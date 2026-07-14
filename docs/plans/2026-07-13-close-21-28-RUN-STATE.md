@@ -35,13 +35,18 @@ ship gate, proven by PASTED output; `/review-impl` per phase, findings fixed in-
 ## 5. Slice board — `done` = an evidence string, never a claim
 Legend: `[ ]` todo · `[~]` in progress · `[x]` done+evidence · `🅿️` parked (→ §7)
 
-### PHASE 0 — the inherited tree (BLOCKS everything)
+### PHASE 0 — the inherited tree (BLOCKS everything) — ✅ DONE
 | # | Slice | Status | Evidence |
 |---|---|---|---|
-| S0.0 | Baseline: full suite green (composition + FE + Go) at HEAD `69f8f2963` with the 96 dirty files | [~] | composition already 2106/289 (earlier this session) |
-| S0.1 | Triage the 96 files → adopt(21–28) / adopt-cheap(cross-cut) / stash(30+) | [ ] | |
-| S0.2 | `/review-impl` the adopted diff; fix findings this phase | [ ] | |
-| S0.3 | Commit in attributed chunks; stash the rest to a branch | [ ] | |
+| S0.0 | Baseline: full suite green with the 96 dirty files | [x] | composition **2106 passed/289 skip**; FE **5130 passed**, 2 fail files = 3 chatParity (theirs, allowed) + PlannerPanel (fixed below); no Go service dirty (D-CL-02) |
+| S0.1 | Triage the 96 files → adopt / leave-theirs | [x] | Adopted: composition BE (`89629ced1`) · studio FE (`5d4ae91a3`) · token-lint tooling (`f7948d442`). LEFT dirty (theirs, off-limits): their planning/status docs + 3 `chat-service/tests/*.py`. D-CL-01/03. |
+| S0.2 | `/review-impl` the adopted diff; fix findings this phase | [x] | **2 findings, both fixed in-phase:** (1) PlannerPanel.test mock missing `useOptionalStudioHost` → 12/12 (`5d4ae91a3`); (2) **HIGH — BE-7c half-fix**: `mineConfirm` still polled the Work-gated `/jobs/{id}` (404 forever on the unbound mine); repointed to `/motif-jobs/{id}` + guard test (`be4d72abf`). tsc clean. |
+| S0.3 | Commit in attributed chunks | [x] | 4 adopt/fix commits + my plan/RUN-STATE (`745753f88`). Tree clean of my concerns. |
+
+> ⚠ **Phase-2b O-2 prerequisite (from S0.2):** `arc_import` (analyze_reference) is the SAME Work-less
+> lane as mine, but has **NO FE poll leg yet** (agent-only today). When O-2 builds the decompiler FE,
+> its poll MUST use `compositionApi.getMotifJob` (`/motif-jobs/{id}`), never `getJob` — or it 404s
+> exactly the way mine did.
 
 ### PHASE 1 — the three real bugs
 | # | Slice | Status | Evidence |
@@ -106,6 +111,8 @@ Legend: `[ ]` todo · `[~]` in progress · `[x]` done+evidence · `🅿️` park
 |---|---|---|---|
 | D-CL-01 | **Phase 0 adopt = commit the green tree in attributed chunks, do NOT surgically split it.** The 96 files are green *together*; splitting a green tree risks breaking green at high token cost. Commit by concern-group, attributed to the Wave-0 session, so the tree is clean (kills the DR-04 collision hazard) and nothing is lost. `/review-impl` focuses on the parts we BUILD ON (BE-7c, G1, OpenAPI parity). | Clean tree unblocks all phases; adopting ≠ building 30+ (it is already-built green code). | Yes — `git revert` a chunk |
 | D-CL-02 | **No Go service is dirty** (verified `git status`), so Phase 0 is Python + FE only; the Go suites are unaffected and not re-run at adoption. | Scope the baseline to what changed. | n/a |
+| D-CL-03 | **Leave the OTHER session's planning/status docs + `chat-service/tests` DIRTY, don't adopt them.** They own their status ("họ tự update sau"); chat-service is explicitly off-limits. Dirty docs pose no collision risk to code work (I won't edit them). | Respect their ownership; don't misattribute their in-flight status. | Yes |
+| D-CL-04 | **BE-7c FE poll fix = repoint FE (option B), NOT owner-scope the generic `/jobs/{id}` (option A).** The Wave-0 session made `/jobs/{id}` deliberately 404 unbound jobs (`engine.py:1444`, "Its route is /motif-jobs/{id}") — a sealed design choice. Honor it; repoint the one live unbound leg (`mineConfirm`), leave getJob's Work-gate intact for collaborator VIEW grants. | Don't fight their sealed design; keep one route = one gate mode. | Yes |
 
 ## 7. Parked / blocked
 | # | Item | Why | Unblocks when |
