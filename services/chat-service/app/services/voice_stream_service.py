@@ -409,21 +409,46 @@ async def voice_stream_response(
     pending_segments: list[tuple[int, str, bytes]] = []  # (index, text, audio_data)
 
     try:
-        chunk_stream = _stream_via_gateway(
+        # WS-4.1-tools — voice consumes the SHARED tool-capable generator (_stream_with_tools),
+        # not the raw gateway stream, so a voice turn can call memory/recall tools mid-response
+        # (the sealed "shared inner generator"). Blast radius is contained: this is a NEW caller,
+        # _stream_with_tools is unchanged. permission_mode='ask' — a spoken turn may READ (recall)
+        # but never fire a destructive write mid-speech (no client confirm loop exists for voice).
+        # A tool set fetch failure degrades to NO tools (voice still answers), never breaks the turn.
+        from app.services.stream_service import _stream_with_tools
+        try:
+            _voice_tools = await knowledge_client.get_tool_definitions(user_id=user_id)
+        except Exception:
+            logger.warning("voice tool-surface fetch failed; proceeding tool-free", exc_info=True)
+            _voice_tools = []
+        chunk_stream = _stream_with_tools(
             model_source=model_source,
             model_ref=model_ref,
             user_id=user_id,
             messages=messages,
             gen_params=gen_params,
+            tools=_voice_tools,
+            knowledge_client=knowledge_client,
+            session_id=session_id,
+            project_id=_build_project_id,
+            permission_mode="ask",
         )
 
         async for chunk_data in chunk_stream:
-            content = chunk_data["content"]
+            # WS-4.1-tools — robust chunk handling: _stream_with_tools yields tool_call /
+            # suspend / agent_surface chunks that carry NO 'content' key (the KeyError the
+            # sealed decision flags). A tool_call is surfaced as an SSE event but never spoken;
+            # suspend/agent_surface are inapplicable to a voice turn (no client resume) → skipped.
+            content = chunk_data.get("content", "")
             reasoning = chunk_data.get("reasoning_content", "")
             # WS-4.2a — the trailing chunk carries usage (content=="" so it skips
             # the TTS path below); keep the last non-null one for billing.
             if chunk_data.get("usage") is not None:
                 last_usage = chunk_data["usage"]
+            _tc = chunk_data.get("tool_call")
+            if _tc:
+                yield _sse("tool-call", {"tool": _tc.get("name") or _tc.get("tool") or "tool"})
+                continue  # a tool_call chunk has no speakable content
 
             if ttft is None and (content or reasoning):
                 ttft = (time.monotonic() - stream_start) * 1000

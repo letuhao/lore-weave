@@ -19,9 +19,11 @@ from app.models import ProviderCredentials
 import app.services.voice_stream_service as vss
 
 
-async def _fake_gateway_stream(*_a, **_k):
-    # two content deltas, then the trailing usage+finish chunk (content == "")
+async def _fake_tool_stream(*_a, **_k):
+    # WS-4.1-tools — the shared generator yields content, a TOOL_CALL chunk (no 'content' key —
+    # voice must NOT KeyError on it), then the trailing usage+finish chunk.
     yield {"content": "Hello ", "reasoning_content": "", "finish_reason": None, "usage": None}
+    yield {"tool_call": {"name": "memory_recall"}}  # no 'content' key at all
     yield {"content": "world.", "reasoning_content": "", "finish_reason": None, "usage": None}
     yield {
         "content": "", "reasoning_content": "", "finish_reason": "stop",
@@ -57,7 +59,9 @@ def _voice_pool(session_kind="chat", project_id=None):
 
 @pytest.fixture
 def _patch_pipeline(monkeypatch):
-    monkeypatch.setattr(vss, "_stream_via_gateway", _fake_gateway_stream)
+    # voice now consumes _stream_with_tools (WS-4.1-tools); patch it at the source (voice
+    # imports it locally at call time).
+    monkeypatch.setattr("app.services.stream_service._stream_with_tools", _fake_tool_stream)
     monkeypatch.setattr(vss, "_generate_tts_chunks", _no_tts)
     monkeypatch.setattr(vss, "_transcribe_audio", AsyncMock(return_value=("hello there", 100)))
     monkeypatch.setattr(vss, "resolve_local_date", AsyncMock(return_value=date(2026, 7, 15)))
@@ -68,6 +72,7 @@ def _patch_pipeline(monkeypatch):
     kc = MagicMock()
     kc.build_context = AsyncMock(return_value=kctx)
     kc.resolve_book_id = AsyncMock(return_value=None)  # no book → capture self-gates to fire=False
+    kc.get_tool_definitions = AsyncMock(return_value=[])  # WS-4.1-tools — voice's tool surface
     monkeypatch.setattr(vss, "get_knowledge_client", lambda: kc)
     return SimpleNamespace(kctx=kctx, kc=kc)
 
@@ -98,6 +103,20 @@ async def test_finish_message_carries_real_tokens(_patch_pipeline):
     assert finish, f"no finish-message SSE emitted; got: {lines}"
     payload = json.loads(finish[0].split("data: ", 1)[1])
     assert payload["usage"] == {"promptTokens": 42, "completionTokens": 17}
+
+
+@pytest.mark.asyncio
+async def test_wsa1_tools_tool_call_chunk_handled_not_spoken(_patch_pipeline):
+    # WS-4.1-tools — a tool_call chunk (no 'content' key) must NOT KeyError; it's surfaced as
+    # an SSE 'tool-call' event and never enters the spoken content.
+    billing = MagicMock()
+    billing.log_usage = AsyncMock()
+    lines = await _run_voice(billing)
+    assert any('"tool-call"' in l and "memory_recall" in l for l in lines)  # surfaced
+    # the spoken text is only the content deltas, never the tool name
+    text = "".join(json.loads(l.split("data: ", 1)[1]).get("delta", "")
+                    for l in lines if '"text-delta"' in l)
+    assert text == "Hello world." and "memory_recall" not in text
 
 
 @pytest.mark.asyncio
