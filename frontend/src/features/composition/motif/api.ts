@@ -169,10 +169,13 @@ export const motifApi = {
     if (!resp.job_id) {
       return ((resp as { result?: MineResult }).result ?? (resp as unknown as MineResult));
     }
-    let job = await compositionApi.getJob(resp.job_id, token);
+    // BE-7c — a motif-mine job is Work-LESS (project_id=NULL). Poll the OWNER-scoped
+    // /motif-jobs/{id}, NOT getJob (/jobs/{id}), which gates on a Work that does not exist
+    // and 404s forever after the user has paid for the mine.
+    let job = await compositionApi.getMotifJob(resp.job_id, token);
     for (let i = 0; i < _POLL_MAX && (job.status === 'pending' || job.status === 'running'); i += 1) {
       await _sleep(_POLL_INTERVAL_MS);
-      job = await compositionApi.getJob(resp.job_id, token);
+      job = await compositionApi.getMotifJob(resp.job_id, token);
     }
     if (job.status === 'failed') {
       throw new Error((job.result as { error?: string } | null)?.error || 'mining failed');

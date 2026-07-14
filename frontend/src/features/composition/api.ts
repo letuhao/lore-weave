@@ -420,6 +420,14 @@ export const compositionApi = {
   getJob(jobId: string, token: string): Promise<GenerationJob> {
     return apiJson(`${BASE}/jobs/${jobId}`, { token });
   },
+  // BE-7c — the OWNER-scoped poll for a Work-LESS job (motif-mine, arc-import). Such a job
+  // carries project_id=NULL, so `getJob` (`/jobs/{id}`, which gates on the job's project→book
+  // grant) 404s on it FOREVER — the "spinner forever after you paid" bug. This route gates on
+  // the actor stamp the row DOES carry (`created_by`). Use it ONLY for unbound flows; Work-bound
+  // polls (compose, conformance) stay on getJob so collaborators' VIEW grants still resolve.
+  getMotifJob(jobId: string, token: string): Promise<GenerationJob> {
+    return apiJson(`${BASE}/motif-jobs/${jobId}`, { token });
+  },
   // M4 — poll a job to terminal (used by the SSE consumer's 202 fallback when a
   // stream endpoint answers a batch job instead). Stops early if `signal` aborts.
   awaitJob(jobId: string, token: string, signal?: AbortSignal): Promise<GenerationJob> {
