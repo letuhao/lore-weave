@@ -405,6 +405,16 @@ async def export_purge_assistant_epoch(body: _ExportPurgeEpochIn) -> dict:
     from app.db.neo4j_repos.facts import export_facts_for_project
 
     pool = get_knowledge_pool()
+    # SAFETY (final review) — purge only a CLOSED epoch. The endpoint takes a raw project_id, so guard
+    # that it belongs to the caller AND is archived: a caller must never purge their ACTIVE epoch through
+    # the epoch-boundary path (account-erase is the separate, deliberate D-R27 flow). Everything is
+    # user_id-scoped regardless, so a cross-user project_id already no-ops; this adds the active-epoch guard.
+    proj = await ProjectsRepo(pool).get(body.user_id, body.project_id)
+    if proj is None:
+        raise HTTPException(status_code=404, detail="epoch project not found")
+    if not proj.is_archived:
+        raise HTTPException(status_code=409, detail={"error_code": "epoch_not_closed",
+                            "message": "export-purge targets a CLOSED epoch; close it first"})
     async with neo4j_session() as session:
         facts = await export_facts_for_project(
             session, user_id=str(body.user_id), project_id=str(body.project_id),
