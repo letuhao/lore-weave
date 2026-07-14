@@ -29,7 +29,13 @@ USING (
   SELECT s.id,
          LEAST(
            $1::int,
-           COALESCE((p.voice ->> 'audio_retention_hours')::int, $1::int)
+           -- SAFE cast (cold-review L3): a single non-numeric stored value would otherwise
+           -- raise and abort the WHOLE sweep platform-wide. Guard with a digit regex so one
+           -- bad/out-of-band row can't poison every user's retention.
+           COALESCE(
+             CASE WHEN p.voice ->> 'audio_retention_hours' ~ '^[0-9]+$'
+                  THEN (p.voice ->> 'audio_retention_hours')::int END,
+             $1::int)
          ) AS ttl
   FROM message_audio_segments s
   LEFT JOIN user_chat_ai_prefs p ON p.owner_user_id = s.user_id

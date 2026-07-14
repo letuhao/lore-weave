@@ -38,6 +38,17 @@ async def _no_tts(*_a, **_k):
     yield  # pragma: no cover
 
 
+async def _yielding_tts(*_a, **_k):
+    # a fake TTS that yields one audio chunk (event, raw) so tts_chars accumulates
+    yield ({"sentenceIndex": 0}, b"\x01\x02")
+
+
+async def _suspend_stream(*_a, **_k):
+    # WS-4.1-tools H1 — content then a SUSPEND chunk (ends the generator, no terminal usage)
+    yield {"content": "Let me check", "reasoning_content": "", "finish_reason": None, "usage": None}
+    yield {"suspend": {"input_tokens": 30, "output_tokens": 5, "pending_tool_call": {}}}
+
+
 def _voice_pool(session_kind="chat", project_id=None):
     pool = AsyncMock()
     conn = AsyncMock()
@@ -186,3 +197,31 @@ async def test_voice_capture_self_gates_when_no_book(_patch_pipeline, monkeypatc
     await _run_voice(billing, session_kind="chat")  # fixture resolve_book_id → None
     persist_spy.assert_awaited_once()
     assert persist_spy.await_args.args[2].fire is False
+
+
+@pytest.mark.asyncio
+async def test_wsb_tts_billing_branch_records_characters(_patch_pipeline, monkeypatch):
+    # WS-4.2b coverage (cold-review M2) — a TTS that yields audio must produce a voice_tts
+    # record with tts_characters > 0 (the branch was previously untested).
+    import app.services.voice_stream_service as _vss
+    monkeypatch.setattr(_vss, "_generate_tts_chunks", _yielding_tts)
+    billing = MagicMock(); billing.log_usage = AsyncMock()
+    await _run_voice(billing)
+    await asyncio.sleep(0)
+    calls = [c.kwargs for c in billing.log_usage.await_args_list]
+    tts = next(c for c in calls if c.get("purpose") == "voice_tts")
+    assert tts["input_payload"]["tts_characters"] > 0
+    assert tts["provider_kind"] == ""  # M1 fix — not the chat provider
+
+
+@pytest.mark.asyncio
+async def test_wsa1_suspend_bills_real_tokens_and_surfaces_error(_patch_pipeline, monkeypatch):
+    # WS-4.1-tools H1 — a suspend must NOT re-create the 0/0 mis-bill and must surface an error.
+    monkeypatch.setattr("app.services.stream_service._stream_with_tools", _suspend_stream)
+    billing = MagicMock(); billing.log_usage = AsyncMock()
+    lines = await _run_voice(billing)
+    await asyncio.sleep(0)
+    assert any('"error"' in l and "voice" in l.lower() for l in lines)  # error surfaced
+    calls = [c.kwargs for c in billing.log_usage.await_args_list]
+    llm = next(c for c in calls if c.get("purpose", "chat") == "chat")
+    assert (llm["input_tokens"], llm["output_tokens"]) == (30, 5)  # real tokens, NOT 0/0

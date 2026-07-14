@@ -19,6 +19,7 @@ import io
 import json
 import logging
 import time
+from types import SimpleNamespace
 from typing import AsyncGenerator
 from uuid import uuid4
 
@@ -445,6 +446,19 @@ async def voice_stream_response(
             # the TTS path below); keep the last non-null one for billing.
             if chunk_data.get("usage") is not None:
                 last_usage = chunk_data["usage"]
+            # WS-4.1-tools cold-review H1 — a SUSPEND ends the generator with NO terminal usage
+            # chunk (a paid Tier-R read or a frontend tool suspends even in 'ask' mode). Voice has
+            # no client resume loop, so: BILL the tokens the suspend payload carries (not 0/0 — the
+            # exact WS-4.2a mis-bill, re-created on this path) and surface an explicit error instead
+            # of a silent half-turn. Then fall through to save/finish with the REAL usage.
+            _susp = chunk_data.get("suspend")
+            if _susp:
+                last_usage = SimpleNamespace(
+                    prompt_tokens=int(_susp.get("input_tokens", 0) or 0),
+                    completion_tokens=int(_susp.get("output_tokens", 0) or 0),
+                )
+                yield _sse("error", {"errorText": "That needs a confirmation I can't do by voice — try it in text chat."})
+                break
             _tc = chunk_data.get("tool_call")
             if _tc:
                 yield _sse("tool-call", {"tool": _tc.get("name") or _tc.get("tool") or "tool"})
@@ -626,10 +640,18 @@ async def voice_stream_response(
         # metering unit (STT = audio-seconds, TTS = characters) in the payload; token fields
         # stay 0 so a token-priced cost is NOT faked — precise per-minute/per-char pricing is
         # the billing cost-model follow-on. This makes the STT/TTS usage VISIBLE + auditable.
-        _stt_seconds = round((speech_duration_ms or 0) / 1000, 2) or round(audio_size_kb / 16, 2)
+        # L1 fix — explicit None check (a clip whose ms rounds to 0.0 is falsy and would
+        # silently fall to the byte-estimate). M1 fix — provider_kind="" (unknown), NOT
+        # creds.provider_kind: `creds` is the CHAT LLM credential; STT/TTS routinely use a
+        # different provider (whisper/Kokoro), so stamping the chat provider corrupts any
+        # per-provider rollup. model_source/model_ref correctly identify the STT/TTS model.
+        if speech_duration_ms:
+            _stt_seconds = round(speech_duration_ms / 1000, 2)
+        else:
+            _stt_seconds = round(audio_size_kb / 16, 2)  # rough proxy (no cost impact; tokens 0)
         asyncio.create_task(billing.log_usage(
             user_id=user_id, model_source=stt_model_source, model_ref=stt_model_ref,
-            provider_kind=creds.provider_kind, input_tokens=0, output_tokens=0,
+            provider_kind="", input_tokens=0, output_tokens=0,
             session_id=session_id, message_id=msg_id, purpose="voice_stt",
             input_payload={"audio_seconds": _stt_seconds, "audio_kb": audio_size_kb},
             output_payload={"transcript_chars": len(transcript)},
@@ -637,7 +659,7 @@ async def voice_stream_response(
         if tts_chars > 0 and tts_model_ref:
             asyncio.create_task(billing.log_usage(
                 user_id=user_id, model_source=tts_model_source, model_ref=tts_model_ref,
-                provider_kind=creds.provider_kind, input_tokens=0, output_tokens=0,
+                provider_kind="", input_tokens=0, output_tokens=0,
                 session_id=session_id, message_id=msg_id, purpose="voice_tts",
                 input_payload={"tts_characters": tts_chars, "tts_voice": tts_voice},
                 output_payload={"sentences": sentence_index},
