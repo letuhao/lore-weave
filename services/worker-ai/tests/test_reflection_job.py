@@ -10,7 +10,12 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from app.reflection_job import ReflectionResult, reflect_week
+import pytest as _pytest
+
+from app.reflection_job import (
+    DETECTOR_CODES, ReflectionPattern, ReflectionResult,
+    reflect_week, validate_detector_code,
+)
 
 
 class _Recaller:
@@ -85,3 +90,47 @@ async def test_self_harm_category_gets_its_acknowledgement():
     assert res.status == "safety_short_circuit"
     assert res.safety_category == "self_harm"
     assert "crisis" in res.acknowledgement.lower() or "trust" in res.acknowledgement.lower()
+
+
+# ── WS-5.2 co-occurrence · WS-5.5 closed-enum guard · WS-5.6 tombstone ────────
+def _note(day, well="", improve=""):
+    return {"entry_date": day, "went_well": well, "to_improve": improve}
+
+
+@pytest.mark.asyncio
+async def test_co_occurrence_surfaces_recurring_theme_with_date_evidence():
+    facts = [_fact(f"day {d}", f"2026-07-{d:02d}") for d in range(6, 13)]  # fully journaled → no gap
+    notes = [
+        _note("2026-07-06", improve="too many meetings broke my focus"),
+        _note("2026-07-08", improve="meetings again ate the morning"),
+        _note("2026-07-10", well="finally protected focus, no meetings"),
+    ]
+    res = await reflect_week(
+        user_id="u1", book_id="b1", week_start="2026-07-06", week_end="2026-07-12",
+        knowledge_client=_Recaller(facts), notes=notes,
+    )
+    keys = {p.pattern_key for p in res.patterns}
+    assert "co_occurrence:meetings" in keys  # 3 days
+    theme = next(p for p in res.patterns if p.pattern_key == "co_occurrence:meetings")
+    assert set(theme.evidence_refs) == {"2026-07-06", "2026-07-08", "2026-07-10"}
+    assert "the" not in keys and "co_occurrence:the" not in keys  # stopwords ignored
+
+
+@pytest.mark.asyncio
+async def test_dismissed_pattern_is_dropped_at_detection():
+    facts = [_fact(f"day {d}", f"2026-07-{d:02d}") for d in range(6, 13)]
+    notes = [_note("2026-07-06", improve="meetings"), _note("2026-07-08", improve="meetings")]
+    res = await reflect_week(
+        user_id="u1", book_id="b1", week_start="2026-07-06", week_end="2026-07-12",
+        knowledge_client=_Recaller(facts), notes=notes,
+        dismissed_pattern_keys=frozenset({"co_occurrence:meetings"}),  # user tombstoned it
+    )
+    assert all(p.pattern_key != "co_occurrence:meetings" for p in res.patterns)  # never resurfaces
+
+
+def test_closed_enum_guard_rejects_unknown_detector_code():
+    assert "journaling_gap" in DETECTOR_CODES
+    with _pytest.raises(ValueError):
+        validate_detector_code("hallucinated_pattern")
+    with _pytest.raises(ValueError):
+        ReflectionPattern(detector_code="not_a_code", summary="x", evidence_refs=("d",))  # __post_init__ guards

@@ -15,6 +15,7 @@ reflection_notes substrate (WS-5.1).
 from __future__ import annotations
 
 import logging
+import re
 from dataclasses import dataclass, field
 from datetime import date, timedelta
 from typing import Any, Protocol
@@ -30,14 +31,41 @@ class _FactRecaller(Protocol):
     ) -> list[dict]: ...
 
 
+# WS-5.5 — the CLOSED detector enum. The phrasing LLM (later) may only name a pattern whose
+# code is in this set; a code outside it is REJECTED (not softened) — enforcement, not a
+# prompt. Deterministic detectors emit these codes directly.
+DETECTOR_CODES: frozenset[str] = frozenset({"journaling_gap", "co_occurrence", "recurring_theme"})
+
+# WS-5.6 — English stopwords the co-occurrence detector ignores so a "recurring theme" is a
+# real content word, not "the"/"and". Small + deterministic (no NLP dependency).
+_STOPWORDS: frozenset[str] = frozenset(
+    "the a an and or but of to in on at for with my me i we our it that this is was were be been "
+    "had has have do did done not no so if then than too very just also more most some any all as "
+    "up out day today week work working got get getting felt feel feeling really".split()
+)
+
+
+def validate_detector_code(code: str) -> None:
+    """WS-5.5 — raise on a detector_code outside the closed set (the guard the phrasing step
+    runs against its LLM output, so a hallucinated pattern name never surfaces)."""
+    if code not in DETECTOR_CODES:
+        raise ValueError(f"detector_code {code!r} is not in the closed set {sorted(DETECTOR_CODES)}")
+
+
 @dataclass(frozen=True)
 class ReflectionPattern:
     """A surfaced pattern. `evidence_refs` is REQUIRED — a pattern with none is dropped
-    before it ever reaches the user (no LLM-invented observations)."""
+    before it ever reaches the user (no LLM-invented observations). `pattern_key` is
+    PERIOD-INDEPENDENT (WS-5.6): it identifies the SAME pattern across weeks so a dismissal
+    tombstones it permanently, not just for the period it was first seen."""
 
     detector_code: str
     summary: str
     evidence_refs: tuple[str, ...]
+    pattern_key: str = ""
+
+    def __post_init__(self):
+        validate_detector_code(self.detector_code)  # WS-5.5 — no out-of-enum code ever exists
 
 
 @dataclass
@@ -102,7 +130,36 @@ def _journaling_gap(
         detector_code="journaling_gap",
         summary=f"{len(gaps)} day(s) this week had no diary entry.",
         evidence_refs=tuple(gaps),  # concrete dates = the evidence
+        pattern_key="journaling_gap",  # period-independent (same concept each week)
     )
+
+
+def _tokenize(text: str) -> set[str]:
+    return {w for w in re.findall(r"[a-zA-Z][a-zA-Z'-]{2,}", (text or "").lower()) if w not in _STOPWORDS}
+
+
+def _co_occurrence(notes: list[dict], min_days: int = 2) -> list[ReflectionPattern]:
+    """WS-5.2 — a deterministic recurring-theme detector over the week's reflection_notes:
+    a content word appearing in went_well/to_improve on ≥ min_days DISTINCT days is a theme.
+    Evidence = the concrete dates (no refs ⇒ no pattern). pattern_key is the term so a
+    dismissal tombstones that theme across weeks (WS-5.6)."""
+    term_days: dict[str, set[str]] = {}
+    for n in notes:
+        d = (n.get("entry_date") or "")[:10]
+        if not d:
+            continue
+        for term in _tokenize(n.get("went_well", "")) | _tokenize(n.get("to_improve", "")):
+            term_days.setdefault(term, set()).add(d)
+    out: list[ReflectionPattern] = []
+    for term, days in sorted(term_days.items()):
+        if len(days) >= min_days:
+            out.append(ReflectionPattern(
+                detector_code="co_occurrence",
+                summary=f"'{term}' recurred in your notes on {len(days)} days this week.",
+                evidence_refs=tuple(sorted(days)),
+                pattern_key=f"co_occurrence:{term}",
+            ))
+    return out
 
 
 async def reflect_week(
@@ -113,18 +170,27 @@ async def reflect_week(
     week_end: str,
     knowledge_client: _FactRecaller,
     away_days: frozenset[str] = frozenset(),
+    notes: list[dict] | None = None,
+    dismissed_pattern_keys: frozenset[str] = frozenset(),
 ) -> ReflectionResult:
     """Recall the week → SAFETY-SCREEN (fail-closed short-circuit) → deterministic detectors.
-    Never raises for content reasons; a transport failure propagates to the caller's status."""
+    `notes` = the week's reflection_notes (WS-5.1 substrate) for the co-occurrence detector;
+    `dismissed_pattern_keys` = the user's tombstoned pattern_keys, dropped AT DETECTION (WS-5.6)
+    so a dismissed pattern never resurfaces as a "new" row each period. Never raises for content
+    reasons; a transport failure propagates to the caller's status."""
     raw = await knowledge_client.recall_facts_range(
         user_id=user_id, book_id=book_id, date_from=week_start, date_to=week_end,
     )
+    notes = notes or []
 
-    # ── Gate 3 (X-2, SEALED) — the safety FLOOR runs BEFORE any pattern is surfaced.
-    # The week's emotional content is screened deterministically; a trip short-circuits
-    # fail-closed: no patterns, no draft, a plain acknowledgement instead (WS-5.12). The
-    # acknowledgement is NEVER written into the KG as a fact about the user.
-    combined = "\n".join(str(f.get("content") or "") for f in raw)
+    # ── Gate 3 (X-2, SEALED) — the safety FLOOR runs BEFORE any pattern is surfaced. The
+    # week's emotional content (facts AND the user's own reflection notes) is screened
+    # deterministically; a trip short-circuits fail-closed: no patterns, no draft, a plain
+    # acknowledgement instead (WS-5.12). The acknowledgement is NEVER written into the KG.
+    combined = "\n".join(
+        [str(f.get("content") or "") for f in raw]
+        + [f"{n.get('went_well', '')} {n.get('to_improve', '')}" for n in notes]
+    )
     verdict = safety_floor.screen(combined)
     if verdict.tripped:
         logger.info(
@@ -138,9 +204,14 @@ async def reflect_week(
         )
 
     # ── Deterministic detectors (evidence refs; no refs ⇒ dropped) ────────────
-    patterns: list[ReflectionPattern] = []
+    candidates: list[ReflectionPattern] = []
     gap = _journaling_gap(raw, week_start, week_end, away_days)
     if gap is not None:
-        patterns.append(gap)
-    # co-occurrence detector lands with the reflection_notes substrate (WS-5.1).
+        candidates.append(gap)
+    candidates.extend(_co_occurrence(notes))
+
+    # ── WS-5.6 — tombstone drop AT DETECTION (before any phrasing LLM), on the
+    # PERIOD-INDEPENDENT pattern_key: a dismissed pattern is gone for good, not re-minted
+    # as a fresh row next period.
+    patterns = [p for p in candidates if p.pattern_key not in dismissed_pattern_keys]
     return ReflectionResult(status="reflected", patterns=patterns)
