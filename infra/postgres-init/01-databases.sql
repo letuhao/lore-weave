@@ -21,6 +21,10 @@ WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'loreweave_book')\gexe
 SELECT 'CREATE DATABASE loreweave_sharing'
 WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'loreweave_sharing')\gexec
 
+-- Scheduler (WS-3.1 — the per-user tick driver's own DB, scheduled_agent_runs)
+SELECT 'CREATE DATABASE loreweave_scheduler'
+WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'loreweave_scheduler')\gexec
+
 -- Public Catalog
 SELECT 'CREATE DATABASE loreweave_catalog'
 WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'loreweave_catalog')\gexec
