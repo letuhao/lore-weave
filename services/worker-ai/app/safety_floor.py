@@ -48,9 +48,13 @@ _LEXICON: dict[str, tuple[str, ...]] = {
         "nothing matters anymore", "nothing helps anymore",
     ),
     CAT_HARASSMENT_ABUSE: (
+        # NB: bare "hit me" is deliberately NOT here — it is idiom-prone ("the flu hit me",
+        # "it hit me that…") and would false-short-circuit reflection; the violence sense is a
+        # PATTERN below (subject + verb + me). Safety fails closed, but a floor that trips on
+        # idiom makes reflection unusable — the wrong kind of fail-closed.
         "harassed", "harassing me", "sexually harassed", "assaulted me",
         "abused me", "abusing me", "threatened me", "threatening me",
-        "hit me", "unsafe around", "afraid of my", "stalking me", "stalked me",
+        "unsafe around", "afraid of my", "stalking me", "stalked me",
     ),
 }
 
@@ -75,6 +79,8 @@ _PATTERNS: tuple[tuple[str, "re.Pattern[str]"], ...] = tuple(
         (CAT_HARASSMENT_ABUSE, r"(makes|made) me feel unsafe"),
         (CAT_HARASSMENT_ABUSE, r"(won'?t|will not) (leave me alone|stop (texting|messaging|calling) me)"),
         (CAT_HARASSMENT_ABUSE, r"(touched|grabbed) me without (my )?(consent|permission)"),
+        # the violence sense of "hit me" — requires a human subject, so idioms don't trip it
+        (CAT_HARASSMENT_ABUSE, r"(he|she|they|my \w+|partner|husband|wife|boss|manager) (hit|hits|beat|beats|punched|punches|slapped|slaps) me"),
     )
 )
 

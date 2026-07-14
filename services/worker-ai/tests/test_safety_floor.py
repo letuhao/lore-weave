@@ -77,6 +77,15 @@ def test_model_may_widen_but_never_narrow_the_floor():
     assert widened.reason == "model"
 
 
+def test_hit_me_idiom_does_not_trip_but_real_violence_does():
+    # review fix — bare "hit me" is idiom-prone and must NOT false-short-circuit reflection…
+    assert screen("the flu really hit me this week").tripped is False
+    assert screen("it hit me that the deadline moved").tripped is False
+    # …but the violence sense (human subject + verb + me) still trips fail-closed.
+    v = screen("my partner hit me again last night")
+    assert v.tripped is True and v.category == CAT_HARASSMENT_ABUSE
+
+
 def test_verdict_is_frozen():
     with pytest.raises(Exception):
         screen("hi").tripped = True  # type: ignore[misc]
