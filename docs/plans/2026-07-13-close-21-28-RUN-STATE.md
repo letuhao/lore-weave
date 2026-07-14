@@ -152,7 +152,7 @@ cascade). DBT-06 (arc-inspector) → re-homed to spec 32 by C1.
 | **22** | D3 · D4 · D5 | D5 🅿️ D-DEFER; D3/F3 🅿️ P-CONC (book-service E2E, contended); D4 folds into T3 🅿️ |
 | **23** | D2 pack-effect ✅ · **D7 S06** | D2 already shipped; **D7 (S06) 🅿️ P-B1** |
 | **24** | **H8.2 browser** · H8.1 | 🅿️ P-P34 (Playwright drives book-service, contended) |
-| **25** | T3 · **T4** · T5 · T6 | **T4 ✅** (`9a9ec24e8`, caught the real B2 bug); T3/T5 🅿️ D-DEFER; T6 🅿️ P-CONC |
+| **25** | T3 · **T4** · T5 · T6 | **T4 ✅** (`9a9ec24e8`, caught the real B2 bug); **T3 ✅** (`cc5777bb3`, F5 no-fork guard); T5 composition-half 🅿️ (seam verified) + usage-row leg P-CONC; T6 🅿️ P-CONC |
 | **26** | F2 · F3 | 🅿️ P-CONC (both need the book-service Hub-leg smoke) |
 | **27** | **H4 S06** · eval | 🅿️ P-B1 (S06) / D-DEFER (eval report) |
 | **28** | **D3 S06** · AN-9/C2 · canonical predicate | **canonical predicate FIXED ✅** (`9a9ec24e8`, the DR-B tenancy bug); AN-9/C2 🅿️ P-B1 (chat-service); D3 (S06) 🅿️ P-B1 |
