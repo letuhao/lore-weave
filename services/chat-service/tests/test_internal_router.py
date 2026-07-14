@@ -399,3 +399,32 @@ async def test_reextract_trigger_surfaces_an_enqueue_failure_as_503(client):
     with patch("app.events.distill_enqueue.enqueue_reextract", new=AsyncMock(side_effect=RuntimeError("redis down"))):
         r = await client.post(_REEXTRACT, json=_reextract_body(), headers=_AUTH)
     assert r.status_code == 503
+
+
+# ── WS-5.13 (P5 Gate-3) — practice-start refuses a disclosed abuse/self-harm scenario ──
+def _create_session_body(**over):
+    body = {
+        "owner_user_id": str(uuid4()), "title": "Practice",
+        "model_source": "user_model", "model_ref": str(uuid4()),
+        "system_prompt": "You are an interviewer.",
+        "working_memory_seed": {"charter": {"goal": "practice a salary negotiation"}},
+    }
+    body.update(over)
+    return body
+
+
+@pytest.mark.asyncio
+async def test_practice_start_refuses_abuse_scenario(client, mock_pool):
+    body = _create_session_body(
+        working_memory_seed={"scenario": "roleplay my manager who keeps harassing me and won't stop"},
+    )
+    r = await client.post("/internal/chat/sessions", json=body, headers=_AUTH)
+    assert r.status_code == 422
+    assert "roleplay" in r.text.lower() or "support" in r.text.lower()
+
+
+@pytest.mark.asyncio
+async def test_practice_start_allows_clean_scenario(client, mock_pool):
+    mock_pool.fetchrow.return_value = FakeRecord({"session_id": uuid4()})
+    r = await client.post("/internal/chat/sessions", json=_create_session_body(), headers=_AUTH)
+    assert r.status_code == 201

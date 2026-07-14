@@ -72,6 +72,11 @@ include = [
   "loreweave_extraction*",
   "loreweave_obs*",
   "loreweave_parse*",
+  # WS-5.11/5.13 (2026-07-15) — `loreweave_safety` (the deterministic distress/harassment/
+  # self-harm FLOOR + clinical deny-list). Pure-stdlib; ONE home so worker-ai (weekly
+  # reflection) + chat-service (practice gate) screen identically — a second copy of a
+  # safety lexicon is a drift.
+  "loreweave_safety*",
   # Q0 (2026-06-01) — `loreweave_eval` added (extraction-quality scorer lifted
   # from knowledge-service/tests/quality). Depends on loreweave_extraction
   # (canonical + prompts) + loreweave_llm (errors) + PyYAML; the LLM client is

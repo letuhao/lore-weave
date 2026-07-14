@@ -63,6 +63,24 @@ async def internal_create_session(
     INSERT `/templates/{id}/start` uses — extracted so roleplay-service (the new
     goal authority) can own scripts while chat-service still owns the session +
     turn loop + M3 anchoring + M6 debrief."""
+    # WS-5.13 (P5 Gate-3) — NEVER roleplay a disclosed harassment/abuse (or self-harm)
+    # scenario. Screen the practice SOURCE MATERIAL (system prompt + the seed's scenario/
+    # charter text) through the shared safety floor; a trip REFUSES to start the practice —
+    # a coach must not enact a user's disclosed abuse as a roleplay.
+    from loreweave_safety import screen
+    _seed = body.working_memory_seed or {}
+    _source = " ".join(str(x) for x in [
+        body.system_prompt, _seed.get("scenario"),
+        (_seed.get("charter") or {}).get("goal") if isinstance(_seed.get("charter"), dict) else None,
+    ] if x)
+    _verdict = screen(_source)
+    if _verdict.tripped:
+        raise HTTPException(
+            status_code=422,
+            detail="this practice scenario can't be started — it describes a situation that "
+                   "shouldn't be roleplayed. If you're dealing with this, please reach out to "
+                   "someone you trust or a support service.",
+        )
     row = await db.fetchrow(
         """
         INSERT INTO chat_sessions
