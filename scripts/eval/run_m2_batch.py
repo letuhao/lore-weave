@@ -104,6 +104,17 @@ def _gt_authoring(b: str) -> tuple[bool, str]:
     return n > 0, f"authoring_runs={n}"
 
 
+def _gt_kg(b: str) -> tuple[bool, str]:
+    # S04 kg-build: a KG project exists AND at least one node was projected (stat_entity_count>0).
+    rows = _sql(DBK["knowledge"],
+                f"SELECT count(*), coalesce(sum(coalesce(stat_entity_count,0)),0) "
+                f"FROM knowledge_projects WHERE book_id='{b}'")
+    parts = rows.split("|") if "|" in rows else rows.split()
+    nproj = int(parts[0]) if parts and parts[0] else 0
+    nnodes = int(parts[1]) if len(parts) > 1 and parts[1] else 0
+    return nproj > 0 and nnodes > 0, f"kg_projects={nproj} nodes={nnodes}"
+
+
 def _gt_conformance(b: str) -> tuple[bool, str]:
     # canon-check: a conformance run was created for this book (arc_conformance_state carries book_id)
     n = int(_sql(DBK["composition"],
@@ -113,12 +124,22 @@ def _gt_conformance(b: str) -> tuple[bool, str]:
 
 # ── S03 entity-triage: a book with a DRAFT PILE the agent must drain (keep/junk/merge) ──────
 def _s03_book(lbl: str) -> str:
-    """A book with adopted kinds + a pile of DRAFT entities (an ai-suggested inbox to triage).
-    Unlike the S04 fixture, these are LEFT as drafts — the pile is the point."""
+    """A book with adopted kinds + the DRAFT pile the S03 scenario actually references (a Dracula
+    inbox: a genuine duplicate Dracula/Count Dracula to MERGE, junk 'Gothic Atmosphere' to REMOVE,
+    plus real characters/places to KEEP). The earlier generic 'Draft Char N' pile was the bug — the
+    agent was told to merge/remove entities that did not exist in the fixture, so it floundered and
+    proposed MORE instead of draining. Left as drafts; the pile is the point."""
     b = _book_with_ontology(f"M2-S03-{lbl}")
     fx._propose(fx._mcp(), b, [
-        {"kind": "character", "name": f"Draft Char {i}"} for i in range(4)
-    ] + [{"kind": "location", "name": "Draft Place"}])
+        {"kind": "character", "name": "Dracula"},
+        {"kind": "character", "name": "Count Dracula"},      # the duplicate of Dracula to MERGE
+        {"kind": "character", "name": "Jonathan Harker"},
+        {"kind": "character", "name": "Mina Murray"},
+        {"kind": "character", "name": "Van Helsing"},
+        {"kind": "character", "name": "Gothic Atmosphere"},  # the junk (a mood, not a character) to REMOVE
+        {"kind": "location", "name": "Castle Dracula"},
+        {"kind": "location", "name": "Carfax Abbey"},
+    ])
     return b
 
 
@@ -140,6 +161,7 @@ SCEN = {
     "S01":  (lambda lbl: _fresh_book(f"M2-S01-{lbl}"), _gt_kinds, False),        # glossary-bootstrap
     "S02":  (lambda lbl: _book_with_ontology(f"M2-S02-{lbl}"), _gt_entities, False),  # populate-glossary
     "S03":  (_s03_book, _gt_triaged, False),                                     # entity-triage (drain a pile)
+    "S04":  (lambda lbl: fx.build_s04(lbl)["book_id"], _gt_kg, False),           # kg-build from glossary
     "S07":  (lambda lbl: _fresh_book(f"M2-S07-{lbl}"), _gt_plan, False),
     "S06b": (lambda lbl: fx.build_plan(lbl)["book_id"], _gt_prose, False),
     # S12's GOAL is "chapters get drafted", not "the authoring-run FSM was used". Score the OUTCOME

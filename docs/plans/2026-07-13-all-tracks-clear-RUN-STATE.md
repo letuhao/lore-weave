@@ -84,6 +84,38 @@ Clear **all four tracks**. MAXIMAL SCOPE — nothing won't-fixed, nothing deferr
 
 *(New decisions made during the run get appended here with reasoning + reversibility.)*
 
+## 6b. ⚠️ ESCALATION — measured rail-DISCOVERY ceiling (S03 · S04 · S09), per goal invariant #10
+
+**The pattern (measured, not guessed):** a mid-tier model (gemma-26B) does NOT reliably DISCOVER +
+DRIVE a **non-pinned** workflow rail from natural language. The rails that drive reliably are the ones
+**pinned by the write-mode binding** (vision-to-book → S06/S06b/S07/S12 ✅) or reached by a **direct
+tool call** (glossary rails → S00b/S00c/S00d/S01/S02 ✅). The rails that require the agent to *find* a
+specific non-pinned workflow (entity-triage W3, canon-check W9, kg-build W4) fail or are flaky:
+
+- **S03 entity-triage 0/3** — fixture VERIFIED correct (8 drafts, `{ai-suggested,assistant}`-tagged, incl. the
+  Dracula/Count-Dracula dupe + junk "Gothic Atmosphere"). The agent NEVER calls `glossary_list_ai_suggestions`
+  to see the pile — it reads the *ontology* (kinds, not entities), **thrashes on `kg_list_templates` ×12
+  (mostly erroring)**, PROPOSES MORE entities (grows the pile), and **hallucinates the inbox** ("Silverpine
+  Forest" — never seeded) + claims a merge it never performed. `triaged=0` all 3 runs. (S03 passed 2/3 in the
+  2026-07-11 run — so the capability exists; it is variance/discovery-fragile, and regressed here.)
+- **S04 kg-build 1/3** — r3 DROVE it (`kg_projects=1, nodes=6`), r1/r2 got 0. The rail CAN work; the agent
+  reaches it ~1/3 of the time. On the ≥2/3 edge, not over it.
+- **S09 canon-check ~0** — the agent improvises KG ops (`kg_schema_read`/`kg_project_*`) instead of running
+  `composition_conformance_run`; also the run is async+slow (outlives the turn).
+
+**Root cause (not a fixture bug — those are fixed):** discovery. The agent must `workflow_list` →
+recognize the right rail → `workflow_load` → drive it, and gemma-26B does that inconsistently for a
+NL request that doesn't name the rail. This is the core discoverability challenge, at the model's edge.
+
+**Fix options (PO call):** (a) **accept the ceiling** for S03/S04/S09 and record measured numbers
+(3 of 18 scenarios are mid-tier-discovery-bound); (b) a **targeted discovery enhancement** — e.g. surface
+these rails more actively, or a lightweight intent→workflow hint so "clean up my suggestions" pins
+entity-triage the way "write my novel" pins vision-to-book (a real product change, ~its own milestone);
+(c) **more runs** betting on variance (S04 is 1/3, might hit 2/3). **My rec: (b) is the honest fix** — it
+is the exact thing the discoverability effort is FOR — but it is a milestone-sized enhancement, so I am
+flagging it for a PO decision rather than silently expanding scope. The other 13/18 scenarios + all FE +
+bugs + docs continue meanwhile.
+
 ## 6. Parked register (genuinely-external blockers only — NOT a place for scenarios)
 
 **⚡ EXPLICIT PARALLELISM (per token-discipline agreement):** M2 (9 scenarios ×3) is running as ONE
