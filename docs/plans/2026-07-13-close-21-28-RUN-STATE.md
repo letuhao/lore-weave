@@ -51,10 +51,10 @@ Legend: `[ ]` todo · `[~]` in progress · `[x]` done+evidence · `🅿️` park
 ### PHASE 1 — the three real bugs
 | # | Slice | Status | Evidence |
 |---|---|---|---|
-| B1 | AN-C2 discovery scent (`stream_service.py`) — unblocks P-08→S06→DoD of 23/27/28 | [ ] | |
-| B2 | Canonical-Work predicate (`agent_native.resolve_scope`) — write 25-T4 RED first | [ ] | |
-| B3 | `arc_lift` startup fail-loud assertion (Q2 sealed) | [ ] | |
-| B4 | C5 — is `POST /works/{pid}/generate` ungated-spend reachable? fix-now or confirm defer | [ ] | |
+| B1 | AN-C2 discovery scent (`stream_service.py`) — unblocks P-08→S06→DoD of 23/27/28 | 🅿️ | **PARKED → §7 P-B1** — chat-service is LIVE-owned by the other session (it committed `90c3ba8cc` mid-run). Cannot edit `stream_service.py` without a DR-04 collision. |
+| B2 | Canonical-Work predicate (`agent_native.resolve_scope`) — write 25-T4 RED first | [x] | `9a9ec24e8` · 25-T4 RED on `marked[0]`, GREEN after using `resolve_canonical_work`; composition 2112/289. |
+| B3 | `arc_lift` startup fail-loud assertion (Q2 sealed) | [x] | `9a9ec24e8` · auto-lift clean DBs + `_assert_lift_applied` fails loud on rekey-without-lift. **LIVE**: fresh throwaway DB → born LIFTED (`kind IN ('chapter','scene')`, both markers, no trip); throwaway dropped (0 left). Unit tests pin both marker states. |
+| B4 | C5 — is `POST /works/{pid}/generate` ungated-spend reachable? | [x] | **Investigated → DEFER + ⚠ PO-DECIDE (§6 D-B4).** Reachable ONLY from the legacy editor (`App.tsx:134` route), NOT the studio (`ComposePanel` is chat-only — imports `@/features/chat/Chat`, no `/generate`). Streaming cowrite/ghost can't take a per-call confirm (UX); the surface is Wave-6-retiring; the correct gate (per-work spend budget / opt-in + discrete-generate confirm) is the compose-path wave, tracked as W3-3c / D-COMPOSE-GENERATE-UNGATED (PO decision sheet). ⚠ **NOT proven fail-closed at a guardrail** — stated honestly, not claimed. |
 
 ### PHASE 2 — the missing test batteries (`25` T3/T4/T5/T6)
 | # | Slice | Status | Evidence |
@@ -113,11 +113,13 @@ Legend: `[ ]` todo · `[~]` in progress · `[x]` done+evidence · `🅿️` park
 | D-CL-02 | **No Go service is dirty** (verified `git status`), so Phase 0 is Python + FE only; the Go suites are unaffected and not re-run at adoption. | Scope the baseline to what changed. | n/a |
 | D-CL-03 | **Leave the OTHER session's planning/status docs + `chat-service/tests` DIRTY, don't adopt them.** They own their status ("họ tự update sau"); chat-service is explicitly off-limits. Dirty docs pose no collision risk to code work (I won't edit them). | Respect their ownership; don't misattribute their in-flight status. | Yes |
 | D-CL-04 | **BE-7c FE poll fix = repoint FE (option B), NOT owner-scope the generic `/jobs/{id}` (option A).** The Wave-0 session made `/jobs/{id}` deliberately 404 unbound jobs (`engine.py:1444`, "Its route is /motif-jobs/{id}") — a sealed design choice. Honor it; repoint the one live unbound leg (`mineConfirm`), leave getJob's Work-gate intact for collaborator VIEW grants. | Don't fight their sealed design; keep one route = one gate mode. | Yes |
+| D-B3 | **The arc-lift assertion HARD-FAILS boot** (not a warning), but run_migrations **auto-lifts a CLEAN DB** first so fresh/test DBs are born consistent. The risky data-lift (legacy DBs with real arc rows) stays operator-invoked; the assertion catches only "post-lift code deployed onto a legacy pre-Deploy-2 DB." | Q2 sealed "fail loud"; the auto-lift resolves the fresh-DB/test-DB breakage without touching legacy data. | Yes |
+| D-B4 | ⚠ **PO-DECIDE — C5 ungated /generate spend: DEFER, don't bolt a confirm onto a retiring surface.** Reachable only from the legacy editor (not the studio's chat-based compose); streaming cowrite can't take a per-call confirm; the surface is Wave-6-retiring; the real fix (spend budget/opt-in + discrete-generate confirm) is the compose-path wave (W3-3c, tracked). Chose the reversible option (defer) over negative work. | A confirm on streaming cowrite is wrong UX; a confirm on a dying surface is O-12-class negative work. | Yes — the compose-path wave lands the real gate |
 
 ## 7. Parked / blocked
 | # | Item | Why | Unblocks when |
 |---|---|---|---|
-| *(none at start)* | | | |
+| **P-B1** | **B1 — AN-C2 discovery scent** (`services/chat-service/app/services/stream_service.py`) + its downstream **S06 replay leg** (Phase 4, DoD of 23/27/28) | The plan assumed chat-service was UNOWNED (the other session had stopped). **FALSE — the other session is LIVE in chat-service**: it committed `90c3ba8cc fix(chat-tests)` mid-run, between my own commits. Editing a large shared file under a live concurrent session is the exact DR-04 collision hazard the run's rules forbid. **Blocked, not stopped** — every other phase is composition-service/FE (mine) and proceeds. | The other session confirms stopped in chat-service (PO re-confirms), OR the PO explicitly authorizes editing stream_service.py despite the concurrency. Then B1 is a ~20-token one-line prompt edit + a guard test; S06 runs after. |
 
 ## 8. Debt (carried from prior RUN-STATE)
 DBT-01 (row-3 saga no sweeper) · DBT-02 (chapter_reorder updated_at) · DBT-04 (RF mount warn) ·
@@ -131,6 +133,7 @@ cascade). DBT-06 (arc-inspector) → re-homed to spec 32 by C1.
 | DR-B | Shipped a tenancy bug the spec forbade (28:502-510); the test that catches it (25-T4) I never wrote | this audit | B2 + T4 |
 | DR-C | Dropped spec 21 from the pillar board; PH7/PH8/G1/G2 tracked by nobody | PO asking "wasn't it 21–28?" | plan §2 |
 | DR-D | My orphan register went stale within hours — read 30–38 but not the concurrent wave-*.md; 5 of 12 already homed | the triage agent | §6.4-CORRECTION |
+| DR-E | **The other session is STILL LIVE despite being asked to stop.** It committed `90c3ba8cc` (chat-tests) between my `f7948d442` and `be4d72abf`. Nothing of mine was lost (linear history; add+commit-as-one-command held), but the plan's premise "chat-service is now unowned" is false. | The unexpected commit in `git log --oneline` after Phase 0 | **P-B1 park**; verify index-clean before EVERY commit (already the rule); surfaced to PO. |
 
 ## 10. Completeness ledger (filled at the end)
 *(per-pillar: 21 · 22 · 23 · 24 · 25 · 26 · 27 · 28 → DoD test → evidence string)*
