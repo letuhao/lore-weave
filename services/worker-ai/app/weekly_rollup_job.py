@@ -73,6 +73,18 @@ async def roll_up_week(
     if not facts:
         return {"status": "no_facts", "week_start": week_start, "week_end": week_end}
 
+    # P5 Gate-3 (cold-review M3) — the weekly review is LLM-generated emotional content, the
+    # same surface the reflection floor protects. Screen the week's facts through the shared
+    # safety floor BEFORE generating a summary; a trip short-circuits fail-closed (no LLM
+    # summary written) rather than auto-generating a review of a distressed week.
+    from loreweave_safety import screen
+    _verdict = screen("\n".join(f.text for f in facts))
+    if _verdict.tripped:
+        logger.info("weekly-rollup short-circuit (safety floor) user=%s category=%s",
+                    user_id, _verdict.category)
+        return {"status": "safety_short_circuit", "category": _verdict.category,
+                "week_start": week_start, "week_end": week_end}
+
     try:
         draft = await reduce_entry(facts, language, llm)
     except Exception as exc:  # noqa: BLE001 — a compute failure is retryable, not a fabricated summary.

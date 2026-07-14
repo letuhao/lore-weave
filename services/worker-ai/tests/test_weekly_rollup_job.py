@@ -83,3 +83,18 @@ async def test_weekly_rollup_paused_on_daily_cap():
         book_client=book, billing_client=FakeBilling(exhausted=True),
     )
     assert out["status"] == "paused" and book.writes == []
+
+
+async def test_weekly_rollup_short_circuits_on_distress():
+    # cold-review M3 — a distressed week must NOT get an auto-generated LLM review.
+    distress = [{"type": "statement", "content": "I don't know how much longer I can do this",
+                 "event_date_iso": "2026-03-11"}]
+    kn = FakeKnowledge(distress)
+    book = FakeBook()
+    out = await weekly_rollup_job.roll_up_week(
+        user_id="u1", book_id="b1", week_start="2026-03-09", week_end="2026-03-15",
+        entry_zone="UTC", language="en", llm=FakeLLM(), knowledge_client=kn, book_client=book,
+    )
+    assert out["status"] == "safety_short_circuit"
+    assert out["category"] == "distress"
+    assert book.writes == []  # nothing written on a distressed week
