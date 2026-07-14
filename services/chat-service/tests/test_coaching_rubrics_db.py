@@ -82,3 +82,19 @@ def test_coerce_clamps_and_rejects_bool_score():
     rubric = CoachingRubric("x", 1, "X", (RubricDimension("clarity", "Clarity", {}),), "quarantine")
     assert coerce_dimensions({"dimensions": [{"key": "clarity", "score": 9}]}, rubric)[0]["score"] == 5
     assert coerce_dimensions({"dimensions": [{"key": "clarity", "score": True}]}, rubric)[0]["score"] is None
+
+
+# ── WS-5.23 — coaching-KB citation resolution (no DB needed) ──────────────────
+def test_unresolved_citations_blocks_dangling_and_blank():
+    from app.services.coaching_rubrics import unresolved_citations
+    known = {"STAR method", "GROW model"}
+    cites = ["STAR method", "made-up framework", "  ", "GROW model"]
+    bad = unresolved_citations(cites, lambda c: c in known)
+    assert bad == ["made-up framework", "  "]  # dangling + blank block sign-off
+
+
+def test_unresolved_citations_fails_closed_on_resolver_error():
+    from app.services.coaching_rubrics import unresolved_citations
+    def _boom(_c):
+        raise RuntimeError("resolver down")
+    assert unresolved_citations(["anything"], _boom) == ["anything"]  # error => unresolved

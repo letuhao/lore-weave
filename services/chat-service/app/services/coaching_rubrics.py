@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
+from typing import Callable
 
 import asyncpg
 
@@ -91,3 +92,23 @@ def coerce_dimensions(raw: dict, rubric: CoachingRubric) -> list[dict]:
             "score": score, "note": note if isinstance(note, str) else None,
         })
     return out
+
+
+# ── WS-5.23 (spec 08 §Scorer, Q4 R3-cite) — coaching-KB citation resolution ───
+def unresolved_citations(citations: list[str], resolve: "Callable[[str], bool]") -> list[str]:
+    """The coaching knowledge-base = a kind='lore' book of curated CITED frameworks. Each cited
+    reference MUST individually resolve before sign-off (a coaching claim with a dangling
+    citation is an unsourced opinion). Returns the citations that DON'T resolve — a non-empty
+    result BLOCKS sign-off (the caller drops the offending content, never ships it uncited).
+    Blank/whitespace citations count as unresolved (an empty citation is not a source)."""
+    bad: list[str] = []
+    for c in citations:
+        if not (c or "").strip():
+            bad.append(c)
+            continue
+        try:
+            if not resolve(c):
+                bad.append(c)
+        except Exception:
+            bad.append(c)  # a resolver error = not proven to resolve -> fail closed
+    return bad
