@@ -67,8 +67,10 @@ func (s *Server) upsertDiaryEntry(w http.ResponseWriter, r *http.Request) {
 	if kind == "" {
 		kind = "primary"
 	}
-	if kind != "primary" && kind != "supplement" {
-		writeError(w, http.StatusBadRequest, "BOOK_BAD_REQUEST", "journal_kind must be primary|supplement")
+	// 'weekly' (WS-3.7) is a get-or-REPLACE kind like primary (review M2): re-running a week's rollup
+	// must REPLACE the prior weekly review for that week, not pile up duplicates on redelivery/double-fire.
+	if kind != "primary" && kind != "supplement" && kind != "weekly" {
+		writeError(w, http.StatusBadRequest, "BOOK_BAD_REQUEST", "journal_kind must be primary|supplement|weekly")
 		return
 	}
 	body := in.Body
@@ -144,15 +146,16 @@ func (s *Server) upsertDiaryEntry(w http.ResponseWriter, r *http.Request) {
 	jsonBody := plainTextToTiptapJSON(body)
 	byteSize := int64(len(body))
 
-	// 3. PRIMARY: get-or-create-then-replace. (Supplement always creates a new chapter.)
-	if kind == "primary" {
+	// 3. PRIMARY / WEEKLY: get-or-create-then-replace (keyed by book+entry_date+kind, so a re-run
+	//    REPLACES). Supplement always creates a new chapter. (M2 — 'weekly' is idempotent per week.)
+	if kind == "primary" || kind == "weekly" {
 		var chID uuid.UUID
 		var kept *time.Time
 		var oldSize int64
 		err = tx.QueryRow(ctx,
 			`SELECT id, diary_kept_at, byte_size FROM chapters
-			   WHERE book_id=$1 AND entry_date=$2 AND journal_kind='primary' AND lifecycle_state='active'`,
-			bookID, entryDate).Scan(&chID, &kept, &oldSize)
+			   WHERE book_id=$1 AND entry_date=$2 AND journal_kind=$3 AND lifecycle_state='active'`,
+			bookID, entryDate, kind).Scan(&chID, &kept, &oldSize)
 		if err == nil {
 			if kept != nil {
 				// The user already reviewed+kept this day (§Q6) — never overwrite it. The caller

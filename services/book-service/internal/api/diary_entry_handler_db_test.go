@@ -393,6 +393,43 @@ func TestAmendDiaryEntry_PreservesKeptAndWritesRevision_DB(t *testing.T) {
 	}
 }
 
+// WS-3.7 review M2 — a weekly review is get-or-REPLACE by week (not a supplement that piles up). A
+// re-run of the same week's rollup REPLACES the prior review; exactly one 'weekly' chapter results.
+func TestDiaryEntry_WeeklyIsGetOrReplace_DB(t *testing.T) {
+	s, pool := dbTestServer(t)
+	ctx := context.Background()
+	owner := uuid.New()
+	diary := seedBookOfKind(t, ctx, pool, owner, "diary")
+
+	post := func(body string) *httptest.ResponseRecorder {
+		return postDiaryEntry(t, s, diary, map[string]any{
+			"owner_user_id": owner.String(), "entry_date": "2026-03-15", "journal_kind": "weekly",
+			"body": body,
+		}, true)
+	}
+	if r := post("First weekly review."); r.Code != http.StatusOK && r.Code != http.StatusCreated {
+		t.Fatalf("first weekly = %d, want 200/201. body=%s", r.Code, r.Body.String())
+	}
+	if r := post("Second weekly review (a redelivery)."); r.Code != http.StatusOK && r.Code != http.StatusCreated {
+		t.Fatalf("second weekly = %d, want 200/201 (replace). body=%s", r.Code, r.Body.String())
+	}
+	// Exactly ONE weekly chapter for the week — the redelivery replaced, not duplicated.
+	var n int
+	_ = pool.QueryRow(ctx, `SELECT count(*) FROM chapters
+		WHERE book_id=$1 AND entry_date=$2 AND journal_kind='weekly' AND lifecycle_state='active'`,
+		diary, "2026-03-15").Scan(&n)
+	if n != 1 {
+		t.Fatalf("expected 1 weekly chapter (get-or-replace), got %d — M2 duplicate bug", n)
+	}
+	var raw string
+	_ = pool.QueryRow(ctx, `SELECT body_text FROM chapter_raw_objects ro
+		JOIN chapters c ON c.id = ro.chapter_id
+		WHERE c.book_id=$1 AND c.journal_kind='weekly'`, diary).Scan(&raw)
+	if !strings.Contains(raw, "redelivery") {
+		t.Fatalf("the weekly body must be the LATEST review, got %q", raw)
+	}
+}
+
 func redactDiaryName(t *testing.T, s *Server, bookID, caller uuid.UUID, name string) *httptest.ResponseRecorder {
 	t.Helper()
 	b, _ := json.Marshal(map[string]any{"name": name})

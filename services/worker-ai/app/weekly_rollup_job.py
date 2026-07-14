@@ -81,12 +81,13 @@ async def roll_up_week(
     if draft is None or not draft.body().strip():
         return {"status": "no_facts", "reason": "empty_reduce", "week_start": week_start}
 
-    # A weekly review is a SUPPLEMENT dated to the week's end (never a primary — it doesn't replace a
-    # day's entry). Draft-into-inbox: journal_kind='supplement', the user reviews it (D4 / P3-D6).
+    # A weekly review is journal_kind='weekly' dated to the week's end — a get-or-REPLACE kind (review
+    # M2): re-running this week's rollup REPLACES the prior review, never duplicates it. Draft-into-inbox
+    # (D4 / P3-D6): the user reviews it. (It doesn't touch a day's primary entry.)
     written = await book_client.write_diary_entry(
         book_id=book_id, owner_user_id=user_id, entry_date=week_end, entry_zone=entry_zone,
         body=draft.body(), title=f"Weekly review · {week_start} – {week_end}",
-        journal_kind="supplement", language=language,
+        journal_kind="weekly", language=language,
     )
     if written is None or written.get("error"):
         return {"status": "error", "reason": "write_failed", "retryable": True}

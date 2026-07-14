@@ -61,7 +61,7 @@ async def test_weekly_rollup_writes_a_supplement_draft():
     assert kn.calls == [{"from": "2026-03-09", "to": "2026-03-15"}]  # recalled the WEEK range
     assert len(book.writes) == 1
     w = book.writes[0]
-    assert w["journal_kind"] == "supplement"           # a review, never a primary
+    assert w["journal_kind"] == "weekly"           # a get-or-replace review kind (M2 idempotent)
     assert w["entry_date"] == "2026-03-15"             # dated to the week's end
     assert "A productive week." in w["body"] and "Weekly review" in (w["title"] or "")
 

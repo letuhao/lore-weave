@@ -765,6 +765,10 @@ func Up(ctx context.Context, pool *pgxpool.Pool) error {
 	if err := backfillChapterBlocksExtraction(ctx, pool); err != nil {
 		slog.Error("book-service: chapter_blocks extraction backfill failed; will retry on next startup", "err", err)
 	}
+	// D-2-PROSE-BLOCKS-BACKFILL: also cover chapters with a draft but ZERO blocks (the case v1 skips).
+	if err := backfillChapterBlocksMissing(ctx, pool); err != nil {
+		slog.Error("book-service: chapter_blocks missing-blocks backfill failed; will retry on next startup", "err", err)
+	}
 
 	// CB3: batched, marker-gated word_count backfill for pre-existing chapters.
 	// Best-effort — a failure here must NEVER block book-service startup (word_count
@@ -1036,6 +1040,68 @@ ORDER BY d.chapter_id LIMIT $2
 	return nil
 }
 
+// backfillChapterBlocksMissing — D-2-PROSE-BLOCKS-BACKFILL (2026-07-15). The v1 backfill above
+// only re-extracts chapters whose blocks EXIST but are all empty. A legacy draft with prose but
+// ZERO chapter_blocks rows (a pre-trigger write, or a save that predated fn_extract_chapter_blocks)
+// slips past it AND past prose_state (which reads chapter_blocks.text_content) — such a chapter
+// under-counts as "no prose", which quietly mis-informs the rail's book-state probe. This closes
+// that gap: it re-fires the extraction (the same no-op `body = body` UPDATE) for every draft with
+// NO blocks at all, so the extraction INSERTs them from the draft's own content.
+//
+// Measured impact at authoring time was ZERO real rows (0 zero-block chapters carried prose in dev),
+// because M0a's save_draft fix + the trigger populate blocks on every write since 2026-07-05. So
+// this is a DEFENSIVE close, not a rescue of live data — but it makes prose_state exact for ALL
+// chapters, and catches the case for free if it ever arises. Re-firing on a genuinely-empty draft
+// is a harmless no-op (empty in, empty out). Marker-gated so it runs once.
+func backfillChapterBlocksMissing(ctx context.Context, pool *pgxpool.Pool) error {
+	var done bool
+	if err := pool.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM chapter_blocks_extraction_backfill_migration WHERE id='cb_missing_backfill_v1')`).Scan(&done); err != nil {
+		return fmt.Errorf("check missing-blocks marker: %w", err)
+	}
+	if done {
+		return nil
+	}
+	var lastID uuid.UUID
+	for {
+		rows, err := pool.Query(ctx, `
+SELECT d.chapter_id
+FROM chapter_drafts d
+WHERE d.chapter_id > $1
+  AND NOT EXISTS (SELECT 1 FROM chapter_blocks cb WHERE cb.chapter_id = d.chapter_id)
+ORDER BY d.chapter_id LIMIT $2`, lastID, chapterBlocksExtractionBackfillBatchSize)
+		if err != nil {
+			return fmt.Errorf("fetch missing-blocks batch: %w", err)
+		}
+		ids := make([]uuid.UUID, 0, chapterBlocksExtractionBackfillBatchSize)
+		for rows.Next() {
+			var id uuid.UUID
+			if err := rows.Scan(&id); err != nil {
+				rows.Close()
+				return fmt.Errorf("scan missing-blocks id: %w", err)
+			}
+			ids = append(ids, id)
+		}
+		rows.Close()
+		if err := rows.Err(); err != nil {
+			return fmt.Errorf("iterate missing-blocks batch: %w", err)
+		}
+		if len(ids) == 0 {
+			break
+		}
+		lastID = ids[len(ids)-1]
+		if _, err := pool.Exec(ctx, `UPDATE chapter_drafts SET body = body WHERE chapter_id = ANY($1)`, ids); err != nil {
+			return fmt.Errorf("re-extract missing-blocks batch (after id %s): %w", lastID, err)
+		}
+		if len(ids) < chapterBlocksExtractionBackfillBatchSize {
+			break
+		}
+	}
+	if _, err := pool.Exec(ctx, `INSERT INTO chapter_blocks_extraction_backfill_migration (id) VALUES ('cb_missing_backfill_v1') ON CONFLICT DO NOTHING`); err != nil {
+		return fmt.Errorf("mark missing-blocks backfill complete: %w", err)
+	}
+	return nil
+}
+
 // backfillSQL — Canon Model CM1 one-time data backfill. Pre-existing chapters
 // with >=1 revision are already canon, so flip them to 'published' and pin the
 // latest revision; revision-less chapters stay 'draft'. Marker-gated via
@@ -1276,8 +1342,14 @@ END $$;
 -- gate and the CM1 canon backfill, and it would contradict "a diary has no publish concept"
 -- — the whole reason kind='diary' exists. Orthogonal sidesteps every existing consumer.
 ALTER TABLE chapters ADD COLUMN IF NOT EXISTS entry_date DATE;
+-- WS-3.7 (review M2): 'weekly' is a get-or-replace review kind. Fresh DBs get it inline; existing DBs
+-- get it via the DROP+ADD below (ADD COLUMN IF NOT EXISTS is a no-op once the column exists, so the
+-- inline CHECK never widens on an existing table — the migration-CHECK-must-revisit lesson).
 ALTER TABLE chapters ADD COLUMN IF NOT EXISTS journal_kind TEXT
-  CHECK (journal_kind IS NULL OR journal_kind IN ('primary','supplement'));
+  CHECK (journal_kind IS NULL OR journal_kind IN ('primary','supplement','weekly'));
+ALTER TABLE chapters DROP CONSTRAINT IF EXISTS chapters_journal_kind_check;
+ALTER TABLE chapters ADD CONSTRAINT chapters_journal_kind_check
+  CHECK (journal_kind IS NULL OR journal_kind IN ('primary','supplement','weekly'));
 ALTER TABLE chapters ADD COLUMN IF NOT EXISTS diary_kept_at TIMESTAMPTZ;
 -- WS-1.8 (spec 06 §Q3/T21) — the IANA zone in effect when entry_date was computed, stored for
 -- auditability. entry_date has no timezone semantics at the DB layer (the distiller resolves the
