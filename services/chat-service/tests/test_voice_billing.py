@@ -36,7 +36,7 @@ async def _no_tts(*_a, **_k):
     yield  # pragma: no cover
 
 
-def _voice_pool():
+def _voice_pool(session_kind="chat"):
     pool = AsyncMock()
     conn = AsyncMock()
     conn.fetchval.return_value = 1  # sequence_num
@@ -49,6 +49,7 @@ def _voice_pool():
     pool.fetchrow.return_value = {
         "system_prompt": None, "generation_params": {},
         "project_id": None, "project_ids": None, "working_memory_seed": None,
+        "session_kind": session_kind,
     }
     pool._conn = conn
     return pool
@@ -68,8 +69,8 @@ def _patch_pipeline(monkeypatch):
     monkeypatch.setattr(vss, "get_knowledge_client", lambda: kc)
 
 
-async def _run_voice(billing):
-    pool = _voice_pool()
+async def _run_voice(billing, session_kind="chat"):
+    pool = _voice_pool(session_kind)
     creds = ProviderCredentials(
         provider_kind="lm_studio", provider_model_name="m", api_key="x",
         base_url="http://localhost", context_length=8192,
@@ -106,3 +107,28 @@ async def test_billing_logged_with_real_tokens(_patch_pipeline):
     kwargs = billing.log_usage.await_args.kwargs
     assert kwargs["input_tokens"] == 42
     assert kwargs["output_tokens"] == 17
+
+
+# ── WS-4.5 — a directly-invoked voice turn on an assistant session records a
+#    SKIPPED-capture decision (never silently drops the spoken diary) ──────────
+@pytest.mark.asyncio
+async def test_assistant_session_records_voice_path_unsupported(_patch_pipeline, monkeypatch):
+    import app.services.canon_capture as cc
+    spy = AsyncMock()
+    monkeypatch.setattr(cc, "persist_capture_status", spy)
+    billing = MagicMock(); billing.log_usage = AsyncMock()
+    await _run_voice(billing, session_kind="assistant")
+    spy.assert_awaited_once()
+    decision = spy.await_args.args[2]
+    assert decision.fire is False
+    assert decision.reason == "voice_path_unsupported"
+
+
+@pytest.mark.asyncio
+async def test_ordinary_chat_session_does_not_record_skip(_patch_pipeline, monkeypatch):
+    import app.services.canon_capture as cc
+    spy = AsyncMock()
+    monkeypatch.setattr(cc, "persist_capture_status", spy)
+    billing = MagicMock(); billing.log_usage = AsyncMock()
+    await _run_voice(billing, session_kind="chat")
+    spy.assert_not_awaited()

@@ -304,7 +304,7 @@ async def voice_stream_response(
     # ── Step 3: LLM stream + TTS pipeline ────────────────────────────
     # Load session settings (same as stream_response)
     session_row = await pool.fetchrow(
-        "SELECT system_prompt, generation_params, project_id, project_ids, working_memory_seed FROM chat_sessions WHERE session_id = $1",
+        "SELECT system_prompt, generation_params, project_id, project_ids, working_memory_seed, session_kind FROM chat_sessions WHERE session_id = $1",
         session_id,
     )
     system_prompt = session_row["system_prompt"] if session_row else None
@@ -519,6 +519,17 @@ async def voice_stream_response(
             await conn.execute(
                 "UPDATE chat_sessions SET message_count=message_count+1, last_message_at=now(), updated_at=now() WHERE session_id=$1",
                 session_id,
+            )
+
+        # WS-4.5 — the FE hides voice for assistant sessions (a voice turn doesn't fire
+        # canon capture yet — the WS-4.1 gap), but the endpoint is reachable directly.
+        # Record the SKIPPED-capture decision WITH a reason so the assistant home strip
+        # shows capture visibly OFF instead of silently dropping the spoken diary
+        # (silent success is a bug). Cleared when WS-4.1 wires capture into voice.
+        if (session_row.get("session_kind") if session_row else None) == "assistant":
+            from app.services.canon_capture import CaptureDecision, persist_capture_status
+            await persist_capture_status(
+                pool, session_id, CaptureDecision(fire=False, reason="voice_path_unsupported"),
             )
 
         # Upload audio segments AFTER message is saved (FK: message_audio_segments → chat_messages)
