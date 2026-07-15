@@ -74,4 +74,14 @@ export const assistantApi = {
       { method: 'POST', token },
     );
   },
+
+  /** C8 / WS-5.6 — DISMISS a weekly-reflection pattern permanently. The BFF derives the owner from the
+   *  JWT; worker-ai then drops that pattern_key AT DETECTION so it never resurfaces (C2 tombstone). */
+  dismissReflectionPattern(token: string, patternKey: string) {
+    return apiJson<{ dismissed: boolean; pattern_key: string }>('/v1/assistant/reflection-dismiss', {
+      method: 'POST',
+      token,
+      body: JSON.stringify({ pattern_key: patternKey }),
+    });
+  },
 };

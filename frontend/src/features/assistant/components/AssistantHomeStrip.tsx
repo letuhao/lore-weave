@@ -7,9 +7,11 @@ import { useAssistant } from '../context/AssistantContext';
 import { useCaptureRail } from '../hooks/useCaptureRail';
 import { useDiaryFactInbox } from '../hooks/useDiaryFactInbox';
 import { useEndOfDay } from '../hooks/useEndOfDay';
+import { useReflection } from '../hooks/useReflection';
 import { CaptureRail } from './CaptureRail';
 import { DiaryFactInbox } from './DiaryFactInbox';
 import { EndOfDayReview } from './EndOfDayReview';
+import { ReflectionCard } from './ReflectionCard';
 
 export function AssistantHomeStrip() {
   const { user } = useAuth();
@@ -17,6 +19,7 @@ export function AssistantHomeStrip() {
   const rail = useCaptureRail(bookId);
   const eod = useEndOfDay(bookId);
   const inbox = useDiaryFactInbox();
+  const reflection = useReflection(bookId);
 
   const firstName = (user?.display_name || user?.email || '').split(/[ @]/)[0];
 
@@ -96,6 +99,15 @@ export function AssistantHomeStrip() {
         keeping={eod.keeping}
         onKeep={eod.keep}
       />
+
+      {/* C8 / WS-5.3 — the latest weekly reflection draft + dismissable patterns (server is SoT). */}
+      {reflection.reflection && (
+        <ReflectionCard
+          reflection={reflection.reflection}
+          patterns={reflection.patterns}
+          onDismiss={reflection.dismiss}
+        />
+      )}
 
       {/* WS-2.5 — the diary fact inbox: keep/dismiss the facts the distiller diverted for review. */}
       <DiaryFactInbox

@@ -47,6 +47,31 @@ export interface DiaryEntriesResponse {
   count: number;
 }
 
+/** C8 / WS-5.6 — a surfaced weekly-reflection pattern the user can DISMISS (period-independent key). */
+export interface ReflectionPattern {
+  detector_code: string;
+  summary: string;
+  pattern_key: string;
+}
+
+/** C8 / WS-5.21 — one scored coaching dimension (server-authoritative from the rubric; the model
+ *  contributes only a clamped 1-5 score + note per fixed key). `score` is null when the model omitted it. */
+export interface ScorecardDimension {
+  key: string;
+  label: string;
+  score: number | null;
+  note?: string | null;
+}
+
+/** C8 — the coaching scorecard. `quarantine` (SD-7) is SHOWN but EXCLUDED from any trend line until a
+ *  human-rating milestone certifies the scorer; every self-run score is quarantine=true (fail-closed). */
+export interface Scorecard {
+  overall_score?: number | null;
+  summary?: string | null;
+  quarantine: boolean;
+  dimensions: ScorecardDimension[];
+}
+
 /** WS-2.5 — one pending diary fact awaiting the user's confirm/reject (the fact inbox). Mirrors
  *  knowledge-service's PendingFact model incl. the WS-2.2 structured fields (nullable — a coarse fact
  *  carries only fact_text; a structured one carries the subject/predicate/object trio + event_date). */

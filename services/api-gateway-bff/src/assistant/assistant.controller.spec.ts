@@ -719,4 +719,36 @@ describe('AssistantController — erase (D-R27 row-delete erasure)', () => {
     expect(out.erased).toBe(true); // all attempted legs (chat + knowledge) succeeded
     expect(out.book_id).toBeUndefined();
   });
+
+  // C8 / SD-C8 — the reflection-dismiss route. The SEC-1 property: the owner is derived from the JWT
+  // `sub`, NEVER from the client body (a client that sends owner_user_id must not dismiss for another user).
+  it('reflection-dismiss: forwards owner_user_id = JWT sub (never the client body) to chat', async () => {
+    const f = jest.fn().mockResolvedValueOnce(resp(200, { dismissed: true }));
+    (global as any).fetch = f;
+    // a malicious client tries to smuggle owner_user_id 'victim' — the BFF must ignore it.
+    const out = await controller.reflectionDismiss(
+      { pattern_key: 'co_occurrence:migration', owner_user_id: 'victim' } as any,
+      bearer('attacker'),
+    );
+    expect(out).toEqual({ dismissed: true, pattern_key: 'co_occurrence:migration' });
+    expect(f).toHaveBeenCalledTimes(1);
+    expect(f.mock.calls[0][0]).toBe('http://chat:8090/internal/chat/assistant/reflection-dismiss');
+    const sent = JSON.parse(f.mock.calls[0][1].body);
+    expect(sent.owner_user_id).toBe('attacker'); // the JWT sub, NOT the client-sent 'victim'
+    expect(sent.pattern_key).toBe('co_occurrence:migration');
+  });
+
+  it('reflection-dismiss: 401 on a missing token — no fan-out', async () => {
+    const f = jest.fn();
+    (global as any).fetch = f;
+    await expectStatus(controller.reflectionDismiss({ pattern_key: 'x' }, undefined), 401);
+    expect(f).not.toHaveBeenCalled();
+  });
+
+  it('reflection-dismiss: 400 on an empty pattern_key — no downstream call', async () => {
+    const f = jest.fn();
+    (global as any).fetch = f;
+    await expectStatus(controller.reflectionDismiss({ pattern_key: '  ' }, bearer('u1')), 400);
+    expect(f).not.toHaveBeenCalled();
+  });
 });

@@ -326,6 +326,38 @@ export class AssistantController {
     };
   }
 
+  // C8 / SD-C8 (WS-5.6) — the FE dismisses a weekly-reflection pattern permanently. Fronts chat's
+  // X-Internal-Token-only PUT /internal/chat/assistant/reflection-dismiss with the SERVER-DERIVED
+  // user_id (the FE never sends owner_user_id). worker-ai then drops that pattern_key AT DETECTION
+  // (the tombstone is period-independent), so a dismissed pattern never resurfaces (C2).
+  @Post('reflection-dismiss')
+  async reflectionDismiss(
+    @Body() body: { pattern_key?: string },
+    @Headers('authorization') authorization?: string,
+  ): Promise<{ dismissed: boolean; pattern_key: string }> {
+    const { userId } = this.requireAuth(authorization);
+    const patternKey = (body?.pattern_key ?? '').trim();
+    if (!patternKey) {
+      throw new HttpException('pattern_key is required', 400);
+    }
+    const chatUrl = process.env.CHAT_SERVICE_URL;
+    const internalToken = process.env.INTERNAL_SERVICE_TOKEN;
+    if (!chatUrl || !internalToken) {
+      this.logger.error('reflection-dismiss rejected: CHAT_SERVICE_URL / INTERNAL_SERVICE_TOKEN not configured');
+      throw new HttpException('server_error', 500);
+    }
+    const res = await this.postInternalMethod(
+      `${chatUrl}/internal/chat/assistant/reflection-dismiss`,
+      internalToken,
+      'PUT',
+      { owner_user_id: userId, pattern_key: patternKey },
+    );
+    if (!res.ok) {
+      throw new HttpException('failed to dismiss reflection pattern', res.status >= 400 ? res.status : 502);
+    }
+    return { dismissed: true, pattern_key: patternKey };
+  }
+
   // WS-2.6a / D17 — the public "correct a memory" trigger. Two legs behind one call: (1) amend the
   // diary day's PG entry (book-service, user-JWT owner-gated — the SSOT correction), then (2) enqueue
   // the graph reconcile (chat-service internal → worker-ai re-extract + invalidate). Identity is the
