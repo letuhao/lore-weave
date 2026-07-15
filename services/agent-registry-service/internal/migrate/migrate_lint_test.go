@@ -1,7 +1,11 @@
 package migrate
 
 import (
+	"encoding/json"
+	"os"
+	"path/filepath"
 	"regexp"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -154,22 +158,62 @@ func TestSchemaSQL_SeededWorkflowNotesFitTheConsumerCap(t *testing.T) {
 // falling every step back to the call log — a stored-but-unread contract. Lint the seed here
 // against the SAME closed grammar the writer enforces (mirrors doneWhenRe in workflows.go).
 func TestSchemaSQL_SeededDoneWhenMatchesTheClosedGrammar(t *testing.T) {
+	// D4 (Phase G · G0): the allowed key set is NOT hardcoded here — it is read from the ONE
+	// SoT, contracts/book-state-keys.contract.json, which chat-service's BOOK_STATE_KEYS also
+	// checks against (tests/test_book_state_contract.py). Duplicating the key list in this Go
+	// regex is exactly the drift D4 exists to kill: a key renamed in the contract + the Python
+	// probe would leave a STALE Go allow-list that green-lights a seed the consumer can't read.
+	keys := loadBookStateKeys(t)
+	keyAlt := strings.Join(keys, "|")
 	seedDoneWhenRe := regexp.MustCompile(`"done_when"\s*:\s*"([^"]*)"`)
-	grammar := regexp.MustCompile(`^\s*(categories|cast|connections|plan|chapters|prose|suggestions)\s*(>=|<=|==|>|<)\s*\d+\s*$`)
+	grammar := regexp.MustCompile(`^\s*(` + keyAlt + `)\s*(>=|<=|==|>|<)\s*\d+\s*$`)
 	found := 0
 	for _, m := range seedDoneWhenRe.FindAllStringSubmatch(schemaSQL, -1) {
 		found++
 		if !grammar.MatchString(m[1]) {
-			t.Errorf("seeded done_when %q does not match the closed grammar "+
-				"'<key> <op> <n>' (key in categories|cast|connections|plan|chapters|prose|suggestions; "+
-				"op in > >= < <= ==) — the chat-service consumer would silently ignore it and fall "+
-				"back to the call log.", m[1])
+			t.Errorf("seeded done_when %q does not match the closed grammar '<key> <op> <n>' "+
+				"(key in %s; op in > >= < <= ==) — the chat-service consumer would silently ignore "+
+				"it and fall back to the call log. If you added a key, add it to "+
+				"contracts/book-state-keys.contract.json + chat-service BOOK_STATE_KEYS too.",
+				m[1], keyAlt)
 		}
 	}
 	if found == 0 {
 		t.Error("no seeded done_when found — the vision-to-book rail should carry several; " +
 			"if the seed was refactored, update this lint rather than letting it pass vacuously.")
 	}
+}
+
+// loadBookStateKeys reads the shared SoT contract (contracts/book-state-keys.contract.json) so
+// this Go lint and chat-service's BOOK_STATE_KEYS can never drift. The path is resolved from THIS
+// test file's location (runtime.Caller), not the process cwd, so it is stable under `go test`.
+func loadBookStateKeys(t *testing.T) []string {
+	t.Helper()
+	_, thisFile, _, ok := runtime.Caller(0)
+	if !ok {
+		t.Fatal("runtime.Caller failed — cannot locate the contract")
+	}
+	// services/agent-registry-service/internal/migrate → repo root is 4 dirs up.
+	root := filepath.Join(filepath.Dir(thisFile), "..", "..", "..", "..")
+	path := filepath.Join(root, "contracts", "book-state-keys.contract.json")
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("cannot read the book-state-keys contract at %s: %v", path, err)
+	}
+	var doc struct {
+		Keys map[string]json.RawMessage `json:"keys"`
+	}
+	if err := json.Unmarshal(raw, &doc); err != nil {
+		t.Fatalf("cannot parse the book-state-keys contract: %v", err)
+	}
+	if len(doc.Keys) == 0 {
+		t.Fatal("the book-state-keys contract has no keys — the lint would be vacuously permissive")
+	}
+	out := make([]string, 0, len(doc.Keys))
+	for k := range doc.Keys {
+		out = append(out, regexp.QuoteMeta(k))
+	}
+	return out
 }
 
 type eLit struct {

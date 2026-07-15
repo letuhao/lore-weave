@@ -2525,6 +2525,75 @@ async def test_plan_state_for_book_runs_without_spec_has_no_plan_spec(pool):
     assert other == {"run_count": 1, "latest_status": "compiled", "has_spec": True}
 
 
+# ── linked_structure_state — the governance effect-probe (Phase G · G0) ──
+# Real SQL for the D2/D3 distinction the route tests mock away: only plan_run_id-stamped
+# rows count (compile-attributed), and the fresh count is scoped to the latest run.
+
+async def _insert_linked_arc(pool, book, run_id, arc_id):
+    """A structure_node as the COMPILE writes it — plan_run_id + plan_arc_id stamped
+    (mirrors plan_link_service's _UPSERT_ARC)."""
+    async with pool.acquire() as c:
+        await c.execute(
+            "INSERT INTO structure_node (book_id, kind, rank, title, plan_run_id, plan_arc_id) "
+            "VALUES ($1, 'arc', $2, $3, $4, $5)",
+            book, arc_id, f"arc {arc_id}", run_id, arc_id,
+        )
+
+
+async def test_linked_structure_state_compile_attributed_and_fresh(pool):
+    from app.db.repositories.plan_runs import PlanRunsRepo
+    from app.db.repositories.structure import StructureRepo
+
+    plans = PlanRunsRepo(pool)
+    structure = StructureRepo(pool)
+    user, _project, book = _ids()
+
+    # D3 — a bare arc_create (create_node leaves plan_run_id NULL) is NOT compile-attributed.
+    await structure.create_node(book, created_by=user, kind="arc", title="hand-made")
+    state = await structure.linked_structure_state(book)
+    assert state["linked_count"] == 0            # a plain insert can't fabricate the effect
+    assert state["latest_run_id"] is None
+    assert state["latest_run_linked_count"] == 0
+
+    # run #1 compiles two arcs (plan_run_id stamped).
+    run1 = await plans.create(
+        user, book, mode="llm", source_checksum="c1", source_markdown="# a", status="compiled",
+    )
+    await _insert_linked_arc(pool, book, run1.id, "arc-1a")
+    await _insert_linked_arc(pool, book, run1.id, "arc-1b")
+    state = await structure.linked_structure_state(book)
+    assert state["linked_count"] == 2            # compile-attributed rows count (ensure-EXISTS)
+    assert str(state["latest_run_id"]) == str(run1.id)
+    assert state["latest_run_linked_count"] == 2  # run #1 IS the latest and it compiled
+
+    # D2 — run #2 (a re-plan) becomes the latest with NO compile yet: fresh count is 0
+    # even though the book still HAS a compiled plan from run #1.
+    run2 = await plans.create(
+        user, book, mode="llm", source_checksum="c2", source_markdown="# b", status="pending",
+    )
+    state = await structure.linked_structure_state(book)
+    assert state["linked_count"] == 2            # ensure-EXISTS: the book has a compiled plan
+    assert str(state["latest_run_id"]) == str(run2.id)
+    assert state["latest_run_linked_count"] == 0  # produce-NEW: THIS attempt is born-fresh, NOT done
+
+    # compiling run #2 raises BOTH counts; the fresh count tracks run #2 only.
+    await _insert_linked_arc(pool, book, run2.id, "arc-2a")
+    state = await structure.linked_structure_state(book)
+    assert state["linked_count"] == 3
+    assert state["latest_run_linked_count"] == 1
+
+    # an archived compiled row drops out of both counts (tombstones don't inflate the effect).
+    async with pool.acquire() as c:
+        await c.execute(
+            "UPDATE structure_node SET is_archived = true "
+            "WHERE book_id = $1 AND plan_run_id = $2 AND plan_arc_id = 'arc-2a'",
+            book, run2.id,
+        )
+    state = await structure.linked_structure_state(book)
+    assert state["linked_count"] == 2
+    assert state["latest_run_linked_count"] == 0
+
+
 async def test_get_run_detail_surfaces_arcs_for_a_picker(pool):
     """D-PLANFORGE-ARC-PICKER: Compile's arc_id was a bare text input — the
     spec already HAS a picker-worthy {id, title} list, it just was never

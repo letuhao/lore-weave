@@ -121,6 +121,33 @@ async def _plan(book_id: str, caller_user_id: str) -> int | None:
     return None
 
 
+async def _structure(book_id: str, caller_user_id: str) -> tuple[int | None, int | None]:
+    """The COMPILE-attributed structure (Phase G · G0) — the effect a mere proposal does NOT
+    produce. Returns ``(structure, structure_fresh)``:
+
+    * ``structure`` = compiled arcs book-global (structure_node with plan_run_id set) —
+      *ensure-EXISTS*, and it EXCLUDES the bare ``composition_arc_create`` INSERT, so a plain
+      insert can't fabricate "the plan is compiled" (D3).
+    * ``structure_fresh`` = arcs the LATEST plan run compiled — *produce-NEW*, so a re-plan reads
+      0 until ITS compile lands (D2).
+
+    Both come from ONE cheap /internal read. UNKNOWN (None) on any failure — never a manufactured
+    0, matching every sibling source (a book-service blip must not read as "no structure, rebuild
+    it"). Grant-scoped by ``caller_user_id`` exactly like ``_plan``."""
+    d = await _get_json(
+        settings.composition_service_internal_url,
+        f"/internal/composition/books/{book_id}/structure-state",
+        {"caller_user_id": caller_user_id},
+    )
+    if d is None:
+        return None, None
+    lc, fresh = d.get("linked_count"), d.get("latest_run_linked_count")
+    return (
+        lc if isinstance(lc, int) else None,
+        fresh if isinstance(fresh, int) else None,
+    )
+
+
 async def _chapters_and_prose(book_id: str) -> tuple[int | None, int | None]:
     d = await _get_json(settings.book_service_url, f"/internal/books/{book_id}/prose-state")
     if d is None:
@@ -141,6 +168,7 @@ async def probe_book_state(book_id: str, caller_user_id: str) -> BookState:
         _plan(book_id, caller_user_id),
         _chapters_and_prose(book_id),
         _suggestions(book_id),
+        _structure(book_id, caller_user_id),
         return_exceptions=True,
     )
 
@@ -151,15 +179,19 @@ async def probe_book_state(book_id: str, caller_user_id: str) -> BookState:
     ch_pr = _val(results[4]) or (None, None)
     chapters, prose = ch_pr
     suggestions = _val(results[5])
+    struct = _val(results[6]) or (None, None)
+    structure, structure_fresh = struct
 
     state = BookState(
         categories=categories, cast=cast, connections=connections,
-        plan=plan, chapters=chapters, prose=prose, suggestions=suggestions,
+        plan=plan, structure=structure, structure_fresh=structure_fresh,
+        chapters=chapters, prose=prose, suggestions=suggestions,
     )
     state.failed_sources = [
         name for name, v in (
             ("glossary/categories", categories), ("glossary/cast", cast),
             ("knowledge/connections", connections), ("composition/plan", plan),
+            ("composition/structure", structure),
             ("book/chapters", chapters), ("glossary/suggestions", suggestions),
         ) if v is None
     ]

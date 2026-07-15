@@ -38,7 +38,7 @@ from app.middleware.trace_id import TraceIdMiddleware
 from app.routers import (
     actions, approve, arc, authoring_runs, canon, conformance, engine, grounding, health,
     import_source, internal_eval, internal_job_control, internal_model_settings,
-    internal_plan_state, metrics,
+    internal_plan_state, internal_structure_state, metrics,
     motif, motif_sync, narrative_threads, outline, ping, plan, plan_bootstrap, plan_forge,
     plan_overlay, progress, prose, references, style_voice, works,
 )
@@ -239,6 +239,7 @@ app.include_router(internal_eval.router)
 app.include_router(internal_job_control.router)  # Unified Job Control Plane P3
 app.include_router(internal_model_settings.router)  # D-CHATAI-M1B — Book tier model-settings read
 app.include_router(internal_plan_state.router)  # per-turn "does this book have an arc plan?" probe
+app.include_router(internal_structure_state.router)  # Phase G · G0 — per-turn "did a compile write linked structure?" probe
 app.include_router(canon.router)
 app.include_router(narrative_threads.router)
 app.include_router(conformance.router)  # W5 — motif-conformance trace read (advisory)

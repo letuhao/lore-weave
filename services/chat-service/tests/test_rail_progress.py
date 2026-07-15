@@ -572,3 +572,80 @@ class TestDrainPredicate:
     def test_snapshot_labels_the_pending_pile(self):
         snap = render_book_state(BookState(suggestions=4))
         assert snap is not None and "suggested items still waiting for review: 4" in snap
+
+
+# ── the COMPILE effect (Phase G · G0) — a proposal is NOT a compiled plan ─────────────
+#
+# The S06 flagship failure in one line: the agent proposed a spec (`plan`/has_spec flips true)
+# and STOPPED, so `structure_node` stayed 0 — the plan was talked about, never materialised.
+# `plan > 0` marks the planning step done after a bare proposal. These two keys gate on the
+# REAL compile instead.
+
+# A planning rail whose "compile" step is gated on the durable structure, not the proposal.
+COMPILE_STEPS = [
+    {"id": "propose", "tool": "plan_propose_spec", "async_job": True, "done_when": "plan > 0"},
+    {"id": "compile", "tool": "plan_compile", "done_when": "structure_fresh > 0"},
+]
+
+
+class TestCompileEffectG0:
+    def test_grammar_accepts_the_new_keys(self):
+        assert parse_done_when("structure > 0") == ("structure", ">", 0)
+        assert parse_done_when("structure_fresh > 0") == ("structure_fresh", ">", 0)
+
+    def test_a_proposal_alone_does_NOT_satisfy_the_compile_step_D3(self):
+        """The core S06 fix. The proposal landed (`plan`=1) and `plan_compile` even 'ran'
+        successfully — but the book has ZERO compiled structure. The compile step is NOT done;
+        the driver keeps pointing at it. A bare arc_create (structure via a plain insert) is the
+        same case: it never stamps plan_run_id, so `structure_fresh` stays 0."""
+        state = BookState(plan=1, structure=0, structure_fresh=0)
+        p = compute_rail_progress(
+            "planning", COMPILE_STEPS, state, succeeded_tools={"plan_propose_spec", "plan_compile"},
+        )
+        # propose IS done (its artifact exists); compile is NOT (the effect never landed).
+        by_id = {s.step_id: s for s in p.steps}
+        assert by_id["propose"].done is True
+        assert by_id["compile"].done is False
+        assert "never landed" in by_id["compile"].reason
+        assert p.next_step is not None and p.next_step.step_id == "compile"
+
+    def test_a_replan_reads_born_fresh_zero_not_done_D2(self):
+        """Freshness. run #1 already compiled (book-global `structure`=6), but the author
+        re-plans: run #2 is the latest with nothing compiled yet (`structure_fresh`=0). The
+        compile step must NOT be born-done off the OLD run's structure."""
+        state = BookState(plan=1, structure=6, structure_fresh=0)
+        p = compute_rail_progress(
+            "planning", COMPILE_STEPS, state, succeeded_tools={"plan_propose_spec"},
+        )
+        by_id = {s.step_id: s for s in p.steps}
+        assert by_id["compile"].done is False
+        assert p.next_step is not None and p.next_step.step_id == "compile"
+
+    def test_a_real_compile_marks_the_step_done(self):
+        state = BookState(plan=1, structure=2, structure_fresh=2)
+        p = compute_rail_progress(
+            "planning", COMPILE_STEPS, state, succeeded_tools={"plan_propose_spec", "plan_compile"},
+        )
+        by_id = {s.step_id: s for s in p.steps}
+        assert by_id["compile"].done is True
+        assert p.all_done
+
+    def test_unknown_structure_falls_back_to_the_call_log_never_a_guess(self):
+        """composition unreachable ⇒ structure_fresh None ⇒ the compile step falls back to the
+        call log (was plan_compile called?), NOT a manufactured 0 that would strand the rail."""
+        state = BookState(plan=1, structure=None, structure_fresh=None)
+        p = compute_rail_progress(
+            "planning", COMPILE_STEPS, state, succeeded_tools={"plan_propose_spec"},
+        )
+        by_id = {s.step_id: s for s in p.steps}
+        # compile's tool has NOT run and state is unknown → not done, but via the call-log path.
+        assert by_id["compile"].done is False
+        assert "unknown" in by_id["compile"].reason
+        # and the unknown source never renders a fake 0
+        assert "compiled" not in (render_book_state(state) or "")
+
+    def test_the_new_keys_render_their_labels(self):
+        snap = render_book_state(BookState(structure=3, structure_fresh=1))
+        assert snap is not None
+        assert "arcs compiled into real chapter/scene structure: 3" in snap
+        assert "arcs the latest plan run just compiled: 1" in snap

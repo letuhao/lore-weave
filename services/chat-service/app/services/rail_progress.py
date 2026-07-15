@@ -47,13 +47,22 @@ logger = logging.getLogger(__name__)
 # treated as satisfied: a mis-typed predicate that quietly reads as "done" would march the
 # agent straight past the step it most needed to take.
 BOOK_STATE_KEYS = (
-    "categories",    # glossary book_kinds        — the world's categories
-    "cast",          # glossary_entities          — characters/places/things saved
-    "connections",   # knowledge_projects stats   — the KG projection
-    "plan",          # composition plan_run/spec  — the arc plan
-    "chapters",      # book chapters              — chapters that exist
-    "prose",         # book chapters with text    — chapters actually written
-    "suggestions",   # glossary ai-suggested DRAFT — the review pile still to triage
+    "categories",       # glossary book_kinds        — the world's categories
+    "cast",             # glossary_entities          — characters/places/things saved
+    "connections",      # knowledge_projects stats   — the KG projection
+    "plan",             # composition plan_run/spec  — a plan PROPOSAL exists (has_spec)
+    # ── the COMPILE-attributed structure (Phase G · G0) — the effect a mere proposal does NOT
+    # produce. `plan` (has_spec) flips true the moment `plan_propose_spec` saves a spec artifact;
+    # but the linked chapter/scene structure the manuscript hangs on is written only by
+    # `plan_compile`, which stamps `structure_node.plan_run_id`. Gating the "compile" step on
+    # `plan` (the S06 bug) marks planning done after a bare proposal. These two gate on the REAL
+    # compile: `structure` = ensure-EXISTS (any compiled arc, book-global, EXCLUDES bare
+    # arc_create); `structure_fresh` = produce-NEW (THIS latest run compiled — a re-plan reads 0).
+    "structure",        # composition structure_node  — compiled arcs, plan_run_id-attributed
+    "structure_fresh",  # composition structure_node  — compiled arcs stamped by the LATEST run
+    "chapters",         # book chapters              — chapters that exist
+    "prose",            # book chapters with text    — chapters actually written
+    "suggestions",      # glossary ai-suggested DRAFT — the review pile still to triage
 )
 
 # The operators are a CLOSED SET. `>`/`>=` express a BUILD predicate ("this many artifacts
@@ -78,6 +87,8 @@ class BookState:
     cast: int | None = None
     connections: int | None = None
     plan: int | None = None
+    structure: int | None = None
+    structure_fresh: int | None = None
     chapters: int | None = None
     prose: int | None = None
     suggestions: int | None = None
@@ -293,7 +304,9 @@ _STATE_LABELS = {
     "categories": "world categories",
     "cast": "characters/places saved",
     "connections": "cast members placed in the connection map",
-    "plan": "arc plan started (1 = yes)",
+    "plan": "arc plan proposed (1 = yes)",
+    "structure": "arcs compiled into real chapter/scene structure",
+    "structure_fresh": "arcs the latest plan run just compiled",
     "chapters": "chapters",
     "prose": "chapters with writing in them",
     "suggestions": "suggested items still waiting for review",

@@ -210,6 +210,50 @@ class StructureRepo:
             row = await c.fetchrow(query, book_id, run_id, arc_id)
         return _row_to_node(row) if row else None
 
+    async def linked_structure_state(self, book_id: UUID) -> dict[str, Any]:
+        """"Did a COMPILE actually write linked structure for this book?" — the governance
+        effect-probe's durable truth (Phase G · G0, spec 2026-07-15 D2/D3), in ONE round-trip.
+
+        Two counts, and the distinction is the whole point:
+
+        * ``linked_count`` — structure_node rows with ``plan_run_id`` SET (compile-attributed),
+          book-global. This is *ensure-EXISTS*: "the book has a compiled plan". It deliberately
+          EXCLUDES ``plan_run_id IS NULL`` rows — a bare ``composition_arc_create`` INSERT (the
+          agent-native manual arc) has no run stamp, so it can NOT fabricate this effect. That is
+          D3: probe the durable, run-attributed truth, not a count a plain insert flips.
+
+        * ``latest_run_linked_count`` — rows stamped by the LATEST plan_run only. This is
+          *produce-NEW*: "THIS planning attempt compiled fresh structure". On a re-plan (a new
+          latest run whose compile has not landed) it reads 0 even though ``linked_count`` is
+          already >0 — so a step gated on it is NOT born-done. That is D2 (freshness), and it
+          needs no migration: ``structure_node.plan_run_id`` already carries the provenance.
+
+        Cheap: the counts ride ``uq_structure_node_plan_prov (book_id, plan_run_id, …)``; the
+        latest-run lookup rides ``idx_plan_run_book_created (book_id, created_at DESC)``.
+        A book with no runs → ``latest_run_id=None`` and both counts 0 (never an error).
+        """
+        query = """
+        WITH latest AS (
+          SELECT id FROM plan_run WHERE book_id = $1 ORDER BY created_at DESC, id DESC LIMIT 1
+        )
+        SELECT
+          (SELECT COUNT(*) FROM structure_node
+             WHERE book_id = $1 AND plan_run_id IS NOT NULL AND NOT is_archived)::int
+            AS linked_count,
+          (SELECT id FROM latest) AS latest_run_id,
+          (SELECT COUNT(*) FROM structure_node
+             WHERE book_id = $1 AND NOT is_archived
+               AND plan_run_id = (SELECT id FROM latest))::int
+            AS latest_run_linked_count
+        """
+        async with self._pool.acquire() as c:
+            row = await c.fetchrow(query, book_id)
+        return {
+            "linked_count": int(row["linked_count"] or 0),
+            "latest_run_id": row["latest_run_id"],
+            "latest_run_linked_count": int(row["latest_run_linked_count"] or 0),
+        }
+
     async def get(
         self, node_id: UUID, *, conn: asyncpg.Connection | None = None,
     ) -> StructureNode | None:
