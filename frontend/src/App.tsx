@@ -65,6 +65,8 @@ import { NotificationsPage } from '@/pages/NotificationsPage';
 import { RawSearchPage } from '@/pages/RawSearchPage';
 import { OnboardingPage } from '@/features/onboarding/pages/OnboardingPage';
 import { OAuthConsentPage } from '@/pages/OAuthConsentPage';
+import { PlatformHomePage } from '@/features/home/components/PlatformHomePage';
+import { ActivityPage } from '@/features/home/components/ActivityPage';
 
 function AuthenticatedThemeProvider({ children }: { children: React.ReactNode }) {
   const { accessToken } = useAuth();
@@ -159,9 +161,10 @@ export function App() {
             <Route path="/onboarding" element={<OnboardingPage />} />
             <Route path="/onboarding/new" element={<OnboardingPage forceShow />} />
 
-            {/* Mobile bottom-tab targets (M0 placeholders; M2 fills /home, M3 fills /you).
-                Real routes on desktop too — harmless, they just show a "coming soon" card. */}
-            <Route path="/home" element={<PlaceholderPage title="Home" description="Your platform home — coming soon." />} />
+            {/* Mobile bottom-tab targets. /home + /activity are M2 (the platform home + feed);
+                /you is the M3 placeholder for now. Real routes on desktop too. */}
+            <Route path="/home" element={<PlatformHomePage />} />
+            <Route path="/activity" element={<ActivityPage />} />
             <Route path="/you" element={<PlaceholderPage title="You" description="Your account & data — coming soon." />} />
 
             {/* Workspace */}

@@ -326,6 +326,46 @@ func (s *Server) createNotificationBatch(w http.ResponseWriter, r *http.Request)
 
 // ── Public Handlers ───────────────────────────────────────────────────────
 
+// listNotificationsQuery builds the SELECT + args for the notifications feed. Pure (no DB) so
+// the keyset/offset/ordering logic is unit-testable. When both `before` and `beforeID` are set it
+// engages KEYSET paging — pages by the stable (created_at, id) tuple and omits OFFSET so a row
+// arriving between fetches can't shift the page boundary (MB3); otherwise it uses legacy OFFSET.
+// Ordering is always created_at DESC, id DESC (the id tiebreaker makes the keyset total-ordered).
+// The third return value reports whether keyset was engaged.
+func listNotificationsQuery(userID uuid.UUID, category string, unreadOnly bool, before *time.Time, beforeID *uuid.UUID, limit, offset int) (string, []any, bool) {
+	keyset := before != nil && beforeID != nil
+
+	query := `SELECT id, category, title, body, metadata, message_key, message_params, read_at, created_at
+		FROM notifications WHERE user_id = $1`
+	args := []any{userID}
+	argIdx := 2
+
+	if category != "" {
+		query += fmt.Sprintf(` AND category = $%d`, argIdx)
+		args = append(args, category)
+		argIdx++
+	}
+	if unreadOnly {
+		query += ` AND read_at IS NULL`
+	}
+	if keyset {
+		// Row-value compare against the DESC ordering: the next (older) page is everything
+		// strictly before the cursor tuple.
+		query += fmt.Sprintf(` AND (created_at, id) < ($%d, $%d)`, argIdx, argIdx+1)
+		args = append(args, *before, *beforeID)
+		argIdx += 2
+	}
+
+	query += fmt.Sprintf(` ORDER BY created_at DESC, id DESC LIMIT $%d`, argIdx)
+	args = append(args, limit)
+	argIdx++
+	if !keyset {
+		query += fmt.Sprintf(` OFFSET $%d`, argIdx)
+		args = append(args, offset)
+	}
+	return query, args, keyset
+}
+
 func (s *Server) listNotifications(w http.ResponseWriter, r *http.Request) {
 	userID, ok := s.requireUserID(r)
 	if !ok {
@@ -341,22 +381,23 @@ func (s *Server) listNotifications(w http.ResponseWriter, r *http.Request) {
 	category := r.URL.Query().Get("category")
 	unreadOnly := r.URL.Query().Get("unread") == "true"
 
-	query := `SELECT id, category, title, body, metadata, message_key, message_params, read_at, created_at
-		FROM notifications WHERE user_id = $1`
-	args := []any{userID}
-	argIdx := 2
-
-	if category != "" {
-		query += fmt.Sprintf(` AND category = $%d`, argIdx)
-		args = append(args, category)
-		argIdx++
+	// Keyset cursor (the mobile Activity feed — MB3): `before`/`before_id` page by the stable
+	// (created_at, id) tuple so a new notification arriving between fetches never duplicates or
+	// drops a row at a page boundary (the flaw of OFFSET paging). Both must be present + valid to
+	// engage keyset; otherwise we keep the legacy OFFSET path so existing consumers are unchanged.
+	var beforeTime *time.Time
+	var beforeID *uuid.UUID
+	if bs := r.URL.Query().Get("before"); bs != "" {
+		if t, err := time.Parse(time.RFC3339Nano, bs); err == nil {
+			beforeTime = &t
+		}
 	}
-	if unreadOnly {
-		query += ` AND read_at IS NULL`
+	if bid := r.URL.Query().Get("before_id"); bid != "" {
+		if id, err := uuid.Parse(bid); err == nil {
+			beforeID = &id
+		}
 	}
-
-	query += fmt.Sprintf(` ORDER BY created_at DESC LIMIT $%d OFFSET $%d`, argIdx, argIdx+1)
-	args = append(args, limit, offset)
+	query, args, _ := listNotificationsQuery(userID, category, unreadOnly, beforeTime, beforeID, limit, offset)
 
 	rows, err := s.pool.Query(r.Context(), query, args...)
 	if err != nil {
@@ -366,7 +407,14 @@ func (s *Server) listNotifications(w http.ResponseWriter, r *http.Request) {
 	defer rows.Close()
 
 	items := make([]map[string]any, 0, limit)
+	var lastCreatedAt time.Time
+	var lastID uuid.UUID
+	// rowCount counts rows the DB RETURNED (not just successfully-scanned ones) so a rare per-row
+	// scan error can't shrink items below `limit` and falsely null the cursor — which would
+	// silently truncate the feed and lose every older notification (cold-review M2).
+	rowCount := 0
 	for rows.Next() {
+		rowCount++
 		var id uuid.UUID
 		var cat, title string
 		var body *string
@@ -378,6 +426,8 @@ func (s *Server) listNotifications(w http.ResponseWriter, r *http.Request) {
 		if err := rows.Scan(&id, &cat, &title, &body, &metadata, &messageKey, &messageParams, &readAt, &createdAt); err != nil {
 			continue
 		}
+		lastCreatedAt = createdAt
+		lastID = id
 		items = append(items, serializeNotification(id, cat, title, body, metadata, messageKey, messageParams, readAt, createdAt))
 	}
 	if err := rows.Err(); err != nil {
@@ -400,7 +450,18 @@ func (s *Server) listNotifications(w http.ResponseWriter, r *http.Request) {
 	var total int64
 	_ = s.pool.QueryRow(r.Context(), countQuery, countArgs...).Scan(&total)
 
-	writeJSON(w, http.StatusOK, map[string]any{"items": items, "total": total})
+	// next_cursor for keyset paging: the tuple of the last (oldest) row, emitted only when the DB
+	// returned a FULL page (rowCount == limit → there may be more) AND we have an anchor row to
+	// point at. A short page means end-of-feed → null cursor → the client stops paging.
+	var nextCursor any
+	if rowCount == limit && limit > 0 && len(items) > 0 {
+		nextCursor = map[string]any{
+			"before":    lastCreatedAt.Format(time.RFC3339Nano),
+			"before_id": lastID.String(),
+		}
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{"items": items, "total": total, "next_cursor": nextCursor})
 }
 
 func (s *Server) unreadCount(w http.ResponseWriter, r *http.Request) {
