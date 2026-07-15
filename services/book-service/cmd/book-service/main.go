@@ -87,6 +87,13 @@ func main() {
 		time.Duration(cfg.ReparseSweepIntervalSeconds)*time.Second,
 		cfg.ReparseSweepBatchSize,
 	)
+	// P4 (D-DIARY-SHRED-OUTBOX-RETRY) — converge any owed diary-DEK crypto-shred whose inline attempt
+	// blipped. Same shutdown-scoped ctx; self-disables when crypto is off. Reuses the reparse cadence.
+	go srv.RunDekShredSweeper(
+		sweepCtx,
+		time.Duration(cfg.ReparseSweepIntervalSeconds)*time.Second,
+		cfg.ReparseSweepBatchSize,
+	)
 
 	go func() {
 		slog.Info("listening", "addr", cfg.HTTPAddr)

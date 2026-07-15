@@ -140,6 +140,23 @@ CREATE TABLE IF NOT EXISTS outbox_events (
 CREATE INDEX IF NOT EXISTS idx_outbox_pending
   ON outbox_events(created_at) WHERE published_at IS NULL;
 
+-- P4 (D-DIARY-SHRED-OUTBOX-RETRY) — a DURABLE record of an OWED diary-DEK crypto-shred. eraseDiaryBook
+-- writes this row IN THE SAME TX as the content row-delete (so a shred can never be silently lost on a
+-- transient auth blip), then attempts the shred inline and clears the row on success. A background
+-- sweeper retries the rest until they converge. Both the inline path and the sweeper gate the shred on
+-- the shared-DEK CONTENT guard (ownerHasDiaryContent): if the owner still has ANY diary content — a
+-- re-provisioned "start fresh" diary OR a coexisting trashed one — the DEK still protects it, so the
+-- shred is SKIPPED (never data loss). requested_at/last_attempt_at drive ordering (round-robin, so a
+-- fresh shred isn't starved behind a stuck one). One owed shred per user (a re-erase upserts).
+CREATE TABLE IF NOT EXISTS pending_dek_shreds (
+  owner_user_id   UUID PRIMARY KEY,
+  book_id         UUID NOT NULL,
+  requested_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+  attempts        INT NOT NULL DEFAULT 0,
+  last_error      TEXT NULL,
+  last_attempt_at TIMESTAMPTZ NULL
+);
+
 CREATE TABLE IF NOT EXISTS block_media_versions (
   id              UUID PRIMARY KEY DEFAULT uuidv7(),
   chapter_id      UUID NOT NULL REFERENCES chapters(id) ON DELETE CASCADE,

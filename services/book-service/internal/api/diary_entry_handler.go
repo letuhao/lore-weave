@@ -810,27 +810,85 @@ func (s *Server) eraseDiaryBook(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "BOOK_BAD_REQUEST", "user_id required")
 		return
 	}
+	ctx := r.Context()
+	// P4 (D-DIARY-SHRED-OUTBOX-RETRY) — the content row-delete AND a DURABLE record of the owed
+	// crypto-shred are ONE transaction, so a transient auth blip on the inline shred (next) can never
+	// silently LOSE the shred: the pending_dek_shreds row survives for the sweeper to converge. The row
+	// is written ONLY when a real diary was deleted (rows>0) — a no-op re-erase owes no shred (and must
+	// not, or the sweeper could later kill a re-provisioned user's fresh DEK).
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT", "failed to erase diary")
+		return
+	}
+	defer tx.Rollback(ctx) //nolint:errcheck
 	// Owner + diary guarded IN the DELETE predicate: a foreign or non-diary book matches 0 rows and
 	// is left untouched (never a cross-tenant or novel delete). Idempotent — re-erase → erased:false.
-	ct, err := s.pool.Exec(r.Context(),
+	ct, err := tx.Exec(ctx,
 		`DELETE FROM books WHERE id=$1 AND owner_user_id=$2 AND kind='diary'`, bookID, owner)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT", "failed to erase diary")
 		return
 	}
-	// Crypto-shred the DEK. Idempotent, so it's safe on a re-erase (0 rows) too. A shred FAILURE is
-	// surfaced in the response (shredded:false) — the row-delete succeeded (immediate absence), but a
-	// failed shred means the key survived and a backup could still be decrypted; the caller/orchestrator
-	// must retry the shred to converge on the backup-resistant guarantee.
-	shredErr := s.diaryCrypto.destroyUserDEK(r.Context(), owner)
-	if shredErr != nil {
-		slog.Error("diary erase: crypto-shred of the user DEK FAILED — backup ciphertext may remain readable; retry required",
-			"user_id", owner, "err", shredErr)
+	erased := ct.RowsAffected() > 0
+	if erased && s.diaryCrypto.Enabled() {
+		if _, err := tx.Exec(ctx,
+			`INSERT INTO pending_dek_shreds (owner_user_id, book_id, requested_at)
+			 VALUES ($1, $2, now())
+			 ON CONFLICT (owner_user_id) DO UPDATE SET book_id=EXCLUDED.book_id,
+			   requested_at=now(), attempts=0, last_error=NULL, last_attempt_at=NULL`,
+			owner, bookID); err != nil {
+			writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT", "failed to record pending shred")
+			return
+		}
 	}
-	writeJSON(w, http.StatusOK, map[string]any{
-		"book_id": bookID.String(), "erased": ct.RowsAffected() > 0, "deleted_books": ct.RowsAffected(),
-		"dek_shredded": shredErr == nil,
-	})
+	if err := tx.Commit(ctx); err != nil {
+		writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT", "failed to erase diary")
+		return
+	}
+
+	// Attempt the crypto-shred inline (the common, immediate case). This runs ONLY when a real diary was
+	// deleted (erased) AND crypto is on — a 0-row no-op re-erase must NEVER shred (cold-review HIGH-1: a
+	// re-provisioned user would have a FRESH DEK that a blind shred would destroy). It is further gated on
+	// the shared-DEK content guard: if the owner still has OTHER diary content (a trashed "start-fresh"
+	// diary), the DEK still protects it, so we do NOT shred (cold-review MED-2). On SUCCESS clear the
+	// durable debt; on FAILURE leave it for the sweeper. The row-delete already succeeded regardless.
+	dekShredded := false
+	shredNote := ""
+	if erased && s.diaryCrypto.Enabled() {
+		hasOther, herr := s.ownerHasDiaryContent(ctx, owner)
+		switch {
+		case herr != nil:
+			shredNote = "shred_deferred_guard_check_failed" // leave the pending row → the sweeper retries
+			slog.Error("diary erase: shared-DEK content guard failed; deferring the shred to the sweeper", "user_id", owner, "err", herr)
+		case hasOther:
+			// SAFE SKIP — other diary content shares this DEK; shredding would destroy it. Do NOT shred;
+			// clear the pending row (a conscious safe skip, not an owed retry).
+			shredNote = "other_diary_content_present"
+			_, _ = s.pool.Exec(ctx, `DELETE FROM pending_dek_shreds WHERE owner_user_id=$1`, owner)
+			slog.Warn("diary erase: owner has OTHER diary content under the shared DEK — NOT crypto-shredding (would destroy it); the erased diary's backup ciphertext remains decryptable until all diary content is erased",
+				"user_id", owner)
+		default:
+			if shredErr := s.diaryCrypto.destroyUserDEK(ctx, owner); shredErr != nil {
+				shredNote = "shred_failed_sweeper_will_retry"
+				slog.Error("diary erase: crypto-shred of the user DEK FAILED — backup ciphertext may remain readable; the sweeper will retry until it converges",
+					"user_id", owner, "err", shredErr)
+			} else {
+				dekShredded = true
+				if _, derr := s.pool.Exec(ctx, `DELETE FROM pending_dek_shreds WHERE owner_user_id=$1`, owner); derr != nil {
+					slog.Warn("diary erase: shred succeeded but clearing pending_dek_shreds failed (sweeper will no-op it)", "user_id", owner, "err", derr)
+				}
+			}
+		}
+	}
+	resp := map[string]any{
+		"book_id": bookID.String(), "erased": erased, "deleted_books": ct.RowsAffected(),
+		"dek_shredded": dekShredded,
+	}
+	if shredNote != "" {
+		resp["shred_note"] = shredNote
+	}
+	writeJSON(w, http.StatusOK, resp)
 }
 
 // listDiaryEntries — WS-1.10 (spec 02/03) — the OWNER-ONLY list of the diary's entries for the
