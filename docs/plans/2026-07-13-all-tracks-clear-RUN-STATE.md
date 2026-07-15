@@ -84,7 +84,22 @@ Clear **all four tracks**. MAXIMAL SCOPE — nothing won't-fixed, nothing deferr
 
 *(New decisions made during the run get appended here with reasoning + reversibility.)*
 
-## 6b. ⚠️ ESCALATION — measured rail-DISCOVERY ceiling (S03 · S04 · S09), per goal invariant #10
+## 6b. RAIL-DISCOVERY ceiling — PO chose "build the intent→workflow hint" (2026-07-15) — BUILT, verifying
+
+**FIX BUILT (chat-service, live re-run in flight):** `app/services/intent_workflows.py` +
+`intent_pinned_workflows()` — a deterministic keyword map (no LLM) from the user's own words to the
+rail they describe, wired into the PIN seam in `stream_service.py` (~L3950). It UNIONS with the
+mode-binding pin (additive, visibility-filtered, degrade-safe), so "clean up my suggestions" pins
+entity-triage exactly as write-mode pins vision-to-book — closing the discovery step a mid-tier model
+won't reliably take. 9 unit tests (each ceiling rail pinned by its scenario's real phrasing; no
+over-fire on "write my novel"; visibility filter; multi-match). 107 rail/binding regression tests
+green. Verified in-container. **Re-running S03/S04 to prove it lands the artifacts; then S09.**
+**M5/M6 FE MOUNTED** into ExtensionsPage as 2 tabs ("Recipes" = WorkflowRackPanel, "Auto-setup" =
+BindingSettingsPanel), keep-mounted-hidden, scope-bookId-wired, tsc clean — no longer built-but-unreachable.
+
+<details><summary>original escalation (the measured ceiling that prompted the PO decision)</summary>
+
+## ⚠️ ESCALATION — measured rail-DISCOVERY ceiling (S03 · S04 · S09), per goal invariant #10
 
 **The pattern (measured, not guessed):** a mid-tier model (gemma-26B) does NOT reliably DISCOVER +
 DRIVE a **non-pinned** workflow rail from natural language. The rails that drive reliably are the ones
@@ -115,6 +130,7 @@ entity-triage the way "write my novel" pins vision-to-book (a real product chang
 is the exact thing the discoverability effort is FOR — but it is a milestone-sized enhancement, so I am
 flagging it for a PO decision rather than silently expanding scope. The other 13/18 scenarios + all FE +
 bugs + docs continue meanwhile.
+</details>
 
 ## 6. Parked register (genuinely-external blockers only — NOT a place for scenarios)
 

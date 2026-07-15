@@ -13,11 +13,13 @@ import { SubagentsView } from '../components/SubagentsView';
 import { ActivityView } from '../components/ActivityView';
 import { AdminIngestView } from '../components/AdminIngestView';
 import { PermissionsView } from '../components/PermissionsView';
+import { WorkflowRackPanel } from '@/features/workflows/components/WorkflowRackPanel';
+import { BindingSettingsPanel } from '@/features/modeBindings/components/BindingSettingsPanel';
 import { useIsAdmin } from '../adminGate';
 import { ExtensionScopeProvider, useExtensionScope } from '../context/ExtensionScope';
 import { BookPicker } from '@/components/shared/BookPicker';
 
-type Tab = 'skills' | 'mcp' | 'commands' | 'subagents' | 'plugins' | 'permissions' | 'proposals' | 'activity' | 'ingest';
+type Tab = 'skills' | 'workflows' | 'bindings' | 'mcp' | 'commands' | 'subagents' | 'plugins' | 'permissions' | 'proposals' | 'activity' | 'ingest';
 
 // D-REG-BOOK-TIER-FE — pick a book to manage its book-tier extensions (or "My" for the
 // user's own). Bound to the shared scope; every capability hook reads it.
@@ -52,6 +54,7 @@ function ExtensionsPageInner() {
   const [tab, setTab] = useState<Tab>('skills');
   const usage = useUsage();
   const isAdmin = useIsAdmin();
+  const { bookId } = useExtensionScope();
   return (
     <div className="mx-auto max-w-4xl p-6" data-testid="extensions-page">
       <div className="mb-4 flex items-center justify-between">
@@ -71,6 +74,16 @@ function ExtensionsPageInner() {
           data-testid="ext-page-tab-skills"
           className={`rounded-md px-3 py-1.5 ${tab === 'skills' ? 'bg-muted font-semibold' : 'text-muted-foreground hover:text-foreground'}`}
         >{t('tabs.skills')}</button>
+        <button
+          onClick={() => setTab('workflows')}
+          data-testid="ext-page-tab-workflows"
+          className={`rounded-md px-3 py-1.5 ${tab === 'workflows' ? 'bg-muted font-semibold' : 'text-muted-foreground hover:text-foreground'}`}
+        >{t('tabs.workflows', { defaultValue: 'Recipes' })}</button>
+        <button
+          onClick={() => setTab('bindings')}
+          data-testid="ext-page-tab-bindings"
+          className={`rounded-md px-3 py-1.5 ${tab === 'bindings' ? 'bg-muted font-semibold' : 'text-muted-foreground hover:text-foreground'}`}
+        >{t('tabs.bindings', { defaultValue: 'Auto-setup' })}</button>
         <button
           onClick={() => setTab('mcp')}
           data-testid="ext-page-tab-mcp"
@@ -115,6 +128,9 @@ function ExtensionsPageInner() {
         )}
       </div>
       <div className={tab === 'skills' ? '' : 'hidden'}><SkillsView /></div>
+      {/* M5 workflow rack + M6 binding UI — keep-mounted-hidden (own fetch/toggle state). */}
+      <div className={tab === 'workflows' ? '' : 'hidden'}><WorkflowRackPanel bookId={bookId ?? undefined} /></div>
+      <div className={tab === 'bindings' ? '' : 'hidden'}><BindingSettingsPanel bookId={bookId ?? undefined} /></div>
       <div className={tab === 'mcp' ? '' : 'hidden'}><McpServersView /></div>
       <div className={tab === 'commands' ? '' : 'hidden'}><CommandsHooksView /></div>
       <div className={tab === 'subagents' ? '' : 'hidden'}><SubagentsView /></div>

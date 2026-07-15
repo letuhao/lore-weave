@@ -3947,16 +3947,35 @@ async def stream_response(
     _rail_specs: list[tuple[str, list]] = []
     _rail_turn_start_counts = None
     _rail_grant_ok = False
-    if turn_workflows and mode_binding and mode_binding.inject_workflows:
+    # M2 (all-tracks-clear) — INTENT pinning. The mode binding pins ONE rail per mode
+    # (write→vision-to-book), so the OTHER rails (entity-triage, canon-check, kg-build, …) a
+    # mid-tier model must DISCOVER, and measured it does so unreliably (S03 0/3, S04 1/3, S09
+    # improvises). Map the user's own words to the rail they describe and pin it the SAME way —
+    # additive to the binding, filtered to the visible set, deterministic (no LLM). See
+    # app/services/intent_workflows.py.
+    _binding_slugs = list(mode_binding.inject_workflows) if (mode_binding and mode_binding.inject_workflows) else []
+    _intent_slugs: list[str] = []
+    if turn_workflows:
+        try:
+            from app.services.intent_workflows import intent_pinned_workflows
+            _vis = {w.get("slug") for w in turn_workflows if w.get("slug")}
+            _intent_slugs = intent_pinned_workflows(user_message_content, _vis)
+            if _intent_slugs:
+                logger.info("intent pinned workflow(s) %s from the user's request", _intent_slugs)
+        except Exception:  # noqa: BLE001 — intent pinning is never load-bearing
+            logger.warning("intent-workflow pin failed — falling back to binding pins only", exc_info=True)
+            _intent_slugs = []
+    _want_slugs = _binding_slugs + [s for s in _intent_slugs if s not in _binding_slugs]
+    if turn_workflows and _want_slugs:
         from app.services.workflow_runner import pinned_rail_block
 
         _visible = {w.get("slug") for w in turn_workflows if w.get("slug")}
-        _pinned_slugs = [s for s in mode_binding.inject_workflows if s in _visible]
+        _pinned_slugs = [s for s in _want_slugs if s in _visible]
         # A pin naming a workflow that is not visible on THIS surface cannot run. Never a
         # silent no-op (Agent Extensibility Standard) — say so, and carry on unpinned.
-        for _missing in [s for s in mode_binding.inject_workflows if s not in _visible]:
+        for _missing in [s for s in _want_slugs if s not in _visible]:
             logger.warning(
-                "mode binding pins workflow %r, not visible on this surface — pin skipped", _missing,
+                "workflow %r pinned (binding or intent), not visible on this surface — pin skipped", _missing,
             )
         if _pinned_slugs:
             # ── Track C Phase 2 — the RAIL DRIVER ────────────────────────────────────
