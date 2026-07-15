@@ -1,0 +1,70 @@
+# PA DEBT-CLEARANCE — BUILD RUN-STATE (the durable commitment)
+
+## 0 · Resuming after a compaction — do THIS first
+Re-read THIS file, then `git log --oneline -20`, then continue at the first ⬜ slice.
+Plan + audit rationale: [`2026-07-15-PA-DEBT-CLEARANCE-plan.md`](2026-07-15-PA-DEBT-CLEARANCE-plan.md).
+Never re-litigate a sealed decision from memory (SD-C1..8/H1..4 in the completion seal; SD-7 quarantine).
+
+## 1 · The GOAL
+Clear EVERY code-doable PA remainder in the plan's §2 slice board (Groups R·P·B·F, ~11 slices) so the
+Personal Assistant is genuinely complete AND reachable. **Autonomous exit** = every slice ✅-with-evidence
+(pasted green tests + a pasted cross-service live-smoke where it crosses services + a cold `/review-impl`
+with findings fixed), commits pushed; the §3 parked list stays parked with its gate; SD-7 stays human.
+**NOT in scope (unchanged):** SD-7 safety-eval cert + numeric-eval QWK clearance (human milestones; scorer
+stays quarantine-tier — R2 makes it VISIBLE, never clears the number).
+
+## 2 · Standing invariants (never lower silently)
+- Never `git add -A` (shared checkout — explicit pathspec per slice). Commit each slice promptly.
+- Per slice: PASTED green tests + a PASTED cross-service live-smoke (where it crosses services) + a cold
+  `/review-impl` with findings fixed + re-verified. Rebuild stale images before a live-smoke.
+- **SD-7:** coaching SCORE stays quarantine-tier; a committed QWK / "safety passing" is a DRIFT VIOLATION.
+- Settings/Config Boundary (per-user, fail-closed, effective-value-visible); Provider-gateway (pricing/models
+  from provider-registry, never hardcoded); Tenancy (owner/scope key on every table); no hardcoded secrets
+  (DEK key ≠ JWT_SECRET). D13 (assistant session has no working-memory charter — F3).
+- Stop + ask ONLY if a sealed decision turns out wrong, an action is destructive/irreversible/risks real
+  user data, or you reach the SD-7 human boundary. Otherwise keep going.
+
+## 3 · SLICE BOARD (evidence string, not a checkmark)
+`⬜ todo · 🔵 wip · ✅ done (evidence)`
+
+### Group R — Reachability (turn 3 shipped-but-unreachable features on)
+| Slice | Status | Evidence / note |
+|---|---|---|
+| **R1** reflection patterns feed + live dismiss | ⬜ | worker-ai persist structured patterns w/ the reflection entry → read route → FE feed |
+| **R2** coaching scorecard read + minimal mount | ⬜ | BFF scorecard read → api.getScorecard → mount w/ SD-7 quarantine badge + trend-exclusion |
+| **R3** proactive delivery notification | ⬜ | content-free notification after proactive commit (mirror nudge; use registered sink) |
+
+### Group P — Privacy / safety / crypto (fix-now default)
+| Slice | Status | Evidence / note |
+|---|---|---|
+| **P1** wiki is_person on USER tier | ⬜ | thread is_person: user_kind create/update HTTP + MCP create; adopt-clone already carries it. **privacy leak** |
+| **P2** reflection facts fail-closed | ⬜ | recall_facts_range fail_closed variant for reflect_week; roll_up_week stays best-effort. **safety** |
+| **P3** DEK hardening bundle | ⬜ | (a) multi-consumer tripwire test (b) shred audit row + DEK_SHRED_TOKEN (c) generic reader decrypt |
+| **P4** diary shred durable retry | ⬜ | ride the existing book-service outbox → retried idempotent auth DELETE |
+
+### Group B — Billing / correctness
+| Slice | Status | Evidence / note |
+|---|---|---|
+| **B1** lane budget enforce + by-lane report | ⬜ | thread purpose→lane into reserve; per-lane cap mirror mcp_key sub-cap; by-lane report |
+| **B2** distiller model-aware window | ⬜ | resolve model ctx in distill consumer (get_context_length exists); window=min(12k, ctx−ovh−rsv) |
+
+### Group F — FE polish (DBT-14)
+| Slice | Status | Evidence / note |
+|---|---|---|
+| **F1** onboarding fifth-intent (C22) | ⬜ | assistant intent id + tile + route |
+| **F2** FE timezone-confirm UI | ⬜ | confirm control; BE already accepts timezone |
+| **F3** assistant session-template seed (WS-1.7) | ⬜ | seed WITHOUT a working-memory charter (D13) |
+
+## 4 · Decision register (ordinary build-time calls appended as the run goes)
+- *(none yet)*
+
+## 5 · Parked (stay parked — each earns a gate; see plan §3)
+D-PROACTIVE-LLM-CONTENT (#2) · D-STT-METER-UNIFY (#4 policy) · DBT-7 KEK re-wrap (#2 ops) ·
+DBT-10 trashed-diary UX (blocked on E14) · DBT-2 (#2) · DBT-3 (#3) · DBT-4 (#2) · P-2 · P-4 tail · P-11.
+Mobile home-strip surface (`md:block` desktop-only) → QC/product decision, not auto-scoped.
+
+## 6 · Drift log (record the near-misses — an empty drift log is dishonest)
+- *(none yet)*
+
+## 7 · Human milestone (NOT code)
+SD-7 safety-eval cert + numeric-eval QWK clearance. Scorer quarantine-tier until a person certifies it.
