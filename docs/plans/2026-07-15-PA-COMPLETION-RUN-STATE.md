@@ -28,7 +28,7 @@ coaching safety-eval + numeric-eval CLEARANCE — human milestones; the scorer s
 ## 3 · SLICE BOARD (evidence string, not a checkmark)
 | Slice | SD | Status | Evidence / note |
 |---|---|---|---|
-| **C1** distiller token sizing | SD-C1 | ⬜ | worker-ai: swap char-window → `loreweave_context.tokens.estimate_tokens` (o200k). Add the dep. |
+| **C1** distiller token sizing | SD-C1 | ✅ | worker-ai `distiller.py` windows in TOKENS via `loreweave_context.estimate_tokens` + NEW `split_to_token_budget` (single home in the SDK, not duplicated). `WINDOW_CHARS`→`WINDOW_TOKENS`(12k), `GIANT_PASTE_CHARS`→`GIANT_PASTE_TOKENS`(40k). **Tests:** SDK 7 passed + worker-ai distiller/job/reextract 55 passed (pasted). **Smoke:** real-import — a 20k-char CJK day: OLD char-window let a chunk reach ~12.6k tok (overflows small models); NEW caps every chunk ≤12k tok (worst 11999); same-size Latin day now 1 chunk vs 2. **Cold review:** cold agent, no HIGH, standards clean, `split_to_token_budget` lossless (2000-string stress); 2 LOW test-strengthenings fixed + re-green; 1 MED → debt D-DISTILL-WINDOW-MODEL-AWARE (§7). Single service — no cross-service seam. |
 | **C2** reflection v2 (co-occurrence notes + live tombstone) | SD-C2 | ⬜ | worker-ai `ChatAssistantClient` → notes into `run_weekly_reflection`; `reflection_dismissals` table + dismiss endpoint → tombstone LIVE. |
 | **C3** coaching scorer → rubric SoT (quarantine) | SD-C3 | ⬜ | evaluate.py `resolve_active_rubric` (code `charter.rubric_code` default `interview_v1`) → 409 no-rubric; `coerce_dimensions`; quarantine STAYS True. |
 | **C4** wiki `is_person` structural flag | SD-C4 | ⬜ | glossary `book_kinds.is_person`; seed colleague+character; migrate/backfill; 4 filters → is_person; seed-drift test. |
@@ -44,8 +44,22 @@ H1..H4 + SD-C1..C8 — all in [`2026-07-15-personal-assistant-completion-seal.md
 - *(none yet)*
 
 ## 6 · Drift log (record the near-misses — an empty drift log is dishonest)
-- *(append as the build runs)*
+- **C1 near-miss (accepted):** re-interpreting the sealed budget number 12_000 as TOKENS (was chars)
+  QUADRUPLES the Latin/English window (3k→12k tok). Cold review flagged this would overflow a
+  hypothetical 8k-context model (and it's a Latin regression there). Accepted, NOT reverted: the seal
+  is explicit ("same number, now tokens"), and the deployed distill model (Gemma-4 26B QAT) runs at
+  **200K context** — 12k is trivially safe. For CJK the change is strictly SAFER (12k tok cap vs the
+  old ~12.6k). Tracked as D-DISTILL-WINDOW-MODEL-AWARE for robustness against a future small-context
+  BYOK model. Two LOW test gaps the review found (lone-char-over-budget; CJK giant-paste) were fixed
+  in-slice, not deferred.
 
 ## 7 · Debt / follow-on carried
 - **SD-7 human-rating milestones** — safety-eval cert + numeric-eval QWK clearance. NOT code; gates a later milestone. The scorer stays quarantine-tier until then.
+- **D-DISTILL-WINDOW-MODEL-AWARE** (from C1 cold review, MED) — the distiller's `window` default is a
+  fixed 12k tokens (per SD-C1). The mechanism to pass a smaller window already exists (it's a param);
+  what's missing is wiring it to the *resolved target model's* context length so a small-context BYOK
+  model gets `window = min(12_000, ctx − prompt_overhead − output_reserve)` instead of a fixed 12k.
+  Gate #2 (needs the distill job to resolve the model's context length — a real feature, not a quick
+  edit). NOT urgent: the deployed model is 200K-context. Trigger: a user configures an ≤8k BYOK distill
+  model. Default stays 12k per the seal.
 - Anything discovered during C1..C8 that clears the defer gate lands here.

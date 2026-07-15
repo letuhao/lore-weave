@@ -25,7 +25,7 @@ from __future__ import annotations
 import logging
 from typing import Any, Protocol
 
-from app.distiller import WINDOW_CHARS, LLMCall, extract_facts_from_text
+from app.distiller import WINDOW_TOKENS, LLMCall, extract_facts_from_text
 
 logger = logging.getLogger(__name__)
 
@@ -53,7 +53,7 @@ async def reextract_and_reconcile(
     llm: LLMCall,
     knowledge_client: _FactQueuer,
     billing_client: "_BudgetChecker | None" = None,
-    window: int = WINDOW_CHARS,
+    window: int = WINDOW_TOKENS,
 ) -> dict[str, Any]:
     """Re-extract a corrected diary entry's facts (leg 2) and reconcile the day's graph (leg 3).
 

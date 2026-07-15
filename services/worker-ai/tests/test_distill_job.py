@@ -11,7 +11,7 @@ from __future__ import annotations
 import json
 
 from app import distill_job
-from app.distiller import GIANT_PASTE_CHARS
+from app.distiller import GIANT_PASTE_TOKENS
 
 
 class FakeChat:
@@ -164,7 +164,7 @@ async def test_reasoning_model_blank_completion_is_actionable_not_a_silent_no_en
 
 
 async def test_a_day_of_only_a_giant_paste_is_oversized_and_not_written():
-    big = _msg("user", "x" * (GIANT_PASTE_CHARS + 1))
+    big = _msg("user", "x" * (GIANT_PASTE_TOKENS * 4 + 8))  # C1: token-sized (Latin ≈ 0.25 tok/char)
     chat = FakeChat([big])
     book = FakeBook()
     out = await distill_job.distill_and_write(
@@ -180,7 +180,7 @@ async def test_a_day_of_only_a_giant_paste_is_oversized_and_not_written():
 async def test_a_giant_paste_alongside_a_real_day_still_writes_the_entry():
     # The T38 fix at the orchestrator level: a real day + a paste → the entry IS written and the
     # paste is surfaced (oversized_count) for the attach-offer, not dropped.
-    big = _msg("user", "x" * (GIANT_PASTE_CHARS + 1))
+    big = _msg("user", "x" * (GIANT_PASTE_TOKENS * 4 + 8))  # C1: token-sized (Latin ≈ 0.25 tok/char)
     chat = FakeChat([_msg("user", "Met Minh."), big])
     book = FakeBook()
     out = await distill_job.distill_and_write(

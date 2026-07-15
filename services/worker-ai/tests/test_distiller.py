@@ -10,6 +10,8 @@ from __future__ import annotations
 
 import json
 
+from loreweave_context import estimate_tokens
+
 from app import distiller as d
 from app.distiller import DayMessage, DistillFact
 
@@ -68,7 +70,8 @@ def test_filter_drops_recall_quoted_assistant_turns_and_empties():
 
 
 async def test_a_day_that_is_only_a_giant_paste_writes_no_entry_but_offers_the_paste():
-    big = "x" * (d.GIANT_PASTE_CHARS + 1)
+    # C1: the threshold is now in TOKENS; Latin ≈ 0.25 tok/char, so 4×+ chars clears 40k tokens.
+    big = "x" * (d.GIANT_PASTE_TOKENS * 4 + 8)
     llm = FakeLLM(map_facts=[{"kind": "event", "text": "should not run"}])
     out = await d.distill_day(_msgs(("user", big)), "en", llm)
     assert out.oversized_messages == [big]
@@ -76,10 +79,20 @@ async def test_a_day_that_is_only_a_giant_paste_writes_no_entry_but_offers_the_p
     assert llm.map_calls == 0, "a giant paste must not be sent to the model at all"
 
 
+def test_giant_paste_guard_is_token_aware_cjk_trips_at_a_quarter_the_chars():
+    # C1/DBT-12 at the guard level: a CJK message trips GIANT_PASTE at ~1/4 the char count a Latin
+    # one needs (CJK ≈ 1 tok/char vs Latin ≈ 0.25), so a big CJK paste isn't silently digested.
+    cjk = "万" * (d.GIANT_PASTE_TOKENS + 10)   # ≈1 tok/char → over the 40k-token threshold
+    lat = "x" * (d.GIANT_PASTE_TOKENS + 10)    # ≈0.25 tok/char → WELL under it (same char count)
+    normal, oversized = d.partition_oversized(_msgs(("user", cjk), ("user", lat)))
+    assert oversized == [cjk]
+    assert [m.content for m in normal] == [lat]
+
+
 async def test_a_giant_paste_does_not_suppress_the_rest_of_the_day():
     # The T38 fix: a productive day that HAPPENS to contain one giant paste still gets an entry from
     # the conversation; the paste is diverted (offered to attach), not allowed to drop the day.
-    big = "x" * (d.GIANT_PASTE_CHARS + 1)
+    big = "x" * (d.GIANT_PASTE_TOKENS * 4 + 8)  # C1: token-sized threshold (Latin ≈ 0.25 tok/char)
     llm = FakeLLM(
         map_facts=[{"kind": "decision", "text": "Ship v2.", "provenance": "user"}],
         reduce_obj={"summary": "A real day.", "decisions": ["Ship v2."]},
@@ -153,8 +166,9 @@ async def test_a_PARTIAL_map_outage_retries_the_whole_day_not_a_partial_entry():
             return json.dumps({"facts": [{"kind": "decision", "text": "chunk-1 fact", "provenance": "user"}]})
 
     llm = PartialFail()
-    # Two ~8000-char messages → two chunks (WINDOW_CHARS=12000), so chunk 2's map call fails.
-    msgs = _msgs(("user", "a" * 8000), ("user", "b" * 8000))
+    # Two ~8000-TOKEN messages → two chunks (WINDOW_TOKENS=12000; Latin ≈ 0.25 tok/char, so 32000
+    # chars ≈ 8000 tokens each, and 16000 > 12000 forces a second chunk), so chunk 2's map call fails.
+    msgs = _msgs(("user", "a" * 32000), ("user", "b" * 32000))
     out = await d.distill_day(msgs, "en", llm)
     assert llm.map_calls == 2 and out.chunks_processed == 2
     assert out.entry is None, "a partial outage must NOT write an entry from only the surviving chunks"
@@ -277,19 +291,29 @@ def test_enum_repair_does_not_launder_prose_or_touch_non_enum_values():
 
 
 def test_chunk_day_packs_windows_and_splits_oversized_messages():
+    # C1: the window is in TOKENS now. Latin ≈ 0.25 tok/char, so 240 chars ≈ 60 tokens.
     win = 100
     msgs = _msgs(
-        ("user", "a" * 60),
-        ("user", "b" * 60),           # 60+60 > 100 → second starts a new chunk
-        ("user", "c" * 250),          # 250 > 100 → hard-split into 3 sub-chunks
+        ("user", "a" * 240),          # ≈60 tok
+        ("user", "b" * 240),          # ≈60 tok → 60+60 > 100 → second starts a new chunk
+        ("user", "c" * 1000),         # ≈250 tok > 100 → hard-split into 3 sub-chunks
     )
     chunks = d.chunk_day(msgs, window=win)
-    # every chunk is within (or a single hard-split slice of) the window
+    # every chunk is within the window measured in TOKENS
     for ch in chunks:
-        assert sum(len(m.content) for m in ch) <= win
-    # the 250-char message produced 3 slices
+        assert sum(estimate_tokens(m.content) for m in ch) <= win
+    # the ~250-tok message produced 3 slices
     total_msgs = sum(len(ch) for ch in chunks)
     assert total_msgs == 2 + 3
+
+
+def test_chunk_day_is_script_aware_cjk_makes_more_chunks_than_latin():
+    # The DBT-12 fix, end-to-end: the SAME char count of CJK produces MORE chunks than Latin,
+    # because CJK ≈ 1 tok/char vs Latin ≈ 0.25 — so a CJK day never silently overflows the model.
+    win = 200
+    latin = d.chunk_day(_msgs(("user", "a" * 4000)), window=win)   # ≈1000 tok → ~5 chunks
+    cjk = d.chunk_day(_msgs(("user", "万" * 4000)), window=win)     # ≈4200 tok → ~21 chunks
+    assert len(cjk) > len(latin)
 
 
 # ── happy path ────────────────────────────────────────────────────────────────

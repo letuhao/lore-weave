@@ -50,6 +50,35 @@ def estimate_tokens(text: str | None) -> int:
     return max(1, round(total))
 
 
+def split_to_token_budget(text: str | None, budget: int) -> list[str]:
+    """Split ``text`` into consecutive slices, each estimated at ≤ ``budget`` tokens
+    (script-aware — the SAME ``_char_factor`` the estimator uses, so a consumer that must
+    hard-split an over-window message never re-derives the ratio, and a CJK slice is cut
+    ~4x shorter in chars than a Latin one). O(n), single pass.
+
+    Guarantees: no character is dropped; a slice is closed as soon as adding the next char
+    would exceed ``budget`` (except a lone char whose factor alone already ≥ budget — it
+    becomes its own over-budget slice rather than being lost). Returns ``[]`` for empty
+    text; returns the whole text as one slice for a non-positive budget."""
+    if not text:
+        return []
+    if budget <= 0:
+        return [text]
+    slices: list[str] = []
+    start = 0
+    acc = 0.0
+    for i, ch in enumerate(text):
+        f = _char_factor(ord(ch))
+        if acc + f > budget and i > start:
+            slices.append(text[start:i])
+            start = i
+            acc = 0.0
+        acc += f
+    if start < len(text):
+        slices.append(text[start:])
+    return slices
+
+
 def estimate_messages_tokens(messages: list[dict] | None) -> int:
     """Estimate the input tokens for a chat `messages` array (role + content)."""
     if not messages:

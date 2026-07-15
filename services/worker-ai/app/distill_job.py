@@ -19,8 +19,8 @@ import logging
 from typing import Any, Protocol
 
 from app.distiller import (
-    GIANT_PASTE_CHARS,
-    WINDOW_CHARS,
+    GIANT_PASTE_TOKENS,
+    WINDOW_TOKENS,
     DayMessage,
     LLMCall,
     distill_day,
@@ -136,8 +136,8 @@ async def distill_and_write(
     knowledge_client: "_FactQueuer | None" = None,
     billing_client: "_BudgetChecker | None" = None,
     limit: int = 5000,
-    giant_paste_threshold: int = GIANT_PASTE_CHARS,
-    window: int = WINDOW_CHARS,
+    giant_paste_threshold: int = GIANT_PASTE_TOKENS,
+    window: int = WINDOW_TOKENS,
 ) -> dict[str, Any]:
     """Distill one local day into the user's diary. Returns a status dict the trigger layer acts on.
 

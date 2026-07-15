@@ -33,23 +33,25 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from typing import Any
 
+from loreweave_context import estimate_tokens, split_to_token_budget
+
 logger = logging.getLogger(__name__)
 
 # An async model call: prompt -> raw completion text. Injected so the core is testable and so the
 # real wiring routes through the provider gateway (loreweave_llm SDK), never a bespoke provider call.
 LLMCall = Callable[[str], Awaitable[str]]
 
-# Char-based windowing — a KNOWN approximation (DBT-12), not the final sizing. The flat ~4 chars/
-# token ratio holds for Latin but UNDER-counts CJK/Vietnamese ~4x (o200k ≈ 1–1.7 tok/char for CJK),
-# so a CJK-heavy WINDOW_CHARS can overflow a small model's context. WINDOW_CHARS is therefore set
-# conservatively (a CJK day of this many chars ≈ 13–20k tokens — still bounded for a 32k model, and
-# a map overflow degrades to ok=False → RETRYABLE, not a crash). PAY-OFF: when the P-10 live-wiring
-# lands, the distiller job needs context-aware chunk sizing anyway (spec 06 §Q4), so switch these to
-# the script-aware token estimator `loreweave_context.tokens.estimate_tokens` (add it to worker-ai's
-# deps then) instead of duplicating it here. Tracked in RUN-STATE §8 DBT-12.
-WINDOW_CHARS = 12_000
-# A single message bigger than this is a paste, not a conversation turn — don't digest it (§T38).
-GIANT_PASTE_CHARS = 40_000
+# Token-based windowing (C1/SD-C1 — closes DBT-12). Chunking is sized in ESTIMATED TOKENS via the
+# shared script-aware estimator `loreweave_context.estimate_tokens` (o200k-ish: CJK/VN ≈ 1–1.7
+# tok/char, Latin ≈ chars/4), NOT the old flat ~4 chars/token that UNDER-counted CJK/Vietnamese ~4x
+# and could overflow a small model's context. The budget NUMBERS are unchanged from the char era but
+# are now interpreted as tokens — so a CJK day is cut ~4x shorter in chars than before (no overflow),
+# while a Latin day packs ~4x more chars into a window (fewer map calls, cheaper). `loreweave_context`
+# ships in the same sdks/python distribution the worker already installs (see requirements.txt); the
+# estimator is NOT duplicated here — the over-window hard-split reuses `split_to_token_budget`.
+WINDOW_TOKENS = 12_000
+# A single message bigger than this (in tokens) is a paste, not a conversation turn — don't digest it (§T38).
+GIANT_PASTE_TOKENS = 40_000
 # Tool-name substrings that mark an assistant turn as quoting journal/recall content (§Q9).
 RECALL_TOOL_MARKERS = ("recall", "journal", "memory_search", "search_sessions", "diary")
 
@@ -170,44 +172,47 @@ def filter_for_distill(messages: list[DayMessage]) -> list[DayMessage]:
 
 
 def partition_oversized(
-    messages: list[DayMessage], threshold: int = GIANT_PASTE_CHARS,
+    messages: list[DayMessage], threshold: int = GIANT_PASTE_TOKENS,
 ) -> tuple[list[DayMessage], list[str]]:
     """§T38: split messages into (normal, oversized-contents). An oversized message is a giant paste
     the chunker has nothing to split on and that can cost more than the whole day — it is DIVERTED
     (offered to attach as a document) while the rest of the day still distills. Returning only the
     first oversized (and dropping the day) would silently lose a productive day that happened to
-    contain one big paste."""
+    contain one big paste. `threshold` is ESTIMATED TOKENS (C1) — a CJK paste trips it at ~1/4 the
+    char count a Latin paste does, matching the model-cost the guard actually protects against."""
     normal: list[DayMessage] = []
     oversized: list[str] = []
     for m in messages:
-        if len(m.content) > threshold:
+        if estimate_tokens(m.content) > threshold:
             oversized.append(m.content)
         else:
             normal.append(m)
     return normal, oversized
 
 
-def chunk_day(messages: list[DayMessage], window: int = WINDOW_CHARS) -> list[list[DayMessage]]:
-    """Pack messages into ≤window-char chunks. A message that alone exceeds the window is HARD-split
-    across chunks (§T38 — never assume a message fits), so the map never receives an over-window
-    input. Assumes giant pastes were already diverted by find_oversized_message."""
+def chunk_day(messages: list[DayMessage], window: int = WINDOW_TOKENS) -> list[list[DayMessage]]:
+    """Pack messages into ≤window-TOKEN chunks (C1 — script-aware sizing, not chars). A message that
+    alone exceeds the window is HARD-split across chunks (§T38 — never assume a message fits) via the
+    shared `split_to_token_budget`, so the map never receives an over-window input. Assumes giant
+    pastes were already diverted by partition_oversized."""
     chunks: list[list[DayMessage]] = []
     cur: list[DayMessage] = []
-    cur_len = 0
+    cur_tok = 0
     for m in messages:
+        m_tok = estimate_tokens(m.content)
         # Split an over-window message into window-sized slices, each its own (sub)message.
-        if len(m.content) > window:
+        if m_tok > window:
             if cur:
                 chunks.append(cur)
-                cur, cur_len = [], 0
-            for i in range(0, len(m.content), window):
-                chunks.append([DayMessage(role=m.role, content=m.content[i : i + window], tool_names=m.tool_names)])
+                cur, cur_tok = [], 0
+            for piece in split_to_token_budget(m.content, window):
+                chunks.append([DayMessage(role=m.role, content=piece, tool_names=m.tool_names)])
             continue
-        if cur_len + len(m.content) > window and cur:
+        if cur_tok + m_tok > window and cur:
             chunks.append(cur)
-            cur, cur_len = [], 0
+            cur, cur_tok = [], 0
         cur.append(m)
-        cur_len += len(m.content)
+        cur_tok += m_tok
     if cur:
         chunks.append(cur)
     return chunks
@@ -462,7 +467,7 @@ async def extract_facts_from_text(
     text: str,
     llm: LLMCall,
     *,
-    window: int = WINDOW_CHARS,
+    window: int = WINDOW_TOKENS,
 ) -> ExtractFactsOutcome:
     """Run ONLY the distiller MAP over a single authored diary entry's text → structured facts. Unlike
     `distill_day` this takes NO message list, applies NO self-feeding / giant-paste guards (the input is
@@ -508,8 +513,8 @@ async def distill_day(
     language: str,
     llm: LLMCall,
     *,
-    giant_paste_threshold: int = GIANT_PASTE_CHARS,
-    window: int = WINDOW_CHARS,
+    giant_paste_threshold: int = GIANT_PASTE_TOKENS,
+    window: int = WINDOW_TOKENS,
 ) -> DistillOutcome:
     """Map-reduce a day into an entry draft, applying every guard. Returns a DistillOutcome where at
     most one of entry / no_entry_reason / oversized_message is set."""

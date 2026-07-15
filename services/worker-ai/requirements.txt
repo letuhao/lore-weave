@@ -13,5 +13,9 @@ prometheus-client>=0.20
 
 # Phase 4b-γ: loreweave_llm + loreweave_extraction SDKs are installed
 # via Dockerfile COPY of sdks/python (build context is repo root).
+# C1 (SD-C1) — the distiller now sizes its map-reduce window in TOKENS via
+# loreweave_context.estimate_tokens / split_to_token_budget (closes DBT-12).
+# loreweave_context ships in that same sdks/python distribution (RUN pip install /sdk),
+# so no separate package pin is needed; it is now a RUNTIME dep of worker-ai, not just chat.
 # For host-side pytest:
 #   pip install -e ../../sdks/python   (from services/worker-ai)
