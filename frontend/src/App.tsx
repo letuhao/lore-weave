@@ -159,6 +159,11 @@ export function App() {
             <Route path="/onboarding" element={<OnboardingPage />} />
             <Route path="/onboarding/new" element={<OnboardingPage forceShow />} />
 
+            {/* Mobile bottom-tab targets (M0 placeholders; M2 fills /home, M3 fills /you).
+                Real routes on desktop too — harmless, they just show a "coming soon" card. */}
+            <Route path="/home" element={<PlaceholderPage title="Home" description="Your platform home — coming soon." />} />
+            <Route path="/you" element={<PlaceholderPage title="You" description="Your account & data — coming soon." />} />
+
             {/* Workspace */}
             <Route path="/books" element={<BooksPage />} />
             <Route path="/trash" element={<TrashPage />} />
