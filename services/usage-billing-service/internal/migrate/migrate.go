@@ -160,6 +160,60 @@ CREATE INDEX IF NOT EXISTS idx_usage_logs_mcp_key
 ALTER TABLE token_reservations ADD COLUMN IF NOT EXISTS mcp_key_id UUID;
 CREATE INDEX IF NOT EXISTS idx_token_reservations_mcp_key
   ON token_reservations(mcp_key_id) WHERE status = 'held' AND mcp_key_id IS NOT NULL;
+
+-- ── C6 / SD-C6 — the spend LANE ledger (3 tables) ────────────────────────────────────────────
+-- A "lane" separates a user's spend by intent: ASSISTANT (the private work-assistant: distiller,
+-- reflection, coaching scorer, voice STT/TTS) vs INTERACTIVE (novel chat, translation, extraction).
+-- This lets a user cap assistant spend independently of their creative-writing spend, and lets the
+-- product report the two separately. Every usage_logs row carries its lane (derived from purpose).
+
+-- 1) spend_lanes — the SYSTEM-tier canonical lane set (admin-seeded; a regular user never writes it).
+CREATE TABLE IF NOT EXISTS spend_lanes (
+  lane_code   TEXT PRIMARY KEY,
+  label       TEXT NOT NULL,
+  description TEXT NOT NULL DEFAULT '',
+  sort_order  INT  NOT NULL DEFAULT 0
+);
+INSERT INTO spend_lanes (lane_code, label, description, sort_order) VALUES
+  ('assistant',   'Work assistant', 'Private assistant: journaling, reflection, coaching, voice', 1),
+  ('interactive', 'Interactive',    'Novel chat, translation, extraction, and other creative work', 2)
+ON CONFLICT (lane_code) DO NOTHING;
+
+-- 2) lane_purpose_map — purpose → lane. DATA, not a code CASE, so a new purpose is mapped by seeding a
+-- row (not a redeploy). A purpose absent here defaults to 'interactive' at write time (the safe default:
+-- an unclassified spend is not hidden inside the assistant lane).
+CREATE TABLE IF NOT EXISTS lane_purpose_map (
+  purpose   TEXT PRIMARY KEY,
+  lane_code TEXT NOT NULL REFERENCES spend_lanes(lane_code)
+);
+INSERT INTO lane_purpose_map (purpose, lane_code) VALUES
+  ('assistant',        'assistant'),
+  ('voice_stt',        'assistant'),
+  ('voice_tts',        'assistant'),
+  ('reflection',       'assistant'),
+  ('coaching',         'assistant'),
+  ('distill',          'assistant'),
+  ('chat',             'interactive'),
+  ('translation',      'interactive'),
+  ('image_gen',        'interactive'),
+  ('entity_extraction','interactive')
+ON CONFLICT (purpose) DO NOTHING;
+
+-- usage_logs.lane — the resolved lane for each spend row (set at /record write from the map above).
+ALTER TABLE usage_logs ADD COLUMN IF NOT EXISTS lane TEXT NOT NULL DEFAULT 'interactive';
+CREATE INDEX IF NOT EXISTS idx_usage_logs_owner_lane
+  ON usage_logs(owner_user_id, lane, created_at DESC);
+
+-- 3) user_lane_budgets — PER-USER per-lane monthly cap (User Boundaries: owner_user_id scope key).
+-- A row = "this user wants at most $N/month on this lane". Absent ⇒ no lane-specific cap (the global
+-- spend_guardrails still applies). NULL/0 monthly_limit_usd ⇒ unlimited for that lane.
+CREATE TABLE IF NOT EXISTS user_lane_budgets (
+  owner_user_id     UUID NOT NULL,
+  lane_code         TEXT NOT NULL REFERENCES spend_lanes(lane_code),
+  monthly_limit_usd DOUBLE PRECISION NOT NULL DEFAULT 0,
+  updated_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
+  PRIMARY KEY (owner_user_id, lane_code)
+);
 `
 
 func Up(ctx context.Context, pool *pgxpool.Pool) error {

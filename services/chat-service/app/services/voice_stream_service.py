@@ -45,6 +45,22 @@ from loreweave_context import build_system_message
 logger = logging.getLogger(__name__)
 
 
+async def _billed_voice_log(
+    billing, *, kind: str, model_source: str, model_ref: str, user_id: str, units: float,
+    purpose: str, session_id: str, message_id: str, input_payload: dict, output_payload: dict,
+) -> None:
+    """C6 — resolve the STT/TTS $ from provider-registry (per_second / per_kchar) then record the usage
+    under its lane WITH the real cost. Best-effort throughout (pricing → 0.0 on any failure; the log is
+    itself swallowed by billing.log_usage), so a pricing hiccup never affects the voice turn."""
+    cost = await get_provider_client().price_voice(model_source, model_ref, user_id, kind, units)
+    await billing.log_usage(
+        user_id=user_id, model_source=model_source, model_ref=model_ref,
+        provider_kind="", input_tokens=0, output_tokens=0,
+        session_id=session_id, message_id=message_id, purpose=purpose,
+        input_payload=input_payload, output_payload=output_payload, cost_usd=cost,
+    )
+
+
 # Voice system prompt — injected server-side when input_method='voice'
 VOICE_SYSTEM_PROMPT = (
     "You are in a voice conversation. The user is speaking to you and will hear "
@@ -645,22 +661,27 @@ async def voice_stream_response(
         # creds.provider_kind: `creds` is the CHAT LLM credential; STT/TTS routinely use a
         # different provider (whisper/Kokoro), so stamping the chat provider corrupts any
         # per-provider rollup. model_source/model_ref correctly identify the STT/TTS model.
+        # C6 — price each voice record from the model's provider-registry rate (STT per audio-second,
+        # TTS per character) and record the real $ (was $0). A local Whisper/Kokoro prices to $0.
         if speech_duration_ms:
             _stt_seconds = round(speech_duration_ms / 1000, 2)
         else:
-            _stt_seconds = round(audio_size_kb / 16, 2)  # rough proxy (no cost impact; tokens 0)
-        asyncio.create_task(billing.log_usage(
-            user_id=user_id, model_source=stt_model_source, model_ref=stt_model_ref,
-            provider_kind="", input_tokens=0, output_tokens=0,
-            session_id=session_id, message_id=msg_id, purpose="voice_stt",
+            # No duration signal → a crude kb→seconds proxy (~16kb/s for the typical PCM upload). Under
+            # C6 this DOES drive the STT charge for a priced cloud model, so it's approximate billing;
+            # a local $0 STT model (the common case) is unaffected. Prefer speech_duration_ms when present.
+            _stt_seconds = round(audio_size_kb / 16, 2)
+        asyncio.create_task(_billed_voice_log(
+            billing, kind="stt", model_source=stt_model_source, model_ref=stt_model_ref,
+            user_id=user_id, units=_stt_seconds, purpose="voice_stt",
+            session_id=session_id, message_id=msg_id,
             input_payload={"audio_seconds": _stt_seconds, "audio_kb": audio_size_kb},
             output_payload={"transcript_chars": len(transcript)},
         ))
         if tts_chars > 0 and tts_model_ref:
-            asyncio.create_task(billing.log_usage(
-                user_id=user_id, model_source=tts_model_source, model_ref=tts_model_ref,
-                provider_kind="", input_tokens=0, output_tokens=0,
-                session_id=session_id, message_id=msg_id, purpose="voice_tts",
+            asyncio.create_task(_billed_voice_log(
+                billing, kind="tts", model_source=tts_model_source, model_ref=tts_model_ref,
+                user_id=user_id, units=float(tts_chars), purpose="voice_tts",
+                session_id=session_id, message_id=msg_id,
                 input_payload={"tts_characters": tts_chars, "tts_voice": tts_voice},
                 output_payload={"sentences": sentence_index},
             ))

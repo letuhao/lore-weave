@@ -504,6 +504,8 @@ func (s *Server) Router() http.Handler {
 
 		// S5a — campaign cost-estimate pricing oracle (token-count → USD).
 		r.Post("/billing/estimate", s.internalBillingEstimate)
+		// C6 / SD-C6 — price ONE STT/TTS invocation from the model's registered per_second/per_kchar rate.
+		r.Post("/billing/price-voice", s.internalBillingPriceVoice)
 
 		// Phase 1a — service-to-service streaming endpoint.
 		r.Post("/llm/stream", s.internalLlmStream)

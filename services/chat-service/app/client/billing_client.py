@@ -34,6 +34,7 @@ class BillingClient:
         input_payload: dict | list | None = None,
         output_payload: dict | str | None = None,
         purpose: str = "chat",
+        cost_usd: float | None = None,
     ) -> None:
         # WS-4.2b — `purpose` lets voice record STT/TTS usage under a distinct lane
         # ('voice_stt' / 'voice_tts') instead of masquerading as chat. STT is metered by
@@ -53,6 +54,11 @@ class BillingClient:
             "input_payload": input_payload or {},
             "output_payload": output_payload if isinstance(output_payload, dict) else {"content": output_payload or ""},
         }
+        # C6 — an authoritative per-invocation cost (e.g. the STT/TTS $ resolved from provider-registry's
+        # per_second/per_kchar rate). usage-billing honours `total_cost_usd` verbatim (its override path),
+        # so a priced voice record no longer lands at $0. Omitted ⇒ the token-based fallback (chat).
+        if cost_usd is not None:
+            payload["total_cost_usd"] = cost_usd
         try:
             # W5 (ephemeral wave): shared factory bakes X-Internal-Token + JSON + trace.
             async with build_internal_client(

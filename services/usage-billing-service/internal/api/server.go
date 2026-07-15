@@ -487,8 +487,9 @@ func (s *Server) writeUsageLog(ctx context.Context, tx pgx.Tx, p usageLogParams)
 INSERT INTO usage_logs(
   request_id, owner_user_id, provider_kind, model_source, model_ref,
   input_tokens, output_tokens, total_tokens, total_cost_usd, billing_decision, request_status, policy_version,
-  input_payload_ciphertext, output_payload_ciphertext, payload_encryption_key_ref, payload_encryption_algo, purpose, mcp_key_id
-) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,'AES-256-GCM',$16,$17)
+  input_payload_ciphertext, output_payload_ciphertext, payload_encryption_key_ref, payload_encryption_algo, purpose, lane, mcp_key_id
+) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,'AES-256-GCM',$16,
+  COALESCE((SELECT lane_code FROM lane_purpose_map WHERE purpose=$16), 'interactive'), $17)
 ON CONFLICT (request_id) DO NOTHING
 RETURNING usage_log_id
 `, p.RequestID, p.OwnerUserID, p.ProviderKind, p.ModelSource, p.ModelRef,
