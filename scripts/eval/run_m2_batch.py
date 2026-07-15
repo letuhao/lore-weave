@@ -66,7 +66,7 @@ def _book_with_ontology(title: str) -> str:
 # effect never lands. SIM_AUTORENDER=1 simulates that ONE user click, which is the ONLY thing a
 # headless run cannot supply for a Tier-W flow — it does NOT relax what the AGENT must do. The
 # flagship (S06) needs none of this because its cast-save is Tier-A (auto-commit + Undo).
-CONFIRM_GATED = {"S03"}
+CONFIRM_GATED = {"S03", "S05"}  # S05's translation_retranslate_dirty is ALSO a priced Tier-W tool
 
 
 def _run_harness(scenario_id: str, book_id: str, label: str) -> dict:
@@ -117,6 +117,21 @@ def _gt_prose(b: str) -> tuple[bool, str]:
 def _gt_authoring(b: str) -> tuple[bool, str]:
     n = int(_sql(DBK["composition"], f"SELECT count(*) FROM authoring_runs WHERE book_id='{b}'"))
     return n > 0, f"authoring_runs={n}"
+
+
+def _gt_s05(b: str) -> tuple[bool, str]:
+    # S05 translation-pass: the fixture seeds exactly ONE 'completed' job (chapters 1-2 done) and
+    # leaves chapter 3 untranslated. The rail's job is "only redo what changed" → start a pass for
+    # the dirty chapter. Translation is ASYNC (translation_start enqueues a job a worker later
+    # runs), so the signal that survives a single-turn harness is a NEW job beyond the seeded one
+    # (or, if the worker was fast, a 3rd chapter actually translated). Either proves the rail drove.
+    njobs = int(_sql("loreweave_translation",
+                     f"SELECT count(*) FROM translation_jobs WHERE book_id='{b}'"))
+    ntrans = int(_sql("loreweave_translation",
+                      f"SELECT count(DISTINCT chapter_id) FROM chapter_translations "
+                      f"WHERE book_id='{b}' AND target_language='en' AND status='completed'"))
+    ok = njobs > 1 or ntrans > 2
+    return ok, f"translation_jobs={njobs} (seeded 1), chapters_translated={ntrans} (seeded 2)"
 
 
 def _gt_kg(b: str) -> tuple[bool, str]:
@@ -177,6 +192,7 @@ SCEN = {
     "S02":  (lambda lbl: _book_with_ontology(f"M2-S02-{lbl}"), _gt_entities, False),  # populate-glossary
     "S03":  (_s03_book, _gt_triaged, False),                                     # entity-triage (drain a pile)
     "S04":  (lambda lbl: fx.build_s04(lbl)["book_id"], _gt_kg, False),           # kg-build from glossary
+    "S05":  (lambda lbl: fx.build_s05(lbl)["book_id"], _gt_s05, False),          # translation-pass (only redo what changed)
     "S07":  (lambda lbl: _fresh_book(f"M2-S07-{lbl}"), _gt_plan, False),
     "S06b": (lambda lbl: fx.build_plan(lbl)["book_id"], _gt_prose, False),
     # S12's GOAL is "chapters get drafted", not "the authoring-run FSM was used". Score the OUTCOME

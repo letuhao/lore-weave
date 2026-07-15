@@ -123,7 +123,22 @@ SIM_AUTORENDER = os.environ.get("QG_SIM_AUTORENDER", "0") != "0"
 _COMMIT_URLS = {
     "glossary": os.environ.get("QG_GLOSSARY_URL", "http://glossary-service:8088")
     + "/v1/glossary/actions/confirm",
+    # A Tier-W token from a DIFFERENT domain (translation_retranslate_dirty is a priced Tier-W
+    # tool) commits at ITS domain's confirm route, not glossary's. Without this a translation-pass
+    # scenario (S05) minted a retranslate token that was never committed → no job was ever created.
+    "translation": os.environ.get("QG_TRANSLATION_URL", "http://translation-service:8087")
+    + "/v1/translation/actions/confirm",
 }
+
+
+def _commit_any_domain(c: "httpx.Client", token: str) -> bool:
+    """Commit a confirm_token without knowing its domain: try each domain's confirm route until one
+    accepts it (a token is only valid at its own domain, so the wrong routes 4xx and the right one
+    2xx). Robust to multi-domain Tier-W flows where the descriptor→domain map would otherwise drift."""
+    for domain in _COMMIT_URLS:
+        if _commit_domain_confirm(c, domain, token):
+            return True
+    return False
 
 
 def _commit_domain_confirm(c: "httpx.Client", domain: str, token: str) -> bool:
@@ -526,7 +541,9 @@ def _send_turn(c: httpx.Client, sid: str, content: str, *,
             pending.append(_last)
         for tok in pending:
             if tok and tok not in committed:
-                if _commit_domain_confirm(c, "glossary", tok):
+                # Domain-agnostic: a turn may mint glossary AND translation tokens; each commits at
+                # its own domain's route (was hardcoded to glossary, so translation tokens were lost).
+                if _commit_any_domain(c, tok):
                     committed.add(tok)
                     st["autorender_committed"] = st.get("autorender_committed", 0) + 1
 

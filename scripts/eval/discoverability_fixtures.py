@@ -334,7 +334,40 @@ def build_s09(run: str) -> dict:
                          "crowned, Tô Hạo watched the pilgrims climb toward him, as he had every "
                          "day for a thousand years.")},
         ]})
-    return {"book_id": book_id,
+
+    # THE OTHER HALF OF THE FIXTURE (D-S09-CANON-RULES). The canon-check rail is
+    # list_canon_rules → conformance_run → status: it checks the prose against DECLARED consistency
+    # RULES. With NONE seeded, the agent CORRECTLY says "there are no rules — want me to set some
+    # up?" (the rail's own notes instruct exactly that, and "never report all-consistent when
+    # nothing was checked"). So a rule-less fixture tests the agent's HONESTY, not contradiction
+    # detection — it can't fail the right way. Seed the composition project + the canon rule the
+    # prose violates, so the rail has something to check against.
+    # composition_create_work idempotently creates the book's composition Work (+ its default
+    # knowledge project) — the scope a canon rule and the conformance run both hang off. plan_*
+    # in rules mode only mints a plan_run, NOT a Work, so it is the wrong primitive here.
+    wk = m.call("composition_create_work", {"book_id": book_id})
+    if isinstance(wk, dict) and wk.get("success") is False:
+        raise RuntimeError(f"s09: composition_create_work failed: {wk.get('error')}")
+    proj = oracle.db_query(
+        config.DOMAIN_DB["composition"],
+        f"SELECT COALESCE(project_id, id) FROM composition_work "
+        f"WHERE book_id='{book_id}' AND source_work_id IS NULL AND status='active' LIMIT 1")
+    if not proj:
+        raise RuntimeError(f"s09: no composition_work resolved for book {book_id} — cannot seed a canon rule")
+    project_id = proj[0][0]
+    # The declared canon the prose contradicts: ch1 establishes GREEN, ch3 says BLUE.
+    m.call("composition_canon_rule_create", {"args": {
+        "project_id": str(project_id),
+        "text": "Lâm Uyên's eye colour is green and never changes.",
+        "scope": "world",
+    }})
+    n_rules = int(oracle.db_query(
+        config.DOMAIN_DB["composition"],
+        f"SELECT count(*) FROM canon_rule WHERE project_id='{project_id}' AND active AND NOT is_archived")[0][0])
+    if n_rules < 1:
+        raise RuntimeError(f"s09: canon rule did not land (rules={n_rules}) — the rail would still find nothing to check")
+
+    return {"book_id": book_id, "project_id": str(project_id), "canon_rules": n_rules,
             "planted_contradictions": ["eye colour: green (ch1) vs blue (ch3)",
                                        "Tô Hạo: dead (ch1) vs alive and ruling (ch3)"]}
 
