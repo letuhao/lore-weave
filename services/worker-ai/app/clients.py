@@ -45,8 +45,18 @@ __all__ = [
     "ChatClient",
     "ChatAssistantClient",
     "ChatAssistantUnavailable",
+    "KnowledgeUnavailable",
     "ProviderRegistryClient",
 ]
+
+
+class KnowledgeUnavailable(Exception):
+    """P2 (D-REFLECTION-FACTS-RECALL-FAIL-CLOSED) — a TRANSPORT / non-200 failure recalling the
+    diary FACTS. Raised ONLY when a caller opts in via `fail_closed=True` (the weekly-reflection
+    path), because the recalled facts are the dominant input to the fail-CLOSED Gate-3 safety
+    screen: on a knowledge-service blip a reflection must RETRY, never be written having screened
+    fewer facts. Best-effort callers (roll_up_week — empty-on-error is the intended 'nothing to
+    summarize' degrade) do NOT pass fail_closed and keep the swallow. An empty 200 is NOT this."""
 
 logger = logging.getLogger(__name__)
 
@@ -241,10 +251,19 @@ class KnowledgeClient:
 
     async def recall_facts_range(
         self, *, user_id: str, book_id: str, date_from: str, date_to: str, limit: int = 200,
+        fail_closed: bool = False,
     ) -> list[dict]:
         """WS-3.7 — read a date-range of the user's CONFIRMED diary facts (the WS-2.4 recall endpoint),
-        the input to a weekly rollup's reduce. Returns the fact dicts (content/type/event_date/...). Best-
-        effort: a transport/non-200 → [] (the rollup simply has nothing to summarize → no draft)."""
+        the input to a weekly rollup's reduce OR the weekly reflection's safety screen. Returns the fact
+        dicts (content/type/event_date/...).
+
+        P2 (D-REFLECTION-FACTS-RECALL-FAIL-CLOSED): the failure mode is caller-dependent.
+        - `fail_closed=False` (default, roll_up_week): best-effort — a transport/non-200 → [] (the rollup
+          simply has nothing to summarize → no draft; empty-on-error IS the intended degrade).
+        - `fail_closed=True` (reflect_week): a transport/non-200 RAISES `KnowledgeUnavailable`, because the
+          facts are the dominant input to the fail-CLOSED Gate-3 safety screen — a blip must retry the
+          reflection, never write one that screened fewer facts. An empty 200 still returns [] in BOTH modes
+          (a genuinely empty week is not an error)."""
         try:
             resp = await self._http.post(
                 f"{self._base_url}/internal/admin/assistant/recall-facts",
@@ -252,9 +271,14 @@ class KnowledgeClient:
                       "event_date_from": date_from, "event_date_to": date_to, "limit": limit},
             )
             if resp.status_code != 200:
+                if fail_closed:
+                    raise KnowledgeUnavailable(
+                        f"recall-facts non-200 ({resp.status_code}) — reflection un-acked for retry")
                 return []
             return list(resp.json().get("facts") or [])
-        except (httpx.HTTPError, ValueError, KeyError):
+        except (httpx.HTTPError, ValueError, KeyError) as exc:
+            if fail_closed:
+                raise KnowledgeUnavailable(f"recall-facts transport error: {exc}") from exc
             return []
 
     async def persist_pass2(

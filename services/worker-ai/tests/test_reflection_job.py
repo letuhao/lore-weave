@@ -12,15 +12,30 @@ import pytest
 
 import pytest as _pytest
 
+from app.clients import KnowledgeUnavailable
 from app.reflection_job import (
     DETECTOR_CODES, ReflectionPattern, ReflectionResult,
-    reflect_week, render_reflection_draft, validate_detector_code,
+    reflect_week, render_reflection_draft, run_weekly_reflection, validate_detector_code,
 )
 
 
 class _Recaller:
     def __init__(self, facts):
         self.recall_facts_range = AsyncMock(return_value=facts)
+
+
+class _RaisingRecaller:
+    """P2 — a knowledge-service blip: raises ONLY when the caller opts into fail_closed (reflection),
+    returns [] otherwise (best-effort rollup path)."""
+    async def recall_facts_range(self, *, fail_closed: bool = False, **_kw):
+        if fail_closed:
+            raise KnowledgeUnavailable("recall-facts transport error (test)")
+        return []
+
+
+class _SpyWriter:
+    def __init__(self):
+        self.write_diary_entry = AsyncMock(return_value={"chapter_id": "c1"})
 
 
 def _fact(content, day):
@@ -41,6 +56,33 @@ async def test_distress_week_short_circuits():
     assert res.safety_category == "distress"
     assert res.acknowledgement and "support" in res.acknowledgement.lower()
     assert res.patterns == []  # NO pattern surfacing past the floor
+
+
+@pytest.mark.asyncio
+async def test_reflect_week_is_fail_closed_on_facts_recall():
+    # P2 (D-REFLECTION-FACTS-RECALL-FAIL-CLOSED) — the facts feed the Gate-3 safety screen, so a
+    # transport failure must RAISE (not degrade to an empty, under-screened week).
+    with pytest.raises(KnowledgeUnavailable):
+        await reflect_week(
+            user_id="u1", book_id="b1", week_start="2026-07-06", week_end="2026-07-12",
+            knowledge_client=_RaisingRecaller(),
+        )
+
+
+@pytest.mark.asyncio
+async def test_reflection_orchestrator_retries_and_writes_nothing_on_recall_blip():
+    # The orchestrator turns the fail-closed raise into a RETRYABLE status and writes NO diary entry —
+    # never an under-screened reflection. (The consumer honours retryable → un-ACK → redelivery.)
+    writer = _SpyWriter()
+    res = await run_weekly_reflection(
+        user_id="u1", book_id="b1", week_start="2026-07-06", week_end="2026-07-12",
+        entry_zone="UTC", language="en",
+        knowledge_client=_RaisingRecaller(), book_client=writer,
+    )
+    assert res["status"] == "error"
+    assert res["retryable"] is True
+    assert res["reason"] == "facts_recall_unavailable"
+    writer.write_diary_entry.assert_not_awaited()
 
 
 @pytest.mark.asyncio

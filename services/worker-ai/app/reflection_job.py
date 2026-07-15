@@ -21,6 +21,7 @@ from datetime import date, timedelta
 from typing import Any, Protocol
 
 from app import safety_floor
+from app.clients import KnowledgeUnavailable
 
 logger = logging.getLogger(__name__)
 
@@ -28,6 +29,7 @@ logger = logging.getLogger(__name__)
 class _FactRecaller(Protocol):
     async def recall_facts_range(
         self, *, user_id: str, book_id: str, date_from: str, date_to: str, limit: int = ...,
+        fail_closed: bool = ...,
     ) -> list[dict]: ...
 
 
@@ -184,9 +186,13 @@ async def reflect_week(
     `notes` = the week's reflection_notes (WS-5.1 substrate) for the co-occurrence detector;
     `dismissed_pattern_keys` = the user's tombstoned pattern_keys, dropped AT DETECTION (WS-5.6)
     so a dismissed pattern never resurfaces as a "new" row each period. Never raises for content
-    reasons; a transport failure propagates to the caller's status."""
+    reasons. P2 (D-REFLECTION-FACTS-RECALL-FAIL-CLOSED): the facts recall is fail-CLOSED
+    (`fail_closed=True`) — a transport/non-200 raises `KnowledgeUnavailable` (the facts feed the Gate-3
+    safety screen below, so a blip must retry, not write an under-screened reflection). The orchestrator
+    turns that into a retryable status; a genuinely empty week still returns []."""
     raw = await knowledge_client.recall_facts_range(
         user_id=user_id, book_id=book_id, date_from=week_start, date_to=week_end,
+        fail_closed=True,
     )
     notes = notes or []
 
@@ -278,11 +284,19 @@ async def run_weekly_reflection(
     draft-into-inbox). On a safety short-circuit it writes NOTHING (the acknowledgement is
     FE-surfaced once, never persisted as a KG fact — WS-5.12). Never raises for content reasons.
     Returns {reflected | safety_short_circuit | error}."""
-    result = await reflect_week(
-        user_id=user_id, book_id=book_id, week_start=week_start, week_end=week_end,
-        knowledge_client=knowledge_client, away_days=away_days,
-        notes=notes or [], dismissed_pattern_keys=dismissed_pattern_keys,
-    )
+    try:
+        result = await reflect_week(
+            user_id=user_id, book_id=book_id, week_start=week_start, week_end=week_end,
+            knowledge_client=knowledge_client, away_days=away_days,
+            notes=notes or [], dismissed_pattern_keys=dismissed_pattern_keys,
+        )
+    except KnowledgeUnavailable as exc:
+        # P2 (D-REFLECTION-FACTS-RECALL-FAIL-CLOSED) — facts recall failed while feeding the fail-closed
+        # safety screen; un-ACK for retry (the consumer honours retryable) rather than write a reflection
+        # that screened fewer facts. Same fail-closed posture the notes fetch already has.
+        logger.warning("weekly-reflection user=%s: facts recall unavailable (%s) — retryable", user_id, exc)
+        return {"status": "error", "reason": "facts_recall_unavailable", "retryable": True,
+                "week_start": week_start, "week_end": week_end}
     if result.status == "safety_short_circuit":
         logger.info("weekly-reflection short-circuit user=%s category=%s", user_id, result.safety_category)
         return {"status": "safety_short_circuit", "category": result.safety_category,
