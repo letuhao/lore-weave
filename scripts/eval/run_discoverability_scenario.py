@@ -435,9 +435,18 @@ def _send_turn(c: httpx.Client, sid: str, content: str, *,
                         # model-copied one — so we commit with this authentic token.
                         _res = env.get("result")
                         if isinstance(_res, dict) and _res.get("confirm_token"):
-                            st["last_confirm_token"] = _res["confirm_token"]
+                            _tok = _res["confirm_token"]
+                            st["last_confirm_token"] = _tok
+                            # Accumulate EVERY minted token, not just the last. A single triage
+                            # turn mints several (keep-batch + reject-batch + merge); overwriting
+                            # last_confirm_token dropped all but one, so SIM_AUTORENDER committed
+                            # one decision and the pile never drained (S03 stuck at triaged≤1).
+                            st.setdefault("minted_tokens", []).append(_tok)
                             if carry is not None:
-                                carry["last_confirm_token"] = _res["confirm_token"]
+                                carry["last_confirm_token"] = _tok
+                                _mt = carry.setdefault("minted_tokens", [])
+                                if _tok not in _mt:
+                                    _mt.append(_tok)
                     except Exception:
                         st["open_calls"][cid]["result"] = obj.get("content")
 
@@ -507,12 +516,19 @@ def _send_turn(c: httpx.Client, sid: str, content: str, *,
     # In a warm pass the user clicks it → the effect lands. Replicate that so the headless
     # rate reflects the real product, not just the agent's tool-following.
     if SIM_AUTORENDER and carry is not None:
-        tok = carry.get("last_confirm_token")
         committed = carry.setdefault("committed", set())
-        if tok and tok not in committed:
-            if _commit_domain_confirm(c, "glossary", tok):
-                committed.add(tok)
-                st["autorender_committed"] = st.get("autorender_committed", 0) + 1
+        # Commit EVERY minted-but-unconfirmed token this session, not just the last — a triage
+        # turn stages keep + reject + merge as separate cards a real user clicks one by one.
+        # Fall back to last_confirm_token so a run with no accumulator still commits its one token.
+        pending = list(carry.get("minted_tokens") or [])
+        _last = carry.get("last_confirm_token")
+        if _last and _last not in pending:
+            pending.append(_last)
+        for tok in pending:
+            if tok and tok not in committed:
+                if _commit_domain_confirm(c, "glossary", tok):
+                    committed.add(tok)
+                    st["autorender_committed"] = st.get("autorender_committed", 0) + 1
 
     budget = st["budget"]
     text_parts = st["text_parts"]

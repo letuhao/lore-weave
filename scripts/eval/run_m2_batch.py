@@ -57,6 +57,18 @@ def _book_with_ontology(title: str) -> str:
     return b
 
 
+# Scenarios whose WRITES are Tier-W (confirm-gated) — a curation/deletion action (keep/reject/
+# MERGE) mints a confirm_token and shows an approve card BY DESIGN; you don't auto-delete a
+# user's entities. The real GUI auto-renders that card from the authentic token and the user
+# clicks it (AssistantMessage.tsx). A headless driver has no such card, so without SIM_AUTORENDER
+# it UNDER-counts: the model proposes the right decisions (proven in the S03 transcripts —
+# propose_status_change + propose_merge every run) but the token is never committed, so the
+# effect never lands. SIM_AUTORENDER=1 simulates that ONE user click, which is the ONLY thing a
+# headless run cannot supply for a Tier-W flow — it does NOT relax what the AGENT must do. The
+# flagship (S06) needs none of this because its cast-save is Tier-A (auto-commit + Undo).
+CONFIRM_GATED = {"S03"}
+
+
 def _run_harness(scenario_id: str, book_id: str, label: str) -> dict:
     """docker exec the harness for ONE scenario; return its metrics dict (+ transcript path)."""
     out_dir = f"/tmp/m2/{label}"
@@ -66,6 +78,9 @@ def _run_harness(scenario_id: str, book_id: str, label: str) -> dict:
         "-e", f"QG_OUT={out_dir}", "-e", "QG_KEEP_SESSIONS=1", "-e", "QG_REPORT_DATE=2026-07-14",
         "-e", "QG_AUTO_APPROVE=1",
     ]
+    if scenario_id in CONFIRM_GATED:
+        # Simulate the user clicking the auto-rendered confirm card for a Tier-W write.
+        env += ["-e", "QG_SIM_AUTORENDER=1"]
     subprocess.run(["docker", "exec", *env, CHAT, "python", "/tmp/ds.py"],
                    capture_output=True, text=True, timeout=1800)
     raw = subprocess.run(
