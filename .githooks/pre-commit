@@ -18,6 +18,14 @@ command -v python >/dev/null 2>&1 || PY=python3
 "$PY" "$ROOT/scripts/knowledge-access-gate.py" --staged
 "$PY" "$ROOT/scripts/knowledge-http-surface-gate.py" --staged
 
+# Track A / M9a — the central C-TOOL tier gate: a write-verb-named tool must NOT be Tier-R
+# (Tier-R auto-runs with no confirm/Undo — a mutation tagged R is a silent-write). Runs when a
+# tool-registration file (or the gate itself) is staged; it scans the whole tree, so this
+# condition only skips it on commits that can't affect a tool's tier.
+if git diff --cached --name-only | grep -qE 'NewToolMeta|mcp_server\.go|_tools\.go|tool_discovery|tier-tag-gate'; then
+  "$PY" "$ROOT/scripts/tier-tag-gate.py"
+fi
+
 # Context Budget Law §13c — keep the §11a Inspector coverage manifest un-gameable:
 # whenever the spec or any Inspector test/component is staged, every §11a checklist
 # item must still bind to an existing proving test (static, no suite execution).
