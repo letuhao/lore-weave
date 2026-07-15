@@ -110,6 +110,25 @@ def test_build_messages_short_transcript_not_clipped():
     assert clipped is False
 
 
+def test_build_messages_includes_rubric_dimensions_when_given():
+    # C3 — the SoT rubric's dimensions reach the prompt as scoring_dimensions + a keyed instruction.
+    dims = [
+        {"key": "star_structure", "label": "STAR structure", "anchors": {"1": "none", "5": "complete"}},
+        {"key": "clarity", "label": "Clarity", "anchors": {"1": "unclear", "5": "crisp"}},
+    ]
+    msgs, _ = ev.build_eval_messages(_CHARTER, {}, None, [{"role": "user", "content": "hi"}], dimensions=dims)
+    user = msgs[1]["content"]
+    assert "scoring_dimensions" in user
+    assert "star_structure" in user and "clarity" in user
+    assert '"dimensions":' in user  # the model is told to return a dimensions array
+
+
+def test_build_messages_omits_dimensions_when_none():
+    # back-compat: no rubric dimensions → no scoring_dimensions block (legacy STAR path unchanged).
+    msgs, _ = ev.build_eval_messages(_CHARTER, {}, None, [{"role": "user", "content": "hi"}])
+    assert "scoring_dimensions" not in msgs[1]["content"]
+
+
 # ── parse_json_object: tolerant extraction ───────────────────────────────────
 
 def test_parse_handles_fences_and_prose():

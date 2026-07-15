@@ -61,6 +61,26 @@ async def test_unknown_code_returns_none_so_caller_refuses(pool):
     assert await resolve_active_rubric(pool, "no_such_rubric") is None
 
 
+@pytest.mark.asyncio
+async def test_rubric_with_no_usable_dimensions_returns_none(pool):
+    # C3 cold-review LOW-2: a row PRESENT but with empty / all-malformed dimensions still yields
+    # None (a rubric that can't score anything is no rubric) → the caller 409s, never scores blind.
+    async with pool.acquire() as c:
+        await c.execute(
+            "INSERT INTO coaching_rubrics (code, version, label, dimensions, tier) "
+            "VALUES ('c3_empty', 1, 'Empty', '[]'::jsonb, 'quarantine') ON CONFLICT DO NOTHING")
+        await c.execute(
+            "INSERT INTO coaching_rubrics (code, version, label, dimensions, tier) "
+            "VALUES ('c3_malformed', 1, 'Malformed', '[{\"no_key\":1}]'::jsonb, 'quarantine') "
+            "ON CONFLICT DO NOTHING")
+    try:
+        assert await resolve_active_rubric(pool, "c3_empty") is None
+        assert await resolve_active_rubric(pool, "c3_malformed") is None
+    finally:
+        async with pool.acquire() as c:
+            await c.execute("DELETE FROM coaching_rubrics WHERE code IN ('c3_empty','c3_malformed')")
+
+
 def test_coerce_dimensions_is_server_authoritative():
     rubric = CoachingRubric("x", 1, "X", (
         RubricDimension("clarity", "Clarity", {}),
@@ -82,6 +102,19 @@ def test_coerce_clamps_and_rejects_bool_score():
     rubric = CoachingRubric("x", 1, "X", (RubricDimension("clarity", "Clarity", {}),), "quarantine")
     assert coerce_dimensions({"dimensions": [{"key": "clarity", "score": 9}]}, rubric)[0]["score"] == 5
     assert coerce_dimensions({"dimensions": [{"key": "clarity", "score": True}]}, rubric)[0]["score"] is None
+
+
+def test_coerce_rejects_non_finite_scores_no_crash():
+    # C3 cold-review MED: json.loads accepts bare NaN/Infinity tokens; int(nan)/int(inf) RAISE.
+    # coerce_dimensions must coerce them to None (never let the raise reach a 500), like _clamp_score.
+    rubric = CoachingRubric("x", 1, "X", (RubricDimension("clarity", "Clarity", {}),), "quarantine")
+    for bad in (float("nan"), float("inf"), float("-inf")):
+        out = coerce_dimensions({"dimensions": [{"key": "clarity", "score": bad}]}, rubric)
+        assert out[0]["score"] is None
+    # and it survives a reply parsed from a raw JSON string carrying those literal tokens
+    import json as _json
+    raw = _json.loads('{"dimensions":[{"key":"clarity","score":NaN}]}')
+    assert coerce_dimensions(raw, rubric)[0]["score"] is None
 
 
 # ── WS-5.23 — coaching-KB citation resolution (no DB needed) ──────────────────

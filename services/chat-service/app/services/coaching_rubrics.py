@@ -13,6 +13,7 @@ SessionTemplate.rubric ("improvised standards already ship") is replaced by Syst
 from __future__ import annotations
 
 import json
+import math
 from dataclasses import dataclass
 from typing import Callable
 
@@ -82,7 +83,12 @@ def coerce_dimensions(raw: dict, rubric: CoachingRubric) -> list[dict]:
     for dim in rubric.dimensions:
         entry = reported.get(dim.key, {})
         score = entry.get("score")
-        if isinstance(score, bool) or not isinstance(score, (int, float)):
+        # Reject bool (an int subclass) AND non-finite floats: Python's JSON decoder accepts the
+        # bare tokens NaN/Infinity/-Infinity, which pass the isinstance guard but make int() raise
+        # (ValueError/OverflowError). Since card.dimensions is built OUTSIDE evaluate's try/except,
+        # an unguarded raise here would surface as a 500 — breaking the "garbled reply ⇒ empty-but-
+        # valid scorecard, never a 500" guarantee (C3 cold-review MED). Coerce them to None instead.
+        if isinstance(score, bool) or not isinstance(score, (int, float)) or not math.isfinite(score):
             score = None
         else:
             score = max(1, min(5, int(score)))

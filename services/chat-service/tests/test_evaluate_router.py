@@ -14,6 +14,7 @@ from uuid import uuid4
 
 import pytest
 
+from app.services.coaching_rubrics import CoachingRubric, RubricDimension
 from tests.conftest import TEST_MODEL_REF, TEST_USER_ID, make_message_record, make_session_record
 
 _CHARTER = {
@@ -76,6 +77,26 @@ def _critic(monkeypatch):
     pc.get_default_model = AsyncMock(return_value=("user_model", _CRITIC_REF))
     monkeypatch.setattr("app.client.provider_client.get_provider_client", lambda: pc)
     return pc
+
+
+# C3 (SD-C3): every evaluate resolves a SoT coaching rubric; no active rubric ⇒ 409. The default
+# fixture returns a 2-dimension quarantine rubric so the existing happy-path tests still score; the
+# C3 tests below reconfigure it to exercise the refuse-to-score path.
+_RUBRIC = CoachingRubric(
+    code="interview_v1", version=1, label="Behavioral interview (STAR)",
+    dimensions=(
+        RubricDimension(key="star_structure", label="STAR structure", anchors={"1": "none", "5": "complete"}),
+        RubricDimension(key="clarity", label="Clarity", anchors={"1": "unclear", "5": "crisp"}),
+    ),
+    tier="quarantine",
+)
+
+
+@pytest.fixture(autouse=True)
+def _rubric(monkeypatch):
+    m = AsyncMock(return_value=_RUBRIC)
+    monkeypatch.setattr("app.routers.evaluate.resolve_active_rubric", m)
+    return m
 
 
 class TestEvaluateHappyPath:
@@ -240,3 +261,73 @@ class TestRubricThreading:
         # the rubric (seed-carried) is serialized into the user message
         user_msg = captured["messages"][1]["content"]
         assert "weights" in user_msg and "system design" in user_msg
+
+
+class TestC3RubricScoring:
+    """C3 (SD-C3) — the scorer resolves the SoT coaching_rubrics standard; dimensions are
+    server-authoritative; no rubric ⇒ 409 refuse-to-score; quarantine stays True (SD-7)."""
+
+    @pytest.mark.asyncio
+    async def test_no_active_rubric_refuses_to_score_409(self, client, mock_pool, _rubric):
+        _rubric.return_value = None  # nothing seeded for the code
+        mock_pool.fetchrow.return_value = _session()
+        mock_pool.fetch.return_value = [make_message_record(role="user", content="x", sequence_num=1)]
+        with _patch_kc(_wm({"phase": "wrap", "covered": []})):
+            resp = await client.post(f"/v1/chat/sessions/{uuid4()}/evaluate")
+        assert resp.status_code == 409
+        assert "rubric" in resp.text.lower()
+        mock_pool.execute.assert_not_called()  # nothing scored without a standard
+
+    @pytest.mark.asyncio
+    async def test_dimensions_are_server_authoritative(self, client, mock_pool):
+        # model reports a valid key, an INVENTED key, and OMITS one → coercion rebuilds from the
+        # rubric: invented dropped, omitted scored None, valid clamped. The scored subject is fixed.
+        reply = json.dumps({
+            "overall_score": 70,
+            "checklist": [],
+            "dimensions": [
+                {"key": "star_structure", "score": 9, "note": "strong"},   # clamps to 5
+                {"key": "HALLUCINATED", "score": 5},                       # dropped (not in rubric)
+                # "clarity" omitted → scored None
+            ],
+        })
+        mock_pool.fetchrow.return_value = _session()
+        mock_pool.fetch.return_value = [make_message_record(role="user", content="x", sequence_num=1)]
+        with _patch_kc(_wm({"phase": "wrap", "covered": []})), \
+             patch("app.routers.evaluate._run_evaluator_llm", AsyncMock(return_value=reply)):
+            resp = await client.post(f"/v1/chat/sessions/{uuid4()}/evaluate")
+        assert resp.status_code == 201, resp.text
+        dims = {d["key"]: d for d in resp.json()["scorecard"]["dimensions"]}
+        assert set(dims) == {"star_structure", "clarity"}  # exactly the rubric's keys, no invention
+        assert dims["star_structure"]["score"] == 5        # clamped from 9
+        assert dims["clarity"]["score"] is None            # omitted → None, not dropped
+
+    @pytest.mark.asyncio
+    async def test_scorecard_stays_quarantine_and_dimensions_persist(self, client, mock_pool):
+        mock_pool.fetchrow.return_value = _session()
+        mock_pool.fetch.return_value = [make_message_record(role="user", content="x", sequence_num=1)]
+        with _patch_kc(_wm({"phase": "wrap", "covered": []})), \
+             patch("app.routers.evaluate._run_evaluator_llm", AsyncMock(return_value=_GOOD_REPLY)):
+            resp = await client.post(f"/v1/chat/sessions/{uuid4()}/evaluate")
+        assert resp.status_code == 201
+        card = resp.json()["scorecard"]
+        assert card["quarantine"] is True  # SD-7 — shown, never trended; wiring did not clear it
+        assert [d["key"] for d in card["dimensions"]] == ["star_structure", "clarity"]
+
+    @pytest.mark.asyncio
+    async def test_scoring_dimensions_reach_the_prompt(self, client, mock_pool):
+        mock_pool.fetchrow.return_value = _session()
+        mock_pool.fetch.return_value = [make_message_record(role="user", content="x", sequence_num=1)]
+        captured = {}
+
+        async def _capture(**kwargs):
+            captured.update(kwargs)
+            return _GOOD_REPLY
+
+        with _patch_kc(_wm({"phase": "wrap", "covered": []})), \
+             patch("app.routers.evaluate._run_evaluator_llm", _capture):
+            resp = await client.post(f"/v1/chat/sessions/{uuid4()}/evaluate")
+        assert resp.status_code == 201
+        user_msg = captured["messages"][1]["content"]
+        assert "scoring_dimensions" in user_msg
+        assert "star_structure" in user_msg and "clarity" in user_msg
