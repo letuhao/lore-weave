@@ -39,7 +39,7 @@ the harness commits every minted token at the right domain, the confirm-gated ra
 | S06b | chapter-compose | GREEN | chapters_with_prose>0 |
 | S07 | build-a-book | GREEN | plan_run>0 |
 | S08 | tool discovery | JUDGE ✓ | transcript |
-| S09 | canon-check | discovery FIXED (2/3 drive conformance); engine-detection tracked | fixture ✅ + book_id-resolution ✅ (committed `e75644212`); conformance run is async + writes no in-turn report (separate engine track) |
+| S09 | canon-check | discovery FIXED; **terminal capability genuinely MISSING** | fixture ✅ + book_id-resolution ✅ (agent now lists rules + runs the check). BUT the deepest root cause: `composition_conformance_run` checks whether prose **realized the ARC/MOTIFS** (beats hit), NOT whether it contradicts declared **canon rules**. The rail lists canon rules then runs conformance — but conformance never examines the rules, so the green-vs-blue eye contradiction is never detected. A prose-vs-canon-rule **contradiction checker does not exist as a runnable tool** (the critic runs at generation-time). Building it = a new engine (gate #2, separate track). NOT a model ceiling — the agent drives the rail correctly. **D-S09-CANON-CONTRADICTION-ENGINE.** |
 | S10 | maps | **2/3 GREEN** | draw-a-map rail + intent-pin (maps were undiscoverable railless); r2/r3 created a map+marker |
 | S11 | reader | **3/3 SPOILER-SAFE (judge)** | all runs: windowed story_search to ch1, found 0 (ch3 betrayal windowed out), answered "no betrayal so far", leaked NONE of the ch3 spoiler content. lore-so-far rail + intent-pin + reader-session (project-linked) |
 | S12 | autonomous-drafting | GREEN | chapters_with_prose>0 |
