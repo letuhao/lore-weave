@@ -39,7 +39,9 @@ that was never touched. This spec restores the correct identities:
 
 ## The spend correction (why "paid" ≠ "costs money here")
 
-`_meta.paid` is a **static** flag on ~25 tools meaning *"this tool can spend on an external service
+`_meta.paid` is a **static** flag on **10 tools** (verified 2026-07-15 — the earlier "~25" was doc
+drift: **4** Python `paid=True` in composition's plan family + **6** Go `WithPaid` = book ×1,
+glossary ×4, provider-registry `web_search` ×1) meaning *"this tool can spend on an external service
 that is not the reasoning model."* The reasoning agent is always local gemma = $0. A `paid` tool
 spends only if the BYOK capability it uses points at a **cloud** provider. The test account has
 **local LM Studio models for chat, embedding (bge-m3), and rerank**, so we route those capabilities

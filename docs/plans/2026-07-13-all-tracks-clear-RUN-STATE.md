@@ -173,7 +173,15 @@ All 10 core services healthy again; book-service image confirmed = my M0c build.
 books were swept** (a concurrent session's eval-cleanup — they're named "safe to delete"); my M0a/S00e
 books survived. NOT a blocker — the M0b seeder is reproducible, so M2/M3 rebuild fixtures fresh per run.
 
-*(no genuinely-external blockers parked)*
+**🅿️ PARKED (genuinely external — needs a `git push`, 2026-07-15):** criterion-3's *"the tier-tag gate
+runs in CI"* wants a **GitHub Actions runner execution log**. That requires triggering GitHub's runners
+via `git push`, which is (a) an outward-facing durable action not authorized in this session (CLAUDE.md:
+"push only when the user asks"), and (b) `act` (the local Actions runner) is not installed here. Proven
+in every context I *can* execute: the gate is wired into `lint-foundation.yml` `p1-lints` matrix (step
+`python scripts/${{matrix.lint}}.py`, line 95), it runs standalone (`python scripts/tier-tag-gate.py` →
+EXIT 0, pasted), AND the **pre-commit hook fires it** (pasted: "scanned 24 Go … ✓ every write-named tool
+carries a non-R tier"). The Actions-runner log lands the moment this branch is pushed — a one-command,
+human-authorized step. **This is the ONLY item gated on an external/unauthorized action.**
 
 ## 7. Debt register (knowingly imperfect)
 
