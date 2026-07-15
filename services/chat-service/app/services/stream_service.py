@@ -1785,6 +1785,8 @@ async def _stream_with_tools(
                     and rail_grant_ok
                     and rail_redrive_count < RAIL_REDRIVE_CAP
                     and not last_iter
+                    # G2: the deploy strength "off" disables the drive entirely (the pre-drive rail).
+                    and settings.rail_enforcement != "off"
                     # GOV-13 escape hatch: an explicit "skip the plan" / "just write" releases the
                     # hold this turn — governance serves the author, it never imprisons them.
                     and not rail_user_abandoned
@@ -1802,10 +1804,9 @@ async def _stream_with_tools(
                     )
                 if _redrive is not None:
                     from app.services.rail_progress import (
+                        enforcement_for,
                         honest_giveup_directive,
-                        nudge_cap_for,
                         redrive_directive,
-                        step_is_required,
                     )
                     _slug, _step = _redrive
                     # The raw step dict carries the enforcement flags (`optional`); look it up by id.
@@ -1815,19 +1816,22 @@ async def _stream_with_tools(
                         {},
                     )
                     rail_nudge_counts[_step.step_id] += 1
-                    # Phase G · G1: a REQUIRED step is HELD up to nudge_cap_for() redrives (GOV-7/9);
-                    # the old flat cap of 2 SILENTLY abandoned it after two tries (the S06 miss).
-                    _cap = nudge_cap_for(_raw_step)
+                    # Phase G · G1+G2: a REQUIRED step under the deploy `enforce` strength is HELD up
+                    # to the (deploy-tunable) cap (GOV-7/9); the old flat cap of 2 SILENTLY abandoned
+                    # it (the S06 miss). `nudge` strength keeps every step gentle (never held).
+                    _enforced, _cap = enforcement_for(
+                        _raw_step, settings.rail_enforcement, settings.rail_required_nudge_cap,
+                    )
                     _giving_up = rail_nudge_counts[_step.step_id] >= _cap
                     if _giving_up:
                         # Stop re-driving this step after this iteration (anti-stall).
                         rail_twice_nudged.add(_step.step_id)
-                    # When a REQUIRED step has exhausted its holds, the final action is an HONEST
+                    # When an ENFORCED step has exhausted its holds, the final action is an HONEST
                     # give-up (GOV-7) — tell the user it did not land — never a silent drop that
                     # reads as success. Otherwise: the forceful single-action nudge.
                     _directive = (
                         honest_giveup_directive(_step)
-                        if (_giving_up and step_is_required(_raw_step))
+                        if (_giving_up and _enforced)
                         else redrive_directive(_step)
                     )
                     # Record the narration the model just streamed, then the ephemeral directive.
@@ -1838,14 +1842,14 @@ async def _stream_with_tools(
                     rail_redrive_count += 1
                     rail_drove_this_turn = True  # drop the stateful chain head at turn end
                     logger.info(
-                        "rail step-runner: %s %s → %s (redrive %d/%d, nudge %d/%d)",
-                        "giving up on" if (_giving_up and step_is_required(_raw_step)) else "driving",
+                        "rail step-runner: %s %s → %s (redrive %d/%d, nudge %d/%d, strength=%s)",
+                        "giving up on" if (_giving_up and _enforced) else "driving",
                         _slug, _step.tool, rail_redrive_count, RAIL_REDRIVE_CAP,
-                        rail_nudge_counts[_step.step_id], _cap,
+                        rail_nudge_counts[_step.step_id], _cap, settings.rail_enforcement,
                     )
                     if trace is not None:
                         trace.add("compiler", "T6", "rail",
-                                  f"{'giveup' if _giving_up else 'redrive'}:{_step.tool}")
+                                  f"{'giveup' if (_giving_up and _enforced) else 'redrive'}:{_step.tool}")
                     continue  # loop top re-offers the tools; the model calls the next step
 
                 # No tool calls — this pass IS the final text response.

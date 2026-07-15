@@ -36,6 +36,21 @@ class Settings(BaseSettings):
     # behavior) — which is also how the A/B control run is measured.
     rail_driver_enabled: bool = True
 
+    # Phase G · G2 — enforcement strength + the per-step hold cap. SIBLINGS of
+    # rail_driver_enabled and, like it, DEPLOY-level (a kill-switch / ceiling, per the Settings
+    # Boundary), NOT a per-user knob — the rail's other loop bounds (RAIL_REDRIVE_CAP,
+    # REPEAT_READ_CAP) are platform constants too. A per-USER SET-1 tuning is a deferred,
+    # flagged item (D-G2-SETUSER) — it needs the full ai-prefs pipeline + FE and is genuinely
+    # debatable against this established deploy-level pattern.
+    #   "enforce" (default) — a REQUIRED step is HELD to rail_required_nudge_cap redrives, then
+    #                         released with an honest give-up (GOV-7). This is the S06 fix.
+    #   "nudge"             — the gentle pre-G1 behavior: every step nudged once, never held.
+    #   "off"              — the drive does not fire at all (equivalent to the pre-drive rail).
+    rail_enforcement: str = "enforce"
+    # The N in GOV-7's bounded auto-release. A ceiling a deploy narrows within; the effective
+    # hold count. Clamped ≥1 at the consumer so a mis-set 0 can never disable the hold silently.
+    rail_required_nudge_cap: int = 3
+
     redis_url: str = "redis://redis:6379"
     port: int = 8090
 

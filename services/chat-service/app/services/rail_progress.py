@@ -529,8 +529,33 @@ def step_is_required(raw: dict) -> bool:
 
 
 def nudge_cap_for(raw: dict) -> int:
-    """How many redrives a step gets before the bounded auto-release (GOV-7)."""
+    """How many redrives a step gets before the bounded auto-release (GOV-7). The platform
+    default; the drive applies the deploy `rail_enforcement` strength via `enforcement_for`."""
     return RAIL_REQUIRED_NUDGE_CAP if step_is_required(raw) else RAIL_OPTIONAL_NUDGE_CAP
+
+
+# Deploy enforcement strengths (config.rail_enforcement) — a closed set.
+ENFORCE = "enforce"
+NUDGE = "nudge"
+OFF = "off"
+
+
+def enforcement_for(raw: dict, strength: str, required_cap: int) -> tuple[bool, int]:
+    """Given the deploy `rail_enforcement` strength (Phase G · G2), return ``(enforced, cap)``
+    for this step — the single place the strength maps onto the drive's behavior:
+
+    * ``enforce`` — a REQUIRED step is ENFORCED: held to ``required_cap`` redrives, then the
+      honest give-up (GOV-7). An optional step stays gentle.
+    * ``nudge``   — nothing is enforced: every step gets the gentle cap and never the hold —
+      the pre-G1 behavior, for a deploy that wants a lighter touch.
+    * ``off``     — the caller must not drive at all (the eligibility gate checks this); this
+      returns not-enforced for safety if it is ever reached.
+
+    ``required_cap`` is clamped ≥1 so a mis-set ``0`` can never SILENTLY disable a hold (a
+    0-cap would give up before the first redrive — a silent no-op, the bug class this fights)."""
+    if strength == ENFORCE and step_is_required(raw):
+        return True, max(1, required_cap)
+    return False, RAIL_OPTIONAL_NUDGE_CAP
 
 
 # The escape hatch (GOV-13) is a small, LITERAL matcher on the user's own words. A false positive

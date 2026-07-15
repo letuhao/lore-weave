@@ -705,3 +705,39 @@ class TestEnforcement:
         assert "not able to finish" in d.lower()
         assert "plan_compile" not in d          # never leaks the tool name
         assert "claim it worked" in d.lower() or "not claim" in d.lower()
+
+
+class TestEnforcementStrengthG2:
+    """G2 — the deploy `rail_enforcement` strength maps onto (enforced, cap)."""
+
+    def test_enforce_holds_required_steps_to_the_deploy_cap(self):
+        from app.services.rail_progress import ENFORCE, enforcement_for
+        enforced, cap = enforcement_for({"id": "compile", "tool": "t"}, ENFORCE, 3)
+        assert enforced is True and cap == 3
+
+    def test_enforce_leaves_optional_steps_gentle(self):
+        from app.services.rail_progress import ENFORCE, RAIL_OPTIONAL_NUDGE_CAP, enforcement_for
+        enforced, cap = enforcement_for({"id": "x", "tool": "t", "optional": True}, ENFORCE, 3)
+        assert enforced is False and cap == RAIL_OPTIONAL_NUDGE_CAP
+
+    def test_nudge_never_enforces_even_a_required_step(self):
+        from app.services.rail_progress import NUDGE, RAIL_OPTIONAL_NUDGE_CAP, enforcement_for
+        enforced, cap = enforcement_for({"id": "compile", "tool": "t"}, NUDGE, 3)
+        assert enforced is False and cap == RAIL_OPTIONAL_NUDGE_CAP
+
+    def test_off_returns_not_enforced_for_safety(self):
+        from app.services.rail_progress import OFF, enforcement_for
+        # `off` is handled by the eligibility gate; the helper must still be safe if reached.
+        enforced, _ = enforcement_for({"id": "compile", "tool": "t"}, OFF, 3)
+        assert enforced is False
+
+    def test_a_misset_zero_cap_is_clamped_so_it_cannot_silently_disable_the_hold(self):
+        from app.services.rail_progress import ENFORCE, enforcement_for
+        enforced, cap = enforcement_for({"id": "compile", "tool": "t"}, ENFORCE, 0)
+        assert enforced is True and cap == 1   # >=1: a 0 must not give up before the first redrive
+
+    def test_config_ships_enforcement_on_by_default(self):
+        # D-ENFORCE-ON: the deploy default is enforce, N=3.
+        from app.config import settings
+        assert settings.rail_enforcement == "enforce"
+        assert settings.rail_required_nudge_cap == 3
