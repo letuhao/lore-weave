@@ -34,7 +34,7 @@ the harness commits every minted token at the right domain, the confirm-gated ra
 | S02 | populate-glossary | GREEN | glossary_entities>0 |
 | **S03** | **entity-triage** | **3/3 GREEN** | **r1 triaged=8 (whole pile drained), r2=1, r3=6** (`a37087d94`) |
 | **S04** | **kg-build** | **3/3 GREEN** | **kg_projects=1 nodes=6 all runs** |
-| S05 | translation-pass | 0/3 — **D-S05-COVERAGE-MISMATCH** | Tier-W commit fixed; coverage reports "all current" on a partial book (tracked) |
+| S05 | translation-pass | **3/3 GREEN** | THREE gaps fixed: coverage untranslated-blindness (cross-service) + domain-aware Tier-W commit + rail used wrong tool (start_job vs retranslate_dirty for NEW chapters). translation_jobs=2, chapters_translated=3 all runs |
 | S06 | flagship vision-to-book | GREEN | 5/5 artifacts land (`463091c6a` etc.) |
 | S06b | chapter-compose | GREEN | chapters_with_prose>0 |
 | S07 | build-a-book | GREEN | plan_run>0 |
