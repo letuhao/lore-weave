@@ -377,7 +377,9 @@
     "deny": "拒绝",
     "approved": "已批准 — 正在运行 ✓",
     "always_allowed": "始终允许 — 正在运行 ✓",
-    "denied": "已拒绝"
+    "denied": "已拒绝",
+    "never_allow": "Never allow",
+    "never_allowed": "Never allowed — you can undo this in Settings → Permissions"
   },
   "rack": {
     "label": "上下文",

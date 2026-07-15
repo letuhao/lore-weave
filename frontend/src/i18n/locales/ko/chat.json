@@ -377,7 +377,9 @@
     "deny": "거부",
     "approved": "승인됨 — 실행 중 ✓",
     "always_allowed": "항상 허용됨 — 실행 중 ✓",
-    "denied": "거부됨"
+    "denied": "거부됨",
+    "never_allow": "Never allow",
+    "never_allowed": "Never allowed — you can undo this in Settings → Permissions"
   },
   "rack": {
     "label": "컨텍스트",

@@ -377,7 +377,9 @@
     "deny": "رفض",
     "approved": "تمت الموافقة — جاري التشغيل ✓",
     "always_allowed": "مسموح دائمًا — جاري التشغيل ✓",
-    "denied": "تم الرفض"
+    "denied": "تم الرفض",
+    "never_allow": "Never allow",
+    "never_allowed": "Never allowed — you can undo this in Settings → Permissions"
   },
   "rack": {
     "label": "السياق",

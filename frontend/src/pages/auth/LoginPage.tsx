@@ -9,6 +9,24 @@ import { useAuth } from '@/auth';
 import { apiJson } from '@/api';
 import { AuthCard } from './AuthCard';
 
+import type { To } from 'react-router-dom';
+
+// MB4 — resolve the post-login destination from RequireAuth's saved state. Accepts the full
+// location object (preferred — preserves search/hash), a legacy pathname string, or nothing
+// (→ /books). Exported so the deep-link-survives-login behaviour is unit-tested.
+export function resolveLoginRedirect(fromState: unknown): To {
+  // Defense-in-depth (cold-review LOW-1): only accept a SAME-ORIGIN in-app path — one leading slash,
+  // never protocol-relative (`//evil.com`). React-router state isn't attacker-controllable today, but
+  // this keeps the redirect safe regardless of who calls it.
+  const safe = (p: string | undefined): boolean => !!p && p.startsWith('/') && !p.startsWith('//');
+  if (typeof fromState === 'string' && safe(fromState)) return fromState;
+  if (fromState && typeof fromState === 'object' && 'pathname' in fromState) {
+    const f = fromState as { pathname?: string; search?: string; hash?: string };
+    if (safe(f.pathname)) return { pathname: f.pathname!, search: f.search ?? '', hash: f.hash ?? '' };
+  }
+  return '/books';
+}
+
 export function LoginPage() {
   const { t } = useTranslation('auth');
   const { setTokens } = useAuth();
@@ -16,8 +34,10 @@ export function LoginPage() {
   const location = useLocation();
   const [error, setError] = useState('');
 
-  // Where to go after login — saved by RequireAuth, or default to /books
-  const from = (location.state as { from?: string })?.from || '/books';
+  // Where to go after login — saved by RequireAuth (MB4: the FULL location, so a deep-link's
+  // query/hash survive the round-trip). resolveLoginRedirect handles the location object, the
+  // legacy string form, and the no-state default.
+  const from = resolveLoginRedirect((location.state as { from?: unknown })?.from);
 
   const schema = z.object({
     email: z.string().min(1, t('validation.email_required')).email(t('validation.email_invalid')),

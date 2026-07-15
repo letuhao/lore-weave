@@ -1,7 +1,8 @@
 import { Outlet } from 'react-router-dom';
 import { Sidebar } from '@/components/layout/Sidebar';
-import { MobileTabBar } from './MobileTabBar';
+import { MobileTopBar } from './MobileTopBar';
 import { useIsMobile } from '@/hooks/useIsMobile';
+import { useResumeTokenRefresh } from '@/hooks/useResumeTokenRefresh';
 import { cn } from '@/lib/utils';
 
 // AppShell — the ONE shell that wraps every dashboard/chat route. It solves the
@@ -24,17 +25,23 @@ import { cn } from '@/lib/utils';
 // change the structure the Outlet hangs from.
 export function AppShell({ variant = 'dashboard' }: { variant?: 'dashboard' | 'chat' }) {
   const isMobile = useIsMobile();
+  useResumeTokenRefresh(); // MB8 — refresh the token on foreground resume before streams reconnect
 
   return (
     <div className={cn('flex h-screen overflow-hidden', isMobile ? 'flex-col' : 'flex-row')}>
-      {/* slot 0 — desktop chrome */}
-      {!isMobile && <Sidebar />}
+      {/* slot 0 — LEADING chrome: desktop sidebar (row-start) OR mobile top bar (column-top). Both
+          occupy the same child index so `main` stays at index 1 and the Outlet is never remounted
+          across the breakpoint flip (MB1). MobileTopBar self-hides on the root tab routes. */}
+      {isMobile ? <MobileTopBar /> : <Sidebar />}
 
-      {/* slot 1 — the single persistent Outlet (same main>div>Outlet chain in every mode) */}
+      {/* slot 1 — the single persistent Outlet (same main>div>Outlet chain in every mode). On
+          mobile it reserves bottom space so content clears the FIXED global bottom nav (MobileNav
+          renders it once at the app root, so it stays visible on every screen). */}
       <main
         className={cn(
           'min-w-0 flex-1',
           variant === 'chat' && !isMobile ? 'overflow-hidden' : 'overflow-y-auto',
+          isMobile && 'pb-[calc(3.5rem+env(safe-area-inset-bottom))]',
         )}
       >
         <div
@@ -51,9 +58,6 @@ export function AppShell({ variant = 'dashboard' }: { variant?: 'dashboard' | 'c
           <Outlet />
         </div>
       </main>
-
-      {/* slot 2 — mobile chrome */}
-      {isMobile && <MobileTabBar />}
     </div>
   );
 }

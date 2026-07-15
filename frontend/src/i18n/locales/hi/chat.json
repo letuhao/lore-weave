@@ -377,7 +377,9 @@
     "deny": "अस्वीकार करें",
     "approved": "अनुमोदित — चल रहा है ✓",
     "always_allowed": "हमेशा अनुमति दी गई — चल रहा है ✓",
-    "denied": "अस्वीकार कर दिया गया"
+    "denied": "अस्वीकार कर दिया गया",
+    "never_allow": "Never allow",
+    "never_allowed": "Never allowed — you can undo this in Settings → Permissions"
   },
   "rack": {
     "label": "संदर्भ",

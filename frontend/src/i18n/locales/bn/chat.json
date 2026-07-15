@@ -377,7 +377,9 @@
     "deny": "প্রত্যাখ্যান করুন",
     "approved": "অনুমোদিত — চলছে ✓",
     "always_allowed": "সবসময় অনুমোদিত — চলছে ✓",
-    "denied": "প্রত্যাখ্যান করা হয়েছে"
+    "denied": "প্রত্যাখ্যান করা হয়েছে",
+    "never_allow": "Never allow",
+    "never_allowed": "Never allowed — you can undo this in Settings → Permissions"
   },
   "rack": {
     "label": "প্রসঙ্গ",

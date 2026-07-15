@@ -377,7 +377,9 @@
     "deny": "拒絕",
     "approved": "已允許 — 執行中 ✓",
     "always_allowed": "一律允許 — 執行中 ✓",
-    "denied": "已拒絕"
+    "denied": "已拒絕",
+    "never_allow": "Never allow",
+    "never_allowed": "Never allowed — you can undo this in Settings → Permissions"
   },
   "rack": {
     "label": "情境",

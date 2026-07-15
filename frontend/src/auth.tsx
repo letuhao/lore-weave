@@ -125,7 +125,10 @@ export function RequireAuth({ children }: { children: React.ReactNode }) {
   const location = useLocation();
 
   if (!accessToken) {
-    return <Navigate to="/login" state={{ from: location.pathname }} replace />;
+    // Preserve the FULL location (pathname + search + hash), not just pathname (MB4): a cold
+    // deep-link like `/entry/123?sheet=today#note` must survive the login round-trip so a
+    // push/feed tap restores the exact tab + sheet, not a stripped path.
+    return <Navigate to="/login" state={{ from: location }} replace />;
   }
   return <>{children}</>;
 }

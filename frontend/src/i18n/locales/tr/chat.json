@@ -377,7 +377,9 @@
     "deny": "Reddet",
     "approved": "Onaylandı — çalışıyor ✓",
     "always_allowed": "Her zaman izin verildi — çalışıyor ✓",
-    "denied": "Reddedildi"
+    "denied": "Reddedildi",
+    "never_allow": "Never allow",
+    "never_allowed": "Never allowed — you can undo this in Settings → Permissions"
   },
   "rack": {
     "label": "Bağlam",

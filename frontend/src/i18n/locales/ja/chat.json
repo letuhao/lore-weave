@@ -377,7 +377,9 @@
     "deny": "拒否",
     "approved": "許可しました — 実行中 ✓",
     "always_allowed": "常に許可 — 実行中 ✓",
-    "denied": "拒否しました"
+    "denied": "拒否しました",
+    "never_allow": "Never allow",
+    "never_allowed": "Never allowed — you can undo this in Settings → Permissions"
   },
   "rack": {
     "label": "コンテキスト",

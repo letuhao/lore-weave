@@ -377,7 +377,9 @@
     "deny": "ปฏิเสธ",
     "approved": "อนุมัติแล้ว — กำลังดำเนินการ ✓",
     "always_allowed": "อนุญาตเสมอแล้ว — กำลังดำเนินการ ✓",
-    "denied": "ปฏิเสธแล้ว"
+    "denied": "ปฏิเสธแล้ว",
+    "never_allow": "Never allow",
+    "never_allowed": "Never allowed — you can undo this in Settings → Permissions"
   },
   "rack": {
     "label": "บริบท",

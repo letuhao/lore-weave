@@ -377,7 +377,9 @@
     "deny": "Отклонить",
     "approved": "Одобрено — выполнение ✓",
     "always_allowed": "Всегда разрешено — выполнение ✓",
-    "denied": "Отклонено"
+    "denied": "Отклонено",
+    "never_allow": "Never allow",
+    "never_allowed": "Never allowed — you can undo this in Settings → Permissions"
   },
   "rack": {
     "label": "Контекст",

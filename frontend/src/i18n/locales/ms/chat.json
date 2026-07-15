@@ -377,7 +377,9 @@
     "deny": "Enggan",
     "approved": "Diluluskan — sedang berjalan ✓",
     "always_allowed": "Sentiasa dibenarkan — sedang berjalan ✓",
-    "denied": "Ditolak"
+    "denied": "Ditolak",
+    "never_allow": "Never allow",
+    "never_allowed": "Never allowed — you can undo this in Settings → Permissions"
   },
   "rack": {
     "label": "Konteks",

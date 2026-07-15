@@ -377,7 +377,9 @@
     "deny": "Từ chối",
     "approved": "Đã cho phép — đang chạy ✓",
     "always_allowed": "Luôn cho phép — đang chạy ✓",
-    "denied": "Đã từ chối"
+    "denied": "Đã từ chối",
+    "never_allow": "Never allow",
+    "never_allowed": "Never allowed — you can undo this in Settings → Permissions"
   },
   "rack": {
     "label": "Ngữ cảnh",

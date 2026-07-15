@@ -84,7 +84,7 @@ describe('AppShell — chrome-only swap preserves the Outlet subtree', () => {
 
     // Desktop chrome only.
     expect(screen.getByTestId('desktop-sidebar')).toBeTruthy();
-    expect(screen.queryByTestId('mobile-tab-bar')).toBeNull();
+    expect(screen.queryByTestId('mobile-top-bar')).toBeNull();
 
     // Build up state in the feature tree.
     const probe = screen.getByTestId('probe');
@@ -98,7 +98,7 @@ describe('AppShell — chrome-only swap preserves the Outlet subtree', () => {
 
     // Chrome swapped…
     expect(screen.queryByTestId('desktop-sidebar')).toBeNull();
-    expect(screen.getByTestId('mobile-tab-bar')).toBeTruthy();
+    expect(screen.getByTestId('mobile-top-bar')).toBeTruthy();
 
     // …but the feature tree is PRESERVED: state survived and it never remounted.
     expect(screen.getByTestId('probe').textContent).toBe('count:3');
@@ -109,7 +109,7 @@ describe('AppShell — chrome-only swap preserves the Outlet subtree', () => {
     const mm = installMatchMedia(true); // start mobile
     renderShell();
 
-    expect(screen.getByTestId('mobile-tab-bar')).toBeTruthy();
+    expect(screen.getByTestId('mobile-top-bar')).toBeTruthy();
     expect(screen.queryByTestId('desktop-sidebar')).toBeNull();
 
     fireEvent.click(screen.getByTestId('probe'));
@@ -119,7 +119,7 @@ describe('AppShell — chrome-only swap preserves the Outlet subtree', () => {
     mm.setMatches(false);
 
     expect(screen.getByTestId('desktop-sidebar')).toBeTruthy();
-    expect(screen.queryByTestId('mobile-tab-bar')).toBeNull();
+    expect(screen.queryByTestId('mobile-top-bar')).toBeNull();
     expect(screen.getByTestId('probe').textContent).toBe('count:2');
     expect(mountCount).toBe(1);
   });
@@ -128,7 +128,7 @@ describe('AppShell — chrome-only swap preserves the Outlet subtree', () => {
     installMatchMedia(false);
     renderShell();
     const bothDesktop =
-      !!screen.queryByTestId('desktop-sidebar') && !!screen.queryByTestId('mobile-tab-bar');
+      !!screen.queryByTestId('desktop-sidebar') && !!screen.queryByTestId('mobile-top-bar');
     expect(bothDesktop).toBe(false);
     expect(screen.getByTestId('desktop-sidebar')).toBeTruthy();
   });

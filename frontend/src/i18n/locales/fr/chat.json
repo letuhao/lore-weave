@@ -377,7 +377,9 @@
     "deny": "Refuser",
     "approved": "Approuvé — exécution ✓",
     "always_allowed": "Toujours autorisé — exécution ✓",
-    "denied": "Refusé"
+    "denied": "Refusé",
+    "never_allow": "Never allow",
+    "never_allowed": "Never allowed — you can undo this in Settings → Permissions"
   },
   "rack": {
     "label": "Contexte",
