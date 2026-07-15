@@ -397,6 +397,10 @@ func (s *Server) Router() http.Handler {
 			r.Get("/books", s.listWorldBooks)
 			r.Post("/books", s.moveBookIntoWorld)
 			r.Delete("/books/{book_id}", s.removeBookFromWorld)
+			// W10-M8 — the maps FE canvas's read surface (list + detail with markers/regions).
+			// Read-only; every map MUTATION stays on the Tier-W world_map_* MCP tools.
+			r.Get("/maps", s.listWorldMaps)
+			r.Get("/maps/{map_id}", s.getWorldMapREST)
 		})
 	})
 	return r
