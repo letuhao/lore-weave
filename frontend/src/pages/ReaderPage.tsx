@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import { Link, useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { Menu, X, ChevronLeft, ChevronRight, Pencil, Volume2, Sun } from 'lucide-react';
+import { Menu, X, ChevronLeft, ChevronRight, Pencil, Volume2, Sun, BookOpen } from 'lucide-react';
 import { useAuth } from '@/auth';
 import { ContentRenderer } from '@/components/reader/ContentRenderer';
 import { TOCSidebar } from '@/components/reader/TOCSidebar';
@@ -15,6 +15,7 @@ import { useBlockScroll } from '@/hooks/useBlockScroll';
 import { useTTSShortcuts } from '@/hooks/useTTSShortcuts';
 import { extractSpeakableBlocks } from '@/lib/audio-utils';
 import { BookAssistantDock } from '@/features/chat/BookAssistantDock';
+import { LoreSeekerPanel } from '@/features/books/components/LoreSeekerPanel';
 import { useBookReaderContent, computeReadingStats } from '@/features/books/hooks/useBookReaderContent';
 
 export function ReaderPage() {
@@ -55,6 +56,7 @@ export function ReaderPage() {
   const [themeOpen, setThemeOpen] = useState(false);
   const [ttsSettingsOpen, setTtsSettingsOpen] = useState(false);
   const [showIndices, setShowIndices] = useState(() => localStorage.getItem('lw_reader_indices') === 'true');
+  const [loreOpen, setLoreOpen] = useState(false); // W11 lore-seeker slide-over
   const [autoNextEnabled, setAutoNextEnabled] = useState(() => localStorage.getItem('lw_reader_auto_next') !== 'false');
   const [autoScrollTTS, setAutoScrollTTS] = useState(() => localStorage.getItem('lw_reader_tts_scroll') !== 'false');
   const [autoNextCountdown, setAutoNextCountdown] = useState<number | null>(null);
@@ -214,6 +216,15 @@ export function ReaderPage() {
           >
             <Volume2 className="h-4 w-4" />
           </button>
+          {/* W11 lore-seeker toggle — "the lore so far", spoiler-windowed to this chapter. */}
+          <button
+            onClick={() => { setLoreOpen((v) => !v); setThemeOpen(false); setTocOpen(false); }}
+            data-testid="lore-toggle"
+            className={`rounded p-1.5 transition-colors ${loreOpen ? 'bg-primary/15 text-primary' : 'text-muted-foreground hover:bg-secondary'}`}
+            title={t('lore.heading', { defaultValue: 'Lore so far' })}
+          >
+            <BookOpen className="h-4 w-4" />
+          </button>
           {/* Theme customizer toggle */}
           <button onClick={() => { setThemeOpen((v) => !v); setTocOpen(false); }} className={`rounded p-1.5 transition-colors ${themeOpen ? 'bg-primary/15 text-primary' : 'text-muted-foreground hover:bg-secondary'}`} title={t('reading_theme')}>
             <Sun className="h-4 w-4" />
@@ -263,6 +274,19 @@ export function ReaderPage() {
           localStorage.setItem('lw_reader_tts_scroll', String(v));
         }}
       />
+
+      {/* W11 lore-seeker slide-over — "the lore so far", spoiler-windowed to the current chapter. */}
+      {loreOpen && bookId && (
+        <>
+          <div className="fixed inset-0 z-[19] bg-black/20" onClick={() => setLoreOpen(false)} />
+          <aside
+            className="fixed right-0 top-12 bottom-0 z-20 w-80 max-w-[90vw] overflow-y-auto border-l bg-card shadow-lg"
+            data-testid="lore-seeker-panel"
+          >
+            <LoreSeekerPanel bookId={bookId} chapterId={chapterId} />
+          </aside>
+        </>
+      )}
 
       {/* P5: the book-scoped glossary assistant (floating dock → embedded chat). */}
       {bookId && <BookAssistantDock bookId={bookId} />}
