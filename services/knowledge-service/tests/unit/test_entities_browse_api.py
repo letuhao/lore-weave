@@ -122,6 +122,75 @@ def test_list_entities_happy(mock_list):
     assert kwargs["search"] is None
 
 
+# ── W11 spoiler window on the entity LIST (adversarial-review finding 2026-07-15) ──
+# The facts were windowed but the NAME list was not, so a chapter-1 reader could browse
+# the existence of characters introduced 50 chapters later. before_chapter_id now windows
+# the list, fail-closed.
+
+
+@patch("app.routers.public.entities.resolve_before_order", new_callable=AsyncMock)
+@patch(
+    "app.routers.public.entities.list_entities_filtered", new_callable=AsyncMock
+)
+@patch("app.routers.public.entities.neo4j_session", new=lambda: _noop_session())
+def test_list_entities_spoiler_window_threads_before_order(mock_list, mock_resolve):
+    """before_chapter_id → resolve_before_order → before_order threaded to the repo."""
+    mock_resolve.return_value = (7, True)  # reader's chapter resolves to fact-ordinal 7
+    mock_list.return_value = ([_entity_stub("Kai")], 1)
+    client = _make_client()
+    chap = uuid4()
+    resp = client.get(f"/v1/knowledge/entities?before_chapter_id={chap}")
+    assert resp.status_code == 200, resp.json()
+    # the reader's chapter was resolved, and the resolved cutoff was passed to the query
+    assert mock_resolve.await_args.args[1] == chap
+    assert mock_list.await_args.kwargs["before_order"] == 7
+
+
+@patch("app.routers.public.entities.resolve_before_order", new_callable=AsyncMock)
+@patch(
+    "app.routers.public.entities.list_entities_filtered", new_callable=AsyncMock
+)
+@patch("app.routers.public.entities.neo4j_session", new=lambda: _noop_session())
+def test_list_entities_no_window_passes_none(mock_list, mock_resolve):
+    """No before_chapter_id → before_order=None (editor/curation whole-cast view); the
+    resolver is never called."""
+    mock_list.return_value = ([_entity_stub("Kai")], 1)
+    client = _make_client()
+    resp = client.get("/v1/knowledge/entities")
+    assert resp.status_code == 200, resp.json()
+    assert mock_list.await_args.kwargs["before_order"] is None
+    mock_resolve.assert_not_awaited()
+
+
+@patch("app.routers.public.entities.resolve_before_order", new_callable=AsyncMock)
+@patch(
+    "app.routers.public.entities.list_entities_filtered", new_callable=AsyncMock
+)
+@patch("app.routers.public.entities.neo4j_session", new=lambda: _noop_session())
+def test_list_entities_window_fail_closed_threads_minus_one(mock_list, mock_resolve):
+    """An UNRESOLVABLE reader position → resolve returns -1 → before_order=-1 goes to the
+    repo, whose predicate (from_order <= -1) matches nothing → EMPTY, never the full cast."""
+    mock_resolve.return_value = (-1, False)  # fail-closed sentinel
+    mock_list.return_value = ([], 0)
+    client = _make_client()
+    resp = client.get(f"/v1/knowledge/entities?before_chapter_id={uuid4()}")
+    assert resp.status_code == 200, resp.json()
+    assert mock_list.await_args.kwargs["before_order"] == -1
+    assert resp.json()["entities"] == []
+
+
+def test_list_entities_semantic_plus_window_rejected():
+    """The spoiler window is not supported on the vector path — a windowed request there
+    must 422, never silently return an UNWINDOWED semantic result (that would BE the leak)."""
+    client = _make_client()
+    resp = client.get(
+        f"/v1/knowledge/entities?project_id={_PROJECT_ID}"
+        f"&semantic_query=who%20betrayed&before_chapter_id={uuid4()}"
+    )
+    assert resp.status_code == 422, resp.json()
+    assert "before_chapter_id" in resp.json()["detail"]
+
+
 @patch(
     "app.routers.public.entities.list_entities_filtered", new_callable=AsyncMock
 )

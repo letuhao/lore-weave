@@ -2396,19 +2396,53 @@ async def _stream_with_tools(
                 # ANY deny row blocks the tool, whatever kind it was recorded under: the user
                 # was shown the words "Never allow", and a consent surface must mean them.
                 _denied_kinds: list[str] = []
+                _decision_unreadable = False
                 if decision_check is not None:
                     for _dk in ("mutation", "spend"):
                         try:
                             if await decision_check(c["name"], _dk) == "deny":
                                 _denied_kinds.append(_dk)
                         except Exception:
-                            # An unreadable decision is UNKNOWN, never "refused" — a DB blip
-                            # must not hard-block tool calling. (The ALLOW side degrades
-                            # separately, below.)
+                            # An unreadable decision is UNKNOWN — we cannot see whether the
+                            # user set "Never allow". We FAIL CLOSED for THIS tool (skip it
+                            # with a transient error below), not open: a paid/mutation tool
+                            # would re-prompt downstream, but a non-paid Tier-R READ has no
+                            # other gate, so treating the error as "not denied" would run a
+                            # possibly-denied tool during a DB blip (adversarial-review
+                            # RISK-2). Per-tool skip — tools whose reads succeeded are
+                            # unaffected, so a blip degrades gracefully without a blanket block.
+                            _decision_unreadable = True
                             logger.warning(
-                                "standing-decision read failed for %s (kind=%s) — not treating as denied",
+                                "standing-decision read failed for %s (kind=%s) — failing CLOSED (skip, retry)",
                                 c["name"], _dk, exc_info=True,
                             )
+                # Fail CLOSED here ONLY for a tool that has NO downstream prompt arm to
+                # catch it: a PAID tool re-prompts on the spend axis and a Tier-A write
+                # re-prompts on the mutation axis (both already fail closed on a read
+                # error, below). A non-paid, non-Tier-A-write READ hits neither — so if
+                # its deny-read was unreadable, THIS is the only place to honor a possible
+                # "Never allow". Gating on the tool's own tier/paid avoids regressing the
+                # paid/Tier-A prompt paths (which must show a card, not a skip).
+                _dl_def = (cat_index if discovery else plain_index).get(c["name"], {})
+                _has_downstream_gate = tool_paid(_dl_def) or (
+                    tool_tier(_dl_def) == "A" and permission_mode == "write"
+                )
+                if not _denied_kinds and _decision_unreadable and not _has_downstream_gate:
+                    _blip_err = (
+                        f"'{c['name']}' was not run: your tool-permission setting could not be "
+                        "read just now (a transient error). It was skipped to respect a possible "
+                        "'Never allow'. Try again in a moment."
+                    )
+                    working.append({
+                        "role": "tool", "tool_call_id": c["id"],
+                        "content": tool_result_content({"error": _blip_err}),
+                    })
+                    yield {"tool_call": {
+                        "id": c["id"], "iteration": iteration, "tool": c["name"],
+                        "args": _parse_tool_args(c["arguments"]), "ok": False,
+                        "result": None, "error": _blip_err,
+                    }}
+                    continue
                 if _denied_kinds:
                     _deny_err = (
                         f"'{c['name']}' is blocked: you chose 'Never allow' for it. It was "

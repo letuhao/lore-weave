@@ -1986,6 +1986,23 @@ WHERE e.user_id = $user_id
     OR toLower(e.name) CONTAINS toLower($search)
     OR any(alias IN e.aliases WHERE toLower(alias) CONTAINS toLower($search))
   )
+  // W11 spoiler window (reader surface): when $before_order is set, an entity is
+  // only visible if the reader has actually MET it — i.e. it carries at least one
+  // ABOUT fact established BY their chapter (f.from_order <= $before_order), the SAME
+  // ordinal the fact window uses (facts.py `_LIST_FACTS_FOR_ENTITY_BODY`). This closes
+  // the name-existence leak the mandatory adversarial review found: the facts were
+  // windowed but the entity LIST was not, so a chapter-1 reader could browse the NAMES
+  // of characters first introduced 50 chapters later. FAIL-CLOSED: an unresolvable
+  // position resolves to $before_order = -1 (never NULL), and no fact has from_order
+  // <= -1, so the list is EMPTY — never the full cast. $before_order IS NULL means the
+  // caller did NOT ask for a window (editor / curation surfaces) → unfiltered, as before.
+  AND (
+    $before_order IS NULL
+    OR EXISTS {
+      MATCH (wf:Fact)-[:ABOUT]->(e)
+      WHERE wf.from_order IS NOT NULL AND wf.from_order <= $before_order
+    }
+  )
 """
 
 _LIST_ENTITIES_COUNT_CYPHER = _LIST_ENTITIES_FILTER_WHERE + """
@@ -2016,6 +2033,7 @@ async def list_entities_filtered(
     offset: int,
     status: str | None = None,
     sort_by: str = "mention_count",
+    before_order: int | None = None,
 ) -> tuple[list[Entity], int]:
     """K19d.2 — paginated browse with optional project / kind / search.
 
@@ -2073,6 +2091,7 @@ async def list_entities_filtered(
         kind=kind,
         search=search,
         status=status,
+        before_order=before_order,
     )
     count_record = await count_result.single()
     total = int(count_record["total"]) if count_record else 0
@@ -2089,6 +2108,7 @@ async def list_entities_filtered(
         status=status,
         offset=offset,
         limit=limit,
+        before_order=before_order,
     )
     rows = [_node_to_entity(record["e"]) async for record in page_result]
     return rows, total

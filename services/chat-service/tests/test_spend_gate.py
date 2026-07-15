@@ -211,6 +211,23 @@ class TestSpendGate:
         assert len(_suspends(chunks)) == 1
 
     @pytest.mark.asyncio
+    async def test_unpaid_read_decision_error_fails_closed_and_skips(self):
+        """RISK-2 (adversarial review 2026-07-15): a NON-paid Tier-R read the user may
+        have set to 'Never allow' must NOT run when the decision read raises. It has no
+        downstream prompt arm (not paid → no spend card; not Tier-A → no mutation card),
+        so the deny-loop itself must fail CLOSED: skip the tool with a transient error,
+        never dispatch it on doubt. (Contrast test_unpaid_tier_r_tool_does_not_suspend,
+        where the read SUCCEEDS with None → the tool runs.)"""
+        check = AsyncMock(side_effect=RuntimeError("db down"))
+        chunks, kc = await _drive(_paid_tool(tier="R", paid=False), decision_check=check)
+
+        kc.mcp_execute_tool.assert_not_awaited()     # did NOT run on an unreadable decision
+        assert _suspends(chunks) == []               # a skip, not a prompt
+        calls = _tool_calls(chunks)
+        assert len(calls) == 1 and calls[0]["ok"] is False
+        assert "could not be read" in (calls[0]["error"] or "")
+
+    @pytest.mark.asyncio
     async def test_no_decision_check_does_not_gate(self):
         """decision_check=None (a caller not wired for consent) → the paid tool is
         not gated (matches the DR-C2 mutation-gate contract for the None case)."""

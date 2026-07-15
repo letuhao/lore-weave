@@ -17,15 +17,22 @@ export function useLoreSeeker(bookId: string, chapterId: string) {
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
   const trimmed = query.trim();
-  // FAIL-CLOSED at the LIST too, not just the facts (adversarial review): listEntities has no
-  // before_chapter_id window, so surfacing entity NAMES to a reader with no position would leak the
-  // existence of later-introduced characters. Gate the whole list on having a reading position, so a
-  // fresh reader (no chapterId) sees NOTHING — matching "a fresh reader sees NO spoilers".
+  // FAIL-CLOSED at the LIST too, not just the facts (adversarial review, 2026-07-15): the entity
+  // list is now SERVER-WINDOWED — `before_chapter_id` restricts it to entities the reader has met
+  // (a fact established by their chapter), fail-closed on an unresolvable position. Gating on
+  // `!!chapterId` still blocks the zero-position reader entirely; passing `before_chapter_id`
+  // additionally stops an EARLY-position reader (ch1) from browsing the NAMES of characters first
+  // introduced in later chapters — the leak the review found (facts were windowed, names were not).
   const entities = useQuery({
     queryKey: ['lore-seeker-entities', projectId, trimmed, chapterId],
     queryFn: () =>
       knowledgeApi.listEntities(
-        { project_id: projectId!, search: trimmed.length >= 2 ? trimmed : undefined, limit: 20 },
+        {
+          project_id: projectId!,
+          search: trimmed.length >= 2 ? trimmed : undefined,
+          limit: 20,
+          before_chapter_id: chapterId,
+        },
         accessToken!,
       ),
     enabled: !!accessToken && !!projectId && !!chapterId,

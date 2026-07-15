@@ -7,10 +7,11 @@
 >   every one a fixture/harness/product-infra gap — never a capability limit. Fixes: intent→workflow
 >   pinning, rail-driver DRAIN grounding, domain-aware Tier-W eval commit, cross-service translation
 >   coverage, canon-check book_id resolution, translation-pass start_job. **S06 flagship 3/3 GREEN**
->   (fresh, SQL-proven); **16/18 scenarios green**; S09 discovery-fixed (conformance-engine async is a
->   separate track); S10 (maps) authored; S11 (reader) in flight.
-> - **WS-5 catalog: now 10 System workflows** live (the WS-5 "13" count was aspirational; the shipped
->   set is 10, all driven).
+>   (fresh, SQL-proven); **18/18 scenarios green ≥2/3** (2026-07-15 clean run, post book-quota fix:
+>   13 DB-scored + 4 judge + S00e `90e3f417e`); S09 2/3 names the planted contradiction; **S10 (maps)
+>   2/3 and S11 (reader) 3/3 spoiler-safe — both BUILT + proven**, not "authored/in-flight".
+> - **WS-5 catalog: now 12 System workflows** live (10 + `draw-a-map` + `lore-so-far`, added this run
+>   for S10/S11; the WS-5 "13" count was aspirational — W8 is an onboarding routing change, not a rail).
 > - **FE surfaces (P-5) all BUILT + browser-proven by effect:** workflow rack, binding UI, W10 maps
 >   canvas, W11 lore-seeker reader (spoiler-windowed, fail-closed).
 

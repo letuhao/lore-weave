@@ -404,6 +404,10 @@ export interface EntitiesListParams {
   sort_by?: EntitySortBy;
   limit?: number;
   offset?: number;
+  /** W11 reader spoiler window: restrict to entities met by this chapter
+   *  (a fact established by it). Fail-closed on an unresolvable chapter →
+   *  empty list. Omit for the editor/curation view (whole cast). */
+  before_chapter_id?: string;
 }
 
 export interface EntitiesBrowseResponse {
@@ -1512,6 +1516,9 @@ export const knowledgeApi = {
     if (params.sort_by != null) qs.set('sort_by', params.sort_by);
     if (params.limit != null) qs.set('limit', String(params.limit));
     if (params.offset != null) qs.set('offset', String(params.offset));
+    // W11 reader spoiler window — restricts the list to entities met by this chapter.
+    if (params.before_chapter_id != null)
+      qs.set('before_chapter_id', params.before_chapter_id);
     const q = qs.toString();
     return apiJson<EntitiesBrowseResponse>(
       `${BASE}/entities${q ? `?${q}` : ''}`,

@@ -336,7 +336,21 @@ async def list_entities(
     ),
     limit: int = Query(50, ge=1, le=ENTITIES_MAX_LIMIT),
     offset: int = Query(0, ge=0),
+    before_chapter_id: UUID | None = Query(
+        default=None,
+        description=(
+            "W11 reader SPOILER WINDOW. When set, the list is restricted to "
+            "entities the reader has actually MET — those with at least one "
+            "fact established by this chapter. FAIL-CLOSED: an unresolvable "
+            "chapter returns an EMPTY list, never the full cast. Omit for the "
+            "editor/curation view (whole cast). The reader lore-seeker passes "
+            "the chapter being read; without this, listing entity NAMES leaks "
+            "the existence of later-introduced characters (adversarial-review "
+            "finding — the facts were windowed but the name list was not)."
+        ),
+    ),
     user_id: UUID = Depends(get_current_user),
+    book_client: BookClient = Depends(get_book_client),
 ) -> EntitiesListResponse:
     """K19d.2 + C8 — browse / search entities.
 
@@ -362,6 +376,16 @@ async def list_entities(
                 detail="pass either `search` (FTS) or `semantic_query` "
                 "(vector), not both",
             )
+        if before_chapter_id is not None:
+            # The W11 spoiler window is not implemented on the vector path (the
+            # reader lore-seeker uses plain FTS). REJECT rather than silently
+            # return an UNWINDOWED semantic result set — a windowed request that
+            # comes back unwindowed would be exactly the leak this closes.
+            raise HTTPException(
+                status_code=status_codes.HTTP_422_UNPROCESSABLE_CONTENT,
+                detail="`before_chapter_id` (spoiler window) is not supported "
+                "with `semantic_query`; use plain `search` for the reader view",
+            )
         if project_id is None:
             raise HTTPException(
                 status_code=status_codes.HTTP_422_UNPROCESSABLE_CONTENT,
@@ -385,6 +409,14 @@ async def list_entities(
             embedding_client=await get_embedding_client(),
         )
 
+    # W11 spoiler window: resolve the reader's chapter to its fact-ordinal cutoff.
+    # resolve_before_order FAILS CLOSED — an omitted/unresolvable chapter → -1, so the
+    # windowed query keeps nothing. before_order stays None ONLY when the caller did not
+    # ask for a window (editor/curation), which the repo reads as "unfiltered".
+    before_order: int | None = None
+    if before_chapter_id is not None:
+        before_order, _ = await resolve_before_order(book_client, before_chapter_id)
+
     async with neo4j_session() as session:
         rows, total = await list_entities_filtered(
             session,
@@ -396,6 +428,7 @@ async def list_entities(
             sort_by=sort_by,
             limit=limit,
             offset=offset,
+            before_order=before_order,
         )
     return EntitiesListResponse(entities=rows, total=total)
 
