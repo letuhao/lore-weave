@@ -24,9 +24,12 @@ from typing import TYPE_CHECKING
 from loreweave_jobs import BaseTerminalConsumer
 
 from app.distill_job import distill_and_write, make_distill_llm
+from app.distiller import WINDOW_TOKENS, resolve_distill_window
 
 if TYPE_CHECKING:
-    from app.clients import BookClient, ChatClient, KnowledgeClient, UsageBillingClient
+    from app.clients import (
+        BookClient, ChatClient, KnowledgeClient, ProviderRegistryClient, UsageBillingClient,
+    )
     from app.llm_client import LLMClient
 
 __all__ = ["DistillConsumer", "DISTILL_STREAM_NAME", "run_one_distill_message"]
@@ -67,6 +70,7 @@ async def run_one_distill_message(
     fields: dict,
     knowledge_client: "KnowledgeClient | None" = None,
     billing_client: "UsageBillingClient | None" = None,
+    provider_client: "ProviderRegistryClient | None" = None,
     message_id: str = "(distill)",
 ) -> bool:
     """Decode one `assistant.distill` message + run the pipeline. Returns True to ACK.
@@ -91,6 +95,19 @@ async def run_one_distill_message(
         model_ref=p["model_ref"],
         trace_id=trace_id,
     )
+    # B2 (D-DISTILL-WINDOW-MODEL-AWARE) — size the per-chunk window to the RESOLVED distill model's
+    # context length so a small-context BYOK model doesn't overflow (a fixed 12k chunk + prompt + output
+    # would error every map step). Best-effort: an unresolved/absent ctx keeps the 12k default (the seal).
+    window = WINDOW_TOKENS
+    if provider_client is not None:
+        try:
+            ctx_len = await provider_client.get_context_length(p["model_source"], p["model_ref"])
+            window = resolve_distill_window(ctx_len)
+            if window != WINDOW_TOKENS:
+                logger.info("distill msg %s: model ctx=%s → window=%s (was %s)",
+                            message_id, ctx_len, window, WINDOW_TOKENS)
+        except Exception as exc:  # noqa: BLE001 — best-effort; fall back to the default window.
+            logger.warning("distill msg %s: context-length resolve failed (%s) — using default window", message_id, exc)
     result = await distill_and_write(
         user_id=p["user_id"],
         book_id=p["book_id"],
@@ -102,6 +119,7 @@ async def run_one_distill_message(
         book_client=book_client,
         knowledge_client=knowledge_client,
         billing_client=billing_client,
+        window=window,
     )
     status = result.get("status")
     if status == "error" and result.get("retryable"):
@@ -142,6 +160,7 @@ class DistillConsumer(BaseTerminalConsumer):
         block_ms: int = 5000,
         knowledge_client: "KnowledgeClient | None" = None,
         billing_client: "UsageBillingClient | None" = None,
+        provider_client: "ProviderRegistryClient | None" = None,
     ) -> None:
         self.group = consumer_group  # runtime group — set before the base validates it
         self.block_ms = block_ms
@@ -151,11 +170,13 @@ class DistillConsumer(BaseTerminalConsumer):
         self._llm = llm_client
         self._knowledge = knowledge_client  # WS-2.3 — divert diary facts to the KG inbox (optional)
         self._billing = billing_client  # WS-2.8 — daily-cap degrade pre-check (optional)
+        self._provider = provider_client  # B2 — resolve the distill model's context length (optional)
 
     async def handle(self, fields: dict) -> None:
         should_ack = await run_one_distill_message(
             chat_client=self._chat, book_client=self._book, llm_client=self._llm,
             knowledge_client=self._knowledge, billing_client=self._billing,
+            provider_client=self._provider,
             fields=fields, message_id="(distill)",
         )
         if not should_ack:

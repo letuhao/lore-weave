@@ -345,3 +345,28 @@ async def test_reduce_returning_prose_is_treated_as_no_entry():
     llm = FakeLLM(map_facts=[{"kind": "event", "text": "did a thing"}], reduce_raw="I refuse to answer.")
     out = await d.distill_day(_msgs(("user", "something happened")), "en", llm)
     assert out.entry is None and out.no_entry_reason == "low_signal" and out.facts_found == 1
+
+
+# B2 (D-DISTILL-WINDOW-MODEL-AWARE) — the per-chunk window adapts to the resolved model's context length.
+def test_resolve_distill_window_defaults_when_ctx_unknown():
+    assert d.resolve_distill_window(None) == d.WINDOW_TOKENS
+    assert d.resolve_distill_window(0) == d.WINDOW_TOKENS
+    assert d.resolve_distill_window(-5) == d.WINDOW_TOKENS
+
+
+def test_resolve_distill_window_keeps_default_for_a_large_context_model():
+    # the deployed 200K model: 12k is trivially safe → unchanged.
+    assert d.resolve_distill_window(200_000) == d.WINDOW_TOKENS
+
+
+def test_resolve_distill_window_shrinks_for_a_small_context_model():
+    # 8k ctx: window = min(12k, 8000 - overhead - reserve).
+    want = min(d.WINDOW_TOKENS, 8_000 - d.PROMPT_OVERHEAD_TOKENS - d.OUTPUT_RESERVE_TOKENS)
+    assert d.resolve_distill_window(8_000) == want
+    assert want < d.WINDOW_TOKENS  # genuinely shrunk
+
+
+def test_resolve_distill_window_floors_for_a_tiny_model():
+    # a 4k model: 4096 - 2048 - 2048 = 0 → floored to MIN_WINDOW_TOKENS (never 0/negative).
+    assert d.resolve_distill_window(4_096) == d.MIN_WINDOW_TOKENS
+    assert d.resolve_distill_window(3_000) == d.MIN_WINDOW_TOKENS

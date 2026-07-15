@@ -23,8 +23,14 @@ class FakeChat:
 
 
 class FakeBook:
-    def __init__(self):
+    def __init__(self, kept=False):
         self.writes = []
+        self._kept = kept
+
+    # WS-3.3 — the pre-LLM kept-gate the pipeline checks before the map-reduce (distill_job.py). The stub
+    # was missing this method, reddening the suite at HEAD; default False → the pipeline proceeds.
+    async def diary_day_kept(self, **kwargs):
+        return self._kept
 
     async def write_diary_entry(self, **kwargs):
         self.writes.append(kwargs)
@@ -120,3 +126,50 @@ async def test_a_low_signal_day_acks_without_writing():
         chat_client=chat, book_client=book, llm_client=RoutingSubmitter(), fields=_fields(),
     )
     assert ack is True and book.writes == []
+
+
+# B2 (D-DISTILL-WINDOW-MODEL-AWARE) — the consumer resolves the model's context length and passes the
+# adapted window into distill_and_write (best-effort: default 12k when unknown / no provider / on error).
+from unittest.mock import AsyncMock, patch  # noqa: E402
+
+
+class _Provider:
+    def __init__(self, ctx):
+        self._ctx = ctx
+    async def get_context_length(self, model_source, model_ref):
+        return self._ctx
+
+
+class _BoomProvider:
+    async def get_context_length(self, model_source, model_ref):
+        raise RuntimeError("provider-registry down")
+
+
+async def _window_for(provider):
+    with patch("app.distill_consumer.distill_and_write",
+               new=AsyncMock(return_value={"status": "written"})) as m:
+        kwargs = dict(chat_client=FakeChat([]), book_client=FakeBook(),
+                      llm_client=RoutingSubmitter(), fields=_fields())
+        if provider is not _MISSING:
+            kwargs["provider_client"] = provider
+        await dc.run_one_distill_message(**kwargs)
+    return m.await_args.kwargs["window"]
+
+
+_MISSING = object()
+
+
+async def test_window_shrinks_for_a_small_context_model():
+    assert await _window_for(_Provider(8_000)) == 8_000 - 2_048 - 2_048  # 3904
+
+
+async def test_window_defaults_when_ctx_unknown():
+    assert await _window_for(_Provider(None)) == 12_000
+
+
+async def test_window_defaults_when_no_provider_client():
+    assert await _window_for(_MISSING) == 12_000
+
+
+async def test_window_defaults_when_resolve_raises():
+    assert await _window_for(_BoomProvider()) == 12_000

@@ -187,6 +187,7 @@ async def main() -> None:
             block_ms=settings.summary_consumer_block_ms,
             knowledge_client=knowledge_client,  # WS-2.3 — divert distilled facts to the KG inbox
             billing_client=usage_billing_client,  # WS-2.8 — daily-cap degrade pre-check
+            provider_client=provider_client,  # B2 — resolve the distill model's context length
         )
         coroutines.append(_distill_consumer.run())
         logger.info("A1: assistant.distill consumer started (group=%s)", settings.distill_consumer_group)

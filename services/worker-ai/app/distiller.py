@@ -52,6 +52,25 @@ LLMCall = Callable[[str], Awaitable[str]]
 WINDOW_TOKENS = 12_000
 # A single message bigger than this (in tokens) is a paste, not a conversation turn — don't digest it (§T38).
 GIANT_PASTE_TOKENS = 40_000
+
+# B2 (D-DISTILL-WINDOW-MODEL-AWARE) — the fixed 12k window (SD-C1) is safe on the deployed 200K-context
+# distill model, but a user could pin a SMALL-context BYOK distill model, where a 12k chunk + the prompt
+# overhead + the output reserve would overflow the context and error every map step. resolve_distill_window
+# shrinks the window to fit the RESOLVED model's context length: window = min(12k, ctx − overhead − reserve),
+# floored so a tiny model still gets a usable chunk. A None/unknown ctx keeps the 12k default (per the seal).
+PROMPT_OVERHEAD_TOKENS = 2_048   # the extraction system prompt + instructions wrapped around each chunk
+OUTPUT_RESERVE_TOKENS = 2_048    # room for the generated diary entry + facts (the map/reduce output)
+MIN_WINDOW_TOKENS = 1_000        # never shrink below this — a sub-1k window would fragment a day absurdly
+
+
+def resolve_distill_window(ctx_length: int | None) -> int:
+    """Return the per-chunk token window for a distill model whose context length is `ctx_length`
+    (None ⇒ unknown ⇒ keep the 12k default). Leaves room for the prompt overhead + the output reserve,
+    and never drops below MIN_WINDOW_TOKENS (a tiny model gets the largest chunk that fits, floored)."""
+    if not ctx_length or ctx_length <= 0:
+        return WINDOW_TOKENS
+    fit = ctx_length - PROMPT_OVERHEAD_TOKENS - OUTPUT_RESERVE_TOKENS
+    return max(MIN_WINDOW_TOKENS, min(WINDOW_TOKENS, fit))
 # Tool-name substrings that mark an assistant turn as quoting journal/recall content (§Q9).
 RECALL_TOOL_MARKERS = ("recall", "journal", "memory_search", "search_sessions", "diary")
 
