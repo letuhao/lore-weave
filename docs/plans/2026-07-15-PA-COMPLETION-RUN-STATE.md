@@ -4,11 +4,18 @@
 Re-read THIS file, then `git log --oneline -20`, then continue. Never re-litigate a sealed
 decision (SD-C1..8, H1..4) from memory — re-read [`2026-07-15-personal-assistant-completion-seal.md`](2026-07-15-personal-assistant-completion-seal.md).
 
-## 1 · The GOAL
+## 1 · The GOAL — ✅ COMPLETE (2026-07-15)
 Clear EVERY code-doable Personal-Assistant remainder (C1..C8 below) so the feature is complete.
 A serious QC phase runs AFTER. **Autonomous exit** = every §3 slice ✅-with-evidence, each
 milestone `/review-impl`'d + live-smoked, commits pushed. **NOT in this phase (SD-7):** the
 coaching safety-eval + numeric-eval CLEARANCE — human milestones; the scorer ships quarantine-tier.
+
+**STATUS: ALL 8 SLICES ✅** — C1 `f491c796d` · C2 `d6d1be7f3` · C3 `466eea2a2` · C4 `abb95413f` ·
+C5 SDK+`d982c1f45` · C6 `8f2d8b2cb` · C7 `a03fe3579` · C8 (this commit). Each: pasted green tests +
+a cross-service live-smoke (where it crosses services) + a cold-start `/review-impl` with findings
+fixed. 4 sealed decisions were amended with the human (C4 character, C5 Go-crypto, C6 lane-shape) and
+1 stopped-and-asked (C4). SD-7 quarantine held throughout (verified in C3 + C8). The **serious QC
+phase** + the **SD-7 human-rating milestones** are next (both explicitly out of this build phase).
 
 ## 2 · Standing invariants (the bar — never lower silently)
 - Never `git add -A` (shared checkout — explicit pathspec per slice). Commit each slice promptly.
