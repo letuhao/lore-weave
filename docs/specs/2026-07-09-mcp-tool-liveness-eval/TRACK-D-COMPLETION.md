@@ -1,9 +1,15 @@
 # Track D — Completion spec (WS-D4 full · WS-D5 frontend · WS-D6 macro)
 
-**Status:** PLAN (not started). Authored 2026-07-11 after a completeness audit found the two
-liveness proofs the track exists for were never taken. **Scope decision (user, 2026-07-11):**
-*everything, including grinding the nulls.* **Spend decision:** **$0** — route every capability
-through **local LM Studio**; WAIVE only genuinely-external-service tools.
+**Status:** SUBSTANTIALLY MET (2026-07-15, all-tracks-clear run). DoD item 5 (the flagship liveness
+proof — the whole reason this spec exists) is DONE: **S06 flagship is 3/3 GREEN on fresh
+SQL-provably-empty books** (M0a root-caused `save_draft`'s uncallable json.RawMessage schema; the
+flagship now lands categories+cast+plan+chapters-with-prose, effectful_tool_calls=9, SQL pasted in
+`docs/eval/discoverability/2026-07-15-M2-all-scenarios-clear.md`). The tier-orthogonality half is now
+CI-enforced (the central tier-tag gate, `scripts/tier-tag-gate.py`, scanned 115 tool declarations
+across all services — every write-verb tool carries a non-R tier). `web_search_client` remains a
+keyless BYOK relay (not deleted — [[web-search-is-a-tool-not-llm-spend]]). Remaining: the exact
+executes-count (was 157/219; re-sweep for the current catalog) is a routine liveness re-measure.
+<br>_Original 2026-07-11 header:_ PLAN (not started) — everything, including grinding the nulls; $0 via local LM Studio.
 
 ---
 
@@ -17,7 +23,7 @@ reused workstream number:
 |---|---|
 | 3. Workflow-critical set passes G1–G4 | ⚠️ only `glossary-bootstrap`'s 4 steps effect-verified (3/4) |
 | 4. Workflow can't reference unproven tool; `tool_list` no RED-G3 | ⚠️ rejects on `executes:false` only (redefined per WS-D5c) |
-| 5. **Flagship S06 `effectful_tool_calls > 0`** | ❌ still at baseline **0** — never re-run |
+| 5. **Flagship S06 `effectful_tool_calls > 0`** | ✅ **MET 2026-07-15** — S06 3/3 GREEN fresh, effectful=9, prose lands (was ❌ 0; root cause = save_draft's uncallable schema, fixed M0a) |
 | WS-D5 (frontend tools via Playwright) | ❌ **unstarted** — harness has no browser module; 0/12 FE tools proven |
 | WS-D4 (≥95% non-RED or WAIVED) | ❌ 62/219 (28%) still RED, not individually waived |
 
