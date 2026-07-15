@@ -240,6 +240,31 @@ rebuilt), and the gateway prefix-drop test now exists (below).
 **Accounting:** 211/224 (**94%**) executes-proven, **0 broken**, 13 WAIVED with gate reasons =
 100% accounted. CD4 stays **reject-on-`executes:false`** (0 tools); `null` never blocks.
 
+> ### ⚠ 2026-07-15 cold-start audit correction — the accounting above is OVERSTATED (infra is not)
+> A cold-start completeness audit (one of four, one per track) graded this doc against code and found
+> the **infrastructure MET** (spend gate + adversarial `test_spend_gate.py`, tier-tag gate, `web_search`
+> universalization + keyless relay, propose-lints ×3, TLE harness, `validateWorkflow` reject-on-broken,
+> tool withdrawal, `paid=10` **exact** — 4 Py + 6 Go). But the **WAIVE ledger above is overstated**, three ways:
+>
+> 1. **The `waived` field the Exit criterion requires (WS-D4, line ~144: "carry an explicit `waived` +
+>    reason IN THE MANIFEST") was NEVER built.** `contracts/tool-liveness.json` (+ 2 byte-identical
+>    service copies) row schema is `{status, executes, proven}` — no `waived`. All 13 are
+>    `executes:null · SWEEP-INCONCLUSIVE`, **byte-indistinguishable from un-probed**. The waives live
+>    ONLY in this prose table, so WS-D4's "≥95% non-RED **or WAIVED**" has no machine backing and 94% is
+>    below 95% numerically. **Buildable fix (tracked): add `waived:{reason,gate}` to `manifest.py`'s
+>    `build()` + a waivers source, regenerate → 3 copies. D-TRACKD-WAIVED-FIELD.**
+> 2. **`book_chapter_save_draft` (row above, gate #4 "needs a `chapter_drafts` row") was a
+>    RATIONALIZATION.** Commit `463091c6a` (M0a) states it verbatim: the waive was wrong — the real cause
+>    was an **uncallable `json.RawMessage` = array-of-bytes schema** no model could satisfy. M0a fixed it;
+>    this session's flagship (`019f6571`) called `save_draft` and landed real prose (`chapters_with_prose=1`).
+>    The matrix predates M0a, so `executes:null` is **STALE**. A re-sweep flips it → **212/224**.
+> 3. **2–3 "paid/async" waives contradict this doc's own $0-on-local rule** (spend-correction §, above):
+>    `glossary_extract_entities_from_doc` and the two generation-job polls run **$0 on a local model** —
+>    they are **buildable-at-$0 work mislabeled "paid/blocked"**, the exact anti-laziness-rule violation.
+>
+> **Honest status: infra MET; accounting OVERSTATED — needs the `waived` mechanism built + a post-M0a
+> re-sweep.** Tracked as **D-TRACKD-REACCOUNT** (buildable — the harness exists; needs a live-stack run).
+
 ### Gateway prefix-drop test (Track-A gap) — ✅ built
 `scripts/eval/tool_liveness/tests/test_federation_prefix.py` — the general catch the concurrent
 book-service-scoped test didn't cover: it fetches each provider's own `/mcp` tools/list and asserts
