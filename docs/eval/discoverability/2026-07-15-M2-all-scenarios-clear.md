@@ -40,8 +40,8 @@ the harness commits every minted token at the right domain, the confirm-gated ra
 | S07 | build-a-book | GREEN | plan_run>0 |
 | S08 | tool discovery | JUDGE ✓ | transcript |
 | S09 | canon-check | discovery FIXED (2/3 drive conformance); engine-detection tracked | fixture ✅ + book_id-resolution ✅ (committed `e75644212`); conformance run is async + writes no in-turn report (separate engine track) |
-| S10 | maps | _blocked on M8 FE canvas_ | — |
-| S11 | reader | _blocked on M7 reader FE_ | — |
+| S10 | maps | **2/3 GREEN** | draw-a-map rail + intent-pin (maps were undiscoverable railless); r2/r3 created a map+marker |
+| S11 | reader | **3/3 SPOILER-SAFE (judge)** | all runs: windowed story_search to ch1, found 0 (ch3 betrayal windowed out), answered "no betrayal so far", leaked NONE of the ch3 spoiler content. lore-so-far rail + intent-pin + reader-session (project-linked) |
 | S12 | autonomous-drafting | GREEN | chapters_with_prose>0 |
 
 ## Fixes shipped (this run)

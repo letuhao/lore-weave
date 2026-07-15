@@ -345,6 +345,14 @@ def _budget_total(frame: dict | None) -> int | None:
 
 def _create_session(c: httpx.Client, title: str) -> str:
     body = {"title": title, "model_source": "user_model", "model_ref": MODEL_REF}
+    # A READER session (S11): link the book's knowledge project + book so the reader's story_search /
+    # lore reads resolve a project. Only set when SKILL_PROJECT_ID is present (the authoring scenarios
+    # never set it, so their bare session is unchanged).
+    _proj = os.environ.get("SKILL_PROJECT_ID", "")
+    if _proj:
+        body["project_id"] = _proj
+        if os.environ.get("SKILL_BOOK_ID"):
+            body["book_id"] = os.environ["SKILL_BOOK_ID"]
     r = c.post(f"{BASE}/v1/chat/sessions", json=body,
                headers={"Authorization": f"Bearer {_bearer()}"})
     r.raise_for_status()
