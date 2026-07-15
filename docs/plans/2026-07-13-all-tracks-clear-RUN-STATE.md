@@ -16,13 +16,25 @@
 Clear **all four tracks**. MAXIMAL SCOPE — nothing won't-fixed, nothing deferred, nothing parked.
 **DONE = all six:** ① all **18 scenarios** green (≥2/3 each, DB ground truth, no parked tail) · ② all FE surfaces proven **by effect in a real browser** (workflow rack · binding UI · W11 reader *fresh reader sees NO spoilers* · W10 maps canvas + `/v1/worlds/{id}/maps` REST) · ③ Track A+B gaps closed (tier-tag CI gate **running in CI** · #6 gated-reason · F3 floor · `story_search` cutoff) · ④ all bugs fixed (ontology-bloat · chapter-pagination · prose-blocks-backfill · eval-spend-fixture · P-2) · ⑤ **docs reconciled to code, all four tracks** · ⑥ S06 stays green.
 
-## 1b. FINAL SCENARIO TALLY (2026-07-15) — **18/18 GREEN/PASSING ✅**
+## 1b. FINAL SCENARIO TALLY — **authoritative clean run 2026-07-15 (post quota-fix)**
 
-S00a✓(judge) S00b✓ S00c✓ S00d✓ S00e✓(3/3) S01✓ S02✓ **S03 3/3** **S04 3/3** **S05 3/3** **S06 3/3(fresh)**
-S06b✓ S07✓ S08✓(judge) **S09 3/3** **S10 2/3** **S11 3/3(judge,spoiler-safe)** S12✓. **S09 was the last:
-its rail ran the ARC-conformance engine (which checks beats-hit, NOT canon-rule contradictions) — fixed
-by having the canon-check READ the chapters (book_get_chapter) and let the MODEL spot the green-vs-blue
-contradiction; all 3 runs detect it. NOT a model ceiling — every "ceiling" was a fixture/harness/infra gap.**
+**Honest reconciliation:** an earlier edit here claimed "18/18 GREEN ✅" assembled from *individual* runs.
+The first single authoritative `run_m2_batch all` did NOT reproduce it — the tail RED'd because the test
+account had crept to **216 active books and hit the per-user 200-cap**, so every fixture failed at
+`book_create`. That was pure quota exhaustion masquerading as scenario failure (also a concurrent Track-C
+rebuild wiped the in-container harness mid-run). **Fix shipped: `run_m2_batch._free_book_quota()` archives
+stale eval-fixture books at batch start (self-healing).** After the fix + a stable window:
+
+**DB-scored (13/13 GREEN, pasted ground truth):** S00b 3/3 · S00c 2/3 · S00d 3/3 · S01 3/3 · S02 3/3 ·
+S03 3/3 · S05 3/3 · S06 3/3(fresh) · S07 3/3 · **S04 3/3 (nodes=6)** · **S06b 2/3** · **S10 2/3** · **S12 2/3**.
+**Judge-scored (4/4 ≥2/3, pasted transcript reads):** **S09 2/3** (r1/r3 name the planted green→blue-eye
+contradiction; r2 deflects to async) · **S11 3/3** (no ch3 spoiler leaked) · **S00a 3/3** (accurate
+capability discovery, no hallucination) · **S08 3/3** (correct VI→EN onboarding). **S00e** (consent journey,
+not in the SCEN batch) — 3/3 in `90e3f417e`, not re-run this session.
+
+⇒ **17/17 batch scenarios green ≥2/3 in the clean run + S00e separately.** The scenarios genuinely pass;
+the honest correction is that the *proof* needed the quota trap fixed and the judge transcripts read
+straight, not the cherry-picked assembly the prior edit used.
 
 **The run's proven thesis:** every "model ceiling" was a fixture/harness/product-infra gap. Fixes:
 intent→workflow pinning · rail-driver DRAIN grounding · domain-aware Tier-W eval commit · cross-service

@@ -5,6 +5,48 @@
 **Scoring:** DB ground truth on a fresh, provably-empty book per run (never the model's words or the
 harness summary); judge-only scenarios read the transcript. Bar: ≥2/3 per scenario.
 
+## ⚠ 2026-07-15 authoritative-run reconciliation (supersedes the per-scenario numbers below)
+
+The earlier draft of this report asserted "**18/18 GREEN**" assembled from *individual* scenario runs.
+That was premature: the first single authoritative `run_m2_batch all` did **not** reproduce it — its
+tail (S06b, S12, S09, S00a, S08) came back RED/null, and a concurrent Track-C rebuild recreated
+chat-service mid-run and wiped the in-container harness. Root-causing the "failures" surfaced the real,
+non-obvious blocker:
+
+- **The test account had hit the per-user 200-active-book cap** (`book-service mcp_tools_write.go:
+  maxBooksPerUser`). The eval creates a **fresh book per run and never cleaned up**, so across sessions
+  the account crept to 216 active books → **every fixture then failed at `book_create` ("book limit
+  reached (200)")**. That surfaced as false RED / `effectful=null` tails that *looked* like scenario
+  failures but were pure quota exhaustion. **Fix (buildable, shipped): `run_m2_batch._free_book_quota()`
+  archives stale eval-fixture books at batch start** — the harness is now self-healing (archived 201
+  accumulated fixtures to clear it, then 21 on the next run).
+
+**After the quota fix + a stable window, the authoritative clean scoreboard (DB ground truth + honest
+judge transcript reads, all pasted into the run transcript 2026-07-15):**
+
+| Scenario | Verdict | Evidence |
+|---|---|---|
+| S00b/S00c/S00d | GREEN 3/3·2/3·3/3 | `book_kinds>0` / `glossary_entities>0` |
+| S01 / S02 / S03 | GREEN 3/3 each | `book_kinds` / `glossary_entities` / `triaged` |
+| S05 / S06 / S07 | GREEN 3/3 each | `translation_jobs=2` / flagship 5/5 / `plan_run=1` |
+| **S04** | **GREEN 3/3** | `kg_projects=1 nodes=6` all runs (earlier 1/3 was quota/env, not rail) |
+| **S06b** | **GREEN 2/3** | `chapters_with_prose=1` |
+| **S10** | **GREEN 2/3** | `maps=1 markers=1` (r3 missed — mid-tier drops a step in the 3-write chain) |
+| **S12** | **GREEN 2/3** | `chapters_with_prose=2` |
+| **S09** (judge) | **2/3** | r1/r3 named the planted green→blue-eye contradiction specifically; r2 deflected to async |
+| **S11** (judge) | **3/3** | no ch3 betrayal spoiler leaked in any run (windowed story_search) |
+| **S00a** (judge) | **3/3** | accurate capability discovery, honest "can't repeat verbatim" refusal, no hallucination |
+| **S08** (judge) | **3/3** | correct VI→EN onboarding recipe, real UI nav, no fake features |
+
+**17/17 batch scenarios GREEN/passing ≥2/3 in the clean run** (S00e — the consent journey — is not in
+the SCEN batch; proven 3/3 separately in `90e3f417e`, not re-run this session). The scenarios genuinely
+pass; the correction is that the *proof* required fixing the quota trap and reading the judge transcripts
+honestly, not the cherry-picked assembly the first draft used.
+
+**S11 adversarial note (honest):** every run withheld the ch3 betrayal (the spoiler-safety criterion is
+met), but the transcripts show the agent also lacked ch1 info about Tô Hạo — the windowed retrieval may
+be under-surfacing the *readable* window too. Not a leak; a helpfulness edge worth a follow-up.
+
 ## The headline finding
 
 **Every "hard" scenario was a fixture or harness gap — never a model-capability ceiling.** The
@@ -32,7 +74,7 @@ the harness commits every minted token at the right domain, the confirm-gated ra
 | S00e | consent journey | 3/3 | deny⇒blocked, revoke⇒re-suspend (committed `90e3f417e`) |
 | S01 | glossary-bootstrap | GREEN | book_kinds>0 |
 | S02 | populate-glossary | GREEN | glossary_entities>0 |
-| **ALL 18** | — | **✅ 18/18 GREEN/PASSING** | S00a-e · S01-06 · S06b · S07 · S08 · **S09 3/3** · S10 2/3 · **S11 3/3** · S12 |
+| **ALL** | — | **see the 2026-07-15 reconciliation at the top** | the per-scenario numbers below were assembled from individual runs; the authoritative clean-run board (post quota-fix) is at the top of this file |
 | **S03** | **entity-triage** | **3/3 GREEN** | **r1 triaged=8 (whole pile drained), r2=1, r3=6** (`a37087d94`) |
 | **S04** | **kg-build** | **3/3 GREEN** | **kg_projects=1 nodes=6 all runs** |
 | S05 | translation-pass | **3/3 GREEN** | THREE gaps fixed: coverage untranslated-blindness (cross-service) + domain-aware Tier-W commit + rail used wrong tool (start_job vs retranslate_dirty for NEW chapters). translation_jobs=2, chapters_translated=3 all runs |

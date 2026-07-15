@@ -44,6 +44,26 @@ def _sql(db: str, q: str) -> str:
     return out.stdout.strip()
 
 
+def _free_book_quota() -> int:
+    """Archive the test user's stale eval-fixture books so a batch never trips the 200-active-book
+    cap (book-service mcp_tools_write.go:maxBooksPerUser). The eval creates a FRESH book per run and
+    never cleans up, so across sessions the account creeps to 200 and then EVERY fixture fails at
+    book_create ('book limit reached (200)') — which surfaces as false RED/null-metrics tails that
+    look like scenario failures but are pure quota exhaustion. Only ACTIVE books whose titles carry a
+    known disposable eval prefix are touched (never a real user book, never a diary/bible — those are
+    already outside the count). Archiving (not deleting) sidesteps cross-DB FK orphans and is
+    reversible. Counts by the SAME predicate book-service uses (is_bible=false AND kind<>'diary' AND
+    lifecycle_state='active')."""
+    prefixes = ("DISCO-FIXTURE-%", "M2-%", "S10 World%", "M4-%", "M8 %", "S00e%", "%(smoke)%",
+                "plan-%", "kg-%", "trans-%")
+    like = " OR ".join(f"title LIKE '{p}'" for p in prefixes)
+    n = _sql(DBK["book"],
+             f"WITH archived AS (UPDATE books SET lifecycle_state='archived' "
+             f"WHERE owner_user_id='{USER}' AND lifecycle_state='active' AND is_bible=false "
+             f"AND kind<>'diary' AND ({like}) RETURNING 1) SELECT count(*) FROM archived")
+    return int(n or 0)
+
+
 def _fresh_book(title: str, lang: str = "en") -> str:
     _sql(DBK["book"],
          f"INSERT INTO books (owner_user_id,title,original_language,kind,lifecycle_state) "
@@ -292,6 +312,13 @@ def main(argv):
     which = argv[1:] if len(argv) > 1 else ["all"]
     if which == ["all"]:
         which = list(SCEN)
+    # free the per-user book quota FIRST — a batch fans out N fresh fixture books; if a prior run
+    # left the account at the 200-active cap, every fixture would fail at book_create and the whole
+    # board would false-RED. (Root cause of the 2026-07-15 'S06b/S12/S04/S10 RED' scare — pure quota
+    # exhaustion, not scenario failure.)
+    freed = _free_book_quota()
+    if freed:
+        print(f"freed book quota: archived {freed} stale eval-fixture book(s)", file=sys.stderr, flush=True)
     # stage the scenario files + harness once
     subprocess.run(["docker", "exec", CHAT, "mkdir", "-p", "/tmp/scen"], capture_output=True)
     subprocess.run(["docker", "cp", "scripts/eval/run_discoverability_scenario.py",
