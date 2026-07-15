@@ -8,12 +8,25 @@ Spec (what/why, SEALED): [`../specs/2026-07-15-mobile-shell-and-home.md`](../spe
 split · single-store feed · same-JWT+resume-refresh · phone-chrome-through-tablet) and the PLAN §1 seals
 (H3 topic map · MB2 numbers). Re-read, don't remember.
 
-## 1 · The GOAL
+## 1 · The GOAL (finish line RATIFIED by the human 2026-07-15 — full program, M5 waiver allowed)
 Ship the sealed mobile spec end-to-end: the app is genuinely mobile-first with the Work Assistant as the
 front door, a platform home + activity feed, a PWA, and content-free closed-app push. **Autonomous exit** =
-every slice M0–M5 ✅-with-evidence (pasted fresh green tests + a pasted cross-service live-smoke where it
-crosses services — incl. M5's **closed-tab content-free** push, the hard path — + a cold `/review-impl` with
-findings fixed), commits landed with explicit pathspec. `<GOAL CONDITION SET VIA /goal — see §6 of the plan>`
+every slice **M0–M5** ✅-with-evidence (pasted fresh green tests + a pasted cross-service live-smoke where it
+crosses services + a cold `/review-impl` with HIGHs fixed), each slice committed with explicit pathspec.
+
+**M5 exit (human-ratified waiver):** the closed-tab content-free push is proven **live** if bootable; if the
+full push stack (VAPID + HTTPS/installed-PWA + a live push service) genuinely can't run at dev time, M5 may
+exit with a pasted `live infra unavailable: <reason>` token **+ a tracked `D-PUSH-LIVE-SMOKE` row in
+SESSION_HANDOFF**, with all Go/FE unit tests still green + pasted. The waiver covers **only** the closed-tab
+demonstration — the content-free chokepoint (B1), exactly-once (B4), 410-prune (B3) and fail-closed (H2) are
+unit-proven regardless.
+
+**The `/goal` condition (transcript-forcing + bounded), set by the human:**
+> Every slice M0–M5 in `docs/plans/2026-07-15-mobile-shell-and-home-RUN-STATE.md` §3 is ✅ with, IN THIS
+> TRANSCRIPT, pasted fresh green test output + a pasted cross-service live-smoke where it crosses services
+> (M5 = a real closed-tab content-free push, OR a pasted `live infra unavailable:` waiver + a D-PUSH-LIVE-SMOKE
+> row) + a cold `/review-impl` with HIGHs fixed, and each slice committed. Claiming a check passed WITHOUT
+> pasting its output does NOT satisfy this. Stop after 220 turns if not met.
 
 ## 2 · Standing invariants (never lower silently)
 - Never `git add -A` (shared checkout — explicit pathspec per slice). Commit each slice promptly.
