@@ -130,6 +130,12 @@ func runK2aMigrations(t *testing.T, pool *pgxpool.Pool) {
 	if err := migrate.UpEntityScopeLabel(ctx, pool); err != nil {
 		t.Fatalf("migrate.UpEntityScopeLabel: %v", err)
 	}
+	// 0054 (C4/SD-C4) — book_kinds/system_kinds/user_kinds.is_person. The wiki-gen + enrichment
+	// PP-4 guards now filter `NOT ek.is_person` and the adopt clone selects sk/uk.is_person, so this
+	// column MUST exist in the shared test DB or those paths error on a missing column.
+	if err := migrate.UpKindIsPerson(ctx, pool); err != nil {
+		t.Fatalf("migrate.UpKindIsPerson: %v", err)
+	}
 }
 
 // ── schema shape tests ──────────────────────────────────────────────────────

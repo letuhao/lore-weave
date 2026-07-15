@@ -40,10 +40,18 @@ does NOT clear the number.
   `coerce_dimensions` (server-authoritative). `Scorecard.quarantine` STAYS True (SD-7). The legacy
   STAR fields remain for back-compat; dimensions are the forward path.
 - **SD-C4 · D-WIKI-PERSON-FLAG.** Add a structural `is_person BOOLEAN` on `book_kinds`
-  (glossary-service). System seed marks the person-kinds (`colleague`, `character`) `is_person=true`;
+  (glossary-service). System seed marks the person-kinds (`colleague`, ~~`character`~~) `is_person=true`;
   a migration backfills them. Replace the 4 `code='colleague'` wiki-gen/enrichment filters with an
   `is_person` filter (so a renamed/custom person-kind is also excluded). A user-settable flag on
   custom kinds. + a seed-drift test asserting the System person-kinds carry the flag.
+  - **AMENDED 2026-07-15 (human-approved during C4):** `is_person` means "a REAL, private,
+    non-consenting person kind." Seed ONLY `colleague` (+ future real-person work kinds) `is_person=true`;
+    fiction **`character` stays `is_person=false`**. The original text also naming `character` was a
+    contradiction — a blanket `NOT is_person` wiki-gen filter would then EXCLUDE fiction characters from
+    AI wiki-gen (breaking `wiki_gen_limit_test` + the core fiction-wiki feature; those characters MUST be
+    generated). The original debt (D-WIKI-PERSON-FLAG) was explicitly about REAL people, so real-person-only
+    is the correct reading. The human chose "Real-person only (colleague)" over the book-flavour-gated
+    alternative. Seed-drift test asserts `colleague.is_person=true` AND `character.is_person=false`.
 - **SD-C5 · P-12 diary encryption + crypto-shred (H3).** Diary chapter content encrypted AT REST
   with a per-user **DEK via the existing `loreweave_crypto` DEK client** (already an in-repo SDK).
   Crypto-shred = on D-R27 assistant-data erasure, DESTROY the user's diary DEK so any backup

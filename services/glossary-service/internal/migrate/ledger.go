@@ -143,6 +143,10 @@ var chain = []Step{
 	// WS-1.6 (spec 05 §Q5) — glossary_entities.is_self + one-self-per-book unique. The
 	// user's OWN identity entity in their diary, so capture + the detectors exclude it.
 	{"0053_entity_is_self", UpEntityIsSelf},
+	// C4 / SD-C4 (D-WIKI-PERSON-FLAG) — a structural is_person flag on every kind tier (backfills
+	// the seeded 'colleague'); the wiki-gen/enrichment PP-4 guards filter on it instead of the
+	// literal 'colleague' code, so a renamed/custom REAL-person kind can't leak an AI biography.
+	{"0054_kind_is_person", UpKindIsPerson},
 }
 
 // EnsureLedger creates the schema_migrations bookkeeping table. Idempotent; must run

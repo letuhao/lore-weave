@@ -150,12 +150,12 @@ func (s *Server) internalUpsertEnrichments(w http.ResponseWriter, r *http.Reques
 	// The entity must exist + belong to this book (not soft-deleted) — a stale
 	// or cross-book entity_id is a 404, never a silent FK error or wrong-row
 	// write. (The FK guarantees referential integrity but not book scoping.)
-	var kindCode string
+	var isPerson bool
 	if err := s.pool.QueryRow(ctx,
-		`SELECT ek.code
+		`SELECT ek.is_person
 		   FROM glossary_entities ge JOIN book_kinds ek ON ek.book_kind_id = ge.kind_id
 		  WHERE ge.entity_id=$1 AND ge.book_id=$2 AND ge.deleted_at IS NULL`,
-		entityID, bookID).Scan(&kindCode); err != nil {
+		entityID, bookID).Scan(&isPerson); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			writeError(w, http.StatusNotFound, "GLOSS_NOT_FOUND", "entity not found")
 			return
@@ -164,11 +164,12 @@ func (s *Server) internalUpsertEnrichments(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	// PP-4 (spec 08 R6) — ENTITY-level guard: never manufacture AI "dimensions" about a REAL PERSON.
-	// The seeded work-person kind is 'colleague'; a diary colleague is a real third party who never
-	// consented. DB-local (no network hop) + precise; defense-in-depth behind the book-level diary
-	// blocks (PP-2/PP-3) for the cross-book/merged case. (The user's own is_self entity is their own
-	// data, not a third party — and in a diary it is book-level blocked regardless.)
-	if kindCode == "colleague" {
+	// A diary colleague is a real third party who never consented. C4/SD-C4: gate on the STRUCTURAL
+	// is_person flag (was the literal 'colleague' code), so a renamed/custom real-person kind is also
+	// refused. DB-local (no network hop) + precise; defense-in-depth behind the book-level diary blocks
+	// (PP-2/PP-3) for the cross-book/merged case. (The user's own is_self entity is their own data, not
+	// a third party — and in a diary it is book-level blocked regardless.)
+	if isPerson {
 		writeError(w, http.StatusForbidden, "GLOSS_NO_ENRICH_PERSON",
 			"a real person is not an enrichable entity")
 		return
@@ -365,7 +366,10 @@ func (s *Server) internalEnrichmentCoverage(w http.ResponseWriter, r *http.Reque
 				WHERE ba.kind_id = e.kind_id AND ba.code = 'name'
 				ORDER BY (g.code = 'universal') DESC, ba.sort_order LIMIT 1
 			)
-		WHERE e.book_id = $1 AND e.deleted_at IS NULL
+		-- C4/SD-C4 (cold-review LOW-MED-3) — defense-in-depth: never offer a REAL person as an
+		-- enrichment TARGET (the write-back already refuses one, but don't ship its data to a picker
+		-- that would send it to the LLM before the 403).
+		WHERE e.book_id = $1 AND e.deleted_at IS NULL AND NOT k.is_person
 		ORDER BY mention_count DESC, e.entity_id
 		LIMIT $2`, bookID, limit)
 	if err != nil {

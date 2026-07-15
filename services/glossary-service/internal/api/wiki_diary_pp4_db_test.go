@@ -13,16 +13,18 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-// seedEntityOfKind inserts a book_kind with `code` (if absent) + an entity of that kind, and returns
-// the entity id. Reuses adoptTestBook for the base tier.
-func seedEntityOfKind(t *testing.T, pool *pgxpool.Pool, bookID uuid.UUID, code string) string {
+// seedEntityOfKind inserts a book_kind (`code`, is_person=`isPerson`) + an entity of that kind and
+// returns the entity id. Reuses adoptTestBook for the base tier. C4/SD-C4: the PP-4 guards now key on
+// the STRUCTURAL is_person flag, so the caller states whether this kind is a REAL person (a colleague
+// or a custom 'coworker'/'client' — true) vs a non-person ('org' — false).
+func seedEntityOfKind(t *testing.T, pool *pgxpool.Pool, bookID uuid.UUID, code string, isPerson bool) string {
 	t.Helper()
 	ctx := context.Background()
 	adoptTestBook(t, pool, bookID)
 	var kindID uuid.UUID
 	_ = pool.QueryRow(ctx,
-		`INSERT INTO book_kinds(book_id, code, name) VALUES($1,$2,$2)
-		 ON CONFLICT DO NOTHING RETURNING book_kind_id`, bookID, code).Scan(&kindID)
+		`INSERT INTO book_kinds(book_id, code, name, is_person) VALUES($1,$2,$2,$3)
+		 ON CONFLICT DO NOTHING RETURNING book_kind_id`, bookID, code, isPerson).Scan(&kindID)
 	if kindID == uuid.Nil {
 		_ = pool.QueryRow(ctx,
 			`SELECT book_kind_id FROM book_kinds WHERE book_id=$1 AND code=$2`, bookID, code).Scan(&kindID)
@@ -56,7 +58,7 @@ func TestEnrichments_RefusesAColleagueEntity_PP4(t *testing.T) {
 	}()
 
 	// A 'colleague' entity (a real person) → enrichment REFUSED (PP-4).
-	colleague := seedEntityOfKind(t, pool, book, "colleague")
+	colleague := seedEntityOfKind(t, pool, book, "colleague", true)
 	w := postEnrichments(t, srv, token, book.String(), colleague, body)
 	if w.Code != http.StatusForbidden {
 		t.Fatalf("PP-4 BREACH: enriching a colleague = %d, want 403. body=%s", w.Code, w.Body.String())
@@ -69,8 +71,17 @@ func TestEnrichments_RefusesAColleagueEntity_PP4(t *testing.T) {
 		t.Fatalf("want GLOSS_NO_ENRICH_PERSON, got %q", resp.Code)
 	}
 
+	// C4/SD-C4 (cold-review LOW-4) — a CUSTOM person kind under a NON-'colleague' code (is_person=true)
+	// is ALSO refused (the whole point: the guard keys on the flag, not the literal 'colleague' code).
+	coworker := seedEntityOfKind(t, pool, book, "coworker", true)
+	w3 := postEnrichments(t, srv, token, book.String(), coworker, body)
+	if w3.Code != http.StatusForbidden {
+		t.Fatalf("PP-4 BREACH: a custom person kind 'coworker' was enrichable = %d, want 403. body=%s",
+			w3.Code, w3.Body.String())
+	}
+
 	// A non-person entity (e.g. 'org') is NOT refused by PP-4 (200 OK).
-	org := seedEntityOfKind(t, pool, book, "org")
+	org := seedEntityOfKind(t, pool, book, "org", false)
 	w2 := postEnrichments(t, srv, token, book.String(), org, body)
 	if w2.Code != http.StatusOK {
 		t.Fatalf("enriching a non-person 'org' entity = %d, want 200 (PP-4 must not over-block). body=%s",
@@ -88,8 +99,8 @@ func TestWikiGenDelegate_ExcludesColleague_PP4(t *testing.T) {
 	srv.pool = pool
 	ctx := context.Background()
 
-	colleague := seedEntityOfKind(t, pool, book, "colleague")
-	org := seedEntityOfKind(t, pool, book, "org")
+	colleague := seedEntityOfKind(t, pool, book, "colleague", true)
+	org := seedEntityOfKind(t, pool, book, "org", false)
 
 	// by-kind resolver (no kind filter → all kinds) must OMIT the colleague, KEEP the org.
 	ids, _, err := srv.resolveWikiGenEntities(ctx, book, nil, 100)

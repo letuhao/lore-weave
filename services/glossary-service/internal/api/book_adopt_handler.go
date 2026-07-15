@@ -64,6 +64,7 @@ type bookKindResp struct {
 	Color       string  `json:"color"`
 	SortOrder   int     `json:"sort_order"`
 	IsHidden    bool    `json:"is_hidden"`
+	IsPerson    bool    `json:"is_person"` // C4/SD-C4 — a REAL-person kind; excluded from AI wiki-gen/enrichment
 	SourceRef   *string `json:"source_ref,omitempty"`
 	BaseVersion string  `json:"base_version"`
 }
@@ -232,8 +233,8 @@ func (s *Server) adoptBookOntologyCore(ctx context.Context, bookID, userID uuid.
 	}
 	// 3) kinds — caller's User tier FIRST (shadows System by code), then System.
 	if _, err := tx.Exec(ctx, `
-		INSERT INTO book_kinds (book_id, code, name, description, icon, color, sort_order, is_hidden, source_ref, source_hash)
-		SELECT $1, uk.code, uk.name, uk.description, uk.icon, uk.color, 0, NOT uk.is_active,
+		INSERT INTO book_kinds (book_id, code, name, description, icon, color, sort_order, is_hidden, is_person, source_ref, source_hash)
+		SELECT $1, uk.code, uk.name, uk.description, uk.icon, uk.color, 0, NOT uk.is_active, uk.is_person,
 		       'user:'||uk.user_kind_id::text, md5(uk.code||'|'||uk.name||'|'||coalesce(uk.description,''))
 		FROM user_kinds uk
 		WHERE uk.owner_user_id = $3 AND uk.code = ANY($2)
@@ -242,8 +243,8 @@ func (s *Server) adoptBookOntologyCore(ctx context.Context, bookID, userID uuid.
 		return err
 	}
 	if _, err := tx.Exec(ctx, `
-		INSERT INTO book_kinds (book_id, code, name, description, icon, color, sort_order, is_hidden, source_ref, source_hash)
-		SELECT $1, sk.code, sk.name, sk.description, sk.icon, sk.color, sk.sort_order, sk.is_hidden,
+		INSERT INTO book_kinds (book_id, code, name, description, icon, color, sort_order, is_hidden, is_person, source_ref, source_hash)
+		SELECT $1, sk.code, sk.name, sk.description, sk.icon, sk.color, sk.sort_order, sk.is_hidden, sk.is_person,
 		       'system:'||sk.kind_id::text, md5(sk.code||'|'||sk.name||'|'||coalesce(sk.description,''))
 		FROM system_kinds sk WHERE sk.code = ANY($2) AND sk.deprecated_at IS NULL
 		ON CONFLICT (book_id, code) DO NOTHING`, bookID, kinds); err != nil {
@@ -399,7 +400,7 @@ func (s *Server) loadBookOntology(ctx context.Context, bookID uuid.UUID) (*bookO
 	}
 
 	krows, err := s.pool.Query(ctx, `
-		SELECT book_kind_id::text, code, name, description, icon, color, sort_order, is_hidden, source_ref, updated_at
+		SELECT book_kind_id::text, code, name, description, icon, color, sort_order, is_hidden, is_person, source_ref, updated_at
 		FROM book_kinds WHERE book_id = $1 AND deprecated_at IS NULL ORDER BY sort_order, code`, bookID)
 	if err != nil {
 		return nil, err
@@ -408,7 +409,7 @@ func (s *Server) loadBookOntology(ctx context.Context, bookID uuid.UUID) (*bookO
 	for krows.Next() {
 		var k bookKindResp
 		var updatedAt time.Time
-		if err := krows.Scan(&k.BookKindID, &k.Code, &k.Name, &k.Description, &k.Icon, &k.Color, &k.SortOrder, &k.IsHidden, &k.SourceRef, &updatedAt); err != nil {
+		if err := krows.Scan(&k.BookKindID, &k.Code, &k.Name, &k.Description, &k.Icon, &k.Color, &k.SortOrder, &k.IsHidden, &k.IsPerson, &k.SourceRef, &updatedAt); err != nil {
 			return nil, err
 		}
 		k.BaseVersion = formatBaseVersion(updatedAt)

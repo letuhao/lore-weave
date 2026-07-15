@@ -180,6 +180,7 @@ type bookCreateToolIn struct {
 	Color           string   `json:"color,omitempty"`
 	SortOrder       int      `json:"sort_order,omitempty"`
 	IsHidden        bool     `json:"is_hidden,omitempty" jsonschema:"kind only"`
+	IsPerson        bool     `json:"is_person,omitempty" jsonschema:"kind only: mark this kind a REAL person (colleague/self/client) — excludes its entities from AI wiki-gen + enrichment"`
 	KindCode        string   `json:"kind_code,omitempty" jsonschema:"attribute only: the kind it belongs to"`
 	GenreCode       string   `json:"genre_code,omitempty" jsonschema:"attribute only: the genre cell (e.g. universal)"`
 	FieldType       string   `json:"field_type,omitempty" jsonschema:"attribute only: text|textarea|select|number|date|tags|url|boolean — omit this argument for the default; do not send an empty string"`
@@ -211,7 +212,7 @@ func (s *Server) toolBookCreate(ctx context.Context, _ *mcp.CallToolRequest, in 
 		}
 		return nil, bookWriteOut{Level: bookLevelGenre, ID: g.GenreID, Code: g.Code, Version: g.BaseVersion, Status: "created"}, nil
 	case bookLevelKind:
-		k, err := s.createBookKindCore(ctx, bookID, bookKindCreateParams{Code: in.Code, Name: in.Name, Description: desc, Icon: in.Icon, Color: in.Color, SortOrder: in.SortOrder, IsHidden: in.IsHidden})
+		k, err := s.createBookKindCore(ctx, bookID, bookKindCreateParams{Code: in.Code, Name: in.Name, Description: desc, Icon: in.Icon, Color: in.Color, SortOrder: in.SortOrder, IsHidden: in.IsHidden, IsPerson: in.IsPerson})
 		if err != nil {
 			return nil, bookWriteOut{}, bookCreateToolErr(err, firstNonEmpty(strings.TrimSpace(in.Code), strings.TrimSpace(in.Name)))
 		}
@@ -270,6 +271,7 @@ type bookPatchToolIn struct {
 	Color           *string   `json:"color,omitempty"`
 	SortOrder       *int      `json:"sort_order,omitempty"`
 	IsHidden        *bool     `json:"is_hidden,omitempty" jsonschema:"kind only"`
+	IsPerson        *bool     `json:"is_person,omitempty" jsonschema:"kind only: mark/unmark this kind a REAL person (excludes its entities from AI wiki-gen + enrichment)"`
 	FieldType       *string   `json:"field_type,omitempty" jsonschema:"attribute only — omit this argument to leave it unchanged; do not send an empty string"`
 	IsRequired      *bool     `json:"is_required,omitempty" jsonschema:"attribute only"`
 	Options         *[]string `json:"options,omitempty" jsonschema:"attribute only"`
@@ -449,6 +451,24 @@ func (s *Server) resolveBookPatch(ctx context.Context, bookID uuid.UUID, level s
 		}
 		if in.IsHidden != nil {
 			add("is_hidden", *in.IsHidden)
+		}
+		if in.IsPerson != nil {
+			// MED-2 (C4 cold-review) — PP-4 protects the THIRD PARTY, not the owner's preference. Do
+			// NOT let an owner CLEAR is_person on a SYSTEM-adopted person kind (the seeded 'colleague')
+			// and thereby re-enable AI biographies of real, non-consenting people. Custom (user-authored)
+			// book kinds stay fully togglable both ways.
+			if !*in.IsPerson {
+				var srcRef *string
+				var curPerson bool
+				if qerr := s.pool.QueryRow(ctx,
+					`SELECT source_ref, is_person FROM book_kinds WHERE book_id=$1 AND book_kind_id=$2`,
+					bookID, id).Scan(&srcRef, &curPerson); qerr == nil &&
+					curPerson && srcRef != nil && strings.HasPrefix(*srcRef, "system:") {
+					err = errCannotClearSystemPersonFlag
+					return
+				}
+			}
+			add("is_person", *in.IsPerson)
 		}
 	case bookLevelAttr:
 		id, err = s.resolveBookAttrID(ctx, bookID, strings.TrimSpace(in.KindCode), strings.TrimSpace(in.GenreCode), code)

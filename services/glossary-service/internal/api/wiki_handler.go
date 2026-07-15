@@ -1064,11 +1064,11 @@ func (s *Server) generateWikiStubs(w http.ResponseWriter, r *http.Request) {
 		  AND ge.status = 'active'
 		  AND NOT EXISTS (SELECT 1 FROM wiki_articles wa WHERE wa.entity_id = ge.entity_id)
 		  -- PP-4 (spec 08 R6) — ENTITY-level guard: never manufacture a wiki page for a REAL PERSON.
-		  -- The book-level PP-3 guard blocks a diary; this closes the cross-book/merged case (an entity
-		  -- of the seeded work-person kind 'colleague' must not get an AI biography even if it ended up
-		  -- in a wiki-eligible book). Scoped to 'colleague' (not all work kinds) so a legitimately-public
-		  -- 'org' page is not over-blocked.
-		  AND ek.code <> 'colleague'`
+		  -- The book-level PP-3 guard blocks a diary; this closes the cross-book/merged case. C4/SD-C4:
+		  -- filter the STRUCTURAL is_person flag (a renamed/custom real-person kind is also excluded; a
+		  -- legitimately-public 'org' is is_person=false so it is NOT over-blocked, and fiction 'character'
+		  -- is is_person=false so it still gets a page).
+		  AND NOT ek.is_person`
 
 	args := []any{bookID}
 	argN := 2

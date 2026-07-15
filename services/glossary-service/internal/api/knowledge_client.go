@@ -402,12 +402,14 @@ func (s *Server) resolveDelegateEntityIDs(
 		}
 		rows, err := s.pool.Query(ctx,
 			// PP-4 (spec 08 R6) — never LLM-generate a wiki biography for a REAL PERSON, even on the
-			// explicit single-entity "Regenerate" path. Exclude the seeded work-person kind 'colleague'.
+			// explicit single-entity "Regenerate" path. C4/SD-C4: filter the STRUCTURAL is_person flag,
+			// not the literal code, so a renamed/custom real-person kind is also excluded (fiction
+			// 'character' is is_person=false, so it still generates).
 			`SELECT ge.entity_id::text FROM glossary_entities ge
 			 JOIN book_kinds ek ON ek.book_kind_id = ge.kind_id
 			 WHERE ge.book_id=$1 AND ge.entity_id = ANY($2::uuid[])
 			   AND ge.deleted_at IS NULL AND ge.status='active'
-			   AND ek.code <> 'colleague'`,
+			   AND NOT ek.is_person`,
 			bookID, parsed)
 		if err != nil {
 			return nil, 0, err
@@ -442,9 +444,11 @@ func (s *Server) resolveWikiGenEntities(
 	ctx context.Context, bookID uuid.UUID, kindCodes []string, limit int,
 ) ([]string, int, error) {
 	// PP-4 (spec 08 R6) — the LLM delegate is the AI-BIOGRAPHY path; never generate a wiki page for a
-	// REAL PERSON (the seeded work-person kind 'colleague'), even in a wiki-eligible book (cross-book/
-	// merged case). PP-3 already blocks the whole diary; this closes the delegate leak PP-4 targets.
-	where := `WHERE ge.book_id = $1 AND ge.deleted_at IS NULL AND ge.status = 'active' AND ek.code <> 'colleague'`
+	// REAL PERSON, even in a wiki-eligible book (cross-book/merged case). PP-3 already blocks the whole
+	// diary; this closes the delegate leak PP-4 targets. C4/SD-C4: filter the STRUCTURAL is_person flag
+	// (a renamed/custom real-person kind is also excluded; fiction 'character' is_person=false, so it
+	// still generates).
+	where := `WHERE ge.book_id = $1 AND ge.deleted_at IS NULL AND ge.status = 'active' AND NOT ek.is_person`
 	args := []any{bookID}
 	if len(kindCodes) > 0 {
 		where += ` AND ek.code = ANY($2)`

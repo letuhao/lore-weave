@@ -31,7 +31,7 @@ coaching safety-eval + numeric-eval CLEARANCE — human milestones; the scorer s
 | **C1** distiller token sizing | SD-C1 | ✅ | worker-ai `distiller.py` windows in TOKENS via `loreweave_context.estimate_tokens` + NEW `split_to_token_budget` (single home in the SDK, not duplicated). `WINDOW_CHARS`→`WINDOW_TOKENS`(12k), `GIANT_PASTE_CHARS`→`GIANT_PASTE_TOKENS`(40k). **Tests:** SDK 7 passed + worker-ai distiller/job/reextract 55 passed (pasted). **Smoke:** real-import — a 20k-char CJK day: OLD char-window let a chunk reach ~12.6k tok (overflows small models); NEW caps every chunk ≤12k tok (worst 11999); same-size Latin day now 1 chunk vs 2. **Cold review:** cold agent, no HIGH, standards clean, `split_to_token_budget` lossless (2000-string stress); 2 LOW test-strengthenings fixed + re-green; 1 MED → debt D-DISTILL-WINDOW-MODEL-AWARE (§7). Single service — no cross-service seam. |
 | **C2** reflection v2 (co-occurrence notes + live tombstone) | SD-C2 | ✅ | worker-ai `ChatAssistantClient` fetches the week's notes (→ co-occurrence fires) + dismissed pattern_keys (→ tombstone) and threads them into `run_weekly_reflection`. New chat `reflection_dismissals` table (owner-scoped, `UNIQUE(owner,pattern_key)`) + `PUT /assistant/reflection-dismiss` (idempotent) + `GET /assistant/reflection-dismissals`. **Tests:** worker reflection 21 + job; chat dismiss-router 4 + dismissals-db 2 (real PG). **Live-smoke (PASTED):** worker-ai real `ChatAssistantClient` → running chat-service :8212 → seed 2 notes → co-occurrence `co_occurrence:migration` surfaced; dismiss (idempotent 2×) → fetched back → pattern tombstoned (empty). **Cold review:** 1 MED (notes feed the fail-CLOSED Gate-3 safety screen but were swallowed on transport error) → FIXED: `list_reflection_notes` now raises `ChatAssistantUnavailable` → consumer un-ACKs/retries (re-smoked: down-endpoint raises); LOW-3 router param-assert added; LOW-2 (dismiss-WRITE producer) = C8's FE. Debt: D-REFLECTION-FACTS-RECALL-FAIL-CLOSED (§7). |
 | **C3** coaching scorer → rubric SoT (quarantine) | SD-C3 | ✅ | evaluate.py resolves the SoT `coaching_rubrics` standard (`charter.rubric_code` default `interview_v1`) → **409 refuse-to-score** if none (before any LLM spend/persist); `coerce_dimensions` rebuilds the N-dim score server-authoritatively; the rubric's dims are threaded into the judge prompt. **quarantine STAYS True (SD-7)** — verified by cold review; `rubric.tier` deliberately unread. **Tests:** evaluate 42 (unit + router C3 class: 409, invented-dropped/omitted→None/clamp, quarantine-true, dims-reach-prompt). **Live-check (PASTED):** real seeded `interview_v1` resolves w/ 3 dims tier=quarantine; bogus code→None (409 path); coercion server-authoritative. **Cold review:** SD-7 VERIFIED INTACT (no drift); 1 MED (NaN/Infinity score → int() raise outside try → 500) FIXED (math.isfinite guard + test); LOW-2 empty-dims→None test + LOW-3 tier-independence comment added. Single service (chat) — the judge-LLM hop via provider-registry is pre-existing infra, unchanged. |
-| **C4** wiki `is_person` structural flag | SD-C4 | ⬜ | glossary `book_kinds.is_person`; seed colleague+character; migrate/backfill; 4 filters → is_person; seed-drift test. |
+| **C4** wiki `is_person` structural flag | SD-C4 | ✅ | glossary: NEW `is_person` on system/user/book kinds (migration 0054 + backfill colleague=true across tiers); adopt clone carries it (both source tiers); 4 PP-4 filters (2× knowledge_client, wiki_handler, enrichment_handler) → `NOT is_person`; user-settable on BOOK custom kinds (HTTP+MCP create/update). **SEAL AMENDED (human):** `is_person`=REAL person only — `colleague` true, fiction `character` FALSE (else fiction wiki-gen breaks). **Tests:** glossary api+migrate FULL suites green; seed-drift (colleague=t, character=f, no other leak, idempotent); wiki-gen excludes a CUSTOM person code + includes character; enrichment refuses colleague AND custom 'coworker'; adopt carry-through; MED-2 clear-guard. **Live:** rebuilt glossary; migration ran on real DB — system_kinds colleague=t/character=f, 12 book_kinds colleague backfilled=t. **Cold review:** no HIGH; MED-2 (owner clearing is_person on adopted system kind → re-enable real-person bios) FIXED (403 guard); MED-3 (enrichment coverage) FIXED (`NOT is_person`); MED-1 (user-tier settability) → D-WIKI-PERSON-USER-TIER (§7; primary path protected). Single service. |
 | **C5** diary encryption + crypto-shred | SD-C5 | ⬜ | book diary chapters encrypted at rest (per-user DEK via `loreweave_crypto`); D-R27 erase DESTROYS the DEK (backup-resistant). Dedicated key ≠ JWT_SECRET. |
 | **C6** billing STT/TTS cost-model + spend lane | SD-C6 | ⬜ | usage-billing `lane` ×3 (T-8) + STT(per-min)/TTS(per-char) pricing from provider-registry; price the voice_stt/voice_tts records. |
 | **C7** proactive-turn seam (WS-3.5/3.8) | SD-C7 | ⬜ | `chat_messages.initiated_by`; headless proactive entrypoint; `proactive_enabled` per-user OFF; scheduler `weekly_reflection`/`proactive_nudge` job_kinds; away-gated. |
@@ -39,6 +39,10 @@ coaching safety-eval + numeric-eval CLEARANCE — human milestones; the scorer s
 
 ## 4 · Decision register (sealed — do not override without the human)
 H1..H4 + SD-C1..C8 — all in [`2026-07-15-personal-assistant-completion-seal.md`](2026-07-15-personal-assistant-completion-seal.md) §1/§2. Ordinary build-time calls appended here as the build runs.
+- **2026-07-15 · SD-C4 AMENDED (human-approved):** `is_person` = "REAL person kind." Seed ONLY `colleague`
+  true; fiction `character` stays FALSE. The seal's original "colleague, character" was a contradiction
+  (blanket `NOT is_person` would break fiction character wiki-gen + `wiki_gen_limit_test`). Human chose
+  "Real-person only." Full note in the seal doc SD-C4 amendment.
 
 ## 5 · Parked (blocked ≠ stopped)
 - *(none yet)*
@@ -67,8 +71,23 @@ H1..H4 + SD-C1..C8 — all in [`2026-07-15-personal-assistant-completion-seal.md
   The `rubric.tier=='validated'` field is the seam a future author could grab to wrongly clear
   quarantine — commented at the write site as an SD-7 tripwire.
 
+- **C4 near-miss (fixed):** the seal named `character` as a person kind — a contradiction that a
+  blanket `NOT is_person` filter would turn into a fiction-wiki regression. Caught at CLARIFY (grep
+  proved `wiki_gen_limit_test` requires character inclusion), stopped + human-amended to real-person-only.
+  Cold review then found two more privacy holes on the NEW user-settable surface: an owner could CLEAR
+  is_person on an adopted colleague (MED-2, fixed) and the enrichment-coverage picker wasn't filtered
+  (MED-3, fixed). The user-tier authoring surface (MED-1) is deferred (primary path protected).
+
 ## 7 · Debt / follow-on carried
 - **SD-7 human-rating milestones** — safety-eval cert + numeric-eval QWK clearance. NOT code; gates a later milestone. The scorer stays quarantine-tier until then.
+- **D-WIKI-PERSON-USER-TIER** (from C4 cold review, MED-1) — the `is_person` flag is settable on
+  BOOK-tier custom kinds (create+update, done in C4) but NOT on USER-tier custom kinds: `user_kinds`
+  create/update (HTTP + MCP) don't accept it, and a user authoring a brand-new user-tier person kind
+  from scratch then adopting it into a book yields `is_person=false` → a leak. The PRIMARY diary flow
+  (system→book adopt) IS protected (proven live: 12 book_kinds colleague=true) and the adopt clone
+  carries `uk.is_person`, so the residual is only a hand-authored user-tier person kind. Gate #2
+  (breadth across the user-tier CRUD surface — HTTP+MCP create+update). Fix: mirror the book-tier
+  is_person threading onto `user_kind_handler.go` + `user_tools.go`. Trigger: a wiki/ontology hardening pass.
 - **D-DISTILL-WINDOW-MODEL-AWARE** (from C1 cold review, MED) — the distiller's `window` default is a
   fixed 12k tokens (per SD-C1). The mechanism to pass a smaller window already exists (it's a param);
   what's missing is wiring it to the *resolved target model's* context length so a small-context BYOK
