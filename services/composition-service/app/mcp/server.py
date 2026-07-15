@@ -507,13 +507,30 @@ async def composition_get_prose(
 )
 async def composition_list_canon_rules(
     ctx: MCPContext,
-    project_id: Annotated[str, "The Work's project_id."],
+    project_id: Annotated[str | None, "The Work's project_id. Optional — pass book_id instead if you only have the book."] = None,
+    book_id: Annotated[str | None, "The book to list canon rules for. Resolves the book's composition project for you — pass this when you have the book id (e.g. from the chat context) and not a project id."] = None,
     active_only: Annotated[bool, "Only enforceable (active, non-archived) rules."] = False,
 ) -> dict:
+    # D-S09-CANON-PROJECT-RESOLUTION — the canon-check rail is book-scoped but this tool only took a
+    # project_id the agent doesn't have (the chat context supplies a book_id). Passing book_id used
+    # to be a hard validation error the model read as "no rules — offer to set some up", so the rail
+    # could never reach the conformance run. Accept book_id and resolve the book's composition
+    # project (the SAME resolver composition_create_work uses, so it finds rules created there). The
+    # returned rules carry their project_id, which the agent then passes to composition_conformance_run.
     tc = _ctx(ctx)
     works = WorksRepo(get_pool())
-    pid = UUID(project_id)
-    await _book_or_deny(works, tc, pid, GrantLevel.VIEW)
+    if project_id:
+        pid: UUID | None = UUID(project_id)
+        await _book_or_deny(works, tc, pid, GrantLevel.VIEW)
+    elif book_id:
+        bid = UUID(book_id)
+        await _gate(tc, bid, GrantLevel.VIEW)  # tenancy: grant-checked on the book itself
+        pid = await _resolve_or_create_default_project(tc, bid, works)
+        if pid is None:
+            return {"rules": [], "note": "the knowledge service is unavailable — cannot resolve this "
+                    "book's consistency rules right now; try again shortly"}
+    else:
+        return {"success": False, "error": "pass either project_id or book_id"}
     canon = CanonRulesRepo(get_pool())
     rules = await (canon.list_active(pid) if active_only
                    else canon.list_all(pid))
