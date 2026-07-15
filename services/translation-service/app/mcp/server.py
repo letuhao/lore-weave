@@ -172,7 +172,9 @@ def _ctx(ctx: MCPContext) -> ToolContext:
         "Get a book's translation coverage matrix: per chapter × language, how many "
         "versions exist, the latest status, whether a version is active, and whether "
         "it's glossary-stale. Use this to answer 'how much of my book is translated' "
-        "or 'what languages does this book have'. Book-scoped (you must have access)."
+        "or 'what languages does this book have'. The `untranslated_chapter_ids` field "
+        "lists chapters that have NO translation yet — these are exactly what a "
+        "'translate what's new/changed' pass must cover. Book-scoped (you must have access)."
     ),
     meta=require_meta(
         "R", "book",
@@ -195,7 +197,12 @@ async def translation_coverage(
     await _require_view(tc, bid)
     db = get_pool()
     rows = await db.fetch(_COVERAGE_SQL, bid)
-    return _coverage_payload(rows, bid)
+    # D-S05-COVERAGE-MISMATCH — _COVERAGE_SQL derives its chapter list from chapter_translations,
+    # so a NEVER-translated chapter is invisible. Fetch the book's REAL chapters (cross-service)
+    # so coverage surfaces the untranslated ones — the whole point of a "translate what's new" pass.
+    from ..book_client import list_chapter_ids
+    all_chapter_ids = await list_chapter_ids(book_id)
+    return _coverage_payload(rows, bid, all_chapter_ids)
 
 
 @mcp_server.tool(
@@ -1045,7 +1052,7 @@ ORDER BY ct.chapter_id, ct.target_language
 """
 
 
-def _coverage_payload(rows, book_id: UUID) -> dict:
+def _coverage_payload(rows, book_id: UUID, all_chapter_ids: "list[str] | None" = None) -> dict:
     chapter_map: dict[str, dict] = {}
     known: set[str] = set()
     for r in rows:
@@ -1059,11 +1066,29 @@ def _coverage_payload(rows, book_id: UUID) -> dict:
             "latest_status": r["latest_status"],
             "version_count": r["version_count"],
         }
+    # D-S05 — surface chapters that exist in the BOOK but have no translation row at all. Preserve
+    # book order (all_chapter_ids is ordered), append any translation-only ids that book-service
+    # didn't return (e.g. a deleted chapter still carrying history), and give the agent an explicit
+    # `untranslated_chapter_ids` list so it doesn't have to diff two structures.
+    untranslated: list[str] = []
+    ordered: list[str] = []
+    if all_chapter_ids:
+        for cid in all_chapter_ids:
+            ordered.append(cid)
+            langs = chapter_map.get(cid, {})
+            if not any(v.get("has_active") for v in langs.values()):
+                untranslated.append(cid)
+        for cid in chapter_map:  # translation-only rows book-service didn't list
+            if cid not in all_chapter_ids:
+                ordered.append(cid)
+    else:
+        ordered = list(chapter_map)  # degraded: no book chapter list available
     return {
         "book_id": str(book_id),
-        "coverage": [{"chapter_id": cid, "languages": langs}
-                     for cid, langs in chapter_map.items()],
+        "coverage": [{"chapter_id": cid, "languages": chapter_map.get(cid, {})}
+                     for cid in ordered],
         "known_languages": sorted(known),
+        "untranslated_chapter_ids": untranslated,
     }
 
 
