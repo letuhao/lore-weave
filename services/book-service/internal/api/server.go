@@ -2157,16 +2157,18 @@ func (s *Server) getChapterContent(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	if _, _, _, ok := s.authBook(w, r, bookID, GrantView); !ok {
+	caller, owner, _, ok := s.authBook(w, r, bookID, GrantView)
+	if !ok {
 		return
 	}
 	var body string
+	var encrypted bool
 	err := s.pool.QueryRow(r.Context(), `
-SELECT ro.body_text
+SELECT ro.body_text, c.body_encrypted
 FROM chapter_raw_objects ro
 JOIN chapters c ON c.id=ro.chapter_id
 WHERE c.id=$1 AND c.book_id=$2
-`, chID, bookID).Scan(&body)
+`, chID, bookID).Scan(&body, &encrypted)
 	if errors.Is(err, pgx.ErrNoRows) {
 		writeError(w, http.StatusNotFound, "CHAPTER_NOT_FOUND", "chapter not found")
 		return
@@ -2174,6 +2176,23 @@ WHERE c.id=$1 AND c.book_id=$2
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "CHAPTER_NOT_FOUND", "failed to fetch content")
 		return
+	}
+	// D-DIARY-GENERIC-READERS-DECRYPT — a diary chapter is stored as ciphertext in chapter_raw_objects;
+	// this generic reader would otherwise return base64 NOISE. Decrypt it owner-gated. A diary is
+	// un-shareable, so any encrypted-chapter read by a non-owner is an anomaly — refuse defensively
+	// (never decrypt the owner's diary for a collaborator). decryptBody fails CLOSED if crypto is
+	// disabled while the row is marked encrypted (never returns the raw ciphertext).
+	if encrypted {
+		if caller != owner {
+			writeError(w, http.StatusForbidden, "DIARY_OWNER_ONLY", "diary content is readable only by its owner")
+			return
+		}
+		dec, derr := s.diaryCrypto.decryptBody(r.Context(), owner, chID, body, true)
+		if derr != nil {
+			writeError(w, http.StatusInternalServerError, "DECRYPT_FAILED", "failed to decrypt diary content")
+			return
+		}
+		body = dec
 	}
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 	w.WriteHeader(http.StatusOK)

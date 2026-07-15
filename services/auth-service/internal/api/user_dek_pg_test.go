@@ -221,6 +221,77 @@ func TestUserDEK_DoesNotReturnThePlaintextKey_PG(t *testing.T) {
 	}
 }
 
+func shredDEK(t *testing.T, s *api.Server, userID uuid.UUID, token string, headers map[string]string) *httptest.ResponseRecorder {
+	t.Helper()
+	req := httptest.NewRequest(http.MethodDelete, "/internal/users/"+userID.String()+"/dek", nil)
+	if token != "" {
+		req.Header.Set("X-Internal-Token", token)
+	}
+	for k, v := range headers {
+		req.Header.Set(k, v)
+	}
+	rr := httptest.NewRecorder()
+	s.Router().ServeHTTP(rr, req)
+	return rr
+}
+
+// P3 (DBT-9) — the crypto-shred (the platform's most destructive irreversible op) must leave a
+// DURABLE, attributed forensic trail that OUTLIVES the user, and must record a no-op shred rather
+// than hide it.
+func TestUserDEK_ShredWritesDurableAuditRow_PG(t *testing.T) {
+	s, pool := dekServer(t, testKEK)
+	uid := seedUser(t, pool)
+	ctx := context.Background()
+	t.Cleanup(func() { _, _ = pool.Exec(ctx, `DELETE FROM dek_shred_audit WHERE user_id=$1`, uid) })
+
+	if rr := getDEK(t, s, uid, "itok"); rr.Code != http.StatusOK { // provision
+		t.Fatalf("provision: %d", rr.Code)
+	}
+
+	// (1) a real shred → 204 + an audit row with rows_shredded=1 + the actor/trace attribution.
+	rr := shredDEK(t, s, uid, "itok", map[string]string{"X-Actor": "erasure-worker", "x-trace-id": "trace-abc"})
+	if rr.Code != http.StatusNoContent {
+		t.Fatalf("shred = %d, body=%s", rr.Code, rr.Body.String())
+	}
+	var rowsShredded int
+	var actor, trace string
+	if err := pool.QueryRow(ctx,
+		`SELECT rows_shredded, coalesce(actor,''), coalesce(trace_id,'') FROM dek_shred_audit
+		 WHERE user_id=$1 ORDER BY created_at DESC LIMIT 1`, uid).Scan(&rowsShredded, &actor, &trace); err != nil {
+		t.Fatalf("no audit row written for the shred: %v", err)
+	}
+	if rowsShredded != 1 || actor != "erasure-worker" || trace != "trace-abc" {
+		t.Fatalf("audit row wrong: rows=%d actor=%q trace=%q (want 1/erasure-worker/trace-abc)", rowsShredded, actor, trace)
+	}
+
+	// (2) a 2nd shred (already absent) → 204 (converges) + a NEW audit row with rows_shredded=0 —
+	// a mis-targeted/no-op shred is RECORDED, never silently swallowed.
+	if rr2 := shredDEK(t, s, uid, "itok", nil); rr2.Code != http.StatusNoContent {
+		t.Fatalf("2nd shred (idempotent) = %d", rr2.Code)
+	}
+	var auditCount, zeroRowShreds int
+	if err := pool.QueryRow(ctx,
+		`SELECT count(*), count(*) FILTER (WHERE rows_shredded=0) FROM dek_shred_audit WHERE user_id=$1`, uid).
+		Scan(&auditCount, &zeroRowShreds); err != nil {
+		t.Fatalf("count audit: %v", err)
+	}
+	if auditCount != 2 || zeroRowShreds != 1 {
+		t.Fatalf("want 2 audit rows incl. 1 no-op, got %d rows / %d no-op", auditCount, zeroRowShreds)
+	}
+
+	// (3) the audit OUTLIVES the user — deleting the user must NOT cascade-erase the forensic record.
+	if _, err := pool.Exec(ctx, `DELETE FROM users WHERE id=$1`, uid); err != nil {
+		t.Fatalf("delete user: %v", err)
+	}
+	var afterDelete int
+	if err := pool.QueryRow(ctx, `SELECT count(*) FROM dek_shred_audit WHERE user_id=$1`, uid).Scan(&afterDelete); err != nil {
+		t.Fatalf("count after user delete: %v", err)
+	}
+	if afterDelete != 2 {
+		t.Fatalf("the shred audit was erased with the user (count=%d) — the forensic trail must survive", afterDelete)
+	}
+}
+
 func TestUserDEK_IsErasedWithTheUser_PG(t *testing.T) {
 	// D18 crypto-shred: deleting the user drops the DEK, and without the DEK their
 	// ciphertext is unrecoverable — INCLUDING in any backup taken before the deletion.

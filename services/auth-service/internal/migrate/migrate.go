@@ -97,6 +97,21 @@ CREATE TABLE IF NOT EXISTS user_deks (
 -- Which users are still wrapped under a retired KEK? (an operator's rotation checklist)
 CREATE INDEX IF NOT EXISTS idx_user_deks_key_ref ON user_deks(key_ref);
 
+-- P3 (D-DEK-MULTICONSUMER-TRIPWIRE / DBT-9) — a DURABLE, attributed forensic trail for the crypto-shred,
+-- the single most destructive irreversible op on the platform (previously the ONLY record was an
+-- ephemeral slog line). Deliberately has NO FK to users(id): the audit must OUTLIVE the user's own
+-- deletion (a shred is precisely part of erasing that user), so an ON DELETE CASCADE would erase the
+-- evidence. rows_shredded=0 records a mis-targeted/no-op shred (visible, never hidden). Append-only.
+CREATE TABLE IF NOT EXISTS dek_shred_audit (
+  audit_id      UUID PRIMARY KEY DEFAULT uuidv7(),
+  user_id       UUID NOT NULL,          -- NO FK: must survive the user's own deletion (forensic)
+  rows_shredded INT  NOT NULL,          -- 0 = shred hit nothing (already-absent OR a wrong user_id)
+  actor         TEXT NULL,              -- the caller service/actor, if identifiable (X-Actor header)
+  trace_id      TEXT NULL,              -- the request's x-trace-id (correlation with the erasure)
+  created_at    TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_dek_shred_audit_user_created ON dek_shred_audit (user_id, created_at DESC);
+
 -- P9-02: Profile extensions
 ALTER TABLE users ADD COLUMN IF NOT EXISTS bio TEXT;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS languages TEXT[] DEFAULT '{}';

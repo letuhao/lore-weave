@@ -39,7 +39,7 @@ stays quarantine-tier — R2 makes it VISIBLE, never clears the number).
 |---|---|---|
 | **P1** wiki is_person on USER tier | ✅ | threaded is_person across user_kind create/update (HTTP) + MCP create + both read queries + response (effective-value-visible). **Tests:** glossary is_person suite 5/5 incl. a NEW full-HTTP `TestUserKindHTTP_IsPerson_CloneInheritsAndClearGuard` + `TestUserTierPersonKind_CreateThenAdopt_ExcludedFromWikiGen` (create→adopt→wiki-gen exclusion). **Cold review:** HIGH (clone path dropped is_person → re-opened the leak) FIXED — clone inherits from the system source; parity clear-guard added (can't clear is_person on a system-cloned person kind — third-party protection, MED-2 parity); MED (no client-level branch test) → covered by the HTTP e2e. Single service (glossary) — no cross-service seam. |
 | **P2** reflection facts fail-closed | ✅ | `recall_facts_range(fail_closed=True)` raises `KnowledgeUnavailable` on transport/non-200 for `reflect_week` (facts feed the Gate-3 safety screen); the orchestrator turns it into a retryable status → consumer un-ACKs → retry; `roll_up_week` stays best-effort (default). Empty 200 still `[]` in both modes. **Tests:** reflection+rollup 28/28 incl. a client-level 4-branch httpx test + orchestrator-retries-writes-nothing + reflect_week-raises. **Cold review:** MED (no client-level branch test) FIXED; verified both safety-screen halves (notes C2 + facts P2) now fail-closed, no circular import, rollup untouched. Single-service worker-ai (mirrors the already-live-smoked C2 down-endpoint shape). |
-| **P3** DEK hardening bundle | ⬜ | (a) multi-consumer tripwire test (b) shred audit row + DEK_SHRED_TOKEN (c) generic reader decrypt |
+| **P3** DEK hardening bundle | ✅ | (a) `TestDEK_IsStillSingleConsumer` repo-scan tripwire (reds if a 2nd service touches the user-DEK substrate → forces a conscious erase-scope decision); (b) `dek_shred_audit` table (NO FK — outlives the user) + the shred DELETE+audit now ONE atomic tx (no un-audited shred; converges on retry); (c) `getChapterContent` decrypts a diary chapter owner-gated (403 non-owner, fail-closed) instead of returning ciphertext. **Tests:** auth `TestUserDEK_ShredWritesDurableAuditRow_PG` (real PG: audit written, no-op recorded, SURVIVES user-delete) + tripwire (proven meaningful: signals in book/auth only) + build/vet. **Cold review:** no HIGH/MED (convergence preserved, audit durable, owner-gating fail-safe, no plaintext regression, tripwire catches); 2 LOW (t.Fatal-not-skip, +.rs/.tsx) FIXED. (b) is auth-only real-PG-tested; (c) reuses the C5-live-proven book→auth DEK decrypt seam (LOW display-bug). Dedicated DEK_SHRED_TOKEN → parked (cross-service config). |
 | **P4** diary shred durable retry | ⬜ | ride the existing book-service outbox → retried idempotent auth DELETE |
 
 ### Group B — Billing / correctness
@@ -62,6 +62,11 @@ stays quarantine-tier — R2 makes it VISIBLE, never clears the number).
 D-PROACTIVE-LLM-CONTENT (#2) · D-STT-METER-UNIFY (#4 policy) · DBT-7 KEK re-wrap (#2 ops) ·
 DBT-10 trashed-diary UX (blocked on E14) · DBT-2 (#2) · DBT-3 (#3) · DBT-4 (#2) · P-2 · P-4 tail · P-11.
 Mobile home-strip surface (`md:block` desktop-only) → QC/product decision, not auto-scoped.
+- **D-DEK-SHRED-TOKEN** (P3, #2 cross-service config) — gate the DEK shred behind a dedicated
+  DEK_SHRED_TOKEN distinct from the shared INTERNAL_SERVICE_TOKEN (mirror ADMIN_TOKEN_ISSUER_SECRET),
+  with a safe fallback + the token plumbed into book-service + admin-cli + compose. Defense-in-depth on
+  an already-internal-token-gated, network-isolated route; the durable audit row (the higher-value half)
+  shipped in P3. Also carry the optional rate/anomaly brake here.
 - **D-PROACTIVE-NOTIF-I18N** (R3 cold-review LOW-1, #2 i18n-tooling) — the `assistant.proactive_checkin`
   message_key has no locale entry, so non-English users see the English title/body fallback. Fold into a
   targeted notification i18n pass (with DBT-4). English fallback works; no broken behavior.

@@ -171,9 +171,31 @@ func (s *Server) internalDeleteUserDEK(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, "AUTH_VALIDATION_ERROR", "invalid user_id")
 		return
 	}
-	tag, err := s.pool.Exec(r.Context(),
-		`DELETE FROM user_deks WHERE user_id = $1`, userID)
+	ctx := r.Context()
+	// DBT-9 — the shred + its DURABLE audit row are ONE transaction, so a key can never be destroyed
+	// without a forensic record (nor a record written without the destroy). The audit must outlive the
+	// user, so its table has no FK to users (see migrate.go).
+	tx, err := s.pool.Begin(ctx)
 	if err != nil {
+		writeErr(w, http.StatusInternalServerError, "AUTH_INTERNAL", "failed to shred dek")
+		return
+	}
+	defer tx.Rollback(ctx) //nolint:errcheck
+	tag, err := tx.Exec(ctx, `DELETE FROM user_deks WHERE user_id = $1`, userID)
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, "AUTH_INTERNAL", "failed to shred dek")
+		return
+	}
+	if _, err := tx.Exec(ctx,
+		`INSERT INTO dek_shred_audit (user_id, rows_shredded, actor, trace_id)
+		 VALUES ($1, $2, NULLIF($3,''), NULLIF($4,''))`,
+		userID, tag.RowsAffected(), r.Header.Get("X-Actor"), r.Header.Get("x-trace-id")); err != nil {
+		// Fail-closed on the audit: a shred with no trail is exactly what DBT-9 forbids. Rolling back
+		// leaves the DEK intact; the erasure worker retries and converges (D-R9 — a shred must converge).
+		writeErr(w, http.StatusInternalServerError, "AUTH_INTERNAL", "failed to record shred audit")
+		return
+	}
+	if err := tx.Commit(ctx); err != nil {
 		writeErr(w, http.StatusInternalServerError, "AUTH_INTERNAL", "failed to shred dek")
 		return
 	}
