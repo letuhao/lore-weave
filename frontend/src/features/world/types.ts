@@ -73,3 +73,36 @@ export interface WorldBookListResponse {
   items: WorldBook[];
   total: number;
 }
+
+// W10 maps — the image-based map canvas (base image + pins + regions), served by
+// GET /v1/worlds/{id}/maps and /maps/{map_id} (book-service).
+export interface WorldMapSummary {
+  map_id: string;
+  world_id: string;
+  name: string;
+  image_object_key: string | null;
+  image_url?: string | null;
+}
+export interface WorldMapMarker {
+  marker_id: string;
+  label: string;
+  x: number; // normalized 0..1 across the image width
+  y: number; // normalized 0..1 down the image height
+  entity_id: string | null;
+  marker_type: string | null;
+}
+export interface WorldMapRegion {
+  region_id: string;
+  name: string;
+  polygon: number[][]; // [[x,y], …] normalized 0..1
+  entity_id: string | null;
+}
+export interface WorldMapDetail {
+  map: WorldMapSummary;
+  markers: WorldMapMarker[];
+  regions: WorldMapRegion[];
+}
+export interface WorldMapListResponse {
+  items: WorldMapSummary[];
+  total: number;
+}

@@ -7,6 +7,8 @@ import type {
   WorldBookListResponse,
   WorldKind,
   WorldListResponse,
+  WorldMapDetail,
+  WorldMapListResponse,
 } from './types';
 
 // C21 — world container FE. World CRUD rides C20's `/v1/worlds` (book-service,
@@ -112,6 +114,23 @@ export const worldsApi = {
         body: JSON.stringify({ chapter_id: chapterId, relevance: 'major' }),
         token,
       },
+    );
+  },
+
+  /** W10 — list a world's maps (GET /v1/worlds/{id}/maps, book-service). Read-only;
+   *  map mutations stay on the Tier-W world_map_* agent tools. */
+  listWorldMaps(token: string, worldId: string): Promise<WorldMapListResponse> {
+    return apiJson<WorldMapListResponse>(
+      `${WORLDS}/${encodeURIComponent(worldId)}/maps`,
+      { token },
+    );
+  },
+
+  /** W10 — one map with all its markers + regions + a render-ready image URL. */
+  getWorldMap(token: string, worldId: string, mapId: string): Promise<WorldMapDetail> {
+    return apiJson<WorldMapDetail>(
+      `${WORLDS}/${encodeURIComponent(worldId)}/maps/${encodeURIComponent(mapId)}`,
+      { token },
     );
   },
 };
