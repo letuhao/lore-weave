@@ -1,6 +1,6 @@
 # W10 World-Container + W11 Reader/Lore-Seeker — Track B backend design
 
-**Status:** DESIGN — awaiting sign-off before BUILD.
+**Status:** BUILT (2026-07-15). W10 maps — 8 `world_map_*` MCP tools + 3 tables + MinIO base image + the `/v1/worlds/{id}/maps` read REST + the FE canvas (WorldMapsSection), all browser-proven by effect. W11 reader — the ask-the-lore facade (resolve-to-owner, `before_chapter_id` server-enforced cutoff, fail-closed, canon-only `status='active'` leak-guard), the `story_search` `before_chapter_id` cutoff, and the FE lore-seeker (spoiler-windowed, fail-closed on both facts AND the entity list) — browser-proven. Design below is retained as the build record.
 **Track:** B (domain backend). Unblocks Track C's W10/W11 surfaces (`TRACK-C.md` "Consumes: B's backing tools for W2/W4/W10/W11").
 **Date:** 2026-07-11 · **Branch:** `feat/context-budget-law`
 **Supersedes framing:** the board called W10/W11 "P2, structurally large, biggest structural gap." Grounded research (2026-07-11, three parallel探査 agents) shows both are **largely wiring over substrates that already exist** — plus exactly two genuinely-greenfield pieces (W10 maps; W11 public lore access).
