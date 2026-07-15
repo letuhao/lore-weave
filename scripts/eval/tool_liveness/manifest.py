@@ -136,6 +136,16 @@ def build(rows: list[dict], meta: dict[str, Any], sweep: list[dict] | None = Non
             )
         if w is not None:
             entry["waived"] = w
+    # FAIL CLOSED at GENERATION (M5 review Q5): the invariant "every executes:null tool carries a
+    # waiver" must hold at build time, not only when someone re-runs the test suite — otherwise a
+    # NEW null tool from a future sweep silently ships as a bare null and the prose-only-waive class
+    # the audit killed re-enters undetected. Mirror the false+waiver fail-closed above.
+    orphans = sorted(n for n, e in tools.items() if e.get("executes") is None and "waived" not in e)
+    if orphans:
+        raise ValueError(
+            f"executes:null tools with NO waiver (prose-only-waive class): {orphans}. "
+            "Add each to scripts/eval/tool_liveness/waivers.py with a reason + gate, or fix the sweep."
+        )
     return {
         "schema_version": SCHEMA_VERSION,
         "source": meta.get("source", "?"),

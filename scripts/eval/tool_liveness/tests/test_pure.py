@@ -722,8 +722,12 @@ def test_manifest_null_executes_never_read_as_false_by_blocked():
     """The load-bearing consumer predicate: `blocked` fires ONLY on explicit false."""
     from tool_liveness.manifest import blocked, build
 
-    m = build([], {}, [{"tool": "x", "executes": None}, {"tool": "y", "executes": False}])
-    assert blocked(m, "x") is False and blocked(m, "y") is True
+    # A null tool must carry a waiver (generation fails closed otherwise — the prose-only-waive
+    # guard), so use a real waived tool for the null case; it is still executes:null, which is what
+    # `blocked` is being tested against. `y` (executes:false, no waiver) is a legitimately BROKEN tool.
+    m = build([], {}, [{"tool": "book_chapter_save_draft", "executes": None},
+                       {"tool": "y", "executes": False}])
+    assert blocked(m, "book_chapter_save_draft") is False and blocked(m, "y") is True
     assert blocked(m, "absent-tool") is False
 
 
@@ -986,3 +990,10 @@ def test_shipped_manifest_has_no_prose_only_waive():
     m = json.loads(pathlib.Path("contracts/tool-liveness.json").read_text(encoding="utf-8"))
     orphans = [k for k, v in m["tools"].items() if v.get("executes") is None and "waived" not in v]
     assert orphans == [], f"executes:null with NO waiver (prose-only waive): {orphans}"
+
+
+def test_build_fails_closed_on_a_null_without_a_waiver():
+    # M5 review Q5: a null tool absent from WAIVERS must FAIL generation (not ship a bare null —
+    # the prose-only-waive class the audit killed). Enforced at build time, not just in a test.
+    with pytest.raises(ValueError, match="prose-only-waive"):
+        build(rows=[], meta={}, sweep=[{"tool": "zzz_unknown_null_tool", "executes": None}])
