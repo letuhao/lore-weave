@@ -1359,6 +1359,40 @@ ALTER TABLE chapters ADD COLUMN IF NOT EXISTS diary_kept_at TIMESTAMPTZ;
 -- local day before the insert); entry_zone records WHICH zone produced it so a later zone change
 -- is auditable and a spring-forward/DST question can be answered. NULL for pre-WS-1.8 entries.
 ALTER TABLE chapters ADD COLUMN IF NOT EXISTS entry_zone TEXT;
+-- C5 / SD-C5 (P-12) — diary encryption-at-rest marker. TRUE ⇒ this diary entry's prose columns
+-- (chapter_raw_objects.body_text + chapter_drafts.body + chapter_revisions.body) hold AES-GCM
+-- ciphertext under the owner's per-user DEK (AAD "chapter:<id>"), and chapter_blocks is empty for it.
+-- FALSE (default) ⇒ plaintext (a pre-C5 entry, or a deployment with no DIARY_ENCRYPTION_KEY). The
+-- flag disambiguates the format so decrypt-on-read tolerates both during the forward-encrypt rollout.
+ALTER TABLE chapters ADD COLUMN IF NOT EXISTS body_encrypted BOOLEAN NOT NULL DEFAULT false;
+
+-- C5 / SD-C5 (cold-review HIGH-1) — the plaintext-bypass guard. Diary prose is encrypted at rest ONLY
+-- when written through the diary write seam (upsert/amend/redact), which SET LOCAL loreweave.diary_write
+-- and stores ciphertext. A GENERIC chapter-write path (an editor tool handed a diary chapter id, an
+-- import into a diary book) would store PLAINTEXT prose into a kind='diary' chapter — defeating
+-- encryption-at-rest. This BEFORE trigger REFUSES any write to a diary chapter's prose columns that is
+-- NOT flagged as coming from the seam. One enforcement point catches every bypass (app tool, HTTP
+-- handler, or future code) — far more robust than guarding N call sites. Novels (kind<>'diary') pass.
+CREATE OR REPLACE FUNCTION fn_guard_diary_prose_write() RETURNS TRIGGER AS $guard$
+BEGIN
+  IF current_setting('loreweave.diary_write', true) IS DISTINCT FROM 'on'
+     AND EXISTS (SELECT 1 FROM chapters c JOIN books b ON b.id = c.book_id
+                 WHERE c.id = NEW.chapter_id AND b.kind = 'diary') THEN
+    RAISE EXCEPTION 'a diary chapter''s body is written only through the diary endpoints (C5 encryption-at-rest); a generic write would store plaintext'
+      USING ERRCODE = 'check_violation';
+  END IF;
+  RETURN NEW;
+END $guard$ LANGUAGE plpgsql;
+
+DROP TRIGGER IF EXISTS trg_guard_diary_prose_drafts ON chapter_drafts;
+CREATE TRIGGER trg_guard_diary_prose_drafts BEFORE INSERT OR UPDATE OF body ON chapter_drafts
+  FOR EACH ROW EXECUTE FUNCTION fn_guard_diary_prose_write();
+DROP TRIGGER IF EXISTS trg_guard_diary_prose_raw ON chapter_raw_objects;
+CREATE TRIGGER trg_guard_diary_prose_raw BEFORE INSERT OR UPDATE OF body_text ON chapter_raw_objects
+  FOR EACH ROW EXECUTE FUNCTION fn_guard_diary_prose_write();
+DROP TRIGGER IF EXISTS trg_guard_diary_prose_rev ON chapter_revisions;
+CREATE TRIGGER trg_guard_diary_prose_rev BEFORE INSERT OR UPDATE OF body ON chapter_revisions
+  FOR EACH ROW EXECUTE FUNCTION fn_guard_diary_prose_write();
 
 -- ONE primary entry per day, per book. The predicate must repeat EXACTLY in any
 -- ON CONFLICT that targets it (the repo's partial-index/ON-CONFLICT lesson), and it must

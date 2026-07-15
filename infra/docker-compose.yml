@@ -174,6 +174,13 @@ services:
       LLM_GATEWAY_INTERNAL_URL: http://provider-registry-service:8085
       USAGE_BILLING_SERVICE_URL: http://usage-billing-service:8086
       INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-dev_internal_token}
+      AUTH_SERVICE_INTERNAL_URL: http://auth-service:8081
+      # C5 / SD-C5 (P-12) — diary encryption-at-rest. MUST be the SAME value as auth-service's
+      # DIARY_ENCRYPTION_KEY: auth WRAPS each per-user DEK under this KEK, book-service UNWRAPS with
+      # it. A dedicated key (never JWT_SECRET). Rotating? Add the OLD value to
+      # DIARY_ENCRYPTION_KEYS_RETIRED on EVERY service at once or you orphan diaries.
+      DIARY_ENCRYPTION_KEY: ${DIARY_ENCRYPTION_KEY:-loreweave_local_dev_diary_kek_change_me}
+      DIARY_ENCRYPTION_KEYS_RETIRED: ${DIARY_ENCRYPTION_KEYS_RETIRED:-}
       # Phase 6c — OpenTelemetry trace export (see provider-registry-service).
       OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
     depends_on:

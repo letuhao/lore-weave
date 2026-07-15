@@ -67,6 +67,9 @@ type Server struct {
 	// goroutine+insert on a repeat this window). nil ⇒ no dedup (still correct — the
 	// DB ON CONFLICT dedups the row). Wired in NewServer.
 	auditDedup *tenantAuditDedup
+	// C5 / SD-C5 — diary encryption-at-rest. Non-nil after NewServer; .Enabled() is false when
+	// DIARY_ENCRYPTION_KEY is unset (writes stay plaintext). Tests can inject a disabled one.
+	diaryCrypto *diaryCrypto
 }
 
 func NewServer(pool *pgxpool.Pool, cfg *config.Config) *Server {
@@ -74,6 +77,9 @@ func NewServer(pool *pgxpool.Pool, cfg *config.Config) *Server {
 	s.resolveBook = s.resolveBookAuth
 	s.emitTenantAudit = s.asyncTenantAudit
 	s.auditDedup = &tenantAuditDedup{}
+	// C5 — diary encryption-at-rest (off with a loud warning when DIARY_ENCRYPTION_KEY is unset).
+	s.diaryCrypto = newDiaryCrypto(cfg.AuthServiceInternalURL, cfg.InternalServiceToken,
+		cfg.DiaryEncryptionKey, cfg.DiaryEncryptionKeysRetired)
 	if cfg.MinioEndpoint != "" && cfg.MinioSecretKey != "" {
 		mc, err := minio.New(cfg.MinioEndpoint, &minio.Options{
 			Creds:  credentials.NewStaticV4(cfg.MinioAccessKey, cfg.MinioSecretKey, ""),

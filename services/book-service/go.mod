@@ -9,6 +9,7 @@ require (
 	github.com/jackc/pgx/v5 v5.6.0
 	github.com/loreweave/foundation/contracts/platformjwt v0.0.0
 	github.com/loreweave/llmgw v0.1.0
+	github.com/loreweave/loreweave_crypto v0.0.0
 	github.com/loreweave/loreweave_mcp v0.1.0
 	github.com/loreweave/observability v0.1.0
 	github.com/minio/minio-go/v7 v7.0.100
@@ -19,6 +20,9 @@ require (
 replace github.com/loreweave/foundation/contracts/platformjwt => ../../contracts/platformjwt
 
 replace github.com/loreweave/llmgw => ../../sdks/go/llmgw
+
+// C5 / SD-C5 — the Go crypto SDK (format-parity with the Python loreweave_crypto) for diary at-rest encryption.
+replace github.com/loreweave/loreweave_crypto => ../../sdks/go/loreweave_crypto
 
 replace github.com/loreweave/observability => ../../sdks/go/observability
 

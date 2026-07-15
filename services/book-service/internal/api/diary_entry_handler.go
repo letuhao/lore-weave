@@ -24,6 +24,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"log/slog"
 	"net/http"
 	"regexp"
 	"strings"
@@ -142,9 +143,14 @@ func (s *Server) upsertDiaryEntry(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT", "failed to acquire day lock")
 		return
 	}
+	// C5 — flag this tx as a sanctioned diary write so the plaintext-bypass guard (fn_guard_diary_prose_write)
+	// permits the encrypted prose writes below. Any OTHER writer of a diary chapter's prose is refused.
+	if _, err := tx.Exec(ctx, `SET LOCAL loreweave.diary_write = 'on'`); err != nil {
+		writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT", "failed to arm diary write")
+		return
+	}
 
-	jsonBody := plainTextToTiptapJSON(body)
-	byteSize := int64(len(body))
+	byteSize := int64(len(body)) // plaintext length drives quota; the encrypted forms are computed per-flow
 
 	// 3. PRIMARY / WEEKLY / REFLECTION: get-or-create-then-replace (keyed by book+entry_date+kind,
 	//    so a re-run REPLACES). Supplement always creates a new chapter. (M2 — 'weekly' + the
@@ -172,17 +178,26 @@ func (s *Server) upsertDiaryEntry(w http.ResponseWriter, r *http.Request) {
 					return
 				}
 			}
+			// C5 — encrypt the body columns under the owner's DEK (fail-closed: a DEK error ABORTS the
+			// replace, never stores plaintext). word_count is set explicitly because the encrypted draft
+			// yields no chapter_blocks for the trigger to count.
+			rawCol, draftBody, encrypted, wc, cerr := s.prepDiaryBody(ctx, owner, chID, body)
+			if cerr != nil {
+				writeError(w, http.StatusInternalServerError, "DIARY_ENCRYPT_UNAVAILABLE", "diary encryption unavailable; entry not written")
+				return
+			}
 			if _, err := tx.Exec(ctx,
 				`UPDATE chapters SET title=$2, original_language=$3, byte_size=$4, entry_zone=$5,
+				        body_encrypted=$6, word_count=CASE WHEN $7 >= 0 THEN $7 ELSE word_count END,
 				        draft_revision_count=draft_revision_count+1, draft_updated_at=now(), updated_at=now()
 				   WHERE id=$1`,
-				chID, nullIfEmpty(title), lang, byteSize, zone); err != nil {
+				chID, nullIfEmpty(title), lang, byteSize, zone, encrypted, wc); err != nil {
 				writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT", "failed to update entry")
 				return
 			}
 			if _, err := tx.Exec(ctx,
 				`UPDATE chapter_drafts SET body=$2, draft_updated_at=now(), draft_version=draft_version+1
-				   WHERE chapter_id=$1`, chID, jsonBody); err != nil {
+				   WHERE chapter_id=$1`, chID, draftBody); err != nil {
 				writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT", "failed to update draft")
 				return
 			}
@@ -190,14 +205,14 @@ func (s *Server) upsertDiaryEntry(w http.ResponseWriter, r *http.Request) {
 			if _, err := tx.Exec(ctx,
 				`INSERT INTO chapter_raw_objects(chapter_id, body_text) VALUES($1,$2)
 				   ON CONFLICT (chapter_id) DO UPDATE SET body_text=EXCLUDED.body_text`,
-				chID, body); err != nil {
+				chID, rawCol); err != nil {
 				writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT", "failed to update raw body")
 				return
 			}
 			if _, err := tx.Exec(ctx,
 				`INSERT INTO chapter_revisions(chapter_id, body, body_format, message, author_user_id)
 				   VALUES($1,$2,'json',$3,$4)`,
-				chID, jsonBody, "distiller re-run", owner); err != nil {
+				chID, draftBody, "distiller re-run", owner); err != nil {
 				writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT", "failed to write revision")
 				return
 			}
@@ -240,23 +255,35 @@ RETURNING id`,
 		writeError(w, http.StatusConflict, "BOOK_CONFLICT", "failed to create entry (retryable)")
 		return
 	}
-	if _, err := tx.Exec(ctx, `INSERT INTO chapter_raw_objects(chapter_id, body_text) VALUES($1,$2)`, chID, body); err != nil {
+	// C5 — encrypt under the owner's DEK now that chID exists (AAD binds to the chapter). Fail-closed:
+	// a DEK error aborts (tx rolls back), never stores plaintext.
+	rawCol, draftBody, encrypted, wc, cerr := s.prepDiaryBody(ctx, owner, chID, body)
+	if cerr != nil {
+		writeError(w, http.StatusInternalServerError, "DIARY_ENCRYPT_UNAVAILABLE", "diary encryption unavailable; entry not written")
+		return
+	}
+	if _, err := tx.Exec(ctx, `INSERT INTO chapter_raw_objects(chapter_id, body_text) VALUES($1,$2)`, chID, rawCol); err != nil {
 		writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT", "failed to write raw body")
 		return
 	}
 	if _, err := tx.Exec(ctx,
 		`INSERT INTO chapter_drafts(chapter_id, body, draft_format, draft_updated_at, draft_version) VALUES($1,$2,'json',now(),1)`,
-		chID, jsonBody); err != nil {
+		chID, draftBody); err != nil {
 		writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT", "failed to write draft")
 		return
 	}
 	if _, err := tx.Exec(ctx,
 		`INSERT INTO chapter_revisions(chapter_id, body, body_format, message, author_user_id) VALUES($1,$2,'json',$3,$4)`,
-		chID, jsonBody, "distilled entry", owner); err != nil {
+		chID, draftBody, "distilled entry", owner); err != nil {
 		writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT", "failed to write revision")
 		return
 	}
-	if _, err := tx.Exec(ctx, `UPDATE chapters SET draft_revision_count=1 WHERE id=$1`, chID); err != nil {
+	// Set draft_revision_count + the encryption marker + (when encrypted) the explicit word_count —
+	// the trigger derived word_count=0 from the empty chapter_blocks of an encrypted draft.
+	if _, err := tx.Exec(ctx,
+		`UPDATE chapters SET draft_revision_count=1, body_encrypted=$2,
+		        word_count=CASE WHEN $3 >= 0 THEN $3 ELSE word_count END WHERE id=$1`,
+		chID, encrypted, wc); err != nil {
 		writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT", "failed to finalize entry")
 		return
 	}
@@ -429,7 +456,6 @@ func (s *Server) amendDiaryEntry(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	title := strings.TrimSpace(in.Title)
-	jsonBody := plainTextToTiptapJSON(body)
 	byteSize := int64(len(body))
 	ctx := r.Context()
 
@@ -467,6 +493,11 @@ WHERE id=$1 AND book_id=$2 AND journal_kind IS NOT NULL AND lifecycle_state='act
 		writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT", "failed to acquire day lock")
 		return
 	}
+	// C5 — arm the diary-write guard (see upsertDiaryEntry) so the encrypted amend writes are permitted.
+	if _, err := tx.Exec(ctx, `SET LOCAL loreweave.diary_write = 'on'`); err != nil {
+		writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT", "failed to arm diary write")
+		return
+	}
 
 	// Quota is enforced only on GROWTH (a correction may shrink or rewrite; never block that).
 	var oldSize int64
@@ -477,32 +508,39 @@ WHERE id=$1 AND book_id=$2 AND journal_kind IS NOT NULL AND lifecycle_state='act
 		}
 	}
 
+	// C5 — encrypt the corrected body columns (fail-closed abort on a DEK error).
+	rawCol, draftBody, encrypted, wc, cerr := s.prepDiaryBody(ctx, owner, chID, body)
+	if cerr != nil {
+		writeError(w, http.StatusInternalServerError, "DIARY_ENCRYPT_UNAVAILABLE", "diary encryption unavailable; correction not written")
+		return
+	}
 	// Write the corrected body as a NEW revision. `diary_kept_at` is DELIBERATELY untouched — a
 	// correction to a kept entry keeps it kept (the write-seam refuses a kept entry; amend is the
 	// sanctioned edit path). draft_revision_count/version bump so the audit trail shows the correction.
 	if _, err := tx.Exec(ctx,
 		`UPDATE chapters SET title=COALESCE(NULLIF($2,''), title), byte_size=$3,
+		        body_encrypted=$4, word_count=CASE WHEN $5 >= 0 THEN $5 ELSE word_count END,
 		        draft_revision_count=draft_revision_count+1, draft_updated_at=now(), updated_at=now()
-		   WHERE id=$1`, chID, title, byteSize); err != nil {
+		   WHERE id=$1`, chID, title, byteSize, encrypted, wc); err != nil {
 		writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT", "failed to update entry")
 		return
 	}
 	if _, err := tx.Exec(ctx,
 		`UPDATE chapter_drafts SET body=$2, draft_updated_at=now(), draft_version=draft_version+1
-		   WHERE chapter_id=$1`, chID, jsonBody); err != nil {
+		   WHERE chapter_id=$1`, chID, draftBody); err != nil {
 		writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT", "failed to update draft")
 		return
 	}
 	if _, err := tx.Exec(ctx,
 		`INSERT INTO chapter_raw_objects(chapter_id, body_text) VALUES($1,$2)
 		   ON CONFLICT (chapter_id) DO UPDATE SET body_text=EXCLUDED.body_text`,
-		chID, body); err != nil {
+		chID, rawCol); err != nil {
 		writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT", "failed to update raw body")
 		return
 	}
 	if _, err := tx.Exec(ctx,
 		`INSERT INTO chapter_revisions(chapter_id, body, body_format, message, author_user_id)
-		   VALUES($1,$2,'json',$3,$4)`, chID, jsonBody, "user amendment (D17)", owner); err != nil {
+		   VALUES($1,$2,'json',$3,$4)`, chID, draftBody, "user amendment (D17)", owner); err != nil {
 		writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT", "failed to write revision")
 		return
 	}
@@ -564,7 +602,7 @@ func (s *Server) redactDiaryName(w http.ResponseWriter, r *http.Request) {
 
 	ctx := r.Context()
 	rows, err := s.pool.Query(ctx, `
-SELECT c.id, COALESCE(ro.body_text,'')
+SELECT c.id, COALESCE(ro.body_text,''), c.body_encrypted
 FROM chapters c LEFT JOIN chapter_raw_objects ro ON ro.chapter_id = c.id
 WHERE c.book_id=$1 AND c.journal_kind IS NOT NULL AND c.lifecycle_state='active'`, bookID)
 	if err != nil {
@@ -579,9 +617,17 @@ WHERE c.book_id=$1 AND c.journal_kind IS NOT NULL AND c.lifecycle_state='active'
 	for rows.Next() {
 		var id uuid.UUID
 		var body string
-		if err := rows.Scan(&id, &body); err != nil {
+		var bodyEncrypted bool
+		if err := rows.Scan(&id, &body, &bodyEncrypted); err != nil {
 			rows.Close()
 			writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT", "failed to read diary row")
+			return
+		}
+		// C5 — match against the PLAINTEXT (decrypt an encrypted row first; the re-write re-encrypts).
+		body, err = s.diaryCrypto.decryptBody(ctx, owner, id, body, bodyEncrypted)
+		if err != nil {
+			rows.Close()
+			writeError(w, http.StatusInternalServerError, "DIARY_DECRYPT_FAILED", "failed to decrypt diary row")
 			return
 		}
 		if re.MatchString(body) {
@@ -605,32 +651,45 @@ WHERE c.book_id=$1 AND c.journal_kind IS NOT NULL AND c.lifecycle_state='active'
 		return
 	}
 	defer tx.Rollback(ctx)
+	// C5 — arm the diary-write guard (see upsertDiaryEntry) so the encrypted redaction writes are permitted.
+	if _, err := tx.Exec(ctx, `SET LOCAL loreweave.diary_write = 'on'`); err != nil {
+		writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT", "failed to arm diary write")
+		return
+	}
 	for _, t := range targets {
-		jsonBody := plainTextToTiptapJSON(t.newBody)
 		byteSize := int64(len(t.newBody))
+		// C5 — re-encrypt the redacted body (fail-closed abort). A row redacted while encryption is on
+		// becomes encrypted; word_count is set explicitly since the encrypted draft yields no blocks.
+		rawCol, draftBody, encrypted, wc, cerr := s.prepDiaryBody(ctx, owner, t.id, t.newBody)
+		if cerr != nil {
+			writeError(w, http.StatusInternalServerError, "DIARY_ENCRYPT_UNAVAILABLE", "diary encryption unavailable; redaction not written")
+			return
+		}
 		// Redaction only SHRINKS or rewrites — never a growth path, so no quota check is needed.
 		if _, err := tx.Exec(ctx,
-			`UPDATE chapters SET byte_size=$2, draft_revision_count=draft_revision_count+1,
-			        draft_updated_at=now(), updated_at=now() WHERE id=$1`, t.id, byteSize); err != nil {
+			`UPDATE chapters SET byte_size=$2, body_encrypted=$3,
+			        word_count=CASE WHEN $4 >= 0 THEN $4 ELSE word_count END,
+			        draft_revision_count=draft_revision_count+1,
+			        draft_updated_at=now(), updated_at=now() WHERE id=$1`, t.id, byteSize, encrypted, wc); err != nil {
 			writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT", "failed to update entry")
 			return
 		}
 		if _, err := tx.Exec(ctx,
 			`UPDATE chapter_drafts SET body=$2, draft_updated_at=now(), draft_version=draft_version+1
-			   WHERE chapter_id=$1`, t.id, jsonBody); err != nil {
+			   WHERE chapter_id=$1`, t.id, draftBody); err != nil {
 			writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT", "failed to update draft")
 			return
 		}
 		if _, err := tx.Exec(ctx,
 			`INSERT INTO chapter_raw_objects(chapter_id, body_text) VALUES($1,$2)
 			   ON CONFLICT (chapter_id) DO UPDATE SET body_text=EXCLUDED.body_text`,
-			t.id, t.newBody); err != nil {
+			t.id, rawCol); err != nil {
 			writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT", "failed to update raw body")
 			return
 		}
 		if _, err := tx.Exec(ctx,
 			`INSERT INTO chapter_revisions(chapter_id, body, body_format, message, author_user_id)
-			   VALUES($1,$2,'json',$3,$4)`, t.id, jsonBody, "forget-person redaction (D17)", owner); err != nil {
+			   VALUES($1,$2,'json',$3,$4)`, t.id, draftBody, "forget-person redaction (D17)", owner); err != nil {
 			writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT", "failed to write revision")
 			return
 		}
@@ -736,7 +795,11 @@ LIMIT 1`, owner).Scan(&bookID, &lifecycle)
 // (not soft-trashed), and a re-provision mints a FRESH empty diary — nothing to resurrect from the
 // book side. Internal-token + owner-scoped by ?user_id; `kind='diary'` guard so this route can NEVER
 // hard-delete a novel or another user's book (a non-diary/foreign id → 0 rows → erased:false).
-// (Backup-resistant crypto-shred stays P-12 — this is the immediate-absence half only.)
+// C5/SD-C5 (P-12) — this now ALSO fires the backup-resistant crypto-shred: after the row-delete it
+// destroys the user's per-user DEK at auth-service, so any surviving backup ciphertext of the diary is
+// permanently unreadable (the immediate-absence half + the backup-resistant half, together). The DEK is
+// per-user; since diary is its only consumer today, shredding it on diary-erase is the assistant-data
+// crypto-shred D-R27 wanted (a re-provision mints a fresh DEK).
 func (s *Server) eraseDiaryBook(w http.ResponseWriter, r *http.Request) {
 	bookID, ok := parseUUIDParam(w, r, "book_id")
 	if !ok {
@@ -755,8 +818,18 @@ func (s *Server) eraseDiaryBook(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT", "failed to erase diary")
 		return
 	}
+	// Crypto-shred the DEK. Idempotent, so it's safe on a re-erase (0 rows) too. A shred FAILURE is
+	// surfaced in the response (shredded:false) — the row-delete succeeded (immediate absence), but a
+	// failed shred means the key survived and a backup could still be decrypted; the caller/orchestrator
+	// must retry the shred to converge on the backup-resistant guarantee.
+	shredErr := s.diaryCrypto.destroyUserDEK(r.Context(), owner)
+	if shredErr != nil {
+		slog.Error("diary erase: crypto-shred of the user DEK FAILED — backup ciphertext may remain readable; retry required",
+			"user_id", owner, "err", shredErr)
+	}
 	writeJSON(w, http.StatusOK, map[string]any{
 		"book_id": bookID.String(), "erased": ct.RowsAffected() > 0, "deleted_books": ct.RowsAffected(),
+		"dek_shredded": shredErr == nil,
 	})
 }
 
@@ -772,14 +845,14 @@ func (s *Server) listDiaryEntries(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	_, _, _, ok = s.authBook(w, r, bookID, GrantOwner)
+	_, owner, _, ok := s.authBook(w, r, bookID, GrantOwner)
 	if !ok {
 		return
 	}
 	rows, err := s.pool.Query(r.Context(), `
 SELECT c.id, c.entry_date, COALESCE(c.entry_zone,'UTC'), COALESCE(c.title,''),
        COALESCE(c.word_count,0), c.journal_kind, c.diary_kept_at, c.draft_updated_at,
-       COALESCE(ro.body_text,'')
+       COALESCE(ro.body_text,''), c.body_encrypted
 FROM chapters c
 LEFT JOIN chapter_raw_objects ro ON ro.chapter_id = c.id
 WHERE c.book_id=$1 AND c.journal_kind IS NOT NULL AND c.lifecycle_state='active'
@@ -797,11 +870,18 @@ LIMIT 100`, bookID)
 		var zone, title, journalKind, body string
 		var wordCount int
 		var keptAt, draftUpdated *time.Time
+		var bodyEncrypted bool
 		// Scan EVERY column into a real target (never `_ = rows.Scan()` — a discarded scan
 		// error zeroes the whole row; pgx-discarded-scan bug class).
 		if err := rows.Scan(&id, &entryDate, &zone, &title, &wordCount, &journalKind,
-			&keptAt, &draftUpdated, &body); err != nil {
+			&keptAt, &draftUpdated, &body, &bodyEncrypted); err != nil {
 			writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT", "failed to read diary entry row")
+			return
+		}
+		// C5 — decrypt the stored prose for this owner+chapter (pass-through for a plaintext row).
+		body, err = s.diaryCrypto.decryptBody(r.Context(), owner, id, body, bodyEncrypted)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "DIARY_DECRYPT_FAILED", "failed to decrypt diary entry")
 			return
 		}
 		e := map[string]any{
