@@ -8,6 +8,8 @@ import { apiJson } from '@/api';
 import { useSheetRoute } from '@/components/shared/Sheet';
 import { useAccountUsage } from '../hooks/useAccountUsage';
 import { AllAppsDrawer, APPS_SHEET_ID } from './AllAppsDrawer';
+import { PushToggle } from '@/features/push/PushToggle';
+import { pushApi } from '@/features/push/api';
 
 export function YouPage() {
   const { user, accessToken, logoutLocal } = useAuth();
@@ -17,7 +19,20 @@ export function YouPage() {
 
   const signOut = async () => {
     setSigningOut(true);
-    // M5 will DELETE this device's push subscription here, BEFORE clearing the JWT.
+    // M5 (§8-B2) — remove THIS device's push subscription BEFORE clearing the JWT, so a signed-out
+    // device stops buzzing ("Signing out removes this device"). Best-effort; never blocks sign-out.
+    try {
+      if ('serviceWorker' in navigator) {
+        const reg = await navigator.serviceWorker.getRegistration();
+        const sub = await reg?.pushManager.getSubscription();
+        if (sub && accessToken) {
+          await pushApi.unregister(accessToken, sub.endpoint).catch(() => {});
+          await sub.unsubscribe().catch(() => {});
+        }
+      }
+    } catch {
+      /* ignore — sign-out proceeds regardless */
+    }
     if (accessToken) {
       try {
         await apiJson('/v1/auth/logout', { method: 'POST', token: accessToken });
@@ -64,6 +79,9 @@ export function YouPage() {
           </dl>
         )}
       </section>
+
+      {/* Notifications (M5) — self-hides where push isn't available */}
+      <PushToggle />
 
       {/* Quick links — every destination is a real, distinct route (no dead links). */}
       <nav className="flex flex-col overflow-hidden rounded-xl border border-border bg-card">

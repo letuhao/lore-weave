@@ -27,6 +27,16 @@ export function registerServiceWorker(): void {
   if (!import.meta.env.PROD) return;
   if (typeof navigator === 'undefined' || !('serviceWorker' in navigator)) return;
 
+  // In-tab deep-link (cold-review LOW-2): when a push is tapped and a tab is already open, the SW
+  // posts {type:'NAVIGATE', route}. Route to it (same-origin relative only — the SW already validated,
+  // we re-check). Without this listener the in-tab case would focus the tab but not navigate.
+  navigator.serviceWorker.addEventListener('message', (e: MessageEvent) => {
+    const d = e.data as { type?: string; route?: string } | undefined;
+    if (d?.type === 'NAVIGATE' && typeof d.route === 'string' && /^\/[^/]/.test(d.route)) {
+      window.location.assign(d.route);
+    }
+  });
+
   window.addEventListener('load', () => {
     navigator.serviceWorker
       .register('/sw.js')

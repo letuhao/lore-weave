@@ -17,6 +17,7 @@ import (
 	"github.com/loreweave/notification-service/internal/config"
 	"github.com/loreweave/notification-service/internal/consumer"
 	"github.com/loreweave/notification-service/internal/migrate"
+	"github.com/loreweave/notification-service/internal/push"
 )
 
 func main() {
@@ -80,13 +81,43 @@ func main() {
 		ReadHeaderTimeout: 10 * time.Second,
 	}
 
+	// M5 (cold-review LOW-1) — the secondary GC: periodically drop push subscriptions that have been
+	// failing without a 404/410 Gone (persistent 5xx/timeout). The 410-prune is the primary GC; this
+	// sweeps the rest so fail_count rows don't accumulate forever. No-op when push isn't configured.
+	pushSweeper := push.NewSender(pool, push.VAPIDConfig{
+		PublicKey:  cfg.VAPIDPublicKey,
+		PrivateKey: cfg.VAPIDPrivateKey,
+		Subscriber: cfg.VAPIDSubscriber,
+	}, slog.Default())
+	go func() {
+		ticker := time.NewTicker(24 * time.Hour)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				if n, err := pushSweeper.SweepStale(ctx, 20); err == nil && n > 0 {
+					slog.Info("pushed subscriptions swept (stale)", "count", n)
+				}
+			}
+		}
+	}()
+
 	// Phase 2d — LLM-jobs consumer. Optional: empty RABBITMQ_URL skips
 	// the subscription so dev-without-broker keeps working.
 	consumerCtx, consumerCancel := context.WithCancel(context.Background())
 	defer consumerCancel()
 	var llmConsumer *consumer.Consumer
 	if cfg.RabbitMQURL != "" {
-		llmConsumer, err = consumer.Start(consumerCtx, cfg.RabbitMQURL, pool, slog.Default())
+		// M5 — the consumer fires a content-free push on a fresh llm_job insert. Shares the same
+		// VAPID config as the HTTP path (a no-op when VAPID isn't configured).
+		pushSender := push.NewSender(pool, push.VAPIDConfig{
+			PublicKey:  cfg.VAPIDPublicKey,
+			PrivateKey: cfg.VAPIDPrivateKey,
+			Subscriber: cfg.VAPIDSubscriber,
+		}, slog.Default())
+		llmConsumer, err = consumer.Start(consumerCtx, cfg.RabbitMQURL, pool, slog.Default(), pushSender)
 		if err != nil {
 			slog.Error("llm-jobs consumer failed to start", "error", err)
 			os.Exit(1)

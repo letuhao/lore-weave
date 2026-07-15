@@ -32,6 +32,53 @@ self.addEventListener('message', (event) => {
   if (event.data && event.data.type === 'SKIP_WAITING') self.skipWaiting();
 });
 
+// M5 (D-MOB-4) — Web Push. The payload the server sends is ALREADY content-free (built from the
+// push_topic only, never the notification's title/body — §8-B1), so the SW just displays it. It
+// carries a route key + opaque id for deep-linking; neither is content.
+self.addEventListener('push', (event) => {
+  let data = {};
+  try {
+    data = event.data ? event.data.json() : {};
+  } catch {
+    data = {};
+  }
+  const title = data.title || 'LoreWeave';
+  const options = {
+    body: data.body || 'You have a new notification.',
+    icon: '/icon.svg',
+    badge: '/icon.svg',
+    // route + opaque id only — NO content in data (§8-S5).
+    data: { route: data.route || '/activity', notification_id: data.notification_id || '' },
+  };
+  event.waitUntil(self.registration.showNotification(title, options));
+});
+
+// Tapping a push opens the app at the (auth-gated) route it carries; the target screen re-fetches
+// owner-scoped with the JWT — the id navigates, it does not authorize (§8-S5). Focus an existing tab
+// if one is open rather than spawning a duplicate.
+// Only a same-origin RELATIVE path is ever opened (defense-in-depth, cold-review MED-2): a single
+// leading slash, not `//evil.com`, an absolute URL, or `javascript:`. The server only ever sends
+// `/activity`, but the SW is the trust boundary and validates regardless.
+function safeRoute(r) {
+  return typeof r === 'string' && /^\/[^/]/.test(r) ? r : '/activity';
+}
+
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+  const route = safeRoute(event.notification.data && event.notification.data.route);
+  event.waitUntil(
+    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clients) => {
+      for (const client of clients) {
+        if ('focus' in client) {
+          client.postMessage({ type: 'NAVIGATE', route });
+          return client.focus();
+        }
+      }
+      return self.clients.openWindow(route);
+    }),
+  );
+});
+
 self.addEventListener('fetch', (event) => {
   const req = event.request;
   if (req.method !== 'GET') return; // never touch writes

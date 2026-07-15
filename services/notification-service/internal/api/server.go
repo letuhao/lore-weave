@@ -20,6 +20,7 @@ import (
 	"github.com/loreweave/notification-service/internal/category"
 	"github.com/loreweave/notification-service/internal/config"
 	"github.com/loreweave/notification-service/internal/prefs"
+	"github.com/loreweave/notification-service/internal/push"
 	"github.com/loreweave/notification-service/internal/redact"
 )
 
@@ -27,10 +28,23 @@ type Server struct {
 	pool   *pgxpool.Pool
 	cfg    *config.Config
 	secret []byte
+	vapid  push.VAPIDConfig
+	sender *push.Sender
 }
 
 func NewServer(pool *pgxpool.Pool, cfg *config.Config) *Server {
-	return &Server{pool: pool, cfg: cfg, secret: []byte(cfg.JWTSecret)}
+	vapid := push.VAPIDConfig{
+		PublicKey:  cfg.VAPIDPublicKey,
+		PrivateKey: cfg.VAPIDPrivateKey,
+		Subscriber: cfg.VAPIDSubscriber,
+	}
+	return &Server{
+		pool:   pool,
+		cfg:    cfg,
+		secret: []byte(cfg.JWTSecret),
+		vapid:  vapid,
+		sender: push.NewSender(pool, vapid, nil),
+	}
 }
 
 func (s *Server) Router() http.Handler {
@@ -82,6 +96,15 @@ func (s *Server) Router() http.Handler {
 		// P2·C (opt-out) — per-user category delivery preferences.
 		r.Get("/preferences", s.getPreferences)
 		r.Put("/preferences", s.setPreference)
+		// M5 (D-MOB-4) — Web Push: device registration + per-topic push toggle + the VAPID public
+		// key. Owner-scoped from the JWT `sub` (§8-H4) except the VAPID key, which is public by design
+		// (its handler skips requireUserID). All under /v1/notifications so they ride the gateway's
+		// existing notification proxy — no new gateway route.
+		r.Post("/push-subscriptions", s.registerPushSubscription)
+		r.Delete("/push-subscriptions", s.deletePushSubscription)
+		r.Get("/push-preferences", s.getPushPreferences)
+		r.Put("/push-preferences", s.setPushPreference)
+		r.Get("/push/vapid-public-key", s.getVAPIDPublicKey)
 	})
 
 	return r
@@ -236,6 +259,10 @@ func (s *Server) createNotification(w http.ResponseWriter, r *http.Request) {
 		userID, category, body.Title, redact.Body(body.Body), meta,
 		nullableText(body.MessageKey), nullableJSONB(body.MessageParams), nullableText(body.DedupKey),
 	).Scan(&id, &createdAt)
+	// B4 (§8-B4) exactly-once push: a FRESH insert returns a row (err==nil); a dedup collision
+	// returns pgx.ErrNoRows (we re-read the existing row, but it was ALREADY pushed on its first
+	// insert — so we must NOT push again). Track it before the re-read overwrites `err`.
+	freshInsert := err == nil
 	if err == pgx.ErrNoRows && strings.TrimSpace(body.DedupKey) != "" {
 		if e := s.pool.QueryRow(r.Context(),
 			`SELECT id, created_at FROM notifications WHERE user_id=$1 AND dedup_key=$2`,
@@ -251,6 +278,13 @@ func (s *Server) createNotification(w http.ResponseWriter, r *http.Request) {
 		"id":         id,
 		"created_at": createdAt.UTC().Format(time.RFC3339Nano),
 	})
+
+	// Fire a content-free push out-of-band, EXACTLY ONCE per stored row (fresh insert only). The
+	// gate inside pushForNotification is fail-closed + respects the per-topic opt-out; a push
+	// failure never affects the already-committed in-app row.
+	if freshInsert {
+		go s.pushForNotification(userID, category, body.MessageKey, "/activity", id.String())
+	}
 }
 
 func (s *Server) createNotificationBatch(w http.ResponseWriter, r *http.Request) {
