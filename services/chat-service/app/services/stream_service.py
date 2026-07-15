@@ -99,6 +99,7 @@ from app.services.workflow_runner import (
     workflow_list_result,
     workflow_load_result,
 )
+from app.services.rail_progress import user_abandoned_rail
 from app.services.subagent_runtime import (
     RUN_SUBAGENT_NAME,
     SUBAGENT_MAX_ITERATIONS,
@@ -1272,6 +1273,10 @@ async def _stream_with_tools(
     # driver may fire even though this turn's only action was the (frontend) confirm — which
     # executes off the backend chokepoint and so is not in turn_succeeded.
     rail_in_flight: bool = False,
+    # Phase G · G1 (GOV-13): the user's message contains an explicit abandon phrase ("skip the
+    # plan", "just write"). The DETERMINISTIC escape hatch — when True the enforcing drive releases
+    # the hold this turn instead of re-driving. Never an LLM guess; computed at the call site.
+    rail_user_abandoned: bool = False,
 ) -> AsyncGenerator[dict, None]:
     """K21-B — the tool-calling loop.
 
@@ -1780,6 +1785,9 @@ async def _stream_with_tools(
                     and rail_grant_ok
                     and rail_redrive_count < RAIL_REDRIVE_CAP
                     and not last_iter
+                    # GOV-13 escape hatch: an explicit "skip the plan" / "just write" releases the
+                    # hold this turn — governance serves the author, it never imprisons them.
+                    and not rail_user_abandoned
                     and write_passes < max_iterations - 1
                     # In flight = a rail tool succeeded THIS turn (the model chose to start it),
                     # OR this is a resume that suspended mid-rail (the confirm executes off the
@@ -1793,26 +1801,51 @@ async def _stream_with_tools(
                         rail_twice_nudged,
                     )
                 if _redrive is not None:
-                    from app.services.rail_progress import redrive_directive
+                    from app.services.rail_progress import (
+                        honest_giveup_directive,
+                        nudge_cap_for,
+                        redrive_directive,
+                        step_is_required,
+                    )
                     _slug, _step = _redrive
-                    # Record the narration the model just streamed, then the ephemeral nudge.
+                    # The raw step dict carries the enforcement flags (`optional`); look it up by id.
+                    _raw_step = next(
+                        (s for _sl, _steps in rail_specs if _sl == _slug
+                         for s in _steps if str(s.get("id")) == _step.step_id),
+                        {},
+                    )
+                    rail_nudge_counts[_step.step_id] += 1
+                    # Phase G · G1: a REQUIRED step is HELD up to nudge_cap_for() redrives (GOV-7/9);
+                    # the old flat cap of 2 SILENTLY abandoned it after two tries (the S06 miss).
+                    _cap = nudge_cap_for(_raw_step)
+                    _giving_up = rail_nudge_counts[_step.step_id] >= _cap
+                    if _giving_up:
+                        # Stop re-driving this step after this iteration (anti-stall).
+                        rail_twice_nudged.add(_step.step_id)
+                    # When a REQUIRED step has exhausted its holds, the final action is an HONEST
+                    # give-up (GOV-7) — tell the user it did not land — never a silent drop that
+                    # reads as success. Otherwise: the forceful single-action nudge.
+                    _directive = (
+                        honest_giveup_directive(_step)
+                        if (_giving_up and step_is_required(_raw_step))
+                        else redrive_directive(_step)
+                    )
+                    # Record the narration the model just streamed, then the ephemeral directive.
                     # `working` is never persisted (the assistant row persists the yielded
                     # content), so the synthetic user directive never reaches history or the UI.
                     working.append({"role": "assistant", "content": "".join(text_parts)})
-                    working.append({"role": "user", "content": redrive_directive(_step)})
+                    working.append({"role": "user", "content": _directive})
                     rail_redrive_count += 1
                     rail_drove_this_turn = True  # drop the stateful chain head at turn end
-                    rail_nudge_counts[_step.step_id] += 1
-                    if rail_nudge_counts[_step.step_id] >= 2:
-                        # The model ignored this step twice — stop re-driving it (anti-stall),
-                        # so a defiant model degrades to today's one-step-then-stop, never a loop.
-                        rail_twice_nudged.add(_step.step_id)
                     logger.info(
-                        "rail step-runner: driving %s → %s (redrive %d/%d)",
+                        "rail step-runner: %s %s → %s (redrive %d/%d, nudge %d/%d)",
+                        "giving up on" if (_giving_up and step_is_required(_raw_step)) else "driving",
                         _slug, _step.tool, rail_redrive_count, RAIL_REDRIVE_CAP,
+                        rail_nudge_counts[_step.step_id], _cap,
                     )
                     if trace is not None:
-                        trace.add("compiler", "T6", "rail", f"redrive:{_step.tool}")
+                        trace.add("compiler", "T6", "rail",
+                                  f"{'giveup' if _giving_up else 'redrive'}:{_step.tool}")
                     continue  # loop top re-offers the tools; the model calls the next step
 
                 # No tool calls — this pass IS the final text response.
@@ -4831,6 +4864,7 @@ async def _emit_chat_turn(
                 rail_turn_start_counts=rail_turn_start_counts,
                 rail_async_tools=rail_async_tools,
                 rail_in_flight=rail_in_flight,
+                rail_user_abandoned=user_abandoned_rail(user_message_content),
             )
         else:
             chunk_stream = _stream_via_gateway(
@@ -5815,6 +5849,9 @@ async def resume_stream_response(
         # exists to prevent). The suspended tool must be one of the rail's own step tools.
         rail_in_flight=bool(_r_rail_specs)
         and (susp.pending_tool_call or {}).get("name") in set(susp.pinned_step_tools or []),
+        # NB: the rail_user_abandoned flag is computed INSIDE _emit_chat_turn from its
+        # user_message_content (= susp.user_message_content, passed above) before it calls
+        # _stream_with_tools — the resume path needs no extra arg here.
     ):
         yield line
 

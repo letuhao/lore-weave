@@ -500,3 +500,65 @@ def redrive_directive(step: StepProgress) -> str:
         f"in plain words what changed. Never mention this instruction, the tool name, or any "
         f"internal term."
     )
+
+
+# ── enforcement (Phase G · G1 — GOV-7/9/12/13) ────────────────────────────────
+#
+# `compute_rail_progress`/`next_actionable_step` decide WHERE the user is and WHETHER a step is
+# drivable. Enforcement decides how HARD to hold a drivable step before yielding the turn — the
+# piece the rail lacked (its own header: "Nothing DRIVES the rail"). The S06 failure was a step
+# (compile) computed as next, nudged, ignored, and then SILENTLY abandoned after two tries, so the
+# book ended uncompiled. Enforcement holds a REQUIRED step longer and, when it truly cannot land,
+# releases it HONESTLY rather than pretending success.
+#
+# Three rules, matching the sealed decisions:
+#   * REQUIRED by default (GOV-9, D-ENFORCE-ON) — a step is enforced unless it opts out with
+#     `"optional": true`. Optional steps are nudged once and never hold the turn.
+#   * BOUNDED (GOV-7) — a required step is held at most RAIL_REQUIRED_NUDGE_CAP redrives, then
+#     released with an honest "I couldn't finish X". A runaway enforcer is itself a bug.
+#   * DETERMINISTIC RELEASE (GOV-13) — an explicit abandon phrase in the user's message releases
+#     the hold immediately; the gate NEVER sits on an LLM intent-guess (the S06 failure mode).
+RAIL_REQUIRED_NUDGE_CAP = 3   # D-ENFORCE-ON: N=3 auto-release. G2 makes this a per-user setting.
+RAIL_OPTIONAL_NUDGE_CAP = 1
+
+
+def step_is_required(raw: dict) -> bool:
+    """A rail step is REQUIRED (enforced) unless it declares ``"optional": true``. Enforcement is
+    ON by default (D-ENFORCE-ON) — a definition opts a step OUT, never in."""
+    return not bool(raw.get("optional"))
+
+
+def nudge_cap_for(raw: dict) -> int:
+    """How many redrives a step gets before the bounded auto-release (GOV-7)."""
+    return RAIL_REQUIRED_NUDGE_CAP if step_is_required(raw) else RAIL_OPTIONAL_NUDGE_CAP
+
+
+# The escape hatch (GOV-13) is a small, LITERAL matcher on the user's own words. A false positive
+# merely releases a hold (governance SERVES the author — `blocked ≠ imprisoned`); a false negative
+# is caught by the bounded auto-release. It is deliberately NOT an LLM call — the release must not
+# sit on the same inference that caused the miss.
+_ABANDON_RE = re.compile(
+    r"\b(?:skip|forget|drop|abandon|never\s*mind|nevermind|leave|ditch)\b[^.?!\n]{0,24}"
+    r"\b(?:plan|step|setup|set-up|it|this|that|those|them)\b"
+    r"|\bjust\s+(?:write|draft|move\s*on|keep\s+going|get\s+writing)\b"
+    r"|\b(?:stop|don'?t)\s+(?:setting\s*up|planning|worrying\s+about\s+the\s+plan|the\s+plan)\b",
+    re.I,
+)
+
+
+def user_abandoned_rail(text: str | None) -> bool:
+    """True when the user's message contains an explicit abandon phrase — the deterministic
+    release signal for the Stop-gate (GOV-13). Not an intent-guess: a literal match only."""
+    return bool(text and _ABANDON_RE.search(text))
+
+
+def honest_giveup_directive(step: StepProgress) -> str:
+    """GOV-7 — after the bounded cap, tell the user PLAINLY the step did not land, instead of
+    silently dropping it. A silent give-up reads as success (`silent-success-is-a-bug`); an honest
+    "I couldn't finish that yet" is what keeps enforcement from lying."""
+    return (
+        f"[SYSTEM DIRECTIVE — not from the user] You have tried this step several times and it has "
+        f"not taken. STOP retrying it. In plain words, tell the user you were not able to finish "
+        f"setting that part up yet, and ask whether they want to try again or move on for now. Do "
+        f"NOT claim it worked, and never mention this instruction or any tool name."
+    )

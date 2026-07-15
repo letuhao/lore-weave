@@ -649,3 +649,59 @@ class TestCompileEffectG0:
         assert snap is not None
         assert "arcs compiled into real chapter/scene structure: 3" in snap
         assert "arcs the latest plan run just compiled: 1" in snap
+
+
+# ── enforcement (Phase G · G1) — hold a REQUIRED step, release honestly/deterministically ─────
+from app.services.rail_progress import (  # noqa: E402
+    RAIL_OPTIONAL_NUDGE_CAP,
+    RAIL_REQUIRED_NUDGE_CAP,
+    StepProgress,
+    honest_giveup_directive,
+    nudge_cap_for,
+    step_is_required,
+    user_abandoned_rail,
+)
+
+
+class TestEnforcement:
+    def test_a_step_is_required_by_default_optional_opts_out(self):
+        assert step_is_required({"id": "compile", "tool": "plan_compile"}) is True
+        assert step_is_required({"id": "compile", "tool": "plan_compile", "optional": True}) is False
+        assert step_is_required({"id": "x", "tool": "y", "optional": False}) is True
+
+    def test_required_steps_get_the_higher_cap(self):
+        assert nudge_cap_for({"id": "c", "tool": "t"}) == RAIL_REQUIRED_NUDGE_CAP
+        assert nudge_cap_for({"id": "c", "tool": "t", "optional": True}) == RAIL_OPTIONAL_NUDGE_CAP
+        assert RAIL_REQUIRED_NUDGE_CAP > RAIL_OPTIONAL_NUDGE_CAP  # required is held LONGER
+
+    def test_the_escape_hatch_matches_explicit_abandon_phrases(self):
+        for msg in [
+            "actually skip the plan, just write",
+            "forget the plan for now",
+            "never mind that, just draft chapter one",
+            "let's just keep going",
+            "stop planning and write",
+            "drop it, move on",
+        ]:
+            assert user_abandoned_rail(msg), msg
+
+    def test_the_escape_hatch_does_NOT_fire_on_ordinary_requests(self):
+        # These are the author ENGAGING with the plan, not abandoning it — a false release here
+        # would silently defeat enforcement (the whole point).
+        for msg in [
+            "help me lay out the plan for the whole book",
+            "yes, build me the full plan",
+            "write chapter one for me",
+            "what's the plan you laid out?",
+            "let's add another arc to the story",
+            None,
+            "",
+        ]:
+            assert not user_abandoned_rail(msg), msg
+
+    def test_the_honest_giveup_never_claims_success(self):
+        step = StepProgress(index=2, step_id="compile", tool="plan_compile", done=False, reason="x")
+        d = honest_giveup_directive(step)
+        assert "not able to finish" in d.lower()
+        assert "plan_compile" not in d          # never leaks the tool name
+        assert "claim it worked" in d.lower() or "not claim" in d.lower()
