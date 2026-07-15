@@ -82,6 +82,13 @@ _INTENT_PATTERNS: list[tuple[str, list[str]]] = [
         r"put.*(city|capital|place|town).*(on\s+the\s+)?map",
         r"\bworld\s+map\b",
     ]),
+    ("lore-so-far", [
+        r"\bso\s+far\b",
+        r"up\s+to\s+(here|where\s+i|this\s+point)",
+        r"(happened|revealed|know|learned|met|died|betray).*(yet|so\s+far)",
+        r"what\s+do\s+(we|i)\s+know\s+about",
+        r"(without|no)\s+spoil",
+    ]),
 ]
 
 _COMPILED: list[tuple[str, list[re.Pattern]]] = [

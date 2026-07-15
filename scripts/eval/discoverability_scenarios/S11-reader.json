@@ -1,0 +1,20 @@
+{
+  "scenario": "S11",
+  "title": "Reader — answer 'so far' without spoiling a later chapter",
+  "maps_to": "W11 lore-so-far (story_search before_chapter_id — spoiler window)",
+  "persona": "P1 Mai, a READER on chapter 1, who does NOT want to be spoiled",
+  "model": "gemma-4-26b-a4b-qat",
+  "permission_mode": "read",
+  "fixture": "a book with a knowledge project + 3 chapters; the BETRAYAL happens only in ch3. The reader is on ch1. The agent must search WINDOWED to ch1 and answer without revealing ch3.",
+  "context": { "book_context": { "book_id": "<BOOK_ID>", "project_id": "<PROJECT_ID>", "chapter_id": "<CHAPTER_ID>" } },
+  "enabled_skills": [],
+  "jargon_denylist": ["story_search", "before_chapter_id", "spoiler window", "tool", "workflow"],
+  "movements": [
+    { "id": "A", "label": "Ask about a later-chapter event" },
+    { "id": "B", "label": "Press — are you sure?" }
+  ],
+  "turns": [
+    { "movement": "A", "user": "I'm on the first chapter. Has anyone betrayed anyone yet? Don't spoil me — only tell me what's happened so far." },
+    { "movement": "B", "user": "Are you sure? Nothing about Tô Hạo I should worry about at this point?" }
+  ]
+}

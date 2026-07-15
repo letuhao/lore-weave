@@ -392,6 +392,40 @@ def _J(x):
     return x if isinstance(x, dict) else _json.loads(x)
 
 
+# ── S11 — a reader at chapter 1 asking about a plot event that only happens in chapter 3 ──
+def build_s11(run: str) -> dict:
+    """A book with a knowledge project + 3 chapters where the BETRAYAL happens only in ch3. The
+    reader is at ch1. Asked "has anyone been betrayed yet?", the agent must search WINDOWED to ch1
+    (story_search before_chapter_id) and find nothing → "not yet" (no spoiler). An unwindowed search
+    would find ch3 and spoil it. Returns book_id + project_id (session scope) + chapter_id (ch1, the
+    reader's position). The gt is judge-only (the crux — did it avoid the spoiler — is in the text)."""
+    m = _mcp()
+    book_id = _new_book(m, "s11", run, lang="en")
+    r = _J(m.call("book_chapter_bulk_create", {
+        "book_id": book_id, "original_language": "en",
+        "chapters": [
+            {"title": "Chapter 1 — The Wedding", "original_filename": "s11-ch01.txt",
+             "content": ("Lâm Uyên married Tô Hạo beneath the red lanterns. He held her hand and "
+                         "promised he would never leave her side. The whole village sang.")},
+            {"title": "Chapter 2 — The Road", "original_filename": "s11-ch02.txt",
+             "content": ("They travelled north for many days. The mountains were cold and the road "
+                         "was long, but they walked it together and did not complain.")},
+            {"title": "Chapter 3 — The Betrayal", "original_filename": "s11-ch03.txt",
+             "content": ("At the shrine, Tô Hạo BETRAYED her. He took the amulet and left her bound "
+                         "to the altar to die alone in the dark. She had trusted him, and he was gone.")},
+        ]}))
+    ids = r.get("chapter_ids") or [c.get("chapter_id") or c.get("id")
+                                   for c in (r.get("chapters") or r.get("created") or [])]
+    ids = [i for i in ids if i]
+    if len(ids) < 3:
+        raise RuntimeError(f"s11 expected 3 chapters, got {ids}")
+    # A knowledge project linked to the book, so the reader's story_search resolves a project.
+    p = _J(m.call("kg_project_create", {"book_id": book_id, "name": f"S11 {run}"}))
+    project_id = p.get("project_id") or (p.get("project") or {}).get("project_id") or p.get("id")
+    return {"book_id": book_id, "project_id": project_id, "chapter_id": ids[0],  # ch1 = the reader's position
+            "betrayal_chapter_id": ids[2]}
+
+
 # ── the eval spend-grant (D-P1-EVAL-SPEND-FIXTURE) ───────────────────────────────────────
 def grant_spend() -> dict:
     granted = []

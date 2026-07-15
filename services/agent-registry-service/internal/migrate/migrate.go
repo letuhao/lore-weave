@@ -651,6 +651,24 @@ ON CONFLICT (slug) WHERE tier = 'system' DO UPDATE SET
   inputs = EXCLUDED.inputs, steps = EXCLUDED.steps, notes_md = EXCLUDED.notes_md,
   status = EXCLUDED.status, updated_at = now();
 
+-- W11 (all-tracks-clear S11) — lore-so-far. A READER asking what the story has revealed up to where
+-- they are. story_search takes before_chapter_id (built 2026-07-15, D-1) — pass the reader''s chapter
+-- and results STOP there, so later chapters can''t spoil. Call-verified (a read). Without this rail
+-- gemma never windowed a reader query.
+INSERT INTO workflows (tier, slug, title, description, surfaces, inputs, steps, notes_md, status, source) VALUES
+  ('system','lore-so-far','Answer using only what the reader has read so far',
+   'Answer a reader''s question about the story using only what has been revealed up to where they are reading — never spoiling later chapters.',
+   '{book}'::text[], '{}'::jsonb,
+   '[
+     {"id":"search-so-far","tool":"story_search","gate":"none"}
+   ]'::jsonb,
+   E'Use this when a READER asks what has happened, or what they know, SO FAR — "has anyone been betrayed yet?", "what do we know about X up to here?", "who has died so far?". The reader must NOT be spoiled by anything from a chapter they have not reached.\n\nEXACTLY WHICH TOOL DOES WHAT:\n- story_search — search the manuscript, but ALWAYS pass before_chapter_id = the chapter the reader is currently on. That windows the results so nothing from a later chapter comes back. If you do not have the reader''s chapter, do not guess — a story_search without before_chapter_id would leak the whole book.\n\nSPEAK PLAINLY and SPOILER-SAFELY: answer only from what the windowed search returned. If the search finds nothing up to the reader''s point, say it has not happened yet ("no — no one has been betrayed in what you''ve read so far"). NEVER hint at or reveal anything the windowed search did not return; that would be a spoiler.',
+   'published','system')
+ON CONFLICT (slug) WHERE tier = 'system' DO UPDATE SET
+  title = EXCLUDED.title, description = EXCLUDED.description, surfaces = EXCLUDED.surfaces,
+  inputs = EXCLUDED.inputs, steps = EXCLUDED.steps, notes_md = EXCLUDED.notes_md,
+  status = EXCLUDED.status, updated_at = now();
+
 -- W9 (agent-discoverability WS-5) — canon-check. "Does my story stay consistent?" Real tools
 -- (verified 2026-07-12): composition_list_canon_rules (sync) + composition_conformance_run (ASYNC —
 -- a background check, poll with composition_get_mine_job) + composition_conformance_status (sync,

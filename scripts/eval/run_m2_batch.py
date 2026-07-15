@@ -81,6 +81,18 @@ def _run_harness(scenario_id: str, book_id: str, label: str) -> dict:
     if scenario_id in CONFIRM_GATED:
         # Simulate the user clicking the auto-rendered confirm card for a Tier-W write.
         env += ["-e", "QG_SIM_AUTORENDER=1"]
+    if scenario_id == "S11":
+        # A READER session: give the session the book's knowledge project (so story_search resolves
+        # a project) + the reader's chapter (ch1, lowest sort_order) as the spoiler window anchor.
+        proj = _sql("loreweave_knowledge",
+                    f"SELECT project_id FROM knowledge_projects WHERE book_id='{book_id}' "
+                    f"ORDER BY created_at LIMIT 1").strip()
+        chap = _sql(DBK["book"],
+                    f"SELECT id FROM chapters WHERE book_id='{book_id}' ORDER BY sort_order LIMIT 1").strip()
+        if proj:
+            env += ["-e", f"SKILL_PROJECT_ID={proj}"]
+        if chap:
+            env += ["-e", f"SKILL_CHAPTER_ID={chap}"]
     subprocess.run(["docker", "exec", *env, CHAT, "python", "/tmp/ds.py"],
                    capture_output=True, text=True, timeout=1800)
     raw = subprocess.run(
@@ -221,6 +233,7 @@ SCEN = {
     "S03":  (_s03_book, _gt_triaged, False),                                     # entity-triage (drain a pile)
     "S06":  (lambda lbl: _fresh_book(f"M2-S06-{lbl}"), _gt_flagship, False),     # flagship vision-to-book (beat-F settler)
     "S10":  (lambda lbl: fx.build_s10(lbl)["book_id"], _gt_maps, False),         # W10 maps (create + marker)
+    "S11":  (lambda lbl: fx.build_s11(lbl)["book_id"], None, True),              # W11 reader (spoiler-safe; judge)
     "S04":  (lambda lbl: fx.build_s04(lbl)["book_id"], _gt_kg, False),           # kg-build from glossary
     "S05":  (lambda lbl: fx.build_s05(lbl)["book_id"], _gt_s05, False),          # translation-pass (only redo what changed)
     "S07":  (lambda lbl: _fresh_book(f"M2-S07-{lbl}"), _gt_plan, False),
