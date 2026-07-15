@@ -625,6 +625,21 @@ CREATE TABLE IF NOT EXISTS reflection_notes (
 CREATE INDEX IF NOT EXISTS idx_reflection_notes_owner_date
   ON reflection_notes (owner_user_id, entry_date);
 
+-- WS-5.6 / C2 (SD-C2) — reflection_dismissals: the user's tombstoned reflection patterns. A
+-- dismissed pattern must never resurface as a "new" row next week, so worker-ai's reflection
+-- detector drops any candidate whose PERIOD-INDEPENDENT pattern_key is here (dropped AT DETECTION,
+-- before any phrasing). PER-USER tier (User Boundaries): owner_user_id scopes every row;
+-- UNIQUE(owner,pattern_key) makes a dismiss idempotent (dismissing twice is a no-op, never a dup).
+CREATE TABLE IF NOT EXISTS reflection_dismissals (
+  id             UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  owner_user_id  UUID NOT NULL,
+  pattern_key    TEXT NOT NULL,
+  created_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE (owner_user_id, pattern_key)
+);
+CREATE INDEX IF NOT EXISTS idx_reflection_dismissals_owner
+  ON reflection_dismissals (owner_user_id);
+
 -- WS-5.20 (spec 08 §Scorer) — coaching_rubrics: the SCORING STANDARD, versioned + cited,
 -- replacing the free-form SessionTemplate.rubric (dict[str,Any], no schema — "improvised
 -- standards already ship"). SYSTEM tier: admin-seeded, everyone reads, a regular user never

@@ -29,7 +29,7 @@ coaching safety-eval + numeric-eval CLEARANCE — human milestones; the scorer s
 | Slice | SD | Status | Evidence / note |
 |---|---|---|---|
 | **C1** distiller token sizing | SD-C1 | ✅ | worker-ai `distiller.py` windows in TOKENS via `loreweave_context.estimate_tokens` + NEW `split_to_token_budget` (single home in the SDK, not duplicated). `WINDOW_CHARS`→`WINDOW_TOKENS`(12k), `GIANT_PASTE_CHARS`→`GIANT_PASTE_TOKENS`(40k). **Tests:** SDK 7 passed + worker-ai distiller/job/reextract 55 passed (pasted). **Smoke:** real-import — a 20k-char CJK day: OLD char-window let a chunk reach ~12.6k tok (overflows small models); NEW caps every chunk ≤12k tok (worst 11999); same-size Latin day now 1 chunk vs 2. **Cold review:** cold agent, no HIGH, standards clean, `split_to_token_budget` lossless (2000-string stress); 2 LOW test-strengthenings fixed + re-green; 1 MED → debt D-DISTILL-WINDOW-MODEL-AWARE (§7). Single service — no cross-service seam. |
-| **C2** reflection v2 (co-occurrence notes + live tombstone) | SD-C2 | ⬜ | worker-ai `ChatAssistantClient` → notes into `run_weekly_reflection`; `reflection_dismissals` table + dismiss endpoint → tombstone LIVE. |
+| **C2** reflection v2 (co-occurrence notes + live tombstone) | SD-C2 | ✅ | worker-ai `ChatAssistantClient` fetches the week's notes (→ co-occurrence fires) + dismissed pattern_keys (→ tombstone) and threads them into `run_weekly_reflection`. New chat `reflection_dismissals` table (owner-scoped, `UNIQUE(owner,pattern_key)`) + `PUT /assistant/reflection-dismiss` (idempotent) + `GET /assistant/reflection-dismissals`. **Tests:** worker reflection 21 + job; chat dismiss-router 4 + dismissals-db 2 (real PG). **Live-smoke (PASTED):** worker-ai real `ChatAssistantClient` → running chat-service :8212 → seed 2 notes → co-occurrence `co_occurrence:migration` surfaced; dismiss (idempotent 2×) → fetched back → pattern tombstoned (empty). **Cold review:** 1 MED (notes feed the fail-CLOSED Gate-3 safety screen but were swallowed on transport error) → FIXED: `list_reflection_notes` now raises `ChatAssistantUnavailable` → consumer un-ACKs/retries (re-smoked: down-endpoint raises); LOW-3 router param-assert added; LOW-2 (dismiss-WRITE producer) = C8's FE. Debt: D-REFLECTION-FACTS-RECALL-FAIL-CLOSED (§7). |
 | **C3** coaching scorer → rubric SoT (quarantine) | SD-C3 | ⬜ | evaluate.py `resolve_active_rubric` (code `charter.rubric_code` default `interview_v1`) → 409 no-rubric; `coerce_dimensions`; quarantine STAYS True. |
 | **C4** wiki `is_person` structural flag | SD-C4 | ⬜ | glossary `book_kinds.is_person`; seed colleague+character; migrate/backfill; 4 filters → is_person; seed-drift test. |
 | **C5** diary encryption + crypto-shred | SD-C5 | ⬜ | book diary chapters encrypted at rest (per-user DEK via `loreweave_crypto`); D-R27 erase DESTROYS the DEK (backup-resistant). Dedicated key ≠ JWT_SECRET. |
@@ -53,6 +53,13 @@ H1..H4 + SD-C1..C8 — all in [`2026-07-15-personal-assistant-completion-seal.md
   BYOK model. Two LOW test gaps the review found (lone-char-over-budget; CJK giant-paste) were fixed
   in-slice, not deferred.
 
+- **C2 near-miss (fixed):** the reflection_notes fetch was first written best-effort (swallow → `[]`),
+  which would have silently DOWNGRADED the fail-closed Gate-3 safety screen on a chat-service blip
+  (a note-borne-distress week could be written as an upbeat reflection, terminal, never retried).
+  Cold review caught it; fixed to raise → retry. The review's premise that `recall_facts_range`
+  already "propagates" was WRONG (it also swallows) — so the facts path has the same latent gap,
+  tracked as D-REFLECTION-FACTS-RECALL-FAIL-CLOSED rather than assumed-safe.
+
 ## 7 · Debt / follow-on carried
 - **SD-7 human-rating milestones** — safety-eval cert + numeric-eval QWK clearance. NOT code; gates a later milestone. The scorer stays quarantine-tier until then.
 - **D-DISTILL-WINDOW-MODEL-AWARE** (from C1 cold review, MED) — the distiller's `window` default is a
@@ -62,4 +69,12 @@ H1..H4 + SD-C1..C8 — all in [`2026-07-15-personal-assistant-completion-seal.md
   Gate #2 (needs the distill job to resolve the model's context length — a real feature, not a quick
   edit). NOT urgent: the deployed model is 200K-context. Trigger: a user configures an ≤8k BYOK distill
   model. Default stays 12k per the seal.
+- **D-REFLECTION-FACTS-RECALL-FAIL-CLOSED** (from C2 cold review, LOW/MED-adjacent) — `KnowledgeClient.
+  recall_facts_range` swallows a transport/non-200 to `[]` (best-effort), same as the notes fetch did
+  before the C2 fix. The diary FACTS are the dominant input to the fail-closed Gate-3 safety screen, so
+  on a knowledge-service blip a reflection can still be written having screened fewer facts. C2 fixed
+  the NEW input (notes); making `recall_facts_range` distinguish transport-error from genuine-empty is a
+  SHARED-contract change (it's also used by `roll_up_week`, where empty-on-error is currently the
+  intended "nothing to summarize" degrade) — gate #2 (structural, needs a per-caller retryable variant).
+  Trigger: harden the reflection safety path fully. NOT urgent (facts-only distress + a concurrent blip).
 - Anything discovered during C1..C8 that clears the defer gate lands here.

@@ -16,6 +16,7 @@ from loreweave_obs import setup_logging, setup_tracing
 
 from app.clients import (
     BookClient,
+    ChatAssistantClient,
     ChatClient,
     GlossaryClient,
     KnowledgeClient,
@@ -80,6 +81,13 @@ async def main() -> None:
     # FD-2 — chat-service client: fetch a chat turn's text so the chat drain branch
     # extracts real knowledge (was a text="" no-op).
     chat_client = ChatClient(
+        base_url=settings.chat_service_url,
+        internal_token=settings.internal_service_token,
+        timeout_s=settings.chat_client_timeout_s,
+    )
+    # C2 (SD-C2) — assistant-domain client: the weekly-reflection consumer reads the week's
+    # reflection_notes (→ co-occurrence detector) + the user's dismissed pattern_keys (→ tombstone).
+    chat_assistant_client = ChatAssistantClient(
         base_url=settings.chat_service_url,
         internal_token=settings.internal_service_token,
         timeout_s=settings.chat_client_timeout_s,
@@ -227,6 +235,7 @@ async def main() -> None:
             consumer_group=f"{settings.distill_consumer_group}-reflection",
             consumer_name=settings.distill_consumer_name,
             block_ms=settings.summary_consumer_block_ms,
+            chat_client=chat_assistant_client,  # C2 — notes + dismissals substrate
         )
         coroutines.append(_reflection_consumer.run())
         logger.info("D-REFLECTION-WIRE: assistant.weekly_reflection consumer started (group=%s-reflection)",
@@ -308,6 +317,7 @@ async def main() -> None:
         await knowledge_client.aclose()
         await book_client.aclose()
         await chat_client.aclose()
+        await chat_assistant_client.aclose()
         await glossary_client.aclose()
         await provider_client.aclose()
         await usage_billing_client.aclose()

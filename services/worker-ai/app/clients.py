@@ -43,6 +43,8 @@ __all__ = [
     "GlossarySyncResult",
     "SummarizeMessageResult",
     "ChatClient",
+    "ChatAssistantClient",
+    "ChatAssistantUnavailable",
     "ProviderRegistryClient",
 ]
 
@@ -630,6 +632,83 @@ class ChatClient:
         except (httpx.HTTPError, ValueError, KeyError) as exc:
             logger.warning("chat-service day-window failed: %s", exc)
             return None
+
+
+# ── ChatAssistantClient ──────────────────────────────────────────────
+
+
+class ChatAssistantUnavailable(Exception):
+    """C2 (cold-review MED-1) — a TRANSPORT / non-200 failure fetching the safety-feeding
+    reflection_notes. RAISED (not swallowed) because those notes feed the fail-CLOSED Gate-3 safety
+    screen (X-2 SEALED): a transient chat-service outage must make the reflection RETRY, never
+    silently write a reflection that skipped screening note-borne distress. An empty 200 ('no notes
+    this week') is NOT this — it returns []."""
+
+
+class ChatAssistantClient:
+    """C2 (SD-C2) — reads the ASSISTANT-domain reflection substrate from chat-service so the
+    weekly-reflection worker can fire the co-occurrence detector (needs the week's reflection_notes)
+    and honour the user's tombstoned patterns (needs the dismissed pattern_keys). Separate from
+    ChatClient (which reads chat turns / the distiller day-window) — this is the reflection substrate,
+    a distinct concern. Both methods are BEST-EFFORT: a transport/non-200 degrades to empty, so a
+    transiently-down chat-service yields a reflection with fewer detectors, never a crash or a lost
+    job. Internal-token boundary."""
+
+    def __init__(self, base_url: str, internal_token: str, timeout_s: float) -> None:
+        self._base_url = base_url.rstrip("/")
+        self._http = httpx.AsyncClient(
+            timeout=httpx.Timeout(timeout_s),
+            headers={"X-Internal-Token": internal_token},
+        )
+
+    async def aclose(self) -> None:
+        await self._http.aclose()
+
+    async def list_reflection_notes(
+        self, *, user_id: str | UUID, date_from: str, date_to: str,
+    ) -> list[dict]:
+        """GET /internal/chat/assistant/reflection-notes → the week's end-of-day notes
+        ([{entry_date, went_well, to_improve}]).
+
+        NOT best-effort (cold-review MED-1): these notes feed the fail-CLOSED Gate-3 safety screen
+        (reflect_week screens facts AND notes before surfacing anything), so a TRANSPORT/non-200
+        failure RAISES `ChatAssistantUnavailable` — the consumer un-ACKs and retries rather than
+        silently writing a reflection that skipped screening note-borne distress. An empty 200 ('no
+        notes this week') is a valid result → returns []."""
+        url = f"{self._base_url}/internal/chat/assistant/reflection-notes"
+        params = {"user_id": str(user_id), "date_from": date_from, "date_to": date_to}
+        try:
+            resp = await self._http.get(url, params=params)
+        except httpx.HTTPError as exc:
+            logger.warning("chat reflection-notes transport error for %s: %s", user_id, exc)
+            raise ChatAssistantUnavailable(f"reflection-notes transport error: {exc}") from exc
+        if resp.status_code != 200:
+            logger.warning("chat reflection-notes %d for %s [%s..%s]",
+                           resp.status_code, user_id, date_from, date_to)
+            raise ChatAssistantUnavailable(f"reflection-notes HTTP {resp.status_code}")
+        try:
+            return list(resp.json().get("notes") or [])
+        except (ValueError, KeyError) as exc:
+            # a malformed 200 body is as opaque as a transport failure for the safety screen → retry
+            logger.warning("chat reflection-notes bad body for %s: %s", user_id, exc)
+            raise ChatAssistantUnavailable(f"reflection-notes bad body: {exc}") from exc
+
+    async def list_dismissed_pattern_keys(self, *, user_id: str | UUID) -> frozenset[str]:
+        """GET /internal/chat/assistant/reflection-dismissals → the user's tombstoned pattern_keys.
+        Best-effort: any transport/non-200 → empty set. NOTE the fail-open here is SAFE — an empty
+        set means a previously-dismissed pattern could momentarily reappear (annoying, recoverable),
+        never that a live pattern is wrongly hidden; correctness-over-cost the other way would risk
+        hiding a real observation on a blip."""
+        url = f"{self._base_url}/internal/chat/assistant/reflection-dismissals"
+        try:
+            resp = await self._http.get(url, params={"user_id": str(user_id)})
+            if resp.status_code != 200:
+                logger.warning("chat reflection-dismissals %d for %s", resp.status_code, user_id)
+                return frozenset()
+            return frozenset(resp.json().get("pattern_keys") or [])
+        except (httpx.HTTPError, ValueError, KeyError) as exc:
+            logger.warning("chat reflection-dismissals failed: %s", exc)
+            return frozenset()
 
 
 # ── ProviderRegistryClient ───────────────────────────────────────────

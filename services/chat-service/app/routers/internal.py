@@ -193,6 +193,48 @@ async def list_reflection_notes(
     ]}
 
 
+# ── WS-5.6 / C2 — reflection_dismissals (the tombstone substrate) ─────────────
+class ReflectionDismiss(BaseModel):
+    """Dismiss a reflection pattern permanently (spec 08 §WS-5.6). owner_user_id is in the body
+    (the FE already authenticated the user; X-Internal-Token gates the boundary). Idempotent on
+    (owner, pattern_key) — the pattern_key is PERIOD-INDEPENDENT so the tombstone holds across weeks."""
+
+    owner_user_id: UUID
+    pattern_key: str
+
+
+@router.put("/assistant/reflection-dismiss", dependencies=[Depends(require_internal_token)])
+async def dismiss_reflection_pattern(body: ReflectionDismiss, db: asyncpg.Pool = Depends(get_db)) -> dict:
+    """Tombstone one reflection pattern (PER-USER tier). Idempotent: dismissing the same
+    pattern_key twice is a no-op (ON CONFLICT DO NOTHING), never a duplicate row."""
+    key = (body.pattern_key or "").strip()
+    if not key:
+        raise HTTPException(status_code=422, detail="pattern_key must be non-empty")
+    await db.execute(
+        """
+        INSERT INTO reflection_dismissals (owner_user_id, pattern_key)
+        VALUES ($1, $2)
+        ON CONFLICT (owner_user_id, pattern_key) DO NOTHING
+        """,
+        str(body.owner_user_id), key,
+    )
+    return {"owner_user_id": str(body.owner_user_id), "pattern_key": key, "dismissed": True}
+
+
+@router.get("/assistant/reflection-dismissals", dependencies=[Depends(require_internal_token)])
+async def list_reflection_dismissals(
+    user_id: UUID = Query(...),
+    db: asyncpg.Pool = Depends(get_db),
+) -> dict:
+    """List a user's tombstoned reflection pattern_keys (owner-scoped) — worker-ai's reflection
+    detector fetches these to drop dismissed patterns AT DETECTION (WS-5.6, tombstone LIVE)."""
+    rows = await db.fetch(
+        "SELECT pattern_key FROM reflection_dismissals WHERE owner_user_id=$1 ORDER BY pattern_key ASC",
+        str(user_id),
+    )
+    return {"pattern_keys": [r["pattern_key"] for r in rows]}
+
+
 # WS-1.8 (spec 06 §Q10) — the distiller's day-window read. The map-reduce worker has no user
 # JWT, so it fetches a day's assistant conversation over the internal-token trust boundary. Two
 # safety properties are enforced HERE, server-side, not left to the caller:
