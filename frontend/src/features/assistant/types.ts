@@ -72,6 +72,16 @@ export interface Scorecard {
   dimensions: ScorecardDimension[];
 }
 
+/** R2 (D-COACHING-SCORECARD-MOUNT) — one persisted scorecard (a chat_outputs 'scorecard' row) + its
+ *  card. `card` may be malformed/partial from an old row, so consumers normalize before rendering. */
+export interface ScorecardItem {
+  output_id: string;
+  session_id: string | null;
+  title: string | null;
+  created_at: string | null;
+  card: Scorecard;
+}
+
 /** WS-2.5 — one pending diary fact awaiting the user's confirm/reject (the fact inbox). Mirrors
  *  knowledge-service's PendingFact model incl. the WS-2.2 structured fields (nullable — a coarse fact
  *  carries only fact_text; a structured one carries the subject/predicate/object trio + event_date). */

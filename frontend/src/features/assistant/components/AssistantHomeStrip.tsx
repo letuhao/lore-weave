@@ -8,7 +8,9 @@ import { useCaptureRail } from '../hooks/useCaptureRail';
 import { useDiaryFactInbox } from '../hooks/useDiaryFactInbox';
 import { useEndOfDay } from '../hooks/useEndOfDay';
 import { useReflection } from '../hooks/useReflection';
+import { useScorecards } from '../hooks/useScorecards';
 import { CaptureRail } from './CaptureRail';
+import { CoachingScorecard } from './CoachingScorecard';
 import { DiaryFactInbox } from './DiaryFactInbox';
 import { EndOfDayReview } from './EndOfDayReview';
 import { ReflectionCard } from './ReflectionCard';
@@ -20,6 +22,7 @@ export function AssistantHomeStrip() {
   const eod = useEndOfDay(bookId);
   const inbox = useDiaryFactInbox();
   const reflection = useReflection(bookId);
+  const scorecards = useScorecards();
 
   const firstName = (user?.display_name || user?.email || '').split(/[ @]/)[0];
 
@@ -108,6 +111,9 @@ export function AssistantHomeStrip() {
           onDismiss={reflection.dismiss}
         />
       )}
+
+      {/* R2 / SD-C8 — the latest coaching scorecard (quarantine badge; SD-7 keeps it shown-never-trended). */}
+      {scorecards.latest && <CoachingScorecard card={scorecards.latest.card} />}
 
       {/* WS-2.5 — the diary fact inbox: keep/dismiss the facts the distiller diverted for review. */}
       <DiaryFactInbox

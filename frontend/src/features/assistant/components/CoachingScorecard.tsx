@@ -31,7 +31,8 @@ export function CoachingScorecard({ card }: { card: Scorecard }) {
           <li key={d.key} data-testid="scorecard-dimension" className="flex items-start gap-3">
             <span className="min-w-32 text-sm font-medium">{d.label}</span>
             <span className="text-sm text-muted-foreground">
-              {d.score === null ? (
+              {d.score == null ? (
+                // == null catches a missing/undefined score on a malformed/legacy card too (cold-review LOW).
                 <span data-testid="dimension-unscored" className="italic">not scored</span>
               ) : (
                 <span data-testid="dimension-score" className="font-medium text-foreground">{d.score}/5</span>

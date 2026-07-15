@@ -327,6 +327,50 @@ async def list_reflection_patterns(
             ]}
 
 
+# ── R2 (D-COACHING-SCORECARD-MOUNT) — read the user's persisted coaching scorecards ──
+@router.get("/assistant/scorecards", dependencies=[Depends(require_internal_token)])
+async def list_scorecards(
+    user_id: UUID = Query(...),
+    limit: int = Query(10, ge=1, le=50),
+    db: asyncpg.Pool = Depends(get_db),
+) -> dict:
+    """Owner-scoped read of the user's coaching SCORECARDS (evaluate.py persists each as a
+    chat_outputs row, output_type='scorecard', metadata = the full Scorecard JSON). Newest-first.
+    Makes the built-but-unmounted CoachingScorecard reachable. SD-7 is preserved end-to-end: the
+    stored card carries `quarantine` (server-authoritative True on every self-run), and the FE trend
+    logic excludes quarantine cards — this route neither reads nor mutates that flag."""
+    rows = await db.fetch(
+        """
+        SELECT output_id, session_id, title, metadata, created_at
+        FROM chat_outputs
+        WHERE owner_user_id = $1 AND output_type = 'scorecard'
+        ORDER BY created_at DESC
+        LIMIT $2
+        """,
+        str(user_id), limit,
+    )
+    out = []
+    for r in rows:
+        meta = r["metadata"]
+        card = json.loads(meta) if isinstance(meta, str) else (meta or {})
+        # cold-review MED: a malformed/legacy row whose metadata is JSON null / a list / a scalar must
+        # not 500 the WHOLE feed — degrade that one card to an empty (quarantined) shell.
+        if not isinstance(card, dict):
+            card = {}
+        # SD-7 defense-in-depth: coerce `quarantine` fail-closed at READ. Legacy cards (pre-C3) have no
+        # quarantine field; a missing/null value MUST present as True (shown-never-trended) so no consumer
+        # can trend an uncertified score. Only an EXPLICIT False (a future certified card) is preserved.
+        card["quarantine"] = False if card.get("quarantine") is False else True
+        out.append({
+            "output_id": str(r["output_id"]),
+            "session_id": str(r["session_id"]) if r["session_id"] else None,
+            "title": r["title"],
+            "created_at": r["created_at"].isoformat() if r["created_at"] else None,
+            "card": card,
+        })
+    return {"scorecards": out}
+
+
 # WS-1.8 (spec 06 §Q10) — the distiller's day-window read. The map-reduce worker has no user
 # JWT, so it fetches a day's assistant conversation over the internal-token trust boundary. Two
 # safety properties are enforced HERE, server-side, not left to the caller:

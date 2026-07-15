@@ -7,6 +7,7 @@ import type {
   EndDayResult,
   ProvisionResult,
   ReflectionPattern,
+  ScorecardItem,
 } from './types';
 
 export interface EndDayPayload {
@@ -89,6 +90,12 @@ export const assistantApi = {
       token,
       body: JSON.stringify({ pattern_key: patternKey }),
     });
+  },
+
+  /** R2 (D-COACHING-SCORECARD-MOUNT) — the user's persisted coaching scorecards (newest-first). Each
+   *  card carries `quarantine` (SD-7); the FE shows it with a badge and NEVER trends a quarantine score. */
+  getScorecards(token: string) {
+    return apiJson<{ scorecards: ScorecardItem[] }>('/v1/assistant/scorecards', { token });
   },
 
   /** R1 (D-REFLECTION-PATTERNS-FEED) — the DISMISSABLE reflection patterns for a given week (server

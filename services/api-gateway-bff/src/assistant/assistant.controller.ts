@@ -101,6 +101,16 @@ interface ReflectionPatternDto {
   evidence_refs: string[];
 }
 
+// R2 (D-COACHING-SCORECARD-MOUNT) — one persisted coaching scorecard (the card JSON is passed through
+// verbatim; the BFF does not interpret or mutate `quarantine` — SD-7 is enforced at chat + the FE).
+interface ScorecardItemDto {
+  output_id: string;
+  session_id: string | null;
+  title: string | null;
+  created_at: string | null;
+  card: unknown;
+}
+
 interface ForgetBody {
   book_id?: string;
   name?: string;
@@ -400,6 +410,31 @@ export class AssistantController {
       week_end: res.body?.week_end ?? null,
       patterns: Array.isArray(res.body?.patterns) ? res.body.patterns : [],
     };
+  }
+
+  // R2 (D-COACHING-SCORECARD-MOUNT) — the FE coaching scorecard feed. Fronts chat's X-Internal-Token-only
+  // GET /internal/chat/assistant/scorecards with the SERVER-DERIVED user_id. SD-7 is preserved: the stored
+  // card's `quarantine` flag rides through untouched; the FE trend logic (scorecardTrend) excludes it.
+  @Get('scorecards')
+  async scorecards(
+    @Headers('authorization') authorization?: string,
+  ): Promise<{ scorecards: ScorecardItemDto[] }> {
+    const { userId } = this.requireAuth(authorization);
+    const chatUrl = process.env.CHAT_SERVICE_URL;
+    const internalToken = process.env.INTERNAL_SERVICE_TOKEN;
+    if (!chatUrl || !internalToken) {
+      this.logger.error('scorecards rejected: CHAT_SERVICE_URL / INTERNAL_SERVICE_TOKEN not configured');
+      throw new HttpException('server_error', 500);
+    }
+    const res = await this.getInternal(
+      `${chatUrl}/internal/chat/assistant/scorecards?user_id=${encodeURIComponent(userId)}`,
+      internalToken,
+    );
+    if (!res.ok) {
+      this.logger.warn(`scorecards fetch failed (status ${res.status}) — returning empty`);
+      return { scorecards: [] };
+    }
+    return { scorecards: Array.isArray(res.body?.scorecards) ? res.body.scorecards : [] };
   }
 
   // WS-2.6a / D17 — the public "correct a memory" trigger. Two legs behind one call: (1) amend the
