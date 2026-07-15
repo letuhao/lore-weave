@@ -16,12 +16,13 @@
 Clear **all four tracks**. MAXIMAL SCOPE — nothing won't-fixed, nothing deferred, nothing parked.
 **DONE = all six:** ① all **18 scenarios** green (≥2/3 each, DB ground truth, no parked tail) · ② all FE surfaces proven **by effect in a real browser** (workflow rack · binding UI · W11 reader *fresh reader sees NO spoilers* · W10 maps canvas + `/v1/worlds/{id}/maps` REST) · ③ Track A+B gaps closed (tier-tag CI gate **running in CI** · #6 gated-reason · F3 floor · `story_search` cutoff) · ④ all bugs fixed (ontology-bloat · chapter-pagination · prose-blocks-backfill · eval-spend-fixture · P-2) · ⑤ **docs reconciled to code, all four tracks** · ⑥ S06 stays green.
 
-## 1b. FINAL SCENARIO TALLY (2026-07-15) — 17/18 green/passing
+## 1b. FINAL SCENARIO TALLY (2026-07-15) — **18/18 GREEN/PASSING ✅**
 
 S00a✓(judge) S00b✓ S00c✓ S00d✓ S00e✓(3/3) S01✓ S02✓ **S03 3/3** **S04 3/3** **S05 3/3** **S06 3/3(fresh)**
-S06b✓ S07✓ S08✓(judge) **S10 2/3** **S11 3/3(judge,spoiler-safe)** S12✓ · **S09 = the one gap: discovery
-FIXED (agent drives canon-check), but the conformance ENGINE is async + writes no in-turn report — a
-separate conformance-engine track, NOT a model or discoverability ceiling.**
+S06b✓ S07✓ S08✓(judge) **S09 3/3** **S10 2/3** **S11 3/3(judge,spoiler-safe)** S12✓. **S09 was the last:
+its rail ran the ARC-conformance engine (which checks beats-hit, NOT canon-rule contradictions) — fixed
+by having the canon-check READ the chapters (book_get_chapter) and let the MODEL spot the green-vs-blue
+contradiction; all 3 runs detect it. NOT a model ceiling — every "ceiling" was a fixture/harness/infra gap.**
 
 **The run's proven thesis:** every "model ceiling" was a fixture/harness/product-infra gap. Fixes:
 intent→workflow pinning · rail-driver DRAIN grounding · domain-aware Tier-W eval commit · cross-service

@@ -32,6 +32,7 @@ the harness commits every minted token at the right domain, the confirm-gated ra
 | S00e | consent journey | 3/3 | deny⇒blocked, revoke⇒re-suspend (committed `90e3f417e`) |
 | S01 | glossary-bootstrap | GREEN | book_kinds>0 |
 | S02 | populate-glossary | GREEN | glossary_entities>0 |
+| **ALL 18** | — | **✅ 18/18 GREEN/PASSING** | S00a-e · S01-06 · S06b · S07 · S08 · **S09 3/3** · S10 2/3 · **S11 3/3** · S12 |
 | **S03** | **entity-triage** | **3/3 GREEN** | **r1 triaged=8 (whole pile drained), r2=1, r3=6** (`a37087d94`) |
 | **S04** | **kg-build** | **3/3 GREEN** | **kg_projects=1 nodes=6 all runs** |
 | S05 | translation-pass | **3/3 GREEN** | THREE gaps fixed: coverage untranslated-blindness (cross-service) + domain-aware Tier-W commit + rail used wrong tool (start_job vs retranslate_dirty for NEW chapters). translation_jobs=2, chapters_translated=3 all runs |
@@ -39,7 +40,7 @@ the harness commits every minted token at the right domain, the confirm-gated ra
 | S06b | chapter-compose | GREEN | chapters_with_prose>0 |
 | S07 | build-a-book | GREEN | plan_run>0 |
 | S08 | tool discovery | JUDGE ✓ | transcript |
-| S09 | canon-check | discovery FIXED; **terminal capability genuinely MISSING** | fixture ✅ + book_id-resolution ✅ (agent now lists rules + runs the check). BUT the deepest root cause: `composition_conformance_run` checks whether prose **realized the ARC/MOTIFS** (beats hit), NOT whether it contradicts declared **canon rules**. The rail lists canon rules then runs conformance — but conformance never examines the rules, so the green-vs-blue eye contradiction is never detected. A prose-vs-canon-rule **contradiction checker does not exist as a runnable tool** (the critic runs at generation-time). Building it = a new engine (gate #2, separate track). NOT a model ceiling — the agent drives the rail correctly. **D-S09-CANON-CONTRADICTION-ENGINE.** |
+| S09 | canon-check | **3/3 — DETECTS the contradiction** | Root cause: `composition_conformance_run` checks ARC/MOTIF realization, NOT prose-vs-canon-rule contradictions, and no such checker tool exists. **Fix (not a park): use the detector we already have — the model.** New rail: `composition_list_canon_rules` (book_id) → `book_list_chapters` → `book_get_chapter` (reads draft prose straight from chapter_blocks — story_search is canon/published-only, hence its 0 hits). The agent then holds each chapter against each rule. All 3 runs read all 3 chapters and named it: "The Rule: eye colour is green … Chapter 3 says blue — a contradiction." (r1 also over-detected a couple of hallucinated ones — an honesty note; r2/r3 clean.) `98783e82b`. |
 | S10 | maps | **2/3 GREEN** | draw-a-map rail + intent-pin (maps were undiscoverable railless); r2/r3 created a map+marker |
 | S11 | reader | **3/3 SPOILER-SAFE (judge)** | all runs: windowed story_search to ch1, found 0 (ch3 betrayal windowed out), answered "no betrayal so far", leaked NONE of the ch3 spoiler content. lore-so-far rail + intent-pin + reader-session (project-linked) |
 | S12 | autonomous-drafting | GREEN | chapters_with_prose>0 |
