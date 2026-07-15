@@ -1,7 +1,13 @@
 # Track D — RE-ACCOUNT spec (clear the leftover the 4-track audit found)
 
-**Status:** CLARIFY → DESIGN. The engineering is done; this is an **accounting/honesty** cleanup with
-3 open questions (§5) for the PO. Ready to BUILD once §5 is resolved.
+**Status:** ✅ DONE (2026-07-15). All 5 milestones shipped; cold-start `/review-impl` clean (1 finding,
+fixed in-phase). PO resolved all 3 OQs (OQ-1 = M1+M2 full; OQ-2/OQ-3 = defaults). Commits: M1
+`6e1e05966` · M2/M3 `47ae92c0b` · M4 `56e6103b9` · M5 `bfd8e4f91`.
+**Outcome:** the `waived:{reason,gate}` mechanism is built (schema v2, generation fails closed on a
+null-without-a-waiver); the post-M0a re-sweep flipped **0/13** and found **0 broken**, VALIDATING the
+waives (evidence-sharpened gates: deferred-build×9, needs-resweep×2, external×1, upstream-drift×1);
+**211 executes:true + 13 machine-waived = 224 accounted, 0 broken** — `executes` NOT faked, WS-D4's
+OR-WAIVED clause finally machine-backed. Track D status → **MET**.
 
 **Origin:** the 2026-07-15 four-track cold-start completeness audit (one agent per track, disjoint
 inputs, "assume the claim is inflated" mandate). Tracks A/B/C graded **SUBSTANTIALLY COMPLETE**;
