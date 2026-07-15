@@ -72,7 +72,7 @@ class TestManifestIsGeneratedNotHandEdited:
         )
 
     def test_real_manifest_loads_and_is_non_empty(self):
-        assert tl.SCHEMA_VERSION == 1
+        assert tl.SCHEMA_VERSION == 2  # v2 (D-TRACKD-REACCOUNT) adds waived:{reason,gate}
         assert tl.TOOLS, "manifest is empty — the CD4 gate would be silently inert"
 
     def test_real_manifest_never_reads_null_executes_as_broken(self):

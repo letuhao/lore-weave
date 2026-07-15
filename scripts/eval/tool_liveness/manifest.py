@@ -34,6 +34,8 @@ import sys
 from pathlib import Path
 from typing import Any
 
+from .waivers import waiver_for
+
 MANIFEST_PATH = Path("contracts/tool-liveness.json")
 
 # The SoT above is not reachable from inside a service container, and neither Go's
@@ -44,7 +46,7 @@ CONSUMER_COPIES = (
     Path("services/agent-registry-service/internal/api/tool-liveness.json"),
     Path("services/chat-service/app/services/tool-liveness.json"),
 )
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2  # v2 (D-TRACKD-REACCOUNT): rows may carry `waived:{reason,gate}`
 
 
 def _executes(row: dict) -> bool | None:
@@ -117,6 +119,23 @@ def build(rows: list[dict], meta: dict[str, Any], sweep: list[dict] | None = Non
         if ev is not None:
             entry["effect_verified"] = ev
         tools[r["tool"]] = entry
+    # WS-D4 (D-TRACKD-REACCOUNT): a tool that is not `executes:true` must carry an EXPLICIT
+    # `waived:{reason,gate}` IN THE MANIFEST — the exit-criterion mechanism that was missing.
+    # We stamp AFTER the merge so a tool the sweep proved `true` is never waived (executes:true
+    # wins). A `waived` NEVER covers `executes:false` — that stays a BROKEN tool the ship gate
+    # rejects; `waiver_for` only annotates null/false-free non-true rows, and build asserts a
+    # false row is not silently waived below.
+    for name, entry in tools.items():
+        if entry.get("executes") is True:
+            continue
+        w = waiver_for(name)
+        if entry.get("executes") is False and w is not None:
+            raise ValueError(
+                f"{name!r} is executes:false (BROKEN) but has a waiver — a waive must never hide "
+                "a broken tool; remove the waiver or fix the tool."
+            )
+        if w is not None:
+            entry["waived"] = w
     return {
         "schema_version": SCHEMA_VERSION,
         "source": meta.get("source", "?"),

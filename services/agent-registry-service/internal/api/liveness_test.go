@@ -30,8 +30,8 @@ func TestLivenessManifestParsesAndIsNonEmpty(t *testing.T) {
 	if len(liveness.Tools) == 0 {
 		t.Fatal("liveness manifest is empty — the CD4 gate would be silently inert")
 	}
-	if liveness.SchemaVersion != 1 {
-		t.Errorf("schema_version = %d, want 1 (bump the reader when you bump the schema)", liveness.SchemaVersion)
+	if liveness.SchemaVersion != 2 {
+		t.Errorf("schema_version = %d, want 2 (v2 adds waived:{reason,gate}; reader ignores it — CD4 still gates on executes:false)", liveness.SchemaVersion)
 	}
 }
 

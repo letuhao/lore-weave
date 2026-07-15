@@ -1,5 +1,5 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "source": "docs/eval/tool-liveness/2026-07-10/matrix.json + docs/eval/tool-liveness/p3-full/sweep.json",
   "generated_from_matrix_date": "?",
   "agent_model_ref": "?",
@@ -43,7 +43,11 @@
     "book_chapter_save_draft": {
       "status": "SWEEP-INCONCLUSIVE",
       "executes": null,
-      "proven": false
+      "proven": false,
+      "waived": {
+        "reason": "M0a (463091c6a) fixed the uncallable json.RawMessage=array-of-bytes schema; the flagship now calls it and lands real prose (2026-07-15, book 019f6571 chapters_with_prose=1). The matrix predates M0a, so executes:null is STALE.",
+        "gate": "needs-resweep"
+      }
     },
     "book_chapter_unpublish": {
       "status": "SWEEP-PASS",
@@ -147,7 +151,11 @@
     "catalog_get_book": {
       "status": "SWEEP-INCONCLUSIVE",
       "executes": null,
-      "proven": false
+      "proven": false,
+      "waived": {
+        "reason": "needs a PUBLIC book published through sharing-service — an external publish state, not something the sweep can seed on the author's own private library.",
+        "gate": "external"
+      }
     },
     "catalog_list_public_books": {
       "status": "SWEEP-PASS",
@@ -157,7 +165,11 @@
     "composition_arc_apply": {
       "status": "SWEEP-INCONCLUSIVE",
       "executes": null,
-      "proven": false
+      "proven": false,
+      "waived": {
+        "reason": "needs an arc_templates row seeded to apply.",
+        "gate": "deferred-build"
+      }
     },
     "composition_arc_assign_chapters": {
       "status": "SWEEP-PASS",
@@ -187,7 +199,11 @@
     "composition_arc_import_analyze": {
       "status": "SWEEP-INCONCLUSIVE",
       "executes": null,
-      "proven": false
+      "proven": false,
+      "waived": {
+        "reason": "needs an import_sources row (an imported document) to analyze.",
+        "gate": "deferred-build"
+      }
     },
     "composition_arc_list": {
       "status": "SWEEP-PASS",
@@ -312,12 +328,20 @@
     "composition_get_generation_job": {
       "status": "SWEEP-INCONCLUSIVE",
       "executes": null,
-      "proven": false
+      "proven": false,
+      "waived": {
+        "reason": "polls a generation job; a job run on a local model is $0 (Phase 3b planned exactly this). Buildable-at-$0, not blocked; needs a job seeded then a re-sweep.",
+        "gate": "needs-resweep"
+      }
     },
     "composition_get_mine_job": {
       "status": "SWEEP-INCONCLUSIVE",
       "executes": null,
-      "proven": false
+      "proven": false,
+      "waived": {
+        "reason": "same as composition_get_generation_job — local generation job = $0, re-sweep flips it.",
+        "gate": "needs-resweep"
+      }
     },
     "composition_get_outline_node": {
       "status": "SWEEP-PASS",
@@ -509,7 +533,11 @@
     "glossary_book_sync_apply": {
       "status": "SWEEP-INCONCLUSIVE",
       "executes": null,
-      "proven": false
+      "proven": false,
+      "waived": {
+        "reason": "syncs a book's adopted standards against an UPSTREAM standard that has since drifted; requires a drifted-standard state that can't be freshly seeded (decide-when-reached).",
+        "gate": "upstream-drift"
+      }
     },
     "glossary_book_sync_available": {
       "status": "SWEEP-PASS",
@@ -524,7 +552,11 @@
     "glossary_create_evidence": {
       "status": "SWEEP-INCONCLUSIVE",
       "executes": null,
-      "proven": false
+      "proven": false,
+      "waived": {
+        "reason": "needs an entity_attribute_values row + a matching attr_def_id to attach evidence to.",
+        "gate": "deferred-build"
+      }
     },
     "glossary_entity_delete": {
       "status": "RED",
@@ -559,7 +591,11 @@
     "glossary_extract_entities_from_doc": {
       "status": "SWEEP-INCONCLUSIVE",
       "executes": null,
-      "proven": false
+      "proven": false,
+      "waived": {
+        "reason": "paid=True, but a paid tool on a LOCAL model is $0 (see the spend-correction §). Buildable-at-$0 — was mislabeled 'paid/blocked'; a local re-sweep flips it.",
+        "gate": "needs-resweep"
+      }
     },
     "glossary_get_entity": {
       "status": "SWEEP-PASS",
@@ -660,7 +696,11 @@
     "glossary_propose_restore_revision": {
       "status": "SWEEP-INCONCLUSIVE",
       "executes": null,
-      "proven": false
+      "proven": false,
+      "waived": {
+        "reason": "needs an entity_revisions snapshot to restore from (a prior edit history).",
+        "gate": "deferred-build"
+      }
     },
     "glossary_propose_status_change": {
       "status": "SWEEP-PASS",
@@ -805,7 +845,11 @@
     "kg_schema_edit": {
       "status": "SWEEP-INCONCLUSIVE",
       "executes": null,
-      "proven": false
+      "proven": false,
+      "waived": {
+        "reason": "adoption lands on a confirm the harness confirm-resolver (confirm.py) can drive; kg_adopt_template is already proven, so this should be reachable on a re-sweep.",
+        "gate": "needs-resweep"
+      }
     },
     "kg_schema_read": {
       "status": "SWEEP-PASS",
@@ -815,7 +859,11 @@
     "kg_sync_apply": {
       "status": "SWEEP-INCONCLUSIVE",
       "executes": null,
-      "proven": false
+      "proven": false,
+      "waived": {
+        "reason": "same confirm path as kg_schema_edit; reachable via the harness confirm-resolver on re-sweep.",
+        "gate": "needs-resweep"
+      }
     },
     "kg_sync_available": {
       "status": "SWEEP-PASS",
@@ -840,7 +888,11 @@
     "kg_triage_schema_write": {
       "status": "SWEEP-INCONCLUSIVE",
       "executes": null,
-      "proven": false
+      "proven": false,
+      "waived": {
+        "reason": "same confirm path as kg_schema_edit; reachable via the harness confirm-resolver on re-sweep.",
+        "gate": "needs-resweep"
+      }
     },
     "kg_view_delete": {
       "status": "SWEEP-PASS",

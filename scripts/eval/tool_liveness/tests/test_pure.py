@@ -13,8 +13,10 @@ import pytest
 
 from scripts.eval.tool_liveness import matrix
 from scripts.eval.tool_liveness.confirm import domain_of, find_confirm_token
+from scripts.eval.tool_liveness.manifest import build
 from scripts.eval.tool_liveness.poller import find_job_id, status_of
 from scripts.eval.tool_liveness.sse import fold_events
+from scripts.eval.tool_liveness.waivers import GATES, WAIVERS
 
 
 def _agui_tool(cid, name, argstr, result_env):
@@ -944,3 +946,43 @@ def test_user_fixture_teardown_is_scoped_to_the_id_it_created():
     # every owned-row entry names an owner column — never an unscoped DELETE
     for _db, table, col in user_fixture._OWNED_ROWS:
         assert col in ("user_id", "owner_user_id"), f"{table}: unscoped owner column {col!r}"
+
+
+# ── D-TRACKD-REACCOUNT: the `waived` mechanism (WS-D4 exit criterion) ──────────────
+# A tool that is not `executes:true` must carry an EXPLICIT `waived:{reason,gate}` in the
+# manifest — the mechanism the 2026-07-15 audit found was never built (13 waives were
+# prose-only, byte-indistinguishable from un-probed). These pin its invariants.
+
+
+def test_build_stamps_waived_on_a_non_executing_tool():
+    out = build(rows=[], meta={}, sweep=[{"tool": "book_chapter_save_draft", "executes": None}])
+    row = out["tools"]["book_chapter_save_draft"]
+    assert row["executes"] is None                      # not faked to true
+    assert row["waived"]["gate"] in GATES               # closed-enum gate
+    assert row["waived"]["reason"].strip()              # a real reason, not empty
+
+
+def test_build_never_waives_a_tool_that_executes():
+    # executes:true wins — a proven tool is never stamped waived, even if it's in WAIVERS.
+    out = build(rows=[], meta={}, sweep=[{"tool": "book_chapter_save_draft", "executes": True}])
+    assert "waived" not in out["tools"]["book_chapter_save_draft"]
+
+
+def test_build_refuses_to_waive_a_broken_tool():
+    # a waiver must NEVER hide an executes:false (BROKEN) tool from the ship gate.
+    with pytest.raises(ValueError, match="never hide a broken"):
+        build(rows=[], meta={}, sweep=[{"tool": "book_chapter_save_draft", "executes": False}])
+
+
+def test_every_waiver_has_a_closed_gate_and_a_reason():
+    for tool, w in WAIVERS.items():
+        assert w["gate"] in GATES, f"{tool}: gate {w['gate']!r} not in {sorted(GATES)}"
+        assert w["reason"].strip(), f"{tool}: empty reason"
+
+
+def test_shipped_manifest_has_no_prose_only_waive():
+    # the SHIPPED manifest: every executes:null tool carries an explicit waiver (0 orphans).
+    import pathlib
+    m = json.loads(pathlib.Path("contracts/tool-liveness.json").read_text(encoding="utf-8"))
+    orphans = [k for k, v in m["tools"].items() if v.get("executes") is None and "waived" not in v]
+    assert orphans == [], f"executes:null with NO waiver (prose-only waive): {orphans}"
