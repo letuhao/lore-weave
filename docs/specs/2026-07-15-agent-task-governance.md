@@ -7,6 +7,18 @@
 > **Decision prefix:** **GOV-\***.
 > **Builds on (does NOT duplicate):** [`2026-07-09-agent-discoverability-and-workflow`](2026-07-09-agent-discoverability-and-workflow/) (the *workflow definitions* + discoverability). **Distinct from** [`2026-07-03-ai-task-standard.md`](2026-07-03-ai-task-standard.md) (that governs **single-shot NON-agentic** LLM generation; this governs **multi-step AGENTIC workflows**).
 
+> ## 🔴 v2 REFRAME (2026-07-16, after an adversarial cold-start review) — **EXTEND the rail, do not rebuild it.**
+> The review's BLOCKER, confirmed against code: **the "new core piece" this spec called a build ALREADY
+> SHIPS as chat-service's Track-C "rail".** `rail_progress.py` = `BOOK_STATE_KEYS` (GOV-1's named
+> observables) + the `done_when: "<key> > <n>"` grammar (GOV-1's `required_effect`, incl. the exact
+> safe-parse: an unparseable predicate RAISES, never silent-done) + `next_actionable_step` (the CONTROL
+> verdict machine: **STOP_ASYNC** = EC-2, **STOP_UNKNOWN** = EC-5, **STOP_USER** = the user-gate).
+> `book_state_probe.py` = the probe (a grant-scoped `/internal` fan-out). Many "edge cases" this spec
+> re-derived are **already solved in the rail.** ⇒ This is NOT a framework build; it is a **targeted
+> extension** of a shipped substrate. The rail's own header states the gap precisely: *"**Nothing DRIVES
+> the rail** — the model is handed a 12-step recipe and asked to hold it."* Governance = **DRIVE it**
+> (the enforcement the rail lacks) + close the 5 confirmed holes (§14). §4/§10 are superseded by §14.
+
 ---
 
 ## 1 · The problem, proven live
@@ -111,16 +123,16 @@ generic — and it reuses the exact query patterns the task-specific enforcers a
 
 ---
 
-## 6 · Phases (draft)
+## 6 · Phases (v2 — extend the rail, ranked by the confirmed deltas §14)
 
-| Phase | Deliverable | DoD (effect test) |
+| Phase | Deliverable | DoD (effect test — PASTED output) |
 |---|---|---|
-| **P0** | The **effect-probe registry** + the step/effect **data schema** (GOV-1). Seed with `linked_structure` + the 2 legacy task probes. | a probe returns the right boolean on a live book; schema round-trips |
-| **P1** | **PLAN**: workflow → todo on `working_memory` (GOV-2), one-in-progress. | a workflow start writes the todo; survives a compaction |
-| **P2** | **MONITOR**: effect-driven pending re-inject (GOV-3). | pending `compile` re-appears each turn until its effect is true |
-| **P3** | **CONTROL**: the completion gate + re-prompt + bounded escalation (GOV-4/7). | a false-done `compile` is overridden + re-prompted; caps at N |
-| **P4** | **Generalise** glossary-extraction + lore-enrichment into governed workflows (GOV-6); retire bespoke enforcement. | both run through the framework; old per-task logic deleted |
-| **P5** | **Observability** (GOV-8) + **the S06 flagship replay GREEN** — `structure_node > 0`, driven by governance. | the pasted S06 metrics + DB rows; 23-D7 / 27-H4 / 28-D3 satisfied |
+| **P0** | **D2 + D3 + D4 — make the effect TRUSTWORTHY** (the load-bearing fix). Run-relative `done_when` (`plan_run_id`, no migration) + probe the compile-attributed durable truth (not a gameable count) + the both-sides catalog contract test. | a re-plan on an already-structured book does NOT read born-done; a bare `arc_create` INSERT does NOT satisfy the compile effect; the contract test reds on a renamed key |
+| **P1** | **D1 — DRIVE the rail** (the S06 gap). Extend `_maybe_redrive_rail` / the `Stop` seam from advisory-nudge → enforce: a REQUIRED unmet step holds the turn + re-prompts (GOV-9/12/13, deterministic release). | a live turn where the model tries to yield with a REQUIRED step unmet is HELD + re-prompted; an explicit "skip" releases it |
+| **P2** | **D5 — cost, measured + capped by PASSES** (GOV-7 N = a pass-cap on the existing `max_total_passes`). SET-1 the enforcement-strength + N (per-user/per-book, not a hardcode). | pasted per-turn pass count on a real S06 turn; N enforced; the setting resolves with its source tier |
+| **P3** | **D6 — the PLAN pillar**: `ActivePlan` on `working_memory` (tenancy-scoped) + agent-self-defined definitions → **the existing proposals inbox** for human review (GOV-14, reuse `skill_proposals`/`ProposalsView`). | an agent-authored workflow lands in the inbox; a human approves; it becomes governed; the plan survives compaction |
+| **P4** | **GOV-6 — generalise the agent-driven enrichers** (interactive glossary path) into governed definitions; leave the deterministic pipelines exempt (§15). | the interactive path runs through the framework; the pipelines are untouched |
+| **P5** | **The S06 flagship replay GREEN, driven by governance** — `structure_node > 0` by the DRIVE + the trustworthy effect, not by hoping the model self-regulates. Plus 23-D7 / 27-H4 / 28-D3. | the pasted S06 metrics + DB rows (in-container) |
 
 ---
 
@@ -294,6 +306,55 @@ actually COMPLETE reliably** — the control loop that turns a workflow *definit
 the *policy/context* and *observability* pieces; this adds the **runtime-enforcement** piece and the
 **plan-lifecycle** piece — the two that, per Gartner, half of 2030's agent failures will trace back to.
 It is the missing pillar, and it is why a strong model *and* a weak model both need it.
+
+---
+
+## 14 · The actual delta over the shipped rail (supersedes §4/§10 — v2)
+
+The rail already does DEFINE (the 12-step recipe + `done_when`), MONITOR (compute_rail_progress), and
+the CONTROL *computation* (next_actionable_step's verdicts). The governance work is **five confirmed
+holes + the drive**, ranked by the review:
+
+| # | Hole (all CONFIRMED by the review) | Fix | Cost |
+|---|---|---|---|
+| **D1** | **The rail is not DRIVEN — verdicts are advisory, handed to the model.** This is the S06 gap: the model is told the next step and drops it. | Wire the `Stop`-gate / re-drive so a REQUIRED unmet step **holds the turn** (GOV-9/12/13). Extend the existing `_maybe_redrive_rail` from nudge → enforce. | S |
+| **D2** | **`done_when` tests BOOK-GLOBAL existence, not THIS-run freshness** — `structure > 0` is born-true on a re-plan / run #2 → the step is born-done → silent no-op (the `idempotency-gate-exists-not-active-version` bug class). | Run-relative predicate. **No migration needed**: `structure_node` already carries `plan_run_id` provenance (migrate.py:1352) — probe `linked_structure(plan_run_id) > 0`, or a per-run baseline captured at PLAN time. Add a `produce-NEW` vs `ensure-EXISTS` mode to the definition. | S |
+| **D3** | **The probe counts EXISTENCE, not QUALITY — gameable.** `composition_arc_create` is a plain INSERT (EDIT grant, no compile, no `plan_run_id`) that flips `structure > 0` without real work. | Probe the DURABLE, run-attributed truth (rows stamped by the compile, `plan_run_id` set), not a count a bare insert can fabricate (`reconcile-by-truth-mirror-producer-predicate`). Ties to D2. | S |
+| **D4** | **The catalog↔impl closed set is joined by a bare string, not machine-checked both sides** — a `done_when` key / probe rename silently disables the gate (reads as satisfied or errors). | A `contracts/*.contract.json`-style both-sides check (the `frontend-tools.contract.json` pattern): `BOOK_STATE_KEYS` ⇄ the `/internal` probe routes ⇄ the definitions, a test reds on drift. | S |
+| **D5** | **Cost is dominated by EXTRA LLM COMPLETIONS, not the probe query.** Each re-prompt/hold is a full LLM pass; the spec budgeted `cost_ms` of the query (the wrong term). | Budget + cap by **passes** (the existing `max_total_passes` / `MAX_TOOL_ITERATIONS`), not probe ms. GOV-7's N is a pass-cap. Measure real per-turn passes at P0. | M |
+| **D6** | **The genuinely NEW pillar: PLAN.** The rail is PLATFORM-defined (a fixed 12-step recipe). Agent-SELF-defined workflows + a persistent per-task todo (GOV-2/14) do not exist. | Add the `ActivePlan` on `working_memory` + agent-authored definitions → the proposals inbox for human review (GOV-14, on the EXISTING `skill_proposals`/`ProposalsView` — do not fork). | M |
+
+**Everything else the review raised** (tenancy scope-key on ActivePlan/probe args, SET-1 for
+enforcement-strength + the N cap, MCP-first mis-applied to deterministic probes — they are plain
+`/internal` reads, NOT ai-gateway agent-logic — versioning a definition mid-plan, the paraphrase-matcher
+gap) folds into the phases as MED hardening, tracked in §12 + the plan.
+
+---
+
+## 15 · Governance inventory — which existing "workflows" get governed (answers "detail for all?")
+
+**No — the spec does NOT carry a full governed-definition per workflow** (that is churny DATA authored at
+migration, not framework — the `don't-inline-the-catalog` discipline). Instead: **the boundary + a
+disposition table.**
+
+**THE BOUNDARY — govern the agent-DRIVEN, exempt the deterministic PIPELINE.** A workflow needs this
+governance **iff the AGENT decides the steps and can DROP one.** A workflow whose steps are driven by
+CODE (a pipeline consumer, a job chain) is already governed by its own control-flow — governing it again
+is the same category error as applying MCP-first to a non-agentic pipeline (CLAUDE.md exempts those).
+
+| Existing workflow | Kind | Disposition |
+|---|---|---|
+| **The book-building rail** (12-step, `done_when`) | agent-driven | **govern-now** — it IS the seed; the work is D1 (drive it) + D2/D3 (freshness/quality) |
+| **`co_write`** (propose→compile→draft) | agent-driven | **govern-now** — the S06 case; define it as data, effect = run-relative `linked_structure` |
+| **`plan_forge`** (the HIL propose→validate→compile loop) | agent-driven | **govern-later** — already has human checkpoints; add the effect-gate on compile |
+| **glossary extraction / entity-propose** | mixed | **govern-later, IF agent-driven** — the interactive propose is; the batch `decoupled_extract` is a pipeline (exempt) |
+| **lore-enrichment** (`decoupled_extract`, `reextract_consumer`) | deterministic pipeline | **pipeline-exempt** — code-driven job chain; its own rule-logic governs it |
+| **translation pipeline** | deterministic pipeline | **pipeline-exempt** — non-agentic (ai-task-standard's domain) |
+| **KG chapter-title enricher** | deterministic pipeline | **pipeline-exempt** |
+
+⇒ The migration surface is **small and specific**: the rail + co_write now, plan_forge + the interactive
+glossary path later. The pipelines are already governed by their code and stay out. This is what keeps
+the framework a *pillar*, not a *rewrite of every task*.
 
 ---
 
