@@ -372,6 +372,26 @@ def build_s09(run: str) -> dict:
                                        "Tô Hạo: dead (ch1) vs alive and ruling (ch3)"]}
 
 
+# ── S10 — a world (with a book in it) the agent should draw a MAP for ────────────────────
+def build_s10(run: str) -> dict:
+    """A world + a book moved into it. The agent, asked to map the world, must discover the
+    world_map_* tools (no rail) and create a map + place a marker. Returns book_id (the harness
+    context) + world_id (the gt resolves the book's world and checks for a map + marker)."""
+    m = _mcp()
+    w = _J(m.call("world_create", {"name": f"S10 World {run}"}))
+    world_id = w.get("world_id") or (w.get("world") or {}).get("world_id") or w.get("id")
+    if not world_id:
+        raise RuntimeError(f"s10: world_create returned no id: {w}")
+    book_id = _new_book(m, "s10", run)
+    m.call("world_move_book", {"world_id": world_id, "book_id": book_id})
+    return {"book_id": book_id, "world_id": world_id}
+
+
+def _J(x):
+    import json as _json
+    return x if isinstance(x, dict) else _json.loads(x)
+
+
 # ── the eval spend-grant (D-P1-EVAL-SPEND-FIXTURE) ───────────────────────────────────────
 def grant_spend() -> dict:
     granted = []

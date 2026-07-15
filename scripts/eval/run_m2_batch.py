@@ -119,6 +119,19 @@ def _gt_authoring(b: str) -> tuple[bool, str]:
     return n > 0, f"authoring_runs={n}"
 
 
+def _gt_maps(b: str) -> tuple[bool, str]:
+    # S10 — resolve the book's world, then require a map WITH at least one marker on it (the agent
+    # both created the map AND placed a location). map_markers.map_id FKs world_maps.id.
+    world = _sql(DBK["book"], f"SELECT COALESCE(world_id::text,'') FROM books WHERE id='{b}'").strip()
+    if not world:
+        return False, "book is not in a world"
+    nmaps = int(_sql(DBK["book"], f"SELECT count(*) FROM world_maps WHERE world_id='{world}'"))
+    nmark = int(_sql(DBK["book"],
+                     f"SELECT count(*) FROM map_markers mk JOIN world_maps wm ON wm.id=mk.map_id "
+                     f"WHERE wm.world_id='{world}'"))
+    return nmaps > 0 and nmark > 0, f"maps={nmaps} markers={nmark} (world={world[:8]})"
+
+
 def _gt_flagship(b: str) -> tuple[bool, str]:
     # S06 flagship (vision-to-book) — the beat-F contradiction settler. §10 said 5/5, §11 said 4/5
     # chapters=0. The disputed beat is chapters_with_prose. Check ALL the artifacts the flagship is
@@ -207,6 +220,7 @@ SCEN = {
     "S02":  (lambda lbl: _book_with_ontology(f"M2-S02-{lbl}"), _gt_entities, False),  # populate-glossary
     "S03":  (_s03_book, _gt_triaged, False),                                     # entity-triage (drain a pile)
     "S06":  (lambda lbl: _fresh_book(f"M2-S06-{lbl}"), _gt_flagship, False),     # flagship vision-to-book (beat-F settler)
+    "S10":  (lambda lbl: fx.build_s10(lbl)["book_id"], _gt_maps, False),         # W10 maps (create + marker)
     "S04":  (lambda lbl: fx.build_s04(lbl)["book_id"], _gt_kg, False),           # kg-build from glossary
     "S05":  (lambda lbl: fx.build_s05(lbl)["book_id"], _gt_s05, False),          # translation-pass (only redo what changed)
     "S07":  (lambda lbl: _fresh_book(f"M2-S07-{lbl}"), _gt_plan, False),
