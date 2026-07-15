@@ -1,5 +1,36 @@
 # ▶▶ NEXT SESSION STARTS HERE
 
+## ⭐ Track: MOBILE — shell + super-app home + PWA + push — **SHIPPED (M0–M5, 2026-07-15)**
+
+> **Spec (SEALED):** [`docs/specs/2026-07-15-mobile-shell-and-home.md`](../specs/2026-07-15-mobile-shell-and-home.md) ·
+> **Plan + RUN-STATE:** [`docs/plans/2026-07-15-mobile-shell-and-home-plan.md`](../plans/2026-07-15-mobile-shell-and-home-plan.md), [`…-RUN-STATE.md`](../plans/2026-07-15-mobile-shell-and-home-RUN-STATE.md)
+> `7f09561be` M0 · `b165c10b4` M1 · `e42253548` M2 · `cb9ee0bd4` M3 · `db2bba64e` M4 · `9e9809384` M5
+
+LoreWeave is now **mobile-first**. Each slice: pasted green tests + a cross-service live-smoke + a cold
+`/review-impl` (the risky ones got cold-start subagents — they found + fixed real bugs: a shipped-raw-i18n-key,
+a rotate-mid-distill duplicate-spend, an unbounded BFF cache, a feed-truncation, **an SSRF in the push register**).
+
+- **M0** `AppShell` — one persistent `<Outlet/>`, chrome-only swap at 767px (no remount → chat SSE/voice survive);
+  bottom tabs (centre = Assistant); addressable `Sheet` (`?sheet=`).
+- **M1** the assistant on mobile — `<Chat>` + a dock/sheets bound to the SAME hooks (reuse thesis proven).
+- **M2** platform home + activity feed — 2 BFF read routes (`/v1/home` degrade contract; `/v1/activity` keyset).
+- **M3** You screen + all-apps drawer; existing workshops render in the mobile chrome.
+- **M4** PWA (manifest+SW, `/v1` network-only, no silent update) + **global always-visible bottom nav** (user
+  feedback: it was getting lost on full-screen routes) + deep-link-survives-login + resume-token-refresh + a11y.
+- **M5** content-free Web Push — `push_subscriptions`/`push_preferences`, VAPID sender (exactly-once, 410-prune,
+  fail-closed gate, SSRF-guarded), FE SW handler + capability-gated toggle + sign-out teardown.
+
+### ▶ NEXT for this track (all tracked in the RUN-STATE §5)
+1. **D-PUSH-LIVE-SMOKE** — the closed-tab VAPID push was WAIVED (dev has no VAPID keypair / HTTPS / browser push
+   service). All mechanics are unit-proven + the routes live-smoked. Do the real closed-tab content-free E2E on a
+   deploy that has VAPID + HTTPS.
+2. **D-PUSH-ACCOUNT-TEARDOWN** — `DeleteAllForOwner` is built but unwired (account erasure is admin-cli-driven, no
+   event to bind). Wire it to an erasure event, or add `push_subscriptions` to the admin erasure purge.
+3. Native (Capacitor) is a documented fallback, NOT built — only if an iOS-push-unreliable / store-required /
+   background-voice trigger fires.
+
+---
+
 ## ⭐ Track: SC11 AMENDMENT — the written-verdict is MAINTAINED, not derived — **SHIPPED** (2026-07-13)
 
 > **Spec + full build audit:** [`docs/specs/2026-07-13-sc11-amendment-written-verdict.md`](../specs/2026-07-13-sc11-amendment-written-verdict.md)
@@ -96,6 +127,8 @@ UI"* and **there is no UI**, so an agent calling it today writes a row **no huma
 
 | ID | What | Gate |
 |---|---|---|
+| **D-PUSH-LIVE-SMOKE** | The M5 closed-tab VAPID push not proven live (mechanics unit-proven; routes live-smoked; SSRF guard live-verified). | #4 blocked-on-external: needs a deploy with a VAPID keypair + HTTPS + a browser push service (FCM/autopush) — none bootable at dev. Do the closed-tab content-free E2E there. |
+| **D-PUSH-ACCOUNT-TEARDOWN** | M5 push subs not auto-deleted on ACCOUNT deletion (sign-out DELETE IS wired). `DeleteAllForOwner` primitive is built. | #2/#4: account erasure is admin-cli-driven, no AMQP event to bind. Wire to an erasure event OR add `push_subscriptions` to the admin erasure purge. |
 | **D-STUDIO-07S-COMPACTION-BREAKER** | 🔴 **P1 — a real defect, not a gap.** 07S has **no microcompact tier, no `hard_truncate`, and no `compaction_failed` breaker** (0 grep hits) — while **Agent Mode's L3/L4 autonomous runs are SHIPPED and running**, and 07S §3/§10 make that breaker **MANDATORY for headless runs**. An unattended run can therefore fail compaction with nothing to stop it. **Raise it, scope it, build it.** | #2 large/structural (needs its own slice + design), **not** "later" |
 | **D-STUDIO-HOOKS-10** | Spec **10 · agent lifecycle hooks — 0% built** (a service, a table, an orchestrator, a sandbox, a manifest format, a settings UI; zero grep hits). **XL.** The single biggest unbuilt block in 00–11. | #2 large/structural — needs its own track, not a wave |
 | **D-ARC-DECOMPILER** | Spec **26-D3** — the arc decompiler: the only path to a spec tree for an **imported** book with no plan. | #2 large/structural |
