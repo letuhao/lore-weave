@@ -65,6 +65,11 @@ def _load_plan_forge() -> str:
     return PLAN_FORGE_SKILL_PROMPT
 
 
+def _load_co_write() -> str:
+    from app.services.co_write_skill import CO_WRITE_SKILL_PROMPT
+    return CO_WRITE_SKILL_PROMPT
+
+
 def _load_composition() -> str:
     from app.services.composition_skill import COMPOSITION_SKILL_PROMPT
     return COMPOSITION_SKILL_PROMPT
@@ -163,6 +168,25 @@ SYSTEM_SKILLS: dict[str, SkillDef] = {
         prompt_loader=_load_plan_forge,
         description="Plan the novel's system from a source doc, then hand off to drafting (propose→validate→compile).",
         hot_domains=frozenset({"plan"}),
+    ),
+    "co_write": SkillDef(
+        code="co_write",
+        label="Co-writing (draft + materialise the plan)",
+        surfaces=frozenset({"book", "editor"}),
+        prompt_loader=_load_co_write,
+        # The write-mode workflow (close-21-28): co-write prose AND materialise the story —
+        # when the author lays out their story, propose AND compile it into linked structure,
+        # never stop at a proposal. Orient/verify with composition_package_tree. Closes the
+        # S06 gap where the agent proposed but never compiled (structure_node=0).
+        description="Co-write prose AND make the plan real — when the author lays out their story, propose then COMPILE it into the linked chapter/scene structure the drafts hang on; orient with composition_package_tree.",
+        # DELIBERATELY EMPTY (close-21-28): unlike plan_forge (which forces `plan` hot in
+        # plan mode), the WRITE-mode workflow keeps the surface LEAN — it does NOT drag the
+        # plan/composition long tail hot onto every co-writing turn (the "long-tail stays
+        # lazy" design, test_seed_advertises_hot_tools_immediately). The tools it names are
+        # reachable via find_tools (the skill instructs it) + the agent's federation; the
+        # value here is the INSTRUCTION (propose→compile), not forcing tools hot. Exempt from
+        # the named-tools-in-hot-domains lint for that reason.
+        hot_domains=frozenset(),
     ),
     "composition": SkillDef(
         code="composition",
@@ -342,6 +366,17 @@ def resolve_skills_to_inject(
         pf = SYSTEM_SKILLS.get("plan_forge")
         if pf and _skill_visible(pf, active):
             out.append("plan_forge")
+
+    # close-21-28 — WRITE mode is co-writing, and a co-writing author DOES lay out their
+    # story. Auto-inject the LIGHT `co_write` workflow (parallel to plan mode's plan_forge)
+    # so the agent MATERIALISES the plan (propose AND compile → linked structure) instead of
+    # proposing and stopping. The S06 flagship replay proved the gap: without this the book
+    # ends at structure_node=0 — a planning feature that never worked end-to-end. plan_forge
+    # (the heavy HIL loop) stays PLAN-mode only; this is the lighter write-mode sibling.
+    if permission_mode == "write" and "co_write" not in out:
+        cw = SYSTEM_SKILLS.get("co_write")
+        if cw and _skill_visible(cw, active):
+            out.append("co_write")
 
     # WS-3 (C6) — the mode→capability binding's skills. Additive + surface-filtered.
     for code in binding_skills or []:

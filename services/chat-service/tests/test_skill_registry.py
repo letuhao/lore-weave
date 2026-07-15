@@ -40,7 +40,8 @@ class TestResolveSkillsToInject:
             book_scoped=True,
             admin=False,
         )
-        assert codes == ["glossary", "knowledge"]
+        # + co_write: the write-mode workflow auto-injects on book/editor surfaces (close-21-28)
+        assert codes == ["glossary", "knowledge", "co_write"]
 
     def test_curated_glossary_only(self):
         codes = resolve_skills_to_inject(
@@ -52,7 +53,9 @@ class TestResolveSkillsToInject:
             book_scoped=True,
             admin=False,
         )
-        assert codes == ["glossary"]
+        # close-21-28: co_write auto-injects on every WRITE-mode book/editor surface
+        # (the write-mode workflow sibling of plan mode's plan_forge). Curation adds to it.
+        assert codes == ["glossary", "co_write"]
 
     def test_disable_tools_returns_empty(self):
         assert resolve_skills_to_inject(
@@ -99,7 +102,7 @@ class TestStudioSurface:
             admin=False,
             studio=True,
         )
-        assert codes == ["composition"]
+        assert codes == ["composition", "co_write"]  # + the write-mode workflow (close-21-28)
 
     def test_composition_pinned_but_not_visible_without_studio_or_editor(self):
         codes = resolve_skills_to_inject(
@@ -156,7 +159,7 @@ class TestPlanForgeSkill:
             book_scoped=True,
             admin=False,
         )
-        assert codes == ["plan_forge"]
+        assert codes == ["plan_forge", "co_write"]  # write mode adds co_write (close-21-28)
 
     def test_plan_forge_hidden_on_plain_chat_surface(self):
         # book/editor only — a non-book chat pin must not inject it.
@@ -358,7 +361,7 @@ _KNOWN_LEGACY_TOOL_NAMES: frozenset[str] = frozenset({
 # small, always-fully-exposed System-tier catalog on the separate `/mcp/admin` server
 # (INV-T6) — a completely different tool space than GROUP_DIRECTORY describes, so
 # "which GROUP_DIRECTORY domain must be hot" doesn't apply to it at all.
-_EXEMPT_SKILL_CODES: frozenset[str] = frozenset({"admin"})
+_EXEMPT_SKILL_CODES: frozenset[str] = frozenset({"admin", "co_write"})  # co_write keeps its tools LAZY (find_tools-reachable), not hot — close-21-28
 
 # A token named only as a NEGATIVE/contrastive reference ("don't use X for this, use Y")
 # — not a claim that X is directly callable, so it's exempt from the hot_domains check.

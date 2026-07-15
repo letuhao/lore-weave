@@ -89,7 +89,16 @@ GROUP_DIRECTORY: dict[str, str] = {
     # federation contract), NOT `composition_` — a separate group so group="plan" actually
     # surfaces them (they used to be mis-claimed under "composition" above, which the
     # prefix-based filter could never honor).
-    "plan": "Novel planning workflow — PlanForge propose/refine/validate/compile (plan_propose_spec, plan_self_check, plan_interpret_feedback, plan_apply_revision, plan_review_checkpoint, plan_handoff_autofix, plan_validate, plan_compile).",
+    "plan": (
+        "Novel planning workflow — PlanForge. THE SEQUENCE MATTERS: plan_propose_spec drafts a "
+        "spec, but a proposal ALONE creates NOTHING the book can use. To actually lay out a story "
+        "you MUST finish by calling plan_compile — that is the step that MATERIALISES the linked "
+        "chapter/scene structure (the outline the manuscript hangs on). After a user asks you to "
+        "plan or lay out their story: propose_spec → (refine with the user) → plan_compile. Do not "
+        "stop at propose; a plan with no compiled structure is an unfinished plan. Also: "
+        "plan_self_check, plan_interpret_feedback, plan_apply_revision, plan_review_checkpoint, "
+        "plan_handoff_autofix, plan_validate."
+    ),
 }
 
 # WS-1a (contracts.md C1) — the closed category enum for tool_list/tool_load: the

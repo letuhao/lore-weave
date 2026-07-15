@@ -721,8 +721,10 @@ class TestSurfaceHotDomains:
 
     def test_editor_matches_book_glossary_skill(self):
         # Both surfaces inject the glossary skill (names glossary_* only) + the story
-        # search; the editor's prose write-back is a FRONTEND tool, not a backend
-        # domain — so the editor's hot domains equal the book-scoped surface's.
+        # search + the co_write write-mode workflow (close-21-28), whose hot_domains
+        # {plan, composition} make plan_compile / composition_package_tree reachable
+        # WITHOUT discovery — the deeper P-08 fix. The editor's prose write-back is a
+        # FRONTEND tool, so the editor's hot domains still equal the book-scoped surface's.
         editor = td.surface_hot_domains(editor=True, book_scoped=True)
         book = td.surface_hot_domains(editor=False, book_scoped=True)
         assert editor == book == {"glossary", "story", "knowledge"}
