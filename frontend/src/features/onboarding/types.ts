@@ -1,8 +1,10 @@
 // C22 — Intent-branching onboarding types.
-// The first-run "What do you want to do?" fork presents exactly four intents.
+// The first-run "What do you want to do?" fork presents the tailored intents.
 // Each routes to a tailored surface + the right container (never a generic shell).
 
-export type IntentId = 'write' | 'world' | 'translate' | 'explore';
+// F1 (DBT-14 / C22 fifth-intent) — 'assistant' surfaces the Work Assistant (private diary + capture)
+// so a first-run user can reach it, not only via the sidebar.
+export type IntentId = 'write' | 'world' | 'translate' | 'explore' | 'assistant';
 
 /** A single intent choice as presented on the first-run screen. */
 export interface IntentChoice {
@@ -14,7 +16,7 @@ export interface IntentChoice {
   /** i18n key for the one-line description. */
   descKey: string;
   /** lucide-react icon name resolved by the view. */
-  icon: 'PenLine' | 'Globe2' | 'Languages' | 'Compass';
+  icon: 'PenLine' | 'Globe2' | 'Languages' | 'Compass' | 'NotebookPen';
 }
 
 /** Server-side preference key persisted via /v1/me/preferences (multi-device). */

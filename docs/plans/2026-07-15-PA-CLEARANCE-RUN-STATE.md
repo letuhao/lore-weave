@@ -51,7 +51,7 @@ stays quarantine-tier — R2 makes it VISIBLE, never clears the number).
 ### Group F — FE polish (DBT-14)
 | Slice | Status | Evidence / note |
 |---|---|---|
-| **F1** onboarding fifth-intent (C22) | ⬜ | assistant intent id + tile + route |
+| **F1** onboarding fifth-intent (C22) | ✅ | added the `assistant` intent (id + tile + `/assistant` route + NotebookPen icon) to the first-run fork, so a new user reaches the Work Assistant not only via the sidebar. i18n: the 2 new `intent.assistant` keys translated into ALL 18 locales via `scripts/i18n_translate.py --ns onboarding` (gap-heal, 0 failed — no churn to existing translations). **Tests (30 green):** IntentScreen four→five + route map + i18n parity + tsc. Single-service FE, self-reviewed (route is real — AssistantPage; no security/data surface). |
 | **F2** FE timezone-confirm UI | ⬜ | confirm control; BE already accepts timezone |
 | **F3** assistant session-template seed (WS-1.7) | ⬜ | seed WITHOUT a working-memory charter (D13) |
 

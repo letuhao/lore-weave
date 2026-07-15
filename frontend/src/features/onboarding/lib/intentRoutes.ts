@@ -1,12 +1,13 @@
 import type { IntentChoice, IntentId } from '../types';
 
 // C22 — pure intent → tailored-surface mapping (BL-15 LOCKED).
-// Each of the four intents lands on its OWN surface + the right container:
+// Each intent lands on its OWN surface + the right container:
 //   - write     → /books            (book workspace: write / continue a book)
 //   - world     → /worlds           (C20/C21 world container — NO new world model)
 //   - translate → /books?intent=translate  (translation surface is per-book in the
 //                 workspace; ROUTE-ONLY, no new translator flow — LOCKED non-goal)
 //   - explore   → /knowledge/projects (C7/C19 read-only project/graph browse)
+//   - assistant → /assistant         (F1 — the Work Assistant surface, AssistantPage)
 // Pure + side-effect-free so it is trivially unit-tested and reused by the hook.
 
 export const INTENT_CHOICES: readonly IntentChoice[] = [
@@ -25,6 +26,15 @@ export const INTENT_CHOICES: readonly IntentChoice[] = [
     titleKey: 'intent.explore.title',
     descKey: 'intent.explore.desc',
     icon: 'Compass',
+  },
+  // F1 (C22 fifth-intent) — the Work Assistant (private diary + work capture); routes to /assistant,
+  // the same surface the sidebar mounts (AssistantPage).
+  {
+    id: 'assistant',
+    route: '/assistant',
+    titleKey: 'intent.assistant.title',
+    descKey: 'intent.assistant.desc',
+    icon: 'NotebookPen',
   },
 ] as const;
 

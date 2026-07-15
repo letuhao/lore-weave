@@ -17,6 +17,10 @@
     "explore": {
       "title": "Explorer",
       "desc": "Parcourez vos connaissances — entités, chronologies et graphe de relations."
+    },
+    "assistant": {
+      "title": "Assistant de travail",
+      "desc": "Un journal intime quotidien qui garde précieusement la trace de vos proches, de vos projets et de vos décisions."
     }
   }
 }
