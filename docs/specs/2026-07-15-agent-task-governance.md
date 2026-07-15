@@ -72,6 +72,9 @@ until every step's effect is real. This is **PDCA**, applied per-agent-task.
 | **GOV-6** | **Generalise the existing task-specific enforcers INTO this framework, don't fork it.** glossary-extraction and lore-enrichment already have rule-based quality logic; they become **governed workflows** with declared effects, retiring their bespoke enforcement. One framework, many workflows. Legacy per-task logic is tracked for migration, never grandfathered silently. |
 | **GOV-7** | **Escalation is bounded.** N consecutive CONTROL failures on one step → stop re-prompting, surface honestly to the user (*"I couldn't complete X"*), never loop forever (the `hard-stop after 3 attempts` discipline). Enforcement re-prompts are capped + counted; a runaway enforcer is itself a bug. |
 | **GOV-8** | **Governance is OBSERVABLE.** Every step transition (planned → in-progress → effect-checked → done/re-prompted) is traced (the 2026 AI-governance "observability layer"). This is the audit trail + the eval signal (the S06 gate reads it). |
+| **GOV-9** | **The enforcement surface is a COPIED hook lifecycle** (OQ-1 sealed — Claude Code + Kiro converge identically; we do not invent one). The governance loop attaches to four lifecycle events: `UserPromptSubmit` (MONITOR — inject the pending-step nag), `PreToolUse` (CONTROL — block a step that violates a dependency; exit-2 semantics = block + reason to the model), `PostToolUse` (CONTROL — run the just-completed step's effect-probe, mark done / re-prompt), and **`Stop`** (CONTROL — the completion gate: **refuse to yield the turn** while a pending step's effect is unmet, sending control back with the re-prompt). §8 details the mapping. |
+| **GOV-10** | **The effect-probe registry is HYBRID: central CATALOG, distributed IMPL** (OQ-2 sealed — the microservices-governance consensus: *centralize the policy source of truth, distribute enforcement close to the workload*). The **catalog** (probe names + typed contracts + the closed set) has ONE home (a governance module in chat-service); each **probe implementation** is owned by its domain as an MCP tool (composition owns `linked_structure`, glossary owns `entities_extracted`) — MCP-first + provider-gateway invariants. No bottleneck (a probe is one cheap query); consistent contract (one catalog). §10 details it. |
+| **GOV-11** | **This is the SESSION-governance pattern ported from meta to product, and STRONGER in the honesty axis** (OQ-4 resolved by brainstorm). The repo already runs agent-governance on itself (Claude Code ↔ the human): `/goal` (a Stop-gate condition), `workflow-gate.py` (an effect-gated phase state-machine), the RUN-STATE file (a persistent todo), the pre-commit hook (rule-probes), the TodoWrite nag. We reuse that vocabulary (*condition · evidence · gate · nag*). Crucial difference: `/goal`'s evaluator reads the **transcript only** — it enforces persistence, NOT honesty (a model *claiming* a check passed satisfies it). The product agent-governance **runs the effect-probe (a real query)**, so it verifies the EFFECT, not the claim — it can do what `/goal` structurally cannot. §11 details the symmetry. |
 
 ---
 
@@ -118,20 +121,165 @@ generic — and it reuses the exact query patterns the task-specific enforcers a
 
 ---
 
-## 7 · Open questions (for CLARIFY)
+## 7 · Open questions
 
-- **OQ-1** Where does CONTROL run — a `PostToolUse`-style hook after each tool, a per-turn checkpoint,
-  or a `Stop`-style gate before the agent yields the turn? (Industry uses all three; likely per-turn
-  checkpoint + a yield gate. `agent-gui-loop-needs-live-browser-smoke` cousin: prove by effect.)
-- **OQ-2** The effect-probe registry's home — chat-service (calls composition/book) vs. a probe MCP each
-  domain owns. Leaning: **domain owns its probes** (composition owns `linked_structure`), chat-service
-  federates — mirrors the MCP-first + provider-gateway invariants.
-- **OQ-3** Agent-self-defined effects: how tightly closed is the set? A pure enum is safest; a
-  parameterised probe (`linked_structure(book_id)`) needs typed args (IN-3 enum discipline).
-- **OQ-4** Interaction with the existing `/goal` + workflow-gate (this repo's OWN governance for the
-  human-agent loop) — is the agent-governance a scaled-down sibling? Reuse vocabulary.
-- **OQ-5** Cost: MONITOR re-inject + CONTROL probes add per-turn work. Budget it (07S §1); the probe is
-  one cheap query, the nag is a few tokens — but measure, don't assume (`m3-pullmode-measured-nogo`).
+**RESOLVED (folded into §3 + detailed below):**
+- ~~**OQ-1**~~ → **GOV-9 / §8** — copy the Claude Code + Kiro hook lifecycle (they hook before/after/stop).
+- ~~**OQ-2**~~ → **GOV-10 / §10** — hybrid: central catalog, domain-distributed probe impl.
+- ~~**OQ-4**~~ → **GOV-11 / §11** — port the `/goal`+`workflow-gate` pattern; stronger in honesty (effect-probe > transcript).
+
+**STILL OPEN (for the detail pass + edge-case review):**
+- **OQ-3** Agent-self-defined effects — how closed is the set? (§9.3 proposes typed-parameterised probes
+  from a closed name-registry; confirm the arg-typing + who can register a new probe name.)
+- **OQ-5** Per-turn cost of MONITOR re-inject + CONTROL probes — measure, don't assume
+  (`m3-pullmode-measured-nogo`, 07S §1 budget). §12 EC-9.
+- **OQ-6** (new) Async effects — a `mode="llm"` propose returns a *job*; its effect (`spec_ready`) is not
+  immediate. Does CONTROL wait, poll, or treat "job in flight" as a distinct pending sub-state? §12 EC-2.
+- **OQ-7** (new) Who owns the WORKFLOW-DEFINITION catalog vs. the skill that teaches it? Today the prose
+  lives in `co_write_skill.py`; the governed definition is data. One home — do they merge? §9.1.
+
+---
+
+## 8 · The enforcement surface — the copied hook lifecycle (GOV-9)
+
+Claude Code and Kiro converge on the same events; we adopt them verbatim and place each governance
+pillar on the right one. Exit-code semantics are copied too: a **block** (PreToolUse exit-2) stops the
+action and hands the reason to the model; a **refuse-to-stop** (Stop) sends control back with a reason.
+
+| Lifecycle event | Fires | Governance action | Block / feedback |
+|---|---|---|---|
+| `SessionStart` / resume | session/agent start | rehydrate the active workflow's plan from `working_memory` | — |
+| **`UserPromptSubmit`** | user turn, before the model sees it | **MONITOR**: append the PENDING-steps nag to context (only the not-yet-satisfied steps) | context inject |
+| **`PreToolUse`** | before a tool runs | **CONTROL (guard)**: if the tool would violate a step dependency (e.g. drafting before the plan compiled, when the workflow requires it), block with the reason | **exit-2 block** |
+| **`PostToolUse`** | after a tool returns | **CONTROL (advance)**: if this tool was a step's action, run that step's **effect-probe**; true → mark `done`; false → keep pending + inject feedback (*"you called plan_compile but linked_structure is still 0 — check the result"*) | feedback inject |
+| **`Stop`** ⭐ | model about to yield the turn | **CONTROL (gate)**: if any REQUIRED (non-optional) pending step has an unmet effect AND the user's intent still implies the workflow, **refuse to yield** — re-prompt the model to complete it | **refuse-to-stop** (bounded, GOV-7) |
+| `PreCompact` | before compaction | ensure the plan is durably on `working_memory` (survives the compaction) | — |
+| `SubagentStop` | a sub-agent finishes | roll its step effects up into the parent plan | — |
+
+**The S06 fix is the `Stop` gate + the `PostToolUse` advance:** the agent proposes (PostToolUse marks
+step-1 done), tries to move to drafting, hits `Stop` with `compile` still pending + `linked_structure=0`
+→ refused, re-prompted → compiles → probe true → `Stop` allows the yield. No reliance on self-regulation.
+
+⚠ **The `Stop` gate must not trap a user who changed their mind.** It fires only while the user's intent
+still implies the workflow (a lightweight intent check) and is bounded (GOV-7: N refusals → surface
+honestly, release). A user who says *"forget the plan, just write"* releases the gate — governance
+serves the author, it does not imprison them (the `blocked ≠ imprisoned` principle).
+
+---
+
+## 9 · Data model
+
+### 9.1 WorkflowDefinition (the DEFINE artifact — OQ-7)
+```
+WorkflowDefinition {
+  id: str                     # "co_write.lay_out_story"
+  trigger: intent-descriptor  # when it applies (author lays out their story)
+  steps: [ Step {
+    id: str                   # "compile"
+    intent: str               # one line, human + model readable
+    action_hint: str          # the tool(s) that advance it (advisory, not a hard bind)
+    required_effect: EffectRef | null   # null ⇒ advisory step (no gate)
+    optional: bool            # a non-required step never blocks Stop
+    depends_on: [step_id]     # ordering for the PreToolUse guard
+  } ]
+}
+```
+The **skill prose** (`co_write_skill.py`) and the **governed definition** are ONE concept in two forms;
+GOV resolves OQ-7 by making the definition the source and the skill prose a *rendering* of it (so they
+cannot drift — the `css-var-duplicated-across-two-consumers-drifts` lesson).
+
+### 9.2 EffectRef + the probe contract
+```
+EffectRef { probe: ProbeName; args: {typed} }        # e.g. { probe: "composition.linked_structure", args: { book_id } }
+Probe (impl, domain-owned MCP) : (args) -> { satisfied: bool, observed: <cheap value>, cost_ms }
+```
+`observed` lets the re-prompt be specific (*"linked_structure = 0"*), not just "not done".
+
+### 9.3 The plan/todo state (on `working_memory`, GOV-2)
+```
+ActivePlan {
+  workflow_id: str
+  steps: [ { step_id, state: planned|in_progress|done|blocked, last_probe: {satisfied, observed, at}, attempts: int } ]
+  # one-in-progress invariant; survives compaction; re-injected (pending only) by MONITOR
+}
+```
+**OQ-3** (agent-self-defined): the agent may author an `ActivePlan` ad-hoc, but each `required_effect`
+must reference a **probe NAME from the closed catalog** (it cannot invent an unverifiable effect) — the
+`Frontend-Tool-Contract` closed-set-⇒-enum discipline applied to effects. It MAY parameterise
+(`linked_structure(book_id=X)`) with typed args; it may NOT register a new probe name (that is a
+platform/def-time act, §10).
+
+---
+
+## 10 · The effect-probe registry (GOV-10 — hybrid)
+
+- **Central catalog** (one home, chat-service governance module): the closed set of `ProbeName`s, each
+  with its typed arg-schema + which domain owns it + a description. Versioned. This is the SoT the agent
+  and the definitions reference by name — the `contracts/frontend-tools.contract.json` pattern, for
+  effects.
+- **Distributed impl**: each probe is an MCP tool on its owning domain (`composition_probe_linked_structure`
+  on composition-service, reading `structure_node`/`outline_node`; `glossary_probe_entities_extracted` on
+  glossary-service). MCP-first; a probe never reaches into another service's DB (provider-gateway /
+  scope-separation invariants).
+- **Seeded probes (P0):** `composition.linked_structure(book_id)`, plus the two that generalise the
+  existing task-specific enforcers — `glossary.entities_extracted(...)`, `lore.enrichment_complete(...)`
+  — so GOV-6 lands with real subjects, not a toy.
+- **Cost discipline:** a probe is ONE cheap query (`EXISTS`/`count`), cached within a turn. The catalog
+  records each probe's measured `cost_ms`; a probe that is not cheap is a design smell (CONTROL runs it
+  often). This answers OQ-5 by construction — but it is MEASURED at P0, not assumed.
+
+---
+
+## 11 · Symmetry with the session-governance (`/goal` + `workflow-gate`) — GOV-11
+
+The repo already governs the **Claude-Code ↔ human** loop; the product governs the **studio-agent ↔
+novelist** loop. Same four pillars, same vocabulary, one is the reference for the other:
+
+| Pillar | SESSION (this repo, on itself) | PRODUCT (the studio agent) |
+|---|---|---|
+| DEFINE | 12-phase `WORKFLOW.md` + the `/goal` condition | `WorkflowDefinition` (co_write, plan_forge) |
+| PLAN | size-class → phase plan | agent `ActivePlan` on `working_memory` |
+| MONITOR | RUN-STATE file · the *"TodoWrite hasn't been used recently"* nag | pending-step re-inject (the nag), §8 |
+| CONTROL | `workflow-gate.py` state-machine · pre-commit rule-hooks · the `/goal` Stop-gate | effect-probe gate · the `Stop` refuse-to-yield, §8 |
+
+**The insight that makes the product version STRONGER:** `/goal`'s evaluator *"reads the transcript
+only — it cannot run commands or read files"* (WORKFLOW.md, verbatim), so it enforces **persistence,
+not honesty** — a model *claiming* a check passed satisfies it. The product agent-governance **runs the
+effect-probe** (a real DB query), so it verifies the **effect**, not the claim. S06 is exactly the case
+`/goal` would wave through (*"I've set up the plan"* with `structure_node=0`) and the effect-probe
+catches. ⇒ We port the vocabulary and the mental model, and we CLOSE the honesty gap the meta-level
+tool cannot. (Conversely: the SESSION tooling could adopt effect-probes too — a future cross-pollination
+row, out of scope here.)
+
+---
+
+## 12 · Edge cases (for the review + plan)
+
+| # | Edge case | Handling |
+|---|---|---|
+| **EC-1** | **False-done** — model marks `compile` done, effect=0 | GOV-4: `PostToolUse`/`Stop` probe overrides to pending. THE core case. |
+| **EC-2** | **Async effect** — `mode="llm"` propose returns a job; `spec_ready` not immediate (OQ-6) | A distinct `in_flight` sub-state: the step is not done AND not re-promptable-as-skipped; MONITOR shows *"waiting for the propose job"*; CONTROL gates on the job's terminal state, not wall-clock. Do NOT re-prompt a step that is legitimately in flight (that is the `worker-loop-cancel-clobber` class). |
+| **EC-3** | **User abandons the workflow** (*"forget the plan, just write"*) | §8: the `Stop` gate checks residual intent; an explicit abandon RELEASES it. Governance serves, not imprisons. |
+| **EC-4** | **Re-prompt loop** — the model can't complete a step (a real backend error) | GOV-7: N attempts → stop, surface honestly (*"I couldn't compile — <observed error>"*), release. A runaway enforcer is itself a bug (`hard-stop after 3`). |
+| **EC-5** | **Probe flakiness** — the effect-probe itself errors (service down) | Absent ≠ unsatisfied. A probe that cannot RUN returns `unknown`, not `false` — CONTROL does NOT re-prompt on `unknown` (that would punish a book-service outage), it degrades to advisory + warns. The `silent-success-is-a-bug` law's mirror: a silent FAILURE-to-verify must not read as "not done". |
+| **EC-6** | **Compaction mid-workflow** | `PreCompact` + GOV-2: the `ActivePlan` is on `working_memory`, which survives; the nag rehydrates it on the next turn. |
+| **EC-7** | **Concurrent / nested workflows** — the agent plans B while A is pending | one-in-progress is per-STEP, not per-workflow; the ActivePlan holds a small stack; MONITOR nags the top-of-stack. (Deep nesting is a smell — cap it.) |
+| **EC-8** | **A step with no cheap effect** (genuinely semantic — "the prose matches the author's voice") | `required_effect: null` (advisory) OR an opt-in LLM-check effect (GOV-4) — used sparingly, since it costs a turn. Most steps have a cheap structural effect; reserve the LLM check. |
+| **EC-9** | **Per-turn cost** (OQ-5) | MONITOR nag = only pending steps (tens of tokens); CONTROL probe = one cached cheap query per advanced step. Measured at P0; budgeted (07S §1). |
+| **EC-10** | **Agent games the probe** — calls a no-op that flips the effect without real work | The probe reads the REAL effect (structure_node rows), which a no-op cannot fabricate — that is the whole point of effect-over-claim. A probe that CAN be gamed is a mis-designed probe (probe the durable truth, not a transient flag — `reconcile-by-truth-mirror-producer-predicate`). |
+
+---
+
+## 13 · Where this sits in the AI-native platform
+
+The platform already has the **generative** and **grounding** layers — session management, prompt
+engineering, context engineering, session compaction, knowledge grounding, LLM-as-judge. Those make the
+agent *capable* and *informed*. **What was missing is the layer that makes a multi-step capability
+actually COMPLETE reliably** — the control loop that turns a workflow *definition* into a workflow
+*outcome*. That is this governance layer. In the 2026 AI-agent-governance stack's terms, the platform had
+the *policy/context* and *observability* pieces; this adds the **runtime-enforcement** piece and the
+**plan-lifecycle** piece — the two that, per Gartner, half of 2030's agent failures will trace back to.
+It is the missing pillar, and it is why a strong model *and* a weak model both need it.
 
 ---
 
