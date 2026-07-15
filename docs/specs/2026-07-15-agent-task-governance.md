@@ -1,8 +1,13 @@
 # Spec — Agent Task/Process Governance (DEFINE · PLAN · MONITOR · CONTROL)
 
-> **Status:** 📐 CLARIFY draft — 2026-07-15. Authored after a live S06 flagship replay proved the gap
-> and a web-research pass (BPM process governance + 2026 AI-agent governance + the todo-list pattern
-> across Claude Code / Cursor / Codex / Antigravity). **Highest priority** (PO-directed).
+> **Status:** 🔒 SEALED — 2026-07-16 (PO-approved; adversarial cold-start review folded; v2 REFRAME
+> confirmed against code). Authored after a live S06 flagship replay proved the gap and a web-research
+> pass (BPM process governance + 2026 AI-agent governance + the todo-list pattern across Claude Code /
+> Cursor / Codex / Antigravity). **Highest priority** (PO-directed). **Implementation home:** folded into
+> [`docs/plans/2026-07-13-close-21-28-plan.md`](../plans/2026-07-13-close-21-28-plan.md) as **Phase G**
+> (its P0–P5 = plan slices G0–G5; Governance-P5 IS the plan's Phase 4 S06 gate — the named DoD of pillars
+> 23-D7 / 27-H4 / 28-D3). No separate implementation plan — this spec is the DESIGN, the close-21-28 plan
+> is the BUILD board.
 > **Type:** FS · cross-cutting (chat-service agent loop + a small composition/book effect-check surface).
 > **Decision prefix:** **GOV-\***.
 > **Builds on (does NOT duplicate):** [`2026-07-09-agent-discoverability-and-workflow`](2026-07-09-agent-discoverability-and-workflow/) (the *workflow definitions* + discoverability). **Distinct from** [`2026-07-03-ai-task-standard.md`](2026-07-03-ai-task-standard.md) (that governs **single-shot NON-agentic** LLM generation; this governs **multi-step AGENTIC workflows**).
