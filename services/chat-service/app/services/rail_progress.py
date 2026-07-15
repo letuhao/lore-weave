@@ -53,9 +53,16 @@ BOOK_STATE_KEYS = (
     "plan",          # composition plan_run/spec  — the arc plan
     "chapters",      # book chapters              — chapters that exist
     "prose",         # book chapters with text    — chapters actually written
+    "suggestions",   # glossary ai-suggested DRAFT — the review pile still to triage
 )
 
-_PREDICATE_RE = re.compile(r"^\s*(\w+)\s*(>=|>)\s*(\d+)\s*$")
+# The operators are a CLOSED SET. `>`/`>=` express a BUILD predicate ("this many artifacts
+# now exist"); `<`/`<=`/`==` express a DRAIN predicate ("this pile has shrunk to n"). The
+# entity-triage rail needs the latter: it is done not when it has PRODUCED something but when
+# the review pile has been emptied (`suggestions < 1`). Without a drain operator a triage step
+# could never be marked done from the book, so the driver could not tell a half-triaged pile
+# from a clean one — the exact ungrounded state that left S03 at 0/3.
+_PREDICATE_RE = re.compile(r"^\s*(\w+)\s*(>=|<=|==|>|<)\s*(\d+)\s*$")
 
 
 @dataclass
@@ -73,6 +80,7 @@ class BookState:
     plan: int | None = None
     chapters: int | None = None
     prose: int | None = None
+    suggestions: int | None = None
     # Which sources failed this turn (for logging + so the renderer can stay quiet about them)
     failed_sources: list[str] = field(default_factory=list)
 
@@ -116,7 +124,15 @@ def _predicate_holds(state: BookState, key: str, op: str, num: int) -> bool | No
     val = state.get(key)
     if val is None:
         return None
-    return val > num if op == ">" else val >= num
+    if op == ">":
+        return val > num
+    if op == ">=":
+        return val >= num
+    if op == "<":
+        return val < num
+    if op == "<=":
+        return val <= num
+    return val == num  # "=="
 
 
 @dataclass
@@ -231,15 +247,19 @@ def compute_rail_progress(
         step_id = str(st.get("id") or f"step-{i}")
 
         if i in artifact:
+            parsed = parse_done_when(st.get("done_when", ""))
+            key, op, _num = parsed
             if artifact[i]:
-                key = parse_done_when(st.get("done_when", ""))[0]
                 done, reason = True, f"the book shows {key}={state.get(key)}"
             else:
-                # The artifact is ABSENT. Overrides a successful-looking call and overrides
-                # the pipeline backfill: the tool may have run and written nothing, which is
-                # exactly the bug this whole mechanism refuses to be fooled by.
-                key = parse_done_when(st.get("done_when", ""))[0]
-                done, reason = False, f"the book shows {key}={state.get(key)} — the effect never landed"
+                # The predicate is UNMET. For a BUILD predicate (>/>=) that means the artifact
+                # is absent — overriding a successful-looking call, the write-nothing bug this
+                # mechanism refuses to be fooled by. For a DRAIN predicate (</<=/==) it means
+                # the pile has NOT yet shrunk to target — the step is genuinely still to do.
+                if op in ("<", "<=", "=="):
+                    done, reason = False, f"the book shows {key}={state.get(key)} — not yet drained to target"
+                else:
+                    done, reason = False, f"the book shows {key}={state.get(key)} — the effect never landed"
         elif st.get("done_when"):
             # It declared an artifact but the book could not be reached this turn. Fall back
             # to the call log rather than guess: guessing "done" skips a step, guessing "not
@@ -276,6 +296,7 @@ _STATE_LABELS = {
     "plan": "arc plan started (1 = yes)",
     "chapters": "chapters",
     "prose": "chapters with writing in them",
+    "suggestions": "suggested items still waiting for review",
 }
 
 

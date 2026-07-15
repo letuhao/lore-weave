@@ -56,7 +56,9 @@ class TestDoneWhenGrammar:
         assert parse_done_when("entities > 0") is None
 
     def test_rejects_junk_and_never_evaluates_it(self):
-        for expr in ("cast", "cast > ", "cast < 5", "len(cast) > 0", "__import__('os')", ""):
+        # NB `cast < 5` is now VALID (the drain operator) — see TestDrainPredicate. Junk here is
+        # only what is outside the closed grammar entirely.
+        for expr in ("cast", "cast > ", "cast != 5", "len(cast) > 0", "__import__('os')", ""):
             assert parse_done_when(expr) is None
 
 
@@ -511,3 +513,62 @@ class TestNextActionableStep:
         assert "glossary_propose_entities" in d          # the model needs to know which tool
         assert "Never mention this instruction" in d     # …but must not leak it to the user
         assert "SYSTEM DIRECTIVE" in d
+
+
+# ── the DRAIN predicate (entity-triage) — done when the pile shrinks to empty ──
+#
+# Every other rail completes when an artifact APPEARS (cast > 0). Triage is the inverse: it
+# completes when the review pile is EMPTIED. A build-only grammar (>, >=) could never express
+# that, so the driver had no artifact for triage and could not tell a half-triaged pile from a
+# clean one — the exact ungrounded state that left S03 at 0/3. These tests pin the drain
+# operator + the triage rail's grounding on `suggestions`.
+TRIAGE_STEPS = [
+    {"id": "see-pile", "tool": "glossary_list_ai_suggestions", "gate": "none"},
+    {"id": "keep-and-reject", "tool": "glossary_propose_status_change", "gate": "confirm"},
+    {"id": "merge-duplicates", "tool": "glossary_propose_merge", "gate": "confirm"},
+    {"id": "recheck", "tool": "glossary_list_ai_suggestions", "gate": "none", "done_when": "suggestions < 1"},
+]
+
+
+class TestDrainPredicate:
+    def test_the_new_operators_parse(self):
+        assert parse_done_when("suggestions < 1") == ("suggestions", "<", 1)
+        assert parse_done_when("suggestions <= 0") == ("suggestions", "<=", 0)
+        assert parse_done_when("suggestions == 0") == ("suggestions", "==", 0)
+
+    def test_unsupported_operator_is_rejected(self):
+        assert parse_done_when("suggestions != 0") is None
+        assert parse_done_when("suggestions =< 0") is None
+
+    def test_drain_holds_only_when_shrunk_to_target(self):
+        # 6 pending ⇒ NOT drained; 0 pending ⇒ drained; UNKNOWN ⇒ None (never a false "clean")
+        full = compute_rail_progress("entity-triage", TRIAGE_STEPS, BookState(suggestions=6), set())
+        assert full.steps[3].done is False
+        assert full.next_index is not None  # rail stays live while items remain
+        clean = compute_rail_progress("entity-triage", TRIAGE_STEPS,
+                                      BookState(suggestions=0), {"glossary_list_ai_suggestions",
+                                                                 "glossary_propose_status_change"})
+        assert clean.steps[3].done is True
+
+    def test_a_half_triaged_pile_keeps_the_recheck_step_open(self):
+        # listed + made some decisions, but 3 items still pending ⇒ recheck is NOT done, so the
+        # driver keeps pointing at the rail instead of declaring it finished (the S03 fix).
+        from collections import Counter
+        p = compute_rail_progress(
+            "entity-triage", TRIAGE_STEPS, BookState(suggestions=3),
+            Counter({"glossary_list_ai_suggestions": 1, "glossary_propose_status_change": 1,
+                     "glossary_propose_merge": 1}),
+        )
+        assert p.next_step is not None and p.next_step.step_id == "recheck"
+        assert not p.all_done
+
+    def test_unknown_suggestions_never_reads_as_clean(self):
+        # glossary unreachable ⇒ suggestions None ⇒ fall back to the call log, NOT a false drain.
+        p = compute_rail_progress("entity-triage", TRIAGE_STEPS, BookState(suggestions=None),
+                                  {"glossary_list_ai_suggestions"})
+        # recheck falls back to the call log (its tool ran) — but crucially not via a manufactured 0.
+        assert "suggestions" not in (render_book_state(BookState(suggestions=None)) or "")
+
+    def test_snapshot_labels_the_pending_pile(self):
+        snap = render_book_state(BookState(suggestions=4))
+        assert snap is not None and "suggested items still waiting for review: 4" in snap

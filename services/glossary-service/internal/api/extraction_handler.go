@@ -2051,6 +2051,29 @@ func (s *Server) internalEntityCount(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"count": count})
 }
 
+// internalSuggestionsCount — GET /internal/books/{book_id}/suggestions-count.
+//
+// The entity-triage rail's completion signal for the Track-C rail driver: how many
+// AI-suggested items still await a triage decision. It reuses the tool's OWN producer
+// (queryAISuggestions with status="draft") rather than re-deriving the predicate, so the
+// count the driver grounds on can never drift from the pile the agent actually sees via
+// glossary_list_ai_suggestions — a keep/throw-out/combine decision moves an item off 'draft',
+// so this counts DOWN as the user triages, reaching 0 exactly when the pile is clean.
+// Auth-free like its siblings: this is an /internal route, the caller (chat-service) owns the
+// grant check on the session's book.
+func (s *Server) internalSuggestionsCount(w http.ResponseWriter, r *http.Request) {
+	bookID, ok := parsePathUUID(w, r, "book_id")
+	if !ok {
+		return
+	}
+	_, total, err := s.queryAISuggestions(r.Context(), bookID, "draft")
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "failed to count suggestions")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"count": total})
+}
+
 // ── C12c-a: glossary entities listing for knowledge-service sync ──────────
 
 // entitiesListItem is a single entity in the listInternalEntities response.

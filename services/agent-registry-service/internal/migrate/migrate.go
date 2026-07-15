@@ -505,6 +505,11 @@ ON CONFLICT (slug) WHERE tier = 'system' DO UPDATE SET
 -- ones, throw out the junk, combine duplicates). The measured S03 failure was the agent
 -- not triaging at all — it never listed the pile, or created new items during a cleanup.
 -- The rail names list → keep/reject → merge → re-list so the pile visibly drains.
+-- The recheck step carries done_when "suggestions < 1": UNLIKE every other rail (whose
+-- completion is an artifact APPEARING), triage completes when the pile SHRINKS to empty, so
+-- the driver grounds on the pending-suggestion count (glossary /suggestions-count) and keeps
+-- the rail live until it hits 0 — without it the driver had no artifact for triage and could
+-- not tell a half-triaged pile from a clean one, which left S03 ungrounded at 0/3.
 INSERT INTO workflows (tier, slug, title, description, surfaces, inputs, steps, notes_md, status, source) VALUES
   ('system','entity-triage','Clean up a book''s suggested items',
    'Sort the AI-suggested items waiting for review — keep the real ones, throw out the junk, combine duplicates — until the pile is a clean, trustworthy list.',
@@ -513,7 +518,7 @@ INSERT INTO workflows (tier, slug, title, description, surfaces, inputs, steps, 
      {"id":"see-pile","tool":"glossary_list_ai_suggestions","gate":"none"},
      {"id":"keep-and-reject","tool":"glossary_propose_status_change","gate":"confirm"},
      {"id":"merge-duplicates","tool":"glossary_propose_merge","gate":"confirm"},
-     {"id":"recheck","tool":"glossary_list_ai_suggestions","gate":"none"}
+     {"id":"recheck","tool":"glossary_list_ai_suggestions","gate":"none","done_when":"suggestions < 1"}
    ]'::jsonb,
    E'Use this when the user wants to clean up / tidy / sort the suggested items in their book — "clean up the suggestions", "keep the good ones", "these are junk", "these two are the same person", "how many are left". The suggested items are the AI-proposed entries awaiting review (internally: draft entities tagged ai-suggested). The job: keep the real ones, throw out the junk, and combine duplicates, so the pile drains to a clean list the user trusts.\n\nEXACTLY WHICH TOOL DOES WHAT — use these, and ONLY these, for the cleanup:\n- glossary_list_ai_suggestions — show the pile. Each item comes back with its entity_id; you will pass those ids to the tools below. Never ask the user for an id.\n- glossary_propose_status_change — KEEP or THROW OUT items, in BATCHES. To keep: call it once with status="active" and entity_ids = all the real ones. To throw out: call it once with status="rejected" and entity_ids = all the junk ones. One confirmation covers the whole batch.\n- glossary_propose_merge — COMBINE duplicates. Call it with winner_id = the one entry to keep and loser_ids = the other entries that are the same thing (they must be the same category). The losers fold into the winner.\n- glossary_propose_reassign_kind — only if an item is filed under the wrong category (uncommon).\nDo NOT use glossary_propose_entity_edit or any rename/edit tool to keep, throw out, or combine — editing a name or a field is NOT triage and will not drain the pile. Renaming "Dracula" to "Count Dracula" does not merge them; use glossary_propose_merge. Do NOT create new items — this is a cleanup.\n\nRail: (1) list the pile and tell the user in plain terms what is there — how many, which look like real people/places, which look empty or junk, which look like the same thing twice; (2) keep the real ones (status_change → active) and throw out the junk (status_change → rejected); (3) combine duplicates (merge winner + losers); (4) list the pile again so the user SEES it shrank, and give an honest count.\n\nSPEAK PLAINLY to the user: say "suggestions" or "items", never "entities"/"drafts"; "keep"/"throw out"/"combine", never "status change"/"reject"/"merge candidate". Give honest counts (e.g. "kept 4, threw out 2, combined 2 into 1 — 5 left"), and never say the pile is clean while items still remain.',
    'published','system')

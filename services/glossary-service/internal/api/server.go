@@ -149,6 +149,10 @@ func (s *Server) Router() http.Handler {
 		r.Get("/books/{book_id}/translation-candidates", s.internalTranslationCandidates)
 		r.Post("/books/{book_id}/apply-translations", s.internalApplyTranslations)
 		r.Get("/books/{book_id}/entity-count", s.internalEntityCount)
+		// Track-C rail driver — the entity-triage rail's completion signal: how many
+		// AI-suggested items still await a triage decision (the review pile). Grounds
+		// `done_when:"suggestions < 1"` so the driver knows a half-triaged pile from a clean one.
+		r.Get("/books/{book_id}/suggestions-count", s.internalSuggestionsCount)
 		r.Get("/books/{book_id}/entities", s.internalListEntities)
 		// mui #4 — batch fetch by id for the knowledge semantic selector.
 		r.Post("/books/{book_id}/entities/by-ids", s.internalEntitiesByIDs)

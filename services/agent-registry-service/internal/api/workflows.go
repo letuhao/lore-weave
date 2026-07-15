@@ -62,13 +62,18 @@ type workflowStepIn struct {
 	// NOTE this field MUST exist on the struct: `steps` round-trips through
 	// json.Unmarshal into []workflowStepIn, so an authored key that is not declared here
 	// is SILENTLY DROPPED on the way out and the consumer never sees it.
-	DoneWhen string `json:"done_when,omitempty" jsonschema:"artifact predicate proving the step landed: '<key> > <n>', key in categories|cast|connections|plan|chapters|prose"`
+	DoneWhen string `json:"done_when,omitempty" jsonschema:"artifact predicate proving the step landed: '<key> <op> <n>', key in categories|cast|connections|plan|chapters|prose|suggestions, op in > >= < <= == (use < for a DRAIN step, e.g. 'suggestions < 1')"`
 }
 
 // validDoneWhen — the closed grammar for a step's done_when. Parsed, never evaluated.
 // A free-string predicate would be a setting that reads back as effective and does
 // nothing (the write-only-behavior bug), so it is rejected at the write.
-var doneWhenRe = regexp.MustCompile(`^\s*(categories|cast|connections|plan|chapters|prose)\s*(>=|>)\s*\d+\s*$`)
+//
+// Keys + operators MUST stay in lockstep with the chat-service consumer
+// (rail_progress.py: BOOK_STATE_KEYS + _PREDICATE_RE). `suggestions` and the drain operators
+// (< <= ==) were added for the entity-triage rail, whose completion is a pile shrinking to 0
+// rather than an artifact appearing — a BUILD-only grammar could not express "done when empty".
+var doneWhenRe = regexp.MustCompile(`^\s*(categories|cast|connections|plan|chapters|prose|suggestions)\s*(>=|<=|==|>|<)\s*\d+\s*$`)
 
 type proposeWorkflowIn struct {
 	Slug        string            `json:"slug" jsonschema:"lowercase a-z0-9- slug, 2-64 chars (unique per tier)"`

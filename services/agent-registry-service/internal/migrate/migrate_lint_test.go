@@ -155,14 +155,15 @@ func TestSchemaSQL_SeededWorkflowNotesFitTheConsumerCap(t *testing.T) {
 // against the SAME closed grammar the writer enforces (mirrors doneWhenRe in workflows.go).
 func TestSchemaSQL_SeededDoneWhenMatchesTheClosedGrammar(t *testing.T) {
 	seedDoneWhenRe := regexp.MustCompile(`"done_when"\s*:\s*"([^"]*)"`)
-	grammar := regexp.MustCompile(`^\s*(categories|cast|connections|plan|chapters|prose)\s*(>=|>)\s*\d+\s*$`)
+	grammar := regexp.MustCompile(`^\s*(categories|cast|connections|plan|chapters|prose|suggestions)\s*(>=|<=|==|>|<)\s*\d+\s*$`)
 	found := 0
 	for _, m := range seedDoneWhenRe.FindAllStringSubmatch(schemaSQL, -1) {
 		found++
 		if !grammar.MatchString(m[1]) {
 			t.Errorf("seeded done_when %q does not match the closed grammar "+
-				"'<key> > <n>' (key in categories|cast|connections|plan|chapters|prose) — the "+
-				"chat-service consumer would silently ignore it and fall back to the call log.", m[1])
+				"'<key> <op> <n>' (key in categories|cast|connections|plan|chapters|prose|suggestions; "+
+				"op in > >= < <= ==) — the chat-service consumer would silently ignore it and fall "+
+				"back to the call log.", m[1])
 		}
 	}
 	if found == 0 {

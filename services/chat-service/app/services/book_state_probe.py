@@ -87,6 +87,19 @@ async def _connections(book_id: str) -> int | None:
     return int(n) if isinstance(n, int) else None
 
 
+async def _suggestions(book_id: str) -> int | None:
+    """The review pile still awaiting triage — ai-suggested entities still in DRAFT (a
+    keep/throw-out/combine decision moves them off draft, so this counts down as the user
+    triages). 0 = a clean pile (confirmed), None = glossary unreachable (UNKNOWN, never a
+    manufactured zero — telling the triage rail "0 left" on a blip would call it finished
+    while items remain)."""
+    d = await _get_json(settings.glossary_service_url, f"/internal/books/{book_id}/suggestions-count")
+    if d is None:
+        return None
+    n = d.get("count")
+    return int(n) if isinstance(n, int) else None
+
+
 async def _plan(book_id: str, caller_user_id: str) -> int | None:
     d = await _get_json(
         settings.composition_service_internal_url,
@@ -127,6 +140,7 @@ async def probe_book_state(book_id: str, caller_user_id: str) -> BookState:
         _connections(book_id),
         _plan(book_id, caller_user_id),
         _chapters_and_prose(book_id),
+        _suggestions(book_id),
         return_exceptions=True,
     )
 
@@ -136,16 +150,17 @@ async def probe_book_state(book_id: str, caller_user_id: str) -> BookState:
     categories, cast, connections, plan = (_val(r) for r in results[:4])
     ch_pr = _val(results[4]) or (None, None)
     chapters, prose = ch_pr
+    suggestions = _val(results[5])
 
     state = BookState(
         categories=categories, cast=cast, connections=connections,
-        plan=plan, chapters=chapters, prose=prose,
+        plan=plan, chapters=chapters, prose=prose, suggestions=suggestions,
     )
     state.failed_sources = [
         name for name, v in (
             ("glossary/categories", categories), ("glossary/cast", cast),
             ("knowledge/connections", connections), ("composition/plan", plan),
-            ("book/chapters", chapters),
+            ("book/chapters", chapters), ("glossary/suggestions", suggestions),
         ) if v is None
     ]
     if state.failed_sources:
@@ -153,7 +168,7 @@ async def probe_book_state(book_id: str, caller_user_id: str) -> BookState:
         # means the agent is running half-blind, which is exactly the thing that used to be
         # invisible.
         logger.warning(
-            "book-state probe: %d/5 sources unavailable for book=%s (%s) — "
+            "book-state probe: %d/6 sources unavailable for book=%s (%s) — "
             "the rail will be grounded only on what answered",
             len(state.failed_sources), book_id, ", ".join(state.failed_sources),
         )

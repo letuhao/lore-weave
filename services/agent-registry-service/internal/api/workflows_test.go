@@ -147,6 +147,8 @@ func TestDoneWhen_Valid(t *testing.T) {
 	for _, expr := range []string{
 		"cast > 0", "categories >= 1", "plan>0", "  prose  >  0  ",
 		"connections > 3", "chapters >= 10",
+		// drain predicates (entity-triage): done when the pile shrinks to empty
+		"suggestions < 1", "suggestions <= 0", "suggestions == 0", "cast < 5",
 	} {
 		w := baseWorkflow()
 		w.Steps[0].DoneWhen = expr
@@ -163,7 +165,7 @@ func TestDoneWhen_RejectsAnythingOutsideTheClosedGrammar(t *testing.T) {
 		"entities > 0",         // not a known key (the key is `cast`)
 		"cast",                 // no operator
 		"cast > ",              // no threshold
-		"cast < 5",             // unsupported operator
+		"cast != 5",            // unsupported operator (!= is not in the closed set)
 		"cast > 0; DROP TABLE", // not an eval surface, and never will be
 		"len(cast) > 0",
 	} {
