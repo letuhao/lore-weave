@@ -1,4 +1,19 @@
-# Track C — completeness audit (2026-07-11, **updated 2026-07-12 post-run**)
+# Track C — completeness audit (2026-07-11, **updated 2026-07-12, then 2026-07-15 all-tracks-clear**)
+
+> **2026-07-15 UPDATE (all-tracks-clear run).** Track C is effectively COMPLETE. Full account:
+> [`docs/plans/2026-07-13-all-tracks-clear-RUN-STATE.md`](../../../../plans/2026-07-13-all-tracks-clear-RUN-STATE.md)
+> + [`docs/eval/discoverability/2026-07-15-M2-all-scenarios-clear.md`](../../../../eval/discoverability/2026-07-15-M2-all-scenarios-clear.md).
+> - **P-1 (step-runner) shipped + the "model ceiling" DISPROVEN.** S03/S04/S05/S09's failures were
+>   every one a fixture/harness/product-infra gap — never a capability limit. Fixes: intent→workflow
+>   pinning, rail-driver DRAIN grounding, domain-aware Tier-W eval commit, cross-service translation
+>   coverage, canon-check book_id resolution, translation-pass start_job. **S06 flagship 3/3 GREEN**
+>   (fresh, SQL-proven); **16/18 scenarios green**; S09 discovery-fixed (conformance-engine async is a
+>   separate track); S10 (maps) authored; S11 (reader) in flight.
+> - **WS-5 catalog: now 10 System workflows** live (the WS-5 "13" count was aspirational; the shipped
+>   set is 10, all driven).
+> - **FE surfaces (P-5) all BUILT + browser-proven by effect:** workflow rack, binding UI, W10 maps
+>   canvas, W11 lore-seeker reader (spoiler-windowed, fail-closed).
+
 
 > **2026-07-12 UPDATE.** A long autonomous run advanced Track C substantially. The full
 > account is [`docs/plans/2026-07-12-track-c-completion-RUN-STATE.md`](../../../../plans/2026-07-12-track-c-completion-RUN-STATE.md)
