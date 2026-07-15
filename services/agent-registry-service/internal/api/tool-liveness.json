@@ -45,7 +45,7 @@
       "executes": null,
       "proven": false,
       "waived": {
-        "reason": "M0a (463091c6a) fixed the uncallable json.RawMessage=array-of-bytes schema; the flagship now calls it and lands real prose (2026-07-15, book 019f6571 chapters_with_prose=1). The matrix predates M0a, so executes:null is STALE.",
+        "reason": "NL-PROVEN: M0a (463091c6a) fixed the uncallable json.RawMessage=array-of-bytes schema, and this session's flagship (a real gemma run, book 019f6571) called it and landed real prose (chapters_with_prose=1). The 2026-07-15 deterministic re-sweep still can't attribute the call ('rejected for a reason we cannot attribute to the tool' — it lacks the base_version precondition the NL rail sets up). The 2026-07-10 matrix predates M0a, so executes:null is STALE — an NL-matrix re-run flips it to true.",
         "gate": "needs-resweep"
       }
     },
@@ -330,8 +330,8 @@
       "executes": null,
       "proven": false,
       "waived": {
-        "reason": "polls a generation job; a job run on a local model is $0 (Phase 3b planned exactly this). Buildable-at-$0, not blocked; needs a job seeded then a re-sweep.",
-        "gate": "needs-resweep"
+        "reason": "2026-07-15 re-sweep: 'required arg needs authored/structured input' — needs a generation job seeded first (a local job is $0). Buildable fixture not yet written.",
+        "gate": "deferred-build"
       }
     },
     "composition_get_mine_job": {
@@ -339,8 +339,8 @@
       "executes": null,
       "proven": false,
       "waived": {
-        "reason": "same as composition_get_generation_job — local generation job = $0, re-sweep flips it.",
-        "gate": "needs-resweep"
+        "reason": "2026-07-15 re-sweep: 'required arg needs authored/structured input' — same seeded-job precondition as composition_get_generation_job.",
+        "gate": "deferred-build"
       }
     },
     "composition_get_outline_node": {
@@ -593,7 +593,7 @@
       "executes": null,
       "proven": false,
       "waived": {
-        "reason": "paid=True, but a paid tool on a LOCAL model is $0 (see the spend-correction §). Buildable-at-$0 — was mislabeled 'paid/blocked'; a local re-sweep flips it.",
+        "reason": "paid=True, but a paid tool on a LOCAL model is $0 (spend-correction §). The 2026-07-15 re-sweep scored it 'paid or not authorable — effect not verified at $0' because the deterministic sweep skips paid effect-verification; an NL run on a local model reaches it.",
         "gate": "needs-resweep"
       }
     },
@@ -847,8 +847,8 @@
       "executes": null,
       "proven": false,
       "waived": {
-        "reason": "adoption lands on a confirm the harness confirm-resolver (confirm.py) can drive; kg_adopt_template is already proven, so this should be reachable on a re-sweep.",
-        "gate": "needs-resweep"
+        "reason": "2026-07-15 re-sweep: 'required arg needs authored/structured input' — the sweep's confirm-resolver reaches the gate but can't author the schema-edit payload.",
+        "gate": "deferred-build"
       }
     },
     "kg_schema_read": {
@@ -861,8 +861,8 @@
       "executes": null,
       "proven": false,
       "waived": {
-        "reason": "same confirm path as kg_schema_edit; reachable via the harness confirm-resolver on re-sweep.",
-        "gate": "needs-resweep"
+        "reason": "2026-07-15 re-sweep: 'required arg needs authored/structured input' — same as kg_schema_edit.",
+        "gate": "deferred-build"
       }
     },
     "kg_sync_available": {
@@ -890,8 +890,8 @@
       "executes": null,
       "proven": false,
       "waived": {
-        "reason": "same confirm path as kg_schema_edit; reachable via the harness confirm-resolver on re-sweep.",
-        "gate": "needs-resweep"
+        "reason": "2026-07-15 re-sweep: 'required arg needs authored/structured input' — same as kg_schema_edit.",
+        "gate": "deferred-build"
       }
     },
     "kg_view_delete": {

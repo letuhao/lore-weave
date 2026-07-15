@@ -28,39 +28,47 @@ GATES = frozenset({"external", "upstream-drift", "needs-resweep", "deferred-buil
 
 # tool_name -> {"reason": <human>, "gate": <enum>}
 WAIVERS: dict[str, dict[str, str]] = {
-    # ── needs-resweep: callable in code now; the 2026-07-10 matrix is stale (pre-M0a) ──
+    # ── needs-resweep: NL-provable by a real model, but the $0 DETERMINISTIC sweep can't drive
+    #    the effect. Flips on an NL-matrix re-run, not a cheap capability sweep. ──
     "book_chapter_save_draft": {
         "gate": "needs-resweep",
-        "reason": "M0a (463091c6a) fixed the uncallable json.RawMessage=array-of-bytes schema; "
-                  "the flagship now calls it and lands real prose (2026-07-15, book 019f6571 "
-                  "chapters_with_prose=1). The matrix predates M0a, so executes:null is STALE.",
+        "reason": "NL-PROVEN: M0a (463091c6a) fixed the uncallable json.RawMessage=array-of-bytes schema, "
+                  "and this session's flagship (a real gemma run, book 019f6571) called it and landed real "
+                  "prose (chapters_with_prose=1). The 2026-07-15 deterministic re-sweep still can't attribute "
+                  "the call ('rejected for a reason we cannot attribute to the tool' — it lacks the "
+                  "base_version precondition the NL rail sets up). The 2026-07-10 matrix predates M0a, so "
+                  "executes:null is STALE — an NL-matrix re-run flips it to true.",
     },
     "glossary_extract_entities_from_doc": {
         "gate": "needs-resweep",
-        "reason": "paid=True, but a paid tool on a LOCAL model is $0 (see the spend-correction §). "
-                  "Buildable-at-$0 — was mislabeled 'paid/blocked'; a local re-sweep flips it.",
+        "reason": "paid=True, but a paid tool on a LOCAL model is $0 (spend-correction §). The 2026-07-15 "
+                  "re-sweep scored it 'paid or not authorable — effect not verified at $0' because the "
+                  "deterministic sweep skips paid effect-verification; an NL run on a local model reaches it.",
     },
+    # ── deferred-build: the 2026-07-15 re-sweep verdict was "required arg needs authored/
+    #    structured input" — the $0 deterministic sweep cannot synthesize the seed; buildable ──
     "composition_get_generation_job": {
-        "gate": "needs-resweep",
-        "reason": "polls a generation job; a job run on a local model is $0 (Phase 3b planned exactly "
-                  "this). Buildable-at-$0, not blocked; needs a job seeded then a re-sweep.",
+        "gate": "deferred-build",
+        "reason": "2026-07-15 re-sweep: 'required arg needs authored/structured input' — needs a "
+                  "generation job seeded first (a local job is $0). Buildable fixture not yet written.",
     },
     "composition_get_mine_job": {
-        "gate": "needs-resweep",
-        "reason": "same as composition_get_generation_job — local generation job = $0, re-sweep flips it.",
+        "gate": "deferred-build",
+        "reason": "2026-07-15 re-sweep: 'required arg needs authored/structured input' — same seeded-job "
+                  "precondition as composition_get_generation_job.",
     },
     "kg_schema_edit": {
-        "gate": "needs-resweep",
-        "reason": "adoption lands on a confirm the harness confirm-resolver (confirm.py) can drive; "
-                  "kg_adopt_template is already proven, so this should be reachable on a re-sweep.",
+        "gate": "deferred-build",
+        "reason": "2026-07-15 re-sweep: 'required arg needs authored/structured input' — the sweep's "
+                  "confirm-resolver reaches the gate but can't author the schema-edit payload.",
     },
     "kg_sync_apply": {
-        "gate": "needs-resweep",
-        "reason": "same confirm path as kg_schema_edit; reachable via the harness confirm-resolver on re-sweep.",
+        "gate": "deferred-build",
+        "reason": "2026-07-15 re-sweep: 'required arg needs authored/structured input' — same as kg_schema_edit.",
     },
     "kg_triage_schema_write": {
-        "gate": "needs-resweep",
-        "reason": "same confirm path as kg_schema_edit; reachable via the harness confirm-resolver on re-sweep.",
+        "gate": "deferred-build",
+        "reason": "2026-07-15 re-sweep: 'required arg needs authored/structured input' — same as kg_schema_edit.",
     },
     # ── deferred-build: needs an in-repo hand-authored multi-FK seed (buildable, not written) ──
     "glossary_create_evidence": {
