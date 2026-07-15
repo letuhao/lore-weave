@@ -714,6 +714,36 @@ async def get_proactive_enabled(user_id: UUID = Query(...), db: asyncpg.Pool = D
     return {"proactive_enabled": bool((prefs.assistant or {}).get("proactive_enabled", False))}
 
 
+async def _notify_proactive_checkin(user_id: str, session_id: str) -> bool:
+    """R3 (D-PROACTIVE-DELIVERY) — push a CONTENT-FREE notification so an opted-in user is actually
+    REACHED (not only if they happen to open the app). Mirrors the nudge's content-free discipline:
+    NO diary text ever leaves the auth boundary — only a stable title + i18n key (a proactive check-in
+    can land on a lock screen). category='assistant' so a user can opt out of assistant pings alone.
+    dedup_key ties it to the session so an at-least-once retry can't double-post. Best-effort: a
+    notification blip must NOT fail the proactive turn (the message is already persisted) — swallow +
+    warn. Returns True when the sink accepted it."""
+    try:
+        async with build_internal_client(
+            settings.notification_service_internal_url, internal_token=settings.internal_service_token,
+            timeout_s=5, trace_id_provider=trace_id_var.get,
+        ) as client:
+            resp = await client.post("/internal/notifications/", json={
+                "user_id": user_id,
+                "category": "assistant",
+                "title": "Weekly check-in",                       # content-free (no diary data)
+                "body": "Your assistant has a check-in ready when you are.",
+                "message_key": "assistant.proactive_checkin",     # locale-aware FE render
+                "dedup_key": f"proactive:{session_id}",           # idempotent per proactive turn
+            })
+        if 200 <= resp.status_code < 300:
+            return True
+        logger.warning("proactive check-in notification returned %d for %s", resp.status_code, user_id)
+        return False
+    except Exception as exc:  # noqa: BLE001 — best-effort; the turn is already persisted.
+        logger.warning("proactive check-in notification failed for %s: %s", user_id, exc)
+        return False
+
+
 class ProactiveTurnTrigger(BaseModel):
     """The scheduler's proactive_nudge fires this with ONLY {user_id}; book/model/tz resolve server-side."""
 
@@ -775,8 +805,13 @@ async def proactive_turn(body: ProactiveTurnTrigger, db: asyncpg.Pool = Depends(
                 """INSERT INTO chat_messages (session_id, owner_user_id, role, content, sequence_num, initiated_by)
                    VALUES ($1, $2, 'assistant', $3, 0, 'assistant_proactive') RETURNING message_id""",
                 session_id, str(body.user_id), content)
+
+    # R3 (D-PROACTIVE-DELIVERY) — AFTER the turn is committed, push a content-free notification so an
+    # opted-in user is actually reached even without opening the app. Best-effort (the message stands
+    # regardless); `notified` is surfaced so the caller/analytics can see whether the push landed.
+    notified = await _notify_proactive_checkin(str(body.user_id), str(session_id))
     return {"proactive": True, "session_id": str(session_id), "message_id": str(msg["message_id"]),
-            "initiated_by": "assistant_proactive"}
+            "initiated_by": "assistant_proactive", "notified": notified}
 
 
 @router.delete("/assistant/data", dependencies=[Depends(require_internal_token)])

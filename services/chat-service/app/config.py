@@ -17,6 +17,9 @@ class Settings(BaseSettings):
     audio_cleanup_interval_hours: int = 4  # How often to run cleanup
     internal_service_token: str
     statistics_service_internal_url: str = "http://statistics-service:8089"
+    # R3 (D-PROACTIVE-DELIVERY) — the notification sink for the proactive check-in's content-free push.
+    # Unconfigured ⇒ the proactive turn still persists its message; the push simply no-ops (best-effort).
+    notification_service_internal_url: str = "http://notification-service:8091"
     # composition-service listens on 8093 (infra/docker-compose.yml PORT: "8093"), not 8092.
     # This default said 8092 and no env var overrode it, so EVERY chat-service call to
     # composition-service has been a ConnectError — and its only consumer

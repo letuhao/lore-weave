@@ -46,9 +46,11 @@ async def test_proactive_turn_enabled_writes_assistant_proactive_message(client,
         FakeRecord({"session_id": sess_id}),
         FakeRecord({"message_id": msg_id}),
     ])
+    notify = AsyncMock(return_value=True)
     with _prefs({"proactive_enabled": True}), \
          patch("app.routers.internal._resolve_distill_context",
-               AsyncMock(return_value=("book-1", "user_model", uuid4(), "UTC"))):
+               AsyncMock(return_value=("book-1", "user_model", uuid4(), "UTC"))), \
+         patch("app.routers.internal._notify_proactive_checkin", notify):
         r = await client.post("/internal/chat/assistant/proactive-turn", headers=_AUTH, json={"user_id": UID})
     assert r.status_code == 202, r.text
     body = r.json()
@@ -59,6 +61,57 @@ async def test_proactive_turn_enabled_writes_assistant_proactive_message(client,
     # the message INSERT stamped initiated_by='assistant_proactive'
     msg_sql = mock_pool._conn.fetchrow.await_args_list[1].args[0]
     assert "chat_messages" in msg_sql and "'assistant_proactive'" in msg_sql
+    # R3 — the push fired for the committed turn's session, and its result is surfaced.
+    notify.assert_awaited_once_with(UID, str(sess_id))
+    assert body["notified"] is True
+
+
+@pytest.mark.asyncio
+async def test_proactive_turn_notification_blip_still_persists_the_turn(client, mock_pool):
+    # R3 — the push is BEST-EFFORT: a notification-service blip must NOT fail the turn (the message is
+    # already committed); the turn succeeds with notified=False.
+    sess_id, msg_id = uuid4(), uuid4()
+    mock_pool.fetchval = AsyncMock(return_value=None)
+    mock_pool._conn.fetchrow = AsyncMock(side_effect=[
+        FakeRecord({"session_id": sess_id}), FakeRecord({"message_id": msg_id})])
+    with _prefs({"proactive_enabled": True}), \
+         patch("app.routers.internal._resolve_distill_context",
+               AsyncMock(return_value=("book-1", "user_model", uuid4(), "UTC"))), \
+         patch("app.routers.internal._notify_proactive_checkin", AsyncMock(return_value=False)):
+        r = await client.post("/internal/chat/assistant/proactive-turn", headers=_AUTH, json={"user_id": UID})
+    assert r.status_code == 202
+    body = r.json()
+    assert body["proactive"] is True and body["notified"] is False  # turn stands, push didn't land
+
+
+@pytest.mark.asyncio
+async def test_proactive_notification_is_content_free():
+    # R3 — the push carries NO diary content (it can land on a lock screen): only a stable title +
+    # i18n key + the 'assistant' category + a session-scoped dedup key. Capture the POSTed body.
+    from types import SimpleNamespace
+    captured = {}
+
+    class _FakeClient:
+        async def __aenter__(self): return self
+        async def __aexit__(self, *a): return False
+        async def post(self, path, json=None):
+            captured["path"] = path
+            captured["json"] = json
+            return SimpleNamespace(status_code=201)
+
+    with patch("app.routers.internal.build_internal_client", lambda *a, **k: _FakeClient()):
+        from app.routers.internal import _notify_proactive_checkin
+        ok = await _notify_proactive_checkin(UID, "sess-123")
+    assert ok is True
+    assert captured["path"] == "/internal/notifications/"
+    payload = captured["json"]
+    assert payload["category"] == "assistant"
+    assert payload["dedup_key"] == "proactive:sess-123"
+    assert payload["message_key"] == "assistant.proactive_checkin"
+    # content-free: no diary text — the title/body are generic, and there is no free 'content' field.
+    blob = (payload.get("title", "") + payload.get("body", "")).lower()
+    for leak in ("diary", "reflect", "colleague", "migration"):
+        assert leak not in blob
 
 
 @pytest.mark.asyncio

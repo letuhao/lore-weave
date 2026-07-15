@@ -17,6 +17,7 @@ func TestValid_AcceptsEveryProducerCategory(t *testing.T) {
 		"mcp_approval", // auth-service MCP approvals — the P0-4 regression
 		"campaign",     // campaign-service
 		"billing",      // usage-billing-service
+		"assistant",    // chat-service proactive check-in (R3 / D-PROACTIVE-DELIVERY)
 	} {
 		if !Valid(c) {
 			t.Errorf("category %q must be accepted (real producers emit it)", c)
