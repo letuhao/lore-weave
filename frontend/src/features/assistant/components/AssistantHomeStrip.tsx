@@ -9,11 +9,13 @@ import { useDiaryFactInbox } from '../hooks/useDiaryFactInbox';
 import { useEndOfDay } from '../hooks/useEndOfDay';
 import { useReflection } from '../hooks/useReflection';
 import { useScorecards } from '../hooks/useScorecards';
+import { useTimezone } from '../hooks/useTimezone';
 import { CaptureRail } from './CaptureRail';
 import { CoachingScorecard } from './CoachingScorecard';
 import { DiaryFactInbox } from './DiaryFactInbox';
 import { EndOfDayReview } from './EndOfDayReview';
 import { ReflectionCard } from './ReflectionCard';
+import { TimezoneConfirm } from './TimezoneConfirm';
 
 export function AssistantHomeStrip() {
   const { user } = useAuth();
@@ -23,6 +25,7 @@ export function AssistantHomeStrip() {
   const inbox = useDiaryFactInbox();
   const reflection = useReflection(bookId);
   const scorecards = useScorecards();
+  const tz = useTimezone();
 
   const firstName = (user?.display_name || user?.email || '').split(/[ @]/)[0];
 
@@ -34,6 +37,9 @@ export function AssistantHomeStrip() {
         </h2>
         <p className="text-sm text-muted-foreground">Your private work assistant.</p>
       </div>
+
+      {/* F2 — confirm the local time zone (once) so the distiller buckets each day correctly. */}
+      {tz.needsConfirm && <TimezoneConfirm detected={tz.detected} saving={tz.saving} onConfirm={tz.confirm} />}
 
       {/* Work-capture consent (A2, fail-closed). Explicit opt-in — never auto-enabled. */}
       <div className="flex items-center justify-between gap-3 rounded-lg border border-border bg-card p-3">

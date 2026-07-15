@@ -52,7 +52,7 @@ stays quarantine-tier — R2 makes it VISIBLE, never clears the number).
 | Slice | Status | Evidence / note |
 |---|---|---|
 | **F1** onboarding fifth-intent (C22) | ✅ | added the `assistant` intent (id + tile + `/assistant` route + NotebookPen icon) to the first-run fork, so a new user reaches the Work Assistant not only via the sidebar. i18n: the 2 new `intent.assistant` keys translated into ALL 18 locales via `scripts/i18n_translate.py --ns onboarding` (gap-heal, 0 failed — no churn to existing translations). **Tests (30 green):** IntentScreen four→five + route map + i18n parity + tsc. Single-service FE, self-reviewed (route is real — AssistantPage; no security/data surface). |
-| **F2** FE timezone-confirm UI | ⬜ | confirm control; BE already accepts timezone |
+| **F2** FE timezone-confirm UI | ✅ | `useTimezone` (detect browser zone + load/save `prefs.timezone` via /v1/me/preferences, server SoT) + a `TimezoneConfirm` banner (shown once until set) MOUNTED in AssistantHomeStrip, so the distiller buckets each day by the confirmed LOCAL zone. **Verified end-to-end (key match):** FE `prefs.timezone` → auth internal profile `timezone` (handlers.go:1152) → chat `get_user_timezone` (auth_client.py:51) → distiller — NOT cosmetic. **Tests (FE 30 green):** component (use-detected/pick-another/inject-detected/disabled) + hook (needsConfirm/saved/write-through/failed-save-not-confirmed). Single-service FE (reuses the existing prefs endpoint + DBT-11 chat resolution), self-reviewed (server SoT, no localStorage for the pref). |
 | **F3** assistant session-template seed (WS-1.7) | ⬜ | seed WITHOUT a working-memory charter (D13) |
 
 ## 4 · Decision register (ordinary build-time calls appended as the run goes)
