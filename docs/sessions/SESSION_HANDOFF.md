@@ -137,8 +137,29 @@ All six DoD criteria met + proven in-transcript (spec `docs/specs/2026-07-13-all
 
 Mandatory adversarial review (W11 reader/consent) found + FIXED 2 real fail-opens: entity-LIST spoiler
 window (names leaked past the facts window) + consent read-tool fail-open on a DB blip. Commits
-`e1891749c` · `876a3d6a8` · `5c10e259b`. Deploy tail: chat-service Fix-2 committed+unit-proven, deploys
-next chat rebuild.
+`e1891749c` · `876a3d6a8` · `5c10e259b`.
+
+**Post-clear audit + remediation + QC (2026-07-15, same session):**
+- **4-track cold-start completeness audit** (1 agent/track, disjoint, "assume inflated"): A/B/C
+  **SUBSTANTIALLY COMPLETE** (no false shells; B's 2 findings = the ones fixed above, confirmed closed);
+  **D OVERSTATED** — infra MET but the WS-D4 `waived`-in-manifest exit mechanism was never built (13
+  waives were prose-only), `save_draft` was a rationalized waive (M0a-fixed), 2–3 buildable-at-$0 waives
+  mislabeled "paid". Commit `319581f72`.
+- **D-TRACKD-REACCOUNT — CLEARED** (spec `docs/specs/2026-07-15-track-d-reaccount.md`; M1 `6e1e05966`,
+  M2/M3 `47ae92c0b`, M4 `56e6103b9`, M5 `bfd8e4f91`): built the `waived:{reason,gate}` mechanism (schema
+  v2, generation fails-closed on a null-without-a-waiver); post-M0a re-sweep flipped **0/13** + **0 broken**
+  → VALIDATED the waives (evidence-sharpened gates: deferred-build×9, needs-resweep×2, external×1,
+  upstream-drift×1). **211 executes:true + 13 machine-waived = 224 accounted, executes NOT faked;** WS-D4's
+  OR-WAIVED clause finally machine-backed. Track D → **MET**. Cold-start `/review-impl` clean (1 finding,
+  fixed in-phase).
+- **QC close:** rebuilt+redeployed chat-service (consent Fix-2, verified live) + knowledge-service
+  (entity-list window + story_search schema). Full suites: knowledge **3985 pass**, chat **1665 pass**.
+  **1 real regression caught + fixed** (`f80c875ca`): story_search's `before_chapter_id` was in the arg
+  model/executor/FastMCP sig but MISSING from the hand-written JSON schema (3-schema-sources trap) — the
+  LLM couldn't discover the spoiler cutoff; S11 masked it (harness-injected). ⚠ **9 remaining suite fails
+  are NOT this session's** (git-verified: 2 knowledge `fact_type` = P5 commitment track `3b45ad4d3`; 2
+  chat `voice_billing` = voice track `e0e64f9fd`; 5 = the documented D-SUITE-RED-5) — flagged for their
+  owning sessions per shared-checkout invariant #9, not touched.
 
 ## ⭐ Track: BOOK-PACKAGE CLUSTER (specs 22–28) — **COMPLETE** (2026-07-12, branch `feat/context-budget-law`)
 
