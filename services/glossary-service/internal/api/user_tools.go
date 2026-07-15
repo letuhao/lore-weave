@@ -279,6 +279,7 @@ type userCreateToolIn struct {
 	Icon        string   `json:"icon,omitempty"`
 	Color       string   `json:"color,omitempty"`
 	SortOrder   int      `json:"sort_order,omitempty"`
+	IsPerson    bool     `json:"is_person,omitempty" jsonschema:"kind only: mark this kind a REAL person (colleague/self/client) — excludes its entities from AI wiki-gen + enrichment (carried into the book on adopt)"`
 	KindCode    string   `json:"kind_code,omitempty" jsonschema:"attribute only: your user-tier kind it attaches to"`
 	GenreCode   string   `json:"genre_code,omitempty" jsonschema:"attribute only: your user-tier genre cell"`
 	FieldType       string   `json:"field_type,omitempty" jsonschema:"attribute only: text|textarea|select|number|date|tags|url|boolean — omit this argument for the default; do not send an empty string"`
@@ -356,10 +357,10 @@ func (s *Server) createUserKindTool(ctx context.Context, userID uuid.UUID, code,
 	var id uuid.UUID
 	var updatedAt time.Time
 	err := s.pool.QueryRow(ctx, `
-		INSERT INTO user_kinds (owner_user_id, code, name, description, icon, color)
-		VALUES ($1,$2,$3,$4,$5,$6)
+		INSERT INTO user_kinds (owner_user_id, code, name, description, icon, color, is_person)
+		VALUES ($1,$2,$3,$4,$5,$6,$7)
 		RETURNING user_kind_id, updated_at`,
-		userID, code, name, optStr(in.Description), icon, color).Scan(&id, &updatedAt)
+		userID, code, name, optStr(in.Description), icon, color, in.IsPerson).Scan(&id, &updatedAt)
 	if err != nil {
 		if isUniqueViolation(err) {
 			return nil, userWriteOut{}, errors.New("a user kind with this code already exists")

@@ -37,7 +37,7 @@ stays quarantine-tier — R2 makes it VISIBLE, never clears the number).
 ### Group P — Privacy / safety / crypto (fix-now default)
 | Slice | Status | Evidence / note |
 |---|---|---|
-| **P1** wiki is_person on USER tier | ⬜ | thread is_person: user_kind create/update HTTP + MCP create; adopt-clone already carries it. **privacy leak** |
+| **P1** wiki is_person on USER tier | ✅ | threaded is_person across user_kind create/update (HTTP) + MCP create + both read queries + response (effective-value-visible). **Tests:** glossary is_person suite 5/5 incl. a NEW full-HTTP `TestUserKindHTTP_IsPerson_CloneInheritsAndClearGuard` + `TestUserTierPersonKind_CreateThenAdopt_ExcludedFromWikiGen` (create→adopt→wiki-gen exclusion). **Cold review:** HIGH (clone path dropped is_person → re-opened the leak) FIXED — clone inherits from the system source; parity clear-guard added (can't clear is_person on a system-cloned person kind — third-party protection, MED-2 parity); MED (no client-level branch test) → covered by the HTTP e2e. Single service (glossary) — no cross-service seam. |
 | **P2** reflection facts fail-closed | ⬜ | recall_facts_range fail_closed variant for reflect_week; roll_up_week stays best-effort. **safety** |
 | **P3** DEK hardening bundle | ⬜ | (a) multi-consumer tripwire test (b) shred audit row + DEK_SHRED_TOKEN (c) generic reader decrypt |
 | **P4** diary shred durable retry | ⬜ | ride the existing book-service outbox → retried idempotent auth DELETE |
