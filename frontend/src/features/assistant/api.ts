@@ -1,7 +1,13 @@
 // WS-1.10 — the Work Assistant API layer. Assistant-specific control-plane calls; entity/chapter
 // reads reuse glossaryApi / chatApi from their own features (no duplication).
 import { apiJson } from '@/api';
-import type { DiaryEntriesResponse, DiaryPendingFact, EndDayResult, ProvisionResult } from './types';
+import type {
+  DiaryEntriesResponse,
+  DiaryPendingFact,
+  EndDayResult,
+  ProvisionResult,
+  ReflectionPattern,
+} from './types';
 
 export interface EndDayPayload {
   book_id: string;
@@ -83,5 +89,17 @@ export const assistantApi = {
       token,
       body: JSON.stringify({ pattern_key: patternKey }),
     });
+  },
+
+  /** R1 (D-REFLECTION-PATTERNS-FEED) — the DISMISSABLE reflection patterns for a given week (server
+   *  already excludes the user's tombstoned ones). `weekEnd` MUST be the displayed draft's week so the
+   *  chips correspond to the shown draft — a CALM week correctly returns no chips (never a stale prior
+   *  week's set). Feeds the ReflectionCard's chips. Server is SoT. */
+  getReflectionPatterns(token: string, weekEnd?: string) {
+    const q = weekEnd ? `?week_end=${encodeURIComponent(weekEnd)}` : '';
+    return apiJson<{ week_end: string | null; patterns: ReflectionPattern[] }>(
+      `/v1/assistant/reflection-patterns${q}`,
+      { token },
+    );
   },
 };

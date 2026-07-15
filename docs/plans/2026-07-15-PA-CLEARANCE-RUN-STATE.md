@@ -30,7 +30,7 @@ stays quarantine-tier — R2 makes it VISIBLE, never clears the number).
 ### Group R — Reachability (turn 3 shipped-but-unreachable features on)
 | Slice | Status | Evidence / note |
 |---|---|---|
-| **R1** reflection patterns feed + live dismiss | ⬜ | worker-ai persist structured patterns w/ the reflection entry → read route → FE feed |
+| **R1** reflection patterns feed + live dismiss | ✅ | chat `reflection_patterns` table (owner-scoped, get-or-replace/week) + PUT (worker-ai) + tombstone-filtered GET; worker-ai `run_weekly_reflection` returns `structured_patterns` → consumer PUTs them (best-effort; short-circuit clears); BFF `GET /v1/assistant/reflection-patterns?week_end` (owner from JWT); FE `useReflection` fetches chips FOR THE DRAFT'S WEEK. **Tests:** chat DB 3 (get-or-replace, tombstone-filter, owner-scope, calm-week-no-fallback) + worker-ai consumer 10 (persist + short-circuit-clears) + FE hook 3 + components 16 + BFF/FE tsc. **Live-smoke (PASTED):** worker-ai→chat PUT → FE→BFF→chat GET (2 chips) → dismiss → GET (dismissed EXCLUDED) → cross-tenant 0; H1 re-smoke: calm week returns [] not a stale prior week. **Cold review:** HIGH-1 (calm-latest-week fell back to a stale prior week via `max(week_end)`) FIXED — chips now pinned to the draft's `entry_date`, no fallback; L1 (patterns user-scoped, card per-book) = conscious (assistant diary is one book/user; chips tie to the shown draft). Crosses worker-ai/chat/BFF/FE. |
 | **R2** coaching scorecard read + minimal mount | ⬜ | BFF scorecard read → api.getScorecard → mount w/ SD-7 quarantine badge + trend-exclusion |
 | **R3** proactive delivery notification | ⬜ | content-free notification after proactive commit (mirror nudge; use registered sink) |
 

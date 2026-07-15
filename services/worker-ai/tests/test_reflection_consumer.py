@@ -25,10 +25,13 @@ class _Chat:
         self._dismissed = dismissed
         self.notes_calls = []
         self.dismiss_calls = []
+        self.pattern_puts = []  # R1 — records (user_id, week_start, week_end, patterns)
     async def list_reflection_notes(self, *, user_id, date_from, date_to):
         self.notes_calls.append((user_id, date_from, date_to)); return self._notes
     async def list_dismissed_pattern_keys(self, *, user_id):
         self.dismiss_calls.append(user_id); return self._dismissed
+    async def put_reflection_patterns(self, *, user_id, week_start, week_end, patterns):
+        self.pattern_puts.append((user_id, week_start, week_end, patterns)); return True
 
 
 def _fields(**over):
@@ -110,6 +113,40 @@ async def test_dismissed_pattern_key_is_tombstoned_live():
     assert ack is True
     body = book.writes[0]["body"]
     assert "migration" not in body  # tombstoned → dropped, never surfaced
+
+
+# ── R1 (D-REFLECTION-PATTERNS-FEED) — the structured patterns are persisted for the FE chip feed ──
+
+
+@pytest.mark.asyncio
+async def test_structured_patterns_are_persisted_for_the_fe_feed():
+    # A reflected week PUTs its structured (tombstone-filtered) patterns to chat, keyed by the week,
+    # so the FE can render dismissable chips (the dismiss CHAIN already exists; it had nothing to render).
+    book, chat = _Book(), _Chat(notes=_RECURRING_NOTES)
+    ack = await run_one_reflection_message(
+        knowledge_client=_Recaller([{"content": "x", "event_date": "2026-07-06"}]),
+        book_client=book, chat_client=chat, fields=_fields())
+    assert ack is True
+    assert len(chat.pattern_puts) == 1
+    uid, ws, we, patterns = chat.pattern_puts[0]
+    assert (uid, ws, we) == ("u1", "2026-07-06", "2026-07-12")
+    keys = {p["pattern_key"] for p in patterns}
+    assert "co_occurrence:migration" in keys  # the co-occurrence chip is fed
+    # every fed pattern carries the fields the FE dismiss chip needs
+    for p in patterns:
+        assert p["detector_code"] and p["pattern_key"] and "summary" in p
+
+
+@pytest.mark.asyncio
+async def test_short_circuit_clears_the_pattern_feed():
+    # A distress short-circuit must PUT an empty set (clearing any stale chips) — the FE must never show
+    # chips against a distress acknowledgement.
+    book, chat = _Book(), _Chat(notes=_RECURRING_NOTES)
+    ack = await run_one_reflection_message(
+        knowledge_client=_Recaller([{"content": "I want to die", "event_date": "2026-07-08"}]),
+        book_client=book, chat_client=chat, fields=_fields())
+    assert ack is True and book.writes == []       # short-circuit: no draft
+    assert chat.pattern_puts == [("u1", "2026-07-06", "2026-07-12", [])]  # chips cleared
 
 
 @pytest.mark.asyncio

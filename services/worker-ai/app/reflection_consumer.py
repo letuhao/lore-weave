@@ -95,6 +95,18 @@ async def run_one_reflection_message(
     if result.get("status") == "error" and result.get("retryable"):
         logger.warning("reflection msg %s retryable error (%s) — un-acked", message_id, result.get("reason"))
         return False
+
+    # R1 (D-REFLECTION-PATTERNS-FEED) — persist the week's STRUCTURED patterns so the FE can render
+    # dismissable chips (get-or-REPLACE per week; a short-circuit returns [] → clears stale chips).
+    # BEST-EFFORT: the prose draft is already written; a blip here just means no chips until next run.
+    # Only runs on a terminal (reflected / safety_short_circuit) outcome — `structured_patterns` is
+    # present in exactly those returns.
+    if chat_client is not None and "structured_patterns" in result:
+        await chat_client.put_reflection_patterns(
+            user_id=p["user_id"], week_start=p["week_start"], week_end=p["week_end"],
+            patterns=result["structured_patterns"],
+        )
+
     logger.info("reflection msg %s status=%s [%s..%s] patterns=%s",
                 message_id, result.get("status"), p["week_start"], p["week_end"],
                 result.get("patterns"))

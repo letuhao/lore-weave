@@ -235,6 +235,98 @@ async def list_reflection_dismissals(
     return {"pattern_keys": [r["pattern_key"] for r in rows]}
 
 
+# ── R1 (D-REFLECTION-PATTERNS-FEED) — reflection_patterns: persist + expose the structured patterns ──
+class ReflectionPatternIn(BaseModel):
+    detector_code: str
+    summary: str
+    pattern_key: str
+    evidence_refs: list[str] = []
+
+
+class ReflectionPatternsPut(BaseModel):
+    """worker-ai writes the week's structured patterns alongside the prose draft (get-or-REPLACE per
+    week). owner_user_id in the body (internal-token boundary). The patterns are ALREADY tombstone-
+    filtered at detection; storing them lets the FE render dismissable chips."""
+
+    owner_user_id: UUID
+    week_start: str
+    week_end: str
+    patterns: list[ReflectionPatternIn] = []
+
+
+@router.put("/assistant/reflection-patterns", dependencies=[Depends(require_internal_token)])
+async def put_reflection_patterns(body: ReflectionPatternsPut, db: asyncpg.Pool = Depends(get_db)) -> dict:
+    """Get-or-REPLACE the structured patterns for one (owner, week_end): a reflection re-run for the
+    same week replaces its set. Empty `patterns` clears the week (a calm week has no chips)."""
+    try:
+        ws, we = date.fromisoformat(body.week_start), date.fromisoformat(body.week_end)
+    except (ValueError, TypeError):
+        raise HTTPException(status_code=422, detail="week_start/week_end must be ISO dates (YYYY-MM-DD)")
+    async with db.acquire() as conn:
+        async with conn.transaction():
+            await conn.execute(
+                "DELETE FROM reflection_patterns WHERE owner_user_id=$1 AND week_end=$2",
+                str(body.owner_user_id), we,
+            )
+            for p in body.patterns:
+                key = (p.pattern_key or "").strip()
+                code = (p.detector_code or "").strip()
+                if not key or not code:
+                    continue  # a pattern with no stable key/detector can't be dismissed — skip it
+                await conn.execute(
+                    """
+                    INSERT INTO reflection_patterns
+                      (owner_user_id, week_start, week_end, detector_code, summary, pattern_key, evidence_refs)
+                    VALUES ($1,$2,$3,$4,$5,$6,$7::jsonb)
+                    ON CONFLICT (owner_user_id, week_end, pattern_key) DO UPDATE
+                      SET summary=EXCLUDED.summary, detector_code=EXCLUDED.detector_code,
+                          evidence_refs=EXCLUDED.evidence_refs
+                    """,
+                    str(body.owner_user_id), ws, we, code, p.summary, key,
+                    json.dumps(list(p.evidence_refs or [])),
+                )
+    return {"owner_user_id": str(body.owner_user_id), "week_end": body.week_end,
+            "stored": len([p for p in body.patterns if (p.pattern_key or '').strip()])}
+
+
+@router.get("/assistant/reflection-patterns", dependencies=[Depends(require_internal_token)])
+async def list_reflection_patterns(
+    user_id: UUID = Query(...),
+    week_end: str | None = Query(None),
+    db: asyncpg.Pool = Depends(get_db),
+) -> dict:
+    """The dismissable-chip feed for the FE reflection card. Returns the patterns for `week_end` (or
+    the LATEST week if omitted), EXCLUDING any the user has since tombstoned (reflection_dismissals) —
+    so a dismiss takes effect on refresh even though worker-ai already filters at the next detection.
+    Server is SoT (no localStorage)."""
+    try:
+        we = date.fromisoformat(week_end) if week_end else None
+    except (ValueError, TypeError):
+        raise HTTPException(status_code=422, detail="week_end must be an ISO date (YYYY-MM-DD)")
+    rows = await db.fetch(
+        """
+        SELECT rp.detector_code, rp.summary, rp.pattern_key, rp.evidence_refs, rp.week_start, rp.week_end
+        FROM reflection_patterns rp
+        WHERE rp.owner_user_id = $1
+          AND rp.week_end = COALESCE(
+                $2::date,
+                (SELECT max(week_end) FROM reflection_patterns WHERE owner_user_id = $1))
+          AND NOT EXISTS (
+                SELECT 1 FROM reflection_dismissals d
+                WHERE d.owner_user_id = rp.owner_user_id AND d.pattern_key = rp.pattern_key)
+        ORDER BY rp.detector_code ASC, rp.pattern_key ASC
+        """,
+        str(user_id), we,
+    )
+    return {"week_end": rows[0]["week_end"].isoformat() if rows else week_end,
+            "patterns": [
+                {"detector_code": r["detector_code"], "summary": r["summary"],
+                 "pattern_key": r["pattern_key"],
+                 "evidence_refs": list(json.loads(r["evidence_refs"]) if isinstance(r["evidence_refs"], str) else (r["evidence_refs"] or []))}
+                for r in rows
+            ]}
+
+
 # WS-1.8 (spec 06 §Q10) — the distiller's day-window read. The map-reduce worker has no user
 # JWT, so it fetches a day's assistant conversation over the internal-token trust boundary. Two
 # safety properties are enforced HERE, server-side, not left to the caller:

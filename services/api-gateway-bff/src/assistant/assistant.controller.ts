@@ -22,7 +22,7 @@
 // confirm (D9) are surfaced as explicit PENDING steps — never silently omitted, never
 // auto-enabled.
 
-import { Body, Controller, Delete, Headers, HttpException, Logger, Post } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Headers, HttpException, Logger, Post, Query } from '@nestjs/common';
 import * as jwt from 'jsonwebtoken';
 
 interface ProvisionBody {
@@ -93,6 +93,14 @@ interface CorrectResult {
 
 // WS-2.6c / D17 — the "forget a person" request. Deletes the structured memory (KG entity + facts +
 // pending) AND redacts the name from the diary source text.
+// R1 (D-REFLECTION-PATTERNS-FEED) — one structured, dismissable reflection pattern for the FE card.
+interface ReflectionPatternDto {
+  detector_code: string;
+  summary: string;
+  pattern_key: string;
+  evidence_refs: string[];
+}
+
 interface ForgetBody {
   book_id?: string;
   name?: string;
@@ -356,6 +364,42 @@ export class AssistantController {
       throw new HttpException('failed to dismiss reflection pattern', res.status >= 400 ? res.status : 502);
     }
     return { dismissed: true, pattern_key: patternKey };
+  }
+
+  // R1 (D-REFLECTION-PATTERNS-FEED) — the FE reflection card's dismissable-chip feed. Fronts chat's
+  // X-Internal-Token-only GET /internal/chat/assistant/reflection-patterns with the SERVER-DERIVED
+  // user_id (never a client-supplied owner). chat returns the LATEST week's structured patterns already
+  // EXCLUDING the user's tombstoned ones, so a dismiss takes effect on the next fetch (server is SoT).
+  @Get('reflection-patterns')
+  async reflectionPatterns(
+    @Query('week_end') weekEnd?: string,
+    @Headers('authorization') authorization?: string,
+  ): Promise<{ week_end: string | null; patterns: ReflectionPatternDto[] }> {
+    const { userId } = this.requireAuth(authorization);
+    const chatUrl = process.env.CHAT_SERVICE_URL;
+    const internalToken = process.env.INTERNAL_SERVICE_TOKEN;
+    if (!chatUrl || !internalToken) {
+      this.logger.error('reflection-patterns rejected: CHAT_SERVICE_URL / INTERNAL_SERVICE_TOKEN not configured');
+      throw new HttpException('server_error', 500);
+    }
+    // week_end pins the chips to the displayed draft's week (cold-review H1) — a calm week returns no
+    // chips instead of a stale prior week's set. Basic shape validation keeps a malformed value out.
+    const weekParam =
+      weekEnd && /^\d{4}-\d{2}-\d{2}$/.test(weekEnd) ? `&week_end=${encodeURIComponent(weekEnd)}` : '';
+    const res = await this.getInternal(
+      `${chatUrl}/internal/chat/assistant/reflection-patterns?user_id=${encodeURIComponent(userId)}${weekParam}`,
+      internalToken,
+    );
+    if (!res.ok) {
+      // Best-effort surface: the reflection DRAFT still renders without chips. Degrade to an empty
+      // set on a chat blip rather than failing the whole card.
+      this.logger.warn(`reflection-patterns fetch failed (status ${res.status}) — returning empty`);
+      return { week_end: null, patterns: [] };
+    }
+    return {
+      week_end: res.body?.week_end ?? null,
+      patterns: Array.isArray(res.body?.patterns) ? res.body.patterns : [],
+    };
   }
 
   // WS-2.6a / D17 — the public "correct a memory" trigger. Two legs behind one call: (1) amend the

@@ -299,8 +299,10 @@ async def run_weekly_reflection(
                 "week_start": week_start, "week_end": week_end}
     if result.status == "safety_short_circuit":
         logger.info("weekly-reflection short-circuit user=%s category=%s", user_id, result.safety_category)
+        # R1: NO chips on a short-circuit — return an empty structured set so the consumer CLEARS any
+        # stale patterns for this week (the FE must not show chips against a distress acknowledgement).
         return {"status": "safety_short_circuit", "category": result.safety_category,
-                "week_start": week_start, "week_end": week_end}
+                "week_start": week_start, "week_end": week_end, "structured_patterns": []}
 
     # An empty week is a VALID output — render_reflection_draft invites reflection without
     # inventing findings, so we always write the (get-or-replace) draft.
@@ -313,4 +315,10 @@ async def run_weekly_reflection(
     if written is None or written.get("error"):
         return {"status": "error", "reason": "write_failed", "retryable": True}
     return {"status": "reflected", "week_start": week_start, "week_end": week_end,
-            "patterns": len(result.patterns), "chapter_id": written.get("chapter_id")}
+            "patterns": len(result.patterns), "chapter_id": written.get("chapter_id"),
+            # R1 — the structured (already tombstone-filtered) patterns for the FE dismissable-chip feed.
+            "structured_patterns": [
+                {"detector_code": p.detector_code, "summary": p.summary,
+                 "pattern_key": p.pattern_key, "evidence_refs": list(p.evidence_refs)}
+                for p in result.patterns
+            ]}

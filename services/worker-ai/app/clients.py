@@ -734,6 +734,29 @@ class ChatAssistantClient:
             logger.warning("chat reflection-dismissals failed: %s", exc)
             return frozenset()
 
+    async def put_reflection_patterns(
+        self, *, user_id: str | UUID, week_start: str, week_end: str, patterns: list[dict],
+    ) -> bool:
+        """R1 (D-REFLECTION-PATTERNS-FEED) — PUT the week's STRUCTURED patterns (already tombstone-
+        filtered at detection) to chat so the FE can render dismissable chips. Get-or-REPLACE per week
+        (empty list clears the week). BEST-EFFORT: the prose DRAFT is the primary artifact (already
+        written to book-service); if this write blips the card simply shows the draft with no chips
+        until the next run — a degraded surface, never a lost/failed reflection or a safety gap. Returns
+        True on success."""
+        url = f"{self._base_url}/internal/chat/assistant/reflection-patterns"
+        body = {"owner_user_id": str(user_id), "week_start": week_start,
+                "week_end": week_end, "patterns": patterns}
+        try:
+            resp = await self._http.put(url, json=body)
+            if resp.status_code != 200:
+                logger.warning("chat reflection-patterns PUT %d for %s [%s..%s]",
+                               resp.status_code, user_id, week_start, week_end)
+                return False
+            return True
+        except httpx.HTTPError as exc:
+            logger.warning("chat reflection-patterns PUT failed for %s: %s", user_id, exc)
+            return False
+
 
 # ── ProviderRegistryClient ───────────────────────────────────────────
 

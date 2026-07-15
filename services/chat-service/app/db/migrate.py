@@ -647,6 +647,29 @@ CREATE TABLE IF NOT EXISTS reflection_dismissals (
 CREATE INDEX IF NOT EXISTS idx_reflection_dismissals_owner
   ON reflection_dismissals (owner_user_id);
 
+-- R1 (D-REFLECTION-PATTERNS-FEED) — reflection_patterns: the STRUCTURED patterns worker-ai's
+-- deterministic detectors surfaced for a week (detector_code, summary, period-independent
+-- pattern_key, evidence_refs), persisted alongside the prose reflection draft so the FE can render
+-- DISMISSABLE chips (the dismiss chain FE→BFF→reflection_dismissals already exists; it just had
+-- nothing to render against). worker-ai already tombstone-filters AT DETECTION; the READ additionally
+-- filters against reflection_dismissals so a pattern dismissed AFTER generation vanishes on refresh
+-- (server is SoT). PER-USER tier: owner_user_id scopes every row. Get-or-REPLACE per (owner, week_end)
+-- — a re-run for the same week replaces its pattern set. UNIQUE(owner,week_end,pattern_key) dedups.
+CREATE TABLE IF NOT EXISTS reflection_patterns (
+  id             UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  owner_user_id  UUID NOT NULL,
+  week_start     DATE NOT NULL,
+  week_end       DATE NOT NULL,
+  detector_code  TEXT NOT NULL,
+  summary        TEXT NOT NULL,
+  pattern_key    TEXT NOT NULL,
+  evidence_refs  JSONB NOT NULL DEFAULT '[]'::jsonb,
+  created_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE (owner_user_id, week_end, pattern_key)
+);
+CREATE INDEX IF NOT EXISTS idx_reflection_patterns_owner_week
+  ON reflection_patterns (owner_user_id, week_end DESC);
+
 -- WS-5.20 (spec 08 §Scorer) — coaching_rubrics: the SCORING STANDARD, versioned + cited,
 -- replacing the free-form SessionTemplate.rubric (dict[str,Any], no schema — "improvised
 -- standards already ship"). SYSTEM tier: admin-seeded, everyone reads, a regular user never
