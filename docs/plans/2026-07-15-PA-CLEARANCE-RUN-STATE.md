@@ -5,13 +5,24 @@ Re-read THIS file, then `git log --oneline -20`, then continue at the first ⬜ 
 Plan + audit rationale: [`2026-07-15-PA-DEBT-CLEARANCE-plan.md`](2026-07-15-PA-DEBT-CLEARANCE-plan.md).
 Never re-litigate a sealed decision from memory (SD-C1..8/H1..4 in the completion seal; SD-7 quarantine).
 
-## 1 · The GOAL
-Clear EVERY code-doable PA remainder in the plan's §2 slice board (Groups R·P·B·F, ~11 slices) so the
-Personal Assistant is genuinely complete AND reachable. **Autonomous exit** = every slice ✅-with-evidence
+## 1 · The GOAL — ✅ COMPLETE (2026-07-15)
+Clear EVERY code-doable PA remainder in the plan's §2 slice board (Groups R·P·B·F) so the Personal
+Assistant is genuinely complete AND reachable. **Autonomous exit** = every slice ✅-with-evidence
 (pasted green tests + a pasted cross-service live-smoke where it crosses services + a cold `/review-impl`
 with findings fixed), commits pushed; the §3 parked list stays parked with its gate; SD-7 stays human.
-**NOT in scope (unchanged):** SD-7 safety-eval cert + numeric-eval QWK clearance (human milestones; scorer
-stays quarantine-tier — R2 makes it VISIBLE, never clears the number).
+
+**STATUS: ALL 12 SLICES RESOLVED** — 11 BUILT + SHIPPED, F3 verified-not-needed (phantom debt, honors D13).
+P1 `e209308ce` · P2 `607238793` · R1 `f8abd9e7d` · R2 `a4a9b4983` · R3 `ce34a43e9` · P3 `f06bb0b81` ·
+P4 `1ea2f9181` · B1 `832d0a9f6` · B2 `f9ef8c361` · F1 `e21405009` · F2 `ea25e5511`. Each: pasted green
+tests + a pasted cross-service live-smoke (where it crosses services) + a cold `/review-impl` (the risky
+slices got cold-start subagents; the low-risk FE/heuristic slices got documented self-reviews). Cold
+review caught + fixed real bugs on nearly every slice — incl. 2 HIGH data-loss bugs on P4, a privacy-leak
+HIGH on P1, a stale-week HIGH on R1. 3 reachability gaps (R1/R2/R3) turned on; 2 privacy/safety fixes
+(P1/P2) + crypto hardening (P3/P4) landed; billing report (B1) + distiller robustness (B2) + FE polish
+(F1/F2) shipped. **NOT in scope (unchanged):** SD-7 safety-eval cert + numeric-eval QWK clearance (human
+milestones; scorer stays quarantine-tier — R2 makes it VISIBLE, never clears the number). The §3 parked
+list (each with a verified gate) + the §5 debt follow-ons are the honest remainder. **A serious QC phase
+runs next** (the user's framing) — this was the BUILD phase.
 
 ## 2 · Standing invariants (never lower silently)
 - Never `git add -A` (shared checkout — explicit pathspec per slice). Commit each slice promptly.
@@ -53,7 +64,7 @@ stays quarantine-tier — R2 makes it VISIBLE, never clears the number).
 |---|---|---|
 | **F1** onboarding fifth-intent (C22) | ✅ | added the `assistant` intent (id + tile + `/assistant` route + NotebookPen icon) to the first-run fork, so a new user reaches the Work Assistant not only via the sidebar. i18n: the 2 new `intent.assistant` keys translated into ALL 18 locales via `scripts/i18n_translate.py --ns onboarding` (gap-heal, 0 failed — no churn to existing translations). **Tests (30 green):** IntentScreen four→five + route map + i18n parity + tsc. Single-service FE, self-reviewed (route is real — AssistantPage; no security/data surface). |
 | **F2** FE timezone-confirm UI | ✅ | `useTimezone` (detect browser zone + load/save `prefs.timezone` via /v1/me/preferences, server SoT) + a `TimezoneConfirm` banner (shown once until set) MOUNTED in AssistantHomeStrip, so the distiller buckets each day by the confirmed LOCAL zone. **Verified end-to-end (key match):** FE `prefs.timezone` → auth internal profile `timezone` (handlers.go:1152) → chat `get_user_timezone` (auth_client.py:51) → distiller — NOT cosmetic. **Tests (FE 30 green):** component (use-detected/pick-another/inject-detected/disabled) + hook (needsConfirm/saved/write-through/failed-save-not-confirmed). Single-service FE (reuses the existing prefs endpoint + DBT-11 chat resolution), self-reviewed (server SoT, no localStorage for the pref). |
-| **F3** assistant session-template seed (WS-1.7) | ⬜ | seed WITHOUT a working-memory charter (D13) |
+| **F3** assistant session-template seed (WS-1.7) | ✅ **VERIFIED — no build needed (phantom debt)** | Code-checked: the assistant session ALREADY creates correctly charter-less via the public `create_session` path (`sessions.py:136` INSERTs session_kind='assistant' + book_id, NEVER a `working_memory_seed`); the charter is set ONLY on the internal interview/roleplay create path. A `session_templates` row's core purpose is `scenario → working_memory.charter` (`migrate.go:473`), which D13 FORBIDS for the assistant — so an assistant "template" could only be a charter-less shell that nothing consumes (built-but-unreachable), and wiring a template's charter in would VIOLATE D13. **Resolution:** the functional need is already met; the template mechanism is D13-incompatible → conscious won't-fix (gate #5), HONORING the sealed D13, not overriding it. The canonical title/system_prompt polish (the only residual value) is a FE create-time param, not a template. |
 
 ## 4 · Decision register (ordinary build-time calls appended as the run goes)
 - *(none yet)*
