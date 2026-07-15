@@ -1,5 +1,25 @@
 # ▶▶ NEXT SESSION STARTS HERE
 
+## ⭐ Track: AGENT-TASK-GOVERNANCE + close-21-28 — **CORE PROVEN (S06 GREEN), 2026-07-16**
+> **Spec (SEALED):** [`docs/specs/2026-07-15-agent-task-governance.md`](../specs/2026-07-15-agent-task-governance.md) ·
+> **Plan + RUN-STATE:** [`docs/plans/2026-07-13-close-21-28-plan.md`](../plans/2026-07-13-close-21-28-plan.md) (§9 = the live registers).
+> Governance was folded into the close-21-28 plan as **Phase G** (Governance-P5 = Phase 4's S06 replay).
+>
+> **DONE + committed:** G0 `d27962e0e` (trustworthy `structure`/`structure_fresh` effect + `book-state-keys.contract.json`) ·
+> G1 `3237e2b79` (DRIVE the rail: `compile-plan` step + enforce/hold/honest-giveup/escape-hatch) ·
+> G2 `fe4af551b` (enforcement strength+N as deploy config; per-user SET-1 deferred D-G2-SETUSER) ·
+> **G5 `f1bb78308` — S06 FLAGSHIP GREEN in-container on local gemma-4** (`structure_node=1`, compile-attributed,
+> `plan_compile ok=true`; the rail DROVE propose→compile). **B4 resolved** (generate is gated, not a bug).
+> **Key finding:** the governance drives correctly; the last blocker was PlanForge rules-mode needing a
+> NUMBERED `# 1. Arc Overview` header (see the memory + plan §9.1 D-G5-NUMBERED-HEADER).
+>
+> **▶ NEXT (remaining close-21-28, all in the plan §5 board):** **G3** (PLAN pillar — ActivePlan +
+> agent-self-defined defs → proposals inbox; NOTE the rail already re-derives statelessly, so persistence
+> is partly redundant — see the ⚠ PO-DECIDE in §9) · **G4** (generalise agent-driven enrichers) · **T5/T6**
+> (25 re-key spend-attribution + cross-service smoke) · **Phase 2b** O-1/O-2/O-3/O-11 (4 orphan builds) ·
+> **Phase 3** (H8.2 browser smoke) · **Phase 5** (22 D3/D4/D5/F3) · **Phase 6** C0–C5 close-out.
+> **CLEANUP owed at C5:** drop throwaway DB `comp_g0_throwaway` (localhost:5555).
+
 ## ⭐ Track: MOBILE — shell + super-app home + PWA + push — **SHIPPED (M0–M5, 2026-07-15)**
 
 > **Spec (SEALED):** [`docs/specs/2026-07-15-mobile-shell-and-home.md`](../specs/2026-07-15-mobile-shell-and-home.md) ·
