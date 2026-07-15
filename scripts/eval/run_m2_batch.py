@@ -119,6 +119,21 @@ def _gt_authoring(b: str) -> tuple[bool, str]:
     return n > 0, f"authoring_runs={n}"
 
 
+def _gt_flagship(b: str) -> tuple[bool, str]:
+    # S06 flagship (vision-to-book) — the beat-F contradiction settler. §10 said 5/5, §11 said 4/5
+    # chapters=0. The disputed beat is chapters_with_prose. Check ALL the artifacts the flagship is
+    # supposed to land, on a fresh book, and PASS iff a chapter with real prose exists (the beat-F
+    # crux) AND the earlier pipeline stages landed (categories + cast).
+    cats = int(_sql(DBK["glossary"], f"SELECT count(*) FROM book_kinds WHERE book_id='{b}'"))
+    cast = int(_sql(DBK["glossary"], f"SELECT count(*) FROM glossary_entities WHERE book_id='{b}'"))
+    chapters = int(_sql(DBK["book"], f"SELECT count(*) FROM chapters WHERE book_id='{b}'"))
+    prose = int(_sql(DBK["book"],
+                     f"SELECT count(DISTINCT c.id) FROM chapters c JOIN chapter_blocks bl ON bl.chapter_id=c.id "
+                     f"WHERE c.book_id='{b}' AND bl.text_content ~ '[^[:space:]]'"))
+    ok = cats > 0 and cast > 0 and prose > 0
+    return ok, f"categories={cats} cast={cast} chapters={chapters} chapters_with_prose={prose}"
+
+
 def _gt_s05(b: str) -> tuple[bool, str]:
     # S05 translation-pass: the fixture seeds exactly ONE 'completed' job (chapters 1-2 done) and
     # leaves chapter 3 untranslated. The rail's job is "only redo what changed" → start a pass for
@@ -191,6 +206,7 @@ SCEN = {
     "S01":  (lambda lbl: _fresh_book(f"M2-S01-{lbl}"), _gt_kinds, False),        # glossary-bootstrap
     "S02":  (lambda lbl: _book_with_ontology(f"M2-S02-{lbl}"), _gt_entities, False),  # populate-glossary
     "S03":  (_s03_book, _gt_triaged, False),                                     # entity-triage (drain a pile)
+    "S06":  (lambda lbl: _fresh_book(f"M2-S06-{lbl}"), _gt_flagship, False),     # flagship vision-to-book (beat-F settler)
     "S04":  (lambda lbl: fx.build_s04(lbl)["book_id"], _gt_kg, False),           # kg-build from glossary
     "S05":  (lambda lbl: fx.build_s05(lbl)["book_id"], _gt_s05, False),          # translation-pass (only redo what changed)
     "S07":  (lambda lbl: _fresh_book(f"M2-S07-{lbl}"), _gt_plan, False),
