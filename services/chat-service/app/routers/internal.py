@@ -365,21 +365,9 @@ async def _resolve_distill_context(body: "DistillTrigger") -> tuple[str, str, st
 
     user_id = str(body.user_id)
 
-    # 1. book_id — the caller's diary. book-service resolves it for ANY lifecycle without creating one.
-    book_id = str(body.book_id) if body.book_id else None
-    if book_id is None:
-        try:
-            async with build_internal_client(
-                settings.book_service_url, internal_token=settings.internal_service_token,
-                timeout_s=5, trace_id_provider=trace_id_var.get,
-            ) as client:
-                resp = await client.get("/internal/books/diary", params={"user_id": user_id})
-            if resp.status_code == 200:
-                book_id = resp.json().get("book_id")
-        except Exception:  # noqa: BLE001 — treated as unresolved below (422), never a 500 into the tick.
-            book_id = None
-        if not book_id:
-            raise HTTPException(status_code=422, detail="no diary book for user (provision the assistant first)")
+    # 1. book_id + 3. entry_zone — shared with the reflection path (no model needed there).
+    book_id, entry_zone = await _resolve_book_and_zone(
+        user_id, str(body.book_id) if body.book_id else None, body.entry_zone)
 
     # 2. model — the caller's supplied model, else the user's `distill` default, else the `chat` default.
     model_source = body.model_source
@@ -394,12 +382,32 @@ async def _resolve_distill_context(body: "DistillTrigger") -> tuple[str, str, st
         model_source, model_ref = resolved
     model_source = model_source or "user_model"
 
-    # 3. entry_zone — the user's IANA zone (best-effort; UTC on any miss — the day bucket degrades safely).
-    entry_zone = body.entry_zone
+    return book_id, model_source, model_ref, entry_zone
+
+
+async def _resolve_book_and_zone(user_id: str, book_id: str | None, entry_zone: str | None) -> tuple[str, str]:
+    """Resolve (diary book_id, entry_zone) server-side — the model-free subset of the distill
+    resolution, shared by the reflection path (D-REFLECTION-WIRE, which uses NO LLM). Raises 422
+    when no diary book resolves; the zone degrades to UTC on any miss (safe day bucket)."""
+    from app.client.auth_client import get_auth_client
+
+    if book_id is None:
+        try:
+            async with build_internal_client(
+                settings.book_service_url, internal_token=settings.internal_service_token,
+                timeout_s=5, trace_id_provider=trace_id_var.get,
+            ) as client:
+                resp = await client.get("/internal/books/diary", params={"user_id": user_id})
+            if resp.status_code == 200:
+                book_id = resp.json().get("book_id")
+        except Exception:  # noqa: BLE001 — treated as unresolved below (422), never a 500.
+            book_id = None
+        if not book_id:
+            raise HTTPException(status_code=422, detail="no diary book for user (provision the assistant first)")
+
     if not entry_zone:
         entry_zone = await get_auth_client().get_user_timezone(user_id) or "UTC"
-
-    return book_id, model_source, model_ref, entry_zone
+    return book_id, entry_zone
 
 
 class ReextractTrigger(BaseModel):
@@ -479,6 +487,41 @@ async def trigger_weekly_rollup(body: WeeklyRollupTrigger) -> dict:
         )
     except Exception as exc:  # noqa: BLE001 — a lost enqueue = a missed weekly review.
         raise HTTPException(status_code=503, detail=f"failed to enqueue weekly rollup: {exc}") from exc
+    return {"enqueued": True, "week_start": week_start.isoformat(), "week_end": week_end.isoformat(),
+            "message_id": msg_id}
+
+
+class ReflectionTrigger(BaseModel):
+    """D-REFLECTION-WIRE — the scheduler/FE posts ONLY {user_id}; book/tz resolve server-side.
+    No model (reflection is deterministic). Week defaults to the last 7 completed days."""
+
+    user_id: UUID
+    book_id: UUID | None = None
+    language: str = "en"
+    entry_zone: str | None = None
+    week_start: date | None = None
+    week_end: date | None = None
+
+
+@router.post("/assistant/weekly-reflection", dependencies=[Depends(require_internal_token)], status_code=status.HTTP_202_ACCEPTED)
+async def trigger_weekly_reflection(body: ReflectionTrigger) -> dict:
+    """D-REFLECTION-WIRE — enqueue a weekly-reflection job (recall → safety screen → detectors →
+    a descriptive 'reflection' draft). Deterministic: resolves book + tz only (no model)."""
+    from app.events.distill_enqueue import enqueue_reflection
+
+    book_id, entry_zone = await _resolve_book_and_zone(
+        str(body.user_id), str(body.book_id) if body.book_id else None, body.entry_zone)
+    today = datetime.now(timezone.utc).date()
+    week_end = body.week_end or (today - timedelta(days=1))
+    week_start = body.week_start or (week_end - timedelta(days=6))
+    try:
+        msg_id = await enqueue_reflection(
+            user_id=str(body.user_id), book_id=book_id,
+            week_start=week_start.isoformat(), week_end=week_end.isoformat(),
+            entry_zone=entry_zone, language=body.language or "en",
+        )
+    except Exception as exc:  # noqa: BLE001 — a lost enqueue = a missed reflection.
+        raise HTTPException(status_code=503, detail=f"failed to enqueue reflection: {exc}") from exc
     return {"enqueued": True, "week_start": week_start.isoformat(), "week_end": week_end.isoformat(),
             "message_id": msg_id}
 

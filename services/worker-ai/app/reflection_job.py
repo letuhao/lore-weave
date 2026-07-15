@@ -31,6 +31,13 @@ class _FactRecaller(Protocol):
     ) -> list[dict]: ...
 
 
+class _DiaryWriter(Protocol):
+    async def write_diary_entry(
+        self, *, book_id: str, owner_user_id: str, entry_date: str, entry_zone: str,
+        body: str, title: str | None, journal_kind: str, language: str,
+    ) -> "dict[str, Any] | None": ...
+
+
 # WS-5.5 — the CLOSED detector enum. The phrasing LLM (later) may only name a pattern whose
 # code is in this set; a code outside it is REJECTED (not softened) — enforcement, not a
 # prompt. Deterministic detectors emit these codes directly.
@@ -249,3 +256,47 @@ def render_reflection_draft(result: ReflectionResult) -> str:
     lines.append("Some questions to sit with:")
     lines.extend(f"- {q}" for q in _SOCRATIC_PROMPTS)
     return "\n".join(lines)
+
+
+async def run_weekly_reflection(
+    *,
+    user_id: str,
+    book_id: str,
+    week_start: str,
+    week_end: str,
+    entry_zone: str,
+    language: str,
+    knowledge_client: _FactRecaller,
+    book_client: _DiaryWriter,
+    away_days: frozenset[str] = frozenset(),
+    notes: list[dict] | None = None,
+    dismissed_pattern_keys: frozenset[str] = frozenset(),
+) -> dict[str, Any]:
+    """D-REFLECTION-WIRE — the live weekly-reflection ORCHESTRATOR (mirrors roll_up_week):
+    reflect_week (recall → SAFETY screen → deterministic detectors) → render a descriptive
+    draft → write it as a `journal_kind='reflection'` diary entry (get-or-REPLACE per week,
+    draft-into-inbox). On a safety short-circuit it writes NOTHING (the acknowledgement is
+    FE-surfaced once, never persisted as a KG fact — WS-5.12). Never raises for content reasons.
+    Returns {reflected | safety_short_circuit | error}."""
+    result = await reflect_week(
+        user_id=user_id, book_id=book_id, week_start=week_start, week_end=week_end,
+        knowledge_client=knowledge_client, away_days=away_days,
+        notes=notes or [], dismissed_pattern_keys=dismissed_pattern_keys,
+    )
+    if result.status == "safety_short_circuit":
+        logger.info("weekly-reflection short-circuit user=%s category=%s", user_id, result.safety_category)
+        return {"status": "safety_short_circuit", "category": result.safety_category,
+                "week_start": week_start, "week_end": week_end}
+
+    # An empty week is a VALID output — render_reflection_draft invites reflection without
+    # inventing findings, so we always write the (get-or-replace) draft.
+    draft = render_reflection_draft(result)
+    written = await book_client.write_diary_entry(
+        book_id=book_id, owner_user_id=user_id, entry_date=week_end, entry_zone=entry_zone,
+        body=draft, title=f"Weekly reflection · {week_start} – {week_end}",
+        journal_kind="reflection", language=language,
+    )
+    if written is None or written.get("error"):
+        return {"status": "error", "reason": "write_failed", "retryable": True}
+    return {"status": "reflected", "week_start": week_start, "week_end": week_end,
+            "patterns": len(result.patterns), "chapter_id": written.get("chapter_id")}

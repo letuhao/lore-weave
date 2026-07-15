@@ -217,6 +217,20 @@ async def main() -> None:
         coroutines.append(_weekly_rollup_consumer.run())
         logger.info("WS-3.7: assistant.weekly_rollup consumer started (group=%s-weekly)",
                     settings.distill_consumer_group)
+
+        # D-REFLECTION-WIRE — the weekly-reflection consumer (deterministic: no LLM/billing).
+        from app.reflection_consumer import ReflectionConsumer
+        _reflection_consumer = ReflectionConsumer(
+            settings.redis_url,
+            knowledge_client,
+            book_client,
+            consumer_group=f"{settings.distill_consumer_group}-reflection",
+            consumer_name=settings.distill_consumer_name,
+            block_ms=settings.summary_consumer_block_ms,
+        )
+        coroutines.append(_reflection_consumer.run())
+        logger.info("D-REFLECTION-WIRE: assistant.weekly_reflection consumer started (group=%s-reflection)",
+                    settings.distill_consumer_group)
     else:
         logger.info("distill consumer disabled via config")
 

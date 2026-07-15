@@ -19,6 +19,8 @@ DISTILL_STREAM = "assistant.distill"
 REEXTRACT_STREAM = "assistant.reextract"
 # MUST match worker-ai app/weekly_rollup_consumer.WEEKLY_ROLLUP_STREAM_NAME.
 WEEKLY_ROLLUP_STREAM = "assistant.weekly_rollup"
+# MUST match worker-ai app/reflection_consumer.REFLECTION_STREAM_NAME.
+REFLECTION_STREAM = "assistant.weekly_reflection"
 
 _redis: Any = None
 
@@ -124,5 +126,32 @@ async def enqueue_weekly_rollup(
     r = _get_redis()
     msg_id = await r.xadd(WEEKLY_ROLLUP_STREAM, fields, maxlen=10000, approximate=True)
     logger.info("enqueued assistant.weekly_rollup user=%s book=%s [%s..%s] msg=%s",
+                user_id, book_id, week_start, week_end, msg_id)
+    return msg_id if isinstance(msg_id, str) else str(msg_id)
+
+
+async def enqueue_reflection(
+    *,
+    user_id: str,
+    book_id: str,
+    week_start: str,
+    week_end: str,
+    entry_zone: str,
+    language: str,
+    trace_id: str | None = None,
+) -> str:
+    """D-REFLECTION-WIRE — enqueue a weekly-reflection job. worker-ai's ReflectionConsumer runs
+    `run_weekly_reflection` (DETERMINISTIC — no model). RAISES on a Redis error (a lost enqueue =
+    a missed reflection; surface it)."""
+    fields = {
+        "user_id": user_id, "book_id": book_id,
+        "week_start": week_start, "week_end": week_end,
+        "entry_zone": entry_zone, "language": language,
+    }
+    if trace_id:
+        fields["trace_id"] = trace_id
+    r = _get_redis()
+    msg_id = await r.xadd(REFLECTION_STREAM, fields, maxlen=10000, approximate=True)
+    logger.info("enqueued assistant.weekly_reflection user=%s book=%s [%s..%s] msg=%s",
                 user_id, book_id, week_start, week_end, msg_id)
     return msg_id if isinstance(msg_id, str) else str(msg_id)

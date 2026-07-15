@@ -69,8 +69,8 @@ func (s *Server) upsertDiaryEntry(w http.ResponseWriter, r *http.Request) {
 	}
 	// 'weekly' (WS-3.7) is a get-or-REPLACE kind like primary (review M2): re-running a week's rollup
 	// must REPLACE the prior weekly review for that week, not pile up duplicates on redelivery/double-fire.
-	if kind != "primary" && kind != "supplement" && kind != "weekly" {
-		writeError(w, http.StatusBadRequest, "BOOK_BAD_REQUEST", "journal_kind must be primary|supplement|weekly")
+	if kind != "primary" && kind != "supplement" && kind != "weekly" && kind != "reflection" {
+		writeError(w, http.StatusBadRequest, "BOOK_BAD_REQUEST", "journal_kind must be primary|supplement|weekly|reflection")
 		return
 	}
 	body := in.Body
@@ -146,9 +146,10 @@ func (s *Server) upsertDiaryEntry(w http.ResponseWriter, r *http.Request) {
 	jsonBody := plainTextToTiptapJSON(body)
 	byteSize := int64(len(body))
 
-	// 3. PRIMARY / WEEKLY: get-or-create-then-replace (keyed by book+entry_date+kind, so a re-run
-	//    REPLACES). Supplement always creates a new chapter. (M2 — 'weekly' is idempotent per week.)
-	if kind == "primary" || kind == "weekly" {
+	// 3. PRIMARY / WEEKLY / REFLECTION: get-or-create-then-replace (keyed by book+entry_date+kind,
+	//    so a re-run REPLACES). Supplement always creates a new chapter. (M2 — 'weekly' + the
+	//    D-REFLECTION-WIRE 'reflection' review are idempotent per period on redelivery/double-fire.)
+	if kind == "primary" || kind == "weekly" || kind == "reflection" {
 		var chID uuid.UUID
 		var kept *time.Time
 		var oldSize int64

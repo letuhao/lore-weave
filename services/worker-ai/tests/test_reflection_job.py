@@ -156,3 +156,45 @@ def test_closed_enum_guard_rejects_unknown_detector_code():
         validate_detector_code("hallucinated_pattern")
     with _pytest.raises(ValueError):
         ReflectionPattern(detector_code="not_a_code", summary="x", evidence_refs=("d",))  # __post_init__ guards
+
+
+# ── D-REFLECTION-WIRE — the live orchestrator writes a 'reflection' entry / short-circuits ──
+class _FakeBook:
+    def __init__(self):
+        self.writes = []
+    async def write_diary_entry(self, **kw):
+        self.writes.append(kw)
+        return {"chapter_id": "refl-1"}
+
+
+from app.reflection_job import run_weekly_reflection  # noqa: E402
+
+
+@pytest.mark.asyncio
+async def test_run_weekly_reflection_writes_a_reflection_draft():
+    facts = [_fact("Shipped auth.", "2026-07-06"), _fact("Fixed bugs.", "2026-07-07")]
+    book = _FakeBook()
+    out = await run_weekly_reflection(
+        user_id="u1", book_id="b1", week_start="2026-07-06", week_end="2026-07-12",
+        entry_zone="UTC", language="en",
+        knowledge_client=_Recaller(facts), book_client=book,
+    )
+    assert out["status"] == "reflected"
+    assert len(book.writes) == 1
+    w = book.writes[0]
+    assert w["journal_kind"] == "reflection"        # get-or-replace per week
+    assert w["entry_date"] == "2026-07-12"
+    assert "questions to sit with" in w["body"].lower()  # the descriptive Socratic draft
+
+
+@pytest.mark.asyncio
+async def test_run_weekly_reflection_short_circuits_and_writes_nothing():
+    distress = [_fact("I don't know how much longer I can do this", "2026-07-08")]
+    book = _FakeBook()
+    out = await run_weekly_reflection(
+        user_id="u1", book_id="b1", week_start="2026-07-06", week_end="2026-07-12",
+        entry_zone="UTC", language="en",
+        knowledge_client=_Recaller(distress), book_client=book,
+    )
+    assert out["status"] == "safety_short_circuit" and out["category"] == "distress"
+    assert book.writes == []  # NOTHING written on a distressed week

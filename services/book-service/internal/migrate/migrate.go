@@ -1346,10 +1346,13 @@ ALTER TABLE chapters ADD COLUMN IF NOT EXISTS entry_date DATE;
 -- get it via the DROP+ADD below (ADD COLUMN IF NOT EXISTS is a no-op once the column exists, so the
 -- inline CHECK never widens on an existing table — the migration-CHECK-must-revisit lesson).
 ALTER TABLE chapters ADD COLUMN IF NOT EXISTS journal_kind TEXT
-  CHECK (journal_kind IS NULL OR journal_kind IN ('primary','supplement','weekly'));
+  CHECK (journal_kind IS NULL OR journal_kind IN ('primary','supplement','weekly','reflection'));
+-- D-REFLECTION-WIRE: 'reflection' is a get-or-replace weekly reflection draft (like 'weekly').
+-- DROP+re-ADD re-widens an ALREADY-migrated DB (an add-if-absent would skip the re-widen — the
+-- recurring CHECK-migration trap).
 ALTER TABLE chapters DROP CONSTRAINT IF EXISTS chapters_journal_kind_check;
 ALTER TABLE chapters ADD CONSTRAINT chapters_journal_kind_check
-  CHECK (journal_kind IS NULL OR journal_kind IN ('primary','supplement','weekly'));
+  CHECK (journal_kind IS NULL OR journal_kind IN ('primary','supplement','weekly','reflection'));
 ALTER TABLE chapters ADD COLUMN IF NOT EXISTS diary_kept_at TIMESTAMPTZ;
 -- WS-1.8 (spec 06 §Q3/T21) — the IANA zone in effect when entry_date was computed, stored for
 -- auditability. entry_date has no timezone semantics at the DB layer (the distiller resolves the

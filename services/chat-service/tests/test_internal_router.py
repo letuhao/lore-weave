@@ -441,3 +441,23 @@ async def test_practice_start_refuses_abuse_in_charter_checklist(client, mock_po
     })
     r = await client.post("/internal/chat/sessions", json=body, headers=_AUTH)
     assert r.status_code == 422  # bypass closed
+
+
+@pytest.mark.asyncio
+async def test_weekly_reflection_headless_resolves_book_and_zone_no_model(client):
+    """D-REFLECTION-WIRE — the reflection trigger resolves book + tz ONLY (deterministic, no model)
+    and defaults the week; it must NOT require a distill/chat model."""
+    uid = str(uuid4())
+    book_id = str(uuid4())
+    today = datetime.now(timezone.utc).date()
+    auth = AsyncMock()
+    auth.get_user_timezone = AsyncMock(return_value="UTC")
+    with patch("app.routers.internal.build_internal_client", return_value=_FakeInternalClient(book_id)), \
+         patch("app.client.auth_client.get_auth_client", return_value=auth), \
+         patch("app.events.distill_enqueue.enqueue_reflection", new=AsyncMock(return_value="r-0")) as enq:
+        r = await client.post("/internal/chat/assistant/weekly-reflection", json={"user_id": uid}, headers=_AUTH)
+    assert r.status_code == 202, r.text
+    kw = enq.await_args.kwargs
+    assert kw["book_id"] == book_id and kw["entry_zone"] == "UTC"
+    assert "model_ref" not in kw and "model_source" not in kw  # deterministic — no model plumbed
+    assert kw["week_end"] == (today - timedelta(days=1)).isoformat()
