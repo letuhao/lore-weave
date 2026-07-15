@@ -122,6 +122,27 @@ def test_list_entities_happy(mock_list):
     assert kwargs["search"] is None
 
 
+def test_list_entities_cypher_templates_are_format_safe():
+    """REGRESSION (live-smoke 500, 2026-07-15): the page template is `.format(sort_key=…)`-ed,
+    so the shared WHERE must contain NO literal `{` (a first cut used `EXISTS { … }` for the
+    spoiler window → str.format() read it as a replacement field → KeyError → 500 on the
+    non-empty unwindowed path). The mock-only router tests could not see this (they patch the
+    repo). Assert BOTH sort keys format cleanly AND the window predicate is present."""
+    from app.db.neo4j_repos.entities import (
+        _LIST_ENTITIES_PAGE_CYPHER_TEMPLATE,
+        _LIST_ENTITIES_COUNT_CYPHER,
+        ENTITY_SORT_KEYS,
+    )
+
+    for sk in ENTITY_SORT_KEYS:
+        rendered = _LIST_ENTITIES_PAGE_CYPHER_TEMPLATE.format(sort_key=sk)  # must not raise
+        assert f"e.{sk}" in rendered
+    # the spoiler window rides the SHARED where → present in both queries
+    assert "$before_order" in _LIST_ENTITIES_COUNT_CYPHER
+    assert "$before_order" in _LIST_ENTITIES_PAGE_CYPHER_TEMPLATE
+    assert "{" not in _LIST_ENTITIES_COUNT_CYPHER  # no stray brace that would break format()
+
+
 # ── W11 spoiler window on the entity LIST (adversarial-review finding 2026-07-15) ──
 # The facts were windowed but the NAME list was not, so a chapter-1 reader could browse
 # the existence of characters introduced 50 chapters later. before_chapter_id now windows

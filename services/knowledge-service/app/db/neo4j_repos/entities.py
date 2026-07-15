@@ -1998,12 +1998,15 @@ WHERE e.user_id = $user_id
   // caller did NOT ask for a window (editor / curation surfaces) → unfiltered, as before.
   AND (
     $before_order IS NULL
-    OR EXISTS {
-      MATCH (wf:Fact)-[:ABOUT]->(e)
-      WHERE wf.from_order IS NOT NULL AND wf.from_order <= $before_order
-    }
+    OR size([(e)<-[:ABOUT]-(wf:Fact)
+             WHERE wf.from_order IS NOT NULL AND wf.from_order <= $before_order | 1]) > 0
   )
 """
+# NB: the window uses a pattern COMPREHENSION (`[...]`), NOT `EXISTS { ... }`. This WHERE
+# is shared by both the count query (plain concat) AND the page query, which is `.format(
+# sort_key=...)`-ed — a literal `{` from an EXISTS block would make str.format() treat it
+# as a replacement field and raise KeyError (a live-smoke 500 the mock-only unit tests could
+# not see). Brackets are format-safe. Same lesson as facts.py's "concatenation, not format()".
 
 _LIST_ENTITIES_COUNT_CYPHER = _LIST_ENTITIES_FILTER_WHERE + """
 RETURN count(e) AS total
