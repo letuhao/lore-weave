@@ -6,6 +6,7 @@ import { toast } from 'sonner';
 import { useAuth } from '@/auth';
 import { knowledgeApi } from '@/features/knowledge/api';
 import { assistantApi } from '../api';
+import { useEndOfDay } from '../hooks/useEndOfDay';
 import type { ProvisionStatus } from '../types';
 
 interface AssistantState {
@@ -21,6 +22,10 @@ interface AssistantState {
   consentSaving: boolean;
   setConsent: (enabled: boolean) => void;
   reprovision: () => void;
+  /** End-of-day flow (distill → poll → keep). Lifted into context so its in-flight state (a
+   *  running distill) SURVIVES the mobile↔desktop chrome swap — a rotate mid-distill must not
+   *  reset the button to idle and invite a duplicate, costly re-enqueue (cold-review MED). */
+  endOfDay: ReturnType<typeof useEndOfDay>;
 }
 
 const AssistantCtx = createContext<AssistantState | null>(null);
@@ -110,6 +115,10 @@ export function AssistantProvider({ children }: { children: ReactNode }) {
 
   const reprovision = useCallback(() => setAttempt((a) => a + 1), []);
 
+  // Bound HERE (in the provider, not a view) so the distill/poll state persists across the
+  // strip↔dock swap on a viewport change — the provider is not remounted on resize.
+  const endOfDay = useEndOfDay(bookId);
+
   return (
     <AssistantCtx.Provider
       value={{
@@ -123,6 +132,7 @@ export function AssistantProvider({ children }: { children: ReactNode }) {
         consentSaving,
         setConsent,
         reprovision,
+        endOfDay,
       }}
     >
       {children}

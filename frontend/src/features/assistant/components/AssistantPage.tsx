@@ -3,11 +3,15 @@
 // features/chat surface (spec 02 D12 — "not a new surface"), bound to the diary book + stamped
 // session_kind='assistant' so recall + capture gate on it.
 import { Chat } from '@/features/chat/Chat';
+import { useIsMobile } from '@/hooks/useIsMobile';
+import { cn } from '@/lib/utils';
 import { AssistantProvider, useAssistant } from '../context/AssistantContext';
 import { AssistantHomeStrip } from './AssistantHomeStrip';
+import { MobileAssistantDock } from './mobile/MobileAssistantDock';
 
 function AssistantPageInner() {
   const { loading, error, provisioned, bookId, projectId, reprovision } = useAssistant();
+  const isMobile = useIsMobile();
 
   // Only show the full-surface spinner during the INITIAL provisioning (before we have a bookId).
   // A later background re-provision must NOT blank the mounted <Chat> (audit HIGH #1 defense — the
@@ -40,14 +44,25 @@ function AssistantPageInner() {
     );
   }
 
+  // The <Chat> is the STABLE first child in every layout — swapping the second child (mobile
+  // dock vs desktop rail) by viewport never remounts it, so the SSE stream / voice / unsaved
+  // input survive a rotate (MB1). Mobile stacks vertically (chat fills, dock at the bottom);
+  // desktop keeps the right rail.
   return (
-    <div className="flex h-full min-h-0" data-testid="assistant-page">
-      <div className="min-w-0 flex-1">
+    <div
+      className={cn('flex h-full min-h-0', isMobile ? 'flex-col' : 'flex-row')}
+      data-testid="assistant-page"
+    >
+      <div className="min-h-0 min-w-0 flex-1">
         <Chat bookId={bookId} sessionKind="assistant" className="h-full" />
       </div>
-      <div className="hidden w-[360px] shrink-0 border-l border-border md:block">
-        <AssistantHomeStrip />
-      </div>
+      {isMobile ? (
+        <MobileAssistantDock />
+      ) : (
+        <div className="w-[360px] shrink-0 border-l border-border">
+          <AssistantHomeStrip />
+        </div>
+      )}
     </div>
   );
 }

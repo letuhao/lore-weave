@@ -6,7 +6,6 @@ import { cn } from '@/lib/utils';
 import { useAssistant } from '../context/AssistantContext';
 import { useCaptureRail } from '../hooks/useCaptureRail';
 import { useDiaryFactInbox } from '../hooks/useDiaryFactInbox';
-import { useEndOfDay } from '../hooks/useEndOfDay';
 import { useReflection } from '../hooks/useReflection';
 import { useScorecards } from '../hooks/useScorecards';
 import { useTimezone } from '../hooks/useTimezone';
@@ -19,9 +18,8 @@ import { TimezoneConfirm } from './TimezoneConfirm';
 
 export function AssistantHomeStrip() {
   const { user } = useAuth();
-  const { bookId, projectId, consentEnabled, consentSaving, setConsent } = useAssistant();
+  const { bookId, projectId, consentEnabled, consentSaving, setConsent, endOfDay: eod } = useAssistant();
   const rail = useCaptureRail(bookId);
-  const eod = useEndOfDay(bookId);
   const inbox = useDiaryFactInbox();
   const reflection = useReflection(bookId);
   const scorecards = useScorecards();
