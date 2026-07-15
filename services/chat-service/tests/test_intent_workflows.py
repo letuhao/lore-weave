@@ -7,7 +7,7 @@ same way the mode binding pins vision-to-book.
 from app.services.intent_workflows import intent_pinned_workflows
 
 ALL = {"entity-triage", "canon-check", "kg-build", "build-a-book", "translation-pass",
-       "autonomous-drafting", "vision-to-book"}
+       "autonomous-drafting", "vision-to-book", "draw-a-map"}
 
 
 def pins(text: str):
@@ -61,3 +61,9 @@ def test_visibility_filter():
 def test_returns_multiple_when_multiple_match():
     got = pins("clean up the suggestions, then map how everything connects")
     assert "entity-triage" in got and "kg-build" in got
+
+
+def test_draw_a_map_from_the_s10_prompts():
+    assert "draw-a-map" in pins("I want to see my world laid out — make a map for it.")
+    assert "draw-a-map" in pins("draw a map of my world")
+    assert "draw-a-map" in pins("Put my capital city, Ironhold, on the map.")

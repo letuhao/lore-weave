@@ -74,6 +74,14 @@ _INTENT_PATTERNS: list[tuple[str, list[str]]] = [
         r"write.*(several|multiple|the\s+next\s+few).*chapter",
         r"draft.*while\s+i",
     ]),
+    ("draw-a-map", [
+        r"\bmake\s+a\s+map\b",
+        r"\bdraw\s+a\s+map\b",
+        r"map\s+of\s+(my|the)\s+world",
+        r"(see|show).*world.*(laid\s+out|on\s+a\s+map)",
+        r"put.*(city|capital|place|town).*(on\s+the\s+)?map",
+        r"\bworld\s+map\b",
+    ]),
 ]
 
 _COMPILED: list[tuple[str, list[re.Pattern]]] = [

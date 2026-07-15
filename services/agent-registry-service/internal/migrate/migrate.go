@@ -630,6 +630,27 @@ ON CONFLICT (slug) WHERE tier = 'system' DO UPDATE SET
   inputs = EXCLUDED.inputs, steps = EXCLUDED.steps, notes_md = EXCLUDED.notes_md,
   status = EXCLUDED.status, updated_at = now();
 
+-- W10 (all-tracks-clear S10) — draw-a-map. "Make a map of my world." Real tools (verified 2026-07-15,
+-- book-service): world_list (find which world) + world_map_create + world_map_add_marker (+ optional
+-- world_map_add_region). No probe artifact for maps, so the steps are call-verified (no done_when),
+-- exactly like a read. Without this rail, gemma never discovered the world_map_* tools (S10 0/3).
+INSERT INTO workflows (tier, slug, title, description, surfaces, inputs, steps, notes_md, status, source) VALUES
+  ('system','draw-a-map','Draw a map of a world',
+   'Make a map for a world — create the map, then mark places on it (cities, regions) so the world can be seen laid out.',
+   '{book,editor}'::text[], '{}'::jsonb,
+   '[
+     {"id":"see-worlds","tool":"world_list","gate":"none"},
+     {"id":"make-map","tool":"world_map_create","gate":"none"},
+     {"id":"mark-place","tool":"world_map_add_marker","gate":"none"},
+     {"id":"draw-region","tool":"world_map_add_region","gate":"none"}
+   ]'::jsonb,
+   E'Use this when the user wants a MAP of their world — "make a map", "draw a map of my world", "I want to see my world laid out", "put the capital on the map". The job: create a map for the world and place the locations the user names on it.\n\nEXACTLY WHICH TOOL DOES WHAT:\n- world_list — first, find which world to map. It returns the user''s worlds with their ids; use the one the user means (if there is only one, use it). Never ask the user for an id.\n- world_map_create — create the map on that world (world_id + a name like "The Realms"). It returns the map''s id; you pass that id to the tools below.\n- world_map_add_marker — put a place on the map: a label (e.g. "Ironhold"), and x + y as fractions from 0 to 1 (x is left→right, y is top→bottom; 0.5,0.5 is the centre). Pick a sensible spot.\n- world_map_add_region — OPTIONAL: outline an area (e.g. "The North") as a polygon of [x,y] points (each 0 to 1).\n\nORDER MATTERS: list worlds → create the map → then add markers/regions to THAT map''s id. A marker needs a map to live on.\n\nSPEAK PLAINLY: say "map" and "place"/"region", never "marker"/"world_map_create". Tell the user what you drew ("made a map of your world and put Ironhold on it").',
+   'published','system')
+ON CONFLICT (slug) WHERE tier = 'system' DO UPDATE SET
+  title = EXCLUDED.title, description = EXCLUDED.description, surfaces = EXCLUDED.surfaces,
+  inputs = EXCLUDED.inputs, steps = EXCLUDED.steps, notes_md = EXCLUDED.notes_md,
+  status = EXCLUDED.status, updated_at = now();
+
 -- W9 (agent-discoverability WS-5) — canon-check. "Does my story stay consistent?" Real tools
 -- (verified 2026-07-12): composition_list_canon_rules (sync) + composition_conformance_run (ASYNC —
 -- a background check, poll with composition_get_mine_job) + composition_conformance_status (sync,
