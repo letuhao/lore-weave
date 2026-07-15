@@ -122,7 +122,10 @@ LIMIT 100`, now)
 		// WS-3.4 (spec 11 Q7) — a NUDGE must never fire on a declared away day (don't scold someone on
 		// holiday). Suppress it as a successful no-op: re-arm for the next day, don't send. eod_distill
 		// is NOT away-gated (a returning user still wants their days journaled — that's the catch-up).
-		if c.kind == "nudge" {
+		// C7 (SD-C7) — proactive_nudge is an assistant-initiated interruption, so it is away-gated too
+		// (don't proactively ping someone on holiday); weekly_reflection is content-generation delivered
+		// on return (like weekly_rollup), so it is NOT away-gated.
+		if c.kind == "nudge" || c.kind == "proactive_nudge" {
 			// M3 — check the user's LOCAL calendar day, not the tick's UTC day (near a tz boundary they
 			// differ, so a UTC-day check could suppress/allow a nudge on the wrong day).
 			localNow := now
@@ -135,7 +138,7 @@ LIMIT 100`, now)
 			away, err := IsAway(ctx, d.pool, c.owner, localNow)
 			if err != nil || away {
 				if err != nil {
-					slog.Warn("scheduler: away-check failed; suppressing nudge (fail-closed)", "id", c.id, "error", err)
+					slog.Warn("scheduler: away-check failed; suppressing (fail-closed)", "id", c.id, "kind", c.kind, "error", err)
 				}
 				d.recordSuccess(ctx, c.id, now) // re-arm, don't notify
 				continue
@@ -219,8 +222,18 @@ func (e *HTTPEnqueuer) Enqueue(ctx context.Context, ownerUserID uuid.UUID, jobKi
 		return e.postAssistant(ctx, ownerUserID, "/internal/chat/assistant/distill", `,"catchup_days":3`)
 	case "weekly_rollup":
 		return e.postAssistant(ctx, ownerUserID, "/internal/chat/assistant/weekly-rollup", "")
+	case "weekly_reflection":
+		// C7 / WS-3.8 — fire the weekly reflection on a schedule. chat's trigger enqueues the
+		// deterministic reflection job (worker-ai's ReflectionConsumer, D-REFLECTION-WIRE) whose draft
+		// is then surfaced to the user (WS-3.8 delivery).
+		return e.postAssistant(ctx, ownerUserID, "/internal/chat/assistant/weekly-reflection", "")
 	case "nudge":
 		return e.postNudge(ctx, ownerUserID)
+	case "proactive_nudge":
+		// C7 / WS-3.5 — an assistant-INITIATED turn. chat's proactive entrypoint fail-closed-gates on the
+		// user's proactive_enabled setting (default OFF), so a scheduled proactive_nudge is a no-op for
+		// any user who hasn't opted in.
+		return e.postAssistant(ctx, ownerUserID, "/internal/chat/assistant/proactive-turn", "")
 	default:
 		return fmt.Errorf("scheduler: unknown job_kind %q", jobKind)
 	}

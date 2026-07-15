@@ -76,9 +76,11 @@ func (s *Server) upsertSchedule(w http.ResponseWriter, r *http.Request) {
 	}
 	// L1 — closed-set job_kind (the driver only knows these; a typo would breaker-loop a row forever).
 	switch req.JobKind {
-	case "eod_distill", "weekly_rollup", "nudge":
+	// C7 (SD-C7) — weekly_reflection (WS-3.8: the weekly reflection delivered on a schedule) and
+	// proactive_nudge (WS-3.5: an assistant-initiated turn) join the closed set.
+	case "eod_distill", "weekly_rollup", "nudge", "weekly_reflection", "proactive_nudge":
 	default:
-		writeErr(w, http.StatusBadRequest, "job_kind must be eod_distill|weekly_rollup|nudge")
+		writeErr(w, http.StatusBadRequest, "job_kind must be eod_distill|weekly_rollup|nudge|weekly_reflection|proactive_nudge")
 		return
 	}
 	if req.Cadence == "" {

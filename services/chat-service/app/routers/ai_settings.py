@@ -78,6 +78,13 @@ class AiPrefsPatch(BaseModel):
             v = self.assistant["coaching_enabled"]
             if v is not None and not isinstance(v, bool):
                 raise ValueError(f"assistant.coaching_enabled must be a boolean, got {v!r}")
+        # C7 (SD-C7) — proactive_enabled: a spend/INTERRUPTION-causing opt-in (default OFF, fail-closed).
+        # Strict bool at the door (same discipline as coaching_enabled — a junk value must 422, not be
+        # read as truthy and start pinging the user).
+        if self.assistant and "proactive_enabled" in self.assistant:
+            v = self.assistant["proactive_enabled"]
+            if v is not None and not isinstance(v, bool):
+                raise ValueError(f"assistant.proactive_enabled must be a boolean, got {v!r}")
         # Voice source fields nest inside the voice blob (flat SETTING_ENUMS can't
         # reach them). Normalize legacy 'ai_model' → 'user_model' so the STORE
         # converges to one vocabulary, and reject a genuinely unknown source

@@ -568,6 +568,81 @@ async def trigger_weekly_reflection(body: ReflectionTrigger) -> dict:
             "message_id": msg_id}
 
 
+# ── WS-3.5 / C7 (SD-C7) — the proactive-turn seam ────────────────────────────
+@router.get("/assistant/proactive-enabled", dependencies=[Depends(require_internal_token)])
+async def get_proactive_enabled(user_id: UUID = Query(...), db: asyncpg.Pool = Depends(get_db)) -> dict:
+    """C7 — the user's `assistant.proactive_enabled` (default FALSE, opt-in). The proactive-turn
+    entrypoint reads this to fail CLOSED: a user who hasn't opted in is NEVER proactively pinged."""
+    from app.db.user_chat_ai_prefs import get_prefs
+    prefs = await get_prefs(db, owner_user_id=str(user_id))
+    return {"proactive_enabled": bool((prefs.assistant or {}).get("proactive_enabled", False))}
+
+
+class ProactiveTurnTrigger(BaseModel):
+    """The scheduler's proactive_nudge fires this with ONLY {user_id}; book/model/tz resolve server-side."""
+
+    user_id: UUID
+    book_id: UUID | None = None
+    model_source: str | None = None
+    model_ref: UUID | None = None
+    language: str = "en"
+
+
+@router.post("/assistant/proactive-turn", dependencies=[Depends(require_internal_token)],
+             status_code=status.HTTP_202_ACCEPTED)
+async def proactive_turn(body: ProactiveTurnTrigger, db: asyncpg.Pool = Depends(get_db)) -> dict:
+    """WS-3.5 / C7 — the headless proactive-turn entrypoint (the scheduler's proactive_nudge fires it,
+    away-gated). It FAILS CLOSED on the per-user `proactive_enabled` setting (default OFF): a user who
+    hasn't opted in gets a NO-OP — never a proactive ping or an LLM spend. When enabled, it starts an
+    assistant-INITIATED turn: a proactive check-in persisted as an `initiated_by='assistant_proactive'`
+    message in a fresh assistant session, so the FE can badge it and analytics can separate assistant-
+    from user-initiated engagement. (The grounded LLM copy of the check-in is a content follow-on,
+    D-PROACTIVE-LLM-CONTENT; this seam persists the attributed turn + the fail-closed gate.)"""
+    from app.db.user_chat_ai_prefs import get_prefs
+    prefs = await get_prefs(db, owner_user_id=str(body.user_id))
+    if not bool((prefs.assistant or {}).get("proactive_enabled", False)):
+        # Fail-closed no-op — the whole point of the opt-in: no session, no message, no spend.
+        return {"proactive": False, "reason": "not_enabled"}
+
+    # cold-review MED-2 — dedup: don't create a NEW proactive check-in if one already fired for this user
+    # in the last 6 days (a daily-scheduled proactive_nudge must not pile up duplicate sessions). One
+    # unanswered proactive turn per week is the intent.
+    recent = await db.fetchval(
+        """SELECT 1 FROM chat_messages
+           WHERE owner_user_id=$1 AND initiated_by='assistant_proactive'
+             AND created_at > now() - interval '6 days' LIMIT 1""",
+        str(body.user_id))
+    if recent:
+        return {"proactive": False, "reason": "already_recent"}
+
+    # Resolve the user's diary book + assistant model server-side (reuse the WS-3.0 headless resolution).
+    ctx = DistillTrigger(user_id=body.user_id, book_id=body.book_id,
+                         model_source=body.model_source, model_ref=body.model_ref, language=body.language)
+    book_id, model_source, model_ref, _entry_zone = await _resolve_distill_context(ctx)
+
+    content = ("It's been a little while — want to take a few minutes to reflect on how your week has "
+               "been going? I'm here whenever you're ready.")
+    async with db.acquire() as conn:
+        async with conn.transaction():
+            # cold-review MED-1/MED-3 — bind the session to the diary book (consistent with interactive
+            # assistant sessions; avoids the recall self-feed of a book-less session) AND set
+            # message_count/last_message_at so the check-in sorts into the session list (a NULL
+            # last_message_at sorts to the bottom under NULLS LAST and escapes the loaded page).
+            sess = await conn.fetchrow(
+                """INSERT INTO chat_sessions
+                     (owner_user_id, book_id, title, model_source, model_ref, session_kind,
+                      message_count, last_message_at)
+                   VALUES ($1, $2, 'Weekly check-in', $3, $4, 'assistant', 1, now()) RETURNING session_id""",
+                str(body.user_id), book_id, model_source, str(model_ref))
+            session_id = sess["session_id"]
+            msg = await conn.fetchrow(
+                """INSERT INTO chat_messages (session_id, owner_user_id, role, content, sequence_num, initiated_by)
+                   VALUES ($1, $2, 'assistant', $3, 0, 'assistant_proactive') RETURNING message_id""",
+                session_id, str(body.user_id), content)
+    return {"proactive": True, "session_id": str(session_id), "message_id": str(msg["message_id"]),
+            "initiated_by": "assistant_proactive"}
+
+
 @router.delete("/assistant/data", dependencies=[Depends(require_internal_token)])
 async def erase_assistant_data(
     user_id: UUID = Query(...),

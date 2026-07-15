@@ -101,6 +101,46 @@ func TestNudge_SuppressedOnAwayDay(t *testing.T) {
 	}
 }
 
+// C7 (SD-C7) — proactive_nudge is away-gated like nudge (don't proactively ping someone on holiday);
+// weekly_reflection (content generation) is NOT away-gated. Proven: an away user's proactive_nudge is
+// suppressed+re-armed while an active user's fires.
+func TestProactiveNudge_SuppressedOnAwayDay(t *testing.T) {
+	pool := testPool(t)
+	ctx := context.Background()
+	now := time.Now().UTC()
+	past := now.Add(-time.Minute)
+
+	awayUser := uuid.New()
+	activeUser := uuid.New()
+	t.Cleanup(func() {
+		pool.Exec(ctx, `DELETE FROM scheduled_agent_runs WHERE owner_user_id = ANY($1)`, []uuid.UUID{awayUser, activeUser})
+		pool.Exec(ctx, `DELETE FROM assistant_away_periods WHERE owner_user_id = ANY($1)`, []uuid.UUID{awayUser, activeUser})
+	})
+	if err := AddAwayPeriod(ctx, pool, awayUser, now.AddDate(0, 0, -1), now.AddDate(0, 0, 3)); err != nil {
+		t.Fatalf("away: %v", err)
+	}
+	seed := func(owner uuid.UUID) {
+		pool.Exec(ctx, `INSERT INTO scheduled_agent_runs (owner_user_id, job_kind, cadence, enabled, next_fire_at)
+			VALUES ($1,'proactive_nudge','daily',true,$2)`, owner, past)
+	}
+	seed(awayUser)
+	seed(activeUser)
+
+	enq := &fakeEnq{}
+	n, err := NewDriver(pool, enq, "t").tickOnce(ctx)
+	if err != nil {
+		t.Fatalf("tick: %v", err)
+	}
+	if n != 1 || len(enq.fired) != 1 || enq.fired[0] != activeUser.String()+"|proactive_nudge" {
+		t.Fatalf("expected only the ACTIVE user's proactive_nudge to fire (away-gated), got n=%d fired=%v", n, enq.fired)
+	}
+	var next time.Time
+	pool.QueryRow(ctx, `SELECT next_fire_at FROM scheduled_agent_runs WHERE owner_user_id=$1`, awayUser).Scan(&next)
+	if !next.After(now) {
+		t.Fatalf("suppressed away proactive_nudge should re-arm to the future, got %v", next)
+	}
+}
+
 // review H1 — the RECURRING re-arm must land on the next LOCAL fire time (fire_local_time in tz), not
 // a raw firedAt+24h (which drifts + breaks on DST). Proven: after firing, next_fire_at's wall-clock is
 // exactly fire_local_time (here 21:00 UTC), regardless of the (earlier) tick instant that claimed it.

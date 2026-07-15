@@ -42,6 +42,13 @@ CREATE TABLE IF NOT EXISTS chat_messages (
 CREATE INDEX IF NOT EXISTS idx_chat_messages_session
   ON chat_messages (session_id, sequence_num);
 
+-- WS-3.5 / C7 (SD-C7) — who INITIATED a message. 'user' (the default, every existing + interactive
+-- message) vs 'assistant_proactive' (a message the assistant started on its own — the weekly reflection
+-- or a proactive nudge, never in reply to a user turn). Lets the FE badge a proactive turn and lets
+-- analytics separate assistant-initiated from user-initiated spend/engagement. Additive, default 'user'.
+ALTER TABLE chat_messages ADD COLUMN IF NOT EXISTS initiated_by TEXT NOT NULL DEFAULT 'user'
+  CHECK (initiated_by IN ('user', 'assistant_proactive'));
+
 CREATE TABLE IF NOT EXISTS chat_outputs (
   output_id         UUID PRIMARY KEY DEFAULT uuidv7(),
   message_id        UUID NOT NULL REFERENCES chat_messages(message_id) ON DELETE CASCADE,

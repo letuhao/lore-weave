@@ -348,7 +348,8 @@ services:
       timeout: 5s
       retries: 3
     ports:
-      - "8213:8095"
+      # C7 — host 8213 collided with video-gen-service (which also mapped 8213); moved to a free port.
+      - "8228:8095"
 
   catalog-service:
     # Phase 6c — repo-root build context so the Dockerfile can COPY
