@@ -606,9 +606,13 @@ ON CONFLICT (slug) WHERE tier = 'system' DO UPDATE SET
   status = EXCLUDED.status, updated_at = now();
 
 -- W5 (agent-discoverability WS-5) — translation-pass. "Keep my translation current." The audit's
--- translation_run/canon_check names were WRONG (verified 2026-07-12: they do not exist); the
--- REAL tools are translation_coverage (sync, reports what is untranslated/stale) + translation_
--- retranslate_dirty (ASYNC — enqueues the re-translation of the stale/missing units). No probe
+-- translation_run/canon_check names were WRONG (verified 2026-07-12: they do not exist). The REAL
+-- tools: translation_coverage (sync — reports translated chapters + untranslated_chapter_ids, the
+-- ones with NO translation yet) + translation_start_job (ASYNC — translate NEVER-translated chapters)
+-- + translation_retranslate_dirty (ASYNC — re-translate a chapter whose translation went STALE after
+-- its source changed). D-S05-RAIL-TOOL: the rail used ONLY retranslate_dirty, which 404s
+-- ("Chapter has no translations") on a never-translated chapter — so a "translate the NEW chapters"
+-- pass could never start a job. Both tools are named now; the agent picks by coverage. No probe
 -- artifact tracks translation, so these steps are call-verified (no done_when), exactly like a read.
 INSERT INTO workflows (tier, slug, title, description, surfaces, inputs, steps, notes_md, status, source) VALUES
   ('system','translation-pass','Translate what is new or changed',
@@ -616,9 +620,10 @@ INSERT INTO workflows (tier, slug, title, description, surfaces, inputs, steps, 
    '{book,editor}'::text[], '{}'::jsonb,
    '[
      {"id":"assess","tool":"translation_coverage","gate":"none"},
-     {"id":"translate","tool":"translation_retranslate_dirty","gate":"none","async_job":true}
+     {"id":"translate-new","tool":"translation_start_job","gate":"none","async_job":true},
+     {"id":"retranslate-changed","tool":"translation_retranslate_dirty","gate":"none","async_job":true}
    ]'::jsonb,
-   E'Use this when the user wants the translation brought up to date — "translate the new chapters", "update the translation", "what still needs translating". The job: see what is missing or out of date, then translate exactly those parts.\n\nEXACTLY WHICH TOOL DOES WHAT:\n- translation_coverage — first, see what is untranslated or has drifted since it was last translated. This reads only; it changes nothing. Tell the user plainly what it found ("3 chapters have no translation yet, and 1 changed since it was translated").\n- translation_retranslate_dirty — translate exactly those out-of-date parts. This is a BACKGROUND job: it is NOT done when the tool returns. Watch it, and never tell the user the translation is finished before you have seen the job complete.\n\nORDER MATTERS: check coverage first, so you translate only what actually needs it instead of re-translating the whole book.\n\nSPEAK PLAINLY: say "translation" and "chapters", never "coverage"/"dirty units"/"retranslate job". Tell the user what changed in their terms ("started translating the 3 new chapters — I will tell you when it is done"), and never claim it finished before the job actually completes.',
+   E'Use this when the user wants the translation brought up to date — "translate the new chapters", "update the translation", "what still needs translating". The job: see what is missing or out of date, then translate exactly those parts.\n\nEXACTLY WHICH TOOL DOES WHAT:\n- translation_coverage — first, see what is untranslated or has drifted. It reads only; it changes nothing. Its untranslated_chapter_ids field lists chapters with NO translation yet; the per-chapter cells show which translated ones went stale. Tell the user plainly ("3 chapters have no translation yet, and 1 changed since it was translated").\n- translation_start_job — translate the NEVER-translated chapters (the ones in untranslated_chapter_ids). Pass their chapter_ids. This is the tool for NEW chapters — retranslate_dirty will fail on them ("no translations").\n- translation_retranslate_dirty — re-translate a chapter whose translation went STALE because its source changed (NOT a never-translated one).\nBoth translate tools are BACKGROUND jobs: NOT done when the tool returns. Watch them, and never tell the user the translation is finished before the job completes.\n\nORDER MATTERS: check coverage first, so you translate only what actually needs it. Use start_job for the untranslated chapters and retranslate_dirty for the stale ones — do not re-translate the whole book.\n\nSPEAK PLAINLY: say "translation" and "chapters", never "coverage"/"dirty units"/"start job"/"retranslate". Tell the user what changed in their terms ("started translating the new chapter — I will tell you when it is done"), and never claim it finished before the job actually completes.',
    'published','system')
 ON CONFLICT (slug) WHERE tier = 'system' DO UPDATE SET
   title = EXCLUDED.title, description = EXCLUDED.description, surfaces = EXCLUDED.surfaces,
