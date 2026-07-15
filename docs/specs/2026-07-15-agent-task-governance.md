@@ -75,6 +75,9 @@ until every step's effect is real. This is **PDCA**, applied per-agent-task.
 | **GOV-9** | **The enforcement surface is a COPIED hook lifecycle** (OQ-1 sealed — Claude Code + Kiro converge identically; we do not invent one). The governance loop attaches to four lifecycle events: `UserPromptSubmit` (MONITOR — inject the pending-step nag), `PreToolUse` (CONTROL — block a step that violates a dependency; exit-2 semantics = block + reason to the model), `PostToolUse` (CONTROL — run the just-completed step's effect-probe, mark done / re-prompt), and **`Stop`** (CONTROL — the completion gate: **refuse to yield the turn** while a pending step's effect is unmet, sending control back with the re-prompt). §8 details the mapping. |
 | **GOV-10** | **The effect-probe registry is HYBRID: central CATALOG, distributed IMPL** (OQ-2 sealed — the microservices-governance consensus: *centralize the policy source of truth, distribute enforcement close to the workload*). The **catalog** (probe names + typed contracts + the closed set) has ONE home (a governance module in chat-service); each **probe implementation** is owned by its domain as an MCP tool (composition owns `linked_structure`, glossary owns `entities_extracted`) — MCP-first + provider-gateway invariants. No bottleneck (a probe is one cheap query); consistent contract (one catalog). §10 details it. |
 | **GOV-11** | **This is the SESSION-governance pattern ported from meta to product, and STRONGER in the honesty axis** (OQ-4 resolved by brainstorm). The repo already runs agent-governance on itself (Claude Code ↔ the human): `/goal` (a Stop-gate condition), `workflow-gate.py` (an effect-gated phase state-machine), the RUN-STATE file (a persistent todo), the pre-commit hook (rule-probes), the TodoWrite nag. We reuse that vocabulary (*condition · evidence · gate · nag*). Crucial difference: `/goal`'s evaluator reads the **transcript only** — it enforces persistence, NOT honesty (a model *claiming* a check passed satisfies it). The product agent-governance **runs the effect-probe (a real query)**, so it verifies the EFFECT, not the claim — it can do what `/goal` structurally cannot. §11 details the symmetry. |
+| **GOV-12** | **Enforcement is LAYERED: the INNER loop AND the outer turn** (OQ-6 sealed). The agent runs multiple LLM iterations per user turn; `PostToolUse` fires after EACH tool in that inner loop → the effect-probe runs **per-iteration, catching a miss immediately** (feedback into the same loop), not only at turn end. `Stop` is the **outer** net (turn boundary). Fine-grained early-catch + a final gate — the Claude Code model exactly. §8. |
+| **GOV-13** | **The `Stop` release is DETERMINISTIC, never an LLM intent-guess.** A control decision (hold vs. release) must not sit on the same unreliable LLM inference that caused the S06 miss. The gate holds + re-prompts, and **offers an inline escape hatch** (*"…or say 'skip the plan' to move on"*); it releases ONLY on an **explicit signal** — an abandon phrase in the user's message (a small deterministic matcher) or a structured GUI dismiss-action — plus the bounded auto-release (GOV-7). The LLM completes the step or drafts; the gate itself is mechanical. §8. |
+| **GOV-14** | **Agent-defined steps whose effect has NO probe → the agent PROPOSES a probe/definition, a human reviews/corrects it** (OQ-3 sealed). Until approved, the step is **advisory** (not gated — an unverifiable effect must never hard-block). Approved → it joins the closed catalog (§10) and the step becomes governed. **This closes the `registry_propose_workflow` orphan** (the audit's BUG-8: it proposes workflows into an approval UI that did not exist) — that approval surface IS this human-review queue. One mechanism, two problems solved: agent self-authored governance + the propose→approve path that was missing. |
 
 ---
 
@@ -128,15 +131,19 @@ generic — and it reuses the exact query patterns the task-specific enforcers a
 - ~~**OQ-2**~~ → **GOV-10 / §10** — hybrid: central catalog, domain-distributed probe impl.
 - ~~**OQ-4**~~ → **GOV-11 / §11** — port the `/goal`+`workflow-gate` pattern; stronger in honesty (effect-probe > transcript).
 
-**STILL OPEN (for the detail pass + edge-case review):**
-- **OQ-3** Agent-self-defined effects — how closed is the set? (§9.3 proposes typed-parameterised probes
-  from a closed name-registry; confirm the arg-typing + who can register a new probe name.)
+**RESOLVED (this brainstorm round):**
+- ~~**OQ-3**~~ → **GOV-14** — agent proposes a probe/definition; a human reviews/corrects; advisory until
+  approved; closes the `registry_propose_workflow` orphan.
+- ~~**OQ-6**~~ → **GOV-12** — YES, hook the inner loop: `PostToolUse` per-iteration + the outer `Stop`.
+- ~~**point-3 (Stop release)**~~ → **GOV-13** — deterministic escape hatch, never an LLM intent-guess.
+
+**STILL OPEN (for the edge-case review + plan):**
 - **OQ-5** Per-turn cost of MONITOR re-inject + CONTROL probes — measure, don't assume
-  (`m3-pullmode-measured-nogo`, 07S §1 budget). §12 EC-9.
-- **OQ-6** (new) Async effects — a `mode="llm"` propose returns a *job*; its effect (`spec_ready`) is not
-  immediate. Does CONTROL wait, poll, or treat "job in flight" as a distinct pending sub-state? §12 EC-2.
-- **OQ-7** (new) Who owns the WORKFLOW-DEFINITION catalog vs. the skill that teaches it? Today the prose
-  lives in `co_write_skill.py`; the governed definition is data. One home — do they merge? §9.1.
+  (`m3-pullmode-measured-nogo`, 07S §1 budget). §12 EC-9. **Measured at P0, not assumed.**
+- **OQ-7** Who owns the WORKFLOW-DEFINITION catalog vs. the skill that teaches it? §9.1 proposes the
+  definition is the source and the skill prose a *rendering* of it (no drift). Confirm the mechanics.
+- **OQ-8** (new) The human-review queue (GOV-14): a new surface, or does it ride the existing extensions/
+  proposals inbox (the one BUG-8's `registry_propose_workflow` should have used)? Reuse, don't fork.
 
 ---
 
@@ -160,10 +167,17 @@ action and hands the reason to the model; a **refuse-to-stop** (Stop) sends cont
 step-1 done), tries to move to drafting, hits `Stop` with `compile` still pending + `linked_structure=0`
 → refused, re-prompted → compiles → probe true → `Stop` allows the yield. No reliance on self-regulation.
 
-⚠ **The `Stop` gate must not trap a user who changed their mind.** It fires only while the user's intent
-still implies the workflow (a lightweight intent check) and is bounded (GOV-7: N refusals → surface
-honestly, release). A user who says *"forget the plan, just write"* releases the gate — governance
-serves the author, it does not imprison them (the `blocked ≠ imprisoned` principle).
+**Layered enforcement (GOV-12).** The agent runs several LLM iterations per user turn. `PostToolUse`
+fires after EACH tool in that inner loop, so the effect-probe catches a miss **inside the turn** and
+feeds it back into the same loop — the agent can compile in the very iteration after it proposed, without
+waiting for `Stop`. `Stop` is the outer net for the case the inner catches miss. Fine-grained + final.
+
+**Release is DETERMINISTIC (GOV-13), never an LLM intent-guess.** The `Stop` gate must not sit on the
+same unreliable inference that caused S06. It holds + re-prompts and **offers the escape hatch inline**
+(*"…or say 'skip the plan' to move on"*); it releases only on an EXPLICIT signal — a small deterministic
+matcher on an abandon phrase in the user's message, or a structured GUI dismiss-action — plus the bounded
+auto-release (GOV-7: N holds → surface honestly, release). Governance **serves** the author, never
+imprisons them (`blocked ≠ imprisoned`), and the serving is mechanical, not guessed.
 
 ---
 
@@ -259,7 +273,7 @@ row, out of scope here.)
 |---|---|---|
 | **EC-1** | **False-done** — model marks `compile` done, effect=0 | GOV-4: `PostToolUse`/`Stop` probe overrides to pending. THE core case. |
 | **EC-2** | **Async effect** — `mode="llm"` propose returns a job; `spec_ready` not immediate (OQ-6) | A distinct `in_flight` sub-state: the step is not done AND not re-promptable-as-skipped; MONITOR shows *"waiting for the propose job"*; CONTROL gates on the job's terminal state, not wall-clock. Do NOT re-prompt a step that is legitimately in flight (that is the `worker-loop-cancel-clobber` class). |
-| **EC-3** | **User abandons the workflow** (*"forget the plan, just write"*) | §8: the `Stop` gate checks residual intent; an explicit abandon RELEASES it. Governance serves, not imprisons. |
+| **EC-3** | **User abandons the workflow** (*"forget the plan, just write"*) | GOV-13: a DETERMINISTIC release — an explicit abandon phrase / GUI dismiss releases the gate, not an LLM intent-guess. Bounded auto-release backstops it. Governance serves, not imprisons. |
 | **EC-4** | **Re-prompt loop** — the model can't complete a step (a real backend error) | GOV-7: N attempts → stop, surface honestly (*"I couldn't compile — <observed error>"*), release. A runaway enforcer is itself a bug (`hard-stop after 3`). |
 | **EC-5** | **Probe flakiness** — the effect-probe itself errors (service down) | Absent ≠ unsatisfied. A probe that cannot RUN returns `unknown`, not `false` — CONTROL does NOT re-prompt on `unknown` (that would punish a book-service outage), it degrades to advisory + warns. The `silent-success-is-a-bug` law's mirror: a silent FAILURE-to-verify must not read as "not done". |
 | **EC-6** | **Compaction mid-workflow** | `PreCompact` + GOV-2: the `ActivePlan` is on `working_memory`, which survives; the nag rehydrates it on the next turn. |
