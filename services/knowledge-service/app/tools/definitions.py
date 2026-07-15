@@ -265,6 +265,15 @@ TOOL_DEFINITIONS: list[dict] = [
                     f"Max hits to return (default {SEARCH_LIMIT_DEFAULT})."
                 ),
             },
+            "before_chapter_id": {
+                "type": "string",
+                "description": (
+                    "Optional spoiler cutoff: window results to this chapter "
+                    "and everything before it (by chapter order). Omit to "
+                    "search the whole manuscript. Fail-closed on an "
+                    "unresolvable id (keeps nothing)."
+                ),
+            },
             "detail": _DETAIL_PROP,
             "project_id": _PROJECT_ID_PROP,
         },
