@@ -67,6 +67,7 @@ import { OnboardingPage } from '@/features/onboarding/pages/OnboardingPage';
 import { OAuthConsentPage } from '@/pages/OAuthConsentPage';
 import { PlatformHomePage } from '@/features/home/components/PlatformHomePage';
 import { ActivityPage } from '@/features/home/components/ActivityPage';
+import { YouPage } from '@/features/home/components/YouPage';
 
 function AuthenticatedThemeProvider({ children }: { children: React.ReactNode }) {
   const { accessToken } = useAuth();
@@ -165,7 +166,7 @@ export function App() {
                 /you is the M3 placeholder for now. Real routes on desktop too. */}
             <Route path="/home" element={<PlatformHomePage />} />
             <Route path="/activity" element={<ActivityPage />} />
-            <Route path="/you" element={<PlaceholderPage title="You" description="Your account & data — coming soon." />} />
+            <Route path="/you" element={<YouPage />} />
 
             {/* Workspace */}
             <Route path="/books" element={<BooksPage />} />

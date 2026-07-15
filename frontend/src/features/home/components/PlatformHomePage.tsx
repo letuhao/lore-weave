@@ -3,9 +3,11 @@
 // activity preview render by their degrade status. Mobile-first; on desktop it centres in the
 // dashboard column. Bound to useHome (logic) — view only.
 import { Link } from 'react-router-dom';
-import { NotebookPen, BookOpen, ListChecks, Bell, ChevronRight, Globe2, Factory, Brain } from 'lucide-react';
+import { NotebookPen, BookOpen, ListChecks, Bell, ChevronRight, Globe2, Factory, Brain, Grid3x3 } from 'lucide-react';
+import { useSheetRoute } from '@/components/shared/Sheet';
 import { useHome } from '../hooks/useHome';
 import { DegradeTile } from './DegradeTile';
+import { AllAppsDrawer, APPS_SHEET_ID } from './AllAppsDrawer';
 
 // Distinct destinations (each a real route) — no duplicate targets.
 const LAUNCHER = [
@@ -17,6 +19,7 @@ const LAUNCHER = [
 
 export function PlatformHomePage() {
   const { data, isLoading, refetch } = useHome();
+  const { openSheet } = useSheetRoute();
   const tiles = data?.tiles;
   const loading = isLoading && !tiles;
 
@@ -120,7 +123,18 @@ export function PlatformHomePage() {
             {l.label}
           </Link>
         ))}
+        <button
+          type="button"
+          data-testid="home-all-apps"
+          onClick={() => openSheet(APPS_SHEET_ID)}
+          className="flex min-h-[64px] flex-col items-center justify-center gap-1 rounded-xl border border-border bg-card text-[11px] text-muted-foreground hover:text-foreground"
+        >
+          <Grid3x3 className="h-5 w-5" aria-hidden="true" />
+          All apps
+        </button>
       </section>
+
+      <AllAppsDrawer />
     </div>
   );
 }
