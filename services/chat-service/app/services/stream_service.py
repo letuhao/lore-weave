@@ -3340,6 +3340,21 @@ async def _run_subagent_call(
     return payload, sub_in, sub_out
 
 
+#: 28 AN-9 / AN-C2 — the discovery SCENT appended to the studio book_context_note. Static
+#: (~1 sentence, no per-turn fetch): names the three orientation reads so a weak model reaches
+#: for ONE cheap read instead of stitching 3–6 calls across services, and uses package_tree as
+#: the verification read before claiming setup is done (AN-11's F7 honesty guard — exactly what
+#: the S06 replay gate measures). It was never built — the false C2/C3 [x] this run's audit found.
+#: A module constant so test_orientation_scent can pin it (C2 cannot silently regress again).
+_ORIENTATION_SCENT = (
+    " For orientation prefer one read over stitching many:"
+    " composition_package_tree (the whole book at a glance — spec, manuscript, coverage, runs),"
+    " composition_diagnostics (what is wrong), and"
+    " composition_find_references (where an entity appears);"
+    " read composition_package_tree to verify state before telling the user something is set up."
+)
+
+
 async def stream_response(
     session_id: str,
     user_message_content: str,
@@ -3871,6 +3886,7 @@ async def stream_response(
             " Use these exact ids for any tool that requires a book_id or chapter_id."
             " Never ask the user for the book_id and never pass a placeholder."
         )
+        book_context_note += _ORIENTATION_SCENT  # 28 AN-9 / AN-C2 — the discovery scent
 
     # ── RAID C1 (DR-C1) — per-book steering ─────────────────────────────────
     # Book-scoped turn → fetch the ENABLED steering entries from book-service,
