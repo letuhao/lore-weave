@@ -669,20 +669,25 @@ ON CONFLICT (slug) WHERE tier = 'system' DO UPDATE SET
   inputs = EXCLUDED.inputs, steps = EXCLUDED.steps, notes_md = EXCLUDED.notes_md,
   status = EXCLUDED.status, updated_at = now();
 
--- W9 (agent-discoverability WS-5) — canon-check. "Does my story stay consistent?" Real tools
--- (verified 2026-07-12): composition_list_canon_rules (sync) + composition_conformance_run (ASYNC —
--- a background check, poll with composition_get_mine_job) + composition_conformance_status (sync,
--- reads the result). No probe artifact for consistency, so the steps are call-verified.
+-- W9 (agent-discoverability WS-5 / S09 fix 2026-07-15) — canon-check. "Does my story stay consistent?"
+-- ROOT CAUSE of the old 0/3: the rail ran composition_conformance_run, which checks whether prose
+-- realised the ARC/MOTIFS (beats hit, reversals landed) — it does NOT check prose against the declared
+-- CANON RULES, so a rule contradiction (ch1 "green eyes" vs ch3 "blue eyes") was never examined, and no
+-- prose-vs-rule contradiction TOOL exists. The fix is to READ-AND-REASON: list the rules, then for each
+-- rule READ the chapters and compare — the model itself is the contradiction detector (it easily
+-- spots green-vs-blue across two chapters). Real tools: composition_list_canon_rules (sync) +
+-- book_list_chapters (sync) + book_get_chapter (sync, reads the draft prose straight from
+-- chapter_blocks — no search index / published state needed). Call-verified.
 INSERT INTO workflows (tier, slug, title, description, surfaces, inputs, steps, notes_md, status, source) VALUES
   ('system','canon-check','Check the story for contradictions',
    'Check the book against the consistency rules it has recorded — names, timelines, established facts — and report what does not line up.',
    '{book,editor,studio}'::text[], '{}'::jsonb,
    '[
      {"id":"see-rules","tool":"composition_list_canon_rules","gate":"none"},
-     {"id":"check","tool":"composition_conformance_run","gate":"none","async_job":true},
-     {"id":"results","tool":"composition_conformance_status","gate":"none"}
+     {"id":"list-chapters","tool":"book_list_chapters","gate":"none"},
+     {"id":"read-a-chapter","tool":"book_get_chapter","gate":"none"}
    ]'::jsonb,
-   E'Use this when the user wants to know whether the story holds together — "check for contradictions", "does this stay consistent", "did I break continuity". The job: run the book against its recorded consistency rules and tell the user, plainly, what conflicts.\n\nEXACTLY WHICH TOOL DOES WHAT:\n- composition_list_canon_rules — first, see which consistency rules the book actually has. If there are none, say so and offer to set some up (a different job); never report "all consistent" when nothing was checked.\n- composition_conformance_run — run the check. This is a BACKGROUND job: it is NOT done when the tool returns. Watch it (poll composition_get_mine_job) and do not report results before it finishes.\n- composition_conformance_status — read the finished result and summarise the real conflicts.\n\nORDER MATTERS: confirm there are rules to check against BEFORE running, or a clean result is meaningless.\n\nSPEAK PLAINLY: say "consistency rules" and "contradictions", never "canon rules"/"conformance run"/"job". Tell the user what was found in their terms ("checked against your 8 rules — two things conflict: ...") and never claim it is consistent before the check has actually run.',
+   E'Use this when the user wants to know whether the story holds together — "check for contradictions", "does this stay consistent", "did I break continuity". The job: check the prose against the book''s recorded consistency rules and tell the user, plainly, what conflicts.\n\nEXACTLY WHICH TOOL DOES WHAT:\n- composition_list_canon_rules — FIRST, see which consistency rules the book has (pass book_id). Each rule is a stated fact, e.g. "Lâm Uyên''s eye colour is green and never changes." If there are NONE, say so and offer to set some up; never report "all consistent" when nothing was checked.\n- book_list_chapters — see the chapters (pass book_id). You will read them next.\n- book_get_chapter — read a chapter''s actual prose (pass book_id + chapter_id + include_body=true). Read EACH chapter this way; the details a rule can contradict (an eye colour, who is alive, a place name) live in the prose, not the titles.\n\nTHEN YOU are the check: hold each chapter''s prose against every rule. If any chapter states something a rule forbids — the rule says her eyes are GREEN but a later chapter''s prose says BLUE — that is a CONTRADICTION. Name it plainly, with the chapters: "Chapter 1 says her eyes are green, but Chapter 3 says blue — that contradicts your rule that her eye colour never changes." Do NOT wait for any background job; you have everything you need once you have read the chapters. Only say the story is consistent AFTER you have actually read the chapters and checked them against every rule.\n\nSPEAK PLAINLY: say "consistency rules" and "contradictions", never "canon rules"/"conformance"/"job".',
    'published','system')
 ON CONFLICT (slug) WHERE tier = 'system' DO UPDATE SET
   title = EXCLUDED.title, description = EXCLUDED.description, surfaces = EXCLUDED.surfaces,

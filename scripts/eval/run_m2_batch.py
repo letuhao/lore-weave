@@ -82,8 +82,9 @@ def _run_harness(scenario_id: str, book_id: str, label: str) -> dict:
         # Simulate the user clicking the auto-rendered confirm card for a Tier-W write.
         env += ["-e", "QG_SIM_AUTORENDER=1"]
     if scenario_id == "S11":
-        # A READER session: give the session the book's knowledge project (so story_search resolves
-        # a project) + the reader's chapter (ch1, lowest sort_order) as the spoiler window anchor.
+        # A READER session: link the book's knowledge project (so story_search resolves a project) +
+        # the reader's chapter (ch1, lowest sort_order) as the spoiler window anchor. (S09 canon-check
+        # needs neither — it reads chapters directly with book_get_chapter.)
         proj = _sql("loreweave_knowledge",
                     f"SELECT project_id FROM knowledge_projects WHERE book_id='{book_id}' "
                     f"ORDER BY created_at LIMIT 1").strip()
