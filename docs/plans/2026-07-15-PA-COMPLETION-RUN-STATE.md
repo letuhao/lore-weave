@@ -39,6 +39,13 @@ coaching safety-eval + numeric-eval CLEARANCE — human milestones; the scorer s
 
 ## 4 · Decision register (sealed — do not override without the human)
 H1..H4 + SD-C1..C8 — all in [`2026-07-15-personal-assistant-completion-seal.md`](2026-07-15-personal-assistant-completion-seal.md) §1/§2. Ordinary build-time calls appended here as the build runs.
+- **2026-07-15 · SD-C5 architecture (human-approved):** diary chapters live in + are read from
+  book-service (Go), which had NO crypto; the sealed "existing loreweave_crypto (Python) client"
+  couldn't transparently apply. Human chose **"Go crypto in book-service"**: a NEW shared Go SDK
+  `sdks/go/loreweave_crypto` (byte-for-byte format-parity with the Python SDK + auth's existing wrap;
+  cross-language golden-vector test GREEN) + a Go DEK client; book-service encrypts kind='diary'
+  chapters on write, decrypts on read (transparent to the FE); crypto-shred = auth destroys the DEK
+  (already built). User directed "add go crypto sdk first" — SDK built + tested this step, book wiring next.
 - **2026-07-15 · SD-C4 AMENDED (human-approved):** `is_person` = "REAL person kind." Seed ONLY `colleague`
   true; fiction `character` stays FALSE. The seal's original "colleague, character" was a contradiction
   (blanket `NOT is_person` would break fiction character wiki-gen + `wiki_gen_limit_test`). Human chose
