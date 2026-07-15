@@ -416,6 +416,12 @@ async def story_search(
     ] = SEARCH_LIMIT_DEFAULT,
     detail: _DETAIL_ARG = "full",
     project_id: _PROJECT_ID_ARG = None,
+    before_chapter_id: Annotated[
+        str | None,
+        "Optional spoiler cutoff (D-1): window results to this chapter and everything before it "
+        "(by chapter order), so a reader-facing search can't surface a hit past the reader's "
+        "position. Omit to search the whole manuscript.",
+    ] = None,
 ) -> dict:
     args: dict[str, Any] = {
         "query": query, "mode": mode, "granularity": granularity, "limit": limit,
@@ -423,6 +429,8 @@ async def story_search(
     }
     if project_id is not None:
         args["project_id"] = project_id
+    if before_chapter_id is not None:
+        args["before_chapter_id"] = before_chapter_id
     return await _dispatch(ctx, "story_search", args)
 
 

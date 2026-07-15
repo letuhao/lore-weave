@@ -858,6 +858,55 @@ async def test_story_search_degraded_legs_surface(monkeypatch):
     assert res.result["degraded"] == {"semantic": "not_indexed"}
 
 
+# ── D-1: the spoiler cutoff `story_search` now shares with `raw_search` ────────
+_CUT_CH = "019f0000-0000-7000-8000-000000000abc"
+
+
+@pytest.mark.asyncio
+async def test_story_search_no_cutoff_searches_whole_manuscript(monkeypatch):
+    # OMITTED before_chapter_id ⇒ before_sort_order=None ⇒ NO window (the owner's authoring
+    # default). Critically NOT the fail-closed -1 — that would return nothing for every plain
+    # search the flagship makes.
+    calls = _patch_hybrid(monkeypatch, hits=[{"chapterId": "c1"}])
+    res = await execute_tool(_story_ctx(), "story_search", {"query": "q"})
+    assert res.success
+    assert calls[0]["before_sort_order"] is None
+
+
+@pytest.mark.asyncio
+async def test_story_search_cutoff_resolves_to_sort_order_and_windows(monkeypatch):
+    from uuid import UUID
+    calls = _patch_hybrid(monkeypatch, hits=[{"chapterId": "c1"}])
+    ctx = _story_ctx()
+    # the resolver asks book_client.get_chapter_sort_orders([id]) → {id: sort_order}
+    ctx.book_client.get_chapter_sort_orders = AsyncMock(return_value={UUID(_CUT_CH): 5})
+    res = await execute_tool(ctx, "story_search", {"query": "q", "before_chapter_id": _CUT_CH})
+    assert res.success
+    assert calls[0]["before_sort_order"] == 5  # windowed to the cutoff chapter's order
+
+
+@pytest.mark.asyncio
+async def test_story_search_unresolvable_cutoff_fails_closed(monkeypatch):
+    # An unknown/cross-book chapter id must window out EVERYTHING (-1), never leak the whole
+    # corpus to a reader whose position couldn't be pinned. This is the spoiler-safety contract.
+    calls = _patch_hybrid(monkeypatch, hits=[{"chapterId": "c1"}])
+    ctx = _story_ctx()
+    ctx.book_client.get_chapter_sort_orders = AsyncMock(return_value={})  # id resolves to nothing
+    res = await execute_tool(ctx, "story_search", {"query": "q", "before_chapter_id": _CUT_CH})
+    assert res.success
+    assert calls[0]["before_sort_order"] == -1
+
+
+@pytest.mark.asyncio
+async def test_story_search_malformed_cutoff_id_fails_closed(monkeypatch):
+    # A non-UUID cutoff must also fail closed (-1), not raise and not search wide.
+    calls = _patch_hybrid(monkeypatch, hits=[{"chapterId": "c1"}])
+    res = await execute_tool(_story_ctx(), "story_search",
+                             {"query": "q", "before_chapter_id": "not-a-uuid"})
+    assert res.success
+    assert calls[0]["before_sort_order"] == -1
+
+
 @pytest.mark.asyncio
 async def test_story_search_no_project_returns_empty_note_not_error():
     ctx = _story_ctx()

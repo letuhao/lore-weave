@@ -347,6 +347,21 @@ async def _handle_story_search(ctx: ToolContext, args: StorySearchArgs) -> dict:
     # Late import — retriever pulls heavy search deps; keep executor import light.
     from app.search.retriever import run_hybrid_search
 
+    # D-1 spoiler cutoff — mirror raw_search.py: resolve the optional before_chapter_id to a
+    # passage-axis sort-order ONLY when supplied (an omitted cutoff means the full manuscript,
+    # NOT the fail-closed -1). An unresolvable id resolves to -1 → windows out everything, so a
+    # bad/hostile id can never leak the whole corpus past a reader's position.
+    before_sort_order: int | None = None
+    if args.before_chapter_id is not None:
+        from uuid import UUID
+
+        from app.spoiler_window import resolve_before_sort_order
+        try:
+            _cut_id = UUID(str(args.before_chapter_id))
+        except (ValueError, AttributeError, TypeError):
+            _cut_id = None
+        before_sort_order, _ = await resolve_before_sort_order(ctx.book_client, _cut_id)
+
     mode = "lexical" if args.mode == "exact" else args.mode
     result = await run_hybrid_search(
         user_id=ctx.user_id,
@@ -359,6 +374,7 @@ async def _handle_story_search(ctx: ToolContext, args: StorySearchArgs) -> dict:
         mode=mode,  # type: ignore[arg-type]
         granularity=args.granularity,
         limit=args.limit,
+        before_sort_order=before_sort_order,
     )
     hits = result.hits[: args.limit]
     # L1/L2 reference-first (§6b): at detail="summary" drop the heavy passage

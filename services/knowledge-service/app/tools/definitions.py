@@ -122,6 +122,16 @@ class StorySearchArgs(ProjectScopedArgs):
     limit: int = Field(default=SEARCH_LIMIT_DEFAULT, ge=1, le=SEARCH_LIMIT_MAX)
     # L1/L2 reference-first contract (§6b) — versioned default "full".
     detail: Literal["summary", "full"] = "full"
+    # D-1 (Track B spec-complete) — the spoiler cutoff `raw_search` already has. OMIT for the
+    # full manuscript (the owner's authoring default); set to a chapter id to window results to
+    # that chapter and everything before it, so a reader-facing caller can't surface a hit from a
+    # chapter past the reader's position. FAIL-CLOSED: an unresolvable id keeps NOTHING, never the
+    # whole corpus (resolve_before_sort_order → -1).
+    before_chapter_id: str | None = Field(
+        default=None,
+        description="Optional spoiler cutoff: window results to this chapter and everything "
+        "before it (by chapter order). Omit to search the whole manuscript.",
+    )
 
 
 class MemoryRecallEntityArgs(ProjectScopedArgs):
