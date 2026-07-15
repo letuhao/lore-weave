@@ -250,6 +250,9 @@ func (s *Server) Router() http.Handler {
 		// the future per-key sub-cap (H-K). Internal-token gated; owner_user_id is an
 		// explicit query arg (the caller already authenticated the owner).
 		r.Get("/billing/mcp-key-usage", s.getMcpKeyUsage)
+		// B1 (D-LANE-BUDGET-ENFORCE) — the per-lane spend report (assistant vs interactive), joining the
+		// per-user lane budget. Internal-token gated; owner_user_id is an explicit query arg.
+		r.Get("/billing/usage/by-lane", s.getUsageByLane)
 	})
 
 	r.Route("/v1/model-billing", func(r chi.Router) {

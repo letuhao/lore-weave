@@ -45,7 +45,7 @@ stays quarantine-tier — R2 makes it VISIBLE, never clears the number).
 ### Group B — Billing / correctness
 | Slice | Status | Evidence / note |
 |---|---|---|
-| **B1** lane budget enforce + by-lane report | ⬜ | thread purpose→lane into reserve; per-lane cap mirror mcp_key sub-cap; by-lane report |
+| **B1** by-lane spend report (+ budget READ) | ✅ | usage-billing `GET /internal/billing/usage/by-lane` (owner-scoped) aggregates usage_logs by lane for the month + JOINs `user_lane_budgets` (making the write-only table READ) → per-lane spent/budget/remaining/over_budget. **Tests (real PG):** aggregation + budget join + over-budget + cross-tenant isolation + error-row-excluded. **Cold review:** tenancy CLEAN; MED (sum only request_status='success') + LOW (bind an exact month-end instant, not session-TZ interval) FIXED. Single service. **Pre-flight per-lane cap ENFORCEMENT deferred (verified gate #2):** the reserve chokepoint has only the coarse capability, NOT the job `purpose` that distinguishes assistant/interactive for chat; enforcement needs `purpose` threaded chat→provider-registry→reserve + a `token_reservations.lane` column (multi-hop, load-bearing spend path) → D-LANE-ENFORCE-RESERVE. |
 | **B2** distiller model-aware window | ⬜ | resolve model ctx in distill consumer (get_context_length exists); window=min(12k, ctx−ovh−rsv) |
 
 ### Group F — FE polish (DBT-14)
@@ -62,6 +62,11 @@ stays quarantine-tier — R2 makes it VISIBLE, never clears the number).
 D-PROACTIVE-LLM-CONTENT (#2) · D-STT-METER-UNIFY (#4 policy) · DBT-7 KEK re-wrap (#2 ops) ·
 DBT-10 trashed-diary UX (blocked on E14) · DBT-2 (#2) · DBT-3 (#3) · DBT-4 (#2) · P-2 · P-4 tail · P-11.
 Mobile home-strip surface (`md:block` desktop-only) → QC/product decision, not auto-scoped.
+- **D-LANE-ENFORCE-RESERVE** (B1, #2 cross-service, VERIFIED) — pre-flight per-lane cap at the reserve
+  chokepoint: thread the job `purpose` chat→provider-registry→reserve (only the coarse capability is there
+  today — can't distinguish assistant/interactive for chat) + add `token_reservations.lane` to sum HELD by
+  lane + a per-lane COMMITTED+HELD check under the owner FOR-UPDATE lock (mirror the mcp_key sub-cap). The
+  by-lane REPORT + budget-READ shipped in B1; the reserve caller only needs to forward an opaque purpose.
 - **D-DIARY-SHRED-ESCALATE** (P4 cold-review LOW-3, #2 ops) — a genuinely-stuck owed shred (auth down
   long-term) retries safely forever but has no operator ESCALATION past N attempts + no backoff window
   (round-robin ordering already prevents starvation). Add a threshold alert + a backoff via last_attempt_at.
