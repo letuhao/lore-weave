@@ -1433,6 +1433,15 @@ export const knowledgeApi = {
     });
   },
 
+  // D-KG-ENTITY-RESTORE (S7) — the inverse of archiveMyEntity, so a hidden
+  // entity can come back (archive is otherwise a one-way trap). 204 on success.
+  restoreMyEntity(entityId: string, token: string): Promise<void> {
+    return apiJson<void>(`${BASE}/me/entities/${entityId}/restore`, {
+      method: 'POST',
+      token,
+    });
+  },
+
   // ── K19b.8 — extraction job logs ───────────────────────────────────────
 
   listJobLogs(

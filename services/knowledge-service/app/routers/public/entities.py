@@ -36,6 +36,7 @@ from app.db.neo4j_repos.entities import (
     EntityDetail,
     MergeEntitiesError,
     user_archive_entity,
+    restore_entity,
     find_entities_by_vector,
     find_gap_candidates,
     get_entity,
@@ -239,6 +240,45 @@ async def archive_user_entity(
             after=None,
             actor_id=str(user_id),
         ),
+    )
+
+
+@router.post(
+    "/entities/{entity_id}/restore",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+async def restore_user_entity(
+    entity_id: str,
+    user_id: UUID = Depends(get_current_user),
+) -> None:
+    """D-KG-ENTITY-RESTORE (S7) — un-archive a user entity: the inverse of the
+    soft-delete above. Without this, archiving is a **one-way trap** — the UI can
+    hide an entity but never bring it back (the only prior path was re-extraction).
+
+    Clears `archived_at`/`archive_reason` via `restore_entity` (which PRESERVES the
+    `glossary_entity_id` anchor). **Idempotent**: restoring an already-active entity
+    is a no-op that still returns 204 (the row comes back with `archived_at` already
+    null). 404 only when the entity doesn't exist for this user at all.
+
+    ⚠ `restore_entity` does NOT recompute `anchor_score` (that is K11.5b's job) — a
+    restored entity ranks at score 0.0 until the next recompute pass. This is
+    documented, not a bug: the row is visible and anchored immediately; only its
+    ranking weight lags one pass.
+    """
+    async with neo4j_session() as session:
+        result = await restore_entity(
+            session,
+            user_id=str(user_id),
+            canonical_id=entity_id,
+        )
+    if result is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="entity not found",
+        )
+    logger.info(
+        "S7 D-KG-ENTITY-RESTORE: user restored entity user_id=%s entity_id=%s",
+        user_id, entity_id,
     )
 
 

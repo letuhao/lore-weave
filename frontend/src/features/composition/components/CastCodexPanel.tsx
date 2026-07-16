@@ -95,6 +95,15 @@ export function CastCodexPanel({
         </div>
       )}
 
+      {/* D-PAGING (S7) — useCast caps the list at limit:200. A silent cut would let a
+          large cast look complete; announce the cap instead (the silent-success law).
+          Full keyset paging past the cap is deferred (D-CAST-KEYSET-PAGING). */}
+      {(entities.data?.length ?? 0) >= 200 && (
+        <div data-testid="cast-truncation-hint" className="border-b bg-amber-50 px-3 py-1 text-[10px] text-amber-700 dark:bg-amber-950/40 dark:text-amber-400">
+          {t('codex.truncated', { defaultValue: 'Showing the first 200 — refine your search to narrow the list.' })}
+        </div>
+      )}
+
       <div className="min-h-0 flex-1 overflow-y-auto p-2">
         {projectQ.isLoading || entities.isLoading ? (
           <Hint>{t('codex.loading', { defaultValue: 'Loading cast…' })}</Hint>

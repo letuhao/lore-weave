@@ -23,6 +23,7 @@ import {
   usePromoteEntity,
   useToggleGlossaryPin,
   useArchiveEntity,
+  useRestoreEntity,
 } from '../hooks/useEntityMutations';
 import type { EntityFact, EntityRelation } from '../api';
 import { TOUCH_TARGET_SQUARE_MOBILE_ONLY_CLASS } from '../lib/touchTarget';
@@ -221,22 +222,31 @@ export function EntityDetailPanel({
 
   // S7-1 — soft archive (Delete = retire, NOT Merge). Wraps the EXISTING
   // archiveMyEntity route: preserves edges + the glossary anchor, hides the row
-  // from the active list. No OCC (the route takes none). The confirm copy is
-  // honest — there is NO UI restore (re-mention re-shows it), so we never
-  // promise an undo button.
+  // from the active list. No OCC (the route takes none).
+  // D-KG-ENTITY-RESTORE (S7) — archive is no longer a one-way trap: the success
+  // toast offers an Undo that calls the new restore route.
+  const restoreMutation = useRestoreEntity({
+    onSuccess: () => toast.success(t('entities.restore.success')),
+    onError: (err) =>
+      toast.error(t('entities.restore.failed', { error: err.message })),
+  });
   const archiveMutation = useArchiveEntity({
-    onSuccess: () => {
-      toast.success(t('entities.archive.success'));
-      onOpenChange(false);
-    },
     onError: (err) =>
       toast.error(t('entities.archive.failed', { error: err.message })),
   });
   const handleArchive = async () => {
     if (!detail) return;
     if (!window.confirm(t('entities.archive.confirm'))) return;
+    const id = detail.entity.id;
     try {
-      await archiveMutation.archive({ entityId: detail.entity.id });
+      await archiveMutation.archive({ entityId: id });
+      toast.success(t('entities.archive.success'), {
+        action: {
+          label: t('entities.archive.undo'),
+          onClick: () => { void restoreMutation.restore({ entityId: id }); },
+        },
+      });
+      onOpenChange(false);
     } catch {
       // onError owns the toast; swallow the rejection (vitest guard).
     }

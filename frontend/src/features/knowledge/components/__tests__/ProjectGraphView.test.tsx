@@ -45,6 +45,10 @@ vi.mock('../../hooks/useEntityMutations', () => ({
   useToggleGlossaryPin: () => ({ toggle: vi.fn(), isPending: false }),
   useUpdateEntity: () => ({ update: vi.fn(), isPending: false }),
   useMergeEntity: () => ({ merge: vi.fn(), isPending: false }),
+  useArchiveEntity: () => ({ archive: vi.fn(), isPending: false, error: null }),
+  useRestoreEntity: () => ({ restore: vi.fn(), isPending: false, error: null }),
+  useCreateRelation: () => ({ create: vi.fn(), isPending: false, error: null }),
+  useCreateEntity: () => ({ create: vi.fn(), isPending: false, error: null }),
 }));
 
 const expand = vi.fn();

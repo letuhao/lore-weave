@@ -44,13 +44,23 @@ no-silent-fail · agent-parity · loop-connected · live-browser-proven · i18n+
 convergence-node work — catalog.ts is co-mingled with S1's SceneComposePanel, so committing it would
 entangle tracks. The 4 panels are built+verified but not yet reachable until convergence wires the registry.
 
-### DEFER rows (from the build)
-- **D-CAST-ARC-BUS-SLICE** — the tier-2 bus deep-link (`activeCastEntityId` in host/types.ts) not built
-  (shared infra, would collide); deep-link works via params (tier 1) + in-panel picker (tier 3). Gate #1.
-- **D-KG-ENTITY-RESTORE** — no FE unarchive route (archive is honest about it). Gate #2 structural.
-- **D-CAST-KEYSET-PAGING** — both list routes cap at limit:200. Gate #1.
-- **D-KG-EVENT-CREATE-ROUTE** — active→gone band read-only; no createEvent route. Belongs to kg-timeline.
-- **D-KG-PREDICATE-VOCAB** — relation predicate stays free-string server-side; GUI enum is the right layer.
+### DEFER rows — DISPOSITIONED (2026-07-16, "clear defers first")
+- ✅ **D-KG-ENTITY-RESTORE — CLEARED.** The `restore_entity` repo function already existed (engine present
+  ⇒ buildable, not blocked). Added `POST /v1/knowledge/me/entities/{id}/restore` + `restoreMyEntity` client
+  + `useRestoreEntity` hook + an **Undo** action on the archive success toast (archive is no longer a
+  one-way trap). Also updated the confirm copy that used to say "no restore button". 4 backend tests pass.
+- ✅ **D-CAST-KEYSET-PAGING — silent part CLEARED, full keyset kept deferred.** `useCast` caps at limit:200;
+  a silent cut let a large cast look complete. Added a **truncation notice** (the silent-success law) when
+  the count hits 200. Full keyset paging past the cap remains its own slice (Gate #1) — a >200 cast is rare.
+- ↪ **D-CAST-ARC-BUS-SLICE — RECLASSIFIED to convergence-node.** The tier-2 bus deep-link touches SHARED
+  `host/types.ts` (S1/S5 also use the bus); editing it mid-multi-session risks a race. The deep-link is
+  fully functional via tier-1 (params) + tier-3 (in-panel picker), so this is a live-update polish, not a
+  gap — done safely at the convergence node, not raced now. (Gate #1: shared-infra convergence work.)
+- ✅ **D-KG-EVENT-CREATE-ROUTE — EARNS its row (out of scope).** Creating timeline events is a `kg-timeline`
+  surface concern, not cast/arc; no createEvent route at any layer. Gate #1 (different surface).
+- ✅ **D-KG-PREDICATE-VOCAB — CLOSED (conscious won't-fix, Gate #5).** The relation predicate stays a free
+  string server-side (server enforcement would break agent `kg_propose_edge` + extraction edges); the GUI
+  enum is the correct layer. This is a design decision, not debt.
 
 ### DRIFT (honest near-misses from the build)
 - Integrator caught an ORCHESTRATION bug: I told both B's world_map_* AND C's kg_* handlers to live in

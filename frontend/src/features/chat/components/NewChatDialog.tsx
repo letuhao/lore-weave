@@ -99,14 +99,14 @@ export function NewChatDialog({ open, onClose, onCreate }: NewChatDialogProps) {
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={onClose} data-testid="new-chat-dialog">
       <div
         className="w-full max-w-md rounded-lg border bg-card p-5 shadow-lg"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="mb-4 flex items-center justify-between">
           <h3 className="text-sm font-semibold">{t('new.title')}</h3>
-          <button type="button" onClick={onClose} className="rounded p-1 text-muted-foreground hover:bg-secondary hover:text-foreground">
+          <button type="button" onClick={onClose} data-testid="new-chat-dismiss" className="rounded p-1 text-muted-foreground hover:bg-secondary hover:text-foreground">
             <X className="h-4 w-4" />
           </button>
         </div>

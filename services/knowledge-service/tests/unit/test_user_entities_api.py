@@ -126,3 +126,29 @@ def test_archive_user_entity_not_found(mock_archive, mock_get):
     resp = client.delete(f"/v1/knowledge/me/entities/{_TEST_ENTITY_ID}")
     assert resp.status_code == 404
     assert resp.json()["detail"] == "entity not found"
+
+
+# ── D-KG-ENTITY-RESTORE (S7) — the inverse of archive ────────────────────────
+@patch("app.routers.public.entities.restore_entity", new_callable=AsyncMock)
+@patch("app.routers.public.entities.neo4j_session", new=lambda: _noop_session())
+def test_restore_user_entity_happy(mock_restore):
+    """POST /entities/{id}/restore clears archived_at via restore_entity → 204."""
+    mock_restore.return_value = _entity_stub()
+    client = _make_client()
+    resp = client.post(f"/v1/knowledge/me/entities/{_TEST_ENTITY_ID}/restore")
+    assert resp.status_code == 204
+    mock_restore.assert_awaited_once()
+    kwargs = mock_restore.await_args.kwargs
+    assert kwargs["canonical_id"] == _TEST_ENTITY_ID
+    assert kwargs["user_id"] == str(_TEST_USER)
+
+
+@patch("app.routers.public.entities.restore_entity", new_callable=AsyncMock)
+@patch("app.routers.public.entities.neo4j_session", new=lambda: _noop_session())
+def test_restore_user_entity_not_found(mock_restore):
+    """restore_entity returns None when the entity doesn't exist → 404."""
+    mock_restore.return_value = None
+    client = _make_client()
+    resp = client.post(f"/v1/knowledge/me/entities/{_TEST_ENTITY_ID}/restore")
+    assert resp.status_code == 404
+    assert resp.json()["detail"] == "entity not found"

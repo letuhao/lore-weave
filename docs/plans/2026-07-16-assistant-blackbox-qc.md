@@ -86,6 +86,28 @@ Dynamic ids interpolate an entity/chapter id (`memory-forget-<entity_id>`) — s
 
 ---
 
+## 5b · Harness status (built + green)
+Started the Track-B execution against the EXISTING Playwright framework (`frontend/tests/e2e/`, PoM +
+`TEST_USER`/`TEST_USER_B` + `PLAYWRIGHT_BASE_URL`). Shipped so far:
+- **`pages/AssistantPage.ts`** — PoM for the assistant surface (strip, sheets, data-rights + autonomous controls).
+- **`specs/assistant-data-rights.spec.ts`** (S2/S4/S5/S8/S9/S12) + **`specs/assistant-autonomous.spec.ts`** (S10)
+  — **6 tests GREEN** on the built image (:5185): consent fail-closed, Memory/Journal reachable on desktop,
+  erase two-step confirm (cancel), new-epoch confirm (cancel), Practice→/roleplay, every autonomous toggle OFF.
+
+**Run recipe (BUILT image on a free port — never `vite dev`, which a parallel session can shadow):**
+```sh
+cd infra && docker compose build frontend                 # rebuild the bundle after ANY FE source change
+docker rm -f qc-frontend 2>/dev/null; \
+docker run -d --name qc-frontend --network infra_default -p 5185:80 infra-frontend   # dedicated, isolated
+cd ../frontend && PLAYWRIGHT_BASE_URL="http://localhost:5185" npx playwright test assistant-*.spec.ts
+```
+**FINDING (F-QC-1, flagged not fixed):** on `/assistant` the chat surface auto-opens a full-screen
+`NewChatDialog` (generic "new chat" + model picker) that covers the assistant home. It persists for the test
+account because it has **no default model** (`user_default_models` empty) → the assistant session can't
+auto-create. A production user with a default model wouldn't see it persistently, but a diary assistant
+greeting you with a "pick a model for a new chat" modal is worth a UX review. The harness dismisses it
+(`new-chat-dismiss` testid, added) before strip interactions.
+
 ## 6 · Infra + accounts (setup the scripts assume)
 - **Frontend under test:** `vite dev` on **:5199** (a free port; NEVER shadow the baked prod nginx `:5174`), OR a
   built image on a free port for the prod-parity pass. FE talks to the gateway via relative `/v1`.

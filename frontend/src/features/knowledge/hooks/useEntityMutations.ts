@@ -453,3 +453,35 @@ export function useArchiveEntity(options?: {
     error: (mutation.error as Error | null) ?? null,
   };
 }
+
+/** D-KG-ENTITY-RESTORE (S7) — the inverse of useArchiveEntity, so archive stops
+ *  being a one-way trap (an "Undo" on the archive toast, or a restore affordance). */
+export function useRestoreEntity(options?: {
+  onSuccess?: () => void;
+  onError?: (err: Error) => void;
+}): { restore: (args: { entityId: string }) => Promise<void>; isPending: boolean; error: Error | null } {
+  const { accessToken, user } = useAuth();
+  const userId = user?.user_id ?? 'anon';
+  const queryClient = useQueryClient();
+
+  const mutation = useMutation({
+    mutationFn: async (args: { entityId: string }) => {
+      await knowledgeApi.restoreMyEntity(args.entityId, accessToken!);
+    },
+    onSuccess: async (_void, args) => {
+      // Same invalidations as archive — the entity re-appears in the same lists.
+      await queryClient.invalidateQueries({ queryKey: ['knowledge-entities', userId] });
+      await queryClient.invalidateQueries({ queryKey: ['knowledge-entity-detail', userId, args.entityId] });
+      await queryClient.invalidateQueries({ queryKey: ['knowledge-subgraph', userId] });
+      await queryClient.invalidateQueries({ queryKey: COMPOSITION_CAST_KEY });
+      options?.onSuccess?.();
+    },
+    onError: (err) => options?.onError?.(err as Error),
+  });
+
+  return {
+    restore: mutation.mutateAsync,
+    isPending: mutation.isPending,
+    error: (mutation.error as Error | null) ?? null,
+  };
+}
