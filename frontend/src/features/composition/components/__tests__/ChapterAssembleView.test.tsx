@@ -62,7 +62,7 @@ describe('ChapterAssembleView (B-FE chapter-assembly)', () => {
 
   it('Accept WITHOUT edit inserts via onAccept and submits NO edit correction (H2)', () => {
     mockGen.mutate.mockImplementation((_p, opts) => opts?.onSuccess?.(CHAPTER_RESULT));
-    const onAccept = vi.fn();
+    const onAccept = vi.fn(() => true); // insert succeeded → correction-capture + clear proceed
     render(<ChapterAssembleView {...base} onAccept={onAccept} />);
     fireEvent.click(btn('assemble-generate-chapter'));
     fireEvent.click(btn('assemble-accept'));
@@ -72,13 +72,25 @@ describe('ChapterAssembleView (B-FE chapter-assembly)', () => {
 
   it('Accept AFTER an edit submits a kind=edit correction with the edited text', () => {
     mockGen.mutate.mockImplementation((_p, opts) => opts?.onSuccess?.(CHAPTER_RESULT));
-    const onAccept = vi.fn();
+    const onAccept = vi.fn(() => true); // insert succeeded → correction-capture + clear proceed
     render(<ChapterAssembleView {...base} onAccept={onAccept} />);
     fireEvent.click(btn('assemble-generate-chapter'));
     fireEvent.change(preview(), { target: { value: 'EDITED PROSE' } });
     fireEvent.click(btn('assemble-accept'));
     expect(mockCorrection.mutate).toHaveBeenCalledWith({ jobId: 'job-ch', body: { kind: 'edit', edited_text: 'EDITED PROSE' } });
     expect(onAccept).toHaveBeenCalledWith('EDITED PROSE');
+  });
+
+  it('Accept that FAILS to insert (no editor) keeps the preview — no clear, no edit correction (S1 GAP-2)', () => {
+    mockGen.mutate.mockImplementation((_p, opts) => opts?.onSuccess?.(CHAPTER_RESULT));
+    const onAccept = vi.fn(() => false); // e.g. no editor open on this chapter in the dock
+    render(<ChapterAssembleView {...base} onAccept={onAccept} />);
+    fireEvent.click(btn('assemble-generate-chapter'));
+    fireEvent.change(preview(), { target: { value: 'EDITED PROSE' } });
+    fireEvent.click(btn('assemble-accept'));
+    expect(onAccept).toHaveBeenCalledWith('EDITED PROSE');
+    expect(mockCorrection.mutate).not.toHaveBeenCalled();  // no correction captured on a failed accept
+    expect(preview()).toBeTruthy();                        // the generated chapter is NOT lost
   });
 
   it('Regenerate submits a regenerate correction then re-runs the last action', () => {

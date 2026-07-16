@@ -45,7 +45,7 @@ const LEGACY_SUBTAB_HOME: Record<string, Home> = {
   references: { unported: 'pending Wave 6 M2 — reference-shelf panel not yet in this branch catalog' },
   canon: 'quality-canon-rules', // S6 M1 — CanonRulesPanel ported into the studio dock behind QualityWorkGate
   polish: 'quality-heal',        // S6 M3 — PolishPanel ported into the studio dock (server-side apply seam)
-  progress: { unported: 'pending Wave 1 — progress panel not yet in this branch catalog' },
+  progress: 'progress',          // S6 M4 — ProgressPanel homed as a dock panel (category editor)
   flywheel: { unported: 'pending Wave 1 — quality-corrections panel not yet in this branch catalog' },
   motifs: { unported: 'pending Wave 3 — motif-library panel not yet in this branch catalog' },
   conformance: { unported: 'pending Wave 3 — quality-conformance panel not yet in this branch catalog' },

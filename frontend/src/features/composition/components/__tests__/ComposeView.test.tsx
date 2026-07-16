@@ -56,7 +56,7 @@ describe('ComposeView (ghost / accept — §13 SC4)', () => {
   it('Accept inserts the ghost via onAccept, runs critique, and clears the ghost', () => {
     mockStream.ghost = 'drafted prose';
     mockStream.jobId = 'job-1';
-    const onAccept = vi.fn();
+    const onAccept = vi.fn(() => true); // insert succeeded → critique + clear proceed
     render(<ComposeView {...baseProps} onAccept={onAccept} />);
     fireEvent.click(screen.getByText('accept'));
     expect(onAccept).toHaveBeenCalledWith('drafted prose');
@@ -66,6 +66,17 @@ describe('ComposeView (ghost / accept — §13 SC4)', () => {
       expect.objectContaining({ onSuccess: expect.any(Function) }),
     );
     expect(mockStream.clearGhost).toHaveBeenCalled();
+  });
+
+  it('Accept that FAILS to insert (no editor) keeps the ghost — does NOT clear or critique (S1 GAP-2)', () => {
+    mockStream.ghost = 'drafted prose';
+    mockStream.jobId = 'job-1';
+    const onAccept = vi.fn(() => false); // e.g. no editor open on this chapter in the dock
+    render(<ComposeView {...baseProps} onAccept={onAccept} />);
+    fireEvent.click(screen.getByText('accept'));
+    expect(onAccept).toHaveBeenCalledWith('drafted prose');
+    expect(mockStream.clearGhost).not.toHaveBeenCalled(); // draft preserved for a retry
+    expect(mockCritique.critique.mutate).not.toHaveBeenCalled();
   });
 
   it('cowrite Regenerate captures a regenerate correction, then re-streams (slice 5)', () => {

@@ -16,18 +16,21 @@ import { useTranslation } from 'react-i18next';
 import { getEditorTarget } from '@/features/chat/context/editorBridge';
 import { useStudioHost } from '../host/StudioHostProvider';
 
-export function useAcceptIntoEditor(chapterId: string | null) {
+/** Returns TRUE only when the prose actually landed in the editor. The caller (ComposeView /
+ *  ChapterAssembleView) clears its draft ONLY on true — so a failed accept (no editor open on this
+ *  chapter, or a rejected insert) never loses the draft (esp. a whole generated chapter). */
+export function useAcceptIntoEditor(chapterId: string | null): (text: string, meta?: { model?: string }) => boolean {
   const { t } = useTranslation('studio');
   const host = useStudioHost();
-  return useCallback((text: string, meta?: { model?: string }) => {
-    if (!chapterId) return;
+  return useCallback((text: string, meta?: { model?: string }): boolean => {
+    if (!chapterId) return false;
     const target = getEditorTarget();
     if (!target?.applyProposedEdit || target.chapterId !== chapterId) {
-      host.focusManuscriptUnit(chapterId);
+      host.focusManuscriptUnit(chapterId); // open the editor on THIS chapter so the retry lands
       toast.info(t('sceneCompose.openedEditor', {
-        defaultValue: 'Opened the Editor on this chapter — Generate again to insert the draft here.',
+        defaultValue: 'Opened the Editor on this chapter — your draft is kept; Accept again to insert it.',
       }));
-      return;
+      return false; // draft preserved — the caller must NOT clear it
     }
     const ok = target.applyProposedEdit({
       operation: 'insert_at_cursor',
@@ -41,5 +44,6 @@ export function useAcceptIntoEditor(chapterId: string | null) {
         defaultValue: 'Could not insert — click into the chapter text in the Editor, then Accept again.',
       }));
     }
+    return ok;
   }, [chapterId, host, t]);
 }

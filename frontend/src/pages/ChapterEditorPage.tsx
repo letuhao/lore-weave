@@ -789,6 +789,7 @@ export function ChapterEditorPage() {
             source: 'ai', status: 'unreviewed', model: meta?.model ?? null,
             ts: new Date().toISOString(),
           });
+          return true; // legacy page co-mounts the editor — the insert always lands (onAccept boolean contract)
         }}
         onApplyPolish={handleApplyPolish}
         sceneId={activeSceneId}

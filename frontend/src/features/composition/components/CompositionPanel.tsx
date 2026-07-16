@@ -67,8 +67,11 @@ type Props = {
   chapterId: string;
   token: string | null;
   // insert accepted prose into the editor; `meta.model` attributes the AI
-  // provenance mark (T5.3) with the model that wrote it.
-  onAccept: (text: string, meta?: { model?: string }) => void;
+  // provenance mark (T5.3) with the model that wrote it. Returns TRUE only when the prose actually
+  // landed — the compose/assemble views clear their draft ONLY on true, so a failed insert (e.g. no
+  // editor open on this chapter in the studio dock) never loses the draft. Legacy ChapterEditorPage
+  // co-mounts the editor and always succeeds synchronously → returns true.
+  onAccept: (text: string, meta?: { model?: string }) => boolean;
   /** M6 Polish — replace the chapter doc with the self-heal-accepted text. Owned by
    *  ChapterEditorPage (it holds the Tiptap editor ref). Omitted ⇒ Apply is a no-op. */
   onApplyPolish?: (healedText: string) => void;
@@ -212,7 +215,7 @@ export function CompositionPanel({ bookId, chapterId, token, onAccept, onApplyPo
   // read via a ref (assigned below, after the Work resolves) so the deps stay stable.
   const modelNameRef = useRef<string | undefined>(undefined);
   const acceptProse = useCallback(
-    (text: string) => onAccept(text, { model: modelNameRef.current }),
+    (text: string): boolean => onAccept(text, { model: modelNameRef.current }),
     [onAccept],
   );
   // T5.4 — the windowing layout/flag (null without a provider, e.g. unit tests / the

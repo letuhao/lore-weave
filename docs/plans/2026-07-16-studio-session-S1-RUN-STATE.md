@@ -58,7 +58,43 @@ no-silent-fail · agent-parity · loop-connected · live-browser-proven · i18n+
 - 2026-07-16 · **Homing architecture:** 2 first-class sibling dock panels (`scene-compose`, `chapter-assemble`), NOT internal subtabs (DOCK-8). accept→editor via shared studio host, not co-mount.
 - 2026-07-16 · **Build order:** S1-B1 scene-compose → S1-B2 chapter-assemble → S1-B3 inline-correction → S1-B4 verify publish. `/review-impl` + live-smoke at each panel close.
 ### PARKED  (blocker -> defer row + continue)
+- 2026-07-16 · **`bookEffects.ts:60` read-thrash (NOT S1's file — flag for the book/editor track).**
+  `/^composition_.*(prose|draft)/` matches the READ tool `composition_get_prose` → the effect handler
+  fires on a chatty read = query-cache thrash (the exact class the ledger's READ_TOOLS assertion
+  guards, but get_prose isn't listed there so it's uncaught). Fix belongs to the bookEffects owner:
+  tighten the pattern to the write tools (e.g. `/^composition_write_prose|_draft/`) OR add
+  composition_get_prose to READ_TOOLS to red it. I did NOT touch it (not S1's subtree). Continue.
 ### DEBT
+- **S1-A3 · COMPLETENESS AUDIT (cold-start agent + own verification) — findings:**
+  - ✅ **FIXED — legacy-parity retirement mapping was stale.** `legacyParityContract` mapped
+    `compose→compose(Chat)` + `assemble→agent-mode` (pre-S1 stopgaps). Remapped to the real homes S1
+    built: `compose→scene-compose`, `assemble→chapter-assemble`. Test green (retirement now points at
+    the full-fidelity draft/stitch loops, not the Chat/agent-mode approximations).
+  - ✅ **FIXED — GAP-2: accept before the Editor is open LOST the draft.** ComposeView/
+    ChapterAssembleView cleared the ghost/preview unconditionally after `onAccept`, so accepting a
+    whole generated chapter before opening the Editor evaporated it (real LLM spend). Fix: `onAccept`
+    now returns boolean (did it land?); the views clear/critique/capture-correction ONLY on true.
+    `useAcceptIntoEditor` returns false on no-editor/mismatch (keeps the draft). +2 guard tests
+    (ComposeView, ChapterAssembleView); PopoutHost returns true (opener owns insertion).
+  - ❌ **REFUTED — the audit's "BLOCKER: no Lane-B handler for compose/assemble".** Verified: the
+    outline/scene family IS covered by `bookEffects.ts:62` `/^composition_(outline_node|scene_link)_/
+    → outlineEffect` (+ `:60` prose/draft). So an agent scene write DOES refresh scene-compose's scene
+    selector + chapter-assemble's stitch gate. The audit only read `compositionEffects.ts` and missed
+    bookEffects — §2-bar-#5 is met for the core writes. (Lesson: verify an adversarial "no handler"
+    claim across ALL handler files before "fixing" it — I nearly added a redundant double-firing one.)
+  - **PARKED (flag, not S1's file):** `bookEffects.ts:60` `/^composition_.*(prose|draft)/` also matches
+    the READ `composition_get_prose` → an effect handler fires on a chatty read = cache-thrash. Pre-
+    existing bug in the book/editor track's handler; the ledger doesn't catch it (get_prose not in
+    READ_TOOLS). Flagged for the bookEffects owner — see PARKED register.
+  - **DEBT (minor):** `composition_create_work` + `composition_generate` are not matched by any Lane-B
+    handler. Edge: an agent creates the Work / generates while the human watches the "No Work" or
+    scene-list state → stale until manual refetch. Rare (agent setup while human idles on the panel).
+  - **DEBT (minor):** the legacy `cowriter` "Use as guide → prefill scene-compose guide + switch" micro-
+    integration is not homed in the dock (the `compose` Chat panel can't seed scene-compose's guide).
+    Loop-connection nicety; the cowriter sub-tab itself is homed (Chat) per the parity contract.
+  - **DEBT/RISK (unverified, S5 co-owns):** derivative adapt→Accept routing — `useAcceptIntoEditor`
+    keys on chapterId only (work-agnostic); adapting a derivative scene + Accept may land in the
+    canon chapter's editor. Needs a live-DB check with a derivative work. Intersects S5 (what-if).
 - **S1-D4 · ✅ FIXED (review-impl, fix-now) — accept could insert into the WRONG chapter.**
   onAccept trusted `getEditorTarget()` without checking `target.chapterId === activeChapterId`; a
   floated/separately-opened editor on a different chapter would receive this scene's draft. Added
