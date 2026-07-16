@@ -423,6 +423,42 @@ def test_arc_public_drop_set_matches_the_mcp_twin():
     }
 
 
+# ── D-ARC-TEMPLATE-BOOK-TIER: the route EDIT-gates a book_shared create/patch ──
+
+
+def test_create_book_shared_requires_edit_on_the_book(client):
+    from app.main import app
+    from app.deps import get_arc_template_repo
+    repo = AsyncMock()
+    app.dependency_overrides[get_arc_template_repo] = lambda: repo
+    try:
+        c, _ = client(GrantLevel.NONE)   # no grant on the book
+        r = c.post(
+            f"/v1/composition/arc-templates?target=book_shared&book_id={BOOK}",
+            json={"code": "shared.arc", "name": "Shared"},
+        )
+        assert r.status_code == 404          # gated (no oracle) BEFORE any write
+        repo.create.assert_not_called()
+    finally:
+        app.dependency_overrides.pop(get_arc_template_repo, None)
+
+
+def test_create_book_shared_without_book_id_is_400(client):
+    from app.main import app
+    from app.deps import get_arc_template_repo
+    repo = AsyncMock()
+    app.dependency_overrides[get_arc_template_repo] = lambda: repo
+    try:
+        c, _ = client(GrantLevel.EDIT)
+        r = c.post("/v1/composition/arc-templates?target=book_shared",
+                   json={"code": "x", "name": "y"})
+        assert r.status_code == 400
+        assert r.json()["detail"]["code"] == "BOOK_ID_REQUIRED"
+        repo.create.assert_not_called()
+    finally:
+        app.dependency_overrides.pop(get_arc_template_repo, None)
+
+
 # ── read surface #1: the derived block MUST ride on every shell node ───────────
 
 

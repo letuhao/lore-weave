@@ -129,16 +129,24 @@ async def list_arc_templates(
     language: str | None = Query(default=None, max_length=20),
     status: str = Query(default="active", pattern="^(draft|active|archived)$"),
     limit: int = Query(default=50, ge=1, le=100),
+    book_id: UUID | None = Query(default=None),
     user_id: UUID = Depends(get_current_user),
+    grant: GrantClient = Depends(get_grant_client_dep),
     repo: ArcTemplateRepo = Depends(get_arc_template_repo),
 ) -> dict[str, Any]:
     """Tier-merged list under the read predicate. `scope=mine` (owner=caller), `system`
     (owner NULL), `all` (owned + system; NOT others' public — that is the catalog). Full
-    owner view; `embedding` is never projected."""
+    owner view; `embedding` is never projected.
+
+    D-ARC-TEMPLATE-BOOK-TIER: pass `book_id` to ALSO surface that book's SHARED tier — the
+    caller must have VIEW on it (gated here BEFORE the repo sees it; a non-grantee's book_id
+    is rejected, never silently honored)."""
+    if book_id is not None:
+        await _gate_book(grant, book_id, user_id, GrantLevel.VIEW)
     repo_scope = "user" if scope == "mine" else scope
     rows = await repo.list_for_caller(
         user_id, scope=repo_scope, genre=genre, status=status,
-        q=q, language=language, limit=limit,
+        q=q, language=language, limit=limit, book_id=book_id,
     )
     return {
         "arc_templates": [a.model_dump(mode="json") for a in rows],
@@ -190,16 +198,31 @@ async def get_arc_template(
 @router.post("/arc-templates", status_code=201)
 async def create_arc_template(
     body: ArcTemplateCreateArgs,
+    target: str = Query(default="user", pattern="^(user|book_shared)$"),
+    book_id: UUID | None = Query(default=None),
     user_id: UUID = Depends(get_current_user),
+    grant: GrantClient = Depends(get_grant_client_dep),
     repo: ArcTemplateRepo = Depends(get_arc_template_repo),
 ) -> dict[str, Any]:
-    """Create a user-tier arc_template; owner_user_id is server-stamped = caller (the
-    body cannot carry it — _ForbidExtra). A public/unlisted create runs the publish
-    quota pre-check first. A duplicate (owner, code, language) → 409."""
+    """Create an arc_template; owner_user_id is server-stamped = caller (the body cannot
+    carry it — _ForbidExtra). A public/unlisted create runs the publish quota pre-check.
+    A duplicate → 409.
+
+    D-ARC-TEMPLATE-BOOK-TIER: `target='book_shared'` creates into a book's SHARED tier —
+    it REQUIRES `book_id` + EDIT on that book (gated here, before the write; owner is
+    attribution, the book's collaborators co-own it). The row stays visibility='private'."""
+    book_shared = target == "book_shared"
+    if book_shared:
+        if book_id is None:
+            raise HTTPException(status_code=400, detail={
+                "code": "BOOK_ID_REQUIRED", "message": "target='book_shared' requires book_id"})
+        await _gate_book(grant, book_id, user_id, GrantLevel.EDIT)
+    else:
+        book_id = None  # a user-tier row never carries a book
     if body.visibility in ("public", "unlisted"):
         await _publish_quota_guard(repo, user_id)
     try:
-        arc = await repo.create(user_id, body)
+        arc = await repo.create(user_id, body, book_id=book_id, book_shared=book_shared)
     except asyncpg.UniqueViolationError:
         raise HTTPException(status_code=409, detail={
             "code": "ARC_TEMPLATE_CODE_EXISTS",
@@ -212,16 +235,24 @@ async def create_arc_template(
 async def patch_arc_template(
     arc_id: UUID,
     body: ArcTemplatePatchArgs,
+    book_id: UUID | None = Query(default=None),
     user_id: UUID = Depends(get_current_user),
+    grant: GrantClient = Depends(get_grant_client_dep),
     repo: ArcTemplateRepo = Depends(get_arc_template_repo),
     if_match: str | None = Header(default=None, alias="If-Match"),
 ) -> dict[str, Any]:
     """Owner-only edit (the repo filters owner_user_id=caller — a system or foreign row
     never matches → 404, the 'clone to edit' affordance). Optimistic concurrency via
     If-Match → 412. Flipping visibility INTO a shareable state runs the publish quota
-    pre-check (un-publishing never hits quota)."""
+    pre-check (un-publishing never hits quota).
+
+    D-ARC-TEMPLATE-BOOK-TIER: pass `book_id` to edit a BOOK-SHARED row as a collaborator —
+    it REQUIRES EDIT on that book (gated here; the repo then allows a non-owner grantee to
+    write the shared row). A book_shared row can never be flipped public (the shape CHECK)."""
+    if book_id is not None:
+        await _gate_book(grant, book_id, user_id, GrantLevel.EDIT)
     if body.visibility in ("public", "unlisted"):
-        current = await repo.get_visible(user_id, arc_id)
+        current = await repo.get_visible(user_id, arc_id, book_id=book_id)
         already_shared = (
             current is not None
             and current.owner_user_id == user_id
@@ -231,7 +262,7 @@ async def patch_arc_template(
             await _publish_quota_guard(repo, user_id)
     try:
         arc = await repo.patch(
-            user_id, arc_id, body, expected_version=_parse_if_match(if_match),
+            user_id, arc_id, body, expected_version=_parse_if_match(if_match), book_id=book_id,
         )
     except VersionMismatchError as exc:
         raise HTTPException(status_code=412, detail={
@@ -251,13 +282,17 @@ async def patch_arc_template(
 @router.delete("/arc-templates/{arc_id}", status_code=200)
 async def archive_arc_template(
     arc_id: UUID,
+    book_id: UUID | None = Query(default=None),
     user_id: UUID = Depends(get_current_user),
+    grant: GrantClient = Depends(get_grant_client_dep),
     repo: ArcTemplateRepo = Depends(get_arc_template_repo),
 ) -> dict[str, Any]:
     """Soft archive (status='archived'), owner-only. A foreign/missing/system row is a
-    no-op (router returns archived:true uniformly — no oracle; the repo only touches the
-    caller's own row)."""
-    await repo.archive(user_id, arc_id)
+    no-op (router returns archived:true uniformly — no oracle). D-ARC-TEMPLATE-BOOK-TIER:
+    pass `book_id` (EDIT-gated) to archive a book-SHARED row as a collaborator."""
+    if book_id is not None:
+        await _gate_book(grant, book_id, user_id, GrantLevel.EDIT)
+    await repo.archive(user_id, arc_id, book_id=book_id)
     return {"id": str(arc_id), "archived": True}
 
 
