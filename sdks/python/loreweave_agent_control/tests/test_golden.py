@@ -12,6 +12,7 @@ from loreweave_agent_control import (
     STOP_DONE,
     BookState,
     build_messages,
+    compute_progress,
     compute_rail_progress,
     merge_state,
     next_actionable_step,
@@ -109,3 +110,16 @@ def test_golden_build_messages_caps_turn():
     msgs = build_messages(_CHARTER, {"phase": "", "covered": []}, [{"role": "user", "content": "x" * 50000}])
     assert msgs[0]["role"] == "system"
     assert len(msgs[1]["content"]) < 10000  # the 2000-char per-turn cap bounds it
+
+
+# ── compute_progress (A4 / RV-M5 wrap enforcement) ────────────────────────────
+
+def test_golden_compute_progress_wrap_gates():
+    interview = {"question_target": 5, "time_budget_min": 45}
+    # question_count = message_count // 2 (one interviewer turn per round)
+    assert compute_progress(interview, 8, 10) == {"question_count": 4, "wrap": False}   # 4<5, 10<45
+    assert compute_progress(interview, 10, 10) == {"question_count": 5, "wrap": True}    # 5>=5 → wrap
+    assert compute_progress(interview, 6, 50)["wrap"] is True                            # 50>=45 → wrap by time
+    assert compute_progress(interview, 6, None)["wrap"] is False                         # no elapsed → time gate off
+    # freeform charter: neither gate set → never wraps
+    assert compute_progress({}, 100, 999) == {"question_count": 50, "wrap": False}

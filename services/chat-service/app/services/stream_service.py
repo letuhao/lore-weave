@@ -3411,7 +3411,7 @@ async def stream_response(
     session_row = await pool.fetchrow(
         "SELECT system_prompt, generation_params, project_id, project_ids, composer_model_source, composer_model_ref, "
         "planner_model_ref, working_memory_seed, enabled_tools, enabled_skills, activated_tools, "
-        "compact_summary, compacted_before_seq "
+        "compact_summary, compacted_before_seq, message_count, created_at "  # A4 (RV-M5): anchor progress + wrap
         "FROM chat_sessions WHERE session_id = $1",
         session_id,
     )
@@ -3604,9 +3604,20 @@ async def stream_response(
     # ("", "") for a non-roleplay session → no injection. Pinned goes in the
     # system block (primacy); tail goes right before the latest user turn
     # (recency). Shared with the voice path (EC-3).
+    # A4 (RV-M5) — pass the session facts so the anchor computes the interview progress + wrap
+    # (compute_progress): question_count from message_count, elapsed from created_at. A
+    # non-interview charter ignores them (no question_target).
+    _wm_msg_count = session_row.get("message_count") if session_row else None
+    _wm_elapsed = None
+    _wm_created = session_row.get("created_at") if session_row else None
+    if _wm_created is not None:
+        from datetime import datetime, timezone
+        _wm_elapsed = max(0, int((datetime.now(timezone.utc) - _wm_created).total_seconds() // 60))
     wm_pinned, wm_tail = resolve_anchor(
         kctx.working_memory,
         session_row.get("working_memory_seed") if session_row else None,
+        message_count=_wm_msg_count,
+        elapsed_min=_wm_elapsed,
     )
     # P0-5 — the rendered anchor carries untrusted roleplay state (goal /
     # redirect_hint, LLM-written); neutralize injection before it enters the prompt.

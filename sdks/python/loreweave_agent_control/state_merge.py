@@ -81,3 +81,23 @@ def merge_state(charter: dict, old_state: dict, llm_state: dict) -> dict:
         "drift_note": _str_or_none(llm_state.get("drift_note")),
         "redirect_hint": _str_or_none(llm_state.get("redirect_hint")),
     }
+
+
+def compute_progress(charter: dict, message_count: int, elapsed_min: int | None) -> dict:
+    """ACP A4 (RV-M5) — the DETERMINISTIC interview progress, computed at anchor-render time from
+    the session's own facts (message_count, elapsed) — NOT by the executive LLM. Returns
+    ``{question_count, wrap}``:
+
+    - ``question_count = message_count // 2`` — one interviewer turn per user/assistant round.
+    - ``wrap`` — the interview should CLOSE now: the fixed ``question_target`` reached, OR the
+      ``time_budget_min`` spent. This is the server-side enforcement of the 5-question / timed
+      structure (the anchor injects a wrap directive when true).
+
+    Only an interview charter sets ``question_target`` / ``time_budget_min``; a freeform charter
+    leaves both gates off → ``wrap`` is False (no count/time wrap)."""
+    question_count = max(0, message_count // 2)
+    target = charter.get("question_target")
+    budget = charter.get("time_budget_min")
+    by_count = target is not None and question_count >= target
+    by_time = budget is not None and elapsed_min is not None and elapsed_min >= budget
+    return {"question_count": question_count, "wrap": bool(by_count or by_time)}

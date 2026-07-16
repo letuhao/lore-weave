@@ -36,7 +36,16 @@
         "covered": { "type": "array", "items": { "type": "string" } },
         "elapsed_min": { "type": ["integer", "null"], "minimum": 0 },
         "drift_note": { "type": ["string", "null"] },
-        "redirect_hint": { "type": ["string", "null"] }
+        "redirect_hint": { "type": ["string", "null"] },
+        "question_count": {
+          "description": "ACP A4 (RV-M5) — interviewer questions asked so far, computed deterministically at anchor-render from the session message_count (NOT written by the executive). Drives the wrap gate against charter.question_target. Optional (absent for non-interview).",
+          "type": ["integer", "null"],
+          "minimum": 0
+        },
+        "wrap": {
+          "description": "ACP A4 (RV-M5) — the server's wrap signal: true when question_count >= question_target OR elapsed_min >= time_budget_min. The anchor injects a 'close the interview now' directive; this is the server-side enforcement of the 5-question / time-budget structure.",
+          "type": "boolean"
+        }
       }
     },
     "rubric": {

@@ -35,6 +35,10 @@ class WorkingMemoryState(BaseModel):
     elapsed_min: int | None = None
     drift_note: str | None = None
     redirect_hint: str | None = None
+    # ACP A4 (RV-M5) — computed at anchor-render (NOT executive-written): the interviewer
+    # question count + the server wrap signal that enforces question_target / time_budget.
+    question_count: int | None = None
+    wrap: bool = False
 
 
 class WorkingMemory(BaseModel):

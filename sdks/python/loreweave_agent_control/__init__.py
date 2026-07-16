@@ -41,6 +41,7 @@ from .state_merge import (
     EXECUTIVE_MAX_TURNS,
     EXECUTIVE_SYSTEM_PROMPT,
     build_messages,
+    compute_progress,
     merge_state,
 )
 
@@ -73,6 +74,7 @@ __all__ = [
     "RAIL_OPTIONAL_NUDGE_CAP",
     # state_merge — the executive's pure parts
     "merge_state",
+    "compute_progress",
     "build_messages",
     "EXECUTIVE_SYSTEM_PROMPT",
     "EXECUTIVE_MAX_TURNS",

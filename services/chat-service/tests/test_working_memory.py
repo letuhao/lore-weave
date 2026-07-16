@@ -135,3 +135,35 @@ def test_question_target_survives_parse_into_the_charter():
     old = parse_working_memory({"version": 1, "charter": {"goal": "g", "phases": ["w"],
                                 "checklist": [], "language": "en"}, "state": {"phase": "", "covered": []}})
     assert old is not None and old.charter.question_target is None
+
+
+def test_anchor_renders_question_progress_and_wrap_directive():
+    # RV-M5: resolve_anchor enriches state (question_count/wrap) from message_count via
+    # compute_progress, and render_pinned injects "Question N of T" + the wrap directive at target.
+    from app.services.working_memory import resolve_anchor
+
+    seed = {
+        "version": 1,
+        "charter": {"goal": "g", "phases": ["warmup", "wrap"], "checklist": [],
+                    "language": "en", "question_target": 5},
+        "state": {"phase": "", "covered": []},
+    }
+    # message_count=8 → question_count=4 < 5 → progress line, NO wrap
+    pinned, _ = resolve_anchor(None, seed, message_count=8)
+    assert "Question 4 of 5" in pinned
+    assert "FINAL question" not in pinned
+
+    # message_count=10 → question_count=5 >= 5 → wrap directive injected (server-enforced close)
+    pinned2, _ = resolve_anchor(None, seed, message_count=10)
+    assert "Question 5 of 5" in pinned2
+    assert "FINAL question" in pinned2 and "CLOSE the interview" in pinned2
+
+    # pre-A4 callers (no message_count) get the anchor unchanged — no progress line
+    pinned3, _ = resolve_anchor(None, seed)
+    assert "Question" not in pinned3
+
+    # a freeform charter (no question_target) never shows progress even with message_count
+    free = {"version": 1, "charter": {"goal": "g", "phases": ["p"], "checklist": [], "language": "en"},
+            "state": {"phase": "", "covered": []}}
+    pinned4, _ = resolve_anchor(None, free, message_count=100)
+    assert "Question" not in pinned4 and "FINAL question" not in pinned4

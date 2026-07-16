@@ -321,7 +321,9 @@ async def voice_stream_response(
     # ── Step 3: LLM stream + TTS pipeline ────────────────────────────
     # Load session settings (same as stream_response)
     session_row = await pool.fetchrow(
-        "SELECT system_prompt, generation_params, project_id, project_ids, working_memory_seed, session_kind FROM chat_sessions WHERE session_id = $1",
+        "SELECT system_prompt, generation_params, project_id, project_ids, working_memory_seed, "
+        "session_kind, message_count, created_at "  # A4 (RV-M5): anchor progress + wrap on voice too
+        "FROM chat_sessions WHERE session_id = $1",
         session_id,
     )
     system_prompt = session_row["system_prompt"] if session_row else None
@@ -362,9 +364,18 @@ async def voice_stream_response(
 
     # ── Anchoring (interview-roleplay) — same shared helper as the text path so
     # the 2h voice session (the real use) gets the anchor too (EC-3).
+    # A4 (RV-M5) — same interview progress + wrap as the text path (compute_progress).
+    _wm_msg_count = session_row.get("message_count") if session_row else None
+    _wm_elapsed = None
+    _wm_created = session_row.get("created_at") if session_row else None
+    if _wm_created is not None:
+        from datetime import datetime, timezone
+        _wm_elapsed = max(0, int((datetime.now(timezone.utc) - _wm_created).total_seconds() // 60))
     wm_pinned, wm_tail = resolve_anchor(
         kctx.working_memory,
         session_row.get("working_memory_seed") if session_row else None,
+        message_count=_wm_msg_count,
+        elapsed_min=_wm_elapsed,
     )
     # P0-5 — sanitize the rendered roleplay anchor (untrusted state) too.
     wm_pinned = neutralize_injection(wm_pinned)
