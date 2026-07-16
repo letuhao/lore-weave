@@ -465,6 +465,26 @@ describe('AssistantController — forget (WS-2.6c / D17 forget-a-person)', () =>
     expect(f).toHaveBeenCalledTimes(1);
   });
 
+  // A1.3 (SEC-1 regression guard) — the knowledge internal routes trust the `user_id` in their body, so
+  // the gateway's whole tenancy guarantee is that this user_id comes from the JWT `sub`, NEVER from client
+  // input. A forged `user_id` in the request body must be IGNORED — else user A could erase/forget across
+  // to user B by resolving B's project. This test is the tripwire if a future edit starts reading it.
+  it('IGNORES a forged user_id in the body — the internal call carries the JWT sub, not the attacker value', async () => {
+    const f = jest
+      .fn()
+      .mockResolvedValueOnce(resp(200, { forgotten: true, name: 'Minh' }))
+      .mockResolvedValueOnce(resp(200, { redacted_entries: 1, name: 'Minh' }));
+    (global as any).fetch = f;
+
+    // The attacker authenticates as user-42 but tries to smuggle victim-99 in the body.
+    const forgedBody = { ...validBody, user_id: 'victim-99' } as any;
+    await controller.forget(forgedBody, bearer('user-42'));
+
+    const sentUserId = JSON.parse(f.mock.calls[0][1].body).user_id;
+    expect(sentUserId).toBe('user-42'); // JWT sub wins
+    expect(sentUserId).not.toBe('victim-99'); // the forged body value is dropped
+  });
+
   it('structured erase OK but redaction fails → forgotten:true + redaction_error (non-fatal)', async () => {
     const f = jest
       .fn()

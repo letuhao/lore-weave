@@ -863,14 +863,34 @@ class ProjectsRepo:
         return True
 
     async def list_assistant_project_ids(self, user_id: UUID) -> "list[str]":
-        """D16 (spec 07 §Q4) — the ids of the user's ASSISTANT (diary) projects, as strings for a Neo4j
-        param. The memory_* read tools pass these as `exclude_project_ids` when a session has no explicit
-        project, so the all-projects fallback can never surface work-diary entities into a novel-writing
-        session. Normally 0 or 1 row (one assistant per user), so this is a cheap indexed lookup."""
+        """D16 (spec 07 §Q4) — the ids of the user's ACTIVE ASSISTANT (diary) projects, as strings for a
+        Neo4j param. The memory_* read tools pass these as `exclude_project_ids` when a session has no
+        explicit project, so the all-projects fallback can never surface work-diary entities into a
+        novel-writing session. Excludes archived epochs: a closed epoch must stay OUT of default recall.
+        Normally 0 or 1 row (one assistant per user), so this is a cheap indexed lookup.
+
+        NOTE: for the account-ERASE path use `list_all_assistant_project_ids` (archived-inclusive) — an
+        archived epoch must stay out of recall but MUST still be reachable by right-to-erasure (A1)."""
         async with self._pool.acquire() as conn:
             rows = await conn.fetch(
                 "SELECT project_id FROM knowledge_projects "
                 "WHERE user_id = $1 AND is_assistant AND NOT is_archived",
+                user_id,
+            )
+        return [str(r["project_id"]) for r in rows]
+
+    async def list_all_assistant_project_ids(self, user_id: UUID) -> "list[str]":
+        """A1 (data-rights / right-to-erasure) — EVERY assistant project of the user, INCLUDING archived
+        (closed-epoch) ones. The account-erase path (`erase_assistant_knowledge` with no project_id) uses
+        this, NOT the D16 read-exclude variant: `close-epoch` (a job change) only *archives* the old
+        assistant project + soft-invalidates its facts — it does NOT purge the decryptable diary passages
+        or confirmed `:Fact`/`:Entity` nodes. Resolving erase targets with `NOT is_archived` (the old bug)
+        silently skipped every archived epoch, leaving that data behind — a GDPR erasure hole. Erase is
+        the ONE path that must see archived rows; recall/exclude keep `list_assistant_project_ids`."""
+        async with self._pool.acquire() as conn:
+            rows = await conn.fetch(
+                "SELECT project_id FROM knowledge_projects "
+                "WHERE user_id = $1 AND is_assistant",
                 user_id,
             )
         return [str(r["project_id"]) for r in rows]

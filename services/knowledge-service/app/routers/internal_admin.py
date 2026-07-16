@@ -95,15 +95,21 @@ async def erase_assistant_knowledge(
     store is tenant-scoped on (user_id, project_id), so this only reaches the caller's own data.
 
     project_id is OPTIONAL (audit HIGH-2): when omitted, ALL of the user's assistant projects are resolved
-    by the `is_assistant` flag (via `list_assistant_project_ids`) and each is erased. The gateway erase
-    calls it WITHOUT a project_id — so the KG erase runs by user_id alone, independent of whether the diary
-    BOOK still exists. A book-keyed project resolution that fails after the book is deleted used to skip
-    this leg while still reporting `erased:true`, leaving decryptable diary passages + fact text behind."""
+    by the `is_assistant` flag (via `list_all_assistant_project_ids`, **archived-INCLUSIVE** — A1) and each
+    is erased. The gateway erase calls it WITHOUT a project_id — so the KG erase runs by user_id alone,
+    independent of whether the diary BOOK still exists. A book-keyed project resolution that fails after the
+    book is deleted used to skip this leg while still reporting `erased:true`, leaving decryptable diary
+    passages + fact text behind.
+
+    A1 (data-rights fix): the resolver is `list_all_assistant_project_ids`, which INCLUDES archived epochs.
+    `close-epoch` (a job change) archives + soft-invalidates but does NOT purge; an erase resolved with
+    `NOT is_archived` skipped those closed epochs, stranding decryptable diary data — a right-to-erasure
+    hole. Recall/exclude paths keep the active-only `list_assistant_project_ids`."""
     pool = get_knowledge_pool()
     if project_id is not None:
         targets = [project_id]
     else:
-        targets = [UUID(p) for p in await ProjectsRepo(pool).list_assistant_project_ids(user_id)]
+        targets = [UUID(p) for p in await ProjectsRepo(pool).list_all_assistant_project_ids(user_id)]
     results = [await _erase_one_assistant_project(pool, user_id, pid) for pid in targets]
     return {
         "projects_erased": len(results),
