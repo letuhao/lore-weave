@@ -106,6 +106,48 @@ export interface PlanCompileResult {
   work_id: string;
 }
 
+// ── 27 V2 · the 7-pass compiler ledger (GET /runs/{runId}/passes) ──────────────────
+// The pass rail's data. `fresh`, `pass_cursor`, `blocked_at`, `blockers` are all DERIVED at
+// serialization server-side (PF-3) — never stored, so they can't go stale about staleness.
+export type PlanPassCheckpoint = 'blocking' | 'advisory';
+export type PlanPassId =
+  | 'motifs' | 'cast' | 'world' | 'beats' | 'character_arcs' | 'scenes' | 'self_heal';
+
+export interface PlanPass {
+  pass_id: PlanPassId;
+  checkpoint: PlanPassCheckpoint;
+  output_kind: string;
+  depends_on: string[];
+  status: string;   // 'pending' | 'running' | 'completed' | 'failed'
+  decision: string; // 'pending' | 'accepted' | 'auto' | 'rejected'
+  artifact_id: string | null;
+  job_id: string | null;
+  fresh: boolean;
+  blockers: string[];
+  // BE-20 — only present once that slice lands; the checkpoint review needs it (PF-7).
+  bootstrap_proposal_id?: string | null;
+  decided_by?: string | null;
+  decided_at?: string | null;
+}
+
+export interface PlanPassLedger {
+  run_id: string;
+  book_id: string;
+  genre_tags: string[];
+  // Absent ≠ zero: a run that never compiled has NO package, so every package-reading pass is
+  // un-runnable. The rail says "compile first" rather than showing 7 tidy pending rows.
+  compiled: boolean;
+  passes: PlanPass[];
+  pass_cursor: number;      // how far the compiler can proceed unattended (contiguous fresh+accepted)
+  blocked_at: PlanPassId | null; // the first blocking pass waiting on a human
+}
+
+export interface RunPassBody {
+  model_ref?: string;
+  params?: Record<string, unknown>;
+  force?: boolean;
+}
+
 // GET /runs list page
 export interface PlanRunListPage {
   items: PlanRunDetail[];

@@ -96,6 +96,35 @@ export const planForgeApi = {
       method: 'POST', body: JSON.stringify(body), token,
     });
   },
+  // ── 27 V2 · the 7-pass compiler rail ──────────────────────────────────────────────
+  // GET the derived pass ledger (per-pass status/decision/fresh + pass_cursor + blocked_at).
+  passStatus(
+    bookId: string, runId: string, token: string,
+  ): Promise<import('./types').PlanPassLedger> {
+    return apiJson(`${BASE}/books/${bookId}/plan/runs/${runId}/passes`, { token });
+  },
+  // Run ONE compiler pass. 202 {job_id, …} + the derived pass view; 409 UPSTREAM_STALE when an
+  // upstream is stale/unaccepted (blockers ride along). paid=true — spends the author's LLM budget.
+  runPass(
+    bookId: string, runId: string, passId: string,
+    body: import('./types').RunPassBody, token: string,
+  ): Promise<unknown> {
+    return apiJson(`${BASE}/books/${bookId}/plan/runs/${runId}/passes/${passId}/run`, {
+      method: 'POST', body: JSON.stringify(body), token,
+    });
+  },
+  // POST /checkpoint — approve/hold a pass (or the spec checkpoint, omit pass_id). `edits`
+  // deep-merges into the pass artifact (a NEW artifact → downstream stales by derivation).
+  reviewCheckpoint(
+    bookId: string, runId: string,
+    body: { approved: boolean; pass_id?: string; edits?: Record<string, unknown> },
+    token: string,
+  ): Promise<import('./types').PlanPassLedger> {
+    return apiJson(`${BASE}/books/${bookId}/plan/runs/${runId}/checkpoint`, {
+      method: 'POST', body: JSON.stringify(body), token,
+    });
+  },
+
   // Auto-bootstrap gate (M4) — propose runs the diff ONCE; approve/reject/apply never
   // re-propose. See docs/specs/2026-07-06-planforge-auto-bootstrap.md §6.
   bootstrapPropose(bookId: string, runId: string, token: string): Promise<BootstrapProposal> {

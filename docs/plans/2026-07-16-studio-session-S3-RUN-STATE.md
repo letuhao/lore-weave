@@ -48,7 +48,7 @@ no-silent-fail · agent-parity · loop-connected · live-browser-proven · i18n+
 | BE-2 · POST .../autofix route (mirror handoff_autofix) (Q-35-BE2) | DONE | PlanAutofixRequest (model_ref optional, max_rounds 1..5→422) + route mirroring handoff_autofix ({rounds,run}; 202 only when run carries live job, else 200; EDIT gate). contract yaml path added. test_plan_forge_router.py 16 passed (+200 applied, +404 unknown, +422 range, +202 async, +403 VIEW). |
 | B0 · reserve `plan-passes` in catalog/enum/contract/i18n/guideBody (enum +1 == plan-passes; Q-35-PANEL-COUNT) | DONE (working tree; registry commit deferred to convergence — see DECISIONS) | PassRailPanel.tsx created + registered: catalog row (after plan-hub), enum +"plan-passes", en/studio.json panels.plan-passes.{title,desc,guideBody}+planPasses.*, contract regenerated. Verified in tree: contract has plan-passes, tsc clean, panelCatalogContract 9 passed (enum==openable==contract). PassRailPanel.tsx committed; shared-registry files NOT committed (entangled with S1/S7 uncommitted work). |
 | FE-1 · json-editor read-only viewer for plan artifacts (Q-35-FE1) | DONE | JsonDocumentProvider.readOnly?; JsonEditorPanel: CM6 editable/readOnly props, no window ⌘S listener when RO, Save/Revert HIDDEN + read-only chip, onChange guard. 3 call sites untouched. JsonEditorPanel.test.tsx 6 passed (+RO hides Save/Revert, +⌘S no-save, +regression editable saves). tsc clean. Not shared-entangled → committable. |
-| M4 · Pass Rail panel: ledger + run-pass + freshness/cursor/blocked_at | TODO | |
+| M4 · Pass Rail panel: ledger + run-pass + freshness/cursor/blocked_at | DONE | types PlanPass/Ledger/RunPassBody; api passStatus/runPass/reviewCheckpoint; usePassRail (resolve run→latest, poll while running, 409-blockers surfaced); PassRow + PassRailPanel (7-row ledger + PS-6 cost-confirm + basic approve/reject + footer + max-w-3xl + empty states). PassRow.test.tsx 6 passed; tsc clean (mine). **LIVE SMOKE (static :5210, proxy /v1): logged in → studio → Command Palette shows "Open Pass Rail" → panel renders 7 passes exactly (motifs done/fresh/re-run, cast BLOCKING/review→=blocked_at, world/arcs/scenes/self_heal 🔒blocked, beats run…, footer "1 of 7 · blocked at cast"). s3-passrail-live.png. PO approved UX + max-width.** |
 | M4-CP · blocking-checkpoint review (view artifact via BE-3 → edit → approve/hold) | TODO | |
 | planEffects · Lane-B handler + remove planEffects from PENDING_FILES (agent parity §2.5) | TODO | |
 | REPAIR · `planner` repair strip (refine/interpret · staleness · failed re-run · relink · autofix) — NO new id | TODO | |
@@ -84,6 +84,10 @@ no-silent-fail · agent-parity · loop-connected · live-browser-proven · i18n+
   in the planner new-run form ("Proposed from this braindump only. Existing chapters are not read.").
 
 ### DEBT
+- Live-smoke fixtures to CLEAN UP at session end: (1) demo package+pass_state seeded on test run
+  019f6556-… (loreweave_composition) for the M4 screenshot — fake, throwaway test account, delete or
+  leave; (2) `frontend/vite.smoke.config.ts` + `frontend/dist/` static build + the `:5210 vite preview`
+  background process — kept for the SMOKE slice; tear down at convergence.
 - Shared-registry commit for `plan-passes` (enum/catalog/contract/i18n) is uncommitted, pending the
   convergence node (see D-S3-DEFER-REGISTRY-COMMIT). Must land at §6 with enum==openable==contract
   reconciled across all 8 sessions. FE-1 (JsonEditorPanel readOnly) and planEffects (Lane-B registry
