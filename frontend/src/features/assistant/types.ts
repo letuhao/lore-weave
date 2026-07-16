@@ -47,6 +47,31 @@ export interface DiaryEntriesResponse {
   count: number;
 }
 
+/** WS-2.6a / D17 — result of POST /v1/assistant/correct (edit a diary day's entry text). Leg 1 (amend
+ *  the PG SSOT) is fatal-if-failed; leg 2/3 (graph reconcile) is NON-FATAL — `reextract_enqueued:false`
+ *  + `reextract_error` means "correction saved, memory sync pending; offer a retry". */
+export interface CorrectResult {
+  amended: boolean;
+  entry_date?: string;
+  kept_preserved?: boolean;
+  reextract_enqueued: boolean;
+  message_id?: string;
+  reextract_error?: string;
+}
+
+/** WS-2.6c / D17 — result of POST /v1/assistant/forget (erase a remembered person). Leg 1 (delete the
+ *  structured KG memory + facts + pending tombstone) is fatal-if-failed; leg 2 (redact the name from the
+ *  diary source prose) is NON-FATAL — `redaction_error` means "memory erased, name may linger in prose". */
+export interface ForgetResult {
+  forgotten: boolean;
+  name?: string;
+  entities_deleted?: number;
+  facts_deleted?: number;
+  pending_tombstoned?: number;
+  redacted_entries?: number;
+  redaction_error?: string;
+}
+
 /** C8 / WS-5.6 — a surfaced weekly-reflection pattern the user can DISMISS (period-independent key). */
 export interface ReflectionPattern {
   detector_code: string;

@@ -12,6 +12,8 @@ import { cn } from '@/lib/utils';
 import { useSheetRoute } from '@/components/shared/Sheet';
 import { useAssistant } from '../../context/AssistantContext';
 import { useDiaryEntries } from '../../hooks/useDiaryEntries';
+import { useDiaryCorrection } from '../../hooks/useDiaryCorrection';
+import { useForgetEntity } from '../../hooks/useForgetEntity';
 import { useMemoryEntities } from '../../hooks/useMemoryEntities';
 import { MobileMemorySheet, MEMORY_SHEET_ID } from './MobileMemorySheet';
 import { useDiaryFactInbox } from '../../hooks/useDiaryFactInbox';
@@ -31,6 +33,28 @@ export function MobileAssistantDock() {
   const tz = useTimezone();
   const journal = useDiaryEntries(bookId);
   const memory = useMemoryEntities(bookId);
+  const correction = useDiaryCorrection(bookId);
+  const forgetEntity = useForgetEntity(bookId);
+
+  // D17 — correcting a day re-distills its facts; forgetting a person deletes them. Both change what
+  // "memory" holds, so refetch the journal + the What-I-know list after either succeeds.
+  const handleCorrect = async (chapterId: string, body: string, title?: string) => {
+    const res = await correction.correct(chapterId, body, title);
+    if (res?.amended) {
+      void journal.refresh();
+      void memory.refresh();
+      void rail.refresh();
+    }
+    return res;
+  };
+  const handleForget = async (name: string) => {
+    const res = await forgetEntity.forget(name);
+    if (res?.forgotten) {
+      void memory.refresh();
+      void rail.refresh();
+    }
+    return res;
+  };
 
   // A small "needs your attention" count for the Today button: captured drafts + facts to review.
   const todayCount = rail.entities.length + inbox.facts.length;
@@ -124,13 +148,21 @@ export function MobileAssistantDock() {
         scorecard={scorecards.latest?.card ?? null}
         inbox={inbox}
       />
-      <MobileJournalSheet entries={journal.entries} loading={journal.loading} error={journal.error} />
+      <MobileJournalSheet
+        entries={journal.entries}
+        loading={journal.loading}
+        error={journal.error}
+        onCorrect={handleCorrect}
+        correctingId={correction.correctingId}
+      />
       <MobileMemorySheet
         entities={memory.entities}
         loading={memory.loading}
         error={memory.error}
         search={memory.search}
         onSearch={memory.setSearch}
+        onForget={handleForget}
+        forgettingName={forgetEntity.forgettingName}
       />
     </div>
   );

@@ -1,6 +1,6 @@
 // DF6 — "What I know" + Recall: remembered entities render, the search box drives recall, empty +
-// private states are honest.
-import { render, screen, fireEvent } from '@testing-library/react';
+// private states are honest. DF7 / D17 — a person carries a Forget action gated by a worded confirm.
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { describe, it, expect, vi } from 'vitest';
 
@@ -39,5 +39,41 @@ describe('MobileMemorySheet (DF6)', () => {
     expect(screen.getByText(/Nothing kept yet/)).toBeTruthy();
     renderOpen({ entities: [], search: 'zzz' });
     expect(screen.getByText(/Nothing remembered matches/)).toBeTruthy();
+  });
+
+  // DF7 / D17 — Forget is a two-step, worded confirm (irreversible); it calls onForget with the NAME.
+  it('forgets a person only after a worded confirm, calling onForget with the name', async () => {
+    const onForget = vi.fn().mockResolvedValue({ forgotten: true });
+    renderOpen({ entities: [ent('e1', 'Minh', 'colleague')], onForget });
+
+    // Step 1: no confirm shown until Forget is pressed; the destructive call has NOT fired.
+    expect(screen.queryByTestId('memory-forget-confirm-e1')).toBeNull();
+    fireEvent.click(screen.getByTestId('memory-forget-e1'));
+    expect(screen.getByTestId('memory-forget-confirm-e1')).toBeTruthy();
+    expect(onForget).not.toHaveBeenCalled();
+
+    // Step 2: confirming fires onForget with the display name.
+    fireEvent.click(screen.getByTestId('memory-forget-do-e1'));
+    expect(onForget).toHaveBeenCalledWith('Minh');
+    await waitFor(() => expect(screen.queryByTestId('memory-forget-confirm-e1')).toBeNull());
+  });
+
+  it('Keep cancels the confirm without forgetting', () => {
+    const onForget = vi.fn();
+    renderOpen({ entities: [ent('e1', 'Minh', 'colleague')], onForget });
+    fireEvent.click(screen.getByTestId('memory-forget-e1'));
+    fireEvent.click(screen.getByTestId('memory-forget-keep-e1'));
+    expect(screen.queryByTestId('memory-forget-confirm-e1')).toBeNull();
+    expect(onForget).not.toHaveBeenCalled();
+  });
+
+  it('offers Forget only for people, not projects', () => {
+    renderOpen({ entities: [ent('e2', 'Q3 Billing', 'project')], onForget: vi.fn() });
+    expect(screen.queryByTestId('memory-forget-e2')).toBeNull(); // a project has no "forget a person"
+  });
+
+  it('offers no Forget action when no onForget handler is wired', () => {
+    renderOpen({ entities: [ent('e1', 'Minh', 'colleague')] });
+    expect(screen.queryByTestId('memory-forget-e1')).toBeNull();
   });
 });

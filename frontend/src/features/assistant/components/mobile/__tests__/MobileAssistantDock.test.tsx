@@ -63,6 +63,12 @@ vi.mock('../../../hooks/useDiaryEntries', () => ({
 vi.mock('../../../hooks/useMemoryEntities', () => ({
   useMemoryEntities: () => ({ entities: [], loading: false, error: null, search: '', setSearch: vi.fn(), refresh: vi.fn() }),
 }));
+vi.mock('../../../hooks/useDiaryCorrection', () => ({
+  useDiaryCorrection: () => ({ correct: vi.fn().mockResolvedValue({ amended: true }), correctingId: null }),
+}));
+vi.mock('../../../hooks/useForgetEntity', () => ({
+  useForgetEntity: () => ({ forget: vi.fn().mockResolvedValue({ forgotten: true }), forgettingName: null }),
+}));
 
 import { MobileAssistantDock } from '../MobileAssistantDock';
 

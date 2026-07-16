@@ -1,9 +1,15 @@
 // DF6 view — "What I know" (draft screen 11) + Recall (draft screen 5): everything the assistant
 // remembers about your work, searchable. The search box IS the "ask your own memory" recall. Read
 // view over the diary book's active entities (people / projects / decisions). Private — no share.
-import { Search, User, Folder, Lock } from 'lucide-react';
+// DF7 / D17 (draft screen 12 "Control you can find later"): each remembered person carries a Forget
+// action — an inline, worded confirm because the erasure is IRREVERSIBLE (KG entity + facts deleted,
+// the name redacted from the diary prose). View + local confirm state only; the call lives in a hook.
+import { useState } from 'react';
+import { Search, User, Folder, Lock, Trash2 } from 'lucide-react';
+import { cn } from '@/lib/utils';
 import { Sheet } from '@/components/shared/Sheet';
 import type { GlossaryEntitySummary } from '@/features/glossary/types';
+import type { ForgetResult } from '../../types';
 
 export const MEMORY_SHEET_ID = 'memory';
 
@@ -15,9 +21,22 @@ export interface MobileMemorySheetProps {
   error: string | null;
   search: string;
   onSearch: (q: string) => void;
+  // D17 — forget a remembered person by name (null result = failed + toasted; leave it in the list).
+  onForget?: (name: string) => Promise<ForgetResult | null>;
+  forgettingName?: string | null;
 }
 
-export function MobileMemorySheet({ entities, loading, error, search, onSearch }: MobileMemorySheetProps) {
+export function MobileMemorySheet({
+  entities,
+  loading,
+  error,
+  search,
+  onSearch,
+  onForget,
+  forgettingName,
+}: MobileMemorySheetProps) {
+  const [confirmId, setConfirmId] = useState<string | null>(null);
+
   return (
     <Sheet id={MEMORY_SHEET_ID} title="What I know" description="Everything I remember about your work — private, never shared.">
       <div className="flex flex-col gap-3" data-testid="memory-sheet">
@@ -53,18 +72,73 @@ export function MobileMemorySheet({ entities, loading, error, search, onSearch }
           {entities.map((e) => {
             const person = PERSON_KINDS.has(e.kind?.code ?? '');
             const Icon = person ? User : Folder;
+            const confirming = confirmId === e.entity_id;
+            const busy = forgettingName === e.display_name;
             return (
-              <li key={e.entity_id} className="flex items-start gap-3 rounded-lg border border-border bg-card p-3">
-                <span className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-muted text-muted-foreground">
-                  <Icon className="h-4 w-4" aria-hidden="true" />
-                </span>
-                <div className="min-w-0 flex-1">
-                  <div className="truncate text-sm font-medium">{e.display_name}</div>
-                  <div className="truncate text-xs text-muted-foreground">
-                    {e.kind?.name ?? 'Noted'}
-                    {e.short_description ? ` · ${e.short_description}` : ''}
+              <li key={e.entity_id} className="flex flex-col rounded-lg border border-border bg-card">
+                <div className="flex items-start gap-3 p-3">
+                  <span className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-muted text-muted-foreground">
+                    <Icon className="h-4 w-4" aria-hidden="true" />
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <div className="truncate text-sm font-medium">{e.display_name}</div>
+                    <div className="truncate text-xs text-muted-foreground">
+                      {e.kind?.name ?? 'Noted'}
+                      {e.short_description ? ` · ${e.short_description}` : ''}
+                    </div>
                   </div>
+                  {/* Forget is offered only for PEOPLE (the BFF's forget resolves a person by name). */}
+                  {onForget && person && !confirming && (
+                    <button
+                      type="button"
+                      data-testid={`memory-forget-${e.entity_id}`}
+                      aria-label={`Forget ${e.display_name}`}
+                      onClick={() => setConfirmId(e.entity_id)}
+                      className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:text-destructive"
+                    >
+                      <Trash2 className="h-4 w-4" aria-hidden="true" />
+                    </button>
+                  )}
                 </div>
+
+                {/* Irreversible — a worded confirm, not a bare icon (draft rev.3 tremor-safe pattern). */}
+                {confirming && onForget && (
+                  <div
+                    className="flex flex-col gap-2 border-t border-border p-3"
+                    data-testid={`memory-forget-confirm-${e.entity_id}`}
+                  >
+                    <p className="text-xs text-muted-foreground">
+                      Forget <span className="font-medium text-foreground">{e.display_name}</span>? This erases
+                      what I know about them and clears the name from your journal. It can&apos;t be undone.
+                    </p>
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        data-testid={`memory-forget-do-${e.entity_id}`}
+                        disabled={busy}
+                        onClick={async () => {
+                          const res = await onForget(e.display_name);
+                          if (res?.forgotten) setConfirmId(null); // parent refetches; failure keeps confirm open
+                        }}
+                        className={cn(
+                          'flex min-h-[40px] flex-1 items-center justify-center rounded-md px-3 text-sm font-medium',
+                          'bg-destructive text-destructive-foreground hover:bg-destructive/90 disabled:opacity-50',
+                        )}
+                      >
+                        {busy ? 'Forgetting…' : 'Forget'}
+                      </button>
+                      <button
+                        type="button"
+                        data-testid={`memory-forget-keep-${e.entity_id}`}
+                        disabled={busy}
+                        onClick={() => setConfirmId(null)}
+                        className="flex min-h-[40px] items-center justify-center rounded-md border border-border px-4 text-sm disabled:opacity-50"
+                      >
+                        Keep
+                      </button>
+                    </div>
+                  </div>
+                )}
               </li>
             );
           })}

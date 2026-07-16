@@ -2,9 +2,11 @@
 // reads reuse glossaryApi / chatApi from their own features (no duplication).
 import { apiJson } from '@/api';
 import type {
+  CorrectResult,
   DiaryEntriesResponse,
   DiaryPendingFact,
   EndDayResult,
+  ForgetResult,
   ProvisionResult,
   ReflectionPattern,
   ScorecardItem,
@@ -57,6 +59,40 @@ export const assistantApi = {
       `/v1/books/${bookId}/diary/entries/${chapterId}/keep`,
       { method: 'POST', token },
     );
+  },
+
+  /** WS-2.6a / D17 — CORRECT a memory: the user edits a diary day's distilled entry text. One call, two
+   *  legs behind it — the BFF amends the PG entry (SSOT), then enqueues the graph reconcile (re-extract +
+   *  invalidate the day's superseded facts). No publish/share/collaborators — owner-gated server-side. The
+   *  re-extract model rides `model_source`/`model_ref` (the caller's chosen chat model, per end-day). */
+  correctDiaryEntry(
+    token: string,
+    payload: {
+      book_id: string;
+      chapter_id: string;
+      body: string;
+      title?: string;
+      model_source: string;
+      model_ref: string;
+      language?: string;
+    },
+  ) {
+    return apiJson<CorrectResult>('/v1/assistant/correct', {
+      method: 'POST',
+      token,
+      body: JSON.stringify(payload),
+    });
+  },
+
+  /** WS-2.6c / D17 — FORGET a person: the scoped-erasure primitive. One call deletes the STRUCTURED memory
+   *  (KG entity + facts + pending tombstone) AND redacts the name from the diary source prose. Irreversible;
+   *  keyed by the remembered person's `name`. Owner-gated server-side (JWT sub); scoped to the diary book. */
+  forgetPerson(token: string, payload: { book_id: string; name: string }) {
+    return apiJson<ForgetResult>('/v1/assistant/forget', {
+      method: 'POST',
+      token,
+      body: JSON.stringify(payload),
+    });
   },
 
   /** WS-2.5 — the diary FACT inbox: the caller's DIARY (session-less) pending facts, oldest-first.
