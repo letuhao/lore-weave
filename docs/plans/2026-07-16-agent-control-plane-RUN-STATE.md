@@ -61,14 +61,22 @@ service surfaces), so chat is its FIRST consumer (dogfood) and roleplay/Practice
 
 ## 6b · A2 build plan (teed up — the next focused slice; sequence its sub-pieces)
 A2 is large; build + test + review each sub-piece, commit A2 as one slice once all green:
-- **A2.1 · RV-M6 advisory lock (self-contained, start here).** `run_executive` does an unlocked
+- **A2.1 ✅ (aead4b271) · RV-M6 advisory lock — DONE.** `apply_state_update` under `pg_advisory_xact_lock`; executive unit 14 passed; real-DB concurrent double-submit 2 passed (both covered items survive). **NEXT: A2.2 (the harness).**
+- ~~A2.1~~ `run_executive` did an unlocked
   read-modify-write (`repo.get` → `merge_state` → `repo.update_state`); two overlapping ticks
   last-writer-wins on `phase`. Fix: after the LLM returns, do the get→merge→write under a
   `pg_advisory_xact_lock(hashtextextended(session_id::text,0))` in ONE txn — add
   `WorkingMemoryRepo.apply_state_update(session_id, user_id, charter, llm_state, merger)` that
   re-reads state under the lock, merges, writes. run_executive calls it instead of update_state.
   Test: real-DB concurrent double-submit doesn't clobber (both covered items survive).
-- **A2.2 · The harness (RW-3/RV-H3 core).** SDK `harness.py`: `decide_rail_drive(*, probe_fn (injected,
+- **A2.2 ✅ (c3096218b harness + 99a1cb669 wiring) · The harness — DONE.** SDK `harness.py`
+  `decide_rail_drive` unifies drive+enforcement into a verdict (probe injected); `stream_service`
+  calls it + owns the loop mechanics; dead `_maybe_redrive_rail` removed; `test_rail_drive` migrated.
+  SDK 16 passed; chat rail 62 passed; stream_service collects clean. **NEXT: A2.4 (voice) — RV-H2 (A2.3)
+  is already satisfied: I kept the rail-drive and the executive-tick as SEPARATE code paths (never
+  conflated into a single control_program), so today's both-fire is preserved; a both-eligible +
+  full-loop live-smoke rides A4/A5 in-container.**
+- ~~A2.2~~ SDK `harness.py`: `decide_rail_drive(*, probe_fn (injected,
   RW-11), rail_specs, book_id, user_id, turn_start_counts, turn_succeeded, async_tools, nudged_out,
   nudge_counts, enforcement_strength, user_message) -> DriveVerdict{action, slug, step, directive_text,
   giving_up, drove}` — UNIFIES `_maybe_redrive_rail` (drive decision) + the inline enforcement at
