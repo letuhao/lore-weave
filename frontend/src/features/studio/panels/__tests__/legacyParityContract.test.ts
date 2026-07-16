@@ -38,7 +38,7 @@ const LEGACY_SUBTAB_HOME: Record<string, Home> = {
   settings: 'book-settings',
   style: { unported: 'pending Wave 6 M1 — style-voice panel not yet in this branch catalog' },
   references: { unported: 'pending Wave 6 M2 — reference-shelf panel not yet in this branch catalog' },
-  canon: { unported: 'pending Wave 1 — quality-canon-rules panel not yet in this branch catalog' },
+  canon: 'quality-canon-rules', // S6 M1 — CanonRulesPanel ported into the studio dock behind QualityWorkGate
   polish: { unported: 'pending Wave 1 — quality-heal panel not yet in this branch catalog' },
   progress: { unported: 'pending Wave 1 — progress panel not yet in this branch catalog' },
   flywheel: { unported: 'pending Wave 1 — quality-corrections panel not yet in this branch catalog' },

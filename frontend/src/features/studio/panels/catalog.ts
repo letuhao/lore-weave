@@ -9,8 +9,11 @@ import type { FunctionComponent } from 'react';
 import type { IDockviewPanelProps } from 'dockview-react';
 import { WelcomePanel } from '../components/panels/WelcomePanel';
 import { ComposePanel } from './ComposePanel';
+import { SceneComposePanel } from './SceneComposePanel';
 import { EditorPanel } from './EditorPanel';
 import { PlannerPanel } from '@/features/plan-forge/components/PlannerPanel';
+import { PassRailPanel } from '@/features/plan-forge/components/PassRailPanel';
+import { MotifLibraryPanel } from './MotifLibraryPanel';
 import { UsagePanel } from './UsagePanel';
 import { NotificationsPanel } from './NotificationsPanel';
 import { SettingsPanel } from './SettingsPanel';
@@ -76,6 +79,12 @@ import { QualityPromisesPanel } from './QualityPromisesPanel';
 import { QualityCriticPanel } from './QualityCriticPanel';
 import { QualityCoveragePanel } from './QualityCoveragePanel';
 import { QualityCanonPanel } from './QualityCanonPanel';
+import { QualityCanonRulesPanel } from './QualityCanonRulesPanel';
+// ── S7 · Knowledge/World/Cast ── (integrator-wired; components owned by build groups A/B/C)
+import { WorldMapEditorPanel } from './WorldMapEditorPanel';
+import { PlaceGraphPanel } from './PlaceGraphPanel';
+import { CastPanel } from './CastPanel';
+import { CharacterArcPanel } from './CharacterArcPanel';
 
 /** #18 — domain-area grouping for the Command Palette. Required for every non-hidden panel
  *  (enforced at runtime by panelCatalogContract.test.ts — B6, not just a convention). */
@@ -214,6 +223,8 @@ export const STUDIO_PANELS: StudioPanelDef[] = [
   // Palette + agent openable (panelCatalogContract enforces openable-set == the
   // ui_open_studio_panel enum + regenerated contracts/frontend-tools.contract.json).
   { id: 'plan-hub', component: PlanHubPanel, titleKey: 'panels.plan-hub.title', descKey: 'panels.plan-hub.desc', category: 'editor', guideBodyKey: 'panels.plan-hub.guideBody' },
+  // S3 · PlanForge — the 7-pass compiler rail (motifs→…→self_heal) + its 2 blocking checkpoints.
+  { id: 'plan-passes', component: PassRailPanel, titleKey: 'panels.plan-passes.title', descKey: 'panels.plan-passes.desc', category: 'editor', guideBodyKey: 'panels.plan-passes.guideBody', tourAnchor: 'studio-plan-passes-panel' },
   { id: 'whatif-canvas', component: WhatIfCanvasPanel, titleKey: 'panels.whatif-canvas.title', descKey: 'panels.whatif-canvas.desc', category: 'editor', guideBodyKey: 'panels.whatif-canvas.guideBody' },
   // D-STUDIO-IMPORT-PANEL — the classic ChaptersTab's import toolbar (text/.docx/.epub +
   // PDF-with-vision-captioning) ported into the studio dock, reusing ImportDialog/PdfImportWizard
@@ -307,12 +318,19 @@ export const STUDIO_PANELS: StudioPanelDef[] = [
   // Panel-id ledger + per-session ownership: docs/plans/2026-07-16-studio-completeness-8-session-orchestration.md §4/§8.0
   // ───────────────────────────────────────────────────────────────────────────
   // ── S1 · Manuscript & Compose ──  (scene-compose, chapter-assemble)
+  { id: 'scene-compose', component: SceneComposePanel, titleKey: 'panels.scene-compose.title', descKey: 'panels.scene-compose.desc', category: 'editor', guideBodyKey: 'panels.scene-compose.guideBody', tourAnchor: 'studio-scene-compose-panel' }, /* owner: S1 */
   // ── S2 · Plan & Structure ──      (arc-inspector, arc-templates)
   // ── S3 · PlanForge ──             (plan-passes)
   // ── S4 · Motif & craft ──         (motif-library, quality-conformance)
+  { id: 'motif-library', component: MotifLibraryPanel, titleKey: 'panels.motif-library.title', descKey: 'panels.motif-library.desc', category: 'storyBible', guideBodyKey: 'panels.motif-library.guideBody' },
   // ── S5 · What-If & Divergence ──  (divergence, + canonview home)
   // ── S6 · Canon/Quality/Progress ──(quality-canon-rules, quality-corrections, quality-heal, progress, + flywheel home)
+  { id: 'quality-canon-rules', component: QualityCanonRulesPanel, titleKey: 'panels.quality-canon-rules.title', descKey: 'panels.quality-canon-rules.desc', category: 'quality', guideBodyKey: 'panels.quality-canon-rules.guideBody' },
   // ── S7 · Knowledge/World/Cast ──  (world, world-map, place-graph, cast, character-arc)
+  { id: 'world-map', component: WorldMapEditorPanel, titleKey: 'panels.world-map.title', descKey: 'panels.world-map.desc', category: 'storyBible', guideBodyKey: 'panels.world-map.guideBody' }, /* owner: S7 (Group B) */
+  { id: 'place-graph', component: PlaceGraphPanel, titleKey: 'panels.place-graph.title', descKey: 'panels.place-graph.desc', category: 'storyBible', guideBodyKey: 'panels.place-graph.guideBody' }, /* owner: S7 (Group C) — OQ-5: storyBible, not 'knowledge' */
+  { id: 'cast', component: CastPanel, titleKey: 'panels.cast.title', descKey: 'panels.cast.desc', category: 'storyBible', guideBodyKey: 'panels.cast.guideBody' }, /* owner: S7 (Group A) */
+  { id: 'character-arc', component: CharacterArcPanel, titleKey: 'panels.character-arc.title', descKey: 'panels.character-arc.desc', category: 'storyBible', guideBodyKey: 'panels.character-arc.guideBody' }, /* owner: S7 (Group A) */
   // ── S8 · Translation ──           (translation-repair)
   // ═══════════════════════════════════════════════════════════════════════════
 ];

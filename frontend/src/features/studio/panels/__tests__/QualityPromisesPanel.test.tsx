@@ -16,6 +16,10 @@ vi.mock('@/features/composition/hooks/useWork', () => ({
   useCreateWork: () => ({ mutateAsync: vi.fn().mockResolvedValue({ project_id: 'proj-new' }), isPending: false }),
   usePendingWorkResolver: () => ({ state: 'idle', start: vi.fn(), retry: vi.fn() }),
 }));
+// useQualityWork also reads the active-Work pref (9262ed53e) — a real useQuery; stub it.
+vi.mock('@/features/composition/hooks/useActiveWork', () => ({
+  useActiveWorkId: () => ({ data: undefined }),
+}));
 
 vi.mock('@/features/composition/components/ThreadsPanel', () => ({
   ThreadsPanel: ({ projectId, token, enabled }: { projectId: string; token: string | null; enabled: boolean }) => (

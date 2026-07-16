@@ -125,6 +125,11 @@
       "desc": "Confirmed contradictions from generation & knowledge extraction",
       "guideBody": "Canon issues collects confirmed contradictions between your prose and your established lore — a character in two places at once, an eye colour that changed, a rule of magic the story just broke. Each issue links back to the chapter and the canon rule it violates, so you can fix the text or amend the rule."
     },
+    "quality-canon-rules": {
+      "title": "Canon rules",
+      "desc": "Author the invariants the critic enforces — create, edit, archive, restore",
+      "guideBody": "Canon rules is where you declare the invariants your story must never break — a character has one arm after chapter 41, spirit stones are consumed and never returned, the Sect Master's identity stays hidden until the Salt Court arc. These are the rules the critic and self-heal enforce on every generation, so writing them here is how you teach the co-writer your canon. It is the write half of Canon issues: that panel shows what broke, this one is where you fix the rule."
+    },
     "kg-overview": {
       "title": "Overview",
       "desc": "Project summary and quick actions",
@@ -287,6 +292,11 @@
       "title": "Plan Hub",
       "desc": "The whole book's plan on a graph canvas — arc lanes, chapters, scenes and their links",
       "guideBody": "The Plan Hub renders your book's entire structure as a graph: each saga/arc/sub-arc is a lane, its chapters and scenes are cards along a story-order axis, and scene-links draw the causal edges between them. Open the panel to see every arc collapsed to a rollup card; expand an arc to lazily load its chapters, and a chapter to see its scenes. Pan and zoom to navigate; problem and staleness badges surface where canon or promises need attention."
+    },
+    "plan-passes": {
+      "title": "Pass Rail",
+      "desc": "Compile a plan pass-by-pass and approve each checkpoint",
+      "guideBody": "The Pass Rail drives PlanForge's 7-pass compiler — motifs, cast, world, beats, character arcs, scenes, and self-heal — one pass at a time. Each pass shows whether it is fresh (its inputs are unchanged since it last ran) or stale, and the rail tells you how far the compiler can proceed on its own and which pass is waiting on you. Two passes are blocking checkpoints you must approve before the compiler moves past them: the cast (who your characters are) and the beats (what shape the story takes). Open a pass to read what it produced, edit it, then approve or hold. Editing a pass restales everything downstream automatically, so the plan can never drift out of sync with itself."
     },
     "whatif-canvas": {
       "title": "What-If Branches",
@@ -516,6 +526,11 @@
       "title": "Character Arc",
       "desc": "One character's events on a timeline, the active→gone band, and 1-hop relations",
       "guideBody": "One character's events in order on a compact arc, spoiler-cut at your reading position, with the active→gone state band and the current 1-hop relations. Pick a character, edit it, or add a relation with + link entity."
+    },
+    "motif-library": {
+      "title": "Motif Library",
+      "desc": "Study tropes (套路/爽点/打脸), adopt or mine them, and inspect the motif relationship graph",
+      "guideBody": "The Motif Library is your narrative-craft workbench. Browse motifs by tier — your own, this book's labels, the shared book tier, the system seeds, the public catalog, and your mined drafts. Create a motif inline, adopt one from the catalog, or mine your own corpus to discover recurring patterns. Open any motif to read its beats and roles, and expand its graph to see what it is composed of, what it precedes, and its variants. Bind motifs to scenes from the Scene Inspector so the drafter actually writes toward them."
     }
   },
   "sceneRail": {
@@ -552,6 +567,10 @@
     "format": "Format",
     "revert": "Revert",
     "openAs": "Open as JSON"
+  },
+  "planPasses": {
+    "comingSoon": "The 7-pass rail loads here.",
+    "noBook": "Open a book to compile its plan."
   },
   "planner": {
     "sourcePlaceholder": "Paste the novel-system markdown…",
@@ -743,6 +762,8 @@
     "coverageDesc": "Whole-book promise coverage",
     "canonTitle": "Canon issues",
     "canonDesc": "Confirmed contradictions",
+    "canonRulesTitle": "Canon rules",
+    "canonRulesDesc": "Author the invariants the critic enforces",
     "canonFromRules": "Broken rules ({{n}})",
     "canonRuleError": "Could not load canon-rule violations — try again.",
     "canonRuleGone": "A rule that no longer exists",

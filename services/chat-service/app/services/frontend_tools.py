@@ -399,9 +399,13 @@ UI_OPEN_STUDIO_PANEL_TOOL: dict = {
             "properties": {
                 "panel_id": {
                     "type": "string",
-                    "enum": ["compose", "editor", "planner", "agent-mode", "usage", "notifications", "settings", "trash", "steering", "extensions", "proposals", "glossary", "glossary-ontology", "glossary-unknown", "glossary-ai-suggestions", "glossary-merge-candidates", "wiki", "knowledge", "kg-overview", "kg-entities", "kg-timeline", "kg-evidence", "kg-gap", "kg-proposals", "kg-schema", "kg-graph", "kg-insights", "kg-jobs", "kg-bio", "kg-privacy", "jobs-list", "books", "leaderboard-books", "leaderboard-authors", "leaderboard-translators", "leaderboard-trending", "chapter-browser", "scene-browser", "scene-inspector", "plan-hub", "whatif-canvas", "book-import", "context-inspector", "sharing", "book-settings", "translation", "enrichment-compose", "enrichment-proposals", "enrichment-gaps", "enrichment-sources", "enrichment-jobs", "enrichment-settings", "user-guide", "quality", "quality-promises", "quality-critic", "quality-coverage", "quality-canon"],
+                    "enum": ["compose", "scene-compose", "editor", "planner", "agent-mode", "usage", "notifications", "settings", "trash", "steering", "extensions", "proposals", "glossary", "glossary-ontology", "glossary-unknown", "glossary-ai-suggestions", "glossary-merge-candidates", "wiki", "knowledge", "kg-overview", "kg-entities", "kg-timeline", "kg-evidence", "kg-gap", "kg-proposals", "kg-schema", "kg-graph", "kg-insights", "kg-jobs", "kg-bio", "kg-privacy", "jobs-list", "books", "leaderboard-books", "leaderboard-authors", "leaderboard-translators", "leaderboard-trending", "chapter-browser", "scene-browser", "scene-inspector", "plan-hub", "plan-passes", "whatif-canvas", "book-import", "context-inspector", "sharing", "book-settings", "translation", "enrichment-compose", "enrichment-proposals", "enrichment-gaps", "enrichment-sources", "enrichment-jobs", "enrichment-settings", "user-guide", "quality", "quality-promises", "quality-critic", "quality-coverage", "quality-canon", "quality-canon-rules", "motif-library", "world-map", "place-graph", "cast", "character-arc"],
                     "description": (
                         "The studio panel to open. 'compose' = the AI co-writer chat; "
+                        "'scene-compose' = draft a scene with the AI — stream a ghost "
+                        "draft or Diverge into several candidates, edit/accept one into "
+                        "the editor, and your regenerate/reject/edit choices train the "
+                        "model (the correction flywheel); "
                         "'editor' = the manuscript editor; 'planner' = the PlanForge "
                         "novel-system planner; 'agent-mode' = mission control for an "
                         "autonomous multi-chapter authoring run — start/pause/resume a run "
@@ -477,7 +481,22 @@ UI_OPEN_STUDIO_PANEL_TOOL: dict = {
                         "'quality-critic' = per-chapter coherence/voice/pacing/canon critic scores; "
                         "'quality-coverage' = whole-book audit of which outline promises got paid off; "
                         "'quality-canon' = book-wide confirmed canon contradictions from generation "
-                        "and knowledge extraction."
+                        "and knowledge extraction; "
+                        "'motif-library' = the narrative-craft library (套路/爽点/打脸 tropes) — browse "
+                        "by tier (yours/book/shared/system/public catalog/mined drafts), create, "
+                        "adopt from the catalog, mine your corpus, inspect a motif's detail and its "
+                        "relationship graph (composed_of/precedes/variant_of); "
+                        "'world-map' = create and edit a world's reference map(s) — upload a base "
+                        "image, drop and drag location pins, draw and reshape regions, and bind them "
+                        "to glossary/KG location entities; "
+                        "'place-graph' = the book's places (locations) as a draggable node graph — add "
+                        "a place, link two places (contains/borders/route_to), arrange them (saved "
+                        "server-side), set a backdrop; location entities only; "
+                        "'cast' = the book's cast codex — every character/place/organization/concept, "
+                        "grouped and searchable, each with its spoiler-safe story-state; create/rename/"
+                        "retire entities and edit aliases/kind; "
+                        "'character-arc' = ONE character's events on a timeline (spoiler-cut at the "
+                        "reading position), the active→gone band, and the 1-hop relations."
                     ),
                 },
             },

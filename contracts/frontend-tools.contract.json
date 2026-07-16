@@ -198,6 +198,7 @@
       "panel_id": {
         "enum": [
           "compose",
+          "scene-compose",
           "editor",
           "planner",
           "agent-mode",
@@ -237,6 +238,7 @@
           "scene-browser",
           "scene-inspector",
           "plan-hub",
+          "plan-passes",
           "whatif-canvas",
           "book-import",
           "context-inspector",
@@ -254,7 +256,13 @@
           "quality-promises",
           "quality-critic",
           "quality-coverage",
-          "quality-canon"
+          "quality-canon",
+          "quality-canon-rules",
+          "motif-library",
+          "world-map",
+          "place-graph",
+          "cast",
+          "character-arc"
         ],
         "type": "string"
       }

@@ -15,6 +15,10 @@ vi.mock('@/features/composition/hooks/useWork', () => ({
   useCreateWork: () => ({ mutateAsync: vi.fn().mockResolvedValue({ project_id: 'proj-new' }), isPending: false }),
   usePendingWorkResolver: () => ({ state: 'idle', start: vi.fn(), retry: vi.fn() }),
 }));
+// useQualityWork also reads the active-Work pref (9262ed53e) — a real useQuery; stub it.
+vi.mock('@/features/composition/hooks/useActiveWork', () => ({
+  useActiveWorkId: () => ({ data: undefined }),
+}));
 
 import { QualityHubPanel } from '../QualityHubPanel';
 
@@ -42,12 +46,13 @@ describe('QualityHubPanel', () => {
     expect(hostRef!.getRegisteredTool('quality')!.commandId).toBe('studio.openPanel.quality');
   });
 
-  it('renders exactly the 4 capability cards', () => {
+  it('renders exactly the 5 capability cards (canon-rules is the write half of canon)', () => {
     withHost('b1', <QualityHubPanel {...dockProps()} />);
     expect(screen.getByTestId('quality-hub-card-quality-promises')).toBeInTheDocument();
     expect(screen.getByTestId('quality-hub-card-quality-critic')).toBeInTheDocument();
     expect(screen.getByTestId('quality-hub-card-quality-coverage')).toBeInTheDocument();
     expect(screen.getByTestId('quality-hub-card-quality-canon')).toBeInTheDocument();
+    expect(screen.getByTestId('quality-hub-card-quality-canon-rules')).toBeInTheDocument();
   });
 
   it('each card opens its own sibling panel via the host, never an internal view-switch', () => {
