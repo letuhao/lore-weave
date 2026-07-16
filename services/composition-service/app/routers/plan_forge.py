@@ -15,7 +15,7 @@ from app.middleware.jwt_auth import get_current_user
 from app.packer.pack import OwnershipError
 from app.db.models import PlanPassId
 from app.grant_deps import InsufficientGrant, authorize_book
-from app.services.plan_forge_service import PlanForgeService
+from app.services.plan_forge_service import PlanForgeService, PlanRunJobInFlight
 from app.services.plan_pass_service import UpstreamStale
 
 router = APIRouter(prefix="/v1/composition")
@@ -141,12 +141,54 @@ async def list_plan_runs(
     book_id: UUID,
     limit: int = Query(default=20, ge=1, le=50),
     cursor: str | None = None,
+    include_archived: bool = Query(default=False),
     user_id: UUID = Depends(get_current_user),
     grant: GrantClient = Depends(get_grant_client_dep),
     svc: PlanForgeService = Depends(get_plan_forge_service),
 ):
     await _gate_book(grant, book_id, user_id, GrantLevel.VIEW)
-    return await svc.list_runs(user_id, book_id, limit=limit, cursor=cursor)
+    return await svc.list_runs(
+        user_id, book_id, limit=limit, cursor=cursor, include_archived=include_archived,
+    )
+
+
+@router.delete("/books/{book_id}/plan/runs/{run_id}", status_code=204)
+async def archive_plan_run(
+    book_id: UUID,
+    run_id: UUID,
+    user_id: UUID = Depends(get_current_user),
+    grant: GrantClient = Depends(get_grant_client_dep),
+    svc: PlanForgeService = Depends(get_plan_forge_service),
+):
+    """BE-4 — soft-archive (is_archived; filtered from LIST, restorable). 409 if a job is in flight."""
+    await _gate_book(grant, book_id, user_id, GrantLevel.EDIT)
+    try:
+        out = await svc.archive_run(user_id, book_id, run_id)
+    except PlanRunJobInFlight as exc:
+        raise HTTPException(
+            status_code=409,
+            detail={"code": "PLAN_RUN_JOB_IN_FLIGHT", "active_job_id": str(exc.job_id)},
+        ) from exc
+    if out is None:
+        raise HTTPException(status_code=404, detail="run not found")
+    return JSONResponse(status_code=204, content=None)
+
+
+@router.post("/books/{book_id}/plan/runs/{run_id}/restore")
+async def restore_plan_run(
+    book_id: UUID,
+    run_id: UUID,
+    user_id: UUID = Depends(get_current_user),
+    grant: GrantClient = Depends(get_grant_client_dep),
+    svc: PlanForgeService = Depends(get_plan_forge_service),
+):
+    """BE-4b — un-archive. Returns the run detail (the FE re-shows it)."""
+    await _gate_book(grant, book_id, user_id, GrantLevel.EDIT)
+    out = await svc.restore_run(user_id, book_id, run_id)
+    if out is None:
+        raise HTTPException(status_code=404, detail="run not found")
+    detail = await svc.get_run_detail(user_id, book_id, run_id)
+    return detail
 
 
 @router.get("/books/{book_id}/plan/runs/{run_id}")

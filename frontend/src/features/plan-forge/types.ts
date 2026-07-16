@@ -47,6 +47,7 @@ export interface PlanRunDetail {
   source_checksum: string | null;
   // BE-3b — the braindump this run was proposed from, so reopening a run restores the textarea.
   source_markdown: string | null;
+  is_archived?: boolean; // BE-4 — soft-archived; the runs list offers restore instead of archive
   active_job_id: string | null;
   job_status: string | null; // pending | running | completed | failed | null (rules → no job)
   error_detail: string | null;

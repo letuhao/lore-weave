@@ -1310,6 +1310,13 @@ CREATE INDEX IF NOT EXISTS idx_plan_run_checksum
 CREATE INDEX IF NOT EXISTS idx_plan_run_book_created
   ON plan_run(book_id, created_at DESC);
 
+-- BE-4 — soft-archive a plan run (mirrors outline_node/canon_rule/structure_node). Additive; the
+-- run is filtered from LIST but restorable. NOT a status: a failed run is still archivable AND
+-- restorable, so it cannot ride the status CHECK.
+ALTER TABLE plan_run ADD COLUMN IF NOT EXISTS is_archived BOOLEAN NOT NULL DEFAULT false;
+CREATE INDEX IF NOT EXISTS idx_plan_run_book_created_active
+  ON plan_run(book_id, created_at DESC) WHERE NOT is_archived;
+
 CREATE TABLE IF NOT EXISTS plan_artifact (
   id              UUID PRIMARY KEY DEFAULT uuidv7(),
   run_id          UUID NOT NULL REFERENCES plan_run(id) ON DELETE CASCADE,

@@ -23,7 +23,7 @@ from app.db.models import PlanArtifact, PlanArtifactKind, PlanRun, PlanRunMode, 
 _SELECT_RUN = """
   id, created_by, book_id, work_id, status, mode, model_ref, source_checksum,
   source_markdown, active_job_id, error_detail, checkpoint_state,
-  pass_state, genre_tags, created_at, updated_at
+  pass_state, genre_tags, is_archived, created_at, updated_at
 """
 
 # `a.`-prefixed so the artifact reads can join plan_run (the book-scope gate);
@@ -104,9 +104,12 @@ class PlanRunsRepo:
         # get a FRESH run, never the stale other-mode result (D-PLANFORGE-MODE-DEDUPE).
         # Book-scoped dedupe (OQ-3): a grantee re-Proposing the owner's identical
         # markdown finds the existing run instead of forking a duplicate.
+        # BE-4 — skip ARCHIVED runs: re-Proposing identical markdown must mint a FRESH run, never
+        # dedupe onto a run the user archived (else their new Propose silently returns an invisible
+        # run — a real bug, not a nicety).
         query = f"""
         SELECT {_SELECT_RUN} FROM plan_run
-        WHERE book_id = $1 AND source_checksum = $2 AND mode = $3
+        WHERE book_id = $1 AND source_checksum = $2 AND mode = $3 AND NOT is_archived
         ORDER BY created_at DESC
         LIMIT 1
         """
@@ -117,6 +120,8 @@ class PlanRunsRepo:
     async def get_for_book(
         self, book_id: UUID, run_id: UUID,
     ) -> PlanRun | None:
+        # BE-4 — MUST NOT filter archived: restore() and the detail view both need to read the
+        # tombstone. Do not "fix" this with `AND NOT is_archived` — a later reviewer's instinct.
         query = f"""
         SELECT {_SELECT_RUN} FROM plan_run
         WHERE id = $1 AND book_id = $2
@@ -125,15 +130,39 @@ class PlanRunsRepo:
             row = await c.fetchrow(query, run_id, book_id)
         return _row_run(row) if row else None
 
+    async def archive(self, book_id: UUID, run_id: UUID) -> bool:
+        """BE-4 — soft-archive (mirrors canon_rules). True if it flipped; False if already archived
+        or not in this book (the router maps False+not-found the same way the caller decides)."""
+        async with self._pool.acquire() as c:
+            row = await c.fetchrow(
+                "UPDATE plan_run SET is_archived = true, updated_at = now() "
+                "WHERE id = $1 AND book_id = $2 AND NOT is_archived RETURNING id",
+                run_id, book_id,
+            )
+        return row is not None
+
+    async def restore(self, book_id: UUID, run_id: UUID) -> bool:
+        """BE-4b — the mirror of archive()."""
+        async with self._pool.acquire() as c:
+            row = await c.fetchrow(
+                "UPDATE plan_run SET is_archived = false, updated_at = now() "
+                "WHERE id = $1 AND book_id = $2 AND is_archived RETURNING id",
+                run_id, book_id,
+            )
+        return row is not None
+
     async def list_for_book(
         self,
         book_id: UUID,
         *,
         limit: int = 20,
         cursor: str | None = None,
+        include_archived: bool = False,
     ) -> tuple[list[PlanRun], str | None]:
         params: list[Any] = [book_id]
         where = ["book_id = $1"]
+        if not include_archived:
+            where.append("NOT is_archived")  # BE-4 — archived runs are hidden by default
         if cursor:
             try:
                 ts_str, id_str = cursor.split("|", 1)
@@ -329,15 +358,17 @@ class PlanRunsRepo:
         leads with `created_by`, which these book-only filters cannot use);
         `idx_plan_artifact_run_kind (run_id, kind, …)` serves the EXISTS probe.
         """
+        # BE-4 — the per-chat-turn probe must NOT count/report an archived run (all three
+        # subqueries filter NOT is_archived).
         query = """
         SELECT
-          (SELECT COUNT(*) FROM plan_run WHERE book_id = $1)::int AS run_count,
-          (SELECT status FROM plan_run WHERE book_id = $1
+          (SELECT COUNT(*) FROM plan_run WHERE book_id = $1 AND NOT is_archived)::int AS run_count,
+          (SELECT status FROM plan_run WHERE book_id = $1 AND NOT is_archived
              ORDER BY created_at DESC, id DESC LIMIT 1) AS latest_status,
           EXISTS (
             SELECT 1 FROM plan_artifact a
             JOIN plan_run r ON r.id = a.run_id
-            WHERE r.book_id = $1 AND a.kind = 'spec'
+            WHERE r.book_id = $1 AND a.kind = 'spec' AND NOT r.is_archived
           ) AS has_spec
         """
         async with self._pool.acquire() as c:

@@ -203,7 +203,7 @@ describe('PlannerPanel — Runs list (D-PLANFORGE-NO-RESUME)', () => {
     listRuns.mockResolvedValue({ items: [runFixture(), runFixture({ id: 'run-2', status: 'failed' })], next_cursor: null });
     renderPanel();
     await waitFor(() => expect(screen.getAllByTestId('plan-run-row')).toHaveLength(2));
-    expect(listRuns).toHaveBeenCalledWith('b1', 'tok', { limit: 50 });
+    expect(listRuns).toHaveBeenCalledWith('b1', 'tok', { limit: 50, includeArchived: false });
   });
 
   it('clicking a run row loads it and switches to the Run tab', async () => {

@@ -38,13 +38,25 @@ export const planForgeApi = {
     });
   },
   listRuns(
-    bookId: string, token: string, opts: { limit?: number; cursor?: string | null } = {},
+    bookId: string, token: string,
+    opts: { limit?: number; cursor?: string | null; includeArchived?: boolean } = {},
   ): Promise<PlanRunListPage> {
     const p = new URLSearchParams();
     if (opts.limit) p.set('limit', String(opts.limit));
     if (opts.cursor) p.set('cursor', opts.cursor);
+    if (opts.includeArchived) p.set('include_archived', 'true');
     const qs = p.toString();
     return apiJson<PlanRunListPage>(`${BASE}/books/${bookId}/plan/runs${qs ? `?${qs}` : ''}`, { token });
+  },
+  // BE-4 — soft-archive a run (204; 409 PLAN_RUN_JOB_IN_FLIGHT if a job is live). Filtered from LIST.
+  archiveRun(bookId: string, runId: string, token: string): Promise<void> {
+    return apiJson(`${BASE}/books/${bookId}/plan/runs/${runId}`, { method: 'DELETE', token });
+  },
+  // BE-4b — un-archive; returns the run detail.
+  restoreRun(bookId: string, runId: string, token: string): Promise<PlanRunDetail> {
+    return apiJson<PlanRunDetail>(`${BASE}/books/${bookId}/plan/runs/${runId}/restore`, {
+      method: 'POST', token,
+    });
   },
   getRun(bookId: string, runId: string, token: string): Promise<PlanRunDetail> {
     return apiJson<PlanRunDetail>(`${BASE}/books/${bookId}/plan/runs/${runId}`, { token });

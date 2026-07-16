@@ -71,6 +71,10 @@ paths:
         - name: cursor
           in: query
           schema: { type: string }
+        - name: include_archived
+          in: query
+          description: BE-4 — include soft-archived runs (default false hides them).
+          schema: { type: boolean, default: false }
       responses:
         '200':
           description: Paginated run list
@@ -93,6 +97,50 @@ paths:
       responses:
         '200':
           description: Run detail
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlanRun'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    delete:
+      tags: [plan-forge]
+      summary: BE-4 — soft-archive a plan run (filtered from LIST, restorable)
+      parameters:
+        - $ref: '#/components/parameters/BookId'
+        - $ref: '#/components/parameters/RunId'
+      responses:
+        '204':
+          description: Archived (idempotent — already-archived is still 204)
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: A job is in flight — the run cannot be archived yet
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  detail:
+                    type: object
+                    properties:
+                      code: { type: string, example: PLAN_RUN_JOB_IN_FLIGHT }
+                      active_job_id: { type: string, format: uuid }
+
+  /books/{book_id}/plan/runs/{run_id}/restore:
+    post:
+      tags: [plan-forge]
+      summary: BE-4b — un-archive a plan run
+      parameters:
+        - $ref: '#/components/parameters/BookId'
+        - $ref: '#/components/parameters/RunId'
+      responses:
+        '200':
+          description: Restored run detail
           content:
             application/json:
               schema:

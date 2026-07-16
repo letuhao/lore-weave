@@ -49,7 +49,7 @@ class StubPlanForge:
             "updated_at": "2026-07-01T00:00:00+00:00",
         }
 
-    async def list_runs(self, owner_user_id, book_id, *, limit, cursor):
+    async def list_runs(self, owner_user_id, book_id, *, limit, cursor, include_archived=False):
         detail = await self.get_run_detail(owner_user_id, book_id, RUN)
         return {"items": [detail], "next_cursor": None}
 
@@ -70,6 +70,12 @@ class StubPlanForge:
 
     async def compile(self, owner_user_id, book_id, run_id, **kwargs):
         return "sync", {"package": {"arc_id": "arc_2"}, "pipeline_job_id": None, "work_id": str(uuid.uuid4())}
+
+    async def archive_run(self, owner_user_id, book_id, run_id):
+        return True if run_id == RUN else None
+
+    async def restore_run(self, owner_user_id, book_id, run_id):
+        return True if run_id == RUN else None
 
     async def handoff_autofix(self, owner_user_id, book_id, run_id, *, model_ref=None, max_rounds=3):
         if run_id != RUN:
@@ -153,6 +159,86 @@ def test_compile_plan_run(client):
     )
     assert r.status_code == 200
     assert r.json()["package"]["arc_id"] == "arc_2"
+
+
+def test_archive_run_204(client):
+    r = client.delete(f"/v1/composition/books/{BOOK}/plan/runs/{RUN}")
+    assert r.status_code == 204
+
+
+def test_archive_unknown_run_is_404(client):
+    r = client.delete(f"/v1/composition/books/{BOOK}/plan/runs/{uuid.uuid4()}")
+    assert r.status_code == 404
+
+
+def test_archive_requires_edit_grant():
+    class ViewGrant:
+        async def resolve_grant(self, book_id, caller):
+            from app.grant_client import GrantLevel
+            return GrantLevel.VIEW
+    app.dependency_overrides[get_current_user] = lambda: USER
+    app.dependency_overrides[get_grant_client_dep] = lambda: ViewGrant()
+    app.dependency_overrides[get_plan_forge_service] = lambda: StubPlanForge()
+    try:
+        r = TestClient(app).delete(f"/v1/composition/books/{BOOK}/plan/runs/{RUN}")
+        assert r.status_code == 403
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_archive_in_flight_returns_409_with_job_id():
+    # The two-carrier guard: a run with a live pass job (or active_job_id) refuses to archive.
+    from app.services.plan_forge_service import PlanRunJobInFlight
+    JOB = uuid.uuid4()
+
+    class InFlightStub(StubPlanForge):
+        async def archive_run(self, owner_user_id, book_id, run_id):
+            raise PlanRunJobInFlight(JOB)
+
+    app.dependency_overrides[get_current_user] = lambda: USER
+    app.dependency_overrides[get_grant_client_dep] = lambda: StubGrant()
+    app.dependency_overrides[get_plan_forge_service] = lambda: InFlightStub()
+    try:
+        r = TestClient(app).delete(f"/v1/composition/books/{BOOK}/plan/runs/{RUN}")
+        assert r.status_code == 409
+        assert r.json()["detail"]["code"] == "PLAN_RUN_JOB_IN_FLIGHT"
+        assert r.json()["detail"]["active_job_id"] == str(JOB)
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_restore_run_200(client):
+    r = client.post(f"/v1/composition/books/{BOOK}/plan/runs/{RUN}/restore")
+    assert r.status_code == 200
+    assert r.json()["id"] == str(RUN)
+
+
+@pytest.mark.asyncio
+async def test_archive_detects_a_PASS_job_in_flight_not_just_active_job_id():
+    """The two-carrier guard: pass jobs live ONLY in pass_state, never in active_job_id. An
+    active_job_id-only probe would happily archive a run with 7 live pass jobs. This is the test
+    that fails an active_job_id-only implementation while every other archive test still passes."""
+    from unittest.mock import AsyncMock
+    from app.db.models import PlanRun
+    from app.services.plan_forge_service import PlanForgeService, PlanRunJobInFlight
+
+    pass_job = uuid.uuid4()
+    run = PlanRun(
+        id=RUN, created_by=USER, book_id=BOOK, mode="llm", status="checkpoint",
+        active_job_id=None,  # the trap — nothing in the classic carrier
+        pass_state={"cast": {"status": "running", "job_id": str(pass_job)}},
+    )
+    runs = AsyncMock(); runs.get_for_book.return_value = run
+
+    async def _active_among(ids, book_id, **kw):
+        return pass_job if pass_job in ids else None
+    jobs = AsyncMock(); jobs.active_among.side_effect = _active_among
+    svc = PlanForgeService(runs, jobs, AsyncMock(), llm=AsyncMock())
+
+    with pytest.raises(PlanRunJobInFlight):
+        await svc.archive_run(USER, BOOK, RUN)
+    assert pass_job in jobs.active_among.call_args[0][0]  # the pass job WAS a candidate
+    runs.archive.assert_not_called()                      # and it did NOT archive
 
 
 def test_autofix_200_applied(client):

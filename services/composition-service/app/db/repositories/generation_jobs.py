@@ -441,6 +441,26 @@ class GenerationJobsRepo:
             row = await c.fetchrow(query, job_id)
         return _row_to_job(row) if row else None
 
+    async def active_among(
+        self, job_ids: list[UUID], book_id: UUID, *, stale_secs: int = 1800,
+    ) -> UUID | None:
+        """BE-4 — is ANY of these jobs still in flight for this book? Returns the first live id.
+
+        `book_id` in the WHERE is the tenancy assert (a bare-id job read must be re-scoped to the
+        run's book, same guard as sync_from_job). `stale_secs` bounds it: a crash-orphaned job must
+        NOT make a failed run un-archivable forever (same window as create_chapter_job_guarded)."""
+        if not job_ids:
+            return None
+        cutoff = datetime.now(timezone.utc) - timedelta(seconds=max(0, stale_secs))
+        query = (
+            "SELECT id FROM generation_job "
+            "WHERE id = ANY($1::uuid[]) AND book_id = $2 AND status = ANY($3) AND created_at > $4 "
+            "LIMIT 1"
+        )
+        async with self._pool.acquire() as c:
+            row = await c.fetchrow(query, job_ids, book_id, list(_ACTIVE_STATUSES), cutoff)
+        return row["id"] if row else None
+
     async def get_by_idempotency_key(
         self, project_id: UUID, key: str
     ) -> GenerationJob | None:

@@ -682,6 +682,7 @@ class PlanRun(BaseModel):
     model_ref: UUID | None = None
     source_checksum: str = ""
     source_markdown: str = ""
+    is_archived: bool = False  # BE-4 — soft-archive; filtered from LIST, restorable
     active_job_id: UUID | None = None
     error_detail: str | None = None
     checkpoint_state: dict[str, Any] = Field(default_factory=dict)

@@ -106,9 +106,13 @@ no-silent-fail · agent-parity · loop-connected · live-browser-proven · i18n+
   not `source_markdown`, so reopening a run cannot restore the pasted braindump into the textarea.
   Small BE add (select+return source_markdown) + FE derived-default seed. Deferred from REPAIR to keep
   the slice focused; buildable anytime.
-- **D-S3-BE4-ARCHIVE** (gate #2 large/structural): soft-archive a plan run (is_archived) + LIST filter
-  + two-carrier in-flight guard + BE-4b restore + `?include_archived` + FE archive/undo. Full recipe
-  in Q-35-BE4. Migration + repo + routes + FE — a real CRUD track, not a quick edit.
+- **D-S3-BE4-ARCHIVE — CLEARED (built, not deferred):** migration (is_archived + partial index) +
+  model + repo (list filter/archive/restore/find_by_checksum/plan_state_for_book) + two-carrier
+  in-flight guard (GenerationJobsRepo.active_among over active_job_id UNION pass_state job_ids) +
+  service archive_run/restore_run (PlanRunJobInFlight) + DELETE(204)/POST-restore/?include_archived
+  routes + contract yaml + FE (usePlanRunsList archive/restore/showArchived, PlanRunsListView
+  archive/restore buttons + toggle). BE 31 passed (incl the two-carrier test that fails an
+  active_job_id-only impl), FE 65 passed. Migration runs at the coverage-phase Docker rebuild.
 - **D-S3-CHECKPOINT-STRUCTURED-EDITS** (gate #2, follow-up): the checkpoint "Save edits" (F-P10 —
   edits deep-merge → decision=rejected + new artifact) needs a STRUCTURED editor (edit specific
   fields), NOT a raw-JSON textarea (draft-banned; deep-merge can't delete). Ship it when the

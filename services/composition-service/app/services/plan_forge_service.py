@@ -72,6 +72,16 @@ def _work_project_id(work: CompositionWork) -> UUID:
     return work.id
 
 
+class PlanRunJobInFlight(Exception):
+    """BE-4 — refuse to archive a run with a live job (a pass/compile/propose still running).
+
+    Carries the offending job id so the router can echo it (mirrors CHAPTER_JOB_IN_FLIGHT)."""
+
+    def __init__(self, job_id: UUID) -> None:
+        super().__init__(f"plan run has a job in flight ({job_id})")
+        self.job_id = job_id
+
+
 class PlanForgeService:
     def __init__(
         self,
@@ -495,11 +505,46 @@ class PlanForgeService:
             "created_at": art.created_at.isoformat() if art.created_at else None,
         }
 
+    async def archive_run(self, created_by: UUID, book_id: UUID, run_id: UUID) -> bool | None:
+        """BE-4 — soft-archive a run. None ⇒ 404; raises PlanRunJobInFlight if a job is live.
+
+        In-flight is decided by generation_job.status (NEVER by plan_run.status / pass_state.status —
+        those are known-lying; sync_from_job exists precisely because the run row goes stale when the
+        worker hook misses). Two carriers: `active_job_id` (propose/checkpoint/compile) UNION the pass
+        jobs (recorded ONLY in pass_state) — an active_job_id-only probe would archive a run with 7
+        live pass jobs."""
+        run = await self._runs.get_for_book(book_id, run_id)
+        if run is None:
+            return None
+        run = await self.sync_from_job(created_by, book_id, run)  # a completed-but-unhooked job must not 409
+        candidates: list[UUID] = []
+        if run.active_job_id is not None:
+            candidates.append(run.active_job_id)
+        for entry in run.pass_state.values():
+            e = entry.model_dump(mode="json") if hasattr(entry, "model_dump") else dict(entry)
+            jid = e.get("job_id")
+            if jid:
+                candidates.append(UUID(str(jid)))
+        live = await self._jobs.active_among(candidates, book_id)
+        if live is not None:
+            raise PlanRunJobInFlight(live)
+        await self._runs.archive(book_id, run_id)  # already-archived ⇒ still 204 (idempotent)
+        return True
+
+    async def restore_run(self, created_by: UUID, book_id: UUID, run_id: UUID) -> bool | None:
+        """BE-4b — the mirror. No in-flight check (nothing to orphan by un-hiding a row)."""
+        run = await self._runs.get_for_book(book_id, run_id)
+        if run is None:
+            return None
+        await self._runs.restore(book_id, run_id)
+        return True
+
     async def list_runs(
         self, created_by: UUID, book_id: UUID, *, limit: int, cursor: str | None,
+        include_archived: bool = False,
     ) -> dict[str, Any]:
         runs, next_cursor = await self._runs.list_for_book(
-            book_id, limit=limit, cursor=cursor,
+            book_id, limit=limit, cursor=cursor, include_archived=include_archived,
         )
         items = []
         for r in runs:
@@ -557,6 +602,7 @@ class PlanForgeService:
             # restore what the user pasted (the textarea was blank because the API sent only the
             # checksum — "the FE cannot resume what the API never sends").
             "source_markdown": run.source_markdown,
+            "is_archived": run.is_archived,  # BE-4 — so the FE shows a restore vs an archive control
             "active_job_id": str(run.active_job_id) if run.active_job_id else None,
             "job_status": job_status,
             "error_detail": run.error_detail,
