@@ -5,6 +5,14 @@
     "failed": "failed",
     "pending": "pending"
   },
+  "error": {
+    "retryable": "Couldn't load translations — the translation service may be unavailable. Try again.",
+    "forbidden": "You don't have access to this book's translations.",
+    "notfound": "These translations could not be found.",
+    "retry": "Retry",
+    "chapters_failed": "Couldn't load the chapter list.",
+    "chapters_timeout": "Loading the chapter list timed out — the service may be slow or down."
+  },
   "page": {
     "breadcrumb_book": "Book",
     "breadcrumb_chapters": "Chapters",
@@ -129,6 +137,7 @@
     "cell_changed_title": "{{count}} segment(s) changed — review & re-translate",
     "legend_stale": "{{count}} affected",
     "select_affected_title": "Select the chapters affected by glossary changes to re-translate",
+    "loading": "Loading translation coverage…",
     "no_chapters_title": "No chapters to translate",
     "no_chapters_desc": "Create chapters first, then come back to translate them.",
     "title": "Translation Matrix",

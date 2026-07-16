@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 import { Loader2, AlertTriangle, ChevronDown, ChevronRight, ShieldCheck } from 'lucide-react';
@@ -11,6 +11,8 @@ import { LANGUAGE_NAMES } from '@/lib/languages';
 import { cn } from '@/lib/utils';
 import { usePagedList } from '@/components/pagination/usePagedList';
 import { Pager } from '@/components/pagination/Pager';
+import { withTimeout } from '@/features/translation/lib/translationError';
+import { TranslationErrorState } from '@/features/translation/components/TranslationErrorState';
 import { FormDialog } from '@/components/shared/FormDialog';
 import { useOptionalStudioHost } from '@/features/studio/host/StudioHostProvider';
 import {
@@ -36,6 +38,8 @@ interface TranslateModalProps {
 }
 
 const PAGE_SIZE = 100;
+// T5: a hanging translation-service must not wedge the checklist forever — recover after this.
+const CHAPTERS_TIMEOUT_MS = 15000;
 
 // Fetch every active chapter, paging past the backend's 100-row cap so a 2000+
 // chapter book is fully classified (not silently truncated to one page).
@@ -83,7 +87,16 @@ export function TranslateModal({ open, onClose, bookId, onJobCreated, preselecte
   const [chapters, setChapters] = useState<Chapter[]>([]);
   const [coverage, setCoverage] = useState<BookCoverageResponse | null>(null);
   const [settings, setSettings] = useState<BookTranslationSettings | null>(null);
-  const [loading, setLoading] = useState(true);
+  // T5: only the chapter checklist is network-bound — the pickers render immediately. This
+  // state scopes loading/error to that region so a slow/dead service can't wedge the whole modal.
+  const [chaptersLoading, setChaptersLoading] = useState(true);
+  const [chaptersError, setChaptersError] = useState<unknown>(null);
+  // True once the fast metadata (coverage + settings + language seed) has settled, so the
+  // default-selection effect below doesn't race the chapter list and seed "all" before it
+  // knows which chapters are already translated.
+  const [metaReady, setMetaReady] = useState(false);
+  const seededRef = useRef(false);           // D7: seed pickers once, never clobber a user choice
+  const seededSelectionRef = useRef(false);  // seed the default chapter selection once per open
 
   // Shared model fetch (W5) — translation drives an LLM, so chat capability.
   // Active-only is the shared hook's default; fetch only while the modal is open.
@@ -114,50 +127,82 @@ export function TranslateModal({ open, onClose, bookId, onJobCreated, preselecte
   );
   const { page, setPage, pageCount, start, pageItems: pageChapters } = usePagedList(sortedChapters, PAGE_SIZE);
 
+  // T5/D8: the chapter checklist is the ONLY network-bound region. Timed so a *hanging*
+  // dependency (not just a rejecting one) recovers into an inline error + Retry instead of a
+  // permanent "Loading chapters…" wedge. Retry re-runs exactly this.
+  const loadChapters = useCallback(() => {
+    if (!accessToken) return;
+    setChaptersError(null);
+    setChaptersLoading(true);
+    withTimeout(fetchAllChapters(accessToken, bookId), CHAPTERS_TIMEOUT_MS)
+      .then((chs) => setChapters(chs))
+      .catch((e) => setChaptersError(e))
+      .finally(() => setChaptersLoading(false));
+  }, [accessToken, bookId]);
+
   useEffect(() => {
     if (!open || !accessToken) return;
-    setLoading(true);
+    seededRef.current = false;
+    seededSelectionRef.current = false;
+    setMetaReady(false);
     setPage(0);
+    // Reset the advanced overrides for this open — the component stays mounted (rendered with
+    // an `open` prop), so without this a one-off force-retranslate/verifier choice would carry
+    // into the next, unrelated translate.
+    setAdvancedOpen(false);
+    setVerifyEnabled(false);
+    setVerifierModelRef('');
+    setQaDepth('standard');
+    setMaxQaRounds(2);
+    setForceRetranslate(false);
+    setThinkingEnabled(false);
+    // D6: the caller-pinned language applies immediately (settings fills the rest below).
+    setSelectedLang(preselectedLang || '');
+    setSelectedModelRef('');
+    // D8: seed the selection from the caller-pinned ids immediately — the ids are already known,
+    // so submit works even if the chapter list below fails or hangs.
+    if (preselectedChapterIds && preselectedChapterIds.length > 0) {
+      setSelectedChapters(new Set(preselectedChapterIds));
+      seededSelectionRef.current = true;
+    } else {
+      setSelectedChapters(new Set());
+    }
+
+    // Fast metadata — coverage + settings need no big fetch, so the pickers render without
+    // waiting on the chapter list (T5). Seed lang/model ONCE, and never clobber a value the
+    // user picked meanwhile (D7 — functional set keeps a non-empty prev).
+    let cancelled = false;
     Promise.all([
-      fetchAllChapters(accessToken, bookId),
       translationApi.getBookCoverage(accessToken, bookId).catch(() => null),
       translationApi.getBookSettings(accessToken, bookId).catch(() => null),
-    ])
-      .then(([chs, cov, bkSettings]) => {
-        setChapters(chs);
-        setCoverage(cov);
-        setSettings(bkSettings);
-        // D6: the caller-pinned language (a matrix column) wins over the book default.
-        const lang = preselectedLang || bkSettings?.target_language || '';
-        setSelectedLang(lang);
-        setSelectedModelRef(bkSettings?.model_ref || '');
-        // Default selection: caller-scoped chapters (per-chapter re-translate) when
-        // given, else everything that needs translation for the default language.
-        const preset = preselectedChapterIds?.filter((id) => chs.some((c) => c.chapter_id === id));
-        if (preset && preset.length > 0) {
-          setSelectedChapters(new Set(preset));
-        } else {
-          const cells = coverageMapFor(cov, lang);
-          const { byId } = classifyChapters(chs.map((c) => c.chapter_id), cells);
-          setSelectedChapters(new Set(needsIds(byId)));
-        }
-        // Reset the advanced overrides each time the modal opens — it stays mounted
-        // (rendered with an `open` prop), so without this a one-off force-retranslate
-        // or verifier choice would silently carry into the next, unrelated translate.
-        setAdvancedOpen(false);
-        setVerifyEnabled(false);
-        setVerifierModelRef('');
-        setQaDepth('standard');
-        setMaxQaRounds(2);
-        setForceRetranslate(false);
-        setThinkingEnabled(false);
-      })
-      .catch((e) => toast.error((e as Error).message))
-      .finally(() => setLoading(false));
-    // presetKey (not the array identity) gates re-runs so an inline `[chapterId]`
-    // prop doesn't trigger a refetch loop while the modal is open.
+    ]).then(([cov, bkSettings]) => {
+      if (cancelled) return;
+      setCoverage(cov);
+      setSettings(bkSettings);
+      if (!seededRef.current) {
+        seededRef.current = true;
+        setSelectedLang((prev) => prev || preselectedLang || bkSettings?.target_language || '');
+        setSelectedModelRef((prev) => prev || bkSettings?.model_ref || '');
+      }
+      setMetaReady(true);
+    });
+
+    loadChapters();
+    return () => { cancelled = true; };
+    // presetKey (not the array identity) gates re-runs so an inline `[chapterId]` prop doesn't
+    // trigger a refetch loop while the modal is open. loadChapters is stable per (token,bookId).
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, accessToken, bookId, presetKey]);
+
+  // Default chapter selection = "everything that needs work" for the current language, seeded
+  // ONCE per open and only when the caller did not pin a selection (keeps the user in control).
+  useEffect(() => {
+    if (!open || seededSelectionRef.current || chapters.length === 0 || !metaReady) return;
+    const cells = coverageMapFor(coverage, selectedLang);
+    const { byId } = classifyChapters(chapters.map((c) => c.chapter_id), cells);
+    setSelectedChapters(new Set(needsIds(byId)));
+    seededSelectionRef.current = true;
+  }, [open, chapters, coverage, selectedLang, metaReady]);
 
   // Per-chapter status + aggregate counts for the selected language.
   const { byId: statusById, counts } = useMemo(() => {
@@ -310,12 +355,6 @@ export function TranslateModal({ open, onClose, bookId, onJobCreated, preselecte
       size="2xl"
       footer={footer}
     >
-      {loading ? (
-        <div className="flex items-center justify-center py-12">
-          <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
-          <span className="ml-2 text-xs text-muted-foreground">{t('translate.loading_chapters')}</span>
-        </div>
-      ) : (
         <div className="space-y-4">
           {/* Language + Model row */}
               <div className="grid grid-cols-2 gap-3">
@@ -545,6 +584,18 @@ export function TranslateModal({ open, onClose, bookId, onJobCreated, preselecte
                     {t('translate.chapters', { selected: selectedChapters.size, total: sortedChapters.length })}
                   </label>
                 </div>
+                {chaptersLoading ? (
+                  <div className="flex items-center justify-center py-8" data-testid="translate-chapters-loading">
+                    <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+                    <span className="ml-2 text-xs text-muted-foreground">{t('translate.loading_chapters')}</span>
+                  </div>
+                ) : chaptersError ? (
+                  // T5/D9: a rejecting OR hanging chapter fetch recovers here with a typed
+                  // message + Retry, scoped to the checklist — the pickers above stay usable, and
+                  // if a selection was preselected the footer submit stays enabled (D8).
+                  <TranslationErrorState compact error={chaptersError} onRetry={loadChapters} />
+                ) : (
+                  <>
                 {/* Quick-select chips */}
                 <div className="mb-2 flex flex-wrap items-center gap-1.5 text-[10px]">
                   <span className="text-muted-foreground">{t('translate.quick_label')}</span>
@@ -604,9 +655,10 @@ export function TranslateModal({ open, onClose, bookId, onJobCreated, preselecte
                   className="mt-2 justify-center"
                   labels={{ page: t('translate.page'), prev: t('translate.prev'), next: t('translate.next') }}
                 />
+                  </>
+                )}
               </div>
             </div>
-      )}
     </FormDialog>
   );
 }

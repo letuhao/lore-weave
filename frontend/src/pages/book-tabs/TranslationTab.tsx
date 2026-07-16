@@ -14,6 +14,7 @@ import { getLanguageName } from '@/lib/languages';
 import { usePagedList } from '@/components/pagination/usePagedList';
 import { Pager } from '@/components/pagination/Pager';
 import { TranslateModal } from './TranslateModal';
+import { TranslationErrorState } from '@/features/translation/components/TranslationErrorState';
 import { SegmentDrilldownModal } from '@/features/translation/components/SegmentDrilldownModal';
 import { ExtractionWizard } from '@/features/extraction/ExtractionWizard';
 
@@ -142,7 +143,7 @@ export function TranslationTab({
   // T2-M3: per-segment drill-down target (chapter × language), null when closed.
   const [drillTarget, setDrillTarget] = useState<{ chapterId: string; lang: string; title?: string } | null>(null);
 
-  const { data: coverageData, isLoading: coverageLoading, error: coverageError } = useQuery({
+  const { data: coverageData, isLoading: coverageLoading, error: coverageError, refetch: refetchCoverage } = useQuery({
     queryKey: ['translation-coverage', bookId],
     queryFn: () => translationApi.getBookCoverage(accessToken!, bookId),
     enabled: !!accessToken,
@@ -150,7 +151,7 @@ export function TranslationTab({
 
   // C: loop-fetch ALL active chapters (the backend clamps a single request to 100, so
   // a >100-chapter book would otherwise lose titles past the first page).
-  const { data: chaptersData } = useQuery({
+  const { data: chaptersData, isLoading: chaptersLoading, error: chaptersError, refetch: refetchChapters } = useQuery({
     queryKey: ['chapters', bookId, 'all'],
     queryFn: async () => {
       const items: Chapter[] = [];
@@ -169,8 +170,11 @@ export function TranslationTab({
 
   const coverage = coverageData ?? null;
   const chapters = chaptersData?.items ?? [];
-  const loading = coverageLoading;
-  const error = coverageError ? (coverageError as Error).message : '';
+  // T4 + T10 + D9: a coverage OR chapter-list failure is a real error surfaced with a typed
+  // message + Retry — never rendered as a raw proxy string, and never as an empty book.
+  const queryError = coverageError ?? chaptersError;
+  const loading = !queryError && (coverageLoading || chaptersLoading);
+  const retryAll = () => { void refetchCoverage(); void refetchChapters(); };
 
   const invalidate = () => {
     queryClient.invalidateQueries({ queryKey: ['translation-coverage', bookId] });
@@ -371,11 +375,13 @@ export function TranslationTab({
 
       {loading ? (
         <div className="space-y-3" data-testid="matrix-loading">
+          {/* T4: the skeleton must carry text — a textless skeleton reads as a broken panel. */}
+          <p className="text-xs text-muted-foreground">{t('matrix.loading')}</p>
           <Skeleton className="h-8 w-48" />
           <Skeleton className="h-64 w-full" />
         </div>
-      ) : error ? (
-        <div className="p-6 text-sm text-destructive" data-testid="matrix-error">{error}</div>
+      ) : queryError ? (
+        <TranslationErrorState error={queryError} onRetry={retryAll} />
       ) : !hasChapters ? (
         <EmptyState icon={Languages} title={t('matrix.no_chapters_title')} description={t('matrix.no_chapters_desc')} />
       ) : visibleLangs.length === 0 ? (
