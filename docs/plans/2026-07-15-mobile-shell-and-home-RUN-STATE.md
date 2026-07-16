@@ -70,6 +70,7 @@ unit-proven regardless.
 | R-MB-FEED-EMIT | a draft feed source not yet emitting a `notifications` row | M2 VERIFY enumerates the grep; a real gap → add the emit at the producer (buildable) |
 | **D-PUSH-LIVE-SMOKE** | the closed-tab VAPID push not proven live (waiver) | trigger: a deploy with a VAPID keypair + HTTPS + a browser push service (FCM/autopush). All mechanics unit-proven; routes live-smoked. Do the closed-tab content-free E2E then. |
 | **D-PUSH-ACCOUNT-TEARDOWN** | push subs not auto-deleted on ACCOUNT deletion (sign-out IS wired) | gate #2/#4: account erasure is admin-cli-driven (no AMQP event to bind). `DeleteAllForOwner` primitive is BUILT + ready. Wire it when an account-deletion event exists, OR add push_subscriptions to the admin erasure purge list. |
+| **D-D17-CLIENT-LIVE-SMOKE** | DF7 wired the D17 correct/forget client to existing gateway routes; the closed-loop browser E2E (correct a real day → facts re-extract; forget a person → KG entity + prose redaction) not yet run | gate #4-external: needs full stack + a local chat model (lm_studio) + a seeded diary entry & person entity. FE payloads are contract-matched to the gateway source (hook tests assert exact shape); routes pre-existed + were smoked at their own build. Do the closed-loop smoke on a stack-up. |
 
 ## 6 · Debt / drift log (append as you go — an empty drift log at the end is dishonest)
 - **M0 near-miss:** a top-level grep made me believe `nav.create`/`nav.you` existed; they did NOT (they were
@@ -114,6 +115,23 @@ unit-proven regardless.
   (mobile) scope, but a 28-key mechanical English-fallback fill across 14 locales was cheaper than a defer
   row and keeps the suite green. The broader `i18n:check` script still shows ~100 pre-existing repo-wide
   parity gaps in OTHER namespaces (studio, etc.) — genuinely out of scope, left as-is.
+
+- **DF7 completeness-audit find (built-but-unreachable):** a post-design-fidelity audit mapped the 20 draft
+  frames to implemented surfaces and found the D17 "correct a memory" (`/v1/assistant/correct`) and "forget a
+  person" (`/v1/assistant/forget`) capability was **fully built server-side (gateway + book + chat + knowledge
+  + worker legs) but had ZERO frontend** — no api method, no UI, desktop or mobile. Draft frames 6 ("Read it,
+  correct it — never share it") and 12 ("Control you can find later") both called for it. Per-screen
+  screenshots proved the screens I looked at; the audit caught the one I hadn't. Closed in DF7 (commit
+  48a5c0f1f): FE api + 2 hooks + inline journal-correction editor + a worded two-step forget confirm, +15 tests.
+  Lesson: "faithful" screenshots verify presence, not reachability of every built capability — a completeness
+  audit against the design's own frame list is what surfaces a server feature with no client.
+- **DF audit — remaining draft frames (NOT built-but-unreachable):** frame 8 "Weekly / descriptive patterns" is
+  already implemented (`ReflectionCard` renders dismissable chips in the Today sheet — present + reachable, just
+  co-located rather than a separate Weekly tab). Frame 9 "Practice session" rides the existing `/roleplay`; a
+  dedicated interview-practice screen is a larger unbuilt feature (gate #2 structural). Frame 13 "First-run
+  onboarding" is a new gated flow (gate #2) — its safe-default pieces (consent OFF, timezone confirm) already
+  exist functionally in Today. The draft's own footer flags these as "for the real build (noted, not
+  mock-fixable)". None are built-but-unreachable, so none are DF7's scope.
 
 ## 7 · Milestone / SESSION checkpoints
 - M1 ships "assistant is great on mobile" · M4 ships the PWA · M5 ships push. POST-REVIEW batched at each.
