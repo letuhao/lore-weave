@@ -10,6 +10,7 @@ import { useMemoryEntities } from './useMemoryEntities';
 import { useDiaryCorrection } from './useDiaryCorrection';
 import { useForgetEntity } from './useForgetEntity';
 import { useEraseAllData } from './useEraseAllData';
+import { useNewEpoch } from './useNewEpoch';
 
 export function useAssistantMemory() {
   const { bookId, reprovision, captureRail: rail } = useAssistant();
@@ -18,6 +19,7 @@ export function useAssistantMemory() {
   const correction = useDiaryCorrection(bookId);
   const forgetEntity = useForgetEntity(bookId);
   const eraseAll = useEraseAllData();
+  const newEpoch = useNewEpoch(bookId);
 
   // D17 — correcting a day re-distills its facts; forgetting a person deletes them. Both change what
   // "memory" holds, so refetch the journal + the What-I-know list + the capture rail after either succeeds.
@@ -51,6 +53,20 @@ export function useAssistantMemory() {
     }
     return ok;
   };
+  // A4 — a new epoch archives the old facts + mints a fresh project; recall + the What-I-know list must
+  // reflect the now-clean epoch (and re-provision so the session binds to the fresh project).
+  const handleNewEpoch = async () => {
+    const res = await newEpoch.startNewEpoch();
+    if (res?.epoch_closed) {
+      reprovision();
+      void memory.refresh();
+      void rail.refresh();
+    }
+    return res;
+  };
 
-  return { journal, memory, correction, forgetEntity, eraseAll, handleCorrect, handleForget, handleEraseAll };
+  return {
+    journal, memory, correction, forgetEntity, eraseAll, newEpoch,
+    handleCorrect, handleForget, handleEraseAll, handleNewEpoch,
+  };
 }

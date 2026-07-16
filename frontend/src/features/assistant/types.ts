@@ -141,3 +141,12 @@ export interface ScheduleRow {
   enabled: boolean;
   next_fire_at?: string | null;
 }
+
+// A4 (WS-2.10 / T18) — "I changed jobs": close the current epoch (archive + invalidate its facts so the
+// ex-employer's memory leaves default recall) and mint a fresh assistant project on the same diary book.
+export interface NewEpochResult {
+  epoch_closed: boolean;
+  closed_project_id?: string;
+  facts_invalidated?: number;
+  new_project_id?: string;
+}

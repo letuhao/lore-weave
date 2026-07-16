@@ -8,6 +8,7 @@ import type {
   DiaryPendingFact,
   EndDayResult,
   ForgetResult,
+  NewEpochResult,
   ProvisionResult,
   ReflectionPattern,
   ScheduleRow,
@@ -91,6 +92,17 @@ export const assistantApi = {
    *  keyed by the remembered person's `name`. Owner-gated server-side (JWT sub); scoped to the diary book. */
   forgetPerson(token: string, payload: { book_id: string; name: string }) {
     return apiJson<ForgetResult>('/v1/assistant/forget', {
+      method: 'POST',
+      token,
+      body: JSON.stringify(payload),
+    });
+  },
+
+  /** A4 (WS-2.10 / T18) — "I changed jobs": close the current epoch (archive + invalidate its facts) and
+   *  mint a fresh assistant project, so an ex-employer's confidential facts stop surfacing in recall.
+   *  Owner-gated server-side; scoped to the caller's diary book. Not a delete — old facts are archived. */
+  newEpoch(token: string, payload: { book_id: string }) {
+    return apiJson<NewEpochResult>('/v1/assistant/new-epoch', {
       method: 'POST',
       token,
       body: JSON.stringify(payload),

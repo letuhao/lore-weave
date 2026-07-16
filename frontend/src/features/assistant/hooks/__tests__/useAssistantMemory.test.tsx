@@ -11,6 +11,7 @@ const reprovision = vi.fn();
 const correct = vi.fn();
 const forget = vi.fn();
 const erase = vi.fn();
+const startNewEpoch = vi.fn();
 
 vi.mock('../../context/AssistantContext', () => ({
   useAssistant: () => ({ bookId: 'book-1', reprovision, captureRail: { refresh: railRefresh } }),
@@ -20,11 +21,12 @@ vi.mock('../useMemoryEntities', () => ({ useMemoryEntities: () => ({ entities: [
 vi.mock('../useDiaryCorrection', () => ({ useDiaryCorrection: () => ({ correct, correctingId: null }) }));
 vi.mock('../useForgetEntity', () => ({ useForgetEntity: () => ({ forget, forgettingName: null }) }));
 vi.mock('../useEraseAllData', () => ({ useEraseAllData: () => ({ erase, erasing: false }) }));
+vi.mock('../useNewEpoch', () => ({ useNewEpoch: () => ({ startNewEpoch, starting: false }) }));
 
 import { useAssistantMemory } from '../useAssistantMemory';
 
 beforeEach(() => {
-  [journalRefresh, memoryRefresh, railRefresh, reprovision, correct, forget, erase].forEach((m) => m.mockReset());
+  [journalRefresh, memoryRefresh, railRefresh, reprovision, correct, forget, erase, startNewEpoch].forEach((m) => m.mockReset());
 });
 
 describe('useAssistantMemory (A2 shared controller)', () => {
@@ -54,6 +56,20 @@ describe('useAssistantMemory (A2 shared controller)', () => {
     erase.mockResolvedValueOnce(false);
     await act(async () => { await result.current.handleEraseAll(); });
     expect(reprovision).toHaveBeenCalledTimes(1); // unchanged — no wipe, no rebind
+  });
+
+  it('handleNewEpoch re-provisions + refetches memory/rail only when the epoch closes', async () => {
+    const { result } = renderHook(() => useAssistantMemory());
+
+    startNewEpoch.mockResolvedValueOnce({ epoch_closed: true, facts_invalidated: 2 });
+    await act(async () => { await result.current.handleNewEpoch(); });
+    expect(reprovision).toHaveBeenCalledTimes(1);
+    expect(memoryRefresh).toHaveBeenCalledTimes(1);
+    expect(railRefresh).toHaveBeenCalledTimes(1);
+
+    startNewEpoch.mockResolvedValueOnce({ epoch_closed: false });
+    await act(async () => { await result.current.handleNewEpoch(); });
+    expect(reprovision).toHaveBeenCalledTimes(1); // unchanged on a no-op
   });
 
   it('handleCorrect refetches journal + memory + rail only when the amend lands', async () => {

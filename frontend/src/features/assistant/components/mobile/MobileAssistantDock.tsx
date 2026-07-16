@@ -161,6 +161,8 @@ export function MobileAssistantDock() {
         forgettingName={forgetEntity.forgettingName}
         onEraseAll={handleEraseAll}
         erasing={eraseAll.erasing}
+        onNewEpoch={mem.handleNewEpoch}
+        newEpochStarting={mem.newEpoch.starting}
       />
     </div>
   );

@@ -72,6 +72,9 @@ vi.mock('../../../hooks/useForgetEntity', () => ({
 vi.mock('../../../hooks/useEraseAllData', () => ({
   useEraseAllData: () => ({ erase: vi.fn().mockResolvedValue(true), erasing: false }),
 }));
+vi.mock('../../../hooks/useNewEpoch', () => ({
+  useNewEpoch: () => ({ startNewEpoch: vi.fn().mockResolvedValue({ epoch_closed: true }), starting: false }),
+}));
 vi.mock('../../../hooks/useAssistantSchedule', () => ({
   useAssistantSchedule: () => ({
     rows: [], loading: false, savingKind: null,

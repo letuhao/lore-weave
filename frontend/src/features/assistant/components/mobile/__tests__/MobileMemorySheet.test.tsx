@@ -107,4 +107,24 @@ describe('MobileMemorySheet (DF6)', () => {
     renderOpen({ entities: [] });
     expect(screen.queryByTestId('memory-erase-all')).toBeNull();
   });
+
+  // A4 — "changed jobs → new chapter": a two-step worded confirm; absent unless wired.
+  it('starts a new epoch only after a worded confirm, calling onNewEpoch', async () => {
+    const onNewEpoch = vi.fn().mockResolvedValue({ epoch_closed: true });
+    renderOpen({ entities: [], onNewEpoch });
+
+    expect(screen.queryByTestId('memory-new-epoch-confirm')).toBeNull();
+    fireEvent.click(screen.getByTestId('memory-new-epoch-open'));
+    expect(screen.getByTestId('memory-new-epoch-confirm')).toBeTruthy();
+    expect(onNewEpoch).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByTestId('memory-new-epoch-do'));
+    expect(onNewEpoch).toHaveBeenCalledOnce();
+    await waitFor(() => expect(screen.queryByTestId('memory-new-epoch-confirm')).toBeNull());
+  });
+
+  it('renders no new-chapter control when no onNewEpoch handler is wired', () => {
+    renderOpen({ entities: [] });
+    expect(screen.queryByTestId('memory-new-epoch')).toBeNull();
+  });
 });

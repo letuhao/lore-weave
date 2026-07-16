@@ -201,6 +201,8 @@ export function AssistantHomeStrip() {
         forgettingName={mem.forgetEntity.forgettingName}
         onEraseAll={handleEraseAll}
         erasing={mem.eraseAll.erasing}
+        onNewEpoch={mem.handleNewEpoch}
+        newEpochStarting={mem.newEpoch.starting}
       />
     </aside>
   );

@@ -45,9 +45,11 @@ vi.mock('../../hooks/useAssistantMemory', () => ({
     correction: { correctingId: null },
     forgetEntity: { forgettingName: null },
     eraseAll: { erasing: false },
+    newEpoch: { starting: false },
     handleCorrect: vi.fn(),
     handleForget,
     handleEraseAll,
+    handleNewEpoch: vi.fn().mockResolvedValue({ epoch_closed: true }),
   }),
 }));
 
