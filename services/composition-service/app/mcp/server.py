@@ -1104,6 +1104,91 @@ class _CanonRuleCreateArgs(ForbidExtra):
     kind: str | None = None
 
 
+# ── D-DIVERGENCE-MCP-TOOLS (S5) — agent parity for the dị bản manage surface. The SAFE
+#    verbs (list + archive) ship here; CREATE (derive) is a Tier-W action that mints a
+#    knowledge partition and MUST go through the AN-8 confirm spine — spec'd separately in
+#    docs/specs/2026-07-17-divergence-mcp-tools.md, not shipped here without its confirm.
+class _DerivativeArchiveArgs(ForbidExtra):
+    project_id: str
+    expected_version: int
+
+
+@mcp_server.tool(
+    name="composition_list_derivatives",
+    description=(
+        "List a book's what-if derivatives (dị bản): the canonical Work + every branch, "
+        "each with its name, branch_point, status and version. Pass ANY Work's project_id "
+        "from the book. VIEW required. Read-only — the agent's read side of the divergence "
+        "manage panel."
+    ),
+    meta=require_meta(
+        "R", "book",
+        synonyms=["list dị bản", "list what-if branches", "list derivatives", "list divergences", "show branches"],
+        tool_name="composition_list_derivatives",
+    ),
+)
+async def composition_list_derivatives(
+    ctx: MCPContext,
+    project_id: Annotated[str, "Any Work's project_id from the book."],
+) -> dict:
+    tc = _ctx(ctx)
+    works = WorksRepo(get_pool())
+    meta = await _book_or_deny(works, tc, UUID(project_id), GrantLevel.VIEW)
+    rows = await works.resolve_by_book(meta.book_id)
+    return {
+        "works": [
+            {
+                "project_id": str(w.project_id) if w.project_id else None,
+                "is_canonical": w.source_work_id is None,
+                "name": (w.settings or {}).get("derivative_name"),
+                "branch_point": w.branch_point,
+                "status": w.status,
+                "version": w.version,
+            }
+            for w in rows
+        ],
+    }
+
+
+@mcp_server.tool(
+    name="composition_archive_derivative",
+    description=(
+        "Archive a what-if derivative (dị bản) — a REVERSIBLE soft-delete (its chapters + "
+        "knowledge partition survive; restore by setting status active). Requires "
+        "`expected_version` (optimistic concurrency; stale → applied_conflict). EDIT "
+        "required. Rejects the canonical Work (only a derivative can be archived here)."
+    ),
+    meta=require_meta(
+        "A", "book",
+        synonyms=["archive dị bản", "archive derivative", "delete what-if branch", "remove branch"],
+        tool_name="composition_archive_derivative",
+    ),
+)
+async def composition_archive_derivative(ctx: MCPContext, args: _DerivativeArchiveArgs) -> dict:
+    tc = _ctx(ctx)
+    works = WorksRepo(get_pool())
+    pid = UUID(args.project_id)
+    await _book_or_deny(works, tc, pid, GrantLevel.EDIT)
+    work = await works.get(pid)
+    if work is None:
+        raise uniform_not_accessible()
+    # DERIVATIVE-only: archiving the canonical Work here would orphan the book — reject.
+    if work.source_work_id is None:
+        return {"success": False, "error": "NOT_A_DERIVATIVE — archive applies only to a dị bản, not the canonical Work"}
+    try:
+        updated = await works.update(pid, {"status": "archived"}, created_by=tc.user_id, expected_version=args.expected_version)
+    except VersionMismatchError as exc:
+        return {
+            "success": False, "outcome": "applied_conflict",
+            "error": "stale expected_version — refetch and retry", "current_version": exc.current.version,
+        }
+    if updated is None:
+        raise uniform_not_accessible()
+    out = updated.model_dump(mode="json")
+    out["_meta"] = {"undo_hint": "restore by PATCH status=active"}
+    return out
+
+
 @mcp_server.tool(
     name="composition_canon_rule_create",
     description=(

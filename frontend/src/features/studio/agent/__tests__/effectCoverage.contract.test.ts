@@ -54,6 +54,11 @@ const WRITE_TOOLS: Record<string, string> = {
   // writes are covered by bookEffects; create_work + generate were the residual hole).
   composition_create_work: 'compositionEffects',
   composition_generate: 'compositionEffects',
+  // S5 (D-DIVERGENCE-MCP-TOOLS) — archiving a dị bản removes it from the book's Work set, so the
+  // divergence manage panel + active-work resolvers (['composition','work']) must refresh. Covered
+  // by compositionEffects `/^composition_(create_work|generate|archive_derivative)/`. Its READ
+  // sibling composition_list_derivatives is asserted handler-free in READ_TOOLS below.
+  composition_archive_derivative: 'compositionEffects',
   // S1-A3 — the prose WRITE (bookEffects, via /^composition_write_prose/). Now enumerated so the
   // ledger guards it (and its READ sibling composition_get_prose is asserted handler-free below).
   composition_write_prose: 'bookEffects',
@@ -158,6 +163,7 @@ const READ_TOOLS = [
   'world_map_get', 'world_map_list',
   'composition_diagnostics', 'composition_get_work', 'composition_list_outline',
   'composition_get_prose', 'composition_get_outline_node',   // S1-A3 — reads MUST stay handler-free (no cache thrash)
+  'composition_list_derivatives',   // S5 — the divergence LIST read; NO handler (archive_derivative carries the effect)
   'composition_motif_get', 'composition_arc_get', 'plan_pass_status',
   'registry_list_skills', 'registry_get_workflow',
 ];

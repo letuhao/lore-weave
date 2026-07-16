@@ -59,6 +59,9 @@ EXPECTED_TOOLS = {
     "composition_canon_rule_create", "composition_canon_rule_update",
     "composition_canon_rule_delete", "composition_canon_rule_restore",
     "composition_write_prose",
+    # ── S5 (D-DIVERGENCE-MCP-TOOLS) — the dị bản manage surface (safe verbs). ──
+    "composition_list_derivatives",   # Tier R
+    "composition_archive_derivative",  # Tier A (reversible soft-delete)
     # Tier W
     "composition_publish", "composition_generate",
     "composition_decompile_arcs",  # close-21-28 P-O2a — confirm-gated arc decompiler
@@ -830,6 +833,96 @@ async def test_canon_rule_restore_unarchives():
         )
     assert res["id"] == str(rule.id)
     canon.restore.assert_awaited_once()
+
+
+# ── S5 (D-DIVERGENCE-MCP-TOOLS) — the dị bản manage surface (agent parity). ─────
+
+
+def _derivative(**kw) -> CompositionWork:
+    """A DERIVATIVE Work: source_work_id set (points at PROJECT), a branch_point, and
+    its name in settings.derivative_name (BE-13a persists it there)."""
+    return CompositionWork(
+        project_id=kw.get("project_id", uuid.uuid4()), created_by=TEST_USER, book_id=BOOK,
+        id=kw.get("id", uuid.uuid4()), source_work_id=kw.get("source_work_id", PROJECT),
+        branch_point=kw.get("branch_point", 3), status=kw.get("status", "active"),
+        version=kw.get("version", 1),
+        settings={"derivative_name": kw.get("name", "What if Kai never left")},
+    )
+
+
+async def test_list_derivatives_returns_canonical_plus_branches():
+    """The agent's read side: canonical Work + every branch, each with is_canonical +
+    the derivative name lifted from settings (the divergence panel's LIST)."""
+    import app.mcp.server as srv
+
+    async with _patched(grant_level=1) as s:
+        s.WorksRepo(None).resolve_by_book = AsyncMock(return_value=[_work(), _derivative()])
+        res = await srv.composition_list_derivatives(_Ctx(), project_id=str(PROJECT))
+    works = res["works"]
+    assert len(works) == 2
+    assert works[0]["is_canonical"] is True and works[0]["name"] is None
+    assert works[1]["is_canonical"] is False
+    assert works[1]["name"] == "What if Kai never left"
+    assert works[1]["branch_point"] == 3
+
+
+async def test_archive_derivative_rejects_the_canonical_work():
+    """Archiving the canonical Work would orphan the book — the tool must refuse it
+    (source_work_id is None ⇒ NOT_A_DERIVATIVE), never PATCH status on canon."""
+    import app.mcp.server as srv
+
+    async def get_canonical(pid):
+        return _work()  # source_work_id None
+
+    async with _patched(works_get=get_canonical) as s:
+        works = s.WorksRepo(None)
+        res = await srv.composition_archive_derivative(
+            _Ctx(), srv._DerivativeArchiveArgs(project_id=str(PROJECT), expected_version=1),
+        )
+    assert res["success"] is False
+    assert "NOT_A_DERIVATIVE" in res["error"]
+    works.update.assert_not_awaited()  # never touched the canonical row
+
+
+async def test_archive_derivative_soft_deletes_with_restore_hint():
+    """A dị bản archive is a reversible soft-delete: status→archived + a restore undo_hint."""
+    import app.mcp.server as srv
+
+    deriv = _derivative(status="active", version=2)
+    archived = _derivative(project_id=deriv.project_id, id=deriv.id, status="archived", version=3)
+
+    async def get_deriv(pid):
+        return deriv
+
+    async with _patched(works_get=get_deriv) as s:
+        s.WorksRepo(None).update = AsyncMock(return_value=archived)
+        res = await srv.composition_archive_derivative(
+            _Ctx(), srv._DerivativeArchiveArgs(project_id=str(deriv.project_id), expected_version=2),
+        )
+    assert res["status"] == "archived"
+    assert "restore" in res["_meta"]["undo_hint"].lower()
+
+
+async def test_archive_derivative_stale_version_is_applied_conflict():
+    """If-Match: a stale expected_version surfaces as applied_conflict with the current
+    version (the panel refetches + retries) — never a silent overwrite."""
+    import app.mcp.server as srv
+    from app.db.repositories import VersionMismatchError
+
+    deriv = _derivative(version=5)
+    current = _derivative(project_id=deriv.project_id, id=deriv.id, version=7)
+
+    async def get_deriv(pid):
+        return deriv
+
+    async with _patched(works_get=get_deriv) as s:
+        s.WorksRepo(None).update = AsyncMock(side_effect=VersionMismatchError(current))
+        res = await srv.composition_archive_derivative(
+            _Ctx(), srv._DerivativeArchiveArgs(project_id=str(deriv.project_id), expected_version=5),
+        )
+    assert res["success"] is False
+    assert res["outcome"] == "applied_conflict"
+    assert res["current_version"] == 7
 
 
 async def test_scene_link_create_returns_undo_hint():

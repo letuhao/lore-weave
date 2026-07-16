@@ -55,7 +55,11 @@ export function registerCompositionEffectHandlers(): void {
   if (registered) return;
   registered = true;
   registerEffectHandler(/^composition_canon_rule_/, compositionCanonEffect);
-  registerEffectHandler(/^composition_(create_work|generate)/, compositionWorkEffect);
+  // S5 (D-DIVERGENCE-MCP-TOOLS) — `archive_derivative` removes a dị bản from the book's Work set;
+  // the divergence manage panel + every active-work resolver read ['composition','work'], so an
+  // agent archive must refresh them (same WORK_KEYS as create_work). Pattern is `archive_derivative`
+  // (NOT `_derivative` broad) so the READ `composition_list_derivatives` matches NO handler.
+  registerEffectHandler(/^composition_(create_work|generate|archive_derivative)/, compositionWorkEffect);
 }
 
 /** Test-only: undo the idempotency guard so a test can re-register after clearEffectHandlers(). */
