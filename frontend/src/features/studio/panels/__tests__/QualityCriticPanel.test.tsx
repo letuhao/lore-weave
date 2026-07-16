@@ -13,6 +13,9 @@ vi.mock('@/auth', () => ({ useAuth: () => ({ accessToken: 'tok' }) }));
 const useWorkResolution = vi.fn();
 vi.mock('@/features/composition/hooks/useWork', () => ({
   useWorkResolution: (bookId: string, token: string | null) => useWorkResolution(bookId, token),
+  // D0 — the no-work branch now renders <WorkSetupCta>, which reuses these hooks.
+  useCreateWork: () => ({ mutateAsync: vi.fn().mockResolvedValue({ project_id: 'proj-new' }), isPending: false }),
+  usePendingWorkResolver: () => ({ state: 'idle', start: vi.fn(), retry: vi.fn() }),
 }));
 
 const listChapters = vi.fn();

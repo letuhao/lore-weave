@@ -26,7 +26,7 @@ export function QualityPromisesPanel(props: IDockviewPanelProps) {
   // `unavailable` (composition-service is DOWN) must NOT render as "no co-writer session yet" —
   // unconsulted is not empty. See useQualityWork / RUN-STATE DR-27.
   const work = useQualityWork(host.bookId, accessToken);
-  if (work.kind !== 'ready') return <QualityWorkGate state={work} testIdPrefix="quality-promises" />;
+  if (work.kind !== 'ready') return <QualityWorkGate state={work} testIdPrefix="quality-promises" bookId={host.bookId} token={accessToken} />;
 
   return (
     <div data-testid="studio-quality-promises-panel" className="h-full min-h-0 overflow-auto">

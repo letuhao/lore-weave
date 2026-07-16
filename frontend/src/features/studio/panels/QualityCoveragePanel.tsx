@@ -26,7 +26,7 @@ export function QualityCoveragePanel(props: IDockviewPanelProps) {
   const work = useQualityWork(host.bookId, accessToken);
   const [modelRef, setModelRef] = useState('');
 
-  if (work.kind !== 'ready') return <QualityWorkGate state={work} testIdPrefix="quality-coverage" />;
+  if (work.kind !== 'ready') return <QualityWorkGate state={work} testIdPrefix="quality-coverage" bookId={host.bookId} token={accessToken} />;
 
   return (
     <div data-testid="studio-quality-coverage-panel" className="flex h-full min-h-0 flex-col gap-2 overflow-auto p-3 text-sm">

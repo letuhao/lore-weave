@@ -9,6 +9,7 @@ import { useAuth } from '@/auth';
 import { useQualityWork } from './useQualityWork';
 import { useStudioHost } from '../host/StudioHostProvider';
 import { useStudioPanel } from './useStudioPanel';
+import { WorkSetupCta } from './WorkSetupCta';
 
 const CARDS = [
   { panelId: 'quality-promises', icon: '🔓', titleKey: 'promisesTitle', descKey: 'promisesDesc' },
@@ -37,11 +38,14 @@ export function QualityHubPanel(props: IDockviewPanelProps) {
         </p>
       )}
       {work.kind === 'no-work' && (
-        <p data-testid="quality-hub-no-work" className="mb-3 text-xs text-neutral-500">
-          {t('quality.hubNoWorkHint', {
-            defaultValue: 'Promises, critic scores, and story coverage need a co-writer session — start composing a chapter first. Canon issues below still work either way.',
-          })}
-        </p>
+        <div data-testid="quality-hub-no-work" className="mb-3 flex flex-col items-start gap-2">
+          <p className="text-xs text-neutral-500">
+            {t('quality.hubNoWorkHint', {
+              defaultValue: 'Promises, critic scores, and story coverage need a co-writer session — set one up (or start composing a chapter). Canon issues below still work either way.',
+            })}
+          </p>
+          <WorkSetupCta bookId={host.bookId} token={accessToken} />
+        </div>
       )}
       <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
         {CARDS.map((c) => (

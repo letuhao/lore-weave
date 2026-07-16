@@ -36,7 +36,7 @@ export function QualityCriticPanel(props: IDockviewPanelProps) {
     enabled: !!accessToken,
   });
 
-  if (work.kind !== 'ready') return <QualityWorkGate state={work} testIdPrefix="quality-critic" />;
+  if (work.kind !== 'ready') return <QualityWorkGate state={work} testIdPrefix="quality-critic" bookId={host.bookId} token={accessToken} />;
 
   const chapters = chaptersQ.data?.items ?? [];
 

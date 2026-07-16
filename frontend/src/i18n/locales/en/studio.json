@@ -21,6 +21,11 @@
       "desc": "AI co-writer chat",
       "guideBody": "The AI co-writer for this book — chat with it about a scene, ask it to draft or revise a passage, or brainstorm what happens next. Open it when you want a conversational partner that already knows this book's characters, glossary, and prior chapters."
     },
+    "scene-compose": {
+      "title": "Scene Compose",
+      "desc": "Draft a scene with AI candidates",
+      "guideBody": "Draft a scene with the AI co-writer: pick a scene and a model, then Generate to stream a ghost draft — or turn on Diverge to get several candidates you can compare, edit, and accept. Accepting inserts the prose into the Editor for this chapter, and your regenerate/reject/edit choices teach the model. Open it when you want to write the next scene, not just chat about it."
+    },
     "editor": {
       "title": "Editor",
       "desc": "Manuscript editor",
@@ -487,6 +492,30 @@
       "title": "Chapter Revision Compare",
       "desc": "Full editor diff for one chapter revision pair",
       "empty": "Open a chapter's revision diff from Agent Mode's review panel."
+    },
+    "world-map": {
+      "title": "World Map",
+      "desc": "Create and edit a world's reference maps — upload a base image, drop and drag location pins, draw and reshape regions.",
+      "guideBody": "Author a world's raster maps. Upload a base image, then drop pins and draw regions on it. Drag a pin to move it (a drag is one absolute-coord PATCH on a stable marker id — never a delete-and-recreate) and drag a polygon vertex to reshape a region. Bind a pin or region to a glossary OR KG location entity (the picker labels the source). Every change saves to book-service; the assistant's world_map_* tools edit the same map live. Rename a map with optimistic-concurrency (If-Match), so a conflicting edit reloads instead of clobbering."
+    },
+    "place-graph": {
+      "title": "Place Graph",
+      "desc": "The book's places (locations) as a draggable node graph",
+      "guideBody": "Add and connect the book's places (locations) as a node graph. Type a name and press + Place to author a location; toggle Link places, pick two nodes and a predicate (contains / borders / route_to) to connect them; drag to arrange (saved server-side, shared across your devices); set a backdrop image (needs an open chapter). Click a node to open it in the Cast codex. Locations only — use Author other kinds to add characters, items, and the rest.",
+      "noWork": "Set up the co-writer in Compose to arrange places.",
+      "openCompose": "Open Compose",
+      "loading": "Loading world map…",
+      "authorOther": "Author other kinds →"
+    },
+    "cast": {
+      "title": "Cast",
+      "desc": "The book's cast — grouped, searchable, spoiler-safe; author & retire entities",
+      "guideBody": "Every character, place, organization and concept in this book's knowledge graph, grouped by kind and searchable, each with its spoiler-safe story-state (active/gone at your reading position). Create a new entity with + New, rename inline, edit aliases/kind, or retire (soft-archive) one. Click a row's arc glyph to open its Character Arc."
+    },
+    "character-arc": {
+      "title": "Character Arc",
+      "desc": "One character's events on a timeline, the active→gone band, and 1-hop relations",
+      "guideBody": "One character's events in order on a compact arc, spoiler-cut at your reading position, with the active→gone state band and the current 1-hop relations. Pick a character, edit it, or add a relation with + link entity."
     }
   },
   "sceneRail": {
@@ -557,6 +586,12 @@
     "glossary": "Glossary",
     "focus": "Focus",
     "translate": "Translate"
+  },
+  "sceneCompose": {
+    "empty": "Select a chapter in the manuscript navigator to draft its scenes here.",
+    "inserted": "Accepted into the manuscript.",
+    "insertFailed": "Could not insert — click into the chapter text in the Editor, then Accept again.",
+    "openedEditor": "Opened the Editor for this chapter — click into the text and Accept again to insert it."
   },
   "popout": {
     "invalid": "This pop-out link is invalid.",
@@ -681,8 +716,13 @@
     }
   },
   "quality": {
-    "noWork": "This book has no co-writer session yet — start composing a chapter first, then quality data will appear here.",
-    "hubNoWorkHint": "Promises, critic scores, and story coverage need a co-writer session — start composing a chapter first. Canon issues below still work either way.",
+    "noWork": "This book has no co-writer session yet — set one up (or start composing a chapter), then quality data will appear here.",
+    "hubNoWorkHint": "Promises, critic scores, and story coverage need a co-writer session — set one up (or start composing a chapter). Canon issues below still work either way.",
+    "setupWork": "Set up co-writer",
+    "settingUpWork": "Setting up…",
+    "setupWorkError": "Could not set up the co-writer. Try again.",
+    "setupWorkPending": "Your co-writer session was created but its knowledge project is still being set up. Try again shortly.",
+    "setupWorkRetry": "Retry",
     "pickModel": "Pick a model to analyze with…",
     "pickChapter": "Pick a chapter",
     "pickChapterHint": "Pick a chapter above to analyze its quality.",

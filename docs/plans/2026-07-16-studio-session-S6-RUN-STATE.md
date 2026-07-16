@@ -35,6 +35,8 @@ no-silent-fail · agent-parity · loop-connected · live-browser-proven · i18n+
 | S6-A3 · design drafts | DONE | screen-flywheel.html CREATED (the missing 5th cap); screen-quality-completion.html verified as existing draft for the other 4 (canon-rules/corrections/heal/progress) — sealed canon=2-panel + progress=category:editor. |
 | S6-A4 · detail spec | DONE | docs/specs/2026-07-16-studio-s6-canon-quality-progress.md — 6 deliverables, reconciled vs HEAD, milestone M0-M5, registry plan, test plan. |
 | S6-A5 · design REVIEW / edge-case pass | DONE | §14 edge register E1-E9, verified vs HEAD (works.py idempotent · CorrectionStatsTable separable · ManuscriptUnitProvider.version · approve.py async extraction). 2 corrections folded (E2 flywheel timing, E3 F2 intrusiveness). No blocker. |
+| **M0 · D0 Work-creation CTA** | DONE | `WorkSetupCta.tsx` (reuse useCreateWork+usePendingWorkResolver, idempotent POST /work); wired into `QualityWorkGate` no-work branch (NOT unavailable) + threaded bookId/token through critic/promises/coverage/hub. 30/30 vitest green (9 new + 21 existing), tsc clean. i18n en keys added. commit `<pending>`. |
+| M0 · X-4 compositionEffects | RE-SEQUENCED → M1 | Lane-B ledger is per-FILE all-or-nothing (canon_rule_* + composition_publish + composition_conformance_run); a handler for panels-not-yet-built is the silent-no-op class the ledger kills. Build with canon-rules (M1); PENDING-clear needs publish + conformance predicates (coordinate S4). |
 | _(session appends its build slices here)_ | | |
 
 ## REGISTERS  (append as you go — an empty DRIFT log at the end is dishonest, not clean)
