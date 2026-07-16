@@ -29,7 +29,7 @@ NO Playwright/CV build or run in this goal). Finish line = plan §0.
 |---|---|---|---|---|---|
 | **A1** ✅ | knowledge account-erase includes ARCHIVED epochs (right-to-erasure hole) via `list_all_assistant_project_ids` (archived-inclusive; recall keeps active-only). A1.2 (forget `:Passage`) = NON-ISSUE (diary never passage-indexed). A1.3 SEC-1 forged-`user_id` guard added. (c3f25b306) | HIGH | Y | ✅ | **EVIDENCE (pasted, committed c3f25b306):** knowledge **59 passed** on real PG :5555 (test_projects_repo incl. 2 new: erase-resolver-includes-archived + is-user-scoped; test_internal_admin unit); gateway assistant spec **43 passed** (incl. the A1.3 adversarial "forged user_id ignored → JWT sub wins"). **LIVE-SMOKE (rebuilt knowledge image):** seeded 1 archived + 1 active assistant epoch + a pending fact in the archived → `DELETE /internal/admin/assistant/erase?user_id=U` (no project_id) → `{projects_erased:2, pending_facts_deleted:1}` (archived INCLUDED — pre-fix would be 1), asserts projects_left=0/archived_left=0/pending_left=0. **/review-impl:** standards clean (resolver user-scoped; no provider/model/secret/table); no HIGH/MED; 2 LOW accepted (smoke seeded PG-only for archived — Neo4j cascade is per-project archived-agnostic + D-R27-tested; A1.2 rests on "diary never indexes" invariant — §6). |
 | **A2** ✅ | desktop parity — extracted `useAssistantMemory` (shared controller: journal/memory/correct/forget/erase + refetch handlers), consumed by BOTH the mobile dock and the desktop `AssistantHomeStrip`; strip gains Journal + Memory buttons opening the reused addressable sheets (incl. forget + erase danger-zone). (81f774c09) | HIGH | N | ✅ | **EVIDENCE (pasted, committed 81f774c09):** assistant suite **21 files / 85 passed**; **tsc 0**. New: `AssistantHomeStrip.desktop-parity` 3 (Journal+Memory reachable; forget + erase controls OPEN on desktop; erase two-step confirm→handler) + `useAssistantMemory` 3 (refetch-on-success-only; erase re-provisions+refreshes; correct gated on amended). Dock refactor regression-free (mutually-exclusive with strip → no double sheet mount). **/review-impl:** FE-only, standards clean (MVC hook owns logic; server-SSOT; no conditional unmount; no provider/model/secret/table); no HIGH/MED; LOW (handler coverage) CLOSED with the shared-hook test; 1 COSMETIC → D-A2-DESKTOP-SHEET-STYLE. |
-| **A3** | arm autonomous — fail-closed per-user schedule setting → `POST /v1/assistant/schedule`; toggle ON makes a job fire | HIGH | Y | ⬜ | |
+| **A3** ✅ | arm autonomous — scheduler `ListSchedules`+`GET /internal/schedules`; gateway `GET /v1/assistant/schedule` + full-set enum; FE `useAssistantSchedule` (fail-closed effective state) + `AutonomousSettings` on desktop strip + mobile Today sheet. **CONFIG FIX:** scheduler→chat wrong hostname (`chat`→`chat-service`) that made arming hollow. (ca372d6eb) | HIGH | Y | ✅ | **EVIDENCE (pasted, committed ca372d6eb):** scheduler Go — ListSchedules real-DB owner-scoped + GET auth/validation + upsert/nudge pass (pre-existing `TestReArm` unrelated, reproduced on fully-stashed clean tree); gateway assistant spec **48 passed** (5 new: GET proxy + server-derived id + full enum + fail-closed); FE **23 files / 93 passed**, tsc 0. **LIVE-SMOKE:** enable eod_distill via gateway→armed; GET reflects enabled+armed; forced due → LIVE scheduler **claimed + FIRED** (log `fired count=1`, `last_fired_at` set, re-armed 21:00, breaker clean → enqueue to chat SUCCEEDED); toggle OFF→enabled=false. **/review-impl:** SET-1..8 compliant; MED (proactive_nudge silent-no-op via separate default-OFF `proactive_enabled`) FIXED — not exposed, deferred D-A3-PROACTIVE-SETTING; 2 LOW accepted (enum arrays not machine-synced=fail-safe reject; nudge notification path not smoked). |
 | **A4** | new-epoch FE (changed-jobs isolation) + proactive LLM content via provider-registry | MED | Y | ⬜ | |
 | **A5** | Practice interview nav — entry from assistant + mobile path | LOW | N | ⬜ | |
 | **B-PLAN** | `docs/plans/2026-07-16-assistant-blackbox-qc.md` — persona×scenario matrix, scenario→tool-layer map, data-testid inventory, run sequencing (PLAN ONLY) | — | N | ⬜ | committed hash |
@@ -42,6 +42,14 @@ Sequence: A1 → A2 → A3 → A4 → A5 → B-PLAN. (A2/A5 FE-only; A1/A3/A4 li
 - 2026-07-16 · Track B is PLAN-ONLY in this goal; Playwright/CV build+run is a SEPARATE later goal.
 
 ## 5 · Parked register (gate each)
+- **D-A3-PROACTIVE-SETTING** (A3 review MED, deferred) — `proactive_nudge` isn't exposed as an autonomous
+  toggle because chat's proactive-turn seam double-gates on a separate `assistant.proactive_enabled` setting
+  (default OFF, `chat-service/app/routers/ai_settings.py`) that has no FE. **Gate:** wire the full chain —
+  a "Proactive check-ins" toggle that sets BOTH the schedule row AND `proactive_enabled` (one concept, one
+  control) — plus the grounded LLM content (see A4.2 / D-PROACTIVE-LLM-CONTENT). Until then, exposing it
+  would silently no-op (the no-silent-no-op rule).
+- **D-A3-PROACTIVE-SETTING** note: also nudge's notification-service path wasn't live-smoked (only eod_distill
+  fired); the `NOTIFICATION_SERVICE_INTERNAL_URL` (:8091) matches every other service's addressing.
 - **D-A2-DESKTOP-SHEET-STYLE** (A2 COSMETIC) — the desktop strip reuses the mobile `Sheet` (Radix Dialog
   styled as a bottom-sheet), so on a wide desktop the Journal/Memory panels open bottom-anchored. Functional
   + accessible (focus-trap, Escape, aria). **Gate:** a desktop-shaped panel/side-drawer is a polish pass, not
@@ -56,6 +64,13 @@ Sequence: A1 → A2 → A3 → A4 → A5 → B-PLAN. (A2/A5 FE-only; A1/A3/A4 li
 - **A1 live-smoke scope:** the archived-epoch smoke seeded PG rows only (passages/kg=0), so the archived
   project's Neo4j cascade wasn't exercised end-to-end. Accepted: the A1 change is the RESOLVER only; the
   per-project cascade is unconditional on `is_archived` and covered by D-R27 tests.
+- **A3 real config bug found + fixed:** scheduler enqueued to `http://chat:8090`, but the service hostname is
+  `chat-service` (no `chat` alias) — DNS "no such host", so EVERY armed autonomous job silently breaker-looped
+  and never reached chat. Arming would have been hollow. Fixed compose env + config.go default + the missing
+  notification URL. Live-proven: post-fix, eod_distill fired with a clean breaker.
+- **A3 pre-existing failure (NOT mine):** `TestReArm_UsesLocalFireTime_NotRawInterval` fails on a
+  fully-stashed clean scheduler tree (re-arm lands at ~claim time, not the next 21:00). My A3 changes don't
+  touch `recordSuccess`/`ComputeNextFireAt`; it belongs to the concurrent scheduler track. Recorded for honesty.
 
 ## 7 · Checkpoints
 - Owner checkpoint after each cross-service slice (A1, A3) and at B-PLAN. Commit per slice with pasted evidence.
