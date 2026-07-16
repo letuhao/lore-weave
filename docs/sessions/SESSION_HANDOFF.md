@@ -34,17 +34,20 @@
 > drive-executes-deterministic-steps (`D-G5-DRIVE-EXEC`; neither blocks — S06 is green with the flag).
 > **Note:** the dev composition-service container currently runs with `PLANFORGE_RULES_AUTOCOMPILE=true`.
 >
-> **▶ NEXT — plan is CLOSED. Only 2 heavy-pipeline live-smokes deferred (both mechanism-proven, genuinely
-> un-stageable in dev without building a large fixture):**
-> - **D-O11-PROMOTE-FLOW-SMOKE** — the what-if *deep* alt-take→generate→promote flow (needs a staged
->   book+Work+scene-graph+LLM fixture; the port itself + SceneGraphCanvas render are unit+live proven).
-> - **D-F2-CONFORMANCE-PIPELINE-SMOKE** — the full browser edit→publish→re-index→`prose_drift`→run-clears
->   chain (needs the Tier-W conformance worker + KG-index revisions + real prose; the flip logic is proven by
->   14 assertions + the overlay is live-reachable).
+> **▶ FULLY CLOSED (2026-07-16) — the two remaining deep-flow live-smokes are now BOTH proven live, harness-
+> first, on the local model (no paid spend):**
+> - **F2 ✅** (`c070f1d5f`) — `D-F2-CONFORMANCE-PIPELINE-SMOKE` cleared: staged chapters+revisions+snapshot,
+>   bumped `kg_indexed_revision_id` → `prose_drift` appeared through the REAL `/conformance/status` route and
+>   cleared on re-conform; the Plan-Hub **"conformance drift" badge flips both ways** in the browser.
+> - **O-11 ✅** (`511e0ec60`, crash fix `e3c5bb4dd`) — `D-O11-PROMOTE-FLOW-SMOKE` cleared: the deep flow
+>   branch-previews → **generates an alt-take** (2090 chars ghost prose on local gemma-4) → **promotes** into a
+>   derivative Work (persisted:true). **It caught a real white-screen crash** (the panel passed the Work
+>   envelope, not the inner Work; the unit test mocked a bare work and hid it) — FIXED + regression-tested.
 >
-> Also still tracked (unchanged): P-O1a (rules pre-flight), P-O2a (arc-decompile confirm wrapper),
-> D-G2-SETUSER (per-user enforcement SET-1). Superseded: D-O11-ATTENDED, D-PHASE3-ATTENDED (the PO chose
-> attempt-now; both delivered with pasted live evidence above).
+> **Only 1 non-blocking item left: `D-G5-DRIVE-EXEC`** (PO-DECIDE) — flip `planforge_rules_autocompile`'s
+> deploy default ON platform-wide / generalize drive-executes-deterministic-steps. S06 is green with the flag
+> as-is; this is a product choice, not a gap. Also still tracked (unchanged): P-O1a, P-O2a, D-G2-SETUSER.
+> Superseded: D-O11-ATTENDED, D-PHASE3-ATTENDED.
 
 ## ⭐ Track: MOBILE — shell + super-app home + PWA + push — **SHIPPED (M0–M5, 2026-07-15)**
 
