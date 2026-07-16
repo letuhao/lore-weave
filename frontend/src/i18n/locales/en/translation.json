@@ -89,7 +89,8 @@
     "original_label": "Original — {{lang}}",
     "translation_label": "Translation — {{lang}}",
     "source_fallback": "Source",
-    "no_translated": "(No translated content)"
+    "no_translated": "(No translated content)",
+    "original_unavailable": "The original text is currently unavailable."
   },
   "block_review": {
     "unchanged": "Unchanged",

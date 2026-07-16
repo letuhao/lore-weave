@@ -56,7 +56,10 @@ export function useConfirmName(bookId: string, targetLang: string) {
         );
       }
       return 'confirmed';
-    } catch {
+    } catch (e) {
+      // S8: don't discard the exception silently — the generic 'error' result stays, but log
+      // the cause so a real failure (auth, 5xx) is diagnosable rather than invisible.
+      console.error('useConfirmName: confirm failed', e);
       return 'error';
     } finally {
       setSubmitting(false);

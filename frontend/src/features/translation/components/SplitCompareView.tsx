@@ -72,8 +72,12 @@ export function SplitCompareView({ bookId, chapterId, versionId, originalLanguag
         <div className="flex-1 overflow-y-auto p-6">
           {originalBlocks ? (
             <div className="mx-auto max-w-[680px]"><ContentRenderer blocks={originalBlocks} mode="compact" /></div>
-          ) : (
+          ) : originalBody ? (
             <div className="whitespace-pre-wrap font-serif text-[15px] leading-[2.0] text-foreground/85">{originalBody}</div>
+          ) : (
+            // S6: a failed getDraft left this pane blank (the translation pane had a fallback,
+            // this one did not) — show the same "unavailable" copy instead of empty space.
+            <p className="text-sm text-muted-foreground">{t('compare.original_unavailable')}</p>
           )}
         </div>
       </div>
