@@ -27,9 +27,21 @@ export function WorkSetupCta({ bookId, token }: { bookId: string; token: string 
   const onSetup = async () => {
     try {
       const work = await create.mutateAsync();
-      // Greenfield Work created during a knowledge outage → project_id null. Poll to backfill; the
-      // resolver invalidates the work query on success. Otherwise useCreateWork.onSuccess already did.
-      if (!work.project_id && work.id) resolver.start(work.id);
+      if (work.project_id) {
+        // Project-backed Work — useCreateWork.onSuccess already invalidated the work query, so the
+        // gate re-resolves to `ready`. Nothing more to do here.
+        return;
+      }
+      if (work.id) {
+        // Greenfield Work created during a knowledge outage → project_id null. Poll to backfill by
+        // its surrogate id; the resolver invalidates the work query once the project is stamped.
+        resolver.start(work.id);
+        return;
+      }
+      // Neither a project nor a surrogate id: nothing we can resolve or poll. A user pressed the
+      // button and NOTHING would happen — a false no-op is a bug (silent-success class), so surface
+      // it rather than leave the gate silently stuck.
+      toast.error(t('quality.setupWorkError', { defaultValue: 'Could not set up the co-writer. Try again.' }));
     } catch {
       toast.error(t('quality.setupWorkError', { defaultValue: 'Could not set up the co-writer. Try again.' }));
     }
@@ -62,7 +74,7 @@ export function WorkSetupCta({ bookId, token }: { bookId: string; token: string 
       type="button"
       data-testid="work-setup-cta"
       onClick={onSetup}
-      disabled={busy}
+      disabled={busy || !token}
       className="rounded bg-sky-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-sky-500 disabled:opacity-50"
     >
       {busy

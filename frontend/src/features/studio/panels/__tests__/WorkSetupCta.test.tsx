@@ -64,6 +64,19 @@ describe('WorkSetupCta', () => {
     await waitFor(() => expect(mocks.toastError).toHaveBeenCalled());
   });
 
+  it('surfaces an error (never a silent no-op) when the created Work has neither a project nor an id', async () => {
+    mocks.mutateAsync.mockResolvedValue({ project_id: null, id: null });
+    render(<WorkSetupCta bookId="b1" token="tok" />);
+    fireEvent.click(screen.getByTestId('work-setup-cta'));
+    await waitFor(() => expect(mocks.toastError).toHaveBeenCalled());
+    expect(mocks.resolver.start).not.toHaveBeenCalled();
+  });
+
+  it('disables the CTA when there is no auth token', () => {
+    render(<WorkSetupCta bookId="b1" token={null} />);
+    expect(screen.getByTestId('work-setup-cta')).toBeDisabled();
+  });
+
   it('disables the CTA while a create/poll is in flight', () => {
     mocks.resolver.state = 'resolving';
     render(<WorkSetupCta bookId="b1" token="tok" />);
