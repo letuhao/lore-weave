@@ -157,6 +157,8 @@ export function DivergenceManagerView({ bookId, token }: { bookId: string; token
             <div className="p-2.5">
               {m.spec.isLoading ? (
                 <div className="text-[11px] text-muted-foreground">{t('divergence.specLoading', { defaultValue: 'Loading spec…' })}</div>
+              ) : m.spec.isError ? (
+                <div data-testid="divergence-spec-error" className="text-[11px] text-red-600">{t('divergence.specError', { defaultValue: 'Could not load the branch spec — try reselecting it.' })}</div>
               ) : s ? (
                 <dl className="grid grid-cols-[80px_1fr] gap-x-2 gap-y-1 text-[11px]">
                   <dt className="text-muted-foreground">{t('divergence.taxonomy', { defaultValue: 'Taxonomy' })}</dt>
