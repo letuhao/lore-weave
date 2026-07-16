@@ -94,6 +94,15 @@ no-silent-fail · agent-parity · loop-connected · live-browser-proven · i18n+
   hoist the compose stream/ghost above the dock. Related to CLAUDE.md "never conditionally unmount
   stateful components".
 ### DRIFT  (near-misses, bars nearly lowered, tests nearly skipped)
+- 2026-07-16 · **COMMIT RACE (shared index, no lost work).** I `git add`-ed only S1's clean files
+  intending a pathspec commit, but before my `git commit` ran, S6's `git commit` (no pathspec) SWEPT
+  the shared index and committed my staged files under **9c6a6d695** (studio-s6 quality-corrections).
+  My own commit **420d008d8** ended up with just ja/studio.json + the NOTE message. **Net: nothing
+  lost — HEAD has all my components + registration (catalog/enum/contract) + all 18 locales, and
+  panelCatalogContract 9/9 passes.** The "clean partial commit" strategy is FUTILE on a shared index
+  when other sessions commit without pathspec — any session's commit co-commits everyone's staged
+  work. Attribution is cross-wired but functionally correct; NOT worth rebasing shared history to fix.
+  Reinforces [[git-index-may-carry-prestaged-unrelated-changes]].
 - 2026-07-16 · **CONFOUND: 8 sessions share the `:5199` vite dev server w/ HMR.** The S1-D1/D2
   "blockers" (dock jumps to Welcome / panel state lost) were observed on that shared HMR server — a
   concurrent session's file edit pushes an HMR update that REMOUNTS the dock (onReady re-fires →
