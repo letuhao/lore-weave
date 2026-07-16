@@ -60,6 +60,16 @@ after all four close, OR when blocked on one of the 4 critical classes.
 | M2b · BE-9c CORRECTABLE_OPERATIONS allowlist (true denominator) | DONE | CORRECTABLE_OPERATIONS=("draft_scene","draft_chapter","stitch_chapter") + j.operation=ANY() in correction_stats; NOT selection_edit STAYS (F-Q3a). 5/5 correction_stats integration green (throwaway DB, incl excludes_non_draft_operations). commit `35fae4ace`. |
 | **M2 · LIVE-QC quality-corrections** | DONE | headless playwright on the static FE :5199: login → studio → command palette "Corrections" → panel RENDERS `studio-quality-corrections-panel` with real stats (Diverge 1 / Stream 8). **M2 CLEARED to §2 bar.** (MCP browsers were locked by concurrent sessions → own playwright instance via frontend node_modules; QC harness reusable for M3/M4/M5.) |
 
+| **M3 · quality-heal** | DONE | PolishPanel ported behind gate + chapter-picker + server-side apply-seam (patchDraft, Polish-run draft_version as OCC — E1 stale guard, 412 surfaced). 22/22 vitest. Live-QC :5199: palette "Self-heal" → panel + chapter picker + Run Polish operable. commit `6992652b1`. legacyParity polish→quality-heal. |
+| **M4 · progress + BE-P2** | DONE | ProgressPanel ported (category editor) + BE-P2 per-user `composition_progress_goal` table + PUT /progress/goal + read-through + SET-1 source (TENANCY FIX). FE 17/17 + BE-P2 2/2 (per-user isolation, throwaway DB). Live-QC :5199: palette "Progress" → today/streak/book-total 1,310/sparkline. commit `c6379eeec`. legacyParity progress→progress. |
+| **M5 · flywheel** | DONE | FlywheelPanel ported (category knowledge) + deep-link RETARGET (selectTab→host.openPanel cast/kg-timeline/kg-graph) + legacyParity conflation fix (flywheel→flywheel not quality-corrections). 16/16 vitest. Live-QC :5199: palette "Flywheel" → panel renders (empty-state valid). commit `e34895040`. |
+
+## ✅ S6 CLEARED (2026-07-16)
+All 6 S6 capabilities operable in the Studio to the §2 bar, each unit-green + live-browser-QC-proven on :5199:
+D0 Work-CTA · **quality-canon-rules** (M1) · **quality-corrections** (M2) · **quality-heal** (M3) · **progress** (M4, +BE-P2 tenancy) · **flywheel** (M5).
+Commits: e8e83b894 · f10ca60a5/769aa8358/2c73b09da · 9c6a6d695/35fae4ace · 6992652b1 · c6379eeec · e34895040.
+Deferred (DEBT, beyond-bar or coordination): M1.4 polish (412 rich-UI · focusRuleId OUT · kind field); flywheelEffects Lane-B (publish→refresh, keys on extraction-complete/E2, PENDING s6-m5); conformanceEffects (S4); F2 flywheel auto-open-on-extraction-complete.
+
 **QC HARNESS (reusable):** static FE = `npx vite build --outDir dist-s6` (bypasses S4 tsc) + `node scratchpad/s6-fe-static.mjs` (serves dist-s6 :5199, proxies /v1→:3123). Live-QC = a headless-playwright script (import from `frontend/node_modules/playwright` via file:// URL) driving :5199 (login claude-test → `/books/019f6553-…/studio` → command palette → assert panel testid). Rebuild dist-s6 per slice.
 
 ## REGISTERS  (append as you go — an empty DRIFT log at the end is dishonest, not clean)
