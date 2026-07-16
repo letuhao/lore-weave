@@ -223,10 +223,11 @@ services:
       # (the FE already polls GET /jobs/{id}).
       COMPOSITION_WORKER_ENABLED: ${COMPOSITION_WORKER_ENABLED:-true}
       # close-21-28 D-G5-DRIVE-EXEC — rules-mode propose auto-compiles its parsed arcs inline
-      # (deterministic, $0). Deploy ceiling, default OFF (preserves the GUI's propose→review→compile
-      # HIL flow); ON makes structure_node>0 a consequence of a governance-driven rules propose
-      # instead of a coin-flip on a weak agent chaining a second plan_compile call (S06 DR-G5-REROLL).
-      PLANFORGE_RULES_AUTOCOMPILE: ${PLANFORGE_RULES_AUTOCOMPILE:-false}
+      # (deterministic, $0, idempotent). Platform default ON (PO-decided 2026-07-16): rules mode is a
+      # deterministic transcription with nothing to review between propose and compile, so structure_node>0
+      # becomes a consequence of a governance-driven rules propose instead of a coin-flip on a weak agent
+      # chaining a second plan_compile call (S06 DR-G5-REROLL). Set FALSE to restore a propose→review step.
+      PLANFORGE_RULES_AUTOCOMPILE: ${PLANFORGE_RULES_AUTOCOMPILE:-true}
       # W5 motif-conformance — the per-scene producer (judge each generated scene vs
       # its bound motif) + the calibrated label. ENABLED 2026-06-28 (the W5 judge gate
       # is satisfied: kappa 1.0 / 0.762 ≥ thresholds). Single-local-judge, so the FE

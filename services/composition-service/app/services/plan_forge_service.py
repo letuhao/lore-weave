@@ -250,9 +250,16 @@ class PlanForgeService:
         A propose that parses ZERO arcs simply compiles nothing (the flag is a no-op on a bad parse).
         """
         spec_art = await self._runs.latest_artifact(book_id, run_id, "spec")
-        arc_ids = [
-            a["id"] for a in (spec_art.content.get("arcs", []) if spec_art else []) if a.get("id")
-        ]
+        content = spec_art.content if spec_art is not None else None
+        raw_arcs = content.get("arcs") if isinstance(content, dict) else None
+        # Only autocompile when the spec genuinely carries a list of arc dicts. A degraded read (or a
+        # mocked repo in a unit test) yields something that is not a list ⇒ no arcs ⇒ a safe no-op, never
+        # a crash — the propose already succeeded and stands on its own.
+        arc_ids = (
+            [a["id"] for a in raw_arcs if isinstance(a, dict) and a.get("id")]
+            if isinstance(raw_arcs, list)
+            else []
+        )
         for arc_id in arc_ids:
             try:
                 await self.compile(created_by, book_id, run_id, arc_id=arc_id)

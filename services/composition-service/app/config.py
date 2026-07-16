@@ -34,18 +34,19 @@ class Settings(BaseSettings):
     composition_job_sweep_secs: int = 60
     composition_job_sweep_timeout_secs: int = 900
 
-    # close-21-28 D-G5-DRIVE-EXEC — rules-mode propose auto-compile (deploy ceiling, default OFF).
-    # In `rules` mode the propose is a DETERMINISTIC transcription of an authored outline — there is
-    # no LLM judgment between propose and compile, so a valid parse can materialise its structure
-    # inline instead of depending on a second `plan_compile` call. The S06 flagship exposed that a
-    # weak agent reliably PROPOSES (valid numbered-header spec → arcs) but drops the follow-up compile
-    # (DR-G5-REROLL: 6 live gemma-4 rolls proposed, 0 compiled); the rail drive can hold+re-prompt but
-    # by G1 design does not execute the deterministic step. When ON, a rules-mode propose that parses
-    # ≥1 arc auto-compiles every arc so `structure_node>0` is a consequence of the governance-driven
-    # propose, not a coin-flip on the model. OFF preserves the propose→review→compile HIL flow for the
-    # GUI. It is a CEILING, never a per-user knob (Settings & Config boundary): effective only in the
-    # agent/rail path; the GUI's explicit compile is unaffected.
-    planforge_rules_autocompile: bool = False
+    # close-21-28 D-G5-DRIVE-EXEC — rules-mode propose auto-compile (platform default ON, PO-decided
+    # 2026-07-16). In `rules` mode the propose is a DETERMINISTIC transcription of an authored outline —
+    # there is NO LLM judgment between propose and compile, so a valid parse materialises its structure
+    # inline instead of depending on a second `plan_compile` call. The S06 flagship exposed that a weak
+    # agent reliably PROPOSES (valid numbered-header spec → arcs) but drops the follow-up compile
+    # (DR-G5-REROLL: 6 live gemma-4 rolls proposed, 0 compiled); the rail drive can hold+re-prompt but by
+    # G1 design does not execute the deterministic step. When ON, a rules-mode propose that parses ≥1 arc
+    # auto-compiles every arc so `structure_node>0` is a consequence of the governance-driven propose, not
+    # a coin-flip on the model — idempotent ($0, re-links by target, preserves human edits). Default ON
+    # because rules mode has nothing to review between propose and compile; set FALSE to restore a
+    # propose→review→compile checkpoint. (Autocompile only fires when the spec artifact carries a real
+    # list of arcs, so a mocked/degraded read is a safe no-op.)
+    planforge_rules_autocompile: bool = True
 
     # Internal service URLs — consumed by the M3 client wrappers.
     knowledge_internal_url: str = "http://knowledge-service:8092"
