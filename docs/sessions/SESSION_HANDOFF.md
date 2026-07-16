@@ -183,6 +183,7 @@ UI"* and **there is no UI**, so an agent calling it today writes a row **no huma
 | **D-ARC-DECOMPILER** | Spec **26-D3** — the arc decompiler: the only path to a spec tree for an **imported** book with no plan. | #2 large/structural |
 | **D-PLANFORGE-PROPOSE-BLIND** | Spec **21-G2** — PlanForge `propose.py` takes no `existing_state`: proposing a plan for a book with 200 chapters **ignores all of them**. | #2 — a real engine change; not in any wave |
 | **D-WIKI-INVERSE-GAP** | **GG-2 (the inverse law):** `wiki` + `wiki-editor` panels exist and glossary-service registers **zero `wiki_*` MCP tools** — the agent cannot help with the wiki at all. | #3 naturally-next-phase — no wave owns it yet |
+| **D-G2-SETUSER** | **Per-USER tuning of the governance enforcement strength** (`enforce`/`nudge`/`off` + N), beyond the platform deploy config that shipped (close-21-28 G2). **PO wants per-user** (2026-07-16) — promoted here from the now-closed 21-28 §9.2 so it isn't orphaned. | #2 large/structural — needs the full ai-prefs pipeline (enum + write-door + tier cascade + deep stream threading) **and an FE settings surface** in the studio to trigger it. Build when the studio settings surface lands. |
 
 <details><summary>Numbers, and where the audit says it is uncertain</summary>
 
