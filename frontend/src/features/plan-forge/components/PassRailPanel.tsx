@@ -74,6 +74,20 @@ export function PassRailPanel(props: IDockviewPanelProps) {
     <div data-testid="studio-plan-passes-panel" className="mx-auto flex h-full w-full min-h-0 max-w-3xl flex-col overflow-auto p-3 text-xs">
       <div className="mb-2 flex items-center gap-2">
         <h2 className="text-sm font-semibold text-foreground">{label}</h2>
+        {/* H4 — a run picker, so a multi-run author isn't stuck on the latest run. */}
+        {rail.runs.length > 1 && (
+          <select
+            data-testid="plan-passes-run-picker"
+            value={rail.runId ?? ''}
+            onChange={(e) => rail.setRunId(e.target.value || null)}
+            className="rounded border border-border bg-background px-1 py-0.5 text-[10px] outline-none focus:border-ring"
+            aria-label={t('planPasses.runPicker', { defaultValue: 'Choose a plan run' })}
+          >
+            {rail.runs.map((r) => (
+              <option key={r.id} value={r.id}>{r.id.slice(0, 8)} · {r.status}</option>
+            ))}
+          </select>
+        )}
         <button
           type="button" data-testid="plan-passes-open-planner" onClick={() => openPanel('planner')}
           className="ml-auto text-[11px] text-accent-foreground underline"

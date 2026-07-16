@@ -21,6 +21,10 @@ function isLedgerPolling(ledger: PlanPassLedger | null | undefined): boolean {
 
 export interface UsePassRail {
   runId: string | null;
+  /** H4 — every plan run for this book, so the rail can offer a run picker (not just latest). */
+  runs: { id: string; status: string; created_at: string | null }[];
+  /** Pin the rail to a specific run (the picker); null re-follows the latest run. */
+  setRunId: (runId: string | null) => void;
   ledger: PlanPassLedger | null;
   busy: boolean;
   polling: boolean;
@@ -44,15 +48,19 @@ export function usePassRail(
   const [busy, setBusy] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const [relinkOutput, setRelinkOutput] = useState<string | null>(null);
+  // H4 — a manual pick from the run picker; overrides the latest-run default until cleared.
+  const [manualRunId, setManualRunId] = useState<string | null>(null);
 
-  // Resolve the run: an explicit deep-link id wins; else the book's most recent run. A book with no
-  // runs leaves runId null → the panel shows the "compile a plan first" empty state.
-  const latest = useQuery({
+  // The book's runs (newest first) — the picker's options AND the source of the default (items[0]).
+  const runsQ = useQuery({
     queryKey: ['plan-runs-latest', bookId],
-    queryFn: () => planForgeApi.listRuns(bookId, token as string, { limit: 1 }),
+    queryFn: () => planForgeApi.listRuns(bookId, token as string, { limit: 50 }),
     enabled: !!token && !explicitRunId,
   });
-  const runId = explicitRunId ?? latest.data?.items[0]?.id ?? null;
+  const runs = (runsQ.data?.items ?? []).map((r) => ({ id: r.id, status: r.status, created_at: r.created_at }));
+  // Resolve the run: an explicit deep-link id wins; else the manual pick; else the most recent run.
+  const runId = explicitRunId ?? manualRunId ?? runsQ.data?.items[0]?.id ?? null;
+  const latest = runsQ;
 
   const ledgerQ = useQuery({
     queryKey: ['plan-passes', bookId, runId],
@@ -126,7 +134,10 @@ export function usePassRail(
     }
   }, [bookId, token, runId]);
 
-  return { runId, ledger, busy, polling, error, reload, runPass, reviewCheckpoint, relink, relinkOutput };
+  return {
+    runId, runs, setRunId: setManualRunId, ledger, busy, polling, error, reload,
+    runPass, reviewCheckpoint, relink, relinkOutput,
+  };
 }
 
 /** Pull a human message out of an apiJson error, preferring the server's `detail.message`. */

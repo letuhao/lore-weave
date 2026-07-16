@@ -10,6 +10,7 @@
 // tracked follow-up (D-S3-CHECKPOINT-STRUCTURED-EDITS), not a raw textarea.
 import { useTranslation } from 'react-i18next';
 import { useCheckpointReview } from '../hooks/useCheckpointReview';
+import { PassArtifactView } from './PassArtifactView';
 import type { PlanPass } from '../types';
 
 interface Props {
@@ -25,10 +26,6 @@ interface Props {
 export function CheckpointReview({ pass, bookId, runId, token, busy, onReview, onClose }: Props) {
   const { t } = useTranslation('studio');
   const review = useCheckpointReview(bookId, runId, pass, token);
-
-  const contentJson = review.artifact
-    ? JSON.stringify(review.artifact.content, null, 2)
-    : '';
 
   return (
     <div data-testid="pass-checkpoint-review" className="mt-1 rounded border border-warning/40 bg-warning/5 p-2">
@@ -48,9 +45,10 @@ export function CheckpointReview({ pass, bookId, runId, token, busy, onReview, o
       {review.loading ? (
         <p className="text-[10px] text-muted-foreground">{t('planPasses.reviewLoading', { defaultValue: 'Loading…' })}</p>
       ) : review.artifact ? (
-        <pre data-testid="review-content" className="max-h-40 overflow-auto rounded bg-muted/40 p-1.5 font-mono text-[10px] leading-relaxed text-muted-foreground">
-          {contentJson}
-        </pre>
+        <div data-testid="review-content" className="max-h-40 overflow-auto text-[11px]">
+          {/* F-1 — a readable per-kind render (cast list / beat list), not raw JSON. */}
+          <PassArtifactView kind={pass.output_kind} content={review.artifact.content} />
+        </div>
       ) : (
         <p className="text-[10px] text-muted-foreground">{t('planPasses.reviewNoContent', { defaultValue: 'No artifact content to show.' })}</p>
       )}
