@@ -309,6 +309,27 @@ export async function createCompositionWork(request: APIRequestContext, token: s
   return w.project_id;
 }
 
+/** S5 — derive a dị bản (derivative Work) from a canon Work via the real route the wizard
+ *  calls. Returns the new derivative's project_id + version (for If-Match archive). Throws on
+ *  the 503 PROJECT_CREATE_UNAVAILABLE (knowledge-service can't mint the delta partition) so a
+ *  seeding test can `test.skip()` on a genuine infra outage instead of failing spuriously. */
+export async function createDerivative(
+  request: APIRequestContext, token: string, sourceProjectId: string,
+  opts: { name: string; branchPoint?: number; taxonomy?: 'au' | 'pov_shift' | 'character_transform'; canonRules?: string[] },
+): Promise<{ project_id: string; version: number }> {
+  const r = await request.post(`/v1/composition/works/${sourceProjectId}/derive`, {
+    ...auth(token),
+    data: {
+      name: opts.name,
+      branch_point: opts.branchPoint ?? 0,
+      divergence: { taxonomy: opts.taxonomy ?? 'au', canon_rule: opts.canonRules ?? [] },
+    },
+  });
+  if (!r.ok()) throw new Error(`createDerivative ${r.url()} → ${r.status()} ${await r.text()}`);
+  const w = (await r.json()) as { project_id: string; version: number };
+  return { project_id: w.project_id, version: w.version };
+}
+
 export async function createCompositionScene(
   request: APIRequestContext, token: string, projectId: string, chapterId: string, title: string,
 ): Promise<string> {
