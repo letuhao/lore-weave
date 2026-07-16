@@ -100,9 +100,16 @@ class StubCanon:
         self.update_result = _rule(version=2)
         self.archive_result = _rule()
         self._archived: set = set()
-    async def list_all(self, p):
-        # mirrors the repo: list_all filters NOT is_archived
-        return [r for r in self.rules if r.id not in self._archived]
+    async def list_all(self, p, *, include_archived=False):
+        # mirrors the repo: NOT is_archived by default; include_archived returns all (BE-11b),
+        # flagging the archived ones so the caller can render them under a section.
+        out = []
+        for r in self.rules:
+            archived = r.id in self._archived
+            if archived and not include_archived:
+                continue
+            out.append(r.model_copy(update={"is_archived": archived}))
+        return out
     async def list_active(self, p):
         return [r for r in self.rules if r.id not in self._archived]
     async def create(self, p, text, **kw): return self.rule
@@ -485,6 +492,23 @@ def test_restore_of_a_never_archived_rule_is_404(ctx):
     r = c.post(f"/v1/composition/canon-rules/{RULE}/restore")
     assert r.status_code == 404
     assert r.json()["detail"] == "canon rule not found or not archived"
+
+
+def test_list_include_archived_returns_archived_rows_flagged(ctx):
+    """BE-11b — the management UI needs to LIST archived rules (to restore one), which the
+    default list hides. `?include_archived=true` returns them, flagged is_archived, so the
+    default list stays lean and the UI can render an archived section."""
+    c, _, _, _, canon = ctx
+    rule = _rule()
+    canon.rules = [rule]
+    assert c.delete(f"/v1/composition/canon-rules/{rule.id}").status_code == 200
+    # default list hides it …
+    assert c.get(f"/v1/composition/works/{PROJECT}/canon-rules").json()["rules"] == []
+    # … include_archived surfaces it, flagged.
+    rows = c.get(f"/v1/composition/works/{PROJECT}/canon-rules?include_archived=true").json()["rules"]
+    assert len(rows) == 1
+    assert rows[0]["id"] == str(rule.id)
+    assert rows[0]["is_archived"] is True
 
 
 def test_restore_by_a_view_only_grantee_is_403(ctx_view_only):

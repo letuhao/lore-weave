@@ -584,8 +584,11 @@ export const compositionApi = {
       method: 'POST', body: JSON.stringify({ rule_id: ruleId }), token,
     });
   },
-  listCanonRules(projectId: string, token: string): Promise<{ rules: CanonRule[] }> {
-    return apiJson(`${BASE}/works/${projectId}/canon-rules`, { token });
+  listCanonRules(
+    projectId: string, token: string, opts?: { includeArchived?: boolean },
+  ): Promise<{ rules: CanonRule[] }> {
+    const q = opts?.includeArchived ? '?include_archived=true' : '';
+    return apiJson(`${BASE}/works/${projectId}/canon-rules${q}`, { token });
   },
   createCanonRule(projectId: string, payload: Partial<CanonRule>, token: string): Promise<CanonRule> {
     return apiJson(`${BASE}/works/${projectId}/canon-rules`, { method: 'POST', body: JSON.stringify(payload), token });
@@ -597,6 +600,11 @@ export const compositionApi = {
   },
   deleteCanonRule(ruleId: string, token: string): Promise<CanonRule> {
     return apiJson(`${BASE}/canon-rules/${ruleId}`, { method: 'DELETE', token });
+  },
+  // BE-11 — un-archive a soft-deleted rule: the UNDO the DELETE promises. Reachability is the
+  // "Rule deleted · Undo" toast (delete returns the archived row, so the FE holds the id).
+  restoreCanonRule(ruleId: string, token: string): Promise<CanonRule> {
+    return apiJson(`${BASE}/canon-rules/${ruleId}/restore`, { method: 'POST', token });
   },
   // T0.1 — read the narrative-thread ledger (FD-1 S4a). `open` = the unpaid-promise
   // debt (priority-ordered); `all` = the full ledger. `open_count` is the true debt

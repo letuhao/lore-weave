@@ -356,6 +356,10 @@ export type CanonRule = {
   until_order: number | null;
   active: boolean;
   version: number;
+  // BE-11b — present when the list was fetched with include_archived. A soft-archived rule
+  // (DELETE is a soft-archive) is unenforced; the management UI lists it under an archived
+  // section and offers Restore. Omitted (⇒ undefined ⇒ falsy) on the default non-archived list.
+  is_archived?: boolean;
 };
 
 export type Violation = {

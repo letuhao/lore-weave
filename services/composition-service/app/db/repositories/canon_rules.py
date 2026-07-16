@@ -85,12 +85,18 @@ class CanonRulesRepo:
             rows = await c.fetch(query, project_id)
         return [_row_to_rule(r) for r in rows]
 
-    async def list_all(self, project_id: UUID) -> list[CanonRule]:
-        """Every non-archived rule (active + inactive) — the management list."""
+    async def list_all(
+        self, project_id: UUID, *, include_archived: bool = False,
+    ) -> list[CanonRule]:
+        """The management list. Non-archived by default (active + inactive); with
+        include_archived also returns soft-archived rows (is_archived=true) so the
+        management UI can list them under a section and offer Restore (BE-11b).
+        Ordered archived-last so the live rules stay at the top."""
+        archived_pred = "" if include_archived else " AND NOT is_archived"
         query = f"""
         SELECT {_SELECT_COLS} FROM canon_rule
-        WHERE project_id = $1 AND NOT is_archived
-        ORDER BY created_at, id
+        WHERE project_id = $1{archived_pred}
+        ORDER BY is_archived, created_at, id
         """
         async with self._pool.acquire() as c:
             rows = await c.fetch(query, project_id)

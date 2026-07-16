@@ -109,14 +109,19 @@ async def _rule_project_id(rule_id: UUID) -> UUID:
 async def list_canon_rules(
     project_id: UUID,
     active_only: bool = False,
+    include_archived: bool = False,
     user_id: UUID = Depends(get_current_user),
     works: WorksRepo = Depends(get_works_repo),
     canon: CanonRulesRepo = Depends(get_canon_rules_repo),
     grant: GrantClient = Depends(get_grant_client_dep),
 ) -> dict[str, Any]:
+    """List canon rules for management. `active_only` = enforceable only (the
+    critic's set). `include_archived` (BE-11b) also returns soft-archived rows so
+    the UI can list them under a section and Restore one (mutually exclusive with
+    active_only, which is already a NOT-archived subset)."""
     await _require_work(works, grant, user_id, project_id, GrantLevel.VIEW)
     rules = await (canon.list_active(project_id) if active_only
-                   else canon.list_all(project_id))
+                   else canon.list_all(project_id, include_archived=include_archived))
     return {"rules": [r.model_dump(mode="json") for r in rules]}
 
 
