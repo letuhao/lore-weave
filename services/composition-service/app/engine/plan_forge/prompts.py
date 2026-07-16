@@ -21,6 +21,7 @@ Output a single JSON object matching PlanAnalyze v1 with these keys:
 - open_questions: string[] (unresolved items — do NOT invent answers)
 
 Fidelity requirements (phần đầu):
+- ARC COVERAGE (REQUIRED — highest priority): EVERY arc you declare in `arcs` MUST have >= 1 event whose `arc_id` is that arc's id. Distribute events across ALL arcs by their scope in the source; never concentrate all events in a single arc. An arc with no events cannot be compiled — leaving one empty is a generation FAILURE, and the named-arc rules below never excuse it.
 - List ALL 5 core traits from §1.3 in consistency_anchors (VN): Thực dụng, Bình dị, Tự giác giới hạn, Giữ lý trí trong khủng hoảng, Hài hước khô
 - Arc 2 MUST have exactly 7 events with Vietnamese titles from source (Nhập Môn through Quyết Định Tiếp Tục)
 - Each arc_2 event: synopsis >= 2 sentences from source bullets; goal from **Goal:** line; source_excerpt with key bullets
@@ -47,6 +48,7 @@ Structure:
 - links: [{from, to, kind, note}] — kind: event_constrains_variable|event_preserves_anchor|event_foreshadows|arc_depends_on_mechanic|variable_governs_tier
 
 Fidelity requirements:
+- ARC COVERAGE (REQUIRED — highest priority, governs the arc-specific rules below): EVERY arc in `arcs` MUST have >= 1 event whose `arc_id` equals that arc's own id. Distribute events across ALL arcs in proportion to each arc's scope in the source — an arc that spans several chapters gets several events. NEVER put every event in one arc. An arc with zero events CANNOT be compiled and is a generation FAILURE — the arc-specific fixture rules below apply to their named arc but do NOT excuse leaving any other arc empty.
 - layers.characters[0].traits: exactly 5 strings in Vietnamese from §1.3
 - baseline_notes: summarize §1.1–§1.3 in VIETNAMESE (>=200 chars, >=35% VN diacritics); include mundane details (mì, mùi, cửa sổ)
 - character name: use "Nữ chính" or source name — never "Female Protagonist" or "TBD"

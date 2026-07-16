@@ -137,6 +137,30 @@ def run_rules(spec: dict[str, Any], package: dict[str, Any] | None = None) -> li
             "no events parsed — an event is a '### ' heading inside an arc"
         ),
     })
+    # F-5 governance — GENERALITY guard: `spec_has_events` only checks the TOTAL count, so a spec
+    # that concentrates every event in ONE arc (the exact defect a POC-welded prompt produces —
+    # "Arc 2 MUST have 7 events" → arc_1/arc_3 empty) passes it, and then compiling any OTHER arc
+    # materialises nothing (E4's 400). Compile is per-arc, so this is ADVISORY (compiling the
+    # populated arc still works) but it MUST surface: an author picks an arc by title and cannot
+    # know it is empty, and the repair loop (autofix) needs the signal to redistribute. Names the
+    # empty arcs so the fix is targeted, not "somewhere an arc is empty".
+    arc_ids = [a.get("id") for a in arcs if a.get("id")]
+    ev_by_arc = {aid: 0 for aid in arc_ids}
+    for ev in events:
+        aid = ev.get("arc_id")
+        if aid in ev_by_arc:
+            ev_by_arc[aid] += 1
+    empty_arcs = [aid for aid in arc_ids if ev_by_arc.get(aid, 0) == 0]
+    results.append({
+        "rule": "every_arc_has_events",
+        "pass": not empty_arcs,
+        "detail": (
+            f"per-arc events: {ev_by_arc}" if not empty_arcs else
+            f"arcs with NO events (cannot be compiled): {empty_arcs} — every arc's events must "
+            f"carry that arc's id; distribute events across all arcs, never one"
+        ),
+        "tier": "advisory",
+    })
 
     thr_fail = False
     for ev in spec.get("events", []):
