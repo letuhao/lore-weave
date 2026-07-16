@@ -85,6 +85,22 @@ def _parse_if_match(if_match: str | None) -> int | None:
         raise HTTPException(status_code=400, detail="If-Match must be an integer version")
 
 
+def _require_if_match(if_match: str | None) -> int:
+    """BE-A2 — `PATCH /arcs/{id}` REQUIRES If-Match. The MCP door already requires
+    `expected_version` (server.py `_ArcUpdateArgs`); the REST door made it OPTIONAL, so a
+    missing header skipped BOTH the version clause AND the `version = version + 1` bump
+    (structure.py) — a blind clobber that also left a concurrent v7 holder able to keep
+    writing against replaced content. Absent ⇒ 428 Precondition Required, never a clobber."""
+    if if_match is None:
+        raise HTTPException(status_code=428, detail={
+            "code": "IF_MATCH_REQUIRED",
+            "message": "If-Match: <version> is required — refetch the arc and retry.",
+        })
+    parsed = _parse_if_match(if_match)
+    assert parsed is not None  # _parse_if_match only returns None for a None input
+    return parsed
+
+
 async def _publish_quota_guard(repo: ArcTemplateRepo, caller_id: UUID) -> None:
     """B-4 publish ceiling — informative refusal (NOT the uniform not-accessible error;
     a quota condition is not an ownership one). 0 = unlimited."""
@@ -496,10 +512,13 @@ async def patch_arc(
 ) -> dict[str, Any]:
     structures = _structures()
     node = await _gate_arc(structures, grant, user_id, node_id, GrantLevel.EDIT)
+    # Auth (the gate) runs BEFORE the precondition check, so a non-grantee gets the uniform
+    # 404 — never a 428 that would confirm the row exists (no existence oracle).
+    expected_version = _require_if_match(if_match)
     patch = body.model_dump(exclude_unset=True)
     try:
         updated = await structures.update(
-            node.id, patch, expected_version=_parse_if_match(if_match),
+            node.id, patch, expected_version=expected_version,
         )
     except VersionMismatchError as exc:
         raise HTTPException(status_code=412, detail={

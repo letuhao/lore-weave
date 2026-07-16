@@ -8,6 +8,11 @@
 S2 is DONE when: arc-inspector + arc-templates + 拆文 are operable; the plan graph hands off to arcs — each to the §2 production-ready bar (operable · CRUD · reachable ·
 no-silent-fail · agent-parity · loop-connected · live-browser-proven · i18n+responsive · scale).
 
+## 🔒 DESIGN SEALED 2026-07-16 (PO approved) — BUILD PHASE
+Design of record: **spec 32 + 32a** (B1), **spec 34 + a future 34a** (B2). PO cleared all open Qs; 3 structural rows pulled in (no defer); cadence B1→POST-REVIEW→B2; S2 owns 5 BE fixes in composition-service.
+**Build defaults (PO-sanctioned):** (1) tracks/roster repair migration auto-applies NON-DESTRUCTIVE fixes + reports; STOPS for PO only if a true DROP (data loss) is required. (2) live-smoke via vite :5199 or a rebuilt FE image (baked :5174 is stale); track D-S2-INFRA-502 if the stack blocks it, never fake-green. (3) stage only S2 lines in shared files (migrate.py/server.py/catalog.ts); never `git add -A`; `git pull --rebase` before push.
+**Now building: S2-B1a.**
+
 ## SCOPE
 - **Persona / files:** features/plan-hub, features/composition/arc*
 - **Panels:** arc-inspector, arc-templates
@@ -30,12 +35,89 @@ no-silent-fail · agent-parity · loop-connected · live-browser-proven · i18n+
 ## SLICE BOARD  (status: TODO / DOING / DONE — DONE requires an EVIDENCE string, not a checkbox)
 | slice | status | evidence (test count / live-smoke line / commit sha) |
 |---|---|---|
-| S2-A1 · audit current surface (role-play user) | TODO | |
-| S2-A2 · PORT/ENHANCE/BUILD decisions per capability | TODO | |
-| _(session appends its build slices here)_ | | |
+| S2-A1 · audit current surface (role-play user) | DONE | code-audit + LIVE drive (chrome-devtools on :5174, book 019f6553). Confirmed: sidebar has "plan" category → plan-hub; NO arc-templates / arc-inspector / 拆文 entry. arc_import_analyze = MCP-only (server.py:3125, import_source.py:17). arc-templates library returns 2 templates via API. |
+| S2-A2 · PORT/ENHANCE/BUILD decisions per capability | DONE | table below; awaiting PO react before BUILD |
+| **S2-B1 · arc-inspector (spec 32 + 32a) — DESIGN LOCKED, awaiting PO approval** | | |
+| S2-B1a · BE-A2 (If-Match required) + D-ARC-TRACKS-ROSTER-SCHEMA (32a §A: schema both doors + repair migration) | DOING | BE-A2 ✅ green (`_require_if_match`→428; arc.py; test_arc_hub_routes.py 11/11). Schema+migration next. |
+| S2-B1b · BE-A3 (assign-chapters null=unassign) + D-ARC-ARCHIVE-CHAPTER-STRANDING (32a §B: recovery col + archive/restore reattach) | TODO | |
+| S2-B1c · BE-A1 (span→derived_blocks both doors, leave packer's span()) + BE tests | TODO | |
+| S2-B1d · FE ArcInspectorPanel/Body/useArcInspector + bus slice + widen ArcListNode + arcEffects.ts | TODO | |
+| S2-B1e · PlanDrawer embed (delete ArcFacets stub → mount ArcInspectorBody, DOCK-2) | TODO | |
+| S2-B1f · registration (catalog/enum/contract/i18n/guide) + cross-service live-browser smoke | TODO | |
+| **S2-B2 · arc-templates + 拆文 (spec 34)** | | |
+| S2-B2a · BE-7a extract-template + BE-7b suggest (REST wrappers + BE tests) | TODO | |
+| S2-B2b · FE ArcTemplatesPanel (lift motif Arc*, drop conformance) + library/catalog/detail/drift + AT-6 stamp | TODO | |
+| S2-B2c · ImportDeconstructSection (拆文 cost-gate → confirm → poll motif-jobs) | TODO | |
+| S2-B2d · registration + live-browser smoke (agent-open→deconstruct→materialize→drift, no dock teardown) | TODO | |
+| S2-BE8 · agent-parity for `_apply`/`_template_drift` stubs | PARKED | defer row — post-panel (34 §5 BE-8) |
+
+## AUDIT (S2-A1) — role-play: a web-novel author structuring a book
+**What the author must DO** → **current surface**:
+1. See whole structure (arcs/sub-arcs/chapters/scenes) → ✅ `plan-hub` canvas — rich, DONE (H8 keyset, drag, rollups).
+2. Restructure by drag (move arc/chapter/scene, reorder reading order) → ✅ usePlanMoves — DONE.
+3. Inspect+edit a chapter/scene → ✅ PlanDrawer chapter/scene facet (edit/archive/restore, ⚓ re-anchor, canon/thread deep-links) — DONE.
+4. **Inspect an ARC deeply** (structure·roster·chapters·conformance·provenance) → ❌ PlanDrawer arc facet is a **minimal summary stub** (self-documented `plan-drawer-arc-gap`: "23-C3 not built"). Data IS on the wire.
+5. **Edit an arc** (title/status/goal/summary/roster) → ❌ arc facet is read-only (no edit block).
+6. **Browse/adopt/create arc TEMPLATES + apply to book** → ⚠️ `ArcTemplateLibraryView` lists + opens timeline + apply-preview + materialize (projectId) + conformance — but **only reachable via S4's motif Motifs|Arcs toggle**, NOT an S2 panel; and **no create/adopt/edit/archive UI** (arcApi has all of them).
+7. **Import a raw book → deconstruct into scenes → arcs** → ⚠️ scene-decompile CTA (`materializeScenes`, $0 deterministic) exists as plan-hub PH21 empty-state; the **arc-grouping LLM step (`composition_arc_import_analyze`) is agent-only, 0 GUI** — violates §2 "0 agent-only tools".
+8. Reachability → `plan-hub` ✅; arc-inspector / arc-templates / 拆文 ❌ not in catalog/enum/contract/palette/guide.
+
+## DECISIONS (S2-A2) — PORT / ENHANCE / BUILD
+| capability | call | rationale |
+|---|---|---|
+| plan-hub canvas + drag + chapter/scene drawer | KEEP | already at §2 bar (DONE by H8/PH20). |
+| **arc-inspector** (deep arc view + arc edit) | **BUILD** | code self-declares "not built"; wire data (roster/tracks/conformance/provenance/span/template) into a full facet + PH20-style arc edit. S2 owns PlanDrawer.tsx → build here. |
+| **arc-templates** panel | **PORT + ENHANCE** | PORT: surface the existing motif Arc* components as a first-class S2 `arc-templates` studio panel (import, don't edit S4 files). ENHANCE: add create/adopt/edit/archive UI on top of arcApi (API exists, UI missing) → CRUD-complete (§2.2). |
+| **拆文 Import & Deconstruct** panel | **ENHANCE + BUILD** | ENHANCE: a proper panel that runs scene-decompile (reuse materializeScenes) with result reporting. BUILD: a GUI for `composition_arc_import_analyze` (priced LLM → propose→confirm mirror, the [[cost-gated-mcp-tool-confirm-runs-engine]] pattern) so a GUI-only user can group chapters into arcs. |
+| reachability (all 3) | **BUILD** | catalog S2-block rows + `ui_open_studio_panel` enum + frontend-tools.contract.json + palette + guideBody, in sync (S0 stub skipped per PO). |
+
+## RECONCILIATION (design of record = specs 32 + 34, verified vs HEAD 2026-07-16)
+**Adopt specs `32_arc_inspector.md` + `34_arc_templates_and_deconstruct.md` as the locked detail design** (they are build-ready to the file/line). Below = only the DELTA where HEAD moved since they were written (Jul 13). Every claim re-verified against source.
+
+### Spec 32 · arc-inspector — ACCURATE, build-ready. Scope = FE panel + 3 live BE fixes.
+| item | spec says | verified at HEAD | verdict |
+|---|---|---|---|
+| 8 arc CRUD routes | exist | exist (`arc.py`) | ✅ |
+| **BE-A1** span raw-strided unit in `GET /arcs/{id}` (+MCP) | must-fix (S) | `arc.py:455 out["span"]=await structures.span(node.id)` — STILL raw | 🔨 fix: serve `derived_blocks(book_id)[node.id]` at BOTH doors; leave `span()` (packer input) |
+| **BE-A2** `PATCH /arcs/{id}` If-Match optional → blind clobber | must-fix (XS) | `arc.py:495 if_match=Header(default=None)` — STILL optional | 🔨 fix: require it, 428 if absent |
+| **BE-A3** assign-chapters add-only, no unassign | must-build (S) | `arc.py:364 structure_node_id: UUID` non-null — STILL add-only | 🔨 build: allow `UUID\|None` both doors |
+| FE seams (plan-hub cache, OCC chain, conformance badge, glossary roster) | reuse | exist | ✅ |
+| category `editor` | valid | in CATEGORY_ORDER | ✅ |
+
+### Spec 34 · arc-templates + 拆文 — ACCURATE; the HEADLINE BLOCKER IS GONE. Scope = FE panel (lift + 拆文 section) + 2 BE REST wrappers.
+| item | spec says | verified at HEAD | verdict |
+|---|---|---|---|
+| **W0-BE1** (拆文/mine confirm 500 + Work-less job lane) | 🔴 blocker, built in Wave 0 | ✅ LANDED: `create_unbound()` (generation_jobs.py:223), synthetic-pid removed (actions.py:558/573), poll `GET /motif-jobs/{id}` (engine.py:1450) | ✅ no S2 work — VERIFY through producer only |
+| motif `Arc*` FE components to lift | exist under composition/motif/ | exist | ✅ reuse-in-place (D-S2-ARC-SEAM) |
+| **BE-7a** `POST /arcs/{id}/extract-template` REST | must-build (XS wrapper) | NOT present | 🔨 build (mirror MCP `server.py` handler) |
+| **BE-7b** `POST /arc-templates/suggest` REST | must-build (XS wrapper) | NOT present | 🔨 build (mirror `retrieve_arcs`) |
+| **AT-6** materialize→provenance stamp | FE, reuse planHubApi.assignArcChapters | route exists | 🔨 FE only; assert `assigned==len` (no silent 0) |
+| **X-1** AddModelCta dock-teardown | hard prereq | ✅ FIXED: `AddModelCta.tsx` uses `followStudioLink`+`<button>` | ✅ |
+| category `storyBible` | valid | in CATEGORY_ORDER | ✅ |
+| **BE-8** agent-parity (2 stubbed tools `_apply`/`_template_drift`) | PARKED, after panel | still `_pending_engine` | ⏸ defer row, post-panel |
+
+### Cross-cutting (both panels)
+- **Enum baseline = 70** at HEAD (specs assumed 57). DoD tests MUST assert **delta (+1) + 3-way equality (py enum == contract == openable)**, NEVER a literal — waves/sessions land panels concurrently.
+- **Both panels touch composition-service BE** (BE-A1/A2/A3, BE-7a/7b) → **cross-service ⇒ live-browser smoke MANDATORY** (§2.7 / spec-34 DoD #5). This widens S2 beyond `features/**` into `services/composition-service/app/routers/arc.py` (+ conformance/engine wrappers). No other session owns arc routes → safe, but it IS a scope note.
+- No concurrent session has registered arc-inspector/arc-templates (or S4/S6 panels) yet.
+
+### Open questions — status (from 32 §11 + 34 §11-12; nearly all self-dispositioned)
+- **Self-cleared (no PO needed):** 32-OQ1..8 (suggest=Wave4 out-of-scope; tracks/roster schema DEFER; archive-count client-derived; status not-derived; X-12 REFUTED; roster/summary honest-label), 34-OQ1..3/5/6 (FE provenance stamp v1; match on (book,template) PATCH; premise=book.summary box; conformance handed to S6; no book-shared tier).
+- **Genuinely PO-facing (need your call):** (1) confirm the BE scope-expansion into composition-service; (2) 34-OQ4 — is deconstructing the 20k-char import cap actually useful? (spec defers this to M2 POST-REVIEW with a real run — not a now-blocker); (3) confirm 3 defer rows stay deferred: `D-ARC-TRACKS-ROSTER-SCHEMA`, `D-ARC-ARCHIVE-CHAPTER-STRANDING`, `D-ARC-TEMPLATE-BOOK-TIER`.
 
 ## REGISTERS  (append as you go — an empty DRIFT log at the end is dishonest, not clean)
 ### DECISIONS
+- **D-S2-BRANCH** — build on the CURRENT branch (`feat/context-budget-law`), NOT a new branch. PO: multiple sessions operate on this folder; switching branch would break them. ⇒ strict §5: never `git add -A`, stage only S2 files (by explicit path), edit ONLY the S2 block in catalog.ts, commit small+often, scoped tests during BUILD. 🔴 **NO REBASE, NO PUSH (PO 2026-07-16): 8 sessions run concurrently in THIS shared checkout — a `git pull --rebase` or push would rewrite/clobber their in-flight state. Commit LOCAL only; do not push unless the PO asks.** (Supersedes the earlier "git pull --rebase before push".)
+- **D-S2-ARC-SEAM** — reuse the existing Arc* components in `composition/motif/` IN PLACE (import, never edit — respects S4 seam). New S2 panels compose them + arcApi. If a motif Arc* component needs an S2-only change, ship an S2 wrapper, don't cross-edit.
+- **D-S2-S0-STUB** — skip the S0 19-stub pre-reservation; add S2's real catalog rows directly (only in the `// ── S2 ──` block). Concurrency-safe because block line-ranges are disjoint.
+- **D-S2-BE-SCOPE** (PO 2026-07-16) — S2 OWNS the 5 BE fixes in composition-service: BE-A1/A2/A3 (arc routes+MCP) in B1, BE-7a/7b (REST wrappers) in B2. Cross-service ⇒ live-smoke mandatory. No other session owns arc routes.
+- **D-S2-NO-DEFER** (PO 2026-07-16) — the 3 structural rows spec 32/34 DEFERRED are PULLED INTO S2 (no defer): `D-ARC-TRACKS-ROSTER-SCHEMA` + `D-ARC-ARCHIVE-CHAPTER-STRANDING` → B1; `D-ARC-TEMPLATE-BOOK-TIER` → B2. These were UNDESIGNED (deferred = no detail) ⇒ S2 must WRITE their detail design now. Each is a schema migration ⇒ **S2 is now XL**. BE-8 (agent-parity `_apply`/`_template_drift`; `_apply` needs the genuinely-unwritten `apply_arc_to_spec` M-engine) was NOT in the pulled-in set — remains its own post-panel slice; flag to PO when B2 closes.
+- **D-S2-CADENCE** (PO 2026-07-16) — build B1 (arc-inspector, all-in) fully → POST-REVIEW → then B2. Design-lock per-milestone: lock B1's detail design (spec 32 + the 2 pulled-in structural rows) and get PO approval BEFORE building B1; design B2 when B1 closes.
 ### PARKED  (blocker -> defer row + continue)
+- **D-S2-INFRA-502** — during the live A1 drive, composition reads via the FRONTEND nginx (:5174 → gateway) 502'd intermittently (raw 502 HTML dumped as text into the plan rail + manuscript rail), while a direct curl to the gateway :3123 for the SAME route returned 200. Not an S2 code defect; a stack-health issue. BLOCKS a clean §2.7 live-browser smoke — must be healthy (or use :5199 vite) before the loop-③ / panel-close smokes. Continue building against unit tests + direct-gateway smoke meanwhile.
+- **FE-RESILIENCE (not S2)** — a failed /v1 fetch renders the raw 502 HTML body as a visible string in the rail instead of an error state. Belongs to the plan-hub/manuscript rail owners' error handling; note for whoever owns the global fetch layer. Not fixing in S2 (out of subtree).
 ### DEBT
+- **PRIOR-ART EXISTS — do NOT recreate.** Full design suite for all 3 S2 capabilities already shipped by track 30-38 (Jul 13): draft HTML `screen-arc-inspector.html` (84KB) + `screen-arc-templates.html` (107KB, includes 拆文 §⑤ cost-gate); detail specs `32_arc_inspector.md` (540L) + `34_arc_templates_and_deconstruct.md` (376L) + plan-hub `21`/`24`. These are source-verified design docs (states, BE-fix flags, DoD, open-Q dispositions), not stubs. Also Wave build-plans `2026-07-13-studio-wave-0/3/4`. ⇒ S2's real design work = RECONCILE vs today's HEAD + clear genuinely-open Qs + lock, NOT redraw.
+- **SPECS PARTLY STALE (good direction) — W0-BE1 LANDED.** Spec 34 §0.1's headline blocker (拆文/mine confirm → HTTP 500, synthetic uuid4 pid) is FIXED at HEAD: `create_unbound()` (generation_jobs.py:223), `_enqueue_motif_job` calls it (actions.py:573), synthetic-pid removed (comment actions.py:558). Reconciliation must re-verify 32's BE-A1/A2/A3 the same way before treating them as TODO.
 ### DRIFT  (near-misses, bars nearly lowered, tests nearly skipped)
+- **NEAR-MISS: static-only audit.** A2 was first written from CODE READING alone and nearly presented as the audit. PO pushed "did you look as a USER?" — the live drive then CONFIRMED the reachability gaps (and surfaced D-S2-INFRA-502). The §2.7 lesson held: reading the wire ≠ proving the user can operate it.

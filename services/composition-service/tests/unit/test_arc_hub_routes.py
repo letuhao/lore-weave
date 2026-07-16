@@ -132,6 +132,45 @@ def test_arc_list_non_grantee_404(client):
     repo.list_tree.assert_not_called()
 
 
+# ── BE-A2: PATCH /arcs/{id} REQUIRES If-Match (no blind clobber) ────────────────
+
+
+def test_patch_arc_without_if_match_is_428_and_never_writes(client):
+    # The MCP door requires expected_version; the REST door used to make If-Match OPTIONAL,
+    # so a missing header skipped the version clause AND the version bump — a legal blind
+    # clobber on the object that steers generation. BE-A2: absent ⇒ 428, update untouched.
+    repo = AsyncMock()
+    repo.get = AsyncMock(return_value=_node(ARC))
+    c, repo = client(GrantLevel.EDIT, structures=repo)
+    r = c.patch(f"/v1/composition/arcs/{ARC}", json={"title": "New title"})
+    assert r.status_code == 428
+    assert r.json()["detail"]["code"] == "IF_MATCH_REQUIRED"
+    repo.update.assert_not_called()
+
+
+def test_patch_arc_with_if_match_passes_expected_version(client):
+    repo = AsyncMock()
+    repo.get = AsyncMock(return_value=_node(ARC))
+    repo.update = AsyncMock(return_value=_node(ARC, title="New title"))
+    c, repo = client(GrantLevel.EDIT, structures=repo)
+    r = c.patch(
+        f"/v1/composition/arcs/{ARC}", json={"title": "New title"}, headers={"If-Match": "7"},
+    )
+    assert r.status_code == 200
+    assert repo.update.call_args.kwargs["expected_version"] == 7
+
+
+def test_patch_arc_missing_if_match_gates_before_precondition(client):
+    # Auth before precondition: a non-grantee with no If-Match still gets the uniform 404
+    # (no existence oracle), never a 428 that would confirm the row exists.
+    repo = AsyncMock()
+    repo.get = AsyncMock(return_value=_node(ARC))
+    c, repo = client(GrantLevel.NONE, structures=repo)
+    r = c.patch(f"/v1/composition/arcs/{ARC}", json={"title": "New title"})
+    assert r.status_code == 404
+    repo.update.assert_not_called()
+
+
 # ── read surface #1: the derived block MUST ride on every shell node ───────────
 
 
