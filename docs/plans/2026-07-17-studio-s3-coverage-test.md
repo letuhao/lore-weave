@@ -176,11 +176,14 @@ FULL clean run (propose → compile → all 7 passes → both checkpoints → li
 |---|---|---|
 | F-4 seed-gate copy cites "PF-7" | LOW | **FIXED** — reworded to author language ("Your cast's characters must be added to the glossary before you can approve. Apply the seed to add them.") |
 | F-3 no archive undo toast | LOW-MED | **FIXED** — archive now shows a `toast('Run archived', {action: Undo → restore})` (mirrors canon-rule archive) |
-| F-1 raw-JSON artifact viewer | MED | OPEN — human-readable per-kind render (read side of the structured-edits spec); new small slice |
-| H2 7-run friction | MED | OPEN — a "run advisory passes to the next checkpoint" affordance; new slice (design) |
-| H4 no run-picker in rail | LOW-MED | OPEN — a run selector in the rail header; small slice |
-The two quick author-facing wins (F-3, F-4) are fixed in-run. F-1/H2/H4 are scheduled slices — none
-block the S3 commitment (proven); all are polish/operability.
+| F-1 raw-JSON artifact viewer | MED | **BUILT** — PassArtifactView (per-kind readable render: cast/beat lists, JSON fallback) in the checkpoint review |
+| H4 no run-picker in rail | LOW-MED | **BUILT** — usePassRail exposes runs + setRunId; the rail header shows a run picker when >1 run |
+| H2 7-run friction | MED | **SPEC'd** — docs/specs/2026-07-17-planforge-run-to-next-checkpoint.md (real design Qs: batch cost-confirm, stop-at-blocking, partial-failure, FE-vs-BE orchestration) |
+
+**Verdict on the 5 gaps:** F-3/F-4 fixed in-run; F-1/H4 built (buildable, not design-needed);
+H2 spec'd (genuine design questions). Nothing hand-waved as "blocked". The S3 commitment was proven
+before any of these; all five were polish/operability the coverage test surfaced by role-playing a
+real author.
 
 ## Known gap hypotheses to CONFIRM or REFUTE (don't assume — test them)
 - **H1 (view-inadequate):** raw-JSON artifact viewer is developer-shaped; an author needs a
