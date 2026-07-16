@@ -87,12 +87,18 @@ Dynamic ids interpolate an entity/chapter id (`memory-forget-<entity_id>`) — s
 ---
 
 ## 5b · Harness status (built + green)
-Started the Track-B execution against the EXISTING Playwright framework (`frontend/tests/e2e/`, PoM +
-`TEST_USER`/`TEST_USER_B` + `PLAYWRIGHT_BASE_URL`). Shipped so far:
-- **`pages/AssistantPage.ts`** — PoM for the assistant surface (strip, sheets, data-rights + autonomous controls).
-- **`specs/assistant-data-rights.spec.ts`** (S2/S4/S5/S8/S9/S12) + **`specs/assistant-autonomous.spec.ts`** (S10)
-  — **6 tests GREEN** on the built image (:5185): consent fail-closed, Memory/Journal reachable on desktop,
-  erase two-step confirm (cancel), new-epoch confirm (cancel), Practice→/roleplay, every autonomous toggle OFF.
+Executing Track-B against the EXISTING Playwright framework (`frontend/tests/e2e/`, PoM +
+`TEST_USER`/`TEST_USER_B` + `PLAYWRIGHT_BASE_URL`). **9 tests GREEN on the built image (:5185):**
+- **`pages/AssistantPage.ts`** — PoM (strip, sheets, data-rights + autonomous controls; dismisses F-QC-1).
+- **`specs/assistant-data-rights.spec.ts`** (S2/S4/S5/S8/S9/S12) + **`assistant-autonomous.spec.ts`** (S10) —
+  6 tests: consent fail-closed, Memory/Journal reachable on desktop, erase two-step (cancel), new-epoch
+  (cancel), Practice→/roleplay, every autonomous toggle OFF. (333663699)
+- **`specs/assistant-tenancy.spec.ts`** (T4, BLOCKING) — 2 tests: A's schedule arm invisible to B; the
+  proactive gate is per-user. API-level, self-cleaning. (0de26bf98)
+- **`specs/assistant-multidevice.spec.ts`** (S11) — 1 test: a server-side opt-in shows in a FRESH browser
+  context (server-SSOT, not localStorage). (f8f42f2f2)
+- **Remaining (next passes):** S1 end-of-day + S13 first-run (stateful; need a resolvable model / mobile
+  viewport), T1 recall isolation (needs seeded facts), then the MCP + CV layers (§4).
 
 **Run recipe (BUILT image on a free port — never `vite dev`, which a parallel session can shadow):**
 ```sh
