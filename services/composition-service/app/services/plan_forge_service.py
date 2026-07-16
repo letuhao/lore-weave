@@ -72,6 +72,30 @@ def _work_project_id(work: CompositionWork) -> UUID:
     return work.id
 
 
+#: D-S3-CHECKPOINT-STRUCTURED-EDITS (option A) — the top-level LIST field a structured pass editor
+#: sends WHOLESALE. For these, a checkpoint edit REPLACES the list rather than deep_merge's id-upsert,
+#: so a DELETE (a shorter list) actually removes a member — beats/events carry ids, so the id-merge
+#: would otherwise silently keep a removed one (the silent-success bug /review-impl flagged).
+_PASS_LIST_REPLACE_FIELDS: dict[str, tuple[str, ...]] = {
+    "cast_plan": ("cast", "roster"),
+    "beat_plan": ("beats",),
+}
+
+
+def _merge_pass_edits(output_kind: str, content: dict[str, Any], edits: dict[str, Any]) -> dict[str, Any]:
+    """Apply a checkpoint edit: deep-merge scalar/object fields, but REPLACE the pass kind's list
+    field wholesale (option A) so removals take effect. Non-list edits keep deep_merge semantics."""
+    replace = {
+        f: edits[f]
+        for f in _PASS_LIST_REPLACE_FIELDS.get(output_kind, ())
+        if isinstance(edits.get(f), list)
+    }
+    rest = {k: v for k, v in edits.items() if k not in replace}
+    merged = _deep_merge(content, rest)
+    merged.update(replace)  # wholesale — a shorter list DELETES; a longer one adds
+    return merged
+
+
 class PlanRunJobInFlight(Exception):
     """BE-4 — refuse to archive a run with a live job (a pass/compile/propose still running).
 
@@ -820,8 +844,9 @@ class PlanForgeService:
           BLOCKING pass (`cast`, `beats`) is ever accepted, and therefore the only way the compiler
           proceeds past the two questions the author alone can answer.
 
-        `edits` deep-merges into the pass's artifact and saves a **NEW** artifact, which the pass
-        then points at. That new id changes every downstream fingerprint, so everything below goes
+        `edits` revises the pass's artifact and saves a **NEW** artifact, which the pass then points
+        at (for cast/beats the list REPLACES wholesale so a deletion sticks — `_merge_pass_edits`,
+        option A; other fields deep-merge). That new id changes every downstream fingerprint, so everything below goes
         STALE by derivation — with zero invalidation writes. That is not a side effect; it is the
         point (PF-3). A human editing the cast SHOULD invalidate the scenes planned against the old
         one, and the alternative — mutating the artifact in place — would leave the downstream
@@ -889,7 +914,7 @@ class PlanForgeService:
                 raise ValueError(
                     f"pass '{pass_id}' points at artifact {artifact_id}, which does not exist",
                 )
-            merged = _deep_merge(art.content, edits)
+            merged = _merge_pass_edits(spec.output_kind, art.content, edits)
             new_art = await self._runs.save_artifact(
                 created_by, run_id, spec.output_kind, merged,
             )
@@ -906,13 +931,17 @@ class PlanForgeService:
             await self._runs.update_run(book_id, run_id, pass_state=state)
             run = await self._runs.get_for_book(book_id, run_id) or run
 
-        decision = "accepted" if approved else "rejected"
-        state = record_pass(
-            run, pass_id, decision=decision, decided_by="user",
-            decided_at=datetime.now(UTC).isoformat(),
-        )
-        await self._runs.update_run(book_id, run_id, pass_state=state)
-        run = await self._runs.get_for_book(book_id, run_id) or run
+        # A save-edits is `approved=false` WITH `edits`: "hold this, but keep my revisions." That must
+        # NOT record a rejection — the pass stays PENDING-review with the new artifact so the author
+        # can approve it next. Only a genuine accept, or a genuine reject (no edits), decides the pass.
+        if not (edits and not approved):
+            decision = "accepted" if approved else "rejected"
+            state = record_pass(
+                run, pass_id, decision=decision, decided_by="user",
+                decided_at=datetime.now(UTC).isoformat(),
+            )
+            await self._runs.update_run(book_id, run_id, pass_state=state)
+            run = await self._runs.get_for_book(book_id, run_id) or run
 
         if approved and pass_id == "cast":
             await self._bind_roster(created_by, book_id, run)

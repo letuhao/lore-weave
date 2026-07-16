@@ -656,7 +656,10 @@
     "seedApplied": "Glossary seed applied — cast can be approved.",
     "seedGate": "Glossary seed is \"{{status}}\". Apply it before approving the cast (PF-7).",
     "applySeed": "Apply seed",
-    "approveGated": "Apply the glossary seed first (PF-7)"
+    "approveGated": "Apply the glossary seed first (PF-7)",
+    "editAdd": "Add",
+    "editRemove": "Remove",
+    "editEmpty": "Nothing here yet — add a row."
   },
   "planner": {
     "sourcePlaceholder": "Paste the novel-system markdown…",

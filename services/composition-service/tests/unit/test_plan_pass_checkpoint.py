@@ -123,9 +123,51 @@ def test_an_EDIT_saves_a_NEW_artifact_rather_than_mutating_in_place():
     passes fresh against a plan that no longer exists: a human edits the cast and the scenes planned
     around the OLD cast keep reporting themselves as up to date."""
     src = inspect.getsource(pfs.PlanForgeService._review_pass)
-    assert "merged = _deep_merge(art.content, edits)" in src
+    assert "merged = _merge_pass_edits(spec.output_kind, art.content, edits)" in src
     assert "new_art = await self._runs.save_artifact(" in src
     assert "artifact_id = new_art.id" in src
+
+
+# ── D-S3-CHECKPOINT-STRUCTURED-EDITS: option A (list-replace for known pass kinds) ────────────────
+
+def test_a_cast_edit_REPLACES_the_roster_so_a_REMOVED_member_actually_disappears():
+    """The whole point of structured edits: an author who deletes a character from the roster must
+    see it gone. deep_merge's id-upsert would keep a removed member; option A replaces the list."""
+    content = {"cast": [{"id": "c1", "name": "Ling"}, {"id": "c2", "name": "Bo"}], "notes": "x"}
+    # the author sends the FULL edited roster with c2 removed and c1 renamed
+    out = pfs._merge_pass_edits("cast_plan", content, {"cast": [{"id": "c1", "name": "Ling Wei"}]})
+    assert [m["id"] for m in out["cast"]] == ["c1"]          # c2 is GONE, not silently retained
+    assert out["cast"][0]["name"] == "Ling Wei"              # the surviving member took the edit
+    assert out["notes"] == "x"                               # untouched scalars are preserved
+
+
+def test_a_beat_edit_REPLACES_the_beats_even_though_beats_carry_ids():
+    """beats/events carry ids, so deep_merge would merge-by-id and never delete. Option A replaces."""
+    content = {"beats": [{"id": "b1"}, {"id": "b2"}, {"id": "b3"}]}
+    out = pfs._merge_pass_edits("beat_plan", content, {"beats": [{"id": "b1"}, {"id": "b3"}]})
+    assert [b["id"] for b in out["beats"]] == ["b1", "b3"]   # b2 removed
+
+
+def test_a_non_list_edit_still_DEEP_MERGES_and_an_unknown_kind_is_untouched():
+    """Scalar/object edits keep deep_merge semantics; a kind with no declared list field is a plain
+    deep_merge (so we never accidentally wipe a list we didn't mean to replace)."""
+    out = pfs._merge_pass_edits("cast_plan", {"cast": [{"id": "c1"}], "meta": {"a": 1}}, {"meta": {"b": 2}})
+    assert out["meta"] == {"a": 1, "b": 2}                   # object deep-merged
+    assert [m["id"] for m in out["cast"]] == ["c1"]          # list untouched when not in the edit
+    # an unknown kind: no list field declared → pure deep_merge (id-upsert), list preserved
+    un = pfs._merge_pass_edits("motif_plan", {"motifs": [{"id": "m1"}]}, {"motifs": [{"id": "m2"}]})
+    assert {m["id"] for m in un["motifs"]} == {"m1", "m2"}   # upsert, not replace
+
+
+def test_a_SAVE_EDITS_holds_the_pass_PENDING_rather_than_REJECTING_it():
+    """A save-edits is `approved=false` WITH `edits` — "keep my revisions, don't decide yet". It must
+    save the new artifact but leave the decision PENDING so the author can approve next; recording a
+    "rejected" decision here would silently reject the very plan they just fixed."""
+    src = inspect.getsource(pfs.PlanForgeService._review_pass)
+    # the decision write is guarded so a save-edits (edits present, not approved) skips it
+    assert "if not (edits and not approved):" in src
+    guard = src.split("if not (edits and not approved):")[1]
+    assert 'decision = "accepted" if approved else "rejected"' in guard[:200]
 
 
 def test_an_edited_pass_stays_FRESH_ITSELF_while_its_dependents_stale():

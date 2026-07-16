@@ -211,6 +211,11 @@ export function PassRailPanel(props: IDockviewPanelProps) {
                       void rail.reviewCheckpoint(approved, pass.pass_id);
                       setReviewPass(null);
                     }}
+                    onSaveEdits={(edits) => {
+                      // Hold + save the revision (approved=false) — keep the review open so the
+                      // author sees the edited artifact refetch, then approves separately.
+                      void rail.reviewCheckpoint(false, pass.pass_id, edits);
+                    }}
                     onClose={() => setReviewPass(null)}
                   />
                 )}

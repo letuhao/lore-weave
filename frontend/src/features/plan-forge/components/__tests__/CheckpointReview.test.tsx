@@ -37,7 +37,7 @@ beforeEach(() => {
 
 const props = (over?: Partial<React.ComponentProps<typeof CheckpointReview>>) => ({
   pass: pass({}), bookId: 'b1', runId: 'r1', token: 't', busy: false,
-  onReview: vi.fn(), onClose: vi.fn(), ...over,
+  onReview: vi.fn(), onSaveEdits: vi.fn(), onClose: vi.fn(), ...over,
 });
 
 describe('CheckpointReview (M4-CP)', () => {
@@ -79,12 +79,38 @@ describe('CheckpointReview (M4-CP)', () => {
     expect(onReview).toHaveBeenCalledWith(true);
   });
 
-  it('the artifact content is READ-ONLY — no raw-JSON editor (draft ban + deep-merge cannot delete)', async () => {
+  it('no RAW-JSON editor — the artifact view is read-only until the structured editor is opened', async () => {
+    // The draft bans a raw-JSON textarea as an un-derived write channel. The STRUCTURED editor
+    // (D-S3-CHECKPOINT-STRUCTURED-EDITS) is the sanctioned edit path, but it is NOT open by default.
     render(<CheckpointReview {...props()} />);
     await waitFor(() => screen.getByTestId('review-content'));
-    expect(screen.queryByTestId('review-edit-toggle')).toBeNull();
+    expect(screen.queryByTestId('artifact-json')).toBeNull();          // no raw JSON for cast
+    expect(screen.queryByTestId('pass-artifact-editor')).toBeNull();   // editor closed by default
+    expect(screen.getByTestId('review-edit')).toBeInTheDocument();     // but the Edit door is offered
+  });
+
+  it('Edit → structured editor; removing a row + Save sends the WHOLE list so the delete sticks', async () => {
+    api.getArtifact.mockResolvedValue({
+      artifact_id: 'art1', kind: 'cast_plan', created_at: null,
+      content: { cast: [{ name: 'Alice' }, { name: 'Bob' }] },
+    });
+    const onSaveEdits = vi.fn();
+    render(<CheckpointReview {...props({ onSaveEdits })} />);
+    await waitFor(() => screen.getByTestId('review-content'));
+    fireEvent.click(screen.getByTestId('review-edit'));
+    await waitFor(() => screen.getByTestId('pass-artifact-editor'));
+    fireEvent.click(screen.getByTestId('edit-remove-1'));               // drop Bob
+    fireEvent.click(screen.getByTestId('edit-save'));
+    expect(onSaveEdits).toHaveBeenCalledTimes(1);
+    const edits = onSaveEdits.mock.calls[0][0] as { cast: { name: string }[] };
+    expect(edits.cast.map((c) => c.name)).toEqual(['Alice']);          // Bob is GONE from the list
+  });
+
+  it('an advisory (non-editable) kind offers no Edit door', async () => {
+    api.getArtifact.mockResolvedValue({ artifact_id: 'art1', kind: 'motif_plan', content: { motifs: [] }, created_at: null });
+    render(<CheckpointReview {...props({ pass: pass({ output_kind: 'motif_plan', checkpoint: 'advisory' }) })} />);
+    await waitFor(() => screen.getByTestId('review-content'));
     expect(screen.queryByTestId('review-edit')).toBeNull();
-    expect(screen.queryByTestId('review-save-edits')).toBeNull();
   });
 
   it('Reject calls onReview(false)', async () => {

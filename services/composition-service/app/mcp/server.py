@@ -3639,11 +3639,13 @@ async def plan_apply_revision(
         "PlanForge: approve or hold a checkpoint. Omit pass_id for the SPEC checkpoint "
         "(approved=true marks the run validated-intent). Give pass_id to review one COMPILER "
         "PASS — the only way a blocking pass ('cast', 'beats') is ever accepted, and therefore "
-        "the only way the compiler proceeds past it. `edits` deep-merges into that pass's "
-        "artifact and saves a NEW one, which stales everything downstream by derivation (that "
-        "is intended: scenes planned against the old cast should not survive an edit to the "
-        "cast). Accepting 'cast' requires its glossary seed proposal to have been APPLIED. "
-        "No LLM. EDIT required."
+        "the only way the compiler proceeds past it. `edits` revises that pass's artifact and "
+        "saves a NEW one, which stales everything downstream by derivation (that is intended: "
+        "scenes planned against the old cast should not survive an edit to the cast). For 'cast' "
+        "(cast/roster) and 'beats' the list you send REPLACES the whole list — a shorter list "
+        "DELETES members; other fields deep-merge. `approved=false` WITH `edits` HOLDS the pass "
+        "with your revision (does not reject it). Accepting 'cast' requires its glossary seed "
+        "proposal to have been APPLIED. No LLM. EDIT required."
     ),
     meta=require_meta("A", "book", synonyms=["approve checkpoint", "accept plan", "hold plan", "accept pass", "accept cast"], tool_name="plan_review_checkpoint"),
 )
@@ -3658,8 +3660,10 @@ async def plan_review_checkpoint(
     ] = None,
     edits: Annotated[
         dict | None,
-        "Optional deep-merge patch into the pass's artifact (pass_id required). Saves a NEW "
-        "artifact; downstream passes go stale by derivation.",
+        "Optional revision to the pass's artifact (pass_id required). For cast/beats the list "
+        "you send REPLACES the list wholesale (a shorter list deletes); other fields deep-merge. "
+        "Saves a NEW artifact; downstream passes go stale by derivation. approved=false + edits "
+        "holds the pass with your revision rather than rejecting it.",
     ] = None,
 ) -> dict:
     tc = _ctx(ctx)
