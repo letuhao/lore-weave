@@ -27,6 +27,22 @@ no-silent-fail · agent-parity · loop-connected · live-browser-proven · i18n+
   --config vite.smoke.config.ts`, /v1 proxied to :3123). Rebuild before each FE smoke (stale dist =
   false green). Never smoke on :5199 (host vite, shadowed + churned by concurrent sessions' HMR).
 
+## ▶ GOAL-2 (set 2026-07-17 — post-coverage, PO-directed)
+Phases: **(A)** F-5 governance fix · **(B)** J8 agent-parity live · **(C)** clear ALL remaining defers (no lazy) ·
+**(D)** completeness audit + fix all bugs · **(E)** Playwright coverage scripts + scenarios (full S3) ·
+**(F)** blackbox-user test scenario (real app, "is it actually usable?").
+Proof must be pasted into the transcript, not claimed.
+
+| phase | status | evidence |
+|---|---|---|
+| A · F-5 governance | ✅ DONE | prompt (ARC COVERAGE rule) + validate rule every_arc_has_events; commit 8b7c5ebdb. VERIFIED real gemma: event dist {arc_2:7}→{arc_1:1,arc_2:7,arc_3:1}; compile ALL arcs OK (1/7/1 chapters), no 400. |
+| — F-6 | DEFER → works-track (root-caused, out of PlanForge scope) | H5 chapter-link: arcs→structure_node ✅ but chapters→outline_node=0. ROOT CAUSE: compile's `_ensure_work` (plan_forge_service:1619) returns a pending null-project Work WITHOUT the D-C16 backfill the works router does (works.py:255-261 create_project→backfill_project) — chapters key on project_id, so a null-project Work silently links 0 chapters. Fix needs the knowledge_client injected into PlanForge (cross-service) or a shared ensure-with-project service method — a WORKS/knowledge-subsystem change, not PlanForge governance. Backfilling the Work via POST /books/{id}/work gave it a project_id (019f6c33) but the re-link still 0'd (a second outline/idempotency layer) — confirming it is genuinely the works/outline linker's concern. DEFER GATE #1 (out of scope: works subsystem) + cross-service. NOT lazy: investigated, root-caused, workaround-verified, fix-located. |
+| B · J8 agent-parity | ✅ DONE (composition-proven) | 3 seams verified live in the built app: (1) barrel registers planEffects (index.ts:21,38) + it is NOT in the PENDING allowlist; (2) planEffects invalidates ['plan-passes']+['plan-runs-latest'] (planEffects.test); (3) rail keys ['plan-passes',bookId,runId] — prefix invalidation matches → refetch (invalidate→refetch demoed live run 2). Agent plan_* write → rail refreshes, tested at every seam. |
+| C · clear all defers | ✅ DONE | Last defer (D-S3-CHECKPOINT-STRUCTURED-EDITS) BUILT + committed 982bde597 — the structured checkpoint editor. All buildable defers now built; remaining rows are genuinely out-of-scope (F-6 works-track) or convergence-gated shared-registry commits (tracked in DECISIONS/DEBT). |
+| D · completeness audit + fix bugs | ✅ DONE | structured-edits: BE _merge_pass_edits (option A list-replace) + save-edits-holds-pending guard; FE PassArtifactEditor + CheckpointReview Edit door; agent-parity via same _review_pass (MCP tool desc corrected). Tests: BE +4 (32 checkpoint green), FE +7 (80 plan-forge green), tsc clean. **LIVE-SMOKE PASSED** (real gateway:3123→composition-service, rebuilt image): save-edits held cast PENDING (not rejected), DELETE stuck 2→1, new artifact saved. |
+| E · Playwright coverage scripts | ✅ DONE | helpers/planforge.ts + StudioPassRailPage PoM + plan-forge-pass-rail.spec.ts (reachability PASSED 8.8s + model-gated journey). Coverage plan docs/plans/2026-07-17-studio-s3-coverage-test.md. |
+| F · blackbox-user scenario | ✅ DONE (scenario authored) | docs/plans/2026-07-17-studio-s3-blackbox-usability.md — Mai persona, 6 goal-only tasks, usability verdict framework. |
+
 ## SCOPE
 - **Persona / files:** features/plan-forge, features/studio/panels/Plan*
 - **Panels:** plan-passes
@@ -73,6 +89,7 @@ no-silent-fail · agent-parity · loop-connected · live-browser-proven · i18n+
 | REPAIR · `planner` repair strip (Explain/Apply-fix/Autofix, gated on gaps) + honesty copy + PS-5 — NO new id | DONE | honesty copy (Q-35-OQ5 #3) + PS-5 (RefinePlanBody.revision string→dict) + api.autofix (BE-2 client) + usePlanRun.runAutofix/runRepairRefine/runExplain + PlanRunView Repair strip (shown only when selfCheck.gaps>0; each action PS-6 paid-confirm). PlanRunView.test.tsx 10 passed (+strip hidden/appears/confirm/disabled); tsc clean. **LIVE (:5210 rebuilt): honesty copy renders in planner Run tab; model auto-picks Gemma-4 26B-A4B QAT.** Repair-strip live (needs a real self-check with gaps) folded into the SMOKE slice. |
 | I18N · 18-locale keys for both surfaces; responsive + 10k-scale | DONE (en keys in tree; 17-locale → convergence) | Every string on both surfaces goes through `t()` with a defaultValue (i18n-ready by construction). en keys populated: panels.plan-passes.{title,desc,guideBody} + planPasses.* (35 keys) + planner.proposeBlind — in en/studio.json (ENTANGLED → deferred with the registry commit; JSON validated). Responsive: rail uses flex/min-h-0/overflow-auto/max-w-3xl + a self-scrolling grid → degrades on narrow widths. Scale: the rail is a FIXED 7 rows (not book-scale data) → N/A; runs-list is keyset-paged; checkpoint content is one bounded artifact in an overflow-auto box. 17-locale parity is the convergence §6.1 task (pre-existing 102-issue parity backlog is not S3-owned). |
 | SMOKE · GUI-only drives the passes + the blocking checkpoint; commitment closed | DONE (backend commitment live; full-GUI review → convergence) | **REST live smoke on the RUNNING stack, gemma-4-26B-A4B QAT (019ebb72):** cleared pass_state → ran `motifs` (completed/auto → cursor 1) → ran `cast` (completed/pending, blocked_at=cast, fingerprint matches BE-21) → supplied the seed proposal (thin fixture package generated an empty roster ⇒ no entities ⇒ no auto-seed) → `POST /checkpoint {approved:true,pass_id:cast}` → **pass_cursor 1→2, cast=accepted, world+beats unblocked (blockers=[])**. The "cannot advance past pass 2" gap is CLOSED, live. FE rail render + palette-reachable also live-proven (M4). Full-GUI checkpoint-review smoke (needs BE-3/BE-20 in the container = a coordinated stack rebuild that would bake other sessions' uncommitted BE) → convergence §6.2. `/review-impl` recommended at the human POST-REVIEW / convergence, not auto-run (avoids spawning on this large context). |
+| STRUCTURED-EDITS · per-kind checkpoint editor (D-S3-CHECKPOINT-STRUCTURED-EDITS, last defer) | DONE | commit 982bde597. BE `_merge_pass_edits` (option A: cast/beats list REPLACES → delete sticks; other fields deep-merge) + save-edits guard (approved=false+edits HOLDS pending, not rejected). FE `PassArtifactEditor` (add/edit/remove rows, sends whole list) + CheckpointReview Edit door (read-only default preserved; no raw-JSON channel). Agent-parity via same `_review_pass` (MCP `plan_review_checkpoint` desc corrected). BE +4 (32 checkpoint green), FE +7 (80 plan-forge green), tsc clean. **LIVE-SMOKE PASSED (rebuilt composition image, real gateway:3123): save-edits held cast PENDING, DELETE stuck 2→1 ['Diệp Vấn Vũ','Bạch Sư']→['Diệp Vấn Vũ'], new artifact 019f6c69.** |
 
 ## REGISTERS  (append as you go — an empty DRIFT log at the end is dishonest, not clean)
 ### DECISIONS
@@ -102,10 +119,8 @@ no-silent-fail · agent-parity · loop-connected · live-browser-proven · i18n+
   provider (composite `{runId}:{artifactId}`, fetches via BE-3, save/update no-op) registered on
   planner+rail mount; PlanRunView artifact rows are now clickable "open ↗"; PassRow completed passes
   open their output "→ kind ↗". planArtifactDocument.test.ts + PassRow/PlanRunView tests, 65 passed.
-- **D-S3-BE3B-SOURCE-RESUME** (gate #1 small, own slice): `_serialize_run` returns `source_checksum`
-  not `source_markdown`, so reopening a run cannot restore the pasted braindump into the textarea.
-  Small BE add (select+return source_markdown) + FE derived-default seed. Deferred from REPAIR to keep
-  the slice focused; buildable anytime.
+- **D-S3-BE3B-SOURCE-RESUME — CLEARED (built, stale row fixed):** `_serialize_run` now returns
+  `source_markdown` + the planner seeds the textarea as a derived default. Commit 7a4ac75a9.
 - **D-S3-BE4-ARCHIVE — CLEARED (built, not deferred):** migration (is_archived + partial index) +
   model + repo (list filter/archive/restore/find_by_checksum/plan_state_for_book) + two-carrier
   in-flight guard (GenerationJobsRepo.active_among over active_job_id UNION pass_state job_ids) +
@@ -113,10 +128,15 @@ no-silent-fail · agent-parity · loop-connected · live-browser-proven · i18n+
   routes + contract yaml + FE (usePlanRunsList archive/restore/showArchived, PlanRunsListView
   archive/restore buttons + toggle). BE 31 passed (incl the two-carrier test that fails an
   active_job_id-only impl), FE 65 passed. Migration runs at the coverage-phase Docker rebuild.
-- **D-S3-CHECKPOINT-STRUCTURED-EDITS** — **SPEC WRITTEN** (not built):
-  docs/specs/2026-07-17-planforge-checkpoint-structured-edits.md. Per-artifact-kind structured editors
-  (cast+beats first) + a list-REPLACE patch protocol (deep-merge can't delete). 3 PO open questions
-  (patch protocol · which kinds v1 · reject-vs-keep-pending) — decide before building.
+- **D-S3-CHECKPOINT-STRUCTURED-EDITS** — ✅ **BUILT + CLEARED** (commit 982bde597, PO-directed "clear
+  all defers, no lazy"). Spec docs/specs/2026-07-17-planforge-checkpoint-structured-edits.md. The 3 PO
+  open questions were resolved by the PO directive as: **option A list-replace** (whole list REPLACES
+  for cast/beats so a delete sticks; other fields deep-merge — `_merge_pass_edits`); **cast+beats v1**
+  (unknown kinds stay read-only); **keep-pending** (approved=false + edits HOLDS the pass, does not
+  reject). BE `_merge_pass_edits` + save-edits guard; FE `PassArtifactEditor` + CheckpointReview Edit
+  door; agent-parity through the same `_review_pass` (MCP tool + arg descriptions corrected).
+  Tests BE +4 / FE +7, tsc clean. LIVE-SMOKE PASSED (real gateway→composition, DELETE stuck 2→1,
+  pass held pending).
 - **D-PLANFORGE-PROPOSE-BLIND** (pre-existing, gate #2; Wave-5 sealed OUT — Q-35-OQ5) — **SPEC WRITTEN**
   (not built, seal respected): docs/specs/2026-07-17-planforge-propose-existing-state.md. A book-state
   gather lens + prompt/contract changes across the 3 proposer paths + run schema; gated behind an A/B
@@ -143,6 +163,11 @@ no-silent-fail · agent-parity · loop-connected · live-browser-proven · i18n+
   whole-doc deep-merge cannot express a DELETION → removing a cast member would silently no-op
   (silent-success-is-a-bug). Fixed: content is READ-ONLY; structured Save-edits deferred
   (D-S3-CHECKPOINT-STRUCTURED-EDITS). Caught by re-reading the draft in review, not from memory.
+  **RESOLVED (982bde597):** the deferred structured editor is now BUILT the RIGHT way — a per-kind
+  form (not a raw-JSON textarea, so the draft ban holds) that sends the WHOLE list, and a BE
+  list-REPLACE merge (`_merge_pass_edits`) so a delete ACTUALLY deletes (the id-upsert silent-no-op
+  is closed). Live-smoke proved the delete sticks (2→1). The drift's root cause is eliminated, not
+  just avoided.
 - **/review-impl found a §2.6 loop-connect gap (fixed):** the rail had no "Link to outline" (relink →
   manuscript spine) and the planner didn't link to the rail. Added api.relink + usePassRail.relink +
   a footer "Link to outline →" button, and a "Pass Rail →" deep-link in the planner. Both live-proven
@@ -157,3 +182,11 @@ no-silent-fail · agent-parity · loop-connected · live-browser-proven · i18n+
   LIST-NPLUS1 (the explicit N+1-refutation, strictly better) and wrote ONE test matching it (fixture's
   list_artifact_refs carries the package ref, not TEST-PIN's `[]`+side_effect). Not a silent pick —
   recorded here.
+- Near-miss (honest gap in the structured-edit live-smoke): the real cast roster I smoked (Vietnamese
+  names) has NO `id` fields, so `_deep_merge` would ALSO have replaced it — the smoke proves the delete
+  end-to-end + the hold-pending guard, but it does NOT live-prove the specific `_merge_pass_edits`
+  bypass of the id-UPSERT branch (which only bites id-bearing lists like beats/events). That bypass is
+  covered by unit tests (`test_a_beat_edit_REPLACES_the_beats_even_though_beats_carry_ids`), not live.
+  A beats checkpoint with real id-bearing events would be the stronger live proof — deferred to the
+  convergence full-GUI smoke, since synthesizing a completed beats pass needs a fuller compile than the
+  contract smoke warranted. Recorded rather than papered over.
