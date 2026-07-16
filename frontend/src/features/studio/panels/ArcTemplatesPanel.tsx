@@ -12,6 +12,7 @@ import { useStudioPanel } from './useStudioPanel';
 import { useArcTemplates, type ArcTemplatesState } from './useArcTemplates';
 import { ArcTimelineEditor } from '@/features/composition/motif/components/ArcTimelineEditor';
 import { ArcApplyPreview } from '@/features/composition/motif/components/ArcApplyPreview';
+import { ImportDeconstructSection } from '@/features/composition/arcImport/ImportDeconstructSection';
 import type { ArcTemplate } from '@/features/composition/motif/arcTypes';
 
 const TIERS = [
@@ -24,14 +25,27 @@ export function ArcTemplatesPanel(props: IDockviewPanelProps) {
   useStudioPanel('arc-templates', props.api);
   const host = useStudioHost();
   const state = useArcTemplates(host.bookId);
+  const [view, setView] = useState<'library' | 'deconstruct'>('library');
 
   return (
     <div data-testid="studio-arc-templates-panel" className="flex h-full min-h-0 flex-col text-sm">
-      {state.selected ? (
-        <ArcDetail state={state} arc={state.selected} />
-      ) : (
-        <ArcLibrary state={state} />
-      )}
+      <div className="flex gap-1 border-b p-1" role="tablist">
+        <button type="button" role="tab" data-testid="arc-tab-library" aria-selected={view === 'library'}
+          className={`rounded px-2 py-0.5 text-xs ${view === 'library' ? 'bg-muted font-medium' : 'text-muted-foreground hover:bg-muted/50'}`}
+          onClick={() => setView('library')}>Library</button>
+        <button type="button" role="tab" data-testid="arc-tab-deconstruct" aria-selected={view === 'deconstruct'}
+          className={`rounded px-2 py-0.5 text-xs ${view === 'deconstruct' ? 'bg-muted font-medium' : 'text-muted-foreground hover:bg-muted/50'}`}
+          onClick={() => setView('deconstruct')}>Import &amp; Deconstruct</button>
+      </div>
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+        {view === 'deconstruct' ? (
+          <div className="h-full overflow-auto"><ImportDeconstructSection token={state.token} /></div>
+        ) : state.selected ? (
+          <ArcDetail state={state} arc={state.selected} />
+        ) : (
+          <ArcLibrary state={state} />
+        )}
+      </div>
     </div>
   );
 }
