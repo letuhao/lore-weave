@@ -36,7 +36,7 @@ no-silent-fail · agent-parity · loop-connected · live-browser-proven · i18n+
 | — PHASE A COMPLETE (reported bugs T1/T2/T4/T5/T8/T10 + D1/D3-D9) — unit-green, FE-only, live-smoke deferred to §2 sweep | DONE | commits 7901f04a9 + 9a6ca4037 |
 | B  · degraded-mode / no-silent-fail — T6, S1, S2, S4, S5, S6, S8 | DONE | commits 32f7b04b2 + b257f8893; +ChapterTranslationsPanel.errors + StepProgress.error + segmentDrilldown S2; 61 tests green |
 | B-tail · T7, D10-A, S3, S9, D11 — see registers | PARTIAL | T7+D10-A covered by existing surfaces (see DECISIONS); S3/S9/D11 tracked in DEBT/PARKED |
-| C1 · language SSOT — D-4 languages.contract.json + Python languages.py mirror + parity + MCP enum + FE consolidate 3 inputs (D13) | TODO | |
+| C1 · language SSOT — D-4 languages.contract.json + Python languages.py mirror + parity + MCP enum + FE consolidate 3 inputs (D13) | DONE | commit 5edd3a06f; SSOT contract + FE parity(2) + Python parity(6 incl MCP Literal) + write-validation at job-create/settings/prefs/MCP-update + LanguagePicker `codes` prop; 55 BE + 16 FE green; tsc clean. S7 BatchTranslateDialog = DEBT (glossary subtree). Route-level 400/201 → §2 live-smoke |
 | C2 · grant-gate — book-service my_grant_level + FE disable-with-reason (T9/D10-C) | TODO | |
 | §2 · bar sweep — S11 agent-parity effect, loop deep-links, i18n 18-locale, responsive/mobile, scale 10k, User Guide | TODO | |
 | D-1 · Vietnamese→vi backfill DRY-RUN + STOP (PO-gated) | TODO | migration+rollback+row-count assert; dry-run pasted; DO NOT execute |
@@ -55,6 +55,7 @@ no-silent-fail · agent-parity · loop-connected · live-browser-proven · i18n+
 - **S3 · settings TranslationTab `.catch(() => {})`** — a providers+models fetch error renders as the benign "you have no models" empty state (`features/settings/**`, outside features/translation subtree). Small no-silent-fail fix; fold into the §2 sweep or a settings pass. MED.
 - **S9 · ConfirmNameDialog hand-rolled `fixed inset-0` overlay** — the last DOCK-9 leftover in translation; migrate to FormDialog. `dockablePanelHygiene.test.ts` should catch it — verify at §2. LOW.
 - **S12 · GlossaryTranslateWizard** — "View glossary"/"Close" both wired to handleClose (button navigates nowhere); `state.totalEntities` stored, never read. LOW, glossary-translate subtree.
+- **S7 · BatchTranslateDialog free-text language input** (`features/glossary/components/`) — consolidate onto `<LanguagePicker codes={TRANSLATION_TARGETS}>` like TranslateModal did. Outside features/translation subtree; the C1 BE closed-set already rejects any invalid code it could emit, so this is UX hygiene, not a correctness hole. MED.
 ### DRIFT  (near-misses, bars nearly lowered, tests nearly skipped)
 - A1 T1-unscoped test first clicked the CTA while chapters still loading (disabled → no-op) → false-green risk; caught it, made the test wait for load. The lesson: assert against the *enabled* control, not just its presence.
 - B S6/S8 committed without a dedicated test (LOW display/logging fixes). Near-miss on the "checklist⇒test the effect" bar; accepted for LOW severity but recorded — add a SplitCompareView fallback test if the §2 sweep touches it.
