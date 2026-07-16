@@ -112,8 +112,13 @@ export function useArcInspector(bookId: string, paramsArcId?: string): ArcInspec
       if (!token || !current || current.id !== targetId) return;
       setSaving(true); setWriteError(null);
       try {
-        const updated = await patchArc(current.id, patch, current.version, token);
-        setDetail(updated);
+        // PATCH /arcs/{id} returns the BARE node (no `resolved`/`open_promises`/derived block).
+        // Seeding that straight into `detail` would blank the cascade the body reads (d.resolved)
+        // and, worse, an Override edit changes `resolved` itself — so refetch the ENRICHED detail.
+        // The refetched row also carries the bumped version the next chained edit needs.
+        await patchArc(current.id, patch, current.version, token);
+        const fresh = await getArc(current.id, token);
+        setDetail(fresh);
         void qc.invalidateQueries({ queryKey: ['plan-hub', 'arcs', bookId] });
       } catch (e) {
         const status = (e as { status?: number }).status;

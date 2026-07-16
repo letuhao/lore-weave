@@ -280,14 +280,16 @@ export function getArc(nodeId: string, token: string): Promise<ArcDetail> {
 }
 
 /** 32/BE-A2 — patch an arc. OCC via If-Match (REQUIRED server-side now). A stale version comes back
- *  412 STRUCTURE_VERSION_CONFLICT with the CURRENT row, so the caller reseeds rather than clobbering. */
+ *  412 STRUCTURE_VERSION_CONFLICT with the CURRENT row, so the caller reseeds rather than clobbering.
+ *  ⚠ Returns the BARE node (no `resolved`/`open_promises`/derived block) — the route does not
+ *  re-enrich. The caller must refetch `getArc` for the cascade after a successful patch. */
 export function patchArc(
   nodeId: string,
   body: ArcEdit,
   version: number,
   token: string,
-): Promise<ArcDetail> {
-  return apiJson<ArcDetail>(`${COMP}/arcs/${nodeId}`, {
+): Promise<ArcListNode> {
+  return apiJson<ArcListNode>(`${COMP}/arcs/${nodeId}`, {
     method: 'PATCH',
     token,
     headers: { 'If-Match': String(version) },
