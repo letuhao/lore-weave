@@ -32,7 +32,33 @@ no-silent-fail · agent-parity · loop-connected · live-browser-proven · i18n+
 |---|---|---|
 | S7-A1 · audit current surface (role-play user) | DONE | black-box operability matrix below — code-grounded, file:line |
 | S7-A2 · PORT/ENHANCE/BUILD decisions per capability | DONE | 5 decisions below |
-| _(build slices appended after A2)_ | | |
+| S7-B1 · kg-authoring (s7-1, FS) — Create Entity/Relation + wire delete + 5-kind gate + faction→organization | DONE | 125 FE tests + knowledge pytest 328 pass; kind gate on REST+MCP+3 schema sources |
+| S7-B2 · world-map editor (s7-2, Go FS) — 10 REST + 3 MCP update tools + 3-col migration | DONE | book-service go build+vet clean; 388 go tests (30 map-family) inc TestMapUpdateRoundTrip |
+| S7-B3 · place-graph port (s7-3, FE) | DONE | leaf-reuse wrapper + worldEffects handler; vitest green |
+| S7-B4 · cast + character-arc port + light edit (s7-4, FE) | DONE | CastPanel/CharacterArcPanel + useCastEdit; knowledgeEffect extended w/ composition keys |
+| S7-INT · integrator wired registry (catalog/enum/contract/i18n/worldEffects) + verify | DONE (registry UNCOMMITTED — convergence) | tsc EXIT 0; contract regen 20; panelCatalog+effectCoverage 175; enum==openable==contract 63; ai-provider-gate OK |
+| S7-VERIFY · live-browser smoke + /review-impl on stack-up | TODO | pending a stack-up (tracked, not skipped) |
+
+**Build committed:** 50 disjoint S7-owned files (components/hooks/tests/backend). The SHARED registry
+(catalog.ts, frontend_tools.py enum, contract.json, i18n, handlers/index.ts) is left UNCOMMITTED as
+convergence-node work — catalog.ts is co-mingled with S1's SceneComposePanel, so committing it would
+entangle tracks. The 4 panels are built+verified but not yet reachable until convergence wires the registry.
+
+### DEFER rows (from the build)
+- **D-CAST-ARC-BUS-SLICE** — the tier-2 bus deep-link (`activeCastEntityId` in host/types.ts) not built
+  (shared infra, would collide); deep-link works via params (tier 1) + in-panel picker (tier 3). Gate #1.
+- **D-KG-ENTITY-RESTORE** — no FE unarchive route (archive is honest about it). Gate #2 structural.
+- **D-CAST-KEYSET-PAGING** — both list routes cap at limit:200. Gate #1.
+- **D-KG-EVENT-CREATE-ROUTE** — active→gone band read-only; no createEvent route. Belongs to kg-timeline.
+- **D-KG-PREDICATE-VOCAB** — relation predicate stays free-string server-side; GUI enum is the right layer.
+
+### DRIFT (honest near-misses from the build)
+- Integrator caught an ORCHESTRATION bug: I told both B's world_map_* AND C's kg_* handlers to live in
+  worldEffects.ts → a 2nd kg_* handler would make kg_create_node match 2 → red the repo `<=1` no-double-fire
+  assertion. Integrator folded C's keys into knowledgeEffect instead of LOWERING the invariant. Bar held.
+- s7-1's `+link` relation builder was drawn ON the kg-graph canvas; Group A placed it in EntityDetailPanel
+  (node→detail→+link) to avoid editing the shared GraphCanvas primitive. Functionally equivalent, a deviation.
+- Retiring `faction` broke a pinned groupCast ordering test — surfaced by running the leaf test, fixed to canonical order.
 
 ## S7-A1 · BLACK-BOX OPERABILITY AUDIT (2026-07-16)
 
