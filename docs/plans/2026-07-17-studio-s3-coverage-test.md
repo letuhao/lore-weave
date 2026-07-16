@@ -116,10 +116,30 @@ push it into my outline so I can write."
 
 ---
 
-## Coverage findings ledger (fill during the run)
-| # | journey/step | severity | what the author expected | what the UI gave | gap type (UI-missing / flow-dead-end / stale-state / unclear / view-inadequate) |
+## Coverage findings ledger
+
+### Run 1 — 2026-07-17, rebuilt Docker stack (composition-service + worker rebuilt, BE-3/BE-20/BE-4
+migration live; FE static :5210). Partial pass — J1/J2.4/J4/J6 exercised live; J2-full/J3/J5-full/
+J7/J8 deferred to a fresh-context continuation (needs fresh gemma runs through all 7 passes).
+
+**Confirmed WORKING live (not findings — coverage passed):**
+- Pass Rail reachable via ⌘⇧P palette with a clear description (J1). ✅
+- PS-9 artifact view: rail "→ cast_plan ↗" AND planner "open ↗" open the artifact in the json-editor
+  READ-ONLY (chip "READ-ONLY", no Save/Revert, only Format) showing the real content — the full
+  PS-9 provider → BE-3 content route → FE-1 read-only chain, live (J4.4/J2.4). ✅
+- Rail renders the derived ledger (7 passes, badges, freshness, cursor, blocked_at) + "Link to
+  outline →" (J4/J6). ✅
+
+**FINDINGS:**
+| # | journey/step | severity | what the author expected | what the UI gave | gap type |
 |---|---|---|---|---|---|
-| | | | | | |
+| F-1 | J4.4 / J2.4 (H1) | **MED** | to READ my cast/beats as a cast/beat list | **raw JSON** in a tab titled "JSON · {runId}" — `{"cast":[{"name":…}]}` | **view-inadequate** — the viewer is developer-shaped; an author needs a human-readable per-kind render (the READ side of the structured-edits spec's per-kind components). H1 **CONFIRMED**. |
+| F-2 | J5 (fixture) | n/a | — | cast showed "re-run" not "review →" | NOT a product bug: the seeded run's cast was already `accepted` (cursor 2) from the prior REST smoke; a full fresh run is needed to exercise the pending-checkpoint UI. Re-run coverage with a clean propose→compile→run in fresh context. |
+
+**Still to confirm/refute (fresh-context continuation, harness ready):** H2 (7-run friction),
+H3 (read-only checkpoint edit — spec'd), H4 (no run-picker), H5 (loop visibility after link),
+H6 (no undo) — plus J3 (repair strip w/ gemma), J5 (full checkpoint incl seed-gate apply→approve),
+J7 (archive/restore + 409 in-flight), J8 (agent parity refresh).
 
 ## Known gap hypotheses to CONFIRM or REFUTE (don't assume — test them)
 - **H1 (view-inadequate):** raw-JSON artifact viewer is developer-shaped; an author needs a
