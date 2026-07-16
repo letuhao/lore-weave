@@ -57,7 +57,8 @@ Design of record: **spec 32 + 32a** (B1), **spec 34 + a future 34a** (B2). PO cl
 | S2-B2c · ImportDeconstructSection (拆文 cost-gate → confirm → poll motif-jobs) | TODO | |
 | S2-B2d · registration + live-browser smoke (agent-open→deconstruct→materialize→drift, no dock teardown) | TODO | |
 | **S2-B2 · arc-templates + 拆文 (spec 34 + 34a book-tier)** | | |
-| S2-B2a · BE-7a extract-template REST + BE-7b suggest REST + tests | DOING | BE-7a ✅ (`POST /arcs/{id}/extract-template`, VIEW gate, 409 dup-code map; mirrors MCP engine). test_arc_hub_routes 23/23. BE-7b next. |
+| S2-B2a · BE-7a extract-template REST + tests | DONE | BE-7a ✅ (7d2119285): `POST /arcs/{id}/extract-template`, VIEW gate, 409 dup-code map; engine verified real. test_arc_hub_routes 23/23. |
+| S2-B2a2 · BE-7b suggest REST (`POST /arc-templates/suggest`) | TODO | Buildable (WorksRepo.get + retrieve_arcs both real). BLOCKER-CARE: needs the `_arc_public_projection` (B-3 privacy — must NOT expose another user's `source_ref`/imported-source in a non-owner candidate). That helper lives in mcp/server.py; do it RIGHT (shared-module extract OR careful replicate + a leak test), not a rushed inline projection. Privacy-sensitive → not rushed. |
 | S2-B2b · FE ArcTemplatesPanel (lift motif Arc*, drop conformance AT-7) + library/catalog/detail/drift + AT-6 stamp | TODO | |
 | S2-B2c · ImportDeconstructSection (拆文 cost-gate → confirm → poll motif-jobs) | TODO | |
 | S2-B2d · D-ARC-TEMPLATE-BOOK-TIER (34a: schema + tenancy) | TODO | |
