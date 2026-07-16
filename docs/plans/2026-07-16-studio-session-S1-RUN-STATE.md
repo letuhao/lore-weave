@@ -95,7 +95,9 @@ book-editor). Triage below.
   does the IDENTICAL thing (`tiptapEditorRef.insertAtCursor` into the one book-chapter editor; the
   derivative is only an `activeWorkOverride` composition Work, the editor stays book-scoped). So S1
   reuses the proven path EXACTLY — it introduces no new routing. Whether a derivative's prose should be
-  isolated from canon is a pre-existing **S5 / what-if COW** design question, not an S1 bug. Cleared.
+  isolated from canon is a pre-existing **S5 / what-if COW** design question, not an S1 bug. Cleared from
+  S1 AND **handed to S5's DEBT register as `D-S5-DERIVATIVE-ACCEPT-ISOLATION`** (ties to their EC-3d
+  active-work seam) so it does NOT drift when S1 closes — S5 owns the design call + the live verify.
 - **Mobile (§2-bar #8) → SETTLED scope, not a gap.** scene-compose/chapter-assemble render at 390px with
   no horizontal overflow, but the studio dock is narrow there because the studio is **desktop-first** —
   a SETTLED decision by the mobile-shell track itself (`2026-07-15-mobile-shell-and-home-RUN-STATE.md`

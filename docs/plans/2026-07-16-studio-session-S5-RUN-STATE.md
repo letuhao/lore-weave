@@ -126,6 +126,22 @@ useWhatIfPromotion), NEVER mount CompositionPanel shell.
 - D-S5-SWITCH-TO-EC3C — divergence "Switch to" + EC-3c (candidates[0]→!source_work_id at ~12 sites, 7 studio+4 legacy+1 BE)
   + EC-3d (useActiveWork + host bus work:switch). Cross-session (edits S1/S3/S6/S7 files) → needs coordination, not S5-solo.
   Panel ships LIST/READ/CREATE/ARCHIVE without it (no bug armed). Gate: hygiene grep `candidates[0]` absent outside tests.
+- **D-S5-DERIVATIVE-ACCEPT-ISOLATION** — 🔵 INBOUND FROM S1-A3 (completeness audit 2026-07-17; handed to S5
+  so it doesn't drift when S1 closes). S1 homed the ComposeView draft loop as the `scene-compose` dock panel;
+  its accept→editor handoff (`useAcceptIntoEditor`) keys ONLY on the bus `chapterId` and inserts into the
+  **book-scoped** chapter editor draft (`booksApi.getDraft(bookId, chapterId)`). A what-if **derivative**
+  Work shares the same book_id/chapter_id under COW, and the editor is NOT work-scoped. So: spawn a what-if
+  in scene-compose → **✦ Adapt from source** a scene → Accept ⇒ the adapted prose lands in the **canon**
+  book chapter's editor draft (the derivative has no editor of its own). **S1 VERIFIED this is IDENTICAL to
+  the legacy ChapterEditorPage** (`tiptapEditorRef.insertAtCursor` into the one book-chapter editor; the
+  derivative is only an `activeWorkOverride`) — so S1 introduced **no regression**, it faithfully reused the
+  proven path. **The open question is S5's (what-if / COW ownership):** under the divergence model, SHOULD a
+  derivative's adapted/composed prose be isolated from canon (a work-scoped draft) or is writing to the
+  shared book chapter draft intended? This is exactly the seam **EC-3d** (`useActiveWork` + `work:switch`
+  bus) has to define — if the editor should follow the active derivative Work, it needs work-scoped drafts,
+  which don't exist today. Decide it when building the divergence→edit/promote flow; verify with a live
+  derivative-work smoke (adapt a derivative scene → Accept → confirm where it lands vs. where it SHOULD).
+  Gate #1 (S5-owned domain) + gate #4 (needs a derivative-work live check). Not an S1 bug; an S5 design call.
 ### /review-impl on B1 (divergence panel + EC-3c/EC-3d) — 2026-07-16
 - **HIGH #1 (FIXED)** — FE wizard `buildBody()` DROPPED `name`: BE-13a accepted it but the FE never sent it,
   so every derivative created via the panel was unnamed ("Untitled dị bản") — the exact F-EC3a silent-success
