@@ -69,9 +69,33 @@ gate T1–T4 has a GREEN spec on the BUILT image (or a tracked waiver) — then 
   Verified: `chat → Gemma-4 26B-A4B QAT`.
 
 ## 6 · Findings / drift log (append as you go)
-- **F-QC-1** — `/assistant` auto-opens a full-screen `NewChatDialog` (generic new-chat + model picker) that
-  covers the home; persists for a no-default-model account. Harness dismisses it (`new-chat-dismiss`). §3
-  addresses the root (default model). A diary assistant greeting with a model-picker modal = a UX review item.
+- **F-QC-1 (DEEPENED by the real-user pass → a genuine UX defect, MED/HIGH):** opening the "private work
+  assistant" (diary) on DESKTOP greets you with the GENERIC chat `NewChatDialog` — "Start New Chat" + a model
+  picker + Quick-Start personas **Novelist / Translator / Worldbuilder / Editor / Analyst** (the novel-writing
+  product's personas, NOT the diary). The gemma default only pre-fills the model; the assistant NEVER
+  auto-creates/resumes its diary session, so a user is forced through this off-context modal or left with
+  "No chat selected". For an app meant to "serve real daily journaling", this is the wrong first impression.
+  **Recommendation (fix, not just flag):** on `/assistant`, auto-create/resume the assistant session
+  (`session_kind='assistant'`, bound to the diary book) instead of showing the generic novel-writing dialog;
+  or a diary-specific "start" affordance. This is ALSO the S1-e2e blocker (no clean scripted session-start).
+  Screenshot: test-results/journey/01-landing-raw.png.
+- **F-QC-3 (RESOLVED — not a defect):** the "faint" desktop Memory sheet was a mid-fade-in capture. Re-shot
+  with a 1.2s settle → the centered DC1 dialog is CRISP + high-contrast: "What I know", recall search, the
+  remembered "Claude Test / Colleague" (forget icon), "Changed jobs? Start a new chapter", red "Erase
+  everything" danger-zone. The desktop centered variant looks great. journey/03-memory.png.
+- **POSITIVE (real-user pass):** the MOBILE first-run onboarding is excellent — privacy-first serif headline,
+  "Encrypted on your device. Erasable in one tap.", fail-closed consent OFF, the forget/erase promise, clear
+  "Start my first day". The desktop home strip is clear + honest ("nothing saved until you review it tonight",
+  capture OFF, autonomous off-by-default). journey/04-mobile-firstrun.png, 02-home.png.
+- **S1 e2e — WAIVED (enriched blocker):** the assistant has no clean scripted session-start — journaling goes
+  through the un-testid'd generic `NewChatDialog` (F-QC-1), and a real distill is a ~60s non-deterministic
+  gemma call mutating diary data. The distill behavior is proven (worker-ai `distill_job` units + completeness
+  audit). The real-user pass captured the actual first-impression instead (higher value than a flaky e2e).
+- **Voice — WAIVED (scaffold noted):** voice uses `getUserMedia`/AudioContext (24kHz) → a realtime WS pipeline
+  → local-stt (up). It IS simulatable via Chrome `--use-fake-device-for-media-stream
+  --use-file-for-fake-audio-capture=<speech.wav>` + a granted mic permission (Playwright `launchOptions.args`),
+  but the full realtime WS→STT→LLM→TTS loop is heavy + flaky, and both MCP browsers are contended (F-QC-2).
+  Deferred: land the fake-audio scaffold (flags + a curated speech WAV) as its own focused pass.
 - **Shared-index sweep (2026-07-16):** commit 333663699 accidentally swept 8 pre-staged files from a parallel
   studio-s7 session (no data loss; not rewritten — session live). Subsequent commits use `git commit -- <path>`.
 - **F-QC-2 (MCP browser contention):** the Playwright MCP browser is a single shared instance ("already in

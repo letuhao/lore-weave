@@ -24,8 +24,10 @@ test.describe('Assistant — real-user journey (screenshots for UX eval)', () =>
     await a.dismissNewChatDialog();
     await page.screenshot({ path: `${DIR}/02-home.png`, fullPage: true });
 
-    // 3) The memory / data-rights sheet.
+    // 3) The memory / data-rights sheet (settle the open animation before capture — F-QC-3 check).
     await a.openMemorySheet();
+    await expect(a.eraseAllZone).toBeVisible();
+    await page.waitForTimeout(1200);
     await page.screenshot({ path: `${DIR}/03-memory.png`, fullPage: true });
   });
 
