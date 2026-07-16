@@ -2,14 +2,24 @@
 // (New/Adopt/Archive), and open a template's detail. Driven by a mock controller + stubbed motif
 // components so the panel is tested in isolation from react-query/the timeline grid.
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import type { ReactNode } from 'react';
 
 const ctrl = vi.hoisted(() => ({ useArcTemplates: vi.fn() }));
+const cat = vi.hoisted(() => ({ listCatalog: vi.fn() }));
 vi.mock('../useArcTemplates', () => ({ useArcTemplates: ctrl.useArcTemplates }));
 vi.mock('../useStudioPanel', () => ({ useStudioPanel: () => {} }));
 vi.mock('../../host/StudioHostProvider', () => ({ useStudioHost: () => ({ bookId: 'b' }) }));
 vi.mock('@/features/composition/motif/components/ArcTimelineEditor', () => ({ ArcTimelineEditor: () => <div data-testid="arc-timeline-stub" /> }));
 vi.mock('@/features/composition/motif/components/ArcApplyPreview', () => ({ ArcApplyPreview: (p: { projectId: string | null }) => <div data-testid="arc-apply-stub" data-project={p.projectId ?? ''} /> }));
+vi.mock('@/features/composition/arcImport/ImportDeconstructSection', () => ({ ImportDeconstructSection: () => <div data-testid="deconstruct-stub" /> }));
+vi.mock('@/features/composition/arcTemplates/api', () => ({ listCatalog: cat.listCatalog }));
+
+function qcWrap({ children }: { children: ReactNode }) {
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  return <QueryClientProvider client={qc}>{children}</QueryClientProvider>;
+}
 
 import { ArcTemplatesPanel } from '../ArcTemplatesPanel';
 import type { ArcTemplatesState } from '../useArcTemplates';
@@ -82,6 +92,18 @@ describe('ArcTemplatesPanel', () => {
     expect(screen.getByTestId('arc-template-detail')).toBeInTheDocument();
     expect(screen.getByTestId('arc-timeline-stub')).toBeInTheDocument();
     expect(screen.getByTestId('arc-apply-stub')).toHaveAttribute('data-project', 'proj1');
+  });
+
+  it('34/AT-2: the Catalog tab browses public templates + adopt', async () => {
+    const state = makeState();
+    ctrl.useArcTemplates.mockReturnValue(state);
+    cat.listCatalog.mockResolvedValue({ items: [{ id: 'pub1', code: 'p', name: 'Public Arc', chapter_span: 10, genre_tags: ['xianxia'] }], total: 1 });
+    render(<ArcTemplatesPanel {...props} />, { wrapper: qcWrap });
+    fireEvent.click(screen.getByTestId('arc-tab-catalog'));
+    await waitFor(() => expect(screen.getByTestId('arc-catalog')).toBeInTheDocument());
+    expect(screen.getByText('Public Arc')).toBeInTheDocument();
+    fireEvent.click(screen.getByTestId('catalog-adopt-pub1'));
+    expect(state.adopt).toHaveBeenCalledWith('pub1');
   });
 
   it('empty / loading / error are distinct honest states', () => {

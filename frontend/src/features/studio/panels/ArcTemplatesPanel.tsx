@@ -6,6 +6,7 @@
 import { useState } from 'react';
 import type { IDockviewPanelProps } from 'dockview-react';
 import { useTranslation } from 'react-i18next';
+import { useQuery } from '@tanstack/react-query';
 
 import { useStudioHost } from '../host/StudioHostProvider';
 import { useStudioPanel } from './useStudioPanel';
@@ -13,6 +14,7 @@ import { useArcTemplates, type ArcTemplatesState } from './useArcTemplates';
 import { ArcTimelineEditor } from '@/features/composition/motif/components/ArcTimelineEditor';
 import { ArcApplyPreview } from '@/features/composition/motif/components/ArcApplyPreview';
 import { ImportDeconstructSection } from '@/features/composition/arcImport/ImportDeconstructSection';
+import { listCatalog } from '@/features/composition/arcTemplates/api';
 import type { ArcTemplate } from '@/features/composition/motif/arcTypes';
 
 const TIERS = [
@@ -26,21 +28,25 @@ export function ArcTemplatesPanel(props: IDockviewPanelProps) {
   useStudioPanel('arc-templates', props.api);
   const host = useStudioHost();
   const state = useArcTemplates(host.bookId);
-  const [view, setView] = useState<'library' | 'deconstruct'>('library');
+  const [view, setView] = useState<'library' | 'catalog' | 'deconstruct'>('library');
+  const tab = (key: typeof view, label: string) => (
+    <button type="button" role="tab" data-testid={`arc-tab-${key}`} aria-selected={view === key}
+      className={`rounded px-2 py-0.5 text-xs ${view === key ? 'bg-muted font-medium' : 'text-muted-foreground hover:bg-muted/50'}`}
+      onClick={() => setView(key)}>{label}</button>
+  );
 
   return (
     <div data-testid="studio-arc-templates-panel" className="flex h-full min-h-0 flex-col text-sm">
       <div className="flex gap-1 border-b p-1" role="tablist">
-        <button type="button" role="tab" data-testid="arc-tab-library" aria-selected={view === 'library'}
-          className={`rounded px-2 py-0.5 text-xs ${view === 'library' ? 'bg-muted font-medium' : 'text-muted-foreground hover:bg-muted/50'}`}
-          onClick={() => setView('library')}>Library</button>
-        <button type="button" role="tab" data-testid="arc-tab-deconstruct" aria-selected={view === 'deconstruct'}
-          className={`rounded px-2 py-0.5 text-xs ${view === 'deconstruct' ? 'bg-muted font-medium' : 'text-muted-foreground hover:bg-muted/50'}`}
-          onClick={() => setView('deconstruct')}>Import &amp; Deconstruct</button>
+        {tab('library', 'Library')}
+        {tab('catalog', 'Catalog')}
+        {tab('deconstruct', 'Import & Deconstruct')}
       </div>
       <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
         {view === 'deconstruct' ? (
           <div className="h-full overflow-auto"><ImportDeconstructSection token={state.token} /></div>
+        ) : view === 'catalog' ? (
+          <CatalogView state={state} />
         ) : state.selected ? (
           <ArcDetail state={state} arc={state.selected} />
         ) : (
@@ -142,6 +148,35 @@ function CreateForm({ state, onDone }: { state: ArcTemplatesState; onDone: () =>
         <button type="button" className="rounded px-2 py-0.5 text-xs text-muted-foreground hover:bg-muted" onClick={onDone}>Cancel</button>
       </div>
     </div>
+  );
+}
+
+function CatalogView({ state }: { state: ArcTemplatesState }) {
+  // 34 AT-2 — others' PUBLIC arc templates (a paged allow-list projection). Adopt clones one
+  // into your own library (the only write available on a foreign row).
+  const cat = useQuery({
+    queryKey: ['composition', 'arc-templates', 'catalog'],
+    queryFn: () => listCatalog({ limit: 50 }, state.token!),
+    enabled: !!state.token,
+  });
+  if (cat.isLoading) return <p data-testid="arc-catalog-loading" className="p-4 text-center text-xs text-muted-foreground">Loading…</p>;
+  if (cat.isError) return <div className="p-4 text-center text-xs text-destructive">Could not load the catalog. <button type="button" className="underline" onClick={() => cat.refetch()}>Retry</button></div>;
+  const items = cat.data?.items ?? [];
+  if (items.length === 0) return <p data-testid="arc-catalog-empty" className="p-4 text-center text-xs text-muted-foreground">No public arc templates yet.</p>;
+  return (
+    <ul className="min-h-0 flex-1 overflow-auto" data-testid="arc-catalog">
+      {items.map((it) => (
+        <li key={it.id} className="flex items-center gap-2 border-b px-2 py-1.5 hover:bg-muted/50">
+          <span className="min-w-0 flex-1">
+            <span className="block truncate text-xs font-medium">{it.name}</span>
+            <span className="block truncate text-[10px] text-muted-foreground">{it.chapter_span ?? 0} chapters{it.genre_tags.length ? ` · ${it.genre_tags.join(', ')}` : ''}</span>
+          </span>
+          <button type="button" data-testid={`catalog-adopt-${it.id}`} disabled={state.busy}
+            className="shrink-0 text-[10px] text-primary underline-offset-2 hover:underline disabled:opacity-50"
+            onClick={() => void state.adopt(it.id)}>adopt</button>
+        </li>
+      ))}
+    </ul>
   );
 }
 
