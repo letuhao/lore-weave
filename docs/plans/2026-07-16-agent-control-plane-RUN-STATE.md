@@ -59,6 +59,33 @@ service surfaces), so chat is its FIRST consumer (dogfood) and roleplay/Practice
 - **A1 /review-impl HIGH (caught + fixed) — the extraction was runtime-broken while every test was green.** The SDK package `loreweave_agent_control` was NOT in `sdks/python/pyproject.toml`'s `[tool.setuptools.packages.find] include` allowlist, so `pip install /sdk` (how chat+knowledge Dockerfiles install SDKs) would have OMITTED it → the shim's `import loreweave_agent_control` fails at RUNTIME → both services fail to start. The whole test suite passed because tests import via `PYTHONPATH=sdks/python`, which ignores the install allowlist. Fixed by adding the include line (the exact `loreweave_crypto` lesson, verbatim). **Lesson: a green Python suite does NOT prove a new SDK package is installable — the manifest allowlist is a separate gate the tests bypass; the /review-impl runtime-importability check is what caught it.**
 - **A1 pre-existing failures (NOT mine — proven, out of scope):** 7 chat (`TestW1ContextBreakdownFrame` token-accounting + `test_voice_billing`) + 1 knowledge (`test_pending_facts_fact_type_check_constraint` migrate DDL) fail. Proven pre-existing by clean-stashing ALL A1 work and reproducing them identically on HEAD. They belong to the concurrent `feat/context-budget-law` track, not A1. Not fixed here (different track); recorded for honesty.
 
+## 6b · A2 build plan (teed up — the next focused slice; sequence its sub-pieces)
+A2 is large; build + test + review each sub-piece, commit A2 as one slice once all green:
+- **A2.1 · RV-M6 advisory lock (self-contained, start here).** `run_executive` does an unlocked
+  read-modify-write (`repo.get` → `merge_state` → `repo.update_state`); two overlapping ticks
+  last-writer-wins on `phase`. Fix: after the LLM returns, do the get→merge→write under a
+  `pg_advisory_xact_lock(hashtextextended(session_id::text,0))` in ONE txn — add
+  `WorkingMemoryRepo.apply_state_update(session_id, user_id, charter, llm_state, merger)` that
+  re-reads state under the lock, merges, writes. run_executive calls it instead of update_state.
+  Test: real-DB concurrent double-submit doesn't clobber (both covered items survive).
+- **A2.2 · The harness (RW-3/RV-H3 core).** SDK `harness.py`: `decide_rail_drive(*, probe_fn (injected,
+  RW-11), rail_specs, book_id, user_id, turn_start_counts, turn_succeeded, async_tools, nudged_out,
+  nudge_counts, enforcement_strength, user_message) -> DriveVerdict{action, slug, step, directive_text,
+  giving_up, drove}` — UNIFIES `_maybe_redrive_rail` (drive decision) + the inline enforcement at
+  stream_service:1806-1861 (nudge caps, `enforcement_for`, `user_abandoned_rail`, directive vs
+  give-up). Returns a VERDICT; chat OWNS the loop mechanics (inject `role=user` directive, drop the
+  stateful chain head `response_id=None`). Read stream_service:1771-1870 for the exact enforcement.
+- **A2.3 · RV-H2 program SET.** The executive tick (`is_roleplay`) + rail drive (`rail_specs`) are
+  INDEPENDENT gates — a session can fire BOTH. The harness runs the SET, SEQUENCED (exec tick →
+  rail drive), preserving today's behavior. Add a both-eligible test.
+- **A2.4 · RV-M7 voice.** `voice_stream_service` has the anchor but NO tick/drive (dead executive on
+  voice — "the real use"). Wire voice through the harness tick+drive. Voice live-smoke.
+- **A2.5 · anchor + WorkingMemory-model move** (deferred from A1): move `parse_working_memory`/
+  `render_pinned`/`render_tail`/`resolve_anchor` + the WorkingMemory/Charter/State models to the SDK;
+  chat `working_memory.py` + `models.py` re-export (shim). Golden for `render_pinned`/`render_tail`.
+- **Smokes (4):** multi-turn drive (nudge→nudge→give-up + escape phrase); both-eligible; concurrent
+  double-submit (A2.1); voice. NO migration (RW-12) — the lock is a runtime advisory lock, not DDL.
+
 ## 7 · Checkpoints
 - PO checkpoint after A3 (SDK extracted + dogfooded) and after A4 (Practice live). Commit per slice with pasted evidence.
 - **A0 DONE 2026-07-16** — the contract-enforcement foundation. Commits ea6ae3239 (move) · b3fbdee09 (executive) · c614d06e2 (charter 3-side + rubric fix). Next: A1 (Python SDK extraction + characterization goldens + checkpoint owner-scope).
