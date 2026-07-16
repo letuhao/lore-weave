@@ -3,13 +3,13 @@ import { act, renderHook, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { localDateKey, useEnsureBaseline, useReportProgress, useSetDailyGoal } from '../useProgress';
 
-const { reportProgress, patchWork, baselineProgress } = vi.hoisted(() => ({
+const { reportProgress, setDailyGoal, baselineProgress } = vi.hoisted(() => ({
   reportProgress: vi.fn(),
-  patchWork: vi.fn(),
+  setDailyGoal: vi.fn(),
   baselineProgress: vi.fn(),
 }));
 vi.mock('../../api', () => ({
-  compositionApi: { reportProgress, patchWork, baselineProgress, getProgress: vi.fn() },
+  compositionApi: { reportProgress, setDailyGoal, baselineProgress, getProgress: vi.fn() },
 }));
 
 function makeWrapper() {
@@ -78,24 +78,18 @@ describe('useEnsureBaseline (T4.2)', () => {
   });
 });
 
-describe('useSetDailyGoal (T4.2)', () => {
-  beforeEach(() => { patchWork.mockReset(); patchWork.mockResolvedValue({}); });
+describe('useSetDailyGoal (BE-P2 — per-user goal, no shared work.settings)', () => {
+  beforeEach(() => { setDailyGoal.mockReset(); setDailyGoal.mockResolvedValue({ ok: true, daily_goal: null }); });
 
-  it('merges the goal into existing settings (no clobber)', async () => {
+  it('writes the goal to the caller OWN per-user route (never the shared settings blob)', async () => {
     const { result } = renderHook(() => useSetDailyGoal('b1', 't'), { wrapper: makeWrapper() });
-    act(() => result.current.mutate({ projectId: 'p1', currentSettings: { assembly_mode: 'chapter' }, goal: 800 }));
-    await waitFor(() =>
-      expect(patchWork).toHaveBeenCalledWith(
-        'p1', { settings: { assembly_mode: 'chapter', daily_goal: 800 } }, 't',
-      ),
-    );
+    act(() => result.current.mutate({ projectId: 'p1', goal: 800 }));
+    await waitFor(() => expect(setDailyGoal).toHaveBeenCalledWith('p1', 800, 't'));
   });
 
-  it('stores null when the goal is cleared (<= 0)', async () => {
+  it('clears the goal with 0', async () => {
     const { result } = renderHook(() => useSetDailyGoal('b1', 't'), { wrapper: makeWrapper() });
-    act(() => result.current.mutate({ projectId: 'p1', currentSettings: {}, goal: 0 }));
-    await waitFor(() =>
-      expect(patchWork).toHaveBeenCalledWith('p1', { settings: { daily_goal: null } }, 't'),
-    );
+    act(() => result.current.mutate({ projectId: 'p1', goal: 0 }));
+    await waitFor(() => expect(setDailyGoal).toHaveBeenCalledWith('p1', 0, 't'));
   });
 });

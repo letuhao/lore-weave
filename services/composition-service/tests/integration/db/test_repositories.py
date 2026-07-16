@@ -2362,6 +2362,20 @@ async def test_daily_progress_anchor_excludes_future_dates_and_isolates_user(poo
     assert other.book_total == 0 and other.day_words == []
 
 
+async def test_progress_goal_is_per_user(pool):
+    """BE-P2 — the daily goal is PER-USER: Alice's goal never becomes Bob's (the tenancy fix for
+    the shared work.settings.daily_goal). Set/get round-trips; 0 clears the row; unset → None."""
+    repo = DailyProgressRepo(pool)
+    alice, project, _ = _ids()
+    bob = uuid.uuid4()
+    assert await repo.get_goal(alice, project) is None      # unset → None
+    await repo.set_goal(alice, project, 2000)
+    assert await repo.get_goal(alice, project) == 2000       # Alice's own
+    assert await repo.get_goal(bob, project) is None         # NOT Bob's (isolation)
+    await repo.set_goal(alice, project, 0)                   # 0 clears
+    assert await repo.get_goal(alice, project) is None
+
+
 async def test_daily_progress_baseline_excludes_preexisting_counts_deltas(pool):
     """An EXISTING chapter baselined at its pre-existing count: its first daily
     snapshot counts only the NEW words (no enablement spike), book total is current."""

@@ -117,14 +117,53 @@ async def get_progress(
     anchor = _parse_local_date(today)
     agg = await progress.read_aggregate(user_id, project_id, anchor)
     by_date = dict(agg.day_words)
+    # BE-P2 — the goal is PER-USER (composition_progress_goal). Read-through fallback to the
+    # legacy shared work.settings.daily_goal so no existing user loses a goal on cutover; the
+    # WRITER only ever writes the new per-user table (the legacy window is closed in the writer).
+    # SET-1: expose the source tier so the panel can show WHERE the effective value came from.
+    user_goal = await progress.get_goal(user_id, project_id)
+    legacy_goal = _coerce_goal(work.settings or {})
+    if user_goal is not None:
+        daily_goal, goal_source = user_goal, "user"
+    elif legacy_goal is not None:
+        daily_goal, goal_source = legacy_goal, "work_legacy"
+    else:
+        daily_goal, goal_source = None, "none"
     return {
         "today": anchor.isoformat(),
         "today_words": by_date.get(anchor, 0),
         "book_total": agg.book_total,
-        "daily_goal": _coerce_goal(work.settings or {}),
+        "daily_goal": daily_goal,
+        "daily_goal_source": goal_source,
         "current_streak": _current_streak(by_date, anchor),
         "sparkline": _sparkline(by_date, anchor),
     }
+
+
+class ProgressGoalBody(BaseModel):
+    # 0 clears the goal (per-user row deleted); a positive int sets it. Same sane upper cap.
+    daily_goal: int = Field(ge=0, le=5_000_000)
+
+
+@router.put("/works/{project_id}/progress/goal")
+async def set_progress_goal(
+    project_id: UUID,
+    body: ProgressGoalBody,
+    user_id: UUID = Depends(get_current_user),
+    works: WorksRepo = Depends(get_works_repo),
+    progress: DailyProgressRepo = Depends(get_daily_progress_repo),
+    grant: GrantClient = Depends(get_grant_client_dep),
+) -> dict[str, Any]:
+    """BE-P2 — set the caller's OWN daily word goal for this Work (0 clears it). Per-user:
+    one collaborator's goal never moves another's. VIEW-gated like the other progress routes
+    (the goal is the caller's own stat, not a package mutation), then written to the per-user
+    composition_progress_goal table — NOT work.settings (the tenancy defect this replaces)."""
+    work = await works.get(project_id)
+    if work is None:
+        raise HTTPException(status_code=404, detail="work not found")
+    await _gate_book(grant, work.book_id, user_id, GrantLevel.VIEW)
+    await progress.set_goal(user_id, project_id, body.daily_goal)
+    return {"ok": True, "daily_goal": body.daily_goal or None}
 
 
 class ProgressReportBody(BaseModel):

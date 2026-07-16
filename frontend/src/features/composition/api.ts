@@ -313,6 +313,13 @@ export const compositionApi = {
   getProgress(projectId: string, today: string, token: string): Promise<ProgressStats> {
     return apiJson(`${BASE}/works/${projectId}/progress?today=${encodeURIComponent(today)}`, { token });
   },
+  // BE-P2 — set the caller's OWN daily goal (0 clears it). PER-USER — never touches the shared
+  // work.settings blob (the tenancy defect this replaces).
+  setDailyGoal(projectId: string, goal: number, token: string): Promise<{ ok: boolean; daily_goal: number | null }> {
+    return apiJson(`${BASE}/works/${projectId}/progress/goal`, {
+      method: 'PUT', body: JSON.stringify({ daily_goal: Math.max(0, Math.floor(goal)) }), token,
+    });
+  },
   // T4.2 — report the active chapter's current total word count (a snapshot keyed
   // to the local date). Idempotent per (chapter, date). Fired best-effort on save.
   reportProgress(

@@ -8,7 +8,6 @@ import type { ProgressPoint } from '../types';
 type Props = {
   bookId: string;
   projectId: string;
-  settings: Record<string, unknown>;
   token: string | null;
 };
 
@@ -22,7 +21,7 @@ function Stat({ label, value, hint }: { label: string; value: string; hint?: str
   );
 }
 
-export function ProgressPanel({ bookId, projectId, settings, token }: Props) {
+export function ProgressPanel({ bookId, projectId, token }: Props) {
   const { t } = useTranslation('composition');
   const { data, isLoading, isError } = useProgress(projectId, token);
   const setGoal = useSetDailyGoal(bookId, token);
@@ -40,7 +39,7 @@ export function ProgressPanel({ bookId, projectId, settings, token }: Props) {
   const saveGoal = () => {
     const n = Math.max(0, Math.floor(Number(goalDraft) || 0));
     setGoal.mutate(
-      { projectId, currentSettings: settings, goal: n },
+      { projectId, goal: n },
       { onSuccess: () => setGoalDraft('') },
     );
   };
@@ -138,6 +137,14 @@ export function ProgressPanel({ bookId, projectId, settings, token }: Props) {
           <span className="text-[11px] text-muted-foreground">{t('progressPanel.goalHint')}</span>
         )}
       </div>
+
+      {/* SET-1 — show the effective goal's SOURCE tier. A legacy (shared-settings) goal is flagged so
+          the user knows setting it now makes it their OWN per-user goal (BE-P2 tenancy fix). */}
+      {data.daily_goal_source === 'work_legacy' && (
+        <p data-testid="progress-goal-legacy" className="text-[11px] text-amber-600 dark:text-amber-400">
+          {t('progressPanel.goalLegacy', { defaultValue: "This goal came from the book's shared settings — setting it makes it yours." })}
+        </p>
+      )}
     </div>
   );
 }

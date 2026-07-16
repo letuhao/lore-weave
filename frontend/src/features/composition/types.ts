@@ -284,6 +284,9 @@ export type ProgressStats = {
   today_words: number;
   book_total: number;
   daily_goal: number | null;
+  // BE-P2 / SET-1 — WHERE the effective goal came from: the caller's own per-user goal,
+  // the legacy shared work.settings (read-through fallback), or unset.
+  daily_goal_source?: 'user' | 'work_legacy' | 'none';
   current_streak: number;
   sparkline: ProgressPoint[];
 };

@@ -509,6 +509,21 @@ CREATE TABLE IF NOT EXISTS composition_progress_baseline (
   PRIMARY KEY (user_id, project_id, chapter_id)
 );
 
+-- ── composition_progress_goal: BE-P2 — the writer's PER-USER daily word goal.
+-- The goal used to live in work.settings.daily_goal — a SHARED per-book package row
+-- every EDIT grantee could write, so one user's goal became everyone's (the tenancy
+-- bug class of the entity_kinds shared-row incident; CLAUDE.md User Boundaries). The
+-- daily-progress stats are already per-user; the goal must be too. NO book_id: the
+-- siblings above have none, the E0 grant is gated at the router before the repo, and a
+-- book_id here would be written-and-never-read (the write-only bug). PK (user, project).
+CREATE TABLE IF NOT EXISTS composition_progress_goal (
+  user_id     UUID NOT NULL,
+  project_id  UUID NOT NULL,
+  daily_goal  INT  NOT NULL CHECK (daily_goal >= 0),
+  updated_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+  PRIMARY KEY (user_id, project_id)
+);
+
 -- ── style_profile: LOOM T3.5 — per-scope prose-style steering (Density + Pace,
 -- 0-100). Scoped work | chapter | scene so a scene can override its chapter which
 -- overrides the book default; the packer resolves the MOST SPECIFIC row for the
