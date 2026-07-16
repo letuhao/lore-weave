@@ -570,6 +570,11 @@ class ArcPlacement(BaseModel):                     # one layout[] entry
 class ArcTemplate(BaseModel):
     id: UUID
     owner_user_id: UUID | None = None
+    # D-ARC-TEMPLATE-BOOK-TIER (34a, mirrors motif model B): book_shared=True ⇒ the book's SHARED
+    # tier (book-grant gated; owner is attribution only). Owner's full dump only — NEVER on the
+    # public/non-owner projection (_arc_public_projection drops both, B-3).
+    book_id: UUID | None = None
+    book_shared: bool = False
     code: _Code
     language: _Lang = "en"
     visibility: MotifVisibility = "private"
