@@ -133,6 +133,7 @@ async def test_the_run_detail_reports_the_SAME_pass_cursor_as_the_passes_endpoin
     assert detail["pass_cursor"] == passes["pass_cursor"]   # …and the detail must AGREE
     assert {p["pass_id"]: p["fresh"] for p in detail["passes"]}["motifs"] is True
     assert detail["genre_tags"] == ["xianxia"]              # PF-15 round-trip, behaviourally
+    assert "source_markdown" in detail                     # BE-3b — reopening a run can resume the braindump
 
 
 # ── it is a RUN input, not platform config (Settings & Configuration Boundary) ──

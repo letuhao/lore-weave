@@ -44,7 +44,9 @@ export function PlannerPanel(props: IDockviewPanelProps) {
   // onCompile handler below — /review-impl caught the case where this was missing):
   // the package artifact changes underneath the proposal, so a stale diff from the
   // previous arc must not linger as if it described the newly-picked one.
-  const openRun = (runId: string) => { void plan.loadRun(runId); bootstrap.reset(); setView('run'); };
+  // Loading a run clears the local edit so the textarea falls back to the run's source_markdown
+  // (BE-3b) as a DERIVED default — mirroring effectiveModelRef, never a useEffect chasing a prop.
+  const openRun = (runId: string) => { void plan.loadRun(runId); bootstrap.reset(); setMarkdown(''); setView('run'); };
   const startNewRun = () => { plan.resetRun(); bootstrap.reset(); setMarkdown(''); setView('run'); };
 
   const label = t('panels.planner.title', { defaultValue: 'Planner' });
@@ -89,15 +91,18 @@ export function PlannerPanel(props: IDockviewPanelProps) {
   }, [models.models]);
   const effectiveModelRef = modelRef || autoModelRef;
 
+  // BE-3b — the textarea shows the loaded run's source as a derived default until the user types.
+  const effectiveMarkdown = markdown || (plan.run?.source_markdown ?? '');
+
   const canPropose =
-    !plan.busy && !plan.polling && markdown.trim().length > 0 && (mode === 'rules' || effectiveModelRef.length > 0);
+    !plan.busy && !plan.polling && effectiveMarkdown.trim().length > 0 && (mode === 'rules' || effectiveModelRef.length > 0);
 
   // Bootstrap only makes sense once a run is compiled (it reads the run's package artifact).
   const compiledRunId = plan.run?.status === 'compiled' ? plan.run.id : null;
 
   const onPropose = () => {
     void plan.createRun({
-      source_markdown: markdown,
+      source_markdown: effectiveMarkdown,
       mode,
       ...(mode === 'llm' ? { model_ref: effectiveModelRef } : {}),
     });
@@ -158,7 +163,7 @@ export function PlannerPanel(props: IDockviewPanelProps) {
       <div data-testid="planner-view-run" className={`flex min-h-0 flex-1 flex-col ${view !== 'run' ? 'hidden' : ''}`}>
         <textarea
           data-testid="plan-source-input"
-          value={markdown}
+          value={effectiveMarkdown}
           onChange={(e) => setMarkdown(e.target.value)}
           placeholder={t('planner.sourcePlaceholder', { defaultValue: 'Paste the novel-system markdown…' })}
           className="min-h-[120px] w-full resize-y rounded border border-border bg-background p-2 text-xs leading-relaxed outline-none focus:border-ring"

@@ -553,6 +553,10 @@ class PlanForgeService:
             "mode": run.mode,
             "model_ref": str(run.model_ref) if run.model_ref else None,
             "source_checksum": run.source_checksum,
+            # BE-3b — the braindump the run was proposed from. Returned so reopening a run can
+            # restore what the user pasted (the textarea was blank because the API sent only the
+            # checksum — "the FE cannot resume what the API never sends").
+            "source_markdown": run.source_markdown,
             "active_job_id": str(run.active_job_id) if run.active_job_id else None,
             "job_status": job_status,
             "error_detail": run.error_detail,

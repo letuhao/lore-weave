@@ -45,6 +45,8 @@ export interface PlanRunDetail {
   mode: PlanRunMode;
   model_ref: string | null;
   source_checksum: string | null;
+  // BE-3b — the braindump this run was proposed from, so reopening a run restores the textarea.
+  source_markdown: string | null;
   active_job_id: string | null;
   job_status: string | null; // pending | running | completed | failed | null (rules → no job)
   error_detail: string | null;
