@@ -5,6 +5,7 @@ import asyncpg
 from ..deps import get_current_user, get_db
 from ..grant_deps import GrantLevel, require_book_grant
 from ..config import settings as app_settings, DEFAULT_SYSTEM_PROMPT, DEFAULT_USER_PROMPT_TPL
+from ..languages import normalize_language, is_translation_target
 from ..models import (
     PreferencesPayload,
     UserTranslationPreferences,
@@ -13,6 +14,22 @@ from ..models import (
     ErrorResponse,
 )
 from ..effective_settings import resolve_effective_settings
+
+
+def _validate_target_language(value: str | None) -> str | None:
+    """D13 — a settings write is a target_language WRITER: normalize + validate against the
+    content-language registry so the free-text "Vietnamese" can't be stored here (it later
+    became a job's effective language). None = "field not sent" (PATCH keep), so pass it through.
+    """
+    if value is None:
+        return None
+    norm = normalize_language(value)
+    if not is_translation_target(norm):
+        raise HTTPException(
+            status_code=400,
+            detail={"code": "invalid_target_language", "message": f"'{value}' is not a supported target language."},
+        )
+    return norm
 
 router = APIRouter(prefix="/v1/translation", tags=["translation-settings"])
 
@@ -48,6 +65,7 @@ async def put_preferences(
     user_id: str = Depends(get_current_user),
     db: asyncpg.Pool = Depends(get_db),
 ):
+    payload.target_language = _validate_target_language(payload.target_language) or payload.target_language
     row = await db.fetchrow(
         """
         INSERT INTO user_translation_preferences
@@ -127,6 +145,7 @@ async def put_book_settings(
     db: asyncpg.Pool = Depends(get_db),
 ):
     uid = UUID(user_id)
+    payload.target_language = _validate_target_language(payload.target_language)
     # PATCH-semantics done ATOMICALLY in one statement (no read-modify-write, so no
     # lost-update race between concurrent multi-device writes). A NULL parameter means
     # "field not sent": on INSERT it falls back to the column default, on UPDATE it

@@ -58,6 +58,7 @@ from ..database import get_pool
 from ..grant_client import GrantLevel, get_grant_client
 from ..grant_deps import clamp_effort_to_grant
 from ..effective_settings import resolve_effective_settings
+from ..languages import TRANSLATION_TARGET_CODES, is_translation_target, normalize_language
 from ..mcp.estimate import SCOPE_CHAPTERS, SCOPE_DIRTY, estimate_job_cost
 from ..routers.actions import (
     DESC_RETRANSLATE_DIRTY,
@@ -66,6 +67,18 @@ from ..routers.actions import (
 )
 from ..workers.extraction_prompt import estimate_extraction_cost
 from ..workers.glossary_client import fetch_extraction_profile
+
+# D13 (closed-set arg ⇒ enum, docs/standards/mcp-tool-io.md) — the closed set of content-language
+# codes an agent may WRITE (translate into / set as the book's target). Reads keep a free-string
+# arg so a legacy unknown code (e.g. "Vietnamese") stays queryable. The assert fails at import if
+# this Literal drifts from the content-language registry (languages.py / the SSOT contract).
+TargetLangCode = Literal[
+    "en", "vi", "ja", "ko", "zh-CN", "zh-TW", "es", "pt-BR", "fr", "de",
+    "ru", "id", "ms", "tr", "ar", "hi", "bn", "th",
+]
+assert set(TargetLangCode.__args__) == set(TRANSLATION_TARGET_CODES), (
+    "MCP TargetLangCode Literal drifted from the content-language registry (languages.py)"
+)
 
 logger = logging.getLogger(__name__)
 
@@ -660,7 +673,7 @@ async def translation_patch_block(
 async def translation_update_settings(
     ctx: MCPContext,
     book_id: Annotated[str, "The book's id (UUID)."],
-    target_language: Annotated[str | None, "New target language code, or omit to keep."] = None,
+    target_language: Annotated[TargetLangCode | None, "New target language code (closed set), or omit to keep."] = None,
     model_source: Annotated[str | None, "New model source ('user_model'|'platform_model'), or omit."] = None,
     model_ref: Annotated[
         str | list[str] | None,
@@ -671,6 +684,14 @@ async def translation_update_settings(
     tc = _ctx(ctx)
     bid = _uuid(book_id)
     await _require_edit(tc, bid)
+    # D13 — this tool writes book_translation_settings DIRECTLY (not via the validated REST
+    # route), so normalize + validate the target_language here too. The Literal enum already
+    # closes the set at the schema; this defends the direct DB write and canonicalizes the value.
+    if target_language is not None:
+        norm = normalize_language(target_language)
+        if not is_translation_target(norm):
+            raise ToolError(f"'{target_language}' is not a supported target language.")
+        target_language = norm
     db = get_pool()
     prior, _is_default, _u = await resolve_effective_settings(tc.user_id, bid, db)
     row = await db.fetchrow(
@@ -732,7 +753,7 @@ async def translation_start_job(
     ctx: MCPContext,
     book_id: Annotated[str, "The book's id (UUID)."],
     chapter_ids: Annotated[list[str], "The chapter ids (UUIDs) to translate."],
-    target_language: Annotated[str | None, "Target language code; omit to use the book's setting."] = None,
+    target_language: Annotated[TargetLangCode | None, "Target language code (closed set); omit to use the book's setting."] = None,
     force_retranslate: Annotated[bool, "Re-translate chapters that are already translated."] = False,
 ) -> dict:
     tc = _ctx(ctx)
@@ -779,7 +800,7 @@ async def translation_retranslate_dirty(
     ctx: MCPContext,
     book_id: Annotated[str, "The book's id (UUID) the chapter belongs to."],
     chapter_id: Annotated[str, "The chapter's id (UUID)."],
-    target_language: Annotated[str, "The target language code (e.g. 'en')."],
+    target_language: Annotated[TargetLangCode, "The target language code (closed set, e.g. 'en')."],
 ) -> dict:
     tc = _ctx(ctx)
     bid = _uuid(book_id)

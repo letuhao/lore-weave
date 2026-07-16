@@ -12,6 +12,7 @@ from ..config import DEFAULT_COMPACT_SYSTEM_PROMPT, DEFAULT_COMPACT_USER_PROMPT_
 from ..models import CreateJobPayload, TranslationJob, ChapterTranslation, ErrorResponse
 from ..broker import publish, publish_event
 from ..effective_settings import resolve_effective_settings
+from ..languages import normalize_language, is_translation_target
 from ..model_name import resolve_model_name
 from ..grant_deps import (
     GrantLevel, require_book_grant, authorize_book, book_for_chapter, get_grant_client_dep,
@@ -220,6 +221,26 @@ async def _resolve_and_create_job(
             status_code=422,
             detail={"code": "TRANSL_NO_MODEL_CONFIGURED", "message": "No model configured. Set a model in Translation Settings before translating."},
         )
+
+    # D13 — normalize, then validate target_language against the content-language SSOT
+    # (contracts/languages.contract.json, mirrored in app/languages.py). A lenient client value
+    # is corrected ("VI"→"vi", "zh_CN"→"zh-CN"); anything outside the closed registry is rejected
+    # 400. The picker offers exactly the registry, so if you cannot pick it you cannot submit it —
+    # this is the writer that first admitted the free-text "Vietnamese". Reads still tolerate
+    # unknown legacy codes; this constrains WRITES only.
+    raw_lang = eff.get("target_language")
+    if not raw_lang:
+        raise HTTPException(
+            status_code=422,
+            detail={"code": "TRANSL_NO_LANGUAGE", "message": "No target language configured. Choose a language before translating."},
+        )
+    norm_lang = normalize_language(str(raw_lang))
+    if not is_translation_target(norm_lang):
+        raise HTTPException(
+            status_code=400,
+            detail={"code": "invalid_target_language", "message": f"'{raw_lang}' is not a supported target language."},
+        )
+    eff["target_language"] = norm_lang
 
     # P4 usage emit — resolve the human model NAME (best-effort, PRE-tx; H1) + assemble a
     # whitelisted params dict for the Jobs GUI. model + params ride the 'pending' create

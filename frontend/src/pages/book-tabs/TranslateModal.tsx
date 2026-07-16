@@ -7,7 +7,8 @@ import { useAuth } from '@/auth';
 import { booksApi, type Chapter } from '@/features/books/api';
 import { translationApi, type BookTranslationSettings, type BookCoverageResponse } from '@/features/translation/api';
 import { ModelPicker, useUserModels } from '@/components/model-picker';
-import { LANGUAGE_NAMES } from '@/lib/languages';
+import { TRANSLATION_TARGETS } from '@/lib/languages';
+import { LanguagePicker } from '@/components/shared/LanguagePicker';
 import { cn } from '@/lib/utils';
 import { usePagedList } from '@/components/pagination/usePagedList';
 import { Pager } from '@/components/pagination/Pager';
@@ -309,7 +310,6 @@ export function TranslateModal({ open, onClose, bookId, onJobCreated, preselecte
 
   if (!open) return null;
 
-  const availableLangs = Object.entries(LANGUAGE_NAMES);
   const selectedModel = userModels.find((m) => m.user_model_id === selectedModelRef);
   const configReady = !!selectedLang && !!selectedModelRef;
   const canSubmitSelected = configReady && selectedChapters.size > 0 && !submitting;
@@ -361,16 +361,18 @@ export function TranslateModal({ open, onClose, bookId, onJobCreated, preselecte
                 {/* Language */}
                 <div>
                   <label className="mb-1 block text-xs font-medium">{t('translate.target_language')}</label>
-                  <select
+                  {/* D13: the target picker offers exactly the closed TRANSLATION_TARGETS set —
+                      the same list the backend accepts, so a value that can't be picked can't be
+                      submitted. A legacy unknown code is still shown (LanguagePicker's orphan guard)
+                      so an existing book's setting never silently blanks. */}
+                  <LanguagePicker
                     value={selectedLang}
-                    onChange={(e) => handleLangChange(e.target.value)}
+                    onChange={handleLangChange}
+                    codes={TRANSLATION_TARGETS.map((l) => l.code)}
+                    placeholder={t('translate.select_language')}
+                    aria-label={t('translate.target_language')}
                     className="h-9 w-full rounded-md border bg-background px-3 text-[13px] focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring/30"
-                  >
-                    <option value="">{t('translate.select_language')}</option>
-                    {availableLangs.map(([code, name]) => (
-                      <option key={code} value={code}>{name} ({code})</option>
-                    ))}
-                  </select>
+                  />
                 </div>
 
                 {/* Model */}

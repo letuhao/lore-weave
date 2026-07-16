@@ -1,0 +1,24 @@
+{
+  "$comment": "D-4 content-language SSOT (spec docs/specs/2026-07-01-writing-studio/29_translation_repair.md, D13). This file is the single source of truth for the closed set of content languages a novel can be translated INTO and the app chrome can be localized into. Both the frontend (src/lib/languages.ts LANGUAGE_REGISTRY) and translation-service (app/languages.py) assert parity against it via a test; a picker offers exactly the translationTarget subset and the backend accepts exactly that subset (normalize → validate). Adding a language = one entry here, then the two parity tests go red until both sides mirror it. Order is the display order in the pickers.",
+  "version": 1,
+  "languages": [
+    { "code": "en",    "englishName": "English",               "endonym": "English",            "script": "Latin",      "dir": "ltr", "uiLocale": true, "translationTarget": true },
+    { "code": "vi",    "englishName": "Vietnamese",            "endonym": "Tiếng Việt",         "script": "Latin",      "dir": "ltr", "uiLocale": true, "translationTarget": true },
+    { "code": "ja",    "englishName": "Japanese",              "endonym": "日本語",             "script": "Japanese",   "dir": "ltr", "uiLocale": true, "translationTarget": true },
+    { "code": "ko",    "englishName": "Korean",                "endonym": "한국어",             "script": "Hangul",     "dir": "ltr", "uiLocale": true, "translationTarget": true },
+    { "code": "zh-CN", "englishName": "Chinese (Simplified)",  "endonym": "简体中文",           "script": "Hans",       "dir": "ltr", "uiLocale": true, "translationTarget": true },
+    { "code": "zh-TW", "englishName": "Chinese (Traditional)", "endonym": "繁體中文",           "script": "Hant",       "dir": "ltr", "uiLocale": true, "translationTarget": true },
+    { "code": "es",    "englishName": "Spanish",               "endonym": "Español",            "script": "Latin",      "dir": "ltr", "uiLocale": true, "translationTarget": true },
+    { "code": "pt-BR", "englishName": "Portuguese (Brazil)",   "endonym": "Português (Brasil)", "script": "Latin",      "dir": "ltr", "uiLocale": true, "translationTarget": true },
+    { "code": "fr",    "englishName": "French",                "endonym": "Français",           "script": "Latin",      "dir": "ltr", "uiLocale": true, "translationTarget": true },
+    { "code": "de",    "englishName": "German",                "endonym": "Deutsch",            "script": "Latin",      "dir": "ltr", "uiLocale": true, "translationTarget": true },
+    { "code": "ru",    "englishName": "Russian",               "endonym": "Русский",            "script": "Cyrillic",   "dir": "ltr", "uiLocale": true, "translationTarget": true },
+    { "code": "id",    "englishName": "Indonesian",            "endonym": "Bahasa Indonesia",   "script": "Latin",      "dir": "ltr", "uiLocale": true, "translationTarget": true },
+    { "code": "ms",    "englishName": "Malay",                 "endonym": "Bahasa Melayu",      "script": "Latin",      "dir": "ltr", "uiLocale": true, "translationTarget": true },
+    { "code": "tr",    "englishName": "Turkish",               "endonym": "Türkçe",             "script": "Latin",      "dir": "ltr", "uiLocale": true, "translationTarget": true },
+    { "code": "ar",    "englishName": "Arabic",                "endonym": "العربية",            "script": "Arabic",     "dir": "rtl", "uiLocale": true, "translationTarget": true },
+    { "code": "hi",    "englishName": "Hindi",                 "endonym": "हिन्दी",              "script": "Devanagari", "dir": "ltr", "uiLocale": true, "translationTarget": true },
+    { "code": "bn",    "englishName": "Bengali",               "endonym": "বাংলা",              "script": "Bengali",    "dir": "ltr", "uiLocale": true, "translationTarget": true },
+    { "code": "th",    "englishName": "Thai",                  "endonym": "ภาษาไทย",            "script": "Thai",       "dir": "ltr", "uiLocale": true, "translationTarget": true }
+  ]
+}
