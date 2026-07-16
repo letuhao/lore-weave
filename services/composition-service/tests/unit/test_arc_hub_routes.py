@@ -64,6 +64,9 @@ def client(monkeypatch):
     def mk(level: GrantLevel, structures: AsyncMock | None = None):
         repo = structures or AsyncMock()
         monkeypatch.setattr(arc_router, "_structures", lambda: repo)
+        # get_arc builds NarrativeThreadRepo(get_pool()) for open_promises; the repo is
+        # mocked, so the pool is never used — stub get_pool so it doesn't raise.
+        monkeypatch.setattr(arc_router, "get_pool", lambda: None)
         app.dependency_overrides[get_current_user] = lambda: USER
         app.dependency_overrides[get_bearer_token] = lambda: "jwt"
         app.dependency_overrides[get_grant_client_dep] = lambda: _Grant(level)
@@ -254,6 +257,47 @@ def test_arc_track_allows_and_preserves_extra_fields():
     dumped = t.model_dump()
     assert dumped["key"] == "revenge"
     assert dumped["weight"] == 0.7  # preserved, not dropped
+
+
+# ── BE-A1: the arc DETAIL door serves the dense-ranked block, never raw span() ──
+
+
+def _detail_repo(block):
+    repo = AsyncMock()
+    repo.get = AsyncMock(return_value=_node(ARC))
+    repo.resolve_tracks = AsyncMock(return_value=[])
+    repo.resolve_roster = AsyncMock(return_value=[])
+    repo.resolve_roster_bindings = AsyncMock(return_value={})
+    repo.open_promises = AsyncMock(return_value=[])
+    repo.derived_blocks = AsyncMock(return_value=block)
+    return repo
+
+
+def test_arc_get_serves_derived_block_span_not_raw_span(client):
+    # The list route returns dense-ranked ORDINAL span; span() returns RAW strided story_order.
+    # Serving span() here made the inspector render "Chapters 41000-58000". BE-A1: read
+    # derived_blocks, never span(), so detail == list == MCP.
+    repo = _detail_repo({ARC: {"span": {"from_order": 41, "to_order": 58}, "is_contiguous": False, "chapter_count": 18}})
+    c, repo = client(GrantLevel.VIEW, structures=repo)
+    r = c.get(f"/v1/composition/arcs/{ARC}")
+    assert r.status_code == 200
+    body = r.json()
+    assert body["span"] == {"from_order": 41, "to_order": 58}
+    assert body["chapter_count"] == 18
+    assert body["is_contiguous"] is False
+    repo.span.assert_not_called()  # the raw-unit door is dead
+
+
+def test_arc_get_archived_node_absent_from_blocks_is_null_not_zero(client):
+    # An archived node is absent from derived_blocks (live-only). Detail must render a NULL
+    # block ("not computed"), never a computed chapter_count: 0 (the absent!=zero trap).
+    repo = _detail_repo({})  # node not in the map
+    c, repo = client(GrantLevel.VIEW, structures=repo)
+    body = c.get(f"/v1/composition/arcs/{ARC}").json()
+    assert body["span"] is None
+    assert body["chapter_count"] is None
+    assert body["is_contiguous"] is None
+    repo.span.assert_not_called()
 
 
 # ── read surface #1: the derived block MUST ride on every shell node ───────────

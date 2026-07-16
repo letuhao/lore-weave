@@ -4325,7 +4325,14 @@ async def composition_arc_get(
         "roster": await structures.resolve_roster(node.id),
         "roster_bindings": await structures.resolve_roster_bindings(node.id),
     }
-    out["span"] = await structures.span(node.id)
+    # BE-A1: the agent door read the SAME raw strided span() the REST detail door did — a
+    # different unit than the list route (ordinals). Serve the dense-ranked derived block so
+    # the agent and the Hub agree; leave span() (the packer's raw axis) untouched. Archived
+    # node ⇒ absent ⇒ NULL block (not a computed 0).
+    _block = (await structures.derived_blocks(node.book_id)).get(node.id)
+    out["span"] = _block["span"] if _block else None
+    out["chapter_count"] = _block["chapter_count"] if _block else None
+    out["is_contiguous"] = _block["is_contiguous"] if _block else None
     out["open_promises"] = [
         t.model_dump(mode="json")
         for t in await structures.open_promises(node.id, narrative_threads_repo=threads_repo)

@@ -530,7 +530,15 @@ async def get_arc(
         "roster": await structures.resolve_roster(node.id),
         "roster_bindings": await structures.resolve_roster_bindings(node.id),
     }
-    out["span"] = await structures.span(node.id)
+    # BE-A1: serve the SAME dense-ranked derived block the list route serves (span in reading
+    # ORDINALS), NOT span()'s raw STRIDED min/max — that raw axis is the packer's input
+    # (lenses.py) and MUST stay untouched, so we read derived_blocks here instead of touching
+    # span(). An archived node is absent from derived_blocks ⇒ a NULL block: "not computed" is
+    # deliberately distinct from a live 0-chapter arc's chapter_count: 0 (§3.4).
+    _block = (await structures.derived_blocks(node.book_id)).get(node.id)
+    out["span"] = _block["span"] if _block else None
+    out["chapter_count"] = _block["chapter_count"] if _block else None
+    out["is_contiguous"] = _block["is_contiguous"] if _block else None
     out["open_promises"] = [
         t.model_dump(mode="json")
         for t in await structures.open_promises(node.id, narrative_threads_repo=threads_repo)

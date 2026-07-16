@@ -115,6 +115,20 @@ async def test_assign_chapters_none_unassigns_and_clears_recovery(pool):
     assert (await _structure_of(pool, ch2))["structure_node_id"] == arc.id
 
 
+async def test_span_keeps_its_raw_strided_keys_for_the_packer(pool):
+    # BE-A1 GUARD: span() is the PACKER's input (lenses.py) — RAW strided story_order, keyed
+    # min_story_order/max_story_order. The two DETAIL doors were switched to derived_blocks
+    # (dense-ranked ordinals), leaving span() untouched. This pins span()'s raw contract so a
+    # future "just dense-rank span() too" cleanup REDS here instead of silently corrupting
+    # every generation prompt.
+    repo, book, arc, ch1, ch2 = await _setup_arc_with_two_chapters(pool)
+    span = await repo.span(arc.id)
+    assert set(span) >= {"min_story_order", "max_story_order", "chapter_count", "is_contiguous"}
+    # chapters were seeded at story_order 1000 and 2000 (strided) — span reports the RAW axis.
+    assert span["min_story_order"] == 1000
+    assert span["max_story_order"] == 2000
+
+
 async def test_archive_saga_returns_all_sub_arc_members(pool):
     book, user, project = uuid.uuid4(), uuid.uuid4(), uuid.uuid4()
     repo = StructureRepo(pool)
