@@ -112,11 +112,14 @@ useWhatIfPromotion), NEVER mount CompositionPanel shell.
 - D-S5-SCENEGRAPH-VIRTUALIZE — ✅ SPEC'D (needs a design, too large to inline): docs/specs/2026-07-17-scenegraph-virtualization.md
   (viewport-cull in GraphCanvas: mount only visible nodes + always-include drag/selected/what-if; edges by
   visible endpoints; extent from full layout). Size M; buildable; owner = next graph-canvas toucher.
-- D-S5-LOOP3-SMOKE — NOT a spec item (env-execution). The full derive→take→promote→diff→browse live loop needs
-  a plan-populated book (env has 7 chapters / 0 scenes) + an LLM for take-gen. Divergence panel LIST/CREATE +
-  the isolated :5399 build are proven; the derive+diff pipeline is unit+integration-tested. Run the live loop
-  when a seeded book exists (can seed via DB: chapter+scenes+canon drafts + a derivative Work + a promoted
-  scene-draft-with-anchor → drive the Diff tab on :5399).
+- D-S5-LOOP3-SMOKE — ✅ CLEARED (live on :5399, 2026-07-17). Seeded book 019f6553: canon scene cs1 + draft,
+  a derivative Work "Nếu Lam Vũ sống", a promoted derivative scene ds1 with anchor_node_id→cs1. Drove the
+  isolated :5399 build: divergence LIST showed the named derivative (BE-13a end-to-end) + branch point + Switch
+  to/Archive; selected it → Diff tab → the two-column canon↔branch line diff rendered the REAL prose (canon
+  "…sẵn sàng trả nó" vs dị bản "…bước qua ngọn lửa…của người khác"), classified 'changed' via the ANCHOR
+  back-ref pairing (the D-S5-BRANCHDIFF-CORRESPONDENCE fix), 0 console errors. The whole B4 pipeline proven
+  end-to-end live. Only take-GENERATION (LLM) was substituted by a seeded promoted draft. NOTE: the seed rows
+  live in fixture book 019f6553 (harmless; can be dropped by project_id d0000000-0000-4000-8000-000000000001).
 - D-S5-BRANCHDIFF-NOPROSE — B4: a diverged scene NODE with no completed draft (prose persist failed/pending)
   is silently absent from the diff (deriv scene-drafts only returns drafted scenes). The mockup drew a
   "no prose yet" state; not built. LOW.
@@ -159,10 +162,14 @@ useWhatIfPromotion), NEVER mount CompositionPanel shell.
   chapter editor should signal/guard that direct edits + Accept land in CANON, not the derivative (the
   DerivativeBanner covers the compose surface; confirm it/​an equivalent shows on the plain editor too). Verify
   with a live derivative smoke. LOW-MED, S5-adjacent follow-up.
-- D-S5-DERIVATIVE-MANUSCRIPT-FORK (LARGE, product + spec) — give a derivative its OWN work-scoped chapter
-  manuscript (book-service work-scoped drafts + editor work-scoping) so editing on a derivative never touches
-  canon. Needs a product decision (is a full manuscript fork wanted, vs the spec-branch model?) + a spec. Not
-  v1. Deferred, tracked.
+- D-S5-DERIVATIVE-MANUSCRIPT-FORK — ✅ SPEC'D: docs/specs/2026-07-17-derivative-manuscript-fork.md. BLOCKED ON
+  A PRODUCT DECISION (§1: keep spec-branch [recommended] vs fork the manuscript). If "keep spec-branch", the
+  item is CLOSED (v1 decision + edit-guard banner stand). Design (§3, work-scoped drafts + editor work-scoping
+  + merge path) built only on an explicit "fork" decision. Size L if built.
+- D-DIVERGENCE-MCP-TOOLS — ✅ SPEC'D: docs/specs/2026-07-17-divergence-mcp-tools.md (5 composition MCP tools:
+  list/get-context/switch/archive safe; create/derive is Tier-W → the AN-8 confirm spine, §3). Buildable
+  (reuses existing repo methods + the confirm_action spine + Lane-B ledger). Size M-L. This is the
+  agent-WRITE-parity path (§2 #5); until built, agent-parity = agent-can-OPEN only (honest v1).
 ### /review-impl on B1 (divergence panel + EC-3c/EC-3d) — 2026-07-16
 - **HIGH #1 (FIXED)** — FE wizard `buildBody()` DROPPED `name`: BE-13a accepted it but the FE never sent it,
   so every derivative created via the panel was unnamed ("Untitled dị bản") — the exact F-EC3a silent-success
