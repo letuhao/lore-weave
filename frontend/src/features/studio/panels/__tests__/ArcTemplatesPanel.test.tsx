@@ -20,7 +20,7 @@ const SYS = { id: 'a2', code: 'c2', name: 'Hero Journey', owner_user_id: null, c
 
 function makeState(over: Partial<ArcTemplatesState> = {}): ArcTemplatesState {
   return {
-    token: 'tok', projectId: 'proj1', templates: [MINE, SYS] as never, loading: false, isError: false,
+    token: 'tok', projectId: 'proj1', bookId: 'b', templates: [MINE, SYS] as never, loading: false, isError: false,
     refetch: vi.fn(), tier: 'all', setTier: vi.fn(), selected: null, select: vi.fn(), meId: 'me',
     tierOf: (a) => (a.owner_user_id === null ? 'system' : a.owner_user_id === 'me' ? 'mine' : 'public'),
     busy: false, actionError: null, create: vi.fn().mockResolvedValue(undefined),
@@ -50,7 +50,20 @@ describe('ArcTemplatesPanel', () => {
     fireEvent.change(screen.getByTestId('arc-create-code'), { target: { value: 'newcode' } });
     fireEvent.change(screen.getByTestId('arc-create-name'), { target: { value: 'New Arc' } });
     fireEvent.click(screen.getByTestId('arc-create-submit'));
-    await waitFor(() => expect(state.create).toHaveBeenCalledWith({ code: 'newcode', name: 'New Arc' }));
+    await waitFor(() => expect(state.create).toHaveBeenCalledWith({ code: 'newcode', name: 'New Arc', shareToBook: false }));
+  });
+
+  it('34a: the Book tier + a share-to-book create (the collaboration tier)', async () => {
+    const state = makeState({ tier: 'book' });
+    ctrl.useArcTemplates.mockReturnValue(state);
+    render(<ArcTemplatesPanel {...props} />);
+    expect(screen.getByTestId('arc-tier-book')).toBeInTheDocument();
+    fireEvent.click(screen.getByTestId('arc-new'));
+    // in the Book tier the share checkbox defaults ON → create targets the book's shared tier
+    fireEvent.change(screen.getByTestId('arc-create-code'), { target: { value: 'shared' } });
+    fireEvent.change(screen.getByTestId('arc-create-name'), { target: { value: 'Shared Arc' } });
+    fireEvent.click(screen.getByTestId('arc-create-submit'));
+    await waitFor(() => expect(state.create).toHaveBeenCalledWith({ code: 'shared', name: 'Shared Arc', shareToBook: true }));
   });
 
   it('adopt/archive fire the controller actions', () => {

@@ -19,6 +19,7 @@ const TIERS = [
   { key: 'all', label: 'All' },
   { key: 'mine', label: 'Mine' },
   { key: 'system', label: 'System' },
+  { key: 'book', label: 'Book' },   // 34a — the book's SHARED tier (collaborators co-own)
 ] as const;
 
 export function ArcTemplatesPanel(props: IDockviewPanelProps) {
@@ -121,15 +122,20 @@ function Row({ state, arc }: { state: ArcTemplatesState; arc: ArcTemplate }) {
 function CreateForm({ state, onDone }: { state: ArcTemplatesState; onDone: () => void }) {
   const [code, setCode] = useState('');
   const [name, setName] = useState('');
+  const [shareToBook, setShareToBook] = useState(state.tier === 'book');
   const submit = async () => {
     if (!code.trim() || !name.trim()) return;
-    await state.create({ code: code.trim(), name: name.trim() });
+    await state.create({ code: code.trim(), name: name.trim(), shareToBook });
     onDone();
   };
   return (
     <div data-testid="arc-create-form" className="flex flex-col gap-1.5 border-b bg-muted/30 p-2">
       <input data-testid="arc-create-code" className="rounded border bg-background px-2 py-1 text-xs" placeholder="code (unique)" value={code} onChange={(e) => setCode(e.target.value)} />
       <input data-testid="arc-create-name" className="rounded border bg-background px-2 py-1 text-xs" placeholder="name" value={name} onChange={(e) => setName(e.target.value)} />
+      <label className="flex items-center gap-2 text-[11px] text-muted-foreground">
+        <input type="checkbox" data-testid="arc-create-share" checked={shareToBook} onChange={(e) => setShareToBook(e.target.checked)} />
+        Share with this book&apos;s collaborators (book tier)
+      </label>
       <div className="flex gap-2">
         <button type="button" data-testid="arc-create-submit" disabled={state.busy || !code.trim() || !name.trim()}
           className="rounded bg-primary px-2 py-0.5 text-xs font-semibold text-primary-fg disabled:opacity-50" onClick={() => void submit()}>Create</button>

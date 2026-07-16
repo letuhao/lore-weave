@@ -6,6 +6,8 @@
 import { useCallback, useMemo, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 
+import { useQuery } from '@tanstack/react-query';
+
 import { useAuth } from '@/auth';
 import { useArcLibrary } from '@/features/composition/motif/hooks/useArcLibrary';
 import { currentUserId } from '@/features/composition/motif/currentUser';
@@ -14,12 +16,14 @@ import type { ArcTemplate } from '@/features/composition/motif/arcTypes';
 import { useWorkResolution } from '@/features/composition/hooks/useWork';
 import { useActiveWorkId } from '@/features/composition/hooks/useActiveWork';
 import { resolveActiveWork } from '@/features/composition/workSelect';
+import { listBookSharedTemplates, createSharedTemplate } from '@/features/composition/arcTemplates/api';
 
-export type ArcTier = 'all' | 'mine' | 'system';
+export type ArcTier = 'all' | 'mine' | 'system' | 'book';
 
 export interface ArcTemplatesState {
   token: string | null;
   projectId: string | null;
+  bookId: string;
   templates: ArcTemplate[];
   loading: boolean;
   isError: boolean;
@@ -33,7 +37,7 @@ export interface ArcTemplatesState {
   tierOf: (a: ArcTemplate) => 'system' | 'mine' | 'public';
   busy: boolean;
   actionError: string | null;
-  create: (args: { code: string; name: string; language?: string }) => Promise<void>;
+  create: (args: { code: string; name: string; language?: string; shareToBook?: boolean }) => Promise<void>;
   adopt: (id: string) => Promise<void>;
   archive: (id: string) => Promise<void>;
 }
@@ -57,12 +61,20 @@ export function useArcTemplates(bookId: string): ArcTemplatesState {
   const [busy, setBusy] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
 
+  // 34a — the book's SHARED tier is a SEPARATE (VIEW-gated) fetch, not a filter over the user lib.
+  const bookLib = useQuery({
+    queryKey: ['composition', 'arc-templates', 'book', bookId],
+    queryFn: () => listBookSharedTemplates(bookId, token!),
+    enabled: !!token && !!bookId && tier === 'book',
+  });
+
   const templates = useMemo(() => {
+    if (tier === 'book') return bookLib.data ?? [];
     const all = lib.data ?? [];
     if (tier === 'mine') return all.filter((a) => a.owner_user_id === meId);
     if (tier === 'system') return all.filter((a) => a.owner_user_id === null);
     return all;
-  }, [lib.data, tier, meId]);
+  }, [tier, bookLib.data, lib.data, meId]);
 
   const tierOf = useCallback(
     (a: ArcTemplate): 'system' | 'mine' | 'public' =>
@@ -92,9 +104,11 @@ export function useArcTemplates(bookId: string): ArcTemplatesState {
   );
 
   const create = useCallback(
-    (args: { code: string; name: string; language?: string }) =>
-      run(() => arcApi.create({ language: 'en', ...args }, token!)),
-    [run, token],
+    (args: { code: string; name: string; language?: string; shareToBook?: boolean }) =>
+      run(() => args.shareToBook && bookId
+        ? createSharedTemplate({ code: args.code, name: args.name, language: args.language }, bookId, token!)
+        : arcApi.create({ language: 'en', code: args.code, name: args.name }, token!)),
+    [run, token, bookId],
   );
   const adopt = useCallback((id: string) => run(() => arcApi.adopt(id, undefined, token!)), [run, token]);
   const archive = useCallback((id: string) => run(async () => {
@@ -102,9 +116,11 @@ export function useArcTemplates(bookId: string): ArcTemplatesState {
     setSelected((s) => (s?.id === id ? null : s)); // close the detail if we archived the open one
   }), [run, token]);
 
+  const active = tier === 'book' ? bookLib : lib;
   return {
-    token, projectId,
-    templates, loading: lib.isLoading, isError: lib.isError, refetch: () => void lib.refetch(),
+    token, projectId, bookId,
+    templates, loading: active.isLoading, isError: active.isError,
+    refetch: () => void active.refetch(),
     tier, setTier,
     selected, select: setSelected,
     meId, tierOf,
