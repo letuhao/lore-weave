@@ -109,6 +109,10 @@ def test_a_missing_proposal_REFUSES_rather_than_silently_accepting():
     src = inspect.getsource(pfs.PlanForgeService._assert_seed_applied)
     assert "if not proposal_id:" in src
     assert "before its glossary seed proposal exists" in src
+    # BE-22: the recovery it names must be REAL. `plan_bootstrap_seed` is a phantom tool — the seed
+    # proposal is opened by the cast pass job itself, so re-running the pass is the true recovery.
+    assert "plan_bootstrap_seed" not in src
+    assert "plan_run_pass" in src
 
 
 # ── D2: the edit ─────────────────────────────────────────────────────────────────────────────────

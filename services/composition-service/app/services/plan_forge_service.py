@@ -886,8 +886,9 @@ class PlanForgeService:
         proposal_id = entry.get("bootstrap_proposal_id")
         if not proposal_id:
             raise ValueError(
-                "cast cannot be accepted before its glossary seed proposal exists "
-                "(call plan_bootstrap_seed for this pass first)",
+                "cast cannot be accepted before its glossary seed proposal exists — re-run the "
+                "'cast' pass (plan_run_pass with pass_id='cast') to propose it. The proposal is "
+                "opened by the pass job itself; there is no standalone seeding call.",
             )
         proposal = await self._proposals.get_for_book(book_id, UUID(str(proposal_id)))
         if proposal is None:
