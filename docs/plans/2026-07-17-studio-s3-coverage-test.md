@@ -172,15 +172,15 @@ J8 (agent-parity refresh — chat-drives-pass → rail refreshes), the 409-in-fl
 FULL clean run (propose → compile → all 7 passes → both checkpoints → link) end-to-end.
 
 ## Findings summary → triage
-| finding | severity | fix path |
+| finding | severity | status |
 |---|---|---|
-| F-1 raw-JSON artifact viewer | MED | human-readable per-kind render (read side of the structured-edits spec) — new small slice |
-| F-3 no archive undo toast | LOW-MED | add a toast-with-Undo on archive (draft-specified) — small FE slice |
-| F-4 seed-gate copy cites "PF-7" | LOW | reword the gate copy in author language — trivial |
-| H2 7-run friction | MED | a "run advisory passes to the next checkpoint" affordance — new slice (design) |
-| H4 no run-picker in rail | LOW-MED | a run selector in the rail header — small slice |
-Each is a real coverage-surfaced gap; none block the S3 commitment (which is proven), all are
-polish/operability improvements to schedule.
+| F-4 seed-gate copy cites "PF-7" | LOW | **FIXED** — reworded to author language ("Your cast's characters must be added to the glossary before you can approve. Apply the seed to add them.") |
+| F-3 no archive undo toast | LOW-MED | **FIXED** — archive now shows a `toast('Run archived', {action: Undo → restore})` (mirrors canon-rule archive) |
+| F-1 raw-JSON artifact viewer | MED | OPEN — human-readable per-kind render (read side of the structured-edits spec); new small slice |
+| H2 7-run friction | MED | OPEN — a "run advisory passes to the next checkpoint" affordance; new slice (design) |
+| H4 no run-picker in rail | LOW-MED | OPEN — a run selector in the rail header; small slice |
+The two quick author-facing wins (F-3, F-4) are fixed in-run. F-1/H2/H4 are scheduled slices — none
+block the S3 commitment (proven); all are polish/operability.
 
 ## Known gap hypotheses to CONFIRM or REFUTE (don't assume — test them)
 - **H1 (view-inadequate):** raw-JSON artifact viewer is developer-shaped; an author needs a

@@ -66,8 +66,7 @@ export function CheckpointReview({ pass, bookId, runId, token, busy, onReview, o
             <div className="flex items-center gap-2">
               <span className="text-muted-foreground">
                 {t('planPasses.seedGate', {
-                  defaultValue: `Glossary seed is "${review.proposal.status}". Apply it before approving the cast (PF-7).`,
-                  status: review.proposal.status,
+                  defaultValue: 'Your cast’s characters must be added to the glossary before you can approve. Apply the seed to add them.',
                 })}
               </span>
               <button

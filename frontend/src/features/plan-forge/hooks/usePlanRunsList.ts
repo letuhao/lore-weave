@@ -4,6 +4,7 @@
 // in local state this mount. Same imperative style as usePlanRun.ts (no react-query dependency
 // in this feature) — a plain fetch-on-mount + manual refresh.
 import { useCallback, useEffect, useState } from 'react';
+import { toast } from 'sonner';
 import { planForgeApi } from '../api';
 import type { PlanRunDetail } from '../types';
 
@@ -46,6 +47,16 @@ export function usePlanRunsList(bookId: string, token: string | null): UsePlanRu
     try {
       await planForgeApi.archiveRun(bookId, runId, token);
       setGen((g) => g + 1);
+      // F-3 — archive is destructive-ish; give an immediate Undo (mirrors canon-rule archive)
+      // instead of forcing the author to hunt the "Show archived" toggle to recover a mis-click.
+      toast('Run archived', {
+        action: {
+          label: 'Undo',
+          onClick: () => {
+            void planForgeApi.restoreRun(bookId, runId, token).then(() => setGen((g) => g + 1));
+          },
+        },
+      });
     } catch (e) {
       // 409 PLAN_RUN_JOB_IN_FLIGHT — surface it; a run mid-compile can't be archived.
       const err = e as { body?: { detail?: { code?: string } }; message?: string };
