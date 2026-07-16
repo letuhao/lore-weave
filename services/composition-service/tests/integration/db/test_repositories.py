@@ -2632,6 +2632,40 @@ async def test_get_run_detail_surfaces_arcs_for_a_picker(pool):
     ]
 
 
+async def test_ground_llm_source_grounds_the_proposer_in_existing_arcs_O1(pool, monkeypatch):
+    """O-1 (21-G2): a mid-book LLM propose is GROUNDED in the book's existing arcs (CONTINUE, not
+    restart); a cold-start book is untouched; a degraded read FAILS CLOSED (refuse, never blind)."""
+    from app.db.repositories.generation_jobs import GenerationJobsRepo
+    from app.db.repositories.plan_runs import PlanRunsRepo
+    from app.db.repositories.structure import StructureRepo
+    from app.db.repositories.works import WorksRepo
+    from app.services.plan_forge_service import PlanForgeService
+
+    user, _project, book = _ids()
+    svc = PlanForgeService(PlanRunsRepo(pool), GenerationJobsRepo(pool), WorksRepo(pool))
+
+    # mid-book: an arc already exists → the grounded source CONTAINS its title + a continue directive.
+    await StructureRepo(pool).create_node(
+        book, created_by=user, kind="arc", title="The Iron Court",
+        summary="she returns for the ninth time",
+    )
+    grounded = await svc._ground_llm_source(book, "a braindump about her next life")
+    assert "The Iron Court" in grounded                        # the proposer SEES the existing arc
+    assert "CONTINUE" in grounded and "do NOT restart" in grounded
+    assert "a braindump about her next life" in grounded        # the author's own input is preserved
+
+    # cold start: a fresh book with no arcs → source returned UNCHANGED (scenario 1 keeps working).
+    _u2, _p2, fresh = _ids()
+    assert await svc._ground_llm_source(fresh, "blank-book braindump") == "blank-book braindump"
+
+    # FAIL-CLOSED: a degraded book-state read must REFUSE, never propose blind.
+    async def _boom(self, *a, **k):
+        raise RuntimeError("book-state read down")
+    monkeypatch.setattr(StructureRepo, "list_tree", _boom)
+    with pytest.raises(RuntimeError):
+        await svc._ground_llm_source(book, "braindump")
+
+
 async def test_compile_run_pipeline_shapes_chapters_and_persists_job_id(pool, monkeypatch):
     """D-PLANFORGE-PIPELINE-CHAPTERPLAN-FIX (§6 M3): before this fix,
     compile(run_pipeline=true) passed raw package.chapters[]

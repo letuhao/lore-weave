@@ -162,8 +162,13 @@ class PlanForgeService:
         # would compare against the still-None sentinel, never match a prior run's
         # already-resolved model_ref, and silently re-run the (billed) LLM propose
         # on every retry.
+        grounded_text = text
         if mode == "llm":
             model_ref = await self._resolve_model_ref(created_by, model_ref)
+            # O-1 (21-G2): GROUND the LLM proposer in the book it is planning, so a mid-book
+            # propose CONTINUES the story instead of inventing a fresh plan. Built BEFORE the run
+            # is created so a fail-closed refusal (a degraded book read) never strands a run.
+            grounded_text = await self._ground_llm_source(book_id, text)
         checksum = hashlib.sha256(text.encode("utf-8")).hexdigest()
         if not force:
             # D-PLANFORGE-MODE-DEDUPE: identical text but a different mode/model is a
@@ -193,9 +198,38 @@ class PlanForgeService:
             updated = await self._runs.get_for_book(book_id, run.id)
             return updated or run, False, None
 
-        job_id = await self._enqueue_propose(created_by, book_id, run, text, model_ref)
+        job_id = await self._enqueue_propose(created_by, book_id, run, grounded_text, model_ref)
         updated = await self._runs.get_for_book(book_id, run.id)
         return updated or run, True, job_id
+
+    async def _ground_llm_source(self, book_id: UUID, source_markdown: str) -> str:
+        """O-1 (21-G2): ground the LLM proposer in the book's EXISTING state. `plan_forge_service`
+        imported no OutlineRepo/MotifRepo and `propose_llm` read only the caller's markdown, so
+        proposing for a 40-chapter in-progress book was architecturally identical to proposing for
+        a blank one — and PF-10's `_FIND_DUPES` keys on `lower(btrim(title))`, so a blind proposer
+        that invents FRESH titles never collides and is never caught (§10.2). We prepend a compact
+        digest of the book's existing arcs so the proposer sees, and CONTINUES, what already exists.
+
+        FAIL-CLOSED (absent ≠ zero — the bug class this cluster shipped twice): if the book-state
+        read RAISES, we RE-RAISE and refuse to propose, rather than propose blind. "I could not look
+        at the book" must never silently become "the book is empty". A book with NO arcs (a genuine
+        cold start — scenario 1) returns the source unchanged, so blank-book propose keeps working.
+        """
+        from app.db.repositories.structure import StructureRepo
+
+        arcs = [a for a in await StructureRepo(self._runs._pool).list_tree(book_id) if a.kind == "arc"]
+        if not arcs:
+            return source_markdown  # cold start: nothing to continue (scenario 1 must keep working)
+        lines = "\n".join(
+            f"- {a.title}" + (f" — {a.summary}" if a.summary else "") for a in arcs[:20]
+        )
+        digest = (
+            "## EXISTING BOOK STATE (already planned — CONTINUE these, do NOT restart the plan)\n"
+            f"This book already has {len(arcs)} arc(s):\n{lines}\n\n"
+            "Propose only what EXTENDS or REFINES the above; never re-invent an arc that exists.\n\n"
+            "---\n\n"
+        )
+        return digest + source_markdown
 
     async def _finalize_rules_propose(
         self, created_by: UUID, book_id: UUID, run_id: UUID, doc: dict[str, Any],

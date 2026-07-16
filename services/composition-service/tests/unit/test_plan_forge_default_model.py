@@ -61,6 +61,10 @@ def _svc(*, find_by_checksum_return=None, llm_resolve_return=str(DEFAULT_MODEL))
     llm.resolve_planner_model.return_value = llm_resolve_return
 
     svc = PlanForgeService(runs, jobs, works, llm=llm)
+    # O-1 added a book-state grounding read to the llm-propose path; these tests exercise
+    # model_ref resolution + dedupe over MOCKED repos (no real pool), so stub the grounding to
+    # pass the source through unchanged — grounding has its own effect test in test_repositories.
+    svc._ground_llm_source = AsyncMock(side_effect=lambda _b, t: t)
     return svc, runs, jobs, works, llm
 
 
