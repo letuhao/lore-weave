@@ -2,6 +2,7 @@
 // reads reuse glossaryApi / chatApi from their own features (no duplication).
 import { apiJson } from '@/api';
 import type {
+  AutonomousJobKind,
   CorrectResult,
   DiaryEntriesResponse,
   DiaryPendingFact,
@@ -9,6 +10,7 @@ import type {
   ForgetResult,
   ProvisionResult,
   ReflectionPattern,
+  ScheduleRow,
   ScorecardItem,
 } from './types';
 
@@ -100,6 +102,25 @@ export const assistantApi = {
    *  caller MUST confirm first. Wires the previously FE-unwired erase backend. */
   eraseAllData(token: string) {
     return apiJson<{ erased: boolean }>('/v1/assistant/data', { method: 'DELETE', token });
+  },
+
+  /** A3 — read the autonomous-layer schedule state (per job_kind effective enabled + armed instant). The
+   *  FE renders each toggle from this; a job_kind with no row is OFF (fail-closed). Owner-scoped by JWT. */
+  getSchedule(token: string) {
+    return apiJson<{ schedules: ScheduleRow[] }>('/v1/assistant/schedule', { token });
+  },
+
+  /** A3 — arm/disarm one autonomous job_kind. `enabled` is fail-closed (only true arms it). `timezone`
+   *  feeds the local fire time. Server (scheduler `scheduled_agent_runs`) is the source of truth. */
+  setSchedule(
+    token: string,
+    payload: { job_kind: AutonomousJobKind; enabled: boolean; timezone?: string; cadence?: string; fire_local_time?: string },
+  ) {
+    return apiJson<{ enabled: boolean; job_kind: string; next_fire_at?: string }>('/v1/assistant/schedule', {
+      method: 'POST',
+      token,
+      body: JSON.stringify(payload),
+    });
   },
 
   /** WS-2.5 — the diary FACT inbox: the caller's DIARY (session-less) pending facts, oldest-first.

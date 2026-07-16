@@ -124,3 +124,20 @@ export interface DiaryPendingFact {
   event_date?: string | null;
   provenance?: string | null;
 }
+
+// A3 — the autonomous-layer schedule. Closed set of job_kinds (mirrors scheduler-service + the gateway).
+export type AutonomousJobKind =
+  | 'eod_distill'
+  | 'weekly_rollup'
+  | 'weekly_reflection'
+  | 'proactive_nudge'
+  | 'nudge';
+
+export interface ScheduleRow {
+  job_kind: AutonomousJobKind;
+  cadence: string;
+  fire_local_time: string;
+  timezone: string;
+  enabled: boolean;
+  next_fire_at?: string | null;
+}

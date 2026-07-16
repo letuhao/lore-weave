@@ -12,6 +12,7 @@ import { cn } from '@/lib/utils';
 import { useSheetRoute } from '@/components/shared/Sheet';
 import { useAssistant } from '../../context/AssistantContext';
 import { useAssistantMemory } from '../../hooks/useAssistantMemory';
+import { useAssistantSchedule } from '../../hooks/useAssistantSchedule';
 import { MobileMemorySheet, MEMORY_SHEET_ID } from './MobileMemorySheet';
 import { useDiaryFactInbox } from '../../hooks/useDiaryFactInbox';
 import { useReflection } from '../../hooks/useReflection';
@@ -32,6 +33,7 @@ export function MobileAssistantDock() {
   // home strip), so their wiring lives in one place.
   const mem = useAssistantMemory();
   const { journal, memory, correction, forgetEntity, eraseAll } = mem;
+  const schedule = useAssistantSchedule();
 
   const handleCorrect = mem.handleCorrect;
   const handleForget = mem.handleForget;
@@ -133,6 +135,14 @@ export function MobileAssistantDock() {
         reflection={reflection}
         scorecard={scorecards.latest?.card ?? null}
         inbox={inbox}
+        autonomous={{
+          loading: schedule.loading,
+          isEnabled: schedule.isEnabled,
+          nextFireAt: schedule.nextFireAt,
+          savingKind: schedule.savingKind,
+          timezone: tz.saved || tz.detected,
+          onToggle: (k, enabled, timezone) => void schedule.setEnabled(k, enabled, timezone),
+        }}
       />
       <MobileJournalSheet
         entries={journal.entries}

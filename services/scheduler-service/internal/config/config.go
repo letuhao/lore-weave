@@ -20,7 +20,7 @@ func Load() (*Config, error) {
 	c := &Config{
 		HTTPAddr:        getEnv("HTTP_ADDR", ":8095"),
 		DatabaseURL:     os.Getenv("DATABASE_URL"),
-		ChatInternalURL: getEnv("CHAT_SERVICE_INTERNAL_URL", "http://chat:8090"),
+		ChatInternalURL: getEnv("CHAT_SERVICE_INTERNAL_URL", "http://chat-service:8090"),
 		NotificationURL: os.Getenv("NOTIFICATION_SERVICE_INTERNAL_URL"),
 		InternalToken:   os.Getenv("INTERNAL_SERVICE_TOKEN"),
 		ConsumerName:    getEnv("SCHEDULER_CONSUMER_NAME", "scheduler-1"),

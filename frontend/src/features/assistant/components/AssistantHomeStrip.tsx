@@ -7,10 +7,12 @@ import { cn } from '@/lib/utils';
 import { useSheetRoute } from '@/components/shared/Sheet';
 import { useAssistant } from '../context/AssistantContext';
 import { useAssistantMemory } from '../hooks/useAssistantMemory';
+import { useAssistantSchedule } from '../hooks/useAssistantSchedule';
 import { useDiaryFactInbox } from '../hooks/useDiaryFactInbox';
 import { useReflection } from '../hooks/useReflection';
 import { useScorecards } from '../hooks/useScorecards';
 import { useTimezone } from '../hooks/useTimezone';
+import { AutonomousSettings } from './AutonomousSettings';
 import { CaptureRail } from './CaptureRail';
 import { CoachingScorecard } from './CoachingScorecard';
 import { DiaryFactInbox } from './DiaryFactInbox';
@@ -31,6 +33,7 @@ export function AssistantHomeStrip() {
   // dock. Surfaced here as two addressable sheets so a desktop user can browse/recall memory, read + correct
   // past journal days, forget a person and erase everything (the data-rights controls the first-run promises).
   const mem = useAssistantMemory();
+  const schedule = useAssistantSchedule();
   const { openSheet } = useSheetRoute();
   const handleEraseAll = async () => {
     const ok = await mem.handleEraseAll();
@@ -146,6 +149,16 @@ export function AssistantHomeStrip() {
           <Brain className="h-4 w-4" aria-hidden="true" /> Memory
         </button>
       </div>
+
+      {/* A3 — arm the (previously dormant) autonomous jobs. Fail-closed OFF; server is SoT. */}
+      <AutonomousSettings
+        loading={schedule.loading}
+        isEnabled={schedule.isEnabled}
+        nextFireAt={schedule.nextFireAt}
+        savingKind={schedule.savingKind}
+        timezone={tz.saved || tz.detected}
+        onToggle={(k, enabled, timezone) => void schedule.setEnabled(k, enabled, timezone)}
+      />
 
       {/* C8 / WS-5.3 — the latest weekly reflection draft + dismissable patterns (server is SoT). */}
       {reflection.reflection && (

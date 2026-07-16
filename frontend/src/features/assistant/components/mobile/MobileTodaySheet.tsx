@@ -5,8 +5,9 @@
 import { cn } from '@/lib/utils';
 import { Sheet } from '@/components/shared/Sheet';
 import type { GlossaryEntitySummary } from '@/features/glossary/types';
-import type { DiaryEntry, DiaryPendingFact, ReflectionPattern, Scorecard } from '../../types';
+import type { AutonomousJobKind, DiaryEntry, DiaryPendingFact, ReflectionPattern, Scorecard } from '../../types';
 import type { EndOfDayStatus } from '../../hooks/useEndOfDay';
+import { AutonomousSettings } from '../AutonomousSettings';
 import { CaptureRail } from '../CaptureRail';
 import { CoachingScorecard } from '../CoachingScorecard';
 import { DiaryFactInbox } from '../DiaryFactInbox';
@@ -41,10 +42,19 @@ export interface MobileTodaySheetProps {
     confirm: (id: string) => void;
     reject: (id: string) => void;
   };
+  // A3 — arm the autonomous jobs (optional; absent ⇒ not rendered). Fail-closed OFF.
+  autonomous?: {
+    loading: boolean;
+    isEnabled: (k: AutonomousJobKind) => boolean;
+    nextFireAt: (k: AutonomousJobKind) => string | null;
+    savingKind: AutonomousJobKind | null;
+    timezone: string;
+    onToggle: (k: AutonomousJobKind, enabled: boolean, timezone: string) => void;
+  };
 }
 
 export function MobileTodaySheet(props: MobileTodaySheetProps) {
-  const { consentEnabled, consentSaving, projectId, onSetConsent, tz, rail, eod, reflection, scorecard, inbox } = props;
+  const { consentEnabled, consentSaving, projectId, onSetConsent, tz, rail, eod, reflection, scorecard, inbox, autonomous } = props;
 
   return (
     <Sheet id={TODAY_SHEET_ID} title="Today" description="Your captures, review and memory for today.">
@@ -84,6 +94,18 @@ export function MobileTodaySheet(props: MobileTodaySheetProps) {
             />
           </button>
         </div>
+
+        {/* A3 — arm the autonomous jobs (fail-closed OFF; server is SoT). */}
+        {autonomous && (
+          <AutonomousSettings
+            loading={autonomous.loading}
+            isEnabled={autonomous.isEnabled}
+            nextFireAt={autonomous.nextFireAt}
+            savingKind={autonomous.savingKind}
+            timezone={autonomous.timezone}
+            onToggle={autonomous.onToggle}
+          />
+        )}
 
         <CaptureRail entities={rail.entities} loading={rail.loading} captureOn={consentEnabled} />
 

@@ -154,6 +154,11 @@ interface ScheduleBody {
   enabled?: boolean;
 }
 
+// A3 — the closed set of autonomous job_kinds, mirroring scheduler-service's own enum (a drift here vs
+// there is the classic weak-contract bug; both sides validate the same closed set). Fail-closed: a
+// job_kind with no schedule row is OFF, and every write defaults `enabled` false unless explicitly true.
+const ASSISTANT_JOB_KINDS = ['eod_distill', 'weekly_rollup', 'weekly_reflection', 'proactive_nudge', 'nudge'];
+
 // D-R27 (human-authorized) — the immediate-row-delete erasure result. Per-service delete counts so
 // the caller can prove "row gone". Backup-resistant crypto-shred stays a separate goal (P-12).
 interface EraseResult {
@@ -650,6 +655,31 @@ export class AssistantController {
   // review on/off; the gateway derives the user_id from the JWT (SEC-1, never a body field) and proxies
   // to scheduler-service with the platform token. Without this route the scheduler is dormant (no row is
   // ever created) — the FE toggle that calls it is the remaining polish (DBT-14).
+  // A3 — the READ path for the autonomous-layer settings toggle. Returns the caller's schedule rows so
+  // the FE shows each job_kind's EFFECTIVE state (Settings-and-Config: a toggle must expose whether it is
+  // really ON + never a hidden default). Owner-scoped: user_id is the JWT sub, never a client field.
+  @Get('schedule')
+  async getSchedule(
+    @Headers('authorization') authorization?: string,
+  ): Promise<{ schedules: unknown[] }> {
+    const { userId } = this.requireAuth(authorization);
+    const schedUrl = process.env.SCHEDULER_SERVICE_URL;
+    const internalToken = process.env.INTERNAL_SERVICE_TOKEN;
+    if (!schedUrl || !internalToken) {
+      this.logger.error('assistant-getSchedule rejected: SCHEDULER_SERVICE_URL / INTERNAL_SERVICE_TOKEN not configured');
+      throw new HttpException('server_error', 500);
+    }
+    const res = await this.getInternal(
+      `${schedUrl}/internal/schedules?user_id=${encodeURIComponent(userId)}`,
+      internalToken,
+    );
+    if (!res.ok) {
+      const detail = (typeof res.body?.error === 'string' && res.body.error) || 'failed to read schedules';
+      throw new HttpException(detail, res.status >= 400 ? res.status : 502);
+    }
+    return { schedules: Array.isArray(res.body?.schedules) ? res.body.schedules : [] };
+  }
+
   @Post('schedule')
   async schedule(
     @Body() body: ScheduleBody,
@@ -657,8 +687,10 @@ export class AssistantController {
   ): Promise<Record<string, unknown>> {
     const { userId } = this.requireAuth(authorization);
     const jobKind = (body?.job_kind ?? '').trim();
-    if (!['eod_distill', 'weekly_rollup', 'nudge'].includes(jobKind)) {
-      throw new HttpException('job_kind must be eod_distill|weekly_rollup|nudge', 400);
+    // A3 — the full autonomous closed set (aligned with the scheduler's own enum), so a user can opt into
+    // weekly reflection + proactive check-ins, not just distill/rollup/nudge. Fail-closed OFF per job_kind.
+    if (!ASSISTANT_JOB_KINDS.includes(jobKind)) {
+      throw new HttpException(`job_kind must be ${ASSISTANT_JOB_KINDS.join('|')}`, 400);
     }
     const schedUrl = process.env.SCHEDULER_SERVICE_URL;
     const internalToken = process.env.INTERNAL_SERVICE_TOKEN;

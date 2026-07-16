@@ -612,6 +612,50 @@ describe('AssistantController — schedule (WS-3.2 opt-in toggle)', () => {
     expect(sent.enabled).toBe(true);
     expect(out).toEqual({ enabled: true, next_fire_at: '2026-07-16T21:00:00Z' });
   });
+
+  // A3 — the enum now covers the FULL autonomous set (aligned with scheduler-service), so a user can arm
+  // weekly reflection + proactive check-ins, not only distill/rollup/nudge.
+  it('accepts the full autonomous job_kind set (weekly_reflection, proactive_nudge)', async () => {
+    for (const jobKind of ['weekly_reflection', 'proactive_nudge']) {
+      const f = jest.fn().mockResolvedValueOnce(resp(200, { enabled: true }));
+      (global as any).fetch = f;
+      await controller.schedule({ job_kind: jobKind, enabled: true }, bearer('user-42'));
+      expect(JSON.parse(f.mock.calls[0][1].body).job_kind).toBe(jobKind);
+    }
+  });
+
+  // A3 — fail-closed: enabled is a strict boolean; a truthy-but-not-true value must NOT arm the schedule.
+  it('is fail-closed — enabled defaults to false unless strictly true', async () => {
+    const f = jest.fn().mockResolvedValueOnce(resp(200, { enabled: false }));
+    (global as any).fetch = f;
+    await controller.schedule({ job_kind: 'eod_distill' } as any, bearer('user-42')); // no `enabled` field
+    expect(JSON.parse(f.mock.calls[0][1].body).enabled).toBe(false);
+  });
+
+  it('GET schedule: 401 without a bearer — never touches the scheduler', async () => {
+    const f = jest.fn();
+    (global as any).fetch = f;
+    await expectStatus(controller.getSchedule(undefined), 401);
+    expect(f).not.toHaveBeenCalled();
+  });
+
+  it('GET schedule: proxies the scheduler list with the SERVER-DERIVED user_id + internal token', async () => {
+    const rows = [{ job_kind: 'eod_distill', enabled: true, cadence: 'daily', fire_local_time: '21:00', timezone: 'UTC', next_fire_at: '2026-07-17T21:00:00Z' }];
+    const f = jest.fn().mockResolvedValueOnce(resp(200, { schedules: rows }));
+    (global as any).fetch = f;
+    const out = await controller.getSchedule(bearer('user-42'));
+    const [url, init] = f.mock.calls[0];
+    expect(url).toBe('http://scheduler:8095/internal/schedules?user_id=user-42'); // JWT sub, not a client field
+    expect(init.method).toBe('GET');
+    expect(init.headers['x-internal-token']).toBe('itok');
+    expect(out).toEqual({ schedules: rows });
+  });
+
+  it('GET schedule: a non-array scheduler body degrades to an empty list (never throws)', async () => {
+    const f = jest.fn().mockResolvedValueOnce(resp(200, { schedules: null }));
+    (global as any).fetch = f;
+    expect(await controller.getSchedule(bearer('u1'))).toEqual({ schedules: [] });
+  });
 });
 
 describe('AssistantController — erase (D-R27 row-delete erasure)', () => {

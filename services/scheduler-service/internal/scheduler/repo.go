@@ -53,6 +53,43 @@ ON CONFLICT (owner_user_id, job_kind) DO UPDATE SET
 	return time.Time{}, nil
 }
 
+// ScheduleRow is one (owner, job_kind) schedule as read back for the settings UI (A3 — the effective
+// value + source the Settings-and-Config rules require: a toggle must expose whether it is really ON).
+type ScheduleRow struct {
+	JobKind       string     `json:"job_kind"`
+	Cadence       string     `json:"cadence"`
+	FireLocalTime string     `json:"fire_local_time"`
+	Timezone      string     `json:"timezone"`
+	Enabled       bool       `json:"enabled"`
+	NextFireAt    *time.Time `json:"next_fire_at,omitempty"`
+}
+
+// ListSchedules (A3 — the READ path for the autonomous-layer settings toggle) returns EVERY schedule row
+// the user has ever set, so the FE can render each job_kind's effective state (enabled + armed instant).
+// Owner-scoped. A job_kind with no row has never been armed ⇒ the FE shows it OFF (fail-closed default).
+func ListSchedules(ctx context.Context, pool *pgxpool.Pool, owner uuid.UUID) ([]ScheduleRow, error) {
+	rows, err := pool.Query(ctx, `
+SELECT job_kind, cadence, fire_local_time, timezone, enabled, next_fire_at
+FROM scheduled_agent_runs
+WHERE owner_user_id = $1
+ORDER BY job_kind`, owner)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := make([]ScheduleRow, 0)
+	for rows.Next() {
+		var s ScheduleRow
+		// Scan EVERY column into a target (nullable next_fire_at → *time.Time) — a discarded/short scan
+		// would zero the row (the pgx discarded-scan bug class).
+		if err := rows.Scan(&s.JobKind, &s.Cadence, &s.FireLocalTime, &s.Timezone, &s.Enabled, &s.NextFireAt); err != nil {
+			return nil, err
+		}
+		out = append(out, s)
+	}
+	return out, rows.Err()
+}
+
 // AddAwayPeriod (WS-3.4) records a declared away span for a user.
 func AddAwayPeriod(ctx context.Context, pool *pgxpool.Pool, owner uuid.UUID, startsOn, endsOn time.Time) error {
 	_, err := pool.Exec(ctx,

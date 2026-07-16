@@ -72,6 +72,12 @@ vi.mock('../../../hooks/useForgetEntity', () => ({
 vi.mock('../../../hooks/useEraseAllData', () => ({
   useEraseAllData: () => ({ erase: vi.fn().mockResolvedValue(true), erasing: false }),
 }));
+vi.mock('../../../hooks/useAssistantSchedule', () => ({
+  useAssistantSchedule: () => ({
+    rows: [], loading: false, savingKind: null,
+    isEnabled: () => false, nextFireAt: () => null, setEnabled: vi.fn(), refresh: vi.fn(),
+  }),
+}));
 
 import { MobileAssistantDock } from '../MobileAssistantDock';
 

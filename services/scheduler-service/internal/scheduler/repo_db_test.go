@@ -175,6 +175,60 @@ func TestReArm_UsesLocalFireTime_NotRawInterval(t *testing.T) {
 	}
 }
 
+// A3 — the settings READ path: ListSchedules returns every job_kind's effective state, owner-scoped, so
+// the FE toggle can show enabled/armed truthfully (and a job_kind with no row reads OFF, fail-closed).
+func TestListSchedules_PerJobKindStateOwnerScoped(t *testing.T) {
+	pool := testPool(t)
+	ctx := context.Background()
+	owner := uuid.New()
+	other := uuid.New()
+	t.Cleanup(func() {
+		pool.Exec(ctx, `DELETE FROM scheduled_agent_runs WHERE owner_user_id = ANY($1)`, []uuid.UUID{owner, other})
+	})
+
+	now := time.Now().UTC()
+	if _, err := UpsertSchedule(ctx, pool, owner, "eod_distill", "daily", "21:00", "UTC", true, now); err != nil {
+		t.Fatalf("enable eod: %v", err)
+	}
+	if _, err := UpsertSchedule(ctx, pool, owner, "weekly_reflection", "weekly", "09:00", "UTC", false, now); err != nil {
+		t.Fatalf("disable reflection: %v", err)
+	}
+	// A DIFFERENT user's row must never appear in owner's list.
+	if _, err := UpsertSchedule(ctx, pool, other, "eod_distill", "daily", "21:00", "UTC", true, now); err != nil {
+		t.Fatalf("other user: %v", err)
+	}
+
+	rows, err := ListSchedules(ctx, pool, owner)
+	if err != nil {
+		t.Fatalf("list: %v", err)
+	}
+	if len(rows) != 2 {
+		t.Fatalf("want 2 rows for owner (never other's), got %d: %+v", len(rows), rows)
+	}
+	byKind := map[string]ScheduleRow{}
+	for _, r := range rows {
+		byKind[r.JobKind] = r
+	}
+	if !byKind["eod_distill"].Enabled || byKind["eod_distill"].NextFireAt == nil {
+		t.Fatalf("eod_distill must be enabled + armed, got %+v", byKind["eod_distill"])
+	}
+	if byKind["weekly_reflection"].Enabled {
+		t.Fatalf("weekly_reflection must read disabled, got %+v", byKind["weekly_reflection"])
+	}
+	if byKind["weekly_reflection"].Cadence != "weekly" {
+		t.Fatalf("cadence not read back: %+v", byKind["weekly_reflection"])
+	}
+
+	// A user with no rows → empty (never nil), so the FE renders every toggle OFF (fail-closed).
+	empty, err := ListSchedules(ctx, pool, uuid.New())
+	if err != nil {
+		t.Fatalf("list empty: %v", err)
+	}
+	if empty == nil || len(empty) != 0 {
+		t.Fatalf("no-rows user must be empty slice, got %+v", empty)
+	}
+}
+
 func mustID(t *testing.T, pool *pgxpool.Pool, owner uuid.UUID) uuid.UUID {
 	t.Helper()
 	var id uuid.UUID

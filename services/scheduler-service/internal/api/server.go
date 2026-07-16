@@ -29,6 +29,7 @@ func (s *Server) Router() http.Handler {
 	r.Get("/health", s.health)
 	r.Group(func(r chi.Router) {
 		r.Use(s.requireInternalToken)
+		r.Get("/internal/schedules", s.listSchedules)
 		r.Put("/internal/schedules", s.upsertSchedule)
 		r.Post("/internal/away", s.addAway)
 	})
@@ -106,6 +107,23 @@ func (s *Server) upsertSchedule(w http.ResponseWriter, r *http.Request) {
 		out["next_fire_at"] = next.Format(time.RFC3339)
 	}
 	writeJSON(w, http.StatusOK, out)
+}
+
+// listSchedules — GET /internal/schedules?user_id=<uuid> (A3). Returns every schedule row the user has,
+// so the gateway (behind the JWT) can render the autonomous-layer settings toggles with their effective
+// enabled state. Owner-scoped by the user_id query param (the gateway binds it from the JWT sub).
+func (s *Server) listSchedules(w http.ResponseWriter, r *http.Request) {
+	uid, err := uuid.Parse(r.URL.Query().Get("user_id"))
+	if err != nil || uid == uuid.Nil {
+		writeErr(w, http.StatusBadRequest, "user_id is required")
+		return
+	}
+	rows, err := scheduler.ListSchedules(r.Context(), s.pool, uid)
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, "failed to list schedules")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"schedules": rows})
 }
 
 type addAwayReq struct {

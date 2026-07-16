@@ -341,7 +341,13 @@ services:
     environment:
       HTTP_ADDR: ":8095"
       DATABASE_URL: postgres://loreweave:loreweave_dev@postgres:5432/loreweave_scheduler?sslmode=disable
-      CHAT_SERVICE_INTERNAL_URL: http://chat:8090
+      # A3 — the scheduler enqueues eod_distill/weekly_rollup/weekly_reflection/proactive_nudge to chat.
+      # The service hostname is `chat-service` (every other service uses it); `chat` has no alias, so the
+      # armed autonomous jobs used to fail DNS ("no such host") and never fire — arming was hollow.
+      CHAT_SERVICE_INTERNAL_URL: http://chat-service:8090
+      # nudge (WS-3.6) delivers a content-free reminder via notification-service (:8091, as every other
+      # service addresses it); without this it no-ops.
+      NOTIFICATION_SERVICE_INTERNAL_URL: ${NOTIFICATION_SERVICE_INTERNAL_URL:-http://notification-service:8091}
       INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-dev_internal_token}
       SCHEDULER_TICK_INTERVAL: ${SCHEDULER_TICK_INTERVAL:-60s}
       OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
