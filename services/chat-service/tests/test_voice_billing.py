@@ -49,10 +49,12 @@ async def _suspend_stream(*_a, **_k):
     yield {"suspend": {"input_tokens": 30, "output_tokens": 5, "pending_tool_call": {}}}
 
 
-def _voice_pool(session_kind="chat", project_id=None):
+def _voice_pool(session_kind="chat", project_id=None, working_memory_seed=None, message_count=1):
     pool = AsyncMock()
     conn = AsyncMock()
     conn.fetchval.return_value = 1  # sequence_num
+    # The post-turn UPDATE ... RETURNING message_count runs on the acquired `conn` (A2.4).
+    conn.fetchrow.return_value = {"message_count": message_count}
     acquire_cm = MagicMock()
     acquire_cm.__aenter__ = AsyncMock(return_value=conn)
     acquire_cm.__aexit__ = AsyncMock(return_value=False)
@@ -61,7 +63,8 @@ def _voice_pool(session_kind="chat", project_id=None):
     pool.fetch.return_value = []  # no history rows
     pool.fetchrow.return_value = {
         "system_prompt": None, "generation_params": {},
-        "project_id": project_id, "project_ids": None, "working_memory_seed": None,
+        "project_id": project_id, "project_ids": None,
+        "working_memory_seed": working_memory_seed,  # non-None ⇒ a roleplay/interview session
         "session_kind": session_kind,
     }
     pool._conn = conn
@@ -88,8 +91,9 @@ def _patch_pipeline(monkeypatch):
     return SimpleNamespace(kctx=kctx, kc=kc)
 
 
-async def _run_voice(billing, session_kind="chat", project_id=None):
-    pool = _voice_pool(session_kind, project_id)
+async def _run_voice(billing, session_kind="chat", project_id=None,
+                     working_memory_seed=None, message_count=1):
+    pool = _voice_pool(session_kind, project_id, working_memory_seed, message_count)
     creds = ProviderCredentials(
         provider_kind="lm_studio", provider_model_name="m", api_key="x",
         base_url="http://localhost", context_length=8192,
@@ -225,3 +229,46 @@ async def test_wsa1_suspend_bills_real_tokens_and_surfaces_error(_patch_pipeline
     calls = [c.kwargs for c in billing.log_usage.await_args_list]
     llm = next(c for c in calls if c.get("purpose", "chat") == "chat")
     assert (llm["input_tokens"], llm["output_tokens"]) == (30, 5)  # real tokens, NOT 0/0
+
+
+# ── ACP A2.4 (RV-M7) — the executive tick on the VOICE path ───────────────────
+_SEED = '{"version":1,"charter":{"goal":"g","phases":["warmup"],"checklist":[],"language":"en"},"state":{"phase":"","covered":[]}}'
+
+
+@pytest.mark.asyncio
+async def test_voice_roleplay_at_cadence_fires_the_executive_tick(_patch_pipeline, monkeypatch):
+    # RV-M7: a roleplay/interview VOICE turn (working_memory_seed present) at the tick cadence
+    # advances state — the executive tick (TEXT-only before A2.4) now fires on voice too.
+    import app.services.stream_service as ss
+    tick = AsyncMock()
+    monkeypatch.setattr(ss, "_fire_executive_tick", tick)
+    billing = MagicMock(); billing.log_usage = AsyncMock()
+    # EXECUTIVE_EVERY_N_TURNS = 4 → message_count=4 hits the cadence.
+    await _run_voice(billing, session_kind="assistant", working_memory_seed=_SEED, message_count=4)
+    await asyncio.sleep(0)  # let the scheduled task be created
+    tick.assert_called_once()
+    assert tick.call_args.args[0] == "s1"  # session_id forwarded
+
+
+@pytest.mark.asyncio
+async def test_voice_roleplay_off_cadence_does_not_fire(_patch_pipeline, monkeypatch):
+    # The gate is BOTH conditions: a roleplay session OFF the cadence (count % N != 0) must not tick.
+    import app.services.stream_service as ss
+    tick = AsyncMock()
+    monkeypatch.setattr(ss, "_fire_executive_tick", tick)
+    billing = MagicMock(); billing.log_usage = AsyncMock()
+    await _run_voice(billing, session_kind="assistant", working_memory_seed=_SEED, message_count=3)
+    await asyncio.sleep(0)
+    tick.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_voice_non_roleplay_never_fires_the_tick(_patch_pipeline, monkeypatch):
+    # A plain chat voice turn (no working_memory_seed) never ticks, even at the cadence.
+    import app.services.stream_service as ss
+    tick = AsyncMock()
+    monkeypatch.setattr(ss, "_fire_executive_tick", tick)
+    billing = MagicMock(); billing.log_usage = AsyncMock()
+    await _run_voice(billing, session_kind="chat", working_memory_seed=None, message_count=4)
+    await asyncio.sleep(0)
+    tick.assert_not_called()

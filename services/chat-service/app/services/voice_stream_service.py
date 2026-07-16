@@ -574,10 +574,12 @@ async def voice_stream_response(
                 msg_id, session_id, user_id, final_text, json.dumps(parts), seq, model_ref,
                 _local_date,  # DBT-11 — same turn as the user msg above (resolved before acquire)
             )
-            await conn.execute(
-                "UPDATE chat_sessions SET message_count=message_count+1, last_message_at=now(), updated_at=now() WHERE session_id=$1",
+            _mc_row = await conn.fetchrow(
+                "UPDATE chat_sessions SET message_count=message_count+1, last_message_at=now(), "
+                "updated_at=now() WHERE session_id=$1 RETURNING message_count",
                 session_id,
             )
+            _new_message_count = _mc_row["message_count"] if _mc_row else None
 
         # WS-4.1 — canon auto-capture on voice turns (the gap the WS-4.5 stopgap worked
         # around). Mirrors the text path's post-turn block (stream_service._emit_chat_turn):
@@ -610,6 +612,31 @@ async def voice_stream_response(
             await persist_capture_status(pool, session_id, _cap_decision)
         except Exception:
             logger.warning("voice canon capture failed for session %s", session_id, exc_info=True)
+
+        # ACP A2.4 (RV-M7) — the executive TICK on the VOICE path. It was TEXT-ONLY, so a
+        # voice-only roleplay never advanced `state` (phase/covered froze at the seed) — and the
+        # code calls the long voice session "the real use". Mirror the text post-turn cadence
+        # (stream_service): every N assistant turns on a roleplay session (working_memory_seed
+        # present), fire a best-effort executive pass so voice sessions advance like text. The
+        # import is function-level (voice ↔ stream siblings) to avoid any module-load cycle.
+        try:
+            from app.services.stream_service import (
+                EXECUTIVE_EVERY_N_TURNS,
+                _fire_executive_tick,
+            )
+            _is_roleplay = bool(session_row and session_row.get("working_memory_seed"))
+            if (
+                _is_roleplay
+                and _new_message_count is not None
+                and _new_message_count % EXECUTIVE_EVERY_N_TURNS == 0
+            ):
+                asyncio.create_task(
+                    _fire_executive_tick(
+                        str(session_id), str(user_id), model_source, model_ref, pool
+                    )
+                )
+        except Exception:
+            logger.warning("voice executive tick scheduling failed for %s", session_id, exc_info=True)
 
         # Upload audio segments AFTER message is saved (FK: message_audio_segments → chat_messages)
         if pending_segments:
