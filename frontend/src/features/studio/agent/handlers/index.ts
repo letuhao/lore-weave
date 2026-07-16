@@ -17,6 +17,7 @@ import { registerAuthoringRunEffectHandlers, _resetAuthoringRunEffectHandlers } 
 import { registerWorldEffectHandlers, _resetWorldEffectHandlers } from './worldEffects';
 import { registerArcEffectHandlers, _resetArcEffectHandlers } from './arcEffects';
 import { registerCompositionEffectHandlers, _resetCompositionEffectHandlers } from './compositionEffects';
+import { registerFlywheelEffectHandlers, _resetFlywheelEffectHandlers } from './flywheelEffects';
 import { registerPlanEffectHandlers, _resetPlanEffectHandlers } from './planEffects';
 // S4 (spec 33) — motif + conformance families live in the motif subtree (component-mounting keeps
 // ownership disjoint; the barrel just registers them).
@@ -33,6 +34,7 @@ export function registerAllStudioEffectHandlers(): void {
   registerWorldEffectHandlers();
   registerArcEffectHandlers();
   registerCompositionEffectHandlers();
+  registerFlywheelEffectHandlers();
   registerPlanEffectHandlers();
   registerMotifEffectHandlers();
   registerConformanceEffectHandlers();
@@ -48,6 +50,7 @@ export function _resetAllStudioEffectHandlers(): void {
   _resetWorldEffectHandlers();
   _resetArcEffectHandlers();
   _resetCompositionEffectHandlers();
+  _resetFlywheelEffectHandlers();
   _resetPlanEffectHandlers();
   _resetMotifEffectHandlers();
   _resetConformanceEffectHandlers();

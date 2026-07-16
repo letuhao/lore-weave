@@ -11,6 +11,9 @@ import type { PropsWithChildren } from 'react';
 
 vi.mock('@/auth', () => ({ useAuth: () => ({ accessToken: 'tok' }) }));
 vi.mock('react-i18next', () => ({ useTranslation: () => ({ t: (k: string) => k }) }));
+// F2 — the gate flashes the flywheel on publish; stub the host so the test doesn't need the provider.
+const openPanel = vi.fn();
+vi.mock('../../host/StudioHostProvider', () => ({ useStudioHost: () => ({ openPanel }) }));
 
 const h = vi.hoisted(() => ({
   getChapter: vi.fn(),
@@ -104,5 +107,7 @@ describe('EditorPublishGate (Studio wiring — #16 1.4)', () => {
     await waitFor(() => expect(h.publishChapter).toHaveBeenCalledWith('tok', 'b1', 'c1', 4));
     await screen.findByText('publish.republish'); // badge/label flipped after the refetch
     expect(h.getChapter).toHaveBeenCalledTimes(2); // initial load + post-publish invalidation
+    // F2 — a publish (pre-change status was 'draft') flashes the flywheel in the background (no focus steal).
+    expect(openPanel).toHaveBeenCalledWith('flywheel', { focus: false });
   });
 });

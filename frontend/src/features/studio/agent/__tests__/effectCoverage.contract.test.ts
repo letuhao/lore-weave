@@ -129,7 +129,8 @@ const WRITE_TOOLS: Record<string, string> = {
 const PENDING_FILES: Record<string, string> = {
   // compositionEffects: SHIPPED (S6 M1) — `/^composition_canon_rule_/` covers the canon family.
   // arcEffects: SHIPPED (S2/spec 32) — `/^composition_arc_/` covers every composition_arc_* write.
-  flywheelEffects: 's6-m5',      // publish → flywheel delta; ships with the flywheel panel (S6 M5).
+  // flywheelEffects: SHIPPED (S6/M5) — /^composition_publish$/ invalidates the flywheel delta; the
+  // panel's own poll catches the async extraction that lands after the publish confirm (E2).
   // conformanceEffects: SHIPPED (S4/spec 33) — /^composition_conformance_run/ (studioConformanceEffects).
   // motifEffects: SHIPPED (S4/spec 33 wave 3) — /^composition_motif_/ (studioMotifEffects).
   // planEffects: SHIPPED (S3/M4) — `/^plan_(?!pass_status)/` refreshes the Pass Rail on plan_* writes.

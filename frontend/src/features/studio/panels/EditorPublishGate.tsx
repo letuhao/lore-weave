@@ -19,6 +19,7 @@ import { useAuth } from '@/auth';
 import { booksApi } from '@/features/books/api';
 import { PublishControl } from '@/features/books/components/PublishControl';
 import { useChapterPublishGate, publishGateMessages } from '@/features/composition/hooks/usePublishGate';
+import { useStudioHost } from '../host/StudioHostProvider';
 
 export interface EditorPublishGateProps {
   bookId: string;
@@ -41,6 +42,7 @@ export function EditorPublishGate({ bookId, chapterId, draftVersion, dirty }: Ed
   const { t } = useTranslation('editor');
   const { accessToken } = useAuth();
   const queryClient = useQueryClient();
+  const host = useStudioHost();
 
   const statusQuery = useQuery({
     queryKey: editorialStatusQueryKey(bookId, chapterId),
@@ -54,7 +56,16 @@ export function EditorPublishGate({ bookId, chapterId, draftVersion, dirty }: Ed
   const { blockedReason, uncheckedWarning } = publishGateMessages(publishGate, t);
 
   // CM-FE contract: refetch ONLY editorial_status after publish/unpublish, never body/title.
-  const onChanged = () => queryClient.invalidateQueries({ queryKey: editorialStatusQueryKey(bookId, chapterId) });
+  const onChanged = () => {
+    // F2 (D-S6-F2, E3): a PUBLISH grows canon (async extraction → flywheel delta). Flash the flywheel
+    // panel in the BACKGROUND (focus:false — never hijack the writer's focus) so the reward is there
+    // when they look; its poll fills in the "+N" when the extraction lands. Inferred from the
+    // PRE-change status: not-yet-published ⇒ this change is a publish (an unpublish doesn't grow canon).
+    if (statusQuery.data?.editorial_status !== 'published') {
+      host.openPanel('flywheel', { focus: false });
+    }
+    queryClient.invalidateQueries({ queryKey: editorialStatusQueryKey(bookId, chapterId) });
+  };
 
   return (
     <div className="flex items-center gap-1.5">
