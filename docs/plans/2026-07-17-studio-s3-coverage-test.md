@@ -171,6 +171,15 @@ J7/J8 deferred to a fresh-context continuation (needs fresh gemma runs through a
 J8 (agent-parity refresh — chat-drives-pass → rail refreshes), the 409-in-flight archive path, and a
 FULL clean run (propose → compile → all 7 passes → both checkpoints → link) end-to-end.
 
+### ⚠ Coverage-ENVIRONMENT blocker (convergence, not S3): FE production build broken
+Attempting to rebuild the static FE (to verify F-1/H4 live and continue coverage) FAILS:
+`Could not resolve "../../api" from src/features/composition/arcTemplates/api.ts` — an UNTRACKED WIP
+file from a concurrent session (S2/S4 arc-templates) with a wrong import (`../../api` should be
+`@/api`). It blocks EVERY session's `vite build`. Not fixed here (do not edit another session's
+uncommitted WIP mid-flight — race risk). **Convergence action:** that session fixes the import (one
+line), then F-1/H4 live-verify + the remaining coverage journeys (H5/J3/J8/full-run) run on a fresh
+FE build. F-1/H4 are unit-proven (70 passed) + tsc-clean in the meantime.
+
 ## Findings summary → triage
 | finding | severity | status |
 |---|---|---|
