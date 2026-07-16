@@ -1,0 +1,688 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>LoreWeave — KG Entity Authoring (studio dock panels, draft)</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  /* ══════════════════════════════════════════════════════════════════════
+     KG ENTITY AUTHORING (`kg-entities` + `kg-graph`)
+     Spec: S7 · docs/plans/2026-07-16-studio-session-S7-RUN-STATE.md §S7-A1/A2 (BUILD #1)
+
+     WHY THIS EXISTS  (the gap, named concretely)
+     The knowledge graph is "view-rich, author-poor." A user can VIEW 13 KG
+     panels, EDIT an existing entity (EntityDetailPanel → EntityEditDialog),
+     and MERGE two — but there is NO WAY to CREATE one from the GUI. The only
+     human path to a new entity is:
+        (a) run extraction over a chapter, or
+        (b) approve an agent's proposal.
+     There is no form. To add a character, faction, or concept by hand — or
+     any relation that isn't a place-link — the user is stuck.
+
+     And the punchline: THE API IS ALREADY BUILT.
+        knowledgeApi.createEntity(payload, token)    — api.ts:1607  → POST /entities   (201)
+        knowledgeApi.createRelation(payload, token)  — api.ts:1617  → POST /relations  (201)
+     Both ship today. Their ONLY human caller is useWorldMap.ts:129/134 —
+     "add a location via the map" and "link two places." So the exact same
+     createEntity that the World Map calls with kind:'location' can mint a
+     character, a faction, a concept — nothing on the backend blocks it. The
+     button just was never drawn. This screen is that button.
+
+     THE ARCHITECTURE THIS MOCK RENDERS
+     PURE FRONTEND WIRING. No new route, no new column, no migration. Two
+     surfaces feed the two ready endpoints:
+        • kg-entities toolbar gains a "+ New Entity" button → the Create
+          Entity form (POST /entities, {project_id, name, kind}).
+        • kg-graph gains a per-node "+ link" affordance (right-click / hover)
+          → the Create Relation flow (POST /relations, {subject, predicate,
+          object}). Also reachable from a table row.
+     The KIND picker and the PREDICATE picker are CLOSED SETS rendered as
+     enums — the Frontend-Tool-Contract discipline (closed-set arg ⇒ enum;
+     a free-string dropdown is the panel_id silent-no-op bug class).
+
+     BACKEND WORK THIS SCREEN IMPLIES (flagged up front, not silently)
+       • createEntity  — EXISTS (api.ts:1607). Payload {project_id, name,
+         kind}. NOT new work.
+       • createRelation — EXISTS (api.ts:1617). Payload {subject_id,
+         object_id, predicate}; already returns 409 (endpoint not yours) +
+         422 (self-loop). NOT new work.
+       • DELETE / archive an entity — ❓ NO client method exists in api.ts
+         (only `archiveProject`, and merge-into archives the loser). The S7
+         audit flagged the kg-overview delete/archive buttons as UNVERIFIED.
+         This form does NOT add a delete route; it links out to Merge (which
+         is the only archival path today) and states the gap out loud.
+       • Enum parity: `kind` is a documented closed set on the FE filter
+         (EntitiesTab:24) but the EDIT dialog types it as a FREE-TEXT input
+         (EntityEditDialog:156) — a latent drift. The create form uses the
+         enum; fixing edit to match is a one-line follow-up, noted below.
+
+     STATES THIS MOCK MUST SHOW (all rendered below, none hand-waved)
+       ① BEFORE — today's kg-entities toolbar, with the "+ New Entity" button
+          struck-through to make the missing control visible.
+       ② CREATE ENTITY — the form: name · kind (enum) · target project ·
+          optional aliases. Anchored/discovered explained.
+       ③ CREATE RELATION — launched from a graph node's "+ link" affordance:
+          subject → predicate (enum) → object. Also from the table.
+       ④ RESULT — the new entity as a table row AND a graph node, a success
+          toast; and the FAILURE path (409/422 → error toast). No silent
+          success, no silent failure (the W0-S16 law).
+
+     SCALE — a project subgraph is easily thousands of entities. The picker
+     dropdowns (subject/object/project) are typeahead-over-keyset, not a
+     render-everything <select>. Create is a single POST; the table + graph
+     refresh via the existing query invalidation (no full reload).
+  ═══════════════════════════════════════════════════════════════════════ */
+  :root {
+    --background: #181412; --background-alt: #1e1a17; --foreground: #f5efe8;
+    --card: #1e1a17; --card-hover: #272220; --border: #332d28; --border-hover: #4a423b;
+    --primary: #e8a832; --primary-fg: #141010; --primary-muted: #3d2e12;
+    --secondary: #282320; --muted-fg: #9e9488;
+    --accent: #3da692; --accent-muted: #1a2e2a; --accent-fg: #c8ede6;
+    --success: #3dba6a; --warning: #e8a832; --info: #5496e8; --destructive: #d9584f; --destructive-muted: #3a1f1c;
+    /* domain: entity-kind hues (reuse the house "extra hue" palette; used by both table badges AND graph nodes) */
+    --kind-character: #e8a832; --kind-location: #3da692; --kind-organization: #5496e8;
+    --kind-concept: #b89ee8; --kind-item: #e8b87e; --kind-event: #c8e6a0;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Inter', system-ui, sans-serif; background: #0f0c0b; color: var(--foreground); -webkit-font-smoothing: antialiased; padding: 24px; }
+  .mono { font-family: 'JetBrains Mono', monospace; }
+  svg { display: block; }
+  ::-webkit-scrollbar { width: 8px; height: 8px; } ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--border-hover); border-radius: 4px; }
+
+  h1 { font-size: 18px; font-weight: 600; margin-bottom: 4px; }
+  h2 { font-size: 13px; font-weight: 600; margin: 28px 0 10px; display: flex; align-items: center; gap: 8px; }
+  h2 .tag { font-size: 9px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--muted-fg); border: 1px solid var(--border); border-radius: 4px; padding: 2px 6px; }
+  .sub { font-size: 12px; color: var(--muted-fg); margin-bottom: 16px; max-width: 1000px; line-height: 1.55; }
+  .sub b { color: var(--foreground); font-weight: 600; }
+  .sub code { font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--accent-fg); background: var(--accent-muted); padding: 1px 4px; border-radius: 3px; }
+
+  /* ── kind legend ──────────────────────────────────────────────────────── */
+  .legend { display: flex; gap: 16px; align-items: center; flex-wrap: wrap; padding: 10px 14px; margin-bottom: 20px;
+            background: var(--background-alt); border: 1px solid var(--border); border-radius: 8px; font-size: 11.5px; }
+  .legend .item { display: flex; align-items: center; gap: 7px; color: var(--muted-fg); }
+  .legend .dot { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; }
+  .legend .item b { color: var(--foreground); font-weight: 600; }
+  .legend .sep { width: 1px; height: 15px; background: var(--border); }
+
+  /* ── Dock panel frame ─────────────────────────────────────────────────── */
+  .panel { background: var(--background-alt); border: 1px solid var(--border); border-radius: 10px; display: flex; flex-direction: column; overflow: hidden; }
+  .panel-head { height: 34px; flex-shrink: 0; display: flex; align-items: center; justify-content: space-between;
+    padding: 0 10px 0 12px; border-bottom: 1px solid var(--border);
+    font-size: 10px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--muted-fg); }
+  .panel-head .acts { display: flex; gap: 4px; }
+  .ico { width: 20px; height: 20px; display: flex; align-items: center; justify-content: center; border-radius: 5px; color: var(--muted-fg); cursor: pointer; }
+  .ico:hover { background: var(--secondary); color: var(--foreground); }
+  .ico svg { width: 13px; height: 13px; }
+
+  .entities { width: 1180px; max-width: 100%; height: 480px; }
+  .form-panel { width: 480px; max-width: 100%; flex-shrink: 0; }
+  .graph-panel { width: 720px; max-width: 100%; height: 520px; }
+
+  /* ── Toolbar ──────────────────────────────────────────────────────────── */
+  .toolbar { padding: 10px 12px; border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 8px; flex-shrink: 0; flex-wrap: wrap; }
+  .search-box { flex: 1; min-width: 180px; display: flex; align-items: center; gap: 7px; height: 30px; padding: 0 10px; border-radius: 7px;
+    background: var(--background); border: 1px solid var(--border); color: var(--muted-fg); font-size: 12.5px; }
+  .search-box svg { width: 14px; height: 14px; flex-shrink: 0; }
+  .search-box input { flex: 1; background: transparent; border: none; outline: none; color: var(--foreground); font-size: 12.5px; }
+  .select-wrap { position: relative; flex-shrink: 0; }
+  select { appearance: none; background: var(--background); border: 1px solid var(--border); color: var(--foreground);
+    font: inherit; font-size: 11.5px; font-weight: 500; padding: 6px 24px 6px 9px; border-radius: 7px; cursor: pointer; }
+  select:hover { border-color: var(--border-hover); }
+  .select-wrap > svg { position: absolute; right: 7px; top: 50%; transform: translateY(-50%); width: 11px; height: 11px; color: var(--muted-fg); pointer-events: none; }
+  .lbl { font-size: 10px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; color: var(--muted-fg); flex-shrink: 0; }
+
+  .btn-new { display: flex; align-items: center; gap: 6px; height: 30px; padding: 0 12px; border-radius: 7px;
+    background: var(--primary); border: 1px solid var(--primary); color: var(--primary-fg); font-size: 11.5px; font-weight: 600; cursor: pointer; flex-shrink: 0; }
+  .btn-new svg { width: 13px; height: 13px; }
+  .btn-new.ghost { background: var(--secondary); border: 1px dashed var(--border-hover); color: var(--muted-fg); }
+
+  /* ── Entities table ───────────────────────────────────────────────────── */
+  .body { flex: 1; min-height: 0; overflow-y: auto; position: relative; }
+  .cols { display: grid; grid-template-columns: 1fr 118px 104px 74px 88px; gap: 10px; align-items: center; }
+  .thead { position: sticky; top: 0; z-index: 2; background: var(--background-alt); border-bottom: 1px solid var(--border);
+    padding: 7px 12px; font-size: 9.5px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: var(--muted-fg); }
+  .trow { padding: 9px 12px; border-bottom: 1px solid var(--border); cursor: pointer; font-size: 12.5px; }
+  .trow:hover { background: var(--card-hover); }
+  .trow.active { background: var(--accent-muted); box-shadow: inset 2px 0 0 var(--accent); }
+  .trow.fresh { background: var(--primary-muted); box-shadow: inset 2px 0 0 var(--primary); animation: none; }
+
+  .name-cell { display: flex; align-items: center; gap: 8px; min-width: 0; }
+  .name-cell .kdot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+  .name-cell .nm { font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+  .name-cell .al { color: var(--muted-fg); font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .new-tag { font-size: 8.5px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; color: var(--primary); border: 1px solid var(--primary); border-radius: 3px; padding: 1px 4px; flex-shrink: 0; }
+
+  .badge { display: inline-flex; align-items: center; gap: 4px; height: 19px; padding: 0 7px; border-radius: 4px;
+    font-size: 10px; font-weight: 600; letter-spacing: .02em; white-space: nowrap; }
+  .k-character   { background: var(--primary-muted); color: var(--primary); }
+  .k-location    { background: var(--accent-muted); color: var(--accent-fg); }
+  .k-organization{ background: #23303f; color: #8ab6e8; }
+  .k-concept     { background: #2e2440; color: #c0a8e8; }
+  .k-item        { background: #33291c; color: var(--kind-item); }
+  .k-event       { background: #2a3320; color: var(--kind-event); }
+
+  .st-canonical  { background: var(--accent-muted); color: var(--accent); }
+  .st-discovered { background: var(--secondary); color: var(--muted-fg); }
+  .st-archived   { background: var(--destructive-muted); color: var(--destructive); }
+
+  .num { font-family: 'JetBrains Mono'; font-size: 11px; color: var(--muted-fg); }
+  .num b { color: var(--foreground); font-weight: 500; }
+  .anchor { display: flex; align-items: center; gap: 6px; }
+  .abar { flex: 1; height: 4px; border-radius: 2px; background: var(--secondary); overflow: hidden; }
+  .abar i { display: block; height: 100%; border-radius: 2px; }
+
+  .panel-foot { flex-shrink: 0; border-top: 1px solid var(--border); padding: 7px 12px; display: flex;
+    align-items: center; justify-content: space-between; font-size: 10.5px; color: var(--muted-fg); }
+  .panel-foot .note { display: flex; align-items: center; gap: 6px; }
+  .panel-foot .note svg { width: 12px; height: 12px; color: var(--info); flex-shrink: 0; }
+  .pager { display: flex; gap: 6px; }
+  .pager button { background: var(--background); border: 1px solid var(--border); color: var(--foreground); font-size: 11px; padding: 3px 8px; border-radius: 6px; cursor: pointer; display: flex; align-items: center; gap: 4px; }
+  .pager button svg { width: 12px; height: 12px; }
+
+  /* ── Create form ──────────────────────────────────────────────────────── */
+  .form-body { padding: 14px 14px 4px; display: flex; flex-direction: column; gap: 12px; }
+  .field { display: flex; flex-direction: column; gap: 5px; }
+  .field > label { font-size: 11px; font-weight: 500; color: var(--muted-fg); display: flex; align-items: center; gap: 6px; }
+  .req { color: var(--destructive); font-size: 10px; }
+  .inp { background: var(--background); border: 1px solid var(--border); border-radius: 7px; color: var(--foreground);
+    font: inherit; font-size: 12.5px; padding: 8px 10px; outline: none; width: 100%; }
+  .inp:focus { border-color: var(--border-hover); }
+  .inp::placeholder { color: var(--muted-fg); }
+  textarea.inp { resize: vertical; min-height: 52px; line-height: 1.5; font-family: 'JetBrains Mono'; font-size: 11.5px; }
+  .hint { font-size: 10px; color: var(--muted-fg); line-height: 1.5; }
+  .hint code { font-family: 'JetBrains Mono'; font-size: 9.5px; color: var(--accent-fg); }
+
+  /* kind picker as a radio-grid (the enum, rendered visible not hidden in a dropdown) */
+  .kind-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 6px; }
+  .kind-opt { display: flex; align-items: center; gap: 7px; padding: 7px 8px; border-radius: 7px; border: 1px solid var(--border);
+    background: var(--background); font-size: 11.5px; color: var(--muted-fg); cursor: pointer; }
+  .kind-opt .kdot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+  .kind-opt:hover { border-color: var(--border-hover); color: var(--foreground); }
+  .kind-opt.on { border-color: var(--primary); background: var(--primary-muted); color: var(--foreground); }
+  .kind-opt.on .check { margin-left: auto; color: var(--primary); display: flex; }
+  .kind-opt .check { display: none; }
+  .kind-opt .check svg { width: 12px; height: 12px; }
+
+  .form-foot { flex-shrink: 0; border-top: 1px solid var(--border); padding: 11px 14px; display: flex; align-items: center; gap: 8px; margin-top: 6px; }
+  .form-foot .spacer { flex: 1; }
+  .btn { height: 30px; padding: 0 14px; border-radius: 7px; font-size: 11.5px; font-weight: 600; cursor: pointer; border: 1px solid var(--border); background: var(--background); color: var(--foreground); display: inline-flex; align-items: center; gap: 6px; }
+  .btn:hover { border-color: var(--border-hover); }
+  .btn.primary { background: var(--primary); border-color: var(--primary); color: var(--primary-fg); }
+  .btn.primary svg { width: 13px; height: 13px; }
+  .btn:disabled { opacity: .45; cursor: not-allowed; }
+
+  /* ── Relation builder ─────────────────────────────────────────────────── */
+  .rel-row { display: grid; grid-template-columns: 1fr 150px 1fr; gap: 10px; align-items: end; }
+  .ent-pick { display: flex; align-items: center; gap: 8px; height: 38px; padding: 0 10px; border-radius: 8px;
+    background: var(--background); border: 1px solid var(--border); font-size: 12px; color: var(--foreground); cursor: pointer; }
+  .ent-pick .kdot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+  .ent-pick .who { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .ent-pick.subject { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent-muted); }
+  .ent-pick.object.empty { border-style: dashed; color: var(--muted-fg); }
+  .pred-select { position: relative; }
+  .pred-arrow { display: flex; align-items: center; justify-content: center; color: var(--muted-fg); padding-bottom: 9px; }
+
+  /* graph canvas */
+  .canvas { flex: 1; min-height: 0; position: relative; background:
+      radial-gradient(circle at 1px 1px, var(--border) 1px, transparent 0) 0 0 / 22px 22px, var(--background); overflow: hidden; }
+  .node { position: absolute; transform: translate(-50%, -50%); display: flex; flex-direction: column; align-items: center; gap: 4px; cursor: pointer; }
+  .node .bub { width: 44px; height: 44px; border-radius: 50%; display: flex; align-items: center; justify-content: center;
+    font-size: 11px; font-weight: 700; color: #141010; border: 2px solid var(--background); box-shadow: 0 2px 8px rgba(0,0,0,.4); }
+  .node .cap { font-size: 10px; color: var(--foreground); white-space: nowrap; max-width: 92px; overflow: hidden; text-overflow: ellipsis; text-align: center; }
+  .node.sel .bub { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .node.fresh .bub { outline: 2px solid var(--primary); outline-offset: 2px; }
+  .node .plink { position: absolute; top: -6px; right: -6px; width: 18px; height: 18px; border-radius: 50%;
+    background: var(--primary); color: var(--primary-fg); display: flex; align-items: center; justify-content: center; border: 2px solid var(--background); }
+  .node .plink svg { width: 10px; height: 10px; }
+  .edge-lbl { position: absolute; transform: translate(-50%, -50%); font-family: 'JetBrains Mono'; font-size: 9px; color: var(--muted-fg);
+    background: var(--background); padding: 1px 5px; border-radius: 3px; border: 1px solid var(--border); }
+  .edge-lbl.fresh { color: var(--primary); border-color: var(--primary); }
+
+  /* context menu on right-click */
+  .ctxmenu { position: absolute; background: var(--card); border: 1px solid var(--border-hover); border-radius: 8px; padding: 4px; z-index: 5;
+    box-shadow: 0 6px 20px rgba(0,0,0,.5); width: 178px; }
+  .ctxmenu .mi { display: flex; align-items: center; gap: 8px; padding: 7px 9px; border-radius: 6px; font-size: 11.5px; color: var(--foreground); cursor: pointer; }
+  .ctxmenu .mi:hover { background: var(--card-hover); }
+  .ctxmenu .mi svg { width: 13px; height: 13px; color: var(--muted-fg); }
+  .ctxmenu .mi.hi { color: var(--primary); } .ctxmenu .mi.hi svg { color: var(--primary); }
+  .ctxmenu .mi.dis { color: var(--muted-fg); opacity: .5; cursor: not-allowed; }
+  .ctxmenu .sep { height: 1px; background: var(--border); margin: 4px 2px; }
+  .ctxmenu .cap { font-size: 9px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; color: var(--muted-fg); padding: 4px 9px 2px; }
+
+  /* toast */
+  .toast { display: flex; align-items: center; gap: 10px; padding: 11px 14px; border-radius: 9px; font-size: 12px;
+    background: var(--card); border: 1px solid var(--border); box-shadow: 0 6px 20px rgba(0,0,0,.45); max-width: 420px; }
+  .toast svg { width: 16px; height: 16px; flex-shrink: 0; }
+  .toast.ok { border-left: 3px solid var(--success); } .toast.ok svg { color: var(--success); }
+  .toast.err { border-left: 3px solid var(--destructive); } .toast.err svg { color: var(--destructive); }
+  .toast b { color: var(--foreground); font-weight: 600; } .toast .sub2 { color: var(--muted-fg); font-size: 11px; }
+  .toast .mono { color: var(--muted-fg); font-size: 10.5px; }
+
+  /* ── Layout + annotation ──────────────────────────────────────────────── */
+  .stack { display: flex; gap: 20px; align-items: flex-start; flex-wrap: wrap; }
+  .callout { max-width: 1180px; margin-top: 12px; padding: 10px 13px; border-radius: 8px; font-size: 11.5px; line-height: 1.6;
+    background: var(--background-alt); border: 1px solid var(--border); border-left: 3px solid var(--info); color: var(--muted-fg); }
+  .callout.warn { border-left-color: var(--warning); }
+  .callout.bad { border-left-color: var(--destructive); }
+  .callout b { color: var(--foreground); }
+  .callout code { font-family: 'JetBrains Mono'; font-size: 10.5px; color: var(--accent-fg); }
+  .strike { text-decoration: line-through; opacity: .5; }
+</style>
+</head>
+<body>
+
+<h1>KG Entity Authoring <span class="mono" style="font-size:12px;color:var(--muted-fg);font-weight:400">— studio dock panels, draft</span></h1>
+<p class="sub">
+  S7 BUILD&nbsp;#1 — the gap-closer. The knowledge graph is <b>view-rich, author-poor</b>: a user can view, edit, and merge entities,
+  but the only way to <b>create</b> one is agent extraction or approving a proposal. There is no form — even though
+  <code>createEntity</code> (api.ts:1607) and <code>createRelation</code> (api.ts:1617) already ship and are called today by the World Map for
+  <code>kind:'location'</code>. This is a human authoring surface over <code>kg-entities</code> + <code>kg-graph</code>. <b>Pure FE wiring — no new backend.</b>
+</p>
+
+<div class="legend">
+  <span class="lbl" style="letter-spacing:.06em">Kinds</span>
+  <div class="item"><span class="dot" style="background:var(--kind-character)"></span><b>character</b></div>
+  <div class="item"><span class="dot" style="background:var(--kind-location)"></span><b>location</b></div>
+  <div class="item"><span class="dot" style="background:var(--kind-organization)"></span><b>organization</b></div>
+  <div class="item"><span class="dot" style="background:var(--kind-concept)"></span><b>concept</b></div>
+  <div class="item"><span class="dot" style="background:var(--kind-item)"></span><b>item</b></div>
+  <div class="item"><span class="dot" style="background:var(--kind-event)"></span><b>event_ref</b></div>
+  <span class="sep"></span>
+  <div class="item mono" style="font-size:10.5px">closed set — EntitiesTab.tsx:24</div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════════════
+     ① BEFORE — today's toolbar. The "+ New Entity" button DOES NOT EXIST.
+     ══════════════════════════════════════════════════════════════════════ -->
+<h2>① Before — today <span class="tag">kg-entities</span> — no way to create</h2>
+<p class="sub">
+  The real <code>EntitiesTab</code> toolbar: project · kind · status filters + FTS search, a table, pagination, and the detail panel
+  (which opens Edit + Merge). <b>Everything reads or mutates an entity that already exists.</b> The one control that would mint a new
+  one is drawn below <span class="strike">struck-through</span> because <b>it is not there.</b>
+</p>
+
+<div class="panel entities">
+  <div class="panel-head">
+    <span>Entities — Nghịch Thiên Kiếm Đế</span>
+    <div class="acts">
+      <div class="ico" title="Refresh"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 1 1-2.6-6.4M21 3v6h-6"/></svg></div>
+      <div class="ico" title="Close"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6 6 18M6 6l12 12"/></svg></div>
+    </div>
+  </div>
+
+  <div class="toolbar">
+    <div class="search-box">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+      <input placeholder="Search entity names…" value="" />
+    </div>
+    <span class="lbl">Kind</span>
+    <div class="select-wrap">
+      <select><option>Any kind</option><option>character</option><option>location</option><option>organization</option><option>concept</option><option>item</option><option>event_ref</option></select>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg>
+    </div>
+    <span class="lbl">Status</span>
+    <div class="select-wrap">
+      <select><option>Any status</option><option>canonical</option><option>discovered</option><option>archived</option></select>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg>
+    </div>
+    <!-- THE GAP: this button does not exist today -->
+    <div class="btn-new ghost strike" title="Does not exist today">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg> New Entity
+    </div>
+  </div>
+
+  <div class="thead cols">
+    <div>Entity</div><div>Kind</div><div>Status</div><div>Mentions</div><div>Anchor</div>
+  </div>
+  <div class="body">
+    <div class="trow cols">
+      <div class="name-cell"><span class="kdot" style="background:var(--kind-character)"></span>
+        <span class="nm">Hàn Lập</span><span class="al">韩立 · Han Li</span></div>
+      <div><span class="badge k-character">character</span></div>
+      <div><span class="badge st-canonical">canonical</span></div>
+      <div class="num"><b>412</b></div>
+      <div class="anchor"><div class="abar"><i style="width:92%;background:var(--accent)"></i></div></div>
+    </div>
+    <div class="trow cols">
+      <div class="name-cell"><span class="kdot" style="background:var(--kind-organization)"></span>
+        <span class="nm">Thiên Kiếm Tông</span><span class="al">天剑宗 · Heaven Sword Sect</span></div>
+      <div><span class="badge k-organization">organization</span></div>
+      <div><span class="badge st-canonical">canonical</span></div>
+      <div class="num"><b>168</b></div>
+      <div class="anchor"><div class="abar"><i style="width:81%;background:var(--accent)"></i></div></div>
+    </div>
+    <div class="trow cols">
+      <div class="name-cell"><span class="kdot" style="background:var(--kind-location)"></span>
+        <span class="nm">Hoàng Phong Cốc</span><span class="al">黄枫谷 · Yellow Maple Valley</span></div>
+      <div><span class="badge k-location">location</span></div>
+      <div><span class="badge st-discovered">discovered</span></div>
+      <div class="num"><b>54</b></div>
+      <div class="anchor"><div class="abar"><i style="width:44%;background:var(--info)"></i></div></div>
+    </div>
+    <div class="trow cols">
+      <div class="name-cell"><span class="kdot" style="background:var(--kind-concept)"></span>
+        <span class="nm">Trúc Cơ</span><span class="al">筑基 · Foundation Establishment</span></div>
+      <div><span class="badge k-concept">concept</span></div>
+      <div><span class="badge st-discovered">discovered</span></div>
+      <div class="num"><b>97</b></div>
+      <div class="anchor"><div class="abar"><i style="width:38%;background:var(--info)"></i></div></div>
+    </div>
+    <div class="trow cols">
+      <div class="name-cell"><span class="kdot" style="background:var(--kind-item)"></span>
+        <span class="nm">Thanh Nguyên Kiếm</span><span class="al">青元剑</span></div>
+      <div><span class="badge k-item">item</span></div>
+      <div><span class="badge st-discovered">discovered</span></div>
+      <div class="num"><b>23</b></div>
+      <div class="anchor"><div class="abar"><i style="width:26%;background:var(--info)"></i></div></div>
+    </div>
+  </div>
+  <div class="panel-foot">
+    <div class="note">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
+      1–50 of 1,284 · all rows here arrived via <b style="color:var(--muted-fg);font-weight:400">extraction or proposal-approval</b>
+    </div>
+    <div class="pager">
+      <button><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m15 18-6-6 6-6"/></svg> Prev</button>
+      <button>Next <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m9 18 6-6-6-6"/></svg></button>
+    </div>
+  </div>
+</div>
+
+<div class="callout warn">
+  <b>To add a character today you must run extraction or approve an agent proposal — there is no form, though <code>createEntity</code> is ready.</b>
+  The endpoint exists (<code>POST /entities</code>, payload <code>{project_id, name, kind}</code>, api.ts:1607) and returns a 201 with the fresh entity.
+  Its <b>only human caller</b> is <code>useWorldMap.ts:129</code>, which passes <code>kind:'location'</code>. Nothing on the backend rejects
+  <code>kind:'character'</code> — the button was simply never drawn.
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════════════
+     ② CREATE ENTITY — the form the button opens.
+     ══════════════════════════════════════════════════════════════════════ -->
+<h2>② Create Entity <span class="tag">POST /entities</span> — the form</h2>
+<p class="sub">
+  Three fields the endpoint needs: <b>name</b>, <b>kind</b> (the closed set, rendered as an enum picker — not a free-text box), and the
+  <b>target project</b> (<code>createEntity</code> requires <code>project_id</code>). Aliases are optional and post-created via the same edit path.
+</p>
+
+<div class="stack">
+  <div class="panel form-panel">
+    <div class="panel-head">
+      <span>New Entity</span>
+      <div class="acts"><div class="ico" title="Close"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6 6 18M6 6l12 12"/></svg></div></div>
+    </div>
+    <div class="form-body">
+      <div class="field">
+        <label>Name <span class="req">required</span></label>
+        <input class="inp" value="Lý Mộ Bạch" placeholder="e.g. Hàn Lập" maxlength="200" />
+        <div class="hint">Free text. Aliases (李慕白 · Li Mubai) can be added after create, via the same edit path the detail panel uses.</div>
+      </div>
+
+      <div class="field">
+        <label>Kind <span class="req">required</span></label>
+        <div class="kind-grid">
+          <div class="kind-opt on"><span class="kdot" style="background:var(--kind-character)"></span>character<span class="check"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6 9 17l-5-5"/></svg></span></div>
+          <div class="kind-opt"><span class="kdot" style="background:var(--kind-location)"></span>location</div>
+          <div class="kind-opt"><span class="kdot" style="background:var(--kind-organization)"></span>organization</div>
+          <div class="kind-opt"><span class="kdot" style="background:var(--kind-concept)"></span>concept</div>
+          <div class="kind-opt"><span class="kdot" style="background:var(--kind-item)"></span>item</div>
+          <div class="kind-opt"><span class="kdot" style="background:var(--kind-event)"></span>event_ref</div>
+        </div>
+        <div class="hint">Closed set (<code>EntitiesTab.tsx:24</code>) — shipped as an <code>enum</code>, per the Frontend-Tool-Contract rule (closed-set arg ⇒ enum, never a free string).</div>
+      </div>
+
+      <div class="field">
+        <label>Target project <span class="req">required</span></label>
+        <div class="select-wrap" style="width:100%">
+          <select style="width:100%"><option>Nghịch Thiên Kiếm Đế · book linked</option><option>山海遺聞</option><option>Thiên Kiếm Lục</option></select>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg>
+        </div>
+        <div class="hint">Scopes the entity to a project (its <code>project_id</code>). Pre-filled when the panel is route-scoped (G6); a select otherwise.</div>
+      </div>
+
+      <div class="field">
+        <label>Aliases <span class="mono" style="font-size:9px;opacity:.7;text-transform:none;letter-spacing:0">optional · one per line</span></label>
+        <textarea class="inp" placeholder="李慕白&#10;Li Mubai&#10;剑痴">李慕白
+Li Mubai</textarea>
+        <div class="hint">Applied on the follow-up PATCH (splitAliases dedupes + trims, per <code>EntityEditDialog</code>). Create can also send name-only.</div>
+      </div>
+    </div>
+    <div class="form-foot">
+      <div class="hint" style="max-width:180px">New entities land as <b style="color:var(--accent)">discovered</b> until glossary-anchored.</div>
+      <div class="spacer"></div>
+      <button class="btn">Cancel</button>
+      <button class="btn primary"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg> Create</button>
+    </div>
+  </div>
+
+  <div style="flex:1;min-width:280px;display:flex;flex-direction:column;gap:12px">
+    <div class="callout" style="margin-top:0">
+      <b>Anchored vs discovered is derived, not chosen.</b> A brand-new entity has no <code>glossary_entity_id</code>, so the server-computed
+      <code>status</code> is <code>discovered</code> (<code>ENTITY_STATUSES</code> = canonical / discovered / archived, api.ts:386). It becomes
+      <code>canonical</code> only when a glossary anchor is attached — this form never lets the user fake that state.
+    </div>
+    <div class="callout warn" style="margin-top:0">
+      <b>Enum parity is a real, tracked drift.</b> The filter renders <code>kind</code> as a select over 7 values (EntitiesTab:24), but the
+      <b>edit</b> dialog types it as a plain <code>&lt;input&gt;</code> (EntityEditDialog:156) — a free string that could write <code>kind:"charcter"</code>
+      silently. This create form uses the enum picker above; making Edit match is the one-line follow-up flagged in the banner.
+    </div>
+    <div class="callout bad" style="margin-top:0">
+      <b>What this form does NOT add.</b> There is <b>no DELETE / archive</b> control here. No entity-level delete route exists in
+      <code>api.ts</code> today (only <code>archiveProject</code>; <code>merge-into</code> archives the loser). The S7 audit flagged the
+      kg-overview delete buttons as <b>unverified</b> — this screen links out to <b>Merge</b> (the only archival path) rather than implying a route that isn't proven.
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════════════
+     ③ CREATE RELATION — launched from a graph node.
+     ══════════════════════════════════════════════════════════════════════ -->
+<h2>③ Create Relation <span class="tag">kg-graph</span> <span class="tag">POST /relations</span> — from a node</h2>
+<p class="sub">
+  The graph gains a per-node <b>“+ link”</b> affordance (hover badge or right-click). It seeds the <b>subject</b>, you pick a
+  <b>predicate</b> (closed set) and an <b>object</b> entity, and <code>createRelation</code> fires. The same builder is reachable from a table row.
+</p>
+
+<div class="stack">
+  <!-- graph canvas with a context menu open -->
+  <div class="panel graph-panel">
+    <div class="panel-head">
+      <span>Graph — Nghịch Thiên Kiếm Đế</span>
+      <div class="acts">
+        <div class="ico" title="Fit"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 3H5a2 2 0 0 0-2 2v3M21 8V5a2 2 0 0 0-2-2h-3M3 16v3a2 2 0 0 0 2 2h3M16 21h3a2 2 0 0 0 2-2v-3"/></svg></div>
+        <div class="ico" title="Close"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6 6 18M6 6l12 12"/></svg></div>
+      </div>
+    </div>
+    <div class="canvas">
+      <!-- edges -->
+      <svg style="position:absolute;inset:0;width:100%;height:100%" fill="none" stroke="var(--border-hover)" stroke-width="1.5">
+        <line x1="200" y1="150" x2="360" y2="240" />
+        <line x1="360" y1="240" x2="540" y2="150" />
+        <line x1="360" y1="240" x2="330" y2="400" />
+        <line x1="200" y1="150" x2="330" y2="400" />
+        <line x1="540" y1="150" x2="330" y2="400" stroke-dasharray="4 4" stroke="var(--primary)" />
+      </svg>
+      <div class="edge-lbl" style="left:280px;top:195px">member_of</div>
+      <div class="edge-lbl" style="left:450px;top:195px">located_in</div>
+      <div class="edge-lbl" style="left:265px;top:320px">mentor_of</div>
+      <div class="edge-lbl fresh" style="left:435px;top:280px">ally_of ＋</div>
+
+      <!-- nodes -->
+      <div class="node sel" style="left:200px;top:150px">
+        <div class="bub" style="background:var(--kind-character)">HL</div>
+        <div class="cap">Hàn Lập</div>
+        <div class="plink" title="+ link"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M12 5v14M5 12h14"/></svg></div>
+      </div>
+      <div class="node" style="left:360px;top:240px"><div class="bub" style="background:var(--kind-organization)">TK</div><div class="cap">Thiên Kiếm Tông</div></div>
+      <div class="node" style="left:540px;top:150px"><div class="bub" style="background:var(--kind-location)">HP</div><div class="cap">Hoàng Phong Cốc</div></div>
+      <div class="node fresh" style="left:330px;top:400px"><div class="bub" style="background:var(--kind-character)">LMB</div><div class="cap">Lý Mộ Bạch</div></div>
+
+      <!-- right-click context menu on the Hàn Lập node -->
+      <div class="ctxmenu" style="left:230px;top:165px">
+        <div class="cap">Hàn Lập</div>
+        <div class="mi hi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 17H7A5 5 0 0 1 7 7h2M15 7h2a5 5 0 0 1 0 10h-2M8 12h8"/></svg> Create link from here…</div>
+        <div class="mi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4v16h16v-7M18.5 2.5a2.12 2.12 0 0 1 3 3L12 15l-4 1 1-4Z"/></svg> Edit entity</div>
+        <div class="mi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 3v2M12 19v2M3 12h2M19 12h2"/></svg> Focus subgraph</div>
+        <div class="sep"></div>
+        <div class="mi dis" title="No entity delete route (audit ❓)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6"/></svg> Delete — via Merge only</div>
+      </div>
+    </div>
+    <div class="panel-foot">
+      <div class="note">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
+        Right-click a node, or use its <b style="color:var(--primary);font-weight:600">＋</b> badge, to open the link builder
+      </div>
+    </div>
+  </div>
+
+  <!-- relation builder -->
+  <div class="panel form-panel" style="width:420px">
+    <div class="panel-head">
+      <span>New Relation</span>
+      <div class="acts"><div class="ico" title="Close"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6 6 18M6 6l12 12"/></svg></div></div>
+    </div>
+    <div class="form-body">
+      <div class="rel-row">
+        <div class="field">
+          <label>Subject</label>
+          <div class="ent-pick subject"><span class="kdot" style="background:var(--kind-character)"></span><span class="who">Hàn Lập</span>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:12px;height:12px;color:var(--muted-fg)"><path d="m6 9 6 6 6-6"/></svg></div>
+        </div>
+        <div class="pred-arrow"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:16px;height:16px"><path d="M5 12h14M13 6l6 6-6 6"/></svg></div>
+        <div class="field">
+          <label>Object</label>
+          <div class="ent-pick object empty"><span class="who">Pick entity…</span>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:12px;height:12px"><path d="m6 9 6 6 6-6"/></svg></div>
+        </div>
+      </div>
+
+      <div class="field">
+        <label>Predicate <span class="req">required</span></label>
+        <div class="select-wrap" style="width:100%">
+          <select style="width:100%">
+            <option>ally_of</option><option>enemy_of</option><option>member_of</option><option>mentor_of</option>
+            <option>parent_of</option><option>located_in</option><option>owns</option><option>part_of</option>
+            <option>contains</option><option>borders</option><option>route_to</option>
+          </select>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg>
+        </div>
+        <div class="hint">A curated vocabulary. The endpoint takes a free <code>predicate</code> string (max 100), but the GUI constrains it to an
+          enum — place-links already ship a 3-value closed set <code>contains/borders/route_to</code> (useWorldMap.ts:18).</div>
+      </div>
+
+      <div class="field">
+        <label>Search object entity</label>
+        <div class="search-box" style="height:34px">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+          <input placeholder="Type to find within this project…" value="Lý" />
+        </div>
+        <div class="hint">Typeahead over the project's entities (keyset, not render-all) — both endpoints must be the caller's own entities.</div>
+      </div>
+    </div>
+    <div class="form-foot">
+      <div class="hint" style="max-width:150px"><b style="color:var(--foreground)">Hàn Lập</b> → <span class="mono">ally_of</span> → <b style="color:var(--foreground)">Lý Mộ Bạch</b></div>
+      <div class="spacer"></div>
+      <button class="btn">Cancel</button>
+      <button class="btn primary"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 17H7A5 5 0 0 1 7 7h2M15 7h2a5 5 0 0 1 0 10h-2M8 12h8"/></svg> Link</button>
+    </div>
+  </div>
+</div>
+
+<div class="callout">
+  <b>The builder is reachable two ways, one endpoint.</b> From a graph node (right-click / ＋ badge, seeds the subject) or from a table row's
+  overflow menu. Both call <code>createRelation({subject_id, object_id, predicate})</code> (api.ts:1617). Same MCP-first parity: an agent reaches
+  it through the equivalent relation tool — the GUI is one caller, not a private path.
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════════════
+     ④ RESULT — table row + graph node + toast; and the failure path.
+     ══════════════════════════════════════════════════════════════════════ -->
+<h2>④ The result <span class="tag">no silent success · no silent failure</span></h2>
+<p class="sub">
+  On 201 the new entity appears as a <b>table row</b> and a <b>graph node</b> (query invalidation, no reload) and a <b>success toast</b> fires.
+  On 409/422 the create is rejected and an <b>error toast</b> explains why — the W0-S16 law: never a silent success, never a silent failure.
+</p>
+
+<div class="stack">
+  <div class="panel entities" style="width:620px;height:300px">
+    <div class="panel-head"><span>Entities — after create</span>
+      <div class="acts"><div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6 6 18M6 6l12 12"/></svg></div></div></div>
+    <div class="thead cols" style="grid-template-columns:1fr 118px 104px 74px">
+      <div>Entity</div><div>Kind</div><div>Status</div><div>Mentions</div>
+    </div>
+    <div class="body">
+      <div class="trow cols fresh" style="grid-template-columns:1fr 118px 104px 74px">
+        <div class="name-cell"><span class="kdot" style="background:var(--kind-character)"></span>
+          <span class="nm">Lý Mộ Bạch</span><span class="al">李慕白</span><span class="new-tag">new</span></div>
+        <div><span class="badge k-character">character</span></div>
+        <div><span class="badge st-discovered">discovered</span></div>
+        <div class="num"><b>0</b></div>
+      </div>
+      <div class="trow cols" style="grid-template-columns:1fr 118px 104px 74px">
+        <div class="name-cell"><span class="kdot" style="background:var(--kind-character)"></span>
+          <span class="nm">Hàn Lập</span><span class="al">韩立</span></div>
+        <div><span class="badge k-character">character</span></div>
+        <div><span class="badge st-canonical">canonical</span></div>
+        <div class="num"><b>412</b></div>
+      </div>
+      <div class="trow cols" style="grid-template-columns:1fr 118px 104px 74px">
+        <div class="name-cell"><span class="kdot" style="background:var(--kind-organization)"></span>
+          <span class="nm">Thiên Kiếm Tông</span><span class="al">天剑宗</span></div>
+        <div><span class="badge k-organization">organization</span></div>
+        <div><span class="badge st-canonical">canonical</span></div>
+        <div class="num"><b>168</b></div>
+      </div>
+    </div>
+    <div class="panel-foot">
+      <div class="note"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6 9 17l-5-5"/></svg>
+        <b style="color:var(--muted-fg);font-weight:400">Lý Mộ Bạch</b> inserted · list re-fetched</div>
+    </div>
+  </div>
+
+  <div style="flex:1;min-width:300px;display:flex;flex-direction:column;gap:14px">
+    <div>
+      <div class="lbl" style="margin-bottom:8px">Success — 201</div>
+      <div class="toast ok">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><path d="M22 4 12 14.01l-3-3"/></svg>
+        <div><b>Entity created</b> <span class="sub2">— Lý Mộ Bạch (character) added to Nghịch Thiên Kiếm Đế.</span></div>
+      </div>
+    </div>
+    <div>
+      <div class="lbl" style="margin-bottom:8px">Failure — 409 endpoint not yours</div>
+      <div class="toast err">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 8v4M12 16h.01"/></svg>
+        <div><b>Could not create link</b> <span class="sub2">— an endpoint isn't one of your entities.</span> <span class="mono">409</span></div>
+      </div>
+    </div>
+    <div>
+      <div class="lbl" style="margin-bottom:8px">Failure — 422 self-loop</div>
+      <div class="toast err">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 8v4M12 16h.01"/></svg>
+        <div><b>Could not create link</b> <span class="sub2">— an entity cannot relate to itself.</span> <span class="mono">422</span></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="callout">
+  <b>The graph and table share one source, so both refresh from one write.</b> After the 201, the existing query invalidation
+  (<code>['composition','worldmap',…]</code> for places; the entities/subgraph queries for kg) re-fetches — the new node
+  (outlined amber, <b style="color:var(--primary)">LMB</b> above) and the new <code>ally_of</code> edge both appear without a reload. No optimistic
+  fabrication: the row shown is the server's returned entity.
+</div>
+
+<div class="callout warn">
+  <b>Every failure surfaces — the W0-S16 law.</b> <code>createRelation</code> already returns <code>409</code> (endpoint not the caller's entity) and
+  <code>422</code> (self-loop); the resolver maps each to a specific error toast, never a swallowed rejection and never a fake success. This mirrors
+  the <code>EntityEditDialog</code> 412-conflict handling that already ships (EntityEditDialog:61).
+</div>
+
+<div class="callout bad">
+  <b>What this draft does NOT claim to build.</b> Zero backend. <code>createEntity</code> + <code>createRelation</code> exist and are proven by the
+  World Map's live use of them. This is the "API ready but unwired" case: the entire deliverable is the two GUI surfaces above plus their MCP-tool
+  parity. The one honest gap — an entity-level <b>delete/archive</b> route — is left <b>unbuilt and flagged</b>, not silently faked with a button that no-ops.
+</div>
+
+</body>
+</html>
