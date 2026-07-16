@@ -1,11 +1,14 @@
-// M2 — the platform home renders each tile by its degrade status, and the assistant hero ALWAYS
-// renders (the front door never blanks — even while loading or when every tile is down).
-import { render, screen, fireEvent } from '@testing-library/react';
+// DF1 — the platform home renders the draft layout: greeting top bar, the always-present assistant
+// hero (Start-talking + mic), a jump-back-in rail of real cards, the launcher, and an inline feed.
+import { render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { describe, it, expect, vi } from 'vitest';
 
 const useHome = vi.fn();
+const useActivity = vi.fn();
 vi.mock('../../hooks/useHome', () => ({ useHome: () => useHome() }));
+vi.mock('../../hooks/useActivity', () => ({ useActivity: () => useActivity() }));
+vi.mock('@/auth', () => ({ useAuth: () => ({ user: { display_name: 'Hao', email: 'hao@x.dev' } }) }));
 
 import { PlatformHomePage } from '../PlatformHomePage';
 import type { HomeResponse } from '../../types';
@@ -13,62 +16,59 @@ import type { HomeResponse } from '../../types';
 const okData: HomeResponse = {
   tiles: {
     activity: { status: 'ok', data: { unread: 4 } },
-    books: { status: 'ok', data: [{ id: 'b1', title: 'My Novel' }] },
-    jobs: { status: 'empty', data: [] },
+    books: { status: 'ok', data: [{ id: 'b1', title: 'The Empty Throne', updated_at: new Date().toISOString() }] },
+    jobs: { status: 'ok', data: [{ id: 'j1', kind: 'translation', status: 'running' }] },
   },
-  generated_at: '2026-07-15T00:00:00Z',
+  generated_at: 'x',
+};
+const feed = {
+  items: [{ id: 'n1', category: 'assistant', title: 'Weekly reflection ready', body: null, read_at: null, created_at: new Date().toISOString() }],
+  unread: 4,
+  isLoading: false,
+  error: null,
+  hasMore: false,
+  isFetchingMore: false,
+  loadMore: vi.fn(),
+  refetch: vi.fn(),
+  markAllRead: vi.fn(),
+  markingAll: false,
 };
 
 function renderHome() {
-  return render(
-    <MemoryRouter>
-      <PlatformHomePage />
-    </MemoryRouter>,
-  );
+  return render(<MemoryRouter><PlatformHomePage /></MemoryRouter>);
 }
 
-describe('PlatformHomePage', () => {
-  it('renders the assistant hero even while loading (front door never blanks)', () => {
-    useHome.mockReturnValue({ data: undefined, isLoading: true, refetch: vi.fn() });
-    renderHome();
-    expect(screen.getByTestId('home-assistant-hero')).toBeTruthy();
-    expect(screen.getByTestId('home-assistant-hero').getAttribute('href')).toBe('/assistant');
-  });
-
-  it('renders ok tiles with data', () => {
+describe('PlatformHomePage (DF1 draft layout)', () => {
+  it('renders the greeting top bar with the user name + a notifications bell', () => {
     useHome.mockReturnValue({ data: okData, isLoading: false, refetch: vi.fn() });
+    useActivity.mockReturnValue(feed);
     renderHome();
-    expect(screen.getByTestId('home-unread').textContent).toContain('4 unread');
-    expect(screen.getByText('My Novel')).toBeTruthy();
-    // jobs tile is empty → honest empty copy, not a blank
-    expect(screen.getByText(/No background jobs/i)).toBeTruthy();
+    expect(screen.getByText(/, Hao/)).toBeTruthy(); // "Good <time>, Hao"
+    expect(screen.getByLabelText(/Notifications, 4 unread/)).toBeTruthy();
   });
 
-  it('a degraded tile shows a Retry that calls refetch — the page still renders', () => {
-    const refetch = vi.fn();
-    useHome.mockReturnValue({
-      data: {
-        tiles: {
-          activity: { status: 'degraded', error: 'down' },
-          books: { status: 'ok', data: [] },
-          jobs: { status: 'ok', data: [] },
-        },
-        generated_at: 'x',
-      },
-      isLoading: false,
-      refetch,
-    });
+  it('always renders the assistant hero with Start-talking (front door never blanks)', () => {
+    useHome.mockReturnValue({ data: undefined, isLoading: true, refetch: vi.fn() });
+    useActivity.mockReturnValue({ ...feed, isLoading: true, items: [] });
     renderHome();
-    // hero still there; the activity tile shows Retry
-    expect(screen.getByTestId('home-assistant-hero')).toBeTruthy();
-    const retry = screen.getAllByText('Retry')[0];
-    fireEvent.click(retry);
-    expect(refetch).toHaveBeenCalled();
+    const hero = screen.getByTestId('home-assistant-hero');
+    expect(hero).toBeTruthy();
+    expect(screen.getByTestId('home-start-talking').getAttribute('href')).toBe('/assistant');
   });
 
-  it('shows a stale banner when the BFF served a cached snapshot', () => {
-    useHome.mockReturnValue({ data: { ...okData, stale: true }, isLoading: false, refetch: vi.fn() });
+  it('renders jump-back-in cards from real books + jobs', () => {
+    useHome.mockReturnValue({ data: okData, isLoading: false, refetch: vi.fn() });
+    useActivity.mockReturnValue(feed);
     renderHome();
-    expect(screen.getByText(/last-loaded home/i)).toBeTruthy();
+    expect(screen.getByText('The Empty Throne')).toBeTruthy();
+    expect(screen.getByTestId('home-jump-back-in')).toBeTruthy();
+  });
+
+  it('renders an inline recent-activity feed and the all-apps launcher', () => {
+    useHome.mockReturnValue({ data: okData, isLoading: false, refetch: vi.fn() });
+    useActivity.mockReturnValue(feed);
+    renderHome();
+    expect(screen.getByTestId('home-recent-feed').textContent).toContain('Weekly reflection ready');
+    expect(screen.getByTestId('home-all-apps')).toBeTruthy();
   });
 });
