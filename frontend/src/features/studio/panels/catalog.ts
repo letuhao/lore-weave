@@ -60,6 +60,7 @@ import { SceneBrowserPanel } from './SceneBrowserPanel';
 import { SceneInspectorPanel } from './SceneInspectorPanel';
 import { WhatIfCanvasPanel } from './WhatIfCanvasPanel';
 import { DivergencePanel } from './DivergencePanel';
+import { CanonViewPanel } from './CanonViewPanel';
 import { PlanHubPanel } from './PlanHubPanel';
 import { BookImportPanel } from './BookImportPanel';
 import { ContextInspectorPanel } from './ContextInspectorPanel';
@@ -338,6 +339,7 @@ export const STUDIO_PANELS: StudioPanelDef[] = [
   { id: 'quality-conformance', component: QualityConformancePanel, titleKey: 'panels.quality-conformance.title', descKey: 'panels.quality-conformance.desc', category: 'quality', guideBodyKey: 'panels.quality-conformance.guideBody' },
   // ── S5 · What-If & Divergence ──  (divergence, + canonview home)
   { id: 'divergence', component: DivergencePanel, titleKey: 'panels.divergence.title', descKey: 'panels.divergence.desc', category: 'editor', guideBodyKey: 'panels.divergence.guideBody' }, /* owner: S5 */
+  { id: 'canonview', component: CanonViewPanel, titleKey: 'panels.canonview.title', descKey: 'panels.canonview.desc', category: 'editor', guideBodyKey: 'panels.canonview.guideBody' }, /* owner: S5 */
   // ── S6 · Canon/Quality/Progress ──(quality-canon-rules, quality-corrections, quality-heal, progress, + flywheel home)
   { id: 'quality-canon-rules', component: QualityCanonRulesPanel, titleKey: 'panels.quality-canon-rules.title', descKey: 'panels.quality-canon-rules.desc', category: 'quality', guideBodyKey: 'panels.quality-canon-rules.guideBody' },
   { id: 'quality-corrections', component: QualityCorrectionsPanel, titleKey: 'panels.quality-corrections.title', descKey: 'panels.quality-corrections.desc', category: 'quality', guideBodyKey: 'panels.quality-corrections.guideBody' },

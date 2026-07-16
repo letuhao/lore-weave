@@ -343,6 +343,11 @@
       "desc": "Manage a book's what-if derivatives — list the canon and every branch, switch the whole studio to one, archive one, or spawn a new branch from a chapter",
       "guideBody": "A dị bản (divergence) branches your book at a chapter and diverges — an alternate universe, a POV shift, a character changed — into a derivative work with its own knowledge partition, while the source stays read-only canon. This panel lists your canonical work and every branch you've spawned. 'Switch to' moves your whole studio — editor, navigator, quality, everything — onto that branch; the choice is remembered per book and survives a reload. 'Archive' hides a branch without destroying it (its chapters and knowledge are kept). 'New divergence' opens the 4-step wizard to spawn one. Select a branch to read its spec (taxonomy, branch point, canon rules, overrides), which is fixed at creation."
     },
+    "canonview": {
+      "title": "Canon at chapter",
+      "desc": "What canon knows as of the chapter in focus — entities present/established, canon state and timeline",
+      "guideBody": "Answers 'what does canon know as of the chapter I'm on?' — the entities present in and established by the current chapter (from the glossary), plus the canon state (how many entities are active vs gone) and timeline events up to that point (from the knowledge graph). It follows the chapter you have in focus in the manuscript, and is the same inspector the what-if canvas shows at a branch point — so you can check what's already established before you diverge. Open a scene or chapter to give it a focus."
+    },
     "scene-inspector": {
       "title": "Scene Inspector",
       "desc": "Read and edit every field of one scene — intent, craft, tension and grounding",
