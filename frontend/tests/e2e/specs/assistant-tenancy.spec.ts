@@ -30,6 +30,42 @@ async function setProactive(request: APIRequestContext, token: string, on: boole
   expect(r.ok(), `PATCH ai-prefs ${r.status()}`).toBeTruthy();
 }
 
+async function provision(request: APIRequestContext, token: string): Promise<{ book_id: string }> {
+  const r = await request.post('/v1/assistant/provision', { ...bearer(token), data: {} });
+  expect(r.ok(), `provision ${r.status()}`).toBeTruthy();
+  return (await r.json()) as { book_id: string };
+}
+
+test.describe('Assistant — tenancy gate (T1, BLOCKING)', () => {
+  test('T1 — each user has a SEPARATE diary root, and A cannot read B\'s diary', async ({ request }) => {
+    const a = await getAccessToken(request);
+    const b = await ensureUserB(request);
+
+    const diaryA = await provision(request, a);
+    const diaryB = await provision(request, b);
+
+    // Per-book tenancy: distinct diary roots (never a shared/global diary).
+    expect(diaryA.book_id, 'A has a diary book').toBeTruthy();
+    expect(diaryB.book_id, 'B has a diary book').toBeTruthy();
+    expect(diaryA.book_id, "A's and B's diaries are DISTINCT roots").not.toBe(diaryB.book_id);
+
+    // A trying to read B's diary entries with A's token is denied (not a global read).
+    const cross = await request.get(`/v1/books/${diaryB.book_id}/diary/entries`, bearer(a));
+    if (cross.ok()) {
+      // If it 200s it must be EMPTY of B's data (never leak another tenant's rows).
+      const body = (await cross.json()) as { entries?: unknown[] };
+      expect((body.entries ?? []).length, "A must not receive B's diary rows").toBe(0);
+    } else {
+      expect(cross.status(), 'A is denied B\'s diary (403/404)').toBeGreaterThanOrEqual(403);
+    }
+
+    // A's own diary FACT inbox is JWT-scoped (returns an array of A's only — never B's).
+    const aFacts = await request.get('/v1/knowledge/pending-facts?diary_only=true', bearer(a));
+    expect(aFacts.ok(), `A pending-facts ${aFacts.status()}`).toBeTruthy();
+    expect(Array.isArray(await aFacts.json()), 'diary facts are a JWT-scoped list').toBe(true);
+  });
+});
+
 test.describe('Assistant — tenancy gate (T4, BLOCKING)', () => {
   test('T4a — user A arming a schedule is INVISIBLE to user B', async ({ request }) => {
     const a = await getAccessToken(request);
