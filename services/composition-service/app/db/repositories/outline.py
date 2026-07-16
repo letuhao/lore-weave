@@ -777,11 +777,13 @@ class OutlineRepo:
         if after is not None:
             after_rank, after_id = after
             args.extend([after_rank, after_id])
-            # strictly after (rank, id): rank byte-greater, or same rank + greater id.
-            keyset_pred = (
-                f' AND (rank COLLATE "C" > ${len(args) - 1}'
-                f' OR (rank COLLATE "C" = ${len(args) - 1} AND id > ${len(args)}))'
-            )
+            # Row-constructor keyset: Postgres pushes `(rank, id) > (x, y)` INTO the index
+            # range (Index Cond), so a deep page costs the same as page 1. The equivalent
+            # OR-decomposed `rank>x OR (rank=x AND id>y)` is applied as a FILTER instead and
+            # walks the index from the start — page N removes ~N·limit tuples (H8.1 EXPLAIN
+            # at 10k: OR-form page-50 = 179 buf, Rows-Removed-by-Filter 4999; row-form = 6
+            # buf). Same semantics: `(a,b) > (x,y)` ≡ `a>x OR (a=x AND b>y)` by SQL definition.
+            keyset_pred = f' AND (rank COLLATE "C", id) > (${len(args) - 1}, ${len(args)})'
         args.append(limit + 1)
         # child_count: non-archived DIRECT children of each row (scene-count badge for a
         # chapter, chapter-count for an arc). Correlated scalar subquery on the
@@ -833,11 +835,13 @@ class OutlineRepo:
         if after is not None:
             after_rank, after_id = after
             args.extend([after_rank, after_id])
-            # strictly after (rank, id): rank byte-greater, or same rank + greater id.
-            keyset_pred = (
-                f' AND (rank COLLATE "C" > ${len(args) - 1}'
-                f' OR (rank COLLATE "C" = ${len(args) - 1} AND id > ${len(args)}))'
-            )
+            # Row-constructor keyset: Postgres pushes `(rank, id) > (x, y)` INTO the index
+            # range (Index Cond), so a deep page costs the same as page 1. The equivalent
+            # OR-decomposed `rank>x OR (rank=x AND id>y)` is applied as a FILTER instead and
+            # walks the index from the start — page N removes ~N·limit tuples (H8.1 EXPLAIN
+            # at 10k: OR-form page-50 = 179 buf, Rows-Removed-by-Filter 4999; row-form = 6
+            # buf). Same semantics: `(a,b) > (x,y)` ≡ `a>x OR (a=x AND b>y)` by SQL definition.
+            keyset_pred = f' AND (rank COLLATE "C", id) > (${len(args) - 1}, ${len(args)})'
         args.append(limit + 1)
         query = f"""
         SELECT {_SELECT_COLS} FROM outline_node
@@ -876,10 +880,13 @@ class OutlineRepo:
         if after is not None:
             after_rank, after_id = after
             args.extend([after_rank, after_id])
-            keyset_pred = (
-                f' AND (rank COLLATE "C" > ${len(args) - 1}'
-                f' OR (rank COLLATE "C" = ${len(args) - 1} AND id > ${len(args)}))'
-            )
+            # Row-constructor keyset: Postgres pushes `(rank, id) > (x, y)` INTO the index
+            # range (Index Cond), so a deep page costs the same as page 1. The equivalent
+            # OR-decomposed `rank>x OR (rank=x AND id>y)` is applied as a FILTER instead and
+            # walks the index from the start — page N removes ~N·limit tuples (H8.1 EXPLAIN
+            # at 10k: OR-form page-50 = 179 buf, Rows-Removed-by-Filter 4999; row-form = 6
+            # buf). Same semantics: `(a,b) > (x,y)` ≡ `a>x OR (a=x AND b>y)` by SQL definition.
+            keyset_pred = f' AND (rank COLLATE "C", id) > (${len(args) - 1}, ${len(args)})'
         args.append(limit + 1)
         query = f"""
         SELECT {_SELECT_COLS} FROM outline_node
@@ -916,10 +923,13 @@ class OutlineRepo:
         if after is not None:
             after_rank, after_id = after
             args.extend([after_rank, after_id])
-            keyset_pred = (
-                f' AND (rank COLLATE "C" > ${len(args) - 1}'
-                f' OR (rank COLLATE "C" = ${len(args) - 1} AND id > ${len(args)}))'
-            )
+            # Row-constructor keyset: Postgres pushes `(rank, id) > (x, y)` INTO the index
+            # range (Index Cond), so a deep page costs the same as page 1. The equivalent
+            # OR-decomposed `rank>x OR (rank=x AND id>y)` is applied as a FILTER instead and
+            # walks the index from the start — page N removes ~N·limit tuples (H8.1 EXPLAIN
+            # at 10k: OR-form page-50 = 179 buf, Rows-Removed-by-Filter 4999; row-form = 6
+            # buf). Same semantics: `(a,b) > (x,y)` ≡ `a>x OR (a=x AND b>y)` by SQL definition.
+            keyset_pred = f' AND (rank COLLATE "C", id) > (${len(args) - 1}, ${len(args)})'
         args.append(limit + 1)
         query = f"""
         SELECT {_SELECT_COLS} FROM outline_node
