@@ -3,7 +3,7 @@
 Validates: the Pydantic WorkingMemory model round-trips, `remaining()` derives
 correctly, charter required fields are enforced, and a serialized instance
 conforms to the cross-service JSON Schema contract
-(contracts/interview/working_memory.schema.json).
+(contracts/agent-control/working_memory.schema.json).
 """
 from __future__ import annotations
 
@@ -16,12 +16,13 @@ from pydantic import ValidationError
 
 from app.models import WorkingMemory, WorkingMemoryCharter, WorkingMemoryState
 
-# contracts/interview/working_memory.schema.json — repo root is 3 parents up
-# from this file: tests/ -> chat-service/ -> services/ -> <root>.
+# contracts/agent-control/working_memory.schema.json — repo root is 3 parents up
+# from this file: tests/ -> chat-service/ -> services/ -> <root>. (Moved from
+# contracts/interview/ at the Agent Control Plane extraction, 2026-07-16.)
 _SCHEMA_PATH = (
     Path(__file__).resolve().parents[3]
     / "contracts"
-    / "interview"
+    / "agent-control"
     / "working_memory.schema.json"
 )
 

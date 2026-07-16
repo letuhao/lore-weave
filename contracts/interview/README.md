@@ -1,29 +1,15 @@
-# Interview-Practice Roleplay — contracts
+# Interview-Practice Roleplay — contracts (MOVED)
 
-POC for the MMO `roleplay-service`. Spec: [docs/specs/2026-06-23-interview-roleplay.md](../../docs/specs/2026-06-23-interview-roleplay.md).
-Plan: [docs/plans/2026-06-23-interview-roleplay.md](../../docs/plans/2026-06-23-interview-roleplay.md).
+> **The working-memory/charter contract moved to [`contracts/agent-control/`](../agent-control/README.md)**
+> at the Agent Control Plane extraction (2026-07-16). It was never interview-specific — it is the control
+> plane's core anchor, shared by every agent-runtime. See
+> [docs/specs/2026-07-16-agent-control-plane-sdk.md](../../docs/specs/2026-07-16-agent-control-plane-sdk.md).
 
-## `working_memory.schema.json`
+Interview-roleplay background: [docs/specs/2026-06-23-interview-roleplay.md](../../docs/specs/2026-06-23-interview-roleplay.md).
 
-The pinned goal-state block. Two tiers mirroring goal-shielding:
+## `build_context` contract (unchanged, still owned by knowledge-service)
 
-- **`charter`** — the committed goal. Written **only by the goal authority** (static template here
-  ⇒ frozen; the world model in full roleplay ⇒ dynamic). The summarizing **executive can NEVER
-  write `charter`** — this invariant is what keeps the memory/executive/anchoring core reusable
-  when the goal becomes world-model-driven.
-- **`state`** — the mutable progress estimate the executive rewrites. `covered` is monotonic
-  (append-only); `remaining` is derived (`charter.checklist − state.covered`), never stored.
-
-Owners:
-- `chat-service` — `session_templates` (the goal authority for interview), `chat_sessions.working_memory_seed`
-  (the frozen charter seed / degraded fallback), anchoring, `/evaluate`.
-- `knowledge-service` — the `working_memory` block as SSOT (selector + store), the `executive`
-  worker, and the rendered `working_memory` string returned by `POST /internal/context/build`.
-
-## `build_context` contract change
-
-`POST /internal/context/build` response (`ContextBuildResponse`) gains:
-
-- **`working_memory: string`** (default `""`) — the rendered anchor text chat-service pins into the
-  system block AND tail-injects (depth-0). `""` when the session has no working-memory block
-  (non-interview session, or knowledge-service build predating this field — backward compatible).
+`POST /internal/context/build` response (`ContextBuildResponse`) carries **`working_memory: string`** (default
+`""`) — the rendered anchor text chat-service pins into the system block AND tail-injects (depth-0). `""` when
+the session has no working-memory block (non-interview session, or a knowledge-service build predating the
+field — backward compatible).

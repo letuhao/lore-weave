@@ -8,7 +8,7 @@ from pydantic import BaseModel, Field, model_validator
 
 
 # ── Interview-roleplay: working_memory (charter + state) ─────────────────────
-# The pinned goal-state block. Mirrors contracts/interview/working_memory.schema.json.
+# The pinned goal-state block. Mirrors contracts/agent-control/working_memory.schema.json.
 # `charter` is written ONLY by the goal authority (template here) and is the frozen
 # anchor; `state` is the executive-rewritten progress estimate (safe-when-wrong).
 # Spec: docs/specs/2026-06-23-interview-roleplay.md.
