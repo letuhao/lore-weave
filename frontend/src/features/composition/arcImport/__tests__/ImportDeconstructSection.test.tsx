@@ -23,7 +23,8 @@ function makeD(over: Partial<Record<string, unknown>> = {}) {
     sources: [{ id: 's1', title: 'Ref', created_at: '' }], sourcesLoading: false, sourcesError: false,
     selectedSourceId: 's1', setSelectedSourceId: vi.fn(), arcHint: '', setArcHint: vi.fn(),
     useWeb: false, setUseWeb: vi.fn(), language: 'en', setLanguage: vi.fn(),
-    createSource: { mutate: vi.fn(), isPending: false }, deleteSource: { mutate: vi.fn() },
+    createSource: { mutate: vi.fn(), isPending: false, isError: false, error: null },
+    deleteSource: { mutate: vi.fn(), isError: false, error: null },
     estimate: null, result: null,
     mint: { mutate: vi.fn(), isPending: false, isError: false },
     confirm: { mutate: vi.fn(), isPending: false, isError: false },
@@ -76,5 +77,25 @@ describe('ImportDeconstructSection', () => {
     ctrl.useDeconstruct.mockReturnValue(makeD({ error: new Error('deconstruct was not accepted') }));
     render(<ImportDeconstructSection token="tok" />);
     expect(screen.getByTestId('deconstruct-error').textContent).toContain('not accepted');
+  });
+
+  it('a source create/delete error is SURFACED, not silent (no-silent-fail)', () => {
+    ctrl.useDeconstruct.mockReturnValue(makeD({ createSource: { mutate: vi.fn(), isPending: false, isError: true, error: new Error('source too long') } }));
+    render(<ImportDeconstructSection token="tok" />);
+    expect(screen.getByTestId('deconstruct-source-error').textContent).toContain('source too long');
+  });
+
+  it('deleting a source is guarded by a confirm (hard delete, no restore)', () => {
+    const d = makeD();
+    ctrl.useDeconstruct.mockReturnValue(d);
+    render(<ImportDeconstructSection token="tok" />);
+    const confirmSpy = vi.spyOn(window, 'confirm');
+    confirmSpy.mockReturnValueOnce(false);   // user cancels → no delete
+    fireEvent.click(screen.getByTestId('source-del-s1'));
+    expect(d.deleteSource.mutate).not.toHaveBeenCalled();
+    confirmSpy.mockReturnValueOnce(true);    // user confirms → delete fires
+    fireEvent.click(screen.getByTestId('source-del-s1'));
+    expect(d.deleteSource.mutate).toHaveBeenCalledWith('s1');
+    confirmSpy.mockRestore();
   });
 });

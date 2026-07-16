@@ -39,10 +39,18 @@ export function ImportDeconstructSection({ token }: { token: string | null }) {
                   className={`min-w-0 flex-1 truncate text-left ${d.selectedSourceId === s.id ? 'font-medium text-primary' : ''}`}
                   onClick={() => d.setSelectedSourceId(s.id)}>{s.title || '(untitled)'}</button>
                 <button type="button" data-testid={`source-del-${s.id}`} className="text-muted-foreground hover:text-destructive"
-                  onClick={() => d.deleteSource.mutate(s.id)} title="Delete (no restore)">✕</button>
+                  onClick={() => { if (window.confirm(t('motif.arc.import.deleteConfirm', { defaultValue: 'Delete this source? There is no restore.' }))) d.deleteSource.mutate(s.id); }}
+                  title="Delete (no restore)">✕</button>
               </li>
             ))}
           </ul>
+        )}
+        {/* no-silent-fail: a source create/delete that errors must SAY so, not vanish. */}
+        {(d.createSource.isError || d.deleteSource.isError) && (
+          <p data-testid="deconstruct-source-error" role="alert" className="text-destructive">
+            {((d.createSource.error || d.deleteSource.error) as Error | null)?.message
+              || t('motif.arc.import.sourceError', { defaultValue: 'Could not save the source — try again.' })}
+          </p>
         )}
         <PasteBox onCreate={(body) => d.createSource.mutate(body)} busy={d.createSource.isPending} />
       </section>
