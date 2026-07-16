@@ -50,6 +50,10 @@ const WRITE_TOOLS: Record<string, string> = {
   composition_canon_rule_update: 'compositionEffects',
   composition_canon_rule_delete: 'compositionEffects',
   composition_canon_rule_restore: 'compositionEffects',
+  // S1-A3 — the work-resolution family scene-compose/chapter-assemble render from (outline/scene
+  // writes are covered by bookEffects; create_work + generate were the residual hole).
+  composition_create_work: 'compositionEffects',
+  composition_generate: 'compositionEffects',
   // publish → flywheel (S6/M5): the delta the flywheel panel renders. Keyed on extraction-complete,
   // NOT the publish confirm (the delta is produced async after publish) — see the S6 spec §9 (E2).
   composition_publish: 'flywheelEffects',
@@ -125,7 +129,7 @@ const PENDING_FILES: Record<string, string> = {
   flywheelEffects: 's6-m5',      // publish → flywheel delta; ships with the flywheel panel (S6 M5).
   conformanceEffects: 's4',      // conformance_run → quality-conformance panel (S4/spec 33).
   motifEffects: 'wave-3',
-  planEffects: 'wave-5',
+  // planEffects: SHIPPED (S3/M4) — `/^plan_(?!pass_status)/` refreshes the Pass Rail on plan_* writes.
   registryEffects: 'wave-7',
 };
 

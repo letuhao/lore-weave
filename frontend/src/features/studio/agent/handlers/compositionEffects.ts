@@ -28,14 +28,34 @@ export function compositionCanonEffect(ctx: EffectContext): void {
   for (const queryKey of CANON_KEYS) ctx.queryClient.invalidateQueries({ queryKey: [...queryKey] });
 }
 
-/** Idempotent — register the composition canon effect handler once.
- *  Double-fire check (§8.0b): /^composition_canon_rule_/ vs every existing pattern —
- *  /^composition_authoring_run_/ (no: `canon_rule` ≠ `authoring_run`), GLOSSARY/KNOWLEDGE/
- *  translation patterns (no: different prefixes). ⇒ DISJOINT. Safe. */
+// S1-A3 (completeness audit) — the WORK-RESOLUTION family the scene-compose / chapter-assemble panels
+// render from. The outline/scene writes are already covered by bookEffects (/^composition_(outline_node|
+// scene_link)_/); the remaining hole was `create_work` (an agent setting up the co-writer Work while
+// the human stares at "No co-writer Work yet") and `generate` (an agent drafting a scene → the scene's
+// status/content shifts). Both were UNMATCHED by every pattern (verified), so an agent write left the
+// human's Work-setup CTA + scene selector stale. Prefix-invalidate work + outline (over-invalidation is
+// a cheap refetch; the effect result doesn't reliably carry project_id). The human's OWN generate goes
+// through the panel stream, not a Lane-B agent tool-call, so this never thrashes the human's typing.
+const WORK_KEYS = [
+  ['composition', 'work'],     // useWorkResolution — the resolved Work (composition_create_work)
+  ['composition', 'outline'],  // useChapterScenes / outline children — the scene selector + stitch gate
+] as const;
+
+export function compositionWorkEffect(ctx: EffectContext): void {
+  for (const queryKey of WORK_KEYS) ctx.queryClient.invalidateQueries({ queryKey: [...queryKey] });
+}
+
+/** Idempotent — register the composition effect handlers once.
+ *  Double-fire check (§8.0b): `canon_rule_` vs `(create_work|generate)` — DISJOINT; and neither
+ *  overlaps any existing pattern — bookEffects `/^composition_.*(prose|draft)/` (no: create_work/
+ *  generate carry neither token) or `/^composition_(outline_node|scene_link)_/` (no), arcEffects
+ *  `/^composition_arc_/` (no), authoringRunEffects `/^composition_authoring_run_/` (no). ⇒ each tool
+ *  matches AT MOST one handler. READS (`composition_get_*`, `composition_list_outline`) match neither. */
 export function registerCompositionEffectHandlers(): void {
   if (registered) return;
   registered = true;
   registerEffectHandler(/^composition_canon_rule_/, compositionCanonEffect);
+  registerEffectHandler(/^composition_(create_work|generate)/, compositionWorkEffect);
 }
 
 /** Test-only: undo the idempotency guard so a test can re-register after clearEffectHandlers(). */

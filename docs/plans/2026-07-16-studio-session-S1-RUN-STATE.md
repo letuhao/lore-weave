@@ -64,37 +64,44 @@ no-silent-fail · agent-parity · loop-connected · live-browser-proven · i18n+
   guards, but get_prose isn't listed there so it's uncaught). Fix belongs to the bookEffects owner:
   tighten the pattern to the write tools (e.g. `/^composition_write_prose|_draft/`) OR add
   composition_get_prose to READ_TOOLS to red it. I did NOT touch it (not S1's subtree). Continue.
-### DEBT
-- **S1-A3 · COMPLETENESS AUDIT (cold-start agent + own verification) — findings:**
-  - ✅ **FIXED — legacy-parity retirement mapping was stale.** `legacyParityContract` mapped
-    `compose→compose(Chat)` + `assemble→agent-mode` (pre-S1 stopgaps). Remapped to the real homes S1
-    built: `compose→scene-compose`, `assemble→chapter-assemble`. Test green (retirement now points at
-    the full-fidelity draft/stitch loops, not the Chat/agent-mode approximations).
-  - ✅ **FIXED — GAP-2: accept before the Editor is open LOST the draft.** ComposeView/
-    ChapterAssembleView cleared the ghost/preview unconditionally after `onAccept`, so accepting a
-    whole generated chapter before opening the Editor evaporated it (real LLM spend). Fix: `onAccept`
-    now returns boolean (did it land?); the views clear/critique/capture-correction ONLY on true.
-    `useAcceptIntoEditor` returns false on no-editor/mismatch (keeps the draft). +2 guard tests
-    (ComposeView, ChapterAssembleView); PopoutHost returns true (opener owns insertion).
-  - ❌ **REFUTED — the audit's "BLOCKER: no Lane-B handler for compose/assemble".** Verified: the
-    outline/scene family IS covered by `bookEffects.ts:62` `/^composition_(outline_node|scene_link)_/
-    → outlineEffect` (+ `:60` prose/draft). So an agent scene write DOES refresh scene-compose's scene
-    selector + chapter-assemble's stitch gate. The audit only read `compositionEffects.ts` and missed
-    bookEffects — §2-bar-#5 is met for the core writes. (Lesson: verify an adversarial "no handler"
-    claim across ALL handler files before "fixing" it — I nearly added a redundant double-firing one.)
-  - **PARKED (flag, not S1's file):** `bookEffects.ts:60` `/^composition_.*(prose|draft)/` also matches
-    the READ `composition_get_prose` → an effect handler fires on a chatty read = cache-thrash. Pre-
-    existing bug in the book/editor track's handler; the ledger doesn't catch it (get_prose not in
-    READ_TOOLS). Flagged for the bookEffects owner — see PARKED register.
-  - **DEBT (minor):** `composition_create_work` + `composition_generate` are not matched by any Lane-B
-    handler. Edge: an agent creates the Work / generates while the human watches the "No Work" or
-    scene-list state → stale until manual refetch. Rare (agent setup while human idles on the panel).
-  - **DEBT (minor):** the legacy `cowriter` "Use as guide → prefill scene-compose guide + switch" micro-
-    integration is not homed in the dock (the `compose` Chat panel can't seed scene-compose's guide).
-    Loop-connection nicety; the cowriter sub-tab itself is homed (Chat) per the parity contract.
-  - **DEBT/RISK (unverified, S5 co-owns):** derivative adapt→Accept routing — `useAcceptIntoEditor`
-    keys on chapterId only (work-agnostic); adapting a derivative scene + Accept may land in the
-    canon chapter's editor. Needs a live-DB check with a derivative work. Intersects S5 (what-if).
+### DEBT — post-audit triage (2026-07-17)
+**No open S1 debt requires a NEW detailed spec.** Every audit finding is either FIXED, cheap-fixed, or
+a legitimate CROSS-TRACK defer that belongs to another track's scope (D-5 mobile-shell / S5 what-if /
+book-editor). Triage below.
+
+#### ✅ RECENTLY CLEARED (fixed; in HEAD)
+- **S1-D1 / S1-D2** — "tab jumps to Welcome" + "panel state lost" were **HMR ARTIFACTS** of the shared
+  :5199 dev server (proven on the isolated static build); no code change needed.
+- **S1-D3** — `forceShared` mis-borrowed from PopoutHost broke the ghost on a prod build → removed to
+  match the legacy docked `LiveStateProvider`.
+- **S1-D4** — accept could insert into the WRONG chapter → chapterId-match guard + honest no-editor toast.
+- **GAP-2 (audit)** — accept before the Editor was open LOST the draft → `onAccept` returns boolean;
+  views clear/critique/capture ONLY on a real insert; +2 guard tests. (commit f80248b19)
+- **legacy-parity mapping (audit)** — compose/assemble were mapped to Chat/agent-mode → remapped to
+  scene-compose/chapter-assemble (the real homes). (commit f80248b19)
+- **Lane-B "blocker" (audit)** — REFUTED: the outline/scene family is already covered by `bookEffects.ts`
+  (`/^composition_(outline_node|scene_link)_/`). Verified before "fixing" — nearly added a double-firer.
+- **create_work/generate Lane-B (audit)** — the one REAL residual → added `compositionWorkEffect`
+  (`/^composition_(create_work|generate)/` → invalidate work+outline) + ledger rows. Ledger 151 green.
+
+#### 🔵 OPEN — cross-track defers (tracked; NOT S1 spec work)
+- **Mobile (§2-bar #8) → D-5 mobile-shell track.** The panels render at 390px with no horizontal
+  overflow, but the DESKTOP studio shell squishes the dock to ~100px (it doesn't collapse the nav on
+  mobile — affects EVERY dock panel, not just S1). §2-bar #8 explicitly gates mobile on the D-5
+  decision. Gate #3 (naturally-next-phase) + external track — the mobile-shell track owns the shell.
+- **derivative adapt→Accept routing → S5 (What-If).** `useAcceptIntoEditor` keys on chapterId only;
+  adapting a derivative scene + Accept may write into the canon chapter's book-scoped editor draft
+  (derivatives share book_id/chapter_id under COW). UNVERIFIED — needs a live derivative-work check.
+  S5 owns derivative correctness; S1 only reuses the adapt affordance. Gate #1 + gate #4. Hand to S5.
+- **bookEffects read-thrash → book/editor track.** `bookEffects.ts:60` `/^composition_.*(prose|draft)/`
+  matches the READ `composition_get_prose` → cache-thrash. Not S1's file (see PARKED). Gate #1.
+
+#### ⚪ CONSCIOUS WON'T-FIX (gate #5)
+- **cowriter "Use as guide" micro-integration.** The legacy CoWriterChat could seed the compose guide
+  from a chat line. In the dock the `compose` Chat panel + scene-compose are separate, and
+  scene-compose's guide textarea is DIRECTLY editable — a convenience, not a capability gap. The
+  cowriter sub-tab itself IS homed (Chat, per the parity contract). Not worth a cross-panel bus bridge
+  for a directly-typeable field. Recorded so it stops re-surfacing.
 - **S1-D4 · ✅ FIXED (review-impl, fix-now) — accept could insert into the WRONG chapter.**
   onAccept trusted `getEditorTarget()` without checking `target.chapterId === activeChapterId`; a
   floated/separately-opened editor on a different chapter would receive this scene's draft. Added
