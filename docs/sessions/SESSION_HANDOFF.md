@@ -1,6 +1,6 @@
 # ▶▶ NEXT SESSION STARTS HERE
 
-## ⭐ Track: AGENT-TASK-GOVERNANCE + close-21-28 — **CORE PROVEN (S06 GREEN), 2026-07-16**
+## ⭐ Track: AGENT-TASK-GOVERNANCE + close-21-28 — **CLOSED TO EVIDENCE, 2026-07-16** (HEAD `7e44b296e`)
 > **Spec (SEALED):** [`docs/specs/2026-07-15-agent-task-governance.md`](../specs/2026-07-15-agent-task-governance.md) ·
 > **Plan + RUN-STATE:** [`docs/plans/2026-07-13-close-21-28-plan.md`](../plans/2026-07-13-close-21-28-plan.md) (§9 = the live registers).
 > Governance was folded into the close-21-28 plan as **Phase G** (Governance-P5 = Phase 4's S06 replay).
@@ -13,20 +13,28 @@
 > **Key finding:** the governance drives correctly; the last blocker was PlanForge rules-mode needing a
 > NUMBERED `# 1. Arc Overview` header (see the memory + plan §9.1 D-G5-NUMBERED-HEADER).
 >
-> **▶ STATUS: ~95% CLOSED (2026-07-16).** Committed with pasted evidence: **Phase G COMPLETE (G0–G5)** ·
-> **B4** (generate gated) · **Phase 2 T5/T6** (spend-attribution usage-row + re-key cross-service smoke) ·
-> **Phase 5 D3/D4/D5/F3** (anchor-direction, re-import preserve, tenancy, adaptive_k E2E) · **Phase 2b
-> O-1** (ground PlanForge, fail-closed) **+ O-2** (arc decompiler engine) **+ O-3** (5 arc-template MCP
-> tools, live-smoked) · **G3/G4** (PLAN pillar realized + enricher boundary) · **Phase 6 C0–C5** (legacy
-> parity guard landed + resource_ref C3 rename + DB cleanup PROVEN). **DB cleanup done** — `comp_g0_throwaway`
-> dropped, S06 book fresh (pasted count query).
+> **▶ STATUS: CLOSED TO EVIDENCE (2026-07-16).** Every DoD slice marked [x] with pasted evidence.
+> Committed: **Phase G COMPLETE (G0–G5)** · **B4** (generate gated) · **Phase 2 T5/T6** · **Phase 5
+> D3/D4/D5/F3** · **Phase 2b O-1/O-2/O-3** · **G3/G4** · **Phase 6 C0–C5** · **O-11** `e3023c775` (what-if
+> branch producer → thin studio panel + LIVE browser smoke of the port: palette-discoverable, opens, mounts,
+> renders) · **Phase 3 H8.1** `7b52ebc24` (10k fixture + EXPLAIN keyset — **caught+fixed an O(offset)
+> deep-page bug**: OR-form keyset was a Filter; row-constructor `(rank,id)>(x,y)` pushes into the Index Cond →
+> page-50 179 buf→6 buf) · **Phase 3 H8.2** `7e44b296e` (FULL live trusted-CDP-mouse drag: staged plan-hub
+> graph on real book 019f6571, dragged Chapter 1 across lanes, DB `structure_node_id` …a1→…a2 before/after,
+> badge source 4/0→3/1) · **F2 ◐** (prose_drift flip mechanism test-proven ×14 + `/conformance/status`
+> overlay proven live-reachable). **All throwaway fixtures cleaned — 0 leak (pasted count queries).**
 >
-> **▶ NEXT — the 2 remaining slices are FE/browser-heavy, ATTENDED-RECOMMENDED (plan §9.2):** **O-11**
-> (~449-LOC what-if branch-preview FE port + browser smoke — D-O11-ATTENDED) · **Phase 3** (Plan-Hub live
-> browser leg: H8.2 CDP-mouse drag smoke, F2 dirty-flip, H8.1 10k fixture — D-PHASE3-ATTENDED). Both
-> BUILDABLE, not blocked; deferred to keep the goal's pasted-live-evidence quality bar (no rushed FE/browser
-> at a long run's tail). Also tracked: P-O1a (rules pre-flight), P-O2a (arc-decompile confirm wrapper),
-> D-G2-SETUSER (per-user enforcement SET-1).
+> **▶ NEXT — plan is CLOSED. Only 2 heavy-pipeline live-smokes deferred (both mechanism-proven, genuinely
+> un-stageable in dev without building a large fixture):**
+> - **D-O11-PROMOTE-FLOW-SMOKE** — the what-if *deep* alt-take→generate→promote flow (needs a staged
+>   book+Work+scene-graph+LLM fixture; the port itself + SceneGraphCanvas render are unit+live proven).
+> - **D-F2-CONFORMANCE-PIPELINE-SMOKE** — the full browser edit→publish→re-index→`prose_drift`→run-clears
+>   chain (needs the Tier-W conformance worker + KG-index revisions + real prose; the flip logic is proven by
+>   14 assertions + the overlay is live-reachable).
+>
+> Also still tracked (unchanged): P-O1a (rules pre-flight), P-O2a (arc-decompile confirm wrapper),
+> D-G2-SETUSER (per-user enforcement SET-1). Superseded: D-O11-ATTENDED, D-PHASE3-ATTENDED (the PO chose
+> attempt-now; both delivered with pasted live evidence above).
 
 ## ⭐ Track: MOBILE — shell + super-app home + PWA + push — **SHIPPED (M0–M5, 2026-07-15)**
 
