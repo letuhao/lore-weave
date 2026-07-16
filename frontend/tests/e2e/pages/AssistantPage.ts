@@ -72,6 +72,12 @@ export class AssistantPage {
     return this.page.getByTestId(`autonomous-toggle-${kind}`);
   }
 
+  /** Click an autonomous toggle, dismissing the chat dialog first (it re-opens on strip re-renders). */
+  async clickAutonomousToggle(kind: string): Promise<void> {
+    await this.dismissNewChatDialog();
+    await this.autonomousToggle(kind).click();
+  }
+
   async openMemorySheet(): Promise<void> {
     // The chat's new-session dialog can re-open after provisioning re-renders <Chat>; clear it first so
     // its full-screen overlay doesn't intercept the click on the strip.
