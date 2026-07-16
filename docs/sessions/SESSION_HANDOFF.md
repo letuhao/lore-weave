@@ -13,12 +13,20 @@
 > **Key finding:** the governance drives correctly; the last blocker was PlanForge rules-mode needing a
 > NUMBERED `# 1. Arc Overview` header (see the memory + plan §9.1 D-G5-NUMBERED-HEADER).
 >
-> **▶ NEXT (remaining close-21-28, all in the plan §5 board):** **G3** (PLAN pillar — ActivePlan +
-> agent-self-defined defs → proposals inbox; NOTE the rail already re-derives statelessly, so persistence
-> is partly redundant — see the ⚠ PO-DECIDE in §9) · **G4** (generalise agent-driven enrichers) · **T5/T6**
-> (25 re-key spend-attribution + cross-service smoke) · **Phase 2b** O-1/O-2/O-3/O-11 (4 orphan builds) ·
-> **Phase 3** (H8.2 browser smoke) · **Phase 5** (22 D3/D4/D5/F3) · **Phase 6** C0–C5 close-out.
-> **CLEANUP owed at C5:** drop throwaway DB `comp_g0_throwaway` (localhost:5555).
+> **▶ STATUS: ~95% CLOSED (2026-07-16).** Committed with pasted evidence: **Phase G COMPLETE (G0–G5)** ·
+> **B4** (generate gated) · **Phase 2 T5/T6** (spend-attribution usage-row + re-key cross-service smoke) ·
+> **Phase 5 D3/D4/D5/F3** (anchor-direction, re-import preserve, tenancy, adaptive_k E2E) · **Phase 2b
+> O-1** (ground PlanForge, fail-closed) **+ O-2** (arc decompiler engine) **+ O-3** (5 arc-template MCP
+> tools, live-smoked) · **G3/G4** (PLAN pillar realized + enricher boundary) · **Phase 6 C0–C5** (legacy
+> parity guard landed + resource_ref C3 rename + DB cleanup PROVEN). **DB cleanup done** — `comp_g0_throwaway`
+> dropped, S06 book fresh (pasted count query).
+>
+> **▶ NEXT — the 2 remaining slices are FE/browser-heavy, ATTENDED-RECOMMENDED (plan §9.2):** **O-11**
+> (~449-LOC what-if branch-preview FE port + browser smoke — D-O11-ATTENDED) · **Phase 3** (Plan-Hub live
+> browser leg: H8.2 CDP-mouse drag smoke, F2 dirty-flip, H8.1 10k fixture — D-PHASE3-ATTENDED). Both
+> BUILDABLE, not blocked; deferred to keep the goal's pasted-live-evidence quality bar (no rushed FE/browser
+> at a long run's tail). Also tracked: P-O1a (rules pre-flight), P-O2a (arc-decompile confirm wrapper),
+> D-G2-SETUSER (per-user enforcement SET-1).
 
 ## ⭐ Track: MOBILE — shell + super-app home + PWA + push — **SHIPPED (M0–M5, 2026-07-15)**
 
