@@ -86,6 +86,10 @@ EXPECTED_TOOLS = {
     # ── 23 structure layer — arc SPEC CRUD + outline reorder (SAME server) ──
     # Tier R (arc reads)
     "composition_arc_list", "composition_arc_get", "composition_arc_template_drift",
+    # BA11 (O-3) — the 5 arc-template CRUD MCP tools (the "Full MCP surface" BA11 mandates).
+    "composition_arc_template_list", "composition_arc_template_get",
+    "composition_arc_template_create", "composition_arc_template_update",
+    "composition_arc_template_archive",
     "composition_conformance_status",   # 26 IX-14 staleness read contract
     # Tier A (arc auto-writes + outline move)
     "composition_arc_create", "composition_arc_update", "composition_arc_delete",
@@ -113,6 +117,7 @@ TIER_R = {"composition_get_work", "composition_list_outline",
           "composition_motif_suggest_for_chapter", "composition_arc_suggest",
           "composition_get_mine_job", "composition_motif_link_list",
           "composition_arc_list", "composition_arc_get", "composition_arc_template_drift",
+          "composition_arc_template_list", "composition_arc_template_get",  # O-3 reads
           "composition_conformance_status",
           "plan_validate", "plan_self_check",
           "composition_authoring_run_list", "composition_authoring_run_get"}
@@ -121,7 +126,9 @@ TIER_W = {"composition_publish", "composition_generate",
           "composition_arc_import_analyze", "composition_conformance_run",
           "composition_authoring_run_create", "composition_authoring_run_gate",
           "composition_authoring_run_start", "composition_authoring_run_resume",
-          "composition_authoring_run_revert_all"}
+          "composition_authoring_run_revert_all",
+          "composition_arc_template_create", "composition_arc_template_update",  # O-3 writes
+          "composition_arc_template_archive"}
 
 
 # ── wire-path fixture ─────────────────────────────────────────────────────────

@@ -69,7 +69,13 @@ from app.clients.knowledge_client import (
     get_knowledge_client,
 )
 from app.config import settings
-from app.db.models import LinkKind, PlanPassId, SceneExitState
+from app.db.models import (
+    ArcTemplateCreateArgs,
+    ArcTemplatePatchArgs,
+    LinkKind,
+    PlanPassId,
+    SceneExitState,
+)
 from app.services.agent_native import ReferenceSource, resolve_scope
 from app.services.plan_pass_service import UpstreamStale
 from app.db.pool import get_pool
@@ -4723,6 +4729,146 @@ async def composition_arc_template_drift(
     if fn is None:
         return _pending_engine("A4", "app.engine.arc_conformance", "build_template_drift")
     return await fn(get_pool(), arc_node=node, user_id=tc.user_id)
+
+
+# ── BA11 — the 5 arc-template CRUD MCP tools (O-3). A comment once claimed this CRUD
+# "stays REST-only per BA11" — but BA11 (23:170) is titled "Full MCP surface" and MANDATES
+# these five; REST-only was the GAP it named (23:113), never the decision. They are thin
+# wrappers over the SAME owner-scoped ArcTemplateRepo the REST routes use. arc_template is
+# USER-tier (owner_user_id = caller), so there is NO book gate — the repo filters
+# owner_user_id=caller, and a foreign/system row is a 404/no-op (the clone-to-edit
+# affordance). visibility/status are closed sets via the pydantic Literal on the arg models.
+# ────────────────────────────────────────────────────────────────────────────
+
+
+@mcp_server.tool(
+    name="composition_arc_template_list",
+    description=(
+        "List the caller's arc templates (reusable arc skeletons). scope=mine (yours), "
+        "system (the seeded library), all (yours + system; NOT other users' public — that is "
+        "the public catalog, a separate discovery surface). Owner view; embedding never projected."
+    ),
+    meta=require_meta("R", "book",
+                      synonyms=["list arc templates", "my arc templates", "arc skeleton library"],
+                      tool_name="composition_arc_template_list"),
+)
+async def composition_arc_template_list(
+    ctx: MCPContext,
+    scope: Annotated[str, "mine | system | all"] = "all",
+    genre: Annotated[str | None, "filter by genre tag"] = None,
+    status: Annotated[str, "draft | active | archived"] = "active",
+    q: Annotated[str | None, "text search over name/summary"] = None,
+    language: Annotated[str | None, "language code filter"] = None,
+    limit: Annotated[int, "1..100"] = 50,
+) -> dict:
+    tc = _ctx(ctx)
+    if scope not in ("mine", "system", "all"):
+        return {"error": "scope must be one of: mine, system, all"}
+    if status not in ("draft", "active", "archived"):
+        return {"error": "status must be one of: draft, active, archived"}
+    repo = ArcTemplateRepo(get_pool())
+    rows = await repo.list_for_caller(
+        tc.user_id, scope=("user" if scope == "mine" else scope), genre=genre,
+        status=status, q=q, language=language, limit=max(1, min(100, limit)),
+    )
+    return {"arc_templates": [a.model_dump(mode="json") for a in rows], "scope": scope}
+
+
+@mcp_server.tool(
+    name="composition_arc_template_get",
+    description="Read one arc template the caller can see (own or system). 404 if not visible.",
+    meta=require_meta("R", "book",
+                      synonyms=["get arc template", "read arc template", "show arc template"],
+                      tool_name="composition_arc_template_get"),
+)
+async def composition_arc_template_get(
+    ctx: MCPContext,
+    arc_id: Annotated[str, "The arc_template id (UUID)."],
+) -> dict:
+    tc = _ctx(ctx)
+    arc = await ArcTemplateRepo(get_pool()).get_visible(tc.user_id, UUID(arc_id))
+    if arc is None:
+        raise uniform_not_accessible()
+    return arc.model_dump(mode="json")
+
+
+@mcp_server.tool(
+    name="composition_arc_template_create",
+    description=(
+        "Create a PRIVATE arc template owned by the caller (a reusable arc skeleton — threads, "
+        "layout, pacing, roster). Publishing/sharing a template is a deliberate human action in "
+        "the studio (it runs a quota gate), so this tool creates PRIVATE only; pass visibility "
+        "other than private and it is refused with that guidance. A duplicate (code, language) → 409."
+    ),
+    meta=require_meta("W", "book",
+                      synonyms=["create arc template", "new arc template", "save arc skeleton"],
+                      tool_name="composition_arc_template_create"),
+)
+async def composition_arc_template_create(ctx: MCPContext, args: ArcTemplateCreateArgs) -> dict:
+    tc = _ctx(ctx)
+    # Publish path (public/unlisted) runs a quota pre-check the agent surface should not carry —
+    # keep template SHARING a deliberate studio action, not an agent side-effect.
+    if args.visibility != "private":
+        return {"error": "create makes a PRIVATE template; publish or share it from the studio UI"}
+    try:
+        arc = await ArcTemplateRepo(get_pool()).create(tc.user_id, args)
+    except asyncpg.UniqueViolationError:
+        return {"error": "an arc template with this code + language already exists"}
+    return arc.model_dump(mode="json")
+
+
+class _ArcTemplateUpdateArgs(ArcTemplatePatchArgs):
+    arc_id: str
+    expected_version: int | None = None  # optimistic concurrency; None = last-writer-wins
+
+
+@mcp_server.tool(
+    name="composition_arc_template_update",
+    description=(
+        "Edit the caller's OWN arc template (a system/foreign row never matches → 404, the "
+        "clone-to-edit affordance). Optional expected_version for optimistic concurrency (→ a "
+        "409-style conflict with the current row). Only fields you pass change. Flipping "
+        "visibility to a shareable state is refused here — share from the studio (quota gate)."
+    ),
+    meta=require_meta("W", "book",
+                      synonyms=["update arc template", "edit arc template", "patch arc template"],
+                      tool_name="composition_arc_template_update"),
+)
+async def composition_arc_template_update(ctx: MCPContext, args: _ArcTemplateUpdateArgs) -> dict:
+    tc = _ctx(ctx)
+    if args.visibility is not None and args.visibility != "private":
+        return {"error": "share/publish from the studio UI (it runs the quota gate), not here"}
+    patch = ArcTemplatePatchArgs(**args.model_dump(exclude={"arc_id", "expected_version"}))
+    try:
+        arc = await ArcTemplateRepo(get_pool()).patch(
+            tc.user_id, UUID(args.arc_id), patch, expected_version=args.expected_version,
+        )
+    except VersionMismatchError as exc:
+        return {"error": "version conflict", "current": exc.current.model_dump(mode="json")}
+    except asyncpg.UniqueViolationError:
+        return {"error": "an arc template with this code + language already exists"}
+    if arc is None:
+        raise uniform_not_accessible()
+    return arc.model_dump(mode="json")
+
+
+@mcp_server.tool(
+    name="composition_arc_template_archive",
+    description=(
+        "Soft-archive the caller's OWN arc template (status='archived'). A foreign/missing/system "
+        "row is a uniform no-op (returns archived:true — no existence oracle)."
+    ),
+    meta=require_meta("W", "book",
+                      synonyms=["archive arc template", "delete arc template", "remove arc template"],
+                      tool_name="composition_arc_template_archive"),
+)
+async def composition_arc_template_archive(
+    ctx: MCPContext,
+    arc_id: Annotated[str, "The arc_template id (UUID)."],
+) -> dict:
+    tc = _ctx(ctx)
+    await ArcTemplateRepo(get_pool()).archive(tc.user_id, UUID(arc_id))
+    return {"id": arc_id, "archived": True}
 
 
 # ── B3 — the missing outline reorder (F6): a human has full drag-reorder
