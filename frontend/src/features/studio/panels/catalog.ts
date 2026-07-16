@@ -296,6 +296,25 @@ export const STUDIO_PANELS: StudioPanelDef[] = [
   { id: 'quality-coverage', component: QualityCoveragePanel, titleKey: 'panels.quality-coverage.title', descKey: 'panels.quality-coverage.desc', category: 'quality', guideBodyKey: 'panels.quality-coverage.guideBody' },
   { id: 'quality-canon', component: QualityCanonPanel, titleKey: 'panels.quality-canon.title', descKey: 'panels.quality-canon.desc', category: 'quality', guideBodyKey: 'panels.quality-canon.guideBody' },
   { id: 'welcome', component: WelcomePanel, titleKey: 'welcome.tab', descKey: 'welcome.tab', hiddenFromPalette: true, guideBodyKey: 'panels.welcome.guideBody' },
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // WRITING-STUDIO COMPLETENESS — the 8-session build (2026-07-16 orchestration).
+  // Each session adds its panels IN ITS OWN BLOCK below, so two sessions editing
+  // this file concurrently touch different line-ranges. Registration is not done
+  // until the row is here AND in chat-service's `ui_open_studio_panel` enum AND in
+  // contracts/frontend-tools.contract.json (regen: WRITE_FRONTEND_CONTRACT=1 pytest)
+  // AND has an `en` i18n guideBodyKey. Keep enum == openable == contract in sync.
+  // Panel-id ledger + per-session ownership: docs/plans/2026-07-16-studio-completeness-8-session-orchestration.md §4/§8.0
+  // ───────────────────────────────────────────────────────────────────────────
+  // ── S1 · Manuscript & Compose ──  (scene-compose, chapter-assemble)
+  // ── S2 · Plan & Structure ──      (arc-inspector, arc-templates)
+  // ── S3 · PlanForge ──             (plan-passes)
+  // ── S4 · Motif & craft ──         (motif-library, quality-conformance)
+  // ── S5 · What-If & Divergence ──  (divergence, + canonview home)
+  // ── S6 · Canon/Quality/Progress ──(quality-canon-rules, quality-corrections, quality-heal, progress, + flywheel home)
+  // ── S7 · Knowledge/World/Cast ──  (world, world-map, place-graph, cast, character-arc)
+  // ── S8 · Translation ──           (translation-repair)
+  // ═══════════════════════════════════════════════════════════════════════════
 ];
 
 /** dockview component map (id → component) for StudioDock. */
