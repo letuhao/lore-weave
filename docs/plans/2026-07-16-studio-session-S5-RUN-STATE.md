@@ -103,6 +103,16 @@ Draft callout #4/EC-6: build a FRESH `divergence` panel reusing leaves (Divergen
 useWhatIfPromotion), NEVER mount CompositionPanel shell.
 
 ### DEBT
+- D-S5-BRANCHDIFF-CORRESPONDENCE — B4 /review-impl (focused self-review, panel-close): useBranchDiff pairs
+  derivative↔canon scenes by (chapter,story_order), but promote seeds derivative scenes with dense 0..n
+  story_order that doesn't align with canon → possible mis-pair shown as "changed". Mitigated: no-match ⇒
+  "added" (the common case). Real fix needs a persisted anchor back-ref on promote. Not blocking.
+- D-S5-BRANCHDIFF-NOPROSE — B4: a diverged scene NODE with no completed draft (prose persist failed/pending)
+  is silently absent from the diff (deriv scene-drafts only returns drafted scenes). The mockup drew a
+  "no prose yet" state; not built. LOW.
+- D-S5-CANONVIEW-REG — canonview panel written (CanonViewPanel.tsx + test, untracked) but registration
+  (catalog/enum/contract/i18n) blocked by the single-line panel_id enum being contended by 3+ sessions'
+  uncommitted panels (chapter-assemble/arc-inspector/quality-corrections). Register at B6 when it settles.
 - D-S5-SWITCH-TO-EC3C — divergence "Switch to" + EC-3c (candidates[0]→!source_work_id at ~12 sites, 7 studio+4 legacy+1 BE)
   + EC-3d (useActiveWork + host bus work:switch). Cross-session (edits S1/S3/S6/S7 files) → needs coordination, not S5-solo.
   Panel ships LIST/READ/CREATE/ARCHIVE without it (no bug armed). Gate: hygiene grep `candidates[0]` absent outside tests.
@@ -119,6 +129,13 @@ useWhatIfPromotion), NEVER mount CompositionPanel shell.
 Standards: [Tenancy] pref per-user+per-book ✓ · [Frontend-Tool Contract] enum==openable==contract machine-checked ✓.
 
 ### DRIFT  (near-misses, bars nearly lowered, tests nearly skipped)
+- 🔴 INCIDENT #2 (getChapterSceneDrafts): I apply-cached my api.ts hunk to the shared index, then ran a
+  SEPARATE inspect command — and between them S3's `git commit` (70b49f2b6) swept my staged hunk into THEIR
+  commit. So `getChapterSceneDrafts` is in HEAD (useBranchDiff works, no data lost) but attributed to S3's
+  commit. LESSON (LOCKED): `git commit -- <pathspec>` protects against sweeping OTHERS in, but does NOT stop
+  others' plain `git commit` from sweeping MY staged hunk out. With N sessions on one index, NEVER leave a hunk
+  staged across commands — apply-cached and commit in the SAME atomic command, or avoid the index (inline the
+  call instead of an api-layer method on a contended file). B4-FE is functionally complete regardless.
 - 🔴 INCIDENT (ec0f012e8): my `git add <mine> && git diff --cached && git commit` (chained with &&, no
   inspection gate) committed S2's PRE-STAGED files too — PlanDrawer.tsx, PlanDrawer.test.tsx,
   ArcInspectorEmbed.tsx, S2-RUN-STATE.md — because `git commit` takes the WHOLE INDEX and S2 had `git add`-ed
