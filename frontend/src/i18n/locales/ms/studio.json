@@ -112,19 +112,23 @@
     },
     "quality-promises": {
       "title": "Janji",
-      "desc": "Lejar hutang janji terbuka (set-up yang belum diselesaikan)"
+      "desc": "Lejar hutang janji terbuka (set-up yang belum diselesaikan)",
+      "guideBody": "Janji adalah lejar hutang naratif anda — setiap petunjuk yang telah dibuat oleh cerita tetapi belum dijelaskan. Sebuah janji bermula di mana anda menanamnya (pengkhianatan yang dibayangkan, pistol yang berisi peluru, parut yang tidak dijelaskan) dan berakhir apabila manuskrip menunaikannya. Selesaikan senarai ini sebelum anda menamatkan buku; apa sahaja yang masih terbuka di penghujung cerita adalah plot yang akan disedari pembaca sebagai sesuatu yang terbiar."
     },
     "quality-critic": {
       "title": "Pengkritik",
-      "desc": "Skor koheren, suara, rentak & kanon bagi setiap bab"
+      "desc": "Skor koheren, suara, rentak & kanon bagi setiap bab",
+      "guideBody": "Kritik memberikan skor pada bab berdasarkan koheren, gaya bahasa, rentak, dan kesetiaan kanon, berserta alasan di sebalik setiap keputusan. Ia bersifat penasihat — ia tidak akan menyunting prosa anda. Gunakan ia untuk mengesan bab yang mula lari daripada plot sebelum pembaca menyedarinya, bukan sebagai gred untuk dioptimumkan."
     },
     "quality-coverage": {
       "title": "Liputan cerita",
-      "desc": "Audit keseluruhan buku tentang janji rangka kerja yang telah diselesaikan"
+      "desc": "Audit keseluruhan buku tentang janji rangka kerja yang telah diselesaikan",
+      "guideBody": "Liputan cerita adalah pandangan keseluruhan buku terhadap buku akaun janji: rangka kerja mana yang benar-benar disampaikan dalam manuskrip, mana yang masih belum selesai, dan di mana tumpuan ganjaran plot. Baca ia apabila draf telah lengkap untuk mencari bab yang menjanjikan lebih daripada apa yang diberikan."
     },
     "quality-canon": {
       "title": "Isu kanon",
-      "desc": "Percanggahan yang disahkan daripada penjanaan & pengekstrakan pengetahuan"
+      "desc": "Percanggahan yang disahkan daripada penjanaan & pengekstrakan pengetahuan",
+      "guideBody": "Isu kanon mengumpulkan percanggahan yang disahkan antara prosa anda dengan lore yang telah ditetapkan — watak berada di dua tempat pada masa yang sama, warna mata yang berubah, atau peraturan sihir yang baru sahaja dilanggar oleh cerita. Setiap isu dipautkan kembali ke bab dan peraturan kanon yang dilanggarnya, supaya anda boleh membaiki teks atau meminda peraturan tersebut."
     },
     "kg-overview": {
       "title": "Tinjauan",
@@ -302,7 +306,8 @@
         "cast": "Pelakon & Tetapan",
         "craft": "Kemahiran",
         "links": "Pautan",
-        "grounding": "Asas"
+        "grounding": "Asas",
+        "motifs": "Motif"
       },
       "links": {
         "empty": "Tiada pautan kausal lagi.",
@@ -481,12 +486,92 @@
     },
     "agent-mode": {
       "title": "Mod Ejen",
-      "desc": "Penulisan pelbagai bab secara autonomi — kawalan misi"
+      "desc": "Penulisan pelbagai bab secara autonomi — kawalan misi",
+      "guideBody": "Mod Ejen adalah pusat kawalan misi untuk larian pelbagai babak autonomi: ejen akan merangka terus melalui pelan yang diluluskan sementara anda memerhati. Mulakan, jeda, dan sambung semula larian dari sini, serta semak setiap babak sebaik sahaja ia siap — perbezaan (diff) dan keputusan pengkritik — kemudian terima, tolak, atau kembalikan. Tiada apa yang ditulis oleh ejen adalah muktamad sehingga anda menerimanya."
     },
     "chapter-revision-compare": {
       "title": "Banding Semakan Bab",
       "desc": "Perbezaan editor penuh untuk sepasang semakan bab",
       "empty": "Buka perbezaan semakan bab daripada panel semakan Mod Ejen."
+    },
+    "arc-templates": {
+      "title": "Templat Plot (Arc)",
+      "desc": "Lihat, cipta, ambil, dan gunakan struktur plot pelbagai bab yang boleh digunakan semula — plot selari dan peranan watak merentasi jangka masa bab",
+      "guideBody": "Perpustakaan Templat Plot menyimpan struktur pelbagai bab yang boleh digunakan semula — plot selari (garis balas dendam, romantik, penipuan mentor) yang disusun sebagai motif merentasi jangka masa bab, bersama peranan watak yang dikaitkan apabila anda menggunakannya. Cari mengikut tahap: templat anda sendiri, templat sistem, dan (dalam Katalog) templat awam orang lain. Cipta templat baharu, ambil templat sistem/awam untuk menyesuaikan salinan anda sendiri, atau buka satu untuk melihat garis masa plot × bab dan pratonton penggunaannya pada buku ini. Anda juga boleh menyimpan plot yang telah anda tulis sebagai templat, atau mengimport cerita rujukan dan mencerahkannya (拆文) menjadi templat baharu. Penggunaan templat adalah dalam mod pratonton terlebih dahulu — ia tidak akan memadam bab anda tanpa anda mengesahkannya secara nyata."
+    },
+    "arc-inspector": {
+      "title": "Pemeriksa Plot (Arc Inspector)",
+      "desc": "Baca dan sunting SATU plot atau saga — matlamatnya, status, penjejakan plot yang telah diselesaikan, senarai watak, jangka masa bab, janji yang belum selesai, dan asal-usul templat",
+      "guideBody": "Pemeriksa Plot membuka satu nod daripada pokok spesifikasi buku anda — sebuah saga, plot, atau sub-plot. Pokok ini bukan sekadar hiasan: penjejakan plot dan ikatan wataknya dibaca ke dalam setiap prom penjanaan, jadi menyunting plot di sini akan mengubah cara AI merangka babnya. Penjejakan dan slot senarai watak diselesaikan secara berperingkat — entri yang diwarisi daripada saga induk akan dipaparkan dengan warna kelabu dengan tindakan 'Override' (menyuntingnya di situ akan menghasilkan salinan baharu secara senyap). Jangka masa bab, ringkasan janji terbuka, dan asal-usul templat adalah mod baca sahaja. Mengarkibkan plot akan mengembalikan babnya ke talam 'unplanned'; memulihkannya akan menyambung semula bab tersebut. Buka melalui Hab Pelan (pilih plot), palet arahan, atau ejen."
+    },
+    "quality-canon-rules": {
+      "title": "Peraturan kanon",
+      "desc": "Tetapkan pemalar yang dikuatkuasakan oleh pengkritik — cipta, sunting, arkib, pulihkan",
+      "guideBody": "Peraturan kanon adalah tempat anda mengisytiharkan pemalar yang tidak boleh dilanggar oleh cerita anda — watak mempunyai satu lengan selepas bab 41, batu roh digunakan dan tidak pernah dikembalikan, atau identiti Ketua Sekte kekal tersembunyi sehingga arka Mahkamah Garam. Ini adalah peraturan yang dikuatkuasakan oleh pengkritik dan 'self-heal' pada setiap penjanaan, jadi menulisnya di sini adalah cara anda mengajar rakan penulis tentang kanon anda. Ia adalah bahagian penulisan bagi Isu kanon: panel itu menunjukkan apa yang rosak, panel ini adalah tempat anda membaiki peraturan tersebut."
+    },
+    "quality-corrections": {
+      "title": "Pembetulan",
+      "desc": "Kadar terima / sunting / jana semula / tolak anda pada draf AI — isyarat kualiti",
+      "guideBody": "Pembetulan adalah cermin kepada penyuntingan anda sendiri: setiap kali anda menerima, menyunting, memilih calon lain, menjana semula, atau menolak draf AI, pilihan itu direkodkan — dan panel ini menunjukkan kadar tersebut, dipecahkan mengikut Diverge (pilihan-K) lwn Stream. Kadar sunting/jana semula/tolak yang lebih rendah (dan kadar terima-seperti-asal yang lebih tinggi) dalam Diverge bermakna penyusun semula (reranker) memberikan nilai tambahan kepada latensi ekstra. Ia bersifat penasihat dan hanya boleh dibaca; ia tidak pernah mengubah prosa anda — ia memberitahu anda sama ada rakan penulis semakin mahir dalam buku anda."
+    },
+    "quality-heal": {
+      "title": "Self-heal",
+      "desc": "Jalankan 'Polish' pada bab dan terima setiap pembetulan sebelum ia menyentuh prosa anda",
+      "guideBody": "Self-heal menjalankan proses pruf bacaan pantas yang menjimatkan kos ke atas bab dan mencadangkan pembetulan — seperti ralat kata ganti nama, kesalahan ejaan, ketidakkonsistenan kanon, atau huraian yang terlalu panjang — setiap satu dipaparkan sebagai baris terima/tolak. Pembetulan deterministik (ejaan, kata ganti nama) ditanda siap; penulisan semula semantik tidak ditanda untuk anda nilai sendiri. Tiada apa yang akan mengubah prosa anda sehingga anda menekan Apply, dan walaupun selepas itu, ia menulis dengan semakan versi: jika bab telah berubah sejak Polish dijalankan, proses apply akan ditolak daripada membatalkan suntingan terbaru anda."
+    },
+    "progress": {
+      "title": "Kemajuan",
+      "desc": "Jumlah perkataan hari ini, rentetan harian anda, jumlah keseluruhan buku, matlamat harian dan sparkline",
+      "guideBody": "Kemajuan menukarkan penulisan anda menjadi tabiat yang boleh dilihat: perkataan yang ditulis hari ini, rentetan hari semasa anda, jumlah keseluruhan buku, dan sparkline 7 atau 30 hari. Tetapkan matlamat harian peribadi dan garis rujukan akan menandakannya pada carta — matlamat ini adalah milik anda sendiri, tidak dikongsi dengan kolaborator. Ia membaca jumlah perkataan yang direkodkan oleh editor semasa anda menyimpan; ia tidak akan sesekali mengubah prosa anda."
+    },
+    "plan-passes": {
+      "title": "Rel Pelan",
+      "desc": "Susun pelan langkah demi langkah dan luluskan setiap titik semakan",
+      "guideBody": "Rel Pelan memacu kompilator 7-langkah PlanForge — motif, watak, dunia, rentak, lengkuk watak, babak, dan self-heal — satu demi satu. Setiap langkah menunjukkan sama ada ia masih segar (inputnya tidak berubah sejak ia dijalankan kali terakhir) atau usang, dan rel tersebut memberitahu anda sejauh mana kompilator boleh meneruskan secara automatik dan langkah mana yang sedang menunggu tindakan anda. Dua langkah adalah titik semakan penghalang yang mesti anda luluskan sebelum kompilator boleh melaluinya: watak (siapa watak anda) dan rentak (bagaimana bentuk cerita tersebut). Buka sesuatu langkah untuk membaca apa yang dihasilkannya, sunting, kemudian luluskan atau tangguhkan. Menyunting sesuatu langkah akan mengosongkan status kesegaran (restales) semua langkah seterusnya secara automatik, supaya pelan tidak akan pernah terkeluar daripada penyelarasan."
+    },
+    "whatif-canvas": {
+      "title": "Cabang What-If",
+      "desc": "Teroka versi alternatif bagi sesuatu babak tanpa komitmen — buat cabang, jana versi alternatif, bandingkan, kemudian promosikan pemenang",
+      "guideBody": "Kanvas 'what-if' membolehkan anda memecahkan babak kepada cabang sementara, menghasilkan versi alternatif, dan melihat lencana penilaian pengkritik secara bersebelahan — semuanya tanpa menyentuh draf asal. Apabila anda telah memilih cabang yang diingini, promosikan ia: ia akan menjadi karya derivatif sebenar yang boleh anda teruskan penulisannya. Tiada apa yang disimpan sehingga anda mempromosikannya, jadi anda boleh meneroka dengan bebas. Ini adalah permukaan penyuntingan di sebalik butang Promote; Plan Hub menunjukkan graf pelan, manakala di sini adalah tempat anda mencuba alternatif pada pelan tersebut."
+    },
+    "divergence": {
+      "title": "Divergence (dị bản)",
+      "desc": "Urus derivatif 'what-if' buku anda — senaraikan kanon dan setiap cabang, tukar keseluruhan studio kepada satu cabang, arkibkan satu cabang, atau mulakan cabang baharu daripada sesuatu bab",
+      "guideBody": "Dị bản (divergence) memecahkan buku anda pada sesuatu bab dan menyimpang — sama ada alam semesta alternatif, peralihan POV, atau perubahan watak — menjadi karya derivatif dengan pembahagian pengetahuan tersendiri, manakala sumber asal kekal sebagai kanon mod baca sahaja. Panel ini menyenaraikan karya kanon anda dan setiap cabang yang telah anda hasilkan. 'Switch to' memindahkan keseluruhan studio anda — editor, navigasi, kualiti, segalanya — ke cabang tersebut; pilihan ini diingati bagi setiap buku dan kekal walaupun selepas dimuat semula. 'Archive' menyembunyikan cabang tanpa memusnahkannya (bab dan pengetahuannya tetap disimpan). 'New divergence' membuka wizard 4-langkah untuk memulakan satu cabang baharu. Pilih cabang untuk membaca spesifikasinya (taksonomi, titik cabang, peraturan kanon, aturan luar), yang ditetapkan semasa penciptaan."
+    },
+    "world-map": {
+      "title": "Peta Dunia",
+      "desc": "Cipta dan sunting peta rujukan dunia — muat naik imej asas, seret dan lepas pin lokasi, lukis dan bentuk semula wilayah.",
+      "guideBody": "Hasilkan peta raster dunia. Muat naik imej asas, kemudian letakkan pin dan lukis wilayah di atasnya. Seret pin untuk menggerakkannya (seretan adalah satu PATCH koordinat-mutlak pada id penanda yang stabil — bukan padam-dan-cipta semula) dan seret bucu poligon untuk mengubah bentuk wilayah. Ikat pin atau wilayah kepada entiti lokasi glosari ATAU KG (pemilih akan melabelkan sumbernya). Setiap perubahan disimpan ke book-service; alat world_map_* pembantu menyunting peta yang sama secara langsung. Namakan semula peta dengan keconcurrence-optimistik (If-Match), supaya suntingan yang bercanggah akan dimuat semula dan bukannya menindih data sedia ada."
+    },
+    "place-graph": {
+      "title": "Graf Tempat",
+      "desc": "Tempat-tempat (lokasi) dalam buku sebagai graf nod yang boleh diseret",
+      "guideBody": "Tambah dan hubungkan tempat-tempat (lokasi) dalam buku sebagai graf nod. Taip nama dan tekan + Place untuk menghasilkan lokasi; aktifkan Link places, pilih dua nod dan predikat (contains / borders / route_to) untuk menghubungkannya; seret untuk menyusun (disimpan di sebelah pelayan, dikongsi merentasi peranti anda); tetapkan imej latar belakang (memerlukan bab terbuka). Klik nod untuk membukanya dalam kodeks Cast. Hanya untuk Lokasi — gunakan Author other kinds untuk menambah watak, item, dan lain-lain.",
+      "noWork": "Tetapkan penulis bersama dalam Compose untuk menyusun tempat.",
+      "openCompose": "Buka Compose",
+      "loading": "Memuatkan peta dunia...",
+      "authorOther": "Hasilkan jenis lain →"
+    },
+    "cast": {
+      "title": "Cast",
+      "desc": "Barisan pelakon buku — dikelompokkan, boleh dicari, selamat daripada spoiler; hasilkan & persara entiti",
+      "guideBody": "Setiap watak, tempat, organisasi dan konsep dalam graf pengetahuan buku ini, dikelompokkan mengikut jenis dan boleh dicari, setiap satu dengan keadaan cerita yang selamat daripada spoiler (aktif/tiada pada kedudukan bacaan anda). Cipta entiti baharu dengan + New, namakan semula secara dalam talian, sunting alias/jenis, atau persarakan (arkib-lembut) satu entiti. Klik glif lengkungan pada baris untuk membuka Lengkungan Wataknya."
+    },
+    "character-arc": {
+      "title": "Lengkungan Watak",
+      "desc": "Peristiwa satu watak pada garis masa, jalur aktif→hilang, dan hubungan 1-lompatan",
+      "guideBody": "Peristiwa satu watak mengikut urutan pada lengkok padat, dipotong spoiler pada kedudukan bacaan anda, dengan jalur keadaan aktif→hilang dan hubungan 1-lompatan semasa. Pilih watak, sunti, atau tambah hubungan dengan + pautan entiti."
+    },
+    "motif-library": {
+      "title": "Perpustakaan Motif",
+      "desc": "Kaji trope (套路/爽点/打脸), guna atau gali motif tersebut, dan periksa graf hubungan motif",
+      "guideBody": "Perpustakaan Motif adalah bengkel pertukangan naratif anda. Telusuri motif mengikut tahap — milik anda, label buku ini, tahap buku kongsi, benih sistem, katalog awam, dan draf yang anda gali. Cipta motif secara dalam talian, guna satu daripada katalog, atau gali korpus anda sendiri untuk menemui corak berulang. Buka mana-mana motif untuk membaca rentak dan perananannya, dan kembangkan grafnya untuk melihat komponennya, apa yang mendahuluinya, dan variasinya. Ikat motif pada babak daripada Pemeriksa Babak supaya draf yang ditulis benar-benar menjurus kepadanya."
+    },
+    "quality-conformance": {
+      "title": "Kepatuhan",
+      "desc": "Rentak-demi-rentak: adakah prosa merealisasikan rancangan? Realisasi/tidak bagi setiap babak + jalur ketegangan",
+      "guideBody": "Kepatuhan menjejaki, babak demi babak, sama ada prosa yang ditulis benar-benar menyampaikan rentak motif yang anda rancangkan untuk sesuatu bab. Setiap babak menunjukkan status terealisasi / tidak terealisasi dan bagaimana ketegangannya berbanding sasaran. Ia menjawab perbandingan spesifikasi-vs-prosa (bukan spesifikasi-vs-templat — itu adalah pandangan hanyutan templat-lengkok). Isyarat ini adalah bersifat nasihat (kasar, bukan disahkan secara kausal). Jana semula babak yang terlepas rentaknya, atau jalankan semula keseluruhan semakan terhadap model yang anda pilih."
     }
   },
   "sceneRail": {
@@ -546,7 +631,8 @@
       "colMode": "Mod",
       "colStatus": "Status",
       "colCreated": "Dicipta"
-    }
+    },
+    "proposeBlind": "Dicadangkan daripada coretan idea ini sahaja. Bab sedia ada tidak dibaca."
   },
   "editor": {
     "empty": "Pilih bab dalam navigasi manuskrip untuk menyunting di sini.",
@@ -624,14 +710,14 @@
       "editor": "Editor & Bab",
       "storyBible": "Alkitab Cerita",
       "knowledge": "Graf Pengetahuan",
+      "quality": "Kualiti",
       "translation": "Terjemahan",
       "enrichment": "Pengayaan",
       "sharing": "Perkongsian & Tetapan",
       "platform": "Platform",
       "discovery": "Penemuan",
       "jobs": "Tugasan",
-      "help": "Bantuan",
-      "quality": "Kualiti"
+      "help": "Bantuan"
     },
     "cmd": {
       "showManuscript": "Lihat: Tunjukkan Manuskrip",
@@ -716,7 +802,22 @@
     "canonRuleFocusUnknown": "Peraturan asal anda tidak dapat diperiksa kerana perkhidmatan penulis bersama tidak tersedia. Ia mungkin masih mempunyai pelanggaran di suatu tempat — ini bukan keputusan muktamad.",
     "canonRulesCapped": "Memaparkan {{shown}} daripada {{total}} peraturan yang dilanggar yang terkini.",
     "workUnavailable": "Tidak dapat menghubungi perkhidmatan penulis bersama, jadi data kualiti buku ini tidak dapat dimuatkan. Masalah mungkin wujud tetapi tidak dipaparkan di sini. Sila cuba lagi sebentar lagi.",
-    "hubUnavailable": "Tidak dapat menghubungi perkhidmatan penulis bersama, jadi janji, skor pengkritik dan liputan cerita tidak dapat dimuatkan buat masa ini. Masalah mungkin wujud tetapi tidak dipaparkan di sini."
+    "hubUnavailable": "Tidak dapat menghubungi perkhidmatan penulis bersama, jadi janji, skor pengkritik dan liputan cerita tidak dapat dimuatkan buat masa ini. Masalah mungkin wujud tetapi tidak dipaparkan di sini.",
+    "setupWork": "Sediakan penulis bersama",
+    "settingUpWork": "Sedang menyediakan...",
+    "setupWorkError": "Tidak dapat menyediakan penulis bersama. Cuba lagi.",
+    "setupWorkPending": "Sesi penulis bersama anda telah dicipta tetapi projek pengetahuannya masih dalam proses penyediaan. Cuba lagi sebentar lagi.",
+    "setupWorkRetry": "Cuba semula",
+    "canonRulesTitle": "Peraturan kanon",
+    "canonRulesDesc": "Tetapkan peraturan tetap yang akan dikuatkuasakan oleh pengkritik",
+    "correctionsTitle": "Pembetulan",
+    "correctionsDesc": "Kadar terima / edit / jana semula / tolak anda",
+    "healTitle": "Pemulihan Kendiri",
+    "healDesc": "Jalankan Polish dan terima setiap pembetulan sebelum ia mengubah prosa anda",
+    "conformanceTitle": "Pematuhan",
+    "conformanceDesc": "Adakah prosa merealisasikan rancangan tersebut? Jejak beat bagi setiap babak",
+    "pickModelRerun": "Pilih model untuk jalankan semula dengan…",
+    "pickChapterConformanceHint": "Pilih bab yang di atas untuk menjejak bagaimana prosanya merealisasikan rancangan tersebut."
   },
   "sidebar": {
     "collapse": "Kecilkan"
@@ -1167,5 +1268,53 @@
       "viewWorldmap": "Peta Dunia",
       "viewSoon": "Akan datang dalam fasa seterusnya"
     }
+  },
+  "planPasses": {
+    "comingSoon": "Laluan 7-langkah akan dimuatkan di sini.",
+    "noBook": "Buka buku untuk menyusun rancangannya.",
+    "noRun": "Belum ada rancangan yang dijalankan — buka Perancang untuk mencadangkan dan menyusun satu.",
+    "loading": "Memuatkan langkah...",
+    "notCompiled": "Larian ini belum mempunyai pakej yang dikompilasi. Kompilasi dalam Planner sebelum menjalankan fasa.",
+    "openPlanner": "← Planner (cadang / kompil)",
+    "blocking": "menghalang",
+    "advisory": "nasihat",
+    "running": "sedang berjalan…",
+    "done": "selesai",
+    "failed": "gagal",
+    "notRun": "— tidak dijalankan",
+    "fresh": "segar",
+    "stale": "usang",
+    "run": "jalankan…",
+    "rerun": "jalankan semula…",
+    "review": "semak →",
+    "blocked": "disekat",
+    "blockedBy": "disekat oleh: {{blockers}}",
+    "runSpends": "Jalankan {{pass}} — ini menggunakan 1 panggilan LLM",
+    "runNow": "Jalankan {{pass}}",
+    "cancel": "Batal",
+    "approve": "Lulus",
+    "reject": "Tolak",
+    "edit": "Edit",
+    "saveEdits": "Simpan suntingan",
+    "cursor": "{{done}} daripada {{total}}",
+    "blockedAt": "disekat pada",
+    "reviewTitle": "Semak {{pass}}",
+    "reviewLoading": "Memuatkan…",
+    "reviewNoContent": "Tiada kandungan artifak untuk dipaparkan.",
+    "reviewPrompt": "Luluskan {{pass}}? Ini membolehkan kompilator meneruskan proses melampauinya.",
+    "seedUnavailable": "Cadangan benih glosari tidak tersedia.",
+    "seedApplied": "Benih glosari telah diterapkan — watak boleh diluluskan.",
+    "seedGate": "Benih glosari adalah «{{status}}». Terapkannya sebelum meluluskan watak (PF-7).",
+    "applySeed": "Terap benih",
+    "approveGated": "Terapkan benih glosari terlebih dahulu (PF-7)"
+  },
+  "sceneCompose": {
+    "empty": "Pilih bab dalam navigasi manuskrip untuk merangka babak di sini.",
+    "inserted": "Diterima ke dalam manuskrip.",
+    "insertFailed": "Tidak dapat dimasukkan — klik pada teks bab dalam Editor, kemudian klik Terima semula.",
+    "openedEditor": "Editor telah dibuka untuk bab ini — Jana semula untuk memasukkan draf di sini."
+  },
+  "chapterAssemble": {
+    "empty": "Pilih bab dalam navigasi manuskrip untuk menyusunnya di sini."
   }
 }
