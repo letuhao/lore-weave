@@ -211,6 +211,24 @@ async def test_works_update_noop_preserves_version(pool):
     assert same is not None and same.version == 1
 
 
+async def test_be18_settings_patch_shallow_merges_and_preserves_keys(pool):
+    """BE-18: a partial settings PATCH must MERGE, not full-blob replace — a caller
+    that sends only {scene_graph} must NOT wipe derivative_name (BE-13a) or any other
+    key. Last-write-wins per top-level key."""
+    repo = WorksRepo(pool)
+    user, project, book = _ids()
+    await repo.create(user, project, book, settings={"derivative_name": "Nếu Lam Vũ chết", "voice": "wry"})
+    # a scene-graph drag sends ONLY {scene_graph}
+    r1 = await repo.update(project, {"settings": {"scene_graph": {"positions": {"n1": {"x": 1, "y": 2}}}}}, created_by=user)
+    assert r1 is not None
+    assert r1.settings["derivative_name"] == "Nếu Lam Vũ chết"  # preserved, not wiped
+    assert r1.settings["voice"] == "wry"                          # preserved
+    assert r1.settings["scene_graph"] == {"positions": {"n1": {"x": 1, "y": 2}}}  # added
+    # same top-level key on a later write REPLACES that key (last-write-wins), leaving siblings intact
+    r2 = await repo.update(project, {"settings": {"voice": "dry"}}, created_by=user)
+    assert r2 is not None and r2.settings["voice"] == "dry" and r2.settings["derivative_name"] == "Nếu Lam Vũ chết"
+
+
 # ─────────────────────── C23 dị bản (derivative) ───────────────────────
 
 async def test_c23_derivative_guard_rejects_null_project(pool):

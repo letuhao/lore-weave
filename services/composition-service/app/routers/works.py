@@ -302,9 +302,27 @@ class EntityOverrideBody(BaseModel):
 
 
 class DeriveBody(BaseModel):
+    # BE-13a: the dị bản's human name. The wizard has ALWAYS collected this
+    # (useDivergenceWizard refuses to submit without it) and then DISCARDED it —
+    # buildBody() never sent it and composition_work has no name column. It lives
+    # in `settings.derivative_name` so candidates[]/GET /works echo it for free
+    # (both dump the Work incl. settings) and the divergence manage panel can LIST
+    # named derivatives instead of unnamed UUIDs. Optional at the route (non-panel
+    # callers / back-compat); the panel enforces presence.
+    name: str | None = None
     branch_point: int | None = None
     divergence: DivergenceSpecBody = DivergenceSpecBody()
     entity_overrides: list[EntityOverrideBody] = []
+
+    @field_validator("name")
+    @classmethod
+    def _validate_name(cls, v: str | None) -> str | None:
+        if v is None:
+            return v
+        v = v.strip()
+        if not 1 <= len(v) <= 200:
+            raise ValueError("name must be 1..200 characters")
+        return v
 
 
 @router.post("/works/{project_id}/derive", status_code=201)
@@ -382,9 +400,14 @@ async def derive_work(
     async with pool.acquire() as conn:
         async with conn.transaction():
             # `user_id` = created_by, the acting caller (plain actor stamp — PM-9).
+            # BE-13a: seed settings.derivative_name at create so it is durable from
+            # the first read (candidates[]/GET /works dump settings). BE-18's merge
+            # PATCH then preserves it against later partial settings writes (e.g. a
+            # scene-graph drag on the derivative sends only {scene_graph}).
+            _derive_settings = {"derivative_name": body.name} if body.name else None
             work = await works.create_derivative(
                 user_id, derivative_project_id, book_id, source.id,
-                branch_point=body.branch_point, conn=conn,
+                branch_point=body.branch_point, settings=_derive_settings, conn=conn,
             )
             await derivatives.create_spec(
                 DivergenceSpec(
@@ -431,6 +454,7 @@ class DerivativeContextResponse(BaseModel):
     `is_derivative=False` (everything else empty) for a greenfield Work."""
 
     is_derivative: bool
+    name: str | None = None  # BE-13a: settings.derivative_name (the dị bản's human label)
     source_work_id: UUID | None = None
     source_project_id: UUID | None = None
     branch_point: int | None = None
@@ -466,6 +490,7 @@ async def get_derivative_context(
     spec = await derivatives.get_spec_for_work(work.id) if work.id else None
     return DerivativeContextResponse(
         is_derivative=True,
+        name=(work.settings or {}).get("derivative_name"),
         source_work_id=work.source_work_id,
         source_project_id=deriv.source_project_id,
         branch_point=deriv.branch_point,

@@ -309,8 +309,19 @@ class WorksRepo:
         params: list[Any] = [project_id]
         for field, value in updates.items():
             if field == "settings":
+                # BE-18: SHALLOW-MERGE rather than full-blob replace. Callers PATCH
+                # a partial settings map (e.g. a scene-graph drag sends only
+                # {scene_graph}); a `settings = $n` replace would WIPE every other
+                # key — notably BE-13a's derivative_name and any concurrent write's
+                # keys (the world-map lost-update window). `||` merges top-level keys,
+                # last-write-wins per key; a caller replacing a nested object still
+                # sends the whole sub-object (read-modify-write), so top-level merge
+                # is the right grain. COALESCE guards a NULL settings (never NULL in
+                # practice — NOT NULL default '{}' — but defensive).
                 params.append(json.dumps(value))
-                set_clauses.append(f"settings = ${len(params)}::jsonb")
+                set_clauses.append(
+                    f"settings = COALESCE(settings, '{{}}'::jsonb) || ${len(params)}::jsonb"
+                )
             else:
                 params.append(value)
                 set_clauses.append(f"{field} = ${len(params)}")
