@@ -187,6 +187,32 @@ FULL clean run (propose → compile → all 7 passes → both checkpoints → li
 (agent-parity refresh), the 409-in-flight archive, and a FULL clean run (propose→compile→7 passes→2
 checkpoints→link with a real package, to see the plan land in the manuscript = the H5 success half).
 
+### Run 4 — 2026-07-17, a REAL gemma-4-26B-A4B QAT run (propose → self-check → autofix → compile)
+- **Propose (gemma) VERIFIED:** a real xianxia premise → run `019f6c17` proposed with 3 real arcs
+  ("The Discarded Miss", "The Corrupt Path", "Reckoning"). ✅
+- **Self-check (gemma) VERIFIED:** returned **2 real gaps** (`open_questions_preserved count=0`,
+  `sg_value_shift_per_scene events_without_value_shift=['ev_2_4']`) — so the Repair strip's gate
+  (`selfCheck.gaps.length > 0`) fires on real data. ✅
+- **J3 autofix (BE-2, gemma) VERIFIED:** `POST /autofix` → 202, `rounds:[{round:1, targets:2,
+  result:'pending'}]` — it targeted both gaps and enqueued a refine round on the worker (the async
+  path). The Repair strip's "Fix the top gaps automatically" is real-proven end-to-end. ✅
+
+**FINDING F-5 (business-flow / generation-quality, MED):** compiling an arc from this
+(high-level, arc-only) gemma spec returns **400 "the package has no arc_id / no chapters — there is
+nothing to link. A compile that materialises nothing is a failure, not an empty success."** The
+propose generated ARCS but not the chapter-level structure the compiler needs to materialise a
+linkable package. So the loop-③ success half (compile → package with chapters → link → the plan
+appears in the manuscript) **cannot complete from a high-level premise alone** — it needs a spec rich
+enough to decompose into chapters (or the separate decompose/planning-pipeline path). This is the same
+CLASS as the propose-blind gap: a generation-quality limitation, not an S3 GUI defect (the GUI
+correctly surfaces the 400, no silent success). Ties to the propose-existing-state spec — a
+richer/grounded proposer would produce the chapter structure. **Triage:** track as a
+generation-quality item for the PlanForge-v2 track; the S3 rail/checkpoints/link GUI are all proven,
+they just need a chapter-bearing package to show the manuscript hand-off.
+
+**Only J8 remains** (agent-parity: a chat-driven `plan_run_pass` refreshes the open rail) — needs the
+studio chat agent; a clean fresh-context check. Everything else in the scenario is now exercised.
+
 ### ⚠ Coverage-ENVIRONMENT blocker — RESOLVED (S2 fixed the import; FE build green again)
 Attempting to rebuild the static FE (to verify F-1/H4 live and continue coverage) FAILS:
 `Could not resolve "../../api" from src/features/composition/arcTemplates/api.ts` — an UNTRACKED WIP
