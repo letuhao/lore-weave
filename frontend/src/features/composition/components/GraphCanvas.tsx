@@ -12,6 +12,22 @@ import { useIsMobile } from '@/hooks/useIsMobile';
 
 export type Pos = { x: number; y: number };
 
+/** D-S5-SCENEGRAPH-VIRTUALIZE — does a node's box intersect the visible viewport, grown
+ *  by ONE viewport in each direction (so a node just off-screen is pre-mounted before it
+ *  scrolls in)? Pure + exported so the cull is unit-testable without a real layout. */
+export function nodeIntersectsViewport(
+  p: Pos,
+  nodeSize: { w: number; h: number },
+  vp: { l: number; t: number; r: number; b: number },
+): boolean {
+  const vpW = vp.r - vp.l;
+  const vpH = vp.b - vp.t;
+  return (
+    p.x + nodeSize.w >= vp.l - vpW && p.x <= vp.r + vpW &&
+    p.y + nodeSize.h >= vp.t - vpH && p.y <= vp.b + vpH
+  );
+}
+
 export const GRAPH_PAD = 24;
 const DRAG_THRESHOLD = 5; // px of pointer travel before a press counts as a drag
 const ZOOM_MIN = 0.3;
@@ -27,6 +43,7 @@ export function GraphCanvas<E>({
   positions, nodeIds, edges, edgeEndpoints, edgeKey, renderNode, renderEdge, nodeSize,
   onNodeClick, onNodeDrag, onNodeDragEnd, onBackgroundClick, defs, background,
   minWidth = 360, minHeight = 220, testid = 'graph-canvas', zoomable = false, autoFit = false,
+  virtualize = false, alwaysRenderIds,
 }: {
   positions: Record<string, Pos>;
   nodeIds: string[];
@@ -58,6 +75,16 @@ export function GraphCanvas<E>({
    *  canvas uses it so the type-graph is centred + scaled to the viewport instead
    *  of rendering at raw layout coords in a corner. Requires `zoomable`. */
   autoFit?: boolean;
+  /** D-S5-SCENEGRAPH-VIRTUALIZE — OPT-IN viewport culling for the non-zoomable
+   *  overflow-auto path (SceneGraphCanvas at book scale): mount only nodes whose box
+   *  intersects the scrolled viewport (+ a 1-viewport margin), plus `alwaysRenderIds`.
+   *  OFF by default so every other GraphCanvas consumer is byte-unchanged. Edges render
+   *  only when both endpoints are rendered. The scroll EXTENT still comes from the full
+   *  layout (the scrollbar reflects the whole graph); cull affects only what mounts. */
+  virtualize?: boolean;
+  /** Ids to ALWAYS mount under `virtualize` regardless of viewport — the dragged node,
+   *  the selection, and a what-if branch overlay — so a pan/scroll never drops them. */
+  alwaysRenderIds?: readonly string[];
 }) {
   const svgRef = useRef<SVGSVGElement>(null);
   const drag = useRef<DragState | null>(null);
@@ -75,6 +102,27 @@ export function GraphCanvas<E>({
   const pointers = useRef<Map<number, { x: number; y: number }>>(new Map());
   const pinch = useRef<{ dist: number; cx: number; cy: number; k: number; vx: number; vy: number } | null>(null);
   const fitted = useRef(false);
+  // D-S5-SCENEGRAPH-VIRTUALIZE — the overflow-auto scroller's visible world-rect (null
+  // until measured). Only tracked/used when `virtualize` is on.
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const [viewport, setViewport] = useState<{ l: number; t: number; r: number; b: number } | null>(null);
+
+  useEffect(() => {
+    if (!virtualize) return;
+    const el = scrollRef.current;
+    if (!el) return;
+    let raf = 0;
+    const measure = () => {
+      raf = 0;
+      setViewport({ l: el.scrollLeft, t: el.scrollTop, r: el.scrollLeft + el.clientWidth, b: el.scrollTop + el.clientHeight });
+    };
+    const onScroll = () => { if (!raf) raf = requestAnimationFrame(measure); };
+    measure();
+    el.addEventListener('scroll', onScroll, { passive: true });
+    const ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(onScroll) : null;
+    ro?.observe(el);
+    return () => { el.removeEventListener('scroll', onScroll); ro?.disconnect(); if (raf) cancelAnimationFrame(raf); };
+  }, [virtualize]);
 
   const posOf = (id: string): Pos => positions[id] ?? { x: GRAPH_PAD, y: GRAPH_PAD };
 
@@ -166,6 +214,21 @@ export function GraphCanvas<E>({
   const w = Math.max(minWidth, ...nodeIds.map((id) => posOf(id).x + nodeSize.w + GRAPH_PAD));
   const h = Math.max(minHeight, ...nodeIds.map((id) => posOf(id).y + nodeSize.h + GRAPH_PAD));
 
+  // D-S5-SCENEGRAPH-VIRTUALIZE — cull to the visible viewport (+ 1-viewport margin so a
+  // node just off-screen is pre-mounted before it scrolls in). Extent (w/h) is unchanged
+  // — the scrollbar still reflects the whole graph; only what MOUNTS is culled.
+  // Only cull once the scroller has a REAL measured area (a 0×0 viewport — jsdom, an
+  // unmeasured or display:none container — must render all, never cull to nothing).
+  const cullActive = virtualize && viewport !== null && viewport.r > viewport.l && viewport.b > viewport.t;
+  const alwaysSet = alwaysRenderIds && alwaysRenderIds.length ? new Set(alwaysRenderIds) : null;
+  const renderedNodeIds = cullActive
+    ? nodeIds.filter((id) => alwaysSet?.has(id) || id === drag.current?.id || nodeIntersectsViewport(posOf(id), nodeSize, viewport!))
+    : nodeIds;
+  const renderedSet = cullActive ? new Set(renderedNodeIds) : null;
+  const renderedEdges = cullActive && renderedSet
+    ? edges.filter((e) => { const { from, to } = edgeEndpoints(e); return renderedSet.has(from) && renderedSet.has(to); })
+    : edges;
+
   // M5b — fit-to-screen on mount (MOBILE always; desktop only when `autoFit` is
   // opted-in — otherwise desktop zoomable keeps its identity start, byte-unchanged).
   // Fires once, once the graph has content + a measurable viewport, so the content
@@ -188,14 +251,14 @@ export function GraphCanvas<E>({
       {background}
       {/* background: a press on empty space clears selection (+ starts a pan when zoomable) */}
       <rect data-testid={`${testid}-bg`} width={w} height={h} fill="transparent" onPointerDown={onBackgroundDown} />
-      {edges.map((e, i) => {
+      {renderedEdges.map((e, i) => {
         const { from, to } = edgeEndpoints(e);
         const pf = positions[from];
         const pt = positions[to];
         if (!pf || !pt) return null; // skip an edge to an off-graph node
         return <Fragment key={edgeKey ? edgeKey(e) : i}>{renderEdge(e, pf, pt)}</Fragment>;
       })}
-      {nodeIds.map((id) => (
+      {renderedNodeIds.map((id) => (
         <Fragment key={id}>{renderNode(id, { onPointerDown: startDrag(id) })}</Fragment>
       ))}
     </>
@@ -205,7 +268,7 @@ export function GraphCanvas<E>({
   // overflow-auto scroller — byte-identical to the pre-C19 behaviour.
   if (!effectiveZoomable) {
     return (
-      <div className="min-h-0 flex-1 overflow-auto">
+      <div ref={scrollRef} className="min-h-0 flex-1 overflow-auto">
         <svg ref={svgRef} width={w} height={h} data-testid={testid} onPointerMove={onPointerMove} onPointerUp={onPointerUp}>
           {defs && <defs>{defs}</defs>}
           {content}

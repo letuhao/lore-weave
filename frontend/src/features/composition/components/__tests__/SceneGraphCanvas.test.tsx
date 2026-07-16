@@ -288,7 +288,9 @@ describe('SceneGraphCanvas (T1.3)', () => {
     await waitFor(() => expect(createNodeSpy).toHaveBeenCalledWith('deriv-p', expect.objectContaining({ kind: 'scene', chapter_id: 'C1', story_order: 0 }), 't'));
     // M3 — and persisted the take's ghost prose into the NEW derivative scene node
     // (scene-scoped synthetic-job store; never the shared book draft).
-    await waitFor(() => expect(persistProseSpy).toHaveBeenCalledWith('deriv-p', 'newnode', 'g', 't'));
+    // D-S5-BRANCHDIFF-CORRESPONDENCE — the promote now records the canon anchor scene
+    // (s1) so the branch-diff can pair reliably; assert the anchorNodeId opt is passed.
+    await waitFor(() => expect(persistProseSpy).toHaveBeenCalledWith('deriv-p', 'newnode', 'g', 't', { anchorNodeId: 's1' }));
     // ...then switched the studio (AFTER seeding settles) + discarded the branch
     await waitFor(() => expect(onPromotedSpy).toHaveBeenCalledWith(expect.objectContaining({ project_id: 'deriv-p' })));
     expect(screen.queryByTestId('whatif-alt-node')).toBeNull();
