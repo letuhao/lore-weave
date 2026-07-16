@@ -157,6 +157,14 @@ describe('CanonRulesPanel (FD-16)', () => {
     expect(screen.getByTestId('composition-canon-show-archived')).toBeTruthy();
   });
 
+  it('a focusRuleId deep-link opens that rule in edit mode (spec §4 — see broken → fix)', () => {
+    canon.list = { isLoading: false, data: [rule({ id: 'r5', text: 'targeted' })] };
+    render(<CanonRulesPanel projectId="p" bookId="b" token="t" focusRuleId="r5" />);
+    // the focused rule renders its edit form (the add form is also present, so scope to the rule row)
+    const row = screen.getByTestId('composition-canon-rule');
+    expect(within(row).getByTestId('composition-canon-submit')).toBeTruthy();
+  });
+
   it('an archived rule shows Restore — never Edit/Archive — and restores on click', () => {
     canon.list = { isLoading: false, data: [rule({ id: 'r7', is_archived: true })] };
     render(<CanonRulesPanel projectId="p" bookId="b" token="t" />);

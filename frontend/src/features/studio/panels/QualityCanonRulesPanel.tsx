@@ -18,8 +18,13 @@ import { useStudioPanel } from './useStudioPanel';
 import { QualityWorkGate } from './QualityNoWorkState';
 import { useQualityWork } from './useQualityWork';
 
+interface CanonRulesFocusParams {
+  focusRuleId?: string | null;
+}
+
 export function QualityCanonRulesPanel(props: IDockviewPanelProps) {
   useStudioPanel('quality-canon-rules', props.api);
+  const focusRuleId = (props.params as CanonRulesFocusParams | undefined)?.focusRuleId ?? null;
   const host = useStudioHost();
   const { accessToken } = useAuth();
   // Authoring a rule is per-project (per composition Work), so it gates like the other quality panels —
@@ -33,7 +38,7 @@ export function QualityCanonRulesPanel(props: IDockviewPanelProps) {
 
   return (
     <div data-testid="studio-quality-canon-rules-panel" className="h-full min-h-0 overflow-auto">
-      <CanonRulesPanel projectId={work.projectId} bookId={host.bookId} token={accessToken} />
+      <CanonRulesPanel projectId={work.projectId} bookId={host.bookId} token={accessToken} focusRuleId={focusRuleId} />
     </div>
   );
 }

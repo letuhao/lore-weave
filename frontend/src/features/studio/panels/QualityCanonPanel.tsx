@@ -107,7 +107,9 @@ export function QualityCanonPanel(props: IDockviewPanelProps) {
           {v.ruleViolations.map((r, i) => (
             <RuleRow key={`${r.job_id}:${r.rule_id ?? 'unattributed'}:${i}`} r={r}
                      focused={!!v.focusRuleId && r.rule_id === v.focusRuleId}
-                     onJump={() => jump(r.chapter_id)} jumpLabel={jumpLabel} t={t as T} />
+                     onJump={() => jump(r.chapter_id)} jumpLabel={jumpLabel}
+                     onEditRule={r.rule_id ? () => host.openPanel('quality-canon-rules', { params: { focusRuleId: r.rule_id } }) : undefined}
+                     t={t as T} />
           ))}
         </Section>
       )}
@@ -161,8 +163,9 @@ function FocusBanner({ v, t }: { v: QualityCanonView; t: T }) {
   );
 }
 
-function RuleRow({ r, focused, onJump, jumpLabel, t }: {
-  r: RuleViolationItem; focused: boolean; onJump: () => void; jumpLabel: string; t: T;
+function RuleRow({ r, focused, onJump, jumpLabel, onEditRule, t }: {
+  r: RuleViolationItem; focused: boolean; onJump: () => void; jumpLabel: string;
+  onEditRule?: () => void; t: T;
 }) {
   return (
     <li data-testid="quality-canon-rule-item" data-focused={focused ? 'true' : undefined}
@@ -176,7 +179,21 @@ function RuleRow({ r, focused, onJump, jumpLabel, t }: {
         <span className="text-rose-600 dark:text-rose-400">⚠ {r.why || r.span}</span>
         <span className="text-neutral-500">{r.scene_title || t('quality.untitledScene', { defaultValue: 'Untitled scene' })}</span>
       </div>
-      {r.chapter_id && <JumpButton onClick={onJump} tone="bg-rose-600" label={jumpLabel} />}
+      <div className="flex shrink-0 flex-col items-end gap-1">
+        {r.chapter_id && <JumpButton onClick={onJump} tone="bg-rose-600" label={jumpLabel} />}
+        {/* Deep-link (spec §4): a resolvable rule can be jumped to in Canon rules to fix it — the
+            write half of "what's broken → fix the rule". Unresolvable (archived) rules have no id. */}
+        {r.rule_id && onEditRule && (
+          <button
+            type="button"
+            data-testid="quality-canon-edit-rule"
+            onClick={onEditRule}
+            className="rounded border border-rose-300 px-1.5 py-0.5 text-[10px] text-rose-700 hover:bg-rose-50 dark:border-rose-800 dark:text-rose-300 dark:hover:bg-rose-950/40"
+          >
+            {t('quality.editRule', { defaultValue: 'Edit rule' })}
+          </button>
+        )}
+      </div>
     </li>
   );
 }

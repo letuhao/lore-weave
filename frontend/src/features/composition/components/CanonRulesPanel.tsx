@@ -1,7 +1,7 @@
 // LOOM Composition (M8) — canon-rules management (view). List + add + edit + archive.
 // FD-16: create now sends the full payload (entity_id / reveal window / active),
 // and rules are editable in-place via the previously-unused `patch` hook.
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 import { useCanonRules } from '../hooks/useCanonRules';
@@ -9,14 +9,31 @@ import { useGlossaryRoster } from '../hooks/useGlossaryRoster';
 import { CanonRuleForm, type CanonRulePayload } from './CanonRuleForm';
 
 export function CanonRulesPanel(
-  { projectId, bookId, token }: { projectId: string; bookId: string; token: string | null },
+  { projectId, bookId, token, focusRuleId }: {
+    projectId: string; bookId: string; token: string | null;
+    // Deep-link (spec §4): `quality-canon`'s "Edit rule" opens this panel focused on a rule — open it
+    // in edit mode and scroll it into view so "see what's broken → fix the rule" is one hop.
+    focusRuleId?: string | null;
+  },
 ) {
   const { t } = useTranslation('composition');
   const [showArchived, setShowArchived] = useState(false);
   const { list, create, patch, remove, restore } = useCanonRules(projectId, token, { includeArchived: showArchived });
   const roster = useGlossaryRoster(bookId, token);
   const rosterOptions = roster.data ?? [];
-  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(focusRuleId ?? null);
+  const listRef = useRef<HTMLUListElement>(null);
+
+  // SYNC (not an event reaction): a NEW focusRuleId deep-link re-focuses the panel — open that rule
+  // in edit mode and scroll it into view. Runs when the param or the loaded rows change (the target
+  // may not be in the DOM until the list resolves).
+  useEffect(() => {
+    if (!focusRuleId) return;
+    setEditingId(focusRuleId);
+    const el = listRef.current?.querySelector(`[data-rule-id="${focusRuleId}"]`) as HTMLElement | null;
+    // optional-call: scrollIntoView is unimplemented in jsdom (and absent if the row isn't in the DOM yet).
+    el?.scrollIntoView?.({ block: 'center' });
+  }, [focusRuleId, list.data]);
 
   const onError = (e: unknown) => toast.error((e as Error).message);
 
@@ -75,11 +92,12 @@ export function CanonRulesPanel(
       </label>
 
       {list.isLoading && <div className="text-neutral-500">{t('loading', { defaultValue: 'Loading…' })}</div>}
-      <ul className="flex flex-col gap-1">
+      <ul ref={listRef} className="flex flex-col gap-1">
         {(list.data ?? []).map((r) => (
           <li
             key={r.id}
             data-testid="composition-canon-rule"
+            data-rule-id={r.id}
             className="flex flex-col gap-1 rounded border border-neutral-200 p-2 dark:border-neutral-700"
           >
             {editingId === r.id && !r.is_archived ? (
