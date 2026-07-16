@@ -10,6 +10,7 @@ import {
   Sparkles,
   Pin,
   PinOff,
+  Archive,
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
@@ -21,12 +22,15 @@ import {
   useUnlockEntity,
   usePromoteEntity,
   useToggleGlossaryPin,
+  useArchiveEntity,
 } from '../hooks/useEntityMutations';
 import type { EntityFact, EntityRelation } from '../api';
 import { TOUCH_TARGET_SQUARE_MOBILE_ONLY_CLASS } from '../lib/touchTarget';
 import { EntityEditDialog } from './EntityEditDialog';
 import { EntityMergeDialog } from './EntityMergeDialog';
 import { RelationEditDialog } from './RelationEditDialog';
+import { CreateRelationDialog } from './CreateRelationDialog';
+import { Link2 } from 'lucide-react';
 import { TemporalTab } from '../../knowledge-temporal/components/TemporalTab';
 
 // K19d.3 — slide-over entity detail panel (read-only MVP).
@@ -135,6 +139,7 @@ export function EntityDetailPanel({
   const { facts } = useEntityFacts(open ? entityId : null);
   const [showEdit, setShowEdit] = useState(false);
   const [showMerge, setShowMerge] = useState(false);
+  const [showLink, setShowLink] = useState(false);
   // X6c — the "Temporal" tab (knowledge-temporal surfaces). Lazy-mounted on first open so its
   // KAL reads don't fire until viewed; once opened it stays mounted (CSS hidden on switch-back)
   // so the as-of slider state survives a Current↔Temporal toggle (no-conditional-unmount rule).
@@ -214,6 +219,29 @@ export function EntityDetailPanel({
     }
   };
 
+  // S7-1 — soft archive (Delete = retire, NOT Merge). Wraps the EXISTING
+  // archiveMyEntity route: preserves edges + the glossary anchor, hides the row
+  // from the active list. No OCC (the route takes none). The confirm copy is
+  // honest — there is NO UI restore (re-mention re-shows it), so we never
+  // promise an undo button.
+  const archiveMutation = useArchiveEntity({
+    onSuccess: () => {
+      toast.success(t('entities.archive.success'));
+      onOpenChange(false);
+    },
+    onError: (err) =>
+      toast.error(t('entities.archive.failed', { error: err.message })),
+  });
+  const handleArchive = async () => {
+    if (!detail) return;
+    if (!window.confirm(t('entities.archive.confirm'))) return;
+    try {
+      await archiveMutation.archive({ entityId: detail.entity.id });
+    } catch {
+      // onError owns the toast; swallow the rejection (vitest guard).
+    }
+  };
+
   const { outgoing, incoming } = useMemo(() => {
     if (!detail || !entityId) {
       return { outgoing: [] as EntityRelation[], incoming: [] as EntityRelation[] };
@@ -273,6 +301,28 @@ export function EntityDetailPanel({
                 data-testid="entity-detail-merge"
               >
                 <Merge className="h-4 w-4" />
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowLink(true)}
+                disabled={!detail?.entity.project_id}
+                title={t('relations.create.action')}
+                aria-label={t('relations.create.action')}
+                className="rounded-sm p-1 text-muted-foreground transition-colors hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
+                data-testid="entity-detail-link"
+              >
+                <Link2 className="h-4 w-4" />
+              </button>
+              <button
+                type="button"
+                onClick={handleArchive}
+                disabled={!detail || archiveMutation.isPending}
+                title={t('entities.archive.action')}
+                aria-label={t('entities.archive.action')}
+                className="rounded-sm p-1 text-muted-foreground transition-colors hover:text-destructive disabled:cursor-not-allowed disabled:opacity-50"
+                data-testid="entity-detail-archive"
+              >
+                <Archive className="h-4 w-4" />
               </button>
               <Dialog.Close asChild>
                 <button
@@ -626,6 +676,15 @@ export function EntityDetailPanel({
                 if (!o) setEditingRelation(null);
               }}
               relation={editingRelation}
+            />
+          )}
+          {detail.entity.project_id && (
+            <CreateRelationDialog
+              open={showLink}
+              onOpenChange={setShowLink}
+              projectId={detail.entity.project_id}
+              subjectId={detail.entity.id}
+              subjectName={detail.entity.name}
             />
           )}
         </>

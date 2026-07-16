@@ -45,7 +45,7 @@ from uuid import UUID
 
 import asyncpg
 from mcp.server.fastmcp import Context as MCPContext
-from pydantic import Field
+from pydantic import Field, field_validator
 
 from loreweave_mcp import (
     ForbidExtra,
@@ -78,6 +78,9 @@ from app.db.models import (
 )
 from app.services.agent_native import ReferenceSource, resolve_scope
 from app.services.plan_pass_service import UpstreamStale
+# D-ARC-TRACKS-ROSTER-SCHEMA — reuse the REST door's entry-key validators (one definition,
+# no drift across the two doors). routers.arc does not import the MCP server, so no cycle.
+from app.routers.arc import validate_track_dicts, validate_roster_dicts
 from app.db.pool import get_pool
 from app.db.repositories import (
     ReferenceViolationError,
@@ -4351,6 +4354,11 @@ class _ArcCreateArgs(ForbidExtra):
     tracks: list[dict[str, Any]] | None = None
     roster: list[dict[str, Any]] | None = None
     roster_bindings: dict[str, Any] | None = None
+    # D-ARC-TRACKS-ROSTER-SCHEMA — the SAME key invariant as the REST door (spec 32a §A):
+    # a missing/empty/duplicate entry key corrupts the cascade merge. FastMCP may strip the
+    # nested schema from the advertised tool JSON, but the validator still fires at call time.
+    _v_tracks = field_validator("tracks")(validate_track_dicts)
+    _v_roster = field_validator("roster")(validate_roster_dicts)
     # BA13: provenance is nullable — an arc authored from conversation has none.
     arc_template_id: str | None = None
     template_version: int | None = None
@@ -4408,6 +4416,8 @@ class _ArcUpdateArgs(ForbidExtra):
     tracks: list[dict[str, Any]] | None = None
     roster: list[dict[str, Any]] | None = None
     roster_bindings: dict[str, Any] | None = None
+    _v_tracks = field_validator("tracks")(validate_track_dicts)   # D-ARC-TRACKS-ROSTER-SCHEMA
+    _v_roster = field_validator("roster")(validate_roster_dicts)
     # re-pin (or set) provenance; None leaves it unchanged (kind/parent/rank are
     # NOT patchable here — reparent+reorder go through composition_arc_move).
     arc_template_id: str | None = None

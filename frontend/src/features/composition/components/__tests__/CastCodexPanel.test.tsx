@@ -39,10 +39,12 @@ describe('groupCast (T2.1)', () => {
     expect(groups[0].rows[1].state).toBeUndefined();
   });
 
-  it('unknown kinds sort after known ones', () => {
+  it('unknown kinds sort after known ones (alpha among unknowns)', () => {
+    // s7-4: `organization` is now a KNOWN kind (authorable set); `event_ref` and
+    // `zzz` are unknown and sort after it, alpha among themselves.
     const groups = groupCast(
-      [ent({ id: 'x', kind: 'artifact' }), ent({ id: 'y', kind: 'faction' })], {});
-    expect(groups.map((g) => g.kind)).toEqual(['faction', 'artifact']);
+      [ent({ id: 'x', kind: 'zzz' }), ent({ id: 'o', kind: 'organization' }), ent({ id: 'e', kind: 'event_ref' })], {});
+    expect(groups.map((g) => g.kind)).toEqual(['organization', 'event_ref', 'zzz']);
   });
 });
 

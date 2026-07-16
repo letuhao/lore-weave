@@ -454,17 +454,32 @@ class KgProjectEntitiesToNodesArgs(ProjectScopedArgs):
 
 class KgCreateNodeArgs(ProjectScopedArgs):
     """`kg_create_node` — manually create ONE knowledge-graph entity node (a
-    character, place, faction, item, …). Tier-A: idempotent (the same name+kind
-    upserts the existing node) + reversible. Use this BEFORE `kg_propose_edge` when a
-    relationship's endpoint isn't in the graph yet — an edge whose endpoints aren't
-    nodes is parked and later fails at confirm. Returns the node's entity_id to use
-    as an edge endpoint."""
+    character, location, organization, item, …). Tier-A: idempotent (the same
+    name+kind upserts the existing node) + reversible. Use this BEFORE
+    `kg_propose_edge` when a relationship's endpoint isn't in the graph yet — an
+    edge whose endpoints aren't nodes is parked and later fails at confirm.
+    Returns the node's entity_id to use as an edge endpoint."""
 
     name: str = Field(min_length=1, max_length=200, description="the entity's name")
     kind: str = Field(
         min_length=1, max_length=100,
-        description="the entity kind, e.g. 'character', 'location', 'faction', 'item'",
+        description=(
+            "the entity kind — one of: character, location, organization, "
+            "concept, item"
+        ),
     )
+
+    @model_validator(mode="after")
+    def _gate_kind(self) -> "KgCreateNodeArgs":
+        # S7-1 (INV-parity): close the free-string agent path so the agent can
+        # only mint the same closed set the human REST create accepts. ONE home
+        # for the set: neo4j_repos.entities.AUTHORABLE_KINDS (imported lazily to
+        # keep the tools layer free of an eager data-layer import at class-def).
+        from app.db.neo4j_repos.entities import AUTHORABLE_KINDS
+
+        if self.kind.strip() not in AUTHORABLE_KINDS:
+            raise ValueError(f"kind must be one of {sorted(AUTHORABLE_KINDS)}")
+        return self
 
 
 GRAPH_SCHEMA_ARG_MODELS: dict[str, type[BaseModel]] = {
@@ -830,8 +845,8 @@ GRAPH_SCHEMA_TOOL_DEFINITIONS: list[dict] = [
     ),
     _tool(
         "kg_create_node",
-        "Manually create ONE knowledge-graph entity node (a character, place, "
-        "faction, item, …). Use this BEFORE kg_propose_edge when a relationship's "
+        "Manually create ONE knowledge-graph entity node (a character, location, "
+        "organization, item, …). Use this BEFORE kg_propose_edge when a relationship's "
         "endpoint isn't in the graph yet — an edge whose endpoints aren't nodes is "
         "parked and later fails. Idempotent: the same name+kind returns the existing "
         "node. Returns the entity_id to use as an edge endpoint.",
@@ -844,9 +859,8 @@ GRAPH_SCHEMA_TOOL_DEFINITIONS: list[dict] = [
             },
             "kind": {
                 "type": "string",
-                "minLength": 1,
-                "maxLength": 100,
-                "description": "the entity kind, e.g. 'character', 'location', 'faction', 'item'",
+                "enum": ["character", "location", "organization", "concept", "item"],
+                "description": "the entity kind (closed set)",
             },
             "project_id": _PROJECT_ID_PROP,
         },

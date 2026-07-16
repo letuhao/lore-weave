@@ -27,6 +27,7 @@ from app.db.neo4j import neo4j_session
 from app.db.neo4j_helpers import run_read
 from app.db.neo4j_repos.canonical import canonicalize_entity_name
 from app.db.neo4j_repos.entities import (
+    AUTHORABLE_KINDS,
     ENTITIES_MAX_LIMIT,
     ENTITY_SORT_KEYS,
     ENTITY_STATUSES,
@@ -1002,12 +1003,11 @@ class EntityUpdate(BaseModel):
 
 # ── T2.5 World Map — manual entity authoring ──────────────────────────
 
-# Closed set of entity kinds the manual-create path accepts. The graph is
-# otherwise extraction-built; this gate keeps user authoring (T2.5 "+ add
-# place" sends kind='location') from minting arbitrary kind strings.
-_AUTHORABLE_KINDS = {"character", "location", "faction", "concept"}
-
-
+# S7-1 — the human create path gates ``kind`` to ``AUTHORABLE_KINDS`` (the
+# ONE home, defined in neo4j_repos/entities.py). The old local set used the
+# ``faction`` misnomer and omitted ``organization``/``item`` — a create form
+# built to the 7-value browse filter silently 422'd 4 of them. The set is now
+# shared with the agent gate (KgCreateNodeArgs) so create == agent (INV-parity).
 class CreateEntityRequest(BaseModel):
     """T2.5 — create a user-authored entity (e.g. a World Map place). Idempotent:
     re-creating the same (name, kind) in a project returns the existing node
@@ -1022,9 +1022,9 @@ class CreateEntityRequest(BaseModel):
     def _validate(self) -> "CreateEntityRequest":
         if not self.name.strip():
             raise ValueError("name must not be blank")
-        if self.kind not in _AUTHORABLE_KINDS:
+        if self.kind not in AUTHORABLE_KINDS:
             raise ValueError(
-                f"kind must be one of {sorted(_AUTHORABLE_KINDS)}"
+                f"kind must be one of {sorted(AUTHORABLE_KINDS)}"
             )
         return self
 

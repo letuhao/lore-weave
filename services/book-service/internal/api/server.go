@@ -404,9 +404,21 @@ func (s *Server) Router() http.Handler {
 			r.Post("/books", s.moveBookIntoWorld)
 			r.Delete("/books/{book_id}", s.removeBookFromWorld)
 			// W10-M8 — the maps FE canvas's read surface (list + detail with markers/regions).
-			// Read-only; every map MUTATION stays on the Tier-W world_map_* MCP tools.
 			r.Get("/maps", s.listWorldMaps)
 			r.Get("/maps/{map_id}", s.getWorldMapREST)
+			// S7·2 — the world-map EDITOR's public write surface (~10 routes). All owner-scoped via
+			// requireWorldOwner + the map-owner JOIN; map rename is If-Match/version OCC (428/412),
+			// marker/region writes are last-write-wins (spec §4.4). See worlds_maps_write_rest.go.
+			r.Post("/maps", s.createMapREST)                                     // R1
+			r.Patch("/maps/{map_id}", s.patchMapREST)                            // R2 (If-Match)
+			r.Delete("/maps/{map_id}", s.deleteMapREST)                          // R3
+			r.Post("/maps/{map_id}/image", s.uploadWorldMapImagePublic)          // R4 (public JWT wrapper)
+			r.Post("/maps/{map_id}/markers", s.addMarkerREST)                    // R5
+			r.Patch("/maps/{map_id}/markers/{marker_id}", s.patchMarkerREST)     // R6 (drag)
+			r.Delete("/maps/{map_id}/markers/{marker_id}", s.deleteMarkerREST)   // R7
+			r.Post("/maps/{map_id}/regions", s.addRegionREST)                    // R8
+			r.Patch("/maps/{map_id}/regions/{region_id}", s.patchRegionREST)     // R9 (reshape)
+			r.Delete("/maps/{map_id}/regions/{region_id}", s.deleteRegionREST)   // R10
 		})
 	})
 	return r

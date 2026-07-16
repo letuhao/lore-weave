@@ -132,4 +132,18 @@ describe('WorldMap (T2.5)', () => {
     expect(screen.getByText('wmap.noProject')).toBeInTheDocument();
     expect(screen.queryByTestId('worldmap-add')).not.toBeInTheDocument();
   });
+
+  // S7-3 §4.3 — the backdrop upload is chapter-scoped; in the standalone place-graph dock panel
+  // chapterId can be empty, and an upload against '' 404s. The leaf degrades: disable + hint.
+  it('backdrop control is ENABLED when a chapter is open (legacy behavior — unchanged)', () => {
+    render0(); // render0 passes chapterId="ch"
+    expect(screen.getByTestId('worldmap-backdrop')).not.toBeDisabled();
+  });
+
+  it('backdrop control is DISABLED with a hint when there is no active chapter (§4.3 guard)', () => {
+    render(<WorldMap work={{} as never} bookId="b" chapterId="" token="t" onViewCast={onViewCast} />);
+    const btn = screen.getByTestId('worldmap-backdrop');
+    expect(btn).toBeDisabled();
+    expect(btn).toHaveAttribute('title', 'wmap.backdropNoChapter');
+  });
 });

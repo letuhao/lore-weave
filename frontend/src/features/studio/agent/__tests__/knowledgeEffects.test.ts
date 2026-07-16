@@ -45,6 +45,17 @@ describe('knowledgeEffect (Lane B handler)', () => {
     expect(keys).toContainEqual(['kg-schema-usage']);
     expect(keys).toContainEqual(['kg-schema-observed']);
     expect(keys).toContainEqual(['kg-adopt-preview']);
+    // s7-4 — the Cast codex / Character-arc panels read the composition
+    // namespace; an agent kg_create_node must refresh them too (else the next
+    // human rename 412s against an unseen version).
+    expect(keys).toContainEqual(['composition', 'cast']);
+    expect(keys).toContainEqual(['composition', 'arc']);
+    // S7-C — the Place-Graph panel (<WorldMap>/useWorldMap) authors places via kg_* writes and
+    // reads the composition worldmap keys; folded into THIS handler (integrator resolution-(a))
+    // so kg_create_node stays single-handler (effectCoverage `<=1`) instead of a 2nd worldEffects
+    // handler. Assert the fold is live so a future refactor can't silently drop the refresh.
+    expect(keys).toContainEqual(['composition', 'worldmap', 'places']);
+    expect(keys).toContainEqual(['composition', 'worldmap', 'detail']);
   });
 });
 

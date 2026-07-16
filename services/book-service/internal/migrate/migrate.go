@@ -423,6 +423,11 @@ CREATE TABLE IF NOT EXISTS world_maps (
   image_object_key TEXT,
   image_w INT,
   image_h INT,
+  -- S7·2 — monotonic OCC ETag for the map rename/image PATCH (If-Match/428/412). A map row is
+  -- the only object with a version gate; markers/regions are last-write-wins (single-owner,
+  -- absolute idempotent writes — spec §4.4). DEFAULT 1 is the correct first version for every
+  -- existing map, so the ADD COLUMN IF NOT EXISTS below has nothing to revisit.
+  version INT NOT NULL DEFAULT 1,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
@@ -436,7 +441,11 @@ CREATE TABLE IF NOT EXISTS map_markers (
   x DOUBLE PRECISION NOT NULL, -- relative [0,1] on the base image (float64 → exact round-trip)
   y DOUBLE PRECISION NOT NULL,
   marker_type TEXT,
-  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  -- S7·2 — "last touched" so the editor can render "edited" and Lane-B can reconcile a drag
+  -- PATCH. now() is the right baseline for legacy rows (≈ last touched). Read back into every
+  -- marker door (spec §4.3) so it is not a write-only column.
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS idx_map_markers_map ON map_markers(map_id);
 
@@ -446,9 +455,16 @@ CREATE TABLE IF NOT EXISTS map_regions (
   name TEXT NOT NULL,
   polygon JSONB NOT NULL,     -- array of [x,y] relative points
   entity_id UUID,             -- soft cross-service ref → glossary location entity (nullable)
-  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now() -- S7·2 — see map_markers.updated_at
 );
 CREATE INDEX IF NOT EXISTS idx_map_regions_map ON map_regions(map_id);
+-- S7·2 — additive, forward-only columns for the world-map editor's UPDATE layer. The CREATE
+-- TABLE literals above carry them for fresh DBs; these ALTERs migrate an already-created DB.
+-- Baselines are correct by construction (version=1, updated_at=now()), so IF NOT EXISTS is safe.
+ALTER TABLE world_maps  ADD COLUMN IF NOT EXISTS version    INT         NOT NULL DEFAULT 1;
+ALTER TABLE map_markers ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT now();
+ALTER TABLE map_regions ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT now();
 
 -- ═══════════════════════════════════════════════════════════════
 -- MCP fan-out Tier-W single-use confirm-token ledger - 2026-06-20

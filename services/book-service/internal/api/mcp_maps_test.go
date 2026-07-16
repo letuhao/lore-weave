@@ -105,6 +105,150 @@ func TestMapAuthoringRoundTrip(t *testing.T) {
 	}
 }
 
+// ── update-tool validation (no DB — checks short-circuit before pool access) ──
+
+func TestWorldMapUpdate_RequiresUUID(t *testing.T) {
+	t.Parallel()
+	s := &Server{}
+	ctx := identityCtxForTest(t, uuid.New())
+	if _, _, err := s.toolWorldMapUpdate(ctx, nil, mapUpdateIn{MapID: "nope"}); err == nil {
+		t.Fatal("expected an error for a non-UUID map_id")
+	}
+}
+
+func TestWorldMapUpdateMarker_RejectsOutOfRangeCoords(t *testing.T) {
+	t.Parallel()
+	s := &Server{}
+	ctx := identityCtxForTest(t, uuid.New())
+	bad := 1.5
+	// x > 1 must be rejected BEFORE any DB access (relative-coord invariant).
+	if _, _, err := s.toolWorldMapUpdateMarker(ctx, nil, mapUpdateMarkerIn{
+		MarkerID: uuid.New().String(), X: &bad,
+	}); err == nil {
+		t.Fatal("expected an error for x outside [0,1]")
+	}
+}
+
+func TestWorldMapUpdateRegion_RejectsTooFewPoints(t *testing.T) {
+	t.Parallel()
+	s := &Server{}
+	ctx := identityCtxForTest(t, uuid.New())
+	// A present-but-degenerate polygon (< 3 pts) is rejected; nil polygon would be "leave unchanged".
+	if _, _, err := s.toolWorldMapUpdateRegion(ctx, nil, mapUpdateRegionIn{
+		RegionID: uuid.New().String(), Polygon: [][]float64{{0, 0}, {1, 1}},
+	}); err == nil {
+		t.Fatal("expected an error for a polygon with < 3 points")
+	}
+}
+
+// ── UPDATE round-trip: the pointer rule + version bump + unbind (needs DB) ──────
+func TestMapUpdateRoundTrip(t *testing.T) {
+	s, _ := dbTestServer(t)
+	owner := uuid.New()
+	ctx := identityCtxForTest(t, owner)
+
+	_, wout, err := s.toolWorldCreate(ctx, nil, worldCreateIn{Name: "UpdWorld"})
+	if err != nil {
+		t.Fatalf("world_create: %v", err)
+	}
+	_, mout, err := s.toolWorldMapCreate(ctx, nil, worldMapCreateIn{WorldID: wout.World.WorldID, Name: "Atlas"})
+	if err != nil {
+		t.Fatalf("map_create: %v", err)
+	}
+	mapID := mout.Map.MapID
+	// M1 — a freshly-created map reads version=1 (the migration/DEFAULT round-trips).
+	if mout.Map.Version != 1 {
+		t.Fatalf("fresh map must be version 1, got %d", mout.Map.Version)
+	}
+
+	entity := uuid.New()
+	_, mk, err := s.toolWorldMapAddMarker(ctx, nil, mapAddMarkerIn{
+		MapID: mapID, Label: "Keep", X: 0.30, Y: 0.60, EntityID: entity.String(),
+	})
+	if err != nil {
+		t.Fatalf("add_marker: %v", err)
+	}
+
+	// M1 — the marker round-trips a non-empty updated_at.
+	_, g0, _ := s.toolWorldMapGet(ctx, nil, mapGetIn{MapID: mapID})
+	if len(g0.Markers) != 1 || g0.Markers[0].UpdatedAt == "" {
+		t.Fatalf("marker updated_at must round-trip non-empty, got %+v", g0.Markers)
+	}
+
+	// 🔴 The pointer rule — a LABEL-ONLY update must NOT move the pin to (0,0).
+	newLabel := "Renamed"
+	if _, _, err := s.toolWorldMapUpdateMarker(ctx, nil, mapUpdateMarkerIn{MarkerID: mk.MarkerID, Label: &newLabel}); err != nil {
+		t.Fatalf("update_marker(label-only): %v", err)
+	}
+	_, g1, _ := s.toolWorldMapGet(ctx, nil, mapGetIn{MapID: mapID})
+	if g1.Markers[0].X != 0.30 || g1.Markers[0].Y != 0.60 {
+		t.Fatalf("label-only update TELEPORTED the pin (pointer-rule bug): got x=%v y=%v", g1.Markers[0].X, g1.Markers[0].Y)
+	}
+	if g1.Markers[0].Label != "Renamed" {
+		t.Fatalf("label not updated: %+v", g1.Markers[0])
+	}
+	if g1.Markers[0].MarkerID != mk.MarkerID {
+		t.Fatalf("marker_id churned on update: %s -> %s", mk.MarkerID, g1.Markers[0].MarkerID)
+	}
+	if g1.Markers[0].EntityID == nil || *g1.Markers[0].EntityID != entity.String() {
+		t.Fatalf("entity tie must survive a label-only update, got %+v", g1.Markers[0].EntityID)
+	}
+
+	// A coord update (a drag) moves the ABSOLUTE position keeping the same marker_id.
+	nx, ny := 0.80, 0.10
+	if _, _, err := s.toolWorldMapUpdateMarker(ctx, nil, mapUpdateMarkerIn{MarkerID: mk.MarkerID, X: &nx, Y: &ny}); err != nil {
+		t.Fatalf("update_marker(move): %v", err)
+	}
+	_, g2, _ := s.toolWorldMapGet(ctx, nil, mapGetIn{MapID: mapID})
+	if g2.Markers[0].X != 0.80 || g2.Markers[0].Y != 0.10 || g2.Markers[0].MarkerID != mk.MarkerID {
+		t.Fatalf("drag PATCH failed: %+v", g2.Markers[0])
+	}
+
+	// clear_entity unbinds without deleting the pin.
+	if _, _, err := s.toolWorldMapUpdateMarker(ctx, nil, mapUpdateMarkerIn{MarkerID: mk.MarkerID, ClearEntity: true}); err != nil {
+		t.Fatalf("update_marker(clear_entity): %v", err)
+	}
+	_, g3, _ := s.toolWorldMapGet(ctx, nil, mapGetIn{MapID: mapID})
+	if len(g3.Markers) != 1 || g3.Markers[0].EntityID != nil {
+		t.Fatalf("clear_entity must unbind but keep the pin, got %+v", g3.Markers)
+	}
+
+	// world_map_update — rename bumps version.
+	rename := "Atlas II"
+	_, uout, err := s.toolWorldMapUpdate(ctx, nil, mapUpdateIn{MapID: mapID, Name: &rename})
+	if err != nil {
+		t.Fatalf("world_map_update: %v", err)
+	}
+	if uout.Map.Name != "Atlas II" || uout.Map.Version != 2 {
+		t.Fatalf("rename must set name + bump version to 2, got name=%q version=%d", uout.Map.Name, uout.Map.Version)
+	}
+
+	// Region reshape keeps the region_id.
+	_, rg, err := s.toolWorldMapAddRegion(ctx, nil, mapAddRegionIn{
+		MapID: mapID, Name: "Wilds", Polygon: [][]float64{{0, 0}, {1, 0}, {0.5, 1}},
+	})
+	if err != nil {
+		t.Fatalf("add_region: %v", err)
+	}
+	newPoly := [][]float64{{0.1, 0.1}, {0.9, 0.1}, {0.9, 0.9}, {0.1, 0.9}}
+	_, rout, err := s.toolWorldMapUpdateRegion(ctx, nil, mapUpdateRegionIn{RegionID: rg.RegionID, Polygon: newPoly})
+	if err != nil {
+		t.Fatalf("update_region(reshape): %v", err)
+	}
+	if rout.Region.RegionID != rg.RegionID || len(rout.Region.Polygon) != 4 {
+		t.Fatalf("reshape failed: %+v", rout.Region)
+	}
+
+	// Owner-scoping: user B cannot update owner A's marker/region/map.
+	ctxB := identityCtxForTest(t, uuid.New())
+	if _, _, err := s.toolWorldMapUpdateMarker(ctxB, nil, mapUpdateMarkerIn{MarkerID: mk.MarkerID, Label: &newLabel}); err == nil {
+		t.Fatal("user B must NOT update owner A's marker")
+	}
+	if _, _, err := s.toolWorldMapUpdate(ctxB, nil, mapUpdateIn{MapID: mapID, Name: &rename}); err == nil {
+		t.Fatal("user B must NOT rename owner A's map")
+	}
+}
+
 // ── delete / remove validation (no DB — checks short-circuit before pool access) ──
 
 func TestWorldMapDelete_RequiresUUID(t *testing.T) {

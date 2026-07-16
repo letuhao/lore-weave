@@ -2,9 +2,12 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/auth';
 import {
   knowledgeApi,
+  type CreateEntityPayload,
+  type CreateRelationPayload,
   type Entity,
   type EntityMergeErrorCode,
   type EntityMergeResponse,
+  type EntityRelation,
   type EntityUpdatePayload,
 } from '../api';
 
@@ -302,5 +305,151 @@ export function useMergeEntity(options?: {
     merge: mutation.mutateAsync,
     isPending: mutation.isPending,
     error: mutation.error,
+  };
+}
+
+// ── S7-1 — manual authoring: create entity / relation, archive ────────
+//
+// All three write over the ready T2.5 routes (createEntity/createRelation/
+// archiveMyEntity). Invalidation mirrors the edit hook (list + detail) and
+// adds the subgraph (graph node/edge appears without reload) + the composition
+// cast/arc keys (an open Cast codex / Character-arc stays fresh — same keys
+// the Lane-B knowledgeEffect handler hits, so agent AND human writes converge).
+
+const COMPOSITION_CAST_KEY = ['composition', 'cast'] as const;
+const COMPOSITION_ARC_KEY = ['composition', 'arc'] as const;
+
+export interface UseCreateEntityResult {
+  create: (payload: CreateEntityPayload) => Promise<Entity>;
+  isPending: boolean;
+  error: Error | null;
+}
+
+export function useCreateEntity(options?: {
+  onSuccess?: (entity: Entity) => void;
+  onError?: (err: Error) => void;
+}): UseCreateEntityResult {
+  const { accessToken, user } = useAuth();
+  const userId = user?.user_id ?? 'anon';
+  const queryClient = useQueryClient();
+
+  const mutation = useMutation({
+    mutationFn: async (payload: CreateEntityPayload) => {
+      return knowledgeApi.createEntity(payload, accessToken!);
+    },
+    onSuccess: async (entity) => {
+      await queryClient.invalidateQueries({
+        queryKey: ['knowledge-entities', userId],
+      });
+      await queryClient.invalidateQueries({
+        queryKey: ['knowledge-subgraph', userId],
+      });
+      await queryClient.invalidateQueries({ queryKey: COMPOSITION_CAST_KEY });
+      options?.onSuccess?.(entity);
+    },
+    onError: (err) => {
+      options?.onError?.(err as Error);
+    },
+  });
+
+  return {
+    create: mutation.mutateAsync,
+    isPending: mutation.isPending,
+    error: (mutation.error as Error | null) ?? null,
+  };
+}
+
+export interface UseCreateRelationResult {
+  createRelation: (payload: CreateRelationPayload) => Promise<EntityRelation>;
+  isPending: boolean;
+  error: Error | null;
+}
+
+export function useCreateRelation(options?: {
+  onSuccess?: (relation: EntityRelation) => void;
+  onError?: (err: Error) => void;
+}): UseCreateRelationResult {
+  const { accessToken, user } = useAuth();
+  const userId = user?.user_id ?? 'anon';
+  const queryClient = useQueryClient();
+
+  const mutation = useMutation({
+    mutationFn: async (payload: CreateRelationPayload) => {
+      return knowledgeApi.createRelation(payload, accessToken!);
+    },
+    onSuccess: async (relation, payload) => {
+      await queryClient.invalidateQueries({
+        queryKey: ['knowledge-subgraph', userId],
+      });
+      // Both endpoints' 1-hop relation lists changed.
+      await queryClient.invalidateQueries({
+        queryKey: ['knowledge-entity-detail', userId, payload.subject_id],
+      });
+      await queryClient.invalidateQueries({
+        queryKey: ['knowledge-entity-detail', userId, payload.object_id],
+      });
+      await queryClient.invalidateQueries({ queryKey: COMPOSITION_ARC_KEY });
+      options?.onSuccess?.(relation);
+    },
+    onError: (err) => {
+      options?.onError?.(err as Error);
+    },
+  });
+
+  return {
+    createRelation: mutation.mutateAsync,
+    isPending: mutation.isPending,
+    error: (mutation.error as Error | null) ?? null,
+  };
+}
+
+export interface UseArchiveEntityResult {
+  archive: (args: { entityId: string }) => Promise<void>;
+  isPending: boolean;
+  error: Error | null;
+}
+
+export function useArchiveEntity(options?: {
+  onSuccess?: () => void;
+  onError?: (err: Error) => void;
+}): UseArchiveEntityResult {
+  const { accessToken, user } = useAuth();
+  const userId = user?.user_id ?? 'anon';
+  const queryClient = useQueryClient();
+
+  const mutation = useMutation({
+    mutationFn: async (args: { entityId: string }) => {
+      // Soft archive (user_archived): 204 on success, 404 cross-user/typo —
+      // BOTH mean "now hidden", so we do NOT treat 404 as a failure here.
+      try {
+        await knowledgeApi.archiveMyEntity(args.entityId, accessToken!);
+      } catch (err) {
+        const status = (err as Error & { status?: number }).status;
+        if (status === 404) return; // idempotent: already gone == success
+        throw err;
+      }
+    },
+    onSuccess: async (_void, args) => {
+      await queryClient.invalidateQueries({
+        queryKey: ['knowledge-entities', userId],
+      });
+      await queryClient.invalidateQueries({
+        queryKey: ['knowledge-entity-detail', userId, args.entityId],
+      });
+      await queryClient.invalidateQueries({
+        queryKey: ['knowledge-subgraph', userId],
+      });
+      await queryClient.invalidateQueries({ queryKey: COMPOSITION_CAST_KEY });
+      options?.onSuccess?.();
+    },
+    onError: (err) => {
+      options?.onError?.(err as Error);
+    },
+  });
+
+  return {
+    archive: mutation.mutateAsync,
+    isPending: mutation.isPending,
+    error: (mutation.error as Error | null) ?? null,
   };
 }

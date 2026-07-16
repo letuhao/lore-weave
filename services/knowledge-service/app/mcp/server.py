@@ -1120,8 +1120,8 @@ async def kg_project_entities_to_nodes(
 @mcp_server.tool(
     name="kg_create_node",
     description=(
-        "Manually create ONE knowledge-graph entity node (a character, place, "
-        "faction, item, …). Use this BEFORE kg_propose_edge when a relationship's "
+        "Manually create ONE knowledge-graph entity node (a character, location, "
+        "organization, item, …). Use this BEFORE kg_propose_edge when a relationship's "
         "endpoint isn't in the graph yet — an edge whose endpoints aren't nodes is "
         "parked and later fails. Idempotent: the same name+kind returns the existing "
         "node. Returns the entity_id to use as an edge endpoint."
@@ -1132,7 +1132,8 @@ async def kg_create_node(
     ctx: MCPContext,
     name: Annotated[str, "the entity's name"],
     kind: Annotated[
-        str, "the entity kind, e.g. 'character', 'location', 'faction', 'item'"
+        str,
+        "the entity kind — one of: character, location, organization, concept, item",
     ],
     project_id: _PROJECT_ID_ARG = None,
 ) -> dict:

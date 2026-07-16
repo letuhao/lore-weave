@@ -13,6 +13,7 @@ from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
+import pytest
 from fastapi.testclient import TestClient
 
 from app.db.neo4j_repos.entities import Entity
@@ -115,6 +116,43 @@ def test_create_entity_rejects_unknown_kind(mock_merge):
         resp = client.post(
             "/v1/knowledge/entities",
             json={"project_id": str(_PROJECT_ID), "name": "Doohickey", "kind": "gadget"},
+        )
+        assert resp.status_code == 422
+        mock_merge.assert_not_awaited()
+    finally:
+        _teardown()
+
+
+# S7-1 — the 5-kind authorable set (create == agent), faction renamed out.
+@pytest.mark.parametrize(
+    "kind", ["character", "location", "organization", "concept", "item"]
+)
+@patch("app.routers.public.entities.merge_entity", new_callable=AsyncMock)
+@patch("app.routers.public.entities.neo4j_session", new=lambda: _noop_session())
+def test_create_entity_accepts_all_five_authorable_kinds(mock_merge, kind):
+    mock_merge.return_value = _entity_stub(name="Thing", kind=kind)
+    client = _make_client()
+    try:
+        resp = client.post(
+            "/v1/knowledge/entities",
+            json={"project_id": str(_PROJECT_ID), "name": "Thing", "kind": kind},
+        )
+        assert resp.status_code == 201, resp.json()
+        assert mock_merge.await_args.kwargs["kind"] == kind
+    finally:
+        _teardown()
+
+
+@patch("app.routers.public.entities.merge_entity", new_callable=AsyncMock)
+@patch("app.routers.public.entities.neo4j_session", new=lambda: _noop_session())
+def test_create_entity_rejects_legacy_faction_misnomer(mock_merge):
+    # ``faction`` was the old create-gate misnomer; it is now renamed to
+    # ``organization`` and must 422 (proving the rename, not a widen-only).
+    client = _make_client()
+    try:
+        resp = client.post(
+            "/v1/knowledge/entities",
+            json={"project_id": str(_PROJECT_ID), "name": "The Guild", "kind": "faction"},
         )
         assert resp.status_code == 422
         mock_merge.assert_not_awaited()

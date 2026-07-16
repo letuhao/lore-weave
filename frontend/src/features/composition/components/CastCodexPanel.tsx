@@ -8,7 +8,10 @@ import type { Entity, EntityStatusEntry } from '../../knowledge/api';
 import { useCast, useKnowledgeProjectId, type CastRow } from '../hooks/useCast';
 import { CastEntityRow } from './CastEntityRow';
 
-const KIND_ORDER = ['character', 'location', 'faction', 'concept'];
+// s7-4 — group order mirrors the authorable kind set (organization is the
+// canonical group kind; the legacy `faction` misnomer is retired). Unknown
+// kinds (event_ref/preference/extraction-emitted) sort after, then alpha.
+const KIND_ORDER = ['character', 'location', 'organization', 'concept', 'item'];
 
 // Pure (exported for tests): join entities↔status, then group by kind in a stable
 // order (known kinds first, then alpha), rows alpha within a group.
@@ -30,6 +33,7 @@ export function groupCast(
 
 export function CastCodexPanel({
   bookId, chapterId, token, onViewArc, search: searchProp, onSearchChange,
+  onRename, onEdit, onArchive, onNewEntity,
 }: {
   bookId: string;
   chapterId: string;
@@ -40,6 +44,12 @@ export function CastCodexPanel({
    *  this place's name). Omitted → the panel keeps its own internal search state. */
   search?: string;
   onSearchChange?: (v: string) => void;
+  // s7-4 — ADDITIVE edit affordances (forwarded to each row) + a "+ New" toolbar
+  // button. Omitted by the legacy mount → read-only codex, exactly as before.
+  onRename?: (args: { entityId: string; name: string; version: number }) => void;
+  onEdit?: (row: CastRow) => void;
+  onArchive?: (row: CastRow) => void;
+  onNewEntity?: () => void;
 }) {
   const { t } = useTranslation('composition');
   const projectQ = useKnowledgeProjectId(bookId, token);
@@ -67,6 +77,16 @@ export function CastCodexPanel({
           value={search}
           onChange={(e) => setSearch(e.target.value)}
         />
+        {onNewEntity && (
+          <button
+            type="button"
+            data-testid="cast-new-entity"
+            className="shrink-0 rounded border px-1.5 py-0.5 text-[11px] hover:bg-accent/50"
+            onClick={onNewEntity}
+          >
+            + {t('codex.newEntity', { defaultValue: 'New' })}
+          </button>
+        )}
       </div>
 
       {windowUnknown && (
@@ -95,7 +115,17 @@ export function CastCodexPanel({
                 </div>
                 <div className="flex flex-col gap-1">
                   {g.rows.map((row) => (
-                    <CastEntityRow key={row.id} row={row} bookId={bookId} chapterId={chapterId} token={token} onViewArc={onViewArc} />
+                    <CastEntityRow
+                      key={row.id}
+                      row={row}
+                      bookId={bookId}
+                      chapterId={chapterId}
+                      token={token}
+                      onViewArc={onViewArc}
+                      onRename={onRename}
+                      onEdit={onEdit}
+                      onArchive={onArchive}
+                    />
                   ))}
                 </div>
               </div>

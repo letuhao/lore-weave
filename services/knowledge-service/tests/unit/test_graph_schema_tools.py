@@ -1590,3 +1590,24 @@ async def test_kg_create_node_resolves_to_owner_not_caller(monkeypatch):
     assert res.success
     _, kwargs = me.call_args
     assert kwargs["user_id"] == str(_OWNER)  # the write ran as OWNER, never the grantee
+
+
+@pytest.mark.asyncio
+async def test_kg_create_node_rejects_free_string_kind():
+    # S7-1 (INV-parity): the agent free-string kind path is now gated to the
+    # same closed set the human REST create accepts. A bogus kind must fail
+    # validation BEFORE any write (no silent free-string mint).
+    ctx = _ctx()  # caller == owner
+    res = await execute_tool(ctx, "kg_create_node", {"name": "X", "kind": "gadget"})
+    assert not res.success
+    assert "kind must be one of" in res.error.lower()
+
+
+@pytest.mark.asyncio
+async def test_kg_create_node_rejects_legacy_faction_kind():
+    # ``faction`` is the retired misnomer — the agent must not be able to mint
+    # it either (create == agent). ``organization`` is the canonical group kind.
+    ctx = _ctx()
+    res = await execute_tool(ctx, "kg_create_node", {"name": "The Guild", "kind": "faction"})
+    assert not res.success
+    assert "kind must be one of" in res.error.lower()

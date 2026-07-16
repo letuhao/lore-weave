@@ -42,6 +42,27 @@ export function knowledgeEffect(ctx: EffectContext): void {
   queryClient.invalidateQueries({ queryKey: ['kg-schema-usage'] });
   queryClient.invalidateQueries({ queryKey: ['kg-schema-observed'] });
   queryClient.invalidateQueries({ queryKey: ['kg-adopt-preview'] });
+  // s7-4 — the Cast codex + Character-arc panels read the composition namespace
+  // (`['composition','cast',…]` / `['composition','arc',…]`, useCast.ts /
+  // useCharacterArc.ts), NOT the knowledge-* keys above. Without these two an
+  // agent `kg_create_node` refreshes kg-entities but leaves an open cast codex
+  // STALE — and the user's next rename then 412s against a version they were
+  // never shown. Extend the EXISTING /^kg_/ handler (KG writes are already its
+  // domain) rather than register a second one — matchEffectHandlers awaits every
+  // match, so a second /^kg_/ registration would double-invalidate ("one home"
+  // rule). The two keys ride the same write-only gate (KNOWLEDGE_WRITE_PATTERN
+  // already excludes reads), so a chatty read loop does not thrash them.
+  queryClient.invalidateQueries({ queryKey: ['composition', 'cast'] });
+  queryClient.invalidateQueries({ queryKey: ['composition', 'arc'] });
+  // S7-C (spec 38) — the Place-Graph panel's operable World/KG surface (PlaceGraphPanel →
+  // <WorldMap>/useWorldMap) authors places/links via kg_* writes (createEntity/createRelation),
+  // and reads `['composition','worldmap','places',…]` + `['composition','worldmap','detail',…]`.
+  // Those are the SAME kg_* domain, so they are folded into THIS handler rather than a second
+  // kg_*-matching worldEffects handler — a second match on kg_create_node would RED
+  // effectCoverage's `<=1` no-double-fire assertion (integrator resolution-(a)). Disjoint from
+  // the world_map_* raster keys, which worldEffects owns.
+  queryClient.invalidateQueries({ queryKey: ['composition', 'worldmap', 'places'] });
+  queryClient.invalidateQueries({ queryKey: ['composition', 'worldmap', 'detail'] });
 }
 
 /** Idempotent — register the knowledge effect handler once. */

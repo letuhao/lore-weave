@@ -45,6 +45,7 @@ __all__ = [
     "ENTITIES_DETAIL_REL_CAP",
     "ENTITY_STATUSES",
     "ENTITY_SORT_KEYS",
+    "AUTHORABLE_KINDS",
     "merge_entity",
     "upsert_glossary_anchor",
     "get_entity",
@@ -177,6 +178,29 @@ ENTITY_STATUSES: tuple[str, ...] = ("canonical", "discovered", "archived")
 # is the legacy default (browse-by-frequency); `anchor_score` surfaces
 # the two-layer-anchored entities first (the semantic-curation view).
 ENTITY_SORT_KEYS: tuple[str, ...] = ("mention_count", "anchor_score")
+
+# S7-1 — the ONE home for the closed set of entity kinds a HUMAN may
+# hand-author (REST create/edit) and the AGENT's ``kg_create_node`` may
+# mint. The graph is otherwise extraction-built; this gate keeps user/agent
+# authoring from minting arbitrary kind strings. Three consumers mirror this
+# set: the REST create gate (``CreateEntityRequest`` in routers/public/
+# entities.py), the agent gate (``KgCreateNodeArgs`` in tools/
+# graph_schema_tools.py), and the FE picker (``entityKinds.ts``).
+#
+# ``organization`` is the canonical group kind — it is exactly the glossary
+# ``kind_code`` the extractor emits (``_EXTRACTOR_TO_GLOSSARY_KIND``). The
+# legacy ``faction`` misnomer that used to live in the create gate is GONE:
+# it existed nowhere in extraction/glossary and zero ``faction`` rows can
+# exist (the only caller sent ``location``), so this is a pure rename, no
+# migration. ``event_ref``/``preference`` (browse-filter kinds) stay OUT —
+# they are timeline-ref / chat-derived, not user-authorable content.
+AUTHORABLE_KINDS: tuple[str, ...] = (
+    "character",
+    "location",
+    "organization",
+    "concept",
+    "item",
+)
 
 
 def _node_to_entity(node: Any) -> Entity:

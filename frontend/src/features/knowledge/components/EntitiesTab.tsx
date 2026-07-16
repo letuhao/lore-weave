@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Search, Sparkles, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Search, Sparkles, ChevronLeft, ChevronRight, Plus } from 'lucide-react';
 import { useEntities } from '../hooks/useEntities';
 import { useProjects } from '../hooks/useProjects';
 import { EntitiesTable } from './EntitiesTable';
 import { EntityDetailPanel } from './EntityDetailPanel';
 import { EntityStatusLegend } from './EntityStatusLegend';
+import { CreateEntityDialog } from './CreateEntityDialog';
 import { ENTITY_STATUSES, type EntityStatus } from '../api';
 
 // K19d — Entities tab container. Owns:
@@ -60,6 +61,7 @@ export function EntitiesTab({ scopedProjectId }: EntitiesTabProps = {}) {
   const [semanticInput, setSemanticInput] = useState<string>('');
   const [offset, setOffset] = useState(0);
   const [selectedEntityId, setSelectedEntityId] = useState<string | null>(null);
+  const [createOpen, setCreateOpen] = useState(false);
 
   const debouncedSearch = useDebounced(searchInput, 300);
   const debouncedSemantic = useDebounced(semanticInput, 300);
@@ -197,7 +199,33 @@ export function EntitiesTab({ scopedProjectId }: EntitiesTabProps = {}) {
             />
           </div>
         </label>
+
+        {/* S7-1 — hand-author a new entity. Disabled with no project selected
+            (a node must attach to a project tag). */}
+        <button
+          type="button"
+          onClick={() => setCreateOpen(true)}
+          disabled={!effectiveProjectId}
+          title={
+            effectiveProjectId
+              ? undefined
+              : t('entities.create.needsProject')
+          }
+          data-testid="entities-new-button"
+          className="inline-flex items-center gap-1.5 self-end rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          <Plus className="h-3 w-3" />
+          {t('entities.create.newButton')}
+        </button>
       </div>
+
+      {effectiveProjectId && (
+        <CreateEntityDialog
+          open={createOpen}
+          onOpenChange={setCreateOpen}
+          projectId={effectiveProjectId}
+        />
+      )}
 
       {/* C8: semantic VECTOR search box — distinct from plain FTS. Only
           when scoped (BE requires a project for vector search). */}

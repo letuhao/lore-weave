@@ -14,6 +14,7 @@ package api
 import (
 	"errors"
 	"net/http"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -32,7 +33,7 @@ func (s *Server) listWorldMaps(w http.ResponseWriter, r *http.Request) {
 	}
 	ctx := r.Context()
 	rows, err := s.pool.Query(ctx, `
-SELECT id, world_id, name, image_object_key
+SELECT id, world_id, name, image_object_key, version
 FROM world_maps
 WHERE world_id=$1 AND owner_user_id=$2
 ORDER BY created_at`, worldID, ownerID)
@@ -48,7 +49,7 @@ ORDER BY created_at`, worldID, ownerID)
 		// A scan error is a FAILURE, not a silently-skipped row: dropping a map on a transient
 		// error would present an incomplete list as authoritative (the silent-success bug class,
 		// and the pgx discarded-scan-zeroes-row trap this repo has hit).
-		if err := rows.Scan(&mapID, &wID, &d.Name, &d.ImageObjectKey); err != nil {
+		if err := rows.Scan(&mapID, &wID, &d.Name, &d.ImageObjectKey, &d.Version); err != nil {
 			writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT", "failed to read maps")
 			return
 		}
@@ -85,10 +86,10 @@ func (s *Server) getWorldMapREST(w http.ResponseWriter, r *http.Request) {
 	var d worldMapDetail
 	var gotWorld uuid.UUID
 	err := s.pool.QueryRow(ctx, `
-SELECT id, world_id, name, image_object_key
+SELECT id, world_id, name, image_object_key, version
 FROM world_maps
 WHERE id=$1 AND world_id=$2 AND owner_user_id=$3`,
-		mapID, worldID, ownerID).Scan(&mapID, &gotWorld, &d.Name, &d.ImageObjectKey)
+		mapID, worldID, ownerID).Scan(&mapID, &gotWorld, &d.Name, &d.ImageObjectKey, &d.Version)
 	if errors.Is(err, pgx.ErrNoRows) {
 		writeError(w, http.StatusNotFound, "BOOK_NOT_FOUND", "map not found") // owner+world scoped, no oracle
 		return
@@ -102,7 +103,7 @@ WHERE id=$1 AND world_id=$2 AND owner_user_id=$3`,
 	s.withImageURL(&d)
 
 	markers := make([]markerOut, 0)
-	mrows, err := s.pool.Query(ctx, `SELECT id, label, x, y, entity_id, marker_type FROM map_markers WHERE map_id=$1 ORDER BY created_at`, mapID)
+	mrows, err := s.pool.Query(ctx, `SELECT id, label, x, y, entity_id, marker_type, updated_at FROM map_markers WHERE map_id=$1 ORDER BY created_at`, mapID)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT", "failed to read markers")
 		return
@@ -112,10 +113,12 @@ WHERE id=$1 AND world_id=$2 AND owner_user_id=$3`,
 		var id uuid.UUID
 		var m markerOut
 		var entityID *uuid.UUID
-		if err := mrows.Scan(&id, &m.Label, &m.X, &m.Y, &entityID, &m.MarkerType); err != nil {
+		var updatedAt time.Time
+		if err := mrows.Scan(&id, &m.Label, &m.X, &m.Y, &entityID, &m.MarkerType, &updatedAt); err != nil {
 			writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT", "failed to read markers")
 			return
 		}
+		m.UpdatedAt = updatedAt.UTC().Format(time.RFC3339Nano)
 		m.MarkerID = id.String()
 		if entityID != nil {
 			eid := entityID.String()
@@ -129,7 +132,7 @@ WHERE id=$1 AND world_id=$2 AND owner_user_id=$3`,
 	}
 
 	regions := make([]regionOut, 0)
-	rrows, err := s.pool.Query(ctx, `SELECT id, name, polygon, entity_id FROM map_regions WHERE map_id=$1 ORDER BY created_at`, mapID)
+	rrows, err := s.pool.Query(ctx, `SELECT id, name, polygon, entity_id, updated_at FROM map_regions WHERE map_id=$1 ORDER BY created_at`, mapID)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT", "failed to read regions")
 		return
@@ -139,10 +142,12 @@ WHERE id=$1 AND world_id=$2 AND owner_user_id=$3`,
 		var id uuid.UUID
 		var rg regionOut
 		var entityID *uuid.UUID
-		if err := rrows.Scan(&id, &rg.Name, &rg.Polygon, &entityID); err != nil {
+		var updatedAt time.Time
+		if err := rrows.Scan(&id, &rg.Name, &rg.Polygon, &entityID, &updatedAt); err != nil {
 			writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT", "failed to read regions")
 			return
 		}
+		rg.UpdatedAt = updatedAt.UTC().Format(time.RFC3339Nano)
 		rg.RegionID = id.String()
 		if entityID != nil {
 			eid := entityID.String()

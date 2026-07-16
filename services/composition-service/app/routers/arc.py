@@ -58,7 +58,7 @@ from app.grant_client import GrantClient, GrantLevel
 from app.grant_deps import InsufficientGrant, authorize_book
 from app.middleware.jwt_auth import get_bearer_token, get_current_user
 from app.packer.pack import OwnershipError
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 router = APIRouter(prefix="/v1/composition")
 
@@ -345,28 +345,87 @@ def _jsonify(value: Any) -> Any:
 _ArcStatusREST = Literal["empty", "outline", "drafting", "done"]
 
 
-class ArcCreate(BaseModel):
+# ── D-ARC-TRACKS-ROSTER-SCHEMA (spec 32a §A) — typed cascade entries ────────────
+# `tracks`/`roster` were `list[dict[str, Any]]` free blobs at both doors. `_merge_by`
+# (structure.py) shadows by `key`; a MISSING key ⇒ un-overridable garbage, an EMPTY key ⇒
+# every empty-keyed entry across the ancestor chain collides on "" and the leaf eats the
+# root's. The ONLY hard rule is therefore the key: non-empty + unique within the node.
+# `extra="allow"` (not forbid): the packer reads other fields leniently, and forbidding a
+# richer agent write — or dropping its extra fields on a round-trip — would be a regression,
+# not a fix. The vocabulary of `constraints[]` stays deliberately OPEN (shape only).
+class ArcTrack(BaseModel):
+    model_config = ConfigDict(extra="allow")
+    key: str = Field(min_length=1)
+    label: str = ""
+
+
+class ArcRosterSlot(BaseModel):
+    model_config = ConfigDict(extra="allow")
+    key: str = Field(min_length=1)
+    actant: str | None = None
+    label: str | None = None
+    constraints: list[str] = Field(default_factory=list)
+
+
+def _reject_within_node_dupes(v: list[ArcTrack] | list[ArcRosterSlot] | None):
+    """AI-3 — a duplicate key WITHIN one node's own list is the corruption (across-chain
+    shadowing by key is intended). Named so the panel/agent can fix it, never silent."""
+    if not v:
+        return v
+    seen: set[str] = set()
+    for it in v:
+        if it.key in seen:
+            raise ValueError(
+                f"ARC_ENTRY_KEY_DUPLICATE: '{it.key}' — track/roster keys must be unique within an arc"
+            )
+        seen.add(it.key)
+    return v
+
+
+class _ArcContent(BaseModel):
+    """The cascade content fields shared by create + patch, with the key invariant."""
+    tracks: list[ArcTrack] | None = None
+    roster: list[ArcRosterSlot] | None = None
+    roster_bindings: dict[str, Any] | None = None
+
+    _v_tracks = field_validator("tracks")(_reject_within_node_dupes)
+    _v_roster = field_validator("roster")(_reject_within_node_dupes)
+
+
+# Dict-form validators for the MCP door (server.py `_ArcCreateArgs`/`_ArcUpdateArgs` keep the
+# args as `list[dict]` so the repo call site is unchanged): validate each entry against the
+# same ArcTrack/ArcRosterSlot invariant (raises on a missing/empty/duplicate key), keep dicts.
+# ONE definition of the key rule across both doors (the 3-schema-source discipline).
+def validate_track_dicts(v: list[dict[str, Any]] | None) -> list[dict[str, Any]] | None:
+    if not v:
+        return v
+    _reject_within_node_dupes([ArcTrack.model_validate(d) for d in v])
+    return v
+
+
+def validate_roster_dicts(v: list[dict[str, Any]] | None) -> list[dict[str, Any]] | None:
+    if not v:
+        return v
+    _reject_within_node_dupes([ArcRosterSlot.model_validate(d) for d in v])
+    return v
+
+
+class ArcCreate(_ArcContent):
     kind: Literal["saga", "arc"] = "arc"
     parent_arc_id: UUID | None = None
     title: str = ""
     summary: str = ""
     goal: str = ""
     status: _ArcStatusREST = "outline"
-    tracks: list[dict[str, Any]] | None = None
-    roster: list[dict[str, Any]] | None = None
-    roster_bindings: dict[str, Any] | None = None
     arc_template_id: UUID | None = None
     template_version: int | None = None
 
 
-class ArcPatch(BaseModel):
+class ArcPatch(_ArcContent):
     title: str | None = None
     summary: str | None = None
     goal: str | None = None
     status: _ArcStatusREST | None = None
-    tracks: list[dict[str, Any]] | None = None
-    roster: list[dict[str, Any]] | None = None
-    roster_bindings: dict[str, Any] | None = None
     arc_template_id: UUID | None = None
     template_version: int | None = None
 

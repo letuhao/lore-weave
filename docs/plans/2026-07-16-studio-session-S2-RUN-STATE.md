@@ -38,7 +38,7 @@ Design of record: **spec 32 + 32a** (B1), **spec 34 + a future 34a** (B2). PO cl
 | S2-A1 · audit current surface (role-play user) | DONE | code-audit + LIVE drive (chrome-devtools on :5174, book 019f6553). Confirmed: sidebar has "plan" category → plan-hub; NO arc-templates / arc-inspector / 拆文 entry. arc_import_analyze = MCP-only (server.py:3125, import_source.py:17). arc-templates library returns 2 templates via API. |
 | S2-A2 · PORT/ENHANCE/BUILD decisions per capability | DONE | table below; awaiting PO react before BUILD |
 | **S2-B1 · arc-inspector (spec 32 + 32a) — DESIGN LOCKED, awaiting PO approval** | | |
-| S2-B1a · BE-A2 (If-Match required) + D-ARC-TRACKS-ROSTER-SCHEMA (32a §A: schema both doors + repair migration) | DOING | BE-A2 ✅ green (`_require_if_match`→428; arc.py; test_arc_hub_routes.py 11/11). Schema+migration next. |
+| S2-B1a · BE-A2 (If-Match required) + D-ARC-TRACKS-ROSTER-SCHEMA (32a §A: schema both doors + repair migration) | DOING | BE-A2 ✅ (commit 263fd5a4f). Schema BOTH doors ✅: `ArcTrack`/`ArcRosterSlot` (key non-empty+unique, extra=allow) in arc.py REST models + mirrored into MCP `_ArcCreateArgs`/`_ArcUpdateArgs` (one definition, imported). test_arc_hub_routes.py 17/17; arc sweep 213 pass. **Repair migration = last B1a piece (needs DB dry-run).** |
 | S2-B1b · BE-A3 (assign-chapters null=unassign) + D-ARC-ARCHIVE-CHAPTER-STRANDING (32a §B: recovery col + archive/restore reattach) | TODO | |
 | S2-B1c · BE-A1 (span→derived_blocks both doors, leave packer's span()) + BE tests | TODO | |
 | S2-B1d · FE ArcInspectorPanel/Body/useArcInspector + bus slice + widen ArcListNode + arcEffects.ts | TODO | |

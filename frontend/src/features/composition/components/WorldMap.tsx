@@ -143,10 +143,18 @@ export function WorldMap({
           )}
           <span className="ml-auto">
             <input ref={fileRef} type="file" accept="image/*" className="hidden" data-testid="worldmap-backdrop-input" onChange={onPickFile} />
+            {/* S7-3 §4.3 — the backdrop upload needs a chapter media bucket (uploadChapterMedia is
+                chapter-scoped). On the legacy page a chapter is always open, so this never mattered;
+                in the standalone place-graph dock panel `chapterId` can be empty and an upload against
+                '' 404s. Degrade gracefully: disable + hint when there's no chapter. Backward-compatible
+                (legacy always passes a real chapterId, so its behavior is unchanged). */}
             <button
               type="button" data-testid="worldmap-backdrop"
               className="rounded border px-2 py-0.5 disabled:opacity-50"
-              disabled={wm.uploadBackdrop.isPending}
+              disabled={!chapterId || wm.uploadBackdrop.isPending}
+              title={!chapterId
+                ? t('wmap.backdropNoChapter', { defaultValue: 'Open a chapter to set a backdrop.' })
+                : undefined}
               onClick={() => fileRef.current?.click()}
             >
               {wm.uploadBackdrop.isPending

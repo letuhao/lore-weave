@@ -13,6 +13,9 @@ const mergeEntityIntoMock = vi.fn();
 const unlockEntityMock = vi.fn();
 const promoteEntityMock = vi.fn();
 const setGlossaryEntityPinnedMock = vi.fn();
+const createEntityMock = vi.fn();
+const createRelationMock = vi.fn();
+const archiveMyEntityMock = vi.fn();
 vi.mock('../../api', async () => {
   const actual = await vi.importActual<Record<string, unknown>>('../../api');
   return {
@@ -24,6 +27,9 @@ vi.mock('../../api', async () => {
       promoteEntity: (...args: unknown[]) => promoteEntityMock(...args),
       setGlossaryEntityPinned: (...args: unknown[]) =>
         setGlossaryEntityPinnedMock(...args),
+      createEntity: (...args: unknown[]) => createEntityMock(...args),
+      createRelation: (...args: unknown[]) => createRelationMock(...args),
+      archiveMyEntity: (...args: unknown[]) => archiveMyEntityMock(...args),
     },
   };
 });
@@ -34,6 +40,9 @@ import {
   useUpdateEntity,
   usePromoteEntity,
   useToggleGlossaryPin,
+  useCreateEntity,
+  useCreateRelation,
+  useArchiveEntity,
 } from '../useEntityMutations';
 
 function makeWrapper() {
@@ -351,5 +360,165 @@ describe('useToggleGlossaryPin', () => {
       queryKey: ['knowledge-entity-detail', 'u1', 'ent-1'],
     });
     expect(onSuccess).toHaveBeenCalledWith(false);
+  });
+});
+
+// ── S7-1 — create entity / relation, archive ──────────────────────────
+
+describe('useCreateEntity', () => {
+  beforeEach(() => {
+    createEntityMock.mockReset();
+    useAuthMock.mockReturnValue({
+      accessToken: 'tok',
+      user: { user_id: 'u1', email: 'a@b', display_name: null, avatar_url: null },
+    });
+  });
+
+  it('posts the payload + invalidates list, subgraph, and composition cast', async () => {
+    createEntityMock.mockResolvedValue({ ...ENTITY, id: 'ent-new' });
+    const onSuccess = vi.fn();
+    const { Wrapper, invalidateSpy } = makeWrapper();
+    const { result } = renderHook(() => useCreateEntity({ onSuccess }), {
+      wrapper: Wrapper,
+    });
+    await act(async () => {
+      await result.current.create({
+        project_id: 'p1',
+        name: 'Kai',
+        kind: 'character',
+      });
+    });
+    expect(createEntityMock).toHaveBeenCalledWith(
+      { project_id: 'p1', name: 'Kai', kind: 'character' },
+      'tok',
+    );
+    const keys = invalidateSpy.mock.calls.map((c) => c[0]?.queryKey);
+    expect(keys).toContainEqual(['knowledge-entities', 'u1']);
+    expect(keys).toContainEqual(['knowledge-subgraph', 'u1']);
+    expect(keys).toContainEqual(['composition', 'cast']);
+    expect(onSuccess).toHaveBeenCalled();
+  });
+
+  it('surfaces errors via onError', async () => {
+    createEntityMock.mockRejectedValue(new Error('boom'));
+    const onError = vi.fn();
+    const { Wrapper } = makeWrapper();
+    const { result } = renderHook(() => useCreateEntity({ onError }), {
+      wrapper: Wrapper,
+    });
+    await expect(
+      result.current.create({ project_id: 'p1', name: 'X', kind: 'item' }),
+    ).rejects.toThrow('boom');
+    expect(onError).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('useCreateRelation', () => {
+  beforeEach(() => {
+    createRelationMock.mockReset();
+    useAuthMock.mockReturnValue({
+      accessToken: 'tok',
+      user: { user_id: 'u1', email: 'a@b', display_name: null, avatar_url: null },
+    });
+  });
+
+  it('invalidates subgraph, both endpoints detail, and composition arc', async () => {
+    createRelationMock.mockResolvedValue({ id: 'rel-1' });
+    const { Wrapper, invalidateSpy } = makeWrapper();
+    const { result } = renderHook(() => useCreateRelation(), {
+      wrapper: Wrapper,
+    });
+    await act(async () => {
+      await result.current.createRelation({
+        subject_id: 's1',
+        object_id: 'o1',
+        predicate: 'ally_of',
+      });
+    });
+    const keys = invalidateSpy.mock.calls.map((c) => c[0]?.queryKey);
+    expect(keys).toContainEqual(['knowledge-subgraph', 'u1']);
+    expect(keys).toContainEqual(['knowledge-entity-detail', 'u1', 's1']);
+    expect(keys).toContainEqual(['knowledge-entity-detail', 'u1', 'o1']);
+    expect(keys).toContainEqual(['composition', 'arc']);
+  });
+
+  it('surfaces a 409 (endpoint not yours) via onError', async () => {
+    createRelationMock.mockRejectedValue(
+      Object.assign(new Error('conflict'), { status: 409 }),
+    );
+    const onError = vi.fn();
+    const { Wrapper } = makeWrapper();
+    const { result } = renderHook(() => useCreateRelation({ onError }), {
+      wrapper: Wrapper,
+    });
+    await expect(
+      result.current.createRelation({
+        subject_id: 's1',
+        object_id: 'x',
+        predicate: 'owns',
+      }),
+    ).rejects.toMatchObject({ status: 409 });
+    expect(onError).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('useArchiveEntity', () => {
+  beforeEach(() => {
+    archiveMyEntityMock.mockReset();
+    useAuthMock.mockReturnValue({
+      accessToken: 'tok',
+      user: { user_id: 'u1', email: 'a@b', display_name: null, avatar_url: null },
+    });
+  });
+
+  it('archives + invalidates list, detail, subgraph, composition cast', async () => {
+    archiveMyEntityMock.mockResolvedValue(undefined);
+    const onSuccess = vi.fn();
+    const { Wrapper, invalidateSpy } = makeWrapper();
+    const { result } = renderHook(() => useArchiveEntity({ onSuccess }), {
+      wrapper: Wrapper,
+    });
+    await act(async () => {
+      await result.current.archive({ entityId: 'ent-1' });
+    });
+    expect(archiveMyEntityMock).toHaveBeenCalledWith('ent-1', 'tok');
+    const keys = invalidateSpy.mock.calls.map((c) => c[0]?.queryKey);
+    expect(keys).toContainEqual(['knowledge-entities', 'u1']);
+    expect(keys).toContainEqual(['knowledge-entity-detail', 'u1', 'ent-1']);
+    expect(keys).toContainEqual(['composition', 'cast']);
+    expect(onSuccess).toHaveBeenCalled();
+  });
+
+  it('treats a 404 as success (idempotent: already gone == hidden)', async () => {
+    archiveMyEntityMock.mockRejectedValue(
+      Object.assign(new Error('not found'), { status: 404 }),
+    );
+    const onSuccess = vi.fn();
+    const onError = vi.fn();
+    const { Wrapper } = makeWrapper();
+    const { result } = renderHook(
+      () => useArchiveEntity({ onSuccess, onError }),
+      { wrapper: Wrapper },
+    );
+    await act(async () => {
+      await result.current.archive({ entityId: 'ent-1' });
+    });
+    expect(onSuccess).toHaveBeenCalled();
+    expect(onError).not.toHaveBeenCalled();
+  });
+
+  it('surfaces a non-404 error via onError', async () => {
+    archiveMyEntityMock.mockRejectedValue(
+      Object.assign(new Error('boom'), { status: 500 }),
+    );
+    const onError = vi.fn();
+    const { Wrapper } = makeWrapper();
+    const { result } = renderHook(() => useArchiveEntity({ onError }), {
+      wrapper: Wrapper,
+    });
+    await expect(
+      result.current.archive({ entityId: 'ent-1' }),
+    ).rejects.toThrow('boom');
+    expect(onError).toHaveBeenCalledTimes(1);
   });
 });

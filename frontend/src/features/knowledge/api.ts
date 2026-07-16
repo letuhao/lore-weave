@@ -579,9 +579,10 @@ export interface EntityUpdatePayload {
 
 // ── T2.5 World Map — manual entity / relation authoring ──────────────
 
-/** Create a user-authored entity (World Map "+ add place"). `kind` is one of
- *  character|location|faction|concept (BE-enforced). Idempotent on (name, kind)
- *  within the project. */
+/** Create a user-authored entity (World Map "+ add place" / KG "+ New Entity").
+ *  `kind` is one of the authorable closed set — see AUTHORABLE_ENTITY_KINDS in
+ *  lib/entityKinds.ts (character|location|organization|concept|item), BE-enforced
+ *  against the same gate. Idempotent on (name, kind) within the project. */
 export interface CreateEntityPayload {
   project_id: string;
   name: string;

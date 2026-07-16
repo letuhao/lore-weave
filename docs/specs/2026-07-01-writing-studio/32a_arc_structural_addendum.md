@@ -30,26 +30,33 @@ Neither door validates it. AI-3 in spec 32 makes the *panel* refuse it — this 
 Add typed entry models; the key rule is the load-bearing part.
 
 ```python
-# arc.py — shared by ArcCreate + NodePatch; MIRROR verbatim into the MCP arg models (server.py)
+# arc.py — shared by ArcCreate + ArcPatch; MIRROR into the MCP arg models (server.py)
 class ArcTrack(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-    key: str = Field(min_length=1, max_length=64)          # required, non-empty — the shadow key
-    label: str = Field(default="", max_length=200)
+    model_config = ConfigDict(extra="allow")   # ⬅ ALLOW, not forbid — see note
+    key: str = Field(min_length=1)             # required, non-empty — the ONLY hard rule (the shadow key)
+    label: str = ""
 
 class ArcRosterSlot(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-    key: str = Field(min_length=1, max_length=64)          # the shadow key (resolve_roster merges on it)
-    actant: str | None = Field(default=None, max_length=64)
-    label: str | None = Field(default=None, max_length=200)
+    model_config = ConfigDict(extra="allow")
+    key: str = Field(min_length=1)             # the shadow key (resolve_roster merges on it)
+    actant: str | None = None
+    label: str | None = None
     constraints: list[str] = Field(default_factory=list)   # shape only — vocabulary stays OPEN (v1)
 
 # tracks: list[ArcTrack] | None ; roster: list[ArcRosterSlot] | None
-# roster_bindings: dict[str, UUID] | None   (role_key -> glossary_entity_id; value is a real entity id)
+# roster_bindings unchanged: dict[str, Any] | None  (role_key -> glossary_entity_id)
 ```
 
-**Unique-key validator** (both lists, both doors) — a `model_validator` on the container that rejects a
-duplicate `key` within one node's own list (across-chain shadowing is *intended*; within-node duplicates
-are the corruption): `409/422 ARC_ENTRY_KEY_DUPLICATE` with the offending key named.
+🔴 **`extra="allow"`, NOT `extra="forbid"` — the bug is the KEY, nothing else.** The corruption `_merge_by`
+suffers is a **missing/empty/duplicate `key`**; every other field is read leniently by the packer and is
+harmless. `forbid` would 422 an agent write carrying a richer object (or a future field), and `ignore`
+would silently DROP those fields on `model_dump` (data loss on a round-trip edit). `allow` validates the
+one invariant and preserves the rest — non-destructive on re-save of any legacy row whose only sin was a
+bad key. We also do NOT cap `label`/`actant` length, for the same re-save-safety reason.
+
+**Unique-key validator** (both lists, both doors) — a `field_validator` that rejects a duplicate `key`
+within one node's own list (across-chain shadowing is *intended*; within-node duplicates are the
+corruption): **422 `ARC_ENTRY_KEY_DUPLICATE`** with the offending key named.
 
 **`constraints[]` — shape, not vocabulary.** Spec-32 OQ-2 flagged the vocabulary as "unsettled." We do
 NOT settle it here: `list[str]` fixes the *shape* (no more `Any`) while leaving the *values* free. A

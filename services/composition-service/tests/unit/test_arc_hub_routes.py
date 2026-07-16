@@ -171,6 +171,75 @@ def test_patch_arc_missing_if_match_gates_before_precondition(client):
     repo.update.assert_not_called()
 
 
+# ── D-ARC-TRACKS-ROSTER-SCHEMA: the key invariant, both doors (spec 32a §A) ─────
+
+
+def test_create_arc_track_missing_key_is_422_and_never_writes(client):
+    repo = AsyncMock()
+    c, repo = client(GrantLevel.EDIT, structures=repo)
+    r = c.post(f"/v1/composition/books/{BOOK}/arcs", json={"title": "A", "tracks": [{"label": "no key"}]})
+    assert r.status_code == 422
+    repo.create_node.assert_not_called()
+
+
+def test_create_arc_empty_key_is_422(client):
+    c, _ = client(GrantLevel.EDIT)
+    r = c.post(f"/v1/composition/books/{BOOK}/arcs", json={"title": "A", "tracks": [{"key": ""}]})
+    assert r.status_code == 422
+
+
+def test_create_arc_duplicate_track_key_is_422(client):
+    c, _ = client(GrantLevel.EDIT)
+    r = c.post(
+        f"/v1/composition/books/{BOOK}/arcs",
+        json={"title": "A", "tracks": [{"key": "revenge"}, {"key": "revenge"}]},
+    )
+    assert r.status_code == 422
+    assert "ARC_ENTRY_KEY_DUPLICATE" in r.text
+
+
+def test_patch_arc_duplicate_roster_key_is_422(client):
+    repo = AsyncMock()
+    repo.get = AsyncMock(return_value=_node(ARC))
+    c, repo = client(GrantLevel.EDIT, structures=repo)
+    r = c.patch(
+        f"/v1/composition/arcs/{ARC}",
+        json={"roster": [{"key": "hero"}, {"key": "hero"}]},
+        headers={"If-Match": "3"},
+    )
+    assert r.status_code == 422
+    assert "ARC_ENTRY_KEY_DUPLICATE" in r.text
+    repo.update.assert_not_called()
+
+
+def test_mcp_arc_create_enforces_the_same_key_invariant():
+    # The AGENT door (MCP) must reject the same corruption as REST — otherwise the agent can
+    # still write an un-overridable/empty/duplicate key into the cascade (3-schema-source law).
+    import pydantic
+    from app.mcp.server import _ArcCreateArgs, _ArcUpdateArgs
+
+    with pytest.raises(pydantic.ValidationError, match="ARC_ENTRY_KEY_DUPLICATE"):
+        _ArcCreateArgs(book_id="b", tracks=[{"key": "a"}, {"key": "a"}])
+    with pytest.raises(pydantic.ValidationError):
+        _ArcCreateArgs(book_id="b", tracks=[{"key": ""}])
+    with pytest.raises(pydantic.ValidationError):
+        _ArcUpdateArgs(node_id="n", expected_version=1, roster=[{"key": "h"}, {"key": "h"}])
+    # valid + extra preserved (dict form, extra="allow" on the entry model)
+    ok = _ArcCreateArgs(book_id="b", tracks=[{"key": "revenge", "weight": 0.5}])
+    assert ok.tracks[0]["weight"] == 0.5
+
+
+def test_arc_track_allows_and_preserves_extra_fields():
+    # extra="allow": the bug is the KEY; a richer agent write must round-trip losslessly,
+    # never 422 (forbid) and never silently dropped (ignore).
+    from app.routers.arc import ArcTrack
+
+    t = ArcTrack.model_validate({"key": "revenge", "label": "Revenge line", "weight": 0.7})
+    dumped = t.model_dump()
+    assert dumped["key"] == "revenge"
+    assert dumped["weight"] == 0.7  # preserved, not dropped
+
+
 # ── read surface #1: the derived block MUST ride on every shell node ───────────
 
 
