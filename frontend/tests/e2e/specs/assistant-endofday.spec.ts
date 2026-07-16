@@ -7,7 +7,11 @@ import { loginViaUI } from '../helpers/auth';
 // ready chat → type a substantive diary message → End my day → the distiller (real gemma) produces a diary
 // entry in the review. Slow (real LLM ~30-90s), so a generous timeout; runs on the shared TEST account (the
 // distill writes today's entry — test data). This is the headline "does journaling actually work" proof.
-test.describe('Assistant — end-of-day core loop (S1)', () => {
+// @slow — a real-gemma, stateful, non-idempotent integration proof. Green in ISOLATION
+// (`npx playwright test assistant-endofday`); excluded from the fast deterministic suite
+// (`assistant- --grep-invert @slow`) because real-LLM timing + accumulated diary state make it flaky when
+// batched. It exists to prove the core loop actually works end-to-end, not for CI gating.
+test.describe('Assistant — end-of-day core loop (S1) @slow', () => {
   test('type a diary note → End my day → a distilled entry appears', async ({ page }) => {
     test.setTimeout(180_000);
     await loginViaUI(page);
@@ -22,9 +26,10 @@ test.describe('Assistant — end-of-day core loop (S1)', () => {
     const note = 'Long day — I finally shipped the Q3 billing migration with Alice, and it is green now. Feeling relieved.';
     await input.fill(note);
     await page.getByTestId('chat-send-button').click();
-    // The user turn is persisted + shown (we don't need to wait for the full LLM reply — distill reads the
-    // user messages of the day).
-    await expect(page.getByText('Q3 billing migration', { exact: false })).toBeVisible({ timeout: 30_000 });
+    // The user turn was sent — the composer clears (robust to a resumed session that already holds prior
+    // days' messages; we don't wait for the full LLM reply, since distill reads the day's USER messages).
+    await expect(input).toHaveValue('', { timeout: 30_000 });
+    await expect(page.getByText('Q3 billing migration', { exact: false }).last()).toBeVisible({ timeout: 30_000 });
 
     // End my day → the distiller runs on today's messages.
     await a.dismissNewChatDialog();

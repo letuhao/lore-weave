@@ -48,7 +48,7 @@ gate T1–T4 has a GREEN spec on the BUILT image (or a tracked waiver) — then 
 | T4 | schedule + proactive owner-scoping (BLOCKING) | assistant-tenancy | ✅ | 0de26bf98 |
 | S11 | multi-device server-SSOT | assistant-multidevice | ✅ | f8f42f2f2 |
 | **S13** | first-run once (mobile, server-gated) | assistant-firstrun | ✅ | 3857c5061 — green :5185 |
-| **S1** | end-of-day: capture→distill→review→keep→journal | — | ⏭️ WAIVED | a deterministic spec needs a seeded assistant conversation (chat_messages w/ session+branch) → a real ~60s gemma distill (non-deterministic output) → entry+facts, all mutating a shared/throwaway account. High flakiness, low marginal value. Behavior PROVEN: worker-ai `distill_job` unit suite + the completeness audit traced day-window→map-reduce→`write_diary_entry`→KG-inbox end-to-end (real). |
+| **S1** | end-of-day: type note→End my day→distilled entry | assistant-endofday `@slow` | ✅ DEMONSTRATED (flaky-for-CI) | 879650ede — the loop WORKS end-to-end: typed a note → gemma replied → End my day → a coherent first-person diary entry ("I successfully shipped the Q3 billing migration with Alice today… a great sense of relief.") — captured in journey/06-endofday-entry.png. Passes in isolation but is FLAKY on repeat (real gemma timing + non-idempotent daily diary state), so it's tagged `@slow` + EXCLUDED from the fast deterministic suite (`assistant- --grep-invert @slow` → 16 green). It's a proof, not a CI gate. |
 | **S3** | correct a memory (re-distill supersedes) | — | ⏭️ WAIVED | depends on S1 (a kept entry) then a 2nd LLM re-extract; same real-LLM-pipeline blocker. PROVEN: `reextract_job` queue-before-invalidate unit test + A1 day-scoped supersession. |
 | **S4** | forget a person (gone from recall) | — | ⏭️ WAIVED | depends on S1 producing a distilled person. Forget's confirm flow + owner-scoping PROVEN: MobileMemorySheet forget tests + A1 real-DB `forget` scoping + the FE forget hook tests. |
 | **S6** | weekly reflection + dismiss | — | ⏭️ WAIVED | needs a whole week of entries + the reflection LLM (heavier than S1). PROVEN: `reflection_job` Gate-3 unit tests + `reflection_patterns` dismiss-tombstone. |
@@ -69,6 +69,11 @@ gate T1–T4 has a GREEN spec on the BUILT image (or a tracked waiver) — then 
   Verified: `chat → Gemma-4 26B-A4B QAT`.
 
 ## 6 · Findings / drift log (append as you go)
+- **F-QC-1 (FIXED — b124c0cbb):** ~~a genuine UX defect~~ RESOLVED — `useAssistantAutoSession` auto-creates the
+  diary session (default model, book-bound, `session_kind='assistant'`) so `/assistant` lands straight in a
+  ready "Work Assistant" chat; the generic dialog only shows if no default model exists. Verified live +
+  unblocked S1 (879650ede). Minor follow-up left: the chat input placeholder is still the generic "Ask about
+  your story, characters…" (diary-inappropriate copy). Original finding below for the record:
 - **F-QC-1 (DEEPENED by the real-user pass → a genuine UX defect, MED/HIGH):** opening the "private work
   assistant" (diary) on DESKTOP greets you with the GENERIC chat `NewChatDialog` — "Start New Chat" + a model
   picker + Quick-Start personas **Novelist / Translator / Worldbuilder / Editor / Analyst** (the novel-writing
