@@ -43,7 +43,7 @@ no-silent-fail · agent-parity · loop-connected · live-browser-proven · i18n+
 | S3-A2 · PORT/ENHANCE/BUILD decisions | DONE | see DECISIONS below |
 | M4-PRE · AddModelCta studio branch (Q-35-X1) — MUST land before any Pass Rail code | DONE | already landed at HEAD: AddModelCta.tsx:83-96 studio branch via useOptionalStudioHost + followStudioLink (resolves /settings/providers → openPanel); AddModelCta.test.tsx drives the real chain + `queryByRole('link')` null guard. Verified against HEAD, not rebuilt (framework S0 verify-first). |
 | BE-3 · GET .../artifacts/{artifact_id} read-route + FE api + PlanArtifact type (Q-35-BE3) | DONE | svc.get_artifact + router GET .../artifacts/{artifact_id} (VIEW, one-404 H13) + FE api.getArtifact + type PlanArtifactDetail. test_plan_forge_router.py 11 passed (added 200 exact-keys / 404 unknown / 404 cross-book≠403). tsc --noEmit clean. Uncommitted — pending per-slice checkpoint. |
-| BE-21 · _serialize_run passes package_artifact_id to derive_view (Q-35-BE21) | TODO | |
+| BE-21 · _serialize_run passes package_artifact_id to derive_view (Q-35-BE21) | DONE | import PACKAGE_KIND; read pkg id from the artifacts list already held (no N+1, per LIST-NPLUS1); `**derive_view(run, package_artifact_id=...)`. Replaced source-text pin (asserted the bug) with behavioral test: detail.pass_cursor == /passes.pass_cursor + motifs fresh. 192 passed (plan_pass/plan_forge/checkpoint suite), 0 fail. Uncommitted — pending checkpoint. |
 | BE-22 · fix phantom `plan_bootstrap_seed` msg → re-run cast pass (Q-35-BE22) | TODO | |
 | BE-2 · POST .../autofix route (mirror handoff_autofix) (Q-35-BE2) | TODO | |
 | B0 · reserve `plan-passes` in catalog/enum/contract/i18n/guideBody (enum +1 == plan-passes; Q-35-PANEL-COUNT) | TODO | |
@@ -78,3 +78,10 @@ no-silent-fail · agent-parity · loop-connected · live-browser-proven · i18n+
 - Near-miss (caught): almost built a separate `planner-repair` panel — my CLARIFY question framed it
   as an option, contradicting the sealed "no new id". Caught by re-reading the source before coding,
   not from memory. This is exactly the rule "re-read a sealed decision; don't re-litigate it."
+- BE-21 adjudication CONFLICT (resolved): two decisions in wave-5-decisions.md prescribe contradictory
+  mechanisms for the SAME fix — Q-35-BE21-LIST-NPLUS1 says "do NOT add latest_artifact(PACKAGE_KIND);
+  read the pkg id from the artifacts list already held" (no N+1); Q-35-BE21-TEST-PIN says "add
+  `package = await latest_artifact(PACKAGE_KIND)`" (an extra query per run, N+1 on LIST). Chose
+  LIST-NPLUS1 (the explicit N+1-refutation, strictly better) and wrote ONE test matching it (fixture's
+  list_artifact_refs carries the package ref, not TEST-PIN's `[]`+side_effect). Not a silent pick —
+  recorded here.

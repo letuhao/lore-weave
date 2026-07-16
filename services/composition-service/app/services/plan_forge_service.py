@@ -18,7 +18,7 @@ from app.clients.llm_client import LLMClient
 from app.config import settings
 from app.db.pool import get_pool
 from app.services.plan_link_service import LinkError, PlanLinkService
-from app.services.plan_pass_service import derive_view
+from app.services.plan_pass_service import PACKAGE_KIND, derive_view
 from app.db.models import CompositionWork, GenerationJob, PlanRun
 from app.db.repositories.generation_jobs import GenerationJobsRepo
 from app.db.repositories.plan_runs import PlanRunsRepo
@@ -516,6 +516,16 @@ class PlanForgeService:
             if job is not None and job.book_id == run.book_id:
                 job_status = job.status
         artifacts = await self._runs.list_artifact_refs(run.book_id, run.id)
+        # BE-21: the pass ledger's freshness DERIVES from each pass's inputs, and the 5
+        # package-reading passes (motifs/cast/world/beats/scenes) count the planning package
+        # among those inputs. Omitting it made `motifs`/`cast` (no pass deps) have a CONSTANT
+        # fingerprint → fresh forever, even after a re-compile with a new package → the run
+        # detail reported a plan that no longer matched its own package. The package pointer is
+        # ALREADY in `artifacts` (list_artifact_refs is DISTINCT ON (kind) = latest per kind), so
+        # reading it here is free — no extra query, no N+1 (Q-35-BE21-LIST-NPLUS1).
+        package_artifact_id = next(
+            (a["artifact_id"] for a in artifacts if a["kind"] == PACKAGE_KIND), None,
+        )
         # D-PLANFORGE-ARC-PICKER: the Compile step's `arc_id` was a bare text input —
         # a writer has no reason to know a spec's internal arc ids ("arc_2"). The spec
         # itself already HAS the picker data (id + a human title); it was just never
@@ -556,7 +566,7 @@ class PlanForgeService:
             # stored: a persisted freshness flag is a second source of truth that goes stale the
             # moment anything writes around it, which is the entire reason PF-3 fingerprints
             # inputs instead of setting dirty bits.
-            **derive_view(run),
+            **derive_view(run, package_artifact_id=package_artifact_id),
             "arcs": arcs,
             "artifacts": [
                 {"kind": a["kind"], "artifact_id": str(a["artifact_id"])}

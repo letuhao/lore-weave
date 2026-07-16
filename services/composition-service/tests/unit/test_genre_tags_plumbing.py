@@ -79,13 +79,60 @@ def test_the_model_carries_both_new_columns():
     assert r.pass_state == {}
 
 
-def test_the_serialized_run_RETURNS_genre_tags_and_the_derived_pass_view():
-    """The response must round-trip what the caller asked for (else a client cannot tell a stored
-    value from a dropped one), and it must carry the DERIVED pass view — PF-3 says fresh/cursor/
-    blocked_at are computed at serialization and never stored."""
-    src = Path(inspect.getfile(PlanForgeService)).read_text(encoding="utf-8")
-    assert '"genre_tags": run.genre_tags' in src
-    assert "**derive_view(run)" in src
+import pytest
+
+
+@pytest.mark.asyncio
+async def test_the_run_detail_reports_the_SAME_pass_cursor_as_the_passes_endpoint():
+    """BE-21: the run detail's derived pass view must AGREE with the /passes endpoint.
+
+    Both derive freshness against the planning package, which the 5 package-reading passes count
+    among their inputs. If `_serialize_run` omits the package id, `motifs`/`cast` (no pass deps)
+    fingerprint against "" → fresh-forever → the detail's pass_cursor diverges from /passes even
+    after a re-compile with a new package. This pins that the two producers of the same truth
+    agree. The old source-text pin here asserted `**derive_view(run)` — i.e. the BUG.
+    """
+    from types import SimpleNamespace
+    from unittest.mock import AsyncMock
+    from uuid import uuid4
+
+    from app.services.plan_pass_service import PACKAGE_KIND, fingerprint
+
+    user, book, pkg = uuid4(), uuid4(), uuid4()
+    # `motifs` is PASS_ORDER[0]: no pass deps, reads_package ⇒ its only fingerprint input is the
+    # package pointer. Record its fingerprint exactly as the worker does — WITH the package id.
+    motifs_fp = fingerprint(input_artifact_ids=[str(pkg)], params={})
+    run = PlanRun(
+        id=uuid4(), created_by=user, book_id=book, mode="llm", status="proposed",
+        active_job_id=None, genre_tags=["xianxia"],
+        pass_state={
+            "motifs": {
+                "status": "completed", "decision": "auto",
+                "artifact_id": str(uuid4()), "params": {}, "input_fingerprint": motifs_fp,
+            },
+        },
+    )
+
+    runs = AsyncMock()
+    runs.get_for_book.return_value = run
+    # LIST-NPLUS1: the package pointer rides the artifact-refs list `_serialize_run` already reads
+    # (DISTINCT ON (kind) = latest per kind) — no extra query.
+    runs.list_artifact_refs.return_value = [{"kind": PACKAGE_KIND, "artifact_id": str(pkg)}]
+
+    async def _latest(book_id, run_id, kind):
+        # `pass_status` resolves the package via latest_artifact; spec/preflight are absent here.
+        return SimpleNamespace(id=pkg) if kind == PACKAGE_KIND else None
+
+    runs.latest_artifact.side_effect = _latest
+    svc = PlanForgeService(runs, AsyncMock(), AsyncMock(), llm=AsyncMock())
+
+    detail = await svc.get_run_detail(user, book, run.id)
+    passes = await svc.pass_status(user, book, run.id)
+
+    assert passes["pass_cursor"] == 1                       # /passes: right by construction
+    assert detail["pass_cursor"] == passes["pass_cursor"]   # …and the detail must AGREE
+    assert {p["pass_id"]: p["fresh"] for p in detail["passes"]}["motifs"] is True
+    assert detail["genre_tags"] == ["xianxia"]              # PF-15 round-trip, behaviourally
 
 
 # ── it is a RUN input, not platform config (Settings & Configuration Boundary) ──
