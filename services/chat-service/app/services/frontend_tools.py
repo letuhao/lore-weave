@@ -399,7 +399,7 @@ UI_OPEN_STUDIO_PANEL_TOOL: dict = {
             "properties": {
                 "panel_id": {
                     "type": "string",
-                    "enum": ["compose", "scene-compose", "chapter-assemble", "editor", "planner", "agent-mode", "usage", "notifications", "settings", "trash", "steering", "extensions", "proposals", "glossary", "glossary-ontology", "glossary-unknown", "glossary-ai-suggestions", "glossary-merge-candidates", "wiki", "knowledge", "kg-overview", "kg-entities", "kg-timeline", "kg-evidence", "kg-gap", "kg-proposals", "kg-schema", "kg-graph", "kg-insights", "kg-jobs", "kg-bio", "kg-privacy", "jobs-list", "books", "leaderboard-books", "leaderboard-authors", "leaderboard-translators", "leaderboard-trending", "chapter-browser", "scene-browser", "scene-inspector", "plan-hub", "arc-inspector", "plan-passes", "whatif-canvas", "divergence", "book-import", "context-inspector", "sharing", "book-settings", "translation", "enrichment-compose", "enrichment-proposals", "enrichment-gaps", "enrichment-sources", "enrichment-jobs", "enrichment-settings", "user-guide", "quality", "quality-promises", "quality-critic", "quality-coverage", "quality-canon", "quality-canon-rules", "quality-corrections", "quality-heal", "motif-library", "world-map", "place-graph", "cast", "character-arc"],
+                    "enum": ["compose", "scene-compose", "chapter-assemble", "editor", "planner", "agent-mode", "usage", "notifications", "settings", "trash", "steering", "extensions", "proposals", "glossary", "glossary-ontology", "glossary-unknown", "glossary-ai-suggestions", "glossary-merge-candidates", "wiki", "knowledge", "kg-overview", "kg-entities", "kg-timeline", "kg-evidence", "kg-gap", "kg-proposals", "kg-schema", "kg-graph", "kg-insights", "kg-jobs", "kg-bio", "kg-privacy", "jobs-list", "books", "leaderboard-books", "leaderboard-authors", "leaderboard-translators", "leaderboard-trending", "chapter-browser", "scene-browser", "scene-inspector", "plan-hub", "arc-inspector", "arc-templates", "plan-passes", "whatif-canvas", "divergence", "book-import", "context-inspector", "sharing", "book-settings", "translation", "enrichment-compose", "enrichment-proposals", "enrichment-gaps", "enrichment-sources", "enrichment-jobs", "enrichment-settings", "user-guide", "quality", "quality-promises", "quality-critic", "quality-coverage", "quality-canon", "quality-canon-rules", "quality-corrections", "quality-heal", "progress", "motif-library", "quality-conformance", "world-map", "place-graph", "cast", "character-arc"],
                     "description": (
                         "The studio panel to open. 'compose' = the AI co-writer chat; "
                         "'scene-compose' = draft a scene with the AI — stream a ghost "
@@ -460,6 +460,9 @@ UI_OPEN_STUDIO_PANEL_TOOL: dict = {
                         "title/goal/status, the cascade-resolved plot tracks and cast roster, its "
                         "chapter span, open promises, and template provenance. This is the structure "
                         "that steers every generation; "
+                        "'arc-templates' = the arc-template library — browse/create/adopt reusable "
+                        "multi-chapter arc structures (parallel plot threads over a chapter span), "
+                        "apply one onto this book, or save one of your arcs as a template; "
                         "'divergence' = manage the book's what-if derivatives (dị bản) — list "
                         "the canonical Work and every branched version, switch the whole studio "
                         "to one, archive one, read its spec, or spawn a new branch from a chapter; "
@@ -497,6 +500,9 @@ UI_OPEN_STUDIO_PANEL_TOOL: dict = {
                         "by tier (yours/book/shared/system/public catalog/mined drafts), create, "
                         "adopt from the catalog, mine your corpus, inspect a motif's detail and its "
                         "relationship graph (composed_of/precedes/variant_of); "
+                        "'quality-conformance' = the beat-by-beat trace of whether a chapter's PROSE "
+                        "realized its planned motif beats (spec-vs-prose) — per-scene realized/not + "
+                        "tension band, regenerate a missed scene, or re-run the check (BYOK); "
                         "'world-map' = create and edit a world's reference map(s) — upload a base "
                         "image, drop and drag location pins, draw and reshape regions, and bind them "
                         "to glossary/KG location entities; "

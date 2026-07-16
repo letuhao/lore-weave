@@ -16,6 +16,11 @@
     "paletteHint": "⌘⇧P also opens the Command Palette anytime"
   },
   "panels": {
+    "arc-templates": {
+      "title": "Arc Templates",
+      "desc": "Browse, create, adopt and apply reusable multi-chapter arc structures — parallel plot threads and cast roles over a chapter span",
+      "guideBody": "The Arc Template library holds reusable multi-chapter structures — parallel plot threads (revenge line, romance, mentor's lie) laid out as motifs across a chapter span, with cast roles the arc binds when you apply it. Browse by tier: your own templates, the system-seeded ones, and (in the Catalog) others' public ones. Create a new template, adopt a system/public one to customize your own copy, or open one to see its thread × chapter timeline and preview applying it to this book. You can also save an arc you have already authored as a template, or import a reference story and deconstruct it (拆文) into a new template. Applying a template is a preview first — it never overwrites your chapters without you materializing it."
+    },
     "arc-inspector": {
       "title": "Arc Inspector",
       "desc": "Read and edit ONE arc or saga — its goal, status, the cascade-resolved plot tracks and cast roster, chapter span, open promises, and template provenance",
@@ -149,6 +154,11 @@
       "title": "Self-heal",
       "desc": "Run Polish on a chapter and accept each fix before it touches your prose",
       "guideBody": "Self-heal runs a cheap proof-reading pass over a chapter and proposes fixes — pronoun drift, typos, canon slips, over-long descriptive beats — each shown as an accept/reject row. Deterministic fixes (typos, pronouns) come pre-ticked; semantic rewrites are unticked for you to judge. Nothing touches your prose until you press Apply, and even then it writes with a version check: if the chapter changed since Polish ran, the apply is refused rather than reverting your newer edits."
+    },
+    "progress": {
+      "title": "Progress",
+      "desc": "Words today, your streak, the book total, a daily goal and a sparkline",
+      "guideBody": "Progress turns your writing into a habit you can see: words written today, your current day-streak, the book's running total, and a 7- or 30-day sparkline. Set a personal daily goal and a reference line marks it on the chart — the goal is yours alone, not shared with collaborators. It reads the word-counts the editor records as you save; it never changes your prose."
     },
     "kg-overview": {
       "title": "Overview",
@@ -557,6 +567,11 @@
       "title": "Motif Library",
       "desc": "Study tropes (套路/爽点/打脸), adopt or mine them, and inspect the motif relationship graph",
       "guideBody": "The Motif Library is your narrative-craft workbench. Browse motifs by tier — your own, this book's labels, the shared book tier, the system seeds, the public catalog, and your mined drafts. Create a motif inline, adopt one from the catalog, or mine your own corpus to discover recurring patterns. Open any motif to read its beats and roles, and expand its graph to see what it is composed of, what it precedes, and its variants. Bind motifs to scenes from the Scene Inspector so the drafter actually writes toward them."
+    },
+    "quality-conformance": {
+      "title": "Conformance",
+      "desc": "Beat-by-beat: did the prose realize the plan? Per-scene realized/not + tension band",
+      "guideBody": "Conformance traces, scene by scene, whether your written prose actually delivered the motif beats you planned for a chapter. Each scene shows realized / not-realized and how its tension compares to the target. It answers spec-vs-prose (not spec-vs-template — that is the arc-templates drift view). The signal is advisory (coarse, not causally verified). Regenerate a scene that missed its beat, or re-run the whole check against a model you pick."
     }
   },
   "sceneRail": {
@@ -846,7 +861,11 @@
     "canonRuleFocusUnknown": "The rule you came from could not be checked, because the co-writer service is unavailable. It may still be broken somewhere — this is not a result.",
     "canonRulesCapped": "Showing the {{shown}} most recent of {{total}} broken rules.",
     "workUnavailable": "Could not reach the co-writer service, so this book’s quality data could not be loaded. Problems may exist that are not shown here. Try again shortly.",
-    "hubUnavailable": "Could not reach the co-writer service, so promises, critic scores and story coverage cannot be loaded right now. Problems may exist that are not shown here."
+    "hubUnavailable": "Could not reach the co-writer service, so promises, critic scores and story coverage cannot be loaded right now. Problems may exist that are not shown here.",
+    "conformanceTitle": "Conformance",
+    "conformanceDesc": "Did the prose realize the plan? Per-scene beat trace",
+    "pickModelRerun": "Pick a model to re-run with…",
+    "pickChapterConformanceHint": "Pick a chapter above to trace how its prose realized the plan."
   },
   "sidebar": {
     "collapse": "Collapse"

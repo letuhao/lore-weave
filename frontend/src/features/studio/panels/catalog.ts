@@ -15,7 +15,9 @@ import { EditorPanel } from './EditorPanel';
 import { PlannerPanel } from '@/features/plan-forge/components/PlannerPanel';
 import { PassRailPanel } from '@/features/plan-forge/components/PassRailPanel';
 import { MotifLibraryPanel } from './MotifLibraryPanel';
+import { QualityConformancePanel } from './QualityConformancePanel';
 import { ArcInspectorPanel } from './ArcInspectorPanel';   /* owner: S2 */
+import { ArcTemplatesPanel } from './ArcTemplatesPanel';   /* owner: S2 */
 import { UsagePanel } from './UsagePanel';
 import { NotificationsPanel } from './NotificationsPanel';
 import { SettingsPanel } from './SettingsPanel';
@@ -85,6 +87,7 @@ import { QualityCanonPanel } from './QualityCanonPanel';
 import { QualityCanonRulesPanel } from './QualityCanonRulesPanel';
 import { QualityCorrectionsPanel } from './QualityCorrectionsPanel';
 import { QualityHealPanel } from './QualityHealPanel';
+import { ProgressStudioPanel } from './ProgressStudioPanel';
 // ── S7 · Knowledge/World/Cast ── (integrator-wired; components owned by build groups A/B/C)
 import { WorldMapEditorPanel } from './WorldMapEditorPanel';
 import { PlaceGraphPanel } from './PlaceGraphPanel';
@@ -327,15 +330,18 @@ export const STUDIO_PANELS: StudioPanelDef[] = [
   { id: 'chapter-assemble', component: ChapterAssemblePanel, titleKey: 'panels.chapter-assemble.title', descKey: 'panels.chapter-assemble.desc', category: 'editor', guideBodyKey: 'panels.chapter-assemble.guideBody', tourAnchor: 'studio-chapter-assemble-panel' }, /* owner: S1 */
   // ── S2 · Plan & Structure ──      (arc-inspector, arc-templates)
   { id: 'arc-inspector', component: ArcInspectorPanel, titleKey: 'panels.arc-inspector.title', descKey: 'panels.arc-inspector.desc', category: 'editor', guideBodyKey: 'panels.arc-inspector.guideBody' }, /* owner: S2 */
+  { id: 'arc-templates', component: ArcTemplatesPanel, titleKey: 'panels.arc-templates.title', descKey: 'panels.arc-templates.desc', category: 'storyBible', guideBodyKey: 'panels.arc-templates.guideBody' }, /* owner: S2 */
   // ── S3 · PlanForge ──             (plan-passes)
   // ── S4 · Motif & craft ──         (motif-library, quality-conformance)
   { id: 'motif-library', component: MotifLibraryPanel, titleKey: 'panels.motif-library.title', descKey: 'panels.motif-library.desc', category: 'storyBible', guideBodyKey: 'panels.motif-library.guideBody' },
+  { id: 'quality-conformance', component: QualityConformancePanel, titleKey: 'panels.quality-conformance.title', descKey: 'panels.quality-conformance.desc', category: 'quality', guideBodyKey: 'panels.quality-conformance.guideBody' },
   // ── S5 · What-If & Divergence ──  (divergence, + canonview home)
   { id: 'divergence', component: DivergencePanel, titleKey: 'panels.divergence.title', descKey: 'panels.divergence.desc', category: 'editor', guideBodyKey: 'panels.divergence.guideBody' }, /* owner: S5 */
   // ── S6 · Canon/Quality/Progress ──(quality-canon-rules, quality-corrections, quality-heal, progress, + flywheel home)
   { id: 'quality-canon-rules', component: QualityCanonRulesPanel, titleKey: 'panels.quality-canon-rules.title', descKey: 'panels.quality-canon-rules.desc', category: 'quality', guideBodyKey: 'panels.quality-canon-rules.guideBody' },
   { id: 'quality-corrections', component: QualityCorrectionsPanel, titleKey: 'panels.quality-corrections.title', descKey: 'panels.quality-corrections.desc', category: 'quality', guideBodyKey: 'panels.quality-corrections.guideBody' },
   { id: 'quality-heal', component: QualityHealPanel, titleKey: 'panels.quality-heal.title', descKey: 'panels.quality-heal.desc', category: 'quality', guideBodyKey: 'panels.quality-heal.guideBody' },
+  { id: 'progress', component: ProgressStudioPanel, titleKey: 'panels.progress.title', descKey: 'panels.progress.desc', category: 'editor', guideBodyKey: 'panels.progress.guideBody' },
   // ── S7 · Knowledge/World/Cast ──  (world, world-map, place-graph, cast, character-arc)
   { id: 'world-map', component: WorldMapEditorPanel, titleKey: 'panels.world-map.title', descKey: 'panels.world-map.desc', category: 'storyBible', guideBodyKey: 'panels.world-map.guideBody' }, /* owner: S7 (Group B) */
   { id: 'place-graph', component: PlaceGraphPanel, titleKey: 'panels.place-graph.title', descKey: 'panels.place-graph.desc', category: 'storyBible', guideBodyKey: 'panels.place-graph.guideBody' }, /* owner: S7 (Group C) — OQ-5: storyBible, not 'knowledge' */
