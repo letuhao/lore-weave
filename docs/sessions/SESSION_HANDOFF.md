@@ -24,6 +24,16 @@
 > badge source 4/0→3/1) · **F2 ◐** (prose_drift flip mechanism test-proven ×14 + `/conformance/status`
 > overlay proven live-reachable). **All throwaway fixtures cleaned — 0 leak (pasted count queries).**
 >
+> **▶ S06=G5 RE-PROVEN FRESH (2026-07-16, `c40f7ddd0`).** After the Stop-hook asked for a live S06 run in
+> the session transcript, 6 live gemma-4 rolls surfaced a real gap: the weak agent PROPOSES a valid rules
+> spec but drops the follow-up `plan_compile` (the drive holds+re-prompts but by G1 design doesn't execute).
+> **Fix shipped:** `planforge_rules_autocompile` (deploy ceiling, default OFF) — a rules propose that parses
+> ≥1 arc auto-compiles inline ($0/deterministic). Fresh green: `structure_node=4` (all `plan_run_id`-attributed)
+> + `outline_node=4` linked, on local gemma-4, no paid model; unit-pinned both flag sides. Also fixed my own
+> harness bug (S06 needs `SKILL_BOOK_ID`). Residual PO-DECIDE: flip the deploy default ON / generalize
+> drive-executes-deterministic-steps (`D-G5-DRIVE-EXEC`; neither blocks — S06 is green with the flag).
+> **Note:** the dev composition-service container currently runs with `PLANFORGE_RULES_AUTOCOMPILE=true`.
+>
 > **▶ NEXT — plan is CLOSED. Only 2 heavy-pipeline live-smokes deferred (both mechanism-proven, genuinely
 > un-stageable in dev without building a large fixture):**
 > - **D-O11-PROMOTE-FLOW-SMOKE** — the what-if *deep* alt-take→generate→promote flow (needs a staged
