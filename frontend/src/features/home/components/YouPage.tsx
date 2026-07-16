@@ -2,14 +2,14 @@
 // the All-apps drawer + sign-out. Bound to useAuth + useAccountUsage (logic) — view only.
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Settings, BarChart3, Shield, LogOut, Grid3x3, ChevronRight, KeyRound, Palette, Library } from 'lucide-react';
+import { Settings, BarChart3, Shield, LogOut, Grid3x3, ChevronRight, KeyRound, Palette, Library, Bell } from 'lucide-react';
 import { useAuth } from '@/auth';
 import { apiJson } from '@/api';
 import { cn } from '@/lib/utils';
 import { useSheetRoute } from '@/components/shared/Sheet';
 import { useAccountBudget } from '../hooks/useAccountBudget';
 import { AllAppsDrawer, APPS_SHEET_ID } from './AllAppsDrawer';
-import { PushToggle } from '@/features/push/PushToggle';
+import { PushSettingsSheet, NOTIFICATIONS_SHEET_ID } from '@/features/push/PushSettingsSheet';
 import { pushApi } from '@/features/push/api';
 
 export function YouPage() {
@@ -90,13 +90,12 @@ export function YouPage() {
         )}
       </section>
 
-      {/* Notifications (M5) — self-hides where push isn't available */}
-      <PushToggle />
 
       {/* Quick links — every destination is a real, distinct route (no dead links). */}
       <nav className="flex flex-col overflow-hidden rounded-xl border border-border bg-card">
         <Row to="/books" icon={Library} label="Workspaces" note={`${budget.bookCount} ${budget.bookCount === 1 ? 'book' : 'books'}`} />
         <Row onClick={() => openSheet(APPS_SHEET_ID)} icon={Grid3x3} label="All apps" testid="you-all-apps" />
+        <Row onClick={() => openSheet(NOTIFICATIONS_SHEET_ID)} icon={Bell} label="Notifications" note="Nudges · per-category · content-free" testid="you-notifications" />
         {/* The assistant hosts the private-data controls (what-I-know, forget, erase everything). */}
         <Row to="/assistant" icon={Shield} label="Assistant data & privacy" />
         <Row to="/settings/providers" icon={KeyRound} label="Models & keys" note="Your BYOK providers" />
@@ -117,6 +116,7 @@ export function YouPage() {
       </button>
 
       <AllAppsDrawer />
+      <PushSettingsSheet />
     </div>
   );
 }

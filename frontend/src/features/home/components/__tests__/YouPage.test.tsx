@@ -13,6 +13,12 @@ vi.mock('@/auth', () => ({
 }));
 vi.mock('@/api', () => ({ apiJson: (...a: unknown[]) => apiJson(...a) }));
 vi.mock('../../hooks/useAccountBudget', () => ({ useAccountBudget: () => useAccountBudget() }));
+// Stub the push settings sheet (its own suite covers it); it pulls react-query which this test
+// doesn't provide.
+vi.mock('@/features/push/PushSettingsSheet', () => ({
+  PushSettingsSheet: () => null,
+  NOTIFICATIONS_SHEET_ID: 'notifications',
+}));
 
 import { YouPage } from '../YouPage';
 
