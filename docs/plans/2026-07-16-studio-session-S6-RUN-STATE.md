@@ -8,6 +8,17 @@
 S6 is DONE when: canon-rules CRUD, quality-critic+heal, the corrections display and progress are operable — each to the §2 production-ready bar (operable · CRUD · reachable ·
 no-silent-fail · agent-parity · loop-connected · live-browser-proven · i18n+responsive · scale).
 
+## ▶ AUTONOMOUS RUN — CLEAR S6 (PO-authorized 2026-07-16)
+**GOAL (the /goal condition):** S6 is cleared when **quality-corrections (M2), quality-heal (M3), progress (M4), and flywheel (M5)** are EACH registered + operable in the Studio
+to the §2 bar, committed. DONE requires, per slice, the transcript to CONTAIN: (a) the pasted scoped-test output (green), AND (b) a pasted live-browser QC smoke line driving the real
+panel (or an explicit `live infra unavailable: <reason>` when the stack can't boot). Claiming a check passed without pasting its output does NOT satisfy this. **Bound:** stop + report
+after all four close, OR when blocked on one of the 4 critical classes.
+- **QC per slice** (not just unit tests): drive the real panel in a browser. **LLM-driven checks use model gemma-4-26b-a4b-qat** (local lm_studio; resolve its `user_model_id` live per CLAUDE.md test account).
+- **Static FE on a dedicated port** (PO instruction): serve a BUILT FE on its own port so a concurrent session's `vite dev` HMR can't shadow/reset my smoke. `npm run build` is blocked by S4's
+  `MotifDetailDrawer.tsx` tsc error (not mine), so build via `npx vite build` (esbuild, no typecheck) → serve `dist/` on a free port with a `/v1`→`:3123` proxy. Rebuild after each slice.
+- **Anti-race discipline (our side):** commit-atomically (`git add <paths> && git commit` in ONE shell call), tiny slices, prefer NEW files in my subtree over edits to hot shared files;
+  never `git add -A`. If S6 work is swept into another track's commit again, verify it's green on HEAD and continue (don't re-commit).
+
 ## SCOPE
 - **Persona / files:** features/composition/{canon,quality,polish,corrections,progress}
 - **Panels:** quality-canon-rules, quality-corrections, quality-heal, progress (+ flywheel home)
