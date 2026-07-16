@@ -41,11 +41,26 @@ function renderFeed() {
 }
 
 describe('ActivityPage', () => {
-  it('renders items and the unread badge', () => {
-    useActivity.mockReturnValue({ ...base, items: [item({}), item({ id: 'n2', read_at: 'x' })], unread: 1 });
+  it('groups items into Needs-you (unread) and Earlier (read) + shows the unread badge', () => {
+    useActivity.mockReturnValue({
+      ...base,
+      items: [item({ id: 'n1', read_at: null }), item({ id: 'n2', read_at: 'x' })],
+      unread: 1,
+    });
     renderFeed();
-    expect(screen.getByTestId('activity-list').children.length).toBe(2);
+    // one unread → Needs you; one read → Earlier
+    expect(screen.getByTestId('activity-needs-you').querySelectorAll('li').length).toBe(1);
+    expect(screen.getByTestId('activity-earlier').querySelectorAll('li').length).toBe(1);
+    expect(screen.getByText('Needs you')).toBeTruthy();
+    expect(screen.getByText('Earlier')).toBeTruthy();
     expect(screen.getByTestId('activity-unread-badge').textContent).toBe('1');
+  });
+
+  it('omits an empty group (all read → no Needs-you section)', () => {
+    useActivity.mockReturnValue({ ...base, items: [item({ id: 'n1', read_at: 'x' })], unread: 0 });
+    renderFeed();
+    expect(screen.queryByTestId('activity-needs-you')).toBeNull();
+    expect(screen.getByTestId('activity-earlier')).toBeTruthy();
   });
 
   it('mark-all-read is disabled at 0 unread and calls the mutation when there are unread', () => {

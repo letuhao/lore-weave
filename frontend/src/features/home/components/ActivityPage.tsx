@@ -22,6 +22,9 @@ export function ActivityPage() {
   const { items, unread, isLoading, error, hasMore, isFetchingMore, loadMore, markAllRead, markingAll } =
     useActivity();
 
+  const needsYou = items.filter((i) => !i.read_at);
+  const earlier = items.filter((i) => i.read_at);
+
   return (
     <div className="mx-auto flex w-full max-w-lg flex-col gap-3 pb-6" data-testid="activity-page">
       <div className="flex items-center justify-between">
@@ -54,11 +57,28 @@ export function ActivityPage() {
         <p className="py-10 text-center text-sm text-muted-foreground">Nothing yet — your notifications land here.</p>
       )}
 
-      <ul className="flex flex-col gap-2" data-testid="activity-list">
-        {items.map((item) => (
-          <ActivityRow key={item.id} item={item} />
-        ))}
-      </ul>
+      {/* Grouped like the draft: unread items that want attention ("Needs you") above read/older
+          items ("Earlier"). Unread is the data-driven proxy for "actionable". */}
+      {needsYou.length > 0 && (
+        <section data-testid="activity-needs-you">
+          <GroupHead label="Needs you" />
+          <ul className="flex flex-col gap-2">
+            {needsYou.map((item) => (
+              <ActivityRow key={item.id} item={item} />
+            ))}
+          </ul>
+        </section>
+      )}
+      {earlier.length > 0 && (
+        <section data-testid="activity-earlier">
+          <GroupHead label="Earlier" />
+          <ul className="flex flex-col gap-2">
+            {earlier.map((item) => (
+              <ActivityRow key={item.id} item={item} />
+            ))}
+          </ul>
+        </section>
+      )}
 
       {hasMore && (
         <button
@@ -72,6 +92,12 @@ export function ActivityPage() {
         </button>
       )}
     </div>
+  );
+}
+
+function GroupHead({ label }: { label: string }) {
+  return (
+    <h2 className="mb-2 mt-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">{label}</h2>
   );
 }
 
