@@ -1,15 +1,20 @@
 // PlanForge S3 (M4) — the Pass Rail controller. Owns the 7-pass ledger for ONE run: resolve the
 // run (an explicit runId from a deep-link, else the book's latest), load its derived pass view,
-// poll while a pass job runs, and drive run-pass / checkpoint. No JSX. The poll is the ONE
-// synchronization effect (mirrors server job state); run-pass / approve are explicit handlers.
-import { useCallback, useEffect, useRef, useState } from 'react';
+// poll while a pass job runs, and drive run-pass / checkpoint. No JSX.
+//
+// The ledger is a REACT-QUERY query (key ['plan-passes', bookId, runId]) — NOT hand-rolled state —
+// specifically so the Lane-B `planEffects` handler can refresh the rail after an AGENT write
+// (plan_run_pass / plan_review_checkpoint) by invalidating that key. A useState ledger would be
+// unreachable from an invalidate (the "invalidateQueries cannot reach hand-rolled state" bug), which
+// would make the agent-parity handler a silent no-op.
+import { useCallback, useState } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { planForgeApi } from '../api';
 import type { PlanPassLedger, RunPassBody } from '../types';
 
 const POLL_INTERVAL_MS = 2000;
 
-/** A pass job is active while any pass is running or pending-with-a-job — the poll runs then. */
-function isLedgerPolling(ledger: PlanPassLedger | null): boolean {
+function isLedgerPolling(ledger: PlanPassLedger | null | undefined): boolean {
   if (!ledger) return false;
   return ledger.passes.some((p) => p.status === 'running' || (p.status === 'pending' && !!p.job_id));
 }
@@ -20,7 +25,6 @@ export interface UsePassRail {
   busy: boolean;
   polling: boolean;
   error: string | null;
-  /** re-fetch the ledger (also the Lane-B refresh path for an agent write). */
   reload: () => Promise<void>;
   runPass: (passId: string, modelRef?: string, force?: boolean) => Promise<void>;
   reviewCheckpoint: (
@@ -33,108 +37,81 @@ export function usePassRail(
   token: string | null,
   explicitRunId?: string | null,
 ): UsePassRail {
-  const [runId, setRunId] = useState<string | null>(explicitRunId ?? null);
-  const [ledger, setLedger] = useState<PlanPassLedger | null>(null);
+  const qc = useQueryClient();
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const genRef = useRef(0);
+  const [actionError, setActionError] = useState<string | null>(null);
 
+  // Resolve the run: an explicit deep-link id wins; else the book's most recent run. A book with no
+  // runs leaves runId null → the panel shows the "compile a plan first" empty state.
+  const latest = useQuery({
+    queryKey: ['plan-runs-latest', bookId],
+    queryFn: () => planForgeApi.listRuns(bookId, token as string, { limit: 1 }),
+    enabled: !!token && !explicitRunId,
+  });
+  const runId = explicitRunId ?? latest.data?.items[0]?.id ?? null;
+
+  const ledgerQ = useQuery({
+    queryKey: ['plan-passes', bookId, runId],
+    queryFn: () => planForgeApi.passStatus(bookId, runId as string, token as string),
+    enabled: !!token && !!runId,
+    // Poll only while a pass job is active; stop by derivation when the ledger settles.
+    refetchInterval: (q) => (isLedgerPolling(q.state.data as PlanPassLedger | undefined) ? POLL_INTERVAL_MS : false),
+  });
+
+  const ledger = ledgerQ.data ?? null;
   const polling = isLedgerPolling(ledger);
+  const error =
+    actionError ??
+    (ledgerQ.error ? (ledgerQ.error as Error).message : null) ??
+    (latest.error ? (latest.error as Error).message : null);
 
-  // Resolve the run to show: an explicit deep-link id wins; otherwise the book's most recent run.
-  // A book with no runs yet leaves runId null → the panel shows the "compile a plan first" empty state.
-  useEffect(() => {
-    if (explicitRunId) { setRunId(explicitRunId); return; }
-    if (!token) return;
-    let cancelled = false;
-    void (async () => {
-      try {
-        const page = await planForgeApi.listRuns(bookId, token, { limit: 1 });
-        if (!cancelled) setRunId(page.items[0]?.id ?? null);
-      } catch (e) {
-        if (!cancelled) setError((e as Error).message);
-      }
-    })();
-    return () => { cancelled = true; };
-  }, [bookId, token, explicitRunId]);
+  const invalidate = useCallback(
+    () => qc.invalidateQueries({ queryKey: ['plan-passes', bookId, runId] }),
+    [qc, bookId, runId],
+  );
 
-  const reload = useCallback(async () => {
-    if (!token || !runId) return;
-    const gen = ++genRef.current;
-    setError(null);
-    try {
-      const next = await planForgeApi.passStatus(bookId, runId, token);
-      if (genRef.current === gen) setLedger(next);
-    } catch (e) {
-      if (genRef.current === gen) setError((e as Error).message);
-    }
-  }, [bookId, token, runId]);
-
-  // Load the ledger whenever the resolved run changes.
-  useEffect(() => {
-    setLedger(null);
-    if (runId) void reload();
-  }, [runId, reload]);
-
-  // Poll while a pass job is active; stop by derivation when the ledger settles (no timer re-armed).
-  useEffect(() => {
-    if (!token || !runId || !isLedgerPolling(ledger)) return;
-    const gen = genRef.current;
-    let cancelled = false;
-    const timer = setTimeout(async () => {
-      try {
-        const next = await planForgeApi.passStatus(bookId, runId, token);
-        if (!cancelled && genRef.current === gen) setLedger(next);
-      } catch (e) {
-        if (!cancelled && genRef.current === gen) setError((e as Error).message);
-      }
-    }, POLL_INTERVAL_MS);
-    return () => { cancelled = true; clearTimeout(timer); };
-  }, [bookId, token, runId, ledger]);
+  const reload = useCallback(async () => { await invalidate(); }, [invalidate]);
 
   const runPass = useCallback(async (passId: string, modelRef?: string, force?: boolean) => {
     if (!token || !runId) return;
-    setBusy(true);
-    setError(null);
+    setBusy(true); setActionError(null);
     try {
       const body: RunPassBody = {};
       if (modelRef) body.model_ref = modelRef;
       if (force) body.force = force;
       await planForgeApi.runPass(bookId, runId, passId, body, token);
-      await reload(); // pick up the newly-active job so the poll takes over
+      await invalidate(); // pick up the newly-active job so the poll takes over
     } catch (e) {
-      // A 409 UPSTREAM_STALE carries {code, pass_id, blockers, message} — surface it, don't swallow.
-      setError(extractError(e));
+      setActionError(extractError(e)); // 409 UPSTREAM_STALE carries blockers — surface, don't swallow
     } finally {
       setBusy(false);
     }
-  }, [bookId, token, runId, reload]);
+  }, [bookId, token, runId, invalidate]);
 
   const reviewCheckpoint = useCallback(async (
     approved: boolean, passId?: string, edits?: Record<string, unknown>,
   ) => {
     if (!token || !runId) return;
-    setBusy(true);
-    setError(null);
+    setBusy(true); setActionError(null);
     try {
       const next = await planForgeApi.reviewCheckpoint(
-        bookId, runId, { approved, ...(passId ? { pass_id: passId } : {}), ...(edits ? { edits } : {}) }, token,
+        bookId, runId,
+        { approved, ...(passId ? { pass_id: passId } : {}), ...(edits ? { edits } : {}) }, token,
       );
-      setLedger(next);
+      qc.setQueryData(['plan-passes', bookId, runId], next);
     } catch (e) {
-      // 409 CHECKPOINT_REFUSED (e.g. the cast seed proposal is not yet applied) — surface it.
-      setError(extractError(e));
+      setActionError(extractError(e)); // 409 CHECKPOINT_REFUSED (seed not applied) — surface it
     } finally {
       setBusy(false);
     }
-  }, [bookId, token, runId]);
+  }, [bookId, token, runId, qc]);
 
   return { runId, ledger, busy, polling, error, reload, runPass, reviewCheckpoint };
 }
 
 /** Pull a human message out of an apiJson error, preferring the server's `detail.message`. */
 function extractError(e: unknown): string {
-  const err = e as { body?: { detail?: { message?: string; blockers?: string[] } | string }; message?: string };
+  const err = e as { body?: { detail?: { message?: string; blockers?: string[] } | string } } & Error;
   const detail = err?.body?.detail;
   if (detail && typeof detail === 'object') {
     const blockers = Array.isArray(detail.blockers) && detail.blockers.length

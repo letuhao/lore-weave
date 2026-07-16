@@ -50,7 +50,7 @@ no-silent-fail · agent-parity · loop-connected · live-browser-proven · i18n+
 | FE-1 · json-editor read-only viewer for plan artifacts (Q-35-FE1) | DONE | JsonDocumentProvider.readOnly?; JsonEditorPanel: CM6 editable/readOnly props, no window ⌘S listener when RO, Save/Revert HIDDEN + read-only chip, onChange guard. 3 call sites untouched. JsonEditorPanel.test.tsx 6 passed (+RO hides Save/Revert, +⌘S no-save, +regression editable saves). tsc clean. Not shared-entangled → committable. |
 | M4 · Pass Rail panel: ledger + run-pass + freshness/cursor/blocked_at | DONE | types PlanPass/Ledger/RunPassBody; api passStatus/runPass/reviewCheckpoint; usePassRail (resolve run→latest, poll while running, 409-blockers surfaced); PassRow + PassRailPanel (7-row ledger + PS-6 cost-confirm + basic approve/reject + footer + max-w-3xl + empty states). PassRow.test.tsx 6 passed; tsc clean (mine). **LIVE SMOKE (static :5210, proxy /v1): logged in → studio → Command Palette shows "Open Pass Rail" → panel renders 7 passes exactly (motifs done/fresh/re-run, cast BLOCKING/review→=blocked_at, world/arcs/scenes/self_heal 🔒blocked, beats run…, footer "1 of 7 · blocked at cast"). s3-passrail-live.png. PO approved UX + max-width.** |
 | M4-CP · blocking-checkpoint review (view artifact via BE-3 → edit → approve/hold) | DONE | BE-20 (derive_view returns bootstrap_proposal_id/decided_by/decided_at — test_plan_pass_service 30 passed) + useCheckpointReview (load artifact content BE-3 + seed proposal; applySeed=approve→apply) + CheckpointReview (read content, edit→save-edits F-P10, cast PF-7 seed-gate: approve disabled until proposal applied) wired into rail. CheckpointReview.test.tsx 6 passed; tsc clean. LIVE-SMOKE deferred to SMOKE slice: composition-service runs a BAKED image (no source mount, no --reload) so BE-3/BE-20 aren't live; rebuilding it would bake S7's uncommitted BE changes + disrupt concurrent sessions — the SMOKE slice rebuilds the stack once at convergence. |
-| planEffects · Lane-B handler + remove planEffects from PENDING_FILES (agent parity §2.5) | TODO | |
+| planEffects · Lane-B handler + remove from PENDING (agent parity §2.5) | DONE (handler+hook committed; registration deferred) | usePassRail REFACTORED to react-query (key ['plan-passes',bookId,runId]) so an invalidate actually refreshes the rail (the "invalidateQueries can't reach hand-rolled state" bug). planEffects.ts (/^plan_(?!pass_status)/ → invalidate ['plan-passes']+['plan-runs-latest']). planEffects.test.ts + effectCoverage 203 passed. **RE-SMOKED live (:5210 rebuilt): rail renders identically after the react-query refactor.** index.ts register + effectCoverage PENDING-removal ENTANGLED (S4/S6/S7) + coupled → deferred to convergence. |
 | REPAIR · `planner` repair strip (refine/interpret · staleness · failed re-run · relink · autofix) — NO new id | TODO | |
 | I18N · 18-locale keys for both surfaces; responsive + 10k-scale | TODO | |
 | SMOKE · live-browser: GUI-only drives 1 run through 7 passes + 2 checkpoints; `/review-impl` per panel close | TODO | |
@@ -90,8 +90,12 @@ no-silent-fail · agent-parity · loop-connected · live-browser-proven · i18n+
   background process — kept for the SMOKE slice; tear down at convergence.
 - Shared-registry commit for `plan-passes` (enum/catalog/contract/i18n) is uncommitted, pending the
   convergence node (see D-S3-DEFER-REGISTRY-COMMIT). Must land at §6 with enum==openable==contract
-  reconciled across all 8 sessions. FE-1 (JsonEditorPanel readOnly) and planEffects (Lane-B registry
-  index) touch other shared files — same deferral discipline applies there.
+  reconciled across all 8 sessions.
+- Lane-B registration for planEffects — `handlers/index.ts` (add register/reset) + the
+  `effectCoverage.contract.test.ts` PENDING-removal — is in the working tree (green there), NOT
+  committed: both files carry S4/S6/S7 uncommitted edits (flywheel/conformance/etc.) and the two must
+  land TOGETHER (register + de-PENDING) or the coverage ledger reds. Lands at convergence. The handler
+  file + the react-query hook ARE committed, so the wiring is one 2-line barrel edit away.
 ### DRIFT  (near-misses, bars nearly lowered, tests nearly skipped)
 - Near-miss (caught): almost built a separate `planner-repair` panel — my CLARIFY question framed it
   as an option, contradicting the sealed "no new id". Caught by re-reading the source before coding,
