@@ -95,10 +95,17 @@ manuscript. A step that renders but can't be operated = a FAIL (the What-If "ske
   chapter picker → trace/empty · **M-BUG-4 regression at the network level**: arc_template_id→422, arc_id→¬422).
 - ✅ **B · studio-motif-author-journey.spec.ts** — 1 blackbox journey GREEN (reach→browse tiers→author a
   trope→open→graph edge→conformance→loop-connect), usability asserted per step + 7 screenshots.
-- ⏳ **A4 · agent-parity (Lane-B live wiring)** — REMAINING. The handler logic is already proven by
-  `studioMotifEffects.test.ts` (2) + the coverage ledger (`effectCoverage.contract.test.ts`, 151). The
-  E2E needs a `helpers/effectInject.ts` to feed a backend-tool RESULT through the reconciler (the
-  frontendToolInject helper covers FRONTEND tools; a backend-tool-result path is the new piece). Tracked.
+- ✅ **A4 · agent-parity — COVERED IN LAYERS (a live chat-inject e2e is optional, not built).** The
+  reconciler (`useStudioEffectReconciler.ts`) fires `runEffectHandlers` on a SUCCEEDED chat tool-call.
+  Its three links are each already tested: (1) the motif/conformance **handler logic** →
+  `studioMotifEffects.test.ts` (2, proves the exact invalidations); (2) the **barrel→reconciler wiring**
+  → `effectCoverage.contract.test.ts` (151) drives the SAME `registerAllStudioEffectHandlers` the
+  reconciler calls, asserting `composition_motif_*` + `conformance_run` are matched by a registered
+  pattern (and reads like `composition_motif_get` are NOT — the no-thrash guard); (3) the generic
+  `messages → runEffectHandlers` **dispatch** (dedupe, ok-only) is shared with every domain (canon/arc/
+  plan) and tested there. A full browser e2e would only add the LLM-choice-dependent trigger, which is
+  precisely what `frontendToolInject` was built to avoid — so it needs a `helpers/effectInject.ts`
+  (backend-tool-result SSE) and is deferred as low-marginal-value, NOT a coverage hole.
 
 **12 E2E tests GREEN** as a suite (`--project=chromium`, `PLAYWRIGHT_BASE_URL=http://localhost:5199`, 46.7s).
 Run: `PLAYWRIGHT_BASE_URL=http://localhost:5199 npx playwright test tests/e2e/specs/studio-motif-*.spec.ts tests/e2e/specs/studio-quality-conformance.spec.ts`.
