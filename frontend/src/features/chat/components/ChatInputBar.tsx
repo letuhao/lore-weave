@@ -56,6 +56,9 @@ interface ChatInputBarProps {
    *  provided (embedded surfaces may omit). */
   permissionMode?: 'ask' | 'plan' | 'write';
   onPermissionModeChange?: (mode: 'ask' | 'plan' | 'write') => void;
+  /** Override the input placeholder — e.g. the diary assistant uses journal-appropriate copy instead of
+   *  the generic "Ask about your story, characters…" (which belongs to the novel-writing surface). */
+  placeholder?: string;
 }
 
 export function ChatInputBar({
@@ -79,6 +82,7 @@ export function ChatInputBar({
   onStopTTS,
   permissionMode,
   onPermissionModeChange,
+  placeholder,
 }: ChatInputBarProps) {
   const { t } = useTranslation('chat');
   const [value, setValue] = useState('');
@@ -263,7 +267,7 @@ export function ChatInputBar({
             value={value}
             onChange={(e) => { handleValueChange(e.target.value); mention.syncFromInput(e.target); }}
             onSelect={(e) => mention.syncFromInput(e.currentTarget)}
-            placeholder={t('input.placeholder')}
+            placeholder={placeholder ?? t('input.placeholder')}
             minRows={3}
             maxRows={8}
             disabled={disabled || isStreaming || voiceModeActive}

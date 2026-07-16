@@ -249,6 +249,7 @@ export function ChatView({ className, composeMode, footerSlot, headerSlot }: Cha
         onStop={chat.stop}
         isStreaming={chat.isStreaming}
         disabled={!!isArchived}
+        placeholder={activeSession.session_kind === 'assistant' ? t('input.assistant_placeholder') : undefined}
         voiceModeActive={voiceChat.isActive}
         voiceEnabled={voiceEnabled}
         voiceAssistOn={voiceAssistOn}

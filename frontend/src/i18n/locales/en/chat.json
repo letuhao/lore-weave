@@ -82,6 +82,7 @@
       "table": "Table"
     },
     "placeholder": "Ask about your story, characters, world-building...",
+    "assistant_placeholder": "Talk through your day — the people, projects and decisions…",
     "attach_context": "Attach context",
     "assist": "Assist",
     "voice_assist_on": "Voice Assist ON — AI responses will be spoken",
