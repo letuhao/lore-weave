@@ -135,6 +135,14 @@ include = [
   # fails at runtime and the whole encryption slice is unreachable — a shipped-but-unusable
   # feature. Depends on `cryptography` (declared in [project.dependencies] above).
   "loreweave_crypto*",
+  # ACP A1 (2026-07-16) — `loreweave_agent_control` added (the Agent Control Plane SDK:
+  # the rail verdict-machine + the executive state-merge, extracted from chat-service +
+  # knowledge-service so any agent-runtime consumes ONE surface). WITHOUT THIS LINE the
+  # module is silently absent from `pip install /sdk`, so chat's `rail_progress` shim and
+  # knowledge's `executive` import fail at RUNTIME and BOTH services fail to start — the
+  # A1 /review-impl caught exactly this (tests use PYTHONPATH=sdks/python, which hides it).
+  # Pure-stdlib (no deps); consumers: chat-service, knowledge-service (roleplay/game later).
+  "loreweave_agent_control*",
 ]
 exclude = ["tests*"]
 

@@ -145,7 +145,9 @@ async def test_happy_path_updates_state_only():
                                     recent_turns=[{"role": "user", "content": "hi"}], **_MODEL)
     assert status == "updated"
     repo.update_state.assert_awaited_once()
-    written = repo.update_state.call_args.args[1]
+    # RV-H4: update_state is now (session_id, user_id, state) — owner-scoped write.
+    assert repo.update_state.call_args.args[1] == "u"  # the owner we read the block under
+    written = repo.update_state.call_args.args[2]
     # monotonic: the prior covered item survives even though the LLM dropped it
     assert "system design" in written["covered"]
     assert "conflict story" in written["covered"]

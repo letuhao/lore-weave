@@ -1,14 +1,14 @@
-"""Track C — the RAIL DRIVER. **MOVED to the Agent Control Plane SDK (ACP A1).**
+"""loreweave_agent_control — the Agent Control Plane SDK (Python).
 
-The implementation now lives in `loreweave_agent_control.rail` (a pure, stdlib-only module,
-byte-identical to what used to be here). This module is a thin RE-EXPORT shim so every existing
-`from app.services.rail_progress import ...` keeps working unchanged while chat-service becomes a
-consumer of the shared SDK (ACP-8 dogfood). See docs/specs/2026-07-16-agent-control-plane-sdk.md.
+The consumable control/governance primitives extracted from chat-service + knowledge-service
+so any agent-runtime speaks one surface (spec: docs/specs/2026-07-16-agent-control-plane-sdk.md).
+ACP A1 lands the PURE compute (no I/O): the rail verdict-machine + the executive state-merge.
+The stateful pieces (the executive's I/O `run_executive`, the drive harness) stay consumer-side
+and call into this. Behavior is byte-identical to the originals (RW-2 goldens guard it).
 """
 from __future__ import annotations
 
-from loreweave_agent_control.rail import (  # noqa: F401 — re-export surface
-    _STATE_LABELS,  # private, but an existing chat test imports it — keep the surface intact
+from .rail import (
     BOOK_STATE_KEYS,
     DRIVE,
     ENFORCE,
@@ -35,8 +35,16 @@ from loreweave_agent_control.rail import (  # noqa: F401 — re-export surface
     step_is_required,
     user_abandoned_rail,
 )
+from .state_merge import (
+    EXECUTIVE_MAX_TURN_CHARS,
+    EXECUTIVE_MAX_TURNS,
+    EXECUTIVE_SYSTEM_PROMPT,
+    build_messages,
+    merge_state,
+)
 
 __all__ = [
+    # rail — verdict machine + progress + directives
     "BOOK_STATE_KEYS",
     "BookState",
     "RailProgress",
@@ -62,4 +70,10 @@ __all__ = [
     "OFF",
     "RAIL_REQUIRED_NUDGE_CAP",
     "RAIL_OPTIONAL_NUDGE_CAP",
+    # state_merge — the executive's pure parts
+    "merge_state",
+    "build_messages",
+    "EXECUTIVE_SYSTEM_PROMPT",
+    "EXECUTIVE_MAX_TURNS",
+    "EXECUTIVE_MAX_TURN_CHARS",
 ]
