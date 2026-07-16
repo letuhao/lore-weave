@@ -89,10 +89,41 @@ def test_contract_requires_server_authenticated_user_id():
 
 def test_tick_response_status_enum_matches_executive():
     # The executive's status strings must stay inside the contract's closed set.
-    from app.working_memory import executive  # noqa: F401 — import proves the module loads
-
     resp_schema = _TICK["$defs"]["response"]
     for status in ("updated", "no_block", "no_model", "llm_failed", "bad_json"):
         jsonschema.Draft7Validator(resp_schema).validate({"status": status})
     with pytest.raises(jsonschema.ValidationError):
         jsonschema.Draft7Validator(resp_schema).validate({"status": "totally_new_status"})
+
+
+def test_every_executive_return_status_is_in_the_contract_enum():
+    # MED-2 (review-impl fix): machine-LINK the enum to run_executive's ACTUAL return
+    # literals — a NEW executive status must RED this test, not silently drift out of
+    # the contract. Source-scan the executive for `return "<status>"` literals.
+    import re
+
+    import app.working_memory.executive as ex
+
+    src = Path(ex.__file__).read_text(encoding="utf-8")
+    # only run_executive returns bare string literals; capture them.
+    returned = set(re.findall(r'return\s+"([a-z_]+)"', src))
+    assert returned, "expected to find run_executive's return-status literals"
+    allowed = set(_TICK["$defs"]["response"]["properties"]["status"]["enum"])
+    drifted = returned - allowed
+    assert not drifted, f"executive returns status(es) absent from the tick contract enum: {drifted}"
+
+
+def test_full_rubric_carrying_instance_validates_against_schema():
+    # LOW-1 (review-impl fix): a seed WITH the rubric sidecar must validate against the
+    # working_memory schema (the case RW-8 surfaced) — full jsonschema, not structural.
+    instance = {
+        "version": 1,
+        "charter": {"goal": "g", "phases": ["a"], "checklist": [], "time_budget_min": None, "language": "en"},
+        "state": {"phase": "", "covered": [], "elapsed_min": None, "drift_note": None, "redirect_hint": None},
+        "rubric": {"dimensions": ["clarity", "depth"]},
+    }
+    jsonschema.Draft7Validator(_WM).validate(instance)  # raises if rubric is rejected
+    # and a top-level field the schema does NOT model is still rejected (guard intact).
+    bad = dict(instance, unexpected="drift")
+    with pytest.raises(jsonschema.ValidationError):
+        jsonschema.Draft7Validator(_WM).validate(bad)

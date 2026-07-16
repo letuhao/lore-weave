@@ -140,9 +140,32 @@ mod tests {
         serde_json::from_str(&text).expect("schema is valid JSON")
     }
 
-    /// Structural check of one object level against its schema node: every
-    /// `required` key present, and (when `additionalProperties:false`) no key
-    /// outside the declared `properties`. Reads the rules FROM the schema.
+    /// Does `value` match a schema `type` node (a string like "array", or a union
+    /// array like ["integer","null"])? Reads the allowed type(s) FROM the schema.
+    fn type_matches(value: &Value, type_node: &Value) -> bool {
+        let allowed: Vec<&str> = match type_node {
+            Value::String(s) => vec![s.as_str()],
+            Value::Array(a) => a.iter().filter_map(Value::as_str).collect(),
+            Value::Null => return true, // no `type` declared ⇒ unconstrained
+            _ => return true,
+        };
+        allowed.iter().any(|t| match *t {
+            "null" => value.is_null(),
+            "string" => value.is_string(),
+            "integer" => value.is_i64() || value.is_u64(),
+            "number" => value.is_number(),
+            "boolean" => value.is_boolean(),
+            "array" => value.is_array(),
+            "object" => value.is_object(),
+            _ => true,
+        })
+    }
+
+    /// Structural + TYPE check of one object level against its schema node: every
+    /// `required` key present; (when `additionalProperties:false`) no key outside
+    /// the declared `properties`; and each present declared property matches its
+    /// declared `type` (MED-1 fix — catches type drift, not just key drift). Reads
+    /// all rules FROM the schema (no hand-mirror).
     fn assert_level_conforms(instance: &Value, schema_node: &Value, path: &str) {
         let obj = instance
             .as_object()
@@ -151,17 +174,30 @@ mod tests {
             let key = req.as_str().unwrap();
             assert!(obj.contains_key(key), "{path}: missing required key '{key}'");
         }
+        let props = schema_node["properties"].as_object();
         let closed = schema_node
             .get("additionalProperties")
             .and_then(Value::as_bool)
             == Some(false);
         if closed {
-            let props = schema_node["properties"].as_object().unwrap();
+            let p = props.expect("closed object must declare properties");
             for key in obj.keys() {
                 assert!(
-                    props.contains_key(key),
+                    p.contains_key(key),
                     "{path}: undeclared key '{key}' (additionalProperties:false) — producer/schema drift"
                 );
+            }
+        }
+        // Type-check each present declared property against its schema `type`.
+        if let Some(p) = props {
+            for (key, val) in obj {
+                if let Some(prop_schema) = p.get(key) {
+                    assert!(
+                        type_matches(val, &prop_schema["type"]),
+                        "{path}.{key}: value {val} does not match declared type {} — producer/schema type drift",
+                        prop_schema["type"]
+                    );
+                }
             }
         }
     }
@@ -207,11 +243,22 @@ mod tests {
 
     #[test]
     fn conformance_check_actually_bites_on_drift() {
-        // Prove the validator would CATCH a producer that added an undeclared key.
         let schema = load_schema();
+        // (a) an undeclared top-level key must be caught.
         let (_c, mut seed) = freeze(&json!({"goal":"x","phases":["a"],"language":"en"}), None, "X");
         seed["surprise_field"] = json!("drift");
-        let caught = std::panic::catch_unwind(|| assert_seed_conforms(&seed, &schema)).is_err();
-        assert!(caught, "the conformance check must FAIL on an undeclared top-level key");
+        let s1 = seed.clone();
+        assert!(
+            std::panic::catch_unwind(move || assert_seed_conforms(&s1, &schema)).is_err(),
+            "must FAIL on an undeclared top-level key"
+        );
+        // (b) MED-1: a TYPE drift on a declared field must be caught too.
+        let schema2 = load_schema();
+        let (_c2, mut seed2) = freeze(&json!({"goal":"x","phases":["a"],"language":"en"}), None, "X");
+        seed2["version"] = json!("not-an-integer"); // schema says integer
+        assert!(
+            std::panic::catch_unwind(move || assert_seed_conforms(&seed2, &schema2)).is_err(),
+            "must FAIL on a declared-field TYPE drift (version as string)"
+        );
     }
 }

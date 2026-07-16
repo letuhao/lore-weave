@@ -96,3 +96,21 @@ def test_schema_rejects_unknown_charter_field():
     }
     with pytest.raises(jsonschema.ValidationError):
         jsonschema.validate(instance=bad, schema=schema)
+
+
+def test_parse_tolerates_a_rubric_carrying_seed():
+    # LOW-2 (review-impl fix): roleplay's freeze() emits a top-level `rubric` sidecar
+    # (A0.3). chat's WorkingMemory (extra='ignore') must PARSE such a seed and simply
+    # drop the rubric — the anchor doesn't need it; /evaluate reads rubric separately.
+    from app.services.working_memory import parse_working_memory
+
+    seed = {
+        "version": 1,
+        "charter": {"goal": "g", "phases": ["warmup"], "checklist": [], "language": "en"},
+        "state": {"phase": "", "covered": []},
+        "rubric": {"dimensions": ["clarity"]},
+    }
+    wm = parse_working_memory(seed)
+    assert wm is not None, "a rubric-carrying seed must parse (not None)"
+    assert wm.charter.goal == "g"
+    assert not hasattr(wm, "rubric")  # dropped by extra='ignore' — anchor never sees it
