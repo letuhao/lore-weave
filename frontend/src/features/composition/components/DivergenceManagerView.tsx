@@ -7,11 +7,13 @@ import { toast } from 'sonner';
 import { derivativeName, useDivergenceManager } from '../hooks/useDivergenceManager';
 import type { Work } from '../types';
 import { DivergenceWizard } from './DivergenceWizard';
+import { BranchDiffView } from './BranchDiffView';
 
 export function DivergenceManagerView({ bookId, token }: { bookId: string; token: string | null }) {
   const { t } = useTranslation('composition');
   const m = useDivergenceManager(bookId, token);
   const [wizardOpen, setWizardOpen] = useState(false);
+  const [detailTab, setDetailTab] = useState<'spec' | 'diff'>('spec');
   const canonical = m.canonical; // local so TS narrows it to Work past the guard below
 
   const status = m.resolution.data?.status;
@@ -142,30 +144,40 @@ export function DivergenceManagerView({ bookId, token }: { bookId: string; token
         )}
       </div>
 
-      {/* Read-only spec of the selected derivative */}
+      {/* Detail of the selected derivative — Spec (how it was declared) / Diff (what changed) */}
       {m.selected && (
-        <div data-testid="divergence-spec" className="mt-3 rounded border border-border p-2.5">
-          <div className="mb-1.5 flex items-center justify-between">
-            <span className="truncate text-[12px] font-medium">{derivativeName(m.selected) ?? t('divergence.unnamed', { defaultValue: 'Untitled dị bản' })}</span>
-            <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">{t('divergence.readonly', { defaultValue: 'read-only' })}</span>
+        <div data-testid="divergence-detail" className="mt-3 rounded border border-border">
+          <div className="flex items-center gap-1 border-b border-border px-2.5 py-1.5">
+            <span className="mr-1 flex-1 truncate text-[12px] font-medium">{derivativeName(m.selected) ?? t('divergence.unnamed', { defaultValue: 'Untitled dị bản' })}</span>
+            <button type="button" data-testid="divergence-tab-spec" onClick={() => setDetailTab('spec')} className={`rounded px-2 py-0.5 text-[11px] ${detailTab === 'spec' ? 'bg-secondary text-foreground' : 'text-muted-foreground hover:text-foreground'}`}>{t('divergence.tabSpec', { defaultValue: 'Spec' })}</button>
+            <button type="button" data-testid="divergence-tab-diff" onClick={() => setDetailTab('diff')} className={`rounded px-2 py-0.5 text-[11px] ${detailTab === 'diff' ? 'bg-secondary text-foreground' : 'text-muted-foreground hover:text-foreground'}`}>{t('divergence.tabDiff', { defaultValue: 'Diff' })}</button>
           </div>
-          {m.spec.isLoading ? (
-            <div className="text-[11px] text-muted-foreground">{t('divergence.specLoading', { defaultValue: 'Loading spec…' })}</div>
-          ) : s ? (
-            <dl className="grid grid-cols-[80px_1fr] gap-x-2 gap-y-1 text-[11px]">
-              <dt className="text-muted-foreground">{t('divergence.taxonomy', { defaultValue: 'Taxonomy' })}</dt>
-              <dd data-testid="divergence-spec-taxonomy">{s.taxonomy ?? '—'}</dd>
-              <dt className="text-muted-foreground">{t('divergence.branchPoint', { defaultValue: 'Branch point' })}</dt>
-              <dd>{s.branch_point != null ? t('divergence.chapterN', { defaultValue: 'chapter {{n}}', n: s.branch_point + 1 }) : '—'}</dd>
-              <dt className="text-muted-foreground">{t('divergence.canonRules', { defaultValue: 'Canon rules' })}</dt>
-              <dd>{s.canon_rules.length ? <ul className="list-disc pl-4">{s.canon_rules.map((r, i) => <li key={i}>{r}</li>)}</ul> : '—'}</dd>
-              <dt className="text-muted-foreground">{t('divergence.overrides', { defaultValue: 'Overrides' })}</dt>
-              <dd>{s.overrides.length ? t('divergence.nOverrides', { defaultValue: '{{n}} entity override(s)', n: s.overrides.length }) : '—'}</dd>
-            </dl>
-          ) : null}
-          <p className="mt-2 text-[10px] leading-snug text-muted-foreground">
-            {t('divergence.specImmutable', { defaultValue: 'The spec is written once, at derive. Editing it is not available yet — archive and re-derive to change it.' })}
-          </p>
+
+          {detailTab === 'spec' ? (
+            <div className="p-2.5">
+              {m.spec.isLoading ? (
+                <div className="text-[11px] text-muted-foreground">{t('divergence.specLoading', { defaultValue: 'Loading spec…' })}</div>
+              ) : s ? (
+                <dl className="grid grid-cols-[80px_1fr] gap-x-2 gap-y-1 text-[11px]">
+                  <dt className="text-muted-foreground">{t('divergence.taxonomy', { defaultValue: 'Taxonomy' })}</dt>
+                  <dd data-testid="divergence-spec-taxonomy">{s.taxonomy ?? '—'}</dd>
+                  <dt className="text-muted-foreground">{t('divergence.branchPoint', { defaultValue: 'Branch point' })}</dt>
+                  <dd>{s.branch_point != null ? t('divergence.chapterN', { defaultValue: 'chapter {{n}}', n: s.branch_point + 1 }) : '—'}</dd>
+                  <dt className="text-muted-foreground">{t('divergence.canonRules', { defaultValue: 'Canon rules' })}</dt>
+                  <dd>{s.canon_rules.length ? <ul className="list-disc pl-4">{s.canon_rules.map((r, i) => <li key={i}>{r}</li>)}</ul> : '—'}</dd>
+                  <dt className="text-muted-foreground">{t('divergence.overrides', { defaultValue: 'Overrides' })}</dt>
+                  <dd>{s.overrides.length ? t('divergence.nOverrides', { defaultValue: '{{n}} entity override(s)', n: s.overrides.length }) : '—'}</dd>
+                </dl>
+              ) : null}
+              <p className="mt-2 text-[10px] leading-snug text-muted-foreground">
+                {t('divergence.specImmutable', { defaultValue: 'The spec is written once, at derive. Editing it is not available yet — archive and re-derive to change it.' })}
+              </p>
+            </div>
+          ) : (
+            <div className="h-72">
+              <BranchDiffView derivativeProjectId={m.selected.project_id} sourceProjectId={s?.source_project_id ?? null} token={token} />
+            </div>
+          )}
         </div>
       )}
 
