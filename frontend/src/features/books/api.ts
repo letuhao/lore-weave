@@ -3,9 +3,17 @@ import type { RevisionCompare } from './types';
 
 export type Visibility = 'private' | 'unlisted' | 'public';
 
+/** The caller's effective grant on a book, computed server-side on the book read
+ *  (book-service getBookByID: owner if books.owner_user_id matches, else the
+ *  book_collaborators.role, else 'none'). Spec 29 T9/D10-C: the frontend gates
+ *  edit-only affordances on this instead of guessing from owner_user_id. */
+export type BookAccessLevel = 'owner' | 'manage' | 'edit' | 'view' | 'none';
+
 export type Book = {
   book_id: string;
   owner_user_id: string;
+  /** Caller's effective grant (see {@link BookAccessLevel}). Present on the single-book read. */
+  access_level?: BookAccessLevel;
   title: string;
   description?: string | null;
   original_language?: string | null;

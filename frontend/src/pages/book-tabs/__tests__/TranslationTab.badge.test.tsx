@@ -11,7 +11,13 @@ vi.mock('react-i18next', () => ({
 }));
 
 const listChapters = vi.fn();
-vi.mock('@/features/books/api', () => ({ booksApi: { listChapters: (...a: unknown[]) => listChapters(...a) } }));
+const getBook = vi.fn().mockResolvedValue({ book_id: 'b', owner_user_id: 'u1', access_level: 'owner' });
+vi.mock('@/features/books/api', () => ({
+  booksApi: {
+    listChapters: (...a: unknown[]) => listChapters(...a),
+    getBook: (...a: unknown[]) => getBook(...a),
+  },
+}));
 
 const getBookCoverage = vi.fn();
 const getSegmentCoverage = vi.fn();

@@ -22,7 +22,13 @@ vi.mock('react-i18next', () => ({
 }));
 
 const listChapters = vi.fn();
-vi.mock('@/features/books/api', () => ({ booksApi: { listChapters: (...a: unknown[]) => listChapters(...a) } }));
+const getBook = vi.fn();
+vi.mock('@/features/books/api', () => ({
+  booksApi: {
+    listChapters: (...a: unknown[]) => listChapters(...a),
+    getBook: (...a: unknown[]) => getBook(...a),
+  },
+}));
 
 const getBookCoverage = vi.fn();
 const getSegmentCoverage = vi.fn();
@@ -63,9 +69,10 @@ function chapters(n: number, prefix = 'ch') {
 }
 
 beforeEach(() => {
-  listChapters.mockReset(); getBookCoverage.mockReset(); getSegmentCoverage.mockReset();
+  listChapters.mockReset(); getBookCoverage.mockReset(); getSegmentCoverage.mockReset(); getBook.mockReset();
   modalProps = {};
   getSegmentCoverage.mockResolvedValue({ book_id: 'b', target_language: 'vi', chapters: [] });
+  getBook.mockResolvedValue({ book_id: 'b', owner_user_id: 'u1', access_level: 'owner' });
 });
 
 /** Resolve listChapters as a single page of the given chapters. */
@@ -155,6 +162,28 @@ describe('TranslationTab matrix — D4 pagination', () => {
     expect(before).toContain('ch1');
     // the pager exists (250 chapters ⇒ 3 pages); next is an aria-label
     expect(screen.getByLabelText('matrix.next')).toBeInTheDocument();
+  });
+});
+
+describe('TranslationTab matrix — T9/D10-C grant gate', () => {
+  it('disables the Translate CTA with a visible reason for a view-only collaborator', async () => {
+    mockChapters(chapters(2));
+    getBook.mockResolvedValue({ book_id: 'b', owner_user_id: 'other', access_level: 'view' });
+    getBookCoverage.mockResolvedValue({ book_id: 'b', known_languages: ['vi'], coverage: [{ chapter_id: 'ch1', languages: { vi: cell() } }] });
+    wrap(<TranslationTab bookId="b" />);
+    const cta = await screen.findByTestId('matrix-translate-cta');
+    await waitFor(() => expect(cta).toBeDisabled());
+    expect(screen.getByTestId('matrix-view-only')).toBeInTheDocument();
+  });
+
+  it('enables the Translate CTA for an edit collaborator, no view-only banner', async () => {
+    mockChapters(chapters(2));
+    getBook.mockResolvedValue({ book_id: 'b', owner_user_id: 'other', access_level: 'edit' });
+    getBookCoverage.mockResolvedValue({ book_id: 'b', known_languages: ['vi'], coverage: [{ chapter_id: 'ch1', languages: { vi: cell() } }] });
+    wrap(<TranslationTab bookId="b" />);
+    await screen.findByText('Ch 1');
+    await waitFor(() => expect(screen.getByTestId('matrix-translate-cta')).not.toBeDisabled());
+    expect(screen.queryByTestId('matrix-view-only')).toBeNull();
   });
 });
 

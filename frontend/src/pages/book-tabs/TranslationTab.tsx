@@ -168,6 +168,18 @@ export function TranslationTab({
     enabled: !!accessToken,
   });
 
+  // T9/D10-C: the caller's effective grant, so the translate affordance is DISABLED-with-reason
+  // for a view-only collaborator (who would otherwise be refused at submit with a late 403),
+  // rather than hidden (indistinguishable from the T1 no-button bug).
+  const { data: book } = useQuery({
+    queryKey: ['book', bookId],
+    queryFn: () => booksApi.getBook(accessToken!, bookId),
+    enabled: !!accessToken,
+  });
+  // Fail OPEN when the grant is unknown/loading (older server, in-flight) so we never disable
+  // the button for everyone — only an explicit view/none grant gates it.
+  const canEdit = book?.access_level ? ['owner', 'manage', 'edit'].includes(book.access_level) : true;
+
   const coverage = coverageData ?? null;
   const chapters = chaptersData?.items ?? [];
   // T4 + T10 + D9: a coverage OR chapter-list failure is a real error surfaced with a typed
@@ -319,8 +331,9 @@ export function TranslationTab({
           )}
           <button
             onClick={openTranslateUnscoped}
-            disabled={!hasChapters}
+            disabled={!hasChapters || !canEdit}
             data-testid="matrix-translate-cta"
+            title={!canEdit ? t('matrix.translate_no_edit', { defaultValue: 'You have view-only access — ask the owner for edit access to translate.' }) : undefined}
             className="inline-flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:brightness-110 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
           >
             <Languages className="h-3.5 w-3.5" />
@@ -328,6 +341,14 @@ export function TranslationTab({
           </button>
         </div>
       </div>
+
+      {/* T9/D10-C: a visible reason, not just a disabled button — a view-only collaborator sees
+          WHY they can't translate instead of a button that silently 403s at submit. */}
+      {book?.access_level && !canEdit && (
+        <div data-testid="matrix-view-only" className="rounded-md border border-amber-400/20 bg-amber-400/5 px-3 py-2 text-[11px] text-amber-500">
+          {t('matrix.translate_no_edit', { defaultValue: 'You have view-only access — ask the owner for edit access to translate.' })}
+        </div>
+      )}
 
       <TranslateModal
         open={translateOpen}
@@ -588,8 +609,10 @@ export function TranslationTab({
         <FloatingActionDivider />
         <button
           onClick={openTranslateScoped}
+          disabled={!canEdit}
+          title={!canEdit ? t('matrix.translate_no_edit', { defaultValue: 'You have view-only access — ask the owner for edit access to translate.' }) : undefined}
           data-testid="matrix-translate-selected"
-          className="btn-glow inline-flex items-center gap-1.5 rounded-full bg-primary px-4 py-1.5 text-xs font-medium text-primary-foreground"
+          className="btn-glow inline-flex items-center gap-1.5 rounded-full bg-primary px-4 py-1.5 text-xs font-medium text-primary-foreground disabled:opacity-50 disabled:cursor-not-allowed"
         >
           <Languages className="h-3.5 w-3.5" />
           {t('matrix.translate_selected')}
