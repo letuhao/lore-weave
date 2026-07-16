@@ -57,7 +57,10 @@ after all four close, OR when blocked on one of the 4 critical classes.
 **M1 = quality-canon-rules is CLEARED to the §2 bar** (operable · CRUD incl restore · reachable · no-silent-fail · agent-parity incl MCP+Lane-B · loop IN-hop · unit-proven). Deferred beyond-bar ENHANCE rows in DEBT (412 rich-UI, focusRuleId OUT deep-link, kind field).
 
 | M2a · quality-corrections display port + register | DONE | Extracted CorrectionStatsTable (F-Q11) → QualityCorrectionsPanel behind gate; registered catalog/enum/contract/i18n/hub-6th-card; unavailable≠empty. 35/35 vitest + tsc clean. commit `9c6a6d695`. LIVE-QC + BE-9c pending (M2b). |
-| M2b · BE-9c CORRECTABLE_OPERATIONS allowlist (true denominator) + live-QC | TODO | correction_stats groups by mode over EVERY job (plan passes inflate accept-rate). Allowlist = ("draft_scene","draft_chapter","stitch_chapter"), NOT selection_edit STAYS (F-Q3a). |
+| M2b · BE-9c CORRECTABLE_OPERATIONS allowlist (true denominator) | DONE | CORRECTABLE_OPERATIONS=("draft_scene","draft_chapter","stitch_chapter") + j.operation=ANY() in correction_stats; NOT selection_edit STAYS (F-Q3a). 5/5 correction_stats integration green (throwaway DB, incl excludes_non_draft_operations). commit `35fae4ace`. |
+| **M2 · LIVE-QC quality-corrections** | DONE | headless playwright on the static FE :5199: login → studio → command palette "Corrections" → panel RENDERS `studio-quality-corrections-panel` with real stats (Diverge 1 / Stream 8). **M2 CLEARED to §2 bar.** (MCP browsers were locked by concurrent sessions → own playwright instance via frontend node_modules; QC harness reusable for M3/M4/M5.) |
+
+**QC HARNESS (reusable):** static FE = `npx vite build --outDir dist-s6` (bypasses S4 tsc) + `node scratchpad/s6-fe-static.mjs` (serves dist-s6 :5199, proxies /v1→:3123). Live-QC = a headless-playwright script (import from `frontend/node_modules/playwright` via file:// URL) driving :5199 (login claude-test → `/books/019f6553-…/studio` → command palette → assert panel testid). Rebuild dist-s6 per slice.
 
 ## REGISTERS  (append as you go — an empty DRIFT log at the end is dishonest, not clean)
 ### DECISIONS
