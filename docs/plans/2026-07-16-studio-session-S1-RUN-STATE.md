@@ -38,7 +38,7 @@ no-silent-fail · agent-parity · loop-connected · live-browser-proven · i18n+
 | S1-B3 · inline-ghost correction capture (ENHANCE useInlineGhost) | DONE | Wired `useInlineGhost` discard→correction{reject} + regenerate→correction{regenerate} (capture BEFORE re-stream mints a new jobId); accept/edit NOT captured (H2, mirrors ComposeView cowrite gate). Closes the ONE Dead capability from the audit. Unit 4/4 (useInlineGhost.correction.test.tsx), tsc clean (mine). **LIVE-PROVEN :5209: set the Work's default_model_ref (test-account has no default — CLAUDE.md caveat) → 'Continue from cursor' enabled → streamed a 1622-char inline ghost at the caret → Discard → `POST /v1/composition/jobs/…/correction => 201 Created` fired. The flywheel is closed for the editor's inline surface.** |
 | S1-B4 · verify publish-chapter meets §2 bar | DONE | Publish already lives in the studio EditorPanel (EditorPublishGate). **VERIFIED live :5209: reachable (editor toolbar) → gated with a VISIBLE reason ("1 of 1 scenes not yet done", no silent fail) → marked the scene done → Publish ENABLED (gate transitions correctly) → clicked → chapter PUBLISHED (button → "Re-publish").** Meets §2 bar (operable/reachable/no-silent-fail/live). Test-data mutations on the fixture book: Work.default_model_ref set (was empty), scene marked done, chapter published — all benign + reversible on the test account. |
 | S1-E1 · Playwright E2E suite (all 4 slices + reachability) | DONE | Committed `bff0…` (13 tests, 9 files): studio-compose-reachability (4, no-model), studio-publish (1, no-model), studio-scene-compose (2), studio-chapter-assemble (4), studio-inline-correction (2) — all model-gated ones `test.skip` when LM Studio/a chat user-model is absent. Drives the REAL dock panels via the Command Palette on the isolated static build (dist-s1-iso :5209, no HMR). **Live-proven this session:** no-model 5/5 (A1 4/4 + A5 1/1); model-gated proven green individually — A2 2/2, A3 4/4, A4 discard 1/1, A4 accept + A2 generate green on their passing runs. Full-suite sweep = 9 passed + 1 flaky-**recovered-on-retry** + 3 ghost-timeout failures — the 3 reds are the documented **LM Studio queue-wedge under 8 back-to-back real generations** (my lesson `lm-studio-queue-wedge`), NOT a spec/app defect: every failing test passes when LM Studio responds, and the flaky one self-recovered. Caveat recorded in the test plan: run model-gated specs spaced / `--retries=2`, not all-at-once against one local LM Studio. |
-| S1-E2 · blackbox author-role usability pass | DOING | Report: `docs/plans/2026-07-17-studio-S1-blackbox-usability-report.md` (per-scenario usable/friction/broken). |
+| S1-E2 · blackbox author-role usability pass | DONE | Report: `docs/plans/2026-07-17-studio-S1-blackbox-usability-report.md` + 6 live screens (`assets/2026-07-17-studio-S1-blackbox/`). **Headline: S1 is usable, the draft→revise→assemble→publish loop closes in-studio with no legacy page, no `broken` capability.** BB-1..6 all `usable` (2 with minor friction). 5 findings, all coherence/polish (NOT blockers): 1 MED (contradictory model indicator — Work-default vs inline-pick), 3 LOW (hover-only gate reasons, compose/assemble visual sameness, invisible flywheel), 1 INFO (Compose naming). All tracked in DEBT below. |
 
 ## REGISTERS  (append as you go — an empty DRIFT log at the end is dishonest, not clean)
 ### DECISIONS
@@ -69,6 +69,24 @@ no-silent-fail · agent-parity · loop-connected · live-browser-proven · i18n+
 **No open S1 debt requires a NEW detailed spec.** Every audit finding is either FIXED, cheap-fixed, or
 a legitimate CROSS-TRACK defer that belongs to another track's scope (D-5 mobile-shell / S5 what-if /
 book-editor). Triage below.
+
+#### 🔎 BLACKBOX USABILITY FINDINGS (2026-07-17 — from `2026-07-17-studio-S1-blackbox-usability-report.md`)
+Author-role pass verdict: **S1 is usable, the loop closes in-studio, no `broken` capability.** The rows
+below are coherence/polish, not blockers — none gate release. Gate reason for all: #2 (design/UX polish)
+or #5 (conscious-note). Screens: `docs/plans/assets/2026-07-17-studio-S1-blackbox/`.
+- **D-S1-MODEL-INDICATOR-CONTRADICTION (MED)** — Editor status bar reads "no model" while the inline AI
+  toolbar shows "Gemma-4 26B" selected; two model concepts (Work default vs inline pick) shown together
+  with no explanation. Not in the compose/assemble/inline/publish build slices → not fix-now; needs the
+  Work-default↔inline-pick resolution surfaced coherently (studio-settings concern). **Target:** next
+  studio-settings pass; re-check on a real account WITH a resolved default. Flag to PO.
+- **D-S1-GATE-REASON-HOVER-ONLY (LOW)** — disabled Publish + Stitch expose their reason only via `title`
+  (hover); disabled buttons aren't strongly greyed. Fix: an inline caption under the gated control.
+- **D-S1-COMPOSE-ASSEMBLE-VISUAL-SAMENESS (LOW)** — Scene Compose and Chapter Assemble share so much
+  chrome they're hard to tell apart at a glance. Fix: stronger per-panel identity (title band / hide the
+  what-if row in assemble). PO/design call.
+- **D-S1-FLYWHEEL-INVISIBLE (LOW, design opinion)** — Regenerate/Discard capture a correction with zero
+  felt signal; the "AI learns from you" value is unfelt. Optional subtle acknowledgement toast. PO call —
+  the mechanic is correct (accept-as-is stays uncaptured, H2), so this is polish, not a defect.
 
 #### ✅ RECENTLY CLEARED (fixed; in HEAD)
 - **S1-D1 / S1-D2** — "tab jumps to Welcome" + "panel state lost" were **HMR ARTIFACTS** of the shared
