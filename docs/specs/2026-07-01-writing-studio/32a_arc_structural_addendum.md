@@ -65,15 +65,20 @@ future vocab spec tightens the enum; this addendum does not block on it.
 ### A.3 The migration audit (the reason OQ-2 was gate-#2 — handled, non-destructively)
 Tightening a write schema can reject writes the **agent already made** into existing rows. So:
 - **Read scan first (dry-run, no write):** count `structure_node` rows whose `tracks`/`roster` contain
-  an entry with a missing or empty `key`, or a within-node duplicate. **STOP and report the count to the
-  PO** before any repair (mirrors the D-1 dry-run discipline).
-- **Repair = backfill, prefer over drop:** for a missing/empty `key`, synthesize `key = slug(label)` when
-  `label` is non-empty and unique-in-node; only when no recoverable key exists, drop the entry AND log
-  its full JSON to the migration report (never a silent drop — `silent-success-is-a-bug`).
-- **Idempotent + reversible-by-report:** the migration writes a `docs/reports/` JSON of every row it
-  touched (before/after), so a bad repair is auditable and hand-revertible.
-- Validation goes live at the doors **after** the repair migration, in the same PR, so no window exists
-  where a valid row can't be re-saved.
+  an entry with a missing/empty `key`, or a within-node duplicate. **DONE 2026-07-16 — dev DB result:
+  `4 nodes, 0 bad/empty/dup keys`. Nothing to repair.**
+- **Repair = ALWAYS non-destructive, NEVER a drop** (so the PO-STOP-on-drop default can never fire):
+  for a missing/empty `key`, synthesize a **positional** `key = "<track|role>_<ord>"` (stable,
+  unique-in-node, editable) rather than dropping the entry; for a genuine within-node duplicate, suffix
+  `_2`, `_3`. No entry is ever lost. (Positional over `slug(label)`: robust, always available, and these
+  garbage entries were un-shadowable anyway — a stable key is the whole win.)
+- **Delivered as an ON-DEMAND idempotent script**, `app/db/repairs/arc_entry_keys.py` (a pure
+  `repair_entries()` + a `--scan`/`--apply` CLI), **NOT a boot-time migration**: reads already tolerate
+  legacy garbage (`_merge_by`), the write-doors now prevent new garbage, and a heavy JSONB backfill on
+  every service boot would be waste for a case that is empty today. Ops runs it once if a real deployment
+  ever scans dirty. The pure function is unit-tested (garbage→valid, idempotent).
+- Validation is live at both doors now; a legacy garbage row still **reads**, and the only edit it would
+  block (a re-save) is unblocked by running the script — which on the current DB has nothing to do.
 
 ### A.4 Files
 `arc.py` (models + validator) · `server.py` (mirror the models — **3-schema-source FastMCP caveat**:
