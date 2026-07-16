@@ -33,6 +33,20 @@ from app.db.repositories import ReferenceViolationError, outbox
 # can render the auto-vs-cowrite A/B even before a mode has any generations.
 _DASHBOARD_MODES = ("auto", "cowrite")
 
+# BE-9c (F-Q3a) — the ONLY generation operations that produce a CORRECTABLE DRAFT (a passage a human
+# accepts / edits / picks-different / regenerates / rejects). The correction-rate denominator MUST
+# count just these. `mode='auto'` is ALSO the default for self_heal_propose, quality_report,
+# promise_coverage, plan_pipeline, plan_forge_*, decompose_preview, conformance_run, mine_motifs, chat
+# — none correctable — so grouping by mode over EVERY job inflates the 'auto' denominator and the
+# accept_rate reads falsely high (a lie with a chart on it).
+#   ⚠ This is ADDED to the NOT-selection_edit exclusion, NEVER a replacement. `mode` is a per-REQUEST
+#   Literal["cowrite","auto"] over the SAME op, so `draft_scene`+cowrite IS already the Stream column
+#   and is in this list. The only exclusively-cowrite ops are rewrite/expand/describe = SELECTION
+#   EDITS, which the selection_edit exclusion removes. "Enumerating the cowrite ops from engine.py"
+#   and adding them here silently reverts this fix and corrupts the very column it charts. The list is
+#   these three; NOT selection_edit STAYS.
+CORRECTABLE_OPERATIONS = ("draft_scene", "draft_chapter", "stitch_chapter")
+
 _SELECT_COLS = """
   id, created_by, project_id, job_id, kind, chosen_candidate_index, guidance,
   changed_blocks, raw_before, raw_after, regenerated_to_job_id, created_at
@@ -198,15 +212,21 @@ class GenerationCorrectionsRepo:
               -- tables (the kinds-bug rule).
               ON c.job_id = j.id AND c.project_id = j.project_id
             WHERE j.project_id = $1
+              -- BE-9c (F-Q3a): count ONLY correctable-draft operations. Without this the
+              -- denominator includes plan passes / quality reports / self-heal / coverage /
+              -- conformance / decompose (all default mode='auto'), so accept_rate reads a lie.
+              AND j.operation = ANY($2::text[])
               -- /review-impl: T3.2 selection edits run mode='cowrite' but are NOT
               -- part of the draft-correction flywheel (no correction is captured),
               -- so they'd inflate the cowrite `generations` denominator and drag its
               -- correction rate down — corrupting the cowrite-vs-auto eval signal.
-              -- Exclude them (audit-shared-table-consumers on a new row-type).
+              -- Exclude them (audit-shared-table-consumers on a new row-type). ADDED TO
+              -- the allowlist above, never replaced (F-Q3a).
               AND NOT coalesce((j.input->>'selection_edit')::boolean, false)
             GROUP BY j.mode
             """,
             project_id,
+            list(CORRECTABLE_OPERATIONS),
         )
         by_mode_raw = {r["mode"]: r for r in rows}
 

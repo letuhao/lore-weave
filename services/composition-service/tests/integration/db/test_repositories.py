@@ -2162,6 +2162,31 @@ async def test_correction_stats_excludes_selection_edits(pool):
     assert cw.generations == 1  # ONLY the real scene draft, not the 2 selection edits
 
 
+async def test_correction_stats_excludes_non_draft_operations(pool):
+    """BE-9c (F-Q3a): the denominator counts ONLY correctable-draft ops. mode='auto' is ALSO the
+    default for plan passes / quality reports / self-heal / coverage / conformance / decompose — none
+    a draft a human accepts/edits/rejects — so grouping by mode over EVERY job inflates the 'auto'
+    denominator and accept_rate reads a lie. Only draft_scene/draft_chapter/stitch_chapter count."""
+    gjr = GenerationJobsRepo(pool)
+    cr = GenerationCorrectionsRepo(pool)
+    user, project, _ = _ids()
+    await _seed_work(pool, user, project)
+    # one real auto draft …
+    await gjr.create(project, created_by=user, operation="draft_scene", mode="auto", status="completed")
+    # … and a spread of non-correctable auto jobs that must NOT inflate the denominator.
+    for op in ("plan_forge_refine", "quality_report", "self_heal_propose", "promise_coverage",
+               "conformance_run", "decompose_preview", "plan_pipeline"):
+        await gjr.create(project, created_by=user, operation=op, mode="auto", status="completed")
+    a = next(m for m in (await cr.correction_stats(project)).by_mode if m.mode == "auto")
+    assert a.generations == 1  # ONLY the draft_scene, not the 7 non-draft auto jobs
+
+    # the other two correctable ops count too (draft_chapter, stitch_chapter).
+    await gjr.create(project, created_by=user, operation="draft_chapter", mode="auto", status="completed")
+    await gjr.create(project, created_by=user, operation="stitch_chapter", mode="auto", status="completed")
+    a2 = next(m for m in (await cr.correction_stats(project)).by_mode if m.mode == "auto")
+    assert a2.generations == 3
+
+
 async def test_correction_stats_distinct_job_and_completed_only(pool):
     """/review-impl slice-5 MED#1+#2: multiple corrections on ONE job count it
     ONCE (a rate can't exceed 1.0), and a correction on a NON-completed job is
