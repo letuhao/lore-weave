@@ -11,7 +11,9 @@ export type BranchDiffScene = {
   nodeId: string;
   storyOrder: number;
   title: string;
-  status: 'changed' | 'added' | 'unchanged';
+  // 'no-prose' = a diverged scene NODE that has no completed draft yet (promote it
+  // on the what-if canvas) — surfaced so it isn't silently absent from the audit.
+  status: 'changed' | 'added' | 'unchanged' | 'no-prose';
   canonText: string; // '' when the scene is all-new (no canon counterpart drafted)
   branchText: string;
 };
@@ -39,7 +41,7 @@ export function useBranchDiff(
           ]);
           const sourceByOrder = new Map(source.items.map((s) => [s.story_order, s]));
           const sourceByNode = new Map(source.items.map((s) => [s.node_id, s]));
-          return deriv.items.map((d): BranchDiffScene => {
+          const drafted = deriv.items.map((d): BranchDiffScene => {
             // Prefer the RELIABLE anchor back-ref (a promoted take records the canon
             // scene it's an alternate of); fall back to story_order only when absent
             // (a wizard-created scene with no anchor). No match ⇒ added (never mis-pair).
@@ -54,6 +56,21 @@ export function useBranchDiff(
               branchText: d.text,
             };
           });
+          // D-S5-BRANCHDIFF-NOPROSE — a diverged scene NODE with no completed draft is
+          // otherwise silently absent from the audit. Surface it as 'no-prose'.
+          const draftedIds = new Set(deriv.items.map((d) => d.node_id));
+          const noProse = scenes
+            .filter((n) => n.chapter_id === chId && !draftedIds.has(n.id))
+            .map((n): BranchDiffScene => ({
+              chapterId: chId,
+              nodeId: n.id,
+              storyOrder: n.story_order ?? 0,
+              title: n.title ?? '',
+              status: 'no-prose',
+              canonText: '',
+              branchText: '',
+            }));
+          return [...drafted, ...noProse];
         }),
       );
       return perChapter

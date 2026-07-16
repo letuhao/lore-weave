@@ -82,6 +82,26 @@ describe('useBranchDiff', () => {
     expect(s.branchText).toBe('the alternate take');
   });
 
+  it('surfaces a diverged scene with no draft as no-prose (not silently absent)', async () => {
+    getOutline.mockResolvedValue({
+      nodes: [
+        { id: 'dd', kind: 'scene', is_archived: false, chapter_id: 'ch1', story_order: 0 },  // drafted
+        { id: 'un', kind: 'scene', is_archived: false, chapter_id: 'ch1', story_order: 1 },  // NO draft
+      ],
+      scene_links: [],
+    });
+    getChapterSceneDrafts.mockImplementation((projectId: string) =>
+      projectId === 'deriv'
+        ? Promise.resolve({ items: [{ node_id: 'dd', story_order: 0, title: 'drafted', text: 'x', anchor_node_id: null }] })
+        : Promise.resolve({ items: [] }),
+    );
+    const { result } = renderHook(() => useBranchDiff('deriv', 'canon', 'tok', true), { wrapper });
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    const byNode = Object.fromEntries((result.current.data ?? []).map((s) => [s.nodeId, s]));
+    expect(byNode.dd.status).toBe('added');    // drafted, no canon counterpart
+    expect(byNode.un.status).toBe('no-prose'); // diverged node, no draft yet — surfaced
+  });
+
   it('stays disabled without a source project', () => {
     const { result } = renderHook(() => useBranchDiff('deriv', null, 'tok', true), { wrapper });
     expect(result.current.fetchStatus).toBe('idle');

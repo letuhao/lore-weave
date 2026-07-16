@@ -52,10 +52,10 @@ export function BranchDiffView({
             onClick={() => setSelectedNode(s.nodeId)}
             className={`flex w-full items-center gap-2 rounded px-2 py-1.5 text-left ${selected?.nodeId === s.nodeId ? 'bg-secondary' : 'hover:bg-muted'}`}
           >
-            <span className={`h-1.5 w-1.5 flex-shrink-0 rounded-full ${s.status === 'added' ? 'bg-emerald-500' : 'bg-amber-500'}`} />
-            <span className="flex-1 truncate">{s.title || t('branchdiff.untitledScene', { defaultValue: 'scene' })}</span>
-            <span className={`rounded px-1 text-[8.5px] font-medium uppercase ${s.status === 'added' ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900 dark:text-emerald-200' : 'bg-amber-100 text-amber-700 dark:bg-amber-900 dark:text-amber-200'}`}>
-              {s.status === 'added' ? t('branchdiff.new', { defaultValue: 'new' }) : t('branchdiff.chg', { defaultValue: 'chg' })}
+            <span className={`h-1.5 w-1.5 flex-shrink-0 rounded-full ${s.status === 'added' ? 'bg-emerald-500' : s.status === 'no-prose' ? 'bg-muted-foreground/40' : 'bg-amber-500'}`} />
+            <span className={`flex-1 truncate ${s.status === 'no-prose' ? 'text-muted-foreground' : ''}`}>{s.title || t('branchdiff.untitledScene', { defaultValue: 'scene' })}</span>
+            <span className={`rounded px-1 text-[8.5px] font-medium uppercase ${s.status === 'added' ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900 dark:text-emerald-200' : s.status === 'no-prose' ? 'bg-muted text-muted-foreground' : 'bg-amber-100 text-amber-700 dark:bg-amber-900 dark:text-amber-200'}`}>
+              {s.status === 'added' ? t('branchdiff.new', { defaultValue: 'new' }) : s.status === 'no-prose' ? t('branchdiff.todo', { defaultValue: 'todo' }) : t('branchdiff.chg', { defaultValue: 'chg' })}
             </span>
           </button>
         ))}
@@ -70,6 +70,14 @@ export function BranchDiffView({
 function SceneDiff({ scene }: { scene: BranchDiffScene }) {
   const { t } = useTranslation('composition');
   const rows = useMemo(() => lineDiff(scene.canonText, scene.branchText), [scene]);
+  if (scene.status === 'no-prose') {
+    return (
+      <div data-testid="branchdiff-noprose" className="flex h-full flex-col items-center justify-center gap-2 p-6 text-center text-xs text-muted-foreground">
+        <span className="font-medium text-foreground">{t('branchdiff.noProseTitle', { defaultValue: 'Not written yet' })}</span>
+        <span>{t('branchdiff.noProseBody', { defaultValue: 'This diverged scene has no prose in the dị bản yet — promote a take on the what-if canvas, then its diff appears here.' })}</span>
+      </div>
+    );
+  }
   if (scene.status === 'added') {
     return (
       <div data-testid="branchdiff-added" className="h-full overflow-y-auto p-3 text-[12.5px] leading-relaxed">
