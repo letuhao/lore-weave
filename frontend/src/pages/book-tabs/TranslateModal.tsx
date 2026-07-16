@@ -355,7 +355,7 @@ export function TranslateModal({ open, onClose, bookId, onJobCreated, preselecte
       size="2xl"
       footer={footer}
     >
-        <div className="space-y-4">
+        <div className="space-y-4" data-testid="translate-modal-body">
           {/* Language + Model row */}
               <div className="grid grid-cols-2 gap-3">
                 {/* Language */}
@@ -371,6 +371,7 @@ export function TranslateModal({ open, onClose, bookId, onJobCreated, preselecte
                     codes={TRANSLATION_TARGETS.map((l) => l.code)}
                     placeholder={t('translate.select_language')}
                     aria-label={t('translate.target_language')}
+                    data-testid="translate-language-picker"
                     className="h-9 w-full rounded-md border bg-background px-3 text-[13px] focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring/30"
                   />
                 </div>
