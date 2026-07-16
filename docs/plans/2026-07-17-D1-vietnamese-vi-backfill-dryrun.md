@@ -85,8 +85,21 @@ COMMIT;  -- (dry-run: ROLLBACK)
 pre-state can be restored even after COMMIT. Because the set is tiny (7 rows) and frozen, the
 snapshot is the rollback.
 
-## Status
+## Status — EXECUTED 2026-07-17 (PO ruled: append + newest + keep-vi)
 
-DRY-RUN COMPLETE. **STOPPED for the PO's which-version-wins ruling (decisions #1–#3 above).**
-Do NOT execute unattended — this is a destructive, non-reversible-after-cleanup merge. Once the PO
-rules, the exact renumber/winner UPDATEs are filled in and run behind the row-count assertions.
+The PO approved decisions #1–#3 as proposed. Snapshot of the 7 rows taken first (rollback
+safety), then the migration ran as ONE transaction with pre/post asserts:
+
+```
+BEGIN → DO(pre-assert 5/1/1) → UPDATE 3 (clean renames) → UPDATE 1 (Vn v2→vi v3) →
+UPDATE 1 (Vn v1→vi v2) → DELETE 1 (old vi active) → UPDATE 1 (Vn active→vi) →
+DELETE 1 (Vn memo) → DO(post-assert: 0 Vietnamese, 3 vi, active=019f0a1a) → COMMIT
+```
+
+**Verified end state:**
+- `Vietnamese` rows remaining across all 3 tables: **0**.
+- Collision chapter `019eeb0e` vi history: v1 completed (non-active), **v2 completed (ACTIVE)**,
+  v3 failed (non-active) — the newest active (Vietnamese v1 = `019f0a1a`) won, appended after the
+  existing `vi v1`.
+
+`D-TRANSL-LANG-BACKFILL` is CLEARED. The write-side (C1) keeps the set from ever growing again.
