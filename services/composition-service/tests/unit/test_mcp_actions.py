@@ -73,6 +73,15 @@ def _generate_token(user=USER, *, target_kind="chapter", target_id=None, ttl=600
     )
 
 
+def _decompile_token(user=USER, *, ttl=600, now=None) -> str:
+    # close-21-28 P-O2a — the arc-decompiler confirm token (book-scoped, deterministic effect).
+    payload = {"book_id": str(BOOK), "chapters_per_arc": 10}
+    return mint_confirm_token(
+        settings.confirm_token_signing_secret, user, BOOK, "composition.decompile",
+        payload, ttl=ttl, now=now,
+    )
+
+
 @pytest.fixture
 def client():
     """TestClient with DB pool, grant, book client, repos + the /mcp session
@@ -191,6 +200,25 @@ def test_confirm_executes_publish(client):
     assert body["outcome"] == "action_done"
     assert body["chapter_id"] == str(CHAPTER)
     client._book.publish_chapter.assert_awaited_once()
+
+
+def test_confirm_executes_decompile(client, monkeypatch):
+    """close-21-28 P-O2a — a confirmed decompile token re-checks the book EDIT grant, then runs the
+    deterministic engine and returns its counts. The engine is patched (its DB effect has its own
+    integration test); this pins the confirm-spine wiring: descriptor → grant re-check → engine."""
+    fake = AsyncMock(return_value={"arcs": 3, "chapters_assigned": 28, "arc_ids": ["a", "b", "c"]})
+    monkeypatch.setattr("app.engine.arc_decompile.decompile_arcs", fake)
+
+    resp = _confirm(client, _decompile_token())
+
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["outcome"] == "action_accepted"
+    assert body["descriptor"] == "composition.decompile"
+    assert body["arcs"] == 3 and body["chapters_assigned"] == 28
+    fake.assert_awaited_once()
+    # the engine was called with the book_id from the token payload + EDIT-scoped caller
+    assert fake.await_args.args[1] == BOOK  # decompile_arcs(pool, book_id, ...)
 
 
 def test_preview_describes_without_writing(client):

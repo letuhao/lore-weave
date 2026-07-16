@@ -60,6 +60,7 @@ EXPECTED_TOOLS = {
     "composition_canon_rule_delete", "composition_write_prose",
     # Tier W
     "composition_publish", "composition_generate",
+    "composition_decompile_arcs",  # close-21-28 P-O2a — confirm-gated arc decompiler
     # ── D-AGENT-MODE §20 authoring-run tools (register on the SAME server) ──
     # Tier R
     "composition_authoring_run_list", "composition_authoring_run_get",
@@ -121,7 +122,7 @@ TIER_R = {"composition_get_work", "composition_list_outline",
           "composition_conformance_status",
           "plan_validate", "plan_self_check",
           "composition_authoring_run_list", "composition_authoring_run_get"}
-TIER_W = {"composition_publish", "composition_generate",
+TIER_W = {"composition_publish", "composition_generate", "composition_decompile_arcs",
           "composition_motif_adopt", "composition_motif_mine",
           "composition_arc_import_analyze", "composition_conformance_run",
           "composition_authoring_run_create", "composition_authoring_run_gate",

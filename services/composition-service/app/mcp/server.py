@@ -121,6 +121,8 @@ _MOTIF_ADOPT_DESCRIPTOR = "composition.motif_adopt"
 _MOTIF_MINE_DESCRIPTOR = "composition.motif_mine"
 _ARC_IMPORT_DESCRIPTOR = "composition.arc_import"
 _CONFORMANCE_RUN_DESCRIPTOR = "composition.conformance_run"
+# close-21-28 P-O2a — the arc-decompiler (deterministic, $0) confirm-gated to the agent.
+_DECOMPILE_DESCRIPTOR = "composition.decompile"
 
 # ── D-AGENT-MODE §20 — authoring-run confirm descriptors (D5/D6). Book-scoped
 # (payload carries book_id, not project_id); the confirm route
@@ -1362,6 +1364,51 @@ async def composition_publish(
         "descriptor": _PUBLISH_DESCRIPTOR,
         "title": "Publish chapter (canonize the reviewed draft)",
         "domain": "composition",
+    }
+
+
+@mcp_server.tool(
+    name="composition_decompile_arcs",
+    description=(
+        "PROPOSE decompiling a flat/imported book into a spec ARC layer: group the book's chapters "
+        "into size-aligned arcs (~`chapters_per_arc` each) so a book with no plan gets a browsable "
+        "arc structure. Deterministic and $0 (no LLM) — but it MUTATES structure, so it is "
+        "confirm-gated: it returns a `confirm_token` + a dry-run count (how many arcs it would "
+        "create); nothing is written until the user confirms via confirm_action. Idempotent "
+        "(re-running reuses existing decompiled arcs by position). EDIT required."
+    ),
+    meta=require_meta(
+        "W", "book",
+        synonyms=["decompile arcs", "auto-arc", "group chapters into arcs", "arc layer from chapters"],
+        tool_name="composition_decompile_arcs",
+    ),
+)
+async def composition_decompile_arcs(
+    ctx: MCPContext,
+    book_id: Annotated[str, "The book to decompile (UUID)."],
+    chapters_per_arc: Annotated[int, "Target chapters per arc (default 10)."] = 10,
+) -> dict:
+    tc = _ctx(ctx)
+    bid = UUID(book_id)
+    await _gate(tc, bid, GrantLevel.EDIT)
+    # Dry-run count so the confirm card is informative (M chapters → ~N arcs). Cheap, and it also
+    # gives a clean "nothing to decompile" answer up front for a book with no chapters.
+    per = max(1, int(chapters_per_arc))
+    n_chapters = await get_pool().fetchval(
+        "SELECT count(*) FROM outline_node WHERE book_id=$1 AND kind='chapter' AND NOT is_archived", bid,
+    ) or 0
+    would_arcs = (int(n_chapters) + per - 1) // per  # integer ceil
+    payload = {"book_id": book_id, "chapters_per_arc": per}
+    confirm_token = mint_confirm_token(
+        settings.confirm_token_signing_secret,
+        tc.user_id, bid, _DECOMPILE_DESCRIPTOR, payload,
+    )
+    return {
+        "confirm_token": confirm_token,
+        "descriptor": _DECOMPILE_DESCRIPTOR,
+        "title": f"Decompile {int(n_chapters)} chapter(s) into ~{would_arcs} arc(s)",
+        "domain": "composition",
+        "dry_run": {"chapters": int(n_chapters), "would_create_arcs": would_arcs},
     }
 
 

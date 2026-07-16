@@ -73,6 +73,8 @@ _MOTIF_ADOPT_DESCRIPTOR = "composition.motif_adopt"
 _MOTIF_MINE_DESCRIPTOR = "composition.motif_mine"
 _ARC_IMPORT_DESCRIPTOR = "composition.arc_import"
 _CONFORMANCE_RUN_DESCRIPTOR = "composition.conformance_run"
+# close-21-28 P-O2a — the deterministic arc decompiler (book-scoped, EDIT-gated at confirm).
+_DECOMPILE_DESCRIPTOR = "composition.decompile"
 
 # D-AGENT-MODE §20 D5/D6 — the authoring-run confirm-gated descriptors. Like
 # motif_adopt/arc_import, these are BOOK-scoped (a book_id in the payload), NOT
@@ -97,6 +99,7 @@ _ALL_DESCRIPTORS = (
     _PUBLISH_DESCRIPTOR, _GENERATE_DESCRIPTOR,
     _MOTIF_ADOPT_DESCRIPTOR, _MOTIF_MINE_DESCRIPTOR,
     _ARC_IMPORT_DESCRIPTOR, _CONFORMANCE_RUN_DESCRIPTOR,
+    _DECOMPILE_DESCRIPTOR,
     *_AUTHORING_RUN_DESCRIPTORS,
 )
 
@@ -272,6 +275,20 @@ async def confirm_action(
         return await _execute_motif_adopt(payload, envelope_user, token=token, claims=claims)
     if claims.descriptor == _ARC_IMPORT_DESCRIPTOR:
         return await _execute_arc_import(payload, envelope_user, token=token, claims=claims)
+
+    # ── P-O2a: decompile is BOOK-scoped + deterministic ($0, no LLM, no worker). Re-check EDIT on
+    # the book at confirm (a grant revoked since propose stops the mutation), then apply the effect
+    # synchronously (mirrors the authoring-run per-book re-gate, minus the billing/worker path).
+    if claims.descriptor == _DECOMPILE_DESCRIPTOR:
+        try:
+            book_id = UUID(str(payload["book_id"]))
+        except (KeyError, ValueError, TypeError) as exc:
+            raise HTTPException(status_code=400, detail={"code": "action_error"}) from exc
+        try:
+            await authorize_book(grant, book_id, envelope_user, GrantLevel.EDIT)
+        except (OwnershipError, InsufficientGrant) as exc:
+            raise HTTPException(status_code=403, detail={"code": "action_error"}) from exc
+        return await _execute_decompile(payload, book_id, envelope_user, token=token, claims=claims)
 
     # ── mine is BOOK/CORPUS-scoped, NOT Work-scoped (its payload has no project_id —
     # it binds book_id for scope='book', user for 'corpus'). Re-check the BOOK grant
@@ -676,6 +693,28 @@ async def _execute_motif_mine(
         "job_id": job_id,
         "poll": "composition_get_mine_job",
     }
+
+
+async def _execute_decompile(
+    payload: dict[str, Any], book_id: UUID, envelope_user: UUID, *, token: str, claims: Any,
+) -> dict[str, Any]:
+    """composition.decompile effect (P-O2a) — the DETERMINISTIC arc decompiler. The grant was
+    re-checked at the dispatch above; here we ledger-claim (replay guard) then run the engine
+    synchronously ($0, no LLM, idempotent — reuses existing decompiled arcs by position). Returns
+    the engine's `{arcs, chapters_assigned, arc_ids, reason?}` so the caller sees exactly what landed."""
+    from app.db.pool import get_pool
+    from app.engine.arc_decompile import decompile_arcs
+
+    try:
+        per = max(1, int(payload.get("chapters_per_arc") or 10))
+    except (ValueError, TypeError) as exc:
+        raise HTTPException(status_code=400, detail={"code": "action_error"}) from exc
+    # Replay guard: a re-submitted token returns the prior outcome, never a second mutation.
+    await _claim_or_replay(token, claims)
+    result = await decompile_arcs(
+        get_pool(), book_id, created_by=envelope_user, chapters_per_arc=per,
+    )
+    return {"outcome": "action_accepted", "descriptor": _DECOMPILE_DESCRIPTOR, **result}
 
 
 async def _execute_arc_import(
