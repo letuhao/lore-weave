@@ -141,6 +141,12 @@ export function PlannerPanel(props: IDockviewPanelProps) {
           placeholder={t('planner.sourcePlaceholder', { defaultValue: 'Paste the novel-system markdown…' })}
           className="min-h-[120px] w-full resize-y rounded border border-border bg-background p-2 text-xs leading-relaxed outline-none focus:border-ring"
         />
+        {/* D-PLANFORGE-PROPOSE-BLIND honesty (Q-35-OQ5): the proposer reads ONLY this braindump —
+            it does not read the book's existing chapters. Say so, rather than let the author assume
+            an in-context plan (silent-success-is-a-bug applied to a known blindness). */}
+        <p data-testid="plan-propose-blind-note" className="mt-1 text-[10px] text-muted-foreground/70">
+          {t('planner.proposeBlind', { defaultValue: 'Proposed from this braindump only. Existing chapters are not read.' })}
+        </p>
 
         <div className="mt-2 flex items-end gap-3">
           <div className="flex gap-1 text-[11px]">
@@ -202,6 +208,11 @@ export function PlannerPanel(props: IDockviewPanelProps) {
                 onSelfCheck={() => void plan.runSelfCheck()}
                 onValidate={() => void plan.runValidate()}
                 onCompile={(arcId) => { bootstrap.reset(); void plan.runCompile(arcId); }}
+                repairOutput={plan.repairOutput}
+                canRepair={!plan.busy && !plan.polling && effectiveModelRef.length > 0}
+                onExplain={() => void plan.runExplain(effectiveModelRef)}
+                onApplyFix={() => void plan.runRepairRefine(effectiveModelRef, (plan.selfCheck?.gaps ?? []).map((g) => g.path))}
+                onAutofix={() => void plan.runAutofix(effectiveModelRef)}
               />
               {compiledRunId && (
                 <BootstrapPanel

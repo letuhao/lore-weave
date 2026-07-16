@@ -163,8 +163,22 @@ export interface CreatePlanRunBody {
 }
 export interface RefinePlanBody {
   model_ref: string;
-  revision?: string;
+  // PS-5 — the backend deep-merges this as a PATCH dict (plan_forge.py PlanRefineRequest.revision:
+  // dict). It was typed `string` here, drifted since the method was written with zero callers, so
+  // the first person to wire a refine button got a 422 and debugged the button. Fixed with the wiring.
+  revision?: Record<string, unknown>;
   focus_paths?: string[];
+}
+
+// BE-2 — POST /autofix result: the applied rounds + the fresh run detail.
+export interface PlanAutofixRound {
+  round: number;
+  targets: number;
+  result: string; // 'applied' | 'no_change' | …
+}
+export interface PlanAutofixResult {
+  rounds: PlanAutofixRound[];
+  run: PlanRunDetail;
 }
 export interface InterpretPlanBody {
   user_message: string;

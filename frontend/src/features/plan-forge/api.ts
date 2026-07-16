@@ -88,6 +88,15 @@ export const planForgeApi = {
       method: 'POST', body: JSON.stringify(body), token,
     });
   },
+  // BE-2 — the bounded self-check→refine loop (plan_handoff_autofix). 200 {rounds, run} on the
+  // worker-off path; 202 {rounds, run} when a round enqueued. The Repair strip renders `rounds`.
+  autofix(
+    bookId: string, runId: string, body: { model_ref?: string; max_rounds?: number }, token: string,
+  ): Promise<import('./types').PlanAutofixResult> {
+    return apiJson(`${BASE}/books/${bookId}/plan/runs/${runId}/autofix`, {
+      method: 'POST', body: JSON.stringify(body), token,
+    });
+  },
   // 202 {run_id, job_id, status} when the pipeline runs on the worker; else the compile package.
   compile(
     bookId: string, runId: string, body: CompilePlanBody, token: string,

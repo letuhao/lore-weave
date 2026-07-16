@@ -8,6 +8,25 @@
 S3 is DONE when: a GUI-only user can drive a plan run through all 7 passes incl. the checkpoints — each to the §2 production-ready bar (operable · CRUD · reachable ·
 no-silent-fail · agent-parity · loop-connected · live-browser-proven · i18n+responsive · scale).
 
+## ▶ GOAL (set 2026-07-16 — autonomous run to CLEAR S3)
+**Done-condition (bounded; the transcript must contain the PROOF, not a claim it passed):**
+1. Every SLICE BOARD row is DONE with an evidence string (test counts pasted / live-smoke line / sha).
+2. **QC each slice**: scoped tests GREEN (output pasted) AND — for any FE surface — a live-browser
+   check on the **static build at :5210** (never :5199 — other sessions' HMR churns it). Claiming a
+   check passed without its pasted output does NOT satisfy this.
+3. REPAIR + I18N built to the §2 bar; SESSION_HANDOFF updated; RETRO note if non-obvious.
+4. The full-loop SMOKE (run real passes → approve cast → cursor advances past pass 2) is either
+   PROVEN live (pasted) or its blocker is a tracked defer row naming exactly why (cross-session stack
+   rebuild at convergence). Registry-commit deferrals stay tracked in DECISIONS/DEBT.
+5. STOP only for the 4 critical classes, or after the board is DONE. Blocked ≠ stopped — park + continue.
+
+**Run parameters (LOCKED for this run):**
+- **LLM smokes use gemma-4-26B-A4B QAT** — `model_ref = 019ebb72-27a2-72f3-a42d-d2d0e0ded179`
+  (test account, local lm_studio, $0). Resolve live if it changes.
+- **FE live-smoke ALWAYS on the static build at :5210** (`npx vite build` → `vite preview
+  --config vite.smoke.config.ts`, /v1 proxied to :3123). Rebuild before each FE smoke (stale dist =
+  false green). Never smoke on :5199 (host vite, shadowed + churned by concurrent sessions' HMR).
+
 ## SCOPE
 - **Persona / files:** features/plan-forge, features/studio/panels/Plan*
 - **Panels:** plan-passes
@@ -51,7 +70,7 @@ no-silent-fail · agent-parity · loop-connected · live-browser-proven · i18n+
 | M4 · Pass Rail panel: ledger + run-pass + freshness/cursor/blocked_at | DONE | types PlanPass/Ledger/RunPassBody; api passStatus/runPass/reviewCheckpoint; usePassRail (resolve run→latest, poll while running, 409-blockers surfaced); PassRow + PassRailPanel (7-row ledger + PS-6 cost-confirm + basic approve/reject + footer + max-w-3xl + empty states). PassRow.test.tsx 6 passed; tsc clean (mine). **LIVE SMOKE (static :5210, proxy /v1): logged in → studio → Command Palette shows "Open Pass Rail" → panel renders 7 passes exactly (motifs done/fresh/re-run, cast BLOCKING/review→=blocked_at, world/arcs/scenes/self_heal 🔒blocked, beats run…, footer "1 of 7 · blocked at cast"). s3-passrail-live.png. PO approved UX + max-width.** |
 | M4-CP · blocking-checkpoint review (view artifact via BE-3 → edit → approve/hold) | DONE | BE-20 (derive_view returns bootstrap_proposal_id/decided_by/decided_at — test_plan_pass_service 30 passed) + useCheckpointReview (load artifact content BE-3 + seed proposal; applySeed=approve→apply) + CheckpointReview (read content, edit→save-edits F-P10, cast PF-7 seed-gate: approve disabled until proposal applied) wired into rail. CheckpointReview.test.tsx 6 passed; tsc clean. LIVE-SMOKE deferred to SMOKE slice: composition-service runs a BAKED image (no source mount, no --reload) so BE-3/BE-20 aren't live; rebuilding it would bake S7's uncommitted BE changes + disrupt concurrent sessions — the SMOKE slice rebuilds the stack once at convergence. |
 | planEffects · Lane-B handler + remove from PENDING (agent parity §2.5) | DONE (handler+hook committed; registration deferred) | usePassRail REFACTORED to react-query (key ['plan-passes',bookId,runId]) so an invalidate actually refreshes the rail (the "invalidateQueries can't reach hand-rolled state" bug). planEffects.ts (/^plan_(?!pass_status)/ → invalidate ['plan-passes']+['plan-runs-latest']). planEffects.test.ts + effectCoverage 203 passed. **RE-SMOKED live (:5210 rebuilt): rail renders identically after the react-query refactor.** index.ts register + effectCoverage PENDING-removal ENTANGLED (S4/S6/S7) + coupled → deferred to convergence. |
-| REPAIR · `planner` repair strip (refine/interpret · staleness · failed re-run · relink · autofix) — NO new id | TODO | |
+| REPAIR · `planner` repair strip (Explain/Apply-fix/Autofix, gated on gaps) + honesty copy + PS-5 — NO new id | DONE | honesty copy (Q-35-OQ5 #3) + PS-5 (RefinePlanBody.revision string→dict) + api.autofix (BE-2 client) + usePlanRun.runAutofix/runRepairRefine/runExplain + PlanRunView Repair strip (shown only when selfCheck.gaps>0; each action PS-6 paid-confirm). PlanRunView.test.tsx 10 passed (+strip hidden/appears/confirm/disabled); tsc clean. **LIVE (:5210 rebuilt): honesty copy renders in planner Run tab; model auto-picks Gemma-4 26B-A4B QAT.** Repair-strip live (needs a real self-check with gaps) folded into the SMOKE slice. |
 | I18N · 18-locale keys for both surfaces; responsive + 10k-scale | TODO | |
 | SMOKE · live-browser: GUI-only drives 1 run through 7 passes + 2 checkpoints; `/review-impl` per panel close | TODO | |
 
@@ -79,6 +98,20 @@ no-silent-fail · agent-parity · loop-connected · live-browser-proven · i18n+
   critical-stop (fully reversible). PO informed.
 
 ### PARKED  (blocker -> defer row + continue)
+- **D-S3-PS9-ARTIFACT-VIEW** (gate #2 large — provider infra): make the planner's artifact rows +
+  the Pass Rail's "view" clickable → open the artifact read-only via a registered `plan-artifact`
+  json-document provider (composite resourceId `{runId}:{artifactId}`, F-P11). BE-3 + FE-1 (both
+  DONE) are the halves; the remaining piece is registering the provider in the json-document registry
+  + wiring openPanel('json-editor', …). Target: a Studio-polish pass. (M4-CP renders cast/beats content
+  INLINE already, so the checkpoint review is operable without this; this is the planner-panel + rail
+  "open ↗" affordance.)
+- **D-S3-BE3B-SOURCE-RESUME** (gate #1 small, own slice): `_serialize_run` returns `source_checksum`
+  not `source_markdown`, so reopening a run cannot restore the pasted braindump into the textarea.
+  Small BE add (select+return source_markdown) + FE derived-default seed. Deferred from REPAIR to keep
+  the slice focused; buildable anytime.
+- **D-S3-BE4-ARCHIVE** (gate #2 large/structural): soft-archive a plan run (is_archived) + LIST filter
+  + two-carrier in-flight guard + BE-4b restore + `?include_archived` + FE archive/undo. Full recipe
+  in Q-35-BE4. Migration + repo + routes + FE — a real CRUD track, not a quick edit.
 - **D-PLANFORGE-PROPOSE-BLIND** (pre-existing, SESSION_HANDOFF.md:102, gate #2): propose ignores an
   existing manuscript. Wave-5 must NOT touch the engine (Q-35-OQ5). Only ship the honesty copy string
   in the planner new-run form ("Proposed from this braindump only. Existing chapters are not read.").
