@@ -6,6 +6,7 @@ import { NewChatDialog } from './components/NewChatDialog';
 import { ChatEmptyState } from './components/ChatEmptyState';
 import { SessionSwitcher } from './components/SessionSwitcher';
 import { useEmbeddedChatBinding } from './useEmbeddedChatBinding';
+import { useAssistantAutoSession } from './useAssistantAutoSession';
 import { useGlossaryDisplayLanguage } from '@/features/glossary/hooks/useGlossaryDisplayLanguage';
 
 interface ChatProps {
@@ -102,12 +103,23 @@ function EmbeddedChat({ bookId, actionBar, className, composeMode, sessionKind }
     updateActiveSession,
   });
 
+  // F-QC-1 — the diary assistant auto-creates its session (default model, book-bound) instead of greeting
+  // the user with the generic new-chat dialog. suppressGenericDialog is true while the assistant owns the
+  // create; it only releases (→ manual dialog) if there's no default model to auto-use.
+  const { suppressGenericDialog } = useAssistantAutoSession({
+    enabled: sessionKind === 'assistant',
+    needsNewSession,
+    hasActiveSession: !!activeSession,
+    bookId,
+    createSession,
+  });
+
   // Derived, not stored: show the create dialog while a book-scoped session is
   // needed and none is active — until the user dismisses it. No setState in
   // render (CLAUDE.md: don't drive UI off a useEffect/render side-effect).
   // The session switcher's "New chat" (showNewDialog) opens it on demand too,
   // even when a session is already active (bug #17).
-  const dialogOpen = (needsNewSession && !activeSession && !dialogDismissed) || showNewDialog;
+  const dialogOpen = (needsNewSession && !activeSession && !dialogDismissed && !suppressGenericDialog) || showNewDialog;
 
   return (
     <div className={`flex h-full flex-col overflow-hidden ${className ?? ''}`}>
