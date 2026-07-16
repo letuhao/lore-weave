@@ -126,8 +126,11 @@ its session and lands straight in a ready "Work Assistant" chat (was: generic ne
 novel-writing personas). That unblocked **S1**: demonstrated the core loop end-to-end — typed a note → gemma
 replied warmly → End my day → a coherent first-person diary entry ("shipped the Q3 billing migration with
 Alice… a great sense of relief"). S1 is `@slow`/flaky-for-CI (non-idempotent daily state), so it's a proof,
-not a gate. **Deterministic suite: 16 green** (`assistant- --grep-invert @slow`). Minor open nit: the chat
-input placeholder is still generic novel copy on the assistant. Voice loop still deferred (F-QC-2 + heavy).
+not a gate. **Deterministic suite: 16 green** (`assistant- --grep-invert @slow`). The chat-input-placeholder
+nit is FIXED (39477223a — the assistant now shows "Talk through your day — the people, projects and
+decisions…", verified live). Voice loop still deferred (F-QC-2 + heavy realtime pipeline).
+**CLOSE:** all QC work committed; the test container `qc-frontend` (:5185) is removed after the run; the test
+account's chat default is left = Gemma-4 26B QAT (owner's choice). Re-run recipe in §2/§6.
 
 ## 8 · 🏁 CAMPAIGN COMPLETE 2026-07-16
 Every §4 board row is ✅ (green spec) or ⏭️ WAIVED (concrete blocker + existing proof). **14 assistant e2e
