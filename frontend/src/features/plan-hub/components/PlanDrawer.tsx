@@ -24,8 +24,11 @@ import type { OutlineNode } from '@/features/composition/types';
 import { usePlanNode, type PlanNodeKind, type PlanNodeView } from '../hooks/usePlanNode';
 import { refsFor } from './nodePresentation';
 import { PlanDrawerEdit } from './PlanDrawerEdit';
+// 32 §3.5 (AI-4/DOCK-2) — the drawer mounts the arc-inspector's SHARED body (embedded variant),
+// the SAME component the dock panel renders. No fork; no `ArcFacets` stub.
+import { ArcInspectorEmbed } from '@/features/studio/panels/ArcInspectorEmbed';
 import type { NodeEdit } from '../api';
-import type { ArcListNode, PlanOverlay, PlanOverlayRef } from '../types';
+import type { PlanOverlay, PlanOverlayRef } from '../types';
 
 export interface PlanDrawerProps {
   /** The canvas selection (usePlanHub's selectedId). null ⇒ the drawer renders nothing. */
@@ -295,70 +298,12 @@ function ChapterSceneFacets({
   );
 }
 
-// ── arc/saga facets (minimal summary — 23-C3 arc-inspector not built yet) ────────
-function rosterKeysOf(roster: unknown): string[] {
-  if (Array.isArray(roster)) return roster.map((r) => (typeof r === 'string' ? r : String((r as { key?: string })?.key ?? ''))).filter(Boolean);
-  if (roster && typeof roster === 'object') return Object.keys(roster as Record<string, unknown>);
-  return [];
-}
-
-function ArcFacets({ arc }: { arc: ArcListNode }) {
-  // The wire carries tracks/roster/roster_bindings (types.ts note) though the FE ArcListNode subset
-  // doesn't declare them — read them defensively without redefining the H2-owned type.
-  const extra = arc as ArcListNode & { tracks?: unknown; roster?: unknown };
-  const rosterKeys = rosterKeysOf(extra.roster);
-  const trackKeys = rosterKeysOf(extra.tracks);
-  const span = arc.span ? `${arc.span.from_order}–${arc.span.to_order}` : null;
-  return (
-    <>
-      <Section title="Overview" testid="plan-drawer-section-overview">
-        <Field label="Status" value={arc.status} testid="plan-drawer-f-status" />
-        <Field label="Goal" value={arc.goal} testid="plan-drawer-f-goal" />
-        <Field label="Summary" value={arc.summary} testid="plan-drawer-f-summary" />
-      </Section>
-
-      <Section title="Structure" testid="plan-drawer-section-structure">
-        <Field label="Kind" value={arc.kind} />
-        <Field label="Chapter span (story order)" value={span} testid="plan-drawer-f-span" />
-        {arc.span && !arc.is_contiguous && (
-          <p data-testid="plan-drawer-noncontiguous" className="text-[11px] text-amber-600 dark:text-amber-400">
-            Non-contiguous span — rendered as separate runs on the canvas.
-          </p>
-        )}
-        <Field label="Chapters" value={String(arc.chapter_count)} testid="plan-drawer-f-chaptercount" />
-        {trackKeys.length > 0 && <Field label="Tracks" value={trackKeys.join(', ')} testid="plan-drawer-f-tracks" />}
-      </Section>
-
-      <Section title="Roster" testid="plan-drawer-section-roster">
-        {rosterKeys.length > 0 ? (
-          <div className="flex flex-wrap gap-1">
-            {rosterKeys.map((key) => (
-              <span key={key} className="rounded bg-muted px-1.5 py-0.5 text-[11px] text-muted-foreground">{key}</span>
-            ))}
-          </div>
-        ) : (
-          <EmptyFacet>No roster keys on this arc.</EmptyFacet>
-        )}
-      </Section>
-
-      {(arc.arc_template_id || arc.template_version != null) && (
-        <Section title="Provenance" testid="plan-drawer-section-provenance">
-          <Field label="Arc template" value={arc.arc_template_id} testid="plan-drawer-f-template" />
-          <Field label="Template version" value={arc.template_version != null ? String(arc.template_version) : null} />
-        </Section>
-      )}
-
-      <p data-testid="plan-drawer-arc-gap" className="p-3 text-[11px] italic text-muted-foreground/70">
-        The full arc inspector (Structure · Roster · Chapters · Conformance · Provenance — 23 C3) is not
-        built yet; this is a minimal summary.
-      </p>
-    </>
-  );
-}
-
 // ── body router ─────────────────────────────────────────────────────────────────
+// The arc/saga branch mounts the arc-inspector's shared body (32 §3.5) — the old `ArcFacets`
+// minimal-summary stub + its `plan-drawer-arc-gap` note are GONE (the inspector is built).
 function DrawerBody({
   view,
+  bookId,
   overlay,
   onOpenRef,
   writes,
@@ -366,6 +311,7 @@ function DrawerBody({
   onOpenInEditor,
 }: {
   view: PlanNodeView;
+  bookId: string;
   overlay?: PlanOverlay | null;
   onOpenRef?: (r: PlanOverlayRef, nodeId: string) => void;
   writes?: PlanDrawerProps['writes'];
@@ -390,7 +336,8 @@ function DrawerBody({
   }
   if (view.kind === 'arc' || view.kind === 'saga') {
     if (!view.arcNode) return <Centered testid="plan-drawer-empty">Arc not found in the shell.</Centered>;
-    return <ArcFacets arc={view.arcNode} />;
+    // The shell has no `resolved`/`open_promises`/derived block — the embed fetches GET /arcs/{id}.
+    return <ArcInspectorEmbed arcId={view.arcNode.id} bookId={bookId} />;
   }
   return <Centered testid="plan-drawer-empty">Select a node to see its plan.</Centered>;
 }
@@ -444,6 +391,7 @@ export function PlanDrawer({
       <div data-testid="plan-drawer-body" className="min-h-0 flex-1 overflow-auto">
         <DrawerBody
           view={view}
+          bookId={bookId}
           overlay={overlay}
           onOpenRef={onOpenRef}
           writes={writes}

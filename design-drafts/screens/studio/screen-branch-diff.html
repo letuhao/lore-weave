@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>LoreWeave — Branch Diff / dị bản prose audit (studio, draft)</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  /* ══════════════════════════════════════════════════════════════════════
+     BRANCH DIFF — the prose audit of a dị bản vs its source canon (S5-B4).
+       A SECTION inside the `divergence` manage panel (NOT a new panel / enum —
+       the audit belongs with the branch you're inspecting; also sidesteps the
+       single-line panel_id enum contention across concurrent sessions).
+     Ref: docs/plans/2026-07-16-studio-session-S5-RUN-STATE.md (B4)
+           docs/plans/2026-07-16-studio-completeness-8-session-orchestration.md §4 S5
+
+     THE JOB (role-play): "I explored an alternate branch — now show me what is
+     actually DIFFERENT from canon so I can decide whether to keep it."
+     The divergence panel already reads a branch's SPEC (taxonomy/branch-point/
+     canon-rules/overrides). This is the PROSE half: per-scene, canon vs dị bản.
+
+     THE DATA — and the ONE backend piece it needs.
+       A derivative is COW (create_derivative copies NO outline nodes): the dị bản's
+       own project starts EMPTY and gains scenes only where the writer diverged
+       (promoted a take, adapted a scene). So every scene splits three ways:
+         • UNCHANGED — no delta node in the dị bản ⇒ it INHERITS canon verbatim
+           (show "inherits canon", do NOT fetch/diff — there is nothing to diff).
+         • CHANGED  — a delta node exists AND canon has the same scene (by
+           story_order within the shared chapter) ⇒ two-column prose diff.
+         • ADDED    — a delta node with no canon counterpart ⇒ all-new prose.
+       Prose per scene lives in the generation-job draft store, readable today only
+       via the composition_get_prose MCP tool — there is NO FE REST route. B4 adds
+       ONE read route: GET /works/{project_id}/scenes/{node_id}/prose → {text} (the
+       same resolver composition_get_prose already calls). Fetched lazily, per
+       selected scene, for BOTH projects (source + derivative). NOT a bulk book diff.
+
+     SCALE — a dị bản diverges at a chapter; the changed/added set is a handful of
+     scenes, not the whole book. The rail lists only NON-inherited scenes by default
+     (a "show inherited (N)" toggle reveals the rest), so a 10k-scene book still shows
+     a short audit. Diff is computed client-side (line-level LCS) on two short texts.
+
+     STATES (all rendered): no branch selected · a changed scene (2-col diff) · an
+     added scene (all-new) · an unchanged/inherited scene · derivative has no prose
+     yet (promote first) · source prose unavailable (canon scene never drafted).
+  ═══════════════════════════════════════════════════════════════════════ */
+  :root {
+    --background: #181412; --background-alt: #1e1a17; --foreground: #f5efe8;
+    --card: #1e1a17; --card-hover: #272220; --border: #332d28; --border-hover: #4a423b;
+    --primary: #e8a832; --primary-fg: #141010; --primary-muted: #3d2e12;
+    --secondary: #282320; --muted-fg: #9e9488;
+    --accent: #3da692; --accent-muted: #1a2e2a; --accent-fg: #c8ede6;
+    --tax-au: #b482e0;
+    --add: #3dba6a; --add-bg: #12251a; --add-border: #1e3d2b;
+    --del: #d9584f; --del-bg: #2a1614; --del-border: #4c2a26;
+    --warning: #e8a832; --info: #5496e8;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Inter', system-ui, sans-serif; background: #0f0c0b; color: var(--foreground); -webkit-font-smoothing: antialiased; padding: 24px; }
+  .mono { font-family: 'JetBrains Mono', monospace; }
+  ::-webkit-scrollbar { width: 8px; height: 8px; } ::-webkit-scrollbar-thumb { background: var(--border-hover); border-radius: 4px; }
+  h1 { font-size: 18px; font-weight: 600; margin-bottom: 4px; }
+  h2 { font-size: 13px; font-weight: 600; margin: 26px 0 10px; }
+  .sub { font-size: 12px; color: var(--muted-fg); margin-bottom: 16px; max-width: 1000px; line-height: 1.55; }
+  .sub b { color: var(--foreground); font-weight: 600; } .sub code { font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--accent-fg); background: var(--accent-muted); padding: 1px 4px; border-radius: 3px; }
+
+  .panel { background: var(--background-alt); border: 1px solid var(--border); border-radius: 10px; display: flex; flex-direction: column; overflow: hidden; }
+  .panel-head { height: 34px; flex-shrink: 0; display: flex; align-items: center; gap: 8px; padding: 0 12px; border-bottom: 1px solid var(--border); font-size: 10px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--muted-fg); }
+  .tab { display: inline-flex; align-items: center; height: 22px; padding: 0 9px; border-radius: 5px; font-size: 11px; font-weight: 500; text-transform: none; letter-spacing: 0; color: var(--muted-fg); cursor: pointer; }
+  .tab.on { background: var(--secondary); color: var(--foreground); }
+
+  .diff-panel { width: 900px; max-width: 100%; height: 560px; }
+  .split { flex: 1; min-height: 0; display: grid; grid-template-columns: 210px 1fr; }
+  /* scene rail */
+  .rail { border-right: 1px solid var(--border); overflow-y: auto; padding: 8px; display: flex; flex-direction: column; gap: 3px; }
+  .rail-head { display: flex; align-items: center; justify-content: space-between; padding: 2px 4px 6px; font-size: 9.5px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; color: var(--muted-fg); }
+  .srow { display: flex; align-items: center; gap: 7px; padding: 6px 8px; border-radius: 6px; font-size: 11.5px; cursor: pointer; border: 1px solid transparent; }
+  .srow:hover { background: var(--card-hover); }
+  .srow.on { background: var(--secondary); border-color: var(--border-hover); }
+  .srow .dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
+  .dot.changed { background: var(--warning); } .dot.added { background: var(--add); } .dot.inherited { background: var(--border-hover); }
+  .srow .nm { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .srow.inherited .nm { color: var(--muted-fg); }
+  .tagpill { font-family: 'JetBrains Mono', monospace; font-size: 8.5px; padding: 1px 4px; border-radius: 3px; text-transform: uppercase; letter-spacing: .04em; }
+  .tag-changed { background: #2b2318; color: var(--warning); } .tag-added { background: var(--add-bg); color: var(--add); }
+  .rail-toggle { margin-top: 6px; padding: 5px 8px; font-size: 10.5px; color: var(--muted-fg); border: 1px dashed var(--border); border-radius: 6px; text-align: center; cursor: pointer; }
+
+  /* diff body */
+  .diff-body { display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
+  .diff-summary { flex-shrink: 0; display: flex; align-items: center; gap: 14px; padding: 8px 12px; border-bottom: 1px solid var(--border); font-size: 11px; color: var(--muted-fg); }
+  .diff-summary b { color: var(--foreground); font-weight: 600; }
+  .chip { display: inline-flex; align-items: center; gap: 5px; }
+  .chip .dot { width: 7px; height: 7px; border-radius: 50%; }
+  .cols { flex: 1; min-height: 0; display: grid; grid-template-columns: 1fr 1fr; gap: 0; }
+  .col { min-height: 0; overflow-y: auto; padding: 10px 12px; font-size: 12.5px; line-height: 1.7; }
+  .col.canon { border-right: 1px solid var(--border); }
+  .col-head { position: sticky; top: -10px; background: var(--background-alt); padding: 4px 0 8px; margin: -10px 0 6px; font-size: 10px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; color: var(--muted-fg); border-bottom: 1px solid var(--border); }
+  .col-head.au { color: var(--tax-au); }
+  .ln { display: block; padding: 0 5px; border-radius: 3px; white-space: pre-wrap; }
+  .ln.del { background: var(--del-bg); box-shadow: inset 2px 0 0 var(--del); }
+  .ln.add { background: var(--add-bg); box-shadow: inset 2px 0 0 var(--add); }
+  .ln.ctx { color: var(--foreground); } .ln.dim { color: var(--muted-fg); }
+
+  .empty { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; text-align: center; padding: 24px; font-size: 12px; color: var(--muted-fg); line-height: 1.6; }
+  .empty b { color: var(--foreground); font-weight: 600; }
+  .info-strip { display: flex; gap: 8px; align-items: flex-start; margin: 10px 12px; padding: 8px 10px; border-radius: 7px; background: var(--background); border: 1px solid var(--border); font-size: 10.5px; line-height: 1.55; color: var(--muted-fg); }
+  .info-strip svg { width: 12px; height: 12px; color: var(--info); flex-shrink: 0; margin-top: 1px; } .info-strip b { color: var(--foreground); }
+  .info-strip.warn svg { color: var(--warning); }
+  .stack { display: flex; gap: 20px; align-items: flex-start; flex-wrap: wrap; }
+  .mini { width: 300px; height: 300px; }
+  .callout { max-width: 1000px; margin-top: 12px; padding: 10px 13px; border-radius: 8px; font-size: 11.5px; line-height: 1.6; background: var(--background-alt); border: 1px solid var(--border); border-left: 3px solid var(--info); color: var(--muted-fg); }
+  .callout b { color: var(--foreground); } .callout code { font-family: 'JetBrains Mono', monospace; font-size: 10.5px; color: var(--accent-fg); }
+</style>
+</head>
+<body>
+<h1>Branch Diff — dị bản prose audit <span class="mono" style="font-size:12px;color:var(--muted-fg);font-weight:400">— a section inside the `divergence` panel · draft</span></h1>
+<p class="sub">
+  The <b>Spec</b> tab answers "how was this branch declared?"; this <b>Diff</b> tab answers "what is actually <b>different</b> in the prose?".
+  A dị bản is <b>copy-on-write</b> — its project holds only the scenes the writer diverged, so each scene is <b>inherited</b> (verbatim canon, nothing to diff),
+  <b>changed</b> (two-column diff), or <b>added</b> (all-new). Prose is fetched <b>lazily per selected scene</b> for both projects via one new read route
+  (<code>GET /works/{id}/scenes/{node}/prose</code>, wrapping the existing <code>composition_get_prose</code> resolver). The rail hides inherited scenes by default, so the audit stays short at book scale.
+</p>
+
+<!-- ① the main diff — a CHANGED scene -->
+<h2>① A changed scene — canon vs dị bản, line-level</h2>
+<div class="stack">
+<div class="panel diff-panel">
+  <div class="panel-head">
+    <span>Divergence · “Nếu Lam Vũ chết ở hồi 3”</span>
+    <span class="tab">Spec</span><span class="tab on">Diff</span>
+  </div>
+  <div class="split">
+    <div class="rail">
+      <div class="rail-head"><span>Scenes</span><span class="mono" style="opacity:.7">3 diverged</span></div>
+      <div class="srow"><span class="dot changed"></span><span class="nm">Ch.62 · Tro tàn</span><span class="tagpill tag-changed">chg</span></div>
+      <div class="srow on"><span class="dot changed"></span><span class="nm">Ch.63 · Người thừa kế</span><span class="tagpill tag-changed">chg</span></div>
+      <div class="srow"><span class="dot added"></span><span class="nm">Ch.63 · Lời thề mới</span><span class="tagpill tag-added">new</span></div>
+      <div class="rail-toggle">show inherited (58)</div>
+    </div>
+    <div class="diff-body">
+      <div class="diff-summary">
+        <span class="chip"><span class="dot" style="background:var(--warning)"></span> <b>2</b> changed</span>
+        <span class="chip"><span class="dot" style="background:var(--add)"></span> <b>1</b> added</span>
+        <span class="chip"><span class="dot" style="background:var(--border-hover)"></span> 58 inherit canon</span>
+        <span style="margin-left:auto" class="mono" style="font-size:10px">branch @ Ch.62 · overrides: 3 · canon-rules: +2</span>
+      </div>
+      <div class="cols">
+        <div class="col canon">
+          <div class="col-head">Canon · Nghịch thiên</div>
+          <span class="ln ctx">Lam Vũ đứng trước Tro Môn, tay nắm chặt thanh kiếm của mình.</span>
+          <span class="ln del">Chàng biết cái giá phải trả, và chàng sẵn sàng trả nó.</span>
+          <span class="ln del">Ngọn lửa chưa bao giờ khuất phục được ý chí của chàng.</span>
+          <span class="ln ctx">Phía sau, Diệp Thanh gọi tên chàng — nhưng chàng không quay lại.</span>
+        </div>
+        <div class="col au">
+          <div class="col-head au">Dị bản · au</div>
+          <span class="ln ctx">Lam Vũ đứng trước Tro Môn, tay nắm chặt thanh kiếm của mình.</span>
+          <span class="ln add">Chàng biết cái giá phải trả — và lần này, cái giá là chính chàng.</span>
+          <span class="ln add">Ngọn lửa nuốt lấy chàng trước khi tiếng gọi kịp vang tới.</span>
+          <span class="ln ctx">Phía sau, Diệp Thanh gọi tên chàng — nhưng chàng không quay lại.</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+</div>
+
+<!-- ② the edge states -->
+<h2>② The states this section must show</h2>
+<div class="stack">
+  <div class="panel mini">
+    <div class="panel-head"><span>Added scene</span></div>
+    <div class="cols" style="grid-template-columns:1fr">
+      <div class="col au">
+        <div class="col-head au">Dị bản · all-new (no canon counterpart)</div>
+        <span class="ln add">Diệp Thanh nhặt thanh kiếm từ tro tàn, và thề một lời thề không ai nghe.</span>
+        <span class="ln add">Từ hôm nay, gánh nặng của Lam Vũ là của nàng.</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="panel mini">
+    <div class="panel-head"><span>Inherited scene</span></div>
+    <div class="empty">
+      <svg viewBox="0 0 24 24" fill="none" stroke="var(--border-hover)" stroke-width="2" style="width:22px;height:22px"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>
+      <b>Inherits canon</b>
+      <span>No delta in the dị bản — this scene is read-only canon, identical to the source. Nothing to diff.</span>
+    </div>
+  </div>
+
+  <div class="panel mini">
+    <div class="panel-head"><span>No prose yet</span></div>
+    <div class="empty">
+      <b>Not written yet</b>
+      <span>This diverged scene has no prose in the dị bản — <b>promote a take</b> or draft it on the what-if canvas first, then its diff appears here.</span>
+    </div>
+    <div class="info-strip warn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 9v4M12 17h.01M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg><span>The scene NODE exists (promote seeded it) but its <b>prose</b> persist failed or is pending.</span></div>
+  </div>
+
+  <div class="panel mini">
+    <div class="panel-head"><span>No branch selected</span></div>
+    <div class="empty">
+      <b>Pick a dị bản</b>
+      <span>Select a branch in the list on the left to audit its prose against canon.</span>
+    </div>
+  </div>
+</div>
+
+<div class="callout">
+  <b>Why a section, not a new panel.</b> The audit is meaningless without a selected branch, which the <code>divergence</code> panel already owns — so it rides the
+  same selection as the Spec tab (one <code>selectedProjectId</code>, two tabs). It also needs <b>no new <code>panel_id</code> enum entry</b>, which is exactly the
+  single-line contention that blocks a fresh panel while sibling sessions add their own. <b>One new backend read route</b> (scene prose by node, both projects),
+  a client-side line diff, and lazy per-scene fetch — no bulk book-diff, no new bi-temporal query.
+</div>
+
+<div class="callout" style="border-left-color:var(--warning)">
+  <b>Scene correspondence is by (chapter_id, story_order), and it must degrade honestly.</b> A canon scene the writer never drafted has no prose — show
+  <i>"canon scene not drafted"</i> on the left, the dị bản prose on the right, and label it <b>added-vs-blank</b>, not a false "changed". A dị bản node whose
+  <code>story_order</code> collides with a different canon scene must NOT be mis-paired — pair only within the SAME chapter, and when in doubt render it as
+  <b>added</b> (all-new), never a wrong diff. A wrong pairing is worse than no pairing.
+</div>
+</body>
+</html>

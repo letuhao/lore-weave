@@ -10,6 +10,14 @@ import type { PlanNodeView } from '../../hooks/usePlanNode';
 
 const hook = vi.hoisted(() => ({ usePlanNode: vi.fn() }));
 vi.mock('../../hooks/usePlanNode', () => ({ usePlanNode: hook.usePlanNode }));
+// The arc/saga branch mounts the arc-inspector's shared body (32 §3.5), which needs react-query +
+// auth. Stub it so this stays a render-only ROUTING test; the embed's behaviour is covered by
+// ArcInspectorBody.test.tsx.
+vi.mock('@/features/studio/panels/ArcInspectorEmbed', () => ({
+  ArcInspectorEmbed: (props: { arcId: string; bookId: string }) => (
+    <div data-testid="arc-inspector-embed" data-arc={props.arcId} data-book={props.bookId} />
+  ),
+}));
 
 import { PlanDrawer } from '../PlanDrawer';
 
@@ -88,7 +96,7 @@ describe('PlanDrawer', () => {
     expect(screen.queryByTestId('plan-drawer-arc-gap')).toBeNull();
   });
 
-  it('arc/saga: renders the minimal arc summary + the reuse-gap note, not outline facets', () => {
+  it('arc/saga: mounts the arc-inspector embed (not the old minimal-summary stub)', () => {
     hook.usePlanNode.mockReturnValue(
       view({
         kind: 'arc',
@@ -101,13 +109,14 @@ describe('PlanDrawer', () => {
     render(<PlanDrawer selectedId="A1" kind="arc" bookId="b" onClose={vi.fn()} />);
 
     expect(screen.getByTestId('plan-drawer-title').textContent).toContain('Rising Action');
-    expect(screen.getByTestId('plan-drawer-section-structure')).toBeInTheDocument();
-    expect(screen.getByTestId('plan-drawer-section-roster')).toBeInTheDocument();
-    expect(screen.getByTestId('plan-drawer-f-chaptercount').textContent).toContain('6');
-    expect(screen.getByTestId('plan-drawer-f-span').textContent).toContain('3');
-    // Non-contiguous span is surfaced, and the arc-inspector reuse gap is noted honestly.
-    expect(screen.getByTestId('plan-drawer-noncontiguous')).toBeInTheDocument();
-    expect(screen.getByTestId('plan-drawer-arc-gap')).toBeInTheDocument();
+    // The branch routes to the shared arc-inspector body, with the drawer supplying the id + book.
+    const embed = screen.getByTestId('arc-inspector-embed');
+    expect(embed).toHaveAttribute('data-arc', 'A1');
+    expect(embed).toHaveAttribute('data-book', 'b');
+    // The old ArcFacets stub + its reuse-gap note are GONE (the inspector is built now).
+    expect(screen.queryByTestId('plan-drawer-arc-gap')).toBeNull();
+    expect(screen.queryByTestId('plan-drawer-section-structure')).toBeNull();
+    expect(screen.queryByTestId('plan-drawer-section-roster')).toBeNull();
     // No outline craft facet on an arc.
     expect(screen.queryByTestId('plan-drawer-section-craft')).toBeNull();
   });
