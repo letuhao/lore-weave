@@ -27,7 +27,7 @@ NO Playwright/CV build or run in this goal). Finish line = plan §0.
 ## 3 · SLICE BOARD (done = a pasted evidence string, NOT a checkmark)
 | Slice | Deliverable | Sev | Cross-svc | Status | Evidence |
 |---|---|---|---|---|---|
-| **A1** | knowledge erase includes archived epochs + forget clears `:Passage` index + internal-token JWT-bind assert | HIGH | Y | ⬜ | |
+| **A1** ✅ | knowledge account-erase includes ARCHIVED epochs (right-to-erasure hole) via `list_all_assistant_project_ids` (archived-inclusive; recall keeps active-only). A1.2 (forget `:Passage`) = NON-ISSUE (diary never passage-indexed). A1.3 SEC-1 forged-`user_id` guard added. (c3f25b306) | HIGH | Y | ✅ | **EVIDENCE (pasted, committed c3f25b306):** knowledge **59 passed** on real PG :5555 (test_projects_repo incl. 2 new: erase-resolver-includes-archived + is-user-scoped; test_internal_admin unit); gateway assistant spec **43 passed** (incl. the A1.3 adversarial "forged user_id ignored → JWT sub wins"). **LIVE-SMOKE (rebuilt knowledge image):** seeded 1 archived + 1 active assistant epoch + a pending fact in the archived → `DELETE /internal/admin/assistant/erase?user_id=U` (no project_id) → `{projects_erased:2, pending_facts_deleted:1}` (archived INCLUDED — pre-fix would be 1), asserts projects_left=0/archived_left=0/pending_left=0. **/review-impl:** standards clean (resolver user-scoped; no provider/model/secret/table); no HIGH/MED; 2 LOW accepted (smoke seeded PG-only for archived — Neo4j cascade is per-project archived-agnostic + D-R27-tested; A1.2 rests on "diary never indexes" invariant — §6). |
 | **A2** | desktop parity — Memory/recall + Journal + Correct + Forget + Erase in the desktop `/assistant` (reuse hooks/sheets) | HIGH | N | ⬜ | |
 | **A3** | arm autonomous — fail-closed per-user schedule setting → `POST /v1/assistant/schedule`; toggle ON makes a job fire | HIGH | Y | ⬜ | |
 | **A4** | new-epoch FE (changed-jobs isolation) + proactive LLM content via provider-registry | MED | Y | ⬜ | |
@@ -43,7 +43,15 @@ Sequence: A1 → A2 → A3 → A4 → A5 → B-PLAN. (A2/A5 FE-only; A1/A3/A4 li
 
 ## 5 · Parked register (gate each) — none yet.
 
-## 6 · Debt / drift log (append as you go — an empty drift log at the end is dishonest) — none yet.
+## 6 · Debt / drift log (append as you go — an empty drift log at the end is dishonest)
+- **A1.2 near-miss (audit said MED, proved NON-ISSUE):** forget was flagged for leaving KS-owned `:Passage`
+  prose searchable. Traced the code: diary books **never publish/index** (`book-service kg_index.go:10`), and
+  the distiller only `write_diary_entry` + `queue_diary_facts` (no chapter index) — so diary prose is NEVER
+  ingested as `:Passage`. Forget has no passage residue. **ASSUMPTION to revisit:** if diary passage-indexing
+  is ever added (for richer prose recall), forget MUST also re-index/redact those passages — re-open A1.2 then.
+- **A1 live-smoke scope:** the archived-epoch smoke seeded PG rows only (passages/kg=0), so the archived
+  project's Neo4j cascade wasn't exercised end-to-end. Accepted: the A1 change is the RESOLVER only; the
+  per-project cascade is unconditional on `is_archived` and covered by D-R27 tests.
 
 ## 7 · Checkpoints
 - Owner checkpoint after each cross-service slice (A1, A3) and at B-PLAN. Commit per slice with pasted evidence.
