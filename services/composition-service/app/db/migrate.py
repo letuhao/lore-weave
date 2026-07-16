@@ -972,6 +972,29 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_arc_template_user
 CREATE UNIQUE INDEX IF NOT EXISTS uq_arc_template_system
   ON arc_template(code, language)                WHERE owner_user_id IS NULL;
 CREATE INDEX IF NOT EXISTS idx_arc_template_owner  ON arc_template(owner_user_id) WHERE owner_user_id IS NOT NULL;
+-- D-ARC-TEMPLATE-BOOK-TIER (34a) — the book-SHARED collaboration tier, MIRRORING the proven
+-- motif.book_shared (model B): access = the book grant resolved at the caller (owner is attribution
+-- only; an EDIT-grantee who is not the owner may edit; a non-grantee sees nothing). Columns first.
+ALTER TABLE arc_template ADD COLUMN IF NOT EXISTS book_id     UUID;
+ALTER TABLE arc_template ADD COLUMN IF NOT EXISTS book_shared BOOLEAN NOT NULL DEFAULT false;
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'arc_template_book_shared_shape') THEN
+    -- both-or-neither shape (identical to motif_book_shared_shape): a shared row carries a book + an
+    -- owner + stays visibility='private' (the shared axis and the public-catalog axis are disjoint).
+    ALTER TABLE arc_template ADD CONSTRAINT arc_template_book_shared_shape
+      CHECK (NOT book_shared OR (book_id IS NOT NULL AND owner_user_id IS NOT NULL AND visibility = 'private'));
+  END IF;
+END $$;
+-- The per-user dedup must now be scoped to book_id IS NULL, so a user's private lib and a book-shared
+-- clone of the same code coexist; the shared tier dedups PER BOOK. Create the replacement BEFORE
+-- dropping the old (no window with zero uniqueness).
+CREATE UNIQUE INDEX IF NOT EXISTS uq_arc_template_user_nobook
+  ON arc_template(owner_user_id, code, language) WHERE owner_user_id IS NOT NULL AND book_id IS NULL;
+DROP INDEX IF EXISTS uq_arc_template_user;
+CREATE UNIQUE INDEX IF NOT EXISTS uq_arc_template_book_shared
+  ON arc_template(book_id, code, language) WHERE book_id IS NOT NULL AND book_shared;
+CREATE INDEX IF NOT EXISTS idx_arc_template_book ON arc_template(book_id) WHERE book_id IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_arc_template_public ON arc_template(visibility, updated_at DESC) WHERE visibility = 'public';
 CREATE INDEX IF NOT EXISTS idx_arc_template_genre  ON arc_template USING GIN (genre_tags);
 
