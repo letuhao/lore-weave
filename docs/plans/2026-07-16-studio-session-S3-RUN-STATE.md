@@ -113,13 +113,15 @@ no-silent-fail · agent-parity · loop-connected · live-browser-proven · i18n+
   routes + contract yaml + FE (usePlanRunsList archive/restore/showArchived, PlanRunsListView
   archive/restore buttons + toggle). BE 31 passed (incl the two-carrier test that fails an
   active_job_id-only impl), FE 65 passed. Migration runs at the coverage-phase Docker rebuild.
-- **D-S3-CHECKPOINT-STRUCTURED-EDITS** (gate #2, follow-up): the checkpoint "Save edits" (F-P10 —
-  edits deep-merge → decision=rejected + new artifact) needs a STRUCTURED editor (edit specific
-  fields), NOT a raw-JSON textarea (draft-banned; deep-merge can't delete). Ship it when the
-  structured edit UX is designed; until then the review is read-only + approve/reject.
-- **D-PLANFORGE-PROPOSE-BLIND** (pre-existing, SESSION_HANDOFF.md:102, gate #2): propose ignores an
-  existing manuscript. Wave-5 must NOT touch the engine (Q-35-OQ5). Only ship the honesty copy string
-  in the planner new-run form ("Proposed from this braindump only. Existing chapters are not read.").
+- **D-S3-CHECKPOINT-STRUCTURED-EDITS** — **SPEC WRITTEN** (not built):
+  docs/specs/2026-07-17-planforge-checkpoint-structured-edits.md. Per-artifact-kind structured editors
+  (cast+beats first) + a list-REPLACE patch protocol (deep-merge can't delete). 3 PO open questions
+  (patch protocol · which kinds v1 · reject-vs-keep-pending) — decide before building.
+- **D-PLANFORGE-PROPOSE-BLIND** (pre-existing, gate #2; Wave-5 sealed OUT — Q-35-OQ5) — **SPEC WRITTEN**
+  (not built, seal respected): docs/specs/2026-07-17-planforge-propose-existing-state.md. A book-state
+  gather lens + prompt/contract changes across the 3 proposer paths + run schema; gated behind an A/B
+  eval before defaulting on. S3 shipped only the honesty copy. 3 PO open questions (owning track ·
+  default on/off · budget split). Building it is a FUTURE track, not S3.
 
 ### DEBT
 - Live-smoke fixtures to CLEAN UP at session end: (1) demo package+pass_state seeded on test run
