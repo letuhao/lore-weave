@@ -46,7 +46,7 @@ const LEGACY_SUBTAB_HOME: Record<string, Home> = {
   canon: 'quality-canon-rules', // S6 M1 — CanonRulesPanel ported into the studio dock behind QualityWorkGate
   polish: 'quality-heal',        // S6 M3 — PolishPanel ported into the studio dock (server-side apply seam)
   progress: 'progress',          // S6 M4 — ProgressPanel homed as a dock panel (category editor)
-  flywheel: { unported: 'pending Wave 1 — quality-corrections panel not yet in this branch catalog' },
+  flywheel: 'flywheel',          // S6 M5 — FlywheelPanel homed as its OWN dock panel (NOT conflated with quality-corrections)
   motifs: { unported: 'pending Wave 3 — motif-library panel not yet in this branch catalog' },
   conformance: { unported: 'pending Wave 3 — quality-conformance panel not yet in this branch catalog' },
   // — homes that need a real M5 mount (the panel exists; the capability lands in M5.a/b/c) —

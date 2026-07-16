@@ -88,6 +88,7 @@ import { QualityCanonRulesPanel } from './QualityCanonRulesPanel';
 import { QualityCorrectionsPanel } from './QualityCorrectionsPanel';
 import { QualityHealPanel } from './QualityHealPanel';
 import { ProgressStudioPanel } from './ProgressStudioPanel';
+import { FlywheelStudioPanel } from './FlywheelStudioPanel';
 // ── S7 · Knowledge/World/Cast ── (integrator-wired; components owned by build groups A/B/C)
 import { WorldMapEditorPanel } from './WorldMapEditorPanel';
 import { PlaceGraphPanel } from './PlaceGraphPanel';
@@ -342,6 +343,7 @@ export const STUDIO_PANELS: StudioPanelDef[] = [
   { id: 'quality-corrections', component: QualityCorrectionsPanel, titleKey: 'panels.quality-corrections.title', descKey: 'panels.quality-corrections.desc', category: 'quality', guideBodyKey: 'panels.quality-corrections.guideBody' },
   { id: 'quality-heal', component: QualityHealPanel, titleKey: 'panels.quality-heal.title', descKey: 'panels.quality-heal.desc', category: 'quality', guideBodyKey: 'panels.quality-heal.guideBody' },
   { id: 'progress', component: ProgressStudioPanel, titleKey: 'panels.progress.title', descKey: 'panels.progress.desc', category: 'editor', guideBodyKey: 'panels.progress.guideBody' },
+  { id: 'flywheel', component: FlywheelStudioPanel, titleKey: 'panels.flywheel.title', descKey: 'panels.flywheel.desc', category: 'knowledge', guideBodyKey: 'panels.flywheel.guideBody' },
   // ── S7 · Knowledge/World/Cast ──  (world, world-map, place-graph, cast, character-arc)
   { id: 'world-map', component: WorldMapEditorPanel, titleKey: 'panels.world-map.title', descKey: 'panels.world-map.desc', category: 'storyBible', guideBodyKey: 'panels.world-map.guideBody' }, /* owner: S7 (Group B) */
   { id: 'place-graph', component: PlaceGraphPanel, titleKey: 'panels.place-graph.title', descKey: 'panels.place-graph.desc', category: 'storyBible', guideBodyKey: 'panels.place-graph.guideBody' }, /* owner: S7 (Group C) — OQ-5: storyBible, not 'knowledge' */

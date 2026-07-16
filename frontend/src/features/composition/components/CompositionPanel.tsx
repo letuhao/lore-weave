@@ -850,7 +850,7 @@ export function CompositionPanel({ bookId, chapterId, token, onAccept, onApplyPo
           </DockSlot>
         )}
         <DockSlot {...slot('progress')}>
-          <ProgressPanel projectId={work.project_id} bookId={bookId} settings={work.settings} token={token} />
+          <ProgressPanel projectId={work.project_id} bookId={bookId} token={token} />
         </DockSlot>
         <DockSlot {...slot('quality')}>
           <QualityPanel projectId={work.project_id} token={token} modelRef={effectiveModelRef} />
