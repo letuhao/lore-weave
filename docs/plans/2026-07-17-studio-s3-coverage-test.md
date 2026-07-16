@@ -136,10 +136,51 @@ J7/J8 deferred to a fresh-context continuation (needs fresh gemma runs through a
 | F-1 | J4.4 / J2.4 (H1) | **MED** | to READ my cast/beats as a cast/beat list | **raw JSON** in a tab titled "JSON · {runId}" — `{"cast":[{"name":…}]}` | **view-inadequate** — the viewer is developer-shaped; an author needs a human-readable per-kind render (the READ side of the structured-edits spec's per-kind components). H1 **CONFIRMED**. |
 | F-2 | J5 (fixture) | n/a | — | cast showed "re-run" not "review →" | NOT a product bug: the seeded run's cast was already `accepted` (cursor 2) from the prior REST smoke; a full fresh run is needed to exercise the pending-checkpoint UI. Re-run coverage with a clean propose→compile→run in fresh context. |
 
-**Still to confirm/refute (fresh-context continuation, harness ready):** H2 (7-run friction),
-H3 (read-only checkpoint edit — spec'd), H4 (no run-picker), H5 (loop visibility after link),
-H6 (no undo) — plus J3 (repair strip w/ gemma), J5 (full checkpoint incl seed-gate apply→approve),
-J7 (archive/restore + 409 in-flight), J8 (agent parity refresh).
+### Run 2 — 2026-07-17, same rebuilt stack — J5 + J7 driven fully through the GUI
+
+**Confirmed WORKING live (GUI-driven, not REST):**
+- **J5 — the S3 headline, end-to-end in the browser:** cast "review →" → the CheckpointReview shows
+  the cast **content read-only** (BE-3), the **seed-gate** "Glossary seed is 'pending'. Apply it
+  before approving (PF-7)", **Approve DISABLED** with the PF-7 tooltip, **no raw-JSON editor** (the
+  /review-impl read-only fix) → **Apply seed** → "Glossary seed applied — cast can be approved",
+  Approve ENABLES → **Approve** → API confirms `pass_cursor 1→2, cast=accepted, world+beats
+  unblocked`. A GUI-only author advanced past the cast checkpoint incl. the seed gate. ✅✅
+- **J7 — archive/restore (BE-4), GUI-driven:** "Archive" → the run vanishes from the list; the
+  "Show archived" toggle → it reappears with "Restore" → "Restore" → back in the active list. ✅
+- **Loop-connect:** the planner Runs tab shows "Pass Rail →"; the rail shows "Link to outline →". ✅
+
+**FINDINGS (run 2):**
+| # | journey/step | severity | what the author expected | what the UI gave | gap type |
+|---|---|---|---|---|---|
+| F-3 | J7 (H6-adjacent) | **LOW-MED** | an undo after Archive (the draft says "the toast carries an Undo") | the run silently vanished; recovery only via discovering the "Show archived" toggle + Restore | **no-undo / flow-friction** — add a toast-with-Undo on archive (the draft specified it; not built). |
+| F-4 | J5 seed-gate | **LOW** | to understand WHY I must "Apply seed" before approving | the copy cites "PF-7" (an internal law id) | **unclear-copy** — "PF-7" means nothing to an author; the gate copy should say *why* (the cast's characters must be written into the glossary first) without the law id. |
+
+**Gap hypotheses — verdicts:**
+- **H1 (raw-JSON viewer): CONFIRMED** (F-1) — view-inadequate.
+- **H2 (7-run friction): CONFIRMED (structural)** — reaching the end is 7 manual `run…` + 2 approvals
+  with no "run all advisory to the next checkpoint" affordance. Real friction for a long book.
+- **H3 (read-only checkpoint edit): CONFIRMED as a designed gap** — the review is read-only (correct
+  per the draft ban); the structured editor is the D-S3-CHECKPOINT-STRUCTURED-EDITS spec.
+- **H4 (no run-picker): CONFIRMED** — the rail always binds the latest run; a multi-run author selects
+  a run only from the planner Runs list (no picker in the rail).
+- **H6 (no undo): CONFIRMED** (F-3 for archive; the repair strip also has no undo).
+- **H5 (loop visibility after link): NOT YET TESTED** — needs a Link-to-outline click + a check that
+  the arcs/chapters appear in the manuscript navigator / Plan Hub.
+
+**Still open (fresh-context continuation):** H5, J3 (repair strip with a real gemma self-check gap),
+J8 (agent-parity refresh — chat-drives-pass → rail refreshes), the 409-in-flight archive path, and a
+FULL clean run (propose → compile → all 7 passes → both checkpoints → link) end-to-end.
+
+## Findings summary → triage
+| finding | severity | fix path |
+|---|---|---|
+| F-1 raw-JSON artifact viewer | MED | human-readable per-kind render (read side of the structured-edits spec) — new small slice |
+| F-3 no archive undo toast | LOW-MED | add a toast-with-Undo on archive (draft-specified) — small FE slice |
+| F-4 seed-gate copy cites "PF-7" | LOW | reword the gate copy in author language — trivial |
+| H2 7-run friction | MED | a "run advisory passes to the next checkpoint" affordance — new slice (design) |
+| H4 no run-picker in rail | LOW-MED | a run selector in the rail header — small slice |
+Each is a real coverage-surfaced gap; none block the S3 commitment (which is proven), all are
+polish/operability improvements to schedule.
 
 ## Known gap hypotheses to CONFIRM or REFUTE (don't assume — test them)
 - **H1 (view-inadequate):** raw-JSON artifact viewer is developer-shaped; an author needs a
