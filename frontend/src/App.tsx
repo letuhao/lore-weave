@@ -1,18 +1,9 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { Toaster } from 'sonner';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { QueryClientProvider } from '@tanstack/react-query';
 import { AuthProvider, RequireAuth } from '@/auth';
-
-const queryClient = new QueryClient({
-  defaultOptions: {
-    queries: {
-      staleTime: 30 * 1000, // 30s — data considered fresh for 30s
-      gcTime: 5 * 60 * 1000, // 5min — garbage collect after 5min
-      refetchOnWindowFocus: true, // refetch when user returns to tab
-      retry: 1,
-    },
-  },
-});
+// W0-S16 — the QueryClient now carries a global MutationCache.onError (see lib/queryClient.ts).
+import { queryClient } from '@/lib/queryClient';
 import { DashboardLayout } from '@/layouts/DashboardLayout';
 import { FullBleedLayout } from '@/layouts/FullBleedLayout';
 import { EditorLayout } from '@/layouts/EditorLayout';
