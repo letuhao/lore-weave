@@ -67,6 +67,43 @@ describe('ArcInspectorBody', () => {
     expect(edit).toHaveBeenCalledWith({ tracks: [{ key: 'revenge', label: 'Revenge line' }, { key: 'romance', label: 'Cold Harbor girl' }] });
   });
 
+  it('D-ARC-NO-ADD-CASCADE-ENTRY: + track adds a NEW own entry with a fresh key', () => {
+    const edit = vi.fn();
+    render(<ArcInspectorBody state={makeState({ edit })} />);
+    fireEvent.click(screen.getByTestId('arc-track-add'));
+    fireEvent.change(screen.getByTestId('arc-track-add-key'), { target: { value: 'betrayal' } });
+    fireEvent.change(screen.getByTestId('arc-track-add-label'), { target: { value: 'The knife' } });
+    fireEvent.click(screen.getByTestId('arc-track-add-submit'));
+    expect(edit).toHaveBeenCalledWith({ tracks: [{ key: 'revenge', label: 'Revenge line' }, { key: 'betrayal', label: 'The knife' }] });
+  });
+
+  it('add-entry refuses a key that already resolves (no dup-422): submit disabled + marker', () => {
+    const edit = vi.fn();
+    render(<ArcInspectorBody state={makeState({ edit })} />);
+    fireEvent.click(screen.getByTestId('arc-track-add'));
+    fireEvent.change(screen.getByTestId('arc-track-add-key'), { target: { value: 'romance' } }); // already inherited
+    expect(screen.getByTestId('arc-track-add-submit')).toBeDisabled();
+    expect(screen.getByTestId('arc-track-add-dup')).toBeInTheDocument();
+    fireEvent.click(screen.getByTestId('arc-track-add-submit'));
+    expect(edit).not.toHaveBeenCalled();
+  });
+
+  it('D-ARC-EDITFIELD-MIDTYPE-RESET: an agent write mid-type never clobbers the draft', () => {
+    const edit = vi.fn();
+    const { rerender } = render(<ArcInspectorBody state={makeState({ edit })} />);
+    const title = screen.getByTestId('arc-f-title');
+    fireEvent.focus(title);
+    fireEvent.change(title, { target: { value: 'my half-typed edit' } });
+    // a concurrent agent write refetches detail → the title value moves underneath the cursor.
+    rerender(<ArcInspectorBody state={makeState({ edit, detail: makeDetail({ title: 'Agent changed it', version: 8 }) })} />);
+    expect(screen.getByTestId('arc-f-title')).toHaveValue('my half-typed edit'); // draft preserved
+    // when the user was focused-but-untouched, the external value DOES win (no stale clobber):
+    const goal = screen.getByTestId('arc-f-goal');
+    fireEvent.focus(goal);
+    rerender(<ArcInspectorBody state={makeState({ edit, detail: makeDetail({ title: 'Agent changed it', goal: 'Agent goal', version: 9 }) })} />);
+    expect(screen.getByTestId('arc-f-goal')).toHaveValue('Agent goal');
+  });
+
   it('archived: dims, hides danger, offers restore, and never a computed 0 for a null block', () => {
     const detail = makeDetail({ is_archived: true, span: null, chapter_count: null as unknown as number, is_contiguous: null as unknown as boolean });
     render(<ArcInspectorBody state={makeState({ detail })} />);

@@ -18,7 +18,10 @@ export function ArcInspectorPanel(props: IDockviewPanelProps) {
   const state = useArcInspector(host.bookId, params?.arcId);
   const { shell, arcId, detail } = state;
 
-  const emptyBook = !state.loading && shell.length === 0;
+  // The empty-book CTA is for a book with NO arc to inspect. A LOADED detail keeps the body even when
+  // the shell is empty — e.g. after archiving the last arc, its detail (is_archived) must stay visible
+  // so Restore is reachable (getArcs excludes archived, so the shell alone would hide it). Caught live.
+  const emptyBook = !state.loading && shell.length === 0 && !detail;
 
   return (
     <div data-testid="studio-arc-inspector-panel" className="flex h-full min-h-0 flex-col text-sm">

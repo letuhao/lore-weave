@@ -168,13 +168,19 @@ async def test_arc_get_enriches_resolved_span_and_promises():
     structures.resolve_tracks = AsyncMock(return_value=[{"key": "romance"}])
     structures.resolve_roster = AsyncMock(return_value=[{"key": "protagonist"}])
     structures.resolve_roster_bindings = AsyncMock(return_value={"protagonist": "e1"})
-    structures.span = AsyncMock(return_value={"min_story_order": 1, "chapter_count": 3,
-                                              "is_contiguous": True})
+    # BE-A1: the agent door now reads the dense-ranked DERIVED block (same unit as the Hub), NOT
+    # the packer's raw strided span(). Mock derived_blocks; assert span() is never touched.
+    structures.span = AsyncMock(return_value={"min_story_order": 1, "chapter_count": 3, "is_contiguous": True})
+    structures.derived_blocks = AsyncMock(return_value={
+        ARC: {"span": {"from_order": 1, "to_order": 3}, "chapter_count": 3, "is_contiguous": True},
+    })
     structures.open_promises = AsyncMock(return_value=[])
     async with _patched(grant_level=1, structures=structures):
         res = await srv.composition_arc_get(_Ctx(), node_id=str(ARC))
     assert res["resolved"]["tracks"] == [{"key": "romance"}]
-    assert res["span"]["chapter_count"] == 3
+    assert res["span"] == {"from_order": 1, "to_order": 3}
+    assert res["chapter_count"] == 3 and res["is_contiguous"] is True
+    structures.span.assert_not_called()   # BE-A1: the raw packer axis is left untouched at this door
     assert res["open_promises"] == []
 
 
@@ -298,6 +304,27 @@ async def test_arc_template_drift_no_provenance_returns_unknown():
     async with _patched(grant_level=1, structures=structures):
         res = await srv.composition_arc_template_drift(_Ctx(), node_id=str(ARC))
     assert res["available"] is False and "no template provenance" in res["reason"]
+
+
+async def test_arc_extract_template_engine_is_wired_not_pending():
+    """BE-8 agent-parity (extract): the `extract_template_from_arc` engine seam is MERGED, so the
+    MCP tool must actually RUN it — never the honest-pending refusal. If a refactor removes/renames
+    the engine fn, `getattr` goes None and this reds (catching a silent regression to a stub)."""
+    import app.mcp.server as srv
+    from unittest.mock import patch
+
+    structures = AsyncMock()
+    structures.get = AsyncMock(return_value=_node(id=ARC, book_id=BOOK))
+    fake = {"success": True, "arc_template_id": str(uuid.uuid4()), "reconstructed": {}}
+    with patch("app.engine.arc_apply.extract_template_from_arc",
+               AsyncMock(return_value=fake)) as eng:
+        async with _patched(grant_level=1, structures=structures):
+            res = await srv.composition_arc_extract_template(
+                _Ctx(), srv._ArcExtractTemplateArgs(node_id=str(ARC), code="c1", name="My Arc"),
+            )
+    eng.assert_awaited_once()                       # the real engine RAN (parity, not a stub)
+    assert "pending_dependency" not in res          # NOT the honest-pending refusal
+    assert res["success"] is True and res["arc_template_id"] == fake["arc_template_id"]
 
 
 # ══════════════════════════════════════════════════════════════════════════════

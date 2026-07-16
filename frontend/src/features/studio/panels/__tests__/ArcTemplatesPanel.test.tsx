@@ -48,9 +48,9 @@ describe('ArcTemplatesPanel', () => {
     ctrl.useArcTemplates.mockReturnValue(makeState());
     render(<ArcTemplatesPanel {...props} />);
     expect(screen.getByTestId('arc-row-a1')).toBeInTheDocument();
-    expect(screen.getByTestId('arc-tier-chip-a1').textContent).toBe('Mine');
+    expect(screen.getByTestId('arc-tier-chip-a1').textContent).toBe('motif.arc.templates.chipMine');
     expect(screen.getByTestId('arc-archive-a1')).toBeInTheDocument();   // own → archive
-    expect(screen.getByTestId('arc-tier-chip-a2').textContent).toBe('System');
+    expect(screen.getByTestId('arc-tier-chip-a2').textContent).toBe('motif.arc.templates.chipSystem');
     expect(screen.getByTestId('arc-adopt-a2')).toBeInTheDocument();     // not-own → adopt
   });
 
@@ -131,6 +131,6 @@ describe('ArcTemplatesPanel', () => {
     expect(screen.getByTestId('arc-templates-loading')).toBeInTheDocument();
     ctrl.useArcTemplates.mockReturnValue(makeState({ isError: true }));
     rerender(<ArcTemplatesPanel {...props} />);
-    expect(screen.getByText(/Could not load templates/)).toBeInTheDocument();
+    expect(screen.getByText('motif.arc.templates.loadError')).toBeInTheDocument();
   });
 });

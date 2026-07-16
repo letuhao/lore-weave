@@ -1,7 +1,7 @@
 // 32 arc-inspector — the shared BODY (dock panel AND PlanDrawer embed — AI-4/DOCK-2: one
 // implementation, two hosts). No panel chrome, no picker (the host supplies the arcId). Render-only
 // against useArcInspector's state; every write goes through its OCC `edit`/`archive`/`restore`.
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 
 import { cn } from '@/lib/utils';
 import type { ArcDetail, ArcEntry, ArcOpenPromise } from '@/features/plan-hub/types';
@@ -25,58 +25,109 @@ function EditField({ label, value, multiline, onCommit, disabled, testid }: {
   onCommit: (v: string) => void; disabled?: boolean; testid: string;
 }) {
   const [draft, setDraft] = useState(value);
-  // keep the draft in sync when the row reloads (OCC reseed / selection change)
+  // keep the draft in sync when the row reloads (OCC reseed / selection change) — but NEVER while the
+  // user is mid-edit in THIS field (D-ARC-EDITFIELD-MIDTYPE-RESET): a concurrent agent write refetches
+  // `detail`, changing `value` under the cursor; reseeding then would silently discard the draft.
   const [seen, setSeen] = useState(value);
-  if (seen !== value) { setSeen(value); setDraft(value); }
-  const commit = () => { if (draft !== value) onCommit(draft); };
+  const focused = useRef(false);
+  const dirty = useRef(false);
+  if (seen !== value && !(focused.current && dirty.current)) { setSeen(value); setDraft(value); dirty.current = false; }
+  // Only commit an edit the user actually made — a stale draft must never clobber a value that moved
+  // underneath (agent write while the field was focused-but-untouched).
+  const commit = () => { if (dirty.current && draft !== value) onCommit(draft); dirty.current = false; };
   const cls = 'w-full rounded border bg-background px-2 py-1 text-xs text-foreground/90 outline-none focus:border-ring disabled:opacity-60';
   return (
     <label className="block">
       <span className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">{label}</span>
       {multiline ? (
         <textarea data-testid={testid} className={cn(cls, 'mt-0.5 min-h-[38px] resize-y')} value={draft}
-          disabled={disabled} onChange={(e) => setDraft(e.target.value)} onBlur={commit} />
+          disabled={disabled} onFocus={() => { focused.current = true; }}
+          onChange={(e) => { setDraft(e.target.value); dirty.current = true; }}
+          onBlur={() => { focused.current = false; commit(); }} />
       ) : (
         <input data-testid={testid} className={cn(cls, 'mt-0.5')} value={draft}
-          disabled={disabled} onChange={(e) => setDraft(e.target.value)} onBlur={commit}
+          disabled={disabled} onFocus={() => { focused.current = true; }}
+          onChange={(e) => { setDraft(e.target.value); dirty.current = true; }}
+          onBlur={() => { focused.current = false; commit(); }}
           onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); commit(); } }} />
       )}
     </label>
   );
 }
 
-/** Own vs inherited cascade row (AI-2): an inherited entry is read-only with one action — Override
- * here — which copies it into THIS node's own array (same key ⇒ it shadows), never a silent fork. */
-function CascadeRows({ resolved, own, kind, disabled, onOverride, onRemove }: {
-  resolved: ArcEntry[]; own: ArcEntry[]; kind: 'track' | 'role'; disabled?: boolean;
-  onOverride: (e: ArcEntry) => void; onRemove: (key: string) => void;
+/** A new-own-entry form (D-ARC-NO-ADD-CASCADE-ENTRY — the CREATE verb the cascade was missing): a key
+ * (+ optional label) that the body appends to THIS node's own array. The server enforces non-empty +
+ * unique key; we also skip an existing key client-side so it can't collide with a resolved entry. */
+function AddEntry({ kind, existingKeys, disabled, onAdd }: {
+  kind: 'track' | 'role'; existingKeys: Set<string>; disabled?: boolean; onAdd: (e: ArcEntry) => void;
 }) {
-  const ownKeys = new Set(own.map((e) => e.key));
-  if (resolved.length === 0) {
-    return <p className="text-[11px] italic text-muted-foreground/70">No {kind === 'track' ? 'plot tracks' : 'cast roles'} yet.</p>;
+  const [open, setOpen] = useState(false);
+  const [key, setKey] = useState('');
+  const [label, setLabel] = useState('');
+  const k = key.trim();
+  const valid = k.length > 0 && !existingKeys.has(k);
+  const submit = () => { if (!valid) return; onAdd({ key: k, label: label.trim() || undefined }); setKey(''); setLabel(''); setOpen(false); };
+  if (!open) {
+    return (
+      <button type="button" data-testid={`arc-${kind}-add`} disabled={disabled}
+        className="text-[10px] font-semibold text-primary underline-offset-2 hover:underline disabled:opacity-50"
+        onClick={() => setOpen(true)}>+ {kind === 'track' ? 'track' : 'role'}</button>
+    );
   }
   return (
-    <ul className="space-y-1" data-testid={`arc-${kind}s`}>
-      {resolved.map((e) => {
-        const isOwn = ownKeys.has(e.key);
-        return (
-          <li key={e.key} data-testid={`arc-${kind}-${e.key}`}
-            className={cn('flex items-center gap-2 border-l-2 pl-2 text-xs',
-              isOwn ? 'border-primary' : 'border-teal-500/70 opacity-80')}>
-            <span className="font-mono text-[10px] text-primary">{e.key}</span>
-            <span className="min-w-0 flex-1 truncate text-foreground/90">{e.label || (e.actant ? `Actant: ${e.actant}` : '—')}</span>
-            {isOwn ? (
-              <button type="button" disabled={disabled} className="text-[10px] text-muted-foreground underline-offset-2 hover:underline disabled:opacity-50"
-                onClick={() => onRemove(e.key)}>remove</button>
-            ) : (
-              <button type="button" disabled={disabled} data-testid={`arc-${kind}-override-${e.key}`}
-                className="text-[10px] text-amber-600 underline-offset-2 hover:underline disabled:opacity-50 dark:text-amber-400"
-                onClick={() => onOverride(e)}>override here</button>
-            )}
-          </li>
-        );
-      })}
-    </ul>
+    <div data-testid={`arc-${kind}-add-form`} className="flex flex-wrap items-center gap-1.5">
+      <input data-testid={`arc-${kind}-add-key`} className="w-24 rounded border bg-background px-1.5 py-0.5 font-mono text-[10px]"
+        placeholder="key" value={key} disabled={disabled} autoFocus onChange={(e) => setKey(e.target.value)}
+        onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); submit(); } }} />
+      <input data-testid={`arc-${kind}-add-label`} className="w-32 rounded border bg-background px-1.5 py-0.5 text-[10px]"
+        placeholder="label (optional)" value={label} disabled={disabled} onChange={(e) => setLabel(e.target.value)}
+        onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); submit(); } }} />
+      <button type="button" data-testid={`arc-${kind}-add-submit`} disabled={disabled || !valid}
+        className="rounded bg-primary px-1.5 py-0.5 text-[10px] font-semibold text-primary-fg disabled:opacity-50" onClick={submit}>add</button>
+      <button type="button" className="text-[10px] text-muted-foreground hover:underline" onClick={() => { setOpen(false); setKey(''); setLabel(''); }}>cancel</button>
+      {k.length > 0 && existingKeys.has(k) && <span data-testid={`arc-${kind}-add-dup`} className="text-[10px] text-destructive">key exists</span>}
+    </div>
+  );
+}
+
+/** Own vs inherited cascade row (AI-2): an inherited entry is read-only with one action — Override
+ * here — which copies it into THIS node's own array (same key ⇒ it shadows), never a silent fork.
+ * A fresh key is created via the AddEntry form below the list. */
+function CascadeRows({ resolved, own, kind, disabled, onOverride, onRemove, onAdd }: {
+  resolved: ArcEntry[]; own: ArcEntry[]; kind: 'track' | 'role'; disabled?: boolean;
+  onOverride: (e: ArcEntry) => void; onRemove: (key: string) => void; onAdd: (e: ArcEntry) => void;
+}) {
+  const ownKeys = new Set(own.map((e) => e.key));
+  const resolvedKeys = new Set(resolved.map((e) => e.key));
+  return (
+    <>
+      {resolved.length === 0 ? (
+        <p className="text-[11px] italic text-muted-foreground/70">No {kind === 'track' ? 'plot tracks' : 'cast roles'} yet.</p>
+      ) : (
+        <ul className="space-y-1" data-testid={`arc-${kind}s`}>
+          {resolved.map((e) => {
+            const isOwn = ownKeys.has(e.key);
+            return (
+              <li key={e.key} data-testid={`arc-${kind}-${e.key}`}
+                className={cn('flex items-center gap-2 border-l-2 pl-2 text-xs',
+                  isOwn ? 'border-primary' : 'border-teal-500/70 opacity-80')}>
+                <span className="font-mono text-[10px] text-primary">{e.key}</span>
+                <span className="min-w-0 flex-1 truncate text-foreground/90">{e.label || (e.actant ? `Actant: ${e.actant}` : '—')}</span>
+                {isOwn ? (
+                  <button type="button" disabled={disabled} className="text-[10px] text-muted-foreground underline-offset-2 hover:underline disabled:opacity-50"
+                    onClick={() => onRemove(e.key)}>remove</button>
+                ) : (
+                  <button type="button" disabled={disabled} data-testid={`arc-${kind}-override-${e.key}`}
+                    className="text-[10px] text-amber-600 underline-offset-2 hover:underline disabled:opacity-50 dark:text-amber-400"
+                    onClick={() => onOverride(e)}>override here</button>
+                )}
+              </li>
+            );
+          })}
+        </ul>
+      )}
+      <div className="pt-1"><AddEntry kind={kind} existingKeys={resolvedKeys} disabled={disabled} onAdd={onAdd} /></div>
+    </>
   );
 }
 
@@ -92,8 +143,13 @@ export function ArcInspectorBody({ state, onOpenPromise }: {
 
   const d: ArcDetail = detail;
   const archived = d.is_archived === true;
-  const overrideEntry = (arr: ArcEntry[] | undefined, e: ArcEntry): ArcEntry[] => [...(arr ?? []), e];
   const removeKey = (arr: ArcEntry[] | undefined, key: string): ArcEntry[] => (arr ?? []).filter((x) => x.key !== key);
+  // Append an entry, idempotently — a double-click Override (or a re-add of the same key) must not
+  // fire a second PATCH that the server would 422 as ARC_ENTRY_KEY_DUPLICATE. Returns null = no-op.
+  const appendOwn = (arr: ArcEntry[] | undefined, e: ArcEntry): ArcEntry[] | null =>
+    (arr ?? []).some((x) => x.key === e.key) ? null : [...(arr ?? []), e];
+  const addTrack = (e: ArcEntry) => { const next = appendOwn(d.tracks, e); if (next) void edit({ tracks: next }); };
+  const addRole = (e: ArcEntry) => { const next = appendOwn(d.roster, e); if (next) void edit({ roster: next }); };
 
   return (
     <div data-testid="arc-inspector-body" className={cn(archived && 'opacity-60')}>
@@ -122,13 +178,13 @@ export function ArcInspectorBody({ state, onOpenPromise }: {
 
         <Section title="Tracks (plot lines → prompt)">
           <CascadeRows resolved={d.resolved.tracks} own={d.tracks ?? []} kind="track"
-            onOverride={(e) => void edit({ tracks: overrideEntry(d.tracks, e) })}
+            onOverride={addTrack} onAdd={addTrack}
             onRemove={(k) => void edit({ tracks: removeKey(d.tracks, k) })} />
         </Section>
 
         <Section title="Roster (cast slots)">
           <CascadeRows resolved={d.resolved.roster} own={d.roster ?? []} kind="role"
-            onOverride={(e) => void edit({ roster: overrideEntry(d.roster, e) })}
+            onOverride={addRole} onAdd={addRole}
             onRemove={(k) => void edit({ roster: removeKey(d.roster, k) })} />
         </Section>
       </fieldset>

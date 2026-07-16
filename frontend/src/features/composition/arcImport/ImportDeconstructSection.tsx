@@ -28,19 +28,19 @@ export function ImportDeconstructSection({ token }: { token: string | null }) {
       <section className="flex flex-col gap-1.5">
         <h4 className="font-medium text-foreground/80">{t('motif.arc.import.sources', { defaultValue: 'Reference sources' })}</h4>
         {d.sourcesLoading ? (
-          <p className="text-muted-foreground">Loading…</p>
+          <p className="text-muted-foreground">{t('motif.arc.import.loading', { defaultValue: 'Loading…' })}</p>
         ) : d.sources.length === 0 ? (
-          <p data-testid="deconstruct-no-sources" className="italic text-muted-foreground">No sources yet — paste one below.</p>
+          <p data-testid="deconstruct-no-sources" className="italic text-muted-foreground">{t('motif.arc.import.noSources', { defaultValue: 'No sources yet — paste one below.' })}</p>
         ) : (
           <ul className="flex flex-col gap-0.5">
             {d.sources.map((s) => (
               <li key={s.id} className="flex items-center gap-2">
                 <button type="button" data-testid={`source-${s.id}`}
                   className={`min-w-0 flex-1 truncate text-left ${d.selectedSourceId === s.id ? 'font-medium text-primary' : ''}`}
-                  onClick={() => d.setSelectedSourceId(s.id)}>{s.title || '(untitled)'}</button>
+                  onClick={() => d.setSelectedSourceId(s.id)}>{s.title || t('motif.arc.import.untitled', { defaultValue: '(untitled)' })}</button>
                 <button type="button" data-testid={`source-del-${s.id}`} className="text-muted-foreground hover:text-destructive"
                   onClick={() => { if (window.confirm(t('motif.arc.import.deleteConfirm', { defaultValue: 'Delete this source? There is no restore.' }))) d.deleteSource.mutate(s.id); }}
-                  title="Delete (no restore)">✕</button>
+                  title={t('motif.arc.import.deleteTitle', { defaultValue: 'Delete (no restore)' })}>✕</button>
               </li>
             ))}
           </ul>
@@ -86,7 +86,7 @@ export function ImportDeconstructSection({ token }: { token: string | null }) {
               : d.confirm.isPending ? t('motif.arc.import.running', { defaultValue: 'Deconstructing…' })
                 : t('motif.arc.import.run', { defaultValue: 'Deconstruct' })}
           </button>
-          {!d.selectedSourceId && <p className="text-[10px] text-muted-foreground">Select a source above first.</p>}
+          {!d.selectedSourceId && <p className="text-[10px] text-muted-foreground">{t('motif.arc.import.selectFirst', { defaultValue: 'Select a source above first.' })}</p>}
 
           {err && <p data-testid="deconstruct-error" role="alert" className="text-destructive">{err}</p>}
         </section>
@@ -102,19 +102,20 @@ export function ImportDeconstructSection({ token }: { token: string | null }) {
 }
 
 function PasteBox({ onCreate, busy }: { onCreate: (b: { content: string; title: string }) => void; busy: boolean }) {
+  const { t } = useTranslation('composition');
   const [title, setTitle] = useState('');
   const [content, setContent] = useState('');
   const over = content.length > IMPORT_SOURCE_MAX;
   return (
     <div className="flex flex-col gap-1 rounded border bg-muted/30 p-2">
-      <input data-testid="paste-title" className="rounded border bg-background px-2 py-1" placeholder="title" value={title} onChange={(e) => setTitle(e.target.value)} />
-      <textarea data-testid="paste-content" className="min-h-[60px] resize-y rounded border bg-background px-2 py-1" placeholder="paste reference text…" value={content} onChange={(e) => setContent(e.target.value)} />
+      <input data-testid="paste-title" className="rounded border bg-background px-2 py-1" placeholder={t('motif.arc.import.pasteTitle', { defaultValue: 'title' })} value={title} onChange={(e) => setTitle(e.target.value)} />
+      <textarea data-testid="paste-content" className="min-h-[60px] resize-y rounded border bg-background px-2 py-1" placeholder={t('motif.arc.import.pasteBody', { defaultValue: 'paste reference text…' })} value={content} onChange={(e) => setContent(e.target.value)} />
       <div className="flex items-center gap-2">
         <span data-testid="paste-count" className={`text-[10px] ${over ? 'text-destructive' : 'text-muted-foreground'}`}>{content.length} / {IMPORT_SOURCE_MAX}</span>
-        {over && <span data-testid="paste-over" className="text-[10px] text-destructive">Too long — trim before importing.</span>}
+        {over && <span data-testid="paste-over" className="text-[10px] text-destructive">{t('motif.arc.import.tooLong', { defaultValue: 'Too long — trim before importing.' })}</span>}
         <button type="button" data-testid="paste-submit" className="ml-auto rounded bg-primary px-2 py-0.5 font-medium text-primary-fg disabled:opacity-50"
           disabled={busy || over || !content.trim() || !title.trim()}
-          onClick={() => { onCreate({ title: title.trim(), content }); setTitle(''); setContent(''); }}>Add source</button>
+          onClick={() => { onCreate({ title: title.trim(), content }); setTitle(''); setContent(''); }}>{t('motif.arc.import.addSource', { defaultValue: 'Add source' })}</button>
       </div>
     </div>
   );
