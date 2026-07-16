@@ -57,7 +57,17 @@ _(empty — D11 was built, not parked; PO directive: no defers.)_
 _(empty — S3/S7/S9/S12 all built in commit 87338d13b per the no-defer directive.)_
 ### RECENTLY CLEARED
 - **D11** (dock-id dedup, EditorPanel/S1 subtree) · **S3** (settings models load error) · **S7** (BatchTranslateDialog picker) · **S9** (ConfirmNameDialog → FormDialog) · **S12** (GlossaryTranslateWizard View-glossary nav) — all built 2026-07-17, commit 87338d13b. Crossed into settings/glossary/studio subtrees per PO "no defers"; changes are additive and each other session's tests stay green.
+### COMPLETENESS AUDIT (cold-start adversarial review, 2026-07-17)
+Reviewer found 5 real issues (rest verified sound); ALL fixed (swept into commit c1581e07b via the shared index — see DRIFT):
+- MED-1 settings/TranslationTab default-lang → LanguagePicker(TRANSLATION_TARGETS) (was a stale 8-code literal bypassing D13).
+- MED-2 _retranslate_dirty_core normalizes target_language BEFORE the seed lookup (raw 'VI' → misleading 409).
+- LOW-1 filter-all-deselected → distinct "All languages filtered out" state (was "no translations yet").
+- LOW-2 MCP update_settings undo hint omits a legacy target_language the enum would reject.
+- LOW-3 put_preferences dead-code `or` cleaned.
+### BLACKBOX-USER USABILITY (real app, author role, 2026-07-17)
+VERDICT: STRONG POSITIVE — genuinely operable, no dead ends. docs/plans/2026-07-17-studio-S8-blackbox-usability-report.md + 6 screenshots (frontend/s8-journey/). Journey spec + 5 e2e specs green on live :5199.
 ### DRIFT  (near-misses, bars nearly lowered, tests nearly skipped)
+- **SHARED-INDEX SWEEP** (2026-07-17): my audit-fix `git add`+commit collided with a concurrent session's commit on the shared checkout — my 5 audit fixes + all_filtered i18n got absorbed into commit c1581e07b (a plan-forge S3 commit) instead of my own. Code is SAFE + verified in HEAD (git show HEAD:… confirms each fix), but misattributed. Lesson (matches memory [git-index-may-carry-prestaged]): on a shared checkout, stage+commit atomically and fast, or a parallel session's commit sweeps your staged changes. Did NOT rewrite history (destructive on a shared branch).
 - A1 T1-unscoped test first clicked the CTA while chapters still loading (disabled → no-op) → false-green risk; caught it, made the test wait for load. The lesson: assert against the *enabled* control, not just its presence.
 - B S6/S8 committed without a dedicated test (LOW display/logging fixes). Near-miss on the "checklist⇒test the effect" bar; accepted for LOW severity but recorded — add a SplitCompareView fallback test if the §2 sweep touches it.
 - B-tail S12 (View-glossary navigate) shipped without a dedicated navigate-assertion test — the wizard's mocked StepResults doesn't wire onViewGlossary and driving to the 'results' step needs internal state-machine setup. Conscious LOW-severity gap; verify by effect in the §2 live-smoke. The 3-line change is visually trivial.
