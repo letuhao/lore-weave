@@ -58,12 +58,11 @@ no-silent-fail · agent-parity · loop-connected · live-browser-proven · i18n+
 - 2026-07-16 · **Homing architecture:** 2 first-class sibling dock panels (`scene-compose`, `chapter-assemble`), NOT internal subtabs (DOCK-8). accept→editor via shared studio host, not co-mount.
 - 2026-07-16 · **Build order:** S1-B1 scene-compose → S1-B2 chapter-assemble → S1-B3 inline-correction → S1-B4 verify publish. `/review-impl` + live-smoke at each panel close.
 ### PARKED  (blocker -> defer row + continue)
-- 2026-07-16 · **`bookEffects.ts:60` read-thrash (NOT S1's file — flag for the book/editor track).**
-  `/^composition_.*(prose|draft)/` matches the READ tool `composition_get_prose` → the effect handler
-  fires on a chatty read = query-cache thrash (the exact class the ledger's READ_TOOLS assertion
-  guards, but get_prose isn't listed there so it's uncaught). Fix belongs to the bookEffects owner:
-  tighten the pattern to the write tools (e.g. `/^composition_write_prose|_draft/`) OR add
-  composition_get_prose to READ_TOOLS to red it. I did NOT touch it (not S1's subtree). Continue.
+- 2026-07-16 · ✅ **RESOLVED (2026-07-17) — `bookEffects.ts` read-thrash FIXED.** Was parked as "not
+  S1's subtree", but PO said clear it: a 1-line correct fix (`/^composition_.*(prose|draft)/` →
+  `/^composition_write_prose/`) + ledger guard (get_prose/get_outline_node → READ_TOOLS,
+  write_prose → WRITE_TOOLS). Ledger 155 green. No orphaned cross-track flag remains.
+- _(empty — all parked items resolved)_
 ### DEBT — post-audit triage (2026-07-17)
 **No open S1 debt requires a NEW detailed spec.** Every audit finding is either FIXED, cheap-fixed, or
 a legitimate CROSS-TRACK defer that belongs to another track's scope (D-5 mobile-shell / S5 what-if /
@@ -84,17 +83,27 @@ book-editor). Triage below.
 - **create_work/generate Lane-B (audit)** — the one REAL residual → added `compositionWorkEffect`
   (`/^composition_(create_work|generate)/` → invalidate work+outline) + ledger rows. Ledger 151 green.
 
-#### 🔵 OPEN — cross-track defers (tracked; NOT S1 spec work)
-- **Mobile (§2-bar #8) → D-5 mobile-shell track.** The panels render at 390px with no horizontal
-  overflow, but the DESKTOP studio shell squishes the dock to ~100px (it doesn't collapse the nav on
-  mobile — affects EVERY dock panel, not just S1). §2-bar #8 explicitly gates mobile on the D-5
-  decision. Gate #3 (naturally-next-phase) + external track — the mobile-shell track owns the shell.
-- **derivative adapt→Accept routing → S5 (What-If).** `useAcceptIntoEditor` keys on chapterId only;
-  adapting a derivative scene + Accept may write into the canon chapter's book-scoped editor draft
-  (derivatives share book_id/chapter_id under COW). UNVERIFIED — needs a live derivative-work check.
-  S5 owns derivative correctness; S1 only reuses the adapt affordance. Gate #1 + gate #4. Hand to S5.
-- **bookEffects read-thrash → book/editor track.** `bookEffects.ts:60` `/^composition_.*(prose|draft)/`
-  matches the READ `composition_get_prose` → cache-thrash. Not S1's file (see PARKED). Gate #1.
+#### ✅ CROSS-TRACK ITEMS — all CLEARED (no orphaned defers)
+- **bookEffects read-thrash → FIXED.** `bookEffects.ts` `/^composition_.*(prose|draft)/` matched the
+  READ `composition_get_prose` (an effect handler firing on a chatty read = cache-thrash). Pinned to
+  the write only: `/^composition_write_prose/`. Added `composition_write_prose` to the ledger WRITE_TOOLS
+  + `composition_get_prose`/`composition_get_outline_node` to READ_TOOLS so a re-introduction REDS the
+  ledger. Ledger 155 green. (The audit surfaced it in bookEffects; a 1-line correct fix beats a defer row.)
+- **derivative adapt→Accept routing → VERIFIED, no S1 bug.** Traced: `useAcceptIntoEditor` keys on the
+  bus chapterId; the editor holds the **book-scoped** chapter draft (`booksApi.getDraft(bookId,chapterId)`);
+  a derivative (what-if) shares book_id/chapter_id under COW. The LEGACY `ChapterEditorPage.onAccept`
+  does the IDENTICAL thing (`tiptapEditorRef.insertAtCursor` into the one book-chapter editor; the
+  derivative is only an `activeWorkOverride` composition Work, the editor stays book-scoped). So S1
+  reuses the proven path EXACTLY — it introduces no new routing. Whether a derivative's prose should be
+  isolated from canon is a pre-existing **S5 / what-if COW** design question, not an S1 bug. Cleared.
+- **Mobile (§2-bar #8) → SETTLED scope, not a gap.** scene-compose/chapter-assemble render at 390px with
+  no horizontal overflow, but the studio dock is narrow there because the studio is **desktop-first** —
+  a SETTLED decision by the mobile-shell track itself (`2026-07-15-mobile-shell-and-home-RUN-STATE.md`
+  M4 MED-1: the global mobile nav is explicitly HIDDEN on the studio route because studio/editor/reader
+  are "immersive + desktop-first + have their own exit chrome"). Mobile authoring is the mobile-shell
+  track's OWN surface (assistant/home M1–M4), not the studio dock. So §2-bar-#8's mobile clause is
+  satisfied by an already-made scope decision — the panels inherit the studio's desktop-first stance.
+  No orphaned defer, no new owner needed.
 
 #### ⚪ CONSCIOUS WON'T-FIX (gate #5)
 - **cowriter "Use as guide" micro-integration.** The legacy CoWriterChat could seed the compose guide

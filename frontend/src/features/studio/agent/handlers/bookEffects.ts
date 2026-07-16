@@ -55,9 +55,12 @@ export function outlineEffect(ctx: EffectContext): void {
 export function registerDefaultEffectHandlers(): void {
   if (registered) return;
   registered = true;
-  // book_save_chapter_draft, book_update_chapter, composition_* prose writes (proxied draft).
+  // book_save_chapter_draft, book_update_chapter, composition prose WRITES (proxied draft).
   registerEffectHandler(/^book_.*(draft|chapter)/, bookDraftEffect);
-  registerEffectHandler(/^composition_.*(prose|draft)/, bookDraftEffect);
+  // S1-A3 fix: was /^composition_.*(prose|draft)/ — that also matched the READ `composition_get_prose`,
+  // so an effect handler fired on a chatty read = query-cache thrash. Pin to the WRITE tool only
+  // (composition_write_prose is the sole composition prose-write; composition_get_prose is a read).
+  registerEffectHandler(/^composition_write_prose/, bookDraftEffect);
   // #12 M-D — agent outline/scene-metadata writes → Scene Rail + navigator + json-editor refresh.
   registerEffectHandler(/^composition_(outline_node|scene_link)_/, outlineEffect);
 }
