@@ -8,6 +8,7 @@ import { useState } from 'react';
 import { Search, User, Folder, Lock, Trash2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Sheet } from '@/components/shared/Sheet';
+import { useIsMobile } from '@/hooks/useIsMobile';
 import type { GlossaryEntitySummary } from '@/features/glossary/types';
 import type { ForgetResult } from '../../types';
 
@@ -49,9 +50,10 @@ export function MobileMemorySheet({
   const [confirmId, setConfirmId] = useState<string | null>(null);
   const [confirmErase, setConfirmErase] = useState(false);
   const [confirmEpoch, setConfirmEpoch] = useState(false);
+  const isMobile = useIsMobile();
 
   return (
-    <Sheet id={MEMORY_SHEET_ID} title="What I know" description="Everything I remember about your work — private, never shared.">
+    <Sheet id={MEMORY_SHEET_ID} title="What I know" description="Everything I remember about your work — private, never shared." variant={isMobile ? 'bottom' : 'center'}>
       <div className="flex flex-col gap-3" data-testid="memory-sheet">
         {/* Recall — search your own memory */}
         <label className="flex items-center gap-2 rounded-lg border border-border bg-card px-3">

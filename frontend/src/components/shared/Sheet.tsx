@@ -78,12 +78,16 @@ export interface SheetProps {
   children: React.ReactNode;
   /** Extra classes for the content panel. */
   className?: string;
+  /** Anchor style: 'bottom' = phone bottom-sheet (default); 'center' = a centered dialog for wide
+   *  viewports (D-A2 — the assistant reuses these sheets on desktop, where a bottom-sheet reads oddly). */
+  variant?: 'bottom' | 'center';
 }
 
-export function Sheet({ id, title, description, children, className }: SheetProps) {
+export function Sheet({ id, title, description, children, className, variant = 'bottom' }: SheetProps) {
   const { t } = useTranslation();
   const { activeSheet, closeSheet } = useSheetRoute();
   const open = activeSheet === id;
+  const centered = variant === 'center';
 
   return (
     <Dialog.Root
@@ -100,14 +104,19 @@ export function Sheet({ id, title, description, children, className }: SheetProp
         />
         <Dialog.Content
           data-testid={`sheet-${id}`}
+          data-variant={variant}
           className={cn(
-            'fixed inset-x-0 bottom-0 z-50 max-h-[90dvh] overflow-y-auto rounded-t-2xl border-t bg-background pb-[max(env(safe-area-inset-bottom),1rem)] shadow-xl',
-            'data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:slide-out-to-bottom data-[state=open]:slide-in-from-bottom',
+            'fixed z-50 overflow-y-auto bg-background shadow-xl',
+            centered
+              ? // Desktop: a centered dialog, capped width, rounded on all sides.
+                'left-1/2 top-1/2 max-h-[85dvh] w-[min(92vw,32rem)] -translate-x-1/2 -translate-y-1/2 rounded-2xl border p-1 data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=closed]:animate-out data-[state=closed]:fade-out-0'
+              : // Mobile: bottom-anchored sheet.
+                'inset-x-0 bottom-0 max-h-[90dvh] rounded-t-2xl border-t pb-[max(env(safe-area-inset-bottom),1rem)] data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:slide-out-to-bottom data-[state=open]:slide-in-from-bottom',
             className,
           )}
         >
-          {/* Grab handle (decorative) */}
-          <div className="mx-auto mt-2 h-1 w-10 rounded-full bg-muted" aria-hidden="true" />
+          {/* Grab handle (decorative) — only meaningful on the phone bottom-sheet. */}
+          {!centered && <div className="mx-auto mt-2 h-1 w-10 rounded-full bg-muted" aria-hidden="true" />}
           <div className="flex items-start justify-between px-4 pb-2 pt-3">
             <Dialog.Title className="font-serif text-base font-semibold">{title}</Dialog.Title>
             <Dialog.Close

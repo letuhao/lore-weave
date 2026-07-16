@@ -8,6 +8,7 @@ import { useState } from 'react';
 import { ChevronDown, ChevronRight, BookmarkCheck, Pencil, Lock } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Sheet } from '@/components/shared/Sheet';
+import { useIsMobile } from '@/hooks/useIsMobile';
 import type { DiaryEntry, CorrectResult } from '../../types';
 
 export const JOURNAL_SHEET_ID = 'journal';
@@ -22,6 +23,7 @@ export interface MobileJournalSheetProps {
 }
 
 export function MobileJournalSheet({ entries, loading, error, onCorrect, correctingId }: MobileJournalSheetProps) {
+  const isMobile = useIsMobile();
   const [openId, setOpenId] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [draft, setDraft] = useState('');
@@ -39,7 +41,7 @@ export function MobileJournalSheet({ entries, loading, error, onCorrect, correct
   };
 
   return (
-    <Sheet id={JOURNAL_SHEET_ID} title="Journal" description="Your distilled diary, newest first.">
+    <Sheet id={JOURNAL_SHEET_ID} title="Journal" description="Your distilled diary, newest first." variant={isMobile ? 'bottom' : 'center'}>
       <div className="flex flex-col gap-2" data-testid="mobile-journal-list">
         {loading && entries.length === 0 && (
           <p className="py-6 text-center text-sm text-muted-foreground">Loading your journal…</p>
