@@ -639,6 +639,8 @@ PlanArtifactKind = Literal[
     # v2 — one artifact kind per pass, plus the two reports (27 V2-A1).
     "motif_plan", "cast_plan", "world_plan", "beat_plan", "char_arc_plan", "scene_plan",
     "heal_report", "link_report",
+    # close-21-28 P-O1a — the rules-mode pre-flight collision report.
+    "preflight",
 ]
 
 PassStatus = Literal["pending", "running", "completed", "failed"]

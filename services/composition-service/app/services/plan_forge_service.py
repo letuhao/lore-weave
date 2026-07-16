@@ -195,7 +195,14 @@ class PlanForgeService:
 
         if mode == "rules":
             await self._finalize_rules_propose(created_by, book_id, run.id, doc)
-            if settings.planforge_rules_autocompile:
+            # P-O1a (§10.5) — RULES-mode PRE-FLIGHT. Rules mode is a TRANSCRIBER (it does not ground the
+            # parser the way O-1 grounds the LLM path), so a mid-book rules propose can silently mint arcs
+            # that PARALLEL the book's existing ones (PF-10's dedupe keys on title, so fresh titles never
+            # collide). With `planforge_rules_autocompile` ON that now MATERIALISES immediately — so a
+            # collision must be REPORTED and the auto-compile HELD behind an explicit compile. `collided`
+            # is True only when the book already has arcs; a cold-start book auto-compiles as before.
+            collided = await self._rules_preflight(created_by, book_id, run.id)
+            if settings.planforge_rules_autocompile and not collided:
                 await self._autocompile_rules_run(created_by, book_id, run.id)
             updated = await self._runs.get_for_book(book_id, run.id)
             return updated or run, False, None
@@ -269,6 +276,62 @@ class PlanForgeService:
                     "propose stands, structure partial",
                     arc_id, run_id, exc,
                 )
+
+    async def _rules_preflight(
+        self, created_by: UUID, book_id: UUID, run_id: UUID,
+    ) -> bool:
+        """close-21-28 P-O1a (§10.5) — the RULES-mode pre-flight. Returns True when the book ALREADY has
+        arcs (a mid-book propose ⇒ a potential collision the caller must resolve before compiling), False
+        on a cold-start book (nothing to collide with — safe to auto-materialise).
+
+        When it returns True it also persists a `preflight` artifact — `{existing_arcs, proposed_arcs,
+        matched[], unmatched[], message}` compared by `lower(strip(title))` — so the FE / agent can SHOW
+        the collision (*"this book already has 3 arcs; your document proposes 2 matching none"*) and the
+        author can decide to compile anyway (an explicit `plan_compile` = the confirm). It never grounds
+        the parser (rules mode is a transcriber) and never blocks the propose; it only gates the silent
+        auto-compile. FAIL-OPEN on a degraded read: if the existing-arc read raises, treat as cold start
+        (do not strand a propose) — the worst case is the pre-ON behaviour, an un-flagged materialise.
+        """
+        from app.db.repositories.structure import StructureRepo
+
+        try:
+            existing = [
+                a for a in await StructureRepo(self._runs._pool).list_tree(book_id) if a.kind == "arc"
+            ]
+        except Exception:  # noqa: BLE001 — a degraded book read must not strand the propose
+            logger.warning("rules pre-flight: existing-arc read failed for book %s; treating as cold start",
+                           book_id, exc_info=True)
+            return False
+        if not existing:
+            return False  # cold start — nothing to collide with
+
+        spec_art = await self._runs.latest_artifact(book_id, run_id, "spec")
+        content = spec_art.content if spec_art is not None else None
+        raw_arcs = content.get("arcs") if isinstance(content, dict) else None
+        proposed = [a.get("title") for a in raw_arcs if isinstance(a, dict)] if isinstance(raw_arcs, list) else []
+
+        def _key(t: Any) -> str:
+            return str(t or "").strip().lower()
+
+        existing_keys = {_key(a.title) for a in existing}
+        matched = [t for t in proposed if _key(t) in existing_keys]
+        unmatched = [t for t in proposed if _key(t) not in existing_keys]
+        message = (
+            f"This book already has {len(existing)} arc(s); your document proposes "
+            f"{len(proposed)} ({len(matched)} matching an existing arc, {len(unmatched)} new). "
+            "Review before compiling — compiling will add the new arcs alongside what already exists."
+        )
+        await self._runs.save_artifact(
+            created_by, run_id, "preflight",
+            {
+                "existing_arcs": len(existing),
+                "proposed_arcs": len(proposed),
+                "matched": matched,
+                "unmatched": unmatched,
+                "message": message,
+            },
+        )
+        return True
 
     async def _finalize_rules_propose(
         self, created_by: UUID, book_id: UUID, run_id: UUID, doc: dict[str, Any],
@@ -433,10 +496,16 @@ class PlanForgeService:
                 for a in spec_art.content.get("arcs", [])
                 if a.get("id")
             ]
+        # P-O1a — the rules pre-flight collision report, when present (a mid-book rules propose held the
+        # auto-compile). Null on a cold-start book / an LLM run. The FE/agent shows it so the author can
+        # confirm-compile or re-word; a stored-but-never-returned artifact would be a silent hold.
+        preflight_art = await self._runs.latest_artifact(run.book_id, run.id, "preflight")
+        preflight = preflight_art.content if preflight_art is not None else None
         return {
             "id": str(run.id),
             "book_id": str(run.book_id),
             "status": run.status,
+            "preflight": preflight,
             "mode": run.mode,
             "model_ref": str(run.model_ref) if run.model_ref else None,
             "source_checksum": run.source_checksum,

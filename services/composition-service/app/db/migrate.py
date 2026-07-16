@@ -1337,7 +1337,10 @@ ALTER TABLE plan_artifact ADD CONSTRAINT plan_artifact_kind_chk CHECK (
     'document', 'analyze', 'spec', 'graph', 'package', 'llm_io', 'validation_report',
     -- v2: one artifact kind per compiler pass (PF-3), plus the two reports.
     'motif_plan', 'cast_plan', 'world_plan', 'beat_plan', 'char_arc_plan', 'scene_plan',
-    'heal_report', 'link_report'
+    'heal_report', 'link_report',
+    -- close-21-28 P-O1a: the rules-mode pre-flight collision report (a mid-book propose held the
+    -- auto-compile). Widen-only; every kind above stays writable (the backfill-all rule).
+    'preflight'
   )
 );
 

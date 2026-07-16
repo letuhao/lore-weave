@@ -165,6 +165,9 @@ async def test_rules_autocompile_on_compiles_every_parsed_arc(monkeypatch):
     runs.latest_artifact.return_value = _Spec([{"id": "arc_1"}, {"id": "arc_2"}, {"id": "arc_3"}])
     svc.compile = AsyncMock(return_value=("sync", {}))
     monkeypatch.setattr(
+        "app.db.repositories.structure.StructureRepo", _fake_structure_repo([]),
+    )  # cold-start book ⇒ the P-O1a pre-flight is a no-op, autocompile fires
+    monkeypatch.setattr(
         "app.services.plan_forge_service.settings.planforge_rules_autocompile", True,
     )
 
@@ -186,6 +189,9 @@ async def test_rules_autocompile_off_preserves_hil(monkeypatch):
     svc._finalize_rules_propose = AsyncMock()
     svc.compile = AsyncMock()
     monkeypatch.setattr(
+        "app.db.repositories.structure.StructureRepo", _fake_structure_repo([]),
+    )
+    monkeypatch.setattr(
         "app.services.plan_forge_service.settings.planforge_rules_autocompile", False,
     )
 
@@ -194,3 +200,63 @@ async def test_rules_autocompile_off_preserves_hil(monkeypatch):
     )
 
     svc.compile.assert_not_awaited()
+
+
+# ── close-21-28 P-O1a — the RULES-mode pre-flight (autocompile-ON safety guard) ───────────────
+#
+# With autocompile ON, a rules propose on a book that ALREADY has arcs would silently materialise
+# arcs that PARALLEL the book's existing ones. The pre-flight holds the auto-compile when the book has
+# arcs (a collision to review) and lets a cold-start book auto-compile unchanged.
+
+
+class _Arc:
+    def __init__(self, title):
+        self.kind, self.title = "arc", title
+
+
+def _fake_structure_repo(arcs):
+    class _R:
+        def __init__(self, _pool):
+            pass
+
+        async def list_tree(self, _book_id):
+            return arcs
+
+    return _R
+
+
+@pytest.mark.asyncio
+async def test_rules_preflight_cold_start_autocompiles(monkeypatch):
+    """Cold-start book (no existing arcs) ⇒ no collision ⇒ autocompile fires as before."""
+    svc, runs, jobs, works, llm = _svc()
+    runs.get_for_book.return_value = _run(mode="rules", status="proposed")
+    svc._finalize_rules_propose = AsyncMock()
+    runs.latest_artifact.return_value = _Spec([{"id": "arc_1", "title": "A"}])
+    svc.compile = AsyncMock(return_value=("sync", {}))
+    monkeypatch.setattr("app.db.repositories.structure.StructureRepo", _fake_structure_repo([]))
+    monkeypatch.setattr("app.services.plan_forge_service.settings.planforge_rules_autocompile", True)
+
+    await svc.create_run(USER, BOOK, source_markdown="# 1. Arc Overview\n## A", mode="rules", model_ref=None)
+
+    svc.compile.assert_awaited()  # cold start → auto-materialised
+
+
+@pytest.mark.asyncio
+async def test_rules_preflight_midbook_collision_holds_autocompile(monkeypatch):
+    """Book already has arcs ⇒ the pre-flight reports a collision + HOLDS the auto-compile (the author
+    must compile explicitly), even with the flag ON."""
+    svc, runs, jobs, works, llm = _svc()
+    runs.get_for_book.return_value = _run(mode="rules", status="proposed")
+    svc._finalize_rules_propose = AsyncMock()
+    runs.latest_artifact.return_value = _Spec([{"id": "arc_1", "title": "A Brand New Arc"}])
+    svc.compile = AsyncMock()
+    monkeypatch.setattr(
+        "app.db.repositories.structure.StructureRepo", _fake_structure_repo([_Arc("An Existing Arc")]),
+    )
+    monkeypatch.setattr("app.services.plan_forge_service.settings.planforge_rules_autocompile", True)
+
+    await svc.create_run(USER, BOOK, source_markdown="# 1. Arc Overview\n## A", mode="rules", model_ref=None)
+
+    svc.compile.assert_not_awaited()  # collision → auto-compile HELD
+    saved_kinds = [c.args[2] for c in runs.save_artifact.await_args_list if len(c.args) >= 3]
+    assert "preflight" in saved_kinds  # the collision report was persisted for the FE/agent
