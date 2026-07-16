@@ -171,7 +171,23 @@ J7/J8 deferred to a fresh-context continuation (needs fresh gemma runs through a
 J8 (agent-parity refresh — chat-drives-pass → rail refreshes), the 409-in-flight archive path, and a
 FULL clean run (propose → compile → all 7 passes → both checkpoints → link) end-to-end.
 
-### ⚠ Coverage-ENVIRONMENT blocker (convergence, not S3): FE production build broken
+### Run 3 — 2026-07-17, FE rebuilt (S2 fixed the arcTemplates import) — F-1/H4/H5 verified live
+- **F-1 VERIFIED live:** with a 2nd run seeded, the cast review now renders a **readable cast list**
+  (`artifact-cast`: "Diệp Vấn Vũ · protagonist — the discarded fifth miss / Bạch Sư · mentor — …"),
+  NOT raw JSON (`artifact-json` absent). ✅
+- **H4 VERIFIED live:** the rail shows a **run picker** with both runs ("507c… · proposed",
+  "019f6556 · checkpoint"); selecting the checkpoint run switches the rail to it. ✅
+- **H5 (loop-connect) — no-silent-success VERIFIED:** "Link to outline →" on a run whose (thin
+  fixture) package has no chapters surfaces a **clear error** ("the package has no arc_id / no
+  chapters — nothing to link; a compile that materialises nothing is a failure, not an empty
+  success"), not a silent success. The success path (arcs/chapters appear in the manuscript) needs a
+  REAL compiled package → folded into the full-clean-run continuation. ✅ (error path)
+
+**Remaining (fresh-context / real gemma run):** J3 (repair strip on a real self-check gap), J8
+(agent-parity refresh), the 409-in-flight archive, and a FULL clean run (propose→compile→7 passes→2
+checkpoints→link with a real package, to see the plan land in the manuscript = the H5 success half).
+
+### ⚠ Coverage-ENVIRONMENT blocker — RESOLVED (S2 fixed the import; FE build green again)
 Attempting to rebuild the static FE (to verify F-1/H4 live and continue coverage) FAILS:
 `Could not resolve "../../api" from src/features/composition/arcTemplates/api.ts` — an UNTRACKED WIP
 file from a concurrent session (S2/S4 arc-templates) with a wrong import (`../../api` should be
