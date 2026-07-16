@@ -6,24 +6,20 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 const logoutLocal = vi.fn();
 const apiJson = vi.fn().mockResolvedValue({});
-const useAccountUsage = vi.fn();
+const useAccountBudget = vi.fn();
 
 vi.mock('@/auth', () => ({
   useAuth: () => ({ user: { email: 'claude@x.dev', display_name: 'Claude Test' }, accessToken: 'tok', logoutLocal }),
 }));
 vi.mock('@/api', () => ({ apiJson: (...a: unknown[]) => apiJson(...a) }));
-vi.mock('../../hooks/useAccountUsage', () => ({ useAccountUsage: () => useAccountUsage() }));
+vi.mock('../../hooks/useAccountBudget', () => ({ useAccountBudget: () => useAccountBudget() }));
 
 import { YouPage } from '../YouPage';
 
 beforeEach(() => {
   logoutLocal.mockClear();
   apiJson.mockClear();
-  useAccountUsage.mockReturnValue({
-    data: { request_count: 42, total_tokens: 12_345, total_cost_usd: 1.2 },
-    isLoading: false,
-    error: null,
-  });
+  useAccountBudget.mockReturnValue({ spent: 12.4, limit: 30, bookCount: 3, isLoading: false, error: null });
 });
 
 function renderYou() {
@@ -41,11 +37,15 @@ describe('YouPage', () => {
     expect(screen.getByText('claude@x.dev')).toBeTruthy();
   });
 
-  it('renders the 7-day usage snapshot', () => {
+  it('renders the month budget bar (spent / limit) + a workspaces row with the book count', () => {
     renderYou();
-    expect(screen.getByText('42')).toBeTruthy(); // requests
-    expect(screen.getByText('12.3k')).toBeTruthy(); // tokens compact
-    expect(screen.getByText('$1.20')).toBeTruthy(); // spend
+    expect(screen.getByTestId('you-budget')).toBeTruthy();
+    expect(screen.getByText('$12.40')).toBeTruthy(); // spent
+    expect(screen.getByText('of $30')).toBeTruthy(); // limit
+    expect(screen.getByTestId('you-budget-bar')).toBeTruthy();
+    expect(screen.getByText('3 books')).toBeTruthy(); // workspaces note
+    expect(screen.getByText('Models & keys')).toBeTruthy();
+    expect(screen.getByText('Appearance')).toBeTruthy();
   });
 
   it('sign-out logs out server-side then clears local session', async () => {
@@ -62,9 +62,10 @@ describe('YouPage', () => {
     expect(screen.getByTestId('sheet-apps')).toBeTruthy();
   });
 
-  it('shows a graceful message when usage is unavailable', () => {
-    useAccountUsage.mockReturnValue({ data: undefined, isLoading: false, error: new Error('down') });
+  it('shows "no cap set" (and no bar) when there is no monthly limit', () => {
+    useAccountBudget.mockReturnValue({ spent: 5, limit: 0, bookCount: 0, isLoading: false, error: null });
     renderYou();
-    expect(screen.getByText(/Usage unavailable/i)).toBeTruthy();
+    expect(screen.getByText('no cap set')).toBeTruthy();
+    expect(screen.queryByTestId('you-budget-bar')).toBeNull();
   });
 });

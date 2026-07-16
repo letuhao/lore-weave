@@ -2,11 +2,12 @@
 // the All-apps drawer + sign-out. Bound to useAuth + useAccountUsage (logic) — view only.
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Settings, BarChart3, Shield, LogOut, Grid3x3, ChevronRight } from 'lucide-react';
+import { Settings, BarChart3, Shield, LogOut, Grid3x3, ChevronRight, KeyRound, Palette, Library } from 'lucide-react';
 import { useAuth } from '@/auth';
 import { apiJson } from '@/api';
+import { cn } from '@/lib/utils';
 import { useSheetRoute } from '@/components/shared/Sheet';
-import { useAccountUsage } from '../hooks/useAccountUsage';
+import { useAccountBudget } from '../hooks/useAccountBudget';
 import { AllAppsDrawer, APPS_SHEET_ID } from './AllAppsDrawer';
 import { PushToggle } from '@/features/push/PushToggle';
 import { pushApi } from '@/features/push/api';
@@ -14,7 +15,7 @@ import { pushApi } from '@/features/push/api';
 export function YouPage() {
   const { user, accessToken, logoutLocal } = useAuth();
   const { openSheet } = useSheetRoute();
-  const usage = useAccountUsage();
+  const budget = useAccountBudget();
   const [signingOut, setSigningOut] = useState(false);
 
   const signOut = async () => {
@@ -59,24 +60,33 @@ export function YouPage() {
         </div>
       </div>
 
-      {/* Usage snapshot (last 7 days) */}
-      <section className="rounded-xl border border-border bg-card p-4" data-testid="you-usage">
+      {/* This month's usage — a budget bar (spent / monthly limit), draft-faithful */}
+      <section className="rounded-xl border border-border bg-card p-4" data-testid="you-budget">
         <div className="mb-2 flex items-center justify-between">
-          <h2 className="text-sm font-semibold">Last 7 days</h2>
+          <h2 className="text-sm font-semibold">This month&apos;s usage</h2>
           <Link to="/usage" className="flex items-center gap-1 text-xs text-primary">
             Details <ChevronRight className="h-3 w-3" />
           </Link>
         </div>
-        {usage.isLoading ? (
+        {budget.isLoading ? (
           <p className="text-sm text-muted-foreground">Loading…</p>
-        ) : usage.error ? (
-          <p className="text-sm text-muted-foreground">Usage unavailable right now.</p>
         ) : (
-          <dl className="grid grid-cols-3 gap-2 text-center">
-            <Stat label="Requests" value={String(usage.data?.request_count ?? 0)} />
-            <Stat label="Tokens" value={compact(usage.data?.total_tokens ?? 0)} />
-            <Stat label="Spend" value={`$${(usage.data?.total_cost_usd ?? 0).toFixed(2)}`} />
-          </dl>
+          <>
+            <div className="flex items-baseline justify-between">
+              <span className="text-lg font-semibold tabular-nums">${budget.spent.toFixed(2)}</span>
+              <span className="text-sm text-muted-foreground tabular-nums">
+                {budget.limit > 0 ? `of $${budget.limit.toFixed(0)}` : 'no cap set'}
+              </span>
+            </div>
+            {budget.limit > 0 && (
+              <div className="mt-2 h-2 w-full overflow-hidden rounded-full bg-muted" data-testid="you-budget-bar">
+                <div
+                  className={cn('h-full rounded-full', budget.spent / budget.limit >= 0.9 ? 'bg-destructive' : 'bg-primary')}
+                  style={{ width: `${Math.min(100, (budget.spent / Math.max(budget.limit, 0.01)) * 100)}%` }}
+                />
+              </div>
+            )}
+          </>
         )}
       </section>
 
@@ -85,11 +95,14 @@ export function YouPage() {
 
       {/* Quick links — every destination is a real, distinct route (no dead links). */}
       <nav className="flex flex-col overflow-hidden rounded-xl border border-border bg-card">
+        <Row to="/books" icon={Library} label="Workspaces" note={`${budget.bookCount} ${budget.bookCount === 1 ? 'book' : 'books'}`} />
         <Row onClick={() => openSheet(APPS_SHEET_ID)} icon={Grid3x3} label="All apps" testid="you-all-apps" />
-        <Row to="/settings/account" icon={Settings} label="Account settings" />
-        <Row to="/usage" icon={BarChart3} label="Usage & billing" />
         {/* The assistant hosts the private-data controls (what-I-know, forget, erase everything). */}
-        <Row to="/assistant" icon={Shield} label="Privacy & data" />
+        <Row to="/assistant" icon={Shield} label="Assistant data & privacy" />
+        <Row to="/settings/providers" icon={KeyRound} label="Models & keys" note="Your BYOK providers" />
+        <Row to="/settings/language" icon={Palette} label="Appearance" note="Theme · language · text size" />
+        <Row to="/usage" icon={BarChart3} label="Usage & billing" />
+        <Row to="/settings/account" icon={Settings} label="Account settings" />
       </nav>
 
       <button
@@ -108,33 +121,29 @@ export function YouPage() {
   );
 }
 
-function Stat({ label, value }: { label: string; value: string }) {
-  return (
-    <div>
-      <div className="text-base font-semibold tabular-nums">{value}</div>
-      <div className="text-[11px] text-muted-foreground">{label}</div>
-    </div>
-  );
-}
-
 function Row({
   to,
   onClick,
   icon: Icon,
   label,
+  note,
   testid,
 }: {
   to?: string;
   onClick?: () => void;
   icon: React.ElementType;
   label: string;
+  note?: string;
   testid?: string;
 }) {
   const inner = (
     <>
       <Icon className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
-      <span className="flex-1 text-sm">{label}</span>
-      <ChevronRight className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
+      <span className="min-w-0 flex-1">
+        <span className="block text-sm">{label}</span>
+        {note && <span className="block truncate text-[11px] text-muted-foreground">{note}</span>}
+      </span>
+      <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
     </>
   );
   const cls = 'flex min-h-[48px] items-center gap-3 border-b border-border px-4 last:border-b-0 hover:bg-secondary';
@@ -150,10 +159,4 @@ function Row({
       {inner}
     </button>
   );
-}
-
-function compact(n: number): string {
-  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
-  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}k`;
-  return String(n);
 }
