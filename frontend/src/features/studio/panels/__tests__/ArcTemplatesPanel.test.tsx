@@ -7,14 +7,16 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { ReactNode } from 'react';
 
 const ctrl = vi.hoisted(() => ({ useArcTemplates: vi.fn() }));
-const cat = vi.hoisted(() => ({ listCatalog: vi.fn() }));
+const cat = vi.hoisted(() => ({ listCatalog: vi.fn(), getArcTemplateDrift: vi.fn() }));
+const ph = vi.hoisted(() => ({ getArcs: vi.fn() }));
 vi.mock('../useArcTemplates', () => ({ useArcTemplates: ctrl.useArcTemplates }));
 vi.mock('../useStudioPanel', () => ({ useStudioPanel: () => {} }));
 vi.mock('../../host/StudioHostProvider', () => ({ useStudioHost: () => ({ bookId: 'b' }) }));
 vi.mock('@/features/composition/motif/components/ArcTimelineEditor', () => ({ ArcTimelineEditor: () => <div data-testid="arc-timeline-stub" /> }));
 vi.mock('@/features/composition/motif/components/ArcApplyPreview', () => ({ ArcApplyPreview: (p: { projectId: string | null }) => <div data-testid="arc-apply-stub" data-project={p.projectId ?? ''} /> }));
 vi.mock('@/features/composition/arcImport/ImportDeconstructSection', () => ({ ImportDeconstructSection: () => <div data-testid="deconstruct-stub" /> }));
-vi.mock('@/features/composition/arcTemplates/api', () => ({ listCatalog: cat.listCatalog }));
+vi.mock('@/features/composition/arcTemplates/api', () => ({ listCatalog: cat.listCatalog, getArcTemplateDrift: cat.getArcTemplateDrift }));
+vi.mock('@/features/plan-hub/api', () => ({ getArcs: ph.getArcs }));
 
 function qcWrap({ children }: { children: ReactNode }) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -86,12 +88,26 @@ describe('ArcTemplatesPanel', () => {
     expect(state.archive).toHaveBeenCalledWith('a1');
   });
 
-  it('selecting a template opens the detail (timeline + apply-preview with the Work projectId)', () => {
+  it('selecting a template opens the detail (timeline + apply-preview with the Work projectId)', async () => {
+    ph.getArcs.mockResolvedValue({ arcs: [] });
     ctrl.useArcTemplates.mockReturnValue(makeState({ selected: MINE as never }));
-    render(<ArcTemplatesPanel {...props} />);
+    render(<ArcTemplatesPanel {...props} />, { wrapper: qcWrap });
     expect(screen.getByTestId('arc-template-detail')).toBeInTheDocument();
     expect(screen.getByTestId('arc-timeline-stub')).toBeInTheDocument();
     expect(screen.getByTestId('arc-apply-stub')).toHaveAttribute('data-project', 'proj1');
+    // Drift: no arc uses this template yet → the honest "not applied" empty (not a blank).
+    await waitFor(() => expect(screen.getByTestId('arc-drift-unapplied')).toBeInTheDocument());
+  });
+
+  it('34 §Drift: a materialized arc (arc_template_id stamped) renders a drift report', async () => {
+    ph.getArcs.mockResolvedValue({ arcs: [{ id: 'sn1', title: 'Rising Action', arc_template_id: 'a1' }] });
+    cat.getArcTemplateDrift.mockResolvedValue({ state: 'ok', report: { thread_coverage: [{ thread: 't1', realized: 2, planned: 3 }] } });
+    ctrl.useArcTemplates.mockReturnValue(makeState({ selected: MINE as never }));
+    render(<ArcTemplatesPanel {...props} />, { wrapper: qcWrap });
+    await waitFor(() => expect(screen.getByTestId('drift-arc-sn1')).toBeInTheDocument());
+    fireEvent.click(screen.getByTestId('drift-arc-sn1'));
+    await waitFor(() => expect(screen.getByTestId('arc-drift-report')).toBeInTheDocument());
+    expect(screen.getByTestId('arc-drift-report').textContent).toContain('thread_coverage');
   });
 
   it('34/AT-2: the Catalog tab browses public templates + adopt', async () => {

@@ -14,7 +14,8 @@ import { useArcTemplates, type ArcTemplatesState } from './useArcTemplates';
 import { ArcTimelineEditor } from '@/features/composition/motif/components/ArcTimelineEditor';
 import { ArcApplyPreview } from '@/features/composition/motif/components/ArcApplyPreview';
 import { ImportDeconstructSection } from '@/features/composition/arcImport/ImportDeconstructSection';
-import { listCatalog } from '@/features/composition/arcTemplates/api';
+import { listCatalog, getArcTemplateDrift } from '@/features/composition/arcTemplates/api';
+import { getArcs } from '@/features/plan-hub/api';
 import type { ArcTemplate } from '@/features/composition/motif/arcTypes';
 
 const TIERS = [
@@ -192,7 +193,56 @@ function ArcDetail({ state, arc }: { state: ArcTemplatesState; arc: ArcTemplate 
         <div className="border-t p-2">
           <ArcApplyPreview arc={arc} token={state.token} projectId={state.projectId} />
         </div>
+        <DriftSection state={state} template={arc} />
       </div>
+    </div>
+  );
+}
+
+// 34 §4.2 §Drift — "how far has my materialized arc drifted from this template". A materialized arc
+// carries arc_template_id (stamped by materialize server-side), so it IS a drift subject. Lists the
+// book's arcs that used this template + a per-arc drift report, with the 3 distinct honest empties.
+function DriftSection({ state, template }: { state: ArcTemplatesState; template: ArcTemplate }) {
+  const [openArc, setOpenArc] = useState<string | null>(null);
+  const arcs = useQuery({
+    queryKey: ['plan-hub', 'arcs', state.bookId],
+    queryFn: () => getArcs(state.bookId, state.token!),
+    enabled: !!state.token && !!state.bookId,
+  });
+  const usedBy = (arcs.data?.arcs ?? []).filter(
+    (a) => (a as { arc_template_id?: string | null }).arc_template_id === template.id,
+  );
+  const drift = useQuery({
+    queryKey: ['composition', 'arc-drift', openArc],
+    queryFn: () => getArcTemplateDrift(state.projectId!, openArc!, state.token!),
+    enabled: !!state.token && !!state.projectId && !!openArc,
+  });
+
+  return (
+    <div data-testid="arc-drift-section" className="border-t p-2 text-[11px]">
+      <h4 className="mb-1 font-medium text-foreground/80">Drift — used by this book</h4>
+      {usedBy.length === 0 ? (
+        <p data-testid="arc-drift-unapplied" className="italic text-muted-foreground">Not applied to this book yet — apply it above to compare drift.</p>
+      ) : (
+        <ul className="flex flex-col gap-0.5">
+          {usedBy.map((a) => (
+            <li key={a.id} className="flex items-center gap-2">
+              <button type="button" data-testid={`drift-arc-${a.id}`} className={`min-w-0 flex-1 truncate text-left ${openArc === a.id ? 'font-medium text-primary' : ''}`}
+                onClick={() => setOpenArc(a.id)}>{a.title || '(untitled arc)'}</button>
+            </li>
+          ))}
+        </ul>
+      )}
+      {openArc && (
+        drift.isLoading ? <p className="text-muted-foreground">Loading drift…</p>
+          : drift.data?.state === 'no_provenance'
+            ? <p data-testid="arc-drift-no-provenance" className="italic text-muted-foreground">This arc was authored directly — there is no template to drift from.</p>
+          : drift.data?.state === 'gone'
+            ? <p data-testid="arc-drift-gone" className="italic text-muted-foreground">The source template is no longer available.</p>
+          : drift.data?.report
+            ? <pre data-testid="arc-drift-report" className="mt-1 overflow-auto rounded bg-muted/40 p-1 text-[10px]">{JSON.stringify(drift.data.report, null, 1)}</pre>
+            : null
+      )}
     </div>
   );
 }

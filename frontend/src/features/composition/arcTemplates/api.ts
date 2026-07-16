@@ -26,6 +26,35 @@ export function createSharedTemplate(
   );
 }
 
+export interface ArcDriftReport {
+  thread_coverage?: { thread: string; realized: number; planned: number }[];
+  pacing?: unknown;
+  unmaterialized?: { motif_code: string; thread: string; reason: string }[];
+  [k: string]: unknown;
+}
+
+/** 34 §4.2 §Drift — "how far has my materialized arc drifted from its template" (AT-6's stamp is
+ *  written by materialize server-side, so a materialized arc carries arc_template_id and IS a drift
+ *  subject). `arcId` is the structure_node id. Distinct honest failures: 422 NO_TEMPLATE_PROVENANCE
+ *  (the arc was authored directly), 404 (the template is gone) — the caller renders each distinctly. */
+export async function getArcTemplateDrift(
+  projectId: string, arcId: string, token: string,
+): Promise<{ report: ArcDriftReport | null; state: 'ok' | 'no_provenance' | 'gone' }> {
+  try {
+    const report = await apiJson<ArcDriftReport>(
+      `${BASE}/works/${projectId}/conformance?scope=arc_template_drift&arc_id=${encodeURIComponent(arcId)}`,
+      { token },
+    );
+    return { report, state: 'ok' };
+  } catch (e) {
+    const status = (e as { status?: number }).status;
+    const code = ((e as { body?: { detail?: { code?: string } } }).body?.detail?.code) ?? '';
+    if (status === 422 || code === 'NO_TEMPLATE_PROVENANCE') return { report: null, state: 'no_provenance' };
+    if (status === 404) return { report: null, state: 'gone' };
+    throw e;
+  }
+}
+
 export interface CatalogItem {
   id: string; code: string; name: string; chapter_span: number | null; genre_tags: string[];
 }
