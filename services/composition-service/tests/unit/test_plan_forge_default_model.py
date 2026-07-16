@@ -260,3 +260,29 @@ async def test_rules_preflight_midbook_collision_holds_autocompile(monkeypatch):
     svc.compile.assert_not_awaited()  # collision → auto-compile HELD
     saved_kinds = [c.args[2] for c in runs.save_artifact.await_args_list if len(c.args) >= 3]
     assert "preflight" in saved_kinds  # the collision report was persisted for the FE/agent
+
+
+@pytest.mark.asyncio
+async def test_rules_preflight_degraded_read_fails_safe_holds_autocompile(monkeypatch):
+    """/review-impl MED: a degraded existing-arc read must FAIL-SAFE (hold the auto-compile), not
+    fail-open — else a transient read failure on a mid-book book silently materialises duplicate arcs,
+    the exact bug the guard prevents. It also surfaces a `preflight` note so the hold is not silent."""
+    svc, runs, jobs, works, llm = _svc()
+    runs.get_for_book.return_value = _run(mode="rules", status="proposed")
+    svc._finalize_rules_propose = AsyncMock()
+    svc.compile = AsyncMock()
+
+    def _raising_structure_repo(_pool):
+        class _R:
+            async def list_tree(self, _book_id):
+                raise RuntimeError("book-state read down")
+        return _R()
+
+    monkeypatch.setattr("app.db.repositories.structure.StructureRepo", _raising_structure_repo)
+    monkeypatch.setattr("app.services.plan_forge_service.settings.planforge_rules_autocompile", True)
+
+    await svc.create_run(USER, BOOK, source_markdown="# 1. Arc Overview\n## A", mode="rules", model_ref=None)
+
+    svc.compile.assert_not_awaited()  # degraded read → auto-compile HELD (fail-safe)
+    saved_kinds = [c.args[2] for c in runs.save_artifact.await_args_list if len(c.args) >= 3]
+    assert "preflight" in saved_kinds  # the hold was surfaced, not silent

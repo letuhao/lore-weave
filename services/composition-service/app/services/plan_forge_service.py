@@ -289,8 +289,13 @@ class PlanForgeService:
         the collision (*"this book already has 3 arcs; your document proposes 2 matching none"*) and the
         author can decide to compile anyway (an explicit `plan_compile` = the confirm). It never grounds
         the parser (rules mode is a transcriber) and never blocks the propose; it only gates the silent
-        auto-compile. FAIL-OPEN on a degraded read: if the existing-arc read raises, treat as cold start
-        (do not strand a propose) — the worst case is the pre-ON behaviour, an un-flagged materialise.
+        auto-compile.
+
+        FAIL-SAFE on a degraded read (matches O-1's fail-closed above): if the existing-arc read RAISES we
+        cannot rule out that the book already has arcs, so we HOLD the auto-compile (return True) rather
+        than fail-open — a fail-open would silently materialise duplicate arcs on exactly the mid-book book
+        this guard protects, now that auto-compile defaults ON. The propose still succeeds; a `preflight`
+        note says why the compile was held, so the hold is never silent.
         """
         from app.db.repositories.structure import StructureRepo
 
@@ -298,10 +303,18 @@ class PlanForgeService:
             existing = [
                 a for a in await StructureRepo(self._runs._pool).list_tree(book_id) if a.kind == "arc"
             ]
-        except Exception:  # noqa: BLE001 — a degraded book read must not strand the propose
-            logger.warning("rules pre-flight: existing-arc read failed for book %s; treating as cold start",
+        except Exception:  # noqa: BLE001 — a degraded read holds the compile, never strands the propose
+            logger.warning("rules pre-flight: existing-arc read failed for book %s; HOLDING auto-compile",
                            book_id, exc_info=True)
-            return False
+            try:
+                await self._runs.save_artifact(created_by, run_id, "preflight", {
+                    "existing_arcs": None, "proposed_arcs": None, "matched": [], "unmatched": [],
+                    "message": "Could not verify this book's existing plan, so the auto-compile was held. "
+                               "Review and compile explicitly to proceed.",
+                })
+            except Exception:  # noqa: BLE001 — best-effort surface; the HOLD itself is the safety
+                pass
+            return True
         if not existing:
             return False  # cold start — nothing to collide with
 
