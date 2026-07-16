@@ -237,6 +237,7 @@
           "scene-browser",
           "scene-inspector",
           "plan-hub",
+          "whatif-canvas",
           "book-import",
           "context-inspector",
           "sharing",

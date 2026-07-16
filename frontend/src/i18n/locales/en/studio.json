@@ -283,6 +283,11 @@
       "desc": "The whole book's plan on a graph canvas — arc lanes, chapters, scenes and their links",
       "guideBody": "The Plan Hub renders your book's entire structure as a graph: each saga/arc/sub-arc is a lane, its chapters and scenes are cards along a story-order axis, and scene-links draw the causal edges between them. Open the panel to see every arc collapsed to a rollup card; expand an arc to lazily load its chapters, and a chapter to see its scenes. Pan and zoom to navigate; problem and staleness badges surface where canon or promises need attention."
     },
+    "whatif-canvas": {
+      "title": "What-If Branches",
+      "desc": "Explore alternate takes on a scene without committing — branch, generate an alt-take, compare, then promote the winner",
+      "guideBody": "The what-if canvas lets you fork a scene into an ephemeral branch, generate an alternate take, and see the critic's judge badges side by side — all without touching the canonical draft. When a branch is the one you want, promote it: it becomes a real derivative work you can keep writing from. Nothing is saved until you promote, so you can explore freely. This is the editing surface behind the Promote button; the Plan Hub shows the plan graph, this is where you try alternatives on it."
+    },
     "scene-inspector": {
       "title": "Scene Inspector",
       "desc": "Read and edit every field of one scene — intent, craft, tension and grounding",

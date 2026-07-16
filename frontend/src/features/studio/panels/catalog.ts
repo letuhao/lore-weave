@@ -51,6 +51,7 @@ import { LeaderboardTrendingPanel } from './LeaderboardTrendingPanel';
 import { ChapterBrowserPanel } from './ChapterBrowserPanel';
 import { SceneBrowserPanel } from './SceneBrowserPanel';
 import { SceneInspectorPanel } from './SceneInspectorPanel';
+import { WhatIfCanvasPanel } from './WhatIfCanvasPanel';
 import { PlanHubPanel } from './PlanHubPanel';
 import { BookImportPanel } from './BookImportPanel';
 import { ContextInspectorPanel } from './ContextInspectorPanel';
@@ -213,6 +214,7 @@ export const STUDIO_PANELS: StudioPanelDef[] = [
   // Palette + agent openable (panelCatalogContract enforces openable-set == the
   // ui_open_studio_panel enum + regenerated contracts/frontend-tools.contract.json).
   { id: 'plan-hub', component: PlanHubPanel, titleKey: 'panels.plan-hub.title', descKey: 'panels.plan-hub.desc', category: 'editor', guideBodyKey: 'panels.plan-hub.guideBody' },
+  { id: 'whatif-canvas', component: WhatIfCanvasPanel, titleKey: 'panels.whatif-canvas.title', descKey: 'panels.whatif-canvas.desc', category: 'editor', guideBodyKey: 'panels.whatif-canvas.guideBody' },
   // D-STUDIO-IMPORT-PANEL — the classic ChaptersTab's import toolbar (text/.docx/.epub +
   // PDF-with-vision-captioning) ported into the studio dock, reusing ImportDialog/PdfImportWizard
   // as-is (DOCK-2). Was reachable only from the pre-Studio /books/:bookId/chapters tab.
