@@ -256,6 +256,18 @@ export function EditorPanel(props: IDockviewPanelProps) {
 
   return (
     <div data-testid="studio-editor-panel" className="flex h-full min-h-0 flex-col">
+      {/* D-S5-DERIVATIVE-EDIT-GUARD — a dị bản is a spec-level branch with no manuscript
+          editor of its own (COW): the editor edits the SHARED canon chapter. Switch-to makes
+          "on a derivative" reachable, so signal that edits here save to canon, not the branch.
+          The derivative's own divergent prose lives on the what-if canvas → Promote. */}
+      {composeWork?.source_work_id ? (
+        <div
+          data-testid="studio-editor-derivative-guard"
+          className="flex flex-shrink-0 items-center gap-1.5 border-b border-amber-300 bg-amber-50 px-3 py-1 text-[11px] text-amber-800 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-200"
+        >
+          ⑂ {t('editor.derivativeGuard', { defaultValue: "You're on a dị bản — edits here save to the canon manuscript, not the branch. Use the what-if canvas → Promote for branch-only prose." })}
+        </div>
+      ) : null}
       <div className="flex h-7 flex-shrink-0 items-center gap-2 overflow-x-auto whitespace-nowrap border-b px-3 text-[11px] text-muted-foreground">
         <span data-testid="studio-editor-dirty" className={isDirty ? 'text-warning' : 'text-muted-foreground/60'}>
           {isDirty ? t('editor.unsaved', { defaultValue: '● unsaved' }) : t(`editor.state.${state.saveState}`, { defaultValue: state.saveState })}
