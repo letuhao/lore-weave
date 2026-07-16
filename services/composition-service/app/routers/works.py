@@ -35,10 +35,12 @@ from app.db.repositories.works import WorksRepo
 from app.deps import (
     get_book_client_dep,
     get_derivatives_repo,
+    get_generation_jobs_repo,
     get_grant_client_dep,
     get_knowledge_client_dep,
     get_works_repo,
 )
+from app.db.repositories.generation_jobs import GenerationJobsRepo
 from app.grant_client import GrantClient, GrantLevel
 from app.grant_deps import InsufficientGrant, authorize_book
 from app.middleware.jwt_auth import get_bearer_token, get_current_user
@@ -505,6 +507,28 @@ async def get_derivative_context(
             for o in deriv.overrides
         ],
     ).model_dump(mode="json")
+
+
+@router.get("/works/{project_id}/chapters/{chapter_id}/scene-drafts")
+async def get_chapter_scene_drafts(
+    project_id: UUID,
+    chapter_id: UUID,
+    user_id: UUID = Depends(get_current_user),
+    works: WorksRepo = Depends(get_works_repo),
+    jobs: GenerationJobsRepo = Depends(get_generation_jobs_repo),
+    grant: GrantClient = Depends(get_grant_client_dep),
+) -> dict[str, Any]:
+    """S5-B4 (branch prose-diff) — the latest completed scene-draft prose for every
+    scene in a chapter, WITH node_id + story_order, so the FE can diff a dị bản's scene
+    prose against the source canon's (fetch this for BOTH projects, correspond by
+    (chapter_id, story_order)). VIEW grant on the Work's book. Read-only; works on any
+    project (canon or derivative). A chapter with no scene drafts → empty items."""
+    work = await works.get(project_id)
+    if work is None:
+        raise HTTPException(status_code=404, detail=NOT_ACCESSIBLE_MESSAGE)
+    await _gate_book(grant, work.book_id, user_id, GrantLevel.VIEW)
+    items = await jobs.scene_drafts_detailed(project_id, chapter_id)
+    return {"items": items}
 
 
 # ── D-C16: id-addressable + self-healing backfill for a pending null-project ──

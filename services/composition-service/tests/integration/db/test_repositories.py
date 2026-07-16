@@ -1098,6 +1098,30 @@ async def test_generation_job_rejects_foreign_node(pool):
         await gjr.create(project, created_by=user, operation="draft_scene", outline_node_id=foreign.id)
 
 
+async def test_scene_drafts_detailed_returns_node_id_and_order(pool):
+    """S5-B4 — scene_drafts_detailed carries node_id + story_order (so a caller can
+    correspond scenes across a dị bản vs its source), latest draft per node, ordered."""
+    olr = OutlineRepo(pool)
+    gjr = GenerationJobsRepo(pool)
+    user, project, book = _ids()
+    await _seed_work(pool, user, project, book)
+    chapter = uuid.uuid4()
+    s1 = await olr.create_node(project, created_by=user, kind="scene", chapter_id=chapter, title="s1", story_order=0)
+    s2 = await olr.create_node(project, created_by=user, kind="scene", chapter_id=chapter, title="s2", story_order=1)
+    await gjr.upsert_promoted_scene_prose(project, s1.id, "prose one", created_by=user)
+    await gjr.upsert_promoted_scene_prose(project, s2.id, "prose two", created_by=user)
+    # a re-promote overwrites (latest per node, not a duplicate)
+    await gjr.upsert_promoted_scene_prose(project, s1.id, "prose one v2", created_by=user)
+    out = await gjr.scene_drafts_detailed(project, chapter)
+    assert [(o["node_id"], o["title"], o["text"]) for o in out] == [
+        (str(s1.id), "s1", "prose one v2"),
+        (str(s2.id), "s2", "prose two"),
+    ]
+    assert all(isinstance(o["story_order"], int) for o in out)
+    # scoped to the chapter — a different chapter sees nothing
+    assert await gjr.scene_drafts_detailed(project, uuid.uuid4()) == []
+
+
 # ───────────────────────── canon_rules ─────────────────────────
 
 async def test_canon_rules_active_listing_and_archive(pool):

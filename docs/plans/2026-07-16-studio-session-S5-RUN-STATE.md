@@ -45,7 +45,7 @@ sessions' uncommitted files. NEVER do anything that could lose their data:
 | S5-B1b · EC-3d Switch-to WRITE path (useSetActiveWork) — FOLDED into B1 (the divergence panel's "Switch to" button). Read path done in B1a. | TODO | write-path lives in the panel |
 | S5-B1 · `divergence` panel (fresh, reuse leaves; LIST/READ/CREATE/ARCHIVE/SWITCH-TO) + catalog row + enum + contract + guideBody + i18n | DONE | DivergencePanel.tsx (studio wrapper) + DivergenceManagerView.tsx + useDivergenceManager.ts (new). patchWork gains opt-in If-Match (archive). catalog row + `ui_open_studio_panel` enum + contract regen (43 chat-service tests pass) + en/studio.json keys. DivergenceManagerView.test 8 pass; panelCatalogContract + legacyParityContract pass. tsc clean for my files (only S4's uncommitted MotifGraphSection error). SWITCH-TO write-path (B1b) folded in via useSetActiveWork. |
 | S5-B2 · `canonview` studio panel (PORT/ENH CanonAtChapterPanel standalone home) | PARKED | CanonViewPanel.tsx WRITTEN (drives CanonAtChapterPanel from bus activeChapterId + resolves chapterIndex via listChapters). Registration (catalog/enum/contract/i18n) REVERTED + deferred → D-S5-CANONVIEW-REG: blocked on S1's concurrent chapter-assemble sharing the single-line panel_id enum (can't line-separate; S1's whole feature incl. component is uncommitted so a superset commit would adopt their work). Re-register when S1 commits + the enum line is clean (circle back at end-of-run). |
-| S5-B4 · branch prose-diff/audit — FULL HTML mockup (screen-branch-diff.html) THEN build | DOING | ✅ mockup done (design-drafts/screens/studio/screen-branch-diff.html — house-style, states: changed/added/inherited/no-prose/no-branch, + 2 scene-correspondence callouts). Design = a Diff TAB inside the divergence panel (NOT a new panel → no enum contention). Build next: BE GET /works/{id}/scenes/{node}/prose (wraps composition_get_prose resolver) + FE diff tab (lazy per-scene, COW correspondence by chapter_id+story_order, client-side line diff). |
+| S5-B4 · branch prose-diff/audit — FULL HTML mockup (screen-branch-diff.html) THEN build | DOING | ✅ mockup done (design-drafts/screens/studio/screen-branch-diff.html — house-style, states: changed/added/inherited/no-prose/no-branch, + 2 scene-correspondence callouts). Design = a Diff TAB inside the divergence panel (NOT a new panel → no enum contention). Build next: FE diff tab. ✅ BE DONE: prose model is CHAPTER-drafts (shared COW) + SCENE-drafts (per-project generation_jobs) → the diff is scene-draft-level per project. Added GenerationJobsRepo.scene_drafts_detailed (node_id+story_order+title+text) + GET /works/{id}/chapters/{cid}/scene-drafts (VIEW-gated, in works.py NOT engine.py — engine.py was entangled with S4's uncommitted motif route). Repo test passes. FE fetches for BOTH projects, correspond by (chapter_id, story_order). |
 | S5-B5 · ENHANCE whatif-canvas to full §2 bar (Lane-B agent parity, deep-links, i18n×18, scale) | TODO | divergence create-MCP stays deferred (D-DIVERGENCE-MCP-TOOLS, Tier-W) |
 | S5-B6 · convergence: live-browser smoke branch→take→promote→audit→browse; /review-impl per panel | TODO | seed scenes first |
 (NOTE: B3 derivative-browser MERGED into B1 — the draft's manage list IS the browser.)
@@ -119,6 +119,15 @@ useWhatIfPromotion), NEVER mount CompositionPanel shell.
 Standards: [Tenancy] pref per-user+per-book ✓ · [Frontend-Tool Contract] enum==openable==contract machine-checked ✓.
 
 ### DRIFT  (near-misses, bars nearly lowered, tests nearly skipped)
+- 🔴 INCIDENT (ec0f012e8): my `git add <mine> && git diff --cached && git commit` (chained with &&, no
+  inspection gate) committed S2's PRE-STAGED files too — PlanDrawer.tsx, PlanDrawer.test.tsx,
+  ArcInspectorEmbed.tsx, S2-RUN-STATE.md — because `git commit` takes the WHOLE INDEX and S2 had `git add`-ed
+  their work. This is the `git-index-may-carry-prestaged-unrelated-changes` lesson, which I had in memory and
+  still hit. NO DATA LOST (S2's working tree == the committed version; their final staged state was captured),
+  but their work is muddled into my commit + their RUN-STATE committed under my sha. HEAD is still ec0f012e8,
+  nobody committed on top. FIX GOING FORWARD (LOCKED): NEVER `git add <paths> && git commit`; ALWAYS
+  `git commit -- <explicit mine>` (pathspec commit ignores others' staged files + reads working tree). Whether
+  to rewrite ec0f012e8 (soft-reset) is the PO's call — it conflicts with the "NEVER reset" rule.
 - NEAR-MISS (caught by /review-impl): shipped B1 with BE-13a HALF-done — backend accepted `name`, FE wizard
   still dropped it. A green suite hid it (no test asserted buildBody sends name). The draft had NAMED this exact
   bug (F-EC3a) and I fixed only one half. This is why panel-close /review-impl is mandatory.

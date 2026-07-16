@@ -532,6 +532,38 @@ class GenerationJobsRepo:
             rows = await c.fetch(query, project_id, chapter_id)
         return [{"title": r["title"] or "", "text": r["text"]} for r in rows]
 
+    async def scene_drafts_detailed(
+        self, project_id: UUID, chapter_id: UUID,
+    ) -> list[dict[str, object]]:
+        """S5-B4 (branch prose-diff) — like `chapter_scene_drafts` but WITH the node id
+        and story_order, so a caller can correspond scenes ACROSS two projects (a dị bản
+        vs its source canon) by (chapter_id, story_order). Latest completed draft per node,
+        empty text filtered, ordered by story_order. Read-only; separate from the stitch
+        path so it never perturbs it. Package tenancy: project_id on BOTH job AND node."""
+        query = """
+        SELECT id, story_order, title, text FROM (
+            SELECT DISTINCT ON (o.id)
+                   o.id AS id, o.story_order AS story_order, o.title AS title,
+                   j.result->>'text' AS text
+            FROM generation_job j
+            JOIN outline_node o ON o.id = j.outline_node_id
+            WHERE j.project_id = $1
+              AND o.project_id = $1
+              AND o.chapter_id = $2 AND o.kind = 'scene'
+              AND o.story_order IS NOT NULL
+              AND j.status = 'completed'
+            ORDER BY o.id, j.created_at DESC
+        ) latest
+        WHERE text IS NOT NULL AND text <> ''
+        ORDER BY story_order
+        """
+        async with self._pool.acquire() as c:
+            rows = await c.fetch(query, project_id, chapter_id)
+        return [
+            {"node_id": str(r["id"]), "story_order": r["story_order"], "title": r["title"] or "", "text": r["text"]}
+            for r in rows
+        ]
+
     async def upsert_promoted_scene_prose(
         self, project_id: UUID, outline_node_id: UUID, text: str,
         *, created_by: UUID, idempotency_key: str | None = None,
