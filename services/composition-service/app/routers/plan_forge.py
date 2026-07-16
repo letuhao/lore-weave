@@ -61,6 +61,14 @@ class PlanRefineRequest(BaseModel):
     focus_paths: list[str] | None = None
 
 
+class PlanAutofixRequest(BaseModel):
+    """HTTP mirror of MCP `plan_handoff_autofix`. model_ref is OPTIONAL — the service resolves the
+    author's default planner model. max_rounds is a closed range (→ 422, not a silent clamp)."""
+
+    model_ref: UUID | None = None
+    max_rounds: int = Field(default=3, ge=1, le=5)
+
+
 class PlanInterpretRequest(BaseModel):
     user_message: str = Field(min_length=1)
     model_ref: UUID
@@ -241,6 +249,36 @@ async def refine_plan_run(
     if mode == "async":
         return JSONResponse(status_code=202, content=payload)
     return payload
+
+
+@router.post("/books/{book_id}/plan/runs/{run_id}/autofix")
+async def autofix_plan_run(
+    book_id: UUID,
+    run_id: UUID,
+    body: PlanAutofixRequest,
+    user_id: UUID = Depends(get_current_user),
+    grant: GrantClient = Depends(get_grant_client_dep),
+    svc: PlanForgeService = Depends(get_plan_forge_service),
+):
+    """Bounded self-check→refine loop (M4 plan_handoff_autofix). Returns `{rounds, run}` — the
+    Repair strip renders `rounds` (WHAT was fixed) and `run` carries the fresh detail."""
+    await _gate_book(grant, book_id, user_id, GrantLevel.EDIT)
+    try:
+        out = await svc.handoff_autofix(
+            user_id, book_id, run_id,
+            model_ref=body.model_ref, max_rounds=body.max_rounds,
+        )
+    except ValueError as exc:  # "no spec to refine" / no default planner model
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    if out is None:
+        raise HTTPException(status_code=404, detail="run not found")
+    # 202 ONLY when the worker path enqueued a round and the loop stopped with a live job; the
+    # default worker-off path already finished → 200. A bare ack would lie about being async on
+    # the sync path and would throw away `rounds` the Repair strip needs.
+    run = out.get("run") or {}
+    if run.get("active_job_id"):
+        return JSONResponse(status_code=202, content=out)
+    return out
 
 
 class PlanCheckpointRequest(BaseModel):

@@ -71,6 +71,12 @@ class StubPlanForge:
     async def compile(self, owner_user_id, book_id, run_id, **kwargs):
         return "sync", {"package": {"arc_id": "arc_2"}, "pipeline_job_id": None, "work_id": str(uuid.uuid4())}
 
+    async def handoff_autofix(self, owner_user_id, book_id, run_id, *, model_ref=None, max_rounds=3):
+        if run_id != RUN:
+            return None
+        detail = await self.get_run_detail(owner_user_id, book_id, run_id)
+        return {"rounds": [{"round": 1, "targets": 2, "result": "applied"}], "run": detail}
+
     async def get_artifact(self, owner_user_id, book_id, run_id, artifact_id):
         # Mirrors artifacts_by_ids' scoping: a foreign book_id, a foreign run, or an unknown
         # artifact_id ALL collapse to None → one 404, never a 403 oracle (H13).
@@ -147,6 +153,57 @@ def test_compile_plan_run(client):
     )
     assert r.status_code == 200
     assert r.json()["package"]["arc_id"] == "arc_2"
+
+
+def test_autofix_200_applied(client):
+    r = client.post(f"/v1/composition/books/{BOOK}/plan/runs/{RUN}/autofix", json={"max_rounds": 2})
+    assert r.status_code == 200
+    assert r.json()["rounds"][0]["result"] == "applied"
+
+
+def test_autofix_unknown_run_is_404(client):
+    r = client.post(f"/v1/composition/books/{BOOK}/plan/runs/{uuid.uuid4()}/autofix", json={})
+    assert r.status_code == 404
+
+
+def test_autofix_max_rounds_out_of_range_is_422(client):
+    # Closed range [1,5] → 422, never a silent clamp.
+    for mr in (0, 6):
+        r = client.post(f"/v1/composition/books/{BOOK}/plan/runs/{RUN}/autofix", json={"max_rounds": mr})
+        assert r.status_code == 422
+
+
+def test_autofix_async_path_returns_202():
+    # When the run carries a live job (worker enqueued a round), the route is honest about async.
+    class AsyncStub(StubPlanForge):
+        async def handoff_autofix(self, owner_user_id, book_id, run_id, *, model_ref=None, max_rounds=3):
+            detail = await self.get_run_detail(owner_user_id, book_id, run_id)
+            return {"rounds": [], "run": {**detail, "active_job_id": str(uuid.uuid4())}}
+
+    app.dependency_overrides[get_current_user] = lambda: USER
+    app.dependency_overrides[get_grant_client_dep] = lambda: StubGrant()
+    app.dependency_overrides[get_plan_forge_service] = lambda: AsyncStub()
+    try:
+        r = TestClient(app).post(f"/v1/composition/books/{BOOK}/plan/runs/{RUN}/autofix", json={})
+        assert r.status_code == 202
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_autofix_requires_edit_grant():
+    class ViewGrant:
+        async def resolve_grant(self, book_id, caller):
+            from app.grant_client import GrantLevel
+            return GrantLevel.VIEW
+
+    app.dependency_overrides[get_current_user] = lambda: USER
+    app.dependency_overrides[get_grant_client_dep] = lambda: ViewGrant()
+    app.dependency_overrides[get_plan_forge_service] = lambda: StubPlanForge()
+    try:
+        r = TestClient(app).post(f"/v1/composition/books/{BOOK}/plan/runs/{RUN}/autofix", json={})
+        assert r.status_code == 403
+    finally:
+        app.dependency_overrides.clear()
 
 
 def test_create_llm_requires_model_ref(client):

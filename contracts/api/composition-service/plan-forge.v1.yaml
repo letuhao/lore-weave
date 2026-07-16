@@ -181,6 +181,69 @@ paths:
         '404':
           $ref: '#/components/responses/NotFound'
 
+  /books/{book_id}/plan/runs/{run_id}/autofix:
+    post:
+      tags: [plan-forge]
+      summary: Bounded self-check→refine loop (plan_handoff_autofix)
+      description: >
+        Runs up to `max_rounds` of self-check → refine-toward-gaps, stopping when no gaps
+        remain. Synchronous on the worker-off path (200 with the applied `rounds` + fresh `run`);
+        202 when the worker enqueued a round and the run carries a live job.
+      parameters:
+        - $ref: '#/components/parameters/BookId'
+        - $ref: '#/components/parameters/RunId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                model_ref:
+                  type: string
+                  format: uuid
+                  nullable: true
+                  description: Optional — omit to use the author's default planner model.
+                max_rounds:
+                  type: integer
+                  minimum: 1
+                  maximum: 5
+                  default: 3
+      responses:
+        '200':
+          description: Autofix completed (worker-off path)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  rounds:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        round: { type: integer }
+                        targets: { type: integer }
+                        result: { type: string }
+                  run:
+                    $ref: '#/components/schemas/PlanRun'
+        '202':
+          description: A refine round was enqueued; poll GET .../runs/{run_id}
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  rounds: { type: array, items: { type: object } }
+                  run:
+                    $ref: '#/components/schemas/PlanRun'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
   /books/{book_id}/plan/runs/{run_id}/interpret:
     post:
       tags: [plan-forge]
