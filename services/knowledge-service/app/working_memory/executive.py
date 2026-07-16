@@ -135,7 +135,9 @@ async def run_executive(
         logger.warning("executive: bad JSON session=%s err=%s body=%r", session_id, exc, content[:200])
         return "bad_json"
 
-    new_state = merge_state(block["charter"], block["state"], llm_state)
-    # RV-H4: owner-scoped write — pass the same user_id we read the block under.
-    await repo.update_state(session_id, user_id, new_state)
+    # RV-M6: the read-modify-write is serialized under a per-session advisory lock inside the
+    # repo, which RE-READS the current state (not the possibly-stale block["state"] we read
+    # before the slow LLM call) and merges under the lock — so two overlapping ticks can't
+    # last-writer-clobber. RV-H4: owner-scoped (same user_id we read the block under).
+    await repo.apply_state_update(session_id, user_id, block["charter"], llm_state, merge_state)
     return "updated"

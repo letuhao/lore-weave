@@ -11,7 +11,7 @@ docs/specs/2026-06-23-interview-roleplay.md.
 from __future__ import annotations
 
 import json
-from typing import Any
+from typing import Any, Callable
 from uuid import UUID
 
 import asyncpg
@@ -90,3 +90,50 @@ class WorkingMemoryRepo:
                 session_id, user_id, json.dumps(state),
             )
         return result != "UPDATE 0"
+
+    async def apply_state_update(
+        self,
+        session_id: UUID,
+        user_id: UUID,
+        charter: dict,
+        llm_state: dict,
+        merger: Callable[[dict, dict, dict], dict],
+    ) -> bool:
+        """RV-M6: the executive's read-modify-write, SERIALIZED per session.
+
+        Two overlapping executive ticks (a double-submit) each did `get → merge_state →
+        update_state` on separate connections, so the later write clobbered the earlier
+        (`phase` last-writer-wins; `covered` only monotonic WITHIN one merge). This does the
+        whole read-merge-write in ONE transaction under a per-session Postgres ADVISORY LOCK
+        (`pg_advisory_xact_lock`, auto-released at commit — no DDL, RW-12), and RE-READS the
+        CURRENT state under the lock (never a stale caller copy) before merging. So concurrent
+        ticks apply in series and `covered` stays monotonic across them.
+
+        `merger` is the pure `merge_state(charter, current_state, llm_state)` (injected so the
+        repo stays free of the SDK import). Owner-scoped (RV-H4). Returns False if the session
+        has no block for this owner (no-op)."""
+        async with self._pool.acquire() as conn:
+            async with conn.transaction():
+                # xact-scoped advisory lock keyed on the session — serializes ticks for THIS
+                # session only; a different session hashes elsewhere and never contends.
+                await conn.execute(
+                    "SELECT pg_advisory_xact_lock(hashtextextended($1, 0))",
+                    str(session_id),
+                )
+                row = await conn.fetchrow(
+                    "SELECT state FROM session_working_memory WHERE session_id = $1 AND user_id = $2",
+                    session_id, user_id,
+                )
+                if row is None:
+                    return False
+                current_state = _as_dict(row["state"])
+                new_state = merger(charter, current_state, llm_state)
+                await conn.execute(
+                    """
+                    UPDATE session_working_memory
+                    SET state = $3::jsonb, updated_at = now()
+                    WHERE session_id = $1 AND user_id = $2
+                    """,
+                    session_id, user_id, json.dumps(new_state),
+                )
+        return True

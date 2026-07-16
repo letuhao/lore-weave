@@ -11,11 +11,13 @@ so it serializes onto one worker on the shared dev DB (CLAUDE.md test-paralleliz
 """
 from __future__ import annotations
 
+import asyncio
 from uuid import uuid4
 
 import pytest
 
 from app.db.repositories.working_memory import WorkingMemoryRepo
+from loreweave_agent_control.state_merge import merge_state
 
 pytestmark = pytest.mark.xdist_group("pg")
 
@@ -46,5 +48,36 @@ async def test_get_and_update_state_are_owner_scoped(pool):
     assert (await repo.get(session_id, owner))["state"]["covered"] == ["a"]
 
     # cleanup (conftest does not truncate session_working_memory)
+    async with pool.acquire() as conn:
+        await conn.execute("DELETE FROM session_working_memory WHERE session_id = $1", session_id)
+
+
+@pytest.mark.asyncio
+async def test_apply_state_update_is_serialized_under_the_advisory_lock(pool):
+    """RV-M6: two overlapping executive ticks must NOT last-writer-clobber. Under the
+    per-session advisory lock in apply_state_update, they apply in SERIES, so `covered` stays
+    monotonic across both — the final state carries BOTH ticks' items. Without the lock, the
+    later blind write would drop the earlier tick's contribution."""
+    repo = WorkingMemoryRepo(pool)
+    session_id = uuid4()
+    owner = uuid4()
+    charter = {"goal": "g", "phases": ["warmup", "technical"], "checklist": ["a", "b"], "language": "en"}
+    await repo.init_charter(session_id, owner, charter)
+
+    # Two concurrent ticks: A reports covered=[a], B reports covered=[b]. Each re-reads current
+    # state under the lock and merges, so the second to run unions onto the first.
+    llm_a = {"phase": "warmup", "covered": ["a"]}
+    llm_b = {"phase": "technical", "covered": ["b"]}
+    results = await asyncio.gather(
+        repo.apply_state_update(session_id, owner, charter, llm_a, merge_state),
+        repo.apply_state_update(session_id, owner, charter, llm_b, merge_state),
+    )
+    assert all(results), "both locked updates should report a row updated"
+
+    final = (await repo.get(session_id, owner))["state"]
+    # THE proof: both items survive — the lock serialized the read-modify-write so neither
+    # tick clobbered the other (a blind last-writer-wins would leave only one).
+    assert set(final["covered"]) == {"a", "b"}, f"lock failed — covered clobbered: {final['covered']}"
+
     async with pool.acquire() as conn:
         await conn.execute("DELETE FROM session_working_memory WHERE session_id = $1", session_id)
