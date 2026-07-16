@@ -14,6 +14,9 @@ import { registerGlossaryEffectHandlers, _resetGlossaryEffectHandlers } from './
 import { registerKnowledgeEffectHandlers, _resetKnowledgeEffectHandlers } from './knowledgeEffects';
 import { registerTranslationEffectHandlers, _resetTranslationEffectHandlers } from './translationEffects';
 import { registerAuthoringRunEffectHandlers, _resetAuthoringRunEffectHandlers } from './authoringRunEffects';
+import { registerWorldEffectHandlers, _resetWorldEffectHandlers } from './worldEffects';
+import { registerArcEffectHandlers, _resetArcEffectHandlers } from './arcEffects';
+import { registerCompositionEffectHandlers, _resetCompositionEffectHandlers } from './compositionEffects';
 
 /** Register every Lane-B domain handler. Idempotent (each file guards itself). */
 export function registerAllStudioEffectHandlers(): void {
@@ -22,6 +25,9 @@ export function registerAllStudioEffectHandlers(): void {
   registerKnowledgeEffectHandlers();
   registerTranslationEffectHandlers();
   registerAuthoringRunEffectHandlers();
+  registerWorldEffectHandlers();
+  registerArcEffectHandlers();
+  registerCompositionEffectHandlers();
 }
 
 /** Test-only: undo every idempotency guard so a test can re-register after clearEffectHandlers(). */
@@ -31,4 +37,7 @@ export function _resetAllStudioEffectHandlers(): void {
   _resetKnowledgeEffectHandlers();
   _resetTranslationEffectHandlers();
   _resetAuthoringRunEffectHandlers();
+  _resetWorldEffectHandlers();
+  _resetArcEffectHandlers();
+  _resetCompositionEffectHandlers();
 }

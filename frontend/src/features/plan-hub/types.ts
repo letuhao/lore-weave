@@ -33,6 +33,16 @@ export type {
  *  23 B1). The whole structure shell + the derived block the Hub requires (OQ-2). Extra
  *  spec fields (goal/tracks/roster/roster_bindings/…) ride along for the drawer; the
  *  canvas + laneLayout only read the ArcShellNode subset. */
+/** One cascade entry (a track or a roster slot). `key` is the shadow key (server-enforced
+ *  non-empty + unique within a node — BE D-ARC-TRACKS-ROSTER-SCHEMA); other fields ride along. */
+export interface ArcEntry {
+  key: string;
+  label?: string;
+  actant?: string | null;
+  constraints?: string[];
+  [k: string]: unknown;
+}
+
 export interface ArcListNode {
   id: string;
   kind: 'saga' | 'arc';
@@ -46,6 +56,17 @@ export interface ArcListNode {
   arc_template_id?: string | null;
   template_version?: number | null;
   version: number;
+  // 32 §3.6 — widened to the full StructureNode shape so PlanDrawer's `as ArcListNode &
+  // { tracks?: unknown }` cast (the type lying about the wire) can go. The inspector reads the
+  // node's OWN arrays; the resolved cascade comes from the ArcDetail fetch.
+  book_id?: string;
+  created_by?: string;
+  tracks?: ArcEntry[];
+  roster?: ArcEntry[];
+  roster_bindings?: Record<string, string>;
+  is_archived?: boolean;
+  created_at?: string;
+  updated_at?: string;
   // derived block (BA6) — the Hub's requirement on B1's response (24 OQ-2).
   // `span` is the human READING-POSITION range ("chapters 1–3"), for display.
   // `first_story_order` is the RAW-axis sort key the rollup card is placed by — a different unit,
@@ -54,6 +75,27 @@ export interface ArcListNode {
   first_story_order: number | null;
   is_contiguous: boolean;
   chapter_count: number;
+}
+
+/** One open-promise rollup entry (32 §3.4 — read-only, deep-links to quality-promises). */
+export interface ArcOpenPromise {
+  id: string;
+  kind: string;
+  severity?: number | null;
+  text?: string;
+  chapter_id?: string | null;
+}
+
+/** `GET /v1/composition/arcs/{node_id}` (composition_arc_get) — the arc-inspector detail (32 §4).
+ *  The node's OWN fields + the root→leaf RESOLVED cascade + the BE-A1 dense-ranked derived block
+ *  (span/chapter_count/is_contiguous, NULL for an archived node) + the open-promise rollup. */
+export interface ArcDetail extends ArcListNode {
+  resolved: {
+    tracks: ArcEntry[];
+    roster: ArcEntry[];
+    roster_bindings: Record<string, string>;
+  };
+  open_promises: ArcOpenPromise[];
 }
 
 /** Read surface #2 — one node of the `detail=summary` children window (24:120 / PH10).

@@ -57,7 +57,8 @@ EXPECTED_TOOLS = {
     "composition_outline_node_delete", "composition_outline_node_restore",
     "composition_scene_link_create", "composition_scene_link_delete",
     "composition_canon_rule_create", "composition_canon_rule_update",
-    "composition_canon_rule_delete", "composition_write_prose",
+    "composition_canon_rule_delete", "composition_canon_rule_restore",
+    "composition_write_prose",
     # Tier W
     "composition_publish", "composition_generate",
     "composition_decompile_arcs",  # close-21-28 P-O2a — confirm-gated arc decompiler
@@ -797,6 +798,38 @@ async def test_canon_rule_create_returns_undo_hint():
     undo = res["_meta"]["undo_hint"]
     assert undo["tool"] == "composition_canon_rule_delete"
     assert undo["args"]["rule_id"] == str(rule.id)
+
+
+async def test_canon_rule_delete_undo_hint_points_at_restore():
+    """BE-11c — the reverse op now exists, so delete's undo_hint is real (was None)."""
+    import app.mcp.server as srv
+
+    canon = AsyncMock()
+    rule = _rule(id=uuid.uuid4())
+    canon.get = AsyncMock(return_value=rule)
+    canon.archive = AsyncMock(return_value=rule)
+    async with _patched(CanonRulesRepo=canon):
+        res = await srv.composition_canon_rule_delete(
+            _Ctx(), project_id=str(PROJECT), rule_id=str(rule.id),
+        )
+    undo = res["_meta"]["undo_hint"]
+    assert undo["tool"] == "composition_canon_rule_restore"
+    assert undo["args"]["rule_id"] == str(rule.id)
+
+
+async def test_canon_rule_restore_unarchives():
+    """BE-11c — the agent gains the same restore the human's Undo toast offers."""
+    import app.mcp.server as srv
+
+    canon = AsyncMock()
+    rule = _rule(id=uuid.uuid4())
+    canon.restore = AsyncMock(return_value=rule)
+    async with _patched(CanonRulesRepo=canon):
+        res = await srv.composition_canon_rule_restore(
+            _Ctx(), project_id=str(PROJECT), rule_id=str(rule.id),
+        )
+    assert res["id"] == str(rule.id)
+    canon.restore.assert_awaited_once()
 
 
 async def test_scene_link_create_returns_undo_hint():

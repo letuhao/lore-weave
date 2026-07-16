@@ -42,12 +42,19 @@ const WRITE_TOOLS: Record<string, string> = {
   // Adding a second handler would DOUBLE-FIRE (and red the <=1 assertion below).
   kg_create_node: 'knowledgeEffects',
 
-  // ── compositionEffects — Wave 1 (spec 31) creates the file; Wave 6 extends it. ──
+  // ── compositionEffects — S6/spec 31 (canon, corrections, style, voice). CLEARED for the canon
+  //    family (S6 M1 ships quality-canon-rules + quality-canon). §8.0b re-partition: publish and
+  //    conformance were mis-lumped here (three cross-session families in one file); they move to
+  //    their OWN files below, so each family's handler is created by the wave that ships its panel. ──
   composition_canon_rule_create: 'compositionEffects',
   composition_canon_rule_update: 'compositionEffects',
   composition_canon_rule_delete: 'compositionEffects',
-  composition_publish: 'compositionEffects',
-  composition_conformance_run: 'compositionEffects',
+  composition_canon_rule_restore: 'compositionEffects',
+  // publish → flywheel (S6/M5): the delta the flywheel panel renders. Keyed on extraction-complete,
+  // NOT the publish confirm (the delta is produced async after publish) — see the S6 spec §9 (E2).
+  composition_publish: 'flywheelEffects',
+  // conformance → S4 (spec 33 quality-conformance panel).
+  composition_conformance_run: 'conformanceEffects',
 
   // ── arcEffects — Wave 2 (spec 32) creates the file; Wave 4 extends its BODY (not a 2nd pattern). ──
   composition_arc_create: 'arcEffects',
@@ -86,13 +93,16 @@ const WRITE_TOOLS: Record<string, string> = {
   plan_interpret_feedback: 'planEffects',
   plan_review_checkpoint: 'planEffects',
 
-  // ── worldEffects — Wave 8 (spec 38). ──
+  // ── worldEffects — S7 / Wave 8 (spec 38) — CLEARED (Group B ships the world-map panel). ──
   world_map_create: 'worldEffects',
   world_map_delete: 'worldEffects',
   world_map_add_marker: 'worldEffects',
   world_map_remove_marker: 'worldEffects',
   world_map_add_region: 'worldEffects',
   world_map_remove_region: 'worldEffects',
+  world_map_update: 'worldEffects',
+  world_map_update_marker: 'worldEffects',
+  world_map_update_region: 'worldEffects',
 
   // ── registryEffects — §8.0b has NO row for registry_*; PO-2 dropped it to Track C. It is TRACKED
   // (target wave-7), never silently dropped. No Studio panel reads registry workflows today, so a
@@ -110,11 +120,12 @@ const WRITE_TOOLS: Record<string, string> = {
 // invalidating query keys of panels that DO NOT EXIST YET is itself a silent-no-op handler — exactly
 // the class this ledger exists to kill. So Wave 0 ships the ENFORCEMENT, and each wave clears its rows.
 const PENDING_FILES: Record<string, string> = {
-  compositionEffects: 'wave-1',
-  arcEffects: 'wave-2',
+  // compositionEffects: SHIPPED (S6 M1) — `/^composition_canon_rule_/` covers the canon family.
+  // arcEffects: SHIPPED (S2/spec 32) — `/^composition_arc_/` covers every composition_arc_* write.
+  flywheelEffects: 's6-m5',      // publish → flywheel delta; ships with the flywheel panel (S6 M5).
+  conformanceEffects: 's4',      // conformance_run → quality-conformance panel (S4/spec 33).
   motifEffects: 'wave-3',
   planEffects: 'wave-5',
-  worldEffects: 'wave-8',
   registryEffects: 'wave-7',
 };
 

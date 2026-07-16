@@ -1224,10 +1224,47 @@ async def composition_canon_rule_delete(
     if rule is None:
         raise uniform_not_accessible()
     out = rule.model_dump(mode="json")
-    # archive() only flips a NOT-archived row; there is no un-archive repo method,
-    # so there is no verified reverse op to surface. Honest: undo unavailable.
-    out["_meta"] = {"undo_hint": None}
+    # BE-11c — the reverse op now EXISTS (composition_canon_rule_restore), so the
+    # undo_hint is real, not None. The agent gains the same undo the human's
+    # "Rule archived · Undo" toast offers.
+    out["_meta"] = {
+        "undo_hint": {
+            "tool": "composition_canon_rule_restore",
+            "args": {"project_id": project_id, "rule_id": rule_id},
+        }
+    }
     return out
+
+
+@mcp_server.tool(
+    name="composition_canon_rule_restore",
+    description=(
+        "Un-archive a soft-deleted canon rule — the reverse of "
+        "composition_canon_rule_delete. EDIT required (auto-applied)."
+    ),
+    meta=require_meta(
+        "A", "book",
+        synonyms=["restore canon rule", "un-archive rule", "undo delete rule"],
+        tool_name="composition_canon_rule_restore",
+    ),
+)
+async def composition_canon_rule_restore(
+    ctx: MCPContext,
+    project_id: Annotated[str, "The Work's project_id."],
+    rule_id: Annotated[str, "The canon rule id (from the delete response)."],
+) -> dict:
+    tc = _ctx(ctx)
+    works = WorksRepo(get_pool())
+    pid = UUID(project_id)
+    await _book_or_deny(works, tc, pid, GrantLevel.EDIT)
+    canon = CanonRulesRepo(get_pool())
+    # restore() is natively project-scoped (WHERE project_id = $1 AND id = $2 AND
+    # is_archived), so it can never un-archive a rule under a different book's gate,
+    # and returns None (→ not-accessible) for a non-archived or foreign rule.
+    rule = await canon.restore(pid, UUID(rule_id))
+    if rule is None:
+        raise uniform_not_accessible()
+    return rule.model_dump(mode="json")
 
 
 class _WriteProseArgs(ForbidExtra):

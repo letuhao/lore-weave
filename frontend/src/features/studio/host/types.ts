@@ -63,7 +63,11 @@ export type StudioBusEvent =
   // Hub canvas (opening plan-hub if closed) — NEVER the Editor". It therefore asks via the bus,
   // exactly like the guided-tour request above (a one-shot request + a seq, so focusing the SAME
   // node twice still pans).
-  | { type: 'planFocusNode'; nodeId: string };
+  | { type: 'planFocusNode'; nodeId: string }
+  // 32 AI-1 — the arc-inspector's subject. plan-hub publishes it on an arc/saga node selection;
+  // the inspector subscribes. The ONLY studio-internal transport the agent needs to drive the
+  // panel (a bare-id `ui_open_studio_panel` open lands here; the panel's picker is the fallback).
+  | { type: 'arc'; arcId: string };
 
 /** The bus's current merged snapshot. `revision` increments on every publish (so a chat turn can
  * stamp `context_revision`). */
@@ -86,6 +90,8 @@ export interface StudioBusSnapshot {
    *  repeat request on the SAME node still pans (and a mount never fires a stale one). */
   planFocusNodeId?: string;
   planFocusSeq?: number;
+  /** 32 AI-1 — the arc/saga the inspector is showing (an outline `structure_node` id). */
+  activeArcId?: string;
 }
 
 /** Reduce a bus event onto the snapshot (pure — one new object, revision bumped). */
@@ -108,6 +114,8 @@ export function applyBusEvent(s: StudioBusSnapshot, e: StudioBusEvent): StudioBu
       return { ...base, guidedTourRequestSeq: (s.guidedTourRequestSeq ?? 0) + 1, guidedTourRequestedId: e.tourId };
     case 'planFocusNode':
       return { ...base, planFocusNodeId: e.nodeId, planFocusSeq: (s.planFocusSeq ?? 0) + 1 };
+    case 'arc':
+      return { ...base, activeArcId: e.arcId };
     default:
       return base;
   }

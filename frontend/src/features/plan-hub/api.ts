@@ -4,6 +4,8 @@
 import { apiJson } from '../../api';
 import type { OutlineNode } from '@/features/composition/types';
 import type {
+  ArcDetail,
+  ArcEntry,
   ArcListNode,
   ChildrenPage,
   ConformanceStatus,
@@ -240,11 +242,12 @@ export function reorderBookChapter(
  *  bulk set (no OCC/If-Match — not a versioned field write). Returns how many rows changed. */
 export function assignChapters(
   bookId: string,
-  structureNodeId: string,
+  structureNodeId: string | null,
   chapterNodeIds: string[],
   token: string,
-): Promise<{ assigned: number; structure_node_id: string }> {
-  return apiJson<{ assigned: number; structure_node_id: string }>(
+): Promise<{ assigned: number; structure_node_id: string | null }> {
+  // BE-A3: `structure_node_id: null` UNASSIGNS (returns the chapters to the ?unassigned pool).
+  return apiJson<{ assigned: number; structure_node_id: string | null }>(
     `${COMP}/books/${bookId}/arcs/assign-chapters`,
     {
       method: 'POST',
@@ -252,4 +255,55 @@ export function assignChapters(
       body: JSON.stringify({ structure_node_id: structureNodeId, chapter_node_ids: chapterNodeIds }),
     },
   );
+}
+
+// ── 32 arc-inspector — the arc (structure_node) CRUD the inspector drives. Distinct from the
+//    outline-node writes above: arcs live at /arcs/{id}, not /outline/nodes/{id}. ──────────────
+
+/** The fields the arc inspector can edit (32 §3.2). A subset of the server's ArcPatch — prose
+ *  (goal/summary) + status + the cascade arrays (tracks/roster/roster_bindings) + provenance. */
+export interface ArcEdit {
+  title?: string;
+  status?: string;
+  goal?: string;
+  summary?: string;
+  tracks?: ArcEntry[];
+  roster?: ArcEntry[];
+  roster_bindings?: Record<string, string>;
+  arc_template_id?: string | null;
+  template_version?: number | null;
+}
+
+/** 32 §4 — the arc detail: the node's own fields + resolved cascade + derived block + promises. */
+export function getArc(nodeId: string, token: string): Promise<ArcDetail> {
+  return apiJson<ArcDetail>(`${COMP}/arcs/${nodeId}`, { token });
+}
+
+/** 32/BE-A2 — patch an arc. OCC via If-Match (REQUIRED server-side now). A stale version comes back
+ *  412 STRUCTURE_VERSION_CONFLICT with the CURRENT row, so the caller reseeds rather than clobbering. */
+export function patchArc(
+  nodeId: string,
+  body: ArcEdit,
+  version: number,
+  token: string,
+): Promise<ArcDetail> {
+  return apiJson<ArcDetail>(`${COMP}/arcs/${nodeId}`, {
+    method: 'PATCH',
+    token,
+    headers: { 'If-Match': String(version) },
+    body: JSON.stringify(body),
+  });
+}
+
+/** 32 §3.4 — soft-archive an arc (cascades to its subtree; BE returns its members to the pool). */
+export function archiveArc(nodeId: string, token: string): Promise<{ id: string; archived: boolean }> {
+  return apiJson<{ id: string; archived: boolean }>(`${COMP}/arcs/${nodeId}`, {
+    method: 'DELETE',
+    token,
+  });
+}
+
+/** 32 §3.4 — the verified inverse of archiveArc (restores the subtree + reattaches its chapters). */
+export function restoreArc(nodeId: string, token: string): Promise<{ id: string }> {
+  return apiJson<{ id: string }>(`${COMP}/arcs/${nodeId}/restore`, { method: 'POST', token });
 }

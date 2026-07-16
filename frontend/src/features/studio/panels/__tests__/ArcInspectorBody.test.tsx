@@ -1,0 +1,87 @@
+// 32 arc-inspector — the shared body is OPERABLE: it renders every section, commits an edit through
+// the OCC `edit`, and degrades honestly (loading / archived / empty). Driven by a mock
+// ArcInspectorState so the view is tested in isolation from react-query/bus.
+import { render, screen, fireEvent } from '@testing-library/react';
+import { describe, it, expect, vi } from 'vitest';
+
+import { ArcInspectorBody } from '../ArcInspectorBody';
+import type { ArcInspectorState } from '../useArcInspector';
+import type { ArcDetail } from '@/features/plan-hub/types';
+
+function makeDetail(over: Partial<ArcDetail> = {}): ArcDetail {
+  return {
+    id: 'arc1', kind: 'arc', parent_id: 'saga1', depth: 1, rank: '0m', title: 'The Betrayal',
+    status: 'drafting', goal: 'She must choose.', summary: 'Cold Harbor falls.', version: 7,
+    span: { from_order: 41, to_order: 58 }, first_story_order: 41000, is_contiguous: false, chapter_count: 18,
+    is_archived: false, tracks: [{ key: 'revenge', label: 'Revenge line' }], roster: [],
+    resolved: {
+      tracks: [{ key: 'revenge', label: 'Revenge line' }, { key: 'romance', label: 'Cold Harbor girl' }],
+      roster: [], roster_bindings: {},
+    },
+    open_promises: [{ id: 'p1', kind: 'promise', text: "the sword's true owner" }],
+    ...over,
+  };
+}
+
+function makeState(over: Partial<ArcInspectorState> = {}): ArcInspectorState {
+  return {
+    arcId: 'arc1', select: vi.fn(), shell: [], detail: makeDetail(), loading: false, error: null,
+    saving: false, writeError: null, edit: vi.fn(), archive: vi.fn(), restore: vi.fn(),
+    ancestors: [], blastRadius: 2, ...over,
+  };
+}
+
+describe('ArcInspectorBody', () => {
+  it('renders every section and the dense-ranked span (not raw)', () => {
+    render(<ArcInspectorBody state={makeState()} />);
+    expect(screen.getByTestId('arc-f-title')).toHaveValue('The Betrayal');
+    expect(screen.getByTestId('arc-chapters').textContent).toContain('Chapters 41–58');
+    expect(screen.getByTestId('arc-noncontiguous')).toBeInTheDocument();
+    expect(screen.getByTestId('arc-promises')).toBeInTheDocument();
+    expect(screen.getByTestId('arc-blast').textContent).toContain('2 sub-arcs');
+  });
+
+  it('marks an inherited track (override) distinctly from an own track (remove)', () => {
+    render(<ArcInspectorBody state={makeState()} />);
+    // own: revenge -> remove; inherited: romance -> override here
+    expect(screen.getByTestId('arc-track-revenge')).toBeInTheDocument();
+    expect(screen.getByTestId('arc-track-override-romance')).toBeInTheDocument();
+    expect(screen.queryByTestId('arc-track-override-revenge')).toBeNull();
+  });
+
+  it('commits an edit through OCC on blur, only when changed', () => {
+    const edit = vi.fn();
+    render(<ArcInspectorBody state={makeState({ edit })} />);
+    const title = screen.getByTestId('arc-f-title');
+    fireEvent.blur(title);
+    expect(edit).not.toHaveBeenCalled(); // unchanged -> no write
+    fireEvent.change(title, { target: { value: 'New title' } });
+    fireEvent.blur(title);
+    expect(edit).toHaveBeenCalledWith({ title: 'New title' });
+  });
+
+  it('override copies the inherited entry into own (never a silent fork)', () => {
+    const edit = vi.fn();
+    render(<ArcInspectorBody state={makeState({ edit })} />);
+    fireEvent.click(screen.getByTestId('arc-track-override-romance'));
+    expect(edit).toHaveBeenCalledWith({ tracks: [{ key: 'revenge', label: 'Revenge line' }, { key: 'romance', label: 'Cold Harbor girl' }] });
+  });
+
+  it('archived: dims, hides danger, offers restore, and never a computed 0 for a null block', () => {
+    const detail = makeDetail({ is_archived: true, span: null, chapter_count: null as unknown as number, is_contiguous: null as unknown as boolean });
+    render(<ArcInspectorBody state={makeState({ detail })} />);
+    expect(screen.getByTestId('arc-inspector-archived')).toBeInTheDocument();
+    expect(screen.getByTestId('arc-restore')).toBeInTheDocument();
+    expect(screen.queryByTestId('arc-archive')).toBeNull();
+    expect(screen.getByTestId('arc-chapters-null').textContent).toBe('—');
+  });
+
+  it('loading / error / empty are distinct honest states', () => {
+    const { rerender } = render(<ArcInspectorBody state={makeState({ loading: true, detail: null })} />);
+    expect(screen.getByTestId('arc-inspector-loading')).toBeInTheDocument();
+    rerender(<ArcInspectorBody state={makeState({ error: 'boom', detail: null })} />);
+    expect(screen.getByTestId('arc-inspector-error')).toBeInTheDocument();
+    rerender(<ArcInspectorBody state={makeState({ detail: null })} />);
+    expect(screen.getByTestId('arc-inspector-empty')).toBeInTheDocument();
+  });
+});
