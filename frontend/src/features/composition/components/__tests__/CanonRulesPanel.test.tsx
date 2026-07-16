@@ -1,4 +1,4 @@
-import { render, screen, fireEvent, within } from '@testing-library/react';
+import { render, screen, fireEvent, within, act } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { CanonRulesPanel } from '../CanonRulesPanel';
 import type { CanonRule } from '../../types';
@@ -155,6 +155,24 @@ describe('CanonRulesPanel (FD-16)', () => {
   it('offers a Show-archived toggle (BE-11b)', () => {
     render(<CanonRulesPanel projectId="p" bookId="b" token="t" />);
     expect(screen.getByTestId('composition-canon-show-archived')).toBeTruthy();
+  });
+
+  it('a 412 conflict keeps the draft + surfaces current, and re-apply retries onto the new version', () => {
+    canon.list = { isLoading: false, data: [rule({ id: 'r1', text: 'mine', version: 3 })] };
+    render(<CanonRulesPanel projectId="p" bookId="b" token="t" />);
+    fireEvent.click(screen.getByTestId('composition-canon-edit'));
+    const li = screen.getByTestId('composition-canon-rule');
+    fireEvent.click(within(li).getByTestId('composition-canon-submit'));
+    // the patch failed with a 412 carrying the current row (D-K8-03)
+    const [, opts] = canon.patch.mutate.mock.calls[0];
+    act(() => opts.onError({ status: 412, body: { detail: { current: rule({ id: 'r1', text: 'theirs', version: 8 }) } } }));
+    // conflict banner shown, NOT a bare toast, and the edit form is still there (draft kept)
+    expect(screen.getByTestId('composition-canon-conflict')).toBeTruthy();
+    expect(toastError).not.toHaveBeenCalled();
+    // re-apply → patch again with the CURRENT version as the new base
+    canon.patch.mutate.mockClear();
+    fireEvent.click(screen.getByTestId('composition-canon-conflict-reapply'));
+    expect(canon.patch.mutate.mock.calls[0][0].version).toBe(8);
   });
 
   it('a focusRuleId deep-link opens that rule in edit mode (spec §4 — see broken → fix)', () => {

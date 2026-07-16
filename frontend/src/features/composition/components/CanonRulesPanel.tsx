@@ -7,6 +7,7 @@ import { toast } from 'sonner';
 import { useCanonRules } from '../hooks/useCanonRules';
 import { useGlossaryRoster } from '../hooks/useGlossaryRoster';
 import { CanonRuleForm, type CanonRulePayload } from './CanonRuleForm';
+import type { CanonRule } from '../types';
 
 export function CanonRulesPanel(
   { projectId, bookId, token, focusRuleId }: {
@@ -61,11 +62,31 @@ export function CanonRulesPanel(
   const add = (payload: CanonRulePayload) =>
     create.mutate(payload, { onError });
 
+  // OCC 412 conflict — the rule changed elsewhere (a collaborator or the agent). Instead of a bare
+  // toast that throws the conflict away WITH the user's typing (the old onError→toast.error), keep
+  // the draft in the form, surface `current` (from the 412 body, D-K8-03), and let the user re-apply
+  // onto the new version / keep theirs / discard. Never a silent overwrite, never lost typing.
+  const [conflict, setConflict] = useState<{ id: string; current: CanonRule; draft: CanonRulePayload } | null>(null);
+
   const saveEdit = (id: string, version: number, payload: CanonRulePayload) =>
     patch.mutate(
       { id, payload, version },
-      { onSuccess: () => setEditingId(null), onError },
+      {
+        onSuccess: () => { setEditingId(null); setConflict(null); },
+        onError: (e: unknown) => {
+          const err = e as { status?: number; body?: { detail?: { current?: CanonRule } } };
+          const current = err?.status === 412 ? err.body?.detail?.current : undefined;
+          if (current) setConflict({ id, current, draft: payload });
+          else onError(e);
+        },
+      },
     );
+
+  const reapplyOntoCurrent = () => {
+    if (conflict) saveEdit(conflict.id, conflict.current.version, conflict.draft);
+  };
+  const keepTheirs = () => { setConflict(null); setEditingId(null); void list.refetch(); };
+  const discardMine = () => { setConflict(null); setEditingId(null); };
 
   // entity_id → display label for the read view (falls back to the raw id).
   const labelFor = (id: string | null) =>
@@ -101,15 +122,41 @@ export function CanonRulesPanel(
             className="flex flex-col gap-1 rounded border border-neutral-200 p-2 dark:border-neutral-700"
           >
             {editingId === r.id && !r.is_archived ? (
-              <CanonRuleForm
-                initial={r}
-                roster={rosterOptions}
-                rosterLoading={roster.isLoading}
-                pending={patch.isPending}
-                submitLabel={t('save', { defaultValue: 'Save' })}
-                onSubmit={(payload) => saveEdit(r.id, r.version, payload)}
-                onCancel={() => setEditingId(null)}
-              />
+              <>
+                {conflict?.id === r.id && (
+                  <div data-testid="composition-canon-conflict" className="flex flex-col gap-1 rounded border border-amber-400 bg-amber-50 p-2 text-[11px] dark:border-amber-700 dark:bg-amber-950/40">
+                    <span className="font-medium text-amber-800 dark:text-amber-300">
+                      {t('canonConflictTitle', { defaultValue: 'This rule changed elsewhere — your draft is kept below.' })}
+                    </span>
+                    <span className="text-neutral-600 dark:text-neutral-400">
+                      {t('canonConflictCurrent', { defaultValue: 'Current (v{{v}}): {{text}}', v: conflict.current.version, text: conflict.current.text })}
+                    </span>
+                    <div className="mt-1 flex flex-wrap gap-2">
+                      <button type="button" data-testid="composition-canon-conflict-reapply" onClick={reapplyOntoCurrent}
+                              className="rounded bg-amber-600 px-2 py-0.5 text-white">
+                        {t('canonConflictReapply', { defaultValue: 'Re-apply my edit onto v{{v}}', v: conflict.current.version })}
+                      </button>
+                      <button type="button" data-testid="composition-canon-conflict-keep-theirs" onClick={keepTheirs}
+                              className="rounded border border-neutral-300 px-2 py-0.5 dark:border-neutral-600">
+                        {t('canonConflictKeepTheirs', { defaultValue: 'Keep theirs' })}
+                      </button>
+                      <button type="button" data-testid="composition-canon-conflict-discard" onClick={discardMine}
+                              className="rounded px-2 py-0.5 text-neutral-500 hover:text-neutral-800 dark:hover:text-neutral-200">
+                        {t('canonConflictDiscard', { defaultValue: 'Discard mine' })}
+                      </button>
+                    </div>
+                  </div>
+                )}
+                <CanonRuleForm
+                  initial={r}
+                  roster={rosterOptions}
+                  rosterLoading={roster.isLoading}
+                  pending={patch.isPending}
+                  submitLabel={t('save', { defaultValue: 'Save' })}
+                  onSubmit={(payload) => saveEdit(r.id, r.version, payload)}
+                  onCancel={() => setEditingId(null)}
+                />
+              </>
             ) : (
               <div className="flex items-start justify-between gap-2">
                 <div className={r.is_archived || !r.active ? 'opacity-50' : ''}>
