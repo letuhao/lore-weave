@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import * as Dialog from '@radix-ui/react-dialog';
 import { X } from 'lucide-react';
@@ -36,6 +37,7 @@ export function GlossaryTranslateWizard({
   onComplete,
 }: GlossaryTranslateWizardProps) {
   const { t } = useTranslation('glossaryTranslate');
+  const navigate = useNavigate();
   const {
     state,
     goNext,
@@ -65,6 +67,14 @@ export function GlossaryTranslateWizard({
   const handleClose = () => {
     if (!canClose) return;
     onOpenChange(false);
+  };
+
+  // S12: "View glossary" used to just close the wizard (navigated nowhere). Take the user to the
+  // book's glossary — the whole point of the affordance after a batch translate.
+  const handleViewGlossary = () => {
+    if (!canClose) return;
+    onOpenChange(false);
+    navigate(`/books/${bookId}/glossary`);
   };
 
   const sameLanguage = isSameLanguageTarget(bookOriginalLanguage, state.targetLanguage);
@@ -121,7 +131,7 @@ export function GlossaryTranslateWizard({
             jobStatus={state.finalJobStatus}
             costEstimate={state.costEstimate}
             onClose={handleClose}
-            onViewGlossary={handleClose}
+            onViewGlossary={handleViewGlossary}
             onRestart={reset}
           />
         ) : null;

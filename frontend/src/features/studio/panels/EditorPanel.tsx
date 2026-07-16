@@ -363,11 +363,10 @@ export function EditorPanel(props: IDockviewPanelProps) {
         <button
           type="button"
           data-testid="studio-editor-open-translate"
-          onClick={() => host.openPanel(`translation-versions:${chapterId}`, {
-            component: 'translation-versions',
-            title: `${t('panels.translation-versions.title', { defaultValue: 'Translation Versions' })} · ${chapterId.slice(0, 8)}`,
-            params: { chapterId },
-          })}
+          // D11 (spec 29): open the BARE `translation-versions` id — the params-retargeting
+          // singleton — the same id the `translation` panel uses, so the editor and the matrix
+          // share ONE dock tab (retargeted per open) instead of minting a per-chapter override tab.
+          onClick={() => host.openPanel('translation-versions', { params: { chapterId } })}
           className="rounded px-1.5 py-0.5 hover:bg-secondary hover:text-foreground"
         >
           {t('editor.translate', { defaultValue: 'Translate' })}
