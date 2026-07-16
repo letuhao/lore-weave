@@ -46,7 +46,7 @@ no-silent-fail · agent-parity · loop-connected · live-browser-proven · i18n+
 | BE-21 · _serialize_run passes package_artifact_id to derive_view (Q-35-BE21) | DONE | import PACKAGE_KIND; read pkg id from the artifacts list already held (no N+1, per LIST-NPLUS1); `**derive_view(run, package_artifact_id=...)`. Replaced source-text pin (asserted the bug) with behavioral test: detail.pass_cursor == /passes.pass_cursor + motifs fresh. 192 passed (plan_pass/plan_forge/checkpoint suite), 0 fail. Uncommitted — pending checkpoint. |
 | BE-22 · fix phantom `plan_bootstrap_seed` msg → re-run cast pass (Q-35-BE22) | DONE | _assert_seed_applied's "call plan_bootstrap_seed" (phantom tool) → "re-run the 'cast' pass (plan_run_pass pass_id='cast')". test_plan_pass_checkpoint.py +2 anti-phantom asserts; 28 passed. Committed with BE-21? no — own commit. |
 | BE-2 · POST .../autofix route (mirror handoff_autofix) (Q-35-BE2) | DONE | PlanAutofixRequest (model_ref optional, max_rounds 1..5→422) + route mirroring handoff_autofix ({rounds,run}; 202 only when run carries live job, else 200; EDIT gate). contract yaml path added. test_plan_forge_router.py 16 passed (+200 applied, +404 unknown, +422 range, +202 async, +403 VIEW). |
-| B0 · reserve `plan-passes` in catalog/enum/contract/i18n/guideBody (enum +1 == plan-passes; Q-35-PANEL-COUNT) | TODO | |
+| B0 · reserve `plan-passes` in catalog/enum/contract/i18n/guideBody (enum +1 == plan-passes; Q-35-PANEL-COUNT) | DONE (working tree; registry commit deferred to convergence — see DECISIONS) | PassRailPanel.tsx created + registered: catalog row (after plan-hub), enum +"plan-passes", en/studio.json panels.plan-passes.{title,desc,guideBody}+planPasses.*, contract regenerated. Verified in tree: contract has plan-passes, tsc clean, panelCatalogContract 9 passed (enum==openable==contract). PassRailPanel.tsx committed; shared-registry files NOT committed (entangled with S1/S7 uncommitted work). |
 | FE-1 · json-editor read-only viewer for plan artifacts (Q-35-FE1) | TODO | |
 | M4 · Pass Rail panel: ledger + run-pass + freshness/cursor/blocked_at | TODO | |
 | M4-CP · blocking-checkpoint review (view artifact via BE-3 → edit → approve/hold) | TODO | |
@@ -68,12 +68,26 @@ no-silent-fail · agent-parity · loop-connected · live-browser-proven · i18n+
   adjudication are complete. Detailed design = this RUN-STATE transcribing them. CLARIFY was done at
   source (wave-5-decisions.md); not re-run.
 
+- **D-S3-DEFER-REGISTRY-COMMIT (2026-07-16):** the 4 shared registry files (chat-service
+  `frontend_tools.py` enum, `catalog.ts`, `frontend-tools.contract.json`, `en/studio.json`) carry
+  S1's + S7's UNCOMMITTED work (scene-compose; world-map/place-graph/cast/character-arc) intermixed
+  with my `plan-passes` row. The enum is a SINGLE line, so `git add -p` cannot separate my token
+  from theirs; and `catalog.ts` imports S7 components that are still UNTRACKED, so committing it in
+  isolation would be a red build. Therefore I commit ONLY my own new file (`PassRailPanel.tsx`) and
+  leave the shared-registry edits in the working tree — green there (tsc clean, panelCatalogContract
+  9 passed) — for the convergence node §6 to commit once every session's components exist. Not a
+  critical-stop (fully reversible). PO informed.
+
 ### PARKED  (blocker -> defer row + continue)
 - **D-PLANFORGE-PROPOSE-BLIND** (pre-existing, SESSION_HANDOFF.md:102, gate #2): propose ignores an
   existing manuscript. Wave-5 must NOT touch the engine (Q-35-OQ5). Only ship the honesty copy string
   in the planner new-run form ("Proposed from this braindump only. Existing chapters are not read.").
 
 ### DEBT
+- Shared-registry commit for `plan-passes` (enum/catalog/contract/i18n) is uncommitted, pending the
+  convergence node (see D-S3-DEFER-REGISTRY-COMMIT). Must land at §6 with enum==openable==contract
+  reconciled across all 8 sessions. FE-1 (JsonEditorPanel readOnly) and planEffects (Lane-B registry
+  index) touch other shared files — same deferral discipline applies there.
 ### DRIFT  (near-misses, bars nearly lowered, tests nearly skipped)
 - Near-miss (caught): almost built a separate `planner-repair` panel — my CLARIFY question framed it
   as an option, contradicting the sealed "no new id". Caught by re-reading the source before coding,
