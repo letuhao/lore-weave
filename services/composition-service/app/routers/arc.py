@@ -436,7 +436,10 @@ class ArcMove(BaseModel):
 
 
 class ArcAssignChapters(BaseModel):
-    structure_node_id: UUID
+    # BE-A3: `null` UNASSIGNS the chapters (returns them to the ?unassigned=true pool). The
+    # children route already READS that pool, so add-only assign left a state no writer could
+    # produce — this closes the inverse gap (GG-2).
+    structure_node_id: UUID | None = None
     chapter_node_ids: list[UUID]
 
 
@@ -647,7 +650,10 @@ async def assign_arc_chapters(
     count = await _structures().assign_chapters(
         book_id, body.structure_node_id, body.chapter_node_ids,
     )
-    return {"assigned": count, "structure_node_id": str(body.structure_node_id)}
+    return {
+        "assigned": count,
+        "structure_node_id": str(body.structure_node_id) if body.structure_node_id else None,
+    }
 
 
 class ChapterReorder(BaseModel):

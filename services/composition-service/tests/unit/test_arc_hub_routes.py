@@ -86,6 +86,22 @@ def test_assign_chapters_view_grantee_403_and_never_writes(client):
     repo.assign_chapters.assert_not_called()
 
 
+def test_assign_chapters_null_unassigns_and_returns_null(client):
+    # BE-A3: structure_node_id null UNASSIGNS (returns chapters to the pool). The route must
+    # pass None through and echo structure_node_id: null, never coerce it to the string "None".
+    repo = AsyncMock()
+    repo.assign_chapters = AsyncMock(return_value=2)
+    c, repo = client(GrantLevel.EDIT, structures=repo)
+    ch = [str(uuid4()), str(uuid4())]
+    r = c.post(
+        f"/v1/composition/books/{BOOK}/arcs/assign-chapters",
+        json={"structure_node_id": None, "chapter_node_ids": ch},
+    )
+    assert r.status_code == 200
+    assert r.json() == {"assigned": 2, "structure_node_id": None}
+    assert repo.assign_chapters.call_args.args[1] is None  # None, not the string "None"
+
+
 def test_assign_chapters_non_grantee_404_and_never_writes(client):
     c, repo = client(GrantLevel.NONE)
     r = c.post(

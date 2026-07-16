@@ -222,6 +222,13 @@ CREATE INDEX IF NOT EXISTS idx_outline_node_chapter ON outline_node(chapter_id) 
 -- giant outlined book. `id` is the keyset tiebreak; the partial matches the default query.
 CREATE INDEX IF NOT EXISTS idx_outline_node_children_keyset
   ON outline_node(parent_id, rank COLLATE "C", id) WHERE NOT is_archived;
+-- D-ARC-ARCHIVE-CHAPTER-STRANDING (spec 32a §B): a recovery slot so archiving an arc can
+-- RETURN its member chapters to the unplanned pool (structure_node_id → NULL) while remembering
+-- which arc they belonged to, and restore() can re-attach exactly those. Nullable, no backfill.
+-- Partial index serves restore()'s reverse lookup (WHERE archived_from_structure_node_id IN subtree).
+ALTER TABLE outline_node ADD COLUMN IF NOT EXISTS archived_from_structure_node_id UUID;
+CREATE INDEX IF NOT EXISTS idx_outline_node_archived_from
+  ON outline_node(archived_from_structure_node_id) WHERE archived_from_structure_node_id IS NOT NULL;
 
 -- ── scene_link: ONLY non-derivable edges
 CREATE TABLE IF NOT EXISTS scene_link (

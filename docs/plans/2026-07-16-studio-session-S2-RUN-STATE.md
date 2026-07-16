@@ -39,7 +39,7 @@ Design of record: **spec 32 + 32a** (B1), **spec 34 + a future 34a** (B2). PO cl
 | S2-A2 · PORT/ENHANCE/BUILD decisions per capability | DONE | table below; awaiting PO react before BUILD |
 | **S2-B1 · arc-inspector (spec 32 + 32a) — DESIGN LOCKED, awaiting PO approval** | | |
 | S2-B1a · BE-A2 (If-Match required) + D-ARC-TRACKS-ROSTER-SCHEMA (32a §A: schema both doors + repair migration) | DONE | BE-A2 ✅ (263fd5a4f). Schema BOTH doors ✅ (d22ab3032): 17/17 + 213 arc sweep. Dry-run scan dev DB `4 nodes / 0 garbage` → no DROP. Repair = on-demand non-destructive script `app/db/repairs/arc_entry_keys.py` (positional backfill, never drops) + test_arc_entry_repair.py 4/4. |
-| S2-B1b · BE-A3 (assign-chapters null=unassign) + D-ARC-ARCHIVE-CHAPTER-STRANDING (32a §B: recovery col + archive/restore reattach) | TODO | |
+| S2-B1b · BE-A3 (assign-chapters null=unassign) + D-ARC-ARCHIVE-CHAPTER-STRANDING (32a §B: recovery col + archive/restore reattach) | DONE | BE-A3 (null=unassign) both doors + `archived_from_structure_node_id` col (migrate.py + applied to dev DB). archive→return-to-pool, restore→reattach (race-guarded), both in txn. Unit 22/22; **integration 4/4 on throwaway DB** (archive-stranding, restore no-clobber, unassign, saga cascade). |
 | S2-B1c · BE-A1 (span→derived_blocks both doors, leave packer's span()) + BE tests | TODO | |
 | S2-B1d · FE ArcInspectorPanel/Body/useArcInspector + bus slice + widen ArcListNode + arcEffects.ts | TODO | |
 | S2-B1e · PlanDrawer embed (delete ArcFacets stub → mount ArcInspectorBody, DOCK-2) | TODO | |

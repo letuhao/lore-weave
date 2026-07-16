@@ -4587,7 +4587,9 @@ async def composition_arc_move(ctx: MCPContext, args: _ArcMoveArgs) -> dict:
 
 class _ArcAssignChaptersArgs(ForbidExtra):
     book_id: str
-    structure_node_id: str
+    # BE-A3: null UNASSIGNS (returns the chapters to the unplanned pool). Add-only assign left
+    # a state the ?unassigned read could show but no writer could produce (GG-2).
+    structure_node_id: str | None = None
     chapter_node_ids: list[str]
 
 
@@ -4596,9 +4598,10 @@ class _ArcAssignChaptersArgs(ForbidExtra):
     description=(
         "Attach CHAPTER-kind outline nodes to an arc (sets their structure_node_id) "
         "— the membership that makes an arc's derived span and open-promise rollup "
-        "real. Book-scoped both sides: only chapters in `book_id` are touched, and "
-        "only if `structure_node_id` is itself in that book. Returns the count "
-        "assigned. EDIT on the book required."
+        "real — OR pass `structure_node_id: null` to UNASSIGN them (return to the "
+        "unplanned pool). Book-scoped both sides: only chapters in `book_id` are "
+        "touched, and an assign only if `structure_node_id` is itself in that book. "
+        "Returns the count. EDIT on the book required."
     ),
     meta=require_meta(
         "A", "book",
@@ -4615,7 +4618,9 @@ async def composition_arc_assign_chapters(
     await _gate(tc, bid, GrantLevel.EDIT)
     structures = StructureRepo(get_pool())
     count = await structures.assign_chapters(
-        bid, UUID(args.structure_node_id), [UUID(c) for c in args.chapter_node_ids],
+        bid,
+        UUID(args.structure_node_id) if args.structure_node_id else None,
+        [UUID(c) for c in args.chapter_node_ids],
     )
     return {
         "assigned": count, "structure_node_id": args.structure_node_id,

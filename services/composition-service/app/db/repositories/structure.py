@@ -450,51 +450,102 @@ class StructureRepo:
         an archived parent). A recursive CTE walks parent_id DOWN, then one UPDATE
         flips is_archived on the whole subtree. UNION (not UNION ALL) dedups so a
         malformed parent cycle terminates instead of hanging (the trigger prevents
-        cycles; this is a backstop). book_id is threaded through every CTE leg."""
+        cycles; this is a backstop). book_id is threaded through every CTE leg.
+
+        D-ARC-ARCHIVE-CHAPTER-STRANDING (spec 32a §B): archiving an arc no longer STRANDS
+        its member chapters (visible in neither the archived lane nor the unassigned tray).
+        Before flipping is_archived, we RETURN the members to the pool — null their
+        structure_node_id while remembering it in archived_from_structure_node_id — so
+        restore() can re-attach exactly those. Both steps run in ONE transaction."""
         async with self._pool.acquire() as c:
-            await c.execute(
-                """
-                WITH RECURSIVE subtree AS (
-                  SELECT id, book_id FROM structure_node WHERE id = $1 AND NOT is_archived
-                  UNION
-                  SELECT n.id, n.book_id FROM structure_node n
-                  JOIN subtree s ON n.parent_id = s.id AND n.book_id = s.book_id
-                  WHERE NOT n.is_archived
+            async with c.transaction():
+                # 1) Return member chapters of the (still-live) subtree to the unplanned pool,
+                #    recording which arc each came from. Runs BEFORE the is_archived flip so the
+                #    `NOT is_archived` subtree is the full live set.
+                await c.execute(
+                    """
+                    WITH RECURSIVE subtree AS (
+                      SELECT id, book_id FROM structure_node WHERE id = $1 AND NOT is_archived
+                      UNION
+                      SELECT n.id, n.book_id FROM structure_node n
+                      JOIN subtree s ON n.parent_id = s.id AND n.book_id = s.book_id
+                      WHERE NOT n.is_archived
+                    )
+                    UPDATE outline_node o
+                    SET archived_from_structure_node_id = o.structure_node_id,
+                        structure_node_id = NULL, updated_at = now()
+                    WHERE o.structure_node_id IN (SELECT id FROM subtree)
+                      AND o.kind = 'chapter' AND NOT o.is_archived
+                    """,
+                    node_id,
                 )
-                UPDATE structure_node SET is_archived = true, updated_at = now()
-                WHERE id IN (SELECT id FROM subtree)
-                """,
-                node_id,
-            )
+                # 2) Flip is_archived on the structure_node subtree.
+                await c.execute(
+                    """
+                    WITH RECURSIVE subtree AS (
+                      SELECT id, book_id FROM structure_node WHERE id = $1 AND NOT is_archived
+                      UNION
+                      SELECT n.id, n.book_id FROM structure_node n
+                      JOIN subtree s ON n.parent_id = s.id AND n.book_id = s.book_id
+                      WHERE NOT n.is_archived
+                    )
+                    UPDATE structure_node SET is_archived = true, updated_at = now()
+                    WHERE id IN (SELECT id FROM subtree)
+                    """,
+                    node_id,
+                )
 
     async def restore(self, node_id: UUID) -> None:
         """Un-archive a node — the inverse of archive(). Walks parent_id UP to
         restore the archived ancestor chain (so the node reconnects to a visible
         root) and DOWN to restore its archived descendants. Sibling branches stay
-        archived. UNION terminates on a malformed cycle; book_id threads every leg."""
+        archived. UNION terminates on a malformed cycle; book_id threads every leg.
+
+        D-ARC-ARCHIVE-CHAPTER-STRANDING (spec 32a §B): after un-archiving, RE-ATTACH the
+        chapters this subtree returned to the pool on archive — but ONLY those still
+        unassigned. A chapter the user re-homed to another arc while this was archived keeps
+        its new home (the `structure_node_id IS NULL` guard). One transaction."""
         async with self._pool.acquire() as c:
-            await c.execute(
-                """
-                WITH RECURSIVE ancestors AS (
-                  SELECT id, parent_id, book_id FROM structure_node
-                  WHERE id = $1 AND is_archived
-                  UNION
-                  SELECT p.id, p.parent_id, p.book_id FROM structure_node p
-                  JOIN ancestors a ON p.id = a.parent_id AND p.book_id = a.book_id
-                  WHERE p.is_archived
-                ),
-                subtree AS (
-                  SELECT id, book_id FROM structure_node WHERE id = $1 AND is_archived
-                  UNION
-                  SELECT n.id, n.book_id FROM structure_node n
-                  JOIN subtree s ON n.parent_id = s.id AND n.book_id = s.book_id
-                  WHERE n.is_archived
+            async with c.transaction():
+                await c.execute(
+                    """
+                    WITH RECURSIVE ancestors AS (
+                      SELECT id, parent_id, book_id FROM structure_node
+                      WHERE id = $1 AND is_archived
+                      UNION
+                      SELECT p.id, p.parent_id, p.book_id FROM structure_node p
+                      JOIN ancestors a ON p.id = a.parent_id AND p.book_id = a.book_id
+                      WHERE p.is_archived
+                    ),
+                    subtree AS (
+                      SELECT id, book_id FROM structure_node WHERE id = $1 AND is_archived
+                      UNION
+                      SELECT n.id, n.book_id FROM structure_node n
+                      JOIN subtree s ON n.parent_id = s.id AND n.book_id = s.book_id
+                      WHERE n.is_archived
+                    )
+                    UPDATE structure_node SET is_archived = false, updated_at = now()
+                    WHERE id IN (SELECT id FROM ancestors) OR id IN (SELECT id FROM subtree)
+                    """,
+                    node_id,
                 )
-                UPDATE structure_node SET is_archived = false, updated_at = now()
-                WHERE id IN (SELECT id FROM ancestors) OR id IN (SELECT id FROM subtree)
-                """,
-                node_id,
-            )
+                # Re-attach the returned chapters (only the still-unassigned ones — the race guard).
+                await c.execute(
+                    """
+                    WITH RECURSIVE subtree AS (
+                      SELECT id, book_id FROM structure_node WHERE id = $1
+                      UNION
+                      SELECT n.id, n.book_id FROM structure_node n
+                      JOIN subtree s ON n.parent_id = s.id AND n.book_id = s.book_id
+                    )
+                    UPDATE outline_node o
+                    SET structure_node_id = o.archived_from_structure_node_id,
+                        archived_from_structure_node_id = NULL, updated_at = now()
+                    WHERE o.archived_from_structure_node_id IN (SELECT id FROM subtree)
+                      AND o.structure_node_id IS NULL
+                    """,
+                    node_id,
+                )
 
     async def move(
         self, node_id: UUID, *, new_parent_id: UUID | None, after_id: UUID | None = None,
@@ -582,29 +633,45 @@ class StructureRepo:
             raise StructureConflictError(str(exc)) from exc
 
     async def assign_chapters(
-        self, book_id: UUID, structure_node_id: UUID, chapter_node_ids: list[UUID],
+        self, book_id: UUID, structure_node_id: UUID | None, chapter_node_ids: list[UUID],
     ) -> int:
         """Attach CHAPTER-kind outline nodes to a spec node (sets
-        `outline_node.structure_node_id`). Book-scoped both sides: only chapters in
-        `book_id` are touched, and the assignment is a no-op unless
-        `structure_node_id` is itself in `book_id` (the EXISTS guard — a spec node
-        never adopts chapters from another book). Returns the count updated."""
+        `outline_node.structure_node_id`), OR — BE-A3 — UNASSIGN them when
+        `structure_node_id is None` (return to the `?unassigned=true` pool). Book-scoped
+        both sides: only chapters in `book_id` are touched, and an ASSIGN is a no-op unless
+        the target node is itself in `book_id` (the EXISTS guard — a spec node never adopts
+        chapters from another book). Either way the archive-recovery slot
+        (`archived_from_structure_node_id`) is CLEARED, so a later restore of some old arc
+        cannot yank a chapter the user has since deliberately re-homed. Returns the count."""
         if not chapter_node_ids:
             return 0
         async with self._pool.acquire() as c:
-            status = await c.execute(
-                """
-                UPDATE outline_node o
-                SET structure_node_id = $1, updated_at = now()
-                WHERE o.book_id = $2 AND o.id = ANY($3)
-                  AND o.kind = 'chapter' AND NOT o.is_archived
-                  AND EXISTS (
-                    SELECT 1 FROM structure_node s
-                    WHERE s.id = $1 AND s.book_id = $2
-                  )
-                """,
-                structure_node_id, book_id, chapter_node_ids,
-            )
+            if structure_node_id is None:
+                status = await c.execute(
+                    """
+                    UPDATE outline_node o
+                    SET structure_node_id = NULL, archived_from_structure_node_id = NULL,
+                        updated_at = now()
+                    WHERE o.book_id = $1 AND o.id = ANY($2)
+                      AND o.kind = 'chapter' AND NOT o.is_archived
+                    """,
+                    book_id, chapter_node_ids,
+                )
+            else:
+                status = await c.execute(
+                    """
+                    UPDATE outline_node o
+                    SET structure_node_id = $1, archived_from_structure_node_id = NULL,
+                        updated_at = now()
+                    WHERE o.book_id = $2 AND o.id = ANY($3)
+                      AND o.kind = 'chapter' AND NOT o.is_archived
+                      AND EXISTS (
+                        SELECT 1 FROM structure_node s
+                        WHERE s.id = $1 AND s.book_id = $2
+                      )
+                    """,
+                    structure_node_id, book_id, chapter_node_ids,
+                )
         return rows_changed(status)
 
     # ─────────────────────── resolution (BA7) ───────────────────────
