@@ -160,6 +160,11 @@
       "desc": "Words today, your streak, the book total, a daily goal and a sparkline",
       "guideBody": "Progress turns your writing into a habit you can see: words written today, your current day-streak, the book's running total, and a 7- or 30-day sparkline. Set a personal daily goal and a reference line marks it on the chart — the goal is yours alone, not shared with collaborators. It reads the word-counts the editor records as you save; it never changes your prose."
     },
+    "flywheel": {
+      "title": "Flywheel",
+      "desc": "What your last publish added to canon — new people, ties and events",
+      "guideBody": "Flywheel is the reward for publishing: when you publish a chapter, an extraction pass grows your world's knowledge, and this panel shows what it added — new entities, relations, and events — with clickable highlights that jump you straight to that character in Cast, that link in the graph, or that moment on the timeline. It closes the loop: writing feeds the canon, and the canon grounds your next chapter."
+    },
     "kg-overview": {
       "title": "Overview",
       "desc": "Project summary and quick actions",

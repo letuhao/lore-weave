@@ -263,12 +263,14 @@ export const motifApi = {
       { token },
     );
   },
-  /** Coarse arc-conformance (D-W10-ARC-CONFORMANCE) — the structural diff of the
-   *  materialized bindings vs the arc template (scope=arc). */
-  arcConformance(projectId: string, arcTemplateId: string, token: string, deep = false, modelRef?: string | null): Promise<ArcConformance> {
+  /** Coarse arc-conformance (D-W10-ARC-CONFORMANCE) — the structural diff of the durable
+   *  SPEC arc (scope=arc) vs the realized prose. `arcId` is a **`structure_node.id`** (spec 23
+   *  BA4 retarget), NOT an arc_template id — M-BUG-4: the wire arg is `arc_id`, and sending
+   *  `arc_template_id` made FastAPI drop it → arc_id=None → 422 ARC_ID_REQUIRED on every call. */
+  arcConformance(projectId: string, arcId: string, token: string, deep = false, modelRef?: string | null): Promise<ArcConformance> {
     return apiJson<ArcConformance>(
       `${BASE}/works/${projectId}/conformance${_qs({
-        scope: 'arc', arc_template_id: arcTemplateId,
+        scope: 'arc', arc_id: arcId,
         ...(deep ? { deep: 'true' } : {}),
         // model_ref opts into thread-tagging (deep thread-progression); omit ⇒ pacing + existing tags.
         ...(deep && modelRef ? { model_ref: modelRef, model_source: 'user_model' } : {}),
@@ -276,18 +278,40 @@ export const motifApi = {
       { token },
     );
   },
-  conformanceRunEstimate(projectId: string, chapterId: string, token: string): Promise<CostEstimate> {
-    return apiJson<CostEstimate>(`${BASE}/actions/conformance_run/estimate`, {
-      method: 'POST', body: JSON.stringify({ project_id: projectId, chapter_id: chapterId }), token,
-    });
+  /** Chapter conformance RE-RUN (Tier-W + BYOK) — spec 33 §3.4: the run goes through the
+   *  generic MCP spine (composition_conformance_run), NOT the deleted bespoke
+   *  /actions/conformance_run/* REST twins. PROPOSE mints a confirm_token + estimate (no spend);
+   *  mirror of arcConformanceRunPropose. */
+  async chapterConformanceRunPropose(
+    args: { projectId: string; chapterId: string; modelRef: string; modelSource?: string },
+    token: string,
+  ): Promise<CostEstimate> {
+    const res = await mcpExecute<_McpProposeResult>('composition_conformance_run', {
+      args: {
+        project_id: args.projectId, scope: 'chapter', chapter_id: args.chapterId,
+        model_ref: args.modelRef, model_source: args.modelSource ?? 'user_model',
+      },
+    }, token);
+    return {
+      confirm_token: res.confirm_token, descriptor: 'composition.conformance_run',
+      est_usd: res.estimate?.estimated_usd ?? 0, est_tokens: 0, quota_remaining: null,
+    };
   },
-  async conformanceRunConfirm(confirmToken: string, token: string): Promise<ChapterConformance> {
-    const resp = await apiJson<{ job_id?: string; status?: string } & Record<string, unknown>>(
-      `${BASE}/actions/conformance_run/confirm`,
-      { method: 'POST', body: JSON.stringify({ confirm_token: confirmToken }), token },
+  /** Confirm the re-run token (the JWT-authed write path) → poll the job to terminal. The
+   *  caller invalidates the conformance query on success, so the GET re-fetches the fresh trace
+   *  (no result-shape parsing needed). */
+  async chapterConformanceRunConfirm(confirmToken: string, token: string): Promise<void> {
+    const resp = await apiJson<{ job_id?: string } & Record<string, unknown>>(
+      `${BASE}/actions/confirm${_qs({ token: confirmToken })}`, { method: 'POST', token },
     );
-    const job = await _resolveActionJob(resp, token);
-    return (job.result as { conformance: ChapterConformance }).conformance;
+    if (!resp.job_id) return;
+    let job = await compositionApi.getJob(resp.job_id, token);
+    for (let i = 0; i < _POLL_MAX && (job.status === 'pending' || job.status === 'running'); i += 1) {
+      await _sleep(_POLL_INTERVAL_MS);
+      job = await compositionApi.getJob(resp.job_id, token);
+    }
+    if (job.status === 'failed') throw new Error((job.result as { error?: string } | null)?.error || 'conformance run failed');
+    if (job.status !== 'completed') throw new Error('conformance run did not complete in time');
   },
 
   // ── DEEP arc-conformance JOB (D-W10-ARC-CONFORMANCE-DEEP-FE) ─────────────────
@@ -299,18 +323,20 @@ export const motifApi = {
   /** Step 1 — PROPOSE `composition_conformance_run` (scope=arc) → a cost estimate +
    *  confirm_token. No spend yet (the worker runs only after confirm). */
   async arcConformanceRunPropose(
-    args: { projectId: string; arcTemplateId: string; modelRef: string; modelSource?: string },
+    args: { projectId: string; arcId: string; modelRef: string; modelSource?: string },
     token: string,
   ): Promise<CostEstimate> {
     const res = await mcpExecute<_McpProposeResult>(
       'composition_conformance_run',
       // The MCP tool takes a single pydantic `args` parameter, so FastMCP nests the
       // fields under `args` (verified live — a flat body fails arg validation).
+      // M-BUG-4: the tool's _ConformanceRunArgs is ForbidExtra with `arc_id` (a structure_node.id)
+      // and NO `arc_template_id` — sending the latter 422'd every deep-arc run.
       {
         args: {
           project_id: args.projectId,
           scope: 'arc',
-          arc_template_id: args.arcTemplateId,
+          arc_id: args.arcId,
           model_ref: args.modelRef,
           model_source: args.modelSource ?? 'user_model',
         },
@@ -352,10 +378,14 @@ export const motifApi = {
     }
     return job.result as ArcConformance;
   },
-  /** Regenerate one scene within its bound beat (reuses the scene-regenerate path). */
-  regenerateToBeat(projectId: string, nodeId: string, token: string): Promise<void> {
-    return apiJson<void>(`${BASE}/works/${projectId}/scenes/${nodeId}/regenerate-to-beat`, {
-      method: 'POST', token,
+  /** Regenerate one scene — spec 33 §5.1: reuse the EXISTING scene-generate route
+   *  (composition_generate's REST twin, `outline_node_id`), NOT the removed
+   *  regenerate-to-beat endpoint (BE-5 was never built; §5.1). The bound motif now steers
+   *  generation through the packer's gather_motif lens (BE-M2), so a plain regenerate honours
+   *  the beat. */
+  regenerateScene(projectId: string, outlineNodeId: string, token: string): Promise<{ job_id?: string }> {
+    return apiJson(`${BASE}/works/${projectId}/generate`, {
+      method: 'POST', body: JSON.stringify({ outline_node_id: outlineNodeId }), token,
     });
   },
 };
@@ -376,31 +406,6 @@ type _McpProposeResult = {
 const _POLL_INTERVAL_MS = 1500;
 const _POLL_MAX = 200;
 const _sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
-
-async function _resolveActionJob(
-  resp: { job_id?: string; status?: string } & Record<string, unknown>,
-  token: string,
-): Promise<GenerationJob> {
-  // Inline (already-consumed / synchronous) — the result is on the response.
-  if (!resp.job_id) {
-    return resp as unknown as GenerationJob;
-  }
-  if (resp.status !== 'pending' && resp.status !== 'running') {
-    return resp as unknown as GenerationJob;
-  }
-  let job = await compositionApi.getJob(resp.job_id, token);
-  for (let i = 0; i < _POLL_MAX && (job.status === 'pending' || job.status === 'running'); i += 1) {
-    await _sleep(_POLL_INTERVAL_MS);
-    job = await compositionApi.getJob(resp.job_id, token);
-  }
-  if (job.status === 'failed') {
-    throw new Error((job.result as { error?: string } | null)?.error || 'action failed');
-  }
-  if (job.status !== 'completed') {
-    throw new Error('action did not complete in time');
-  }
-  return job;
-}
 
 /** A QuotaError thrown by the api carries `code: 'quota_exceeded'` (the legacy estimate
  *  shape) OR the composition confirm-effect 402 shape `{code:'action_error',

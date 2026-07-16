@@ -758,7 +758,8 @@
         "ok": "On beat",
         "warn": "Tension drift",
         "bad": "Beat missed"
-      }
+      },
+      "rerunNeedsModel": "Pick a model to re-run conformance"
     },
     "arc": {
       "mobileNotice": "The timeline grid is available on a larger screen — here you can edit it as a list.",

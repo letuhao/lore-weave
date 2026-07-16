@@ -11,11 +11,14 @@ type Props = {
   projectId: string | undefined;
   chapterId: string | undefined;
   token: string | null;
+  /** BYOK model for the Tier-W re-run (composition_conformance_run). No model ⇒ the Re-run
+   *  button is disabled with a hint; the read + regenerate still work. */
+  modelRef?: string | null;
 };
 
-export function ConformanceTraceView({ projectId, chapterId, token }: Props) {
+export function ConformanceTraceView({ projectId, chapterId, token, modelRef }: Props) {
   const { t } = useTranslation('composition');
-  const trace = useConformanceTrace(projectId, chapterId, token);
+  const trace = useConformanceTrace(projectId, chapterId, token, modelRef);
   const conf = trace.conformance;
   const scenes = conf?.scenes ?? [];
   const isEmpty = !trace.isLoading && !trace.isError && scenes.length === 0;
@@ -40,7 +43,8 @@ export function ConformanceTraceView({ projectId, chapterId, token }: Props) {
           type="button"
           data-testid="conformance-rerun"
           className="rounded border border-amber-400 px-2 py-0.5 text-xs text-amber-700 disabled:opacity-50 dark:text-amber-300"
-          disabled={!projectId || !chapterId || trace.mintRun.isPending}
+          disabled={!projectId || !chapterId || !trace.canRerun || trace.mintRun.isPending}
+          title={!trace.canRerun ? t('motif.conf.rerunNeedsModel', { defaultValue: 'Pick a model to re-run conformance' }) : undefined}
           onClick={() => trace.mintRun.mutate()}
         >
           {t('motif.conf.rerun', { defaultValue: 'Re-run' })}
@@ -66,7 +70,7 @@ export function ConformanceTraceView({ projectId, chapterId, token }: Props) {
         ) : (
           <div>
             {scenes.map((s) => (
-              <ConformanceSceneRow key={s.outline_node_id} scene={s} onRegenerate={(id) => trace.regenerateToBeat.mutate(id)} />
+              <ConformanceSceneRow key={s.outline_node_id} scene={s} onRegenerate={(id) => trace.regenerateScene.mutate(id)} />
             ))}
           </div>
         )}
