@@ -35,11 +35,13 @@ no-silent-fail · agent-parity · loop-connected · live-browser-proven · i18n+
 | A2 · no-wedge — T4+T10 (typed error+Retry/D9) + T5 (modal abort/timeout/seeded/D7-D8) | DONE | commit 9a6ca4037; shared TranslationErrorState+classify+withTimeout; 4 errors + 4 wedge + 6 unit tests; 73 translation tests green; tsc clean |
 | — PHASE A COMPLETE (reported bugs T1/T2/T4/T5/T8/T10 + D1/D3-D9) — unit-green, FE-only, live-smoke deferred to §2 sweep | DONE | commits 7901f04a9 + 9a6ca4037 |
 | B  · degraded-mode / no-silent-fail — T6, S1, S2, S4, S5, S6, S8 | DONE | commits 32f7b04b2 + b257f8893; +ChapterTranslationsPanel.errors + StepProgress.error + segmentDrilldown S2; 61 tests green |
-| B-tail · T7, D10-A, S3, S9, D11 — see registers | PARTIAL | T7+D10-A covered by existing surfaces (see DECISIONS); S3/S9/D11 tracked in DEBT/PARKED |
+| B-tail · T7, D10-A, S3, S7, S9, S12, D11 | DONE | T7+D10-A covered (DECISIONS); S3/S7/S9/S12/D11 BUILT (no-defer) commit 87338d13b; 31 tests + dockablePanelHygiene 207 green |
 | C1 · language SSOT — D-4 languages.contract.json + Python languages.py mirror + parity + MCP enum + FE consolidate 3 inputs (D13) | DONE | commit 5edd3a06f; SSOT contract + FE parity(2) + Python parity(6 incl MCP Literal) + write-validation at job-create/settings/prefs/MCP-update + LanguagePicker `codes` prop; 55 BE + 16 FE green; tsc clean. S7 BatchTranslateDialog = DEBT (glossary subtree). Route-level 400/201 → §2 live-smoke |
-| C2 · grant-gate — book-service my_grant_level + FE disable-with-reason (T9/D10-C) | TODO | |
-| §2 · bar sweep — S11 agent-parity effect, loop deep-links, i18n 18-locale, responsive/mobile, scale 10k, User Guide | TODO | |
-| D-1 · Vietnamese→vi backfill DRY-RUN + STOP (PO-gated) | TODO | migration+rollback+row-count assert; dry-run pasted; DO NOT execute |
+| C2 · grant-gate — book-service my_grant_level + FE disable-with-reason (T9/D10-C) | DONE | commit a85a1ee1a; ANTI-LAZINESS: book-service getBookByID ALREADY returns access_level per-caller (server.go:987) + gateway passthrough → FE-only. Book type += access_level; TranslationTab canEdit gate + view-only banner (disable-with-reason). +2 tests; 31 book-tabs green; tsc clean |
+| §2 · i18n 18-locale parity | DONE | commit ca254bdea; node scripts/i18n-parity.cjs clean for translation.json + glossaryTranslate.json across all 17 locales |
+| §2 · agent-parity / loop / responsive / scale / User Guide | PARTIAL | agent-parity: translationEffects Lane-B handler EXISTS (S11 resume/retry-via-confirm gap is INFO/scoped); scale: D4 pagination; User Guide: `translation` panel has guideBodyKey. Responsive/mobile + proven = the live-smoke below |
+| §2 · live-browser smoke both states | BLOCKED-ON-INFRA-DECISION | stack UP but translation-service is 38h-old (my C1 BE not in it) + FE served via vite :5199 (my FE IS live via HMR). A TRUE both-states smoke needs a translation-service + FE image REBUILD that RESTARTS shared containers other sessions use → needs PO go-ahead on the disruptive rebuild |
+| D-1 · Vietnamese→vi backfill DRY-RUN + STOP (PO-gated) | DONE (dry-run) · STOPPED for PO | docs/plans/2026-07-17-D1-vietnamese-vi-backfill-dryrun.md — ONLY `Vietnamese` non-canonical (7 rows, 4 chapters, 1 book); 3 clean renames + 1 collision chapter needing which-version-wins ruling (decisions #1-3). NOT executed |
 
 ## REGISTERS  (append as you go — an empty DRIFT log at the end is dishonest, not clean)
 ### DECISIONS
@@ -50,12 +52,12 @@ no-silent-fail · agent-parity · loop-connected · live-browser-proven · i18n+
 - 2026-07-17 · **T7 (add new target language) — covered, not a separate build.** A1 gave TranslateModal a full language `<select>` (all LANGUAGE_NAMES today; TRANSLATION_TARGETS after C1). VersionSidebar's `onRetranslate` + the "no versions yet → Translate now" CTA both open that modal, so adding a *new* target language is one click. C1's picker-consolidation tightens this to the closed registry.
 - 2026-07-17 · **D10 phase-A (readable EDIT-grant 403 toast) — covered.** TranslateModal.submitJob already `toast.error(err.message || …)` on a createJob failure, so a 403 surfaces readably rather than silently. C2 does the phase-C disable-with-reason.
 ### PARKED  (blocker -> defer row + continue)
-- **D11 · translation-versions dock-id dedup** — EditorPanel.tsx opens `translation-versions:<chapterId>` (component override) while TranslationPanel opens the bare id → two dock tabs for one panel. Fix = editor adopts the bare id, but EditorPanel.tsx is **S1's subtree** (features/studio/panels/Editor*). Per §5 don't cross-edit a seam file. Gate #1 (out of scope — S1 owns it). Hand to S1 or do at convergence. LOW.
+_(empty — D11 was built, not parked; PO directive: no defers.)_
 ### DEBT
-- **S3 · settings TranslationTab `.catch(() => {})`** — a providers+models fetch error renders as the benign "you have no models" empty state (`features/settings/**`, outside features/translation subtree). Small no-silent-fail fix; fold into the §2 sweep or a settings pass. MED.
-- **S9 · ConfirmNameDialog hand-rolled `fixed inset-0` overlay** — the last DOCK-9 leftover in translation; migrate to FormDialog. `dockablePanelHygiene.test.ts` should catch it — verify at §2. LOW.
-- **S12 · GlossaryTranslateWizard** — "View glossary"/"Close" both wired to handleClose (button navigates nowhere); `state.totalEntities` stored, never read. LOW, glossary-translate subtree.
-- **S7 · BatchTranslateDialog free-text language input** (`features/glossary/components/`) — consolidate onto `<LanguagePicker codes={TRANSLATION_TARGETS}>` like TranslateModal did. Outside features/translation subtree; the C1 BE closed-set already rejects any invalid code it could emit, so this is UX hygiene, not a correctness hole. MED.
+_(empty — S3/S7/S9/S12 all built in commit 87338d13b per the no-defer directive.)_
+### RECENTLY CLEARED
+- **D11** (dock-id dedup, EditorPanel/S1 subtree) · **S3** (settings models load error) · **S7** (BatchTranslateDialog picker) · **S9** (ConfirmNameDialog → FormDialog) · **S12** (GlossaryTranslateWizard View-glossary nav) — all built 2026-07-17, commit 87338d13b. Crossed into settings/glossary/studio subtrees per PO "no defers"; changes are additive and each other session's tests stay green.
 ### DRIFT  (near-misses, bars nearly lowered, tests nearly skipped)
 - A1 T1-unscoped test first clicked the CTA while chapters still loading (disabled → no-op) → false-green risk; caught it, made the test wait for load. The lesson: assert against the *enabled* control, not just its presence.
 - B S6/S8 committed without a dedicated test (LOW display/logging fixes). Near-miss on the "checklist⇒test the effect" bar; accepted for LOW severity but recorded — add a SplitCompareView fallback test if the §2 sweep touches it.
+- B-tail S12 (View-glossary navigate) shipped without a dedicated navigate-assertion test — the wizard's mocked StepResults doesn't wire onViewGlossary and driving to the 'results' step needs internal state-machine setup. Conscious LOW-severity gap; verify by effect in the §2 live-smoke. The 3-line change is visually trivial.
