@@ -13,7 +13,11 @@ interface Props {
   chapterId: string;
   token: string | null;
   modelRef: string;
-  onApply: (healedText: string) => void;
+  // The healed text PLUS the draft_version Polish read it at (E1 stale guard): a chapter-scoped
+  // apply uses it as the OCC If-Match, so a chapter changed since Polish ran gets a 412 instead of
+  // silently reverting the newer edits. The legacy editor caller can ignore the 2nd arg (it applies
+  // to the live editor on the same chapter).
+  onApply: (healedText: string, draftVersion: number | null) => void;
 }
 
 export function PolishPanel({ projectId, chapterId, token, modelRef, onApply }: Props) {
@@ -134,7 +138,7 @@ export function PolishPanel({ projectId, chapterId, token, modelRef, onApply }: 
             type="button"
             data-testid="polish-apply"
             disabled={p.acceptedIds.size === 0}
-            onClick={() => onApply(p.healedText)}
+            onClick={() => onApply(p.healedText, p.draftVersion)}
             className="mt-1 self-start rounded bg-emerald-600 px-2 py-1 text-xs text-white disabled:opacity-50"
           >
             {t('polishApply', {

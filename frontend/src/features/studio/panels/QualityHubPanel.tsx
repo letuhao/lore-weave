@@ -18,6 +18,7 @@ const CARDS = [
   { panelId: 'quality-canon', icon: '⚠️', titleKey: 'canonTitle', descKey: 'canonDesc' },
   { panelId: 'quality-canon-rules', icon: '⚖️', titleKey: 'canonRulesTitle', descKey: 'canonRulesDesc' },
   { panelId: 'quality-corrections', icon: '📈', titleKey: 'correctionsTitle', descKey: 'correctionsDesc' },
+  { panelId: 'quality-heal', icon: '✨', titleKey: 'healTitle', descKey: 'healDesc' },
 ] as const;
 
 export function QualityHubPanel(props: IDockviewPanelProps) {

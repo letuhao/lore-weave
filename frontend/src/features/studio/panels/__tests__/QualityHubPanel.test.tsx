@@ -54,6 +54,7 @@ describe('QualityHubPanel', () => {
     expect(screen.getByTestId('quality-hub-card-quality-canon')).toBeInTheDocument();
     expect(screen.getByTestId('quality-hub-card-quality-canon-rules')).toBeInTheDocument();
     expect(screen.getByTestId('quality-hub-card-quality-corrections')).toBeInTheDocument();
+    expect(screen.getByTestId('quality-hub-card-quality-heal')).toBeInTheDocument();
   });
 
   it('each card opens its own sibling panel via the host, never an internal view-switch', () => {

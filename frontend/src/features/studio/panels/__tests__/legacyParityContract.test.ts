@@ -20,9 +20,14 @@ type Home = string | { retired: string } | { unported: string };
 // a retirement reason. 23 homed, 2 retired.
 const LEGACY_SUBTAB_HOME: Record<string, Home> = {
   // — already ported / successor already ships —
-  compose: 'compose',            // Studio Compose IS ComposeView's agent-native successor
-  cowriter: 'compose',           // same panel — ComposePanel renders <Chat>
-  assemble: 'agent-mode',        // chapter-gen + human gate → agent-mode accept_unit/reject_unit
+  // S1 (2026-07-16) homed the ComposeView draft loop + ChapterAssembleView as DEDICATED dock panels
+  // (scene-compose / chapter-assemble), reusing CompositionPanel in soloPanel mode. The legacy
+  // `compose`/`assemble` sub-tabs now map to those faithful homes — NOT to the Chat (`compose`
+  // panel) or `agent-mode`, which are different capabilities (conversational co-writing / autonomous
+  // multi-chapter runs) and do NOT carry the draft→candidates→accept or generate/stitch loops.
+  compose: 'scene-compose',      // S1 — the ComposeView draft/candidates/accept loop, homed as a dock panel
+  cowriter: 'compose',           // the conversational co-writer — ComposePanel renders <Chat>
+  assemble: 'chapter-assemble',  // S1 — ChapterAssembleView (generate/stitch + human gate + correction capture)
   planner: 'planner',            // PlanForge planner panel
   beats: 'plan-hub',             // Wave 6 M4a (drawer facet)
   graph: 'plan-hub',             // SceneGraphCanvas superseded — plan-hub IS the graph canvas
@@ -39,7 +44,7 @@ const LEGACY_SUBTAB_HOME: Record<string, Home> = {
   style: { unported: 'pending Wave 6 M1 — style-voice panel not yet in this branch catalog' },
   references: { unported: 'pending Wave 6 M2 — reference-shelf panel not yet in this branch catalog' },
   canon: 'quality-canon-rules', // S6 M1 — CanonRulesPanel ported into the studio dock behind QualityWorkGate
-  polish: { unported: 'pending Wave 1 — quality-heal panel not yet in this branch catalog' },
+  polish: 'quality-heal',        // S6 M3 — PolishPanel ported into the studio dock (server-side apply seam)
   progress: { unported: 'pending Wave 1 — progress panel not yet in this branch catalog' },
   flywheel: { unported: 'pending Wave 1 — quality-corrections panel not yet in this branch catalog' },
   motifs: { unported: 'pending Wave 3 — motif-library panel not yet in this branch catalog' },
