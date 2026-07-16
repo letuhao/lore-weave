@@ -44,20 +44,18 @@ Sequence: A1 → A2 → A3 → A4 → A5 → B-PLAN. (A2/A5 FE-only; A1/A3/A4 li
 - 2026-07-16 · Track B is PLAN-ONLY in this goal; Playwright/CV build+run is a SEPARATE later goal.
 
 ## 5 · Parked register (gate each)
-- **D-A3-PROACTIVE-SETTING** (A3 review MED, deferred) — `proactive_nudge` isn't exposed as an autonomous
-  toggle because chat's proactive-turn seam double-gates on a separate `assistant.proactive_enabled` setting
-  (default OFF, `chat-service/app/routers/ai_settings.py`) that has no FE. **Gate:** wire the full chain —
-  a "Proactive check-ins" toggle that sets BOTH the schedule row AND `proactive_enabled` (one concept, one
-  control), PLUS **A4.2's grounded proactive LLM content** (replace the hardcoded check-in string at
-  `chat-service/app/routers/internal.py:789` with provider-registry-resolved copy — D-PROACTIVE-LLM-CONTENT).
-  These are ONE track: the content is only observable-by-effect once proactive can fire, so both land
-  together. Until then, exposing the toggle would silently no-op (the no-silent-no-op rule).
-- **D-A3-PROACTIVE-SETTING** note: also nudge's notification-service path wasn't live-smoked (only eod_distill
-  fired); the `NOTIFICATION_SERVICE_INTERNAL_URL` (:8091) matches every other service's addressing.
-- **D-A2-DESKTOP-SHEET-STYLE** (A2 COSMETIC) — the desktop strip reuses the mobile `Sheet` (Radix Dialog
-  styled as a bottom-sheet), so on a wide desktop the Journal/Memory panels open bottom-anchored. Functional
-  + accessible (focus-trap, Escape, aria). **Gate:** a desktop-shaped panel/side-drawer is a polish pass, not
-  a reachability blocker — do it if the QC personas flag the bottom-sheet-on-desktop as jarring.
+- ~~**D-A3-PROACTIVE-SETTING**~~ **CLEARED 2026-07-16 (4f5fc6b24)** — proactive fully wired + exposed:
+  `useProactiveSetting` sets BOTH the chat opt-in AND the `proactive_nudge` schedule (ordered so a partial
+  failure can't leave the gate ON with no trigger), surfaced as a dedicated "Proactive check-ins" row on
+  desktop + mobile. A4.2 done: grounded LLM check-in via provider-registry (recent-turns grounding + scaffold
+  cleanup + static fail-safe). **LIVE-SMOKE:** a clean grounded message referencing the user's recent work;
+  reasoning-model → safe static fallback. Also fixed a latent `logger` NameError in internal.py.
+- ~~**D-A2-DESKTOP-SHEET-STYLE**~~ **CLEARED 2026-07-16 (bb3b074a0)** — the shared `Sheet` gained a `variant`
+  prop; the assistant's Journal/Memory sheets open as a centered dialog on desktop, bottom-sheet on mobile.
+  Default `'bottom'` keeps every other Sheet consumer unchanged.
+- **D-A3 remaining note (not blocking):** nudge's notification-service path still wasn't live-smoked (only
+  eod_distill + proactive fired live); `NOTIFICATION_SERVICE_INTERNAL_URL` (:8091) matches every other
+  service's addressing. Left as a QC-scenario check (S10), not a code gap.
 
 ## 6 · Debt / drift log (append as you go — an empty drift log at the end is dishonest)
 - **A1.2 near-miss (audit said MED, proved NON-ISSUE):** forget was flagged for leaving KS-owned `:Passage`
@@ -75,6 +73,14 @@ Sequence: A1 → A2 → A3 → A4 → A5 → B-PLAN. (A2/A5 FE-only; A1/A3/A4 li
 - **A3 pre-existing failure (NOT mine):** `TestReArm_UsesLocalFireTime_NotRawInterval` fails on a
   fully-stashed clean scheduler tree (re-arm lands at ~claim time, not the next 21:00). My A3 changes don't
   touch `recordSuccess`/`ComputeNextFireAt`; it belongs to the concurrent scheduler track. Recorded for honesty.
+- **Debt-clear latent bug found + fixed:** `internal.py` used `logger` (proactive-notification warn paths,
+  lines ~740/743) with NO module-level `logger` defined — a real notification failure would have raised
+  NameError → 500. Never hit in tests (those paths were mocked/happy). My grounded-content fallback path
+  exposed it; fixed by defining the module logger.
+- **Debt-clear model-quality finding (fail-safe, not a bug):** a local REASONING model (gemma-4-26b-a4b-qat)
+  emitted planning/scaffolding (or empty content) for the proactive check-in; the scaffold-cleanup then the
+  static fallback kept the output safe. A non-reasoning instruct model (qwen2.5-7b-instruct) produced a
+  clean grounded message. So proactive content quality depends on the user's model — correct + fail-safe.
 
 ## 7 · Checkpoints
 - Owner checkpoint after each cross-service slice (A1, A3) and at B-PLAN. Commit per slice with pasted evidence.

@@ -113,9 +113,12 @@ Dynamic ids interpolate an entity/chapter id (`memory-forget-<entity_id>`) — s
 
 ---
 
-## 8 · Known deferrals that shape QC scope (don't test what's intentionally off)
-- **Proactive check-ins** are NOT exposed (D-A3-PROACTIVE-SETTING) — no scenario for them until wired.
-- **Desktop sheet styling** (D-A2-DESKTOP-SHEET-STYLE) is cosmetic — S12 tests *reachability*, not the
-  bottom-sheet look.
+## 8 · Notes that shape QC scope
+- **Proactive check-ins** are now EXPOSED + wired (D-A3-PROACTIVE-SETTING cleared): add a scenario —
+  `autonomous-toggle-proactive_nudge` ON sets BOTH the chat opt-in AND the schedule; the fired turn persists
+  a GROUNDED check-in (references recent work) with a non-reasoning model, or a safe static line otherwise.
+  Verify by effect: the assistant_proactive message appears; OFF → no turn / no spend.
+- **Desktop sheet** (D-A2-DESKTOP-SHEET-STYLE cleared): the Journal/Memory sheets now open as a centered
+  dialog on desktop (`data-variant="center"`) — S12 can assert the variant, but reachability remains the bar.
 - Scenarios must **verify by effect** (visible UI + server-side row checks), never raw stream / unit-mock —
   the whole reason this campaign exists on top of the unit suites.
