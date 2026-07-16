@@ -1,6 +1,6 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "https://loreweave.dev/contracts/interview/working_memory.schema.json",
+  "$id": "https://loreweave.dev/contracts/agent-control/working_memory.schema.json",
   "title": "WorkingMemory",
   "description": "The pinned goal-state block for a roleplay/interview session. Two tiers: an immutable `charter` (written ONLY by the goal authority — a static template here, the world model in full roleplay) and a mutable `state` (the progress estimate the executive rewrites). The summarizing executive may NEVER write `charter`. See docs/specs/2026-06-23-interview-roleplay.md.",
   "type": "object",
