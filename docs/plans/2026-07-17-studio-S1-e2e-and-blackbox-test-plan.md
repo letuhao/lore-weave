@@ -127,3 +127,22 @@ Friction that is a real defect → fix-now or a tracked row; friction that is a 
   Part B report written with an explicit "is S1 genuinely usable by an author?" verdict.
 - **Not in scope:** agent-drives-the-panel E2E (Lane-A/B via chat) — that's the agent-rack test surface,
   a separate track; S1's §2-bar-#5 is unit-covered by effectCoverage.
+
+### ⚠ Running the model-gated specs against a LOCAL LM Studio (operational caveat — learned 2026-07-17)
+A full sweep of all 8 model-gated tests **back-to-back against one local LM Studio** reliably wedges its
+queue (my lesson `lm-studio-queue-wedge`: a mid-stream stop — Discard/Regenerate/Stop — disconnects the
+LLM mid-response, and sustained load compounds it). Once wedged, the next `Generate`/`Continue` stalls
+~120 s and the spec reds on `ghost toBeVisible timeout`. **This is infra, not an app/spec defect** — the
+tell is that the *same* test passes on retry (flaky, not failed) and passes when run individually. So:
+- **Run model-gated specs with `--retries=2`** (a retry rides out a transient wedge). A genuine spec bug
+  fails BOTH attempts; a wedge usually clears by the retry.
+- **Prefer spacing them** — run one model-gated spec at a time, or interleave the no-model specs — rather
+  than all 8 generations in one uninterrupted run.
+- **A full-suite red on `ghost timeout` is NOT a build blocker** — check the trace: if it's the ghost
+  never streaming (LM Studio silent) and no-model specs are green, it's the wedge. Do **not** `lms reload`
+  (the model backend is the user's infra, per `never-manage-llm-provider-model-lifecycle`); let it idle.
+- **Ordering fix already applied:** `studio-inline-correction` runs its clean **Accept** test first and the
+  mid-stream-stopping **Discard** test last, so Discard's stop can't starve a sibling in the same file.
+- **Proven-green record (2026-07-17, isolated static build :5209):** no-model 5/5 always; each model-gated
+  test green individually — A2 2/2, A3 4/4, A4 discard 1/1, A4 accept + A2 generate on their passing runs.
+  Full-suite sweep: 9 passed + 1 flaky-recovered + 3 wedge-timeouts.
