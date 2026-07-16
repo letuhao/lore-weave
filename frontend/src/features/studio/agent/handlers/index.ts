@@ -17,6 +17,11 @@ import { registerAuthoringRunEffectHandlers, _resetAuthoringRunEffectHandlers } 
 import { registerWorldEffectHandlers, _resetWorldEffectHandlers } from './worldEffects';
 import { registerArcEffectHandlers, _resetArcEffectHandlers } from './arcEffects';
 import { registerCompositionEffectHandlers, _resetCompositionEffectHandlers } from './compositionEffects';
+import { registerPlanEffectHandlers, _resetPlanEffectHandlers } from './planEffects';
+// S4 (spec 33) — motif + conformance families live in the motif subtree (component-mounting keeps
+// ownership disjoint; the barrel just registers them).
+import { registerMotifEffectHandlers, _resetMotifEffectHandlers } from '@/features/composition/motif/studioMotifEffects';
+import { registerConformanceEffectHandlers, _resetConformanceEffectHandlers } from '@/features/composition/motif/studioConformanceEffects';
 
 /** Register every Lane-B domain handler. Idempotent (each file guards itself). */
 export function registerAllStudioEffectHandlers(): void {
@@ -28,6 +33,9 @@ export function registerAllStudioEffectHandlers(): void {
   registerWorldEffectHandlers();
   registerArcEffectHandlers();
   registerCompositionEffectHandlers();
+  registerPlanEffectHandlers();
+  registerMotifEffectHandlers();
+  registerConformanceEffectHandlers();
 }
 
 /** Test-only: undo every idempotency guard so a test can re-register after clearEffectHandlers(). */
@@ -40,4 +48,7 @@ export function _resetAllStudioEffectHandlers(): void {
   _resetWorldEffectHandlers();
   _resetArcEffectHandlers();
   _resetCompositionEffectHandlers();
+  _resetPlanEffectHandlers();
+  _resetMotifEffectHandlers();
+  _resetConformanceEffectHandlers();
 }

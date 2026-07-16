@@ -54,6 +54,9 @@ const WRITE_TOOLS: Record<string, string> = {
   // writes are covered by bookEffects; create_work + generate were the residual hole).
   composition_create_work: 'compositionEffects',
   composition_generate: 'compositionEffects',
+  // S1-A3 — the prose WRITE (bookEffects, via /^composition_write_prose/). Now enumerated so the
+  // ledger guards it (and its READ sibling composition_get_prose is asserted handler-free below).
+  composition_write_prose: 'bookEffects',
   // publish → flywheel (S6/M5): the delta the flywheel panel renders. Keyed on extraction-complete,
   // NOT the publish confirm (the delta is produced async after publish) — see the S6 spec §9 (E2).
   composition_publish: 'flywheelEffects',
@@ -127,8 +130,8 @@ const PENDING_FILES: Record<string, string> = {
   // compositionEffects: SHIPPED (S6 M1) — `/^composition_canon_rule_/` covers the canon family.
   // arcEffects: SHIPPED (S2/spec 32) — `/^composition_arc_/` covers every composition_arc_* write.
   flywheelEffects: 's6-m5',      // publish → flywheel delta; ships with the flywheel panel (S6 M5).
-  conformanceEffects: 's4',      // conformance_run → quality-conformance panel (S4/spec 33).
-  motifEffects: 'wave-3',
+  // conformanceEffects: SHIPPED (S4/spec 33) — /^composition_conformance_run/ (studioConformanceEffects).
+  // motifEffects: SHIPPED (S4/spec 33 wave 3) — /^composition_motif_/ (studioMotifEffects).
   // planEffects: SHIPPED (S3/M4) — `/^plan_(?!pass_status)/` refreshes the Pass Rail on plan_* writes.
   registryEffects: 'wave-7',
 };
@@ -153,6 +156,7 @@ const READ_TOOLS = [
   'kg_graph_query', 'kg_project_list', 'kg_triage_list',
   'world_map_get', 'world_map_list',
   'composition_diagnostics', 'composition_get_work', 'composition_list_outline',
+  'composition_get_prose', 'composition_get_outline_node',   // S1-A3 — reads MUST stay handler-free (no cache thrash)
   'composition_motif_get', 'composition_arc_get', 'plan_pass_status',
   'registry_list_skills', 'registry_get_workflow',
 ];

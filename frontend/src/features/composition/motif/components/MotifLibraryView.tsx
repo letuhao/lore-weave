@@ -133,6 +133,13 @@ export function MotifLibraryView({ token, meUserId: meProp, projectId, bookId, h
             ) : lib.motifs.length === 0 ? (
               <p data-testid="motif-no-match" className="p-4 text-center text-xs text-neutral-500">{t('motif.list.noMatch', { defaultValue: 'No motifs match — clear filters.' })}</p>
             ) : (
+              <>
+              {/* §2#9 scale — never silently hide the tail of a >100-motif library. */}
+              {lib.truncated && (
+                <p data-testid="motif-list-truncated" className="mb-1 rounded bg-amber-50 px-2 py-0.5 text-[11px] text-amber-700 dark:bg-amber-950/30 dark:text-amber-300">
+                  {t('motif.list.truncated', { defaultValue: 'Showing the first 100 — narrow with search or filters to see the rest.' })}
+                </p>
+              )}
               <div className="grid grid-cols-1 gap-2 lg:grid-cols-2">
                 {lib.motifs.map((m) => (
                   <MotifCard
@@ -147,6 +154,7 @@ export function MotifLibraryView({ token, meUserId: meProp, projectId, bookId, h
                   />
                 ))}
               </div>
+              </>
             )}
           </MotifStateBoundary>
         </div>

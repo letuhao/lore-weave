@@ -189,5 +189,9 @@ export function useMotifLibrary(
     available,
     rawCount: baseData.length,
     hasBook: !!bookId,
+    // §2#9 scale — the list is server-capped at 100; surface it so a >100-motif library never
+    // silently hides its tail (the "no silent cap" lesson). The raw fetch (pre-facet) hitting the
+    // cap is the signal; facet-narrowing below it is expected.
+    truncated: (query.data?.length ?? 0) >= 100,
   };
 }

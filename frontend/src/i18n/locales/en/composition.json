@@ -638,7 +638,8 @@
     "search": "Search motifs",
     "overuse": "\"{{name}}\" is already used in {{chapters}} — consider varying it.",
     "list": {
-      "noMatch": "No motifs match — clear filters."
+      "noMatch": "No motifs match — clear filters.",
+      "truncated": "Showing the first 100 — narrow with search or filters to see the rest."
     },
     "error": {
       "load": "Couldn't load — please retry."
