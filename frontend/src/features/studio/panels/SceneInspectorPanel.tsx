@@ -15,6 +15,7 @@ import { useSceneInspector } from './useSceneInspector';
 import { useConformanceStatus } from './useConformanceStatus';
 import { EntityRefField } from './EntityRefField';
 import { SceneLinksSection } from './SceneLinksSection';
+import { SceneMotifsSection } from '@/features/composition/motif/components/SceneMotifsSection';
 
 const STATUSES: OutlineNode['status'][] = ['empty', 'outline', 'drafting', 'done'];
 const SOURCE_LABEL: Record<string, string> = { authored: 'Authored', decompiled: 'Mined', planforge: 'PlanForge' };
@@ -174,6 +175,18 @@ export function SceneInspectorPanel(props: IDockviewPanelProps) {
           value={n.value_shift} min={-100} max={100} onCommit={(v) => setF({ value_shift: v })} />
         <NumberField testid="scene-inspector-targetwords" label={t('panels.scene-inspector.f.targetWords', { defaultValue: 'Target words' })}
           value={n.target_words} min={0} onCommit={(v) => setF({ target_words: v })} />
+      </Section>
+
+      {/* 3b §3.2a — Motifs: bind/swap/clear this scene's motif + the ranked Suggest button. */}
+      <Section title={t('panels.scene-inspector.section.motifs', { defaultValue: 'Motifs' })}>
+        <SceneMotifsSection
+          projectId={sb.projectId ?? null}
+          bookId={host.bookId ?? null}
+          chapterId={n.chapter_id ?? null}
+          sceneId={n.id}
+          roster={rosterOptions}
+          token={accessToken ?? null}
+        />
       </Section>
 
       {/* 22-C3 Links — this scene's causal edges, reusing the Scene Graph's data (DOCK-2, no fork). */}

@@ -733,7 +733,8 @@
     },
     "binding": {
       "freeForm": "No motif matched — this scene is free-form.",
-      "commitGenerate": "Commit + write this scene →"
+      "commitGenerate": "Commit + write this scene →",
+      "noWork": "Create a plan for this book to bind motifs to its scenes."
     },
     "swap": {
       "title": "Swap motif",
@@ -842,6 +843,14 @@
         "precedes": "Precedes",
         "variant_of": "Variant of"
       }
+    },
+    "suggest": {
+      "button": "Suggest a motif",
+      "loading": "Ranking motifs for this scene…",
+      "error": "Could not suggest motifs.",
+      "retry": "Retry",
+      "empty": "No motif fits this scene yet — add more to your library.",
+      "bind": "Bind"
     }
   },
   "authoringRun": {

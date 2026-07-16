@@ -33,6 +33,14 @@ export type MotifLinkRow = {
   neighbor_name: string;
 };
 
+// One ranked suggest candidate (BE-M4): the motif + its score + the "why this motif"
+// breakdown (tension/genre/precondition/cosine, optionally degraded).
+export type MotifSuggestion = {
+  motif: Motif;
+  score: number;
+  match_reason: Record<string, unknown>;
+};
+
 /** GET /motifs scope — the router accepts ONLY mine|system|all (NOT 'public';
  *  others' public rows are the CATALOG route, never this list). */
 export type MotifListParams = {
@@ -121,6 +129,12 @@ export const motifApi = {
   },
   deleteLink(linkId: string, token: string, bookId?: string | null): Promise<{ deleted: boolean; link_id: string }> {
     return apiJson(`${BASE}/motif-links/${linkId}${_qs({ book_id: bookId ?? undefined })}`, { method: 'DELETE', token });
+  },
+
+  // ── ranked suggest (BE-M4, 3b) — the GUI twin of composition_motif_suggest_for_chapter,
+  //    replacing the flat list(scope=all,100) behind SwapMotifPopover (GG-1 Determinism).
+  suggestForChapter(projectId: string, nodeId: string, token: string, limit = 5): Promise<{ candidates: MotifSuggestion[] }> {
+    return apiJson(`${BASE}/works/${projectId}/scenes/${nodeId}/suggest-motifs${_qs({ limit })}`, { token });
   },
 
   // ── Tier-W: adopt = clone into YOUR library (R2.8 confirm-token), via the

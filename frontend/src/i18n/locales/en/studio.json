@@ -145,6 +145,11 @@
       "desc": "Your accept / edit / regenerate / reject rates on AI drafts — the quality signal",
       "guideBody": "Corrections is the mirror on your own editing: every time you accept, edit, pick a different candidate, regenerate, or reject an AI draft, that choice is recorded — and this panel shows the rates, split by Diverge (K-option) vs Stream. A lower edit/regenerate/reject rate (and higher accept-as-is) in Diverge means the reranker is earning its extra latency. It is advisory and read-only; it never changes your prose — it tells you whether the co-writer is getting better at your book."
     },
+    "quality-heal": {
+      "title": "Self-heal",
+      "desc": "Run Polish on a chapter and accept each fix before it touches your prose",
+      "guideBody": "Self-heal runs a cheap proof-reading pass over a chapter and proposes fixes — pronoun drift, typos, canon slips, over-long descriptive beats — each shown as an accept/reject row. Deterministic fixes (typos, pronouns) come pre-ticked; semantic rewrites are unticked for you to judge. Nothing touches your prose until you press Apply, and even then it writes with a version check: if the chapter changed since Polish ran, the apply is refused rather than reverting your newer edits."
+    },
     "kg-overview": {
       "title": "Overview",
       "desc": "Project summary and quick actions",
@@ -336,7 +341,8 @@
         "cast": "Cast & Setting",
         "craft": "Craft",
         "links": "Links",
-        "grounding": "Grounding"
+        "grounding": "Grounding",
+        "motifs": "Motifs"
       },
       "links": {
         "empty": "No causal links yet.",
@@ -590,10 +596,46 @@
   },
   "planPasses": {
     "comingSoon": "The 7-pass rail loads here.",
-    "noBook": "Open a book to compile its plan."
+    "noBook": "Open a book to compile its plan.",
+    "noRun": "No plan run yet — open the Planner to propose and compile one.",
+    "loading": "Loading passes…",
+    "notCompiled": "This run has no compiled package yet. Compile it in the Planner before running passes.",
+    "openPlanner": "← Planner (propose / compile)",
+    "blocking": "blocking",
+    "advisory": "advisory",
+    "running": "running…",
+    "done": "done",
+    "failed": "failed",
+    "notRun": "— not run",
+    "fresh": "fresh",
+    "stale": "stale",
+    "run": "run…",
+    "rerun": "re-run…",
+    "review": "review →",
+    "blocked": "blocked",
+    "blockedBy": "blocked by: {{blockers}}",
+    "runSpends": "Run {{pass}} — this spends 1 LLM call",
+    "runNow": "Run {{pass}}",
+    "cancel": "Cancel",
+    "approve": "Approve",
+    "reject": "Reject",
+    "edit": "Edit",
+    "saveEdits": "Save edits",
+    "cursor": "{{done}} of {{total}}",
+    "blockedAt": "blocked at",
+    "reviewTitle": "Review {{pass}}",
+    "reviewLoading": "Loading…",
+    "reviewNoContent": "No artifact content to show.",
+    "reviewPrompt": "Approve {{pass}}? This lets the compiler proceed past it.",
+    "seedUnavailable": "Glossary seed proposal unavailable.",
+    "seedApplied": "Glossary seed applied — cast can be approved.",
+    "seedGate": "Glossary seed is \"{{status}}\". Apply it before approving the cast (PF-7).",
+    "applySeed": "Apply seed",
+    "approveGated": "Apply the glossary seed first (PF-7)"
   },
   "planner": {
     "sourcePlaceholder": "Paste the novel-system markdown…",
+    "proposeBlind": "Proposed from this braindump only. Existing chapters are not read.",
     "propose": "Propose",
     "model": "Model",
     "empty": "Paste your novel-system markdown and Propose to start a plan run.",
@@ -789,6 +831,8 @@
     "canonRulesDesc": "Author the invariants the critic enforces",
     "correctionsTitle": "Corrections",
     "correctionsDesc": "Your accept / edit / regenerate / reject rates",
+    "healTitle": "Self-heal",
+    "healDesc": "Run Polish and accept each fix before it touches your prose",
     "canonFromRules": "Broken rules ({{n}})",
     "canonRuleError": "Could not load canon-rule violations — try again.",
     "canonRuleGone": "A rule that no longer exists",

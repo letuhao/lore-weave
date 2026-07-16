@@ -14,7 +14,7 @@ import logging
 from typing import Annotated, Any, Literal
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi import status as http_status
 from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, Field, StringConstraints
@@ -37,6 +37,8 @@ from app.db.repositories.style_voice import StyleProfileRepo, VoiceProfileRepo
 from app.db.repositories.narrative_thread import NarrativeThreadRepo
 from app.db.repositories.motif_application import MotifApplicationRepo
 from app.db.repositories.motif_repo import MotifRepo
+from app.db.repositories.motif_retrieve import MotifRetriever
+from app.db.pool import get_pool
 from app.db.repositories.outline import OutlineRepo
 from app.db.repositories.references import ReferencesRepo
 from app.db.repositories.scene_links import SceneLinksRepo
@@ -1425,6 +1427,35 @@ async def suggest_cast(
     bios = await glossary.select_for_context(work.book_id, user_id, query)
     suggested = [b["entity_id"] for b in bios if b.get("entity_id")]
     return {"suggested_entity_ids": suggested}
+
+
+@router.get("/works/{project_id}/scenes/{node_id}/suggest-motifs")
+async def suggest_motifs(
+    project_id: UUID, node_id: UUID,
+    limit: int = Query(default=5, ge=1, le=20),
+    user_id: UUID = Depends(get_current_user),
+    works: WorksRepo = Depends(get_works_repo),
+    outline: OutlineRepo = Depends(get_outline_repo),
+    grant: GrantClient = Depends(get_grant_client_dep),
+) -> dict[str, Any]:
+    """BE-M4 — ranked motif candidates for a chapter node, each with a `match_reason`
+    breakdown (tension/genre/precondition/semantic). The GUI twin of the agent-only
+    `composition_motif_suggest_for_chapter` — it replaces the FE's flat `list(scope=all,100)`
+    behind SwapMotifPopover (spec 33 §2.5: a GG-1 Determinism gap in one hook). VIEW-gated on
+    the Work's book; a node from another Work → uniform 404 (per-tool IDOR)."""
+    work, node = await _load_work_node(
+        works, outline, grant, user_id, project_id, node_id, GrantLevel.VIEW)
+    retriever = MotifRetriever(get_pool())
+    candidates = await retriever.retrieve(
+        user_id, book_id=work.book_id, project_id=project_id,
+        genre_tags=list(getattr(work, "genre_tags", []) or []),
+        language=getattr(work, "language", None) or "en",
+        beat_role=None, tension=getattr(node, "tension_target", None), limit=limit,
+    )
+    return {"candidates": [
+        {"motif": c.motif.model_dump(mode="json"), "score": c.score, "match_reason": c.match_reason}
+        for c in candidates
+    ]}
 
 
 @router.get("/jobs/{job_id}")
