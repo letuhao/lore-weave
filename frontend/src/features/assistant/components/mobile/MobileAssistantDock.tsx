@@ -7,11 +7,13 @@
 // The dock is the thumb-zone: "End my day" is a VISIBLE primary button (not a buried gesture —
 // the drafts' rev.2 fix), and "Today"/"Journal" open addressable sheets (?sheet=…) so a deep
 // link or the hardware Back button behaves correctly (MB4).
-import { CalendarCheck, BookText, ChevronRight } from 'lucide-react';
+import { CalendarCheck, BookText, ChevronRight, Brain } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useSheetRoute } from '@/components/shared/Sheet';
 import { useAssistant } from '../../context/AssistantContext';
 import { useDiaryEntries } from '../../hooks/useDiaryEntries';
+import { useMemoryEntities } from '../../hooks/useMemoryEntities';
+import { MobileMemorySheet, MEMORY_SHEET_ID } from './MobileMemorySheet';
 import { useDiaryFactInbox } from '../../hooks/useDiaryFactInbox';
 import { useReflection } from '../../hooks/useReflection';
 import { useScorecards } from '../../hooks/useScorecards';
@@ -28,6 +30,7 @@ export function MobileAssistantDock() {
   const scorecards = useScorecards();
   const tz = useTimezone();
   const journal = useDiaryEntries(bookId);
+  const memory = useMemoryEntities(bookId);
 
   // A small "needs your attention" count for the Today button: captured drafts + facts to review.
   const todayCount = rail.entities.length + inbox.facts.length;
@@ -96,6 +99,16 @@ export function MobileAssistantDock() {
             openSheet(JOURNAL_SHEET_ID);
           }}
         />
+
+        <DockButton
+          testid="dock-memory"
+          icon={Brain}
+          label="Memory"
+          onClick={() => {
+            void memory.refresh();
+            openSheet(MEMORY_SHEET_ID);
+          }}
+        />
       </div>
 
       {/* Addressable sheets (portaled; open iff ?sheet=<id>). */}
@@ -112,6 +125,13 @@ export function MobileAssistantDock() {
         inbox={inbox}
       />
       <MobileJournalSheet entries={journal.entries} loading={journal.loading} error={journal.error} />
+      <MobileMemorySheet
+        entities={memory.entities}
+        loading={memory.loading}
+        error={memory.error}
+        search={memory.search}
+        onSearch={memory.setSearch}
+      />
     </div>
   );
 }

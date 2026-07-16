@@ -60,6 +60,9 @@ vi.mock('../../../hooks/useTimezone', () => ({
 vi.mock('../../../hooks/useDiaryEntries', () => ({
   useDiaryEntries: () => ({ entries: [], loading: false, error: null, refresh: journalRefresh }),
 }));
+vi.mock('../../../hooks/useMemoryEntities', () => ({
+  useMemoryEntities: () => ({ entities: [], loading: false, error: null, search: '', setSearch: vi.fn(), refresh: vi.fn() }),
+}));
 
 import { MobileAssistantDock } from '../MobileAssistantDock';
 
