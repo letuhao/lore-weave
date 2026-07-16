@@ -119,6 +119,16 @@ gate T1–T4 has a GREEN spec on the BUILT image (or a tracked waiver) — then 
 - The stateful/destructive specs (S1/S3/S4/S6/S10b) are the risk surface — each self-fixtures + tears down.
 - Owner checkpoint only at genuine product decisions or a destructive/irreversible action.
 
+## 8b · Real-user pass + fix (2026-07-16, after the campaign)
+Drove the built app as a real user (screenshots evaluated): the mobile onboarding + desktop home strip +
+memory sheet all evaluate WELL. Found + **FIXED F-QC-1** (b124c0cbb) — the diary assistant now auto-creates
+its session and lands straight in a ready "Work Assistant" chat (was: generic new-chat dialog with
+novel-writing personas). That unblocked **S1**: demonstrated the core loop end-to-end — typed a note → gemma
+replied warmly → End my day → a coherent first-person diary entry ("shipped the Q3 billing migration with
+Alice… a great sense of relief"). S1 is `@slow`/flaky-for-CI (non-idempotent daily state), so it's a proof,
+not a gate. **Deterministic suite: 16 green** (`assistant- --grep-invert @slow`). Minor open nit: the chat
+input placeholder is still generic novel copy on the assistant. Voice loop still deferred (F-QC-2 + heavy).
+
 ## 8 · 🏁 CAMPAIGN COMPLETE 2026-07-16
 Every §4 board row is ✅ (green spec) or ⏭️ WAIVED (concrete blocker + existing proof). **14 assistant e2e
 tests GREEN in one run on the built image :5185** (`PLAYWRIGHT_BASE_URL=…:5185 npx playwright test assistant-`
