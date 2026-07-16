@@ -1,0 +1,16 @@
+[package]
+name = "contracts-agent-control"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+publish.workspace = true
+description = "ACP A3 — typed Rust mirror of the Agent Control Plane contracts (contracts/agent-control/*.schema.json): the working-memory/charter block a Rust agent-runtime produces (roleplay-service) or consumes. Serde structs replace hand-rolled JSON; a schema-conformance test proves both-sides agreement. The reqwest executive/probe client is deferred (D-ACP-RUST-CLIENT) until a Rust runtime calls the executive."
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+serde = { workspace = true }
+serde_json = { workspace = true }

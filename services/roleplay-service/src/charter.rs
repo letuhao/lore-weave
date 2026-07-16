@@ -8,7 +8,10 @@
 //! `checklist` directly; freeform roleplay uses `premise` / `beats`. We accept
 //! both (goal||premise, checklist||beats) and always emit the canonical charter.
 
-use serde_json::{Value, json};
+use contracts_agent_control::{Charter, WorkingMemory};
+use serde_json::Value;
+#[cfg(test)]
+use serde_json::json;
 
 fn str_field(v: &Value, key: &str) -> Option<String> {
     v.get(key).and_then(Value::as_str).map(str::to_owned).filter(|s| !s.trim().is_empty())
@@ -45,30 +48,15 @@ pub fn freeze(scenario: &Value, rubric: Option<&Value>, fallback_goal: &str) -> 
     let language = str_field(scenario, "language").unwrap_or_else(|| "en".to_string());
     let time_budget_min = scenario.get("time_budget_min").and_then(Value::as_i64);
 
-    let charter = json!({
-        "goal": goal,
-        "phases": phases,
-        "checklist": checklist,
-        "time_budget_min": time_budget_min,
-        "language": language,
-    });
-
-    let mut seed = json!({
-        "version": 1,
-        "charter": charter.clone(),
-        "state": {
-            "phase": "",
-            "covered": [],
-            "elapsed_min": null,
-            "drift_note": null,
-            "redirect_hint": null,
-        },
-    });
-    if let Some(r) = rubric {
-        seed["rubric"] = r.clone();
-    }
-
-    (charter, seed)
+    // ACP A3 — build the charter + seed via the shared TYPED contract structs (not hand-rolled
+    // JSON), so the producer can't drift from chat/knowledge's WorkingMemory (the comment above
+    // warned about exactly this). The serialized Value is byte-identical to the prior json!.
+    let charter = Charter { goal, phases, checklist, time_budget_min, language };
+    let seed = WorkingMemory::seed(charter.clone(), rubric.cloned());
+    (
+        serde_json::to_value(&charter).expect("charter serializes"),
+        serde_json::to_value(&seed).expect("seed serializes"),
+    )
 }
 
 #[cfg(test)]
