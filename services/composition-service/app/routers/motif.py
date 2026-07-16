@@ -157,22 +157,24 @@ async def list_motifs(
     language: str | None = Query(default=None, max_length=20),
     status: str = Query(default="active", pattern="^(draft|active|archived)$"),
     limit: int = Query(default=50, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
     user_id: UUID = Depends(get_current_user),
     repo: MotifRepo = Depends(get_motif_repo),
 ) -> dict[str, Any]:
     """Tier-merged list under the read predicate. `scope=mine` (owner=caller),
     `system` (owner NULL), `all` (owned + system; NOT others' public — that is the
     catalog). Full owner/author view (the caller owns or is the platform for every
-    row). `embedding` is never projected."""
+    row). `embedding` is never projected. `offset` paginates a >limit library (§2#9 scale)."""
     repo_scope = "user" if scope == "mine" else scope  # repo names the owned scope 'user'
     rows = await repo.list_for_caller(
         user_id, scope=repo_scope, genre=genre, kind=kind, status=status,
-        q=q, language=language, limit=limit,
+        q=q, language=language, limit=limit, offset=offset,
     )
     return {
         "motifs": [m.model_dump(mode="json") for m in rows],
         "scope": scope,
         "limit": limit,
+        "offset": offset,
     }
 
 

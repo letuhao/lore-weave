@@ -71,7 +71,23 @@ export function QualityConformancePanel(props: IDockviewPanelProps) {
       </div>
       {chapterId ? (
         <div className="min-h-0 flex-1">
-          <ConformanceTraceView projectId={work.projectId} chapterId={chapterId} token={accessToken} modelRef={modelRef || null} />
+          <ConformanceTraceView
+            projectId={work.projectId}
+            chapterId={chapterId}
+            token={accessToken}
+            modelRef={modelRef || null}
+            onOpenScene={(sceneId, chId) => {
+              // §2#6 loop-connect — publish the selection + open the scene surface (the SceneBrowser pattern).
+              if (sceneId) {
+                host.publish({ type: 'scene', sceneId, chapterId: chId });
+                host.openPanel('scene-inspector', { focus: true });
+              } else {
+                // empty state: no specific scene yet → land on the scene-browser to pick one to bind.
+                host.publish({ type: 'chapter', chapterId: chId, bookId: host.bookId });
+                host.openPanel('scene-browser', { focus: true });
+              }
+            }}
+          />
         </div>
       ) : (
         <div data-testid="quality-conformance-no-chapter" className="p-4 text-center text-neutral-500">

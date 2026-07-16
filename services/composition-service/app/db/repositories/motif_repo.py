@@ -522,6 +522,7 @@ class MotifRepo:
         self, caller_id: UUID, *, scope: str = "all", genre: str | None = None,
         kind: str | None = None, status: str | None = "active", q: str | None = None,
         language: str | None = None, book_id: UUID | None = None, limit: int = 100,
+        offset: int = 0,
     ) -> list[Motif]:
         """Tier-merged list under the read predicate (system | public | owner).
         `scope` narrows the predicate: 'system' (owner NULL), 'user' (owner=caller),
@@ -566,11 +567,13 @@ class MotifRepo:
             params.append(f"%{q}%")
             where.append(f"(name ILIKE ${len(params)} OR summary ILIKE ${len(params)})")
         params.append(max(0, limit))
+        limit_pos = len(params)
+        params.append(max(0, offset))
         query = f"""
         SELECT {_SELECT_COLS} FROM motif
         WHERE {" AND ".join(where)}
         ORDER BY owner_user_id NULLS FIRST, name
-        LIMIT ${len(params)}
+        LIMIT ${limit_pos} OFFSET ${len(params)}
         """
         async with self._pool.acquire() as c:
             rows = await c.fetch(query, *params)

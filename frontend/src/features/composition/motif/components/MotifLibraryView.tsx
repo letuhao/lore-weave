@@ -134,7 +134,7 @@ export function MotifLibraryView({ token, meUserId: meProp, projectId, bookId, h
               <p data-testid="motif-no-match" className="p-4 text-center text-xs text-neutral-500">{t('motif.list.noMatch', { defaultValue: 'No motifs match — clear filters.' })}</p>
             ) : (
               <>
-              {/* §2#9 scale — never silently hide the tail of a >100-motif library. */}
+              {/* §2#9 scale — book/shared aren't offset-paginated; never silently hide their tail. */}
               {lib.truncated && (
                 <p data-testid="motif-list-truncated" className="mb-1 rounded bg-amber-50 px-2 py-0.5 text-[11px] text-amber-700 dark:bg-amber-950/30 dark:text-amber-300">
                   {t('motif.list.truncated', { defaultValue: 'Showing the first 100 — narrow with search or filters to see the rest.' })}
@@ -154,6 +154,22 @@ export function MotifLibraryView({ token, meUserId: meProp, projectId, bookId, h
                   />
                 ))}
               </div>
+              {/* §2#9 scale — real pagination: fetch the next offset page (no silent 100-cap). */}
+              {lib.hasMore && (
+                <div className="mt-2 text-center">
+                  <button
+                    type="button"
+                    data-testid="motif-load-more"
+                    disabled={lib.isLoadingMore}
+                    onClick={lib.loadMore}
+                    className="rounded border border-neutral-300 px-3 py-1 text-[11px] hover:bg-neutral-50 disabled:opacity-50 dark:border-neutral-600 dark:hover:bg-neutral-800"
+                  >
+                    {lib.isLoadingMore
+                      ? t('motif.list.loadingMore', { defaultValue: 'Loading…' })
+                      : t('motif.list.loadMore', { defaultValue: 'Load more' })}
+                  </button>
+                </div>
+              )}
               </>
             )}
           </MotifStateBoundary>

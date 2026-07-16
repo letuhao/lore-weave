@@ -51,6 +51,7 @@ export type MotifListParams = {
   q?: string;
   language?: string;
   limit?: number;
+  offset?: number;   // §2#9 scale — paginate a >limit library
 };
 
 /** GET /motifs/catalog params — the catalog route has NO scope (always public)

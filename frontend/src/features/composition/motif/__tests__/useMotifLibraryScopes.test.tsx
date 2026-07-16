@@ -71,3 +71,26 @@ describe('useMotifLibrary — 6-tab partition', () => {
     expect(motifApi.list).toHaveBeenCalledWith(expect.objectContaining({ scope: 'system' }), 't');
   });
 });
+
+describe('useMotifLibrary — offset pagination (§2#9 scale)', () => {
+  it('a full page ⇒ hasMore; loadMore fetches the next offset and accumulates', async () => {
+    const page1 = Array.from({ length: 100 }, (_, i) => ({ id: `m${i}`, book_id: null, book_shared: false, code: `c${i}`, name: `M${i}`, kind: 'scheme', genre_tags: [], owner_user_id: 'u', visibility: 'private' }));
+    const page2 = [{ id: 'm100', book_id: null, book_shared: false, code: 'c100', name: 'M100', kind: 'scheme', genre_tags: [], owner_user_id: 'u', visibility: 'private' }];
+    (motifApi.list as ReturnType<typeof vi.fn>).mockImplementation((p: { offset?: number }) =>
+      Promise.resolve({ motifs: (p.offset ?? 0) === 0 ? page1 : page2 }));
+    const { result } = renderHook(() => useMotifLibrary('t', { initialScope: 'my', bookId: null }), { wrapper: wrapper() });
+    await waitFor(() => expect(result.current.motifs.length).toBe(100));
+    expect(result.current.hasMore).toBe(true);   // a full page ⇒ maybe more
+    act(() => result.current.loadMore());
+    await waitFor(() => expect(result.current.motifs.length).toBe(101));   // accumulated
+    expect(result.current.hasMore).toBe(false);   // short page ⇒ done
+    expect(motifApi.list).toHaveBeenCalledWith(expect.objectContaining({ offset: 100 }), 't');
+  });
+
+  it('a short first page ⇒ no hasMore (no load-more button)', async () => {
+    (motifApi.list as ReturnType<typeof vi.fn>).mockResolvedValue({ motifs: [{ id: 'm1', book_id: null, book_shared: false, code: 'c', name: 'M', kind: 'scheme', genre_tags: [], owner_user_id: 'u', visibility: 'private' }] });
+    const { result } = renderHook(() => useMotifLibrary('t', { initialScope: 'my', bookId: null }), { wrapper: wrapper() });
+    await waitFor(() => expect(result.current.motifs.length).toBe(1));
+    expect(result.current.hasMore).toBe(false);
+  });
+});
