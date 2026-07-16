@@ -463,6 +463,41 @@
       "errArchived": "Cannot merge archived entities. Restore them first.",
       "errGlossaryConflict": "Both entities are anchored to different glossary entries. Resolve the glossary anchors before merging.",
       "errUnknown": "Merge failed: {{reason}}"
+    },
+    "create": {
+      "title": "New entity",
+      "description": "Hand-author a knowledge-graph entity. It starts as discovered; anchor it later to make it canonical.",
+      "newButton": "New Entity",
+      "needsProject": "Select a project first",
+      "field": {
+        "name": "Name",
+        "kind": "Kind"
+      },
+      "save": "Create",
+      "saving": "Creating…",
+      "cancel": "Cancel",
+      "success": "Entity created — {{name}} ({{kind}})",
+      "dedup": "Already existed — showing {{name}} ({{kind}})",
+      "failed": "Could not create entity — {{error}}",
+      "discoveredHint": "New entities start as discovered. Canonical status is earned by anchoring to the glossary."
+    },
+    "kind": {
+      "character": "Character",
+      "location": "Location",
+      "organization": "Organization",
+      "concept": "Concept",
+      "item": "Item"
+    },
+    "archive": {
+      "action": "Archive",
+      "confirm": "Hide this entity? Its relations and glossary anchor are kept; it disappears from the active list. You can Undo right after, or surface it again via the Archived filter.",
+      "success": "Entity archived.",
+      "failed": "Could not archive — {{error}}",
+      "undo": "Undo"
+    },
+    "restore": {
+      "success": "Entity restored.",
+      "failed": "Could not restore — {{error}}"
     }
   },
   "jobs": {
@@ -1080,6 +1115,23 @@
       "markWrong": "Mark wrong",
       "invalidating": "Removing…",
       "failed": "Couldn't save the correction: {{error}}"
+    },
+    "create": {
+      "title": "Link entity",
+      "description": "Create a relation from {{subject}} to another of your entities.",
+      "action": "Link entity",
+      "subject": "From",
+      "predicate": "Relation",
+      "object": "To",
+      "objectPlaceholder": "Search your entities…",
+      "noMatches": "No matching entities.",
+      "save": "Create link",
+      "saving": "Linking…",
+      "cancel": "Cancel",
+      "success": "Relation created.",
+      "notYours": "Could not create link — an endpoint isn't one of your entities.",
+      "selfLoop": "An entity cannot relate to itself.",
+      "failed": "Could not create link — {{error}}"
     }
   },
   "events": {
