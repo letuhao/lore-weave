@@ -14,6 +14,8 @@ import type { IDockviewPanelProps } from 'dockview-react';
 import { useAuth } from '@/auth';
 import { WorldMap } from '@/features/composition/components/WorldMap';
 import { useWorkResolution } from '@/features/composition/hooks/useWork';
+import { useActiveWorkId } from '@/features/composition/hooks/useActiveWork';
+import { resolveActiveWork } from '@/features/composition/workSelect';
 import { useStudioHost, useStudioBusSelector } from '../host/StudioHostProvider';
 import { useStudioPanel } from './useStudioPanel';
 
@@ -28,17 +30,12 @@ export function PlaceGraphPanel(props: IDockviewPanelProps) {
   const activeChapterId = useStudioBusSelector((s) => s.activeChapterId);
 
   // useWorkResolution resolves to the ENVELOPE `WorkResolution {status, work, candidates}`, NOT a bare
-  // Work — the same status cascade the other consumers use (WhatIfCanvasPanel/CompositionPanel): a
-  // `found` work, else the first `candidates` work, else null. The leaf reads `work.settings.world_map`,
-  // so mounting it with a null Work would crash — the wrapper intercepts that below.
+  // Work — resolve the ACTIVE Work (EC-3d: per-book pref, else canonical) so the place graph follows a
+  // "Switch to" a dị bản. The leaf reads `work.settings.world_map`, so mounting it with a null Work
+  // would crash — the wrapper intercepts that below.
   const workQ = useWorkResolution(host.bookId, accessToken);
-  const res = workQ.data;
-  const work =
-    res?.status === 'found'
-      ? res.work
-      : res?.status === 'candidates'
-        ? (res.candidates[0] ?? null)
-        : null;
+  const { data: activeWorkId } = useActiveWorkId(host.bookId, accessToken);
+  const work = resolveActiveWork(workQ.data, activeWorkId);
 
   // Deep-links (§4.1, S3). onViewCast → the s7-4 `cast` panel with a search prefill (OQ-1:
   // CastCodexPanel already accepts a `search` prop; params.search is the settled key). "Author other

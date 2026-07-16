@@ -17,6 +17,8 @@ import { useAuth } from '@/auth';
 import { compositionApi } from '@/features/composition/api';
 import type { OutlineNode } from '@/features/composition/types';
 import { useWorkResolution } from '@/features/composition/hooks/useWork';
+import { useActiveWorkId } from '@/features/composition/hooks/useActiveWork';
+import { resolveActiveWork } from '@/features/composition/workSelect';
 
 // 1→I, 4→IV, … same converter `ManuscriptNavigator.tsx` uses for its arc badges (arcs never
 // exceed a few dozen; the full converter is trivial + safe). Duplicated rather than imported:
@@ -82,13 +84,13 @@ async function fetchAllChildren(
 export function useChapterBrowserGroups(bookId: string): UseChapterBrowserGroupsResult {
   const { accessToken } = useAuth();
   const work = useWorkResolution(bookId, accessToken);
+  const { data: activeWorkId } = useActiveWorkId(bookId, accessToken);
 
-  const projectId = useMemo(() => {
-    const d = work.data;
-    if (d?.status === 'found') return d.work?.project_id ?? null;
-    if (d?.status === 'candidates') return d.candidates[0]?.project_id ?? null;
-    return null;
-  }, [work.data]);
+  // EC-3d: the ACTIVE Work's project (per-book pref, else canonical) — NOT candidates[0].
+  const projectId = useMemo(
+    () => resolveActiveWork(work.data, activeWorkId)?.project_id ?? null,
+    [work.data, activeWorkId],
+  );
 
   const [groups, setGroups] = useState<ChapterArcGroup[]>([]);
   const [arcMap, setArcMap] = useState<Map<string, string>>(new Map());

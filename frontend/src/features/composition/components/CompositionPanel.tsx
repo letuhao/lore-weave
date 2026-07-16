@@ -12,6 +12,8 @@ import { ModelPicker, useUserModels } from '@/components/model-picker';
 import { useEffectiveModel } from '@/features/chat-ai-settings/context/ChatAiSettingsContext';
 import { compositionApi } from '../api';
 import { useChapterScenes, useCreateScene, useCreateWork, usePendingWorkResolver, useSetSceneStatus, useWorkResolution } from '../hooks/useWork';
+import { useActiveWorkId } from '../hooks/useActiveWork';
+import { resolveActiveWork } from '../workSelect';
 import { useGuidedFirstRun } from '../hooks/useGuidedFirstRun';
 import type { Work } from '../types';
 import { ComposeView } from './ComposeView';
@@ -91,6 +93,7 @@ export function CompositionPanel({ bookId, chapterId, token, onAccept, onApplyPo
   const { t } = useTranslation('composition');
   const qc = useQueryClient();
   const resolution = useWorkResolution(bookId, token);
+  const { data: activeWorkId } = useActiveWorkId(bookId, token);
   const createWork = useCreateWork(bookId, token);
   // D-C16: a Work created during a knowledge-service outage comes back pending
   // (null project_id) and is invisible to the resolution query; this resolver
@@ -147,13 +150,13 @@ export function CompositionPanel({ bookId, chapterId, token, onAccept, onApplyPo
   const deepLinkWork = deepLinkWorkId
     ? allResolved.find((w) => (w.id ?? w.project_id) === deepLinkWorkId) ?? null
     : null;
-  // 'found' → the marked Work; 'candidates' (rare multi-marked) → the first,
-  // so the panel doesn't loop on "set up" forever. A just-spawned dị bản overrides;
-  // a `?work=` deep-link selects the named Work next.
+  // 'found' → the marked Work; 'candidates' → the ACTIVE Work (EC-3d: the per-book
+  // pref, else canonical) so the panel follows a "Switch to". A just-spawned dị bản
+  // overrides; a `?work=` deep-link selects the named Work next.
   const work: Work | null =
     activeWorkOverride ??
     deepLinkWork ??
-    (res?.status === 'found' ? res.work : res?.status === 'candidates' ? (res.candidates[0] ?? null) : null);
+    resolveActiveWork(res, activeWorkId);
   const projectId = work?.project_id;
 
   // C24 (dị bản M0) — derivative-context controller. Surfaces the dị bản banner +

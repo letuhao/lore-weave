@@ -3,6 +3,8 @@ import { booksApi, type Chapter } from '@/features/books/api';
 import { compositionApi } from '@/features/composition/api';
 import type { OutlineNode } from '@/features/composition/types';
 import { useWorkResolution } from '@/features/composition/hooks/useWork';
+import { useActiveWorkId } from '@/features/composition/hooks/useActiveWork';
+import { resolveActiveWork } from '@/features/composition/workSelect';
 import { appendChildren, flatten, setExpanded, setLoading } from './tree';
 import { ROOT_KEY, emptyTree, type ManuscriptNode, type TreeState } from './types';
 
@@ -49,12 +51,12 @@ export type ManuscriptSource = 'pending' | 'chapters' | 'outline';
  */
 export function useManuscriptTree(bookId: string, token: string | null) {
   const work = useWorkResolution(bookId, token);
-  const projectId = useMemo(() => {
-    const d = work.data;
-    if (d?.status === 'found') return d.work?.project_id ?? null;
-    if (d?.status === 'candidates') return d.candidates[0]?.project_id ?? null;
-    return null;
-  }, [work.data]);
+  const { data: activeWorkId } = useActiveWorkId(bookId, token);
+  // EC-3d: the ACTIVE Work's project (per-book pref, else canonical) — NOT candidates[0].
+  const projectId = useMemo(
+    () => resolveActiveWork(work.data, activeWorkId)?.project_id ?? null,
+    [work.data, activeWorkId],
+  );
 
   const source: ManuscriptSource = work.isLoading ? 'pending' : projectId ? 'outline' : 'chapters';
 

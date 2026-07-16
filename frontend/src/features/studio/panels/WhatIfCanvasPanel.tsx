@@ -15,6 +15,8 @@ import type { IDockviewPanelProps } from 'dockview-react';
 import { useAuth } from '@/auth';
 import { SceneGraphCanvas } from '@/features/composition/components/SceneGraphCanvas';
 import { useWorkResolution } from '@/features/composition/hooks/useWork';
+import { useActiveWorkId } from '@/features/composition/hooks/useActiveWork';
+import { resolveActiveWork } from '@/features/composition/workSelect';
 
 import { useStudioHost } from '../host/StudioHostProvider';
 import { useStudioPanel } from './useStudioPanel';
@@ -24,19 +26,14 @@ export function WhatIfCanvasPanel(props: IDockviewPanelProps) {
   const host = useStudioHost();
   const { accessToken } = useAuth();
   const workQ = useWorkResolution(host.bookId, accessToken);
+  const { data: activeWorkId } = useActiveWorkId(host.bookId, accessToken);
   // useWorkResolution resolves to the ENVELOPE `WorkResolution {status, work, candidates}`, not a bare
-  // Work — SceneGraphCanvas needs the inner Work (it reads `work.settings`, `work.project_id`). Extract it
-  // with the same status cascade the other consumers use (CompositionPanel/OutlineTree): a `found` work,
-  // else the first `candidates` work, else null. (Passing the raw envelope crashed the canvas on
+  // Work — SceneGraphCanvas needs the inner Work (it reads `work.settings`, `work.project_id`). Resolve
+  // the ACTIVE Work (EC-3d: the user's per-book pref, else canonical), so a "Switch to" a dị bản opens
+  // its what-if canvas, not always canon's. (Passing the raw envelope crashed the canvas on
   // `work.settings` — caught by the O-11 promote-flow live smoke; the unit test had mocked a bare work,
   // which hid the shape mismatch.)
-  const res = workQ.data;
-  const work =
-    res?.status === 'found'
-      ? res.work
-      : res?.status === 'candidates'
-        ? (res.candidates[0] ?? null)
-        : null;
+  const work = resolveActiveWork(workQ.data, activeWorkId);
 
   if (!work) {
     // No composition Work yet ⇒ no scene graph to branch. A calm empty state, not an error —

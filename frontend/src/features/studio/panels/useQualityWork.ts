@@ -22,6 +22,8 @@
 // independent re-derivations of one gate is exactly what SDK-First exists to stop.
 import { useMemo } from 'react';
 import { useWorkResolution } from '@/features/composition/hooks/useWork';
+import { useActiveWorkId } from '@/features/composition/hooks/useActiveWork';
+import { resolveActiveWork } from '@/features/composition/workSelect';
 
 export type QualityWorkState =
   | { kind: 'loading' }
@@ -34,21 +36,17 @@ export type QualityWorkState =
 export function useQualityWork(bookId: string, token: string | null): QualityWorkState {
   const resolution = useWorkResolution(bookId, token);
   const { data, isLoading, isError } = resolution;
+  const { data: activeWorkId } = useActiveWorkId(bookId, token);
 
   return useMemo<QualityWorkState>(() => {
     if (isLoading) return { kind: 'loading' };
     // An errored resolution is not an absence of work — we never got to ask.
     if (isError || data?.status === 'unavailable') return { kind: 'unavailable' };
 
-    // `candidates` means Works EXIST. Take the first, exactly as every other consumer does — one
-    // name, one concept. Treating it as "no work" would deny data that is right there.
-    const projectId =
-      data?.status === 'found'
-        ? data.work?.project_id ?? null
-        : data?.status === 'candidates'
-          ? data.candidates[0]?.project_id ?? null
-          : null;
+    // `candidates` means Works EXIST. Resolve the ACTIVE Work (EC-3d: per-book pref, else
+    // canonical) — one name, one concept — so the quality panels follow a "Switch to".
+    const projectId = resolveActiveWork(data, activeWorkId)?.project_id ?? null;
 
     return projectId ? { kind: 'ready', projectId } : { kind: 'no-work' };
-  }, [data, isLoading, isError]);
+  }, [data, isLoading, isError, activeWorkId]);
 }

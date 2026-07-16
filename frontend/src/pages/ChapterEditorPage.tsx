@@ -59,6 +59,8 @@ import { useIsMobile } from '@/hooks/useIsMobile';
 import { SelectionToolbar } from '@/features/composition/components/SelectionToolbar';
 import { InlineAiLayer } from '@/features/composition/components/InlineAiLayer';
 import { useWorkResolution, useChapterScenes } from '@/features/composition/hooks/useWork';
+import { useActiveWorkId } from '@/features/composition/hooks/useActiveWork';
+import { resolveActiveWork } from '@/features/composition/workSelect';
 import { useReportProgress, useEnsureBaseline } from '@/features/composition/hooks/useProgress';
 import { useMentionHeatmap } from '@/features/composition/hooks/useMentionHeatmap';
 import { useFocusMode } from '@/features/composition/hooks/useFocusMode';
@@ -213,10 +215,10 @@ export function ChapterEditorPage() {
   // + lift the active scene so the toolbar grounds on the compose panel's scene.
   // useWorkResolution is react-query-cached, so CompositionPanel reuses this fetch.
   const workResolution = useWorkResolution(bookId, accessToken);
-  const composeWork =
-    workResolution.data?.status === 'found' ? workResolution.data.work
-      : workResolution.data?.status === 'candidates' ? (workResolution.data.candidates[0] ?? null)
-        : null;
+  const { data: activeWorkId } = useActiveWorkId(bookId, accessToken);
+  // EC-3d: the ACTIVE Work (per-book pref, else canonical) so the legacy editor page
+  // opens the dị bản a user switched to in the Studio, not always canon.
+  const composeWork = resolveActiveWork(workResolution.data, activeWorkId);
   const composeProjectId = composeWork?.project_id ?? null;
   // T4.2 — report the chapter's word count to the progress SSOT on save (best-effort,
   // accrues regardless of which sub-tab is open). `wcRef` keeps the live count fresh

@@ -19,6 +19,8 @@ import { useAuth } from '@/auth';
 import { booksApi } from '@/features/books/api';
 import { compositionApi } from '@/features/composition/api';
 import { useWorkResolution } from '@/features/composition/hooks/useWork';
+import { useActiveWorkId } from '@/features/composition/hooks/useActiveWork';
+import { resolveActiveWork } from '@/features/composition/workSelect';
 import { useReportProgress, useEnsureBaseline } from '@/features/composition/hooks/useProgress';
 import type { OutlineNode } from '@/features/composition/types';
 import { addTextSnapshots, extractText } from '@/lib/tiptap-utils';
@@ -132,12 +134,12 @@ export function ManuscriptUnitProvider({ bookId, children }: { bookId: string; c
   // resolveWork returns an ENVELOPE {status, work, candidates} — same extraction as
   // useManuscriptTree (the live gate caught a bare `.project_id` read returning undefined).
   const work = useWorkResolution(bookId, accessToken);
-  const projectId = useMemo(() => {
-    const d = work.data;
-    if (d?.status === 'found') return d.work?.project_id ?? null;
-    if (d?.status === 'candidates') return d.candidates[0]?.project_id ?? null;
-    return null;
-  }, [work.data]);
+  const { data: activeWorkId } = useActiveWorkId(bookId, accessToken);
+  // EC-3d: the ACTIVE Work's project (per-book pref, else canonical) — NOT candidates[0].
+  const projectId = useMemo(
+    () => resolveActiveWork(work.data, activeWorkId)?.project_id ?? null,
+    [work.data, activeWorkId],
+  );
   const projectIdRef = useRef<string | null>(projectId);
   projectIdRef.current = projectId;
 

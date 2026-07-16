@@ -8,6 +8,8 @@
 import { useQuery } from '@tanstack/react-query';
 import { compositionApi } from '../api';
 import { useWorkResolution } from './useWork';
+import { useActiveWorkId } from './useActiveWork';
+import { resolveActiveWork } from '../workSelect';
 
 export function usePublishGate(
   projectId: string | undefined, chapterId: string | undefined,
@@ -44,11 +46,11 @@ export function useChapterPublishGate(
   bookId: string | undefined, chapterId: string | undefined, token: string | null,
 ): ChapterPublishGate {
   const resolution = useWorkResolution(bookId, token);
-  const res = resolution.data;
-  // A real composition_work exists only for 'found' / 'candidates' (mirrors
-  // CompositionPanel's `work` derivation). Other statuses = no Work → ungated.
-  const work =
-    res?.status === 'found' ? res.work : res?.status === 'candidates' ? (res.candidates[0] ?? null) : null;
+  const { data: activeWorkId } = useActiveWorkId(bookId, token);
+  // A real composition_work exists only for 'found' / 'candidates'. Resolve the
+  // ACTIVE Work (EC-3d: the user's per-book pref, else canonical) so the gate follows
+  // a "Switch to". Other statuses = no Work → ungated.
+  const work = resolveActiveWork(resolution.data, activeWorkId);
   const projectId = work?.project_id;
 
   const gate = usePublishGate(projectId, chapterId, token, !!projectId);

@@ -18,6 +18,8 @@ import { ProvenanceTag } from '@/features/composition/components/ProvenanceTag';
 import { SelectionToolbar } from '@/features/composition/components/SelectionToolbar';
 import { InlineAiLayer } from '@/features/composition/components/InlineAiLayer';
 import { useWorkResolution } from '@/features/composition/hooks/useWork';
+import { useActiveWorkId } from '@/features/composition/hooks/useActiveWork';
+import { resolveActiveWork } from '@/features/composition/workSelect';
 import { aiModelsApi } from '@/features/ai-models/api';
 import { glossaryApi } from '@/features/glossary/api';
 import type { EntityNameEntry } from '@/features/glossary/types';
@@ -185,9 +187,10 @@ export function EditorPanel(props: IDockviewPanelProps) {
   // cursor). Both render-prop slots already exist on TiptapEditor untouched — the missing piece
   // was resolving projectId/sceneId/default-model, not new editor capability.
   const workResolution = useWorkResolution(bookId, accessToken);
-  const composeWork = workResolution.data?.status === 'found' ? workResolution.data.work
-    : workResolution.data?.status === 'candidates' ? (workResolution.data.candidates[0] ?? null)
-      : null;
+  const { data: activeWorkId } = useActiveWorkId(bookId, accessToken);
+  // EC-3d: the ACTIVE Work (per-book pref, else canonical) so the editor follows a
+  // "Switch to" a dị bản instead of always loading canon.
+  const composeWork = resolveActiveWork(workResolution.data, activeWorkId);
   const composeProjectId = composeWork?.project_id ?? null;
   const chatModels = useQuery({
     queryKey: ['composition', 'chat-models'],

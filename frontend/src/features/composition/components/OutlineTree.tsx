@@ -18,6 +18,8 @@ import {
 } from '@dnd-kit/core';
 import { SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { useWorkResolution } from '../hooks/useWork';
+import { useActiveWorkId } from '../hooks/useActiveWork';
+import { resolveActiveWork } from '../workSelect';
 import { useOutline, useOutlineMutations } from '../hooks/useOutline';
 import { OutlineNodeRow } from './OutlineNodeRow';
 import { Corkboard, type CardMove } from './Corkboard';
@@ -114,8 +116,10 @@ export function OutlineTree(
 ) {
   const { t } = useTranslation('composition');
   const resolution = useWorkResolution(bookId, token);
-  const res = resolution.data;
-  const work = res?.status === 'found' ? res.work : res?.status === 'candidates' ? (res.candidates[0] ?? null) : null;
+  const { data: activeWorkId } = useActiveWorkId(bookId, token);
+  // EC-3d: resolve the ACTIVE Work (per-book pref, else canonical) so the outline
+  // tree follows a "Switch to" a dị bản instead of pinning to canon.
+  const work = resolveActiveWork(resolution.data, activeWorkId);
   const [showArchived, setShowArchived] = useState(false);
   const [viewMode, setViewMode] = useState<'tree' | 'cards'>('tree');
   // Cards (Corkboard) read only active scenes; the archived view is tree-only.

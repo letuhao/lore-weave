@@ -7,6 +7,8 @@ import { useAuth } from '@/auth';
 import { compositionApi } from '@/features/composition/api';
 import type { OutlineNode } from '@/features/composition/types';
 import { useWorkResolution } from '@/features/composition/hooks/useWork';
+import { useActiveWorkId } from '@/features/composition/hooks/useActiveWork';
+import { resolveActiveWork } from '@/features/composition/workSelect';
 import { useStudioBusSelector } from '../host/StudioHostProvider';
 
 export type SceneInspectorState = {
@@ -24,13 +26,13 @@ export function useSceneInspector(bookId: string | null): SceneInspectorState {
   const token = accessToken ?? null;
   const activeSceneId = useStudioBusSelector((s) => s.activeSceneId);
   const work = useWorkResolution(bookId ?? '', token);
+  const { data: activeWorkId } = useActiveWorkId(bookId ?? '', token);
 
-  const projectId = useMemo(() => {
-    const d = work.data;
-    if (d?.status === 'found') return d.work?.project_id ?? null;
-    if (d?.status === 'candidates') return d.candidates[0]?.project_id ?? null;
-    return null;
-  }, [work.data]);
+  // EC-3d: the ACTIVE Work's project (per-book pref, else canonical) — NOT candidates[0].
+  const projectId = useMemo(
+    () => resolveActiveWork(work.data, activeWorkId)?.project_id ?? null,
+    [work.data, activeWorkId],
+  );
 
   const [node, setNode] = useState<OutlineNode | null>(null);
   const [loading, setLoading] = useState(false);
