@@ -554,37 +554,10 @@ async def _compute_rail_drive_context(
         return [], False, None, frozenset()
 
 
-async def _maybe_redrive_rail(
-    rail_specs, book_id, user_id, turn_start_counts, turn_succeeded,
-    async_tools, nudged_out: set[str],
-):
-    """Re-probe the book FRESH and decide whether to drive the next rail step this turn.
-
-    Returns ``(slug, StepProgress)`` to drive, or ``None`` to end the turn. Never raises — any
-    failure degrades to today's end-of-turn. The fresh probe is what makes ARTIFACT beat the
-    call log at every hop (the turn-start probe is stale the moment the model writes mid-turn),
-    and ``next_actionable_step`` applies the confirm / async / UNKNOWN stop policy.
-    """
-    try:
-        from app.services.book_state_probe import probe_book_state
-        from app.services.rail_progress import (
-            DRIVE, compute_rail_progress, next_actionable_step,
-        )
-
-        fresh = await probe_book_state(str(book_id), str(user_id))
-        merged = Counter(turn_start_counts or {}) + turn_succeeded
-        started = set(merged)
-        for slug, steps in rail_specs:
-            if not isinstance(steps, list) or not steps:
-                continue
-            prog = compute_rail_progress(slug, steps, fresh, merged)
-            action, step = next_actionable_step(prog, steps, started, async_tools)
-            if action == DRIVE and step is not None and step.step_id not in nudged_out:
-                return slug, step
-        return None
-    except Exception:  # noqa: BLE001 — the driver must never break a turn
-        logger.warning("rail re-drive skipped", exc_info=True)
-        return None
+# ACP A2 (RW-3): `_maybe_redrive_rail` (the fresh-probe drive selector) + the inline enforcement
+# block moved to the SDK harness `loreweave_agent_control.decide_rail_drive`, which unifies them
+# into one verdict. The stream loop calls it with `probe_book_state` INJECTED and owns the loop
+# mechanics (see the drive site below). One home for the drive decision — no duplicated selector.
 
 
 class _ProbeAccessDenied(Exception):
@@ -1263,7 +1236,7 @@ async def _stream_with_tools(
     # P-1 step-runner (Track C) — DRIVE the pinned rail within the turn. rail_specs = the
     # pinned rails' (slug, steps); rail_book_id + rail_grant_ok + rail_turn_start_counts +
     # rail_async_tools come from the turn-start probe/grant. Empty/None ⇒ the driver is inert
-    # (exactly today's behavior). See _maybe_redrive_rail + rail_progress.next_actionable_step.
+    # (exactly today's behavior). See decide_rail_drive (SDK harness) + rail_progress.next_actionable_step.
     rail_specs: list[tuple] | None = None,
     rail_book_id: str | None = None,
     rail_grant_ok: bool = False,
@@ -1777,7 +1750,7 @@ async def _stream_with_tools(
                 # confirm gates / started async / UNKNOWN artifacts), inject a forceful nudge,
                 # and loop ONE more pass. Wholly best-effort — any failure falls through to the
                 # normal end-of-turn below, byte-identical to pre-P-1.
-                _redrive = None
+                _verdict = None
                 if (
                     settings.rail_driver_enabled
                     and rail_specs
@@ -1797,59 +1770,40 @@ async def _stream_with_tools(
                     # unambiguously in flight, so the driver must be allowed to continue it).
                     and (rail_in_flight or (set(turn_succeeded) & _rail_all_step_tools))
                 ):
-                    _redrive = await _maybe_redrive_rail(
-                        rail_specs, rail_book_id, user_id,
-                        rail_turn_start_counts, turn_succeeded, rail_async_tools,
-                        rail_twice_nudged,
+                    # ACP A2 (RW-3): the drive+enforcement DECISION lives in the SDK harness
+                    # (decide_rail_drive) — it unifies the fresh re-probe, next_actionable_step, and
+                    # the nudge-cap/strength/give-up logic into one verdict. The probe is INJECTED
+                    # (RW-11). This loop OWNS the mechanics: inject the directive as a role=user
+                    # message, bump the counters, drop the stateful chain head, continue.
+                    from app.services.book_state_probe import probe_book_state
+                    from loreweave_agent_control import decide_rail_drive
+                    _verdict = await decide_rail_drive(
+                        probe_fn=probe_book_state,
+                        rail_specs=rail_specs, book_id=rail_book_id, user_id=user_id,
+                        turn_start_counts=rail_turn_start_counts, turn_succeeded=turn_succeeded,
+                        async_tools=rail_async_tools, nudged_out=rail_twice_nudged,
+                        nudge_counts=rail_nudge_counts,
+                        enforcement_strength=settings.rail_enforcement,
+                        required_nudge_cap=settings.rail_required_nudge_cap,
                     )
-                if _redrive is not None:
-                    from app.services.rail_progress import (
-                        enforcement_for,
-                        honest_giveup_directive,
-                        redrive_directive,
-                    )
-                    _slug, _step = _redrive
-                    # The raw step dict carries the enforcement flags (`optional`); look it up by id.
-                    _raw_step = next(
-                        (s for _sl, _steps in rail_specs if _sl == _slug
-                         for s in _steps if str(s.get("id")) == _step.step_id),
-                        {},
-                    )
-                    rail_nudge_counts[_step.step_id] += 1
-                    # Phase G · G1+G2: a REQUIRED step under the deploy `enforce` strength is HELD up
-                    # to the (deploy-tunable) cap (GOV-7/9); the old flat cap of 2 SILENTLY abandoned
-                    # it (the S06 miss). `nudge` strength keeps every step gentle (never held).
-                    _enforced, _cap = enforcement_for(
-                        _raw_step, settings.rail_enforcement, settings.rail_required_nudge_cap,
-                    )
-                    _giving_up = rail_nudge_counts[_step.step_id] >= _cap
-                    if _giving_up:
-                        # Stop re-driving this step after this iteration (anti-stall).
-                        rail_twice_nudged.add(_step.step_id)
-                    # When an ENFORCED step has exhausted its holds, the final action is an HONEST
-                    # give-up (GOV-7) — tell the user it did not land — never a silent drop that
-                    # reads as success. Otherwise: the forceful single-action nudge.
-                    _directive = (
-                        honest_giveup_directive(_step)
-                        if (_giving_up and _enforced)
-                        else redrive_directive(_step)
-                    )
+                if _verdict is not None and _verdict.should_drive:
+                    _step = _verdict.step
                     # Record the narration the model just streamed, then the ephemeral directive.
                     # `working` is never persisted (the assistant row persists the yielded
                     # content), so the synthetic user directive never reaches history or the UI.
                     working.append({"role": "assistant", "content": "".join(text_parts)})
-                    working.append({"role": "user", "content": _directive})
+                    working.append({"role": "user", "content": _verdict.directive_text})
                     rail_redrive_count += 1
                     rail_drove_this_turn = True  # drop the stateful chain head at turn end
                     logger.info(
-                        "rail step-runner: %s %s → %s (redrive %d/%d, nudge %d/%d, strength=%s)",
-                        "giving up on" if (_giving_up and _enforced) else "driving",
-                        _slug, _step.tool, rail_redrive_count, RAIL_REDRIVE_CAP,
-                        rail_nudge_counts[_step.step_id], _cap, settings.rail_enforcement,
+                        "rail step-runner: %s %s → %s (redrive %d/%d, strength=%s)",
+                        "giving up on" if _verdict.giving_up else "driving",
+                        _verdict.slug, _step.tool, rail_redrive_count, RAIL_REDRIVE_CAP,
+                        settings.rail_enforcement,
                     )
                     if trace is not None:
                         trace.add("compiler", "T6", "rail",
-                                  f"{'giveup' if (_giving_up and _enforced) else 'redrive'}:{_step.tool}")
+                                  f"{'giveup' if _verdict.giving_up else 'redrive'}:{_step.tool}")
                     continue  # loop top re-offers the tools; the model calls the next step
 
                 # No tool calls — this pass IS the final text response.
