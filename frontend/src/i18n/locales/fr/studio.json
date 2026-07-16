@@ -112,19 +112,23 @@
     },
     "quality-promises": {
       "title": "Promesses",
-      "desc": "Le registre des dettes de promesses en suspens (les éléments installés non encore résolus)"
+      "desc": "Le registre des dettes de promesses en suspens (les éléments installés non encore résolus)",
+      "guideBody": "Les Promesses constituent votre grand livre de dettes narratives — chaque indice posé par l'histoire et non encore honoré. Une promesse s'ouvre là où vous la plantez (une trahison suggérée, une arme chargée, une cicatrice inexpliquée) et se ferme là où le manuscrit la concrétise. Épuisez cette liste avant de terminer un livre ; tout ce qui reste ouvert à la fin est un fil que les lecteurs remarqueront avoir abandonné."
     },
     "quality-critic": {
       "title": "Critique",
-      "desc": "Scores de cohérence, de voix, de rythme et de canon par chapitre"
+      "desc": "Scores de cohérence, de voix, de rythme et de canon par chapitre",
+      "guideBody": "Le critique évalue un chapitre selon la cohérence, la voix, le rythme et la fidélité au canon, en fournissant le raisonnement derrière chaque verdict. Il s'agit d'un outil de conseil — il ne modifie jamais votre prose. Utilisez-le pour repérer un chapitre qui a dérivé avant qu'un lecteur ne le fasse, et non comme une note à optimiser."
     },
     "quality-coverage": {
       "title": "Couverture de l'intrigue",
-      "desc": "Audit complet de l'œuvre pour vérifier quelles promesses du plan ont été tenues"
+      "desc": "Audit complet de l'œuvre pour vérifier quelles promesses du plan ont été tenues",
+      "guideBody": "La couverture de l'histoire est une vue d'ensemble du livre basée sur le registre des promesses : quels éléments du plan se retrouvent réellement dans le manuscrit, lesquels sont toujours en attente, et où se concentrent les résolutions. Consultez-la lorsqu'un brouillon est terminé pour identifier les actes qui ont promis plus qu'ils n'ont livré."
     },
     "quality-canon": {
       "title": "Problèmes de canon",
-      "desc": "Contradictions confirmées par la génération et l'extraction de connaissances"
+      "desc": "Contradictions confirmées par la génération et l'extraction de connaissances",
+      "guideBody": "Les problèmes de canon regroupent les contradictions confirmées entre votre prose et votre univers établi — un personnage présent à deux endroits à la fois, une couleur d'yeux qui change, une règle de magie que l'histoire vient de transgresser. Chaque problème est lié au chapitre et à la règle de canon violée, afin que vous puissiez corriger le texte ou modifier la règle."
     },
     "kg-overview": {
       "title": "Aperçu",
@@ -302,7 +306,8 @@
         "cast": "Distribution et Cadre",
         "craft": "Technique",
         "links": "Liens",
-        "grounding": "Ancrage"
+        "grounding": "Ancrage",
+        "motifs": "Motifs"
       },
       "links": {
         "empty": "Aucun lien causal pour le moment.",
@@ -481,12 +486,92 @@
     },
     "agent-mode": {
       "title": "Mode Agent",
-      "desc": "Exécutions d'écriture autonomes multi-chapitres — centre de contrôle"
+      "desc": "Exécutions d'écriture autonomes multi-chapitres — centre de contrôle",
+      "guideBody": "Le Mode Agent est le centre de contrôle pour les exécutions autonomes multi-chapitres : l'agent rédige directement selon un plan approuvé pendant que vous observez. Démarrez, mettez en pause et reprenez une exécution depuis ici, et passez en revue chaque chapitre lorsqu'il est généré — sa différence (diff) et le verdict du critique — puis acceptez, rejetez ou revenez en arrière. Rien de ce qu'il écrit n'est définitif tant que vous ne l'avez pas accepté."
     },
     "chapter-revision-compare": {
       "title": "Comparaison de révision de chapitre",
       "desc": "Différence complète de l'éditeur pour une paire de révisions de chapitre",
       "empty": "Ouvrez la différence de révision d'un chapitre depuis le panneau de révision du Mode Agent."
+    },
+    "arc-templates": {
+      "title": "Modèles d'arcs",
+      "desc": "Parcourez, créez, adoptez et appliquez des structures d'arcs multi-chapitres réutilisables — fils narratifs parallèles et rôles de personnages sur une étendue de chapitres",
+      "guideBody": "La bibliothèque de modèles d'arcs contient des structures multi-chapitres réutilisables — des fils narratifs parallèles (trame de vengeance, romance, mensonge du mentor) disposés sous forme de motifs sur une étendue de chapitres, avec les rôles de personnages que l'arc lie lorsque vous l'appliquez. Parcourez par niveau : vos propres modèles, ceux fournis par le système, et (dans le Catalogue) ceux du public. Créez un nouveau modèle, adoptez un modèle système/public pour personnaliser votre propre copie, ou ouvrez-en un pour voir sa chronologie fil × chapitre et prévisualiser son application à ce livre. Vous pouvez également enregistrer un arc que vous avez déjà écrit en tant que modèle, ou importer une histoire de référence et la déconstruire (拆文) en un nouveau modèle. L'application d'un modèle est d'abord une prévisualisation — elle n'écrase jamais vos chapitres sans que vous ne la matérialisiez."
+    },
+    "arc-inspector": {
+      "title": "Inspecteur d'arc",
+      "desc": "Lisez et modifiez UN arc ou une saga — son objectif, son statut, les pistes narratives résolues en cascade et la liste des personnages, l'étendue des chapitres, les promesses en suspens et la provenance du modèle",
+      "guideBody": "L'Inspecteur d'arc ouvre un nœud de l'arbre de spécifications de votre livre — une saga, un arc ou un sous-arc. Cet arbre n'est pas une simple décoration : ses pistes narratives et ses liaisons de personnages sont intégrées dans chaque prompt de génération, ainsi la modification d'un arc ici modifie la manière dont l'IA rédige ses chapitres. Les pistes et les emplacements de la liste se résolvent en cascade — une entrée héritée d'une saga parente s'affiche en gris avec une action « Override » (la modifier sur place créerait silencieusement une copie distincte). L'étendue des chapitres, le récapitulatif des promesses en suspens et la provenance du modèle sont en lecture seule. Archiver un arc renvoie ses chapitres dans le bac « non planifiés » ; les restaurer les réattache. Ouvrez-le depuis le Plan Hub (sélectionnez un arc), la palette de commandes ou l'agent."
+    },
+    "quality-canon-rules": {
+      "title": "Règles de canon",
+      "desc": "Définissez les invariants que le critique applique — créer, éditer, archiver, restaurer",
+      "guideBody": "Les règles de canon sont l'endroit où vous déclarez les invariants que votre histoire ne doit jamais transgresser — un personnage n'a qu'un seul bras après le chapitre 41, les pierres spirituelles sont consommées et ne sont jamais restituées, l'identité du Maître de Sect reste cachée jusqu'à l'arc de la Cour de Sel. Ce sont les règles que le critique et l'auto-correction appliquent à chaque génération ; les écrire ici est donc la façon d'enseigner votre canon au co-auteur. C'est le versant constructif des « Problèmes de canon » : ce panneau montre ce qui a échoué, celui-ci est l'endroit où vous corrigez la règle."
+    },
+    "quality-corrections": {
+      "title": "Corrections",
+      "desc": "Vos taux d'acceptation / édition / régénération / rejet sur les brouillons IA — le signal de qualité",
+      "guideBody": "Les corrections sont le miroir de votre propre édition : chaque fois que vous acceptez, éditez, choisissez un autre candidat, régénérez ou rejetez un brouillon IA, ce choix est enregistré — et ce panneau affiche les taux, répartis entre Diverge (option K) et Stream. Un taux d'édition/régénération/rejet plus faible (et une acceptation directe plus élevée) dans Diverge signifie que le réorganisateur justifie sa latence supplémentaire. C'est un outil consultatif et en lecture seule ; il ne modifie jamais votre prose — il vous indique si le co-auteur s'améliore sur votre livre."
+    },
+    "quality-heal": {
+      "title": "Auto-correction",
+      "desc": "Lancez un « Polissage » sur un chapitre et validez chaque correction avant qu'elle ne touche votre prose",
+      "guideBody": "L'auto-correction effectue une relecture rapide de votre chapitre et propose des corrections — glissements de pronoms, fautes de frappe, incohérences de l'univers (canon) ou descriptions trop longues — chacune présentée sous forme de ligne à accepter ou à rejeter. Les corrections déterministes (fautes de frappe, pronoms) sont pré-cochées ; les réécritures sémantiques ne le sont pas, afin que vous puissiez les juger. Rien n'est modifié dans votre prose tant que vous n'appuyez pas sur « Appliquer », et même dans ce cas, le système effectue une vérification de version : si le chapitre a été modifié depuis le passage de Polish, l'application est refusée plutôt que d'écraser vos nouvelles éditions."
+    },
+    "progress": {
+      "title": "Progression",
+      "desc": "Mots du jour, votre série, le total du livre, un objectif quotidien et un graphique linéaire",
+      "guideBody": "La progression transforme votre écriture en une habitude visible : mots écrits aujourd'hui, votre série actuelle, le total cumulé du livre et un graphique linéaire sur 7 ou 30 jours. Fixez un objectif quotidien personnel et une ligne de référence le marquera sur le graphique — cet objectif est le vôtre seul, il n'est pas partagé avec les collaborateurs. Le système lit le nombre de mots enregistré par l'éditeur lors de vos sauvegardes ; il ne modifie jamais votre prose."
+    },
+    "plan-passes": {
+      "title": "Rail de Planification",
+      "desc": "Compilez un plan étape par étape et approuvez chaque point de contrôle",
+      "guideBody": "Le Rail de Planification pilote le compilateur à 7 étapes de PlanForge — motifs, distribution, univers, rythmique, arcs de personnages, scènes et auto-correction — une étape à la fois. Chaque étape indique si elle est « fraîche » (ses données d'entrée sont inchangées depuis son dernier passage) ou « obsolète », et le rail vous indique jusqu'où le compilateur peut avancer seul et quelle étape attend votre intervention. Deux étapes constituent des points de contrôle bloquants que vous devez approuver avant que le compilateur ne puisse continuer : la distribution (l'identité de vos personnages) et la rythmique (la structure de l'histoire). Ouvrez une étape pour lire ce qu'elle a produit, modifiez-la, puis approuvez ou mettez en attente. Modifier une étape rend automatiquement toutes les étapes suivantes obsolètes, afin que le plan ne soit jamais désynchronisé."
+    },
+    "whatif-canvas": {
+      "title": "Branches « Et si ? »",
+      "desc": "Explorez des variantes d'une scène sans les valider — créez une branche, générez une alternative, comparez, puis promevez la meilleure version",
+      "guideBody": "Le canevas « what-if » vous permet de créer une branche éphémère pour une scène, de générer une prise alternative et de comparer les badges de jugement du critique côte à côte — le tout sans toucher au brouillon canonique. Lorsqu'une branche est celle que vous souhaitez conserver, « promouvez-la » : elle devient alors une véritable œuvre dérivée à partir de laquelle vous pouvez continuer à écrire. Rien n'est sauvegardé tant que vous ne promouvez pas la branche, ce qui vous permet d'explorer librement. Il s'agit de la surface d'édition située derrière le bouton « Promouvoir » ; le Plan Hub affiche le graphe de planification, tandis que ceci est l'endroit où vous testez des alternatives sur celui-ci."
+    },
+    "divergence": {
+      "title": "Divergence (dị bản)",
+      "desc": "Gérez les dérivés « what-if » d'un livre — listez le canon et chaque branche, basculez tout le studio sur l'une d'elles, archivez-en une ou créez une nouvelle branche à partir d'un chapitre",
+      "guideBody": "Une « dị bản » (divergence) crée une ramification de votre livre à un chapitre donné et diverge — un univers alternatif, un changement de point de vue, un personnage modifié — pour devenir une œuvre dérivée possédant sa propre partition de connaissances, tandis que la source reste le canon en lecture seule. Ce panneau liste votre œuvre canonique et chaque branche que vous avez créée. « Basculer vers » déplace l'intégralité de votre studio — éditeur, navigateur, qualité, tout — sur cette branche ; le choix est mémorisé par livre et persiste après un rechargement. « Archiver » masque une branche sans la détruire (ses chapitres et ses connaissances sont conservés). « Nouvelle divergence » ouvre l'assistant en 4 étapes pour en créer une. Sélectionnez une branche pour lire sa spécification (taxonomie, point de divergence, règles canoniques, modifications), laquelle est fixée lors de la création."
+    },
+    "world-map": {
+      "title": "Carte du monde",
+      "desc": "Créez et éditez les cartes de référence d'un monde — téléchargez une image de base, déposez et déplacez des épingles de localisation, dessinez et redessinez des régions.",
+      "guideBody": "Créez les cartes raster de votre monde. Importez une image de base, puis placez des épingles et dessinez des régions. Faites glisser une épingle pour la déplacer (un glissement correspond à une modification PATCH sur une coordonnée absolue sur un marqueur stable — jamais une suppression-recréation) et faites glisser un sommet de polygone pour remodeler une région. Liez une épingle ou une région à une entité de glossaire ou de KG (le sélecteur indique la source). Chaque modification est enregistrée dans le service-book ; les outils world_map_* de l'assistant modifient la même carte en direct. Renommez une carte avec une gestion de concurrence optimiste (If-Match), afin qu'une modification conflictuelle provoque un rechargement plutôt qu'un écrasement."
+    },
+    "place-graph": {
+      "title": "Graphe des lieux",
+      "desc": "Les lieux du livre sous forme de graphe de nœuds déplaçables",
+      "guideBody": "Ajoutez et connectez les lieux du livre sous forme de graphe de nœuds. Tapez un nom et appuyez sur + Lieu pour créer un emplacement ; activez « Lier les lieux », choisissez deux nœuds et un prédicat (contient / borde / mène_à) pour les connecter ; faites glisser pour organiser (sauvegardé côté serveur, partagé entre vos appareils) ; définissez une image d'arrière-plan (nécessite un chapitre ouvert). Cliquez sur un nœud pour l'ouvrir dans le codex des personnages. Lieux uniquement — utilisez « Créer d'autres types » pour ajouter des personnages, des objets et le reste.",
+      "noWork": "Configurez le co-auteur dans Compose pour organiser les lieux.",
+      "openCompose": "Ouvrir Compose",
+      "loading": "Chargement de la carte du monde…",
+      "authorOther": "Créer d'autres types →"
+    },
+    "cast": {
+      "title": "Distribution",
+      "desc": "La distribution du livre — groupée, searchable, sans spoilers ; créez et archivez des entités",
+      "guideBody": "Chaque personnage, lieu, organisation et concept du graphe de connaissances de ce livre, groupés par type et consultables, chacun avec son état narratif protégé contre les spoilers (actif/disparu selon votre position de lecture). Créez une nouvelle entité avec + Nouveau, renommez en ligne, modifiez les alias/type, ou archivez-en une (archivage partiel). Cliquez sur l'icône d'arc d'une ligne pour ouvrir son Arc Narratif."
+    },
+    "character-arc": {
+      "title": "Arc Narratif",
+      "desc": "Les événements d'un personnage sur une chronologie, la bande active→disparue et les relations à 1 saut",
+      "guideBody": "Les événements d'un personnage dans l'ordre sur un arc compact, coupé au niveau des spoilers selon votre position de lecture, avec la bande d'état active→disparue et les relations actuelles à 1 saut. Choisissez un personnage, modifiez-le ou ajoutez une relation avec + lier une entité."
+    },
+    "motif-library": {
+      "title": "Bibliothèque de motifs",
+      "desc": "Étudiez les tropes (clichés, moments forts, retournements), adoptez-les ou extrayez-les, et inspectez le graphe de relations des motifs",
+      "guideBody": "La Bibliothèque de motifs est votre établi de création narrative. Parcourez les motifs par niveau : les vôtres, les étiquettes de ce livre, le niveau partagé du livre, les graines du système, le catalogue public et vos brouillons extraits. Créez un motif en ligne, adoptez-en un depuis le catalogue ou extrayez votre propre corpus pour découvrir les schémas récurrents. Ouvrez n'importe quel motif pour lire ses battements et ses rôles, et développez son graphe pour voir de quoi il est composé, ce qu'il précède et ses variantes. Liez des motifs aux scènes depuis l'Inspecteur de Scène pour que la rédaction s'y conforme réellement."
+    },
+    "quality-conformance": {
+      "title": "Conformité",
+      "desc": "Battement par battement : la prose a-t-elle réalisé le plan ? Réalisé/non réalisé par scène + bande de tension",
+      "guideBody": "La Conformité suit, scène par scène, si votre prose écrite a réellement livré les battements de motifs que vous aviez prévus pour un chapitre. Chaque scène affiche l'état réalisé / non réalisé et la comparaison de sa tension par rapport à la cible. Elle répond à la question spécification-vs-prose (et non spécification-vs-modèle — cela correspond à la vue de dérive des modèles d'arc). Le signal est consultatif (global, non vérifié de manière causale). Régénérez une scène qui a manqué son battement, ou relancez toute la vérification par rapport à un modèle de votre choix."
     }
   },
   "sceneRail": {
@@ -546,7 +631,8 @@
       "colMode": "Mode",
       "colStatus": "Statut",
       "colCreated": "Créé le"
-    }
+    },
+    "proposeBlind": "Proposé uniquement à partir de ce brouillon. Les chapitres existants ne sont pas lus."
   },
   "editor": {
     "empty": "Sélectionnez un chapitre dans le navigateur de manuscrit pour l'éditer ici.",
@@ -624,14 +710,14 @@
       "editor": "Éditeur et chapitres",
       "storyBible": "Bible de l'histoire",
       "knowledge": "Graphe de connaissances",
+      "quality": "Qualité",
       "translation": "Traduction",
       "enrichment": "Enrichissement",
       "sharing": "Partage et paramètres",
       "platform": "Plateforme",
       "discovery": "Découverte",
       "jobs": "Tâches",
-      "help": "Aide",
-      "quality": "Qualité"
+      "help": "Aide"
     },
     "cmd": {
       "showManuscript": "Vue : Afficher le manuscrit",
@@ -716,7 +802,22 @@
     "canonRuleFocusUnknown": "La règle dont vous venez n'a pas pu être vérifiée car le service de co-écriture est indisponible. Elle est peut-être toujours rompue quelque part — ceci n'est pas un résultat définitif.",
     "canonRulesCapped": "Affichage des {{shown}} dernières règles enfreintes sur {{total}}.",
     "workUnavailable": "Impossible de joindre le service de co-écriture, les données de qualité de ce livre n'ont donc pas pu être chargées. Des problèmes peuvent exister sans être affichés ici. Réessayez bientôt.",
-    "hubUnavailable": "Impossible de joindre le service de co-écriture, les promesses, les scores des critiques et la couverture de l'histoire ne peuvent donc pas être chargés pour le moment. Des problèmes peuvent exister sans être affichés ici."
+    "hubUnavailable": "Impossible de joindre le service de co-écriture, les promesses, les scores des critiques et la couverture de l'histoire ne peuvent donc pas être chargés pour le moment. Des problèmes peuvent exister sans être affichés ici.",
+    "setupWork": "Configurer le co-auteur",
+    "settingUpWork": "Configuration en cours…",
+    "setupWorkError": "Impossible de configurer le co-auteur. Réessayez.",
+    "setupWorkPending": "Votre session de co-auteur a été créée, mais son projet de connaissances est encore en cours de configuration. Réessayez bientôt.",
+    "setupWorkRetry": "Réessayer",
+    "canonRulesTitle": "Règles du canon",
+    "canonRulesDesc": "Définissez les invariants que le critique doit respecter",
+    "correctionsTitle": "Corrections",
+    "correctionsDesc": "Vos taux d'acceptation / modification / régénération / rejet",
+    "healTitle": "Auto-correction",
+    "healDesc": "Lancez le polissage et validez chaque correction avant qu'elle n'impacte votre prose",
+    "conformanceTitle": "Conformité",
+    "conformanceDesc": "La prose a-t-elle respecté le plan ? Traçage des battements par scène",
+    "pickModelRerun": "Choisir un modèle pour relancer avec…",
+    "pickChapterConformanceHint": "Choisissez un chapitre ci-dessus pour voir comment sa prose a respecté le plan."
   },
   "sidebar": {
     "collapse": "Réduire"
@@ -1167,5 +1268,53 @@
       "viewWorldmap": "Carte du monde",
       "viewSoon": "Prévu pour une phase ultérieure"
     }
+  },
+  "planPasses": {
+    "comingSoon": "Le rail des 7 passages s'affichera ici.",
+    "noBook": "Ouvrez un livre pour compiler son plan.",
+    "noRun": "Aucun plan exécuté — ouvrez le Planificateur pour en proposer et en compiler un.",
+    "loading": "Chargement des passages…",
+    "notCompiled": "Cette exécution n'a pas encore de package compilé. Compilez-le dans le Planner avant de lancer les passes.",
+    "openPlanner": "← Planner (proposer / compiler)",
+    "blocking": "bloquant",
+    "advisory": "conseil",
+    "running": "en cours…",
+    "done": "terminé",
+    "failed": "échoué",
+    "notRun": "— non exécuté",
+    "fresh": "récent",
+    "stale": "périmé",
+    "run": "exécuter…",
+    "rerun": "relancer…",
+    "review": "révision →",
+    "blocked": "bloqué",
+    "blockedBy": "bloqué par : {{blockers}}",
+    "runSpends": "Exécuter {{pass}} — cela consomme 1 appel LLM",
+    "runNow": "Exécuter {{pass}}",
+    "cancel": "Annuler",
+    "approve": "Approuver",
+    "reject": "Rejeter",
+    "edit": "Modifier",
+    "saveEdits": "Enregistrer les modifications",
+    "cursor": "{{done}} sur {{total}}",
+    "blockedAt": "bloqué à",
+    "reviewTitle": "Révision de {{pass}}",
+    "reviewLoading": "Chargement…",
+    "reviewNoContent": "Aucun contenu d'artefact à afficher.",
+    "reviewPrompt": "Approuver {{pass}} ? Cela permet au compilateur de passer à l'étape suivante.",
+    "seedUnavailable": "Proposition de graine de glossaire indisponible.",
+    "seedApplied": "Graine de glossaire appliquée — la distribution peut être approuvée.",
+    "seedGate": "La graine de glossaire est « {{status}} ». Appliquez-la avant d'approuver la distribution (PF-7).",
+    "applySeed": "Appliquer la graine",
+    "approveGated": "Appliquez d'abord la graine du glossaire (PF-7)"
+  },
+  "sceneCompose": {
+    "empty": "Sélectionnez un chapitre dans le navigateur de manuscrit pour en rédiger les scènes ici.",
+    "inserted": "Inséré dans le manuscrit.",
+    "insertFailed": "Impossible d'insérer — cliquez dans le texte du chapitre dans l'Éditeur, puis cliquez à nouveau sur Accepter.",
+    "openedEditor": "L'Éditeur a été ouvert sur ce chapitre — Générez à nouveau pour insérer le brouillon ici."
+  },
+  "chapterAssemble": {
+    "empty": "Sélectionnez un chapitre dans le navigateur du manuscrit pour l'assembler ici."
   }
 }
