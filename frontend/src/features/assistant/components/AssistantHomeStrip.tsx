@@ -9,6 +9,7 @@ import { useSheetRoute } from '@/components/shared/Sheet';
 import { useAssistant } from '../context/AssistantContext';
 import { useAssistantMemory } from '../hooks/useAssistantMemory';
 import { useAssistantSchedule } from '../hooks/useAssistantSchedule';
+import { useProactiveSetting } from '../hooks/useProactiveSetting';
 import { useDiaryFactInbox } from '../hooks/useDiaryFactInbox';
 import { useReflection } from '../hooks/useReflection';
 import { useScorecards } from '../hooks/useScorecards';
@@ -35,6 +36,7 @@ export function AssistantHomeStrip() {
   // past journal days, forget a person and erase everything (the data-rights controls the first-run promises).
   const mem = useAssistantMemory();
   const schedule = useAssistantSchedule();
+  const proactive = useProactiveSetting();
   const { openSheet } = useSheetRoute();
   const handleEraseAll = async () => {
     const ok = await mem.handleEraseAll();
@@ -169,6 +171,11 @@ export function AssistantHomeStrip() {
         savingKind={schedule.savingKind}
         timezone={tz.saved || tz.detected}
         onToggle={(k, enabled, timezone) => void schedule.setEnabled(k, enabled, timezone)}
+        proactive={{
+          enabled: proactive.enabled,
+          saving: proactive.saving,
+          onToggle: (on, timezone) => void proactive.setProactive(on, timezone),
+        }}
       />
 
       {/* C8 / WS-5.3 — the latest weekly reflection draft + dismissable patterns (server is SoT). */}

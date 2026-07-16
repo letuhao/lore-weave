@@ -9,6 +9,7 @@ aggregated from chat_messages.tool_calls so MCP-reliability work is measurable.
 """
 
 import json
+import logging
 from datetime import date, datetime, timedelta, timezone
 from uuid import UUID
 
@@ -20,6 +21,8 @@ from pydantic import BaseModel
 from app.config import settings
 from app.deps import get_db
 from app.middleware.trace_id import trace_id_var
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/internal/chat", tags=["internal"])
 
@@ -754,6 +757,112 @@ class ProactiveTurnTrigger(BaseModel):
     language: str = "en"
 
 
+# A4.2 (D-PROACTIVE-LLM-CONTENT) — the fail-safe fallback when grounded generation is unavailable.
+_PROACTIVE_STATIC = (
+    "It's been a little while — want to take a few minutes to reflect on how your week has "
+    "been going? I'm here whenever you're ready."
+)
+
+
+async def _recent_assistant_snippets(db: asyncpg.Pool, user_id: str, limit: int = 5) -> list[str]:
+    """A4.2 grounding — the user's most recent OWN messages in their assistant sessions, so a proactive
+    check-in can reference what they've actually been working on. Owner-scoped; plaintext user turns only
+    (never the assistant's own proactive messages, which are role='assistant')."""
+    rows = await db.fetch(
+        """
+        SELECT m.content
+        FROM chat_messages m
+        JOIN chat_sessions s ON s.session_id = m.session_id
+        WHERE s.owner_user_id = $1 AND s.session_kind = 'assistant'
+          AND m.role = 'user' AND length(trim(m.content)) > 0
+        ORDER BY m.created_at DESC
+        LIMIT $2
+        """,
+        user_id, limit,
+    )
+    return [str(r["content"])[:280] for r in rows]
+
+
+async def _generate_proactive_content(
+    user_id: UUID, model_source: str, model_ref: str, snippets: list[str]
+) -> str | None:
+    """A4.2 — generate a warm, GROUNDED proactive check-in via provider-registry (no direct SDK; mirrors
+    the evaluator/title non-streaming pattern). Returns None on ANY failure so the caller falls back to a
+    static line — a proactive turn is NEVER blocked or errored by content generation."""
+    from loreweave_llm import Client, ReasoningEvent, StreamRequest, TokenEvent
+
+    context = "\n".join(f"- {s}" for s in snippets if s.strip())
+    # A persona-only system line + a direct user ask — NOT a spec-shaped system prompt (some local models
+    # echo a spec's fields back as a filled-in template / show their drafting). The constraints go in the
+    # user turn as a plain request.
+    system = "You are the user's warm, thoughtful private work assistant."
+    if context:
+        user = (
+            "It's been a quiet stretch since you last heard from them. Their most recent notes to you were:\n"
+            f"{context}\n\n"
+            "Write a brief, genuine check-in — ONE or TWO sentences — that gently acknowledges what they've "
+            "been working on and invites them to reflect on how it's going. Reply with ONLY the message text: "
+            "no preamble, headings, bullet points, drafts, options, or quotation marks."
+        )
+    else:
+        user = (
+            "It's been a quiet stretch. Write a brief, genuine, warm check-in — ONE or TWO sentences — "
+            "inviting them to reflect on how things have been going. Reply with ONLY the message text: no "
+            "preamble, headings, drafts, or quotation marks."
+        )
+    client = Client(
+        base_url=settings.provider_registry_internal_url,
+        auth_mode="internal",
+        internal_token=settings.internal_service_token,
+        user_id=str(user_id),
+    )
+    try:
+        request = StreamRequest(
+            model_source=model_source,
+            model_ref=model_ref,
+            messages=[{"role": "system", "content": system}, {"role": "user", "content": user}],
+            temperature=0.7,
+            max_tokens=320,  # enough for a thinking model to finish (a truncated draft is worse than static)
+        )
+        parts: list[str] = []
+        reasoning: list[str] = []
+        async for ev in client.stream(request):
+            if isinstance(ev, TokenEvent):
+                parts.append(ev.delta)
+            elif isinstance(ev, ReasoningEvent):
+                reasoning.append(ev.delta)
+        return _clean_proactive_text("".join(parts)) or _clean_proactive_text("".join(reasoning))
+    except Exception:
+        logger.warning("proactive check-in content generation failed; using static fallback", exc_info=True)
+        return None
+    finally:
+        await client.aclose()
+
+
+# Scaffolding some local reasoning models emit before their final line (planning/labels/drafts). A message
+# that is ONLY scaffolding (no clean prose) returns None → the caller falls back to the static line rather
+# than persist junk.
+_SCAFFOLD_PREFIXES = ("*", "-", "#", ">", "role:", "goal:", "format:", "tone:", "context:", "draft", "here", "sure", "okay", "note:")
+
+
+def _clean_proactive_text(raw: str) -> str | None:
+    """Reduce a model reply to just the check-in message: drop markdown/planning scaffolding lines, unwrap
+    surrounding quotes, and take the last clean prose paragraph (the final answer, after any 'thinking')."""
+    if not raw or not raw.strip():
+        return None
+    lines = [ln.strip() for ln in raw.strip().splitlines()]
+    clean = [
+        ln for ln in lines
+        if ln and not ln.lower().startswith(_SCAFFOLD_PREFIXES) and not ln.endswith(":")
+    ]
+    if not clean:
+        return None
+    # The final answer is the last contiguous prose block; join its lines.
+    msg = " ".join(clean).strip().strip('"').strip("*").strip()
+    # A plausible check-in is a real sentence, not a stray fragment.
+    return msg if len(msg) >= 12 else None
+
+
 @router.post("/assistant/proactive-turn", dependencies=[Depends(require_internal_token)],
              status_code=status.HTTP_202_ACCEPTED)
 async def proactive_turn(body: ProactiveTurnTrigger, db: asyncpg.Pool = Depends(get_db)) -> dict:
@@ -786,8 +895,10 @@ async def proactive_turn(body: ProactiveTurnTrigger, db: asyncpg.Pool = Depends(
                          model_source=body.model_source, model_ref=body.model_ref, language=body.language)
     book_id, model_source, model_ref, _entry_zone = await _resolve_distill_context(ctx)
 
-    content = ("It's been a little while — want to take a few minutes to reflect on how your week has "
-               "been going? I'm here whenever you're ready.")
+    # A4.2 (D-PROACTIVE-LLM-CONTENT) — a grounded LLM check-in (references what they've been working on),
+    # fail-safe: any generation failure/empty falls back to the static line, so the turn always lands.
+    snippets = await _recent_assistant_snippets(db, str(body.user_id))
+    content = await _generate_proactive_content(body.user_id, model_source, str(model_ref), snippets) or _PROACTIVE_STATIC
     async with db.acquire() as conn:
         async with conn.transaction():
             # cold-review MED-1/MED-3 — bind the session to the diary book (consistent with interactive

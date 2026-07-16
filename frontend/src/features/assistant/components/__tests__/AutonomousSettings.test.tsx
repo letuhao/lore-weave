@@ -27,9 +27,18 @@ describe('AutonomousSettings (A3)', () => {
     }
   });
 
-  it('does NOT expose proactive_nudge (double-gated on a separate default-OFF setting → would no-op)', () => {
+  it('does NOT render the proactive row unless the (double-gated) proactive control is wired', () => {
     renderPanel();
     expect(screen.queryByTestId('autonomous-toggle-proactive_nudge')).toBeNull();
+  });
+
+  it('renders the proactive row OFF by default when wired, and toggling drives its dual-gate handler', () => {
+    const onProactive = vi.fn();
+    renderPanel({ proactive: { enabled: false, saving: false, onToggle: onProactive } });
+    const toggle = screen.getByTestId('autonomous-toggle-proactive_nudge');
+    expect(toggle.getAttribute('aria-checked')).toBe('false'); // fail-closed
+    fireEvent.click(toggle);
+    expect(onProactive).toHaveBeenCalledWith(true, 'Asia/Ho_Chi_Minh'); // sets BOTH gates via the hook
   });
 
   it('arming a job calls onToggle with that kind, enabled=true, and the user zone', () => {

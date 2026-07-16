@@ -10,12 +10,9 @@ interface JobMeta {
   desc: string;
 }
 
-// The user-facing set. Order = most-valuable first (auto-journal is the headline autonomous behavior).
-// NOTE (A3 review): `proactive_nudge` is deliberately NOT here. Arming its schedule is only HALF the
-// control — chat's proactive-turn seam ALSO fail-closed-gates on a separate `assistant.proactive_enabled`
-// setting (default OFF) that has no FE yet, so a "Proactive check-ins" toggle would appear ON and silently
-// do nothing (the no-silent-no-op rule). Exposing it waits until its full setting chain is wired
-// (D-A3-PROACTIVE-SETTING). The four below are fully delivered by the schedule alone.
+// The schedule-only set (each fully delivered by arming its schedule row alone). `proactive_nudge` is NOT
+// here — it's double-gated (chat opt-in + schedule), so it gets a DEDICATED row via the `proactive` prop
+// (wired to useProactiveSetting, which sets both). Order = most-valuable first.
 const JOBS: JobMeta[] = [
   { kind: 'eod_distill', label: 'End my day automatically', desc: 'Journal the day each evening, even if you forget to.' },
   { kind: 'weekly_reflection', label: 'Weekly reflection', desc: 'A gentle weekly pattern + coaching note.' },
@@ -31,9 +28,12 @@ export interface AutonomousSettingsProps {
   /** The user's effective zone (saved || detected) — feeds the schedule's local fire time. */
   timezone: string;
   onToggle: (k: AutonomousJobKind, enabled: boolean, timezone: string) => void;
+  /** D-A3-PROACTIVE — proactive check-ins are double-gated (chat opt-in + schedule), so they get a
+   *  dedicated row wired to useProactiveSetting (which sets BOTH). Absent ⇒ the row isn't rendered. */
+  proactive?: { enabled: boolean; saving: boolean; onToggle: (on: boolean, timezone: string) => void };
 }
 
-export function AutonomousSettings({ loading, isEnabled, nextFireAt, savingKind, timezone, onToggle }: AutonomousSettingsProps) {
+export function AutonomousSettings({ loading, isEnabled, nextFireAt, savingKind, timezone, onToggle, proactive }: AutonomousSettingsProps) {
   return (
     <section className="flex flex-col gap-2 rounded-lg border border-border bg-card p-3" data-testid="autonomous-settings">
       <div>
@@ -83,6 +83,39 @@ export function AutonomousSettings({ loading, isEnabled, nextFireAt, savingKind,
               </li>
             );
           })}
+
+          {/* D-A3-PROACTIVE — the double-gated "Proactive check-ins" row (sets the chat opt-in AND the
+              schedule together, so it can never silently no-op). Only rendered when wired. */}
+          {proactive && (
+            <li className="flex items-center justify-between gap-3 py-2.5" data-testid="autonomous-proactive-row">
+              <div className="min-w-0">
+                <div className="text-sm">Proactive check-ins</div>
+                <div className="text-xs text-muted-foreground">
+                  {proactive.enabled ? 'On — I may reach out when it has been a while.' : 'Let me open with a thought after a quiet stretch.'}
+                </div>
+              </div>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={proactive.enabled}
+                aria-label="Proactive check-ins"
+                data-testid="autonomous-toggle-proactive_nudge"
+                disabled={proactive.saving}
+                onClick={() => proactive.onToggle(!proactive.enabled, timezone)}
+                className={cn(
+                  'relative h-6 w-11 shrink-0 rounded-full transition disabled:opacity-50',
+                  proactive.enabled ? 'bg-emerald-500' : 'bg-muted',
+                )}
+              >
+                <span
+                  className={cn(
+                    'absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-all',
+                    proactive.enabled ? 'left-[22px]' : 'left-0.5',
+                  )}
+                />
+              </button>
+            </li>
+          )}
         </ul>
       )}
     </section>

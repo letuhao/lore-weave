@@ -13,6 +13,7 @@ import { useSheetRoute } from '@/components/shared/Sheet';
 import { useAssistant } from '../../context/AssistantContext';
 import { useAssistantMemory } from '../../hooks/useAssistantMemory';
 import { useAssistantSchedule } from '../../hooks/useAssistantSchedule';
+import { useProactiveSetting } from '../../hooks/useProactiveSetting';
 import { MobileMemorySheet, MEMORY_SHEET_ID } from './MobileMemorySheet';
 import { useDiaryFactInbox } from '../../hooks/useDiaryFactInbox';
 import { useReflection } from '../../hooks/useReflection';
@@ -34,6 +35,7 @@ export function MobileAssistantDock() {
   const mem = useAssistantMemory();
   const { journal, memory, correction, forgetEntity, eraseAll } = mem;
   const schedule = useAssistantSchedule();
+  const proactive = useProactiveSetting();
 
   const handleCorrect = mem.handleCorrect;
   const handleForget = mem.handleForget;
@@ -142,6 +144,11 @@ export function MobileAssistantDock() {
           savingKind: schedule.savingKind,
           timezone: tz.saved || tz.detected,
           onToggle: (k, enabled, timezone) => void schedule.setEnabled(k, enabled, timezone),
+          proactive: {
+            enabled: proactive.enabled,
+            saving: proactive.saving,
+            onToggle: (on, timezone) => void proactive.setProactive(on, timezone),
+          },
         }}
       />
       <MobileJournalSheet

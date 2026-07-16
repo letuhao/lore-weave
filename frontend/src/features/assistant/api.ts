@@ -122,6 +122,22 @@ export const assistantApi = {
     return apiJson<{ schedules: ScheduleRow[] }>('/v1/assistant/schedule', { token });
   },
 
+  /** D-A3-PROACTIVE — read the chat AI prefs (proxied /v1/chat/ai-prefs); we only need
+   *  `assistant.proactive_enabled` (the fail-closed gate the proactive-turn seam checks). */
+  getAiPrefs(token: string) {
+    return apiJson<{ assistant?: { proactive_enabled?: boolean }; version?: number }>('/v1/chat/ai-prefs', { token });
+  },
+
+  /** D-A3-PROACTIVE — set the `proactive_enabled` gate (a spend/interruption opt-in, strict bool). This
+   *  is HALF of arming proactive — the schedule row (proactive_nudge) is the other half; the hook sets both. */
+  setProactiveEnabled(token: string, enabled: boolean) {
+    return apiJson<{ assistant?: { proactive_enabled?: boolean } }>('/v1/chat/ai-prefs', {
+      method: 'PATCH',
+      token,
+      body: JSON.stringify({ assistant: { proactive_enabled: enabled } }),
+    });
+  },
+
   /** A3 — arm/disarm one autonomous job_kind. `enabled` is fail-closed (only true arms it). `timezone`
    *  feeds the local fire time. Server (scheduler `scheduled_agent_runs`) is the source of truth. */
   setSchedule(

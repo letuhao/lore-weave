@@ -38,6 +38,15 @@ async def test_proactive_turn_explicit_false_is_noop(client, mock_pool):
     assert r.status_code == 202 and r.json()["proactive"] is False
 
 
+def _grounded(text: str | None):
+    """Patch the A4.2 helpers: fixed grounding snippets + a controllable generated message (None ⇒ the
+    endpoint falls back to the static line)."""
+    return (
+        patch("app.routers.internal._recent_assistant_snippets", AsyncMock(return_value=["shipping the Q3 launch"])),
+        patch("app.routers.internal._generate_proactive_content", AsyncMock(return_value=text)),
+    )
+
+
 @pytest.mark.asyncio
 async def test_proactive_turn_enabled_writes_assistant_proactive_message(client, mock_pool):
     sess_id, msg_id = uuid4(), uuid4()
@@ -47,7 +56,8 @@ async def test_proactive_turn_enabled_writes_assistant_proactive_message(client,
         FakeRecord({"message_id": msg_id}),
     ])
     notify = AsyncMock(return_value=True)
-    with _prefs({"proactive_enabled": True}), \
+    snip, gen = _grounded("How's the Q3 launch coming along?")
+    with _prefs({"proactive_enabled": True}), snip, gen, \
          patch("app.routers.internal._resolve_distill_context",
                AsyncMock(return_value=("book-1", "user_model", uuid4(), "UTC"))), \
          patch("app.routers.internal._notify_proactive_checkin", notify):
@@ -59,11 +69,32 @@ async def test_proactive_turn_enabled_writes_assistant_proactive_message(client,
     sess_sql = mock_pool._conn.fetchrow.await_args_list[0].args[0]
     assert "book_id" in sess_sql and "last_message_at" in sess_sql
     # the message INSERT stamped initiated_by='assistant_proactive'
-    msg_sql = mock_pool._conn.fetchrow.await_args_list[1].args[0]
-    assert "chat_messages" in msg_sql and "'assistant_proactive'" in msg_sql
+    msg_call = mock_pool._conn.fetchrow.await_args_list[1]
+    assert "chat_messages" in msg_call.args[0] and "'assistant_proactive'" in msg_call.args[0]
+    # A4.2 — the persisted content is the GROUNDED LLM message, not the static line.
+    assert msg_call.args[3] == "How's the Q3 launch coming along?"
     # R3 — the push fired for the committed turn's session, and its result is surfaced.
     notify.assert_awaited_once_with(UID, str(sess_id))
     assert body["notified"] is True
+
+
+@pytest.mark.asyncio
+async def test_proactive_turn_falls_back_to_static_when_generation_fails(client, mock_pool):
+    # A4.2 — content generation is fail-SAFE: a None (LLM error/empty) never blocks the turn; it lands
+    # with the static line so the user is still reached.
+    from app.routers.internal import _PROACTIVE_STATIC
+    sess_id, msg_id = uuid4(), uuid4()
+    mock_pool.fetchval = AsyncMock(return_value=None)
+    mock_pool._conn.fetchrow = AsyncMock(side_effect=[
+        FakeRecord({"session_id": sess_id}), FakeRecord({"message_id": msg_id})])
+    snip, gen = _grounded(None)  # generation unavailable
+    with _prefs({"proactive_enabled": True}), snip, gen, \
+         patch("app.routers.internal._resolve_distill_context",
+               AsyncMock(return_value=("book-1", "user_model", uuid4(), "UTC"))), \
+         patch("app.routers.internal._notify_proactive_checkin", AsyncMock(return_value=True)):
+        r = await client.post("/internal/chat/assistant/proactive-turn", headers=_AUTH, json={"user_id": UID})
+    assert r.status_code == 202
+    assert mock_pool._conn.fetchrow.await_args_list[1].args[3] == _PROACTIVE_STATIC
 
 
 @pytest.mark.asyncio
@@ -74,7 +105,8 @@ async def test_proactive_turn_notification_blip_still_persists_the_turn(client, 
     mock_pool.fetchval = AsyncMock(return_value=None)
     mock_pool._conn.fetchrow = AsyncMock(side_effect=[
         FakeRecord({"session_id": sess_id}), FakeRecord({"message_id": msg_id})])
-    with _prefs({"proactive_enabled": True}), \
+    snip, gen = _grounded("How's it going?")
+    with _prefs({"proactive_enabled": True}), snip, gen, \
          patch("app.routers.internal._resolve_distill_context",
                AsyncMock(return_value=("book-1", "user_model", uuid4(), "UTC"))), \
          patch("app.routers.internal._notify_proactive_checkin", AsyncMock(return_value=False)):
@@ -139,6 +171,20 @@ def test_proactive_enabled_must_be_bool():
     # a real bool is accepted
     p = AiPrefsPatch(assistant={"proactive_enabled": True})
     assert p.assistant["proactive_enabled"] is True
+
+
+def test_clean_proactive_text_strips_scaffolding_and_falls_back():
+    from app.routers.internal import _clean_proactive_text
+    # a clean model reply is returned as-is (quotes unwrapped)
+    assert _clean_proactive_text('"How did the Q3 migration land?"') == "How did the Q3 migration land?"
+    # a reply that is ONLY planning scaffolding → None (caller uses the static fallback, never junk)
+    scaffold = "*   Role: assistant\n*   Goal: check-in\n*   Draft 1:\n*   Context: ..."
+    assert _clean_proactive_text(scaffold) is None
+    # empty / whitespace → None
+    assert _clean_proactive_text("   ") is None
+    # scaffolding THEN a real message → the message survives
+    mixed = "Here is my plan:\n- think about it\nHow have things been since the launch settled?"
+    assert _clean_proactive_text(mixed) == "How have things been since the launch settled?"
 
 
 @pytest.mark.asyncio

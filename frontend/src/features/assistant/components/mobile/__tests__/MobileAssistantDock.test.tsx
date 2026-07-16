@@ -81,6 +81,9 @@ vi.mock('../../../hooks/useAssistantSchedule', () => ({
     isEnabled: () => false, nextFireAt: () => null, setEnabled: vi.fn(), refresh: vi.fn(),
   }),
 }));
+vi.mock('../../../hooks/useProactiveSetting', () => ({
+  useProactiveSetting: () => ({ enabled: false, loading: false, saving: false, setProactive: vi.fn(), refresh: vi.fn() }),
+}));
 
 import { MobileAssistantDock } from '../MobileAssistantDock';
 

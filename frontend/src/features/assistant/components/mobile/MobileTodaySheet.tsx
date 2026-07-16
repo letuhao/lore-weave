@@ -52,6 +52,8 @@ export interface MobileTodaySheetProps {
     savingKind: AutonomousJobKind | null;
     timezone: string;
     onToggle: (k: AutonomousJobKind, enabled: boolean, timezone: string) => void;
+    // D-A3-PROACTIVE — the double-gated proactive check-ins row.
+    proactive?: { enabled: boolean; saving: boolean; onToggle: (on: boolean, timezone: string) => void };
   };
 }
 
@@ -106,6 +108,7 @@ export function MobileTodaySheet(props: MobileTodaySheetProps) {
             savingKind={autonomous.savingKind}
             timezone={autonomous.timezone}
             onToggle={autonomous.onToggle}
+            proactive={autonomous.proactive}
           />
         )}
 
