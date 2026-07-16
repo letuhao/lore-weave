@@ -47,6 +47,11 @@ service surfaces), so chat is its FIRST consumer (dogfood) and roleplay/Practice
   substrate (outbox/saga/WFQ) for resume-at-exact-step + replay, so a crashed background/game agent resumes
   deterministically (LangGraph/Temporal parity). **Gate:** the first AUTONOMOUS consumer (background
   task-agent / game logic). It's WIRING (substrate exists), not greenfield; folds into ACP-10's autonomous path.
+- **D-ACP-RUST-CLIENT** (deferred from A3) — the reqwest executive/probe HTTP client in
+  `crates/contracts-agent-control`. **Gate #4 (no consumer):** no Rust runtime calls the executive
+  today — roleplay is a PRODUCER (it posts to chat's `/internal/chat/sessions`, never the executive),
+  and the other enumerated Rust-ish consumer (`game-server`) is TypeScript (RV-M2). The typed contract
+  structs already ship (A3); add the client when a Rust runtime actually consumes the executive.
 - **D-ACP-ANCHOR-MOVE** (deferred from A2.5) — move the anchor render (`parse_working_memory`/`render_pinned`/
   `render_tail`/`resolve_anchor`) + the `WorkingMemory`/`Charter`/`State` Pydantic models from chat into the SDK
   (`anchor.py`), chat re-exporting. **Gate #2 (large/structural):** the model is imported across chat (wide
@@ -105,4 +110,5 @@ A2 is large; build + test + review each sub-piece, commit A2 as one slice once a
 - PO checkpoint after A3 (SDK extracted + dogfooded) and after A4 (Practice live). Commit per slice with pasted evidence.
 - **A0 DONE 2026-07-16** — the contract-enforcement foundation. Commits ea6ae3239 (move) · b3fbdee09 (executive) · c614d06e2 (charter 3-side + rubric fix). Next: A1 (Python SDK extraction + characterization goldens + checkpoint owner-scope).
 - **A1 DONE** — SDK extraction (22963904e); RV-H4 DB-proven; review-impl HIGH (pyproject manifest) fixed.
-- **A2 DONE** — lock (aead4b271) + harness (c3096218b) + wiring (99a1cb669) + voice (24d3b661b). A2.5 anchor-move deferred (D-ACP-ANCHOR-MOVE). **Next: A3 (Rust crate `crates/contracts-agent-control` — charter/state types validated vs schema + a thin executive/probe HTTP client; roleplay `/start` produces via it).**
+- **A2 DONE** — lock (aead4b271) + harness (c3096218b) + wiring (99a1cb669) + voice (24d3b661b). A2.5 anchor-move deferred (D-ACP-ANCHOR-MOVE).
+- **A3 DONE** — typed Rust contract crate + roleplay produces via it (6bba75a53). reqwest client deferred (D-ACP-RUST-CLIENT). **Next: A4 (Practice — `question_target` OPTIONAL in the contract + chat's `WorkingMemoryCharter` Pydantic (RV-M4); the executive/anchor computes `question_count`(from message_count)/`elapsed_min`(from created_at)/`wrap` INTO `state`, `render_pinned` reads it staying pure (RV-M5); mobile Practice FE; full-stack interview live-smoke wraps at 5/at-budget).**
