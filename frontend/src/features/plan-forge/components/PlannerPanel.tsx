@@ -99,14 +99,25 @@ export function PlannerPanel(props: IDockviewPanelProps) {
           session's scope), so it needs a non-palette entry point. An approved
           plan run is the prerequisite for a run's plan picker anyway, so the
           Planner is the natural adjacent surface to link from. */}
-      <button
-        type="button"
-        data-testid="planner-open-agent-mode"
-        onClick={() => openPanel('agent-mode')}
-        className="mb-2 self-start text-[11px] text-accent-foreground underline"
-      >
-        {t('planner.openAgentMode', { defaultValue: 'Autonomous Agent Runs →' })}
-      </button>
+      <div className="mb-2 flex items-center gap-3">
+        <button
+          type="button"
+          data-testid="planner-open-agent-mode"
+          onClick={() => openPanel('agent-mode')}
+          className="self-start text-[11px] text-accent-foreground underline"
+        >
+          {t('planner.openAgentMode', { defaultValue: 'Autonomous Agent Runs →' })}
+        </button>
+        {/* §2.6 loop-connected — compile happens here; the passes run in the rail. Hand off. */}
+        <button
+          type="button"
+          data-testid="planner-open-pass-rail"
+          onClick={() => openPanel('plan-passes')}
+          className="self-start text-[11px] text-accent-foreground underline"
+        >
+          {t('planner.openPassRail', { defaultValue: 'Pass Rail →' })}
+        </button>
+      </div>
 
       <div className="mb-2 flex gap-4 border-b" role="tablist" aria-label={t('planner.list.title', { defaultValue: 'Runs for this book' })}>
         {([

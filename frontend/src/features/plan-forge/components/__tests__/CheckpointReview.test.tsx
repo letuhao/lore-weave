@@ -79,13 +79,19 @@ describe('CheckpointReview (M4-CP)', () => {
     expect(onReview).toHaveBeenCalledWith(true);
   });
 
-  it('Edit → Save edits sends the parsed JSON as edits with approved=false (F-P10)', async () => {
+  it('the artifact content is READ-ONLY — no raw-JSON editor (draft ban + deep-merge cannot delete)', async () => {
+    render(<CheckpointReview {...props()} />);
+    await waitFor(() => screen.getByTestId('review-content'));
+    expect(screen.queryByTestId('review-edit-toggle')).toBeNull();
+    expect(screen.queryByTestId('review-edit')).toBeNull();
+    expect(screen.queryByTestId('review-save-edits')).toBeNull();
+  });
+
+  it('Reject calls onReview(false)', async () => {
     const onReview = vi.fn();
     render(<CheckpointReview {...props({ onReview })} />);
     await waitFor(() => screen.getByTestId('review-content'));
-    fireEvent.click(screen.getByTestId('review-edit-toggle'));
-    fireEvent.change(screen.getByTestId('review-edit'), { target: { value: '{"roster":[{"name":"Bob"}]}' } });
-    fireEvent.click(screen.getByTestId('review-save-edits'));
-    expect(onReview).toHaveBeenCalledWith(false, { roster: [{ name: 'Bob' }] });
+    fireEvent.click(screen.getByTestId('review-reject'));
+    expect(onReview).toHaveBeenCalledWith(false);
   });
 });

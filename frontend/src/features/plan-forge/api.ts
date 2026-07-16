@@ -122,6 +122,15 @@ export const planForgeApi = {
       method: 'POST', body: JSON.stringify(body), token,
     });
   },
+  // POST /link — (re-)link a compiled plan into the book's spec/outline tree. Idempotent; never
+  // overwrites a node a human edited. 'skeleton' = arcs + chapters; 'scene_plan' = the scenes.
+  relink(
+    bookId: string, runId: string, target: 'skeleton' | 'scene_plan', token: string,
+  ): Promise<unknown> {
+    return apiJson(`${BASE}/books/${bookId}/plan/runs/${runId}/link`, {
+      method: 'POST', body: JSON.stringify({ target }), token,
+    });
+  },
   // POST /checkpoint — approve/hold a pass (or the spec checkpoint, omit pass_id). `edits`
   // deep-merges into the pass artifact (a NEW artifact → downstream stales by derivation).
   reviewCheckpoint(

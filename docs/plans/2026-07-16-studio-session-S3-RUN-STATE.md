@@ -112,6 +112,10 @@ no-silent-fail · agent-parity · loop-connected · live-browser-proven · i18n+
 - **D-S3-BE4-ARCHIVE** (gate #2 large/structural): soft-archive a plan run (is_archived) + LIST filter
   + two-carrier in-flight guard + BE-4b restore + `?include_archived` + FE archive/undo. Full recipe
   in Q-35-BE4. Migration + repo + routes + FE — a real CRUD track, not a quick edit.
+- **D-S3-CHECKPOINT-STRUCTURED-EDITS** (gate #2, follow-up): the checkpoint "Save edits" (F-P10 —
+  edits deep-merge → decision=rejected + new artifact) needs a STRUCTURED editor (edit specific
+  fields), NOT a raw-JSON textarea (draft-banned; deep-merge can't delete). Ship it when the
+  structured edit UX is designed; until then the review is read-only + approve/reject.
 - **D-PLANFORGE-PROPOSE-BLIND** (pre-existing, SESSION_HANDOFF.md:102, gate #2): propose ignores an
   existing manuscript. Wave-5 must NOT touch the engine (Q-35-OQ5). Only ship the honesty copy string
   in the planner new-run form ("Proposed from this braindump only. Existing chapters are not read.").
@@ -130,6 +134,16 @@ no-silent-fail · agent-parity · loop-connected · live-browser-proven · i18n+
   land TOGETHER (register + de-PENDING) or the coverage ledger reds. Lands at convergence. The handler
   file + the react-query hook ARE committed, so the wiring is one 2-line barrel edit away.
 ### DRIFT  (near-misses, bars nearly lowered, tests nearly skipped)
+- **/review-impl caught a sealed-design drift (fixed):** M4-CP's CheckpointReview shipped a raw-JSON
+  Edit textarea → Save-edits, which the pass-rail draft's "What this mock does NOT propose" callout
+  EXPLICITLY bans ("No raw JSON/spec editor as a fallback — the artifact viewer is read-only"), and a
+  whole-doc deep-merge cannot express a DELETION → removing a cast member would silently no-op
+  (silent-success-is-a-bug). Fixed: content is READ-ONLY; structured Save-edits deferred
+  (D-S3-CHECKPOINT-STRUCTURED-EDITS). Caught by re-reading the draft in review, not from memory.
+- **/review-impl found a §2.6 loop-connect gap (fixed):** the rail had no "Link to outline" (relink →
+  manuscript spine) and the planner didn't link to the rail. Added api.relink + usePassRail.relink +
+  a footer "Link to outline →" button, and a "Pass Rail →" deep-link in the planner. Both live-proven
+  (rail footer button renders; rail reflects the post-smoke cursor=2 / world+beats unblocked).
 - Near-miss (caught): almost built a separate `planner-repair` panel — my CLARIFY question framed it
   as an option, contradicting the sealed "no new id". Caught by re-reading the source before coding,
   not from memory. This is exactly the rule "re-read a sealed decision; don't re-litigate it."

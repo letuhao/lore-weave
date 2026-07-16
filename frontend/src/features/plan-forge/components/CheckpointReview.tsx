@@ -1,8 +1,13 @@
 // PlanForge S3 (M4-CP) — the blocking-checkpoint review, inline under a pass in the rail. Lets a
 // GUI-only author READ what a checkpoint approves (cast = who the characters are, beats = the
-// story shape), edit it, and approve/hold — and, for cast, clear the PF-7 glossary seed gate that
-// otherwise 409s the approve forever. Render-only over useCheckpointReview + the rail's callbacks.
-import { useState } from 'react';
+// story shape) and approve/hold — and, for cast, clear the PF-7 glossary seed gate that otherwise
+// 409s the approve forever. Render-only over useCheckpointReview + the rail's callbacks.
+//
+// The artifact content is READ-ONLY here, deliberately: the draft's callout (screen-planforge-
+// pass-rail.html §"What this mock does NOT propose") bans a raw-JSON editor as a second, un-derived
+// write channel into the pass ledger — and a whole-doc deep-merge cannot express a DELETION, so a
+// "remove this cast member" edit would silently no-op. Structured `edits` (Save-edits, F-P10) is a
+// tracked follow-up (D-S3-CHECKPOINT-STRUCTURED-EDITS), not a raw textarea.
 import { useTranslation } from 'react-i18next';
 import { useCheckpointReview } from '../hooks/useCheckpointReview';
 import type { PlanPass } from '../types';
@@ -13,33 +18,17 @@ interface Props {
   runId: string;
   token: string | null;
   busy: boolean; // the rail's busy (an approve/reject in flight)
-  onReview: (approved: boolean, edits?: Record<string, unknown>) => void;
+  onReview: (approved: boolean) => void;
   onClose: () => void;
 }
 
 export function CheckpointReview({ pass, bookId, runId, token, busy, onReview, onClose }: Props) {
   const { t } = useTranslation('studio');
   const review = useCheckpointReview(bookId, runId, pass, token);
-  const [editing, setEditing] = useState(false);
-  const [draft, setDraft] = useState<string | null>(null);
-  const [parseError, setParseError] = useState<string | null>(null);
 
   const contentJson = review.artifact
     ? JSON.stringify(review.artifact.content, null, 2)
     : '';
-
-  const startEdit = () => { setDraft(contentJson); setEditing(true); setParseError(null); };
-  const saveEdits = () => {
-    try {
-      const parsed = JSON.parse(draft ?? '');
-      setParseError(null);
-      // F-P10 — "Save edits" is NOT a hold: it deep-merges into the artifact (a NEW artifact,
-      // restaling downstream) and records decision=rejected. The rail reloads after.
-      onReview(false, parsed as Record<string, unknown>);
-    } catch (e) {
-      setParseError(e instanceof Error ? e.message : 'invalid JSON');
-    }
-  };
 
   return (
     <div data-testid="pass-checkpoint-review" className="mt-1 rounded border border-warning/40 bg-warning/5 p-2">
@@ -55,17 +44,9 @@ export function CheckpointReview({ pass, bookId, runId, token, busy, onReview, o
         <p data-testid="review-error" className="mb-1 rounded bg-destructive/10 px-2 py-1 text-[10px] text-destructive">{review.error}</p>
       )}
 
-      {/* what the checkpoint is asking you to approve */}
+      {/* what the checkpoint is asking you to approve — READ-ONLY (see the file header) */}
       {review.loading ? (
         <p className="text-[10px] text-muted-foreground">{t('planPasses.reviewLoading', { defaultValue: 'Loading…' })}</p>
-      ) : editing ? (
-        <>
-          <textarea
-            data-testid="review-edit" value={draft ?? ''} onChange={(e) => setDraft(e.target.value)}
-            className="h-40 w-full resize-y rounded border border-border bg-background p-1.5 font-mono text-[10px] leading-relaxed outline-none focus:border-ring"
-          />
-          {parseError && <p className="text-[10px] text-destructive">{parseError}</p>}
-        </>
       ) : review.artifact ? (
         <pre data-testid="review-content" className="max-h-40 overflow-auto rounded bg-muted/40 p-1.5 font-mono text-[10px] leading-relaxed text-muted-foreground">
           {contentJson}
@@ -110,21 +91,6 @@ export function CheckpointReview({ pass, bookId, runId, token, busy, onReview, o
         >
           {t('planPasses.approve', { defaultValue: 'Approve' })}
         </button>
-        {editing ? (
-          <button
-            type="button" data-testid="review-save-edits" disabled={busy} onClick={saveEdits}
-            className="rounded border border-warning/50 px-2 py-1 text-[11px] text-warning hover:bg-warning/10 disabled:opacity-40"
-          >
-            {t('planPasses.saveEdits', { defaultValue: 'Save edits' })}
-          </button>
-        ) : (
-          <button
-            type="button" data-testid="review-edit-toggle" disabled={busy || !review.artifact} onClick={startEdit}
-            className="rounded border border-border px-2 py-1 text-[11px] hover:bg-secondary disabled:opacity-40"
-          >
-            {t('planPasses.edit', { defaultValue: 'Edit' })}
-          </button>
-        )}
         <button
           type="button" data-testid="review-reject" disabled={busy} onClick={() => onReview(false)}
           className="rounded border border-destructive/50 px-2 py-1 text-[11px] text-destructive hover:bg-destructive/10 disabled:opacity-40"

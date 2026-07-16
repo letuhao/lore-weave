@@ -30,6 +30,9 @@ export interface UsePassRail {
   reviewCheckpoint: (
     approved: boolean, passId?: string, edits?: Record<string, unknown>,
   ) => Promise<void>;
+  /** Push the compiled plan into the book's outline tree (§2.6 loop-connect → the manuscript). */
+  relink: (target: 'skeleton' | 'scene_plan') => Promise<void>;
+  relinkOutput: string | null;
 }
 
 export function usePassRail(
@@ -40,6 +43,7 @@ export function usePassRail(
   const qc = useQueryClient();
   const [busy, setBusy] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [relinkOutput, setRelinkOutput] = useState<string | null>(null);
 
   // Resolve the run: an explicit deep-link id wins; else the book's most recent run. A book with no
   // runs leaves runId null → the panel shows the "compile a plan first" empty state.
@@ -106,7 +110,23 @@ export function usePassRail(
     }
   }, [bookId, token, runId, qc]);
 
-  return { runId, ledger, busy, polling, error, reload, runPass, reviewCheckpoint };
+  const relink = useCallback(async (target: 'skeleton' | 'scene_plan') => {
+    if (!token || !runId) return;
+    setBusy(true); setActionError(null); setRelinkOutput(null);
+    try {
+      await planForgeApi.relink(bookId, runId, target, token);
+      setRelinkOutput(target === 'skeleton'
+        ? 'Linked arcs + chapters into the outline.'
+        : 'Linked the scenes into the outline.');
+    } catch (e) {
+      // 409 LINK_REFUSED (e.g. nothing compiled / no scene plan yet) — surface it.
+      setActionError(extractError(e));
+    } finally {
+      setBusy(false);
+    }
+  }, [bookId, token, runId]);
+
+  return { runId, ledger, busy, polling, error, reload, runPass, reviewCheckpoint, relink, relinkOutput };
 }
 
 /** Pull a human message out of an apiJson error, preferring the server's `detail.message`. */

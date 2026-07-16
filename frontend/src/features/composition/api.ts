@@ -133,6 +133,16 @@ export const compositionApi = {
   getDerivativeContext(projectId: string, token: string): Promise<DerivativeContextResponse> {
     return apiJson<DerivativeContextResponse>(`${BASE}/works/${projectId}/derivative-context`, { token });
   },
+  // S5-B4 — the latest completed scene-draft prose for a chapter in ONE project
+  // (node_id + story_order + title + text). Fetched for BOTH the dị bản and its source
+  // so the branch-diff can correspond scenes by (chapter_id, story_order).
+  getChapterSceneDrafts(
+    projectId: string,
+    chapterId: string,
+    token: string | null,
+  ): Promise<{ items: Array<{ node_id: string; story_order: number; title: string; text: string }> }> {
+    return apiJson(`${BASE}/works/${projectId}/chapters/${chapterId}/scene-drafts`, { token });
+  },
   getOutline(projectId: string, token: string, includeArchived = false): Promise<{ nodes: OutlineNode[]; scene_links: SceneLink[] }> {
     const qs = includeArchived ? '?include_archived=true' : '';
     return apiJson(`${BASE}/works/${projectId}/outline${qs}`, { token });

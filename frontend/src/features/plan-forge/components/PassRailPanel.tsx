@@ -147,8 +147,8 @@ export function PassRailPanel(props: IDockviewPanelProps) {
                     runId={rail.runId}
                     token={accessToken ?? null}
                     busy={rail.busy}
-                    onReview={(approved, edits) => {
-                      void rail.reviewCheckpoint(approved, pass.pass_id, edits);
+                    onReview={(approved) => {
+                      void rail.reviewCheckpoint(approved, pass.pass_id);
                       setReviewPass(null);
                     }}
                     onClose={() => setReviewPass(null)}
@@ -175,7 +175,18 @@ export function PassRailPanel(props: IDockviewPanelProps) {
               </span>
             )}
             {rail.polling && <span className="animate-pulse text-accent">· working…</span>}
+            {/* §2.6 loop-connect — push the compiled plan into the book's outline (the manuscript). */}
+            <button
+              type="button" data-testid="plan-passes-relink" disabled={rail.busy}
+              onClick={() => void rail.relink('skeleton')}
+              className="ml-auto rounded border border-border px-2 py-0.5 text-[10px] hover:bg-secondary disabled:opacity-40"
+            >
+              {t('planPasses.linkOutline', { defaultValue: 'Link to outline →' })}
+            </button>
           </div>
+          {rail.relinkOutput && (
+            <p data-testid="plan-passes-relink-output" className="mt-1 text-[10px] text-success">{rail.relinkOutput}</p>
+          )}
         </>
       )}
     </div>
