@@ -98,6 +98,7 @@ async def get_authoring_run_service() -> "AuthoringRunService":
         EngineDraftingSeam(),
         AuthoringRunUnitsRepo(get_pool()),
         BookRevisionCapture(),
+        corrections=GenerationCorrectionsRepo(get_pool()),  # BE-9b — reject-correction capture
     )
 
 

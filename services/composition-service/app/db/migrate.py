@@ -1565,6 +1565,11 @@ CREATE TABLE IF NOT EXISTS authoring_run_units (
   -- breaker (run PAUSED, breaker reason critic_severe — 07S: interrupt on
   -- severe; the human reviews the report and resumes/reverts).
   critic_verdict   JSONB,
+  -- BE-9a: the generation_job that drafted this unit — accept/reject attaches a generation_correction
+  -- to it (the human-gate learning signal). NULLABLE and NEVER backfilled: a pre-BE-9a unit has no
+  -- job to attribute a rejection to, so it records nothing (a wrong guess would attribute the author's
+  -- rejection to someone else's generation).
+  job_id           UUID,
   created_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
   PRIMARY KEY (run_id, unit_index)
@@ -1572,6 +1577,8 @@ CREATE TABLE IF NOT EXISTS authoring_run_units (
 -- D5 additive column for DBs that created authoring_run_units before D5 (the
 -- CREATE TABLE above is IF NOT EXISTS — it does not evolve an existing table).
 ALTER TABLE authoring_run_units ADD COLUMN IF NOT EXISTS critic_verdict JSONB;
+-- BE-9a additive column (same rationale — evolve an existing table).
+ALTER TABLE authoring_run_units ADD COLUMN IF NOT EXISTS job_id UUID;
 
 -- ── plan_bootstrap_proposal (PlanForge auto-bootstrap POC): the
 -- propose→record→approve→apply structural-mutation quarantine gate

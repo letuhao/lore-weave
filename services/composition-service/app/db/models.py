@@ -783,6 +783,9 @@ class AuthoringRunUnit(BaseModel):
     # cost_usd[, detail]}. None = not critiqued (critic disabled / unit never
     # drafted / run paused-or-stolen at the boundary before the critique).
     critic_verdict: dict[str, Any] | None = None
+    # BE-9a: the generation_job that drafted this unit (NULL for pre-BE-9a units — never backfilled).
+    # It is what accept/reject attaches a generation_correction to (the human-gate learning signal).
+    job_id: UUID | None = None
     created_at: datetime | None = None
     updated_at: datetime | None = None
 

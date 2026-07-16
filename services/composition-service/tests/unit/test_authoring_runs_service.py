@@ -218,12 +218,12 @@ class FakeUnitsRepo:
         return unit
 
     async def mark_drafted(self, run_id, unit_index, *, post_revision_id,
-                           cost_usd, run_statuses=None,
+                           cost_usd, job_id=None, run_statuses=None,
                            run_driver_id=None) -> AuthoringRunUnit | None:
         return await self.transition_unit(
             run_id, unit_index, from_statuses=("pending",),
             to_status="drafted", post_revision_id=post_revision_id, cost_usd=cost_usd,
-            run_statuses=run_statuses, run_driver_id=run_driver_id,
+            job_id=job_id, run_statuses=run_statuses, run_driver_id=run_driver_id,
         )
 
     async def mark_failed(self, run_id, unit_index, *, error) -> AuthoringRunUnit | None:
@@ -245,7 +245,7 @@ class FakeUnitsRepo:
 
     async def transition_unit(self, run_id, unit_index, *, from_statuses,
                               to_status, post_revision_id=None, cost_usd=None,
-                              error_message=None, run_statuses=None,
+                              error_message=None, job_id=None, run_statuses=None,
                               run_driver_id=None) -> AuthoringRunUnit | None:
         parent = self._runs.rows.get(run_id)
         if parent is None:  # mirrors the FROM authoring_runs r JOIN
@@ -264,6 +264,8 @@ class FakeUnitsRepo:
             update["post_revision_id"] = post_revision_id
         if cost_usd is not None:
             update["cost_usd"] = cost_usd
+        if job_id is not None:
+            update["job_id"] = job_id
         if error_message is not None:
             update["error_message"] = error_message
         updated = u.model_copy(update=update)
@@ -361,7 +363,7 @@ async def _drain_driver_tasks():
 
 
 def make_svc(seam=None, plan_status="validated", revisions=None, notify=None,
-             driver_id=None, critic=None, late_restore=None):
+             driver_id=None, critic=None, late_restore=None, corrections=None):
     runs = FakeRunsRepo()
     plans = FakePlanRuns()
     plans.add(OWNER, BOOK, PLAN, plan_status)
@@ -378,8 +380,19 @@ def make_svc(seam=None, plan_status="validated", revisions=None, notify=None,
         critic=critic or FakeCriticSeam(),
         # Late-swallow restore spy (never the real book-service call).
         late_restore=late_restore or RestoreRecorder(),
+        corrections=corrections,  # BE-9b: None → no capture (most tests); a recorder for the capture test
     )
     return svc, runs, plans
+
+
+class FakeCorrections:
+    """BE-9b recorder — captures record_for_job calls without a DB."""
+    def __init__(self):
+        self.calls: list[tuple] = []
+
+    async def record_for_job(self, job_id, *, created_by, kind, changed_blocks=None):
+        self.calls.append((job_id, created_by, kind))
+        return object()
 
 
 async def make_run(svc, *, scope=None, budget="1.00", allowlist=None, level=3,
@@ -1050,6 +1063,28 @@ async def test_reject_restores_pre_revision_then_marks_rejected():
     assert restore.calls == [(BOOK, CH1, cap.issued[0])]
     # cascade warning: unit 1 is still drafted downstream of the rejected unit 0
     assert cascade == [1]
+
+
+async def test_reject_captures_reject_correction_be9b():
+    """BE-9b — a reject on a unit whose draft carried a job_id records a kind='reject'
+    generation_correction on that job (the human-gate taste signal, previously discarded)."""
+    JOB = uuid.uuid4()
+    corrections = FakeCorrections()
+    seam = FakeSeam(default=DraftOutcome(ok=True, cost_usd=Decimal("0.01"), job_id=JOB))
+    svc, runs, _ = make_svc(seam=seam, corrections=corrections)
+    run = await _completed_run(svc, runs)
+    await svc.reject_unit(run.run_id, 0, restore=RestoreRecorder())
+    assert corrections.calls == [(JOB, OWNER, "reject")]
+
+
+async def test_reject_with_null_job_id_records_nothing_be9b():
+    """BE-9a: a pre-BE-9a unit (job_id NULL) records NO correction — never backfill a guess that
+    would attribute the author's rejection to someone else's generation."""
+    corrections = FakeCorrections()
+    svc, runs, _ = make_svc(corrections=corrections)  # default seam → DraftOutcome.job_id is None
+    run = await _completed_run(svc, runs)
+    await svc.reject_unit(run.run_id, 0, restore=RestoreRecorder())
+    assert corrections.calls == []
 
 
 async def test_reject_restore_failure_leaves_unit_drafted():

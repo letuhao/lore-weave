@@ -181,6 +181,28 @@ class GenerationCorrectionsRepo:
                 )
                 return corr
 
+    async def record_for_job(
+        self,
+        job_id: UUID,
+        *,
+        created_by: UUID,
+        kind: CorrectionKind,
+        changed_blocks: int | None = None,
+    ) -> GenerationCorrection | None:
+        """BE-9b — record a correction for a caller that holds only the job id (the authoring-run
+        accept/reject seam), resolving the job's project internally. Returns None if the job no
+        longer exists — the caller uses this fire-and-forget (a failed capture never blocks review).
+        Note: the correction denominator (BE-9c) only counts draft ops, so an authoring-run draft
+        job (draft_scene/draft_chapter/stitch_chapter) is a real, correctly-counted signal."""
+        pid = await self._pool.fetchval(
+            "SELECT project_id FROM generation_job WHERE id = $1", job_id,
+        )
+        if pid is None:
+            return None
+        return await self.create(
+            pid, job_id, created_by=created_by, kind=kind, changed_blocks=changed_blocks,
+        )
+
     async def correction_stats(
         self, project_id: UUID
     ) -> CorrectionStats:

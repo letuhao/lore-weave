@@ -39,7 +39,7 @@ _SELECT = """
 _UNIT_SELECT = """
   u.run_id, u.unit_index, u.chapter_id, u.status, u.pre_revision_id,
   u.post_revision_id, u.cost_usd, u.error_message, u.critic_verdict,
-  u.created_at, u.updated_at
+  u.job_id, u.created_at, u.updated_at
 """
 
 
@@ -333,6 +333,7 @@ class AuthoringRunUnitsRepo:
         *,
         post_revision_id: UUID | None,
         cost_usd: Decimal,
+        job_id: UUID | None = None,
         run_statuses: tuple[AuthoringRunStatus, ...] | None = None,
         run_driver_id: str | None = None,
     ) -> AuthoringRunUnit | None:
@@ -345,7 +346,7 @@ class AuthoringRunUnitsRepo:
         return await self.transition_unit(
             run_id, unit_index,
             from_statuses=("pending",), to_status="drafted",
-            post_revision_id=post_revision_id, cost_usd=cost_usd,
+            post_revision_id=post_revision_id, cost_usd=cost_usd, job_id=job_id,
             run_statuses=run_statuses, run_driver_id=run_driver_id,
         )
 
@@ -395,6 +396,7 @@ class AuthoringRunUnitsRepo:
         post_revision_id: UUID | None = None,
         cost_usd: Decimal | None = None,
         error_message: str | None = None,
+        job_id: UUID | None = None,
         run_statuses: tuple[AuthoringRunStatus, ...] | None = None,
         run_driver_id: str | None = None,
     ) -> AuthoringRunUnit | None:
@@ -411,6 +413,11 @@ class AuthoringRunUnitsRepo:
         if cost_usd is not None:
             args.append(cost_usd)
             sets.append(f"cost_usd = ${len(args)}")
+        if job_id is not None:
+            # BE-9a: the generation_job that drafted this unit — so accept/reject can attach a
+            # correction to it. Nullable (never backfilled): a pre-BE-9a unit records nothing.
+            args.append(job_id)
+            sets.append(f"job_id = ${len(args)}")
         if error_message is not None:
             args.append(error_message)
             sets.append(f"error_message = ${len(args)}")

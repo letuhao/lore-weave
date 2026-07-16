@@ -102,6 +102,7 @@ import asyncpg
 from app.config import settings
 from app.db.models import AuthoringRun, AuthoringRunUnit
 from app.db.repositories.authoring_runs import AuthoringRunsRepo, AuthoringRunUnitsRepo
+from app.db.repositories.generation_corrections import GenerationCorrectionsRepo
 from app.db.repositories.plan_runs import PlanRunsRepo
 
 logger = logging.getLogger(__name__)
@@ -200,6 +201,9 @@ class DraftOutcome:
     ok: bool
     cost_usd: Decimal = Decimal("0")
     error: str | None = None
+    # BE-9a: the generation_job that produced this unit's draft. Persisted onto the unit so accept/
+    # reject can attach a generation_correction to it. None when the engine returned no job id.
+    job_id: UUID | None = None
 
 
 class DraftingSeam(Protocol):
@@ -382,13 +386,14 @@ class EngineDraftingSeam:
             return await self._poll_job(jobs, project_id, UUID(str(job_id_raw)))
         if status == "completed":
             cost = Decimal("0")
-            if job_id_raw:
+            job_id = UUID(str(job_id_raw)) if job_id_raw else None
+            if job_id is not None:
                 # `jobs.get` is bare-id since the 25 re-key — re-scope the loaded row to
                 # this run's Work partition (worker-loaded-id-needs-parent-scoping).
-                job = await jobs.get(UUID(str(job_id_raw)))
+                job = await jobs.get(job_id)
                 if job is not None and job.project_id == project_id:
                     cost = job.cost_usd or Decimal("0")
-            return DraftOutcome(ok=True, cost_usd=cost)
+            return DraftOutcome(ok=True, cost_usd=cost, job_id=job_id)  # BE-9a: carry the job id
         return DraftOutcome(ok=False, error=f"engine returned status={status or 'unknown'}")
 
     @staticmethod
@@ -405,7 +410,7 @@ class EngineDraftingSeam:
             if job is None or job.project_id != project_id:
                 return DraftOutcome(ok=False, error=f"generation job {job_id} vanished")
             if job.status == "completed":
-                return DraftOutcome(ok=True, cost_usd=job.cost_usd or Decimal("0"))
+                return DraftOutcome(ok=True, cost_usd=job.cost_usd or Decimal("0"), job_id=job_id)  # BE-9a
             if job.status in ("failed", "cancelled"):
                 err = (job.result or {}).get("error", job.status)
                 return DraftOutcome(ok=False, error=f"generation job {job.status}: {err}")
@@ -634,12 +639,17 @@ class AuthoringRunService:
         driver_id: str | None = None,
         critic: CriticSeam | None = None,
         late_restore: RestoreFn | None = None,
+        corrections: GenerationCorrectionsRepo | None = None,
     ) -> None:
         self._runs = runs
         self._plan_runs = plan_runs
         self._seam = seam
         self._units = units
         self._revisions = revisions
+        # BE-9b: the human-gate correction capture. A reject on a drafted unit IS a `kind='reject'`
+        # correction on that unit's generation_job — the taste signal the corrections panel + learning
+        # consume. Fire-and-forget (None → skip; a failed capture NEVER blocks the review).
+        self._corrections = corrections
         # D4 late-swallow content restore (None → the real book-service restore
         # with a minted service bearer; tests inject a spy): when a seam result
         # lands after close/fail, the engine ALREADY persisted the draft into
@@ -950,6 +960,17 @@ class AuthoringRunService:
         )
         if rejected is None:
             raise TransitionConflictError("unit left drafted while rejecting (raced)")
+        # BE-9b: a reject is a textbook `kind='reject'` correction on the unit's draft job — the
+        # human-gate taste signal (previously thrown away every time). Fire-and-forget: a null job_id
+        # (pre-BE-9a unit) records nothing (never backfill a guess), and a capture failure NEVER blocks
+        # the review it rides on. Actor = the run's owner (the reviewer of their own run).
+        if self._corrections is not None and unit.job_id is not None:
+            try:
+                await self._corrections.record_for_job(
+                    unit.job_id, created_by=run.created_by, kind="reject",
+                )
+            except Exception:  # noqa: BLE001 — telemetry must never fail the reject
+                logger.warning("BE-9b: reject-correction capture failed", exc_info=True)
         cascade = [
             u.unit_index
             for u in await self._units.list_for_run(run_id)
@@ -1185,7 +1206,7 @@ class AuthoringRunService:
             # new driver (its re-run owns it).
             drafted = await self._units.mark_drafted(
                 run_id, run.current_unit,
-                post_revision_id=post_rev, cost_usd=cost,
+                post_revision_id=post_rev, cost_usd=cost, job_id=outcome.job_id,  # BE-9a
                 run_statuses=_LATE_RESULT_RUN_STATUSES,
                 run_driver_id=self._driver_id,
             )
