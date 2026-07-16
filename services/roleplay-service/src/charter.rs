@@ -122,4 +122,96 @@ mod tests {
         assert_eq!(charter["phases"], json!(["roleplay"]));
         assert_eq!(charter["checklist"], json!([]));
     }
+
+    // ── ACP A0.3 / RW-8 — the PRODUCER side of the working_memory contract ──────
+    // roleplay-service freezes the seed that chat/knowledge consume. This validates
+    // the REAL `freeze()` output (not a fixture) against the shared JSON Schema
+    // contract, machine-READING the schema (so a schema change propagates — no
+    // hand-mirrored rules). Covers the drift modes RW-8 targets: a required key
+    // missing, and an UNDECLARED top-level key (additionalProperties:false) — the
+    // exact class that surfaced `rubric` was unmodelled by the schema.
+
+    fn load_schema() -> Value {
+        // CARGO_MANIFEST_DIR = services/roleplay-service ; repo root is two up.
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../contracts/agent-control/working_memory.schema.json");
+        let text = std::fs::read_to_string(&path)
+            .unwrap_or_else(|e| panic!("read schema {}: {e}", path.display()));
+        serde_json::from_str(&text).expect("schema is valid JSON")
+    }
+
+    /// Structural check of one object level against its schema node: every
+    /// `required` key present, and (when `additionalProperties:false`) no key
+    /// outside the declared `properties`. Reads the rules FROM the schema.
+    fn assert_level_conforms(instance: &Value, schema_node: &Value, path: &str) {
+        let obj = instance
+            .as_object()
+            .unwrap_or_else(|| panic!("{path}: expected an object"));
+        for req in schema_node["required"].as_array().into_iter().flatten() {
+            let key = req.as_str().unwrap();
+            assert!(obj.contains_key(key), "{path}: missing required key '{key}'");
+        }
+        let closed = schema_node
+            .get("additionalProperties")
+            .and_then(Value::as_bool)
+            == Some(false);
+        if closed {
+            let props = schema_node["properties"].as_object().unwrap();
+            for key in obj.keys() {
+                assert!(
+                    props.contains_key(key),
+                    "{path}: undeclared key '{key}' (additionalProperties:false) — producer/schema drift"
+                );
+            }
+        }
+    }
+
+    fn assert_seed_conforms(seed: &Value, schema: &Value) {
+        assert_level_conforms(seed, schema, "seed");
+        assert_level_conforms(&seed["charter"], &schema["properties"]["charter"], "seed.charter");
+        assert_level_conforms(&seed["state"], &schema["properties"]["state"], "seed.state");
+    }
+
+    #[test]
+    fn freeze_output_conforms_to_working_memory_schema() {
+        let schema = load_schema();
+        // The 3 System interview presets, mirrored from the migration seed, WITH a
+        // rubric sidecar (the case that exposed the schema gap).
+        let presets = [
+            (
+                json!({"goal":"Assess senior software-engineering skill through a coding/problem-solving interview","phases":["warmup","coding","followup","wrap"],"checklist":["clarifies the problem before coding","states an approach and its complexity"],"time_budget_min":45,"language":"en"}),
+                json!({"dimensions":["problem clarification","algorithmic approach","code correctness","communication"]}),
+                "FAANG SWE Interview",
+            ),
+            (
+                json!({"goal":"Assess behavioral fit through STAR stories","phases":["warmup","stories","followup","wrap"],"checklist":["gives a concrete Situation and Task"],"time_budget_min":40,"language":"en"}),
+                json!({"dimensions":["STAR structure","specificity","ownership","reflection"]}),
+                "Behavioral (HR) Interview",
+            ),
+            (
+                json!({"goal":"Assess senior system-design skill","phases":["requirements","high_level","deep_dive","wrap"],"checklist":["clarifies functional and scale requirements"],"time_budget_min":50,"language":"en"}),
+                json!({"dimensions":["requirements","architecture","scalability","trade-off reasoning"]}),
+                "System Design Interview",
+            ),
+        ];
+        for (scenario, rubric, name) in presets {
+            let (_charter, seed) = freeze(&scenario, Some(&rubric), name);
+            // The interview seed carries the rubric sidecar top-level (schema models it as of A0.3).
+            assert!(seed.get("rubric").is_some(), "{name}: interview seed should carry a rubric");
+            assert_seed_conforms(&seed, &schema);
+        }
+        // A freeform (no-rubric) seed must also conform.
+        let (_c, seed) = freeze(&json!({"premise":"tense negotiation","beats":["establish leverage"]}), None, "Freighter");
+        assert_seed_conforms(&seed, &schema);
+    }
+
+    #[test]
+    fn conformance_check_actually_bites_on_drift() {
+        // Prove the validator would CATCH a producer that added an undeclared key.
+        let schema = load_schema();
+        let (_c, mut seed) = freeze(&json!({"goal":"x","phases":["a"],"language":"en"}), None, "X");
+        seed["surprise_field"] = json!("drift");
+        let caught = std::panic::catch_unwind(|| assert_seed_conforms(&seed, &schema)).is_err();
+        assert!(caught, "the conformance check must FAIL on an undeclared top-level key");
+    }
 }

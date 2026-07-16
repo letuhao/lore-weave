@@ -33,6 +33,10 @@
         "drift_note": { "type": ["string", "null"] },
         "redirect_hint": { "type": ["string", "null"] }
       }
+    },
+    "rubric": {
+      "description": "Optional debrief-rubric SIDECAR that rides the seed (NOT written by the executive; NOT in the knowledge block). The goal authority (roleplay `charter::freeze`) attaches it from the script; chat-service `/evaluate` reads it from the seed (`seed.rubric`) to score the debrief. Shape is flexible (e.g. {\"dimensions\": [...]}). Added at ACP A0.3 — RW-8 surfaced that `freeze()` emits this top-level field for interview presets while the schema forbade it via additionalProperties:false.",
+      "type": "object"
     }
   }
 }
