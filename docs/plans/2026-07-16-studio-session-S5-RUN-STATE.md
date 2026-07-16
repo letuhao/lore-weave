@@ -106,6 +106,21 @@ useWhatIfPromotion), NEVER mount CompositionPanel shell.
 - D-S5-SWITCH-TO-EC3C — divergence "Switch to" + EC-3c (candidates[0]→!source_work_id at ~12 sites, 7 studio+4 legacy+1 BE)
   + EC-3d (useActiveWork + host bus work:switch). Cross-session (edits S1/S3/S6/S7 files) → needs coordination, not S5-solo.
   Panel ships LIST/READ/CREATE/ARCHIVE without it (no bug armed). Gate: hygiene grep `candidates[0]` absent outside tests.
+### /review-impl on B1 (divergence panel + EC-3c/EC-3d) — 2026-07-16
+- **HIGH #1 (FIXED)** — FE wizard `buildBody()` DROPPED `name`: BE-13a accepted it but the FE never sent it,
+  so every derivative created via the panel was unnamed ("Untitled dị bản") — the exact F-EC3a silent-success
+  bug the draft named, half-fixed. Fix: FE DeriveBody.name + buildBody includes name.trim(); test asserts it.
+- **MED #2 (FIXED)** — useActiveWorkId fired N identical GET /v1/me/preferences (no react-query dedup) across
+  ~13 sites on studio mount. Fix: module-level in-flight dedup (fetchActiveWorkId) coalesces concurrent loads.
+- **MED/LOW #3 (FIXED)** — DivergenceManagerView Row was a `<button>` containing `<span role=button>` (invalid
+  content model / a11y). Fix: Row is a div (role/tabIndex for derivatives); Switch/Archive are real buttons.
+- **LOW #4 (DEFERRED)** — spec query error path is silent (getDerivativeContext failure shows no error). D-S5-SPEC-ERR.
+- **LOW #5 (ACCEPT)** — archive uses token! assertion; studio is always authed.
+Standards: [Tenancy] pref per-user+per-book ✓ · [Frontend-Tool Contract] enum==openable==contract machine-checked ✓.
+
 ### DRIFT  (near-misses, bars nearly lowered, tests nearly skipped)
+- NEAR-MISS (caught by /review-impl): shipped B1 with BE-13a HALF-done — backend accepted `name`, FE wizard
+  still dropped it. A green suite hid it (no test asserted buildBody sends name). The draft had NAMED this exact
+  bug (F-EC3a) and I fixed only one half. This is why panel-close /review-impl is mandatory.
 - NEAR-MISS: I first reported the surface as "operates" from CODE READING alone — the exact trap repo law `agent-gui-loop-needs-live-browser-smoke` warns against. User challenge forced the live drive. Corrected before any build.
 - NEAR-MISS: almost concluded "whatif-canvas unreachable" from the live :5174 palette — caught the STALE-BUILD confound (image 23h older than the row) before asserting it. Live-truth deferred, not faked.

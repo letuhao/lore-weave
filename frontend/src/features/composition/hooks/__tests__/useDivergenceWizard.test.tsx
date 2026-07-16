@@ -48,12 +48,14 @@ describe('useDivergenceWizard (C24 — 4-step → POST /works/{id}/derive)', () 
     const { Wrapper } = makeWrapper();
     const { result } = renderHook(() => useDivergenceWizard({ sourceWork, token: 'tok' }), { wrapper: Wrapper });
     act(() => {
+      result.current.setName('  Genderbend AU  '); // BE-13a: must be sent (trimmed), not dropped
       result.current.setBranchPoint(3);
       result.current.setTaxonomy('character_transform');
       result.current.setOverride('ent-zrc', { description: 'now a woman' });
       result.current.setCanonRules(['张若尘 is female', '  ']); // blank trimmed out
     });
     const body = result.current.buildBody();
+    expect(body.name).toBe('Genderbend AU'); // BE-13a — the name reaches the derive body, trimmed
     expect(body.branch_point).toBe(3);
     expect(body.divergence.taxonomy).toBe('character_transform');
     expect(body.divergence.canon_rule).toEqual(['张若尘 is female']);

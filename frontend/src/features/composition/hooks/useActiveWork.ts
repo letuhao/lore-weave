@@ -25,6 +25,22 @@ function notifyActiveWorkChanged(): void {
   reloadListeners.forEach((l) => l());
 }
 
+// In-flight dedup: ~13 Work-resolution sites each mount useActiveWorkId, and without
+// react-query's cache they would each fire an identical GET /v1/me/preferences on
+// studio mount. Coalesce concurrent loads for the same book onto one request (cleared
+// on settle, so a later mount / a post-switch reload refetches fresh — no staleness).
+const inflightByBook = new Map<string, Promise<string | null>>();
+function fetchActiveWorkId(bookId: string, token: string | null): Promise<string | null> {
+  const existing = inflightByBook.get(bookId);
+  if (existing) return existing;
+  const p = loadPrefFromServer<string>(activeWorkPrefKey(bookId), token)
+    .then((v) => v ?? null)
+    .catch(() => null)
+    .finally(() => inflightByBook.delete(bookId));
+  inflightByBook.set(bookId, p);
+  return p;
+}
+
 /** The active-Work project id for this book (undefined while loading, null = unset ⇒ canonical). */
 export function useActiveWorkId(bookId: string | undefined, token: string | null) {
   const [data, setData] = useState<string | null | undefined>(undefined);
@@ -36,8 +52,8 @@ export function useActiveWorkId(bookId: string | undefined, token: string | null
     }
     let cancelled = false;
     const load = async () => {
-      const v = await loadPrefFromServer<string>(activeWorkPrefKey(bookId), token);
-      if (!cancelled) setData(v ?? null);
+      const v = await fetchActiveWorkId(bookId, token);
+      if (!cancelled) setData(v);
     };
     void load();
     reloadListeners.add(load);

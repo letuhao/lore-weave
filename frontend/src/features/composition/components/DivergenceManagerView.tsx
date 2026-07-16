@@ -1,7 +1,7 @@
 // EC-3 — the divergence (dị bản) MANAGE view. Canonical + named derivatives, each with
 // Switch-to / Archive, the read-only spec of the selected one, and the create wizard.
 // Logic lives in useDivergenceManager; this renders only.
-import { useState } from 'react';
+import { useState, type KeyboardEvent as ReactKeyboardEvent } from 'react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 import { derivativeName, useDivergenceManager } from '../hooks/useDivergenceManager';
@@ -54,12 +54,16 @@ export function DivergenceManagerView({ bookId, token }: { bookId: string; token
   const Row = ({ w, canon }: { w: Work; canon: boolean }) => {
     const active = isActive(w);
     const name = derivativeName(w) ?? (canon ? t('divergence.canonical', { defaultValue: 'Canonical' }) : t('divergence.unnamed', { defaultValue: 'Untitled dị bản' }));
+    const selectable = !canon; // only a derivative opens a spec
+    const select = () => m.setSelectedProjectId(w.project_id === m.selectedProjectId ? null : w.project_id);
+    // A plain div (NOT a <button>) so the Switch/Archive <button>s below are not nested
+    // inside a button (invalid content model / a11y). Derivative rows are keyboard-
+    // operable via role+tabIndex; the canon row is static.
     return (
-      <button
-        type="button"
+      <div
         data-testid={canon ? 'divergence-canon-row' : `divergence-row-${w.project_id}`}
-        onClick={() => !canon && m.setSelectedProjectId(w.project_id === m.selectedProjectId ? null : w.project_id)}
-        className={`flex w-full flex-col gap-1 rounded border px-2.5 py-2 text-left ${
+        {...(selectable ? { role: 'button', tabIndex: 0, onClick: select, onKeyDown: (e: ReactKeyboardEvent) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); select(); } } } : {})}
+        className={`flex w-full flex-col gap-1 rounded border px-2.5 py-2 text-left ${selectable ? 'cursor-pointer' : ''} ${
           active ? 'border-emerald-400 bg-emerald-50/40 dark:border-emerald-600 dark:bg-emerald-950/20' : 'border-border hover:border-foreground/30'
         } ${m.selectedProjectId === w.project_id ? 'ring-1 ring-primary' : ''}`}
       >
@@ -77,32 +81,28 @@ export function DivergenceManagerView({ bookId, token }: { bookId: string; token
         )}
         <div className="mt-0.5 flex items-center gap-1.5">
           {!active && (
-            <span
-              role="button"
-              tabIndex={0}
+            <button
+              type="button"
               data-testid={`divergence-switch-${w.project_id}`}
+              disabled={m.isSwitching}
               onClick={(e) => { e.stopPropagation(); void doSwitch(canon ? null : w); }}
-              onKeyDown={(e) => { if (e.key === 'Enter') { e.stopPropagation(); void doSwitch(canon ? null : w); } }}
-              className="cursor-pointer rounded border border-border px-2 py-0.5 text-[11px] hover:bg-muted disabled:opacity-50"
-              aria-disabled={m.isSwitching}
+              className="rounded border border-border px-2 py-0.5 text-[11px] hover:bg-muted disabled:opacity-50"
             >
               {t('divergence.switchTo', { defaultValue: 'Switch to' })}
-            </span>
+            </button>
           )}
           {!canon && (
-            <span
-              role="button"
-              tabIndex={0}
+            <button
+              type="button"
               data-testid={`divergence-archive-${w.project_id}`}
               onClick={(e) => { e.stopPropagation(); doArchive(w); }}
-              onKeyDown={(e) => { if (e.key === 'Enter') { e.stopPropagation(); doArchive(w); } }}
-              className="cursor-pointer rounded px-2 py-0.5 text-[11px] text-red-600 hover:bg-red-50 dark:hover:bg-red-950/30"
+              className="rounded px-2 py-0.5 text-[11px] text-red-600 hover:bg-red-50 dark:hover:bg-red-950/30"
             >
               {t('divergence.archive', { defaultValue: 'Archive' })}
-            </span>
+            </button>
           )}
         </div>
-      </button>
+      </div>
     );
   };
 

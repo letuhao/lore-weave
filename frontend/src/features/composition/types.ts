@@ -39,6 +39,11 @@ export type DivergenceSpec = {
 };
 
 export type DeriveBody = {
+  // BE-13a — the dị bản's human name (persisted to settings.derivative_name). The
+  // wizard has always collected it; without sending it here the manage panel lists
+  // unnamed UUIDs (the F-EC3a silent-success bug). Optional at the API for non-panel
+  // callers; the wizard enforces presence.
+  name?: string;
   branch_point: number | null;
   divergence: DivergenceSpec;
   entity_overrides: EntityOverride[];
