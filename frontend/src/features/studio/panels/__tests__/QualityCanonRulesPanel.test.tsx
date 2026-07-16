@@ -19,6 +19,8 @@ vi.mock('@/features/composition/hooks/useWork', () => ({
 vi.mock('@/features/composition/hooks/useActiveWork', () => ({
   useActiveWorkId: () => ({ data: undefined }),
 }));
+// The reverse-deep-link data source (violation counts); stub it so the panel doesn't do a real fetch.
+vi.mock('../useQualityCanon', () => ({ useQualityCanon: () => ({ ruleViolations: [] }) }));
 
 // The port reuses this component AS-IS; stub it so this test targets the wrapper (gate + wiring).
 vi.mock('@/features/composition/components/CanonRulesPanel', () => ({

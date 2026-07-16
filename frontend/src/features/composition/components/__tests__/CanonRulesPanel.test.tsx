@@ -175,6 +175,17 @@ describe('CanonRulesPanel (FD-16)', () => {
     expect(canon.patch.mutate.mock.calls[0][0].version).toBe(8);
   });
 
+  it('shows a "N broken →" badge on violated rules and opens the issues on click (reverse deep-link)', () => {
+    canon.list = { isLoading: false, data: [rule({ id: 'r1', text: 'clean' }), rule({ id: 'r2', text: 'broken' })] };
+    const onOpenViolations = vi.fn();
+    render(<CanonRulesPanel projectId="p" bookId="b" token="t"
+                            violationCounts={{ r2: 3 }} onOpenViolations={onOpenViolations} />);
+    const badges = screen.getAllByTestId('composition-canon-broken');
+    expect(badges).toHaveLength(1);               // only the violated rule (r2), not the clean r1
+    fireEvent.click(badges[0]);
+    expect(onOpenViolations).toHaveBeenCalledWith('r2');
+  });
+
   it('a focusRuleId deep-link opens that rule in edit mode (spec §4 — see broken → fix)', () => {
     canon.list = { isLoading: false, data: [rule({ id: 'r5', text: 'targeted' })] };
     render(<CanonRulesPanel projectId="p" bookId="b" token="t" focusRuleId="r5" />);

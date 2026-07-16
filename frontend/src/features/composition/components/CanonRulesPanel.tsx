@@ -10,11 +10,16 @@ import { CanonRuleForm, type CanonRulePayload } from './CanonRuleForm';
 import type { CanonRule } from '../types';
 
 export function CanonRulesPanel(
-  { projectId, bookId, token, focusRuleId }: {
+  { projectId, bookId, token, focusRuleId, violationCounts, onOpenViolations }: {
     projectId: string; bookId: string; token: string | null;
     // Deep-link (spec §4): `quality-canon`'s "Edit rule" opens this panel focused on a rule — open it
     // in edit mode and scroll it into view so "see what's broken → fix the rule" is one hop.
     focusRuleId?: string | null;
+    // The REVERSE deep-link: open violation counts per rule id (from quality-canon) + a handler that
+    // opens quality-canon focused on that rule. Together they render a "N broken →" badge so the pair
+    // links BOTH ways (rule → its violations, and violation → its rule).
+    violationCounts?: Record<string, number>;
+    onOpenViolations?: (ruleId: string) => void;
   },
 ) {
   const { t } = useTranslation('composition');
@@ -171,6 +176,17 @@ export function CanonRulesPanel(
                   {r.is_archived
                     ? <span className="ml-1 text-[10px] text-neutral-400">({t('canonArchivedTag', { defaultValue: 'archived' })})</span>
                     : !r.active && <span className="ml-1 text-[10px] text-neutral-400">({t('canonInactive', { defaultValue: 'inactive' })})</span>}
+                  {/* Reverse deep-link — this rule is currently being VIOLATED; jump to the issues. */}
+                  {!!violationCounts?.[r.id] && onOpenViolations && (
+                    <button
+                      type="button"
+                      data-testid="composition-canon-broken"
+                      onClick={() => onOpenViolations(r.id)}
+                      className="ml-1 rounded bg-rose-100 px-1.5 py-0.5 text-[10px] font-medium text-rose-700 hover:bg-rose-200 dark:bg-rose-950/50 dark:text-rose-300"
+                    >
+                      {t('canonBrokenBadge', { defaultValue: '{{n}} broken →', n: violationCounts[r.id] })}
+                    </button>
+                  )}
                 </div>
                 <div className="flex shrink-0 gap-2">
                   {r.is_archived ? (
