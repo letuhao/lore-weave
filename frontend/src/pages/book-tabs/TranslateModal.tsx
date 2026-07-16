@@ -29,6 +29,10 @@ interface TranslateModalProps {
   // per-chapter version page's "re-translate" action) instead of "everything that
   // needs it".
   preselectedChapterIds?: string[];
+  // T8/D6: when the matrix opens the modal from a language column, seed that language so
+  // "Select affected → Translate Selected" targets the column the user was looking at,
+  // instead of falling back to the book default.
+  preselectedLang?: string;
 }
 
 const PAGE_SIZE = 100;
@@ -62,7 +66,7 @@ const STATUS_BADGE: Record<ChapterTxStatus, string> = {
   running: 'bg-sky-500/10 text-sky-500',
 };
 
-export function TranslateModal({ open, onClose, bookId, onJobCreated, preselectedChapterIds }: TranslateModalProps) {
+export function TranslateModal({ open, onClose, bookId, onJobCreated, preselectedChapterIds, preselectedLang }: TranslateModalProps) {
   const { t } = useTranslation('books');
   const { accessToken } = useAuth();
   const navigate = useNavigate();
@@ -123,7 +127,8 @@ export function TranslateModal({ open, onClose, bookId, onJobCreated, preselecte
         setChapters(chs);
         setCoverage(cov);
         setSettings(bkSettings);
-        const lang = bkSettings?.target_language || '';
+        // D6: the caller-pinned language (a matrix column) wins over the book default.
+        const lang = preselectedLang || bkSettings?.target_language || '';
         setSelectedLang(lang);
         setSelectedModelRef(bkSettings?.model_ref || '');
         // Default selection: caller-scoped chapters (per-chapter re-translate) when

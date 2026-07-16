@@ -11,9 +11,14 @@ import { Skeleton } from '@/components/shared/Skeleton';
 import { EmptyState, FloatingActionBar, FloatingActionDivider } from '@/components/shared';
 import { cn } from '@/lib/utils';
 import { getLanguageName } from '@/lib/languages';
+import { usePagedList } from '@/components/pagination/usePagedList';
+import { Pager } from '@/components/pagination/Pager';
 import { TranslateModal } from './TranslateModal';
 import { SegmentDrilldownModal } from '@/features/translation/components/SegmentDrilldownModal';
 import { ExtractionWizard } from '@/features/extraction/ExtractionWizard';
+
+/** Rows per page in the coverage matrix — D4: one row per chapter is unbounded (2000+ books). */
+const MATRIX_PAGE_SIZE = 100;
 
 function cellContent(cell: CoverageCell | undefined, t: TFunction) {
   if (!cell || cell.version_count === 0) {
@@ -129,6 +134,9 @@ export function TranslationTab({
   const [selectedLangs, setSelectedLangs] = useState<Set<string> | null>(null);
   const [filterOpen, setFilterOpen] = useState(false);
   const [translateOpen, setTranslateOpen] = useState(false);
+  // T8/D6: when the modal is opened from the selection (FloatingActionBar), it inherits the
+  // ticked chapters + the language column; the header/empty-state CTAs open it UNSCOPED (D1).
+  const [translateScoped, setTranslateScoped] = useState(false);
   const [extractionOpen, setExtractionOpen] = useState(false);
   const [selectedChapters, setSelectedChapters] = useState<Set<string>>(new Set());
   // T2-M3: per-segment drill-down target (chapter × language), null when closed.
@@ -205,6 +213,29 @@ export function TranslationTab({
 
   const resetFilter = () => { setSelectedLangs(null); setFilterOpen(false); };
 
+  // D3: the matrix renders one row per CHAPTER (in reading order), left-joined onto coverage —
+  // an untranslated chapter has no coverage row but must still appear + be selectable (T2).
+  const coverageByChapter = useMemo(
+    () => new Map((coverage?.coverage ?? []).map((r) => [r.chapter_id, r])),
+    [coverage],
+  );
+  const chapterSet = useMemo(() => new Set(chapters.map((c) => c.chapter_id)), [chapters]);
+  const rows = useMemo(
+    () =>
+      [...chapters]
+        .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0))
+        .map((ch) => ({ ch, languages: coverageByChapter.get(ch.chapter_id)?.languages ?? {} })),
+    [chapters, coverageByChapter],
+  );
+  // D5: coverage rows whose chapter is no longer active (trashed but still translated) are
+  // surfaced as a footnote, never silently dropped by the left-join.
+  const orphanCount = useMemo(
+    () => (coverage?.coverage ?? []).filter((r) => !chapterSet.has(r.chapter_id)).length,
+    [coverage, chapterSet],
+  );
+  // D4: one row per chapter is unbounded — page it (selection is by id, so it survives paging).
+  const { page, setPage, pageCount, start, pageItems: pageRows } = usePagedList(rows, MATRIX_PAGE_SIZE);
+
   // Chapter selection
   const toggleChapter = (id: string) => {
     setSelectedChapters((prev) => {
@@ -213,20 +244,19 @@ export function TranslationTab({
       return next;
     });
   };
+  // D4: select-all covers EVERY chapter (not just the visible page), and the label says so.
+  const allChapterIds = useMemo(() => chapters.map((c) => c.chapter_id), [chapters]);
   const toggleAllChapters = () => {
-    if (!coverage) return;
-    const allIds = coverage.coverage.map((r) => r.chapter_id);
-    setSelectedChapters((prev) => prev.size === allIds.length ? new Set() : new Set(allIds));
+    setSelectedChapters((prev) => (prev.size === allChapterIds.length ? new Set() : new Set(allChapterIds)));
   };
   const clearSelection = () => setSelectedChapters(new Set());
 
   // Summary counts
   const summaryCounts = useMemo(() => {
-    if (!coverage) return { done: 0, running: 0, partial: 0, failed: 0 };
     let done = 0, running = 0, partial = 0, failed = 0;
-    for (const row of coverage.coverage) {
+    for (const { languages } of rows) {
       for (const lang of visibleLangs) {
-        const s = cellStatus(row.languages[lang]);
+        const s = cellStatus(languages[lang]);
         if (s === 'completed') done++;
         else if (s === 'running') running++;
         else if (s === 'pending') partial++;
@@ -234,45 +264,34 @@ export function TranslationTab({
       }
     }
     return { done, running, partial, failed };
-  }, [coverage, visibleLangs]);
+  }, [rows, visibleLangs]);
 
   // M6b-2: chapters with a glossary-stale active translation in a visible language.
   const stale = useMemo(
     () => coverage ? staleChapterIds(coverage, visibleLangs) : { ids: new Set<string>(), cells: 0 },
     [coverage, visibleLangs],
   );
-  const selectStale = () => setSelectedChapters(new Set(stale.ids));
+  // Only select stale chapters that are still active (a stale orphan can't be re-translated).
+  const selectStale = () => setSelectedChapters(new Set([...stale.ids].filter((id) => chapterSet.has(id))));
 
   const manageVersions = (chapterId: string, lang: string) => {
     if (onManageVersions) { onManageVersions(chapterId, lang); return; }
     navigate(`/books/${bookId}/chapters/${chapterId}/translations?lang=${lang}`);
   };
 
-  if (loading) {
-    return (
-      <div className="space-y-3 p-6">
-        <Skeleton className="h-8 w-48" />
-        <Skeleton className="h-64 w-full" />
-      </div>
-    );
-  }
-
-  if (error) return <div className="p-6 text-sm text-destructive">{error}</div>;
-
-  if (!coverage || chapters.length === 0) {
-    return (
-      <EmptyState icon={Languages} title={t('matrix.no_chapters_title')} description={t('matrix.no_chapters_desc')} />
-    );
-  }
-
-  const chapterMap = new Map(chapters.map((c) => [c.chapter_id, c]));
   const isFiltered = selectedLangs !== null;
   const hiddenCount = allLanguages.length - visibleLangs.length;
-  const allSelected = selectedChapters.size === coverage.coverage.length && coverage.coverage.length > 0;
+  const allSelected = selectedChapters.size === allChapterIds.length && allChapterIds.length > 0;
+  const hasChapters = chapters.length > 0;
+  // D1: the header CTA opens the modal UNSCOPED (the modal owns scope, because scope depends on
+  // the language the user has not chosen yet). Selection-scoped opens come from the floating bar.
+  const openTranslateUnscoped = () => { setTranslateScoped(false); setTranslateOpen(true); };
+  const openTranslateScoped = () => { setTranslateScoped(true); setTranslateOpen(true); };
 
   return (
     <div className="space-y-4 p-6">
-      {/* Header */}
+      {/* Header — always rendered (D1): the Translate CTA must outlive the loading/error/empty
+          branches, which now live inside the matrix region below. */}
       <div className="flex items-center justify-between">
         <div>
           <h3 className="text-sm font-semibold">{t('matrix.title')}</h3>
@@ -294,6 +313,15 @@ export function TranslationTab({
               {isFiltered ? t('matrix.selected_count', { count: visibleLangs.length }) : t('matrix.filter')}
             </button>
           )}
+          <button
+            onClick={openTranslateUnscoped}
+            disabled={!hasChapters}
+            data-testid="matrix-translate-cta"
+            className="inline-flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:brightness-110 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          >
+            <Languages className="h-3.5 w-3.5" />
+            {t('matrix.translate_cta', { defaultValue: 'Translate…' })}
+          </button>
         </div>
       </div>
 
@@ -302,6 +330,10 @@ export function TranslationTab({
         onClose={() => setTranslateOpen(false)}
         bookId={bookId}
         onJobCreated={() => { invalidate(); clearSelection(); }}
+        // T8/D6: a selection-scoped open inherits the ticked chapters and, when exactly one
+        // language column is visible, that language; an unscoped open lets the modal derive scope.
+        preselectedChapterIds={translateScoped ? [...selectedChapters] : undefined}
+        preselectedLang={translateScoped && visibleLangs.length === 1 ? visibleLangs[0] : undefined}
       />
 
       {/* Language filter */}
@@ -337,14 +369,23 @@ export function TranslationTab({
         </div>
       )}
 
-      {visibleLangs.length === 0 ? (
+      {loading ? (
+        <div className="space-y-3" data-testid="matrix-loading">
+          <Skeleton className="h-8 w-48" />
+          <Skeleton className="h-64 w-full" />
+        </div>
+      ) : error ? (
+        <div className="p-6 text-sm text-destructive" data-testid="matrix-error">{error}</div>
+      ) : !hasChapters ? (
+        <EmptyState icon={Languages} title={t('matrix.no_chapters_title')} description={t('matrix.no_chapters_desc')} />
+      ) : visibleLangs.length === 0 ? (
         <EmptyState
           icon={Languages}
           title={t('matrix.no_translations_title')}
           description={t('matrix.no_translations_desc')}
           action={
             <button
-              onClick={() => setTranslateOpen(true)}
+              onClick={openTranslateUnscoped}
               className="inline-flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:brightness-110"
             >
               <Languages className="h-3.5 w-3.5" />
@@ -354,7 +395,7 @@ export function TranslationTab({
         />
       ) : (
         <>
-          {/* Matrix table */}
+          {/* Matrix table — one row per CHAPTER (D3), paged (D4). */}
           <div className="overflow-x-auto rounded-lg border">
             <table className="w-full text-xs">
               <thead>
@@ -364,6 +405,7 @@ export function TranslationTab({
                       type="checkbox"
                       checked={allSelected}
                       onChange={toggleAllChapters}
+                      aria-label={t('matrix.select_all_chapters', { defaultValue: 'Select all chapters' })}
                       className="h-[15px] w-[15px] rounded accent-primary cursor-pointer"
                     />
                   </th>
@@ -380,12 +422,12 @@ export function TranslationTab({
                 </tr>
               </thead>
               <tbody>
-                {coverage.coverage.map((row, idx) => {
-                  const ch = chapterMap.get(row.chapter_id);
-                  const isSelected = selectedChapters.has(row.chapter_id);
+                {pageRows.map(({ ch, languages }, idx) => {
+                  const isSelected = selectedChapters.has(ch.chapter_id);
+                  const rowTitle = ch.title || ch.original_filename || ch.chapter_id.slice(0, 8);
                   return (
                     <tr
-                      key={row.chapter_id}
+                      key={ch.chapter_id}
                       className={cn(
                         'border-b last:border-b-0 transition-colors',
                         isSelected ? 'bg-primary/[0.04]' : 'hover:bg-[rgba(255,255,255,0.01)]',
@@ -395,20 +437,21 @@ export function TranslationTab({
                         <input
                           type="checkbox"
                           checked={isSelected}
-                          onChange={() => toggleChapter(row.chapter_id)}
+                          onChange={() => toggleChapter(ch.chapter_id)}
+                          aria-label={rowTitle}
                           className="h-[15px] w-[15px] rounded accent-primary cursor-pointer"
                         />
                       </td>
-                      <td className="px-3 py-2 font-mono text-muted-foreground">{idx + 1}</td>
+                      <td className="px-3 py-2 font-mono text-muted-foreground">{start + idx + 1}</td>
                       <td className="sticky left-0 z-10 bg-background px-3 py-2 font-medium">
-                        <span className="line-clamp-1">{ch?.title || ch?.original_filename || row.chapter_id.slice(0, 8)}</span>
+                        <span className="line-clamp-1">{rowTitle}</span>
                       </td>
                       {visibleLangs.map((lang) => {
-                        const cell = row.languages[lang];
+                        const cell = languages[lang];
                         const isStale = !!cell?.is_glossary_stale;
                         const hasVersions = !!cell && cell.version_count > 0;
                         // T2-M3: segments needing re-translation (source-dirty ∪ glossary-stale).
-                        const needs = needsMap?.[row.chapter_id]?.[lang] ?? 0;
+                        const needs = needsMap?.[ch.chapter_id]?.[lang] ?? 0;
                         const inner = (
                           <span className="inline-flex items-center justify-center gap-1">
                             {cellContent(cell, t)}
@@ -434,7 +477,7 @@ export function TranslationTab({
                                     version active (the version page was previously unreachable). */}
                                 <button
                                   type="button"
-                                  onClick={() => manageVersions(row.chapter_id, lang)}
+                                  onClick={() => manageVersions(ch.chapter_id, lang)}
                                   aria-label={t('matrix.cell_manage_versions', { num: cell!.latest_version_num, count: cell!.version_count })}
                                   className="inline-flex items-center justify-center gap-1 rounded px-1.5 py-0.5 cursor-pointer hover:bg-primary/10 hover:underline focus:outline-none focus:ring-1 focus:ring-ring/40"
                                 >
@@ -444,7 +487,7 @@ export function TranslationTab({
                                 {needs > 0 && (
                                   <button
                                     type="button"
-                                    onClick={() => setDrillTarget({ chapterId: row.chapter_id, lang, title: ch?.title || ch?.original_filename })}
+                                    onClick={() => setDrillTarget({ chapterId: ch.chapter_id, lang, title: ch.title || ch.original_filename })}
                                     title={t('matrix.cell_changed_title', { count: needs })}
                                     aria-label={t('matrix.cell_changed_title', { count: needs })}
                                     className="inline-flex items-center gap-0.5 rounded-full border border-amber-500/40 px-1.5 py-0.5 text-[10px] font-medium text-amber-500 hover:bg-amber-500/10 focus:outline-none focus:ring-1 focus:ring-ring/40"
@@ -467,9 +510,29 @@ export function TranslationTab({
             </table>
           </div>
 
+          {/* D5: orphan coverage — translations belonging to a chapter that is no longer active
+              are surfaced, never silently dropped by the one-row-per-chapter left-join. */}
+          {orphanCount > 0 && (
+            <p className="text-[10px] text-muted-foreground" data-testid="matrix-orphan-footnote">
+              {t('matrix.orphan_footnote', {
+                count: orphanCount,
+                defaultValue: '{{count}} translation(s) belong to chapters that are no longer active.',
+              })}
+            </p>
+          )}
+
+          {/* D4: pagination — selection is by id and survives a page change. */}
+          <Pager
+            page={page}
+            pageCount={pageCount}
+            onPageChange={setPage}
+            className="justify-center"
+            labels={{ page: t('matrix.page', { defaultValue: 'Page' }), prev: t('matrix.prev', { defaultValue: 'Prev' }), next: t('matrix.next', { defaultValue: 'Next' }) }}
+          />
+
           {/* Summary legend */}
           <div className="flex items-center justify-between text-[11px] text-muted-foreground">
-            <span>{t('matrix.showing_chapters', { shown: coverage.coverage.length, total: chapters.length })}</span>
+            <span>{t('matrix.showing_chapters', { shown: pageRows.length, total: chapters.length })}</span>
             <div className="flex items-center gap-3">
               {stale.cells > 0 && (
                 <button
@@ -518,7 +581,8 @@ export function TranslationTab({
         <span className="text-sm font-medium">{t('matrix.chapters_selected', { count: selectedChapters.size })}</span>
         <FloatingActionDivider />
         <button
-          onClick={() => setTranslateOpen(true)}
+          onClick={openTranslateScoped}
+          data-testid="matrix-translate-selected"
           className="btn-glow inline-flex items-center gap-1.5 rounded-full bg-primary px-4 py-1.5 text-xs font-medium text-primary-foreground"
         >
           <Languages className="h-3.5 w-3.5" />
