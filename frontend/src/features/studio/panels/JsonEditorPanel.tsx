@@ -40,6 +40,8 @@ export function JsonEditorPanel(props: IDockviewPanelProps) {
 
   const { handle, snapshot, openError } = useJsonDocument(target.docType, target.resourceId);
   const provider = target.docType ? getJsonDocumentProvider(target.docType) : undefined;
+  // FE-1 — immutable doc types (e.g. plan-pass artifacts) render as a VIEWER: no Save/Revert/⌘S.
+  const readOnly = provider?.readOnly === true;
 
   // J1 — per-instance self-title (locale-correct across swaps): the provider's document label
   // + a short resource discriminator so multiple JSON tabs are tellable apart.
@@ -70,6 +72,7 @@ export function JsonEditorPanel(props: IDockviewPanelProps) {
 
   const onChange = useCallback((value: string) => {
     setText(value);
+    if (readOnly) return; // defense-in-depth: a paste/programmatic path must not mutate the doc
     try {
       const parsed = JSON.parse(value);
       setParseError(null);
@@ -78,7 +81,7 @@ export function JsonEditorPanel(props: IDockviewPanelProps) {
       setParseError(e instanceof Error ? e.message : 'invalid JSON');
       // invalid JSON stays local to the buffer — the handle keeps the last parseable doc
     }
-  }, [handle]);
+  }, [handle, readOnly]);
 
   const onFormat = useCallback(() => {
     try { setText(JSON.stringify(JSON.parse(text), null, 2)); setParseError(null); }
@@ -91,12 +94,15 @@ export function JsonEditorPanel(props: IDockviewPanelProps) {
   }, [handle, parseError]);
 
   useEffect(() => {
+    // Read-only docs register NO window listener at all: a live handler that swallows the
+    // browser's ⌘S is a side effect on the whole app, not a local no-op.
+    if (readOnly) return;
     const onKey = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 's') { e.preventDefault(); onSave(); }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [onSave]);
+  }, [onSave, readOnly]);
 
   // J2 — theme from the app's CSS variables (follows dark/light/sepia/oled live);
   // paired with theme="none" below so @uiw's hard-coded light default never applies.
@@ -144,21 +150,33 @@ export function JsonEditorPanel(props: IDockviewPanelProps) {
                 ? (snapshot?.detail ?? 'error')
                 : dirty ? t('editor.unsaved', { defaultValue: '● unsaved' }) : status}
         </span>
+        {readOnly && (
+          <span data-testid="json-editor-readonly"
+            className="rounded bg-secondary px-1 py-0.5 text-[9px] uppercase tracking-wide text-muted-foreground/70">
+            {t('jsonEditor.readOnly', { defaultValue: 'read-only' })}
+          </span>
+        )}
         <div className="flex-1" />
         <button type="button" data-testid="json-editor-format" onClick={onFormat}
           className="rounded px-1.5 py-0.5 hover:bg-secondary hover:text-foreground">
           {t('jsonEditor.format', { defaultValue: 'Format' })}
         </button>
-        <button type="button" data-testid="json-editor-revert" onClick={() => handle?.revert()}
-          disabled={!dirty}
-          className="rounded px-1.5 py-0.5 hover:bg-secondary hover:text-foreground disabled:opacity-40">
-          {t('jsonEditor.revert', { defaultValue: 'Revert' })}
-        </button>
-        <button type="button" data-testid="json-editor-save" onClick={onSave}
-          disabled={!dirty || !!parseError || status === 'saving'}
-          className="rounded px-1.5 py-0.5 hover:bg-secondary hover:text-foreground disabled:opacity-40">
-          {t('editor.save', { defaultValue: 'Save' })} <span className="font-mono text-[10px]">⌘S</span>
-        </button>
+        {/* FE-1 — Save + Revert are HIDDEN (not disabled) for an immutable doc: a disabled Save
+            reads as "nothing to save yet", a lie about a doc that can never be saved. */}
+        {!readOnly && (
+          <>
+            <button type="button" data-testid="json-editor-revert" onClick={() => handle?.revert()}
+              disabled={!dirty}
+              className="rounded px-1.5 py-0.5 hover:bg-secondary hover:text-foreground disabled:opacity-40">
+              {t('jsonEditor.revert', { defaultValue: 'Revert' })}
+            </button>
+            <button type="button" data-testid="json-editor-save" onClick={onSave}
+              disabled={!dirty || !!parseError || status === 'saving'}
+              className="rounded px-1.5 py-0.5 hover:bg-secondary hover:text-foreground disabled:opacity-40">
+              {t('editor.save', { defaultValue: 'Save' })} <span className="font-mono text-[10px]">⌘S</span>
+            </button>
+          </>
+        )}
       </div>
       <div className="min-h-0 flex-1 overflow-auto" data-testid="json-editor-cm">
         <CodeMirror
@@ -167,6 +185,8 @@ export function JsonEditorPanel(props: IDockviewPanelProps) {
           theme="none"
           extensions={extensions}
           onChange={onChange}
+          editable={!readOnly}
+          readOnly={readOnly}
           basicSetup={{ lineNumbers: true, foldGutter: true }}
         />
       </div>
