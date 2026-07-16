@@ -62,10 +62,10 @@ export function ProgressPanel({ bookId, projectId, token }: Props) {
 
       {/* daily-goal progress bar (only when a goal is set) */}
       {goal != null && (
-        <div className="rounded-lg border bg-card px-3 py-2">
+        <div data-testid="progress-goal" className="rounded-lg border bg-card px-3 py-2">
           <div className="mb-1 flex items-center justify-between text-[11px] text-muted-foreground">
             <span>{t('progressPanel.dailyGoal')}</span>
-            <span className="tabular-nums">{data.today_words.toLocaleString()} / {goal.toLocaleString()}</span>
+            <span data-testid="progress-goal-readout" className="tabular-nums">{data.today_words.toLocaleString()} / {goal.toLocaleString()}</span>
           </div>
           <div className="h-2 w-full overflow-hidden rounded-full bg-muted">
             <div
