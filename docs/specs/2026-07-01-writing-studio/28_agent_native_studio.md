@@ -304,8 +304,18 @@ this is that section.
 
 ### AN-12.1a — NAME: one name for one concept (DA-10)
 
-The concept is **`resource_ref`**. The shipped object key is **`node_ref`**. **Rename it at its three
-producers** (Wave 2):
+> 🔴 **C3 COLLISION RESOLVED (2026-07-16, close-21-28 plan §6.6):** the name **`resource_ref`** proposed
+> here for the canvas-addressing concept is **ALREADY TAKEN** by a SHIPPED, live arg — `propose_record_edit`'s
+> `resource_ref` (`chat-service/app/services/frontend_tools.py`, `contracts/frontend-tools.contract.json`,
+> `frontend/src/features/chat/components/RecordDiffCard.tsx`), which addresses a *record to edit*. Two
+> different concepts under one name is the EXACT DA-10 defect this section forbids. **Resolution (must land
+> BEFORE Wave 2 builds AN-12.1):** the canvas-addressing convention is renamed to **`canvas_ref`** — the
+> spec-only side moves (it has ZERO code consumers: `ui_focus_resource`/`resolveResourceRef` are unbuilt),
+> the shipped `resource_ref` arg stays untouched. Read every "`resource_ref`" below (and in AN-12.1b–e) as
+> **`canvas_ref`**; the Wave-2 builder MUST use `canvas_ref` for the WHICH-table-keyed canvas address.
+
+The concept is **`canvas_ref`** (renamed from `resource_ref` — see the C3 box above). The shipped object
+key is **`node_ref`**. **Rename it at its three producers** (Wave 2):
 
 | Producer | Sites |
 |---|---|
