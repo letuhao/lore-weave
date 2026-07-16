@@ -21,6 +21,16 @@
       "desc": "Yapay zeka ile yazım sohbeti",
       "guideBody": "Bu kitabın yapay zeka yazım ortağı — bir sahne hakkında onunla sohbet edin, bir pasaj taslağı oluşturmasını veya revize etmesini isteyin ya da bir sonraki adımda ne olacağını beyin fırtınası yaparak tartışın. Bu kitabın karakterlerini, sözlüğünü ve önceki bölümlerini zaten bilen bir sohbet ortağı istediğinizde açın."
     },
+    "scene-compose": {
+      "title": "Sahne oluştur",
+      "desc": "Yapay zeka adaylarıyla bir sahne taslağı çıkarın",
+      "guideBody": "Yapay zeka eş-yazarıyla bir sahne taslağı çıkarın: bir sahne ve bir model seçin, ardından hayalet taslağı akıtmak için Oluştur'a basın — ya da karşılaştırıp düzenleyip kabul edebileceğiniz birkaç aday için Ayrış'ı açın. Kabul etmek metni bu bölümün Düzenleyicisine ekler ve yeniden-oluştur/reddet/düzenle seçimleriniz modeli eğitir. Bir sonraki sahneyi sadece konuşmak değil yazmak istediğinizde açın."
+    },
+    "chapter-assemble": {
+      "title": "Bölüm birleştir",
+      "desc": "Sahneleri bir bölüme birleştirin veya dikin",
+      "guideBody": "Bir bölümün sahnelerini tamamlanmış bölüm metnine dönüştürün: 'Bölüm oluştur' tek seferde taslağı çıkarır, 'Dik' ise tamamlanmış sahne taslaklarınızı tek ve akıcı bir bölümde birleştirir. Düzenlenebilir önizlemeyi inceleyin, ardından Düzenleyiciye eklemek için Kabul et'e basın — düzenle/yeniden-oluştur/reddet seçimleriniz modeli eğitir, Sahne oluştur ile aynı düzeltme çarkı. Bir bölümün sahneleri taslak hale geldiğinde ve onları birleştirmek istediğinizde açın."
+    },
     "editor": {
       "title": "Editör",
       "desc": "Taslak editörü",

@@ -21,6 +21,16 @@
       "desc": "Chat đồng sáng tác AI",
       "guideBody": "Compose là trợ lý viết AI đồng hành cùng cuốn sách này — trò chuyện về một cảnh, nhờ nó viết nháp hoặc chỉnh sửa một đoạn văn, hoặc cùng brainstorm xem chuyện gì xảy ra tiếp theo. Mở panel này khi bạn cần một người bạn trò chuyện đã nắm rõ nhân vật, từ điển thuật ngữ và các chương trước của cuốn sách."
     },
+    "scene-compose": {
+      "title": "Soạn cảnh",
+      "desc": "Phác thảo một cảnh với các bản nháp AI",
+      "guideBody": "Phác thảo một cảnh cùng trợ lý đồng-sáng-tác: chọn một cảnh và một mô hình, rồi bấm Tạo để truyền một bản nháp mờ — hoặc bật Phân nhánh để nhận nhiều phương án bạn có thể so sánh, sửa và chấp nhận. Chấp nhận sẽ chèn đoạn văn vào Trình soạn thảo của chương này, và các lựa chọn tạo-lại/từ-chối/sửa của bạn sẽ dạy cho mô hình. Mở nó khi bạn muốn viết cảnh tiếp theo, không chỉ trò chuyện về nó."
+    },
+    "chapter-assemble": {
+      "title": "Lắp ráp chương",
+      "desc": "Lắp ráp hoặc ghép các cảnh thành một chương",
+      "guideBody": "Biến các cảnh của một chương thành đoạn văn chương hoàn chỉnh: 'Tạo chương' phác thảo trong một lượt, hoặc 'Ghép' hợp nhất các bản nháp cảnh đã hoàn tất thành một chương liền mạch. Xem bản xem trước có thể chỉnh sửa, rồi Chấp nhận để chèn vào Trình soạn thảo — và các lựa chọn sửa/tạo-lại/từ-chối của bạn sẽ dạy cho mô hình, cùng vòng phản hồi như Soạn cảnh. Mở nó khi các cảnh của chương đã được phác thảo và bạn muốn lắp ráp chúng."
+    },
     "editor": {
       "title": "Editor",
       "desc": "Trình soạn bản thảo",
@@ -102,19 +112,23 @@
     },
     "quality-promises": {
       "title": "Lời hứa",
-      "desc": "Sổ nợ các lời hứa chưa thực hiện (các tình tiết cài cắm chưa được giải quyết)"
+      "desc": "Sổ nợ các lời hứa chưa thực hiện (các tình tiết cài cắm chưa được giải quyết)",
+      "guideBody": "Lời hứa là sổ cái nợ tự sự của bạn — mọi sự thiết lập mà câu chuyện đã tạo ra nhưng chưa được giải quyết. Một lời hứa mở ra khi bạn gieo nó (một sự phản bội được gợi ý, một khẩu súng đã nạp đạn, một vết sẹo không lời giải thích) và đóng lại khi bản thảo thực hiện nó. Hãy xử lý hết danh sách này trước khi bạn hoàn thành một cuốn sách; bất cứ điều gì vẫn còn bỏ ngỏ ở cuối truyện là một sợi dây mà độc giả sẽ nhận ra bạn đã bỏ lơ."
     },
     "quality-critic": {
       "title": "Chuyên gia",
-      "desc": "Điểm số về tính mạch lạc, giọng văn, nhịp độ & chính văn theo từng chương"
+      "desc": "Điểm số về tính mạch lạc, giọng văn, nhịp độ & chính văn theo từng chương",
+      "guideBody": "Critic chấm điểm một chương dựa trên tính mạch lạc, giọng văn, nhịp độ và sự trung thành với nguyên tác, kèm theo lý do đằng sau mỗi phán quyết. Đây là tính chất tư vấn — nó không bao giờ chỉnh sửa văn phong của bạn. Hãy sử dụng nó để phát hiện chương truyện bị lạc đề trước khi độc giả nhận ra, chứ không phải như một điểm số để tối ưu hóa."
     },
     "quality-coverage": {
       "title": "Độ bao phủ cốt truyện",
-      "desc": "Kiểm tra toàn bộ cuốn sách về việc các lời hứa trong dàn ý đã được thực hiện như thế nào"
+      "desc": "Kiểm tra toàn bộ cuốn sách về việc các lời hứa trong dàn ý đã được thực hiện như thế nào",
+      "guideBody": "Độ bao phủ câu chuyện là cái nhìn tổng thể về toàn bộ cuốn sách đối với sổ cái lời hứa: những tình tiết nào trong dàn ý mà bản thảo thực tế đã thực hiện, những tình tiết nào vẫn còn tồn đọng, và nơi các nút thắt được giải quyết tập trung. Hãy đọc nó khi một bản thảo đã hoàn tất để tìm ra các hồi đã hứa hẹn nhiều hơn những gì chúng thực hiện."
     },
     "quality-canon": {
       "title": "Vấn đề chính văn",
-      "desc": "Các mâu thuẫn đã được xác nhận từ quá trình tạo nội dung & trích xuất kiến thức"
+      "desc": "Các mâu thuẫn đã được xác nhận từ quá trình tạo nội dung & trích xuất kiến thức",
+      "guideBody": "Vấn đề nguyên tác tập hợp các mâu thuẫn đã được xác nhận giữa văn phong của bạn và các thiết lập thế giới đã định — một nhân vật xuất hiện ở hai nơi cùng một lúc, màu mắt bị thay đổi, một quy tắc ma thuật mà câu chuyện vừa phá vỡ. Mỗi vấn đề đều liên kết ngược lại chương và quy tắc nguyên tác mà nó vi phạm, để bạn có thể sửa văn bản hoặc sửa đổi quy tắc."
     },
     "kg-overview": {
       "title": "Tổng quan",
@@ -471,12 +485,72 @@
     },
     "agent-mode": {
       "title": "Chế độ Agent",
-      "desc": "Các lượt tự sáng tác nhiều chương — trung tâm điều khiển"
+      "desc": "Các lượt tự sáng tác nhiều chương — trung tâm điều khiển",
+      "guideBody": "Chế độ Agent là trung tâm điều khiển cho các đợt chạy tự động đa chương: tác nhân sẽ viết nháp xuyên suốt một kế hoạch đã được phê duyệt trong khi bạn theo dõi. Bắt đầu, tạm dừng và tiếp tục đợt chạy từ đây, đồng thời xem xét từng chương khi nó hoàn thành — bao gồm các thay đổi (diff) và phán quyết của chuyên gia — sau đó bạn có thể chấp nhận, từ chối hoặc khôi phục. Không có gì tác nhân viết là bản cuối cùng cho đến khi bạn chấp nhận nó."
     },
     "chapter-revision-compare": {
       "title": "So sánh phiên bản chương",
       "desc": "Diff đầy đủ trong trình soạn thảo cho một cặp phiên bản chương",
       "empty": "Mở diff phiên bản của một chương từ panel xem xét của Chế độ Agent."
+    },
+    "arc-inspector": {
+      "title": "Trình kiểm tra Cốt truyện",
+      "desc": "Đọc và chỉnh sửa MỘT hồi hoặc thiên sử thi — mục tiêu, trạng thái, các tuyến cốt truyện và danh sách nhân vật đã được giải quyết, phạm vi chương, các lời hứa chưa hoàn thành và nguồn gốc khuôn mẫu",
+      "guideBody": "Trình kiểm tra Cốt truyện mở ra một nút trong cây thông số sách của bạn — một thiên sử thi, một hồi, hoặc một tiểu hồi. Cây này không phải để trang trí: các tuyến cốt truyện và liên kết nhân vật của nó được đưa vào mọi câu lệnh tạo nội dung, vì vậy việc chỉnh sửa một hồi tại đây sẽ thay đổi cách AI soạn thảo các chương của nó. Các tuyến và các vị trí trong danh sách nhân vật được giải quyết theo dạng thác đổ — một mục được kế thừa từ thiên sử thi cha sẽ hiển thị màu xám với hành động Ghi đè (việc chỉnh sửa trực tiếp sẽ âm thầm tạo ra một bản sao tách biệt). Phạm vi chương, tổng hợp các lời hứa chưa hoàn thành và nguồn gốc khuôn mẫu là chế độ chỉ đọc. Việc lưu trữ một hồi sẽ đưa các chương của nó trở lại khay chưa lập kế hoạch; việc khôi phục sẽ gắn kết lại chúng. Mở nó từ Trung tâm Lập kế hoạch (chọn một hồi), bảng lệnh, hoặc tác nhân."
+    },
+    "quality-canon-rules": {
+      "title": "Quy tắc nguyên tác",
+      "desc": "Thiết lập các bất biến mà Critic thực thi — tạo, chỉnh sửa, lưu trữ, khôi phục",
+      "guideBody": "Quy tắc Canon là nơi bạn thiết lập các bất biến mà câu chuyện của bạn không bao giờ được vi phạm — ví dụ: một nhân vật chỉ có một cánh tay sau chương 41, linh thạch đã tiêu hao sẽ không bao giờ được hoàn lại, hay danh tính của Tông chủ sẽ được giữ kín cho đến khi đến chương Salt Court. Đây là những quy tắc mà trình phê bình và tính năng tự sửa lỗi (self-heal) sẽ thực thi trên mọi bản tạo; vì vậy, viết chúng tại đây chính là cách bạn dạy cho người viết cùng (co-writer) hiểu về vũ trụ của mình. Đây là một nửa của các vấn đề về Canon: bảng kia hiển thị những gì đã vi phạm, còn bảng này là nơi bạn sửa lại quy tắc."
+    },
+    "quality-corrections": {
+      "title": "Chỉnh sửa",
+      "desc": "Tỷ lệ chấp nhận / chỉnh sửa / tạo lại / từ chối bản thảo AI của bạn — chỉ số đánh giá chất lượng",
+      "guideBody": "Chỉnh sửa là tấm gương phản chiếu quá trình biên tập của chính bạn: mỗi khi bạn chấp nhận, chỉnh sửa, chọn một phương án khác, tạo lại hoặc từ chối một bản thảo AI, lựa chọn đó đều được ghi lại — và bảng này hiển thị các tỷ lệ đó, được chia theo Diverge (tùy chọn K) so với Stream. Tỷ lệ chỉnh sửa/tạo lại/từ chối thấp hơn (và tỷ lệ chấp nhận nguyên bản cao hơn) trong chế độ Diverge có nghĩa là bộ xếp hạng lại (reranker) đang xứng đáng với độ trễ tăng thêm của nó. Đây là bảng thông tin tham khảo và chỉ đọc; nó không bao giờ thay đổi văn phong của bạn — nó chỉ cho bạn biết liệu người viết cùng có đang viết tốt hơn cho cuốn sách của bạn hay không."
+    },
+    "plan-passes": {
+      "title": "Đường ray Tiến trình",
+      "desc": "Tổng hợp kế hoạch theo từng giai đoạn và phê duyệt từng điểm kiểm soát",
+      "guideBody": "Đường ray Tiến trình điều phối trình biên dịch 7 giai đoạn của PlanForge — bao gồm: mô-típ, dàn nhân vật, thế giới, nhịp truyện, tuyến nhân vật, bối cảnh và tự sửa lỗi — thực hiện từng bước một. Mỗi giai đoạn sẽ hiển thị trạng thái là mới (dữ liệu đầu vào không đổi kể từ lần chạy cuối) hay đã cũ, và đường ray sẽ cho bạn biết trình biên dịch có thể tự tiến hành đến đâu và giai đoạn nào đang chờ bạn. Có hai giai đoạn là điểm kiểm soát bắt buộc bạn phải phê duyệt trước khi trình biên dịch có thể đi tiếp: dàn nhân vật (nhân vật của bạn là ai) và nhịp truyện (cấu trúc của câu chuyện). Hãy mở một giai đoạn để xem kết quả nó tạo ra, chỉnh sửa, sau đó phê duyệt hoặc tạm dừng. Việc chỉnh sửa một giai đoạn sẽ tự động làm mới tất cả các giai đoạn tiếp theo, đảm bảo kế hoạch không bao giờ bị mất đồng bộ."
+    },
+    "whatif-canvas": {
+      "title": "Nhánh Giả định",
+      "desc": "Khám phá các phương án thay thế cho một cảnh quay mà không làm thay đổi bản chính — tạo nhánh, tạo phương án thay thế, so sánh, sau đó chọn phương án tốt nhất để áp dụng",
+      "guideBody": "Bảng vẽ 'what-if' cho phép bạn tách một cảnh thành một nhánh tạm thời, tạo ra một bản nháp thay thế và so sánh các huy hiệu đánh giá của chuyên gia cạnh nhau — tất cả đều không làm ảnh hưởng đến bản thảo chính thức. Khi đã chọn được nhánh ưng ý, hãy 'Promote' (Thăng cấp) nó: nó sẽ trở thành một tác phẩm phái sinh thực thụ mà bạn có thể tiếp tục viết tiếp. Không có gì được lưu lại cho đến khi bạn thực hiện Thăng cấp, vì vậy bạn có thể tự do khám phá. Đây là bề mặt chỉnh sửa đằng sau nút Promote; trong khi Plan Hub hiển thị sơ đồ kế hoạch, thì đây là nơi bạn thử nghiệm các phương án thay thế trên sơ đồ đó."
+    },
+    "divergence": {
+      "title": "Dị bản",
+      "desc": "Quản lý các bản phái sinh 'what-if' của một cuốn sách — liệt kê bản chính và mọi nhánh, chuyển toàn bộ studio sang một nhánh, lưu trữ một nhánh, hoặc tạo một nhánh mới từ một chương",
+      "guideBody": "Một dị bản (divergence) sẽ tách cuốn sách của bạn tại một chương và tạo ra một hướng đi mới — một vũ trụ song song, một sự thay đổi góc nhìn, hoặc một nhân vật thay đổi — thành một tác phẩm phái sinh với phân vùng kiến thức riêng, trong khi bản gốc vẫn được giữ ở chế độ chỉ đọc. Bảng này liệt kê tác phẩm chính thức và mọi nhánh bạn đã tạo. 'Switch to' (Chuyển sang) sẽ chuyển toàn bộ studio của bạn — trình chỉnh sửa, trình điều hướng, chất lượng, mọi thứ — sang nhánh đó; lựa chọn này được ghi nhớ theo từng cuốn sách và vẫn tồn tại sau khi tải lại trang. 'Archive' (Lưu trữ) sẽ ẩn một nhánh mà không xóa nó (các chương và kiến thức của nó vẫn được giữ lại). 'New divergence' (Dị bản mới) sẽ mở trình hướng dẫn 4 bước để tạo một nhánh mới. Chọn một nhánh để xem thông số kỹ thuật của nó (phân loại, điểm rẽ nhánh, quy tắc chính, các ghi đè), những thông số này sẽ được cố định khi tạo."
+    },
+    "world-map": {
+      "title": "Bản đồ thế giới",
+      "desc": "Tạo và chỉnh sửa các bản đồ tham chiếu của một thế giới — tải lên hình ảnh nền, kéo thả các điểm đánh dấu vị trí, vẽ và định hình lại các khu vực.",
+      "guideBody": "Tạo bản đồ raster cho thế giới. Tải lên một hình ảnh nền, sau đó thả ghim và vẽ các vùng trên đó. Kéo một chiếc ghim để di chuyển nó (thao tác kéo là một lệnh PATCH tọa độ tuyệt đối duy nhất trên một id marker ổn định — không bao giờ là xóa và tạo lại) và kéo các đỉnh đa giác để thay đổi hình dạng vùng. Liên kết một chiếc ghim hoặc một vùng với một thực thể vị trí trong bảng thuật ngữ HOẶC KG (trình chọn sẽ dán nhãn nguồn). Mọi thay đổi đều được lưu vào book-service; các công cụ world_map_* của trợ lý sẽ chỉnh sửa trực tiếp trên cùng một bản đồ đó. Đổi tên bản đồ bằng cơ chế kiểm soát xung đột (If-Match), để các chỉnh sửa xung đột sẽ được tải lại thay vì ghi đè dữ liệu."
+    },
+    "place-graph": {
+      "title": "Đồ thị Địa điểm",
+      "desc": "Các địa điểm trong sách dưới dạng đồ thị nút có thể kéo thả",
+      "guideBody": "Thêm và kết nối các địa điểm trong sách dưới dạng đồ thị nút. Nhập tên và nhấn + Place để tạo một địa điểm; bật Link places, chọn hai nút và một vị ngữ (contains / borders / route_to) để kết nối chúng; kéo để sắp xếp (được lưu ở phía máy chủ, chia sẻ giữa các thiết bị của bạn); thiết lập hình nền (yêu cầu phải có một chương đang mở). Nhấp vào một nút để mở nó trong codex Cast. Chỉ dành cho Địa điểm — hãy dùng Author other kinds để thêm nhân vật, vật phẩm và các loại khác.",
+      "noWork": "Thiết lập người đồng viết trong Compose để sắp xếp các địa điểm.",
+      "openCompose": "Mở Compose",
+      "loading": "Đang tải bản đồ thế giới…",
+      "authorOther": "Tạo các loại khác →"
+    },
+    "cast": {
+      "title": "Dàn nhân vật",
+      "desc": "Dàn nhân vật trong sách — được nhóm lại, có thể tìm kiếm, an toàn với nội dung tiết lộ trước (spoiler-safe); tạo và lưu trữ thực thể",
+      "guideBody": "Mọi nhân vật, địa điểm, tổ chức và khái niệm trong đồ thị tri thức của cuốn sách này, được nhóm theo loại và có thể tìm kiếm, mỗi thực thể đều có trạng thái câu chuyện an toàn với nội dung tiết lộ trước (đang hoạt động/đã biến mất tại vị trí bạn đang đọc). Tạo một thực thể mới bằng cách nhấn + New, đổi tên trực tiếp, chỉnh sửa bí danh/loại, hoặc lưu trữ (lưu trữ tạm thời) một thực thể. Nhấp vào biểu tượng hình cung của một hàng để mở Cốt truyện nhân vật của nó."
+    },
+    "character-arc": {
+      "title": "Cốt truyện nhân vật",
+      "desc": "Các sự kiện của một nhân vật trên dòng thời gian, dải trạng thái đang hoạt động→đã biến mất, và các mối quan hệ 1-hop",
+      "guideBody": "Các sự kiện của một nhân vật theo thứ tự trên một biểu đồ rút gọn, được cắt bớt nội dung tiết lộ (spoiler) tại vị trí bạn đang đọc, cùng với dải trạng thái đang hoạt động→đã biến mất và các mối quan hệ 1-hop hiện tại. Chọn một nhân vật, chỉnh sửa hoặc thêm một mối quan hệ bằng cách nhấn + link entity."
+    },
+    "motif-library": {
+      "title": "Thư viện Motif",
+      "desc": "Nghiên cứu các mô-típ (套路/爽点/打脸), áp dụng hoặc khai thác chúng, và kiểm tra biểu đồ mối quan hệ motif",
+      "guideBody": "Thư viện Motif là bàn làm việc sáng tạo cốt truyện của bạn. Duyệt các motif theo phân cấp — của riêng bạn, nhãn của cuốn sách này, phân cấp sách dùng chung, hạt giống hệ thống, danh mục công khai và các bản nháp bạn đã khai thác. Tạo một motif trực tiếp, áp dụng một motif từ danh mục, hoặc khai thác kho dữ liệu của riêng bạn để khám phá các khuôn mẫu lặp lại. Mở bất kỳ motif nào để đọc các nhịp độ (beats) và vai trò của nó, đồng thời mở rộng biểu đồ để xem nó được cấu thành từ gì, nó diễn ra trước điều gì và các biến thể của nó. Liên kết các motif với các cảnh từ Trình kiểm tra cảnh (Scene Inspector) để bản thảo thực sự hướng tới chúng."
     }
   },
   "sceneRail": {
@@ -614,14 +688,14 @@
       "editor": "Soạn thảo & Chương",
       "storyBible": "Story Bible",
       "knowledge": "Đồ thị tri thức",
+      "quality": "Chất lượng",
       "translation": "Dịch thuật",
       "enrichment": "Làm giàu",
       "sharing": "Chia sẻ & Cài đặt",
       "platform": "Nền tảng",
       "discovery": "Khám phá",
       "jobs": "Tác vụ",
-      "help": "Trợ giúp",
-      "quality": "Chất lượng"
+      "help": "Trợ giúp"
     },
     "cmd": {
       "showManuscript": "Xem: Bản thảo",
@@ -706,7 +780,16 @@
     "canonRuleFocusUnknown": "Không thể kiểm tra quy tắc bạn vừa chuyển đến vì dịch vụ co-writer hiện không khả dụng. Quy tắc có thể vẫn đang bị lỗi ở đâu đó — đây không phải là kết quả cuối cùng.",
     "canonRulesCapped": "Đang hiển thị {{shown}} quy tắc vi phạm gần đây nhất trong tổng số {{total}}.",
     "workUnavailable": "Không thể kết nối với dịch vụ co-writer, vì vậy dữ liệu chất lượng của cuốn sách này không thể tải được. Có thể có các vấn đề tồn tại mà không được hiển thị ở đây. Vui lòng thử lại sau ít phút.",
-    "hubUnavailable": "Không thể kết nối với dịch vụ co-writer, vì vậy các cam kết, điểm số phê bình và độ bao phủ cốt truyện hiện không thể tải được. Có thể có các vấn đề tồn tại mà không được hiển thị ở đây."
+    "hubUnavailable": "Không thể kết nối với dịch vụ co-writer, vì vậy các cam kết, điểm số phê bình và độ bao phủ cốt truyện hiện không thể tải được. Có thể có các vấn đề tồn tại mà không được hiển thị ở đây.",
+    "setupWork": "Thiết lập cộng sự",
+    "settingUpWork": "Đang thiết lập…",
+    "setupWorkError": "Không thể thiết lập cộng sự. Vui lòng thử lại.",
+    "setupWorkPending": "Phiên làm việc với cộng sự đã được tạo nhưng dự án kiến thức vẫn đang được thiết lập. Vui lòng thử lại sau ít phút.",
+    "setupWorkRetry": "Thử lại",
+    "canonRulesTitle": "Quy tắc cốt truyện",
+    "canonRulesDesc": "Thiết lập các quy tắc bất biến mà biên tập viên sẽ tuân thủ",
+    "correctionsTitle": "Chỉnh sửa",
+    "correctionsDesc": "Tỷ lệ chấp nhận / chỉnh sửa / tạo lại / từ chối của bạn"
   },
   "sidebar": {
     "collapse": "Thu gọn"
@@ -1157,5 +1240,18 @@
       "viewWorldmap": "Bản đồ thế giới",
       "viewSoon": "Sẽ ra mắt trong giai đoạn sau"
     }
+  },
+  "planPasses": {
+    "comingSoon": "Quy trình 7 bước sẽ được tải tại đây.",
+    "noBook": "Mở một cuốn sách để biên soạn kế hoạch của nó."
+  },
+  "sceneCompose": {
+    "empty": "Chọn một chương trong trình điều hướng bản thảo để soạn thảo các cảnh tại đây.",
+    "inserted": "Đã được chấp nhận vào bản thảo.",
+    "insertFailed": "Không thể chèn — hãy nhấp vào văn bản chương trong Trình chỉnh sửa, sau đó nhấn Chấp nhận một lần nữa.",
+    "openedEditor": "Đã mở Trình chỉnh sửa cho chương này — Hãy nhấn Tạo lại để chèn bản thảo vào đây."
+  },
+  "chapterAssemble": {
+    "empty": "Chọn một chương trong trình điều hướng bản thảo để lắp ghép tại đây."
   }
 }

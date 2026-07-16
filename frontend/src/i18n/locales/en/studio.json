@@ -16,6 +16,11 @@
     "paletteHint": "⌘⇧P also opens the Command Palette anytime"
   },
   "panels": {
+    "arc-inspector": {
+      "title": "Arc Inspector",
+      "desc": "Read and edit ONE arc or saga — its goal, status, the cascade-resolved plot tracks and cast roster, chapter span, open promises, and template provenance",
+      "guideBody": "The Arc Inspector opens one node of your book's spec tree — a saga, an arc, or a sub-arc. This tree is not decoration: its plot tracks and cast bindings are read into every generation prompt, so editing an arc here changes how the AI drafts its chapters. Tracks and roster slots resolve as a cascade — an entry inherited from a parent saga is shown greyed with an Override action (editing it in place would silently fork a copy). The chapter span, open-promise rollup, and template provenance are read-only. Archiving an arc returns its chapters to the unplanned tray; restoring re-attaches them. Open it from the Plan Hub (select an arc), the command palette, or the agent."
+    },
     "compose": {
       "title": "Compose",
       "desc": "AI co-writer chat",
@@ -25,6 +30,11 @@
       "title": "Scene Compose",
       "desc": "Draft a scene with AI candidates",
       "guideBody": "Draft a scene with the AI co-writer: pick a scene and a model, then Generate to stream a ghost draft — or turn on Diverge to get several candidates you can compare, edit, and accept. Accepting inserts the prose into the Editor for this chapter, and your regenerate/reject/edit choices teach the model. Open it when you want to write the next scene, not just chat about it."
+    },
+    "chapter-assemble": {
+      "title": "Chapter Assemble",
+      "desc": "Assemble or stitch scenes into a chapter",
+      "guideBody": "Turn a chapter's scenes into finished chapter prose: 'Generate chapter' drafts it in one pass, or 'Stitch' merges your completed scene drafts into a single flowing chapter. Review the editable preview, then Accept to insert it into the Editor — and your edit/regenerate/reject choices teach the model, the same correction flywheel as Scene Compose. Open it once a chapter's scenes are drafted and you want to assemble them."
     },
     "editor": {
       "title": "Editor",
@@ -129,6 +139,11 @@
       "title": "Canon rules",
       "desc": "Author the invariants the critic enforces — create, edit, archive, restore",
       "guideBody": "Canon rules is where you declare the invariants your story must never break — a character has one arm after chapter 41, spirit stones are consumed and never returned, the Sect Master's identity stays hidden until the Salt Court arc. These are the rules the critic and self-heal enforce on every generation, so writing them here is how you teach the co-writer your canon. It is the write half of Canon issues: that panel shows what broke, this one is where you fix the rule."
+    },
+    "quality-corrections": {
+      "title": "Corrections",
+      "desc": "Your accept / edit / regenerate / reject rates on AI drafts — the quality signal",
+      "guideBody": "Corrections is the mirror on your own editing: every time you accept, edit, pick a different candidate, regenerate, or reject an AI draft, that choice is recorded — and this panel shows the rates, split by Diverge (K-option) vs Stream. A lower edit/regenerate/reject rate (and higher accept-as-is) in Diverge means the reranker is earning its extra latency. It is advisory and read-only; it never changes your prose — it tells you whether the co-writer is getting better at your book."
     },
     "kg-overview": {
       "title": "Overview",
@@ -615,7 +630,10 @@
     "empty": "Select a chapter in the manuscript navigator to draft its scenes here.",
     "inserted": "Accepted into the manuscript.",
     "insertFailed": "Could not insert — click into the chapter text in the Editor, then Accept again.",
-    "openedEditor": "Opened the Editor for this chapter — click into the text and Accept again to insert it."
+    "openedEditor": "Opened the Editor on this chapter — Generate again to insert the draft here."
+  },
+  "chapterAssemble": {
+    "empty": "Select a chapter in the manuscript navigator to assemble it here."
   },
   "popout": {
     "invalid": "This pop-out link is invalid.",
@@ -769,6 +787,8 @@
     "canonDesc": "Confirmed contradictions",
     "canonRulesTitle": "Canon rules",
     "canonRulesDesc": "Author the invariants the critic enforces",
+    "correctionsTitle": "Corrections",
+    "correctionsDesc": "Your accept / edit / regenerate / reject rates",
     "canonFromRules": "Broken rules ({{n}})",
     "canonRuleError": "Could not load canon-rule violations — try again.",
     "canonRuleGone": "A rule that no longer exists",

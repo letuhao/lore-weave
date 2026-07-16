@@ -199,6 +199,7 @@
         "enum": [
           "compose",
           "scene-compose",
+          "chapter-assemble",
           "editor",
           "planner",
           "agent-mode",
@@ -238,6 +239,7 @@
           "scene-browser",
           "scene-inspector",
           "plan-hub",
+          "arc-inspector",
           "plan-passes",
           "whatif-canvas",
           "divergence",
@@ -259,6 +261,7 @@
           "quality-coverage",
           "quality-canon",
           "quality-canon-rules",
+          "quality-corrections",
           "motif-library",
           "world-map",
           "place-graph",

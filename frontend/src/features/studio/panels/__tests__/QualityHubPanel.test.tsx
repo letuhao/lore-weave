@@ -46,13 +46,14 @@ describe('QualityHubPanel', () => {
     expect(hostRef!.getRegisteredTool('quality')!.commandId).toBe('studio.openPanel.quality');
   });
 
-  it('renders exactly the 5 capability cards (canon-rules is the write half of canon)', () => {
+  it('renders the quality capability cards (canon-rules + corrections are S6 additions)', () => {
     withHost('b1', <QualityHubPanel {...dockProps()} />);
     expect(screen.getByTestId('quality-hub-card-quality-promises')).toBeInTheDocument();
     expect(screen.getByTestId('quality-hub-card-quality-critic')).toBeInTheDocument();
     expect(screen.getByTestId('quality-hub-card-quality-coverage')).toBeInTheDocument();
     expect(screen.getByTestId('quality-hub-card-quality-canon')).toBeInTheDocument();
     expect(screen.getByTestId('quality-hub-card-quality-canon-rules')).toBeInTheDocument();
+    expect(screen.getByTestId('quality-hub-card-quality-corrections')).toBeInTheDocument();
   });
 
   it('each card opens its own sibling panel via the host, never an internal view-switch', () => {

@@ -21,6 +21,16 @@
       "desc": "Sembang penulisan bersama AI",
       "guideBody": "Rakan penulisan AI untuk buku ini — berbual dengannya tentang sesuatu babak, minta ia merangka atau menyemak semula perenggan, atau sumbang saran tentang apa yang berlaku seterusnya. Buka panel ini apabila anda mahukan rakan perbualan yang sudah mengenali watak, glosari, dan bab-bab terdahulu buku ini."
     },
+    "scene-compose": {
+      "title": "Karang adegan",
+      "desc": "Rangka sebuah adegan dengan calon AI",
+      "guideBody": "Rangka sebuah adegan bersama penulis bersama AI: pilih adegan dan model, kemudian klik Jana untuk menstrim draf bayang — atau hidupkan Divergen untuk mendapat beberapa calon yang boleh anda banding, sunting dan terima. Menerima akan menyelitkan prosa ke Editor bab ini, dan pilihan jana semula/tolak/sunting anda melatih model. Buka apabila anda mahu menulis adegan seterusnya, bukan sekadar berbual tentangnya."
+    },
+    "chapter-assemble": {
+      "title": "Himpun bab",
+      "desc": "Himpun atau jahit adegan menjadi satu bab",
+      "guideBody": "Tukar adegan-adegan sesuatu bab menjadi prosa bab yang lengkap: 'Jana bab' merangkanya sekali gus, atau 'Jahit' menggabungkan draf adegan anda yang telah siap menjadi satu bab yang lancar. Semak pratonton yang boleh disunting, kemudian klik Terima untuk menyelitkannya ke Editor — pilihan sunting/jana semula/tolak anda melatih model, roda tenaga pembetulan yang sama seperti Karang adegan. Buka apabila adegan sesuatu bab telah dirangka dan anda mahu menghimpunnya."
+    },
     "editor": {
       "title": "Editor",
       "desc": "Editor manuskrip",

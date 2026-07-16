@@ -399,13 +399,17 @@ UI_OPEN_STUDIO_PANEL_TOOL: dict = {
             "properties": {
                 "panel_id": {
                     "type": "string",
-                    "enum": ["compose", "scene-compose", "editor", "planner", "agent-mode", "usage", "notifications", "settings", "trash", "steering", "extensions", "proposals", "glossary", "glossary-ontology", "glossary-unknown", "glossary-ai-suggestions", "glossary-merge-candidates", "wiki", "knowledge", "kg-overview", "kg-entities", "kg-timeline", "kg-evidence", "kg-gap", "kg-proposals", "kg-schema", "kg-graph", "kg-insights", "kg-jobs", "kg-bio", "kg-privacy", "jobs-list", "books", "leaderboard-books", "leaderboard-authors", "leaderboard-translators", "leaderboard-trending", "chapter-browser", "scene-browser", "scene-inspector", "plan-hub", "plan-passes", "whatif-canvas", "divergence", "book-import", "context-inspector", "sharing", "book-settings", "translation", "enrichment-compose", "enrichment-proposals", "enrichment-gaps", "enrichment-sources", "enrichment-jobs", "enrichment-settings", "user-guide", "quality", "quality-promises", "quality-critic", "quality-coverage", "quality-canon", "quality-canon-rules", "motif-library", "world-map", "place-graph", "cast", "character-arc"],
+                    "enum": ["compose", "scene-compose", "chapter-assemble", "editor", "planner", "agent-mode", "usage", "notifications", "settings", "trash", "steering", "extensions", "proposals", "glossary", "glossary-ontology", "glossary-unknown", "glossary-ai-suggestions", "glossary-merge-candidates", "wiki", "knowledge", "kg-overview", "kg-entities", "kg-timeline", "kg-evidence", "kg-gap", "kg-proposals", "kg-schema", "kg-graph", "kg-insights", "kg-jobs", "kg-bio", "kg-privacy", "jobs-list", "books", "leaderboard-books", "leaderboard-authors", "leaderboard-translators", "leaderboard-trending", "chapter-browser", "scene-browser", "scene-inspector", "plan-hub", "arc-inspector", "plan-passes", "whatif-canvas", "divergence", "book-import", "context-inspector", "sharing", "book-settings", "translation", "enrichment-compose", "enrichment-proposals", "enrichment-gaps", "enrichment-sources", "enrichment-jobs", "enrichment-settings", "user-guide", "quality", "quality-promises", "quality-critic", "quality-coverage", "quality-canon", "quality-canon-rules", "quality-corrections", "motif-library", "world-map", "place-graph", "cast", "character-arc"],
                     "description": (
                         "The studio panel to open. 'compose' = the AI co-writer chat; "
                         "'scene-compose' = draft a scene with the AI — stream a ghost "
                         "draft or Diverge into several candidates, edit/accept one into "
                         "the editor, and your regenerate/reject/edit choices train the "
                         "model (the correction flywheel); "
+                        "'chapter-assemble' = assemble a whole chapter from its scenes — "
+                        "single-pass generate or stitch the done scene drafts, review the "
+                        "editable preview, accept it into the editor (the second correction "
+                        "producer); "
                         "'editor' = the manuscript editor; 'planner' = the PlanForge "
                         "novel-system planner; 'agent-mode' = mission control for an "
                         "autonomous multi-chapter authoring run — start/pause/resume a run "
@@ -452,6 +456,10 @@ UI_OPEN_STUDIO_PANEL_TOOL: dict = {
                         "'plan-hub' = the whole book's plan as a graph canvas — arc/sub-arc lanes "
                         "with their chapters and scenes, scene-link edges, and problem/staleness "
                         "decorations; pan/zoom, expand an arc to see its chapters; "
+                        "'arc-inspector' = read/edit ONE arc or saga of the book's spec tree — "
+                        "title/goal/status, the cascade-resolved plot tracks and cast roster, its "
+                        "chapter span, open promises, and template provenance. This is the structure "
+                        "that steers every generation; "
                         "'divergence' = manage the book's what-if derivatives (dị bản) — list "
                         "the canonical Work and every branched version, switch the whole studio "
                         "to one, archive one, read its spec, or spawn a new branch from a chapter; "

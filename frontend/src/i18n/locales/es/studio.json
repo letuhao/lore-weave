@@ -21,6 +21,16 @@
       "desc": "Chat de coescritura con IA",
       "guideBody": "El coescritor de IA para este libro: chatea con él sobre una escena, pídele que redacte o revise un pasaje o haz una lluvia de ideas sobre qué pasará después. Ábrelo cuando necesites un compañero de conversación que ya conozca los personajes, el glosario y los capítulos anteriores de este libro."
     },
+    "scene-compose": {
+      "title": "Componer escena",
+      "desc": "Redacta una escena con candidatos de IA",
+      "guideBody": "Redacta una escena con el coescritor de IA: elige una escena y un modelo, luego pulsa Generar para transmitir un borrador fantasma, o activa Divergir para obtener varios candidatos que puedes comparar, editar y aceptar. Al aceptar, la prosa se inserta en el Editor de este capítulo, y tus decisiones de regenerar/rechazar/editar entrenan al modelo. Ábrelo cuando quieras escribir la siguiente escena, no solo hablar de ella."
+    },
+    "chapter-assemble": {
+      "title": "Ensamblar capítulo",
+      "desc": "Ensambla o cose las escenas en un capítulo",
+      "guideBody": "Convierte las escenas de un capítulo en prosa de capítulo terminada: 'Generar capítulo' lo redacta de una pasada, o 'Coser' fusiona tus borradores de escena completados en un único capítulo fluido. Revisa la vista previa editable y luego pulsa Aceptar para insertarlo en el Editor; tus decisiones de editar/regenerar/rechazar entrenan al modelo, el mismo volante de corrección que Componer escena. Ábrelo cuando las escenas de un capítulo estén redactadas y quieras ensamblarlas."
+    },
     "editor": {
       "title": "Editor",
       "desc": "Editor de manuscrito",

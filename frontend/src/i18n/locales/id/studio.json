@@ -21,6 +21,16 @@
       "desc": "Chat co-writer AI",
       "guideBody": "Co-writer AI untuk buku ini — ajak mengobrol tentang sebuah adegan, minta ia membuat draf atau merevisi paragraf, atau curah pendapat tentang apa yang terjadi selanjutnya. Buka panel ini saat Anda menginginkan mitra percakapan yang sudah memahami karakter, glosarium, dan bab-bab sebelumnya dalam buku ini."
     },
+    "scene-compose": {
+      "title": "Susun adegan",
+      "desc": "Rancang sebuah adegan dengan kandidat AI",
+      "guideBody": "Rancang sebuah adegan bersama co-writer AI: pilih adegan dan model, lalu klik Hasilkan untuk mengalirkan draf bayangan — atau nyalakan Divergensi untuk mendapat beberapa kandidat yang bisa Anda bandingkan, sunting, dan terima. Menerima akan menyisipkan prosa ke Editor bab ini, dan pilihan hasilkan-ulang/tolak/sunting Anda melatih model. Buka saat Anda ingin menulis adegan berikutnya, bukan sekadar membahasnya."
+    },
+    "chapter-assemble": {
+      "title": "Rakit bab",
+      "desc": "Rakit atau jahit adegan menjadi satu bab",
+      "guideBody": "Ubah adegan-adegan sebuah bab menjadi prosa bab yang utuh: 'Hasilkan bab' menyusunnya sekali jalan, atau 'Jahit' menggabungkan draf adegan Anda yang telah selesai menjadi satu bab yang mengalir. Tinjau pratinjau yang dapat disunting, lalu klik Terima untuk menyisipkannya ke Editor — pilihan sunting/hasilkan-ulang/tolak Anda melatih model, roda gila koreksi yang sama seperti Susun adegan. Buka setelah adegan sebuah bab dirancang dan Anda ingin merakitnya."
+    },
     "editor": {
       "title": "Editor",
       "desc": "Editor manuskrip",

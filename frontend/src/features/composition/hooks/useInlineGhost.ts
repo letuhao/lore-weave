@@ -11,6 +11,8 @@ import type { Editor } from '@tiptap/react';
 import { trackPosition, type PositionHandle } from '../../../components/editor/TrackedPositions';
 import { useCompositionStream } from './useCompositionStream';
 import { useCritique } from './useCritique';
+import { useCorrection } from './useAutoGenerate';
+import type { CorrectionBody } from '../types';
 
 export type GhostAnchor = { pos: number; coords: { top: number; left: number } };
 
@@ -28,6 +30,7 @@ export function useInlineGhost(
   const { t } = useTranslation('composition');
   const stream = useCompositionStream(opts.token);
   const { critique } = useCritique(opts.token);
+  const correction = useCorrection(opts.token);
   const [anchor, setAnchor] = useState<GhostAnchor | null>(null);
   // WS-C: the insert caret is a TRACKED position — PM remaps it through any edit the
   // author makes while the ghost streams, so commit inserts at the RIGHT spot (and
@@ -80,7 +83,18 @@ export function useInlineGhost(
     posHandle.current = null;
     setAnchor(null);
   }, [stream]);
-  const discard = useCallback(() => { stream.stop(); close(); }, [stream, close]);
+
+  // S1 correction-capture seam (spec §0 flywheel) — the inline "Continue from cursor" ghost is the
+  // studio Editor's own draft loop; Discard/Regenerate are genuine dissatisfaction signals, so
+  // capture them (composition.generation_corrected → learning-service), the SAME rationale as
+  // ComposeView's cowrite gate. Accept/Edit are NOT captured (accept-as-is is not a correction, and
+  // the streamed ghost is not editable pre-accept — H2 self-reinforcement guard). Fire-and-forget:
+  // never blocks the UI, only fires when a real generation job exists.
+  const capture = useCallback((body: CorrectionBody) => {
+    if (stream.jobId) correction.mutate({ jobId: stream.jobId, body });
+  }, [correction, stream.jobId]);
+
+  const discard = useCallback(() => { capture({ kind: 'reject' }); stream.stop(); close(); }, [capture, stream, close]);
 
   // runCritique=false is the "Edit" path: the prose lands in the doc (editable) but
   // we skip the advisory critique (it's a one-shot judge of an accepted passage).
@@ -102,9 +116,10 @@ export function useInlineGhost(
 
   const regenerate = useCallback(() => {
     if (!anchor) return;
+    capture({ kind: 'regenerate' }); // capture BEFORE re-stream — startAt mints a new jobId
     stream.clearGhost();
     startAt(posHandle.current?.current() ?? anchor.pos);
-  }, [anchor, stream, startAt]);
+  }, [anchor, capture, stream, startAt]);
 
   // Release the tracked caret if the hook unmounts mid-ghost (without a commit/
   // discard) so a stale entry doesn't linger in the shared editor's plugin state.

@@ -21,6 +21,16 @@
       "desc": "Chat de coescrita com IA",
       "guideBody": "O coescritor de IA para este livro — converse com ele sobre uma cena, peça para rascunhar ou revisar um trecho, ou faça um brainstorming sobre o que acontece a seguir. Abra-o quando quiser um parceiro de conversa que já conheça os personagens, o glossário e os capítulos anteriores deste livro."
     },
+    "scene-compose": {
+      "title": "Compor cena",
+      "desc": "Rascunhe uma cena com candidatos de IA",
+      "guideBody": "Rascunhe uma cena com o coautor de IA: escolha uma cena e um modelo, então clique em Gerar para transmitir um rascunho fantasma — ou ative Divergir para obter vários candidatos que você pode comparar, editar e aceitar. Aceitar insere o texto no Editor deste capítulo, e suas escolhas de regenerar/rejeitar/editar treinam o modelo. Abra quando quiser escrever a próxima cena, não apenas conversar sobre ela."
+    },
+    "chapter-assemble": {
+      "title": "Montar capítulo",
+      "desc": "Monte ou costure as cenas em um capítulo",
+      "guideBody": "Transforme as cenas de um capítulo em prosa de capítulo finalizada: 'Gerar capítulo' o rascunha de uma vez, ou 'Costurar' funde seus rascunhos de cena concluídos em um único capítulo fluido. Revise a prévia editável e então clique em Aceitar para inseri-lo no Editor — suas escolhas de editar/regenerar/rejeitar treinam o modelo, o mesmo volante de correção da Compor cena. Abra quando as cenas de um capítulo estiverem rascunhadas e você quiser montá-las."
+    },
     "editor": {
       "title": "Editor",
       "desc": "Editor de manuscrito",

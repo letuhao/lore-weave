@@ -21,6 +21,16 @@
       "desc": "KI-Co-Writer Chat",
       "guideBody": "Der KI-Co-Writer für dieses Buch – chatte mit ihm über eine Szene, bitte ihn um einen Entwurf oder eine Überarbeitung eines Abschnitts oder brainstorme, was als Nächstes passiert. Öffne ihn, wenn du einen Gesprächspartner brauchst, der die Charaktere, das Glossar und die vorangegangenen Kapitel dieses Buches bereits kennt."
     },
+    "scene-compose": {
+      "title": "Szene verfassen",
+      "desc": "Entwirf eine Szene mit KI-Kandidaten",
+      "guideBody": "Entwirf eine Szene mit dem KI-Koautor: Wähle eine Szene und ein Modell und klicke dann auf Generieren, um einen Geister-Entwurf zu streamen – oder aktiviere Divergieren, um mehrere Kandidaten zu erhalten, die du vergleichen, bearbeiten und übernehmen kannst. Übernehmen fügt den Text in den Editor dieses Kapitels ein, und deine Entscheidungen zum Neu-Generieren/Ablehnen/Bearbeiten trainieren das Modell. Öffne es, wenn du die nächste Szene schreiben und nicht nur darüber reden willst."
+    },
+    "chapter-assemble": {
+      "title": "Kapitel zusammensetzen",
+      "desc": "Szenen zu einem Kapitel zusammensetzen oder verweben",
+      "guideBody": "Verwandle die Szenen eines Kapitels in fertige Kapitelprosa: „Kapitel generieren“ entwirft es in einem Durchgang, oder „Verweben“ führt deine fertigen Szenenentwürfe zu einem einzigen fließenden Kapitel zusammen. Prüfe die bearbeitbare Vorschau und klicke dann auf Übernehmen, um es in den Editor einzufügen – deine Entscheidungen zum Bearbeiten/Neu-Generieren/Ablehnen trainieren das Modell, dasselbe Korrektur-Schwungrad wie beim Szene-Verfassen. Öffne es, sobald die Szenen eines Kapitels entworfen sind und du sie zusammensetzen willst."
+    },
     "editor": {
       "title": "Editor",
       "desc": "Manuskript-Editor",

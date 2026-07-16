@@ -21,6 +21,16 @@
       "desc": "Chat avec l'IA co-auteur",
       "guideBody": "L'IA co-auteur pour ce livre — discutez d'une scène, demandez-lui de rédiger ou de réviser un passage, ou explorez des idées pour la suite. Ouvrez-le lorsque vous avez besoin d'un partenaire de conversation qui connaît déjà les personnages, le glossaire et les chapitres précédents de ce livre."
     },
+    "scene-compose": {
+      "title": "Composer la scène",
+      "desc": "Rédigez une scène avec des candidats IA",
+      "guideBody": "Rédigez une scène avec le co-auteur IA : choisissez une scène et un modèle, puis cliquez sur Générer pour diffuser un brouillon fantôme, ou activez Diverger pour obtenir plusieurs candidats que vous pouvez comparer, modifier et accepter. Accepter insère le texte dans l'Éditeur de ce chapitre, et vos choix de régénérer/rejeter/modifier entraînent le modèle. Ouvrez-le quand vous voulez écrire la scène suivante, pas seulement en discuter."
+    },
+    "chapter-assemble": {
+      "title": "Assembler le chapitre",
+      "desc": "Assemblez ou reliez les scènes en un chapitre",
+      "guideBody": "Transformez les scènes d'un chapitre en prose de chapitre achevée : « Générer le chapitre » le rédige en une passe, ou « Relier » fusionne vos brouillons de scène terminés en un seul chapitre fluide. Examinez l'aperçu modifiable, puis cliquez sur Accepter pour l'insérer dans l'Éditeur — vos choix de modifier/régénérer/rejeter entraînent le modèle, le même volant de correction que Composer la scène. Ouvrez-le une fois les scènes d'un chapitre rédigées et que vous voulez les assembler."
+    },
     "editor": {
       "title": "Éditeur",
       "desc": "Éditeur de manuscrit",
