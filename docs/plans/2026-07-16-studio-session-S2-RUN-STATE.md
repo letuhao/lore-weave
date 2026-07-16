@@ -56,6 +56,12 @@ Design of record: **spec 32 + 32a** (B1), **spec 34 + a future 34a** (B2). PO cl
 | S2-B2b · FE ArcTemplatesPanel (lift motif Arc*, drop conformance) + library/catalog/detail/drift + AT-6 stamp | TODO | |
 | S2-B2c · ImportDeconstructSection (拆文 cost-gate → confirm → poll motif-jobs) | TODO | |
 | S2-B2d · registration + live-browser smoke (agent-open→deconstruct→materialize→drift, no dock teardown) | TODO | |
+| **S2-B2 · arc-templates + 拆文 (spec 34 + 34a book-tier)** | | |
+| S2-B2a · BE-7a extract-template REST + BE-7b suggest REST + tests | DOING | BE-7a ✅ (`POST /arcs/{id}/extract-template`, VIEW gate, 409 dup-code map; mirrors MCP engine). test_arc_hub_routes 23/23. BE-7b next. |
+| S2-B2b · FE ArcTemplatesPanel (lift motif Arc*, drop conformance AT-7) + library/catalog/detail/drift + AT-6 stamp | TODO | |
+| S2-B2c · ImportDeconstructSection (拆文 cost-gate → confirm → poll motif-jobs) | TODO | |
+| S2-B2d · D-ARC-TEMPLATE-BOOK-TIER (34a: schema + tenancy) | TODO | |
+| S2-B2e · registration + live-browser smoke (agent-open→deconstruct→materialize→drift) + /review-impl | TODO | |
 | S2-BE8 · agent-parity for `_apply`/`_template_drift` stubs | PARKED | defer row — post-panel (34 §5 BE-8) |
 
 ## AUDIT (S2-A1) — role-play: a web-novel author structuring a book

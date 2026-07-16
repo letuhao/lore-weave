@@ -22,6 +22,7 @@ from __future__ import annotations
 from unittest.mock import AsyncMock
 from uuid import uuid4
 
+import asyncpg
 import pytest
 from fastapi.testclient import TestClient
 
@@ -298,6 +299,45 @@ def test_arc_get_archived_node_absent_from_blocks_is_null_not_zero(client):
     assert body["chapter_count"] is None
     assert body["is_contiguous"] is None
     repo.span.assert_not_called()
+
+
+# ── BE-7a: extract-template — VIEW gate + the 409 duplicate-code map (spec 34) ──
+
+
+def test_extract_template_non_grantee_is_404(client):
+    repo = AsyncMock()
+    repo.get = AsyncMock(return_value=_node(ARC))
+    c, repo = client(GrantLevel.NONE, structures=repo)
+    r = c.post(f"/v1/composition/arcs/{ARC}/extract-template", json={"code": "c", "name": "n"})
+    assert r.status_code == 404
+
+
+def test_extract_template_duplicate_code_is_409(client, monkeypatch):
+    import app.routers.arc as arc_router
+
+    async def _boom(*a, **k):
+        raise asyncpg.UniqueViolationError("dup")
+    monkeypatch.setattr(arc_router, "extract_template_from_arc", _boom)
+    repo = AsyncMock()
+    repo.get = AsyncMock(return_value=_node(ARC))
+    c, repo = client(GrantLevel.EDIT, structures=repo)
+    r = c.post(f"/v1/composition/arcs/{ARC}/extract-template", json={"code": "dup", "name": "n"})
+    assert r.status_code == 409
+    assert r.json()["detail"]["code"] == "ARC_TEMPLATE_CODE_EXISTS"
+
+
+def test_extract_template_success_201(client, monkeypatch):
+    import app.routers.arc as arc_router
+
+    async def _ok(*a, **k):
+        return {"success": True, "outcome": "extracted", "template_id": "t1"}
+    monkeypatch.setattr(arc_router, "extract_template_from_arc", _ok)
+    repo = AsyncMock()
+    repo.get = AsyncMock(return_value=_node(ARC))
+    c, repo = client(GrantLevel.VIEW, structures=repo)
+    r = c.post(f"/v1/composition/arcs/{ARC}/extract-template", json={"code": "c", "name": "My Arc"})
+    assert r.status_code == 201
+    assert r.json()["template_id"] == "t1"
 
 
 # ── read surface #1: the derived block MUST ride on every shell node ───────────

@@ -53,7 +53,7 @@ from app.deps import (
     get_grant_client_dep,
     get_outline_repo,
 )
-from app.engine.arc_apply import build_apply_plan
+from app.engine.arc_apply import build_apply_plan, extract_template_from_arc
 from app.grant_client import GrantClient, GrantLevel
 from app.grant_deps import InsufficientGrant, authorize_book
 from app.middleware.jwt_auth import get_bearer_token, get_current_user
@@ -662,6 +662,43 @@ async def assign_arc_chapters(
         "assigned": count,
         "structure_node_id": str(body.structure_node_id) if body.structure_node_id else None,
     }
+
+
+# ── BE-7a (spec 34) — the REST twin of composition_arc_extract_template. "Save this arc as a
+#    template" is a Tier-A WRITE, so it gets a REST route (NOT a bridge allowlist entry — the
+#    allowlist's contract is "nothing here writes"). Mirrors the MCP handler verbatim, incl. the
+#    UniqueViolationError → 409 map (the engine deliberately does not swallow it). ──────────────
+class ArcExtractTemplate(BaseModel):
+    code: str = Field(min_length=1, max_length=120)
+    name: str = Field(min_length=1, max_length=200)
+    language: str = "en"
+    # 'public' is excluded at create — publishing is the separate library visibility flip.
+    visibility: Literal["private", "unlisted"] = "private"
+
+
+@router.post("/arcs/{node_id}/extract-template", status_code=201)
+async def extract_arc_template(
+    node_id: UUID,
+    body: ArcExtractTemplate,
+    user_id: UUID = Depends(get_current_user),
+    grant: GrantClient = Depends(get_grant_client_dep),
+) -> dict[str, Any]:
+    """Save an authored arc (a structure_node) as a reusable arc TEMPLATE in the caller's own
+    library. Reading the arc to extract from it ⇒ VIEW on its book (derived from the ROW); the
+    new template is owner-stamped to the caller. 409 on a duplicate (owner, code, language)."""
+    structures = _structures()
+    node = await _gate_arc(structures, grant, user_id, node_id, GrantLevel.VIEW)
+    try:
+        result = await extract_template_from_arc(
+            get_pool(), arc_node=node, owner_user_id=user_id,
+            code=body.code, name=body.name, language=body.language, visibility=body.visibility,
+        )
+    except asyncpg.UniqueViolationError:
+        raise HTTPException(status_code=409, detail={
+            "code": "ARC_TEMPLATE_CODE_EXISTS",
+            "message": "an arc template with this code + language already exists in your library",
+        })
+    return result
 
 
 class ChapterReorder(BaseModel):
