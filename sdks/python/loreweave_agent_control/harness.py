@@ -63,6 +63,10 @@ class DriveVerdict:
     step: StepProgress | None = None
     directive_text: str | None = None
     giving_up: bool = False
+    # ACP-10 — AUTONOMOUS mode only: an exhausted REQUIRED step has no user to re-prompt, so it
+    # PARKS (escalate + move on) instead of holding. `park_reason` carries the escalation note.
+    parked: bool = False
+    park_reason: str | None = None
 
 
 async def decide_rail_drive(
@@ -78,8 +82,15 @@ async def decide_rail_drive(
     nudge_counts: Counter,
     enforcement_strength: str,
     required_nudge_cap: int,
+    mode: str = "interactive",
 ) -> DriveVerdict:
     """Decide whether to drive the next rail step this turn, and how hard — one verdict.
+
+    ``mode`` (ACP-10, per-runtime enforcement policy): ``interactive`` (chat) holds an exhausted
+    REQUIRED step + re-prompts the user with an honest give-up; ``autonomous`` (a future
+    background/game runtime — no user to re-prompt) instead PARKS it (``parked=True`` +
+    ``park_reason``) so the runtime escalates and moves on (``blocked ≠ stopped``). The verdict
+    machine is shared; only this release policy differs by mode.
 
     `probe_fn` is INJECTED (RW-11) — the consumer supplies its own book-state probe; the harness
     calls it fresh (the turn-start counts go stale the moment the model writes mid-turn). Never
@@ -116,6 +127,12 @@ async def decide_rail_drive(
             nudged_out.add(step.step_id)
         # An ENFORCED, exhausted step gets the honest give-up (GOV-7); else the forceful nudge.
         honest = giving_up and enforced
+        # ACP-10 — AUTONOMOUS: no user to re-prompt → PARK the exhausted step + escalate, never hold.
+        if honest and mode == "autonomous":
+            return DriveVerdict(
+                should_drive=False, slug=slug, step=step, giving_up=True, parked=True,
+                park_reason=f"step '{step.step_id}' unmet after {cap} attempts — parked for escalation",
+            )
         directive = honest_giveup_directive(step) if honest else redrive_directive(step)
         return DriveVerdict(
             should_drive=True, slug=slug, step=step, directive_text=directive, giving_up=honest,
