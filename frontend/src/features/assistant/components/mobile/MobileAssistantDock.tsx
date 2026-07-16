@@ -11,11 +11,7 @@ import { CalendarCheck, BookText, ChevronRight, Brain } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useSheetRoute } from '@/components/shared/Sheet';
 import { useAssistant } from '../../context/AssistantContext';
-import { useDiaryEntries } from '../../hooks/useDiaryEntries';
-import { useDiaryCorrection } from '../../hooks/useDiaryCorrection';
-import { useForgetEntity } from '../../hooks/useForgetEntity';
-import { useEraseAllData } from '../../hooks/useEraseAllData';
-import { useMemoryEntities } from '../../hooks/useMemoryEntities';
+import { useAssistantMemory } from '../../hooks/useAssistantMemory';
 import { MobileMemorySheet, MEMORY_SHEET_ID } from './MobileMemorySheet';
 import { useDiaryFactInbox } from '../../hooks/useDiaryFactInbox';
 import { useReflection } from '../../hooks/useReflection';
@@ -25,51 +21,24 @@ import { MobileTodaySheet, TODAY_SHEET_ID } from './MobileTodaySheet';
 import { MobileJournalSheet, JOURNAL_SHEET_ID } from './MobileJournalSheet';
 
 export function MobileAssistantDock() {
-  const { bookId, projectId, consentEnabled, consentSaving, setConsent, reprovision, endOfDay: eod, captureRail: rail } = useAssistant();
+  const { bookId, projectId, consentEnabled, consentSaving, setConsent, endOfDay: eod, captureRail: rail } = useAssistant();
   const { openSheet } = useSheetRoute();
 
   const inbox = useDiaryFactInbox();
   const reflection = useReflection(bookId);
   const scorecards = useScorecards();
   const tz = useTimezone();
-  const journal = useDiaryEntries(bookId);
-  const memory = useMemoryEntities(bookId);
-  const correction = useDiaryCorrection(bookId);
-  const forgetEntity = useForgetEntity(bookId);
-  const eraseAll = useEraseAllData();
+  // A2 — the memory/journal/forget/erase capabilities are a shared controller (also used by the desktop
+  // home strip), so their wiring lives in one place.
+  const mem = useAssistantMemory();
+  const { journal, memory, correction, forgetEntity, eraseAll } = mem;
 
-  // D17 — correcting a day re-distills its facts; forgetting a person deletes them. Both change what
-  // "memory" holds, so refetch the journal + the What-I-know list after either succeeds.
-  const handleCorrect = async (chapterId: string, body: string, title?: string) => {
-    const res = await correction.correct(chapterId, body, title);
-    if (res?.amended) {
-      void journal.refresh();
-      void memory.refresh();
-      void rail.refresh();
-    }
-    return res;
-  };
-  const handleForget = async (name: string) => {
-    const res = await forgetEntity.forget(name);
-    if (res?.forgotten) {
-      void memory.refresh();
-      void rail.refresh();
-    }
-    return res;
-  };
-  // FR — erase-everything wipes memory + journal server-side; refresh every surface that reads it so
-  // the UI reflects the now-empty account (a re-open re-provisions an empty diary, idempotently).
+  const handleCorrect = mem.handleCorrect;
+  const handleForget = mem.handleForget;
+  // Erase also clears the fact inbox (a dock-owned surface the shared hook doesn't touch).
   const handleEraseAll = async () => {
-    const ok = await eraseAll.erase();
-    if (ok) {
-      // The erase deleted the diary book too, so the in-session bookId is now dead — re-provision an
-      // empty diary (idempotent) so the surfaces bind to a live book instead of a stale reference.
-      reprovision();
-      void memory.refresh();
-      void journal.refresh();
-      void rail.refresh();
-      void inbox.refetch();
-    }
+    const ok = await mem.handleEraseAll();
+    if (ok) void inbox.refetch();
     return ok;
   };
 

@@ -1,9 +1,12 @@
 // WS-1.10 view — the assistant home strip (right rail): greeting, the capture-consent chip, the
 // "today so far" rail, and the "End my day" → review flow. Composition only; all logic is in the
 // context + the two controller hooks (CLAUDE.md MVC).
+import { BookText, Brain } from 'lucide-react';
 import { useAuth } from '@/auth';
 import { cn } from '@/lib/utils';
+import { useSheetRoute } from '@/components/shared/Sheet';
 import { useAssistant } from '../context/AssistantContext';
+import { useAssistantMemory } from '../hooks/useAssistantMemory';
 import { useDiaryFactInbox } from '../hooks/useDiaryFactInbox';
 import { useReflection } from '../hooks/useReflection';
 import { useScorecards } from '../hooks/useScorecards';
@@ -14,6 +17,8 @@ import { DiaryFactInbox } from './DiaryFactInbox';
 import { EndOfDayReview } from './EndOfDayReview';
 import { ReflectionCard } from './ReflectionCard';
 import { TimezoneConfirm } from './TimezoneConfirm';
+import { MobileJournalSheet, JOURNAL_SHEET_ID } from './mobile/MobileJournalSheet';
+import { MobileMemorySheet, MEMORY_SHEET_ID } from './mobile/MobileMemorySheet';
 
 export function AssistantHomeStrip() {
   const { user } = useAuth();
@@ -22,6 +27,16 @@ export function AssistantHomeStrip() {
   const reflection = useReflection(bookId);
   const scorecards = useScorecards();
   const tz = useTimezone();
+  // A2 (desktop parity) — the memory/journal/correct/forget/erase capabilities, shared with the mobile
+  // dock. Surfaced here as two addressable sheets so a desktop user can browse/recall memory, read + correct
+  // past journal days, forget a person and erase everything (the data-rights controls the first-run promises).
+  const mem = useAssistantMemory();
+  const { openSheet } = useSheetRoute();
+  const handleEraseAll = async () => {
+    const ok = await mem.handleEraseAll();
+    if (ok) void inbox.refetch();
+    return ok;
+  };
 
   const firstName = (user?.display_name || user?.email || '').split(/[ @]/)[0];
 
@@ -105,6 +120,33 @@ export function AssistantHomeStrip() {
         onKeep={eod.keep}
       />
 
+      {/* A2 — Journal + Memory affordances (were mobile-only). Open the SAME addressable sheets the dock
+          uses, so a desktop user can read/correct past days, browse/recall memory, forget + erase. */}
+      <div className="grid grid-cols-2 gap-2">
+        <button
+          type="button"
+          data-testid="assistant-open-journal"
+          onClick={() => {
+            void mem.journal.refresh();
+            openSheet(JOURNAL_SHEET_ID);
+          }}
+          className="flex min-h-[44px] items-center justify-center gap-2 rounded-md border border-border text-sm font-medium hover:bg-secondary"
+        >
+          <BookText className="h-4 w-4" aria-hidden="true" /> Journal
+        </button>
+        <button
+          type="button"
+          data-testid="assistant-open-memory"
+          onClick={() => {
+            void mem.memory.refresh();
+            openSheet(MEMORY_SHEET_ID);
+          }}
+          className="flex min-h-[44px] items-center justify-center gap-2 rounded-md border border-border text-sm font-medium hover:bg-secondary"
+        >
+          <Brain className="h-4 w-4" aria-hidden="true" /> Memory
+        </button>
+      </div>
+
       {/* C8 / WS-5.3 — the latest weekly reflection draft + dismissable patterns (server is SoT). */}
       {reflection.reflection && (
         <ReflectionCard
@@ -125,6 +167,27 @@ export function AssistantHomeStrip() {
         pendingId={inbox.pendingId}
         onConfirm={inbox.confirm}
         onReject={inbox.reject}
+      />
+
+      {/* A2 — the addressable Journal + Memory sheets (reused from the mobile surface; Radix-Dialog based,
+          so they render fine on desktop). Memory carries the Forget + Erase-everything data-rights controls. */}
+      <MobileJournalSheet
+        entries={mem.journal.entries}
+        loading={mem.journal.loading}
+        error={mem.journal.error}
+        onCorrect={mem.handleCorrect}
+        correctingId={mem.correction.correctingId}
+      />
+      <MobileMemorySheet
+        entities={mem.memory.entities}
+        loading={mem.memory.loading}
+        error={mem.memory.error}
+        search={mem.memory.search}
+        onSearch={mem.memory.setSearch}
+        onForget={mem.handleForget}
+        forgettingName={mem.forgetEntity.forgettingName}
+        onEraseAll={handleEraseAll}
+        erasing={mem.eraseAll.erasing}
       />
     </aside>
   );
