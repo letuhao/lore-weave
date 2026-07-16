@@ -137,3 +137,60 @@ async def test_explicit_model_ref_skips_resolution_entirely(monkeypatch):
 
     llm.resolve_planner_model.assert_not_awaited()
     assert runs.create.await_args.kwargs["model_ref"] == EXPLICIT_MODEL
+
+
+# ── close-21-28 D-G5-DRIVE-EXEC — rules-mode propose auto-compile (flag-gated) ────────────────
+#
+# The S06 flagship exposed that a weak agent reliably PROPOSES a valid rules spec but drops the
+# follow-up plan_compile call (DR-G5-REROLL: 6 live gemma-4 rolls proposed, 0 chained the compile),
+# and the rail drive holds+re-prompts but by G1 design does not execute the deterministic step.
+# `planforge_rules_autocompile` (deploy ceiling, default OFF) closes it: a rules propose that parses
+# ≥1 arc compiles every arc inline. These two tests pin BOTH sides of the flag — the write-only-
+# behavior bug (a flag consumed by nothing) and the HIL-preservation (OFF must not auto-compile).
+
+
+class _Spec:
+    def __init__(self, arcs):
+        self.content = {"arcs": arcs}
+
+
+@pytest.mark.asyncio
+async def test_rules_autocompile_on_compiles_every_parsed_arc(monkeypatch):
+    """Flag ON: a rules propose that parses arcs auto-compiles EACH one inline — structure
+    materialises with the propose, not on a second call the weak model drops."""
+    svc, runs, jobs, works, llm = _svc()
+    runs.get_for_book.return_value = _run(mode="rules", status="proposed")
+    # The real transcription is exercised elsewhere; here we drive only the flag→compile wiring.
+    svc._finalize_rules_propose = AsyncMock()
+    runs.latest_artifact.return_value = _Spec([{"id": "arc_1"}, {"id": "arc_2"}, {"id": "arc_3"}])
+    svc.compile = AsyncMock(return_value=("sync", {}))
+    monkeypatch.setattr(
+        "app.services.plan_forge_service.settings.planforge_rules_autocompile", True,
+    )
+
+    await svc.create_run(
+        USER, BOOK, source_markdown="# 1. Arc Overview\n## A\n### b", mode="rules", model_ref=None,
+    )
+
+    assert svc.compile.await_count == 3  # one deterministic compile per parsed arc
+    compiled = {c.kwargs["arc_id"] for c in svc.compile.await_args_list}
+    assert compiled == {"arc_1", "arc_2", "arc_3"}
+
+
+@pytest.mark.asyncio
+async def test_rules_autocompile_off_preserves_hil(monkeypatch):
+    """Flag OFF (the default): a rules propose does NOT auto-compile — the GUI's
+    propose→review→compile flow is unchanged."""
+    svc, runs, jobs, works, llm = _svc()
+    runs.get_for_book.return_value = _run(mode="rules", status="proposed")
+    svc._finalize_rules_propose = AsyncMock()
+    svc.compile = AsyncMock()
+    monkeypatch.setattr(
+        "app.services.plan_forge_service.settings.planforge_rules_autocompile", False,
+    )
+
+    await svc.create_run(
+        USER, BOOK, source_markdown="# 1. Arc Overview\n## A\n### b", mode="rules", model_ref=None,
+    )
+
+    svc.compile.assert_not_awaited()

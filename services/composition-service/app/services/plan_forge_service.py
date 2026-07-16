@@ -195,6 +195,8 @@ class PlanForgeService:
 
         if mode == "rules":
             await self._finalize_rules_propose(created_by, book_id, run.id, doc)
+            if settings.planforge_rules_autocompile:
+                await self._autocompile_rules_run(created_by, book_id, run.id)
             updated = await self._runs.get_for_book(book_id, run.id)
             return updated or run, False, None
 
@@ -230,6 +232,36 @@ class PlanForgeService:
             "---\n\n"
         )
         return digest + source_markdown
+
+    async def _autocompile_rules_run(
+        self, created_by: UUID, book_id: UUID, run_id: UUID,
+    ) -> None:
+        """close-21-28 D-G5-DRIVE-EXEC (flag-gated by `planforge_rules_autocompile`, default OFF).
+
+        A rules-mode propose has just written the `spec` artifact — a DETERMINISTIC transcription of
+        the authored outline. Compile EVERY parsed arc inline so `structure_node` materialises with
+        the propose, rather than depending on a weak agent to chain a second `plan_compile` call it
+        reliably drops (S06 DR-G5-REROLL). The compile is `$0`/no-LLM/composition-local, and idempotent
+        (re-compiling an arc re-links by target, preserving human edits — the PF-11 prior-report path),
+        so auto-running it cannot double-write or spend.
+
+        Fail-SOFT: if a single arc's compile raises (e.g. a validation edge), we log and continue —
+        the propose already succeeded, and a partial structure is the pre-fix behaviour, never worse.
+        A propose that parses ZERO arcs simply compiles nothing (the flag is a no-op on a bad parse).
+        """
+        spec_art = await self._runs.latest_artifact(book_id, run_id, "spec")
+        arc_ids = [
+            a["id"] for a in (spec_art.content.get("arcs", []) if spec_art else []) if a.get("id")
+        ]
+        for arc_id in arc_ids:
+            try:
+                await self.compile(created_by, book_id, run_id, arc_id=arc_id)
+            except (ValueError, LookupError, LinkError) as exc:  # deterministic-compile edges only
+                logger.warning(
+                    "planforge rules-autocompile: arc %s of run %s did not compile (%s); "
+                    "propose stands, structure partial",
+                    arc_id, run_id, exc,
+                )
 
     async def _finalize_rules_propose(
         self, created_by: UUID, book_id: UUID, run_id: UUID, doc: dict[str, Any],
