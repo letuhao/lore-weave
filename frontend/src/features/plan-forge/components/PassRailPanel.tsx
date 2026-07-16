@@ -16,6 +16,7 @@ import { useStudioHost, useRegisterStudioTool } from '@/features/studio/host/Stu
 import type { StudioToolRegistration } from '@/features/studio/host/types';
 import { usePassRail } from '../hooks/usePassRail';
 import { PassRow } from './PassRow';
+import { CheckpointReview } from './CheckpointReview';
 
 export function PassRailPanel(props: IDockviewPanelProps) {
   const { t } = useTranslation('studio');
@@ -137,38 +138,21 @@ export function PassRailPanel(props: IDockviewPanelProps) {
                   </div>
                 )}
 
-                {/* Basic checkpoint review (M4-CP adds artifact view + edit) */}
-                {reviewPass === pass.pass_id && (
-                  <div data-testid="pass-review-strip" className="mt-1 rounded border border-warning/40 bg-warning/5 p-2">
-                    <p className="mb-2 text-[11px] text-foreground">
-                      {t('planPasses.reviewPrompt', {
-                        defaultValue: `Approve ${pass.pass_id}? This lets the compiler proceed past it.`,
-                        pass: pass.pass_id,
-                      })}
-                    </p>
-                    <div className="flex gap-2">
-                      <button
-                        type="button" data-testid="pass-approve" disabled={rail.busy}
-                        onClick={() => { void rail.reviewCheckpoint(true, pass.pass_id); setReviewPass(null); }}
-                        className="rounded bg-primary px-2 py-1 text-[11px] font-medium text-primary-foreground hover:brightness-110 disabled:opacity-40"
-                      >
-                        {t('planPasses.approve', { defaultValue: 'Approve' })}
-                      </button>
-                      <button
-                        type="button" data-testid="pass-reject" disabled={rail.busy}
-                        onClick={() => { void rail.reviewCheckpoint(false, pass.pass_id); setReviewPass(null); }}
-                        className="rounded border border-destructive/50 px-2 py-1 text-[11px] text-destructive hover:bg-destructive/10 disabled:opacity-40"
-                      >
-                        {t('planPasses.reject', { defaultValue: 'Reject' })}
-                      </button>
-                      <button
-                        type="button" onClick={() => setReviewPass(null)}
-                        className="rounded border border-border px-2 py-1 text-[11px] hover:bg-secondary"
-                      >
-                        {t('planPasses.cancel', { defaultValue: 'Cancel' })}
-                      </button>
-                    </div>
-                  </div>
+                {/* M4-CP — the rich checkpoint review: read the artifact, edit it, clear the cast
+                    seed gate (PF-7), then approve/hold. */}
+                {reviewPass === pass.pass_id && rail.runId && (
+                  <CheckpointReview
+                    pass={pass}
+                    bookId={bookId}
+                    runId={rail.runId}
+                    token={accessToken ?? null}
+                    busy={rail.busy}
+                    onReview={(approved, edits) => {
+                      void rail.reviewCheckpoint(approved, pass.pass_id, edits);
+                      setReviewPass(null);
+                    }}
+                    onClose={() => setReviewPass(null)}
+                  />
                 )}
               </div>
             ))}

@@ -312,6 +312,14 @@ def derive_view(
             "decision": e.get("decision", "pending"),
             "artifact_id": e.get("artifact_id"),
             "job_id": e.get("job_id"),
+            # BE-20 · PF-7 — the glossary seed proposal this pass is waiting on. RETURNED, because
+            # `_assert_seed_applied` refuses to accept `cast` until this proposal is `applied`, and
+            # the ONLY route to it is GET /plan/bootstrap/{proposal_id} — which needs an id the
+            # client could not otherwise see. A stored field the gate reads but no transport returns
+            # is a permanent, unclearable 409 (the "cannot advance past cast" bug).
+            "bootstrap_proposal_id": e.get("bootstrap_proposal_id"),
+            "decided_by": e.get("decided_by"),
+            "decided_at": e.get("decided_at"),
             # DERIVED — not stored:
             "fresh": is_fresh(run, pid, package_artifact_id=package_artifact_id),
             "blockers": blockers_for(run, pid, package_artifact_id=package_artifact_id),

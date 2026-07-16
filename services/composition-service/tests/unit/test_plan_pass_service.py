@@ -248,6 +248,22 @@ def test_derive_view_reports_every_pass_with_its_derived_freshness():
     assert v["blocked_at"] is None
 
 
+def test_derive_view_surfaces_bootstrap_proposal_id_for_the_client(monkeypatch):
+    """BE-20/PF-7 — `cast` cannot be accepted until its glossary seed proposal is `applied`, and the
+    ONLY route to that proposal needs its id. If the ledger omits `bootstrap_proposal_id` the approve
+    button 409s forever with no way to clear it. So the derived view MUST return it."""
+    prop = uuid4()
+    entry = done(uuid4(), pps.fingerprint(input_artifact_ids=[str(PKG)]), decision="pending")
+    entry["bootstrap_proposal_id"] = str(prop)
+    v = pps.derive_view(run_with({"cast": entry}), package_artifact_id=PKG)
+    cast = next(p for p in v["passes"] if p["pass_id"] == "cast")
+    assert cast["bootstrap_proposal_id"] == str(prop)
+    # a pass with no proposal reports None, not a missing key (the FE reads it either way)
+    motifs = next(p for p in v["passes"] if p["pass_id"] == "motifs")
+    assert motifs["bootstrap_proposal_id"] is None
+    assert "decided_by" in cast and "decided_at" in cast
+
+
 # ── record_pass merges; it never clobbers the pointer downstream passes resolve through ──
 
 
