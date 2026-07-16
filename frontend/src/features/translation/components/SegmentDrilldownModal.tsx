@@ -56,6 +56,14 @@ export function SegmentDrilldownModal({ bookId, target, onClose }: Props) {
       description={`${target.title || target.chapterId.slice(0, 8)} · ${getLanguageName(target.lang)}`}
       footer={footer}
     >
+      {/* S2: a re-translate mutation failure must be visible — it was captured by the hook but
+          never rendered, so a failed "re-translate changed" looked like nothing happened. */}
+      {drill.retranslateError && (
+        <div role="alert" data-testid="segment-retranslate-error" className="mb-3 flex items-center gap-2 rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-[11px] text-destructive">
+          <AlertCircle className="h-3.5 w-3.5 shrink-0" />
+          {t('segments.retranslate_failed')}
+        </div>
+      )}
       {drill.loading ? (
         <div className="flex items-center justify-center py-10">
           <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />

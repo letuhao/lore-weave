@@ -179,6 +179,7 @@
     "needs_count": "{{count}} segment(s) need re-translation",
     "retranslate_changed": "Re-translate changed ({{count}})",
     "retranslate_started": "Re-translation started",
+    "retranslate_failed": "Re-translation could not be started. Please try again.",
     "empty": "No segments built yet.",
     "close": "Close"
   }
