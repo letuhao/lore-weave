@@ -161,7 +161,9 @@
     "page": "Sayfa",
     "prev": "Önceki sayfa",
     "next": "Sonraki sayfa",
-    "translate_no_edit": "Yalnızca görüntüleme erişiminiz var — çevirmek için sahibinden düzenleme erişimi isteyin."
+    "translate_no_edit": "Yalnızca görüntüleme erişiminiz var — çevirmek için sahibinden düzenleme erişimi isteyin.",
+    "all_filtered_title": "Tüm diller filtrelendi",
+    "all_filtered_desc": "Kapsamını görmek için filtrede bir dili yeniden etkinleştirin."
   },
   "segments": {
     "title": "Segment durumu",

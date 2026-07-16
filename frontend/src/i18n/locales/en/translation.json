@@ -148,6 +148,8 @@
     "filter": "Filter",
     "show_languages": "Show languages",
     "reset_auto": "Reset to auto",
+    "all_filtered_title": "All languages are filtered out",
+    "all_filtered_desc": "Re-enable a language in the filter to see its coverage.",
     "no_translations_title": "No translations yet",
     "no_translations_desc": "Start by translating your chapters into another language.",
     "start_translation": "Start Translation",

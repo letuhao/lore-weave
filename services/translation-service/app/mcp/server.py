@@ -721,7 +721,11 @@ async def translation_update_settings(
                 "tool": "translation_update_settings",
                 "args": {
                     "book_id": book_id,
-                    "target_language": prior.get("target_language"),
+                    # D13: only echo a prior target_language the tool's own enum would accept — a
+                    # legacy non-canonical value (reads tolerate it) must not be handed back as an
+                    # undo arg the schema would then reject. Omit it in that (pre-migration) case.
+                    **({"target_language": prior["target_language"]}
+                       if is_translation_target(str(prior.get("target_language") or "")) else {}),
                     "model_source": prior.get("model_source"),
                     "model_ref": str(prior["model_ref"]) if prior.get("model_ref") else None,
                 },

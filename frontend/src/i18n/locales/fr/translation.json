@@ -169,7 +169,9 @@
     "extract_glossary": "Extraire le glossaire",
     "clear": "Effacer",
     "loading": "Chargement de la couverture de traduction…",
-    "translate_no_edit": "Vous avez un accès en lecture seule — demandez au propriétaire un accès en modification pour traduire."
+    "translate_no_edit": "Vous avez un accès en lecture seule — demandez au propriétaire un accès en modification pour traduire.",
+    "all_filtered_title": "Toutes les langues sont filtrées",
+    "all_filtered_desc": "Réactivez une langue dans le filtre pour voir sa couverture."
   },
   "segments": {
     "title": "Statut des segments",

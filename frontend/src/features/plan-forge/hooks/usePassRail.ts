@@ -37,6 +37,10 @@ export interface UsePassRail {
   /** Push the compiled plan into the book's outline tree (§2.6 loop-connect → the manuscript). */
   relink: (target: 'skeleton' | 'scene_plan') => Promise<void>;
   relinkOutput: string | null;
+  /** H2 — run runnable advisory passes in order, STOPPING at the next blocking checkpoint (never
+   * auto-approving it), a failure, or the end. One click collapses many manual runs. */
+  runToNextCheckpoint: (modelRef: string) => Promise<void>;
+  running: string | null; // the pass id currently running in a batch sequence, for the progress line
 }
 
 export function usePassRail(
@@ -48,6 +52,7 @@ export function usePassRail(
   const [busy, setBusy] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const [relinkOutput, setRelinkOutput] = useState<string | null>(null);
+  const [running, setRunning] = useState<string | null>(null);
   // H4 — a manual pick from the run picker; overrides the latest-run default until cleared.
   const [manualRunId, setManualRunId] = useState<string | null>(null);
 
@@ -134,9 +139,46 @@ export function usePassRail(
     }
   }, [bookId, token, runId]);
 
+  const runToNextCheckpoint = useCallback(async (modelRef: string) => {
+    if (!token || !runId) return;
+    setBusy(true); setActionError(null);
+    try {
+      // Refetch the derived ledger each iteration (freshness/blockers re-derive between passes).
+      for (let guard = 0; guard < 8; guard++) {
+        const l = await planForgeApi.passStatus(bookId, runId, token);
+        // A blocking pass awaiting a human halts everything — the human is the only oracle (PF-6).
+        const blockingPending = l.passes.find(
+          (p) => p.checkpoint === 'blocking' && p.status === 'completed' && p.decision === 'pending',
+        );
+        if (blockingPending) break;
+        // The next runnable pass: first in order that hasn't completed and has no blockers.
+        const next = l.passes.find((p) => p.status !== 'completed' && p.blockers.length === 0);
+        if (!next) break;
+        setRunning(next.pass_id);
+        await planForgeApi.runPass(bookId, runId, next.pass_id, { model_ref: modelRef }, token);
+        // wait for THIS pass to settle before deciding the next step
+        for (let i = 0; i < 60; i++) {
+          const s = await planForgeApi.passStatus(bookId, runId, token);
+          const p = s.passes.find((x) => x.pass_id === next.pass_id);
+          if (p && (p.status === 'completed' || p.status === 'failed')) {
+            if (p.status === 'failed') { setActionError(`pass '${next.pass_id}' failed`); guard = 99; }
+            break;
+          }
+          await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS));
+        }
+        // a blocking pass we just ran is now pending → stop for the human on the next iteration.
+      }
+      await invalidate();
+    } catch (e) {
+      setActionError(extractError(e));
+    } finally {
+      setRunning(null); setBusy(false);
+    }
+  }, [bookId, token, runId, invalidate]);
+
   return {
     runId, runs, setRunId: setManualRunId, ledger, busy, polling, error, reload,
-    runPass, reviewCheckpoint, relink, relinkOutput,
+    runPass, reviewCheckpoint, relink, relinkOutput, runToNextCheckpoint, running,
   };
 }
 

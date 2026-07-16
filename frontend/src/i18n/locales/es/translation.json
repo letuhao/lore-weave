@@ -169,7 +169,9 @@
     "extract_glossary": "Extraer glosario",
     "clear": "Limpiar",
     "loading": "Cargando cobertura de traducción…",
-    "translate_no_edit": "Tienes acceso de solo lectura: pide al propietario acceso de edición para traducir."
+    "translate_no_edit": "Tienes acceso de solo lectura: pide al propietario acceso de edición para traducir.",
+    "all_filtered_title": "Todos los idiomas están filtrados",
+    "all_filtered_desc": "Vuelve a activar un idioma en el filtro para ver su cobertura."
   },
   "segments": {
     "title": "Estado de los segmentos",

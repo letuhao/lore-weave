@@ -161,7 +161,9 @@
     "page": "Halaman",
     "prev": "Halaman sebelumnya",
     "next": "Halaman berikutnya",
-    "translate_no_edit": "Anda memiliki akses hanya-lihat — minta akses edit kepada pemilik untuk menerjemahkan."
+    "translate_no_edit": "Anda memiliki akses hanya-lihat — minta akses edit kepada pemilik untuk menerjemahkan.",
+    "all_filtered_title": "Semua bahasa tersaring",
+    "all_filtered_desc": "Aktifkan kembali sebuah bahasa di filter untuk melihat cakupannya."
   },
   "segments": {
     "title": "Status segmen",

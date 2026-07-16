@@ -28,7 +28,8 @@ export function PassRailPanel(props: IDockviewPanelProps) {
   // Cost-confirm (PS-6): running a pass is a paid Tier-A action, so it opens a confirm with an
   // explicit model choice before spending. Only one pass's confirm is open at a time.
   const [confirmPass, setConfirmPass] = useState<string | null>(null);
-  const models = useUserModels({ capability: 'chat', enabled: !!confirmPass });
+  const [batchConfirm, setBatchConfirm] = useState(false); // H2 — "run to next checkpoint" cost-confirm
+  const models = useUserModels({ capability: 'chat', enabled: !!confirmPass || batchConfirm });
   const [modelRef, setModelRef] = useState('');
   const autoModelRef = useMemo(() => {
     const candidates = (models.models ?? []).filter(isChatSafeDefault);
@@ -118,6 +119,41 @@ export function PassRailPanel(props: IDockviewPanelProps) {
         </p>
       ) : (
         <>
+          {/* H2 — one click runs the runnable advisory passes to the next checkpoint. Shown while
+              there is a runnable pass and no blocking checkpoint is already waiting on the human. */}
+          {(() => {
+            const blockingPending = ledger.passes.some((p) => p.checkpoint === 'blocking' && p.status === 'completed' && p.decision === 'pending');
+            const hasRunnable = ledger.passes.some((p) => p.status !== 'completed' && p.blockers.length === 0);
+            if (!hasRunnable || blockingPending) return null;
+            return (
+              <div className="mb-2">
+                {batchConfirm ? (
+                  <div data-testid="pass-batch-confirm" className="rounded border border-accent/40 bg-accent/5 p-2">
+                    <p className="mb-1 text-[11px] font-medium text-foreground">
+                      {t('planPasses.batchSpends', { defaultValue: 'Runs each ready pass until the next checkpoint — spends 1 LLM call per pass.' })}
+                    </p>
+                    <div className="mb-2"><ModelPicker capability="chat" compact value={effectiveModelRef || null} onChange={(id) => setModelRef(id ?? '')} ariaLabel={t('planner.model', { defaultValue: 'Model' })} /></div>
+                    <div className="flex gap-2">
+                      <button type="button" data-testid="pass-batch-run" disabled={!effectiveModelRef}
+                        onClick={() => { void rail.runToNextCheckpoint(effectiveModelRef); setBatchConfirm(false); }}
+                        className="rounded bg-primary px-2 py-1 text-[11px] font-medium text-primary-foreground hover:brightness-110 disabled:opacity-40">
+                        {t('planPasses.runToCheckpoint', { defaultValue: 'Run to next checkpoint' })}
+                      </button>
+                      <button type="button" onClick={() => setBatchConfirm(false)} className="rounded border border-border px-2 py-1 text-[11px] hover:bg-secondary">
+                        {t('planPasses.cancel', { defaultValue: 'Cancel' })}
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <button type="button" data-testid="pass-run-to-checkpoint" disabled={rail.busy || rail.polling}
+                    onClick={() => { setModelRef(''); setBatchConfirm(true); }}
+                    className="rounded border border-accent/50 px-2 py-1 text-[11px] font-medium text-accent-foreground hover:bg-accent/10 disabled:opacity-40">
+                    {rail.running ? t('planPasses.runningPass', { defaultValue: `running ${rail.running}…`, pass: rail.running }) : t('planPasses.runToCheckpoint', { defaultValue: '▶ Run to next checkpoint' })}
+                  </button>
+                )}
+              </div>
+            );
+          })()}
           <div className="flex flex-col gap-1">
             {ledger.passes.map((pass, i) => (
               <div key={pass.pass_id}>

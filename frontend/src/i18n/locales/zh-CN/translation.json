@@ -169,7 +169,9 @@
     "extract_glossary": "提取术语表",
     "clear": "清除",
     "loading": "正在加载翻译覆盖范围…",
-    "translate_no_edit": "您只有查看权限——请向所有者申请编辑权限以进行翻译。"
+    "translate_no_edit": "您只有查看权限——请向所有者申请编辑权限以进行翻译。",
+    "all_filtered_title": "已过滤掉所有语言",
+    "all_filtered_desc": "在过滤器中重新启用某种语言以查看其覆盖情况。"
   },
   "segments": {
     "title": "分段状态",

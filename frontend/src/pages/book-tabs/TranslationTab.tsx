@@ -406,20 +406,39 @@ export function TranslationTab({
       ) : !hasChapters ? (
         <EmptyState icon={Languages} title={t('matrix.no_chapters_title')} description={t('matrix.no_chapters_desc')} />
       ) : visibleLangs.length === 0 ? (
-        <EmptyState
-          icon={Languages}
-          title={t('matrix.no_translations_title')}
-          description={t('matrix.no_translations_desc')}
-          action={
-            <button
-              onClick={openTranslateUnscoped}
-              className="inline-flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:brightness-110"
-            >
-              <Languages className="h-3.5 w-3.5" />
-              {t('matrix.start_translation')}
-            </button>
-          }
-        />
+        isFiltered && allLanguages.length > 0 ? (
+          // The book HAS translations — the user just filtered them all out. Don't claim "no
+          // translations yet"; offer to reset the filter.
+          <EmptyState
+            icon={Filter}
+            title={t('matrix.all_filtered_title', { defaultValue: 'All languages are filtered out' })}
+            description={t('matrix.all_filtered_desc', { defaultValue: 'Re-enable a language in the filter to see its coverage.' })}
+            action={
+              <button
+                onClick={resetFilter}
+                className="inline-flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:brightness-110"
+              >
+                <Filter className="h-3.5 w-3.5" />
+                {t('matrix.reset_auto')}
+              </button>
+            }
+          />
+        ) : (
+          <EmptyState
+            icon={Languages}
+            title={t('matrix.no_translations_title')}
+            description={t('matrix.no_translations_desc')}
+            action={
+              <button
+                onClick={openTranslateUnscoped}
+                className="inline-flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:brightness-110"
+              >
+                <Languages className="h-3.5 w-3.5" />
+                {t('matrix.start_translation')}
+              </button>
+            }
+          />
+        )
       ) : (
         <>
           {/* Matrix table — one row per CHAPTER (D3), paged (D4). */}

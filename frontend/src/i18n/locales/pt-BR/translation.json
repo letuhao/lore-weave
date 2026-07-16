@@ -169,7 +169,9 @@
     "extract_glossary": "Extrair Glossário",
     "clear": "Limpar",
     "loading": "Carregando cobertura de tradução…",
-    "translate_no_edit": "Você tem acesso somente para visualização — peça ao proprietário acesso de edição para traduzir."
+    "translate_no_edit": "Você tem acesso somente para visualização — peça ao proprietário acesso de edição para traduzir.",
+    "all_filtered_title": "Todos os idiomas estão filtrados",
+    "all_filtered_desc": "Reative um idioma no filtro para ver sua cobertura."
   },
   "segments": {
     "title": "Status dos segmentos",

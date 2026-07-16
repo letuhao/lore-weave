@@ -121,7 +121,15 @@ async def _retranslate_dirty_core(
     if book_id is None:
         raise HTTPException(status_code=404, detail={"code": "TRANSL_NOT_FOUND", "message": "Chapter has no translations"})
 
-    lang = target_language
+    # D13 — normalize BEFORE the segment-status + seed lookups (which key on target_language).
+    # A raw "VI"/"zh_CN" would otherwise miss the canonical "vi"/"zh-CN" rows and 409 with the
+    # misleading "run a full translation first" for a chapter that IS translated.
+    lang = normalize_language(target_language)
+    if not is_translation_target(lang):
+        raise HTTPException(
+            status_code=400,
+            detail={"code": "invalid_target_language", "message": f"'{target_language}' is not a supported target language."},
+        )
     items = await compute_segment_status(db, chapter_id, lang)
     # "needs" = source-dirty ∪ glossary-stale (T2-M3.2) — every segment that should
     # be re-translated, not just the source-changed ones.

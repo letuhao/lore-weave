@@ -169,7 +169,9 @@
     "extract_glossary": "用語を抽出",
     "clear": "クリア",
     "loading": "翻訳カバー率を読み込み中…",
-    "translate_no_edit": "閲覧のみの権限です。翻訳するには所有者に編集権限を依頼してください。"
+    "translate_no_edit": "閲覧のみの権限です。翻訳するには所有者に編集権限を依頼してください。",
+    "all_filtered_title": "すべての言語がフィルターで除外されています",
+    "all_filtered_desc": "フィルターで言語を再度有効にすると、その進捗が表示されます。"
   },
   "segments": {
     "title": "セグメント状態",

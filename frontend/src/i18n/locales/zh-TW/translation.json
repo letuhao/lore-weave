@@ -169,7 +169,9 @@
     "extract_glossary": "擷取詞彙",
     "clear": "清除",
     "loading": "正在載入翻譯覆蓋範圍…",
-    "translate_no_edit": "您只有檢視權限——請向擁有者申請編輯權限以進行翻譯。"
+    "translate_no_edit": "您只有檢視權限——請向擁有者申請編輯權限以進行翻譯。",
+    "all_filtered_title": "已篩除所有語言",
+    "all_filtered_desc": "在篩選器中重新啟用某種語言以檢視其涵蓋情況。"
   },
   "segments": {
     "title": "段落狀態",

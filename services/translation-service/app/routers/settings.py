@@ -65,7 +65,9 @@ async def put_preferences(
     user_id: str = Depends(get_current_user),
     db: asyncpg.Pool = Depends(get_db),
 ):
-    payload.target_language = _validate_target_language(payload.target_language) or payload.target_language
+    # target_language is required on preferences (never None here), so the validated (normalized)
+    # value is always returned — no keep-existing fallback needed (unlike the PATCH book settings).
+    payload.target_language = _validate_target_language(payload.target_language) or "en"
     row = await db.fetchrow(
         """
         INSERT INTO user_translation_preferences

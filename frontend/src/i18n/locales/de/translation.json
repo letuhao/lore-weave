@@ -169,7 +169,9 @@
     "extract_glossary": "Glossar extrahieren",
     "clear": "Löschen",
     "loading": "Übersetzungsumfang wird geladen…",
-    "translate_no_edit": "Sie haben nur Lesezugriff – bitten Sie den Eigentümer um Bearbeitungszugriff, um zu übersetzen."
+    "translate_no_edit": "Sie haben nur Lesezugriff – bitten Sie den Eigentümer um Bearbeitungszugriff, um zu übersetzen.",
+    "all_filtered_title": "Alle Sprachen sind ausgefiltert",
+    "all_filtered_desc": "Aktivieren Sie eine Sprache im Filter wieder, um deren Abdeckung zu sehen."
   },
   "segments": {
     "title": "Segmentstatus",

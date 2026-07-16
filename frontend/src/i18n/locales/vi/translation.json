@@ -169,7 +169,9 @@
     "extract_glossary": "Trích xuất lore",
     "clear": "Bỏ chọn",
     "loading": "Đang tải độ phủ bản dịch…",
-    "translate_no_edit": "Bạn chỉ có quyền xem — hãy yêu cầu chủ sở hữu cấp quyền chỉnh sửa để dịch."
+    "translate_no_edit": "Bạn chỉ có quyền xem — hãy yêu cầu chủ sở hữu cấp quyền chỉnh sửa để dịch.",
+    "all_filtered_title": "Đã lọc bỏ tất cả ngôn ngữ",
+    "all_filtered_desc": "Bật lại một ngôn ngữ trong bộ lọc để xem độ phủ của nó."
   },
   "segments": {
     "title": "Trạng thái đoạn",

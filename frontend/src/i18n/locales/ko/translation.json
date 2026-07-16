@@ -169,7 +169,9 @@
     "extract_glossary": "용어집 추출",
     "clear": "지우기",
     "loading": "번역 커버리지 로딩 중…",
-    "translate_no_edit": "보기 전용 권한입니다. 번역하려면 소유자에게 편집 권한을 요청하세요."
+    "translate_no_edit": "보기 전용 권한입니다. 번역하려면 소유자에게 편집 권한을 요청하세요.",
+    "all_filtered_title": "모든 언어가 필터링되었습니다",
+    "all_filtered_desc": "필터에서 언어를 다시 활성화하면 해당 언어의 범위가 표시됩니다."
   },
   "segments": {
     "title": "세그먼트 상태",
