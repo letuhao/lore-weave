@@ -70,6 +70,12 @@ describe('AssistantHomeStrip — desktop parity (A2)', () => {
     expect(screen.getByTestId('assistant-open-memory')).toBeTruthy();
   });
 
+  it('surfaces a Practice-interview entry from the assistant (A5), linking to /roleplay', () => {
+    renderStrip();
+    const link = screen.getByTestId('assistant-practice-link');
+    expect(link.getAttribute('href')).toBe('/roleplay');
+  });
+
   it('opening Memory reveals recall + the FORGET and ERASE data-rights controls on desktop', async () => {
     renderStrip();
     fireEvent.click(screen.getByTestId('assistant-open-memory'));

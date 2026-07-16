@@ -1,7 +1,8 @@
 // WS-1.10 view — the assistant home strip (right rail): greeting, the capture-consent chip, the
 // "today so far" rail, and the "End my day" → review flow. Composition only; all logic is in the
 // context + the two controller hooks (CLAUDE.md MVC).
-import { BookText, Brain } from 'lucide-react';
+import { BookText, Brain, GraduationCap } from 'lucide-react';
+import { Link } from 'react-router-dom';
 import { useAuth } from '@/auth';
 import { cn } from '@/lib/utils';
 import { useSheetRoute } from '@/components/shared/Sheet';
@@ -149,6 +150,16 @@ export function AssistantHomeStrip() {
           <Brain className="h-4 w-4" aria-hidden="true" /> Memory
         </button>
       </div>
+
+      {/* A5 — Practice interview: surfaced from the assistant (it's coaching-adjacent — the scorecard below
+          comes from a Practice run). Was only reachable from the global sidebar / apps drawer, never here. */}
+      <Link
+        to="/roleplay"
+        data-testid="assistant-practice-link"
+        className="flex min-h-[44px] items-center justify-center gap-2 rounded-md border border-border text-sm font-medium hover:bg-secondary"
+      >
+        <GraduationCap className="h-4 w-4" aria-hidden="true" /> Practice interview
+      </Link>
 
       {/* A3 — arm the (previously dormant) autonomous jobs. Fail-closed OFF; server is SoT. */}
       <AutonomousSettings

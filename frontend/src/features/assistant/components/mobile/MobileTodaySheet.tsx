@@ -2,6 +2,8 @@
 // a phone (full-width cards, thumb reach) but built ENTIRELY from the existing presentational
 // cards (CaptureRail, EndOfDayReview, ReflectionCard, CoachingScorecard, DiaryFactInbox,
 // TimezoneConfirm). View only — every prop comes from the dock's reused hooks (CLAUDE.md MVC).
+import { GraduationCap } from 'lucide-react';
+import { Link } from 'react-router-dom';
 import { cn } from '@/lib/utils';
 import { Sheet } from '@/components/shared/Sheet';
 import type { GlossaryEntitySummary } from '@/features/glossary/types';
@@ -126,6 +128,15 @@ export function MobileTodaySheet(props: MobileTodaySheetProps) {
         )}
 
         {scorecard && <CoachingScorecard card={scorecard} />}
+
+        {/* A5 — Practice interview, surfaced from the assistant (coaching-adjacent). */}
+        <Link
+          to="/roleplay"
+          data-testid="assistant-practice-link"
+          className="flex min-h-[44px] items-center justify-center gap-2 rounded-lg border border-border text-sm font-medium hover:bg-secondary"
+        >
+          <GraduationCap className="h-4 w-4" aria-hidden="true" /> Practice interview
+        </Link>
 
         <DiaryFactInbox
           facts={inbox.facts}
