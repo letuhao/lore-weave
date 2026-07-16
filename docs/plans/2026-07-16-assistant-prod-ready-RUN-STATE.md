@@ -28,7 +28,7 @@ NO Playwright/CV build or run in this goal). Finish line = plan §0.
 | Slice | Deliverable | Sev | Cross-svc | Status | Evidence |
 |---|---|---|---|---|---|
 | **A1** ✅ | knowledge account-erase includes ARCHIVED epochs (right-to-erasure hole) via `list_all_assistant_project_ids` (archived-inclusive; recall keeps active-only). A1.2 (forget `:Passage`) = NON-ISSUE (diary never passage-indexed). A1.3 SEC-1 forged-`user_id` guard added. (c3f25b306) | HIGH | Y | ✅ | **EVIDENCE (pasted, committed c3f25b306):** knowledge **59 passed** on real PG :5555 (test_projects_repo incl. 2 new: erase-resolver-includes-archived + is-user-scoped; test_internal_admin unit); gateway assistant spec **43 passed** (incl. the A1.3 adversarial "forged user_id ignored → JWT sub wins"). **LIVE-SMOKE (rebuilt knowledge image):** seeded 1 archived + 1 active assistant epoch + a pending fact in the archived → `DELETE /internal/admin/assistant/erase?user_id=U` (no project_id) → `{projects_erased:2, pending_facts_deleted:1}` (archived INCLUDED — pre-fix would be 1), asserts projects_left=0/archived_left=0/pending_left=0. **/review-impl:** standards clean (resolver user-scoped; no provider/model/secret/table); no HIGH/MED; 2 LOW accepted (smoke seeded PG-only for archived — Neo4j cascade is per-project archived-agnostic + D-R27-tested; A1.2 rests on "diary never indexes" invariant — §6). |
-| **A2** | desktop parity — Memory/recall + Journal + Correct + Forget + Erase in the desktop `/assistant` (reuse hooks/sheets) | HIGH | N | ⬜ | |
+| **A2** ✅ | desktop parity — extracted `useAssistantMemory` (shared controller: journal/memory/correct/forget/erase + refetch handlers), consumed by BOTH the mobile dock and the desktop `AssistantHomeStrip`; strip gains Journal + Memory buttons opening the reused addressable sheets (incl. forget + erase danger-zone). (81f774c09) | HIGH | N | ✅ | **EVIDENCE (pasted, committed 81f774c09):** assistant suite **21 files / 85 passed**; **tsc 0**. New: `AssistantHomeStrip.desktop-parity` 3 (Journal+Memory reachable; forget + erase controls OPEN on desktop; erase two-step confirm→handler) + `useAssistantMemory` 3 (refetch-on-success-only; erase re-provisions+refreshes; correct gated on amended). Dock refactor regression-free (mutually-exclusive with strip → no double sheet mount). **/review-impl:** FE-only, standards clean (MVC hook owns logic; server-SSOT; no conditional unmount; no provider/model/secret/table); no HIGH/MED; LOW (handler coverage) CLOSED with the shared-hook test; 1 COSMETIC → D-A2-DESKTOP-SHEET-STYLE. |
 | **A3** | arm autonomous — fail-closed per-user schedule setting → `POST /v1/assistant/schedule`; toggle ON makes a job fire | HIGH | Y | ⬜ | |
 | **A4** | new-epoch FE (changed-jobs isolation) + proactive LLM content via provider-registry | MED | Y | ⬜ | |
 | **A5** | Practice interview nav — entry from assistant + mobile path | LOW | N | ⬜ | |
@@ -41,7 +41,11 @@ Sequence: A1 → A2 → A3 → A4 → A5 → B-PLAN. (A2/A5 FE-only; A1/A3/A4 li
 - 2026-07-16 · Autonomous is a fail-closed OFF per-user setting, no auto-seed (repo law — sealed).
 - 2026-07-16 · Track B is PLAN-ONLY in this goal; Playwright/CV build+run is a SEPARATE later goal.
 
-## 5 · Parked register (gate each) — none yet.
+## 5 · Parked register (gate each)
+- **D-A2-DESKTOP-SHEET-STYLE** (A2 COSMETIC) — the desktop strip reuses the mobile `Sheet` (Radix Dialog
+  styled as a bottom-sheet), so on a wide desktop the Journal/Memory panels open bottom-anchored. Functional
+  + accessible (focus-trap, Escape, aria). **Gate:** a desktop-shaped panel/side-drawer is a polish pass, not
+  a reachability blocker — do it if the QC personas flag the bottom-sheet-on-desktop as jarring.
 
 ## 6 · Debt / drift log (append as you go — an empty drift log at the end is dishonest)
 - **A1.2 near-miss (audit said MED, proved NON-ISSUE):** forget was flagged for leaving KS-owned `:Passage`
