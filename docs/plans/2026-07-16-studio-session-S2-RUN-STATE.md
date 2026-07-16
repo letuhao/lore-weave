@@ -53,14 +53,11 @@ Design of record: **spec 32 + 32a** (B1), **spec 34 + a future 34a** (B2). PO cl
 | S2-B1 · CLOSE — arc-inspector to §2 bar | DONE | operable ✓ · CRUD (minus +add cascade entry, MED-tracked) · reachable (drift-locks 42) · no-silent-fail (MutationCache + writeError) · agent-parity (arcEffects live) · loop-connected (PlanDrawer embed + quality-promises deep-link) · live-BE-proven ✓ · i18n 18 · **FE browser-drive → D-S2-B1-BROWSER-SMOKE** (baked :5174 stale, needs rebuilt image + arc-bearing book; BE loop already proven live). |
 | **S2-B2 · arc-templates + 拆文 (spec 34)** | | |
 | S2-B2a · BE-7a extract-template + BE-7b suggest (REST wrappers + BE tests) | TODO | |
-| S2-B2b · FE ArcTemplatesPanel (lift motif Arc*, drop conformance) + library/catalog/detail/drift + AT-6 stamp | TODO | |
-| S2-B2c · ImportDeconstructSection (拆文 cost-gate → confirm → poll motif-jobs) | TODO | |
-| S2-B2d · registration + live-browser smoke (agent-open→deconstruct→materialize→drift, no dock teardown) | TODO | |
 | **S2-B2 · arc-templates + 拆文 (spec 34 + 34a book-tier)** | | |
 | S2-B2a · BE-7a extract-template REST + tests | DONE | BE-7a ✅ (7d2119285): `POST /arcs/{id}/extract-template`, VIEW gate, 409 dup-code map; engine verified real. test_arc_hub_routes 23/23. |
 | S2-B2a2 · BE-7b suggest REST (`POST /arc-templates/suggest`) | DONE | `POST /arc-templates/suggest`: WorksRepo→book VIEW gate; retrieve_arcs; **B-3 privacy projection** (non-owner candidate strips source_ref/embedding/owner) replicated + drop-set PINNED by a test vs the MCP twin. test_arc_hub_routes 27/27 incl the leak guard + owner-sees-own + 404 gate. |
 | S2-B2b · FE ArcTemplatesPanel (lift motif Arc*, drop conformance AT-7) — Library operable | DOING | Panel + useArcTemplates controller: library list (tier All/Mine/System) + **the CRUD the library was MISSING** (New/Adopt/Archive via arcApi, was 0 UI) + detail (reuse ArcTimelineEditor + ArcApplyPreview in place, NO conformance AT-7). projectId via useWork. Registered: catalog row + enum + contract (re-regen after a race) + i18n en + guideBody; drift-locks panelCatalog 9/9. ArcTemplatesPanel.test 5/5; arc-templates files tsc-clean. **Catalog tab + Import&Deconstruct (B2c) + AT-6 stamp + drift = next slices.** |
-| S2-B2c · ImportDeconstructSection (拆文 cost-gate → confirm → poll motif-jobs) | TODO | |
+| S2-B2c · ImportDeconstructSection (拆文 cost-gate → confirm → poll motif-jobs) | DONE (FE) | 926161735 — arcImport/ api+controller+section+tab; AT-5 spine, AT-11 Work-less poll, AT-8 model-required, confirm-500 surfaced, B-3 copyright. Tests 5/5. Agent-only→GUI closure. Live-smoke at B2 close. |
 | S2-B2d · D-ARC-TEMPLATE-BOOK-TIER (34a: schema + tenancy) | TODO | |
 | S2-B2e · registration + live-browser smoke (agent-open→deconstruct→materialize→drift) + /review-impl | TODO | |
 | S2-BE8 · agent-parity for `_apply`/`_template_drift` stubs | PARKED | defer row — post-panel (34 §5 BE-8) |
