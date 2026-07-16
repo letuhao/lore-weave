@@ -109,6 +109,14 @@ useWhatIfPromotion), NEVER mount CompositionPanel shell.
   back-ref RELIABLY (falls back to story_order only when absent, then "added" — never mis-pairs). BE: upsert +
   route + repo query; FE: api opts + SceneGraphCanvas passes anchorScene.id + useBranchDiff pairing. Tests: BE
   scene_drafts_detailed anchor roundtrip; FE useBranchDiff "pairs by anchor not order" (3 pass). tsc clean.
+- D-S5-SCENEGRAPH-VIRTUALIZE — ✅ SPEC'D (needs a design, too large to inline): docs/specs/2026-07-17-scenegraph-virtualization.md
+  (viewport-cull in GraphCanvas: mount only visible nodes + always-include drag/selected/what-if; edges by
+  visible endpoints; extent from full layout). Size M; buildable; owner = next graph-canvas toucher.
+- D-S5-LOOP3-SMOKE — NOT a spec item (env-execution). The full derive→take→promote→diff→browse live loop needs
+  a plan-populated book (env has 7 chapters / 0 scenes) + an LLM for take-gen. Divergence panel LIST/CREATE +
+  the isolated :5399 build are proven; the derive+diff pipeline is unit+integration-tested. Run the live loop
+  when a seeded book exists (can seed via DB: chapter+scenes+canon drafts + a derivative Work + a promoted
+  scene-draft-with-anchor → drive the Diff tab on :5399).
 - D-S5-BRANCHDIFF-NOPROSE — B4: a diverged scene NODE with no completed draft (prose persist failed/pending)
   is silently absent from the diff (deriv scene-drafts only returns drafted scenes). The mockup drew a
   "no prose yet" state; not built. LOW.
