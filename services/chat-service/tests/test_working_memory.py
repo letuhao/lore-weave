@@ -114,3 +114,24 @@ def test_parse_tolerates_a_rubric_carrying_seed():
     assert wm is not None, "a rubric-carrying seed must parse (not None)"
     assert wm.charter.goal == "g"
     assert not hasattr(wm, "rubric")  # dropped by extra='ignore' — anchor never sees it
+
+
+def test_question_target_survives_parse_into_the_charter():
+    # RV-M4: question_target MUST survive parse — the model defaults to extra='ignore', so an
+    # UNDECLARED field would be silently dropped and the anchor could never enforce the wrap.
+    # Declaring it on WorkingMemoryCharter (A4) is what keeps it.
+    from app.services.working_memory import parse_working_memory
+
+    seed = {
+        "version": 1,
+        "charter": {"goal": "g", "phases": ["warmup"], "checklist": [], "language": "en",
+                    "question_target": 5},
+        "state": {"phase": "", "covered": []},
+    }
+    wm = parse_working_memory(seed)
+    assert wm is not None
+    assert wm.charter.question_target == 5  # carried through — NOT dropped
+    # an older charter without it is still valid (additive) and defaults to None.
+    old = parse_working_memory({"version": 1, "charter": {"goal": "g", "phases": ["w"],
+                                "checklist": [], "language": "en"}, "state": {"phase": "", "covered": []}})
+    assert old is not None and old.charter.question_target is None

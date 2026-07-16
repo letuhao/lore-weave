@@ -25,6 +25,10 @@ pub struct Charter {
     /// Present-but-null when the scenario declares no budget (the schema is `["integer","null"]`).
     pub time_budget_min: Option<i64>,
     pub language: String,
+    /// ACP A4 (RV-M4) — the fixed question count an interview drives before wrapping. OMITTED
+    /// (skip) when absent so non-interview charters stay byte-identical; interview presets set it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub question_target: Option<i64>,
 }
 
 /// The mutable progress estimate the executive rewrites (safe-when-wrong). `covered` is monotonic.
@@ -92,6 +96,7 @@ mod tests {
             checklist: vec!["clarifies the problem".into()],
             time_budget_min: Some(45),
             language: "en".into(),
+            question_target: Some(5),  // A4 — an interview charter carries it
         };
         let wm = WorkingMemory::seed(charter, Some(json!({"dimensions": ["clarity"]})));
         let inst = serde_json::to_value(&wm).unwrap();
@@ -99,17 +104,19 @@ mod tests {
         assert_level(&inst, &schema, "wm");
         assert_level(&inst["charter"], &schema["properties"]["charter"], "charter");
         assert_level(&inst["state"], &schema["properties"]["state"], "state");
+        assert_eq!(inst["charter"]["question_target"], 5);  // A4 — carried through
         // the rubric sidecar is present + an object (schema models it as of A0.3)
         assert!(inst.get("rubric").map_or(false, Value::is_object));
 
-        // a freeform seed (no rubric) OMITS the key (not null) and still conforms.
+        // a freeform seed (no rubric, no question_target) OMITS both keys and still conforms.
         let free = WorkingMemory::seed(
             Charter { goal: "x".into(), phases: vec!["a".into()], checklist: vec![],
-                      time_budget_min: None, language: "en".into() },
+                      time_budget_min: None, language: "en".into(), question_target: None },
             None,
         );
         let free_inst = serde_json::to_value(&free).unwrap();
         assert!(free_inst.get("rubric").is_none(), "no-rubric seed must omit the key");
+        assert!(free_inst["charter"].get("question_target").is_none(), "no-target charter omits it");
         assert_level(&free_inst, &schema, "free");
     }
 
@@ -118,7 +125,7 @@ mod tests {
     fn round_trips_through_json() {
         let wm = WorkingMemory::seed(
             Charter { goal: "g".into(), phases: vec!["p".into()], checklist: vec!["c".into()],
-                      time_budget_min: Some(30), language: "vi".into() },
+                      time_budget_min: Some(30), language: "vi".into(), question_target: Some(5) },
             None,
         );
         let back: WorkingMemory = serde_json::from_str(&serde_json::to_string(&wm).unwrap()).unwrap();

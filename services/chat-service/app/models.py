@@ -21,6 +21,10 @@ class WorkingMemoryCharter(BaseModel):
     checklist: list[str] = Field(default_factory=list)
     time_budget_min: int | None = None
     language: str
+    # ACP A4 (RV-M4/RV-M7) — the fixed question count an interview drives before wrapping.
+    # MUST be declared here: the model defaults to extra='ignore', so an undeclared field would
+    # be silently DROPPED and the anchor would never see it. Optional/additive (older charters ok).
+    question_target: int | None = None
 
 
 class WorkingMemoryState(BaseModel):

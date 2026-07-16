@@ -18,7 +18,12 @@
         "phases": { "type": "array", "items": { "type": "string" }, "minItems": 1 },
         "checklist": { "type": "array", "items": { "type": "string" } },
         "time_budget_min": { "type": ["integer", "null"], "minimum": 1 },
-        "language": { "type": "string", "minLength": 2 }
+        "language": { "type": "string", "minLength": 2 },
+        "question_target": {
+          "description": "ACP A4 (RV-M4/RV-M7) — the fixed number of questions an interview drives before wrapping (a preset default, e.g. 5). OPTIONAL + additive: an older charter without it is still valid, and the consumer applies its own default. The control layer server-enforces the wrap via the anchor when question_count reaches this.",
+          "type": ["integer", "null"],
+          "minimum": 1
+        }
       }
     },
     "state": {

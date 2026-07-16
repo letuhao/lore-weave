@@ -24,11 +24,23 @@ fn str_array(v: &Value, key: &str) -> Vec<String> {
         .unwrap_or_default()
 }
 
+/// ACP A4 (RV-M4/RV-M7) — the default number of questions an INTERVIEW drives before wrapping,
+/// applied at freeze-time when the scenario doesn't pin one. Defaulting by genre here (not by a
+/// seed data-migration) keeps A0–A4 migration-free (RW-12) and makes EXISTING preset rows wrap
+/// correctly. Freeform roleplay leaves `question_target` unset ⇒ no count-wrap.
+const DEFAULT_INTERVIEW_QUESTION_TARGET: i64 = 5;
+
 /// Returns `(charter, seed)`. `charter` is stored verbatim in `rp_memory`; `seed`
 /// is sent as `working_memory_seed` to chat-service. `fallback_goal` (the script
 /// name) is used only when neither `goal` nor `premise` is present, since the
-/// chat-service charter requires a non-empty goal.
-pub fn freeze(scenario: &Value, rubric: Option<&Value>, fallback_goal: &str) -> (Value, Value) {
+/// chat-service charter requires a non-empty goal. `genre` supplies the interview
+/// `question_target` default (A4).
+pub fn freeze(
+    scenario: &Value,
+    rubric: Option<&Value>,
+    fallback_goal: &str,
+    genre: &str,
+) -> (Value, Value) {
     let goal = str_field(scenario, "goal")
         .or_else(|| str_field(scenario, "premise"))
         .unwrap_or_else(|| fallback_goal.to_string());
@@ -47,11 +59,17 @@ pub fn freeze(scenario: &Value, rubric: Option<&Value>, fallback_goal: &str) -> 
 
     let language = str_field(scenario, "language").unwrap_or_else(|| "en".to_string());
     let time_budget_min = scenario.get("time_budget_min").and_then(Value::as_i64);
+    // A4 — the scenario may pin question_target; else an interview genre defaults to 5, a
+    // freeform roleplay leaves it None (no count-wrap).
+    let question_target = scenario.get("question_target").and_then(Value::as_i64).or({
+        if genre == "interview" { Some(DEFAULT_INTERVIEW_QUESTION_TARGET) } else { None }
+    });
 
     // ACP A3 — build the charter + seed via the shared TYPED contract structs (not hand-rolled
     // JSON), so the producer can't drift from chat/knowledge's WorkingMemory (the comment above
-    // warned about exactly this). The serialized Value is byte-identical to the prior json!.
-    let charter = Charter { goal, phases, checklist, time_budget_min, language };
+    // warned about exactly this). The serialized Value is byte-identical to the prior json! for a
+    // non-interview charter; an interview charter additionally carries question_target (A4).
+    let charter = Charter { goal, phases, checklist, time_budget_min, language, question_target };
     let seed = WorkingMemory::seed(charter.clone(), rubric.cloned());
     (
         serde_json::to_value(&charter).expect("charter serializes"),
@@ -73,11 +91,13 @@ mod tests {
             "language": "en"
         });
         let rubric = json!({"dimensions": ["clarity"]});
-        let (charter, seed) = freeze(&scenario, Some(&rubric), "FAANG SWE");
+        let (charter, seed) = freeze(&scenario, Some(&rubric), "FAANG SWE", "interview");
         assert_eq!(charter["goal"], "Assess senior SWE skill");
         assert_eq!(charter["phases"].as_array().unwrap().len(), 3);
         assert_eq!(charter["checklist"].as_array().unwrap().len(), 2);
         assert_eq!(charter["time_budget_min"], 45);
+        // A4 — an interview genre defaults question_target to 5 (the scenario pinned none).
+        assert_eq!(charter["question_target"], 5);
         // Seed must match the chat-service WorkingMemory shape exactly.
         assert_eq!(seed["version"], 1);
         assert_eq!(seed["charter"], charter);
@@ -93,7 +113,7 @@ mod tests {
             "premise": "A tense negotiation aboard a derelict freighter",
             "beats": ["establish leverage", "reveal the hidden cargo"],
         });
-        let (charter, seed) = freeze(&scenario, None, "Freighter");
+        let (charter, seed) = freeze(&scenario, None, "Freighter", "roleplay");
         assert_eq!(charter["goal"], "A tense negotiation aboard a derelict freighter");
         assert_eq!(charter["checklist"].as_array().unwrap().len(), 2);
         // No phases supplied → default single phase (chat charter needs ≥1).
@@ -101,11 +121,13 @@ mod tests {
         assert_eq!(charter["language"], "en");
         assert_eq!(charter["time_budget_min"], Value::Null);
         assert!(seed.get("rubric").is_none());
+        // A4 — a freeform roleplay leaves question_target unset (no count-wrap).
+        assert!(charter.get("question_target").is_none());
     }
 
     #[test]
     fn empty_scenario_uses_fallback_goal() {
-        let (charter, _) = freeze(&json!({}), None, "My Script");
+        let (charter, _) = freeze(&json!({}), None, "My Script", "roleplay");
         assert_eq!(charter["goal"], "My Script");
         assert_eq!(charter["phases"], json!(["roleplay"]));
         assert_eq!(charter["checklist"], json!([]));
@@ -219,13 +241,13 @@ mod tests {
             ),
         ];
         for (scenario, rubric, name) in presets {
-            let (_charter, seed) = freeze(&scenario, Some(&rubric), name);
+            let (_charter, seed) = freeze(&scenario, Some(&rubric), name, "interview");
             // The interview seed carries the rubric sidecar top-level (schema models it as of A0.3).
             assert!(seed.get("rubric").is_some(), "{name}: interview seed should carry a rubric");
             assert_seed_conforms(&seed, &schema);
         }
         // A freeform (no-rubric) seed must also conform.
-        let (_c, seed) = freeze(&json!({"premise":"tense negotiation","beats":["establish leverage"]}), None, "Freighter");
+        let (_c, seed) = freeze(&json!({"premise":"tense negotiation","beats":["establish leverage"]}), None, "Freighter", "roleplay");
         assert_seed_conforms(&seed, &schema);
     }
 
@@ -233,7 +255,7 @@ mod tests {
     fn conformance_check_actually_bites_on_drift() {
         let schema = load_schema();
         // (a) an undeclared top-level key must be caught.
-        let (_c, mut seed) = freeze(&json!({"goal":"x","phases":["a"],"language":"en"}), None, "X");
+        let (_c, mut seed) = freeze(&json!({"goal":"x","phases":["a"],"language":"en"}), None, "X", "roleplay");
         seed["surprise_field"] = json!("drift");
         let s1 = seed.clone();
         assert!(
@@ -242,7 +264,7 @@ mod tests {
         );
         // (b) MED-1: a TYPE drift on a declared field must be caught too.
         let schema2 = load_schema();
-        let (_c2, mut seed2) = freeze(&json!({"goal":"x","phases":["a"],"language":"en"}), None, "X");
+        let (_c2, mut seed2) = freeze(&json!({"goal":"x","phases":["a"],"language":"en"}), None, "X", "roleplay");
         seed2["version"] = json!("not-an-integer"); // schema says integer
         assert!(
             std::panic::catch_unwind(move || assert_seed_conforms(&seed2, &schema2)).is_err(),
