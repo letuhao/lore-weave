@@ -76,4 +76,35 @@ describe('MobileMemorySheet (DF6)', () => {
     renderOpen({ entities: [ent('e1', 'Minh', 'colleague')] });
     expect(screen.queryByTestId('memory-forget-e1')).toBeNull();
   });
+
+  // FR / D17 — the "erase everything" danger-zone: worded, two-step, and absent unless wired.
+  it('erases everything only after a worded confirm, calling onEraseAll', async () => {
+    const onEraseAll = vi.fn().mockResolvedValue(true);
+    renderOpen({ entities: [ent('e1', 'Minh', 'colleague')], onEraseAll });
+
+    // Step 1: the confirm is hidden and the destructive call has NOT fired.
+    expect(screen.queryByTestId('memory-erase-all-confirm')).toBeNull();
+    fireEvent.click(screen.getByTestId('memory-erase-all-open'));
+    expect(screen.getByTestId('memory-erase-all-confirm')).toBeTruthy();
+    expect(onEraseAll).not.toHaveBeenCalled();
+
+    // Step 2: confirming fires onEraseAll and (on success) closes the confirm.
+    fireEvent.click(screen.getByTestId('memory-erase-all-do'));
+    expect(onEraseAll).toHaveBeenCalledOnce();
+    await waitFor(() => expect(screen.queryByTestId('memory-erase-all-confirm')).toBeNull());
+  });
+
+  it('Keep cancels the erase confirm without erasing', () => {
+    const onEraseAll = vi.fn();
+    renderOpen({ entities: [], onEraseAll });
+    fireEvent.click(screen.getByTestId('memory-erase-all-open'));
+    fireEvent.click(screen.getByTestId('memory-erase-all-cancel'));
+    expect(screen.queryByTestId('memory-erase-all-confirm')).toBeNull();
+    expect(onEraseAll).not.toHaveBeenCalled();
+  });
+
+  it('renders no danger-zone when no onEraseAll handler is wired', () => {
+    renderOpen({ entities: [] });
+    expect(screen.queryByTestId('memory-erase-all')).toBeNull();
+  });
 });

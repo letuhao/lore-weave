@@ -69,6 +69,9 @@ vi.mock('../../../hooks/useDiaryCorrection', () => ({
 vi.mock('../../../hooks/useForgetEntity', () => ({
   useForgetEntity: () => ({ forget: vi.fn().mockResolvedValue({ forgotten: true }), forgettingName: null }),
 }));
+vi.mock('../../../hooks/useEraseAllData', () => ({
+  useEraseAllData: () => ({ erase: vi.fn().mockResolvedValue(true), erasing: false }),
+}));
 
 import { MobileAssistantDock } from '../MobileAssistantDock';
 

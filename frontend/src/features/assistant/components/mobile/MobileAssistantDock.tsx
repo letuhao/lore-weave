@@ -14,6 +14,7 @@ import { useAssistant } from '../../context/AssistantContext';
 import { useDiaryEntries } from '../../hooks/useDiaryEntries';
 import { useDiaryCorrection } from '../../hooks/useDiaryCorrection';
 import { useForgetEntity } from '../../hooks/useForgetEntity';
+import { useEraseAllData } from '../../hooks/useEraseAllData';
 import { useMemoryEntities } from '../../hooks/useMemoryEntities';
 import { MobileMemorySheet, MEMORY_SHEET_ID } from './MobileMemorySheet';
 import { useDiaryFactInbox } from '../../hooks/useDiaryFactInbox';
@@ -24,7 +25,7 @@ import { MobileTodaySheet, TODAY_SHEET_ID } from './MobileTodaySheet';
 import { MobileJournalSheet, JOURNAL_SHEET_ID } from './MobileJournalSheet';
 
 export function MobileAssistantDock() {
-  const { bookId, projectId, consentEnabled, consentSaving, setConsent, endOfDay: eod, captureRail: rail } = useAssistant();
+  const { bookId, projectId, consentEnabled, consentSaving, setConsent, reprovision, endOfDay: eod, captureRail: rail } = useAssistant();
   const { openSheet } = useSheetRoute();
 
   const inbox = useDiaryFactInbox();
@@ -35,6 +36,7 @@ export function MobileAssistantDock() {
   const memory = useMemoryEntities(bookId);
   const correction = useDiaryCorrection(bookId);
   const forgetEntity = useForgetEntity(bookId);
+  const eraseAll = useEraseAllData();
 
   // D17 — correcting a day re-distills its facts; forgetting a person deletes them. Both change what
   // "memory" holds, so refetch the journal + the What-I-know list after either succeeds.
@@ -54,6 +56,21 @@ export function MobileAssistantDock() {
       void rail.refresh();
     }
     return res;
+  };
+  // FR — erase-everything wipes memory + journal server-side; refresh every surface that reads it so
+  // the UI reflects the now-empty account (a re-open re-provisions an empty diary, idempotently).
+  const handleEraseAll = async () => {
+    const ok = await eraseAll.erase();
+    if (ok) {
+      // The erase deleted the diary book too, so the in-session bookId is now dead — re-provision an
+      // empty diary (idempotent) so the surfaces bind to a live book instead of a stale reference.
+      reprovision();
+      void memory.refresh();
+      void journal.refresh();
+      void rail.refresh();
+      void inbox.refetch();
+    }
+    return ok;
   };
 
   // A small "needs your attention" count for the Today button: captured drafts + facts to review.
@@ -163,6 +180,8 @@ export function MobileAssistantDock() {
         onSearch={memory.setSearch}
         onForget={handleForget}
         forgettingName={forgetEntity.forgettingName}
+        onEraseAll={handleEraseAll}
+        erasing={eraseAll.erasing}
       />
     </div>
   );

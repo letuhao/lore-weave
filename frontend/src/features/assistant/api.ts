@@ -95,6 +95,13 @@ export const assistantApi = {
     });
   },
 
+  /** FR — "erasable in one tap": erase ALL of the caller's assistant data (chat/knowledge/book/
+   *  glossary), owner-gated server-side (BFF `DELETE /v1/assistant/data`). Irreversible — the
+   *  caller MUST confirm first. Wires the previously FE-unwired erase backend. */
+  eraseAllData(token: string) {
+    return apiJson<{ erased: boolean }>('/v1/assistant/data', { method: 'DELETE', token });
+  },
+
   /** WS-2.5 — the diary FACT inbox: the caller's DIARY (session-less) pending facts, oldest-first.
    *  `diary_only=true` is load-bearing: a bare list returns ALL pending facts, so chat-memory facts
    *  from other projects would leak into this inbox (audit MED). JWT-scoped to the caller. */

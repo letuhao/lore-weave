@@ -6,13 +6,16 @@ import { Chat } from '@/features/chat/Chat';
 import { useIsMobile } from '@/hooks/useIsMobile';
 import { cn } from '@/lib/utils';
 import { AssistantProvider, useAssistant } from '../context/AssistantContext';
+import { useAssistantFirstRun } from '../hooks/useAssistantFirstRun';
 import { AssistantHomeStrip } from './AssistantHomeStrip';
 import { MobileAssistantDock } from './mobile/MobileAssistantDock';
+import { MobileAssistantFirstRun } from './mobile/MobileAssistantFirstRun';
 import { MobileAssistantHeader } from './mobile/MobileAssistantHeader';
 
 function AssistantPageInner() {
   const { loading, error, provisioned, bookId, projectId, reprovision } = useAssistant();
   const isMobile = useIsMobile();
+  const firstRun = useAssistantFirstRun();
 
   // Only show the full-surface spinner during the INITIAL provisioning (before we have a bookId).
   // A later background re-provision must NOT blank the mounted <Chat> (audit HIGH #1 defense — the
@@ -43,6 +46,25 @@ function AssistantPageInner() {
         </button>
       </div>
     );
+  }
+
+  // FR — on mobile, hold the layout while the first-run flag is still loading. Rendering the <Chat>
+  // (which opens the SSE stream) only to replace it with the first-run screen a tick later would
+  // mount-then-unmount a stateful component and churn the stream — the exact conditional-unmount the
+  // CLAUDE.md FE rules forbid. Desktop has no first-run, so it never waits.
+  if (isMobile && firstRun.isLoading) {
+    return (
+      <div className="flex h-full items-center justify-center" data-testid="assistant-first-run-loading">
+        <p className="text-sm text-muted-foreground">Opening your journal…</p>
+      </div>
+    );
+  }
+
+  // FR (draft frame 13) — the mobile journal first-run: shown ONCE (server-gated) after provisioning
+  // is ready (it needs projectId for the consent toggle), before the chat. Desktop keeps the strip
+  // (which already surfaces consent/tz), so first-run is a mobile affordance.
+  if (isMobile && firstRun.shouldShow) {
+    return <MobileAssistantFirstRun onDone={firstRun.markDone} />;
   }
 
   // The <Chat> is the STABLE first child in every layout — swapping the second child (mobile

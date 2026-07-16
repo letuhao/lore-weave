@@ -24,6 +24,10 @@ export interface MobileMemorySheetProps {
   // D17 — forget a remembered person by name (null result = failed + toasted; leave it in the list).
   onForget?: (name: string) => Promise<ForgetResult | null>;
   forgettingName?: string | null;
+  // FR / D17 — the "erase everything" danger-zone (the first-run's "erasable in one tap" promise,
+  // honoured on the "Control you can find later" screen). Absent ⇒ the danger-zone is not rendered.
+  onEraseAll?: () => Promise<boolean>;
+  erasing?: boolean;
 }
 
 export function MobileMemorySheet({
@@ -34,8 +38,11 @@ export function MobileMemorySheet({
   onSearch,
   onForget,
   forgettingName,
+  onEraseAll,
+  erasing,
 }: MobileMemorySheetProps) {
   const [confirmId, setConfirmId] = useState<string | null>(null);
+  const [confirmErase, setConfirmErase] = useState(false);
 
   return (
     <Sheet id={MEMORY_SHEET_ID} title="What I know" description="Everything I remember about your work — private, never shared.">
@@ -143,6 +150,57 @@ export function MobileMemorySheet({
             );
           })}
         </ul>
+
+        {/* Danger-zone — "erase everything" (the first-run promise). A worded confirm because it
+            wipes ALL of your assistant data (memory + journal) and can't be undone. */}
+        {onEraseAll && (
+          <div className="mt-2 flex flex-col gap-2 rounded-lg border border-destructive/40 p-3" data-testid="memory-erase-all">
+            {!confirmErase ? (
+              <button
+                type="button"
+                data-testid="memory-erase-all-open"
+                onClick={() => setConfirmErase(true)}
+                className="flex min-h-[44px] items-center justify-center gap-2 rounded-md text-sm font-medium text-destructive hover:bg-destructive/10"
+              >
+                <Trash2 className="h-4 w-4" aria-hidden="true" />
+                Erase everything
+              </button>
+            ) : (
+              <div className="flex flex-col gap-2" data-testid="memory-erase-all-confirm">
+                <p className="text-xs text-muted-foreground">
+                  Erase <span className="font-medium text-foreground">everything</span> I remember and your whole
+                  journal? This can&apos;t be undone.
+                </p>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    data-testid="memory-erase-all-do"
+                    disabled={erasing}
+                    onClick={async () => {
+                      const ok = await onEraseAll();
+                      if (ok) setConfirmErase(false); // parent refetches; failure keeps confirm open
+                    }}
+                    className={cn(
+                      'flex min-h-[40px] flex-1 items-center justify-center rounded-md px-3 text-sm font-medium',
+                      'bg-destructive text-destructive-foreground hover:bg-destructive/90 disabled:opacity-50',
+                    )}
+                  >
+                    {erasing ? 'Erasing…' : 'Erase everything'}
+                  </button>
+                  <button
+                    type="button"
+                    data-testid="memory-erase-all-cancel"
+                    disabled={erasing}
+                    onClick={() => setConfirmErase(false)}
+                    className="flex min-h-[40px] items-center justify-center rounded-md border border-border px-4 text-sm disabled:opacity-50"
+                  >
+                    Keep
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
       </div>
     </Sheet>
   );

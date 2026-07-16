@@ -36,6 +36,13 @@ vi.mock('../../context/AssistantContext', () => ({
     reprovision: () => {},
   }),
 }));
+// The first-run gate is a separate concern (its own test) — here it's satisfied (already seen),
+// so the page falls through to the dock/rail layout this test asserts on. `firstRunState` lets a
+// single test flip it to the still-loading case (the FR anti-churn guard).
+const firstRunState = { isLoading: false, shouldShow: false };
+vi.mock('../../hooks/useAssistantFirstRun', () => ({
+  useAssistantFirstRun: () => ({ ...firstRunState, markDone: () => {} }),
+}));
 
 import { AssistantPage } from '../AssistantPage';
 
@@ -77,6 +84,21 @@ describe('AssistantPage — mobile dock vs desktop rail (Chat preserved)', () =>
     expect(screen.getByTestId('mobile-dock')).toBeTruthy();
     expect(screen.queryByTestId('desktop-strip')).toBeNull();
     expect(screen.getByTestId('chat-surface')).toBeTruthy();
+  });
+
+  it('on mobile, holds the layout while the first-run flag loads — never mounts Chat then tears it down', () => {
+    firstRunState.isLoading = true;
+    installMatchMedia(true);
+    render(
+      <MemoryRouter>
+        <AssistantPage />
+      </MemoryRouter>,
+    );
+    // The FR anti-churn guard: no <Chat> (no SSE) while the flag is still resolving.
+    expect(screen.getByTestId('assistant-first-run-loading')).toBeTruthy();
+    expect(screen.queryByTestId('chat-surface')).toBeNull();
+    expect(chatMountCount).toBe(0);
+    firstRunState.isLoading = false; // restore for the other tests
   });
 
   it('desktop shows the rail, not the dock', () => {
