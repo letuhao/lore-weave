@@ -7,11 +7,10 @@
 // The dock is the thumb-zone: "End my day" is a VISIBLE primary button (not a buried gesture —
 // the drafts' rev.2 fix), and "Today"/"Journal" open addressable sheets (?sheet=…) so a deep
 // link or the hardware Back button behaves correctly (MB4).
-import { NotebookPen, CalendarCheck, BookText } from 'lucide-react';
+import { CalendarCheck, BookText, ChevronRight } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useSheetRoute } from '@/components/shared/Sheet';
 import { useAssistant } from '../../context/AssistantContext';
-import { useCaptureRail } from '../../hooks/useCaptureRail';
 import { useDiaryEntries } from '../../hooks/useDiaryEntries';
 import { useDiaryFactInbox } from '../../hooks/useDiaryFactInbox';
 import { useReflection } from '../../hooks/useReflection';
@@ -21,10 +20,9 @@ import { MobileTodaySheet, TODAY_SHEET_ID } from './MobileTodaySheet';
 import { MobileJournalSheet, JOURNAL_SHEET_ID } from './MobileJournalSheet';
 
 export function MobileAssistantDock() {
-  const { bookId, projectId, consentEnabled, consentSaving, setConsent, endOfDay: eod } = useAssistant();
+  const { bookId, projectId, consentEnabled, consentSaving, setConsent, endOfDay: eod, captureRail: rail } = useAssistant();
   const { openSheet } = useSheetRoute();
 
-  const rail = useCaptureRail(bookId);
   const inbox = useDiaryFactInbox();
   const reflection = useReflection(bookId);
   const scorecards = useScorecards();
@@ -43,42 +41,62 @@ export function MobileAssistantDock() {
     openSheet(TODAY_SHEET_ID);
   };
 
+  const noticed = rail.entities.length;
+
   return (
     <div
-      className="flex items-stretch gap-2 border-t border-border bg-background p-2"
+      className="flex flex-col gap-2 border-t border-border bg-background p-2"
       data-testid="mobile-assistant-dock"
     >
-      <DockButton
-        testid="dock-today"
-        icon={NotebookPen}
-        label="Today"
-        badge={todayCount > 0 ? todayCount : undefined}
-        onClick={() => openSheet(TODAY_SHEET_ID)}
-      />
-
+      {/* The LABELLED today bar (draft rev.3: "3 noticed today ›", not a mystery handle) — opens the
+          Today panel. States plainly that captures are held, not saved. */}
       <button
         type="button"
-        data-testid="dock-end-day"
-        disabled={distilling}
-        onClick={handleEndDay}
-        className={cn(
-          'flex min-h-[44px] flex-1 items-center justify-center gap-2 rounded-md px-3 text-sm font-medium transition-colors',
-          'bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50',
-        )}
+        data-testid="dock-today"
+        onClick={() => openSheet(TODAY_SHEET_ID)}
+        className="flex min-h-[44px] w-full items-center gap-2 rounded-md border border-border bg-card px-3 text-left text-sm hover:bg-secondary"
       >
-        <CalendarCheck className="h-5 w-5" aria-hidden="true" />
-        {distilling ? 'Ending your day…' : 'End my day'}
+        <span className="font-medium">
+          {noticed > 0 ? `${noticed} noticed today` : 'Nothing noticed yet'}
+        </span>
+        <span className="truncate text-xs text-muted-foreground">· held for tonight, nothing saved</span>
+        {todayCount > 0 && (
+          <span
+            className="ml-auto flex h-5 min-w-5 items-center justify-center rounded-full bg-primary px-1 text-xs font-semibold text-primary-foreground"
+            aria-label={`${todayCount} to review`}
+          >
+            {todayCount}
+          </span>
+        )}
+        <ChevronRight className={cn('h-4 w-4 shrink-0 text-muted-foreground', todayCount > 0 ? '' : 'ml-auto')} aria-hidden="true" />
       </button>
 
-      <DockButton
-        testid="dock-journal"
-        icon={BookText}
-        label="Journal"
-        onClick={() => {
-          void journal.refresh();
-          openSheet(JOURNAL_SHEET_ID);
-        }}
-      />
+      {/* Action row: End my day (primary, visible) + Journal. */}
+      <div className="flex items-stretch gap-2">
+        <button
+          type="button"
+          data-testid="dock-end-day"
+          disabled={distilling}
+          onClick={handleEndDay}
+          className={cn(
+            'flex min-h-[44px] flex-1 items-center justify-center gap-2 rounded-md px-3 text-sm font-medium transition-colors',
+            'bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50',
+          )}
+        >
+          <CalendarCheck className="h-5 w-5" aria-hidden="true" />
+          {distilling ? 'Ending your day…' : 'End my day'}
+        </button>
+
+        <DockButton
+          testid="dock-journal"
+          icon={BookText}
+          label="Journal"
+          onClick={() => {
+            void journal.refresh();
+            openSheet(JOURNAL_SHEET_ID);
+          }}
+        />
+      </div>
 
       {/* Addressable sheets (portaled; open iff ?sheet=<id>). */}
       <MobileTodaySheet

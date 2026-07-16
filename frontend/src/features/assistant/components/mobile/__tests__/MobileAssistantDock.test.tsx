@@ -23,6 +23,12 @@ vi.mock('../../../context/AssistantContext', () => ({
     setConsent: vi.fn(),
     // endOfDay is now lifted into the context (survives the strip↔dock swap).
     endOfDay: { status: 'idle', entry: null, error: null, keeping: false, trigger, keep: vi.fn() },
+    // captureRail is now shared via context (DF2 — one fetch for header + dock + sheet).
+    captureRail: {
+      entities: [railEntity('e1', 'Alice'), railEntity('e2', 'Bob')],
+      loading: false,
+      refresh: railRefresh,
+    },
   }),
 }));
 const railEntity = (id: string, name: string) => ({
@@ -31,13 +37,6 @@ const railEntity = (id: string, name: string) => ({
   short_description: null,
   kind: { code: 'colleague', name: 'Colleague' },
 });
-vi.mock('../../../hooks/useCaptureRail', () => ({
-  useCaptureRail: () => ({
-    entities: [railEntity('e1', 'Alice'), railEntity('e2', 'Bob')],
-    loading: false,
-    refresh: railRefresh,
-  }),
-}));
 vi.mock('../../../hooks/useDiaryFactInbox', () => ({
   useDiaryFactInbox: () => ({
     facts: [{ pending_fact_id: 'f1' }],

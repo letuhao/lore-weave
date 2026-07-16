@@ -8,6 +8,7 @@ import { cn } from '@/lib/utils';
 import { AssistantProvider, useAssistant } from '../context/AssistantContext';
 import { AssistantHomeStrip } from './AssistantHomeStrip';
 import { MobileAssistantDock } from './mobile/MobileAssistantDock';
+import { MobileAssistantHeader } from './mobile/MobileAssistantHeader';
 
 function AssistantPageInner() {
   const { loading, error, provisioned, bookId, projectId, reprovision } = useAssistant();
@@ -53,6 +54,9 @@ function AssistantPageInner() {
       className={cn('flex h-full min-h-0', isMobile ? 'flex-col' : 'flex-row')}
       data-testid="assistant-page"
     >
+      {/* Mobile: a greeting + "noticed" strip above the chat (draft DF2). Placed BEFORE the chat in
+          the flex-col so it sits at the top; the chat stays the stable middle child. */}
+      {isMobile && <MobileAssistantHeader />}
       <div className="min-h-0 min-w-0 flex-1">
         <Chat bookId={bookId} sessionKind="assistant" className="h-full" />
       </div>

@@ -22,6 +22,9 @@ vi.mock('../AssistantHomeStrip', () => ({
 vi.mock('../mobile/MobileAssistantDock', () => ({
   MobileAssistantDock: () => <div data-testid="mobile-dock" />,
 }));
+vi.mock('../mobile/MobileAssistantHeader', () => ({
+  MobileAssistantHeader: () => <div data-testid="mobile-header" />,
+}));
 vi.mock('../../context/AssistantContext', () => ({
   AssistantProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
   useAssistant: () => ({

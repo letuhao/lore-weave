@@ -6,6 +6,7 @@ import { toast } from 'sonner';
 import { useAuth } from '@/auth';
 import { knowledgeApi } from '@/features/knowledge/api';
 import { assistantApi } from '../api';
+import { useCaptureRail } from '../hooks/useCaptureRail';
 import { useEndOfDay } from '../hooks/useEndOfDay';
 import type { ProvisionStatus } from '../types';
 
@@ -26,6 +27,9 @@ interface AssistantState {
    *  running distill) SURVIVES the mobile↔desktop chrome swap — a rotate mid-distill must not
    *  reset the button to idle and invite a duplicate, costly re-enqueue (cold-review MED). */
   endOfDay: ReturnType<typeof useEndOfDay>;
+  /** The "today so far" capture rail. Lifted into context so the mobile header (noticed strip),
+   *  the dock (Today count), the Today sheet, and the desktop strip all SHARE one fetch. */
+  captureRail: ReturnType<typeof useCaptureRail>;
 }
 
 const AssistantCtx = createContext<AssistantState | null>(null);
@@ -118,6 +122,7 @@ export function AssistantProvider({ children }: { children: ReactNode }) {
   // Bound HERE (in the provider, not a view) so the distill/poll state persists across the
   // strip↔dock swap on a viewport change — the provider is not remounted on resize.
   const endOfDay = useEndOfDay(bookId);
+  const captureRail = useCaptureRail(bookId);
 
   return (
     <AssistantCtx.Provider
@@ -133,6 +138,7 @@ export function AssistantProvider({ children }: { children: ReactNode }) {
         setConsent,
         reprovision,
         endOfDay,
+        captureRail,
       }}
     >
       {children}
