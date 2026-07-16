@@ -57,7 +57,8 @@
     "cancel": "Annuler",
     "cancelConfirm": "Annuler cette tâche de traduction ? Les entités déjà traitées conserveront leurs traductions.",
     "cancelRequested": "Annulation demandée",
-    "noEntities": "Aucune entité ne nécessite de traduction pour cette langue."
+    "noEntities": "Aucune entité ne nécessite de traduction pour cette langue.",
+    "pollFailed": "Impossible d'obtenir la progression de la traduction — le service est peut-être indisponible. Nouvelle tentative…"
   },
   "results": {
     "title": "Traduction terminée",

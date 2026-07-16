@@ -57,7 +57,8 @@
     "cancel": "Hủy",
     "cancelConfirm": "Hủy job dịch? Thực thể đã xử lý vẫn giữ bản dịch.",
     "cancelRequested": "Đã yêu cầu hủy",
-    "noEntities": "Không có thực thể nào cần dịch cho ngôn ngữ này."
+    "noEntities": "Không có thực thể nào cần dịch cho ngôn ngữ này.",
+    "pollFailed": "Không lấy được tiến độ dịch — dịch vụ có thể không khả dụng. Đang thử lại…"
   },
   "results": {
     "title": "Dịch hoàn tất",

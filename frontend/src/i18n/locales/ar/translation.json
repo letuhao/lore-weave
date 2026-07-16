@@ -81,7 +81,8 @@
     "original_label": "الأصل — {{lang}}",
     "translation_label": "الترجمة — {{lang}}",
     "source_fallback": "المصدر",
-    "no_translated": "(لا يوجد محتوى مترجم)"
+    "no_translated": "(لا يوجد محتوى مترجم)",
+    "original_unavailable": "النص الأصلي غير متوفر حاليًا."
   },
   "block_review": {
     "unchanged": "لم يتغير",
@@ -152,7 +153,15 @@
     "chapters_selected": "تم اختيار {{count}} فصول",
     "translate_selected": "ترجمة المختار",
     "extract_glossary": "استخراج المسرد",
-    "clear": "مسح"
+    "clear": "مسح",
+    "loading": "جاري تحميل تغطية الترجمة…",
+    "translate_cta": "ترجمة…",
+    "select_all_chapters": "تحديد كل الفصول",
+    "orphan_footnote": "{{count}} ترجمة(ات) تابعة لفصول لم تعد نشطة.",
+    "page": "صفحة",
+    "prev": "الصفحة السابقة",
+    "next": "الصفحة التالية",
+    "translate_no_edit": "لديك صلاحية العرض فقط — اطلب من المالك صلاحية التعديل للترجمة."
   },
   "segments": {
     "title": "حالة المقاطع",
@@ -165,6 +174,15 @@
     "retranslate_changed": "إعادة ترجمة التغييرات ({{count}})",
     "retranslate_started": "بدأت عملية إعادة الترجمة",
     "empty": "لم يتم إنشاء أي مقاطع بعد.",
-    "close": "إغلاق"
+    "close": "إغلاق",
+    "retranslate_failed": "تعذّر بدء إعادة الترجمة. يرجى المحاولة مرة أخرى."
+  },
+  "error": {
+    "retryable": "تعذر تحميل الترجمات — قد تكون خدمة الترجمة غير متوفرة. حاول مرة أخرى.",
+    "forbidden": "ليس لديك صلاحية الوصول إلى ترجمات هذا الكتاب.",
+    "notfound": "تعذر العثور على هذه الترجمات.",
+    "retry": "إعادة المحاولة",
+    "chapters_failed": "تعذر تحميل قائمة الفصول.",
+    "chapters_timeout": "انتهت مهلة تحميل قائمة الفصول — قد تكون الخدمة بطيئة أو متوقفة."
   }
 }

@@ -5,6 +5,14 @@
     "failed": "fallido",
     "pending": "pendiente"
   },
+  "error": {
+    "retryable": "No se pudieron cargar las traducciones; es posible que el servicio de traducción no esté disponible. Inténtalo de nuevo.",
+    "forbidden": "No tienes acceso a las traducciones de este libro.",
+    "notfound": "No se pudieron encontrar estas traducciones.",
+    "retry": "Reintentar",
+    "chapters_failed": "No se pudo cargar la lista de capítulos.",
+    "chapters_timeout": "La carga de la lista de capítulos ha agotado el tiempo de espera; es posible que el servicio esté lento o caído."
+  },
   "page": {
     "breadcrumb_book": "Libro",
     "breadcrumb_chapters": "Capítulos",
@@ -81,7 +89,8 @@
     "original_label": "Original — {{lang}}",
     "translation_label": "Traducción — {{lang}}",
     "source_fallback": "Fuente",
-    "no_translated": "(Sin contenido traducido)"
+    "no_translated": "(Sin contenido traducido)",
+    "original_unavailable": "El texto original no está disponible en este momento."
   },
   "block_review": {
     "unchanged": "Sin cambios",
@@ -151,8 +160,16 @@
     "show_filter": "mostrar filtro",
     "chapters_selected": "{{count}} capítulos seleccionados",
     "translate_selected": "Traducir seleccionados",
+    "translate_cta": "Traducir…",
+    "select_all_chapters": "Seleccionar todos los capítulos",
+    "orphan_footnote": "{{count}} traducción(es) pertenecen a capítulos que ya no están activos.",
+    "page": "Página",
+    "prev": "Página anterior",
+    "next": "Página siguiente",
     "extract_glossary": "Extraer glosario",
-    "clear": "Limpiar"
+    "clear": "Limpiar",
+    "loading": "Cargando cobertura de traducción…",
+    "translate_no_edit": "Tienes acceso de solo lectura: pide al propietario acceso de edición para traducir."
   },
   "segments": {
     "title": "Estado de los segmentos",
@@ -165,6 +182,7 @@
     "retranslate_changed": "Re-traducir cambios ({{count}})",
     "retranslate_started": "Re-traducción iniciada",
     "empty": "Aún no se han generado segmentos.",
-    "close": "Cerrar"
+    "close": "Cerrar",
+    "retranslate_failed": "No se pudo iniciar la retraducción. Inténtalo de nuevo."
   }
 }

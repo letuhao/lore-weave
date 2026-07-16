@@ -5,6 +5,14 @@
     "failed": "thất bại",
     "pending": "đang chờ"
   },
+  "error": {
+    "retryable": "Không thể tải bản dịch — dịch vụ dịch thuật có thể đang tạm ngưng. Vui lòng thử lại.",
+    "forbidden": "Bạn không có quyền truy cập vào bản dịch của cuốn sách này.",
+    "notfound": "Không tìm thấy các bản dịch này.",
+    "retry": "Thử lại",
+    "chapters_failed": "Không thể tải danh sách chương.",
+    "chapters_timeout": "Hết thời gian tải danh sách chương — dịch vụ có thể đang phản hồi chậm hoặc bị gián đoạn."
+  },
   "page": {
     "breadcrumb_book": "Sách",
     "breadcrumb_chapters": "Các chương",
@@ -81,7 +89,8 @@
     "original_label": "Nguyên gốc — {{lang}}",
     "translation_label": "Bản dịch — {{lang}}",
     "source_fallback": "Nguồn",
-    "no_translated": "(Không có nội dung đã dịch)"
+    "no_translated": "(Không có nội dung đã dịch)",
+    "original_unavailable": "Hiện chưa có văn bản gốc."
   },
   "block_review": {
     "unchanged": "Không đổi",
@@ -151,8 +160,16 @@
     "show_filter": "hiện bộ lọc",
     "chapters_selected": "đã chọn {{count}} chương",
     "translate_selected": "Dịch mục đã chọn",
+    "translate_cta": "Dịch…",
+    "select_all_chapters": "Chọn tất cả các chương",
+    "orphan_footnote": "{{count}} bản dịch thuộc về các chương không còn hoạt động.",
+    "page": "Trang",
+    "prev": "Trang trước",
+    "next": "Trang sau",
     "extract_glossary": "Trích xuất lore",
-    "clear": "Bỏ chọn"
+    "clear": "Bỏ chọn",
+    "loading": "Đang tải độ phủ bản dịch…",
+    "translate_no_edit": "Bạn chỉ có quyền xem — hãy yêu cầu chủ sở hữu cấp quyền chỉnh sửa để dịch."
   },
   "segments": {
     "title": "Trạng thái đoạn",
@@ -165,6 +182,7 @@
     "retranslate_changed": "Dịch lại phần đã đổi ({{count}})",
     "retranslate_started": "Đã bắt đầu dịch lại",
     "empty": "Chưa có đoạn nào.",
-    "close": "Đóng"
+    "close": "Đóng",
+    "retranslate_failed": "Không thể bắt đầu dịch lại. Vui lòng thử lại."
   }
 }
