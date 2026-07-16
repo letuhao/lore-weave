@@ -140,7 +140,7 @@ export const compositionApi = {
     projectId: string,
     chapterId: string,
     token: string | null,
-  ): Promise<{ items: Array<{ node_id: string; story_order: number; title: string; text: string }> }> {
+  ): Promise<{ items: Array<{ node_id: string; story_order: number; title: string; text: string; anchor_node_id: string | null }> }> {
     return apiJson(`${BASE}/works/${projectId}/chapters/${chapterId}/scene-drafts`, { token });
   },
   getOutline(projectId: string, token: string, includeArchived = false): Promise<{ nodes: OutlineNode[]; scene_links: SceneLink[] }> {
@@ -228,11 +228,18 @@ export const compositionApi = {
   // text; empty/whitespace → 422 EMPTY_SCENE_PROSE (caller skips that scene). Idempotent
   // on node_id (a re-promote overwrites, never duplicates).
   persistScenePromoteProse(
-    projectId: string, nodeId: string, text: string, token: string, idempotencyKey?: string,
+    projectId: string, nodeId: string, text: string, token: string,
+    opts?: { idempotencyKey?: string; anchorNodeId?: string },
   ): Promise<{ node_id: string; persisted: boolean; version: number }> {
     return apiJson(`${BASE}/works/${projectId}/scenes/${nodeId}/prose`, {
       method: 'POST',
-      body: JSON.stringify({ text, ...(idempotencyKey ? { idempotency_key: idempotencyKey } : {}) }),
+      body: JSON.stringify({
+        text,
+        ...(opts?.idempotencyKey ? { idempotency_key: opts.idempotencyKey } : {}),
+        // S5-B4 — the canon scene this take is an alternate of, so the branch-diff
+        // pairs this promoted scene to canon reliably (not by dense story_order).
+        ...(opts?.anchorNodeId ? { anchor_node_id: opts.anchorNodeId } : {}),
+      }),
       token,
     });
   },

@@ -148,7 +148,7 @@ export function SceneGraphCanvas({ work, bookId, token, onPromoted }: {
             const ghost = a.take?.ghost?.trim();
             if (ghost) {
               try {
-                await compositionApi.persistScenePromoteProse(proj, node.id, ghost, token);
+                await compositionApi.persistScenePromoteProse(proj, node.id, ghost, token, { anchorNodeId: anchorScene?.id ?? undefined });
               } catch {
                 proseFailed += 1;
               }

@@ -1108,16 +1108,20 @@ async def test_scene_drafts_detailed_returns_node_id_and_order(pool):
     chapter = uuid.uuid4()
     s1 = await olr.create_node(project, created_by=user, kind="scene", chapter_id=chapter, title="s1", story_order=0)
     s2 = await olr.create_node(project, created_by=user, kind="scene", chapter_id=chapter, title="s2", story_order=1)
-    await gjr.upsert_promoted_scene_prose(project, s1.id, "prose one", created_by=user)
+    anchor = uuid.uuid4()  # S5-B4 — the canon scene s1's take is an alternate of
+    await gjr.upsert_promoted_scene_prose(project, s1.id, "prose one", created_by=user, anchor_node_id=anchor)
     await gjr.upsert_promoted_scene_prose(project, s2.id, "prose two", created_by=user)
-    # a re-promote overwrites (latest per node, not a duplicate)
-    await gjr.upsert_promoted_scene_prose(project, s1.id, "prose one v2", created_by=user)
+    # a re-promote overwrites (latest per node, not a duplicate); anchor carries through
+    await gjr.upsert_promoted_scene_prose(project, s1.id, "prose one v2", created_by=user, anchor_node_id=anchor)
     out = await gjr.scene_drafts_detailed(project, chapter)
     assert [(o["node_id"], o["title"], o["text"]) for o in out] == [
         (str(s1.id), "s1", "prose one v2"),
         (str(s2.id), "s2", "prose two"),
     ]
     assert all(isinstance(o["story_order"], int) for o in out)
+    by_node = {o["node_id"]: o for o in out}
+    assert by_node[str(s1.id)]["anchor_node_id"] == str(anchor)  # back-ref persisted + returned
+    assert by_node[str(s2.id)]["anchor_node_id"] is None          # no anchor ⇒ null
     # scoped to the chapter — a different chapter sees nothing
     assert await gjr.scene_drafts_detailed(project, uuid.uuid4()) == []
 

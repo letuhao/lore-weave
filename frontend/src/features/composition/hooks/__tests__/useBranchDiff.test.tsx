@@ -36,14 +36,14 @@ describe('useBranchDiff', () => {
     getChapterSceneDrafts.mockImplementation((projectId: string) => {
       if (projectId === 'deriv') {
         return Promise.resolve({ items: [
-          { node_id: 'd0', story_order: 0, title: 's0', text: 'same' },        // unchanged
-          { node_id: 'd1', story_order: 1, title: 's1', text: 'branch new' },  // changed
-          { node_id: 'd2', story_order: 2, title: 's2', text: 'all new' },     // added (no canon @2)
+          { node_id: 'd0', story_order: 0, title: 's0', text: 'same', anchor_node_id: null },        // unchanged (by order)
+          { node_id: 'd1', story_order: 1, title: 's1', text: 'branch new', anchor_node_id: null },  // changed (by order)
+          { node_id: 'd2', story_order: 2, title: 's2', text: 'all new', anchor_node_id: null },     // added (no canon @2)
         ] });
       }
       return Promise.resolve({ items: [
-        { node_id: 'c0', story_order: 0, title: 's0', text: 'same' },
-        { node_id: 'c1', story_order: 1, title: 's1', text: 'canon original' },
+        { node_id: 'c0', story_order: 0, title: 's0', text: 'same', anchor_node_id: null },
+        { node_id: 'c1', story_order: 1, title: 's1', text: 'canon original', anchor_node_id: null },
       ] });
     });
 
@@ -56,6 +56,30 @@ describe('useBranchDiff', () => {
     expect(byNode.d1.branchText).toBe('branch new');
     expect(byNode.d2.status).toBe('added');
     expect(byNode.d2.canonText).toBe('');
+  });
+
+  it('pairs by the anchor back-ref (not dense story_order) for a promoted take', async () => {
+    // A promoted derivative scene at a FRESH dense story_order (99) that does NOT match
+    // its canon counterpart's order (7) — but carries anchor_node_id='c7'. It must pair
+    // to canon c7 by the back-ref (a real changed diff), never mis-pair by order.
+    getOutline.mockResolvedValue({
+      nodes: [{ id: 'dp', kind: 'scene', is_archived: false, chapter_id: 'ch1', story_order: 99 }],
+      scene_links: [],
+    });
+    getChapterSceneDrafts.mockImplementation((projectId: string) =>
+      projectId === 'deriv'
+        ? Promise.resolve({ items: [{ node_id: 'dp', story_order: 99, title: 'take', text: 'the alternate take', anchor_node_id: 'c7' }] })
+        : Promise.resolve({ items: [
+            { node_id: 'c99others', story_order: 99, title: 'unrelated', text: 'WRONG pair', anchor_node_id: null },
+            { node_id: 'c7', story_order: 7, title: 'anchor', text: 'the canon original', anchor_node_id: null },
+          ] }),
+    );
+    const { result } = renderHook(() => useBranchDiff('deriv', 'canon', 'tok', true), { wrapper });
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    const s = (result.current.data ?? [])[0];
+    expect(s.status).toBe('changed');
+    expect(s.canonText).toBe('the canon original');   // paired to c7 by anchor, NOT c99others by order
+    expect(s.branchText).toBe('the alternate take');
   });
 
   it('stays disabled without a source project', () => {

@@ -103,10 +103,12 @@ Draft callout #4/EC-6: build a FRESH `divergence` panel reusing leaves (Divergen
 useWhatIfPromotion), NEVER mount CompositionPanel shell.
 
 ### DEBT
-- D-S5-BRANCHDIFF-CORRESPONDENCE — B4 /review-impl (focused self-review, panel-close): useBranchDiff pairs
-  derivative↔canon scenes by (chapter,story_order), but promote seeds derivative scenes with dense 0..n
-  story_order that doesn't align with canon → possible mis-pair shown as "changed". Mitigated: no-match ⇒
-  "added" (the common case). Real fix needs a persisted anchor back-ref on promote. Not blocking.
+- D-S5-BRANCHDIFF-CORRESPONDENCE — ✅ CLEARED (implemented, not spec'd — engine.py was clean + bounded). The
+  promote persist now records an `anchor_node_id` (the canon scene the take is an alternate of) in the
+  synthetic-job marker; scene_drafts_detailed returns it; useBranchDiff pairs derivative→canon by the anchor
+  back-ref RELIABLY (falls back to story_order only when absent, then "added" — never mis-pairs). BE: upsert +
+  route + repo query; FE: api opts + SceneGraphCanvas passes anchorScene.id + useBranchDiff pairing. Tests: BE
+  scene_drafts_detailed anchor roundtrip; FE useBranchDiff "pairs by anchor not order" (3 pass). tsc clean.
 - D-S5-BRANCHDIFF-NOPROSE — B4: a diverged scene NODE with no completed draft (prose persist failed/pending)
   is silently absent from the diff (deriv scene-drafts only returns drafted scenes). The mockup drew a
   "no prose yet" state; not built. LOW.

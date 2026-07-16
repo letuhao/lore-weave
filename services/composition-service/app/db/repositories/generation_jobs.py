@@ -561,10 +561,11 @@ class GenerationJobsRepo:
         empty text filtered, ordered by story_order. Read-only; separate from the stitch
         path so it never perturbs it. Package tenancy: project_id on BOTH job AND node."""
         query = """
-        SELECT id, story_order, title, text FROM (
+        SELECT id, story_order, title, text, anchor_node_id FROM (
             SELECT DISTINCT ON (o.id)
                    o.id AS id, o.story_order AS story_order, o.title AS title,
-                   j.result->>'text' AS text
+                   j.result->>'text' AS text,
+                   j.input->>'anchor_node_id' AS anchor_node_id
             FROM generation_job j
             JOIN outline_node o ON o.id = j.outline_node_id
             WHERE j.project_id = $1
@@ -580,13 +581,20 @@ class GenerationJobsRepo:
         async with self._pool.acquire() as c:
             rows = await c.fetch(query, project_id, chapter_id)
         return [
-            {"node_id": str(r["id"]), "story_order": r["story_order"], "title": r["title"] or "", "text": r["text"]}
+            {
+                "node_id": str(r["id"]), "story_order": r["story_order"],
+                "title": r["title"] or "", "text": r["text"],
+                # S5-B4 — the canon scene this derivative scene is an alternate of (if a
+                # promoted take carried it); null for a canon scene's own draft.
+                "anchor_node_id": r["anchor_node_id"],
+            }
             for r in rows
         ]
 
     async def upsert_promoted_scene_prose(
         self, project_id: UUID, outline_node_id: UUID, text: str,
         *, created_by: UUID, idempotency_key: str | None = None,
+        anchor_node_id: UUID | None = None,
     ) -> tuple[GenerationJob, int]:
         """M3 (WS-B3) — persist a promoted scene's PROSE into the synthetic-job store,
         keyed by `outline_node_id`, IDEMPOTENTLY on (project, node). Returns
@@ -657,6 +665,13 @@ class GenerationJobsRepo:
                 _input = {"kind": _PROMOTED_SCENE_PROSE_KIND, "version": version}
                 if idempotency_key:
                     _input["idempotency_key"] = idempotency_key
+                # S5-B4 (D-S5-BRANCHDIFF-CORRESPONDENCE) — the canon scene this take is an
+                # alternate of. A promoted derivative scene gets a fresh dense story_order
+                # that does NOT align with canon's, so the branch-diff can't pair by order;
+                # this back-ref lets it pair the derivative scene to its canon counterpart
+                # RELIABLY (a real canon↔branch diff instead of a false "added").
+                if anchor_node_id is not None:
+                    _input["anchor_node_id"] = str(anchor_node_id)
                 row = await c.fetchrow(
                     f"""
                     INSERT INTO generation_job

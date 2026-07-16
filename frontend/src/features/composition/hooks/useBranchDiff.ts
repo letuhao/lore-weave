@@ -38,8 +38,12 @@ export function useBranchDiff(
             compositionApi.getChapterSceneDrafts(sourceProjectId!, chId, token),
           ]);
           const sourceByOrder = new Map(source.items.map((s) => [s.story_order, s]));
+          const sourceByNode = new Map(source.items.map((s) => [s.node_id, s]));
           return deriv.items.map((d): BranchDiffScene => {
-            const src = sourceByOrder.get(d.story_order);
+            // Prefer the RELIABLE anchor back-ref (a promoted take records the canon
+            // scene it's an alternate of); fall back to story_order only when absent
+            // (a wizard-created scene with no anchor). No match ⇒ added (never mis-pair).
+            const src = (d.anchor_node_id && sourceByNode.get(d.anchor_node_id)) || sourceByOrder.get(d.story_order);
             return {
               chapterId: chId,
               nodeId: d.node_id,

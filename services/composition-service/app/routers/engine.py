@@ -186,6 +186,10 @@ class ScenePromoteProseBody(BaseModel):
     # node_id; the key is trace-only).
     text: Annotated[str, StringConstraints(max_length=200_000)]
     idempotency_key: Annotated[str, StringConstraints(max_length=200)] | None = None
+    # S5-B4 (D-S5-BRANCHDIFF-CORRESPONDENCE) — the CANON scene this take is an alternate
+    # of, so the branch-diff can pair this derivative scene to its canon counterpart
+    # (the promoted scene gets a fresh dense story_order that can't be paired by order).
+    anchor_node_id: UUID | None = None
 
 
 class CritiqueBody(BaseModel):
@@ -1661,7 +1665,8 @@ async def persist_scene_prose(
     try:
         _job, version = await jobs.upsert_promoted_scene_prose(
             project_id, node_id, body.text,
-            created_by=user_id, idempotency_key=body.idempotency_key)
+            created_by=user_id, idempotency_key=body.idempotency_key,
+            anchor_node_id=body.anchor_node_id)
     except ReferenceViolationError:
         raise HTTPException(status_code=404, detail="scene not found")
 
