@@ -171,7 +171,16 @@
     "kind_character": "Characters",
     "kind_location": "Places",
     "kind_faction": "Factions",
-    "kind_concept": "Concepts"
+    "kind_concept": "Concepts",
+    "rename": "Rename",
+    "renameConflict": "Changed elsewhere — reloaded.",
+    "editEntity": "Edit aliases & kind",
+    "archive": "Retire entity",
+    "archiveConfirm": "Retire \"{{name}}\"? Its relations and glossary anchor are kept; it returns if the book mentions it again (there is no restore button).",
+    "archived": "Retired — it returns if the book mentions it again.",
+    "newEntity": "New",
+    "editFailed": "Edit failed: {{error}}",
+    "truncated": "Showing the first 200 — refine your search to narrow the list."
   },
   "relmap": "Relations",
   "relations": {
@@ -214,7 +223,9 @@
     "gone": "gone",
     "loading": "Loading character arc…",
     "noProject": "No knowledge graph yet — extract this book to chart character arcs.",
-    "empty": "This character has no events yet."
+    "empty": "This character has no events yet.",
+    "edit": "Edit",
+    "linkEntity": "+ link entity"
   },
   "worldmap": "World Map",
   "wmap": {
@@ -251,7 +262,11 @@
     "densityRange": "lean ◂▸ lush",
     "pace": "Pace",
     "paceRange": "slow ◂▸ fast",
-    "scope": { "work": "Book", "chapter": "Chapter", "scene": "Scene" },
+    "scope": {
+      "work": "Book",
+      "chapter": "Chapter",
+      "scene": "Scene"
+    },
     "scopeHint": "Most specific scope wins (scene › chapter › book). A mid value is balanced — no steer.",
     "voices": "Character voices",
     "noVoices": "No character voices yet.",
@@ -259,15 +274,66 @@
     "addTag": "+ tag",
     "remove": "Remove"
   },
-  "heatmap": { "title": "Mention heatmap", "inProse": "In prose" },
-  "provenance": { "title": "AI provenance", "unreviewedCount": "{{n}} unreviewed", "show": "Show", "hide": "Hide", "markAllReviewed": "Mark all reviewed", "ai": "AI", "reviewed": "reviewed", "unreviewed": "unreviewed", "clickToReview": "(click to review)" },
+  "heatmap": {
+    "title": "Mention heatmap",
+    "inProse": "In prose"
+  },
+  "provenance": {
+    "title": "AI provenance",
+    "unreviewedCount": "{{n}} unreviewed",
+    "show": "Show",
+    "hide": "Hide",
+    "markAllReviewed": "Mark all reviewed",
+    "ai": "AI",
+    "reviewed": "reviewed",
+    "unreviewed": "unreviewed",
+    "clickToReview": "(click to review)"
+  },
   "flywheel": "Flywheel",
-  "flywheelPanel": { "loading": "Loading…", "empty": "Publish a chapter to grow your canon — new entities, relations and events will show up here.", "subtitle": "Your latest publish grew the canon:", "entities": "entities", "relations": "relations", "events": "events", "highlights": "New highlights", "kind": { "entity": "Entity", "event": "Event", "relation": "Relation" } },
-  "view": { "power_view": "Power view", "back_to_editor": "Back to editor" },
-  "dock": { "addPanel": "Add panel", "float": "Float", "dock": "Dock", "popout": "Pop out" },
-  "popout": { "invalid": "This pop-out link is invalid." },
+  "flywheelPanel": {
+    "loading": "Loading…",
+    "empty": "Publish a chapter to grow your canon — new entities, relations and events will show up here.",
+    "subtitle": "Your latest publish grew the canon:",
+    "entities": "entities",
+    "relations": "relations",
+    "events": "events",
+    "highlights": "New highlights",
+    "kind": {
+      "entity": "Entity",
+      "event": "Event",
+      "relation": "Relation"
+    }
+  },
+  "view": {
+    "power_view": "Power view",
+    "back_to_editor": "Back to editor"
+  },
+  "dock": {
+    "addPanel": "Add panel",
+    "float": "Float",
+    "dock": "Dock",
+    "popout": "Pop out"
+  },
+  "popout": {
+    "invalid": "This pop-out link is invalid."
+  },
   "references": "References",
-  "referencesPanel": { "title": "Title", "author": "Author", "contentPlaceholder": "Paste a reference passage / influence…", "pickEmbedModel": "Embedding model (set once for this work)", "noEmbedModel": "Add an embedding model (e.g. bge-m3) in AI settings to enable reference retrieval.", "add": "Add reference", "adding": "Adding…", "relevant": "For this scene", "searchPlaceholder": "Search…", "unavailable": "Retrieval unavailable (embedding provider down).", "noHits": "No matching references yet.", "library": "Library", "delete": "Delete", "empty": "No references yet — add influences above." },
+  "referencesPanel": {
+    "title": "Title",
+    "author": "Author",
+    "contentPlaceholder": "Paste a reference passage / influence…",
+    "pickEmbedModel": "Embedding model (set once for this work)",
+    "noEmbedModel": "Add an embedding model (e.g. bge-m3) in AI settings to enable reference retrieval.",
+    "add": "Add reference",
+    "adding": "Adding…",
+    "relevant": "For this scene",
+    "searchPlaceholder": "Search…",
+    "unavailable": "Retrieval unavailable (embedding provider down).",
+    "noHits": "No matching references yet.",
+    "library": "Library",
+    "delete": "Delete",
+    "empty": "No references yet — add influences above."
+  },
   "progressPanel": {
     "loading": "Loading progress…",
     "error": "Couldn't load progress.",
@@ -375,6 +441,12 @@
   "canonUntil": "Until (reading order)",
   "canonActive": "active",
   "canonInactive": "inactive",
+  "canonArchivedTag": "archived",
+  "canonShowArchived": "Show archived",
+  "canonRuleArchived": "Rule archived",
+  "canonRuleRestored": "Rule restored",
+  "restore": "Restore",
+  "undo": "Undo",
   "canonWindowInverted": "'From' must be ≤ 'Until'.",
   "archive": "Archive",
   "noRules": "No canon rules yet.",
@@ -555,8 +627,13 @@
     },
     "scope": {
       "label": "Motif scope",
-      "my": "My library",
-      "catalog": "Public catalog"
+      "my": "Mine",
+      "catalog": "Public catalog",
+      "book": "Book",
+      "shared": "Shared",
+      "system": "System",
+      "drafts": "Drafts",
+      "needsBook": "Open a book to see its motifs"
     },
     "search": "Search motifs",
     "overuse": "\"{{name}}\" is already used in {{chapters}} — consider varying it.",
@@ -748,6 +825,23 @@
       "knows": "Knows",
       "deceived": "Deceived",
       "gap": "Gap"
+    },
+    "graph": {
+      "title": "Graph — composed of · precedes · variant of",
+      "loading": "Loading edges…",
+      "error": "Could not load the motif graph.",
+      "retry": "Retry",
+      "empty": "No relationships yet.",
+      "deleteEdge": "Remove edge",
+      "addEdge": "Add relationship",
+      "pickNeighbor": "Pick a motif…",
+      "add": "Add edge",
+      "cancel": "Cancel",
+      "kind": {
+        "composed_of": "Composed of",
+        "precedes": "Precedes",
+        "variant_of": "Variant of"
+      }
     }
   },
   "authoringRun": {
@@ -840,7 +934,11 @@
       "failedUnit": "This unit failed:",
       "verdictShow": "Show detail ▾",
       "verdictHide": "Hide detail ▴",
-      "sev": { "ok": "ok", "warn": "warn", "severe": "severe" },
+      "sev": {
+        "ok": "ok",
+        "warn": "warn",
+        "severe": "severe"
+      },
       "cascadeWarning": "{{count}} downstream unit(s) already drafted/accepted ({{chapters}}) — this is advisory only; rejecting this unit does NOT auto-revert them.",
       "accept": "Accept",
       "reject": "Reject",

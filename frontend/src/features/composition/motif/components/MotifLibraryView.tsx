@@ -30,13 +30,18 @@ type Props = {
   projectId?: string | null;
   /** The current book — enables book-scope mining (corpus scope works without it). */
   bookId?: string | null;
+  /** Studio-panel mode (S4/3a): hide the motifs⇄arc-templates kind toggle so this
+   *  renders the motif library ONLY. The arc-template half lives in its own
+   *  `arc-templates` dock panel (Wave 4 / S2); the legacy CompositionPanel omits this
+   *  prop and keeps the toggle, so no legacy regression (spec 33 §2.3). */
+  hideArcTabs?: boolean;
 };
 
-export function MotifLibraryView({ token, meUserId: meProp, projectId, bookId }: Props) {
+export function MotifLibraryView({ token, meUserId: meProp, projectId, bookId, hideArcTabs }: Props) {
   const { t } = useTranslation('composition');
   const me = meProp ?? currentUserId();
   const { simple, toggle } = useMotifSimpleMode();
-  const lib = useMotifLibrary(token);
+  const lib = useMotifLibrary(token, { bookId: bookId ?? null });
   const [openId, setOpenId] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
   const [mining, setMining] = useState(false);
@@ -51,7 +56,10 @@ export function MotifLibraryView({ token, meUserId: meProp, projectId, bookId }:
 
   return (
     <div data-testid="motif-library-view" className="flex h-full flex-col">
-      {/* W10 — library kind: motifs vs arc templates (the meso structure layer) */}
+      {/* W10 — library kind: motifs vs arc templates (the meso structure layer).
+          Studio-panel mode (hideArcTabs) renders motifs only — arc templates get their
+          own dock panel (spec 33 §2.3). */}
+      {!hideArcTabs && (
       <div role="tablist" aria-label={t('motif.kind.label', { defaultValue: 'Library' })} className="flex items-center gap-1 px-1 pt-1">
         <button type="button" role="tab" aria-selected={kind === 'motifs'} data-testid="motif-kind-motifs" className={`rounded px-2 py-0.5 text-[11px] ${kind === 'motifs' ? 'bg-amber-600 text-white' : 'border border-neutral-300 dark:border-neutral-600'}`} onClick={() => setKind('motifs')}>
           {t('motif.kind.motifs', { defaultValue: 'Motifs' })}
@@ -60,8 +68,9 @@ export function MotifLibraryView({ token, meUserId: meProp, projectId, bookId }:
           {t('motif.kind.arcs', { defaultValue: 'Arc templates' })}
         </button>
       </div>
+      )}
 
-      {kind === 'arcs' ? (
+      {kind === 'arcs' && !hideArcTabs ? (
         <div className="min-h-0 flex-1 overflow-auto">
           <ArcTemplateLibraryView token={token} projectId={projectId} />
         </div>
@@ -69,7 +78,7 @@ export function MotifLibraryView({ token, meUserId: meProp, projectId, bookId }:
       <>
       {/* header: scope tabs + simple-mode toggle + new-motif */}
       <div className="flex items-center justify-between gap-2 px-1 pt-1">
-        <MotifScopeTabs scope={lib.scope} onScope={lib.setScope} />
+        <MotifScopeTabs scope={lib.scope} onScope={lib.setScope} hasBook={lib.hasBook} />
         <div className="flex items-center gap-1">
           <button type="button" aria-pressed={simple} data-testid="motif-simple-toggle" className="rounded border border-neutral-300 px-2 py-0.5 text-[11px] dark:border-neutral-600" onClick={toggle}>
             {simple ? t('motif.mode.simple', { defaultValue: 'Simple' }) : t('motif.mode.expert', { defaultValue: 'Expert' })}

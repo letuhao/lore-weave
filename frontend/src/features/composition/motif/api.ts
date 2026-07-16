@@ -18,6 +18,21 @@ import type {
 
 const BASE = '/v1/composition';
 
+// ── the motif graph (BE-M3) edge shapes ──────────────────────────────────────
+export type MotifLinkKind = 'composed_of' | 'precedes' | 'variant_of';
+export type MotifLinkDirection = 'out' | 'in' | 'both';
+/** One relationship edge as GET /motifs/{id}/links returns it — the edge id/kind/ord/
+ *  direction plus the NEIGHBOR stub (id/code/name), so a list needs no second fetch. */
+export type MotifLinkRow = {
+  id: string;
+  kind: MotifLinkKind;
+  ord: number | null;
+  direction: 'out' | 'in';
+  neighbor_id: string;
+  neighbor_code: string;
+  neighbor_name: string;
+};
+
 /** GET /motifs scope — the router accepts ONLY mine|system|all (NOT 'public';
  *  others' public rows are the CATALOG route, never this list). */
 export type MotifListParams = {
@@ -82,6 +97,30 @@ export const motifApi = {
   // Answers the `{ items, total, limit, offset }` envelope, NOT `{ motifs }`.
   catalog(params: CatalogParams, token: string): Promise<CatalogList> {
     return apiJson<CatalogList>(`${BASE}/motifs/catalog${_qs(params)}`, { token });
+  },
+
+  // ── the book's library (3a) — GET /motifs/book/{book_id}. Returns, MERGED in one
+  //    list: the caller's globals (the Mine tier) + this book's private labels + its
+  //    book_shared rows. Every row carries book_id + book_shared, so the FE partitions
+  //    ONE response into the Book tab (book_id===bookId && !book_shared) and the Shared
+  //    tab (book_shared===true) — do NOT fetch it twice (§3.1).
+  book(bookId: string, token: string,
+       params?: { genre?: string; kind?: string; status?: string; q?: string }): Promise<{ motifs: Motif[] }> {
+    return apiJson<{ motifs: Motif[] }>(`${BASE}/motifs/book/${bookId}${_qs(params ?? {})}`, { token });
+  },
+
+  // ── the motif graph (BE-M3, 3a-C) — composed_of · precedes · variant_of ─────
+  links(motifId: string, token: string,
+        opts?: { direction?: MotifLinkDirection; bookId?: string | null }): Promise<{ motif_id: string; links: MotifLinkRow[]; count: number }> {
+    return apiJson(`${BASE}/motifs/${motifId}/links${_qs({ direction: opts?.direction, book_id: opts?.bookId ?? undefined })}`, { token });
+  },
+  createLink(motifId: string, args: { to_motif_id: string; kind: MotifLinkKind; ord?: number | null; book_id?: string | null }, token: string): Promise<MotifLinkRow> {
+    return apiJson<MotifLinkRow>(`${BASE}/motifs/${motifId}/links`, {
+      method: 'POST', body: JSON.stringify(args), token,
+    });
+  },
+  deleteLink(linkId: string, token: string, bookId?: string | null): Promise<{ deleted: boolean; link_id: string }> {
+    return apiJson(`${BASE}/motif-links/${linkId}${_qs({ book_id: bookId ?? undefined })}`, { method: 'DELETE', token });
   },
 
   // ── Tier-W: adopt = clone into YOUR library (R2.8 confirm-token), via the

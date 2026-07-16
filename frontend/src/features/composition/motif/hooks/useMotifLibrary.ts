@@ -14,7 +14,11 @@ import { useQuery } from '@tanstack/react-query';
 import { motifApi, type MotifListParams, type CatalogParams } from '../api';
 import type { CatalogMotif, Motif, MotifKind } from '../types';
 
-export type LibraryScope = 'my' | 'catalog' | 'drafts';
+// The six library tiers (§3.1). `my` = your globals + system; `book`/`shared` come from
+// ONE GET /motifs/book/{id} response, partitioned client-side (book_id vs book_shared);
+// `system` = the seeded defaults; `catalog` = the public allow-list; `drafts` = your mined
+// review queue. `book`/`shared` need a bookId (disabled without one).
+export type LibraryScope = 'my' | 'book' | 'shared' | 'system' | 'catalog' | 'drafts';
 
 export type MotifFacets = {
   kind?: MotifKind;
@@ -60,7 +64,11 @@ function catalogToMotif(c: CatalogMotif): Motif {
   };
 }
 
-export function useMotifLibrary(token: string | null, opts?: { initialScope?: LibraryScope }) {
+export function useMotifLibrary(
+  token: string | null,
+  opts?: { initialScope?: LibraryScope; bookId?: string | null },
+) {
+  const bookId = opts?.bookId ?? null;
   const [scope, setScope] = useState<LibraryScope>(opts?.initialScope ?? 'my');
   const [search, setSearch] = useState('');
   const [facets, setFacets] = useState<MotifFacets>({});
@@ -74,6 +82,25 @@ export function useMotifLibrary(token: string | null, opts?: { initialScope?: Li
     queryKey: ['composition', 'motifs', 'my', q],
     queryFn: () => motifApi.list(myParams, token!),
     enabled: !!token && scope === 'my',
+    select: (d): Motif[] => d.motifs,
+  });
+
+  // 'system' tab: GET /motifs scope='system' (the seeded defaults only — read-only tier).
+  const systemQuery = useQuery({
+    queryKey: ['composition', 'motifs', 'system', q],
+    queryFn: () => motifApi.list({ scope: 'system', q, limit: 100 }, token!),
+    enabled: !!token && scope === 'system',
+    select: (d): Motif[] => d.motifs,
+  });
+
+  // 'book' + 'shared' tabs: ONE GET /motifs/book/{id} response feeds BOTH (§3.1) — it
+  // merges the caller's globals + this book's private labels + its book_shared rows, each
+  // carrying book_id + book_shared. We partition it below; do NOT fetch it twice. Needs a
+  // book (disabled otherwise, so the tabs read empty rather than 422).
+  const bookQuery = useQuery({
+    queryKey: ['composition', 'motifs', 'book', bookId, q],
+    queryFn: () => motifApi.book(bookId!, token!, { q }),
+    enabled: !!token && !!bookId && (scope === 'book' || scope === 'shared'),
     select: (d): Motif[] => d.motifs,
   });
 
@@ -98,12 +125,26 @@ export function useMotifLibrary(token: string | null, opts?: { initialScope?: Li
     select: (d): Motif[] => d.motifs,
   });
 
-  const query = scope === 'catalog' ? catalogQuery : scope === 'drafts' ? draftsQuery : myQuery;
+  const query =
+    scope === 'catalog' ? catalogQuery
+    : scope === 'drafts' ? draftsQuery
+    : scope === 'system' ? systemQuery
+    : scope === 'book' || scope === 'shared' ? bookQuery
+    : myQuery;
+
+  // The book endpoint merges three tiers into one list; partition it by the row flags so
+  // the Book tab shows only THIS book's private labels (never the globals already on Mine)
+  // and Shared shows only the book_shared rows (§3.1 — the book_id test is load-bearing).
+  const baseData = useMemo<Motif[]>(() => {
+    if (scope === 'book') return (bookQuery.data ?? []).filter((m) => m.book_id === bookId && !m.book_shared);
+    if (scope === 'shared') return (bookQuery.data ?? []).filter((m) => m.book_shared === true);
+    return query.data ?? [];
+  }, [scope, bookId, bookQuery.data, query.data]);
 
   // Client-side facet narrowing over the fetched page (cheap; server already did
   // the scope/q filter). Derived — recomputed only when inputs change.
   const motifs = useMemo<Motif[]>(() => {
-    const all = query.data ?? [];
+    const all = baseData;
     return all.filter((m) => {
       if (facets.kind && m.kind !== facets.kind) return false;
       if (facets.genre && !m.genre_tags.includes(facets.genre)) return false;
@@ -123,7 +164,7 @@ export function useMotifLibrary(token: string | null, opts?: { initialScope?: Li
   // The available facet values (derived from the fetched page — only show filters
   // that would actually match something).
   const available = useMemo(() => {
-    const all = query.data ?? [];
+    const all = baseData;
     const genres = new Set<string>();
     const kinds = new Set<MotifKind>();
     for (const m of all) {
@@ -131,9 +172,9 @@ export function useMotifLibrary(token: string | null, opts?: { initialScope?: Li
       kinds.add(m.kind);
     }
     return { genres: [...genres].sort(), kinds: [...kinds].sort() };
-  }, [query.data]);
+  }, [baseData]);
 
-  const isEmpty = !query.isLoading && !query.isError && motifs.length === 0 && (query.data?.length ?? 0) === 0;
+  const isEmpty = !query.isLoading && !query.isError && motifs.length === 0 && baseData.length === 0;
 
   return {
     motifs,
@@ -146,6 +187,7 @@ export function useMotifLibrary(token: string | null, opts?: { initialScope?: Li
     search, setSearch,
     facets, setFacet, clearFacets,
     available,
-    rawCount: query.data?.length ?? 0,
+    rawCount: baseData.length,
+    hasBook: !!bookId,
   };
 }

@@ -346,6 +346,65 @@ paths:
         '200': { description: Updated critic, content: { application/json: { schema: { type: object, properties: { critic: { $ref: '#/components/schemas/Critic' } } } } } }
         '404': { $ref: '#/components/responses/NotFound' }
 
+  /motifs/{motif_id}/links:
+    get:
+      tags: [motif]
+      summary: List one motif's relationship edges (the motif graph — BE-M3)
+      description: >
+        composed_of members · precedes successors · variant_of siblings, each joined to the
+        neighbor's id/code/name. Was agent-only (composition_motif_link_list) until BE-M3. A
+        not-visible anchor returns an EMPTY list, never 404 (IDOR-safe — no existence oracle).
+        Pass book_id to read a SHARED book motif's graph (VIEW-gated).
+      parameters:
+        - { name: motif_id, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: direction, in: query, required: false, schema: { type: string, enum: [out, in, both], default: both } }
+        - { name: kinds, in: query, required: false, schema: { type: array, items: { type: string, enum: [composed_of, precedes, variant_of] } } }
+        - { name: book_id, in: query, required: false, schema: { type: string, format: uuid } }
+      responses:
+        '200': { description: Edge list, content: { application/json: { schema: { type: object, properties: { motif_id: { type: string, format: uuid }, count: { type: integer }, links: { type: array, items: { type: object } } } } } } }
+        '422': { description: bad direction }
+    post:
+      tags: [motif]
+      summary: Create a motif-graph edge FROM this motif TO another (BE-M3)
+      description: >
+        Default — both endpoints must be motifs you OWN. Pass book_id to link two SHARED motifs
+        of that book (EDIT-gated). A self-link / cycle / cross-tier edge (the motif_link_guard
+        DB trigger) → 409 MOTIF_LINK_INVALID; a duplicate → 409 MOTIF_LINK_EXISTS; an endpoint
+        out of scope → 404.
+      parameters:
+        - { name: motif_id, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [to_motif_id, kind]
+              additionalProperties: false
+              properties:
+                to_motif_id: { type: string, format: uuid }
+                kind: { type: string, enum: [composed_of, precedes, variant_of] }
+                ord: { type: integer, nullable: true }
+                book_id: { type: string, format: uuid, nullable: true }
+      responses:
+        '201': { description: Edge, content: { application/json: { schema: { type: object, properties: { id: { type: string, format: uuid }, from_motif_id: { type: string, format: uuid }, to_motif_id: { type: string, format: uuid }, kind: { type: string, enum: [composed_of, precedes, variant_of] }, ord: { type: integer, nullable: true }, created_at: { type: string, format: date-time, nullable: true } } } } } }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { description: duplicate / self-link / cycle / cross-tier edge }
+
+  /motif-links/{link_id}:
+    delete:
+      tags: [motif]
+      summary: Delete a motif-graph edge (hard delete — BE-M3)
+      description: >
+        Default — the edge must be on one of YOUR motifs. Pass book_id for an edge in that book's
+        SHARED graph (EDIT-gated). A foreign / system / missing / wrong-book edge → 404 (no oracle).
+      parameters:
+        - { name: link_id, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: book_id, in: query, required: false, schema: { type: string, format: uuid } }
+      responses:
+        '200': { description: Deleted, content: { application/json: { schema: { type: object, properties: { deleted: { type: boolean }, link_id: { type: string, format: uuid } } } } } }
+        '404': { $ref: '#/components/responses/NotFound' }
+
 components:
   securitySchemes:
     bearerAuth: { type: http, scheme: bearer, bearerFormat: JWT }
