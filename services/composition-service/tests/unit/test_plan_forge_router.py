@@ -16,6 +16,7 @@ from app.deps import get_grant_client_dep, get_plan_forge_service
 USER = uuid.uuid4()
 BOOK = uuid.uuid4()
 RUN = uuid.uuid4()
+ART = uuid.uuid4()
 
 
 class StubGrant:
@@ -70,6 +71,16 @@ class StubPlanForge:
     async def compile(self, owner_user_id, book_id, run_id, **kwargs):
         return "sync", {"package": {"arc_id": "arc_2"}, "pipeline_job_id": None, "work_id": str(uuid.uuid4())}
 
+    async def get_artifact(self, owner_user_id, book_id, run_id, artifact_id):
+        # Mirrors artifacts_by_ids' scoping: a foreign book_id, a foreign run, or an unknown
+        # artifact_id ALL collapse to None → one 404, never a 403 oracle (H13).
+        if book_id != BOOK or run_id != RUN or artifact_id != ART:
+            return None
+        return {
+            "artifact_id": str(ART), "kind": "cast_plan",
+            "content": {"roster": []}, "created_at": "2026-07-01T00:00:00+00:00",
+        }
+
 
 @pytest.fixture
 def client():
@@ -94,6 +105,27 @@ def test_get_plan_run(client):
     r = client.get(f"/v1/composition/books/{BOOK}/plan/runs/{RUN}")
     assert r.status_code == 200
     assert r.json()["id"] == str(RUN)
+
+
+def test_get_plan_artifact_200(client):
+    r = client.get(f"/v1/composition/books/{BOOK}/plan/runs/{RUN}/artifacts/{ART}")
+    assert r.status_code == 200
+    assert set(r.json()) == {"artifact_id", "kind", "content", "created_at"}
+    assert r.json()["artifact_id"] == str(ART)
+
+
+def test_get_plan_artifact_unknown_is_404(client):
+    r = client.get(f"/v1/composition/books/{BOOK}/plan/runs/{RUN}/artifacts/{uuid.uuid4()}")
+    assert r.status_code == 404
+
+
+def test_get_plan_artifact_cross_book_is_404_not_403(client):
+    # H13: a foreign artifact must be indistinguishable from a missing one — one 404, never a
+    # 403 that would confirm the id exists in another tenant (enumeration oracle).
+    other_book = uuid.uuid4()
+    r = client.get(f"/v1/composition/books/{other_book}/plan/runs/{RUN}/artifacts/{ART}")
+    assert r.status_code == 404
+    assert r.status_code != 403
 
 
 def test_list_plan_runs(client):

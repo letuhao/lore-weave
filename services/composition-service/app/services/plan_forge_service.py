@@ -474,6 +474,27 @@ class PlanForgeService:
         run = await self.sync_from_job(created_by, book_id, run)
         return await self._serialize_run(created_by, run)
 
+    async def get_artifact(
+        self, created_by: UUID, book_id: UUID, run_id: UUID, artifact_id: UUID,
+    ) -> dict[str, Any] | None:
+        """BE-3. One pass/spec artifact's content, so the Pass Rail can render what a checkpoint
+        is asking the human to approve (the ledger carries only `artifact_id`, never content).
+
+        Scoped through the run join (`plan_artifact` has no `book_id`): a foreign id is simply NOT
+        in the returned dict, so unknown-id and cross-book id collapse to the SAME None ⇒ the SAME
+        404. No enumeration oracle (H13). `created_by` is an actor stamp, never a filter (PM-5).
+        """
+        loaded = await self._runs.artifacts_by_ids(book_id, run_id, [artifact_id])
+        art = loaded.get(str(artifact_id))
+        if art is None:
+            return None
+        return {
+            "artifact_id": str(art.id),
+            "kind": art.kind,
+            "content": art.content,
+            "created_at": art.created_at.isoformat() if art.created_at else None,
+        }
+
     async def list_runs(
         self, created_by: UUID, book_id: UUID, *, limit: int, cursor: str | None,
     ) -> dict[str, Any]:

@@ -20,6 +20,15 @@ export interface PlanArtifact {
   artifact_id: string;
 }
 
+// BE-3 — GET /runs/{runId}/artifacts/{artifactId}: one artifact's CONTENT (the run detail /
+// pass ledger carry only refs). The Pass Rail loads this to render what a checkpoint approves.
+export interface PlanArtifactDetail {
+  artifact_id: string;
+  kind: string;
+  content: unknown;
+  created_at: string | null;
+}
+
 // D-PLANFORGE-ARC-PICKER: the spec's own arcs, {id, title} — lets Compile offer a
 // picker instead of a bare arc_id text box a writer has no way to fill in correctly.
 export interface PlanArc {

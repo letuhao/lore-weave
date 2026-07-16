@@ -49,6 +49,13 @@ export const planForgeApi = {
   getRun(bookId: string, runId: string, token: string): Promise<PlanRunDetail> {
     return apiJson<PlanRunDetail>(`${BASE}/books/${bookId}/plan/runs/${runId}`, { token });
   },
+  // BE-3 — one artifact's content (read-only). The Pass Rail loads this to render what a
+  // blocking checkpoint (cast/beats) is asking the human to approve.
+  getArtifact(
+    bookId: string, runId: string, artifactId: string, token: string,
+  ): Promise<import('./types').PlanArtifactDetail> {
+    return apiJson(`${BASE}/books/${bookId}/plan/runs/${runId}/artifacts/${artifactId}`, { token });
+  },
   patchNovelSystemSpec(
     bookId: string, runId: string, spec: Record<string, unknown>, token: string,
   ): Promise<PlanRunDetail> {

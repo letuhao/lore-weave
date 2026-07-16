@@ -156,6 +156,27 @@ async def get_plan_run(
     return detail
 
 
+@router.get("/books/{book_id}/plan/runs/{run_id}/artifacts/{artifact_id}")
+async def get_plan_artifact(
+    book_id: UUID,
+    run_id: UUID,
+    artifact_id: UUID,
+    user_id: UUID = Depends(get_current_user),
+    grant: GrantClient = Depends(get_grant_client_dep),
+    svc: PlanForgeService = Depends(get_plan_forge_service),
+):
+    """BE-3. One artifact's content, so the Pass Rail can show what a checkpoint approves.
+
+    ONE 404 covers run-not-found + artifact-not-found + cross-book artifact — emitting 403 for a
+    foreign artifact_id would be an enumeration oracle (H13). READ-ONLY (FE opens it read-only).
+    """
+    await _gate_book(grant, book_id, user_id, GrantLevel.VIEW)
+    art = await svc.get_artifact(user_id, book_id, run_id, artifact_id)
+    if art is None:
+        raise HTTPException(status_code=404, detail="artifact not found")
+    return art
+
+
 @router.patch("/books/{book_id}/plan/runs/{run_id}/novel-system-spec")
 async def patch_novel_system_spec(
     book_id: UUID,
