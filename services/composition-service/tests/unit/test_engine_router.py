@@ -933,3 +933,41 @@ def test_persist_job_404_when_missing(ctx):
     _use_book(_StubBook())
     jobs.job = None
     assert c.post(f"/v1/composition/jobs/{JOB}/persist", json={}).status_code == 404
+
+
+# ── BE-M4 (3b): GET /works/{pid}/scenes/{node}/suggest-motifs — ranked motif suggest ──
+def test_suggest_motifs_returns_ranked_candidates(ctx, monkeypatch):
+    """The GUI twin of composition_motif_suggest_for_chapter: ranked {motif,score,match_reason}."""
+    from app.db.models import Motif, MotifCandidate
+    c = ctx[0]
+    motif = Motif(id=uuid.uuid4(), owner_user_id=USER, code="rev.slap", name="Face-slap")
+
+    class _StubRetriever:
+        def __init__(self, pool):
+            pass
+
+        async def retrieve(self, caller_id, **kw):
+            assert kw["project_id"] == PROJECT   # gated Work's project rode through
+            return [MotifCandidate(motif=motif, score=0.82, match_reason={"tension": 1, "cosine": 0.8})]
+
+    monkeypatch.setattr("app.routers.engine.get_pool", lambda: object())
+    monkeypatch.setattr("app.routers.engine.MotifRetriever", _StubRetriever)
+    r = c.get(f"/v1/composition/works/{PROJECT}/scenes/{NODE}/suggest-motifs?limit=5")
+    assert r.status_code == 200
+    body = r.json()
+    assert len(body["candidates"]) == 1
+    cand = body["candidates"][0]
+    assert cand["motif"]["name"] == "Face-slap"
+    assert cand["score"] == 0.82
+    assert "tension" in cand["match_reason"]
+
+
+def test_suggest_motifs_404_for_node_in_another_work(ctx, monkeypatch):
+    """Per-tool IDOR (via _load_work_node): a node whose project_id != the gated Work → 404."""
+    c, _works, outline, *_ = ctx
+    # the node resolves to a DIFFERENT project than the URL's PROJECT (reuse the valid _node())
+    outline.node = _node().model_copy(update={"project_id": uuid.uuid4()})
+    monkeypatch.setattr("app.routers.engine.get_pool", lambda: object())
+    monkeypatch.setattr("app.routers.engine.MotifRetriever", lambda pool: None)  # never reached
+    r = c.get(f"/v1/composition/works/{PROJECT}/scenes/{NODE}/suggest-motifs")
+    assert r.status_code == 404
