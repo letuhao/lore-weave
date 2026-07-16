@@ -44,9 +44,11 @@ from app.clients.book_client import BookClient, BookClientError
 from app.db.pool import get_pool
 from app.db.repositories import VersionMismatchError
 from app.db.repositories.arc_template_repo import ArcTemplateRepo
+from app.db.repositories.motif_retrieve import MotifRetriever
 from app.db.repositories.narrative_thread import NarrativeThreadRepo
 from app.db.repositories.outline import OutlineRepo
 from app.db.repositories.structure import StructureConflictError, StructureRepo
+from app.db.repositories.works import WorksRepo
 from app.deps import (
     get_arc_template_repo,
     get_book_client_dep,
@@ -699,6 +701,67 @@ async def extract_arc_template(
             "message": "an arc template with this code + language already exists in your library",
         })
     return result
+
+
+# ── BE-7b (spec 34) — the REST twin of composition_arc_suggest. A READ, but it rides the REST
+#    path like everything else the FE reaches (plan-30 §6.1), so it is a route, not a bridge entry. ──
+# B-3 PRIVACY (mirrors mcp/server.py `_arc_public_projection`): a NON-owned candidate's raw
+# source_ref / embedding / owner are STRIPPED — the shareable thing is the abstract structure, never
+# another user's imported-source reference. Drop-set pinned by a test so the two projections can't drift.
+_ARC_PUBLIC_DROP = frozenset({
+    "embedding", "embedding_model", "embedding_dim", "source_ref", "owner_user_id", "source_version",
+})
+
+
+def _arc_public_projection(arc: Any) -> dict[str, Any]:
+    return {k: v for k, v in arc.model_dump(mode="json").items() if k not in _ARC_PUBLIC_DROP}
+
+
+class ArcSuggest(BaseModel):
+    project_id: UUID
+    premise: str | None = None
+    genre: str | None = None
+    limit: int = Field(default=5, ge=1, le=20)
+    detail: Literal["summary", "full"] = "full"
+
+
+@router.post("/arc-templates/suggest")
+async def suggest_arc_templates(
+    body: ArcSuggest,
+    user_id: UUID = Depends(get_current_user),
+    grant: GrantClient = Depends(get_grant_client_dep),
+) -> dict[str, Any]:
+    """Rank the caller-visible arc templates that fit a Work's premise/genre. VIEW on the Work's
+    book (derived from the row). A non-owned candidate is projected through the B-3 allow-list."""
+    work = await WorksRepo(get_pool()).get(body.project_id)
+    if work is None:
+        raise HTTPException(status_code=404, detail=NOT_ACCESSIBLE_MESSAGE)
+    await _gate_book(grant, work.book_id, user_id, GrantLevel.VIEW)
+    candidates = await MotifRetriever(get_pool()).retrieve_arcs(
+        user_id, book_id=work.book_id, project_id=body.project_id,
+        premise=body.premise, genre=body.genre, limit=body.limit,
+    )
+
+    def _project(arc: Any) -> dict[str, Any]:
+        is_owner = getattr(arc, "owner_user_id", None) == user_id
+        if body.detail == "summary":
+            # a lightweight ref (score + match_reason are kept at the wrapper) — Context Budget Law §6b
+            return {
+                "id": str(arc.id), "code": arc.code, "name": arc.name,
+                "chapter_span": getattr(arc, "chapter_span", None),
+                "genre_tags": list(getattr(arc, "genre_tags", []) or []),
+                "mine": is_owner,
+            }
+        return arc.model_dump(mode="json") if is_owner else _arc_public_projection(arc)
+
+    return {
+        "candidates": [
+            {"arc_template": _project(c.arc_template), "score": c.score, "match_reason": c.match_reason}
+            for c in candidates
+        ],
+        "detail": body.detail,
+        "count": len(candidates),
+    }
 
 
 class ChapterReorder(BaseModel):

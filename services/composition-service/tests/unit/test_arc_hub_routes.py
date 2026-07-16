@@ -340,6 +340,89 @@ def test_extract_template_success_201(client, monkeypatch):
     assert r.json()["template_id"] == "t1"
 
 
+# ── BE-7b: suggest — the B-3 privacy projection (a non-owner candidate strips source_ref) ──
+
+
+class _FakeArc:
+    def __init__(self, owner, source_ref="secret-source"):
+        self.id = uuid4()
+        self.code = "revenge-arc"
+        self.name = "Revenge Arc"
+        self.owner_user_id = owner
+        self.chapter_span = 12
+        self.genre_tags = ["xianxia"]
+        self._source_ref = source_ref
+
+    def model_dump(self, mode="json"):
+        return {
+            "id": str(self.id), "code": self.code, "name": self.name,
+            "owner_user_id": str(self.owner_user_id) if self.owner_user_id else None,
+            "chapter_span": self.chapter_span, "genre_tags": self.genre_tags,
+            "source_ref": self._source_ref, "embedding": [0.1, 0.2], "threads": [{"key": "t1"}],
+        }
+
+
+class _Cand:
+    def __init__(self, arc):
+        self.arc_template = arc
+        self.score = 0.9
+        self.match_reason = {"genre": 1.0, "cosine": 0.8}
+
+
+def _wire_suggest(monkeypatch, candidates):
+    import app.routers.arc as arc_router
+
+    class _Works:
+        def __init__(self, pool): ...
+        async def get(self, pid):
+            from types import SimpleNamespace
+            return SimpleNamespace(book_id=BOOK, project_id=pid)
+
+    class _Retr:
+        def __init__(self, pool): ...
+        async def retrieve_arcs(self, caller, **k): return candidates
+    monkeypatch.setattr(arc_router, "WorksRepo", _Works)
+    monkeypatch.setattr(arc_router, "MotifRetriever", _Retr)
+
+
+def test_suggest_strips_source_ref_from_a_non_owned_candidate(client, monkeypatch):
+    other = uuid4()
+    _wire_suggest(monkeypatch, [_Cand(_FakeArc(owner=other))])   # NOT the caller
+    c, repo = client(GrantLevel.VIEW, structures=AsyncMock())
+    r = c.post("/v1/composition/arc-templates/suggest", json={"project_id": str(uuid4()), "detail": "full"})
+    assert r.status_code == 200
+    tmpl = r.json()["candidates"][0]["arc_template"]
+    # B-3: another user's imported-source reference + embedding + owner are STRIPPED.
+    assert "source_ref" not in tmpl
+    assert "embedding" not in tmpl
+    assert "owner_user_id" not in tmpl
+    # the shareable STRUCTURE survives.
+    assert tmpl["threads"] == [{"key": "t1"}]
+
+
+def test_suggest_owner_sees_their_own_source_ref(client, monkeypatch):
+    _wire_suggest(monkeypatch, [_Cand(_FakeArc(owner=USER))])    # the caller owns it
+    c, repo = client(GrantLevel.VIEW, structures=AsyncMock())
+    r = c.post("/v1/composition/arc-templates/suggest", json={"project_id": str(uuid4()), "detail": "full"})
+    assert r.json()["candidates"][0]["arc_template"]["source_ref"] == "secret-source"
+
+
+def test_suggest_non_grantee_is_404(client, monkeypatch):
+    _wire_suggest(monkeypatch, [])
+    c, repo = client(GrantLevel.NONE, structures=AsyncMock())
+    r = c.post("/v1/composition/arc-templates/suggest", json={"project_id": str(uuid4())})
+    assert r.status_code == 404
+
+
+def test_arc_public_drop_set_matches_the_mcp_twin():
+    # The privacy allow-list is duplicated in arc.py + mcp/server.py `_arc_public_projection`.
+    # Pin it here so a drift on either side is caught (they must stay identical).
+    from app.routers.arc import _ARC_PUBLIC_DROP
+    assert _ARC_PUBLIC_DROP == {
+        "embedding", "embedding_model", "embedding_dim", "source_ref", "owner_user_id", "source_version",
+    }
+
+
 # ── read surface #1: the derived block MUST ride on every shell node ───────────
 
 
