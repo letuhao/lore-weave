@@ -17,6 +17,7 @@ import type { StudioToolRegistration } from '@/features/studio/host/types';
 import { usePassRail } from '../hooks/usePassRail';
 import { PassRow } from './PassRow';
 import { CheckpointReview } from './CheckpointReview';
+import { registerPlanArtifactDocumentProvider, PLAN_ARTIFACT_DOC_TYPE } from '../documents/planArtifactDocument';
 
 export function PassRailPanel(props: IDockviewPanelProps) {
   const { t } = useTranslation('studio');
@@ -49,6 +50,14 @@ export function PassRailPanel(props: IDockviewPanelProps) {
   }), [t, label]);
   useRegisterStudioTool(registration);
   useEffect(() => { props.api.setTitle(label); }, [props.api, label]);
+  // PS-9 — register the read-only plan-artifact provider so a completed pass can open its output.
+  useEffect(() => { registerPlanArtifactDocumentProvider(); }, []);
+  const openArtifact = (artifactId: string) => {
+    if (!rail.runId) return;
+    openPanel('json-editor', {
+      params: { docType: PLAN_ARTIFACT_DOC_TYPE, resourceId: `${rail.runId}:${artifactId}` },
+    });
+  };
 
   const onRun = (passId: string) => { setModelRef(''); setConfirmPass(passId); };
   const doRun = () => {
@@ -104,6 +113,7 @@ export function PassRailPanel(props: IDockviewPanelProps) {
                   blockedAtHere={ledger.blocked_at === pass.pass_id}
                   onRun={onRun}
                   onReview={setReviewPass}
+                  onView={openArtifact}
                   disabled={rail.busy || rail.polling}
                 />
 

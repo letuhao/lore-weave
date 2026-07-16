@@ -18,6 +18,8 @@ interface Props {
   onSelfCheck: () => void;
   onValidate: () => void;
   onCompile: (arcId: string) => void;
+  /** PS-9 — open one artifact read-only in the json-editor (fed by BE-3). */
+  onOpenArtifact: (artifactId: string) => void;
   // ⑨ Repair strip — appears ONLY when self-check found gaps (recovery tools are meaningless
   // without a diagnosis; an always-on row of three paid buttons is a leaky abstraction).
   repairOutput: string | null;
@@ -29,7 +31,7 @@ interface Props {
 
 export function PlanRunView({
   run, polling, busy, selfCheck, validation, compileResult,
-  onSelfCheck, onValidate, onCompile,
+  onSelfCheck, onValidate, onCompile, onOpenArtifact,
   repairOutput, canRepair, onExplain, onApplyFix, onAutofix,
 }: Props) {
   const [pickedArcId, setPickedArcId] = useState('');
@@ -60,9 +62,17 @@ export function PlanRunView({
           <p className="mb-1 text-[10px] uppercase text-muted-foreground">Artifacts</p>
           <ul className="space-y-0.5">
             {run.artifacts.map((a) => (
-              <li key={a.artifact_id} className="flex justify-between gap-2 rounded bg-muted/40 px-2 py-0.5">
-                <span>{a.kind}</span>
-                <span className="font-mono text-[10px] text-muted-foreground/60">{a.artifact_id.slice(0, 8)}</span>
+              <li key={a.artifact_id}>
+                {/* PS-9 — each row opens the artifact read-only (was a dead <li> — the body of the
+                    plan the user paid an LLM to write was unreachable by any client). */}
+                <button
+                  type="button" data-testid={`plan-artifact-${a.kind}`}
+                  onClick={() => onOpenArtifact(a.artifact_id)}
+                  className="flex w-full items-center justify-between gap-2 rounded bg-muted/40 px-2 py-0.5 text-left hover:bg-muted"
+                >
+                  <span>{a.kind}</span>
+                  <span className="font-mono text-[10px] text-accent-foreground underline">open ↗</span>
+                </button>
               </li>
             ))}
           </ul>

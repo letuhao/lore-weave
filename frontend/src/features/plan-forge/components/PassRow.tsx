@@ -11,10 +11,11 @@ interface Props {
   blockedAtHere: boolean;      // this is the blocking pass a human must accept next
   onRun: (passId: string) => void;   // open the cost-confirm for this pass
   onReview: (passId: string) => void; // open the checkpoint review (blocking + completed + pending)
+  onView: (artifactId: string) => void; // PS-9 — open the pass artifact read-only
   disabled: boolean;
 }
 
-export function PassRow({ index, pass, blockedAtHere, onRun, onReview, disabled }: Props) {
+export function PassRow({ index, pass, blockedAtHere, onRun, onReview, onView, disabled }: Props) {
   const { t } = useTranslation('studio');
   const blocked = pass.blockers.length > 0;
   const running = pass.status === 'running' || (pass.status === 'pending' && !!pass.job_id);
@@ -40,7 +41,15 @@ export function PassRow({ index, pass, blockedAtHere, onRun, onReview, disabled 
 
       <span className="min-w-0">
         <span className="font-medium text-foreground">{pass.pass_id}</span>
-        <span className="ml-1 truncate text-[10px] text-muted-foreground">→ {pass.output_kind}</span>
+        {/* PS-9 — a completed pass's output is readable (its content route is BE-3). */}
+        {completed && pass.artifact_id ? (
+          <button
+            type="button" data-testid={`pass-view-${pass.pass_id}`} onClick={() => onView(pass.artifact_id as string)}
+            className="ml-1 truncate text-[10px] text-accent-foreground underline hover:brightness-110"
+          >→ {pass.output_kind} ↗</button>
+        ) : (
+          <span className="ml-1 truncate text-[10px] text-muted-foreground">→ {pass.output_kind}</span>
+        )}
       </span>
 
       {/* checkpoint class */}

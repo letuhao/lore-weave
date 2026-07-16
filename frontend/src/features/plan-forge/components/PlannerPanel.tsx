@@ -18,6 +18,7 @@ import type { PlanRunMode } from '../types';
 import { BootstrapPanel } from './BootstrapPanel';
 import { PlanRunView } from './PlanRunView';
 import { PlanRunsListView } from './PlanRunsListView';
+import { registerPlanArtifactDocumentProvider, PLAN_ARTIFACT_DOC_TYPE } from '../documents/planArtifactDocument';
 
 type PlannerView = 'list' | 'run';
 
@@ -56,6 +57,16 @@ export function PlannerPanel(props: IDockviewPanelProps) {
     mcpToolPrefixes: ['composition_'],
   }), [t, label]);
   useRegisterStudioTool(registration);
+
+  // PS-9 — register the read-only plan-artifact json provider so an artifact row can open in the
+  // json-editor. Idempotent; mirrors the other feature providers registering on mount.
+  useEffect(() => { registerPlanArtifactDocumentProvider(); }, []);
+  const openArtifact = (artifactId: string) => {
+    if (!plan.run) return;
+    openPanel('json-editor', {
+      params: { docType: PLAN_ARTIFACT_DOC_TYPE, resourceId: `${plan.run.id}:${artifactId}` },
+    });
+  };
 
   // Self-title the dock tab (openPanel sets the title before mount; an agent/palette open otherwise
   // shows the raw 'planner' id). Also keeps it correct across a locale swap. See EditorPanel.
@@ -219,6 +230,7 @@ export function PlannerPanel(props: IDockviewPanelProps) {
                 onSelfCheck={() => void plan.runSelfCheck()}
                 onValidate={() => void plan.runValidate()}
                 onCompile={(arcId) => { bootstrap.reset(); void plan.runCompile(arcId); }}
+                onOpenArtifact={openArtifact}
                 repairOutput={plan.repairOutput}
                 canRepair={!plan.busy && !plan.polling && effectiveModelRef.length > 0}
                 onExplain={() => void plan.runExplain(effectiveModelRef)}

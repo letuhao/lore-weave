@@ -110,7 +110,7 @@ describe('PlanRunView — null fidelity_score', () => {
 describe('PlanRunView — repair strip', () => {
   const repairProps = {
     run: RUN, polling: false, busy: false, validation: null, compileResult: null,
-    onSelfCheck: noop, onValidate: noop, onCompile: noop,
+    onSelfCheck: noop, onValidate: noop, onCompile: noop, onOpenArtifact: noop,
     repairOutput: null, canRepair: true, onExplain: noop, onApplyFix: noop, onAutofix: noop,
   };
 
@@ -134,6 +134,22 @@ describe('PlanRunView — repair strip', () => {
     render(<PlanRunView {...repairProps} canRepair={false}
       selfCheck={{ gaps: [{ path: 'x', severity: 'error', message: 'y' }], fidelity_score: null }} />);
     expect((screen.getByTestId('plan-repair-autofix') as HTMLButtonElement).disabled).toBe(true);
+  });
+});
+
+// PS-9 — the artifact rows used to be dead <li>s (the plan the user paid to write was unreachable).
+describe('PlanRunView — artifact rows open read-only (PS-9)', () => {
+  it('each artifact row opens the artifact', () => {
+    const onOpenArtifact = vi.fn();
+    render(
+      <PlanRunView
+        run={{ ...RUN, artifacts: [{ kind: 'package', artifact_id: 'art-pkg' }] }}
+        polling={false} busy={false} selfCheck={null} validation={null} compileResult={null}
+        onSelfCheck={noop} onValidate={noop} onCompile={noop} onOpenArtifact={onOpenArtifact}
+      />,
+    );
+    fireEvent.click(screen.getByTestId('plan-artifact-package'));
+    expect(onOpenArtifact).toHaveBeenCalledWith('art-pkg');
   });
 });
 

@@ -98,13 +98,10 @@ no-silent-fail · agent-parity · loop-connected · live-browser-proven · i18n+
   critical-stop (fully reversible). PO informed.
 
 ### PARKED  (blocker -> defer row + continue)
-- **D-S3-PS9-ARTIFACT-VIEW** (gate #2 large — provider infra): make the planner's artifact rows +
-  the Pass Rail's "view" clickable → open the artifact read-only via a registered `plan-artifact`
-  json-document provider (composite resourceId `{runId}:{artifactId}`, F-P11). BE-3 + FE-1 (both
-  DONE) are the halves; the remaining piece is registering the provider in the json-document registry
-  + wiring openPanel('json-editor', …). Target: a Studio-polish pass. (M4-CP renders cast/beats content
-  INLINE already, so the checkpoint review is operable without this; this is the planner-panel + rail
-  "open ↗" affordance.)
+- **D-S3-PS9-ARTIFACT-VIEW — CLEARED (built, not deferred):** `planArtifactDocument.ts` read-only
+  provider (composite `{runId}:{artifactId}`, fetches via BE-3, save/update no-op) registered on
+  planner+rail mount; PlanRunView artifact rows are now clickable "open ↗"; PassRow completed passes
+  open their output "→ kind ↗". planArtifactDocument.test.ts + PassRow/PlanRunView tests, 65 passed.
 - **D-S3-BE3B-SOURCE-RESUME** (gate #1 small, own slice): `_serialize_run` returns `source_checksum`
   not `source_markdown`, so reopening a run cannot restore the pasted braindump into the textarea.
   Small BE add (select+return source_markdown) + FE derived-default seed. Deferred from REPAIR to keep

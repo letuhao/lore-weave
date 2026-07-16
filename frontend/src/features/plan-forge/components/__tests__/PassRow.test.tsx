@@ -16,6 +16,7 @@ function pass(over: Partial<PlanPass>): PlanPass {
 }
 
 const noop = () => {};
+const base = { blockedAtHere: false, onRun: noop, onReview: noop, onView: noop, disabled: false };
 
 describe('PassRow — the action cell reflects the pass state', () => {
   it('runnable (no blockers, not run) → a run button', () => {
@@ -57,7 +58,20 @@ describe('PassRow — the action cell reflects the pass state', () => {
 
   it('completed + stale → freshness reads "stale"', () => {
     render(<PassRow index={1} pass={pass({ pass_id: 'motifs', checkpoint: 'advisory', status: 'completed', decision: 'auto', fresh: false })}
-      blockedAtHere={false} onRun={noop} onReview={noop} disabled={false} />);
+      blockedAtHere={false} onRun={noop} onReview={noop} onView={noop} disabled={false} />);
     expect(screen.getByTestId('pass-fresh-motifs').textContent).toContain('stale');
+  });
+
+  it('PS-9 — a completed pass with an artifact opens it read-only (was unreachable)', () => {
+    const onView = vi.fn();
+    render(<PassRow index={1} pass={pass({ pass_id: 'motifs', checkpoint: 'advisory', status: 'completed', decision: 'auto', fresh: true, artifact_id: 'art9' })}
+      {...base} onView={onView} />);
+    fireEvent.click(screen.getByTestId('pass-view-motifs'));
+    expect(onView).toHaveBeenCalledWith('art9');
+  });
+
+  it('a NOT-run pass offers no view (nothing to read yet)', () => {
+    render(<PassRow index={4} pass={pass({ artifact_id: null })} {...base} />);
+    expect(screen.queryByTestId('pass-view-beats')).toBeNull();
   });
 });
