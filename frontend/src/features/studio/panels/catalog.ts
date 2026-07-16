@@ -55,6 +55,7 @@ import { ChapterBrowserPanel } from './ChapterBrowserPanel';
 import { SceneBrowserPanel } from './SceneBrowserPanel';
 import { SceneInspectorPanel } from './SceneInspectorPanel';
 import { WhatIfCanvasPanel } from './WhatIfCanvasPanel';
+import { DivergencePanel } from './DivergencePanel';
 import { PlanHubPanel } from './PlanHubPanel';
 import { BookImportPanel } from './BookImportPanel';
 import { ContextInspectorPanel } from './ContextInspectorPanel';
@@ -324,6 +325,7 @@ export const STUDIO_PANELS: StudioPanelDef[] = [
   // ── S4 · Motif & craft ──         (motif-library, quality-conformance)
   { id: 'motif-library', component: MotifLibraryPanel, titleKey: 'panels.motif-library.title', descKey: 'panels.motif-library.desc', category: 'storyBible', guideBodyKey: 'panels.motif-library.guideBody' },
   // ── S5 · What-If & Divergence ──  (divergence, + canonview home)
+  { id: 'divergence', component: DivergencePanel, titleKey: 'panels.divergence.title', descKey: 'panels.divergence.desc', category: 'editor', guideBodyKey: 'panels.divergence.guideBody' }, /* owner: S5 */
   // ── S6 · Canon/Quality/Progress ──(quality-canon-rules, quality-corrections, quality-heal, progress, + flywheel home)
   { id: 'quality-canon-rules', component: QualityCanonRulesPanel, titleKey: 'panels.quality-canon-rules.title', descKey: 'panels.quality-canon-rules.desc', category: 'quality', guideBodyKey: 'panels.quality-canon-rules.guideBody' },
   // ── S7 · Knowledge/World/Cast ──  (world, world-map, place-graph, cast, character-arc)

@@ -240,6 +240,7 @@
           "plan-hub",
           "plan-passes",
           "whatif-canvas",
+          "divergence",
           "book-import",
           "context-inspector",
           "sharing",

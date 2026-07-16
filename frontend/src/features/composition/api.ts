@@ -444,12 +444,24 @@ export const compositionApi = {
       body: JSON.stringify(commitMessage ? { commit_message: commitMessage } : {}),
     });
   },
-  // Patch the Work (LOOM chapter-assembly: set settings.assembly_mode). NOTE the
-  // server REPLACES the whole settings blob — the caller MUST merge the existing
-  // settings (see useChapterAssembly.setAssemblyMode) so it never drops
-  // critic_model_*/reasoning_engine/etc.
-  patchWork(projectId: string, patch: { settings?: Record<string, unknown>; status?: string }, token: string): Promise<Work> {
-    return apiJson(`${BASE}/works/${projectId}`, { method: 'PATCH', body: JSON.stringify(patch), token });
+  // Patch the Work (settings and/or status). BE-18: the server now SHALLOW-MERGES a
+  // partial `settings` patch (COALESCE(settings,'{}') || $n), so a caller may send only
+  // the keys it changes; merging the full blob FE-side is still safe (idempotent).
+  // `opts.version` opts IN to If-Match optimistic concurrency (412 WORK_VERSION_CONFLICT
+  // carrying the current row) — used by the divergence ARCHIVE, human-paced + conflict-
+  // meaningful. Do NOT pass it from high-frequency writers (e.g. world-map node drag).
+  patchWork(
+    projectId: string,
+    patch: { settings?: Record<string, unknown>; status?: string },
+    token: string,
+    opts?: { version?: number },
+  ): Promise<Work> {
+    return apiJson(`${BASE}/works/${projectId}`, {
+      method: 'PATCH',
+      body: JSON.stringify(patch),
+      token,
+      ...(opts?.version !== undefined ? { headers: { 'If-Match': String(opts.version) } } : {}),
+    });
   },
   // B2 chapter single-pass — generate a whole chapter from its decompose plan.
   async generateChapter(projectId: string, chapterId: string, params: ChapterAssembleParams, token: string): Promise<ChapterGeneration> {
