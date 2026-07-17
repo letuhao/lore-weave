@@ -17,7 +17,7 @@
   },
   "panels": {
     "compose": {
-      "title": "Compose",
+      "title": "Co-Autor-Chat",
       "desc": "KI-Co-Writer Chat",
       "guideBody": "Der KI-Co-Writer für dieses Buch – chatte mit ihm über eine Szene, bitte ihn um einen Entwurf oder eine Überarbeitung eines Abschnitts oder brainstorme, was als Nächstes passiert. Öffne ihn, wenn du einen Gesprächspartner brauchst, der die Charaktere, das Glossar und die vorangegangenen Kapitel dieses Buches bereits kennt."
     },
@@ -1304,9 +1304,12 @@
     "reviewPrompt": "{{pass}} genehmigen? Dies ermöglicht dem Compiler, darüber hinaus zu verarbeiten.",
     "seedUnavailable": "Glossar-Seed-Vorschlag nicht verfügbar.",
     "seedApplied": "Glossar-Seed angewendet – Besetzung kann genehmigt werden.",
-    "seedGate": "Der Glossar-Seed ist „{{status}}“. Wenden Sie ihn an, bevor Sie die Besetzung genehmigen (PF-7).",
+    "seedGate": "Die Figuren deiner Besetzung müssen zum Glossar hinzugefügt werden, bevor du freigeben kannst. Wende den Seed an, um sie hinzuzufügen.",
     "applySeed": "Seed anwenden",
-    "approveGated": "Zuerst den Glossar-Seed anwenden (PF-7)"
+    "approveGated": "Zuerst den Glossar-Seed anwenden (PF-7)",
+    "editAdd": "Hinzufügen",
+    "editRemove": "Entfernen",
+    "editEmpty": "Noch nichts hier — füge eine Zeile hinzu."
   },
   "sceneCompose": {
     "empty": "Wählen Sie ein Kapitel im Manuskript-Navigator aus, um dessen Szenen hier zu entwerfen.",

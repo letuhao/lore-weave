@@ -22,7 +22,7 @@
       "guideBody": "Trình kiểm tra Cốt truyện mở ra một nút trong cây thông số sách của bạn — một thiên sử thi, một hồi, hoặc một tiểu hồi. Cây này không phải để trang trí: các tuyến cốt truyện và liên kết nhân vật của nó được đưa vào mọi câu lệnh tạo nội dung, vì vậy việc chỉnh sửa một hồi tại đây sẽ thay đổi cách AI soạn thảo các chương của nó. Các tuyến và các vị trí trong danh sách nhân vật được giải quyết theo dạng thác đổ — một mục được kế thừa từ thiên sử thi cha sẽ hiển thị màu xám với hành động Ghi đè (việc chỉnh sửa trực tiếp sẽ âm thầm tạo ra một bản sao tách biệt). Phạm vi chương, tổng hợp các lời hứa chưa hoàn thành và nguồn gốc khuôn mẫu là chế độ chỉ đọc. Việc lưu trữ một hồi sẽ đưa các chương của nó trở lại khay chưa lập kế hoạch; việc khôi phục sẽ gắn kết lại chúng. Mở nó từ Trung tâm Lập kế hoạch (chọn một hồi), bảng lệnh, hoặc tác nhân."
     },
     "compose": {
-      "title": "Compose",
+      "title": "Trò chuyện đồng tác giả",
       "desc": "Chat đồng sáng tác AI",
       "guideBody": "Compose là trợ lý viết AI đồng hành cùng cuốn sách này — trò chuyện về một cảnh, nhờ nó viết nháp hoặc chỉnh sửa một đoạn văn, hoặc cùng brainstorm xem chuyện gì xảy ra tiếp theo. Mở panel này khi bạn cần một người bạn trò chuyện đã nắm rõ nhân vật, từ điển thuật ngữ và các chương trước của cuốn sách."
     },
@@ -644,9 +644,12 @@
     "reviewPrompt": "Phê duyệt {{pass}}? Việc này cho phép trình biên dịch tiếp tục xử lý qua phần này.",
     "seedUnavailable": "Đề xuất hạt giống thuật ngữ không khả dụng.",
     "seedApplied": "Đã áp dụng hạt giống thuật ngữ — có thể phê duyệt dàn diễn viên.",
-    "seedGate": "Hạt giống thuật ngữ đang ở trạng thái «{{status}}». Hãy áp dụng nó trước khi phê duyệt dàn diễn viên (PF-7).",
+    "seedGate": "Các nhân vật trong dàn cast của bạn phải được thêm vào bảng chú giải trước khi bạn có thể phê duyệt. Áp dụng seed để thêm họ.",
     "applySeed": "Áp dụng hạt giống",
-    "approveGated": "Hãy áp dụng hạt giống thuật ngữ trước (PF-7)"
+    "approveGated": "Hãy áp dụng hạt giống thuật ngữ trước (PF-7)",
+    "editAdd": "Thêm",
+    "editRemove": "Xóa",
+    "editEmpty": "Chưa có gì ở đây — thêm một hàng."
   },
   "planner": {
     "sourcePlaceholder": "Dán markdown hệ thống truyện…",

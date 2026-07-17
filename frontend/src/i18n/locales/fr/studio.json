@@ -17,7 +17,7 @@
   },
   "panels": {
     "compose": {
-      "title": "Composition",
+      "title": "Chat du co-auteur",
       "desc": "Chat avec l'IA co-auteur",
       "guideBody": "L'IA co-auteur pour ce livre — discutez d'une scène, demandez-lui de rédiger ou de réviser un passage, ou explorez des idées pour la suite. Ouvrez-le lorsque vous avez besoin d'un partenaire de conversation qui connaît déjà les personnages, le glossaire et les chapitres précédents de ce livre."
     },
@@ -1304,9 +1304,12 @@
     "reviewPrompt": "Approuver {{pass}} ? Cela permet au compilateur de passer à l'étape suivante.",
     "seedUnavailable": "Proposition de graine de glossaire indisponible.",
     "seedApplied": "Graine de glossaire appliquée — la distribution peut être approuvée.",
-    "seedGate": "La graine de glossaire est « {{status}} ». Appliquez-la avant d'approuver la distribution (PF-7).",
+    "seedGate": "Les personnages de votre distribution doivent être ajoutés au glossaire avant que vous puissiez approuver. Appliquez le seed pour les ajouter.",
     "applySeed": "Appliquer la graine",
-    "approveGated": "Appliquez d'abord la graine du glossaire (PF-7)"
+    "approveGated": "Appliquez d'abord la graine du glossaire (PF-7)",
+    "editAdd": "Ajouter",
+    "editRemove": "Supprimer",
+    "editEmpty": "Rien ici pour l’instant — ajoutez une ligne."
   },
   "sceneCompose": {
     "empty": "Sélectionnez un chapitre dans le navigateur de manuscrit pour en rédiger les scènes ici.",

@@ -17,7 +17,7 @@
   },
   "panels": {
     "compose": {
-      "title": "Compose",
+      "title": "Obrolan Co-writer",
       "desc": "Chat co-writer AI",
       "guideBody": "Co-writer AI untuk buku ini — ajak mengobrol tentang sebuah adegan, minta ia membuat draf atau merevisi paragraf, atau curah pendapat tentang apa yang terjadi selanjutnya. Buka panel ini saat Anda menginginkan mitra percakapan yang sudah memahami karakter, glosarium, dan bab-bab sebelumnya dalam buku ini."
     },
@@ -1304,9 +1304,12 @@
     "reviewPrompt": "Setujui {{pass}}? Ini memungkinkan kompiler untuk melanjutkannya.",
     "seedUnavailable": "Usulan benih glosarium tidak tersedia.",
     "seedApplied": "Benih glosarium telah diterapkan — cast dapat disetujui.",
-    "seedGate": "Benih glosarium berstatus «{{status}}». Terapkan sebelum menyetujui cast (PF-7).",
+    "seedGate": "Karakter pemeran Anda harus ditambahkan ke glosarium sebelum Anda dapat menyetujui. Terapkan seed untuk menambahkannya.",
     "applySeed": "Terapkan benih",
-    "approveGated": "Terapkan benih glosarium terlebih dahulu (PF-7)"
+    "approveGated": "Terapkan benih glosarium terlebih dahulu (PF-7)",
+    "editAdd": "Tambah",
+    "editRemove": "Hapus",
+    "editEmpty": "Belum ada apa-apa di sini — tambahkan baris."
   },
   "sceneCompose": {
     "empty": "Pilih bab dalam navigator manuskrip untuk menyusun adegan di sini.",

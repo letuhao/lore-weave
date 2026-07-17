@@ -17,7 +17,7 @@
   },
   "panels": {
     "compose": {
-      "title": "Compose",
+      "title": "Sembang Penulis Bersama",
       "desc": "Sembang penulisan bersama AI",
       "guideBody": "Rakan penulisan AI untuk buku ini — berbual dengannya tentang sesuatu babak, minta ia merangka atau menyemak semula perenggan, atau sumbang saran tentang apa yang berlaku seterusnya. Buka panel ini apabila anda mahukan rakan perbualan yang sudah mengenali watak, glosari, dan bab-bab terdahulu buku ini."
     },
@@ -1304,9 +1304,12 @@
     "reviewPrompt": "Luluskan {{pass}}? Ini membolehkan kompilator meneruskan proses melampauinya.",
     "seedUnavailable": "Cadangan benih glosari tidak tersedia.",
     "seedApplied": "Benih glosari telah diterapkan — watak boleh diluluskan.",
-    "seedGate": "Benih glosari adalah «{{status}}». Terapkannya sebelum meluluskan watak (PF-7).",
+    "seedGate": "Watak pelakon anda mesti ditambah ke glosari sebelum anda boleh meluluskan. Gunakan seed untuk menambahnya.",
     "applySeed": "Terap benih",
-    "approveGated": "Terapkan benih glosari terlebih dahulu (PF-7)"
+    "approveGated": "Terapkan benih glosari terlebih dahulu (PF-7)",
+    "editAdd": "Tambah",
+    "editRemove": "Buang",
+    "editEmpty": "Belum ada apa-apa di sini — tambah satu baris."
   },
   "sceneCompose": {
     "empty": "Pilih bab dalam navigasi manuskrip untuk merangka babak di sini.",

@@ -17,7 +17,7 @@
   },
   "panels": {
     "compose": {
-      "title": "Compose",
+      "title": "Yardımcı Yazar Sohbeti",
       "desc": "Yapay zeka ile yazım sohbeti",
       "guideBody": "Bu kitabın yapay zeka yazım ortağı — bir sahne hakkında onunla sohbet edin, bir pasaj taslağı oluşturmasını veya revize etmesini isteyin ya da bir sonraki adımda ne olacağını beyin fırtınası yaparak tartışın. Bu kitabın karakterlerini, sözlüğünü ve önceki bölümlerini zaten bilen bir sohbet ortağı istediğinizde açın."
     },
@@ -1304,9 +1304,12 @@
     "reviewPrompt": "{{pass}} onaylansın mı? Bu, derleyicinin bu aşamayı geçmesini sağlar.",
     "seedUnavailable": "Sözlük tohumu önerisi mevcut değil.",
     "seedApplied": "Sözlük tohumu uygulandı — kadro onaylanabilir.",
-    "seedGate": "Sözlük tohumu «{{status}}» durumunda. Kadroyu onaylamadan önce uygulayın (PF-7).",
+    "seedGate": "Onaylayabilmeniz için önce kadronuzun karakterleri sözlüğe eklenmelidir. Eklemek için seed’i uygulayın.",
     "applySeed": "Tohumu uygula",
-    "approveGated": "Önce sözlük tohumunu uygulayın (PF-7)"
+    "approveGated": "Önce sözlük tohumunu uygulayın (PF-7)",
+    "editAdd": "Ekle",
+    "editRemove": "Kaldır",
+    "editEmpty": "Burada henüz bir şey yok — bir satır ekleyin."
   },
   "sceneCompose": {
     "empty": "Sahnelerini burada taslak haline getirmek için taslak gezgininden bir bölüm seçin.",

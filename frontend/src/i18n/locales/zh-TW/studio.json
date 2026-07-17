@@ -17,7 +17,7 @@
   },
   "panels": {
     "compose": {
-      "title": "Compose",
+      "title": "協作聊天",
       "desc": "AI 共同創作對話",
       "guideBody": "這本書的 AI 共同創作夥伴——你可以和它聊某個場景、請它草擬或修改段落，或是一起腦力激盪接下來的劇情發展。當你想要一個已經熟悉這本書角色、詞彙表與先前章節內容的對話夥伴時，就開啟這個面板。"
     },
@@ -1304,9 +1304,12 @@
     "reviewPrompt": "核准 {{pass}} 嗎？核准後編譯器將繼續執行後續步驟。",
     "seedUnavailable": "無法取得術語表種子提案。",
     "seedApplied": "術語表種子已套用 — 現在可以核准角色表。",
-    "seedGate": "術語表種子狀態為「{{status}}」。請在核准角色表前先套用它 (PF-7)。",
+    "seedGate": "在你核准之前，必須先將角色陣容中的人物加入詞彙表。套用種子以加入他們。",
     "applySeed": "套用種子",
-    "approveGated": "請先套用術語表種子 (PF-7)"
+    "approveGated": "請先套用術語表種子 (PF-7)",
+    "editAdd": "新增",
+    "editRemove": "移除",
+    "editEmpty": "這裡還沒有內容 — 新增一列。"
   },
   "sceneCompose": {
     "empty": "請在手稿導覽器中選擇一個章節，在此草擬其場景。",

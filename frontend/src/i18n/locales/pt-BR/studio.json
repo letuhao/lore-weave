@@ -17,7 +17,7 @@
   },
   "panels": {
     "compose": {
-      "title": "Compor",
+      "title": "Chat do coautor",
       "desc": "Chat de coescrita com IA",
       "guideBody": "O coescritor de IA para este livro — converse com ele sobre uma cena, peça para rascunhar ou revisar um trecho, ou faça um brainstorming sobre o que acontece a seguir. Abra-o quando quiser um parceiro de conversa que já conheça os personagens, o glossário e os capítulos anteriores deste livro."
     },
@@ -1304,9 +1304,12 @@
     "reviewPrompt": "Aprovar {{pass}}? Isso permite que o compilador prossiga além dele.",
     "seedUnavailable": "Proposta de semente do glossário indisponível.",
     "seedApplied": "Semente do glossário aplicada — o elenco pode ser aprovado.",
-    "seedGate": "A semente do glossário está como «{{status}}». Aplique-a antes de aprovar o elenco (PF-7).",
+    "seedGate": "Os personagens do seu elenco precisam ser adicionados ao glossário antes de você aprovar. Aplique o seed para adicioná-los.",
     "applySeed": "Aplicar semente",
-    "approveGated": "Aplique a semente do glossário primeiro (PF-7)"
+    "approveGated": "Aplique a semente do glossário primeiro (PF-7)",
+    "editAdd": "Adicionar",
+    "editRemove": "Remover",
+    "editEmpty": "Nada aqui ainda — adicione uma linha."
   },
   "sceneCompose": {
     "empty": "Selecione um capítulo no navegador do manuscrito para rascunhar suas cenas aqui.",
