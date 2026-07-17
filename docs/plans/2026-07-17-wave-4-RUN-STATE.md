@@ -46,7 +46,7 @@ smoke (drive the real app as a user) for each:
 **B · motif graph-canvas — DONE ✅** (commits: BE `05445221b`-adjacent, FE B3-B6, live E2E `d7a8fb59d`, +this review fix). Persisted per-viewer positions live-proven end-to-end (drag→PATCH→DB→reload).
 
 ### DEBT (from B8 review)
-- **D-MOTIF-GRAPH-BOOK-SCOPING** (design refinement, gate #2) — `nodes_for_book` returns ALL the caller's OWN motifs (`owner_user_id=$1`) regardless of book, so a user's whole library shows in every book's graph (only the `book_shared` tier is book-filtered). Honest + bounded (node cap + truncation) for v1, but not truly "this book's" graph. Refine later to filter own motifs by book relevance (e.g. bound-in-book via motif_application, or the `book_id` label) — needs a design call + a join, so deferred not fixed.
+- **D-MOTIF-GRAPH-BOOK-SCOPING** (design refinement, gate #2) — `nodes_for_book` returns ALL the caller's OWN motifs (`owner_user_id=$1`) regardless of book, so a user's whole library shows in every book's graph (only the `book_shared` tier is book-filtered). Honest + bounded (node cap + truncation) for v1, but not truly "this book's" graph. Spec: [`docs/specs/2026-07-17-motif-graph-book-scoping.md`](../specs/2026-07-17-motif-graph-book-scoping.md) — recommends mirroring the library `list_in_book` book-relevance clause (Option A, 1 SQL clause); Option B (bound-in-book via motif_application) deferred.
 
 ## REGISTERS (append as you go)
 ### DECISIONS
