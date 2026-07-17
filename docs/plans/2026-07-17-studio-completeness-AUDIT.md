@@ -11,8 +11,10 @@
 > all 88 catalog panels. **Round 5 then re-derived the MAP itself — and found plan 30 has a hole** (an
 > entire agent-only triage domain it never names, 18 tools it never counted, and 4 more composition
 > holes). **ALL 142 tools are now re-derived — the audit is COMPLETE in breadth.** What remains: BUILD
-> (A-3..A-13) + 7 PO decisions + the loop-③ smoke — which is the BEHAVIOURAL audit this static one
-> cannot perform.
+> (A-3..A-13 + the Tier-A/B data & route builds) + 7 PO decisions + the loop-③ smoke — the BEHAVIOURAL
+> audit this static one cannot perform. **Round 6 (CRUD-completeness) is COMPLETE across all 4 service
+> domains** — it re-framed the whole effort: the real work is not porting legacy, it is BUILDING the verbs
+> the legacy never had. See §6.5 synthesis for the Tier-A/B/C build-spec input.
 >
 > **Depth of this audit — say it plainly:** STATIC. It proves "a button has no handler", "a panel does not
 > mount the component", "an api function has no caller", "a route does not exist". It does NOT prove
@@ -476,7 +478,67 @@ DATA layer, so no port could ever add it.** Grouped by fix shape:
 - `G-ARC-SPEC-CRUD` ("all 5 arc CRUD tools NO-FE") — **closed** (`useArcInspector` calls all 5).
 - `G-KG-WRITE-HOLES` "grep createEntity → EMPTY" — **false at HEAD**.
 
-*(world / book / glossary domains — the 4th agent — appended below when it lands.)*
+### 6.5 · world / book / glossary (Go services) — verified
+
+**Big correction to plan 30: G-WORLD-MAPS / BE-15 is STALE in the reassuring direction.** The doc (dated
+2026-07-01) claims world-maps has *"8 MCP tools, NO REST layer, UPDATE does not exist at ANY layer…
+degrades to delete+recreate which churns ids and breaks glossary entity links."* **False at HEAD.** The
+S7·2 world-map editor shipped a full public REST layer + MCP, and **pin-drag and region-reshape both
+persist via real in-place UPDATE** (`UPDATE map_markers SET x,y` / `UPDATE map_regions SET polygon`),
+preserving `marker_id`/`region_id`/`entity_id` — the exact churn defect the doc feared **does not occur**.
+If BE-15 is still backlogged as "L: design an UPDATE layer", **close it — the layer shipped.**
+
+**The canonical tenancy bug is confirmed FIXED.** The globally-unique-user-mutable `entity_kinds` (the bug
+CLAUDE.md's User-Boundaries section is built around) was split: `system_kinds.code` global but **admin-only**
+(RS256 `admin:write`), `user_kinds UNIQUE(owner_user_id, code)` (`migrate.go:1731`), `book_kinds
+UNIQUE(book_id, code)` (`migrate.go:1819`). No shared user-mutable row remains. Verified.
+
+Real gaps found here (all buildable now):
+
+| Domain | Missing | Layer | Consequence | Size |
+|---|---|---|---|---|
+| **parts (acts/volumes)** | Create · Update · Delete · move-chapter-to-part | **route + MCP** (table exists; only writer is the import decomposer, `parse.go:192`) | A Studio user cannot create/rename/delete an act or re-home a chapter — the hierarchy is **frozen at import**. `patchChapter`/`reorderChapters` never touch `part_id`. | **M** + **S** |
+| **glossary attribute-VALUE on an entity** | add-later via REST; DELETE the value row | **route** (add is MCP-only `entity_attribute_edit_tools.go:256`; delete absent everywhere) | If the ontology gains an attribute after an entity exists, **only an LLM can fill it** — the REST/GUI editor can't | **S** / **XS** |
+| **world_maps OCC** | `version=$expected` predicate on MCP update + image upload | **consistency defect** — REST PATCH gates it, MCP (`mcp_maps.go:521`) + image (`maps_image.go:124`) don't | an agent/image repoint silently clobbers a concurrent human rename the human's own PATCH would 412 | **S** |
+| **MCP `world_update`/`world_delete`, chapter-reorder** | agent-side verbs | **MCP** (REST exists) | agent can create a mis-named world but not rename/delete it; can't reorder chapters | **XS–S** |
+| **wiki suggestion withdraw / status** | contributor retract + see accept/reject | **route** (submit is INSERT-only) | a contributor who mis-files can't retract and is blind to the outcome | **XS** |
+
+**Complete here (no gap):** books/chapters/chapter-content (full CRUD, OCC autosave, immutable revision
+spine, soft-delete lifecycle, grant tenancy) · world maps/markers/regions (real move/reshape UPDATE) ·
+glossary entities/kinds/attribute-defs/revisions (tiered CRUD, recycle-bin, exact-id revert) · wiki
+pages/generation/writeback (CRUD + human-edit clobber-guard + outbox).
+
+---
+
+## Round 6 synthesis — the detail-level build-spec input
+
+The completeness gaps, ranked by whether a port could ever fix them:
+
+**Tier A — DATA-layer builds (no port can add these; a new repo method + migration is required):**
+1. `structure_template` write side — the user-custom tier is unpopulatable (M)
+2. `parts` (acts/volumes) editor CRUD + move-chapter-to-part (M+S)
+3. `references` UPDATE (S/M)
+4. `derivative` delta mutation — `divergence_spec` + `entity_override` (M)
+
+**Tier B — route/MCP wire-ups (the repo method or public route already exists):**
+5. fact author (`POST /pending-facts`) + fact invalidate (`/facts/{id}/invalidate`) (S / XS)
+6. glossary attribute-VALUE add-via-REST + row delete (S / XS)
+7. world_maps OCC predicate on MCP+image; MCP world_update/delete + chapter-reorder (S / XS)
+8. triage panel + view-aware graph reader (F-10/F-12) — FE wire-ups (XS–S)
+9. motif RESTORE + arc-template RESTORE (soft-archive dead-ends) (S each)
+10. corrections `list_for_job` route; glossary→graph seed route (XS / S)
+11. wiki suggestion withdraw/status (XS)
+
+**Tier C — FE-only (the orphans from rounds 1–5): style-voice + reference-shelf panels, the Issues tab,
+the bible/quality rails, MotifBindingLens mount, the 3 arc agent-only surfaces.**
+
+**Confirmed COMPLETE — must NOT be re-specced:** outline · canon rules · style/voice(BE) · arcs · plan
+runs · motif bindings · projects · schema/ontology · books/chapters · world maps · glossary entities/kinds ·
+wiki. Plus the by-design absences (bitemporal fact/relation update, entity hard-delete, import immutability).
+
+**Stale in plan 30 — remove from any backlog:** G-WORLD-MAPS/BE-15 (UPDATE layer shipped), the
+arc_apply/drift `_pending_engine` flags (both wired), G-ARC-SPEC-CRUD (closed), G-KG-WRITE-HOLES createEntity
+claim (false at HEAD).
 
 ---
 
