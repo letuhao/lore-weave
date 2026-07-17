@@ -422,8 +422,25 @@
         "decision": "Keputusan",
         "preference": "Preferensi",
         "milestone": "Tonggak sejarah",
-        "negation": "Negasi"
-      }
+        "negation": "Negasi",
+        "statement": "Pernyataan",
+        "commitment": "Komitmen"
+      },
+      "addFact": "Tambah fakta",
+      "addFactTitle": "Tambah fakta tentang entitas ini",
+      "factContentLabel": "Fakta",
+      "factContentPlaceholder": "mis. Tidak percaya pada Dewan setelah pengkhianatan",
+      "factTypeLabel": "Tipe",
+      "factPredicatePlaceholder": "predikat (opsional, mis. loyal_to)",
+      "factObjectPlaceholder": "objek (opsional, mis. House Vaeth)",
+      "addFactSave": "Simpan fakta",
+      "addFactCancel": "Batal",
+      "addFactSuccess": "Fakta ditambahkan",
+      "addFactFailed": "Tidak dapat menambah fakta: {{error}}",
+      "markWrong": "Tandai salah",
+      "markWrongConfirm": "Tandai fakta ini sebagai salah? Fakta ini akan dibatalkan (dihapus dari pengulangan) tetapi tetap disimpan dalam riwayat.",
+      "markWrongSuccess": "Fakta ditandai salah",
+      "markWrongFailed": "Tidak dapat membatalkan fakta: {{error}}"
     },
     "edit": {
       "title": "Edit entitas",
@@ -1135,6 +1152,14 @@
     }
   },
   "events": {
+    "create": {
+      "title": "Tambah kejadian",
+      "description": "Buat kejadian lini masa baru untuk karakter ini.",
+      "success": "Kejadian berhasil ditambahkan.",
+      "failed": "Penambahan gagal: {{error}}",
+      "saving": "Menambahkan…",
+      "save": "Tambah kejadian"
+    },
     "edit": {
       "cta": "Edit",
       "title": "Edit peristiwa",
@@ -1160,14 +1185,6 @@
       "archiving": "Menghapus...",
       "success": "Peristiwa dihapus.",
       "failed": "Tidak dapat menghapus peristiwa: {{error}}"
-    },
-    "create": {
-      "title": "Tambah kejadian",
-      "description": "Buat kejadian lini masa baru untuk karakter ini.",
-      "success": "Kejadian berhasil ditambahkan.",
-      "failed": "Penambahan gagal: {{error}}",
-      "saving": "Menambahkan…",
-      "save": "Tambah kejadian"
     }
   },
   "mining": {

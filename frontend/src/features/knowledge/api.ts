@@ -542,7 +542,16 @@ export interface EntityStatusesResponse {
   window_available: boolean;
 }
 
-export type EntityFactType = 'decision' | 'preference' | 'milestone' | 'negation';
+// S-05 — the FULL closed set (mirrors BE `FactType` = `get_args(FactType)`, 6 values).
+// Was 4 here while the BE had 6, so a `statement`/`commitment` fact rendered a blank
+// label; the author form now offers all 6, so all 6 must be renderable.
+export type EntityFactType =
+  | 'decision'
+  | 'preference'
+  | 'milestone'
+  | 'negation'
+  | 'statement'
+  | 'commitment';
 
 /** A known fact ABOUT an entity (decision/preference/…). Spoiler-windowed by
  *  `from_order` server-side. Mirrors the BE Fact projection (subset the codex
@@ -554,6 +563,16 @@ export interface EntityFact {
   confidence: number;
   source_chapter: string | null;
   from_order: number | null;
+}
+
+/** S-05 — payload to author a fact ABOUT an entity (POST /entities/{id}/facts).
+ *  `fact_type` is the closed 6-value set; the server 422s an out-of-set value. */
+export interface CreateEntityFactPayload {
+  fact_type: EntityFactType;
+  content: string;
+  predicate?: string | null;
+  object?: string | null;
+  event_date_iso?: string | null;
 }
 
 export interface EntityFactsResponse {
@@ -1944,16 +1963,41 @@ export const knowledgeApi = {
   /** The known-facts list ABOUT one entity, spoiler-windowed by chapter. */
   getEntityFacts(
     entityId: string,
-    params: { before_chapter_id?: string },
+    params: { before_chapter_id?: string; curation?: boolean },
     token: string,
   ): Promise<EntityFactsResponse> {
     const qs = new URLSearchParams();
     if (params.before_chapter_id != null)
       qs.set('before_chapter_id', params.before_chapter_id);
+    // S-05 — the studio curation view reads whole-book (no spoiler window) so
+    // authored + extracted facts both show; without it the server fails closed
+    // (before_order=-1) and the list is always empty.
+    if (params.curation) qs.set('curation', 'true');
     const q = qs.toString();
     return apiJson<EntityFactsResponse>(
       `${BASE}/entities/${encodeURIComponent(entityId)}/facts${q ? `?${q}` : ''}`,
       { token },
+    );
+  },
+
+  /** S-05 — author a fact ABOUT an entity (direct-write, 201). The fact lands
+   *  committed + high-confidence so it appears at once in the curation list. */
+  createEntityFact(
+    entityId: string,
+    payload: CreateEntityFactPayload,
+    token: string,
+  ): Promise<EntityFact> {
+    return apiJson<EntityFact>(
+      `${BASE}/entities/${encodeURIComponent(entityId)}/facts`,
+      { method: 'POST', body: JSON.stringify(payload), token },
+    );
+  },
+
+  /** S-05 — mark a committed fact wrong → soft-invalidate (fact_corrected). */
+  invalidateFact(factId: string, token: string): Promise<EntityFact> {
+    return apiJson<EntityFact>(
+      `${BASE}/facts/${encodeURIComponent(factId)}/invalidate`,
+      { method: 'POST', token },
     );
   },
 

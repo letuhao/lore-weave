@@ -422,8 +422,25 @@
         "decision": "Decisión",
         "preference": "Preferencia",
         "milestone": "Hito",
-        "negation": "Negación"
-      }
+        "negation": "Negación",
+        "statement": "Declaración",
+        "commitment": "Compromiso"
+      },
+      "addFact": "Añadir hecho",
+      "addFactTitle": "Añadir un hecho sobre esta entidad",
+      "factContentLabel": "Hecho",
+      "factContentPlaceholder": "p. ej. Desconfía del Consejo tras la traición",
+      "factTypeLabel": "Tipo",
+      "factPredicatePlaceholder": "predicado (opcional, p. ej. leal_a)",
+      "factObjectPlaceholder": "objeto (opcional, p. ej. Casa Vaeth)",
+      "addFactSave": "Guardar hecho",
+      "addFactCancel": "Cancelar",
+      "addFactSuccess": "Hecho añadido",
+      "addFactFailed": "No se pudo añadir el hecho: {{error}}",
+      "markWrong": "Marcar como incorrecto",
+      "markWrongConfirm": "¿Marcar este hecho como incorrecto? Se invalidará (se eliminará del repaso) pero se mantendrá en el historial.",
+      "markWrongSuccess": "Hecho marcado como incorrecto",
+      "markWrongFailed": "No se pudo invalidar el hecho: {{error}}"
     },
     "edit": {
       "title": "Editar entidad",
@@ -1135,6 +1152,14 @@
     }
   },
   "events": {
+    "create": {
+      "title": "Añadir evento",
+      "description": "Crea un nuevo evento en la línea de tiempo de este personaje.",
+      "success": "Evento añadido.",
+      "failed": "Error al añadir: {{error}}",
+      "saving": "Añadiendo…",
+      "save": "Añadir evento"
+    },
     "edit": {
       "cta": "Editar",
       "title": "Editar evento",
@@ -1160,14 +1185,6 @@
       "archiving": "Eliminando…",
       "success": "Evento eliminado.",
       "failed": "No se pudo eliminar el evento: {{error}}"
-    },
-    "create": {
-      "title": "Añadir evento",
-      "description": "Crea un nuevo evento en la línea de tiempo de este personaje.",
-      "success": "Evento añadido.",
-      "failed": "Error al añadir: {{error}}",
-      "saving": "Añadiendo…",
-      "save": "Añadir evento"
     }
   },
   "mining": {

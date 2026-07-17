@@ -422,8 +422,25 @@
         "decision": "決定",
         "preference": "嗜好",
         "milestone": "節目",
-        "negation": "否定"
-      }
+        "negation": "否定",
+        "statement": "記述",
+        "commitment": "誓約"
+      },
+      "addFact": "事実を追加",
+      "addFactTitle": "このエンティティに関する事実を追加",
+      "factContentLabel": "事実",
+      "factContentPlaceholder": "例：裏切りを経て評議会を不信視している",
+      "factTypeLabel": "タイプ",
+      "factPredicatePlaceholder": "述語（任意、例：loyal_to）",
+      "factObjectPlaceholder": "目的語（任意、例：House Vaeth）",
+      "addFactSave": "事実を保存",
+      "addFactCancel": "キャンセル",
+      "addFactSuccess": "事実を追加しました",
+      "addFactFailed": "事実を追加できませんでした: {{error}}",
+      "markWrong": "間違いとしてマーク",
+      "markWrongConfirm": "この事実を間違いとしてマークしますか？無効化（復習から削除）されますが、履歴には残ります。",
+      "markWrongSuccess": "事実を間違いとしてマークしました",
+      "markWrongFailed": "事実を無効化できませんでした: {{error}}"
     },
     "edit": {
       "title": "エンティティを編集",
@@ -1135,6 +1152,14 @@
     }
   },
   "events": {
+    "create": {
+      "title": "イベントを追加",
+      "description": "このキャラクターの新しいタイムラインイベントを作成します。",
+      "success": "イベントが追加されました。",
+      "failed": "追加に失敗しました: {{error}}",
+      "saving": "追加中…",
+      "save": "イベントを追加"
+    },
     "edit": {
       "cta": "Edit",
       "title": "Edit event",
@@ -1160,14 +1185,6 @@
       "archiving": "Deleting…",
       "success": "Event deleted.",
       "failed": "Couldn't delete the event: {{error}}"
-    },
-    "create": {
-      "title": "イベントを追加",
-      "description": "このキャラクターの新しいタイムラインイベントを作成します。",
-      "success": "イベントが追加されました。",
-      "failed": "追加に失敗しました: {{error}}",
-      "saving": "追加中…",
-      "save": "イベントを追加"
     }
   },
   "mining": {

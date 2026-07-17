@@ -422,8 +422,25 @@
         "decision": "Karar",
         "preference": "Tercih",
         "milestone": "Kilometre Taşı",
-        "negation": "İnkar"
-      }
+        "negation": "İnkar",
+        "statement": "Beyan",
+        "commitment": "Bağlılık"
+      },
+      "addFact": "Bilgi ekle",
+      "addFactTitle": "Bu varlık hakkında bir bilgi ekleyin",
+      "factContentLabel": "Bilgi",
+      "factContentPlaceholder": "ör. İhanetten sonra Konsey'e güvenmiyor",
+      "factTypeLabel": "Tür",
+      "factPredicatePlaceholder": "yüklem (isteğe bağlı, ör. sadık_olan)",
+      "factObjectPlaceholder": "nesne (isteğe bağlı, ör. House Vaeth)",
+      "addFactSave": "Bilgiyi kaydet",
+      "addFactCancel": "İptal",
+      "addFactSuccess": "Bilgi eklendi",
+      "addFactFailed": "Bilgi eklenemedi: {{error}}",
+      "markWrong": "Yanlış olarak işaretle",
+      "markWrongConfirm": "Bu bilgiyi yanlış olarak işaretlemek istiyor musunuz? Bilgi geçersiz sayılacak (tekrar hatırlatılmayacak) ancak geçmişte tutulmaya devam edilecek.",
+      "markWrongSuccess": "Bilgi yanlış olarak işaretlendi",
+      "markWrongFailed": "Bilgi geçersiz kılınamadı: {{error}}"
     },
     "edit": {
       "title": "Varlığı düzenle",
@@ -1135,6 +1152,14 @@
     }
   },
   "events": {
+    "create": {
+      "title": "Etkinlik ekle",
+      "description": "Bu karakter için yeni bir zaman çizelgesi etkinliği oluşturun.",
+      "success": "Etkinlik eklendi.",
+      "failed": "Ekleme başarısız oldu: {{error}}",
+      "saving": "Ekleniyor…",
+      "save": "Etkinlik ekle"
+    },
     "edit": {
       "cta": "Düzenle",
       "title": "Etkinliği düzenle",
@@ -1160,14 +1185,6 @@
       "archiving": "Siliniyor…",
       "success": "Etkinlik silindi.",
       "failed": "Etkinlik silinemedi: {{error}}"
-    },
-    "create": {
-      "title": "Etkinlik ekle",
-      "description": "Bu karakter için yeni bir zaman çizelgesi etkinliği oluşturun.",
-      "success": "Etkinlik eklendi.",
-      "failed": "Ekleme başarısız oldu: {{error}}",
-      "saving": "Ekleniyor…",
-      "save": "Etkinlik ekle"
     }
   },
   "mining": {

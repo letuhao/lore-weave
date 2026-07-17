@@ -422,8 +422,25 @@
         "decision": "Keputusan",
         "preference": "Keutamaan",
         "milestone": "Pencapaian",
-        "negation": "Penafian"
-      }
+        "negation": "Penafian",
+        "statement": "Pernyataan",
+        "commitment": "Komitmen"
+      },
+      "addFact": "Tambah fakta",
+      "addFactTitle": "Tambah fakta tentang entiti ini",
+      "factContentLabel": "Fakta",
+      "factContentPlaceholder": "cth. Tidak mempercayai Majlis selepas pengkhianatan",
+      "factTypeLabel": "Jenis",
+      "factPredicatePlaceholder": "predikat (pilihan, cth. setia_kepada)",
+      "factObjectPlaceholder": "objek (pilihan, cth. House Vaeth)",
+      "addFactSave": "Simpan fakta",
+      "addFactCancel": "Batal",
+      "addFactSuccess": "Fakta ditambah",
+      "addFactFailed": "Tidak dapat menambah fakta: {{error}}",
+      "markWrong": "Tandakan salah",
+      "markWrongConfirm": "Tandakan fakta ini sebagai salah? Ia akan dibatalkan (dikeluarkan daripada imbasan) tetapi akan disimpan dalam sejarah.",
+      "markWrongSuccess": "Fakta telah ditandakan sebagai salah",
+      "markWrongFailed": "Tidak dapat membatalkan fakta: {{error}}"
     },
     "edit": {
       "title": "Edit entiti",
@@ -1135,6 +1152,14 @@
     }
   },
   "events": {
+    "create": {
+      "title": "Tambah acara",
+      "description": "Tulis acara garis masa baharu untuk watak ini.",
+      "success": "Acara telah ditambah.",
+      "failed": "Penambahan gagal: {{error}}",
+      "saving": "Sedang menambah…",
+      "save": "Tambah acara"
+    },
     "edit": {
       "cta": "Edit",
       "title": "Edit peristiwa",
@@ -1160,14 +1185,6 @@
       "archiving": "Memadam…",
       "success": "Peristiwa dipadamkan.",
       "failed": "Tidak dapat memadam peristiwa: {{error}}"
-    },
-    "create": {
-      "title": "Tambah acara",
-      "description": "Tulis acara garis masa baharu untuk watak ini.",
-      "success": "Acara telah ditambah.",
-      "failed": "Penambahan gagal: {{error}}",
-      "saving": "Sedang menambah…",
-      "save": "Tambah acara"
     }
   },
   "mining": {

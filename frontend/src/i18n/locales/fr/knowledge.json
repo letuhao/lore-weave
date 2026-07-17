@@ -422,8 +422,25 @@
         "decision": "Décision",
         "preference": "Préférence",
         "milestone": "Jalon",
-        "negation": "Négation"
-      }
+        "negation": "Négation",
+        "statement": "Déclaration",
+        "commitment": "Engagement"
+      },
+      "addFact": "Ajouter un fait",
+      "addFactTitle": "Ajouter un fait sur cette entité",
+      "factContentLabel": "Fait",
+      "factContentPlaceholder": "ex. Se méfie du Conseil après la trahison",
+      "factTypeLabel": "Type",
+      "factPredicatePlaceholder": "prédicat (optionnel, ex. loyal_à)",
+      "factObjectPlaceholder": "objet (optionnel, ex. Maison Vaeth)",
+      "addFactSave": "Enregistrer le fait",
+      "addFactCancel": "Annuler",
+      "addFactSuccess": "Fait ajouté",
+      "addFactFailed": "Impossible d'ajouter le fait : {{error}}",
+      "markWrong": "Marquer comme incorrect",
+      "markWrongConfirm": "Marquer ce fait comme incorrect ? Il sera invalidé (retiré de la mémorisation) mais conservé dans l'historique.",
+      "markWrongSuccess": "Fait marqué comme incorrect",
+      "markWrongFailed": "Impossible d'invalider le fait : {{error}}"
     },
     "edit": {
       "title": "Modifier l'entité",
@@ -1135,6 +1152,14 @@
     }
   },
   "events": {
+    "create": {
+      "title": "Ajouter un événement",
+      "description": "Créez un nouvel événement chronologique pour ce personnage.",
+      "success": "Événement ajouté.",
+      "failed": "Échec de l'ajout : {{error}}",
+      "saving": "Ajout en cours…",
+      "save": "Ajouter l'événement"
+    },
     "edit": {
       "cta": "Modifier",
       "title": "Modifier l'événement",
@@ -1160,14 +1185,6 @@
       "archiving": "Suppression…",
       "success": "Événement supprimé.",
       "failed": "Impossible de supprimer l'événement : {{error}}"
-    },
-    "create": {
-      "title": "Ajouter un événement",
-      "description": "Créez un nouvel événement chronologique pour ce personnage.",
-      "success": "Événement ajouté.",
-      "failed": "Échec de l'ajout : {{error}}",
-      "saving": "Ajout en cours…",
-      "save": "Ajouter l'événement"
     }
   },
   "mining": {

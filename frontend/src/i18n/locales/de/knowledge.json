@@ -422,8 +422,25 @@
         "decision": "Entscheidung",
         "preference": "Präferenz",
         "milestone": "Meilenstein",
-        "negation": "Negation"
-      }
+        "negation": "Negation",
+        "statement": "Aussage",
+        "commitment": "Verpflichtung"
+      },
+      "addFact": "Fakt hinzufügen",
+      "addFactTitle": "Einen Fakt über diese Entität hinzufügen",
+      "factContentLabel": "Fakt",
+      "factContentPlaceholder": "z. B. Misstraut dem Rat nach dem Verrat",
+      "factTypeLabel": "Typ",
+      "factPredicatePlaceholder": "Prädikat (optional, z. B. loyal_zu)",
+      "factObjectPlaceholder": "Objekt (optional, z. B. Haus Vaeth)",
+      "addFactSave": "Fakt speichern",
+      "addFactCancel": "Abbrechen",
+      "addFactSuccess": "Fakt hinzugefügt",
+      "addFactFailed": "Fakt konnte nicht hinzugefügt werden: {{error}}",
+      "markWrong": "Als falsch markieren",
+      "markWrongConfirm": "Dieses Fakt als falsch markieren? Es wird ungültig gemacht (aus dem Abruf entfernt), aber im Verlauf behalten.",
+      "markWrongSuccess": "Fakt als falsch markiert",
+      "markWrongFailed": "Fakt konnte nicht ungültig gemacht werden: {{error}}"
     },
     "edit": {
       "title": "Entität bearbeiten",
@@ -1135,6 +1152,14 @@
     }
   },
   "events": {
+    "create": {
+      "title": "Ereignis hinzufügen",
+      "description": "Erstellen Sie ein neues Zeitlinenereignis für diesen Charakter.",
+      "success": "Ereignis hinzugefügt.",
+      "failed": "Hinzufügen fehlgeschlagen: {{error}}",
+      "saving": "Wird hinzugefügt…",
+      "save": "Ereignis hinzufügen"
+    },
     "edit": {
       "cta": "Bearbeiten",
       "title": "Event bearbeiten",
@@ -1160,14 +1185,6 @@
       "archiving": "Lösche…",
       "success": "Event gelöscht.",
       "failed": "Event konnte nicht gelöscht werden: {{error}}"
-    },
-    "create": {
-      "title": "Ereignis hinzufügen",
-      "description": "Erstellen Sie ein neues Zeitlinenereignis für diesen Charakter.",
-      "success": "Ereignis hinzugefügt.",
-      "failed": "Hinzufügen fehlgeschlagen: {{error}}",
-      "saving": "Wird hinzugefügt…",
-      "save": "Ereignis hinzufügen"
     }
   },
   "mining": {

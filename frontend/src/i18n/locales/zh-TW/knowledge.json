@@ -422,8 +422,25 @@
         "decision": "決定",
         "preference": "偏好",
         "milestone": "里程碑",
-        "negation": "否定"
-      }
+        "negation": "否定",
+        "statement": "陳述",
+        "commitment": "承諾"
+      },
+      "addFact": "新增事實",
+      "addFactTitle": "新增關於此實體的相關事實",
+      "factContentLabel": "事實內容",
+      "factContentPlaceholder": "例如：在背叛後對議會失去信任",
+      "factTypeLabel": "類型",
+      "factPredicatePlaceholder": "謂詞（選填，例如：loyal_to）",
+      "factObjectPlaceholder": "受詞（選填，例如：House Vaeth）",
+      "addFactSave": "儲存事實",
+      "addFactCancel": "取消",
+      "addFactSuccess": "事實已新增",
+      "addFactFailed": "無法新增事實：{{error}}",
+      "markWrong": "標記為錯誤",
+      "markWrongConfirm": "要將此事實標記為錯誤嗎？它將被作廢（從複習中移除），但會保留在歷史紀錄中。",
+      "markWrongSuccess": "事實已標記為錯誤",
+      "markWrongFailed": "無法作廢事實：{{error}}"
     },
     "edit": {
       "title": "編輯實體",
@@ -1135,6 +1152,14 @@
     }
   },
   "events": {
+    "create": {
+      "title": "新增事件",
+      "description": "為此角色撰寫一個新的時間線事件。",
+      "success": "事件已新增。",
+      "failed": "新增失敗：{{error}}",
+      "saving": "新增中…",
+      "save": "新增事件"
+    },
     "edit": {
       "cta": "Edit",
       "title": "Edit event",
@@ -1160,14 +1185,6 @@
       "archiving": "Deleting…",
       "success": "Event deleted.",
       "failed": "Couldn't delete the event: {{error}}"
-    },
-    "create": {
-      "title": "新增事件",
-      "description": "為此角色撰寫一個新的時間線事件。",
-      "success": "事件已新增。",
-      "failed": "新增失敗：{{error}}",
-      "saving": "新增中…",
-      "save": "新增事件"
     }
   },
   "mining": {

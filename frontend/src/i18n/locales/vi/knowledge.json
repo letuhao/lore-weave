@@ -422,8 +422,25 @@
         "decision": "Quyết định",
         "preference": "Sở thích",
         "milestone": "Cột mốc",
-        "negation": "Phủ định"
-      }
+        "negation": "Phủ định",
+        "statement": "Lời khẳng định",
+        "commitment": "Cam kết"
+      },
+      "addFact": "Thêm sự kiện",
+      "addFactTitle": "Thêm một sự kiện về thực thể này",
+      "factContentLabel": "Sự kiện",
+      "factContentPlaceholder": "ví dụ: Không còn tin tưởng Hội đồng sau sự phản bội",
+      "factTypeLabel": "Loại",
+      "factPredicatePlaceholder": "vị ngữ (tùy chọn, ví dụ: loyal_to)",
+      "factObjectPlaceholder": "tân ngữ (tùy chọn, ví dụ: House Vaeth)",
+      "addFactSave": "Lưu sự kiện",
+      "addFactCancel": "Hủy",
+      "addFactSuccess": "Đã thêm sự kiện",
+      "addFactFailed": "Không thể thêm sự kiện: {{error}}",
+      "markWrong": "Đánh dấu sai",
+      "markWrongConfirm": "Đánh dấu sự kiện này là sai? Sự kiện sẽ bị vô hiệu hóa (xóa khỏi chế độ ôn tập) nhưng vẫn được lưu trong lịch sử.",
+      "markWrongSuccess": "Đã đánh dấu sự kiện là sai",
+      "markWrongFailed": "Không thể vô hiệu hóa sự kiện: {{error}}"
     },
     "edit": {
       "title": "Chỉnh sửa thực thể",
@@ -1135,6 +1152,14 @@
     }
   },
   "events": {
+    "create": {
+      "title": "Thêm sự kiện",
+      "description": "Soạn thảo một sự kiện dòng thời gian mới cho nhân vật này.",
+      "success": "Đã thêm sự kiện.",
+      "failed": "Thêm thất bại: {{error}}",
+      "saving": "Đang thêm…",
+      "save": "Thêm sự kiện"
+    },
     "edit": {
       "cta": "Edit",
       "title": "Edit event",
@@ -1160,14 +1185,6 @@
       "archiving": "Deleting…",
       "success": "Event deleted.",
       "failed": "Couldn't delete the event: {{error}}"
-    },
-    "create": {
-      "title": "Thêm sự kiện",
-      "description": "Soạn thảo một sự kiện dòng thời gian mới cho nhân vật này.",
-      "success": "Đã thêm sự kiện.",
-      "failed": "Thêm thất bại: {{error}}",
-      "saving": "Đang thêm…",
-      "save": "Thêm sự kiện"
     }
   },
   "mining": {

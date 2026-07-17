@@ -422,8 +422,25 @@
         "decision": "قرار",
         "preference": "تفضيل",
         "milestone": "حدث هام",
-        "negation": "نفي"
-      }
+        "negation": "نفي",
+        "statement": "تصريح",
+        "commitment": "التزام"
+      },
+      "addFact": "إضافة حقيقة",
+      "addFactTitle": "إضافة حقيقة عن هذا الكيان",
+      "factContentLabel": "الحقيقة",
+      "factContentPlaceholder": "مثال: لا يثق بالمجلس بعد الخيانة",
+      "factTypeLabel": "النوع",
+      "factPredicatePlaceholder": "المسند (اختياري، مثال: loyal_to)",
+      "factObjectPlaceholder": "المسند إليه (اختياري، مثال: House Vaeth)",
+      "addFactSave": "حفظ الحقيقة",
+      "addFactCancel": "إلغاء",
+      "addFactSuccess": "تمت إضافة الحقيقة",
+      "addFactFailed": "تعذر إضافة الحقيقة: {{error}}",
+      "markWrong": "تحديد كخطأ",
+      "markWrongConfirm": "هل تريد تحديد هذه الحقيقة كخطأ؟ سيتم إبطالها (إزالتها من الاستدعاء) ولكن ستظل محفوظة في السجل.",
+      "markWrongSuccess": "تم تحديد الحقيقة كخطأ",
+      "markWrongFailed": "تعذر إبطال الحقيقة: {{error}}"
     },
     "edit": {
       "title": "Edit entity",
@@ -1135,6 +1152,14 @@
     }
   },
   "events": {
+    "create": {
+      "title": "إضافة حدث",
+      "description": "قم بتأليف حدث جديد في الجدول الزمني لهذه الشخصية.",
+      "success": "تمت إضافة الحدث.",
+      "failed": "فشلت الإضافة: {{error}}",
+      "saving": "جاري الإضافة…",
+      "save": "إضافة حدث"
+    },
     "edit": {
       "cta": "تعديل",
       "title": "تعديل الحدث",
@@ -1160,14 +1185,6 @@
       "archiving": "جاري الحذف...",
       "success": "تم حذف الحدث.",
       "failed": "تعذر حذف الحدث: {{error}}"
-    },
-    "create": {
-      "title": "إضافة حدث",
-      "description": "قم بتأليف حدث جديد في الجدول الزمني لهذه الشخصية.",
-      "success": "تمت إضافة الحدث.",
-      "failed": "فشلت الإضافة: {{error}}",
-      "saving": "جاري الإضافة…",
-      "save": "إضافة حدث"
     }
   },
   "mining": {

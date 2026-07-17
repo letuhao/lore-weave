@@ -422,8 +422,25 @@
         "decision": "Decision",
         "preference": "Preference",
         "milestone": "Milestone",
-        "negation": "Negation"
-      }
+        "negation": "Negation",
+        "statement": "Statement",
+        "commitment": "Commitment"
+      },
+      "addFact": "Add fact",
+      "addFactTitle": "Add a fact about this entity",
+      "factContentLabel": "Fact",
+      "factContentPlaceholder": "e.g. Distrusts the Council after the betrayal",
+      "factTypeLabel": "Type",
+      "factPredicatePlaceholder": "predicate (optional, e.g. loyal_to)",
+      "factObjectPlaceholder": "object (optional, e.g. House Vaeth)",
+      "addFactSave": "Save fact",
+      "addFactCancel": "Cancel",
+      "addFactSuccess": "Fact added",
+      "addFactFailed": "Could not add fact: {{error}}",
+      "markWrong": "Mark wrong",
+      "markWrongConfirm": "Mark this fact as wrong? It will be invalidated (removed from recall) but kept in history.",
+      "markWrongSuccess": "Fact marked wrong",
+      "markWrongFailed": "Could not invalidate fact: {{error}}"
     },
     "edit": {
       "title": "Edit entity",

@@ -422,8 +422,25 @@
         "decision": "결정",
         "preference": "선호도",
         "milestone": "이정표",
-        "negation": "부정"
-      }
+        "negation": "부정",
+        "statement": "진술",
+        "commitment": "약속"
+      },
+      "addFact": "사실 추가",
+      "addFactTitle": "이 엔티티에 대한 사실 추가",
+      "factContentLabel": "사실",
+      "factContentPlaceholder": "예: 배신 이후 의회를 불신함",
+      "factTypeLabel": "유형",
+      "factPredicatePlaceholder": "서술어 (선택 사항, 예: loyal_to)",
+      "factObjectPlaceholder": "목적어 (선택 사항, 예: House Vaeth)",
+      "addFactSave": "사실 저장",
+      "addFactCancel": "취소",
+      "addFactSuccess": "사실이 추가되었습니다",
+      "addFactFailed": "사실을 추가할 수 없습니다: {{error}}",
+      "markWrong": "오답 처리",
+      "markWrongConfirm": "이 사실을 오답으로 처리할까요? 무효화되어(암기 목록에서 제거) 히스토리에는 남지만 학습에는 나타나지 않습니다.",
+      "markWrongSuccess": "오답 처리 완료",
+      "markWrongFailed": "사실을 무효화할 수 없습니다: {{error}}"
     },
     "edit": {
       "title": "엔티티 편집",
@@ -1135,6 +1152,14 @@
     }
   },
   "events": {
+    "create": {
+      "title": "이벤트 추가",
+      "description": "이 캐릭터를 위한 새로운 타임라인 이벤트를 작성합니다.",
+      "success": "이벤트가 추가되었습니다.",
+      "failed": "추가 실패: {{error}}",
+      "saving": "추가 중…",
+      "save": "이벤트 추가"
+    },
     "edit": {
       "cta": "수정",
       "title": "이벤트 수정",
@@ -1160,14 +1185,6 @@
       "archiving": "삭제 중...",
       "success": "이벤트가 삭제되었습니다.",
       "failed": "이벤트를 삭제할 수 없습니다: {{error}}"
-    },
-    "create": {
-      "title": "이벤트 추가",
-      "description": "이 캐릭터를 위한 새로운 타임라인 이벤트를 작성합니다.",
-      "success": "이벤트가 추가되었습니다.",
-      "failed": "추가 실패: {{error}}",
-      "saving": "추가 중…",
-      "save": "이벤트 추가"
     }
   },
   "mining": {

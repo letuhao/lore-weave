@@ -422,8 +422,25 @@
         "decision": "निर्णय",
         "preference": "पसंद",
         "milestone": "महत्वपूर्ण पड़ाव",
-        "negation": "नकार"
-      }
+        "negation": "नकार",
+        "statement": "कथन",
+        "commitment": "प्रतिबद्धता"
+      },
+      "addFact": "तथ्य जोड़ें",
+      "addFactTitle": "इस इकाई के बारे में एक तथ्य जोड़ें",
+      "factContentLabel": "तथ्य",
+      "factContentPlaceholder": "जैसे: विश्वासघात के बाद काउंसिल पर अविश्वास करता है",
+      "factTypeLabel": "प्रकार",
+      "factPredicatePlaceholder": "predicate (वैकल्पिक, जैसे: loyal_to)",
+      "factObjectPlaceholder": "object (वैकल्पिक, जैसे: House Vaeth)",
+      "addFactSave": "तथ्य सहेजें",
+      "addFactCancel": "रद्द करें",
+      "addFactSuccess": "तथ्य जोड़ा गया",
+      "addFactFailed": "तथ्य नहीं जोड़ा जा सका: {{error}}",
+      "markWrong": "गलत चिह्नित करें",
+      "markWrongConfirm": "क्या इस तथ्य को गलत चिह्नित करना है? इसे अमान्य (पुनरावृत्ति से हटा दिया जाएगा) कर दिया जाएगा लेकिन इतिहास में रखा जाएगा।",
+      "markWrongSuccess": "तथ्य को गलत चिह्नित किया गया",
+      "markWrongFailed": "तथ्य को अमान्य नहीं किया जा सका: {{error}}"
     },
     "edit": {
       "title": "एंटिटी संपादित करें",
@@ -1135,6 +1152,14 @@
     }
   },
   "events": {
+    "create": {
+      "title": "घटना जोड़ें",
+      "description": "इस पात्र के लिए एक नई टाइमलाइन घटना लिखें।",
+      "success": "घटना जोड़ दी गई है।",
+      "failed": "जोड़ने में विफल: {{error}}",
+      "saving": "जोड़ा जा रहा है…",
+      "save": "घटना जोड़ें"
+    },
     "edit": {
       "cta": "संपादित करें",
       "title": "इवेंट संपादित करें",
@@ -1160,14 +1185,6 @@
       "archiving": "हटाया जा रहा है…",
       "success": "इवेंट हटा दिया गया।",
       "failed": "इवेंट नहीं हटा सका: {{error}}"
-    },
-    "create": {
-      "title": "घटना जोड़ें",
-      "description": "इस पात्र के लिए एक नई टाइमलाइन घटना लिखें।",
-      "success": "घटना जोड़ दी गई है।",
-      "failed": "जोड़ने में विफल: {{error}}",
-      "saving": "जोड़ा जा रहा है…",
-      "save": "घटना जोड़ें"
     }
   },
   "mining": {

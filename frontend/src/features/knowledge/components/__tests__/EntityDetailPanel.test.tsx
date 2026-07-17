@@ -31,6 +31,9 @@ vi.mock('../../hooks/useEntityFacts', () => ({
     isLoading: false,
     error: null,
   }),
+  // S-05 — inert author/invalidate mutations (this suite doesn't exercise them).
+  useCreateEntityFact: () => ({ create: vi.fn(), isPending: false }),
+  useInvalidateFact: () => ({ invalidate: vi.fn(), isPending: false }),
 }));
 
 // #11 — the anchored-glossary description hook is stubbed so this suite stays a

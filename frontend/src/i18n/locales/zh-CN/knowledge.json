@@ -422,8 +422,25 @@
         "decision": "决策",
         "preference": "偏好",
         "milestone": "里程碑",
-        "negation": "否定"
-      }
+        "negation": "否定",
+        "statement": "陈述",
+        "commitment": "承诺"
+      },
+      "addFact": "添加事实",
+      "addFactTitle": "添加关于此实体的描述",
+      "factContentLabel": "事实内容",
+      "factContentPlaceholder": "例如：在背叛后不再信任议会",
+      "factTypeLabel": "类型",
+      "factPredicatePlaceholder": "谓词（可选，例如：loyal_to）",
+      "factObjectPlaceholder": "宾语（可选，例如：House Vaeth）",
+      "addFactSave": "保存事实",
+      "addFactCancel": "取消",
+      "addFactSuccess": "事实已添加",
+      "addFactFailed": "无法添加事实：{{error}}",
+      "markWrong": "标记为错误",
+      "markWrongConfirm": "将此事实标记为错误？它将被作废（从复习中移除），但会保留在历史记录中。",
+      "markWrongSuccess": "事实已标记为错误",
+      "markWrongFailed": "无法作废事实：{{error}}"
     },
     "edit": {
       "title": "编辑实体",
@@ -1135,6 +1152,14 @@
     }
   },
   "events": {
+    "create": {
+      "title": "添加事件",
+      "description": "为该角色创作一个新的时间线事件。",
+      "success": "事件已添加。",
+      "failed": "添加失败：{{error}}",
+      "saving": "正在添加…",
+      "save": "添加事件"
+    },
     "edit": {
       "cta": "编辑",
       "title": "编辑事件",
@@ -1160,14 +1185,6 @@
       "archiving": "正在删除…",
       "success": "事件已删除。",
       "failed": "无法删除事件：{{error}}"
-    },
-    "create": {
-      "title": "添加事件",
-      "description": "为该角色创作一个新的时间线事件。",
-      "success": "事件已添加。",
-      "failed": "添加失败：{{error}}",
-      "saving": "正在添加…",
-      "save": "添加事件"
     }
   },
   "mining": {

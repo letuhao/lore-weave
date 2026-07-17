@@ -11,12 +11,18 @@ import {
   Pin,
   PinOff,
   Archive,
+  Plus,
+  Ban,
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { useEntityDetail } from '../hooks/useEntityDetail';
-import { useEntityFacts } from '../hooks/useEntityFacts';
+import {
+  useEntityFacts,
+  useCreateEntityFact,
+  useInvalidateFact,
+} from '../hooks/useEntityFacts';
 import { useAnchoredGlossaryEntity } from '../hooks/useAnchoredGlossaryEntity';
 import {
   useUnlockEntity,
@@ -60,7 +66,15 @@ const FACT_TYPE_LABEL: Record<EntityFact['type'], string> = {
   preference: 'entities.detail.factType.preference',
   milestone: 'entities.detail.factType.milestone',
   negation: 'entities.detail.factType.negation',
+  statement: 'entities.detail.factType.statement',
+  commitment: 'entities.detail.factType.commitment',
 };
+
+// S-05 — the closed authoring order (mirrors the BE FactType). The order the
+// select offers; every value here MUST have a FACT_TYPE_LABEL entry.
+const AUTHORABLE_FACT_TYPES: EntityFact['type'][] = [
+  'decision', 'preference', 'milestone', 'negation', 'statement', 'commitment',
+];
 
 function RelationRow({
   relation,
@@ -138,6 +152,50 @@ export function EntityDetailPanel({
   );
   // C9 — provenance MVP: known-facts list (+ each fact's source_chapter).
   const { facts } = useEntityFacts(open ? entityId : null);
+  // S-05 — author a fact ABOUT this entity (direct-write) + mark a fact wrong.
+  const [showAddFact, setShowAddFact] = useState(false);
+  const [factType, setFactType] = useState<EntityFact['type']>('decision');
+  const [factContent, setFactContent] = useState('');
+  const [factPredicate, setFactPredicate] = useState('');
+  const [factObject, setFactObject] = useState('');
+  const createFact = useCreateEntityFact(open ? entityId : null, {
+    onSuccess: () => {
+      toast.success(t('entities.detail.addFactSuccess'));
+      setShowAddFact(false);
+      setFactContent('');
+      setFactPredicate('');
+      setFactObject('');
+      setFactType('decision');
+    },
+    onError: (e) =>
+      toast.error(t('entities.detail.addFactFailed', { error: e.message })),
+  });
+  const invalidateFactMutation = useInvalidateFact(open ? entityId : null, {
+    onSuccess: () => toast.success(t('entities.detail.markWrongSuccess')),
+    onError: (e) =>
+      toast.error(t('entities.detail.markWrongFailed', { error: e.message })),
+  });
+  const handleAddFact = async () => {
+    if (!factContent.trim()) return;
+    try {
+      await createFact.create({
+        fact_type: factType,
+        content: factContent.trim(),
+        predicate: factPredicate.trim() || null,
+        object: factObject.trim() || null,
+      });
+    } catch {
+      // onError owns the toast; swallow the rejection (vitest guard).
+    }
+  };
+  const handleMarkWrong = async (factId: string) => {
+    if (!window.confirm(t('entities.detail.markWrongConfirm'))) return;
+    try {
+      await invalidateFactMutation.invalidate(factId);
+    } catch {
+      // onError owns the toast; swallow the rejection (vitest guard).
+    }
+  };
   const [showEdit, setShowEdit] = useState(false);
   const [showMerge, setShowMerge] = useState(false);
   const [showLink, setShowLink] = useState(false);
@@ -560,15 +618,97 @@ export function EntityDetailPanel({
                   </section>
                 )}
 
-                {/* C9 (C9-promote-flow) — provenance MVP: known-facts
-                    list + each fact's source_chapter. Full passage-trail
-                    is deferred (LOCKED). Hidden when the entity has no
-                    facts (keeps the panel uncluttered for thin entities). */}
-                {facts.length > 0 && (
-                  <section className="space-y-2" data-testid="entity-detail-facts">
+                {/* S-05 — known-facts list + the AUTHOR affordance. The section
+                    ALWAYS renders (header + "Add fact") even with zero facts, so an
+                    empty entity — the one that most needs authoring — can add one.
+                    Each committed fact carries a "mark wrong" (invalidate) action,
+                    mirroring the relation mark-wrong; facts become as correctable as
+                    relations (the asymmetry the audit named). */}
+                <section className="space-y-2" data-testid="entity-detail-facts">
+                  <div className="flex items-baseline justify-between">
                     <h3 className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
                       {t('entities.detail.facts', { count: facts.length })}
                     </h3>
+                    <button
+                      type="button"
+                      onClick={() => setShowAddFact((v) => !v)}
+                      className="inline-flex items-center gap-1 rounded-sm px-1.5 py-0.5 text-[11px] text-muted-foreground transition-colors hover:text-foreground"
+                      data-testid="entity-detail-add-fact"
+                    >
+                      <Plus className="h-3 w-3" />
+                      {t('entities.detail.addFact')}
+                    </button>
+                  </div>
+
+                  {showAddFact && (
+                    <div
+                      className="space-y-2 rounded-md border border-primary/30 bg-primary/5 px-3 py-2"
+                      data-testid="entity-detail-add-fact-form"
+                    >
+                      <label className="block text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+                        {t('entities.detail.factTypeLabel')}
+                      </label>
+                      <select
+                        value={factType}
+                        onChange={(e) =>
+                          setFactType(e.target.value as EntityFact['type'])
+                        }
+                        className="w-full rounded-md border bg-background px-2 py-1 text-[12px]"
+                        data-testid="entity-detail-add-fact-type"
+                      >
+                        {AUTHORABLE_FACT_TYPES.map((ft) => (
+                          <option key={ft} value={ft}>
+                            {t(FACT_TYPE_LABEL[ft])}
+                          </option>
+                        ))}
+                      </select>
+                      <textarea
+                        value={factContent}
+                        onChange={(e) => setFactContent(e.target.value)}
+                        placeholder={t('entities.detail.factContentPlaceholder')}
+                        rows={2}
+                        className="w-full rounded-md border bg-background px-2 py-1 text-[12px]"
+                        data-testid="entity-detail-add-fact-content"
+                      />
+                      <div className="flex gap-2">
+                        <input
+                          value={factPredicate}
+                          onChange={(e) => setFactPredicate(e.target.value)}
+                          placeholder={t('entities.detail.factPredicatePlaceholder')}
+                          className="min-w-0 flex-1 rounded-md border bg-background px-2 py-1 text-[11px]"
+                          data-testid="entity-detail-add-fact-predicate"
+                        />
+                        <input
+                          value={factObject}
+                          onChange={(e) => setFactObject(e.target.value)}
+                          placeholder={t('entities.detail.factObjectPlaceholder')}
+                          className="min-w-0 flex-1 rounded-md border bg-background px-2 py-1 text-[11px]"
+                          data-testid="entity-detail-add-fact-object"
+                        />
+                      </div>
+                      <div className="flex justify-end gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setShowAddFact(false)}
+                          className="rounded-md border px-2 py-1 text-[11px] transition-colors hover:bg-secondary"
+                          data-testid="entity-detail-add-fact-cancel"
+                        >
+                          {t('entities.detail.addFactCancel')}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={handleAddFact}
+                          disabled={!factContent.trim() || createFact.isPending}
+                          className="inline-flex items-center gap-1 rounded-md border border-primary/40 px-2 py-1 text-[11px] text-primary transition-colors hover:bg-primary/10 disabled:cursor-not-allowed disabled:opacity-50"
+                          data-testid="entity-detail-add-fact-save"
+                        >
+                          {t('entities.detail.addFactSave')}
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                  {facts.length > 0 && (
                     <ul className="space-y-1">
                       {facts.map((f) => (
                         <li
@@ -581,6 +721,20 @@ export function EntityDetailPanel({
                               {t(FACT_TYPE_LABEL[f.type])}
                             </span>
                             <span className="min-w-0 flex-1">{f.content}</span>
+                            <button
+                              type="button"
+                              onClick={() => handleMarkWrong(f.id)}
+                              disabled={invalidateFactMutation.isPending}
+                              title={t('entities.detail.markWrong')}
+                              aria-label={t('entities.detail.markWrong')}
+                              className={cn(
+                                'inline-flex shrink-0 items-center justify-center rounded-sm p-1 text-muted-foreground transition-colors hover:text-destructive disabled:cursor-not-allowed disabled:opacity-50',
+                                TOUCH_TARGET_SQUARE_MOBILE_ONLY_CLASS,
+                              )}
+                              data-testid="entity-detail-fact-mark-wrong"
+                            >
+                              <Ban className="h-3 w-3" />
+                            </button>
                           </div>
                           {f.source_chapter && (
                             <p
@@ -595,8 +749,8 @@ export function EntityDetailPanel({
                         </li>
                       ))}
                     </ul>
-                  </section>
-                )}
+                  )}
+                </section>
 
                 <section className="space-y-2">
                   <div className="flex items-baseline justify-between">

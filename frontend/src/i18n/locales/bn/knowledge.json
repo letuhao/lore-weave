@@ -422,8 +422,25 @@
         "decision": "Decision",
         "preference": "Preference",
         "milestone": "Milestone",
-        "negation": "Negation"
-      }
+        "negation": "Negation",
+        "statement": "বিবৃতি",
+        "commitment": "অঙ্গীকার"
+      },
+      "addFact": "তথ্য যোগ করুন",
+      "addFactTitle": "এই সত্তা সম্পর্কে একটি তথ্য যোগ করুন",
+      "factContentLabel": "তথ্য",
+      "factContentPlaceholder": "যেমন: বিশ্বাসঘাতকতার পর কাউন্সিলের প্রতি অবিশ্বাসী",
+      "factTypeLabel": "ধরণ",
+      "factPredicatePlaceholder": "প্রেডিকেট (ঐচ্ছিক, যেমন: loyal_to)",
+      "factObjectPlaceholder": "অবজেক্ট (ঐচ্ছিক, যেমন: House Vaeth)",
+      "addFactSave": "তথ্য সংরক্ষণ করুন",
+      "addFactCancel": "বাতিল",
+      "addFactSuccess": "তথ্য যোগ করা হয়েছে",
+      "addFactFailed": "তথ্য যোগ করা সম্ভব হয়নি: {{error}}",
+      "markWrong": "ভুল হিসেবে চিহ্নিত করুন",
+      "markWrongConfirm": "এই তথ্যটিকে ভুল হিসেবে চিহ্নিত করবেন কি? এটি বাতিল করা হবে (রিকল থেকে সরিয়ে দেওয়া হবে) কিন্তু ইতিহাসে সংরক্ষিত থাকবে।",
+      "markWrongSuccess": "তথ্যটি ভুল হিসেবে চিহ্নিত করা হয়েছে",
+      "markWrongFailed": "তথ্যটি বাতিল করা সম্ভব হয়নি: {{error}}"
     },
     "edit": {
       "title": "এন্টটি সম্পাদনা করুন",
@@ -1135,6 +1152,14 @@
     }
   },
   "events": {
+    "create": {
+      "title": "ইভেন্ট যোগ করুন",
+      "description": "এই চরিত্রের জন্য একটি নতুন টাইমলাইন ইভেন্ট তৈরি করুন।",
+      "success": "ইভেন্ট যোগ করা হয়েছে।",
+      "failed": "যোগ করা সম্ভব হয়নি: {{error}}",
+      "saving": "যোগ করা হচ্ছে…",
+      "save": "ইভেন্ট যোগ করুন"
+    },
     "edit": {
       "cta": "এডিট",
       "title": "ইভেন্ট এডিট করুন",
@@ -1160,14 +1185,6 @@
       "archiving": "মুছে ফেলা হচ্ছে…",
       "success": "ইভেন্টটি মুছে ফেলা হয়েছে।",
       "failed": "ইভেন্টটি মুছে ফেলা সম্ভব হয়নি: {{error}}"
-    },
-    "create": {
-      "title": "ইভেন্ট যোগ করুন",
-      "description": "এই চরিত্রের জন্য একটি নতুন টাইমলাইন ইভেন্ট তৈরি করুন।",
-      "success": "ইভেন্ট যোগ করা হয়েছে।",
-      "failed": "যোগ করা সম্ভব হয়নি: {{error}}",
-      "saving": "যোগ করা হচ্ছে…",
-      "save": "ইভেন্ট যোগ করুন"
     }
   },
   "mining": {

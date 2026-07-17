@@ -422,8 +422,25 @@
         "decision": "Decisão",
         "preference": "Preferência",
         "milestone": "Marco",
-        "negation": "Negação"
-      }
+        "negation": "Negação",
+        "statement": "Afirmação",
+        "commitment": "Compromisso"
+      },
+      "addFact": "Adicionar fato",
+      "addFactTitle": "Adicionar um fato sobre esta entidade",
+      "factContentLabel": "Fato",
+      "factContentPlaceholder": "ex. Desconfia do Conselho após a traição",
+      "factTypeLabel": "Tipo",
+      "factPredicatePlaceholder": "predicado (opcional, ex. leal_a)",
+      "factObjectPlaceholder": "objeto (opcional, ex. Casa Vaeth)",
+      "addFactSave": "Salvar fato",
+      "addFactCancel": "Cancelar",
+      "addFactSuccess": "Fato adicionado",
+      "addFactFailed": "Não foi possível adicionar o fato: {{error}}",
+      "markWrong": "Marcar como incorreto",
+      "markWrongConfirm": "Marcar este fato como incorreto? Ele será invalidado (removido da revisão), mas será mantido no histórico.",
+      "markWrongSuccess": "Fato marcado como incorreto",
+      "markWrongFailed": "Não foi possível invalidar o fato: {{error}}"
     },
     "edit": {
       "title": "Editar entidade",
@@ -1135,6 +1152,14 @@
     }
   },
   "events": {
+    "create": {
+      "title": "Adicionar evento",
+      "description": "Crie um novo evento na linha do tempo para este personagem.",
+      "success": "Evento adicionado.",
+      "failed": "Falha ao adicionar: {{error}}",
+      "saving": "Adicionando…",
+      "save": "Adicionar evento"
+    },
     "edit": {
       "cta": "Editar",
       "title": "Editar evento",
@@ -1160,14 +1185,6 @@
       "archiving": "Excluindo...",
       "success": "Evento excluído.",
       "failed": "Não foi possível excluir o evento: {{error}}"
-    },
-    "create": {
-      "title": "Adicionar evento",
-      "description": "Crie um novo evento na linha do tempo para este personagem.",
-      "success": "Evento adicionado.",
-      "failed": "Falha ao adicionar: {{error}}",
-      "saving": "Adicionando…",
-      "save": "Adicionar evento"
     }
   },
   "mining": {
