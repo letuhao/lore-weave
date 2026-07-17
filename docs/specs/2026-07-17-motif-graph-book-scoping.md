@@ -31,39 +31,44 @@ i.e. **the caller's globals (book_id NULL) + their motifs labelled to THIS book 
 | **(B) Bound-in-this-book** | `EXISTS (SELECT 1 FROM motif_application WHERE book_id = $2 AND motif_id = motif.id)` (∪ book_shared) | the tightest "this book's story" graph — only motifs actually woven into the book | excludes motifs created/adopted for the book but **not yet bound** (a fresh book's graph is empty); needs a join + a product call on whether "planned but unbound" should show |
 | **(C) Keep current** | (do nothing) | — | the debt stays; the graph is not book-scoped |
 
-**Recommendation: (A).** It makes the graph *consistent with the library's own book definition* (the least-surprising behaviour), is a one-line change, and keeps a just-created/adopted motif visible (unlike B, which hides anything unbound). B is a plausible future enhancement (a "bound only" toggle) but changes the mental model and can render an empty graph for a book you're still planning.
+**DECISION (PO, 2026-07-17): (B) bound-in-book.** The graph is the book's STORY graph — only motifs actually woven into this book (a `motif_application` binding) plus the book's shared tier. A user's global library no longer floods every book's graph; a book you have not started binding shows the honest empty state (§5 E2), which is acceptable — the graph is about *this book's* woven motifs, not your whole library. (Option A is recorded above as the rejected alternative; a "show my whole library" toggle could revisit it later.)
 
-## 4 · The change (Option A)
+## 4 · The change (Option B)
 
-`nodes_for_book` becomes:
+`nodes_for_book` becomes — the book's SHARED tier, plus the caller's OWN motifs BOUND in this book:
 
 ```sql
 WHERE status = 'active'
-  AND (owner_user_id = $1 OR (book_shared AND book_id = $2))
-  AND (book_id IS NULL OR book_id = $2)
+  AND (
+    (book_shared AND book_id = $2)                                       -- the book's shared authoring tier
+    OR (owner_user_id = $1 AND EXISTS (                                  -- the caller's own, actually bound here
+      SELECT 1 FROM motif_application ma WHERE ma.book_id = $2 AND ma.motif_id = motif.id))
+  )
 ```
 
-- **Keep excluding system (`owner_user_id IS NULL`)** — unlike the library tab, the graph omits system rows *on purpose*: the `motif_link_guard` forbids cross-tier edges, so a system node can only ever be an island in the caller's graph. (The library tab shows system for *browsing*; a graph shows *relationships*.) This is the one deliberate divergence from `list_in_book`, and it should carry a one-line comment so a future reader doesn't "fix" it by adding system back.
-- `edges_among` and `motif_visible_in_book` are unchanged structurally, but **`motif_visible_in_book` must apply the SAME new clause** so the PATCH can't store a position for a motif that is no longer a graph node (a motif labelled to another book). Keep the two predicates BYTE-IDENTICAL (one helper or a shared SQL fragment) so a retrieved node is provably position-able — the same one-predicate-two-callsites discipline the motif read path uses.
-- The node cap + `truncated` flag are unchanged (they now bound a correctly-scoped set).
+- **System (`owner_user_id IS NULL`) and public stay excluded** — you bind a *clone* (adopt) of a system/public motif, not the shared original, so a bound node is always own-or-book_shared; and the `motif_link_guard` forbids cross-tier edges, so a system node could only be an island. (One-line comment so nobody "fixes" it by adding system back.)
+- **`motif_visible_in_book` MUST apply the SAME predicate** — a caller may only store a position for a motif that IS a graph node (bound-here-own or book_shared); anything else → 404 (no oracle). Keep the two BYTE-IDENTICAL via a shared SQL fragment (the one-predicate-two-callsites discipline) + a test that asserts they agree.
+- **`edges_among` unchanged** — it already filters to edges whose BOTH endpoints are in the (now-tighter) node set, so no dangling edge to an unbound motif.
+- The node cap + `truncated` flag are unchanged (they now bound the correctly-scoped, usually-smaller set).
 
 ## 5 · Edge cases
 
 | # | Case | Behaviour |
 |---|---|---|
-| E1 | A motif labelled to a DIFFERENT book | no longer a node here (correct); its stored position in THIS book's layout row is ignored on read (regenerable) — no orphan. |
-| E2 | A global (book_id NULL) motif | still a node in every book's graph — matches the library `book` tab (consistent, not a bug). |
-| E3 | A stored position for a motif that left the graph (re-labelled to another book) | GET ignores unknown ids in `positions`; PATCH `motif_visible_in_book` now returns false for it → 404 (no oracle). Both already handled; the shared predicate keeps them aligned. |
-| E4 | book_shared row | unchanged — `(book_shared AND book_id = $2)` already implies `book_id = $2`, so the new clause is a no-op for it. |
+| E1 | The caller's own motif NOT bound in this book (unbound / other book) | not a node here (that is the point of B); its stale position in this book's layout row is ignored on read (regenerable) — no orphan. |
+| E2 | A book you have not bound any motif in yet | the graph is empty → the honest `motif-graph-empty` CTA ("create/adopt then link"). Correct for a story graph — not a bug. Its wording already fits ("no motifs to graph yet"). |
+| E3 | A stored position for a motif that left the graph (unbound / re-scoped) | GET ignores unknown ids in `positions`; PATCH `motif_visible_in_book` returns false → 404. Both handled; the shared predicate keeps them aligned. |
+| E4 | A book_shared motif with no binding | STILL a node — book_shared is the shared authoring tier, shown unconditionally (only the *own* tier requires a binding). The `(book_shared AND book_id = $2)` clause covers it. |
+| E5 | A motif bound in this book but since ARCHIVED | `status = 'active'` filters it out (a retired motif is not a live node), even if a stale `motif_application` row remains. |
 
 ## 6 · Standards
 - **Tenancy:** unchanged shape — still scope-keyed on `owner_user_id` + `book_id`; this tightens (never widens) what a caller sees. ✅
 - **One-predicate-two-callsites:** `nodes_for_book` ⇄ `motif_visible_in_book` must share the exact clause (so a shown node is always position-able, and a non-shown one is always rejected). Enforce with a test.
 
 ## 7 · Plan (phases)
-1. **BE:** add the `(book_id IS NULL OR book_id = $2)` clause to `nodes_for_book` AND `motif_visible_in_book` (shared fragment). One-line comment on why system stays excluded.
-2. **Tests:** extend `test_motif_graph_layout` — a motif labelled to book-A does NOT appear in book-B's `nodes_for_book`, and `motif_visible_in_book` rejects it (so the PATCH 404s); a global + a book-A-labelled motif DO appear in book-A. Assert the two predicates agree (a node returned by `nodes_for_book` is accepted by `motif_visible_in_book`, and vice-versa).
-3. **Live re-smoke:** re-run `studio-motif-graph.spec.ts` (the CDP drag) — still green — plus a `GET /motif-graph` on a book with a foreign-labelled motif confirming it is absent.
+1. **BE:** rewrite the `nodes_for_book` / `motif_visible_in_book` predicate to the §4 bound-in-book form via a shared SQL fragment (book_shared-tier ∪ own-bound-here). One-line comment on why system stays excluded.
+2. **Tests:** extend `test_motif_graph_layout` — an own motif BOUND in this book appears; an own motif NOT bound (or bound in another book) does NOT; a book_shared motif appears even with no binding; an archived-but-once-bound motif is excluded; and `motif_visible_in_book` AGREES with `nodes_for_book` (a returned node is accepted; a non-node is rejected → the PATCH 404s). Update the existing route/repo tests' fixtures (they mocked `nodes_for_book` — the mock shape is unchanged; the DB behaviour is what changes, covered by the live re-smoke since the repo query is DB-side).
+3. **Live re-smoke:** seed a bound motif + a book_shared motif + an UNBOUND own motif, `GET /motif-graph` → the first two present, the unbound absent; re-run `studio-motif-graph.spec.ts` (bind the seeded motifs first so the graph is non-empty) — the CDP drag still green.
 4. **/review-impl + close** the DEBT row in the Wave-4 RUN-STATE.
 
-**Deferred (not this spec):** Option B "bound-only" view (a toggle backed by `motif_application`) — a product decision + a join; revisit if users ask for a story-only graph.
+**Deferred (not this spec):** a "show my whole library" toggle (Option A behaviour) — revisit if users want to arrange unbound motifs too.

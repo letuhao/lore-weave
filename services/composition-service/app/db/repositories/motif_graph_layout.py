@@ -17,6 +17,20 @@ from uuid import UUID
 import asyncpg
 
 
+# D-MOTIF-GRAPH-BOOK-SCOPING (Option B — the book's STORY graph): a node is (a) the book's
+# SHARED authoring tier, or (b) the caller's OWN motif actually BOUND in THIS book (a
+# motif_application row). NOT the caller's whole library, NOT other books, NOT system/public
+# (you bind a *clone* of those, and the motif_link_guard forbids cross-tier edges → islands).
+# $1 = caller, $2 = book; the EXISTS correlates on the outer `motif.id`. ONE fragment shared by
+# nodes_for_book (what shows) and motif_visible_in_book (what a caller may position) so a shown
+# node is always position-able and a non-node is always rejected (one-predicate-two-callsites).
+_BOOK_NODE_PREDICATE = (
+    "((book_shared AND book_id = $2) "
+    "OR (owner_user_id = $1 AND EXISTS ("
+    "SELECT 1 FROM motif_application ma WHERE ma.book_id = $2 AND ma.motif_id = motif.id)))"
+)
+
+
 class MotifGraphLayoutRepo:
     def __init__(self, pool: asyncpg.Pool) -> None:
         self._pool = pool
@@ -24,17 +38,15 @@ class MotifGraphLayoutRepo:
     async def nodes_for_book(
         self, caller_id: UUID, book_id: UUID, limit: int,
     ) -> list[dict[str, Any]]:
-        """The graph NODES for a book: the caller's OWN motifs + the book's SHARED-tier motifs
-        (edges only exist within one tier — the motif_link_guard forbids cross-tier — so a
-        system/public node would be an island; we show the caller's connected authored graph).
-        Bounded by `limit`; own-tier first, then by name for a stable layout seed."""
+        """The graph NODES for a book (D-MOTIF-GRAPH-BOOK-SCOPING, Option B): the book's shared
+        tier + the caller's own motifs BOUND in this book. Bounded by `limit`; own-tier first,
+        then by name for a stable layout seed."""
         async with self._pool.acquire() as c:
             rows = await c.fetch(
-                """
+                f"""
                 SELECT id, owner_user_id, book_shared, code, kind, name, visibility
                 FROM motif
-                WHERE status = 'active'
-                  AND (owner_user_id = $1 OR (book_shared AND book_id = $2))
+                WHERE status = 'active' AND {_BOOK_NODE_PREDICATE}
                 ORDER BY (owner_user_id = $1) DESC, name
                 LIMIT $3
                 """,
@@ -56,13 +68,12 @@ class MotifGraphLayoutRepo:
         return [dict(r) for r in rows]
 
     async def motif_visible_in_book(self, caller_id: UUID, book_id: UUID, motif_id: UUID) -> bool:
-        """Is `motif_id` a node the caller may position in this book's graph (own or book-shared)?
-        The layout PATCH validates against this so a caller cannot store a position keyed on a
-        motif they can't see (a 404, no oracle)."""
+        """Is `motif_id` a node the caller may position in this book's graph? Uses the SAME
+        `_BOOK_NODE_PREDICATE` as `nodes_for_book`, so a shown node is always position-able and a
+        non-node (unbound / other book / system) is always rejected (a 404, no oracle)."""
         async with self._pool.acquire() as c:
             found = await c.fetchval(
-                "SELECT 1 FROM motif WHERE id = $3 AND status = 'active' "
-                "AND (owner_user_id = $1 OR (book_shared AND book_id = $2))",
+                f"SELECT 1 FROM motif WHERE id = $3 AND status = 'active' AND {_BOOK_NODE_PREDICATE}",
                 caller_id, book_id, motif_id,
             )
         return found is not None

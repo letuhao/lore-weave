@@ -26,6 +26,14 @@ class _FakeConn:
         self.calls.append((sql, args))
         return self._row
 
+    async def fetch(self, sql, *args):
+        self.calls.append((sql, args))
+        return []
+
+    async def fetchval(self, sql, *args):
+        self.calls.append((sql, args))
+        return 1
+
 
 class _FakeAcquire:
     def __init__(self, conn):
@@ -86,3 +94,18 @@ async def test_merge_with_no_moves_is_a_read():
     repo = MotifGraphLayoutRepo(_FakePool(None))
     out = await repo.merge(uuid.uuid4(), uuid.uuid4(), {}, if_version=3)
     assert out == ({}, 0)  # empty moves → get() → ({},0), never a wasted write
+
+
+async def test_nodes_and_visibility_share_the_bound_in_book_predicate():
+    """D-MOTIF-GRAPH-BOOK-SCOPING (Option B): both the node list and the position-write check
+    gate on a motif_application binding (bound-in-book), via the SAME shared fragment — so a
+    shown node is always position-able and a non-node is always rejected."""
+    repo = MotifGraphLayoutRepo(_FakePool(None))
+    await repo.nodes_for_book(uuid.uuid4(), uuid.uuid4(), 10)
+    await repo.motif_visible_in_book(uuid.uuid4(), uuid.uuid4(), uuid.uuid4())
+    nodes_sql, vis_sql = repo._pool.conn.calls[0][0], repo._pool.conn.calls[1][0]
+    for sql in (nodes_sql, vis_sql):
+        assert "motif_application ma" in sql          # the bound-in-book join
+        assert "ma.book_id = $2 AND ma.motif_id = motif.id" in sql
+        assert "book_shared AND book_id = $2" in sql   # the shared tier is shown unconditionally
+        assert "owner_user_id IS NULL" not in sql      # system stays excluded (islands)

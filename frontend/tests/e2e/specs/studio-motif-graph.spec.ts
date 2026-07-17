@@ -4,25 +4,30 @@
 // wrote it) via the graph API, then survives a reload. Seeds motifs + a link via the real gateway.
 import { test, expect } from '@playwright/test';
 import { loginViaUI } from '../helpers/auth';
-import { getAccessToken, createBook, trashBook } from '../helpers/api';
-import { seedMotif, createMotifLink } from '../helpers/motif';
+import { getAccessToken, createBook, createChapter, trashBook } from '../helpers/api';
+import { seedMotif, createWork, createSceneNode } from '../helpers/motif';
 import { StudioPage } from '../pages/StudioPage';
 
 test.describe('@s4 Studio · motif-graph canvas', () => {
   let token: string;
   let bookId = '';
   let m1 = '';
-  let m2 = '';
   const stamp = Date.now();
 
   test.beforeAll(async ({ request }) => {
     token = await getAccessToken(request);
     bookId = await createBook(request, token, `E2E motif-graph ${stamp}`);
-    // Motifs are the caller's own (user-tier, book-agnostic) — the graph shows the caller's own +
-    // book-shared nodes, so a private motif appears in this book's graph without a book_id.
+    const chapterId = await createChapter(request, token, bookId, 'Ch.1');
+    const pid = await createWork(request, token, bookId);
     m1 = await seedMotif(request, token, { code: `g.a.${stamp}`, name: `GraphA ${stamp}` });
-    m2 = await seedMotif(request, token, { code: `g.b.${stamp}`, name: `GraphB ${stamp}` });
-    await createMotifLink(request, token, m1, m2, 'precedes');
+    // D-MOTIF-GRAPH-BOOK-SCOPING (Option B): the graph is the book's STORY graph — only motifs
+    // BOUND in this book show. Bind m1 to a scene so it becomes a graph node.
+    const scene = await createSceneNode(request, token, pid, chapterId, 'Scene 1');
+    const r = await request.patch(`/v1/composition/works/${pid}/outline/${scene}/motif`, {
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      data: { motif_id: m1, book_id: bookId },
+    });
+    if (!r.ok()) throw new Error(`bind failed: ${r.status()} ${await r.text()}`);
   });
 
   test.afterAll(async ({ request }) => {

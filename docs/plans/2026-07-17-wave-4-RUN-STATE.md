@@ -46,7 +46,15 @@ smoke (drive the real app as a user) for each:
 **B · motif graph-canvas — DONE ✅** (commits: BE `05445221b`-adjacent, FE B3-B6, live E2E `d7a8fb59d`, +this review fix). Persisted per-viewer positions live-proven end-to-end (drag→PATCH→DB→reload).
 
 ### DEBT (from B8 review)
-- **D-MOTIF-GRAPH-BOOK-SCOPING** (design refinement, gate #2) — `nodes_for_book` returns ALL the caller's OWN motifs (`owner_user_id=$1`) regardless of book, so a user's whole library shows in every book's graph (only the `book_shared` tier is book-filtered). Honest + bounded (node cap + truncation) for v1, but not truly "this book's" graph. Spec: [`docs/specs/2026-07-17-motif-graph-book-scoping.md`](../specs/2026-07-17-motif-graph-book-scoping.md) — recommends mirroring the library `list_in_book` book-relevance clause (Option A, 1 SQL clause); Option B (bound-in-book via motif_application) deferred.
+- **D-MOTIF-GRAPH-BOOK-SCOPING — CLEARED (2026-07-17, PO chose Option B).** The graph is now the book's
+  STORY graph: `nodes_for_book`/`motif_visible_in_book` gate on `_BOOK_NODE_PREDICATE` = the book's shared
+  tier ∪ the caller's OWN motifs BOUND in this book (a `motif_application` row); system stays excluded
+  (islands). ONE shared SQL fragment → a shown node is always position-able, a non-node always rejected (a
+  test asserts both queries use it). Spec: [`docs/specs/2026-07-17-motif-graph-book-scoping.md`](../specs/2026-07-17-motif-graph-book-scoping.md).
+  **EVIDENCE:** live GET smoke — a BOUND own motif shows, an UNBOUND own motif (and the caller's whole prior
+  library) absent; `studio-motif-graph.spec.ts` updated to BIND a motif then drag it → **RAN GREEN LIVE
+  (12.9s)**; 11 graph unit/route tests green. /review-impl clean (tenancy tightens never widens; EXISTS is
+  index-backed by `idx_motif_application_book_motif`). Deferred: a "show my whole library" toggle (Option A).
 
 ## REGISTERS (append as you go)
 ### DECISIONS
