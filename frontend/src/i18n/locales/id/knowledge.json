@@ -1268,6 +1268,7 @@
       "target_entity_id": "ID entitas target yang diperbaiki",
       "map_to": "Petakan ke (kosongkan untuk menggunakan nilai yang terdeteksi)"
     },
-    "itemDismissed": "Item diabaikan"
+    "itemDismissed": "Item diabaikan",
+    "confirmSchemaWrite": "Tambahkan ini ke skema Anda? Ini akan mengubah cara validasi ekstraksi di masa mendatang."
   }
 }

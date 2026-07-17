@@ -1268,6 +1268,7 @@
       "target_entity_id": "ID entiti sasaran yang telah diperbetulkan",
       "map_to": "Petakan ke (biarkan kosong untuk menggunakan nilai yang dikesan)"
     },
-    "itemDismissed": "Item dibatalkan"
+    "itemDismissed": "Item dibatalkan",
+    "confirmSchemaWrite": "Tambah ini ke dalam skema anda? Ia akan mengubah cara pengesahan pengekstrakan pada masa hadapan dilakukan."
   }
 }

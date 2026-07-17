@@ -1268,6 +1268,7 @@
       "target_entity_id": "已修正的目標實體 ID",
       "map_to": "映射至 (留空則使用偵測到的值)"
     },
-    "itemDismissed": "項目已移除"
+    "itemDismissed": "項目已移除",
+    "confirmSchemaWrite": "要將此內容新增至您的架構（Schema）中嗎？這會改變未來擷取內容的驗證方式。"
   }
 }

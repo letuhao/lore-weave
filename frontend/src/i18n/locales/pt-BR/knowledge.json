@@ -1268,6 +1268,7 @@
       "target_entity_id": "ID da entidade de destino corrigido",
       "map_to": "Mapear para (deixe em branco para usar o valor detectado)"
     },
-    "itemDismissed": "Item descartado"
+    "itemDismissed": "Item descartado",
+    "confirmSchemaWrite": "Adicionar isso ao seu esquema? Isso altera a forma como as futuras extrações são validadas."
   }
 }

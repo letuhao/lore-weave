@@ -1268,6 +1268,7 @@
       "target_entity_id": "수정된 대상 엔티티 ID",
       "map_to": "매핑 대상 (빈칸으로 두면 감지된 값 사용)"
     },
-    "itemDismissed": "항목 삭제됨"
+    "itemDismissed": "항목 삭제됨",
+    "confirmSchemaWrite": "이 내용을 스키마에 추가하시겠습니까? 추가 시 향후 추출 데이터의 유효성 검사 방식이 변경됩니다."
   }
 }

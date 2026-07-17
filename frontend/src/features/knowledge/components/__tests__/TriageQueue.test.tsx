@@ -148,6 +148,49 @@ describe('TriageQueue', () => {
     );
   });
 
+  it('add_to_schema now renders + writes on confirm (S-05 schema write)', async () => {
+    const group = {
+      signature: 'edge:rules_over',
+      item_type: 'unknown_edge_type' as const,
+      count: 2,
+      status: 'pending' as const,
+      sample_payload: { predicate: 'rules_over' },
+      suggested_actions: ['map', 'add_to_schema', 'dismiss'],
+    };
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
+    listTriageMock.mockResolvedValue({ groups: [group] });
+    resolveTriageMock.mockResolvedValue({ status: 'resolved', affected: 2, schema_version: 4 });
+    render(<TriageQueue projectId="p-1" />, { wrapper: Wrapper });
+    await waitFor(() => screen.getByTestId('kg-triage-action-add_to_schema'));
+    fireEvent.click(screen.getByTestId('kg-triage-action-add_to_schema'));
+    await waitFor(() =>
+      expect(resolveTriageMock).toHaveBeenCalledWith(
+        'p-1', 'edge:rules_over', { action: 'add_to_schema', params: {} }, 'tok',
+      ),
+    );
+    expect(confirmSpy).toHaveBeenCalled(); // ontology change is confirmed first
+    confirmSpy.mockRestore();
+  });
+
+  it('add_to_schema does NOT fire when the schema-write confirm is cancelled', async () => {
+    const group = {
+      signature: 'edge:rules_over',
+      item_type: 'unknown_edge_type' as const,
+      count: 1,
+      status: 'pending' as const,
+      sample_payload: { predicate: 'rules_over' },
+      suggested_actions: ['add_to_schema', 'dismiss'],
+    };
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false);
+    listTriageMock.mockResolvedValue({ groups: [group] });
+    render(<TriageQueue projectId="p-1" />, { wrapper: Wrapper });
+    await waitFor(() => screen.getByTestId('kg-triage-action-add_to_schema'));
+    fireEvent.click(screen.getByTestId('kg-triage-action-add_to_schema'));
+    await new Promise((r) => setTimeout(r, 20));
+    expect(resolveTriageMock).not.toHaveBeenCalled();
+    confirmSpy.mockRestore();
+  });
+
   it('expands a multi-item group and dismisses ONE item (per-item, not the group)', async () => {
     listTriageMock.mockResolvedValue({ groups: [GROUP_EDGE_MISMATCH] }); // count: 3
     listTriageItemsMock.mockResolvedValue({

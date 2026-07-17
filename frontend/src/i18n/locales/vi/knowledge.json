@@ -1268,6 +1268,7 @@
       "target_entity_id": "ID thực thể mục tiêu đã sửa",
       "map_to": "Ánh xạ tới (để trống để dùng giá trị đã phát hiện)"
     },
-    "itemDismissed": "Đã bỏ qua mục này"
+    "itemDismissed": "Đã bỏ qua mục này",
+    "confirmSchemaWrite": "Thêm nội dung này vào schema của bạn? Việc này sẽ thay đổi cách xác thực các dữ liệu trích xuất trong tương lai."
   }
 }

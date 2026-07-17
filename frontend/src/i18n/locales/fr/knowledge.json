@@ -1268,6 +1268,7 @@
       "target_entity_id": "ID de l'entité cible corrigé",
       "map_to": "Mapper vers (laisser vide pour utiliser la valeur détectée)"
     },
-    "itemDismissed": "Élément ignoré"
+    "itemDismissed": "Élément ignoré",
+    "confirmSchemaWrite": "Ajouter ceci à votre schéma ? Cela modifiera la validation des futures extractions."
   }
 }

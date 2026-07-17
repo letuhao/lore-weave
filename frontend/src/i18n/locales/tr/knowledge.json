@@ -1268,6 +1268,7 @@
       "target_entity_id": "Düzeltilmiş hedef varlık ID'si",
       "map_to": "Şuna eşle (tespit edilen değeri kullanmak için boş bırakın)"
     },
-    "itemDismissed": "Öğe elendi"
+    "itemDismissed": "Öğe elendi",
+    "confirmSchemaWrite": "Bunu şemanıza eklemek istiyor musunuz? Bu işlem, gelecekteki çıkarımların nasıl doğrulandığını değiştirir."
   }
 }

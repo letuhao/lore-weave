@@ -9,7 +9,7 @@ tests/integration/db/test_kg_triage.py.
 
 from __future__ import annotations
 
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
 import pytest
@@ -59,17 +59,31 @@ def _make_client(
     from app.middleware.jwt_auth import get_current_user
     from app.auth.grant_deps import project_meta_dep
     from app.deps import get_grant_client
-    from app.routers.public.triage import get_triage_repo
+    from app.routers.public.triage import (
+        get_triage_repo,
+        get_graph_schemas_repo,
+        get_ontology_mutations_repo,
+    )
 
     repo = repo or MagicMock()
 
     grant = MagicMock()
     grant.resolve_grant = AsyncMock(return_value=grant_level)
 
+    # S-05 — resolve_triage now DI's the schema + mutations repos (for the schema
+    # write). Override them with mocks so unit tests don't hit get_knowledge_pool.
+    # active_project_schema defaults to None (non-schema actions never call it;
+    # schema-write tests override it to a real schema).
+    schemas = MagicMock()
+    schemas.active_project_schema = AsyncMock(return_value=None)
+    mutations = MagicMock()
+
     app.dependency_overrides[get_current_user] = lambda: caller
     app.dependency_overrides[project_meta_dep] = lambda: meta
     app.dependency_overrides[get_grant_client] = lambda: grant
     app.dependency_overrides[get_triage_repo] = lambda: repo
+    app.dependency_overrides[get_graph_schemas_repo] = lambda: schemas
+    app.dependency_overrides[get_ontology_mutations_repo] = lambda: mutations
     return TestClient(app, raise_server_exceptions=False), repo, grant
 
 
@@ -159,6 +173,65 @@ def test_resolve_kg_local_marks_resolved():
     assert kwargs["user_id"] == _OWNER
 
 
+@patch("app.routers.public.triage.apply_triage_schema_write", new_callable=AsyncMock)
+def test_resolve_add_to_schema_writes_and_resolves(mock_apply):
+    """S-05 — add_to_schema (Manage) now WRITES the schema via the resolve route:
+    derive code from the parked predicate, apply the mutation, then mark resolved
+    with the new schema_version (no more 'records intent')."""
+    from types import SimpleNamespace
+    from app.routers.public.triage import get_graph_schemas_repo
+
+    repo = MagicMock()
+    repo.list_pending_for_signature = AsyncMock(return_value=[
+        _item(item_type="unknown_edge_type", signature="edge:rules_over",
+              payload={"predicate": "rules_over"}),
+    ])
+    repo.resolve_signature = AsyncMock(return_value=2)
+    mock_apply.return_value = {"applied": True, "schema_version": 4}
+    schemas = MagicMock()
+    schemas.active_project_schema = AsyncMock(
+        return_value=SimpleNamespace(schema_id=uuid4(), schema_version=3)
+    )
+    client, _, _ = _make_client(repo=repo)
+    from app.main import app
+    app.dependency_overrides[get_graph_schemas_repo] = lambda: schemas
+    r = client.post(
+        f"/v1/kg/projects/{_PROJECT}/triage/edge:rules_over/resolve",
+        json={"action": "add_to_schema"},
+    )
+    assert r.status_code == 200, r.json()
+    assert r.json()["schema_version"] == 4
+    mock_apply.assert_awaited_once()
+    # code was DERIVED from the parked payload predicate (one-click, no form)
+    params = mock_apply.call_args.args[4]
+    assert params.action == "add_to_schema" and params.code == "rules_over"
+    # marked resolved WITH the new version
+    _, kwargs = repo.resolve_signature.call_args
+    assert kwargs["new_status"] == "resolved" and kwargs["schema_version"] == 4
+
+
+def test_resolve_add_to_schema_no_active_schema_422():
+    """No adopted schema → 422 BEFORE anything is marked resolved."""
+    from app.routers.public.triage import get_graph_schemas_repo
+
+    repo = MagicMock()
+    repo.list_pending_for_signature = AsyncMock(return_value=[
+        _item(item_type="unknown_edge_type", signature="edge:x", payload={"predicate": "x"}),
+    ])
+    repo.resolve_signature = AsyncMock()
+    schemas = MagicMock()
+    schemas.active_project_schema = AsyncMock(return_value=None)
+    client, _, _ = _make_client(repo=repo)
+    from app.main import app
+    app.dependency_overrides[get_graph_schemas_repo] = lambda: schemas
+    r = client.post(
+        f"/v1/kg/projects/{_PROJECT}/triage/edge:x/resolve",
+        json={"action": "add_to_schema"},
+    )
+    assert r.status_code == 422
+    repo.resolve_signature.assert_not_called()
+
+
 def test_resolve_invalid_action_for_item_type_422():
     repo = MagicMock()
     repo.list_pending_for_signature = AsyncMock(return_value=[_item(item_type="unknown_vocab_value")])
@@ -238,21 +311,37 @@ def test_resolve_schema_mutating_requires_manage():
     repo.resolve_signature.assert_not_called()
 
 
-def test_resolve_schema_mutating_manage_grantee_ok():
+@patch("app.routers.public.triage.apply_triage_schema_write", new_callable=AsyncMock)
+def test_resolve_schema_mutating_manage_grantee_ok(mock_apply):
+    """A MANAGE grantee's add_to_vocab now WRITES the schema (S-05) — the write runs
+    for the direct human path, and the response carries the new schema_version
+    (no longer None / 'intent recorded'). set_code + code derive from the payload."""
+    from types import SimpleNamespace
+    from app.routers.public.triage import get_graph_schemas_repo
+
     repo = MagicMock()
-    repo.list_pending_for_signature = AsyncMock(return_value=[_item()])
+    repo.list_pending_for_signature = AsyncMock(return_value=[
+        _item(item_type="unknown_vocab_value", signature="drive:curiosity",
+              payload={"set_code": "drive", "value": "curiosity"}),
+    ])
     repo.resolve_signature = AsyncMock(return_value=1)
+    mock_apply.return_value = {"applied": True, "schema_version": 7}
     other = uuid4()
     client, _, _ = _make_client(caller=other, grant_level=GrantLevel.MANAGE, repo=repo)
+    from app.main import app
+    schemas = MagicMock()
+    schemas.active_project_schema = AsyncMock(
+        return_value=SimpleNamespace(schema_id=uuid4(), schema_version=6)
+    )
+    app.dependency_overrides[get_graph_schemas_repo] = lambda: schemas
     r = client.post(
         f"/v1/kg/projects/{_PROJECT}/triage/drive:curiosity/resolve",
-        json={"action": "add_to_vocab", "params": {"value": "curiosity"}},
+        json={"action": "add_to_vocab"},
     )
-    assert r.status_code == 200
-    body = r.json()
-    assert body["status"] == "resolved"
-    # schema write deferred to LC -> schema_version stays None (intent recorded)
-    assert body["schema_version"] is None
+    assert r.status_code == 200, r.json()
+    assert r.json()["schema_version"] == 7
+    params = mock_apply.call_args.args[4]
+    assert params.set_code == "drive" and params.code == "curiosity"
 
 
 # ── POST dismiss (Edit-gated) ────────────────────────────────────────────────

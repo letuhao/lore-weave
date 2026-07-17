@@ -1268,6 +1268,7 @@
       "target_entity_id": "Corrected target entity id",
       "map_to": "Map to (leave blank to use the detected value)"
     },
-    "itemDismissed": "Item dismissed"
+    "itemDismissed": "Item dismissed",
+    "confirmSchemaWrite": "Add this to your schema? It changes how future extractions are validated."
   }
 }

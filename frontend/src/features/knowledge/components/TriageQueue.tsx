@@ -17,24 +17,29 @@ import type { TriageAction, TriageGroup } from '../types/ontology';
 // (`RENDERABLE_ACTIONS`), so a backend value the FE can't handle never renders a
 // dead button (e.g. `place_edge`, which is a confirm-token flow, not a resolve).
 
-// Only the actions the RESOLVE route actually completes are offered. The four
-// SCHEMA-MUTATING actions (add_to_vocab / add_to_schema / widen_target_kinds /
-// set_multi_active) are DELIBERATELY excluded: the resolve route only "records
-// intent" for them (it marks the item resolved but does NOT write the schema —
-// D-KG-LH-LC-SCHEMA-WRITE), so a button here would VANISH the item yet leave the
-// schema unchanged, and the next extraction re-parks the same element — a
-// misleading silent-partial. Those actions have a COMPLETE path via the class-C
-// confirm-token flow (kg_actions `_confirm_triage_schema_write`); surfacing that
-// propose→confirm UX in the panel is a separate follow-up. Until then the panel
-// offers only the actions that fully work on click, so no button lies.
+// The actions the RESOLVE route completes on click. add_to_vocab / add_to_schema
+// now WRITE the schema for real (S-05, D-KG-LH-LC-SCHEMA-WRITE done for the human
+// path — the resolve route applies the ontology mutation, deriving the code from
+// the parked payload). widen_target_kinds / set_multi_active stay OUT: their params
+// aren't cleanly one-click-derivable from the parked payload (endpoint-kind /
+// cardinality choices), so they remain on the agent confirm-token path for now.
 const RENDERABLE_ACTIONS: ReadonlySet<TriageAction> = new Set<TriageAction>([
   'map',
   're_target',
   'drop_edge',
   'close_previous',
+  'add_to_vocab',
+  'add_to_schema',
   'promote_to_glossary_kind',
   'demote_to_attribute',
   'dismiss',
+]);
+
+// Schema-mutating actions get a light confirm — they change the ONTOLOGY (affect
+// every future extraction), so a stray click shouldn't silently alter the schema.
+const SCHEMA_MUTATING: ReadonlySet<TriageAction> = new Set<TriageAction>([
+  'add_to_vocab',
+  'add_to_schema',
 ]);
 
 const GLOSSARY_HANDOFF: ReadonlySet<TriageAction> = new Set<TriageAction>([
@@ -133,6 +138,10 @@ export function TriageQueue({ projectId, bookId, onGlossaryHandoff }: TriageQueu
   };
 
   const handleAction = async (group: TriageGroup, action: TriageAction) => {
+    // Schema-mutating actions change the ontology — confirm before firing.
+    if (SCHEMA_MUTATING.has(action) && !window.confirm(t('triage.confirmSchemaWrite'))) {
+      return;
+    }
     let params: Record<string, unknown> | undefined;
     const promptKey = NEEDS_TARGET[action];
     if (promptKey) {
