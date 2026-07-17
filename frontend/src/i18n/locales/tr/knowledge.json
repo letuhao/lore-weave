@@ -1235,5 +1235,37 @@
       "divergent": "Iraksak"
     },
     "totalRuns": "Toplam {{count}} çalışma"
+  },
+  "triage": {
+    "loading": "Triage kuyruğu yükleniyor…",
+    "loadFailed": "Triage kuyruğu yüklenemedi: {{error}}",
+    "empty": "Triage edilecek bir şey yok — çıkarılan tüm öğeler şemanızla eşleşti.",
+    "resolved": "{{count}} öğe çözümlendi",
+    "resolveFailed": "Çözümlenemedi: {{error}}",
+    "handoffToGlossary": "Bunu sözlüğünüzde tamamlamak için sözlük açılıyor…",
+    "itemType": {
+      "unknown_node_kind": "Bilinmeyen varlık türü",
+      "unknown_edge_type": "Bilinmeyen ilişki türü",
+      "edge_kind_mismatch": "İlişki uç noktası uyuşmazlığı",
+      "unknown_vocab_value": "Sözlük dışı değer",
+      "edge_cardinality_conflict": "Çakışan aktif ilişkiler"
+    },
+    "action": {
+      "map": "Mevcut olana eşle",
+      "add_to_vocab": "Kelime dağarcığına ekle",
+      "add_to_schema": "Şemaya ekle",
+      "re_target": "Uç noktayı düzelt",
+      "widen_target_kinds": "İzin verilen türleri genişlet",
+      "drop_edge": "Kaldır",
+      "close_previous": "Önceki olanı kapat",
+      "set_multi_active": "Çoklu seçime izin ver",
+      "promote_to_glossary_kind": "Sözlük türüne yükselt",
+      "demote_to_attribute": "Özniteliğe düşür",
+      "dismiss": "Kapat"
+    },
+    "prompt": {
+      "target_entity_id": "Düzeltilmiş hedef varlık ID'si",
+      "map_to": "Şuna eşle (tespit edilen değeri kullanmak için boş bırakın)"
+    }
   }
 }

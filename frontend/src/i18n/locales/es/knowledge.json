@@ -1235,5 +1235,37 @@
       "divergent": "Divergente"
     },
     "totalRuns": "{{count}} ejecuciones en total"
+  },
+  "triage": {
+    "loading": "Cargando cola de triaje…",
+    "loadFailed": "No se pudo cargar la cola de triaje: {{error}}",
+    "empty": "No hay nada que triar: todos los elementos extraídos coinciden con su esquema.",
+    "resolved": "Se resolvieron {{count}} elemento(s)",
+    "resolveFailed": "No se pudo resolver: {{error}}",
+    "handoffToGlossary": "Abriendo glosario para finalizar esto en su códice…",
+    "itemType": {
+      "unknown_node_kind": "Tipo de entidad desconocido",
+      "unknown_edge_type": "Tipo de relación desconocido",
+      "edge_kind_mismatch": "Discrepancia en el extremo de la relación",
+      "unknown_vocab_value": "Valor fuera de vocabulario",
+      "edge_cardinality_conflict": "Conflictos de relaciones activas"
+    },
+    "action": {
+      "map": "Mapear a existente",
+      "add_to_vocab": "Añadir al vocabulario",
+      "add_to_schema": "Añadir al esquema",
+      "re_target": "Corregir endpoint",
+      "widen_target_kinds": "Ampliar tipos permitidos",
+      "drop_edge": "Eliminar",
+      "close_previous": "Cerrar anterior",
+      "set_multi_active": "Permitir múltiples",
+      "promote_to_glossary_kind": "Promover a tipo de glosario",
+      "demote_to_attribute": "Degradar a atributo",
+      "dismiss": "Descartar"
+    },
+    "prompt": {
+      "target_entity_id": "ID de entidad de destino corregida",
+      "map_to": "Mapear a (dejar en blanco para usar el valor detectado)"
+    }
   }
 }

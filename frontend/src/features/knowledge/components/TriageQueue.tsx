@@ -1,0 +1,205 @@
+import { useTranslation } from 'react-i18next';
+import { toast } from 'sonner';
+import { AlertTriangle, X } from 'lucide-react';
+import { useTriageQueue } from '../hooks/useTriageQueue';
+import type { TriageAction, TriageGroup } from '../types/ontology';
+
+// S-05 Part B — the KG extraction-triage queue. Extraction elements that didn't
+// match the resolved schema are parked (NOT written to Neo4j) and resolved
+// human-gated, grouped by `signature` so one resolution batch-applies.
+//
+// THE LOAD-BEARING UX RULE (spec B.2): each group offers ONLY the actions the
+// backend permits for its `item_type` (`suggested_actions`) — a closed set the
+// router will accept — so the human never picks an action that would 400/422.
+// This is the Frontend-Tool-Contract discipline applied to a human surface. We
+// additionally intersect with the actions the FE knows how to DRIVE
+// (`RENDERABLE_ACTIONS`), so a backend value the FE can't handle never renders a
+// dead button (e.g. `place_edge`, which is a confirm-token flow, not a resolve).
+
+const RENDERABLE_ACTIONS: ReadonlySet<TriageAction> = new Set<TriageAction>([
+  'map',
+  'add_to_vocab',
+  'add_to_schema',
+  're_target',
+  'widen_target_kinds',
+  'drop_edge',
+  'close_previous',
+  'set_multi_active',
+  'promote_to_glossary_kind',
+  'demote_to_attribute',
+  'dismiss',
+]);
+
+const GLOSSARY_HANDOFF: ReadonlySet<TriageAction> = new Set<TriageAction>([
+  'promote_to_glossary_kind',
+  'demote_to_attribute',
+]);
+
+// Actions that need a corrected endpoint/value from the user (else the backend
+// re-apply fail-softs to a silent no-op — a silent-success bug). We prompt.
+const NEEDS_TARGET: Partial<Record<TriageAction, string>> = {
+  re_target: 'target_entity_id',
+  map: 'map_to',
+};
+
+export interface TriageQueueProps {
+  projectId: string;
+  bookId?: string | null;
+  /** Wired by the studio panel to deep-link into glossary on a handoff action. */
+  onGlossaryHandoff?: (needs: { book_id?: string | null; kinds: string[] }) => void;
+}
+
+function evidenceSnippet(payload: Record<string, unknown> | undefined): string {
+  if (!payload) return '';
+  // Prefer the human-meaningful fields; fall back to a compact JSON preview.
+  const pick = (k: string) => (typeof payload[k] === 'string' ? (payload[k] as string) : undefined);
+  return (
+    pick('value') ??
+    pick('predicate') ??
+    pick('kind') ??
+    pick('proposed_kind') ??
+    JSON.stringify(payload).slice(0, 120)
+  );
+}
+
+export function TriageQueue({ projectId, bookId, onGlossaryHandoff }: TriageQueueProps) {
+  const { t } = useTranslation('knowledge');
+  const { groups, isLoading, error, resolve, isResolving } = useTriageQueue(projectId);
+
+  const handleAction = async (group: TriageGroup, action: TriageAction) => {
+    let params: Record<string, unknown> | undefined;
+    const promptKey = NEEDS_TARGET[action];
+    if (promptKey) {
+      const value = window.prompt(
+        t(`triage.prompt.${promptKey}`, { defaultValue: promptKey }),
+      );
+      // `map` may fall back to the parked value → blank is allowed; `re_target`
+      // needs a real target → blank cancels (never fire a silent no-op).
+      if (value === null) return;
+      const trimmed = value.trim();
+      if (action === 're_target' && !trimmed) return;
+      if (trimmed) params = { [promptKey]: trimmed };
+    }
+    try {
+      const result = await resolve({ signature: group.signature, action, params });
+      if (result.status === 'pending_glossary' && result.needs_glossary) {
+        onGlossaryHandoff?.(result.needs_glossary);
+        toast.info(t('triage.handoffToGlossary'));
+      } else {
+        toast.success(t('triage.resolved', { count: result.affected }));
+      }
+    } catch (e) {
+      // The glossary handoff returns HTTP 422 with the needs_glossary body (the
+      // shared apiJson throws `.status===422` + `.body`). Recover it into the
+      // deep-link instead of surfacing a scary error.
+      const err = e as { status?: number; body?: unknown };
+      if (err.status === 422 && err.body && typeof err.body === 'object') {
+        const body = err.body as {
+          needs_glossary?: { book_id?: string | null; kinds: string[] };
+        };
+        if (body.needs_glossary) {
+          onGlossaryHandoff?.(body.needs_glossary);
+          toast.info(t('triage.handoffToGlossary'));
+          return;
+        }
+      }
+      toast.error(
+        t('triage.resolveFailed', { error: (e as Error).message }),
+      );
+    }
+  };
+
+  if (isLoading) {
+    return (
+      <p className="text-[12px] text-muted-foreground" data-testid="kg-triage-loading">
+        {t('triage.loading')}
+      </p>
+    );
+  }
+  if (error) {
+    return (
+      <div
+        role="alert"
+        className="rounded-md border border-destructive/40 bg-destructive/5 p-3 text-[12px] text-destructive"
+        data-testid="kg-triage-error"
+      >
+        {t('triage.loadFailed', { error: error.message })}
+      </div>
+    );
+  }
+  if (groups.length === 0) {
+    return (
+      <div
+        className="rounded-md border border-dashed px-3 py-8 text-center text-[12px] text-muted-foreground"
+        data-testid="kg-triage-empty"
+      >
+        {t('triage.empty')}
+      </div>
+    );
+  }
+
+  return (
+    <ul className="space-y-2" data-testid="kg-triage-list" data-book-id={bookId ?? ''}>
+      {groups.map((group) => {
+        const actions = (group.suggested_actions ?? []).filter(
+          (a): a is TriageAction => RENDERABLE_ACTIONS.has(a as TriageAction),
+        );
+        return (
+          <li
+            key={group.signature}
+            className="rounded-md border px-3 py-2"
+            data-testid="kg-triage-group"
+            data-item-type={group.item_type}
+          >
+            <div className="flex items-start gap-2">
+              <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-warning" aria-hidden />
+              <div className="min-w-0 flex-1">
+                <p className="text-[12px] font-medium">
+                  {t(`triage.itemType.${group.item_type}`, {
+                    defaultValue: group.item_type,
+                  })}
+                  <span className="ml-1.5 rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">
+                    {group.count}
+                  </span>
+                </p>
+                <p
+                  className="mt-0.5 truncate text-[11px] text-muted-foreground"
+                  title={evidenceSnippet(group.sample_payload)}
+                  data-testid="kg-triage-evidence"
+                >
+                  {evidenceSnippet(group.sample_payload)}
+                </p>
+              </div>
+            </div>
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              {actions.map((action) => {
+                const isHandoff = GLOSSARY_HANDOFF.has(action);
+                const isDismiss = action === 'dismiss';
+                return (
+                  <button
+                    key={action}
+                    type="button"
+                    onClick={() => handleAction(group, action)}
+                    disabled={isResolving}
+                    className={
+                      'inline-flex items-center gap-1 rounded-md border px-2 py-1 text-[11px] transition-colors disabled:cursor-not-allowed disabled:opacity-50 ' +
+                      (isDismiss
+                        ? 'text-muted-foreground hover:bg-secondary'
+                        : isHandoff
+                          ? 'border-primary/40 text-primary hover:bg-primary/10'
+                          : 'hover:bg-secondary')
+                    }
+                    data-testid={`kg-triage-action-${action}`}
+                  >
+                    {isDismiss && <X className="h-3 w-3" />}
+                    {t(`triage.action.${action}`, { defaultValue: action })}
+                  </button>
+                );
+              })}
+            </div>
+          </li>
+        );
+      })}
+    </ul>
+  );
+}

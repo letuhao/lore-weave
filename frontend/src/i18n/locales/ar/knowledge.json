@@ -1235,5 +1235,37 @@
       "divergent": "متباعد"
     },
     "totalRuns": "{{count}} عملية إجمالاً"
+  },
+  "triage": {
+    "loading": "جاري تحميل قائمة الفرز…",
+    "loadFailed": "تعذر تحميل قائمة الفرز: {{error}}",
+    "empty": "لا يوجد شيء لفرزه — كل العناصر المستخرجة تطابقت مع المخطط الخاص بك.",
+    "resolved": "تمت معالجة {{count}} عنصر/عناصر",
+    "resolveFailed": "تعذر المعالجة: {{error}}",
+    "handoffToGlossary": "جاري فتح المسرد لإكمال هذا في الكودكس الخاص بك…",
+    "itemType": {
+      "unknown_node_kind": "نوع كيان غير معروف",
+      "unknown_edge_type": "نوع علاقة غير معروف",
+      "edge_kind_mismatch": "عدم تطابق في طرف العلاقة",
+      "unknown_vocab_value": "قيمة خارج المفردات",
+      "edge_cardinality_conflict": "تضارب في العلاقات النشطة"
+    },
+    "action": {
+      "map": "ربط بالموجود",
+      "add_to_vocab": "إضافة إلى المفردات",
+      "add_to_schema": "إضافة إلى المخطط",
+      "re_target": "إصلاح نقطة النهاية",
+      "widen_target_kinds": "توسيع الأنواع المسموح بها",
+      "drop_edge": "حذف",
+      "close_previous": "إغلاق السابق",
+      "set_multi_active": "السماح بتعدد العناصر",
+      "promote_to_glossary_kind": "الترقية إلى نوع في المسرد",
+      "demote_to_attribute": "الخفض إلى سمة",
+      "dismiss": "تجاهل"
+    },
+    "prompt": {
+      "target_entity_id": "معرف الكيان المستهدف المصحح",
+      "map_to": "الربط بـ (اتركه فارغاً لاستخدام القيمة المكتشفة)"
+    }
   }
 }

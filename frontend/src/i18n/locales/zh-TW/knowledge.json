@@ -1235,5 +1235,37 @@
       "divergent": "發散"
     },
     "totalRuns": "共 {{count}} 次執行"
+  },
+  "triage": {
+    "loading": "正在載入分流隊列…",
+    "loadFailed": "無法載入分流隊列：{{error}}",
+    "empty": "無須分流 — 所有提取的元素皆符合您的架構。",
+    "resolved": "已處理 {{count}} 個項目",
+    "resolveFailed": "無法處理：{{error}}",
+    "handoffToGlossary": "正在開啟術語表，以便在您的法典中完成此項工作…",
+    "itemType": {
+      "unknown_node_kind": "不明實體類型",
+      "unknown_edge_type": "不明關係類型",
+      "edge_kind_mismatch": "關係端點不匹配",
+      "unknown_vocab_value": "超出詞彙表範圍的值",
+      "edge_cardinality_conflict": "衝突的活動關係"
+    },
+    "action": {
+      "map": "映射至現有項目",
+      "add_to_vocab": "加入詞彙表",
+      "add_to_schema": "加入結構定義",
+      "re_target": "修正端點",
+      "widen_target_kinds": "擴大允許類型",
+      "drop_edge": "捨棄",
+      "close_previous": "關閉前一個",
+      "set_multi_active": "允許複數個",
+      "promote_to_glossary_kind": "提升為術語類型",
+      "demote_to_attribute": "降級為屬性",
+      "dismiss": "忽略"
+    },
+    "prompt": {
+      "target_entity_id": "已修正的目標實體 ID",
+      "map_to": "映射至 (留空則使用偵測到的值)"
+    }
   }
 }

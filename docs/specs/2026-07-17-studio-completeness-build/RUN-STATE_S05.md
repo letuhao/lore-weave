@@ -77,8 +77,16 @@ confidence=1.0, provenance='human_authored', pending_validation=False)`. No pend
 - [x] S5-BE1 read-fix: `GET /entities/{id}/facts?curation=true` → before_order=None (whole-book) + test — EVIDENCE: test_fact_authoring.py test_curation_read_skips_spoiler_window + test_reader_read_still_fail_closed; 8 passed
 - [x] S5-BE2 author route `POST /entities/{id}/facts` (merge_fact manual/1.0, owner-check entity, FactType→422) + test — EVIDENCE: test_author_fact_happy/_bad_type_422/_cross_user_404/_all_six_types; asserts conf=1.0+manual+human_authored+subject_id
 - [x] S5-BE3 invalidate route `POST /facts/{id}/invalidate` + FACT_CORRECTED/fact_snapshot in outbox_emit + test — EVIDENCE: test_invalidate_fact_happy/_404; `8 passed in 3.15s`; +17 passed w/ relation_correction (no regression)
-- [ ] S5-FE1 EntityDetailPanel: useEntityFacts curation=true, Add-fact form (6 types), mark-wrong; api+hooks; label fix — EVIDENCE:
-- [ ] S5-FE2 kg-triage panel (GG-8) + triageEffects Lane-B + deep-links + convergence manifest — EVIDENCE:
+- [x] S5-FE1 EntityDetailPanel: useEntityFacts curation=true, Add-fact form (6 types), mark-wrong; api+hooks; label fix — EVIDENCE: 20 FE tests pass (EntityDetailPanel + C9); tsc exit 0; i18n gate 17 locales PASS; commit 0a5c930e5
+- [x] S5-FE2 kg-triage panel (GG-8) + triageEffects Lane-B + deep-links + convergence manifest — EVIDENCE: TriageQueue+hook+panel built; 6 TriageQueue tests + 33 (w/ effects handlers) pass; tsc 0; i18n 17 locales; effects folded into ONE /^kg_/ handler; CONVERGENCE_MANIFEST_S05.md written (catalog/panel_id/studio.json for convergence)
+
+## COMMITS (mine)
+- b27e2ec80 BE: author + invalidate + curation read-fix (8 tests)
+- 0a5c930e5 FE: EntityDetailPanel affordance (20 tests)
+## SHARED CHECKOUT NOTE: sibling sessions committing to same branch (S-01 7712c8bb1, S-02 b56725e05). git pull --rebase before push.
+## VERIFY CONSTRAINT (user, 2026-07-17): multi-session ⇒ live-smoke on an ISOLATED STATIC FE build on
+##   its OWN free port. Do NOT use the shared vite dev / :5174 (N sessions share one HMR → remounts fake
+##   bugs; a host vite dev SHADOWs the baked :5174). Build the image / `vite build` + preview on a free port.
 - [ ] VERIFY pasted output + 2-stage review + /review-impl + live-smoke ≥2 svc — EVIDENCE:
 
 ## SEALED DECISIONS (do NOT re-litigate — 01_DECISIONS.md)

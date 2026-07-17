@@ -1235,5 +1235,37 @@
       "divergent": "अपसारी (Divergent)"
     },
     "totalRuns": "कुल {{count}} रन"
+  },
+  "triage": {
+    "loading": "ट्राइएज कतार लोड हो रही है…",
+    "loadFailed": "ट्राइएज कतार लोड नहीं हो सकी: {{error}}",
+    "empty": "ट्राइएज के लिए कुछ नहीं है — निकाला गया प्रत्येक तत्व आपके स्कीमा से मेल खाता है।",
+    "resolved": "{{count}} आइटम हल किए गए",
+    "resolveFailed": "हल नहीं कर सके: {{error}}",
+    "handoffToGlossary": "इसे अपने कोडेक्स में पूरा करने के लिए शब्दावली (glossary) खोल रहे हैं…",
+    "itemType": {
+      "unknown_node_kind": "अज्ञात इकाई प्रकार",
+      "unknown_edge_type": "अज्ञात संबंध प्रकार",
+      "edge_kind_mismatch": "संबंध एंडपॉइंट बेमेल",
+      "unknown_vocab_value": "शब्दावली से बाहर का मान",
+      "edge_cardinality_conflict": "परस्पर विरोधी सक्रिय संबंध"
+    },
+    "action": {
+      "map": "मौजूदा से मैप करें",
+      "add_to_vocab": "शब्दावली में जोड़ें",
+      "add_to_schema": "स्कीमा में जोड़ें",
+      "re_target": "एंडपॉइंट ठीक करें",
+      "widen_target_kinds": "अनुमत प्रकारों का दायरा बढ़ाएं",
+      "drop_edge": "हटाएं",
+      "close_previous": "पिछला बंद करें",
+      "set_multi_active": "एकाधिक की अनुमति दें",
+      "promote_to_glossary_kind": "ग्लॉसरी प्रकार के रूप में पदोन्नत करें",
+      "demote_to_attribute": "एट्रीब्यूट के रूप में घटाएं",
+      "dismiss": "खारिज करें"
+    },
+    "prompt": {
+      "target_entity_id": "सुधारित लक्ष्य इकाई आईडी",
+      "map_to": "मैप करें (डिटेक्ट किए गए मान का उपयोग करने के लिए खाली छोड़ें)"
+    }
   }
 }

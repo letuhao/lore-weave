@@ -1235,5 +1235,37 @@
       "divergent": "Phân kỳ"
     },
     "totalRuns": "{{count}} lượt tổng cộng"
+  },
+  "triage": {
+    "loading": "Đang tải hàng đợi phân loại…",
+    "loadFailed": "Không thể tải hàng đợi phân loại: {{error}}",
+    "empty": "Không có gì cần phân loại — mọi phần tử được trích xuất đều khớp với lược đồ của bạn.",
+    "resolved": "Đã giải quyết {{count}} mục",
+    "resolveFailed": "Không thể giải quyết: {{error}}",
+    "handoffToGlossary": "Đang mở bảng thuật ngữ để hoàn tất việc này trong codex của bạn…",
+    "itemType": {
+      "unknown_node_kind": "Loại thực thể không xác định",
+      "unknown_edge_type": "Loại quan hệ không xác định",
+      "edge_kind_mismatch": "Sai lệch điểm cuối quan hệ",
+      "unknown_vocab_value": "Giá trị nằm ngoài từ vựng",
+      "edge_cardinality_conflict": "Xung đột quan hệ đang hoạt động"
+    },
+    "action": {
+      "map": "Ánh xạ vào mục hiện có",
+      "add_to_vocab": "Thêm vào từ vựng",
+      "add_to_schema": "Thêm vào lược đồ",
+      "re_target": "Sửa điểm cuối",
+      "widen_target_kinds": "Mở rộng các loại được cho phép",
+      "drop_edge": "Loại bỏ",
+      "close_previous": "Đóng mục trước đó",
+      "set_multi_active": "Cho phép nhiều mục",
+      "promote_to_glossary_kind": "Nâng cấp lên loại thuật ngữ",
+      "demote_to_attribute": "Hạ cấp xuống thuộc tính",
+      "dismiss": "Bỏ qua"
+    },
+    "prompt": {
+      "target_entity_id": "ID thực thể mục tiêu đã sửa",
+      "map_to": "Ánh xạ tới (để trống để dùng giá trị đã phát hiện)"
+    }
   }
 }

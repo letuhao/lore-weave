@@ -1235,5 +1235,37 @@
       "divergent": "Divergen"
     },
     "totalRuns": "{{count}} proses total"
+  },
+  "triage": {
+    "loading": "Memuat antrean triase…",
+    "loadFailed": "Tidak dapat memuat antrean triase: {{error}}",
+    "empty": "Tidak ada yang perlu ditriase — setiap elemen yang diekstrak telah sesuai dengan skema Anda.",
+    "resolved": "Menyelesaikan {{count}} item",
+    "resolveFailed": "Tidak dapat menyelesaikan: {{error}}",
+    "handoffToGlossary": "Membuka glosarium untuk menyelesaikan ini di dalam kodeks Anda…",
+    "itemType": {
+      "unknown_node_kind": "Jenis entitas tidak dikenal",
+      "unknown_edge_type": "Jenis relasi tidak dikenal",
+      "edge_kind_mismatch": "Ketidakcocokan titik akhir relasi",
+      "unknown_vocab_value": "Nilai di luar kosakata",
+      "edge_cardinality_conflict": "Konflik relasi aktif"
+    },
+    "action": {
+      "map": "Petakan ke yang sudah ada",
+      "add_to_vocab": "Tambahkan ke kosakata",
+      "add_to_schema": "Tambahkan ke skema",
+      "re_target": "Perbaiki endpoint",
+      "widen_target_kinds": "Perluas jenis yang diizinkan",
+      "drop_edge": "Hapus",
+      "close_previous": "Tutup sebelumnya",
+      "set_multi_active": "Izinkan banyak",
+      "promote_to_glossary_kind": "Promosikan ke jenis glosarium",
+      "demote_to_attribute": "Turunkan ke atribut",
+      "dismiss": "Abaikan"
+    },
+    "prompt": {
+      "target_entity_id": "ID entitas target yang diperbaiki",
+      "map_to": "Petakan ke (kosongkan untuk menggunakan nilai yang terdeteksi)"
+    }
   }
 }

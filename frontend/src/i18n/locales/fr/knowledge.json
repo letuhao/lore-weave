@@ -1235,5 +1235,37 @@
       "divergent": "Divergent"
     },
     "totalRuns": "{{count}} cycles au total"
+  },
+  "triage": {
+    "loading": "Chargement de la file de tri…",
+    "loadFailed": "Impossible de charger la file de tri : {{error}}",
+    "empty": "Rien à trier — tous les éléments extraits correspondent à votre schéma.",
+    "resolved": "{{count}} élément(s) résolu(s)",
+    "resolveFailed": "Impossible de résoudre : {{error}}",
+    "handoffToGlossary": "Ouverture du glossaire pour finaliser cela dans votre codex…",
+    "itemType": {
+      "unknown_node_kind": "Type d'entité inconnu",
+      "unknown_edge_type": "Type de relation inconnu",
+      "edge_kind_mismatch": "Incohérence de l'extrémité de la relation",
+      "unknown_vocab_value": "Valeur hors vocabulaire",
+      "edge_cardinality_conflict": "Conflit de relations actives"
+    },
+    "action": {
+      "map": "Mapper vers l'existant",
+      "add_to_vocab": "Ajouter au vocabulaire",
+      "add_to_schema": "Ajouter au schéma",
+      "re_target": "Corriger le point de terminaison",
+      "widen_target_kinds": "Élargir les types autorisés",
+      "drop_edge": "Supprimer",
+      "close_previous": "Fermer le précédent",
+      "set_multi_active": "Autoriser plusieurs",
+      "promote_to_glossary_kind": "Promouvoir en type de glossaire",
+      "demote_to_attribute": "Rétrograder en attribut",
+      "dismiss": "Ignorer"
+    },
+    "prompt": {
+      "target_entity_id": "ID de l'entité cible corrigé",
+      "map_to": "Mapper vers (laisser vide pour utiliser la valeur détectée)"
+    }
   }
 }

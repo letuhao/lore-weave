@@ -1235,5 +1235,37 @@
       "divergent": "Divergent"
     },
     "totalRuns": "{{count}} runs total"
+  },
+  "triage": {
+    "loading": "Loading triage queue…",
+    "loadFailed": "Could not load the triage queue: {{error}}",
+    "empty": "Nothing to triage — every extracted element matched your schema.",
+    "resolved": "Resolved {{count}} item(s)",
+    "resolveFailed": "Could not resolve: {{error}}",
+    "handoffToGlossary": "Opening glossary to finish this in your codex…",
+    "itemType": {
+      "unknown_node_kind": "Unknown entity kind",
+      "unknown_edge_type": "Unknown relationship type",
+      "edge_kind_mismatch": "Relationship endpoint mismatch",
+      "unknown_vocab_value": "Off-vocabulary value",
+      "edge_cardinality_conflict": "Conflicting active relationships"
+    },
+    "action": {
+      "map": "Map to existing",
+      "add_to_vocab": "Add to vocabulary",
+      "add_to_schema": "Add to schema",
+      "re_target": "Fix endpoint",
+      "widen_target_kinds": "Widen allowed kinds",
+      "drop_edge": "Drop",
+      "close_previous": "Close previous",
+      "set_multi_active": "Allow multiple",
+      "promote_to_glossary_kind": "Promote to glossary kind",
+      "demote_to_attribute": "Demote to attribute",
+      "dismiss": "Dismiss"
+    },
+    "prompt": {
+      "target_entity_id": "Corrected target entity id",
+      "map_to": "Map to (leave blank to use the detected value)"
+    }
   }
 }

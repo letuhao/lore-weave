@@ -1235,5 +1235,37 @@
       "divergent": "趋异"
     },
     "totalRuns": "总计 {{count}} 次运行"
+  },
+  "triage": {
+    "loading": "正在加载分拣队列…",
+    "loadFailed": "无法加载分拣队列：{{error}}",
+    "empty": "暂无待分拣内容 — 所有提取的元素均符合您的模式。",
+    "resolved": "已解决 {{count}} 项",
+    "resolveFailed": "无法解决：{{error}}",
+    "handoffToGlossary": "正在打开术语表，以便在您的法典中完成此项…",
+    "itemType": {
+      "unknown_node_kind": "未知的实体类型",
+      "unknown_edge_type": "未知的关系类型",
+      "edge_kind_mismatch": "关系端点不匹配",
+      "unknown_vocab_value": "不在词汇表内的数值",
+      "edge_cardinality_conflict": "存在冲突的活动关系"
+    },
+    "action": {
+      "map": "映射至现有项",
+      "add_to_vocab": "添加到词汇表",
+      "add_to_schema": "添加到架构",
+      "re_target": "修正终点",
+      "widen_target_kinds": "扩大允许的类型",
+      "drop_edge": "丢弃",
+      "close_previous": "关闭前一个",
+      "set_multi_active": "允许复数",
+      "promote_to_glossary_kind": "提升为术语类型",
+      "demote_to_attribute": "降级为属性",
+      "dismiss": "忽略"
+    },
+    "prompt": {
+      "target_entity_id": "已修正的终点实体 ID",
+      "map_to": "映射至（留空则使用检测到的值）"
+    }
   }
 }

@@ -1235,5 +1235,37 @@
       "divergent": "발산"
     },
     "totalRuns": "총 {{count}}회 실행"
+  },
+  "triage": {
+    "loading": "트라이아지 대기열 로딩 중…",
+    "loadFailed": "트라이아지 대기열을 불러올 수 없습니다: {{error}}",
+    "empty": "검토할 항목 없음 — 추출된 모든 요소가 스키마와 일치합니다.",
+    "resolved": "{{count}}개의 항목 해결됨",
+    "resolveFailed": "해결 실패: {{error}}",
+    "handoffToGlossary": "코덱스에서 작업을 완료하기 위해 용어집을 여는 중…",
+    "itemType": {
+      "unknown_node_kind": "알 수 없는 엔티티 종류",
+      "unknown_edge_type": "알 수 없는 관계 유형",
+      "edge_kind_mismatch": "관계 엔드포인트 불일치",
+      "unknown_vocab_value": "용어집에 없는 값",
+      "edge_cardinality_conflict": "충돌하는 활성 관계"
+    },
+    "action": {
+      "map": "기존 항목에 매핑",
+      "add_to_vocab": "어휘에 추가",
+      "add_to_schema": "스키마에 추가",
+      "re_target": "엔드포인트 수정",
+      "widen_target_kinds": "허용되는 종류 확장",
+      "drop_edge": "삭제",
+      "close_previous": "이전 항목 닫기",
+      "set_multi_active": "다중 선택 허용",
+      "promote_to_glossary_kind": "용어집 종류로 승격",
+      "demote_to_attribute": "속성으로 강등",
+      "dismiss": "무시"
+    },
+    "prompt": {
+      "target_entity_id": "수정된 대상 엔티티 ID",
+      "map_to": "매핑 대상 (빈칸으로 두면 감지된 값 사용)"
+    }
   }
 }

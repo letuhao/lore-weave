@@ -1235,5 +1235,37 @@
       "divergent": "分岐"
     },
     "totalRuns": "合計 {{count}} 件"
+  },
+  "triage": {
+    "loading": "トリアージキューを読み込み中…",
+    "loadFailed": "トリアージキューを読み込めませんでした: {{error}}",
+    "empty": "トリアージする項目はありません — すべての抽出済み要素がスキーマに一致しました。",
+    "resolved": "{{count}} 件の項目を解決しました",
+    "resolveFailed": "解決できませんでした: {{error}}",
+    "handoffToGlossary": "コーデックスで処理を完了するために用語集を開いています…",
+    "itemType": {
+      "unknown_node_kind": "不明なエンティティの種類",
+      "unknown_edge_type": "不明なリレーションシップの種類",
+      "edge_kind_mismatch": "リレーションシップの終端不一致",
+      "unknown_vocab_value": "語彙外の値",
+      "edge_cardinality_conflict": "競合するアクティブなリレーションシップ"
+    },
+    "action": {
+      "map": "既存の項目にマッピング",
+      "add_to_vocab": "語彙に追加",
+      "add_to_schema": "スキーマに追加",
+      "re_target": "エンドポイントを修正",
+      "widen_target_kinds": "許可する種類を拡大",
+      "drop_edge": "削除",
+      "close_previous": "前の項目を閉じる",
+      "set_multi_active": "複数選択を許可",
+      "promote_to_glossary_kind": "用語集の種類に昇格",
+      "demote_to_attribute": "属性に降格",
+      "dismiss": "無視"
+    },
+    "prompt": {
+      "target_entity_id": "修正後のターゲットエンティティID",
+      "map_to": "マッピング先（空欄の場合は検出された値を使用）"
+    }
   }
 }

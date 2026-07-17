@@ -31,6 +31,10 @@ export function knowledgeEffect(ctx: EffectContext): void {
   queryClient.invalidateQueries({ queryKey: ['knowledge-jobs'] });
   queryClient.invalidateQueries({ queryKey: ['knowledge-subgraph'] });
   queryClient.invalidateQueries({ queryKey: ['knowledge-proposals-inbox'] });
+  // S-05 — the kg-triage panel: an agent triage_resolve/schema write clears the
+  // queue, so the panel must refetch. Folded into THIS /^kg_/ handler (the one
+  // home) — a second kg_*-matching handler would double-fire (effectCoverage <=1).
+  queryClient.invalidateQueries({ queryKey: ['kg-triage'] });
   queryClient.invalidateQueries({ queryKey: ['knowledge-summaries'] });
   queryClient.invalidateQueries({ queryKey: ['knowledge-summary-versions'] });
   // KG schema/ontology family (kg-schema panel, Phase B).

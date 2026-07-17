@@ -1235,5 +1235,37 @@
       "divergent": "Divergent"
     },
     "totalRuns": "{{count}} Läufe insgesamt"
+  },
+  "triage": {
+    "loading": "Triage-Warteschlange wird geladen…",
+    "loadFailed": "Warteschlange konnte nicht geladen werden: {{error}}",
+    "empty": "Nichts zu triagieren – jedes extrahierte Element entspricht Ihrem Schema.",
+    "resolved": "{{count}} Element(e) gelöst",
+    "resolveFailed": "Konnte nicht gelöst werden: {{error}}",
+    "handoffToGlossary": "Glossar wird geöffnet, um dies in Ihrem Codex zu vervollständigen…",
+    "itemType": {
+      "unknown_node_kind": "Unbekannte Entitätstyp",
+      "unknown_edge_type": "Unbekannter Beziehungstyp",
+      "edge_kind_mismatch": "Beziehungsendpunkt-Abweichung",
+      "unknown_vocab_value": "Wert außerhalb des Vokabulars",
+      "edge_cardinality_conflict": "Konfliktierende aktive Beziehungen"
+    },
+    "action": {
+      "map": "Zuweisen zu bestehendem",
+      "add_to_vocab": "Zum Vokabular hinzufügen",
+      "add_to_schema": "Zum Schema hinzufügen",
+      "re_target": "Endpunkt korrigieren",
+      "widen_target_kinds": "Zugelassene Typen erweitern",
+      "drop_edge": "Verwerfen",
+      "close_previous": "Vorherige schließen",
+      "set_multi_active": "Mehrere zulassen",
+      "promote_to_glossary_kind": "Zum Glossar-Typ befördern",
+      "demote_to_attribute": "Zum Attribut herabstufen",
+      "dismiss": "Ignorieren"
+    },
+    "prompt": {
+      "target_entity_id": "Korrigierte Ziel-Entitäts-ID",
+      "map_to": "Zuweisen zu (leer lassen, um den erkannten Wert zu verwenden)"
+    }
   }
 }
