@@ -158,6 +158,13 @@ export function ManuscriptUnitProvider({ bookId, children }: { bookId: string; c
   projectIdRef.current = projectId;
   const isDerivativeRef = useRef<boolean>(isDerivative);
   isDerivativeRef.current = isDerivative;
+  // The active-work pref: `undefined` = still loading, `null` = unset (canonical), else the project.
+  // loadChapter must NOT run while it is `undefined` (it would load the WRONG draft source and need a
+  // reload — the fork first-paint race). We defer the load until it resolves (see loadChapter + the
+  // resolution effect below).
+  const activeWorkIdRef = useRef<string | null | undefined>(activeWorkId);
+  activeWorkIdRef.current = activeWorkId;
+  const pendingChapterRef = useRef<string | null>(null);
 
   const loadScenes = useCallback(async (chapterId: string) => {
     const pid = projectIdRef.current;
@@ -172,6 +179,15 @@ export function ManuscriptUnitProvider({ bookId, children }: { bookId: string; c
 
   const loadChapter = useCallback(async (chapterId: string, external: boolean) => {
     if (!accessToken) return;
+    // D-S5 — defer until the active-work pref resolves so the FIRST load already uses the correct draft
+    // source (canon vs the dị bản's fork). The resolution effect re-invokes this once it settles. This
+    // eliminates the load-canon-then-reload race (and its unreliable false-dirty guard).
+    if (activeWorkIdRef.current === undefined) {
+      pendingChapterRef.current = chapterId;
+      setState((s) => ({ ...s, chapterId, saveState: 'loading', error: null }));
+      return;
+    }
+    pendingChapterRef.current = null;
     setState((s) => ({ ...s, chapterId, saveState: external ? s.saveState : 'loading', error: null }));
     try {
       // D-S5 fork: on a dị bản read the WORK-scoped draft (fork if any, else read-through canon at
@@ -218,12 +234,20 @@ export function ManuscriptUnitProvider({ bookId, children }: { bookId: string; c
     if (projectId && chapterId && stateRef.current.scenes.length === 0) void loadScenes(chapterId);
   }, [projectId, loadScenes]);
 
-  // D-S5-DERIVATIVE-MANUSCRIPT-FORK — when the active Work's FORK IDENTITY changes while a chapter
-  // is open, reload it from the correct draft source. Two cases this fixes: (1) the active-work pref
-  // resolves AFTER the chapter auto-loaded (a deep-link/first-paint race) so the body loaded from
-  // canon on a derivative; (2) the user hits "Switch to" a dị bản (or back to canon) with a chapter
-  // already open — the manuscript must swap to that Work's draft. Skips a dirty unit (never clobbers
-  // unsaved edits) and only fires when the identity actually flips (not per render).
+  // D-S5 — once the active-work pref RESOLVES (undefined→value|null), run any chapter load that was
+  // deferred (loadChapter above) so the first paint loads the correct draft source without a reload.
+  useEffect(() => {
+    if (activeWorkId !== undefined && pendingChapterRef.current) {
+      const cid = pendingChapterRef.current;
+      pendingChapterRef.current = null;
+      void loadChapter(cid, false);
+    }
+  }, [activeWorkId, loadChapter]);
+
+  // D-S5-DERIVATIVE-MANUSCRIPT-FORK — a DELIBERATE "Switch to" a dị bản (or back to canon) with a
+  // chapter already open must swap the manuscript to that Work's draft. Skips a real unsaved edit
+  // (never clobbers) and only fires when the fork identity actually flips. The first-paint race is
+  // handled by the defer above, not here — so this only sees genuine value→value switches.
   const forkIdentityRef = useRef<string>('');
   useEffect(() => {
     const identity = isDerivative ? `deriv:${projectId ?? ''}` : 'canon';
@@ -231,8 +255,7 @@ export function ManuscriptUnitProvider({ bookId, children }: { bookId: string; c
     if (!chapterId) { forkIdentityRef.current = identity; return; }
     if (forkIdentityRef.current === identity) return;
     forkIdentityRef.current = identity;
-    // Block ONLY on a real unsaved user edit (text changed) — never on a mount-normalize false-dirty.
-    if (userEditedRef.current) return;
+    if (userEditedRef.current) return;   // preserve a genuine unsaved edit on a deliberate switch
     void loadChapter(chapterId, false);
   }, [isDerivative, projectId, loadChapter]);
 
