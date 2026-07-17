@@ -137,6 +137,33 @@ confidence=1.0, provenance='human_authored', pending_validation=False)`. No pend
 ## 404-guarded (tested), curation bypass leaks nothing (owner-scoped read), no silent-success
 ## (re_target blocks blank), fact_corrected persists (32-hex id → UUID). LOW items above are documented.
 
+## ═══ COMPLETENESS AUDIT (goal 2, 2026-07-18) — fix all defers/debts/bugs ═══
+FIXED:
+- FIX-1 registry wiring (catalog + panel_id enum both sides + contract regen + studio.json 17 loc) →
+  kg-triage panel REACHABLE via palette/nav. Parity: panelCatalog(9)+frontendTool(15)+hygiene(213)+
+  chat contract(43). commit 86d0d730d.
+- FIX-3 per-item dismiss → kills the `dismissTriageItem` zero-caller. New GET /triage/{sig}/items
+  (View-gated, owner-scoped) + FE expand→drill-in→dismiss-one. BE triage_api 29, FE TriageQueue 7. d4bac709d.
+- FIX-4 removed the 4 schema-mutating actions (add_to_vocab/add_to_schema/widen/set_multi_active) from
+  the panel — resolve only records intent (no schema write), so they were a misleading silent-partial
+  (item vanishes, schema unchanged, re-parked next extraction). Every item_type keeps ≥1 working action
+  + dismiss. commit cd57e396d.
+- FIX-7 AUDIT: other author surfaces reading entity facts — LoreSeeker + Cast both pass before_chapter_id
+  (reader context, spoiler-window CORRECT). EntityDetailPanel was the ONLY author surface → already fixed.
+  No other fail-closed empty-shell. CLEAN.
+DEFERRED (investigated, gate-passing — NOT lazy):
+- FIX-2 learning mining consume `target_type='fact'`: gate #1 (learning-service, not knowledge) + #2
+  (structural). Naive add = FALSE-DEGRADE bug — a human invalidating their OWN authored fact has no
+  source_extraction_run_id → matches ANY extraction run via the IS-NULL branch → wrongly lowers that
+  run's recomputed_outcome (the exact bug the existing 'generation'-exclusion comment warns of). Correct
+  fix needs the human-vs-extraction fact distinction, a learning-service design call. fact_corrected is
+  still emitted (audit value).
+- FIX-4b schema-authoring via the class-C confirm-token flow (kg_actions `_confirm_triage_schema_write`
+  DOES write) — a propose→confirm UX, a separate feature never in S-05 scope. gate #2.
+- FIX-5 deep-links IN ("N need triage →" from KG panels): the panel is already reachable (palette+nav);
+  a deep-link touches a SHARED component (OverviewSection) for discoverability polish, not an operability
+  gap. gate #5 conscious-scope. Not an empty-shell.
+
 ## DRIFT LOG (near-misses — an empty log at end is dishonest)
 - Spec Part A "reuse confirm-promotion as-is" would ship an empty shell (T1+T2). Deviating to make the
   confirmed human fact actually appear on the entity — recorded, not silently done.

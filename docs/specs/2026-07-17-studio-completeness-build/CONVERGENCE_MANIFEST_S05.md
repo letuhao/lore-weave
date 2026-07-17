@@ -1,9 +1,13 @@
 # Convergence manifest — S-05 kg-triage panel
 
-> The panel COMPONENT + hook + effects are built & tested in this session (my files, no registry
-> conflict). The shared studio registry wiring below is for the **convergence node** to apply (per the
-> fanout rule: sibling sessions also touch catalog.ts / panel_id enum / studio.json — don't edit them
-> here). Until wired, the panel is not reachable from the nav/palette; everything else is done.
+> **UPDATE 2026-07-18 (completeness-audit goal): the registry wiring below is now DONE in this session**
+> (commit 86d0d730d) — the kg-triage panel is REACHABLE via the palette/nav. The steps are kept as a
+> record of what was wired. Only the OPTIONAL deep-links (§4) remain a conscious follow-up.
+>
+> The panel COMPONENT + hook + effects were built & tested first (no registry conflict). The shared
+> studio registry wiring was then applied here (verified no sibling had touched kg-triage) — parity
+> tests (panelCatalogContract, frontendToolContract, dockablePanelHygiene, chat-service contract) all
+> green, so the additive edit is conflict-safe.
 
 ## Built & committed by S-05 (no convergence needed)
 - `frontend/src/features/knowledge/hooks/useTriageQueue.ts` — list + resolve (grouped-by-signature).
