@@ -1,5 +1,28 @@
 # ▶▶ NEXT SESSION STARTS HERE
 
+## 🏗️ STUDIO COMPLETENESS — audited, specced, SEALED → **BUILD NEXT** (2026-07-17)
+> **Read first:** [`docs/specs/2026-07-17-studio-completeness-build/00_ROADMAP.md`](../specs/2026-07-17-studio-completeness-build/00_ROADMAP.md)
+> + [`01_DECISIONS.md`](../specs/2026-07-17-studio-completeness-build/01_DECISIONS.md) (sealed) ·
+> **Audit:** [`docs/plans/2026-07-17-studio-completeness-AUDIT.md`](../plans/2026-07-17-studio-completeness-AUDIT.md).
+>
+> A 6-round audit (parity + **CRUD-completeness**) found the real work is **not porting legacy** — the legacy
+> is itself incomplete, so several domains are missing a verb **at the data layer**. **12 detail specs
+> (S-01..S-12) written + CLARIFY-sealed**, 3 HTML drafts for the net-new surfaces. All decisions in
+> `01_DECISIONS.md`; **nothing parked** (G-WORKFLOWS sealed to this track = S-12).
+>
+> **BUILD ORDER (PO: fanout, Tier-A parallel):** the four Tier-A DATA-layer specs go first, in parallel
+> (disjoint services):
+> - **S-01** structure-template authoring — composition
+> - **S-02** manuscript parts (acts/volumes) — book-service (Go)
+> - **S-03** references UPDATE — composition
+> - **S-04** derivative delta editing — composition
+>
+> Then Tier-B (S-05 fact+triage · S-06 attr-value · S-07 world OCC · S-08 restores · S-09 wire-ups · S-11
+> search · S-12 workflows) and Tier-C (S-10 FE orphans + `[[`-create). Each build: full workflow, VERIFY
+> evidence, 2-stage review, `/review-impl` for the tenancy/data specs, live-smoke where it crosses services.
+> **Same-folder multi-session rules apply** (never `git add -A`; commit only your own files; scoped tests
+> during BUILD; the studio registry — catalog.ts/enum/contract — is convergence-node work).
+
 ## 🔧 BUILD FIXED + repo-wide TEST SWEEP — **DONE, 2026-07-17** (HEAD `4ea141e9e`)
 >
 > ### `docker compose build` was BROKEN — fixed at root cause (`b74a48793`)
