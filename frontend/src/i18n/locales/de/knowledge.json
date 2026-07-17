@@ -1287,6 +1287,14 @@
       "noMatches": "Keine passenden Entitäten gefunden.",
       "cancel": "Abbrechen",
       "confirm": "Neu zuweisen"
+    },
+    "map": {
+      "title": "Mit einem bestehenden Element verknüpfen",
+      "description": "Wählen Sie das Schema-Element aus, als das dieses Element außerhalb des Schemas behandelt werden soll.",
+      "label": "Verknüpfen mit",
+      "keepDetected": "Erkannten Wert beibehalten",
+      "cancel": "Abbrechen",
+      "confirm": "Verknüpfen"
     }
   }
 }

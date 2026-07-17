@@ -1287,6 +1287,14 @@
       "noMatches": "Aucune entité correspondante.",
       "cancel": "Annuler",
       "confirm": "Rediriger"
+    },
+    "map": {
+      "title": "Mapper vers un élément existant",
+      "description": "Choisissez l'élément du schéma auquel cet élément hors schéma doit être associé.",
+      "label": "Mapper vers",
+      "keepDetected": "Conserver la valeur détectée",
+      "cancel": "Annuler",
+      "confirm": "Mapper"
     }
   }
 }

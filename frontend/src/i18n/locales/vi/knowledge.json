@@ -1287,6 +1287,14 @@
       "noMatches": "Không tìm thấy thực thể phù hợp.",
       "cancel": "Hủy",
       "confirm": "Thiết lập lại"
+    },
+    "map": {
+      "title": "Ánh xạ tới một mục hiện có",
+      "description": "Chọn mục schema mà phần tử ngoài schema này nên được xử lý như là.",
+      "label": "Ánh xạ tới",
+      "keepDetected": "Giữ giá trị đã phát hiện",
+      "cancel": "Hủy",
+      "confirm": "Ánh xạ"
     }
   }
 }

@@ -5,6 +5,7 @@ import { AlertTriangle, X, ChevronRight, ChevronDown } from 'lucide-react';
 import { useTriageQueue, useTriageItems } from '../hooks/useTriageQueue';
 import { triageEvidence } from '../lib/triageEvidence';
 import { TriageRetargetDialog } from './TriageRetargetDialog';
+import { TriageMapDialog } from './TriageMapDialog';
 import type { TriageAction, TriageGroup } from '../types/ontology';
 
 // S-05 Part B — the KG extraction-triage queue. Extraction elements that didn't
@@ -49,12 +50,6 @@ const GLOSSARY_HANDOFF: ReadonlySet<TriageAction> = new Set<TriageAction>([
   'demote_to_attribute',
 ]);
 
-// Actions that still gather a value via a lightweight prompt (map's code falls
-// back to the parked value on blank, so a prompt is acceptable). re_target is NOT
-// here — S-05b gives it a real entity PICKER (a UUID prompt was unusable).
-const NEEDS_TARGET: Partial<Record<TriageAction, string>> = {
-  map: 'map_to',
-};
 
 export interface TriageQueueProps {
   projectId: string;
@@ -117,8 +112,9 @@ export function TriageQueue({ projectId, bookId, onGlossaryHandoff }: TriageQueu
   const { groups, isLoading, error, resolve, isResolving, dismissItem, isDismissing } =
     useTriageQueue(projectId);
   const [expanded, setExpanded] = useState<string | null>(null);
-  // S-05b (F1) — the signature currently being re-targeted via the entity picker.
+  // S-05b — the group currently being re-targeted (F1) / mapped (F4) via a dialog.
   const [retargetSig, setRetargetSig] = useState<string | null>(null);
+  const [mapGroup, setMapGroup] = useState<TriageGroup | null>(null);
 
   const handleDismissItem = async (triageId: string) => {
     try {
@@ -169,22 +165,16 @@ export function TriageQueue({ projectId, bookId, onGlossaryHandoff }: TriageQueu
       setRetargetSig(group.signature);
       return;
     }
+    // S-05b (F4) — map opens a code SELECT over the schema (no more raw-code prompt).
+    if (action === 'map') {
+      setMapGroup(group);
+      return;
+    }
     // Schema-mutating actions change the ontology — confirm before firing.
     if (SCHEMA_MUTATING.has(action) && !window.confirm(t('triage.confirmSchemaWrite'))) {
       return;
     }
-    let params: Record<string, unknown> | undefined;
-    const promptKey = NEEDS_TARGET[action];
-    if (promptKey) {
-      const value = window.prompt(
-        t(`triage.prompt.${promptKey}`, { defaultValue: promptKey }),
-      );
-      // `map` may fall back to the parked value → blank is allowed.
-      if (value === null) return;
-      const trimmed = value.trim();
-      if (trimmed) params = { [promptKey]: trimmed };
-    }
-    await runResolve(group.signature, action, params);
+    await runResolve(group.signature, action);
   };
 
   if (isLoading) {
@@ -320,6 +310,21 @@ export function TriageQueue({ projectId, bookId, onGlossaryHandoff }: TriageQueu
         if (sig) void runResolve(sig, 're_target', { target_entity_id: entityId });
       }}
     />
+    {/* S-05b (F4) — the code select for map (replaces the raw-code prompt). */}
+    {mapGroup && (
+      <TriageMapDialog
+        open
+        onOpenChange={(o) => { if (!o) setMapGroup(null); }}
+        projectId={projectId}
+        itemType={mapGroup.item_type}
+        payload={mapGroup.sample_payload}
+        onPick={(code) => {
+          const sig = mapGroup.signature;
+          setMapGroup(null);
+          void runResolve(sig, 'map', code ? { map_to: code } : {});
+        }}
+      />
+    )}
     </>
   );
 }

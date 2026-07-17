@@ -1287,6 +1287,14 @@
       "noMatches": "Eşleşen varlık bulunamadı.",
       "cancel": "İptal",
       "confirm": "Yeniden Yönlendir"
+    },
+    "map": {
+      "title": "Mevcut bir öğeyle eşleştir",
+      "description": "Bu şema dışı öğenin hangi şema öğesi olarak kabul edileceğini seçin.",
+      "label": "Şuna eşle",
+      "keepDetected": "Tespit edilen değeri koru",
+      "cancel": "İptal",
+      "confirm": "Eşleştir"
     }
   }
 }

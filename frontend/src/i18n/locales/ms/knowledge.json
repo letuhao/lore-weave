@@ -1287,6 +1287,14 @@
       "noMatches": "Tiada entiti yang sepadan.",
       "cancel": "Batal",
       "confirm": "Noktakan Semula"
+    },
+    "map": {
+      "title": "Petakan ke item sedia ada",
+      "description": "Pilih item skema yang harus digunakan untuk elemen luar skema ini.",
+      "label": "Petakan ke",
+      "keepDetected": "Kekalkan nilai yang dikesan",
+      "cancel": "Batal",
+      "confirm": "Petak"
     }
   }
 }

@@ -1287,6 +1287,14 @@
       "noMatches": "Tidak ada entitas yang cocok.",
       "cancel": "Batal",
       "confirm": "Arahkan ulang"
+    },
+    "map": {
+      "title": "Petakan ke item yang sudah ada",
+      "description": "Pilih item skema yang akan digunakan untuk elemen di luar skema ini.",
+      "label": "Petakan ke",
+      "keepDetected": "Pertahankan nilai yang terdeteksi",
+      "cancel": "Batal",
+      "confirm": "Petakan"
     }
   }
 }

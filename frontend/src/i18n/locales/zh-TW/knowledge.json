@@ -1287,6 +1287,14 @@
       "noMatches": "無符合的實體。",
       "cancel": "取消",
       "confirm": "重新指向"
+    },
+    "map": {
+      "title": "對應至現有項目",
+      "description": "請選擇此非結構化元素應被視為哪一個架構項目。",
+      "label": "對應至",
+      "keepDetected": "保留偵測到的值",
+      "cancel": "取消",
+      "confirm": "對應"
     }
   }
 }

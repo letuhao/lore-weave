@@ -1287,6 +1287,14 @@
       "noMatches": "No hay entidades que coincidan.",
       "cancel": "Cancelar",
       "confirm": "Reasignar"
+    },
+    "map": {
+      "title": "Mapear a un elemento existente",
+      "description": "Selecciona el elemento del esquema que debe representar a este elemento fuera de esquema.",
+      "label": "Mapear a",
+      "keepDetected": "Mantener el valor detectado",
+      "cancel": "Cancelar",
+      "confirm": "Mapear"
     }
   }
 }

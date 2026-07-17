@@ -1287,6 +1287,14 @@
       "noMatches": "未找到匹配的实体。",
       "cancel": "取消",
       "confirm": "重新指向"
+    },
+    "map": {
+      "title": "映射到现有项目",
+      "description": "请选择该非模式元素应被视为哪一个模式项目。",
+      "label": "映射至",
+      "keepDetected": "保留检测到的值",
+      "cancel": "取消",
+      "confirm": "映射"
     }
   }
 }

@@ -1287,6 +1287,14 @@
       "noMatches": "일치하는 엔티티가 없습니다.",
       "cancel": "취소",
       "confirm": "다시 지정"
+    },
+    "map": {
+      "title": "기존 항목에 매핑",
+      "description": "이 스키마 외 요소가 어떤 스키마 항목으로 처리될지 선택하세요.",
+      "label": "매핑 대상",
+      "keepDetected": "감지된 값 유지",
+      "cancel": "취소",
+      "confirm": "매핑"
     }
   }
 }

@@ -1287,6 +1287,14 @@
       "noMatches": "No matching entities.",
       "cancel": "Cancel",
       "confirm": "Re-point"
+    },
+    "map": {
+      "title": "Map to an existing item",
+      "description": "Pick the schema item this off-schema element should be treated as.",
+      "label": "Map to",
+      "keepDetected": "Keep the detected value",
+      "cancel": "Cancel",
+      "confirm": "Map"
     }
   }
 }

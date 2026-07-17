@@ -1287,6 +1287,14 @@
       "noMatches": "Nenhuma entidade correspondente encontrada.",
       "cancel": "Cancelar",
       "confirm": "Reatribuir"
+    },
+    "map": {
+      "title": "Mapear para um item existente",
+      "description": "Escolha o item do esquema como este elemento fora do esquema deve ser tratado.",
+      "label": "Mapear para",
+      "keepDetected": "Manter o valor detectado",
+      "cancel": "Cancelar",
+      "confirm": "Mapear"
     }
   }
 }

@@ -45,6 +45,28 @@ vi.mock('../TriageRetargetDialog', () => ({
     ) : null,
 }));
 
+// S-05b — stub the map code-select dialog (tested separately with useResolvedSchema
+// mocked). Exposes a "pick code" + "keep detected" button.
+vi.mock('../TriageMapDialog', () => ({
+  TriageMapDialog: ({
+    open,
+    onPick,
+  }: {
+    open: boolean;
+    onPick: (code: string | null) => void;
+  }) =>
+    open ? (
+      <div>
+        <button data-testid="map-stub-pick" onClick={() => onPick('rules_over')}>
+          pick
+        </button>
+        <button data-testid="map-stub-keep" onClick={() => onPick(null)}>
+          keep
+        </button>
+      </div>
+    ) : null,
+}));
+
 import { TriageQueue } from '../TriageQueue';
 
 function Wrapper({ children }: PropsWithChildren) {
@@ -165,6 +187,37 @@ describe('TriageQueue', () => {
     fireEvent.click(screen.getByTestId('kg-triage-action-promote_to_glossary_kind'));
     await waitFor(() =>
       expect(onGlossaryHandoff).toHaveBeenCalledWith({ book_id: 'b-1', kinds: ['deity'] }),
+    );
+  });
+
+  it('map opens the code SELECT (no raw-code prompt); picking a code resolves with map_to', async () => {
+    const promptSpy = vi.spyOn(window, 'prompt');
+    listTriageMock.mockResolvedValue({ groups: [GROUP_UNKNOWN_KIND] }); // has 'map'
+    resolveTriageMock.mockResolvedValue({ status: 'resolved', affected: 1 });
+    render(<TriageQueue projectId="p-1" />, { wrapper: Wrapper });
+    await waitFor(() => screen.getByTestId('kg-triage-action-map'));
+    fireEvent.click(screen.getByTestId('kg-triage-action-map'));
+    expect(promptSpy).not.toHaveBeenCalled(); // picker, not prompt
+    fireEvent.click(await screen.findByTestId('map-stub-pick'));
+    await waitFor(() =>
+      expect(resolveTriageMock).toHaveBeenCalledWith(
+        'p-1', 'sig-2', { action: 'map', params: { map_to: 'rules_over' } }, 'tok',
+      ),
+    );
+    promptSpy.mockRestore();
+  });
+
+  it('map "keep detected value" resolves with empty params (backend uses the parked value)', async () => {
+    listTriageMock.mockResolvedValue({ groups: [GROUP_UNKNOWN_KIND] });
+    resolveTriageMock.mockResolvedValue({ status: 'resolved', affected: 1 });
+    render(<TriageQueue projectId="p-1" />, { wrapper: Wrapper });
+    await waitFor(() => screen.getByTestId('kg-triage-action-map'));
+    fireEvent.click(screen.getByTestId('kg-triage-action-map'));
+    fireEvent.click(await screen.findByTestId('map-stub-keep'));
+    await waitFor(() =>
+      expect(resolveTriageMock).toHaveBeenCalledWith(
+        'p-1', 'sig-2', { action: 'map', params: {} }, 'tok',
+      ),
     );
   });
 
