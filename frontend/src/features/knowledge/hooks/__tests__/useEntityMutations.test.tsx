@@ -16,6 +16,7 @@ const setGlossaryEntityPinnedMock = vi.fn();
 const createEntityMock = vi.fn();
 const createRelationMock = vi.fn();
 const archiveMyEntityMock = vi.fn();
+const restoreMyEntityMock = vi.fn();
 vi.mock('../../api', async () => {
   const actual = await vi.importActual<Record<string, unknown>>('../../api');
   return {
@@ -30,6 +31,7 @@ vi.mock('../../api', async () => {
       createEntity: (...args: unknown[]) => createEntityMock(...args),
       createRelation: (...args: unknown[]) => createRelationMock(...args),
       archiveMyEntity: (...args: unknown[]) => archiveMyEntityMock(...args),
+      restoreMyEntity: (...args: unknown[]) => restoreMyEntityMock(...args),
     },
   };
 });
@@ -43,6 +45,7 @@ import {
   useCreateEntity,
   useCreateRelation,
   useArchiveEntity,
+  useRestoreEntity,
 } from '../useEntityMutations';
 
 function makeWrapper() {
@@ -518,6 +521,53 @@ describe('useArchiveEntity', () => {
     });
     await expect(
       result.current.archive({ entityId: 'ent-1' }),
+    ).rejects.toThrow('boom');
+    expect(onError).toHaveBeenCalledTimes(1);
+  });
+});
+
+// D-KG-ENTITY-RESTORE (S7) — the Undo leg of the archive toast. The round-trip
+// (archive → Undo → restore) is the operable inverse; without coverage the
+// restore hook is a wired-but-unproven path.
+describe('useRestoreEntity', () => {
+  beforeEach(() => {
+    restoreMyEntityMock.mockReset();
+    useAuthMock.mockReturnValue({
+      accessToken: 'tok',
+      user: { user_id: 'u1', email: 'a@b', display_name: null, avatar_url: null },
+    });
+  });
+
+  it('restores + invalidates list, detail, subgraph, composition cast', async () => {
+    restoreMyEntityMock.mockResolvedValue(undefined);
+    const onSuccess = vi.fn();
+    const { Wrapper, invalidateSpy } = makeWrapper();
+    const { result } = renderHook(() => useRestoreEntity({ onSuccess }), {
+      wrapper: Wrapper,
+    });
+    await act(async () => {
+      await result.current.restore({ entityId: 'ent-1' });
+    });
+    expect(restoreMyEntityMock).toHaveBeenCalledWith('ent-1', 'tok');
+    const keys = invalidateSpy.mock.calls.map((c) => c[0]?.queryKey);
+    expect(keys).toContainEqual(['knowledge-entities', 'u1']);
+    expect(keys).toContainEqual(['knowledge-entity-detail', 'u1', 'ent-1']);
+    expect(keys).toContainEqual(['knowledge-subgraph', 'u1']);
+    expect(keys).toContainEqual(['composition', 'cast']);
+    expect(onSuccess).toHaveBeenCalled();
+  });
+
+  it('surfaces a restore failure via onError', async () => {
+    restoreMyEntityMock.mockRejectedValue(
+      Object.assign(new Error('boom'), { status: 500 }),
+    );
+    const onError = vi.fn();
+    const { Wrapper } = makeWrapper();
+    const { result } = renderHook(() => useRestoreEntity({ onError }), {
+      wrapper: Wrapper,
+    });
+    await expect(
+      result.current.restore({ entityId: 'ent-1' }),
     ).rejects.toThrow('boom');
     expect(onError).toHaveBeenCalledTimes(1);
   });

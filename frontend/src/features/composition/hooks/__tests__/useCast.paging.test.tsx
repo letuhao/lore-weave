@@ -60,6 +60,33 @@ describe('useCast — offset paging (D-CAST-KEYSET-PAGING)', () => {
     );
   });
 
+  // Regression (s7-4 audit): the dock panel opens with `activeChapterId ?? ''`.
+  // `before_chapter_id` is a `UUID | None` server param — an empty query value
+  // (`before_chapter_id=`) 422s (uuid_parsing) instead of fail-closing the
+  // window. useCast must OMIT it (undefined), never forward the empty string.
+  it('an empty beforeChapterId is normalized to undefined (no before_chapter_id=)', async () => {
+    listEntitiesMock.mockResolvedValue({ entities: page(1, 0), total: 1 });
+    const { result } = renderHook(
+      () => useCast('proj', 'tok', { beforeChapterId: '' }), { wrapper: wrapper() });
+    await waitFor(() => expect(result.current.entities.data).toHaveLength(1));
+    expect(getEntityStatusesMock).toHaveBeenCalledWith(
+      { project_id: 'proj', kind: undefined, before_chapter_id: undefined },
+      'tok',
+    );
+  });
+
+  it('a real beforeChapterId (UUID) is forwarded as the spoiler window', async () => {
+    listEntitiesMock.mockResolvedValue({ entities: page(1, 0), total: 1 });
+    const cid = '11111111-1111-1111-1111-111111111111';
+    const { result } = renderHook(
+      () => useCast('proj', 'tok', { beforeChapterId: cid }), { wrapper: wrapper() });
+    await waitFor(() => expect(result.current.entities.data).toHaveLength(1));
+    expect(getEntityStatusesMock).toHaveBeenCalledWith(
+      { project_id: 'proj', kind: undefined, before_chapter_id: cid },
+      'tok',
+    );
+  });
+
   it('a >200 cast reports hasMore, and loadMore fetches offset 200 and appends', async () => {
     listEntitiesMock
       .mockResolvedValueOnce({ entities: page(200, 0), total: 250 })

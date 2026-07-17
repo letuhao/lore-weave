@@ -5,7 +5,7 @@
 // moveMarker({markerId,x,y}) — never delete+add.
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
-import type { WorldMapMarker } from '../../types';
+import type { WorldMapMarker, WorldMapRegion } from '../../types';
 import { WorldMapEditor } from '../WorldMapEditor';
 
 vi.mock('react-i18next', () => ({
@@ -113,5 +113,65 @@ describe('WorldMapEditor', () => {
   it('shows the world picker (never a dead pane) when no world is resolved', () => {
     render(<WorldMapEditor ctl={fakeCtl({ needsWorldPicker: true, selectedMarker: null })} />);
     expect(screen.getByTestId('world-map-world-picker')).toBeInTheDocument();
+  });
+
+  it('a plain click on a pin (no drag) does NOT relocate it — only selects', () => {
+    render(<WorldMapEditor ctl={ctl} />);
+    const pin = screen.getByTestId('world-map-marker-m1');
+    // A click == pointerdown then pointerup at (roughly) the same spot: must NOT fire moveMarker.
+    fireEvent.pointerDown(pin, { pointerId: 1, clientX: 100, clientY: 100 });
+    fireEvent.pointerUp(pin, { pointerId: 1, clientX: 100, clientY: 100 });
+    expect(ctl.moveMarker.mutate).not.toHaveBeenCalled();
+  });
+
+  it('an actual drag (pointermove between down and up) fires ONE moveMarker on the stable id', () => {
+    render(<WorldMapEditor ctl={ctl} />);
+    const pin = screen.getByTestId('world-map-marker-m1');
+    fireEvent.pointerDown(pin, { pointerId: 1, clientX: 100, clientY: 100 });
+    fireEvent.pointerMove(pin, { pointerId: 1, clientX: 150, clientY: 150 });
+    fireEvent.pointerUp(pin, { pointerId: 1, clientX: 150, clientY: 150 });
+    expect(ctl.moveMarker.mutate).toHaveBeenCalledTimes(1);
+    expect(ctl.moveMarker.mutate.mock.calls[0][0].markerId).toBe('m1');
+  });
+
+  it('the marker popover remounts per marker (key) so it never edits with a stale label', () => {
+    const { rerender } = render(<WorldMapEditor ctl={ctl} />);
+    expect((screen.getByTestId('world-map-marker-label') as HTMLInputElement).value).toBe('Keep');
+    // Select a DIFFERENT marker: the popover must show ITS label, not the previous one.
+    const other = marker({ marker_id: 'm2', label: 'Tower' });
+    rerender(<WorldMapEditor ctl={fakeCtl({ selectedMarkerId: 'm2', selectedMarker: other, markers: [other] })} />);
+    expect((screen.getByTestId('world-map-marker-label') as HTMLInputElement).value).toBe('Tower');
+  });
+
+  it('region CRUD is reachable: selected region opens a popover with rename/rebind/delete', () => {
+    const region: WorldMapRegion = {
+      region_id: 'r1',
+      name: 'Coast',
+      polygon: [
+        [0.1, 0.1],
+        [0.5, 0.1],
+        [0.3, 0.6],
+      ],
+      entity_id: null,
+      updated_at: '2026-07-16T00:00:00Z',
+    };
+    const rctl = fakeCtl({
+      regions: [region],
+      selectedRegionId: 'r1',
+      selectedRegion: region,
+      selectedMarker: null,
+      selectedMarkerId: null,
+    });
+    render(<WorldMapEditor ctl={rctl} />);
+    // popover present + a rename Save wires patchRegion; vertex handles exist for reshape.
+    expect(screen.getByTestId('world-map-region-popover')).toBeInTheDocument();
+    expect(screen.getByTestId('world-map-vertex-0')).toBeInTheDocument();
+    fireEvent.click(screen.getByTestId('world-map-region-save'));
+    expect(rctl.patchRegion.mutate).toHaveBeenCalledWith({
+      regionId: 'r1',
+      payload: { name: 'Coast', entity_id: null },
+    });
+    fireEvent.click(screen.getByTestId('world-map-region-delete'));
+    expect(rctl.deleteRegion.mutate).toHaveBeenCalledWith('r1');
   });
 });

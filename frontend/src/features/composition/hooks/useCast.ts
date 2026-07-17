@@ -46,7 +46,14 @@ export function useCast(
   token: string | null,
   opts: { kind?: string; search?: string; beforeChapterId?: string },
 ) {
-  const { kind, search, beforeChapterId } = opts;
+  const { kind, search } = opts;
+  // Normalize an EMPTY chapter id (no active reading position — the dock panel
+  // opens with `activeChapterId ?? ''`) to `undefined`. `before_chapter_id` is a
+  // `UUID | None` server param: an empty query value (`before_chapter_id=`) 422s
+  // (uuid_parsing) instead of omitting the window, so the intended "window
+  // unavailable → fail-closed + banner" path never runs. `'' || undefined`
+  // omits it; a real UUID passes through.
+  const beforeChapterId = opts.beforeChapterId || undefined;
   const effSearch = search && search.trim().length >= 2 ? search.trim() : undefined;
   const enabled = !!projectId && !!token;
 
@@ -121,10 +128,13 @@ export function useEntityDetail(entityId: string | null, token: string | null, e
 export function useEntityEvents(
   entityId: string | null, beforeChapterId: string | undefined, token: string | null, enabled = true,
 ) {
+  // Empty chapter id (no reading position) → omit the window (see useCast); a
+  // `before_chapter_id=` empty query value 422s the UUID param.
+  const beforeId = beforeChapterId || undefined;
   return useQuery({
-    queryKey: ['composition', 'cast', 'events', entityId, beforeChapterId ?? null],
+    queryKey: ['composition', 'cast', 'events', entityId, beforeId ?? null],
     queryFn: () => knowledgeApi.listTimeline(
-      { entity_id: entityId!, before_chapter_id: beforeChapterId, limit: 10 }, token!),
+      { entity_id: entityId!, before_chapter_id: beforeId, limit: 10 }, token!),
     enabled: !!entityId && !!token && enabled,
     select: (d) => d.events,
   });
@@ -134,9 +144,12 @@ export function useEntityEvents(
 export function useEntityFacts(
   entityId: string | null, beforeChapterId: string | undefined, token: string | null, enabled = true,
 ) {
+  // Empty chapter id (no reading position) → omit the window (see useCast); a
+  // `before_chapter_id=` empty query value 422s the UUID param.
+  const beforeId = beforeChapterId || undefined;
   return useQuery({
-    queryKey: ['composition', 'cast', 'facts', entityId, beforeChapterId ?? null],
-    queryFn: () => knowledgeApi.getEntityFacts(entityId!, { before_chapter_id: beforeChapterId }, token!),
+    queryKey: ['composition', 'cast', 'facts', entityId, beforeId ?? null],
+    queryFn: () => knowledgeApi.getEntityFacts(entityId!, { before_chapter_id: beforeId }, token!),
     enabled: !!entityId && !!token && enabled,
   });
 }

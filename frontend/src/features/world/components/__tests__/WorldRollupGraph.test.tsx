@@ -44,6 +44,9 @@ vi.mock('@/features/knowledge/hooks/useEntityMutations', () => ({
   useToggleGlossaryPin: () => ({ toggle: vi.fn(), isPending: false }),
   useUpdateEntity: () => ({ update: vi.fn(), isPending: false }),
   useMergeEntity: () => ({ merge: vi.fn(), isPending: false }),
+  useArchiveEntity: () => ({ archive: vi.fn(), isPending: false }),
+  useRestoreEntity: () => ({ restore: vi.fn(), isPending: false, error: null }),
+  useCreateRelation: () => ({ createRelation: vi.fn(), isPending: false }),
 }));
 
 // Two nodes from TWO distinct member projects (per-book islands) + one node

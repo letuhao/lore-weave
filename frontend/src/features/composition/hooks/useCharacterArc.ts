@@ -41,6 +41,12 @@ export function useCharacterArc(
   const projectQ = useKnowledgeProjectId(bookId, token);
   const projectId = projectQ.data;
   const enabled = !!projectId && !!token;
+  // Normalize an EMPTY chapter id (the dock panel opens with `activeChapterId ??
+  // ''` — no active reading position) to `undefined`: `before_chapter_id` is a
+  // `UUID | None` server param, so an empty query value (`before_chapter_id=`)
+  // 422s (uuid_parsing) instead of fail-closing the window. The cutoff query
+  // already gates on `!!chapterId`, but the batch-status query does not.
+  const beforeChapterId = chapterId || undefined;
 
   const rosterQ = useQuery({
     queryKey: ['composition', 'arc', 'roster', projectId],
@@ -67,10 +73,10 @@ export function useCharacterArc(
   // Decoupled cutoff: the visible (≤ current chapter) count under the same entity
   // scope. limit:1 — only `total` is consumed (T2.3 pattern, no FE stride).
   const cutoffQ = useQuery({
-    queryKey: ['composition', 'arc', 'cutoff', projectId, effectiveEntityId, chapterId],
+    queryKey: ['composition', 'arc', 'cutoff', projectId, effectiveEntityId, beforeChapterId ?? null],
     queryFn: () => knowledgeApi.listTimeline(
-      { project_id: projectId!, entity_id: effectiveEntityId!, before_chapter_id: chapterId, limit: 1 }, token!),
-    enabled: arcEnabled && !!chapterId,
+      { project_id: projectId!, entity_id: effectiveEntityId!, before_chapter_id: beforeChapterId, limit: 1 }, token!),
+    enabled: arcEnabled && !!beforeChapterId,
     select: (d) => d.total,
   });
 
@@ -84,9 +90,9 @@ export function useCharacterArc(
   // State band — the spoiler-windowed story-state (active|gone + from_order). Batch
   // route (no per-entity status route exists); we read this entity's entry.
   const statusQ = useQuery({
-    queryKey: ['composition', 'arc', 'status', projectId, chapterId],
+    queryKey: ['composition', 'arc', 'status', projectId, beforeChapterId ?? null],
     queryFn: () => knowledgeApi.getEntityStatuses(
-      { project_id: projectId!, before_chapter_id: chapterId }, token!),
+      { project_id: projectId!, before_chapter_id: beforeChapterId }, token!),
     enabled,
   });
   const state = effectiveEntityId ? statusQ.data?.statuses?.[effectiveEntityId] : undefined;

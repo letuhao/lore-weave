@@ -54,7 +54,14 @@ export function WorldMapEditor({ ctl }: { ctl: Ctl }) {
         </div>
       </div>
       <Footer ctl={ctl} />
-      {ctl.selectedMarker && <MarkerPopover ctl={ctl} marker={ctl.selectedMarker} t={t} />}
+      {/* key per id so selecting a DIFFERENT marker/region remounts the popover — otherwise the
+          form's useState keeps the PREVIOUS row's label/entity and a Save clobbers the new row. */}
+      {ctl.selectedMarker && (
+        <MarkerPopover key={ctl.selectedMarker.marker_id} ctl={ctl} marker={ctl.selectedMarker} t={t} />
+      )}
+      {ctl.selectedRegion && (
+        <RegionPopover key={ctl.selectedRegion.region_id} ctl={ctl} region={ctl.selectedRegion} t={t} />
+      )}
     </div>
   );
 }
@@ -143,10 +150,21 @@ function CreateMapButton({ ctl, t }: { ctl: Ctl; t: (k: string, o?: Record<strin
   );
 }
 
+// A pin/vertex "drag" is only a drag if the pointer actually moved beyond this normalized epsilon.
+// Below it, treat the gesture as a click (select only) — otherwise a plain click to open a pin's
+// popover would PATCH the pin to the cursor position (the pin renders OFFSET from its anchor).
+const DRAG_EPSILON = 0.005;
+
 function Canvas({ ctl }: { ctl: Ctl }) {
   const canvasRef = useRef<HTMLDivElement>(null);
   const [dragId, setDragId] = useState<string | null>(null);
   const [draft, setDraft] = useState<number[][]>([]); // region-mode vertices in progress
+  // Live vertex-reshape draft for the SELECTED region (commits on pointer-up). null = not reshaping.
+  const [reshape, setReshape] = useState<{ regionId: string; polygon: number[][] } | null>(null);
+  const [vertexDrag, setVertexDrag] = useState<number | null>(null);
+  // A gesture is a DRAG only if a pointermove fired between down and up. A pure click fires none,
+  // so it must select (not relocate) — the guard against a click PATCHing a pin to the cursor.
+  const movedRef = useRef(false);
 
   const onCanvasClick = (e: React.MouseEvent) => {
     if (!canvasRef.current || !ctl.selectedMapId) return;
@@ -164,33 +182,70 @@ function Canvas({ ctl }: { ctl: Ctl }) {
   const onPinPointerDown = (markerId: string) => (e: React.PointerEvent) => {
     if (ctl.mode !== 'select') return;
     e.stopPropagation();
-    (e.target as HTMLElement).setPointerCapture(e.pointerId);
+    (e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId);
+    movedRef.current = false;
     setDragId(markerId);
+    ctl.setSelectedRegionId(null);
     ctl.setSelectedMarkerId(markerId);
   };
-  const onPinPointerMove = (markerId: string) => (e: React.PointerEvent) => {
-    if (dragId !== markerId || !canvasRef.current) return;
-    const { x, y } = coordsFromEvent(canvasRef.current, e.clientX, e.clientY);
-    // Optimistic move happens in the mutation onMutate; here we only fire on release to avoid a
-    // PATCH per frame — but we do update the visual via the mutation cache on drop.
-    (e.currentTarget as HTMLElement).dataset.dragX = String(x);
-    (e.currentTarget as HTMLElement).dataset.dragY = String(y);
+  const onPinPointerMove = (markerId: string) => () => {
+    if (dragId === markerId) movedRef.current = true;
   };
   const onPinPointerUp = (markerId: string) => (e: React.PointerEvent) => {
     if (dragId !== markerId || !canvasRef.current) return;
-    const { x, y } = coordsFromEvent(canvasRef.current, e.clientX, e.clientY);
     setDragId(null);
+    // A pure click (no pointermove) must NOT relocate the pin — it only selects (done on down).
+    if (!movedRef.current) return;
+    const { x, y } = coordsFromEvent(canvasRef.current, e.clientX, e.clientY);
+    // Idempotent guard: don't PATCH if the pin didn't actually change position (a tiny jitter).
+    // One atomic PATCH of the ABSOLUTE coord on the stable marker_id — never delete+recreate.
+    const m = ctl.markers.find((mm) => mm.marker_id === markerId);
+    if (m && Math.abs(m.x - x) < DRAG_EPSILON && Math.abs(m.y - y) < DRAG_EPSILON) return;
     ctl.moveMarker.mutate({ markerId, x, y });
+  };
+
+  // ── region vertex reshape (select mode, on the selected region) ──
+  const activePolygon = (r: WorldMapRegion): number[][] =>
+    reshape && reshape.regionId === r.region_id ? reshape.polygon : r.polygon;
+  const onVertexDown = (regionId: string, polygon: number[][], i: number) => (e: React.PointerEvent) => {
+    e.stopPropagation();
+    (e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId);
+    setReshape({ regionId, polygon: polygon.map((p) => [...p]) });
+    setVertexDrag(i);
+  };
+  const onVertexMove = (i: number) => (e: React.PointerEvent) => {
+    if (vertexDrag !== i || !canvasRef.current || !reshape) return;
+    const { x, y } = coordsFromEvent(canvasRef.current, e.clientX, e.clientY);
+    setReshape((prev) =>
+      prev ? { ...prev, polygon: prev.polygon.map((p, idx) => (idx === i ? [x, y] : p)) } : prev,
+    );
+  };
+  const onVertexUp = (regionId: string, i: number) => (e: React.PointerEvent) => {
+    if (vertexDrag !== i) return;
+    e.stopPropagation();
+    setVertexDrag(null);
+    const poly = reshape?.polygon;
+    setReshape(null);
+    if (poly) ctl.reshapeRegion.mutate({ regionId, polygon: poly });
+  };
+
+  const selectRegion = (regionId: string) => {
+    ctl.setSelectedMarkerId(null);
+    ctl.setSelectedRegionId(regionId);
   };
 
   const finishRegion = () => {
     if (draft.length >= 3) {
-      ctl.addRegion.mutate({ name: 'New region', polygon: draft });
+      ctl.addRegion.mutate(
+        { name: 'New region', polygon: draft },
+        { onSuccess: (res) => selectRegion(res.region.region_id) },
+      );
     }
     setDraft([]);
   };
 
   const map = ctl.map;
+  const selectedRegion = ctl.selectedRegion;
   return (
     <div className="flex h-full flex-col gap-2">
       {ctl.mode === 'region' && draft.length > 0 && (
@@ -226,7 +281,32 @@ function Canvas({ ctl }: { ctl: Ctl }) {
           </div>
         )}
 
-        <RegionOverlay regions={ctl.regions} draft={draft} />
+        <RegionOverlay
+          regions={ctl.regions}
+          draft={draft}
+          selectedRegionId={ctl.selectedRegionId}
+          selectable={ctl.mode === 'select'}
+          onSelect={selectRegion}
+          activePolygon={activePolygon}
+        />
+
+        {/* Vertex handles for the selected region (select mode only) — drag one to reshape. */}
+        {ctl.mode === 'select' &&
+          selectedRegion &&
+          activePolygon(selectedRegion).map((pt, i) => (
+            <button
+              key={i}
+              type="button"
+              data-testid={`world-map-vertex-${i}`}
+              onPointerDown={onVertexDown(selectedRegion.region_id, selectedRegion.polygon, i)}
+              onPointerMove={onVertexMove(i)}
+              onPointerUp={onVertexUp(selectedRegion.region_id, i)}
+              onClick={(e) => e.stopPropagation()}
+              className="absolute h-2.5 w-2.5 -translate-x-1/2 -translate-y-1/2 rounded-full border border-white bg-primary shadow"
+              style={{ left: `${pt[0] * 100}%`, top: `${pt[1] * 100}%`, touchAction: 'none' }}
+              aria-label={`vertex ${i + 1}`}
+            />
+          ))}
 
         {ctl.markers.map((m) => (
           <button
@@ -239,6 +319,7 @@ function Canvas({ ctl }: { ctl: Ctl }) {
             onPointerUp={onPinPointerUp(m.marker_id)}
             onClick={(e) => {
               e.stopPropagation();
+              ctl.setSelectedRegionId(null);
               ctl.setSelectedMarkerId(m.marker_id);
             }}
             className="absolute -translate-x-1/2 -translate-y-full"
@@ -256,7 +337,21 @@ function Canvas({ ctl }: { ctl: Ctl }) {
   );
 }
 
-function RegionOverlay({ regions, draft }: { regions: WorldMapRegion[]; draft: number[][] }) {
+function RegionOverlay({
+  regions,
+  draft,
+  selectedRegionId,
+  selectable,
+  onSelect,
+  activePolygon,
+}: {
+  regions: WorldMapRegion[];
+  draft: number[][];
+  selectedRegionId: string | null;
+  selectable: boolean;
+  onSelect: (regionId: string) => void;
+  activePolygon: (r: WorldMapRegion) => number[][];
+}) {
   return (
     <svg
       className="pointer-events-none absolute inset-0 h-full w-full"
@@ -264,16 +359,29 @@ function RegionOverlay({ regions, draft }: { regions: WorldMapRegion[]; draft: n
       preserveAspectRatio="none"
       data-testid="world-map-regions"
     >
-      {regions.map((r) => (
-        <polygon
-          key={r.region_id}
-          points={r.polygon.map(([x, y]) => `${x * 100},${y * 100}`).join(' ')}
-          className="fill-primary/15 stroke-primary/60"
-          strokeWidth={0.4}
-        >
-          <title>{r.name}</title>
-        </polygon>
-      ))}
+      {regions.map((r) => {
+        const selected = r.region_id === selectedRegionId;
+        return (
+          <polygon
+            key={r.region_id}
+            data-testid={`world-map-region-${r.region_id}`}
+            points={activePolygon(r)
+              .map(([x, y]) => `${x * 100},${y * 100}`)
+              .join(' ')}
+            className={`${selected ? 'fill-primary/25 stroke-primary' : 'fill-primary/15 stroke-primary/60'} ${
+              selectable ? 'pointer-events-auto cursor-pointer' : ''
+            }`}
+            strokeWidth={selected ? 0.7 : 0.4}
+            onClick={(e) => {
+              if (!selectable) return;
+              e.stopPropagation();
+              onSelect(r.region_id);
+            }}
+          >
+            <title>{r.name}</title>
+          </polygon>
+        );
+      })}
       {draft.length > 0 && (
         <polyline
           points={draft.map(([x, y]) => `${x * 100},${y * 100}`).join(' ')}
@@ -375,6 +483,96 @@ function MarkerPopover({
           type="button"
           data-testid="world-map-marker-delete"
           onClick={() => ctl.deleteMarker.mutate(marker.marker_id)}
+          className="rounded border border-rose-300 px-2 py-0.5 text-rose-600"
+        >
+          {t('mapEditor.delete', { defaultValue: 'Delete' })}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function RegionPopover({
+  ctl,
+  region,
+  t,
+}: {
+  ctl: Ctl;
+  region: WorldMapRegion;
+  t: (k: string, o?: Record<string, unknown>) => string;
+}) {
+  const [name, setName] = useState(region.name);
+  const [entityId, setEntityId] = useState(region.entity_id ?? '');
+  const [source, setSource] = useState<'glossary' | 'kg'>('glossary');
+  return (
+    <div
+      data-testid="world-map-region-popover"
+      className="absolute right-4 top-16 z-10 w-64 space-y-2 rounded-md border bg-background p-3 text-xs shadow-lg"
+    >
+      <div className="flex items-center justify-between">
+        <span className="font-semibold">{t('mapEditor.region', { defaultValue: 'Region' })}</span>
+        <button type="button" onClick={() => ctl.setSelectedRegionId(null)} aria-label="close">
+          ×
+        </button>
+      </div>
+      <label className="block">
+        {t('mapEditor.name', { defaultValue: 'Name' })}
+        <input
+          data-testid="world-map-region-name"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          className="mt-0.5 w-full rounded border px-1 py-0.5"
+        />
+      </label>
+      {/* 🔒 SEALED PO#2 — bind a glossary `location` OR a KG entity; the source is LABELLED. Soft
+          untyped entity_id (no FK). Drag a vertex on the canvas to reshape the outline. */}
+      <div className="space-y-1">
+        <div className="flex items-center gap-1">
+          <span>{t('mapEditor.bind', { defaultValue: 'Bind entity' })}</span>
+          <select
+            data-testid="world-map-region-source"
+            value={source}
+            onChange={(e) => setSource(e.target.value as 'glossary' | 'kg')}
+            className="rounded border px-1"
+          >
+            <option value="glossary">glossary</option>
+            <option value="kg">KG</option>
+          </select>
+        </div>
+        <input
+          data-testid="world-map-region-entity"
+          value={entityId}
+          placeholder={t('mapEditor.entityPlaceholder', { defaultValue: 'location entity id' })}
+          onChange={(e) => setEntityId(e.target.value)}
+          className="w-full rounded border px-1 py-0.5"
+        />
+      </div>
+      <div className="flex flex-wrap gap-2 pt-1">
+        <button
+          type="button"
+          data-testid="world-map-region-save"
+          onClick={() =>
+            ctl.patchRegion.mutate({
+              regionId: region.region_id,
+              payload: { name, entity_id: entityId.trim() || null },
+            })
+          }
+          className="rounded bg-primary px-2 py-0.5 text-primary-foreground"
+        >
+          {t('mapEditor.save', { defaultValue: 'Save' })}
+        </button>
+        <button
+          type="button"
+          data-testid="world-map-region-unbind"
+          onClick={() => ctl.patchRegion.mutate({ regionId: region.region_id, payload: { entity_id: null } })}
+          className="rounded border px-2 py-0.5"
+        >
+          {t('mapEditor.unbind', { defaultValue: 'Unbind' })}
+        </button>
+        <button
+          type="button"
+          data-testid="world-map-region-delete"
+          onClick={() => ctl.deleteRegion.mutate(region.region_id)}
           className="rounded border border-rose-300 px-2 py-0.5 text-rose-600"
         >
           {t('mapEditor.delete', { defaultValue: 'Delete' })}
