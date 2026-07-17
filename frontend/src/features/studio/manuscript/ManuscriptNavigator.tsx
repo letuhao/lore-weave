@@ -13,7 +13,7 @@
 // (outline search for a Work, book-service chapter search for imports), so it reaches nodes
 // NOT yet lazy-loaded into the tree (the v1 client-filter's blind spot). Typing switches the
 // body from the tree to a flat result list; clearing returns to the tree.
-import { useCallback, useEffect, useMemo, useRef } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { ChevronDown, ChevronRight, ChevronsDownUp, ChevronUp, FolderPlus, Loader2, PanelLeftClose, Pencil, Plus, RotateCw, Search, Trash2 } from 'lucide-react';
@@ -39,6 +39,39 @@ interface Props {
 
 const ROW_H = 26;
 
+/**
+ * S-02c — a tiny in-place text input for creating / renaming an act (replaces window.prompt).
+ * Auto-focuses + selects; Enter commits, Esc cancels, blur commits. A `done` guard makes Enter
+ * (which unmounts the input → fires blur) commit exactly once. Module-scope so it never remounts
+ * from the parent's render (the "component-defined-in-render-body-remounts" trap).
+ */
+function ActNameInput({
+  initial, placeholder, testid, onCommit, onCancel,
+}: { initial: string; placeholder: string; testid: string; onCommit: (v: string) => void; onCancel: () => void }) {
+  const [val, setVal] = useState(initial);
+  const done = useRef(false);
+  const ref = useRef<HTMLInputElement>(null);
+  useEffect(() => { ref.current?.focus(); ref.current?.select(); }, []);
+  const commit = () => { if (done.current) return; done.current = true; onCommit(val); };
+  const cancel = () => { if (done.current) return; done.current = true; onCancel(); };
+  return (
+    <input
+      ref={ref}
+      data-testid={testid}
+      value={val}
+      onChange={(e) => setVal(e.target.value)}
+      onClick={(e) => e.stopPropagation()}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter') { e.preventDefault(); commit(); }
+        else if (e.key === 'Escape') { e.preventDefault(); cancel(); }
+      }}
+      onBlur={commit}
+      placeholder={placeholder}
+      className="min-w-0 flex-1 rounded border border-primary/40 bg-background px-1 py-0.5 text-xs text-foreground outline-none focus:border-primary"
+    />
+  );
+}
+
 /** 1→I, 4→IV, … (arcs never exceed a few dozen, but the full converter is trivial + safe). */
 function toRoman(n: number): string {
   if (n <= 0) return String(n);
@@ -56,7 +89,7 @@ export function ManuscriptNavigator({ bookId, token, selectedId, onSelect, onNew
   const {
     // `parts`/`trashedActs` default to [] so the navigator tolerates a hook shape without them
     // (older/partial mocks) — reading .length/.findIndex on undefined would crash every render.
-    source, rows, total, counts, error, parts = [], trashedActs = [],
+    source, rows, total, counts, error, partsMode, parts = [], trashedActs = [],
     toggleExpand, loadMore, collapseAll, reload,
     createAct, renameAct, trashAct, moveChapterToAct, moveAct, restoreAct,
   } = useManuscriptTree(bookId, token);
@@ -65,16 +98,20 @@ export function ManuscriptNavigator({ bookId, token, selectedId, onSelect, onNew
   // S-02 — the chapter id currently dragged onto an act (native HTML5 DnD, trusted user drag).
   const dragChapterId = useRef<string | null>(null);
 
-  // S-02 act affordances. prompt/confirm keep this navigator edit minimal + immediately operable
-  // (inline editors are a later polish); each awaits a mutator that reloads the grouped tree.
-  const onNewAct = useCallback(() => {
-    const title = window.prompt(t('manuscript.newActPrompt', { defaultValue: 'Name the new act' }))?.trim();
-    if (title != null) void createAct(title);
-  }, [createAct, t]);
-  const onRenameAct = useCallback((id: string, current: string) => {
-    const title = window.prompt(t('manuscript.renameActPrompt', { defaultValue: 'Rename act' }), current)?.trim();
-    if (title != null) void renameAct(id, title);
-  }, [renameAct, t]);
+  // S-02c — inline act create/rename (no window.prompt). `creatingAct` shows an input at the top
+  // of the act list; `editingActId` turns one act's title into an input in place.
+  const [creatingAct, setCreatingAct] = useState(false);
+  const [editingActId, setEditingActId] = useState<string | null>(null);
+  const onNewAct = useCallback(() => { setEditingActId(null); setCreatingAct(true); }, []);
+  const commitNewAct = useCallback((val: string) => {
+    const title = val.trim();
+    if (title) void createAct(title); // blank = no-op (don't create an untitled act by accident)
+    setCreatingAct(false);
+  }, [createAct]);
+  const commitRename = useCallback((id: string, val: string) => {
+    void renameAct(id, val.trim()); // blank clears the title → "(untitled act)"
+    setEditingActId(null);
+  }, [renameAct]);
   // S-02b — trash is INSTANT + UNDOABLE (no blocking confirm): trash, then a toast whose Undo
   // restores the act. Copy notes chapters were kept (un-filed), so it doesn't read as data loss.
   const onTrashAct = useCallback((id: string, name: string) => {
@@ -123,6 +160,8 @@ export function ManuscriptNavigator({ bookId, token, selectedId, onSelect, onNew
   const fmt = (n: number) => n.toLocaleString();
   const statParts: string[] = [];
   if (counts.arcs != null && counts.arcs > 0) statParts.push(t('manuscript.statArcs', { n: fmt(counts.arcs), defaultValue: '{{n}} arc' }));
+  // S-02c B1 — acts count as "act", never "arc".
+  if (partsMode && parts.length > 0) statParts.push(t('manuscript.statActs', { count: parts.length, n: fmt(parts.length), defaultValue: '{{n}} act' }));
   if (counts.chapters != null) statParts.push(t('manuscript.statChapters', { n: fmt(counts.chapters), defaultValue: '{{n}} ch' }));
   if (counts.scenes != null && counts.scenes > 0) statParts.push(t('manuscript.statScenes', { n: fmt(counts.scenes), defaultValue: '{{n}} sc' }));
 
@@ -218,6 +257,19 @@ export function ManuscriptNavigator({ bookId, token, selectedId, onSelect, onNew
       {error && !jump.active && <div className="px-3 py-1.5 text-[11px] text-amber-600">{error}</div>}
 
       <div ref={parentRef} data-testid="manuscript-scroll" className="min-h-0 flex-1 overflow-y-auto">
+        {/* S-02c — inline "new act" input at the top of the list (replaces window.prompt) */}
+        {creatingAct && !jump.active && (
+          <div className="flex items-center gap-1 px-2 py-1">
+            <FolderPlus className="h-3.5 w-3.5 flex-shrink-0 text-accent" />
+            <ActNameInput
+              testid="manuscript-part-new-input"
+              initial=""
+              placeholder={t('manuscript.newActPlaceholder', { defaultValue: 'New act name…' })}
+              onCommit={commitNewAct}
+              onCancel={() => setCreatingAct(false)}
+            />
+          </div>
+        )}
         {jump.active ? (
           /* ── Server search results (flat list across the WHOLE book) ─────────── */
           jump.results.length === 0 ? (
@@ -377,7 +429,22 @@ export function ManuscriptNavigator({ bookId, token, selectedId, onSelect, onNew
                     </span>
                   )}
 
-                  <span className="truncate">{node.title}</span>
+                  {isPart && !isUnassigned && editingActId === node.id ? (
+                    <ActNameInput
+                      testid={`manuscript-part-rename-input-${node.id}`}
+                      initial={node.title}
+                      placeholder={t('manuscript.renameActPlaceholder', { defaultValue: 'Act name…' })}
+                      onCommit={(v) => commitRename(node.id, v)}
+                      onCancel={() => setEditingActId(null)}
+                    />
+                  ) : (
+                    <span
+                      className="truncate"
+                      onDoubleClick={isPart && !isUnassigned ? ((e) => { e.stopPropagation(); setEditingActId(node.id); }) : undefined}
+                    >
+                      {node.title}
+                    </span>
+                  )}
 
                   {/* child-count badge: chapter → scenes, arc → chapters, act → chapters */}
                   {node.childCount != null && node.childCount > 0 && (
@@ -417,7 +484,7 @@ export function ManuscriptNavigator({ bookId, token, selectedId, onSelect, onNew
                       <button
                         type="button"
                         data-testid={`manuscript-part-rename-${node.id}`}
-                        onClick={(e) => { e.stopPropagation(); onRenameAct(node.id, node.title); }}
+                        onClick={(e) => { e.stopPropagation(); setEditingActId(node.id); }}
                         title={t('manuscript.renameAct', { defaultValue: 'Rename act' })}
                         className="flex h-4 w-4 items-center justify-center rounded text-muted-foreground hover:text-foreground"
                       >

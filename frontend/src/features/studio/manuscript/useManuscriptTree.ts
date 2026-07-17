@@ -202,11 +202,13 @@ export function useManuscriptTree(bookId: string, token: string | null) {
     return () => { alive = false; };
   }, [source, projectId, bookId, token]);
 
+  // 'arc' is an OUTLINE concept; a chapters-source book counts ACTS (parts), not arcs — the
+  // footer label must not say "arc" for acts (S-02c B1). Acts are surfaced via `parts.length`.
   const counts = useMemo(
     () => (source === 'outline'
       ? { arcs: outlineCounts?.arcs ?? null, chapters: outlineCounts?.chapters ?? null, scenes: outlineCounts?.scenes ?? null }
-      : { arcs: partsMode ? parts.length : null, chapters: total, scenes: null }),
-    [source, outlineCounts, total, partsMode, parts.length],
+      : { arcs: null, chapters: total, scenes: null }),
+    [source, outlineCounts, total],
   );
 
   // Collapse every expanded node back to the root level (VS Code "Collapse All"). Loaded

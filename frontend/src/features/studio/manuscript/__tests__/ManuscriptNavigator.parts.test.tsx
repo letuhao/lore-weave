@@ -45,8 +45,10 @@ const mutators = () => ({
 const partRow2 = (id: string, sort: number, state: 'active' | 'trashed' = 'active') => ({ part_id: id, book_id: 'b', title: id, path: id, sort_order: sort, lifecycle_state: state });
 
 const base = (m: ReturnType<typeof mutators>, rows: ManuscriptRow[], parts: ReturnType<typeof partRow2>[] = [], trashedActs: ReturnType<typeof partRow2>[] = []) => ({
+  // Mirror the real hook: in a chapters-source (parts) book, counts.arcs is null — acts are
+  // surfaced via `parts.length`, never counted as arcs.
   source: 'chapters', rows, total: 1, error: null, partsMode: true, parts, trashedActs,
-  counts: { arcs: parts.length, chapters: 1, scenes: null },
+  counts: { arcs: null, chapters: 1, scenes: null },
   toggleExpand: vi.fn(), loadMore: vi.fn(), collapseAll: vi.fn(), reload: vi.fn(), ...m,
 });
 
@@ -76,23 +78,54 @@ describe('ManuscriptNavigator — S-02 act affordances', () => {
     expect(screen.queryByTestId(`manuscript-part-trash-${PART_UNASSIGNED_ID}`)).toBeNull();
   });
 
-  it('New act → prompts + calls createAct with the entered title', () => {
+  it('S-02c: New act → INLINE input (no prompt); Enter commits the trimmed title', () => {
     const m = mutators();
     hook.value = base(m, [row(partNode('p1', 'Act I'), 0)]);
-    vi.spyOn(window, 'prompt').mockReturnValue('  Rising Action  ');
+    const promptSpy = vi.spyOn(window, 'prompt');
     render(<ManuscriptNavigator bookId="b1" token="t" />);
 
     fireEvent.click(screen.getByTestId('manuscript-part-new'));
+    const input = screen.getByTestId('manuscript-part-new-input');
+    fireEvent.change(input, { target: { value: '  Rising Action  ' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
     expect(m.createAct).toHaveBeenCalledWith('Rising Action'); // trimmed
+    expect(promptSpy).not.toHaveBeenCalled();                  // no window.prompt
   });
 
-  it('rename → calls renameAct', () => {
+  it('S-02c: New act → Esc cancels (no create, input gone)', () => {
     const m = mutators();
     hook.value = base(m, [row(partNode('p1', 'Act I'), 0)]);
-    vi.spyOn(window, 'prompt').mockReturnValue('Act One');
     render(<ManuscriptNavigator bookId="b1" token="t" />);
+    fireEvent.click(screen.getByTestId('manuscript-part-new'));
+    const input = screen.getByTestId('manuscript-part-new-input');
+    fireEvent.change(input, { target: { value: 'Nope' } });
+    fireEvent.keyDown(input, { key: 'Escape' });
+    expect(m.createAct).not.toHaveBeenCalled();
+    expect(screen.queryByTestId('manuscript-part-new-input')).toBeNull();
+  });
+
+  it('S-02c: rename → INLINE in-place edit (no prompt); Enter commits', () => {
+    const m = mutators();
+    hook.value = base(m, [row(partNode('p1', 'Act I'), 0)]);
+    const promptSpy = vi.spyOn(window, 'prompt');
+    render(<ManuscriptNavigator bookId="b1" token="t" />);
+
     fireEvent.click(screen.getByTestId('manuscript-part-rename-p1'));
+    const input = screen.getByTestId('manuscript-part-rename-input-p1');
+    fireEvent.change(input, { target: { value: 'Act One' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
     expect(m.renameAct).toHaveBeenCalledWith('p1', 'Act One');
+    expect(promptSpy).not.toHaveBeenCalled();
+  });
+
+  it('S-02c: footer counts acts as "act", never "arc"', () => {
+    const m = mutators();
+    hook.value = base(m, [row(partNode('p1', 'Act I'), 0)], [partRow2('p1', 1)]);
+    render(<ManuscriptNavigator bookId="b1" token="t" />);
+    // test-i18n returns the raw key → the "act" stat renders via statActs, never statArcs.
+    const totals = screen.getByTestId('manuscript-totals').textContent ?? '';
+    expect(totals).toMatch(/statActs/);
+    expect(totals).not.toMatch(/statArcs/);
   });
 
   it('S-02b: trash is INSTANT + UNDOABLE — no confirm, fires an undo toast whose action restores', () => {
