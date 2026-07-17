@@ -53,6 +53,14 @@ class PlanRunCreate(BaseModel):
     genre_tags: list[Annotated[str, StringConstraints(max_length=40)]] = Field(
         default_factory=list, max_length=20,
     )
+    # D-PLANFORGE-PROPOSE-BLIND — the per-run choice to ground the propose in the book's EXISTING
+    # state (cast/spine/systems), so a returning author's plan CONTINUES the book instead of
+    # re-inventing it. A per-user choice that rides the run (SET boundary: two authors want different
+    # values — a continuation-writer vs a fresh-spinoff author). Declared explicitly (never rely on
+    # extra='ignore', the rest-write-mirror-drops-fields bug). The EFFECTIVE value is
+    # AND(settings.planforge_ground_on_existing_allowed, this) — the deploy ceiling fails closed, so a
+    # cold-start book / ceiling-off run is a no-op and the blind path is unchanged.
+    ground_on_existing: bool = False
 
 
 class PlanRefineRequest(BaseModel):
@@ -120,6 +128,7 @@ async def create_plan_run(
             model_ref=body.model_ref,
             force=body.force,
             genre_tags=body.genre_tags,
+            ground_on_existing=body.ground_on_existing,
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc

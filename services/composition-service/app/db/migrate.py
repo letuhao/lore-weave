@@ -1340,6 +1340,12 @@ ALTER TABLE plan_run ADD COLUMN IF NOT EXISTS is_archived BOOLEAN NOT NULL DEFAU
 CREATE INDEX IF NOT EXISTS idx_plan_run_book_created_active
   ON plan_run(book_id, created_at DESC) WHERE NOT is_archived;
 
+-- D-PLANFORGE-PROPOSE-BLIND — what existing book-state was folded into this run's propose (the gather
+-- lens fingerprint + counts), so a re-propose over the same state is deterministic and reproducible.
+-- Additive + deliberately NULLable: NULL = "not grounded" (the honest default for historical runs and
+-- for a blind propose) — never a value we'd later regret (add-column-never-revisits-a-bad-default).
+ALTER TABLE plan_run ADD COLUMN IF NOT EXISTS grounded_on JSONB;
+
 CREATE TABLE IF NOT EXISTS plan_artifact (
   id              UUID PRIMARY KEY DEFAULT uuidv7(),
   run_id          UUID NOT NULL REFERENCES plan_run(id) ON DELETE CASCADE,

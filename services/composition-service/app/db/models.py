@@ -712,6 +712,10 @@ class PlanRun(BaseModel):
     # 27 V2-A1 — the pass ledger (one key per pass_id) + the genre input (PF-15).
     pass_state: dict[str, PassEntry] = Field(default_factory=dict)
     genre_tags: list[str] = Field(default_factory=list)
+    # D-PLANFORGE-PROPOSE-BLIND — what existing book-state was folded into this run's propose
+    # (fingerprint + counts). None ⇒ not grounded (blind / cold-start / ceiling-off) — an honest
+    # default, never silently {} (a read-only-looking write-only bug).
+    grounded_on: dict[str, Any] | None = None
     created_at: datetime | None = None
     updated_at: datetime | None = None
 

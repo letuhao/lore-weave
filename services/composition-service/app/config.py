@@ -48,6 +48,15 @@ class Settings(BaseSettings):
     # list of arcs, so a mocked/degraded read is a safe no-op.)
     planforge_rules_autocompile: bool = True
 
+    # D-PLANFORGE-PROPOSE-BLIND — the DEPLOY CEILING for propose-existing-state grounding (OQ-2).
+    # This is a platform-wide MAX the per-user `ground_on_existing` run flag narrows within:
+    # `effective = AND(this, ground_on_existing)`. Default OFF at ship — the RICHER cast/spine/systems
+    # grounding is a behaviour change gated behind the A/B eval; a behaviour-changing default fails
+    # CLOSED. Flip ON org-wide once the eval proves grounding improves the plan. This is NOT a per-user
+    # knob (that is the run flag) — it is the ceiling. (The always-on arc digest `_ground_llm_source`
+    # is unaffected: it is today's baseline and never regresses.)
+    planforge_ground_on_existing_allowed: bool = False
+
     # Internal service URLs — consumed by the M3 client wrappers.
     knowledge_internal_url: str = "http://knowledge-service:8092"
     glossary_internal_url: str = "http://glossary-service:8088"

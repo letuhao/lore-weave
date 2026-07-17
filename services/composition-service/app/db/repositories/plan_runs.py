@@ -23,7 +23,7 @@ from app.db.models import PlanArtifact, PlanArtifactKind, PlanRun, PlanRunMode, 
 _SELECT_RUN = """
   id, created_by, book_id, work_id, status, mode, model_ref, source_checksum,
   source_markdown, active_job_id, error_detail, checkpoint_state,
-  pass_state, genre_tags, is_archived, created_at, updated_at
+  pass_state, genre_tags, grounded_on, is_archived, created_at, updated_at
 """
 
 # `a.`-prefixed so the artifact reads can join plan_run (the book-scope gate);
@@ -40,7 +40,7 @@ def _row_run(row: asyncpg.Record) -> PlanRun:
     # asyncpg hands JSONB back as a str unless a codec is registered. Every jsonb column must be
     # decoded HERE — a column selected but not decoded validates as a string and then silently
     # becomes `{}`/`[]` in the model, which is a read-only-looking write-only bug.
-    for key in ("checkpoint_state", "pass_state", "genre_tags"):
+    for key in ("checkpoint_state", "pass_state", "genre_tags", "grounded_on"):
         v = data.get(key)
         if isinstance(v, str):
             data[key] = json.loads(v)
@@ -206,6 +206,9 @@ class PlanRunsRepo:
         # one pass entry at a time); `None` means "leave it alone", never "clear it".
         pass_state: dict[str, Any] | None = None,
         genre_tags: list[str] | None = None,
+        # D-PLANFORGE-PROPOSE-BLIND — the grounding fingerprint + counts folded into this run's
+        # propose. `None` means "leave it alone" (never "clear it") — same convention as the others.
+        grounded_on: dict[str, Any] | None = None,
         clear_error: bool = False,
     ) -> PlanRun | None:
         sets: list[str] = ["updated_at = now()"]
@@ -245,6 +248,9 @@ class PlanRunsRepo:
         if genre_tags is not None:
             params.append(json.dumps(genre_tags))
             sets.append(f"genre_tags = ${len(params)}::jsonb")
+        if grounded_on is not None:
+            params.append(json.dumps(grounded_on))
+            sets.append(f"grounded_on = ${len(params)}::jsonb")
         query = f"""
         UPDATE plan_run SET {", ".join(sets)}
         WHERE id = $1 AND book_id = $2

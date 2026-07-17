@@ -11,8 +11,11 @@ from datetime import UTC, datetime
 
 import hashlib
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from uuid import UUID
+
+if TYPE_CHECKING:
+    from app.engine.plan_forge.existing_state import ExistingState
 
 from app.clients.llm_client import LLMClient
 from app.config import settings
@@ -185,11 +188,18 @@ class PlanForgeService:
         # (they are already genre-aware) and rides the RUN, because it is a per-run authorial
         # choice, not platform config.
         genre_tags: list[str] | None = None,
+        # D-PLANFORGE-PROPOSE-BLIND — the per-run choice to ground on the book's existing cast/spine/
+        # systems. EFFECTIVE only when the deploy ceiling also allows it (fails closed).
+        ground_on_existing: bool = False,
     ) -> tuple[PlanRun, bool, UUID | None]:
         """Returns (run, is_async, job_id). is_async=True → caller returns 202."""
         text = source_markdown.strip()
         if not text:
             raise ValueError("source_markdown required")
+        # The deploy ceiling is a MAX the per-run flag narrows within (OQ-2): a behaviour-changing
+        # default fails CLOSED, so the richer grounding is off until the eval flips the ceiling on.
+        effective_ground = bool(settings.planforge_ground_on_existing_allowed and ground_on_existing)
+        existing_state: "ExistingState | None" = None
         # Resolved BEFORE the dedupe check below (not after) -- two omitted-model_ref
         # LLM proposes for the SAME text must both resolve to the caller's current
         # default and therefore dedupe against each other. Resolving after the check
@@ -197,12 +207,23 @@ class PlanForgeService:
         # already-resolved model_ref, and silently re-run the (billed) LLM propose
         # on every retry.
         grounded_text = text
+        # PROPOSE-BLIND: gather the RICH book state once, up front (used by both modes when effective).
+        # Fail-closed like _ground_llm_source — the gather itself degrades to absent-with-a-note and
+        # never raises, so this cannot strand a run.
+        if effective_ground:
+            existing_state = await self._gather_book_state(created_by, book_id)
         if mode == "llm":
             model_ref = await self._resolve_model_ref(created_by, model_ref)
-            # O-1 (21-G2): GROUND the LLM proposer in the book it is planning, so a mid-book
-            # propose CONTINUES the story instead of inventing a fresh plan. Built BEFORE the run
-            # is created so a fail-closed refusal (a degraded book read) never strands a run.
-            grounded_text = await self._ground_llm_source(book_id, text)
+            if effective_ground and existing_state is not None and not existing_state.is_empty():
+                # RICH grounding (cast + spine + systems + arcs): prepend the structured EXISTING STATE
+                # block. This SUPERSEDES the arc-only _ground_llm_source digest (so arcs aren't listed
+                # twice); the CONTINUITY rule in the prompts references this section.
+                from app.engine.plan_forge.existing_state import render_existing_state_prompt
+                block = render_existing_state_prompt(existing_state)
+                grounded_text = f"{block}\n\n---\n\n{text}" if block else text
+            else:
+                # O-1 (21-G2) baseline: the always-on arc digest. Never regresses when grounding is off.
+                grounded_text = await self._ground_llm_source(book_id, text)
         checksum = hashlib.sha256(text.encode("utf-8")).hexdigest()
         if not force:
             # D-PLANFORGE-MODE-DEDUPE: identical text but a different mode/model is a
@@ -227,8 +248,23 @@ class PlanForgeService:
         doc = ingest_markdown(text)
         await self._runs.save_artifact(created_by, run.id, "document", doc)
 
+        # PROPOSE-BLIND: record WHAT existing state was folded in (the reproducibility fingerprint +
+        # counts), so a re-propose over the same state is deterministic and the freshness model can
+        # reason about it. NULL when not grounded (blind / cold-start / ceiling-off) — an honest default.
+        if existing_state is not None and not existing_state.is_empty():
+            await self._runs.update_run(
+                book_id, run.id,
+                grounded_on={
+                    "fingerprint": existing_state.grounded_fingerprint,
+                    "chapter_count": existing_state.chapter_count,
+                    "arc_titles": [a.title for a in existing_state.arcs],
+                    "cast_entity_ids": [c.glossary_entity_id for c in existing_state.cast],
+                    "notes": existing_state.notes,
+                },
+            )
+
         if mode == "rules":
-            await self._finalize_rules_propose(created_by, book_id, run.id, doc)
+            await self._finalize_rules_propose(created_by, book_id, run.id, doc, existing=existing_state)
             # P-O1a (§10.5) — RULES-mode PRE-FLIGHT. Rules mode is a TRANSCRIBER (it does not ground the
             # parser the way O-1 grounds the LLM path), so a mid-book rules propose can silently mint arcs
             # that PARALLEL the book's existing ones (PF-10's dedupe keys on title, so fresh titles never
@@ -244,6 +280,25 @@ class PlanForgeService:
         job_id = await self._enqueue_propose(created_by, book_id, run, grounded_text, model_ref)
         updated = await self._runs.get_for_book(book_id, run.id)
         return updated or run, True, job_id
+
+    async def _gather_book_state(self, created_by: UUID, book_id: UUID) -> "ExistingState":
+        """PROPOSE-BLIND: the rich book-state gather lens (arcs + cast + spine + systems), budget-
+        bounded. Composes existing seams — StructureRepo/OutlineRepo (this pool) + the KAL roster.
+        Degrades to absent-with-a-note internally and never raises, so it cannot strand a run."""
+        from app.clients.kal_client import get_kal_client
+        from app.db.repositories.outline import OutlineRepo
+        from app.db.repositories.structure import StructureRepo
+        from app.engine.plan_forge.existing_state import gather_existing_state
+
+        return await gather_existing_state(
+            book_id,
+            structure_repo=StructureRepo(self._runs._pool),
+            outline_repo=OutlineRepo(self._runs._pool),
+            kal_client=get_kal_client(),
+            user_id=created_by,
+            latest_package=None,  # systems (lowest-priority) best-effort; a book-scoped package read
+                                  # is a future enhancement — absent yields "no compiled systems yet".
+        )
 
     async def _ground_llm_source(self, book_id: UUID, source_markdown: str) -> str:
         """O-1 (21-G2): ground the LLM proposer in the book's EXISTING state. `plan_forge_service`
@@ -383,8 +438,11 @@ class PlanForgeService:
 
     async def _finalize_rules_propose(
         self, created_by: UUID, book_id: UUID, run_id: UUID, doc: dict[str, Any],
+        *, existing: "ExistingState | None" = None,
     ) -> None:
-        spec = propose_spec(doc)
+        # PROPOSE-BLIND: merge-not-duplicate against the book's existing arcs/cast (deterministic, no
+        # LLM). None/empty ⇒ byte-identical to the blind transcription.
+        spec = propose_spec(doc, existing=existing)
         graph = build_graph(spec)
         await self._runs.save_artifact(created_by, run_id, "spec", spec)
         await self._runs.save_artifact(created_by, run_id, "graph", graph)
@@ -628,6 +686,9 @@ class PlanForgeService:
             # checksum — "the FE cannot resume what the API never sends").
             "source_markdown": run.source_markdown,
             "is_archived": run.is_archived,  # BE-4 — so the FE shows a restore vs an archive control
+            # PROPOSE-BLIND — what existing state was folded in (null = blind/cold-start), so the
+            # planner can show the grounded affirmation vs the honesty copy (P5), proven by effect.
+            "grounded_on": run.grounded_on,
             "active_job_id": str(run.active_job_id) if run.active_job_id else None,
             "job_status": job_status,
             "error_detail": run.error_detail,
