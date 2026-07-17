@@ -9,6 +9,14 @@
 Build S-03 (references edit) + S-04 (derivative delta editing). Each: DATA-layer verb + REST + MCP
 + FE affordance. **DONE = build complete, tests green with pasted output, /review-impl pass.**
 
+## STATUS: ✅ COMPLETE (2026-07-18)
+S-04 committed ab63bd791; S-03 backend/FE swept into S-01's 68b20b8c2 (see DRIFT-7); FE api+types
+committed 25a621774 (restores HEAD consistency). Final tree verify: 88 BE (MCP+refs router) + 190 FE
+(ledger+refs+divergence) GREEN. /review-impl ran on S-04 (fixes applied). S-03 = focused adversarial
+pass (mirrors S-04's reviewed patterns). USABILITY (user's core ask): S-04 turns a read-only dead-end
+into an operable editor on an ALREADY-reachable panel; S-03 edit affordance is operable NOW via legacy
+ChapterEditorPage. Neither is a shell.
+
 ## THE USER'S OVERRIDING CONSTRAINT (goal prompt, 2026-07-17)
 Plan Hub shipped as a VIEW-ONLY dead-end — everything blocked, user can DO nothing. The user
 suspects other features are the same empty shell. **Before building each slice, analyze whether a
@@ -99,6 +107,13 @@ A slice is NOT done if its FE affordance lands on an unreachable/inert panel. Ve
   server.py divergence MCP tools (Tier-W base) into THEIR commit — so HEAD momentarily had the tools but NOT
   my derivatives.py repo methods they call (inconsistent HEAD). MY S-04 commit lands the repo methods + routes
   + FE + the Tier-A/undo delta, making the tree consistent again. Lesson reaffirmed: [[git-index-may-carry-prestaged]].
+- DRIFT-7 (shared-INDEX race): my `git add` of S-03 files, then a parallel session's `git commit`
+  (68b20b8c2 S-01 slice D) committed the SHARED index → my staged S-03 backend/FE/tests/RUN-STATE landed
+  under S-01's message; my own `git commit` then found "no changes". api.ts/types.ts were NOT swept (left
+  HEAD inconsistent — committed FE called uncommitted api methods). Fixed via `git commit -m ... -- api.ts
+  types.ts` (pathspec commit reads working tree, atomic, dodges the index race). LESSON: on a shared checkout
+  the git INDEX is shared across sessions — `git add` then a slow `git commit` races another session's commit.
+  Prefer `git commit -m <msg> -- <my paths>` (stages+commits only my paths, atomically) over add-then-commit.
 
 ## DEBT
 - S-04 pov_anchor RE-PICK deferred (gate #2 large/structural): editing shows current + Clear (both usable
