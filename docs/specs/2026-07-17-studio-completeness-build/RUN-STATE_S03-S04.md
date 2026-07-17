@@ -115,13 +115,22 @@ A slice is NOT done if its FE affordance lands on an unreachable/inert panel. Ve
   the git INDEX is shared across sessions — `git add` then a slow `git commit` races another session's commit.
   Prefer `git commit -m <msg> -- <my paths>` (stages+commits only my paths, atomically) over add-then-commit.
 
-## DEBT
-- S-04 pov_anchor RE-PICK deferred (gate #2 large/structural): editing shows current + Clear (both usable
-  now); re-picking a NEW pov entity needs the glossary entity-search picker wired into the editor. Clear +
-  taxonomy + canon + override-CRUD all fully usable. Target: fold into an entity-picker reuse pass.
-- S-04 override edit surface = the `description` field (matches wizard Step3 + packer present-lens). Editing
-  ARBITRARY overridden_fields JSON is a power-user affordance, intentionally not built (would be a raw-JSON
-  shell; the description field is the proven-usable path).
+## DEBT — reviewed & cleared 2026-07-18 (goal: clear all defers/debts/bugs)
+- ✅ CLEARED: override editor now exposes `name` (rename an entity in the dị bản — genderbend/rename AU)
+  ALONGSIDE description. Verified against packer merge.py apply_entity_overrides (:182-192) which applies
+  `name` + `description`/`summary`. Was description-only (a real gap — user couldn't rename). +2 FE tests.
+- ✅ CLEARED (latent bug): taxonomy `<select>` now REVERTS to the prior value if the PATCH fails (was
+  optimistic-only → a failed write left a lying select value, since only success invalidates). +1 FE test.
+- ⏸ DEFER (gate #3 naturally-next-phase, PRECISE): pov_anchor RE-PICK. pov_anchor is STORED but consumed by
+  NO engine/packer yet (write-only field — grep: no `.pov_anchor` read outside models/repo/derive). Its
+  id-space (glossary anchor vs knowledge node) is UNDEFINED until the POV-shift generation consumer lands.
+  A picker now would write a maybe-wrong-id-space value nothing reads = exactly a shell. The Clear affordance
+  covers the one real need today (drop a stale anchor). Target: when POV-shift generation is built.
+- 🚫 WON'T-FIX (gate #5 conscious, VERIFIED): tenancy §4 cross-book target_entity_id verify — NOT a breach
+  (foreign id no-ops in the derivative's own knowledge partition per packer merge.py; the derive-time writer
+  doesn't verify either; the FE picker only offers in-book anchored entities). Data-quality nit, not tenancy.
+- 🚫 WON'T-FIX (conscious): per-override canon-rule field (packer OVERRIDE_CANON_FIELD) — redundant with the
+  spec-level canon_rule[] editor already shipped; niche. Not built.
 
 ## DRIFT LOG (near-misses — an empty log at end is dishonest)
 - (none yet)

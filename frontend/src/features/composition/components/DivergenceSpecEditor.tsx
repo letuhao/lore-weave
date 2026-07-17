@@ -14,6 +14,20 @@ function overrideDescription(fields: Record<string, unknown>): string {
   return typeof fields.description === 'string' ? fields.description : '';
 }
 
+function overrideName(fields: Record<string, unknown>): string {
+  return typeof fields.name === 'string' ? fields.name : '';
+}
+
+// The packer applies `name` + `description`/`summary` from an override's field-set
+// (merge.py apply_entity_overrides). We expose both so a dị bản can RENAME an entity
+// (e.g. a genderbend/rename AU), not only re-describe it.
+function buildOverrideFields(name: string, desc: string): Record<string, unknown> {
+  const fields: Record<string, unknown> = {};
+  if (name.trim()) fields.name = name.trim();
+  if (desc.trim()) fields.description = desc.trim();
+  return fields;
+}
+
 export function DivergenceSpecEditor({
   projectId, sourceProjectId, taxonomy, povAnchor, canonRules, token,
 }: {
@@ -29,14 +43,17 @@ export function DivergenceSpecEditor({
   const [tax, setTax] = useState<DivergenceTaxonomy>(taxonomy ?? 'au');
   const [canonDraft, setCanonDraft] = useState(canonRules.join('\n'));
   const [addAnchor, setAddAnchor] = useState('');
+  const [addName, setAddName] = useState('');
   const [addDesc, setAddDesc] = useState('');
 
   const canonDirty = canonDraft !== canonRules.join('\n');
   const fail = () => toast.error(t('divergence.editFailed', { defaultValue: 'Could not save — try again.' }));
 
   const saveTaxonomy = (next: DivergenceTaxonomy) => {
+    const prev = tax;
     setTax(next);
-    ed.patchSpec.mutate({ taxonomy: next }, { onError: fail });
+    // Revert the optimistic select if the write fails (no success-invalidate would fix it).
+    ed.patchSpec.mutate({ taxonomy: next }, { onError: () => { setTax(prev); fail(); } });
   };
   const saveCanon = () => {
     const rules = canonDraft.split('\n').map((r) => r.trim()).filter(Boolean);
@@ -46,8 +63,8 @@ export function DivergenceSpecEditor({
   const doAdd = () => {
     if (!addAnchor) return;
     ed.addOverride.mutate(
-      { target: addAnchor, fields: addDesc.trim() ? { description: addDesc.trim() } : {} },
-      { onSuccess: () => { setAddAnchor(''); setAddDesc(''); }, onError: fail },
+      { target: addAnchor, fields: buildOverrideFields(addName, addDesc) },
+      { onSuccess: () => { setAddAnchor(''); setAddName(''); setAddDesc(''); }, onError: fail },
     );
   };
 
@@ -152,6 +169,13 @@ export function DivergenceSpecEditor({
           {addAnchor && (
             <>
               <input
+                data-testid="divergence-override-add-name"
+                className="rounded border border-border bg-transparent px-2 py-1 text-[11px]"
+                placeholder={t('divergence.overrideNamePlaceholder', { defaultValue: 'New name in this dị bản (optional)…' })}
+                value={addName}
+                onChange={(e) => setAddName(e.target.value)}
+              />
+              <input
                 data-testid="divergence-override-add-desc"
                 className="rounded border border-border bg-transparent px-2 py-1 text-[11px]"
                 placeholder={t('divergence.overridePlaceholder', { defaultValue: 'How does this entity differ (e.g. now a villain)…' })}
@@ -161,9 +185,9 @@ export function DivergenceSpecEditor({
               <button
                 type="button"
                 data-testid="divergence-override-add-save"
-                // Require a description — an empty {} override is a no-op that just
+                // Require at least one field — an empty {} override is a no-op that just
                 // consumes the (work,target) unique slot (the user would edit it anyway).
-                disabled={ed.addOverride.isPending || !addDesc.trim()}
+                disabled={ed.addOverride.isPending || !(addName.trim() || addDesc.trim())}
                 onClick={doAdd}
                 className="self-start rounded bg-primary px-2 py-0.5 text-[11px] font-medium text-primary-foreground disabled:opacity-50"
               >
@@ -187,8 +211,9 @@ function OverrideRow({
   onDelete: () => void;
 }) {
   const { t } = useTranslation('composition');
+  const [nameField, setNameField] = useState(overrideName(row.overridden_fields));
   const [desc, setDesc] = useState(overrideDescription(row.overridden_fields));
-  const dirty = desc !== overrideDescription(row.overridden_fields);
+  const dirty = nameField !== overrideName(row.overridden_fields) || desc !== overrideDescription(row.overridden_fields);
   return (
     <div data-testid={`divergence-override-row-${row.id}`} className="flex flex-col gap-1 rounded border border-border px-2 py-1.5">
       <div className="flex items-center justify-between">
@@ -206,6 +231,13 @@ function OverrideRow({
         </button>
       </div>
       <input
+        data-testid={`divergence-override-name-${row.id}`}
+        className="rounded border border-border bg-transparent px-2 py-1 text-[11px]"
+        value={nameField}
+        onChange={(e) => setNameField(e.target.value)}
+        placeholder={t('divergence.overrideNamePlaceholder', { defaultValue: 'New name in this dị bản (optional)…' })}
+      />
+      <input
         data-testid={`divergence-override-desc-${row.id}`}
         className="rounded border border-border bg-transparent px-2 py-1 text-[11px]"
         value={desc}
@@ -217,7 +249,7 @@ function OverrideRow({
           type="button"
           data-testid={`divergence-override-save-${row.id}`}
           disabled={busy}
-          onClick={() => onSave(desc.trim() ? { description: desc.trim() } : {})}
+          onClick={() => onSave(buildOverrideFields(nameField, desc))}
           className="self-start rounded bg-primary px-2 py-0.5 text-[11px] font-medium text-primary-foreground disabled:opacity-50"
         >
           {t('divergence.save', { defaultValue: 'Save' })}
