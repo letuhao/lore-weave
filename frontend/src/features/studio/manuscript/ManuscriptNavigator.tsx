@@ -102,6 +102,8 @@ export function ManuscriptNavigator({ bookId, token, selectedId, onSelect, onNew
   // of the act list; `editingActId` turns one act's title into an input in place.
   const [creatingAct, setCreatingAct] = useState(false);
   const [editingActId, setEditingActId] = useState<string | null>(null);
+  // S-02c B6 — the act currently under a dragged chapter (drop-target highlight).
+  const [dragOverPartId, setDragOverPartId] = useState<string | null>(null);
   const onNewAct = useCallback(() => { setEditingActId(null); setCreatingAct(true); }, []);
   const commitNewAct = useCallback((val: string) => {
     const title = val.trim();
@@ -180,15 +182,20 @@ export function ManuscriptNavigator({ bookId, token, selectedId, onSelect, onNew
           {/* S-02 — New act (manuscript part). Only meaningful for a manuscript-structured book
               (no composition Work); the outline owns the hierarchy when a Work exists. */}
           {source === 'chapters' && (
-            <button
-              type="button"
-              data-testid="manuscript-part-new"
-              onClick={onNewAct}
-              title={t('manuscript.newAct', { defaultValue: 'New act' })}
-              className="flex h-5 w-5 items-center justify-center rounded text-muted-foreground hover:bg-secondary hover:text-foreground"
-            >
-              <FolderPlus className="h-3.5 w-3.5" />
-            </button>
+            <>
+              {/* S-02c B7 — a LABELED "Act" button so it isn't confused with the Plan "+" beside it. */}
+              <button
+                type="button"
+                data-testid="manuscript-part-new"
+                onClick={onNewAct}
+                title={t('manuscript.newAct', { defaultValue: 'New act' })}
+                className="flex h-5 items-center gap-0.5 rounded px-1 text-[10px] font-semibold uppercase tracking-[0.04em] text-muted-foreground hover:bg-secondary hover:text-foreground"
+              >
+                <FolderPlus className="h-3.5 w-3.5" />
+                {t('manuscript.actShort', { defaultValue: 'Act' })}
+              </button>
+              <span className="mx-0.5 h-3.5 w-px bg-border" />
+            </>
           )}
           {/* Opens the PLAN (plan-hub), it does not create a chapter — structure authoring is a spec
               act and lives on the Plan rail (StudioSideBar's rail contract). The label changed with
@@ -369,8 +376,11 @@ export function ManuscriptNavigator({ bookId, token, selectedId, onSelect, onNew
                   onDragStart={isChapter ? (() => { dragChapterId.current = node.chapterId; }) : undefined}
                   onDragEnd={isChapter ? (() => { dragChapterId.current = null; }) : undefined}
                   onDragOver={isPart ? ((e) => e.preventDefault()) : undefined}
+                  onDragEnter={isPart ? (() => { if (dragChapterId.current) setDragOverPartId(node.id); }) : undefined}
+                  onDragLeave={isPart ? (() => setDragOverPartId((cur) => (cur === node.id ? null : cur))) : undefined}
                   onDrop={isPart ? ((e) => {
                     e.preventDefault();
+                    setDragOverPartId(null);
                     const cid = dragChapterId.current;
                     dragChapterId.current = null;
                     if (cid) void moveChapterToAct(cid, isUnassigned ? null : node.id);
@@ -385,6 +395,8 @@ export function ManuscriptNavigator({ bookId, token, selectedId, onSelect, onNew
                     isUnassigned && !selected && 'text-amber-600',
                     isChapter && 'font-medium',
                     isScene && !selected && 'text-muted-foreground',
+                    // S-02c B6 — drop-target highlight while a chapter is dragged over this act
+                    isPart && dragOverPartId === node.id && 'bg-primary/10 ring-1 ring-inset ring-primary',
                   )}
                 >
                   {/* selected-row accent bar (mockup .row.active::before) */}
@@ -452,10 +464,18 @@ export function ManuscriptNavigator({ bookId, token, selectedId, onSelect, onNew
                       {node.childCount}
                     </span>
                   )}
+                  {/* S-02c B6 — an empty act reads as a drop target ("drag chapters here") */}
+                  {isPart && !isUnassigned && node.childCount === 0 && editingActId !== node.id && (
+                    <span className="ml-1 flex-shrink-0 truncate text-[10px] italic text-muted-foreground/50" data-testid={`manuscript-part-empty-hint-${node.id}`}>
+                      {t('manuscript.emptyActHint', { defaultValue: 'drag chapters here' })}
+                    </span>
+                  )}
 
-                  {/* S-02 act affordances (reorder / rename / trash) — real acts only, revealed on hover */}
+                  {/* S-02 act affordances (reorder / rename / trash) — real acts only. Revealed on
+                      hover for a fine pointer; on FOCUS-WITHIN (keyboard); and ALWAYS on a coarse
+                      pointer (touch — a stated platform, which has no hover). S-02c B5. */}
                   {isPart && !isUnassigned && (
-                    <span className="ml-auto flex flex-shrink-0 items-center gap-0.5 opacity-0 group-hover/row:opacity-100">
+                    <span className="ml-auto flex flex-shrink-0 items-center gap-0.5 opacity-0 group-hover/row:opacity-100 group-focus-within/row:opacity-100 [@media(pointer:coarse)]:opacity-100">
                       {/* S-02b — reorder this act up/down (only with ≥2 acts; disabled at the ends) */}
                       {canReorder && (
                         <>

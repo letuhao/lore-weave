@@ -187,6 +187,35 @@ describe('ManuscriptNavigator — S-02 act affordances', () => {
     expect(screen.queryByTestId('manuscript-part-down-p1')).toBeNull();
   });
 
+  it('S-02c: an empty act shows a "drag chapters here" hint; a non-empty act does not', () => {
+    const m = mutators();
+    const emptyAct: ManuscriptNode = { id: 'pe', kind: 'part', title: 'Empty', number: null, status: null, chapterId: null, hasChildren: false, childCount: 0 };
+    hook.value = base(m, [row(partNode('p1', 'Act I'), 0), row(emptyAct, 0)], [partRow2('p1', 1), partRow2('pe', 2)]);
+    render(<ManuscriptNavigator bookId="b1" token="t" />);
+    expect(screen.getByTestId('manuscript-part-empty-hint-pe')).toBeTruthy();
+    expect(screen.queryByTestId('manuscript-part-empty-hint-p1')).toBeNull(); // has a chapter → no hint
+  });
+
+  it('S-02c: dragging a chapter over an act highlights it (drop-target ring); leaving clears it', () => {
+    const m = mutators();
+    hook.value = base(m, [row(partNode('p1', 'Act I'), 0), row(chapNode('c1'), 1)], [partRow2('p1', 1)]);
+    render(<ManuscriptNavigator bookId="b1" token="t" />);
+    const actRow = screen.getByTestId('manuscript-row-p1');
+    fireEvent.dragStart(screen.getByTestId('manuscript-row-c1'));
+    fireEvent.dragEnter(actRow);
+    expect(actRow.className).toMatch(/ring-primary/);
+    fireEvent.dragLeave(actRow);
+    expect(actRow.className).not.toMatch(/ring-primary/);
+  });
+
+  it('S-02c: the New-act button is labeled "Act" (not just an icon beside the Plan +)', () => {
+    const m = mutators();
+    hook.value = base(m, [row(partNode('p1', 'Act I'), 0)]);
+    render(<ManuscriptNavigator bookId="b1" token="t" />);
+    // test-i18n returns the raw key → the button carries the actShort label (not icon-only).
+    expect(screen.getByTestId('manuscript-part-new').textContent).toMatch(/actShort/);
+  });
+
   it('drag a chapter onto an act → moveChapterToAct(chapterId, partId); onto Unassigned → null', () => {
     const m = mutators();
     hook.value = base(m, [
