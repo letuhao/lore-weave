@@ -59,7 +59,8 @@ export function DivergenceSpecEditor({
     const rules = canonDraft.split('\n').map((r) => r.trim()).filter(Boolean);
     ed.patchSpec.mutate({ canon_rule: rules }, { onError: fail });
   };
-  const clearPov = () => ed.patchSpec.mutate({ pov_anchor: null }, { onError: fail });
+  // Part A — set/re-pick (a glossary anchor) or clear (empty → null) the POV-shift character.
+  const savePov = (anchorId: string) => ed.patchSpec.mutate({ pov_anchor: anchorId || null }, { onError: fail });
   const doAdd = () => {
     if (!addAnchor) return;
     ed.addOverride.mutate(
@@ -88,17 +89,25 @@ export function DivergenceSpecEditor({
 
         <dt className="text-muted-foreground">{t('divergence.povAnchor', { defaultValue: 'POV anchor' })}</dt>
         <dd className="flex items-center gap-1.5">
-          <span data-testid="divergence-edit-pov" className="truncate font-mono text-[10px]">{povAnchor ?? '—'}</span>
-          {povAnchor && (
-            <button
-              type="button"
-              data-testid="divergence-pov-clear"
-              onClick={clearPov}
-              className="rounded border border-border px-1.5 py-0.5 text-[10px] hover:bg-muted"
-            >
-              {t('divergence.clear', { defaultValue: 'Clear' })}
-            </button>
-          )}
+          {/* Part A — pick/re-pick/clear the POV-shift character. The empty option clears
+              it (pov_anchor=null). Keyed on the glossary anchor — the id-space the packer
+              default-fills as the effective scene POV. A stale anchor not in the source
+              list falls back to a mono id so it's still visible. */}
+          <select
+            data-testid="divergence-pov-select"
+            className="min-w-0 flex-1 rounded border border-border bg-transparent px-1.5 py-0.5 text-[11px]"
+            value={povAnchor ?? ''}
+            onChange={(e) => savePov(e.target.value)}
+            aria-label={t('divergence.povAnchor', { defaultValue: 'POV anchor' })}
+          >
+            <option value="">{t('divergence.noPov', { defaultValue: '— no POV anchor —' })}</option>
+            {povAnchor && !ed.anchoredEntities.some((e) => e.glossary_entity_id === povAnchor) && (
+              <option value={povAnchor}>{ed.entityByAnchor.get(povAnchor)?.name ?? povAnchor}</option>
+            )}
+            {ed.anchoredEntities.map((e) => (
+              <option key={e.glossary_entity_id!} value={e.glossary_entity_id!}>{e.name} ({e.kind})</option>
+            ))}
+          </select>
         </dd>
       </dl>
 

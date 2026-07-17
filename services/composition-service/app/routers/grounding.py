@@ -102,7 +102,7 @@ async def get_grounding(
         node=node.model_dump(mode="python"), bearer=bearer, guide=guide,
         settings=work.settings,
         source_project_id=deriv.source_project_id, branch_point=deriv.branch_point,
-        overrides=deriv.overrides,
+        overrides=deriv.overrides, pov_anchor=deriv.pov_anchor,
     )
     try:
         pc = await pack(

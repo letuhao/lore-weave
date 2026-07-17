@@ -87,10 +87,19 @@ export function useDivergenceSpecEditor(
     [entities.data, overriddenTargets],
   );
 
+  // Part A — the POV-anchor picker offers EVERY anchored source entity (a POV can be
+  // any character, unlike an override which is one-per-target). Keyed on the glossary
+  // anchor (`glossary_entity_id`) — the id-space divergence_spec.pov_anchor stores.
+  const anchoredEntities = useMemo(
+    () => (entities.data ?? []).filter((e) => e.glossary_entity_id),
+    [entities.data],
+  );
+
   return {
     overrides,
     entityByAnchor,
     addableEntities,
+    anchoredEntities,
     patchSpec,
     addOverride,
     updateOverride,

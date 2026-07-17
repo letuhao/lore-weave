@@ -95,9 +95,18 @@ describe('DivergenceSpecEditor', () => {
       expect(patchDivergenceSpec).toHaveBeenCalledWith('da', { canon_rule: ['Lam Vũ dies', 'No magic'] }, 'tok'));
   });
 
-  it('clearing the POV anchor PATCHes pov_anchor:null', async () => {
+  it('re-picks the POV anchor via the picker (PATCHes the glossary anchor)', async () => {
     renderEditor();
-    fireEvent.click(screen.getByTestId('divergence-pov-clear'));
+    await screen.findAllByRole('option', { name: /The Sect/ });  // anchored source entities loaded (pov + override pickers)
+    fireEvent.change(screen.getByTestId('divergence-pov-select'), { target: { value: 'g2' } });
+    await waitFor(() =>
+      expect(patchDivergenceSpec).toHaveBeenCalledWith('da', { pov_anchor: 'g2' }, 'tok'));
+  });
+
+  it('clears the POV anchor via the picker empty option (PATCHes pov_anchor:null)', async () => {
+    renderEditor();
+    await screen.findByTestId('divergence-pov-select');
+    fireEvent.change(screen.getByTestId('divergence-pov-select'), { target: { value: '' } });
     await waitFor(() =>
       expect(patchDivergenceSpec).toHaveBeenCalledWith('da', { pov_anchor: null }, 'tok'));
   });

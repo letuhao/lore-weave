@@ -1,8 +1,11 @@
 # Spec — POV-shift derivative consumption (pov_anchor) + override cross-book tenancy verify
 
-> **Status: CLARIFY (2026-07-18).** Two deferred items from the S-04 (derivative delta editing) build, now
-> spec'd. Part A is a real feature (a `pov_shift` dị bản should actually generate from its POV character).
-> Part B formalizes a conscious won't-fix into a documented decision + a ready build-path.
+> **Status: Part A BUILT + QC'd (2026-07-18); Part B = documented won't-fix (no code).** PO-1/2/3 SEALED
+> (see the CLARIFY table). Part A shipped: `pov_anchor` now flows through the pack path (build_derivative_context
+> → PackRequest → default-fill at `pack.py`), the assemble beat block renders an explicit `pov=<name>` steer
+> (also closing the pre-existing scene-POV render gap), and `DivergenceSpecEditor` gained a pov picker (set/
+> re-pick/clear, glossary-anchored). Evidence: pack `pov=Kai` end-to-end through real pack+assemble; 87 pack
+> tests + 18 FE tests green; provider-gate OK. Two deferred items from the S-04 (derivative delta editing) build.
 >
 > **Provenance:** deferred in [`2026-07-17-studio-completeness-build/RUN-STATE_S03-S04.md`](2026-07-17-studio-completeness-build/RUN-STATE_S03-S04.md)
 > (DEBT register). S-04 shipped `divergence_spec.pov_anchor` as writable (PATCH + Clear) but INTENTIONALLY did
@@ -20,11 +23,14 @@
 | CV-A4a | Does POV reach the prompt today? | **RESOLVED (code): NO — scene POV is unrendered; only implicit as a `<present>` cast bio** |
 | CV-A4b | Does the packer see taxonomy/pov_anchor today? | **RESOLVED (code): NO — PackRequest carries only source/branch/overrides; get_spec_for_work uncalled on pack path** |
 | CV-B | Is a foreign override/anchor target a tenancy breach? | **RESOLVED (code): NO — no-op + book-scoped present lens; conscious won't-fix** |
-| **PO-1** | Consumption model — default-fill (A3-1) / hard-override (A3-2) / additive (A3-3)? | **NEEDS PO** — recommend **A3-1 default-fill** |
-| **PO-2** | Rendering — grounding-only (A4-grounding) or explicit `pov=` line + cowrite steer (A4-explicit)? | **NEEDS PO** — recommend **A4-explicit** (also fixes the scene-POV gap) |
-| **PO-3** | Gate consumption on `taxonomy=='pov_shift'`, or apply whenever `pov_anchor` is set? | **NEEDS PO** — recommend **apply-when-set** (for a derivative Work), taxonomy is a label not a gate |
+| **PO-1** | Consumption model — default-fill (A3-1) / hard-override (A3-2) / additive (A3-3)? | **SEALED 2026-07-18: A3-1 default-fill** (`effective_pov = scene.pov_entity_id ?? pov_anchor`) |
+| **PO-2** | Rendering — grounding-only (A4-grounding) or explicit `pov=` line + cowrite steer (A4-explicit)? | **SEALED 2026-07-18: A4-explicit** — render `pov=<name>`; also fixes the scene-POV gap |
+| **PO-3** | Gate consumption on `taxonomy=='pov_shift'`, or apply whenever `pov_anchor` is set? | **SEALED 2026-07-18: apply-when-set** — for a derivative Work, no taxonomy gate |
 
-**Do not build Part A until PO-1/2/3 are decided.** All three have a recommendation; none blocks the others.
+**SEALED (do not re-litigate) — build to these:** PO-1 = default-fill (scene POV wins; anchor fills the rest);
+PO-2 = explicit `pov=<name>` render + cowrite steer (closes the scene-POV render gap too); PO-3 = apply
+whenever `pov_anchor` is set on a derivative Work (taxonomy is a label, not the gate). Part B = won't-fix (no
+code). Build Part A now.
 
 ---
 

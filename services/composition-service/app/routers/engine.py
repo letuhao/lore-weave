@@ -407,7 +407,8 @@ async def generate(
                         # fires gather_source_scene; every other op is byte-unchanged.
                         operation=body.operation,
                         source_project_id=deriv.source_project_id,
-                        branch_point=deriv.branch_point, overrides=deriv.overrides),
+                        branch_point=deriv.branch_point, overrides=deriv.overrides,
+                        pov_anchor=deriv.pov_anchor),
             book=book, glossary=glossary, knowledge=knowledge, canon_repo=canon,
             outline_repo=outline, scene_links_repo=scene_links,
             structure_repo=structures,  # 23 BA12 — the arc lens
@@ -784,7 +785,8 @@ async def selection_edit(
                                 node=node.model_dump(mode="python"), bearer=bearer, guide=body.guide,
                                 settings=work.settings,
                                 source_project_id=deriv.source_project_id,
-                                branch_point=deriv.branch_point, overrides=deriv.overrides),
+                                branch_point=deriv.branch_point, overrides=deriv.overrides,
+                        pov_anchor=deriv.pov_anchor),
                     book=book, glossary=glossary, knowledge=knowledge, canon_repo=canon,
                     outline_repo=outline, scene_links_repo=scene_links,
                     structure_repo=structures,  # 23 BA12 — the arc lens
@@ -994,7 +996,8 @@ async def generate_chapter(
                         node=pack_node, bearer=bearer, guide=body.guide,
                         settings=work.settings, chapter_sort_hint=chapter_sort,
                         source_project_id=deriv.source_project_id,
-                        branch_point=deriv.branch_point, overrides=deriv.overrides),
+                        branch_point=deriv.branch_point, overrides=deriv.overrides,
+                        pov_anchor=deriv.pov_anchor),
             book=book, glossary=glossary, knowledge=knowledge, canon_repo=canon,
             outline_repo=outline, scene_links_repo=scene_links,
             structure_repo=structures,  # 23 BA12 — the arc lens

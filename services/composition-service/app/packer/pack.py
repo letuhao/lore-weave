@@ -82,6 +82,11 @@ class PackRequest:
     source_project_id: UUID | None = None
     branch_point: int | None = None
     overrides: list[Any] | None = None
+    # Part A (2026-07-18 spec) — the derivative's POV-shift anchor (divergence_spec.
+    # pov_anchor), a GLOSSARY entity id. When set on a derivative Work, pack() default-
+    # fills it as the effective scene POV where the scene sets none (PO-1 default-fill,
+    # PO-3 apply-when-set — no taxonomy gate). None for a non-derivative / unset spec.
+    pov_anchor: UUID | None = None
     # M1 (D-DERIVATIVE-ADAPT-FROM-SOURCE) — the free-form prose operation this pack
     # serves. Op-AWARE only for `adapt_scene`: that op (and ONLY that op, on a
     # derivative) fires the `gather_source_scene` lens to read the inherited source
@@ -135,6 +140,9 @@ class DerivativeContext:
     source_project_id: UUID | None = None
     branch_point: int | None = None
     overrides: list[Any] = field(default_factory=list)
+    # Part A — the divergence_spec's pov_anchor (a GLOSSARY entity id), read fresh each
+    # pack alongside the overrides. None for a non-derivative / spec without a pov_anchor.
+    pov_anchor: UUID | None = None
 
 
 async def build_derivative_context(
@@ -166,15 +174,24 @@ async def build_derivative_context(
     except Exception:  # noqa: BLE001 — source lookup degrades to a refused derivative pack
         logger.warning("build_derivative_context: source work lookup failed", exc_info=True)
     overrides: list[Any] = []
+    pov_anchor: UUID | None = None
     if derivatives_repo is not None and getattr(work, "id", None) is not None:
         try:
             overrides = await derivatives_repo.list_overrides_for_work(work.id)
         except Exception:  # noqa: BLE001 — override read degrades (pack never 500s on it)
             logger.warning("build_derivative_context: override read failed", exc_info=True)
             overrides = []
+        # Part A — the divergence spec carries the POV-shift anchor. Read fresh (self-
+        # syncing); a missing spec / read failure degrades to no anchor (never 500s).
+        try:
+            spec = await derivatives_repo.get_spec_for_work(work.id)
+            pov_anchor = spec.pov_anchor if spec is not None else None
+        except Exception:  # noqa: BLE001 — spec read degrades to no POV default
+            logger.warning("build_derivative_context: spec read failed", exc_info=True)
+            pov_anchor = None
     return DerivativeContext(
         source_project_id=base_project_id, branch_point=getattr(work, "branch_point", None),
-        overrides=overrides,
+        overrides=overrides, pov_anchor=pov_anchor,
     )
 
 
@@ -238,6 +255,15 @@ async def pack(
 
     profile = profile_mod.from_settings(req.settings)
     node = req.node
+    # Part A (2026-07-18 spec) — POV-shift derivative: DEFAULT-FILL the effective scene
+    # POV from the divergence spec's pov_anchor when the scene sets none (PO-1 default-
+    # fill: a scene's own pov_entity_id wins; the anchor covers the rest. PO-3 apply-
+    # when-set: any derivative with a pov_anchor, no taxonomy gate). pov_anchor is a
+    # GLOSSARY anchor in the SAME id-space as pov_entity_id, so the copied node flows
+    # through the beat lens + present_ids unchanged — its bio grounds and the assemble
+    # beat block renders `pov=<name>`. Copy the node (never mutate the caller's dict).
+    if is_derivative and req.pov_anchor is not None and not node.get("pov_entity_id"):
+        node = {**node, "pov_entity_id": str(req.pov_anchor)}
     story_order = node.get("story_order")
     chapter_id = _as_uuid(node.get("chapter_id"))
     # 23 BA12 — the arc this scene's chapter is assigned to (structure_node.id). A SCENE
