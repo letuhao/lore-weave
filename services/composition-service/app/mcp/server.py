@@ -94,6 +94,7 @@ from app.db.repositories.motif_retrieve import MotifRetriever
 from app.db.repositories.entity_references import EntityReferencesRepo
 from app.db.repositories.narrative_thread import NarrativeThreadRepo
 from app.db.repositories.outline import OutlineRepo
+from app.db.repositories.references import reference_embed_model
 from app.db.repositories.scene_links import SceneLinksRepo
 from app.db.repositories.structure import StructureConflictError, StructureRepo
 from app.db.repositories.derivatives import DerivativesRepo
@@ -2544,15 +2545,17 @@ async def composition_arc_suggest(
     pid = UUID(project_id)
     meta = await _book_or_deny(works, tc, pid, GrantLevel.VIEW)
     retriever = MotifRetriever(get_pool())
-    # Arc retrieval (D-ARC-RETRIEVE) ranks the caller-visible arc_template set under
-    # the read predicate (no target id beyond the book gate; arc_template is a
-    # deps/ registry table — untouched by the re-key, so tc.user_id stays): SQL
-    # pre-filter → platform-embed query → cosine → match_reason → genre-degrade,
-    # with a bounded owner-scoped lazy back-fill of NULL-vector arcs (mirrors the
-    # motif retriever).
+    # Arc retrieval (D-ARC-RETRIEVE) ranks the caller-visible arc_template set under the
+    # read predicate (book gate only; arc_template is a deps/ registry table, so tc.user_id
+    # stays). Two-space (2026-07-17 tenancy re-design): the caller's STRICTLY-PRIVATE arcs
+    # rank in their OWN BYOK space (section='mine'), shared arcs in the platform space
+    # (section='library'). The caller's embed model comes from the Work settings; None ⇒
+    # their private arcs degrade to genre ranking (the platform never embeds private content).
+    work = await works.get(pid)
+    user_model = reference_embed_model(getattr(work, "settings", None)) if work is not None else None
     candidates = await retriever.retrieve_arcs(
         tc.user_id, book_id=meta.book_id, project_id=pid,
-        premise=premise, genre=genre, limit=limit,
+        premise=premise, genre=genre, limit=limit, user_model=user_model,
     )
     # L1/L2 reference-first on the ranked candidates: project each (heavy) arc_template
     # body through the contract while keeping the score + match_reason wrapper. The

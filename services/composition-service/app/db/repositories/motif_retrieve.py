@@ -40,7 +40,8 @@ from app.config import settings
 from app.db.models import ArcCandidate, ArcTemplate, Motif, MotifCandidate
 from app.engine.motif_embed import (
     EmbedConfigError, _platform_embed_model, arc_summary_text, embed_motif_summary,
-    embed_query, summary_hash,
+    embed_private_summary, embed_query, embed_query_with, is_strictly_private,
+    summary_hash, user_embedded_with,
 )
 
 logger = logging.getLogger(__name__)
@@ -280,17 +281,26 @@ class MotifRetriever:
         self, caller_id: UUID, *, book_id: UUID | None = None,
         project_id: UUID | None = None, premise: str | None = None,
         genre: str | None = None, limit: int = 5,
+        user_model: tuple[str, str] | None = None,
     ) -> list[ArcCandidate]:
         """Tier-merged, SQL-pre-filtered, cosine-ranked arc_template candidates for a Work
-        (composition_arc_suggest). Returns up to `limit` ArcCandidate (arc + score +
-        match_reason={genre,cosine[,degraded]}), highest score first.
+        (composition_arc_suggest), split into TWO embedding SPACES (2026-07-17 tenancy
+        re-design). The caller's STRICTLY-PRIVATE arcs rank in the caller's OWN BYOK space
+        (U-space; `match_reason.section='mine'`); everything shared — system, public,
+        unlisted — ranks in the PLATFORM space (P-space; `section='library'`). Cosine is
+        intra-space ONLY: the query is embedded ONCE PER SPACE and each section ranks against
+        its own query vector; the two are never compared (their scores aren't commensurable).
+        Returns up to `limit` PER SECTION, mine first then library.
 
-        Same shape as `retrieve()` with two arc-specific choices: (a) NO language filter —
-        arc suggest is exploratory across languages (cosine is one space, B-1); (b) a
-        NULL-embedding arc is LAZILY back-filled inline (bounded, best-effort) rather than
-        skipped — arcs are few and there is no separate back-fill worker, so this is where a
-        seeded/imported arc earns its vector. An arc that still has no vector ranks on genre
-        (never dropped — suggest must surface options)."""
+        `user_model` is the caller's (source, ref) BYOK embed model — resolved by the route
+        from the Work settings (`reference_embed_model`). None ⇒ the caller has no embed
+        model, so their private arcs fall back to non-semantic (genre) ranking + `degraded`
+        (the platform NEVER embeds a user's private content — that is the whole fix).
+
+        Arc specifics kept from D-ARC-RETRIEVE: (a) NO language filter (exploratory across
+        languages); (b) a NULL / WRONG-SPACE vector is LAZILY (re-)embedded inline (bounded,
+        best-effort) in the arc's OWN space — this doubles as the lazy migration for a
+        since-privatised arc (its stale platform vector is re-embedded with the owner model)."""
         ceiling = settings.motif_candidate_ceiling
         genre_tags = [genre] if genre else []
         rows = await self._fetch_arc_candidates(caller_id, genre_tags, ceiling)
@@ -298,43 +308,80 @@ class MotifRetriever:
             return []
 
         qtext = " ".join(p for p in [premise or "", genre or ""] if p).strip()
-        qvec: list[float] | None = None
-        if qtext:
-            try:
-                qvec = await embed_query(qtext)
-            except (EmbeddingError, EmbedConfigError):
-                qvec = None  # degrade to genre order (R4) — never 500/[]
+        qvec_p = await self._embed_query_safe(qtext, None, caller_id)            # P-space
+        qvec_u = await self._embed_query_safe(qtext, user_model, caller_id) if user_model else None
+        user_ref = user_model[1] if user_model else None
 
         backfilled = 0
-        scored: list[tuple[float, str, ArcCandidate]] = []
+        mine: list[tuple[float, str, ArcCandidate]] = []
+        library: list[tuple[float, str, ArcCandidate]] = []
         for r in rows:
             genre_s = _genre_overlap(list(r["genre_tags"]), genre_tags)
-            vec = r["embedding"]
-            # Back-fill ONLY system (owner NULL) or the caller's OWN arcs — never another
-            # tenant's public arc (a read must not trigger a cross-tenant write; that arc's
-            # owner back-fills it on their own suggest). Others' public NULL arcs rank on genre.
-            own_or_system = r["owner_user_id"] is None or r["owner_user_id"] == caller_id
-            if vec is None and qvec is not None and own_or_system and backfilled < _ARC_BACKFILL_CAP:
-                vec = await self._embed_and_persist_arc(r, caller_id)  # best-effort; None on failure
+            private = is_strictly_private(
+                owner_user_id=r["owner_user_id"], visibility=r.get("visibility"))
+            if private:
+                # A private row MUST be in the OWNER's space — a stored vector counts only
+                # if it matches the caller's current model (else it is a legacy platform
+                # vector or a stale user model → re-embed, the lazy migration).
+                section, qvec, bucket = "mine", qvec_u, mine
+                fresh = user_embedded_with(r["embedding_model"], user_model)
+            else:
+                # A shared row trusts its stored vector UNLESS it is positively the caller's
+                # OWN user-space vector (a since-published private arc carrying a stale
+                # U-vector) → re-embed with the platform model. We do NOT invalidate a vector
+                # just because the platform ref is unreadable (that would strand every shared
+                # vector when the platform embed model is unset).
+                section, qvec, bucket = "library", qvec_p, library
+                fresh = not (user_ref is not None and r["embedding_model"] == user_ref)
+
+            # A stored vector is only usable if it is in THIS row's space; otherwise treat it
+            # as absent and (re-)embed below. This is what keeps a P-vector off a U-query.
+            vec = list(r["embedding"]) if (fresh and r["embedding"] is not None) else None
+            if vec is None and qvec is not None and backfilled < _ARC_BACKFILL_CAP:
+                # (Re-)embed inline in the row's OWN space. Private → owner's model (bills the
+                # owner); shared system/own → platform. Never touch another tenant's arc.
+                if private and user_model is not None:
+                    vec = await self._embed_and_persist_arc(r, caller_id, owner_model=user_model)
+                elif not private and (r["owner_user_id"] is None or r["owner_user_id"] == caller_id):
+                    vec = await self._embed_and_persist_arc(r, caller_id, owner_model=None)
                 if vec is not None:
                     backfilled += 1
+
             if qvec is not None and vec is not None:
-                cos = _cosine(qvec, list(vec))
+                cos = _cosine(qvec, vec)
                 rank, degraded = cos, False
             else:
-                cos, rank, degraded = 0.0, genre_s, True  # genre order (R4 / unembedded)
+                cos, rank, degraded = 0.0, genre_s, True  # genre order (R4 / unembedded / no U-model)
             arc = _row_to_arc(r)
-            reason: dict[str, Any] = {"genre": genre_s, "cosine": cos}
+            reason: dict[str, Any] = {"genre": genre_s, "cosine": cos, "section": section}
             if degraded:
                 reason["degraded"] = True
-            scored.append((rank, arc.code, ArcCandidate(
+            bucket.append((rank, arc.code, ArcCandidate(
                 arc_template=arc, score=rank, match_reason=reason,
             )))
 
-        # rank DESC, deterministic tie-break (cosine/genre desc, then code asc). No hard
-        # min_score floor — arc suggest is exploratory; the caller picks from the top-N.
-        scored.sort(key=lambda t: (-t[0], t[1]))
-        return [c for _rank, _code, c in scored[: max(0, limit)]]
+        # Rank each SECTION independently (intra-space), cap PER section, concat mine-first.
+        # No cross-space sort — a U-space 0.8 and a P-space 0.8 are not the same thing.
+        def _top(items: list[tuple[float, str, ArcCandidate]]) -> list[ArcCandidate]:
+            items.sort(key=lambda t: (-t[0], t[1]))
+            return [c for _rank, _code, c in items[: max(0, limit)]]
+
+        return _top(mine) + _top(library)
+
+    async def _embed_query_safe(
+        self, qtext: str, model: tuple[str, str] | None, caller_id: UUID,
+    ) -> list[float] | None:
+        """Embed a query in ONE space (platform when `model` is None, else the caller's own
+        BYOK model as `caller_id`). Degrades to None on an empty query or any embed/config
+        failure — the retrieve loop then ranks that space on genre (R4), never 500/[]."""
+        if not qtext:
+            return None
+        try:
+            if model is None:
+                return await embed_query(qtext)
+            return await embed_query_with(qtext, user_id=caller_id, model=model)
+        except (EmbeddingError, EmbedConfigError):
+            return None
 
     async def _fetch_arc_candidates(
         self, caller_id: UUID, genre_tags: list[str], ceiling: int,
@@ -360,30 +407,42 @@ class MotifRetriever:
         async with self._pool.acquire() as c:
             return await c.fetch(sql, *params)
 
-    async def _embed_and_persist_arc(self, row: asyncpg.Record, caller_id: UUID) -> list[float] | None:
-        """Lazy inline back-fill of one NULL-embedding arc (best-effort). Embeds the
-        canonical arc text with the platform model and writes the vector + model + hash in
-        ONE statement; returns the vector (or None on any embed/config failure — the caller
-        then ranks the arc on genre). Idempotent: a concurrent back-fill just rewrites the
-        same vector. The model is platform config (B-1), never a per-row choice.
+    async def _embed_and_persist_arc(
+        self, row: asyncpg.Record, caller_id: UUID, *,
+        owner_model: tuple[str, str] | None,
+    ) -> list[float] | None:
+        """Lazy inline (re-)embed of ONE arc in its OWN space (best-effort). Writes the
+        vector + model + hash in ONE statement; returns the vector (or None on any
+        embed/config failure — the caller then ranks the arc on genre). Idempotent.
 
-        TENANCY: the UPDATE is scoped `id AND (owner NULL OR owner = caller)` so a read can
-        NEVER mutate another tenant's public arc — even an idempotent platform-vector write
-        (the caller already filtered to system/own before calling, this is defence-in-depth)."""
+        `owner_model=None` ⇒ the PLATFORM space (a system arc or the caller's OWN shared
+        arc); a (source, ref) ⇒ the OWNER's OWN BYOK space (a strictly-private arc — the
+        `embed(user_id=caller, …)` call bills the OWNER's ledger; the 2026-07-17 tenancy fix).
+
+        TENANCY: the UPDATE scope makes a read incapable of mutating another tenant's arc.
+        Platform back-fill is `owner NULL OR owner = caller`; a private re-embed is
+        `owner = caller AND visibility = 'private'` — so a since-published arc is never
+        rewritten with a user vector by mistake (its space flipped; the platform path owns it)."""
         try:
             arc = _row_to_arc(row)
             text = arc_summary_text(arc)
             if not text:
                 return None
-            res = await embed_motif_summary(text)
+            if owner_model is None:
+                res = await embed_motif_summary(text)
+                model_ref = _platform_embed_model()[1]  # platform model id → embedding_model
+                scope = "AND (owner_user_id IS NULL OR owner_user_id = $6)"
+            else:
+                res = await embed_private_summary(text, owner_id=caller_id, user_model=owner_model)
+                model_ref = owner_model[1]
+                scope = "AND owner_user_id = $6 AND visibility = 'private'"
             vec = res.embeddings[0]
-            ref = _platform_embed_model()[1]  # the platform model id → embedding_model col
             async with self._pool.acquire() as c:
                 await c.execute(
                     "UPDATE arc_template SET embedding = $2::real[], embedding_model = $3, "
                     "embedding_dim = $4, embedded_summary_hash = $5 "
-                    "WHERE id = $1 AND (owner_user_id IS NULL OR owner_user_id = $6)",
-                    row["id"], list(vec), ref, len(vec), summary_hash(text), caller_id,
+                    f"WHERE id = $1 {scope}",
+                    row["id"], list(vec), model_ref, len(vec), summary_hash(text), caller_id,
                 )
             return vec
         except (EmbeddingError, EmbedConfigError) as exc:

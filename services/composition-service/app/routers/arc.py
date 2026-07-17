@@ -47,6 +47,7 @@ from app.db.repositories.arc_template_repo import ArcTemplateRepo
 from app.db.repositories.motif_retrieve import MotifRetriever
 from app.db.repositories.narrative_thread import NarrativeThreadRepo
 from app.db.repositories.outline import OutlineRepo
+from app.db.repositories.references import reference_embed_model
 from app.db.repositories.structure import StructureConflictError, StructureRepo
 from app.db.repositories.works import WorksRepo
 from app.deps import (
@@ -772,9 +773,13 @@ async def suggest_arc_templates(
     if work is None:
         raise HTTPException(status_code=404, detail=NOT_ACCESSIBLE_MESSAGE)
     await _gate_book(grant, work.book_id, user_id, GrantLevel.VIEW)
+    # Two-space retrieval (2026-07-17 tenancy re-design): the caller's OWN BYOK embed model
+    # (from the Work settings) ranks their STRICTLY-PRIVATE arcs in their own space; None ⇒
+    # those arcs fall back to non-semantic ranking (the platform never embeds private content).
     candidates = await MotifRetriever(get_pool()).retrieve_arcs(
         user_id, book_id=work.book_id, project_id=body.project_id,
         premise=body.premise, genre=body.genre, limit=body.limit,
+        user_model=reference_embed_model(getattr(work, "settings", None)),
     )
 
     def _project(arc: Any) -> dict[str, Any]:
