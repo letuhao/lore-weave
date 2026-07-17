@@ -121,14 +121,15 @@ A slice is NOT done if its FE affordance lands on an unreachable/inert panel. Ve
   `name` + `description`/`summary`. Was description-only (a real gap — user couldn't rename). +2 FE tests.
 - ✅ CLEARED (latent bug): taxonomy `<select>` now REVERTS to the prior value if the PATCH fails (was
   optimistic-only → a failed write left a lying select value, since only success invalidates). +1 FE test.
-- ⏸ DEFER (gate #3 naturally-next-phase, PRECISE): pov_anchor RE-PICK. pov_anchor is STORED but consumed by
-  NO engine/packer yet (write-only field — grep: no `.pov_anchor` read outside models/repo/derive). Its
-  id-space (glossary anchor vs knowledge node) is UNDEFINED until the POV-shift generation consumer lands.
-  A picker now would write a maybe-wrong-id-space value nothing reads = exactly a shell. The Clear affordance
-  covers the one real need today (drop a stale anchor). Target: when POV-shift generation is built.
-- 🚫 WON'T-FIX (gate #5 conscious, VERIFIED): tenancy §4 cross-book target_entity_id verify — NOT a breach
-  (foreign id no-ops in the derivative's own knowledge partition per packer merge.py; the derive-time writer
-  doesn't verify either; the FE picker only offers in-book anchored entities). Data-quality nit, not tenancy.
+- ⏸ DEFER (gate #3) → NOW SPEC'D: pov_anchor consumption + RE-PICK. Full CLARIFY spec written
+  [`../2026-07-18-divergence-pov-and-override-tenancy.md`](../2026-07-18-divergence-pov-and-override-tenancy.md)
+  Part A. RESOLVED by code trace: id-space = glossary_entity_id (used directly); pov reaches the prompt NOWHERE
+  today (even scene pov_entity_id is unrendered — only implicit as a present cast bio); PackRequest doesn't
+  carry taxonomy/pov_anchor. Consumer = default-fill effective_pov at pack.py:261 + explicit `pov=` render line
+  (also fixes the scene-POV gap). 3 PO calls open (PO-1/2/3, all with recommendations). Build after PO decides.
+- 🚫 WON'T-FIX (gate #5) → NOW SPEC'D: tenancy §4 cross-book verify. Same spec Part B. Confirmed NOT a breach:
+  no-op + the present lens is BOOK-scoped (pack.py:409) so even a CONSUMED foreign anchor pulls no book-B bio.
+  Hardening design + 3 build-triggers recorded; none active → stays a documented decision, no code.
 - 🚫 WON'T-FIX (conscious): per-override canon-rule field (packer OVERRIDE_CANON_FIELD) — redundant with the
   spec-level canon_rule[] editor already shipped; niche. Not built.
 
