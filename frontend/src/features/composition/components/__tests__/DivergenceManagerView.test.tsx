@@ -36,6 +36,13 @@ vi.mock('../BranchDiffView', () => ({
   BranchDiffView: (p: { derivativeProjectId: string }) => <div data-testid="branch-diff-view" data-proj={p.derivativeProjectId} />,
 }));
 
+// S-04: the editable spec block has its own test (DivergenceSpecEditor.test.tsx).
+// Here it is a stub — this view test only proves the manager mounts it for a
+// selected derivative (and swaps it out for the Diff tab).
+vi.mock('../DivergenceSpecEditor', () => ({
+  DivergenceSpecEditor: (p: { projectId: string }) => <div data-testid="divergence-spec-editor" data-proj={p.projectId} />,
+}));
+
 vi.mock('sonner', () => ({ toast: Object.assign(vi.fn(), { success: vi.fn(), error: vi.fn(), warning: vi.fn() }) }));
 
 import { DivergenceManagerView } from '../DivergenceManagerView';
@@ -89,23 +96,23 @@ describe('DivergenceManagerView', () => {
     await waitFor(() => expect(patchWork).toHaveBeenCalledWith('da', { status: 'archived' }, 'tok', { version: 2 }));
   });
 
-  it('selecting a derivative loads and shows its read-only spec', async () => {
+  it('selecting a derivative loads its context and mounts the editable spec editor', async () => {
     resolution = { status: 'candidates', work: null, candidates: [canon, derivA] };
     renderView();
     fireEvent.click(screen.getByTestId('divergence-row-da'));
-    await waitFor(() => expect(screen.getByTestId('divergence-spec-taxonomy')).toHaveTextContent('au'));
+    await waitFor(() => expect(screen.getByTestId('divergence-spec-editor')).toHaveAttribute('data-proj', 'da'));
     expect(getDerivativeContext).toHaveBeenCalledWith('da', 'tok');
   });
 
-  it('the Diff tab swaps the spec for the branch prose diff', async () => {
+  it('the Diff tab swaps the spec editor for the branch prose diff', async () => {
     resolution = { status: 'candidates', work: null, candidates: [canon, derivA] };
     renderView();
     fireEvent.click(screen.getByTestId('divergence-row-da'));
-    await waitFor(() => expect(screen.getByTestId('divergence-spec-taxonomy')).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByTestId('divergence-spec-editor')).toBeInTheDocument());
     fireEvent.click(screen.getByTestId('divergence-tab-diff'));
     const diff = screen.getByTestId('branch-diff-view');
     expect(diff.getAttribute('data-proj')).toBe('da');
-    expect(screen.queryByTestId('divergence-spec-taxonomy')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('divergence-spec-editor')).not.toBeInTheDocument();
   });
 
   it('shows the empty state when there are no derivatives', () => {
