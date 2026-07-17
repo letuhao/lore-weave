@@ -26,9 +26,17 @@ import { ExtractionTuningPanel } from './ExtractionTuningPanel';
 interface Props {
   project: Project;
   onEdit: (p: Project) => void;
-  onArchive: (p: Project) => void;
-  onRestore: (p: Project) => void;
-  onDelete: (p: Project) => void;
+  // Destructive CRUD — OPTIONAL, and the buttons only render when handled. They used to be
+  // required, so the Overview (where the decision is that destructive CRUD belongs with the
+  // projects LIST, not the detail shell) satisfied the types with `noop` — which rendered a live
+  // Archive and a live Delete icon that did nothing at all on click: no toast, no dialog, no
+  // error. That is the "kg-overview 3-noop-buttons" bug the studio's own production-ready bar
+  // cites as its canonical example of a dead button. Omitting a handler now HIDES its button, so
+  // the intent ("destructive CRUD lives with the list") is expressed in the types instead of being
+  // faked with a no-op.
+  onArchive?: (p: Project) => void;
+  onRestore?: (p: Project) => void;
+  onDelete?: (p: Project) => void;
   // C7 (G6) — when supplied (the HOME browser), clicking the project name
   // or the Open affordance routes INTO the C6 project-detail shell
   // (`/knowledge/projects/:projectId/overview`). Omitted when the row is
@@ -289,7 +297,7 @@ export function ProjectRow({
               <SlidersHorizontal className="h-3.5 w-3.5" />
             </button>
           )}
-          {!isArchived ? (
+          {!isArchived && onArchive && (
             <button
               onClick={() => onArchive(project)}
               title={t('projects.card.archive')}
@@ -297,7 +305,8 @@ export function ProjectRow({
             >
               <Archive className="h-3.5 w-3.5" />
             </button>
-          ) : (
+          )}
+          {isArchived && onRestore && (
             <button
               onClick={() => onRestore(project)}
               title={t('projects.card.restore')}
@@ -306,13 +315,15 @@ export function ProjectRow({
               <ArchiveRestore className="h-3.5 w-3.5" />
             </button>
           )}
-          <button
-            onClick={() => onDelete(project)}
-            title={t('projects.card.delete')}
-            className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
-          >
-            <Trash2 className="h-3.5 w-3.5" />
-          </button>
+          {onDelete && (
+            <button
+              onClick={() => onDelete(project)}
+              title={t('projects.card.delete')}
+              className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+            </button>
+          )}
         </div>
       </div>
 

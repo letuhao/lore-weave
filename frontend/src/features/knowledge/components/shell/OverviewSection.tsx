@@ -53,20 +53,18 @@ export function OverviewSection({ project, onExploreGraph, onOpenBook, onOpenWor
     );
   }
 
-  const noop = () => {};
-
   return (
     <div className="space-y-4" data-testid="shell-overview">
       {/* Reuse the project state card (build/extract/model dialogs all
           wired). Edit opens the project form modal in-place (KN — the pen
           was previously a dead no-op here). Archive/restore/delete stay on
-          the projects browser (destructive CRUD lives with the list). */}
+          the projects browser (destructive CRUD lives with the list) — so we
+          OMIT those handlers and ProjectRow hides the buttons. Passing `noop`
+          here (what this did until the 2026-07-17 audit) rendered a live
+          Archive + Delete that silently did nothing on click. */}
       <ProjectRow
         project={project}
         onEdit={() => setEditing(true)}
-        onArchive={noop}
-        onRestore={noop}
-        onDelete={noop}
         onExploreGraph={onExploreGraph}
       />
 
