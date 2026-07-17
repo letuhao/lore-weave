@@ -635,6 +635,11 @@
       "title": "Strukturvorlagen",
       "desc": "Erstelle eigene Story-Strukturen (eine benannte, geordnete Liste von Beats) und zerlege dein Buch anhand dieser Strukturen – wie die integrierten Vorlagen „Save the Cat“ oder „Heldenreise“",
       "guideBody": "Story-Strukturen sind geordnete Beat-Sheets, anhand derer du die Kapitel eines Buches analysierst. Dieses Panel listet die integrierten Strukturen (Save the Cat, Heldenreise, Kishōtenketsu, Drei-Akt-Modell, Story Circle, Web-Novel Arc — schreibgeschützt) sowie deine eigenen auf. Du kannst eine integrierte Vorlage klonen, um eine bearbeitbare Kopie zu erhalten, deren Beats du dann hinzufügen, umordnen, umbenennen oder löschen und speichern kannst. Nutze eine Struktur in der „Zerlegung“, um ihre Beats auf deine Kapitel zu übertragen. Deine benutzerdefinierten Strukturen sind privat und können für jedes Buch wiederverwendet werden; du kannst sie archivieren, um sie zu verbergen, und später wiederherstellen. Die integrierten Vorlagen bleiben für alle unverändert – du bearbeitest immer nur deine eigene Kopie."
+    },
+    "kg-triage": {
+      "title": "Triage",
+      "desc": "Überprüfen Sie extrahierte Elemente, die nicht mit Ihrem Schema übereinstimmen, und lösen Sie diese.",
+      "guideBody": "Wenn die Extraktion eine Entität, eine Beziehung oder einen Wert findet, der noch nicht in Ihrem Schema enthalten ist, wird dieser hier zwischengespeichert, anstatt zu raten. Jede Zeile bietet nur die Korrekturen an, die für sie gültig sind – ordnen Sie sie etwas zu, das Sie bereits haben, fügen Sie sie Ihrem Schema/Vokabular hinzu, korrigieren Sie einen Endpunkt oder ignorieren Sie sie."
     }
   },
   "sceneRail": {
@@ -1414,6 +1419,10 @@
     "beatPurpose": "Wozu dieser Beat dient…",
     "addBeat": "Beat hinzufügen",
     "save": "Speichern",
-    "saving": "Speichern…"
+    "saving": "Speichern…",
+    "showArchived": "archiviert",
+    "archive": "Archiv",
+    "restore": "Wiederherstellen",
+    "archivedNote": "Diese Struktur ist archiviert. Wiederherstellen Sie sie, um sie zu bearbeiten oder erneut zu verwenden."
   }
 }

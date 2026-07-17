@@ -635,6 +635,11 @@
       "title": "Yapı Şablonları",
       "desc": "Yazarın özel hikaye yapılarını (adlandırılmış sıralı bir olay örgüsü listesi) oluşturun ve kitabınızı bu yapılara göre çözümleyin — Save the Cat veya Hero's Journey gibi yerleşik yapılar gibi.",
       "guideBody": "Hikaye yapıları, bir kitabın bölümlerini karşılaştırarak çözümlediğiniz sıralı olay örgüsü listeleridir. Bu panel, yerleşik yapıları (Save the Cat, Hero's Journey, Kishōtenketsu, Üç Perdelik Yapı, Hikaye Çemberi, Web-Roman Arkı — salt okunur) ve kendi oluşturduğunuz yapıları listeler. Düzenlenebilir bir kopya elde etmek için yerleşik bir yapıyı klonlayın; ardından olay örgüsünü ekleyin, yeniden sıralayın, yeniden adlandırın, kaldırın ve kaydedin. Çözümleme (Decompose) kısmında, olay örgüsünü bölümlerinize eşlemek için bir yapı kullanın. Özel yapılarınız size özeldir ve her kitapta yeniden kullanılabilir; bir yapıyı arşivleyerek gizleyebilir ve daha sonra geri yükleyebilirsiniz. Yerleşik yapılar herkes için bozulmadan kalır — siz her zaman kendi kopyanızı düzenlersiniz."
+    },
+    "kg-triage": {
+      "title": "Triyaj",
+      "desc": "Şemanızla eşleşmeyen çıkarılan öğeleri inceleyin ve bunları çözümleyin.",
+      "guideBody": "Çıkarım işlemi şemanızda henüz bulunmayan bir varlık türü, ilişki veya değer bulduğunda, tahmin yürütmek yerine onu buraya park eder. Her satır yalnızca o öğe için geçerli olan düzeltmeleri sunar — onu halihazırda sahip olduğunuz bir şeye eşleyin, şemanıza/kelime dağarcığınıza ekleyin, bir uç noktayı düzeltin veya reddedin."
     }
   },
   "sceneRail": {
@@ -1414,6 +1419,10 @@
     "beatPurpose": "Bu vuruşun amacı…",
     "addBeat": "Vuruş ekle",
     "save": "Kaydet",
-    "saving": "Kaydediliyor…"
+    "saving": "Kaydediliyor…",
+    "showArchived": "arşivlenmiş",
+    "archive": "Arşivle",
+    "restore": "Geri Yükle",
+    "archivedNote": "Bu yapı arşivlendi. Düzenlemek veya tekrar kullanmak için geri yükleyin."
   }
 }

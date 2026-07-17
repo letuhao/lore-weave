@@ -635,6 +635,11 @@
       "title": "Modèles de structure",
       "desc": "Créez vos propres structures narratives (une liste ordonnée de moments clés nommés) et décomposez votre livre en fonction d'elles — comme les modèles intégrés « Save the Cat » ou « Le voyage du héros »",
       "guideBody": "Les structures narratives sont des fiches de moments clés ordonnés sur lesquelles vous décomposez les chapitres d'un livre. Ce panneau liste les structures intégrées (Save the Cat, Hero's Journey, Kishōtenketsu, Trois actes, Story Circle, Arc de Web-Novel — en lecture seule) ainsi que les vôtres. Dupliquez un modèle intégré pour obtenir une copie modifiable, puis ajoutez, réorganisez, renommez et supprimez ses moments clés avant de l'enregistrer. Utilisez une structure dans l'outil de Décomposition pour mapper ses moments clés sur vos chapitres. Vos structures personnalisées vous sont propres et sont réutilisables pour chaque livre ; archivez-en une pour la masquer et la restaurer plus tard. Les modèles intégrés restent intacts pour tout le monde — vous modifiez toujours votre propre copie."
+    },
+    "kg-triage": {
+      "title": "Triage",
+      "desc": "Examinez les éléments extraits qui ne correspondent pas à votre schéma et résolvez-les.",
+      "guideBody": "Lorsque l'extraction trouve une entité, une relation ou une valeur qui ne figure pas encore dans votre schéma, elle les place ici au lieu de faire des suppositions. Chaque ligne ne propose que les corrections valides pour cet élément : mappez-le vers un élément existant, ajoutez-le à votre schéma/vocabulaire, corrigez un point de terminaison ou ignorez-le."
     }
   },
   "sceneRail": {
@@ -1414,6 +1419,10 @@
     "beatPurpose": "Rôle de ce battement…",
     "addBeat": "Ajouter un battement",
     "save": "Enregistrer",
-    "saving": "Enregistrement…"
+    "saving": "Enregistrement…",
+    "showArchived": "archivé",
+    "archive": "Archiver",
+    "restore": "Restaurer",
+    "archivedNote": "Cette structure est archivée. Restaurez-la pour la modifier ou l'utiliser à nouveau."
   }
 }

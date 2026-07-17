@@ -19,6 +19,7 @@ import { MotifGraphPanel } from './MotifGraphPanel';
 import { QualityConformancePanel } from './QualityConformancePanel';
 import { ArcInspectorPanel } from './ArcInspectorPanel';   /* owner: S2 */
 import { ArcTemplatesPanel } from './ArcTemplatesPanel';   /* owner: S2 */
+import { StructureTemplatesPanel } from './StructureTemplatesPanel';   /* S-01 */
 import { UsagePanel } from './UsagePanel';
 import { NotificationsPanel } from './NotificationsPanel';
 import { SettingsPanel } from './SettingsPanel';
@@ -48,6 +49,7 @@ import { KgInsightsPanel } from './KgInsightsPanel';
 import { KgJobsPanel } from './KgJobsPanel';
 import { KgGlobalBioPanel } from './KgGlobalBioPanel';
 import { KgPrivacyPanel } from './KgPrivacyPanel';
+import { KgTriagePanel } from './KgTriagePanel';   /* owner: S-05 */
 import { JobsListPanel } from './JobsListPanel';
 import { JobDetailPanel } from './JobDetailPanel';
 import { BooksBrowserPanel } from './BooksBrowserPanel';
@@ -208,6 +210,7 @@ export const STUDIO_PANELS: StudioPanelDef[] = [
   { id: 'kg-jobs', component: KgJobsPanel, titleKey: 'panels.kg-jobs.title', descKey: 'panels.kg-jobs.desc', category: 'knowledge', guideBodyKey: 'panels.kg-jobs.guideBody' },
   { id: 'kg-bio', component: KgGlobalBioPanel, titleKey: 'panels.kg-bio.title', descKey: 'panels.kg-bio.desc', category: 'knowledge', guideBodyKey: 'panels.kg-bio.guideBody' },
   { id: 'kg-privacy', component: KgPrivacyPanel, titleKey: 'panels.kg-privacy.title', descKey: 'panels.kg-privacy.desc', category: 'knowledge', guideBodyKey: 'panels.kg-privacy.guideBody' },
+  { id: 'kg-triage', component: KgTriagePanel, titleKey: 'panels.kg-triage.title', descKey: 'panels.kg-triage.desc', category: 'knowledge', guideBodyKey: 'panels.kg-triage.guideBody' },   /* S-05 */
   // 14_utility_panels.md Phase B — jobs-list is palette + agent openable; job-detail is a
   // params-retargeting singleton ({service, jobId}, json-editor/skill-editor precedent).
   { id: 'jobs-list', component: JobsListPanel, titleKey: 'panels.jobs-list.title', descKey: 'panels.jobs-list.desc', category: 'jobs', guideBodyKey: 'panels.jobs-list.guideBody' },
@@ -334,6 +337,7 @@ export const STUDIO_PANELS: StudioPanelDef[] = [
   // ── S2 · Plan & Structure ──      (arc-inspector, arc-templates)
   { id: 'arc-inspector', component: ArcInspectorPanel, titleKey: 'panels.arc-inspector.title', descKey: 'panels.arc-inspector.desc', category: 'editor', guideBodyKey: 'panels.arc-inspector.guideBody' }, /* owner: S2 */
   { id: 'arc-templates', component: ArcTemplatesPanel, titleKey: 'panels.arc-templates.title', descKey: 'panels.arc-templates.desc', category: 'storyBible', guideBodyKey: 'panels.arc-templates.guideBody' }, /* owner: S2 */
+  { id: 'structure-templates', component: StructureTemplatesPanel, titleKey: 'panels.structure-templates.title', descKey: 'panels.structure-templates.desc', category: 'storyBible', guideBodyKey: 'panels.structure-templates.guideBody' }, /* S-01 */
   // ── S3 · PlanForge ──             (plan-passes)
   // ── S4 · Motif & craft ──         (motif-library, quality-conformance)
   { id: 'motif-library', component: MotifLibraryPanel, titleKey: 'panels.motif-library.title', descKey: 'panels.motif-library.desc', category: 'storyBible', guideBodyKey: 'panels.motif-library.guideBody' },

@@ -635,6 +635,11 @@
       "title": "Templat Struktur",
       "desc": "Buat struktur cerita kustom (daftar urutan beat yang dinamai) dan bedah buku Anda berdasarkan struktur tersebut — seperti fitur bawaan Save the Cat atau Hero's Journey",
       "guideBody": "Struktur cerita adalah lembar beat berurutan yang digunakan untuk membedah bab-bab buku Anda. Panel ini mencantumkan struktur bawaan (Save the Cat, Hero's Journey, Kishōtenketsu, Three-Act, Story Circle, Web-Novel Arc — hanya baca) serta struktur buatan Anda sendiri. Duplikat struktur bawaan untuk mendapatkan salinan yang dapat diedit, lalu tambahkan, urutkan ulang, ubah nama, hapus beat-nya, dan simpan. Gunakan struktur dalam fitur Decompose untuk memetakan beat ke dalam bab Anda. Struktur kustom Anda bersifat pribadi dan dapat digunakan kembali di setiap buku; arsipkan untuk menyembunyikannya dan pulihkan nanti. Struktur bawaan tetap utuh bagi semua orang — Anda selalu mengedit salinan Anda sendiri."
+    },
+    "kg-triage": {
+      "title": "Triage",
+      "desc": "Tinjau elemen yang diekstraksi yang tidak cocok dengan skema Anda dan selesaikan.",
+      "guideBody": "Saat ekstraksi menemukan jenis entitas, relasi, atau nilai yang belum ada dalam skema Anda, sistem akan menyimpannya di sini alih-alih menebak. Setiap baris hanya menawarkan perbaikan yang valid untuk elemen tersebut — petakan ke sesuatu yang sudah Anda miliki, tambahkan ke skema/kosakata Anda, perbaiki endpoint, atau abaikan."
     }
   },
   "sceneRail": {
@@ -1414,6 +1419,10 @@
     "beatPurpose": "Apa fungsi beat ini...",
     "addBeat": "Tambah beat",
     "save": "Simpan",
-    "saving": "Menyimpan..."
+    "saving": "Menyimpan...",
+    "showArchived": "diarsipkan",
+    "archive": "Arsipkan",
+    "restore": "Pulihkan",
+    "archivedNote": "Struktur ini telah diarsipkan. Pulihkan untuk mengedit atau menggunakannya kembali."
   }
 }

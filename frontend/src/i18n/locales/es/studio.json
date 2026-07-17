@@ -635,6 +635,11 @@
       "title": "Plantillas de estructura",
       "desc": "Crea estructuras de historia personalizadas (una lista ordenada de beats con nombre) y descompón tu libro basándote en ellas, como las integradas «Save the Cat» o «El viaje del héroe»",
       "guideBody": "Las estructuras de la historia son hojas de beats ordenadas con las que descompones los capítulos de un libro. Este panel enumera las estructuras integradas (Save the Cat, Hero's Journey, Kishōtenketsu, Three-Act, Story Circle, Web-Novel Arc — solo lectura), además de las tuyas. Clona una estructura integrada para obtener una copia editable; luego podrás añadir, reordenar, renombrar y eliminar sus beats y guardarlos. Usa una estructura en Decompose para mapear sus beats en tus capítulos. Tus estructuras personalizadas son privadas y reutilizables en cada libro; puedes archivarlas para ocultarlas y restaurarlas más tarde. Las estructuras integradas permanecen intactas para todos: siempre editas tu propia copia."
+    },
+    "kg-triage": {
+      "title": "Triaje",
+      "desc": "Revisa los elementos extraídos que no coincidieron con tu esquema y resuélvelos.",
+      "guideBody": "Cuando la extracción encuentra un tipo de entidad, relación o valor que aún no está en tu esquema, lo guarda aquí en lugar de intentar adivinar. Cada fila ofrece únicamente las correcciones válidas para ese elemento: asígnale algo que ya tengas, añádelo a tu esquema/vocabulario, corrige un endpoint o descártalo."
     }
   },
   "sceneRail": {
@@ -1414,6 +1419,10 @@
     "beatPurpose": "¿Qué hace este beat…?",
     "addBeat": "Añadir beat",
     "save": "Guardar",
-    "saving": "Guardando…"
+    "saving": "Guardando…",
+    "showArchived": "archivados",
+    "archive": "Archivar",
+    "restore": "Restaurar",
+    "archivedNote": "Esta estructura está archivada. Restáurala para editarla o volver a usarla."
   }
 }

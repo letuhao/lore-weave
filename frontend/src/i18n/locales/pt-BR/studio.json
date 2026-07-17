@@ -635,6 +635,11 @@
       "title": "Modelos de Estrutura",
       "desc": "Crie estruturas de história personalizadas (uma lista ordenada de batidas) e decomponha seu livro com base nelas — como o Save the Cat ou a Jornada do Herói integrados",
       "guideBody": "Estruturas de história são sequências de batidas ordenadas nas quais você decompõe os capítulos de um livro. Este painel lista as estruturas integradas (Save the Cat, Jornada do Herói, Kishōtenketsu, Três Atos, Círculo de História, Arco de Web-Novel — apenas leitura), além das suas próprias. Clone uma estrutura integrada para obter uma cópia editável e, então, adicione, reordene, renomeie e remova suas batidas e salve. Use uma estrutura em Decompor para mapear suas batidas em seus capítulos. Suas estruturas personalizadas são privadas e reutilizáveis em todos os livros; arquive uma para ocultá-la e restaure-a mais tarde. As estruturas integradas permanecem intactas para todos — você sempre edita sua própria cópia."
+    },
+    "kg-triage": {
+      "title": "Triagem",
+      "desc": "Revise os elementos extraídos que não correspondem ao seu esquema e resolva-os.",
+      "guideBody": "Quando a extração encontra um tipo de entidade, relacionamento ou valor que ainda não está no seu esquema, ela o armazena aqui em vez de tentar adivinhar. Cada linha oferece apenas as correções válidas para ela — mapeie para algo que você já possui, adicione ao seu esquema/vocabulário, corrija um endpoint ou descarte-o."
     }
   },
   "sceneRail": {
@@ -1414,6 +1419,10 @@
     "beatPurpose": "O que este beat faz...",
     "addBeat": "Adicionar beat",
     "save": "Salvar",
-    "saving": "Salvando..."
+    "saving": "Salvando...",
+    "showArchived": "arquivado",
+    "archive": "Arquivar",
+    "restore": "Restaurar",
+    "archivedNote": "Esta estrutura está arquivada. Restaure-a para editá-la ou usá-la novamente."
   }
 }

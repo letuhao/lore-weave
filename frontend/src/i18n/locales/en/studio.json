@@ -635,6 +635,11 @@
       "title": "Structure Templates",
       "desc": "Author custom story structures (a named ordered list of beats) and decompose your book against them — like the built-in Save the Cat or Hero's Journey",
       "guideBody": "Story structures are ordered beat sheets you decompose a book's chapters against. This panel lists the built-in structures (Save the Cat, Hero's Journey, Kishōtenketsu, Three-Act, Story Circle, Web-Novel Arc — read-only) plus your own. Clone a built-in to get an editable copy, then add, reorder, rename and remove its beats and save. Use a structure in Decompose to map its beats onto your chapters. Your custom structures are private to you and reusable across every book; archive one to hide it and restore it later. Built-ins stay intact for everyone — you always edit your own copy."
+    },
+    "kg-triage": {
+      "title": "Triage",
+      "desc": "Review extracted elements that didn't match your schema and resolve them.",
+      "guideBody": "When extraction finds an entity kind, relationship, or value that isn't in your schema yet, it parks it here instead of guessing. Each row offers only the fixes that are valid for it — map it to something you already have, add it to your schema/vocabulary, fix an endpoint, or dismiss it."
     }
   },
   "sceneRail": {
@@ -1414,6 +1419,10 @@
     "beatPurpose": "What this beat does…",
     "addBeat": "Add beat",
     "save": "Save",
-    "saving": "Saving…"
+    "saving": "Saving…",
+    "showArchived": "archived",
+    "archive": "Archive",
+    "restore": "Restore",
+    "archivedNote": "This structure is archived. Restore it to edit or use it again."
   }
 }
