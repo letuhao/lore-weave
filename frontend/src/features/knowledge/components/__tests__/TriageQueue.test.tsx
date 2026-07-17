@@ -103,12 +103,14 @@ describe('TriageQueue', () => {
     toastMocks.info.mockReset();
   });
 
-  it('renders the empty state when the queue is clear', async () => {
+  it('renders the empty state + an orienting hint when the queue is clear', async () => {
     listTriageMock.mockResolvedValue({ groups: [] });
     render(<TriageQueue projectId="p-1" />, { wrapper: Wrapper });
     await waitFor(() =>
       expect(screen.getByTestId('kg-triage-empty')).toBeInTheDocument(),
     );
+    // S-05b (F11) — a curious user gets orientation, not just "nothing here"
+    expect(screen.getByTestId('kg-triage-empty-hint')).toBeInTheDocument();
   });
 
   it('renders ONLY the resolve-completing actions (no dead place_edge, no silent-partial schema action)', async () => {

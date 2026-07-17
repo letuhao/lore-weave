@@ -1300,6 +1300,7 @@
       "keepDetected": "Conserver la valeur détectée",
       "cancel": "Annuler",
       "confirm": "Mapper"
-    }
+    },
+    "emptyHint": "Le triage collecte tout élément extrait qui ne correspond pas encore à votre schéma — une file d'attente vide signifie que tout est bien classé."
   }
 }

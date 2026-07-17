@@ -1300,6 +1300,7 @@
       "keepDetected": "Giữ giá trị đã phát hiện",
       "cancel": "Hủy",
       "confirm": "Ánh xạ"
-    }
+    },
+    "emptyHint": "Triage thu thập mọi dữ liệu trích xuất được tìm thấy nhưng chưa khớp với schema của bạn — một hàng đợi trống đồng nghĩa với việc mọi thứ đã được sắp xếp ngăn nắp."
   }
 }

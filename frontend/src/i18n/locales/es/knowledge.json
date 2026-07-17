@@ -1300,6 +1300,7 @@
       "keepDetected": "Mantener el valor detectado",
       "cancel": "Cancelar",
       "confirm": "Mapear"
-    }
+    },
+    "emptyHint": "Triage recopila cualquier dato extraído que aún no encaje en tu esquema; una cola vacía significa que todo está en orden."
   }
 }

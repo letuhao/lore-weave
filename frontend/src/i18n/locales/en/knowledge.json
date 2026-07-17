@@ -1300,6 +1300,7 @@
       "keepDetected": "Keep the detected value",
       "cancel": "Cancel",
       "confirm": "Map"
-    }
+    },
+    "emptyHint": "Triage collects anything extraction found that doesn’t fit your schema yet — a clean queue means everything lined up."
   }
 }

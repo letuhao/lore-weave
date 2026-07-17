@@ -198,10 +198,14 @@ export function TriageQueue({ projectId, bookId, onGlossaryHandoff }: TriageQueu
   if (groups.length === 0) {
     return (
       <div
-        className="rounded-md border border-dashed px-3 py-8 text-center text-[12px] text-muted-foreground"
+        className="space-y-1 rounded-md border border-dashed px-3 py-8 text-center text-[12px] text-muted-foreground"
         data-testid="kg-triage-empty"
       >
-        {t('triage.empty')}
+        <p>{t('triage.empty')}</p>
+        {/* S-05b (F11) — orient a curious user who opens an empty queue. */}
+        <p className="text-[11px]" data-testid="kg-triage-empty-hint">
+          {t('triage.emptyHint')}
+        </p>
       </div>
     );
   }

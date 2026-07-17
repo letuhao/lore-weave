@@ -1300,6 +1300,7 @@
       "keepDetected": "Kekalkan nilai yang dikesan",
       "cancel": "Batal",
       "confirm": "Petak"
-    }
+    },
+    "emptyHint": "Triage mengumpul sebarang hasil pengekstrakan yang belum sepadan dengan skema anda — barisan yang bersih bermakna semuanya telah disusun dengan teratur."
   }
 }

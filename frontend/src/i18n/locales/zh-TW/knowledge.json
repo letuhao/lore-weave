@@ -1300,6 +1300,7 @@
       "keepDetected": "保留偵測到的值",
       "cancel": "取消",
       "confirm": "對應"
-    }
+    },
+    "emptyHint": "Triage 會收集所有尚未符合您架構的擷取內容 — 佇列清空代表所有內容都已歸位。"
   }
 }

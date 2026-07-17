@@ -1300,6 +1300,7 @@
       "keepDetected": "Pertahankan nilai yang terdeteksi",
       "cancel": "Batal",
       "confirm": "Petakan"
-    }
+    },
+    "emptyHint": "Triage mengumpulkan semua hasil ekstraksi yang belum sesuai dengan skema Anda — antrean yang bersih berarti semuanya sudah tersusun rapi."
   }
 }

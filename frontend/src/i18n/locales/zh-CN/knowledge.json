@@ -1300,6 +1300,7 @@
       "keepDetected": "保留检测到的值",
       "cancel": "取消",
       "confirm": "映射"
-    }
+    },
+    "emptyHint": "Triage 会收集所有尚未符合您模式的提取内容——队列清空意味着一切都已归位。"
   }
 }

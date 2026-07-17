@@ -1300,6 +1300,7 @@
       "keepDetected": "Manter o valor detectado",
       "cancel": "Cancelar",
       "confirm": "Mapear"
-    }
+    },
+    "emptyHint": "A Triage coleta qualquer dado extraído que ainda não se encaixe no seu esquema — uma fila limpa significa que tudo está organizado."
   }
 }

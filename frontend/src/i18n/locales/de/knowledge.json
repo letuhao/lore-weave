@@ -1300,6 +1300,7 @@
       "keepDetected": "Erkannten Wert beibehalten",
       "cancel": "Abbrechen",
       "confirm": "Verknüpfen"
-    }
+    },
+    "emptyHint": "Triage sammelt alle extrahierten Informationen, die noch nicht in dein Schema passen – eine leere Warteschlange bedeutet, dass alles korrekt zugeordnet wurde."
   }
 }

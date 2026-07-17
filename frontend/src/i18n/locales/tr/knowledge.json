@@ -1300,6 +1300,7 @@
       "keepDetected": "Tespit edilen değeri koru",
       "cancel": "İptal",
       "confirm": "Eşleştir"
-    }
+    },
+    "emptyHint": "Triage, henüz şemanıza uymayan tüm çıkarılan verileri toplar — temiz bir kuyruk, her şeyin yerli yerine oturduğu anlamına gelir."
   }
 }
