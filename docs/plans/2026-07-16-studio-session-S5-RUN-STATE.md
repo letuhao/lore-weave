@@ -178,19 +178,13 @@ useWhatIfPromotion), NEVER mount CompositionPanel shell.
   LIVE-PROVEN cross-service (composition↔book): inherit→fork→CANON-BYTE-UNCHANGED→merge; + a live browser e2e
   (studio-derivative-fork.spec). BE 13 router + 1 repo-integration tests; FE 6 provider + 3 editor tests; 817
   manuscript+panels green. The edit-guard banner (v1 mitigation) is SUPERSEDED by the real isolation.
-- 🔴 D-EDITOR-FALSE-DIRTY — NOT FIXED (found 2026-07-17 while building the fork; pre-existing + wide-reaching).
-  `isDirtyState` (workingBody != savedBody) FALSE-FIRES on Tiptap's mount-normalize onUpdate: on open, Tiptap
-  re-emits the loaded content under a re-normalized STRUCTURE (reordered/added fields, _text snapshots), so any
-  chapter whose stored body was not previously studio-normalized (imports, book-service projections, older
-  saves) opens as ● unsaved, spuriously flushes on navigate (openUnit's dirty-flush), auto-saves, AND blocks the
-  Lane-B reconciler's `isChapterDirty` guard. The existing M-I guard only suppresses it when snap byte-equals
-  savedBody, which fails for those bodies. ATTEMPTED a root fix (adopt the first mount-normalize as the clean
-  baseline) but it entangles with the editor's text extraction — the load-time extractor (`text_content ||
-  extractText`) returned '' while the editor's onUpdate emitted the real text, so text-equality can't reliably
-  distinguish mount-normalize from a real edit; the attempt destabilized the fork flow and was REVERTED. Needs a
-  dedicated task: FIRST root-cause why the two extractors disagree (the loadedText='' case), then either align
-  them or have the editor emit a "this is the mount-normalize" signal so the baseline can be adopted safely.
-  Gate #2 (structural, needs its own investigation + /review-impl). NOT S5-specific — a general editor bug.
+- D-EDITOR-FALSE-DIRTY — ✅ CLOSED (investigated 2026-07-17; my earlier "wide-reaching user-visible" claim was
+  WRONG). Live-tested opening a chapter across scenarios — a simple `saveDraft` body, a rich body WITHOUT
+  `_text`, and a derivative INHERITED chapter — the dirty indicator is **"idle"** (clean) in every case: the M-I
+  guard + book-service's `_text` projection hold, so chapters do NOT open ● unsaved. The `dirty=true` I saw was
+  a TRANSIENT during mount-normalize observed only by the fork reload effect mid-render; its ONLY real impact was
+  the fork draft-source reload timing, which is FIXED by deferring the load until the active-work pref resolves
+  (commit 809e66c67, studio-derivative-fork e2e 3/3). No user-visible false-dirty remains to fix.
 - D-DIVERGENCE-MCP-TOOLS — ◑ MOSTLY CLEARED 2026-07-17 (commits 0c41947a4 + this run). SHIPPED the 3
   buildable-now verbs: `composition_list_derivatives` (R/VIEW) + `composition_get_derivative_context`
   (R/VIEW — durable spec: taxonomy/branch_point/pov_anchor/canon_rules/overrides, reuses
