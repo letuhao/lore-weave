@@ -813,8 +813,6 @@
         "driftNoProvenance": "Cốt truyện này được viết trực tiếp — không có mẫu để so sánh độ lệch.",
         "driftGone": "Mẫu nguồn không còn khả dụng.",
         "driftLoading": "Đang tải độ lệch...",
-        "untitledArc": "(cốt truyện chưa đặt tên)",
-        "truncated": "Đang hiển thị {{shown}} trên {{count}} — hãy sử dụng Danh mục hoặc gói thu hẹp hơn để tìm thêm.",
         "driftClean": "Không có sai lệch — cấu trúc thực tế khớp với khuôn mẫu.",
         "driftSummary": "Lỗ hổng bao phủ {{gaps}} · {{violations}} lỗi thứ tự · {{folded}} vị trí bị gấp",
         "driftThreads": "Độ bao phủ của các mạch truyện",
@@ -825,7 +823,10 @@
         "driftSuccession": "Thứ tự",
         "driftSuccessionOk": "Không có vi phạm thứ tự.",
         "driftViolation": "{{label}}: {{n}} lỗi thứ tự",
-        "driftFolded": "Bị gấp (chưa bao giờ được liên kết)"
+        "driftFolded": "Bị gấp (chưa bao giờ được liên kết)",
+        "untitledArc": "(cốt truyện chưa đặt tên)",
+        "truncated": "Đang hiển thị {{shown}} trên {{count}} — hãy sử dụng Danh mục hoặc gói thu hẹp hơn để tìm thêm.",
+        "driftPacingOnly": "Cấu trúc khớp, nhưng nhịp độ bị lệch (tối đa {{drift}})."
       },
       "import": {
         "privacy": "Văn bản gốc sẽ được giữ riêng tư và không bao giờ được chia sẻ. Chỉ có cấu trúc trừu tượng được trích xuất mới có thể được xuất bản — và việc xuất bản sẽ loại bỏ các tham chiếu nguồn.",

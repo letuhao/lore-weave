@@ -813,8 +813,6 @@
         "driftNoProvenance": "Este arco foi escrito diretamente — não há um modelo para comparação de drift.",
         "driftGone": "O modelo de origem não está mais disponível.",
         "driftLoading": "Carregando drift…",
-        "untitledArc": "(arco sem título)",
-        "truncated": "Mostrando os primeiros {{shown}} de {{count}} — use o Catálogo ou um nível mais restrito para encontrar mais.",
         "driftClean": "Sem desvio — o arco realizado corresponde ao seu modelo.",
         "driftSummary": "lacuna(s) de cobertura: {{gaps}} · problema(s) de ordenação: {{violations}} · posicionamento(s) dobrado(s): {{folded}}",
         "driftThreads": "Cobertura de fios",
@@ -825,7 +823,10 @@
         "driftSuccession": "Ordenação",
         "driftSuccessionOk": "Sem violações de ordenação.",
         "driftViolation": "{{label}}: {{n}} fora de ordem",
-        "driftFolded": "Dobrado (nunca vinculado)"
+        "driftFolded": "Dobrado (nunca vinculado)",
+        "untitledArc": "(arco sem título)",
+        "truncated": "Mostrando os primeiros {{shown}} de {{count}} — use o Catálogo ou um nível mais restrito para encontrar mais.",
+        "driftPacingOnly": "A estrutura coincide, mas o ritmo oscilou (máx. {{drift}})."
       },
       "import": {
         "privacy": "O texto bruto permanece privado para você e nunca é compartilhado. Apenas a estrutura abstrata derivada pode ser publicada — e a publicação remove a referência da fonte.",

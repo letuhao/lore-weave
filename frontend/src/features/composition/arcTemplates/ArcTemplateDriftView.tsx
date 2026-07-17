@@ -17,12 +17,19 @@ function driftCounts(r: ArcConformance) {
 
 export function ArcTemplateDriftView({ report: r, t }: { report: ArcConformance; t: TFunction }) {
   const c = driftCounts(r);
+  const structural = c.gaps + c.violations + c.folded;
   return (
     <div data-testid="arc-drift-view" className="mt-1 flex flex-col gap-2 text-[11px]">
-      {/* Derived one-line verdict — honest "no drift" when every signal is clean. */}
+      {/* Derived one-line verdict — honest "no drift" when every signal is clean. A pacing-ONLY
+          drift (no structural gaps but the tension curve moved) gets its own line so the summary
+          never reads "0 · 0 · 0" while the arc is not clean (the pacing section shows the number). */}
       {c.clean ? (
         <p data-testid="arc-drift-clean" className="rounded bg-emerald-50 px-2 py-0.5 text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-300">
           {t('motif.arc.templates.driftClean', { defaultValue: 'No drift — the realized arc matches its template.' })}
+        </p>
+      ) : structural === 0 && c.pacing ? (
+        <p data-testid="arc-drift-summary" className="rounded bg-amber-50 px-2 py-0.5 text-amber-800 dark:bg-amber-950/30 dark:text-amber-200">
+          {t('motif.arc.templates.driftPacingOnly', { drift: c.pacing, defaultValue: 'Structure matches, but the pacing drifted (max {{drift}}).' })}
         </p>
       ) : (
         <p data-testid="arc-drift-summary" className="rounded bg-amber-50 px-2 py-0.5 text-amber-800 dark:bg-amber-950/30 dark:text-amber-200">

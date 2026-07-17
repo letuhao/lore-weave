@@ -813,8 +813,6 @@
         "driftNoProvenance": "此弧線為直接撰寫 — 無可對照的模板。",
         "driftGone": "來源模板已失效。",
         "driftLoading": "正在載入漂移…",
-        "untitledArc": "（未命名弧線）",
-        "truncated": "目前顯示 {{count}} 個中的前 {{shown}} 個 — 請使用目錄或更高級別的方案以尋找更多內容。",
         "driftClean": "無偏差 — 實際弧線與模板相符。",
         "driftSummary": "{{gaps}} 覆蓋缺口 · {{violations}} 順序問題 · {{folded}} 折疊位置",
         "driftThreads": "線索覆蓋率",
@@ -825,7 +823,10 @@
         "driftSuccession": "順序",
         "driftSuccessionOk": "無順序違規。",
         "driftViolation": "{{label}}: {{n}} 順序錯誤",
-        "driftFolded": "折疊（從未綁定）"
+        "driftFolded": "折疊（從未綁定）",
+        "untitledArc": "（未命名弧線）",
+        "truncated": "目前顯示 {{count}} 個中的前 {{shown}} 個 — 請使用目錄或更高級別的方案以尋找更多內容。",
+        "driftPacingOnly": "結構吻合，但節奏出現偏差（最大值 {{drift}}）。"
       },
       "import": {
         "privacy": "原始文本僅供您個人私密使用，絕不外流。只有衍生出的抽象結構可以發佈 — 且發佈時會移除原始引用。",

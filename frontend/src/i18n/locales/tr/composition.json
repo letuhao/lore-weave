@@ -813,8 +813,6 @@
         "driftNoProvenance": "Bu ark doğrudan yazıldı — sapma yapılacak bir şablon yok.",
         "driftGone": "Kaynak şablon artık mevcut değil.",
         "driftLoading": "Sürüklenme yükleniyor…",
-        "untitledArc": "(başlıksız ark)",
-        "truncated": "Toplam {{count}} öğeden ilk {{shown}} tanesi gösteriliyor — daha fazlasını bulmak için Katalog'u veya daha dar bir kademeyi kullanın.",
         "driftClean": "Sapma yok — gerçekleşen ark şablonla eşleşiyor.",
         "driftSummary": "{{gaps}} kapsama boşluğu · {{violations}} sıralama sorunu · {{folded}} katlanmış yerleşim",
         "driftThreads": "İplik kapsamı",
@@ -825,7 +823,10 @@
         "driftSuccession": "Sıralama",
         "driftSuccessionOk": "Sıralama ihlali yok.",
         "driftViolation": "{{label}}: {{n}} sıralama hatası",
-        "driftFolded": "Katlanmış (hiç bağlanmamış)"
+        "driftFolded": "Katlanmış (hiç bağlanmamış)",
+        "untitledArc": "(başlıksız ark)",
+        "truncated": "Toplam {{count}} öğeden ilk {{shown}} tanesi gösteriliyor — daha fazlasını bulmak için Katalog'u veya daha dar bir kademeyi kullanın.",
+        "driftPacingOnly": "Yapı eşleşiyor ancak tempo sapma gösterdi (maks. {{drift}})."
       },
       "import": {
         "privacy": "Ham metin size özel kalır ve asla paylaşılmaz. Sadece türetilen soyut yapı yayınlanabilir — yayınlama işlemi kaynak referansını kaldırır.",

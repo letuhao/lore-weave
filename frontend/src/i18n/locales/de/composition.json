@@ -813,8 +813,6 @@
         "driftNoProvenance": "Dieser Arc wurde direkt erstellt – es gibt kein Template, von dem abgewichen werden kann.",
         "driftGone": "Das Quell-Template ist nicht mehr verfügbar.",
         "driftLoading": "Drift wird geladen…",
-        "untitledArc": "(unbenannter Arc)",
-        "truncated": "Die ersten {{shown}} von {{count}} werden angezeigt – nutze den Katalog oder eine präzisere Auswahl, um mehr zu finden.",
         "driftClean": "Keine Abweichung — der realisierte Bogen entspricht seiner Vorlage.",
         "driftSummary": "{{gaps}} Abdeckungslücke(n) · {{violations}} Ordnungsfehler · {{folded}} Faltung(en)",
         "driftThreads": "Fadenabdeckung",
@@ -825,7 +823,10 @@
         "driftSuccession": "Reihenfolge",
         "driftSuccessionOk": "Keine Ordnungsverstöße.",
         "driftViolation": "{{label}}: {{n}} außerhalb der Reihenfolge",
-        "driftFolded": "Gefaltet (nie gebunden)"
+        "driftFolded": "Gefaltet (nie gebunden)",
+        "untitledArc": "(unbenannter Arc)",
+        "truncated": "Die ersten {{shown}} von {{count}} werden angezeigt – nutze den Katalog oder eine präzisere Auswahl, um mehr zu finden.",
+        "driftPacingOnly": "Struktur stimmt, aber das Tempo hat abgewichen (max. {{drift}})."
       },
       "import": {
         "privacy": "Der Rohtext bleibt privat und wird niemals geteilt. Nur die abgeleitete abstrakte Struktur kann veröffentlicht werden – und die Veröffentlichung entfernt den Quellenbezug.",

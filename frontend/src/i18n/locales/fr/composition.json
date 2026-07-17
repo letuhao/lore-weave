@@ -813,8 +813,6 @@
         "driftNoProvenance": "Cet arc a été écrit directement — il n'y a pas de modèle de référence.",
         "driftGone": "Le modèle source n'est plus disponible.",
         "driftLoading": "Chargement de la dérive…",
-        "untitledArc": "(arc sans titre)",
-        "truncated": "Affichage des {{shown}} premiers sur {{count}} — utilisez le Catalogue ou un forfait supérieur pour en trouver davantage.",
         "driftClean": "Aucun écart — l'arc réalisé correspond à son modèle.",
         "driftSummary": "Lacune(s) de couverture {{gaps}} · Problème(s) d'ordre {{violations}} · Placement(s) replié(s) {{folded}}",
         "driftThreads": "Couverture des fils",
@@ -825,7 +823,10 @@
         "driftSuccession": "Ordre",
         "driftSuccessionOk": "Aucune violation d'ordre.",
         "driftViolation": "{{label}} : {{n}} hors séquence",
-        "driftFolded": "Replié (jamais lié)"
+        "driftFolded": "Replié (jamais lié)",
+        "untitledArc": "(arc sans titre)",
+        "truncated": "Affichage des {{shown}} premiers sur {{count}} — utilisez le Catalogue ou un forfait supérieur pour en trouver davantage.",
+        "driftPacingOnly": "La structure correspond, mais le rythme a dérivé (max {{drift}})."
       },
       "import": {
         "privacy": "Le texte brut vous reste privé et n'est jamais partagé. Seule la structure abstraite dérivée peut être publiée — et la publication supprime la référence source.",

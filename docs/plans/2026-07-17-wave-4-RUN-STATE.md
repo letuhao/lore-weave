@@ -29,7 +29,9 @@ smoke (drive the real app as a user) for each:
 - [x] A4 tests: REWROTE the fictional `thread_coverage` fixture → real `thread_progress` shape (E1); `ArcTemplateDriftView.test.tsx` (clean verdict, derived summary, null-code→#ord, pacing-NC, empty threads). **EVIDENCE: 14 passed** (5 view + panel suite).
 - [x] A5 i18n +11 keys × 17 locales via `i18n_translate.py` (0 failed); tsc clean (arc-drift files); **EVIDENCE: 898 passed** (arcTemplates + motif + studio panels).
 - [x] A6 Playwright E2E spec `studio-arc-drift.spec.ts` (parses — 1 test listed) + **blackbox Playwright-MCP smoke on :5199** (seeded book+work+template+arc-stamped via the real gateway; opened arc-templates via Ctrl+Shift+P palette → selected template → clicked the drift arc). **EVIDENCE:** `arc-drift-view` rendered live, `arc-drift-report` (raw `<pre>`) GONE, real EN i18n ("No drift — the realized arc matches its template… Not comparable yet… No ordering violations"), 0 console errors. The direct drift route returned `{thread_progress:[],pacing:{comparable:false},…}` — the real ArcConformance shape (confirms the type reconcile end-to-end).
-- [ ] A7 /review-impl + commit
+- [x] A7 /review-impl: pure FE presentational change — no ENFORCED/LOCKED standard touched (no tool schema, no provider/model/table, reads an existing VIEW-gated route). Found + fixed ONE real gap: a **pacing-ONLY drift** (structure clean, curve moved) made `clean=false` yet the summary read "0·0·0" — added a dedicated `driftPacingOnly` line + test. **EVIDENCE: 6 view tests** green; i18n +1 key × 17 locales.
+
+**A · arc-template-drift-view — DONE ✅** (commits f93d77616, 24db0a196, + review fix). Structured drift view live-proven, E2E + blackbox MCP done, /review-impl clean.
 
 ### B · motif graph-canvas (XL, BE-first)
 - [ ] B1 BE: `motif_graph_layout` migration + `MotifGraphLayoutRepo` (get + batch merge + OCC) + tests

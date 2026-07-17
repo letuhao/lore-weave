@@ -815,6 +815,7 @@
         "driftLoading": "Loading drift…",
         "driftClean": "No drift — the realized arc matches its template.",
         "driftSummary": "{{gaps}} coverage gap(s) · {{violations}} ordering issue(s) · {{folded}} folded placement(s)",
+        "driftPacingOnly": "Structure matches, but the pacing drifted (max {{drift}}).",
         "driftThreads": "Thread coverage",
         "driftNoThreads": "The template has no threads to compare.",
         "driftPacing": "Pacing",

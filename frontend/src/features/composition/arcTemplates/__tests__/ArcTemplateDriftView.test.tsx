@@ -46,6 +46,17 @@ describe('ArcTemplateDriftView', () => {
     expect(screen.getByTestId('arc-drift-folded')).toBeInTheDocument();
   });
 
+  it('a pacing-ONLY drift (no structural gaps) reads as pacing drift, never "0·0·0"', () => {
+    render(<ArcTemplateDriftView report={report({
+      // structure clean (covered==planned, no violations, nothing folded) but the curve moved
+      pacing: { comparable: true, planned: [10, 90], realized: [{ chapter_index: 1, avg_tension: 40, scenes: 1 }], max_drift: 7 },
+    })} t={t} />);
+    expect(screen.queryByTestId('arc-drift-clean')).not.toBeInTheDocument();
+    const s = screen.getByTestId('arc-drift-summary').textContent!;
+    expect(s).toMatch(/pacing drifted/);
+    expect(s).not.toMatch(/0 coverage/);
+  });
+
   it('renders a null motif_code by its ord, never crashing or printing "null"', () => {
     render(<ArcTemplateDriftView report={report({
       thread_progress: [{ thread: 't1', label: 'Revenge', planned: 2, covered: 1, missing: [{ motif_code: null, ord: 4 }] }],

@@ -813,8 +813,6 @@
         "driftNoProvenance": "このアークは直接作成されました — 比較対象となるテンプレートはありません。",
         "driftGone": "ソーステンプレートが利用できなくなっています。",
         "driftLoading": "ドリフトを読み込み中…",
-        "untitledArc": "（無題のアーク）",
-        "truncated": "全 {{count}} 件のうち最初の {{shown}} 件を表示しています — もっと探すにはカタログまたは上位プランをご利用ください。",
         "driftClean": "ドリフトなし — 実績値はテンプレートと一致しています。",
         "driftSummary": "{{gaps}} のカバー範囲の乖離 · {{violations}} の順序の問題 · {{folded}} の折り返し配置",
         "driftThreads": "スレッドのカバー範囲",
@@ -825,7 +823,10 @@
         "driftSuccession": "順序",
         "driftSuccessionOk": "順序の違反はありません。",
         "driftViolation": "{{label}}: {{n}} 件の順序違い",
-        "driftFolded": "折り返し（未結合）"
+        "driftFolded": "折り返し（未結合）",
+        "untitledArc": "（無題のアーク）",
+        "truncated": "全 {{count}} 件のうち最初の {{shown}} 件を表示しています — もっと探すにはカタログまたは上位プランをご利用ください。",
+        "driftPacingOnly": "構成は一致していますが、ペースにズレが生じました（最大 {{drift}}）。"
       },
       "import": {
         "privacy": "元のテキストはあなただけのプライベートなものであり、共有されることはありません。公開できるのは、そこから生成された抽象的な構造のみです。また、公開時にソースへの参照は削除されます。",
