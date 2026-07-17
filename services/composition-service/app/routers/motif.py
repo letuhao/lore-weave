@@ -42,7 +42,9 @@ from app.config import settings
 from app.db.models import (
     Motif, MotifCreateArgs, MotifLinkKind, MotifPatchArgs, _ForbidExtra, _Key,
 )
+from app.db.pool import get_pool
 from app.db.repositories import VersionMismatchError
+from app.db.repositories.motif_graph_layout import MotifGraphLayoutRepo
 from app.db.repositories.motif_repo import MotifRepo
 from app.deps import get_grant_client_dep, get_motif_repo
 from app.grant_client import GrantClient, GrantLevel
@@ -540,6 +542,87 @@ async def delete_motif_link(
     if not deleted:
         raise HTTPException(status_code=404, detail=_NOT_FOUND)
     return {"deleted": True, "link_id": str(link_id)}
+
+
+# ── Wave-4 (D-MOTIF-GRAPH-CANVAS): the book-wide motif graph canvas + per-viewer layout ──
+_MOTIF_GRAPH_NODE_CAP = 300  # bound the node load; a book past this truncates LOUDLY (no silent cap)
+
+
+class _LayoutMove(_ForbidExtra):
+    motif_id: str
+    x: float
+    y: float
+
+
+class _LayoutPatchBody(_ForbidExtra):
+    moves: list[_LayoutMove] = Field(default_factory=list)
+    if_version: int = 0
+
+
+@router.get("/books/{book_id}/motif-graph")
+async def get_motif_graph(
+    book_id: UUID,
+    user_id: UUID = Depends(get_current_user),
+    grant: GrantClient = Depends(get_grant_client_dep),
+) -> dict[str, Any]:
+    """The book-wide motif graph for the canvas: the caller's own + book-shared motif NODES,
+    the motif_link EDGES among them, and the caller's OWN persisted layout (positions+version).
+    VIEW-gated on the book. Bounded by the node cap — a larger book reports `truncated` so the
+    FE can say so (no silent tail-hiding)."""
+    await _gate_book(grant, book_id, user_id, GrantLevel.VIEW)
+    repo = MotifGraphLayoutRepo(get_pool())
+    nodes = await repo.nodes_for_book(user_id, book_id, _MOTIF_GRAPH_NODE_CAP + 1)
+    truncated = len(nodes) > _MOTIF_GRAPH_NODE_CAP
+    nodes = nodes[:_MOTIF_GRAPH_NODE_CAP]
+    node_ids = [n["id"] for n in nodes]
+    edges = await repo.edges_among(node_ids)
+    positions, version = await repo.get(user_id, book_id)
+    return {
+        "nodes": [{
+            "id": str(n["id"]), "code": n["code"], "name": n["name"], "kind": n["kind"],
+            "mine": n["owner_user_id"] == user_id, "book_shared": n["book_shared"],
+        } for n in nodes],
+        "edges": [{
+            "id": str(e["id"]), "from_motif_id": str(e["from_motif_id"]),
+            "to_motif_id": str(e["to_motif_id"]), "kind": e["kind"], "ord": e["ord"],
+        } for e in edges],
+        "layout": {"positions": positions, "version": version},
+        "truncated": truncated, "node_cap": _MOTIF_GRAPH_NODE_CAP,
+    }
+
+
+@router.patch("/books/{book_id}/motif-graph/layout")
+async def patch_motif_graph_layout(
+    book_id: UUID,
+    body: _LayoutPatchBody,
+    user_id: UUID = Depends(get_current_user),
+    grant: GrantClient = Depends(get_grant_client_dep),
+) -> dict[str, Any]:
+    """Persist the caller's OWN node positions (a per-viewer cosmetic layout). VIEW-gated on the
+    book (a viewer arranges their own view even of a read-only graph). Every `motif_id` must be a
+    node the caller can see in this book (else 404, no oracle). Server-side MERGE + OCC: a stale
+    `if_version` → 412 with the current {positions, version} so the client reseeds + retries."""
+    await _gate_book(grant, book_id, user_id, GrantLevel.VIEW)
+    repo = MotifGraphLayoutRepo(get_pool())
+    moves: dict[str, dict[str, float]] = {}
+    for m in body.moves:
+        try:
+            mid = UUID(m.motif_id)
+        except (ValueError, TypeError):
+            raise HTTPException(status_code=404, detail=_NOT_FOUND)
+        if not await repo.motif_visible_in_book(user_id, book_id, mid):
+            raise HTTPException(status_code=404, detail=_NOT_FOUND)  # no oracle
+        moves[str(mid)] = {"x": m.x, "y": m.y}
+    result = await repo.merge(user_id, book_id, moves, if_version=body.if_version)
+    if result is None:
+        positions, version = await repo.get(user_id, book_id)  # OCC — reseed the client
+        raise HTTPException(status_code=412, detail={
+            "code": "MOTIF_GRAPH_LAYOUT_STALE",
+            "message": "the layout changed on another device; reseed and retry",
+            "current": {"positions": positions, "version": version},
+        })
+    positions, version = result
+    return {"positions": positions, "version": version}
 
 
 def _jsonify(value: Any) -> Any:

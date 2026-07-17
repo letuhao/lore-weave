@@ -928,6 +928,22 @@ BEGIN
   END IF;
 END $$;
 
+-- ── motif_graph_layout (Wave-4 D-MOTIF-GRAPH-CANVAS): PER-VIEWER node positions for a book's
+-- motif graph canvas. A cosmetic, REGENERABLE cache — each user arranges THEIR OWN view (scope
+-- key owner_user_id + book_id), so it never lives on the shared motif/motif_link rows (one
+-- collaborator's drag must not move everyone's graph). Drop the row → the canvas falls back to
+-- auto-layout. `version` gives optimistic concurrency for the rare multi-device same-user race
+-- (fail-soft: a 412 reseeds + retries, never a hard error on a cosmetic write). An unknown
+-- motif_id in `positions` is ignored on read (regenerable). positions = {"<motif_id>":{"x","y"}}.
+CREATE TABLE IF NOT EXISTS motif_graph_layout (
+  owner_user_id UUID NOT NULL,
+  book_id       UUID NOT NULL,
+  positions     JSONB NOT NULL DEFAULT '{}'::jsonb,
+  version       INT  NOT NULL DEFAULT 1,
+  updated_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+  PRIMARY KEY (owner_user_id, book_id)
+);
+
 -- ── arc_template: multi-thread × motifs over a chapter span (§12.2). SAME 2-tier
 -- tenancy as motif (owner set | NULL=system). layout stores a RESOLVED motif_id
 -- alongside motif_code (R1.4 — so a clone/apply walks ids, not codes). ONE platform

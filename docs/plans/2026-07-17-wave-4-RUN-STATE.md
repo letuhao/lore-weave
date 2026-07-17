@@ -34,8 +34,8 @@ smoke (drive the real app as a user) for each:
 **A · arc-template-drift-view — DONE ✅** (commits f93d77616, 24db0a196, + review fix). Structured drift view live-proven, E2E + blackbox MCP done, /review-impl clean.
 
 ### B · motif graph-canvas (XL, BE-first)
-- [ ] B1 BE: `motif_graph_layout` migration + `MotifGraphLayoutRepo` (get + batch merge + OCC) + tests
-- [ ] B2 BE: `GET /books/{id}/motif-graph` + `PATCH …/layout` (batch, OCC 412, owner-scoped) + route tests
+- [x] B1 BE: `motif_graph_layout` table (migrate.py, applied to dev DB) + `MotifGraphLayoutRepo` (get + batch server-side merge `positions||moves` + OCC via `version`; nodes_for_book + edges_among + motif_visible_in_book). **EVIDENCE: 5 unit tests** (SQL shape, owner-scope, OCC-None). Real merge/OCC behaviour → B7 live smoke.
+- [x] B2 BE: `GET /books/{id}/motif-graph` (nodes+edges+layout, VIEW-gated, node-cap + `truncated`) + `PATCH …/layout` (batch merge, OCC 412 + reseed `current`, foreign-motif 404 no-oracle). **EVIDENCE: 5 route tests** (shape, truncation, merge, 412-reseed, foreign-404).
 - [ ] B3 FE: `MotifGraphCanvas` (reactflow v11: controlled + onNodesChange + threshold + cursor drop) + bespoke layered auto-layout + `posOf` fallback + pending-map debounced persist + 412 reseed + edge create/delete + read-only
 - [ ] B4 FE: `useMotifGraph` hook
 - [ ] B5 register `motif-graph` panel (catalog + enum + contract regen + i18n)
