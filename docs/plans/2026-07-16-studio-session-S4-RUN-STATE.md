@@ -142,12 +142,22 @@ space, each ranked independently, `match_reason.section ∈ {mine,library}` (PO 
   user via `embed(user_id=caller)`), `section='mine'`, real cosine 0.45–0.51 (degraded=False). System/shared
   motifs → `section='library'`, degraded (platform embed model is UNSET in dev → honest degrade, not a fake
   score). Proves private→owner-BYOK, shared→platform, no cross-space cosine — end to end. ✅
-- **DEBT (config, not code):** `motif_embed_model_ref`/`motif_embed_owner_id` are UNSET in the dev deploy → the
-  shared "library" section degrades to genre. A deploy-config gap (set the platform embed credential), NOT a
-  code bug — the code degrades honestly. → **D-MOTIF-PLATFORM-EMBED-CONFIG** (set the platform embed model in
-  deploy so the library section ranks semantically too).
-- **DEBT (minor UX):** the degrade banner text says "library fallbacks" but also shows when it's the MINE
-  section that degraded (caller has no embed model). Wording could be per-section. → **D-MOTIF-DEGRADE-BANNER-WORDING** (LOW).
+- **D-MOTIF-PLATFORM-EMBED-CONFIG — CLEARED (2026-07-17, PO chose "reserved platform account").** Investigation
+  (Explore agent) found a real TRAP: `/internal/embed` REJECTS `model_source='platform_model'` (server.go:3232)
+  yet composition defaulted to it → every motif embed would 400 even once configured. The platform embed model
+  is a **BYOK-as-platform** bge-m3 `user_model` under a RESERVED platform-owner (not the `platform_models` table,
+  which can't embed; and there is NO admin FE for it). Fix: (1) config default source → `user_model` + the
+  `motif_embed.py` fallback (commit `32701d6ab`); (2) provisioned a reserved platform-owner (`00000000-…001`)
+  owning `platform-bge-m3` (`00000000-…0e0001`) by copying the local bge-m3 credential (AES-GCM AAD=nil → a
+  copied ciphertext decrypts under a new owner); (3) `scripts/seed_platform_embed_model.sh` (idempotent, dev
+  reproducible) + `MOTIF_EMBED_*` env on both composition-service + worker (commit `05445221b`). **LIVE-PROVEN:**
+  system motifs went `embedding_model '' → 00000000-…0e0001 (platform bge-m3, dim 1024)`; the "library" section
+  now ranks by REAL cosine (degraded=False) — `cultivation.face_slap` #1 for a "cultivation revenge face-slap"
+  query, platform-embedded (platform pays). PROD: point the env at a real platform account.
+- **D-MOTIF-DEGRADE-BANNER-WORDING — CLEARED (2026-07-17, commit `5c38757ec`).** The single "library fallbacks"
+  banner mislabelled a degraded MINE section. Moved the degrade note INSIDE each section with its true cause
+  ("your motifs" → set up YOUR embed model; "library" → platform embed model not configured). +1 FE test; i18n
+  filled to 17 locales via `scripts/i18n_translate.py` (not hand-rolled).
 
 ### DRIFT  (near-misses, bars nearly lowered, tests nearly skipped)
 - **SPEC-PREMISE-IMPRECISE (D-S4-5, 2026-07-17):** the tenancy re-design spec's opening claim ("every motif
