@@ -630,6 +630,11 @@
       "guideBody": "Un DAG (graphe orienté acyclique) visuel des motifs de ce livre. Les nœuds représentent vos motifs ainsi que les motifs de niveau partagé ; les liens représentent les relations « composé de », « précède » ou « variante de ». Faites glisser un nœud pour organiser le graphe — votre disposition est enregistrée par livre et vous suit sur tous vos appareils (chaque collaborateur possède sa propre organisation). La disposition initiale est calculée automatiquement de gauche à droite selon les chaînes de précédence. Créez et supprimez des liens depuis le détail d'un motif dans la Bibliothèque de motifs.",
       "signedOut": "Connectez-vous pour voir le graphe des motifs.",
       "noBook": "Ouvrez un livre pour voir son graphe de motifs."
+    },
+    "structure-templates": {
+      "title": "Modèles de structure",
+      "desc": "Créez vos propres structures narratives (une liste ordonnée de moments clés nommés) et décomposez votre livre en fonction d'elles — comme les modèles intégrés « Save the Cat » ou « Le voyage du héros »",
+      "guideBody": "Les structures narratives sont des fiches de moments clés ordonnés sur lesquelles vous décomposez les chapitres d'un livre. Ce panneau liste les structures intégrées (Save the Cat, Hero's Journey, Kishōtenketsu, Trois actes, Story Circle, Arc de Web-Novel — en lecture seule) ainsi que les vôtres. Dupliquez un modèle intégré pour obtenir une copie modifiable, puis ajoutez, réorganisez, renommez et supprimez ses moments clés avant de l'enregistrer. Utilisez une structure dans l'outil de Décomposition pour mapper ses moments clés sur vos chapitres. Vos structures personnalisées vous sont propres et sont réutilisables pour chaque livre ; archivez-en une pour la masquer et la restaurer plus tard. Les modèles intégrés restent intacts pour tout le monde — vous modifiez toujours votre propre copie."
     }
   },
   "sceneRail": {
@@ -963,7 +968,7 @@
   },
   "manuscript": {
     "title": "Manuscrit",
-    "newChapter": "Nouveau chapitre",
+    "openPlan": "Planifier ce livre",
     "collapseAll": "Tout réduire",
     "reload": "Recharger",
     "arc": "ARC",
@@ -1365,7 +1370,12 @@
       "extracting": "Extraction en cours…",
       "planCta": "Créer un plan de zéro",
       "extractNote": "L'extraction lit les scènes déjà analysées de vos chapitres et transforme chacune d'elles en un nœud structurel. Le regroupement en arcs est une étape d'IA distincte — demandez-le à l'agent. En attendant, les chapitres extraits se trouvent dans la bande « Non assignés ».",
-      "nothingParsed": "Rien à extraire — ce livre ne contient aucune scène analysée. Analysez ou importez d'abord les chapitres, puis procédez à l'extraction."
+      "nothingParsed": "Rien à extraire — ce livre ne contient aucune scène analysée. Analysez ou importez d'abord les chapitres, puis procédez à l'extraction.",
+      "startArcCta": "Commencer avec votre premier arc",
+      "startingArc": "Création…",
+      "arcPlaceholder": "Nommez votre premier arc…",
+      "untitledArc": "Arc sans titre",
+      "extractNeedsChapters": "Extraction des chapitres nécessaires — ce livre n'en a pas encore."
     },
     "node": {
       "unplannedTray": "Chapitres non planifiés",
@@ -1387,5 +1397,18 @@
       "viewWorldmap": "Carte du monde",
       "viewSoon": "Prévu pour une phase ultérieure"
     }
+  },
+  "structTpl": {
+    "subtitle": "structures narratives pour la décomposition de vos chapitres",
+    "builtin": "Intégré (lecture seule)",
+    "mine": "Les miennes",
+    "mineEmpty": "Aucune pour le moment — dupliquez un modèle intégré pour commencer.",
+    "loading": "Chargement…",
+    "pickHint": "Choisissez une structure pour voir ses moments clés.",
+    "beats": "moments clés",
+    "builtinNote": "Ceci est une structure intégrée. Dupliquez-la pour la personnaliser — vous modifiez votre copie, l'original reste intact pour tout le monde.",
+    "cloneBuiltin": "Dupliquer dans mes structures",
+    "duplicate": "Dupliquer",
+    "cloning": "Duplication…"
   }
 }

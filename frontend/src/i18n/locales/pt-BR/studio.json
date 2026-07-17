@@ -630,6 +630,11 @@
       "guideBody": "Um DAG visual dos motivos deste livro. Os nós são seus motivos mais os motivos de nível compartilhado do livro; as arestas são os links de composto_por / precede / variante_de. Arraste um nó para organizar o gráfico — seu layout é salvo por livro e acompanha você entre dispositivos (cada colaborador tem seu próprio arranjo). O layout inicial é calculado automaticamente da esquerda para a direita ao longo das cadeias de precedência. Crie e exclua arestas a partir dos detalhes de um motivo na Biblioteca de Motivos.",
       "signedOut": "Faça login para ver o gráfico de motivos.",
       "noBook": "Abra um livro para ver seu gráfico de motivos."
+    },
+    "structure-templates": {
+      "title": "Modelos de Estrutura",
+      "desc": "Crie estruturas de história personalizadas (uma lista ordenada de batidas) e decomponha seu livro com base nelas — como o Save the Cat ou a Jornada do Herói integrados",
+      "guideBody": "Estruturas de história são sequências de batidas ordenadas nas quais você decompõe os capítulos de um livro. Este painel lista as estruturas integradas (Save the Cat, Jornada do Herói, Kishōtenketsu, Três Atos, Círculo de História, Arco de Web-Novel — apenas leitura), além das suas próprias. Clone uma estrutura integrada para obter uma cópia editável e, então, adicione, reordene, renomeie e remova suas batidas e salve. Use uma estrutura em Decompor para mapear suas batidas em seus capítulos. Suas estruturas personalizadas são privadas e reutilizáveis em todos os livros; arquive uma para ocultá-la e restaure-a mais tarde. As estruturas integradas permanecem intactas para todos — você sempre edita sua própria cópia."
     }
   },
   "sceneRail": {
@@ -963,7 +968,7 @@
   },
   "manuscript": {
     "title": "Manuscrito",
-    "newChapter": "Novo capítulo",
+    "openPlan": "Planeje este livro",
     "collapseAll": "Recolher tudo",
     "reload": "Recarregar",
     "arc": "ARC",
@@ -1365,7 +1370,12 @@
       "extracting": "Extraindo…",
       "planCta": "Planejar do zero",
       "extractNote": "A extração lê as cenas já processadas de seus capítulos e transforma cada uma em um nó de estrutura. Agrupá-las em arcos é uma etapa separada de IA — peça ao agente para fazer isso. Até lá, os capítulos extraídos ficarão na faixa «Não atribuídos».",
-      "nothingParsed": "Nada para extrair — este livro ainda não possui cenas processadas. Primeiro, processe ou importe os capítulos e, depois, extraia."
+      "nothingParsed": "Nada para extrair — este livro ainda não possui cenas processadas. Primeiro, processe ou importe os capítulos e, depois, extraia.",
+      "startArcCta": "Comece com seu primeiro arco",
+      "startingArc": "Criando...",
+      "arcPlaceholder": "Dê um nome ao seu primeiro arco...",
+      "untitledArc": "Arco sem título",
+      "extractNeedsChapters": "Extraindo capítulos de necessidades — este livro ainda não possui nenhum."
     },
     "node": {
       "unplannedTray": "Capítulos não planejados",
@@ -1387,5 +1397,18 @@
       "viewWorldmap": "Mapa do mundo",
       "viewSoon": "Disponível em uma fase posterior"
     }
+  },
+  "structTpl": {
+    "subtitle": "estruturas de história para decompor capítulos",
+    "builtin": "Integrada (apenas leitura)",
+    "mine": "Minhas",
+    "mineEmpty": "Nenhuma ainda — clone uma integrada para começar.",
+    "loading": "Carregando…",
+    "pickHint": "Escolha uma estrutura para visualizar suas batidas.",
+    "beats": "batidas",
+    "builtinNote": "Esta é uma estrutura integrada. Clone-a para personalizar — você edita sua cópia, e o original permanece intacto para todos.",
+    "cloneBuiltin": "Clonar para minhas estruturas",
+    "duplicate": "Duplicar",
+    "cloning": "Clonando…"
   }
 }

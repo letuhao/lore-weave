@@ -630,6 +630,11 @@
       "guideBody": "Bu kitabın motiflerinin görsel bir DAG (Yönlü Döngüsüz Graf) yapısıdır. Düğümler, sizin motifleriniz ile kitabın ortak düzeydeki motiflerinden oluşur; kenarlar ise 'oluşan' / 'öncesinde gelen' / 'varyantı' bağlantılarıdır. Grafiği düzenlemek için bir düğümü sürükleyin — yerleşim düzeniniz kitap başına kaydedilir ve cihazlar arasında sizinle birlikte gelir (her iş birliği yapan kişinin kendi düzeni vardır). İlk yerleşim, 'öncesinde gelen' zincirleri boyunca soldan sağa otomatik olarak hesaplanır. Motif Kütüphanesi'ndeki bir motifin detaylarından kenarları oluşturun veya silin.",
       "signedOut": "Motif grafiğini görmek için giriş yapın.",
       "noBook": "Motif grafiğini görmek için bir kitap açın."
+    },
+    "structure-templates": {
+      "title": "Yapı Şablonları",
+      "desc": "Yazarın özel hikaye yapılarını (adlandırılmış sıralı bir olay örgüsü listesi) oluşturun ve kitabınızı bu yapılara göre çözümleyin — Save the Cat veya Hero's Journey gibi yerleşik yapılar gibi.",
+      "guideBody": "Hikaye yapıları, bir kitabın bölümlerini karşılaştırarak çözümlediğiniz sıralı olay örgüsü listeleridir. Bu panel, yerleşik yapıları (Save the Cat, Hero's Journey, Kishōtenketsu, Üç Perdelik Yapı, Hikaye Çemberi, Web-Roman Arkı — salt okunur) ve kendi oluşturduğunuz yapıları listeler. Düzenlenebilir bir kopya elde etmek için yerleşik bir yapıyı klonlayın; ardından olay örgüsünü ekleyin, yeniden sıralayın, yeniden adlandırın, kaldırın ve kaydedin. Çözümleme (Decompose) kısmında, olay örgüsünü bölümlerinize eşlemek için bir yapı kullanın. Özel yapılarınız size özeldir ve her kitapta yeniden kullanılabilir; bir yapıyı arşivleyerek gizleyebilir ve daha sonra geri yükleyebilirsiniz. Yerleşik yapılar herkes için bozulmadan kalır — siz her zaman kendi kopyanızı düzenlersiniz."
     }
   },
   "sceneRail": {
@@ -963,7 +968,7 @@
   },
   "manuscript": {
     "title": "Taslak",
-    "newChapter": "Yeni bölüm",
+    "openPlan": "Bu kitabı planla",
     "collapseAll": "Tümünü daralt",
     "reload": "Yenile",
     "arc": "AKIŞ",
@@ -1365,7 +1370,12 @@
       "extracting": "Çıkarılıyor…",
       "planCta": "Sıfırdan plan oluştur",
       "extractNote": "Çıkarma işlemi, bölümlerinizden halihazırda ayrıştırılmış olan sahneleri okur ve her birini bir teknik düğüme dönüştürür. Bunları arklar halinde gruplandırmak ayrı bir yapay zeka adımıdır; bunun için asistana komut verin. O zamana kadar çıkarılan bölümler «Atanmamış» şeridinde duracaktır.",
-      "nothingParsed": "Çıkarılacak bir şey yok — bu kitabın henüz ayrıştırılmış sahnesi bulunmuyor. Önce bölümleri ayrıştırın veya içe aktarın, ardından çıkarın."
+      "nothingParsed": "Çıkarılacak bir şey yok — bu kitabın henüz ayrıştırılmış sahnesi bulunmuyor. Önce bölümleri ayrıştırın veya içe aktarın, ardından çıkarın.",
+      "startArcCta": "İlk arkınla başla",
+      "startingArc": "Oluşturuluyor…",
+      "arcPlaceholder": "İlk arkına bir isim ver…",
+      "untitledArc": "İsimsiz ark",
+      "extractNeedsChapters": "İhtiyaç duyulan bölümler çıkarılıyor — bu kitabın henüz bölümü yok."
     },
     "node": {
       "unplannedTray": "Planlanmamış bölümler",
@@ -1387,5 +1397,18 @@
       "viewWorldmap": "Dünya haritası",
       "viewSoon": "Daha sonraki bir aşamada gelecek"
     }
+  },
+  "structTpl": {
+    "subtitle": "bölümlerinizi çözümlemek için kullanacağınız hikaye yapıları",
+    "builtin": "Yerleşik (salt okunur)",
+    "mine": "Benimkiler",
+    "mineEmpty": "Henüz hiç yok — başlamak için bir yerleşik yapıyı klonlayın.",
+    "loading": "Yükleniyor…",
+    "pickHint": "Olay örgüsünü görüntülemek için bir yapı seçin.",
+    "beats": "olay örgüsü",
+    "builtinNote": "Bu yerleşik bir yapıdır. Özelleştirmek için klonlayın; siz kendi kopyanızı düzenlersiniz, orijinal yapı herkes için bozulmadan kalır.",
+    "cloneBuiltin": "Yapılarım arasına klonla",
+    "duplicate": "Kopyala",
+    "cloning": "Kopyalanıyor…"
   }
 }

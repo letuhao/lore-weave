@@ -630,6 +630,11 @@
       "guideBody": "DAG visual dari motif-motif dalam buku ini. Node adalah motif Anda ditambah motif tier bersama; edge adalah tautan composed_of / precedes / variant_of. Seret node untuk mengatur grafik — tata letak Anda disimpan per-buku dan tersinkronisasi di berbagai perangkat (setiap kolaborator memiliki pengaturan sendiri). Tata letak awal dihitung otomatis dari kiri ke kanan di sepanjang rantai precedes. Buat dan hapus edge dari detail motif di Perpustakaan Motif.",
       "signedOut": "Masuk untuk melihat grafik motif.",
       "noBook": "Buka buku untuk melihat grafik motifnya."
+    },
+    "structure-templates": {
+      "title": "Templat Struktur",
+      "desc": "Buat struktur cerita kustom (daftar urutan beat yang dinamai) dan bedah buku Anda berdasarkan struktur tersebut — seperti fitur bawaan Save the Cat atau Hero's Journey",
+      "guideBody": "Struktur cerita adalah lembar beat berurutan yang digunakan untuk membedah bab-bab buku Anda. Panel ini mencantumkan struktur bawaan (Save the Cat, Hero's Journey, Kishōtenketsu, Three-Act, Story Circle, Web-Novel Arc — hanya baca) serta struktur buatan Anda sendiri. Duplikat struktur bawaan untuk mendapatkan salinan yang dapat diedit, lalu tambahkan, urutkan ulang, ubah nama, hapus beat-nya, dan simpan. Gunakan struktur dalam fitur Decompose untuk memetakan beat ke dalam bab Anda. Struktur kustom Anda bersifat pribadi dan dapat digunakan kembali di setiap buku; arsipkan untuk menyembunyikannya dan pulihkan nanti. Struktur bawaan tetap utuh bagi semua orang — Anda selalu mengedit salinan Anda sendiri."
     }
   },
   "sceneRail": {
@@ -963,7 +968,7 @@
   },
   "manuscript": {
     "title": "Manuskrip",
-    "newChapter": "Bab baru",
+    "openPlan": "Rencanakan buku ini",
     "collapseAll": "Sembunyikan semua",
     "reload": "Muat ulang",
     "arc": "ARC",
@@ -1365,7 +1370,12 @@
       "extracting": "Mengekstrak...",
       "planCta": "Buat rencana dari awal",
       "extractNote": "Ekstraksi membaca adegan yang telah diparsing dari bab Anda dan mengubah setiap adegan menjadi simpul spesifikasi. Mengelompokkannya ke dalam alur adalah langkah AI terpisah — mintalah agen untuk melakukannya. Hingga saat itu, bab yang diekstrak akan berada di baris «Tidak Terpilih».",
-      "nothingParsed": "Tidak ada yang bisa diekstrak — buku ini belum memiliki adegan yang diparsing. Parsing atau impor bab terlebih dahulu, baru kemudian ekstrak."
+      "nothingParsed": "Tidak ada yang bisa diekstrak — buku ini belum memiliki adegan yang diparsing. Parsing atau impor bab terlebih dahulu, baru kemudian ekstrak.",
+      "startArcCta": "Mulai dengan alur pertama Anda",
+      "startingArc": "Sedang membuat...",
+      "arcPlaceholder": "Beri nama alur pertama Anda...",
+      "untitledArc": "Alur tanpa judul",
+      "extractNeedsChapters": "Mengekstrak bab yang dibutuhkan — buku ini belum memilikinya."
     },
     "node": {
       "unplannedTray": "Bab yang tidak terencana",
@@ -1387,5 +1397,18 @@
       "viewWorldmap": "Peta Dunia",
       "viewSoon": "Akan datang di fase berikutnya"
     }
+  },
+  "structTpl": {
+    "subtitle": "struktur cerita untuk membedah bab",
+    "builtin": "Bawaan (hanya baca)",
+    "mine": "Milik Saya",
+    "mineEmpty": "Belum ada — duplikat struktur bawaan untuk memulai.",
+    "loading": "Memuat...",
+    "pickHint": "Pilih struktur untuk melihat beat-nya.",
+    "beats": "beat",
+    "builtinNote": "Ini adalah struktur bawaan. Duplikat untuk menyesuaikan — Anda mengedit salinan Anda, versi aslinya tetap utuh bagi semua orang.",
+    "cloneBuiltin": "Duplikat ke struktur saya",
+    "duplicate": "Duplikat",
+    "cloning": "Mengkloning…"
   }
 }

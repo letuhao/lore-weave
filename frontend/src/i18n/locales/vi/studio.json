@@ -630,6 +630,11 @@
       "guideBody": "Một đồ thị DAG trực quan về các motif của cuốn sách này. Các nút là motif của bạn cộng với các motif cấp chung của sách; các cạnh là các liên kết cấu_thành / đi_trước / biến_thể. Kéo một nút để sắp xếp biểu đồ — bố cục của bạn được lưu theo từng cuốn sách và đồng bộ trên các thiết bị (mỗi cộng tác viên sẽ có cách sắp xếp riêng). Bố cục ban đầu được tự động tính toán từ trái sang phải theo các chuỗi đi trước. Tạo và xóa các liên kết từ chi tiết motif trong Thư viện Motif.",
       "signedOut": "Đăng nhập để xem biểu đồ motif.",
       "noBook": "Mở một cuốn sách để xem biểu đồ motif của nó."
+    },
+    "structure-templates": {
+      "title": "Mẫu Cấu Trúc",
+      "desc": "Tự tạo cấu trúc cốt truyện riêng (danh sách các nhịp truyện có thứ tự được đặt tên) và phân rã cuốn sách của bạn theo chúng — tương tự như các mẫu có sẵn như Save the Cat hay Hành trình Anh hùng",
+      "guideBody": "Cấu trúc cốt truyện là các bảng nhịp truyện có thứ tự mà bạn dùng để phân rã các chương trong sách. Bảng này liệt kê các cấu trúc có sẵn (Save the Cat, Hero's Journey, Kishōtenketsu, Three-Act, Story Circle, Web-Novel Arc — chỉ đọc) cùng với các cấu trúc của riêng bạn. Hãy nhân bản một mẫu có sẵn để có bản sao có thể chỉnh sửa, sau đó thêm, sắp xếp lại, đổi tên, xóa các nhịp truyện và lưu lại. Sử dụng một cấu trúc trong phần Phân rã để ánh xạ các nhịp truyện của nó vào các chương sách của bạn. Các cấu trúc tùy chỉnh của bạn là riêng tư và có thể tái sử dụng cho mọi cuốn sách; hãy lưu trữ để ẩn chúng và khôi phục lại sau. Các mẫu có sẵn sẽ giữ nguyên cho tất cả mọi người — bạn luôn chỉnh sửa trên bản sao của riêng mình."
     }
   },
   "sceneRail": {
@@ -963,7 +968,7 @@
   },
   "manuscript": {
     "title": "Bản thảo",
-    "newChapter": "Chương mới",
+    "openPlan": "Lập kế hoạch cho cuốn sách này",
     "collapseAll": "Thu gọn tất cả",
     "reload": "Tải lại",
     "arc": "HỒI",
@@ -1365,7 +1370,12 @@
       "extracting": "Đang trích xuất…",
       "planCta": "Lập kế hoạch từ đầu",
       "extractNote": "Trích xuất sẽ đọc các cảnh đã được phân tích từ các chương của bạn và chuyển mỗi cảnh thành một nút thông số. Việc nhóm chúng thành các hồi là một bước AI riêng biệt — hãy yêu cầu tác nhân thực hiện việc đó. Cho đến lúc đó, các chương đã trích xuất sẽ nằm trong dải «Chưa phân bổ».",
-      "nothingParsed": "Không có gì để trích xuất — cuốn sách này chưa có cảnh nào được phân tích. Hãy phân tích hoặc nhập các chương trước, sau đó mới trích xuất."
+      "nothingParsed": "Không có gì để trích xuất — cuốn sách này chưa có cảnh nào được phân tích. Hãy phân tích hoặc nhập các chương trước, sau đó mới trích xuất.",
+      "startArcCta": "Bắt đầu với chương hồi đầu tiên",
+      "startingArc": "Đang khởi tạo…",
+      "arcPlaceholder": "Đặt tên cho chương hồi đầu tiên của bạn…",
+      "untitledArc": "Chương hồi chưa đặt tên",
+      "extractNeedsChapters": "Đang trích xuất các chương cần thiết — cuốn sách này hiện chưa có chương nào."
     },
     "node": {
       "unplannedTray": "Các chương chưa có kế hoạch",
@@ -1387,5 +1397,18 @@
       "viewWorldmap": "Bản đồ thế giới",
       "viewSoon": "Sẽ ra mắt trong giai đoạn sau"
     }
+  },
+  "structTpl": {
+    "subtitle": "cấu trúc cốt truyện để phân rã các chương",
+    "builtin": "Có sẵn (chỉ đọc)",
+    "mine": "Của tôi",
+    "mineEmpty": "Chưa có — hãy nhân bản một mẫu có sẵn để bắt đầu.",
+    "loading": "Đang tải…",
+    "pickHint": "Chọn một cấu trúc để xem các nhịp truyện.",
+    "beats": "nhịp truyện",
+    "builtinNote": "Đây là cấu trúc có sẵn. Hãy nhân bản để tùy chỉnh — bạn chỉnh sửa bản sao của mình, bản gốc vẫn giữ nguyên cho mọi người.",
+    "cloneBuiltin": "Nhân bản vào cấu trúc của tôi",
+    "duplicate": "Sao chép",
+    "cloning": "Đang sao chép…"
   }
 }

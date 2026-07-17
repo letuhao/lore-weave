@@ -630,6 +630,11 @@
       "guideBody": "DAG visual bagi motif buku ini. Nod adalah motif anda ditambah dengan motif peringkat dikongsi buku; hubungan adalah pautan terdiri_daripada / mendahului / variasi_daripada. Seret nod untuk menyusun graf — susun atur anda disimpan bagi setiap buku dan diselaraskan merentasi peranti (setiap kolaborator mempunyai susun atur sendiri). Susun atur awal dikira secara automatik dari kiri ke kanan mengikut rantaian mendahului. Cipta dan padam hubungan daripada butiran motif dalam Perpustakaan Motif.",
       "signedOut": "Log masuk untuk melihat graf motif.",
       "noBook": "Buka buku untuk melihat graf motifnya."
+    },
+    "structure-templates": {
+      "title": "Templat Struktur",
+      "desc": "Cipta struktur cerita tersuai (senarai berurutan beat yang dinamakan) dan leraikan buku anda berdasarkan struktur tersebut — seperti Save the Cat atau Hero's Journey yang sedia ada",
+      "guideBody": "Struktur cerita adalah helaian beat berurutan yang digunakan untuk meleraikan bab buku anda. Panel ini menyenaraikan struktur sedia ada (Save the Cat, Hero's Journey, Kishōtenketsu, Three-Act, Story Circle, Web-Novel Arc — mod baca sahaja) serta struktur anda sendiri. Klon struktur sedia ada untuk mendapatkan salinan yang boleh diedit, kemudian tambah, susun semula, namakan semula, buang beat tersebut dan simpan. Gunakan struktur dalam Decompose untuk memetakan beat tersebut ke dalam bab anda. Struktur tersuai anda adalah peribadi dan boleh digunakan semula untuk setiap buku; arkibkan untuk menyembunyikannya dan pulihkan kemudian. Struktur sedia ada kekal utuh untuk semua orang — anda sentiasa mengedit salinan anda sendiri."
     }
   },
   "sceneRail": {
@@ -963,7 +968,7 @@
   },
   "manuscript": {
     "title": "Manuskrip",
-    "newChapter": "Bab baru",
+    "openPlan": "Rancang buku ini",
     "collapseAll": "Kecilkan semua",
     "reload": "Muat semula",
     "arc": "ARKA",
@@ -1365,7 +1370,12 @@
       "extracting": "Sedang mengekstrak…",
       "planCta": "Bina pelan dari awal",
       "extractNote": "Proses mengekstrak akan membaca babak yang telah dianalisis daripada bab anda dan menukarkan setiap satu menjadi nod spesifikasi. Mengumpulkan babak tersebut ke dalam arka adalah langkah AI yang berasingan — minta ejen untuk melakukannya. Sehingga itu, babak yang diekstrak akan berada di jalur «Tidak Diperuntukkan».",
-      "nothingParsed": "Tiada untuk diekstrak — buku ini belum mempunyai babak yang dianalisis. Analisis atau import bab terlebih dahulu, kemudian ekstrak."
+      "nothingParsed": "Tiada untuk diekstrak — buku ini belum mempunyai babak yang dianalisis. Analisis atau import bab terlebih dahulu, kemudian ekstrak.",
+      "startArcCta": "Mulakan dengan arka pertama anda",
+      "startingArc": "Sedang mencipta…",
+      "arcPlaceholder": "Namakan arka pertama anda…",
+      "untitledArc": "Arka tanpa tajuk",
+      "extractNeedsChapters": "Mengekstrak bab keperluan — buku ini belum mempunyai mana-mana bab."
     },
     "node": {
       "unplannedTray": "Bab yang tidak dirancang",
@@ -1387,5 +1397,18 @@
       "viewWorldmap": "Peta Dunia",
       "viewSoon": "Akan datang dalam fasa seterusnya"
     }
+  },
+  "structTpl": {
+    "subtitle": "struktur cerita untuk meleraikan bab",
+    "builtin": "Sedia ada (mod baca sahaja)",
+    "mine": "Milik saya",
+    "mineEmpty": "Belum ada — klon struktur sedia ada untuk bermula.",
+    "loading": "Memuatkan…",
+    "pickHint": "Pilih struktur untuk melihat beatnya.",
+    "beats": "beat",
+    "builtinNote": "Ini adalah struktur sedia ada. Klon untuk menyesuaikan — anda mengedit salinan anda, manakala yang asal kekal utuh untuk semua orang.",
+    "cloneBuiltin": "Klon ke struktur saya",
+    "duplicate": "Duplikasi",
+    "cloning": "Mengklon…"
   }
 }

@@ -630,6 +630,11 @@
       "guideBody": "Un DAG visual de los motivos de este libro. Los nodos son tus motivos más los de nivel compartido del libro; las aristas son los enlaces de compuesto_por / precede_a / variante_de. Arrastra un nodo para organizar el gráfico: tu diseño se guarda por libro y te sigue en todos tus dispositivos (cada colaborador tiene su propia disposición). El diseño inicial se calcula automáticamente de izquierda a derecha a lo largo de las cadenas de precedencia. Crea y elimina aristas desde el detalle de un motivo en la Biblioteca de motivos.",
       "signedOut": "Inicia sesión para ver el gráfico de motivos.",
       "noBook": "Abre un libro para ver su gráfico de motivos."
+    },
+    "structure-templates": {
+      "title": "Plantillas de estructura",
+      "desc": "Crea estructuras de historia personalizadas (una lista ordenada de beats con nombre) y descompón tu libro basándote en ellas, como las integradas «Save the Cat» o «El viaje del héroe»",
+      "guideBody": "Las estructuras de la historia son hojas de beats ordenadas con las que descompones los capítulos de un libro. Este panel enumera las estructuras integradas (Save the Cat, Hero's Journey, Kishōtenketsu, Three-Act, Story Circle, Web-Novel Arc — solo lectura), además de las tuyas. Clona una estructura integrada para obtener una copia editable; luego podrás añadir, reordenar, renombrar y eliminar sus beats y guardarlos. Usa una estructura en Decompose para mapear sus beats en tus capítulos. Tus estructuras personalizadas son privadas y reutilizables en cada libro; puedes archivarlas para ocultarlas y restaurarlas más tarde. Las estructuras integradas permanecen intactas para todos: siempre editas tu propia copia."
     }
   },
   "sceneRail": {
@@ -963,7 +968,7 @@
   },
   "manuscript": {
     "title": "Manuscrito",
-    "newChapter": "Nuevo capítulo",
+    "openPlan": "Planifica este libro",
     "collapseAll": "Contraer todo",
     "reload": "Recargar",
     "arc": "ARC",
@@ -1365,7 +1370,12 @@
       "extracting": "Extrayendo…",
       "planCta": "Crear plan desde cero",
       "extractNote": "La extracción lee las escenas ya analizadas de tus capítulos y convierte cada una en un nodo de la estructura. Agruparlas en arcos es un paso de IA independiente; solicítalo al agente. Hasta entonces, los capítulos extraídos permanecerán en la franja «Sin asignar».",
-      "nothingParsed": "Nada que extraer: este libro aún no tiene escenas analizadas. Primero analiza o importa los capítulos y luego extrae."
+      "nothingParsed": "Nada que extraer: este libro aún no tiene escenas analizadas. Primero analiza o importa los capítulos y luego extrae.",
+      "startArcCta": "Comienza con tu primer arco",
+      "startingArc": "Creando…",
+      "arcPlaceholder": "Pon nombre a tu primer arco…",
+      "untitledArc": "Arco sin título",
+      "extractNeedsChapters": "Extrayendo capítulos necesarios — este libro aún no tiene ninguno."
     },
     "node": {
       "unplannedTray": "Capítulos sin planificar",
@@ -1387,5 +1397,18 @@
       "viewWorldmap": "Mapa del mundo",
       "viewSoon": "Próximamente en una fase posterior"
     }
+  },
+  "structTpl": {
+    "subtitle": "estructuras de historia para descompone capítulos",
+    "builtin": "Integrada (solo lectura)",
+    "mine": "Mías",
+    "mineEmpty": "Aún no tienes ninguna; clona una integrada para empezar.",
+    "loading": "Cargando…",
+    "pickHint": "Selecciona una estructura para ver sus beats.",
+    "beats": "beats",
+    "builtinNote": "Esta es una estructura integrada. Clónala para personalizarla; tú editas tu copia y el original permanece intacto para todos.",
+    "cloneBuiltin": "Clonar en mis estructuras",
+    "duplicate": "Duplicar",
+    "cloning": "Duplicando…"
   }
 }

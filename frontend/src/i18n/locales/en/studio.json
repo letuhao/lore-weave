@@ -630,6 +630,11 @@
       "guideBody": "A visual DAG of this book's motifs. Nodes are your motifs plus the book's shared-tier ones; edges are the composed_of / precedes / variant_of links. Drag a node to arrange the graph — your layout is saved per-book and follows you across devices (each collaborator has their own arrangement). The initial layout is auto-computed left-to-right along the precedes chains. Create and delete edges from a motif's detail in the Motif Library.",
       "signedOut": "Sign in to see the motif graph.",
       "noBook": "Open a book to see its motif graph."
+    },
+    "structure-templates": {
+      "title": "Structure Templates",
+      "desc": "Author custom story structures (a named ordered list of beats) and decompose your book against them — like the built-in Save the Cat or Hero's Journey",
+      "guideBody": "Story structures are ordered beat sheets you decompose a book's chapters against. This panel lists the built-in structures (Save the Cat, Hero's Journey, Kishōtenketsu, Three-Act, Story Circle, Web-Novel Arc — read-only) plus your own. Clone a built-in to get an editable copy, then add, reorder, rename and remove its beats and save. Use a structure in Decompose to map its beats onto your chapters. Your custom structures are private to you and reusable across every book; archive one to hide it and restore it later. Built-ins stay intact for everyone — you always edit your own copy."
     }
   },
   "sceneRail": {
@@ -963,7 +968,7 @@
   },
   "manuscript": {
     "title": "Manuscript",
-    "newChapter": "New chapter",
+    "openPlan": "Plan this book",
     "collapseAll": "Collapse all",
     "reload": "Reload",
     "arc": "ARC",
@@ -1363,9 +1368,14 @@
       "body": "The Plan Hub shows the spec — arcs, chapters, scenes. This book has none yet. It will never be invented from your manuscript: extract it, or write one.",
       "extractCta": "Extract the plan from the manuscript",
       "extracting": "Extracting…",
-      "planCta": "Plan from scratch",
+      "planCta": "Paste a plan you've already written",
       "extractNote": "Extracting reads the scenes already parsed from your chapters and turns each into a spec node. Grouping them into arcs is a separate AI step — ask the agent for it. Until then the extracted chapters sit in the “Unassigned” strip.",
-      "nothingParsed": "Nothing to extract — this book has no parsed scenes yet. Parse or import the chapters first, then extract."
+      "nothingParsed": "Nothing to extract — this book has no parsed scenes yet. Parse or import the chapters first, then extract.",
+      "startArcCta": "Start with your first arc",
+      "startingArc": "Creating…",
+      "arcPlaceholder": "Name your first arc…",
+      "untitledArc": "Untitled arc",
+      "extractNeedsChapters": "Extracting needs chapters — this book has none yet."
     },
     "node": {
       "unplannedTray": "Unplanned chapters",
@@ -1387,5 +1397,18 @@
       "viewWorldmap": "World map",
       "viewSoon": "Coming in a later phase"
     }
+  },
+  "structTpl": {
+    "subtitle": "story structures you decompose chapters against",
+    "builtin": "Built-in (read-only)",
+    "mine": "Mine",
+    "mineEmpty": "None yet — clone a built-in to start.",
+    "loading": "Loading…",
+    "pickHint": "Pick a structure to view its beats.",
+    "beats": "beats",
+    "builtinNote": "This is a built-in structure. Clone it to customise — you edit your copy, the original stays intact for everyone.",
+    "cloneBuiltin": "Clone to my structures",
+    "duplicate": "Duplicate",
+    "cloning": "Cloning…"
   }
 }

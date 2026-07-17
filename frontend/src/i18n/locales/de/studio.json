@@ -630,6 +630,11 @@
       "guideBody": "Ein visueller DAG der Motive dieses Buches. Die Knoten sind deine Motive plus die gemeinsamen Motive des Buches; die Kanten sind die Verknüpfungen „besteht aus“ / „folgt auf“ / „Variante von“. Ziehe einen Knoten, um den Graphen anzuordnen – dein Layout wird pro Buch gespeichert und ist geräteübergreifend verfügbar (jeder Mitwirkende hat sein eigenes Arrangement). Das initiale Layout wird automatisch von links nach rechts entlang der „folgt auf“-Ketten berechnet. Erstelle und lösche Kanten in der Detailansicht eines Motivs in der Motiv-Bibliothek.",
       "signedOut": "Melde dich an, um den Motiv-Graphen zu sehen.",
       "noBook": "Öffne ein Buch, um dessen Motiv-Graphen anzuzeigen."
+    },
+    "structure-templates": {
+      "title": "Strukturvorlagen",
+      "desc": "Erstelle eigene Story-Strukturen (eine benannte, geordnete Liste von Beats) und zerlege dein Buch anhand dieser Strukturen – wie die integrierten Vorlagen „Save the Cat“ oder „Heldenreise“",
+      "guideBody": "Story-Strukturen sind geordnete Beat-Sheets, anhand derer du die Kapitel eines Buches analysierst. Dieses Panel listet die integrierten Strukturen (Save the Cat, Heldenreise, Kishōtenketsu, Drei-Akt-Modell, Story Circle, Web-Novel Arc — schreibgeschützt) sowie deine eigenen auf. Du kannst eine integrierte Vorlage klonen, um eine bearbeitbare Kopie zu erhalten, deren Beats du dann hinzufügen, umordnen, umbenennen oder löschen und speichern kannst. Nutze eine Struktur in der „Zerlegung“, um ihre Beats auf deine Kapitel zu übertragen. Deine benutzerdefinierten Strukturen sind privat und können für jedes Buch wiederverwendet werden; du kannst sie archivieren, um sie zu verbergen, und später wiederherstellen. Die integrierten Vorlagen bleiben für alle unverändert – du bearbeitest immer nur deine eigene Kopie."
     }
   },
   "sceneRail": {
@@ -963,7 +968,7 @@
   },
   "manuscript": {
     "title": "Manuskript",
-    "newChapter": "Neues Kapitel",
+    "openPlan": "Dieses Buch planen",
     "collapseAll": "Alle einklappen",
     "reload": "Neu laden",
     "arc": "Handlungsbogen",
@@ -1365,7 +1370,12 @@
       "extracting": "Extrahiere...",
       "planCta": "Plan von Grund auf erstellen",
       "extractNote": "Beim Extrahieren werden die bereits aus deinen Kapiteln analysierten Szenen gelesen und in Spezifikationsknoten umgewandelt. Die Gruppierung in Handlungsbögen ist ein separater KI-Schritt — bitte den Agenten darum. Bis dahin liegen die extrahierten Kapitel im Bereich „Nicht zugewiesen“.",
-      "nothingParsed": "Nichts zu extrahieren — dieses Buch hat noch keine analysierten Szenen. Analysiere oder importiere zuerst die Kapitel, um dann zu extrahieren."
+      "nothingParsed": "Nichts zu extrahieren — dieses Buch hat noch keine analysierten Szenen. Analysiere oder importiere zuerst die Kapitel, um dann zu extrahieren.",
+      "startArcCta": "Beginnen Sie mit Ihrem ersten Handlungsbogen",
+      "startingArc": "Wird erstellt…",
+      "arcPlaceholder": "Nennen Sie Ihren ersten Handlungsbogen…",
+      "untitledArc": "Unbenannter Handlungsbogen",
+      "extractNeedsChapters": "Kapitel werden extrahiert – dieses Buch hat noch keine."
     },
     "node": {
       "unplannedTray": "Nicht geplante Kapitel",
@@ -1387,5 +1397,18 @@
       "viewWorldmap": "Weltkarte",
       "viewSoon": "In einer späteren Phase verfügbar"
     }
+  },
+  "structTpl": {
+    "subtitle": "Story-Strukturen, anhand derer du Kapitel zerlegst",
+    "builtin": "Integriert (schreibgeschützt)",
+    "mine": "Meine",
+    "mineEmpty": "Noch keine vorhanden – klone eine integrierte Vorlage, um zu beginnen.",
+    "loading": "Laden…",
+    "pickHint": "Wähle eine Struktur aus, um ihre Beats anzuzeigen.",
+    "beats": "Beats",
+    "builtinNote": "Dies ist eine integrierte Struktur. Klone sie, um sie anzupassen – du bearbeitest deine Kopie, das Original bleibt für alle unverändert.",
+    "cloneBuiltin": "In meine Strukturen klonen",
+    "duplicate": "Duplizieren",
+    "cloning": "Kopieren…"
   }
 }
