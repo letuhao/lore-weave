@@ -7,8 +7,13 @@ import { useActiveWorkId } from '@/features/composition/hooks/useActiveWork';
 import { resolveActiveWork } from '@/features/composition/workSelect';
 import { appendChildren, flatten, setExpanded, setLoading } from './tree';
 import { ROOT_KEY, emptyTree, type ManuscriptNode, type TreeState } from './types';
+import { partsApi, type Part } from './partsApi';
+import { buildPartsTree } from './partsTree';
 
 const PAGE = 100;
+// Cap for the parts grouping's whole-book chapter load (a structured book with acts is
+// authored, typically hundreds of chapters). Beyond this we keep the flat paged tree.
+const PARTS_MAX_PAGES = 60; // 60 × 100 = 6000 chapters
 
 /** book-service chapter → a flat chapter node (no children). */
 function chapterToNode(c: Chapter): ManuscriptNode {
@@ -48,6 +53,12 @@ export type ManuscriptSource = 'pending' | 'chapters' | 'outline';
  * The manuscript tree data source. Resolves the book's composition Work: a Work → the outline
  * (arc→chapter→scene, lazy-paged via listOutlineChildren); no Work → a flat chapter list
  * (cursor-paged via listChaptersPage). Both stream into one TreeState; the view is agnostic.
+ *
+ * S-02 — when a no-Work book has manuscript PARTS (acts/volumes), the flat list is replaced by a
+ * two-level tree: act group headers with their chapters nested + an "Unassigned" bucket. Because
+ * grouping needs every chapter's part_id up front, the whole (bounded) chapter set is loaded and
+ * grouped in one shot (no per-part cursor). A book with NO parts keeps the flat paged behavior
+ * exactly. The hook also exposes the part mutators (create/rename/trash act, move chapter).
  */
 export function useManuscriptTree(bookId: string, token: string | null) {
   const work = useWorkResolution(bookId, token);
@@ -63,6 +74,7 @@ export function useManuscriptTree(bookId: string, token: string | null) {
   const [tree, setTree] = useState<TreeState>(emptyTree);
   const [total, setTotal] = useState<number | null>(null);
   const [outlineCounts, setOutlineCounts] = useState<{ arcs: number; chapters: number; scenes: number } | null>(null);
+  const [parts, setParts] = useState<Part[]>([]); // S-02: active acts (empty ⇒ flat mode)
   const [error, setError] = useState<string | null>(null);
   const treeRef = useRef(tree);
   treeRef.current = tree;
@@ -71,6 +83,8 @@ export function useManuscriptTree(bookId: string, token: string | null) {
   // Generation token: bumped on every book/source reset. A load that resolves AFTER a reset
   // is stale — it must not append the old book's rows into the new tree (review-impl M1).
   const genRef = useRef(0);
+
+  const partsMode = source === 'chapters' && parts.length > 0;
 
   const loadPage = useCallback(async (parentKey: string, parentNodeId: string | null, cursor: string | null) => {
     if (!token || inflight.current.has(parentKey)) return;
@@ -103,23 +117,71 @@ export function useManuscriptTree(bookId: string, token: string | null) {
     }
   }, [token, bookId, source, projectId]);
 
-  // Reset to an empty tree + reload the root page. Shared by the mount/source-change
-  // effect and the manual Reload action; bumps the generation so any in-flight load from
-  // the prior tree is dropped (review-impl M1 stale-guard).
-  const resetAndLoadRoot = useCallback(() => {
+  // S-02 — load EVERY chapter (bounded) then build the grouped act tree. Used when the book has
+  // parts. gen guards against a stale book/source switch mid-load.
+  const loadGroupedTree = useCallback(async (activeParts: Part[], gen: number) => {
+    if (!token) return;
+    const all: Chapter[] = [];
+    let cursor: string | null = null;
+    let pages = 0;
+    try {
+      do {
+        const page = await booksApi.listChaptersPage(token, bookId, { cursor, limit: PAGE });
+        if (genRef.current !== gen) return;
+        all.push(...page.items);
+        if (page.total != null) setTotal(page.total);
+        cursor = page.next_cursor ?? null;
+        pages += 1;
+      } while (cursor && pages < PARTS_MAX_PAGES);
+    } catch (e) {
+      if (genRef.current === gen) setError((e as Error).message);
+      return;
+    }
+    if (genRef.current !== gen) return;
+    setTree(buildPartsTree(activeParts, all));
+  }, [token, bookId]);
+
+  // Reset to an empty tree + (re)load. For the chapters source, first resolve the book's parts:
+  // parts present → the grouped act tree; none → the flat cursor-paged list (unchanged). Bumps the
+  // generation so any in-flight load from the prior tree is dropped (review-impl M1 stale-guard).
+  const resetAndLoad = useCallback(async () => {
     genRef.current += 1;
+    const gen = genRef.current;
     inflight.current.clear();
     setTree(emptyTree());
     setTotal(null);
     setError(null);
-    void loadPage(ROOT_KEY, null, null);
-  }, [loadPage]);
+    setParts([]);
 
-  // Load the root page once the source resolves; reset on book/source change.
+    if (source === 'outline') {
+      void loadPage(ROOT_KEY, null, null);
+      return;
+    }
+    if (source !== 'chapters') return;
+
+    let active: Part[] = [];
+    if (token) {
+      try {
+        const res = await partsApi.list(token, bookId);
+        active = (res.items ?? []).filter((p) => p.lifecycle_state === 'active');
+      } catch {
+        active = []; // a book-service without S-02, or a transient error → flat mode
+      }
+    }
+    if (genRef.current !== gen) return; // a reset landed while resolving parts
+    if (active.length > 0) {
+      setParts(active);
+      await loadGroupedTree(active, gen);
+    } else {
+      void loadPage(ROOT_KEY, null, null); // flat
+    }
+  }, [source, bookId, token, loadPage, loadGroupedTree]);
+
+  // Load once the source resolves; reset on book/source change.
   useEffect(() => {
     if (source === 'pending') return;
-    resetAndLoadRoot();
-  }, [source, projectId, bookId, resetAndLoadRoot]);
+    void resetAndLoad();
+  }, [source, projectId, bookId, resetAndLoad]);
 
   // Whole-book totals for the footer. Outline → one GROUP BY (arcs/chapters/scenes); the flat
   // chapters source has no scenes/arcs, so its chapter total comes from the page-1 `total`.
@@ -138,8 +200,8 @@ export function useManuscriptTree(bookId: string, token: string | null) {
   const counts = useMemo(
     () => (source === 'outline'
       ? { arcs: outlineCounts?.arcs ?? null, chapters: outlineCounts?.chapters ?? null, scenes: outlineCounts?.scenes ?? null }
-      : { arcs: null, chapters: total, scenes: null }),
-    [source, outlineCounts, total],
+      : { arcs: partsMode ? parts.length : null, chapters: total, scenes: null }),
+    [source, outlineCounts, total, partsMode, parts.length],
   );
 
   // Collapse every expanded node back to the root level (VS Code "Collapse All"). Loaded
@@ -152,7 +214,8 @@ export function useManuscriptTree(bookId: string, token: string | null) {
     const t = treeRef.current;
     const willExpand = !t.expanded[nodeId];
     setTree((s) => setExpanded(s, nodeId, willExpand));
-    // Lazy-load children the first time a node is expanded.
+    // Lazy-load children the first time a node is expanded (outline only — the parts tree and the
+    // flat list are already fully loaded, so childrenOf already has the node's children).
     if (willExpand && !(nodeId in t.childrenOf)) {
       void loadPage(nodeId, nodeId, null);
     }
@@ -163,7 +226,38 @@ export function useManuscriptTree(bookId: string, token: string | null) {
     if (typeof cursor === 'string') void loadPage(parentKey, parentNodeId, cursor);
   }, [loadPage]);
 
+  // ── S-02 part mutators — call book-service, then rebuild the tree ─────────────
+  // Each returns the api promise so the caller can await + surface an error; every one
+  // reloads so a create/rename/trash/move is reflected immediately (server is the SoT).
+  const createAct = useCallback(async (title: string) => {
+    if (!token) return;
+    await partsApi.create(token, bookId, title);
+    await resetAndLoad();
+  }, [token, bookId, resetAndLoad]);
+
+  const renameAct = useCallback(async (partId: string, title: string) => {
+    if (!token) return;
+    await partsApi.rename(token, bookId, partId, title);
+    await resetAndLoad();
+  }, [token, bookId, resetAndLoad]);
+
+  const trashAct = useCallback(async (partId: string) => {
+    if (!token) return;
+    await partsApi.archive(token, bookId, partId);
+    await resetAndLoad();
+  }, [token, bookId, resetAndLoad]);
+
+  const moveChapterToAct = useCallback(async (chapterId: string, partId: string | null) => {
+    if (!token) return;
+    await partsApi.setChapterPart(token, bookId, chapterId, partId);
+    await resetAndLoad();
+  }, [token, bookId, resetAndLoad]);
+
   const rows = useMemo(() => flatten(tree), [tree]);
 
-  return { source, rows, total, counts, error, toggleExpand, loadMore, collapseAll, reload: resetAndLoadRoot };
+  return {
+    source, rows, total, counts, error, partsMode,
+    toggleExpand, loadMore, collapseAll, reload: resetAndLoad,
+    createAct, renameAct, trashAct, moveChapterToAct,
+  };
 }

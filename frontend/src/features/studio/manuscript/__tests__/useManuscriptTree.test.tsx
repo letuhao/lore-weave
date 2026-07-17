@@ -13,6 +13,14 @@ vi.mock('@/features/composition/api', () => ({ compositionApi: {
   listOutlineChildren: (...a: unknown[]) => listOutlineChildren(...a),
   outlineStats: (...a: unknown[]) => outlineStats(...a),
 } }));
+// S-02: default parts = none, so these tests exercise the FLAT chapters path (the grouped-tree
+// path is covered by partsTree.test.ts + a dedicated case below). Keep groupChaptersByParts real
+// (buildPartsTree depends on it). Individual tests can override listParts.
+const listParts = vi.fn(() => Promise.resolve({ items: [] }));
+vi.mock('../partsApi', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../partsApi')>();
+  return { ...actual, partsApi: { ...actual.partsApi, list: (...a: unknown[]) => listParts(...a) } };
+});
 
 import { useManuscriptTree } from '../useManuscriptTree';
 import type { ManuscriptRow } from '../types';
@@ -22,6 +30,8 @@ const isNode = (r: ManuscriptRow, id: string) => r.type === 'node' && r.node.id 
 beforeEach(() => {
   listChaptersPage.mockReset();
   listOutlineChildren.mockReset();
+  listParts.mockReset();
+  listParts.mockResolvedValue({ items: [] }); // default: flat mode
   work.value = { data: { status: 'none' }, isLoading: false };
 });
 
@@ -84,6 +94,26 @@ describe('useManuscriptTree', () => {
     });
     expect(result.current.rows.some((r) => isNode(r, 'c-b1'))).toBe(false); // no leak
     expect(result.current.rows.some((r) => isNode(r, 'c-b2'))).toBe(true);
+  });
+
+  it('S-02: a book WITH parts renders the grouped act tree (part header + nested chapter)', async () => {
+    listParts.mockResolvedValue({
+      items: [{ part_id: 'p1', book_id: 'b1', title: 'Act I', path: 'act-i', sort_order: 1, lifecycle_state: 'active' }],
+    });
+    listChaptersPage.mockResolvedValue({
+      items: [{ chapter_id: 'c1', sort_order: 1, title: 'Ch', original_filename: 'a.txt', part_id: 'p1' }],
+      next_cursor: null, total: 1,
+    });
+    const { result } = renderHook(() => useManuscriptTree('b1', 't'));
+    await waitFor(() => expect(result.current.partsMode).toBe(true));
+    await waitFor(() => expect(result.current.rows.some((r) => isNode(r, 'p1'))).toBe(true));
+    const head = result.current.rows.find((r) => isNode(r, 'p1'));
+    expect(head && head.type === 'node' && head.node.kind).toBe('part');
+    // the act is expanded by default → its chapter is visible, nested one level deeper
+    const chap = result.current.rows.find((r) => isNode(r, 'c1'));
+    expect(chap && chap.type === 'node' && chap.depth).toBe(1);
+    // no paging affordance in grouped mode (whole book loaded)
+    expect(result.current.rows.some((r) => r.type === 'more')).toBe(false);
   });
 
   it('filters structural `beat` nodes out of the outline', async () => {
