@@ -268,6 +268,65 @@ func TestParts_MoveChapter_DB(t *testing.T) {
 	}
 }
 
+// Moving a chapter into a TRASHED part is refused (400) — exercises the locked
+// active-part filter in moveChapterToPart (the TOCTOU-safe path). No move lands.
+func TestParts_MoveIntoTrashedPartRefused_DB(t *testing.T) {
+	s, pool := dbTestServer(t)
+	ctx := context.Background()
+	owner := uuid.New()
+	bookID := seedPartsBook(t, ctx, pool, owner)
+	s.resolveBook = ownerResolver(owner)
+	base := "/v1/books/" + bookID.String() + "/parts"
+
+	rr := partsHTTP(t, s, owner, http.MethodPost, base, `{"title":"Act I"}`)
+	partID := decodeMap(t, rr.Body.Bytes())["part_id"].(string)
+	ch := seedPartsChapter(t, ctx, pool, bookID, 1, nil)
+	// trash the part
+	if rr = partsHTTP(t, s, owner, http.MethodDelete, base+"/"+partID, ""); rr.Code != http.StatusNoContent {
+		t.Fatalf("archive = %d\n%s", rr.Code, rr.Body.String())
+	}
+	// move into the now-trashed part → 400
+	rr = partsHTTP(t, s, owner, http.MethodPatch,
+		"/v1/books/"+bookID.String()+"/chapters/"+ch.String()+"/part", `{"part_id":"`+partID+`"}`)
+	if rr.Code != http.StatusBadRequest {
+		t.Fatalf("move into trashed part = %d, want 400\n%s", rr.Code, rr.Body.String())
+	}
+	var pid *uuid.UUID
+	_ = pool.QueryRow(ctx, `SELECT part_id FROM chapters WHERE id=$1`, ch).Scan(&pid)
+	if pid != nil {
+		t.Fatalf("chapter homed into a trashed part: %v", *pid)
+	}
+}
+
+// §9 — a part reorder must NOT touch the flat reading order (chapters.sort_order).
+// The part LAYER order is independent of the chapter sequence.
+func TestParts_ReorderDoesNotTouchChapterOrder_DB(t *testing.T) {
+	s, pool := dbTestServer(t)
+	ctx := context.Background()
+	owner := uuid.New()
+	bookID := seedPartsBook(t, ctx, pool, owner)
+	s.resolveBook = ownerResolver(owner)
+	base := "/v1/books/" + bookID.String() + "/parts"
+
+	mk := func(title string) string {
+		rr := partsHTTP(t, s, owner, http.MethodPost, base, `{"title":"`+title+`"}`)
+		return decodeMap(t, rr.Body.Bytes())["part_id"].(string)
+	}
+	a, b := mk("A"), mk("B")
+	c1 := seedPartsChapter(t, ctx, pool, bookID, 1, nil)
+	c2 := seedPartsChapter(t, ctx, pool, bookID, 2, nil)
+
+	if rr := partsHTTP(t, s, owner, http.MethodPost, base+"/reorder", `{"ordered_ids":["`+b+`","`+a+`"]}`); rr.Code != http.StatusOK {
+		t.Fatalf("reorder = %d\n%s", rr.Code, rr.Body.String())
+	}
+	var o1, o2 int
+	_ = pool.QueryRow(ctx, `SELECT sort_order FROM chapters WHERE id=$1`, c1).Scan(&o1)
+	_ = pool.QueryRow(ctx, `SELECT sort_order FROM chapters WHERE id=$1`, c2).Scan(&o2)
+	if o1 != 1 || o2 != 2 {
+		t.Fatalf("part reorder changed chapter order: c1=%d c2=%d, want 1,2", o1, o2)
+	}
+}
+
 // Tenancy: a chapter in book A CANNOT be moved into a part that lives in book B,
 // even when the caller owns BOTH books (cross-book move = tenancy breach → 400).
 func TestParts_CrossBookMoveBreach_DB(t *testing.T) {

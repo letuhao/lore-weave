@@ -150,10 +150,9 @@ func (s *Server) toolPartReorder(ctx context.Context, _ *mcp.CallToolRequest, in
 	if _, err := s.mcpRequireGrant(ctx, bookID, userID, GrantEdit); err != nil {
 		return nil, partReorderOut{}, mcpOwnershipError(err)
 	}
-	// Capture the prior order for the undo hint (before the rewrite).
-	prior := s.activePartOrder(ctx, bookID)
-
-	out, err := s.storeReorderParts(ctx, bookID, ids)
+	// The store returns the PRIOR order from the same FOR UPDATE snapshot that did the
+	// rewrite → the undo hint is an exact reverse op (no racy best-effort re-query).
+	prior, out, err := s.storeReorderParts(ctx, bookID, ids)
 	if err != nil {
 		return nil, partReorderOut{}, mcpMapPartErr(err)
 	}
@@ -161,27 +160,12 @@ func (s *Server) toolPartReorder(ctx context.Context, _ *mcp.CallToolRequest, in
 	for i, p := range out {
 		partIDs[i] = p.PartID.String()
 	}
-	res := undoResult("book_part_reorder", map[string]any{"book_id": bookID.String(), "ordered_ids": prior})
+	priorIDs := make([]string, len(prior))
+	for i, id := range prior {
+		priorIDs[i] = id.String()
+	}
+	res := undoResult("book_part_reorder", map[string]any{"book_id": bookID.String(), "ordered_ids": priorIDs})
 	return res, partReorderOut{PartIDs: partIDs}, nil
-}
-
-// activePartOrder returns the book's active part ids in current sort order (for the
-// reorder undo hint). Best-effort — an empty slice on error just yields a weaker hint.
-func (s *Server) activePartOrder(ctx context.Context, bookID uuid.UUID) []string {
-	rows, err := s.pool.Query(ctx,
-		`SELECT id FROM parts WHERE book_id=$1 AND lifecycle_state='active' ORDER BY sort_order, id`, bookID)
-	if err != nil {
-		return []string{}
-	}
-	defer rows.Close()
-	out := []string{}
-	for rows.Next() {
-		var id uuid.UUID
-		if rows.Scan(&id) == nil {
-			out = append(out, id.String())
-		}
-	}
-	return out
 }
 
 // ── book_part_archive ────────────────────────────────────────────────────────

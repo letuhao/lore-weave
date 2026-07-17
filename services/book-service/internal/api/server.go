@@ -1400,7 +1400,12 @@ func (s *Server) listChapters(w http.ResponseWriter, r *http.Request) {
 		var revCount int
 		var publishedRevisionID *uuid.UUID
 		var partID *uuid.UUID // S-02: the act this chapter is homed in (NULL = flat manuscript). The FE navigator groups on it.
-		_ = rows.Scan(&id, &bid, &title, &fn, &lang, &ctype, &size, &order, &draftUpdated, &revCount, &lstate, &trashedAt, &purgeAt, &createdAt, &updatedAt, &wordCount, &editorialStatus, &publishedRevisionID, &partID)
+		// Check the Scan error (was discarded): a NULL into a non-pointer dest errors here, and a
+		// discarded error would append a ZEROED row (the title/part_id bug). Fail loud instead.
+		if err := rows.Scan(&id, &bid, &title, &fn, &lang, &ctype, &size, &order, &draftUpdated, &revCount, &lstate, &trashedAt, &purgeAt, &createdAt, &updatedAt, &wordCount, &editorialStatus, &publishedRevisionID, &partID); err != nil {
+			writeError(w, http.StatusInternalServerError, "CHAPTER_NOT_FOUND", "failed to list chapters")
+			return
+		}
 		items = append(items, map[string]any{
 			"chapter_id":            id,
 			"book_id":               bid,
@@ -1623,7 +1628,12 @@ func (s *Server) listChaptersKeyset(w http.ResponseWriter, r *http.Request) {
 		var revCount int
 		var publishedRevisionID *uuid.UUID
 		var partID *uuid.UUID // S-02: the act this chapter is homed in (NULL = flat). The navigator (useManuscriptTree) groups on it.
-		_ = rows.Scan(&id, &bid, &title, &fn, &lang, &ctype, &size, &order, &draftUpdated, &revCount, &lstate, &trashedAt, &purgeAt, &createdAt, &updatedAt, &wordCount, &editorialStatus, &publishedRevisionID, &partID)
+		// Check the Scan error (was discarded) — a NULL into a non-pointer dest would otherwise
+		// silently append a ZEROED row (the title/part_id bug). Fail loud.
+		if err := rows.Scan(&id, &bid, &title, &fn, &lang, &ctype, &size, &order, &draftUpdated, &revCount, &lstate, &trashedAt, &purgeAt, &createdAt, &updatedAt, &wordCount, &editorialStatus, &publishedRevisionID, &partID); err != nil {
+			writeError(w, http.StatusInternalServerError, "CHAPTER_NOT_FOUND", "failed to list chapters")
+			return
+		}
 		items = append(items, map[string]any{
 			"chapter_id":            id,
 			"book_id":               bid,

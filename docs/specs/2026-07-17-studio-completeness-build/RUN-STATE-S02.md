@@ -63,19 +63,29 @@ Commits: b56725e05 (A) · 4cc462f36 (B) · 190795cb1 (C) · dfbf3392b (review fi
   and zeroed every column after `title` (sort_order, lifecycle_state, part_id). Surfaced when adding
   part_id. Fix = scan `title *string` + `nullableStringPtr` (matches getChapterByID). In-scope
   (navigator surface), root-cause-clear, one-file → fixed now per defer gate.
-- NOTE (not fixed, out of scope): `_ = rows.Scan()` discarding the error is a broader footgun; only
-  `title` is a NULLABLE-into-non-pointer dest today, so the pointer fix closes the actual bug.
-### /review-impl (2026-07-18) — findings
-- **MED [parity] FIXED (commit dfbf3392b):** `toolPartCreate` skipped the book-lifecycle gate that REST
-  `createPart` + sibling create tools enforce → could add an act to a trashed book. Mirrored + tested.
-- **LOW [race] accept+document:** `moveChapterToPart` = 2 reads + 1 write, not one tx → a concurrent
-  part-trash can leave a chapter homed in a now-trashed part. Benign: `groupChaptersByParts` treats a
-  chapter pointing at a trashed/unknown act as Unassigned, so no visible corruption. Low-contention.
-- **LOW [repo-wide] documented:** the `_ = rows.Scan()` discarded-error pattern remains in
-  listChapters/keyset; `title` was the only NULLABLE-into-non-pointer dest today (now fixed via *string),
-  so the actual bug is closed, but the footgun persists for any future nullable column added there.
-- **LOW [robustness] accept:** `activePartOrder` (reorder undo-hint helper) returns [] on query error →
-  a rare error path yields a weak/empty undo hint. Best-effort by design.
+- (2026-07-18) FIXED (was "NOTE not fixed"): the `_ = rows.Scan()` discarded-error footgun in both list
+  functions now checks the error → fails loud. Debt cleared.
+### COMPLETENESS AUDIT + DEBT-CLEAR (2026-07-18) — ALL CLEARED, ZERO OPEN
+Audited every spec §5–§10 requirement against a real test (checklist⇒test-the-effect). Then converted
+every "accept+document" LOW into a real fix — nothing left parked.
+
+**Spec §9 test matrix → all covered:**
+- tenancy (403 on every write; cross-book move 400; list book-scoped) → ViewCanReadNotWrite, CrossBookMoveBreach.
+- archive un-homes-not-cascade + restore doesn't re-home → ArchiveUnhomesChaptersNotCascade.
+- reorder two-phase no collision → CRUD (dense 1..N); **flat chapter order unaffected → NEW ReorderDoesNotTouchChapterOrder**.
+- move in-place/un-home → MoveChapter; **into a trashed part 400 → NEW MoveIntoTrashedPartRefused**.
+- import unbroken → parse.go untouched; the decompose→parts write is covered by reparse_db_test (green in full suite).
+- MCP parity + set_part null → the 5 TestMCPParts_*.
+
+**Debts/LOWs — CLEARED (not documented-and-left):**
+- **MED [parity] FIXED (dfbf3392b):** `toolPartCreate` now enforces the book-lifecycle gate (parity w/ REST + sibling tools).
+- **LOW [race] FIXED:** `moveChapterToPart` is now ONE transaction with `FOR UPDATE` on the target part →
+  a concurrent archive can no longer trash the part between check and write (TOCTOU closed). New test
+  MoveIntoTrashedPartRefused proves the active-filter path.
+- **LOW [robustness] FIXED:** removed the best-effort `activePartOrder`; `storeReorderParts` now RETURNS the
+  prior order from the same FOR UPDATE snapshot → the reorder undo hint is always accurate (TestMCPParts_Reorder asserts it).
+- **LOW [footgun] FIXED:** the discarded `_ = rows.Scan()` in listChapters + listChaptersKeyset now checks
+  the error and 500s → a future nullable-into-non-pointer mistake fails loud, never a silent zeroed row.
 - **Standards: COMPLIANT.** Tenancy — parts are book_id-scoped, gated via authBook/mcpRequireGrant, every
   query book-scoped, cross-book move blocked, `UNIQUE(book_id,sort_order)` is correctly scoped (no
   shared-row/`UNIQUE(code)` smell). Language rule (Go domain) ✓. MCP-first agent-parity ✓ (domain tools,

@@ -169,37 +169,42 @@ RETURNING `+partSelectCols,
 // Two-phase negate/rewrite (like reorderChapters) because UNIQUE(book_id, sort_order)
 // is checked per row; FOR UPDATE serializes racing reorders. Caller pre-checks
 // empty/duplicate ids (pure input validation).
-func (s *Server) storeReorderParts(ctx context.Context, bookID uuid.UUID, orderedIDs []uuid.UUID) ([]partView, error) {
+//
+// Returns `prior` — the active order BEFORE the rewrite, captured from the same
+// FOR UPDATE snapshot — so the MCP undo hint is an ACCURATE reverse op (never a
+// best-effort second query that could race or come back empty).
+func (s *Server) storeReorderParts(ctx context.Context, bookID uuid.UUID, orderedIDs []uuid.UUID) (prior []uuid.UUID, out []partView, err error) {
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	defer tx.Rollback(ctx) //nolint:errcheck // no-op after Commit
 
 	rows, err := tx.Query(ctx,
 		`SELECT id FROM parts WHERE book_id=$1 AND lifecycle_state='active' ORDER BY sort_order, id FOR UPDATE`, bookID)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	existing := make(map[uuid.UUID]bool)
 	for rows.Next() {
 		var id uuid.UUID
 		if err := rows.Scan(&id); err != nil {
 			rows.Close()
-			return nil, err
+			return nil, nil, err
 		}
 		existing[id] = true
+		prior = append(prior, id) // ORDER BY sort_order ⇒ this IS the pre-reorder order
 	}
 	rows.Close()
 	if err := rows.Err(); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	if len(orderedIDs) != len(existing) {
-		return nil, errReorderMismatch
+		return nil, nil, errReorderMismatch
 	}
 	for _, id := range orderedIDs {
 		if !existing[id] {
-			return nil, errReorderMismatch
+			return nil, nil, errReorderMismatch
 		}
 	}
 
@@ -207,10 +212,10 @@ func (s *Server) storeReorderParts(ctx context.Context, bookID uuid.UUID, ordere
 	// disjoint from the target positives, so the per-row unique check never trips).
 	if _, err := tx.Exec(ctx,
 		`UPDATE parts SET sort_order = -sort_order - 1 WHERE book_id=$1 AND lifecycle_state='active'`, bookID); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	// Phase 2: write the dense 1..N sequence (negative → positive; disjoint again).
-	out := make([]partView, 0, len(orderedIDs))
+	out = make([]partView, 0, len(orderedIDs))
 	for i, id := range orderedIDs {
 		row := tx.QueryRow(ctx, `
 UPDATE parts SET sort_order=$3, updated_at=now()
@@ -218,14 +223,14 @@ WHERE id=$1 AND book_id=$2
 RETURNING `+partSelectCols, id, bookID, i+1)
 		p, err := scanPart(row)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 		out = append(out, p)
 	}
 	if err := tx.Commit(ctx); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	return out, nil
+	return prior, out, nil
 }
 
 // storeArchivePart soft-trashes an act and UN-HOMES its chapters (part_id = NULL —
@@ -275,10 +280,21 @@ RETURNING `+partSelectCols, partID, bookID)
 // moveChapterToPart sets chapters.part_id, verifying (a) the chapter is an active
 // chapter of bookID, and (b) when partID != nil, the part is an ACTIVE part of the
 // SAME book (tenancy: no cross-book move). errChapterNotFound / errPartNotInBook.
+//
+// Done in ONE transaction with FOR UPDATE on the target part: without it, a
+// concurrent archivePart could trash the part BETWEEN the check and the write,
+// leaving a chapter homed in a trashed act (TOCTOU). The lock serializes the two —
+// if archive wins, the `lifecycle_state='active'` filter finds no row → errPartNotInBook.
 func (s *Server) moveChapterToPart(ctx context.Context, bookID, chapterID uuid.UUID, partID *uuid.UUID) error {
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx) //nolint:errcheck // no-op after Commit
+
 	var exists bool
-	if err := s.pool.QueryRow(ctx,
-		`SELECT true FROM chapters WHERE id=$1 AND book_id=$2 AND lifecycle_state='active'`,
+	if err := tx.QueryRow(ctx,
+		`SELECT true FROM chapters WHERE id=$1 AND book_id=$2 AND lifecycle_state='active' FOR UPDATE`,
 		chapterID, bookID).Scan(&exists); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return errChapterNotFound
@@ -287,8 +303,8 @@ func (s *Server) moveChapterToPart(ctx context.Context, bookID, chapterID uuid.U
 	}
 	if partID != nil {
 		var ok bool
-		if err := s.pool.QueryRow(ctx,
-			`SELECT true FROM parts WHERE id=$1 AND book_id=$2 AND lifecycle_state='active'`,
+		if err := tx.QueryRow(ctx,
+			`SELECT true FROM parts WHERE id=$1 AND book_id=$2 AND lifecycle_state='active' FOR UPDATE`,
 			*partID, bookID).Scan(&ok); err != nil {
 			if errors.Is(err, pgx.ErrNoRows) {
 				return errPartNotInBook
@@ -296,10 +312,12 @@ func (s *Server) moveChapterToPart(ctx context.Context, bookID, chapterID uuid.U
 			return err
 		}
 	}
-	_, err := s.pool.Exec(ctx,
+	if _, err := tx.Exec(ctx,
 		`UPDATE chapters SET part_id=$3, updated_at=now() WHERE id=$1 AND book_id=$2`,
-		chapterID, bookID, partID)
-	return err
+		chapterID, bookID, partID); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -423,7 +441,7 @@ func (s *Server) reorderParts(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "BOOK_VALIDATION_ERROR", msg)
 		return
 	}
-	out, err := s.storeReorderParts(r.Context(), bookID, in.OrderedIDs)
+	_, out, err := s.storeReorderParts(r.Context(), bookID, in.OrderedIDs)
 	if errors.Is(err, errReorderMismatch) {
 		writeError(w, http.StatusBadRequest, "BOOK_VALIDATION_ERROR", errReorderMismatch.Error())
 		return
