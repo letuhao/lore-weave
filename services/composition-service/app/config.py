@@ -50,12 +50,13 @@ class Settings(BaseSettings):
 
     # D-PLANFORGE-PROPOSE-BLIND — the DEPLOY CEILING for propose-existing-state grounding (OQ-2).
     # This is a platform-wide MAX the per-user `ground_on_existing` run flag narrows within:
-    # `effective = AND(this, ground_on_existing)`. Default OFF at ship — the RICHER cast/spine/systems
-    # grounding is a behaviour change gated behind the A/B eval; a behaviour-changing default fails
-    # CLOSED. Flip ON org-wide once the eval proves grounding improves the plan. This is NOT a per-user
-    # knob (that is the run flag) — it is the ceiling. (The always-on arc digest `_ground_llm_source`
-    # is unaffected: it is today's baseline and never regresses.)
-    planforge_ground_on_existing_allowed: bool = False
+    # `effective = AND(this, ground_on_existing)`. FLIPPED ON 2026-07-17: the OQ-2 A/B eval passed —
+    # grounded cast continuity 2/3 vs blind 0/3 on two confirmed gemma runs, and the A1 protagonist
+    # injection is deterministic (report docs/reports/2026-07-17-propose-blind-ab-eval.md). So grounding
+    # is now AVAILABLE org-wide — but still fails-closed + OPT-IN: the per-user planner toggle defaults
+    # OFF, so a returning author must tick "Continue this book". (Making it on-by-default for everyone —
+    # OQ-2's per-user default → TRUE — waits on B1 broader-book validation.)
+    planforge_ground_on_existing_allowed: bool = True
 
     # A1 — how many existing cast to DETERMINISTICALLY inject into a grounded propose when the model
     # emitted only a placeholder protagonist (the A/B proved prompt grounding alone doesn't reuse

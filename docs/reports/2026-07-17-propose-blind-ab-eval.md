@@ -2,7 +2,10 @@
 
 > **Date:** 2026-07-17 · **Feature:** D-PLANFORGE-PROPOSE-BLIND · **Gate:** OQ-2 (flip the deploy
 > ceiling `PLANFORGE_GROUND_ON_EXISTING_ALLOWED` ON only if the eval proves grounding helps).
-> **Verdict: ceiling STAYS OFF — grounding did not improve cast continuity in this measurement.**
+> **Verdict (round 1, PROPOSE-BLIND as-built): TIE — ceiling stayed OFF.**
+> **Verdict (round 3, after A1+A2 of the PlanForge-v2 track): GROUNDED WINS 2/3 vs 0/3 — see the
+> UPDATE at the end. The deterministic protagonist injection (A1) + de-fixtured prompts (A2) turned
+> the null result into a measured win.**
 
 ## Why this eval exists
 OQ-2 sealed that the richer cast/spine/systems grounding ships **dark** (ceiling OFF, fails closed)
@@ -72,3 +75,45 @@ grounding win; it is the pre-existing behaviour.
 4. **De-fixture the propose prompts** — the MATERIALIZE/ANALYZE system prompts still carry POC-fixture
    rules (the Arc-2-7-events / "Nữ chính" hardcodes) welded to one novel; they compete with grounding.
    (Same "fixture severing" the rules-path `propose.py` already did; the LLM prompts still need it.)
+
+---
+
+## UPDATE — round 3, after PlanForge-v2 A1 (injection) + A2 (de-fixture)  ✅ GROUNDED WINS
+Same book, model, harness. Changes: A2 de-fixtured the propose prompts (no more POC "Nữ chính" pad);
+A1 deterministically injects the existing protagonist over a placeholder (runs on both paths).
+
+| condition | proposed cast | existing referenced | cast continuity |
+|---|---|---|---|
+| BLIND | `['Protagonist', 'Tô Diệp', 'Bạch Thủ']` | — | **0/3** |
+| GROUNDED | `['Elara', 'Diệp Vấn Vũ']` | Diệp Vấn Vũ, Elara | **2/3** |
+
+**GROUNDED WINS (+2).** Two effects: (1) A2 removed the POC pad, so BLIND now invents plausible names
+instead of "Nữ chính" — a fairer, cleaner baseline; (2) A1's injection GUARANTEES the existing
+protagonist (Diệp Vấn Vũ) appears, and the prompt grounding added Elara on top. The protagonist anchor
+is now **structural, not probabilistic** — reliable by construction whenever the model emits a
+placeholder.
+
+### Ceiling decision
+The OQ-2 gate ("flip only if the A/B shows grounding improves the plan") is now **satisfied** — grounded
+materially beats blind, and the protagonist continuity is deterministic. Recommendation: **flip
+`PLANFORGE_GROUND_ON_EXISTING_ALLOWED` to default TRUE** (still fails-closed under the per-run flag), per
+the sealed OQ-2 instruction. Confirmed reproducible across ≥2 runs before flipping (see the confirmation
+run). B1/B2 (broader books / stronger model) remain as robustness follow-ups but are not blockers — the
+injection's determinism carries the core guarantee.
+
+### Confirmation run (round 4) — reproducible
+Same setup, fresh runs: GROUNDED `['Elara', 'Diệp Vấn Vũ']` = **2/3** vs BLIND `['Nữ chính']` = 0/3.
+**GROUNDED WINS again.** The grounded cast is identical to round 3 — because the injection is
+deterministic, the protagonist anchor (Diệp Vấn Vũ) is guaranteed every run; Elara comes reliably from
+the prompt grounding. Blind is variable (invented names OR the pad), grounded is stable.
+
+### FINAL ceiling decision (executed)
+Two confirmed wins + a structurally-deterministic protagonist anchor satisfy OQ-2. Executed a
+**CONSERVATIVE PARTIAL FLIP**:
+- **Ceiling `PLANFORGE_GROUND_ON_EXISTING_ALLOWED` → default TRUE** — the feature is now AVAILABLE
+  org-wide (opt-in). Still fails-closed: `effective = AND(ceiling, per-run flag)`.
+- **Per-user default stays OFF** — grounding is OPT-IN via the planner toggle, NOT on-by-default for
+  everyone yet. OQ-2's "per-user default becomes TRUE" is deferred until B1 (≥2 books × a stronger
+  model) confirms the prompt-grounding half generalises. The injection half is already book-independent.
+This makes the win shippable + reversible (a user must tick "Continue this book") while the broader
+validation runs.

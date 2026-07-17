@@ -232,7 +232,7 @@ services:
       # Default FALSE: the richer cast/spine/systems grounding is gated behind the A/B eval and fails
       # closed. effective = AND(this, the per-run ground_on_existing flag). Flip TRUE org-wide once the
       # eval proves grounding improves the plan.
-      PLANFORGE_GROUND_ON_EXISTING_ALLOWED: ${PLANFORGE_GROUND_ON_EXISTING_ALLOWED:-false}
+      PLANFORGE_GROUND_ON_EXISTING_ALLOWED: ${PLANFORGE_GROUND_ON_EXISTING_ALLOWED:-true}
       # W5 motif-conformance — the per-scene producer (judge each generated scene vs
       # its bound motif) + the calibrated label. ENABLED 2026-06-28 (the W5 judge gate
       # is satisfied: kappa 1.0 / 0.762 ≥ thresholds). Single-local-judge, so the FE

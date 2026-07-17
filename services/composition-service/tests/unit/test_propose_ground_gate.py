@@ -9,10 +9,12 @@ from app.routers.plan_forge import PlanRunCreate
 from app.services import plan_forge_service as pfs
 
 
-def test_deploy_ceiling_defaults_OFF_so_a_behaviour_change_fails_closed():
-    # OQ-2: the richer grounding is gated behind an A/B eval; the default fails CLOSED.
+def test_deploy_ceiling_FLIPPED_ON_after_the_ab_eval_passed():
+    # OQ-2: the ceiling flips ON once the A/B eval proves grounding helps — it did (2/3 vs 0/3, two
+    # runs; A1 injection deterministic). Grounding is now AVAILABLE org-wide, still opt-in + fails-closed
+    # (effective = AND(ceiling, per-run flag); the per-user toggle defaults OFF).
     s = Settings(_env_file=None)  # type: ignore[call-arg]
-    assert s.planforge_ground_on_existing_allowed is False
+    assert s.planforge_ground_on_existing_allowed is True
 
 
 def test_PlanRunCreate_declares_ground_on_existing_defaulting_false():
