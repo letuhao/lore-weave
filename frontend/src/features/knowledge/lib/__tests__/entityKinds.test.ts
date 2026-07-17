@@ -37,10 +37,17 @@ describe('AUTHORABLE_ENTITY_KINDS', () => {
       '../../../../../../services/knowledge-service/app/db/neo4j_repos/entities.py',
     );
     const src = readFileSync(pyPath, 'utf8');
-    const m = src.match(/AUTHORABLE_KINDS:\s*tuple\[str,\s*\.\.\.\]\s*=\s*\(([\s\S]*?)\)/);
-    expect(m, 'AUTHORABLE_KINDS not found in entities.py').toBeTruthy();
+    // The vocabulary moved into the `AuthorableKind` Literal, from which AUTHORABLE_KINDS is now
+    // DERIVED (`get_args`) — done so the FastMCP tool signature can reuse the type and finally
+    // advertise `kind` as a real enum instead of describing the closed set in prose. Read the
+    // Literal: it is the source of truth, and the tuple can no longer disagree with it.
+    const m = src.match(/AuthorableKind\s*=\s*Literal\[([\s\S]*?)\]/);
+    expect(m, 'the AuthorableKind Literal not found in entities.py').toBeTruthy();
     const pyKinds = [...m![1].matchAll(/"([a-z_]+)"/g)].map((x) => x[1]);
+    expect(pyKinds.length, 'the Literal parsed to no kinds — the regex has drifted').toBeGreaterThan(0);
     expect(new Set(pyKinds)).toEqual(new Set(AUTHORABLE_ENTITY_KINDS));
+    // …and the exported tuple the server gate actually checks against must still derive from it.
+    expect(src).toContain('AUTHORABLE_KINDS: tuple[str, ...] = get_args(AuthorableKind)');
   });
 });
 

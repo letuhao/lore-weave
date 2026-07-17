@@ -47,8 +47,16 @@ const LEGACY_SUBTAB_HOME: Record<string, Home> = {
   polish: 'quality-heal',        // S6 M3 — PolishPanel ported into the studio dock (server-side apply seam)
   progress: 'progress',          // S6 M4 — ProgressPanel homed as a dock panel (category editor)
   flywheel: 'flywheel',          // S6 M5 — FlywheelPanel homed as its OWN dock panel (NOT conflated with quality-corrections)
-  motifs: { unported: 'pending Wave 3 — motif-library panel not yet in this branch catalog' },
-  conformance: { unported: 'pending Wave 3 — quality-conformance panel not yet in this branch catalog' },
+  // Wave 3 LANDED (S4). Flipped from `unported` to real homes per this file's own instruction —
+  // both were shipped but the rows were never flipped, so the inventory kept claiming
+  // "not yet in this branch catalog" while the panels were live, and (because an `unported` row
+  // only needs a >20-char reason) the contract stayed green either way and hid the drift.
+  // Verified faithful, not just id-exists: the legacy `motifs` sub-tab mounts
+  // MotifSimpleModeProvider + MotifLibraryView and MotifLibraryPanel mounts the SAME two;
+  // the legacy `conformance` sub-tab mounts ConformanceTraceView and QualityConformancePanel
+  // wraps that SAME view.
+  motifs: 'motif-library',            // S4 — MotifLibraryPanel (MotifSimpleModeProvider + MotifLibraryView)
+  conformance: 'quality-conformance', // S4 — QualityConformancePanel (ConformanceTraceView)
   // — homes that need a real M5 mount (the panel exists; the capability lands in M5.a/b/c) —
   cast: 'kg-entities',           // M5.a
   arc: 'kg-timeline',            // M5.b — NOT arc-templates (spec sketch is wrong by code)

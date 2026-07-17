@@ -93,6 +93,8 @@ describe('apiJson', () => {
   });
 
   it('handles unparseable response body', async () => {
+    // A SHORT plain-text body is a real message — Go's `http.Error(w, "…", 500)` writes
+    // text/plain and 24 such sites exist across the Go services. Keep surfacing it.
     globalThis.fetch = vi.fn().mockResolvedValue({
       ok: false,
       status: 500,
@@ -215,5 +217,69 @@ describe('apiJson', () => {
     await apiJson('/v1/protected', { token: 'old' });
     expect(localStorage.getItem('lw_auth')).toBeNull();
     expect(window.location.href).toBe('/login');
+  });
+
+  // — a NON-JSON error body is infra noise, never a user-facing message (S2's live 502) —
+
+  function mockRawFetch(status: number, text: string, statusText = 'Bad Gateway') {
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      ok: false,
+      status,
+      statusText,
+      text: () => Promise.resolve(text),
+      headers: new Headers(),
+    });
+  }
+
+  const NGINX_502 =
+    '<html>\r\n<head><title>502 Bad Gateway</title></head>\r\n<body>\r\n' +
+    '<center><h1>502 Bad Gateway</h1></center>\r\n<hr><center>nginx</center>\r\n</body>\r\n</html>\r\n';
+
+  it('never surfaces an HTML error page as the message (the raw-502-in-a-toast bug)', async () => {
+    mockRawFetch(502, NGINX_502);
+    const err = await apiJson('/v1/composition/works/x').catch((e) => e as Error);
+    // readBackendError feeds Error.message + body.message to the global MutationCache toast,
+    // so an HTML document reaching EITHER renders markup at the author.
+    expect(err.message).toBe('Bad Gateway');
+    expect(err.message).not.toContain('<html');
+    expect((err as Error & { body?: { message?: unknown } }).body?.message).toBeUndefined();
+  });
+
+  it('keeps the raw non-JSON body for debugging, just not as the message', async () => {
+    mockRawFetch(502, NGINX_502);
+    const err = await apiJson('/v1/x').catch((e) => e as Error);
+    const body = (err as Error & { body?: { code?: string; rawBody?: string } }).body;
+    expect(body?.code).toBe('PARSE_ERROR');
+    expect(body?.rawBody).toContain('502 Bad Gateway');
+  });
+
+  it('still surfaces a Go http.Error plain-text message (the fix must not swallow those)', async () => {
+    // services/agent-registry-service/internal/api/oauth.go:146 — http.Error(w, "database
+    // unavailable", 503). Suppressing ALL non-JSON bodies would have regressed 24 such sites
+    // to a bare "Service Unavailable".
+    mockRawFetch(503, 'database unavailable', 'Service Unavailable');
+    const err = await apiJson('/v1/x').catch((e) => e as Error);
+    expect(err.message).toBe('database unavailable');
+  });
+
+  it('suppresses a long non-JSON body even without markup (a dumped page/stack, not a sentence)', async () => {
+    mockRawFetch(500, 'x'.repeat(500), 'Internal Server Error');
+    const err = await apiJson('/v1/x').catch((e) => e as Error);
+    expect(err.message).toBe('Internal Server Error');
+  });
+
+  it('falls back to the status code when statusText is empty (HTTP/2 drops the reason phrase)', async () => {
+    // Needs a body that yields NO message (the HTML page) AND an empty statusText — behind an
+    // HTTP/2 load balancer both are true at once, and Error('') would render a BLANK toast: a
+    // silent failure, the exact thing the §2 bar forbids.
+    mockRawFetch(504, NGINX_502, '');
+    const err = await apiJson('/v1/x').catch((e) => e as Error);
+    expect(err.message).toBe('HTTP 504');
+  });
+
+  it('still surfaces a real JSON envelope message (the fix must not swallow those)', async () => {
+    mockFetch(409, { detail: 'nothing to compact' });
+    const err = await apiJson('/v1/chat/compact').catch((e) => e as Error);
+    expect(err.message).toBe('nothing to compact');
   });
 });

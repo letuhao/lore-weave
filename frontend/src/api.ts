@@ -77,6 +77,20 @@ function forceLogout(): void {
   window.location.href = '/login';
 }
 
+/** The longest a non-JSON body can be and still plausibly be a human sentence rather than a
+ *  generated error page. Go's `http.Error` messages are a few words; nginx's 502 is ~150+ bytes
+ *  of markup and a proxy's debug page can be kilobytes. */
+const MAX_PLAIN_TEXT_MESSAGE = 200;
+
+/** Is a non-JSON error body a real message we should show, or infra noise we must not?
+ *  Exported for tests — this predicate is the whole difference between "database unavailable"
+ *  reaching the author and an HTML document being rendered at them. */
+export function isPlainTextMessage(text: string): boolean {
+  const t = text.trim();
+  if (!t || t.length > MAX_PLAIN_TEXT_MESSAGE) return false;
+  return !t.startsWith('<');    // any markup/document, not a sentence
+}
+
 export async function apiJson<T>(
   path: string,
   init: RequestInit & { token?: string | null } = {},
@@ -99,7 +113,18 @@ export async function apiJson<T>(
     try {
       body = JSON.parse(text);
     } catch {
-      body = { code: 'PARSE_ERROR', message: text };
+      // A non-JSON body is one of TWO things, and they must not be treated alike:
+      //   1. a real plain-text message — Go's `http.Error(w, "database unavailable", 503)`
+      //      (24 such sites across the Go services). Keep surfacing these.
+      //   2. an INFRA error page — nginx's 502/504 HTML, a proxy timeout. These carry no
+      //      user-facing message at all.
+      // `message` flows to the Error below → readBackendError → the global MutationCache
+      // toast, so (2) rendered a whole HTML document at the author (S2 hit this live on a
+      // 502 through the FE nginx). Suppress markup and anything far too long to be a
+      // sentence; keep the raw text under `rawBody` either way for debugging.
+      body = isPlainTextMessage(text)
+        ? { code: 'PARSE_ERROR', message: text.trim(), rawBody: text }
+        : { code: 'PARSE_ERROR', rawBody: text };
     }
   }
   if (!res.ok) {
@@ -156,7 +181,11 @@ export async function apiJson<T>(
     // D-K8-03: attach the parsed response body to the thrown error
     // so callers handling 412 Precondition Failed can read the
     // current row out of it without a second round-trip.
-    throw Object.assign(new Error(err?.message || detailMessage || res.statusText), {
+    // `res.statusText` is EMPTY over HTTP/2 (the protocol dropped the reason phrase), so it
+    // cannot be the last resort: behind an HTTP/2 load balancer this would throw Error('') and
+    // the toast would render blank — a silent failure. Fall back to the status code itself.
+    const statusLine = res.statusText || `HTTP ${res.status}`;
+    throw Object.assign(new Error(err?.message || detailMessage || statusLine), {
       status: res.status,
       code: err?.code,
       body,
