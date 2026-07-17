@@ -82,6 +82,19 @@ def _decompile_token(user=USER, *, ttl=600, now=None) -> str:
     )
 
 
+def _derive_token(user=USER, *, ttl=600, now=None) -> str:
+    # D-DIVERGENCE-MCP-TOOLS — the derive (spawn a dị bản) confirm token (book-scoped).
+    payload = {
+        "source_project_id": str(PROJECT), "book_id": str(BOOK), "name": "My dị bản",
+        "branch_point": 0, "taxonomy": "au", "pov_anchor": None,
+        "canon_rule": [], "entity_overrides": [],
+    }
+    return mint_confirm_token(
+        settings.confirm_token_signing_secret, user, BOOK, "composition.derive",
+        payload, ttl=ttl, now=now,
+    )
+
+
 @pytest.fixture
 def client():
     """TestClient with DB pool, grant, book client, repos + the /mcp session
@@ -143,6 +156,7 @@ def client():
         with TestClient(app, raise_server_exceptions=True) as c:
             c._book = book  # expose for assertions
             c._outline = outline
+            c._works = works
             yield c
         app.dependency_overrides.clear()
 
@@ -219,6 +233,40 @@ def test_confirm_executes_decompile(client, monkeypatch):
     fake.assert_awaited_once()
     # the engine was called with the book_id from the token payload + EDIT-scoped caller
     assert fake.await_args.args[1] == BOOK  # decompile_arcs(pool, book_id, ...)
+
+
+def test_confirm_executes_derive(client, monkeypatch):
+    """D-DIVERGENCE-MCP-TOOLS — a confirmed derive token re-checks the book EDIT grant, then runs the
+    SHARED perform_derive (patched; its mint+txn has its own coverage). Pins the confirm-spine wiring:
+    descriptor → grant re-check → perform_derive(source, body, user) with the SIGNED target."""
+    new_pid = str(uuid.uuid4())
+    fake = AsyncMock(return_value={"project_id": new_pid, "source_work_id": str(PROJECT)})
+    monkeypatch.setattr("app.routers.works.perform_derive", fake)
+
+    resp = _confirm(client, _derive_token())
+
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["outcome"] == "action_accepted"
+    assert body["descriptor"] == "composition.derive"
+    assert body["project_id"] == new_pid
+    fake.assert_awaited_once()
+    # perform_derive got the acting user (envelope) + the source resolved from the signed payload.
+    assert fake.await_args.args[2] == USER  # perform_derive(source, body, user_id, ...)
+
+
+def test_confirm_derive_rejects_a_derivative_source(client, monkeypatch):
+    """If the payload's source resolves to a DERIVATIVE (or is gone) at confirm, refuse uniformly —
+    never mint a partition off a branch."""
+    # works.get returns a DERIVATIVE for PROJECT (source_work_id set).
+    deriv = CompositionWork(project_id=PROJECT, created_by=USER, book_id=BOOK, id=PROJECT, source_work_id=CHAPTER)
+    client._works.get = AsyncMock(side_effect=lambda p: deriv if p == PROJECT else None)
+    fake = AsyncMock()
+    monkeypatch.setattr("app.routers.works.perform_derive", fake)
+
+    resp = _confirm(client, _derive_token())
+    assert resp.status_code == 400
+    fake.assert_not_awaited()  # never derived off a derivative
 
 
 def test_preview_describes_without_writing(client):
@@ -703,3 +751,40 @@ def test_confirm_authoring_run_denied_without_edit_grant(client, authoring_svc):
         resp = _confirm(client, token)
     assert resp.status_code == 403
     authoring_svc.gate.assert_not_awaited()
+
+
+# ── D-MOTIF-BOOKSHARED-QUOTA (REFUTED — locked, 2026-07-17) ─────────────────────────────
+# The Wave-3 "does adopt-into-book_shared spend against a quota/ledger?" question was
+# refuted: motif adopt is a $0 CLONE — it never calls the usage-billing precheck. Its only
+# ceiling is the LOCAL row-count `motif_max_adopt` (→ 402), a tenancy guard, not a spend.
+# This AST guard locks that: if a future edit silently adds a billing hold to the free
+# adopt effect, it reds. (AST, not a substring grep — the docstring literally says "no
+# billing precheck", which a text search would false-match; hygiene-grep lesson.)
+def _called_names(fn):
+    import ast
+    import inspect
+    tree = ast.parse(inspect.getsource(fn))
+    return {
+        n.func.id for n in ast.walk(tree)
+        if isinstance(n, ast.Call) and isinstance(n.func, ast.Name)
+    }
+
+
+def test_motif_adopt_effect_never_prechecks_billing():
+    """Adopt is a $0 clone — its confirm effect must NEVER call `_precheck_or_402`."""
+    from app.routers import actions
+
+    assert "_precheck_or_402" not in _called_names(actions._execute_motif_adopt), (
+        "motif adopt must not call the billing precheck — adopt is a $0 clone, its ceiling "
+        "is the local motif_max_adopt row count (D-MOTIF-BOOKSHARED-QUOTA, refuted)."
+    )
+
+
+def test_motif_mine_effect_does_precheck_billing_contrast():
+    """Contrast that proves the guard discriminates: a genuine SPEND path (mine) DOES call
+    the precheck — so the adopt assertion above is meaningful, not vacuously true."""
+    from app.routers import actions
+
+    assert "_precheck_or_402" in _called_names(actions._execute_motif_mine), (
+        "motif mine spends on the LLM extractor and MUST precheck the billing hold."
+    )
