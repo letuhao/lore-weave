@@ -70,25 +70,27 @@ no-silent-fail · agent-parity · loop-connected · live-browser-proven · i18n+
 a legitimate CROSS-TRACK defer that belongs to another track's scope (D-5 mobile-shell / S5 what-if /
 book-editor). Triage below.
 
-#### 🔎 BLACKBOX USABILITY FINDINGS (2026-07-17 — from `2026-07-17-studio-S1-blackbox-usability-report.md`)
-Author-role pass verdict: **S1 is usable, the loop closes in-studio, no `broken` capability.** The rows
-below are coherence/polish, not blockers — none gate release. Gate reason for all: #2 (design/UX polish)
-or #5 (conscious-note). Screens: `docs/plans/assets/2026-07-17-studio-S1-blackbox/`.
-- **D-S1-MODEL-INDICATOR (was MED) — ✅ FIXED NOW (was a bug, not deferrable debt).** Root-cause on
-  verify (anti-laziness gate): the status bar's "no model" was NOT a real indicator reflecting a Work
-  default — it was a **hardcoded skeleton placeholder** (`StudioStatusBar.tsx:40`,
-  `t('status.modelPlaceholder', 'no model')`) that ALWAYS said "no model" and always contradicted the
-  real model shown in the editor's inline toolbar. A misleading always-wrong string = fix-now, not a
-  studio-settings defer. **Removed the stub** (a real active-model indicator belongs as a registered F2
-  status producer, like WordCountStatusItem — noted inline). StudioStatusBar test 4/4 green.
-- **D-S1-GATE-REASON-HOVER-ONLY (LOW)** — disabled Publish + Stitch expose their reason only via `title`
-  (hover); disabled buttons aren't strongly greyed. Fix: an inline caption under the gated control.
-- **D-S1-COMPOSE-ASSEMBLE-VISUAL-SAMENESS (LOW)** — Scene Compose and Chapter Assemble share so much
-  chrome they're hard to tell apart at a glance. Fix: stronger per-panel identity (title band / hide the
-  what-if row in assemble). PO/design call.
-- **D-S1-FLYWHEEL-INVISIBLE (LOW, design opinion)** — Regenerate/Discard capture a correction with zero
-  felt signal; the "AI learns from you" value is unfelt. Optional subtle acknowledgement toast. PO call —
-  the mechanic is correct (accept-as-is stays uncaptured, H2), so this is polish, not a defect.
+#### 🔎 BLACKBOX USABILITY FINDINGS (2026-07-17 — from `2026-07-17-studio-S1-blackbox-usability-report.md`) — ✅ ALL CLEARED
+Author-role pass verdict: **S1 is usable, the loop closes in-studio, no `broken` capability.** The 5
+findings were all coherence/polish (none blockers). On PO greenlight (2026-07-17) all 5 were **fixed now**
+rather than carried — verifying each against code showed they were cheap, not the cross-cutting design
+work first assumed. **Zero open S1 debt remains.** Screens: `docs/plans/assets/2026-07-17-studio-S1-blackbox/`.
+- **D-S1-MODEL-INDICATOR (was MED) — ✅ FIXED (`ca40dcf4`).** Root-cause on verify (anti-laziness gate):
+  the status bar's "no model" was NOT a real indicator vs a Work default — it was a **hardcoded skeleton
+  placeholder** (`StudioStatusBar.tsx`) that ALWAYS said "no model" and always contradicted the editor's
+  inline toolbar. A misleading always-wrong string = fix-now, not a studio-settings defer. Removed the
+  stub (a real active-model indicator belongs as a registered F2 producer, like WordCountStatusItem).
+- **D-S1-GATE-REASON-HOVER-ONLY (LOW) — ✅ FIXED (`5ab0315`).** Reasons now surface INLINE: a blockedReason
+  chip in EditorPublishGate (mirrors the canon-unchecked chip; shared PublishControl untouched) + an inline
+  "all scenes must be done" reason in ChapterAssembleView once a model is picked. Test-locked both sides.
+- **D-S1-COMPOSE-ASSEMBLE-VISUAL-SAMENESS (LOW) — ✅ FIXED (`5ab0315`).** The what-if chrome (Spawn button +
+  promote row) is hidden in the chapter-assemble solo panel — what-if is a scene-drafting concern, and
+  dropping it distinguishes assemble from the near-identical scene-compose. CompositionPanel test-locked.
+- **D-S1-FLYWHEEL-INVISIBLE (LOW) — ✅ FIXED (`5ab0315`).** One subtle acknowledgement toast on a genuine
+  correction capture, DRY in the shared `useCorrection` mutation → every capture site gets it; only real
+  corrections (accept stays uncaptured, H2), never on POST failure. useAutoGenerate test-locked.
+- **Compose → "Co-writer Chat" (INFO) — ✅ DONE in HEAD (convergent session).** All 18 locale titles
+  already carried the rename when verified; no redundant churn committed.
 
 #### ✅ RECENTLY CLEARED (fixed; in HEAD)
 - **S1-D1 / S1-D2** — "tab jumps to Welcome" + "panel state lost" were **HMR ARTIFACTS** of the shared

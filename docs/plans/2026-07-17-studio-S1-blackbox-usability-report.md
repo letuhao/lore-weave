@@ -19,10 +19,10 @@ Generation *mechanics* are proven by the model-gated E2E; this report renders th
 **S1 is genuinely usable by an author — the compose → revise → assemble → publish loop closes entirely
 inside the Studio, with strong "you can start now" guidance and no dead-ends.** It clears the bar S1
 exists to satisfy (the failure mode was *"cho có và rời rạc"* — present-but-disjoint; it is neither).
-The friction that remains is **coherence/polish**, not broken capability: two AI drafting surfaces that
-look alike, a couple of gate reasons that are hover-only, one genuinely contradictory model indicator,
-and an invisible (working) learning flywheel. None block the job; four are worth a tracked row or a PO
-design call.
+The friction found was **coherence/polish**, not broken capability: two AI drafting surfaces that looked
+alike, gate reasons that were hover-only, a contradictory model indicator, an invisible (working) learning
+flywheel, and a close panel name. None blocked the job — and on PO greenlight **all 5 were fixed this
+session** (see the findings table). Net open S1 debt: **zero.**
 
 | BB | Scenario | Verdict |
 |---|---|---|
@@ -139,14 +139,15 @@ note on a recommended "default path."
 | # | Severity | Finding | Disposition |
 |---|---|---|---|
 | 1 | ~~MED~~ **FIXED** | **Misleading model indicator.** The Editor status bar read **"no model"** (bottom-right) while the inline AI toolbar showed **"Gemma-4 26B-A4B QAT"** selected (`01`,`05`). On root-cause verify this was **not** two model concepts disagreeing — it was a **hardcoded skeleton placeholder** (`StudioStatusBar.tsx:40`) that *always* rendered "no model" regardless of state, so it always contradicted the real model. | **Fixed now** (a misleading always-wrong string is fix-now, not debt): removed the stub; an active-model indicator belongs as a registered F2 status producer (like the word-count item). `StudioStatusBar` test 4/4 green. |
-| 2 | LOW | **Gate reasons are hover-only** (Publish `title`, Stitch greyed). No inline caption; disabled buttons aren't strongly greyed. | `D-S1-GATE-REASON-HOVER-ONLY` — surface disabled reasons inline. |
-| 3 | LOW | **Scene Compose ≈ Chapter Assemble visually.** Shared chrome makes the two panels hard to tell apart at a glance. | `D-S1-COMPOSE-ASSEMBLE-VISUAL-SAMENESS` — stronger per-panel identity. |
-| 4 | LOW | **Flywheel is invisible.** Corrections are captured with zero felt signal; the "AI learns from you" value is unfelt. | `D-S1-FLYWHEEL-INVISIBLE` — optional subtle acknowledgement (PO design opinion). |
-| 5 | INFO | `Compose` vs `Scene Compose` naming proximity. | PO call on a rename; subtitle currently disambiguates. |
+| 2 | ~~LOW~~ **FIXED** | **Gate reasons were hover-only** (Publish `title`, Stitch greyed). | **Fixed (`5ab0315`):** a blockedReason chip in EditorPublishGate (mirrors the canon-unchecked chip; shared PublishControl untouched) + an inline "all scenes must be done" reason in ChapterAssembleView once a model is picked. Test-locked both sides. |
+| 3 | ~~LOW~~ **FIXED** | **Scene Compose ≈ Chapter Assemble visually.** Shared chrome made them hard to tell apart. | **Fixed (`5ab0315`):** hide the what-if chrome (Spawn + promote row) in the assemble solo panel — what-if is a scene-drafting concern, and dropping it gives assemble a distinct identity. CompositionPanel test-locked. |
+| 4 | ~~LOW~~ **FIXED** | **Flywheel was invisible.** Corrections captured with zero felt signal. | **Fixed (`5ab0315`):** one subtle toast on a genuine correction, DRY in `useCorrection` → every capture site; only real corrections (accept stays uncaptured, H2), never on POST failure. useAutoGenerate test-locked. |
+| 5 | ~~INFO~~ **DONE** | `Compose` vs `Scene Compose` naming proximity. | **Done in HEAD** (convergent session): `Compose` → "Co-writer Chat" across all 18 locales. Verified; no redundant churn committed. |
 
-**No `broken` verdicts.** Every capability an author reaches for works. Finding 1 was **fixed on the
-spot** (a misleading hardcoded "no model" stub — a bug, not debt). Findings 2–5 are design/polish (PO
-calls or LOW tracked rows). Net open debt: **3 LOW + 1 INFO, all design opinions — zero blockers.**
+**No `broken` verdicts, and all 5 findings are now cleared.** Every capability an author reaches for
+works. On PO greenlight all 5 were **fixed now** — verifying each against code showed they were cheap
+(the model-indicator a 1-line stub removal; the rest small, pattern-reusing changes), not the
+cross-cutting design work first assumed. **Net open S1 debt: zero.**
 
 ---
 
@@ -158,7 +159,6 @@ calls or LOW tracked rows). Net open debt: **3 LOW + 1 INFO, all design opinions
   from the non-generation screens + prior direct observation, which is where the usability verdict lives.
 
 ## Recommendation to PO
-Ship S1 — it is usable and the loop closes. Finding 1 (the misleading model indicator) is already fixed.
-The remaining **3 LOW + 1 INFO** rows are all design opinions (gate-reason placement, panel visual
-identity, flywheel felt-signal, Compose naming); none gate the release. They live in the S1 RUN-STATE
-DEBT register for a future polish/PO pass — no forced-now work remains.
+Ship S1 — it is usable, the loop closes, and **all 5 usability findings are now fixed** (model indicator,
+inline gate reasons, panel identity, flywheel felt-signal, Compose→"Co-writer Chat"). Nothing outstanding
+gates the release; net open S1 debt is zero.
