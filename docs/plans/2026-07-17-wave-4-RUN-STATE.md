@@ -41,7 +41,12 @@ smoke (drive the real app as a user) for each:
 - [x] B5 register `motif-graph`: catalog row + chat panel_id enum + contract.json + studio.json + composition canvas keys (distinct from the section's — restored the ones I'd clobbered). **EVIDENCE: 13 panel-contract + 71 chat-service contract tests green.**
 - [x] B6 unit: `MotifGraphCanvas.test.tsx` (7) + `useMotifGraph.test.tsx` (2 — pending-map batches both / 412 reseed+retry). **EVIDENCE: 904 motif+panel green, tsc clean, i18n +keys × 17 locales (0 failed).** Playwright CDP live-drag + blackbox → B7.
 - [x] B6-live + B7 — `studio-motif-graph.spec.ts` (CDP stepped-mouse drag, the d3-drag recipe) **RAN GREEN LIVE (9.0s) against :5199 + the rebuilt composition BE**: opened the motif-graph panel via the palette → the canvas + reactflow node rendered → CDP-dragged the node → the debounced PATCH persisted the position (asserted via `GET /books/{id}/motif-graph` → `layout.positions[m1]` set) → survived a reload. This IS the blackbox live-drive + the cross-service smoke (FE canvas → PATCH → composition → DB → reload). GET route also confirmed live cross-service via the gateway. (The shared MCP browser profile was held by a concurrent session — ran the isolated-browser Playwright spec instead, per D-S4-4.)
-- [ ] B8 /review-impl + commit
+- [x] B8 /review-impl: standards clean (tenancy scope key + owner-scoped PATCH; panel_id enum both sides machine-checked; no localStorage—DB; no MCP tool—cosmetic GUI; no provider/model). Fixed LOW: capped the 412 reseed-retry (≤3) so an always-stale server can't spin (2 hook tests still green). Recorded DEBT below.
+
+**B · motif graph-canvas — DONE ✅** (commits: BE `05445221b`-adjacent, FE B3-B6, live E2E `d7a8fb59d`, +this review fix). Persisted per-viewer positions live-proven end-to-end (drag→PATCH→DB→reload).
+
+### DEBT (from B8 review)
+- **D-MOTIF-GRAPH-BOOK-SCOPING** (design refinement, gate #2) — `nodes_for_book` returns ALL the caller's OWN motifs (`owner_user_id=$1`) regardless of book, so a user's whole library shows in every book's graph (only the `book_shared` tier is book-filtered). Honest + bounded (node cap + truncation) for v1, but not truly "this book's" graph. Refine later to filter own motifs by book relevance (e.g. bound-in-book via motif_application, or the `book_id` label) — needs a design call + a join, so deferred not fixed.
 
 ## REGISTERS (append as you go)
 ### DECISIONS

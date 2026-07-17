@@ -26,6 +26,7 @@ export function useMotifGraph(bookId: string | null, token: string | null) {
   const versionRef = useRef(0);
   const pending = useRef<Map<string, XY>>(new Map());
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const retries = useRef(0);  // bound the 412 reseed-retry so an always-stale server can't spin
 
   useEffect(() => {
     if (q.data) versionRef.current = q.data.layout.version;
@@ -38,14 +39,18 @@ export function useMotifGraph(bookId: string | null, token: string | null) {
     try {
       const res = await motifApi.patchGraphLayout(bookId, moves, versionRef.current, token);
       versionRef.current = res.version;
+      retries.current = 0;
       qc.setQueryData<MotifGraphData>(key, (old) => (old ? { ...old, layout: res } : old));
     } catch (e) {
       const status = (e as { status?: number }).status;
       const current = (e as { body?: { detail?: { current?: { positions: Record<string, XY>; version: number } } } })
         .body?.detail?.current;
-      if (status === 412 && current) {
+      if (status === 412 && current && retries.current < 3) {
         // Fail-soft: reseed from the server state, re-apply THIS drag on top (the user's move wins
-        // over the other device's older state), and retry — never hard-fail a cosmetic write.
+        // over the other device's older state), and retry — never hard-fail a cosmetic write. Capped
+        // so an always-stale server (a version bug) can't spin; after the cap the moves stay pending
+        // and the next drag retries with the freshest version.
+        retries.current += 1;
         versionRef.current = current.version;
         const mine = Object.fromEntries(moves.map((m) => [m.motif_id, { x: m.x, y: m.y }]));
         for (const m of moves) pending.current.set(m.motif_id, { x: m.x, y: m.y });
