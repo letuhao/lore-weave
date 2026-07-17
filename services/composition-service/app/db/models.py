@@ -75,6 +75,24 @@ class CompositionWork(BaseModel):
     updated_at: datetime | None = None
 
 
+class WorkChapterDraft(BaseModel):
+    # D-S5-DERIVATIVE-MANUSCRIPT-FORK — a derivative Work's OWN manuscript for ONE chapter
+    # (the fork). Keyed by (project_id, chapter_id); project_id is the derivative Work's own
+    # partition (PM-3), book_id the E0 tenancy gate, created_by the actor stamp (never filtered).
+    # `body` is the full chapter doc (same shape as book-service's chapter_drafts.body);
+    # `draft_version` is the OI-2 OCC token. `merged_at` records the last promote-to-canon.
+    project_id: UUID
+    chapter_id: UUID
+    book_id: UUID
+    created_by: UUID
+    body: Any
+    draft_format: str = "json"
+    draft_version: int = 1
+    merged_at: datetime | None = None
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
+
+
 DivergenceTaxonomy = Literal["pov_shift", "character_transform", "au"]
 
 

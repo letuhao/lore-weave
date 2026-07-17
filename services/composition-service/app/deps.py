@@ -29,6 +29,7 @@ from app.db.repositories.generation_jobs import GenerationJobsRepo
 from app.db.repositories.grounding_pins import GroundingPinsRepo
 from app.db.repositories.import_source_repo import ImportSourceRepo
 from app.db.repositories.motif_application import MotifApplicationRepo
+from app.db.repositories.work_chapter_drafts import WorkChapterDraftsRepo
 from app.db.repositories.motif_repo import MotifRepo
 from app.db.repositories.motif_retrieve import MotifRetriever
 from app.db.repositories.narrative_thread import NarrativeThreadRepo
@@ -114,6 +115,11 @@ async def get_derivatives_repo() -> DerivativesRepo:
 
 async def get_outline_repo() -> OutlineRepo:
     return OutlineRepo(get_pool())
+
+
+async def get_work_chapter_drafts_repo() -> WorkChapterDraftsRepo:
+    """D-S5-DERIVATIVE-MANUSCRIPT-FORK — a derivative Work's work-scoped chapter drafts."""
+    return WorkChapterDraftsRepo(get_pool())
 
 
 async def get_structure_repo() -> "StructureRepo | None":

@@ -805,3 +805,158 @@ def test_get_prose_502_on_book_down(ctx):
     works.work = _work()
     book.get_raises = BookClientError(502, "BOOK_SERVICE_UNAVAILABLE")
     assert c.get(f"/v1/composition/works/{PROJECT}/chapters/{CHAPTER}/prose").status_code == 502
+
+
+# ── D-S5-DERIVATIVE-MANUSCRIPT-FORK — work-scoped chapter drafts (the fork) ───────────
+
+
+class StubWorkChapterDrafts:
+    def __init__(self):
+        self.row = None            # get() result (None = not forked yet → inherit canon)
+        self.insert_result = None  # insert_fork() result (None = ON CONFLICT = already forked)
+        self.update_result = None
+        self.update_raises = None  # set to VersionMismatchError to simulate a stale OCC token
+        self.forked_with = None
+        self.updated_with = None
+
+    async def get(self, project_id, chapter_id):
+        return self.row
+
+    async def insert_fork(self, project_id, chapter_id, book_id, created_by, body, draft_format="json"):
+        self.forked_with = {"body": body, "book_id": book_id}
+        return self.insert_result
+
+    async def update_occ(self, project_id, chapter_id, body, expected_version, draft_format="json"):
+        self.updated_with = {"body": body, "expected_version": expected_version}
+        if self.update_raises:
+            raise self.update_raises
+        return self.update_result
+
+    async def mark_merged(self, project_id, chapter_id):
+        return self.row
+
+
+def _deriv_work(**kw) -> CompositionWork:
+    w = _work(**kw)
+    w.source_work_id = kw.get("source_work_id", uuid.uuid4())
+    w.branch_point = kw.get("branch_point", 0)
+    return w
+
+
+def _wcd(**kw):
+    from app.db.models import WorkChapterDraft
+    return WorkChapterDraft(
+        project_id=kw.get("project_id", PROJECT), chapter_id=kw.get("chapter_id", CHAPTER),
+        book_id=BOOK, created_by=USER, body=kw.get("body", {"v": 1}),
+        draft_version=kw.get("draft_version", 1), merged_at=kw.get("merged_at"),
+    )
+
+
+@pytest.fixture
+def wcd_ctx(monkeypatch):
+    monkeypatch.setattr("app.main.create_pool", AsyncMock())
+    monkeypatch.setattr("app.main.run_migrations", AsyncMock())
+    monkeypatch.setattr("app.main.close_pool", AsyncMock())
+    monkeypatch.setattr("app.main.get_pool", lambda: object())
+    from app.main import app
+    from app.deps import (
+        get_book_client_dep, get_grant_client_dep, get_work_chapter_drafts_repo, get_works_repo,
+    )
+    from app.grant_client import GrantLevel
+    from app.middleware.jwt_auth import get_bearer_token, get_current_user
+
+    class _StubGrant:
+        async def resolve_grant(self, book_id, user_id):
+            return GrantLevel.OWNER
+        async def resolve_access(self, book_id, user_id):
+            return GrantLevel.OWNER, "active"
+
+    works, book, wcd = StubWorks(), StubBook(), StubWorkChapterDrafts()
+    app.dependency_overrides[get_current_user] = lambda: USER
+    app.dependency_overrides[get_bearer_token] = lambda: "jwt"
+    app.dependency_overrides[get_works_repo] = lambda: works
+    app.dependency_overrides[get_book_client_dep] = lambda: book
+    app.dependency_overrides[get_grant_client_dep] = lambda: _StubGrant()
+    app.dependency_overrides[get_work_chapter_drafts_repo] = lambda: wcd
+    with TestClient(app) as c:
+        yield c, works, book, wcd
+    app.dependency_overrides.clear()
+
+
+_WD_URL = f"/v1/composition/works/{PROJECT}/chapters/{CHAPTER}/work-draft"
+
+
+def test_work_draft_get_inherits_canon_when_not_forked(wcd_ctx):
+    c, works, book, wcd = wcd_ctx
+    works.work = _deriv_work()
+    wcd.row = None  # not forked → read-through to canon
+    r = c.get(_WD_URL)
+    assert r.status_code == 200
+    j = r.json()
+    assert j["forked"] is False and j["inherited"] is True
+    assert j["draft_version"] == 0            # the "fork token" the FE sends to fork
+    assert j["body"] == {"x": 1}              # StubBook.draft body — inherited from canon
+    assert j["canon_version"] == 5
+
+
+def test_work_draft_get_returns_the_fork_when_forked(wcd_ctx):
+    c, works, book, wcd = wcd_ctx
+    works.work = _deriv_work()
+    wcd.row = _wcd(body={"y": 2}, draft_version=3)
+    j = c.get(_WD_URL).json()
+    assert j["forked"] is True and j["draft_version"] == 3 and j["body"] == {"y": 2}
+
+
+def test_work_draft_get_rejects_the_canonical_work(wcd_ctx):
+    c, works, book, wcd = wcd_ctx
+    works.work = _work()  # source_work_id None — canonical has no fork layer
+    r = c.get(_WD_URL)
+    assert r.status_code == 400 and r.json()["detail"]["code"] == "NOT_A_DERIVATIVE"
+
+
+def test_work_draft_patch_forks_on_first_edit_and_never_touches_canon(wcd_ctx):
+    c, works, book, wcd = wcd_ctx
+    works.work = _deriv_work()
+    wcd.insert_result = _wcd(body={"edited": True}, draft_version=1)
+    r = c.patch(_WD_URL, json={"body": {"edited": True}, "expected_version": 0})
+    assert r.status_code == 200
+    assert r.json()["forked"] is True and r.json()["draft_version"] == 1
+    assert wcd.forked_with["body"] == {"edited": True}
+    # THE ISOLATION GUARANTEE: canon (book-service) was never patched.
+    assert book.patched_with is None
+
+
+def test_work_draft_patch_fork_conflict_when_already_forked(wcd_ctx):
+    c, works, book, wcd = wcd_ctx
+    works.work = _deriv_work()
+    wcd.insert_result = None  # ON CONFLICT DO NOTHING — a concurrent fork won
+    r = c.patch(_WD_URL, json={"body": {"x": 1}, "expected_version": 0})
+    assert r.status_code == 409 and r.json()["detail"]["code"] == "ALREADY_FORKED"
+
+
+def test_work_draft_patch_occ_updates_an_existing_fork(wcd_ctx):
+    c, works, book, wcd = wcd_ctx
+    works.work = _deriv_work()
+    wcd.update_result = _wcd(body={"v": 9}, draft_version=4)
+    r = c.patch(_WD_URL, json={"body": {"v": 9}, "expected_version": 3})
+    assert r.status_code == 200 and r.json()["draft_version"] == 4
+    assert wcd.updated_with["expected_version"] == 3
+    assert book.patched_with is None  # still never touches canon
+
+
+def test_work_draft_patch_stale_version_is_412(wcd_ctx):
+    from app.db.repositories import VersionMismatchError
+    c, works, book, wcd = wcd_ctx
+    works.work = _deriv_work()
+    wcd.update_raises = VersionMismatchError(_wcd(draft_version=7))
+    r = c.patch(_WD_URL, json={"body": {"v": 1}, "expected_version": 3})
+    assert r.status_code == 412
+    assert r.json()["detail"]["code"] == "STALE_VERSION"
+    assert r.json()["detail"]["current_version"] == 7
+
+
+def test_work_draft_patch_rejects_the_canonical_work(wcd_ctx):
+    c, works, book, wcd = wcd_ctx
+    works.work = _work()  # canonical
+    r = c.patch(_WD_URL, json={"body": {"x": 1}, "expected_version": 0})
+    assert r.status_code == 400 and r.json()["detail"]["code"] == "NOT_A_DERIVATIVE"

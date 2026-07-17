@@ -57,7 +57,7 @@ _TABLES = [
     "scene_grounding_pins",
     "outbox_events", "generation_correction", "generation_job", "narrative_thread",
     "canon_rule", "scene_link", "outline_node", "structure_node", "structure_template",
-    "entity_override", "divergence_spec", "composition_work",
+    "work_chapter_draft", "entity_override", "divergence_spec", "composition_work",
 ]
 
 
@@ -3042,3 +3042,39 @@ async def test_commit_decomposed_tree_persists_the_chapter_on_the_reading_axis(p
     # The chapter shares its slot with its own scene 0 — that identity is what makes the canon-rule
     # window (`from_order` on the strided axis) resolve to the same node the overlay anchors on.
     assert chapter["story_order"] == scenes[0]["story_order"]
+
+
+async def test_work_chapter_draft_fork_on_write_occ_and_merge(pool):
+    """D-S5-DERIVATIVE-MANUSCRIPT-FORK — the real SQL behind the fork store: fork-on-write
+    (INSERT ON CONFLICT DO NOTHING), OCC UPDATE (WHERE draft_version), and mark_merged. The
+    router tests stub the repo, so THIS proves the SQL. Real dev PG (xdist_group pg)."""
+    from app.db.repositories import VersionMismatchError
+    from app.db.repositories.work_chapter_drafts import WorkChapterDraftsRepo
+
+    user, project, book = _ids()
+    chapter = uuid.uuid4()
+    repo = WorkChapterDraftsRepo(pool)
+
+    # Not forked yet → get returns None (the chapter inherits canon).
+    assert await repo.get(project, chapter) is None
+
+    # Fork-on-write: the first insert → version 1, body round-trips through JSONB.
+    forked = await repo.insert_fork(project, chapter, book, user, {"t": "branch v1"})
+    assert forked is not None and forked.draft_version == 1 and forked.body == {"t": "branch v1"}
+
+    # A second fork of the same (project, chapter) → ON CONFLICT DO NOTHING → None (a race lost).
+    assert await repo.insert_fork(project, chapter, book, user, {"t": "race"}) is None
+
+    # OCC update with the correct version → v2.
+    up = await repo.update_occ(project, chapter, {"t": "branch v2"}, expected_version=1)
+    assert up.draft_version == 2 and up.body == {"t": "branch v2"}
+
+    # OCC update with a STALE version → VersionMismatchError carrying the current row.
+    with pytest.raises(VersionMismatchError) as ei:
+        await repo.update_occ(project, chapter, {"t": "stale"}, expected_version=1)
+    assert ei.value.current.draft_version == 2
+
+    # mark_merged stamps merged_at; the row STAYS (the branch keeps its fork).
+    merged = await repo.mark_merged(project, chapter)
+    assert merged.merged_at is not None and merged.draft_version == 2
+    assert (await repo.get(project, chapter)).body == {"t": "branch v2"}

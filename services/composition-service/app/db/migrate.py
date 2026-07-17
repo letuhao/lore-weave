@@ -1713,6 +1713,31 @@ END $$;
 -- The owner-scoped read's index (the only query shape over these rows).
 CREATE INDEX IF NOT EXISTS idx_generation_job_owner_unbound
   ON generation_job(created_by, created_at DESC) WHERE project_id IS NULL;
+
+-- ── S5 D-S5-DERIVATIVE-MANUSCRIPT-FORK — work-scoped chapter drafts (the manuscript FORK).
+-- A dị bản (derivative Work) gains its OWN manuscript per chapter, keyed by (project_id, chapter_id).
+-- Chapter-level copy-on-write: a derivative chapter with NO row here INHERITS canon (book-service's
+-- chapter_drafts, read-through in app code); it FORKS on first edit (the first PATCH seeds `body`
+-- from canon, then bumps version). Canon's chapter_drafts (book-service) is byte-unchanged by any
+-- edit here — the isolation the fork model promises. project_id = the derivative Work's OWN project =
+-- the partition/tenancy scope key (PM-3); book_id is the E0 tenancy gate; created_by is the actor
+-- stamp (PM-5, never filtered on). draft_version is the OI-2 OCC token, mirroring book-service's
+-- chapter_drafts.draft_version. `merged_at` marks a fork promoted back to canon (M2). No cross-DB FK
+-- (chapter_id → book, project_id → the Work partition; validated in app code).
+CREATE TABLE IF NOT EXISTS work_chapter_draft (
+  project_id     UUID NOT NULL,
+  chapter_id     UUID NOT NULL,
+  book_id        UUID NOT NULL,
+  created_by     UUID NOT NULL,
+  body           JSONB NOT NULL,
+  draft_format   TEXT NOT NULL DEFAULT 'json',
+  draft_version  INT NOT NULL DEFAULT 1,
+  merged_at      TIMESTAMPTZ,
+  created_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+  PRIMARY KEY (project_id, chapter_id)
+);
+CREATE INDEX IF NOT EXISTS idx_work_chapter_draft_book ON work_chapter_draft(book_id);
 """
 
 

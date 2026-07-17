@@ -38,9 +38,11 @@ from app.deps import (
     get_generation_jobs_repo,
     get_grant_client_dep,
     get_knowledge_client_dep,
+    get_work_chapter_drafts_repo,
     get_works_repo,
 )
 from app.db.repositories.generation_jobs import GenerationJobsRepo
+from app.db.repositories.work_chapter_drafts import WorkChapterDraftsRepo
 from app.grant_client import GrantClient, GrantLevel
 from app.grant_deps import InsufficientGrant, authorize_book
 from app.middleware.jwt_auth import get_bearer_token, get_current_user
@@ -529,6 +531,100 @@ async def get_chapter_scene_drafts(
     await _gate_book(grant, work.book_id, user_id, GrantLevel.VIEW)
     items = await jobs.scene_drafts_detailed(project_id, chapter_id)
     return {"items": items}
+
+
+# ── D-S5-DERIVATIVE-MANUSCRIPT-FORK — a derivative Work's OWN manuscript, per chapter.
+# Chapter-level copy-on-write: GET reads the fork if it exists, else reads-through to
+# canon (inherit); PATCH forks on first edit (expected_version=0) then OCC-bumps. Only a
+# DERIVATIVE Work has a fork layer — the canonical Work edits the book draft directly.
+class WorkChapterDraftPatchBody(BaseModel):
+    body: Any
+    # 0 = FORK this chapter (no work row yet — the FE saw the inherited canon at version 0);
+    # >=1 = overwrite the existing fork under OCC against its draft_version.
+    expected_version: int
+    draft_format: str = "json"
+
+
+@router.get("/works/{project_id}/chapters/{chapter_id}/work-draft")
+async def get_work_chapter_draft(
+    project_id: UUID,
+    chapter_id: UUID,
+    user_id: UUID = Depends(get_current_user),
+    bearer: str = Depends(get_bearer_token),
+    works: WorksRepo = Depends(get_works_repo),
+    grant: GrantClient = Depends(get_grant_client_dep),
+    book: BookClient = Depends(get_book_client_dep),
+    wcd: WorkChapterDraftsRepo = Depends(get_work_chapter_drafts_repo),
+) -> dict[str, Any]:
+    """The derivative's own draft for this chapter. If it has forked, return the fork
+    (`forked: true`). If not, READ THROUGH to canon (book-service) and return it with
+    `forked: false, inherited: true, draft_version: 0` — the FE edits it and PATCHes with
+    expected_version=0 to fork. VIEW grant. Rejects the canonical Work (it has no fork layer —
+    edit the book draft directly)."""
+    work = await works.get(project_id)
+    if work is None:
+        raise HTTPException(status_code=404, detail=NOT_ACCESSIBLE_MESSAGE)
+    await _gate_book(grant, work.book_id, user_id, GrantLevel.VIEW)
+    if work.source_work_id is None:
+        raise HTTPException(status_code=400, detail={"code": "NOT_A_DERIVATIVE"})
+    fork = await wcd.get(project_id, chapter_id)
+    if fork is not None:
+        return {
+            "forked": True, "inherited": False, "body": fork.body,
+            "draft_version": fork.draft_version, "draft_format": fork.draft_format,
+            "merged_at": fork.merged_at.isoformat() if fork.merged_at else None,
+        }
+    # Inherit canon (read-through). book-service 404 → the chapter doesn't exist → surface it.
+    try:
+        canon = await book.get_draft(work.book_id, chapter_id, bearer)
+    except BookClientError:
+        raise HTTPException(status_code=502, detail={"code": "BOOK_SERVICE_UNAVAILABLE"})
+    if canon is None:
+        raise HTTPException(status_code=404, detail="chapter not found")
+    return {
+        "forked": False, "inherited": True, "body": canon.get("body"),
+        "draft_version": 0, "draft_format": canon.get("draft_format", "json"),
+        "canon_version": canon.get("draft_version"),
+    }
+
+
+@router.patch("/works/{project_id}/chapters/{chapter_id}/work-draft")
+async def patch_work_chapter_draft(
+    project_id: UUID,
+    chapter_id: UUID,
+    body: WorkChapterDraftPatchBody,
+    user_id: UUID = Depends(get_current_user),
+    works: WorksRepo = Depends(get_works_repo),
+    grant: GrantClient = Depends(get_grant_client_dep),
+    wcd: WorkChapterDraftsRepo = Depends(get_work_chapter_drafts_repo),
+) -> dict[str, Any]:
+    """Write the derivative's fork for this chapter. expected_version=0 FORKS it (INSERT
+    version 1); >=1 overwrites under OCC (stale → 412). Canon (book-service) is NEVER touched —
+    the isolation the fork model promises. EDIT grant. Rejects the canonical Work."""
+    work = await works.get(project_id)
+    if work is None:
+        raise HTTPException(status_code=404, detail=NOT_ACCESSIBLE_MESSAGE)
+    await _gate_book(grant, work.book_id, user_id, GrantLevel.EDIT)
+    if work.source_work_id is None:
+        raise HTTPException(status_code=400, detail={"code": "NOT_A_DERIVATIVE"})
+    if body.expected_version == 0:
+        forked = await wcd.insert_fork(
+            project_id, chapter_id, work.book_id, user_id, body.body, body.draft_format,
+        )
+        if forked is None:  # a concurrent fork raced us — refetch and retry
+            raise HTTPException(status_code=409, detail={"code": "ALREADY_FORKED"})
+        return {"forked": True, "body": forked.body, "draft_version": forked.draft_version}
+    try:
+        updated = await wcd.update_occ(
+            project_id, chapter_id, body.body, body.expected_version, body.draft_format,
+        )
+    except VersionMismatchError as exc:
+        current = exc.current
+        raise HTTPException(status_code=412, detail={
+            "code": "STALE_VERSION",
+            "current_version": current.draft_version if current else None,
+        })
+    return {"forked": True, "body": updated.body, "draft_version": updated.draft_version}
 
 
 # ── D-C16: id-addressable + self-healing backfill for a pending null-project ──
