@@ -1,11 +1,10 @@
 # PlanForge — KAL roster cast enrichment (A3)
 
-> **Status:** build-ready spec (design) — **NOT built, deliberately deferred** (2026-07-17). The track
-> goal was met by A1+A2 without it (grounding beats blind, ceiling flipped; A1 uses `cast[0]` which
-> works). A3 is a cross-service quality refinement (knowledge-gateway TS + likely glossary Go for the
-> upstream `kind` field) that upgrades protagonist SELECTION (kind-ranked vs first-drained) — genuinely
-> off the critical path. Build it when the knowledge-gateway track opens, or fold the tiny TS
-> passthrough in then. Part of the PlanForge-v2 Proposer-Grounding track.
+> **Status:** ✅ **BUILT + live-verified 2026-07-17.** Build-time finding: **NO glossary Go change
+> needed** — the upstream `/internal/books/{id}/entities` already selects `k.code AS kind_code` and
+> returns it (`entitiesListItem.KindCode`). So A3 was just the KAL TS passthrough + composition
+> consumption. Live-verified across glossary→knowledge-gateway→composition: a grounded propose's cast
+> note now reads "…, N character-kind first". Part of the PlanForge-v2 Proposer-Grounding track.
 
 ## 1 · The problem
 The PROPOSE-BLIND gather lens can only present existing cast as `{name}` — no role, no kind, no

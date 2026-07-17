@@ -39,12 +39,27 @@ def _truncate(text: str, n: int = _ONE_LINE) -> str:
     return text if len(text) <= n else text[: n - 1].rstrip() + "…"
 
 
+#: A3 — kind_codes that mark a CHARACTER (a book-local slug, so a substring heuristic). Used to rank
+#: character entities ahead of places/items in the roster, so the injected/listed cast is a person,
+#: not a location. A kind that matches none of these is kept but ranked lower (never dropped).
+_CHARACTER_KIND_HINTS = ("char", "person", "protagonist", "hero", "villain", "cast", "npc", "figure",
+                         "nhân vật", "nhanvat")
+
+
+def _is_character_kind(kind: str | None) -> bool:
+    if not kind:
+        return False
+    k = kind.casefold()
+    return any(h in k for h in _CHARACTER_KIND_HINTS)
+
+
 @dataclass
 class CastMember:
-    """A character already in the book's glossary. The KAL roster exposes only name + id — role/trait
-    would need a richer endpoint (a future enhancement); the anti-re-invention goal needs only these."""
+    """A character already in the book's glossary. `kind` (A3) is the entity's book-local kind_code
+    when the gateway provides it (else None) — used to rank characters ahead of places/items."""
     name: str
     glossary_entity_id: str
+    kind: str | None = None
 
 
 @dataclass
@@ -162,7 +177,7 @@ def merge_existing_into_spec(
                 # inject ONLY over a placeholder — never over a name the model chose, and never when
                 # the model already used an existing name (the annotate pass handled that).
                 if name in _PLACEHOLDER_CAST_NAMES and name not in existing_names:
-                    injected = existing.cast[0]  # A3 makes this protagonist-kind-ranked; until then, first
+                    injected = existing.cast[0]  # A3: cast is character-kind-ranked, so [0] is a person
                     proto["name"] = injected.name
                     proto["glossary_entity_id"] = injected.glossary_entity_id
                     proto["continues_existing"] = True
@@ -267,14 +282,21 @@ async def gather_existing_state(
     try:
         roster = await kal_client.roster(book_id, user_id=user_id)
         full = len(roster)
-        cast = [
-            CastMember(name=str(e["name"]), glossary_entity_id=str(e["entity_id"]))
-            for e in roster[: budget.cast_cap]
+        all_cast = [
+            CastMember(name=str(e["name"]), glossary_entity_id=str(e["entity_id"]), kind=e.get("kind"))
+            for e in roster
             if e.get("name") and e.get("entity_id")
         ]
+        # A3 — rank CHARACTER-kind entities first (stable) so the cap keeps people, not places, and the
+        # injected/listed protagonist is a character. When no kinds are present (older gateway) this is
+        # a stable no-op (all rank equal → original order preserved).
+        ranked = sorted(all_cast, key=lambda c: 0 if _is_character_kind(c.kind) else 1)
+        cast = ranked[: budget.cast_cap]
+        n_char = sum(1 for c in cast if _is_character_kind(c.kind))
+        rank_note = f", {n_char} character-kind first" if any(c.kind for c in all_cast) else ""
         notes["cast"] = (
-            f"showing {len(cast)} of {full} cast member(s)" if full > len(cast)
-            else (f"{full} cast member(s)" if full else "no glossary characters yet")
+            f"showing {len(cast)} of {full} cast member(s){rank_note}" if full > len(cast)
+            else (f"{full} cast member(s){rank_note}" if full else "no glossary characters yet")
         )
     except Exception:  # noqa: BLE001
         cast, notes["cast"] = [], "cast read failed — omitted"

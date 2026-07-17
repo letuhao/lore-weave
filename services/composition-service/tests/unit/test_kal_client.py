@@ -42,10 +42,27 @@ async def test_roster_single_page_sends_internal_token_and_user_id():
         cast = await c.roster(BOOK, user_id=USER)
     finally:
         await c.aclose()
-    assert cast == [{"entity_id": e1, "name": "Alice"}]
+    assert cast == [{"entity_id": e1, "name": "Alice", "kind": None}]
     req = route.calls.last.request
     assert req.headers["X-Internal-Token"] == "intok"
     assert req.headers["X-User-Id"] == str(USER)
+
+
+@respx.mock
+async def test_roster_passes_the_entity_kind_through_when_the_gateway_provides_it():
+    # A3 — the gateway now includes `kind`; the client carries it so the gather lens can rank cast.
+    e1 = str(uuid.uuid4())
+    respx.get(_roster_url()).mock(
+        return_value=httpx.Response(200, json={
+            "items": [{"entity_id": e1, "name": "Ling", "kind": "character"}], "next_cursor": None,
+        })
+    )
+    c = _client()
+    try:
+        cast = await c.roster(BOOK, user_id=USER)
+    finally:
+        await c.aclose()
+    assert cast == [{"entity_id": e1, "name": "Ling", "kind": "character"}]
 
 
 @respx.mock
@@ -86,7 +103,7 @@ async def test_roster_partial_on_mid_drain_outage():
         cast = await c.roster(BOOK, user_id=USER)
     finally:
         await c.aclose()
-    assert cast == [{"entity_id": e1, "name": "A"}]
+    assert cast == [{"entity_id": e1, "name": "A", "kind": None}]
     assert route.call_count == 2
 
 
@@ -117,7 +134,7 @@ async def test_roster_skips_malformed_items_and_omits_user_id_when_absent():
         cast = await c.roster(BOOK)  # no user_id
     finally:
         await c.aclose()
-    assert cast == [{"entity_id": good, "name": "Good"}]
+    assert cast == [{"entity_id": good, "name": "Good", "kind": None}]
     assert "X-User-Id" not in route.calls.last.request.headers
 
 

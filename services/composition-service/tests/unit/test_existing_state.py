@@ -115,6 +115,30 @@ async def test_a_degraded_read_is_absent_with_a_note_never_a_raise():
 
 
 @pytest.mark.asyncio
+async def test_A3_ranks_character_kind_cast_ahead_of_places():
+    # a roster mixing a location + characters — A3 ranks characters first so the cap/injection picks a person
+    kal = FakeKal([
+        {"entity_id": "e1", "name": "The Iron Keep", "kind": "location"},
+        {"entity_id": "e2", "name": "Ling Wei", "kind": "character"},
+        {"entity_id": "e3", "name": "A Sword", "kind": "item"},
+    ])
+    st = await _gather(FakeStructure([]), FakeOutline(0, []), kal,
+                       budget=ExistingStateBudget(total=10_000, cast_cap=40))
+    assert st.cast[0].name == "Ling Wei"           # the character ranks first, not the location
+    assert st.cast[0].kind == "character"
+    assert "character-kind first" in st.notes["cast"]
+
+
+@pytest.mark.asyncio
+async def test_A3_no_kinds_is_a_stable_no_op():
+    # older gateway (no kind) → stable order preserved, no rank note
+    kal = FakeKal([{"entity_id": "e1", "name": "A"}, {"entity_id": "e2", "name": "B"}])
+    st = await _gather(FakeStructure([]), FakeOutline(0, []), kal, budget=ExistingStateBudget(total=10_000))
+    assert [c.name for c in st.cast] == ["A", "B"]  # original order kept
+    assert "character-kind first" not in st.notes["cast"]
+
+
+@pytest.mark.asyncio
 async def test_systems_extracted_from_a_caller_supplied_package():
     pkg = {"layers": {"variables": [{"code": "PA"}, {"name": "HA"}]},
            "motifs": [{"label": "打脸"}, "爽点"]}
