@@ -305,14 +305,19 @@ names against the FE reported 78 "no GUI" tools; spot-checking killed it (`compo
 was flagged, but the FE has `compositionApi.createCanonRule` — the FE names verbs **verb-first**, tools are
 **noun-first**). Only capability-level tracing is sound. Every claim below was re-verified by hand.
 
-### F-10 · The whole KG **triage** queue is agent-only — and plan 30 never mentions it 🔴
+### F-10 · The whole KG **triage** queue has no GUI — and plan 30 never mentions it 🔴 (correction below)
+
+> **⚠️ Correction (round 6): this is an FE gap, NOT a backend gap.** The round-6 knowledge sweep verified
+> that `app/routers/public/triage.py` is a **full public JWT router** (list/resolve/dismiss), mounted at
+> `main.py:784` — the backend is complete. My "agent can fill an inbox the human can never open" framing
+> was imprecise: the human *route* exists; only the FE *caller* is missing. This makes it an **XS wire-up**
+> (call an existing route), not a build. The finding stands — the triage queue is unreachable in the GUI —
+> but its size and layer were wrong.
 
 Extraction parks every off-schema element in a triage queue, and `kg_propose_edge` writes *into* it. Four
 tools operate it — `kg_triage_list` · `kg_triage_resolve` · `kg_triage_place_edge` · `kg_triage_schema_write`.
-**The agent can fill an inbox the human can never open.**
-
-The routes are already **public** (`app/routers/public/triage.py`), and the FE functions already exist —
-with **zero callers**. That is the exact `createEntity`-with-no-callers shape this repo has shipped before.
+The routes are **public and complete**; the FE functions exist with **zero callers** — the exact
+`createEntity`-with-no-callers shape this repo has shipped before.
 
 | Verified | |
 |---|---|
@@ -333,13 +338,17 @@ with **zero callers**. That is the exact `createEntity`-with-no-callers shape th
 
 Plan 30 caught `memory_forget` (under G-KG-WRITE-HOLES) but **not** the authoring half.
 
-### F-12 · Views are authorable but not applicable — a lens you cannot look through 🔴
+### F-12 · Views are authorable but not applicable — a lens you cannot look through 🔴 (FE gap, corrected)
 
-`kg_view_upsert`/`delete`/`read` are fully GUI (`ViewBuilder` ← `KgSchemaPanel`). But `kg_graph_query` — the
-only reader that accepts `view` + `as_of_chapter` — has **zero FE callers** (`ontologyApi.readGraph`).
-`KgGraphPanel` renders `ProjectGraphView` → `useProjectSubgraph` → `/subgraph`, whose params are
-`center`/`hops`/`limit` only. **A human can build a saved lens and then never apply it, and cannot view the
-graph as-of a chapter.** In no plan-30 row.
+> **⚠️ Correction (round 6): FE gap, not backend.** `GET /v1/kg/projects/{id}/graph?view=&as_of_chapter=`
+> (`graph_views.py:597`) is a **public, browser-reachable reader** that applies the lens — the backend is
+> complete. The gap is only that `KgGraphPanel`'s `ProjectGraphView` calls a *different* endpoint
+> (`/subgraph`, params `center`/`hops`/`limit`) instead of this one. So it is an **S FE swap** (point the
+> panel at the view-aware reader), not a backend build. The finding stands; the layer/size were wrong.
+
+`kg_view_upsert`/`delete`/`read` are fully GUI (`ViewBuilder` ← `KgSchemaPanel`). The reader that applies a
+view + `as_of_chapter` exists and is public — but has **zero FE callers**. **A human can build a saved lens
+and then never apply it, and cannot view the graph as-of a chapter.** In no plan-30 row.
 
 ### F-13 · `kg_project_entities_to_nodes` is MCP-only (plan 30 caught this one)
 
@@ -415,6 +424,59 @@ style/voice is invisible to the agent AND (per F-1) to the Studio user. Both hal
 
 **Dead code surfaced along the way:** `useResolvedSchema.ts` (zero importers), `ontologyApi.updateView`
 (zero callers, `upsertView` won).
+
+---
+
+## Round 6 — CRUD-completeness at the BACKEND (the real build-spec input) 🔴
+
+The question rounds 1–5 should have asked. For each authorable domain: which CRUD verb is missing, **at
+which layer** (repo / route / MCP)? A missing repo method is a data-model gap (M); a missing route over an
+existing method is a wire-up (XS–S). Every row below was re-verified against the repos by hand after the
+agents returned — the two corrections to F-10/F-12 above came out of exactly this cross-check (both were FE
+gaps I'd mislabelled as backend).
+
+**The pattern that emerged: this is NOT "port the legacy code". Several domains are missing a verb at the
+DATA layer, so no port could ever add it.** Grouped by fix shape:
+
+### 6.1 · Missing at the REPO/DATA layer — a real BUILD, not a port
+
+| Domain | Missing | Evidence | Consequence | Size |
+|---|---|---|---|---|
+| **structure_template** | Create · Update · Delete — **the entire write side** | `structure_templates.py` has ONLY `list_for_user`+`get`; the sole `INSERT` is the built-in seed at `migrate.py:1985` (`owner_user_id NULL`) | The schema fully provisions a per-user tier (`owner_user_id` col + index + the SELECT filters on it) but **no code can insert one** — the advertised "user-custom story structure" tier is dead. Only the 6 seeds are ever usable. | **M** (repo methods + `UNIQUE(owner_user_id,name)` tenancy + route + MCP) |
+| **references** | Update | `ReferencesRepo` = create/list/get/delete/search — no `update` (verified); router GET/POST/DELETE only | Cannot fix a typo in a reference's title/author/url — delete+re-add **re-embeds** the whole content and loses ordering | **S** metadata-only PATCH · **M** if content edits re-embed |
+| **derivative deltas** | Update/Delete of `divergence_spec`; add-after/Update/Delete of `entity_override` | `derivatives.py` = create_spec/create_override/get/list only; sole writer is `perform_derive` at derive-time | After creating a dị bản the author can't change its taxonomy/pov/added-rules or edit a per-entity override — the only "edit" is archive-and-re-derive. `DivergenceManagerView` shows deltas it cannot mutate. | **M** |
+
+### 6.2 · Missing at the ROUTE/MCP layer — the repo method EXISTS (wire-up)
+
+| Domain | Missing | Evidence | Fix |
+|---|---|---|---|
+| **facts (author)** | no public POST-create | `pending_facts.py` = GET/confirm/reject only; `merge_fact`+`PendingFactsRepo.queue` called only from MCP | `POST /v1/knowledge/pending-facts` (or direct `…/facts`) — **S** |
+| **facts (invalidate)** | no `/facts/{id}/invalidate` | `invalidate_fact` exists (`facts.py:764`) and IS exposed for relations (`/relations/{id}/invalidate`), just not facts | route over the existing method — **XS** |
+| **corrections (list)** | no `GET …/corrections` | `generation_corrections.py:280 list_for_job` defined, **zero callers** | route mirror — **XS** |
+| **glossary→graph seed** | `kg_project_entities_to_nodes` MCP-only | no REST twin; `POST /entities` is single-node | `POST …/projects/{id}/entities/from-glossary` — **S** |
+| **world rollup `unify`** | REST subgraph takes only `limit` | `unify` (off/by_name/semantic) lives in `kg_world_query`/`kg_multi_query` MCP + `kg_unify.py` | add `unify` param to the REST route — **M** |
+| **triage / views (F-10/F-12)** | FE caller only | routes public + complete | wire the panel — **XS–S** |
+| **motif RESTORE, arc-template RESTORE** | soft-archive with **no restore** | `motif_repo`/`arc_template_repo`: `archive` present, `restore` absent (verified vs canon/plan/structure/outline which all have it) | `restore` method + route — **S each** |
+
+### 6.3 · Confirmed COMPLETE (no gap — do not spec) & by-design absences
+
+- **Full CRUD:** outline nodes · canon rules · style/voice · arcs · plan runs · motif bindings (fully
+  reversible, undo_token round-trips) · projects · schema/ontology · views(backend) · triage(backend).
+- **By-design, NOT a gap:** entity hard-delete (soft-archive preserves the glossary anchor) · relation &
+  fact in-place UPDATE (bitemporal — correction = invalidate + re-assert) · references restore (hard-delete,
+  no calibration history to keep) · import-source update (immutable raw input) · self-heal proposals
+  (ephemeral compute; accepted edits persist via prose write) · corrections update/delete (append-only
+  preference log).
+
+### 6.4 · Stale flags in plan 30, now disproven by code
+
+- `composition_arc_apply` / `composition_arc_template_drift` were flagged as `_pending_engine` stubs —
+  **both are fully wired** now (`apply_arc_to_spec`, `compute_arc_report`). The only live `_pending_engine`
+  is dead code (`server.py:5077`, unreachable because `extract_template_from_arc` now exists).
+- `G-ARC-SPEC-CRUD` ("all 5 arc CRUD tools NO-FE") — **closed** (`useArcInspector` calls all 5).
+- `G-KG-WRITE-HOLES` "grep createEntity → EMPTY" — **false at HEAD**.
+
+*(world / book / glossary domains — the 4th agent — appended below when it lands.)*
 
 ---
 
