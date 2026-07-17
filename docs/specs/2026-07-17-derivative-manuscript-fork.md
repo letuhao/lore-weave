@@ -63,5 +63,9 @@ manuscript. Isolating it needs a **work-scoped draft layer**, which does not exi
 
 ## 5 · Status
 
-BLOCKED ON A PRODUCT DECISION (§1). Until then, v1 = spec-branch + the edit-guard banner
-(shipped). Size if built: L (schema/store + editor work-scoping + merge path + smokes).
+✅ **BUILT 2026-07-17** — the PO chose FORK (§1). Delivered via §3 option (b) (composition-side
+work-scoped chapter drafts). Build plan + milestones: `docs/plans/2026-07-17-derivative-manuscript-fork-build.md`.
+Commits c24632af2 (M1 store), 617957c7f (M2 merge-to-canon), 1534e417b (M3 editor work-scoping +
+isolation banner + merge affordance), 35b9840f6 (M4 live-verify + reload-race fix). All §4 acceptance
+criteria live-proven (cross-service composition↔book smoke + a live browser e2e). The v1 edit-guard
+banner is superseded by the real isolation.

@@ -169,10 +169,15 @@ useWhatIfPromotion), NEVER mount CompositionPanel shell.
   not the branch. Use the what-if canvas → Promote for branch-only prose.") whenever the active Work is a
   derivative (`composeWork?.source_work_id`). The s5-blackbox-journey e2e PROVES it renders live on a
   derivative (2026-07-17). Row was stale.
-- D-S5-DERIVATIVE-MANUSCRIPT-FORK — ✅ SPEC'D: docs/specs/2026-07-17-derivative-manuscript-fork.md. BLOCKED ON
-  A PRODUCT DECISION (§1: keep spec-branch [recommended] vs fork the manuscript). If "keep spec-branch", the
-  item is CLOSED (v1 decision + edit-guard banner stand). Design (§3, work-scoped drafts + editor work-scoping
-  + merge path) built only on an explicit "fork" decision. Size L if built.
+- D-S5-DERIVATIVE-MANUSCRIPT-FORK — ✅ CLEARED — BUILT 2026-07-17 (PO chose FORK). A dị bản now has its OWN
+  work-scoped manuscript per chapter (chapter-level copy-on-write); editing a derivative NEVER touches canon.
+  Plan: docs/plans/2026-07-17-derivative-manuscript-fork-build.md. Commits c24632af2 (M1 store: work_chapter_draft
+  table + repo + GET/PATCH routes, read-through + fork-on-write + OCC), 617957c7f (M2 merge-to-canon, OCC-guarded),
+  1534e417b (M3 editor work-scoping: ManuscriptUnitProvider routes load/save to the fork store on a derivative +
+  the real isolation banner + Merge-to-canon button), 35b9840f6 (M4 VERIFY + a fork-identity reload-race fix).
+  LIVE-PROVEN cross-service (composition↔book): inherit→fork→CANON-BYTE-UNCHANGED→merge; + a live browser e2e
+  (studio-derivative-fork.spec). BE 13 router + 1 repo-integration tests; FE 6 provider + 3 editor tests; 817
+  manuscript+panels green. The edit-guard banner (v1 mitigation) is SUPERSEDED by the real isolation.
 - D-DIVERGENCE-MCP-TOOLS — ◑ MOSTLY CLEARED 2026-07-17 (commits 0c41947a4 + this run). SHIPPED the 3
   buildable-now verbs: `composition_list_derivatives` (R/VIEW) + `composition_get_derivative_context`
   (R/VIEW — durable spec: taxonomy/branch_point/pov_anchor/canon_rules/overrides, reuses
