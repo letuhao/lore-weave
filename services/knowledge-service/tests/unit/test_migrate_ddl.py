@@ -513,7 +513,8 @@ def test_pending_facts_fact_type_check_constraint():
     """K21-C — fact_type CHECK locks the vocabulary in sync with the
     Neo4j FactType closed enum + the PendingFact Pydantic model. A
     drift would let an unknown type reach merge_fact's own validation
-    and 500. WS-2.1 added 'statement' (the diary's coarse fact kind)."""
+    and 500. WS-2.1 added 'statement' (the diary's coarse fact kind);
+    WS-5.7 added 'commitment' (a promised action + due date)."""
     import re
     m = re.search(
         r"CREATE TABLE IF NOT EXISTS knowledge_pending_facts\s*\((.*?)\);",
@@ -522,11 +523,11 @@ def test_pending_facts_fact_type_check_constraint():
     assert m is not None
     body = m.group(1)
     assert (
-        "CHECK (fact_type IN ('decision','preference','milestone','negation','statement'))"
+        "CHECK (fact_type IN ('decision','preference','milestone','negation','statement','commitment'))"
         in body
     )
-    # The idempotent widen (for an already-migrated DB) must ADD the same 5-value CHECK.
-    assert "'negation','statement'))" in DDL
+    # The idempotent widen (for an already-migrated DB) must ADD the same 6-value CHECK.
+    assert "'negation','statement','commitment'))" in DDL
 
 
 def test_pending_facts_no_cross_db_fk():

@@ -16,6 +16,11 @@ vi.mock('react-i18next', () => ({
 vi.mock('@/features/composition/components/GroundingPanel', () => ({
   GroundingPanel: () => <div data-testid="mock-grounding" />,
 }));
+// The inspector renders SceneMotifsSection (TanStack query hooks; covered on its own).
+// Stub it so this stays a pure view test without needing a QueryClientProvider.
+vi.mock('@/features/composition/motif/components/SceneMotifsSection', () => ({
+  SceneMotifsSection: () => <div data-testid="mock-scene-motifs" />,
+}));
 const state = vi.fn<[], SceneInspectorState>();
 vi.mock('../useSceneInspector', () => ({ useSceneInspector: () => state() }));
 // 26 IX-14 — the inspector also reads conformance; mock it (default: nothing dirty).
