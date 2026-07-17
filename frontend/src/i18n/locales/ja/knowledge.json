@@ -443,7 +443,12 @@
       "markWrongSuccess": "事実を間違いとしてマークしました",
       "markWrongFailed": "事実を無効化できませんでした: {{error}}",
       "factTypeHelp": "これはどのような事実ですか？",
-      "factAdvancedToggle": "別のエンティティにリンクする（任意）"
+      "factAdvancedToggle": "別のエンティティにリンクする（任意）",
+      "replaceFact": "この事実を置換",
+      "replaceFactSave": "置換を保存",
+      "replaceFactSuccess": "事実を置換しました",
+      "markWrongUndo": "元に戻す",
+      "markWrongUndoFailed": "元に戻せませんでした: {{error}}"
     },
     "edit": {
       "title": "エンティティを編集",

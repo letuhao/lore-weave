@@ -443,7 +443,12 @@
       "markWrongSuccess": "事实已标记为错误",
       "markWrongFailed": "无法作废事实：{{error}}",
       "factTypeHelp": "这是哪种事实？",
-      "factAdvancedToggle": "链接到另一个实体（可选）"
+      "factAdvancedToggle": "链接到另一个实体（可选）",
+      "replaceFact": "替换此事实",
+      "replaceFactSave": "保存替换",
+      "replaceFactSuccess": "事实已替换",
+      "markWrongUndo": "撤销",
+      "markWrongUndoFailed": "无法撤销：{{error}}"
     },
     "edit": {
       "title": "编辑实体",

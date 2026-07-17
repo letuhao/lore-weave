@@ -443,7 +443,12 @@
       "markWrongSuccess": "Đã đánh dấu sự kiện là sai",
       "markWrongFailed": "Không thể vô hiệu hóa sự kiện: {{error}}",
       "factTypeHelp": "Đây là loại sự thật nào?",
-      "factAdvancedToggle": "Liên kết tới một thực thể khác (tùy chọn)"
+      "factAdvancedToggle": "Liên kết tới một thực thể khác (tùy chọn)",
+      "replaceFact": "Thay thế sự thật này",
+      "replaceFactSave": "Lưu thay đổi",
+      "replaceFactSuccess": "Đã thay thế sự thật",
+      "markWrongUndo": "Hoàn tác",
+      "markWrongUndoFailed": "Không thể hoàn tác: {{error}}"
     },
     "edit": {
       "title": "Chỉnh sửa thực thể",

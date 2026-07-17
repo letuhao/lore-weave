@@ -443,7 +443,12 @@
       "markWrongSuccess": "Fact marked wrong",
       "markWrongFailed": "Could not invalidate fact: {{error}}",
       "factTypeHelp": "What kind of fact is this?",
-      "factAdvancedToggle": "Link to another entity (optional)"
+      "factAdvancedToggle": "Link to another entity (optional)",
+      "replaceFact": "Replace this fact",
+      "replaceFactSave": "Save replacement",
+      "replaceFactSuccess": "Fact replaced",
+      "markWrongUndo": "Undo",
+      "markWrongUndoFailed": "Could not undo: {{error}}"
     },
     "edit": {
       "title": "Edit entity",

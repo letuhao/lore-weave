@@ -93,3 +93,25 @@ export function useInvalidateFact(
   });
   return { invalidate: mutation.mutateAsync, isPending: mutation.isPending };
 }
+
+/** S-05b — UNDO a mark-wrong: revalidate → refetch so the fact re-appears. */
+export function useRevalidateFact(
+  entityId: string | null,
+  options?: { onSuccess?: () => void; onError?: (e: Error) => void },
+) {
+  const { accessToken, user } = useAuth();
+  const userId = user?.user_id ?? 'anon';
+  const queryClient = useQueryClient();
+  const mutation = useMutation({
+    mutationFn: (factId: string) =>
+      knowledgeApi.revalidateFact(factId, accessToken!),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({
+        queryKey: ['knowledge-entity-facts', userId, entityId],
+      });
+      options?.onSuccess?.();
+    },
+    onError: (e) => options?.onError?.(e as Error),
+  });
+  return { revalidate: mutation.mutateAsync, isPending: mutation.isPending };
+}

@@ -443,7 +443,12 @@
       "markWrongSuccess": "Fato marcado como incorreto",
       "markWrongFailed": "Não foi possível invalidar o fato: {{error}}",
       "factTypeHelp": "Que tipo de fato é este?",
-      "factAdvancedToggle": "Vincular a outra entidade (opcional)"
+      "factAdvancedToggle": "Vincular a outra entidade (opcional)",
+      "replaceFact": "Substituir este fato",
+      "replaceFactSave": "Salvar substituição",
+      "replaceFactSuccess": "Fato substituído",
+      "markWrongUndo": "Desfazer",
+      "markWrongUndoFailed": "Não foi possível desfazer: {{error}}"
     },
     "edit": {
       "title": "Editar entidade",

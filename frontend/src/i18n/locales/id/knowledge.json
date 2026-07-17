@@ -443,7 +443,12 @@
       "markWrongSuccess": "Fakta ditandai salah",
       "markWrongFailed": "Tidak dapat membatalkan fakta: {{error}}",
       "factTypeHelp": "Fakta jenis apa ini?",
-      "factAdvancedToggle": "Tautkan ke entitas lain (opsional)"
+      "factAdvancedToggle": "Tautkan ke entitas lain (opsional)",
+      "replaceFact": "Ganti fakta ini",
+      "replaceFactSave": "Simpan penggantian",
+      "replaceFactSuccess": "Fakta berhasil diganti",
+      "markWrongUndo": "Batalkan",
+      "markWrongUndoFailed": "Tidak dapat membatalkan: {{error}}"
     },
     "edit": {
       "title": "Edit entitas",

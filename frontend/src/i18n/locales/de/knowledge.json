@@ -443,7 +443,12 @@
       "markWrongSuccess": "Fakt als falsch markiert",
       "markWrongFailed": "Fakt konnte nicht ungültig gemacht werden: {{error}}",
       "factTypeHelp": "Was für eine Art von Fakt ist dies?",
-      "factAdvancedToggle": "Mit einer anderen Entität verknüpfen (optional)"
+      "factAdvancedToggle": "Mit einer anderen Entität verknüpfen (optional)",
+      "replaceFact": "Diesen Fakt ersetzen",
+      "replaceFactSave": "Ersetzung speichern",
+      "replaceFactSuccess": "Fakt ersetzt",
+      "markWrongUndo": "Rückgängig machen",
+      "markWrongUndoFailed": "Rückgängig machen fehlgeschlagen: {{error}}"
     },
     "edit": {
       "title": "Entität bearbeiten",

@@ -22,6 +22,7 @@ import {
   useEntityFacts,
   useCreateEntityFact,
   useInvalidateFact,
+  useRevalidateFact,
 } from '../hooks/useEntityFacts';
 import { useAnchoredGlossaryEntity } from '../hooks/useAnchoredGlossaryEntity';
 import {
@@ -158,22 +159,29 @@ export function EntityDetailPanel({
   const [factContent, setFactContent] = useState('');
   const [factPredicate, setFactPredicate] = useState('');
   const [factObject, setFactObject] = useState('');
+  // S-05b (F8) — the fact being REPLACED (edit = invalidate old + author new,
+  // since bitemporal has no in-place UPDATE). null = a plain add.
+  const [replacingFactId, setReplacingFactId] = useState<string | null>(null);
+  const resetFactForm = () => {
+    setShowAddFact(false);
+    setFactContent('');
+    setFactPredicate('');
+    setFactObject('');
+    setFactType('decision');
+    setReplacingFactId(null);
+  };
   const createFact = useCreateEntityFact(open ? entityId : null, {
-    onSuccess: () => {
-      toast.success(t('entities.detail.addFactSuccess'));
-      setShowAddFact(false);
-      setFactContent('');
-      setFactPredicate('');
-      setFactObject('');
-      setFactType('decision');
-    },
     onError: (e) =>
       toast.error(t('entities.detail.addFactFailed', { error: e.message })),
   });
   const invalidateFactMutation = useInvalidateFact(open ? entityId : null, {
-    onSuccess: () => toast.success(t('entities.detail.markWrongSuccess')),
     onError: (e) =>
       toast.error(t('entities.detail.markWrongFailed', { error: e.message })),
+  });
+  // S-05b (F9) — the Undo half of mark-wrong.
+  const revalidateFactMutation = useRevalidateFact(open ? entityId : null, {
+    onError: (e) =>
+      toast.error(t('entities.detail.markWrongUndoFailed', { error: e.message })),
   });
   const handleAddFact = async () => {
     if (!factContent.trim()) return;
@@ -184,14 +192,44 @@ export function EntityDetailPanel({
         predicate: factPredicate.trim() || null,
         object: factObject.trim() || null,
       });
+      // S-05b (F8) — Replace = author the new fact THEN invalidate the old one.
+      if (replacingFactId) {
+        try {
+          await invalidateFactMutation.invalidate(replacingFactId);
+        } catch {
+          // the new fact is already saved; a failed old-invalidate just leaves both.
+        }
+      }
+      toast.success(
+        t(replacingFactId
+          ? 'entities.detail.replaceFactSuccess'
+          : 'entities.detail.addFactSuccess'),
+      );
+      resetFactForm();
     } catch {
-      // onError owns the toast; swallow the rejection (vitest guard).
+      // createFact onError owns the toast; swallow (vitest guard).
     }
+  };
+  // S-05b (F8) — prefill the add-fact form from a fact + mark it for replacement.
+  const handleReplaceFact = (f: EntityFact) => {
+    setFactType(f.type);
+    setFactContent(f.content);
+    setFactPredicate('');
+    setFactObject('');
+    setReplacingFactId(f.id);
+    setShowAddFact(true);
   };
   const handleMarkWrong = async (factId: string) => {
     if (!window.confirm(t('entities.detail.markWrongConfirm'))) return;
     try {
       await invalidateFactMutation.invalidate(factId);
+      // S-05b (F9) — Undo toast (mirror the entity-archive restore).
+      toast.success(t('entities.detail.markWrongSuccess'), {
+        action: {
+          label: t('entities.detail.markWrongUndo'),
+          onClick: () => { void revalidateFactMutation.revalidate(factId); },
+        },
+      });
     } catch {
       // onError owns the toast; swallow the rejection (vitest guard).
     }
@@ -703,7 +741,7 @@ export function EntityDetailPanel({
                       <div className="flex justify-end gap-2">
                         <button
                           type="button"
-                          onClick={() => setShowAddFact(false)}
+                          onClick={resetFactForm}
                           className="rounded-md border px-2 py-1 text-[11px] transition-colors hover:bg-secondary"
                           data-testid="entity-detail-add-fact-cancel"
                         >
@@ -716,7 +754,9 @@ export function EntityDetailPanel({
                           className="inline-flex items-center gap-1 rounded-md border border-primary/40 px-2 py-1 text-[11px] text-primary transition-colors hover:bg-primary/10 disabled:cursor-not-allowed disabled:opacity-50"
                           data-testid="entity-detail-add-fact-save"
                         >
-                          {t('entities.detail.addFactSave')}
+                          {t(replacingFactId
+                            ? 'entities.detail.replaceFactSave'
+                            : 'entities.detail.addFactSave')}
                         </button>
                       </div>
                     </div>
@@ -735,6 +775,21 @@ export function EntityDetailPanel({
                               {t(FACT_TYPE_LABEL[f.type])}
                             </span>
                             <span className="min-w-0 flex-1">{f.content}</span>
+                            {/* S-05b (F8) — Replace: the "edit" a bitemporal fact
+                                allows (author corrected + invalidate old). */}
+                            <button
+                              type="button"
+                              onClick={() => handleReplaceFact(f)}
+                              title={t('entities.detail.replaceFact')}
+                              aria-label={t('entities.detail.replaceFact')}
+                              className={cn(
+                                'inline-flex shrink-0 items-center justify-center rounded-sm p-1 text-muted-foreground transition-colors hover:text-foreground',
+                                TOUCH_TARGET_SQUARE_MOBILE_ONLY_CLASS,
+                              )}
+                              data-testid="entity-detail-fact-replace"
+                            >
+                              <Pencil className="h-3 w-3" />
+                            </button>
                             <button
                               type="button"
                               onClick={() => handleMarkWrong(f.id)}

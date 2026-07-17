@@ -205,6 +205,25 @@ def test_invalidate_extraction_fact_emits_correction(mock_get, mock_invalidate, 
     mock_emit.assert_awaited_once()
 
 
+@patch("app.routers.public.facts.neo4j_session", new=lambda: _noop_session())
+@patch("app.routers.public.facts.revalidate_fact", new_callable=AsyncMock)
+def test_revalidate_fact_happy(mock_revalidate):
+    """S-05b — undo a mark-wrong: revalidate clears valid_until (fact re-appears)."""
+    mock_revalidate.return_value = _fact(valid_until=None)
+    resp = _client().post("/v1/knowledge/facts/fact-1/revalidate")
+    assert resp.status_code == 200, resp.json()
+    assert resp.json()["valid_until"] is None
+    mock_revalidate.assert_awaited_once()
+
+
+@patch("app.routers.public.facts.neo4j_session", new=lambda: _noop_session())
+@patch("app.routers.public.facts.revalidate_fact", new_callable=AsyncMock)
+def test_revalidate_fact_404_cross_user(mock_revalidate):
+    mock_revalidate.return_value = None
+    resp = _client().post("/v1/knowledge/facts/missing/revalidate")
+    assert resp.status_code == 404
+
+
 @patch("app.routers.public.facts.emit_correction", new_callable=AsyncMock)
 @patch("app.routers.public.facts.neo4j_session", new=lambda: _noop_session())
 @patch("app.routers.public.facts.invalidate_fact", new_callable=AsyncMock)

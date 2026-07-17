@@ -443,7 +443,12 @@
       "markWrongSuccess": "तथ्य को गलत चिह्नित किया गया",
       "markWrongFailed": "तथ्य को अमान्य नहीं किया जा सका: {{error}}",
       "factTypeHelp": "यह किस प्रकार का तथ्य है?",
-      "factAdvancedToggle": "किसी अन्य इकाई से लिंक करें (वैकल्पिक)"
+      "factAdvancedToggle": "किसी अन्य इकाई से लिंक करें (वैकल्पिक)",
+      "replaceFact": "इस तथ्य को बदलें",
+      "replaceFactSave": "बदलाव सहेजें",
+      "replaceFactSuccess": "तथ्य बदल दिया गया",
+      "markWrongUndo": "पूर्ववत करें",
+      "markWrongUndoFailed": "पूर्ववत नहीं किया जा सका: {{error}}"
     },
     "edit": {
       "title": "एंटिटी संपादित करें",

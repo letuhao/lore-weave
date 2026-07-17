@@ -443,7 +443,12 @@
       "markWrongSuccess": "তথ্যটি ভুল হিসেবে চিহ্নিত করা হয়েছে",
       "markWrongFailed": "তথ্যটি বাতিল করা সম্ভব হয়নি: {{error}}",
       "factTypeHelp": "এটি কী ধরনের তথ্য?",
-      "factAdvancedToggle": "অন্য কোনো এনটিটির সাথে লিঙ্ক করুন (ঐচ্ছিক)"
+      "factAdvancedToggle": "অন্য কোনো এনটিটির সাথে লিঙ্ক করুন (ঐচ্ছিক)",
+      "replaceFact": "এই তথ্যটি পরিবর্তন করুন",
+      "replaceFactSave": "পরিবর্তনটি সংরক্ষণ করুন",
+      "replaceFactSuccess": "তথ্যটি পরিবর্তন করা হয়েছে",
+      "markWrongUndo": "পূর্বাবস্থায় ফিরুন",
+      "markWrongUndoFailed": "পূর্বাবস্থায় ফিরতে ব্যর্থ হয়েছে: {{error}}"
     },
     "edit": {
       "title": "এন্টটি সম্পাদনা করুন",

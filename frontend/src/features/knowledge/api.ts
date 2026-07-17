@@ -2001,6 +2001,14 @@ export const knowledgeApi = {
     );
   },
 
+  /** S-05b — UNDO a mark-wrong: clear valid_until so the fact re-appears. */
+  revalidateFact(factId: string, token: string): Promise<EntityFact> {
+    return apiJson<EntityFact>(
+      `${BASE}/facts/${encodeURIComponent(factId)}/revalidate`,
+      { method: 'POST', token },
+    );
+  },
+
   // ── K19e.5 — GET /v1/knowledge/drawers/search ────────────────────────
 
   searchDrawers(

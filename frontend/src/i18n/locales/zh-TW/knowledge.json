@@ -443,7 +443,12 @@
       "markWrongSuccess": "事實已標記為錯誤",
       "markWrongFailed": "無法作廢事實：{{error}}",
       "factTypeHelp": "這是什麼類型的事實？",
-      "factAdvancedToggle": "連結至另一個實體（選填）"
+      "factAdvancedToggle": "連結至另一個實體（選填）",
+      "replaceFact": "替換此事實",
+      "replaceFactSave": "儲存替換",
+      "replaceFactSuccess": "事實已替換",
+      "markWrongUndo": "復原",
+      "markWrongUndoFailed": "無法復原：{{error}}"
     },
     "edit": {
       "title": "編輯實體",

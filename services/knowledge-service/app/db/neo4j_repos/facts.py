@@ -789,6 +789,40 @@ async def invalidate_fact(
     return _node_to_fact(record["f"])
 
 
+# ── revalidate_fact (S-05b F9 — undo a mark-wrong) ────────────────────
+
+
+_REVALIDATE_FACT_CYPHER = """
+MATCH (f:Fact {id: $id})
+WHERE f.user_id = $user_id
+SET f.valid_until = NULL,
+    f.updated_at = datetime()
+RETURN f
+"""
+
+
+async def revalidate_fact(
+    session: CypherSession,
+    *,
+    user_id: str,
+    fact_id: str,
+) -> Fact | None:
+    """S-05b — the inverse of `invalidate_fact`: clear `valid_until` so a mark-wrong
+    can be UNDONE (the fact re-appears in the L2 loader). Owner-scoped; idempotent
+    (revalidating an active fact is a no-op). Returns None on cross-user/missing so
+    the router maps to 404 (no existence oracle). No event: a self-undo of one's own
+    invalidate is not an extraction correction (mirrors the S-05 emit-gating stance)."""
+    if not fact_id:
+        raise ValueError("fact_id must be a non-empty string")
+    result = await run_write(
+        session, _REVALIDATE_FACT_CYPHER, user_id=user_id, id=fact_id,
+    )
+    record = await result.single()
+    if record is None:
+        return None
+    return _node_to_fact(record["f"])
+
+
 # ── invalidate_facts_for_day (WS-2.6a leg 3 — D17 amendment reconcile) ─
 
 

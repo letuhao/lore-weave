@@ -443,7 +443,12 @@
       "markWrongSuccess": "Факт помечен как неверный",
       "markWrongFailed": "Не удалось аннулировать факт: {{error}}",
       "factTypeHelp": "Что это за факт?",
-      "factAdvancedToggle": "Связать с другой сущностью (необязательно)"
+      "factAdvancedToggle": "Связать с другой сущностью (необязательно)",
+      "replaceFact": "Заменить этот факт",
+      "replaceFactSave": "Сохранить замену",
+      "replaceFactSuccess": "Факт заменен",
+      "markWrongUndo": "Отменить",
+      "markWrongUndoFailed": "Не удалось отменить: {{error}}"
     },
     "edit": {
       "title": "Редактировать сущность",

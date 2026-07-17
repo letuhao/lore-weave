@@ -443,7 +443,12 @@
       "markWrongSuccess": "오답 처리 완료",
       "markWrongFailed": "사실을 무효화할 수 없습니다: {{error}}",
       "factTypeHelp": "어떤 종류의 사실인가요?",
-      "factAdvancedToggle": "다른 엔티티와 연결 (선택 사항)"
+      "factAdvancedToggle": "다른 엔티티와 연결 (선택 사항)",
+      "replaceFact": "이 사실 교체",
+      "replaceFactSave": "교체 사항 저장",
+      "replaceFactSuccess": "사실이 교체되었습니다",
+      "markWrongUndo": "실행 취소",
+      "markWrongUndoFailed": "실행 취소 실패: {{error}}"
     },
     "edit": {
       "title": "엔티티 편집",

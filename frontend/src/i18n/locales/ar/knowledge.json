@@ -443,7 +443,12 @@
       "markWrongSuccess": "تم تحديد الحقيقة كخطأ",
       "markWrongFailed": "تعذر إبطال الحقيقة: {{error}}",
       "factTypeHelp": "ما نوع هذه الحقيقة؟",
-      "factAdvancedToggle": "ربط بكيان آخر (اختياري)"
+      "factAdvancedToggle": "ربط بكيان آخر (اختياري)",
+      "replaceFact": "استبدال هذه الحقيقة",
+      "replaceFactSave": "حفظ الاستبدال",
+      "replaceFactSuccess": "تم استبدال الحقيقة",
+      "markWrongUndo": "تراجع",
+      "markWrongUndoFailed": "تعذر التراجع: {{error}}"
     },
     "edit": {
       "title": "Edit entity",

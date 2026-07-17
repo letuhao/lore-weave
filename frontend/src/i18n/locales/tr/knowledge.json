@@ -443,7 +443,12 @@
       "markWrongSuccess": "Bilgi yanlış olarak işaretlendi",
       "markWrongFailed": "Bilgi geçersiz kılınamadı: {{error}}",
       "factTypeHelp": "Bu ne tür bir bilgi?",
-      "factAdvancedToggle": "Başka bir varlığa bağlantı ekle (isteğe bağlı)"
+      "factAdvancedToggle": "Başka bir varlığa bağlantı ekle (isteğe bağlı)",
+      "replaceFact": "Bu bilgiyi değiştir",
+      "replaceFactSave": "Değişikliği kaydet",
+      "replaceFactSuccess": "Bilgi değiştirildi",
+      "markWrongUndo": "Geri al",
+      "markWrongUndoFailed": "Geri alınamadı: {{error}}"
     },
     "edit": {
       "title": "Varlığı düzenle",

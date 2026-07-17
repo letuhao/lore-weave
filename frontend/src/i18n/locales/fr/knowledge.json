@@ -443,7 +443,12 @@
       "markWrongSuccess": "Fait marqué comme incorrect",
       "markWrongFailed": "Impossible d'invalider le fait : {{error}}",
       "factTypeHelp": "Quel type de fait s'agit-il ?",
-      "factAdvancedToggle": "Lier à une autre entité (optionnel)"
+      "factAdvancedToggle": "Lier à une autre entité (optionnel)",
+      "replaceFact": "Remplacer ce fait",
+      "replaceFactSave": "Enregistrer le remplacement",
+      "replaceFactSuccess": "Fait remplacé",
+      "markWrongUndo": "Annuler",
+      "markWrongUndoFailed": "Impossible d'annuler : {{error}}"
     },
     "edit": {
       "title": "Modifier l'entité",
