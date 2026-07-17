@@ -43,8 +43,30 @@ Done = both specs built, unit tests green (pasted), tsc clean, live smoke on the
 ### Parked: create-into-act (A6) — folded, not built this run.
 ### Debt: (none yet)
 ### Evidence
-- **S1 reorder (2026-07-18):** `moveAct` hook + ↑/↓ buttons. tsc=0; useManuscriptTree 7/7 + navigator parts 7/7;
-  full manuscript suite 123/123. moveAct order-math + boundary no-op tested; ↑/↓ gated on ≥2 acts + disabled at ends.
+- **S1 reorder (2026-07-18):** `moveAct` hook + ↑/↓ buttons. tsc=0; manuscript 123/123. Commit 4b5be039e.
+- **S2 restore (2026-07-18):** `restoreAct` + `trashedActs` + Trashed section + undo-toast trash (dropped confirm).
+  tsc=0; manuscript 126/126. Commit 3611eb77f.
+- **S3 terminology+inline (2026-07-18):** `statActs` + inline create/rename (dropped prompt). tsc=0; 128/128. Commit a7d8d8ddc.
+- **S4 touch+cues+button (2026-07-18):** focus-within/coarse affordances + empty-act hint + drag-over ring + ＋Act.
+  tsc=0; 131/131. Commit b25d8448f.
+- **S5 LIVE SMOKE (2026-07-18):** rebuilt book-service :8205 + isolated FE :5199, operated by hand:
+  - Restore → Act I came back, Trashed section vanished, footer "2 act". ✅
+  - ↑/↓ reorder → [Act I, Act II] → [Act II, Act I] (real reorder→DB→reload). ✅
+  - Inline "＋Act" → typed "Act III — Aftermath" + Enter → created, input auto-closed, footer "3 act". ✅
+  - Live-confirmed: "ACT" labeled button, "drag chapters here" empty-act hint, footer says **"act" not "arc"**. ✅
+
+### RE-SCORE (post-build, live-verified)
+| Metric | Audit | Now |
+|---|---:|---:|
+| Usability | 6.5 | **8.5** (reorder+restore reachable) |
+| Completeness (CRUD) | 6 | **9** (create/read/rename/move/reorder/trash/restore all reachable) |
+| Ease-of-use | 7 | **8.5** (inline edit, labeled button, undo toast) |
+| Beauty | 6 | **8** (no OS dialogs, drop cues) |
+| Consistency | 6.5 | **8.5** ("act" terminology, in-app dialogs) |
+| Accessibility/touch | 5 | **8** (focus-within + coarse-pointer visible) |
+| Robustness | 8 | **8.5** (live-verified, no console errors from S-02) |
+| **Overall** | **~6.4** | **~8.4** (hit the spec's ~8.3 target) |
+Deferred (conscious, A6): create-chapter-INTO-act (folded — create via Plan + drag works; booksApi.createChapter is file-based).
 ### Drift
 - **DRIFT (2026-07-18):** concurrent commit `95e3f3b28` (plan-hub redesign) SWEPT my uncommitted
   ManuscriptNavigator.tsx ↑/↓ edits into itself (shared working tree; `git commit <file>` reads worktree).
