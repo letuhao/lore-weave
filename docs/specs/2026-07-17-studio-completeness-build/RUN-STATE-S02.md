@@ -20,8 +20,11 @@ Done = S-02 built + scoped tests green (real pasted output) + `/review-impl` pas
 - Trashing a part **un-homes** its chapters (`part_id=NULL`), never cascade-deletes. Restore does NOT re-home.
 - Move-chapter-to-part must verify target part is in the SAME book (cross-book move = tenancy breach).
 
+## STATUS: S-02 COMPLETE (backend + agent path shipped; GUI render → CONVERGENCE-S02.md)
+Commits: b56725e05 (A) · 4cc462f36 (B) · 190795cb1 (C) · dfbf3392b (review fix). On feat/context-budget-law (not pushed).
+
 ## Slices (usability-first ordering)
-- [ ] **A — Parts DATA layer (REST + repo).** `parts.go`: create/rename/reorder/archive/restore/move + list;
+- [x] **A — Parts DATA layer (REST + repo).** `parts.go`: create/rename/reorder/archive/restore/move + list;
       7 routes in server.go; expose `part_id` in listChapters + listChaptersKeyset (the FE grouping seam).
       Usability: the load-bearing enabler; consumed by B (agent) and C (FE).
 - [x] **B — MCP tools (agent parity).** `book_part_{create,rename,reorder,archive,restore}` + `book_chapter_set_part`.
@@ -62,5 +65,27 @@ Done = S-02 built + scoped tests green (real pasted output) + `/review-impl` pas
   (navigator surface), root-cause-clear, one-file → fixed now per defer gate.
 - NOTE (not fixed, out of scope): `_ = rows.Scan()` discarding the error is a broader footgun; only
   `title` is a NULLABLE-into-non-pointer dest today, so the pointer fix closes the actual bug.
+### /review-impl (2026-07-18) — findings
+- **MED [parity] FIXED (commit dfbf3392b):** `toolPartCreate` skipped the book-lifecycle gate that REST
+  `createPart` + sibling create tools enforce → could add an act to a trashed book. Mirrored + tested.
+- **LOW [race] accept+document:** `moveChapterToPart` = 2 reads + 1 write, not one tx → a concurrent
+  part-trash can leave a chapter homed in a now-trashed part. Benign: `groupChaptersByParts` treats a
+  chapter pointing at a trashed/unknown act as Unassigned, so no visible corruption. Low-contention.
+- **LOW [repo-wide] documented:** the `_ = rows.Scan()` discarded-error pattern remains in
+  listChapters/keyset; `title` was the only NULLABLE-into-non-pointer dest today (now fixed via *string),
+  so the actual bug is closed, but the footgun persists for any future nullable column added there.
+- **LOW [robustness] accept:** `activePartOrder` (reorder undo-hint helper) returns [] on query error →
+  a rare error path yields a weak/empty undo hint. Best-effort by design.
+- **Standards: COMPLIANT.** Tenancy — parts are book_id-scoped, gated via authBook/mcpRequireGrant, every
+  query book-scoped, cross-book move blocked, `UNIQUE(book_id,sort_order)` is correctly scoped (no
+  shared-row/`UNIQUE(code)` smell). Language rule (Go domain) ✓. MCP-first agent-parity ✓ (domain tools,
+  tier-tag-gate passed). No provider SDK / model literal / secret. FE tools contract N/A (these are
+  book-service domain tools, not FE GUI tools).
+
 ### Drift / near-misses
-- (record as they happen)
+- Near-miss ×2: the git INDEX carried ANOTHER session's staged files (knowledge S-05, then S-01 templates
+  + frontend-tools.contract.json) at commit time. Caught both via `git diff --cached --name-only`; used
+  `git reset -q` + re-add of my exact paths. The "index may carry prestaged unrelated changes" trap is
+  LIVE on this shared checkout — always inspect the cached name-list before every commit.
+- Near-miss: NULL-title chapters silently zeroed part_id/sort_order in the chapter lists — my part_id
+  addition surfaced a pre-existing discarded-Scan bug. Fixed rather than worked-around.
