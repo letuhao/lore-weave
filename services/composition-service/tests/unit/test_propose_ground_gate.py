@@ -47,7 +47,7 @@ def test_llm_rich_grounding_supersedes_the_arc_only_digest_no_double_listing():
 
 def test_rules_path_threads_existing_into_propose_spec():
     src = inspect.getsource(pfs.PlanForgeService._finalize_rules_propose)
-    assert "propose_spec(doc, existing=existing)" in src
+    assert "propose_spec(doc, existing=existing" in src  # A1 added inject_cast_max=; keep the prefix loose
 
 
 def test_latest_artifact_for_book_keeps_the_a_prefix_because_it_JOINs():

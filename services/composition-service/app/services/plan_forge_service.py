@@ -277,7 +277,9 @@ class PlanForgeService:
             updated = await self._runs.get_for_book(book_id, run.id)
             return updated or run, False, None
 
-        job_id = await self._enqueue_propose(created_by, book_id, run, grounded_text, model_ref)
+        job_id = await self._enqueue_propose(
+            created_by, book_id, run, grounded_text, model_ref, existing=existing_state,
+        )
         updated = await self._runs.get_for_book(book_id, run.id)
         return updated or run, True, job_id
 
@@ -451,9 +453,9 @@ class PlanForgeService:
         self, created_by: UUID, book_id: UUID, run_id: UUID, doc: dict[str, Any],
         *, existing: "ExistingState | None" = None,
     ) -> None:
-        # PROPOSE-BLIND: merge-not-duplicate against the book's existing arcs/cast (deterministic, no
-        # LLM). None/empty ⇒ byte-identical to the blind transcription.
-        spec = propose_spec(doc, existing=existing)
+        # PROPOSE-BLIND + A1: merge-not-duplicate + deterministic cast injection against the book's
+        # existing arcs/cast (no LLM). None/empty ⇒ byte-identical to the blind transcription.
+        spec = propose_spec(doc, existing=existing, inject_cast_max=settings.planforge_inject_cast_max)
         graph = build_graph(spec)
         await self._runs.save_artifact(created_by, run_id, "spec", spec)
         await self._runs.save_artifact(created_by, run_id, "graph", graph)
@@ -469,6 +471,8 @@ class PlanForgeService:
         run: PlanRun,
         source_markdown: str,
         model_ref: UUID | None,
+        *,
+        existing: "ExistingState | None" = None,
     ) -> UUID:
         # PM-9: the Work resolves per-BOOK; the caller flows only as the actor
         # stamp on a pending create (and as spend attribution below).
@@ -482,6 +486,14 @@ class PlanForgeService:
             "model_ref": str(model_ref),
             "model_source": "user_model",
         }
+        # A1 — carry the existing cast (name+id) into the job so the worker can DETERMINISTICALLY inject
+        # the existing protagonist over a placeholder (the LLM path's merge runs in the worker). Only
+        # when grounded + non-empty; a blind run sends nothing (no behaviour change).
+        if existing is not None and not existing.is_empty() and existing.cast:
+            pipe_input["existing_cast"] = [
+                {"name": c.name, "entity_id": c.glossary_entity_id} for c in existing.cast
+            ]
+            pipe_input["inject_cast_max"] = settings.planforge_inject_cast_max
         if settings.composition_worker_enabled:
             job, _ = await self._jobs.create(
                 project_id,

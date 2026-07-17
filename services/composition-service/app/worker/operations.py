@@ -619,7 +619,25 @@ async def run_plan_forge_propose(
         io_log=io_log,
         cancel_check=cancel_check,
     )
-    spec, analyze, logged = await propose_spec_llm_async(source, client)
+    # A1 — reconstruct a minimal ExistingState (cast only) from the job input so the LLM propose can
+    # DETERMINISTICALLY inject the existing protagonist over a placeholder. Absent ⇒ blind (existing=None).
+    existing = None
+    raw_cast = input.get("existing_cast")
+    inject_cast_max = int(input.get("inject_cast_max", 1))
+    if raw_cast:
+        from app.engine.plan_forge.existing_state import CastMember, ExistingState
+        cast = [
+            CastMember(name=str(c["name"]), glossary_entity_id=str(c["entity_id"]))
+            for c in raw_cast if c.get("name") and c.get("entity_id")
+        ]
+        if cast:
+            existing = ExistingState(
+                chapter_count=0, recent_chapters=[], cast=cast, arcs=[],
+                variables=[], motifs=[], notes={}, grounded_fingerprint="",
+            )
+    spec, analyze, logged = await propose_spec_llm_async(
+        source, client, existing=existing, inject_cast_max=inject_cast_max,
+    )
     return {
         "status": "completed",
         "novel_system_spec": spec,

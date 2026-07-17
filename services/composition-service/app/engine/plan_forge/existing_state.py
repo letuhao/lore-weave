@@ -109,16 +109,27 @@ def title_key(title: Any) -> str:
     return str(title or "").strip().lower()
 
 
-def merge_existing_into_spec(spec: dict[str, Any], existing: "ExistingState") -> dict[str, Any]:
-    """Rules-path merge-not-duplicate (spec §3.4): annotate a proposed spec IN PLACE against the book's
-    existing state, deterministically (no LLM). It does NOT delete/rewrite the author's braindump — it
-    ADDS signal the compiler/linker + the author use:
-    - a proposed arc whose title-key matches an existing arc gets `continues_existing: true` (so the
-      compile can treat it as a continuation, and the author sees it is not a fresh arc),
-    - a proposed character whose name matches an existing glossary cast member carries that member's
-      `glossary_entity_id` (so the later roster-bind resolves to the SAME entity, never a duplicate)
-      and `continues_existing: true`.
-    A cold-start / empty existing state is a no-op (the caller should skip it, but this is safe anyway).
+#: A1 — names that mean "the model produced no real character" (a placeholder to REPLACE with the
+#: book's existing protagonist), case-folded. `normalize`/`_pad_traits_from_analyze` inject these.
+_PLACEHOLDER_CAST_NAMES = frozenset({"", "nữ chính", "nu chinh", "[tbd]", "tbd", "char_main",
+                                     "female protagonist", "protagonist", "main character"})
+
+
+def merge_existing_into_spec(
+    spec: dict[str, Any], existing: "ExistingState", *, inject_cast_max: int = 1,
+) -> dict[str, Any]:
+    """Merge-not-duplicate + DETERMINISTIC CAST INJECTION (spec §3.4 + A1): reconcile a proposed spec
+    IN PLACE against the book's existing state, no LLM. Two passes:
+
+    1. ANNOTATE (both paths): a proposed arc whose title matches an existing arc gets
+       `continues_existing: true`; a proposed character whose name matches an existing glossary cast
+       member carries that member's `glossary_entity_id` (so roster-bind resolves to the SAME entity)
+       + `continues_existing: true`.
+    2. INJECT (A1): when the model emitted only a PLACEHOLDER protagonist (`Nữ chính`/`[TBD]`/empty —
+       the A/B eval proved prompt grounding does not make the model reuse existing names), REPLACE that
+       placeholder with the book's existing protagonist (name + entity id), deterministically. Capped
+       by `inject_cast_max` (default 1 = protagonist only; 0 disables). A genuinely NEW named character
+       is the author's choice and is NEVER overridden. Cold-start / empty existing ⇒ no-op.
     """
     if existing.is_empty():
         return spec
@@ -126,6 +137,7 @@ def merge_existing_into_spec(spec: dict[str, Any], existing: "ExistingState") ->
     for arc in spec.get("arcs", []) or []:
         if isinstance(arc, dict):
             arc["continues_existing"] = title_key(arc.get("title", "")) in existing_arc_keys
+    existing_names = {c.name.casefold() for c in existing.cast if c.name}
     cast_by_name = {c.name.casefold(): c.glossary_entity_id for c in existing.cast if c.name}
     for char in (spec.get("layers", {}) or {}).get("characters", []) or []:
         if not isinstance(char, dict):
@@ -134,6 +146,27 @@ def merge_existing_into_spec(spec: dict[str, Any], existing: "ExistingState") ->
         if eid:
             char["glossary_entity_id"] = eid
             char["continues_existing"] = True
+
+    # ── A1 injection ──
+    if inject_cast_max > 0 and existing.cast:
+        chars = (spec.get("layers", {}) or {}).get("characters")
+        if isinstance(chars, list):
+            proto = next(
+                (c for c in chars if isinstance(c, dict) and (c.get("role") or "").strip().lower() == "protagonist"),
+                None,
+            )
+            if proto is None and chars and isinstance(chars[0], dict):
+                proto = chars[0]
+            if proto is not None:
+                name = str(proto.get("name") or "").strip().casefold()
+                # inject ONLY over a placeholder — never over a name the model chose, and never when
+                # the model already used an existing name (the annotate pass handled that).
+                if name in _PLACEHOLDER_CAST_NAMES and name not in existing_names:
+                    injected = existing.cast[0]  # A3 makes this protagonist-kind-ranked; until then, first
+                    proto["name"] = injected.name
+                    proto["glossary_entity_id"] = injected.glossary_entity_id
+                    proto["continues_existing"] = True
+                    proto.setdefault("role", "protagonist")
     return spec
 
 

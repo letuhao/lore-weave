@@ -57,6 +57,12 @@ class Settings(BaseSettings):
     # is unaffected: it is today's baseline and never regresses.)
     planforge_ground_on_existing_allowed: bool = False
 
+    # A1 — how many existing cast to DETERMINISTICALLY inject into a grounded propose when the model
+    # emitted only a placeholder protagonist (the A/B proved prompt grounding alone doesn't reuse
+    # existing names). 1 = protagonist anchor only (default, lowest-risk); 0 disables injection (the
+    # annotate-only escape hatch). Only takes effect under an effective grounded run.
+    planforge_inject_cast_max: int = 1
+
     # Internal service URLs — consumed by the M3 client wrappers.
     knowledge_internal_url: str = "http://knowledge-service:8092"
     glossary_internal_url: str = "http://glossary-service:8088"

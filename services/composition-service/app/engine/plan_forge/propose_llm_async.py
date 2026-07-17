@@ -77,6 +77,7 @@ async def materialize_from_analyze_async(
     client: ProviderPlanForgeLLM,
     *,
     existing: ExistingState | None = None,
+    inject_cast_max: int = 1,
 ) -> dict[str, Any]:
     analyze_json = json.dumps(analyze, ensure_ascii=False, indent=2)
     block = render_existing_state_prompt(existing) if existing is not None else ""
@@ -92,7 +93,9 @@ async def materialize_from_analyze_async(
     if analyze.get("open_questions") and not spec.get("meta", {}).get("open_questions"):
         spec["meta"]["open_questions"] = analyze["open_questions"]
     if existing is not None:
-        spec = merge_existing_into_spec(spec, existing)  # deterministic backstop (see propose_llm)
+        # A1 — the deterministic backstop: annotate + INJECT the existing protagonist over a placeholder
+        # (prompt grounding alone proved insufficient in the A/B). Runs AFTER normalize's pad.
+        spec = merge_existing_into_spec(spec, existing, inject_cast_max=inject_cast_max)
     return spec
 
 
@@ -101,10 +104,13 @@ async def propose_spec_llm_async(
     client: ProviderPlanForgeLLM,
     *,
     existing: ExistingState | None = None,
+    inject_cast_max: int = 1,
 ) -> tuple[dict[str, Any], dict[str, Any], list[dict[str, Any]]]:
-    """Returns (spec, analyze, llm_io_log). PROPOSE-BLIND: `existing` grounds both steps."""
+    """Returns (spec, analyze, llm_io_log). PROPOSE-BLIND: `existing` grounds both steps; A1 injects."""
     analyze, checksum = await analyze_markdown(source_markdown, client, existing=existing)
-    spec = await materialize_from_analyze_async(analyze, checksum, client, existing=existing)
+    spec = await materialize_from_analyze_async(
+        analyze, checksum, client, existing=existing, inject_cast_max=inject_cast_max,
+    )
     return spec, analyze, client.io_log
 
 

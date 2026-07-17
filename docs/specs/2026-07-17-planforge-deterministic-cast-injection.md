@@ -1,6 +1,8 @@
 # PlanForge — deterministic protagonist/cast injection (A1)
 
-> **Status:** build-ready spec (design). Part of the PlanForge-v2 Proposer-Grounding track
+> **Status:** ✅ **BUILT 2026-07-17** (unit-proven; live B re-eval pending). `merge_existing_into_spec`
+> gained the injection pass (cap `PLANFORGE_INJECT_CAST_MAX=1`); the LLM path now carries the cast into
+> the worker (job input `existing_cast`) so injection runs on BOTH paths. Part of the PlanForge-v2 track
 > (`docs/plans/2026-07-17-planforge-v2-grounding-track.md`). **Highest-value item** — the reliable way
 > to make grounding actually improve cast continuity, since the A/B eval proved prompt-grounding alone
 > does not (`docs/reports/2026-07-17-propose-blind-ab-eval.md`).

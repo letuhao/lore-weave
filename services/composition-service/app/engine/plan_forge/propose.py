@@ -415,7 +415,7 @@ def _characters(char_body: str, anchors: list[str]) -> list[dict[str, Any]]:
 # ── the spec ─────────────────────────────────────────────────────────────────────────────────────
 
 def propose_spec(
-    doc: dict[str, Any], *, existing: "ExistingState | None" = None,
+    doc: dict[str, Any], *, existing: "ExistingState | None" = None, inject_cast_max: int = 1,
 ) -> dict[str, Any]:
     """Parse the braindump into a NovelSystemSpec (rules mode). When `existing` is supplied
     (PROPOSE-BLIND, D-PLANFORGE-PROPOSE-BLIND) the parsed spec is merged-not-duplicated against the
@@ -520,7 +520,7 @@ def propose_spec(
     # None/empty — so the cold-start path is byte-identical to before.
     if existing is not None:
         from app.engine.plan_forge.existing_state import merge_existing_into_spec
-        spec = merge_existing_into_spec(spec, existing)
+        spec = merge_existing_into_spec(spec, existing, inject_cast_max=inject_cast_max)
     return spec
 
 
