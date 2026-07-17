@@ -317,6 +317,16 @@ func (s *Server) Router() http.Handler {
 			// /chapters/{chapter_id}) — same reason as bulk/page above.
 			r.Post("/chapters/reorder", s.reorderChapters)
 
+			// S-02 — manuscript parts (acts / volumes) editor CRUD. The `parts` layer was
+			// write-only from the import decomposer; these routes let a user create/rename/
+			// reorder/trash an act and move a chapter between acts (VIEW to list, EDIT to write).
+			r.Get("/parts", s.listParts)
+			r.Post("/parts", s.createPart)
+			r.Post("/parts/reorder", s.reorderParts) // static — before /parts/{part_id}
+			r.Patch("/parts/{part_id}", s.renamePart)
+			r.Delete("/parts/{part_id}", s.archivePart)
+			r.Post("/parts/{part_id}/restore", s.restorePart)
+
 			// 22-A2/A3 — scene browser (read-only, VIEW-gated; SC5 inverted authoring
 			// to composition). Book-wide keyset-paged list + single-scene get. Static
 			// "/scenes" registers before "/scenes/{scene_id}" so chi matches it first.
@@ -343,6 +353,9 @@ func (s *Server) Router() http.Handler {
 			r.Route("/chapters/{chapter_id}", func(r chi.Router) {
 				r.Get("/", s.getChapter)
 				r.Patch("/", s.patchChapter)
+				// S-02 — move a chapter into/out of/between acts. Separate from patchChapter
+				// so the move is explicit/auditable and patchChapter's OCC contract is untouched.
+				r.Patch("/part", s.setChapterPart)
 				r.Delete("/", s.trashChapter)
 				r.Post("/restore", s.restoreChapter)
 				r.Delete("/purge", s.purgeChapter)
@@ -1370,7 +1383,7 @@ func (s *Server) listChapters(w http.ResponseWriter, r *http.Request) {
 	var total int
 	_ = s.pool.QueryRow(r.Context(), `SELECT COUNT(*) FROM chapters WHERE `+where, countArgs...).Scan(&total)
 	args = append(args, limit, offset)
-	rows, err := s.pool.Query(r.Context(), `SELECT id,book_id,title,original_filename,original_language,content_type,byte_size,sort_order,draft_updated_at,draft_revision_count,lifecycle_state,trashed_at,purge_eligible_at,created_at,updated_at,word_count,editorial_status,published_revision_id FROM chapters WHERE `+where+` ORDER BY `+orderBy+` LIMIT $`+strconv.Itoa(len(args)-1)+` OFFSET $`+strconv.Itoa(len(args)), args...)
+	rows, err := s.pool.Query(r.Context(), `SELECT id,book_id,title,original_filename,original_language,content_type,byte_size,sort_order,draft_updated_at,draft_revision_count,lifecycle_state,trashed_at,purge_eligible_at,created_at,updated_at,word_count,editorial_status,published_revision_id,part_id FROM chapters WHERE `+where+` ORDER BY `+orderBy+` LIMIT $`+strconv.Itoa(len(args)-1)+` OFFSET $`+strconv.Itoa(len(args)), args...)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "CHAPTER_NOT_FOUND", "failed to list chapters")
 		return
@@ -1379,17 +1392,19 @@ func (s *Server) listChapters(w http.ResponseWriter, r *http.Request) {
 	items := make([]map[string]any, 0)
 	for rows.Next() {
 		var id, bid uuid.UUID
-		var title, fn, lang, ctype, lstate, editorialStatus string
+		var title *string // chapters.title is NULLABLE — a plain string errors the Scan on a titleless chapter, and the discarded-error path then zeroes every column AFTER it (part_id, sort_order, …). See getChapterByID.
+		var fn, lang, ctype, lstate, editorialStatus string
 		var size int64
 		var order, wordCount int
 		var draftUpdated, trashedAt, purgeAt, createdAt, updatedAt *time.Time
 		var revCount int
 		var publishedRevisionID *uuid.UUID
-		_ = rows.Scan(&id, &bid, &title, &fn, &lang, &ctype, &size, &order, &draftUpdated, &revCount, &lstate, &trashedAt, &purgeAt, &createdAt, &updatedAt, &wordCount, &editorialStatus, &publishedRevisionID)
+		var partID *uuid.UUID // S-02: the act this chapter is homed in (NULL = flat manuscript). The FE navigator groups on it.
+		_ = rows.Scan(&id, &bid, &title, &fn, &lang, &ctype, &size, &order, &draftUpdated, &revCount, &lstate, &trashedAt, &purgeAt, &createdAt, &updatedAt, &wordCount, &editorialStatus, &publishedRevisionID, &partID)
 		items = append(items, map[string]any{
 			"chapter_id":            id,
 			"book_id":               bid,
-			"title":                 nullableString(title),
+			"title":                 nullableStringPtr(title),
 			"original_filename":     fn,
 			"original_language":     lang,
 			"content_type":          ctype,
@@ -1405,6 +1420,7 @@ func (s *Server) listChapters(w http.ResponseWriter, r *http.Request) {
 			"word_count":            wordCount,
 			"editorial_status":      editorialStatus,
 			"published_revision_id": publishedRevisionID,
+			"part_id":               partID,
 		})
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
@@ -1590,7 +1606,7 @@ func (s *Server) listChaptersKeyset(w http.ResponseWriter, r *http.Request) {
 
 	// Fetch limit+1 to detect a further page without a second COUNT.
 	args = append(args, limit+1)
-	rows, err := s.pool.Query(r.Context(), `SELECT id,book_id,title,original_filename,original_language,content_type,byte_size,sort_order,draft_updated_at,draft_revision_count,lifecycle_state,trashed_at,purge_eligible_at,created_at,updated_at,word_count,editorial_status,published_revision_id FROM chapters WHERE `+where+` ORDER BY `+orderBy+` LIMIT $`+strconv.Itoa(len(args)), args...)
+	rows, err := s.pool.Query(r.Context(), `SELECT id,book_id,title,original_filename,original_language,content_type,byte_size,sort_order,draft_updated_at,draft_revision_count,lifecycle_state,trashed_at,purge_eligible_at,created_at,updated_at,word_count,editorial_status,published_revision_id,part_id FROM chapters WHERE `+where+` ORDER BY `+orderBy+` LIMIT $`+strconv.Itoa(len(args)), args...)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "CHAPTER_NOT_FOUND", "failed to list chapters")
 		return
@@ -1599,17 +1615,19 @@ func (s *Server) listChaptersKeyset(w http.ResponseWriter, r *http.Request) {
 	items := make([]map[string]any, 0, limit)
 	for rows.Next() {
 		var id, bid uuid.UUID
-		var title, fn, lang, ctype, lstate, editorialStatus string
+		var title *string // NULLABLE — scan into a pointer, else a titleless chapter errors the Scan and zeroes every later column (part_id included). See listChapters / getChapterByID.
+		var fn, lang, ctype, lstate, editorialStatus string
 		var size int64
 		var order, wordCount int
 		var draftUpdated, trashedAt, purgeAt, createdAt, updatedAt *time.Time
 		var revCount int
 		var publishedRevisionID *uuid.UUID
-		_ = rows.Scan(&id, &bid, &title, &fn, &lang, &ctype, &size, &order, &draftUpdated, &revCount, &lstate, &trashedAt, &purgeAt, &createdAt, &updatedAt, &wordCount, &editorialStatus, &publishedRevisionID)
+		var partID *uuid.UUID // S-02: the act this chapter is homed in (NULL = flat). The navigator (useManuscriptTree) groups on it.
+		_ = rows.Scan(&id, &bid, &title, &fn, &lang, &ctype, &size, &order, &draftUpdated, &revCount, &lstate, &trashedAt, &purgeAt, &createdAt, &updatedAt, &wordCount, &editorialStatus, &publishedRevisionID, &partID)
 		items = append(items, map[string]any{
 			"chapter_id":            id,
 			"book_id":               bid,
-			"title":                 nullableString(title),
+			"title":                 nullableStringPtr(title),
 			"original_filename":     fn,
 			"original_language":     lang,
 			"content_type":          ctype,
@@ -1625,6 +1643,7 @@ func (s *Server) listChaptersKeyset(w http.ResponseWriter, r *http.Request) {
 			"word_count":            wordCount,
 			"editorial_status":      editorialStatus,
 			"published_revision_id": publishedRevisionID,
+			"part_id":               partID,
 		})
 	}
 
@@ -1819,11 +1838,12 @@ func (s *Server) getChapterByID(w http.ResponseWriter, ctx context.Context, book
 	// is one the user can neither trust nor correct.
 	var kgIndexedRevID *uuid.UUID
 	var kgExclude bool
+	var partID *uuid.UUID // S-02: which act (parts row) this chapter is homed in; NULL = flat manuscript
 	err := s.pool.QueryRow(ctx, `
-SELECT c.id,c.book_id,c.title,c.original_filename,c.original_language,c.content_type,c.byte_size,c.sort_order,c.draft_updated_at,c.draft_revision_count,c.lifecycle_state,c.trashed_at,c.purge_eligible_at,c.created_at,c.updated_at,c.editorial_status,c.published_revision_id,c.kg_indexed_revision_id,c.kg_exclude,c.word_count
+SELECT c.id,c.book_id,c.title,c.original_filename,c.original_language,c.content_type,c.byte_size,c.sort_order,c.draft_updated_at,c.draft_revision_count,c.lifecycle_state,c.trashed_at,c.purge_eligible_at,c.created_at,c.updated_at,c.editorial_status,c.published_revision_id,c.kg_indexed_revision_id,c.kg_exclude,c.word_count,c.part_id
 FROM chapters c
 WHERE c.id=$1 AND c.book_id=$2
-`, chapterID, bookID).Scan(&id, &bid, &title, &fn, &lang, &ctype, &size, &order, &draftUpdated, &revCount, &state, &trashedAt, &purgeAt, &createdAt, &updatedAt, &editorialStatus, &publishedRevID, &kgIndexedRevID, &kgExclude, &wordCount)
+`, chapterID, bookID).Scan(&id, &bid, &title, &fn, &lang, &ctype, &size, &order, &draftUpdated, &revCount, &state, &trashedAt, &purgeAt, &createdAt, &updatedAt, &editorialStatus, &publishedRevID, &kgIndexedRevID, &kgExclude, &wordCount, &partID)
 	if errors.Is(err, pgx.ErrNoRows) || state == "purge_pending" {
 		writeError(w, http.StatusNotFound, "CHAPTER_NOT_FOUND", "chapter not found")
 		return
@@ -1855,6 +1875,7 @@ WHERE c.id=$1 AND c.book_id=$2
 		"kg_indexed_revision_id": kgIndexedRevID,
 		"kg_exclude":             kgExclude,
 		"word_count":             wordCount,
+		"part_id":                partID,
 	}
 	if len(extra) > 0 {
 		for k, v := range extra[0] {
