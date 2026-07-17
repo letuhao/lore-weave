@@ -71,6 +71,9 @@ export class StudioPassRailPage {
   readonly planner = {
     open: () => this.openPanel('Planner'),
     proposeBlindNote: () => this.page.getByTestId('plan-propose-blind-note'),
+    groundedNote: () => this.page.getByTestId('plan-grounded-note'),          // PROPOSE-BLIND affirmation
+    groundToggle: () => this.page.getByTestId('plan-ground-toggle'),          // "Continue this book"
+    groundCheckbox: () => this.page.getByTestId('plan-ground-checkbox'),
     passRailLink: () => this.page.getByTestId('planner-open-pass-rail'),
     runsTab: () => this.page.getByTestId('plan-tab-list'),
     runTab: () => this.page.getByTestId('plan-tab-run'),

@@ -25,7 +25,11 @@ export async function findGemma(request: APIRequestContext, token: string): Prom
 
 export async function createPlanRun(
   request: APIRequestContext, token: string, bookId: string,
-  body: { source_markdown: string; mode: 'rules' | 'llm'; model_ref?: string; genre_tags?: string[] },
+  body: {
+    source_markdown: string; mode: 'rules' | 'llm'; model_ref?: string; genre_tags?: string[];
+    // PROPOSE-BLIND — ask the proposer to continue the book (effective only if the deploy ceiling allows).
+    ground_on_existing?: boolean; force?: boolean;
+  },
 ): Promise<string> {
   const r = await request.post(`${BASE}/books/${bookId}/plan/runs`, { ...auth(token), data: body });
   if (!r.ok() && r.status() !== 202) throw new Error(`createPlanRun ${r.status()}: ${await r.text()}`);
@@ -48,7 +52,9 @@ export async function waitProposed(request: APIRequestContext, token: string, bo
   return poll(
     () => getRun(request, token, bookId, runId),
     (d: { status: string; job_status: string | null }) =>
-      ['proposed', 'validated', 'checkpoint', 'failed'].includes(d.status) &&
+      // 'compiled' — a rules-mode propose with autocompile ON materialises the arcs inline and lands
+      // here, not at 'proposed'; accept it as a terminal state so grounded rules runs don't hang.
+      ['proposed', 'validated', 'checkpoint', 'compiled', 'failed'].includes(d.status) &&
       [null, 'completed', 'failed'].includes(d.job_status),
   );
 }
