@@ -441,7 +441,9 @@
       "markWrong": "Đánh dấu sai",
       "markWrongConfirm": "Đánh dấu sự kiện này là sai? Sự kiện sẽ bị vô hiệu hóa (xóa khỏi chế độ ôn tập) nhưng vẫn được lưu trong lịch sử.",
       "markWrongSuccess": "Đã đánh dấu sự kiện là sai",
-      "markWrongFailed": "Không thể vô hiệu hóa sự kiện: {{error}}"
+      "markWrongFailed": "Không thể vô hiệu hóa sự kiện: {{error}}",
+      "factTypeHelp": "Đây là loại sự thật nào?",
+      "factAdvancedToggle": "Liên kết tới một thực thể khác (tùy chọn)"
     },
     "edit": {
       "title": "Chỉnh sửa thực thể",

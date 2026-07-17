@@ -441,7 +441,9 @@
       "markWrong": "오답 처리",
       "markWrongConfirm": "이 사실을 오답으로 처리할까요? 무효화되어(암기 목록에서 제거) 히스토리에는 남지만 학습에는 나타나지 않습니다.",
       "markWrongSuccess": "오답 처리 완료",
-      "markWrongFailed": "사실을 무효화할 수 없습니다: {{error}}"
+      "markWrongFailed": "사실을 무효화할 수 없습니다: {{error}}",
+      "factTypeHelp": "어떤 종류의 사실인가요?",
+      "factAdvancedToggle": "다른 엔티티와 연결 (선택 사항)"
     },
     "edit": {
       "title": "엔티티 편집",

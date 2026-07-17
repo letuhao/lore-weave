@@ -349,6 +349,21 @@ describe('EntityDetailPanel — C9 promote / facts / unpin', () => {
     await waitFor(() => expect(toastMocks.success).toHaveBeenCalled());
   });
 
+  it('S-05b: the s/p/o inputs are behind an Advanced disclosure, collapsed by default', () => {
+    setDetail({ status: 'discovered' });
+    setFacts([]);
+    render(
+      <EntityDetailPanel open onOpenChange={vi.fn()} entityId="ent-1" />,
+      { wrapper: Wrapper },
+    );
+    fireEvent.click(screen.getByTestId('entity-detail-add-fact'));
+    const adv = screen.getByTestId('entity-detail-add-fact-advanced') as HTMLDetailsElement;
+    // a novelist isn't confronted with predicate/object up front
+    expect(adv.open).toBe(false);
+    // the type helper is shown so the taxonomy isn't a guess
+    expect(screen.getByText('entities.detail.factTypeHelp')).toBeInTheDocument();
+  });
+
   it('renders a statement fact without crashing (6-vs-4 label closed)', () => {
     // Pre-fix, FACT_TYPE_LABEL['statement'] was undefined → t(undefined). The map
     // now covers all 6, so a statement fact renders its row + content cleanly.

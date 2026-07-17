@@ -441,7 +441,9 @@
       "markWrong": "Tandai salah",
       "markWrongConfirm": "Tandai fakta ini sebagai salah? Fakta ini akan dibatalkan (dihapus dari pengulangan) tetapi tetap disimpan dalam riwayat.",
       "markWrongSuccess": "Fakta ditandai salah",
-      "markWrongFailed": "Tidak dapat membatalkan fakta: {{error}}"
+      "markWrongFailed": "Tidak dapat membatalkan fakta: {{error}}",
+      "factTypeHelp": "Fakta jenis apa ini?",
+      "factAdvancedToggle": "Tautkan ke entitas lain (opsional)"
     },
     "edit": {
       "title": "Edit entitas",

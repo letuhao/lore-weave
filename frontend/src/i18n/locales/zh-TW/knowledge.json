@@ -441,7 +441,9 @@
       "markWrong": "標記為錯誤",
       "markWrongConfirm": "要將此事實標記為錯誤嗎？它將被作廢（從複習中移除），但會保留在歷史紀錄中。",
       "markWrongSuccess": "事實已標記為錯誤",
-      "markWrongFailed": "無法作廢事實：{{error}}"
+      "markWrongFailed": "無法作廢事實：{{error}}",
+      "factTypeHelp": "這是什麼類型的事實？",
+      "factAdvancedToggle": "連結至另一個實體（選填）"
     },
     "edit": {
       "title": "編輯實體",

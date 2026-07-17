@@ -441,7 +441,9 @@
       "markWrong": "标记为错误",
       "markWrongConfirm": "将此事实标记为错误？它将被作废（从复习中移除），但会保留在历史记录中。",
       "markWrongSuccess": "事实已标记为错误",
-      "markWrongFailed": "无法作废事实：{{error}}"
+      "markWrongFailed": "无法作废事实：{{error}}",
+      "factTypeHelp": "这是哪种事实？",
+      "factAdvancedToggle": "链接到另一个实体（可选）"
     },
     "edit": {
       "title": "编辑实体",

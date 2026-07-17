@@ -441,7 +441,9 @@
       "markWrong": "Yanlış olarak işaretle",
       "markWrongConfirm": "Bu bilgiyi yanlış olarak işaretlemek istiyor musunuz? Bilgi geçersiz sayılacak (tekrar hatırlatılmayacak) ancak geçmişte tutulmaya devam edilecek.",
       "markWrongSuccess": "Bilgi yanlış olarak işaretlendi",
-      "markWrongFailed": "Bilgi geçersiz kılınamadı: {{error}}"
+      "markWrongFailed": "Bilgi geçersiz kılınamadı: {{error}}",
+      "factTypeHelp": "Bu ne tür bir bilgi?",
+      "factAdvancedToggle": "Başka bir varlığa bağlantı ekle (isteğe bağlı)"
     },
     "edit": {
       "title": "Varlığı düzenle",

@@ -441,7 +441,9 @@
       "markWrong": "تحديد كخطأ",
       "markWrongConfirm": "هل تريد تحديد هذه الحقيقة كخطأ؟ سيتم إبطالها (إزالتها من الاستدعاء) ولكن ستظل محفوظة في السجل.",
       "markWrongSuccess": "تم تحديد الحقيقة كخطأ",
-      "markWrongFailed": "تعذر إبطال الحقيقة: {{error}}"
+      "markWrongFailed": "تعذر إبطال الحقيقة: {{error}}",
+      "factTypeHelp": "ما نوع هذه الحقيقة؟",
+      "factAdvancedToggle": "ربط بكيان آخر (اختياري)"
     },
     "edit": {
       "title": "Edit entity",

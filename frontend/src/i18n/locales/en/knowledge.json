@@ -421,19 +421,19 @@
       "factSource": "Chapter {{chapter}}",
       "factType": {
         "decision": "Decision",
-        "preference": "Preference",
-        "milestone": "Milestone",
-        "negation": "Negation",
-        "statement": "Statement",
-        "commitment": "Commitment"
+        "preference": "Likes / dislikes",
+        "milestone": "Milestone / event",
+        "negation": "Denial (not true)",
+        "statement": "Trait / fact",
+        "commitment": "Promise / commitment"
       },
       "addFact": "Add fact",
       "addFactTitle": "Add a fact about this entity",
       "factContentLabel": "Fact",
       "factContentPlaceholder": "e.g. Distrusts the Council after the betrayal",
       "factTypeLabel": "Type",
-      "factPredicatePlaceholder": "predicate (optional, e.g. loyal_to)",
-      "factObjectPlaceholder": "object (optional, e.g. House Vaeth)",
+      "factPredicatePlaceholder": "how they relate (e.g. loyal to)",
+      "factObjectPlaceholder": "the other entity (e.g. House Vaeth)",
       "addFactSave": "Save fact",
       "addFactCancel": "Cancel",
       "addFactSuccess": "Fact added",
@@ -441,7 +441,9 @@
       "markWrong": "Mark wrong",
       "markWrongConfirm": "Mark this fact as wrong? It will be invalidated (removed from recall) but kept in history.",
       "markWrongSuccess": "Fact marked wrong",
-      "markWrongFailed": "Could not invalidate fact: {{error}}"
+      "markWrongFailed": "Could not invalidate fact: {{error}}",
+      "factTypeHelp": "What kind of fact is this?",
+      "factAdvancedToggle": "Link to another entity (optional)"
     },
     "edit": {
       "title": "Edit entity",
@@ -1255,7 +1257,7 @@
       "map": "Map to existing",
       "add_to_vocab": "Add to vocabulary",
       "add_to_schema": "Add to schema",
-      "re_target": "Fix endpoint",
+      "re_target": "Point to the right entity",
       "widen_target_kinds": "Widen allowed kinds",
       "drop_edge": "Drop",
       "close_previous": "Close previous",

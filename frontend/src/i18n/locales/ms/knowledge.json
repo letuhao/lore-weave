@@ -441,7 +441,9 @@
       "markWrong": "Tandakan salah",
       "markWrongConfirm": "Tandakan fakta ini sebagai salah? Ia akan dibatalkan (dikeluarkan daripada imbasan) tetapi akan disimpan dalam sejarah.",
       "markWrongSuccess": "Fakta telah ditandakan sebagai salah",
-      "markWrongFailed": "Tidak dapat membatalkan fakta: {{error}}"
+      "markWrongFailed": "Tidak dapat membatalkan fakta: {{error}}",
+      "factTypeHelp": "Apakah jenis fakta ini?",
+      "factAdvancedToggle": "Pautkan ke entiti lain (pilihan)"
     },
     "edit": {
       "title": "Edit entiti",

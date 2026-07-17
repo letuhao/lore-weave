@@ -441,7 +441,9 @@
       "markWrong": "間違いとしてマーク",
       "markWrongConfirm": "この事実を間違いとしてマークしますか？無効化（復習から削除）されますが、履歴には残ります。",
       "markWrongSuccess": "事実を間違いとしてマークしました",
-      "markWrongFailed": "事実を無効化できませんでした: {{error}}"
+      "markWrongFailed": "事実を無効化できませんでした: {{error}}",
+      "factTypeHelp": "これはどのような事実ですか？",
+      "factAdvancedToggle": "別のエンティティにリンクする（任意）"
     },
     "edit": {
       "title": "エンティティを編集",

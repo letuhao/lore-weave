@@ -441,7 +441,9 @@
       "markWrong": "Marquer comme incorrect",
       "markWrongConfirm": "Marquer ce fait comme incorrect ? Il sera invalidé (retiré de la mémorisation) mais conservé dans l'historique.",
       "markWrongSuccess": "Fait marqué comme incorrect",
-      "markWrongFailed": "Impossible d'invalider le fait : {{error}}"
+      "markWrongFailed": "Impossible d'invalider le fait : {{error}}",
+      "factTypeHelp": "Quel type de fait s'agit-il ?",
+      "factAdvancedToggle": "Lier à une autre entité (optionnel)"
     },
     "edit": {
       "title": "Modifier l'entité",

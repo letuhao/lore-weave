@@ -441,7 +441,9 @@
       "markWrong": "Marcar como incorreto",
       "markWrongConfirm": "Marcar este fato como incorreto? Ele será invalidado (removido da revisão), mas será mantido no histórico.",
       "markWrongSuccess": "Fato marcado como incorreto",
-      "markWrongFailed": "Não foi possível invalidar o fato: {{error}}"
+      "markWrongFailed": "Não foi possível invalidar o fato: {{error}}",
+      "factTypeHelp": "Que tipo de fato é este?",
+      "factAdvancedToggle": "Vincular a outra entidade (opcional)"
     },
     "edit": {
       "title": "Editar entidade",

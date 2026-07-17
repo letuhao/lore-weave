@@ -662,6 +662,11 @@ export function EntityDetailPanel({
                           </option>
                         ))}
                       </select>
+                      {/* S-05b (F6) — a one-line helper so the type taxonomy
+                          isn't a guess. */}
+                      <p className="text-[10px] text-muted-foreground">
+                        {t('entities.detail.factTypeHelp')}
+                      </p>
                       <textarea
                         value={factContent}
                         onChange={(e) => setFactContent(e.target.value)}
@@ -670,22 +675,31 @@ export function EntityDetailPanel({
                         className="w-full rounded-md border bg-background px-2 py-1 text-[12px]"
                         data-testid="entity-detail-add-fact-content"
                       />
-                      <div className="flex gap-2">
-                        <input
-                          value={factPredicate}
-                          onChange={(e) => setFactPredicate(e.target.value)}
-                          placeholder={t('entities.detail.factPredicatePlaceholder')}
-                          className="min-w-0 flex-1 rounded-md border bg-background px-2 py-1 text-[11px]"
-                          data-testid="entity-detail-add-fact-predicate"
-                        />
-                        <input
-                          value={factObject}
-                          onChange={(e) => setFactObject(e.target.value)}
-                          placeholder={t('entities.detail.factObjectPlaceholder')}
-                          className="min-w-0 flex-1 rounded-md border bg-background px-2 py-1 text-[11px]"
-                          data-testid="entity-detail-add-fact-object"
-                        />
-                      </div>
+                      {/* S-05b (F5) — the s/p/o triple is an ADVANCED, optional
+                          refinement (recall supersession); hide it behind a
+                          disclosure so a novelist isn't confronted with
+                          "predicate"/"object" up front. Default collapsed. */}
+                      <details data-testid="entity-detail-add-fact-advanced">
+                        <summary className="cursor-pointer text-[11px] text-muted-foreground">
+                          {t('entities.detail.factAdvancedToggle')}
+                        </summary>
+                        <div className="mt-2 flex gap-2">
+                          <input
+                            value={factPredicate}
+                            onChange={(e) => setFactPredicate(e.target.value)}
+                            placeholder={t('entities.detail.factPredicatePlaceholder')}
+                            className="min-w-0 flex-1 rounded-md border bg-background px-2 py-1 text-[11px]"
+                            data-testid="entity-detail-add-fact-predicate"
+                          />
+                          <input
+                            value={factObject}
+                            onChange={(e) => setFactObject(e.target.value)}
+                            placeholder={t('entities.detail.factObjectPlaceholder')}
+                            className="min-w-0 flex-1 rounded-md border bg-background px-2 py-1 text-[11px]"
+                            data-testid="entity-detail-add-fact-object"
+                          />
+                        </div>
+                      </details>
                       <div className="flex justify-end gap-2">
                         <button
                           type="button"

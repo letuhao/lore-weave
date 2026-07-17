@@ -441,7 +441,9 @@
       "markWrong": "Marcar como incorrecto",
       "markWrongConfirm": "¿Marcar este hecho como incorrecto? Se invalidará (se eliminará del repaso) pero se mantendrá en el historial.",
       "markWrongSuccess": "Hecho marcado como incorrecto",
-      "markWrongFailed": "No se pudo invalidar el hecho: {{error}}"
+      "markWrongFailed": "No se pudo invalidar el hecho: {{error}}",
+      "factTypeHelp": "¿Qué tipo de dato es este?",
+      "factAdvancedToggle": "Vincular con otra entidad (opcional)"
     },
     "edit": {
       "title": "Editar entidad",

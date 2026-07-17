@@ -441,7 +441,9 @@
       "markWrong": "Als falsch markieren",
       "markWrongConfirm": "Dieses Fakt als falsch markieren? Es wird ungültig gemacht (aus dem Abruf entfernt), aber im Verlauf behalten.",
       "markWrongSuccess": "Fakt als falsch markiert",
-      "markWrongFailed": "Fakt konnte nicht ungültig gemacht werden: {{error}}"
+      "markWrongFailed": "Fakt konnte nicht ungültig gemacht werden: {{error}}",
+      "factTypeHelp": "Was für eine Art von Fakt ist dies?",
+      "factAdvancedToggle": "Mit einer anderen Entität verknüpfen (optional)"
     },
     "edit": {
       "title": "Entität bearbeiten",
