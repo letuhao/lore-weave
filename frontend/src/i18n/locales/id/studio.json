@@ -1409,6 +1409,11 @@
     "builtinNote": "Ini adalah struktur bawaan. Duplikat untuk menyesuaikan — Anda mengedit salinan Anda, versi aslinya tetap utuh bagi semua orang.",
     "cloneBuiltin": "Duplikat ke struktur saya",
     "duplicate": "Duplikat",
-    "cloning": "Mengkloning…"
+    "cloning": "Mengkloning…",
+    "beatLabel": "Label",
+    "beatPurpose": "Apa fungsi beat ini...",
+    "addBeat": "Tambah beat",
+    "save": "Simpan",
+    "saving": "Menyimpan..."
   }
 }

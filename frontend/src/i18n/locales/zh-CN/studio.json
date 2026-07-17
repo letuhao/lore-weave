@@ -1409,6 +1409,11 @@
     "builtinNote": "这是一个内置结构。克隆它进行自定义 —— 您编辑的是您的副本，原始结构对所有人保持不变。",
     "cloneBuiltin": "克隆到我的结构",
     "duplicate": "复制",
-    "cloning": "正在克隆…"
+    "cloning": "正在克隆…",
+    "beatLabel": "标签",
+    "beatPurpose": "此节拍的作用……",
+    "addBeat": "添加节拍",
+    "save": "保存",
+    "saving": "正在保存…"
   }
 }

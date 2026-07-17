@@ -129,6 +129,21 @@ async def test_clone_builtin_into_own_tier(pool):
     assert updated is not None and updated.name == "My Customised Cat"
 
 
+async def test_cloning_the_same_builtin_twice_auto_disambiguates(pool):
+    """A live smoke caught this: a fixed '(copy)' name 409s on the second clone. The default name
+    must auto-disambiguate so a user (or a re-run) can clone the same built-in repeatedly."""
+    repo = StructureTemplatesRepo(pool)
+    u = uuid.uuid4()
+    bid = await _builtin_id(pool)
+    src = await repo.get(u, bid)
+    c1 = await repo.clone_builtin(u, bid)
+    c2 = await repo.clone_builtin(u, bid)   # would 409 with a fixed "(copy)"
+    c3 = await repo.clone_builtin(u, bid)
+    names = {c1.name, c2.name, c3.name}
+    assert names == {f"{src.name} (copy)", f"{src.name} (copy 2)", f"{src.name} (copy 3)"}
+    assert len(names) == 3  # all distinct — no collision
+
+
 # ── OCC ──────────────────────────────────────────────────────────────────────
 
 async def test_occ_stale_version_conflicts(pool):

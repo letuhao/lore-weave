@@ -87,13 +87,28 @@ class StructureTemplatesRepo:
 
     async def clone_builtin(self, user_id: UUID, template_id: UUID, *, name: str | None = None) -> StructureTemplate:
         """S-01 slice B entry-point: copy a built-in (or any visible template) into the user's own
-        tier so they have an editable starting structure. A user never edits a built-in in place."""
+        tier so they have an editable starting structure. A user never edits a built-in in place.
+
+        The default name auto-disambiguates ("(copy)", "(copy 2)", …) so cloning the same built-in
+        twice does not 409 on UNIQUE(owner_user_id, name) — a real dead-end a live smoke caught."""
         src = await self.get(user_id, template_id)
         if src is None:
             raise LookupError(f"structure template {template_id} not visible")
-        return await self.create(
-            user_id, name=name or f"{src.name} (copy)", kind=src.kind, beats=src.beats
-        )
+        if name is not None:
+            return await self.create(user_id, name=name, kind=src.kind, beats=src.beats)
+        # find the first non-colliding "(copy [n])" name among the user's own templates
+        async with self._pool.acquire() as c:
+            taken = {
+                r["name"] for r in await c.fetch(
+                    "SELECT name FROM structure_template WHERE owner_user_id = $1", user_id,
+                )
+            }
+        candidate = f"{src.name} (copy)"
+        n = 2
+        while candidate in taken:
+            candidate = f"{src.name} (copy {n})"
+            n += 1
+        return await self.create(user_id, name=candidate, kind=src.kind, beats=src.beats)
 
     async def update(
         self,

@@ -1409,6 +1409,11 @@
     "builtinNote": "Ini adalah struktur sedia ada. Klon untuk menyesuaikan — anda mengedit salinan anda, manakala yang asal kekal utuh untuk semua orang.",
     "cloneBuiltin": "Klon ke struktur saya",
     "duplicate": "Duplikasi",
-    "cloning": "Mengklon…"
+    "cloning": "Mengklon…",
+    "beatLabel": "Label",
+    "beatPurpose": "Apa fungsi beat ini…",
+    "addBeat": "Tambah beat",
+    "save": "Simpan",
+    "saving": "Menyimpan…"
   }
 }

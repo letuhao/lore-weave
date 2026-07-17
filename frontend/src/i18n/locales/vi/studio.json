@@ -1409,6 +1409,11 @@
     "builtinNote": "Đây là cấu trúc có sẵn. Hãy nhân bản để tùy chỉnh — bạn chỉnh sửa bản sao của mình, bản gốc vẫn giữ nguyên cho mọi người.",
     "cloneBuiltin": "Nhân bản vào cấu trúc của tôi",
     "duplicate": "Sao chép",
-    "cloning": "Đang sao chép…"
+    "cloning": "Đang sao chép…",
+    "beatLabel": "Nhãn",
+    "beatPurpose": "Mục đích của nhịp này…",
+    "addBeat": "Thêm nhịp",
+    "save": "Lưu",
+    "saving": "Đang lưu…"
   }
 }

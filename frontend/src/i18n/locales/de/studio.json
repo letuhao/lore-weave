@@ -1409,6 +1409,11 @@
     "builtinNote": "Dies ist eine integrierte Struktur. Klone sie, um sie anzupassen – du bearbeitest deine Kopie, das Original bleibt für alle unverändert.",
     "cloneBuiltin": "In meine Strukturen klonen",
     "duplicate": "Duplizieren",
-    "cloning": "Kopieren…"
+    "cloning": "Kopieren…",
+    "beatLabel": "Label",
+    "beatPurpose": "Wozu dieser Beat dient…",
+    "addBeat": "Beat hinzufügen",
+    "save": "Speichern",
+    "saving": "Speichern…"
   }
 }

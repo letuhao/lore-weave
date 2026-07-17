@@ -1409,6 +1409,11 @@
     "builtinNote": "Bu yerleşik bir yapıdır. Özelleştirmek için klonlayın; siz kendi kopyanızı düzenlersiniz, orijinal yapı herkes için bozulmadan kalır.",
     "cloneBuiltin": "Yapılarım arasına klonla",
     "duplicate": "Kopyala",
-    "cloning": "Kopyalanıyor…"
+    "cloning": "Kopyalanıyor…",
+    "beatLabel": "Etiket",
+    "beatPurpose": "Bu vuruşun amacı…",
+    "addBeat": "Vuruş ekle",
+    "save": "Kaydet",
+    "saving": "Kaydediliyor…"
   }
 }

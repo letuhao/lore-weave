@@ -1409,6 +1409,11 @@
     "builtinNote": "Ceci est une structure intégrée. Dupliquez-la pour la personnaliser — vous modifiez votre copie, l'original reste intact pour tout le monde.",
     "cloneBuiltin": "Dupliquer dans mes structures",
     "duplicate": "Dupliquer",
-    "cloning": "Duplication…"
+    "cloning": "Duplication…",
+    "beatLabel": "Libellé",
+    "beatPurpose": "Rôle de ce battement…",
+    "addBeat": "Ajouter un battement",
+    "save": "Enregistrer",
+    "saving": "Enregistrement…"
   }
 }

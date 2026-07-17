@@ -1409,6 +1409,11 @@
     "builtinNote": "Esta é uma estrutura integrada. Clone-a para personalizar — você edita sua cópia, e o original permanece intacto para todos.",
     "cloneBuiltin": "Clonar para minhas estruturas",
     "duplicate": "Duplicar",
-    "cloning": "Clonando…"
+    "cloning": "Clonando…",
+    "beatLabel": "Rótulo",
+    "beatPurpose": "O que este beat faz...",
+    "addBeat": "Adicionar beat",
+    "save": "Salvar",
+    "saving": "Salvando..."
   }
 }

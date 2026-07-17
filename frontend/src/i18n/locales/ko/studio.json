@@ -1409,6 +1409,11 @@
     "builtinNote": "이것은 내장된 구조입니다. 편집하려면 복제하세요. 복제본을 편집하는 동안 원본은 모든 사용자에게 그대로 유지됩니다.",
     "cloneBuiltin": "내 구조로 복제",
     "duplicate": "복제",
-    "cloning": "복제 중…"
+    "cloning": "복제 중…",
+    "beatLabel": "레이블",
+    "beatPurpose": "이 비트의 역할...",
+    "addBeat": "비트 추가",
+    "save": "저장",
+    "saving": "저장 중..."
   }
 }

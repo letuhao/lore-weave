@@ -1409,6 +1409,11 @@
     "builtinNote": "這是內建結構。請複製它以進行自定義 — 您編輯的是您的副本，原始結構對所有人保持不變。",
     "cloneBuiltin": "複製到我的結構",
     "duplicate": "複製",
-    "cloning": "正在複製…"
+    "cloning": "正在複製…",
+    "beatLabel": "標籤",
+    "beatPurpose": "此節拍的作用…",
+    "addBeat": "新增節拍",
+    "save": "儲存",
+    "saving": "儲存中…"
   }
 }
