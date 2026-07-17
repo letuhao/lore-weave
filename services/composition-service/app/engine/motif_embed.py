@@ -68,7 +68,9 @@ def _platform_embed_model() -> tuple[str, str]:
     single chokepoint that makes cross-model contamination impossible. Fails closed
     (EmbedConfigError) if the ref is unset, so an unconfigured deploy never embeds
     against an empty model id."""
-    source = settings.motif_embed_model_source or "platform_model"
+    # ALWAYS "user_model" — /internal/embed rejects "platform_model" (see config.py). The
+    # fallback is the accepted value, never the rejected one, so a blanked source can't 400.
+    source = settings.motif_embed_model_source or "user_model"
     ref = settings.motif_embed_model_ref
     if not ref:
         raise EmbedConfigError(

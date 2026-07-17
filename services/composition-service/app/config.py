@@ -160,8 +160,14 @@ class Settings(BaseSettings):
     # The owner_id is the reserved platform-owner identity whose BYOK credential holds
     # the platform embedding model (the local-rerank-as-platform precedent — D2). W3
     # fails closed if model_ref/owner are unset before its embed pipeline runs.
-    motif_embed_model_source: str = "platform_model"
-    motif_embed_model_ref: str = ""              # platform embedding model id; W3 asserts non-empty
+    # `source` is ALWAYS "user_model": provider-registry /internal/embed rejects
+    # model_source="platform_model" (it resolves creds from user_models only) — the
+    # "platform" embed model is a BYOK-as-platform credential (a bge-m3 user_model owned
+    # by the reserved platform-owner below), the local-rerank precedent, NOT the
+    # platform_models table (which can't serve embeds). A "platform_model" default here
+    # would 400 every motif embed, so it defaults to the only value the endpoint accepts.
+    motif_embed_model_source: str = "user_model"
+    motif_embed_model_ref: str = ""              # platform embedding model id (a user_model_id); W3 asserts non-empty
     motif_embed_owner_id: str = ""               # RECONCILE D2 — reserved platform-owner row
     # Retrieval (W3/W2): the SQL pre-filter ceiling (rows loaded for the cosine pass),
     # the top-K returned, and the minimum cosine for a planner-bindable match.
