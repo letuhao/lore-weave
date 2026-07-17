@@ -9,6 +9,12 @@ import { useDivergenceSpecEditor } from '../hooks/useDivergenceSpecEditor';
 import type { DivergenceTaxonomy, EntityOverrideRow } from '../types';
 
 const TAXONOMIES: DivergenceTaxonomy[] = ['pov_shift', 'character_transform', 'au'];
+// Audit fix — human labels (the select used to show the raw enum: "au", "pov_shift").
+const TAXONOMY_LABELS: Record<DivergenceTaxonomy, string> = {
+  pov_shift: 'POV shift',
+  character_transform: 'Character transform',
+  au: 'Alternate universe (AU)',
+};
 
 function overrideDescription(fields: Record<string, unknown>): string {
   return typeof fields.description === 'string' ? fields.description : '';
@@ -41,6 +47,7 @@ export function DivergenceSpecEditor({
   const { t } = useTranslation('composition');
   const ed = useDivergenceSpecEditor(projectId, sourceProjectId, token);
   const [tax, setTax] = useState<DivergenceTaxonomy>(taxonomy ?? 'au');
+  const [pov, setPov] = useState<string | null>(povAnchor);  // local so the select doesn't snap back mid-save
   const [canonDraft, setCanonDraft] = useState(canonRules.join('\n'));
   const [addAnchor, setAddAnchor] = useState('');
   const [addName, setAddName] = useState('');
@@ -60,7 +67,13 @@ export function DivergenceSpecEditor({
     ed.patchSpec.mutate({ canon_rule: rules }, { onError: fail });
   };
   // Part A — set/re-pick (a glossary anchor) or clear (empty → null) the POV-shift character.
-  const savePov = (anchorId: string) => ed.patchSpec.mutate({ pov_anchor: anchorId || null }, { onError: fail });
+  // Optimistic local state so the select reflects the pick immediately; revert on error.
+  const savePov = (anchorId: string) => {
+    const prev = pov;
+    const next = anchorId || null;
+    setPov(next);
+    ed.patchSpec.mutate({ pov_anchor: next }, { onError: () => { setPov(prev); fail(); } });
+  };
   const doAdd = () => {
     if (!addAnchor) return;
     ed.addOverride.mutate(
@@ -82,7 +95,7 @@ export function DivergenceSpecEditor({
             aria-label={t('divergence.taxonomy', { defaultValue: 'Taxonomy' })}
           >
             {TAXONOMIES.map((v) => (
-              <option key={v} value={v}>{t(`divergence.tax_${v}`, { defaultValue: v })}</option>
+              <option key={v} value={v}>{t(`divergence.tax_${v}`, { defaultValue: TAXONOMY_LABELS[v] })}</option>
             ))}
           </select>
         </dd>
@@ -96,13 +109,13 @@ export function DivergenceSpecEditor({
           <select
             data-testid="divergence-pov-select"
             className="min-w-0 flex-1 rounded border border-border bg-transparent px-1.5 py-0.5 text-[11px]"
-            value={povAnchor ?? ''}
+            value={pov ?? ''}
             onChange={(e) => savePov(e.target.value)}
             aria-label={t('divergence.povAnchor', { defaultValue: 'POV anchor' })}
           >
             <option value="">{t('divergence.noPov', { defaultValue: '— no POV anchor —' })}</option>
-            {povAnchor && !ed.anchoredEntities.some((e) => e.glossary_entity_id === povAnchor) && (
-              <option value={povAnchor}>{ed.entityByAnchor.get(povAnchor)?.name ?? povAnchor}</option>
+            {pov && !ed.anchoredEntities.some((e) => e.glossary_entity_id === pov) && (
+              <option value={pov}>{ed.entityByAnchor.get(pov)?.name ?? pov}</option>
             )}
             {ed.anchoredEntities.map((e) => (
               <option key={e.glossary_entity_id!} value={e.glossary_entity_id!}>{e.name} ({e.kind})</option>
@@ -204,6 +217,13 @@ export function DivergenceSpecEditor({
               </button>
             </>
           )}
+        </div>
+      )}
+      {/* Audit fix — when the source has NO glossary-anchored entities, the override picker
+          + POV picker are both empty. Explain WHY instead of silently showing nothing. */}
+      {ed.anchoredEntities.length === 0 && (
+        <div data-testid="divergence-no-anchors" className="mt-2 rounded border border-dashed border-border p-2 text-[11px] text-muted-foreground">
+          {t('divergence.noAnchoredEntities', { defaultValue: 'No glossary-anchored characters in this branch’s source yet — anchor entities in the glossary to set a POV or override them here.' })}
         </div>
       )}
     </div>

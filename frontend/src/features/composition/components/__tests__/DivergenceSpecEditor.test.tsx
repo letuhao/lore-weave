@@ -65,6 +65,18 @@ describe('DivergenceSpecEditor', () => {
       expect(patchDivergenceSpec).toHaveBeenCalledWith('da', { taxonomy: 'pov_shift' }, 'tok'));
   });
 
+  // NOTE: the human taxonomy labels (TAXONOMY_LABELS: "POV shift" etc.) are a defaultValue
+  // fix, not unit-assertable here — vitest.setup mocks t() to return the KEY and ignore
+  // defaultValue by repo convention, so both before/after render the same key in tests.
+
+  it('audit fix: explains WHY the override/POV pickers are empty when the source has no anchored entities', async () => {
+    listEntities.mockResolvedValue({
+      entities: [{ id: 'n3', name: 'Unanchored', kind: 'character', glossary_entity_id: null }],
+    });
+    renderEditor();
+    expect(await screen.findByTestId('divergence-no-anchors')).toBeInTheDocument();
+  });
+
   it('reverts the taxonomy select when the PATCH fails (no lying optimistic value)', async () => {
     patchDivergenceSpec.mockRejectedValueOnce(new Error('boom'));
     renderEditor();

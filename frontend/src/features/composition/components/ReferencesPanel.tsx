@@ -60,6 +60,12 @@ export function ReferencesPanel({ projectId, sceneId, token, models }: {
           className="rounded border px-2 py-1 text-xs dark:bg-neutral-900"
           value={draft.content} onChange={(e) => setDraft({ ...draft, content: e.target.value })}
         />
+        {/* Audit fix — the URL was captured at edit-time only; the add form dropped it (sent ''). */}
+        <input
+          data-testid="references-add-url" placeholder={t('referencesPanel.sourceUrl', { defaultValue: 'Source URL (optional)' })}
+          className="rounded border px-2 py-1 text-xs dark:bg-neutral-900"
+          value={draft.source_url} onChange={(e) => setDraft({ ...draft, source_url: e.target.value })}
+        />
         {needsModel && (
           embedModels.length > 0 ? (
             <select
@@ -168,7 +174,9 @@ function LibraryRow({ r, onSaveMetadata, onSaveContent, onDelete, savingMetaId, 
   if (!editing) {
     return (
       <li data-testid={`references-lib-${r.id}`} className="flex items-center justify-between gap-2 rounded border border-neutral-200 px-2 py-1 text-xs dark:border-neutral-700">
-        <span className="truncate" title={r.content}>{r.title || r.content.slice(0, 60)}{r.author ? <span className="text-neutral-400"> — {r.author}</span> : null}</span>
+        {/* Audit fix — `truncate` needs `min-w-0 flex-1` in a flex row (mirrors HitRow), else a
+            long title overflows and shoves the action buttons off the row. */}
+        <span className="min-w-0 flex-1 truncate" title={r.content}>{r.title || r.content.slice(0, 60)}{r.author ? <span className="text-neutral-400"> — {r.author}</span> : null}</span>
         <div className="flex shrink-0 items-center gap-1.5">
           <button
             type="button" data-testid={`references-edit-${r.id}`}

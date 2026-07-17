@@ -116,6 +116,16 @@ describe('ReferencesPanel (T3.6)', () => {
     expect(screen.getByTestId('references-empty')).toBeInTheDocument();
   });
 
+  it('audit fix: captures source_url at ADD time (was silently dropped — no URL input)', () => {
+    h.state.embedModelSet = true;
+    renderPanel();
+    fireEvent.change(screen.getByTestId('references-add-content'), { target: { value: 'a passage' } });
+    fireEvent.change(screen.getByTestId('references-add-url'), { target: { value: 'https://src.example/x' } });
+    fireEvent.click(screen.getByTestId('references-add-submit'));
+    expect(h.add).toHaveBeenCalledTimes(1);
+    expect(h.add.mock.calls[0][0]).toMatchObject({ content: 'a passage', source_url: 'https://src.example/x' });
+  });
+
   it('S-03: edits metadata (PATCH — no re-embed) — only shows Save when a field changed', () => {
     h.state.references = [{ id: 'r9', title: 'Old', author: 'X', source_url: '', content: 'body', embedding_model: 'bge-m3', embedding_dim: 3, created_at: null }];
     renderPanel();

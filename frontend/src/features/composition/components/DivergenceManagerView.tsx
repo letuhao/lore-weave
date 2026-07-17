@@ -41,7 +41,20 @@ export function DivergenceManagerView({ bookId, token }: { bookId: string; token
   };
   const doArchive = (w: Work) => {
     m.archive.mutate(w, {
-      onSuccess: () => toast.success(t('divergence.archived', { defaultValue: 'Archived — its chapters and knowledge are kept; it left this list.' })),
+      // Audit fix — offer an immediate Undo (restore) so archive isn't a one-way door.
+      // `archived` is the post-archive Work (bumped version) → restore's If-Match matches.
+      onSuccess: (archived) => toast.success(
+        t('divergence.archived', { defaultValue: 'Archived — its chapters and knowledge are kept; it left this list.' }),
+        {
+          action: {
+            label: t('divergence.undo', { defaultValue: 'Undo' }),
+            onClick: () => m.restore.mutate(archived as Work, {
+              onSuccess: () => toast.success(t('divergence.restored', { defaultValue: 'Restored to the list.' })),
+              onError: () => toast.error(t('divergence.restoreFailed', { defaultValue: 'Could not restore — it may have changed elsewhere.' })),
+            }),
+          },
+        },
+      ),
       onError: (e) => {
         const conflict = (e as { status?: number }).status === 412;
         toast[conflict ? 'warning' : 'error'](

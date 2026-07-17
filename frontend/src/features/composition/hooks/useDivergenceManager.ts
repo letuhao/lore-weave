@@ -59,6 +59,18 @@ export function useDivergenceManager(bookId: string | undefined, token: string |
     },
   });
 
+  // Audit fix — archive was a ONE-WAY door (the branch dropped out of the list with no
+  // way back). Restore flips status→active (the reverse op the backend already supports);
+  // wired as an Undo action on the archive toast. Takes the post-archive Work (its bumped
+  // version) so the If-Match matches.
+  const restore = useMutation({
+    mutationFn: (w: Work) =>
+      compositionApi.patchWork(w.project_id, { status: 'active' }, token!, { version: w.version }),
+    onSettled: () => {
+      qc.invalidateQueries({ queryKey: ['composition', 'work', bookId] });
+    },
+  });
+
   const isArchiveConflict = (archive.error as { status?: number } | null)?.status === 412;
 
   return {
@@ -71,6 +83,7 @@ export function useDivergenceManager(bookId: string | undefined, token: string |
     setSelectedProjectId,
     spec,
     archive,
+    restore,
     isArchiveConflict,
     switchTo,
     isSwitching,

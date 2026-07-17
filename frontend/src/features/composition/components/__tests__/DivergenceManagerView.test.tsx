@@ -43,7 +43,8 @@ vi.mock('../DivergenceSpecEditor', () => ({
   DivergenceSpecEditor: (p: { projectId: string }) => <div data-testid="divergence-spec-editor" data-proj={p.projectId} />,
 }));
 
-vi.mock('sonner', () => ({ toast: Object.assign(vi.fn(), { success: vi.fn(), error: vi.fn(), warning: vi.fn() }) }));
+const toastSuccess = vi.hoisted(() => vi.fn());
+vi.mock('sonner', () => ({ toast: Object.assign(vi.fn(), { success: toastSuccess, error: vi.fn(), warning: vi.fn() }) }));
 
 import { DivergenceManagerView } from '../DivergenceManagerView';
 
@@ -94,6 +95,20 @@ describe('DivergenceManagerView', () => {
     renderView();
     fireEvent.click(screen.getByTestId('divergence-archive-da'));
     await waitFor(() => expect(patchWork).toHaveBeenCalledWith('da', { status: 'archived' }, 'tok', { version: 2 }));
+  });
+
+  it('audit fix: archive offers an Undo that RESTORES the derivative (status active) — no one-way door', async () => {
+    resolution = { status: 'candidates', work: null, candidates: [canon, derivA] };
+    toastSuccess.mockClear();
+    patchWork.mockResolvedValueOnce({ project_id: 'da', version: 3 });  // the post-archive Work
+    renderView();
+    fireEvent.click(screen.getByTestId('divergence-archive-da'));
+    await waitFor(() => expect(toastSuccess).toHaveBeenCalled());
+    // the success toast carried an Undo action → invoking it restores status→active with the bumped version
+    const opts = toastSuccess.mock.calls.at(-1)?.[1] as { action?: { onClick: () => void } } | undefined;
+    expect(opts?.action).toBeTruthy();
+    opts!.action!.onClick();
+    await waitFor(() => expect(patchWork).toHaveBeenCalledWith('da', { status: 'active' }, 'tok', { version: 3 }));
   });
 
   it('selecting a derivative loads its context and mounts the editable spec editor', async () => {
