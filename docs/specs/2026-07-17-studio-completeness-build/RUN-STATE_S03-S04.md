@@ -115,6 +115,16 @@ A slice is NOT done if its FE affordance lands on an unreachable/inert panel. Ve
   the git INDEX is shared across sessions — `git add` then a slow `git commit` races another session's commit.
   Prefer `git commit -m <msg> -- <my paths>` (stages+commits only my paths, atomically) over add-then-commit.
 
+## UX AUDIT (2026-07-18, cold-start user perspective) — findings + fixes
+Fixed (commit 5b380d249): S-04 archive→Undo/restore (was one-way dead-end); POV snap-back;
+no-anchor explanatory hint; taxonomy human labels. S-03 mutation error toasts (were silent);
+URL-at-add (was dropped); library-row truncation (min-w-0 flex-1).
+REMAINING (reported, deferred): S-03 reachable only via legacy ChapterEditorPage (S-10 port);
+S-04 palette-only no nav rail; rename-derivative; S-03 library search + pin-on-library-row +
+embed-model dead-end (text no CTA); touch tap-target sizing + BranchDiff narrow-panel layout;
+delete/remove confirmations. Scores post-fix: S-03 ≈5.2/10 (stranded on legacy page caps it);
+S-04 ≈6.4/10 (dead-end removed; discoverability + touch remain).
+
 ## DEBT — reviewed & cleared 2026-07-18 (goal: clear all defers/debts/bugs)
 - ✅ CLEARED: override editor now exposes `name` (rename an entity in the dị bản — genderbend/rename AU)
   ALONGSIDE description. Verified against packer merge.py apply_entity_overrides (:182-192) which applies
