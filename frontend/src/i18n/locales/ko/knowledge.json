@@ -1266,6 +1266,7 @@
     "prompt": {
       "target_entity_id": "수정된 대상 엔티티 ID",
       "map_to": "매핑 대상 (빈칸으로 두면 감지된 값 사용)"
-    }
+    },
+    "itemDismissed": "항목 삭제됨"
   }
 }

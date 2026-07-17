@@ -1266,6 +1266,7 @@
     "prompt": {
       "target_entity_id": "ID de entidad de destino corregida",
       "map_to": "Mapear a (dejar en blanco para usar el valor detectado)"
-    }
+    },
+    "itemDismissed": "Elemento descartado"
   }
 }

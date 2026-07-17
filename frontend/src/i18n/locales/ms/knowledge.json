@@ -1266,6 +1266,7 @@
     "prompt": {
       "target_entity_id": "ID entiti sasaran yang telah diperbetulkan",
       "map_to": "Petakan ke (biarkan kosong untuk menggunakan nilai yang dikesan)"
-    }
+    },
+    "itemDismissed": "Item dibatalkan"
   }
 }

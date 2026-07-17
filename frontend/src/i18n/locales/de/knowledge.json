@@ -1266,6 +1266,7 @@
     "prompt": {
       "target_entity_id": "Korrigierte Ziel-Entitäts-ID",
       "map_to": "Zuweisen zu (leer lassen, um den erkannten Wert zu verwenden)"
-    }
+    },
+    "itemDismissed": "Element entfernt"
   }
 }

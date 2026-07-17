@@ -1266,6 +1266,7 @@
     "prompt": {
       "target_entity_id": "ID thực thể mục tiêu đã sửa",
       "map_to": "Ánh xạ tới (để trống để dùng giá trị đã phát hiện)"
-    }
+    },
+    "itemDismissed": "Đã bỏ qua mục này"
   }
 }

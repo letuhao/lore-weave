@@ -1266,6 +1266,7 @@
     "prompt": {
       "target_entity_id": "已修正的目標實體 ID",
       "map_to": "映射至 (留空則使用偵測到的值)"
-    }
+    },
+    "itemDismissed": "項目已移除"
   }
 }

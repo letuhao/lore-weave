@@ -14,6 +14,7 @@ import { ontologyApi } from '../api/ontology';
 import type {
   TriageAction,
   TriageGroup,
+  TriageItem,
   TriageResolveResult,
 } from '../types/ontology';
 
@@ -27,6 +28,9 @@ export interface UseTriageQueueResult {
     params?: Record<string, unknown>;
   }) => Promise<TriageResolveResult>;
   isResolving: boolean;
+  /** S-05 — dismiss ONE item of a signature (kills the whole-group blast). */
+  dismissItem: (triageId: string) => Promise<void>;
+  isDismissing: boolean;
 }
 
 export function useTriageQueue(projectId: string | null): UseTriageQueueResult {
@@ -62,11 +66,41 @@ export function useTriageQueue(projectId: string | null): UseTriageQueueResult {
     onSuccess: () => queryClient.invalidateQueries({ queryKey }),
   });
 
+  const dismissMutation = useMutation({
+    mutationFn: (triageId: string) =>
+      ontologyApi.dismissTriageItem(projectId!, triageId, accessToken!),
+    onSuccess: () => {
+      // refetch the groups (a count may drop / a group may vanish) AND any open
+      // per-signature item drill-in.
+      queryClient.invalidateQueries({ queryKey });
+      queryClient.invalidateQueries({ queryKey: ['kg-triage-items', userId, projectId] });
+    },
+  });
+
   return {
     groups: query.data?.groups ?? [],
     isLoading: query.isLoading,
     error: (query.error as Error | null) ?? null,
     resolve: resolveMutation.mutateAsync,
     isResolving: resolveMutation.isPending,
+    dismissItem: dismissMutation.mutateAsync,
+    isDismissing: dismissMutation.isPending,
   };
+}
+
+/** S-05 — lazy per-signature item drill-in (loads only when a group is expanded). */
+export function useTriageItems(
+  projectId: string | null,
+  signature: string | null,
+  enabled: boolean,
+): { items: TriageItem[]; isLoading: boolean } {
+  const { accessToken, user } = useAuth();
+  const userId = user?.user_id ?? 'anon';
+  const query = useQuery({
+    queryKey: ['kg-triage-items', userId, projectId, signature] as const,
+    queryFn: () => ontologyApi.listTriageItems(projectId!, signature!, accessToken!),
+    enabled: !!accessToken && !!projectId && !!signature && enabled,
+    staleTime: 10_000,
+  });
+  return { items: query.data?.items ?? [], isLoading: query.isLoading };
 }

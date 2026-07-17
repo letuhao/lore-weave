@@ -127,6 +127,19 @@ class TriageResolveResultOut(BaseModel):
     needs_glossary: NeedsGlossaryOut | None = None
 
 
+# S-05 — per-item drill-in (so the FE can dismiss ONE noisy item of a signature
+# group via the existing /{triage_id}/dismiss route, instead of only the whole
+# signature). Read-only, additive; the resolve/dismiss write paths are unchanged.
+class TriageItemOut(BaseModel):
+    triage_id: str
+    item_type: TriageItemType
+    payload: dict[str, Any] = Field(default_factory=dict)
+
+
+class TriageItemListOut(BaseModel):
+    items: list[TriageItemOut]
+
+
 def _not_found(detail: str = "not found") -> HTTPException:
     # Uniform 404 -- never an existence oracle for a project/signature.
     return HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=detail)
@@ -172,6 +185,36 @@ async def list_triage(
             for g in groups
         ],
         next_cursor=next_cursor,
+    )
+
+
+# ── GET the pending items of one signature (View-gated) ──────────────────────
+@router.get(
+    "/projects/{project_id}/triage/{signature}/items",
+    response_model=TriageItemListOut,
+)
+async def list_triage_items(
+    project_id: UUID,
+    signature: str = Path(..., min_length=1, max_length=500),
+    owner: UUID = Depends(require_project_grant(GrantLevel.VIEW)),
+    repo: TriageRepo = Depends(get_triage_repo),
+) -> TriageItemListOut:
+    """The PENDING items of one signature (S-05 per-item drill-in). View-gated;
+    the repo is scoped to the project OWNER (resolve-to-owner), so a cross-tenant
+    caller 404s in the dep. Lets the FE dismiss ONE noisy item via the existing
+    `/{triage_id}/dismiss` route instead of the whole signature group."""
+    items = await repo.list_pending_for_signature(
+        user_id=owner, project_id=str(project_id), signature=signature
+    )
+    return TriageItemListOut(
+        items=[
+            TriageItemOut(
+                triage_id=str(it.triage_id),
+                item_type=it.item_type,
+                payload=it.payload or {},
+            )
+            for it in items
+        ]
     )
 
 

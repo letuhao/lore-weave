@@ -1,7 +1,8 @@
+import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
-import { AlertTriangle, X } from 'lucide-react';
-import { useTriageQueue } from '../hooks/useTriageQueue';
+import { AlertTriangle, X, ChevronRight, ChevronDown } from 'lucide-react';
+import { useTriageQueue, useTriageItems } from '../hooks/useTriageQueue';
 import type { TriageAction, TriageGroup } from '../types/ontology';
 
 // S-05 Part B — the KG extraction-triage queue. Extraction elements that didn't
@@ -62,9 +63,68 @@ function evidenceSnippet(payload: Record<string, unknown> | undefined): string {
   );
 }
 
+/** S-05 — expandable per-item drill-in: dismiss ONE noisy item of a signature
+ *  (via dismissTriageItem) instead of the whole group. Loaded lazily on expand. */
+function GroupDrillIn({
+  projectId,
+  signature,
+  onDismissItem,
+  isDismissing,
+}: {
+  projectId: string;
+  signature: string;
+  onDismissItem: (triageId: string) => void;
+  isDismissing: boolean;
+}) {
+  const { t } = useTranslation('knowledge');
+  const { items, isLoading } = useTriageItems(projectId, signature, true);
+  if (isLoading) {
+    return (
+      <p className="mt-2 pl-5 text-[11px] text-muted-foreground">{t('triage.loading')}</p>
+    );
+  }
+  return (
+    <ul className="mt-2 space-y-1 border-l pl-3" data-testid="kg-triage-items">
+      {items.map((it) => (
+        <li
+          key={it.triage_id}
+          className="flex items-center gap-2 text-[11px]"
+          data-testid="kg-triage-item"
+        >
+          <span className="min-w-0 flex-1 truncate text-muted-foreground">
+            {JSON.stringify(it.payload).slice(0, 90)}
+          </span>
+          <button
+            type="button"
+            onClick={() => onDismissItem(it.triage_id)}
+            disabled={isDismissing}
+            title={t('triage.action.dismiss')}
+            aria-label={t('triage.action.dismiss')}
+            className="inline-flex shrink-0 items-center rounded-sm p-0.5 text-muted-foreground transition-colors hover:text-destructive disabled:opacity-50"
+            data-testid="kg-triage-item-dismiss"
+          >
+            <X className="h-3 w-3" />
+          </button>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
 export function TriageQueue({ projectId, bookId, onGlossaryHandoff }: TriageQueueProps) {
   const { t } = useTranslation('knowledge');
-  const { groups, isLoading, error, resolve, isResolving } = useTriageQueue(projectId);
+  const { groups, isLoading, error, resolve, isResolving, dismissItem, isDismissing } =
+    useTriageQueue(projectId);
+  const [expanded, setExpanded] = useState<string | null>(null);
+
+  const handleDismissItem = async (triageId: string) => {
+    try {
+      await dismissItem(triageId);
+      toast.success(t('triage.itemDismissed'));
+    } catch (e) {
+      toast.error(t('triage.resolveFailed', { error: (e as Error).message }));
+    }
+  };
 
   const handleAction = async (group: TriageGroup, action: TriageAction) => {
     let params: Record<string, unknown> | undefined;
@@ -158,9 +218,29 @@ export function TriageQueue({ projectId, bookId, onGlossaryHandoff }: TriageQueu
                   {t(`triage.itemType.${group.item_type}`, {
                     defaultValue: group.item_type,
                   })}
-                  <span className="ml-1.5 rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">
-                    {group.count}
-                  </span>
+                  {/* expand toggle — only when the group has >1 item (per-item
+                      dismiss only makes sense when there's more than one). */}
+                  {group.count > 1 ? (
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setExpanded((s) => (s === group.signature ? null : group.signature))
+                      }
+                      className="ml-1.5 inline-flex items-center gap-0.5 rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground transition-colors hover:text-foreground"
+                      data-testid="kg-triage-expand"
+                    >
+                      {expanded === group.signature ? (
+                        <ChevronDown className="h-3 w-3" />
+                      ) : (
+                        <ChevronRight className="h-3 w-3" />
+                      )}
+                      {group.count}
+                    </button>
+                  ) : (
+                    <span className="ml-1.5 rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">
+                      {group.count}
+                    </span>
+                  )}
                 </p>
                 <p
                   className="mt-0.5 truncate text-[11px] text-muted-foreground"
@@ -197,6 +277,14 @@ export function TriageQueue({ projectId, bookId, onGlossaryHandoff }: TriageQueu
                 );
               })}
             </div>
+            {expanded === group.signature && (
+              <GroupDrillIn
+                projectId={projectId}
+                signature={group.signature}
+                onDismissItem={handleDismissItem}
+                isDismissing={isDismissing}
+              />
+            )}
           </li>
         );
       })}

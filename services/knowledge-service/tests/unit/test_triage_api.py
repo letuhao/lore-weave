@@ -115,6 +115,30 @@ def test_list_missing_project_404():
     assert r.status_code == 404
 
 
+# ── GET per-item drill-in (S-05, View-gated) ─────────────────────────────────
+def test_list_items_returns_pending_items():
+    repo = MagicMock()
+    repo.list_pending_for_signature = AsyncMock(return_value=[_item(), _item()])
+    client, _, _ = _make_client(repo=repo)
+    r = client.get(f"/v1/kg/projects/{_PROJECT}/triage/drive:curiosity/items")
+    assert r.status_code == 200, r.json()
+    body = r.json()
+    assert len(body["items"]) == 2
+    assert body["items"][0]["item_type"] == "unknown_vocab_value"
+    assert "triage_id" in body["items"][0]
+
+
+def test_list_items_cross_tenant_non_grantee_404():
+    """A non-owner with NO grant -> 404 in the View gate before the repo runs."""
+    repo = MagicMock()
+    repo.list_pending_for_signature = AsyncMock(return_value=[])
+    other = uuid4()
+    client, _, _ = _make_client(caller=other, grant_level=GrantLevel.NONE, repo=repo)
+    r = client.get(f"/v1/kg/projects/{_PROJECT}/triage/sig-x/items")
+    assert r.status_code == 404
+    repo.list_pending_for_signature.assert_not_called()
+
+
 # ── POST resolve (KG-local Edit-gated) ───────────────────────────────────────
 def test_resolve_kg_local_marks_resolved():
     repo = MagicMock()

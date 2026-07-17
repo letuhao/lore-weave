@@ -16,10 +16,14 @@ vi.mock('sonner', () => ({ toast: toastMocks }));
 
 const listTriageMock = vi.fn();
 const resolveTriageMock = vi.fn();
+const listTriageItemsMock = vi.fn();
+const dismissTriageItemMock = vi.fn();
 vi.mock('../../api/ontology', () => ({
   ontologyApi: {
     listTriage: (...a: unknown[]) => listTriageMock(...a),
     resolveTriage: (...a: unknown[]) => resolveTriageMock(...a),
+    listTriageItems: (...a: unknown[]) => listTriageItemsMock(...a),
+    dismissTriageItem: (...a: unknown[]) => dismissTriageItemMock(...a),
   },
 }));
 
@@ -52,6 +56,8 @@ describe('TriageQueue', () => {
   beforeEach(() => {
     listTriageMock.mockReset();
     resolveTriageMock.mockReset();
+    listTriageItemsMock.mockReset();
+    dismissTriageItemMock.mockReset();
     toastMocks.success.mockReset();
     toastMocks.error.mockReset();
     toastMocks.info.mockReset();
@@ -138,5 +144,29 @@ describe('TriageQueue', () => {
     await waitFor(() =>
       expect(onGlossaryHandoff).toHaveBeenCalledWith({ book_id: 'b-1', kinds: ['deity'] }),
     );
+  });
+
+  it('expands a multi-item group and dismisses ONE item (per-item, not the group)', async () => {
+    listTriageMock.mockResolvedValue({ groups: [GROUP_EDGE_MISMATCH] }); // count: 3
+    listTriageItemsMock.mockResolvedValue({
+      items: [
+        { triage_id: 'ti-1', item_type: 'edge_kind_mismatch', payload: { predicate: 'rules_over' } },
+        { triage_id: 'ti-2', item_type: 'edge_kind_mismatch', payload: { predicate: 'reigns' } },
+      ],
+    });
+    dismissTriageItemMock.mockResolvedValue(undefined);
+    render(<TriageQueue projectId="p-1" />, { wrapper: Wrapper });
+    await waitFor(() => screen.getByTestId('kg-triage-expand'));
+    fireEvent.click(screen.getByTestId('kg-triage-expand'));
+    await waitFor(() =>
+      expect(screen.getAllByTestId('kg-triage-item')).toHaveLength(2),
+    );
+    fireEvent.click(screen.getAllByTestId('kg-triage-item-dismiss')[0]);
+    await waitFor(() =>
+      expect(dismissTriageItemMock).toHaveBeenCalledWith('p-1', 'ti-1', 'tok'),
+    );
+    // per-item dismiss must NOT fire a whole-group resolve
+    expect(resolveTriageMock).not.toHaveBeenCalled();
+    await waitFor(() => expect(toastMocks.success).toHaveBeenCalled());
   });
 });

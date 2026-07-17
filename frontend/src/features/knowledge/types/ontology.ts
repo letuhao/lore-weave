@@ -388,6 +388,17 @@ export interface TriageGroupList {
   next_cursor?: string | null;
 }
 
+// S-05 — per-item drill-in of a signature group (for single-item dismiss).
+export interface TriageItem {
+  triage_id: string;
+  item_type: TriageItemType;
+  payload?: Record<string, unknown>;
+}
+
+export interface TriageItemList {
+  items: TriageItem[];
+}
+
 export interface TriageListParams {
   status?: TriageStatus;
   item_type?: TriageItemType;

@@ -1266,6 +1266,7 @@
     "prompt": {
       "target_entity_id": "已修正的终点实体 ID",
       "map_to": "映射至（留空则使用检测到的值）"
-    }
+    },
+    "itemDismissed": "项目已忽略"
   }
 }

@@ -1266,6 +1266,7 @@
     "prompt": {
       "target_entity_id": "ID de l'entité cible corrigé",
       "map_to": "Mapper vers (laisser vide pour utiliser la valeur détectée)"
-    }
+    },
+    "itemDismissed": "Élément ignoré"
   }
 }
