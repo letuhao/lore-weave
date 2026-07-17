@@ -57,6 +57,10 @@ export function CastPanel(props: IDockviewPanelProps) {
         chapterId={activeChapterId ?? ''}
         token={accessToken}
         onViewArc={(entityId) => {
+          // Tier-1 deep-link (params) opens/focuses the panel with this subject;
+          // tier-2 bus event re-subjects an ALREADY-OPEN arc panel (S7
+          // D-CAST-ARC-BUS-SLICE) so clicking a different cast row switches it.
+          host.publish({ type: 'castEntity', entityId });
           host.openPanel('character-arc', { params: { entityId }, focus: true });
         }}
         onRename={(args) => void edit.rename(args)}

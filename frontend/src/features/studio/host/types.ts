@@ -67,7 +67,12 @@ export type StudioBusEvent =
   // 32 AI-1 — the arc-inspector's subject. plan-hub publishes it on an arc/saga node selection;
   // the inspector subscribes. The ONLY studio-internal transport the agent needs to drive the
   // panel (a bare-id `ui_open_studio_panel` open lands here; the panel's picker is the fallback).
-  | { type: 'arc'; arcId: string };
+  | { type: 'arc'; arcId: string }
+  // S7 D-CAST-ARC-BUS-SLICE — the cast codex's selected character. CastPanel publishes it when a
+  // row's "view arc" is clicked; an ALREADY-OPEN character-arc panel subscribes so clicking a
+  // different cast row switches the arc's subject (tier-2 live update). Mirrors 'arc'/'scene':
+  // params (tier-1 deep-link) still win, the in-panel picker (tier-3) remains the fallback.
+  | { type: 'castEntity'; entityId: string };
 
 /** The bus's current merged snapshot. `revision` increments on every publish (so a chat turn can
  * stamp `context_revision`). */
@@ -92,6 +97,10 @@ export interface StudioBusSnapshot {
   planFocusSeq?: number;
   /** 32 AI-1 — the arc/saga the inspector is showing (an outline `structure_node` id). */
   activeArcId?: string;
+  /** S7 D-CAST-ARC-BUS-SLICE — the cast character last selected for its arc (a KG entity id).
+   *  The character-arc panel reads it as tier-2 (params ?? this ?? picker) so an open panel
+   *  re-subjects when a different cast row is clicked. */
+  activeCastEntityId?: string;
 }
 
 /** Reduce a bus event onto the snapshot (pure — one new object, revision bumped). */
@@ -116,6 +125,8 @@ export function applyBusEvent(s: StudioBusSnapshot, e: StudioBusEvent): StudioBu
       return { ...base, planFocusNodeId: e.nodeId, planFocusSeq: (s.planFocusSeq ?? 0) + 1 };
     case 'arc':
       return { ...base, activeArcId: e.arcId };
+    case 'castEntity':
+      return { ...base, activeCastEntityId: e.entityId };
     default:
       return base;
   }

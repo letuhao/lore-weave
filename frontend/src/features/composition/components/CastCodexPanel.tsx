@@ -57,7 +57,8 @@ export function CastCodexPanel({
   const [localSearch, setLocalSearch] = useState('');
   const search = searchProp ?? localSearch;
   const setSearch = onSearchChange ?? setLocalSearch;
-  const { entities, statuses } = useCast(projectId, token, { search, beforeChapterId: chapterId });
+  const { entities, statuses, hasMore, loadMore, isFetchingMore, total, loaded } =
+    useCast(projectId, token, { search, beforeChapterId: chapterId });
 
   const groups = useMemo(
     () => groupCast(entities.data ?? [], statuses.data?.statuses ?? {}),
@@ -95,12 +96,24 @@ export function CastCodexPanel({
         </div>
       )}
 
-      {/* D-PAGING (S7) — useCast caps the list at limit:200. A silent cut would let a
-          large cast look complete; announce the cap instead (the silent-success law).
-          Full keyset paging past the cap is deferred (D-CAST-KEYSET-PAGING). */}
-      {(entities.data?.length ?? 0) >= 200 && (
-        <div data-testid="cast-truncation-hint" className="border-b bg-amber-50 px-3 py-1 text-[10px] text-amber-700 dark:bg-amber-950/40 dark:text-amber-400">
-          {t('codex.truncated', { defaultValue: 'Showing the first 200 — refine your search to narrow the list.' })}
+      {/* D-CAST-KEYSET-PAGING (S7) — the list is offset-paged, not capped. When
+          more pages remain, offer a real "Load more" (the route exposes offset)
+          instead of a dead-end "refine your search" notice — a >200 cast is now
+          fully reachable. */}
+      {hasMore && (
+        <div data-testid="cast-more-hint" className="flex items-center gap-2 border-b bg-amber-50 px-3 py-1 text-[10px] text-amber-700 dark:bg-amber-950/40 dark:text-amber-400">
+          <span>{t('codex.showingOf', { defaultValue: 'Showing {{loaded}} of {{total}}.', loaded, total })}</span>
+          <button
+            type="button"
+            data-testid="cast-load-more"
+            className="ml-auto shrink-0 rounded border border-amber-300 px-1.5 py-0.5 hover:bg-amber-100 disabled:opacity-50 dark:border-amber-800 dark:hover:bg-amber-900/40"
+            disabled={isFetchingMore}
+            onClick={() => loadMore()}
+          >
+            {isFetchingMore
+              ? t('codex.loadingMore', { defaultValue: 'Loading…' })
+              : t('codex.loadMore', { defaultValue: 'Load more' })}
+          </button>
         </div>
       )}
 

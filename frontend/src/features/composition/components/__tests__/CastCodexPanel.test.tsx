@@ -112,4 +112,50 @@ describe('CastCodexPanel (T2.1)', () => {
     render(<CastCodexPanel bookId="b" chapterId="ch3" token="t" />);
     expect(screen.getByText('codex.empty')).toBeInTheDocument();
   });
+
+  // ── D-CAST-KEYSET-PAGING (S7) — Load-more replaces the dead-end truncation ──
+  describe('paging', () => {
+    it('no Load-more control when the whole cast is loaded (hasMore=false)', () => {
+      castHook.mockReturnValue({
+        entities: { data: entities, isLoading: false },
+        statuses: { data: { statuses: {}, window_available: true } },
+        hasMore: false,
+      });
+      render(<CastCodexPanel bookId="b" chapterId="ch3" token="t" />);
+      expect(screen.queryByTestId('cast-load-more')).not.toBeInTheDocument();
+    });
+
+    it('renders a Load-more control when more pages remain, and clicking it loads the next page', () => {
+      const loadMore = vi.fn();
+      castHook.mockReturnValue({
+        entities: { data: entities, isLoading: false },
+        statuses: { data: { statuses: {}, window_available: true } },
+        hasMore: true,
+        loadMore,
+        isFetchingMore: false,
+        loaded: 200,
+        total: 250,
+      });
+      render(<CastCodexPanel bookId="b" chapterId="ch3" token="t" />);
+      // A real control, not a dead-end notice.
+      const btn = screen.getByTestId('cast-load-more');
+      expect(screen.getByTestId('cast-more-hint')).toBeInTheDocument();
+      fireEvent.click(btn);
+      expect(loadMore).toHaveBeenCalledTimes(1);
+    });
+
+    it('disables the control while a page is in flight', () => {
+      castHook.mockReturnValue({
+        entities: { data: entities, isLoading: false },
+        statuses: { data: { statuses: {}, window_available: true } },
+        hasMore: true,
+        loadMore: vi.fn(),
+        isFetchingMore: true,
+        loaded: 200,
+        total: 250,
+      });
+      render(<CastCodexPanel bookId="b" chapterId="ch3" token="t" />);
+      expect(screen.getByTestId('cast-load-more')).toBeDisabled();
+    });
+  });
 });

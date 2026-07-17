@@ -9,7 +9,7 @@
 // The spoiler window is the BUS chapter (DP-2 — no second picker here). The
 // ENHANCE toolbar reuses EntityEditDialog (edit) + CreateRelationDialog (+ link)
 // over the existing routes.
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { IDockviewPanelProps } from 'dockview-react';
 import { useTranslation } from 'react-i18next';
 import { Pencil, Link2 } from 'lucide-react';
@@ -30,12 +30,29 @@ export function CharacterArcPanel(props: IDockviewPanelProps) {
   const queryClient = useQueryClient();
   const activeChapterId = useStudioBusSelector((s) => s.activeChapterId);
 
-  // Tier 1 (deep-link param) seeds the controlled subject; the in-panel picker
-  // (tier 3) then owns it. Tier 2 (bus.activeCastEntityId) lands via the manifest
-  // bus-slice the integrator adds — decompose, don't block the core port on it.
+  // Subject resolution cascade (mirrors useArcInspector's params→bus→picker):
+  //   picked (in-panel select, tier-3) ?? params.entityId (deep-link, tier-1)
+  //   ?? bus.activeCastEntityId (tier-2, S7 D-CAST-ARC-BUS-SLICE).
+  // The in-panel pick wins so the picker is never a silent no-op; a FRESH cast-row
+  // click (a new bus castEntity event) clears that pick below so an already-open
+  // panel re-subjects — the exact gap this slice closes.
   const paramEntityId =
     (props.params as { entityId?: string } | undefined)?.entityId ?? null;
-  const [entityId, setEntityId] = useState<string | null>(paramEntityId);
+  const busCastEntityId = useStudioBusSelector((s) => s.activeCastEntityId) ?? null;
+  const [picked, setPicked] = useState<string | null>(null);
+
+  // A new castEntity bus event = the user clicked a different cast row = an explicit
+  // switch intent, so it overrides any prior in-panel pick. Subscription to an
+  // EXTERNAL bus value (not an in-component event) → useEffect is the right tool.
+  const lastBusRef = useRef<string | null>(busCastEntityId);
+  useEffect(() => {
+    if (busCastEntityId && busCastEntityId !== lastBusRef.current) {
+      lastBusRef.current = busCastEntityId;
+      setPicked(null);
+    }
+  }, [busCastEntityId]);
+
+  const entityId = picked ?? paramEntityId ?? busCastEntityId;
 
   const { detail } = useEntityDetail(entityId);
   const entity = detail?.entity ?? null;
@@ -81,7 +98,7 @@ export function CharacterArcPanel(props: IDockviewPanelProps) {
           chapterId={activeChapterId ?? ''}
           token={accessToken}
           entityId={entityId}
-          onEntityChange={setEntityId}
+          onEntityChange={setPicked}
         />
       </div>
 

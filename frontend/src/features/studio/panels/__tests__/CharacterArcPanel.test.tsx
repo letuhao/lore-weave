@@ -1,11 +1,11 @@
 // s7-4 — CharacterArcPanel wrapper: resolves its subject via props.params.entityId
 // (DP-5 tier 1) and hands it to the leaf <CharacterArcView>. The leaf is stubbed.
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { act, render, screen } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { IDockviewPanelProps } from 'dockview-react';
 import type { ReactNode } from 'react';
-import { StudioHostProvider } from '../../host/StudioHostProvider';
+import { StudioHostProvider, useStudioHost, type StudioHost } from '../../host/StudioHostProvider';
 
 vi.mock('@/auth', () => ({ useAuth: () => ({ accessToken: 'tok', user: { user_id: 'u1' } }) }));
 vi.mock('react-i18next', () => ({
@@ -61,5 +61,26 @@ describe('CharacterArcPanel wrapper', () => {
     withHost(<CharacterArcPanel {...dockProps({ entityId: 'e42' })} />);
     expect(screen.getByTestId('arc-edit-entity')).toBeTruthy();
     expect(screen.getByTestId('arc-link-entity')).toBeTruthy();
+  });
+
+  // D-CAST-ARC-BUS-SLICE — tier-2 live update.
+  it('an already-open panel re-subjects when a cast row publishes a castEntity bus event', () => {
+    let host: StudioHost | null = null;
+    function Capture() { host = useStudioHost(); return null; }
+    withHost(<><Capture /><CharacterArcPanel {...dockProps()} /></>);
+    // Bare open → the leaf has no subject yet (its own picker, not a dead panel).
+    expect(screen.getByTestId('arc-view-stub').getAttribute('data-entity')).toBe('');
+    // A cast-row "view arc" click publishes the bus event → the open panel switches.
+    act(() => { host!.publish({ type: 'castEntity', entityId: 'e99' }); });
+    expect(screen.getByTestId('arc-view-stub').getAttribute('data-entity')).toBe('e99');
+  });
+
+  it('a deep-link param wins over the bus (tier-1 precedence, picker still available)', () => {
+    let host: StudioHost | null = null;
+    function Capture() { host = useStudioHost(); return null; }
+    withHost(<><Capture /><CharacterArcPanel {...dockProps({ entityId: 'e42' })} /></>);
+    act(() => { host!.publish({ type: 'castEntity', entityId: 'e99' }); });
+    // params.entityId is tier-1; the bus is tier-2 → the param subject holds.
+    expect(screen.getByTestId('arc-view-stub').getAttribute('data-entity')).toBe('e42');
   });
 });

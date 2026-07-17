@@ -726,6 +726,20 @@ export interface EventUpdatePayload {
   event_date_iso?: string;
 }
 
+/** D-KG-EVENT-CREATE-ROUTE — author a new user-created timeline event. `project_id`
+ *  scopes it to the book's KG; `chapter_id` (optional) anchors narrative order + the
+ *  spoiler cutoff; `participants` are the display names it involves (pass the focused
+ *  character's name so it lands on that character's arc). */
+export interface EventCreatePayload {
+  project_id: string;
+  title: string;
+  summary?: string;
+  time_cue?: string;
+  event_date_iso?: string;
+  chapter_id?: string | null;
+  participants?: string[];
+}
+
 export interface TimelineListParams {
   project_id?: string;
   /** Strict `event_order > after_order`. BE defers wall-clock date
@@ -1757,6 +1771,16 @@ export const knowledgeApi = {
   },
 
   // ── Phase B C — event corrections ────────────────────────────────────
+
+  /** D-KG-EVENT-CREATE-ROUTE — author a new timeline event. 201 → the created
+   *  Event (idempotent on (project, chapter, title) server-side). */
+  createEvent(body: EventCreatePayload, token: string): Promise<TimelineEvent> {
+    return apiJson<TimelineEvent>(`${BASE}/events`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+      token,
+    });
+  },
 
   updateEvent(
     eventId: string,

@@ -1135,6 +1135,14 @@
     }
   },
   "events": {
+    "create": {
+      "title": "Add event",
+      "description": "Author a new timeline event for this character.",
+      "success": "Event added.",
+      "failed": "Add failed: {{error}}",
+      "saving": "Adding…",
+      "save": "Add event"
+    },
     "edit": {
       "cta": "Edit",
       "title": "Edit event",
