@@ -627,6 +627,64 @@ async def patch_work_chapter_draft(
     return {"forked": True, "body": updated.body, "draft_version": updated.draft_version}
 
 
+class MergeToCanonBody(BaseModel):
+    # The canon draft_version the user is merging against — merge ONLY if canon hasn't moved
+    # since (anti-clobber, surfaced as CANON_CONFLICT). None → merge over canon's CURRENT
+    # version (force-promote the fork; book-service's own OCC still guards the read→patch window).
+    expected_canon_version: int | None = None
+
+
+@router.post("/works/{project_id}/chapters/{chapter_id}/merge-to-canon")
+async def merge_work_chapter_to_canon(
+    project_id: UUID,
+    chapter_id: UUID,
+    body: MergeToCanonBody | None = None,
+    user_id: UUID = Depends(get_current_user),
+    bearer: str = Depends(get_bearer_token),
+    works: WorksRepo = Depends(get_works_repo),
+    grant: GrantClient = Depends(get_grant_client_dep),
+    book: BookClient = Depends(get_book_client_dep),
+    wcd: WorkChapterDraftsRepo = Depends(get_work_chapter_drafts_repo),
+) -> dict[str, Any]:
+    """Promote a derivative's forked chapter INTO canon — one-way content merge (the fork ROW
+    stays; the branch remains a parallel manuscript). Writes the fork body into canon
+    (book-service) under OCC against the canon draft_version: a concurrent canon edit → 409
+    CANON_CONFLICT (never a silent clobber). EDIT grant. Rejects the canonical Work + an
+    unforked chapter (nothing to merge)."""
+    body = body or MergeToCanonBody()
+    work = await works.get(project_id)
+    if work is None:
+        raise HTTPException(status_code=404, detail=NOT_ACCESSIBLE_MESSAGE)
+    await _gate_book(grant, work.book_id, user_id, GrantLevel.EDIT)
+    if work.source_work_id is None:
+        raise HTTPException(status_code=400, detail={"code": "NOT_A_DERIVATIVE"})
+    fork = await wcd.get(project_id, chapter_id)
+    if fork is None:
+        raise HTTPException(status_code=409, detail={"code": "NOT_FORKED"})  # nothing to merge
+    try:
+        if body.expected_canon_version is not None:
+            expected = body.expected_canon_version
+        else:
+            canon = await book.get_draft(work.book_id, chapter_id, bearer)
+            if canon is None:
+                raise HTTPException(status_code=404, detail="chapter not found")
+            expected = canon.get("draft_version")
+        name = (work.settings or {}).get("derivative_name") or "dị bản"
+        updated = await book.patch_draft(
+            work.book_id, chapter_id, bearer,
+            body=fork.body, expected_draft_version=expected,
+            body_format=fork.draft_format, commit_message=f"Merge {name} into canon",
+        )
+    except BookClientError as exc:
+        if exc.status == 409 or exc.code == "CHAPTER_DRAFT_CONFLICT":
+            raise HTTPException(status_code=409, detail={
+                "code": "CANON_CONFLICT", "detail": "canon changed since — refetch and retry",
+            })
+        raise HTTPException(status_code=502, detail={"code": "BOOK_MERGE_FAILED", "detail": exc.code})
+    await wcd.mark_merged(project_id, chapter_id)
+    return {"merged": True, "canon_draft_version": updated.get("draft_version")}
+
+
 # ── D-C16: id-addressable + self-healing backfill for a pending null-project ──
 # Work. A GREENFIELD Work created during a knowledge-service outage has a null
 # project_id, so the /works/{project_id} routes can't address it — its only

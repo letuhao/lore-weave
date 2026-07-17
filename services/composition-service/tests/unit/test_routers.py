@@ -818,6 +818,7 @@ class StubWorkChapterDrafts:
         self.update_raises = None  # set to VersionMismatchError to simulate a stale OCC token
         self.forked_with = None
         self.updated_with = None
+        self.merged_called = False
 
     async def get(self, project_id, chapter_id):
         return self.row
@@ -833,6 +834,7 @@ class StubWorkChapterDrafts:
         return self.update_result
 
     async def mark_merged(self, project_id, chapter_id):
+        self.merged_called = True
         return self.row
 
 
@@ -960,3 +962,55 @@ def test_work_draft_patch_rejects_the_canonical_work(wcd_ctx):
     works.work = _work()  # canonical
     r = c.patch(_WD_URL, json={"body": {"x": 1}, "expected_version": 0})
     assert r.status_code == 400 and r.json()["detail"]["code"] == "NOT_A_DERIVATIVE"
+
+
+# ── M2 — merge a forked chapter back into canon ──────────────────────────────────────
+
+_MERGE_URL = f"/v1/composition/works/{PROJECT}/chapters/{CHAPTER}/merge-to-canon"
+
+
+def test_merge_to_canon_writes_canon_and_marks_merged(wcd_ctx):
+    c, works, book, wcd = wcd_ctx
+    works.work = _deriv_work()
+    wcd.row = _wcd(body={"m": 1}, draft_version=2)
+    r = c.post(_MERGE_URL, json={})
+    assert r.status_code == 200
+    assert r.json()["merged"] is True and r.json()["canon_draft_version"] == 6
+    assert book.patched_with["body"] == {"m": 1}
+    assert book.patched_with["expected_draft_version"] == 5
+    assert wcd.merged_called is True
+
+
+def test_merge_to_canon_rejects_when_not_forked(wcd_ctx):
+    c, works, book, wcd = wcd_ctx
+    works.work = _deriv_work()
+    wcd.row = None
+    r = c.post(_MERGE_URL, json={})
+    assert r.status_code == 409 and r.json()["detail"]["code"] == "NOT_FORKED"
+    assert book.patched_with is None
+
+
+def test_merge_to_canon_canon_conflict_is_409(wcd_ctx):
+    c, works, book, wcd = wcd_ctx
+    works.work = _deriv_work()
+    wcd.row = _wcd(body={"m": 1})
+    book.patch_raises = BookClientError(409, "CHAPTER_DRAFT_CONFLICT")
+    r = c.post(_MERGE_URL, json={})
+    assert r.status_code == 409 and r.json()["detail"]["code"] == "CANON_CONFLICT"
+    assert wcd.merged_called is False
+
+
+def test_merge_to_canon_rejects_the_canonical_work(wcd_ctx):
+    c, works, book, wcd = wcd_ctx
+    works.work = _work()
+    r = c.post(_MERGE_URL, json={})
+    assert r.status_code == 400 and r.json()["detail"]["code"] == "NOT_A_DERIVATIVE"
+
+
+def test_merge_to_canon_honors_client_expected_canon_version(wcd_ctx):
+    c, works, book, wcd = wcd_ctx
+    works.work = _deriv_work()
+    wcd.row = _wcd(body={"m": 1})
+    r = c.post(_MERGE_URL, json={"expected_canon_version": 3})
+    assert r.status_code == 200
+    assert book.patched_with["expected_draft_version"] == 3
