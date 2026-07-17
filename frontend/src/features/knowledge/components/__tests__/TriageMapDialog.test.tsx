@@ -16,7 +16,7 @@ describe('TriageMapDialog (S-05b F4 — code select, no raw prompt)', () => {
     useResolvedSchemaMock.mockReturnValue({
       schema: {
         edge_types: [{ code: 'rules_over' }, { code: 'allied_with' }],
-        node_kinds: [{ code: 'person' }],
+        node_kinds: [{ kind_code: 'person' }],
         vocab_values: { drive: [{ code: 'curiosity' }] },
       },
     });
@@ -45,6 +45,17 @@ describe('TriageMapDialog (S-05b F4 — code select, no raw prompt)', () => {
       (screen.getByTestId('triage-map-select') as HTMLSelectElement).querySelectorAll('option'),
     ).map((o) => o.value);
     expect(opts).toEqual(['', 'curiosity']);
+  });
+
+  it('lists NODE-KIND codes for an unknown_node_kind (kind_code, not code)', () => {
+    render(
+      <TriageMapDialog open onOpenChange={vi.fn()} projectId="p-1"
+        itemType="unknown_node_kind" payload={{ kind_code: 'deity' }} onPick={vi.fn()} />,
+    );
+    const opts = Array.from(
+      (screen.getByTestId('triage-map-select') as HTMLSelectElement).querySelectorAll('option'),
+    ).map((o) => o.value);
+    expect(opts).toEqual(['', 'person']);
   });
 
   it('keep-detected (blank) → onPick(null)', () => {

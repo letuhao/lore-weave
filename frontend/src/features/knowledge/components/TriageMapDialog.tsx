@@ -40,7 +40,7 @@ export function TriageMapDialog({
   const codes = useMemo<string[]>(() => {
     if (!schema) return [];
     if (itemType === 'unknown_edge_type') return (schema.edge_types ?? []).map((e) => e.code);
-    if (itemType === 'unknown_node_kind') return (schema.node_kinds ?? []).map((k) => k.code);
+    if (itemType === 'unknown_node_kind') return (schema.node_kinds ?? []).map((k) => k.kind_code);
     if (itemType === 'unknown_vocab_value') {
       const set = typeof payload?.set_code === 'string' ? (payload.set_code as string) : '';
       return (schema.vocab_values?.[set] ?? []).map((v) => v.code);
