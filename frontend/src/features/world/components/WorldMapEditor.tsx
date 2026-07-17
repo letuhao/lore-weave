@@ -50,7 +50,7 @@ export function WorldMapEditor({ ctl }: { ctl: Ctl }) {
       <div className="flex min-h-0 flex-1">
         <MapRail ctl={ctl} t={t} />
         <div className="relative min-w-0 flex-1 p-2">
-          <Canvas ctl={ctl} />
+          <Canvas ctl={ctl} t={t} />
         </div>
       </div>
       <Footer ctl={ctl} />
@@ -155,7 +155,14 @@ function CreateMapButton({ ctl, t }: { ctl: Ctl; t: (k: string, o?: Record<strin
 // popover would PATCH the pin to the cursor position (the pin renders OFFSET from its anchor).
 const DRAG_EPSILON = 0.005;
 
-function Canvas({ ctl }: { ctl: Ctl }) {
+// D-WORLDMAP-POLY-SIMPLIFY — a bounded cap on interactive reshape handles. A very-high-vertex region
+// otherwise renders one draggable handle PER vertex with no ceiling — a silent degradation (hundreds
+// of absolutely-positioned buttons + pointer listeners). Above the cap we keep the polygon (still
+// renders, still selectable/deletable) but SWAP the N handles for a NOTICE — announce the cap, don't
+// silently choke (mirrors the cast paging notice). NOT a Douglas-Peucker simplify (that stays deferred).
+const MAX_INTERACTIVE_VERTICES = 60;
+
+function Canvas({ ctl, t }: { ctl: Ctl; t: (k: string, o?: Record<string, unknown>) => string }) {
   const canvasRef = useRef<HTMLDivElement>(null);
   const [dragId, setDragId] = useState<string | null>(null);
   const [draft, setDraft] = useState<number[][]>([]); // region-mode vertices in progress
@@ -290,22 +297,39 @@ function Canvas({ ctl }: { ctl: Ctl }) {
           activePolygon={activePolygon}
         />
 
-        {/* Vertex handles for the selected region (select mode only) — drag one to reshape. */}
+        {/* Vertex handles for the selected region (select mode only) — drag one to reshape.
+            BOUNDED (D-WORLDMAP-POLY-SIMPLIFY): above MAX_INTERACTIVE_VERTICES, render a notice
+            instead of N handles. The polygon itself (RegionOverlay above) is unaffected — still
+            visible, still selectable/deletable; only per-vertex reshape is capped. */}
         {ctl.mode === 'select' &&
           selectedRegion &&
-          activePolygon(selectedRegion).map((pt, i) => (
-            <button
-              key={i}
-              type="button"
-              data-testid={`world-map-vertex-${i}`}
-              onPointerDown={onVertexDown(selectedRegion.region_id, selectedRegion.polygon, i)}
-              onPointerMove={onVertexMove(i)}
-              onPointerUp={onVertexUp(selectedRegion.region_id, i)}
-              onClick={(e) => e.stopPropagation()}
-              className="absolute h-2.5 w-2.5 -translate-x-1/2 -translate-y-1/2 rounded-full border border-white bg-primary shadow"
-              style={{ left: `${pt[0] * 100}%`, top: `${pt[1] * 100}%`, touchAction: 'none' }}
-              aria-label={`vertex ${i + 1}`}
-            />
+          (activePolygon(selectedRegion).length > MAX_INTERACTIVE_VERTICES ? (
+            <div
+              data-testid="world-map-vertex-cap-notice"
+              className="absolute left-1/2 top-2 z-10 -translate-x-1/2 rounded border border-amber-300 bg-amber-50 px-2 py-1 text-[10px] text-amber-700 shadow dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-400"
+            >
+              {t('mapEditor.vertexCapNotice', {
+                defaultValue:
+                  '{{count}} vertices — reshape disabled above {{max}} for performance.',
+                count: activePolygon(selectedRegion).length,
+                max: MAX_INTERACTIVE_VERTICES,
+              })}
+            </div>
+          ) : (
+            activePolygon(selectedRegion).map((pt, i) => (
+              <button
+                key={i}
+                type="button"
+                data-testid={`world-map-vertex-${i}`}
+                onPointerDown={onVertexDown(selectedRegion.region_id, selectedRegion.polygon, i)}
+                onPointerMove={onVertexMove(i)}
+                onPointerUp={onVertexUp(selectedRegion.region_id, i)}
+                onClick={(e) => e.stopPropagation()}
+                className="absolute h-2.5 w-2.5 -translate-x-1/2 -translate-y-1/2 rounded-full border border-white bg-primary shadow"
+                style={{ left: `${pt[0] * 100}%`, top: `${pt[1] * 100}%`, touchAction: 'none' }}
+                aria-label={`vertex ${i + 1}`}
+              />
+            ))
           ))}
 
         {ctl.markers.map((m) => (

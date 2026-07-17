@@ -46,6 +46,24 @@ export function WorldMap({
     if (n) onViewCast(n.name);
   };
 
+  // Destructive: confirm, then soft-archive the location entity. On success the
+  // places query invalidates and the node drops out on refetch; onError surfaces
+  // a toast (never a silent failure).
+  const onDeletePlace = (id: string) => {
+    const n = byId.get(id);
+    if (!n) return;
+    const ok = window.confirm(
+      t('wmap.deleteConfirm', {
+        name: n.name,
+        defaultValue: 'Remove “{{name}}” from the world map? This archives the place.',
+      }),
+    );
+    if (!ok) return;
+    wm.deletePlace.mutate(id, {
+      onError: () => toast.error(t('wmap.deleteFailed', { defaultValue: 'Could not remove the place.' })),
+    });
+  };
+
   const addPlace = () => {
     const name = newPlace.trim();
     if (!name) return;
@@ -207,6 +225,8 @@ export function WorldMap({
               selected={selected.includes(id)}
               onPointerDown={h.onPointerDown}
               onActivate={() => onNodeActivate(id)}
+              onDelete={() => onDeletePlace(id)}
+              deleteLabel={t('wmap.delete', { name: byId.get(id)!.name, defaultValue: 'Remove {{name}}' })}
             />
           )}
         />

@@ -143,6 +143,48 @@ describe('WorldMapEditor', () => {
     expect((screen.getByTestId('world-map-marker-label') as HTMLInputElement).value).toBe('Tower');
   });
 
+  // D-WORLDMAP-POLY-SIMPLIFY — a very-high-vertex region rendered one drag handle PER vertex with
+  // no cap (a silent degradation). Bounded fix: above MAX_INTERACTIVE_VERTICES (60) the polygon still
+  // renders + is selectable/deletable, but the N per-vertex handles are replaced by a NOTICE.
+  const bigRegion = (n: number): WorldMapRegion => ({
+    region_id: 'rBig',
+    name: 'Sprawl',
+    polygon: Array.from({ length: n }, (_, i) => [i / n, (i % 2) / 2] as number[]),
+    entity_id: null,
+    updated_at: '2026-07-16T00:00:00Z',
+  });
+
+  it('caps interactive vertex handles above MAX (60) and shows a notice — polygon still renders', () => {
+    const region = bigRegion(70);
+    const rctl = fakeCtl({
+      regions: [region],
+      selectedRegionId: 'rBig',
+      selectedRegion: region,
+      selectedMarker: null,
+      selectedMarkerId: null,
+    });
+    render(<WorldMapEditor ctl={rctl} />);
+    // polygon still renders + is selectable (RegionOverlay unaffected)
+    expect(screen.getByTestId('world-map-region-rBig')).toBeInTheDocument();
+    // the notice is shown INSTEAD of N handles — announce the cap, don't silently choke
+    expect(screen.getByTestId('world-map-vertex-cap-notice')).toBeInTheDocument();
+    expect(screen.queryAllByTestId(/^world-map-vertex-\d+$/)).toHaveLength(0);
+  });
+
+  it('renders every vertex handle for a region at/under the cap (no notice)', () => {
+    const region = bigRegion(12);
+    const rctl = fakeCtl({
+      regions: [region],
+      selectedRegionId: 'rBig',
+      selectedRegion: region,
+      selectedMarker: null,
+      selectedMarkerId: null,
+    });
+    render(<WorldMapEditor ctl={rctl} />);
+    expect(screen.queryByTestId('world-map-vertex-cap-notice')).not.toBeInTheDocument();
+    expect(screen.queryAllByTestId(/^world-map-vertex-\d+$/)).toHaveLength(12);
+  });
+
   it('region CRUD is reachable: selected region opens a popover with rename/rebind/delete', () => {
     const region: WorldMapRegion = {
       region_id: 'r1',

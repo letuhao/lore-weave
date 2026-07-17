@@ -56,6 +56,7 @@ describe('WorldMap (T2.5)', () => {
   const onViewCast = vi.fn();
   const createPlace = { mutate: vi.fn(), isPending: false };
   const linkPlaces = { mutate: vi.fn(), isPending: false };
+  const deletePlace = { mutate: vi.fn(), isPending: false };
   const uploadBackdrop = { mutate: vi.fn(), isPending: false };
   const persistPositions = vi.fn();
   const applyLocal = vi.fn();
@@ -67,12 +68,12 @@ describe('WorldMap (T2.5)', () => {
     positions: { p1: { x: 40, y: 40 }, p2: { x: 260, y: 40 } },
     backdropUrl: null as string | null,
     applyLocal, localRef: { current: {} }, persistPositions,
-    createPlace, linkPlaces, uploadBackdrop,
+    createPlace, linkPlaces, deletePlace, uploadBackdrop,
   };
 
   beforeEach(() => {
     onViewCast.mockReset(); createPlace.mutate.mockReset(); linkPlaces.mutate.mockReset();
-    uploadBackdrop.mutate.mockReset(); hook.mockReturnValue(base);
+    deletePlace.mutate.mockReset(); uploadBackdrop.mutate.mockReset(); hook.mockReturnValue(base);
   });
 
   const render0 = () => render(<WorldMap work={{} as never} bookId="b" chapterId="ch" token="t" onViewCast={onViewCast} />);
@@ -111,6 +112,35 @@ describe('WorldMap (T2.5)', () => {
       { subjectId: 'p1', objectId: 'p2', predicate: 'borders' }, expect.anything(),
     );
     expect(onViewCast).not.toHaveBeenCalled(); // link-mode click ≠ codex open
+  });
+
+  const deleteBtn = (id: string) =>
+    within(document.querySelector(`[data-place="${id}"]`) as HTMLElement).getByTestId('worldmap-node-delete');
+
+  it('deleting a place: confirms, then fires the archive mutation with the node id', () => {
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
+    render0();
+    fireEvent.click(deleteBtn('p1'));
+    expect(confirmSpy).toHaveBeenCalled();
+    expect(deletePlace.mutate).toHaveBeenCalledWith('p1', expect.anything());
+    confirmSpy.mockRestore();
+  });
+
+  it('deleting a place: declining the confirm does NOT fire the mutation (destructive guard)', () => {
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false);
+    render0();
+    fireEvent.click(deleteBtn('p2'));
+    expect(confirmSpy).toHaveBeenCalled();
+    expect(deletePlace.mutate).not.toHaveBeenCalled();
+    confirmSpy.mockRestore();
+  });
+
+  it('the delete button does NOT open the codex (isolated from the node body click)', () => {
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
+    render0();
+    fireEvent.click(deleteBtn('p1'));
+    expect(onViewCast).not.toHaveBeenCalled();
+    confirmSpy.mockRestore();
   });
 
   it('renders the backdrop image when one is set', () => {

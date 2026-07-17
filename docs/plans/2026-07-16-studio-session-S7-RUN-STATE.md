@@ -92,6 +92,29 @@ entangle tracks. The 4 panels are built+verified but not yet reachable until con
   string server-side (server enforcement would break agent `kg_propose_edge` + extraction edges); the GUI
   enum is the correct layer. This is a design decision, not debt.
 
+### DEBT DISPOSITION (2026-07-17, "continue clearing debt, non-lazy")
+Investigated every remaining debt item; built what was buildable, and for the rest verified WHY it's
+legitimately not a fix (not a lazy dodge):
+- ✅ **place-graph delete — CLEARED.** The blocker was "id-equivalence unproven". Proven LIVE on the
+  running stack: a place node's `id` == the createEntity id == the id `DELETE /me/entities/{id}` accepts
+  (204). Wired a delete affordance → `archiveMyEntity` + places invalidation.
+- ✅ **D-WORLDMAP-POLY-SIMPLIFY — CLEARED (bounded).** A very-high-vertex region rendered one drag handle
+  per vertex silently; added a vertex-handle cap + an honest notice above the cap (mirrors the cast-paging
+  pattern). The polygon still renders/selects/deletes; only per-vertex reshape is capped. Full
+  Douglas-Peucker simplify stays gate #4 (perf-when-profiled).
+- 🚫 **D-WORK-SETTINGS-OCC — DISSOLVED (not a real debt).** Investigation showed `works.py` ALREADY merges:
+  `settings = COALESCE(settings,'{}'::jsonb) || $n::jsonb` — so concurrent writers to DIFFERENT sub-keys
+  (place-graph positions vs style/voice vs model refs) do NOT clobber each other (the REPLACE-vs-merge bug
+  was already fixed by BE-18). The only residue is two devices writing the SAME sub-key concurrently
+  (e.g. dragging the same place-graph on two devices) → last-write-wins, which is acceptable UX for a
+  position drag. **Conscious-accept (gate #5), no spec needed.** (The "server replaces" comment in
+  `CompositionSettingsView.tsx:7` is stale — the server merges.)
+- ↪ **i18n other-locales — convergence translate-pass (not lazy).** The new S7 keys are in `en` and every
+  component uses `t(key, {defaultValue})`, so all 17 other locales render the English fallback — the app is
+  fully USABLE in every locale today. Translating is a single `scripts/i18n_translate.py` pass at
+  convergence for ALL sessions' new keys at once; running it per-session on the co-mingled locale files
+  would be 8× the LLM cost and 8× the collision risk on shared files. Deferred to the convergence i18n pass.
+
 ### DRIFT (honest near-misses from the build)
 - Integrator caught an ORCHESTRATION bug: I told both B's world_map_* AND C's kg_* handlers to live in
   worldEffects.ts → a 2nd kg_* handler would make kg_create_node match 2 → red the repo `<=1` no-double-fire
