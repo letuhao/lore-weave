@@ -122,6 +122,13 @@ work first assumed. **Zero open S1 debt remains.** Screens: `docs/plans/assets/2
   isolated from canon is a pre-existing **S5 / what-if COW** design question, not an S1 bug. Cleared from
   S1 AND **handed to S5's DEBT register as `D-S5-DERIVATIVE-ACCEPT-ISOLATION`** (ties to their EC-3d
   active-work seam) so it does NOT drift when S1 closes — S5 owns the design call + the live verify.
+  **✅ S5 RESOLVED it 2026-07-17** (verified in S5 RUN-STATE + git): v1 DECISION — a derivative is a
+  SPEC-LEVEL branch, its divergent prose isolates via the what-if canvas → PROMOTE (writes the derivative
+  project's OWN scene-draft store, source-clobber-guarded); the editor stays book-scoped by design and the
+  adapt→Accept-into-canon path is a KNOWN, SIGNALED limitation (the `studio-editor-derivative-guard`
+  banner — `D-S5-DERIVATIVE-EDIT-GUARD` ✅ CLEARED + e2e-proven). Full manuscript isolation split to
+  `D-S5-DERIVATIVE-MANUSCRIPT-FORK` (spec'd; S5 even shipped M2 merge-to-canon `617957c7f` + M3 editor
+  work-scoping `1534e417b`). **No open S1↔S5 orphan remains.**
 - **Mobile (§2-bar #8) → SETTLED scope, not a gap.** scene-compose/chapter-assemble render at 390px with
   no horizontal overflow, but the studio dock is narrow there because the studio is **desktop-first** —
   a SETTLED decision by the mobile-shell track itself (`2026-07-15-mobile-shell-and-home-RUN-STATE.md`
