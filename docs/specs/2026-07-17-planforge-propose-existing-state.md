@@ -1,11 +1,14 @@
 # PlanForge — propose reads the existing manuscript (D-PLANFORGE-PROPOSE-BLIND)
 
-> **Status:** BUILD-READY detailed design for a FUTURE track. **NOT built, and MUST NOT be built
-> inside Wave 5 / S3** — the wave-5 adjudication (Q-35-OQ5) sealed this: *"Wave 5 must NOT touch it… a
-> generation-quality redesign, not a GUI gap, and no wave owns it."* Writing/expanding this design is
-> planning, not touching the engine — it does not violate the seal. S3 shipped only the **honesty
-> copy** ("Proposed from this braindump only. Existing chapters are not read.") as the interim
-> truth-telling. This spec is what eventually replaces that copy with the real capability.
+> **Status:** ✅ **BUILT + QC'd (2026-07-17).** PO lifted the Q-35-OQ5 seal ("build PROPOSE-BLIND and
+> QC it") — the seal read *"needs a PO to own it"*, and the PO did. Built in 5 phases (§6), all
+> committed; live-smoked end-to-end + adversarially reviewed. **Shipped with the deploy ceiling OFF**
+> (`PLANFORGE_GROUND_ON_EXISTING_ALLOWED=false`) — the richer grounding is dark until the A/B eval
+> (§6 P5) proves it improves the plan, then the ceiling flips. See the BUILD CLOSE-OUT at the end.
+>
+> Commits: P1 `ac0026856` (gather lens) · P2 `38952a21d` (rules merge) · P3 `a7065246a` (LLM/async
+> prompt) · P4 `5596e7e05` (setting+ceiling+wiring) · P5 `39cfbaff1` (planner copy-switch) · QC
+> `9a8cbacd6` (MCP agent-parity).
 >
 > **This revision (2026-07-17):** upgraded from high-level design + 3 open PO questions to a
 > **build-ready** design — every read grounded in an existing seam, a concrete `ExistingState` schema,
@@ -67,13 +70,18 @@ hard-capped read (the `composition_package_tree` philosophy: orientation, not co
 `engine/plan_forge/existing_state.py`, injected the repos/clients it composes (testable in isolation).
 
 **`ExistingState` schema (the typed contract):**
+> **Build-time correction (2026-07-17, verified against `kal_client.py`):** `KalClient.roster()`
+> returns only `{entity_id, name}` — it does NOT expose role/trait or a mention-frequency rank. So the
+> cast component carries `{name, glossary_entity_id}` and is capped by COUNT (first-K, drained order),
+> not mention-rank; `notes["cast"]` reports "showing K of N". Richer cast fields (role/trait/mention
+> rank) would need a richer glossary endpoint — a future enhancement, out of scope for this track. The
+> anti-re-invention goal only needs the existing NAMES + their entity ids, which the roster provides.
+
 ```python
 @dataclass
-class CastMember:      # from glossary character entities
+class CastMember:      # from the KAL roster (name + entity id — all the roster exposes)
     name: str
-    role: str          # entity kind / role label
-    trait: str         # one-line, truncated
-    glossary_entity_id: str | None
+    glossary_entity_id: str
 
 @dataclass
 class ArcSummary:      # from StructureRepo.list_tree
@@ -248,3 +256,42 @@ copy switch. Risk is **generation quality** (does grounding actually improve the
 the P5 A/B eval before defaulting on. **No user-facing tenancy change** — the gather lens reads only
 grant-gated book state the caller already has EDIT on (the propose route is already `_gate_book(...,
 EDIT)`); it adds no new read surface a user couldn't already reach.
+
+---
+
+## BUILD CLOSE-OUT (2026-07-17)
+
+**Built (P1–P5 + QC), all committed:**
+- **P1** gather lens `existing_state.py` (arcs=StructureRepo · cast=KAL roster · spine=OutlineRepo
+  `recent_chapter_briefs` · systems=caller package · budget-trim=`enforce_budget`), degrade-safe,
+  deterministic fingerprint. 7 unit tests.
+- **P2** rules merge-not-duplicate (`merge_existing_into_spec` + shared `title_key`, preflight refactored
+  to it). 6 tests.
+- **P3** LLM+async EXISTING STATE prompt block + CONTINUITY rule (beside ARC COVERAGE) + deterministic
+  merge backstop. 4 tests.
+- **P4** `PlanRunCreate.ground_on_existing` + deploy ceiling (`settings.planforge_ground_on_existing_allowed`,
+  default OFF, effective=AND, fails-closed) + `_gather_book_state` wiring (rules→propose_spec(existing);
+  LLM→prepend block, superseding the arc-only `_ground_llm_source`) + `plan_run.grounded_on` migration.
+  7 tests.
+- **P5** planner "Continue this book" toggle + the honesty-copy↔grounded-affirmation switch (SET-8,
+  proven by effect) + 18-locale i18n. 3 tests.
+- **QC** MCP `plan_propose_spec` agent-parity (the review found the agent couldn't ground; fixed).
+
+**Live-smoke (real gateway→composition, ceiling ON):** a grounded rules-propose recorded `grounded_on`
+(fingerprint + 3 arcs + 2 cast + 9 chapters + notes) and merge-annotated a re-declared arc
+`continues_existing=true` / a new arc `=false`; a blind propose left `grounded_on` null (fails closed);
+the LLM path prepended the EXISTING STATE block into the enqueued job. BE 487 + FE 83 green.
+
+**Honest coverage gaps (recorded, non-blocking — the ceiling is OFF so none are user-visible yet):**
+1. **Per-user setting not persisted (OQ-2).** The planner toggle is EPHEMERAL component state (resets on
+   remount); OQ-2 specified a per-user *setting* that defaults it (a server-side preference). Deferred —
+   non-urgent while the ceiling is OFF. Follow-up: store `ground_on_existing` default in `/v1/me/
+   preferences` (server-side, one home) and default the toggle from it.
+2. **Systems (variables/motifs) never populated live.** `_gather_book_state` passes `latest_package=None`,
+   so the systems component is always "no compiled systems yet". A book-scoped latest-compiled-package
+   read is the enhancement. The gather lens ALREADY consumes a package when handed one (unit-tested).
+3. **Cast is name+id only, capped by count not mention-rank.** The KAL roster (`roster()`) exposes only
+   `{entity_id, name}`; role/trait/mention-frequency need a richer glossary endpoint. The anti-re-invention
+   goal only needs the names, which are present.
+4. **A/B eval (P5) not run.** The ceiling stays OFF until the canon-check-judge A/B shows grounding
+   improves the plan. That eval is the gate to flipping `PLANFORGE_GROUND_ON_EXISTING_ALLOWED` on.
