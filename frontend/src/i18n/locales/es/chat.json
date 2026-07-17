@@ -124,7 +124,8 @@
     "mode_write": "Escribir",
     "mode_ask_hint": "Modo de solo lectura — el agente puede investigar pero no cambiar nada",
     "mode_plan_hint": "Modo de planificación — el agente investiga y construye un plan con las herramientas de planificación; no habrá prosa hasta que cambies a Escribir",
-    "mode_write_hint": "Modo de escritura — el agente puede realizar cambios irreversibles (pregunta una vez por cada nueva herramienta)"
+    "mode_write_hint": "Modo de escritura — el agente puede realizar cambios irreversibles (pregunta una vez por cada nueva herramienta)",
+    "assistant_placeholder": "Relata tu día: las personas, los proyectos y las decisiones…"
   },
   "new": {
     "create_failed": "Error al crear el chat: {{error}}",
@@ -375,10 +376,10 @@
     "approve_once": "Aprobar una vez",
     "always_allow": "Permitir siempre",
     "deny": "Denegar",
+    "never_allow": "Never allow",
     "approved": "Aprobado — ejecutando ✓",
     "always_allowed": "Permitido siempre — ejecutando ✓",
     "denied": "Denegado",
-    "never_allow": "Never allow",
     "never_allowed": "Never allowed — you can undo this in Settings → Permissions"
   },
   "rack": {
@@ -404,6 +405,9 @@
     "more": "+{{count}} más",
     "more_tooltip": "{{count}} herramientas descubiertas adicionales no mostradas",
     "remove": "Eliminar",
+    "advanced_tools": "Herramientas avanzadas ({{count}})",
+    "advanced_tools_hint": "Se mantienen las herramientas obsoletas para llamadas antiguas. Se recomienda usar las herramientas anteriores a menos que necesite específicamente una de estas.",
+    "legacy_pin_tooltip": "Has activado esta herramienta heredada para esta sesión",
     "server": {
       "knowledge": "Conocimiento",
       "glossary": "Glosario",
@@ -414,10 +418,7 @@
       "ui": "UI",
       "chat": "Chat",
       "other": "Otros"
-    },
-    "advanced_tools": "Herramientas avanzadas ({{count}})",
-    "advanced_tools_hint": "Se mantienen las herramientas obsoletas para llamadas antiguas. Se recomienda usar las herramientas anteriores a menos que necesite específicamente una de estas.",
-    "legacy_pin_tooltip": "Has activado esta herramienta heredada para esta sesión"
+    }
   },
   "inspector": {
     "title": "Entorno de ejecución del agente",

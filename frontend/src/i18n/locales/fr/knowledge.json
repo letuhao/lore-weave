@@ -404,7 +404,8 @@
         "global": "Global",
         "confidence": "Confiance",
         "mentions": "Mentions",
-        "anchor": "Score d'ancrage"
+        "anchor": "Score d'ancrage",
+        "scope": "Portée"
       },
       "promote": "Promouvoir au glossaire",
       "promoteHint": "Entité découverte. Promouvez-la pour créer un brouillon de glossaire suggéré par l'IA pour révision.",
@@ -462,6 +463,41 @@
       "errArchived": "Impossible de fusionner des entités archivées. Restaurez-les d'abord.",
       "errGlossaryConflict": "Les deux entités sont liées à des entrées de glossaire différentes. Résolvez les ancres du glossaire avant la fusion.",
       "errUnknown": "Échec de la fusion : {{reason}}"
+    },
+    "create": {
+      "title": "Nouvelle entité",
+      "description": "Rédigez manuellement une entité du graphe de connaissances. Elle commence au statut « découverte » ; ancrez-la plus tard pour la rendre canonique.",
+      "newButton": "Nouvelle entité",
+      "needsProject": "Sélectionnez d'abord un projet",
+      "field": {
+        "name": "Nom",
+        "kind": "Type"
+      },
+      "save": "Créer",
+      "saving": "Création…",
+      "cancel": "Annuler",
+      "success": "Entité créée — {{name}} ({{kind}})",
+      "dedup": "Existait déjà — affichage de {{name}} ({{kind}})",
+      "failed": "Impossible de créer l'entité — {{error}}",
+      "discoveredHint": "Les nouvelles entités commencent avec le statut « découverte ». Le statut canonique est obtenu en les ancrant au glossaire."
+    },
+    "kind": {
+      "character": "Personnage",
+      "location": "Lieu",
+      "organization": "Organisation",
+      "concept": "Concept",
+      "item": "Objet"
+    },
+    "archive": {
+      "action": "Archiver",
+      "confirm": "Masquer cette entité ? Ses relations et son ancrage au glossaire sont conservés ; elle disparaît de la liste active. Vous pouvez annuler l'action immédiatement ou la faire réapparaître via le filtre « Archivé ».",
+      "success": "Entité archivée.",
+      "failed": "Impossible d'archiver — {{error}}",
+      "undo": "Annuler"
+    },
+    "restore": {
+      "success": "Entité restaurée.",
+      "failed": "Échec de la restauration — {{error}}"
     }
   },
   "jobs": {
@@ -1079,6 +1115,23 @@
       "markWrong": "Marquer comme erronée",
       "invalidating": "Suppression…",
       "failed": "Impossible d'enregistrer la correction : {{error}}"
+    },
+    "create": {
+      "title": "Lier l'entité",
+      "description": "Créez une relation de {{subject}} vers une autre de vos entités.",
+      "action": "Lier l'entité",
+      "subject": "De",
+      "predicate": "Relation",
+      "object": "Vers",
+      "objectPlaceholder": "Rechercher vos entités…",
+      "noMatches": "Aucune entité correspondante.",
+      "save": "Créer le lien",
+      "saving": "Liaison en cours…",
+      "cancel": "Annuler",
+      "success": "Relation créée.",
+      "notYours": "Impossible de créer le lien — un point de terminaison n'est pas l'une de vos entités.",
+      "selfLoop": "Une entité ne peut pas être liée à elle-même.",
+      "failed": "Impossible de créer le lien — {{error}}"
     }
   },
   "events": {
@@ -1107,6 +1160,14 @@
       "archiving": "Suppression…",
       "success": "Événement supprimé.",
       "failed": "Impossible de supprimer l'événement : {{error}}"
+    },
+    "create": {
+      "title": "Ajouter un événement",
+      "description": "Créez un nouvel événement chronologique pour ce personnage.",
+      "success": "Événement ajouté.",
+      "failed": "Échec de l'ajout : {{error}}",
+      "saving": "Ajout en cours…",
+      "save": "Ajouter l'événement"
     }
   },
   "mining": {

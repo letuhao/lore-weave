@@ -124,7 +124,8 @@
     "mode_write": "Yaz",
     "mode_ask_hint": "Salt okunur mod — ajan araştırma yapabilir ancak hiçbir şeyi değiştiremez",
     "mode_plan_hint": "Planlama modu — ajan araştırma yapar ve planlama araçlarıyla bir plan oluşturur; Yaz moduna geçene kadar metin yazılmaz",
-    "mode_write_hint": "Yazma modu — ajan geri alınamaz değişiklikler yapabilir (her yeni araç için bir kez sorar)"
+    "mode_write_hint": "Yazma modu — ajan geri alınamaz değişiklikler yapabilir (her yeni araç için bir kez sorar)",
+    "assistant_placeholder": "Gününüzden bahsedin — insanlar, projeler ve kararlar…"
   },
   "new": {
     "create_failed": "Sohbet oluşturulamadı: {{error}}",
@@ -375,10 +376,10 @@
     "approve_once": "Bir kez onayla",
     "always_allow": "Her zaman izin ver",
     "deny": "Reddet",
+    "never_allow": "Never allow",
     "approved": "Onaylandı — çalışıyor ✓",
     "always_allowed": "Her zaman izin verildi — çalışıyor ✓",
     "denied": "Reddedildi",
-    "never_allow": "Never allow",
     "never_allowed": "Never allowed — you can undo this in Settings → Permissions"
   },
   "rack": {
@@ -404,6 +405,9 @@
     "more": "+{{count}} daha fazla",
     "more_tooltip": "{{count}} keşfedilen ancak gösterilmeyen araç var",
     "remove": "Kaldır",
+    "advanced_tools": "Gelişmiş araçlar ({{count}})",
+    "advanced_tools_hint": "Eski çağrılar için geçerliliğini yitirmiş araçlar burada tutulmaktadır. Eğer bunlardan birine özel olarak ihtiyacınız yoksa, yukarıdaki araçları kullanmanız önerilir.",
+    "legacy_pin_tooltip": "Bu oturum için bu eski aracı etkinleştirdiniz",
     "server": {
       "knowledge": "Bilgi",
       "glossary": "Sözlük",
@@ -414,10 +418,7 @@
       "ui": "UI",
       "chat": "Sohbet",
       "other": "Diğer"
-    },
-    "advanced_tools": "Gelişmiş araçlar ({{count}})",
-    "advanced_tools_hint": "Eski çağrılar için geçerliliğini yitirmiş araçlar burada tutulmaktadır. Eğer bunlardan birine özel olarak ihtiyacınız yoksa, yukarıdaki araçları kullanmanız önerilir.",
-    "legacy_pin_tooltip": "Bu oturum için bu eski aracı etkinleştirdiniz"
+    }
   },
   "inspector": {
     "title": "Ajan çalışma zamanı",

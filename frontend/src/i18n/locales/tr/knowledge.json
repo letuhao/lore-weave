@@ -404,7 +404,8 @@
         "global": "Global",
         "confidence": "Güven",
         "mentions": "Bahsetmeler",
-        "anchor": "Çapa puanı"
+        "anchor": "Çapa puanı",
+        "scope": "Kapsam"
       },
       "promote": "Sözlüğe tanıt",
       "promoteHint": "Bulunan varlık. İnceleme için yapay zeka tarafından önerilen bir sözlük taslağı oluşturmak üzere tanıtın.",
@@ -462,6 +463,41 @@
       "errArchived": "Arşivlenmiş varlıklar birleştirilemez. Önce onları geri yükleyin.",
       "errGlossaryConflict": "Her iki varlık da farklı sözlük girişlerine bağlı. Birleştirmeden önce sözlük bağlantılarını çözün.",
       "errUnknown": "Birleştirme başarısız oldu: {{reason}}"
+    },
+    "create": {
+      "title": "Yeni varlık",
+      "description": "Bir bilgi grafiği varlığı oluşturun. Başlangıçta keşfedilmiş olarak işaretlenir; daha sonra temel hale getirmek için sabitleyebilirsiniz.",
+      "newButton": "Yeni Varlık",
+      "needsProject": "Önce bir proje seçin",
+      "field": {
+        "name": "İsim",
+        "kind": "Tür"
+      },
+      "save": "Oluştur",
+      "saving": "Oluşturuluyor…",
+      "cancel": "İptal",
+      "success": "Varlık oluşturuldu — {{name}} ({{kind}})",
+      "dedup": "Zaten mevcut — {{name}} ({{kind}}) gösteriliyor",
+      "failed": "Varlık oluşturulamadı — {{error}}",
+      "discoveredHint": "Yeni varlıklar «keşfedildi» olarak başlar. Sözlüğe sabitlenerek «kanonik» statüsü kazanılır."
+    },
+    "kind": {
+      "character": "Karakter",
+      "location": "Mekan",
+      "organization": "Organizasyon",
+      "concept": "Kavram",
+      "item": "Eşya"
+    },
+    "archive": {
+      "action": "Arşivle",
+      "confirm": "Bu varlık gizlensin mi? İlişkileri ve sözlük bağlantısı korunur; aktif listeden kaldırılır. Hemen ardından Geri Al yapabilir veya Arşivlenmiş filtresiyle tekrar görünür kılabilirsiniz.",
+      "success": "Varlık arşivlendi.",
+      "failed": "Arşivlenemedi — {{error}}",
+      "undo": "Geri Al"
+    },
+    "restore": {
+      "success": "Varlık geri yüklendi.",
+      "failed": "Geri yüklenemedi — {{error}}"
     }
   },
   "jobs": {
@@ -1079,6 +1115,23 @@
       "markWrong": "Yanlış olarak işaretle",
       "invalidating": "Kaldırılıyor…",
       "failed": "Düzeltme kaydedilemedi: {{error}}"
+    },
+    "create": {
+      "title": "Varlığı bağla",
+      "description": "{{subject}} öğesinden diğer bir varlığınıza bir ilişki oluşturun.",
+      "action": "Varlığı bağla",
+      "subject": "Kimden",
+      "predicate": "İlişki",
+      "object": "Kime",
+      "objectPlaceholder": "Varlıklarınızda ara…",
+      "noMatches": "Eşleşen varlık bulunamadı.",
+      "save": "Bağlantı oluştur",
+      "saving": "Bağlanıyor…",
+      "cancel": "İptal",
+      "success": "İlişki oluşturuldu.",
+      "notYours": "Bağlantı oluşturulamadı — uç nokta sizin varlıklarınızdan biri değil.",
+      "selfLoop": "Bir varlık kendisiyle ilişki kuramaz.",
+      "failed": "Bağlantı oluşturulamadı — {{error}}"
     }
   },
   "events": {
@@ -1107,6 +1160,14 @@
       "archiving": "Siliniyor…",
       "success": "Etkinlik silindi.",
       "failed": "Etkinlik silinemedi: {{error}}"
+    },
+    "create": {
+      "title": "Etkinlik ekle",
+      "description": "Bu karakter için yeni bir zaman çizelgesi etkinliği oluşturun.",
+      "success": "Etkinlik eklendi.",
+      "failed": "Ekleme başarısız oldu: {{error}}",
+      "saving": "Ekleniyor…",
+      "save": "Etkinlik ekle"
     }
   },
   "mining": {

@@ -404,7 +404,8 @@
         "global": "Global",
         "confidence": "Konfidenz",
         "mentions": "Erwähnungen",
-        "anchor": "Anchor-Score"
+        "anchor": "Anchor-Score",
+        "scope": "Umfang"
       },
       "promote": "Zum Glossar befördern",
       "promoteHint": "Gefundene Entität. Befördere sie, um einen KI-vorgeschlagenen Glossarentwurf zur Überprüfung zu erstellen.",
@@ -462,6 +463,41 @@
       "errArchived": "Archivierte Entitäten können nicht zusammengeführt werden. Wiederstelle sie zuerst.",
       "errGlossaryConflict": "Beide Entitäten sind an unterschiedlichen Glossareinträgen verankert. Löse die Glossar-Verankerungen vor dem Zusammenführen.",
       "errUnknown": "Zusammenführung fehlgeschlagen: {{reason}}"
+    },
+    "create": {
+      "title": "Neue Entität",
+      "description": "Erstellen Sie manuell eine Entität für den Wissensgraphen. Sie beginnt als „entdeckt“; verankern Sie sie später, um sie als kanonisch zu markieren.",
+      "newButton": "Neue Entität",
+      "needsProject": "Wählen Sie zuerst ein Projekt aus",
+      "field": {
+        "name": "Name",
+        "kind": "Art"
+      },
+      "save": "Erstellen",
+      "saving": "Wird erstellt…",
+      "cancel": "Abbrechen",
+      "success": "Entität erstellt — {{name}} ({{kind}})",
+      "dedup": "Bereits vorhanden — zeigt {{name}} ({{kind}})",
+      "failed": "Entität konnte nicht erstellt werden — {{error}}",
+      "discoveredHint": "Neue Entitäten werden als „entdeckt“ markiert. Der Status „Kanonisch“ wird durch das Verankern im Glossar erreicht."
+    },
+    "kind": {
+      "character": "Charakter",
+      "location": "Ort",
+      "organization": "Organisation",
+      "concept": "Konzept",
+      "item": "Gegenstand"
+    },
+    "archive": {
+      "action": "Archivieren",
+      "confirm": "Diese Entität ausblenden? Ihre Beziehungen und Glossar-Verankerungen bleiben erhalten; sie verschwindet aus der aktiven Liste. Sie können dies direkt über „Rückgängig“ korrigieren oder sie über den Filter „Archiviert“ wieder einblenden.",
+      "success": "Entität archiviert.",
+      "failed": "Archivierung fehlgeschlagen — {{error}}",
+      "undo": "Rückgängig"
+    },
+    "restore": {
+      "success": "Entity wiederhergestellt.",
+      "failed": "Wiederherstellung fehlgeschlagen — {{error}}"
     }
   },
   "jobs": {
@@ -1079,6 +1115,23 @@
       "markWrong": "Als falsch markieren",
       "invalidating": "Entferne…",
       "failed": "Korrektur konnte nicht gespeichert werden: {{error}}"
+    },
+    "create": {
+      "title": "Entity verknüpfen",
+      "description": "Erstelle eine Beziehung von {{subject}} zu einer anderen deiner Entities.",
+      "action": "Entity verknüpfen",
+      "subject": "Von",
+      "predicate": "Beziehung",
+      "object": "Zu",
+      "objectPlaceholder": "Deine Entities durchsuchen…",
+      "noMatches": "Keine passenden Entities gefunden.",
+      "save": "Verknüpfung erstellen",
+      "saving": "Verknüpfe…",
+      "cancel": "Abbrechen",
+      "success": "Verknüpfung erstellt.",
+      "notYours": "Verknüpfung konnte nicht erstellt werden – ein Endpunkt ist keine Ihrer Entitäten.",
+      "selfLoop": "Eine Entität kann nicht mit sich selbst verknüpft werden.",
+      "failed": "Verknüpfung konnte nicht erstellt werden – {{error}}"
     }
   },
   "events": {
@@ -1107,6 +1160,14 @@
       "archiving": "Lösche…",
       "success": "Event gelöscht.",
       "failed": "Event konnte nicht gelöscht werden: {{error}}"
+    },
+    "create": {
+      "title": "Ereignis hinzufügen",
+      "description": "Erstellen Sie ein neues Zeitlinenereignis für diesen Charakter.",
+      "success": "Ereignis hinzugefügt.",
+      "failed": "Hinzufügen fehlgeschlagen: {{error}}",
+      "saving": "Wird hinzugefügt…",
+      "save": "Ereignis hinzufügen"
     }
   },
   "mining": {

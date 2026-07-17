@@ -124,7 +124,8 @@
     "mode_write": "写作",
     "mode_ask_hint": "只读模式 — Agent 可以进行研究但不能更改任何内容",
     "mode_plan_hint": "计划模式 — Agent 使用计划工具进行研究并制定计划；在切换到写作模式前不会生成正文",
-    "mode_write_hint": "写作模式 — Agent 可以进行不可撤销的更改 (每个新工具请求一次)"
+    "mode_write_hint": "写作模式 — Agent 可以进行不可撤销的更改 (每个新工具请求一次)",
+    "assistant_placeholder": "聊聊你的一天吧 —— 那些遇见的人、参与的项目和做出的决定……"
   },
   "new": {
     "create_failed": "创建对话失败：{{error}}",
@@ -375,10 +376,10 @@
     "approve_once": "仅允许一次",
     "always_allow": "始终允许",
     "deny": "拒绝",
+    "never_allow": "Never allow",
     "approved": "已批准 — 正在运行 ✓",
     "always_allowed": "始终允许 — 正在运行 ✓",
     "denied": "已拒绝",
-    "never_allow": "Never allow",
     "never_allowed": "Never allowed — you can undo this in Settings → Permissions"
   },
   "rack": {
@@ -404,6 +405,9 @@
     "more": "+{{count}} 个",
     "more_tooltip": "有 {{count}} 个已发现但未显示的工具",
     "remove": "移除",
+    "advanced_tools": "高级工具 ({{count}})",
+    "advanced_tools_hint": "保留这些旧版工具是为了兼容旧版调用。除非您明确需要其中之一，否则请优先使用上方的工具。",
+    "legacy_pin_tooltip": "您已在此会话中启用了此旧版工具",
     "server": {
       "knowledge": "知识",
       "glossary": "术语表",
@@ -414,10 +418,7 @@
       "ui": "UI",
       "chat": "聊天",
       "other": "其他"
-    },
-    "advanced_tools": "高级工具 ({{count}})",
-    "advanced_tools_hint": "保留这些旧版工具是为了兼容旧版调用。除非您明确需要其中之一，否则请优先使用上方的工具。",
-    "legacy_pin_tooltip": "您已在此会话中启用了此旧版工具"
+    }
   },
   "inspector": {
     "title": "代理运行时",

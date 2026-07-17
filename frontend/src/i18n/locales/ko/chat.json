@@ -124,7 +124,8 @@
     "mode_write": "쓰기",
     "mode_ask_hint": "읽기 전용 모드 — 에이전트가 조사할 수는 있지만 변경할 수는 없습니다",
     "mode_plan_hint": "계획 모드 — 에이전트가 계획 도구를 사용하여 조사하고 계획을 세웁니다; '쓰기'로 전환하기 전까지는 산문이 생성되지 않습니다",
-    "mode_write_hint": "쓰기 모드 — 에이전트가 되돌릴 수 없는 변경을 수행할 수 있습니다 (새 도구 사용 시 한 번씩 확인 요청)"
+    "mode_write_hint": "쓰기 모드 — 에이전트가 되돌릴 수 없는 변경을 수행할 수 있습니다 (새 도구 사용 시 한 번씩 확인 요청)",
+    "assistant_placeholder": "오늘 하루는 어땠나요? 만났던 사람, 진행한 프로젝트, 내렸던 결정들에 대해 이야기해 보세요…"
   },
   "new": {
     "create_failed": "채팅 생성 실패: {{error}}",
@@ -375,10 +376,10 @@
     "approve_once": "한 번만 승인",
     "always_allow": "항상 허용",
     "deny": "거부",
+    "never_allow": "Never allow",
     "approved": "승인됨 — 실행 중 ✓",
     "always_allowed": "항상 허용됨 — 실행 중 ✓",
     "denied": "거부됨",
-    "never_allow": "Never allow",
     "never_allowed": "Never allowed — you can undo this in Settings → Permissions"
   },
   "rack": {
@@ -404,6 +405,9 @@
     "more": "+{{count}}개 더",
     "more_tooltip": "표시되지 않은 발견된 도구 {{count}}개 더 있음",
     "remove": "제거",
+    "advanced_tools": "고급 도구 ({{count}}개)",
+    "advanced_tools_hint": "이 도구들은 이전 버전의 호출자를 위해 유지되고 있습니다. 특정 도구가 꼭 필요한 경우가 아니라면 위의 도구들을 우선적으로 사용하세요.",
+    "legacy_pin_tooltip": "이번 세션 동안 이 레거시 도구를 활성화했습니다",
     "server": {
       "knowledge": "지식",
       "glossary": "용어 사전",
@@ -414,10 +418,7 @@
       "ui": "UI",
       "chat": "채팅",
       "other": "기타"
-    },
-    "advanced_tools": "고급 도구 ({{count}}개)",
-    "advanced_tools_hint": "이 도구들은 이전 버전의 호출자를 위해 유지되고 있습니다. 특정 도구가 꼭 필요한 경우가 아니라면 위의 도구들을 우선적으로 사용하세요.",
-    "legacy_pin_tooltip": "이번 세션 동안 이 레거시 도구를 활성화했습니다"
+    }
   },
   "inspector": {
     "title": "에이전트 런타임",

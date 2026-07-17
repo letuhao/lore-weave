@@ -404,7 +404,8 @@
         "global": "全局",
         "confidence": "置信度",
         "mentions": "提及次数",
-        "anchor": "锚点评分"
+        "anchor": "锚点评分",
+        "scope": "范围"
       },
       "promote": "提升至术语表",
       "promoteHint": "已发现的实体。将其提升以创建 AI 建议的术语表草稿供您审核。",
@@ -462,6 +463,41 @@
       "errArchived": "无法合并已归档的实体。请先将其恢复。",
       "errGlossaryConflict": "两个实体关联了不同的术语表条目。请在合并前解决术语表锚点冲突。",
       "errUnknown": "合并失败：{{reason}}"
+    },
+    "create": {
+      "title": "新实体",
+      "description": "手动编写知识图谱实体。初始状态为“已发现”；稍后将其锚定为“规范实体”。",
+      "newButton": "新建实体",
+      "needsProject": "请先选择一个项目",
+      "field": {
+        "name": "名称",
+        "kind": "类型"
+      },
+      "save": "创建",
+      "saving": "正在创建…",
+      "cancel": "取消",
+      "success": "实体已创建 — {{name}} ({{kind}})",
+      "dedup": "已存在 — 显示 {{name}} ({{kind}})",
+      "failed": "无法创建实体 — {{error}}",
+      "discoveredHint": "新实体初始状态为“已发现”。通过关联至术语表可获得“规范”状态。"
+    },
+    "kind": {
+      "character": "角色",
+      "location": "地点",
+      "organization": "组织",
+      "concept": "概念",
+      "item": "物品"
+    },
+    "archive": {
+      "action": "归档",
+      "confirm": "隐藏此实体？其关联关系和术语表锚点将被保留，但会从活动列表中消失。您可以立即撤销，或通过“已归档”过滤器重新显示它。",
+      "success": "实体已归档。",
+      "failed": "无法归档 — {{error}}",
+      "undo": "撤销"
+    },
+    "restore": {
+      "success": "实体已恢复。",
+      "failed": "无法恢复 — {{error}}"
     }
   },
   "jobs": {
@@ -1079,6 +1115,23 @@
       "markWrong": "标记为错误",
       "invalidating": "正在移除…",
       "failed": "无法保存修正：{{error}}"
+    },
+    "create": {
+      "title": "链接实体",
+      "description": "建立从 {{subject}} 到你另一个实体的关系。",
+      "action": "链接实体",
+      "subject": "从",
+      "predicate": "关系",
+      "object": "至",
+      "objectPlaceholder": "搜索您的实体…",
+      "noMatches": "未找到匹配的实体。",
+      "save": "创建链接",
+      "saving": "正在链接…",
+      "cancel": "取消",
+      "success": "关系已创建。",
+      "notYours": "无法创建链接 — 该端点不属于您的实体。",
+      "selfLoop": "实体不能与自身建立关系。",
+      "failed": "无法创建链接 — {{error}}"
     }
   },
   "events": {
@@ -1107,6 +1160,14 @@
       "archiving": "正在删除…",
       "success": "事件已删除。",
       "failed": "无法删除事件：{{error}}"
+    },
+    "create": {
+      "title": "添加事件",
+      "description": "为该角色创作一个新的时间线事件。",
+      "success": "事件已添加。",
+      "failed": "添加失败：{{error}}",
+      "saving": "正在添加…",
+      "save": "添加事件"
     }
   },
   "mining": {

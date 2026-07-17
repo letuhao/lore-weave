@@ -124,7 +124,8 @@
     "mode_write": "Tulis",
     "mode_ask_hint": "Mode baca-saja — agen dapat melakukan riset tetapi tidak dapat mengubah apa pun",
     "mode_plan_hint": "Mode rencana — agen melakukan riset dan membangun rencana dengan alat perencanaan; tidak ada prosa sampai Anda beralih ke Tulis",
-    "mode_write_hint": "Mode tulis — agen dapat membuat perubahan yang tidak dapat dibatalkan (bertanya sekali per alat baru)"
+    "mode_write_hint": "Mode tulis — agen dapat membuat perubahan yang tidak dapat dibatalkan (bertanya sekali per alat baru)",
+    "assistant_placeholder": "Ceritakan tentang harimu — orang-orang, proyek, dan keputusan yang ada..."
   },
   "new": {
     "create_failed": "Gagal membuat obrolan: {{error}}",
@@ -375,10 +376,10 @@
     "approve_once": "Setujui sekali",
     "always_allow": "Selalu izinkan",
     "deny": "Tolak",
+    "never_allow": "Never allow",
     "approved": "Disetujui — sedang berjalan ✓",
     "always_allowed": "Selalu diizinkan — sedang berjalan ✓",
     "denied": "Ditolak",
-    "never_allow": "Never allow",
     "never_allowed": "Never allowed — you can undo this in Settings → Permissions"
   },
   "rack": {
@@ -404,6 +405,9 @@
     "more": "+{{count}} lagi",
     "more_tooltip": "{{count}} alat yang ditemukan lainnya tidak ditampilkan",
     "remove": "Hapus",
+    "advanced_tools": "Alat tingkat lanjut ({{count}})",
+    "advanced_tools_hint": "Alat yang sudah digantikan tetap disimpan untuk panggilan lama. Gunakan alat di atas kecuali Anda secara khusus membutuhkan salah satu dari alat ini.",
+    "legacy_pin_tooltip": "Anda mengaktifkan alat lama ini untuk sesi ini",
     "server": {
       "knowledge": "Pengetahuan",
       "glossary": "Glosarium",
@@ -414,10 +418,7 @@
       "ui": "UI",
       "chat": "Chat",
       "other": "Lainnya"
-    },
-    "advanced_tools": "Alat tingkat lanjut ({{count}})",
-    "advanced_tools_hint": "Alat yang sudah digantikan tetap disimpan untuk panggilan lama. Gunakan alat di atas kecuali Anda secara khusus membutuhkan salah satu dari alat ini.",
-    "legacy_pin_tooltip": "Anda mengaktifkan alat lama ini untuk sesi ini"
+    }
   },
   "inspector": {
     "title": "Runtime agen",

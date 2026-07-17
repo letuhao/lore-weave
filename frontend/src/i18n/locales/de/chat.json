@@ -124,7 +124,8 @@
     "mode_write": "Schreiben",
     "mode_ask_hint": "Nur-Lese-Modus — der Agent kann recherchieren, aber nichts ändern",
     "mode_plan_hint": "Planungsmodus — der Agent recherchiert und erstellt einen Plan mit Planungs-Tools; kein Fließtext, bis du zu Schreiben wechselst",
-    "mode_write_hint": "Schreibmodus — der Agent kann Änderungen vornehmen (fragt einmal pro neuem Tool nach)"
+    "mode_write_hint": "Schreibmodus — der Agent kann Änderungen vornehmen (fragt einmal pro neuem Tool nach)",
+    "assistant_placeholder": "Erzähle von deinem Tag – den Menschen, Projekten und Entscheidungen…"
   },
   "new": {
     "create_failed": "Chat konnte nicht erstellt werden: {{error}}",
@@ -375,10 +376,10 @@
     "approve_once": "Einmal erlauben",
     "always_allow": "Immer erlauben",
     "deny": "Ablehnen",
+    "never_allow": "Never allow",
     "approved": "Genehmigt — wird ausgeführt ✓",
     "always_allowed": "Immer erlaubt — wird ausgeführt ✓",
     "denied": "Abgelehnt",
-    "never_allow": "Never allow",
     "never_allowed": "Never allowed — you can undo this in Settings → Permissions"
   },
   "rack": {
@@ -404,6 +405,9 @@
     "more": "+{{count}} weitere",
     "more_tooltip": "{{count}} weitere entdeckte Tools werden nicht angezeigt",
     "remove": "Entfernen",
+    "advanced_tools": "Erweiterte Tools ({{count}})",
+    "advanced_tools_hint": "Veraltete Tools werden für ältere Aufrufe beibehalten. Verwenden Sie vorzugsweise die Tools oben, es sei denn, Sie benötigen eines dieser spezifischen Tools.",
+    "legacy_pin_tooltip": "Sie haben dieses Legacy-Tool für diese Sitzung aktiviert",
     "server": {
       "knowledge": "Wissen",
       "glossary": "Glossar",
@@ -414,10 +418,7 @@
       "ui": "UI",
       "chat": "Chat",
       "other": "Sonstiges"
-    },
-    "advanced_tools": "Erweiterte Tools ({{count}})",
-    "advanced_tools_hint": "Veraltete Tools werden für ältere Aufrufe beibehalten. Verwenden Sie vorzugsweise die Tools oben, es sei denn, Sie benötigen eines dieser spezifischen Tools.",
-    "legacy_pin_tooltip": "Sie haben dieses Legacy-Tool für diese Sitzung aktiviert"
+    }
   },
   "inspector": {
     "title": "Agenten-Laufzeit",

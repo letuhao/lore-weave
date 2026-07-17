@@ -124,7 +124,8 @@
     "mode_write": "Ghi",
     "mode_ask_hint": "Chế độ chỉ đọc — trợ lý có thể tra cứu nhưng không thay đổi gì",
     "mode_plan_hint": "Chế độ lập kế hoạch — trợ lý tra cứu và xây dựng kế hoạch bằng công cụ lập kế hoạch; không viết văn cho đến khi bạn chuyển sang Ghi",
-    "mode_write_hint": "Chế độ ghi — trợ lý có thể thực hiện thay đổi hoàn tác được (hỏi một lần cho mỗi công cụ mới)"
+    "mode_write_hint": "Chế độ ghi — trợ lý có thể thực hiện thay đổi hoàn tác được (hỏi một lần cho mỗi công cụ mới)",
+    "assistant_placeholder": "Chia sẻ về một ngày của bạn — về những con người, dự án và những quyết định..."
   },
   "new": {
     "create_failed": "Không thể tạo cuộc trò chuyện: {{error}}",
@@ -375,10 +376,10 @@
     "approve_once": "Cho phép một lần",
     "always_allow": "Luôn cho phép",
     "deny": "Từ chối",
+    "never_allow": "Never allow",
     "approved": "Đã cho phép — đang chạy ✓",
     "always_allowed": "Luôn cho phép — đang chạy ✓",
     "denied": "Đã từ chối",
-    "never_allow": "Never allow",
     "never_allowed": "Never allowed — you can undo this in Settings → Permissions"
   },
   "rack": {
@@ -404,6 +405,9 @@
     "more": "+{{count}} nữa",
     "more_tooltip": "còn {{count}} công cụ đã khám phá chưa hiển thị",
     "remove": "Xóa",
+    "advanced_tools": "Công cụ nâng cao ({{count}})",
+    "advanced_tools_hint": "Các công cụ cũ được giữ lại để hỗ trợ các trình gọi cũ hơn. Hãy ưu tiên sử dụng các công cụ ở trên trừ khi bạn thực sự cần một trong số các công cụ này.",
+    "legacy_pin_tooltip": "Bạn đã kích hoạt công cụ cũ này cho phiên làm việc này",
     "server": {
       "knowledge": "Tri thức",
       "glossary": "Thuật ngữ",
@@ -414,10 +418,7 @@
       "ui": "Giao diện",
       "chat": "Trò chuyện",
       "other": "Khác"
-    },
-    "advanced_tools": "Công cụ nâng cao ({{count}})",
-    "advanced_tools_hint": "Các công cụ cũ được giữ lại để hỗ trợ các trình gọi cũ hơn. Hãy ưu tiên sử dụng các công cụ ở trên trừ khi bạn thực sự cần một trong số các công cụ này.",
-    "legacy_pin_tooltip": "Bạn đã kích hoạt công cụ cũ này cho phiên làm việc này"
+    }
   },
   "inspector": {
     "title": "Trạng thái agent",

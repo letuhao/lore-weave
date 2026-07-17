@@ -124,7 +124,8 @@
     "mode_write": "書込",
     "mode_ask_hint": "読み取り専用モード — エージェントは調査できますが変更はできません",
     "mode_plan_hint": "プランモード — エージェントは調査し、プランニングツールで計画を作成します。書込に切り替えるまで本文は書きません",
-    "mode_write_hint": "書き込みモード — エージェントは取り消し可能な変更を実行できます（新しいツールごとに一度確認）"
+    "mode_write_hint": "書き込みモード — エージェントは取り消し可能な変更を実行できます（新しいツールごとに一度確認）",
+    "assistant_placeholder": "今日一日の出来事を話してみましょう — 出会った人々、進捗中のプロジェクト、そして下した決断について…"
   },
   "new": {
     "create_failed": "チャットの作成に失敗しました: {{error}}",
@@ -375,10 +376,10 @@
     "approve_once": "今回のみ許可",
     "always_allow": "常に許可",
     "deny": "拒否",
+    "never_allow": "Never allow",
     "approved": "許可しました — 実行中 ✓",
     "always_allowed": "常に許可 — 実行中 ✓",
     "denied": "拒否しました",
-    "never_allow": "Never allow",
     "never_allowed": "Never allowed — you can undo this in Settings → Permissions"
   },
   "rack": {
@@ -404,6 +405,9 @@
     "more": "他 {{count}} 件",
     "more_tooltip": "未表示の検出ツールが他 {{count}} 件あります",
     "remove": "削除",
+    "advanced_tools": "高度なツール ({{count}})",
+    "advanced_tools_hint": "旧バージョンの呼び出し元のために、非推奨となったツールが保持されています。特定のツールがどうしても必要な場合を除き、上のツールを使用してください。",
+    "legacy_pin_tooltip": "このセッションでは、このレガシーツールが有効になっています",
     "server": {
       "knowledge": "ナレッジ",
       "glossary": "用語集",
@@ -414,10 +418,7 @@
       "ui": "UI",
       "chat": "チャット",
       "other": "その他"
-    },
-    "advanced_tools": "高度なツール ({{count}})",
-    "advanced_tools_hint": "旧バージョンの呼び出し元のために、非推奨となったツールが保持されています。特定のツールがどうしても必要な場合を除き、上のツールを使用してください。",
-    "legacy_pin_tooltip": "このセッションでは、このレガシーツールが有効になっています"
+    }
   },
   "inspector": {
     "title": "エージェントランタイム",

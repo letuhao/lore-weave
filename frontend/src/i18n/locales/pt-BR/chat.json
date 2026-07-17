@@ -124,7 +124,8 @@
     "mode_write": "Escrever",
     "mode_ask_hint": "Modo apenas leitura — o agente pode pesquisar, mas não pode alterar nada",
     "mode_plan_hint": "Modo de planejamento — o agente pesquisa e constrói um plano com ferramentas de planejamento; sem prosa até você mudar para Escrever",
-    "mode_write_hint": "Modo de escrita — o agente pode fazer alterações irreversíveis (pergunta uma vez por nova ferramenta)"
+    "mode_write_hint": "Modo de escrita — o agente pode fazer alterações irreversíveis (pergunta uma vez por nova ferramenta)",
+    "assistant_placeholder": "Relate o seu dia — as pessoas, projetos e decisões…"
   },
   "new": {
     "create_failed": "Falha ao criar chat: {{error}}",
@@ -375,10 +376,10 @@
     "approve_once": "Aprovar uma vez",
     "always_allow": "Sempre permitir",
     "deny": "Negar",
+    "never_allow": "Never allow",
     "approved": "Aprovado — executando ✓",
     "always_allowed": "Sempre permitido — executando ✓",
     "denied": "Negado",
-    "never_allow": "Never allow",
     "never_allowed": "Never allowed — you can undo this in Settings → Permissions"
   },
   "rack": {
@@ -404,6 +405,9 @@
     "more": "+{{count}} mais",
     "more_tooltip": "{{count}} ferramentas descobertas não exibidas",
     "remove": "Remover",
+    "advanced_tools": "Ferramentas avançadas ({{count}})",
+    "advanced_tools_hint": "Ferramentas obsoletas mantidas para chamadas antigas. Prefira as ferramentas acima, a menos que precise especificamente de uma destas.",
+    "legacy_pin_tooltip": "Você ativou esta ferramenta legada para esta sessão",
     "server": {
       "knowledge": "Conhecimento",
       "glossary": "Glossário",
@@ -414,10 +418,7 @@
       "ui": "UI",
       "chat": "Chat",
       "other": "Outros"
-    },
-    "advanced_tools": "Ferramentas avançadas ({{count}})",
-    "advanced_tools_hint": "Ferramentas obsoletas mantidas para chamadas antigas. Prefira as ferramentas acima, a menos que precise especificamente de uma destas.",
-    "legacy_pin_tooltip": "Você ativou esta ferramenta legada para esta sessão"
+    }
   },
   "inspector": {
     "title": "Runtime do Agente",

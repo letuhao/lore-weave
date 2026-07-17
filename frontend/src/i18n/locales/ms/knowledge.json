@@ -404,7 +404,8 @@
         "global": "Global",
         "confidence": "Keyakinan",
         "mentions": "Sebutan",
-        "anchor": "Skor sauh"
+        "anchor": "Skor sauh",
+        "scope": "Skop"
       },
       "promote": "Promosikan ke glosari",
       "promoteHint": "Entiti ditemui. Promosikan ia untuk mencipta draf glosari cadangan AI untuk semakan.",
@@ -462,6 +463,41 @@
       "errArchived": "Tidak boleh menggabungkan entiti yang diarkibkan. Pulihkan entiti tersebut terlebih dahulu.",
       "errGlossaryConflict": "Kedua-dua entiti terikat pada entri glosari yang berbeza. Selesaikan pautan glosari sebelum menggabungkan.",
       "errUnknown": "Penggabungan gagal: {{reason}}"
+    },
+    "create": {
+      "title": "Entiti baharu",
+      "description": "Tulis entiti graf-pengetahuan secara manual. Ia bermula sebagai entiti yang ditemui; tetapkan sebagai entiti kanonikal kemudian.",
+      "newButton": "Entiti Baharu",
+      "needsProject": "Pilih projek terlebih dahulu",
+      "field": {
+        "name": "Nama",
+        "kind": "Jenis"
+      },
+      "save": "Cipta",
+      "saving": "Mencipta…",
+      "cancel": "Batal",
+      "success": "Entiti dicipta — {{name}} ({{kind}})",
+      "dedup": "Sudah wujud — memaparkan {{name}} ({{kind}})",
+      "failed": "Tidak dapat mencipta entiti — {{error}}",
+      "discoveredHint": "Entiti baharu bermula sebagai entiti yang ditemui. Status kanonikal diperoleh dengan menetapkannya ke dalam glosari."
+    },
+    "kind": {
+      "character": "Watak",
+      "location": "Lokasi",
+      "organization": "Organisasi",
+      "concept": "Konsep",
+      "item": "Item"
+    },
+    "archive": {
+      "action": "Arkib",
+      "confirm": "Sembunyikan entiti ini? Hubungan dan sauh glosarinya akan dikekalkan; ia akan hilang daripada senarai aktif. Anda boleh membatalkan tindakan ini dengan segera, atau menampilkannya semula melalui penapis Arkib.",
+      "success": "Entiti telah diarkibkan.",
+      "failed": "Tidak dapat mengarkibkan — {{error}}",
+      "undo": "Batalkan"
+    },
+    "restore": {
+      "success": "Entiti dipulihkan.",
+      "failed": "Tidak dapat memulihkan — {{error}}"
     }
   },
   "jobs": {
@@ -1079,6 +1115,23 @@
       "markWrong": "Tanda salah",
       "invalidating": "Membuang…",
       "failed": "Tidak dapat menyimpan pembetulan: {{error}}"
+    },
+    "create": {
+      "title": "Pautkan entiti",
+      "description": "Cipta hubungan daripada {{subject}} kepada entiti anda yang lain.",
+      "action": "Pautkan entiti",
+      "subject": "Daripada",
+      "predicate": "Hubungan",
+      "object": "Kepada",
+      "objectPlaceholder": "Cari entiti anda…",
+      "noMatches": "Tiada entiti yang sepadan.",
+      "save": "Cipta pautan",
+      "saving": "Menghubungkan…",
+      "cancel": "Batal",
+      "success": "Hubungan berjaya dicipta.",
+      "notYours": "Tidak dapat mencipta pautan — titik akhir bukan salah satu entiti anda.",
+      "selfLoop": "Sesuatu entiti tidak boleh berhubung dengan dirinya sendiri.",
+      "failed": "Tidak dapat mencipta pautan — {{error}}"
     }
   },
   "events": {
@@ -1107,6 +1160,14 @@
       "archiving": "Memadam…",
       "success": "Peristiwa dipadamkan.",
       "failed": "Tidak dapat memadam peristiwa: {{error}}"
+    },
+    "create": {
+      "title": "Tambah acara",
+      "description": "Tulis acara garis masa baharu untuk watak ini.",
+      "success": "Acara telah ditambah.",
+      "failed": "Penambahan gagal: {{error}}",
+      "saving": "Sedang menambah…",
+      "save": "Tambah acara"
     }
   },
   "mining": {

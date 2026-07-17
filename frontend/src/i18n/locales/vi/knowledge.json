@@ -70,9 +70,9 @@
       "extraction": "Trích xuất",
       "extractionEnabled": "Đã bật",
       "extractionDisabled": "Đã tắt",
-      "none": "—",
       "book": "Sách",
-      "world": "Thế giới"
+      "world": "Thế giới",
+      "none": "—"
     },
     "placeholder": {
       "proposals": "Các đề xuất đang chờ sẽ hiển thị ở đây (C11).",
@@ -404,7 +404,8 @@
         "global": "Toàn cục",
         "confidence": "Độ tin cậy",
         "mentions": "Số lần nhắc",
-        "anchor": "Điểm neo"
+        "anchor": "Điểm neo",
+        "scope": "Phạm vi"
       },
       "promote": "Đưa vào từ điển",
       "promoteHint": "Thực thể được phát hiện. Đưa vào để tạo bản nháp từ điển do AI gợi ý để duyệt.",
@@ -462,6 +463,41 @@
       "errArchived": "Không thể hợp nhất thực thể đã lưu trữ. Vui lòng khôi phục trước.",
       "errGlossaryConflict": "Cả hai thực thể được neo vào các mục từ điển khác nhau. Hãy giải quyết xung đột trước khi hợp nhất.",
       "errUnknown": "Hợp nhất thất bại: {{reason}}"
+    },
+    "create": {
+      "title": "Thực thể mới",
+      "description": "Tự soạn thảo một thực thể trong đồ thị tri thức. Ban đầu thực thể ở trạng thái được phát hiện; hãy neo nó lại sau để trở thành thực thể chuẩn.",
+      "newButton": "Thực thể mới",
+      "needsProject": "Vui lòng chọn một dự án trước",
+      "field": {
+        "name": "Tên",
+        "kind": "Loại"
+      },
+      "save": "Tạo",
+      "saving": "Đang tạo…",
+      "cancel": "Hủy",
+      "success": "Đã tạo thực thể — {{name}} ({{kind}})",
+      "dedup": "Đã tồn tại — đang hiển thị {{name}} ({{kind}})",
+      "failed": "Không thể tạo thực thể — {{error}}",
+      "discoveredHint": "Các thực thể mới sẽ ở trạng thái «đã khám phá». Trạng thái «chính thức» sẽ đạt được khi được gắn vào bảng thuật ngữ."
+    },
+    "kind": {
+      "character": "Nhân vật",
+      "location": "Địa điểm",
+      "organization": "Tổ chức",
+      "concept": "Khái niệm",
+      "item": "Vật phẩm"
+    },
+    "archive": {
+      "action": "Lưu trữ",
+      "confirm": "Ẩn thực thể này? Các mối quan hệ và liên kết thuật ngữ của nó vẫn được giữ lại; nó sẽ biến mất khỏi danh sách hoạt động. Bạn có thể Hoàn tác ngay lập tức, hoặc hiển thị lại thông qua bộ lọc Lưu trữ.",
+      "success": "Đã lưu trữ thực thể.",
+      "failed": "Không thể lưu trữ — {{error}}",
+      "undo": "Hoàn tác"
+    },
+    "restore": {
+      "success": "Đã khôi phục thực thể.",
+      "failed": "Không thể khôi phục — {{error}}"
     }
   },
   "jobs": {
@@ -1079,6 +1115,23 @@
       "markWrong": "Mark wrong",
       "invalidating": "Removing…",
       "failed": "Couldn't save the correction: {{error}}"
+    },
+    "create": {
+      "title": "Liên kết thực thể",
+      "description": "Tạo một mối quan hệ từ {{subject}} đến một thực thể khác của bạn.",
+      "action": "Liên kết thực thể",
+      "subject": "Từ",
+      "predicate": "Mối quan hệ",
+      "object": "Đến",
+      "objectPlaceholder": "Tìm kiếm thực thể của bạn…",
+      "noMatches": "Không tìm thấy thực thể phù hợp.",
+      "save": "Tạo liên kết",
+      "saving": "Đang liên kết…",
+      "cancel": "Hủy",
+      "success": "Đã tạo liên kết.",
+      "notYours": "Không thể tạo liên kết — một điểm cuối không phải là thực thể của bạn.",
+      "selfLoop": "Một thực thể không thể tự liên kết với chính nó.",
+      "failed": "Không thể tạo liên kết — {{error}}"
     }
   },
   "events": {
@@ -1107,6 +1160,14 @@
       "archiving": "Deleting…",
       "success": "Event deleted.",
       "failed": "Couldn't delete the event: {{error}}"
+    },
+    "create": {
+      "title": "Thêm sự kiện",
+      "description": "Soạn thảo một sự kiện dòng thời gian mới cho nhân vật này.",
+      "success": "Đã thêm sự kiện.",
+      "failed": "Thêm thất bại: {{error}}",
+      "saving": "Đang thêm…",
+      "save": "Thêm sự kiện"
     }
   },
   "mining": {

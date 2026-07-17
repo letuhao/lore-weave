@@ -404,7 +404,8 @@
         "global": "Global",
         "confidence": "Confianza",
         "mentions": "Menciones",
-        "anchor": "Puntuación de anclaje"
+        "anchor": "Puntuación de anclaje",
+        "scope": "Alcance"
       },
       "promote": "Promover al glosario",
       "promoteHint": "Entidad descubierta. Promuévela para crear un borrador de glosario sugerido por IA para su revisión.",
@@ -462,6 +463,41 @@
       "errArchived": "No se pueden fusionar entidades archivadas. Restáuralas primero.",
       "errGlossaryConflict": "Ambas entidades están vinculadas a entradas de glosario diferentes. Resuelve los vínculos del glosario antes de fusionar.",
       "errUnknown": "Error en la fusión: {{reason}}"
+    },
+    "create": {
+      "title": "Nueva entidad",
+      "description": "Redacta manualmente una entidad del grafo de conocimiento. Comienza como «descubierta»; anclala más tarde para que sea canónica.",
+      "newButton": "Nueva entidad",
+      "needsProject": "Selecciona un proyecto primero",
+      "field": {
+        "name": "Nombre",
+        "kind": "Tipo"
+      },
+      "save": "Crear",
+      "saving": "Creando…",
+      "cancel": "Cancelar",
+      "success": "Entidad creada — {{name}} ({{kind}})",
+      "dedup": "Ya existía — mostrando {{name}} ({{kind}})",
+      "failed": "No se pudo crear la entidad — {{error}}",
+      "discoveredHint": "Las nuevas entidades comienzan como «descubiertas». El estado canónico se obtiene al anclarlas al glosario."
+    },
+    "kind": {
+      "character": "Personaje",
+      "location": "Ubicación",
+      "organization": "Organización",
+      "concept": "Concepto",
+      "item": "Objeto"
+    },
+    "archive": {
+      "action": "Archivar",
+      "confirm": "¿Ocultar esta entidad? Sus relaciones y su anclaje al glosario se conservarán; la entidad desaparecerá de la lista activa. Puedes usar «Deshacer» inmediatamente después o volver a mostrarla mediante el filtro de Archivados.",
+      "success": "Entidad archivada.",
+      "failed": "No se pudo archivar — {{error}}",
+      "undo": "Deshacer"
+    },
+    "restore": {
+      "success": "Entidad restaurada.",
+      "failed": "No se pudo restaurar — {{error}}"
     }
   },
   "jobs": {
@@ -1079,6 +1115,23 @@
       "markWrong": "Marcar como incorrecta",
       "invalidating": "Eliminando…",
       "failed": "No se pudo guardar la corrección: {{error}}"
+    },
+    "create": {
+      "title": "Vincular entidad",
+      "description": "Crea una relación desde {{subject}} hacia otra de tus entidades.",
+      "action": "Vincular entidad",
+      "subject": "Desde",
+      "predicate": "Relación",
+      "object": "Hacia",
+      "objectPlaceholder": "Buscar tus entidades…",
+      "noMatches": "No hay entidades que coincidan.",
+      "save": "Crear vínculo",
+      "saving": "Vinculando…",
+      "cancel": "Cancelar",
+      "success": "Relación creada.",
+      "notYours": "No se pudo crear el vínculo: uno de los extremos no es una de tus entidades.",
+      "selfLoop": "Una entidad no puede relacionarse consigo misma.",
+      "failed": "No se pudo crear el vínculo: {{error}}"
     }
   },
   "events": {
@@ -1107,6 +1160,14 @@
       "archiving": "Eliminando…",
       "success": "Evento eliminado.",
       "failed": "No se pudo eliminar el evento: {{error}}"
+    },
+    "create": {
+      "title": "Añadir evento",
+      "description": "Crea un nuevo evento en la línea de tiempo de este personaje.",
+      "success": "Evento añadido.",
+      "failed": "Error al añadir: {{error}}",
+      "saving": "Añadiendo…",
+      "save": "Añadir evento"
     }
   },
   "mining": {

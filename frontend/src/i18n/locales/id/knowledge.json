@@ -404,7 +404,8 @@
         "global": "Global",
         "confidence": "Keyakinan",
         "mentions": "Penyebutan",
-        "anchor": "Skor jangkar"
+        "anchor": "Skor jangkar",
+        "scope": "Cakupan"
       },
       "promote": "Promosikan ke glosarium",
       "promoteHint": "Entitas ditemukan. Promosikan untuk membuat draf glosarium saran AI untuk ditinjau.",
@@ -462,6 +463,41 @@
       "errArchived": "Tidak dapat menggabungkan entitas yang diarsipkan. Pulihkan terlebih dahulu.",
       "errGlossaryConflict": "Kedua entitas tertambat pada entri glosarium yang berbeda. Selesaikan penambatan glosarium sebelum menggabungkan.",
       "errUnknown": "Penggabungan gagal: {{reason}}"
+    },
+    "create": {
+      "title": "Entitas baru",
+      "description": "Buat entitas graph-pengetahuan secara manual. Dimulai sebagai entitas yang ditemukan; jangkar nanti untuk menjadikannya kanonikal.",
+      "newButton": "Entitas Baru",
+      "needsProject": "Pilih proyek terlebih dahulu",
+      "field": {
+        "name": "Nama",
+        "kind": "Jenis"
+      },
+      "save": "Buat",
+      "saving": "Membuat…",
+      "cancel": "Batal",
+      "success": "Entitas berhasil dibuat — {{name}} ({{kind}})",
+      "dedup": "Sudah ada — menampilkan {{name}} ({{kind}})",
+      "failed": "Gagal membuat entitas — {{error}}",
+      "discoveredHint": "Entitas baru dimulai sebagai entitas yang ditemukan. Status kanonikal diperoleh dengan menambatkannya ke glosarium."
+    },
+    "kind": {
+      "character": "Karakter",
+      "location": "Lokasi",
+      "organization": "Organisasi",
+      "concept": "Konsep",
+      "item": "Item"
+    },
+    "archive": {
+      "action": "Arsipkan",
+      "confirm": "Sembunyikan entitas ini? Relasi dan penambatan glosariumnya akan tetap disimpan; entitas ini akan hilang dari daftar aktif. Anda dapat membatalkannya segera setelah tindakan ini, atau menampilkannya kembali melalui filter Diarsipkan.",
+      "success": "Entitas berhasil diarsipkan.",
+      "failed": "Gagal mengarsipkan — {{error}}",
+      "undo": "Batalkan"
+    },
+    "restore": {
+      "success": "Entitas dipulihkan.",
+      "failed": "Gagal memulihkan — {{error}}"
     }
   },
   "jobs": {
@@ -1079,6 +1115,23 @@
       "markWrong": "Tandai salah",
       "invalidating": "Menghapus...",
       "failed": "Tidak dapat menyimpan perbaikan: {{error}}"
+    },
+    "create": {
+      "title": "Tautkan entitas",
+      "description": "Buat relasi dari {{subject}} ke entitas Anda yang lain.",
+      "action": "Tautkan entitas",
+      "subject": "Dari",
+      "predicate": "Relasi",
+      "object": "Ke",
+      "objectPlaceholder": "Cari entitas Anda…",
+      "noMatches": "Tidak ada entitas yang cocok.",
+      "save": "Buat tautan",
+      "saving": "Menautkan…",
+      "cancel": "Batal",
+      "success": "Relasi berhasil dibuat.",
+      "notYours": "Tidak dapat membuat tautan — salah satu titik akhir bukan merupakan entitas Anda.",
+      "selfLoop": "Sebuah entitas tidak dapat berelasi dengan dirinya sendiri.",
+      "failed": "Tidak dapat membuat tautan — {{error}}"
     }
   },
   "events": {
@@ -1107,6 +1160,14 @@
       "archiving": "Menghapus...",
       "success": "Peristiwa dihapus.",
       "failed": "Tidak dapat menghapus peristiwa: {{error}}"
+    },
+    "create": {
+      "title": "Tambah kejadian",
+      "description": "Buat kejadian lini masa baru untuk karakter ini.",
+      "success": "Kejadian berhasil ditambahkan.",
+      "failed": "Penambahan gagal: {{error}}",
+      "saving": "Menambahkan…",
+      "save": "Tambah kejadian"
     }
   },
   "mining": {

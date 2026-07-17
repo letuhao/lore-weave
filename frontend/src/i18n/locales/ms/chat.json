@@ -124,7 +124,8 @@
     "mode_write": "Tulis",
     "mode_ask_hint": "Mod baca sahaja — ejen boleh membuat penyelidikan tetapi tidak boleh mengubah apa-apa",
     "mode_plan_hint": "Mod rancang — ejen menyelidik dan membina rancangan dengan alatan perancangan; tiada prosa sehingga anda tukar ke Tulis",
-    "mode_write_hint": "Mod tulis — ejen boleh membuat perubahan yang tidak boleh dibatalkan (bertanya sekali bagi setiap alatan baru)"
+    "mode_write_hint": "Mod tulis — ejen boleh membuat perubahan yang tidak boleh dibatalkan (bertanya sekali bagi setiap alatan baru)",
+    "assistant_placeholder": "Ceritakan tentang hari anda — orang di sekeliling, projek dan keputusan..."
   },
   "new": {
     "create_failed": "Gagal mencipta sembang: {{error}}",
@@ -375,10 +376,10 @@
     "approve_once": "Lulus sekali",
     "always_allow": "Sentiasa benarkan",
     "deny": "Enggan",
+    "never_allow": "Never allow",
     "approved": "Diluluskan — sedang berjalan ✓",
     "always_allowed": "Sentiasa dibenarkan — sedang berjalan ✓",
     "denied": "Ditolak",
-    "never_allow": "Never allow",
     "never_allowed": "Never allowed — you can undo this in Settings → Permissions"
   },
   "rack": {
@@ -404,6 +405,9 @@
     "more": "+{{count}} lagi",
     "more_tooltip": "{{count}} lagi alat yang ditemui tidak dipaparkan",
     "remove": "Buang",
+    "advanced_tools": "Alatan lanjutan ({{count}})",
+    "advanced_tools_hint": "Alatan lama dikekalkan untuk pemanggil lama. Gunakan alatan di atas kecuali jika anda memerlukan salah satu daripada ini secara khusus.",
+    "legacy_pin_tooltip": "Anda telah mengaktifkan alatan lama ini untuk sesi ini",
     "server": {
       "knowledge": "Pengetahuan",
       "glossary": "Glosari",
@@ -414,10 +418,7 @@
       "ui": "UI",
       "chat": "Sembang",
       "other": "Lain-lain"
-    },
-    "advanced_tools": "Alatan lanjutan ({{count}})",
-    "advanced_tools_hint": "Alatan lama dikekalkan untuk pemanggil lama. Gunakan alatan di atas kecuali jika anda memerlukan salah satu daripada ini secara khusus.",
-    "legacy_pin_tooltip": "Anda telah mengaktifkan alatan lama ini untuk sesi ini"
+    }
   },
   "inspector": {
     "title": "Waktu larian ejen",

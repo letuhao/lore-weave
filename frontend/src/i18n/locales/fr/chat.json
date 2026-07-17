@@ -124,7 +124,8 @@
     "mode_write": "Écrire",
     "mode_ask_hint": "Mode lecture seule — l'agent peut faire des recherches mais ne peut rien modifier",
     "mode_plan_hint": "Mode planification — l'agent effectue des recherches et construit un plan avec les outils de planification ; pas de prose tant que vous n'êtes pas en mode Écrire",
-    "mode_write_hint": "Mode écriture — l'agent peut effectuer des changements irréversibles (demande une confirmation par nouvel outil)"
+    "mode_write_hint": "Mode écriture — l'agent peut effectuer des changements irréversibles (demande une confirmation par nouvel outil)",
+    "assistant_placeholder": "Racontez votre journée — les personnes, les projets et les décisions…"
   },
   "new": {
     "create_failed": "Échec de la création du chat : {{error}}",
@@ -375,10 +376,10 @@
     "approve_once": "Autoriser une fois",
     "always_allow": "Toujours autoriser",
     "deny": "Refuser",
+    "never_allow": "Never allow",
     "approved": "Approuvé — exécution ✓",
     "always_allowed": "Toujours autorisé — exécution ✓",
     "denied": "Refusé",
-    "never_allow": "Never allow",
     "never_allowed": "Never allowed — you can undo this in Settings → Permissions"
   },
   "rack": {
@@ -404,6 +405,9 @@
     "more": "+{{count}} de plus",
     "more_tooltip": "{{count}} outils découverts supplémentaires non affichés",
     "remove": "Supprimer",
+    "advanced_tools": "Outils avancés ({{count}})",
+    "advanced_tools_hint": "Les outils obsolètes sont conservés pour les anciens appels. Privilégiez les outils ci-dessus, sauf si vous avez spécifiquement besoin de l'un d'entre eux.",
+    "legacy_pin_tooltip": "Vous avez activé cet outil obsolète pour cette session",
     "server": {
       "knowledge": "Connaissances",
       "glossary": "Glossaire",
@@ -414,10 +418,7 @@
       "ui": "UI",
       "chat": "Chat",
       "other": "Autre"
-    },
-    "advanced_tools": "Outils avancés ({{count}})",
-    "advanced_tools_hint": "Les outils obsolètes sont conservés pour les anciens appels. Privilégiez les outils ci-dessus, sauf si vous avez spécifiquement besoin de l'un d'entre eux.",
-    "legacy_pin_tooltip": "Vous avez activé cet outil obsolète pour cette session"
+    }
   },
   "inspector": {
     "title": "Runtime de l'agent",

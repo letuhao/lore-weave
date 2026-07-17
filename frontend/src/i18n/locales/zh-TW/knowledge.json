@@ -70,9 +70,9 @@
       "extraction": "擷取",
       "extractionEnabled": "已啟用",
       "extractionDisabled": "已停用",
-      "none": "—",
       "book": "書籍",
-      "world": "世界觀"
+      "world": "世界觀",
+      "none": "—"
     },
     "placeholder": {
       "proposals": "待處理提案將顯示於此（C11）。",
@@ -404,7 +404,8 @@
         "global": "全域",
         "confidence": "信心度",
         "mentions": "提及次數",
-        "anchor": "錨定分數"
+        "anchor": "錨定分數",
+        "scope": "範圍"
       },
       "promote": "提升至詞彙表",
       "promoteHint": "已發現的實體。提升後會建立一份待審的 AI 建議詞彙表草稿。",
@@ -462,6 +463,41 @@
       "errArchived": "無法合併已封存的實體。請先還原。",
       "errGlossaryConflict": "兩個實體分別錨定在不同的詞彙表條目。請先解決詞彙表錨點衝突。",
       "errUnknown": "合併失敗：{{reason}}"
+    },
+    "create": {
+      "title": "新實體",
+      "description": "手動建立知識圖譜實體。初始狀態為「已發現」；稍後可將其錨定為「規範實體」。",
+      "newButton": "新增實體",
+      "needsProject": "請先選擇一個專案",
+      "field": {
+        "name": "名稱",
+        "kind": "類型"
+      },
+      "save": "建立",
+      "saving": "建立中…",
+      "cancel": "取消",
+      "success": "實體已建立 — {{name}} ({{kind}})",
+      "dedup": "實體已存在 — 顯示 {{name}} ({{kind}})",
+      "failed": "無法建立實體 — {{error}}",
+      "discoveredHint": "新實體初始狀態為「已發現」。透過與術語表建立關聯即可獲得「標準」狀態。"
+    },
+    "kind": {
+      "character": "角色",
+      "location": "地點",
+      "organization": "組織",
+      "concept": "概念",
+      "item": "物品"
+    },
+    "archive": {
+      "action": "封存",
+      "confirm": "要隱藏此實體嗎？其關聯與術語表錨點將予以保留，但會從活動清單中消失。您可以在操作後立即「復原」，或透過「已封存」篩選器再次將其顯示。",
+      "success": "實體已封存。",
+      "failed": "無法封存 — {{error}}",
+      "undo": "復原"
+    },
+    "restore": {
+      "success": "實體已還原。",
+      "failed": "無法還原 — {{error}}"
     }
   },
   "jobs": {
@@ -1079,6 +1115,23 @@
       "markWrong": "Mark wrong",
       "invalidating": "Removing…",
       "failed": "Couldn't save the correction: {{error}}"
+    },
+    "create": {
+      "title": "連結實體",
+      "description": "建立從 {{subject}} 到您另一個實體的關係。",
+      "action": "連結實體",
+      "subject": "從",
+      "predicate": "關係",
+      "object": "至",
+      "objectPlaceholder": "搜尋您的實體…",
+      "noMatches": "無符合的實體。",
+      "save": "建立連結",
+      "saving": "連結中…",
+      "cancel": "取消",
+      "success": "關係已建立。",
+      "notYours": "無法建立連結 — 端點並非您的實體之一。",
+      "selfLoop": "實體不能與自身建立關係。",
+      "failed": "無法建立連結 — {{error}}"
     }
   },
   "events": {
@@ -1107,6 +1160,14 @@
       "archiving": "Deleting…",
       "success": "Event deleted.",
       "failed": "Couldn't delete the event: {{error}}"
+    },
+    "create": {
+      "title": "新增事件",
+      "description": "為此角色撰寫一個新的時間線事件。",
+      "success": "事件已新增。",
+      "failed": "新增失敗：{{error}}",
+      "saving": "新增中…",
+      "save": "新增事件"
     }
   },
   "mining": {

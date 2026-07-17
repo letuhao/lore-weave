@@ -404,7 +404,8 @@
         "global": "전체",
         "confidence": "신뢰도",
         "mentions": "언급 횟수",
-        "anchor": "앵커 점수"
+        "anchor": "앵커 점수",
+        "scope": "범위"
       },
       "promote": "용어집으로 승격",
       "promoteHint": "발견된 엔티티입니다. 승격하면 검토를 위한 AI 제안 용어집 초안이 생성됩니다.",
@@ -462,6 +463,41 @@
       "errArchived": "보관된 엔티티는 병합할 수 없습니다. 먼저 보관을 해제하세요.",
       "errGlossaryConflict": "두 엔티티가 서로 다른 용어집 항목에 고정되어 있습니다. 병합하기 전에 용어집 고정을 해제하세요.",
       "errUnknown": "병합 실패: {{reason}}"
+    },
+    "create": {
+      "title": "새 엔티티",
+      "description": "지식 그래프 엔티티를 직접 작성합니다. 처음에는 ‘발견됨’ 상태로 시작하며, 나중에 정식 엔티티로 고정할 수 있습니다.",
+      "newButton": "새 엔티티",
+      "needsProject": "먼저 프로젝트를 선택하세요",
+      "field": {
+        "name": "이름",
+        "kind": "유형"
+      },
+      "save": "생성",
+      "saving": "생성 중…",
+      "cancel": "취소",
+      "success": "엔티티 생성 완료 — {{name}} ({{kind}})",
+      "dedup": "이미 존재하는 엔티티입니다 — {{name}} ({{kind}}) 표시 중",
+      "failed": "엔티티를 생성할 수 없습니다 — {{error}}",
+      "discoveredHint": "새 엔티티는 '발견됨' 상태로 시작합니다. 용어집에 고정하면 '표준' 상태가 됩니다."
+    },
+    "kind": {
+      "character": "캐릭터",
+      "location": "장소",
+      "organization": "조직",
+      "concept": "개념",
+      "item": "아이템"
+    },
+    "archive": {
+      "action": "아카이브",
+      "confirm": "이 엔티티를 숨길까요? 관계 및 용어집 고정 정보는 유지되지만, 활성 목록에서는 사라집니다. 생성 직후에는 '실행 취소'를 할 수 있으며, '아카이브됨' 필터를 통해 다시 표시할 수 있습니다.",
+      "success": "엔티티가 아카이브되었습니다.",
+      "failed": "아카이브할 수 없습니다 — {{error}}",
+      "undo": "실행 취소"
+    },
+    "restore": {
+      "success": "엔티티를 복구했습니다.",
+      "failed": "복구 실패 — {{error}}"
     }
   },
   "jobs": {
@@ -1079,6 +1115,23 @@
       "markWrong": "잘못된 것으로 표시",
       "invalidating": "삭제 중...",
       "failed": "수정 사항을 저장할 수 없습니다: {{error}}"
+    },
+    "create": {
+      "title": "엔티티 연결",
+      "description": "{{subject}}에서 다른 엔티티로의 관계를 생성합니다.",
+      "action": "엔티티 연결",
+      "subject": "출발",
+      "predicate": "관계",
+      "object": "도착",
+      "objectPlaceholder": "엔티티 검색…",
+      "noMatches": "일치하는 엔티티가 없습니다.",
+      "save": "연결 생성",
+      "saving": "연결 중…",
+      "cancel": "취소",
+      "success": "관계가 생성되었습니다.",
+      "notYours": "링크를 생성할 수 없습니다 — 엔드포인트가 사용자의 엔티티가 아닙니다.",
+      "selfLoop": "엔티티는 자기 자신과 관계를 맺을 수 없습니다.",
+      "failed": "링크를 생성할 수 없습니다 — {{error}}"
     }
   },
   "events": {
@@ -1107,6 +1160,14 @@
       "archiving": "삭제 중...",
       "success": "이벤트가 삭제되었습니다.",
       "failed": "이벤트를 삭제할 수 없습니다: {{error}}"
+    },
+    "create": {
+      "title": "이벤트 추가",
+      "description": "이 캐릭터를 위한 새로운 타임라인 이벤트를 작성합니다.",
+      "success": "이벤트가 추가되었습니다.",
+      "failed": "추가 실패: {{error}}",
+      "saving": "추가 중…",
+      "save": "이벤트 추가"
     }
   },
   "mining": {

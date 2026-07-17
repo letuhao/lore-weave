@@ -70,9 +70,9 @@
       "extraction": "抽出",
       "extractionEnabled": "有効",
       "extractionDisabled": "無効",
-      "none": "—",
       "book": "本",
-      "world": "世界"
+      "world": "世界",
+      "none": "—"
     },
     "placeholder": {
       "proposals": "保留中の提案はここに表示されます（C11）。",
@@ -404,7 +404,8 @@
         "global": "グローバル",
         "confidence": "信頼度",
         "mentions": "言及回数",
-        "anchor": "アンカースコア"
+        "anchor": "アンカースコア",
+        "scope": "スコープ"
       },
       "promote": "用語集へ昇格",
       "promoteHint": "発見されたエンティティです。昇格するとレビュー用のAI提案下書きが作成されます。",
@@ -462,6 +463,41 @@
       "errArchived": "アーカイブ済みのエンティティは結合できません。先に復元してください。",
       "errGlossaryConflict": "両方が異なる用語集エントリにリンクしています。先に用語集アンカーを調整してください。",
       "errUnknown": "結合に失敗しました：{{reason}}"
+    },
+    "create": {
+      "title": "新規エンティティ",
+      "description": "ナレッジグラフのエンティティを手動で作成します。最初は「発見済み」として作成され、後でアンカーを設定することで「正規」として確定できます。",
+      "newButton": "新規エンティティ",
+      "needsProject": "先にプロジェクトを選択してください",
+      "field": {
+        "name": "名前",
+        "kind": "種類"
+      },
+      "save": "作成",
+      "saving": "作成中…",
+      "cancel": "キャンセル",
+      "success": "エンティティを作成しました — {{name}} ({{kind}})",
+      "dedup": "既に存在します — {{name}} ({{kind}}) を表示中",
+      "failed": "エンティティを作成できませんでした — {{error}}",
+      "discoveredHint": "新しいエンティティは「発見済み」として作成されます。用語集に紐付けることで「正規」ステータスになります。"
+    },
+    "kind": {
+      "character": "キャラクター",
+      "location": "場所",
+      "organization": "組織",
+      "concept": "概念",
+      "item": "アイテム"
+    },
+    "archive": {
+      "action": "アーカイブ",
+      "confirm": "このエンティティを非表示にしますか？関係性や用語集への紐付けは保持されますが、アクティブなリストからは消えます。作成直後であれば「元に戻す」が可能ですし、アーカイブフィルタから再度表示させることもできます。",
+      "success": "エンティティをアーカイブしました。",
+      "failed": "アーカイブできませんでした — {{error}}",
+      "undo": "元に戻す"
+    },
+    "restore": {
+      "success": "エンティティを復元しました。",
+      "failed": "復元できませんでした — {{error}}"
     }
   },
   "jobs": {
@@ -1079,6 +1115,23 @@
       "markWrong": "Mark wrong",
       "invalidating": "Removing…",
       "failed": "Couldn't save the correction: {{error}}"
+    },
+    "create": {
+      "title": "エンティティをリンク",
+      "description": "{{subject}} から別のエンティティへの関係を作成します。",
+      "action": "エンティティをリンク",
+      "subject": "元",
+      "predicate": "関係",
+      "object": "先",
+      "objectPlaceholder": "エンティティを検索…",
+      "noMatches": "一致するエンティティがありません。",
+      "save": "リンクを作成",
+      "saving": "リンク中…",
+      "cancel": "キャンセル",
+      "success": "関係を作成しました。",
+      "notYours": "リンクを作成できませんでした。エンドポイントがあなたのエンティティのいずれかではありません。",
+      "selfLoop": "エンティティが自分自身と関係を持つことはできません。",
+      "failed": "リンクを作成できませんでした — {{error}}"
     }
   },
   "events": {
@@ -1107,6 +1160,14 @@
       "archiving": "Deleting…",
       "success": "Event deleted.",
       "failed": "Couldn't delete the event: {{error}}"
+    },
+    "create": {
+      "title": "イベントを追加",
+      "description": "このキャラクターの新しいタイムラインイベントを作成します。",
+      "success": "イベントが追加されました。",
+      "failed": "追加に失敗しました: {{error}}",
+      "saving": "追加中…",
+      "save": "イベントを追加"
     }
   },
   "mining": {
