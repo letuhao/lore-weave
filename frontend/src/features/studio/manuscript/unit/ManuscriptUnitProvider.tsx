@@ -56,12 +56,17 @@ export interface ManuscriptUnitState {
   /** #12 M-G — the outline CHAPTER node scenes parent under (the rail's Create target).
    * null until scenes load / when the chapter was never outlined. */
   sceneChapterNodeId: string | null;
+  /** D-S5-DERIVATIVE-MANUSCRIPT-FORK — when the active Work is a dị bản, this chapter's draft is
+   * WORK-SCOPED (isolated from canon). `forked` = it has its own row (vs still inheriting canon).
+   * On the canonical Work both are false and the draft is the shared book manuscript. */
+  isDerivative: boolean;
+  forked: boolean;
 }
 
 const INITIAL: ManuscriptUnitState = {
   chapterId: null, loadedBody: EMPTY_DOC, savedBody: EMPTY_DOC, workingBody: null,
   version: undefined, textContent: '', saveState: 'idle', error: null, scenes: [],
-  sceneChapterNodeId: null,
+  sceneChapterNodeId: null, isDerivative: false, forked: false,
 };
 
 export interface ManuscriptUnitApi {
@@ -136,12 +141,18 @@ export function ManuscriptUnitProvider({ bookId, children }: { bookId: string; c
   const work = useWorkResolution(bookId, accessToken);
   const { data: activeWorkId } = useActiveWorkId(bookId, accessToken);
   // EC-3d: the ACTIVE Work's project (per-book pref, else canonical) — NOT candidates[0].
-  const projectId = useMemo(
-    () => resolveActiveWork(work.data, activeWorkId)?.project_id ?? null,
+  const activeWork = useMemo(
+    () => resolveActiveWork(work.data, activeWorkId),
     [work.data, activeWorkId],
   );
+  const projectId = activeWork?.project_id ?? null;
+  // D-S5-DERIVATIVE-MANUSCRIPT-FORK — a dị bản (source_work_id set) has its OWN manuscript per
+  // chapter; load/save route to the composition work-draft store, not the shared book draft.
+  const isDerivative = !!activeWork?.source_work_id;
   const projectIdRef = useRef<string | null>(projectId);
   projectIdRef.current = projectId;
+  const isDerivativeRef = useRef<boolean>(isDerivative);
+  isDerivativeRef.current = isDerivative;
 
   const loadScenes = useCallback(async (chapterId: string) => {
     const pid = projectIdRef.current;
@@ -158,16 +169,32 @@ export function ManuscriptUnitProvider({ bookId, children }: { bookId: string; c
     if (!accessToken) return;
     setState((s) => ({ ...s, chapterId, saveState: external ? s.saveState : 'loading', error: null }));
     try {
-      const draft = await booksApi.getDraft(accessToken, bookId, chapterId);
-      const body = (draft.body as JSONContent) ?? EMPTY_DOC;
-      // Server text_content can be empty (blocks projection) and an already-normalized
-      // body fires NO mount onUpdate to backfill it — derive from the body (M-H word count).
-      const textContent = draft.text_content || extractText(body);
+      // D-S5 fork: on a dị bản read the WORK-scoped draft (fork if any, else read-through canon at
+      // version 0); on the canonical Work read the shared book draft. `version` is the concurrency
+      // token either way (book draft_version, or the fork's — 0 means "inherited, not forked yet").
+      const derivative = isDerivativeRef.current;
+      const pid = projectIdRef.current;
+      let body: JSONContent; let version: number | undefined; let textContent: string; let forked = false;
+      if (derivative && pid) {
+        const wd = await compositionApi.getWorkChapterDraft(pid, chapterId, accessToken);
+        body = (wd.body as JSONContent) ?? EMPTY_DOC;
+        version = wd.draft_version;
+        forked = wd.forked;
+        textContent = extractText(body);
+      } else {
+        const draft = await booksApi.getDraft(accessToken, bookId, chapterId);
+        body = (draft.body as JSONContent) ?? EMPTY_DOC;
+        version = draft.draft_version;
+        // Server text_content can be empty (blocks projection) and an already-normalized
+        // body fires NO mount onUpdate to backfill it — derive from the body (M-H word count).
+        textContent = draft.text_content || extractText(body);
+      }
       loadedWordCountRef.current = wordCount(textContent);
       setState({
         chapterId, loadedBody: body, savedBody: body, workingBody: null,
-        version: draft.draft_version, textContent,
+        version, textContent,
         saveState: 'idle', error: null, scenes: [], sceneChapterNodeId: null,
+        isDerivative: derivative, forked,
       });
       void loadScenes(chapterId);
     } catch (e) {
@@ -219,23 +246,49 @@ export function ManuscriptUnitProvider({ bookId, children }: { bookId: string; c
     const body = s.workingBody ?? s.savedBody;
     setState((p) => ({ ...p, saveState: 'saving', error: null }));
     try {
-      try {
-        await booksApi.patchDraft(accessToken, bookId, s.chapterId, {
-          body, body_format: 'json', expected_draft_version: s.version,
-        });
-      } catch (e) {
-        const err = e as { code?: string; status?: number };
-        if (err.code === 'CHAPTER_DRAFT_CONFLICT' || err.status === 409) {
-          // Last-write-wins fallback (mirrors ChapterEditorPage). Then re-sync the version below.
-          await booksApi.patchDraft(accessToken, bookId, s.chapterId, { body, body_format: 'json' });
-        } else { throw e; }
+      const derivative = isDerivativeRef.current;
+      const pid = projectIdRef.current;
+      let freshVersion: number | undefined; let freshText: string; let freshForked = s.forked;
+      if (derivative && pid) {
+        // D-S5 fork: write the WORK-scoped draft (expected_version 0 forks; >=1 OCC-bumps). Canon
+        // is NEVER touched. On a stale token (fork raced / concurrent edit), refetch + retry once.
+        let saved: { draft_version: number };
+        try {
+          saved = await compositionApi.patchWorkChapterDraft(pid, s.chapterId, {
+            body, expected_version: s.version ?? 0,
+          }, accessToken);
+        } catch (e) {
+          const err = e as { code?: string; status?: number };
+          if (err.status === 412 || err.status === 409) {
+            const cur = await compositionApi.getWorkChapterDraft(pid, s.chapterId, accessToken);
+            saved = await compositionApi.patchWorkChapterDraft(pid, s.chapterId, {
+              body, expected_version: cur.draft_version,
+            }, accessToken);
+          } else { throw e; }
+        }
+        freshVersion = saved.draft_version;
+        freshText = extractText(body);
+        freshForked = true;  // any successful work-draft write means this chapter is now forked
+      } else {
+        try {
+          await booksApi.patchDraft(accessToken, bookId, s.chapterId, {
+            body, body_format: 'json', expected_draft_version: s.version,
+          });
+        } catch (e) {
+          const err = e as { code?: string; status?: number };
+          if (err.code === 'CHAPTER_DRAFT_CONFLICT' || err.status === 409) {
+            // Last-write-wins fallback (mirrors ChapterEditorPage). Then re-sync the version below.
+            await booksApi.patchDraft(accessToken, bookId, s.chapterId, { body, body_format: 'json' });
+          } else { throw e; }
+        }
+        // Re-fetch to pick up the new draft_version + text snapshot (patchDraft returns void).
+        const fresh = await booksApi.getDraft(accessToken, bookId, s.chapterId);
+        freshVersion = fresh.draft_version;
+        freshText = fresh.text_content ?? extractText(body);
       }
-      // Re-fetch to pick up the new draft_version + text snapshot (patchDraft returns void).
-      const fresh = await booksApi.getDraft(accessToken, bookId, s.chapterId);
-      const freshText = fresh.text_content ?? extractText(body);
       setState((p) => (p.chapterId !== s.chapterId ? p : {
-        ...p, savedBody: body, workingBody: null, version: fresh.draft_version,
-        textContent: freshText, saveState: 'saved',
+        ...p, savedBody: body, workingBody: null, version: freshVersion,
+        textContent: freshText, saveState: 'saved', forked: freshForked,
       }));
       // #16 2.10 — best-effort; NEVER disrupts the save it rides on (the hook swallows failures).
       reportProgress(s.chapterId, wordCount(freshText));

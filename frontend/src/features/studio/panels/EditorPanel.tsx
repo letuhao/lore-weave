@@ -5,6 +5,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useQuery } from '@tanstack/react-query';
+import { toast } from 'sonner';
+import { compositionApi } from '@/features/composition/api';
 import type { IDockviewPanelProps } from 'dockview-react';
 import { TiptapEditor, type TiptapEditorHandle } from '@/components/editor/TiptapEditor';
 import { registerEditorTarget } from '@/features/chat/context/editorBridge';
@@ -69,6 +71,9 @@ export function EditorPanel(props: IDockviewPanelProps) {
   // multi-instance landmine flagged for item #10's upload-context singleton).
   const editorContainerRef = useRef<HTMLDivElement | null>(null);
   const [editorEl, setEditorEl] = useState<HTMLElement | null>(null);
+  // D-S5-DERIVATIVE-MANUSCRIPT-FORK — two-step confirm for merging a forked chapter into canon.
+  const [mergeConfirm, setMergeConfirm] = useState(false);
+  const [merging, setMerging] = useState(false);
 
   const label = t('panels.editor.title', { defaultValue: 'Editor' });
   const registration = useMemo<StudioToolRegistration>(() => ({
@@ -192,6 +197,23 @@ export function EditorPanel(props: IDockviewPanelProps) {
   // "Switch to" a dị bản instead of always loading canon.
   const composeWork = resolveActiveWork(workResolution.data, activeWorkId);
   const composeProjectId = composeWork?.project_id ?? null;
+  // D-S5-DERIVATIVE-MANUSCRIPT-FORK — promote THIS forked chapter into canon. Two-step confirm
+  // (the first click arms it). The branch keeps its own version; only canon is overwritten.
+  const handleMergeToCanon = async () => {
+    if (!mergeConfirm) { setMergeConfirm(true); return; }
+    if (!composeProjectId || !chapterId) return;
+    setMerging(true);
+    try {
+      await compositionApi.mergeWorkChapterToCanon(composeProjectId, chapterId, accessToken);
+      toast.success(t('editor.mergeDone', { defaultValue: 'Merged into canon — the branch keeps its own version.' }));
+      setMergeConfirm(false);
+    } catch (e) {
+      const conflict = (e as { status?: number }).status === 409;
+      toast[conflict ? 'warning' : 'error'](conflict
+        ? t('editor.mergeConflict', { defaultValue: 'Canon changed since — reopen the chapter and merge again.' })
+        : t('editor.mergeFailed', { defaultValue: 'Could not merge — try again.' }));
+    } finally { setMerging(false); }
+  };
   const chatModels = useQuery({
     queryKey: ['composition', 'chat-models'],
     queryFn: () => aiModelsApi.listUserModels(accessToken!, { capability: 'chat' }),
@@ -256,16 +278,36 @@ export function EditorPanel(props: IDockviewPanelProps) {
 
   return (
     <div data-testid="studio-editor-panel" className="flex h-full min-h-0 flex-col">
-      {/* D-S5-DERIVATIVE-EDIT-GUARD — a dị bản is a spec-level branch with no manuscript
-          editor of its own (COW): the editor edits the SHARED canon chapter. Switch-to makes
-          "on a derivative" reachable, so signal that edits here save to canon, not the branch.
-          The derivative's own divergent prose lives on the what-if canvas → Promote. */}
-      {composeWork?.source_work_id ? (
+      {/* D-S5-DERIVATIVE-MANUSCRIPT-FORK — a dị bản now has its OWN manuscript per chapter
+          (work-scoped draft; the ManuscriptUnitProvider routes load/save there). Signal the real
+          isolation state — inherited (still mirrors canon, editing forks it) vs forked (isolated) —
+          and offer Merge-to-canon on a forked chapter. Canon is never touched by editing here. */}
+      {unit?.state.isDerivative ? (
         <div
           data-testid="studio-editor-derivative-guard"
-          className="flex flex-shrink-0 items-center gap-1.5 border-b border-amber-300 bg-amber-50 px-3 py-1 text-[11px] text-amber-800 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-200"
+          className="flex flex-shrink-0 flex-wrap items-center gap-1.5 border-b border-amber-300 bg-amber-50 px-3 py-1 text-[11px] text-amber-800 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-200"
         >
-          ⑂ {t('editor.derivativeGuard', { defaultValue: "You're on a dị bản — edits here save to the canon manuscript, not the branch. Use the what-if canvas → Promote for branch-only prose." })}
+          <span data-testid="studio-editor-fork-state">
+            ⑂ {unit.state.forked
+              ? t('editor.derivativeForked', { defaultValue: "On a dị bản — this chapter is FORKED, isolated from canon. Edits save to the branch; canon stays untouched." })
+              : t('editor.derivativeInherit', { defaultValue: "On a dị bản — this chapter still mirrors canon. Editing here FORKS it into the branch (canon stays untouched)." })}
+          </span>
+          {unit.state.forked && (
+            <button
+              type="button"
+              data-testid="studio-editor-merge-canon"
+              disabled={merging}
+              onClick={handleMergeToCanon}
+              onBlur={() => setMergeConfirm(false)}
+              className="ml-auto rounded border border-amber-400 px-1.5 py-0.5 hover:bg-amber-100 disabled:opacity-50 dark:hover:bg-amber-900/40"
+            >
+              {merging
+                ? t('editor.merging', { defaultValue: 'Merging…' })
+                : mergeConfirm
+                  ? t('editor.mergeConfirm', { defaultValue: 'Confirm — overwrite canon' })
+                  : t('editor.mergeToCanon', { defaultValue: 'Merge to canon' })}
+            </button>
+          )}
         </div>
       ) : null}
       <div className="flex h-7 flex-shrink-0 items-center gap-2 overflow-x-auto whitespace-nowrap border-b px-3 text-[11px] text-muted-foreground">

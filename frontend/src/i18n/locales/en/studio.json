@@ -735,7 +735,15 @@
     "heatmap": "Heatmap",
     "glossary": "Glossary",
     "focus": "Focus",
-    "translate": "Translate"
+    "translate": "Translate",
+    "derivativeForked": "On a dị bản — this chapter is FORKED, isolated from canon. Edits save to the branch; canon stays untouched.",
+    "derivativeInherit": "On a dị bản — this chapter still mirrors canon. Editing here FORKS it into the branch (canon stays untouched).",
+    "mergeToCanon": "Merge to canon",
+    "mergeConfirm": "Confirm — overwrite canon",
+    "merging": "Merging…",
+    "mergeDone": "Merged into canon — the branch keeps its own version.",
+    "mergeConflict": "Canon changed since — reopen the chapter and merge again.",
+    "mergeFailed": "Could not merge — try again."
   },
   "sceneCompose": {
     "empty": "Select a chapter in the manuscript navigator to draft its scenes here.",

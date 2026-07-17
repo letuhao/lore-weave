@@ -143,6 +143,37 @@ export const compositionApi = {
   ): Promise<{ items: Array<{ node_id: string; story_order: number; title: string; text: string; anchor_node_id: string | null }> }> {
     return apiJson(`${BASE}/works/${projectId}/chapters/${chapterId}/scene-drafts`, { token });
   },
+  // ── D-S5-DERIVATIVE-MANUSCRIPT-FORK — a dị bản's OWN manuscript, per chapter. GET reads the
+  // fork if it exists, else reads-through to canon (draft_version 0 = inherited, not forked yet).
+  // PATCH with expected_version 0 forks; >=1 OCC-bumps. Canon (book-service) is never touched.
+  getWorkChapterDraft(
+    projectId: string,
+    chapterId: string,
+    token: string | null,
+  ): Promise<{ forked: boolean; inherited: boolean; body: unknown; draft_version: number; draft_format: string; canon_version?: number; merged_at?: string | null }> {
+    return apiJson(`${BASE}/works/${projectId}/chapters/${chapterId}/work-draft`, { token });
+  },
+  patchWorkChapterDraft(
+    projectId: string,
+    chapterId: string,
+    payload: { body: unknown; expected_version: number; draft_format?: string },
+    token: string | null,
+  ): Promise<{ forked: boolean; body: unknown; draft_version: number }> {
+    return apiJson(`${BASE}/works/${projectId}/chapters/${chapterId}/work-draft`, {
+      method: 'PATCH', token, body: JSON.stringify(payload),
+    });
+  },
+  mergeWorkChapterToCanon(
+    projectId: string,
+    chapterId: string,
+    token: string | null,
+    opts?: { expectedCanonVersion?: number },
+  ): Promise<{ merged: boolean; canon_draft_version: number }> {
+    return apiJson(`${BASE}/works/${projectId}/chapters/${chapterId}/merge-to-canon`, {
+      method: 'POST', token,
+      body: JSON.stringify(opts?.expectedCanonVersion !== undefined ? { expected_canon_version: opts.expectedCanonVersion } : {}),
+    });
+  },
   getOutline(projectId: string, token: string, includeArchived = false): Promise<{ nodes: OutlineNode[]; scene_links: SceneLink[] }> {
     const qs = includeArchived ? '?include_archived=true' : '';
     return apiJson(`${BASE}/works/${projectId}/outline${qs}`, { token });
