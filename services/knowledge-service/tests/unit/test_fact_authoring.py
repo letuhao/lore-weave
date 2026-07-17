@@ -24,7 +24,7 @@ _ENTITY_ID = "ent-aria-1"
 
 
 def _fact(fact_id="fact-1", type="decision", content="Aria distrusts the Council",
-          valid_until=None, confidence=1.0) -> Fact:
+          valid_until=None, confidence=1.0, source_types=None) -> Fact:
     return Fact(
         id=fact_id,
         user_id=str(_TEST_USER),
@@ -35,7 +35,7 @@ def _fact(fact_id="fact-1", type="decision", content="Aria distrusts the Council
         confidence=confidence,
         pending_validation=False,
         valid_until=valid_until,
-        source_types=["manual"],
+        source_types=source_types if source_types is not None else ["manual"],
     )
 
 
@@ -188,3 +188,34 @@ def test_invalidate_fact_404_cross_user(mock_get, mock_invalidate):
     mock_invalidate.return_value = None
     resp = _client().post("/v1/knowledge/facts/missing/invalidate")
     assert resp.status_code == 404
+
+
+@patch("app.routers.public.facts.emit_correction", new_callable=AsyncMock)
+@patch("app.routers.public.facts.neo4j_session", new=lambda: _noop_session())
+@patch("app.routers.public.facts.invalidate_fact", new_callable=AsyncMock)
+@patch("app.routers.public.facts.get_fact", new_callable=AsyncMock)
+def test_invalidate_extraction_fact_emits_correction(mock_get, mock_invalidate, mock_emit):
+    """An EXTRACTION-derived fact (source_types has a non-manual origin) retraction
+    IS a learning signal → emit the fact_corrected correction."""
+    f = _fact(source_types=["book_content"], valid_until=datetime.now(timezone.utc))
+    mock_get.return_value = _fact(source_types=["book_content"])
+    mock_invalidate.return_value = f
+    resp = _client().post("/v1/knowledge/facts/fact-1/invalidate")
+    assert resp.status_code == 200, resp.json()
+    mock_emit.assert_awaited_once()
+
+
+@patch("app.routers.public.facts.emit_correction", new_callable=AsyncMock)
+@patch("app.routers.public.facts.neo4j_session", new=lambda: _noop_session())
+@patch("app.routers.public.facts.invalidate_fact", new_callable=AsyncMock)
+@patch("app.routers.public.facts.get_fact", new_callable=AsyncMock)
+def test_invalidate_human_authored_fact_skips_correction(mock_get, mock_invalidate, mock_emit):
+    """A PURELY human-authored fact (source_types == ['manual']) retraction is the
+    user editing their OWN assertion — NOT an extraction correction. The invalidate
+    still happens (200) but NO learning event is emitted (no false-degrade)."""
+    f = _fact(source_types=["manual"], valid_until=datetime.now(timezone.utc))
+    mock_get.return_value = _fact(source_types=["manual"])
+    mock_invalidate.return_value = f
+    resp = _client().post("/v1/knowledge/facts/fact-1/invalidate")
+    assert resp.status_code == 200, resp.json()
+    mock_emit.assert_not_awaited()

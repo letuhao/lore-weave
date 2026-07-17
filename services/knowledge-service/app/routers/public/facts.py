@@ -61,19 +61,35 @@ async def invalidate_fact_endpoint(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="fact not found"
         )
-    await emit_correction(
-        event_type=FACT_CORRECTED,
-        aggregate_id=fact_id,
-        payload=fact_correction_payload(
-            user_id=str(user_id),
-            project_id=invalidated.project_id,
-            book_id=None,
-            target_id=fact_id,
-            op="invalidate",
-            before=fact_snapshot(before),
-            after=None,
-            actor_id=str(user_id),
-        ),
+    # S-05 — emit the learning correction ONLY for an extraction/agent-derived fact.
+    # A PURELY human-authored fact (`source_types == ['manual']`, written via
+    # POST /entities/{id}/facts) being retracted is the user editing their OWN
+    # assertion, NOT a correction of what extraction produced. Emitting it would let
+    # a human retracting their own fact wrongly degrade a recent extraction run in
+    # learning-service's outcome recompute (fact corrections carry no
+    # source_extraction_run_id, so they match any run in the window). Facts now have
+    # a large human-authored population, so this distinction matters (relations don't
+    # need it — humans rarely author raw relations). The invalidate itself always
+    # happens; only the learning signal is gated.
+    sources = set(invalidated.source_types or [])
+    is_human_authored = bool(sources) and sources <= {"manual"}
+    if not is_human_authored:
+        await emit_correction(
+            event_type=FACT_CORRECTED,
+            aggregate_id=fact_id,
+            payload=fact_correction_payload(
+                user_id=str(user_id),
+                project_id=invalidated.project_id,
+                book_id=None,
+                target_id=fact_id,
+                op="invalidate",
+                before=fact_snapshot(before),
+                after=None,
+                actor_id=str(user_id),
+            ),
+        )
+    logger.info(
+        "user invalidated fact user_id=%s fact_id=%s human_authored=%s",
+        user_id, fact_id, is_human_authored,
     )
-    logger.info("user invalidated fact user_id=%s fact_id=%s", user_id, fact_id)
     return invalidated

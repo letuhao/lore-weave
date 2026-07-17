@@ -305,13 +305,10 @@ def fact_correction_payload(
 ) -> dict[str, Any]:
     """knowledge.fact_corrected payload core (S-05). Mirrors the relation/entity
     correction shape so the `corrections` columns + learning-service's handler
-    contract stay uniform across target types.
-
-    NOTE (tracked DEBT): learning-service mining currently consumes only
-    `target_type IN ('entity','relation','event')` (mining.py). A `fact`
-    correction lands in the `corrections` audit table but is NOT yet mined into
-    gold — the event is symmetry + audit, not a live learning signal, until the
-    mining IN-list is widened. It is emitted now so no history is lost."""
+    contract stay uniform across target types. learning-service registers this
+    event (main.py) and mines it (`target_type IN (…, 'fact')`, mining.py); the KS
+    invalidate route only emits it for EXTRACTION-derived facts (a purely
+    human-authored fact retraction is gated out, so it can't false-degrade a run)."""
     return {
         "user_id": user_id,
         "project_id": project_id,

@@ -234,12 +234,14 @@ async def handle_glossary_entity_merged(event: EventData, *, pool: asyncpg.Pool)
 
 
 async def handle_knowledge_corrected(event: EventData, *, pool: asyncpg.Pool) -> None:
-    """`knowledge.{entity,relation,event}_corrected` → a correction.
+    """`knowledge.{entity,relation,event,fact}_corrected` → a correction.
 
-    KS emits these only from user-facing edit endpoints (BUILD sub-session B),
-    so they are user corrections by construction. The payload carries the full
-    correction core including the owner `user_id`. `target_type` is taken from
-    the payload (entity|relation|event)."""
+    KS emits these only from user-facing edit endpoints (BUILD sub-session B; fact
+    added S-05), so they are user corrections by construction. The payload carries
+    the full correction core including the owner `user_id`. `target_type` is taken
+    from the payload (entity|relation|event|fact). KS gates the `fact` event to
+    EXTRACTION-derived facts only (a purely human-authored fact retraction is not
+    emitted), so mining never sees a user's own-fact edit as an extraction signal."""
     payload = event.payload
     target_type = payload.get("target_type") or _TARGET_FROM_EVENT.get(event.event_type, "entity")
 
@@ -269,6 +271,7 @@ _TARGET_FROM_EVENT = {
     "knowledge.entity_corrected": "entity",
     "knowledge.relation_corrected": "relation",
     "knowledge.event_corrected": "event",
+    "knowledge.fact_corrected": "fact",  # S-05 (extraction-derived fact retractions)
 }
 
 
