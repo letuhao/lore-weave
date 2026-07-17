@@ -1,5 +1,53 @@
 # ▶▶ NEXT SESSION STARTS HERE
 
+## 🔧 BUILD FIXED + repo-wide TEST SWEEP — **DONE, 2026-07-17** (HEAD `4ea141e9e`)
+>
+> ### `docker compose build` was BROKEN — fixed at root cause (`b74a48793`)
+> Reproduced first: `docker compose build` → **EXIT 1**, `target learning-service: failed to solve`.
+> **Root cause (a single-service build HIDES it):** compose builds ~33 images **concurrently** ⇒ ~33 pip
+> processes hit PyPI at once ⇒ the CDN returns **truncated bodies**. Building one service alone succeeds
+> every time. The network is **FLAKY UNDER CONCURRENCY, not blocked** (an early read of mine said
+> "blocked" — wrong; and there is no IPv6 route here at all, so that theory was wrong too).
+> **Why pip's own `--retries` can't save it:** pip retries a *failed connection* (the log shows
+> `Retrying (Retry(total=4…))` recovering fine), but a **truncated body under HTTP 200** is not a failure
+> to pip — it parses the short JSON index and dies with `JSONDecodeError`, instantly, no retry. **Fix:** an
+> outer retry loop around all 24 pip RUNs in 11 Dockerfiles (any non-zero exit is retryable; still fails
+> hard after 5 so it never masks a real error). **Proof — same network, same 33-way storm:** network errors
+> still occurred **25×**, the retry fired **12×**, `failed to solve` **0**, **33/33 images Built, EXIT 0**,
+> on the **default PyPI**. `345055b4b` also adds an opt-in `ARG PIP_INDEX_URL` (defaults to PyPI — CI/prod
+> byte-identical) as an escape hatch for an unusable index; it is **not** the flaky-network fix.
+> **PO question settled with evidence:** there is **no library to remove or rewrite** — zero CN packages in
+> any requirements; the same `/sdk` installs cleanly (50+ deps) with only the index host changed; and a
+> mirror wheel hashed **byte-identical** to PyPI's own published sha256.
+>
+> ### Repo-wide sweep — EVERY suite green, 15 reds cleared (`bf29e70b5`, `4ea141e9e`)
+> | | result |
+> |---|---|
+> | **Python** 14 svcs | **12 reds → fixed.** chat 1708 · composition 2289 · knowledge 4009 · worker-ai 474 · translation 1053 · lore-enrichment 965 · campaign 183 · learning 195 · jobs 97 · video-gen 58 |
+> | **Go** 28 svcs | 28/28 ok, no reds |
+> | **Rust** | tilemap 518 · world 134 · roleplay 9 · travel 0 (genuinely has no tests) |
+> | **Node** | api-gateway-bff **201** (was 188 + 2 dead suites) · ai-gateway 206 · mcp-public-gateway 264 · game-server 40 · knowledge-gateway 19 |
+> | **Frontends** | frontend 5739 · frontend-game 155 · cms-frontend 41 |
+>
+> **Two finds worth carrying forward:**
+> - **A REAL bug:** `kg_create_node.kind` advertised **no enum** — S7's 5-kind closed set lived only in the
+>   bespoke schema, while the **FastMCP signature** (the one actually advertised as `inputSchema`) typed it
+>   `str` with the set in *prose*. The `panel_id:"editor"` silent-no-op class. Fixed at the SSOT:
+>   `AUTHORABLE_KINDS` now derives from an `AuthorableKind` Literal that the signature reuses.
+> - **api-gateway-bff's green was LYING:** "188 passed" while health.spec + proxy-routing.spec **never ran**
+>   (a required `agentRegistryUrl` was added; the fixtures weren't → TS2345 killed both suites before their
+>   first test). 13 tests had silently stopped executing.
+>
+> **Gotchas for the next sweeper** (both bit me):
+> - `cargo` prints one `test result:` line **per target** — reading only the last reports an empty doc-test
+>   as the total (my first pass claimed world-service had 0 tests; it has 134). **Aggregate them.**
+> - **Never run a whole suite while other suites/builds run** — CPU contention false-REDs any wall-clock
+>   assertion (it red `test_intent_classifier` once; `874713245` converted that one to a scaling ratio).
+> - `frontend-game` + `packages/*` are **pnpm** (`pnpm-workspace.yaml`); `frontend/` is **intentionally npm**.
+>   `npm install` in frontend-game breaks node_modules — use `pnpm install --filter frontend-game...`.
+> - `cms-frontend` + `knowledge-gateway` ship **no node_modules** — their suites (41 / 19) run only after an
+>   install, so nobody had been running them.
+
 ## 🧹 RECONCILE of the 8-session fan-out — **DONE, 2026-07-17** (HEAD `e72d712c1`)
 > The shared checkout is **reconciled: `git ls-files --others` empty, and the only file left dirty is
 > `docs/ARCHITECTURE.md`** — it was still being written *while this reconcile ran* (mtime landed mid-commit;
