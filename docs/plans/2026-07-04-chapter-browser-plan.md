@@ -1,6 +1,6 @@
 # Chapter Browser — Build Plan
 
-> Executes [`15_chapter_browser.md`](../specs/2026-07-01-writing-studio/15_chapter_browser.md). PO-approved design draft + spec, now in PLAN.
+> Executes [`15b_chapter_browser.md`](../specs/2026-07-01-writing-studio/15b_chapter_browser.md). PO-approved design draft + spec, now in PLAN.
 
 ## Size classification (manual — `.workflow-state.json` still off-limits, see note)
 
@@ -54,7 +54,7 @@ Phase B (FE, parallel where independent):
 | Phase | State |
 |---|---|
 | CLARIFY | Done — design draft approved, 2 scoping questions answered (word_count IN, bulk-export zip IN) |
-| DESIGN | Done — `15_chapter_browser.md`, including the DOCK-8 analysis for why Title/Content stay one panel |
+| DESIGN | Done — `15b_chapter_browser.md`, including the DOCK-8 analysis for why Title/Content stay one panel |
 | REVIEW (design) | Done — self-review during spec-writing (investigation findings table, CB1-CB8 decisions) |
 | PLAN | This document |
 | BUILD | Next — Phase A (serial) → Phase B (parallel B1/B2/B3) → integrate → B4/B5 |
