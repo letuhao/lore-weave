@@ -106,7 +106,11 @@ Two committed Playwright suites run over the REAL login/gateway/dockview stack o
 **EVERY S6 debt item is now built** except `kind` (won't-fix — verified write-only; building it is a defect). No open S6 work remains.
 - **E5 take-first-candidate** — quality panels bind the FIRST Work on an ambiguous multi-Work book (pre-existing convention across ALL consumers). Not S6's to fix; cross-cutting. Filed.
 - **E6 BE-9a null-job report** — the "N units couldn't capture a correction" honest surface belongs to S1's authoring-run report (S1 owns the producer seam). Coordinate BE-9a/9b with S1.
-- **D5 S7 deep-link targets** — flywheel chips open cast/kg-timeline/kg-graph (S7's panels). Pace M5 after S7 registers them; disable-with-reason any not-yet-registered target, never a dead chip.
+- **D5 S7 deep-link targets → ✅ RESOLVED (verified live 2026-07-17, by S7 landing `71b6c8cbf`).** All three flywheel chip targets are now registered in the catalog — `cast` (line 352, "owner: S7"), `kg-timeline` (200), `kg-graph` (205) — and FlywheelStudioPanel routes onOpenCast/Timeline/Relations through `host.openPanel('cast'|'kg-timeline'|'kg-graph')`. No dead chip remains. Nothing left to pace.
+
+### RESIDUAL — the ONLY open threads after S6 closure (both NOT S6-owned; tracked to their owner track)
+- **E5 take-first-Work** (defer gate #1 out-of-scope) — quality panels bind the FIRST Work on a multi-Work book. A pre-existing convention across **every** consumer, not an S6 bug; the correct fix is one cross-cutting change at the shared resolver, not in S6.
+- **E6 BE-9a null-job honest surface** (defer gate #1 out-of-scope) — the "N units couldn't capture a correction" report belongs to **S1's** authoring-run report (S1 owns the `authoring_run_units.job_id` producer seam). Needs S1 coordination; not buildable inside S6.
 
 ### DRIFT  (near-misses, bars nearly lowered, tests nearly skipped)
 - Draft screen-quality-completion.html flags BE-11a `restore` as MUST-BUILD, but it SHIPPED since (canon.py:192-216). Verified before trusting the doc (repo laws: verify claim against code; missing-infra≠blocked). Do NOT re-build restore.
