@@ -56,7 +56,7 @@ from app.clients.reranker_client import get_reranker_client
 from app.clients.grant_client import get_grant_client
 from app.config import settings
 from app.db.neo4j import neo4j_session
-from app.db.neo4j_repos.entities import list_entities_filtered
+from app.db.neo4j_repos.entities import AuthorableKind, list_entities_filtered
 from app.db.neo4j_repos.facts import FactType
 from app.db.pool import get_knowledge_pool
 from app.db.repositories.graph_schemas import GraphSchemasRepo
@@ -1132,8 +1132,8 @@ async def kg_create_node(
     ctx: MCPContext,
     name: Annotated[str, "the entity's name"],
     kind: Annotated[
-        str,
-        "the entity kind — one of: character, location, organization, concept, item",
+        AuthorableKind,
+        "the entity kind (closed set)",
     ],
     project_id: _PROJECT_ID_ARG = None,
 ) -> dict:

@@ -152,6 +152,11 @@ PACKAGE_TIER_SETTINGS = {
     "critic_model_source",           # its provider kind
     "assembly_mode",                 # how the book's prose assembles — a book property
     "narrative_thread_enabled",      # the book's promise-ledger toggle — steers shared generation
+    "derivative_name",               # BE-13a — the dị bản's human label. Package-tier, not a
+                                     # preference: it NAMES the derivative Work itself (seeded at
+                                     # create in routers/works.py, read back as `name` by the MCP
+                                     # work reads), so two grantees cannot want different values
+                                     # for the same object the way they could a font size.
 }
 
 # The files that write/read `composition_work.settings` (the Work manifest).

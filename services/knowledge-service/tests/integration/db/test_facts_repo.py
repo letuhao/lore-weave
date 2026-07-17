@@ -69,11 +69,19 @@ def test_k11_7_fact_id_rejects_empty_inputs():
 
 
 def test_k11_7_fact_types_constant_matches_literal():
+    # Deliberate change-detector: the vocabulary lives in THREE places that must move
+    # together — the FactType Literal (models.py), this constant, and the pending-facts
+    # CHECK in migrate.py (test_migrate_ddl pins that one). Widening it here without the
+    # DDL would let an unknown type reach merge_fact and 500.
+    # WS-2.1 added 'statement' (the diary's coarse fact kind);
+    # WS-5.7 added 'commitment' (a promised action + due date).
     assert set(FACT_TYPES) == {
         "decision",
         "preference",
         "milestone",
         "negation",
+        "statement",
+        "commitment",
     }
 
 

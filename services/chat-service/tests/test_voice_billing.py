@@ -88,7 +88,34 @@ def _patch_pipeline(monkeypatch):
     kc.resolve_book_id = AsyncMock(return_value=None)  # no book → capture self-gates to fire=False
     kc.get_tool_definitions = AsyncMock(return_value=[])  # WS-4.1-tools — voice's tool surface
     monkeypatch.setattr(vss, "get_knowledge_client", lambda: kc)
-    return SimpleNamespace(kctx=kctx, kc=kc)
+    # C6 put a provider-registry price lookup INSIDE the fire-and-forget usage task
+    # (`_billed_voice_log` awaits price_voice before log_usage). Unpatched, that is a real
+    # HTTP call from a unit test; patched, the voice records price deterministically to $0
+    # (the local-Whisper/Kokoro case) and the task reaches log_usage promptly.
+    pc = MagicMock()
+    pc.price_voice = AsyncMock(return_value=0.0)
+    monkeypatch.setattr(vss, "get_provider_client", lambda: pc)
+    return SimpleNamespace(kctx=kctx, kc=kc, pc=pc)
+
+
+async def _drain_background_tasks(limit: int = 100) -> None:
+    """Run the voice turn's fire-and-forget `asyncio.create_task(...)` usage logs to completion.
+
+    A single `asyncio.sleep(0)` (what this replaced) only advances each task to its FIRST suspension point.
+    That was enough until C6 added an await (provider pricing) inside `_billed_voice_log`, after
+    which the task parks on pricing and never reaches `billing.log_usage` — the assertions then
+    read an empty call list and `next()` raised StopIteration (surfacing as the RuntimeError
+    'coroutine raised StopIteration'). Draining to quiescence tests the effect instead of
+    guessing a tick count, and stays correct if another await is added later.
+    """
+    for _ in range(limit):
+        pending = [
+            t for t in asyncio.all_tasks()
+            if t is not asyncio.current_task() and not t.done()
+        ]
+        if not pending:
+            return
+        await asyncio.wait(pending, timeout=1)
 
 
 async def _run_voice(billing, session_kind="chat", project_id=None,
@@ -139,7 +166,7 @@ async def test_billing_logged_with_real_tokens(_patch_pipeline):
     billing = MagicMock()
     billing.log_usage = AsyncMock()
     await _run_voice(billing)
-    await asyncio.sleep(0)  # let the fire-and-forget create_task run
+    await _drain_background_tasks()
     # the LLM (chat-purpose) usage carries the real tokens
     calls = [c.kwargs for c in billing.log_usage.await_args_list]
     llm = next(c for c in calls if c.get("purpose", "chat") == "chat")
@@ -154,7 +181,7 @@ async def test_wsb_stt_usage_is_plumbed_not_discarded(_patch_pipeline):
     billing = MagicMock()
     billing.log_usage = AsyncMock()
     await _run_voice(billing)
-    await asyncio.sleep(0)
+    await _drain_background_tasks()
     calls = [c.kwargs for c in billing.log_usage.await_args_list]
     stt = next(c for c in calls if c.get("purpose") == "voice_stt")
     assert stt["input_tokens"] == 0 and stt["output_tokens"] == 0  # no faked token cost
@@ -211,7 +238,7 @@ async def test_wsb_tts_billing_branch_records_characters(_patch_pipeline, monkey
     monkeypatch.setattr(_vss, "_generate_tts_chunks", _yielding_tts)
     billing = MagicMock(); billing.log_usage = AsyncMock()
     await _run_voice(billing)
-    await asyncio.sleep(0)
+    await _drain_background_tasks()
     calls = [c.kwargs for c in billing.log_usage.await_args_list]
     tts = next(c for c in calls if c.get("purpose") == "voice_tts")
     assert tts["input_payload"]["tts_characters"] > 0
@@ -224,7 +251,7 @@ async def test_wsa1_suspend_bills_real_tokens_and_surfaces_error(_patch_pipeline
     monkeypatch.setattr("app.services.stream_service._stream_with_tools", _suspend_stream)
     billing = MagicMock(); billing.log_usage = AsyncMock()
     lines = await _run_voice(billing)
-    await asyncio.sleep(0)
+    await _drain_background_tasks()
     assert any('"error"' in l and "voice" in l.lower() for l in lines)  # error surfaced
     calls = [c.kwargs for c in billing.log_usage.await_args_list]
     llm = next(c for c in calls if c.get("purpose", "chat") == "chat")
@@ -245,7 +272,7 @@ async def test_voice_roleplay_at_cadence_fires_the_executive_tick(_patch_pipelin
     billing = MagicMock(); billing.log_usage = AsyncMock()
     # EXECUTIVE_EVERY_N_TURNS = 4 → message_count=4 hits the cadence.
     await _run_voice(billing, session_kind="assistant", working_memory_seed=_SEED, message_count=4)
-    await asyncio.sleep(0)  # let the scheduled task be created
+    await _drain_background_tasks()
     tick.assert_called_once()
     assert tick.call_args.args[0] == "s1"  # session_id forwarded
 
@@ -258,7 +285,7 @@ async def test_voice_roleplay_off_cadence_does_not_fire(_patch_pipeline, monkeyp
     monkeypatch.setattr(ss, "_fire_executive_tick", tick)
     billing = MagicMock(); billing.log_usage = AsyncMock()
     await _run_voice(billing, session_kind="assistant", working_memory_seed=_SEED, message_count=3)
-    await asyncio.sleep(0)
+    await _drain_background_tasks()
     tick.assert_not_called()
 
 
@@ -270,5 +297,5 @@ async def test_voice_non_roleplay_never_fires_the_tick(_patch_pipeline, monkeypa
     monkeypatch.setattr(ss, "_fire_executive_tick", tick)
     billing = MagicMock(); billing.log_usage = AsyncMock()
     await _run_voice(billing, session_kind="chat", working_memory_seed=None, message_count=4)
-    await asyncio.sleep(0)
+    await _drain_background_tasks()
     tick.assert_not_called()

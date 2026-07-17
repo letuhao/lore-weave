@@ -23,7 +23,7 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime
-from typing import Any
+from typing import Any, Literal, get_args
 
 from pydantic import BaseModel, Field, computed_field
 
@@ -46,6 +46,7 @@ __all__ = [
     "ENTITY_STATUSES",
     "ENTITY_SORT_KEYS",
     "AUTHORABLE_KINDS",
+    "AuthorableKind",
     "merge_entity",
     "upsert_glossary_anchor",
     "get_entity",
@@ -194,13 +195,22 @@ ENTITY_SORT_KEYS: tuple[str, ...] = ("mention_count", "anchor_score")
 # exist (the only caller sent ``location``), so this is a pure rename, no
 # migration. ``event_ref``/``preference`` (browse-filter kinds) stay OUT —
 # they are timeline-ref / chat-derived, not user-authorable content.
-AUTHORABLE_KINDS: tuple[str, ...] = (
+#
+# Declared as a Literal (and the tuple DERIVED from it, the same idiom
+# ``FactType``/``FACT_TYPES`` uses) so a consumer that needs a *type* — notably
+# the FastMCP tool signature, which is what gets advertised as the MCP
+# ``inputSchema`` — can reuse this closed set instead of re-declaring it. A
+# closed-set arg must reach the model as an ``enum``, never as prose in a
+# description: prose is not machine-checked, so the agent learns the constraint
+# only by guessing wrong (the ``panel_id: "editor"`` silent-no-op bug class).
+AuthorableKind = Literal[
     "character",
     "location",
     "organization",
     "concept",
     "item",
-)
+]
+AUTHORABLE_KINDS: tuple[str, ...] = get_args(AuthorableKind)
 
 
 def _node_to_entity(node: Any) -> Entity:

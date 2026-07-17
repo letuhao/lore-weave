@@ -9,6 +9,7 @@ helper. Tests now patch `_stream_via_gateway` instead of `acompletion` /
 from __future__ import annotations
 
 import json
+import re
 from contextlib import asynccontextmanager
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
@@ -24,6 +25,34 @@ from app.services.stream_service import (
     parse_inline_effort,
 )
 from tests.conftest import TEST_SESSION_ID, TEST_USER_ID, TEST_MODEL_REF
+
+
+def insert_param(call, column: str):
+    """Read an INSERT's bound parameter BY COLUMN NAME, from the SQL the code actually ran.
+
+    Replaces positional reads like `args[-2]`. Those needed a comment to survive
+    ("$12, second-to-last since response_id was appended as $13") and broke anyway every
+    time a column was appended — `exclude_from_memory`/`local_date` shifted the payload two
+    slots left, so `args[-2]` started returning a bool and json.loads() raised TypeError.
+    Binding by name tracks the statement instead of guessing at its shape.
+
+    Returns the bound arg for `$N`, or the inline literal when the column is hardcoded in
+    VALUES (e.g. `branch_id` → `0`).
+    """
+    sql = call.args[0]
+    m = re.search(r"INSERT INTO \w+\s*\(([^)]*)\)\s*VALUES\s*\(([^)]*)\)", sql, re.S)
+    assert m, f"could not parse the INSERT statement:\n{sql}"
+    columns = [c.strip() for c in m.group(1).split(",")]
+    values = [v.strip() for v in m.group(2).split(",")]
+    assert len(columns) == len(values), (
+        f"INSERT lists {len(columns)} columns but {len(values)} values — the statement is "
+        f"malformed or this parse is too naive for it:\n{sql}"
+    )
+    assert column in columns, f"{column!r} is not in the INSERT: {columns}"
+    token = values[columns.index(column)]
+    if (pm := re.match(r"\$(\d+)", token)) is None:
+        return token.strip("'")          # an inline literal, not a bound param
+    return call.args[int(pm.group(1))]   # args[0] is the SQL, so $N lands on args[N]
 
 
 # ── RE: reasoning-effort wiring (the chat thinking no-op fix) ──────────────
@@ -1344,15 +1373,12 @@ class TestK21BToolCallingIntegration:
         assert len(insert_calls) == 1
         # The INSERT SQL writes the tool_calls column.
         assert "tool_calls" in insert_calls[0].args[0]
-        # tool_calls JSON is $11 (third-to-last since W1 appended context_breakdown
-        # as $12, and the stateful-chain feature later appended response_id as $13).
-        tool_calls_json = insert_calls[0].args[-3]
+        tool_calls_json = insert_param(insert_calls[0], "tool_calls")
         assert tool_calls_json is not None
         assert json.loads(tool_calls_json) == [tool_call]
-        # W1 — the context_breakdown JSONB ($12, second-to-last arg since response_id
-        # was appended as $13) is persisted and carries the per-category breakdown
-        # incl. the tool_results bucket.
-        ctx_json = insert_calls[0].args[-2]
+        # W1 — the context_breakdown JSONB is persisted and carries the per-category
+        # breakdown incl. the tool_results bucket.
+        ctx_json = insert_param(insert_calls[0], "context_breakdown")
         assert ctx_json is not None
         ctx = json.loads(ctx_json)
         assert set(ctx) >= {"used_tokens", "pct", "breakdown", "baseline_tokens",
@@ -1392,9 +1418,8 @@ class TestK21BToolCallingIntegration:
             if "INSERT INTO chat_messages" in str(c)
         ]
         assert len(insert_calls) == 1
-        # tool_calls JSON ($11, third-to-last arg — see note above) is None when
-        # no calls were made.
-        assert insert_calls[0].args[-3] is None
+        # tool_calls JSON is None when no calls were made.
+        assert insert_param(insert_calls[0], "tool_calls") is None
 
     @pytest.mark.asyncio
     async def test_tool_call_chunk_excluded_from_assistant_content(self):
@@ -2291,7 +2316,7 @@ class TestW1ContextBreakdownFrame:
         # arg since the stateful-chain feature appended response_id as $13).
         insert_calls = [c for c in conn.execute.call_args_list
                         if "INSERT INTO chat_messages" in str(c)]
-        persisted = json.loads(insert_calls[0].args[-2])
+        persisted = json.loads(insert_param(insert_calls[0], "context_breakdown"))
         assert persisted["breakdown"]["mcp_tool_schemas"] == 2222
         assert persisted["used_tokens"] == frame["used_tokens"]
 
@@ -2343,7 +2368,7 @@ class TestW1ContextBreakdownFrame:
 
         insert_calls = [c for c in conn.execute.call_args_list
                         if "INSERT INTO chat_messages" in str(c)]
-        persisted = json.loads(insert_calls[0].args[-2])
+        persisted = json.loads(insert_param(insert_calls[0], "context_breakdown"))
         assert persisted["used_tokens"] == 1000
         assert persisted["caching"]["context_size"] == 1000
         # The billed input_tokens column is a SEPARATE positional param and must
@@ -2373,7 +2398,7 @@ class TestW1ContextBreakdownFrame:
                         if "INSERT INTO chat_messages" in str(c)]
         assert "context_breakdown" in insert_calls[0].args[0]
         # $12, second-to-last arg since response_id trails it as $13.
-        assert json.loads(insert_calls[0].args[-2])["breakdown"]["history"] >= 0
+        assert json.loads(insert_param(insert_calls[0], "context_breakdown"))["breakdown"]["history"] >= 0
 
 
 class TestW1CompactionFrame:

@@ -674,7 +674,13 @@ async def test_process_job_chat_records_spending_on_success(mock_extract_persist
     bc = _mock_book_client()
     gc = _mock_glossary_client()
 
-    await process_job(pool, kc, llm, bc, gc, _mock_chat_client(), _mock_provider_client(), job)
+    # The turns must carry TEXT. D-EXTRACTION-SILENT-NOOP later made an empty turn a
+    # deliberate skip that is not charged, so `_mock_chat_client()`'s default of no text
+    # stopped exercising the success path this test names — it was asserting the spend of
+    # a branch it no longer entered. Non-empty text puts it back on the paid path.
+    chat = _mock_chat_client(text="Kai told Master Lin he would leave the sect.")
+
+    await process_job(pool, kc, llm, bc, gc, chat, _mock_provider_client(), job)
 
     spending_calls = [
         c for c in pool.execute.call_args_list

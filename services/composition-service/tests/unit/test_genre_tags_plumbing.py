@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import inspect
 import json
+import re
 from pathlib import Path
 
 from app.db.models import PlanRun
@@ -63,7 +64,15 @@ def test_the_repo_SELECTS_it_back():
 def test_jsonb_columns_are_DECODED_not_left_as_strings():
     # asyncpg hands JSONB back as `str` unless a codec is registered. A column selected but not
     # decoded validates as a string and then silently becomes the model's default.
-    assert 'for key in ("checkpoint_state", "pass_state", "genre_tags")' in REPO_SRC
+    #
+    # Assert each key is IN the decode loop rather than matching the loop's exact literal: the
+    # tuple legitimately grows (it since gained "grounded_on"), and a guard that reds on a correct
+    # extension trains people to edit the guard. Dropping a key still fails this.
+    m = re.search(r"for key in \(([^)]*)\):", REPO_SRC)
+    assert m, "the JSONB decode loop is gone from the repo — every JSONB column now returns `str`"
+    decoded = {k.strip().strip('"').strip("'") for k in m.group(1).split(",") if k.strip()}
+    for column in ("checkpoint_state", "pass_state", "genre_tags"):
+        assert column in decoded, f"{column} is selected but never JSON-decoded → silently defaults"
 
 
 def test_the_model_carries_both_new_columns():
