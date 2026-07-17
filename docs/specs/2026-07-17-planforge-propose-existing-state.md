@@ -282,16 +282,20 @@ EDIT)`); it adds no new read surface a user couldn't already reach.
 `continues_existing=true` / a new arc `=false`; a blind propose left `grounded_on` null (fails closed);
 the LLM path prepended the EXISTING STATE block into the enqueued job. BE 487 + FE 83 green.
 
-**Honest coverage gaps (recorded, non-blocking — the ceiling is OFF so none are user-visible yet):**
-1. **Per-user setting not persisted (OQ-2).** The planner toggle is EPHEMERAL component state (resets on
-   remount); OQ-2 specified a per-user *setting* that defaults it (a server-side preference). Deferred —
-   non-urgent while the ceiling is OFF. Follow-up: store `ground_on_existing` default in `/v1/me/
-   preferences` (server-side, one home) and default the toggle from it.
-2. **Systems (variables/motifs) never populated live.** `_gather_book_state` passes `latest_package=None`,
-   so the systems component is always "no compiled systems yet". A book-scoped latest-compiled-package
-   read is the enhancement. The gather lens ALREADY consumes a package when handed one (unit-tested).
-3. **Cast is name+id only, capped by count not mention-rank.** The KAL roster (`roster()`) exposes only
-   `{entity_id, name}`; role/trait/mention-frequency need a richer glossary endpoint. The anti-re-invention
-   goal only needs the names, which are present.
-4. **A/B eval (P5) not run.** The ceiling stays OFF until the canon-check-judge A/B shows grounding
-   improves the plan. That eval is the gate to flipping `PLANFORGE_GROUND_ON_EXISTING_ALLOWED` on.
+**Coverage gaps — the 2026-07-17 follow-up cleared them (PO: "clear the gaps + measure for real"):**
+1. ✅ **Per-user setting persisted (OQ-2)** — the planner toggle now loads from + writes through to
+   `/v1/me/preferences` (`planner.groundOnExisting`), server-side, one home. Commit `bf4b5afc8`.
+2. ✅ **Systems populate live** — `_gather_book_state` reads the book's latest `spec` (variables) +
+   `motif_plan` (motifs) via a new book-scoped `latest_artifact_for_book`. Commit `cce54ad81`; a live
+   ambiguous-`id` SQL 500 (JOIN) that the unit suite couldn't see was caught by the measurement + fixed
+   (`bcafc99f4`); proven live ("4 variable(s) in play").
+3. 🔵 **Cast name+id only — assessed, legitimate cross-service defer.** The KAL roster is DELIBERATELY
+   projection-restricted to `{entity_id, name}` (`kal-read.controller.ts:107`); adding role/kind is a
+   knowledge-gateway (TS) change to a deliberate restriction, out of composition scope. The
+   anti-re-invention goal only needs names, which are present.
+4. ✅ **A/B eval RUN (đo thật) — and it says KEEP THE CEILING OFF.** Two blind-vs-grounded gemma proposes
+   on book 019f6555: cast continuity **0/3 in every cell (TIE)**; grounding added nothing (arc continuity
+   3/3 is the baseline `_ground_llm_source`, not a win). Root cause: a character-less braindump generates
+   no cast → normalize pads "Nữ chính"; prompt grounding references but does not INVENT a cast. Per OQ-2
+   the ceiling therefore does **not** flip — the eval gated a generation-quality claim that isn't real.
+   Report + follow-ups: `docs/reports/2026-07-17-propose-blind-ab-eval.md`. Commit `6597a1ee2`.
