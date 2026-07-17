@@ -123,7 +123,44 @@ Audited the S4 surface against the §2 bar (9 dims). "Committed" masked 3 unmet 
 - **#9 Full pagination — CLOSED.** BE: added `offset` to `GET /motifs` + `MotifRepo.list_for_caller` (stable `ORDER BY owner_user_id NULLS FIRST, name`). **Live-proven:** offset=0 vs offset=2 return different rows. FE: `useMotifLibrary` → `useInfiniteQuery` for the flat scopes (my/system/drafts/catalog) with a "Load more" button; book/shared (merged route, not offset-paginated) keep the truncation signal. 2 pagination tests + 174 suite green. /review-impl caught + fixed a book/shared silent-cap regression.
 - **#8 i18n — HANDLED BY THE ESTABLISHED PIPELINE (not hand-fabricated).** Verified an async translation pipeline already translated my earlier `motif.suggest`/`graph`/`scope` keys to all 18 locales (vi = high-quality "Gợi ý một mô-típ"). My newest keys flow through the same pipeline; my action was to keep `en` complete + remove the stale `motif.list.truncated` key (then re-add when book/shared reused it). Hand-translating 17 languages would be lower quality than the pipeline — so this is MET via the repo's mechanism, not a gap I fake.
 
+### D-S4-5 — MOTIF/ARC EMBEDDING TENANCY RE-DESIGN (DONE, 2026-07-17, PO: "thiết kế lại")
+Two embedding SPACES: shared (system/public/unlisted/book_shared) → platform model (P-space); a user's
+STRICTLY-PRIVATE motif/arc → the OWNER's OWN BYOK model (U-space, bills the owner). Query embedded once per
+space, each ranked independently, `match_reason.section ∈ {mine,library}` (PO chose §4-A two-section).
+- **P1 (arc, the LIVE bug)** — `_embed_and_persist_arc` was platform-embedding private arcs → now branches by
+  tier; `retrieve_arcs` two-space + section tag; user_model wired at REST + MCP. +4 tests. Commit `abb9ff5e9`.
+- **P2 (motif)** — built the MISSING persist path (motif summary vectors were NEVER persisted → always
+  degraded) inline + tier-aware; two-space `retrieve()`; user_model wired at suggest-motifs REST + MCP (the
+  planner needs no query → stays degrade). FE `SceneMotifsSection` renders 2 sections ("Your motifs" / "From
+  the library"). +4 BE +2 FE tests, en i18n keys. Commit `8c59b02b2`.
+- **review-impl fix** — closed a cross-space leak: a since-PUBLISHED private row's stale user-vector could be
+  cosined against the platform query → `_shared_vector_fresh(stored, platform_ref)` re-embeds/skips it. +1
+  regression test. Commit `3b3354df2`.
+- **VERIFY:** 595 motif/arc/embed + 462 plan/retrieve BE, 177 motif FE, tsc clean, provider-gate green ×3.
+- **LIVE SMOKE (real DB + real provider-registry + real bge-m3, in-container):** a test-acct PRIVATE motif
+  went `embedding_model '' → 019eeb08…(bge-m3), dim 1024` — embedded with the USER's model (billed to the
+  user via `embed(user_id=caller)`), `section='mine'`, real cosine 0.45–0.51 (degraded=False). System/shared
+  motifs → `section='library'`, degraded (platform embed model is UNSET in dev → honest degrade, not a fake
+  score). Proves private→owner-BYOK, shared→platform, no cross-space cosine — end to end. ✅
+- **DEBT (config, not code):** `motif_embed_model_ref`/`motif_embed_owner_id` are UNSET in the dev deploy → the
+  shared "library" section degrades to genre. A deploy-config gap (set the platform embed credential), NOT a
+  code bug — the code degrades honestly. → **D-MOTIF-PLATFORM-EMBED-CONFIG** (set the platform embed model in
+  deploy so the library section ranks semantically too).
+- **DEBT (minor UX):** the degrade banner text says "library fallbacks" but also shows when it's the MINE
+  section that degraded (caller has no embed model). Wording could be per-section. → **D-MOTIF-DEGRADE-BANNER-WORDING** (LOW).
+
 ### DRIFT  (near-misses, bars nearly lowered, tests nearly skipped)
+- **SPEC-PREMISE-IMPRECISE (D-S4-5, 2026-07-17):** the tenancy re-design spec's opening claim ("every motif
+  — incl. private — is embedded with the platform model") was FALSE against code. Verified: motif *summary*
+  vectors are NEVER persisted (queue-but-never-drained) → motif suggest is always degraded; the live cost
+  mis-attribution was in **arcs** (`_embed_and_persist_arc` platform-embeds private arcs). Had I built to the
+  prose, I'd have "fixed" a motif embed path that doesn't run and missed the real arc bug. Caught by tracing
+  every embed-persist site before writing code (the verify-first rule). The build relocated: arcs = fix the
+  live bug; motifs = build the missing persist path AND make it tier-aware. ([[completeness-audit-gap-hides-in-the-accounting-artifact]])
+- **NEAR-MISS (D-S4-5 review):** P1+P2 shipped a shared-freshness check (`not (user_ref == stored)`) that
+  trusted a since-published private row's stale user-vector when the caller had no model → a cross-space
+  cosine (the exact contamination the two-space split prevents). Only found by /review-impl walking the
+  freshness edge cases, not by any unit test at commit time. Fixed + regression-tested (commit 3b3354df2).
 - **BLOCKED-SMOKE → CLEARED (audit-debt, 2026-07-17):** the post-refactor live-browser regression smoke was briefly blocked by a CONCURRENT session's untracked broken `arcTemplates/api.ts` (S2) poisoning shared vite :5199. **S2 fixed it; the smoke then RAN GREEN:** motif-library (the `useInfiniteQuery` change) mounts · 6 scope tabs · renders real data · 0 console errors; quality-conformance mounts + chapter picker · 0 errors. The §8 same-folder risk materialised and self-resolved via coordination (I did NOT cross-edit S2's file). Confirms the pagination refactor + loop-connect have no live regression.
 - **NEAR-MISS (completeness):** I reported "S4 cleared to the §2 bar" after 3c committed — but an artifact audit found #5 (agent parity) was entirely UNBUILT (both Lane-B handlers PENDING), plus #6/#9 unmet. "Committed + tested + live-proven" is NOT "complete to the bar" — the bar has dims a green panel doesn't exercise. The RUN-STATE prose would have carried the gap silently ([[completeness-audit-gap-hides-in-the-accounting-artifact]]) if the audit hadn't checked the ledger + the actual query-key wiring.
 - **SPEC-STALE (3a-gate)** — spec 33 (§2.1, §9-3a) says the packer has "0 motif hits" and 3a must build BE-M1/M2/M3. Verified vs HEAD: BE-M1/M2 + W0-BE1 **already landed** by a concurrent track (38 motif hits in packer; `gather_motif` wired at all 3 pack() call-sites; effect test present). Had I trusted the doc note I'd have rebuilt a live lens ([[planforge-promoted-by-another-agent-check-compat]]). Only BE-M3 was real. Recorded so 3a's DoD "the packer effect test proves a bound motif changes the prompt" is a VERIFY step (run the existing test with a real DB), not a build.
