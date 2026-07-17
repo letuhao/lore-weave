@@ -151,18 +151,24 @@ FIXED:
 - FIX-7 AUDIT: other author surfaces reading entity facts — LoreSeeker + Cast both pass before_chapter_id
   (reader context, spoiler-window CORRECT). EntityDetailPanel was the ONLY author surface → already fixed.
   No other fail-closed empty-shell. CLEAN.
-DEFERRED (investigated, gate-passing — NOT lazy):
-- FIX-2 learning mining consume `target_type='fact'`: gate #1 (learning-service, not knowledge) + #2
-  (structural). Naive add = FALSE-DEGRADE bug — a human invalidating their OWN authored fact has no
-  source_extraction_run_id → matches ANY extraction run via the IS-NULL branch → wrongly lowers that
-  run's recomputed_outcome (the exact bug the existing 'generation'-exclusion comment warns of). Correct
-  fix needs the human-vs-extraction fact distinction, a learning-service design call. fact_corrected is
-  still emitted (audit value).
-- FIX-4b schema-authoring via the class-C confirm-token flow (kg_actions `_confirm_triage_schema_write`
-  DOES write) — a propose→confirm UX, a separate feature never in S-05 scope. gate #2.
-- FIX-5 deep-links IN ("N need triage →" from KG panels): the panel is already reachable (palette+nav);
-  a deep-link touches a SHARED component (OverviewSection) for discoverability polish, not an operability
-  gap. gate #5 conscious-scope. Not an empty-shell.
+## ═══ ROUND 2 (goal 3: "brainstorm and clear ALL defers") — ALL THREE NOW CLEARED ═══
+- FIX-2 CLEARED (commit 5303e2752): the fact_corrected event was DROPPED by learning (no dispatcher
+  registration) AND excluded by mining. Now: learning registers `knowledge.fact_corrected` → the
+  target-type-agnostic handler; mining IN-list +'fact'; CORRECTION_EVENT_TYPES contract + test updated.
+  The false-degrade trap is solved at the SOURCE: knowledge-service emits ONLY for extraction-derived
+  facts (source_types ⊄ {manual}) — a purely human-authored fact retraction is gated out. BE: KS 10 +
+  learning 25 pass. (Cross-service — the bus flow mirrors the proven entity/relation path exactly.)
+- FIX-4b CLEARED (commit 97de09bd8): the resolve route now WRITES the schema for add_to_vocab/add_to_schema
+  (the effect existed; only the resolve route didn't call it). Insight: a Manage-gated HUMAN click is the
+  synchronous approval — the confirm-token flow is for the ASYNC agent path. Params derive one-click from
+  the parked payload; OCC read in-request (no drift window); write-before-resolve so a conflict 422/409s
+  cleanly. FE restores the 2 actions + a confirm. widen/set_multi stay agent-path (params not derivable).
+  BE triage 31 + FE 9 pass.
+- FIX-5 CLEARED (commit 026a4d22d): count-gated "N need triage →" nudge on KgOverviewPanel → deep-links
+  into kg-triage. OverviewSection stays presentational (classic route shows no nudge). FE 7+12 pass.
+
+**S-05 fully complete: every defer/debt/bug from both audit rounds is FIXED. No open S-05 items.**
+Final verify: BE knowledge 50 + learning 25 + FE 259 = green.
 
 ## DRIFT LOG (near-misses — an empty log at end is dishonest)
 - Spec Part A "reuse confirm-promotion as-is" would ship an empty shell (T1+T2). Deviating to make the
