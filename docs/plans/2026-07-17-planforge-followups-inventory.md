@@ -6,6 +6,12 @@
 >
 > **Nothing below blocks a shipped feature** — PROPOSE-BLIND is CLOSED and correctly gated OFF; these
 > are the "make it better / clean up / measure more" items.
+>
+> **STATUS 2026-07-17: ALL CLEARED.** A1/A2/A3 built + the ≥2-books+model eval passed → per-user
+> grounding default flipped to opt-out. The orphaned cross-track items were adopted (their sessions
+> closed): **C1** progress get_goal RED test fixed (stale stub; `4af2b7077`); **C2** SceneMotifsSection
+> already committed (`c94ed3eeb`); **C3** the "17-locale backlog" was 7 keys in 2 namespaces — filled,
+> i18n gate now GLOBALLY green (`7bf39f411`). Nothing outstanding.
 
 ## A · Needs a real spec/plan (design-heavy)
 
