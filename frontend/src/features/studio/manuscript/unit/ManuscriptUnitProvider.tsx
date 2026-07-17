@@ -134,6 +134,11 @@ export function ManuscriptUnitProvider({ bookId, children }: { bookId: string; c
   // #16 2.10 — the on-disk word count at the moment a chapter loads (the "baseline" so today's
   // first progress snapshot counts only words written THIS session, not pre-existing content).
   const loadedWordCountRef = useRef<number | null>(null);
+  // D-S5 — the loaded chapter TEXT + whether a REAL user edit (text changed) has happened since.
+  // Distinguishes a keystroke from Tiptap's mount-normalize (which re-emits the same text under a
+  // normalized structure); the fork-identity reload uses this instead of the structural dirty flag.
+  const loadedTextRef = useRef<string>('');
+  const userEditedRef = useRef<boolean>(false);
 
   // #12 — the book's composition Work (scenes[] source). No Work → scenes stay [].
   // resolveWork returns an ENVELOPE {status, work, candidates} — same extraction as
@@ -190,6 +195,11 @@ export function ManuscriptUnitProvider({ bookId, children }: { bookId: string; c
         textContent = draft.text_content || extractText(body);
       }
       loadedWordCountRef.current = wordCount(textContent);
+      // Track the loaded TEXT so a mount-normalize onUpdate (same text, Tiptap-normalized structure)
+      // is not mistaken for a user edit by the fork-identity reload below (isDirtyState false-fires on
+      // the structural diff; the TEXT is the real-edit signal).
+      loadedTextRef.current = textContent;
+      userEditedRef.current = false;
       setState({
         chapterId, loadedBody: body, savedBody: body, workingBody: null,
         version, textContent,
@@ -208,6 +218,24 @@ export function ManuscriptUnitProvider({ bookId, children }: { bookId: string; c
     if (projectId && chapterId && stateRef.current.scenes.length === 0) void loadScenes(chapterId);
   }, [projectId, loadScenes]);
 
+  // D-S5-DERIVATIVE-MANUSCRIPT-FORK — when the active Work's FORK IDENTITY changes while a chapter
+  // is open, reload it from the correct draft source. Two cases this fixes: (1) the active-work pref
+  // resolves AFTER the chapter auto-loaded (a deep-link/first-paint race) so the body loaded from
+  // canon on a derivative; (2) the user hits "Switch to" a dị bản (or back to canon) with a chapter
+  // already open — the manuscript must swap to that Work's draft. Skips a dirty unit (never clobbers
+  // unsaved edits) and only fires when the identity actually flips (not per render).
+  const forkIdentityRef = useRef<string>('');
+  useEffect(() => {
+    const identity = isDerivative ? `deriv:${projectId ?? ''}` : 'canon';
+    const chapterId = stateRef.current.chapterId;
+    if (!chapterId) { forkIdentityRef.current = identity; return; }
+    if (forkIdentityRef.current === identity) return;
+    forkIdentityRef.current = identity;
+    // Block ONLY on a real unsaved user edit (text changed) — never on a mount-normalize false-dirty.
+    if (userEditedRef.current) return;
+    void loadChapter(chapterId, false);
+  }, [isDerivative, projectId, loadChapter]);
+
   // Open a chapter into the unit. Dirty-flush (S7/M2): a pending edit is SAVED before switching so
   // navigation never loses work (a prompt variant is a later UX polish).
   const openUnit = useCallback(async (chapterId: string) => {
@@ -220,6 +248,9 @@ export function ManuscriptUnitProvider({ bookId, children }: { bookId: string; c
   }, [loadChapter]);
 
   const setBody = useCallback((doc: JSONContent, text: string) => {
+    // A REAL edit changes the text; a mount-normalize re-emits the loaded text. Only the former
+    // should block the fork-identity reload (D-S5).
+    if (text !== loadedTextRef.current) userEditedRef.current = true;
     // addTextSnapshots is REQUIRED before persist (chapter_blocks trigger) — do it at the edit
     // boundary so `workingBody` is always save-ready.
     setState((s) => {
@@ -286,6 +317,8 @@ export function ManuscriptUnitProvider({ bookId, children }: { bookId: string; c
         freshVersion = fresh.draft_version;
         freshText = fresh.text_content ?? extractText(body);
       }
+      loadedTextRef.current = freshText;
+      userEditedRef.current = false;   // persisted — no unsaved user edit remains
       setState((p) => (p.chapterId !== s.chapterId ? p : {
         ...p, savedBody: body, workingBody: null, version: freshVersion,
         textContent: freshText, saveState: 'saved', forked: freshForked,

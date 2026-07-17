@@ -5,6 +5,10 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { act, render } from '@testing-library/react';
 
+// A MUTABLE active-Work so a test can flip canonical→derivative mid-run (the deep-link/first-paint
+// race the fork reload fixes). Default: the dị bản.
+const activeWork = vi.hoisted(() => ({ current: { project_id: 'proj-d', source_work_id: 'src-w' } as { project_id: string; source_work_id?: string } | null }));
+
 const getDraft = vi.fn();
 const patchDraft = vi.fn();
 vi.mock('@/features/books/api', () => ({ booksApi: { getDraft: (...a: unknown[]) => getDraft(...a), patchDraft: (...a: unknown[]) => patchDraft(...a) } }));
@@ -15,7 +19,7 @@ vi.mock('@/lib/tiptap-utils', () => ({ addTextSnapshots: (d: unknown) => d, extr
 vi.mock('@/features/composition/hooks/useWork', () => ({ useWorkResolution: () => ({ data: { status: 'ok', work: null, candidates: [] } }) }));
 vi.mock('@/features/composition/hooks/useActiveWork', () => ({ useActiveWorkId: () => ({ data: 'proj-d' }) }));
 vi.mock('@/features/composition/workSelect', () => ({
-  resolveActiveWork: () => ({ project_id: 'proj-d', source_work_id: 'src-w' }),
+  resolveActiveWork: () => activeWork.current,
 }));
 
 const progressSpies = vi.hoisted(() => ({ reportProgress: vi.fn(), ensureBaseline: vi.fn() }));
@@ -51,6 +55,7 @@ const renderHoist = () => render(<ManuscriptUnitProvider bookId="b1"><Consumer /
 beforeEach(() => {
   getDraft.mockReset(); patchDraft.mockReset(); gwcd.mockReset(); pwcd.mockReset();
   progressSpies.reportProgress.mockReset();
+  activeWork.current = { project_id: 'proj-d', source_work_id: 'src-w' };
   api = null;
 });
 
@@ -89,6 +94,42 @@ describe('useManuscriptUnit — dị bản work-scoped draft (fork isolation)', 
     expect(pwcd).toHaveBeenCalledWith('proj-d', 'ch1', expect.objectContaining({ expected_version: 5 }), 't');
     expect(patchDraft).not.toHaveBeenCalled();
     expect(api!.state.version).toBe(6);
+  });
+
+  it('reloads from the work-draft when the active Work flips canonical→dị bản after load (the race)', async () => {
+    // Canonical first — the active-work pref has not resolved yet, so the chapter auto-loads canon.
+    activeWork.current = { project_id: 'proj-c' };
+    getDraft.mockResolvedValue({ chapter_id: 'ch1', body: doc('canon'), draft_version: 4, text_content: '' });
+    gwcd.mockResolvedValue({ forked: false, inherited: true, body: doc('inherit'), draft_version: 0, draft_format: 'json' });
+    const { rerender } = render(<ManuscriptUnitProvider bookId="b1"><Consumer /></ManuscriptUnitProvider>);
+    await act(async () => { await api!.openUnit('ch1'); });
+    expect(getDraft).toHaveBeenCalled();          // loaded canon first
+    expect(api!.state.isDerivative).toBe(false);
+    expect(gwcd).not.toHaveBeenCalled();
+    // The pref resolves → the active Work is now the dị bản. A mount-normalize false-dirty must NOT
+    // block the reload (no real text edit happened) — the work-draft is read + the unit switches.
+    activeWork.current = { project_id: 'proj-d', source_work_id: 'src-w' };
+    await act(async () => {
+      rerender(<ManuscriptUnitProvider bookId="b1"><Consumer /></ManuscriptUnitProvider>);
+      await Promise.resolve();
+    });
+    expect(gwcd).toHaveBeenCalledWith('proj-d', 'ch1', 't');
+    expect(api!.state.isDerivative).toBe(true);
+  });
+
+  it('does NOT reload (and would lose no edits) when the identity flips but a real edit is pending', async () => {
+    activeWork.current = { project_id: 'proj-c' };
+    getDraft.mockResolvedValue({ chapter_id: 'ch1', body: doc('canon'), draft_version: 4, text_content: '' });
+    const { rerender } = render(<ManuscriptUnitProvider bookId="b1"><Consumer /></ManuscriptUnitProvider>);
+    await act(async () => { await api!.openUnit('ch1'); });
+    // a REAL user edit (text changes from the loaded '' to 'typed')
+    act(() => api!.setBody(doc('typed'), 'typed'));
+    activeWork.current = { project_id: 'proj-d', source_work_id: 'src-w' };
+    await act(async () => {
+      rerender(<ManuscriptUnitProvider bookId="b1"><Consumer /></ManuscriptUnitProvider>);
+      await Promise.resolve();
+    });
+    expect(gwcd).not.toHaveBeenCalled();          // the pending edit is preserved, not clobbered
   });
 
   it('a stale-version save refetches the fork and retries with the fresh version', async () => {
