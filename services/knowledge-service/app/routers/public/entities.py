@@ -50,7 +50,12 @@ from app.db.neo4j_repos.entities import (
     update_entity_fields,
 )
 from app.db.neo4j_repos.entity_status import statuses_detail_at_order
-from app.db.neo4j_repos.facts import Fact, list_facts_for_entity
+from app.db.neo4j_repos.facts import (
+    Fact,
+    FactType,
+    list_facts_for_entity,
+    merge_fact,
+)
 from app.db.neo4j_repos.relations import (
     SUBGRAPH_MAX_HOPS,
     SUBGRAPH_MAX_NODE_CAP,
@@ -715,14 +720,39 @@ async def list_entity_facts(
             "established-at order). Omitted / unresolvable → fail-closed (no facts)."
         ),
     ),
+    curation: bool = Query(
+        default=False,
+        description=(
+            "S-05 — AUTHOR-facing whole-book read (the studio entity-detail curation "
+            "view, NOT the reader codex). Skips spoiler-windowing so every known fact "
+            "shows regardless of chapter position — including user-authored facts that "
+            "carry no chapter `from_order`. Without it the fail-closed window (before_"
+            "order=-1) hides EVERY fact, so the curation list renders empty. When true, "
+            "`before_chapter_id` is ignored. Reader surfaces MUST NOT set this."
+        ),
+    ),
     user_id: UUID = Depends(get_current_user),
     book_client: BookClient = Depends(get_book_client),
 ) -> EntityFactsResponse:
-    """T2.1 — the known-facts list (`decision|preference|milestone|negation`) ABOUT
-    one entity, spoiler-windowed by `before_chapter_id`. A cross-user / unknown
-    entity simply yields no facts (no existence leak). L2-loader filters apply
-    (confidence ≥ 0.8, not pending) so quarantine candidates don't surface."""
-    before_order, available = await resolve_before_order(book_client, before_chapter_id)
+    """T2.1 — the known-facts list ABOUT one entity. A cross-user / unknown entity
+    simply yields no facts (no existence leak). L2-loader filters apply
+    (confidence ≥ 0.8, not pending) so quarantine candidates don't surface.
+
+    Two read modes:
+      * READER (default): spoiler-windowed by `before_chapter_id`; an omitted /
+        unresolvable chapter fails CLOSED (no facts) so future reveals never leak.
+      * CURATION (`curation=true`, S-05): the author's whole-book view — no window,
+        so every known fact (extraction-derived AND user-authored, the latter having
+        NULL `from_order`) is visible. This is what makes `POST /entities/{id}/facts`
+        actually operable: an authored fact appears at once instead of being hidden
+        by the fail-closed window."""
+    if curation:
+        # No spoiler window for the author view: before_order=None makes the
+        # projection's `($before_order IS NULL OR …)` branch pass every fact.
+        before_order: int | None = None
+        available = True
+    else:
+        before_order, available = await resolve_before_order(book_client, before_chapter_id)
     async with neo4j_session() as session:
         facts = await list_facts_for_entity(
             session,
@@ -731,6 +761,89 @@ async def list_entity_facts(
             before_order=before_order,
         )
     return EntityFactsResponse(facts=facts, window_available=available)
+
+
+# ── S-05 — author a fact ABOUT an entity (human, direct-write) ─────────
+
+
+class CreateEntityFactRequest(BaseModel):
+    """S-05 — author a fact ABOUT an entity from the studio curation view.
+
+    Written DIRECTLY as a committed `:Fact` (`source_type='manual'`, confidence 1.0,
+    `provenance='human_authored'`) linked to the entity by an `:ABOUT` edge — the
+    same user-authored posture as a manual `:Event`/`:Entity`. No pending queue: a
+    human reviewing their own input is pointless friction (the pending lane gates
+    AGENT proposals). `invalidate` is the correction path.
+
+    `fact_type` is the CLOSED 6-value `FactType` — an out-of-set value 422s (FastAPI
+    validates the Literal) instead of reaching `merge_fact`'s `ValueError` → 500
+    (the enum-must-422-not-500 discipline)."""
+
+    fact_type: FactType
+    content: str = Field(min_length=1, max_length=2000)
+    # WS-2.6b structured claim (optional) — lets recall detect a supersession.
+    predicate: str | None = Field(default=None, max_length=200)
+    object: str | None = Field(default=None, max_length=500)
+    # dec-3 — optional in-story date ("YYYY" / "YYYY-MM" / "YYYY-MM-DD"), additive.
+    event_date_iso: str | None = Field(default=None, max_length=10)
+
+    @model_validator(mode="after")
+    def _validate(self) -> "CreateEntityFactRequest":
+        if not self.content.strip():
+            raise ValueError("content must not be blank")
+        return self
+
+
+@entities_router.post(
+    "/entities/{entity_id}/facts",
+    response_model=Fact,
+    status_code=status.HTTP_201_CREATED,
+)
+async def create_entity_fact(
+    body: CreateEntityFactRequest,
+    entity_id: str = Path(min_length=1, max_length=200),
+    user_id: UUID = Depends(get_current_user),
+) -> Fact:
+    """S-05 — author a human fact ABOUT `entity_id`, written straight to the graph.
+
+    Multi-tenant: the entity is loaded under the caller's `user_id` FIRST; a
+    cross-user / unknown entity 404s (no existence leak) BEFORE any write, so a
+    caller can never attach a fact to another tenant's entity nor orphan a fact on
+    a subject that isn't theirs. The fact inherits the entity's `project_id` so the
+    curation read (which is project-agnostic here) and any project-scoped recall see
+    it consistently. `confidence=1.0` clears the L2 `≥0.8` floor so the authored
+    fact is immediately visible in the `curation=true` list; `subject_id` MERGEs the
+    `:ABOUT` edge so `list_facts_for_entity` (which matches on that edge) returns it.
+    Idempotent on (user, project, type, normalized content) — re-authoring the same
+    fact returns the same node, not a duplicate."""
+    async with neo4j_session() as session:
+        entity = await get_entity(
+            session, user_id=str(user_id), canonical_id=entity_id
+        )
+        if entity is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail="entity not found"
+            )
+        fact = await merge_fact(
+            session,
+            user_id=str(user_id),
+            project_id=entity.project_id,
+            type=body.fact_type,
+            content=body.content.strip(),
+            confidence=1.0,
+            pending_validation=False,
+            source_type="manual",
+            provenance="human_authored",
+            subject_id=entity_id,
+            predicate=body.predicate,
+            object=body.object,
+            event_date_iso=body.event_date_iso,
+        )
+    logger.info(
+        "S-05: user authored fact user_id=%s entity_id=%s type=%s fact_id=%s",
+        user_id, entity_id, body.fact_type, fact.id,
+    )
+    return fact
 
 
 # ── C10 (C10-gap-report) — GET /projects/{id}/gaps ───────────────────

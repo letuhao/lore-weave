@@ -54,6 +54,7 @@ from app.routers.public import pending_facts as public_pending_facts
 from app.routers.public import events as public_events
 from app.routers.public import projects as public_projects
 from app.routers.public import relations as public_relations
+from app.routers.public import facts as public_facts
 from app.routers.public import summaries as public_summaries
 from app.routers.public.summaries import close_cooldown_client
 from app.routers.public import timeline as public_timeline
@@ -769,6 +770,7 @@ app.include_router(public_labels.router)
 app.include_router(public_entities.router)
 app.include_router(public_entities.entities_router)
 app.include_router(public_relations.relations_router)
+app.include_router(public_facts.facts_router)
 app.include_router(public_events.events_router)
 app.include_router(public_extraction.router)
 app.include_router(public_extraction.jobs_router)

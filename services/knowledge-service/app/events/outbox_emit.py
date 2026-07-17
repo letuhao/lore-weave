@@ -63,6 +63,7 @@ def _record_emit_failure(event_type: str, aggregate_id: str, exc: Exception) -> 
 ENTITY_CORRECTED = "knowledge.entity_corrected"
 RELATION_CORRECTED = "knowledge.relation_corrected"  # sub-session C
 EVENT_CORRECTED = "knowledge.event_corrected"        # sub-session C
+FACT_CORRECTED = "knowledge.fact_corrected"          # S-05 (human fact invalidate)
 CONFIG_ADJUSTED = "knowledge.config_adjusted"        # Phase B2-B
 ENTITY_FORGOTTEN = "knowledge.entity_forgotten"      # WS-2.6c (D17 forget-a-person)
 
@@ -287,5 +288,57 @@ def relation_snapshot(rel: Any) -> dict[str, Any] | None:
         "object_id": getattr(rel, "object_id", None),
         "predicate": getattr(rel, "predicate", None),
         "confidence": getattr(rel, "confidence", None),
+        "valid_until": valid_until.isoformat() if valid_until is not None else None,
+    }
+
+
+def fact_correction_payload(
+    *,
+    user_id: str,
+    project_id: str | None,
+    book_id: str | None,
+    target_id: str,
+    op: str,
+    before: dict[str, Any] | None,
+    after: dict[str, Any] | None,
+    actor_id: str,
+) -> dict[str, Any]:
+    """knowledge.fact_corrected payload core (S-05). Mirrors the relation/entity
+    correction shape so the `corrections` columns + learning-service's handler
+    contract stay uniform across target types.
+
+    NOTE (tracked DEBT): learning-service mining currently consumes only
+    `target_type IN ('entity','relation','event')` (mining.py). A `fact`
+    correction lands in the `corrections` audit table but is NOT yet mined into
+    gold — the event is symmetry + audit, not a live learning signal, until the
+    mining IN-list is widened. It is emitted now so no history is lost."""
+    return {
+        "user_id": user_id,
+        "project_id": project_id,
+        "book_id": book_id,
+        "target_type": "fact",
+        "target_id": target_id,
+        "op": op,
+        "before": before,
+        "after": after,
+        "actor_type": "user",
+        "actor_id": actor_id,
+        "emitted_at": now_iso(),
+    }
+
+
+def fact_snapshot(fact: Any) -> dict[str, Any] | None:
+    """The diffable fact snapshot. Structural = type + confidence + valid_until;
+    content = the fact text + the structured (subject/predicate/object) claim.
+    `fact` is a `Fact` model or None (an invalidate's `after` is always None)."""
+    if fact is None:
+        return None
+    valid_until = getattr(fact, "valid_until", None)
+    return {
+        "type": getattr(fact, "type", None),
+        "content": getattr(fact, "content", None),
+        "predicate": getattr(fact, "predicate", None),
+        "object": getattr(fact, "object", None),
+        "confidence": getattr(fact, "confidence", None),
         "valid_until": valid_until.isoformat() if valid_until is not None else None,
     }
