@@ -92,7 +92,18 @@ mounts into S2's PlanDrawer; `enum == contract == openable` move +2 in lockstep 
 - **D-S4-5** — Motif/arc embedding **TENANCY RE-DESIGN** (PO 2026-07-17: "thiết kế lại — shared re-embed platform, private dùng key user"). Reverses the B-1 "one platform model for ALL vectors" rule into **two SPACES**: shared tiers (system/public/unlisted/book_shared) → platform model (P-space); a user's STRICTLY-PRIVATE motif/arc → the OWNER's OWN BYOK model (U-space, `embed(user_id=owner)` bills the owner). Retriever embeds the query ONCE PER SPACE, ranks each independently, tags `match_reason.section ∈ {mine,library}` (PO chose §4-A two-section, honest — no cross-space score compare). **Verified finding:** the live bug is in **arcs** (`_embed_and_persist_arc` platform-embeds private arcs); **motifs never persist a summary vector at all** (queue-but-never-drain) so they always degrade. Spec: [`docs/specs/2026-07-17-motif-embedding-tenancy-redesign.md`](../specs/2026-07-17-motif-embedding-tenancy-redesign.md).
 
 ### PARKED  (blocker -> defer row + continue)
-- (spec 33 §11 pre-existing defers carried: D-COMPOSE-GENERATE-UNGATED [gate#1 out-of-scope], D-MOTIF-BOOKSHARED-QUOTA [gate#4], D-MOTIF-GRAPH-CANVAS [gate#2], D-ARC-TEMPLATE-DRIFT-VIEW → Wave 4.)
+- (spec 33 §11 pre-existing defers carried: D-COMPOSE-GENERATE-UNGATED [gate#1 out-of-scope] — still parked.)
+- **Wave-4 RESOLVED (2026-07-17, PO: "lên plan và spec cho Wave-4"):** verified each against code first —
+  - **D-MOTIF-BOOKSHARED-QUOTA — CLOSED (refuted, not a feature).** `_execute_motif_adopt` never calls
+    `_precheck_or_402`; 0 "motif" hits in usage-billing → adopt is a $0 clone, its only ceiling is the local
+    `motif_max_adopt` row count. Locked by an AST regression test (`test_mcp_actions.py`, commit `daa2b5e96`).
+  - **D-ARC-TEMPLATE-DRIFT-VIEW — SPEC READY (S).** BE fully shipped + already has a crude `<pre>` JSON
+    consumer (`ArcTemplatesPanel.DriftSection`); the work is a structured view swap (report = `ArcConformance`
+    shape, no registration). Spec+plan: [`docs/specs/2026-07-17-arc-template-drift-view.md`](../specs/2026-07-17-arc-template-drift-view.md).
+  - **D-MOTIF-GRAPH-CANVAS — SPEC READY (XL).** PO chose persisted positions (per-viewer). Net-new
+    `motif_graph_layout` table + repo + routes + OCC + a new reactflow(v11) `motif-graph` panel fusing the
+    PlanCanvas drag wiring with a SceneGraphCanvas-style persist-on-drag-end.
+    Spec+plan: [`docs/specs/2026-07-17-motif-graph-canvas.md`](../specs/2026-07-17-motif-graph-canvas.md).
 
 ### DEBT — ALL CLOSED (2026-07-17, PO: "làm luôn hay đóng luôn"; verified against code, not prose)
 - **D-M-BUG-4-ARC-CALLER — CLOSED (not-a-bug / already fixed).** The conformance caller (`motif/api.ts`
