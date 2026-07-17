@@ -101,6 +101,42 @@ class _KalClient(Protocol):
     async def roster(self, book_id: Any, *, user_id: Any = None, strict: bool = False) -> list[dict[str, Any]]: ...
 
 
+def title_key(title: Any) -> str:
+    """The dedup key for matching a proposed arc/entity against an existing one: `lower(strip(title))`.
+    Promoted from `_rules_preflight`'s inline `_key` so the rules-path merge (below) and the pre-flight
+    collision report share ONE definition — a drift between them would let the merge annotate an arc the
+    preflight then flags as new (or vice versa)."""
+    return str(title or "").strip().lower()
+
+
+def merge_existing_into_spec(spec: dict[str, Any], existing: "ExistingState") -> dict[str, Any]:
+    """Rules-path merge-not-duplicate (spec §3.4): annotate a proposed spec IN PLACE against the book's
+    existing state, deterministically (no LLM). It does NOT delete/rewrite the author's braindump — it
+    ADDS signal the compiler/linker + the author use:
+    - a proposed arc whose title-key matches an existing arc gets `continues_existing: true` (so the
+      compile can treat it as a continuation, and the author sees it is not a fresh arc),
+    - a proposed character whose name matches an existing glossary cast member carries that member's
+      `glossary_entity_id` (so the later roster-bind resolves to the SAME entity, never a duplicate)
+      and `continues_existing: true`.
+    A cold-start / empty existing state is a no-op (the caller should skip it, but this is safe anyway).
+    """
+    if existing.is_empty():
+        return spec
+    existing_arc_keys = {title_key(a.title) for a in existing.arcs}
+    for arc in spec.get("arcs", []) or []:
+        if isinstance(arc, dict):
+            arc["continues_existing"] = title_key(arc.get("title", "")) in existing_arc_keys
+    cast_by_name = {c.name.casefold(): c.glossary_entity_id for c in existing.cast if c.name}
+    for char in (spec.get("layers", {}) or {}).get("characters", []) or []:
+        if not isinstance(char, dict):
+            continue
+        eid = cast_by_name.get(str(char.get("name") or "").casefold())
+        if eid:
+            char["glossary_entity_id"] = eid
+            char["continues_existing"] = True
+    return spec
+
+
 def _extract_systems(latest_package: dict[str, Any] | None) -> tuple[list[str], list[str]]:
     """Best-effort read of the variables/motifs already in play, from a caller-supplied latest
     compiled package (the caller has the run context; the lens stays pure). Empty when absent."""

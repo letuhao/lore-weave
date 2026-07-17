@@ -357,8 +357,9 @@ class PlanForgeService:
         raw_arcs = content.get("arcs") if isinstance(content, dict) else None
         proposed = [a.get("title") for a in raw_arcs if isinstance(a, dict)] if isinstance(raw_arcs, list) else []
 
-        def _key(t: Any) -> str:
-            return str(t or "").strip().lower()
+        # Shared with the rules-path merge (PROPOSE-BLIND) — ONE title-key definition so the merge and
+        # this collision report can never disagree about what "matches an existing arc" means.
+        from app.engine.plan_forge.existing_state import title_key as _key
 
         existing_keys = {_key(a.title) for a in existing}
         matched = [t for t in proposed if _key(t) in existing_keys]

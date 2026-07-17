@@ -33,7 +33,12 @@ import logging
 import re
 from typing import Any
 
+from typing import TYPE_CHECKING
+
 from app.engine.plan_forge.normalize import post_normalize_spec
+
+if TYPE_CHECKING:
+    from app.engine.plan_forge.existing_state import ExistingState
 
 logger = logging.getLogger(__name__)
 
@@ -409,7 +414,13 @@ def _characters(char_body: str, anchors: list[str]) -> list[dict[str, Any]]:
 
 # ── the spec ─────────────────────────────────────────────────────────────────────────────────────
 
-def propose_spec(doc: dict[str, Any]) -> dict[str, Any]:
+def propose_spec(
+    doc: dict[str, Any], *, existing: "ExistingState | None" = None,
+) -> dict[str, Any]:
+    """Parse the braindump into a NovelSystemSpec (rules mode). When `existing` is supplied
+    (PROPOSE-BLIND, D-PLANFORGE-PROPOSE-BLIND) the parsed spec is merged-not-duplicated against the
+    book's existing arcs/cast — deterministically, no LLM (see `merge_existing_into_spec`). A cold-start
+    / absent `existing` reproduces the braindump-only behaviour byte-for-byte."""
     char_sec = _section(doc, "character_seed")
     var_sec = _section(doc, "planner_variables")
     arc_sec = _section(doc, "arc_overview")
@@ -480,7 +491,7 @@ def propose_spec(doc: dict[str, Any]) -> dict[str, Any]:
                     "note": note,
                 })
 
-    return post_normalize_spec({
+    spec = post_normalize_spec({
         "version": 1,
         "meta": {
             # The document's own title, not the literal string "STORY PLAN".
@@ -503,6 +514,14 @@ def propose_spec(doc: dict[str, Any]) -> dict[str, Any]:
         "events": events,
         "links": links,
     })
+
+    # PROPOSE-BLIND: merge-not-duplicate against the book's existing state (deterministic, no LLM).
+    # Applied AFTER normalize so it annotates the settled names/titles. A no-op when `existing` is
+    # None/empty — so the cold-start path is byte-identical to before.
+    if existing is not None:
+        from app.engine.plan_forge.existing_state import merge_existing_into_spec
+        spec = merge_existing_into_spec(spec, existing)
+    return spec
 
 
 def _doc_title(doc: dict[str, Any]) -> str:
