@@ -41,7 +41,7 @@ from app.db.models import ArcCandidate, ArcTemplate, Motif, MotifCandidate
 from app.engine.motif_embed import (
     EmbedConfigError, _platform_embed_model, arc_summary_text, embed_motif_summary,
     embed_private_summary, embed_query, embed_query_with, is_strictly_private,
-    summary_hash, user_embedded_with,
+    motif_summary_text, summary_hash, user_embedded_with,
 )
 
 logger = logging.getLogger(__name__)
@@ -50,7 +50,7 @@ logger = logging.getLogger(__name__)
 # (loaded ONLY for the bounded candidate set; the vector never leaves this repo — the
 # returned Motif omits it, the reference_source rule).
 _RETRIEVE_COLS = """
-  id, owner_user_id, code, language, visibility, kind, category, name, summary,
+  id, owner_user_id, book_shared, code, language, visibility, kind, category, name, summary,
   genre_tags, roles, beats, preconditions, effects, info_asymmetry, annotations,
   tension_target, emotion_target, examples, abstraction_confidence, source,
   imported_derived, source_ref, source_version, embedding_model, embedding_dim,
@@ -203,10 +203,28 @@ class MotifRetriever:
         genre_tags: list[str], language: str,
         beat_role: str | None, tension: int | None,
         prev_effects: list[str] | None = None, limit: int = 10,
+        user_model: tuple[str, str] | None = None,
     ) -> list[MotifCandidate]:
         """Tier-merged, SQL-pre-filtered, cosine-ranked motif candidates for a chapter's
-        beat. Returns up to `limit` MotifCandidate (motif + score + match_reason=
-        {tension,genre,precond,cosine[,degraded]}), highest score first. W3 impl."""
+        beat — split into TWO embedding SPACES (2026-07-17 tenancy re-design; mirrors
+        `retrieve_arcs`). The caller's STRICTLY-PRIVATE motifs (owner==caller, private, not
+        book_shared) rank in the caller's OWN BYOK space (U-space; `match_reason.section=
+        'mine'`); everything shared — system, public, unlisted, book_shared — ranks in the
+        PLATFORM space (P-space; `section='library'`). Cosine is intra-space ONLY: the query
+        is embedded once per space and each section ranks against its own query vector.
+        Returns up to `limit` PER SECTION (mine first, then library), each carrying
+        match_reason={tension,genre,precond,cosine,section[,degraded]}.
+
+        `user_model` is the caller's (source, ref) BYOK embed model (resolved by the route
+        from the Work settings). None ⇒ the caller's private motifs fall back to non-semantic
+        (genre+tension) ranking + `degraded` — the platform NEVER embeds private content.
+
+        A NULL / wrong-space vector is (re-)embedded INLINE (bounded, best-effort) in the
+        row's OWN space — private with the owner's model, shared with the platform model.
+        This is the motif summary-vector persist path (previously queue-but-never-drained,
+        so motif suggest was always degraded) AND the lazy migration for a since-privatised
+        row. A row that still can't be embedded (foreign, no user model, or embed down) is
+        queued + skipped in the cosine path (never 0.0-ranked as a real miss; RECONCILE D4)."""
         min_score = settings.motif_min_score
         ceiling = settings.motif_candidate_ceiling
 
@@ -215,66 +233,121 @@ class MotifRetriever:
         if not rows:
             return []  # no in-genre/in-language motif → W2 falls back to invent
 
-        # (2) Query vector (the chapter-intent embedding). Embed-DOWN → degrade (R4).
+        # (2) Query vectors — ONE PER SPACE (platform + the caller's own model). Embed-DOWN
+        #     → that space degrades (R4); EmbedConfigError (unset platform model) degrades
+        #     the READ path too (the WRITE path is where a config gap fails closed).
         qtext = _build_query_text(beat_role, prev_effects)
-        qvec: list[float] | None = None
-        if qtext:
-            try:
-                qvec = await embed_query(qtext)
-            except (EmbeddingError, EmbedConfigError):
-                # Degrade, do NOT 500/[]. EmbedConfigError (unset platform model) ALSO
-                # degrades the READ path — a planner read must never hard-fail on a
-                # config gap; the WRITE path (engine/motif_embed) is where the config gap
-                # fails closed.
-                qvec = None
+        qvec_p = await self._embed_query_safe(qtext, None, caller_id)            # P-space
+        qvec_u = await self._embed_query_safe(qtext, user_model, caller_id) if user_model else None
+        user_ref = user_model[1] if user_model else None
 
-        # (3) Score every BOUNDED candidate; build match_reason.
-        scored: list[tuple[float, str, MotifCandidate]] = []
+        # (3) Score every BOUNDED candidate into its section; build match_reason.
+        backfilled = 0
+        mine: list[tuple[float, str, int, float, MotifCandidate]] = []
+        library: list[tuple[float, str, int, float, MotifCandidate]] = []
         for r in rows:
             genre_s = _genre_overlap(list(r["genre_tags"]), genre_tags)
             tension_s = _tension_band(r["tension_target"], tension)
             precond_s = _precond_overlap(_loads(r["preconditions"]), prev_effects)
-            vec = r["embedding"]
-            if vec is None:
-                # RECONCILE D4 — NULL vector: queue a lazy back-fill, NEVER 0.0-rank it
-                # against scored rows. In the cosine path SKIP it; in the degrade path
-                # (no query vector) it can still rank on genre+tension.
-                self._queue_backfill(r)
-                if qvec is not None:
-                    continue
+            private = is_strictly_private(
+                owner_user_id=r["owner_user_id"], visibility=r.get("visibility"),
+                book_shared=bool(r.get("book_shared")))
+            if private:
+                section, qvec, bucket = "mine", qvec_u, mine
+                fresh = user_embedded_with(r["embedding_model"], user_model)
+            else:
+                section, qvec, bucket = "library", qvec_p, library
+                fresh = not (user_ref is not None and r["embedding_model"] == user_ref)
+
+            # A stored vector counts only if it is in THIS row's space (keeps a P-vector off
+            # a U-query); else treat as absent + (re-)embed inline in the row's own space.
+            vec = list(r["embedding"]) if (fresh and r["embedding"] is not None) else None
+            if vec is None and qvec is not None and backfilled < _ARC_BACKFILL_CAP:
+                if private and user_model is not None:
+                    vec = await self._embed_and_persist_motif(r, caller_id, owner_model=user_model)
+                elif not private and (r["owner_user_id"] is None or r["owner_user_id"] == caller_id):
+                    vec = await self._embed_and_persist_motif(r, caller_id, owner_model=None)
+                if vec is not None:
+                    backfilled += 1
 
             if qvec is not None:
-                cos = _cosine(qvec, list(vec))
-                rank = cos
-                degraded = False
+                # cosine path — a row we still couldn't embed is queued + SKIPPED (D4).
+                if vec is None:
+                    self._queue_backfill(r)
+                    continue
+                cos = _cosine(qvec, vec)
+                rank, degraded = cos, False
+                if rank < min_score:
+                    continue  # min_score floor → no force-bind of an unrelated motif
             else:
+                # degrade path — genre+tension order (R4); a NULL row still ranks + is queued.
+                if r["embedding"] is None:
+                    self._queue_backfill(r)
                 cos = 0.0
-                rank = 0.6 * genre_s + 0.4 * tension_s  # DEGRADE: genre+tension order (R4)
+                rank = 0.6 * genre_s + 0.4 * tension_s
                 degraded = True
-
-            if (qvec is not None) and rank < min_score:
-                continue  # min_score floor → no force-bind of an unrelated motif
 
             motif = _row_to_motif(r)  # WITHOUT embedding (server-side only)
             reason: dict[str, Any] = {
                 "tension": tension_s, "genre": genre_s,
-                "precond": precond_s, "cosine": cos,
+                "precond": precond_s, "cosine": cos, "section": section,
             }
             if degraded:
                 reason["degraded"] = True
-            scored.append((rank, motif.code, MotifCandidate(
-                motif=motif, score=rank, match_reason=reason,
-            )))
+            bucket.append((
+                rank, motif.code, motif.mining_support or 0,
+                float(motif.judge_score or 0.0),
+                MotifCandidate(motif=motif, score=rank, match_reason=reason),
+            ))
 
-        # (4) Rank desc + deterministic tie-break (reproducible top-1 for W2's eval):
-        # rank DESC, then mining_support DESC, judge_score DESC, code ASC.
-        scored.sort(key=lambda t: (
-            -t[0],
-            -(t[2].motif.mining_support or 0),
-            -float(t[2].motif.judge_score or 0.0),
-            t[1],
-        ))
-        return [c for _rank, _code, c in scored[: max(0, limit)]]
+        # (4) Rank each SECTION independently (intra-space), cap PER section, concat
+        # mine-first. Deterministic tie-break: rank DESC, mining_support DESC, judge DESC,
+        # code ASC. No cross-space sort — a U-space 0.8 ≠ a P-space 0.8.
+        def _top(items: list[tuple[float, str, int, float, MotifCandidate]]) -> list[MotifCandidate]:
+            items.sort(key=lambda t: (-t[0], -t[2], -t[3], t[1]))
+            return [c for _rank, _code, _ms, _js, c in items[: max(0, limit)]]
+
+        return _top(mine) + _top(library)
+
+    async def _embed_and_persist_motif(
+        self, row: asyncpg.Record | dict[str, Any], caller_id: UUID, *,
+        owner_model: tuple[str, str] | None,
+    ) -> list[float] | None:
+        """Lazy inline (re-)embed of ONE motif in its OWN space (best-effort; None on any
+        failure → the caller queues + skips it). `owner_model=None` ⇒ the PLATFORM space (a
+        system motif or the caller's OWN shared motif); a (source, ref) ⇒ the OWNER's OWN
+        BYOK space (a strictly-private motif — the `embed(user_id=caller, …)` call bills the
+        OWNER's ledger; the 2026-07-17 tenancy fix). Mirrors `_embed_and_persist_arc`.
+
+        TENANCY: the UPDATE scope makes a read incapable of mutating another tenant's motif.
+        Platform back-fill is `owner NULL OR owner = caller`; a private re-embed is
+        `owner = caller AND visibility = 'private' AND NOT book_shared` — a since-shared
+        motif is never rewritten with a user vector (its space flipped; platform owns it)."""
+        try:
+            motif = _row_to_motif(row)
+            text = motif_summary_text(motif)
+            if not text:
+                return None
+            if owner_model is None:
+                res = await embed_motif_summary(text)
+                model_ref = _platform_embed_model()[1]
+                scope = "AND (owner_user_id IS NULL OR owner_user_id = $6)"
+            else:
+                res = await embed_private_summary(text, owner_id=caller_id, user_model=owner_model)
+                model_ref = owner_model[1]
+                scope = "AND owner_user_id = $6 AND visibility = 'private' AND NOT book_shared"
+            vec = res.embeddings[0]
+            async with self._pool.acquire() as c:
+                await c.execute(
+                    "UPDATE motif SET embedding = $2::real[], embedding_model = $3, "
+                    "embedding_dim = $4, embedded_summary_hash = $5 "
+                    f"WHERE id = $1 {scope}",
+                    row["id"], list(vec), model_ref, len(vec), summary_hash(text), caller_id,
+                )
+            return vec
+        except (EmbeddingError, EmbedConfigError) as exc:
+            logger.warning("motif embed back-fill skipped for %s: %r", row["id"], exc)
+            return None
 
     # ── arc retrieval (D-ARC-RETRIEVE) — mirrors motif retrieve over arc_template ──────
     async def retrieve_arcs(

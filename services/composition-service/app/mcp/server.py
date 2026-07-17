@@ -2487,13 +2487,19 @@ async def composition_motif_suggest_for_chapter(
     if node is None or node.project_id != pid:
         raise uniform_not_accessible()
     retriever = MotifRetriever(get_pool())
-    # Motif is a USER-tier resource (deps/ registry — untouched by the re-key),
-    # so the retriever keeps its caller-visibility predicate on tc.user_id.
+    # Motif is a USER-tier resource (deps/ registry — untouched by the re-key), so the
+    # retriever keeps its caller-visibility predicate on tc.user_id. Two-space (2026-07-17):
+    # the caller's STRICTLY-PRIVATE motifs rank in their OWN BYOK space (section='mine'),
+    # shared in the platform space (section='library'). The embed model comes from the Work
+    # settings; None ⇒ private motifs degrade to genre (the platform never embeds private).
+    work = await works.get(pid)
+    user_model = reference_embed_model(getattr(work, "settings", None)) if work is not None else None
     candidates = await retriever.retrieve(
         tc.user_id, book_id=meta.book_id, project_id=pid,
         genre_tags=list(getattr(meta, "genre_tags", []) or []),
         language=getattr(meta, "language", None) or "en",
         beat_role=None, tension=getattr(node, "tension_target", None), limit=limit,
+        user_model=user_model,
     )
     # L1/L2 reference-first on the ranked candidates: project each candidate's (heavy)
     # motif body through the contract, keeping the score + match_reason wrapper. The

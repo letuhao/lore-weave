@@ -40,7 +40,7 @@ from app.db.repositories.motif_repo import MotifRepo
 from app.db.repositories.motif_retrieve import MotifRetriever
 from app.db.pool import get_pool
 from app.db.repositories.outline import OutlineRepo
-from app.db.repositories.references import ReferencesRepo
+from app.db.repositories.references import ReferencesRepo, reference_embed_model
 from app.db.repositories.scene_links import SceneLinksRepo
 from app.db.repositories.works import WorksRepo
 from app.clients.embedding_client import EmbeddingClient
@@ -1450,11 +1450,16 @@ async def suggest_motifs(
     work, node = await _load_work_node(
         works, outline, grant, user_id, project_id, node_id, GrantLevel.VIEW)
     retriever = MotifRetriever(get_pool())
+    # Two-space retrieval (2026-07-17 tenancy re-design): the caller's OWN BYOK embed model
+    # (from the Work settings) ranks their STRICTLY-PRIVATE motifs in their own space
+    # (section='mine'); shared motifs rank in the platform space (section='library'). None ⇒
+    # private motifs degrade to genre+tension (the platform never embeds private content).
     candidates = await retriever.retrieve(
         user_id, book_id=work.book_id, project_id=project_id,
         genre_tags=list(getattr(work, "genre_tags", []) or []),
         language=getattr(work, "language", None) or "en",
         beat_role=None, tension=getattr(node, "tension_target", None), limit=limit,
+        user_model=reference_embed_model(getattr(work, "settings", None)),
     )
     return {"candidates": [
         {"motif": c.motif.model_dump(mode="json"), "score": c.score, "match_reason": c.match_reason}

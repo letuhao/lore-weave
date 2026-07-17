@@ -4,7 +4,10 @@
 // ranked BE-M4 candidates with a match_reason, replacing the flat unranked list (GG-1). No
 // silent fail: the suggest error + empty both render; binding failures keep the prior binding.
 import { useState } from 'react';
+import type { ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
+import type { TFunction } from 'i18next';
+import type { MotifSuggestion } from '../api';
 import { MotifBindingCard } from './MotifBindingCard';
 import { useMotifBindings } from '../hooks/useMotifBindings';
 import { useMotifBinding } from '../hooks/useMotifBinding';
@@ -20,6 +23,70 @@ type Props = {
   roster?: RosterOption[];
   token: string | null;
 };
+
+/** One ranked suggestion row. Shows the % + reasons ONLY when the match is real (not a
+ * degraded fallback) — a flat degraded score presented as a % is the silent-lie this guards. */
+function SuggestRow(
+  { s, t, swapping, onBind }: {
+    s: MotifSuggestion; t: TFunction; swapping: boolean; onBind: (id: string) => void;
+  },
+): ReactNode {
+  const degraded = (s.match_reason as { degraded?: boolean } | null)?.degraded;
+  return (
+    <li data-testid="motif-suggest-row" className="flex items-center gap-1.5 rounded bg-neutral-50 px-1.5 py-1 text-[11px] dark:bg-neutral-800/50">
+      <span className="min-w-0 flex-1 truncate">
+        <span className="font-medium">{s.motif.name}</span>
+        {degraded ? (
+          <span className="ml-1 text-neutral-400">·</span>
+        ) : (
+          <>
+            <span className="ml-1 text-neutral-400">{Math.round(s.score * 100)}%</span>
+            <span className="ml-1 text-neutral-400">{Object.keys(s.match_reason ?? {}).filter((k) => k !== 'degraded' && k !== 'section').join(' · ')}</span>
+          </>
+        )}
+      </span>
+      <button
+        type="button"
+        data-testid="motif-suggest-bind"
+        disabled={swapping}
+        onClick={() => onBind(s.motif.id)}
+        className="shrink-0 rounded bg-amber-600 px-1.5 py-0.5 text-white hover:bg-amber-700 disabled:opacity-40"
+      >
+        {t('motif.suggest.bind', { defaultValue: 'Bind' })}
+      </button>
+    </li>
+  );
+}
+
+/** Group the ranked candidates into their two embedding SPACES — "your motifs" (U-space,
+ * embedded with YOUR own model) and "the library" (P-space, platform) — and render each as
+ * its own labelled list. The two spaces' scores aren't comparable, so they are NEVER merged
+ * into one order (the honest two-section presentation). A candidate with no `section` (older
+ * BE, or a shared row) falls into the library group. */
+function renderMotifSuggestions(
+  rows: MotifSuggestion[],
+  { t, swapping, onBind }: { t: TFunction; swapping: boolean; onBind: (id: string) => void },
+): ReactNode {
+  const mine = rows.filter((s) => (s.match_reason as { section?: string } | null)?.section === 'mine');
+  const library = rows.filter((s) => (s.match_reason as { section?: string } | null)?.section !== 'mine');
+  const group = (items: MotifSuggestion[], testid: string, label: string) =>
+    items.length === 0 ? null : (
+      <div data-testid={testid}>
+        <p className="px-0.5 pt-0.5 text-[10px] font-semibold uppercase tracking-wide text-neutral-400">{label}</p>
+        <ul className="space-y-1">
+          {items.map((s) => (
+            <SuggestRow key={s.motif.id} s={s} t={t} swapping={swapping} onBind={onBind} />
+          ))}
+        </ul>
+      </div>
+    );
+  return (
+    <div className="space-y-1.5">
+      {group(mine, 'motif-suggest-section-mine', t('motif.suggest.sectionMine', { defaultValue: 'Your motifs' }))}
+      {group(library, 'motif-suggest-section-library', t('motif.suggest.sectionLibrary', { defaultValue: 'From the library' }))}
+    </div>
+  );
+}
 
 export function SceneMotifsSection({ projectId, bookId, chapterId, sceneId, roster = [], token }: Props) {
   const { t } = useTranslation('composition');
@@ -93,34 +160,14 @@ function SceneMotifsInner({ projectId, bookId, chapterId, sceneId, roster = [], 
                 {t('motif.suggest.degraded', { defaultValue: 'Unranked — semantic matching is unavailable (the embedding model isn\'t set up), so these are library fallbacks, not scored fits.' })}
               </p>
             )}
-            <ul className="space-y-1">
-              {(suggestions.data ?? []).map((s) => (
-                <li key={s.motif.id} data-testid="motif-suggest-row" className="flex items-center gap-1.5 rounded bg-neutral-50 px-1.5 py-1 text-[11px] dark:bg-neutral-800/50">
-                  <span className="min-w-0 flex-1 truncate">
-                    <span className="font-medium">{s.motif.name}</span>
-                    {/* Only show the % + reasons when the match is REAL (not a degraded fallback) —
-                        a flat degraded score presented as a % is the silent-lie this guards. */}
-                    {(s.match_reason as { degraded?: boolean } | null)?.degraded ? (
-                      <span className="ml-1 text-neutral-400">·</span>
-                    ) : (
-                      <>
-                        <span className="ml-1 text-neutral-400">{Math.round(s.score * 100)}%</span>
-                        <span className="ml-1 text-neutral-400">{Object.keys(s.match_reason ?? {}).filter((k) => k !== 'degraded').join(' · ')}</span>
-                      </>
-                    )}
-                  </span>
-                  <button
-                    type="button"
-                    data-testid="motif-suggest-bind"
-                    disabled={binding.swap.isPending}
-                    onClick={() => binding.swap.mutate(s.motif.id, { onSuccess: () => setSuggestOpen(false) })}
-                    className="shrink-0 rounded bg-amber-600 px-1.5 py-0.5 text-white hover:bg-amber-700 disabled:opacity-40"
-                  >
-                    {t('motif.suggest.bind', { defaultValue: 'Bind' })}
-                  </button>
-                </li>
-              ))}
-            </ul>
+            {/* Two SECTIONS (tenancy re-design 2026-07-17): "your" motifs (embedded in YOUR
+                own model space) rank separately from the shared library (platform space) — the
+                scores aren't comparable across spaces, so we never merge them into one order.
+                A candidate with no `section` (older BE) falls into the library group. */}
+            {renderMotifSuggestions(suggestions.data ?? [], {
+              t, swapping: binding.swap.isPending,
+              onBind: (id) => binding.swap.mutate(id, { onSuccess: () => setSuggestOpen(false) }),
+            })}
           </div>
         )}
       </div>

@@ -918,7 +918,9 @@
       "retry": "Retry",
       "empty": "No motif fits this scene yet — add more to your library.",
       "bind": "Bind",
-      "degraded": "Unranked — semantic matching is unavailable (the embedding model isn't set up), so these are library fallbacks, not scored fits."
+      "degraded": "Unranked — semantic matching is unavailable (the embedding model isn't set up), so these are library fallbacks, not scored fits.",
+      "sectionMine": "Your motifs",
+      "sectionLibrary": "From the library"
     }
   },
   "authoringRun": {
