@@ -27,6 +27,24 @@ vi.mock('../../api/ontology', () => ({
   },
 }));
 
+// S-05b — stub the entity-picker dialog: expose a "pick" button so the test can
+// drive re_target through the picker (the dialog itself is tested separately with
+// useEntities mocked). Renders only when open.
+vi.mock('../TriageRetargetDialog', () => ({
+  TriageRetargetDialog: ({
+    open,
+    onPick,
+  }: {
+    open: boolean;
+    onPick: (id: string) => void;
+  }) =>
+    open ? (
+      <button data-testid="retarget-stub-pick" onClick={() => onPick('ent-99')}>
+        pick
+      </button>
+    ) : null,
+}));
+
 import { TriageQueue } from '../TriageQueue';
 
 function Wrapper({ children }: PropsWithChildren) {
@@ -99,13 +117,16 @@ describe('TriageQueue', () => {
     await waitFor(() => expect(toastMocks.success).toHaveBeenCalled());
   });
 
-  it('re_target prompts for the corrected target and passes it as params', async () => {
-    const promptSpy = vi.spyOn(window, 'prompt').mockReturnValue('ent-99');
+  it('re_target opens the entity PICKER (no UUID prompt) and resolves with the picked id', async () => {
+    const promptSpy = vi.spyOn(window, 'prompt');
     listTriageMock.mockResolvedValue({ groups: [GROUP_EDGE_MISMATCH] });
     resolveTriageMock.mockResolvedValue({ status: 'resolved', affected: 1 });
     render(<TriageQueue projectId="p-1" />, { wrapper: Wrapper });
     await waitFor(() => screen.getByTestId('kg-triage-action-re_target'));
     fireEvent.click(screen.getByTestId('kg-triage-action-re_target'));
+    // NO window.prompt — the picker opens instead
+    expect(promptSpy).not.toHaveBeenCalled();
+    fireEvent.click(await screen.findByTestId('retarget-stub-pick'));
     await waitFor(() =>
       expect(resolveTriageMock).toHaveBeenCalledWith(
         'p-1', 'sig-1',
@@ -116,15 +137,14 @@ describe('TriageQueue', () => {
     promptSpy.mockRestore();
   });
 
-  it('re_target with a blank prompt does NOT fire (no silent no-op)', async () => {
-    const promptSpy = vi.spyOn(window, 'prompt').mockReturnValue('   ');
+  it('re_target fires nothing until the user actually picks (cancel = no-op)', async () => {
     listTriageMock.mockResolvedValue({ groups: [GROUP_EDGE_MISMATCH] });
     render(<TriageQueue projectId="p-1" />, { wrapper: Wrapper });
     await waitFor(() => screen.getByTestId('kg-triage-action-re_target'));
     fireEvent.click(screen.getByTestId('kg-triage-action-re_target'));
-    await new Promise((r) => setTimeout(r, 20));
+    // picker opened but nothing picked yet
+    await screen.findByTestId('retarget-stub-pick');
     expect(resolveTriageMock).not.toHaveBeenCalled();
-    promptSpy.mockRestore();
   });
 
   it('glossary handoff (422 body) deep-links via onGlossaryHandoff', async () => {

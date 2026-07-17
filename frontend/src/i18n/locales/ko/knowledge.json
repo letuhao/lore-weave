@@ -1279,6 +1279,14 @@
       "unknown_node_kind": "노드 유형 “{{kind}}”가 아직 스키마에 정의되어 있지 않습니다.",
       "edge_cardinality_conflict": "충돌하는 “{{predicate}}” 관계가 존재합니다.",
       "generic": "추출된 요소가 스키마와 일치하지 않습니다."
+    },
+    "retarget": {
+      "title": "올바른 엔티티 지정",
+      "description": "엔티티를 검색하여 이 관계가 가리켜야 할 대상을 선택하세요.",
+      "searchPlaceholder": "이름으로 엔티티 검색…",
+      "noMatches": "일치하는 엔티티가 없습니다.",
+      "cancel": "취소",
+      "confirm": "다시 지정"
     }
   }
 }

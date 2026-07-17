@@ -4,6 +4,7 @@ import { toast } from 'sonner';
 import { AlertTriangle, X, ChevronRight, ChevronDown } from 'lucide-react';
 import { useTriageQueue, useTriageItems } from '../hooks/useTriageQueue';
 import { triageEvidence } from '../lib/triageEvidence';
+import { TriageRetargetDialog } from './TriageRetargetDialog';
 import type { TriageAction, TriageGroup } from '../types/ontology';
 
 // S-05 Part B — the KG extraction-triage queue. Extraction elements that didn't
@@ -48,10 +49,10 @@ const GLOSSARY_HANDOFF: ReadonlySet<TriageAction> = new Set<TriageAction>([
   'demote_to_attribute',
 ]);
 
-// Actions that need a corrected endpoint/value from the user (else the backend
-// re-apply fail-softs to a silent no-op — a silent-success bug). We prompt.
+// Actions that still gather a value via a lightweight prompt (map's code falls
+// back to the parked value on blank, so a prompt is acceptable). re_target is NOT
+// here — S-05b gives it a real entity PICKER (a UUID prompt was unusable).
 const NEEDS_TARGET: Partial<Record<TriageAction, string>> = {
-  re_target: 'target_entity_id',
   map: 'map_to',
 };
 
@@ -116,6 +117,8 @@ export function TriageQueue({ projectId, bookId, onGlossaryHandoff }: TriageQueu
   const { groups, isLoading, error, resolve, isResolving, dismissItem, isDismissing } =
     useTriageQueue(projectId);
   const [expanded, setExpanded] = useState<string | null>(null);
+  // S-05b (F1) — the signature currently being re-targeted via the entity picker.
+  const [retargetSig, setRetargetSig] = useState<string | null>(null);
 
   const handleDismissItem = async (triageId: string) => {
     try {
@@ -126,26 +129,15 @@ export function TriageQueue({ projectId, bookId, onGlossaryHandoff }: TriageQueu
     }
   };
 
-  const handleAction = async (group: TriageGroup, action: TriageAction) => {
-    // Schema-mutating actions change the ontology — confirm before firing.
-    if (SCHEMA_MUTATING.has(action) && !window.confirm(t('triage.confirmSchemaWrite'))) {
-      return;
-    }
-    let params: Record<string, unknown> | undefined;
-    const promptKey = NEEDS_TARGET[action];
-    if (promptKey) {
-      const value = window.prompt(
-        t(`triage.prompt.${promptKey}`, { defaultValue: promptKey }),
-      );
-      // `map` may fall back to the parked value → blank is allowed; `re_target`
-      // needs a real target → blank cancels (never fire a silent no-op).
-      if (value === null) return;
-      const trimmed = value.trim();
-      if (action === 're_target' && !trimmed) return;
-      if (trimmed) params = { [promptKey]: trimmed };
-    }
+  // The shared resolve+toast path (used by the action buttons AND the re-target
+  // picker), including the glossary-handoff 422 recovery.
+  const runResolve = async (
+    signature: string,
+    action: TriageAction,
+    params?: Record<string, unknown>,
+  ) => {
     try {
-      const result = await resolve({ signature: group.signature, action, params });
+      const result = await resolve({ signature, action, params });
       if (result.status === 'pending_glossary' && result.needs_glossary) {
         onGlossaryHandoff?.(result.needs_glossary);
         toast.info(t('triage.handoffToGlossary'));
@@ -167,10 +159,32 @@ export function TriageQueue({ projectId, bookId, onGlossaryHandoff }: TriageQueu
           return;
         }
       }
-      toast.error(
-        t('triage.resolveFailed', { error: (e as Error).message }),
-      );
+      toast.error(t('triage.resolveFailed', { error: (e as Error).message }));
     }
+  };
+
+  const handleAction = async (group: TriageGroup, action: TriageAction) => {
+    // S-05b (F1) — re_target opens the entity PICKER (no more UUID prompt).
+    if (action === 're_target') {
+      setRetargetSig(group.signature);
+      return;
+    }
+    // Schema-mutating actions change the ontology — confirm before firing.
+    if (SCHEMA_MUTATING.has(action) && !window.confirm(t('triage.confirmSchemaWrite'))) {
+      return;
+    }
+    let params: Record<string, unknown> | undefined;
+    const promptKey = NEEDS_TARGET[action];
+    if (promptKey) {
+      const value = window.prompt(
+        t(`triage.prompt.${promptKey}`, { defaultValue: promptKey }),
+      );
+      // `map` may fall back to the parked value → blank is allowed.
+      if (value === null) return;
+      const trimmed = value.trim();
+      if (trimmed) params = { [promptKey]: trimmed };
+    }
+    await runResolve(group.signature, action, params);
   };
 
   if (isLoading) {
@@ -203,6 +217,7 @@ export function TriageQueue({ projectId, bookId, onGlossaryHandoff }: TriageQueu
   }
 
   return (
+    <>
     <ul className="space-y-2" data-testid="kg-triage-list" data-book-id={bookId ?? ''}>
       {groups.map((group) => {
         const actions = (group.suggested_actions ?? []).filter(
@@ -294,5 +309,17 @@ export function TriageQueue({ projectId, bookId, onGlossaryHandoff }: TriageQueu
         );
       })}
     </ul>
+    {/* S-05b (F1) — the entity picker for re_target (replaces the UUID prompt). */}
+    <TriageRetargetDialog
+      open={retargetSig !== null}
+      onOpenChange={(o) => { if (!o) setRetargetSig(null); }}
+      projectId={projectId}
+      onPick={(entityId) => {
+        const sig = retargetSig;
+        setRetargetSig(null);
+        if (sig) void runResolve(sig, 're_target', { target_entity_id: entityId });
+      }}
+    />
+    </>
   );
 }

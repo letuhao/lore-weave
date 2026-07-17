@@ -1279,6 +1279,14 @@
       "unknown_node_kind": "类型“{{kind}}”尚未包含在您的模式中。",
       "edge_cardinality_conflict": "存在冲突的有效“{{predicate}}”关系。",
       "generic": "提取的元素与您的模式不匹配。"
+    },
+    "retarget": {
+      "title": "指向正确的实体",
+      "description": "搜索您的实体，并选择此关系应指向的对象。",
+      "searchPlaceholder": "按名称搜索实体…",
+      "noMatches": "未找到匹配的实体。",
+      "cancel": "取消",
+      "confirm": "重新指向"
     }
   }
 }

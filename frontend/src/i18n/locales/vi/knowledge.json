@@ -1279,6 +1279,14 @@
       "unknown_node_kind": "Loại “{{kind}}” chưa có trong sơ đồ của bạn.",
       "edge_cardinality_conflict": "Đang có các mối quan hệ “{{predicate}}” đang hoạt động bị xung đột.",
       "generic": "Phần tử được trích xuất này không khớp với sơ đồ của bạn."
+    },
+    "retarget": {
+      "title": "Trỏ đến thực thể chính xác",
+      "description": "Tìm kiếm các thực thể của bạn và chọn thực thể mà mối quan hệ này nên trỏ tới.",
+      "searchPlaceholder": "Tìm kiếm thực thể theo tên…",
+      "noMatches": "Không tìm thấy thực thể phù hợp.",
+      "cancel": "Hủy",
+      "confirm": "Thiết lập lại"
     }
   }
 }

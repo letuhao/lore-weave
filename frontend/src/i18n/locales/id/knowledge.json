@@ -1279,6 +1279,14 @@
       "unknown_node_kind": "Jenis «{{kind}}» belum ada dalam skema Anda.",
       "edge_cardinality_conflict": "Terdapat konflik pada hubungan «{{predicate}}» yang aktif.",
       "generic": "Elemen yang diekstraksi ini tidak sesuai dengan skema Anda."
+    },
+    "retarget": {
+      "title": "Arahkan ke entitas yang tepat",
+      "description": "Cari entitas Anda dan pilih entitas yang seharusnya dituju oleh relasi ini.",
+      "searchPlaceholder": "Cari entitas berdasarkan nama…",
+      "noMatches": "Tidak ada entitas yang cocok.",
+      "cancel": "Batal",
+      "confirm": "Arahkan ulang"
     }
   }
 }

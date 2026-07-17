@@ -1279,6 +1279,14 @@
       "unknown_node_kind": "Le type « {{kind}} » n’est pas encore dans votre schéma.",
       "edge_cardinality_conflict": "Il existe des relations « {{predicate}} » actives conflictuelles.",
       "generic": "Cet élément extrait ne correspond pas à votre schéma."
+    },
+    "retarget": {
+      "title": "Pointer vers la bonne entité",
+      "description": "Recherchez vos entités et choisissez celle vers laquelle cette relation doit pointer.",
+      "searchPlaceholder": "Rechercher des entités par nom…",
+      "noMatches": "Aucune entité correspondante.",
+      "cancel": "Annuler",
+      "confirm": "Rediriger"
     }
   }
 }

@@ -1279,6 +1279,14 @@
       "unknown_node_kind": "The kind “{{kind}}” isn’t in your schema yet.",
       "edge_cardinality_conflict": "There are conflicting active “{{predicate}}” relationships.",
       "generic": "This extracted element didn’t match your schema."
+    },
+    "retarget": {
+      "title": "Point to the right entity",
+      "description": "Search your entities and pick the one this relationship should point to.",
+      "searchPlaceholder": "Search entities by name…",
+      "noMatches": "No matching entities.",
+      "cancel": "Cancel",
+      "confirm": "Re-point"
     }
   }
 }

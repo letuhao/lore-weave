@@ -1279,6 +1279,14 @@
       "unknown_node_kind": "«{{kind}}» türü henüz şemanızda yer almıyor.",
       "edge_cardinality_conflict": "Çakışan aktif «{{predicate}}» ilişkileri mevcut.",
       "generic": "Bu çıkarılan öğe şemanızla eşleşmedi."
+    },
+    "retarget": {
+      "title": "Doğru varlığa yönlendirin",
+      "description": "Varlıklarınız arasında arama yapın ve bu ilişkinin hangi varlığa yönlendirilmesi gerektiğini seçin.",
+      "searchPlaceholder": "İsme göre varlık ara…",
+      "noMatches": "Eşleşen varlık bulunamadı.",
+      "cancel": "İptal",
+      "confirm": "Yeniden Yönlendir"
     }
   }
 }

@@ -1279,6 +1279,14 @@
       "unknown_node_kind": "Der Typ „{{kind}}“ ist noch nicht in Ihrem Schema enthalten.",
       "edge_cardinality_conflict": "Es gibt widersprüchliche aktive „{{predicate}}“-Beziehungen.",
       "generic": "Dieses extrahierte Element entspricht nicht Ihrem Schema."
+    },
+    "retarget": {
+      "title": "Auf die richtige Entität zeigen",
+      "description": "Suchen Sie in Ihren Entitäten und wählen Sie diejenige aus, auf die diese Beziehung zeigen soll.",
+      "searchPlaceholder": "Entitäten nach Name suchen…",
+      "noMatches": "Keine passenden Entitäten gefunden.",
+      "cancel": "Abbrechen",
+      "confirm": "Neu zuweisen"
     }
   }
 }

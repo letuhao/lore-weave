@@ -1279,6 +1279,14 @@
       "unknown_node_kind": "El tipo «{{kind}}» aún no está en tu esquema.",
       "edge_cardinality_conflict": "Existen relaciones «{{predicate}}» activas que presentan conflictos.",
       "generic": "Este elemento extraído no coincide con tu esquema."
+    },
+    "retarget": {
+      "title": "Señala la entidad correcta",
+      "description": "Busca tus entidades y elige aquella a la que debe apuntar esta relación.",
+      "searchPlaceholder": "Buscar entidades por nombre…",
+      "noMatches": "No hay entidades que coincidan.",
+      "cancel": "Cancelar",
+      "confirm": "Reasignar"
     }
   }
 }

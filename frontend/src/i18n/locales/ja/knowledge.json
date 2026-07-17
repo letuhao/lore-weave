@@ -1279,6 +1279,14 @@
       "unknown_node_kind": "種類「{{kind}}」は、まだスキーマに登録されていません。",
       "edge_cardinality_conflict": "競合するアクティブな「{{predicate}}」関係が存在します。",
       "generic": "抽出された要素がスキーマと一致しませんでした。"
+    },
+    "retarget": {
+      "title": "正しいエンティティを指定する",
+      "description": "エンティティを検索し、このリレーションシップが指し示すべきものを選択してください。",
+      "searchPlaceholder": "名前でエンティティを検索…",
+      "noMatches": "一致するエンティティがありません。",
+      "cancel": "キャンセル",
+      "confirm": "再設定"
     }
   }
 }

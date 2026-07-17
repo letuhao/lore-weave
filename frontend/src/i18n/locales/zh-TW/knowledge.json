@@ -1279,6 +1279,14 @@
       "unknown_node_kind": "類型「{{kind}}」尚未包含在您的架構中。",
       "edge_cardinality_conflict": "存在衝突的「{{predicate}}」活動關係。",
       "generic": "此擷取元素與您的架構不符。"
+    },
+    "retarget": {
+      "title": "指向正確的實體",
+      "description": "搜尋您的實體，並選擇此關係應指向的對象。",
+      "searchPlaceholder": "按名稱搜尋實體…",
+      "noMatches": "無符合的實體。",
+      "cancel": "取消",
+      "confirm": "重新指向"
     }
   }
 }
