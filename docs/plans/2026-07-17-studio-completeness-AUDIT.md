@@ -21,11 +21,31 @@
 
 ---
 
-## Verdict so far
+## ⚠️ Framing correction (PO, 2026-07-17) — parity ≠ completeness
 
-The 8-session build is **substantially complete and honest**: every mechanical gate is green, and every
-"still open" debt row I could test turned out to be **already built**. The real gaps are NOT in what the
-sessions did — they are in what the **plan never assigned** and in what **no session owned**.
+Rounds 1–5 audited the WRONG question. Plan 30 (and this audit through round 5) asks *"has each legacy
+capability been ported to the Studio?"* But **the legacy code is itself incomplete**, so wiring it to the
+new Studio moves an incomplete feature to a new address — it solves nothing. Proven on the backend, not
+from docs:
+
+- **references** — routes are `GET` · `POST` · `DELETE`. **No `UPDATE`.** Fixing a typo means delete +
+  re-add, which **re-embeds**. Porting `ReferencesPanel` faithfully ports a corpus you cannot edit.
+- **derivative (dị bản)** — `POST /derive` + `GET /derivative-context`. **No `UPDATE`, no `DELETE`, no
+  LIST-of-a-book's-derivatives.** It is create-once/read-one, not CRUD.
+- **structure_template** — the repo has `list_for_user` + `get` and **no create/insert/update/delete on
+  ANY transport**. The "user-custom" tier the table advertises **cannot be inserted by any code**.
+
+⇒ **Round 6 changes the question.** For every authorable domain, audit CRUD-completeness at the layer that
+matters — **BE route + MCP tool + FE** — and record which verb is missing at which layer. That, not
+"ported y/n", is the input to the detail-level build specs. A missing `UPDATE` route is a BUILD task, not a
+port task; the old plan mislabelled several as ports.
+
+## Verdict (rounds 1–5, parity lens)
+
+The 8-session build is **substantially complete for what it was scoped to do** (port legacy → Studio): every
+mechanical gate is green, and every "still open" debt row I could test turned out to be already built. The
+parity gaps are in what the plan never assigned. **But parity was the wrong bar** — see round 6 for the
+completeness gaps that porting cannot fix.
 
 ---
 
