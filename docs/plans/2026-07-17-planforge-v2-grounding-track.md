@@ -6,9 +6,16 @@
 > Playwright grounding e2e (2 contract tests green); **blackbox Playwright MCP** drove the real browser —
 > a returning author ticked "Continue this book", proposed, and saw the honesty copy replaced by
 > *"Grounded on 9 existing chapter(s) + 2 cast member(s); 3 existing arc(s) continued."* A3 remains a
-> cross-service (knowledge-gateway TS + glossary Go) quality refinement, off the critical path — spec is
-> build-ready for when that track opens. Commits: A2 `f1b34ad17` · A1 `b16a6b21d` · ceiling flip
-> `3f134b96f` · Playwright `2bbca1e4a`.
+ cross-service refinement.
+>
+> **UPDATE — A3 + B1 also cleared (2026-07-17):** **A3 BUILT + live-verified** — the glossary upstream
+> already returned `kind_code`, so it was just the KAL TS passthrough + composition character-ranking
+> (`f7957db76`). **B1 done** — re-ran the A/B on gpt-4o: GROUNDED WINS 2/3 vs 0/3 on BOTH models, so the
+> win is model-independent; but the ≥2-books axis was untestable (no 2nd seeded book) so the **per-user
+> default stays OFF (opt-in)** — the correct UX + the conservative call. All A1/A2/A3 built; the ceiling
+> is ON (opt-in). The only remaining follow-up is a genuine ≥2-books measurement to consider the
+> per-user-default flip. Commits: A2 `f1b34ad17` · A1 `b16a6b21d` · ceiling `3f134b96f` · Playwright
+> `2bbca1e4a` · A3 `f7957db76`.
 
 
 > **Why this track exists.** PROPOSE-BLIND (D-PLANFORGE-PROPOSE-BLIND) is BUILT + CLOSED, but its OQ-2

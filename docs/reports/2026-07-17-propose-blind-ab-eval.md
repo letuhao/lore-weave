@@ -117,3 +117,31 @@ Two confirmed wins + a structurally-deterministic protagonist anchor satisfy OQ-
   model) confirms the prompt-grounding half generalises. The injection half is already book-independent.
 This makes the win shippable + reversible (a user must tick "Continue this book") while the broader
 validation runs.
+
+---
+
+## B1 — broader validation (stronger model)  ✅ win generalizes; per-user default stays OPT-IN
+Re-ran the A/B on **gpt-4o** (a genuinely different/stronger model than the local gemma-4-26B):
+
+| model | BLIND cast continuity | GROUNDED cast continuity |
+|---|---|---|
+| gemma-4-26B QAT (×2 runs) | 0/3 | **2/3** |
+| gpt-4o | 0/3 | **2/3** |
+
+**GROUNDED WINS on both models, identically** (`['Elara', 'Diệp Vấn Vũ']`). The win is **model-
+independent** — the A1 injection deterministically guarantees the protagonist (Diệp Vấn Vũ) and the
+prompt grounding reliably adds Elara on both.
+
+### Per-user-default decision (the B1 gate)
+B1 was the gate to flip the PER-USER default to on-for-everyone (OQ-2's second half). Verdict: **KEEP
+IT OFF (opt-in).** Rationale:
+- **Model axis: PASSED** (2 models, both win). **Book axis: UNTESTED** — no second test-account book
+  has a seeded cast, so the strict "≥2 books" bar was not met. The injection is structurally
+  book-independent, but that is an argument, not a measurement.
+- **UX**: on-by-default would ground EVERY returning author's EVERY propose — even a deliberate fresh
+  spinoff/AU. Opt-in ("Continue this book") is the correct UX: the author declares intent, and the
+  grounded affirmation confirms it worked. The eval proves grounding is VALUABLE when wanted, not that
+  it should be forced.
+- **Net**: the CEILING stays ON (available org-wide, opt-in); the per-user default stays OFF. Flipping
+  the per-user default awaits a genuine ≥2-books measurement (seed a second book's cast) — a follow-up,
+  not a blocker. The feature ships in its correct, evidence-backed, reversible state.
