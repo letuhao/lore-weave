@@ -1,8 +1,11 @@
 # PlanForge — KAL roster cast enrichment (A3)
 
-> **Status:** build-ready spec (design). Part of the PlanForge-v2 Proposer-Grounding track
-> (`docs/plans/2026-07-17-planforge-v2-grounding-track.md`). **Cross-service (knowledge-gateway TS) —
-> NOT on the critical path** (names alone satisfy A1); do when the knowledge-gateway track is open.
+> **Status:** build-ready spec (design) — **NOT built, deliberately deferred** (2026-07-17). The track
+> goal was met by A1+A2 without it (grounding beats blind, ceiling flipped; A1 uses `cast[0]` which
+> works). A3 is a cross-service quality refinement (knowledge-gateway TS + likely glossary Go for the
+> upstream `kind` field) that upgrades protagonist SELECTION (kind-ranked vs first-drained) — genuinely
+> off the critical path. Build it when the knowledge-gateway track opens, or fold the tiny TS
+> passthrough in then. Part of the PlanForge-v2 Proposer-Grounding track.
 
 ## 1 · The problem
 The PROPOSE-BLIND gather lens can only present existing cast as `{name}` — no role, no kind, no

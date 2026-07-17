@@ -1,5 +1,16 @@
 # PlanForge-v2 · Proposer-Grounding track (umbrella plan)
 
+> **STATUS 2026-07-17: GOAL MET + BUILT + QC'd.** A2 (de-fixture) + A1 (deterministic injection) built;
+> the B re-eval measured **GROUNDED 2/3 vs BLIND 0/3 on two confirmed gemma runs** → the OQ-2 ceiling
+> was **flipped ON** (available/opt-in, per-user default still OFF pending B1). QC: BE 599 + FE 84 green;
+> Playwright grounding e2e (2 contract tests green); **blackbox Playwright MCP** drove the real browser —
+> a returning author ticked "Continue this book", proposed, and saw the honesty copy replaced by
+> *"Grounded on 9 existing chapter(s) + 2 cast member(s); 3 existing arc(s) continued."* A3 remains a
+> cross-service (knowledge-gateway TS + glossary Go) quality refinement, off the critical path — spec is
+> build-ready for when that track opens. Commits: A2 `f1b34ad17` · A1 `b16a6b21d` · ceiling flip
+> `3f134b96f` · Playwright `2bbca1e4a`.
+
+
 > **Why this track exists.** PROPOSE-BLIND (D-PLANFORGE-PROPOSE-BLIND) is BUILT + CLOSED, but its OQ-2
 > A/B eval measured **no cast-continuity improvement** (TIE 0/3, twice) — so the deploy ceiling stays
 > OFF and the feature ships dark. The eval also surfaced exactly WHY, and what would make grounding
