@@ -165,7 +165,14 @@ function OwnEditor({ tpl, t, saving, saveError, onSave, onArchive }: {
       return next;
     });
   const remove = (i: number) => setBeats((bs) => bs.filter((_, j) => j !== i));
-  const add = () => setBeats((bs) => [...bs, { key: `beat_${bs.length + 1}`, label: '', purpose: '' }]);
+  const add = () =>
+    setBeats((bs) => {
+      // a guaranteed-unique key — `beat_${len+1}` collides if a middle beat was removed then re-added
+      const keys = new Set(bs.map((b) => b.key));
+      let n = bs.length + 1;
+      while (keys.has(`beat_${n}`)) n += 1;
+      return [...bs, { key: `beat_${n}`, label: '', purpose: '' }];
+    });
 
   const save = () =>
     onSave({ name, beats: beats.map((b, i) => ({ ...b, order: i + 1 })) });
@@ -220,7 +227,8 @@ function OwnEditor({ tpl, t, saving, saveError, onSave, onArchive }: {
         <p data-testid="structtpl-save-error" className="mt-2 text-[11px] text-destructive">{saveError}</p>
       )}
       <div className="mt-3 flex items-center gap-2">
-        <button type="button" data-testid="structtpl-save" disabled={saving} onClick={save}
+        <button type="button" data-testid="structtpl-save" disabled={saving || !name.trim()} onClick={save}
+          title={!name.trim() ? t('structTpl.nameRequired', { defaultValue: 'Name required' }) : undefined}
           className="rounded border border-primary bg-primary/15 px-2.5 py-1 text-[11px] text-primary hover:opacity-90 disabled:opacity-50">
           {saving ? t('structTpl.saving', { defaultValue: 'Saving…' }) : t('structTpl.save', { defaultValue: 'Save' })}
         </button>

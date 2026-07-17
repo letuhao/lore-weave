@@ -1780,15 +1780,34 @@ async def composition_canon_rule_restore(
 # ── S-01 · structure-template authoring (per-USER; agent parity for the human routes) ──
 
 
+def _st_clean_name(v: str | None) -> str | None:
+    if v is None:
+        return None
+    s = v.strip()
+    if not s:
+        raise ValueError("name must not be blank")
+    return s[:200]
+
+
 class _StructTemplateCreateArgs(ForbidExtra):
     name: str
     kind: str = "generic"  # free-text label (S-01 CV-1), NOT an enum
     beats: list[dict[str, Any]] = []
 
+    @field_validator("name")
+    @classmethod
+    def _v(cls, v: str) -> str:
+        return _st_clean_name(v)  # type: ignore[return-value]
+
 
 class _StructTemplateCloneArgs(ForbidExtra):
     template_id: str
     name: str | None = None
+
+    @field_validator("name")
+    @classmethod
+    def _v(cls, v: str | None) -> str | None:
+        return _st_clean_name(v)
 
 
 class _StructTemplateUpdateArgs(ForbidExtra):
@@ -1797,6 +1816,11 @@ class _StructTemplateUpdateArgs(ForbidExtra):
     name: str | None = None
     kind: str | None = None
     beats: list[dict[str, Any]] | None = None
+
+    @field_validator("name")
+    @classmethod
+    def _v(cls, v: str | None) -> str | None:
+        return _st_clean_name(v)
 
 
 class _StructTemplateIdArgs(ForbidExtra):

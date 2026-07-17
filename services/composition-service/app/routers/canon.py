@@ -14,7 +14,7 @@ from typing import Any
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Header, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 
 from app.db.models import RuleScope
 from app.db.pool import get_pool
@@ -238,16 +238,39 @@ async def list_templates(
 # ── S-01 · custom structure-template authoring (per-USER; no book/project scope) ──
 
 
+def _clean_name(v: str | None) -> str | None:
+    """Trim + require non-empty. A blank name (the user cleared the field) is a real bug — it makes
+    the structure un-findable and collides at UNIQUE(owner,'') — so reject it (422), not save silently."""
+    if v is None:
+        return None
+    s = v.strip()
+    if not s:
+        raise ValueError("name must not be blank")
+    if len(s) > 200:
+        raise ValueError("name too long (max 200)")
+    return s
+
+
 class StructureTemplateCreate(BaseModel):
     name: str
     kind: str = "generic"  # free-text label (S-01 CV-1), NOT an enum
     beats: list[dict[str, Any]] = []
+
+    @field_validator("name")
+    @classmethod
+    def _v_name(cls, v: str) -> str:
+        return _clean_name(v)  # type: ignore[return-value]
 
 
 class StructureTemplateUpdate(BaseModel):
     name: str | None = None
     kind: str | None = None
     beats: list[dict[str, Any]] | None = None
+
+    @field_validator("name")
+    @classmethod
+    def _v_name(cls, v: str | None) -> str | None:
+        return _clean_name(v)
 
 
 class StructureTemplateClone(BaseModel):

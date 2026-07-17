@@ -147,7 +147,7 @@ derives from it. **Not a defect — the guard doing its job.**
 | Gap | Proposed surface | State |
 |---|---|---|
 | G-MOTIF-SUGGEST | 2 suggest buttons | ✅ built |
-| G-STORY-STRUCTURE | decompose action in `plan-hub` | ✅ built |
+| G-STORY-STRUCTURE | decompose action in `plan-hub` | 🔴 **CORRECTED 2026-07-18 (S-01 build): NOT in the studio.** The round-2 grep matched `decompose` in composition, but that is the LEGACY `PlannerView` (mounted only in `CompositionPanel`, not any studio panel); plan-hub has **zero** decompose/structure-template refs (`materialize-scenes` is a DIFFERENT capability). The decompose flow that consumes structure templates is **legacy-only** — a real gap, tracked as `D-S01-USE-IN-DECOMPOSE`. Custom structures ARE usable via the legacy planner (it reads `listTemplates` incl. the user's own), so the loop connects there, not in the studio. |
 | G-KG-WRITE-HOLES | 4 affordances, no new panel | ✅ built (`createEntity` has FE consumers) |
 | G-IMPORT-DECONSTRUCT | 拆文 section inside `arc-templates` | ✅ built + MOUNTED (`ImportDeconstructSection` in `ArcTemplatesPanel`) |
 | **G-DIAGNOSTICS-ISSUES** | wire the existing Issues tab + `GET /books/{bid}/diagnostics` | 🔴 **NOT built — see F-5** |

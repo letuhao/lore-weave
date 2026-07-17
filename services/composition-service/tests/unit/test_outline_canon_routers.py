@@ -133,6 +133,22 @@ class StubTemplates:
     async def list_for_user(self, u, *, include_archived=False):
         return [StructureTemplate(id=uuid.uuid4(), name="Save the Cat", kind="save_the_cat")]
 
+    # S-01 write side — echo back a template so the route serialization is exercised.
+    async def create(self, u, *, name, kind="generic", beats=None):
+        return StructureTemplate(id=uuid.uuid4(), owner_user_id=u, name=name, kind=kind, beats=beats or [])
+
+    async def clone_builtin(self, u, template_id, *, name=None):
+        return StructureTemplate(id=uuid.uuid4(), owner_user_id=u, name=name or "X (copy)", beats=[])
+
+    async def update(self, u, template_id, expected_version, **patch):
+        return StructureTemplate(id=template_id, owner_user_id=u, name=patch.get("name", "n"), version=2)
+
+    async def archive(self, u, template_id):
+        return StructureTemplate(id=template_id, owner_user_id=u, name="n", is_archived=True)
+
+    async def restore(self, u, template_id):
+        return StructureTemplate(id=template_id, owner_user_id=u, name="n", is_archived=False)
+
 
 @pytest.fixture
 def ctx(monkeypatch):
@@ -464,6 +480,43 @@ def test_templates_lists_builtins(ctx):
     c, _, _, _, _ = ctx
     r = c.get("/v1/composition/templates")
     assert r.status_code == 200 and r.json()["templates"][0]["kind"] == "save_the_cat"
+
+
+# ── S-01 · structure-template authoring route contract ──
+
+def test_create_template_ok(ctx):
+    c, _, _, _, _ = ctx
+    r = c.post("/v1/composition/templates", json={"name": "My Structure", "beats": []})
+    assert r.status_code == 201 and r.json()["name"] == "My Structure"
+
+
+def test_create_template_rejects_blank_name(ctx):
+    """The empty-name bug: a blank/whitespace name must 422, not save an unfindable row."""
+    c, _, _, _, _ = ctx
+    for bad in ("", "   ", "\t"):
+        r = c.post("/v1/composition/templates", json={"name": bad, "beats": []})
+        assert r.status_code == 422, f"blank name {bad!r} should be rejected"
+
+
+def test_patch_template_requires_if_match(ctx):
+    c, _, _, _, _ = ctx
+    r = c.patch(f"/v1/composition/templates/{uuid.uuid4()}", json={"name": "x"})
+    assert r.status_code == 428  # OCC: If-Match required
+
+
+def test_patch_template_rejects_blank_name(ctx):
+    c, _, _, _, _ = ctx
+    r = c.patch(f"/v1/composition/templates/{uuid.uuid4()}", json={"name": "  "},
+                headers={"If-Match": "1"})
+    assert r.status_code == 422
+
+
+def test_clone_archive_restore_routes(ctx):
+    c, _, _, _, _ = ctx
+    tid = uuid.uuid4()
+    assert c.post(f"/v1/composition/templates/{tid}/clone", json={}).status_code == 201
+    assert c.delete(f"/v1/composition/templates/{tid}").status_code == 204
+    assert c.post(f"/v1/composition/templates/{tid}/restore").status_code == 200
 
 
 # ── BE-11 (W0-BE2) · canon_rule RESTORE — the undo the DELETE already promises ──

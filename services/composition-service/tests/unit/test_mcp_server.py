@@ -1672,3 +1672,21 @@ async def test_generate_grant_denied_refused():
                     model_source="user_model", model_ref=str(MODEL_REF),
                 ),
             )
+
+
+# ── S-01 · structure-template MCP args validation (the agent-path guard) ──
+
+def test_structure_template_mcp_args_reject_blank_name():
+    """The empty-name bug at the agent surface: create/update/clone args must reject a blank name
+    (parity with the REST route), so an LLM cannot author an unfindable, blank-named structure."""
+    import pytest
+    import app.mcp.server as srv
+    for bad in ("", "   ", "\t"):
+        with pytest.raises(Exception):
+            srv._StructTemplateCreateArgs(name=bad)
+        with pytest.raises(Exception):
+            srv._StructTemplateUpdateArgs(template_id="x", expected_version=1, name=bad)
+        with pytest.raises(Exception):
+            srv._StructTemplateCloneArgs(template_id="x", name=bad)
+    # a valid name is trimmed + accepted
+    assert srv._StructTemplateCreateArgs(name="  My Structure  ").name == "My Structure"

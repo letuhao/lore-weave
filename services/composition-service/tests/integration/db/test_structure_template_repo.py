@@ -158,6 +158,38 @@ async def test_occ_stale_version_conflicts(pool):
 
 # ── ARCHIVE / RESTORE symmetry ───────────────────────────────────────────────
 
+async def test_the_decompose_consumer_resolves_a_custom_template(pool):
+    """Spec §9 consumer-unbroken: the decompose route resolves its template via
+    `StructureTemplatesRepo.get(user_id, id)` — a CUSTOM (user-authored) template must resolve with
+    its beats exactly like a built-in, so decompose can map them onto chapters."""
+    repo = StructureTemplatesRepo(pool)
+    u = uuid.uuid4()
+    beats = [{"key": "setup", "label": "Setup", "purpose": "…", "order": 1},
+             {"key": "payoff", "label": "Payoff", "purpose": "…", "order": 2}]
+    t = await repo.create(u, name="My Decompose Structure", beats=beats)
+    # the exact call the decompose route (plan.py) makes:
+    resolved = await repo.get(u, t.id)
+    assert resolved is not None
+    assert resolved.owner_user_id == u
+    assert [b["key"] for b in resolved.beats] == ["setup", "payoff"]  # beats intact for beat_role mapping
+
+
+async def test_migration_is_idempotent(pool):
+    """Spec §9: re-running migrations adds nothing — the S-01 ALTERs are IF NOT EXISTS and the two
+    partial-unique indexes are IF NOT EXISTS, so a second run over an already-migrated DB is a no-op
+    and the 6 seeds are not re-inserted."""
+    from app.db.migrate import run_migrations
+    async with pool.acquire() as c:
+        before = await c.fetchval("SELECT count(*) FROM structure_template WHERE owner_user_id IS NULL")
+    await run_migrations(pool)   # second run
+    async with pool.acquire() as c:
+        after = await c.fetchval("SELECT count(*) FROM structure_template WHERE owner_user_id IS NULL")
+        cols = {r["column_name"] for r in await c.fetch(
+            "SELECT column_name FROM information_schema.columns WHERE table_name = 'structure_template'")}
+    assert before == after and before > 0        # seeds not duplicated
+    assert {"version", "is_archived", "updated_at"} <= cols  # write-side columns present, once
+
+
 async def test_archive_hides_then_restore_brings_back(pool):
     repo = StructureTemplatesRepo(pool)
     u = uuid.uuid4()
