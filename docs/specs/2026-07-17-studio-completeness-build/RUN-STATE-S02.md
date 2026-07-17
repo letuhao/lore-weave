@@ -27,8 +27,11 @@ Done = S-02 built + scoped tests green (real pasted output) + `/review-impl` pas
 - [x] **B — MCP tools (agent parity).** `book_part_{create,rename,reorder,archive,restore}` + `book_chapter_set_part`.
       DONE 2026-07-17 (commit pending). Shared store methods (no REST/MCP drift); Undo hints per tool.
       Usability: **operable with NO new GUI** — user drives it through the studio assistant. Anti-hollow-shell insurance.
-- [ ] **C — FE two-level tree.** Self-contained parts api + PartsTree + hook + tests. Navigator MOUNT →
-      manifest (foreign uncommitted diff blocks a clean stage). Direct-manipulation GUI.
+- [~] **C — FE building blocks DONE; navigator render handed to convergence.** Shipped: `partsApi.ts`
+      (typed client + pure `groupChaptersByParts`, 8 unit tests) + `Chapter.part_id`. The render/affordances/
+      drag edit the FOREIGN `ManuscriptNavigator.tsx`/`useManuscriptTree.ts` → speced in
+      [`CONVERGENCE-S02.md`](CONVERGENCE-S02.md), not stomped. Human-usable GUI lands at convergence;
+      human-usable ASSISTANT path is live now (Slice B).
 
 ## Evidence log (paste real output here as each slice VERIFYs)
 - **Slice A (2026-07-17):** `go test ./internal/api/ -run TestParts_ -v` — 7/7 PASS
@@ -41,6 +44,10 @@ Done = S-02 built + scoped tests green (real pasted output) + `/review-impl` pas
   breach → errPartNotInBook, TenancyDenied → errBookNotAccessible). Refactored REST → shared store methods,
   TestParts_ still 7/7. Full `internal/api` `ok 23.1s`. Single-service ⇒ no cross-service live-smoke token;
   DB tests ARE the live proof (real PG18 + real router + real MCP handlers; tools boot-validated by MustValidateToolMeta).
+- **Slice C (2026-07-17):** `npx vitest run partsApi.test.ts` — 8/8 PASS (grouping: sort order, within-group
+  order, Unassigned bucket for null/trashed/unknown-act, empty act renders, empty-bucket hide/show, flat book,
+  no-mutate). `npx tsc --noEmit` exit 0 (clean full FE typecheck — my additions don't break the build).
+  Navigator render → CONVERGENCE-S02.md (foreign-file constraint).
 
 ## Registers
 ### Decisions

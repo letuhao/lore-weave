@@ -66,6 +66,10 @@ export type Chapter = {
   // the BE column/backfill (Phase A) may not have landed yet on a given deploy, so
   // every consumer must tolerate `undefined` rather than assume the field exists.
   word_count?: number;
+  // S-02 — the manuscript part (act/volume) this chapter is homed in, or null when it
+  // lives in the flat manuscript. Additive + optional: an older book-service may not
+  // return it, so the navigator must tolerate `undefined` (treated as unassigned).
+  part_id?: string | null;
 };
 
 // Shared base from @/api (relative '' default → proxy→gateway). For multipart
