@@ -3,15 +3,20 @@
 # service patterns. docker-compose.yml passes `context: ..` +
 # `dockerfile: services/video-gen-service/Dockerfile`.
 FROM python:3.13-slim
+# Build-time Python package index. Defaults to PyPI — CI and production builds are
+# unchanged. Override ONLY when the local network blocks PyPI (some ISPs reset the
+# connection mid-download, which fails any not-yet-cached pip layer):
+#   docker compose build --build-arg PIP_INDEX_URL=https://<mirror>/simple
+ARG PIP_INDEX_URL=https://pypi.org/simple
 
 WORKDIR /app
 
 # SDK install — Phase 5e-α (matches translation-service Phase 4c-α + chat-service pattern).
 COPY sdks/python /sdk
-RUN pip install --no-cache-dir /sdk
+RUN pip install --no-cache-dir -i "$PIP_INDEX_URL" /sdk
 
 COPY services/video-gen-service/requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir -i "$PIP_INDEX_URL" -r requirements.txt
 
 COPY services/video-gen-service/app/ app/
 

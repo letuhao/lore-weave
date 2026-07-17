@@ -1,4 +1,9 @@
 FROM python:3.12-slim
+# Build-time Python package index. Defaults to PyPI — CI and production builds are
+# unchanged. Override ONLY when the local network blocks PyPI (some ISPs reset the
+# connection mid-download, which fails any not-yet-cached pip layer):
+#   docker compose build --build-arg PIP_INDEX_URL=https://<mirror>/simple
+ARG PIP_INDEX_URL=https://pypi.org/simple
 
 WORKDIR /app
 
@@ -8,13 +13,13 @@ WORKDIR /app
 # dockerfile to `services/chat-service/Dockerfile`.
 
 COPY services/chat-service/requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir -i "$PIP_INDEX_URL" -r requirements.txt
 
 # Install the local LLM SDK. Service code imports `loreweave_llm` which
 # resolves to this package — direct provider-SDK calls (litellm,
 # openai-python) are forbidden per CLAUDE.md gateway invariant.
 COPY sdks/python /sdk
-RUN pip install --no-cache-dir /sdk
+RUN pip install --no-cache-dir -i "$PIP_INDEX_URL" /sdk
 
 COPY services/chat-service/app/ ./app/
 

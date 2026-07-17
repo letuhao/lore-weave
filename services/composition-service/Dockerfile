@@ -2,22 +2,28 @@
 # Build context is repo root (set in docker-compose.yml) so we can COPY the
 # local SDKs alongside the service code. Mirrors knowledge-service.
 FROM python:3.12-slim AS deps
+# Build-time Python package index. Defaults to PyPI — CI and production builds are
+# unchanged. Override ONLY when the local network blocks PyPI (some ISPs reset the
+# connection mid-download, which fails any not-yet-cached pip layer):
+#   docker compose build --build-arg PIP_INDEX_URL=https://<mirror>/simple
+ARG PIP_INDEX_URL=https://pypi.org/simple
 
 WORKDIR /app
 COPY services/composition-service/requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir -i "$PIP_INDEX_URL" -r requirements.txt
 
 # Local SDKs (loreweave_obs / loreweave_llm / loreweave_eval / …). Direct
 # provider-SDK calls are forbidden per the CLAUDE.md gateway invariant.
 COPY sdks/python /sdk
-RUN pip install --no-cache-dir /sdk
+RUN pip install --no-cache-dir -i "$PIP_INDEX_URL" /sdk
 
 # ── Stage 2: test ─────────────────────────────────────────────
 # CI target: docker build --target test .
 FROM deps AS test
+ARG PIP_INDEX_URL=https://pypi.org/simple
 
 COPY services/composition-service/requirements-test.txt .
-RUN pip install --no-cache-dir -r requirements-test.txt
+RUN pip install --no-cache-dir -i "$PIP_INDEX_URL" -r requirements-test.txt
 
 COPY services/composition-service/app/ ./app/
 COPY services/composition-service/tests/ ./tests/

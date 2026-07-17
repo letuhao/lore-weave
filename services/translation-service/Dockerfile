@@ -3,11 +3,16 @@
 # impl: services/knowledge-service/Dockerfile (Phase 4a-α) +
 # services/worker-ai/Dockerfile (Phase 4b-γ).
 FROM python:3.12-slim
+# Build-time Python package index. Defaults to PyPI — CI and production builds are
+# unchanged. Override ONLY when the local network blocks PyPI (some ISPs reset the
+# connection mid-download, which fails any not-yet-cached pip layer):
+#   docker compose build --build-arg PIP_INDEX_URL=https://<mirror>/simple
+ARG PIP_INDEX_URL=https://pypi.org/simple
 
 WORKDIR /app
 
 COPY services/translation-service/requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir -i "$PIP_INDEX_URL" -r requirements.txt
 
 # Install the local SDKs. The pyproject ships two top-level packages:
 #   - loreweave_llm — gateway client (streaming + async jobs)
@@ -16,7 +21,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Translation-service uses loreweave_llm; the gateway invariant
 # (CLAUDE.md) forbids direct provider-SDK calls (litellm, openai).
 COPY sdks/python /sdk
-RUN pip install --no-cache-dir /sdk
+RUN pip install --no-cache-dir -i "$PIP_INDEX_URL" /sdk
 
 COPY services/translation-service/app/ ./app/
 

@@ -5,10 +5,15 @@
 # so we can COPY the local SDKs alongside the service code. Reference
 # impl: services/chat-service/Dockerfile (Phase 1c-ii).
 FROM python:3.12-slim AS deps
+# Build-time Python package index. Defaults to PyPI — CI and production builds are
+# unchanged. Override ONLY when the local network blocks PyPI (some ISPs reset the
+# connection mid-download, which fails any not-yet-cached pip layer):
+#   docker compose build --build-arg PIP_INDEX_URL=https://<mirror>/simple
+ARG PIP_INDEX_URL=https://pypi.org/simple
 
 WORKDIR /app
 COPY services/knowledge-service/requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir -i "$PIP_INDEX_URL" -r requirements.txt
 
 # Install the local SDKs. The pyproject ships two top-level packages:
 #   - loreweave_llm — gateway client (streaming + async jobs)
@@ -16,15 +21,16 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Service code imports both. Direct provider-SDK calls (litellm,
 # openai, anthropic) are forbidden per CLAUDE.md gateway invariant.
 COPY sdks/python /sdk
-RUN pip install --no-cache-dir /sdk
+RUN pip install --no-cache-dir -i "$PIP_INDEX_URL" /sdk
 
 # ── Stage 2: test ─────────────────────────────────────────────
 # CI target: docker build --target test .
 # Installs test deps, copies source + tests, runs pytest.
 FROM deps AS test
+ARG PIP_INDEX_URL=https://pypi.org/simple
 
 COPY services/knowledge-service/requirements-test.txt .
-RUN pip install --no-cache-dir -r requirements-test.txt
+RUN pip install --no-cache-dir -i "$PIP_INDEX_URL" -r requirements-test.txt
 
 COPY services/knowledge-service/app/ ./app/
 COPY services/knowledge-service/tests/ ./tests/
