@@ -95,10 +95,12 @@ scope — a story structure is per-user, reusable across books (like the built-i
 ## 7. MCP tools (MCP-first invariant — agent parity)
 
 `composition_structure_template_{create,update,archive,restore}` on composition-service, each wrapping the
-repo method above. `beats` is a structured arg (list of `{key, label, purpose, order}`); `kind` is a
-**closed-set enum** (`generic|three_act|hero_journey|…` — register in `CLOSED_SET_ARGS` per the
-Frontend-Tool-Contract law). The existing `structure_template` list/get already flow through the decompose
-path; this adds only the write verbs.
+repo method above. `beats` is a structured arg (list of `{key, label, purpose, order}`). **`kind` is a FREE-TEXT label, NOT a
+closed enum** — SEALED after CLARIFY-verify: `structure_template.kind` is read **nowhere** semantically (every
+`.kind` consumer is outline-node / diagnostics / arc, not template), so forcing a user's custom structure to
+claim it is "save_the_cat" would be wrong. `kind` defaults to `'generic'`; the built-ins carry descriptive
+labels (`save_the_cat`, `hero_journey`, `story_circle`, `kishotenketsu`, …) purely for display. Do NOT
+register it in `CLOSED_SET_ARGS`.
 
 ## 8. Frontend (net-new panel → HTML draft first)
 

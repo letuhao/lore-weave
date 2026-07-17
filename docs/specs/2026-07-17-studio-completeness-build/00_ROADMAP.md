@@ -13,7 +13,7 @@
 
 ## The spec set
 
-**Status: all 10 specs WRITTEN 2026-07-17 (S-01..S-10) + 3 HTML drafts. Ready for CLARIFY/seal → build.**
+**Status: 11 specs WRITTEN + CLARIFY-SEALED 2026-07-17 (S-01..S-11) + 3 HTML drafts. Decisions: [`01_DECISIONS.md`](01_DECISIONS.md). Ready to BUILD (fanout, Tier-A parallel). G-WORKFLOWS parked on a track-ownership PO call.**
 
 | # | Spec | Tier | New verb(s) at DATA layer? | HTML draft? | Size |
 |---|---|---|---|---|---|
@@ -26,7 +26,8 @@
 | **S-07** | `world-maps OCC + agent verbs` — OCC on MCP/image; MCP world_update/delete + chapter-reorder | B | ❌ wire-up over existing repo | ❌ backend-only | S |
 | **S-08** | `soft-archive RESTORE` — motif + arc-template restore (dead-end soft-delete) | B | ✅ `restore` repo method each | ❌ affordance | S |
 | **S-09** | `small wire-ups` — corrections `list_for_job` route · glossary→graph seed route · wiki suggestion withdraw/status · view-aware graph reader (F-12) | B | mixed (routes over existing methods) | ❌ affordances | XS–S |
-| **S-10** | `Tier-C FE orphans` — style-voice + reference-shelf panels · Issues/diagnostics tab · bible/quality rails · MotifBindingLens mount · 3 arc agent-only surfaces | C | ❌ FE-only | ❌ (Issues tab layout = a small inline decision; the rest are ports/mounts) | S each |
+| **S-11** | `search activity-view` (PO D-a: BUILD) — mount RawSearchPanel + memory_search into the `search` nav | C | ❌ mount/aggregation (BE complete) | ❌ port (`RawSearchPanel` is the reference) | S |
+| **S-10** | `Tier-C FE orphans` — style-voice + reference-shelf panels · Issues/diagnostics tab · bible/quality rails · MotifBindingLens mount · 3 arc agent-only surfaces · `[[`-create (PO D-d) | C | ❌ FE-only | ❌ (Issues tab layout = a small inline decision; the rest are ports/mounts) | S each |
 
 **HTML drafts required (3):** `screen-structure-templates.html`, `screen-manuscript-parts.html`,
 `screen-kg-triage.html`. Everything else references an existing component or adds an affordance.

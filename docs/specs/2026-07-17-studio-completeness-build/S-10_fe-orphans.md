@@ -30,8 +30,8 @@ template) for the house pattern.
 The activity-bar `bible` view renders "Coming soon" over **13 built storyBible panels**; `quality` similarly
 over 9. **Build:** a rail that lists its category's panels (the data is in `catalog.ts` →
 `PANELS_BY_CATEGORY`). `bible` lists glossary/wiki/motif/world/cast/arc panels; `quality` lists the 9 quality
-panels. `search` stays "Coming soon" — it is a genuinely unbuilt feature (PO decision D-a). Pure FE over
-existing panels.
+panels. **`search` is now BUILT in S-11** (PO decided BUILD, D-a) — no longer left "Coming soon". Pure FE
+over existing panels.
 
 ## O5 · Mount `MotifBindingLens` in `PlanDrawer` (the handoff that never happened) — F-16
 S4 built `MotifBindingLens.tsx`; S2 never mounted it (0 importers), so per-scene motif binding is legacy-only.
@@ -46,6 +46,14 @@ line", it's a few). No backend (bind/unbind is complete). No draft — SceneMoti
   exists, 0 callers). 
 - `composition_decompile_arcs` — a "Group my chapters into arcs" action (confirm-gated; no FE). 
 All three are buttons over shipped engines — no new panel, no backend.
+
+## O7 · `[[`-create from the editor (PO decided BUILD, D-d) — F-9
+The `[[` glossary autocomplete's "+ Create new" link never worked in any consumer (F-9 hid it). PO decided to
+BUILD it. **Build:** typing `[[NewName` shows "＋ Create \"NewName\" as…" with a kind picker (the closed
+`AuthorableKind` set — character/location/organization/concept/item); selecting → `knowledgeApi.createEntity`
+(BE complete) → inserts `[[NewName]]` into the prose. Wire `onCreateNew` in both `EditorPanel` and
+`ChapterEditorPage` (the two consumers that passed `() => {}`). No backend. Enum-gated kind (Frontend-Tool-
+Contract). This is the capability F-9 named as the real unbuilt flow.
 
 ## Registration + tests (shared)
 Every new panel (O1/O2/O4-rail) goes through the GG-8 gate: `panelCatalogContract` (enum==openable==contract),

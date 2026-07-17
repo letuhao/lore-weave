@@ -37,11 +37,11 @@ POST /v1/knowledge/facts/{fact_id}/invalidate          (mark a committed fact wr
 - Tenancy: owner-scoped (`user_id` = the caller); a fact/pending-fact is only authorable/invalidatable by
   its owner within a project they can access.
 
-### A.3 MCP
-`memory_remember` already authors (agent side); this spec adds the HUMAN route only. Add
-`memory_invalidate` MCP tool for agent parity on the invalidate verb (wraps the same `invalidate_fact`),
-since `memory_forget` is the existing agent forget — confirm whether `memory_forget` already covers this
-before adding (avoid a duplicate; if `memory_forget` = invalidate, expose only the human route).
+### A.3 MCP — SEALED (no new tool)
+`memory_remember` already authors (agent side); **`memory_forget` already = invalidate** — CLARIFY-verified:
+`_handle_memory_forget` (`executor.py:726`) calls `invalidate_fact` (owner-keyed). So agent parity on BOTH
+verbs already exists. **This spec adds the HUMAN routes only** (`POST /pending-facts`, `/facts/{id}/invalidate`)
+— no new MCP tool, no duplicate.
 
 ### A.4 FE affordance (on the existing EntityDetailPanel fact list — no new panel)
 `/entities/{id}/facts` already renders a fact list. Add: an "＋ Add fact" row (opens a small s/p/o + type
