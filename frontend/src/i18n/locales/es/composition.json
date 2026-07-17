@@ -814,7 +814,18 @@
         "driftGone": "La plantilla de origen ya no está disponible.",
         "driftLoading": "Cargando deriva…",
         "untitledArc": "(arco sin título)",
-        "truncated": "Mostrando los primeros {{shown}} de {{count}} — usa el Catálogo o un plan superior para encontrar más."
+        "truncated": "Mostrando los primeros {{shown}} de {{count}} — usa el Catálogo o un plan superior para encontrar más.",
+        "driftClean": "Sin desviación: el arco realizado coincide con su plantilla.",
+        "driftSummary": "Brecha de cobertura: {{gaps}} · Problemas de orden: {{violations}} · Colocaciones plegadas: {{folded}}",
+        "driftThreads": "Cobertura de hilos",
+        "driftNoThreads": "La plantilla no tiene hilos para comparar.",
+        "driftPacing": "Ritmo",
+        "driftMax": "desviación máx. {{drift}}",
+        "driftPacingNC": "Aún no comparable: la plantilla no tiene curva de tensión.",
+        "driftSuccession": "Orden",
+        "driftSuccessionOk": "Sin violaciones de orden.",
+        "driftViolation": "{{label}}: {{n}} fuera de orden",
+        "driftFolded": "Plegado (nunca vinculado)"
       },
       "import": {
         "privacy": "El texto original es privado y nunca se comparte. Solo la estructura abstracta derivada puede publicarse; al publicar, se elimina la referencia a la fuente.",

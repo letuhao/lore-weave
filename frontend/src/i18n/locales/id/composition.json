@@ -814,7 +814,18 @@
         "driftGone": "Templat sumber tidak lagi tersedia.",
         "driftLoading": "Memuat drift...",
         "untitledArc": "(alur tanpa judul)",
-        "truncated": "Menampilkan {{shown}} dari {{count}} pertama — gunakan Katalog atau tingkatan yang lebih sempit untuk menemukan lebih banyak."
+        "truncated": "Menampilkan {{shown}} dari {{count}} pertama — gunakan Katalog atau tingkatan yang lebih sempit untuk menemukan lebih banyak.",
+        "driftClean": "Tidak ada penyimpangan — busur yang terealisasi sesuai dengan templatnya.",
+        "driftSummary": "celah cakupan {{gaps}} · {{violations}} masalah urutan · {{folded}} penempatan terlipat",
+        "driftThreads": "Cakupan alur",
+        "driftNoThreads": "Templat tidak memiliki alur untuk dibandingkan.",
+        "driftPacing": "Tempo",
+        "driftMax": "penyimpangan maks {{drift}}",
+        "driftPacingNC": "Belum dapat dibandingkan — templat tidak memiliki kurva ketegangan.",
+        "driftSuccession": "Urutan",
+        "driftSuccessionOk": "Tidak ada pelanggaran urutan.",
+        "driftViolation": "{{label}}: {{n}} tidak berurutan",
+        "driftFolded": "Terlipat (tidak pernah terikat)"
       },
       "import": {
         "privacy": "Teks mentah tetap bersifat pribadi bagi Anda dan tidak akan pernah dibagikan. Hanya struktur abstrak yang diturunkan yang dapat dipublikasikan — dan publikasi akan menghapus referensi sumbernya.",

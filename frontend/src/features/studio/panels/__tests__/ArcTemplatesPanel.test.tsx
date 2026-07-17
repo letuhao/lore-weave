@@ -100,15 +100,33 @@ describe('ArcTemplatesPanel', () => {
     await waitFor(() => expect(screen.getByTestId('arc-drift-unapplied')).toBeInTheDocument());
   });
 
-  it('34 §Drift: a materialized arc (arc_template_id stamped) renders a drift report', async () => {
+  it('34 §Drift: a materialized arc renders the STRUCTURED drift view (real ArcConformance shape)', async () => {
+    // The report is the real ArcConformance (thread_progress/pacing/succession/unmaterialized) —
+    // NOT the old fictional `thread_coverage` stub the <pre> mock used to feed (that shape never
+    // came off the wire; the JSON dump hid it — the mock-hides-contract lesson this view fixes).
     ph.getArcs.mockResolvedValue({ arcs: [{ id: 'sn1', title: 'Rising Action', arc_template_id: 'a1' }] });
-    cat.getArcTemplateDrift.mockResolvedValue({ state: 'ok', report: { thread_coverage: [{ thread: 't1', realized: 2, planned: 3 }] } });
+    cat.getArcTemplateDrift.mockResolvedValue({ state: 'ok', report: {
+      scope: 'arc', available: true, coarse: true, causal_verified: false,
+      arc_template_id: 'a1', arc_name: 'Rising Action', chapter_count: 3,
+      thread_progress: [{ thread: 't1', label: 'Revenge', planned: 3, covered: 2, missing: [{ motif_code: 'rev.slap', ord: 2 }] }],
+      pacing: { comparable: true, planned: [10, 50, 90], realized: [{ chapter_index: 1, avg_tension: 12, scenes: 2 }], max_drift: 8 },
+      succession: { causal_verified: false, threads: [{ thread: 't1', label: 'Revenge', transitions: 2, legal: 2, unrelated: 0, violations: [] }] },
+      unmaterialized: [],
+    } });
     ctrl.useArcTemplates.mockReturnValue(makeState({ selected: MINE as never }));
     render(<ArcTemplatesPanel {...props} />, { wrapper: qcWrap });
     await waitFor(() => expect(screen.getByTestId('drift-arc-sn1')).toBeInTheDocument());
     fireEvent.click(screen.getByTestId('drift-arc-sn1'));
-    await waitFor(() => expect(screen.getByTestId('arc-drift-report')).toBeInTheDocument());
-    expect(screen.getByTestId('arc-drift-report').textContent).toContain('thread_coverage');
+    // the structured view renders (NOT the raw <pre>)…
+    await waitFor(() => expect(screen.getByTestId('arc-drift-view')).toBeInTheDocument());
+    expect(screen.queryByTestId('arc-drift-report')).not.toBeInTheDocument();
+    // …with the derived summary (drift present, not the clean verdict) + the data-derived
+    // per-thread coverage + the missing motif code. (Copy is i18n-keyed; assert on data +
+    // testids here, and on interpolated copy in the view's own unit test.)
+    expect(screen.getByTestId('arc-drift-summary')).toBeInTheDocument();
+    expect(screen.queryByTestId('arc-drift-clean')).not.toBeInTheDocument();
+    expect(screen.getByTestId('arc-drift-thread-t1').textContent).toMatch(/2\/3/);
+    expect(screen.getByTestId('arc-drift-missing-t1').textContent).toContain('rev.slap');
   });
 
   it('34/AT-2: the Catalog tab browses public templates + adopt', async () => {

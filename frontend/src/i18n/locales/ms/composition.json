@@ -814,7 +814,18 @@
         "driftGone": "Templat sumber tidak lagi tersedia.",
         "driftLoading": "Memuatkan drift…",
         "untitledArc": "(lengkungan tanpa tajuk)",
-        "truncated": "Menunjukkan {{shown}} daripada {{count}} yang pertama — gunakan Katalog atau peringkat yang lebih khusus untuk mencari lebih banyak."
+        "truncated": "Menunjukkan {{shown}} daripada {{count}} yang pertama — gunakan Katalog atau peringkat yang lebih khusus untuk mencari lebih banyak.",
+        "driftClean": "Tiada hanyutan — lengkok yang dihasilkan sepadan dengan templatnya.",
+        "driftSummary": "jurang liputan {{gaps}} · isu turutan {{violations}} · penempatan terlipat {{folded}}",
+        "driftThreads": "Liputan benang",
+        "driftNoThreads": "Templat tidak mempunyai benang untuk dibandingkan.",
+        "driftPacing": "Tempo",
+        "driftMax": "hanyutan maks {{drift}}",
+        "driftPacingNC": "Belum boleh dibandingkan — templat tidak mempunyai lengkung ketegangan.",
+        "driftSuccession": "Turutan",
+        "driftSuccessionOk": "Tiada pelanggaran turutan.",
+        "driftViolation": "{{label}}: {{n}} tidak mengikut turutan",
+        "driftFolded": "Terlipat (tidak pernah terikat)"
       },
       "import": {
         "privacy": "Teks asal kekal peribadi untuk anda dan tidak akan dikongsi. Hanya struktur abstrak yang terhasil boleh diterbitkan — dan penerbitan akan membuang rujukan sumber.",

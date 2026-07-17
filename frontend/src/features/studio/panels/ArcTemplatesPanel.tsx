@@ -18,6 +18,7 @@ import { ArcTimelineEditor } from '@/features/composition/motif/components/ArcTi
 import { ArcApplyPreview } from '@/features/composition/motif/components/ArcApplyPreview';
 import { ImportDeconstructSection } from '@/features/composition/arcImport/ImportDeconstructSection';
 import { listCatalog, getArcTemplateDrift } from '@/features/composition/arcTemplates/api';
+import { ArcTemplateDriftView } from '@/features/composition/arcTemplates/ArcTemplateDriftView';
 import { getArcs } from '@/features/plan-hub/api';
 import type { ArcTemplate } from '@/features/composition/motif/arcTypes';
 
@@ -250,7 +251,7 @@ function DriftSection({ state, template, t }: { state: ArcTemplatesState; templa
           : drift.data?.state === 'gone'
             ? <p data-testid="arc-drift-gone" className="italic text-muted-foreground">{t('motif.arc.templates.driftGone', { defaultValue: 'The source template is no longer available.' })}</p>
           : drift.data?.report
-            ? <pre data-testid="arc-drift-report" className="mt-1 overflow-auto rounded bg-muted/40 p-1 text-[10px]">{JSON.stringify(drift.data.report, null, 1)}</pre>
+            ? <ArcTemplateDriftView report={drift.data.report} t={t} />
             : null
       )}
     </div>

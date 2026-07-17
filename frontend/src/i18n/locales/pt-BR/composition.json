@@ -814,7 +814,18 @@
         "driftGone": "O modelo de origem não está mais disponível.",
         "driftLoading": "Carregando drift…",
         "untitledArc": "(arco sem título)",
-        "truncated": "Mostrando os primeiros {{shown}} de {{count}} — use o Catálogo ou um nível mais restrito para encontrar mais."
+        "truncated": "Mostrando os primeiros {{shown}} de {{count}} — use o Catálogo ou um nível mais restrito para encontrar mais.",
+        "driftClean": "Sem desvio — o arco realizado corresponde ao seu modelo.",
+        "driftSummary": "lacuna(s) de cobertura: {{gaps}} · problema(s) de ordenação: {{violations}} · posicionamento(s) dobrado(s): {{folded}}",
+        "driftThreads": "Cobertura de fios",
+        "driftNoThreads": "O modelo não possui fios para comparação.",
+        "driftPacing": "Ritmo",
+        "driftMax": "desvio máx. {{drift}}",
+        "driftPacingNC": "Ainda não é possível comparar — o modelo não possui curva de tensão.",
+        "driftSuccession": "Ordenação",
+        "driftSuccessionOk": "Sem violações de ordenação.",
+        "driftViolation": "{{label}}: {{n}} fora de ordem",
+        "driftFolded": "Dobrado (nunca vinculado)"
       },
       "import": {
         "privacy": "O texto bruto permanece privado para você e nunca é compartilhado. Apenas a estrutura abstrata derivada pode ser publicada — e a publicação remove a referência da fonte.",

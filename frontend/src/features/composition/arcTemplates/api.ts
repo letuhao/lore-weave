@@ -3,6 +3,10 @@
 // tier (34a) + the public catalog. Types stay loose (the panel reads a subset).
 import { apiJson } from '../../../api';
 import type { ArcTemplate } from '../motif/arcTypes';
+// The template-drift report is BYTE-IDENTICAL to the "spec vs prose" arc conformance report
+// (same engine, by_structure=false) — reuse the ONE real type instead of a loose local stub
+// (importing a type across the S2/S4 seam is fine: no runtime coupling).
+import type { ArcConformance } from '../motif/types';
 
 const BASE = '/v1/composition';
 
@@ -26,22 +30,16 @@ export function createSharedTemplate(
   );
 }
 
-export interface ArcDriftReport {
-  thread_coverage?: { thread: string; realized: number; planned: number }[];
-  pacing?: unknown;
-  unmaterialized?: { motif_code: string; thread: string; reason: string }[];
-  [k: string]: unknown;
-}
-
 /** 34 §4.2 §Drift — "how far has my materialized arc drifted from its template" (AT-6's stamp is
  *  written by materialize server-side, so a materialized arc carries arc_template_id and IS a drift
  *  subject). `arcId` is the structure_node id. Distinct honest failures: 422 NO_TEMPLATE_PROVENANCE
- *  (the arc was authored directly), 404 (the template is gone) — the caller renders each distinctly. */
+ *  (the arc was authored directly), 404 (the template is gone) — the caller renders each distinctly.
+ *  The report IS an `ArcConformance` (coarse; the drift path never sets `deep`). */
 export async function getArcTemplateDrift(
   projectId: string, arcId: string, token: string,
-): Promise<{ report: ArcDriftReport | null; state: 'ok' | 'no_provenance' | 'gone' }> {
+): Promise<{ report: ArcConformance | null; state: 'ok' | 'no_provenance' | 'gone' }> {
   try {
-    const report = await apiJson<ArcDriftReport>(
+    const report = await apiJson<ArcConformance>(
       `${BASE}/works/${projectId}/conformance?scope=arc_template_drift&arc_id=${encodeURIComponent(arcId)}`,
       { token },
     );
