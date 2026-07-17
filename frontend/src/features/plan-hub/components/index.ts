@@ -1,5 +1,6 @@
 // Plan Hub v2 (24 H2.4 + H3/H6) — canvas + node views + drawer + navigator rail public surface.
 export { PlanCanvas } from './PlanCanvas';
+export { LaneFlowView } from './LaneFlowView';
 export { ChapterNode } from './ChapterNode';
 export { SceneNode } from './SceneNode';
 export { ArcRollupNode } from './ArcRollupNode';

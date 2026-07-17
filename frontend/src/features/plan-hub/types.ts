@@ -16,6 +16,12 @@ import type {
   LaneBand,
   LaneLayout,
 } from './layout/laneLayout';
+import type { LaneArc } from './layout/laneTree';
+
+/** Authorship of a spec node — the sealed Plan Hub redesign's type/colour semantic: `authored`
+ *  (a human wrote it → Lora serif + amber) vs `mined` (the decompiler proposed it → JetBrains Mono
+ *  + teal). Maps 1:1 to the real `outline_node.source` / `structure_node.source` column. */
+export type NodeSource = 'authored' | 'mined';
 
 // Re-export the laneLayout-owned types so a consumer imports one place.
 export type {
@@ -28,6 +34,7 @@ export type {
   LaneBand,
   LaneLayout,
 };
+export type { LaneArc, LaneChapter, LaneScene } from './layout/laneTree';
 
 /** Read surface #1 — `GET /v1/composition/books/{book_id}/arcs` (composition_arc_list,
  *  23 B1). The whole structure shell + the derived block the Hub requires (OQ-2). Extra
@@ -56,6 +63,9 @@ export interface ArcListNode {
   arc_template_id?: string | null;
   template_version?: number | null;
   version: number;
+  /** AUTHORSHIP (redesign) — 'authored' (human) vs 'mined' (decompiler). Rides the arc-list wire via
+   *  `model_dump`. Optional only defensively; consumers fall back to 'authored'. */
+  source?: NodeSource;
   // 32 §3.6 — widened to the full StructureNode shape so PlanDrawer's `as ArcListNode &
   // { tracks?: unknown }` cast (the type lying about the wire) can go. The inspector reads the
   // node's OWN arrays; the resolved cascade comes from the ArcDetail fetch.
@@ -116,6 +126,9 @@ export interface SummaryNode {
   pov_entity_id: string | null;
   present_entity_ids: string[];
   present_entity_count: number;
+  /** AUTHORSHIP (redesign) — 'authored' (human) vs 'mined' (decompiler). Now on the summary wire
+   *  (`outline.py _summary_projection`). Optional only defensively; consumers fall back to 'authored'. */
+  source?: NodeSource;
   /** SC11 amendment — "is there prose behind this node?", MAINTAINED server-side
    *  (`outline_node.written_scene_id`, reconciled from book-service's `scenes.source_scene_id`).
    *  It replaces the client-side two-truths join entirely: no scene-index page-walk, no per-chapter
@@ -248,6 +261,9 @@ export interface NodeContent {
   castIds: string[];
   /** EXACT roster size — drives the `+N` overflow. Never the length of the capped list. */
   castCount: number;
+  /** AUTHORSHIP (redesign) — 'authored' (human) vs 'mined' (decompiler). Drives the Lora+amber vs
+   *  Mono+teal type/colour coding on every card. Defaults to 'authored' when the wire omits it. */
+  source: NodeSource;
 }
 
 /** The controller ↔ canvas contract (H2). `usePlanHub` PRODUCES this; `PlanCanvas` and
@@ -257,6 +273,10 @@ export interface PlanHubView {
   /** The positioned lanes/nodes for the current shell + loaded windows + collapse state
    *  (the ONE laneLayout() call — never a second "where does a node go" in the canvas). */
   layout: LaneLayout;
+  /** The arc → chapter → scene TREE for the lane-flow Advanced view (the sealed redesign). A
+   *  projection of the SAME shell + loaded windows the `layout` uses — the flow view renders a
+   *  document tree (stacked lanes, wrapping chapters), not the graph's absolute positions. */
+  laneTree: LaneArc[];
   edges: SceneLinkEdge[];
   /** null until the overlay resolves; the canvas renders no problem badge while null. */
   overlay: PlanOverlay | null;
@@ -329,6 +349,10 @@ export interface PlanHubView {
   select: (id: string | null) => void;
   /** Collapse/expand an arc lane to/from a single rollup card (PH11). */
   toggleArc: (arcId: string) => void;
+  /** Idempotently OPEN a set of arcs (never collapses one already closed by the user). The lane-flow
+   *  view uses it for bounded auto-expand on open — showing the hierarchy by default (mockup "root
+   *  fix 2") without a per-arc window fetch on a huge book. */
+  expandArcs: (arcIds: string[]) => void;
   /** Hide/show a chapter's scene branch (loads the scene window on expand). */
   toggleChapter: (chapterId: string) => void;
   /** OQ-5 — open an arc's ancestors so the arc becomes a RENDERED node. A nested arc under a

@@ -1388,7 +1388,9 @@
       "unplannedCapped": "…و {{n}} أخرى (القائمة محدودة)",
       "unassignedStrip": "{{count}} فصل بدون مسار — اسحبه إلى أحد المسارات",
       "unassignedStrip_other": "{{count}} فصول خارج أي مسار — اسحبها إلى أحد المسارات",
-      "untitled": "بدون عنوان"
+      "untitled": "بدون عنوان",
+      "unassignedFlow": "{{count}} فصل غير مدرج في أي حبكة بعد",
+      "unassignedFlow_other": "{{count}} فصول غير مدرجة في أي حبكة بعد"
     },
     "loading": "جاري تحميل المخطط…",
     "toolbar": {
@@ -1416,14 +1418,45 @@
       "status": {
         "done": "مكتمل",
         "drafting": "قيد الكتابة",
-        "empty": "لم يبدأ بعد"
+        "empty": "لم يبدأ بعد",
+        "aiIdea": "فكرة من الذكاء الاصطناعي"
       },
       "more": "+ {{n}} إضافية",
       "loadingMore": "جاري التحميل…",
       "writeCta": "كتابة فصل جديد",
       "writing": "جاري الإنشاء…",
       "doorNote": "يفتح صفحة فارغة مباشرة.",
-      "goAdvanced": "التنظيم في خطوط قصصية ←"
+      "goAdvanced": "التنظيم في خطوط قصصية ←",
+      "rename": "إعادة تسمية",
+      "delete": "حذف الفصل",
+      "aiDraft": "أو اترك الذكاء الاصطناعي يكتب مسودة ←",
+      "legend": {
+        "authored": "لقد كتبتها أنت",
+        "ai": "فكرة من الذكاء الاصطناعي"
+      }
+    },
+    "costHint": "تعديل الهيكل لا يستهلك أي طلبات للنماذج.",
+    "flow": {
+      "chNo": "الفصل {{n}}",
+      "chCount": "{{n}} فصل",
+      "gap": "⚠ فجوة",
+      "aiCollapsed": "الذكاء الاصطناعي · مطوي",
+      "subArcTag": "مسار فرعي",
+      "untitledArc": "مسار غير مسمى",
+      "untitledChapter": "فصل غير مسمى",
+      "untitledScene": "مشهد غير مسمى",
+      "addChapter": "+ فصل",
+      "addScene": "+ مشهد",
+      "addSubArc": "+ مسار فرعي",
+      "showScenes": "▸ مشاهد",
+      "moreChapters": "+ {{n}} إضافية",
+      "empty": "لا توجد خطوط قصصية بعد — أضف مساراً من شريط الأدوات للبدء.",
+      "status": {
+        "empty": "فارغ",
+        "outline": "مخطط",
+        "drafting": "قيد المسودة",
+        "done": "تم"
+      }
     }
   },
   "structTpl": {

@@ -1388,7 +1388,9 @@
       "unplannedCapped": "…以及另外 {{n}} 个（列表已截断）",
       "unassignedStrip": "{{count}} 个章节未归入弧线 —— 请将其拖入对应的轨道",
       "unassignedStrip_other": "有 {{count}} 个章节未分配至情节线 — 请将它们拖入泳道",
-      "untitled": "未命名"
+      "untitled": "未命名",
+      "unassignedFlow": "{{count}} 个章节尚未加入任何故事线",
+      "unassignedFlow_other": "{{count}} 个章节尚未加入任何故事线"
     },
     "loading": "正在加载大纲…",
     "toolbar": {
@@ -1416,14 +1418,45 @@
       "status": {
         "done": "已完成",
         "drafting": "草稿中",
-        "empty": "未开始"
+        "empty": "未开始",
+        "aiIdea": "AI 灵感"
       },
       "more": "更多 {{n}} 个",
       "loadingMore": "正在加载…",
       "writeCta": "撰写新章节",
       "writing": "正在创建…",
       "doorNote": "立即开启空白页。",
-      "goAdvanced": "整理为故事情节 →"
+      "goAdvanced": "整理为故事情节 →",
+      "rename": "重命名",
+      "delete": "删除章节",
+      "aiDraft": "或者让 AI 来起草 →",
+      "legend": {
+        "authored": "你创作的",
+        "ai": "AI 灵感"
+      }
+    },
+    "costHint": "编辑结构不会消耗模型调用次数。",
+    "flow": {
+      "chNo": "第 {{n}} 章",
+      "chCount": "{{n}} 章",
+      "gap": "⚠ 间隙",
+      "aiCollapsed": "AI · 已折叠",
+      "subArcTag": "子情节",
+      "untitledArc": "未命名情节",
+      "untitledChapter": "未命名章节",
+      "untitledScene": "未命名场景",
+      "addChapter": "+ 章节",
+      "addScene": "+ 场景",
+      "addSubArc": "+ 子情节",
+      "showScenes": "▸ 场景",
+      "moreChapters": "+ 还有 {{n}} 个",
+      "empty": "暂无故事情节 — 从工具栏添加一个情节以开始。",
+      "status": {
+        "empty": "空白",
+        "outline": "大纲",
+        "drafting": "起草中",
+        "done": "已完成"
+      }
     }
   },
   "structTpl": {

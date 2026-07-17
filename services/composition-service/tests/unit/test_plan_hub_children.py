@@ -35,6 +35,10 @@ _SUMMARY_KEYS = {
     # the contract: adding a field here is a deliberate amendment, and removing `written` by
     # accident turns this red instead of silently blanking the canvas's written/unwritten state.
     "written",
+    # AUTHORSHIP (Plan Hub redesign) — the sealed design's type/colour semantic (Lora+amber
+    # 'authored' vs Mono+teal 'mined'). A deliberate additive amendment to the closed field list;
+    # dropping it would silently blank the authorship coding on every card.
+    "source",
 }
 
 
@@ -426,6 +430,19 @@ def test_the_canvas_gets_a_BOOL_never_the_scene_id():
     assert proj["written"] is True
     assert "written_scene_id" not in proj
     assert "written_at" not in proj
+
+
+def test_the_summary_payload_carries_the_AUTHORSHIP_SOURCE():
+    """Plan Hub redesign — the sealed design codes authorship by type+colour (Lora+amber for a human's
+    'authored' node, JetBrains-Mono+teal for the decompiler's 'mined' node). That semantic maps to the
+    real `OutlineNode.source` column, so it must ride the canvas payload for every card to paint it —
+    dropping it silently blanks the authorship coding the user panel unanimously voted to KEEP."""
+    authored = _summary_projection(_node(kind="chapter"))
+    assert authored["source"] == "authored"  # model default
+
+    mined = _node(kind="scene")
+    mined.source = "mined"
+    assert _summary_projection(mined)["source"] == "mined"
 
 
 def test_written_is_INDEPENDENT_of_status():

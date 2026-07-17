@@ -7,23 +7,7 @@
 // View-only (React-MVC): it renders; the hook owns the data and the panel owns the actions.
 import { useTranslation } from 'react-i18next';
 import type { SimpleChapter } from '../hooks/useSimpleChapters';
-
-type Status = 'done' | 'drafting' | 'empty';
-
-/** Map the data we actually have (editorial_status + word_count) to a quiet status. We deliberately
- *  do NOT invent the outline_node status enum here — a chapter list only knows published vs draft and
- *  whether prose exists. Honest and enough for Simple mode. */
-function statusOf(c: SimpleChapter): Status {
-  if (c.published) return 'done';
-  if ((c.word_count ?? 0) > 0) return 'drafting';
-  return 'empty';
-}
-
-const DOT: Record<Status, string> = {
-  done: 'bg-[hsl(var(--success))]',
-  drafting: 'bg-primary',
-  empty: 'border border-dashed border-muted-foreground/60 bg-transparent',
-};
+import { SimpleChapterRow } from './SimpleChapterRow';
 
 export interface SimpleChapterListProps {
   chapters: SimpleChapter[];
@@ -38,13 +22,21 @@ export interface SimpleChapterListProps {
   /** Create a new chapter and open it in the editor. Null ⇒ no EDIT grant / no token. */
   onWriteNew: (() => void) | null;
   writing: boolean;
-  /** Switch to Advanced (the lane canvas) — used by the empty-state hint. */
+  /** Rename a chapter (inline). Null ⇒ no EDIT grant. */
+  onRename: ((chapterId: string, title: string) => void) | null;
+  /** Delete (trash) a chapter. Null ⇒ no EDIT grant. */
+  onDelete: ((chapterId: string) => void) | null;
+  /** A rename/delete is in flight. */
+  mutating: boolean;
+  /** "Or let the AI draft one" — open the planner/co-writer. Null ⇒ unavailable. */
+  onAiDraft: (() => void) | null;
+  /** Switch to Advanced (the lane canvas) — used by the guide + empty-state hint. */
   onGoAdvanced: () => void;
 }
 
 export function SimpleChapterList({
   chapters, total, loading, error, hasMore, loadMore, loadingMore,
-  onOpenChapter, onWriteNew, writing, onGoAdvanced,
+  onOpenChapter, onWriteNew, writing, onRename, onDelete, mutating, onAiDraft, onGoAdvanced,
 }: SimpleChapterListProps) {
   const { t } = useTranslation('studio');
 
@@ -74,31 +66,17 @@ export function SimpleChapterList({
           </div>
         )}
 
-        {!loading && !error && chapters.map((c, i) => {
-          const s = statusOf(c);
-          return (
-            <button
-              key={c.chapter_id}
-              type="button"
-              data-testid={`plan-hub-simple-row-${c.chapter_id}`}
-              onClick={() => onOpenChapter(c.chapter_id)}
-              className="group flex w-full items-center gap-3 border-b border-border/50 border-l-2 border-l-transparent px-4 py-3 text-left transition-colors hover:border-l-primary/60 hover:bg-secondary/50"
-            >
-              <span className="w-7 flex-shrink-0 text-right font-mono text-[11px] text-muted-foreground">{i + 1}</span>
-              <span className={`h-2 w-2 flex-shrink-0 rounded-full ${DOT[s]}`} />
-              <span className="min-w-0 flex-1 truncate font-serif text-[15px] font-semibold text-foreground/95" title={c.title || undefined}>
-                {c.title || t('planHub.simple.untitled', 'Untitled chapter')}
-              </span>
-              <span className="flex-shrink-0 font-mono text-[11px] text-muted-foreground">
-                {c.word_count != null && c.word_count > 0 ? t('planHub.simple.words', { n: c.word_count.toLocaleString(), defaultValue: '{{n}}w' }) : '—'}
-              </span>
-              <span className="w-16 flex-shrink-0 text-right font-mono text-[9.5px] uppercase tracking-wide text-muted-foreground">
-                {t(`planHub.simple.status.${s}`, s)}
-              </span>
-              <span className="flex-shrink-0 text-muted-foreground transition-colors group-hover:text-primary">→</span>
-            </button>
-          );
-        })}
+        {!loading && !error && chapters.map((c, i) => (
+          <SimpleChapterRow
+            key={c.chapter_id}
+            chapter={c}
+            index={i}
+            onOpen={onOpenChapter}
+            onRename={onRename}
+            onDelete={onDelete}
+            busy={mutating}
+          />
+        ))}
 
         {hasMore && !loading && (
           <button
@@ -115,6 +93,15 @@ export function SimpleChapterList({
         )}
       </div>
 
+      {/* legend — the quiet key to the type/colour coding (authorship) + the status dots. */}
+      <div data-testid="plan-hub-simple-legend" className="flex flex-shrink-0 flex-wrap gap-x-4 gap-y-1 border-t border-border/60 px-4 py-2 text-[10.5px] text-muted-foreground">
+        <span><span className="mr-1 inline-block h-2.5 w-2.5 rounded-full align-[-1px]" style={{ background: 'hsl(35 85% 55% / .85)' }} />{t('planHub.simple.legend.authored', 'you wrote it')}</span>
+        <span><span className="mr-1 inline-block h-2.5 w-2.5 rounded-full align-[-1px]" style={{ background: 'hsl(170 40% 45% / .85)' }} />{t('planHub.simple.legend.ai', 'AI idea')}</span>
+        <span><span className="mr-1 inline-block h-2.5 w-2.5 rounded-full bg-[hsl(var(--success))] align-[-1px]" />{t('planHub.simple.status.done', 'done')}</span>
+        <span><span className="mr-1 inline-block h-2.5 w-2.5 rounded-full bg-primary align-[-1px]" />{t('planHub.simple.status.drafting', 'drafting')}</span>
+        <span><span className="mr-1 inline-block h-2.5 w-2.5 rounded-full border border-dashed border-muted-foreground/60 align-[-1px]" />{t('planHub.simple.status.empty', 'not started')}</span>
+      </div>
+
       {/* the ONE door */}
       <div className="flex-shrink-0 border-t border-border p-4">
         <button
@@ -128,7 +115,19 @@ export function SimpleChapterList({
         </button>
         <p className="mt-2 text-center text-[11.5px] text-muted-foreground">
           {t('planHub.simple.doorNote', 'Opens a blank page straight away.')}{' '}
-          <button type="button" onClick={onGoAdvanced} className="border-b border-dotted border-accent/50 text-teal-400 hover:text-teal-300">
+          {onAiDraft && (
+            <button
+              type="button"
+              data-testid="plan-hub-simple-ai-draft"
+              onClick={onAiDraft}
+              className="border-b border-dotted border-accent/50 text-teal-400 hover:text-teal-300"
+            >
+              {t('planHub.simple.aiDraft', 'Or let the AI draft one →')}
+            </button>
+          )}
+        </p>
+        <p className="mt-1 text-center text-[11px] text-muted-foreground/80">
+          <button type="button" data-testid="plan-hub-simple-more-advanced" onClick={onGoAdvanced} className="border-b border-dotted border-accent/40 text-teal-400/80 hover:text-teal-300">
             {t('planHub.simple.goAdvanced', 'Organise into storylines →')}
           </button>
         </p>

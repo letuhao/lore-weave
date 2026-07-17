@@ -1388,7 +1388,9 @@
       "unplannedCapped": "…y {{n}} más (lista limitada)",
       "unassignedStrip": "{{count}} capítulo sin arco — arrástralo a un carril",
       "unassignedStrip_other": "{{count}} capítulos sin arco — arrástralos a un carril",
-      "untitled": "Sin título"
+      "untitled": "Sin título",
+      "unassignedFlow": "{{count}} capítulo no asignado a ninguna trama aún",
+      "unassignedFlow_other": "{{count}} capítulos no asignados a ninguna trama aún"
     },
     "loading": "Cargando el plan…",
     "toolbar": {
@@ -1416,14 +1418,45 @@
       "status": {
         "done": "terminado",
         "drafting": "escribiendo",
-        "empty": "sin empezar"
+        "empty": "sin empezar",
+        "aiIdea": "Idea de IA"
       },
       "more": "+ {{n}} más",
       "loadingMore": "Cargando…",
       "writeCta": "Escribir un nuevo capítulo",
       "writing": "Creando…",
       "doorNote": "Abre una página en blanco de inmediato.",
-      "goAdvanced": "Organizar en tramas →"
+      "goAdvanced": "Organizar en tramas →",
+      "rename": "Renombrar",
+      "delete": "Eliminar capítulo",
+      "aiDraft": "O deja que la IA redacte uno →",
+      "legend": {
+        "authored": "tú lo escribiste",
+        "ai": "Idea de IA"
+      }
+    },
+    "costHint": "Editar la estructura no consume créditos de modelo.",
+    "flow": {
+      "chNo": "cap {{n}}",
+      "chCount": "{{n}} cap",
+      "gap": "⚠ hueco",
+      "aiCollapsed": "IA · contraído",
+      "subArcTag": "sub-arco",
+      "untitledArc": "Arco sin título",
+      "untitledChapter": "Capítulo sin título",
+      "untitledScene": "Escena sin título",
+      "addChapter": "+ capítulo",
+      "addScene": "+ escena",
+      "addSubArc": "+ sub-arco",
+      "showScenes": "▸ escenas",
+      "moreChapters": "+ {{n}} más",
+      "empty": "Aún no hay tramas; añade un arco desde la barra de herramientas para empezar.",
+      "status": {
+        "empty": "vacío",
+        "outline": "esquema",
+        "drafting": "redactando",
+        "done": "completado"
+      }
     }
   },
   "structTpl": {

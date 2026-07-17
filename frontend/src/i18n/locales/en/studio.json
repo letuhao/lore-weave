@@ -1388,7 +1388,9 @@
       "unplannedCapped": "…and {{n}} more (list capped)",
       "unassignedStrip": "{{count}} chapter in no arc — drag it into a lane",
       "unassignedStrip_other": "{{count}} chapters in no arc — drag them into a lane",
-      "untitled": "Untitled"
+      "untitled": "Untitled",
+      "unassignedFlow": "{{count}} chapter not in any storyline yet",
+      "unassignedFlow_other": "{{count}} chapters not in any storyline yet"
     },
     "loading": "Loading the plan…",
     "toolbar": {
@@ -1416,14 +1418,45 @@
       "status": {
         "done": "done",
         "drafting": "drafting",
-        "empty": "not started"
+        "empty": "not started",
+        "aiIdea": "AI idea"
       },
       "more": "+ {{n}} more",
       "loadingMore": "Loading…",
       "writeCta": "Write a new chapter",
       "writing": "Creating…",
       "doorNote": "Opens a blank page straight away.",
-      "goAdvanced": "Organise into storylines →"
+      "goAdvanced": "Organise into storylines →",
+      "rename": "Rename",
+      "delete": "Delete chapter",
+      "aiDraft": "Or let the AI draft one →",
+      "legend": {
+        "authored": "you wrote it",
+        "ai": "AI idea"
+      }
+    },
+    "costHint": "Editing structure makes no model calls.",
+    "flow": {
+      "chNo": "ch {{n}}",
+      "chCount": "{{n}} ch",
+      "gap": "⚠ gap",
+      "aiCollapsed": "AI · collapsed",
+      "subArcTag": "sub-arc",
+      "untitledArc": "Untitled arc",
+      "untitledChapter": "Untitled chapter",
+      "untitledScene": "Untitled scene",
+      "addChapter": "+ chapter",
+      "addScene": "+ scene",
+      "addSubArc": "+ sub-arc",
+      "showScenes": "▸ scenes",
+      "moreChapters": "+ {{n}} more",
+      "empty": "No storylines yet — add an arc from the toolbar to begin.",
+      "status": {
+        "empty": "empty",
+        "outline": "outline",
+        "drafting": "drafting",
+        "done": "done"
+      }
     }
   },
   "structTpl": {

@@ -34,9 +34,9 @@ import { usePlanChildCreate } from '@/features/plan-hub/hooks/usePlanChildCreate
 import { usePlanHubMode } from '@/features/plan-hub/hooks/usePlanHubMode';
 import { useSimpleChapters } from '@/features/plan-hub/hooks/useSimpleChapters';
 import { SimpleChapterList } from '@/features/plan-hub/components/SimpleChapterList';
-import type { CameraFocusTarget, PlanOverlayRef } from '@/features/plan-hub/types';
+import type { PlanOverlayRef } from '@/features/plan-hub/types';
 import {
-  PlanCanvas,
+  LaneFlowView,
   PlanDrawer,
   PlanEmptyState,
   PlanToolbar,
@@ -50,7 +50,11 @@ export function PlanHubPanel(props: IDockviewPanelProps) {
   const { bookId, openPanel, focusManuscriptUnit } = useStudioHost();
   const { accessToken } = useAuth();
   const qc = useQueryClient();
-  const view = usePlanHub(bookId);
+  // View mode FIRST — it decides whether usePlanHub auto-expands the lane-flow hierarchy. Advanced
+  // ⇒ open the first roots by default (mockup "root fix 2"); Simple ⇒ never (Simple renders a plain
+  // list and must not fire a chapter-window fetch). Per-user setting (mirrors MotifSimpleMode).
+  const mode = usePlanHubMode(accessToken);
+  const view = usePlanHub(bookId, { autoExpandArcs: !mode.simple });
   // The structure origin — the empty state's primary verb (spec 2026-07-17-studio-structure-origin).
   const origin = usePlanOrigin(bookId, accessToken);
   // Bug A — build the hierarchy DOWN from a selected node (+Chapter on an arc, +Scene on a chapter).
@@ -66,10 +70,6 @@ export function PlanHubPanel(props: IDockviewPanelProps) {
   const originalLanguage = bookInfo.data?.original_language ?? 'en';
   const childCreate = usePlanChildCreate(bookId, projectId, accessToken, originalLanguage);
 
-  // View mode — SIMPLE (linear chapter list, content-first, the default) vs ADVANCED (the lane
-  // canvas). Per-user setting (mirrors MotifSimpleMode). A user panel scored the canvas Easy 2/5:
-  // jargon-heavy, no "just write" door. Simple mode is that fix.
-  const mode = usePlanHubMode(accessToken);
   const simpleChapters = useSimpleChapters(bookId, accessToken, mode.simple);
   // The "Write a new chapter" door: create a book chapter, then open it in the editor. This is the
   // content-first entry the pantser + newcomer both said was missing — no arc choice required.
@@ -80,20 +80,25 @@ export function PlanHubPanel(props: IDockviewPanelProps) {
       if (created?.chapter_id) focusManuscriptUnit(created.chapter_id);
     },
   });
+  // Simple-mode CRUD — the edit/delete the panel named as missing ("only add and view"). Rename PATCHes
+  // the book chapter's title; delete trashes it (soft, restorable). Both refetch the windowed list.
+  const invalidateSimple = () => void qc.invalidateQueries({ queryKey: ['plan-hub', 'simple-chapters', bookId] });
+  const renameChapter = useMutation({
+    mutationFn: (v: { chapterId: string; title: string }) =>
+      booksApi.patchChapter(accessToken!, bookId, v.chapterId, { title: v.title }),
+    onSuccess: invalidateSimple,
+  });
+  const deleteChapter = useMutation({
+    mutationFn: (chapterId: string) => booksApi.trashChapter(accessToken!, bookId, chapterId),
+    onSuccess: invalidateSimple,
+  });
 
   // H2.6 — the editor's active chapter (book-service chapter_id) off the bus. Map it to the Hub node
   // whose loaded content carries that chapterId; null when nothing's open or its window isn't loaded.
+  // The editor's active chapter (book-service chapter_id) off the bus. The lane-flow cards match it
+  // directly (a chapter card carries its chapterId), so the old chapterId→node-id derivation the RF
+  // canvas needed is gone.
   const activeChapterId = useStudioBusSelector((s) => s.activeChapterId);
-  const activeNodeId = useMemo(() => {
-    if (!activeChapterId) return null;
-    // Match the CHAPTER node only — the editor's active unit is a chapter, and only chapter nodes
-    // carry a chapter_id (scenes' is null); the kind guard also immunises against any scene-side
-    // denormalisation of chapter_id from picking a scene over its chapter.
-    const hit = Object.entries(view.nodeContent).find(
-      ([, c]) => c.kind === 'chapter' && c.chapterId === activeChapterId,
-    );
-    return hit ? hit[0] : null;
-  }, [activeChapterId, view.nodeContent]);
 
   // PH18 deep-links — a problem ref opens its OWNING lens, FOCUSED on the offending row. Routed
   // through openPanel, never navigate() (PH24/DOCK-7).
@@ -124,9 +129,9 @@ export function PlanHubPanel(props: IDockviewPanelProps) {
   // disabled) so the mode is a real, discoverable concept rather than a silently absent one.
   const [viewMode, setViewMode] = useState<PlanViewMode>('narrative');
 
-  // A FIND, not a filter: matched nodes are ringed and everything stays exactly where it was.
-  // Filtering would re-lay the canvas out under the user, which PH14 forbids ("an insert must shift,
-  // never reshuffle"). Empty query ⇒ undefined ⇒ the cards render no find state at all.
+  // A FIND, not a filter: matched cards are RINGED and everything stays exactly where it is (PH14 —
+  // an insert must shift, never reshuffle; the same holds for the lane-flow view). Empty query ⇒
+  // undefined ⇒ the cards render no find state at all.
   const matchedIds = useMemo(() => {
     const q = search.trim().toLowerCase();
     if (!q) return undefined;
@@ -137,26 +142,18 @@ export function PlanHubPanel(props: IDockviewPanelProps) {
     return hits;
   }, [search, view.nodeContent]);
 
-  // OQ-5 camera — a focus REQUEST (nodeId + monotonically bumped seq so re-focusing the same node
-  // still pans). A rail row focus selects AND pans; a canvas click only selects (already in view).
-  const [focusTarget, setFocusTarget] = useState<CameraFocusTarget | null>(null);
+  // PH25 — the ACTIVITY BAR's Plan rail lives outside the dock, so it asks over the bus. The lane-flow
+  // view has no camera to pan, so a focus request SELECTS the node and OPENS its ancestor lanes (so a
+  // nested arc's lane is expanded and the card is on screen). We diff the seq (not the nodeId) so
+  // re-clicking the same row re-selects, and a fresh mount never replays a stale request.
   const { select, expandAncestorsOf } = view;
   const focusNode = useCallback(
     (nodeId: string) => {
-      // Open the ancestors FIRST: a nested arc under a collapsed one isn't drawn, so the camera
-      // would have nothing to pan to. The pan itself fires as soon as the node appears (the camera
-      // waits for it rather than giving up on the frame the request was made).
       expandAncestorsOf(nodeId);
-      setFocusTarget((prev) => ({ nodeId, seq: (prev?.seq ?? 0) + 1 }));
       select(nodeId);
     },
     [select, expandAncestorsOf],
   );
-
-  // PH25 — the ACTIVITY BAR's Plan rail lives outside the dock, so it asks over the bus rather than
-  // handing us a callback. We diff the seq (not the nodeId) so re-clicking the SAME row still pans,
-  // and a fresh mount never replays a stale request. This is a legitimate useEffect: it synchronises
-  // an external request stream onto our imperative camera, not a reaction to our own state.
   const planFocus = useStudioBusSelector((s) => s.planFocusSeq);
   const planFocusNodeId = useStudioBusSelector((s) => s.planFocusNodeId);
   const lastPlanFocus = useRef<number | undefined>(planFocus);
@@ -169,7 +166,14 @@ export function PlanHubPanel(props: IDockviewPanelProps) {
   // The Simple | Advanced mode toggle — shown in BOTH views so a writer can always switch. Simple is
   // a plain chapter list (content-first); Advanced is the lane canvas (structure-first).
   const modeToggle = (
-    <div className="flex flex-shrink-0 items-center gap-2 border-b bg-muted/20 px-3 py-1.5">
+    <div className="flex flex-shrink-0 items-center gap-3 border-b bg-muted/20 px-3 py-1.5">
+      {/* book title (mockup `.book`) — the surface's subject, so the writer always knows which book */}
+      {bookInfo.data?.title && (
+        <span data-testid="plan-hub-book-title" className="min-w-0 truncate font-serif text-sm font-semibold">
+          {bookInfo.data.title}
+        </span>
+      )}
+      <span className="flex-1" />
       <span className="inline-flex overflow-hidden rounded-full border text-[11px]">
         <button
           type="button"
@@ -189,6 +193,15 @@ export function PlanHubPanel(props: IDockviewPanelProps) {
         >
           {t('planHub.mode.advanced', 'Advanced')}
         </button>
+      </span>
+      {/* cost (mockup `.cost`) — editing structure makes NO model calls, so it is genuinely free. A
+          truthful $0.00 (not a fabricated model spend); the tooltip says why. */}
+      <span
+        data-testid="plan-hub-cost"
+        className="flex-shrink-0 font-mono text-[11px] text-muted-foreground"
+        title={t('planHub.costHint', 'Editing structure makes no model calls.')}
+      >
+        <span className="font-medium text-[hsl(var(--success))]">$0.00</span>
       </span>
     </div>
   );
@@ -211,6 +224,10 @@ export function PlanHubPanel(props: IDockviewPanelProps) {
           onOpenChapter={(chapterId) => focusManuscriptUnit(chapterId)}
           onWriteNew={accessToken ? () => writeChapter.mutate() : null}
           writing={writeChapter.isPending}
+          onRename={accessToken ? (chapterId, title) => renameChapter.mutate({ chapterId, title }) : null}
+          onDelete={accessToken ? (chapterId) => deleteChapter.mutate(chapterId) : null}
+          mutating={renameChapter.isPending || deleteChapter.isPending}
+          onAiDraft={() => openPanel('planner', { focus: true })}
           onGoAdvanced={() => mode.setSimple(false)}
         />
       </div>
@@ -334,47 +351,56 @@ export function PlanHubPanel(props: IDockviewPanelProps) {
         problemCount={view.problemTotal}
       />
       <div className="relative min-w-0 flex-1">
-        <PlanCanvas
-          layout={view.layout}
-          edges={view.edges}
-          overlay={view.overlay}
-          conformance={view.conformance}
-          unionState={view.unionState}
-          nodeContent={view.nodeContent}
+        {/* ADVANCED = the sealed lane-flow view (design-drafts/plan-hub-redesign/index.html): stacked
+            arc lanes with wrapping chapter cards + inset sub-arcs. Replaces the React Flow graph — the
+            mockup is a document-flow layout, not a node graph. Selection routes the SAME drawer
+            (edit/archive); inline +chapter/+scene/+sub-arc wire the verified create routes. */}
+        <LaneFlowView
+          laneTree={view.laneTree}
+          arcPagination={view.arcPagination}
           selectedId={view.selectedId}
+          activeChapterId={activeChapterId ?? null}
           onSelect={view.select}
           onToggleArc={view.toggleArc}
           onToggleChapter={view.toggleChapter}
-          activeNodeId={activeNodeId}
-          focusTarget={focusTarget}
-          onMoveChapter={view.moveChapterToArc}
-          onMoveScene={view.moveSceneToChapter}
-          onMoveArc={view.moveArcTo}
-          onReorderChapter={view.reorderChapter}
-          arcPagination={view.arcPagination}
           onLoadMoreArc={view.loadMoreArc}
-          onOpenRef={openRef}
-          onLinkScenes={view.linkScenes}
-          onUnlinkScenes={view.unlinkScenes}
-          resolveEntity={view.resolveEntity}
-          fitSignal={fitSignal}
+          onAddChapter={
+            accessToken && projectId
+              ? (arcId) => void childCreate.addChapterUnderArc(arcId).then((n) => n && view.select(n.id))
+              : null
+          }
+          onAddScene={
+            accessToken && projectId
+              ? (chapterNodeId, bookChapterId) =>
+                  void childCreate.addSceneUnderChapter(chapterNodeId, bookChapterId).then((n) => n && view.select(n.id))
+              : null
+          }
+          onAddSubArc={
+            accessToken
+              ? (parentArcId) =>
+                  void origin
+                    .start(t('planHub.empty.untitledArc', 'Untitled arc'), parentArcId)
+                    .then((arc) => arc && view.select(arc.id))
+              : null
+          }
+          addingChild={childCreate.creating || origin.creating}
+          childError={childCreate.error || origin.error}
           matchedIds={matchedIds}
-          busy={view.moving}
+          fitSignal={fitSignal}
         />
         {/* PH21 — a HUD notice for the UNASSIGNED strip (spec chapters bound to no arc — the normal
-            post-decompile state). Their cards render in a strip below the lanes and drag into a lane
-            through the ordinary Row-1 path; this just says how many there are, since the strip can
-            be scrolled out of view on a tall canvas. NOT the unplanned tray — that is the other
-            direction (manuscript chapters with no spec node) and docks below. */}
+            post-decompile state). They have no arc lane in the flow view, so this surfaces how many
+            exist rather than letting them vanish (they are filed via the drawer / assign). NOT the
+            unplanned tray — that is the other direction (manuscript chapters with no spec node). */}
         {view.layout.unassigned.length > 0 && (
           <div
             data-testid="plan-hub-unassigned-notice"
             className="pointer-events-none absolute left-3 top-3 z-20 rounded-md border border-amber-500/40 bg-amber-500/10 px-2 py-1 text-xs text-amber-700 shadow"
           >
-            {t('planHub.node.unassignedStrip', {
+            {t('planHub.node.unassignedFlow', {
               count: view.layout.unassigned.length,
-              defaultValue: '{{count}} chapter in no arc — drag it into a lane',
-              defaultValue_other: '{{count}} chapters in no arc — drag them into a lane',
+              defaultValue: '{{count}} chapter not in any storyline yet',
+              defaultValue_other: '{{count}} chapters not in any storyline yet',
             })}
           </div>
         )}

@@ -1388,7 +1388,9 @@
       "unplannedCapped": "…et {{n}} autres (liste limitée)",
       "unassignedStrip": "{{count}} chapitre sans arc — faites-le glisser dans une piste",
       "unassignedStrip_other": "{{count}} chapitres sans arc — faites-les glisser dans une piste",
-      "untitled": "Sans titre"
+      "untitled": "Sans titre",
+      "unassignedFlow": "{{count}} chapitre n'est encore dans aucune intrigue",
+      "unassignedFlow_other": "{{count}} chapitres ne sont encore dans aucune intrigue"
     },
     "loading": "Chargement du plan…",
     "toolbar": {
@@ -1416,14 +1418,45 @@
       "status": {
         "done": "terminé",
         "drafting": "en cours de rédaction",
-        "empty": "non commencé"
+        "empty": "non commencé",
+        "aiIdea": "Idée IA"
       },
       "more": "+ {{n}} autres",
       "loadingMore": "Chargement…",
       "writeCta": "Écrire un nouveau chapitre",
       "writing": "Création en cours…",
       "doorNote": "Ouvre immédiatement une page vierge.",
-      "goAdvanced": "Organiser en intrigues →"
+      "goAdvanced": "Organiser en intrigues →",
+      "rename": "Renommer",
+      "delete": "Supprimer le chapitre",
+      "aiDraft": "Ou laissez l'IA en rédiger un →",
+      "legend": {
+        "authored": "vous l'avez écrit",
+        "ai": "Idée IA"
+      }
+    },
+    "costHint": "La modification de la structure n'entraîne aucun appel de modèle.",
+    "flow": {
+      "chNo": "ch {{n}}",
+      "chCount": "{{n}} ch",
+      "gap": "⚠ écart",
+      "aiCollapsed": "IA · réduite",
+      "subArcTag": "sous-arc",
+      "untitledArc": "Arc sans titre",
+      "untitledChapter": "Chapitre sans titre",
+      "untitledScene": "Scène sans titre",
+      "addChapter": "+ chapitre",
+      "addScene": "+ scène",
+      "addSubArc": "+ sous-arc",
+      "showScenes": "▸ scènes",
+      "moreChapters": "+ {{n}} autres",
+      "empty": "Aucune intrigue pour le moment — ajoutez un arc depuis la barre d'outils pour commencer.",
+      "status": {
+        "empty": "vide",
+        "outline": "plan",
+        "drafting": "rédaction en cours",
+        "done": "terminé"
+      }
     }
   },
   "structTpl": {

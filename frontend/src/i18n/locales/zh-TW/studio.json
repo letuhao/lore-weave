@@ -1388,7 +1388,9 @@
       "unplannedCapped": "…以及另外 {{n}} 個（列表已截斷）",
       "unassignedStrip": "{{count}} 個章節未歸屬於任何故事弧 — 請將其拖入欄位中",
       "unassignedStrip_other": "{{count}} 個章節尚未歸類於任何故事弧 — 將它們拖入分欄中",
-      "untitled": "未命名"
+      "untitled": "未命名",
+      "unassignedFlow": "{{count}} 個章節尚未加入任何故事線",
+      "unassignedFlow_other": "{{count}} 個章節尚未加入任何故事線"
     },
     "loading": "正在載入計畫…",
     "toolbar": {
@@ -1416,14 +1418,45 @@
       "status": {
         "done": "已完成",
         "drafting": "撰寫中",
-        "empty": "尚未開始"
+        "empty": "尚未開始",
+        "aiIdea": "AI 靈感"
       },
       "more": "還有 {{n}} 個",
       "loadingMore": "載入中…",
       "writeCta": "撰寫新章節",
       "writing": "建立中…",
       "doorNote": "立即開啟空白頁面。",
-      "goAdvanced": "整理成故事線 →"
+      "goAdvanced": "整理成故事線 →",
+      "rename": "重新命名",
+      "delete": "刪除章節",
+      "aiDraft": "或讓 AI 為您撰寫 →",
+      "legend": {
+        "authored": "您撰寫的內容",
+        "ai": "AI 靈感"
+      }
+    },
+    "costHint": "編輯結構不會消耗模型額度。",
+    "flow": {
+      "chNo": "第 {{n}} 章",
+      "chCount": "{{n}} 章",
+      "gap": "⚠ 缺口",
+      "aiCollapsed": "AI · 已收起",
+      "subArcTag": "子章節",
+      "untitledArc": "未命名章節弧線",
+      "untitledChapter": "未命名章節",
+      "untitledScene": "未命名場景",
+      "addChapter": "+ 章節",
+      "addScene": "+ 場景",
+      "addSubArc": "+ 子章節",
+      "showScenes": "▸ 場景",
+      "moreChapters": "+ {{n}} 個",
+      "empty": "尚未建立故事線 — 從工具列新增一個章節弧線以開始。",
+      "status": {
+        "empty": "空白",
+        "outline": "大綱",
+        "drafting": "撰寫中",
+        "done": "已完成"
+      }
     }
   },
   "structTpl": {

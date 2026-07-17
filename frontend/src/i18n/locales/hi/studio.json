@@ -1388,7 +1388,9 @@
       "unplannedCapped": "…और {{n}} अन्य (सूची सीमित है)",
       "unassignedStrip": "{{count}} अध्याय किसी आर्क में नहीं है — इसे किसी लेन में ड्रैग करें",
       "unassignedStrip_other": "{{count}} अध्याय किसी भी आर्क में नहीं हैं — उन्हें किसी लेन में खींचें",
-      "untitled": "शीर्षकहीन"
+      "untitled": "शीर्षकहीन",
+      "unassignedFlow": "{{count}} अध्याय अभी किसी कहानी का हिस्सा नहीं हैं",
+      "unassignedFlow_other": "{{count}} अध्याय अभी किसी कहानी का हिस्सा नहीं हैं"
     },
     "loading": "योजना लोड हो रही है…",
     "toolbar": {
@@ -1416,14 +1418,45 @@
       "status": {
         "done": "पूरा हुआ",
         "drafting": "लिखा जा रहा है",
-        "empty": "शुरू नहीं किया गया"
+        "empty": "शुरू नहीं किया गया",
+        "aiIdea": "AI विचार"
       },
       "more": "+ {{n}} और",
       "loadingMore": "लोड हो रहा है…",
       "writeCta": "नया अध्याय लिखें",
       "writing": "बनाया जा रहा है…",
       "doorNote": "सीधे एक खाली पेज खोलता है।",
-      "goAdvanced": "कहानी के प्रवाह (storylines) में व्यवस्थित करें →"
+      "goAdvanced": "कहानी के प्रवाह (storylines) में व्यवस्थित करें →",
+      "rename": "नाम बदलें",
+      "delete": "अध्याय हटाएँ",
+      "aiDraft": "या AI को ड्राफ्ट बनाने दें →",
+      "legend": {
+        "authored": "आपने लिखा है",
+        "ai": "AI विचार"
+      }
+    },
+    "costHint": "संरचना (structure) संपादित करने से कोई मॉडल कॉल नहीं होता है।",
+    "flow": {
+      "chNo": "अध्याय {{n}}",
+      "chCount": "{{n}} अध्याय",
+      "gap": "⚠ अंतराल",
+      "aiCollapsed": "AI · संक्षिप्त",
+      "subArcTag": "उप-आर्क",
+      "untitledArc": "शीर्षकहीन आर्क",
+      "untitledChapter": "शीर्षकहीन अध्याय",
+      "untitledScene": "शीर्षकहीन दृश्य",
+      "addChapter": "+ अध्याय",
+      "addScene": "+ दृश्य",
+      "addSubArc": "+ उप-आर्क",
+      "showScenes": "▸ दृश्य",
+      "moreChapters": "+ {{n}} और",
+      "empty": "अभी तक कोई कहानी नहीं है — शुरू करने के लिए टूलबार से एक आर्क जोड़ें।",
+      "status": {
+        "empty": "खाली",
+        "outline": "रूपरेखा",
+        "drafting": "मसौदा तैयार किया जा रहा है",
+        "done": "पूरा हुआ"
+      }
     }
   },
   "structTpl": {

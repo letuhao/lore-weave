@@ -1388,7 +1388,9 @@
       "unplannedCapped": "…und {{n}} weitere (Liste gekürzt)",
       "unassignedStrip": "{{count}} Kapitel ohne Handlungsbogen — ziehe es in eine Spalte",
       "unassignedStrip_other": "{{count}} Kapitel ohne Handlungsstrang — ziehe sie in eine Spalte",
-      "untitled": "Unbenannt"
+      "untitled": "Unbenannt",
+      "unassignedFlow": "{{count}} Kapitel noch nicht in einer Storyline",
+      "unassignedFlow_other": "{{count}} Kapitel noch nicht in einer Storyline"
     },
     "loading": "Plan wird geladen…",
     "toolbar": {
@@ -1416,14 +1418,45 @@
       "status": {
         "done": "erledigt",
         "drafting": "im Entwurf",
-        "empty": "noch nicht begonnen"
+        "empty": "noch nicht begonnen",
+        "aiIdea": "KI-Idee"
       },
       "more": "+ {{n}} weitere",
       "loadingMore": "Wird geladen…",
       "writeCta": "Ein neues Kapitel schreiben",
       "writing": "Wird erstellt…",
       "doorNote": "Öffnet sofort eine leere Seite.",
-      "goAdvanced": "In Storylines organisieren →"
+      "goAdvanced": "In Storylines organisieren →",
+      "rename": "Umbenennen",
+      "delete": "Kapitel löschen",
+      "aiDraft": "Oder lassen Sie die KI einen Entwurf erstellen →",
+      "legend": {
+        "authored": "selbst geschrieben",
+        "ai": "KI-Idee"
+      }
+    },
+    "costHint": "Das Bearbeiten der Struktur löst keine Modell-Aufrufe aus.",
+    "flow": {
+      "chNo": "Kap. {{n}}",
+      "chCount": "{{n}} Kap.",
+      "gap": "⚠ Lücke",
+      "aiCollapsed": "KI · eingeklappt",
+      "subArcTag": "Sub-Arc",
+      "untitledArc": "Unbenannter Handlungsbogen",
+      "untitledChapter": "Unbenanntes Kapitel",
+      "untitledScene": "Unbenannte Szene",
+      "addChapter": "+ Kapitel",
+      "addScene": "+ Szene",
+      "addSubArc": "+ Sub-Arc",
+      "showScenes": "▸ Szenen",
+      "moreChapters": "+ {{n}} weitere",
+      "empty": "Noch keine Handlungsstränge – füge einen Bogen aus der Symbolleiste hinzu, um zu beginnen.",
+      "status": {
+        "empty": "leer",
+        "outline": "Entwurf",
+        "drafting": "In Bearbeitung",
+        "done": "Abgeschlossen"
+      }
     }
   },
   "structTpl": {

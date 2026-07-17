@@ -1388,7 +1388,9 @@
       "unplannedCapped": "…và {{n}} mục khác (danh sách đã bị giới hạn)",
       "unassignedStrip": "{{count}} chương không thuộc hồi nào — hãy kéo nó vào một làn",
       "unassignedStrip_other": "{{count}} chương chưa thuộc về cốt truyện — hãy kéo chúng vào một hàng",
-      "untitled": "Chưa đặt tên"
+      "untitled": "Chưa đặt tên",
+      "unassignedFlow": "{{count}} chương chưa thuộc cốt truyện nào",
+      "unassignedFlow_other": "{{count}} chương chưa thuộc cốt truyện nào"
     },
     "loading": "Đang tải kế hoạch…",
     "toolbar": {
@@ -1416,14 +1418,45 @@
       "status": {
         "done": "hoàn thành",
         "drafting": "đang viết",
-        "empty": "chưa bắt đầu"
+        "empty": "chưa bắt đầu",
+        "aiIdea": "Ý tưởng AI"
       },
       "more": "+ {{n}} mục khác",
       "loadingMore": "Đang tải…",
       "writeCta": "Viết chương mới",
       "writing": "Đang khởi tạo…",
       "doorNote": "Mở ngay một trang trắng.",
-      "goAdvanced": "Sắp xếp theo cốt truyện →"
+      "goAdvanced": "Sắp xếp theo cốt truyện →",
+      "rename": "Đổi tên",
+      "delete": "Xóa chương",
+      "aiDraft": "Hoặc để AI viết nháp →",
+      "legend": {
+        "authored": "bạn đã viết",
+        "ai": "Ý tưởng AI"
+      }
+    },
+    "costHint": "Việc chỉnh sửa cấu trúc không tiêu tốn lượt gọi mô hình.",
+    "flow": {
+      "chNo": "ch {{n}}",
+      "chCount": "{{n}} ch",
+      "gap": "⚠ khoảng trống",
+      "aiCollapsed": "AI · thu gọn",
+      "subArcTag": "phân đoạn",
+      "untitledArc": "Phân đoạn chưa đặt tên",
+      "untitledChapter": "Chương chưa đặt tên",
+      "untitledScene": "Cảnh chưa đặt tên",
+      "addChapter": "+ chương",
+      "addScene": "+ cảnh",
+      "addSubArc": "+ phân đoạn",
+      "showScenes": "▸ cảnh",
+      "moreChapters": "+ {{n}} chương khác",
+      "empty": "Chưa có cốt truyện — hãy thêm một phân đoạn từ thanh công cụ để bắt đầu.",
+      "status": {
+        "empty": "trống",
+        "outline": "phác thảo",
+        "drafting": "đang soạn thảo",
+        "done": "hoàn thành"
+      }
     }
   },
   "structTpl": {

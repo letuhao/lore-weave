@@ -1388,7 +1388,9 @@
       "unplannedCapped": "...dan {{n}} lainnya (daftar dibatasi)",
       "unassignedStrip": "{{count}} bab tanpa alur — tarik ke dalam jalur",
       "unassignedStrip_other": "{{count}} bab tanpa alur — seret ke dalam jalur",
-      "untitled": "Tanpa Judul"
+      "untitled": "Tanpa Judul",
+      "unassignedFlow": "{{count}} bab belum masuk ke alur cerita mana pun",
+      "unassignedFlow_other": "{{count}} bab belum masuk ke alur cerita mana pun"
     },
     "loading": "Memuat rencana…",
     "toolbar": {
@@ -1416,14 +1418,45 @@
       "status": {
         "done": "selesai",
         "drafting": "sedang menulis",
-        "empty": "belum dimulai"
+        "empty": "belum dimulai",
+        "aiIdea": "Ide AI"
       },
       "more": "+ {{n}} lagi",
       "loadingMore": "Memuat...",
       "writeCta": "Tulis bab baru",
       "writing": "Sedang membuat...",
       "doorNote": "Langsung membuka halaman kosong.",
-      "goAdvanced": "Atur ke dalam alur cerita →"
+      "goAdvanced": "Atur ke dalam alur cerita →",
+      "rename": "Ubah nama",
+      "delete": "Hapus bab",
+      "aiDraft": "Atau biarkan AI membuat drafnya →",
+      "legend": {
+        "authored": "Anda menulisnya",
+        "ai": "Ide AI"
+      }
+    },
+    "costHint": "Mengedit struktur tidak menggunakan panggilan model.",
+    "flow": {
+      "chNo": "bab {{n}}",
+      "chCount": "{{n}} bab",
+      "gap": "⚠ celah",
+      "aiCollapsed": "AI · diciutkan",
+      "subArcTag": "sub-busur",
+      "untitledArc": "Busur tanpa judul",
+      "untitledChapter": "Bab tanpa judul",
+      "untitledScene": "Adegan tanpa judul",
+      "addChapter": "+ bab",
+      "addScene": "+ adegan",
+      "addSubArc": "+ sub-busur",
+      "showScenes": "▸ adegan",
+      "moreChapters": "+ {{n}} lagi",
+      "empty": "Belum ada alur cerita — tambahkan busur dari toolbar untuk memulai.",
+      "status": {
+        "empty": "kosong",
+        "outline": "kerangka",
+        "drafting": "drafting",
+        "done": "selesai"
+      }
     }
   },
   "structTpl": {

@@ -5,6 +5,7 @@
 import { useCallback, useState } from 'react';
 import { useInfiniteQuery } from '@tanstack/react-query';
 import { booksApi } from '@/features/books/api';
+import type { NodeSource } from '../types';
 
 export interface SimpleChapter {
   chapter_id: string;
@@ -13,6 +14,10 @@ export interface SimpleChapter {
   word_count: number | null;
   /** editorial_status from book-service: 'draft' | 'published'. Undefined on older BE. */
   published: boolean;
+  /** Authorship — 'authored' (the writer's) vs 'mined' (an AI-proposed chapter). Book chapters are
+   *  the writer's prose units, so this is 'authored' today; the field + the "AI idea" row styling
+   *  exist so an AI-proposed chapter renders correctly (Mono + teal) the moment such a flow lands. */
+  source: NodeSource;
 }
 
 export interface SimpleChaptersResult {
@@ -48,6 +53,9 @@ export function useSimpleChapters(bookId: string, token: string | null, enabled:
       sort_order: c.sort_order,
       word_count: c.word_count ?? null,
       published: c.editorial_status === 'published',
+      // Book chapters are the writer's prose units → authored. (No book-service authorship flag; an
+      // AI-proposed chapter, when that flow exists, would set this to 'mined'.)
+      source: 'authored',
     })),
   );
 

@@ -1388,7 +1388,9 @@
       "unplannedCapped": "…dan {{n}} lagi (senarai dihadkan)",
       "unassignedStrip": "{{count}} bab tanpa arka — seret ia ke dalam lorong",
       "unassignedStrip_other": "{{count}} bab tanpa arka — seret mereka ke dalam lorong",
-      "untitled": "Tanpa Tajuk"
+      "untitled": "Tanpa Tajuk",
+      "unassignedFlow": "{{count}} bab belum dalam mana-mana jalan cerita",
+      "unassignedFlow_other": "{{count}} bab belum dalam mana-mana jalan cerita"
     },
     "loading": "Memuatkan pelan…",
     "toolbar": {
@@ -1416,14 +1418,45 @@
       "status": {
         "done": "selesai",
         "drafting": "sedang menulis",
-        "empty": "belum bermula"
+        "empty": "belum bermula",
+        "aiIdea": "Idea AI"
       },
       "more": "+ {{n}} lagi",
       "loadingMore": "Memuatkan…",
       "writeCta": "Tulis bab baharu",
       "writing": "Sedang mencipta…",
       "doorNote": "Membuka halaman kosong dengan segera.",
-      "goAdvanced": "Susun mengikut jalan cerita →"
+      "goAdvanced": "Susun mengikut jalan cerita →",
+      "rename": "Namakan semula",
+      "delete": "Padam bab",
+      "aiDraft": "Atau biarkan AI drafkan satu →",
+      "legend": {
+        "authored": "anda tulis",
+        "ai": "Idea AI"
+      }
+    },
+    "costHint": "Mengedit struktur tidak melibatkan sebarang panggilan model.",
+    "flow": {
+      "chNo": "bab {{n}}",
+      "chCount": "{{n}} bab",
+      "gap": "⚠ jurang",
+      "aiCollapsed": "AI · dikecilkan",
+      "subArcTag": "sub-ark",
+      "untitledArc": "Ark tanpa tajuk",
+      "untitledChapter": "Bab tanpa tajuk",
+      "untitledScene": "Babak tanpa tajuk",
+      "addChapter": "+ bab",
+      "addScene": "+ babak",
+      "addSubArc": "+ sub-ark",
+      "showScenes": "▸ babak",
+      "moreChapters": "+ {{n}} lagi",
+      "empty": "Tiada jalan cerita lagi — tambah ark daripada bar alatan untuk bermula.",
+      "status": {
+        "empty": "kosong",
+        "outline": "rangkuman",
+        "drafting": "sedang mendraf",
+        "done": "selesai"
+      }
     }
   },
   "structTpl": {

@@ -1388,7 +1388,9 @@
       "unplannedCapped": "…외 {{n}}개 (목록 제한됨)",
       "unassignedStrip": "아크에 포함되지 않은 챕터 {{count}}개 — 레인으로 드래그하세요",
       "unassignedStrip_other": "아크에 포함되지 않은 챕터 {{count}}개 — 드래그하여 배치하세요",
-      "untitled": "제목 없음"
+      "untitled": "제목 없음",
+      "unassignedFlow": "아직 어떤 스토리라인에도 포함되지 않은 챕터 {{count}}개",
+      "unassignedFlow_other": "아직 어떤 스토리라인에도 포함되지 않은 챕터 {{count}}개"
     },
     "loading": "플랜 로딩 중…",
     "toolbar": {
@@ -1416,14 +1418,45 @@
       "status": {
         "done": "완료",
         "drafting": "집필 중",
-        "empty": "시작 전"
+        "empty": "시작 전",
+        "aiIdea": "AI 아이디어"
       },
       "more": "+ {{n}}개 더 보기",
       "loadingMore": "로딩 중…",
       "writeCta": "새 챕터 쓰기",
       "writing": "생성 중…",
       "doorNote": "즉시 빈 페이지가 열립니다.",
-      "goAdvanced": "스토리라인으로 구성하기 →"
+      "goAdvanced": "스토리라인으로 구성하기 →",
+      "rename": "이름 바꾸기",
+      "delete": "챕터 삭제",
+      "aiDraft": "또는 AI가 초안을 작성하게 하기 →",
+      "legend": {
+        "authored": "직접 작성함",
+        "ai": "AI 아이디어"
+      }
+    },
+    "costHint": "구조를 편집해도 모델 호출 비용은 발생하지 않습니다.",
+    "flow": {
+      "chNo": "ch {{n}}",
+      "chCount": "{{n}} ch",
+      "gap": "⚠ 공백",
+      "aiCollapsed": "AI · 축소됨",
+      "subArcTag": "서브 아크",
+      "untitledArc": "제목 없는 아크",
+      "untitledChapter": "제목 없는 챕터",
+      "untitledScene": "제목 없는 씬",
+      "addChapter": "+ 챕터",
+      "addScene": "+ 씬",
+      "addSubArc": "+ 서브 아크",
+      "showScenes": "▸ 씬",
+      "moreChapters": "+ {{n}}개 더",
+      "empty": "스토리라인이 없습니다 — 툴바에서 아크를 추가하여 시작하세요.",
+      "status": {
+        "empty": "비어 있음",
+        "outline": "개요",
+        "drafting": "작성 중",
+        "done": "완료"
+      }
     }
   },
   "structTpl": {

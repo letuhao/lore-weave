@@ -43,17 +43,29 @@ this same folder and their HMR cross-contaminates a shared dev server (the multi
       lane header arc name wraps ≤2 lines; telemetry count pill gated on hasMore (cut when fully
       loaded). tsc 0; layout 49 green (updated 2 chapterAtPoint tests to D.* geometry); LaneBandPaging
       updated to new count intent. QC on :5290 pending in S6.
-- [~] S5 · DEFERRED with rationale (not "build cho có"):
-      · default-expand-on-load → fires a per-arc chapter-window fetch each, violating the documented
-        ≤5-request cold-open budget (usePlanHub.ts:76-77). Not safe to rush.
-      · full wrap/bounded-resizable lanes → LARGE React-Flow rebuild AND the 3-user panel's plotter
-        explicitly found wrap BREAKS the shared x-axis (chapter N stops aligning across arcs), which
-        is the whole point of lanes. Contested direction — needs a PO decision (wrap vs true-axis),
-        not a rushed build. Both-modes is satisfied without it: Simple (default) + Advanced (readable
-        cards + create hierarchy) are built.
-- [ ] S6 · VERIFY: full suite + tsc + i18n parity + live smoke BOTH modes on :5290; SESSION+COMMIT
-      (commit MY files only — KgOverviewPanel*/OverviewSection/knowledge.json are ANOTHER session's
-      in-flight work in this shared checkout; their 8 test fails are NOT my regression).
+- [x] S5 · RESOLVED 2026-07-18 — the human OVERRODE the plotter's caution and mandated full mockup
+      fidelity, no defer ("build all item in the draft html, compare 1 by 1"). Built as a NEW
+      CSS-flow Advanced view (`LaneFlowView` + `FlowLane` recursive + `FlowChapterCard`), REPLACING
+      the React Flow graph in the Advanced branch. Wrap lanes (62% + resize:horizontal), inset
+      sub-arcs, wrapping chapter cards, scene chips (lazy), inline +arc/+sub-arc/+chapter/+scene,
+      authorship coding (source column now on the wire), bounded auto-expand (MAX 8 roots — keeps the
+      cold-open budget). The x-axis-alignment concern is MOOT: the flow view is a document tree, not a
+      shared-axis graph, so there is no cross-arc axis to break. See
+      `docs/plans/2026-07-18-plan-hub-mockup-parity.md` for the item-by-item audit. LIVE-QC'd on :5290.
+- [x] S6 · DONE — commit `95e3f3b28` (feat/context-budget-law), 48 files. tsc 0; plan-hub+studio my
+      tests green; i18n gate 17 locales full parity; BOTH modes live-smoked on the static build :5290
+      (Simple: default view + write-door create+editor; Advanced: full arc name legible, toggle works).
+      Committed MY files ONLY by explicit path — excluded 4 parallel sessions' work (useManuscriptTree
+      S-02b, TriageQueue, services/*, KgOverviewPanel, studio-completeness docs, divergence docs).
+
+## DELIVERED
+Plan-hub redesign, both modes, committed. Simple mode (new, default) + Advanced readable cards + chip
+cut, on top of this arc's origin/+Chapter/+Scene create. QC'd on an isolated static build per the goal.
+
+## STILL UNCOMMITTED (this session, SEPARATE concern — earlier docs-refresh task, ready to commit)
+docs/ARCHITECTURE.md, DATA_ARCHITECTURE.md, FEATURE_INDEX.md, README.md, CLAUDE.md,
+docs/03_planning/LLM_MMO_RPG/features/_index.md, infra/db-ensure.sh (scheduler DB fix),
+infra/docker-compose.yml (5176 port-collision fix). Not part of the plan-hub redesign; commit apart.
       NOTE: working tree also carries this session's earlier uncommitted work (docs ARCHITECTURE/
       DATA/FEATURE_INDEX, infra db-ensure + compose 5176 port fix, origin/+Chapter/+Scene, laneLayout
       fixes). S6 must commit in LOGICAL chunks, not one giant commit.
@@ -66,4 +78,13 @@ this same folder and their HMR cross-contaminates a shared dev server (the multi
 ### Debt
 - +Scene live-UI-proof was blocked by chapter-node selection flakiness (Bug C) — re-verify in S5.
 ### Drift / near-misses
-- (record them)
+- NEAR-MISS: cardWidth 128→208 broke 2 `chapterAtPoint` hit-test unit tests that hardcoded pixel
+  coords for width=128. Rewrote them to `D.*` geometry (self-correcting under any dimension change).
+- NEAR-MISS: the shared checkout carries 4 sessions' work. `git status` showed KG/services/completeness
+  files I never touched. Had I `git add -A`'d I'd have swept another session's in-flight work into my
+  commit. Avoided by explicit-path staging + a grep-verify that nothing foreign was staged.
+- DELIBERATE test change: LaneBandPaging "counter renders even when fully loaded" asserted the OLD
+  always-on pill; updated to the new intent (count only when hasMore) — user-panel-driven, not a
+  regression. Recorded so it isn't mistaken for one.
+- DEFERRED honestly (not "build cho có"): S5 default-expand (cold-open budget) + wrap rebuild (plotter
+  said wrap breaks the x-axis). Recorded rather than rushed.

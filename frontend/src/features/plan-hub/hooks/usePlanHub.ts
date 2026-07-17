@@ -4,11 +4,17 @@
 // collapse state (which arcs/chapters are OPEN — default none open ⇒ every arc collapsed to a
 // rollup, v1; camera-focus default is a later phase) + selectedId. Calls laneLayout ONCE — the
 // single "where does a node go"; nothing here recomputes a position.
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '@/auth';
 import { getArcs, getConformanceStatus, getPlanOverlay, getSceneLinks } from '../api';
 import { laneLayout } from '../layout/laneLayout';
+import { autoExpandArcIds, buildLaneTree } from '../layout/laneTree';
+
+/** How many root arcs the lane-flow view opens on first show. Bounds the cold-open cost (each opened
+ *  arc fires ONE chapter-window fetch, after paint) so a 1000-arc book never fetches 1000 windows at
+ *  once, while a normal book shows its whole hierarchy by default (mockup "root fix 2"). */
+const MAX_AUTO_EXPAND = 8;
 import type {
   ArcPagination,
   CollapseState,
@@ -24,7 +30,10 @@ import { usePlanNodeWrites } from './usePlanNodeWrites';
 import { useBookChapters } from './useBookChapters';
 import { computeUnionState, toArcShellNode } from './planHubMappers';
 
-export function usePlanHub(bookId: string): PlanHubView {
+export function usePlanHub(
+  bookId: string,
+  opts: { autoExpandArcs?: boolean } = {},
+): PlanHubView {
   const { accessToken } = useAuth();
   const token = accessToken ?? null;
   const enabled = !!token && !!bookId;
@@ -92,6 +101,13 @@ export function usePlanHub(bookId: string): PlanHubView {
     [shell, windowsResult.windows, collapse],
   );
 
+  // The lane-flow Advanced view's tree (the sealed redesign). Same shell + loaded windows the graph
+  // layout uses, reshaped into arc → chapter → scene. `content` carries source/title/status/written.
+  const laneTree = useMemo(
+    () => buildLaneTree(arcsQuery.data?.arcs ?? [], windowsResult.content, expandedArcs, expandedChapters),
+    [arcsQuery.data, windowsResult.content, expandedArcs, expandedChapters],
+  );
+
   const unionState = useMemo(
     () =>
       computeUnionState(
@@ -110,6 +126,8 @@ export function usePlanHub(bookId: string): PlanHubView {
       out[a.id] = {
         title: a.title, status: a.status, kind: a.kind, tension: null, beatRole: null,
         chapterId: null, castIds: [], castCount: 0,
+        // AUTHORSHIP (redesign) — from the arc-list wire; default 'authored' for a pre-source arc.
+        source: a.source ?? 'authored',
       };
     }
     for (const n of Object.values(windowsResult.content)) {
@@ -119,6 +137,8 @@ export function usePlanHub(bookId: string): PlanHubView {
         // PH26 — the cast the server already capped to 3, plus the EXACT count for the +N chip.
         castIds: n.present_entity_ids ?? [],
         castCount: n.present_entity_count ?? 0,
+        // AUTHORSHIP (redesign) — from the summary wire; default 'authored' for a pre-source node.
+        source: n.source ?? 'authored',
       };
     }
     return out;
@@ -143,6 +163,29 @@ export function usePlanHub(bookId: string): PlanHubView {
   }, []);
 
   const select = useCallback((id: string | null) => setSelectedId(id), []);
+
+  // Idempotent bulk-open (the flow view's bounded auto-expand). Adds only — never collapses an arc
+  // the user has since closed, and keeps the set's identity when every id is already open (no
+  // needless re-render / re-fetch). Distinct from toggleArc, which flips one id.
+  const expandArcs = useCallback((arcIds: string[]) => {
+    setExpandedArcs((prev) => {
+      if (arcIds.every((id) => prev.has(id))) return prev;
+      return new Set([...prev, ...arcIds]);
+    });
+  }, []);
+
+  // Bounded auto-expand for the lane-flow view (mockup "root fix 2": show the hierarchy by default).
+  // Seeds ONCE per book, only when the caller asks (Advanced mode) — so Simple mode never fires a
+  // chapter-window fetch — and only the first MAX_AUTO_EXPAND roots, so a huge book stays bounded.
+  // Seeding once (a ref guard) means a user who then COLLAPSES an auto-opened arc keeps it closed.
+  const seededBook = useRef<string | null>(null);
+  useEffect(() => {
+    if (!opts.autoExpandArcs || !arcsQuery.isSuccess) return;
+    if (seededBook.current === bookId) return;
+    seededBook.current = bookId;
+    const roots = autoExpandArcIds(arcsQuery.data?.arcs ?? [], MAX_AUTO_EXPAND);
+    if (roots.length) expandArcs(roots);
+  }, [opts.autoExpandArcs, arcsQuery.isSuccess, arcsQuery.data, bookId, expandArcs]);
 
   // OQ-5 — open every ANCESTOR of an arc so the arc itself becomes a rendered node.
   // An arc renders as a rollup card only when it is the OUTERMOST collapsed one: under a collapsed
@@ -275,6 +318,7 @@ export function usePlanHub(bookId: string): PlanHubView {
 
   return {
     layout,
+    laneTree,
     edges: sceneLinksQuery.data?.scene_links ?? [],
     overlay,
     conformance: conformanceQuery.data ?? null,
@@ -299,6 +343,7 @@ export function usePlanHub(bookId: string): PlanHubView {
     selectedId,
     select,
     toggleArc,
+    expandArcs,
     toggleChapter,
     expandAncestorsOf,
     moveChapterToArc: moves.moveChapterToArc,

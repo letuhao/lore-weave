@@ -1388,7 +1388,9 @@
       "unplannedCapped": "…e mais {{n}} (lista limitada)",
       "unassignedStrip": "{{count}} capítulo sem arco — arraste-o para uma trilha",
       "unassignedStrip_other": "{{count}} capítulos sem arco — arraste-os para uma faixa",
-      "untitled": "Sem título"
+      "untitled": "Sem título",
+      "unassignedFlow": "{{count}} capítulo ainda não está em nenhuma linha do tempo",
+      "unassignedFlow_other": "{{count}} capítulos ainda não estão em nenhuma linha do tempo"
     },
     "loading": "Carregando o plano...",
     "toolbar": {
@@ -1416,14 +1418,45 @@
       "status": {
         "done": "concluído",
         "drafting": "escrevendo",
-        "empty": "não iniciado"
+        "empty": "não iniciado",
+        "aiIdea": "Ideia de IA"
       },
       "more": "+ {{n}} mais",
       "loadingMore": "Carregando…",
       "writeCta": "Escrever um novo capítulo",
       "writing": "Criando…",
       "doorNote": "Abre uma página em branco imediatamente.",
-      "goAdvanced": "Organizar em linhas narrativas →"
+      "goAdvanced": "Organizar em linhas narrativas →",
+      "rename": "Renomear",
+      "delete": "Excluir capítulo",
+      "aiDraft": "Ou deixe a IA escrever um →",
+      "legend": {
+        "authored": "você escreveu",
+        "ai": "Ideia de IA"
+      }
+    },
+    "costHint": "Editar a estrutura não consome créditos de modelo.",
+    "flow": {
+      "chNo": "cap. {{n}}",
+      "chCount": "{{n}} cap.",
+      "gap": "⚠ lacuna",
+      "aiCollapsed": "IA · recolhido",
+      "subArcTag": "sub-arco",
+      "untitledArc": "Arco sem título",
+      "untitledChapter": "Capítulo sem título",
+      "untitledScene": "Cena sem título",
+      "addChapter": "+ capítulo",
+      "addScene": "+ cena",
+      "addSubArc": "+ sub-arco",
+      "showScenes": "▸ cenas",
+      "moreChapters": "+ {{n}} restantes",
+      "empty": "Nenhuma linha narrativa ainda — adicione um arco da barra de ferramentas para começar.",
+      "status": {
+        "empty": "vazio",
+        "outline": "esboço",
+        "drafting": "escrevendo",
+        "done": "concluído"
+      }
     }
   },
   "structTpl": {

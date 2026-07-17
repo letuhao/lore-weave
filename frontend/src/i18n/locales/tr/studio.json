@@ -1388,7 +1388,9 @@
       "unplannedCapped": "…ve {{n}} tane daha (liste sınırlandırıldı)",
       "unassignedStrip": "Herhangi bir arka yer almayan {{count}} bölüm — onu bir şeride sürükleyin",
       "unassignedStrip_other": "Herhangi bir kurguda olmayan {{count}} bölüm — onları bir şeride sürükleyin",
-      "untitled": "Başlıksız"
+      "untitled": "Başlıksız",
+      "unassignedFlow": "{{count}} bölüm henüz bir hikaye akışında değil",
+      "unassignedFlow_other": "{{count}} bölüm henüz bir hikaye akışında değil"
     },
     "loading": "Plan yükleniyor…",
     "toolbar": {
@@ -1416,14 +1418,45 @@
       "status": {
         "done": "tamamlandı",
         "drafting": "taslak aşamasında",
-        "empty": "başlanmadı"
+        "empty": "başlanmadı",
+        "aiIdea": "Yapay zeka fikri"
       },
       "more": "+ {{n}} tane daha",
       "loadingMore": "Yükleniyor…",
       "writeCta": "Yeni bir bölüm yaz",
       "writing": "Oluşturuluyor…",
       "doorNote": "Doğrudan boş bir sayfa açar.",
-      "goAdvanced": "Hikaye akışlarına göre düzenle →"
+      "goAdvanced": "Hikaye akışlarına göre düzenle →",
+      "rename": "Yeniden Adlandır",
+      "delete": "Bölümü sil",
+      "aiDraft": "Veya yapay zekanın taslak oluşturmasına izin ver →",
+      "legend": {
+        "authored": "siz yazdınız",
+        "ai": "Yapay zeka fikri"
+      }
+    },
+    "costHint": "Yapıyı düzenlemek model çağrısı gerektirmez.",
+    "flow": {
+      "chNo": "bölüm {{n}}",
+      "chCount": "{{n}} böl.",
+      "gap": "⚠ boşluk",
+      "aiCollapsed": "AI · daraltıldı",
+      "subArcTag": "alt-ark",
+      "untitledArc": "Başlıksız ark",
+      "untitledChapter": "Başlıksız bölüm",
+      "untitledScene": "Başlıksız sahne",
+      "addChapter": "+ bölüm",
+      "addScene": "+ sahne",
+      "addSubArc": "+ alt-ark",
+      "showScenes": "▸ sahneler",
+      "moreChapters": "+ {{n}} tane daha",
+      "empty": "Henüz hikaye akışı yok — başlamak için araç çubuğundan bir ark ekleyin.",
+      "status": {
+        "empty": "boş",
+        "outline": "taslak",
+        "drafting": "yazılıyor",
+        "done": "tamamlandı"
+      }
     }
   },
   "structTpl": {

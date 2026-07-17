@@ -286,6 +286,11 @@ def _summary_projection(node: Any) -> dict[str, Any]:
         "pov_entity_id": str(node.pov_entity_id) if node.pov_entity_id else None,
         "present_entity_ids": [str(e) for e in present[:_PRESENT_ENTITY_CAP]],
         "present_entity_count": len(present),
+        # AUTHORSHIP (Plan Hub redesign) — 'authored' (human) vs 'mined' (decompiler). It is the
+        # sealed design's type/colour semantic (Lora+amber vs Mono+teal) and maps to this exact
+        # column (`OutlineNode.source`; the decompiler never overwrites 'authored'). Additive scalar
+        # on a request the Hub already makes — no new call, PH10 budget unaffected.
+        "source": node.source,
         # ── SC11 amendment Phase 3 — the WRITTEN VERDICT rides the payload it already sends ──
         #
         # PH10's field list is CLOSED, so this is a deliberate amendment to it, and the reason it
