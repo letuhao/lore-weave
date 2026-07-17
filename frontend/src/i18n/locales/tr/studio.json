@@ -1446,6 +1446,43 @@
     "showArchived": "arşivlenmiş",
     "archive": "Arşivle",
     "restore": "Geri Yükle",
-    "archivedNote": "Bu yapı arşivlendi. Düzenlemek veya tekrar kullanmak için geri yükleyin."
+    "archivedNote": "Bu yapı arşivlendi. Düzenlemek veya tekrar kullanmak için geri yükleyin.",
+    "newStructure": "Yeni yapı",
+    "createStructure": "Yapı oluştur",
+    "creating": "Oluşturuluyor…",
+    "cancel": "İptal",
+    "unsaved": "Kaydedilmemiş",
+    "discard": "Kaldır",
+    "discardTitle": "Kaydedilmemiş değişiklikler atılsın mı?",
+    "discardBody": "Bu yapıdaki düzenlemeleriniz kaydedilmedi. Ayrılmak değişiklikleri silecektir.",
+    "archiveTitle": "Bu yapı arşivlensin mi?",
+    "archiveBody": "«{{name}}» arşivleniyor — daha sonra geri yükleyebilirsiniz.",
+    "nameLabel": "Yapı adı",
+    "namePlaceholder": "Yapınıza bir ad verin…",
+    "kindLabel": "Tür (serbest metin etiketi)",
+    "beatKey": "anahtar",
+    "beatKeyLabel": "Vuruş anahtarı",
+    "beatLabelLabel": "Vuruş etiketi",
+    "moveUp": "Vuruşu yukarı taşı",
+    "moveDown": "Vuruşu aşağı taşı",
+    "removeBeat": "Vuruşu kaldır",
+    "decomposeHint": "Bu yapıyı kullanmak için bir bölüm açın ve Parçalara Ayır adımını çalıştırın; yapılarınız orada seçici kısmında görünecektir.",
+    "err": {
+      "conflict": "Bu yapı başka bir yerde değiştirildi — lütfen sayfayı yenileyip düzenlemelerinizi tekrar uygulayın.",
+      "duplicate": "Bu isme sahip bir yapınız zaten mevcut.",
+      "blank": "Bir yapının isme ihtiyacı var.",
+      "unknown": "Bir şeyler ters gitti — lütfen tekrar deneyin."
+    },
+    "toast": {
+      "saved": "Yapı kaydedildi",
+      "archived": "Yapı arşivlendi",
+      "restored": "Yapı geri yüklendi",
+      "created": "Yapı oluşturuldu"
+    },
+    "badge": {
+      "builtin": "yerleşik",
+      "mine": "benimki",
+      "archived": "arşivlenmiş"
+    }
   }
 }

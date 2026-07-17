@@ -1446,6 +1446,43 @@
     "showArchived": "已封存",
     "archive": "封存",
     "restore": "還原",
-    "archivedNote": "此結構已封存。請將其還原以進行編輯或再次使用。"
+    "archivedNote": "此結構已封存。請將其還原以進行編輯或再次使用。",
+    "newStructure": "新結構",
+    "createStructure": "建立結構",
+    "creating": "建立中…",
+    "cancel": "取消",
+    "unsaved": "未儲存",
+    "discard": "捨棄",
+    "discardTitle": "捨棄未儲存的變更？",
+    "discardBody": "您對此結構所做的編輯尚未儲存。現在離開將會捨棄這些變更。",
+    "archiveTitle": "封存此結構？",
+    "archiveBody": "「{{name}}」將移至封存區 — 您稍後可以將其還原。",
+    "nameLabel": "結構名稱",
+    "namePlaceholder": "請輸入結構名稱…",
+    "kindLabel": "類型（自定義標籤）",
+    "beatKey": "key",
+    "beatKeyLabel": "節拍鍵",
+    "beatLabelLabel": "節拍標籤",
+    "moveUp": "向上移動節拍",
+    "moveDown": "向下移動節拍",
+    "removeBeat": "移除節拍",
+    "decomposeHint": "若要使用此結構，請開啟章節並執行其「分解」步驟 — 您的結構將會顯示在該處的選擇器中。",
+    "err": {
+      "conflict": "此結構已在其他地方被更改 — 請重新載入並重新套用您的編輯。",
+      "duplicate": "您已擁有一個同名的結構。",
+      "blank": "結構必須包含名稱。",
+      "unknown": "發生錯誤 — 請再試一次。"
+    },
+    "toast": {
+      "saved": "結構已儲存",
+      "archived": "結構已封存",
+      "restored": "結構已還原",
+      "created": "結構已建立"
+    },
+    "badge": {
+      "builtin": "內建",
+      "mine": "我的",
+      "archived": "已封存"
+    }
   }
 }

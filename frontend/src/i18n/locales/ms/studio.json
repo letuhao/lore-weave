@@ -1446,6 +1446,43 @@
     "showArchived": "diarkibkan",
     "archive": "Arkib",
     "restore": "Pulihkan",
-    "archivedNote": "Struktur ini telah diarkibkan. Pulihkan untuk menyunting atau menggunakannya semula."
+    "archivedNote": "Struktur ini telah diarkibkan. Pulihkan untuk menyunting atau menggunakannya semula.",
+    "newStructure": "Struktur baharu",
+    "createStructure": "Cipta struktur",
+    "creating": "Mencipta…",
+    "cancel": "Batal",
+    "unsaved": "Belum disimpan",
+    "discard": "Buang",
+    "discardTitle": "Buang perubahan yang belum disimpan?",
+    "discardBody": "Suntingan anda pada struktur ini belum disimpan. Meninggalkan halaman ini akan membuang semua perubahan tersebut.",
+    "archiveTitle": "Arkibkan struktur ini?",
+    "archiveBody": "«{{name}}» akan dipindahkan ke arkib — anda boleh memulihkannya kemudian.",
+    "nameLabel": "Nama struktur",
+    "namePlaceholder": "Namakan struktur anda…",
+    "kindLabel": "Jenis (label teks bebas)",
+    "beatKey": "kunci",
+    "beatKeyLabel": "Kunci beat",
+    "beatLabelLabel": "Label beat",
+    "moveUp": "Gerakkan beat ke atas",
+    "moveDown": "Gerakkan beat ke bawah",
+    "removeBeat": "Padam beat",
+    "decomposeHint": "Untuk menggunakan struktur ini, buka bab dan jalankan langkah Dekomposisi — struktur anda akan muncul di pemilih di sana.",
+    "err": {
+      "conflict": "Struktur ini telah berubah di tempat lain — muat semula dan laksanakan semula suntingan anda.",
+      "duplicate": "Anda sudah mempunyai struktur dengan nama tersebut.",
+      "blank": "Struktur memerlukan nama.",
+      "unknown": "Sesuatu telah berlaku — sila cuba lagi."
+    },
+    "toast": {
+      "saved": "Struktur disimpan",
+      "archived": "Struktur diarkibkan",
+      "restored": "Struktur dipulihkan",
+      "created": "Struktur dicipta"
+    },
+    "badge": {
+      "builtin": "sedia ada",
+      "mine": "milik saya",
+      "archived": "diarkibkan"
+    }
   }
 }

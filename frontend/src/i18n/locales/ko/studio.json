@@ -1446,6 +1446,43 @@
     "showArchived": "보관됨",
     "archive": "보관",
     "restore": "복원",
-    "archivedNote": "이 구조는 보관되었습니다. 다시 편집하거나 사용하려면 복원하세요."
+    "archivedNote": "이 구조는 보관되었습니다. 다시 편집하거나 사용하려면 복원하세요.",
+    "newStructure": "새 구조",
+    "createStructure": "구조 생성",
+    "creating": "생성 중…",
+    "cancel": "취소",
+    "unsaved": "저장되지 않음",
+    "discard": "버리기",
+    "discardTitle": "저장되지 않은 변경 사항을 버리시겠습니까?",
+    "discardBody": "이 구조에 대한 수정 사항이 저장되지 않았습니다. 지금 나가면 모든 변경 사항이 삭제됩니다.",
+    "archiveTitle": "이 구조를 보관하시겠습니까?",
+    "archiveBody": "«{{name}}»이(가) 보관함으로 이동합니다. 나중에 다시 복구할 수 있습니다.",
+    "nameLabel": "구조 이름",
+    "namePlaceholder": "구조의 이름을 입력하세요…",
+    "kindLabel": "종류 (자유 텍스트 레이블)",
+    "beatKey": "key",
+    "beatKeyLabel": "비트 키",
+    "beatLabelLabel": "비트 레이블",
+    "moveUp": "비트 위로 이동",
+    "moveDown": "비트 아래로 이동",
+    "removeBeat": "비트 삭제",
+    "decomposeHint": "이 구조를 사용하려면 챕터를 열고 «분해(Decompose)» 단계를 실행하세요. 그러면 선택기에서 구조를 확인할 수 있습니다.",
+    "err": {
+      "conflict": "다른 곳에서 이 구조가 변경되었습니다. 페이지를 새로고침한 후 수정을 다시 적용해 주세요.",
+      "duplicate": "이미 동일한 이름의 구조가 존재합니다.",
+      "blank": "구조에는 이름이 필요합니다.",
+      "unknown": "오류가 발생했습니다. 다시 시도해 주세요."
+    },
+    "toast": {
+      "saved": "구조 저장됨",
+      "archived": "구조 보관됨",
+      "restored": "구조 복원됨",
+      "created": "구조 생성됨"
+    },
+    "badge": {
+      "builtin": "기본 제공",
+      "mine": "내 항목",
+      "archived": "보관됨"
+    }
   }
 }

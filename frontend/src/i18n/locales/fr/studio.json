@@ -1446,6 +1446,43 @@
     "showArchived": "archivé",
     "archive": "Archiver",
     "restore": "Restaurer",
-    "archivedNote": "Cette structure est archivée. Restaurez-la pour la modifier ou l'utiliser à nouveau."
+    "archivedNote": "Cette structure est archivée. Restaurez-la pour la modifier ou l'utiliser à nouveau.",
+    "newStructure": "Nouvelle structure",
+    "createStructure": "Créer une structure",
+    "creating": "Création…",
+    "cancel": "Annuler",
+    "unsaved": "Non enregistré",
+    "discard": "Abandonner",
+    "discardTitle": "Abandonner les modifications non enregistrées ?",
+    "discardBody": "Vos modifications sur cette structure n'ont pas été enregistrées. Si vous quittez maintenant, elles seront perdues.",
+    "archiveTitle": "Archiver cette structure ?",
+    "archiveBody": "«{{name}}» sera déplacée vers les archives — vous pourrez la restaurer plus tard.",
+    "nameLabel": "Nom de la structure",
+    "namePlaceholder": "Nommez votre structure…",
+    "kindLabel": "Type (un libellé libre)",
+    "beatKey": "clé",
+    "beatKeyLabel": "Clé de l'action",
+    "beatLabelLabel": "Libellé de l'action",
+    "moveUp": "Déplacer l'action vers le haut",
+    "moveDown": "Déplacer l'action vers le bas",
+    "removeBeat": "Supprimer l'action",
+    "decomposeHint": "Pour utiliser cette structure, ouvrez un chapitre et lancez l'étape « Décomposer » — vos structures apparaîtront alors dans le sélecteur.",
+    "err": {
+      "conflict": "Cette structure a été modifiée ailleurs — rechargez et réappliquez vos modifications.",
+      "duplicate": "Vous avez déjà une structure portant ce nom.",
+      "blank": "Une structure doit avoir un nom.",
+      "unknown": "Une erreur est survenue — veuillez réessayer."
+    },
+    "toast": {
+      "saved": "Structure enregistrée",
+      "archived": "Structure archivée",
+      "restored": "Structure restaurée",
+      "created": "Structure créée"
+    },
+    "badge": {
+      "builtin": "intégrée",
+      "mine": "la mienne",
+      "archived": "archivée"
+    }
   }
 }

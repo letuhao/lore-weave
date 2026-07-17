@@ -1430,9 +1430,9 @@
     "subtitle": "story structures you decompose chapters against",
     "builtin": "Built-in (read-only)",
     "mine": "Mine",
-    "mineEmpty": "None yet — clone a built-in to start.",
+    "mineEmpty": "None yet — clone a built-in above, or “New structure”.",
     "loading": "Loading…",
-    "pickHint": "Pick a structure to view its beats.",
+    "pickHint": "Pick a structure to view its beats — or create a new one.",
     "beats": "beats",
     "builtinNote": "This is a built-in structure. Clone it to customise — you edit your copy, the original stays intact for everyone.",
     "cloneBuiltin": "Clone to my structures",
@@ -1446,6 +1446,43 @@
     "showArchived": "archived",
     "archive": "Archive",
     "restore": "Restore",
-    "archivedNote": "This structure is archived. Restore it to edit or use it again."
+    "archivedNote": "This structure is archived. Restore it to edit or use it again.",
+    "newStructure": "New structure",
+    "createStructure": "Create structure",
+    "creating": "Creating…",
+    "cancel": "Cancel",
+    "unsaved": "Unsaved",
+    "discard": "Discard",
+    "discardTitle": "Discard unsaved changes?",
+    "discardBody": "Your edits to this structure haven't been saved. Leaving now discards them.",
+    "archiveTitle": "Archive this structure?",
+    "archiveBody": "\"{{name}}\" moves to archived — you can restore it later.",
+    "nameLabel": "Structure name",
+    "namePlaceholder": "Name your structure…",
+    "kindLabel": "Kind (a free-text label)",
+    "beatKey": "key",
+    "beatKeyLabel": "Beat key",
+    "beatLabelLabel": "Beat label",
+    "moveUp": "Move beat up",
+    "moveDown": "Move beat down",
+    "removeBeat": "Remove beat",
+    "decomposeHint": "To use this structure, open a chapter and run its Decompose step — your structures appear in the picker there.",
+    "err": {
+      "conflict": "This structure changed elsewhere — reload and reapply your edits.",
+      "duplicate": "You already have a structure with that name.",
+      "blank": "A structure needs a name.",
+      "unknown": "Something went wrong — please try again."
+    },
+    "toast": {
+      "saved": "Structure saved",
+      "archived": "Structure archived",
+      "restored": "Structure restored",
+      "created": "Structure created"
+    },
+    "badge": {
+      "builtin": "built-in",
+      "mine": "mine",
+      "archived": "archived"
+    }
   }
 }

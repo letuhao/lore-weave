@@ -1446,6 +1446,43 @@
     "showArchived": "arquivado",
     "archive": "Arquivar",
     "restore": "Restaurar",
-    "archivedNote": "Esta estrutura está arquivada. Restaure-a para editá-la ou usá-la novamente."
+    "archivedNote": "Esta estrutura está arquivada. Restaure-a para editá-la ou usá-la novamente.",
+    "newStructure": "Nova estrutura",
+    "createStructure": "Criar estrutura",
+    "creating": "Criando…",
+    "cancel": "Cancelar",
+    "unsaved": "Não salvo",
+    "discard": "Descartar",
+    "discardTitle": "Descartar alterações não salvas?",
+    "discardBody": "Suas edições nesta estrutura não foram salvas. Se você sair agora, elas serão descartadas.",
+    "archiveTitle": "Arquivar esta estrutura?",
+    "archiveBody": "«{{name}}» será movida para os arquivos — você poderá restaurá-la mais tarde.",
+    "nameLabel": "Nome da estrutura",
+    "namePlaceholder": "Dê um nome à sua estrutura…",
+    "kindLabel": "Tipo (um rótulo de texto livre)",
+    "beatKey": "chave",
+    "beatKeyLabel": "Chave do beat",
+    "beatLabelLabel": "Rótulo do beat",
+    "moveUp": "Mover beat para cima",
+    "moveDown": "Mover beat para baixo",
+    "removeBeat": "Remover beat",
+    "decomposeHint": "Para usar esta estrutura, abra um capítulo e execute a etapa Decompose — suas estruturas aparecerão no seletor lá.",
+    "err": {
+      "conflict": "Esta estrutura foi alterada em outro lugar — recarregue e reaplique suas edições.",
+      "duplicate": "Você já possui uma estrutura com esse nome.",
+      "blank": "Uma estrutura precisa de um nome.",
+      "unknown": "Algo deu errado — por favor, tente novamente."
+    },
+    "toast": {
+      "saved": "Estrutura salva",
+      "archived": "Estrutura arquivada",
+      "restored": "Estrutura restaurada",
+      "created": "Estrutura criada"
+    },
+    "badge": {
+      "builtin": "nativa",
+      "mine": "minha",
+      "archived": "arquivada"
+    }
   }
 }

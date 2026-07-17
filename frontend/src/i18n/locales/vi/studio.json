@@ -1446,6 +1446,43 @@
     "showArchived": "đã lưu trữ",
     "archive": "Lưu trữ",
     "restore": "Khôi phục",
-    "archivedNote": "Cấu trúc này đã được lưu trữ. Hãy khôi phục để chỉnh sửa hoặc sử dụng lại."
+    "archivedNote": "Cấu trúc này đã được lưu trữ. Hãy khôi phục để chỉnh sửa hoặc sử dụng lại.",
+    "newStructure": "Cấu trúc mới",
+    "createStructure": "Tạo cấu trúc",
+    "creating": "Đang tạo…",
+    "cancel": "Hủy",
+    "unsaved": "Chưa lưu",
+    "discard": "Hủy bỏ",
+    "discardTitle": "Hủy bỏ các thay đổi chưa lưu?",
+    "discardBody": "Các chỉnh sửa của bạn đối với cấu trúc này chưa được lưu. Nếu rời đi bây giờ, các thay đổi sẽ bị mất.",
+    "archiveTitle": "Lưu trữ cấu trúc này?",
+    "archiveBody": "«{{name}}» sẽ được chuyển vào kho lưu trữ — bạn có thể khôi phục lại sau.",
+    "nameLabel": "Tên cấu trúc",
+    "namePlaceholder": "Đặt tên cho cấu trúc của bạn…",
+    "kindLabel": "Loại (nhãn văn bản tự do)",
+    "beatKey": "key",
+    "beatKeyLabel": "Khóa nhịp",
+    "beatLabelLabel": "Nhãn nhịp",
+    "moveUp": "Di chuyển nhịp lên",
+    "moveDown": "Di chuyển nhịp xuống",
+    "removeBeat": "Xóa nhịp",
+    "decomposeHint": "Để sử dụng cấu trúc này, hãy mở một chương và chạy bước Phân rã (Decompose) — các cấu trúc của bạn sẽ xuất hiện trong trình chọn tại đó.",
+    "err": {
+      "conflict": "Cấu trúc này đã thay đổi ở nơi khác — vui lòng tải lại và áp dụng lại các chỉnh sửa của bạn.",
+      "duplicate": "Bạn đã có một cấu trúc với tên này rồi.",
+      "blank": "Cấu trúc cần có tên.",
+      "unknown": "Đã xảy ra lỗi — vui lòng thử lại."
+    },
+    "toast": {
+      "saved": "Đã lưu cấu trúc",
+      "archived": "Đã lưu trữ cấu trúc",
+      "restored": "Đã khôi phục cấu trúc",
+      "created": "Đã tạo cấu trúc"
+    },
+    "badge": {
+      "builtin": "mặc định",
+      "mine": "của tôi",
+      "archived": "đã lưu trữ"
+    }
   }
 }

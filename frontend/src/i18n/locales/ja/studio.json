@@ -1446,6 +1446,43 @@
     "showArchived": "アーカイブ済み",
     "archive": "アーカイブ",
     "restore": "復元",
-    "archivedNote": "この構成はアーカイブされています。編集や再利用を行うには、復元してください。"
+    "archivedNote": "この構成はアーカイブされています。編集や再利用を行うには、復元してください。",
+    "newStructure": "新しい構成",
+    "createStructure": "構成を作成",
+    "creating": "作成中…",
+    "cancel": "キャンセル",
+    "unsaved": "未保存",
+    "discard": "破棄",
+    "discardTitle": "未保存の変更を破棄しますか？",
+    "discardBody": "この構成への編集内容は保存されていません。このまま移動すると変更内容は破棄されます。",
+    "archiveTitle": "この構成をアーカイブしますか？",
+    "archiveBody": "「{{name}}」はアーカイブに移動します。後で復元することが可能です。",
+    "nameLabel": "構成名",
+    "namePlaceholder": "構成の名前を入力…",
+    "kindLabel": "種類（自由入力ラベル）",
+    "beatKey": "キー",
+    "beatKeyLabel": "ビートキー",
+    "beatLabelLabel": "ビートラベル",
+    "moveUp": "ビートを上に移動",
+    "moveDown": "ビートを下に移動",
+    "removeBeat": "ビートを削除",
+    "decomposeHint": "この構造を使用するには、チャプターを開いて「分解」ステップを実行してください。作成した構造がそこに表示されます。",
+    "err": {
+      "conflict": "この構造は他の場所で変更されました。再読み込みして編集を適用し直してください。",
+      "duplicate": "その名前の構造は既に存在します。",
+      "blank": "構造には名前が必要です。",
+      "unknown": "エラーが発生しました。もう一度やり直してください。"
+    },
+    "toast": {
+      "saved": "構成を保存しました",
+      "archived": "構成をアーカイブしました",
+      "restored": "構成を復元しました",
+      "created": "構成を作成しました"
+    },
+    "badge": {
+      "builtin": "標準",
+      "mine": "自分",
+      "archived": "アーカイブ済み"
+    }
   }
 }

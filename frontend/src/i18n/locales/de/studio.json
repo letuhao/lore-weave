@@ -1446,6 +1446,43 @@
     "showArchived": "archiviert",
     "archive": "Archiv",
     "restore": "Wiederherstellen",
-    "archivedNote": "Diese Struktur ist archiviert. Wiederherstellen Sie sie, um sie zu bearbeiten oder erneut zu verwenden."
+    "archivedNote": "Diese Struktur ist archiviert. Wiederherstellen Sie sie, um sie zu bearbeiten oder erneut zu verwenden.",
+    "newStructure": "Neue Struktur",
+    "createStructure": "Struktur erstellen",
+    "creating": "Wird erstellt…",
+    "cancel": "Abbrechen",
+    "unsaved": "Nicht gespeichert",
+    "discard": "Verwerfen",
+    "discardTitle": "Unsaved Änderungen verwerfen?",
+    "discardBody": "Deine Bearbeitungen an dieser Struktur wurden nicht gespeichert. Wenn du jetzt gehst, gehen sie verloren.",
+    "archiveTitle": "Diese Struktur archivieren?",
+    "archiveBody": "«{{name}}» wird verschoben und archiviert – du kannst sie später wiederherstellen.",
+    "nameLabel": "Strukturname",
+    "namePlaceholder": "Name deiner Struktur…",
+    "kindLabel": "Art (freitextliche Bezeichnung)",
+    "beatKey": "Schlüssel",
+    "beatKeyLabel": "Beat-Schlüssel",
+    "beatLabelLabel": "Beat-Bezeichnung",
+    "moveUp": "Beat nach oben verschieben",
+    "moveDown": "Beat nach unten verschieben",
+    "removeBeat": "Beat entfernen",
+    "decomposeHint": "Um diese Struktur zu verwenden, öffnen Sie ein Kapitel und führen Sie den Schritt „Zersetzen“ aus – Ihre Strukturen erscheinen dann im Picker.",
+    "err": {
+      "conflict": "Diese Struktur wurde an anderer Stelle geändert – bitte laden Sie sie neu und wenden Sie Ihre Änderungen erneut an.",
+      "duplicate": "Sie haben bereits eine Struktur mit diesem Namen.",
+      "blank": "Eine Struktur benötigt einen Namen.",
+      "unknown": "Etwas ist schiefgelaufen – bitte versuchen Sie es erneut."
+    },
+    "toast": {
+      "saved": "Struktur gespeichert",
+      "archived": "Struktur archiviert",
+      "restored": "Struktur wiederhergestellt",
+      "created": "Struktur erstellt"
+    },
+    "badge": {
+      "builtin": "integriert",
+      "mine": "meine",
+      "archived": "archiviert"
+    }
   }
 }

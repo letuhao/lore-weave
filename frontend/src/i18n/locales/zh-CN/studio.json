@@ -1446,6 +1446,43 @@
     "showArchived": "已归档",
     "archive": "归档",
     "restore": "还原",
-    "archivedNote": "此结构已归档。请还原后才能进行编辑或再次使用。"
+    "archivedNote": "此结构已归档。请还原后才能进行编辑或再次使用。",
+    "newStructure": "新结构",
+    "createStructure": "创建结构",
+    "creating": "正在创建…",
+    "cancel": "取消",
+    "unsaved": "未保存",
+    "discard": "舍弃",
+    "discardTitle": "舍弃未保存的修改？",
+    "discardBody": "您对该结构的编辑尚未保存。现在离开将导致修改丢失。",
+    "archiveTitle": "归档此结构？",
+    "archiveBody": "«{{name}}» 将移至归档栏 — 您稍后可以将其恢复。",
+    "nameLabel": "结构名称",
+    "namePlaceholder": "为您的结构命名…",
+    "kindLabel": "类型（自定义文本标签）",
+    "beatKey": "key",
+    "beatKeyLabel": "节拍键",
+    "beatLabelLabel": "节拍标签",
+    "moveUp": "向上移动节拍",
+    "moveDown": "向下移动节拍",
+    "removeBeat": "移除节拍",
+    "decomposeHint": "要使用此结构，请打开一个章节并运行其“分解”步骤 —— 您的结构将出现在那里的选择器中。",
+    "err": {
+      "conflict": "此结构已在别处更改 —— 请重新加载并重新应用您的编辑。",
+      "duplicate": "您已经拥有一个同名的结构。",
+      "blank": "结构需要一个名称。",
+      "unknown": "发生了一些错误 —— 请重试。"
+    },
+    "toast": {
+      "saved": "结构已保存",
+      "archived": "结构已归档",
+      "restored": "结构已还原",
+      "created": "结构已创建"
+    },
+    "badge": {
+      "builtin": "内置",
+      "mine": "我的",
+      "archived": "已归档"
+    }
   }
 }
