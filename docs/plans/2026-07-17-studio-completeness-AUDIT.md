@@ -7,7 +7,9 @@
 > [`2026-07-16-studio-completeness-8-session-orchestration.md`](2026-07-16-studio-completeness-8-session-orchestration.md)
 > and its §6 convergence node.
 >
-> **Status:** IN PROGRESS — rounds 1–2 below. Update in place as rounds land.
+> **Status:** ROUNDS 1–4 COMPLETE — every §2 axis, every plan-30 gap row, every legacy sub-tab and all
+> 88 catalog panels have been walked. What remains is BUILD (A-3..A-8) + 5 PO decisions + the loop-③
+> smoke. Update in place as those land.
 
 ---
 
@@ -240,10 +242,44 @@ charter and in no plan-30 row. Recorded here for the PO; hiding the lie is the h
 
 ---
 
-## Still to audit (rounds 3+)
+## Round 4 — the §2 bar, all nine axes swept
 
-- [ ] Per-family §2 bar: operable · CRUD · no-silent-failure · loop-connected · proven · scale
-- [ ] plan 30's §5 gap register — every row's real state
-- [ ] BE/MCP tools with no GUI (the original question this whole track started from)
-- [ ] Convergence #2: the loop-③ Studio-only live smoke (import → plan → draft → revise → translate → publish)
-- [ ] Convergence #3: GG-4 retirement readiness (blocked on F-1 + the D-5 mobile-shell decision)
+| # | Axis | Method | Result |
+|---|---|---|---|
+| 1 | Operable | grep every stub marker across `features/studio` | 🔴 **F-5** (bottom panel), **F-7** (2 dead views) |
+| 2 | CRUD / no dead buttons | grep every `on*={noop / () => {}}` across studio + composition + knowledge | 🔴 **F-8**, **F-9** — both FIXED |
+| 3 | Reachable | `panelCatalogContract` + the plan-30 panel list vs `catalog.ts` | 🔴 **F-1** (2 panels absent), **F-7** (nav says "Coming soon" over 13 built panels) |
+| 4 | No silent failure | the shared error path + the dead handlers above | 🔴 **F-3** — FIXED |
+| 5 | Agent parity | Lane-B handlers registered AND called | ✅ 12 domains wired in `registerAllStudioEffectHandlers()` |
+| 6 | Loop-connected | deep-links between adjacent tools | ⚪ not mechanically sweepable — covered by the loop-③ smoke, still to run |
+| 7 | **Proven** | every catalog component vs the test corpus | ✅ 6 panels have no test naming the WRAPPER, but all 6 have unit tests on their inner view **and** e2e specs — the legitimate DOCK-2 pattern, not a gap |
+| 8 | i18n | `i18n-completeness-gate.py` | ✅ 17 locales × 33 namespaces at full `en` parity |
+| 9 | Scale | caps / paging / virtualization | ✅ 38 files carry a cap or paging (cast offset-paging, arc-template 200 cap, scene-graph virtualize, relmap 60-node cap, subgraph 250) |
+
+**Coverage of this audit:** 9/9 bar axes · 22/22 plan-30 gap rows · 25/25 legacy sub-tabs · 88/88
+catalog panels · 8/8 session registers.
+
+---
+
+## What is left, and who must decide
+
+**Buildable now (no decision needed) — the orphans no charter owns:**
+- **A-3** port `style-voice` + `reference-shelf` (F-1)
+- **A-4** home `CompositionSettingsView` (F-6 / G-WORK-SETTINGS)
+- **A-5** home the `beats` capability (F-6)
+- **A-6** wire the Issues tab + `GET /books/{bid}/diagnostics` (F-5) — **already PO-approved via PO-1**
+- **A-8** give `bible` (and `quality`) a real rail (F-7) — pure FE over 13 + 9 existing panels
+
+**Needs a PO decision:**
+| Q | Decision |
+|---|---|
+| **D-a** | **`search`** (F-7): a whole unbuilt feature, in NO plan-30 row and no charter. Build it, or retire the activity-bar icon? A nav icon that says "Coming soon" is not an option. |
+| **D-b** | **`timeline`** (F-6): extend knowledge's `TimelineTab` with the spoiler cutoff, or port composition's `TimelineView` as its own panel? |
+| **D-c** | **G-WORKFLOWS**: plan 30 flags a head-on collision with Track C's P-5. Ownership call, not a build call. |
+| **D-d** | **`[[`-create** (F-9): build "type `[[NewCharacter` → create it", or leave the affordance hidden? |
+| **D-e** | **D-5 mobile-shell** — GG-4 retirement depends on it (per the orchestration plan's §6.3) |
+
+**Convergence node, still to run:**
+- **#2 the loop-③ Studio-only live smoke** (import → plan → draft → revise → translate → publish on ONE book). Cannot run before A-3..A-6 land.
+- **#3 GG-4 retirement** — gated on the **5 unhomed** capabilities (settings · beats · timeline · style · references), NOT on a green test. The inventory now says so mechanically.
+- **#4 full gate** — ✅ already green (every service suite + `ai-provider-gate`; see SESSION_HANDOFF).
