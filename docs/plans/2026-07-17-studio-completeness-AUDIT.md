@@ -9,9 +9,10 @@
 >
 > **Status:** ROUNDS 1–5. Rounds 1–4 walked every §2 axis, every plan-30 gap row, every legacy sub-tab and
 > all 88 catalog panels. **Round 5 then re-derived the MAP itself — and found plan 30 has a hole** (an
-> entire agent-only triage domain it never names, plus 18 tools it never counted). composition-service
-> (87 tools) is still being re-derived. What remains: BUILD (A-3..A-11) + 7 PO decisions + the loop-③
-> smoke — which is the BEHAVIOURAL audit this static one cannot perform.
+> entire agent-only triage domain it never names, 18 tools it never counted, and 4 more composition
+> holes). **ALL 142 tools are now re-derived — the audit is COMPLETE in breadth.** What remains: BUILD
+> (A-3..A-13) + 7 PO decisions + the loop-③ smoke — which is the BEHAVIOURAL audit this static one
+> cannot perform.
 >
 > **Depth of this audit — say it plainly:** STATIC. It proves "a button has no handler", "a panel does not
 > mount the component", "an api function has no caller", "a route does not exist". It does NOT prove
@@ -338,6 +339,45 @@ The code already admits it: `studio/agent/handlers/translationEffects.ts` calls 
 **Inverse gap (agent-side, not GUI-side):** the GUI exposes job `resume` + `retry`, and **no MCP tool
 covers them**.
 
+### F-16 · The plan's OWN worked example of a cross-session handoff silently never happened 🔴
+
+The orchestration plan's §5 coordination rules use this as their model case, verbatim:
+
+> *"`PlanDrawer.tsx` → **S2 owns the file.** S4 builds `MotifBindingLens.tsx` (S4's file); **S2 mounts
+> `<MotifBindingLens nodeId={…}/>` with a one-line import.** S4 never edits `PlanDrawer.tsx`."*
+
+**S4 built it. S2 never mounted it.** `MotifBindingLens.tsx` exists with **zero importers** (verified),
+so `composition_motif_bind`/`unbind` — per-scene motif binding — remains reachable **only from the legacy
+page** (`useMotifBinding` → `ChapterMotifBindings` → `PlannerView` → `CompositionPanel` →
+`ChapterEditorPage`). GG-4 would delete it.
+
+**Nobody was wrong by their own charter, and no gate could catch it.** S4's component has its own tests
+and passes; S2's `PlanDrawer.tsx` is untouched and passes. A handoff that spans two owners is invisible to
+per-owner tests — which is exactly the risk §5 was written to manage, and it still landed.
+
+*(Cost note, since the plan called it "a one-line import": it isn't quite. `PlanDrawerProps` carries
+`bookId` but not `projectId`/`chapterId`, which `MotifBindingLens` needs — so the mount also threads two
+props. Small, but not one line.)*
+
+### F-17 · composition: 4 more agent-only capabilities plan 30 never names
+
+Re-derived: **87 tools** (plan 30 says 75) — **76 GUI · 4 agent-only · 3 agent-native reads · 2 legacy
+proxies**. The composition surface is in far better shape than its scoreboard suggests, but four holes are
+real and none appear in any plan-30 row:
+
+| Capability | State |
+|---|---|
+| `composition_decompile_arcs` | 🔴 **Agent-only write.** "Group my flat/imported book's chapters into arcs" — deterministic, $0, confirm-gated. No FE at all. (`materializeScenes` in plan-hub is a DIFFERENT capability: scenes-from-chapters.) |
+| `composition_arc_extract_template` | 🔴 **Agent-only write.** "Save my authored arc as a reusable template" — the **extract** half of the apply↔extract round trip. `composition_arc_apply` IS GUI-reachable, so the pair is asymmetric. `grep extract-template frontend/src` → **0**. |
+| `composition_arc_suggest` | 🟡 **Agent-only read.** `grep arc-templates/suggest frontend/src` → **0**. The route's own header says it is *"the REST twin of `composition_arc_suggest` … so it is a route, not a bridge entry"* — built for an FE that was never written. |
+| `composition_motif_bind`/`unbind` | 🟠 **Legacy-only** — see F-16. |
+
+**Also closed by the sessions (plan 30 is stale here):** `G-ARC-SPEC-CRUD` claimed all 5 arc CRUD tools had
+NO FE consumer — `useArcInspector.ts` now calls all five and `arc-inspector` is registered.
+**Confirmed still true:** `G-STYLE-VOICE`'s inverse gap — `grep "composition_style_|composition_voice_"` in
+server.py → **0 tools**, while 6 style/voice REST routes exist and only the legacy page consumes them. So
+style/voice is invisible to the agent AND (per F-1) to the Studio user. Both halves missing.
+
 ### F-15 · plan 30's own scoreboard is provably incomplete — and one of its rows is stale
 
 - It contains **zero** occurrences of `translation-service`, `jobs-service`, `lore-enrichment` — those **18
@@ -370,6 +410,10 @@ covers them**.
   with zero callers, so this is FE wiring. It is the largest single hole the audit found.
 - **A-10** (F-12) let `KgGraphPanel` apply a saved `view` + `as_of_chapter` (consume `kg_graph_query`)
 - **A-11** (F-14) put job control on the translation surface — or delete the 3 dead `translationApi` fns
+- **A-12** (F-16) mount `MotifBindingLens` in `PlanDrawer` — S4 built it, S2 never mounted it; it also
+  needs `projectId`/`chapterId` threaded into `PlanDrawerProps`
+- **A-13** (F-17) surface `decompile_arcs` + `arc_extract_template` (+ `arc_suggest`) — the extract half of
+  apply↔extract is the sharpest asymmetry
 
 **Needs a PO decision:**
 | Q | Decision |
