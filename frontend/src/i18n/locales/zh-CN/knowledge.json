@@ -72,7 +72,8 @@
       "extractionDisabled": "已禁用",
       "book": "书籍",
       "world": "世界观",
-      "none": "—"
+      "none": "—",
+      "triageNudge": "有 {{count}} 个提取的元素需要进行分拣"
     },
     "placeholder": {
       "proposals": "待处理提案将显示在此处 (C11)。",

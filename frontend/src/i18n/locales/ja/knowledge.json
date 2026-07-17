@@ -72,7 +72,8 @@
       "extractionDisabled": "無効",
       "book": "本",
       "world": "世界",
-      "none": "—"
+      "none": "—",
+      "triageNudge": "{{count}} 個の抽出要素に仕分けが必要です"
     },
     "placeholder": {
       "proposals": "保留中の提案はここに表示されます（C11）。",

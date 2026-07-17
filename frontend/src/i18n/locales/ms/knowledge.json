@@ -72,7 +72,8 @@
       "extractionDisabled": "Nyahaktif",
       "book": "Buku",
       "world": "Dunia",
-      "none": "—"
+      "none": "—",
+      "triageNudge": "{{count}} elemen diekstrak perlu ditapis"
     },
     "placeholder": {
       "proposals": "Cadangan tertunda akan muncul di sini (C11).",

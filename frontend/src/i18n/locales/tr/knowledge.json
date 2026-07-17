@@ -72,7 +72,8 @@
       "extractionDisabled": "Devre Dışı",
       "book": "Kitap",
       "world": "Dünya",
-      "none": "—"
+      "none": "—",
+      "triageNudge": "{{count}} çıkarılan öğenin tasnif edilmesi gerekiyor"
     },
     "placeholder": {
       "proposals": "Bekleyen öneriler buraya düşer (C11).",

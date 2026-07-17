@@ -72,7 +72,8 @@
       "extractionDisabled": "Desactivada",
       "book": "Libro",
       "world": "Mundo",
-      "none": "—"
+      "none": "—",
+      "triageNudge": "{{count}} elemento(s) extraído(s) requiere triaje"
     },
     "placeholder": {
       "proposals": "Las propuestas pendientes aparecen aquí (C11).",

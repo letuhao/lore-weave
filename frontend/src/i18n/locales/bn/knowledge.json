@@ -72,7 +72,8 @@
       "extractionDisabled": "নিষ্ক্রিয়",
       "book": "বই",
       "world": "ওয়ার্ল্ড",
-      "none": "—"
+      "none": "—",
+      "triageNudge": "{{count}}টি নিষ্কাশিত উপাদান (element) যাচাই করা প্রয়োজন"
     },
     "placeholder": {
       "proposals": "পেন্ডিং প্রপোজাল এখানে জমা হবে (C11)।",

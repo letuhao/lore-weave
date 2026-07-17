@@ -8,6 +8,7 @@ import { Skeleton } from '@/components/shared';
 import { OverviewSection } from '@/features/knowledge/components/shell/OverviewSection';
 import { KgNoProjectState } from '@/features/knowledge/components/shell/KgNoProjectState';
 import { useBookKnowledgeProject } from '@/features/knowledge/hooks/useBookKnowledgeProject';
+import { useTriageQueue } from '@/features/knowledge/hooks/useTriageQueue';
 import { useStudioHost } from '../host/StudioHostProvider';
 import { followStudioLink } from '../host/studioLinks';
 import { useStudioPanel } from './useStudioPanel';
@@ -16,6 +17,11 @@ export function KgOverviewPanel(props: IDockviewPanelProps) {
   useStudioPanel('kg-overview', props.api, { mcpToolPrefixes: ['kg_'] });
   const host = useStudioHost();
   const { project, projectId, isLoading } = useBookKnowledgeProject(host.bookId);
+  // S-05 — surface a "N need triage →" nudge that deep-links INTO the kg-triage
+  // panel (spec B.2). The count fetch lives here (studio-specific); OverviewSection
+  // stays presentational, so the classic route (no onOpenTriage) shows no nudge.
+  const { groups: triageGroups } = useTriageQueue(projectId);
+  const triageCount = triageGroups.reduce((n, g) => n + g.count, 0);
 
   if (isLoading) {
     return (
@@ -47,6 +53,8 @@ export function KgOverviewPanel(props: IDockviewPanelProps) {
         onOpenWorld={(worldId) =>
           followStudioLink(`/worlds/${worldId}`, host, { bookId: host.bookId })
         }
+        triageCount={triageCount}
+        onOpenTriage={() => host.openPanel('kg-triage')}
       />
     </div>
   );

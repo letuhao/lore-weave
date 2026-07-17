@@ -72,7 +72,8 @@
       "extractionDisabled": "अक्षम",
       "book": "पुस्तक",
       "world": "विश्व",
-      "none": "—"
+      "none": "—",
+      "triageNudge": "{{count}} निकाले गए तत्व(तत्वों) को समीक्षा की आवश्यकता है"
     },
     "placeholder": {
       "proposals": "लंबित प्रस्ताव यहाँ दिखाई देंगे (C11)।",

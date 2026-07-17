@@ -72,7 +72,8 @@
       "extractionDisabled": "مُعطل",
       "book": "الكتاب",
       "world": "العالم",
-      "none": "—"
+      "none": "—",
+      "triageNudge": "هناك {{count}} عنصر (عناصر) مستخرجة بحاجة إلى فرز"
     },
     "placeholder": {
       "proposals": "تستقر المقترحات المعلقة هنا (C11).",

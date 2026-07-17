@@ -72,7 +72,8 @@
       "extractionDisabled": "Nonaktif",
       "book": "Buku",
       "world": "Dunia",
-      "none": "—"
+      "none": "—",
+      "triageNudge": "{{count}} elemen yang diekstrak perlu ditinjau"
     },
     "placeholder": {
       "proposals": "Proposal tertunda muncul di sini (C11).",

@@ -72,7 +72,8 @@
       "extractionDisabled": "ปิดใช้งาน",
       "book": "หนังสือ",
       "world": "โลก",
-      "none": "—"
+      "none": "—",
+      "triageNudge": "มี {{count}} องค์ประกอบที่ต้องทำการคัดกรอง"
     },
     "placeholder": {
       "proposals": "ข้อเสนอที่รอการตรวจสอบจะปรากฏที่นี่ (C11)",

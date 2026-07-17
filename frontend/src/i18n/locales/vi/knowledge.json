@@ -72,7 +72,8 @@
       "extractionDisabled": "Đã tắt",
       "book": "Sách",
       "world": "Thế giới",
-      "none": "—"
+      "none": "—",
+      "triageNudge": "{{count}} phần tử đã trích xuất cần được phân loại"
     },
     "placeholder": {
       "proposals": "Các đề xuất đang chờ sẽ hiển thị ở đây (C11).",

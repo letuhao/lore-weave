@@ -72,7 +72,8 @@
       "extractionDisabled": "Disabled",
       "book": "Book",
       "world": "World",
-      "none": "—"
+      "none": "—",
+      "triageNudge": "{{count}} extracted element(s) need triage"
     },
     "placeholder": {
       "proposals": "Pending proposals land here (C11).",

@@ -72,7 +72,8 @@
       "extractionDisabled": "已停用",
       "book": "書籍",
       "world": "世界觀",
-      "none": "—"
+      "none": "—",
+      "triageNudge": "有 {{count}} 個擷取的元素需要進行分類"
     },
     "placeholder": {
       "proposals": "待處理提案將顯示於此（C11）。",

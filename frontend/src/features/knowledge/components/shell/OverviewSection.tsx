@@ -20,6 +20,11 @@ interface Props {
   // without this component importing react-router at all.
   onOpenBook: (bookId: string) => void;
   onOpenWorld: (worldId: string) => void;
+  // S-05 — optional triage deep-link (studio only). When `triageCount > 0` and
+  // `onOpenTriage` is provided, a "N need triage →" nudge opens the kg-triage
+  // panel. The classic route omits both → no nudge (presentational-only here).
+  triageCount?: number;
+  onOpenTriage?: () => void;
 }
 
 // C6 (G6 / KN-2 / KN-20) — the project-detail shell's Overview section:
@@ -28,7 +33,14 @@ interface Props {
 // actions keep working unchanged, then threads the Explore-graph deep
 // link through. Config is read-only here; full edit stays on ProjectsTab
 // (no new BE, no scope creep into C7).
-export function OverviewSection({ project, onExploreGraph, onOpenBook, onOpenWorld }: Props) {
+export function OverviewSection({
+  project,
+  onExploreGraph,
+  onOpenBook,
+  onOpenWorld,
+  triageCount,
+  onOpenTriage,
+}: Props) {
   const { t } = useTranslation('knowledge');
   // D-WORLD-PROJECT-BACKLINK (G3) — resolve the project's book + world so the
   // overview cross-links out instead of showing a raw book UUID.
@@ -55,6 +67,19 @@ export function OverviewSection({ project, onExploreGraph, onOpenBook, onOpenWor
 
   return (
     <div className="space-y-4" data-testid="shell-overview">
+      {/* S-05 — triage nudge (studio only, count-gated): a deep-link INTO the
+          kg-triage panel when there are off-schema elements to resolve. */}
+      {onOpenTriage && (triageCount ?? 0) > 0 && (
+        <button
+          type="button"
+          onClick={onOpenTriage}
+          className="flex w-full items-center justify-between rounded-md border border-warning/40 bg-warning/5 px-3 py-2 text-[12px] text-warning transition-colors hover:bg-warning/10"
+          data-testid="shell-overview-triage-nudge"
+        >
+          <span>{t('shell.overview.triageNudge', { count: triageCount })}</span>
+          <span aria-hidden>→</span>
+        </button>
+      )}
       {/* Reuse the project state card (build/extract/model dialogs all
           wired). Edit opens the project form modal in-place (KN — the pen
           was previously a dead no-op here). Archive/restore/delete stay on
