@@ -588,6 +588,29 @@ async def test_two_spaces_rank_against_their_own_query_no_cross_cosine(monkeypat
     assert retr._pool.conn.executed == []                # both fresh → no re-embed
 
 
+async def test_shared_row_with_stale_user_vector_not_cross_cosined(monkeypatch):
+    """Cross-space guard: a PUBLIC (shared/P-space) motif still holding a stale USER-model
+    vector — a since-PUBLISHED private motif whose owner hasn't re-embedded it yet — is NOT
+    cosined against the platform query when the platform ref is known. It is skipped +
+    queued, never wrong-space ranked. (On the pre-fix logic this row would score 1.0.)"""
+    from app.db.repositories.motif_retrieve import MotifRetriever
+
+    caller = uuid.uuid4()
+    _patch_query_embed(monkeypatch, [1.0, 0.0, 0.0])          # platform (P) query
+    monkeypatch.setattr("app.db.repositories.motif_retrieve._platform_embed_model",
+                        lambda: ("platform_model", "platform-embed-v1"))
+    row = _row("published", embedding=[1.0, 0.0, 0.0], genre_tags=["xianxia"])
+    row["owner_user_id"] = uuid.uuid4()                       # another user's now-public motif
+    row["visibility"] = "public"
+    row["embedding_model"] = "someones-user-embed"            # a stale U-space vector, NOT platform
+    retr = MotifRetriever(_FakePool([row]))
+    out = await retr.retrieve(
+        caller, book_id=uuid.uuid4(), project_id=uuid.uuid4(),
+        genre_tags=["xianxia"], language="en", beat_role="hook", tension=50, user_model=None)
+    assert out == []                                          # skipped — never cross-space cosined
+    assert any(r["code"] == "published" for r in retr.drain_backfill_queue())
+
+
 async def test_book_shared_motif_is_library_space_not_private(monkeypatch):
     """A book_shared motif (visibility='private' but shared to a book's grantees) is a SHARED
     tier → P-space/section='library', embedded by the platform — NOT the owner's private space."""

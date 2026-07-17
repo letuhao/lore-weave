@@ -149,6 +149,21 @@ def _tokens(text: str) -> set[str]:
     return {t for t in text.lower().split() if t}
 
 
+def _shared_vector_fresh(stored_model: str | None, platform_ref: str | None) -> bool:
+    """Is a SHARED (P-space) row's stored vector usable against the platform query?
+
+    When the platform model ref is KNOWN, only a vector embedded with THAT model is fresh —
+    so a stale user-model vector left on a since-PUBLISHED private motif (embedded in the
+    owner's U-space, then published) is NOT trusted; it is re-embedded (own/system) or
+    skipped (foreign), never cosined against the platform query (the cross-space leak this
+    guards). When the ref is UNREADABLE (platform embed unset / a unit test that doesn't
+    stub it), we cannot tell the space apart, so we trust the stored vector (degrade-safe —
+    a config gap must not strand every shared vector)."""
+    if platform_ref is None:
+        return True
+    return stored_model == platform_ref
+
+
 def _row_to_motif(row: dict[str, Any] | asyncpg.Record) -> Motif:
     """Build a Motif WITHOUT the embedding/hash (server-side only). Mirrors
     motif_repo._row_to_motif but drops the retrieve-only columns from the projection."""
@@ -239,7 +254,7 @@ class MotifRetriever:
         qtext = _build_query_text(beat_role, prev_effects)
         qvec_p = await self._embed_query_safe(qtext, None, caller_id)            # P-space
         qvec_u = await self._embed_query_safe(qtext, user_model, caller_id) if user_model else None
-        user_ref = user_model[1] if user_model else None
+        platform_ref = self._platform_ref()
 
         # (3) Score every BOUNDED candidate into its section; build match_reason.
         backfilled = 0
@@ -257,7 +272,7 @@ class MotifRetriever:
                 fresh = user_embedded_with(r["embedding_model"], user_model)
             else:
                 section, qvec, bucket = "library", qvec_p, library
-                fresh = not (user_ref is not None and r["embedding_model"] == user_ref)
+                fresh = _shared_vector_fresh(r["embedding_model"], platform_ref)
 
             # A stored vector counts only if it is in THIS row's space (keeps a P-vector off
             # a U-query); else treat as absent + (re-)embed inline in the row's own space.
@@ -383,7 +398,7 @@ class MotifRetriever:
         qtext = " ".join(p for p in [premise or "", genre or ""] if p).strip()
         qvec_p = await self._embed_query_safe(qtext, None, caller_id)            # P-space
         qvec_u = await self._embed_query_safe(qtext, user_model, caller_id) if user_model else None
-        user_ref = user_model[1] if user_model else None
+        platform_ref = self._platform_ref()
 
         backfilled = 0
         mine: list[tuple[float, str, ArcCandidate]] = []
@@ -399,13 +414,11 @@ class MotifRetriever:
                 section, qvec, bucket = "mine", qvec_u, mine
                 fresh = user_embedded_with(r["embedding_model"], user_model)
             else:
-                # A shared row trusts its stored vector UNLESS it is positively the caller's
-                # OWN user-space vector (a since-published private arc carrying a stale
-                # U-vector) → re-embed with the platform model. We do NOT invalidate a vector
-                # just because the platform ref is unreadable (that would strand every shared
-                # vector when the platform embed model is unset).
+                # A shared row's stored vector is trusted only if it is a platform vector
+                # (when the platform ref is known) — a stale user-space vector on a since-
+                # published arc is re-embedded/skipped, never cross-space cosined.
                 section, qvec, bucket = "library", qvec_p, library
-                fresh = not (user_ref is not None and r["embedding_model"] == user_ref)
+                fresh = _shared_vector_fresh(r["embedding_model"], platform_ref)
 
             # A stored vector is only usable if it is in THIS row's space; otherwise treat it
             # as absent and (re-)embed below. This is what keeps a P-vector off a U-query.
@@ -440,6 +453,16 @@ class MotifRetriever:
             return [c for _rank, _code, c in items[: max(0, limit)]]
 
         return _top(mine) + _top(library)
+
+    @staticmethod
+    def _platform_ref() -> str | None:
+        """The current platform embed model id, or None when it is unset/unreadable — the
+        signal `_shared_vector_fresh` uses to decide whether a shared row's stored vector can
+        be trusted against the platform query (see that helper)."""
+        try:
+            return _platform_embed_model()[1]
+        except EmbedConfigError:
+            return None
 
     async def _embed_query_safe(
         self, qtext: str, model: tuple[str, str] | None, caller_id: UUID,
