@@ -18,6 +18,9 @@ const hook = vi.hoisted(() => ({ value: {} as Record<string, unknown> }));
 vi.mock('../useManuscriptTree', () => ({ useManuscriptTree: () => hook.value }));
 const jump = vi.hoisted(() => ({ value: {} as Record<string, unknown> }));
 vi.mock('../useManuscriptJump', () => ({ useManuscriptJump: () => jump.value }));
+// Capture sonner toasts (the undo-toast on trash).
+const toastFn = vi.hoisted(() => vi.fn());
+vi.mock('sonner', () => ({ toast: (...a: unknown[]) => toastFn(...a) }));
 
 import { ManuscriptNavigator } from '../ManuscriptNavigator';
 
@@ -36,18 +39,20 @@ const mutators = () => ({
   trashAct: vi.fn(() => Promise.resolve()),
   moveChapterToAct: vi.fn(() => Promise.resolve()),
   moveAct: vi.fn(() => Promise.resolve()),
+  restoreAct: vi.fn(() => Promise.resolve()),
 });
 
-const partRow2 = (id: string, sort: number) => ({ part_id: id, book_id: 'b', title: id, path: id, sort_order: sort, lifecycle_state: 'active' as const });
+const partRow2 = (id: string, sort: number, state: 'active' | 'trashed' = 'active') => ({ part_id: id, book_id: 'b', title: id, path: id, sort_order: sort, lifecycle_state: state });
 
-const base = (m: ReturnType<typeof mutators>, rows: ManuscriptRow[], parts: ReturnType<typeof partRow2>[] = []) => ({
-  source: 'chapters', rows, total: 1, error: null, partsMode: true, parts,
+const base = (m: ReturnType<typeof mutators>, rows: ManuscriptRow[], parts: ReturnType<typeof partRow2>[] = [], trashedActs: ReturnType<typeof partRow2>[] = []) => ({
+  source: 'chapters', rows, total: 1, error: null, partsMode: true, parts, trashedActs,
   counts: { arcs: parts.length, chapters: 1, scenes: null },
   toggleExpand: vi.fn(), loadMore: vi.fn(), collapseAll: vi.fn(), reload: vi.fn(), ...m,
 });
 
 beforeEach(() => {
   jump.value = { query: '', setQuery: vi.fn(), results: [], searching: false, active: false };
+  toastFn.mockReset();
   vi.restoreAllMocks();
 });
 
@@ -81,26 +86,46 @@ describe('ManuscriptNavigator — S-02 act affordances', () => {
     expect(m.createAct).toHaveBeenCalledWith('Rising Action'); // trimmed
   });
 
-  it('rename → calls renameAct; trash (confirmed) → calls trashAct', () => {
+  it('rename → calls renameAct', () => {
     const m = mutators();
     hook.value = base(m, [row(partNode('p1', 'Act I'), 0)]);
     vi.spyOn(window, 'prompt').mockReturnValue('Act One');
-    vi.spyOn(window, 'confirm').mockReturnValue(true);
     render(<ManuscriptNavigator bookId="b1" token="t" />);
-
     fireEvent.click(screen.getByTestId('manuscript-part-rename-p1'));
     expect(m.renameAct).toHaveBeenCalledWith('p1', 'Act One');
-    fireEvent.click(screen.getByTestId('manuscript-part-trash-p1'));
-    expect(m.trashAct).toHaveBeenCalledWith('p1');
   });
 
-  it('trash CANCELLED → does not call trashAct', () => {
+  it('S-02b: trash is INSTANT + UNDOABLE — no confirm, fires an undo toast whose action restores', () => {
     const m = mutators();
     hook.value = base(m, [row(partNode('p1', 'Act I'), 0)]);
-    vi.spyOn(window, 'confirm').mockReturnValue(false);
+    const confirmSpy = vi.spyOn(window, 'confirm');
     render(<ManuscriptNavigator bookId="b1" token="t" />);
+
     fireEvent.click(screen.getByTestId('manuscript-part-trash-p1'));
-    expect(m.trashAct).not.toHaveBeenCalled();
+    expect(m.trashAct).toHaveBeenCalledWith('p1');
+    expect(confirmSpy).not.toHaveBeenCalled();          // no blocking confirm
+    expect(toastFn).toHaveBeenCalledTimes(1);           // undo toast shown
+    // the toast carries an Undo action that restores the act
+    const opts = toastFn.mock.calls[0][1] as { action?: { onClick?: () => void } };
+    expect(opts.action).toBeTruthy();
+    opts.action!.onClick!();
+    expect(m.restoreAct).toHaveBeenCalledWith('p1');
+  });
+
+  it('S-02b: the Trashed-acts section lists trashed acts + Restore calls restoreAct', () => {
+    const m = mutators();
+    hook.value = base(m, [row(partNode('p1', 'Act I'), 0)], [partRow2('p1', 1)], [partRow2('gone', 2, 'trashed')]);
+    render(<ManuscriptNavigator bookId="b1" token="t" />);
+    expect(screen.getByTestId('manuscript-trashed-acts')).toBeTruthy();
+    fireEvent.click(screen.getByTestId('manuscript-part-restore-gone'));
+    expect(m.restoreAct).toHaveBeenCalledWith('gone');
+  });
+
+  it('no Trashed-acts section when there are none', () => {
+    const m = mutators();
+    hook.value = base(m, [row(partNode('p1', 'Act I'), 0)]);
+    render(<ManuscriptNavigator bookId="b1" token="t" />);
+    expect(screen.queryByTestId('manuscript-trashed-acts')).toBeNull();
   });
 
   it('S-02b: ↑/↓ reorder buttons — only with ≥2 acts, disabled at the boundary, call moveAct', () => {

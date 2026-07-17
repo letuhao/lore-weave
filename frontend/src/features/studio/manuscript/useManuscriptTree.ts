@@ -75,6 +75,7 @@ export function useManuscriptTree(bookId: string, token: string | null) {
   const [total, setTotal] = useState<number | null>(null);
   const [outlineCounts, setOutlineCounts] = useState<{ arcs: number; chapters: number; scenes: number } | null>(null);
   const [parts, setParts] = useState<Part[]>([]); // S-02: active acts (empty ⇒ flat mode)
+  const [trashedActs, setTrashedActs] = useState<Part[]>([]); // S-02b: soft-trashed acts (for the restore section)
   const [error, setError] = useState<string | null>(null);
   const treeRef = useRef(tree);
   treeRef.current = tree;
@@ -152,6 +153,7 @@ export function useManuscriptTree(bookId: string, token: string | null) {
     setTotal(null);
     setError(null);
     setParts([]);
+    setTrashedActs([]);
 
     if (source === 'outline') {
       void loadPage(ROOT_KEY, null, null);
@@ -162,8 +164,11 @@ export function useManuscriptTree(bookId: string, token: string | null) {
     let active: Part[] = [];
     if (token) {
       try {
-        const res = await partsApi.list(token, bookId);
-        active = (res.items ?? []).filter((p) => p.lifecycle_state === 'active');
+        // One include_trashed fetch splits into active (drives grouping) + trashed (restore section).
+        const res = await partsApi.list(token, bookId, { includeTrashed: true });
+        const all = res.items ?? [];
+        active = all.filter((p) => p.lifecycle_state === 'active');
+        if (genRef.current === gen) setTrashedActs(all.filter((p) => p.lifecycle_state === 'trashed'));
       } catch {
         active = []; // a book-service without S-02, or a transient error → flat mode
       }
@@ -247,6 +252,14 @@ export function useManuscriptTree(bookId: string, token: string | null) {
     await resetAndLoad();
   }, [token, bookId, resetAndLoad]);
 
+  // S-02b — restore a soft-trashed act. It comes back EMPTY (S-02 sealed: restore does NOT
+  // re-home the chapters it once held); the caller's copy must say so.
+  const restoreAct = useCallback(async (partId: string) => {
+    if (!token) return;
+    await partsApi.restore(token, bookId, partId);
+    await resetAndLoad();
+  }, [token, bookId, resetAndLoad]);
+
   const moveChapterToAct = useCallback(async (chapterId: string, partId: string | null) => {
     if (!token) return;
     await partsApi.setChapterPart(token, bookId, chapterId, partId);
@@ -270,8 +283,8 @@ export function useManuscriptTree(bookId: string, token: string | null) {
   const rows = useMemo(() => flatten(tree), [tree]);
 
   return {
-    source, rows, total, counts, error, partsMode, parts,
+    source, rows, total, counts, error, partsMode, parts, trashedActs,
     toggleExpand, loadMore, collapseAll, reload: resetAndLoad,
-    createAct, renameAct, trashAct, moveChapterToAct, moveAct,
+    createAct, renameAct, trashAct, moveChapterToAct, moveAct, restoreAct,
   };
 }

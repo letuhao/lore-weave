@@ -17,6 +17,7 @@ import { useCallback, useEffect, useMemo, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { ChevronDown, ChevronRight, ChevronsDownUp, ChevronUp, FolderPlus, Loader2, PanelLeftClose, Pencil, Plus, RotateCw, Search, Trash2 } from 'lucide-react';
+import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { useManuscriptTree } from './useManuscriptTree';
 import { useManuscriptJump } from './useManuscriptJump';
@@ -53,11 +54,11 @@ function toRoman(n: number): string {
 export function ManuscriptNavigator({ bookId, token, selectedId, onSelect, onNewChapter, onCollapseSidebar }: Props) {
   const { t } = useTranslation('studio');
   const {
-    // `parts` defaults to [] so the navigator tolerates a hook shape without it (older/partial
-    // mocks) — reading parts.length/findIndex on undefined would crash every row render.
-    source, rows, total, counts, error, parts = [],
+    // `parts`/`trashedActs` default to [] so the navigator tolerates a hook shape without them
+    // (older/partial mocks) — reading .length/.findIndex on undefined would crash every render.
+    source, rows, total, counts, error, parts = [], trashedActs = [],
     toggleExpand, loadMore, collapseAll, reload,
-    createAct, renameAct, trashAct, moveChapterToAct, moveAct,
+    createAct, renameAct, trashAct, moveChapterToAct, moveAct, restoreAct,
   } = useManuscriptTree(bookId, token);
   const jump = useManuscriptJump(bookId, token);
   const parentRef = useRef<HTMLDivElement>(null);
@@ -74,9 +75,15 @@ export function ManuscriptNavigator({ bookId, token, selectedId, onSelect, onNew
     const title = window.prompt(t('manuscript.renameActPrompt', { defaultValue: 'Rename act' }), current)?.trim();
     if (title != null) void renameAct(id, title);
   }, [renameAct, t]);
-  const onTrashAct = useCallback((id: string) => {
-    if (window.confirm(t('manuscript.trashActConfirm', { defaultValue: 'Trash this act? Its chapters stay in the book, just un-filed.' }))) void trashAct(id);
-  }, [trashAct, t]);
+  // S-02b — trash is INSTANT + UNDOABLE (no blocking confirm): trash, then a toast whose Undo
+  // restores the act. Copy notes chapters were kept (un-filed), so it doesn't read as data loss.
+  const onTrashAct = useCallback((id: string, name: string) => {
+    void trashAct(id);
+    toast(t('manuscript.actTrashed', { name, defaultValue: `Act "${name}" trashed — its chapters stayed in the book` }), {
+      duration: 10000,
+      action: { label: t('manuscript.undo', { defaultValue: 'Undo' }), onClick: () => void restoreAct(id) },
+    });
+  }, [trashAct, restoreAct, t]);
 
   // 1-based ordinal per top-level arc → roman numeral label (ARC I / II / …). Computed over the
   // full loaded row list (not the virtual window) so it's stable as you scroll.
@@ -419,7 +426,7 @@ export function ManuscriptNavigator({ bookId, token, selectedId, onSelect, onNew
                       <button
                         type="button"
                         data-testid={`manuscript-part-trash-${node.id}`}
-                        onClick={(e) => { e.stopPropagation(); onTrashAct(node.id); }}
+                        onClick={(e) => { e.stopPropagation(); onTrashAct(node.id, node.title); }}
                         title={t('manuscript.trashAct', { defaultValue: 'Trash act' })}
                         className="flex h-4 w-4 items-center justify-center rounded text-muted-foreground hover:text-destructive"
                       >
@@ -433,6 +440,32 @@ export function ManuscriptNavigator({ bookId, token, selectedId, onSelect, onNew
           </div>
         )}
       </div>
+
+      {/* S-02b — Trashed acts: the durable restore path (the undo toast is the immediate one).
+          Shown only when there are trashed acts; a restored act comes back EMPTY (chapters were
+          un-filed on trash and are NOT re-homed — S-02 sealed), so the hint says so. */}
+      {!jump.active && trashedActs.length > 0 && (
+        <div data-testid="manuscript-trashed-acts" className="flex-shrink-0 border-t bg-muted/20 px-2 py-1.5">
+          <div className="px-1 pb-1 text-[10px] font-bold uppercase tracking-[0.06em] text-muted-foreground">
+            {t('manuscript.trashedActs', { defaultValue: 'Trashed acts' })} · {trashedActs.length}
+          </div>
+          {trashedActs.map((p) => (
+            <div key={p.part_id} className="flex items-center gap-1 rounded px-1 py-0.5 text-xs text-muted-foreground hover:bg-secondary">
+              <Trash2 className="h-3 w-3 flex-shrink-0 opacity-50" />
+              <span className="truncate line-through">{p.title || t('manuscript.untitledAct', { defaultValue: '(untitled act)' })}</span>
+              <button
+                type="button"
+                data-testid={`manuscript-part-restore-${p.part_id}`}
+                onClick={() => void restoreAct(p.part_id)}
+                title={t('manuscript.restoreActHint', { defaultValue: 'Restore this act (it comes back empty — re-file chapters as needed)' })}
+                className="ml-auto flex-shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium text-primary hover:bg-primary/10"
+              >
+                {t('manuscript.restore', { defaultValue: 'Restore' })}
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
 
       {/* Footer: whole-book totals (arc·ch·sc) + virtual window position (mockup .nav-foot) */}
       <div className="flex h-6 flex-shrink-0 items-center gap-2 border-t px-3 font-mono text-[10px] text-muted-foreground">

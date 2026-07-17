@@ -18,12 +18,13 @@ vi.mock('@/features/composition/api', () => ({ compositionApi: {
 // (buildPartsTree depends on it). Individual tests can override listParts.
 const listParts = vi.fn(() => Promise.resolve({ items: [] }));
 const reorderParts = vi.fn(() => Promise.resolve({ items: [] }));
+const restorePart = vi.fn(() => Promise.resolve({}));
 vi.mock('../partsApi', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../partsApi')>();
-  return { ...actual, partsApi: { ...actual.partsApi, list: (...a: unknown[]) => listParts(...a), reorder: (...a: unknown[]) => reorderParts(...a) } };
+  return { ...actual, partsApi: { ...actual.partsApi, list: (...a: unknown[]) => listParts(...a), reorder: (...a: unknown[]) => reorderParts(...a), restore: (...a: unknown[]) => restorePart(...a) } };
 });
 
-const mkAct = (id: string, sort: number) => ({ part_id: id, book_id: 'b1', title: id.toUpperCase(), path: id, sort_order: sort, lifecycle_state: 'active' as const });
+const mkAct = (id: string, sort: number, state: 'active' | 'trashed' = 'active') => ({ part_id: id, book_id: 'b1', title: id.toUpperCase(), path: id, sort_order: sort, lifecycle_state: state });
 
 import { useManuscriptTree } from '../useManuscriptTree';
 import type { ManuscriptRow } from '../types';
@@ -35,6 +36,8 @@ beforeEach(() => {
   listOutlineChildren.mockReset();
   listParts.mockReset();
   reorderParts.mockReset();
+  restorePart.mockReset();
+  restorePart.mockResolvedValue({});
   reorderParts.mockResolvedValue({ items: [] });
   listParts.mockResolvedValue({ items: [] }); // default: flat mode
   work.value = { data: { status: 'none' }, isLoading: false };
@@ -135,6 +138,20 @@ describe('useManuscriptTree', () => {
     reorderParts.mockClear();
     await act(async () => { await result.current.moveAct('p1', 'up'); });
     expect(reorderParts).not.toHaveBeenCalled();
+  });
+
+  it('S-02b: splits include_trashed into active `parts` + `trashedActs`; restoreAct calls restore', async () => {
+    listParts.mockResolvedValue({ items: [mkAct('p1', 1), mkAct('gone', 2, 'trashed')] });
+    listChaptersPage.mockResolvedValue({ items: [], next_cursor: null, total: 0 });
+    const { result } = renderHook(() => useManuscriptTree('b1', 't'));
+    await waitFor(() => expect(result.current.partsMode).toBe(true));
+    expect(result.current.parts.map((p) => p.part_id)).toEqual(['p1']);
+    expect(result.current.trashedActs.map((p) => p.part_id)).toEqual(['gone']);
+    // list was called WITH include_trashed
+    expect(listParts).toHaveBeenCalledWith('t', 'b1', { includeTrashed: true });
+
+    await act(async () => { await result.current.restoreAct('gone'); });
+    expect(restorePart).toHaveBeenCalledWith('t', 'b1', 'gone');
   });
 
   it('filters structural `beat` nodes out of the outline', async () => {
