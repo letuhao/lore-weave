@@ -1269,6 +1269,14 @@
       "map_to": "映射至（留空则使用检测到的值）"
     },
     "itemDismissed": "项目已忽略",
-    "confirmSchemaWrite": "将此内容添加到您的模式中？这会改变未来提取内容的验证方式。"
+    "confirmSchemaWrite": "将此内容添加到您的模式中？这会改变未来提取内容的验证方式。",
+    "evidence": {
+      "unknown_edge_type": "关系“{{predicate}}”尚未包含在您的模式中。",
+      "unknown_vocab_value": "值“{{value}}”尚未包含在“{{set}}”列表中。",
+      "edge_kind_mismatch": "在 {{source}} 与 {{target}} 之间使用了“{{predicate}}”，这不符合您的模式设定。",
+      "unknown_node_kind": "类型“{{kind}}”尚未包含在您的模式中。",
+      "edge_cardinality_conflict": "存在冲突的有效“{{predicate}}”关系。",
+      "generic": "提取的元素与您的模式不匹配。"
+    }
   }
 }

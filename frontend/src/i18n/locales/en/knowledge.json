@@ -1269,6 +1269,14 @@
       "map_to": "Map to (leave blank to use the detected value)"
     },
     "itemDismissed": "Item dismissed",
-    "confirmSchemaWrite": "Add this to your schema? It changes how future extractions are validated."
+    "confirmSchemaWrite": "Add this to your schema? It changes how future extractions are validated.",
+    "evidence": {
+      "unknown_edge_type": "The relationship “{{predicate}}” isn’t in your schema yet.",
+      "unknown_vocab_value": "The value “{{value}}” isn’t in the “{{set}}” list yet.",
+      "edge_kind_mismatch": "“{{predicate}}” was used between a {{source}} and a {{target}}, which your schema doesn’t allow.",
+      "unknown_node_kind": "The kind “{{kind}}” isn’t in your schema yet.",
+      "edge_cardinality_conflict": "There are conflicting active “{{predicate}}” relationships.",
+      "generic": "This extracted element didn’t match your schema."
+    }
   }
 }

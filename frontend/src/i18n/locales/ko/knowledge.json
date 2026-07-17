@@ -1269,6 +1269,14 @@
       "map_to": "매핑 대상 (빈칸으로 두면 감지된 값 사용)"
     },
     "itemDismissed": "항목 삭제됨",
-    "confirmSchemaWrite": "이 내용을 스키마에 추가하시겠습니까? 추가 시 향후 추출 데이터의 유효성 검사 방식이 변경됩니다."
+    "confirmSchemaWrite": "이 내용을 스키마에 추가하시겠습니까? 추가 시 향후 추출 데이터의 유효성 검사 방식이 변경됩니다.",
+    "evidence": {
+      "unknown_edge_type": "관계 “{{predicate}}”가 아직 스키마에 정의되어 있지 않습니다.",
+      "unknown_vocab_value": "“{{value}}” 값이 아직 “{{set}}” 목록에 없습니다.",
+      "edge_kind_mismatch": "스키마 규칙에 따라 {{source}}와 {{target}} 사이에는 “{{predicate}}” 관계를 사용할 수 없습니다.",
+      "unknown_node_kind": "노드 유형 “{{kind}}”가 아직 스키마에 정의되어 있지 않습니다.",
+      "edge_cardinality_conflict": "충돌하는 “{{predicate}}” 관계가 존재합니다.",
+      "generic": "추출된 요소가 스키마와 일치하지 않습니다."
+    }
   }
 }

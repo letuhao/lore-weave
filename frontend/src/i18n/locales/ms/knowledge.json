@@ -1269,6 +1269,14 @@
       "map_to": "Petakan ke (biarkan kosong untuk menggunakan nilai yang dikesan)"
     },
     "itemDismissed": "Item dibatalkan",
-    "confirmSchemaWrite": "Tambah ini ke dalam skema anda? Ia akan mengubah cara pengesahan pengekstrakan pada masa hadapan dilakukan."
+    "confirmSchemaWrite": "Tambah ini ke dalam skema anda? Ia akan mengubah cara pengesahan pengekstrakan pada masa hadapan dilakukan.",
+    "evidence": {
+      "unknown_edge_type": "Hubungan «{{predicate}}» belum ada dalam skema anda.",
+      "unknown_vocab_value": "Nilai «{{value}}» belum ada dalam senarai «{{set}}».",
+      "edge_kind_mismatch": "«{{predicate}}» telah digunakan antara {{source}} dan {{target}}, yang tidak dibenarkan oleh skema anda.",
+      "unknown_node_kind": "Jenis «{{kind}}» belum ada dalam skema anda.",
+      "edge_cardinality_conflict": "Terdapat percanggahan dalam hubungan «{{predicate}}» yang aktif.",
+      "generic": "Elemen yang diekstrak ini tidak sepadan dengan skema anda."
+    }
   }
 }

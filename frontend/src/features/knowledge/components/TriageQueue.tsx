@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 import { AlertTriangle, X, ChevronRight, ChevronDown } from 'lucide-react';
 import { useTriageQueue, useTriageItems } from '../hooks/useTriageQueue';
+import { triageEvidence } from '../lib/triageEvidence';
 import type { TriageAction, TriageGroup } from '../types/ontology';
 
 // S-05 Part B — the KG extraction-triage queue. Extraction elements that didn't
@@ -61,19 +62,6 @@ export interface TriageQueueProps {
   onGlossaryHandoff?: (needs: { book_id?: string | null; kinds: string[] }) => void;
 }
 
-function evidenceSnippet(payload: Record<string, unknown> | undefined): string {
-  if (!payload) return '';
-  // Prefer the human-meaningful fields; fall back to a compact JSON preview.
-  const pick = (k: string) => (typeof payload[k] === 'string' ? (payload[k] as string) : undefined);
-  return (
-    pick('value') ??
-    pick('predicate') ??
-    pick('kind') ??
-    pick('proposed_kind') ??
-    JSON.stringify(payload).slice(0, 120)
-  );
-}
-
 /** S-05 — expandable per-item drill-in: dismiss ONE noisy item of a signature
  *  (via dismissTriageItem) instead of the whole group. Loaded lazily on expand. */
 function GroupDrillIn({
@@ -103,7 +91,8 @@ function GroupDrillIn({
           data-testid="kg-triage-item"
         >
           <span className="min-w-0 flex-1 truncate text-muted-foreground">
-            {JSON.stringify(it.payload).slice(0, 90)}
+            {/* S-05b (F3) — humanized, never raw JSON */}
+            {triageEvidence(t, it.item_type, it.payload)}
           </span>
           <button
             type="button"
@@ -259,10 +248,11 @@ export function TriageQueue({ projectId, bookId, onGlossaryHandoff }: TriageQueu
                 </p>
                 <p
                   className="mt-0.5 truncate text-[11px] text-muted-foreground"
-                  title={evidenceSnippet(group.sample_payload)}
+                  title={triageEvidence(t, group.item_type, group.sample_payload)}
                   data-testid="kg-triage-evidence"
                 >
-                  {evidenceSnippet(group.sample_payload)}
+                  {/* S-05b (F3) — humanized sentence, never raw JSON */}
+                  {triageEvidence(t, group.item_type, group.sample_payload)}
                 </p>
               </div>
             </div>

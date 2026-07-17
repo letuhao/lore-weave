@@ -1269,6 +1269,14 @@
       "map_to": "映射至 (留空則使用偵測到的值)"
     },
     "itemDismissed": "項目已移除",
-    "confirmSchemaWrite": "要將此內容新增至您的架構（Schema）中嗎？這會改變未來擷取內容的驗證方式。"
+    "confirmSchemaWrite": "要將此內容新增至您的架構（Schema）中嗎？這會改變未來擷取內容的驗證方式。",
+    "evidence": {
+      "unknown_edge_type": "關係「{{predicate}}」尚未包含在您的架構中。",
+      "unknown_vocab_value": "值「{{value}}」尚未包含在「{{set}}」清單中。",
+      "edge_kind_mismatch": "「{{predicate}}」被用於 {{source}} 與 {{target}} 之間，這不符合您的架構規範。",
+      "unknown_node_kind": "類型「{{kind}}」尚未包含在您的架構中。",
+      "edge_cardinality_conflict": "存在衝突的「{{predicate}}」活動關係。",
+      "generic": "此擷取元素與您的架構不符。"
+    }
   }
 }

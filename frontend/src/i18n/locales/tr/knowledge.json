@@ -1269,6 +1269,14 @@
       "map_to": "Şuna eşle (tespit edilen değeri kullanmak için boş bırakın)"
     },
     "itemDismissed": "Öğe elendi",
-    "confirmSchemaWrite": "Bunu şemanıza eklemek istiyor musunuz? Bu işlem, gelecekteki çıkarımların nasıl doğrulandığını değiştirir."
+    "confirmSchemaWrite": "Bunu şemanıza eklemek istiyor musunuz? Bu işlem, gelecekteki çıkarımların nasıl doğrulandığını değiştirir.",
+    "evidence": {
+      "unknown_edge_type": "«{{predicate}}» ilişkisi henüz şemanızda yer almıyor.",
+      "unknown_vocab_value": "«{{value}}» değeri henüz «{{set}}» listesinde bulunmuyor.",
+      "edge_kind_mismatch": "Şemanızın izin vermediği şekilde, bir {{source}} ile bir {{target}} arasında «{{predicate}}» kullanıldı.",
+      "unknown_node_kind": "«{{kind}}» türü henüz şemanızda yer almıyor.",
+      "edge_cardinality_conflict": "Çakışan aktif «{{predicate}}» ilişkileri mevcut.",
+      "generic": "Bu çıkarılan öğe şemanızla eşleşmedi."
+    }
   }
 }

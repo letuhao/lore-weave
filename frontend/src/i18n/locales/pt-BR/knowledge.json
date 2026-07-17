@@ -1269,6 +1269,14 @@
       "map_to": "Mapear para (deixe em branco para usar o valor detectado)"
     },
     "itemDismissed": "Item descartado",
-    "confirmSchemaWrite": "Adicionar isso ao seu esquema? Isso altera a forma como as futuras extrações são validadas."
+    "confirmSchemaWrite": "Adicionar isso ao seu esquema? Isso altera a forma como as futuras extrações são validadas.",
+    "evidence": {
+      "unknown_edge_type": "A relação «{{predicate}}» ainda não está no seu esquema.",
+      "unknown_vocab_value": "O valor «{{value}}» ainda não está na lista «{{set}}».",
+      "edge_kind_mismatch": "«{{predicate}}» foi usado entre um {{source}} e um {{target}}, o que o seu esquema não permite.",
+      "unknown_node_kind": "O tipo «{{kind}}» ainda não está no seu esquema.",
+      "edge_cardinality_conflict": "Existem relações «{{predicate}}» ativas conflitantes.",
+      "generic": "Este elemento extraído não corresponde ao seu esquema."
+    }
   }
 }

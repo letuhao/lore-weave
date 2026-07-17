@@ -1269,6 +1269,14 @@
       "map_to": "Ánh xạ tới (để trống để dùng giá trị đã phát hiện)"
     },
     "itemDismissed": "Đã bỏ qua mục này",
-    "confirmSchemaWrite": "Thêm nội dung này vào schema của bạn? Việc này sẽ thay đổi cách xác thực các dữ liệu trích xuất trong tương lai."
+    "confirmSchemaWrite": "Thêm nội dung này vào schema của bạn? Việc này sẽ thay đổi cách xác thực các dữ liệu trích xuất trong tương lai.",
+    "evidence": {
+      "unknown_edge_type": "Mối quan hệ “{{predicate}}” chưa có trong sơ đồ của bạn.",
+      "unknown_vocab_value": "Giá trị “{{value}}” chưa có trong danh sách “{{set}}”.",
+      "edge_kind_mismatch": "“{{predicate}}” đã được sử dụng giữa một {{source}} và một {{target}}, điều mà sơ đồ của bạn không cho phép.",
+      "unknown_node_kind": "Loại “{{kind}}” chưa có trong sơ đồ của bạn.",
+      "edge_cardinality_conflict": "Đang có các mối quan hệ “{{predicate}}” đang hoạt động bị xung đột.",
+      "generic": "Phần tử được trích xuất này không khớp với sơ đồ của bạn."
+    }
   }
 }

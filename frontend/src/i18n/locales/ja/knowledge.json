@@ -1269,6 +1269,14 @@
       "map_to": "マッピング先（空欄の場合は検出された値を使用）"
     },
     "itemDismissed": "アイテムを非表示にしました",
-    "confirmSchemaWrite": "これをスキーマに追加しますか？追加すると、今後の抽出データの検証方法が変更されます。"
+    "confirmSchemaWrite": "これをスキーマに追加しますか？追加すると、今後の抽出データの検証方法が変更されます。",
+    "evidence": {
+      "unknown_edge_type": "関係性「{{predicate}}」は、まだスキーマに登録されていません。",
+      "unknown_vocab_value": "値「{{value}}」は、まだ「{{set}}」リストに含まれていません。",
+      "edge_kind_mismatch": "スキーマでは許可されていない「{{source}}」と「{{target}}」の間で「{{predicate}}」が使用されています。",
+      "unknown_node_kind": "種類「{{kind}}」は、まだスキーマに登録されていません。",
+      "edge_cardinality_conflict": "競合するアクティブな「{{predicate}}」関係が存在します。",
+      "generic": "抽出された要素がスキーマと一致しませんでした。"
+    }
   }
 }

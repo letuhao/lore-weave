@@ -1269,6 +1269,14 @@
       "map_to": "Zuweisen zu (leer lassen, um den erkannten Wert zu verwenden)"
     },
     "itemDismissed": "Element entfernt",
-    "confirmSchemaWrite": "Dies zum Schema hinzufügen? Dadurch wird geändert, wie zukünftige Extrahierungen validiert werden."
+    "confirmSchemaWrite": "Dies zum Schema hinzufügen? Dadurch wird geändert, wie zukünftige Extrahierungen validiert werden.",
+    "evidence": {
+      "unknown_edge_type": "Die Beziehung „{{predicate}}“ ist noch nicht in Ihrem Schema enthalten.",
+      "unknown_vocab_value": "Der Wert „{{value}}“ ist noch nicht in der Liste „{{set}}“ enthalten.",
+      "edge_kind_mismatch": "„{{predicate}}“ wurde zwischen einem {{source}} und einem {{target}} verwendet, was Ihr Schema nicht zulässt.",
+      "unknown_node_kind": "Der Typ „{{kind}}“ ist noch nicht in Ihrem Schema enthalten.",
+      "edge_cardinality_conflict": "Es gibt widersprüchliche aktive „{{predicate}}“-Beziehungen.",
+      "generic": "Dieses extrahierte Element entspricht nicht Ihrem Schema."
+    }
   }
 }
