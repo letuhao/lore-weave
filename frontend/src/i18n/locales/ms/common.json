@@ -25,7 +25,8 @@
     "home": "Laman Utama",
     "account": "Akaun",
     "signin": "Log masuk",
-    "back_to_book": "Kembali ke buku"
+    "back_to_book": "Kembali ke buku",
+    "assistant": "Pembantu"
   },
   "logout_confirm": {
     "title": "Log keluar dengan perubahan yang belum disimpan?",

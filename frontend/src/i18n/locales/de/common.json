@@ -25,7 +25,8 @@
     "home": "Home",
     "account": "Konto",
     "signin": "Anmelden",
-    "back_to_book": "Zurück zum Buch"
+    "back_to_book": "Zurück zum Buch",
+    "assistant": "Assistent"
   },
   "logout_confirm": {
     "title": "Abmelden mit ungespeicherten Änderungen?",

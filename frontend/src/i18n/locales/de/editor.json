@@ -371,5 +371,26 @@
     "no_restore": "Keine frühere Version zum Wiederherstellen verfügbar",
     "confirm_title": "Auf den Stand vor dieser KI-Bearbeitung zurücksetzen?",
     "confirm_desc": "Der aktuelle Entwurf wird zuerst als Snapshot gesichert, sodass dieser Vorgang über den Versionsverlauf rückgängig gemacht werden kann."
+  },
+  "knowledge": {
+    "add": "Zum Wissen hinzufügen",
+    "reindex": "Wissen aktualisieren",
+    "indexed_badge": "In deinem Wissen",
+    "not_indexed_badge": "Nicht im Wissen",
+    "excluded_badge": "Ausgeschlossen",
+    "forget": "Dieses Kapitel vergessen",
+    "keep_out": "Nicht zum Wissen hinzufügen",
+    "allow": "Zum Wissen zulassen",
+    "save_first": "Zuerst speichern, bevor du es zum Wissen hinzufügst",
+    "indexed_toast": "Zum Wissen hinzugefügt",
+    "reused_toast": "Bereits aktuell — es wurde nichts geändert",
+    "empty_toast": "Dieses Kapitel enthält keine Inhalte zum Hinzufügen — schreibe zuerst etwas.",
+    "excluded_toast": "Dieses Kapitel ist von deinem Wissen ausgeschlossen – erlaube es zuerst.",
+    "forgotten_toast": "Vergessen – aus deinem Wissen entfernt",
+    "allowed_toast": "Zugelassen. Wähle „Zum Wissen hinzufügen“, sobald du bereit bist.",
+    "failed_toast": "Wissen konnte nicht aktualisiert werden – bitte versuche es erneut.",
+    "forget_confirm_title": "Dieses Kapitel vergessen?",
+    "forget_confirm_body": "Alles, was aus diesem Kapitel gelernt wurde, wird aus deinem Wissen entfernt. Das Kapitel selbst wird nicht gelöscht und kann später wieder hinzugefügt werden.",
+    "hint": "Wenn du ein Kapitel zu deinem Wissen hinzufügst, kann der Assistent es verwenden. Du musst es nicht veröffentlichen."
   }
 }

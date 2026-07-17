@@ -118,6 +118,7 @@
     "count": "{{count}} bab",
     "count_other": "{{count}} bab",
     "import": "Import",
+    "importPdf": "Import PDF",
     "new": "Bab Baru",
     "col": {
       "title": "Tajuk",
@@ -150,8 +151,7 @@
       "title": "Pindahkan bab ke tong sampah?",
       "description": "\"{{title}}\" akan dipindahkan ke tong sampah.",
       "confirm": "Pindah ke Tong Sampah"
-    },
-    "importPdf": "Import PDF"
+    }
   },
   "glossary": {
     "header": "Glosari & Lore",
@@ -211,7 +211,8 @@
     "status": {
       "draft": "Draf",
       "active": "Aktif",
-      "inactive": "Tidak aktif"
+      "inactive": "Tidak aktif",
+      "rejected": "Ditolak"
     },
     "bulk": {
       "select_row": "Pilih entiti",
@@ -228,7 +229,8 @@
       "delete_confirm": {
         "title": "Padam {{count}} entiti?",
         "description": "{{count}} entiti yang dipilih akan dipindahkan ke bakul kitar semula."
-      }
+      },
+      "reject": "Tolak"
     },
     "clear_filters": "Kosongkan semua penapis",
     "deleted": "Entiti dipadam",
@@ -252,7 +254,8 @@
       "title": "Padam entiti?",
       "description": "\"{{title}}\" akan dipindahkan ke bakul kitar semula.",
       "confirm": "Padam"
-    }
+    },
+    "scope_label_title": "Skop — membezakan entiti ini daripada entiti lain yang mempunyai nama yang sama"
   },
   "sharing": {
     "title": "Kebolehnampakan",

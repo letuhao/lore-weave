@@ -34,6 +34,11 @@
       "saved": "Entidad guardada",
       "status_changed": "Estado cambiado a {{status}}",
       "invalid_lang": "Código de idioma no válido (ej. es, zh, zh-tw)"
+    },
+    "scope_label": {
+      "placeholder": "Desambiguar (p. ej. mundo/reino)...",
+      "aria": "Etiqueta de alcance: desambigua entidades con el mismo nombre en diferentes contextos de la historia",
+      "duplicate": "Ya existe una entidad con este nombre, tipo y alcance en este libro"
     }
   },
   "attr_card": {

@@ -34,6 +34,11 @@
       "saved": "Entitas disimpan",
       "status_changed": "Status berubah menjadi {{status}}",
       "invalid_lang": "Kode bahasa tidak valid (mis. en, zh, zh-tw)"
+    },
+    "scope_label": {
+      "placeholder": "Disambiguasi (mis. dunia/alam)...",
+      "aria": "Label cakupan — membedakan entitas dengan nama yang sama dalam konteks cerita yang berbeda",
+      "duplicate": "Entitas dengan nama, jenis, dan cakupan ini sudah ada di dalam buku ini"
     }
   },
   "attr_card": {

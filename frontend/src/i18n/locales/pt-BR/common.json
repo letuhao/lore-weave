@@ -25,7 +25,8 @@
     "home": "Início",
     "account": "Conta",
     "signin": "Entrar",
-    "back_to_book": "Voltar para o livro"
+    "back_to_book": "Voltar para o livro",
+    "assistant": "Assistente"
   },
   "logout_confirm": {
     "title": "Sair sem salvar as alterações?",

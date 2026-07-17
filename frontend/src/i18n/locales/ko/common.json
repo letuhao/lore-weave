@@ -25,7 +25,8 @@
     "home": "홈",
     "account": "계정",
     "signin": "로그인",
-    "back_to_book": "책으로 돌아가기"
+    "back_to_book": "책으로 돌아가기",
+    "assistant": "어시스턴트"
   },
   "logout_confirm": {
     "title": "저장되지 않은 변경 사항이 있습니다. 로그아웃할까요?",

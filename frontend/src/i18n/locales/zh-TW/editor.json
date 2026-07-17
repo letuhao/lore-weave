@@ -371,5 +371,26 @@
     "no_restore": "沒有可還原的先前版本",
     "confirm_title": "還原至此次 AI 編輯之前？",
     "confirm_desc": "目前草稿會先建立快照，因此可從版本歷史還原此操作。"
+  },
+  "knowledge": {
+    "add": "加入知識庫",
+    "reindex": "更新知識庫",
+    "indexed_badge": "已在知識庫中",
+    "not_indexed_badge": "不在知識庫中",
+    "excluded_badge": "已排除",
+    "forget": "忘記此章節",
+    "keep_out": "不納入知識庫",
+    "allow": "納入知識庫",
+    "save_first": "請先儲存再加入知識庫",
+    "indexed_toast": "已加入您的知識庫",
+    "reused_toast": "內容已是最新 — 沒有任何變動",
+    "empty_toast": "此章節沒有可加入的內容 — 請先撰寫內容。",
+    "excluded_toast": "此章節未包含在您的知識庫中 — 請先允許使用。",
+    "forgotten_toast": "已遺忘 — 已從您的知識庫中移除",
+    "allowed_toast": "已允許。準備好時，請選擇「加入知識庫」。",
+    "failed_toast": "無法更新您的知識庫 — 請再試一次。",
+    "forget_confirm_title": "要遺忘此章節嗎？",
+    "forget_confirm_body": "從此章節學到的一切都將從您的知識庫中移除。章節本身不會被刪除，您稍後可以重新將其加入。",
+    "hint": "將章節加入知識庫後，助手便能使用該內容。您不需要將其發佈。"
   }
 }

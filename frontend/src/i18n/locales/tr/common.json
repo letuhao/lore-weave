@@ -25,7 +25,8 @@
     "home": "Ana Sayfa",
     "account": "Hesap",
     "signin": "Giriş Yap",
-    "back_to_book": "Kitaba geri dön"
+    "back_to_book": "Kitaba geri dön",
+    "assistant": "Asistan"
   },
   "logout_confirm": {
     "title": "Kaydedilmemiş değişikliklerle oturum kapatılsın mı?",

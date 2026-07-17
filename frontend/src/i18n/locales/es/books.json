@@ -118,6 +118,7 @@
     "count": "{{count}} capítulo",
     "count_other": "{{count}} capítulos",
     "import": "Importar",
+    "importPdf": "Importar PDF",
     "new": "Nuevo capítulo",
     "col": {
       "title": "Título",
@@ -150,8 +151,7 @@
       "title": "¿Mover capítulo a la papelera?",
       "description": "\"{{title}}\" se moverá a la papelera.",
       "confirm": "Mover a la papelera"
-    },
-    "importPdf": "Importar PDF"
+    }
   },
   "glossary": {
     "header": "Glosario y Lore",
@@ -211,7 +211,8 @@
     "status": {
       "draft": "Borrador",
       "active": "Activo",
-      "inactive": "Inactivo"
+      "inactive": "Inactivo",
+      "rejected": "Rechazado"
     },
     "bulk": {
       "select_row": "Seleccionar entidad",
@@ -228,7 +229,8 @@
       "delete_confirm": {
         "title": "¿Eliminar {{count}} entidades?",
         "description": "Las {{count}} entidades seleccionadas se moverán a la papelera."
-      }
+      },
+      "reject": "Rechazar"
     },
     "clear_filters": "Limpiar todos los filtros",
     "deleted": "Entidad eliminada",
@@ -252,7 +254,8 @@
       "title": "¿Eliminar entidad?",
       "description": "\"{{title}}\" se moverá a la papelera.",
       "confirm": "Eliminar"
-    }
+    },
+    "scope_label_title": "Alcance — diferencia esta entidad de otras que comparten el mismo nombre"
   },
   "sharing": {
     "title": "Visibilidad",

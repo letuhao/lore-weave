@@ -34,6 +34,11 @@
       "saved": "Varlık kaydedildi",
       "status_changed": "Durum {{status}} olarak değiştirildi",
       "invalid_lang": "Geçersiz dil kodu (örn. en, zh, zh-tw)"
+    },
+    "scope_label": {
+      "placeholder": "Belirsizliği giderin (örn. dünya/alem)...",
+      "aria": "Kapsam etiketi — hikaye içindeki farklı bağlamlarda aynı isme sahip varlıkları birbirinden ayırır",
+      "duplicate": "Bu isme, türe ve kapsama sahip bir varlık bu kitapta zaten mevcut"
     }
   },
   "attr_card": {

@@ -34,6 +34,11 @@
       "saved": "Entiti disimpan",
       "status_changed": "Status ditukar kepada {{status}}",
       "invalid_lang": "Kod bahasa tidak sah (cth. en, zh, zh-tw)"
+    },
+    "scope_label": {
+      "placeholder": "Disambigukan (cth. dunia/alam)...",
+      "aria": "Label skop — menjelaskan entiti bernama sama dalam konteks cerita yang berbeza",
+      "duplicate": "Entiti dengan nama, jenis, dan skop ini sudah wujud dalam buku ini"
     }
   },
   "attr_card": {

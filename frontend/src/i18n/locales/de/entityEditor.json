@@ -34,6 +34,11 @@
       "saved": "Entität gespeichert",
       "status_changed": "Status geändert in {{status}}",
       "invalid_lang": "Ungültiger Sprachcode (z. B. en, zh, zh-tw)"
+    },
+    "scope_label": {
+      "placeholder": "Eindeutigkeit schaffen (z. B. Welt/Reich)...",
+      "aria": "Scope-Label – dient der Unterscheidung von Entitäten mit gleichem Namen in unterschiedlichen Kontexten der Geschichte",
+      "duplicate": "Eine Entität mit diesem Namen, diesem Typ und diesem Scope existiert bereits in diesem Buch"
     }
   },
   "attr_card": {

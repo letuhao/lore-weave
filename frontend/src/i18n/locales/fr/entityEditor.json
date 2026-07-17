@@ -34,6 +34,11 @@
       "saved": "Entité enregistrée",
       "status_changed": "Statut modifié en {{status}}",
       "invalid_lang": "Code de langue invalide (ex. fr, en, zh-tw)"
+    },
+    "scope_label": {
+      "placeholder": "Désambiguïser (ex. : monde/royaume)...",
+      "aria": "Libellé de portée — permet de différencier des entités portant le même nom dans différents contextes de l'histoire",
+      "duplicate": "Une entité avec ce nom, ce type et cette portée existe déjà dans ce livre"
     }
   },
   "attr_card": {

@@ -25,7 +25,8 @@
     "home": "Accueil",
     "account": "Compte",
     "signin": "Se connecter",
-    "back_to_book": "Retour au livre"
+    "back_to_book": "Retour au livre",
+    "assistant": "Assistant"
   },
   "logout_confirm": {
     "title": "Déconnexion avec des modifications non enregistrées ?",

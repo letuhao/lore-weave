@@ -34,6 +34,11 @@
       "saved": "Entidade salva",
       "status_changed": "Status alterado para {{status}}",
       "invalid_lang": "Código de idioma inválido (ex: en, zh, zh-tw)"
+    },
+    "scope_label": {
+      "placeholder": "Desambiguar (ex: mundo/reino)...",
+      "aria": "Rótulo de escopo — desambigua entidades com o mesmo nome em diferentes contextos da história",
+      "duplicate": "Uma entidade com este nome, tipo e escopo já existe neste livro"
     }
   },
   "attr_card": {

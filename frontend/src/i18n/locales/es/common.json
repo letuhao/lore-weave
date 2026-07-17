@@ -25,7 +25,8 @@
     "home": "Inicio",
     "account": "Cuenta",
     "signin": "Iniciar sesión",
-    "back_to_book": "Volver al libro"
+    "back_to_book": "Volver al libro",
+    "assistant": "Asistente"
   },
   "logout_confirm": {
     "title": "¿Cerrar sesión con cambios sin guardar?",

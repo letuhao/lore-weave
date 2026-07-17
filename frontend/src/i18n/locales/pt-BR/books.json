@@ -118,6 +118,7 @@
     "count": "{{count}} capítulo",
     "count_other": "{{count}} capítulos",
     "import": "Importar",
+    "importPdf": "Importar PDF",
     "new": "Novo Capítulo",
     "col": {
       "title": "Título",
@@ -150,8 +151,7 @@
       "title": "Mover capítulo para a lixeira?",
       "description": "\"{{title}}\" será movido para a lixeira.",
       "confirm": "Mover para a Lixeira"
-    },
-    "importPdf": "Importar PDF"
+    }
   },
   "glossary": {
     "header": "Glossário e Lore",
@@ -211,7 +211,8 @@
     "status": {
       "draft": "Rascunho",
       "active": "Ativo",
-      "inactive": "Inativo"
+      "inactive": "Inativo",
+      "rejected": "Rejeitado"
     },
     "bulk": {
       "select_row": "Selecionar entidade",
@@ -228,7 +229,8 @@
       "delete_confirm": {
         "title": "Excluir {{count}} entidades?",
         "description": "{{count}} entidades selecionadas serão movidas para a lixeira."
-      }
+      },
+      "reject": "Rejeitar"
     },
     "clear_filters": "Limpar todos os filtros",
     "deleted": "Entidade excluída",
@@ -252,7 +254,8 @@
       "title": "Excluir entidade?",
       "description": "\"{{title}}\" será movida para a lixeira.",
       "confirm": "Excluir"
-    }
+    },
+    "scope_label_title": "Escopo — diferencia esta entidade de outras com o mesmo nome"
   },
   "sharing": {
     "title": "Visibilidade",

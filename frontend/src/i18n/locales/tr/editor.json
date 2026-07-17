@@ -371,5 +371,26 @@
     "no_restore": "Geri yüklenecek daha eski bir sürüm yok",
     "confirm_title": "Bu yapay zeka düzenlemesi öncesine geri yüklensin mi?",
     "confirm_desc": "Mevcut taslak önce anlık görüntüsü alınarak kaydedilir, böylece revizyon geçmişinden bu işlem geri alınabilir."
+  },
+  "knowledge": {
+    "add": "Bilgiye ekle",
+    "reindex": "Bilgiyi güncelle",
+    "indexed_badge": "Bilginizde mevcut",
+    "not_indexed_badge": "Bilginizde değil",
+    "excluded_badge": "Dahil edilmedi",
+    "forget": "Bu bölümü unut",
+    "keep_out": "Bilgi dışında tut",
+    "allow": "Bilgiye dahil et",
+    "save_first": "Bilgiye eklemeden önce kaydedin",
+    "indexed_toast": "Bilginize eklendi",
+    "reused_toast": "Zaten güncel — değişiklik yapılmadı",
+    "empty_toast": "Bu bölümün eklenecek içeriği yok — önce bir şeyler yazın.",
+    "excluded_toast": "Bu bölüm bilgi dağarcığınızın dışında tutuluyor — önce izin verin.",
+    "forgotten_toast": "Unutuldu — bilgi dağarcığınızdan çıkarıldı",
+    "allowed_toast": "İzin verildi. Hazır olduğunuzda «Bilgiye ekle» seçeneğini seçin.",
+    "failed_toast": "Bilgi dağarcığınız güncellenemedi — tekrar deneyin.",
+    "forget_confirm_title": "Bu bölüm unutulsun mu?",
+    "forget_confirm_body": "Bu bölümden öğrenilen her şey bilgi dağarcığınızdan silinecektir. Bölümün kendisi silinmez, daha sonra tekrar ekleyebilirsiniz.",
+    "hint": "Bir bölümü bilgi dağarcığınıza eklemek, asistanın onu kullanmasına olanak tanır. Yayınlamanıza gerek yoktur."
   }
 }

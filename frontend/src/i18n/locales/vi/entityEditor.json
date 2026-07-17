@@ -34,6 +34,11 @@
       "saved": "Đã lưu thực thể",
       "status_changed": "Đã đổi trạng thái thành {{status}}",
       "invalid_lang": "Mã ngôn ngữ không hợp lệ (ví dụ: en, zh, zh-tw)"
+    },
+    "scope_label": {
+      "placeholder": "Phân biệt (ví dụ: thế giới/cõi)...",
+      "aria": "Nhãn phạm vi — dùng để phân biệt các thực thể trùng tên trong các ngữ cảnh khác nhau của câu chuyện",
+      "duplicate": "Một thực thể có cùng tên, loại và phạm vi này đã tồn tại trong cuốn sách này"
     }
   },
   "attr_card": {

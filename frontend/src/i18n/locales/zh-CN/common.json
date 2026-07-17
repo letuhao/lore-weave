@@ -25,7 +25,8 @@
     "home": "主页",
     "account": "账户",
     "signin": "登录",
-    "back_to_book": "返回书籍"
+    "back_to_book": "返回书籍",
+    "assistant": "助手"
   },
   "logout_confirm": {
     "title": "确定要退出登录吗？",
