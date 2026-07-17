@@ -45,13 +45,21 @@ class StubWorks:
 
 
 class StubProgress:
-    def __init__(self, agg=None):
+    def __init__(self, agg=None, goal=None):
         self.agg = agg or ProgressAggregate()
+        self.goal = goal  # BE-P2 — the per-user daily goal (composition_progress_goal), None = unset
         self.reported: list[tuple] = []
         self.baselined: list[tuple] = []
 
     async def read_aggregate(self, user_id, project_id, on_or_before):
         return self.agg
+
+    async def get_goal(self, user_id, project_id):
+        # mirrors DailyProgressRepo.get_goal — the router reads this before the legacy fallback
+        return self.goal
+
+    async def set_goal(self, user_id, project_id, goal):
+        self.goal = goal
 
     async def report(self, user_id, project_id, chapter_id, words, snapshot_date):
         self.reported.append((chapter_id, words, snapshot_date))
@@ -156,6 +164,20 @@ def test_get_progress_shapes_response(ctx):
     assert body["daily_goal"] == 400
     assert body["current_streak"] == 2
     assert len(body["sparkline"]) == 30
+
+
+def test_the_PER_USER_goal_wins_over_the_legacy_work_setting(ctx):
+    # BE-P2 — the per-user composition_progress_goal shadows the legacy shared work.settings.daily_goal,
+    # and the response surfaces the source tier (SET-1). This exercises the get_goal path the stale stub
+    # broke (C1).
+    client, works, progress = ctx
+    works.work = _work(settings={"daily_goal": 400})  # legacy shared
+    progress.goal = 750                                # the caller's own per-user goal
+    r = client.get(f"/v1/composition/works/{PROJECT}/progress", params={"today": "2026-06-24"})
+    assert r.status_code == 200
+    body = r.json()
+    assert body["daily_goal"] == 750                   # per-user WINS
+    assert body.get("daily_goal_source") == "user"     # and the source tier is surfaced
 
 
 def test_get_progress_404_on_unknown_work(ctx):
