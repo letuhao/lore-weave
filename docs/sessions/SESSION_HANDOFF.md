@@ -1,5 +1,33 @@
 # ▶▶ NEXT SESSION STARTS HERE
 
+## 🧹 RECONCILE of the 8-session fan-out — **DONE, 2026-07-17** (HEAD `e72d712c1`)
+> The shared checkout is **fully reconciled: `git status` clean, `git ls-files --others` empty.** 75 modified
+> + 12 untracked files triaged into 5 commits. **The tree is green: frontend 785 files / 5739 tests · knowledge
+> tests/unit 3891 (`-n auto --dist loadgroup`) · tsc EXIT 0 · i18n-completeness / ai-provider / knowledge-access
+> gates all OK.**
+>
+> **⚠️ The headline finding: HEAD itself was RED in 3 places.** Three sessions committed production code and
+> left the test asserting it dirty in the worktree — the exact shared-index hazard S8's caveat flags below.
+> Each was proven by checking the HEAD test out against the committed source before repairing (`669e989df`):
+> - `test_migrate_ddl` — WS-5.7's `'commitment'` fact_type shipped in migrate.py/models.py, the 6-value CHECK
+>   assertion did not. · `SceneInspectorPanel` — 7/8 red; the inspector gained `SceneMotifsSection` (query hooks).
+> - `PolishPanel` — the M3 apply-seam added the OCC `draftVersion` to the hook's return; the test's fake hook
+>   state never grew it. Now asserts BOTH args, so **the OCC version threading is genuinely tested**, not just
+>   un-red. The component was right all along — the mock had drifted from the hook it stands in for.
+>
+> **Other work:** `874713245` intent-classifier's absolute `<15ms` wall-clock budget → a **scaling-ratio**
+> assertion (it false-red only because this session ran vitest+tsc concurrently; measured real 1.97x vs a
+> quadratic stand-in 3.85x, so the new gate has teeth) · `807593510` **the convergence i18n translate-pass —
+> 17 locales × 33 namespaces at full `en` parity** (this clears every session's deferred i18n row, incl. S7's)
+> · `14bdaa1c1` plan links broken by the W0-S10 spec renumber (14→14a/14b, 15→15a/15b) · `e72d712c1` gitignore:
+> `frontend/s8-journey/` never matched (nested patterns are relative to their own dir) + root `/*.png` +
+> `test-results/`. Smoke screenshots are **ignored, not deleted** — the RUN-STATE docs cite them and every one
+> is reproducible by re-running its spec.
+>
+> **▶ STILL OPEN — convergence node §6** (needs all 8 tracks, not any one session): loop-③ Studio-only smoke ·
+> GG-4 retire `ChapterEditorPage` · rebuild+redeploy the baked images (dev is verified; **prod is not**, and
+> stale images give false-greens — see the `live-smoke-rebuild-stale-images-first` lesson).
+
 ## ⭐ Track: STUDIO-S8 TRANSLATION (spec 29) — **CLOSED, 2026-07-17**
 > **RUN-STATE (authoritative):** [`docs/plans/2026-07-16-studio-session-S8-RUN-STATE.md`](../plans/2026-07-16-studio-session-S8-RUN-STATE.md)
 > **Spec:** [`docs/specs/2026-07-01-writing-studio/29_translation_repair.md`](../specs/2026-07-01-writing-studio/29_translation_repair.md)
