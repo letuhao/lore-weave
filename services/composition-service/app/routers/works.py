@@ -329,50 +329,23 @@ class DeriveBody(BaseModel):
         return v
 
 
-@router.post("/works/{project_id}/derive", status_code=201)
-async def derive_work(
-    project_id: UUID,
-    body: DeriveBody | None = None,
-    user_id: UUID = Depends(get_current_user),
-    bearer: str = Depends(get_bearer_token),
-    works: WorksRepo = Depends(get_works_repo),
-    derivatives: DerivativesRepo = Depends(get_derivatives_repo),
-    knowledge: KnowledgeClient = Depends(get_knowledge_client_dep),
-    book: BookClient = Depends(get_book_client_dep),
-    grant: GrantClient = Depends(get_grant_client_dep),
+async def perform_derive(
+    source: CompositionWork,
+    body: DeriveBody,
+    user_id: UUID,
+    *,
+    works: WorksRepo,
+    derivatives: DerivativesRepo,
+    knowledge: KnowledgeClient,
+    book: BookClient,
+    bearer: str,
 ) -> dict[str, Any]:
-    """C23 (dị bản M0): create a DERIVATIVE Work that diverges from a SOURCE Work.
-
-    COW (LOCKED): SPEC ONLY — no chapter/scene clone; the source reference spine
-    stays read-only and the writer adapts manually. The derivative:
-      • links to the source (`source_work_id`) at a chapter-level `branch_point` (G3);
-      • gets its OWN freshly-minted knowledge project_id (G2 — its own Neo4j delta
-        partition), NEVER the source's;
-      • persists its `divergence_spec` + any `entity_override[]` (M0 scope = entity
-        fields + added canon rules; relationship/event overrides DEFERRED) — these are
-        PERSISTED here and APPLIED at retrieval in C25.
-
-    ARCH-REVIEW GUARD (LOCKED, reconciled with C16's nullable column): a derivative
-    MUST carry a NOT-NULL project_id. If knowledge-service can't mint a fresh project
-    (outage/None or a 4xx contract error), we REJECT (4xx) rather than degrade to a
-    null project — a null project_id widens the knowledge timeline to ALL of a user's
-    projects (cross-project grounding leak). The DB CHECK is the belt; this is the
-    suspenders.
-    """
-    body = body or DeriveBody()
-    # Source Work resolution is un-user-scoped (PM-9); ACCESS is the EDIT gate on
-    # the source's book just below — a no-grant caller gets the same 404 there
-    # (anti-oracle preserved; nothing is returned before the gate).
-    source = await works.get(project_id)
-    if source is None:
-        raise HTTPException(status_code=404, detail="source work not found")
+    """The derive EXECUTION (mint a fresh knowledge partition + persist the derivative Work +
+    divergence_spec + entity_override[] in one txn). Shared by the REST route `derive_work` and the
+    Tier-W confirm handler (D-DIVERGENCE-MCP-TOOLS `composition.derive`). The caller has ALREADY
+    resolved `source` and gated EDIT on `source.book_id`. Raises the SAME HTTPException codes as the
+    route (pending source → 409; book outage → 502; knowledge outage → 503)."""
     book_id = source.book_id
-
-    # E0-4c: deriving is an authoring (write) action on the source's book → EDIT grant
-    # (LOCKED: a derivative of a shared work follows the source's per-book grant).
-    # Gated BEFORE the 409 below so a no-grant probe can't tell a backed source
-    # from a pending one (no existence/state oracle).
-    await _gate_book(grant, book_id, user_id, GrantLevel.EDIT)
     if source.id is None:  # a pending/lazy source has no surrogate id to link to
         raise HTTPException(status_code=409, detail={"code": "SOURCE_WORK_NOT_BACKED"})
     try:
@@ -431,6 +404,41 @@ async def derive_work(
                     conn=conn,
                 )
     return work.model_dump(mode="json")
+
+
+@router.post("/works/{project_id}/derive", status_code=201)
+async def derive_work(
+    project_id: UUID,
+    body: DeriveBody | None = None,
+    user_id: UUID = Depends(get_current_user),
+    bearer: str = Depends(get_bearer_token),
+    works: WorksRepo = Depends(get_works_repo),
+    derivatives: DerivativesRepo = Depends(get_derivatives_repo),
+    knowledge: KnowledgeClient = Depends(get_knowledge_client_dep),
+    book: BookClient = Depends(get_book_client_dep),
+    grant: GrantClient = Depends(get_grant_client_dep),
+) -> dict[str, Any]:
+    """C23 (dị bản M0): create a DERIVATIVE Work that diverges from a SOURCE Work.
+
+    COW (LOCKED): SPEC ONLY — no chapter/scene clone; the source reference spine
+    stays read-only and the writer adapts manually. The derivative links to the source
+    at a chapter-level `branch_point`, gets its OWN freshly-minted knowledge project_id
+    (G2), and persists its divergence_spec + entity_override[]. See `perform_derive`.
+    """
+    body = body or DeriveBody()
+    # Source Work resolution is un-user-scoped (PM-9); ACCESS is the EDIT gate on
+    # the source's book just below — a no-grant caller gets the same 404 there
+    # (anti-oracle preserved; nothing is returned before the gate).
+    source = await works.get(project_id)
+    if source is None:
+        raise HTTPException(status_code=404, detail="source work not found")
+    # E0-4c: deriving is an authoring (write) action on the source's book → EDIT grant
+    # (gated BEFORE the backed/knowledge steps so a no-grant probe can't oracle state).
+    await _gate_book(grant, source.book_id, user_id, GrantLevel.EDIT)
+    return await perform_derive(
+        source, body, user_id,
+        works=works, derivatives=derivatives, knowledge=knowledge, book=book, bearer=bearer,
+    )
 
 
 @router.get("/works/{project_id}")

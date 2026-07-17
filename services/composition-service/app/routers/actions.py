@@ -75,6 +75,11 @@ _ARC_IMPORT_DESCRIPTOR = "composition.arc_import"
 _CONFORMANCE_RUN_DESCRIPTOR = "composition.conformance_run"
 # close-21-28 P-O2a — the deterministic arc decompiler (book-scoped, EDIT-gated at confirm).
 _DECOMPILE_DESCRIPTOR = "composition.decompile"
+# D-DIVERGENCE-MCP-TOOLS (S5) — the derive (spawn a dị bản). BOOK-scoped (payload carries the
+# source project_id + book_id), EDIT-gated at confirm. Mints a knowledge partition + persists the
+# branch spec via the shared `perform_derive`. No replay ledger (like publish/generate — a re-
+# confirmed token would mint a SECOND partition, but the token is single-use by the confirm flow).
+_DERIVE_DESCRIPTOR = "composition.derive"
 
 # D-AGENT-MODE §20 D5/D6 — the authoring-run confirm-gated descriptors. Like
 # motif_adopt/arc_import, these are BOOK-scoped (a book_id in the payload), NOT
@@ -99,7 +104,7 @@ _ALL_DESCRIPTORS = (
     _PUBLISH_DESCRIPTOR, _GENERATE_DESCRIPTOR,
     _MOTIF_ADOPT_DESCRIPTOR, _MOTIF_MINE_DESCRIPTOR,
     _ARC_IMPORT_DESCRIPTOR, _CONFORMANCE_RUN_DESCRIPTOR,
-    _DECOMPILE_DESCRIPTOR,
+    _DECOMPILE_DESCRIPTOR, _DERIVE_DESCRIPTOR,
     *_AUTHORING_RUN_DESCRIPTORS,
 )
 
@@ -289,6 +294,20 @@ async def confirm_action(
         except (OwnershipError, InsufficientGrant) as exc:
             raise HTTPException(status_code=403, detail={"code": "action_error"}) from exc
         return await _execute_decompile(payload, book_id, envelope_user, token=token, claims=claims)
+
+    # ── D-DIVERGENCE-MCP-TOOLS: derive is BOOK-scoped (payload has the source project_id + book_id).
+    # Re-gate EDIT on the book at confirm (a grant revoked since propose stops the mint), then run the
+    # shared perform_derive (mint knowledge partition + persist the branch spec in one txn).
+    if claims.descriptor == _DERIVE_DESCRIPTOR:
+        try:
+            book_id = UUID(str(payload["book_id"]))
+        except (KeyError, ValueError, TypeError) as exc:
+            raise HTTPException(status_code=400, detail={"code": "action_error"}) from exc
+        try:
+            await authorize_book(grant, book_id, envelope_user, GrantLevel.EDIT)
+        except (OwnershipError, InsufficientGrant) as exc:
+            raise HTTPException(status_code=403, detail={"code": "action_error"}) from exc
+        return await _execute_derive(payload, envelope_user, works=works, book=book)
 
     # ── mine is BOOK/CORPUS-scoped, NOT Work-scoped (its payload has no project_id —
     # it binds book_id for scope='book', user for 'corpus'). Re-check the BOOK grant
@@ -715,6 +734,63 @@ async def _execute_decompile(
         get_pool(), book_id, created_by=envelope_user, chapters_per_arc=per,
     )
     return {"outcome": "action_accepted", "descriptor": _DECOMPILE_DESCRIPTOR, **result}
+
+
+async def _execute_derive(
+    payload: dict[str, Any], envelope_user: UUID, *, works: WorksRepo, book: BookClient,
+) -> dict[str, Any]:
+    """composition.derive effect (D-DIVERGENCE-MCP-TOOLS) — mint a fresh knowledge partition +
+    persist the derivative Work + divergence_spec + entity_override[] via the SHARED perform_derive
+    (the same path the REST /derive route runs). The grant was re-checked at the dispatch above.
+    Rebuilds the DeriveBody from the SIGNED payload (the LLM can't alter the target between propose
+    and confirm). Mints a user-scoped service bearer for book.get_book + knowledge.create_project."""
+    from app.clients.knowledge_client import get_knowledge_client
+    from app.db.pool import get_pool
+    from app.db.repositories.derivatives import DerivativesRepo
+    from app.routers.works import (
+        DeriveBody, DivergenceSpecBody, EntityOverrideBody, perform_derive,
+    )
+
+    try:
+        source_pid = UUID(str(payload["source_project_id"]))
+    except (KeyError, ValueError, TypeError) as exc:
+        raise HTTPException(status_code=400, detail={"code": "action_error"}) from exc
+    source = await works.get(source_pid)
+    if source is None or source.source_work_id is not None:
+        # gone since propose, or somehow a derivative — uniform refusal (anti-oracle).
+        raise HTTPException(status_code=400, detail={"code": "action_error"})
+    try:
+        overrides = [
+            EntityOverrideBody(
+                target_entity_id=UUID(str(o["target_entity_id"])),
+                overridden_fields=o.get("overridden_fields") or {},
+            )
+            for o in (payload.get("entity_overrides") or [])
+        ]
+        body = DeriveBody(
+            name=payload.get("name"),
+            branch_point=payload.get("branch_point"),
+            divergence=DivergenceSpecBody(
+                taxonomy=payload.get("taxonomy") or "au",
+                pov_anchor=(UUID(str(payload["pov_anchor"])) if payload.get("pov_anchor") else None),
+                canon_rule=list(payload.get("canon_rule") or []),
+            ),
+            entity_overrides=overrides,
+        )
+    except (ValueError, TypeError) as exc:
+        raise HTTPException(status_code=400, detail={"code": "action_error"}) from exc
+
+    bearer = mint_service_bearer(envelope_user, settings.jwt_secret, ttl=120)
+    pool = get_pool()
+    work = await perform_derive(
+        source, body, envelope_user,
+        works=works, derivatives=DerivativesRepo(pool),
+        knowledge=get_knowledge_client(), book=book, bearer=bearer,
+    )
+    return {
+        "outcome": "action_accepted", "descriptor": _DERIVE_DESCRIPTOR,
+        "project_id": work.get("project_id"), "derivative": work,
+    }
 
 
 async def _execute_arc_import(

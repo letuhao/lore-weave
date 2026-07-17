@@ -129,6 +129,10 @@ _ARC_IMPORT_DESCRIPTOR = "composition.arc_import"
 _CONFORMANCE_RUN_DESCRIPTOR = "composition.conformance_run"
 # close-21-28 P-O2a — the arc-decompiler (deterministic, $0) confirm-gated to the agent.
 _DECOMPILE_DESCRIPTOR = "composition.decompile"
+# D-DIVERGENCE-MCP-TOOLS (S5) — the derive (spawn a dị bản). Tier-W: it MINTS a knowledge
+# partition + persists the branch spec (expensive, only archivable, not undoable), so it is
+# confirm-gated via the SAME mint_confirm_token → confirm_action spine (executed in actions.py).
+_DERIVE_DESCRIPTOR = "composition.derive"
 
 # ── D-AGENT-MODE §20 — authoring-run confirm descriptors (D5/D6). Book-scoped
 # (payload carries book_id, not project_id); the confirm route
@@ -1236,6 +1240,123 @@ async def composition_archive_derivative(ctx: MCPContext, args: _DerivativeArchi
     out = updated.model_dump(mode="json")
     out["_meta"] = {"undo_hint": "restore by PATCH status=active"}
     return out
+
+
+class _DeriveOverride(ForbidExtra):
+    target_entity_id: str
+    overridden_fields: dict[str, Any] = {}
+
+
+class _DeriveArgs(ForbidExtra):
+    project_id: str  # the SOURCE (canonical) Work's project_id
+    name: Annotated[str, "The dị bản's human name (1..200 chars)."]
+    branch_point: int | None = None  # chapter index the branch diverges at (0-based)
+    taxonomy: Literal["pov_shift", "character_transform", "au"] = "au"
+    pov_anchor: str | None = None
+    canon_rule: list[str] = []
+    entity_overrides: list[_DeriveOverride] = []
+
+
+@mcp_server.tool(
+    name="composition_create_derivative",
+    description=(
+        "PROPOSE spawning a what-if derivative (dị bản) from a SOURCE Work. Deriving MINTS a fresh "
+        "knowledge partition + persists the branch spec — expensive, and only archivable (not "
+        "undoable) — so it is CONFIRM-GATED: it returns a `confirm_token` + descriptor and creates "
+        "NOTHING until the user confirms via confirm_action. Pass the source (canonical) Work's "
+        "project_id + a name; optionally branch_point (0-based chapter index), taxonomy, canon_rule[], "
+        "pov_anchor, entity_overrides. EDIT on the source's book. Rejects deriving from a derivative."
+    ),
+    meta=require_meta(
+        "W", "book",
+        synonyms=["derive dị bản", "spawn what-if", "create derivative", "branch the book", "fork the spec", "new divergence"],
+        tool_name="composition_create_derivative",
+    ),
+)
+async def composition_create_derivative(ctx: MCPContext, args: _DeriveArgs) -> dict:
+    tc = _ctx(ctx)
+    works = WorksRepo(get_pool())
+    pid = UUID(args.project_id)
+    # Gate EDIT on the source's book — the SAME gate the REST route + the confirm re-check use.
+    meta = await _book_or_deny(works, tc, pid, GrantLevel.EDIT)
+    source = await works.get(pid)
+    if source is None:
+        raise uniform_not_accessible()
+    if source.source_work_id is not None:
+        return {"success": False, "error": "CANNOT_DERIVE_FROM_DERIVATIVE — branch from the canonical Work"}
+    if source.id is None:
+        return {"success": False, "error": "SOURCE_WORK_NOT_BACKED — the source has no knowledge project yet"}
+    name = args.name.strip()
+    if not 1 <= len(name) <= 200:
+        return {"success": False, "error": "name must be 1..200 characters"}
+    # The signed payload captures EXACTLY what confirm will execute (the LLM cannot alter the target
+    # between propose and confirm). book_id lets the confirm re-gate EDIT without another resolve.
+    payload = {
+        "source_project_id": str(pid),
+        "book_id": str(meta.book_id),
+        "name": name,
+        "branch_point": args.branch_point,
+        "taxonomy": args.taxonomy,
+        "pov_anchor": args.pov_anchor,
+        "canon_rule": list(args.canon_rule),
+        "entity_overrides": [
+            {"target_entity_id": o.target_entity_id, "overridden_fields": o.overridden_fields}
+            for o in args.entity_overrides
+        ],
+    }
+    confirm_token = mint_confirm_token(
+        settings.confirm_token_signing_secret, tc.user_id, meta.book_id, _DERIVE_DESCRIPTOR, payload,
+    )
+    return {
+        "confirm_token": confirm_token,
+        "descriptor": _DERIVE_DESCRIPTOR,
+        "title": f"Spawn a dị bản '{name}' — mints a knowledge partition (cannot be undone, only archived)",
+        "domain": "composition",
+    }
+
+
+class _SwitchActiveWorkArgs(ForbidExtra):
+    book_id: str
+    # The Work to make active for this book; null switches back to the canonical Work.
+    project_id: str | None = None
+
+
+@mcp_server.tool(
+    name="composition_switch_active_work",
+    description=(
+        "Set the ACTIVE Work (dị bản) for a book — the per-user, per-book preference the studio "
+        "follows (which Work the editor + panels resolve to). Pass project_id = the derivative to "
+        "switch onto, or null to switch back to the canonical Work. Reversible + cheap (auto-applied, "
+        "no confirm). EDIT on the book. The open studio re-resolves live (Lane-B)."
+    ),
+    meta=require_meta(
+        "A", "book",
+        synonyms=["switch to dị bản", "set active work", "switch branch", "make active", "switch to derivative", "activate branch"],
+        tool_name="composition_switch_active_work",
+    ),
+)
+async def composition_switch_active_work(ctx: MCPContext, args: _SwitchActiveWorkArgs) -> dict:
+    tc = _ctx(ctx)
+    bid = UUID(args.book_id)
+    await _gate(tc, bid, GrantLevel.EDIT)
+    target: str | None = None
+    if args.project_id is not None:
+        # Never point active-work at a foreign/nonexistent Work — it must belong to THIS book.
+        works = WorksRepo(get_pool())
+        w = await works.get(UUID(args.project_id))
+        if w is None or w.book_id != bid:
+            return {"success": False, "error": "NOT_A_WORK_OF_THIS_BOOK"}
+        target = str(w.project_id) if w.project_id else args.project_id
+    from app.clients.auth_prefs_client import AuthPrefsError, set_user_preference
+    try:
+        # The SAME key + store the FE's useActiveWorkId reads (lw_active_work.<book>).
+        await set_user_preference(tc.user_id, f"lw_active_work.{bid}", target)
+    except AuthPrefsError:
+        return {"success": False, "error": "PREF_WRITE_UNAVAILABLE"}
+    return {
+        "success": True, "book_id": str(bid), "active_project_id": target,
+        "_meta": {"undo_hint": "composition_switch_active_work with project_id=null → back to canonical"},
+    }
 
 
 @mcp_server.tool(

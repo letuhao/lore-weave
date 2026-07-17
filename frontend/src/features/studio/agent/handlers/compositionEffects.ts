@@ -17,6 +17,7 @@
 // so an agent write refreshes both the rules panel and the issues viewer. Over-invalidation is safe
 // (a refetch); a project-scoped miss would leave a stale panel, which is the bug.
 import { registerEffectHandler, type EffectContext } from '../effectRegistry';
+import { notifyActiveWorkChanged } from '@/features/composition/hooks/useActiveWork';
 
 let registered = false;
 
@@ -45,6 +46,15 @@ export function compositionWorkEffect(ctx: EffectContext): void {
   for (const queryKey of WORK_KEYS) ctx.queryClient.invalidateQueries({ queryKey: [...queryKey] });
 }
 
+// S5 (D-DIVERGENCE-MCP-TOOLS) — `composition_switch_active_work` wrote the active-work PREF
+// (lw_active_work.<book>) SERVER-side. useActiveWorkId reads that pref via an in-process pub/sub
+// (not react-query), so re-trigger its re-read (the same notify the human's Switch-to fires), THEN
+// refetch the work resolution — so an agent switch moves the studio onto the dị bản live.
+export function compositionActiveWorkEffect(ctx: EffectContext): void {
+  notifyActiveWorkChanged();
+  for (const queryKey of WORK_KEYS) ctx.queryClient.invalidateQueries({ queryKey: [...queryKey] });
+}
+
 /** Idempotent — register the composition effect handlers once.
  *  Double-fire check (§8.0b): `canon_rule_` vs `(create_work|generate)` — DISJOINT; and neither
  *  overlaps any existing pattern — bookEffects `/^composition_.*(prose|draft)/` (no: create_work/
@@ -56,10 +66,14 @@ export function registerCompositionEffectHandlers(): void {
   registered = true;
   registerEffectHandler(/^composition_canon_rule_/, compositionCanonEffect);
   // S5 (D-DIVERGENCE-MCP-TOOLS) — `archive_derivative` removes a dị bản from the book's Work set;
-  // the divergence manage panel + every active-work resolver read ['composition','work'], so an
-  // agent archive must refresh them (same WORK_KEYS as create_work). Pattern is `archive_derivative`
-  // (NOT `_derivative` broad) so the READ `composition_list_derivatives` matches NO handler.
-  registerEffectHandler(/^composition_(create_work|generate|archive_derivative)/, compositionWorkEffect);
+  // `create_derivative` adds one (confirm-gated — the effect fires when the confirm completes and the
+  // studio re-resolves). Both read ['composition','work'], so refresh them (same WORK_KEYS as
+  // create_work). Patterns name the exact write tokens so the READS (list_/get_derivative_context)
+  // match NO handler.
+  registerEffectHandler(
+    /^composition_(create_work|generate|archive_derivative|create_derivative)/, compositionWorkEffect,
+  );
+  registerEffectHandler(/^composition_switch_active_work/, compositionActiveWorkEffect);
 }
 
 /** Test-only: undo the idempotency guard so a test can re-register after clearEffectHandlers(). */

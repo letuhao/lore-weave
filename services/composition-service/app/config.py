@@ -62,6 +62,9 @@ class Settings(BaseSettings):
     glossary_internal_url: str = "http://glossary-service:8088"
     book_internal_url: str = "http://book-service:8082"
     llm_gateway_internal_url: str = "http://provider-registry-service:8085"
+    # D-DIVERGENCE-MCP-TOOLS switch_active_work — auth-service owns /v1/me/preferences (the store the
+    # FE reads active-work from). We set it on-behalf-of-user via a minted bearer to the JWT route.
+    auth_internal_url: str = "http://auth-service:8081"
     # KAL — the single versioned knowledge read/write boundary (INV-KAL). Reads the
     # KAL exposes (roster, facts, canonical, search, timeline, neighborhood) MUST go
     # through here, never the owning services' /internal/* knowledge routes directly.

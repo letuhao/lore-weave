@@ -20,8 +20,10 @@ export function activeWorkPrefKey(bookId: string): string {
 
 // Reload fan-out: useSetActiveWork.switchTo() notifies every mounted reader after a
 // durable write, so a "Switch to" moves the whole studio without a shared query cache.
+// Exported so the Lane-B effect for an AGENT switch (composition_switch_active_work — it wrote the
+// pref server-side) can re-trigger the same in-process re-read the human's switch does.
 const reloadListeners = new Set<() => void>();
-function notifyActiveWorkChanged(): void {
+export function notifyActiveWorkChanged(): void {
   reloadListeners.forEach((l) => l());
 }
 

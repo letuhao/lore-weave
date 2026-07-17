@@ -185,7 +185,17 @@ useWhatIfPromotion), NEVER mount CompositionPanel shell.
   a TRANSIENT during mount-normalize observed only by the fork reload effect mid-render; its ONLY real impact was
   the fork draft-source reload timing, which is FIXED by deferring the load until the active-work pref resolves
   (commit 809e66c67, studio-derivative-fork e2e 3/3). No user-visible false-dirty remains to fix.
-- D-DIVERGENCE-MCP-TOOLS — ◑ MOSTLY CLEARED 2026-07-17 (commits 0c41947a4 + this run). SHIPPED the 3
+- D-DIVERGENCE-MCP-TOOLS — ✅ FULLY CLEARED 2026-07-17. All 5 verbs shipped + LIVE-PROVEN through the MCP
+  protocol (composition /mcp → knowledge → book → auth): `composition_create_derivative` (Tier-W → the AN-8
+  mint_confirm_token → confirm_action spine; `composition.derive` descriptor executed in actions.py via the
+  SHARED `perform_derive`) + `composition_switch_active_work` (Tier-A → writes the SAME `lw_active_work.<book>`
+  pref the FE reads, via a minted user-bearer to auth-service /v1/me/preferences; FE re-resolves live via a
+  Lane-B handler that fires notifyActiveWorkChanged). Live MCP smoke: propose→confirm minted a real derivative
+  + list saw it by name + switch set the auth pref (verified via GET /me/preferences) + switch-to-null cleared
+  it. Tests: BE 64 test_mcp_server + derive-confirm in test_mcp_actions + 150 across mcp/actions/routers; FE 278
+  agent-layer (ledger covers create/switch/archive → compositionEffects; list/get-context handler-free reads).
+  Agent-parity is now COMPLETE: OPEN + LIST + GET-CONTEXT + CREATE(confirm) + SWITCH + ARCHIVE.
+  ── (superseded detail) ◑ MOSTLY CLEARED 2026-07-17 (commits 0c41947a4 + this run). SHIPPED the 3
   buildable-now verbs: `composition_list_derivatives` (R/VIEW) + `composition_get_derivative_context`
   (R/VIEW — durable spec: taxonomy/branch_point/pov_anchor/canon_rules/overrides, reuses
   build_derivative_context) + `composition_archive_derivative` (A/EDIT, If-Match→applied_conflict, rejects

@@ -54,11 +54,15 @@ const WRITE_TOOLS: Record<string, string> = {
   // writes are covered by bookEffects; create_work + generate were the residual hole).
   composition_create_work: 'compositionEffects',
   composition_generate: 'compositionEffects',
-  // S5 (D-DIVERGENCE-MCP-TOOLS) — archiving a dị bản removes it from the book's Work set, so the
-  // divergence manage panel + active-work resolvers (['composition','work']) must refresh. Covered
-  // by compositionEffects `/^composition_(create_work|generate|archive_derivative)/`. Its READ
-  // sibling composition_list_derivatives is asserted handler-free in READ_TOOLS below.
+  // S5 (D-DIVERGENCE-MCP-TOOLS) — archiving/creating a dị bản changes the book's Work set, so the
+  // divergence manage panel + active-work resolvers (['composition','work']) must refresh. Covered by
+  // compositionEffects `/^composition_(create_work|generate|archive_derivative|create_derivative)/`.
+  // The READs (list_derivatives, get_derivative_context) are asserted handler-free in READ_TOOLS.
   composition_archive_derivative: 'compositionEffects',
+  composition_create_derivative: 'compositionEffects',
+  // S5 — switch_active_work wrote the active-work PREF server-side; its handler re-reads the pref
+  // (notifyActiveWorkChanged) + refetches work, so the studio follows an agent switch live.
+  composition_switch_active_work: 'compositionEffects',
   // S1-A3 — the prose WRITE (bookEffects, via /^composition_write_prose/). Now enumerated so the
   // ledger guards it (and its READ sibling composition_get_prose is asserted handler-free below).
   composition_write_prose: 'bookEffects',

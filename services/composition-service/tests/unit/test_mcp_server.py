@@ -59,10 +59,12 @@ EXPECTED_TOOLS = {
     "composition_canon_rule_create", "composition_canon_rule_update",
     "composition_canon_rule_delete", "composition_canon_rule_restore",
     "composition_write_prose",
-    # ── S5 (D-DIVERGENCE-MCP-TOOLS) — the dị bản manage surface (safe verbs). ──
+    # ── S5 (D-DIVERGENCE-MCP-TOOLS) — the dị bản manage surface. ──
     "composition_list_derivatives",   # Tier R
     "composition_get_derivative_context",  # Tier R
     "composition_archive_derivative",  # Tier A (reversible soft-delete)
+    "composition_switch_active_work",  # Tier A (per-user active-work pref)
+    "composition_create_derivative",  # Tier W (confirm-gated derive → composition.derive)
     # Tier W
     "composition_publish", "composition_generate",
     "composition_decompile_arcs",  # close-21-28 P-O2a — confirm-gated arc decompiler
@@ -961,6 +963,112 @@ async def test_archive_derivative_stale_version_is_applied_conflict():
     assert res["success"] is False
     assert res["outcome"] == "applied_conflict"
     assert res["current_version"] == 7
+
+
+async def test_switch_active_work_sets_the_per_book_pref():
+    """The agent switches the studio onto a dị bản by writing the SAME per-user pref the human's
+    Switch-to writes (lw_active_work.<book> via auth-service)."""
+    import app.mcp.server as srv
+
+    async with _patched(grant_level=2) as s:
+        s.WorksRepo(None).get = AsyncMock(return_value=_work())  # a Work of BOOK
+        set_pref = AsyncMock()
+        with patch("app.clients.auth_prefs_client.set_user_preference", set_pref):
+            res = await srv.composition_switch_active_work(
+                _Ctx(), srv._SwitchActiveWorkArgs(book_id=str(BOOK), project_id=str(PROJECT)),
+            )
+    assert res["success"] is True and res["active_project_id"] == str(PROJECT)
+    a = set_pref.await_args.args
+    assert a[0] == TEST_USER and a[1] == f"lw_active_work.{BOOK}" and a[2] == str(PROJECT)
+
+
+async def test_switch_active_work_null_clears_to_canonical():
+    import app.mcp.server as srv
+
+    async with _patched(grant_level=2):
+        set_pref = AsyncMock()
+        with patch("app.clients.auth_prefs_client.set_user_preference", set_pref):
+            res = await srv.composition_switch_active_work(
+                _Ctx(), srv._SwitchActiveWorkArgs(book_id=str(BOOK), project_id=None),
+            )
+    assert res["success"] is True and res["active_project_id"] is None
+    assert set_pref.await_args.args[2] is None  # null → back to canonical
+
+
+async def test_switch_active_work_rejects_a_foreign_work():
+    import app.mcp.server as srv
+
+    async with _patched(grant_level=2) as s:
+        foreign = _work()
+        foreign.book_id = uuid.uuid4()  # a Work of a DIFFERENT book
+        s.WorksRepo(None).get = AsyncMock(return_value=foreign)
+        set_pref = AsyncMock()
+        with patch("app.clients.auth_prefs_client.set_user_preference", set_pref):
+            res = await srv.composition_switch_active_work(
+                _Ctx(), srv._SwitchActiveWorkArgs(book_id=str(BOOK), project_id=str(PROJECT)),
+            )
+    assert res["success"] is False and "NOT_A_WORK_OF_THIS_BOOK" in res["error"]
+    set_pref.assert_not_awaited()  # never wrote a foreign target
+
+
+async def test_switch_active_work_pref_write_unavailable():
+    import app.mcp.server as srv
+    from app.clients.auth_prefs_client import AuthPrefsError
+
+    async with _patched(grant_level=2):
+        set_pref = AsyncMock(side_effect=AuthPrefsError("auth down"))
+        with patch("app.clients.auth_prefs_client.set_user_preference", set_pref):
+            res = await srv.composition_switch_active_work(
+                _Ctx(), srv._SwitchActiveWorkArgs(book_id=str(BOOK), project_id=None),
+            )
+    assert res["success"] is False and "PREF_WRITE_UNAVAILABLE" in res["error"]
+
+
+async def test_create_derivative_returns_a_confirm_token_not_a_derivative():
+    """Tier-W derive is CONFIRM-GATED: the tool mints a confirm_token + descriptor and creates
+    NOTHING (no works.create_derivative call) until confirm_action runs."""
+    import app.mcp.server as srv
+
+    async def get_canonical(pid):
+        return _work()  # canonical source (source_work_id None), backed (id set)
+
+    async with _patched(works_get=get_canonical) as s:
+        works = s.WorksRepo(None)
+        res = await srv.composition_create_derivative(
+            _Ctx(), srv._DeriveArgs(project_id=str(PROJECT), name="What if Kai stayed", taxonomy="au"),
+        )
+    assert res["descriptor"] == "composition.derive"
+    assert res["confirm_token"] and isinstance(res["confirm_token"], str)
+    assert "What if Kai stayed" in res["title"]
+    works.create_derivative.assert_not_awaited()  # nothing created at propose time
+
+
+async def test_create_derivative_rejects_deriving_from_a_derivative():
+    import app.mcp.server as srv
+
+    async def get_deriv(pid):
+        return _derivative()  # already a derivative (source_work_id set)
+
+    async with _patched(works_get=get_deriv):
+        res = await srv.composition_create_derivative(
+            _Ctx(), srv._DeriveArgs(project_id=str(PROJECT), name="branch of a branch"),
+        )
+    assert res["success"] is False and "CANNOT_DERIVE_FROM_DERIVATIVE" in res["error"]
+
+
+async def test_create_derivative_rejects_an_unbacked_source():
+    import app.mcp.server as srv
+
+    async def get_unbacked(pid):
+        w = _work()
+        w.id = None  # a lazy/pending source with no surrogate id to link to
+        return w
+
+    async with _patched(works_get=get_unbacked):
+        res = await srv.composition_create_derivative(
+            _Ctx(), srv._DeriveArgs(project_id=str(PROJECT), name="x"),
+        )
+    assert res["success"] is False and "SOURCE_WORK_NOT_BACKED" in res["error"]
 
 
 async def test_scene_link_create_returns_undo_hint():

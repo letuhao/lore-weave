@@ -66,8 +66,11 @@ token-gated commit the glossary/book Tier-W actions use — see the Frontend-Too
 
 ## 5 · Status + size
 
-Deferred from S5 (agent-WRITE-parity was blocked on exactly these tools). Not blocked to build —
-it's buildable now (reuses existing repo methods + the confirm spine). Size: M-L (5 tools +
-the derive confirm wiring + the Lane-B ledger rows + a cross-service live-smoke). Owner: the
-next agent-tooling / ai-gateway pass, or an S5 follow-up. Until built, agent-parity = agent can
-OPEN the panel (whatif-canvas/divergence enum) but not drive its writes — the honest v1.
+✅ **BUILT + LIVE-PROVEN 2026-07-17.** All 5 verbs shipped: list_derivatives + get_derivative_context
+(R), switch_active_work + archive_derivative (A), create_derivative (W, confirm-gated). The derive
+routes the `mint_confirm_token → /actions/confirm` spine (§3) executing the SHARED `perform_derive`;
+switch writes the `lw_active_work.<book>` pref to auth-service via a minted user-bearer (the store the
+FE reads), with a Lane-B handler firing `notifyActiveWorkChanged` so the studio re-resolves live. A
+live MCP-protocol smoke (composition /mcp → knowledge → book → auth) proved propose→confirm mints a
+real derivative + switch sets/clears the auth pref (verified via GET /me/preferences). Agent-parity is
+COMPLETE. Cross-service live-smoke: DONE (not deferred).
