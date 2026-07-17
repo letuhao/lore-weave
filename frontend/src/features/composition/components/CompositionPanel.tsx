@@ -543,10 +543,16 @@ export function CompositionPanel({ bookId, chapterId, token, onAccept, onApplyPo
         {/* C24 (dị bản M0) — spawn a what-if derivative branching from this canon.
             The wizard mints a fresh Work + its own knowledge project (delta), persists
             the divergence_spec + entity overrides, then routes the writer into the new
-            dị bản studio (re-resolved via the book's work query). */}
-        <div className="ml-auto">
-          <DivergenceWizardButton sourceWork={work} token={token} onDerived={onDerivedWork} />
-        </div>
+            dị bản studio (re-resolved via the book's work query).
+            D-S1-COMPOSE-ASSEMBLE-VISUAL-SAMENESS: the chapter-assemble solo panel stitches DONE
+            scenes into a chapter — what-if exploration is a scene-drafting concern, not an assembly
+            one — so its what-if chrome (this Spawn button + the promote row below) is hidden there,
+            which also gives assemble a distinct identity from scene-compose. */}
+        {soloPanel !== 'assemble' && (
+          <div className="ml-auto">
+            <DivergenceWizardButton sourceWork={work} token={token} onDerived={onDerivedWork} />
+          </div>
+        )}
       </div>
 
       {/* C27 (dị bản M4) — what-if → derivative PROMOTION. Only on a CANON work
@@ -555,7 +561,7 @@ export function CompositionPanel({ bookId, chapterId, token, onAccept, onApplyPo
           derive path (fresh project_id + spec + overrides carried over). The full
           spec/overrides authoring is the C24 wizard; this is the explicit
           ephemeral→persistent seam for a quick what-if. */}
-      {!derivativeCtx.isDerivative && (
+      {!derivativeCtx.isDerivative && soloPanel !== 'assemble' && (
         <div
           data-testid="composition-whatif-promote"
           className="flex flex-wrap items-center gap-2 border-b border-neutral-200 px-2 py-1.5 dark:border-neutral-700"

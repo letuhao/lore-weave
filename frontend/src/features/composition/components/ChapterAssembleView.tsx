@@ -131,6 +131,13 @@ export function ChapterAssembleView({
           {stitch.isPending ? t('stitching', { defaultValue: 'Stitching…' }) : t('stitchChapter', { defaultValue: 'Stitch chapter' })}
         </button>
         {!modelRef && <span className="self-center text-xs text-amber-600">{t('needModel', { defaultValue: 'Pick a model' })}</span>}
+        {/* D-S1-GATE-REASON-INLINE: once a model IS picked, the only remaining stitch gate is
+            scenes-done — surface it inline (not just the disabled button's tooltip). */}
+        {modelRef && !scenesAllDone && (
+          <span data-testid="assemble-stitch-blocked" className="self-center text-xs text-muted-foreground">
+            {t('stitchNeedsDone', { defaultValue: 'All scenes must be done to stitch' })}
+          </span>
+        )}
       </div>
 
       {errMsg && <div data-testid="assemble-error" className="rounded bg-red-50 p-2 text-xs text-red-700 dark:bg-red-950">{errMsg}</div>}

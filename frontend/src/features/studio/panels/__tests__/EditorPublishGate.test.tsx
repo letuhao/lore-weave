@@ -74,6 +74,9 @@ describe('EditorPublishGate (Studio wiring — #16 1.4)', () => {
     const btn = await screen.findByText('publish.publish');
     await waitFor(() => expect((btn.closest('button') as HTMLButtonElement).disabled).toBe(true));
     expect((btn.closest('button') as HTMLButtonElement).title).toContain('publish.gate_pending');
+    // D-S1-GATE-REASON-INLINE (S1 blackbox): the reason is surfaced INLINE too, not tooltip-only.
+    const reasonChip = await screen.findByTestId('studio-publish-blocked-reason');
+    expect(reasonChip.textContent).toContain('publish.gate_pending');
     expect(h.publishGate).toHaveBeenCalledWith('p1', 'c1', 'tok');
   });
 

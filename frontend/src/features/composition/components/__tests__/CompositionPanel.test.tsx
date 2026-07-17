@@ -298,6 +298,16 @@ describe('CompositionPanel solo / OS pop-out mode (T5.4 M4)', () => {
     expect(screen.queryByTestId('mock-grounding')).toBeNull();
   });
 
+  it('D-S1-COMPOSE-ASSEMBLE-VISUAL-SAMENESS: the what-if promote chrome is HIDDEN in the assemble solo panel but PRESENT in scene-compose', () => {
+    // chapter-assemble stitches DONE scenes — what-if exploration is a scene-drafting concern, so
+    // its promote row is dropped there, which also distinguishes it from the near-identical scene-compose.
+    renderSolo('assemble');
+    expect(screen.queryByTestId('composition-whatif-promote')).toBeNull();
+
+    renderSolo('compose');
+    expect(screen.getByTestId('composition-whatif-promote')).toBeInTheDocument();
+  });
+
   it('survives a cold-cache loading→resolved transition (the pop-out path) without a rules-of-hooks crash', async () => {
     // Live-smoke caught this: the pop-out is a SEPARATE React root with a COLD react-query
     // cache, so useWorkResolution is isLoading on first render (early return → fewer hooks),

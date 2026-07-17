@@ -47,9 +47,17 @@ describe('ChapterAssembleView (B-FE chapter-assembly)', () => {
     expect(preview().value).toBe('CH PROSE');
   });
 
-  it('Stitch is disabled until all scenes are done', () => {
+  it('Stitch is disabled until all scenes are done, with the reason surfaced INLINE (not tooltip-only)', () => {
     render(<ChapterAssembleView {...base} scenesAllDone={false} onAccept={vi.fn()} />);
     expect(btn('assemble-stitch').disabled).toBe(true);
+    // D-S1-GATE-REASON-INLINE: model is picked (base.modelRef='m') so the only remaining stitch gate
+    // is scenes-done — it shows inline beside the button, not just in the disabled button's title.
+    expect(screen.getByTestId('assemble-stitch-blocked')).toBeTruthy();
+  });
+
+  it('no inline stitch-blocked reason once all scenes ARE done', () => {
+    render(<ChapterAssembleView {...base} scenesAllDone onAccept={vi.fn()} />);
+    expect(screen.queryByTestId('assemble-stitch-blocked')).toBeNull();
   });
 
   it('Stitch (all done) calls the stitch endpoint and shows the degraded badge on fallback', () => {

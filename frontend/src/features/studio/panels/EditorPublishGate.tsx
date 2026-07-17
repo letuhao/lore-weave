@@ -69,6 +69,19 @@ export function EditorPublishGate({ bookId, chapterId, draftVersion, dirty }: Ed
 
   return (
     <div className="flex items-center gap-1.5">
+      {/* D-S1-GATE-REASON-INLINE (S1 blackbox): surface the blocking reason INLINE, not tooltip-only —
+          mirrors the uncheckedWarning chip below. The shared PublishControl still carries it in `title`
+          for hover; this chip makes "why can't I publish?" answerable without hovering a disabled button. */}
+      {blockedReason && (
+        <span
+          data-testid="studio-publish-blocked-reason"
+          className="inline-flex items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-[10px] font-medium text-muted-foreground"
+          title={blockedReason}
+        >
+          <AlertTriangle className="h-3 w-3" aria-hidden="true" />
+          {blockedReason}
+        </span>
+      )}
       {uncheckedWarning && (
         <span
           data-testid="studio-publish-canon-unchecked"
