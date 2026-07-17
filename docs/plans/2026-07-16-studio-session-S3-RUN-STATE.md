@@ -158,11 +158,15 @@ Proof must be pasted into the transcript, not claimed.
   door; agent-parity through the same `_review_pass` (MCP tool + arg descriptions corrected).
   Tests BE +4 / FE +7, tsc clean. LIVE-SMOKE PASSED (real gateway→composition, DELETE stuck 2→1,
   pass held pending).
-- **D-PLANFORGE-PROPOSE-BLIND** (pre-existing, gate #2; Wave-5 sealed OUT — Q-35-OQ5) — **SPEC WRITTEN**
-  (not built, seal respected): docs/specs/2026-07-17-planforge-propose-existing-state.md. A book-state
-  gather lens + prompt/contract changes across the 3 proposer paths + run schema; gated behind an A/B
-  eval before defaulting on. S3 shipped only the honesty copy. 3 PO open questions (owning track ·
-  default on/off · budget split). Building it is a FUTURE track, not S3.
+- **D-PLANFORGE-PROPOSE-BLIND** (pre-existing, gate #2; Wave-5 sealed OUT — Q-35-OQ5) — **BUILD-READY
+  DESIGN, PO-APPROVED** (not built, seal respected): docs/specs/2026-07-17-planforge-propose-existing-state.md.
+  A book-state gather lens (composing EXISTING seams — StructureRepo/KAL/OutlineRepo/latest_artifact/
+  enforce_budget, no new service/table/provider) + prompt/contract changes across the 3 proposer paths
+  + run schema; gated behind an A/B eval before defaulting on. **All 3 PO open questions APPROVED +
+  SEALED 2026-07-17** (OQ-1 composition-service/PlanForge-v2 · OQ-2 per-user setting + deploy ceiling,
+  FALSE→TRUE post-A/B, fails-closed · OQ-3 reuse enforce_budget). Design is COMPLETE — a builder starts
+  at §6 P1 with no open questions. Building it is a FUTURE track (seal lifts when PlanForge-v2 re-opens),
+  not S3.
 
 ### DEBT
 - Live-smoke fixtures to CLEAN UP at session end: (1) demo package+pass_state seeded on test run

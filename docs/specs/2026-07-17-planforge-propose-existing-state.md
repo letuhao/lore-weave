@@ -8,10 +8,11 @@
 > truth-telling. This spec is what eventually replaces that copy with the real capability.
 >
 > **This revision (2026-07-17):** upgraded from high-level design + 3 open PO questions to a
-> **build-ready** design — every read grounded in an existing seam, the 3 open questions resolved with
-> a recommended default (PO may override), a concrete `ExistingState` schema, the budget model wired to
-> the real `enforce_budget` allocator, the migration, the merge-not-duplicate algorithm, the per-path
-> prompt diffs, the A/B rollout gate, and a phased build plan.
+> **build-ready** design — every read grounded in an existing seam, a concrete `ExistingState` schema,
+> the budget model wired to the real `enforce_budget` allocator, the migration, the merge-not-duplicate
+> algorithm, the per-path prompt diffs, the A/B rollout gate, and a phased build plan. **The 3 open
+> questions were PO-APPROVED 2026-07-17 (§4) — now sealed decisions.** The design is COMPLETE; nothing
+> further to specify. Only the seal (Q-35-OQ5) stands between it and a build.
 
 ## 1 · The problem
 
@@ -180,23 +181,33 @@ current honesty copy stands. The copy is CONSUMED-and-proven-by-effect (it rende
 counts, never a stored blob) — the SET-8 rule, and the same "surface the effective value + its source"
 discipline the settings standard mandates.
 
-## 4 · Resolved open questions (recommended defaults — PO may override)
+## 4 · Decisions (PO-APPROVED 2026-07-17 — SEALED; do not re-litigate)
 
-- **OQ-1 · owning track → composition-service, PlanForge-v2 compiler track.** Rationale: every read is
-  composition-local or an existing internal client (arcs via `StructureRepo`, cast via the roster-bind
-  glossary seam, spine via `OutlineRepo`, motifs/vars via `latest_artifact`). No new service boundary.
-  Opens when the PlanForge v2 compiler track next re-opens (Q-35-OQ5's target trigger).
+> These were the three open questions; the PO approved the recommended resolutions on 2026-07-17.
+> They are now **sealed decisions** — a future builder implements them, does not re-open them (per the
+> "re-read a sealed decision, don't re-litigate" rule). Change requires an explicit PO reversal.
+
+- **OQ-1 · owning track → composition-service, PlanForge-v2 compiler track. ✅ APPROVED.** Rationale:
+  every read is composition-local or an existing internal client (arcs via `StructureRepo`, cast via the
+  KAL `/internal/books/{id}/entities`, spine via `OutlineRepo.linked_chapter_nodes`, motifs/vars via
+  `latest_artifact`). No new service boundary. Opens when the PlanForge v2 compiler track next re-opens
+  (Q-35-OQ5's target trigger).
 - **OQ-2 · default `ground_on_existing` → FALSE at ship, flipped to TRUE org-wide only after the A/B
-  eval passes.** This is the SET-boundary-correct answer: `ground_on_existing` is a **per-user
+  eval passes. ✅ APPROVED.** This is the SET-boundary-correct answer: `ground_on_existing` is a **per-user
   setting** (two authors genuinely want different values — a continuation-writer wants it on, a
   fresh-spinoff author wants it off), with a **deploy ceiling** (`PLANFORGE_GROUND_ON_EXISTING_ALLOWED`,
   default OFF at ship) so `effective = AND(deploy_allows, user_enables)`. A behavior-changing default
   **fails closed** (the `spend-causing-setting-fails-closed` rule) until the eval proves grounding
   improves the plan; then the ceiling flips ON and the per-user default becomes TRUE. Never a global
   `*_ENABLED` env flag standing in for the per-user choice (that would be a `/review-impl` finding).
-- **OQ-3 · budget split → resolved by reuse (§3.2).** No new allocator: `enforce_budget` + the priority
-  ladder above, with the `total` owned by the Context Budget Law's plan-orientation allocation. The
-  percentages are PO-tunable soft caps, not hard-coded behavior.
+- **OQ-3 · budget split → resolved by reuse (§3.2). ✅ APPROVED.** No new allocator: `enforce_budget` +
+  the priority ladder above, with the `total` owned by the Context Budget Law's plan-orientation
+  allocation. The percentages are PO-tunable soft caps, not hard-coded behavior.
+
+**Spec status after approval:** with all three decisions sealed, this design is **COMPLETE and
+build-ready** — nothing further to specify. The only thing between here and code is the *seal lifting*
+(the PlanForge-v2 track re-opening, Q-35-OQ5). A builder can start at §6 P1 without re-opening any
+design question.
 
 ## 5 · Acceptance criteria
 1. Proposing for a book with existing arcs/cast **does not duplicate** an existing arc by title, and
