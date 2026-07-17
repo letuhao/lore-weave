@@ -111,9 +111,12 @@ useWhatIfPromotion), NEVER mount CompositionPanel shell.
   back-ref RELIABLY (falls back to story_order only when absent, then "added" — never mis-pairs). BE: upsert +
   route + repo query; FE: api opts + SceneGraphCanvas passes anchorScene.id + useBranchDiff pairing. Tests: BE
   scene_drafts_detailed anchor roundtrip; FE useBranchDiff "pairs by anchor not order" (3 pass). tsc clean.
-- D-S5-SCENEGRAPH-VIRTUALIZE — ✅ SPEC'D (needs a design, too large to inline): docs/specs/2026-07-17-scenegraph-virtualization.md
-  (viewport-cull in GraphCanvas: mount only visible nodes + always-include drag/selected/what-if; edges by
-  visible endpoints; extent from full layout). Size M; buildable; owner = next graph-canvas toucher.
+- D-S5-SCENEGRAPH-VIRTUALIZE — ✅ CLEARED (BUILT, spec'd + implemented — stale row). GraphCanvas has opt-in
+  `virtualize` + `alwaysRenderIds` (viewport-cull: mounts only intersecting nodes +1-viewport margin, tracks
+  the scroller world-viewport via scroll+ResizeObserver+rAF; `nodeIntersectsViewport` pure predicate). Spec:
+  docs/specs/2026-07-17-scenegraph-virtualization.md. SceneGraphCanvas.tsx ENABLES it (`virtualize` +
+  alwaysRenderIds = selected + what-if alts + anchor). graphCanvasCull.test 5 pass (verified 2026-07-17). The
+  §2 #9 scale gap is closed for the scene graph.
 - D-S5-LOOP3-SMOKE — ✅ CLEARED (live on :5399, 2026-07-17). Seeded book 019f6553: canon scene cs1 + draft,
   a derivative Work "Nếu Lam Vũ sống", a promoted derivative scene ds1 with anchor_node_id→cs1. Drove the
   isolated :5399 build: divergence LIST showed the named derivative (BE-13a end-to-end) + branch point + Switch
@@ -122,9 +125,10 @@ useWhatIfPromotion), NEVER mount CompositionPanel shell.
   back-ref pairing (the D-S5-BRANCHDIFF-CORRESPONDENCE fix), 0 console errors. The whole B4 pipeline proven
   end-to-end live. Only take-GENERATION (LLM) was substituted by a seeded promoted draft. NOTE: the seed rows
   live in fixture book 019f6553 (harmless; can be dropped by project_id d0000000-0000-4000-8000-000000000001).
-- D-S5-BRANCHDIFF-NOPROSE — B4: a diverged scene NODE with no completed draft (prose persist failed/pending)
-  is silently absent from the diff (deriv scene-drafts only returns drafted scenes). The mockup drew a
-  "no prose yet" state; not built. LOW.
+- D-S5-BRANCHDIFF-NOPROSE — ✅ CLEARED (stale row; it WAS built in B4). useBranchDiff emits a `no-prose`
+  status for a diverged scene node with no completed draft; BranchDiffView renders the `branchdiff-noprose`
+  state ("promote it…") + a "todo" chip in the rail. The S5 e2e diff test accepts branchdiff-noprose as a
+  valid non-error state. Verified 2026-07-17.
 - D-S5-CANONVIEW-REG — ✅ CLEARED (commit 05e9bcf6e): enum contention settled, canonview registered clean
   (catalog+enum+contract+i18n+test); panelCatalogContract 9 pass WITH canonview.
 - D-S5-SWITCH-TO-EC3C — ✅ CLEARED: EC-3c done in B1a (workSelect.ts + 13 sites, hygiene grep clean, commit
@@ -160,22 +164,29 @@ useWhatIfPromotion), NEVER mount CompositionPanel shell.
   below). The FULL isolation (work-scoped chapter drafts) is a LARGE new infra effort + a product decision →
   split out as D-S5-DERIVATIVE-MANUSCRIPT-FORK. This resolves the open QUESTION (v1 behavior decided); the fork
   is future work.
-- D-S5-DERIVATIVE-EDIT-GUARD (mitigation, SMALL) — since Switch-to now puts a user "on" a derivative, the
-  chapter editor should signal/guard that direct edits + Accept land in CANON, not the derivative (the
-  DerivativeBanner covers the compose surface; confirm it/​an equivalent shows on the plain editor too). Verify
-  with a live derivative smoke. LOW-MED, S5-adjacent follow-up.
+- D-S5-DERIVATIVE-EDIT-GUARD — ✅ CLEARED (built + LIVE-verified). EditorPanel renders the amber
+  `studio-editor-derivative-guard` banner ("You're on a dị bản — edits here save to the canon manuscript,
+  not the branch. Use the what-if canvas → Promote for branch-only prose.") whenever the active Work is a
+  derivative (`composeWork?.source_work_id`). The s5-blackbox-journey e2e PROVES it renders live on a
+  derivative (2026-07-17). Row was stale.
 - D-S5-DERIVATIVE-MANUSCRIPT-FORK — ✅ SPEC'D: docs/specs/2026-07-17-derivative-manuscript-fork.md. BLOCKED ON
   A PRODUCT DECISION (§1: keep spec-branch [recommended] vs fork the manuscript). If "keep spec-branch", the
   item is CLOSED (v1 decision + edit-guard banner stand). Design (§3, work-scoped drafts + editor work-scoping
   + merge path) built only on an explicit "fork" decision. Size L if built.
-- D-DIVERGENCE-MCP-TOOLS — ◑ PARTIALLY CLEARED 2026-07-17 (commit 0c41947a4). The SAFE verbs SHIPPED:
-  `composition_list_derivatives` (R/VIEW) + `composition_archive_derivative` (A/EDIT, If-Match→applied_conflict,
-  rejects the canonical Work) on composition-service MCP, + Lane-B `compositionWorkEffect` fires on
-  `/^composition_archive_derivative/` + ledger rows (archive=covered write, list=handler-free read) + 4 handler
-  tests (55 BE MCP green) + EXPECTED_TOOLS catalog. REMAINING (still spec'd, NOT lazy): `composition_create_derivative`
-  is Tier-W (mints a knowledge partition) → MUST go through the AN-8 confirm_action spine (§3 of the spec); shipping
-  it without the confirm would be wrong. `composition_switch_active_work` + `get_derivative_context` are cheap
-  follow-ups for the next ai-gateway pass. Agent-parity now = OPEN + LIST + ARCHIVE (was OPEN-only).
+- D-DIVERGENCE-MCP-TOOLS — ◑ MOSTLY CLEARED 2026-07-17 (commits 0c41947a4 + this run). SHIPPED the 3
+  buildable-now verbs: `composition_list_derivatives` (R/VIEW) + `composition_get_derivative_context`
+  (R/VIEW — durable spec: taxonomy/branch_point/pov_anchor/canon_rules/overrides, reuses
+  build_derivative_context) + `composition_archive_derivative` (A/EDIT, If-Match→applied_conflict, rejects
+  the canonical Work). + Lane-B `compositionWorkEffect` on `/^composition_archive_derivative/` + ledger rows
+  (archive=covered write; list + get-context=handler-free reads) + 6 handler tests (57 BE MCP green; ledger
+  159 FE green) + EXPECTED_TOOLS catalog. TWO verbs remain, BOTH legitimately gated (NOT lazy):
+  (1) `composition_create_derivative` is Tier-W (mints a knowledge partition) → MUST route the AN-8
+  `confirm_action` spine (§3 of the spec); shipping it without confirm would be wrong — gate #2 (structural).
+  (2) `composition_switch_active_work` writes the per-user active-work PREFERENCE (`lw_active_work.<book>` via
+  /v1/me/preferences), owned by the me/preferences service — composition-service has no preferences client,
+  so it needs a new cross-service seam (or the tool belongs on the preferences domain) — gate #2 + a design
+  call, spec'd in docs/specs/2026-07-17-divergence-mcp-tools.md §2. Agent-parity now = OPEN + LIST +
+  GET-CONTEXT + ARCHIVE (was OPEN-only); CREATE + SWITCH remain the two gated writes.
 ### /review-impl on B1 (divergence panel + EC-3c/EC-3d) — 2026-07-16
 - **HIGH #1 (FIXED)** — FE wizard `buildBody()` DROPPED `name`: BE-13a accepted it but the FE never sent it,
   so every derivative created via the panel was unnamed ("Untitled dị bản") — the exact F-EC3a silent-success

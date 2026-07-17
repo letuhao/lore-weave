@@ -96,8 +96,10 @@ from app.db.repositories.narrative_thread import NarrativeThreadRepo
 from app.db.repositories.outline import OutlineRepo
 from app.db.repositories.scene_links import SceneLinksRepo
 from app.db.repositories.structure import StructureConflictError, StructureRepo
+from app.db.repositories.derivatives import DerivativesRepo
 from app.db.repositories.works import WorksRepo
 from app.deps import get_authoring_run_service
+from app.packer.pack import build_derivative_context
 from app.grant_client import GrantLevel, get_grant_client
 from app.mcp.service_bearer import mint_service_bearer
 from app.services.authoring_run_service import ALLOWLISTABLE_TOOLS
@@ -1146,6 +1148,52 @@ async def composition_list_derivatives(
                 "version": w.version,
             }
             for w in rows
+        ],
+    }
+
+
+@mcp_server.tool(
+    name="composition_get_derivative_context",
+    description=(
+        "Read ONE what-if derivative's DURABLE divergence spec — taxonomy, branch_point, "
+        "pov_anchor, canon_rules, and entity overrides (the persisted substrate the packer "
+        "applies at retrieval, not the derive-time cache). VIEW required. Read-only. Returns "
+        "is_derivative=false for the canonical Work."
+    ),
+    meta=require_meta(
+        "R", "book",
+        synonyms=["get dị bản spec", "derivative context", "branch spec", "what-if spec", "divergence spec"],
+        tool_name="composition_get_derivative_context",
+    ),
+)
+async def composition_get_derivative_context(
+    ctx: MCPContext,
+    project_id: Annotated[str, "The derivative Work's project_id."],
+) -> dict:
+    tc = _ctx(ctx)
+    works = WorksRepo(get_pool())
+    pid = UUID(project_id)
+    await _book_or_deny(works, tc, pid, GrantLevel.VIEW)
+    work = await works.get(pid)
+    if work is None:
+        raise uniform_not_accessible()
+    if work.source_work_id is None:
+        return {"is_derivative": False}
+    derivatives = DerivativesRepo(get_pool())
+    deriv = await build_derivative_context(work, works_repo=works, derivatives_repo=derivatives)
+    spec = await derivatives.get_spec_for_work(work.id) if work.id else None
+    return {
+        "is_derivative": True,
+        "name": (work.settings or {}).get("derivative_name"),
+        "source_work_id": str(work.source_work_id),
+        "source_project_id": str(deriv.source_project_id) if deriv.source_project_id else None,
+        "branch_point": deriv.branch_point,
+        "taxonomy": spec.taxonomy if spec else None,
+        "pov_anchor": str(spec.pov_anchor) if spec and spec.pov_anchor else None,
+        "canon_rules": list(spec.canon_rule) if spec else [],
+        "overrides": [
+            {"target_entity_id": str(o.target_entity_id), "overridden_fields": o.overridden_fields}
+            for o in deriv.overrides
         ],
     }
 

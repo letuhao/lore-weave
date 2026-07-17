@@ -164,6 +164,7 @@ const READ_TOOLS = [
   'composition_diagnostics', 'composition_get_work', 'composition_list_outline',
   'composition_get_prose', 'composition_get_outline_node',   // S1-A3 — reads MUST stay handler-free (no cache thrash)
   'composition_list_derivatives',   // S5 — the divergence LIST read; NO handler (archive_derivative carries the effect)
+  'composition_get_derivative_context',   // S5 — one branch's durable spec; a READ, NO handler
   'composition_motif_get', 'composition_arc_get', 'plan_pass_status',
   'registry_list_skills', 'registry_get_workflow',
 ];

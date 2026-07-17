@@ -61,6 +61,7 @@ EXPECTED_TOOLS = {
     "composition_write_prose",
     # ── S5 (D-DIVERGENCE-MCP-TOOLS) — the dị bản manage surface (safe verbs). ──
     "composition_list_derivatives",   # Tier R
+    "composition_get_derivative_context",  # Tier R
     "composition_archive_derivative",  # Tier A (reversible soft-delete)
     # Tier W
     "composition_publish", "composition_generate",
@@ -864,6 +865,43 @@ async def test_list_derivatives_returns_canonical_plus_branches():
     assert works[1]["is_canonical"] is False
     assert works[1]["name"] == "What if Kai never left"
     assert works[1]["branch_point"] == 3
+
+
+async def test_get_derivative_context_returns_the_durable_spec():
+    """The agent reads ONE branch's full spec — taxonomy/branch_point/canon_rules/overrides."""
+    import app.mcp.server as srv
+    from types import SimpleNamespace as NS
+
+    deriv = _derivative(branch_point=2)
+
+    async def get_deriv(pid):
+        return deriv
+
+    ctx_obj = NS(source_project_id=PROJECT, branch_point=2, overrides=[])
+    spec_obj = NS(taxonomy="pov_shift", pov_anchor=None, canon_rule=["Kai stays"])
+    async with _patched(works_get=get_deriv) as s:
+        s.WorksRepo(None).get = AsyncMock(return_value=deriv)
+        with patch.object(srv, "build_derivative_context", AsyncMock(return_value=ctx_obj)), \
+             patch.object(srv, "DerivativesRepo") as DR:
+            DR.return_value.get_spec_for_work = AsyncMock(return_value=spec_obj)
+            res = await srv.composition_get_derivative_context(_Ctx(), project_id=str(deriv.project_id))
+    assert res["is_derivative"] is True
+    assert res["taxonomy"] == "pov_shift"
+    assert res["branch_point"] == 2
+    assert res["canon_rules"] == ["Kai stays"]
+
+
+async def test_get_derivative_context_false_for_the_canonical_work():
+    """The canonical Work (source_work_id None) is not a derivative — is_derivative=false, no spec read."""
+    import app.mcp.server as srv
+
+    async def get_canonical(pid):
+        return _work()
+
+    async with _patched(works_get=get_canonical) as s:
+        s.WorksRepo(None).get = AsyncMock(return_value=_work())
+        res = await srv.composition_get_derivative_context(_Ctx(), project_id=str(PROJECT))
+    assert res["is_derivative"] is False
 
 
 async def test_archive_derivative_rejects_the_canonical_work():
