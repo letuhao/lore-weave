@@ -148,6 +148,18 @@ test.describe('@s7 Studio · place-graph author journey (blackbox)', () => {
     ).toBeVisible({ timeout: 10_000 });
     await shot(page, '5b-cast');
 
+    // ── STEP 5c · "Remove a place I added by mistake" — delete must be OPERABLE (S7 debt-clear) ─────────
+    // The base WorldMap had no delete; S7 wired a × affordance → archiveMyEntity (id-equivalence proven live).
+    page.on('dialog', (d) => d.accept()); // the × triggers window.confirm — a real user clicks OK
+    await pg.open(bookId);
+    await expect(pg.nodeBody(VALLEY), 'STEP 5c — the place must be present before removing it').toBeVisible({ timeout: 10_000 });
+    await pg.deletePlace(VALLEY);
+    await expect(
+      pg.node(VALLEY),
+      'STEP 5c (operable) — the × must remove the place from the graph (archiveMyEntity landed, not a dead button)',
+    ).toHaveCount(0, { timeout: 10_000 });
+    await shot(page, '5c-deleted');
+
     // ── STEP 6 · "A book with no co-writer" — the empty-precondition state must be HONEST, not blank ───
     // The leaf reads `work.settings.world_map` and would crash on a null Work; the wrapper intercepts
     // with an honest hint + a reachable next step (Open Compose). Assert the hint AND the escape hatch.

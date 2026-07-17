@@ -74,6 +74,17 @@ export class PlaceGraphPage {
     await this.addButton.click();
   }
 
+  /** The × remove button inside a place node (S7 debt-clear — archives the entity). */
+  deleteBtn(name: string): Locator {
+    return this.node(name).getByTestId('worldmap-node-delete');
+  }
+
+  /** Remove a place through the live × affordance (the real delete → knowledgeApi.archiveMyEntity).
+   *  The caller must have armed `page.on('dialog', d => d.accept())` — the × triggers window.confirm. */
+  async deletePlace(name: string): Promise<void> {
+    await this.deleteBtn(name).click();
+  }
+
   /** Enter link mode, select two nodes, pick a predicate, and confirm (real createRelation POST). */
   async linkPlaces(nameA: string, nameB: string, predicate: 'contains' | 'borders' | 'route_to'): Promise<void> {
     await this.linkToggle.click();
