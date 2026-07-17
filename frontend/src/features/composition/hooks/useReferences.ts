@@ -48,6 +48,26 @@ export function useReferences(
     },
   });
 
+  // S-03 — edit a reference. Metadata is cheap (no re-embed); content re-embeds. Both
+  // refresh the library + per-scene retrieval (an edited passage changes both).
+  const updateMetadata = useMutation({
+    mutationFn: ({ id, patch }: { id: string; patch: { title?: string; author?: string; source_url?: string } }) =>
+      compositionApi.updateReferenceMetadata(projectId!, id, patch, token!),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: listKey });
+      qc.invalidateQueries({ queryKey: ['composition', 'references', 'search', projectId] });
+    },
+  });
+
+  const updateContent = useMutation({
+    mutationFn: ({ id, content }: { id: string; content: string }) =>
+      compositionApi.updateReferenceContent(projectId!, id, content, token!),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: listKey });
+      qc.invalidateQueries({ queryKey: ['composition', 'references', 'search', projectId] });
+    },
+  });
+
   const pin = useMutation({
     mutationFn: ({ hit, action }: { hit: ReferenceHit; action: PinAction }) =>
       compositionApi.setGroundingPin(
@@ -79,6 +99,8 @@ export function useReferences(
     isSearching: search.isFetching,
     add,
     remove,
+    updateMetadata,
+    updateContent,
     setPin,
   };
 }

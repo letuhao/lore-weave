@@ -97,4 +97,45 @@ test.describe('@s01 Studio · structure-templates (blackbox: clone from empty)',
 
     await page.screenshot({ path: 'tests/e2e/test-results/structtpl-edited.png' }).catch(() => {});
   });
+
+  // ── SLICE D · archive → restore round-trips (no dead-end soft-delete) ──
+  test('archive an own structure then restore it — a clean round-trip, not a dead-end', async ({ page }) => {
+    const studio = new StudioPage(page);
+    await studio.goto(bookId);
+    await studio.openPanel('structure-templates', 'structure');
+
+    // clone + rename to a unique name so we can track it unambiguously on the shared dev DB
+    const uniqueName = `E2E Archive ${stamp}`;
+    await page.getByRole('button', { name: 'Story Circle system' }).click();
+    await page.getByTestId('structtpl-clone').click();
+    await expect(page.getByTestId('structtpl-beat-editor')).toBeVisible({ timeout: 10_000 });
+    await page.getByTestId('structtpl-name').fill(uniqueName);
+    await page.getByTestId('structtpl-save').click();
+    await expect(page.getByTestId('structtpl-save-error')).toHaveCount(0);
+    await page.getByTestId('structtpl-row').filter({ hasText: uniqueName }).click();
+
+    // ARCHIVE → it leaves the default (non-archived) list
+    await page.getByTestId('structtpl-archive').click();
+    await expect(
+      page.getByTestId('structtpl-row').filter({ hasText: uniqueName }),
+      'after archiving, the template is gone from the default list',
+    ).toHaveCount(0, { timeout: 10_000 });
+
+    // toggle "archived" → it reappears, badged archived, and is RESTORABLE (not a dead-end)
+    await page.getByTestId('structtpl-show-archived').check();
+    const archivedRow = page.getByTestId('structtpl-row').filter({ hasText: uniqueName });
+    await expect(archivedRow, 'the archived template is visible under the archived toggle').toBeVisible({ timeout: 10_000 });
+    await archivedRow.click();
+    await expect(page.getByTestId('structtpl-archived-note')).toBeVisible();
+
+    // RESTORE → back to an active, editable template
+    await page.getByTestId('structtpl-restore').click();
+    await page.getByTestId('structtpl-show-archived').uncheck();
+    await expect(
+      page.getByTestId('structtpl-row').filter({ hasText: uniqueName }),
+      'after restore, the template is back in the default list',
+    ).toBeVisible({ timeout: 10_000 });
+
+    await page.screenshot({ path: 'tests/e2e/test-results/structtpl-archive-restore.png' }).catch(() => {});
+  });
 });

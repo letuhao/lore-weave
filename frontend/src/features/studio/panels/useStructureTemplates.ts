@@ -23,16 +23,22 @@ export interface StructureTemplatesState {
   saving: boolean;
   saveError: string | null;
   save: (id: string, version: number, patch: { name?: string; beats?: Beat[] }) => void;
+  // slice D — archive/restore an OWN template + show-archived toggle.
+  showArchived: boolean;
+  setShowArchived: (v: boolean) => void;
+  archive: (id: string) => void;
+  restore: (id: string) => void;
 }
 
-export function useStructureTemplates(includeArchived = false): StructureTemplatesState {
+export function useStructureTemplates(): StructureTemplatesState {
   const { accessToken } = useAuth();
   const qc = useQueryClient();
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [showArchived, setShowArchived] = useState(false);
 
   const q = useQuery({
-    queryKey: ['structure-templates', includeArchived],
-    queryFn: () => compositionApi.listTemplates(accessToken!, includeArchived),
+    queryKey: ['structure-templates', showArchived],
+    queryFn: () => compositionApi.listTemplates(accessToken!, showArchived),
     enabled: !!accessToken,
   });
 
@@ -53,6 +59,17 @@ export function useStructureTemplates(includeArchived = false): StructureTemplat
       compositionApi.updateTemplate(v.id, v.version, v.patch, accessToken!),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['structure-templates'] }),
   });
+  const archiveMut = useMutation({
+    mutationFn: (id: string) => compositionApi.archiveTemplate(id, accessToken!),
+    onSuccess: (_r, id) => {
+      qc.invalidateQueries({ queryKey: ['structure-templates'] });
+      if (selectedId === id) setSelectedId(null);   // it left the default list
+    },
+  });
+  const restoreMut = useMutation({
+    mutationFn: (id: string) => compositionApi.restoreTemplate(id, accessToken!),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['structure-templates'] }),
+  });
 
   const selected = templates.find((t) => t.id === selectedId) ?? null;
 
@@ -66,5 +83,8 @@ export function useStructureTemplates(includeArchived = false): StructureTemplat
     saving: saveMut.isPending,
     saveError: saveMut.error ? (saveMut.error as Error).message : null,
     save: (id, version, patch) => saveMut.mutate({ id, version, patch }),
+    showArchived, setShowArchived,
+    archive: (id) => archiveMut.mutate(id),
+    restore: (id) => restoreMut.mutate(id),
   };
 }

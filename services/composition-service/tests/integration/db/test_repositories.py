@@ -31,6 +31,7 @@ from app.db.repositories.grounding_pins import GroundingPinsRepo
 from app.db.repositories.narrative_thread import NarrativeThreadRepo
 from app.db.repositories.outline import OutlineRepo
 from app.db.repositories.plan_overlay import PlanOverlayRepo
+from app.db.repositories.references import ReferencesRepo
 from app.db.repositories.scene_links import SceneLinksRepo
 from app.db.repositories.structure_templates import StructureTemplatesRepo
 from app.db.repositories.works import WorksRepo
@@ -57,6 +58,7 @@ _TABLES = [
     "scene_grounding_pins",
     "outbox_events", "generation_correction", "generation_job", "narrative_thread",
     "canon_rule", "scene_link", "outline_node", "structure_node", "structure_template",
+    "reference_source",
     "work_chapter_draft", "entity_override", "divergence_spec", "composition_work",
 ]
 
@@ -396,6 +398,47 @@ async def test_s04_entity_override_crud_post_derive(pool):
     assert await drepo.delete_override(deriv.id, book, ov.id) is True
     assert await drepo.delete_override(deriv.id, book, ov.id) is False
     assert await drepo.list_overrides_for_work(deriv.id) == []
+
+
+async def test_s03_reference_update_metadata_vs_content(pool):
+    """S-03 — a reference's UPDATE splits by cost: metadata (title/author/source_url)
+    is a cheap column write that MUST NOT touch the embedding; content is a re-embed
+    (the caller supplies the new vector). Both project-scoped."""
+    works, refs = WorksRepo(pool), ReferencesRepo(pool)
+    user, _, book = _ids()
+    w = await works.create(user, uuid.uuid4(), book)
+    ref = await refs.create(
+        w.project_id, created_by=user, content="orig", embedding=[0.1, 0.2, 0.3],
+        title="T", author="A", source_url="http://x", embedding_model="m1", embedding_dim=3,
+    )
+
+    async def _vec(rid):
+        async with pool.acquire() as c:
+            return await c.fetchval("SELECT embedding FROM reference_source WHERE id = $1", rid)
+
+    # metadata edit changes ONLY the provided column; embedding + model untouched (the bug this prevents)
+    upd = await refs.update_metadata(w.project_id, ref.id, author="New Author")
+    assert upd is not None and upd.author == "New Author" and upd.title == "T"
+    assert upd.embedding_model == "m1" and upd.embedding_dim == 3
+    assert list(await _vec(ref.id)) == pytest.approx([0.1, 0.2, 0.3], abs=1e-4)  # vector unchanged
+
+    # content edit re-embeds: new content + new vector + new model/dim
+    upd2 = await refs.update_content(
+        w.project_id, ref.id, content="rewritten", embedding=[0.9, 0.8],
+        embedding_model="m2", embedding_dim=2,
+    )
+    assert upd2 is not None and upd2.content == "rewritten"
+    assert upd2.embedding_model == "m2" and upd2.embedding_dim == 2
+    assert list(await _vec(ref.id)) == pytest.approx([0.9, 0.8], abs=1e-4)
+
+    # tenancy: wrong project can't touch this row (→ router 404)
+    assert await refs.update_metadata(uuid.uuid4(), ref.id, title="X") is None
+    assert await refs.update_content(
+        uuid.uuid4(), ref.id, content="y", embedding=[0.0], embedding_model="m", embedding_dim=1,
+    ) is None
+    # no-op metadata patch returns the current row (not None), embedding still the content edit's
+    noop = await refs.update_metadata(w.project_id, ref.id)
+    assert noop is not None and noop.content == "rewritten" and noop.author == "New Author"
 
 
 async def test_c23_migration_roundtrip_up_down_up_clean(pool):

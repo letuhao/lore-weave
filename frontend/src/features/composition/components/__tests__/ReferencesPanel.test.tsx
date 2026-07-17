@@ -6,6 +6,8 @@ import { ReferencesPanel } from '../ReferencesPanel';
 const h = vi.hoisted(() => ({
   add: vi.fn(),
   remove: vi.fn(),
+  updateMetadata: vi.fn(),
+  updateContent: vi.fn(),
   setPin: vi.fn(),
   state: {
     references: [] as any[],
@@ -21,6 +23,8 @@ vi.mock('../../hooks/useReferences', () => ({
     ...h.state,
     add: { mutate: h.add, isPending: false },
     remove: { mutate: h.remove },
+    updateMetadata: { mutate: h.updateMetadata, isPending: false, variables: undefined },
+    updateContent: { mutate: h.updateContent, isPending: false, variables: undefined },
     setPin: h.setPin,
   }),
 }));
@@ -32,6 +36,7 @@ const EMBED_MODEL = {
 
 beforeEach(() => {
   h.add.mockReset(); h.remove.mockReset(); h.setPin.mockReset();
+  h.updateMetadata.mockReset(); h.updateContent.mockReset();
   h.state = { references: [], embedModelSet: false, isLoading: false, hits: [],
               searchUnavailable: false, isSearching: false };
 });
@@ -109,5 +114,28 @@ describe('ReferencesPanel (T3.6)', () => {
   it('shows the empty-library state', () => {
     renderPanel();
     expect(screen.getByTestId('references-empty')).toBeInTheDocument();
+  });
+
+  it('S-03: edits metadata (PATCH — no re-embed) — only shows Save when a field changed', () => {
+    h.state.references = [{ id: 'r9', title: 'Old', author: 'X', source_url: '', content: 'body', embedding_model: 'bge-m3', embedding_dim: 3, created_at: null }];
+    renderPanel();
+    fireEvent.click(screen.getByTestId('references-edit-r9'));  // expand the editor
+    // no Save until a field is dirty
+    expect(screen.queryByTestId('references-save-metadata-r9')).toBeNull();
+    fireEvent.change(screen.getByTestId('references-edit-author-r9'), { target: { value: 'New Author' } });
+    fireEvent.click(screen.getByTestId('references-save-metadata-r9'));
+    expect(h.updateMetadata).toHaveBeenCalledWith({ id: 'r9', patch: { title: 'Old', author: 'New Author', source_url: '' } });
+    expect(h.updateContent).not.toHaveBeenCalled();  // metadata edit never re-embeds
+  });
+
+  it('S-03: edits content (PUT — re-embeds) via the separate content action', () => {
+    h.state.references = [{ id: 'r9', title: 'T', author: '', source_url: '', content: 'orig body', embedding_model: 'bge-m3', embedding_dim: 3, created_at: null }];
+    renderPanel();
+    fireEvent.click(screen.getByTestId('references-edit-r9'));
+    expect(screen.queryByTestId('references-save-content-r9')).toBeNull();  // not dirty yet
+    fireEvent.change(screen.getByTestId('references-edit-content-r9'), { target: { value: 'rewritten body' } });
+    fireEvent.click(screen.getByTestId('references-save-content-r9'));
+    expect(h.updateContent).toHaveBeenCalledWith({ id: 'r9', content: 'rewritten body' });
+    expect(h.updateMetadata).not.toHaveBeenCalled();
   });
 });

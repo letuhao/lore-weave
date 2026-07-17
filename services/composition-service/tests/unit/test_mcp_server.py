@@ -74,6 +74,8 @@ EXPECTED_TOOLS = {
     "composition_entity_override_add",
     "composition_entity_override_update",
     "composition_entity_override_delete",
+    # ── S-03 — reference-shelf metadata edit (agent parity). Tier A (auto-write + Undo). ──
+    "composition_reference_update",
     # Tier W
     "composition_publish", "composition_generate",
     "composition_decompile_arcs",  # close-21-28 P-O2a — confirm-gated arc decompiler
@@ -1104,6 +1106,47 @@ async def test_entity_override_update_and_delete():
     assert dele["success"] is True and dele["deleted"] is True
     assert dele["_meta"]["undo_hint"]["tool"] == "composition_entity_override_add"
     assert dele["_meta"]["undo_hint"]["args"]["target_entity_id"] == str(tgt)
+
+
+# ── S-03: reference-shelf metadata edit (agent parity) ──
+
+async def test_reference_update_edits_only_metadata_with_undo():
+    """The reference edit forwards ONLY the fields the agent set (no re-embed — it never
+    calls the embedder), and its Tier-A Undo restores the prior metadata."""
+    import app.mcp.server as srv
+    from types import SimpleNamespace as NS
+
+    work = _work()
+
+    async def get_work(pid):
+        return work
+
+    prior = NS(title="Old Title", author="A", source_url="")
+    updated = NS(model_dump=lambda mode=None: {"title": "New Title", "author": "A"})
+    async with _patched(works_get=get_work) as s:
+        s.WorksRepo(None).get = AsyncMock(return_value=work)
+        with patch.object(srv, "ReferencesRepo") as RR:
+            RR.return_value.get = AsyncMock(return_value=prior)
+            RR.return_value.update_metadata = AsyncMock(return_value=updated)
+            res = await srv.composition_reference_update(
+                _Ctx(), srv._ReferenceUpdateArgs(
+                    project_id=str(PROJECT), reference_id=str(uuid.uuid4()), title="New Title"),
+            )
+            _, kwargs = RR.return_value.update_metadata.call_args
+    assert res["success"] is True and res["reference"]["title"] == "New Title"
+    assert set(kwargs) == {"title"}  # author/source_url NOT forwarded (omitted)
+    assert res["_meta"]["undo_hint"]["args"]["title"] == "Old Title"  # restores prior
+
+
+async def test_reference_update_rejects_a_content_field():
+    """S-03: editing CONTENT via MCP is out of scope — `content` is not on the args model,
+    so ForbidExtra rejects it at construction (the asymmetry is intentional, not an omission)."""
+    import app.mcp.server as srv
+    from pydantic import ValidationError
+
+    with pytest.raises(ValidationError):
+        srv._ReferenceUpdateArgs(
+            project_id=str(PROJECT), reference_id=str(uuid.uuid4()), content="new body")
 
 
 async def test_switch_active_work_sets_the_per_book_pref():

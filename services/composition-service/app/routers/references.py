@@ -145,6 +145,85 @@ async def create_reference(
     return ref.model_dump(mode="json")
 
 
+class ReferenceMetadataPatch(BaseModel):
+    """S-03: metadata-only edit — no field touches the embedding. All optional; an
+    OMITTED field is left unchanged (Pydantic model_fields_set), a provided null
+    clears to '' (the columns are NOT NULL DEFAULT '')."""
+
+    title: Annotated[str, StringConstraints(max_length=500)] | None = None
+    author: Annotated[str, StringConstraints(max_length=500)] | None = None
+    source_url: Annotated[str, StringConstraints(max_length=500)] | None = None
+
+
+class ReferenceContentPut(BaseModel):
+    content: Annotated[str, StringConstraints(min_length=1, max_length=20000)]
+
+
+@router.patch("/works/{project_id}/references/{reference_id}")
+async def update_reference_metadata(
+    project_id: UUID,
+    reference_id: UUID,
+    body: ReferenceMetadataPatch,
+    user_id: UUID = Depends(get_current_user),
+    works: WorksRepo = Depends(get_works_repo),
+    refs: ReferencesRepo = Depends(get_references_repo),
+    grant: GrantClient = Depends(get_grant_client_dep),
+) -> dict[str, Any]:
+    """S-03: edit title/author/source_url — a CHEAP column write, NO re-embed (fixing
+    a typo in an author's name must not pay for a full re-embed). EDIT grant; only the
+    provided fields change; 404 when the reference isn't in this project."""
+    await _require_work(works, grant, user_id, project_id, GrantLevel.EDIT)
+    fs = body.model_fields_set
+    kwargs = {col: (getattr(body, col) or "") for col in ("title", "author", "source_url") if col in fs}
+    ref = await refs.update_metadata(project_id, reference_id, **kwargs)
+    if ref is None:
+        raise HTTPException(status_code=404, detail="reference not found")
+    return ref.model_dump(mode="json")
+
+
+@router.put("/works/{project_id}/references/{reference_id}/content")
+async def update_reference_content(
+    project_id: UUID,
+    reference_id: UUID,
+    body: ReferenceContentPut,
+    user_id: UUID = Depends(get_current_user),
+    works: WorksRepo = Depends(get_works_repo),
+    refs: ReferencesRepo = Depends(get_references_repo),
+    embedder: EmbeddingClient = Depends(get_embedding_client_dep),
+    grant: GrantClient = Depends(get_grant_client_dep),
+) -> dict[str, Any]:
+    """S-03: replace a reference's content — this DOES re-embed (a priced embed, made
+    explicit by the separate route). Resolves the Work's PINNED embed model (never a
+    model in the body — one embedding space per Work, OQ-9); it does not re-adopt a
+    model. EDIT grant; 404 when the reference isn't in this project."""
+    work = await _require_work(works, grant, user_id, project_id, GrantLevel.EDIT)
+    # Confirm the reference is in this project BEFORE paying for the embed (also the
+    # tenancy check — a reference from another project 404s here, not after an embed).
+    if await refs.get(project_id, reference_id) is None:
+        raise HTTPException(status_code=404, detail="reference not found")
+    model = reference_embed_model(work.settings)
+    if model is None:
+        # A reference exists ⇒ its create set the model; defensive only.
+        raise HTTPException(status_code=422, detail={"code": "REFERENCE_EMBED_MODEL_UNSET"})
+    model_source, model_ref = model
+    try:
+        result = await embedder.embed(
+            user_id=user_id, model_source=model_source, model_ref=model_ref, texts=[body.content],
+        )
+    except EmbeddingError as exc:
+        raise HTTPException(status_code=502, detail={
+            "code": "REFERENCE_EMBED_FAILED", "retryable": exc.retryable, "message": str(exc)})
+    if not result.embeddings or not result.embeddings[0]:
+        raise HTTPException(status_code=502, detail={"code": "REFERENCE_EMBED_EMPTY"})
+    ref = await refs.update_content(
+        project_id, reference_id, content=body.content, embedding=result.embeddings[0],
+        embedding_model=result.model, embedding_dim=result.dimension,
+    )
+    if ref is None:
+        raise HTTPException(status_code=404, detail="reference not found")
+    return ref.model_dump(mode="json")
+
+
 @router.delete("/references/{reference_id}", status_code=200)
 async def delete_reference(
     reference_id: UUID,

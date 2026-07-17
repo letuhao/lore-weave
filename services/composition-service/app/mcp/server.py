@@ -99,7 +99,7 @@ from app.db.repositories.motif_retrieve import MotifRetriever
 from app.db.repositories.entity_references import EntityReferencesRepo
 from app.db.repositories.narrative_thread import NarrativeThreadRepo
 from app.db.repositories.outline import OutlineRepo
-from app.db.repositories.references import reference_embed_model
+from app.db.repositories.references import ReferencesRepo, reference_embed_model
 from app.db.repositories.scene_links import SceneLinksRepo
 from app.db.repositories.structure import StructureConflictError, StructureRepo
 from app.db.repositories.derivatives import DerivativesRepo
@@ -1518,6 +1518,56 @@ def _override_out(ov) -> dict:
         "target_entity_id": str(ov.target_entity_id),
         "overridden_fields": ov.overridden_fields,
     }
+
+
+# ── S-03: reference-shelf METADATA edit (agent parity). Metadata-only — editing a
+#    reference's CONTENT via MCP is deliberately OUT OF SCOPE (an agent re-authoring a
+#    whole corpus is not a wanted capability; agents ADD references via create). The
+#    `content` field is not on the args model, so ForbidExtra rejects it at construction.
+class _ReferenceUpdateArgs(ForbidExtra):
+    project_id: str
+    reference_id: str
+    title: str | None = None
+    author: str | None = None
+    source_url: str | None = None
+
+
+@mcp_server.tool(
+    name="composition_reference_update",
+    description=(
+        "Edit a reference's METADATA — title / author / source_url. A cheap column write; "
+        "it does NOT re-embed (fixing a typo must not pay for a re-embed). Only the fields you "
+        "pass change. EDIT required (auto-applied; Undo restores the prior values). Editing a "
+        "reference's CONTENT is not available here (add references via the create path)."
+    ),
+    meta=require_meta(
+        "A", "book",
+        synonyms=["edit reference", "update reference metadata", "fix reference title", "rename reference source"],
+        tool_name="composition_reference_update",
+    ),
+)
+async def composition_reference_update(ctx: MCPContext, args: _ReferenceUpdateArgs) -> dict:
+    tc = _ctx(ctx)
+    works = WorksRepo(get_pool())
+    pid = UUID(args.project_id)
+    await _book_or_deny(works, tc, pid, GrantLevel.EDIT)
+    refs = ReferencesRepo(get_pool())
+    rid = UUID(args.reference_id)
+    prior = await refs.get(pid, rid)  # 404 + prior for the Undo
+    if prior is None:
+        raise uniform_not_accessible()
+    fs = args.model_fields_set
+    kwargs = {col: (getattr(args, col) or "") for col in ("title", "author", "source_url") if col in fs}
+    ref = await refs.update_metadata(pid, rid, **kwargs)
+    if ref is None:
+        raise uniform_not_accessible()
+    undo_fields = {col: getattr(prior, col) for col in kwargs}  # restore prior metadata
+    out = {"success": True, "reference": ref.model_dump(mode="json")}
+    out["_meta"] = {"undo_hint": _undo(
+        "composition_reference_update", project_id=args.project_id, reference_id=args.reference_id,
+        **undo_fields,
+    ) if undo_fields else None}
+    return out
 
 
 class _SwitchActiveWorkArgs(ForbidExtra):

@@ -49,14 +49,22 @@ export function StructureTemplatesPanel(props: IDockviewPanelProps) {
               {s.builtins.map((tpl) => (
                 <Row key={tpl.id} tpl={tpl} active={tpl.id === s.selectedId} onClick={() => s.select(tpl.id)} badge="system" />
               ))}
-              <Group label={t('structTpl.mine', { defaultValue: 'Mine' })} />
+              <div className="flex items-center justify-between pr-2">
+                <Group label={t('structTpl.mine', { defaultValue: 'Mine' })} />
+                <label className="flex items-center gap-1 text-[10px] text-muted-foreground">
+                  <input type="checkbox" data-testid="structtpl-show-archived"
+                    checked={s.showArchived} onChange={(e) => s.setShowArchived(e.target.checked)} />
+                  {t('structTpl.showArchived', { defaultValue: 'archived' })}
+                </label>
+              </div>
               {s.mine.length === 0 ? (
                 <div className="px-3 py-2 text-[11px] text-muted-foreground">
                   {t('structTpl.mineEmpty', { defaultValue: 'None yet — clone a built-in to start.' })}
                 </div>
               ) : (
                 s.mine.map((tpl) => (
-                  <Row key={tpl.id} tpl={tpl} active={tpl.id === s.selectedId} onClick={() => s.select(tpl.id)} badge="mine" />
+                  <Row key={tpl.id} tpl={tpl} active={tpl.id === s.selectedId} onClick={() => s.select(tpl.id)}
+                    badge={tpl.is_archived ? 'archived' : 'mine'} />
                 ))
               )}
             </>
@@ -69,12 +77,15 @@ export function StructureTemplatesPanel(props: IDockviewPanelProps) {
             <Hint>{t('structTpl.pickHint', { defaultValue: 'Pick a structure to view its beats.' })}</Hint>
           ) : s.selected.owner_user_id == null ? (
             <BuiltinDetail tpl={s.selected} t={t} cloning={s.cloning} onClone={() => s.clone(s.selected!.id)} />
+          ) : s.selected.is_archived ? (
+            <ArchivedDetail tpl={s.selected} t={t} onRestore={() => s.restore(s.selected!.id)} />
           ) : (
             <OwnEditor
               key={s.selected.id}   // remount → fresh draft when the selection changes
               tpl={s.selected} t={t}
               saving={s.saving} saveError={s.saveError}
               onSave={(patch) => s.save(s.selected!.id, s.selected!.version ?? 1, patch)}
+              onArchive={() => s.archive(s.selected!.id)}
             />
           )}
         </div>
@@ -118,10 +129,26 @@ function BuiltinDetail({ tpl, t, cloning, onClone }: {
   );
 }
 
+// Archived own template (slice D): read-only + a Restore CTA (dead-end soft-delete avoided).
+function ArchivedDetail({ tpl, t, onRestore }: { tpl: StructureTemplate; t: TFn; onRestore: () => void }) {
+  return (
+    <>
+      <DetailHead name={tpl.name} kind={tpl.kind} count={tpl.beats.length} badge="mine" t={t} />
+      <div data-testid="structtpl-archived-note" className="mb-3 rounded-md border px-2.5 py-2 text-[11px] text-muted-foreground">
+        {t('structTpl.archivedNote', { defaultValue: 'This structure is archived. Restore it to edit or use it again.' })}
+      </div>
+      <button type="button" data-testid="structtpl-restore" onClick={onRestore}
+        className="rounded border border-primary bg-primary/15 px-2.5 py-1 text-[11px] text-primary hover:opacity-90">
+        {t('structTpl.restore', { defaultValue: 'Restore' })}
+      </button>
+    </>
+  );
+}
+
 // Own template: the beat EDITOR (slice C). Local draft; Save → updateTemplate (OCC).
-function OwnEditor({ tpl, t, saving, saveError, onSave }: {
+function OwnEditor({ tpl, t, saving, saveError, onSave, onArchive }: {
   tpl: StructureTemplate; t: TFn; saving: boolean; saveError: string | null;
-  onSave: (patch: { name?: string; beats?: Beat[] }) => void;
+  onSave: (patch: { name?: string; beats?: Beat[] }) => void; onArchive: () => void;
 }) {
   const [name, setName] = useState(tpl.name);
   const [beats, setBeats] = useState<Beat[]>(
@@ -192,10 +219,14 @@ function OwnEditor({ tpl, t, saving, saveError, onSave }: {
       {saveError && (
         <p data-testid="structtpl-save-error" className="mt-2 text-[11px] text-destructive">{saveError}</p>
       )}
-      <div className="mt-3">
+      <div className="mt-3 flex items-center gap-2">
         <button type="button" data-testid="structtpl-save" disabled={saving} onClick={save}
           className="rounded border border-primary bg-primary/15 px-2.5 py-1 text-[11px] text-primary hover:opacity-90 disabled:opacity-50">
           {saving ? t('structTpl.saving', { defaultValue: 'Saving…' }) : t('structTpl.save', { defaultValue: 'Save' })}
+        </button>
+        <button type="button" data-testid="structtpl-archive" onClick={onArchive}
+          className="ml-auto rounded border border-destructive/40 px-2.5 py-1 text-[11px] text-destructive hover:bg-destructive/10">
+          {t('structTpl.archive', { defaultValue: 'Archive' })}
         </button>
       </div>
     </>
@@ -229,7 +260,7 @@ const Group = ({ label }: { label: string }) => (
 );
 
 const Row = ({ tpl, active, onClick, badge }: {
-  tpl: StructureTemplate; active: boolean; onClick: () => void; badge: 'system' | 'mine';
+  tpl: StructureTemplate; active: boolean; onClick: () => void; badge: 'system' | 'mine' | 'archived';
 }) => (
   <button
     type="button"
@@ -240,10 +271,12 @@ const Row = ({ tpl, active, onClick, badge }: {
       (active ? 'border-primary bg-accent/50' : 'border-transparent')
     }
   >
-    <span className="flex-1 truncate font-medium">{tpl.name}</span>
+    <span className={'flex-1 truncate font-medium ' + (badge === 'archived' ? 'opacity-60' : '')}>{tpl.name}</span>
     <span className={
       'rounded-full px-1.5 py-0.5 text-[9px] uppercase ' +
-      (badge === 'system' ? 'bg-secondary text-muted-foreground' : 'bg-emerald-500/15 text-emerald-500')
+      (badge === 'system' ? 'bg-secondary text-muted-foreground'
+        : badge === 'archived' ? 'bg-secondary text-muted-foreground'
+        : 'bg-emerald-500/15 text-emerald-500')
     }>{badge}</span>
   </button>
 );

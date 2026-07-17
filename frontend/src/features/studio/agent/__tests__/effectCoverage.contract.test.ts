@@ -70,6 +70,10 @@ const WRITE_TOOLS: Record<string, string> = {
   composition_entity_override_add: 'compositionEffects',
   composition_entity_override_update: 'compositionEffects',
   composition_entity_override_delete: 'compositionEffects',
+  // S-03 — reference-shelf metadata edit. The reference-shelf is NOT a studio panel yet (S-10
+  // ports it); a handler invalidating a panel that doesn't exist is the no-op class this ledger
+  // kills. PENDING until S-10 mounts reference-shelf, then this row's handler gets created.
+  composition_reference_update: 'referencesEffects',
   // S1-A3 — the prose WRITE (bookEffects, via /^composition_write_prose/). Now enumerated so the
   // ledger guards it (and its READ sibling composition_get_prose is asserted handler-free below).
   composition_write_prose: 'bookEffects',
@@ -151,6 +155,10 @@ const PENDING_FILES: Record<string, string> = {
   // motifEffects: SHIPPED (S4/spec 33 wave 3) — /^composition_motif_/ (studioMotifEffects).
   // planEffects: SHIPPED (S3/M4) — `/^plan_(?!pass_status)/` refreshes the Pass Rail on plan_* writes.
   registryEffects: 'wave-7',
+  // referencesEffects: PENDING — S-10 mounts the reference-shelf studio panel; the agent's
+  // composition_reference_update refresh handler is created THEN (a Wave-0 handler over an
+  // unmounted panel would be a silent no-op).
+  referencesEffects: 'S-10',
 };
 
 // 🔴 NOTE ON `diagnosticsEffects`: §8.0b and Q-30-X4-LANE-B-HANDLERS §4 both list it as a PENDING

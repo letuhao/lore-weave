@@ -22,10 +22,19 @@ A slice is NOT done if its FE affordance lands on an unreachable/inert panel. Ve
         S-03 ReferencesPanel already editable + reachable via legacy ChapterEditorPage.tsx:781; NOT a
         studio catalog panel (port = S-10, other session). PLAN: put edit affordance ON the component
         (live in legacy surface now, rides S-10 mount later). Do NOT touch catalog.ts (convergence).
-- [ ] S3a ReferencesRepo.update_metadata + update_content (repo + unit tests) — EVIDENCE:
-- [ ] S3b PATCH metadata + PUT content routes (embed via provider-registry) — EVIDENCE:
-- [ ] S3c composition_reference_update MCP tool (metadata-only) — EVIDENCE:
-- [ ] S3d FE edit affordance on reference row (+ reachability resolved) — EVIDENCE:
+- [x] S3a ReferencesRepo.update_metadata (no re-embed) + update_content (re-embed) — EVIDENCE: repo
+        integration test_s03_reference_update_metadata_vs_content PASSED (real PG): metadata edit leaves
+        embedding vector unchanged, content edit rewrites vector+model, wrong-project→None, no-op→current.
+- [x] S3b PATCH /works/{pid}/references/{rid} (cheap) + PUT .../content (re-embed via provider-registry,
+        model from Work not body) — EVIDENCE: test_references_router.py 17 passed incl. patch-no-reembed,
+        content-reembeds-pinned-model, 404-before-embed, 502-on-embed-fail.
+- [x] S3c composition_reference_update MCP (Tier A + undo, metadata-only; content REJECTED via ForbidExtra)
+        — EVIDENCE: test_mcp_server.py 71 passed incl. edits-only-metadata-with-undo + rejects-content-field;
+        wire catalog test proves it registered. Ledger: PENDING referencesEffects (S-10 mounts the panel).
+- [x] S3d FE: ReferencesPanel LibraryRow — inline title/author/url edit (PATCH, instant) + separate
+        "Save content (re-embeds)" with re-embedding state (PUT). Lives on the ReferencesPanel component =
+        REACHABLE via legacy ChapterEditorPage NOW; rides S-10 studio mount later. EVIDENCE: tsc 0;
+        ReferencesPanel.test 11 passed incl. edits-metadata-no-reembed + edits-content-reembeds; useReferences 7.
 - [x] S4a divergence repo methods (update_spec/add_override/update_override/delete_override) — EVIDENCE:
         migration UNIQUE already existed (DRIFT-1, no migration). Repo tests vs real PG:
         test_s04_divergence_spec_post_derive_update PASSED, test_s04_entity_override_crud_post_derive PASSED,

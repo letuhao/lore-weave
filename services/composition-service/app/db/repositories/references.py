@@ -53,6 +53,12 @@ def _row_to_ref(row: asyncpg.Record) -> ReferenceSource:
     return ReferenceSource.model_validate(dict(row))
 
 
+# Sentinel for update_metadata partial-update: distinguishes "field omitted" from
+# "field set to '' " (title/author/source_url are NOT NULL DEFAULT '' — clearing one
+# to empty is a legitimate edit, not the same as leaving it unchanged).
+_UNSET: Any = object()
+
+
 # `_cosine` is the shared loreweave_vecmath.cosine_similarity (imported above,
 # aliased to keep this module's existing call sites unchanged). D-COSINE-SDK-
 # PROMOTE: this was the origin copy that motif_retrieve.py's own `_cosine`
@@ -123,6 +129,68 @@ class ReferencesRepo:
                 project_id, reference_id,
             )
         return status.rsplit(" ", 1)[-1] != "0"
+
+    async def update_metadata(
+        self,
+        project_id: UUID,
+        reference_id: UUID,
+        *,
+        title: Any = _UNSET,
+        author: Any = _UNSET,
+        source_url: Any = _UNSET,
+    ) -> ReferenceSource | None:
+        """S-03: edit a reference's METADATA only (title/author/source_url) — NO
+        embedding recompute (fixing a typo in an author's name is a cheap column
+        write, not a full re-embed). Only provided fields change. Project-scoped
+        (book scope is fixed at create; the row can't cross projects). Returns None
+        when no row matches (id, project_id) — the router maps that to 404."""
+        sets: list[str] = []
+        args: list[Any] = []
+        for col, val in (("title", title), ("author", author), ("source_url", source_url)):
+            if val is not _UNSET:
+                args.append(val)
+                sets.append(f"{col} = ${len(args)}")
+        if not sets:
+            return await self.get(project_id, reference_id)  # no-op patch → current row
+        args.append(reference_id)
+        id_pos = len(args)
+        args.append(project_id)
+        pid_pos = len(args)
+        query = f"""
+        UPDATE reference_source SET {", ".join(sets)}
+        WHERE id = ${id_pos} AND project_id = ${pid_pos}
+        RETURNING {_SELECT_COLS}
+        """
+        async with self._pool.acquire() as c:
+            row = await c.fetchrow(query, *args)
+        return _row_to_ref(row) if row else None
+
+    async def update_content(
+        self,
+        project_id: UUID,
+        reference_id: UUID,
+        *,
+        content: str,
+        embedding: list[float],
+        embedding_model: str,
+        embedding_dim: int | None,
+    ) -> ReferenceSource | None:
+        """S-03: replace a reference's CONTENT and its recomputed embedding. The
+        CALLER (service/router) runs the embed via provider-registry BEFORE calling
+        this — the repo never embeds (provider-gateway invariant), exactly as the
+        create route does. Project-scoped; None when no row matches → 404."""
+        query = f"""
+        UPDATE reference_source
+        SET content = $1, embedding = $2, embedding_model = $3, embedding_dim = $4
+        WHERE id = $5 AND project_id = $6
+        RETURNING {_SELECT_COLS}
+        """
+        async with self._pool.acquire() as c:
+            row = await c.fetchrow(
+                query, content, embedding, embedding_model, embedding_dim,
+                reference_id, project_id,
+            )
+        return _row_to_ref(row) if row else None
 
     async def search(
         self, project_id: UUID, query_vector: list[float], *, limit: int = 8,

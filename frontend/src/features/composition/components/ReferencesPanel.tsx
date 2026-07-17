@@ -123,15 +123,15 @@ export function ReferencesPanel({ projectId, sceneId, token, models }: {
         </div>
         <ul className="flex flex-col gap-0.5">
           {refs.references.map((r) => (
-            <li key={r.id} data-testid={`references-lib-${r.id}`} className="flex items-center justify-between gap-2 rounded border border-neutral-200 px-2 py-1 text-xs dark:border-neutral-700">
-              <span className="truncate" title={r.content}>{r.title || r.content.slice(0, 60)}{r.author ? <span className="text-neutral-400"> — {r.author}</span> : null}</span>
-              <button
-                type="button" data-testid={`references-delete-${r.id}`}
-                className="shrink-0 text-neutral-400 hover:text-destructive"
-                title={t('referencesPanel.delete', { defaultValue: 'Delete' })}
-                onClick={() => refs.remove.mutate(r.id)}
-              >✕</button>
-            </li>
+            <LibraryRow
+              key={r.id}
+              r={r}
+              onSaveMetadata={(patch) => refs.updateMetadata.mutate({ id: r.id, patch })}
+              onSaveContent={(content) => refs.updateContent.mutate({ id: r.id, content })}
+              onDelete={() => refs.remove.mutate(r.id)}
+              savingMetaId={refs.updateMetadata.isPending ? (refs.updateMetadata.variables as { id: string } | undefined)?.id : undefined}
+              savingContentId={refs.updateContent.isPending ? (refs.updateContent.variables as { id: string } | undefined)?.id : undefined}
+            />
           ))}
           {!refs.references.length && (
             <li data-testid="references-empty" className="px-1 py-1 text-xs text-neutral-500">
@@ -141,6 +141,106 @@ export function ReferencesPanel({ projectId, sceneId, token, models }: {
         </ul>
       </div>
     </div>
+  );
+}
+
+// S-03 — a library row is editable: inline title/author/source_url (a cheap metadata
+// PATCH — feels instant) and a separate "Edit content" (a PUT that RE-EMBEDS — signalled
+// with a "re-embedding…" state so the cost is visible). Mounted with key={r.id} so a
+// selection change remounts with fresh drafts (no useEffect-to-sync-props).
+function LibraryRow({ r, onSaveMetadata, onSaveContent, onDelete, savingMetaId, savingContentId }: {
+  r: import('../types').ReferenceSource;
+  onSaveMetadata: (patch: { title: string; author: string; source_url: string }) => void;
+  onSaveContent: (content: string) => void;
+  onDelete: () => void;
+  savingMetaId: string | undefined;
+  savingContentId: string | undefined;
+}) {
+  const { t } = useTranslation('composition');
+  const [editing, setEditing] = useState(false);
+  const [meta, setMeta] = useState({ title: r.title, author: r.author, source_url: r.source_url });
+  const [content, setContent] = useState(r.content);
+  const metaDirty = meta.title !== r.title || meta.author !== r.author || meta.source_url !== r.source_url;
+  const contentDirty = content.trim().length > 0 && content !== r.content;
+  const savingMeta = savingMetaId === r.id;
+  const savingContent = savingContentId === r.id;
+
+  if (!editing) {
+    return (
+      <li data-testid={`references-lib-${r.id}`} className="flex items-center justify-between gap-2 rounded border border-neutral-200 px-2 py-1 text-xs dark:border-neutral-700">
+        <span className="truncate" title={r.content}>{r.title || r.content.slice(0, 60)}{r.author ? <span className="text-neutral-400"> — {r.author}</span> : null}</span>
+        <div className="flex shrink-0 items-center gap-1.5">
+          <button
+            type="button" data-testid={`references-edit-${r.id}`}
+            className="text-neutral-400 hover:text-foreground"
+            title={t('referencesPanel.edit', { defaultValue: 'Edit' })}
+            onClick={() => setEditing(true)}
+          >✎</button>
+          <button
+            type="button" data-testid={`references-delete-${r.id}`}
+            className="text-neutral-400 hover:text-destructive"
+            title={t('referencesPanel.delete', { defaultValue: 'Delete' })}
+            onClick={onDelete}
+          >✕</button>
+        </div>
+      </li>
+    );
+  }
+
+  return (
+    <li data-testid={`references-lib-${r.id}`} className="flex flex-col gap-1.5 rounded border border-primary/40 px-2 py-2 text-xs dark:border-primary/40">
+      <div className="grid grid-cols-2 gap-1.5">
+        <input
+          data-testid={`references-edit-title-${r.id}`} placeholder={t('referencesPanel.title', { defaultValue: 'Title' })}
+          className="rounded border px-2 py-1 dark:bg-neutral-900"
+          value={meta.title} onChange={(e) => setMeta({ ...meta, title: e.target.value })}
+        />
+        <input
+          data-testid={`references-edit-author-${r.id}`} placeholder={t('referencesPanel.author', { defaultValue: 'Author' })}
+          className="rounded border px-2 py-1 dark:bg-neutral-900"
+          value={meta.author} onChange={(e) => setMeta({ ...meta, author: e.target.value })}
+        />
+      </div>
+      <input
+        data-testid={`references-edit-url-${r.id}`} placeholder={t('referencesPanel.sourceUrl', { defaultValue: 'Source URL' })}
+        className="rounded border px-2 py-1 dark:bg-neutral-900"
+        value={meta.source_url} onChange={(e) => setMeta({ ...meta, source_url: e.target.value })}
+      />
+      {metaDirty && (
+        <button
+          type="button" data-testid={`references-save-metadata-${r.id}`} disabled={savingMeta}
+          className="self-start rounded bg-primary px-2 py-0.5 text-primary-foreground disabled:opacity-40"
+          onClick={() => onSaveMetadata({ title: meta.title.trim(), author: meta.author.trim(), source_url: meta.source_url.trim() })}
+        >
+          {savingMeta ? t('referencesPanel.saving', { defaultValue: 'Saving…' }) : t('referencesPanel.saveMetadata', { defaultValue: 'Save details' })}
+        </button>
+      )}
+      <label className="mt-1 text-[10px] font-semibold uppercase tracking-wide text-neutral-500">
+        {t('referencesPanel.content', { defaultValue: 'Content' })}
+      </label>
+      <textarea
+        data-testid={`references-edit-content-${r.id}`} rows={3}
+        className="rounded border px-2 py-1 dark:bg-neutral-900"
+        value={content} onChange={(e) => setContent(e.target.value)}
+      />
+      {contentDirty && (
+        <button
+          type="button" data-testid={`references-save-content-${r.id}`} disabled={savingContent}
+          className="self-start rounded border border-primary px-2 py-0.5 text-primary disabled:opacity-40"
+          title={t('referencesPanel.contentRecomputes', { defaultValue: 'Saving content re-computes this reference’s embedding.' })}
+          onClick={() => onSaveContent(content.trim())}
+        >
+          {savingContent ? t('referencesPanel.reembedding', { defaultValue: 'Re-embedding…' }) : t('referencesPanel.saveContent', { defaultValue: 'Save content (re-embeds)' })}
+        </button>
+      )}
+      <button
+        type="button" data-testid={`references-edit-done-${r.id}`}
+        className="self-end text-neutral-400 hover:text-foreground"
+        onClick={() => setEditing(false)}
+      >
+        {t('referencesPanel.done', { defaultValue: 'Done' })}
+      </button>
+    </li>
   );
 }
 
