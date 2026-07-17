@@ -43,6 +43,19 @@ describe('SceneMotifsSection', () => {
     expect(motifApi.suggestForChapter).toHaveBeenCalledWith('p', 's', 't');
   });
 
+  it('surfaces a DEGRADE warning + hides the fake % when the retriever falls back (no silent lie)', async () => {
+    (motifApi.suggestForChapter as ReturnType<typeof vi.fn>).mockResolvedValue({ candidates: [
+      { motif: { id: 'm1', name: 'Face-slap', code: 'x' }, score: 0.2, match_reason: { tension: 1, cosine: 0, degraded: true } },
+    ] });
+    wrap(<SceneMotifsSection projectId="p" bookId="b" chapterId="c" sceneId="s" token="t" />);
+    fireEvent.click(await screen.findByTestId('motif-suggest-toggle'));
+    // the honest degrade banner shows…
+    expect(await screen.findByTestId('motif-suggest-degraded')).toBeInTheDocument();
+    // …and the misleading "20%" is NOT presented as a real score
+    const row = await screen.findByTestId('motif-suggest-row');
+    expect(row.textContent).not.toMatch(/20%/);
+  });
+
   it('surfaces the suggest empty state (no motif fits)', async () => {
     (motifApi.suggestForChapter as ReturnType<typeof vi.fn>).mockResolvedValue({ candidates: [] });
     wrap(<SceneMotifsSection projectId="p" bookId="b" chapterId="c" sceneId="s" token="t" />);

@@ -180,7 +180,10 @@
     "archived": "Retired — it returns if the book mentions it again.",
     "newEntity": "New",
     "editFailed": "Edit failed: {{error}}",
-    "truncated": "Showing the first 200 — refine your search to narrow the list."
+    "truncated": "Showing the first 200 — refine your search to narrow the list.",
+    "showingOf": "Showing {{loaded}} of {{total}}.",
+    "loadMore": "Load more",
+    "loadingMore": "Loading…"
   },
   "relmap": "Relations",
   "relations": {
@@ -225,7 +228,8 @@
     "noProject": "No knowledge graph yet — extract this book to chart character arcs.",
     "empty": "This character has no events yet.",
     "edit": "Edit",
-    "linkEntity": "+ link entity"
+    "linkEntity": "+ link entity",
+    "addEvent": "+ Add event"
   },
   "worldmap": "World Map",
   "wmap": {
@@ -377,6 +381,9 @@
   "statDiverge": "Diverge (K)",
   "statStream": "Stream",
   "guidePlaceholder": "Optional guidance for the co-writer…",
+  "correction": {
+    "capturedToast": "Noted — your co-writer will learn from this"
+  },
   "reasoning": "Reasoning",
   "reasoningHint": "Auto = the server decides per model. Off disables thinking; Low/Med/High force it.",
   "reasoningAuto": "Thinking: auto",
@@ -803,7 +810,8 @@
         "driftNoProvenance": "This arc was authored directly — there is no template to drift from.",
         "driftGone": "The source template is no longer available.",
         "driftLoading": "Loading drift…",
-        "untitledArc": "(untitled arc)"
+        "untitledArc": "(untitled arc)",
+        "truncated": "Showing the first {{shown}} of {{count}} — use Catalog or a narrower tier to find more."
       },
       "import": {
         "privacy": "The raw text stays private to you and is never shared. Only the derived abstract structure can be published — and publishing strips the source reference.",
@@ -909,7 +917,8 @@
       "error": "Could not suggest motifs.",
       "retry": "Retry",
       "empty": "No motif fits this scene yet — add more to your library.",
-      "bind": "Bind"
+      "bind": "Bind",
+      "degraded": "Unranked — semantic matching is unavailable (the embedding model isn't set up), so these are library fallbacks, not scored fits."
     }
   },
   "authoringRun": {

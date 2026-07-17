@@ -85,13 +85,29 @@ function SceneMotifsInner({ projectId, bookId, chapterId, sceneId, roster = [], 
             {!suggestions.isLoading && !suggestions.isError && (suggestions.data?.length ?? 0) === 0 && (
               <p data-testid="motif-suggest-empty" className="p-1 text-[11px] text-neutral-500">{t('motif.suggest.empty', { defaultValue: 'No motif fits this scene yet — add more to your library.' })}</p>
             )}
+            {/* NO SILENT DEGRADE — when the retriever falls back (the platform embedding model isn't
+                configured, so vectors are missing), the scores are NOT semantic. Say so, don't show a
+                flat % as if it were a real match (the challenge that surfaced this). */}
+            {(suggestions.data ?? []).some((s) => (s.match_reason as { degraded?: boolean } | null)?.degraded) && (
+              <p data-testid="motif-suggest-degraded" className="mb-1 rounded bg-amber-50 px-2 py-0.5 text-[10px] text-amber-700 dark:bg-amber-950/30 dark:text-amber-300">
+                {t('motif.suggest.degraded', { defaultValue: 'Unranked — semantic matching is unavailable (the embedding model isn\'t set up), so these are library fallbacks, not scored fits.' })}
+              </p>
+            )}
             <ul className="space-y-1">
               {(suggestions.data ?? []).map((s) => (
                 <li key={s.motif.id} data-testid="motif-suggest-row" className="flex items-center gap-1.5 rounded bg-neutral-50 px-1.5 py-1 text-[11px] dark:bg-neutral-800/50">
                   <span className="min-w-0 flex-1 truncate">
                     <span className="font-medium">{s.motif.name}</span>
-                    <span className="ml-1 text-neutral-400">{Math.round(s.score * 100)}%</span>
-                    <span className="ml-1 text-neutral-400">{Object.keys(s.match_reason ?? {}).filter((k) => k !== 'degraded').join(' · ')}</span>
+                    {/* Only show the % + reasons when the match is REAL (not a degraded fallback) —
+                        a flat degraded score presented as a % is the silent-lie this guards. */}
+                    {(s.match_reason as { degraded?: boolean } | null)?.degraded ? (
+                      <span className="ml-1 text-neutral-400">·</span>
+                    ) : (
+                      <>
+                        <span className="ml-1 text-neutral-400">{Math.round(s.score * 100)}%</span>
+                        <span className="ml-1 text-neutral-400">{Object.keys(s.match_reason ?? {}).filter((k) => k !== 'degraded').join(' · ')}</span>
+                      </>
+                    )}
                   </span>
                   <button
                     type="button"
