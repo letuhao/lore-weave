@@ -201,6 +201,11 @@
       "desc": "Jumlah perkataan hari ini, rentetan harian anda, jumlah keseluruhan buku, matlamat harian dan sparkline",
       "guideBody": "Kemajuan menukarkan penulisan anda menjadi tabiat yang boleh dilihat: perkataan yang ditulis hari ini, rentetan hari semasa anda, jumlah keseluruhan buku, dan sparkline 7 atau 30 hari. Tetapkan matlamat harian peribadi dan garis rujukan akan menandakannya pada carta — matlamat ini adalah milik anda sendiri, tidak dikongsi dengan kolaborator. Ia membaca jumlah perkataan yang direkodkan oleh editor semasa anda menyimpan; ia tidak akan sesekali mengubah prosa anda."
     },
+    "flywheel": {
+      "title": "Flywheel",
+      "desc": "Apa yang ditambah oleh penerbitan terakhir anda ke dalam kanon — watak, hubungan dan peristiwa baharu",
+      "guideBody": "Flywheel adalah ganjaran untuk menerbit: apabila anda menerbitkan bab, satu proses pengekstrakan akan mengembangkan pengetahuan dunia anda, dan panel ini menunjukkan apa yang telah ditambah — entiti, hubungan, dan peristiwa baharu — dengan sorotan boleh klik yang membawa anda terus ke watak tersebut dalam Cast, pautan tersebut dalam graf, atau detik tersebut pada garis masa. Ia melengkapkan kitaran: penulisan membina kanon, dan kanon memperkukuh bab anda yang seterusnya."
+    },
     "kg-overview": {
       "title": "Tinjauan",
       "desc": "Ringkasan projek dan tindakan pantas",
@@ -378,6 +383,11 @@
       "title": "Divergence (dị bản)",
       "desc": "Urus derivatif 'what-if' buku anda — senaraikan kanon dan setiap cabang, tukar keseluruhan studio kepada satu cabang, arkibkan satu cabang, atau mulakan cabang baharu daripada sesuatu bab",
       "guideBody": "Dị bản (divergence) memecahkan buku anda pada sesuatu bab dan menyimpang — sama ada alam semesta alternatif, peralihan POV, atau perubahan watak — menjadi karya derivatif dengan pembahagian pengetahuan tersendiri, manakala sumber asal kekal sebagai kanon mod baca sahaja. Panel ini menyenaraikan karya kanon anda dan setiap cabang yang telah anda hasilkan. 'Switch to' memindahkan keseluruhan studio anda — editor, navigasi, kualiti, segalanya — ke cabang tersebut; pilihan ini diingati bagi setiap buku dan kekal walaupun selepas dimuat semula. 'Archive' menyembunyikan cabang tanpa memusnahkannya (bab dan pengetahuannya tetap disimpan). 'New divergence' membuka wizard 4-langkah untuk memulakan satu cabang baharu. Pilih cabang untuk membaca spesifikasinya (taksonomi, titik cabang, peraturan kanon, aturan luar), yang ditetapkan semasa penciptaan."
+    },
+    "canonview": {
+      "title": "Kanon pada bab",
+      "desc": "Apa yang diketahui kanon setakat bab yang difokuskan — entiti yang hadir/tertubuh, keadaan kanon dan garis masa",
+      "guideBody": "Menjawab persoalan «apa yang diketahui kanon setakat bab yang saya sedang tulis?» — entiti yang hadir dalam dan dibentuk oleh bab semasa (daripada glosari), ditambah dengan keadaan kanon (berapa banyak entiti yang aktif berbanding yang sudah tiada) dan peristiwa garis masa sehingga titik tersebut (daripada graf pengetahuan). Ia mengikut bab yang anda fokuskan dalam manuskrip, dan merupakan pemeriksa yang sama yang dipaparkan oleh kanvas 'what-if' pada titik percabangan — supaya anda boleh menyemak apa yang telah ditetapkan sebelum anda menyimpang. Buka bab atau bab untuk menjadikannya fokus."
     },
     "scene-inspector": {
       "title": "Pemeriksa Babak",
@@ -613,16 +623,6 @@
       "title": "Kepatuhan",
       "desc": "Rentak-demi-rentak: adakah prosa merealisasikan rancangan? Realisasi/tidak bagi setiap babak + jalur ketegangan",
       "guideBody": "Kepatuhan menjejaki, babak demi babak, sama ada prosa yang ditulis benar-benar menyampaikan rentak motif yang anda rancangkan untuk sesuatu bab. Setiap babak menunjukkan status terealisasi / tidak terealisasi dan bagaimana ketegangannya berbanding sasaran. Ia menjawab perbandingan spesifikasi-vs-prosa (bukan spesifikasi-vs-templat — itu adalah pandangan hanyutan templat-lengkok). Isyarat ini adalah bersifat nasihat (kasar, bukan disahkan secara kausal). Jana semula babak yang terlepas rentaknya, atau jalankan semula keseluruhan semakan terhadap model yang anda pilih."
-    },
-    "flywheel": {
-      "title": "Flywheel",
-      "desc": "Apa yang ditambah oleh penerbitan terakhir anda ke dalam kanon — watak, hubungan dan peristiwa baharu",
-      "guideBody": "Flywheel adalah ganjaran untuk menerbit: apabila anda menerbitkan bab, satu proses pengekstrakan akan mengembangkan pengetahuan dunia anda, dan panel ini menunjukkan apa yang telah ditambah — entiti, hubungan, dan peristiwa baharu — dengan sorotan boleh klik yang membawa anda terus ke watak tersebut dalam Cast, pautan tersebut dalam graf, atau detik tersebut pada garis masa. Ia melengkapkan kitaran: penulisan membina kanon, dan kanon memperkukuh bab anda yang seterusnya."
-    },
-    "canonview": {
-      "title": "Kanon pada bab",
-      "desc": "Apa yang diketahui kanon setakat bab yang difokuskan — entiti yang hadir/tertubuh, keadaan kanon dan garis masa",
-      "guideBody": "Menjawab persoalan «apa yang diketahui kanon setakat bab yang saya sedang tulis?» — entiti yang hadir dalam dan dibentuk oleh bab semasa (daripada glosari), ditambah dengan keadaan kanon (berapa banyak entiti yang aktif berbanding yang sudah tiada) dan peristiwa garis masa sehingga titik tersebut (daripada graf pengetahuan). Ia mengikut bab yang anda fokuskan dalam manuskrip, dan merupakan pemeriksa yang sama yang dipaparkan oleh kanvas 'what-if' pada titik percabangan — supaya anda boleh menyemak apa yang telah ditetapkan sebelum anda menyimpang. Buka bab atau bab untuk menjadikannya fokus."
     }
   },
   "sceneRail": {
@@ -725,7 +725,9 @@
       "colMode": "Mod",
       "colStatus": "Status",
       "colCreated": "Dicipta"
-    }
+    },
+    "grounded": "Berdasarkan {{chapters}} bab sedia ada + {{cast}} ahli watak; {{arcs}} arka sedia ada diteruskan.",
+    "groundOnExisting": "Teruskan buku ini — berdasarkan watak, arka & bab terbaru sedia ada"
   },
   "editor": {
     "empty": "Pilih bab dalam navigasi manuskrip untuk menyunting di sini.",

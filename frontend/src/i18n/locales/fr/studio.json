@@ -201,6 +201,11 @@
       "desc": "Mots du jour, votre série, le total du livre, un objectif quotidien et un graphique linéaire",
       "guideBody": "La progression transforme votre écriture en une habitude visible : mots écrits aujourd'hui, votre série actuelle, le total cumulé du livre et un graphique linéaire sur 7 ou 30 jours. Fixez un objectif quotidien personnel et une ligne de référence le marquera sur le graphique — cet objectif est le vôtre seul, il n'est pas partagé avec les collaborateurs. Le système lit le nombre de mots enregistré par l'éditeur lors de vos sauvegardes ; il ne modifie jamais votre prose."
     },
+    "flywheel": {
+      "title": "Flywheel",
+      "desc": "Ce que votre dernière publication a ajouté au canon — nouveaux personnages, liens et événements",
+      "guideBody": "Flywheel est la récompense de la publication : lorsque vous publiez un chapitre, une phase d'extraction enrichit la connaissance de votre univers, et ce panneau affiche ce qu'elle a ajouté — nouvelles entités, relations et événements — avec des liens cliquables qui vous mènent directement à ce personnage dans la Distribution, à ce lien dans le graphe ou à ce moment sur la chronologie. Cela boucle la boucle : l'écriture nourrit le canon, et le canon ancre votre prochain chapitre."
+    },
     "kg-overview": {
       "title": "Aperçu",
       "desc": "Résumé du projet et actions rapides",
@@ -378,6 +383,11 @@
       "title": "Divergence (dị bản)",
       "desc": "Gérez les dérivés « what-if » d'un livre — listez le canon et chaque branche, basculez tout le studio sur l'une d'elles, archivez-en une ou créez une nouvelle branche à partir d'un chapitre",
       "guideBody": "Une « dị bản » (divergence) crée une ramification de votre livre à un chapitre donné et diverge — un univers alternatif, un changement de point de vue, un personnage modifié — pour devenir une œuvre dérivée possédant sa propre partition de connaissances, tandis que la source reste le canon en lecture seule. Ce panneau liste votre œuvre canonique et chaque branche que vous avez créée. « Basculer vers » déplace l'intégralité de votre studio — éditeur, navigateur, qualité, tout — sur cette branche ; le choix est mémorisé par livre et persiste après un rechargement. « Archiver » masque une branche sans la détruire (ses chapitres et ses connaissances sont conservés). « Nouvelle divergence » ouvre l'assistant en 4 étapes pour en créer une. Sélectionnez une branche pour lire sa spécification (taxonomie, point de divergence, règles canoniques, modifications), laquelle est fixée lors de la création."
+    },
+    "canonview": {
+      "title": "Le canon au chapitre",
+      "desc": "Ce que le canon sait à l'état du chapitre en cours — entités présentes/établies, état du canon et chronologie",
+      "guideBody": "Répond à la question « que sait le canon à l'état du chapitre où je me trouve ? » — les entités présentes dans le chapitre actuel et établies par celui-ci (via le glossaire), ainsi que l'état du canon (combien d'entités sont actives vs disparues) et les événements chronologiques jusqu'à ce point (via le graphe de connaissances). Il suit le chapitre que vous avez sélectionné dans le manuscrit, et c'est le même inspecteur que celui affiché par le canevas « what-if » à un point de divergence — afin que vous puissiez vérifier ce qui est déjà établi avant de bifurquer. Ouvrez une scène ou un chapitre pour lui donner le focus."
     },
     "scene-inspector": {
       "title": "Inspecteur de scène",
@@ -613,16 +623,6 @@
       "title": "Conformité",
       "desc": "Battement par battement : la prose a-t-elle réalisé le plan ? Réalisé/non réalisé par scène + bande de tension",
       "guideBody": "La Conformité suit, scène par scène, si votre prose écrite a réellement livré les battements de motifs que vous aviez prévus pour un chapitre. Chaque scène affiche l'état réalisé / non réalisé et la comparaison de sa tension par rapport à la cible. Elle répond à la question spécification-vs-prose (et non spécification-vs-modèle — cela correspond à la vue de dérive des modèles d'arc). Le signal est consultatif (global, non vérifié de manière causale). Régénérez une scène qui a manqué son battement, ou relancez toute la vérification par rapport à un modèle de votre choix."
-    },
-    "flywheel": {
-      "title": "Flywheel",
-      "desc": "Ce que votre dernière publication a ajouté au canon — nouveaux personnages, liens et événements",
-      "guideBody": "Flywheel est la récompense de la publication : lorsque vous publiez un chapitre, une phase d'extraction enrichit la connaissance de votre univers, et ce panneau affiche ce qu'elle a ajouté — nouvelles entités, relations et événements — avec des liens cliquables qui vous mènent directement à ce personnage dans la Distribution, à ce lien dans le graphe ou à ce moment sur la chronologie. Cela boucle la boucle : l'écriture nourrit le canon, et le canon ancre votre prochain chapitre."
-    },
-    "canonview": {
-      "title": "Le canon au chapitre",
-      "desc": "Ce que le canon sait à l'état du chapitre en cours — entités présentes/établies, état du canon et chronologie",
-      "guideBody": "Répond à la question « que sait le canon à l'état du chapitre où je me trouve ? » — les entités présentes dans le chapitre actuel et établies par celui-ci (via le glossaire), ainsi que l'état du canon (combien d'entités sont actives vs disparues) et les événements chronologiques jusqu'à ce point (via le graphe de connaissances). Il suit le chapitre que vous avez sélectionné dans le manuscrit, et c'est le même inspecteur que celui affiché par le canevas « what-if » à un point de divergence — afin que vous puissiez vérifier ce qui est déjà établi avant de bifurquer. Ouvrez une scène ou un chapitre pour lui donner le focus."
     }
   },
   "sceneRail": {
@@ -725,7 +725,9 @@
       "colMode": "Mode",
       "colStatus": "Statut",
       "colCreated": "Créé le"
-    }
+    },
+    "grounded": "Basé sur {{chapters}} chapitre(s) existant(s) + {{cast}} membre(s) de la distribution ; {{arcs}} arc(s) existant(s) continués.",
+    "groundOnExisting": "Continuer ce livre — se baser sur la distribution, les arcs et les chapitres récents existants"
   },
   "editor": {
     "empty": "Sélectionnez un chapitre dans le navigateur de manuscrit pour l'éditer ici.",

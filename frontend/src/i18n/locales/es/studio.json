@@ -201,6 +201,11 @@
       "desc": "Palabras de hoy, tu racha, el total del libro, una meta diaria y un gráfico de líneas",
       "guideBody": "El progreso convierte tu escritura en un hábito visible: palabras escritas hoy, tu racha actual, el total acumulado del libro y un gráfico de líneas de 7 o 30 días. Establece una meta diaria personal y una línea de referencia la marcará en el gráfico; la meta es solo tuya, no se comparte con colaboradores. Lee el recuento de palabras que el editor registra al guardar; nunca modifica tu prosa."
     },
+    "flywheel": {
+      "title": "Flywheel",
+      "desc": "Lo que tu última publicación añadió al canon: nuevas personas, vínculos y eventos",
+      "guideBody": "Flywheel es la recompensa por publicar: cuando publicas un capítulo, un proceso de extracción expande el conocimiento de tu mundo, y este panel muestra lo que ha añadido —nuevas entidades, relaciones y eventos— con resaltados interactivos que te llevan directamente a ese personaje en el Reparto, a ese enlace en el gráfico o a ese momento en la línea de tiempo. Cierra el ciclo: escribir alimenta el canon, y el canon fundamenta tu próximo capítulo."
+    },
     "kg-overview": {
       "title": "Resumen",
       "desc": "Resumen del proyecto y acciones rápidas",
@@ -378,6 +383,11 @@
       "title": "Divergencia (dị bản)",
       "desc": "Gestiona los derivados «what-if» de un libro: lista el canon y cada rama, cambia todo el estudio a una de ellas, archiva una o genera una nueva rama a partir de un capítulo.",
       "guideBody": "Una dị bản (divergencia) bifurca tu libro en un capítulo y diverge —un universo alternativo, un cambio de punto de vista, un personaje modificado— en una obra derivada con su propia partición de conocimiento, mientras que la fuente permanece como canon de solo lectura. Este panel enumera tu obra canónica y cada rama que hayas generado. «Cambiar a» traslada todo tu estudio —editor, navegador, calidad, todo— a esa rama; la elección se recuerda por libro y persiste tras recargar. «Archivar» oculta una rama sin destruirla (sus capítulos y conocimiento se conservan). «Nueva divergencia» abre el asistente de 4 pasos para generar una. Selecciona una rama para leer su especificación (taxonomía, punto de bifurcación, reglas del canon, anulaciones), la cual queda fijada al momento de su creación."
+    },
+    "canonview": {
+      "title": "Canon en el capítulo",
+      "desc": "Lo que el canon sabe hasta el capítulo en foco: entidades presentes/establecidas, estado del canon y línea de tiempo",
+      "guideBody": "Responde a «¿qué sabe el canon hasta el capítulo en el que estoy?»: las entidades presentes y establecidas por el capítulo actual (según el glosario), además del estado del canon (cuántas entidades están activas frente a las que han desaparecido) y los eventos de la línea de tiempo hasta ese punto (según el grafo de conocimiento). Sigue el capítulo que tengas seleccionado en el manuscrito, y es el mismo inspector que muestra el lienzo de «qué pasaría si» en un punto de bifurcación; así puedes comprobar qué está ya establecido antes de divergir. Abre una escena o un capítulo para darle el foco."
     },
     "scene-inspector": {
       "title": "Inspector de escena",
@@ -613,16 +623,6 @@
       "title": "Conformidad",
       "desc": "Ritmo a ritmo: ¿la prosa ejecutó el plan? Realizado/no realizado por escena + banda de tensión",
       "guideBody": "Conformidad rastrea, escena por escena, si tu prosa escrita realmente cumplió con los ritmos de motivo que planeaste para un capítulo. Cada escena muestra lo realizado / no realizado y cómo su tensión se compara con el objetivo. Responde a la relación especificación-vs-prosa (no especificación-vs-plantilla; esa es la vista de desviación de plantillas de arco). La señal es consultiva (aproximada, no verificada causalmente). Regenera una escena que haya perdido su ritmo o vuelve a ejecutar todo el control frente al modelo que elijas."
-    },
-    "flywheel": {
-      "title": "Flywheel",
-      "desc": "Lo que tu última publicación añadió al canon: nuevas personas, vínculos y eventos",
-      "guideBody": "Flywheel es la recompensa por publicar: cuando publicas un capítulo, un proceso de extracción expande el conocimiento de tu mundo, y este panel muestra lo que ha añadido —nuevas entidades, relaciones y eventos— con resaltados interactivos que te llevan directamente a ese personaje en el Reparto, a ese enlace en el gráfico o a ese momento en la línea de tiempo. Cierra el ciclo: escribir alimenta el canon, y el canon fundamenta tu próximo capítulo."
-    },
-    "canonview": {
-      "title": "Canon en el capítulo",
-      "desc": "Lo que el canon sabe hasta el capítulo en foco: entidades presentes/establecidas, estado del canon y línea de tiempo",
-      "guideBody": "Responde a «¿qué sabe el canon hasta el capítulo en el que estoy?»: las entidades presentes y establecidas por el capítulo actual (según el glosario), además del estado del canon (cuántas entidades están activas frente a las que han desaparecido) y los eventos de la línea de tiempo hasta ese punto (según el grafo de conocimiento). Sigue el capítulo que tengas seleccionado en el manuscrito, y es el mismo inspector que muestra el lienzo de «qué pasaría si» en un punto de bifurcación; así puedes comprobar qué está ya establecido antes de divergir. Abre una escena o un capítulo para darle el foco."
     }
   },
   "sceneRail": {
@@ -725,7 +725,9 @@
       "colMode": "Modo",
       "colStatus": "Estado",
       "colCreated": "Creado"
-    }
+    },
+    "grounded": "Basado en {{chapters}} capítulo(s) existente(s) + {{cast}} miembro(s) del elenco; se continúa con {{arcs}} arco(s) existente(s).",
+    "groundOnExisting": "Continuar este libro: basarse en su elenco, arcos y capítulos recientes existentes"
   },
   "editor": {
     "empty": "Selecciona un capítulo en el navegador del manuscrito para editarlo aquí.",

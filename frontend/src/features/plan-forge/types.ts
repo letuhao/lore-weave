@@ -48,6 +48,12 @@ export interface PlanRunDetail {
   // BE-3b — the braindump this run was proposed from, so reopening a run restores the textarea.
   source_markdown: string | null;
   is_archived?: boolean; // BE-4 — soft-archived; the runs list offers restore instead of archive
+  // D-PLANFORGE-PROPOSE-BLIND — what existing book-state was folded into this run's propose (null =
+  // blind/cold-start). Drives the grounded-affirmation vs honesty-copy switch (proven by effect).
+  grounded_on?: {
+    fingerprint: string; chapter_count: number; arc_titles: string[];
+    cast_entity_ids: string[]; notes?: Record<string, string>;
+  } | null;
   active_job_id: string | null;
   job_status: string | null; // pending | running | completed | failed | null (rules → no job)
   error_detail: string | null;
@@ -163,6 +169,9 @@ export interface CreatePlanRunBody {
   mode: PlanRunMode;
   model_ref?: string; // REQUIRED when mode === 'llm'
   force?: boolean;
+  // D-PLANFORGE-PROPOSE-BLIND — ask the proposer to CONTINUE the book (ground on existing cast/arcs/
+  // spine) instead of proposing blind. Effective only when the deploy ceiling also allows it.
+  ground_on_existing?: boolean;
 }
 export interface RefinePlanBody {
   model_ref: string;

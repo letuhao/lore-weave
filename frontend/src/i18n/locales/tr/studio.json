@@ -201,6 +201,11 @@
       "desc": "Bugünkü kelime sayısı, seriniz, kitabın toplamı, günlük hedef ve bir grafik çizgisi",
       "guideBody": "İlerleme, yazma sürecinizi somut bir alışkanlığa dönüştürür: bugün yazılan kelimeler, mevcut gün seriniz, kitabın toplam kelime sayısı ve 7 veya 30 günlük bir grafik çizgisi. Kişisel bir günlük hedef belirleyin ve grafik üzerinde bir referans çizgisiyle işaretlensin — bu hedef sadece size özeldir, iş arkadaşlarınızla paylaşılmaz. Editörün siz kaydettikçe kaydettiği kelime sayılarını okur; metninize asla müdahale etmez."
     },
+    "flywheel": {
+      "title": "Flywheel",
+      "desc": "Son yayınladığınız içeriğin kanona ekledikleri — yeni kişiler, bağlar ve olaylar",
+      "guideBody": "Flywheel, yayınlamanın ödülüdür: Bir bölüm yayınladığınızda, bir çıkarma işlemi dünyanın bilgisini büyütür ve bu panel ne eklediğini —yeni varlıklar, ilişkiler ve olaylar— Cast'taki o karaktere, grafikteki o bağlantıya veya zaman çizelgesindeki o ana doğrudan atlamanızı sağlayan tıklanabilir vurgularla gösterir. Döngüyü tamamlar: Yazmak kanonu besler, kanon ise bir sonraki bölümünüzü temellendirir."
+    },
     "kg-overview": {
       "title": "Genel Bakış",
       "desc": "Proje özeti ve hızlı işlemler",
@@ -378,6 +383,11 @@
       "title": "Divergence (dị bản)",
       "desc": "Bir kitabın what-if türevlerini yönetin — kanon listesini ve her bir dalı listeleyin, tüm stüdyoyu birine geçirin, birini arşivleyin veya bir bölümden yeni bir dal türetin",
       "guideBody": "Bir dị bản (divergence), kitabınızı bir bölümde dallara ayırır ve —alternatif bir evren, bir bakış açısı değişikliği veya değişmiş bir karakter— kendi bilgi bölümüne sahip türev bir eser oluştururken, kaynak metin salt okunur kanon olarak kalır. Bu panel, kanonik çalışmanızı ve oluşturduğunuz her bir dalı listeler. «Şuna geç» seçeneği; editör, gezgin, kalite ve her şeyiyle tüm stüdyonuzu o dala taşır; bu seçim kitap bazında hatırlanır ve sayfa yenilense de korunur. «Arşivle» bir dalı yok etmeden gizler (bölümleri ve bilgileri korunur). «Yeni dị bản» yeni bir dal oluşturmak için 4 adımlı sihirbazı açar. Bir dalın özelliklerini (taksonomi, dallanma noktası, kanon kuralları, geçersiz kılmalar) okumak için bir dal seçin; bu özellikler oluşturma anında sabitlenir."
+    },
+    "canonview": {
+      "title": "Bölüm bazlı kanon",
+      "desc": "Odaklanılan bölüm itibarıyla kanonun bildikleri — mevcut/kurulmuş varlıklar, kanon durumu ve zaman çizelgesi",
+      "guideBody": "«Şu anki bölüm itibarıyla kanon ne biliyor?» sorusuna yanıt verir — mevcut bölümde yer alan ve mevcut bölüm tarafından kurulan varlıklar (sözlükten), artı kanon durumu (kaç varlığın aktif, kaçının gittiği) ve o noktaya kadar olan zaman çizelgesi olayları (bilgi grafiğinden). Taslakta odaklandığınız bölümü takip eder ve 'ya şöyle olsaydı' tuvalinin bir ayrım noktasında gösterdiği denetleyici ile aynıdır; böylece yoldan sapmadan önce nelerin halihazırda kurulduğunu kontrol edebilirsiniz. Bir sahneye veya bölüme odaklanmak için onu açın."
     },
     "scene-inspector": {
       "title": "Sahne İnceleyici",
@@ -613,16 +623,6 @@
       "title": "Uyumluluk",
       "desc": "Vuruş vuruş: anlatı planı gerçekleştirdi mi? Sahne başına gerçekleşen/gerçekleşmeyen + gerilim bandı",
       "guideBody": "Uyumluluk, yazdığınız metnin bir bölüm için planladığınız motif vuruşlarını gerçekten sunup sunmadığını sahne sahne izler. Her sahne, gerçekleşen / gerçekleşmeyen durumunu ve geriliminin hedefe göre nasıl olduğunu gösterir. Şartname-metin kıyaslamasına yanıt verir (şartname-şablon kıyaslaması değil — bu, yay-şablon sapma görünümüdür). Veriler tavsiye niteliğindedir (nedensel olarak doğrulanmış değil, kaba veridir). Vuruşunu kaçıran bir sahneyi yeniden oluşturun veya tüm kontrolü seçtiğiniz bir modele göre yeniden çalıştırın."
-    },
-    "flywheel": {
-      "title": "Flywheel",
-      "desc": "Son yayınladığınız içeriğin kanona ekledikleri — yeni kişiler, bağlar ve olaylar",
-      "guideBody": "Flywheel, yayınlamanın ödülüdür: Bir bölüm yayınladığınızda, bir çıkarma işlemi dünyanın bilgisini büyütür ve bu panel ne eklediğini —yeni varlıklar, ilişkiler ve olaylar— Cast'taki o karaktere, grafikteki o bağlantıya veya zaman çizelgesindeki o ana doğrudan atlamanızı sağlayan tıklanabilir vurgularla gösterir. Döngüyü tamamlar: Yazmak kanonu besler, kanon ise bir sonraki bölümünüzü temellendirir."
-    },
-    "canonview": {
-      "title": "Bölüm bazlı kanon",
-      "desc": "Odaklanılan bölüm itibarıyla kanonun bildikleri — mevcut/kurulmuş varlıklar, kanon durumu ve zaman çizelgesi",
-      "guideBody": "«Şu anki bölüm itibarıyla kanon ne biliyor?» sorusuna yanıt verir — mevcut bölümde yer alan ve mevcut bölüm tarafından kurulan varlıklar (sözlükten), artı kanon durumu (kaç varlığın aktif, kaçının gittiği) ve o noktaya kadar olan zaman çizelgesi olayları (bilgi grafiğinden). Taslakta odaklandığınız bölümü takip eder ve 'ya şöyle olsaydı' tuvalinin bir ayrım noktasında gösterdiği denetleyici ile aynıdır; böylece yoldan sapmadan önce nelerin halihazırda kurulduğunu kontrol edebilirsiniz. Bir sahneye veya bölüme odaklanmak için onu açın."
     }
   },
   "sceneRail": {
@@ -725,7 +725,9 @@
       "colMode": "Mod",
       "colStatus": "Durum",
       "colCreated": "Oluşturulma"
-    }
+    },
+    "grounded": "{{chapters}} mevcut bölüm(ler) + {{cast}} karakter(ler) üzerine temellendirildi; {{arcs}} mevcut kurgu(lar) devam ediyor.",
+    "groundOnExisting": "Bu kitabı devam ettir — mevcut karakterler, kurgular ve son bölümler üzerine temellendir"
   },
   "editor": {
     "empty": "Düzenlemek için el yazması gezgininden bir bölüm seçin.",

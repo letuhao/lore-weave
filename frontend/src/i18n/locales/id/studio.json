@@ -201,6 +201,11 @@
       "desc": "Jumlah kata hari ini, streak Anda, total buku, target harian, dan sparkline",
       "guideBody": "Progres mengubah kegiatan menulis Anda menjadi kebiasaan yang dapat dipantau: jumlah kata yang ditulis hari ini, streak harian Anda saat ini, total keseluruhan buku, serta sparkline 7 atau 30 hari. Tetapkan target harian pribadi dan garis referensi akan menandainya pada grafik — target ini hanya milik Anda sendiri, tidak dibagikan dengan kolaborator. Sistem membaca jumlah kata yang dicatat editor saat Anda menyimpan; sistem tidak akan pernah mengubah prosa Anda."
     },
+    "flywheel": {
+      "title": "Flywheel",
+      "desc": "Apa yang ditambahkan oleh publikasi terakhir Anda ke kanon — orang baru, keterkaitan, dan peristiwa",
+      "guideBody": "Flywheel adalah imbalan dari proses publikasi: saat Anda menerbitkan bab, proses ekstraksi akan memperluas pengetahuan dunia Anda, dan panel ini menunjukkan apa yang telah ditambahkan — entitas, relasi, dan peristiwa baru — dengan sorotan yang dapat diklik untuk langsung menuju ke karakter tersebut di Cast, tautan di grafik, atau momen di lini masa. Ini menutup siklusnya: menulis memberi makan kanon, dan kanon memperkuat bab Anda berikutnya."
+    },
     "kg-overview": {
       "title": "Ikhtisar",
       "desc": "Ringkasan proyek dan tindakan cepat",
@@ -378,6 +383,11 @@
       "title": "Divergensi (dị bản)",
       "desc": "Kelola turunan what-if sebuah buku — daftar kanon dan setiap cabang, pindahkan seluruh studio ke salah satu cabang, arsipkan, atau buat cabang baru dari sebuah bab",
       "guideBody": "Dị bản (divergensi) memisahkan buku Anda pada suatu bab dan menyimpang — alam semesta alternatif, pergeseran POV, perubahan karakter — menjadi karya turunan dengan partisi pengetahuan tersendiri, sementara sumber aslinya tetap menjadi kanon yang hanya bisa dibaca. Panel ini mencantumkan karya kanon Anda dan setiap cabang yang telah Anda buat. 'Pindah ke' memindahkan seluruh studio Anda — editor, navigator, kualitas, semuanya — ke cabang tersebut; pilihan ini diingat per buku dan tetap ada setelah memuat ulang. 'Arsipkan' menyembunyikan cabang tanpa menghapusnya (bab dan pengetahuannya tetap disimpan). 'Divergensi baru' membuka wizard 4 langkah untuk membuatnya. Pilih cabang untuk membaca spesifikasinya (taksonomi, titik cabang, aturan kanon, override), yang bersifat tetap saat dibuat."
+    },
+    "canonview": {
+      "title": "Kanon pada bab",
+      "desc": "Apa yang diketahui kanon per bab yang sedang difokuskan — entitas yang hadir/terbentuk, status kanon, dan lini masa",
+      "guideBody": "Menjawab pertanyaan «apa yang diketahui kanon pada bab yang sedang saya kerjakan?» — entitas yang hadir dalam dan dibentuk oleh bab saat ini (dari glosarium), ditambah status kanon (berapa banyak entitas yang aktif vs yang sudah tidak ada) dan peristiwa lini masa hingga titik tersebut (dari grafik pengetahuan). Ini mengikuti bab yang Anda fokuskan dalam manuskrip, dan merupakan inspektur yang sama dengan yang ditampilkan kanvas what-if pada titik percabangan — sehingga Anda dapat memeriksa apa yang sudah terbentuk sebelum Anda menyimpang. Buka adegan atau bab untuk menjadikannya fokus."
     },
     "scene-inspector": {
       "title": "Inspektur Adegan",
@@ -613,16 +623,6 @@
       "title": "Kesesuaian",
       "desc": "Beat-per-beat: apakah prosa telah mewujudkan rencana? Realisasi per-adegan (ya/tidak) + pita ketegangan",
       "guideBody": "Kesesuaian melacak, adegan demi adegan, apakah prosa yang Anda tulis benar-benar menyampaikan ritme motif yang Anda rencanakan untuk sebuah bab. Setiap adegan menunjukkan status terealisasi / tidak terealisasi dan bagaimana ketegangannya dibandingkan dengan target. Ini menjawab perbandingan spesifikasi-vs-prosa (bukan spesifikasi-vs-templat — itu adalah tampilan drift arc-template). Sinyal ini bersifat saran (kasar, bukan diverifikasi secara kausal). Regenerasi adegan yang melewatkan ritmenya, atau jalankan ulang seluruh pemeriksaan terhadap model yang Anda pilih."
-    },
-    "flywheel": {
-      "title": "Flywheel",
-      "desc": "Apa yang ditambahkan oleh publikasi terakhir Anda ke kanon — orang baru, keterkaitan, dan peristiwa",
-      "guideBody": "Flywheel adalah imbalan dari proses publikasi: saat Anda menerbitkan bab, proses ekstraksi akan memperluas pengetahuan dunia Anda, dan panel ini menunjukkan apa yang telah ditambahkan — entitas, relasi, dan peristiwa baru — dengan sorotan yang dapat diklik untuk langsung menuju ke karakter tersebut di Cast, tautan di grafik, atau momen di lini masa. Ini menutup siklusnya: menulis memberi makan kanon, dan kanon memperkuat bab Anda berikutnya."
-    },
-    "canonview": {
-      "title": "Kanon pada bab",
-      "desc": "Apa yang diketahui kanon per bab yang sedang difokuskan — entitas yang hadir/terbentuk, status kanon, dan lini masa",
-      "guideBody": "Menjawab pertanyaan «apa yang diketahui kanon pada bab yang sedang saya kerjakan?» — entitas yang hadir dalam dan dibentuk oleh bab saat ini (dari glosarium), ditambah status kanon (berapa banyak entitas yang aktif vs yang sudah tidak ada) dan peristiwa lini masa hingga titik tersebut (dari grafik pengetahuan). Ini mengikuti bab yang Anda fokuskan dalam manuskrip, dan merupakan inspektur yang sama dengan yang ditampilkan kanvas what-if pada titik percabangan — sehingga Anda dapat memeriksa apa yang sudah terbentuk sebelum Anda menyimpang. Buka adegan atau bab untuk menjadikannya fokus."
     }
   },
   "sceneRail": {
@@ -725,7 +725,9 @@
       "colMode": "Mode",
       "colStatus": "Status",
       "colCreated": "Dibuat"
-    }
+    },
+    "grounded": "Berdasarkan {{chapters}} bab yang sudah ada + {{cast}} anggota cast; {{arcs}} arc yang sudah ada dilanjutkan.",
+    "groundOnExisting": "Lanjutkan buku ini — sesuaikan dengan cast, arc & bab terbaru yang sudah ada"
   },
   "editor": {
     "empty": "Pilih bab di navigator manuskrip untuk mengeditnya di sini.",

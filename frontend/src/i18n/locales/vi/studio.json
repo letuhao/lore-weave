@@ -201,6 +201,11 @@
       "desc": "Số chữ hôm nay, chuỗi ngày viết liên tiếp, tổng số chữ của cuốn sách, mục tiêu hàng ngày và biểu đồ đường",
       "guideBody": "Tiến độ biến việc viết lách của bạn thành một thói quen có thể quan sát được: số chữ đã viết hôm nay, chuỗi ngày viết liên tiếp hiện tại, tổng số chữ của cuốn sách, và biểu đồ đường trong 7 hoặc 30 ngày. Thiết lập mục tiêu hàng ngày cá nhân và một đường tham chiếu sẽ đánh dấu nó trên biểu đồ — mục tiêu này là của riêng bạn, không chia sẻ với những người cộng tác. Nó đọc số lượng từ mà trình biên tập ghi lại khi bạn lưu; nó không bao giờ thay đổi văn bản của bạn."
     },
+    "flywheel": {
+      "title": "Flywheel",
+      "desc": "Những gì bản xuất bản gần nhất đã thêm vào chính văn — nhân vật, mối liên kết và sự kiện mới",
+      "guideBody": "Flywheel là phần thưởng cho việc xuất bản: khi bạn xuất bản một chương, một quá trình trích xuất sẽ mở rộng kiến thức về thế giới của bạn, và bảng này hiển thị những gì nó đã thêm vào — các thực thể, mối quan hệ và sự kiện mới — với các điểm nhấn có thể nhấp để đưa bạn trực tiếp đến nhân vật đó trong Cast, liên kết đó trong đồ thị, hoặc khoảnh khắc đó trên dòng thời gian. Nó khép kín vòng lặp: viết lách bồi đắp cho chính văn, và chính văn tạo nền tảng cho chương tiếp theo của bạn."
+    },
     "kg-overview": {
       "title": "Tổng quan",
       "desc": "Tóm tắt dự án và thao tác nhanh",
@@ -378,6 +383,11 @@
       "title": "Dị bản",
       "desc": "Quản lý các bản phái sinh 'what-if' của một cuốn sách — liệt kê bản chính và mọi nhánh, chuyển toàn bộ studio sang một nhánh, lưu trữ một nhánh, hoặc tạo một nhánh mới từ một chương",
       "guideBody": "Một dị bản (divergence) sẽ tách cuốn sách của bạn tại một chương và tạo ra một hướng đi mới — một vũ trụ song song, một sự thay đổi góc nhìn, hoặc một nhân vật thay đổi — thành một tác phẩm phái sinh với phân vùng kiến thức riêng, trong khi bản gốc vẫn được giữ ở chế độ chỉ đọc. Bảng này liệt kê tác phẩm chính thức và mọi nhánh bạn đã tạo. 'Switch to' (Chuyển sang) sẽ chuyển toàn bộ studio của bạn — trình chỉnh sửa, trình điều hướng, chất lượng, mọi thứ — sang nhánh đó; lựa chọn này được ghi nhớ theo từng cuốn sách và vẫn tồn tại sau khi tải lại trang. 'Archive' (Lưu trữ) sẽ ẩn một nhánh mà không xóa nó (các chương và kiến thức của nó vẫn được giữ lại). 'New divergence' (Dị bản mới) sẽ mở trình hướng dẫn 4 bước để tạo một nhánh mới. Chọn một nhánh để xem thông số kỹ thuật của nó (phân loại, điểm rẽ nhánh, quy tắc chính, các ghi đè), những thông số này sẽ được cố định khi tạo."
+    },
+    "canonview": {
+      "title": "Chính văn tại chương",
+      "desc": "Những gì chính văn biết tính đến chương đang xem xét — các thực thể hiện diện/đã được thiết lập, trạng thái chính văn và dòng thời gian",
+      "guideBody": "Trả lời câu hỏi «chính văn biết được những gì tính đến chương tôi đang viết?» — các thực thể hiện diện trong và được thiết lập bởi chương hiện tại (từ bảng thuật ngữ), cộng với trạng thái chính văn (có bao nhiêu thực thể đang hoạt động so với đã biến mất) và các sự kiện dòng thời gian tính đến thời điểm đó (từ đồ thị kiến thức). Nó theo sát chương mà bạn đang tập trung trong bản thảo, và cũng chính là bảng kiểm tra mà khung hình «what-if» hiển thị tại một điểm rẽ nhánh — để bạn có thể kiểm tra những gì đã được thiết lập trước khi bạn đi chệch hướng. Mở một cảnh hoặc một chương để bắt đầu tập trung vào nó."
     },
     "scene-inspector": {
       "title": "Trình kiểm tra Cảnh",
@@ -613,16 +623,6 @@
       "title": "Sự nhất quán",
       "desc": "Từng nhịp độ: văn bản đã thực hiện đúng kế hoạch chưa? Trạng thái thực hiện theo từng cảnh (đã thực hiện/chưa thực hiện) + dải căng thẳng",
       "guideBody": "Truy vết sự tương thích, theo từng cảnh, để xem văn phong của bạn có thực sự truyền tải được các nhịp mô-típ đã lên kế hoạch cho một chương hay không. Mỗi cảnh sẽ hiển thị trạng thái đã thực hiện / chưa thực hiện và so sánh mức độ căng thẳng của nó với mục tiêu. Tính năng này giải đáp sự khác biệt giữa kịch bản và văn bản (không phải kịch bản so với khuôn mẫu — đó là chế độ xem độ lệch khuôn mẫu cốt truyện). Các tín hiệu mang tính chất tham khảo (mang tính khái quát, không phải xác minh nguyên nhân trực tiếp). Hãy tạo lại một cảnh đã bỏ lỡ nhịp, hoặc chạy lại toàn bộ quá trình kiểm tra dựa trên một mô hình mà bạn chọn."
-    },
-    "flywheel": {
-      "title": "Flywheel",
-      "desc": "Những gì bản xuất bản gần nhất đã thêm vào chính văn — nhân vật, mối liên kết và sự kiện mới",
-      "guideBody": "Flywheel là phần thưởng cho việc xuất bản: khi bạn xuất bản một chương, một quá trình trích xuất sẽ mở rộng kiến thức về thế giới của bạn, và bảng này hiển thị những gì nó đã thêm vào — các thực thể, mối quan hệ và sự kiện mới — với các điểm nhấn có thể nhấp để đưa bạn trực tiếp đến nhân vật đó trong Cast, liên kết đó trong đồ thị, hoặc khoảnh khắc đó trên dòng thời gian. Nó khép kín vòng lặp: viết lách bồi đắp cho chính văn, và chính văn tạo nền tảng cho chương tiếp theo của bạn."
-    },
-    "canonview": {
-      "title": "Chính văn tại chương",
-      "desc": "Những gì chính văn biết tính đến chương đang xem xét — các thực thể hiện diện/đã được thiết lập, trạng thái chính văn và dòng thời gian",
-      "guideBody": "Trả lời câu hỏi «chính văn biết được những gì tính đến chương tôi đang viết?» — các thực thể hiện diện trong và được thiết lập bởi chương hiện tại (từ bảng thuật ngữ), cộng với trạng thái chính văn (có bao nhiêu thực thể đang hoạt động so với đã biến mất) và các sự kiện dòng thời gian tính đến thời điểm đó (từ đồ thị kiến thức). Nó theo sát chương mà bạn đang tập trung trong bản thảo, và cũng chính là bảng kiểm tra mà khung hình «what-if» hiển thị tại một điểm rẽ nhánh — để bạn có thể kiểm tra những gì đã được thiết lập trước khi bạn đi chệch hướng. Mở một cảnh hoặc một chương để bắt đầu tập trung vào nó."
     }
   },
   "sceneRail": {
@@ -725,7 +725,9 @@
       "colMode": "Chế độ",
       "colStatus": "Trạng thái",
       "colCreated": "Ngày tạo"
-    }
+    },
+    "grounded": "Dựa trên {{chapters}} chương hiện có + {{cast}} thành viên dàn nhân vật; tiếp nối {{arcs}} arc hiện có.",
+    "groundOnExisting": "Tiếp tục cuốn sách này — dựa trên dàn nhân vật, các arc và các chương gần đây hiện có"
   },
   "editor": {
     "empty": "Chọn một chương trong navigator để soạn ở đây.",

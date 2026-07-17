@@ -21,9 +21,12 @@ vi.mock('@/features/studio/host/StudioHostProvider', () => ({
 const createRun = vi.fn();
 const loadRun = vi.fn();
 const resetRun = vi.fn();
+// PROPOSE-BLIND: `mockRun` is mutable so a test can put a GROUNDED run in the hook (grounded_on set)
+// to exercise the affirmation-vs-honesty copy switch.
+let mockRun: unknown = null;
 vi.mock('../../hooks/usePlanRun', () => ({
   usePlanRun: () => ({
-    run: null, busy: false, polling: false, error: null,
+    run: mockRun, busy: false, polling: false, error: null,
     selfCheck: null, validation: null, compileResult: null,
     createRun, loadRun, resetRun, runSelfCheck: vi.fn(), runValidate: vi.fn(), runCompile: vi.fn(),
   }),
@@ -80,6 +83,45 @@ describe('PlannerPanel model picker (W5 shared ModelPicker)', () => {
     localStorage.clear();
     invalidateUserModelsCache();
     listRuns.mockResolvedValue({ items: [], next_cursor: null });
+    mockRun = null;  // PROPOSE-BLIND: reset the grounded-run fixture between tests
+  });
+
+  it('PROPOSE-BLIND: ticking "continue this book" sends ground_on_existing=true', () => {
+    listUserModelsMock.mockResolvedValue({ items: [] });
+    renderPanel();
+    fireEvent.click(screen.getByTestId('plan-tab-run'));
+    fireEvent.click(screen.getByTestId('plan-mode-rules'));
+    fireEvent.change(screen.getByTestId('plan-source-input'), { target: { value: '# system' } });
+    fireEvent.click(screen.getByTestId('plan-ground-checkbox'));
+    fireEvent.click(screen.getByTestId('plan-propose-btn'));
+    expect(createRun).toHaveBeenCalledWith({
+      source_markdown: '# system', mode: 'rules', ground_on_existing: true,
+    });
+  });
+
+  it('PROPOSE-BLIND: a GROUNDED run shows the affirmation (real counts), not the honesty copy', () => {
+    // the copy is proven-by-effect (SET-8): it renders the actual folded-in counts from grounded_on
+    mockRun = {
+      id: 'r1', status: 'proposed', source_markdown: '# s', arcs: [], genre_tags: [], artifacts: [],
+      grounded_on: { fingerprint: 'fp', chapter_count: 42, arc_titles: ['A', 'B'], cast_entity_ids: ['e1', 'e2', 'e3'] },
+    };
+    listUserModelsMock.mockResolvedValue({ items: [] });
+    renderPanel();
+    fireEvent.click(screen.getByTestId('plan-tab-run'));
+    // the SWITCH is the unit concern: a grounded run shows the affirmation, hides the honesty copy.
+    // (The interpolated real counts are asserted in the live browser smoke — the test i18n returns
+    // the raw key, so counts can't be checked here.)
+    expect(screen.getByTestId('plan-grounded-note')).toBeInTheDocument();
+    expect(screen.queryByTestId('plan-propose-blind-note')).toBeNull();  // honesty copy hidden
+  });
+
+  it('a BLIND run (no grounded_on) shows the honesty copy, not the affirmation', () => {
+    mockRun = { id: 'r1', status: 'proposed', source_markdown: '# s', arcs: [], genre_tags: [], artifacts: [], grounded_on: null };
+    listUserModelsMock.mockResolvedValue({ items: [] });
+    renderPanel();
+    fireEvent.click(screen.getByTestId('plan-tab-run'));
+    expect(screen.getByTestId('plan-propose-blind-note')).toBeInTheDocument();
+    expect(screen.queryByTestId('plan-grounded-note')).toBeNull();
   });
 
   it('rules mode (explicitly chosen) proposes without any model', () => {

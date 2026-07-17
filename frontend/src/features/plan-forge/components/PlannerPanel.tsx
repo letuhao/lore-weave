@@ -37,6 +37,9 @@ export function PlannerPanel(props: IDockviewPanelProps) {
   // real story. 'llm' is the only mode that genuinely reads the pasted text.
   const [mode, setMode] = useState<PlanRunMode>('llm');
   const [modelRef, setModelRef] = useState('');
+  // D-PLANFORGE-PROPOSE-BLIND — the per-run choice to ground on the book's existing state. Off by
+  // default (matches the deploy ceiling default); effective server-side = AND(ceiling, this).
+  const [groundOnExisting, setGroundOnExisting] = useState(false);
 
   // A bootstrap proposal is scoped to ONE run — switching runs must not leave a stale
   // proposal from the previous run showing under the newly-loaded/started one. Same
@@ -105,6 +108,7 @@ export function PlannerPanel(props: IDockviewPanelProps) {
       source_markdown: effectiveMarkdown,
       mode,
       ...(mode === 'llm' ? { model_ref: effectiveModelRef } : {}),
+      ...(groundOnExisting ? { ground_on_existing: true } : {}),
     });
   };
 
@@ -168,12 +172,34 @@ export function PlannerPanel(props: IDockviewPanelProps) {
           placeholder={t('planner.sourcePlaceholder', { defaultValue: 'Paste the novel-system markdown…' })}
           className="min-h-[120px] w-full resize-y rounded border border-border bg-background p-2 text-xs leading-relaxed outline-none focus:border-ring"
         />
-        {/* D-PLANFORGE-PROPOSE-BLIND honesty (Q-35-OQ5): the proposer reads ONLY this braindump —
-            it does not read the book's existing chapters. Say so, rather than let the author assume
-            an in-context plan (silent-success-is-a-bug applied to a known blindness). */}
-        <p data-testid="plan-propose-blind-note" className="mt-1 text-[10px] text-muted-foreground/70">
-          {t('planner.proposeBlind', { defaultValue: 'Proposed from this braindump only. Existing chapters are not read.' })}
-        </p>
+        {/* D-PLANFORGE-PROPOSE-BLIND — the copy is CONSUMED-and-proven-by-effect (SET-8): when the
+            current run was GROUNDED, show the real folded-in counts (grounded_on); otherwise the
+            honesty copy stands ("reads only this braindump"). Never a stored blob — it renders what
+            actually happened. */}
+        {plan.run?.grounded_on ? (
+          <p data-testid="plan-grounded-note" className="mt-1 text-[10px] text-success">
+            {t('planner.grounded', {
+              defaultValue: `Grounded on ${plan.run.grounded_on.chapter_count} existing chapter(s) + ${plan.run.grounded_on.cast_entity_ids.length} cast member(s); ${plan.run.grounded_on.arc_titles.length} existing arc(s) continued.`,
+              chapters: plan.run.grounded_on.chapter_count,
+              cast: plan.run.grounded_on.cast_entity_ids.length,
+              arcs: plan.run.grounded_on.arc_titles.length,
+            })}
+          </p>
+        ) : (
+          <p data-testid="plan-propose-blind-note" className="mt-1 text-[10px] text-muted-foreground/70">
+            {t('planner.proposeBlind', { defaultValue: 'Proposed from this braindump only. Existing chapters are not read.' })}
+          </p>
+        )}
+        {/* The per-run choice to CONTINUE the book (ground on existing cast/arcs/spine). Effective
+            only when the deploy ceiling allows it (server-side AND); off by default. */}
+        <label data-testid="plan-ground-toggle" className="mt-1 flex cursor-pointer items-center gap-1.5 text-[10px] text-muted-foreground">
+          <input
+            type="checkbox" data-testid="plan-ground-checkbox"
+            checked={groundOnExisting} onChange={(e) => setGroundOnExisting(e.target.checked)}
+            className="h-3 w-3"
+          />
+          {t('planner.groundOnExisting', { defaultValue: 'Continue this book — ground on its existing cast, arcs & recent chapters' })}
+        </label>
 
         <div className="mt-2 flex items-end gap-3">
           <div className="flex gap-1 text-[11px]">

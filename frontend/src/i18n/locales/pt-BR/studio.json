@@ -201,6 +201,11 @@
       "desc": "Palavras hoje, sua sequência, o total do livro, uma meta diária e um gráfico de linhas",
       "guideBody": "O Progresso transforma sua escrita em um hábito visível: palavras escritas hoje, sua sequência atual de dias, o total acumulado do livro e um gráfico de linhas de 7 ou 30 dias. Defina uma meta diária pessoal e uma linha de referência a marcará no gráfico — a meta é apenas sua, não é compartilhada com colaboradores. Ele lê a contagem de palavras que o editor registra conforme você salva; ele nunca altera sua prosa."
     },
+    "flywheel": {
+      "title": "Flywheel",
+      "desc": "O que sua última publicação adicionou ao cânone — novas pessoas, conexões e eventos",
+      "guideBody": "O Flywheel é a recompensa por publicar: quando você publica um capítulo, uma passagem de extração expande o conhecimento do seu mundo, e este painel mostra o que foi adicionado — novas entidades, relações e eventos — com destaques clicáveis que levam você diretamente àquele personagem no Elenco, àquele link no gráfico ou àquele momento na linha do tempo. Ele fecha o ciclo: escrever alimenta o cânone, e o cânone fundamenta seu próximo capítulo."
+    },
     "kg-overview": {
       "title": "Visão Geral",
       "desc": "Resumo do projeto e ações rápidas",
@@ -378,6 +383,11 @@
       "title": "Divergência (dị bản)",
       "desc": "Gerencie as derivadas de «e se...» de um livro — liste o cânone e cada ramificação, mude todo o estúdio para uma delas, arquive uma ou crie uma nova ramificação a partir de um capítulo",
       "guideBody": "Uma dị bản (divergência) ramifica seu livro em um capítulo e diverge — um universo alternativo, uma mudança de ponto de vista, um personagem alterado — em uma obra derivada com sua própria partição de conhecimento, enquanto a fonte permanece como o cânone de apenas leitura. Este painel lista seu trabalho canônico e cada ramificação que você criou. «Mudar para» move todo o seu estúdio — editor, navegador, qualidade, tudo — para essa ramificação; a escolha é lembrada por livro e sobrevive ao recarregamento. «Arquivar» esconde uma ramificação sem destruí-la (seus capítulos e conhecimento são mantidos). «Nova divergência» abre o assistente de 4 etapas para criar uma. Selecione uma ramificação para ler sua especificação (taxonomia, ponto de ramificação, regras do cânone, sobreposições), que é fixa no momento da criação."
+    },
+    "canonview": {
+      "title": "Cânone no capítulo",
+      "desc": "O que o cânone sabe até o capítulo em foco — entidades presentes/estabelecidas, estado do cânone e linha do tempo",
+      "guideBody": "Responde a «o que o cânone sabe até o capítulo em que estou?» — as entidades presentes e estabelecidas pelo capítulo atual (do glossário), além do estado do cânone (quantas entidades estão ativas vs. removidas) e eventos da linha do tempo até aquele ponto (do gráfico de conhecimento). Ele acompanha o capítulo que você tem em foco no manuscrito e é o mesmo inspetor que a tela «e se» mostra em um ponto de ramificação — para que você possa verificar o que já está estabelecido antes de divergir. Abra uma cena ou capítulo para dar foco a ele."
     },
     "scene-inspector": {
       "title": "Inspetor de Cena",
@@ -613,16 +623,6 @@
       "title": "Conformidade",
       "desc": "Beat a beat: a prosa realizou o plano? Realizado/não realizado por cena + faixa de tensão",
       "guideBody": "A Conformidade rastreia, cena por cena, se a sua prosa escrita realmente entregou os beats de motivos que você planejou para um capítulo. Cada cena mostra o que foi realizado / não realizado e como sua tensão se compara ao alvo. Ela responde à relação especificação-vs-prosa (não especificação-vs-template — essa é a visualização de desvio de templates de arco). O sinal é consultivo (aproximado, não verificado causalmente). Regenere uma cena que perdeu seu beat ou execute novamente toda a verificação contra um modelo que você escolher."
-    },
-    "flywheel": {
-      "title": "Flywheel",
-      "desc": "O que sua última publicação adicionou ao cânone — novas pessoas, conexões e eventos",
-      "guideBody": "O Flywheel é a recompensa por publicar: quando você publica um capítulo, uma passagem de extração expande o conhecimento do seu mundo, e este painel mostra o que foi adicionado — novas entidades, relações e eventos — com destaques clicáveis que levam você diretamente àquele personagem no Elenco, àquele link no gráfico ou àquele momento na linha do tempo. Ele fecha o ciclo: escrever alimenta o cânone, e o cânone fundamenta seu próximo capítulo."
-    },
-    "canonview": {
-      "title": "Cânone no capítulo",
-      "desc": "O que o cânone sabe até o capítulo em foco — entidades presentes/estabelecidas, estado do cânone e linha do tempo",
-      "guideBody": "Responde a «o que o cânone sabe até o capítulo em que estou?» — as entidades presentes e estabelecidas pelo capítulo atual (do glossário), além do estado do cânone (quantas entidades estão ativas vs. removidas) e eventos da linha do tempo até aquele ponto (do gráfico de conhecimento). Ele acompanha o capítulo que você tem em foco no manuscrito e é o mesmo inspetor que a tela «e se» mostra em um ponto de ramificação — para que você possa verificar o que já está estabelecido antes de divergir. Abra uma cena ou capítulo para dar foco a ele."
     }
   },
   "sceneRail": {
@@ -725,7 +725,9 @@
       "colMode": "Modo",
       "colStatus": "Status",
       "colCreated": "Criado em"
-    }
+    },
+    "grounded": "Baseado em {{chapters}} capítulo(s) existente(s) + {{cast}} membro(s) do elenco; {{arcs}} arco(s) existente(s) continuados.",
+    "groundOnExisting": "Continuar este livro — basear-se no elenco, arcos e capítulos recentes existentes"
   },
   "editor": {
     "empty": "Selecione um capítulo no navegador de manuscrito para editá-lo aqui.",

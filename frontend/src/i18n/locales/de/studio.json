@@ -201,6 +201,11 @@
       "desc": "Wörter heute, Ihre Serie, die Gesamtzahl des Buches, ein Tagesziel und eine Sparkline",
       "guideBody": "Der Fortschritt macht Ihr Schreiben zu einer sichtbaren Gewohnheit: heute geschriebene Wörter, Ihre aktuelle Serie, die laufende Gesamtzahl des Buches und eine 7- oder 30-Tage-Sparkline. Legen Sie ein persönliches Tagesziel fest, das als Referenzlinie im Diagramm markiert wird – das Ziel gehört nur Ihnen und wird nicht mit Mitwirkenden geteilt. Es liest die Wortzahlen, die der Editor beim Speichern erfasst; es verändert niemals Ihren Text."
     },
+    "flywheel": {
+      "title": "Flywheel",
+      "desc": "Was dein letztes Veröffentlichen zum Kanon hinzugefügt hat – neue Personen, Verbindungen und Ereignisse",
+      "guideBody": "Das Flywheel ist die Belohnung für das Veröffentlichen: Wenn du ein Kapitel veröffentlichst, erweitert ein Extraktionslauf das Wissen deiner Welt. Dieses Panel zeigt an, was hinzugefügt wurde – neue Entitäten, Beziehungen und Ereignisse – mit anklickbaren Highlights, die dich direkt zum Charakter in der Besetzung, zum Link im Graphen oder zum Moment in der Timeline springen lassen. Es schließt den Kreis: Das Schreiben füttert den Kanon, und der Kanon bildet das Fundament für dein nächstes Kapitel."
+    },
     "kg-overview": {
       "title": "Übersicht",
       "desc": "Projektzusammenfassung und Schnellzugriffe",
@@ -378,6 +383,11 @@
       "title": "Divergenz (dị bản)",
       "desc": "Verwalte die What-if-Derivate eines Buches – liste den Kanon und jeden Zweig auf, verschiebe das gesamte Studio in einen Zweig, archiviere einen oder erstelle einen neuen Zweig aus einem Kapitel",
       "guideBody": "Eine Divergenz (dị bản) verzweigt dein Buch an einem Kapitel und weicht ab – ein alternatives Universum, ein Perspektivwechsel, ein veränderter Charakter – in ein derivatives Werk mit einer eigenen Wissenspartition, während die Quelle als schreibgeschützter Kanon bestehen bleibt. Dieses Panel listet dein kanonisches Werk und jeden von dir erstellten Zweig auf. „Wechseln zu“ verschiebt dein gesamtes Studio – Editor, Navigator, Qualität, alles – in diesen Zweig; die Auswahl wird pro Buch gespeichert und bleibt auch nach einem Neuladen erhalten. „Archivieren“ blendet einen Zweig aus, ohne ihn zu löschen (seine Kapitel und sein Wissen bleiben erhalten). „Neue Divergenz“ öffnet den 4-Schritte-Assistenten, um eine zu erstellen. Wähle einen Zweig aus, um dessen Spezifikation zu lesen (Taxonomie, Verzweigungspunkt, Kanon-Regeln, Overrides), die bei der Erstellung festgelegt wird."
+    },
+    "canonview": {
+      "title": "Kanon zum Kapitel",
+      "desc": "Was der Kanon zum Fokus-Kapitel weiß – vorhandene/etablierte Entitäten, Kanon-Status und Timeline",
+      "guideBody": "Beantwortet die Frage: „Was weiß der Kanon zum Kapitel, an dem ich gerade arbeite?“ – die in diesem Kapitel vorhandenen oder durch es etablierten Entitäten (aus dem Glossar), plus den Kanon-Status (wie viele Entitäten sind aktiv vs. verschwunden) und die Timeline-Ereignisse bis zu diesem Zeitpunkt (aus dem Wissensgraphen). Es folgt dem Kapitel, das du im Manuskript im Fokus hast, und ist derselbe Inspector, den die „Was-wäre-wenn“-Leinwand an einem Verzweigungspunkt anzeigt – so kannst du prüfen, was bereits etabliert ist, bevor du dich abspaltest. Öffne eine Szene oder ein Kapitel, um sie in den Fokus zu rücken."
     },
     "scene-inspector": {
       "title": "Szenen-Inspektor",
@@ -613,16 +623,6 @@
       "title": "Konformität",
       "desc": "Beat für Beat: Hat die Prosa den Plan umgesetzt? Realisiert/Nicht realisiert pro Szene + Spannungsbalken",
       "guideBody": "Die Konformität prüft Szene für Szene, ob Ihre geschriebene Prosa tatsächlich die Motiv-Beats umgesetzt hat, die Sie für ein Kapitel geplant haben. Jede Szene zeigt an, ob die Beats realisiert wurden oder nicht, und wie die Spannung im Vergleich zum Zielwert steht. Es beantwortet die Frage Spezifikation vs. Prosa (nicht Spezifikation vs. Template — das ist die Abweichungsansicht der Bogen-Templates). Die Analyse dient als Orientierungshilfe (grob geschätzt, nicht kausal verifiziert). Generieren Sie eine Szene neu, die ihren Beat verpasst hat, oder führen Sie den gesamten Check gegen ein von Ihnen gewähltes Modell erneut aus."
-    },
-    "flywheel": {
-      "title": "Flywheel",
-      "desc": "Was dein letztes Veröffentlichen zum Kanon hinzugefügt hat – neue Personen, Verbindungen und Ereignisse",
-      "guideBody": "Das Flywheel ist die Belohnung für das Veröffentlichen: Wenn du ein Kapitel veröffentlichst, erweitert ein Extraktionslauf das Wissen deiner Welt. Dieses Panel zeigt an, was hinzugefügt wurde – neue Entitäten, Beziehungen und Ereignisse – mit anklickbaren Highlights, die dich direkt zum Charakter in der Besetzung, zum Link im Graphen oder zum Moment in der Timeline springen lassen. Es schließt den Kreis: Das Schreiben füttert den Kanon, und der Kanon bildet das Fundament für dein nächstes Kapitel."
-    },
-    "canonview": {
-      "title": "Kanon zum Kapitel",
-      "desc": "Was der Kanon zum Fokus-Kapitel weiß – vorhandene/etablierte Entitäten, Kanon-Status und Timeline",
-      "guideBody": "Beantwortet die Frage: „Was weiß der Kanon zum Kapitel, an dem ich gerade arbeite?“ – die in diesem Kapitel vorhandenen oder durch es etablierten Entitäten (aus dem Glossar), plus den Kanon-Status (wie viele Entitäten sind aktiv vs. verschwunden) und die Timeline-Ereignisse bis zu diesem Zeitpunkt (aus dem Wissensgraphen). Es folgt dem Kapitel, das du im Manuskript im Fokus hast, und ist derselbe Inspector, den die „Was-wäre-wenn“-Leinwand an einem Verzweigungspunkt anzeigt – so kannst du prüfen, was bereits etabliert ist, bevor du dich abspaltest. Öffne eine Szene oder ein Kapitel, um sie in den Fokus zu rücken."
     }
   },
   "sceneRail": {
@@ -725,7 +725,9 @@
       "colMode": "Modus",
       "colStatus": "Status",
       "colCreated": "Erstellt"
-    }
+    },
+    "grounded": "Basierend auf {{chapters}} bestehenden Kapitel(n) + {{cast}} Besetzungsmitglied(ern); {{arcs}} bestehende Handlungsbögen werden fortgesetzt.",
+    "groundOnExisting": "Dieses Buch fortsetzen – basierend auf der bestehenden Besetzung, den Handlungsbögen & den jüngsten Kapiteln"
   },
   "editor": {
     "empty": "Wähle ein Kapitel im Manuskript-Navigator aus, um es hier zu bearbeiten.",

@@ -725,7 +725,9 @@
       "colMode": "Mode",
       "colStatus": "Status",
       "colCreated": "Created"
-    }
+    },
+    "grounded": "Grounded on {{chapters}} existing chapter(s) + {{cast}} cast member(s); {{arcs}} existing arc(s) continued.",
+    "groundOnExisting": "Continue this book — ground on its existing cast, arcs & recent chapters"
   },
   "editor": {
     "empty": "Select a chapter in the manuscript navigator to edit it here.",
