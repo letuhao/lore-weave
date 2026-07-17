@@ -17,6 +17,7 @@
 |---|---|---|---|
 | D-a | `search` activity-view — build or retire the icon? | **BUILD** (→ **S-11**) | new spec S-11; S-10 O4 no longer leaves it "Coming soon". |
 | D-d | `[[`-create from the editor — build or leave hidden? | **BUILD** (→ **S-10 O7**) | `[[NewName` → kind-picker → `createEntity` → insert; wire `onCreateNew` in both consumers. |
+| D-workflows | G-WORKFLOWS ownership | **BUILD IN THIS TRACK** (→ S-12) | ownership resolved; item un-parked. |
 | D-order | Build order after seal | **FANOUT — each Tier-A a parallel session** | S-01/S-03/S-04 (composition) + S-02 (book-service) build in parallel, disjoint files; convergence node reconciles the studio registry. Same model as the 8-session run. |
 
 ## Author-sealed decisions (recorded in each spec; formalized here)
@@ -42,12 +43,15 @@
 
 | Q | Decision needed |
 |---|---|
-| **G-WORKFLOWS** | Ownership vs Track C's P-5 — does THIS track build the workflows/workflow-proposals panels, or does Track C own them? Not a build decision; a track-ownership call. The item stays OUT of S-01..S-11 until answered. |
+| ~~G-WORKFLOWS~~ | **SEALED 2026-07-17: BUILD IN THIS TRACK (→ S-12).** PO decided ownership. CLARIFY-verify shrank it — the proposals routes + a workflows LIST already exist; only 3 backend verbs (get-one/delete/enablement, mirror skills) + the FE panels are missing. |
 | **S-11 category** | Which category does the `search` panel belong to (`storyBible`, or a new top-level)? Minor; resolve at S-11 build. |
 
 ## Build-readiness
 
-S-01..S-11 are **sealed and buildable** except the G-WORKFLOWS item (parked). Per D-order, the Tier-A four
-(S-01, S-02, S-03, S-04) fan out in parallel; Tier-B/C follow. Each build runs the full workflow (VERIFY
-evidence, 2-stage review, `/review-impl` for the data-layer/tenancy specs, live-smoke ≥2 services where the
-spec crosses a service boundary).
+**All 12 specs (S-01..S-12) are sealed and buildable — nothing is parked.** Per D-order, the Tier-A four
+(S-01, S-02, S-03, S-04) fan out in parallel; Tier-B/C (incl. S-11, S-12) follow. Each build runs the full
+workflow (VERIFY evidence, 2-stage review, `/review-impl` for the data-layer/tenancy specs, live-smoke ≥2
+services where the spec crosses a service boundary).
+
+The only unresolved detail is **S-11's panel category** (minor — resolve at S-11 build), which does not
+block anything.

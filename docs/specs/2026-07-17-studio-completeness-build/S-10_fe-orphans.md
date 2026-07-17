@@ -62,8 +62,9 @@ Every new panel (O1/O2/O4-rail) goes through the GG-8 gate: `panelCatalogContrac
 `PlanDrawer` renders `<MotifBindingLens>` (the handoff regression guard). O3's diagnostics route gets a
 read-only endpoint test.
 
-## The PO decisions this spec surfaces (do NOT build until decided)
-- **D-a search:** build a real search panel, or retire the activity-bar icon? (a nav icon saying "Coming
-  soon" is not an option.)
-- **D-d `[[`-create:** build "type `[[NewCharacter` → create it", or leave the affordance hidden (F-9)?
-- **G-WORKFLOWS:** ownership vs Track C's P-5 — not a build decision.
+## PO decisions — all RESOLVED (2026-07-17, see `01_DECISIONS.md`)
+- **D-a search:** BUILD → **S-11** (search is a mount, not net-new).
+- **D-d `[[`-create:** BUILD → **O7** above.
+- **G-WORKFLOWS:** build in this track → **S-12**.
+
+Nothing in S-10 is blocked on a decision anymore.
