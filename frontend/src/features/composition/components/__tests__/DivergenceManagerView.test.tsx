@@ -32,6 +32,10 @@ vi.mock('../DivergenceWizard', () => ({
   DivergenceWizard: ({ open }: { open: boolean }) => (open ? <div data-testid="wizard-open" /> : null),
 }));
 
+vi.mock('../BranchDiffView', () => ({
+  BranchDiffView: (p: { derivativeProjectId: string }) => <div data-testid="branch-diff-view" data-proj={p.derivativeProjectId} />,
+}));
+
 vi.mock('sonner', () => ({ toast: Object.assign(vi.fn(), { success: vi.fn(), error: vi.fn(), warning: vi.fn() }) }));
 
 import { DivergenceManagerView } from '../DivergenceManagerView';
@@ -91,6 +95,17 @@ describe('DivergenceManagerView', () => {
     fireEvent.click(screen.getByTestId('divergence-row-da'));
     await waitFor(() => expect(screen.getByTestId('divergence-spec-taxonomy')).toHaveTextContent('au'));
     expect(getDerivativeContext).toHaveBeenCalledWith('da', 'tok');
+  });
+
+  it('the Diff tab swaps the spec for the branch prose diff', async () => {
+    resolution = { status: 'candidates', work: null, candidates: [canon, derivA] };
+    renderView();
+    fireEvent.click(screen.getByTestId('divergence-row-da'));
+    await waitFor(() => expect(screen.getByTestId('divergence-spec-taxonomy')).toBeInTheDocument());
+    fireEvent.click(screen.getByTestId('divergence-tab-diff'));
+    const diff = screen.getByTestId('branch-diff-view');
+    expect(diff.getAttribute('data-proj')).toBe('da');
+    expect(screen.queryByTestId('divergence-spec-taxonomy')).not.toBeInTheDocument();
   });
 
   it('shows the empty state when there are no derivatives', () => {
