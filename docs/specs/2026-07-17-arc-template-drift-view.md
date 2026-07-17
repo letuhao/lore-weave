@@ -66,6 +66,18 @@ The `deep` overlay is prose-drift (different axis) — **out of scope** (the MCP
 - **No-silent-fail:** the three honest states (ok/no_provenance/gone) + the per-section empties are the whole point — the view NEVER shows a blank or a fake "no drift" when data is missing.
 - **i18n:** new keys through the pipeline (never hand-rolled), en complete first.
 
+## 4.5 · Edge cases & resolutions (design-review pass)
+
+| # | Edge case | Resolution |
+|---|---|---|
+| E1 | **The existing test mocks a FICTIONAL shape.** [`ArcTemplatesPanel.test.tsx:105,111`](../../frontend/src/features/studio/panels/__tests__/ArcTemplatesPanel.test.tsx#L105) feeds `report:{thread_coverage:[{thread,realized,planned}]}` — a field that does NOT exist on the real BE response (the real shape is `thread_progress:[{thread,label,planned,covered,missing}]`). The `<pre>` JSON-dumps anything, so the mock's wrong shape was never caught (the [[mocked-client-hides-server-side-default-filters]] class). | BUILD must **rewrite the fixture to the real `ArcConformance` shape, verified against a live BE response** — not copied from the stub/old mock. This is the whole reason the type-reconcile (§2.2) is a required sub-task, not cosmetic. |
+| E2 | **Empty / degenerate template** — a template with 0 threads, or an arc with 0 realized chapters → every signal array is empty. | Render the honest "**no drift — the realized arc matches its template**" summary (all-zero path), never a blank section. Distinguish from `no_provenance` (never had a template). |
+| E3 | **`pacing.comparable === false`** — planned vs realized tension isn't alignable yet. | Render "pacing not comparable yet" and **suppress `max_drift`** — never show a fabricated pacing-drift number. |
+| E4 | **null `motif_code`** — `thread_progress[].missing[].motif_code` and `unmaterialized[].motif_code` may be null. | Render by `thread`/`ord` when the code is null; never crash or render "null". |
+| E5 | **Coarse-only** — the view must never request the `deep` prose overlay (a different axis). | Enforced by construction: `getArcTemplateDrift` takes NO `deep` param (verified). Keep it so. |
+| E6 | **Stale drift after an edit** — editing the arc/template then reopening drift could show a cached report. | The query already keys on the selected arc id; accept `staleTime` for a read-only $0 report, OR invalidate `['plan-hub','arcs',bookId]`-adjacent drift keys on an arc/template mutation. Minor — a manual refresh affordance suffices for v1. |
+| E7 | **`report.scope` is hardcoded `"arc"` even on the drift path** — the view can't key "template drift" off `scope`. | The view lives inside `DriftSection` (always the template-drift context) and keys its label off that context / `arc_template_id` presence, not `scope`. |
+
 ## 5 · Plan (phases)
 
 | # | Phase | Work |
