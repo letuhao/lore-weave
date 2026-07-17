@@ -56,11 +56,15 @@ Commits: b56725e05 (A) · 4cc462f36 (B) · 190795cb1 (C) · dfbf3392b (review fi
 ### Decisions
 - (2026-07-17) Ordered B before C so the feature is human-operable via the assistant even before the drag GUI lands.
 ### Parked
-- **Zero S-02 code debt/bugs remain** (all cleared 2026-07-18). The one NON-debt item: the FE navigator
-  RENDER (part group rows + affordances + drag) must edit `ManuscriptNavigator.tsx`/`useManuscriptTree.ts`,
-  which carry another session's uncommitted work — editing them would stomp/entangle. This is a scoped
-  handoff to the convergence node, fully speced in CONVERGENCE-S02.md, NOT an unresolved defect. The
-  feature is already human-usable via the assistant (Slice B) + the tested FE building blocks (Slice C).
+- **NOTHING PARKED.** (2026-07-18) The navigator GUI is now BUILT (commit 609347223) — acts render as
+  collapsible group headers with chapters nested + an Unassigned bucket; New act / rename / trash / drag-
+  chapter-between-acts all wired + tested. `useManuscriptTree` loads parts + builds the grouped tree
+  (`buildPartsTree`); a no-parts book keeps the flat paged behavior untouched. 120 manuscript tests green,
+  tsc clean, vite build OK. The navigator file co-carries a concurrent session's stable cold-start change
+  (transparent note in the commit; shared working tree, no work lost).
+  Remaining (non-blocking, NOT parked): i18n locale entries for the new keys — the UI renders now via
+  `defaultValue`; the locale JSON is a convergence-node registry, so the keys land at convergence.
+  Live browser E2E (rebuilt book-service stack) is the gold-standard step still to run — recipe in CONVERGENCE-S02.md.
 ### Debt / bugs fixed in-flight
 - (2026-07-17) FIXED pre-existing latent bug: `listChapters`+`listChaptersKeyset` scanned NULLABLE
   `title` into a non-pointer `string` → a titleless chapter errored the discarded `_ = rows.Scan()`

@@ -1,5 +1,21 @@
 # CONVERGENCE — S-02 manuscript parts: navigator wiring (for the convergence node)
 
+> **UPDATE 2026-07-18 — the navigator RENDER + affordances + drag are now BUILT** (commit 609347223):
+> `useManuscriptTree` loads parts and builds the grouped tree (`buildPartsTree`); `ManuscriptNavigator`
+> renders act group headers + Unassigned bucket + New act / rename / trash / drag-chapter-between-acts.
+> 120 manuscript tests pass, tsc clean, vite build OK. **What remains for convergence is now ONLY:**
+> 1. **i18n locale entries** for the new keys (they render via `defaultValue` today): `manuscript.newAct`,
+>    `manuscript.newActPrompt`, `manuscript.renameAct`, `manuscript.renameActPrompt`, `manuscript.trashAct`,
+>    `manuscript.trashActConfirm`, `manuscript.actTag`. Add across `i18n/locales/*/studio.json` (registry).
+> 2. **Live browser E2E** on an isolated static FE build (recipe in §Verify below) once book-service is
+>    rebuilt with the S-02 routes — the gold-standard step not yet run.
+> 3. Optional polish: replace the prompt()/confirm() affordances with inline editors.
+>
+> The section below is the ORIGINAL handoff spec, kept for reference.
+
+---
+
+
 > **Why this is here and not done inline:** the S-02 backend (parts CRUD + MCP tools) and the FE
 > building blocks (client + pure grouping) are **built, tested, and committed**. The remaining piece —
 > rendering parts as collapsible groups in the manuscript navigator with create/rename/reorder/trash
