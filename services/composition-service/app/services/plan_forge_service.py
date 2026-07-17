@@ -290,14 +290,25 @@ class PlanForgeService:
         from app.db.repositories.structure import StructureRepo
         from app.engine.plan_forge.existing_state import gather_existing_state
 
+        # In-play systems (best-effort): variables live on the latest `spec` artifact
+        # (`layers.variables`), motifs on the latest `motif_plan` — both book-scoped across all runs.
+        # A book that never compiled yields None → "no compiled systems yet".
+        spec_art = await self._runs.latest_artifact_for_book(book_id, "spec")
+        motif_art = await self._runs.latest_artifact_for_book(book_id, "motif_plan")
+        systems: dict[str, Any] | None = None
+        if spec_art is not None or motif_art is not None:
+            systems = {}
+            if spec_art is not None and isinstance(spec_art.content.get("layers"), dict):
+                systems["layers"] = spec_art.content["layers"]
+            if motif_art is not None and motif_art.content.get("motifs"):
+                systems["motifs"] = motif_art.content["motifs"]
         return await gather_existing_state(
             book_id,
             structure_repo=StructureRepo(self._runs._pool),
             outline_repo=OutlineRepo(self._runs._pool),
             kal_client=get_kal_client(),
             user_id=created_by,
-            latest_package=None,  # systems (lowest-priority) best-effort; a book-scoped package read
-                                  # is a future enhancement — absent yields "no compiled systems yet".
+            latest_package=systems,
         )
 
     async def _ground_llm_source(self, book_id: UUID, source_markdown: str) -> str:

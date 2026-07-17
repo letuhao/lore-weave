@@ -345,6 +345,25 @@ class PlanRunsRepo:
             row = await c.fetchrow(query, run_id, book_id, target)
         return _row_artifact(row) if row else None
 
+    async def latest_artifact_for_book(
+        self, book_id: UUID, kind: PlanArtifactKind,
+    ) -> PlanArtifact | None:
+        """The most-recent artifact of `kind` across ALL of a book's non-archived runs (book-scoped,
+        NOT run-scoped like `latest_artifact`). Used by the PROPOSE-BLIND gather lens to read the
+        book's latest compiled `package` for the in-play variables/motifs, independent of which run a
+        new propose belongs to. Book scope is transitive via the plan_run join (plan_artifact carries
+        no book_id). NULL when the book has no such artifact yet."""
+        query = f"""
+        SELECT {_SELECT_ARTIFACT.replace("a.", "")} FROM plan_artifact a
+        JOIN plan_run r ON r.id = a.run_id
+        WHERE r.book_id = $1 AND a.kind = $2 AND NOT r.is_archived
+        ORDER BY a.created_at DESC, a.id DESC
+        LIMIT 1
+        """
+        async with self._pool.acquire() as c:
+            row = await c.fetchrow(query, book_id, kind)
+        return _row_artifact(row) if row else None
+
     async def plan_state_for_book(self, book_id: UUID) -> dict[str, Any]:
         """"Does this book have an arc plan?" — ONE round-trip, book-keyed.
 
