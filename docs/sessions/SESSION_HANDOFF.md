@@ -1,8 +1,11 @@
 # ▶▶ NEXT SESSION STARTS HERE
 
 ## 🧹 RECONCILE of the 8-session fan-out — **DONE, 2026-07-17** (HEAD `e72d712c1`)
-> The shared checkout is **fully reconciled: `git status` clean, `git ls-files --others` empty.** 75 modified
-> + 12 untracked files triaged into 5 commits. **The tree is green: frontend 785 files / 5739 tests · knowledge
+> The shared checkout is **reconciled: `git ls-files --others` empty, and the only file left dirty is
+> `docs/ARCHITECTURE.md`** — it was still being written *while this reconcile ran* (mtime landed mid-commit;
+> confirmed settled, not abandoned), so by PO decision it stays with its owning session to commit. Its numbers
+> were spot-checked as correct in passing (52 language-rule rows = 47 mapped + 5 `missing`; 47 service dirs on
+> disk; 3 SPAs). **Do not treat it as junk.** 75 modified + 12 untracked files triaged into 5 commits. **The tree is green: frontend 785 files / 5739 tests · knowledge
 > tests/unit 3891 (`-n auto --dist loadgroup`) · tsc EXIT 0 · i18n-completeness / ai-provider / knowledge-access
 > gates all OK.**
 >
