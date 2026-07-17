@@ -56,7 +56,11 @@ Commits: b56725e05 (A) · 4cc462f36 (B) · 190795cb1 (C) · dfbf3392b (review fi
 ### Decisions
 - (2026-07-17) Ordered B before C so the feature is human-operable via the assistant even before the drag GUI lands.
 ### Parked
-- Navigator mount (Slice C) blocked on foreign uncommitted diff → deliver component + manifest note, not a stomp.
+- **Zero S-02 code debt/bugs remain** (all cleared 2026-07-18). The one NON-debt item: the FE navigator
+  RENDER (part group rows + affordances + drag) must edit `ManuscriptNavigator.tsx`/`useManuscriptTree.ts`,
+  which carry another session's uncommitted work — editing them would stomp/entangle. This is a scoped
+  handoff to the convergence node, fully speced in CONVERGENCE-S02.md, NOT an unresolved defect. The
+  feature is already human-usable via the assistant (Slice B) + the tested FE building blocks (Slice C).
 ### Debt / bugs fixed in-flight
 - (2026-07-17) FIXED pre-existing latent bug: `listChapters`+`listChaptersKeyset` scanned NULLABLE
   `title` into a non-pointer `string` → a titleless chapter errored the discarded `_ = rows.Scan()`
