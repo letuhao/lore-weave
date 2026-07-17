@@ -8,19 +8,23 @@
 // chapters.part_id already carry lifecycle_state, updated_at, the
 // UNIQUE(book_id, sort_order) ordering constraint, and the FK index).
 //
+// Structure: the SQL lives in store methods (storeCreatePart, storeReorderParts, …)
+// so BOTH surfaces — the REST routes below AND the MCP tools (book_part_*,
+// book_chapter_set_part in mcp_tools_parts.go) — share ONE implementation. A REST
+// route parses + grant-gates + maps the store error to an HTTP status; an MCP tool
+// grant-gates + maps it to the kit sentinel. Neither re-implements the write.
+//
 // Sealed decisions (docs/specs/2026-07-17-studio-completeness-build/01_DECISIONS.md):
 //   - `path` is NOT NULL and import-oriented. A user-created act has no source path,
 //     so we SYNTHESIZE one from the title (slugifyPartPath). Keeps the column
 //     meaningful + non-null with no migration.
-//   - NO OCC on parts — rename is low-contention, updated_at + last-write-wins is fine
-//     (chapters keep their own draft OCC; this is the part LAYER only).
+//   - NO OCC on parts — rename is low-contention, updated_at + last-write-wins is fine.
 //   - Trashing a part UN-HOMES its chapters (part_id = NULL) — they survive in the
 //     flat manuscript — it never cascade-deletes them. Restore does NOT re-home.
 //
-// Tenancy: parts are book_id-scoped; access is grant-gated through authBook (VIEW to
-// read, EDIT to write) exactly like chapters. Every query is scoped by book_id. A
-// move verifies the target part belongs to the SAME book (a cross-book move is a
-// tenancy breach), so a chapter can never be re-homed into another tenant's book.
+// Tenancy: parts are book_id-scoped; access is grant-gated (VIEW to read, EDIT to
+// write) exactly like chapters. Every query is scoped by book_id. A move verifies
+// the target part belongs to the SAME book (a cross-book move is a tenancy breach).
 package api
 
 import (
@@ -35,8 +39,17 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
-// partView is the JSON shape returned for a part. sort_order drives the manuscript
-// act ordering; lifecycle_state is 'active' | 'trashed' (soft-delete, like chapters).
+// Store-layer sentinels, mapped to HTTP by the REST routes and to kit errors by the
+// MCP tools. errChapterNotFound is shared from server.go.
+var (
+	errPartNotFound  = errors.New("part not found")
+	errPartNotInBook = errors.New("target part is not an active part of this book")
+	// errReorderMismatch: ordered_ids was not exactly the book's active part set.
+	errReorderMismatch = errors.New("ordered_ids must list every active part of this book exactly once")
+)
+
+// partView is the JSON shape returned for a part. sort_order drives the act
+// ordering; lifecycle_state is 'active' | 'trashed' (soft-delete, like chapters).
 type partView struct {
 	PartID         uuid.UUID `json:"part_id"`
 	BookID         uuid.UUID `json:"book_id"`
@@ -48,13 +61,21 @@ type partView struct {
 	UpdatedAt      any       `json:"updated_at"`
 }
 
+const partSelectCols = `id, book_id, title, path, sort_order, lifecycle_state, created_at, updated_at`
+
+func scanPart(row pgx.Row) (partView, error) {
+	var p partView
+	err := row.Scan(&p.PartID, &p.BookID, &p.Title, &p.Path, &p.SortOrder, &p.LifecycleState, &p.CreatedAt, &p.UpdatedAt)
+	return p, err
+}
+
 // slugifyPartPath turns a user-supplied act title into a stable, filesystem-ish
 // path token so the NOT NULL `path` column stays meaningful for a user-created part
 // (the import decomposer sets it from the source file; a Studio act has no file).
 // Lowercases, keeps [a-z0-9], collapses every other run to a single '-', trims. If
-// the title has no ASCII-alphanumerics at all (e.g. a purely CJK title), it yields
-// "" and the caller falls back to "part-<sort_order>" — a slug is convenience, not
-// identity (the id + (book_id, sort_order) are identity).
+// the title has no ASCII-alphanumerics (e.g. a purely CJK title) it yields "" and
+// the caller falls back to "part-<sort_order>" — a slug is convenience, not identity
+// (the id + (book_id, sort_order) are identity).
 func slugifyPartPath(title string) string {
 	var b strings.Builder
 	prevHyphen := false
@@ -73,17 +94,219 @@ func slugifyPartPath(title string) string {
 	return strings.Trim(b.String(), "-")
 }
 
-func scanPart(row pgx.Row) (partView, error) {
+// partPath returns slugify(title), or "part-<sort_order>" when the title yields no
+// usable slug. sortOrder=0 signals "unknown yet" → the caller backfills.
+func partPath(title string, sortOrder int) string {
+	if s := slugifyPartPath(title); s != "" {
+		return s
+	}
+	if sortOrder > 0 {
+		return "part-" + strconv.Itoa(sortOrder)
+	}
+	return ""
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Store methods — the single implementation shared by REST + MCP.
+// They do NOT check grants or book lifecycle (the caller's job); they only own the
+// SQL + the store-layer sentinels. Every query is scoped by book_id.
+// ═══════════════════════════════════════════════════════════════════════════
+
+// storeCreatePart appends an act at sort_order = MAX+1, path synthesized from the
+// title. A racing create can collide on UNIQUE(book_id, sort_order) → retry once
+// (the second racer just takes MAX+2).
+func (s *Server) storeCreatePart(ctx context.Context, bookID uuid.UUID, title string) (partView, error) {
+	title = strings.TrimSpace(title)
 	var p partView
-	err := row.Scan(&p.PartID, &p.BookID, &p.Title, &p.Path, &p.SortOrder, &p.LifecycleState, &p.CreatedAt, &p.UpdatedAt)
+	var lastErr error
+	for attempt := 0; attempt < 2; attempt++ {
+		row := s.pool.QueryRow(ctx, `
+INSERT INTO parts(book_id, sort_order, title, path)
+VALUES(
+  $1,
+  (SELECT COALESCE(MAX(sort_order),0)+1 FROM parts WHERE book_id=$1),
+  $2,
+  $3
+)
+RETURNING `+partSelectCols,
+			bookID, nullIfEmpty(title), partPath(title, 0))
+		p, lastErr = scanPart(row)
+		if lastErr == nil {
+			// Backfill a slug that couldn't know its sort_order at INSERT time (CJK
+			// title → empty slug → "part-<n>"). Cheap single-row update, only when needed.
+			if p.Path == "" {
+				fallback := partPath(title, p.SortOrder)
+				if _, err := s.pool.Exec(ctx,
+					`UPDATE parts SET path=$3 WHERE id=$1 AND book_id=$2`, p.PartID, bookID, fallback); err == nil {
+					p.Path = fallback
+				}
+			}
+			return p, nil
+		}
+		if !isUniqueViolation(lastErr) {
+			break
+		}
+	}
+	return partView{}, lastErr
+}
+
+// storeRenamePart renames an active act (LWW — no OCC). errPartNotFound if absent.
+func (s *Server) storeRenamePart(ctx context.Context, bookID, partID uuid.UUID, title string) (partView, error) {
+	row := s.pool.QueryRow(ctx, `
+UPDATE parts SET title=$3, updated_at=now()
+WHERE id=$1 AND book_id=$2 AND lifecycle_state='active'
+RETURNING `+partSelectCols,
+		partID, bookID, nullIfEmpty(strings.TrimSpace(title)))
+	p, err := scanPart(row)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return partView{}, errPartNotFound
+	}
 	return p, err
 }
 
-const partSelectCols = `id, book_id, title, path, sort_order, lifecycle_state, created_at, updated_at`
+// storeReorderParts rewrites the whole active ordering. orderedIDs must be EXACTLY
+// the book's active parts (a subset/superset/foreign id → errReorderMismatch).
+// Two-phase negate/rewrite (like reorderChapters) because UNIQUE(book_id, sort_order)
+// is checked per row; FOR UPDATE serializes racing reorders. Caller pre-checks
+// empty/duplicate ids (pure input validation).
+func (s *Server) storeReorderParts(ctx context.Context, bookID uuid.UUID, orderedIDs []uuid.UUID) ([]partView, error) {
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback(ctx) //nolint:errcheck // no-op after Commit
 
-// ── GET /v1/books/{book_id}/parts ────────────────────────────────────────────
-// Lists a book's parts (acts) in sort order. Active only by default;
-// ?include_trashed=true also returns soft-trashed ones (for a restore UI).
+	rows, err := tx.Query(ctx,
+		`SELECT id FROM parts WHERE book_id=$1 AND lifecycle_state='active' ORDER BY sort_order, id FOR UPDATE`, bookID)
+	if err != nil {
+		return nil, err
+	}
+	existing := make(map[uuid.UUID]bool)
+	for rows.Next() {
+		var id uuid.UUID
+		if err := rows.Scan(&id); err != nil {
+			rows.Close()
+			return nil, err
+		}
+		existing[id] = true
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	if len(orderedIDs) != len(existing) {
+		return nil, errReorderMismatch
+	}
+	for _, id := range orderedIDs {
+		if !existing[id] {
+			return nil, errReorderMismatch
+		}
+	}
+
+	// Phase 1: park every active slot in the negative space (positive → negative;
+	// disjoint from the target positives, so the per-row unique check never trips).
+	if _, err := tx.Exec(ctx,
+		`UPDATE parts SET sort_order = -sort_order - 1 WHERE book_id=$1 AND lifecycle_state='active'`, bookID); err != nil {
+		return nil, err
+	}
+	// Phase 2: write the dense 1..N sequence (negative → positive; disjoint again).
+	out := make([]partView, 0, len(orderedIDs))
+	for i, id := range orderedIDs {
+		row := tx.QueryRow(ctx, `
+UPDATE parts SET sort_order=$3, updated_at=now()
+WHERE id=$1 AND book_id=$2
+RETURNING `+partSelectCols, id, bookID, i+1)
+		p, err := scanPart(row)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, p)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+// storeArchivePart soft-trashes an act and UN-HOMES its chapters (part_id = NULL —
+// they survive in the flat manuscript), in ONE transaction. errPartNotFound if the
+// active part is absent.
+func (s *Server) storeArchivePart(ctx context.Context, bookID, partID uuid.UUID) error {
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx) //nolint:errcheck
+
+	var trashedID uuid.UUID
+	err = tx.QueryRow(ctx, `
+UPDATE parts SET lifecycle_state='trashed', trashed_at=now(), updated_at=now()
+WHERE id=$1 AND book_id=$2 AND lifecycle_state='active'
+RETURNING id`, partID, bookID).Scan(&trashedID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return errPartNotFound
+	}
+	if err != nil {
+		return err
+	}
+	// Un-home this part's chapters — scoped by book_id AND part_id so it can never
+	// touch another book's rows.
+	if _, err := tx.Exec(ctx,
+		`UPDATE chapters SET part_id=NULL, updated_at=now() WHERE book_id=$1 AND part_id=$2`, bookID, partID); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
+}
+
+// storeRestorePart reactivates a soft-trashed act. Its chapters are NOT re-homed
+// (restore is a non-magical inverse of trash — sealed). errPartNotFound if absent.
+func (s *Server) storeRestorePart(ctx context.Context, bookID, partID uuid.UUID) (partView, error) {
+	row := s.pool.QueryRow(ctx, `
+UPDATE parts SET lifecycle_state='active', trashed_at=NULL, updated_at=now()
+WHERE id=$1 AND book_id=$2 AND lifecycle_state='trashed'
+RETURNING `+partSelectCols, partID, bookID)
+	p, err := scanPart(row)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return partView{}, errPartNotFound
+	}
+	return p, err
+}
+
+// moveChapterToPart sets chapters.part_id, verifying (a) the chapter is an active
+// chapter of bookID, and (b) when partID != nil, the part is an ACTIVE part of the
+// SAME book (tenancy: no cross-book move). errChapterNotFound / errPartNotInBook.
+func (s *Server) moveChapterToPart(ctx context.Context, bookID, chapterID uuid.UUID, partID *uuid.UUID) error {
+	var exists bool
+	if err := s.pool.QueryRow(ctx,
+		`SELECT true FROM chapters WHERE id=$1 AND book_id=$2 AND lifecycle_state='active'`,
+		chapterID, bookID).Scan(&exists); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return errChapterNotFound
+		}
+		return err
+	}
+	if partID != nil {
+		var ok bool
+		if err := s.pool.QueryRow(ctx,
+			`SELECT true FROM parts WHERE id=$1 AND book_id=$2 AND lifecycle_state='active'`,
+			*partID, bookID).Scan(&ok); err != nil {
+			if errors.Is(err, pgx.ErrNoRows) {
+				return errPartNotInBook
+			}
+			return err
+		}
+	}
+	_, err := s.pool.Exec(ctx,
+		`UPDATE chapters SET part_id=$3, updated_at=now() WHERE id=$1 AND book_id=$2`,
+		chapterID, bookID, partID)
+	return err
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// REST routes — grant-gated (authBook), thin over the store methods.
+// ═══════════════════════════════════════════════════════════════════════════
+
+// GET /v1/books/{book_id}/parts — list active parts (?include_trashed=true adds trashed).
 func (s *Server) listParts(w http.ResponseWriter, r *http.Request) {
 	bookID, ok := parseUUIDParam(w, r, "book_id")
 	if !ok {
@@ -119,10 +342,7 @@ func (s *Server) listParts(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"items": items})
 }
 
-// ── POST /v1/books/{book_id}/parts ───────────────────────────────────────────
-// Creates an act at the end of the book's part sequence. sort_order = MAX+1;
-// path is synthesized from the title. A racing create can collide on the
-// UNIQUE(book_id, sort_order) slot — retry once (a second racer just takes MAX+2).
+// POST /v1/books/{book_id}/parts — create an act (201).
 func (s *Server) createPart(w http.ResponseWriter, r *http.Request) {
 	bookID, ok := parseUUIDParam(w, r, "book_id")
 	if !ok {
@@ -143,58 +363,15 @@ func (s *Server) createPart(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "BOOK_VALIDATION_ERROR", "invalid payload")
 		return
 	}
-	title := strings.TrimSpace(in.Title)
-
-	var p partView
-	var lastErr error
-	for attempt := 0; attempt < 2; attempt++ {
-		row := s.pool.QueryRow(r.Context(), `
-INSERT INTO parts(book_id, sort_order, title, path)
-VALUES(
-  $1,
-  (SELECT COALESCE(MAX(sort_order),0)+1 FROM parts WHERE book_id=$1),
-  $2,
-  $3
-)
-RETURNING `+partSelectCols,
-			bookID, nullIfEmpty(title), partPath(title, 0))
-		p, lastErr = scanPart(row)
-		if lastErr == nil {
-			// Backfill a slug that couldn't know its sort_order at INSERT time (CJK
-			// title → empty slug → "part-<n>"). Cheap single-row update, only when needed.
-			if p.Path == "" {
-				fallback := partPath(title, p.SortOrder)
-				if _, err := s.pool.Exec(r.Context(),
-					`UPDATE parts SET path=$3 WHERE id=$1 AND book_id=$2`, p.PartID, bookID, fallback); err == nil {
-					p.Path = fallback
-				}
-			}
-			writeJSON(w, http.StatusCreated, p)
-			return
-		}
-		// Only a (book_id, sort_order) unique collision is retryable; anything else is fatal.
-		if !isUniqueViolation(lastErr) {
-			break
-		}
+	p, err := s.storeCreatePart(r.Context(), bookID, in.Title)
+	if err != nil {
+		writeError(w, http.StatusConflict, "BOOK_CONFLICT", "failed to create part")
+		return
 	}
-	writeError(w, http.StatusConflict, "BOOK_CONFLICT", "failed to create part")
+	writeJSON(w, http.StatusCreated, p)
 }
 
-// partPath returns slugify(title), or "part-<sort_order>" when the title yields no
-// usable slug (empty/CJK). sortOrder=0 signals "unknown yet" → the caller decides.
-func partPath(title string, sortOrder int) string {
-	if s := slugifyPartPath(title); s != "" {
-		return s
-	}
-	if sortOrder > 0 {
-		return "part-" + strconv.Itoa(sortOrder)
-	}
-	return "" // caller backfills once sort_order is known
-}
-
-// ── PATCH /v1/books/{book_id}/parts/{part_id} ────────────────────────────────
-// Renames an act. Last-write-wins (no OCC — sealed). Only `title` is mutable here;
-// reorder + lifecycle have their own routes so each write is explicit + auditable.
+// PATCH /v1/books/{book_id}/parts/{part_id} — rename.
 func (s *Server) renamePart(w http.ResponseWriter, r *http.Request) {
 	bookID, ok := parseUUIDParam(w, r, "book_id")
 	if !ok {
@@ -214,13 +391,8 @@ func (s *Server) renamePart(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "BOOK_VALIDATION_ERROR", "invalid payload")
 		return
 	}
-	row := s.pool.QueryRow(r.Context(), `
-UPDATE parts SET title=$3, updated_at=now()
-WHERE id=$1 AND book_id=$2 AND lifecycle_state='active'
-RETURNING `+partSelectCols,
-		partID, bookID, nullIfEmpty(strings.TrimSpace(in.Title)))
-	p, err := scanPart(row)
-	if errors.Is(err, pgx.ErrNoRows) {
+	p, err := s.storeRenamePart(r.Context(), bookID, partID, in.Title)
+	if errors.Is(err, errPartNotFound) {
 		writeError(w, http.StatusNotFound, "PART_NOT_FOUND", "part not found")
 		return
 	}
@@ -231,12 +403,7 @@ RETURNING `+partSelectCols,
 	writeJSON(w, http.StatusOK, p)
 }
 
-// ── POST /v1/books/{book_id}/parts/reorder ───────────────────────────────────
-// Rewrites the whole part ordering. Body: {ordered_ids:[uuid,...]} — the exact set
-// of the book's ACTIVE parts, in the new order. Two-phase negate/rewrite (same
-// trick as reorderChapters) because UNIQUE(book_id, sort_order) is checked per row,
-// so an intermediate permutation state would collide. FOR UPDATE serializes racing
-// reorders. A subset/superset/foreign id is a 400 (never a partial reorder).
+// POST /v1/books/{book_id}/parts/reorder — body {ordered_ids:[uuid,...]}.
 func (s *Server) reorderParts(w http.ResponseWriter, r *http.Request) {
 	bookID, ok := parseUUIDParam(w, r, "book_id")
 	if !ok {
@@ -252,96 +419,39 @@ func (s *Server) reorderParts(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "BOOK_VALIDATION_ERROR", "invalid payload")
 		return
 	}
-	if len(in.OrderedIDs) == 0 {
-		writeError(w, http.StatusBadRequest, "BOOK_VALIDATION_ERROR", "ordered_ids is required")
+	if msg := validateOrderedIDs(in.OrderedIDs); msg != "" {
+		writeError(w, http.StatusBadRequest, "BOOK_VALIDATION_ERROR", msg)
 		return
 	}
-	// Reject a duplicate id up front (a permutation cannot repeat an element).
-	seen := make(map[uuid.UUID]bool, len(in.OrderedIDs))
-	for _, id := range in.OrderedIDs {
-		if seen[id] {
-			writeError(w, http.StatusBadRequest, "BOOK_VALIDATION_ERROR", "ordered_ids has a duplicate")
-			return
-		}
-		seen[id] = true
+	out, err := s.storeReorderParts(r.Context(), bookID, in.OrderedIDs)
+	if errors.Is(err, errReorderMismatch) {
+		writeError(w, http.StatusBadRequest, "BOOK_VALIDATION_ERROR", errReorderMismatch.Error())
+		return
 	}
-
-	ctx := r.Context()
-	tx, err := s.pool.Begin(ctx)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT", "failed to reorder parts")
-		return
-	}
-	defer tx.Rollback(ctx) //nolint:errcheck // no-op after Commit
-
-	// Load the book's active parts FOR UPDATE (serializes concurrent reorders).
-	rows, err := tx.Query(ctx,
-		`SELECT id FROM parts WHERE book_id=$1 AND lifecycle_state='active' ORDER BY sort_order, id FOR UPDATE`, bookID)
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT", "failed to reorder parts")
-		return
-	}
-	existing := make(map[uuid.UUID]bool)
-	for rows.Next() {
-		var id uuid.UUID
-		if err := rows.Scan(&id); err != nil {
-			rows.Close()
-			writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT", "failed to reorder parts")
-			return
-		}
-		existing[id] = true
-	}
-	rows.Close()
-	if err := rows.Err(); err != nil {
-		writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT", "failed to reorder parts")
-		return
-	}
-	// ordered_ids must be EXACTLY the active set — same size and every id present.
-	if len(in.OrderedIDs) != len(existing) {
-		writeError(w, http.StatusBadRequest, "BOOK_VALIDATION_ERROR",
-			"ordered_ids must list every active part of this book exactly once")
-		return
-	}
-	for _, id := range in.OrderedIDs {
-		if !existing[id] {
-			writeError(w, http.StatusBadRequest, "BOOK_VALIDATION_ERROR",
-				"ordered_ids contains a part that is not an active part of this book")
-			return
-		}
-	}
-
-	// Phase 1: park every active slot in the negative space (positive → negative;
-	// disjoint from the target positives, so the per-row unique check never trips).
-	if _, err := tx.Exec(ctx,
-		`UPDATE parts SET sort_order = -sort_order - 1 WHERE book_id=$1 AND lifecycle_state='active'`, bookID); err != nil {
-		writeError(w, http.StatusConflict, "BOOK_CONFLICT", "failed to reorder parts")
-		return
-	}
-	// Phase 2: write the dense 1..N sequence (negative → positive; disjoint again).
-	out := make([]partView, 0, len(in.OrderedIDs))
-	for i, id := range in.OrderedIDs {
-		row := tx.QueryRow(ctx, `
-UPDATE parts SET sort_order=$3, updated_at=now()
-WHERE id=$1 AND book_id=$2
-RETURNING `+partSelectCols, id, bookID, i+1)
-		p, err := scanPart(row)
-		if err != nil {
-			writeError(w, http.StatusConflict, "BOOK_CONFLICT", "failed to reorder parts")
-			return
-		}
-		out = append(out, p)
-	}
-	if err := tx.Commit(ctx); err != nil {
 		writeError(w, http.StatusConflict, "BOOK_CONFLICT", "failed to reorder parts")
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"items": out})
 }
 
-// ── DELETE /v1/books/{book_id}/parts/{part_id} ───────────────────────────────
-// Soft-trashes an act. Its chapters are NOT deleted — they are UN-HOMED
-// (part_id = NULL) so they fall back to the flat manuscript. One transaction so a
-// part is never trashed while its chapters still point at it.
+// validateOrderedIDs is the pure input check shared by REST + MCP: non-empty and no
+// duplicate id (a permutation cannot repeat an element). "" = valid.
+func validateOrderedIDs(ids []uuid.UUID) string {
+	if len(ids) == 0 {
+		return "ordered_ids is required"
+	}
+	seen := make(map[uuid.UUID]bool, len(ids))
+	for _, id := range ids {
+		if seen[id] {
+			return "ordered_ids has a duplicate"
+		}
+		seen[id] = true
+	}
+	return ""
+}
+
+// DELETE /v1/books/{book_id}/parts/{part_id} — soft-trash (chapters → part_id NULL); 204.
 func (s *Server) archivePart(w http.ResponseWriter, r *http.Request) {
 	bookID, ok := parseUUIDParam(w, r, "book_id")
 	if !ok {
@@ -354,20 +464,8 @@ func (s *Server) archivePart(w http.ResponseWriter, r *http.Request) {
 	if _, _, _, ok := s.authBook(w, r, bookID, GrantEdit); !ok {
 		return
 	}
-	ctx := r.Context()
-	tx, err := s.pool.Begin(ctx)
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT", "failed to trash part")
-		return
-	}
-	defer tx.Rollback(ctx) //nolint:errcheck
-
-	var trashedID uuid.UUID
-	err = tx.QueryRow(ctx, `
-UPDATE parts SET lifecycle_state='trashed', trashed_at=now(), updated_at=now()
-WHERE id=$1 AND book_id=$2 AND lifecycle_state='active'
-RETURNING id`, partID, bookID).Scan(&trashedID)
-	if errors.Is(err, pgx.ErrNoRows) {
+	err := s.storeArchivePart(r.Context(), bookID, partID)
+	if errors.Is(err, errPartNotFound) {
 		writeError(w, http.StatusNotFound, "PART_NOT_FOUND", "part not found")
 		return
 	}
@@ -375,24 +473,10 @@ RETURNING id`, partID, bookID).Scan(&trashedID)
 		writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT", "failed to trash part")
 		return
 	}
-	// Un-home this part's chapters (they survive in the flat manuscript). Scoped by
-	// book_id AND part_id so it can never touch another book's rows.
-	if _, err := tx.Exec(ctx,
-		`UPDATE chapters SET part_id=NULL, updated_at=now() WHERE book_id=$1 AND part_id=$2`, bookID, partID); err != nil {
-		writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT", "failed to un-home chapters")
-		return
-	}
-	if err := tx.Commit(ctx); err != nil {
-		writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT", "failed to trash part")
-		return
-	}
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// ── POST /v1/books/{book_id}/parts/{part_id}/restore ─────────────────────────
-// Restores a soft-trashed act. Its chapters are NOT re-homed — restore is a
-// non-magical inverse of trash (an explicit choice, sealed): the user re-homes
-// chapters deliberately via the move route.
+// POST /v1/books/{book_id}/parts/{part_id}/restore — restore a trashed act.
 func (s *Server) restorePart(w http.ResponseWriter, r *http.Request) {
 	bookID, ok := parseUUIDParam(w, r, "book_id")
 	if !ok {
@@ -405,12 +489,8 @@ func (s *Server) restorePart(w http.ResponseWriter, r *http.Request) {
 	if _, _, _, ok := s.authBook(w, r, bookID, GrantEdit); !ok {
 		return
 	}
-	row := s.pool.QueryRow(r.Context(), `
-UPDATE parts SET lifecycle_state='active', trashed_at=NULL, updated_at=now()
-WHERE id=$1 AND book_id=$2 AND lifecycle_state='trashed'
-RETURNING `+partSelectCols, partID, bookID)
-	p, err := scanPart(row)
-	if errors.Is(err, pgx.ErrNoRows) {
+	p, err := s.storeRestorePart(r.Context(), bookID, partID)
+	if errors.Is(err, errPartNotFound) {
 		writeError(w, http.StatusNotFound, "PART_NOT_FOUND", "trashed part not found")
 		return
 	}
@@ -421,12 +501,9 @@ RETURNING `+partSelectCols, partID, bookID)
 	writeJSON(w, http.StatusOK, p)
 }
 
-// ── PATCH /v1/books/{book_id}/chapters/{chapter_id}/part ──────────────────────
-// Moves a chapter into / out of / between acts. Body: {part_id: uuid|null}.
-// null un-homes it (flat manuscript). Deliberately SEPARATE from patchChapter so
-// the move is explicit/auditable and patchChapter's OCC contract is untouched.
-// A non-null target part must belong to the SAME book (cross-book move = tenancy
-// breach) AND be active. No id churn, no re-embed — only chapters.part_id changes.
+// PATCH /v1/books/{book_id}/chapters/{chapter_id}/part — move a chapter into/out of/
+// between acts. Body {part_id: uuid|null}. Separate from patchChapter so the move is
+// explicit/auditable and patchChapter's OCC contract is untouched.
 func (s *Server) setChapterPart(w http.ResponseWriter, r *http.Request) {
 	bookID, ok := parseUUIDParam(w, r, "book_id")
 	if !ok {
@@ -439,11 +516,7 @@ func (s *Server) setChapterPart(w http.ResponseWriter, r *http.Request) {
 	if _, _, _, ok := s.authBook(w, r, bookID, GrantEdit); !ok {
 		return
 	}
-	// Distinguish "field absent" from "explicit null": both are valid (null = un-home),
-	// but an absent field is a malformed request. Use a pointer-to-pointer sentinel.
-	var in struct {
-		PartID *uuid.UUID `json:"part_id"`
-	}
+	// Distinguish "field absent" (400) from "explicit null" (valid — un-home).
 	raw := map[string]json.RawMessage{}
 	if err := json.NewDecoder(r.Body).Decode(&raw); err != nil {
 		writeError(w, http.StatusBadRequest, "BOOK_VALIDATION_ERROR", "invalid payload")
@@ -454,22 +527,22 @@ func (s *Server) setChapterPart(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "BOOK_VALIDATION_ERROR", "part_id is required (use null to un-home)")
 		return
 	}
+	var partID *uuid.UUID
 	if string(pv) != "null" {
 		var id uuid.UUID
 		if err := json.Unmarshal(pv, &id); err != nil {
 			writeError(w, http.StatusBadRequest, "BOOK_VALIDATION_ERROR", "part_id must be a UUID or null")
 			return
 		}
-		in.PartID = &id
+		partID = &id
 	}
 
-	if err := s.moveChapterToPart(r.Context(), bookID, chapterID, in.PartID); err != nil {
+	if err := s.moveChapterToPart(r.Context(), bookID, chapterID, partID); err != nil {
 		switch {
 		case errors.Is(err, errChapterNotFound):
 			writeError(w, http.StatusNotFound, "CHAPTER_NOT_FOUND", "chapter not found")
 		case errors.Is(err, errPartNotInBook):
-			writeError(w, http.StatusBadRequest, "BOOK_VALIDATION_ERROR",
-				"target part is not an active part of this book")
+			writeError(w, http.StatusBadRequest, "BOOK_VALIDATION_ERROR", errPartNotInBook.Error())
 		default:
 			writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT", "failed to move chapter")
 		}
@@ -477,42 +550,5 @@ func (s *Server) setChapterPart(w http.ResponseWriter, r *http.Request) {
 	}
 	// Echo the resulting part_id so the caller sees the move without a re-read.
 	s.getChapterByID(w, r.Context(), bookID, chapterID, uuid.Nil, http.StatusOK,
-		map[string]any{"part_id": in.PartID})
-}
-
-// errChapterNotFound is declared in server.go (shared chapter sentinel). This file
-// adds only the part-move-specific one.
-var errPartNotInBook = errors.New("target part is not an active part of this book")
-
-// moveChapterToPart sets chapters.part_id, verifying (a) the chapter is an active
-// chapter of bookID, and (b) when partID != nil, the part is an ACTIVE part of the
-// SAME book. Shared by the REST route and the MCP tool (book_chapter_set_part).
-func (s *Server) moveChapterToPart(ctx context.Context, bookID, chapterID uuid.UUID, partID *uuid.UUID) error {
-	// Guard the chapter exists in this book (active). A missing chapter must 404,
-	// not silently no-op.
-	var exists bool
-	if err := s.pool.QueryRow(ctx,
-		`SELECT true FROM chapters WHERE id=$1 AND book_id=$2 AND lifecycle_state='active'`,
-		chapterID, bookID).Scan(&exists); err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			return errChapterNotFound
-		}
-		return err
-	}
-	// A non-null target must be an active part of THIS book (tenancy: no cross-book move).
-	if partID != nil {
-		var ok bool
-		if err := s.pool.QueryRow(ctx,
-			`SELECT true FROM parts WHERE id=$1 AND book_id=$2 AND lifecycle_state='active'`,
-			*partID, bookID).Scan(&ok); err != nil {
-			if errors.Is(err, pgx.ErrNoRows) {
-				return errPartNotInBook
-			}
-			return err
-		}
-	}
-	_, err := s.pool.Exec(ctx,
-		`UPDATE chapters SET part_id=$3, updated_at=now() WHERE id=$1 AND book_id=$2`,
-		chapterID, bookID, partID)
-	return err
+		map[string]any{"part_id": partID})
 }

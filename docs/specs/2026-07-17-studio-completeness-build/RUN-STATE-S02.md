@@ -24,7 +24,8 @@ Done = S-02 built + scoped tests green (real pasted output) + `/review-impl` pas
 - [ ] **A — Parts DATA layer (REST + repo).** `parts.go`: create/rename/reorder/archive/restore/move + list;
       7 routes in server.go; expose `part_id` in listChapters + listChaptersKeyset (the FE grouping seam).
       Usability: the load-bearing enabler; consumed by B (agent) and C (FE).
-- [ ] **B — MCP tools (agent parity).** `book_part_{create,rename,reorder,archive,restore}` + `book_chapter_set_part`.
+- [x] **B — MCP tools (agent parity).** `book_part_{create,rename,reorder,archive,restore}` + `book_chapter_set_part`.
+      DONE 2026-07-17 (commit pending). Shared store methods (no REST/MCP drift); Undo hints per tool.
       Usability: **operable with NO new GUI** — user drives it through the studio assistant. Anti-hollow-shell insurance.
 - [ ] **C — FE two-level tree.** Self-contained parts api + PartsTree + hook + tests. Navigator MOUNT →
       manifest (foreign uncommitted diff blocks a clean stage). Direct-manipulation GUI.
@@ -35,6 +36,11 @@ Done = S-02 built + scoped tests green (real pasted output) + `/review-impl` pas
   ReorderValidation, ChapterListExposesPartId). Full `internal/api` package `ok 24.672s` (no regression).
   migrate-package deadlock/backfill failures = shared-DB test residue (green on fresh DB), not S-02.
   DB: throwaway `loreweave_book_s02test` on PG18 :5555.
+- **Slice B (2026-07-17):** `go test ./internal/api/ -run TestMCPParts -v` — 4/4 PASS
+  (CreateRenameArchiveRestore + undo hints, Reorder + prior-order undo, SetPart round-trip + cross-book
+  breach → errPartNotInBook, TenancyDenied → errBookNotAccessible). Refactored REST → shared store methods,
+  TestParts_ still 7/7. Full `internal/api` `ok 23.1s`. Single-service ⇒ no cross-service live-smoke token;
+  DB tests ARE the live proof (real PG18 + real router + real MCP handlers; tools boot-validated by MustValidateToolMeta).
 
 ## Registers
 ### Decisions
