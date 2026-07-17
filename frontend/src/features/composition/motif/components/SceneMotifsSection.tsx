@@ -62,17 +62,32 @@ function SuggestRow(
  * embedded with YOUR own model) and "the library" (P-space, platform) — and render each as
  * its own labelled list. The two spaces' scores aren't comparable, so they are NEVER merged
  * into one order (the honest two-section presentation). A candidate with no `section` (older
- * BE, or a shared row) falls into the library group. */
+ * BE, or a shared row) falls into the library group.
+ *
+ * A degrade note lives INSIDE each section with the RIGHT cause — the two degrade for
+ * DIFFERENT reasons: "your motifs" degrade when YOU have no embedding model set up (fixable
+ * by you), "the library" degrades when the PLATFORM embedding model isn't configured (an
+ * admin concern). A single global "library fallbacks" banner mislabelled the first case. */
 function renderMotifSuggestions(
   rows: MotifSuggestion[],
   { t, swapping, onBind }: { t: TFunction; swapping: boolean; onBind: (id: string) => void },
 ): ReactNode {
   const mine = rows.filter((s) => (s.match_reason as { section?: string } | null)?.section === 'mine');
   const library = rows.filter((s) => (s.match_reason as { section?: string } | null)?.section !== 'mine');
-  const group = (items: MotifSuggestion[], testid: string, label: string) =>
-    items.length === 0 ? null : (
+  const group = (
+    items: MotifSuggestion[], testid: string, label: string,
+    degradeTestid: string, degradeText: string,
+  ) => {
+    if (items.length === 0) return null;
+    const degraded = items.some((s) => (s.match_reason as { degraded?: boolean } | null)?.degraded);
+    return (
       <div data-testid={testid}>
         <p className="px-0.5 pt-0.5 text-[10px] font-semibold uppercase tracking-wide text-neutral-400">{label}</p>
+        {degraded && (
+          <p data-testid={degradeTestid} className="my-0.5 rounded bg-amber-50 px-2 py-0.5 text-[10px] text-amber-700 dark:bg-amber-950/30 dark:text-amber-300">
+            {degradeText}
+          </p>
+        )}
         <ul className="space-y-1">
           {items.map((s) => (
             <SuggestRow key={s.motif.id} s={s} t={t} swapping={swapping} onBind={onBind} />
@@ -80,10 +95,19 @@ function renderMotifSuggestions(
         </ul>
       </div>
     );
+  };
   return (
     <div className="space-y-1.5">
-      {group(mine, 'motif-suggest-section-mine', t('motif.suggest.sectionMine', { defaultValue: 'Your motifs' }))}
-      {group(library, 'motif-suggest-section-library', t('motif.suggest.sectionLibrary', { defaultValue: 'From the library' }))}
+      {group(
+        mine, 'motif-suggest-section-mine', t('motif.suggest.sectionMine', { defaultValue: 'Your motifs' }),
+        'motif-suggest-degraded-mine',
+        t('motif.suggest.degradedMine', { defaultValue: "Your motifs aren't ranked by fit — set up an embedding model in your settings to rank them semantically." }),
+      )}
+      {group(
+        library, 'motif-suggest-section-library', t('motif.suggest.sectionLibrary', { defaultValue: 'From the library' }),
+        'motif-suggest-degraded',
+        t('motif.suggest.degradedLibrary', { defaultValue: "Not ranked by fit — the shared library's embedding model isn't configured, so these are genre fallbacks, not scored matches." }),
+      )}
     </div>
   );
 }
@@ -155,15 +179,11 @@ function SceneMotifsInner({ projectId, bookId, chapterId, sceneId, roster = [], 
             {/* NO SILENT DEGRADE — when the retriever falls back (the platform embedding model isn't
                 configured, so vectors are missing), the scores are NOT semantic. Say so, don't show a
                 flat % as if it were a real match (the challenge that surfaced this). */}
-            {(suggestions.data ?? []).some((s) => (s.match_reason as { degraded?: boolean } | null)?.degraded) && (
-              <p data-testid="motif-suggest-degraded" className="mb-1 rounded bg-amber-50 px-2 py-0.5 text-[10px] text-amber-700 dark:bg-amber-950/30 dark:text-amber-300">
-                {t('motif.suggest.degraded', { defaultValue: 'Unranked — semantic matching is unavailable (the embedding model isn\'t set up), so these are library fallbacks, not scored fits.' })}
-              </p>
-            )}
             {/* Two SECTIONS (tenancy re-design 2026-07-17): "your" motifs (embedded in YOUR
                 own model space) rank separately from the shared library (platform space) — the
                 scores aren't comparable across spaces, so we never merge them into one order.
-                A candidate with no `section` (older BE) falls into the library group. */}
+                A candidate with no `section` (older BE) falls into the library group. Each
+                section carries its OWN degrade note (different causes — see the helper). */}
             {renderMotifSuggestions(suggestions.data ?? [], {
               t, swapping: binding.swap.isPending,
               onBind: (id) => binding.swap.mutate(id, { onSuccess: () => setSuggestOpen(false) }),

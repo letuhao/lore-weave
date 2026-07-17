@@ -251,7 +251,10 @@
     "loading": "Cargando mapa del mundo…",
     "addFailed": "No se pudo añadir el lugar.",
     "linkFailed": "No se pudieron vincular los lugares.",
-    "linkMissing": "Uno de esos lugares ya no existe."
+    "linkMissing": "Uno de esos lugares ya no existe.",
+    "delete": "Eliminar {{name}}",
+    "deleteConfirm": "¿Eliminar «{{name}}» del mapa mundial? Esto archivará el lugar.",
+    "deleteFailed": "No se pudo eliminar el lugar."
   },
   "grounding": "Contextualización",
   "canon": "Canon",
@@ -918,7 +921,8 @@
       "retry": "Reintentar",
       "empty": "Aún no hay ningún motivo que encaje con esta escena; añade más a tu biblioteca.",
       "bind": "Vincular",
-      "degraded": "Sin clasificar: la coincidencia semántica no está disponible (el modelo de embedding no está configurado), por lo que estos son resultados de respaldo de la biblioteca, no coincidencias puntuadas.",
+      "degradedMine": "Tus motivos no están clasificados por relevancia; configura un modelo de embedding en tus ajustes para clasificarlos semánticamente.",
+      "degradedLibrary": "No están clasificados por relevancia; el modelo de embedding de la biblioteca compartida no está configurado, por lo que estos son valores predeterminados por género, no coincidencias puntuadas.",
       "sectionMine": "Tus motivos",
       "sectionLibrary": "De la biblioteca"
     }

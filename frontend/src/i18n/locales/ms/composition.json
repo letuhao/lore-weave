@@ -251,7 +251,10 @@
     "loading": "Memuat peta dunia...",
     "addFailed": "Tidak dapat menambah tempat tersebut.",
     "linkFailed": "Tidak dapat memautkan tempat tersebut.",
-    "linkMissing": "Salah satu tempat tersebut tidak lagi wujud."
+    "linkMissing": "Salah satu tempat tersebut tidak lagi wujud.",
+    "delete": "Padam {{name}}",
+    "deleteConfirm": "Padam «{{name}}» daripada peta dunia? Ini akan mengarkibkan tempat tersebut.",
+    "deleteFailed": "Tidak dapat memadam tempat tersebut."
   },
   "grounding": "Asas",
   "canon": "Kanun",
@@ -918,7 +921,8 @@
       "retry": "Cuba lagi",
       "empty": "Tiada motif yang sesuai untuk babak ini lagi — tambah lebih banyak ke dalam perpustakaan anda.",
       "bind": "Ikat",
-      "degraded": "Tidak berkedudukan — padanan semantik tidak tersedia (model embedding belum ditetapkan), jadi ini adalah sandaran perpustakaan, bukan padanan yang dinilai.",
+      "degradedMine": "Motif anda tidak disusun mengikut kesesuaian — tetapkan model embedding dalam tetapan anda untuk menyusunnya secara semantik.",
+      "degradedLibrary": "Tidak disusun mengikut kesesuaian — model embedding perpustakaan kongsi belum dikonfigurasi, jadi ini adalah pilihan fallback genre, bukannya padanan yang diberi skor.",
       "sectionMine": "Motif anda",
       "sectionLibrary": "Daripada perpustakaan"
     }

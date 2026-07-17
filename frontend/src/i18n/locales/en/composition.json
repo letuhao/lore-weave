@@ -251,7 +251,10 @@
     "loading": "Loading world map…",
     "addFailed": "Could not add the place.",
     "linkFailed": "Could not link the places.",
-    "linkMissing": "One of those places no longer exists."
+    "linkMissing": "One of those places no longer exists.",
+    "delete": "Remove {{name}}",
+    "deleteConfirm": "Remove “{{name}}” from the world map? This archives the place.",
+    "deleteFailed": "Could not remove the place."
   },
   "grounding": "Grounding",
   "canon": "Canon",
@@ -918,7 +921,8 @@
       "retry": "Retry",
       "empty": "No motif fits this scene yet — add more to your library.",
       "bind": "Bind",
-      "degraded": "Unranked — semantic matching is unavailable (the embedding model isn't set up), so these are library fallbacks, not scored fits.",
+      "degradedMine": "Your motifs aren't ranked by fit — set up an embedding model in your settings to rank them semantically.",
+      "degradedLibrary": "Not ranked by fit — the shared library's embedding model isn't configured, so these are genre fallbacks, not scored matches.",
       "sectionMine": "Your motifs",
       "sectionLibrary": "From the library"
     }

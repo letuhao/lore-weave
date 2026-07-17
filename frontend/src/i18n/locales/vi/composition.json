@@ -251,7 +251,10 @@
     "loading": "Đang tải bản đồ thế giới…",
     "addFailed": "Không thể thêm địa điểm.",
     "linkFailed": "Không thể liên kết các địa điểm.",
-    "linkMissing": "Một trong các địa điểm đó không còn tồn tại."
+    "linkMissing": "Một trong các địa điểm đó không còn tồn tại.",
+    "delete": "Xóa {{name}}",
+    "deleteConfirm": "Xóa «{{name}}» khỏi bản đồ thế giới? Thao tác này sẽ đưa địa điểm vào kho lưu trữ.",
+    "deleteFailed": "Không thể xóa địa điểm này."
   },
   "grounding": "Căn cứ",
   "canon": "Canon",
@@ -918,7 +921,8 @@
       "retry": "Thử lại",
       "empty": "Chưa có mô-típ nào phù hợp với cảnh này — hãy thêm nhiều hơn vào thư viện của bạn.",
       "bind": "Liên kết",
-      "degraded": "Chưa xếp hạng — không thể khớp ngữ nghĩa (do mô hình nhúng chưa được thiết lập), vì vậy đây là các kết quả dự phòng từ thư viện, không phải các kết quả khớp theo điểm số.",
+      "degradedMine": "Các motif của bạn không được xếp hạng theo độ phù hợp — hãy thiết lập một mô hình embedding trong phần cài đặt để xếp hạng chúng theo ngữ nghĩa.",
+      "degradedLibrary": "Không được xếp hạng theo độ phù hợp — mô hình embedding của thư viện dùng chung chưa được cấu hình, vì vậy đây là các kết quả thay thế theo thể loại, không phải các kết quả khớp theo điểm số.",
       "sectionMine": "Mô típ của bạn",
       "sectionLibrary": "Từ thư viện"
     }

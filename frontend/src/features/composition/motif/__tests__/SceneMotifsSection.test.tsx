@@ -86,6 +86,19 @@ describe('SceneMotifsSection', () => {
     expect(screen.queryByTestId('motif-suggest-section-mine')).not.toBeInTheDocument();
   });
 
+  it('shows a MINE-specific degrade note (not the library one) when your own motifs are unranked', async () => {
+    (motifApi.suggestForChapter as ReturnType<typeof vi.fn>).mockResolvedValue({ candidates: [
+      { motif: { id: 'p1', name: 'Mine-Deg', code: 'a' }, score: 0.4, match_reason: { genre: 0.4, cosine: 0, section: 'mine', degraded: true } },
+      { motif: { id: 'l1', name: 'Lib-OK', code: 'b' }, score: 0.7, match_reason: { cosine: 0.7, section: 'library' } },
+    ] });
+    wrap(<SceneMotifsSection projectId="p" bookId="b" chapterId="c" sceneId="s" token="t" />);
+    fireEvent.click(await screen.findByTestId('motif-suggest-toggle'));
+    // the degrade note appears in YOUR section (your-embedding-model cause)…
+    expect(await screen.findByTestId('motif-suggest-degraded-mine')).toBeInTheDocument();
+    // …and NOT the library one (the library ranked fine here)
+    expect(screen.queryByTestId('motif-suggest-degraded')).not.toBeInTheDocument();
+  });
+
   it('surfaces the suggest empty state (no motif fits)', async () => {
     (motifApi.suggestForChapter as ReturnType<typeof vi.fn>).mockResolvedValue({ candidates: [] });
     wrap(<SceneMotifsSection projectId="p" bookId="b" chapterId="c" sceneId="s" token="t" />);

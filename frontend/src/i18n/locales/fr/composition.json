@@ -251,7 +251,10 @@
     "loading": "Chargement de la carte du monde…",
     "addFailed": "Impossible d'ajouter le lieu.",
     "linkFailed": "Impossible de lier les lieux.",
-    "linkMissing": "L'un de ces lieux n'existe plus."
+    "linkMissing": "L'un de ces lieux n'existe plus.",
+    "delete": "Supprimer {{name}}",
+    "deleteConfirm": "Supprimer « {{name}} » de la carte du monde ? Cela archivera le lieu.",
+    "deleteFailed": "Impossible de supprimer le lieu."
   },
   "grounding": "Ancrage",
   "canon": "Canon",
@@ -918,7 +921,8 @@
       "retry": "Réessayer",
       "empty": "Aucun motif ne correspond encore à cette scène — ajoutez-en davantage à votre bibliothèque.",
       "bind": "Lier",
-      "degraded": "Non classé — la correspondance sémantique est indisponible (le modèle d'embedding n'est pas configuré), il s'agit donc de suggestions par défaut et non de correspondances évaluées.",
+      "degradedMine": "Vos motifs ne sont pas classés par pertinence — configurez un modèle d'embedding dans vos paramètres pour les classer sémantiquement.",
+      "degradedLibrary": "Non classés par pertinence — le modèle d'embedding de la bibliothèque partagée n'est pas configuré ; il s'agit de suggestions par genre et non de correspondances évaluées.",
       "sectionMine": "Vos motifs",
       "sectionLibrary": "Depuis la bibliothèque"
     }

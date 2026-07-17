@@ -251,7 +251,10 @@
     "loading": "Weltkarte wird geladen…",
     "addFailed": "Ort konnte nicht hinzugefügt werden.",
     "linkFailed": "Orte konnten nicht verknüpft werden.",
-    "linkMissing": "Einer dieser Orte existiert nicht mehr."
+    "linkMissing": "Einer dieser Orte existiert nicht mehr.",
+    "delete": "{{name}} entfernen",
+    "deleteConfirm": "„{{name}}“ von der Weltkarte entfernen? Dadurch wird der Ort archiviert.",
+    "deleteFailed": "Der Ort konnte nicht entfernt werden."
   },
   "grounding": "Fundierung",
   "canon": "Kanon",
@@ -918,7 +921,8 @@
       "retry": "Wiederholen",
       "empty": "Noch kein passendes Motiv für diese Szene gefunden – füge deiner Bibliothek mehr hinzu.",
       "bind": "Verknüpfen",
-      "degraded": "Nicht bewertet – semantisches Matching ist nicht verfügbar (das Embedding-Modell ist nicht konfiguriert), daher handelt es sich hierbei um Standard-Bibliotheksergebnisse statt bewerteter Treffer.",
+      "degradedMine": "Deine Motive sind nicht nach Relevanz sortiert – richte in deinen Einstellungen ein Embedding-Modell ein, um sie semantisch zu bewerten.",
+      "degradedLibrary": "Nicht nach Relevanz sortiert – das Embedding-Modell der gemeinsamen Bibliothek ist nicht konfiguriert. Daher handelt es sich hierbei um Genre-Alternativen und nicht um bewertete Treffer.",
       "sectionMine": "Deine Motive",
       "sectionLibrary": "Aus der Bibliothek"
     }

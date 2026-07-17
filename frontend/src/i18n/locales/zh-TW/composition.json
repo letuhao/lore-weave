@@ -251,7 +251,10 @@
     "loading": "載入世界地圖中…",
     "addFailed": "無法新增地點。",
     "linkFailed": "無法連結地點。",
-    "linkMissing": "其中一個地點已不存在。"
+    "linkMissing": "其中一個地點已不存在。",
+    "delete": "移除 {{name}}",
+    "deleteConfirm": "要從世界地圖中移除「{{name}}」嗎？這將把該地點存入封存檔。",
+    "deleteFailed": "無法移除該地點。"
   },
   "grounding": "依據",
   "canon": "正典",
@@ -918,7 +921,8 @@
       "retry": "重試",
       "empty": "目前尚無符合此場景的主題 — 請在您的庫中添加更多內容。",
       "bind": "綁定",
-      "degraded": "未排名 — 無法進行語義匹配（尚未設定嵌入模型），因此這些是從圖書館中提取的預設選項，而非經過評分的匹配項。",
+      "degradedMine": "您的主題（motifs）尚未依據契合度排序 — 請在設定中建立嵌入模型（embedding model），以便進行語義排序。",
+      "degradedLibrary": "尚未依據契合度排序 — 由於共享圖書館的嵌入模型尚未配置，因此這些是類型回退（genre fallbacks），而非評分匹配項。",
       "sectionMine": "您的主題",
       "sectionLibrary": "來自圖庫"
     }

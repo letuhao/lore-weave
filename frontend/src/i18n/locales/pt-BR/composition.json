@@ -251,7 +251,10 @@
     "loading": "Carregando mapa mundi...",
     "addFailed": "Não foi possível adicionar o lugar.",
     "linkFailed": "Não foi possível vincular os lugares.",
-    "linkMissing": "Um desses lugares não existe mais."
+    "linkMissing": "Um desses lugares não existe mais.",
+    "delete": "Remover {{name}}",
+    "deleteConfirm": "Remover «{{name}}» do mapa do mundo? Isso arquivará o lugar.",
+    "deleteFailed": "Não foi possível remover o lugar."
   },
   "grounding": "Fundamentação",
   "canon": "Cânone",
@@ -918,7 +921,8 @@
       "retry": "Tentar novamente",
       "empty": "Nenhum motivo se encaixa nesta cena ainda — adicione mais à sua biblioteca.",
       "bind": "Vincular",
-      "degraded": "Sem classificação — a correspondência semântica não está disponível (o modelo de embedding não está configurado), portanto, estes são resultados padrão da biblioteca, não correspondências pontuadas.",
+      "degradedMine": "Seus motivos não estão classificados por afinidade — configure um modelo de embedding nas suas configurações para classificá-los semanticamente.",
+      "degradedLibrary": "Não classificados por afinidade — o modelo de embedding da biblioteca compartilhada não está configurado, portanto, estes são resultados genéricos de gênero, não correspondências pontuadas.",
       "sectionMine": "Seus motivos",
       "sectionLibrary": "Da biblioteca"
     }

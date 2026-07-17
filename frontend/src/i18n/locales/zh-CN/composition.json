@@ -251,7 +251,10 @@
     "loading": "正在加载世界地图…",
     "addFailed": "无法添加地点。",
     "linkFailed": "无法链接这些地点。",
-    "linkMissing": "其中一个地点已不存在。"
+    "linkMissing": "其中一个地点已不存在。",
+    "delete": "移除 {{name}}",
+    "deleteConfirm": "要从世界地图中移除“{{name}}”吗？这将把该地点归档。",
+    "deleteFailed": "无法移除该地点。"
   },
   "grounding": "事实依据",
   "canon": "正典",
@@ -918,7 +921,8 @@
       "retry": "重试",
       "empty": "目前尚无符合该场景的主题 —— 请在您的库中添加更多内容。",
       "bind": "绑定",
-      "degraded": "未排名 — 语义匹配不可用（未设置嵌入模型），因此这些是库回退结果，而非评分匹配项。",
+      "degradedMine": "您的主题（Motif）未按匹配度排序 —— 请在设置中配置嵌入模型（Embedding Model）以实现语义排序。",
+      "degradedLibrary": "未按匹配度排序 —— 由于共享库的嵌入模型尚未配置，这些是基于类型的备选方案，而非评分匹配项。",
       "sectionMine": "您的主题",
       "sectionLibrary": "来自库"
     }

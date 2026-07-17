@@ -251,7 +251,10 @@
     "loading": "Memuat peta dunia...",
     "addFailed": "Tidak dapat menambahkan tempat.",
     "linkFailed": "Tidak dapat menautkan tempat.",
-    "linkMissing": "Salah satu tempat tersebut tidak lagi ada."
+    "linkMissing": "Salah satu tempat tersebut tidak lagi ada.",
+    "delete": "Hapus {{name}}",
+    "deleteConfirm": "Hapus «{{name}}» dari peta dunia? Ini akan mengarsipkan tempat tersebut.",
+    "deleteFailed": "Tidak dapat menghapus tempat ini."
   },
   "grounding": "Grounding",
   "canon": "Kanun",
@@ -918,7 +921,8 @@
       "retry": "Coba lagi",
       "empty": "Belum ada motif yang cocok untuk adegan ini — tambahkan lebih banyak ke pustaka Anda.",
       "bind": "Ikat",
-      "degraded": "Tanpa peringkat — pencocokan semantik tidak tersedia (model embedding belum diatur), jadi ini adalah cadangan pustaka, bukan kecocokan yang dinilai.",
+      "degradedMine": "Motif Anda tidak diurutkan berdasarkan kecocokan — atur model embedding di pengaturan Anda untuk mengurutkannya secara semantik.",
+      "degradedLibrary": "Tidak diurutkan berdasarkan kecocokan — model embedding pustaka bersama belum dikonfigurasi, jadi ini adalah cadangan genre, bukan hasil pencocokan yang dinilai.",
       "sectionMine": "Motif Anda",
       "sectionLibrary": "Dari pustaka"
     }

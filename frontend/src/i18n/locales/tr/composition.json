@@ -251,7 +251,10 @@
     "loading": "Dünya haritası yükleniyor…",
     "addFailed": "Mekan eklenemedi.",
     "linkFailed": "Mekanlar bağlanamadı.",
-    "linkMissing": "Mekanlardan biri artık mevcut değil."
+    "linkMissing": "Mekanlardan biri artık mevcut değil.",
+    "delete": "{{name}} öğesini kaldır",
+    "deleteConfirm": "“{{name}}” dünya haritasından kaldırılsın mı? Bu işlem mekanı arşivler.",
+    "deleteFailed": "Mekan kaldırılamadı."
   },
   "grounding": "Temellendirme",
   "canon": "Kanun",
@@ -918,7 +921,8 @@
       "retry": "Tekrar dene",
       "empty": "Bu sahneye uygun henüz bir motif bulunamadı — kütüphanenize daha fazla ekleyin.",
       "bind": "Bağla",
-      "degraded": "Sıralama yok — anlamsal eşleştirme kullanılamıyor (gömme modeli ayarlanmamış), bu nedenle bunlar puanlanmış eşleşmeler değil, kütüphane yedekleridir.",
+      "degradedMine": "Motifleriniz uyumluluk sırasına göre sıralanmıyor — bunları anlamsal olarak sıralamak için ayarlarınızdan bir gömme (embedding) modeli kurun.",
+      "degradedLibrary": "Uyumluluk sırasına göre sıralanmadı — ortak kütüphanenin gömme (embedding) modeli yapılandırılmadığı için bunlar puanlanmış eşleşmeler değil, tür bazlı yedek seçeneklerdir.",
       "sectionMine": "Motifleriniz",
       "sectionLibrary": "Kütüphaneden"
     }
