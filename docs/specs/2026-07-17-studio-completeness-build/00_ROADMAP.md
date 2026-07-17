@@ -35,6 +35,7 @@ was mis-carried as. See [`S-13_studio-decompose-surface.md`](S-13_studio-decompo
 | **S-12** | `workflows + workflow-proposals GUI` (G-WORKFLOWS, PO: build here) — 3 BE verbs (mirror skills) + 2 panels + mode-binding setting | B | ❌ 3 routes over existing repo | ❌ near-clone of ExtensionsPanel/ProposalsPanel | M |
 | **S-10** | `Tier-C FE orphans` — style-voice + reference-shelf panels · Issues/diagnostics tab · bible/quality rails · MotifBindingLens mount · 3 arc agent-only surfaces · `[[`-create (PO D-d) | C | ❌ FE-only | ❌ (Issues tab layout = a small inline decision; the rest are ports/mounts) | S each |
 | **S-13** | `studio decompose surface` (G-STORY-STRUCTURE) — closes the S-01 `Use in decompose` loop: a studio `decompose` panel hosting the existing decompose flow + a deep-link from `structure-templates` | A follow-on | ❌ FE-only PORT (decompose UX already exists in `usePlanner`/`PlannerView`) | ❌ port (`PlannerView` is the reference) | M |
+| **S-01b** | `structure-templates UX hardening` — clears every S-01 dead-end + lifts the GUI score ≈6.3→≈8.4: blank-create on-ramp, feedback/safety layer (unsaved-guard, save-toast, human error copy, archive-confirm), narrow-dock `@container` responsive, i18n/a11y/kind-edit. A1 button wired via S-13 | A follow-on | ❌ FE-only (all verbs already backend-supported) | ❌ hardens existing panel | M |
 
 **HTML drafts required (3):** `screen-structure-templates.html`, `screen-manuscript-parts.html`,
 `screen-kg-triage.html`. Everything else references an existing component or adds an affordance.
