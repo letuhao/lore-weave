@@ -53,7 +53,9 @@ function toRoman(n: number): string {
 export function ManuscriptNavigator({ bookId, token, selectedId, onSelect, onNewChapter, onCollapseSidebar }: Props) {
   const { t } = useTranslation('studio');
   const {
-    source, rows, total, counts, error, parts,
+    // `parts` defaults to [] so the navigator tolerates a hook shape without it (older/partial
+    // mocks) — reading parts.length/findIndex on undefined would crash every row render.
+    source, rows, total, counts, error, parts = [],
     toggleExpand, loadMore, collapseAll, reload,
     createAct, renameAct, trashAct, moveChapterToAct, moveAct,
   } = useManuscriptTree(bookId, token);

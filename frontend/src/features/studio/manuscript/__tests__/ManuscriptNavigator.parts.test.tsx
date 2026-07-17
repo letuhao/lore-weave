@@ -35,11 +35,14 @@ const mutators = () => ({
   renameAct: vi.fn(() => Promise.resolve()),
   trashAct: vi.fn(() => Promise.resolve()),
   moveChapterToAct: vi.fn(() => Promise.resolve()),
+  moveAct: vi.fn(() => Promise.resolve()),
 });
 
-const base = (m: ReturnType<typeof mutators>, rows: ManuscriptRow[]) => ({
-  source: 'chapters', rows, total: 1, error: null, partsMode: true,
-  counts: { arcs: 1, chapters: 1, scenes: null },
+const partRow2 = (id: string, sort: number) => ({ part_id: id, book_id: 'b', title: id, path: id, sort_order: sort, lifecycle_state: 'active' as const });
+
+const base = (m: ReturnType<typeof mutators>, rows: ManuscriptRow[], parts: ReturnType<typeof partRow2>[] = []) => ({
+  source: 'chapters', rows, total: 1, error: null, partsMode: true, parts,
+  counts: { arcs: parts.length, chapters: 1, scenes: null },
   toggleExpand: vi.fn(), loadMore: vi.fn(), collapseAll: vi.fn(), reload: vi.fn(), ...m,
 });
 
@@ -98,6 +101,32 @@ describe('ManuscriptNavigator — S-02 act affordances', () => {
     render(<ManuscriptNavigator bookId="b1" token="t" />);
     fireEvent.click(screen.getByTestId('manuscript-part-trash-p1'));
     expect(m.trashAct).not.toHaveBeenCalled();
+  });
+
+  it('S-02b: ↑/↓ reorder buttons — only with ≥2 acts, disabled at the boundary, call moveAct', () => {
+    const m = mutators();
+    hook.value = base(m, [
+      row(partNode('p1', 'Act I'), 0),
+      row(partNode('p2', 'Act II'), 0),
+    ], [partRow2('p1', 1), partRow2('p2', 2)]);
+    render(<ManuscriptNavigator bookId="b1" token="t" />);
+
+    // first act: up disabled, down enabled
+    expect((screen.getByTestId('manuscript-part-up-p1') as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByTestId('manuscript-part-down-p1') as HTMLButtonElement).disabled).toBe(false);
+    // last act: down disabled
+    expect((screen.getByTestId('manuscript-part-down-p2') as HTMLButtonElement).disabled).toBe(true);
+
+    fireEvent.click(screen.getByTestId('manuscript-part-down-p1'));
+    expect(m.moveAct).toHaveBeenCalledWith('p1', 'down');
+  });
+
+  it('S-02b: a single act shows NO reorder buttons (nothing to reorder)', () => {
+    const m = mutators();
+    hook.value = base(m, [row(partNode('p1', 'Act I'), 0)], [partRow2('p1', 1)]);
+    render(<ManuscriptNavigator bookId="b1" token="t" />);
+    expect(screen.queryByTestId('manuscript-part-up-p1')).toBeNull();
+    expect(screen.queryByTestId('manuscript-part-down-p1')).toBeNull();
   });
 
   it('drag a chapter onto an act → moveChapterToAct(chapterId, partId); onto Unassigned → null', () => {

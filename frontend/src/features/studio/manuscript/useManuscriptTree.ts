@@ -253,11 +253,25 @@ export function useManuscriptTree(bookId: string, token: string | null) {
     await resetAndLoad();
   }, [token, bookId, resetAndLoad]);
 
+  // S-02b — reorder acts by swapping the target with its neighbour and rewriting the whole
+  // order (partsApi.reorder wants EVERY active id). Boundary move (up at top / down at bottom)
+  // is a no-op. `parts` is already in sort order (the list route orders by sort_order).
+  const moveAct = useCallback(async (partId: string, dir: 'up' | 'down') => {
+    if (!token) return;
+    const ordered = parts.map((p) => p.part_id);
+    const i = ordered.indexOf(partId);
+    const j = dir === 'up' ? i - 1 : i + 1;
+    if (i < 0 || j < 0 || j >= ordered.length) return; // boundary → no-op
+    [ordered[i], ordered[j]] = [ordered[j], ordered[i]];
+    await partsApi.reorder(token, bookId, ordered);
+    await resetAndLoad();
+  }, [token, bookId, parts, resetAndLoad]);
+
   const rows = useMemo(() => flatten(tree), [tree]);
 
   return {
-    source, rows, total, counts, error, partsMode,
+    source, rows, total, counts, error, partsMode, parts,
     toggleExpand, loadMore, collapseAll, reload: resetAndLoad,
-    createAct, renameAct, trashAct, moveChapterToAct,
+    createAct, renameAct, trashAct, moveChapterToAct, moveAct,
   };
 }

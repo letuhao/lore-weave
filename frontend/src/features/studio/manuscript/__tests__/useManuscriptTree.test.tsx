@@ -17,10 +17,13 @@ vi.mock('@/features/composition/api', () => ({ compositionApi: {
 // path is covered by partsTree.test.ts + a dedicated case below). Keep groupChaptersByParts real
 // (buildPartsTree depends on it). Individual tests can override listParts.
 const listParts = vi.fn(() => Promise.resolve({ items: [] }));
+const reorderParts = vi.fn(() => Promise.resolve({ items: [] }));
 vi.mock('../partsApi', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../partsApi')>();
-  return { ...actual, partsApi: { ...actual.partsApi, list: (...a: unknown[]) => listParts(...a) } };
+  return { ...actual, partsApi: { ...actual.partsApi, list: (...a: unknown[]) => listParts(...a), reorder: (...a: unknown[]) => reorderParts(...a) } };
 });
+
+const mkAct = (id: string, sort: number) => ({ part_id: id, book_id: 'b1', title: id.toUpperCase(), path: id, sort_order: sort, lifecycle_state: 'active' as const });
 
 import { useManuscriptTree } from '../useManuscriptTree';
 import type { ManuscriptRow } from '../types';
@@ -31,6 +34,8 @@ beforeEach(() => {
   listChaptersPage.mockReset();
   listOutlineChildren.mockReset();
   listParts.mockReset();
+  reorderParts.mockReset();
+  reorderParts.mockResolvedValue({ items: [] });
   listParts.mockResolvedValue({ items: [] }); // default: flat mode
   work.value = { data: { status: 'none' }, isLoading: false };
 });
@@ -114,6 +119,22 @@ describe('useManuscriptTree', () => {
     expect(chap && chap.type === 'node' && chap.depth).toBe(1);
     // no paging affordance in grouped mode (whole book loaded)
     expect(result.current.rows.some((r) => r.type === 'more')).toBe(false);
+  });
+
+  it('S-02b: moveAct swaps with a neighbour and reorders the FULL id set; boundary = no-op', async () => {
+    listParts.mockResolvedValue({ items: [mkAct('p1', 1), mkAct('p2', 2), mkAct('p3', 3)] });
+    listChaptersPage.mockResolvedValue({ items: [], next_cursor: null, total: 0 });
+    const { result } = renderHook(() => useManuscriptTree('b1', 't'));
+    await waitFor(() => expect(result.current.partsMode).toBe(true));
+
+    // move p2 up → [p2, p1, p3]
+    await act(async () => { await result.current.moveAct('p2', 'up'); });
+    expect(reorderParts).toHaveBeenLastCalledWith('t', 'b1', ['p2', 'p1', 'p3']);
+
+    // move p1 up when it's first → no-op (boundary), no new reorder call
+    reorderParts.mockClear();
+    await act(async () => { await result.current.moveAct('p1', 'up'); });
+    expect(reorderParts).not.toHaveBeenCalled();
   });
 
   it('filters structural `beat` nodes out of the outline', async () => {
