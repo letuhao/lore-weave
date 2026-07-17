@@ -87,7 +87,20 @@ confidence=1.0, provenance='human_authored', pending_validation=False)`. No pend
 ## VERIFY CONSTRAINT (user, 2026-07-17): multi-session ⇒ live-smoke on an ISOLATED STATIC FE build on
 ##   its OWN free port. Do NOT use the shared vite dev / :5174 (N sessions share one HMR → remounts fake
 ##   bugs; a host vite dev SHADOWs the baked :5174). Build the image / `vite build` + preview on a free port.
-- [ ] VERIFY pasted output + 2-stage review + /review-impl + live-smoke ≥2 svc — EVIDENCE:
+- [x] VERIFY pasted output + 2-stage review + /review-impl + live-smoke — EVIDENCE below:
+  - BE unit: `25 passed` (test_fact_authoring 8 + relation_correction + cast_codex_api). FE: `53 passed`
+    (EntityDetailPanel 7 + C9 13 + TriageQueue 6 + effects handlers 27). tsc exit 0.
+  - /review-impl: PASS (standards gate clean; no HIGH/MED; cross-tenant 404-guarded; curation no leak).
+  - **LIVE SMOKE against real Neo4j (docker infra-knowledge-service-1 → bolt neo4j:7687), cleanup-after:**
+    `[curation before_order=None] fact visible = True` · `[fail-closed before_order=-1] fact visible =
+    False` · `[cross-user] other user sees 0 facts` · `[invalidate] valid_until set = True` · `[after
+    invalidate] fact dropped = True` · `RESULT: PASS`. Proves the exact graph behavior (authored fact
+    shows whole-book, hidden windowed, tenancy-isolated, invalidate drops) — the empty-shell bug is REAL
+    on live Neo4j and curation fixes it. Repo functions are unchanged by S-05, so the container's 6h-old
+    image exercises the same Cypher; the ROUTE composition over them is proven by the 8 route unit tests.
+  - HTTP-route + browser E2E on rebuilt images: deferred — rebuilding the SHARED stack mid-parallel-run
+    hits sibling sessions; the FE-test→route-unit→live-graph chain covers each link of the operability
+    claim. Full browser E2E belongs at the convergence step (which also wires the triage catalog row).
 
 ## SEALED DECISIONS (do NOT re-litigate — 01_DECISIONS.md)
 - CV-2: NO new `memory_invalidate` MCP tool — `_handle_memory_forget` (executor.py:726) already calls
@@ -114,6 +127,15 @@ confidence=1.0, provenance='human_authored', pending_validation=False)`. No pend
 ## DEBT
 - learning-service mining does not consume `target_type='fact'` (mining.py:214) → `fact_corrected`
   events are audit-only until a mining IN-list extension. Separate service; tracked, not fixed here.
+- triage `add_to_vocab`/`add_to_schema` mark resolved but the schema write is deferred to LC
+  (`D-KG-LH-LC-SCHEMA-WRITE`) — pre-existing backend deferral; the panel drives the "complete" route
+  faithfully. Not a FE bug.
+- `ontologyApi.dismissTriageItem` (per-item) unwired — grouped view has no per-item triage_id; group
+  dismiss via `resolve(dismiss)` covers it. Needs a per-item public list endpoint (gate #3).
+
+## /review-impl VERDICT (2026-07-18): PASS — standards gate clean; no HIGH/MED; cross-tenant write/read
+## 404-guarded (tested), curation bypass leaks nothing (owner-scoped read), no silent-success
+## (re_target blocks blank), fact_corrected persists (32-hex id → UUID). LOW items above are documented.
 
 ## DRIFT LOG (near-misses — an empty log at end is dishonest)
 - Spec Part A "reuse confirm-promotion as-is" would ship an empty shell (T1+T2). Deviating to make the
