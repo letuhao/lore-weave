@@ -21,6 +21,7 @@ Output a single JSON object matching PlanAnalyze v1 with these keys:
 - open_questions: string[] (unresolved items — do NOT invent answers)
 
 Fidelity requirements (phần đầu):
+- CONTINUITY (REQUIRED when an "EXISTING STATE" section is present in the user message): that section lists arcs, characters and systems the book ALREADY has. REFERENCE them by their exact existing name/title — never re-invent an existing character under a new name, never duplicate an existing arc title. Proposing genuinely NEW arcs/characters is fine; contradicting or shadowing an existing one is a FAILURE. When no EXISTING STATE section is present, ignore this rule.
 - ARC COVERAGE (REQUIRED — highest priority): EVERY arc you declare in `arcs` MUST have >= 1 event whose `arc_id` is that arc's id. Distribute events across ALL arcs by their scope in the source; never concentrate all events in a single arc. An arc with no events cannot be compiled — leaving one empty is a generation FAILURE, and the named-arc rules below never excuse it.
 - List ALL 5 core traits from §1.3 in consistency_anchors (VN): Thực dụng, Bình dị, Tự giác giới hạn, Giữ lý trí trong khủng hoảng, Hài hước khô
 - Arc 2 MUST have exactly 7 events with Vietnamese titles from source (Nhập Môn through Quyết Định Tiếp Tục)
@@ -48,6 +49,7 @@ Structure:
 - links: [{from, to, kind, note}] — kind: event_constrains_variable|event_preserves_anchor|event_foreshadows|arc_depends_on_mechanic|variable_governs_tier
 
 Fidelity requirements:
+- CONTINUITY (REQUIRED when an "EXISTING STATE" section is present): that section lists arcs, characters and systems the book ALREADY has. REFERENCE them by their exact existing name/title — never re-invent an existing character under a new name, never duplicate an existing arc title. New arcs/characters are fine; contradicting or shadowing an existing one is a FAILURE. When no EXISTING STATE section is present, ignore this rule.
 - ARC COVERAGE (REQUIRED — highest priority, governs the arc-specific rules below): EVERY arc in `arcs` MUST have >= 1 event whose `arc_id` equals that arc's own id. Distribute events across ALL arcs in proportion to each arc's scope in the source — an arc that spans several chapters gets several events. NEVER put every event in one arc. An arc with zero events CANNOT be compiled and is a generation FAILURE — the arc-specific fixture rules below apply to their named arc but do NOT excuse leaving any other arc empty.
 - layers.characters[0].traits: exactly 5 strings in Vietnamese from §1.3
 - baseline_notes: summarize §1.1–§1.3 in VIETNAMESE (>=200 chars, >=35% VN diacritics); include mundane details (mì, mùi, cửa sổ)
@@ -129,19 +131,26 @@ Rules:
 - Base content only on provided section excerpts"""
 
 
-def analyze_user_prompt(markdown: str) -> str:
-    return f"""Analyze this planning document and output PlanAnalyze JSON only.
+def _existing_block(existing_block: str) -> str:
+    """Wrap a pre-rendered EXISTING STATE block (from `render_existing_state_prompt`), or "" when the
+    caller passes none (cold-start / grounding off) — keeping the prompt byte-identical to the blind
+    path. Rendered here (not in the engine) so `prompts.py` stays dependency-free of the gather lens."""
+    return f"\n<existing_state>\n{existing_block}\n</existing_state>\n" if existing_block else ""
 
+
+def analyze_user_prompt(markdown: str, existing_block: str = "") -> str:
+    return f"""Analyze this planning document and output PlanAnalyze JSON only.
+{_existing_block(existing_block)}
 <plan_document>
 {markdown}
 </plan_document>"""
 
 
-def materialize_user_prompt(analyze_json: str, source_checksum: str) -> str:
+def materialize_user_prompt(analyze_json: str, source_checksum: str, existing_block: str = "") -> str:
     return f"""Materialize this PlanAnalyze into NovelSystemSpec v1 JSON only.
 
 source_checksum for meta: {source_checksum}
-
+{_existing_block(existing_block)}
 <plan_analyze>
 {analyze_json}
 </plan_analyze>"""

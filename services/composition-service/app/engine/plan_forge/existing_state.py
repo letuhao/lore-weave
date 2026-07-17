@@ -137,6 +137,37 @@ def merge_existing_into_spec(spec: dict[str, Any], existing: "ExistingState") ->
     return spec
 
 
+def render_existing_state_prompt(state: "ExistingState") -> str:
+    """Render the EXISTING STATE section injected into the LLM propose prompts (analyze + materialize).
+    Empty string on a cold-start/empty state, so the prompt is byte-identical to the blind path when
+    there is nothing to ground on. The CONTINUITY rule in the system prompts references this section."""
+    if state.is_empty():
+        return ""
+    lines: list[str] = [
+        "EXISTING STATE — this book already exists. CONTINUE it; do NOT re-invent what is listed here.",
+        f"- Chapters written: {state.chapter_count}"
+        + (f" ({state.notes.get('spine', '')})" if state.notes.get("spine") else ""),
+    ]
+    if state.recent_chapters:
+        lines.append("- Recent chapters (the plan must continue from here):")
+        for cb in state.recent_chapters:
+            lines.append(f"  - {cb.title}: {cb.synopsis}".rstrip(": "))
+    if state.cast:
+        names = ", ".join(c.name for c in state.cast)
+        lines.append(f"- Existing cast (REFERENCE by these exact names; do not rename or re-invent): {names}")
+    if state.arcs:
+        titles = ", ".join(a.title for a in state.arcs)
+        lines.append(f"- Existing arcs (continue these; do not duplicate a title): {titles}")
+    if state.variables or state.motifs:
+        sys_bits = []
+        if state.variables:
+            sys_bits.append("variables: " + ", ".join(state.variables))
+        if state.motifs:
+            sys_bits.append("motifs: " + ", ".join(state.motifs))
+        lines.append("- Systems already in play: " + " | ".join(sys_bits))
+    return "\n".join(lines)
+
+
 def _extract_systems(latest_package: dict[str, Any] | None) -> tuple[list[str], list[str]]:
     """Best-effort read of the variables/motifs already in play, from a caller-supplied latest
     compiled package (the caller has the run context; the lens stays pure). Empty when absent."""
