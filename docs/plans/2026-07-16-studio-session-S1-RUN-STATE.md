@@ -74,11 +74,13 @@ book-editor). Triage below.
 Author-role pass verdict: **S1 is usable, the loop closes in-studio, no `broken` capability.** The rows
 below are coherence/polish, not blockers — none gate release. Gate reason for all: #2 (design/UX polish)
 or #5 (conscious-note). Screens: `docs/plans/assets/2026-07-17-studio-S1-blackbox/`.
-- **D-S1-MODEL-INDICATOR-CONTRADICTION (MED)** — Editor status bar reads "no model" while the inline AI
-  toolbar shows "Gemma-4 26B" selected; two model concepts (Work default vs inline pick) shown together
-  with no explanation. Not in the compose/assemble/inline/publish build slices → not fix-now; needs the
-  Work-default↔inline-pick resolution surfaced coherently (studio-settings concern). **Target:** next
-  studio-settings pass; re-check on a real account WITH a resolved default. Flag to PO.
+- **D-S1-MODEL-INDICATOR (was MED) — ✅ FIXED NOW (was a bug, not deferrable debt).** Root-cause on
+  verify (anti-laziness gate): the status bar's "no model" was NOT a real indicator reflecting a Work
+  default — it was a **hardcoded skeleton placeholder** (`StudioStatusBar.tsx:40`,
+  `t('status.modelPlaceholder', 'no model')`) that ALWAYS said "no model" and always contradicted the
+  real model shown in the editor's inline toolbar. A misleading always-wrong string = fix-now, not a
+  studio-settings defer. **Removed the stub** (a real active-model indicator belongs as a registered F2
+  status producer, like WordCountStatusItem — noted inline). StudioStatusBar test 4/4 green.
 - **D-S1-GATE-REASON-HOVER-ONLY (LOW)** — disabled Publish + Stitch expose their reason only via `title`
   (hover); disabled buttons aren't strongly greyed. Fix: an inline caption under the gated control.
 - **D-S1-COMPOSE-ASSEMBLE-VISUAL-SAMENESS (LOW)** — Scene Compose and Chapter Assemble share so much

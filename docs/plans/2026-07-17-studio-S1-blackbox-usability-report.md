@@ -138,15 +138,15 @@ note on a recommended "default path."
 
 | # | Severity | Finding | Disposition |
 |---|---|---|---|
-| 1 | **MED** | **Contradictory model indicator.** The Editor status bar reads **"no model"** (bottom-right) while the inline AI toolbar shows **"Gemma-4 26B-A4B QAT"** selected (`01`,`05`). Two model concepts (the Work's resolved default vs the inline per-action pick) are shown side-by-side with no explanation — an author can't tell which model will actually run. | **Tracked row `D-S1-MODEL-INDICATOR-CONTRADICTION`.** Not a fix-now in the compose/assemble/inline/publish build slices — it's the editor's model-display, and the correct fix needs the Work-default ↔ inline-pick resolution surfaced coherently (settings/config clarity, likely a shared studio concern). Flag to PO; verify a real account *with* a default model doesn't show "no model". |
+| 1 | ~~MED~~ **FIXED** | **Misleading model indicator.** The Editor status bar read **"no model"** (bottom-right) while the inline AI toolbar showed **"Gemma-4 26B-A4B QAT"** selected (`01`,`05`). On root-cause verify this was **not** two model concepts disagreeing — it was a **hardcoded skeleton placeholder** (`StudioStatusBar.tsx:40`) that *always* rendered "no model" regardless of state, so it always contradicted the real model. | **Fixed now** (a misleading always-wrong string is fix-now, not debt): removed the stub; an active-model indicator belongs as a registered F2 status producer (like the word-count item). `StudioStatusBar` test 4/4 green. |
 | 2 | LOW | **Gate reasons are hover-only** (Publish `title`, Stitch greyed). No inline caption; disabled buttons aren't strongly greyed. | `D-S1-GATE-REASON-HOVER-ONLY` — surface disabled reasons inline. |
 | 3 | LOW | **Scene Compose ≈ Chapter Assemble visually.** Shared chrome makes the two panels hard to tell apart at a glance. | `D-S1-COMPOSE-ASSEMBLE-VISUAL-SAMENESS` — stronger per-panel identity. |
 | 4 | LOW | **Flywheel is invisible.** Corrections are captured with zero felt signal; the "AI learns from you" value is unfelt. | `D-S1-FLYWHEEL-INVISIBLE` — optional subtle acknowledgement (PO design opinion). |
 | 5 | INFO | `Compose` vs `Scene Compose` naming proximity. | PO call on a rename; subtitle currently disambiguates. |
 
-**No `broken` verdicts.** Every capability an author reaches for works; the findings are coherence and
-polish. Findings 2–5 are design/polish (PO calls or LOW tracked rows); finding 1 is the only one worth a
-MED tracked row and a real-account re-check.
+**No `broken` verdicts.** Every capability an author reaches for works. Finding 1 was **fixed on the
+spot** (a misleading hardcoded "no model" stub — a bug, not debt). Findings 2–5 are design/polish (PO
+calls or LOW tracked rows). Net open debt: **3 LOW + 1 INFO, all design opinions — zero blockers.**
 
 ---
 
@@ -158,7 +158,7 @@ MED tracked row and a real-account re-check.
   from the non-generation screens + prior direct observation, which is where the usability verdict lives.
 
 ## Recommendation to PO
-Ship S1 — it is usable and the loop closes. Open the four tracked rows above (one MED, three LOW) in the
-S1 RUN-STATE DEBT register; none gate the release. Prioritise **finding 1 (model indicator)** for the
-next studio-settings pass, as a contradictory model display is the one item that could actually mislead
-an author about what (and what cost) they're running.
+Ship S1 — it is usable and the loop closes. Finding 1 (the misleading model indicator) is already fixed.
+The remaining **3 LOW + 1 INFO** rows are all design opinions (gate-reason placement, panel visual
+identity, flywheel felt-signal, Compose naming); none gate the release. They live in the S1 RUN-STATE
+DEBT register for a future polish/PO pass — no forced-now work remains.
