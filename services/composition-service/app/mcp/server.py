@@ -4872,18 +4872,28 @@ async def composition_arc_apply(ctx: MCPContext, args: _ArcApplyArgs) -> dict:
     arc_tmpl = await ArcTemplateRepo(get_pool()).get_visible(tc.user_id, UUID(args.arc_template_id))
     if arc_tmpl is None:
         raise uniform_not_accessible()
-    from app.engine import arc_apply as _engine  # 23 A5 (module exists; fn pending)
-    fn = getattr(_engine, "apply_arc_to_spec", None)
-    if fn is None:
-        return _pending_engine("A5", "app.engine.arc_apply", "apply_arc_to_spec")
-    result = await fn(
-        get_pool(),
-        book_id=meta.book_id, project_id=pid, arc_template=arc_tmpl,
-        roster_bindings=dict(args.roster_bindings),
-        replace=args.replace, idempotency_key=args.idempotency_key,
-        created_by=tc.user_id,
-    )
+    # BA3 — the SHARED apply engine (the SAME path the REST route POST /works/{id}/arc/materialize
+    # runs). The MCP envelope has no JWT, so we mint a short-lived service bearer for the cross-service
+    # book-chapter + KAL-cast reads (the established MCP→JWT-route seam). Typed failures → error dicts.
+    from app.engine.arc_apply import apply_arc_to_spec, ArcApplyError, ArcApplyConflict
+    from app.clients.kal_client import get_kal_client
+    bearer = mint_service_bearer(tc.user_id, settings.jwt_secret)
+    try:
+        result = await apply_arc_to_spec(
+            get_pool(), book_id=meta.book_id, project_id=pid, arc_template=arc_tmpl,
+            roster_bindings=dict(args.roster_bindings), replace=args.replace,
+            idempotency_key=args.idempotency_key, created_by=tc.user_id,
+            book_client=get_book_client(), kal_client=get_kal_client(),
+            motifs_repo=MotifRepo(get_pool()), outline_repo=OutlineRepo(get_pool()), bearer=bearer,
+        )
+    except ArcApplyConflict as exc:
+        return {"success": False, "outcome": "applied_conflict",
+                "error": "member chapters already have scenes — retry with replace=true",
+                "chapter_ids": exc.chapter_ids}
+    except ArcApplyError as exc:
+        return {"success": False, "error": exc.message, **exc.detail}
     out = dict(result)
+    out["success"] = True
     out.setdefault("_meta", {"undo_hint": None})
     return out
 
@@ -4961,17 +4971,33 @@ async def composition_arc_extract_template(
 async def composition_arc_template_drift(
     ctx: MCPContext,
     node_id: Annotated[str, "The arc (structure_node) to compare against its source template."],
+    project_id: Annotated[str, "The Work whose realized prose the drift is measured against — its "
+                               "book MUST be the arc's book (no cross-book oracle)."],
 ) -> dict:
     tc = _ctx(ctx)
     structures = StructureRepo(get_pool())
     node = await _arc_or_deny(structures, tc, UUID(node_id), GrantLevel.VIEW)
     if node.arc_template_id is None:
         return {"available": False, "reason": "arc has no template provenance (authored directly)"}
-    from app.engine import arc_conformance as _engine  # 23 A4 (module exists; fn pending)
-    fn = getattr(_engine, "build_template_drift", None)
-    if fn is None:
-        return _pending_engine("A4", "app.engine.arc_conformance", "build_template_drift")
-    return await fn(get_pool(), arc_node=node, user_id=tc.user_id)
+    # SHARED path with the REST scope=arc_template_drift (conformance.py): resolve the Work (project
+    # is the prose axis; a structure_node is book-scoped, so the caller names which Work), gate that
+    # it is the arc's OWN book, resolve the source template, then run the SAME coarse arc report by
+    # the legacy annotation key (by_structure=False). No confirm token — it is a $0 read.
+    works = WorksRepo(get_pool())
+    work = await works.get(UUID(project_id))
+    if work is None or work.book_id != node.book_id:
+        raise uniform_not_accessible()
+    arc_tmpl = await ArcTemplateRepo(get_pool()).get_visible(tc.user_id, node.arc_template_id)
+    if arc_tmpl is None:
+        return {"available": False, "reason": "the source template is no longer available"}
+    from app.engine.arc_conformance_orchestrate import compute_arc_report
+    from app.routers.conformance import ConformanceTraceReader
+    report = await compute_arc_report(
+        reader=ConformanceTraceReader(get_pool()), mrepo=MotifRepo(get_pool()),
+        knowledge=get_knowledge_client(), user_id=tc.user_id, project_id=UUID(project_id),
+        book_id=node.book_id, arc=arc_tmpl, by_structure=False, deep=False,
+    )
+    return {"available": True, "report": report}
 
 
 # ── BA11 — the 5 arc-template CRUD MCP tools (O-3). A comment once claimed this CRUD

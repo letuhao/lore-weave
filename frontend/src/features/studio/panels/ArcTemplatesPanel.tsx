@@ -96,6 +96,11 @@ function ArcLibrary({ state, t }: { state: ArcTemplatesState; t: TFunction }) {
         ) : (
           <ul className="flex flex-col">
             {state.templates.map((a) => <Row key={a.id} state={state} arc={a} t={t} />)}
+            {state.truncated && (
+              <li data-testid="arc-templates-truncated" className="border-b px-2 py-1.5 text-center text-[10px] text-muted-foreground">
+                {t('motif.arc.templates.truncated', { count: state.totalInTier, defaultValue: 'Showing the first {{shown}} of {{count}} — use Catalog or a narrower tier to find more.', shown: state.templates.length })}
+              </li>
+            )}
           </ul>
         )}
       </div>

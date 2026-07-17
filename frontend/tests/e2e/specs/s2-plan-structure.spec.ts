@@ -109,11 +109,14 @@ test.describe('S2 · Plan & Structure panels (operable to the §2 bar)', () => {
     await s2.tab('deconstruct').click();
     await expect(s2.deconstructSection).toBeVisible();
 
-    // Add a reference source through the UI → it appears in the source list.
-    await s2.pasteTitle.fill('Reference: a betrayal beat');
+    // Add a reference source through the UI → it appears in the source list. Import-sources are
+    // user-scoped and persist on the shared dev DB, so a UNIQUE title keeps the selector exact
+    // (a fixed title accumulates across runs → strict-mode multi-match). [[shared-dev-db-not-clean-fixture-e2e]]
+    const srcTitle = `Reference: a betrayal beat ${Date.now()}`;
+    await s2.pasteTitle.fill(srcTitle);
     await s2.pasteContent.fill('A loyal captain is betrayed by the prince he served, and swears revenge across three cities.');
     await s2.pasteSubmit.click();
-    await expect(page.getByText('Reference: a betrayal beat')).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByText(srcTitle)).toBeVisible({ timeout: 15_000 });
 
     // AT-8: with a source selected but NO model chosen, the priced Deconstruct button stays disabled —
     // there is no silent platform-fallback payer. (A real run needs a BYOK model + confirm; covered at

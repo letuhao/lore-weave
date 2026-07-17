@@ -302,8 +302,76 @@ async def test_arc_template_drift_no_provenance_returns_unknown():
     structures = AsyncMock()
     structures.get = AsyncMock(return_value=_node(id=ARC, book_id=BOOK))  # arc_template_id None
     async with _patched(grant_level=1, structures=structures):
-        res = await srv.composition_arc_template_drift(_Ctx(), node_id=str(ARC))
+        res = await srv.composition_arc_template_drift(_Ctx(), node_id=str(ARC), project_id=str(PROJECT))
     assert res["available"] is False and "no template provenance" in res["reason"]
+
+
+async def test_arc_apply_engine_is_wired_not_pending():
+    """BE-8 (apply): `apply_arc_to_spec` is MERGED — the MCP tool must RUN the shared engine (the same
+    path the REST materialize route uses), never the honest-pending refusal. Mocks the engine to prove
+    the WIRING (deps threaded, bearer minted, result wrapped)."""
+    import app.mcp.server as srv
+    from unittest.mock import patch
+
+    arc_repo = AsyncMock()
+    arc_repo.get_visible = AsyncMock(return_value=SimpleNamespace(id=uuid.uuid4(), name="Revenge"))
+    fake = {"arc_id": str(uuid.uuid4()), "scene_ids": ["s0"], "motif_applications": 2}
+    with patch.object(srv, "ArcTemplateRepo", return_value=arc_repo), \
+         patch.object(srv, "MotifRepo", return_value=AsyncMock()), \
+         patch.object(srv, "OutlineRepo", return_value=AsyncMock()), \
+         patch.object(srv, "get_book_client", return_value=AsyncMock()), \
+         patch.object(srv, "mint_service_bearer", return_value="svc-bearer"), \
+         patch("app.clients.kal_client.get_kal_client", return_value=AsyncMock()), \
+         patch("app.engine.arc_apply.apply_arc_to_spec", AsyncMock(return_value=fake)) as eng:
+        async with _patched(grant_level=2):
+            res = await srv.composition_arc_apply(
+                _Ctx(), srv._ArcApplyArgs(project_id=str(PROJECT), arc_template_id=str(uuid.uuid4())))
+    eng.assert_awaited_once()
+    assert "pending_dependency" not in res and res["success"] is True
+    assert res["arc_id"] == fake["arc_id"]
+
+
+async def test_arc_template_drift_wired_runs_the_shared_report():
+    """BE-8 (drift): the tool now runs the SAME coarse arc report the REST scope=arc_template_drift
+    uses — never pending. Gates the Work to the arc's OWN book, resolves the template, returns the
+    report. A cross-book project_id is the H13 uniform deny."""
+    import app.mcp.server as srv
+    from unittest.mock import patch
+
+    TID = uuid.uuid4()
+    node = _node(id=ARC, book_id=BOOK).model_copy(update={"arc_template_id": TID, "template_version": 1})
+    structures = AsyncMock()
+    structures.get = AsyncMock(return_value=node)
+    arc_repo = AsyncMock()
+    arc_repo.get_visible = AsyncMock(return_value=SimpleNamespace(id=TID, name="Rev"))
+    report = {"thread_coverage": [{"thread": "t1", "realized": 2, "planned": 3}]}
+    with patch.object(srv, "ArcTemplateRepo", return_value=arc_repo), \
+         patch.object(srv, "MotifRepo", return_value=AsyncMock()), \
+         patch.object(srv, "get_knowledge_client", return_value=AsyncMock()), \
+         patch("app.routers.conformance.ConformanceTraceReader", return_value=AsyncMock()), \
+         patch("app.engine.arc_conformance_orchestrate.compute_arc_report",
+               AsyncMock(return_value=report)) as rep:
+        async with _patched(grant_level=1, structures=structures) as (s, _st, works):
+            works.get = AsyncMock(return_value=SimpleNamespace(book_id=BOOK, project_id=PROJECT))
+            res = await srv.composition_arc_template_drift(_Ctx(), node_id=str(ARC), project_id=str(PROJECT))
+    rep.assert_awaited_once()
+    assert "pending_dependency" not in res and res["available"] is True
+    assert res["report"] == report
+
+
+async def test_arc_template_drift_cross_book_project_is_denied():
+    """The named Work MUST be the arc's book — a project_id whose book differs is the uniform deny
+    (no cross-book drift oracle)."""
+    import app.mcp.server as srv
+    from loreweave_mcp import NotAccessibleError
+
+    node = _node(id=ARC, book_id=BOOK).model_copy(update={"arc_template_id": uuid.uuid4()})
+    structures = AsyncMock()
+    structures.get = AsyncMock(return_value=node)
+    async with _patched(grant_level=1, structures=structures) as (s, _st, works):
+        works.get = AsyncMock(return_value=SimpleNamespace(book_id=OTHER_BOOK, project_id=PROJECT))
+        with pytest.raises(NotAccessibleError):
+            await srv.composition_arc_template_drift(_Ctx(), node_id=str(ARC), project_id=str(PROJECT))
 
 
 async def test_arc_extract_template_engine_is_wired_not_pending():

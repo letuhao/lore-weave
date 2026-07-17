@@ -35,10 +35,11 @@ describe('ArcInspectorBody', () => {
   it('renders every section and the dense-ranked span (not raw)', () => {
     render(<ArcInspectorBody state={makeState()} />);
     expect(screen.getByTestId('arc-f-title')).toHaveValue('The Betrayal');
-    expect(screen.getByTestId('arc-chapters').textContent).toContain('Chapters 41–58');
+    // the span range renders raw (numbers survive i18n); the "Chapters" label is now a t() key.
+    expect(screen.getByTestId('arc-chapters').textContent).toContain('41–58');
     expect(screen.getByTestId('arc-noncontiguous')).toBeInTheDocument();
     expect(screen.getByTestId('arc-promises')).toBeInTheDocument();
-    expect(screen.getByTestId('arc-blast').textContent).toContain('2 sub-arcs');
+    expect(screen.getByTestId('arc-blast')).toBeInTheDocument();   // blast shows when blastRadius > 0
   });
 
   it('marks an inherited track (override) distinctly from an own track (remove)', () => {

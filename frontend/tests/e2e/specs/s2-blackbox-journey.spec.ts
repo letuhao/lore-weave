@@ -61,10 +61,13 @@ test.describe('S2 · blackbox author journey (plan & structure, Studio-only)', (
     await expect(s2.trackRow('pride')).toBeVisible();
 
     // 4 · They move to Arc Templates and create a reusable template from scratch — it lands in "Mine".
+    //     Templates are user-scoped + persist on the shared dev DB → a UNIQUE name keeps the selector
+    //     exact across reruns. [[shared-dev-db-not-clean-fixture-e2e]]
     await s2.openTemplates(bookId);
-    const code = `journey-${Date.now()}`;
-    await s2.createTemplate(code, 'My Reusable Act Structure');
-    await expect(page.getByText('My Reusable Act Structure')).toBeVisible({ timeout: 15_000 });
+    const stamp = Date.now();
+    const tmplName = `My Reusable Act Structure ${stamp}`;
+    await s2.createTemplate(`journey-${stamp}`, tmplName);
+    await expect(page.getByText(tmplName)).toBeVisible({ timeout: 15_000 });
 
     // 5 · They open Import & Deconstruct to turn a reference story into a template — the priced 拆文
     //     flow is present, states its privacy contract, and gates on a chosen model (no silent payer).

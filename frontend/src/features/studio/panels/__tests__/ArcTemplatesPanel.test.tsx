@@ -32,7 +32,8 @@ const SYS = { id: 'a2', code: 'c2', name: 'Hero Journey', owner_user_id: null, c
 
 function makeState(over: Partial<ArcTemplatesState> = {}): ArcTemplatesState {
   return {
-    token: 'tok', projectId: 'proj1', bookId: 'b', templates: [MINE, SYS] as never, loading: false, isError: false,
+    token: 'tok', projectId: 'proj1', bookId: 'b', templates: [MINE, SYS] as never, truncated: false, totalInTier: 2,
+    loading: false, isError: false,
     refetch: vi.fn(), tier: 'all', setTier: vi.fn(), selected: null, select: vi.fn(), meId: 'me',
     tierOf: (a) => (a.owner_user_id === null ? 'system' : a.owner_user_id === 'me' ? 'mine' : 'public'),
     busy: false, actionError: null, create: vi.fn().mockResolvedValue(undefined),
@@ -120,6 +121,12 @@ describe('ArcTemplatesPanel', () => {
     expect(screen.getByText('Public Arc')).toBeInTheDocument();
     fireEvent.click(screen.getByTestId('catalog-adopt-pub1'));
     expect(state.adopt).toHaveBeenCalledWith('pub1');
+  });
+
+  it('§2.9 scale: a library over the render cap shows an honest "first N" truncation notice', () => {
+    ctrl.useArcTemplates.mockReturnValue(makeState({ truncated: true, totalInTier: 640 }));
+    render(<ArcTemplatesPanel {...props} />);
+    expect(screen.getByTestId('arc-templates-truncated')).toBeInTheDocument();
   });
 
   it('empty / loading / error are distinct honest states', () => {

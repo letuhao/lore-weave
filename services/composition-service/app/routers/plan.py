@@ -1287,110 +1287,23 @@ async def materialize_arc(
             "code": "ARC_TEMPLATE_NOT_FOUND",
             "message": "arc template not found or not accessible"})
 
-    book_chapters = await _book_chapter_ids(book, work.book_id, bearer)
-    if not book_chapters:
-        raise HTTPException(status_code=400, detail={
-            "code": "NO_CHAPTERS",
-            "detail": "materialize maps onto existing chapters — create chapters first"})
-    if len(book_chapters) > settings.plan_max_chapters:
-        raise HTTPException(status_code=400, detail={
-            "code": "TOO_MANY_CHAPTERS", "count": len(book_chapters), "max": settings.plan_max_chapters})
-
-    chapters_sorted = sorted(book_chapters, key=lambda c: c.get("sort_order") or 0)
-    target = len(chapters_sorted)
-
-    plan = build_apply_plan(arc, ArcApplyArgs(
-        target_chapters=target, roster_bindings=dict(body.roster_bindings)))
-
-    resolved = await _resolve_plan_motifs(motifs, user_id, plan.placements)
-
-    cast = await _cast_roster(kal, work.book_id, user_id)
-    cast_index = {c["name"].strip().casefold(): c["entity_id"] for c in cast if c.get("name")}
-    cast_names = {c["entity_id"]: c["name"] for c in cast}
-
-    spec = build_materialize_spec(
-        plan, resolved,
-        cast_index=cast_index, cast_names=cast_names,
-        roster_bindings=dict(body.roster_bindings), arc_template_id=str(arc.id),
-        k_ceiling=settings.compose_diverge_k, high_threshold=settings.plan_high_tension_threshold,
-        min_scenes=settings.plan_min_scenes_per_chapter, max_scenes=settings.plan_max_scenes_per_chapter,
-    )
-
-    if not spec.chapters:
-        raise HTTPException(status_code=400, detail={
-            "code": "NO_MATERIALIZABLE_PLACEMENTS",
-            "detail": "no placement resolved to a motif with beats — nothing to commit",
-            "unresolved_placements": spec.unresolved_placements})
-
-    # build the A3 commit spec (chapter_index → real chapter_id + story_order) + the flat,
-    # chapter-major ledger payloads (parallel to the scene_ids the commit returns).
-    commit_chapters: list[dict[str, Any]] = []
-    flat_app_rows: list[dict[str, Any]] = []
-    for mc in spec.chapters:
-        ch = chapters_sorted[mc.chapter_index - 1]
-        sort_order = ch.get("sort_order") or 0
-        scenes_spec: list[dict[str, Any]] = []
-        for i, sc in enumerate(mc.scenes):
-            present = []
-            for eid in sc.present_entity_ids:
-                try:
-                    present.append(UUID(str(eid)))
-                except (ValueError, TypeError):
-                    continue            # a non-UUID binding value (shouldn't happen) → skip
-            scenes_spec.append({
-                "title": sc.title, "synopsis": sc.synopsis, "tension": sc.tension,
-                "present_entity_ids": present,
-                "story_order": sort_order * STORY_ORDER_CHAPTER_STRIDE + i,
-            })
-            flat_app_rows.append(sc.application_row)
-        commit_chapters.append({
-            "chapter_id": UUID(str(ch["chapter_id"])), "title": ch.get("title", ""),
-            "intent": "", "beat_role": None, "scenes": scenes_spec,
-        })
-
+    # The orchestration (chapters→plan→resolve→spec→commit→ledger) is the SHARED engine
+    # `apply_arc_to_spec` — the SAME path the MCP tool `composition_arc_apply` runs (D-W10 dedupe:
+    # one apply for the GUI and the agent). This route resolves + EDIT-gates the Work above; the
+    # engine does the deterministic work and raises typed failures we map to HTTP.
+    from app.engine.arc_apply import apply_arc_to_spec, ArcApplyError, ArcApplyConflict
+    _STATUS = {"BOOK_SERVICE_UNAVAILABLE": 502}  # the rest are 400 client errors
     try:
-        created = await outline.commit_decomposed_tree(
-            project_id, book_id=work.book_id, created_by=user_id, arc_title=arc.name,
-            chapters=commit_chapters, replace=body.replace, idempotency_key=body.idempotency_key,
+        return await apply_arc_to_spec(
+            get_pool(), book_id=work.book_id, project_id=project_id, arc_template=arc,
+            roster_bindings=dict(body.roster_bindings), replace=body.replace,
+            idempotency_key=body.idempotency_key, created_by=user_id,
+            book_client=book, kal_client=kal, motifs_repo=motifs, outline_repo=outline, bearer=bearer,
         )
-    except AlreadyPlannedError as exc:
+    except ArcApplyConflict as exc:
         raise HTTPException(status_code=409, detail={
-            "code": "CHAPTER_ALREADY_PLANNED",
-            "chapter_ids": sorted(str(c) for c in exc.chapter_ids),
+            "code": "CHAPTER_ALREADY_PLANNED", "chapter_ids": exc.chapter_ids,
             "detail": "chapters already have scenes — resend with replace=true"}) from exc
-    except ReferenceViolationError as exc:
-        raise HTTPException(status_code=400,
-                            detail={"code": "BAD_REFERENCE", "detail": exc.message}) from exc
-
-    # ledger the bindings (positional with the flat scene_ids). Mirrors decompose_commit:
-    # NOT atomic with the tree Tx, FK-tolerant (an archived motif → soft-skip), skipped on
-    # an idempotency replay (the prior commit already wrote them).
-    applied = 0
-    if not created.get("replay") and flat_app_rows:
-        scene_ids = [UUID(s) for s in created["scene_ids"]]
-        ledger_rows = [
-            {**row, "outline_node_id": str(node_id)}
-            for row, node_id in zip(flat_app_rows, scene_ids)
-        ]
-        if ledger_rows:
-            try:
-                await MotifApplicationRepo(get_pool()).insert_many(
-                    project_id, work.book_id, ledger_rows, created_by=user_id)
-                applied = len(ledger_rows)
-            except asyncpg.ForeignKeyViolationError:
-                logger.warning("arc materialize: motif_application FK violation — ledger skipped")
-
-    return {
-        "arc_id": str(created["arc_id"]),
-        "arc_template_id": str(arc.id),
-        "chapter_ids": [str(i) for i in created["chapter_ids"]],
-        "scene_ids": [str(i) for i in created["scene_ids"]],
-        "motif_applications": applied,
-        "scenes_total": spec.scenes_total,
-        "beats_distributed": spec.beats_distributed,
-        "unresolved_placements": spec.unresolved_placements,
-        # §12.6 — when the book has fewer chapters than the arc span, placements merge
-        # and the folded-away motifs are NOT materialized; surface that (never silent).
-        "drop_merge_report": [d.model_dump(mode="json") for d in plan.drop_merge_report],
-        "replay": bool(created.get("replay")),
-    }
+    except ArcApplyError as exc:
+        raise HTTPException(status_code=_STATUS.get(exc.detail.get("code"), 400),
+                            detail=exc.detail) from exc

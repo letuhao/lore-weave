@@ -88,7 +88,9 @@ def client(monkeypatch):
     monkeypatch.setattr("app.main.close_pool", AsyncMock())
     monkeypatch.setattr("app.main.get_pool", lambda: object())
     monkeypatch.setattr("app.routers.plan.get_pool", lambda: object())
-    monkeypatch.setattr("app.routers.plan.MotifApplicationRepo", _FakeAppRepo)
+    # the ledger write moved into the shared engine (apply_arc_to_spec), which imports the repo
+    # from its SOURCE module — patch there so the fake is picked up by the lazy import.
+    monkeypatch.setattr("app.db.repositories.motif_application.MotifApplicationRepo", _FakeAppRepo)
 
     from app.main import app
     from app.deps import (get_arc_template_repo, get_book_client_dep,

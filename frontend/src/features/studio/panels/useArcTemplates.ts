@@ -20,11 +20,18 @@ import { listBookSharedTemplates, createSharedTemplate } from '@/features/compos
 
 export type ArcTier = 'all' | 'mine' | 'system' | 'book';
 
+/** Scale guard (§2.9): the library is fetched whole, so cap what we RENDER and say so — a huge
+ *  library never silently truncates or janks the panel. Browse the long tail via the Catalog tab. */
+export const ARC_TEMPLATE_RENDER_CAP = 200;
+
 export interface ArcTemplatesState {
   token: string | null;
   projectId: string | null;
   bookId: string;
   templates: ArcTemplate[];
+  /** true when the tier holds more than the render cap — the panel shows an honest "first N" notice. */
+  truncated: boolean;
+  totalInTier: number;
   loading: boolean;
   isError: boolean;
   refetch: () => void;
@@ -68,13 +75,18 @@ export function useArcTemplates(bookId: string): ArcTemplatesState {
     enabled: !!token && !!bookId && tier === 'book',
   });
 
-  const templates = useMemo(() => {
+  const allInTier = useMemo(() => {
     if (tier === 'book') return bookLib.data ?? [];
     const all = lib.data ?? [];
     if (tier === 'mine') return all.filter((a) => a.owner_user_id === meId);
     if (tier === 'system') return all.filter((a) => a.owner_user_id === null);
     return all;
   }, [tier, bookLib.data, lib.data, meId]);
+  // Scale (§2.9): the library is fetched whole; cap what we RENDER + surface the cap honestly
+  // (the Catalog tab is the paged path for browsing beyond this) — never a silent truncation.
+  const templates = useMemo(() => allInTier.slice(0, ARC_TEMPLATE_RENDER_CAP), [allInTier]);
+  const truncated = allInTier.length > ARC_TEMPLATE_RENDER_CAP;
+  const totalInTier = allInTier.length;
 
   const tierOf = useCallback(
     (a: ArcTemplate): 'system' | 'mine' | 'public' =>
@@ -119,7 +131,7 @@ export function useArcTemplates(bookId: string): ArcTemplatesState {
   const active = tier === 'book' ? bookLib : lib;
   return {
     token, projectId, bookId,
-    templates, loading: active.isLoading, isError: active.isError,
+    templates, truncated, totalInTier, loading: active.isLoading, isError: active.isError,
     refetch: () => void active.refetch(),
     tier, setTier,
     selected, select: setSelected,
