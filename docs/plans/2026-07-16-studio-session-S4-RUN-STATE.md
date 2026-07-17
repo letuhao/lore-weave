@@ -94,10 +94,28 @@ mounts into S2's PlanDrawer; `enum == contract == openable` move +2 in lockstep 
 ### PARKED  (blocker -> defer row + continue)
 - (spec 33 §11 pre-existing defers carried: D-COMPOSE-GENERATE-UNGATED [gate#1 out-of-scope], D-MOTIF-BOOKSHARED-QUOTA [gate#4], D-MOTIF-GRAPH-CANVAS [gate#2], D-ARC-TEMPLATE-DRIFT-VIEW → Wave 4.)
 
-### DEBT
-- **D-MOTIF-LENS-PLANDRAWER-MOUNT** (gate #1, coordination) — `MotifBindingLens.tsx` is built (S4 owns) but not yet mounted in `PlanDrawer.tsx` (S2 owns the file). Per the seam rule S2 adds `<MotifBindingLens nodeId={…}/>` with a one-line import. Reachable via scene-inspector today; the PlanDrawer entry lands when S2 mounts it.
-- **D-MOTIF-NODEBADGES-ONCLICK** (gate #1, cross-track) — §3.2b's `NodeBadges` motif-chip → `openPanel('scene-inspector')` onClick touches the Book-Package track's `NodeBadges.tsx`. Deferred to coordinate with that track (don't cross-edit).
-- **D-MOTIF-MINE-BEAT-EXTRACTOR** (env caveat, gate #4) — the gemma mine smoke completed but mined 0 with `reason: beat_extractor_unavailable`: a mining sub-component (beat extractor) isn't available in this dev env. Graceful degrade (no crash, no fake success), so the FE flow is correct; the 0-result is an infra gap, not an S4 bug. Verify mine yields drafts once the beat extractor is provisioned.
+### DEBT — ALL CLOSED (2026-07-17, PO: "làm luôn hay đóng luôn"; verified against code, not prose)
+- **D-M-BUG-4-ARC-CALLER — CLOSED (not-a-bug / already fixed).** The conformance caller (`motif/api.ts`
+  `arcConformance` / `arcConformanceRunPropose`) already sends `arc_id` (a `structure_node.id`), not
+  `arc_template_id`. The remaining `arc_template_id` refs are type fields + `ArcMaterializeAction` (a DIFFERENT
+  endpoint where `arc_template_id` is the correct field). No broken conformance caller remains.
+- **D-CONF-RERUN-NOT-READY-HINT — CLOSED (already present).** The re-run button is `disabled={!canRerun}` with
+  a `title` hint "Pick a model to re-run conformance" (`ConformanceTraceView.tsx:49-50`) — graceful, no silent
+  fail. Nothing to add.
+- **D-MOTIF-MINE-BEAT-EXTRACTOR — CLOSED (not a code debt).** The knowledge route
+  `POST /internal/extraction/motif-beats` is SHIPPED (commit 73004c33); the client degrades to
+  `beat_extractor_unavailable` only when a book has NO `:Event` corpus (never analysis-extracted). The code is
+  correct + degrades honestly — it is a DATA/env verification step (mine a book that has an extracted event
+  timeline), not buildable code. Re-verify with a real corpus when convenient; no code work.
+- **D-MOTIF-LENS-PLANDRAWER-MOUNT — CLOSED as sufficient (cross-track, optional convenience).**
+  `MotifBindingLens` is built + reachable via the scene-inspector Motifs section today. Mounting it in
+  `plan-hub/PlanDrawer.tsx` is a SECONDARY entry point (another track's file) — not a functional gap. Revive as
+  a ~1-line additive mount if plan-hub wants the second surface; not needed for S4 completeness.
+- **D-MOTIF-NODEBADGES-ONCLICK — CLOSED as sufficient (cross-track, optional convenience).** The `NodeBadges`
+  motif chip (`plan-hub`) is display-only; a deep-link needs `openPanel` plumbed into a host-agnostic
+  component in another track. The motif surface is already reachable via scene-inspector — a convenience
+  deep-link, not a gap. Revive if plan-hub adds the host hook (cross-editing it now risks concurrent-branch
+  conflicts).
 
 ### 3c — quality-conformance + M-BUG-4 (DONE)
 - **quality-conformance panel** — `QualityConformancePanel.tsx` (mirrors QualityCriticPanel: useQualityWork gate + chapter picker + ModelPicker) rendering `ConformanceTraceView` (chapter-scope beat trace). Registered (catalog row + enum + contract + i18n + guide + QualityHub 8th card). **LIVE browser smoke (:5199):** palette "Open Conformance" → `PANEL_MOUNTED` + `CHAPTER_PICKER` + `NO_CHAPTER_HINT`, 0 console errors.
