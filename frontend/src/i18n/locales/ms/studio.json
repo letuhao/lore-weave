@@ -623,6 +623,13 @@
       "title": "Kepatuhan",
       "desc": "Rentak-demi-rentak: adakah prosa merealisasikan rancangan? Realisasi/tidak bagi setiap babak + jalur ketegangan",
       "guideBody": "Kepatuhan menjejaki, babak demi babak, sama ada prosa yang ditulis benar-benar menyampaikan rentak motif yang anda rancangkan untuk sesuatu bab. Setiap babak menunjukkan status terealisasi / tidak terealisasi dan bagaimana ketegangannya berbanding sasaran. Ia menjawab perbandingan spesifikasi-vs-prosa (bukan spesifikasi-vs-templat — itu adalah pandangan hanyutan templat-lengkok). Isyarat ini adalah bersifat nasihat (kasar, bukan disahkan secara kausal). Jana semula babak yang terlepas rentaknya, atau jalankan semula keseluruhan semakan terhadap model yang anda pilih."
+    },
+    "motif-graph": {
+      "title": "Graf Motif",
+      "desc": "Graf hubungan motif merentasi buku sebagai kanvas boleh seret — motif milik anda + motif dikongsi buku serta hubungan 'terdiri daripada' / 'mendahului' / 'variasi daripada', dengan susun atur tersimpan anda sendiri.",
+      "guideBody": "DAG visual bagi motif buku ini. Nod adalah motif anda ditambah dengan motif peringkat dikongsi buku; hubungan adalah pautan terdiri_daripada / mendahului / variasi_daripada. Seret nod untuk menyusun graf — susun atur anda disimpan bagi setiap buku dan diselaraskan merentasi peranti (setiap kolaborator mempunyai susun atur sendiri). Susun atur awal dikira secara automatik dari kiri ke kanan mengikut rantaian mendahului. Cipta dan padam hubungan daripada butiran motif dalam Perpustakaan Motif.",
+      "signedOut": "Log masuk untuk melihat graf motif.",
+      "noBook": "Buka buku untuk melihat graf motifnya."
     }
   },
   "sceneRail": {

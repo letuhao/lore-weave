@@ -623,6 +623,13 @@
       "title": "Konformität",
       "desc": "Beat für Beat: Hat die Prosa den Plan umgesetzt? Realisiert/Nicht realisiert pro Szene + Spannungsbalken",
       "guideBody": "Die Konformität prüft Szene für Szene, ob Ihre geschriebene Prosa tatsächlich die Motiv-Beats umgesetzt hat, die Sie für ein Kapitel geplant haben. Jede Szene zeigt an, ob die Beats realisiert wurden oder nicht, und wie die Spannung im Vergleich zum Zielwert steht. Es beantwortet die Frage Spezifikation vs. Prosa (nicht Spezifikation vs. Template — das ist die Abweichungsansicht der Bogen-Templates). Die Analyse dient als Orientierungshilfe (grob geschätzt, nicht kausal verifiziert). Generieren Sie eine Szene neu, die ihren Beat verpasst hat, oder führen Sie den gesamten Check gegen ein von Ihnen gewähltes Modell erneut aus."
+    },
+    "motif-graph": {
+      "title": "Motiv-Graph",
+      "desc": "Der buchstweiten Motiv-Beziehungsgraph als verschiebbare Leinwand – deine + buchstarken Motive und ihre Kanten (besteht aus / folgt auf / Variante von), inklusive deines eigenen gespeicherten Layouts.",
+      "guideBody": "Ein visueller DAG der Motive dieses Buches. Die Knoten sind deine Motive plus die gemeinsamen Motive des Buches; die Kanten sind die Verknüpfungen „besteht aus“ / „folgt auf“ / „Variante von“. Ziehe einen Knoten, um den Graphen anzuordnen – dein Layout wird pro Buch gespeichert und ist geräteübergreifend verfügbar (jeder Mitwirkende hat sein eigenes Arrangement). Das initiale Layout wird automatisch von links nach rechts entlang der „folgt auf“-Ketten berechnet. Erstelle und lösche Kanten in der Detailansicht eines Motivs in der Motiv-Bibliothek.",
+      "signedOut": "Melde dich an, um den Motiv-Graphen zu sehen.",
+      "noBook": "Öffne ein Buch, um dessen Motiv-Graphen anzuzeigen."
     }
   },
   "sceneRail": {

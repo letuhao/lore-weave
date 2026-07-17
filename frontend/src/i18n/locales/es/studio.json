@@ -623,6 +623,13 @@
       "title": "Conformidad",
       "desc": "Ritmo a ritmo: ¿la prosa ejecutó el plan? Realizado/no realizado por escena + banda de tensión",
       "guideBody": "Conformidad rastrea, escena por escena, si tu prosa escrita realmente cumplió con los ritmos de motivo que planeaste para un capítulo. Cada escena muestra lo realizado / no realizado y cómo su tensión se compara con el objetivo. Responde a la relación especificación-vs-prosa (no especificación-vs-plantilla; esa es la vista de desviación de plantillas de arco). La señal es consultiva (aproximada, no verificada causalmente). Regenera una escena que haya perdido su ritmo o vuelve a ejecutar todo el control frente al modelo que elijas."
+    },
+    "motif-graph": {
+      "title": "Gráfico de motivos",
+      "desc": "El gráfico de relaciones de motivos de todo el libro como un lienzo arrastrable: tus motivos compartidos con el libro y sus conexiones de «compuesto por», «precede a» o «variante de», con tu propio diseño guardado.",
+      "guideBody": "Un DAG visual de los motivos de este libro. Los nodos son tus motivos más los de nivel compartido del libro; las aristas son los enlaces de compuesto_por / precede_a / variante_de. Arrastra un nodo para organizar el gráfico: tu diseño se guarda por libro y te sigue en todos tus dispositivos (cada colaborador tiene su propia disposición). El diseño inicial se calcula automáticamente de izquierda a derecha a lo largo de las cadenas de precedencia. Crea y elimina aristas desde el detalle de un motivo en la Biblioteca de motivos.",
+      "signedOut": "Inicia sesión para ver el gráfico de motivos.",
+      "noBook": "Abre un libro para ver su gráfico de motivos."
     }
   },
   "sceneRail": {

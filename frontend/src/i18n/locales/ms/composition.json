@@ -815,6 +815,7 @@
         "driftLoading": "Memuatkan drift…",
         "driftClean": "Tiada hanyutan — lengkok yang dihasilkan sepadan dengan templatnya.",
         "driftSummary": "jurang liputan {{gaps}} · isu turutan {{violations}} · penempatan terlipat {{folded}}",
+        "driftPacingOnly": "Struktur sepadan, tetapi rentak berubah (maksimum {{drift}}).",
         "driftThreads": "Liputan benang",
         "driftNoThreads": "Templat tidak mempunyai benang untuk dibandingkan.",
         "driftPacing": "Tempo",
@@ -825,8 +826,7 @@
         "driftViolation": "{{label}}: {{n}} tidak mengikut turutan",
         "driftFolded": "Terlipat (tidak pernah terikat)",
         "untitledArc": "(lengkungan tanpa tajuk)",
-        "truncated": "Menunjukkan {{shown}} daripada {{count}} yang pertama — gunakan Katalog atau peringkat yang lebih khusus untuk mencari lebih banyak.",
-        "driftPacingOnly": "Struktur sepadan, tetapi rentak berubah (maksimum {{drift}})."
+        "truncated": "Menunjukkan {{shown}} daripada {{count}} yang pertama — gunakan Katalog atau peringkat yang lebih khusus untuk mencari lebih banyak."
       },
       "import": {
         "privacy": "Teks asal kekal peribadi untuk anda dan tidak akan dikongsi. Hanya struktur abstrak yang terhasil boleh diterbitkan — dan penerbitan akan membuang rujukan sumber.",
@@ -924,7 +924,10 @@
         "composed_of": "Terdiri daripada",
         "precedes": "Mendahului",
         "variant_of": "Variasi daripada"
-      }
+      },
+      "truncated": "Menunjukkan {{cap}} motif pertama — kecilkan julat mengikut tahap atau cari untuk melihat lebih banyak.",
+      "canvasLoading": "Memuatkan graf motif...",
+      "canvasEmpty": "Tiada motif untuk digrafkan lagi — cipta atau ambil motif, kemudian hubungkannya."
     },
     "suggest": {
       "button": "Cadangkan motif",

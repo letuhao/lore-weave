@@ -815,6 +815,7 @@
         "driftLoading": "Carregando drift…",
         "driftClean": "Sem desvio — o arco realizado corresponde ao seu modelo.",
         "driftSummary": "lacuna(s) de cobertura: {{gaps}} · problema(s) de ordenação: {{violations}} · posicionamento(s) dobrado(s): {{folded}}",
+        "driftPacingOnly": "A estrutura coincide, mas o ritmo oscilou (máx. {{drift}}).",
         "driftThreads": "Cobertura de fios",
         "driftNoThreads": "O modelo não possui fios para comparação.",
         "driftPacing": "Ritmo",
@@ -825,8 +826,7 @@
         "driftViolation": "{{label}}: {{n}} fora de ordem",
         "driftFolded": "Dobrado (nunca vinculado)",
         "untitledArc": "(arco sem título)",
-        "truncated": "Mostrando os primeiros {{shown}} de {{count}} — use o Catálogo ou um nível mais restrito para encontrar mais.",
-        "driftPacingOnly": "A estrutura coincide, mas o ritmo oscilou (máx. {{drift}})."
+        "truncated": "Mostrando os primeiros {{shown}} de {{count}} — use o Catálogo ou um nível mais restrito para encontrar mais."
       },
       "import": {
         "privacy": "O texto bruto permanece privado para você e nunca é compartilhado. Apenas a estrutura abstrata derivada pode ser publicada — e a publicação remove a referência da fonte.",
@@ -924,7 +924,10 @@
         "composed_of": "Composto por",
         "precedes": "Precede",
         "variant_of": "Variante de"
-      }
+      },
+      "truncated": "Mostrando os primeiros {{cap}} motivos — refine por nível ou pesquise para ver mais.",
+      "canvasLoading": "Carregando o gráfico de motivos...",
+      "canvasEmpty": "Ainda não há motivos para exibir no gráfico — crie ou adote motivos e, em seguida, vincule-os."
     },
     "suggest": {
       "button": "Sugerir um motivo",

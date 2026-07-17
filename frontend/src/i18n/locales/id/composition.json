@@ -815,6 +815,7 @@
         "driftLoading": "Memuat drift...",
         "driftClean": "Tidak ada penyimpangan — busur yang terealisasi sesuai dengan templatnya.",
         "driftSummary": "celah cakupan {{gaps}} · {{violations}} masalah urutan · {{folded}} penempatan terlipat",
+        "driftPacingOnly": "Struktur sesuai, tetapi temponya melenceng (maks. {{drift}}).",
         "driftThreads": "Cakupan alur",
         "driftNoThreads": "Templat tidak memiliki alur untuk dibandingkan.",
         "driftPacing": "Tempo",
@@ -825,8 +826,7 @@
         "driftViolation": "{{label}}: {{n}} tidak berurutan",
         "driftFolded": "Terlipat (tidak pernah terikat)",
         "untitledArc": "(alur tanpa judul)",
-        "truncated": "Menampilkan {{shown}} dari {{count}} pertama — gunakan Katalog atau tingkatan yang lebih sempit untuk menemukan lebih banyak.",
-        "driftPacingOnly": "Struktur sesuai, tetapi temponya melenceng (maks. {{drift}})."
+        "truncated": "Menampilkan {{shown}} dari {{count}} pertama — gunakan Katalog atau tingkatan yang lebih sempit untuk menemukan lebih banyak."
       },
       "import": {
         "privacy": "Teks mentah tetap bersifat pribadi bagi Anda dan tidak akan pernah dibagikan. Hanya struktur abstrak yang diturunkan yang dapat dipublikasikan — dan publikasi akan menghapus referensi sumbernya.",
@@ -924,7 +924,10 @@
         "composed_of": "Terdiri dari",
         "precedes": "Mendahului",
         "variant_of": "Variasi dari"
-      }
+      },
+      "truncated": "Menampilkan {{cap}} motif pertama — perkecil rentang tier atau gunakan pencarian untuk melihat lebih banyak.",
+      "canvasLoading": "Memuat grafik motif...",
+      "canvasEmpty": "Belum ada motif untuk ditampilkan — buat atau adopsi motif, lalu hubungkan motif tersebut."
     },
     "suggest": {
       "button": "Sarankan motif",

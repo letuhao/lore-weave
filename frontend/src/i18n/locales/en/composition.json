@@ -924,7 +924,10 @@
         "composed_of": "Composed of",
         "precedes": "Precedes",
         "variant_of": "Variant of"
-      }
+      },
+      "truncated": "Showing the first {{cap}} motifs — narrow by tier or search to see more.",
+      "canvasLoading": "Loading the motif graph…",
+      "canvasEmpty": "No motifs to graph yet — create or adopt motifs, then link them."
     },
     "suggest": {
       "button": "Suggest a motif",

@@ -623,6 +623,13 @@
       "title": "Sự nhất quán",
       "desc": "Từng nhịp độ: văn bản đã thực hiện đúng kế hoạch chưa? Trạng thái thực hiện theo từng cảnh (đã thực hiện/chưa thực hiện) + dải căng thẳng",
       "guideBody": "Truy vết sự tương thích, theo từng cảnh, để xem văn phong của bạn có thực sự truyền tải được các nhịp mô-típ đã lên kế hoạch cho một chương hay không. Mỗi cảnh sẽ hiển thị trạng thái đã thực hiện / chưa thực hiện và so sánh mức độ căng thẳng của nó với mục tiêu. Tính năng này giải đáp sự khác biệt giữa kịch bản và văn bản (không phải kịch bản so với khuôn mẫu — đó là chế độ xem độ lệch khuôn mẫu cốt truyện). Các tín hiệu mang tính chất tham khảo (mang tính khái quát, không phải xác minh nguyên nhân trực tiếp). Hãy tạo lại một cảnh đã bỏ lỡ nhịp, hoặc chạy lại toàn bộ quá trình kiểm tra dựa trên một mô hình mà bạn chọn."
+    },
+    "motif-graph": {
+      "title": "Biểu đồ Motif",
+      "desc": "Biểu đồ quan hệ motif trong toàn bộ cuốn sách dưới dạng một khung vẽ có thể kéo thả — bao gồm các motif của bạn và motif dùng chung của sách cùng các liên kết cấu thành / đi trước / biến thể, với bố cục đã lưu của riêng bạn.",
+      "guideBody": "Một đồ thị DAG trực quan về các motif của cuốn sách này. Các nút là motif của bạn cộng với các motif cấp chung của sách; các cạnh là các liên kết cấu_thành / đi_trước / biến_thể. Kéo một nút để sắp xếp biểu đồ — bố cục của bạn được lưu theo từng cuốn sách và đồng bộ trên các thiết bị (mỗi cộng tác viên sẽ có cách sắp xếp riêng). Bố cục ban đầu được tự động tính toán từ trái sang phải theo các chuỗi đi trước. Tạo và xóa các liên kết từ chi tiết motif trong Thư viện Motif.",
+      "signedOut": "Đăng nhập để xem biểu đồ motif.",
+      "noBook": "Mở một cuốn sách để xem biểu đồ motif của nó."
     }
   },
   "sceneRail": {

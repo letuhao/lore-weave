@@ -623,6 +623,13 @@
       "title": "Kesesuaian",
       "desc": "Beat-per-beat: apakah prosa telah mewujudkan rencana? Realisasi per-adegan (ya/tidak) + pita ketegangan",
       "guideBody": "Kesesuaian melacak, adegan demi adegan, apakah prosa yang Anda tulis benar-benar menyampaikan ritme motif yang Anda rencanakan untuk sebuah bab. Setiap adegan menunjukkan status terealisasi / tidak terealisasi dan bagaimana ketegangannya dibandingkan dengan target. Ini menjawab perbandingan spesifikasi-vs-prosa (bukan spesifikasi-vs-templat — itu adalah tampilan drift arc-template). Sinyal ini bersifat saran (kasar, bukan diverifikasi secara kausal). Regenerasi adegan yang melewatkan ritmenya, atau jalankan ulang seluruh pemeriksaan terhadap model yang Anda pilih."
+    },
+    "motif-graph": {
+      "title": "Grafik Motif",
+      "desc": "Grafik hubungan motif di seluruh buku dalam kanvas yang dapat digeser — motif milik Anda + motif bersama buku tersebut beserta relasi composed-of / precedes / variant-of, dengan tata letak tersimpan Anda sendiri.",
+      "guideBody": "DAG visual dari motif-motif dalam buku ini. Node adalah motif Anda ditambah motif tier bersama; edge adalah tautan composed_of / precedes / variant_of. Seret node untuk mengatur grafik — tata letak Anda disimpan per-buku dan tersinkronisasi di berbagai perangkat (setiap kolaborator memiliki pengaturan sendiri). Tata letak awal dihitung otomatis dari kiri ke kanan di sepanjang rantai precedes. Buat dan hapus edge dari detail motif di Perpustakaan Motif.",
+      "signedOut": "Masuk untuk melihat grafik motif.",
+      "noBook": "Buka buku untuk melihat grafik motifnya."
     }
   },
   "sceneRail": {

@@ -15,6 +15,7 @@ import { EditorPanel } from './EditorPanel';
 import { PlannerPanel } from '@/features/plan-forge/components/PlannerPanel';
 import { PassRailPanel } from '@/features/plan-forge/components/PassRailPanel';
 import { MotifLibraryPanel } from './MotifLibraryPanel';
+import { MotifGraphPanel } from './MotifGraphPanel';
 import { QualityConformancePanel } from './QualityConformancePanel';
 import { ArcInspectorPanel } from './ArcInspectorPanel';   /* owner: S2 */
 import { ArcTemplatesPanel } from './ArcTemplatesPanel';   /* owner: S2 */
@@ -336,6 +337,7 @@ export const STUDIO_PANELS: StudioPanelDef[] = [
   // ── S3 · PlanForge ──             (plan-passes)
   // ── S4 · Motif & craft ──         (motif-library, quality-conformance)
   { id: 'motif-library', component: MotifLibraryPanel, titleKey: 'panels.motif-library.title', descKey: 'panels.motif-library.desc', category: 'storyBible', guideBodyKey: 'panels.motif-library.guideBody' },
+  { id: 'motif-graph', component: MotifGraphPanel, titleKey: 'panels.motif-graph.title', descKey: 'panels.motif-graph.desc', category: 'storyBible', guideBodyKey: 'panels.motif-graph.guideBody' },
   { id: 'quality-conformance', component: QualityConformancePanel, titleKey: 'panels.quality-conformance.title', descKey: 'panels.quality-conformance.desc', category: 'quality', guideBodyKey: 'panels.quality-conformance.guideBody' },
   // ── S5 · What-If & Divergence ──  (divergence, + canonview home)
   { id: 'divergence', component: DivergencePanel, titleKey: 'panels.divergence.title', descKey: 'panels.divergence.desc', category: 'editor', guideBodyKey: 'panels.divergence.guideBody' }, /* owner: S5 */

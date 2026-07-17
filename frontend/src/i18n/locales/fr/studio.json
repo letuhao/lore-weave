@@ -623,6 +623,13 @@
       "title": "Conformité",
       "desc": "Battement par battement : la prose a-t-elle réalisé le plan ? Réalisé/non réalisé par scène + bande de tension",
       "guideBody": "La Conformité suit, scène par scène, si votre prose écrite a réellement livré les battements de motifs que vous aviez prévus pour un chapitre. Chaque scène affiche l'état réalisé / non réalisé et la comparaison de sa tension par rapport à la cible. Elle répond à la question spécification-vs-prose (et non spécification-vs-modèle — cela correspond à la vue de dérive des modèles d'arc). Le signal est consultatif (global, non vérifié de manière causale). Régénérez une scène qui a manqué son battement, ou relancez toute la vérification par rapport à un modèle de votre choix."
+    },
+    "motif-graph": {
+      "title": "Graphe de motifs",
+      "desc": "Le graphe des relations de motifs de votre livre sous forme de canevas déplaçable — vos motifs personnels et ceux partagés par le livre, ainsi que leurs liens de composition, de précédence ou de variante, avec votre propre mise en page enregistrée.",
+      "guideBody": "Un DAG (graphe orienté acyclique) visuel des motifs de ce livre. Les nœuds représentent vos motifs ainsi que les motifs de niveau partagé ; les liens représentent les relations « composé de », « précède » ou « variante de ». Faites glisser un nœud pour organiser le graphe — votre disposition est enregistrée par livre et vous suit sur tous vos appareils (chaque collaborateur possède sa propre organisation). La disposition initiale est calculée automatiquement de gauche à droite selon les chaînes de précédence. Créez et supprimez des liens depuis le détail d'un motif dans la Bibliothèque de motifs.",
+      "signedOut": "Connectez-vous pour voir le graphe des motifs.",
+      "noBook": "Ouvrez un livre pour voir son graphe de motifs."
     }
   },
   "sceneRail": {

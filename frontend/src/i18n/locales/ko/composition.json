@@ -815,6 +815,7 @@
         "driftLoading": "드리프트 로딩 중…",
         "driftClean": "편차 없음 — 실제 아크가 템플릿과 일치합니다.",
         "driftSummary": "{{gaps}} 커버리지 공백 · {{violations}} 순서 오류 · {{folded}} 중첩 배치",
+        "driftPacingOnly": "구조는 일치하지만, 페이싱이 어긋났습니다 (최대 {{drift}}).",
         "driftThreads": "스레드 커버리지",
         "driftNoThreads": "비교할 스레드가 템플릿에 없습니다.",
         "driftPacing": "페이싱",
@@ -825,8 +826,7 @@
         "driftViolation": "{{label}}: {{n}}개 순서 어긋남",
         "driftFolded": "중첩됨 (결합되지 않음)",
         "untitledArc": "(제목 없는 아크)",
-        "truncated": "{{count}}개 중 처음 {{shown}}개만 표시됨 — 더 많은 내용을 찾으려면 카탈로그를 이용하거나 더 높은 등급을 사용하세요.",
-        "driftPacingOnly": "구조는 일치하지만, 페이싱이 어긋났습니다 (최대 {{drift}})."
+        "truncated": "{{count}}개 중 처음 {{shown}}개만 표시됨 — 더 많은 내용을 찾으려면 카탈로그를 이용하거나 더 높은 등급을 사용하세요."
       },
       "import": {
         "privacy": "원문 텍스트는 사용자 본인만 볼 수 있으며 절대 공유되지 않습니다. 파생된 추상적 구조만 게시할 수 있으며, 게시 시 소스 참조 정보는 삭제됩니다.",
@@ -924,7 +924,10 @@
         "composed_of": "구성 요소",
         "precedes": "이전 단계",
         "variant_of": "변형"
-      }
+      },
+      "truncated": "{{cap}}개의 모티프를 표시 중입니다 — 더 많은 모티프를 보려면 티어별로 좁히거나 검색해 보세요.",
+      "canvasLoading": "모티프 그래프를 불러오는 중…",
+      "canvasEmpty": "아직 그래프로 표시할 모티프가 없습니다 — 모티프를 생성하거나 가져온 뒤 연결해 보세요."
     },
     "suggest": {
       "button": "모티프 제안",

@@ -815,6 +815,7 @@
         "driftLoading": "Cargando deriva…",
         "driftClean": "Sin desviación: el arco realizado coincide con su plantilla.",
         "driftSummary": "Brecha de cobertura: {{gaps}} · Problemas de orden: {{violations}} · Colocaciones plegadas: {{folded}}",
+        "driftPacingOnly": "La estructura coincide, pero el ritmo se desvió (máx. {{drift}}).",
         "driftThreads": "Cobertura de hilos",
         "driftNoThreads": "La plantilla no tiene hilos para comparar.",
         "driftPacing": "Ritmo",
@@ -825,8 +826,7 @@
         "driftViolation": "{{label}}: {{n}} fuera de orden",
         "driftFolded": "Plegado (nunca vinculado)",
         "untitledArc": "(arco sin título)",
-        "truncated": "Mostrando los primeros {{shown}} de {{count}} — usa el Catálogo o un plan superior para encontrar más.",
-        "driftPacingOnly": "La estructura coincide, pero el ritmo se desvió (máx. {{drift}})."
+        "truncated": "Mostrando los primeros {{shown}} de {{count}} — usa el Catálogo o un plan superior para encontrar más."
       },
       "import": {
         "privacy": "El texto original es privado y nunca se comparte. Solo la estructura abstracta derivada puede publicarse; al publicar, se elimina la referencia a la fuente.",
@@ -924,7 +924,10 @@
         "composed_of": "Compuesto por",
         "precedes": "Precede a",
         "variant_of": "Variante de"
-      }
+      },
+      "truncated": "Mostrando los primeros {{cap}} motivos; filtra por nivel o busca para ver más.",
+      "canvasLoading": "Cargando el gráfico de motivos...",
+      "canvasEmpty": "Aún no hay motivos para graficar; crea o adopta motivos y luego conéctalos."
     },
     "suggest": {
       "button": "Sugerir un motivo",

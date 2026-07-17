@@ -815,6 +815,7 @@
         "driftLoading": "Drift wird geladen…",
         "driftClean": "Keine Abweichung — der realisierte Bogen entspricht seiner Vorlage.",
         "driftSummary": "{{gaps}} Abdeckungslücke(n) · {{violations}} Ordnungsfehler · {{folded}} Faltung(en)",
+        "driftPacingOnly": "Struktur stimmt, aber das Tempo hat abgewichen (max. {{drift}}).",
         "driftThreads": "Fadenabdeckung",
         "driftNoThreads": "Die Vorlage enthält keine Fäden zum Vergleichen.",
         "driftPacing": "Pacing",
@@ -825,8 +826,7 @@
         "driftViolation": "{{label}}: {{n}} außerhalb der Reihenfolge",
         "driftFolded": "Gefaltet (nie gebunden)",
         "untitledArc": "(unbenannter Arc)",
-        "truncated": "Die ersten {{shown}} von {{count}} werden angezeigt – nutze den Katalog oder eine präzisere Auswahl, um mehr zu finden.",
-        "driftPacingOnly": "Struktur stimmt, aber das Tempo hat abgewichen (max. {{drift}})."
+        "truncated": "Die ersten {{shown}} von {{count}} werden angezeigt – nutze den Katalog oder eine präzisere Auswahl, um mehr zu finden."
       },
       "import": {
         "privacy": "Der Rohtext bleibt privat und wird niemals geteilt. Nur die abgeleitete abstrakte Struktur kann veröffentlicht werden – und die Veröffentlichung entfernt den Quellenbezug.",
@@ -924,7 +924,10 @@
         "composed_of": "Zusammengesetzt aus",
         "precedes": "Geht voraus auf",
         "variant_of": "Variante von"
-      }
+      },
+      "truncated": "Es werden die ersten {{cap}} Motive angezeigt – verfeinern Sie die Auswahl nach Stufe oder nutzen Sie die Suche, um mehr zu sehen.",
+      "canvasLoading": "Motiv-Graph wird geladen…",
+      "canvasEmpty": "Noch keine Motive zum Darstellen vorhanden – erstellen oder übernehmen Sie Motive und verknüpfen Sie diese anschließend."
     },
     "suggest": {
       "button": "Motiv vorschlagen",

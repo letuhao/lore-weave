@@ -623,6 +623,13 @@
       "title": "Uyumluluk",
       "desc": "Vuruş vuruş: anlatı planı gerçekleştirdi mi? Sahne başına gerçekleşen/gerçekleşmeyen + gerilim bandı",
       "guideBody": "Uyumluluk, yazdığınız metnin bir bölüm için planladığınız motif vuruşlarını gerçekten sunup sunmadığını sahne sahne izler. Her sahne, gerçekleşen / gerçekleşmeyen durumunu ve geriliminin hedefe göre nasıl olduğunu gösterir. Şartname-metin kıyaslamasına yanıt verir (şartname-şablon kıyaslaması değil — bu, yay-şablon sapma görünümüdür). Veriler tavsiye niteliğindedir (nedensel olarak doğrulanmış değil, kaba veridir). Vuruşunu kaçıran bir sahneyi yeniden oluşturun veya tüm kontrolü seçtiğiniz bir modele göre yeniden çalıştırın."
+    },
+    "motif-graph": {
+      "title": "Motif Grafiği",
+      "desc": "Kitap genelindeki motif ilişkilerini sürükle-bırak özellikli bir tuval olarak görün — size ve kitaba özel motifler ile bunların 'oluşan' / 'öncesinde gelen' / 'varyantı' bağlantıları ve kendi kaydettiğiniz yerleşim düzeniniz.",
+      "guideBody": "Bu kitabın motiflerinin görsel bir DAG (Yönlü Döngüsüz Graf) yapısıdır. Düğümler, sizin motifleriniz ile kitabın ortak düzeydeki motiflerinden oluşur; kenarlar ise 'oluşan' / 'öncesinde gelen' / 'varyantı' bağlantılarıdır. Grafiği düzenlemek için bir düğümü sürükleyin — yerleşim düzeniniz kitap başına kaydedilir ve cihazlar arasında sizinle birlikte gelir (her iş birliği yapan kişinin kendi düzeni vardır). İlk yerleşim, 'öncesinde gelen' zincirleri boyunca soldan sağa otomatik olarak hesaplanır. Motif Kütüphanesi'ndeki bir motifin detaylarından kenarları oluşturun veya silin.",
+      "signedOut": "Motif grafiğini görmek için giriş yapın.",
+      "noBook": "Motif grafiğini görmek için bir kitap açın."
     }
   },
   "sceneRail": {

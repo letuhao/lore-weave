@@ -815,6 +815,7 @@
         "driftLoading": "Chargement de la dérive…",
         "driftClean": "Aucun écart — l'arc réalisé correspond à son modèle.",
         "driftSummary": "Lacune(s) de couverture {{gaps}} · Problème(s) d'ordre {{violations}} · Placement(s) replié(s) {{folded}}",
+        "driftPacingOnly": "La structure correspond, mais le rythme a dérivé (max {{drift}}).",
         "driftThreads": "Couverture des fils",
         "driftNoThreads": "Le modèle ne contient aucun fil à comparer.",
         "driftPacing": "Rythme",
@@ -825,8 +826,7 @@
         "driftViolation": "{{label}} : {{n}} hors séquence",
         "driftFolded": "Replié (jamais lié)",
         "untitledArc": "(arc sans titre)",
-        "truncated": "Affichage des {{shown}} premiers sur {{count}} — utilisez le Catalogue ou un forfait supérieur pour en trouver davantage.",
-        "driftPacingOnly": "La structure correspond, mais le rythme a dérivé (max {{drift}})."
+        "truncated": "Affichage des {{shown}} premiers sur {{count}} — utilisez le Catalogue ou un forfait supérieur pour en trouver davantage."
       },
       "import": {
         "privacy": "Le texte brut vous reste privé et n'est jamais partagé. Seule la structure abstraite dérivée peut être publiée — et la publication supprime la référence source.",
@@ -924,7 +924,10 @@
         "composed_of": "Composé de",
         "precedes": "Précède",
         "variant_of": "Variante de"
-      }
+      },
+      "truncated": "Affichage des {{cap}} premiers motifs — affinez par niveau ou effectuez une recherche pour en voir davantage.",
+      "canvasLoading": "Chargement du graphique des motifs…",
+      "canvasEmpty": "Aucun motif à afficher — créez ou adoptez des motifs, puis liez-les."
     },
     "suggest": {
       "button": "Suggérer un motif",

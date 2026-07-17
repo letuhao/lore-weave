@@ -815,6 +815,7 @@
         "driftLoading": "正在載入漂移…",
         "driftClean": "無偏差 — 實際弧線與模板相符。",
         "driftSummary": "{{gaps}} 覆蓋缺口 · {{violations}} 順序問題 · {{folded}} 折疊位置",
+        "driftPacingOnly": "結構吻合，但節奏出現偏差（最大值 {{drift}}）。",
         "driftThreads": "線索覆蓋率",
         "driftNoThreads": "模板中沒有可比較的線索。",
         "driftPacing": "節奏",
@@ -825,8 +826,7 @@
         "driftViolation": "{{label}}: {{n}} 順序錯誤",
         "driftFolded": "折疊（從未綁定）",
         "untitledArc": "（未命名弧線）",
-        "truncated": "目前顯示 {{count}} 個中的前 {{shown}} 個 — 請使用目錄或更高級別的方案以尋找更多內容。",
-        "driftPacingOnly": "結構吻合，但節奏出現偏差（最大值 {{drift}}）。"
+        "truncated": "目前顯示 {{count}} 個中的前 {{shown}} 個 — 請使用目錄或更高級別的方案以尋找更多內容。"
       },
       "import": {
         "privacy": "原始文本僅供您個人私密使用，絕不外流。只有衍生出的抽象結構可以發佈 — 且發佈時會移除原始引用。",
@@ -924,7 +924,10 @@
         "composed_of": "由…組成",
         "precedes": "先於",
         "variant_of": "…的變體"
-      }
+      },
+      "truncated": "目前僅顯示前 {{cap}} 個主題 — 您可以透過分級篩選或搜尋來查看更多內容。",
+      "canvasLoading": "正在載入主題圖譜…",
+      "canvasEmpty": "尚未有可繪製的主題 — 請先建立或採用主題，然後將它們進行關聯。"
     },
     "suggest": {
       "button": "建議主題",

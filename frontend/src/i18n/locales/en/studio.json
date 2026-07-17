@@ -623,6 +623,13 @@
       "title": "Conformance",
       "desc": "Beat-by-beat: did the prose realize the plan? Per-scene realized/not + tension band",
       "guideBody": "Conformance traces, scene by scene, whether your written prose actually delivered the motif beats you planned for a chapter. Each scene shows realized / not-realized and how its tension compares to the target. It answers spec-vs-prose (not spec-vs-template — that is the arc-templates drift view). The signal is advisory (coarse, not causally verified). Regenerate a scene that missed its beat, or re-run the whole check against a model you pick."
+    },
+    "motif-graph": {
+      "title": "Motif Graph",
+      "desc": "The book-wide motif relationship graph as a draggable canvas — your + book-shared motifs and their composed-of / precedes / variant-of edges, with your own saved layout.",
+      "guideBody": "A visual DAG of this book's motifs. Nodes are your motifs plus the book's shared-tier ones; edges are the composed_of / precedes / variant_of links. Drag a node to arrange the graph — your layout is saved per-book and follows you across devices (each collaborator has their own arrangement). The initial layout is auto-computed left-to-right along the precedes chains. Create and delete edges from a motif's detail in the Motif Library.",
+      "signedOut": "Sign in to see the motif graph.",
+      "noBook": "Open a book to see its motif graph."
     }
   },
   "sceneRail": {

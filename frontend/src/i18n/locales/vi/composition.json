@@ -815,6 +815,7 @@
         "driftLoading": "Đang tải độ lệch...",
         "driftClean": "Không có sai lệch — cấu trúc thực tế khớp với khuôn mẫu.",
         "driftSummary": "Lỗ hổng bao phủ {{gaps}} · {{violations}} lỗi thứ tự · {{folded}} vị trí bị gấp",
+        "driftPacingOnly": "Cấu trúc khớp, nhưng nhịp độ bị lệch (tối đa {{drift}}).",
         "driftThreads": "Độ bao phủ của các mạch truyện",
         "driftNoThreads": "Khuôn mẫu không có mạch truyện để so sánh.",
         "driftPacing": "Nhịp độ",
@@ -825,8 +826,7 @@
         "driftViolation": "{{label}}: {{n}} lỗi thứ tự",
         "driftFolded": "Bị gấp (chưa bao giờ được liên kết)",
         "untitledArc": "(cốt truyện chưa đặt tên)",
-        "truncated": "Đang hiển thị {{shown}} trên {{count}} — hãy sử dụng Danh mục hoặc gói thu hẹp hơn để tìm thêm.",
-        "driftPacingOnly": "Cấu trúc khớp, nhưng nhịp độ bị lệch (tối đa {{drift}})."
+        "truncated": "Đang hiển thị {{shown}} trên {{count}} — hãy sử dụng Danh mục hoặc gói thu hẹp hơn để tìm thêm."
       },
       "import": {
         "privacy": "Văn bản gốc sẽ được giữ riêng tư và không bao giờ được chia sẻ. Chỉ có cấu trúc trừu tượng được trích xuất mới có thể được xuất bản — và việc xuất bản sẽ loại bỏ các tham chiếu nguồn.",
@@ -924,7 +924,10 @@
         "composed_of": "Được cấu thành từ",
         "precedes": "Trước",
         "variant_of": "Biến thể của"
-      }
+      },
+      "truncated": "Đang hiển thị {{cap}} mô típ đầu tiên — hãy thu hẹp theo cấp độ hoặc tìm kiếm để xem thêm.",
+      "canvasLoading": "Đang tải biểu đồ mô típ…",
+      "canvasEmpty": "Chưa có mô típ nào để hiển thị biểu đồ — hãy tạo hoặc áp dụng mô típ, sau đó liên kết chúng."
     },
     "suggest": {
       "button": "Gợi ý một mô-típ",

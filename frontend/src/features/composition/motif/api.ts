@@ -33,6 +33,16 @@ export type MotifLinkRow = {
   neighbor_name: string;
 };
 
+// ── the book-wide motif graph canvas (Wave-4) ──────────────────────────────────
+export type MotifGraphNode = { id: string; code: string; name: string; kind: string; mine: boolean; book_shared: boolean };
+export type MotifGraphEdge = { id: string; from_motif_id: string; to_motif_id: string; kind: MotifLinkKind; ord: number | null };
+export type MotifGraphLayout = { positions: Record<string, { x: number; y: number }>; version: number };
+export type MotifGraphMove = { motif_id: string; x: number; y: number };
+export type MotifGraphData = {
+  nodes: MotifGraphNode[]; edges: MotifGraphEdge[]; layout: MotifGraphLayout;
+  truncated: boolean; node_cap: number;
+};
+
 // One ranked suggest candidate (BE-M4): the motif + its score + the "why this motif"
 // breakdown (tension/genre/precondition/cosine, optionally degraded).
 export type MotifSuggestion = {
@@ -130,6 +140,19 @@ export const motifApi = {
   },
   deleteLink(linkId: string, token: string, bookId?: string | null): Promise<{ deleted: boolean; link_id: string }> {
     return apiJson(`${BASE}/motif-links/${linkId}${_qs({ book_id: bookId ?? undefined })}`, { method: 'DELETE', token });
+  },
+
+  // ── the book-wide motif graph CANVAS (Wave-4 D-MOTIF-GRAPH-CANVAS) — nodes+edges+the
+  //    caller's own persisted layout; the PATCH persists per-viewer node positions (OCC).
+  motifGraph(bookId: string, token: string): Promise<MotifGraphData> {
+    return apiJson<MotifGraphData>(`${BASE}/books/${bookId}/motif-graph`, { token });
+  },
+  patchGraphLayout(
+    bookId: string, moves: MotifGraphMove[], ifVersion: number, token: string,
+  ): Promise<MotifGraphLayout> {
+    return apiJson<MotifGraphLayout>(`${BASE}/books/${bookId}/motif-graph/layout`, {
+      method: 'PATCH', body: JSON.stringify({ moves, if_version: ifVersion }), token,
+    });
   },
 
   // ── ranked suggest (BE-M4, 3b) — the GUI twin of composition_motif_suggest_for_chapter,

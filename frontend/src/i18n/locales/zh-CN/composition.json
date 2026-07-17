@@ -815,6 +815,7 @@
         "driftLoading": "正在加载漂移…",
         "driftClean": "无偏差 —— 实际弧线与模板一致。",
         "driftSummary": "{{gaps}} 覆盖缺口 · {{violations}} 顺序问题 · {{folded}} 折叠位置",
+        "driftPacingOnly": "结构匹配，但节奏出现偏差（最大值 {{drift}}）。",
         "driftThreads": "情节线覆盖",
         "driftNoThreads": "模板中没有可对比的情节线。",
         "driftPacing": "节奏",
@@ -825,8 +826,7 @@
         "driftViolation": "{{label}}: {{n}} 顺序错误",
         "driftFolded": "折叠（从未绑定）",
         "untitledArc": "（未命名弧线）",
-        "truncated": "正在显示第 {{shown}} / {{count}} 项 — 使用“目录”或更高级别的方案以查找更多内容。",
-        "driftPacingOnly": "结构匹配，但节奏出现偏差（最大值 {{drift}}）。"
+        "truncated": "正在显示第 {{shown}} / {{count}} 项 — 使用“目录”或更高级别的方案以查找更多内容。"
       },
       "import": {
         "privacy": "原始文本仅供您个人私密使用，绝不会被分享。只有生成的抽象结构可以发布 —— 且发布操作会移除原始引用。",
@@ -924,7 +924,10 @@
         "composed_of": "由…组成",
         "precedes": "先于",
         "variant_of": "…的变体"
-      }
+      },
+      "truncated": "正在显示前 {{cap}} 个主题——通过分层筛选或搜索以查看更多。",
+      "canvasLoading": "正在加载主题图谱…",
+      "canvasEmpty": "暂无可绘制的主题——请先创建或采用主题，然后将它们进行关联。"
     },
     "suggest": {
       "button": "推荐主题",

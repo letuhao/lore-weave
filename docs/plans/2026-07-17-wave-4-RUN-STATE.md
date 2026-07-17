@@ -36,10 +36,10 @@ smoke (drive the real app as a user) for each:
 ### B · motif graph-canvas (XL, BE-first)
 - [x] B1 BE: `motif_graph_layout` table (migrate.py, applied to dev DB) + `MotifGraphLayoutRepo` (get + batch server-side merge `positions||moves` + OCC via `version`; nodes_for_book + edges_among + motif_visible_in_book). **EVIDENCE: 5 unit tests** (SQL shape, owner-scope, OCC-None). Real merge/OCC behaviour → B7 live smoke.
 - [x] B2 BE: `GET /books/{id}/motif-graph` (nodes+edges+layout, VIEW-gated, node-cap + `truncated`) + `PATCH …/layout` (batch merge, OCC 412 + reseed `current`, foreign-motif 404 no-oracle). **EVIDENCE: 5 route tests** (shape, truncation, merge, 412-reseed, foreign-404).
-- [ ] B3 FE: `MotifGraphCanvas` (reactflow v11: controlled + onNodesChange + threshold + cursor drop) + bespoke layered auto-layout + `posOf` fallback + pending-map debounced persist + 412 reseed + edge create/delete + read-only
-- [ ] B4 FE: `useMotifGraph` hook
-- [ ] B5 register `motif-graph` panel (catalog + enum + contract regen + i18n)
-- [ ] B6 tests: PlanCanvasDrag-style RF unit + persist test + Playwright CDP live-drag
+- [x] B3 FE: `MotifGraphCanvas` (reactflow v11 controlled useNodesState + onNodesChange + nodeDragThreshold=5 + drag-stop persist) + bespoke layered `autoLayout` (Kahn longest-path, no dagre dep) + `posOf` stored??auto??default + read-only-safe.
+- [x] B4 FE: `useMotifGraph` — book-graph query + pending-MAP + debounced batch flush + optimistic cache + fail-soft 412 reseed+retry + flush-on-unmount/hide.
+- [x] B5 register `motif-graph`: catalog row + chat panel_id enum + contract.json + studio.json + composition canvas keys (distinct from the section's — restored the ones I'd clobbered). **EVIDENCE: 13 panel-contract + 71 chat-service contract tests green.**
+- [x] B6 unit: `MotifGraphCanvas.test.tsx` (7) + `useMotifGraph.test.tsx` (2 — pending-map batches both / 412 reseed+retry). **EVIDENCE: 904 motif+panel green, tsc clean, i18n +keys × 17 locales (0 failed).** Playwright CDP live-drag + blackbox → B7.
 - [ ] B7 blackbox Playwright-MCP smoke + cross-service live-smoke (drag → PATCH → DB → reload persists)
 - [ ] B8 /review-impl + commit
 

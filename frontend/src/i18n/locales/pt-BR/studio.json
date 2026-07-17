@@ -623,6 +623,13 @@
       "title": "Conformidade",
       "desc": "Beat a beat: a prosa realizou o plano? Realizado/não realizado por cena + faixa de tensão",
       "guideBody": "A Conformidade rastreia, cena por cena, se a sua prosa escrita realmente entregou os beats de motivos que você planejou para um capítulo. Cada cena mostra o que foi realizado / não realizado e como sua tensão se compara ao alvo. Ela responde à relação especificação-vs-prosa (não especificação-vs-template — essa é a visualização de desvio de templates de arco). O sinal é consultivo (aproximado, não verificado causalmente). Regenere uma cena que perdeu seu beat ou execute novamente toda a verificação contra um modelo que você escolher."
+    },
+    "motif-graph": {
+      "title": "Gráfico de Motivos",
+      "desc": "O gráfico de relações de motivos de todo o livro como uma tela arrastável — seus motivos compartilhados com o livro e suas arestas de «composto por» / «precede» / «variante de», com seu próprio layout salvo.",
+      "guideBody": "Um DAG visual dos motivos deste livro. Os nós são seus motivos mais os motivos de nível compartilhado do livro; as arestas são os links de composto_por / precede / variante_de. Arraste um nó para organizar o gráfico — seu layout é salvo por livro e acompanha você entre dispositivos (cada colaborador tem seu próprio arranjo). O layout inicial é calculado automaticamente da esquerda para a direita ao longo das cadeias de precedência. Crie e exclua arestas a partir dos detalhes de um motivo na Biblioteca de Motivos.",
+      "signedOut": "Faça login para ver o gráfico de motivos.",
+      "noBook": "Abra um livro para ver seu gráfico de motivos."
     }
   },
   "sceneRail": {
