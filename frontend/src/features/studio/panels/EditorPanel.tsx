@@ -476,13 +476,14 @@ export function EditorPanel(props: IDockviewPanelProps) {
       </div>
       {/* #16 2.4 — glossary hover tooltip + `[[` autocomplete, scoped to this panel's own editor. */}
       {glossaryEnabled && <GlossaryTooltip bookId={bookId} />}
+      {/* onSelect/onCreateNew omitted on purpose: the insert IS handleInsertGlossaryEntity, and no
+          create-from-editor flow exists yet — passing `() => {}` (what this did until the
+          2026-07-17 audit) rendered a live "+ Create new" link that silently did nothing. */}
       {glossaryEnabled && (
         <GlossaryAutocomplete
           entities={glossaryEntities}
           editorEl={editorEl}
           onInsertEntity={handleInsertGlossaryEntity}
-          onSelect={() => {}}
-          onCreateNew={() => {}}
         />
       )}
     </div>

@@ -1380,14 +1380,14 @@ export function ChapterEditorPage() {
       {/* T5.3 — AI-provenance hover tag (reads the span's data-* attrs) */}
       {composeProjectId && <ProvenanceTag />}
 
-      {/* Glossary [[ autocomplete */}
+      {/* Glossary [[ autocomplete. onSelect/onCreateNew omitted — see the note in EditorPanel: the
+          "+ Create new" link had no implementation in EITHER consumer, so it rendered dead in every
+          `[[` popup until the 2026-07-17 audit. */}
       {glossaryEnabled && (
         <GlossaryAutocomplete
           entities={glossaryEntities}
           editorEl={editorElRef.current}
           onInsertEntity={handleInsertEntity}
-          onSelect={() => {}}
-          onCreateNew={() => {}}
         />
       )}
     </div>

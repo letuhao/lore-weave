@@ -167,6 +167,65 @@ declares a reasoned supersede). See "Actions".
 
 ---
 
+## Round 3 — sweeping ALL 88 panels + the studio chrome for "cho có" surfaces
+
+Method: grep the whole `features/studio` tree for stub markers (`once wired`, `Coming soon`,
+`Built next.`, TODO, noop handlers), then verify each hit against what actually exists.
+
+### F-7 · Two of the studio's FIVE top-level views are dead — and one of them is fully built 🔴
+
+`ACTIVITY_VIEWS = ['manuscript', 'plan', 'bible', 'search', 'quality']` — the VS-Code-style activity
+bar, the studio's primary navigation. `StudioActivityBar` renders **all five** as clickable buttons.
+`StudioSideBar` only implements two navigators (`manuscript`, `plan`); the rest fall to a stub that
+renders `navStub.<view>.body`. That copy is shipped **and translated into all 17 locales**:
+
+| View | What the author is told | What actually exists |
+|---|---|---|
+| `bible` | *"Cast, world & canon entries. **Coming soon.**"* | 🔴 **13 storyBible panels ship**: glossary, glossary-ontology, glossary-unknown, glossary-ai-suggestions, glossary-merge-candidates, wiki, arc-templates, motif-library, motif-graph, world-map, place-graph, cast, character-arc |
+| `quality` | *"Critic scores, promise threads & canon issues. **Coming soon.**"* | 🟠 **9 quality panels ship.** The rail does offer ONE honest affordance (a button that opens the `quality` hub), but still leads with "Coming soon" |
+| `search` | *"Full-text & semantic search across the book. **Coming soon.**"* | ⚪ **True** — no search panel exists anywhere in the catalog. A genuinely unbuilt feature |
+
+**Severity.** The author clicks the Story Bible icon — the entry point to their whole cast, world,
+glossary, wiki and motif library — and is told the feature is *coming soon*, while 13 panels sit
+built, tested, i18n'd and palette-reachable. This is `built-mounted-unreachable-duplicated-nav-list`
+at the **top level of the product**. Bar #3 (reachable) is technically satisfied via the Command
+Palette, which is exactly why no gate caught it: *reachable-by-palette* is not *discoverable*, and
+the primary nav actively tells the author the opposite of the truth.
+
+**Disposition:** `bible` + `quality` are pure FE wiring over panels that already exist (a rail that
+lists its category's panels — the data is in `catalog.ts`, `PANELS_BY_CATEGORY` already groups it).
+`search` is a real unbuilt feature and a scope decision for the PO — it is NOT in plan 30's gap
+register either.
+
+### F-8 · The "kg-overview 3-noop-buttons" bug the §2 bar CITES was still live — ✅ FIXED (`e51593f8f`)
+
+The bar names this bug as its canonical dead-button example. It survived all 8 sessions.
+`ProjectRow` REQUIRED `onArchive`/`onRestore`/`onDelete` and rendered their buttons
+unconditionally, so `OverviewSection` — where the recorded decision is that destructive CRUD belongs
+with the projects LIST — satisfied the types with `noop`. In the `kg-overview` panel the author saw
+a live Archive icon and a live Delete icon that did **nothing** on click: no dialog, no toast, no
+error. Bar #2 and #4, both violated.
+
+Fixed by expressing the intent in the types (the trio is optional; a button renders only when
+handled — the same `onOpen?`/`onExploreGraph?` idiom this file already documents). **Why no test
+caught it:** `OverviewSection`'s suite stubs `ProjectRow` out entirely, so nothing ever rendered the
+real buttons. Added a guard on the real component, proven both ways (re-injecting the old render
+REDs it; the handled case still shows the buttons, so it cannot pass by rendering nothing).
+
+### F-9 · A 4th dead button — `[[` autocomplete's "+ Create new", in the studio's main editor — ✅ FIXED
+
+`GlossaryAutocomplete` renders a primary-coloured, `cursor-pointer hover:underline` **"+ Create
+new"** action at the foot of every `[[` popup. **Both** consumers — `EditorPanel` (the studio's
+manuscript editor) and the legacy `ChapterEditorPage` — passed `onCreateNew={() => {}}`. Clicking it
+closed the popup and did nothing. It has **never worked anywhere**: the component advertises a
+capability no consumer ever implemented.
+
+Made optional + hidden when unhandled (same pattern as F-8). **The capability itself is a real,
+unbuilt gap** — "type `[[NewCharacter` → create it" is a natural authoring flow, is in no session
+charter and in no plan-30 row. Recorded here for the PO; hiding the lie is the honest interim state.
+
+---
+
 ## Actions
 
 | # | Action | State |

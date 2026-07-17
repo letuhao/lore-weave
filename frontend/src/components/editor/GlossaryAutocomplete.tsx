@@ -7,8 +7,14 @@ type Props = {
   editorEl: HTMLElement | null;
   /** Called with (triggerStart, triggerEnd, entityName) to replace [[query with entity name via editor commands */
   onInsertEntity: (from: number, to: number, name: string) => void;
-  onSelect: (entity: EntityNameEntry) => void;
-  onCreateNew: (searchText: string) => void;
+  /** Optional notification after a pick — the INSERT itself is onInsertEntity's job. */
+  onSelect?: (entity: EntityNameEntry) => void;
+  /** AUDIT 2026-07-17 — OPTIONAL, and the "+ Create new" affordance only renders when handled.
+   *  It used to be required, and BOTH consumers (EditorPanel and the legacy ChapterEditorPage)
+   *  passed `() => {}` — so the link rendered in every `[[` popup, styled as a live primary-colour
+   *  action, and clicking it just closed the popup. It has never worked anywhere. Hiding it is the
+   *  honest state until someone builds the create-from-editor flow (recorded in the audit doc). */
+  onCreateNew?: (searchText: string) => void;
 };
 
 export function GlossaryAutocomplete({ entities, editorEl, onInsertEntity, onSelect, onCreateNew }: Props) {
@@ -122,7 +128,7 @@ export function GlossaryAutocomplete({ entities, editorEl, onInsertEntity, onSel
         // Replace [[query with entity name via editor commands (safe, no DOM mutation)
         onInsertEntity(triggerRange.from, triggerRange.to, entity.display_name);
       }
-      onSelect(entity);
+      onSelect?.(entity);
       cleanup();
     },
     [triggerRange, onInsertEntity, onSelect],
@@ -168,12 +174,14 @@ export function GlossaryAutocomplete({ entities, editorEl, onInsertEntity, onSel
       </div>
       <div className="border-t px-3 py-1.5 flex justify-between text-[10px] text-muted-foreground">
         <span>↑↓ {t('navigate')} · Enter {t('select')} · Esc {t('dismiss')}</span>
-        <span
-          className="text-[var(--primary)] cursor-pointer hover:underline"
-          onClick={() => { onCreateNew(query); cleanup(); }}
-        >
-          + {t('createNew')}
-        </span>
+        {onCreateNew && (
+          <span
+            className="text-[var(--primary)] cursor-pointer hover:underline"
+            onClick={() => { onCreateNew(query); cleanup(); }}
+          >
+            + {t('createNew')}
+          </span>
+        )}
       </div>
     </div>
   );
