@@ -21,6 +21,13 @@ export interface PlanToolbarProps {
   onProblems: () => void;
   /** OQ-7/P-13 — Compose chat, with the current selection as its subject. Null ⇒ nothing selected. */
   onAskAi: (() => void) | null;
+  /** Create a top-level arc. Null ⇒ the caller can't offer it (no EDIT grant / no token). The GUI for
+   *  a capability the backend already had (POST /books/{id}/arcs) — missing GUI ≠ missing feature. */
+  onAddArc: (() => void) | null;
+  /** Create a sub-arc under the SELECTED arc/saga. Null ⇒ selection isn't an arc, so there's no
+   *  parent to nest under — disabled-with-reason, never a dead button (PH7). */
+  onAddSubArc: (() => void) | null;
+  creatingArc: boolean;
   view: PlanViewMode;
   onView: (v: PlanViewMode) => void;
   /** Total problems across the book (canon + threads), for the toolbar counter. */
@@ -36,6 +43,9 @@ export function PlanToolbar({
   onFit,
   onProblems,
   onAskAi,
+  onAddArc,
+  onAddSubArc,
+  creatingArc,
   view,
   onView,
   problemCount,
@@ -54,6 +64,35 @@ export function PlanToolbar({
         placeholder={t('planHub.toolbar.search', 'Filter nodes…')}
         className="w-40 rounded border bg-background px-1.5 py-1 text-xs"
       />
+
+      {/* Manual structure authoring — the GUI the canvas never had for a route the backend always
+          did (POST /books/{id}/arcs). A new arc is created "Untitled" and selected, so it is renamed
+          IN PLACE via the drawer — no modal (the killed Spine's one good instinct). Sub-arc nests
+          under the selected arc via parent_arc_id; disabled-with-reason when the selection can't be a
+          parent. Chapters/scenes are NOT peers here — a scene needs a chapter_id and a chapter is
+          book-service's to create; those hang off their parents contextually, not on this bar. */}
+      <button
+        type="button"
+        data-testid="plan-hub-add-arc"
+        onClick={() => onAddArc?.()}
+        disabled={!onAddArc || creatingArc}
+        title={onAddArc ? t('planHub.toolbar.addArcHint', 'Add a top-level arc') : t('planHub.toolbar.addArcNoGrant', 'You need edit access to add arcs')}
+        className={btn}
+      >
+        {creatingArc ? t('planHub.toolbar.addingArc', '+ Arc…') : t('planHub.toolbar.addArc', '+ Arc')}
+      </button>
+      <button
+        type="button"
+        data-testid="plan-hub-add-subarc"
+        onClick={() => onAddSubArc?.()}
+        disabled={!onAddSubArc || creatingArc}
+        title={onAddSubArc ? t('planHub.toolbar.addSubArcHint', 'Add a sub-arc under the selected arc') : t('planHub.toolbar.addSubArcHint2', 'Select an arc to nest a sub-arc under it')}
+        className={btn}
+      >
+        {t('planHub.toolbar.addSubArc', '+ Sub-arc')}
+      </button>
+
+      <span className="mx-1 h-4 w-px bg-border" />
 
       <button type="button" data-testid="plan-hub-fit" onClick={onFit} className={btn}>
         {t('planHub.toolbar.fit', 'Fit')}

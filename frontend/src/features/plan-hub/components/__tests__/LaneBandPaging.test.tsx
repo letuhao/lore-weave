@@ -57,16 +57,19 @@ describe('lane header pagination (PH11)', () => {
     expect(screen.getByTestId('plan-lane-count-arc-1').textContent).toBe('100/340');
   });
 
-  it('the counter renders even when fully loaded — "100/100" ≠ "100/340"', () => {
-    // Showing it only when truncated would leave the user unable to tell the two apart, which is
-    // precisely the ambiguity the bug hid behind.
+  it('the counter is HIDDEN when fully loaded — nothing is hidden, so it is just clutter', () => {
+    // Changed 2026-07-18 (S4): a 3-user panel flagged the always-on "100/340" pill as telemetry
+    // clutter on a writing surface. The count exists to warn "not everything is loaded" — so it now
+    // shows ONLY when hasMore. Fully loaded (hasMore false) ⇒ nothing is hidden ⇒ no signal needed ⇒
+    // no pill. The anti-silent-truncation guarantee is preserved: whenever chapters ARE hidden
+    // (hasMore true) the count + "+ more" both appear (see the test above).
     renderBand({
       band: band(),
       onToggleArc: vi.fn(),
       pagination: { loaded: 100, total: 100, hasMore: false, loading: false },
       onLoadMore: vi.fn(),
     });
-    expect(screen.getByTestId('plan-lane-count-arc-1').textContent).toBe('100/100');
+    expect(screen.queryByTestId('plan-lane-count-arc-1')).toBeNull(); // fully loaded → no clutter
     expect(screen.queryByTestId('plan-lane-more-arc-1')).toBeNull(); // nothing left to fetch
   });
 

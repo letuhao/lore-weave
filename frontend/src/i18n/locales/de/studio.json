@@ -1401,6 +1401,29 @@
       "viewTimeline": "Zeitstrahl",
       "viewWorldmap": "Weltkarte",
       "viewSoon": "In einer späteren Phase verfügbar"
+    },
+    "mode": {
+      "simple": "Einfach",
+      "advanced": "Erweitert"
+    },
+    "simple": {
+      "guide": "Dein Buch, Kapitel für Kapitel. Klicke auf eines, um weiterzuschreiben, oder beginne unten mit einem neuen Kapitel.",
+      "loading": "Deine Kapitel werden geladen…",
+      "error": "Die Kapitel konnten nicht geladen werden. Versuche es in einem Moment erneut.",
+      "emptyLine": "Ein leeres Buch. Beginne mit einem Satz – die Struktur kann später folgen.",
+      "untitled": "Unbetiteltes Kapitel",
+      "words": "{{n}}w",
+      "status": {
+        "done": "erledigt",
+        "drafting": "im Entwurf",
+        "empty": "noch nicht begonnen"
+      },
+      "more": "+ {{n}} weitere",
+      "loadingMore": "Wird geladen…",
+      "writeCta": "Ein neues Kapitel schreiben",
+      "writing": "Wird erstellt…",
+      "doorNote": "Öffnet sofort eine leere Seite.",
+      "goAdvanced": "In Storylines organisieren →"
     }
   },
   "structTpl": {

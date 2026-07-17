@@ -1401,6 +1401,29 @@
       "viewTimeline": "Garis Masa",
       "viewWorldmap": "Peta Dunia",
       "viewSoon": "Akan datang dalam fasa seterusnya"
+    },
+    "mode": {
+      "simple": "Ringkas",
+      "advanced": "Lanjutan"
+    },
+    "simple": {
+      "guide": "Buku anda, bab demi bab. Klik satu untuk terus menulis, atau mulakan bab baharu di bawah.",
+      "loading": "Memuatkan bab anda…",
+      "error": "Tidak dapat memuatkan bab anda. Sila cuba sebentar lagi.",
+      "emptyLine": "Buku kosong. Mulakan dengan satu ayat — struktur boleh disusun kemudian.",
+      "untitled": "Bab tanpa tajuk",
+      "words": "{{n}} perkataan",
+      "status": {
+        "done": "selesai",
+        "drafting": "sedang menulis",
+        "empty": "belum bermula"
+      },
+      "more": "+ {{n}} lagi",
+      "loadingMore": "Memuatkan…",
+      "writeCta": "Tulis bab baharu",
+      "writing": "Sedang mencipta…",
+      "doorNote": "Membuka halaman kosong dengan segera.",
+      "goAdvanced": "Susun mengikut jalan cerita →"
     }
   },
   "structTpl": {

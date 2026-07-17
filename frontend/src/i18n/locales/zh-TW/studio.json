@@ -1401,6 +1401,29 @@
       "viewTimeline": "時間軸",
       "viewWorldmap": "世界地圖",
       "viewSoon": "即將於後續階段推出"
+    },
+    "mode": {
+      "simple": "簡易模式",
+      "advanced": "進階模式"
+    },
+    "simple": {
+      "guide": "您的書籍，逐章呈現。點擊章節繼續寫作，或在下方開始新章節。",
+      "loading": "正在載入您的章節…",
+      "error": "無法載入您的章節。請稍後再試。",
+      "emptyLine": "一本空白的書。從一句話開始——結構可以稍後再建立。",
+      "untitled": "未命名章節",
+      "words": "{{n}} 字",
+      "status": {
+        "done": "已完成",
+        "drafting": "撰寫中",
+        "empty": "尚未開始"
+      },
+      "more": "還有 {{n}} 個",
+      "loadingMore": "載入中…",
+      "writeCta": "撰寫新章節",
+      "writing": "建立中…",
+      "doorNote": "立即開啟空白頁面。",
+      "goAdvanced": "整理成故事線 →"
     }
   },
   "structTpl": {

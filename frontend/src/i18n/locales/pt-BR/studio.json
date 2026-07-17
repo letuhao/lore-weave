@@ -1401,6 +1401,29 @@
       "viewTimeline": "Linha do tempo",
       "viewWorldmap": "Mapa do mundo",
       "viewSoon": "Disponível em uma fase posterior"
+    },
+    "mode": {
+      "simple": "Simples",
+      "advanced": "Avançado"
+    },
+    "simple": {
+      "guide": "Seu livro, capítulo por capítulo. Clique em um para continuar escrevendo ou comece um novo capítulo abaixo.",
+      "loading": "Carregando seus capítulos...",
+      "error": "Não foi possível carregar seus capítulos. Tente novamente em instantes.",
+      "emptyLine": "Um livro em branco. Comece com uma frase — a estrutura pode vir depois.",
+      "untitled": "Capítulo sem título",
+      "words": "{{n}}p",
+      "status": {
+        "done": "concluído",
+        "drafting": "escrevendo",
+        "empty": "não iniciado"
+      },
+      "more": "+ {{n}} mais",
+      "loadingMore": "Carregando…",
+      "writeCta": "Escrever um novo capítulo",
+      "writing": "Criando…",
+      "doorNote": "Abre uma página em branco imediatamente.",
+      "goAdvanced": "Organizar em linhas narrativas →"
     }
   },
   "structTpl": {

@@ -1401,6 +1401,29 @@
       "viewTimeline": "Timeline",
       "viewWorldmap": "Carte du monde",
       "viewSoon": "Prévu pour une phase ultérieure"
+    },
+    "mode": {
+      "simple": "Simple",
+      "advanced": "Avancé"
+    },
+    "simple": {
+      "guide": "Votre livre, chapitre par chapitre. Cliquez sur l'un d'eux pour continuer l'écriture, ou commencez un nouveau chapitre ci-dessous.",
+      "loading": "Chargement de vos chapitres…",
+      "error": "Impossible de charger vos chapitres. Réessayez dans un instant.",
+      "emptyLine": "Un livre vide. Commencez par une phrase — la structure viendra plus tard.",
+      "untitled": "Chapitre sans titre",
+      "words": "{{n}} mots",
+      "status": {
+        "done": "terminé",
+        "drafting": "en cours de rédaction",
+        "empty": "non commencé"
+      },
+      "more": "+ {{n}} autres",
+      "loadingMore": "Chargement…",
+      "writeCta": "Écrire un nouveau chapitre",
+      "writing": "Création en cours…",
+      "doorNote": "Ouvre immédiatement une page vierge.",
+      "goAdvanced": "Organiser en intrigues →"
     }
   },
   "structTpl": {

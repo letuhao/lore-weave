@@ -35,7 +35,7 @@ function ArcRollupNodeInner({ data }: NodeProps<PlanNodeData>) {
       <div className="flex items-center gap-1.5">
         {/* The arc title (from the shell) is primary; the chapter count is the rollup's secondary
             line. Before the shell resolves for this node, the count alone still reads correctly. */}
-        <span className="flex-1 truncate font-medium" title={content?.title}>
+        <span className="line-clamp-2 flex-1 break-words font-medium leading-tight" title={content?.title}>
           {content?.title || countLabel}
           {content?.title && (
             <span className="ml-1 font-normal text-muted-foreground">· {countLabel}</span>

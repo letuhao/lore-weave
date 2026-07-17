@@ -60,6 +60,15 @@ export interface PlanDrawerProps {
   chapters?: { chapter_id: string; title: string; sort_order: number }[];
   /** PH16 — "Open in Editor" goes to the ACTUAL (the manuscript). */
   onOpenInEditor?: (chapterId: string) => void;
+  /** Bug A (spec 2026-07-17) — build the hierarchy DOWN from the selected node. Null ⇒ no Work yet, so
+   *  there's nothing to hang children on (the button then isn't rendered, PH7). +Chapter shows on an
+   *  arc/saga; +Scene on a chapter. Scene needs the chapter's BOOK chapter_id, which the node carries. */
+  childCreate?: {
+    busy: boolean;
+    error: string | null;
+    addChapter: (arcStructureNodeId: string) => void;
+    addScene: (chapterNodeId: string, bookChapterId: string) => void;
+  } | null;
 }
 
 const KIND_LABEL: Record<PlanNodeKind, string> = {
@@ -301,6 +310,53 @@ function ChapterSceneFacets({
 // ── body router ─────────────────────────────────────────────────────────────────
 // The arc/saga branch mounts the arc-inspector's shared body (32 §3.5) — the old `ArcFacets`
 // minimal-summary stub + its `plan-drawer-arc-gap` note are GONE (the inspector is built).
+/** Bug A — the contextual create bar. +Chapter under an arc, +Scene under a chapter. This is the
+ *  answer to "I selected a node, now how do I add anything under it?" — the drawer used to offer only
+ *  metadata (+track/+role) and dead-ended the hierarchy here. A created node is auto-selected by the
+ *  panel, so naming happens in place (create-then-rename), never in a modal. */
+function AddChildBar({
+  view,
+  childCreate,
+}: {
+  view: PlanNodeView;
+  childCreate: NonNullable<PlanDrawerProps['childCreate']>;
+}) {
+  const isArc = view.kind === 'arc' || view.kind === 'saga';
+  const isChapter = view.kind === 'chapter';
+  if (!isArc && !isChapter) return null; // a scene has no structural children
+  return (
+    <div className="flex flex-col gap-1 border-b p-2">
+      {isArc && view.arcNode && (
+        <button
+          type="button"
+          data-testid="plan-drawer-add-chapter"
+          disabled={childCreate.busy}
+          onClick={() => childCreate.addChapter(view.arcNode!.id)}
+          className="self-start rounded border px-2 py-1 text-xs font-medium hover:bg-accent disabled:opacity-50"
+        >
+          {childCreate.busy ? '+ Chapter…' : '+ Chapter'}
+        </button>
+      )}
+      {isChapter && view.outlineNode?.chapter_id && (
+        <button
+          type="button"
+          data-testid="plan-drawer-add-scene"
+          disabled={childCreate.busy}
+          onClick={() => childCreate.addScene(view.outlineNode!.id, view.outlineNode!.chapter_id!)}
+          className="self-start rounded border px-2 py-1 text-xs font-medium hover:bg-accent disabled:opacity-50"
+        >
+          {childCreate.busy ? '+ Scene…' : '+ Scene'}
+        </button>
+      )}
+      {childCreate.error && (
+        <p data-testid="plan-drawer-child-error" className="text-xs text-destructive">
+          {childCreate.error}
+        </p>
+      )}
+    </div>
+  );
+}
+
 function DrawerBody({
   view,
   bookId,
@@ -309,6 +365,7 @@ function DrawerBody({
   writes,
   chapters,
   onOpenInEditor,
+  childCreate,
 }: {
   view: PlanNodeView;
   bookId: string;
@@ -317,27 +374,36 @@ function DrawerBody({
   writes?: PlanDrawerProps['writes'];
   chapters?: PlanDrawerProps['chapters'];
   onOpenInEditor?: (chapterId: string) => void;
+  childCreate?: PlanDrawerProps['childCreate'];
 }) {
   if (view.loading) return <Centered testid="plan-drawer-loading">Loading…</Centered>;
   if (view.error) return <Centered testid="plan-drawer-error" tone="error">{view.error}</Centered>;
   if (view.kind === 'chapter' || view.kind === 'scene') {
     if (!view.outlineNode) return <Centered testid="plan-drawer-empty">This node has no plan yet.</Centered>;
     return (
-      <ChapterSceneFacets
-        node={view.outlineNode}
-        nameFor={view.nameFor}
-        overlay={overlay}
-        onOpenRef={onOpenRef}
-        writes={writes}
-        chapters={chapters}
-        onOpenInEditor={onOpenInEditor}
-      />
+      <>
+        {childCreate && <AddChildBar view={view} childCreate={childCreate} />}
+        <ChapterSceneFacets
+          node={view.outlineNode}
+          nameFor={view.nameFor}
+          overlay={overlay}
+          onOpenRef={onOpenRef}
+          writes={writes}
+          chapters={chapters}
+          onOpenInEditor={onOpenInEditor}
+        />
+      </>
     );
   }
   if (view.kind === 'arc' || view.kind === 'saga') {
     if (!view.arcNode) return <Centered testid="plan-drawer-empty">Arc not found in the shell.</Centered>;
     // The shell has no `resolved`/`open_promises`/derived block — the embed fetches GET /arcs/{id}.
-    return <ArcInspectorEmbed arcId={view.arcNode.id} bookId={bookId} />;
+    return (
+      <>
+        {childCreate && <AddChildBar view={view} childCreate={childCreate} />}
+        <ArcInspectorEmbed arcId={view.arcNode.id} bookId={bookId} />
+      </>
+    );
   }
   return <Centered testid="plan-drawer-empty">Select a node to see its plan.</Centered>;
 }
@@ -352,6 +418,7 @@ export function PlanDrawer({
   writes,
   chapters,
   onOpenInEditor,
+  childCreate,
 }: PlanDrawerProps) {
   // Hook first (unconditional — Rules of Hooks); then self-hide when there is no selection so the
   // orchestrator can keep <PlanDrawer/> mounted (never conditionally unmount a stateful child).
@@ -397,6 +464,7 @@ export function PlanDrawer({
           writes={writes}
           chapters={chapters}
           onOpenInEditor={onOpenInEditor}
+          childCreate={childCreate}
         />
       </div>
     </aside>

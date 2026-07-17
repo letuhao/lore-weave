@@ -31,11 +31,25 @@ export function StudioSideBar({ activeView, onCollapse, bookId, token, selectedI
       {activeView === 'manuscript' ? (
         // The navigator owns its full view header (title + New/Collapse-all/Reload + collapse),
         // so the Side Bar renders NO chrome header here — a single header, VS Code-style.
+        //
+        // `onNewChapter` is REQUIRED, not optional-in-practice: the navigator renders its `+` as
+        // `disabled={!onNewChapter}`, and this is its ONLY consumer. Dropping it (as this file did
+        // until 2026-07-17) disabled the button 100% of the time, for every user, on every book —
+        // and with the Editor's empty state pointing back at the navigator, that closed the Studio's
+        // zero-state loop: nothing in it could create the first thing.
+        // (docs/bugs/2026-07-17-studio-first-use-cold-start.md)
+        //
+        // It OPENS THE PLAN, it does not create a chapter. Structure authoring is a SPEC act, and the
+        // rail contract below is explicit — Manuscript = prose, Plan = spec — so the `+` hands off to
+        // the surface that owns structure rather than growing a rival authoring path here. plan-hub's
+        // empty state carries the actual origin verb ("Start with your first arc"), which is what
+        // makes this a real exit and not just a relocated dead end.
         <ManuscriptNavigator
           bookId={bookId}
           token={token}
           selectedId={selectedId}
           onSelect={(node) => onSelectNode(node)}
+          onNewChapter={() => host.openPanel('plan-hub', { focus: true })}
           onCollapseSidebar={onCollapse}
         />
       ) : activeView === 'plan' ? (

@@ -1401,6 +1401,29 @@
       "viewTimeline": "Dòng thời gian",
       "viewWorldmap": "Bản đồ thế giới",
       "viewSoon": "Sẽ ra mắt trong giai đoạn sau"
+    },
+    "mode": {
+      "simple": "Đơn giản",
+      "advanced": "Nâng cao"
+    },
+    "simple": {
+      "guide": "Cuốn sách của bạn, theo từng chương. Nhấp vào một chương để tiếp tục viết, hoặc bắt đầu chương mới ở bên dưới.",
+      "loading": "Đang tải các chương của bạn…",
+      "error": "Không thể tải các chương của bạn. Vui lòng thử lại sau giây lát.",
+      "emptyLine": "Một cuốn sách trống. Hãy bắt đầu bằng một câu — cấu trúc có thể xây dựng sau.",
+      "untitled": "Chương chưa đặt tên",
+      "words": "{{n}} từ",
+      "status": {
+        "done": "hoàn thành",
+        "drafting": "đang viết",
+        "empty": "chưa bắt đầu"
+      },
+      "more": "+ {{n}} mục khác",
+      "loadingMore": "Đang tải…",
+      "writeCta": "Viết chương mới",
+      "writing": "Đang khởi tạo…",
+      "doorNote": "Mở ngay một trang trắng.",
+      "goAdvanced": "Sắp xếp theo cốt truyện →"
     }
   },
   "structTpl": {

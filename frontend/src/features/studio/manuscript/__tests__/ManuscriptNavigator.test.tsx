@@ -162,12 +162,18 @@ describe('ManuscriptNavigator', () => {
     expect(reload).toHaveBeenCalledOnce();
   });
 
-  it('New-chapter is disabled without a handler, fires it when provided', () => {
+  // The header button fires the handler it is GIVEN. That is all this component can honestly assert.
+  //
+  // ⚠ This test used to also assert `disabled === true` when no handler was passed, and called that
+  // correct behaviour. It was the bug's accomplice: it injected its OWN `onNewChapter`, so it proved
+  // the mechanism and could never prove the APP wires it. The real consumer (StudioSideBar) never
+  // passed the prop, so the button was disabled 100% of the time in production while this stayed
+  // green. Injecting a fake at the chokepoint cannot prove the chokepoint is wired — the wiring is
+  // asserted in StudioSideBar.test.tsx, which mounts the CALLER.
+  it('fires the handler it is given', () => {
     hook.value = base({ rows: [nodeRow(n('c1'))] });
-    const { rerender } = render_();
-    expect((screen.getByTestId('manuscript-new') as HTMLButtonElement).disabled).toBe(true);
     const onNewChapter = vi.fn();
-    rerender(<ManuscriptNavigator bookId="b1" token="t" onNewChapter={onNewChapter} />);
+    render(<ManuscriptNavigator bookId="b1" token="t" onNewChapter={onNewChapter} />);
     fireEvent.click(screen.getByTestId('manuscript-new'));
     expect(onNewChapter).toHaveBeenCalledOnce();
   });

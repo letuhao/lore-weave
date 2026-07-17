@@ -1401,6 +1401,29 @@
       "viewTimeline": "时间轴",
       "viewWorldmap": "世界地图",
       "viewSoon": "将在后续阶段推出"
+    },
+    "mode": {
+      "simple": "简易模式",
+      "advanced": "高级模式"
+    },
+    "simple": {
+      "guide": "你的书籍，按章节排列。点击某一章节继续写作，或在下方开始新章节。",
+      "loading": "正在加载章节……",
+      "error": "无法加载章节。请稍后再试。",
+      "emptyLine": "一本空白的书。从一句话开始——结构可以稍后再定。",
+      "untitled": "未命名章节",
+      "words": "{{n}}字",
+      "status": {
+        "done": "已完成",
+        "drafting": "草稿中",
+        "empty": "未开始"
+      },
+      "more": "更多 {{n}} 个",
+      "loadingMore": "正在加载…",
+      "writeCta": "撰写新章节",
+      "writing": "正在创建…",
+      "doorNote": "立即开启空白页。",
+      "goAdvanced": "整理为故事情节 →"
     }
   },
   "structTpl": {

@@ -53,7 +53,9 @@ function LaneBandInner({ data }: NodeProps<LaneBandData>) {
         >
           {band.collapsed ? '▸' : '▾'}
         </button>
-        <span className="truncate">{band.title}</span>
+        {/* The arc NAME is the most important text on the canvas — a user panel's #1 gripe was that it
+            truncated to a few characters. Let it wrap up to ~2 lines within a generous max-width. */}
+        <span className="line-clamp-2 max-w-[280px] break-words leading-tight">{band.title}</span>
         {!band.contiguous && (
           <span
             data-testid={`plan-lane-warn-${band.id}`}
@@ -63,15 +65,15 @@ function LaneBandInner({ data }: NodeProps<LaneBandData>) {
             ⚠
           </span>
         )}
-        {/* PH11 — the window is PAGED at 100. Say how much of the lane you are actually looking at,
-            and offer the rest. Without this the 101st chapter of an arc is invisible and therefore
-            un-draggable, with nothing on screen admitting it exists (a silent truncation). The
-            counter shows even when fully loaded, so "100 of 100" is distinguishable from "100 of
-            340" — the exact ambiguity the bug hid behind. */}
-        {pagination && pagination.total > 0 && (
+        {/* PH11 — the window is PAGED at 100; the 101st chapter is otherwise invisible + un-draggable
+            (a silent truncation). A 3-user panel flagged the always-on "100/340" pill as telemetry
+            clutter on a writing surface. Resolution: show it ONLY when there is genuinely more to
+            load (hasMore) — then it's a real "not all loaded" signal beside the "+ more" button; when
+            the lane is fully loaded there is nothing hidden, so the count is just noise and is cut. */}
+        {pagination && pagination.hasMore && pagination.total > 0 && (
           <span
             data-testid={`plan-lane-count-${band.id}`}
-            className="text-muted-foreground"
+            className="text-[10px] text-muted-foreground/70"
             title={`${pagination.loaded} of ${pagination.total} chapters loaded`}
           >
             {pagination.loaded}/{pagination.total}

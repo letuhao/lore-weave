@@ -16,7 +16,7 @@
 import { useCallback, useEffect, useMemo, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useVirtualizer } from '@tanstack/react-virtual';
-import { ChevronRight, ChevronsDownUp, FolderPlus, Loader2, PanelLeftClose, Pencil, Plus, RotateCw, Search, Trash2 } from 'lucide-react';
+import { ChevronDown, ChevronRight, ChevronsDownUp, ChevronUp, FolderPlus, Loader2, PanelLeftClose, Pencil, Plus, RotateCw, Search, Trash2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useManuscriptTree } from './useManuscriptTree';
 import { useManuscriptJump } from './useManuscriptJump';
@@ -53,9 +53,9 @@ function toRoman(n: number): string {
 export function ManuscriptNavigator({ bookId, token, selectedId, onSelect, onNewChapter, onCollapseSidebar }: Props) {
   const { t } = useTranslation('studio');
   const {
-    source, rows, total, counts, error,
+    source, rows, total, counts, error, parts,
     toggleExpand, loadMore, collapseAll, reload,
-    createAct, renameAct, trashAct, moveChapterToAct,
+    createAct, renameAct, trashAct, moveChapterToAct, moveAct,
   } = useManuscriptTree(bookId, token);
   const jump = useManuscriptJump(bookId, token);
   const parentRef = useRef<HTMLDivElement>(null);
@@ -292,6 +292,9 @@ export function ManuscriptNavigator({ bookId, token, selectedId, onSelect, onNew
               const isScene = node.kind === 'scene';
               const isChapter = node.kind === 'chapter';
               const isGroup = isArc || isPart; // an expandable group header (click toggles, not select)
+              // S-02b — this act's position among active acts, for the ↑/↓ reorder buttons.
+              const actIdx = isPart && !isUnassigned ? parts.findIndex((p) => p.part_id === node.id) : -1;
+              const canReorder = parts.length >= 2;
               return (
                 <div
                   key={node.id}
@@ -374,9 +377,34 @@ export function ManuscriptNavigator({ bookId, token, selectedId, onSelect, onNew
                     </span>
                   )}
 
-                  {/* S-02 act affordances (rename / trash) — real acts only, revealed on hover */}
+                  {/* S-02 act affordances (reorder / rename / trash) — real acts only, revealed on hover */}
                   {isPart && !isUnassigned && (
                     <span className="ml-auto flex flex-shrink-0 items-center gap-0.5 opacity-0 group-hover/row:opacity-100">
+                      {/* S-02b — reorder this act up/down (only with ≥2 acts; disabled at the ends) */}
+                      {canReorder && (
+                        <>
+                          <button
+                            type="button"
+                            data-testid={`manuscript-part-up-${node.id}`}
+                            disabled={actIdx <= 0}
+                            onClick={(e) => { e.stopPropagation(); void moveAct(node.id, 'up'); }}
+                            title={t('manuscript.moveActUp', { defaultValue: 'Move act up' })}
+                            className="flex h-4 w-4 items-center justify-center rounded text-muted-foreground hover:text-foreground disabled:pointer-events-none disabled:opacity-30"
+                          >
+                            <ChevronUp className="h-3 w-3" />
+                          </button>
+                          <button
+                            type="button"
+                            data-testid={`manuscript-part-down-${node.id}`}
+                            disabled={actIdx < 0 || actIdx >= parts.length - 1}
+                            onClick={(e) => { e.stopPropagation(); void moveAct(node.id, 'down'); }}
+                            title={t('manuscript.moveActDown', { defaultValue: 'Move act down' })}
+                            className="flex h-4 w-4 items-center justify-center rounded text-muted-foreground hover:text-foreground disabled:pointer-events-none disabled:opacity-30"
+                          >
+                            <ChevronDown className="h-3 w-3" />
+                          </button>
+                        </>
+                      )}
                       <button
                         type="button"
                         data-testid={`manuscript-part-rename-${node.id}`}

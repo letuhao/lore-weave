@@ -10,6 +10,9 @@ function setup(o: Partial<Parameters<typeof PlanToolbar>[0]> = {}) {
     onFit: vi.fn(),
     onProblems: vi.fn(),
     onAskAi: vi.fn(),
+    onAddArc: vi.fn(),
+    onAddSubArc: vi.fn(),
+    creatingArc: false,
     view: 'narrative' as const,
     onView: vi.fn(),
     problemCount: 0,
@@ -67,6 +70,37 @@ describe('PlanToolbar (PH15/PH22)', () => {
     setup({ onAskAi });
     fireEvent.click(screen.getByTestId('plan-hub-ask-ai'));
     expect(onAskAi).toHaveBeenCalled();
+  });
+
+  // Manual structure authoring — the GUI for a backend route (POST /books/{id}/arcs) that had none.
+  it('adds a top-level arc', () => {
+    const onAddArc = vi.fn();
+    setup({ onAddArc });
+    fireEvent.click(screen.getByTestId('plan-hub-add-arc'));
+    expect(onAddArc).toHaveBeenCalled();
+  });
+
+  it('+ Arc is disabled without an EDIT grant (null handler) — visible, never dead (PH7)', () => {
+    setup({ onAddArc: null });
+    expect((screen.getByTestId('plan-hub-add-arc') as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it('+ Sub-arc is DISABLED unless the selection is an arc (no parent to nest under)', () => {
+    setup({ onAddSubArc: null });
+    expect((screen.getByTestId('plan-hub-add-subarc') as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it('+ Sub-arc fires when an arc is selected', () => {
+    const onAddSubArc = vi.fn();
+    setup({ onAddSubArc });
+    fireEvent.click(screen.getByTestId('plan-hub-add-subarc'));
+    expect(onAddSubArc).toHaveBeenCalled();
+  });
+
+  it('both add buttons are disabled mid-create (no double-create)', () => {
+    setup({ creatingArc: true });
+    expect((screen.getByTestId('plan-hub-add-arc') as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByTestId('plan-hub-add-subarc') as HTMLButtonElement).disabled).toBe(true);
   });
 
   it('typing in find reports the query up (the panel highlights; it never filters)', () => {

@@ -124,6 +124,42 @@ export interface NodeEdit {
   chapter_id?: string | null;
 }
 
+/** STRUCTURE ORIGIN (spec 2026-07-17) — create an outline node (a CHAPTER or SCENE spec node). This
+ *  is the GUI for a route that always existed (`POST /works/{pid}/outline/nodes`) but had no caller in
+ *  plan-hub, which is why a selected arc/chapter dead-ended with nothing to add under it.
+ *
+ *  The DB enforces the shape (verified live, not assumed):
+ *   • a `chapter`/`scene` node REQUIRES `chapter_id` — a BOOK-service chapter must exist first
+ *     (`outline_chapter_required` CHECK). Composition never creates the book chapter; see
+ *     `createBookChapter` + the 3-step add-chapter flow in usePlanChildCreate.
+ *   • a `scene` hangs under its chapter node via `parent_id` (the chapter outline node's id). */
+export function createOutlineNode(
+  projectId: string,
+  payload: { kind: 'chapter' | 'scene'; chapter_id: string; parent_id?: string; title?: string; story_order?: number },
+  token: string,
+): Promise<OutlineNode> {
+  return apiJson<OutlineNode>(`${COMP}/works/${projectId}/outline/nodes`, {
+    method: 'POST',
+    token,
+    body: JSON.stringify(payload),
+  });
+}
+
+/** Create a BOOK-service chapter (the prose unit) — book-service owns chapter creation, composition
+ *  does not. Returns the new chapter's `chapter_id`, which an outline `chapter` node then references.
+ *  This is the JSON editor-create (no file upload), the same call the manuscript's Chapters tab uses. */
+export function createBookChapter(
+  bookId: string,
+  payload: { title?: string; original_language: string },
+  token: string,
+): Promise<{ chapter_id: string }> {
+  return apiJson<{ chapter_id: string }>(`/v1/books/${bookId}/chapters`, {
+    method: 'POST',
+    token,
+    body: JSON.stringify(payload),
+  });
+}
+
 /** H3/PH20 write — patch a spec node. OCC on the node `version` via the existing `If-Match` header
  *  convention (ONE OCC concept, one name per surface — PH20/F-H3). A stale version comes back 412
  *  NODE_VERSION_CONFLICT with the CURRENT row, so the caller reloads rather than clobbering. */
@@ -308,4 +344,30 @@ export function archiveArc(nodeId: string, token: string): Promise<{ id: string;
 /** 32 §3.4 — the verified inverse of archiveArc (restores the subtree + reattaches its chapters). */
 export function restoreArc(nodeId: string, token: string): Promise<{ id: string }> {
   return apiJson<{ id: string }>(`${COMP}/arcs/${nodeId}/restore`, { method: 'POST', token });
+}
+
+/** The STRUCTURE ORIGIN (spec 2026-07-17-studio-structure-origin §4) — create an arc from nothing.
+ *
+ *  This is the write the Hub was missing: it had getArc/patchArc/archiveArc/restoreArc but no
+ *  create, so `PlanEmptyState` had no verb that works on an empty book and the Studio had no origin
+ *  point at all (the zero-state dead loop — docs/bugs/2026-07-17-studio-first-use-cold-start.md).
+ *
+ *  Book-scoped on purpose: an arc is a `structure_node`, keyed by `book_id` — NOT `project_id`
+ *  (migrate.py:1157-1165). So this needs NO composition Work and works on a brand-new book. The
+ *  Work is still ensured alongside (see WorkSetupCta) because outline nodes need `project_id`, but
+ *  this call does not depend on it — which is what lets the origin survive a knowledge outage (C16).
+ *
+ *  Every ArcCreate field is optional server-side (arc.py:451-459; title defaults to "", status to
+ *  'outline'), so `{kind:'arc'}` is a legal minimal create. We still send a title — an untitled row
+ *  on the canvas is a thing the writer then has to hunt for and name. */
+export function createArc(
+  bookId: string,
+  body: { kind?: 'saga' | 'arc'; title?: string; summary?: string; goal?: string; parent_arc_id?: string | null },
+  token: string,
+): Promise<ArcListNode> {
+  return apiJson<ArcListNode>(`${COMP}/books/${bookId}/arcs`, {
+    method: 'POST',
+    token,
+    body: JSON.stringify({ kind: 'arc', ...body }),
+  });
 }

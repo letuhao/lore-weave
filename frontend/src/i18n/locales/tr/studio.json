@@ -1401,6 +1401,29 @@
       "viewTimeline": "Zaman Çizelgesi",
       "viewWorldmap": "Dünya haritası",
       "viewSoon": "Daha sonraki bir aşamada gelecek"
+    },
+    "mode": {
+      "simple": "Basit",
+      "advanced": "Gelişmiş"
+    },
+    "simple": {
+      "guide": "Kitabınız, bölüm bölüm. Yazmaya devam etmek için bir bölüme tıklayın veya aşağıdan yeni bir bölüm başlatın.",
+      "loading": "Bölümleriniz yükleniyor…",
+      "error": "Bölümleriniz yüklenemedi. Bir an sonra tekrar deneyin.",
+      "emptyLine": "Boş bir kitap. Bir cümleyle başlayın; yapı daha sonra gelebilir.",
+      "untitled": "Başlıksız bölüm",
+      "words": "{{n}} kelime",
+      "status": {
+        "done": "tamamlandı",
+        "drafting": "taslak aşamasında",
+        "empty": "başlanmadı"
+      },
+      "more": "+ {{n}} tane daha",
+      "loadingMore": "Yükleniyor…",
+      "writeCta": "Yeni bir bölüm yaz",
+      "writing": "Oluşturuluyor…",
+      "doorNote": "Doğrudan boş bir sayfa açar.",
+      "goAdvanced": "Hikaye akışlarına göre düzenle →"
     }
   },
   "structTpl": {

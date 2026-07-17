@@ -36,7 +36,7 @@ function SceneNodeInner({ data }: NodeProps<PlanNodeData>) {
       <div className="flex items-center gap-1">
         <span className={cn('h-1.5 w-1.5 shrink-0 rounded-full', unionDotClass(unionState))} />
         {/* Real scene title once its window loads; a story-order label until then. */}
-        <span className="flex-1 truncate" title={title}>{title}</span>
+        <span className="line-clamp-2 flex-1 break-words leading-tight" title={title}>{title}</span>
       </div>
       <NodeBadges nodeId={node.id} badges={badges} onOpenRef={onOpenRef} compact />
       <Handle type="source" position={Position.Right} className="!border-0 !bg-transparent" />

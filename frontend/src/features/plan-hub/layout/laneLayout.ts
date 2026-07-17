@@ -74,7 +74,7 @@ export interface CollapseState {
 export interface LaneLayoutOptions {
   laneHeight: number; // content-strip height of a leaf lane (the chapter row)
   sceneRowHeight: number; // the scene branch row beneath the chapter row on a leaf lane
-  laneHeaderHeight: number; // header strip of a non-leaf band (saga / arc-with-sub-arcs)
+  laneHeaderHeight: number; // header strip reserved above EVERY band's cards (leaf + non-leaf) so the title/toggle never overlaps the first card
   laneGap: number; // vertical gap between sibling bands
   cardWidth: number;
   cardPitch: number; // x distance between adjacent chapter slots (cardWidth + h-gap)
@@ -84,12 +84,16 @@ export interface LaneLayoutOptions {
 }
 
 export const DEFAULT_LAYOUT_OPTIONS: LaneLayoutOptions = {
-  laneHeight: 84,
+  // Cards were 128px wide with truncated titles — a user panel's #1 complaint was "text bị ăn mất,
+  // tên arc chỉ vài ký tự" (the title showed ~10 chars). Widened to 208 and the node titles now WRAP
+  // to 2 lines (line-clamp) instead of hard-truncating, so a real chapter/arc name is legible. Pitch
+  // and lane height grow to match (pitch = width + 16 gap; a 2-line title + badges needs the height).
+  laneHeight: 92,
   sceneRowHeight: 44,
   laneHeaderHeight: 28,
   laneGap: 12,
-  cardWidth: 128,
-  cardPitch: 144,
+  cardWidth: 208,
+  cardPitch: 224,
   scenePitch: 96,
   padX: 24,
   padY: 16,
@@ -209,13 +213,21 @@ function layoutBands(forest: VBand[], carriers: Set<string>, opts: LaneLayoutOpt
   const place = (vb: VBand): number => {
     const top = cursor;
     if (vb.isLeaf) {
+      // A leaf band renders a header (title + collapse toggle) too, so it needs its OWN header strip
+      // — same as the non-leaf branch below. Without it, chapterY === top put the first card (and an
+      // empty arc's rollup) directly under the floating header, so the header title and the card
+      // title overlapped (the bug the manual-create feature made unmissable: an empty arc IS just a
+      // header + its rollup, stacked on the same pixels). Reserve laneHeaderHeight so cards clear it.
+      const leafHeight = opts.laneHeaderHeight + contentStrip;
       out.push({
         id: vb.node.id, kind: vb.node.kind, depth: vb.depth, title: vb.node.title,
-        y: top, height: contentStrip, chapterY: top, sceneY: top + opts.laneHeight,
+        y: top, height: leafHeight,
+        chapterY: top + opts.laneHeaderHeight,
+        sceneY: top + opts.laneHeaderHeight + opts.laneHeight,
         isLeaf: true, contiguous: vb.node.is_contiguous, segments: [], collapsed: false,
       });
-      cursor = top + contentStrip;
-      return contentStrip;
+      cursor = top + leafHeight;
+      return leafHeight;
     }
     // Non-leaf: a header strip; if it carries its own chapters, ALSO a content strip; then children.
     const carries = carriers.has(vb.node.id);
@@ -356,8 +368,16 @@ export function laneLayout(
       xOf.set(u.node.id, x);
     } else {
       const band = bandById.get(u.arc.id)!;
+      // An EMPTY arc (no chapters) has no story position: orderKey() sorts it at +Infinity, so the
+      // slot index `i` would march every empty arc one column right and one band down — the diagonal
+      // cascade the manual-create feature exposed (before it, arcs were only born from the decompiler
+      // WITH chapters, so they always had a real first_story_order). Anchor an unpositioned rollup at
+      // the lane's first column instead: empty arcs then form a clean left-aligned stack, one per
+      // band row (distinct y), never overlapping each other. A POSITIONED arc's rollup keeps its
+      // story-order slot (it must interleave with real chapter cards) — only the null case is pinned.
+      const rollupX = u.arc.first_story_order === null ? opts.padX : x;
       nodes.push({
-        id: u.arc.id, shape: 'arc-rollup', laneId: band.id, x, y: band.chapterY,
+        id: u.arc.id, shape: 'arc-rollup', laneId: band.id, x: rollupX, y: band.chapterY,
         width: opts.cardWidth, collapsed: true, rollupCount: u.arc.chapter_count,
         storyOrder: u.arc.span ? u.arc.span.from_order : null,
       });

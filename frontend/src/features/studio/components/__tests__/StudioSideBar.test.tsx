@@ -50,6 +50,28 @@ describe('StudioSideBar', () => {
     expect(navProps.value?.onCollapseSidebar).toBe(onCollapse);
   });
 
+  // ⚠ THE REGRESSION TEST. This exact wiring was missing and shipped: the navigator renders its `+`
+  // as `disabled={!onNewChapter}` and this is its ONLY consumer, so dropping the prop disabled the
+  // button 100% of the time — for every user, on every book — and closed the Studio's zero-state
+  // loop (docs/bugs/2026-07-17-studio-first-use-cold-start.md).
+  //
+  // The navigator's OWN test could never catch it: it passed its own `onNewChapter` in, so it proved
+  // the mechanism while the app wired nothing. Only a test that mounts the CALLER can. Asserting the
+  // prop is a function IS asserting the button is enabled — that is precisely what the navigator
+  // gates on. Do not "simplify" this back into ManuscriptNavigator's tests.
+  it('passes onNewChapter to the navigator — the `+` must never render disabled', () => {
+    renderSideBar({ activeView: 'manuscript' });
+    expect(typeof navProps.value?.onNewChapter).toBe('function');
+  });
+
+  it('the navigator `+` opens the plan hub (structure is a SPEC act, not a prose one)', () => {
+    renderSideBar({ activeView: 'manuscript' });
+    // Invoking it must not throw: it goes through the real host's openPanel. As with the quality
+    // button above, dockview internals are out of scope for a chrome test — PlanHubPanel's own
+    // tests cover what opening it renders.
+    expect(() => (navProps.value?.onNewChapter as () => void)()).not.toThrow();
+  });
+
   it('fires onCollapse from the chrome collapse button on a stub view', () => {
     const onCollapse = vi.fn();
     renderSideBar({ activeView: 'bible', onCollapse });

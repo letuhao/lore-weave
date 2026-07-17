@@ -24,7 +24,16 @@ import { useTranslation } from 'react-i18next';
 import type { IDockviewPanelProps } from 'dockview-react';
 import { useStudioBusSelector, useStudioHost } from '../host/StudioHostProvider';
 import { useStudioPanel } from './useStudioPanel';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useAuth } from '@/auth';
+import { booksApi } from '@/features/books/api';
+import { useWorkResolution } from '@/features/composition/hooks/useWork';
 import { usePlanHub } from '@/features/plan-hub/hooks/usePlanHub';
+import { usePlanOrigin } from '@/features/plan-hub/hooks/usePlanOrigin';
+import { usePlanChildCreate } from '@/features/plan-hub/hooks/usePlanChildCreate';
+import { usePlanHubMode } from '@/features/plan-hub/hooks/usePlanHubMode';
+import { useSimpleChapters } from '@/features/plan-hub/hooks/useSimpleChapters';
+import { SimpleChapterList } from '@/features/plan-hub/components/SimpleChapterList';
 import type { CameraFocusTarget, PlanOverlayRef } from '@/features/plan-hub/types';
 import {
   PlanCanvas,
@@ -39,7 +48,38 @@ export function PlanHubPanel(props: IDockviewPanelProps) {
   useStudioPanel('plan-hub', props.api);
   const { t } = useTranslation('studio');
   const { bookId, openPanel, focusManuscriptUnit } = useStudioHost();
+  const { accessToken } = useAuth();
+  const qc = useQueryClient();
   const view = usePlanHub(bookId);
+  // The structure origin — the empty state's primary verb (spec 2026-07-17-studio-structure-origin).
+  const origin = usePlanOrigin(bookId, accessToken);
+  // Bug A — build the hierarchy DOWN from a selected node (+Chapter on an arc, +Scene on a chapter).
+  // Both need a resolved Work's project_id; +Chapter also needs the book's own language for the new
+  // book-service chapter (never hardcode 'en' — this is a multilingual platform).
+  const workRes = useWorkResolution(bookId, accessToken);
+  const projectId = workRes.data?.work?.project_id ?? null;
+  const bookInfo = useQuery({
+    queryKey: ['book', bookId],
+    queryFn: () => booksApi.getBook(accessToken!, bookId),
+    enabled: !!accessToken && !!bookId,
+  });
+  const originalLanguage = bookInfo.data?.original_language ?? 'en';
+  const childCreate = usePlanChildCreate(bookId, projectId, accessToken, originalLanguage);
+
+  // View mode — SIMPLE (linear chapter list, content-first, the default) vs ADVANCED (the lane
+  // canvas). Per-user setting (mirrors MotifSimpleMode). A user panel scored the canvas Easy 2/5:
+  // jargon-heavy, no "just write" door. Simple mode is that fix.
+  const mode = usePlanHubMode(accessToken);
+  const simpleChapters = useSimpleChapters(bookId, accessToken, mode.simple);
+  // The "Write a new chapter" door: create a book chapter, then open it in the editor. This is the
+  // content-first entry the pantser + newcomer both said was missing — no arc choice required.
+  const writeChapter = useMutation({
+    mutationFn: () => booksApi.createChapterEditor(accessToken!, bookId, { original_language: originalLanguage, title: '' }),
+    onSuccess: (created) => {
+      void qc.invalidateQueries({ queryKey: ['plan-hub', 'simple-chapters', bookId] });
+      if (created?.chapter_id) focusManuscriptUnit(created.chapter_id);
+    },
+  });
 
   // H2.6 — the editor's active chapter (book-service chapter_id) off the bus. Map it to the Hub node
   // whose loaded content carries that chapterId; null when nothing's open or its window isn't loaded.
@@ -126,6 +166,57 @@ export function PlanHubPanel(props: IDockviewPanelProps) {
     if (planFocusNodeId) focusNode(planFocusNodeId);
   }, [planFocus, planFocusNodeId, focusNode]);
 
+  // The Simple | Advanced mode toggle — shown in BOTH views so a writer can always switch. Simple is
+  // a plain chapter list (content-first); Advanced is the lane canvas (structure-first).
+  const modeToggle = (
+    <div className="flex flex-shrink-0 items-center gap-2 border-b bg-muted/20 px-3 py-1.5">
+      <span className="inline-flex overflow-hidden rounded-full border text-[11px]">
+        <button
+          type="button"
+          data-testid="plan-hub-mode-simple"
+          aria-pressed={mode.simple}
+          onClick={() => mode.setSimple(true)}
+          className={`px-3 py-1 font-medium ${mode.simple ? 'bg-primary/15 text-primary' : 'text-muted-foreground hover:text-foreground'}`}
+        >
+          {t('planHub.mode.simple', 'Simple')}
+        </button>
+        <button
+          type="button"
+          data-testid="plan-hub-mode-advanced"
+          aria-pressed={!mode.simple}
+          onClick={() => mode.setSimple(false)}
+          className={`px-3 py-1 font-medium ${!mode.simple ? 'bg-primary/15 text-primary' : 'text-muted-foreground hover:text-foreground'}`}
+        >
+          {t('planHub.mode.advanced', 'Advanced')}
+        </button>
+      </span>
+    </div>
+  );
+
+  // SIMPLE MODE — the default. A linear chapter list + one "Write a new chapter" door. It reads book
+  // chapters directly (not the plan shell), so it renders regardless of plan-shell load state — the
+  // branch sits ABOVE the plan-shell guards on purpose.
+  if (mode.simple) {
+    return (
+      <div data-testid="studio-plan-hub-panel" className="flex h-full w-full flex-col">
+        {modeToggle}
+        <SimpleChapterList
+          chapters={simpleChapters.chapters}
+          total={simpleChapters.total}
+          loading={simpleChapters.loading}
+          error={simpleChapters.error}
+          hasMore={simpleChapters.hasMore}
+          loadMore={simpleChapters.loadMore}
+          loadingMore={simpleChapters.loadingMore}
+          onOpenChapter={(chapterId) => focusManuscriptUnit(chapterId)}
+          onWriteNew={accessToken ? () => writeChapter.mutate() : null}
+          writing={writeChapter.isPending}
+          onGoAdvanced={() => mode.setSimple(false)}
+        />
+      </div>
+    );
+  }
+
   if (view.error) {
     return (
       <div
@@ -152,20 +243,32 @@ export function PlanHubPanel(props: IDockviewPanelProps) {
     );
   }
 
-  // PH21 — the book has no spec at all. Offer the two honest verbs (extract / plan) instead of a
-  // blank canvas. `specEmpty` is false until BOTH reads have answered, so this never flashes over a
-  // book whose plan simply hasn't loaded (absent ≠ empty). "Plan from scratch" opens the PlanForge
-  // panel via the host — zero navigate() (PH24/DOCK-7).
+  // PH21 — the book has no spec at all. Offer the honest verbs instead of a blank canvas.
+  // `specEmpty` is false until BOTH reads have answered, so this never flashes over a book whose plan
+  // simply hasn't loaded (absent ≠ empty). Verb 3 opens the PlanForge panel via the host — zero
+  // navigate() (PH24/DOCK-7).
+  //
+  // The ORIGIN verb (spec 2026-07-17-studio-structure-origin) is the primary: it is the only one that
+  // works on an empty book, and it is the Studio's exit from the zero-state dead loop. `hasChapters`
+  // is what lets Extract honour PH7 for real — proven upfront, so it renders disabled-with-reason
+  // instead of failing after a click.
   if (view.specEmpty) {
     return (
-      <div data-testid="studio-plan-hub-panel" className="h-full w-full">
+      <div data-testid="studio-plan-hub-panel" className="flex h-full w-full flex-col">
+        {modeToggle}
+        <div className="min-h-0 flex-1">
         <PlanEmptyState
+          onStartArc={accessToken ? (title) => void origin.start(title) : null}
+          creatingArc={origin.creating}
+          arcError={origin.error}
           onExtract={view.extract.run}
+          hasChapters={view.chapters.length > 0}
           onPlanFromScratch={() => openPanel('planner', { focus: true })}
           extracting={view.extract.extracting}
           result={view.extract.result}
           error={view.extract.error}
         />
+        </div>
       </div>
     );
   }
@@ -175,7 +278,9 @@ export function PlanHubPanel(props: IDockviewPanelProps) {
   const selectedKind = view.selectedId ? view.nodeContent[view.selectedId]?.kind ?? null : null;
 
   return (
-    <div data-testid="studio-plan-hub-panel" className="flex h-full w-full min-h-0">
+    <div data-testid="studio-plan-hub-panel" className="flex h-full w-full min-h-0 flex-col">
+      {modeToggle}
+      <div className="flex min-h-0 flex-1">
       {/* PH25/OQ-6 — the Plan navigator is NOT a column in here. It is an ACTIVITY BAR rail (it and
           the canvas are two densities of one dataset), and OQ-6 rejects a third in-panel list as a
           duplicate of it. It reaches us over the bus (`planFocusNode`, subscribed above). */}
@@ -201,6 +306,29 @@ export function PlanHubPanel(props: IDockviewPanelProps) {
                 })
             : null
         }
+        // Manual create wired to the existing backend (missing GUI ≠ missing feature). A created arc
+        // is selected so the drawer can rename it in place — no modal. Sub-arc nests under the
+        // selection only when that selection is itself an arc/saga (the model's parent rule).
+        onAddArc={
+          accessToken
+            ? () => {
+                void origin
+                  .start(t('planHub.empty.untitledArc', 'Untitled arc'))
+                  .then((arc) => arc && view.select(arc.id));
+              }
+            : null
+        }
+        onAddSubArc={
+          accessToken && view.selectedId && (selectedKind === 'arc' || selectedKind === 'saga')
+            ? () => {
+                const parentId = view.selectedId!;
+                void origin
+                  .start(t('planHub.empty.untitledArc', 'Untitled arc'), parentId)
+                  .then((arc) => arc && view.select(arc.id));
+              }
+            : null
+        }
+        creatingArc={origin.creating}
         view={viewMode}
         onView={setViewMode}
         problemCount={view.problemTotal}
@@ -289,6 +417,21 @@ export function PlanHubPanel(props: IDockviewPanelProps) {
           writes={view.nodeWrites}
           chapters={view.chapters}
           onOpenInEditor={(chapterId) => focusManuscriptUnit(chapterId)}
+          // Bug A — the contextual create the drawer never had: +Chapter under an arc, +Scene under a
+          // chapter. Disabled (null) until a Work exists. The created node is selected so the drawer
+          // re-targets it for inline rename — same create-then-name flow as the toolbar's +Arc.
+          childCreate={
+            accessToken && projectId
+              ? {
+                  busy: childCreate.creating,
+                  error: childCreate.error,
+                  addChapter: (arcId: string) =>
+                    void childCreate.addChapterUnderArc(arcId).then((n) => n && view.select(n.id)),
+                  addScene: (chapterNodeId: string, bookChapterId: string) =>
+                    void childCreate.addSceneUnderChapter(chapterNodeId, bookChapterId).then((n) => n && view.select(n.id)),
+                }
+              : null
+          }
         />
       </div>
 
@@ -318,6 +461,7 @@ export function PlanHubPanel(props: IDockviewPanelProps) {
           total={view.unplannedCount}
           onOpenChapter={(chapterId) => focusManuscriptUnit(chapterId)}
         />
+      </div>
       </div>
     </div>
   );

@@ -35,7 +35,7 @@ function ChapterNodeInner({ data }: NodeProps<PlanNodeData>) {
       <div className="flex items-center gap-1.5">
         <span className={cn('h-2 w-2 shrink-0 rounded-full', unionDotClass(unionState))} />
         {/* Real chapter title once the window loads; a story-order label until then. */}
-        <span className="flex-1 truncate font-medium" title={title}>{title}</span>
+        <span className="line-clamp-2 flex-1 break-words font-medium leading-tight" title={title}>{title}</span>
         {/* PH13 — scene-links whose other end is hidden (inside this collapsed chapter, or off in a
             collapsed arc). Counted here so the edge is accounted for rather than silently dropped. */}
         {!!hiddenEdges && (

@@ -1401,6 +1401,29 @@
       "viewTimeline": "Timeline",
       "viewWorldmap": "World map",
       "viewSoon": "Coming in a later phase"
+    },
+    "mode": {
+      "simple": "Simple",
+      "advanced": "Advanced"
+    },
+    "simple": {
+      "guide": "Your book, chapter by chapter. Click one to keep writing, or start a new chapter below.",
+      "loading": "Loading your chapters…",
+      "error": "Couldn't load your chapters. Try again in a moment.",
+      "emptyLine": "A blank book. Start with a sentence — the structure can come later.",
+      "untitled": "Untitled chapter",
+      "words": "{{n}}w",
+      "status": {
+        "done": "done",
+        "drafting": "drafting",
+        "empty": "not started"
+      },
+      "more": "+ {{n}} more",
+      "loadingMore": "Loading…",
+      "writeCta": "Write a new chapter",
+      "writing": "Creating…",
+      "doorNote": "Opens a blank page straight away.",
+      "goAdvanced": "Organise into storylines →"
     }
   },
   "structTpl": {

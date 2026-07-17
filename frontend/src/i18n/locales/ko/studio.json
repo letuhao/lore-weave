@@ -1401,6 +1401,29 @@
       "viewTimeline": "타임라인",
       "viewWorldmap": "세계 지도",
       "viewSoon": "다음 단계에서 공개 예정"
+    },
+    "mode": {
+      "simple": "심플",
+      "advanced": "어드밴스드"
+    },
+    "simple": {
+      "guide": "당신의 책을 챕터별로 관리하세요. 기존 챕터를 클릭해 집필을 이어가거나, 아래에서 새 챕터를 시작하세요.",
+      "loading": "챕터를 불러오는 중…",
+      "error": "챕터를 불러올 수 없습니다. 잠시 후 다시 시도해 주세요.",
+      "emptyLine": "빈 책입니다. 문장 하나로 시작해 보세요. 구조는 나중에 잡아도 됩니다.",
+      "untitled": "제목 없는 챕터",
+      "words": "{{n}}단어",
+      "status": {
+        "done": "완료",
+        "drafting": "집필 중",
+        "empty": "시작 전"
+      },
+      "more": "+ {{n}}개 더 보기",
+      "loadingMore": "로딩 중…",
+      "writeCta": "새 챕터 쓰기",
+      "writing": "생성 중…",
+      "doorNote": "즉시 빈 페이지가 열립니다.",
+      "goAdvanced": "스토리라인으로 구성하기 →"
     }
   },
   "structTpl": {

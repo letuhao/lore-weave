@@ -60,7 +60,9 @@ describe('laneLayout — PH14 (24-H2.2)', () => {
     ];
     const l = laneLayout(shell, []);
     const S = laneOf(l, 'S')!, A1 = laneOf(l, 'A1')!, A2 = laneOf(l, 'A2')!;
-    const leafH = D.laneHeight + D.sceneRowHeight;
+    // A leaf band now reserves its OWN header strip too (so the title never overlaps the first card),
+    // so its total height is the header strip + the content strip.
+    const leafH = D.laneHeaderHeight + D.laneHeight + D.sceneRowHeight;
     expect(S.y).toBe(D.padY);
     expect(A1.y).toBe(D.padY + D.laneHeaderHeight); // A1 sits under the saga's header
     expect(A2.y).toBe(A1.y + leafH + D.laneGap); // A2 stacks under A1 with the sibling gap
@@ -254,29 +256,34 @@ describe('chapterAtPoint — H5 Row-4 scene drop-target (24-H5.4)', () => {
   // Two chapter cards on one lane's chapter row (y=28), plus a scene on the scene row (y=112).
   const np = (o: Partial<NodePosition> & { id: string; shape: NodePosition['shape']; x: number; y: number }): NodePosition =>
     ({ laneId: 'arc-a', width: D.cardWidth, collapsed: false, storyOrder: 1, ...o });
+  // Geometry-relative to the layout options (was hardcoded for cardWidth=128; broke when S4 widened
+  // cards to 208). c1 spans [padX, padX+cardWidth); c2 sits one cardPitch over; the scene is on the
+  // row below (chapterY + laneHeight). Using D.* keeps this correct under any future dimension change.
+  const SCENE_Y = 28 + D.laneHeight;
   const nodes: NodePosition[] = [
-    np({ id: 'c1', shape: 'chapter', x: 24, y: 28 }),
-    np({ id: 'c2', shape: 'chapter', x: 200, y: 28 }),
-    np({ id: 's1', shape: 'scene', x: 24, y: 112 }),
+    np({ id: 'c1', shape: 'chapter', x: D.padX, y: 28 }),
+    np({ id: 'c2', shape: 'chapter', x: D.padX + D.cardPitch, y: 28 }),
+    np({ id: 's1', shape: 'scene', x: D.padX, y: SCENE_Y + 2 }),
   ];
 
   it('returns the chapter whose card box contains the drop point', () => {
-    expect(chapterAtPoint(nodes, 60, 40)?.id).toBe('c1');
-    expect(chapterAtPoint(nodes, 240, 60)?.id).toBe('c2');
+    expect(chapterAtPoint(nodes, D.padX + 40, 40)?.id).toBe('c1');
+    expect(chapterAtPoint(nodes, D.padX + D.cardPitch + 40, 60)?.id).toBe('c2');
   });
   it('the hit box spans the chapter ROW strip (laneHeight), so a drop low on the card still lands', () => {
-    expect(chapterAtPoint(nodes, 60, 28 + D.laneHeight - 1)?.id).toBe('c1');
-    expect(chapterAtPoint(nodes, 60, 28 + D.laneHeight)).toBeNull(); // past the row → miss
+    expect(chapterAtPoint(nodes, D.padX + 40, 28 + D.laneHeight - 1)?.id).toBe('c1');
+    expect(chapterAtPoint(nodes, D.padX + 40, 28 + D.laneHeight)).toBeNull(); // past the row → miss
   });
   it('a drop in the horizontal gap BETWEEN two chapter cards hits neither', () => {
-    // c1 ends at 24+128=152; c2 starts at 200 → 170 is the gutter.
-    expect(chapterAtPoint(nodes, 170, 40)).toBeNull();
+    // c1 ends at padX+cardWidth; c2 starts at padX+cardPitch → the gutter is the middle of that gap.
+    const gutter = D.padX + D.cardWidth + (D.cardPitch - D.cardWidth) / 2;
+    expect(chapterAtPoint(nodes, gutter, 40)).toBeNull();
   });
   it('never returns a non-chapter node (a scene is not a re-parent target)', () => {
-    expect(chapterAtPoint(nodes, 60, 112)).toBeNull(); // over the scene row
+    expect(chapterAtPoint(nodes, D.padX + 40, SCENE_Y + 2)).toBeNull(); // over the scene row
   });
   it('returns null when the point is off every card', () => {
-    expect(chapterAtPoint(nodes, 999, 999)).toBeNull();
+    expect(chapterAtPoint(nodes, 9999, 9999)).toBeNull();
   });
 })
 
@@ -375,14 +382,33 @@ describe('laneLayout — a collapsed arc\'s rollup interleaves on the RAW axis',
     expect(byId(l, 'A2')!.shape).toBe('arc-rollup');
   });
 
-  it('an arc with NO positioned chapters sorts its rollup last (null ≠ position 0)', () => {
+  it('an empty arc pins its rollup to the left column, and never steals a positioned arc\'s slot', () => {
+    // null first_story_order ≠ story position 0: the empty arc must NOT sort ahead of a positioned
+    // one. It ALSO must not cascade by slot index (the manual-create bug: N empty arcs marching
+    // diagonally, the first overlapping its own lane header). It pins to the lane's first column,
+    // in its OWN band row — so a stack of freshly-created empty arcs reads as a clean left column.
     const shell = [
       arc({ id: 'A1', rank: 'a', span: { from_order: 1, to_order: 1 }, first_story_order: 1 * STRIDE, chapter_count: 1 }),
       arc({ id: 'A2', rank: 'b', span: null, first_story_order: null, chapter_count: 0 }),
     ];
     const l = laneLayout(shell, [ch('c1', 'A1', 1 * STRIDE)], { arcs: ['A1', 'A2'] });
-    expect(byId(l, 'A1')!.x).toBe(D.padX + 0 * D.cardPitch);
-    expect(byId(l, 'A2')!.x).toBe(D.padX + 1 * D.cardPitch);
+    const a1 = byId(l, 'A1')!, a2 = byId(l, 'A2')!;
+    expect(a1.x).toBe(D.padX + 0 * D.cardPitch); // positioned arc keeps slot 0 — the empty one didn't displace it
+    expect(a2.x).toBe(D.padX);                    // empty arc pinned left, NOT cascaded to padX + 1*pitch
+    expect(a2.y).not.toBe(a1.y);                  // different bands ⇒ no overlap despite the shared x
+  });
+
+  it('multiple empty arcs stack in a left column, one per band — no diagonal cascade', () => {
+    const shell = [
+      arc({ id: 'E1', rank: 'a', span: null, first_story_order: null, chapter_count: 0 }),
+      arc({ id: 'E2', rank: 'b', span: null, first_story_order: null, chapter_count: 0 }),
+      arc({ id: 'E3', rank: 'c', span: null, first_story_order: null, chapter_count: 0 }),
+    ];
+    const l = laneLayout(shell, [], { arcs: ['E1', 'E2', 'E3'] });
+    const xs = ['E1', 'E2', 'E3'].map((id) => byId(l, id)!.x);
+    const ys = ['E1', 'E2', 'E3'].map((id) => byId(l, id)!.y);
+    expect(new Set(xs)).toEqual(new Set([D.padX]));   // all at the left column, no cascade
+    expect(new Set(ys).size).toBe(3);                 // each in its own band row
   });
 });
 

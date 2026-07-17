@@ -1401,6 +1401,29 @@
       "viewTimeline": "Lini Masa",
       "viewWorldmap": "Peta Dunia",
       "viewSoon": "Akan datang di fase berikutnya"
+    },
+    "mode": {
+      "simple": "Sederhana",
+      "advanced": "Lanjutan"
+    },
+    "simple": {
+      "guide": "Buku Anda, bab demi bab. Klik satu bab untuk lanjut menulis, atau mulai bab baru di bawah.",
+      "loading": "Memuat bab Anda...",
+      "error": "Tidak dapat memuat bab Anda. Coba lagi sebentar lagi.",
+      "emptyLine": "Buku kosong. Mulailah dengan satu kalimat — struktur bisa disusun kemudian.",
+      "untitled": "Bab tanpa judul",
+      "words": "{{n}} kata",
+      "status": {
+        "done": "selesai",
+        "drafting": "sedang menulis",
+        "empty": "belum dimulai"
+      },
+      "more": "+ {{n}} lagi",
+      "loadingMore": "Memuat...",
+      "writeCta": "Tulis bab baru",
+      "writing": "Sedang membuat...",
+      "doorNote": "Langsung membuka halaman kosong.",
+      "goAdvanced": "Atur ke dalam alur cerita →"
     }
   },
   "structTpl": {
