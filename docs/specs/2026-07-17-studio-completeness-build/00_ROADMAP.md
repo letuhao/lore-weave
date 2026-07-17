@@ -13,6 +13,8 @@
 
 ## The spec set
 
+**Status: all 10 specs WRITTEN 2026-07-17 (S-01..S-10) + 3 HTML drafts. Ready for CLARIFY/seal → build.**
+
 | # | Spec | Tier | New verb(s) at DATA layer? | HTML draft? | Size |
 |---|---|---|---|---|---|
 | **S-01** | `structure-template authoring` — create/edit/delete a custom story structure | A | ✅ full write side (repo has only list+get) | ✅ **net-new** (`screen-structure-templates.html`) | M |
