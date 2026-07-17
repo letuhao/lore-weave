@@ -47,25 +47,38 @@ Verify after fixes: composition unit **2247 passed** · repo integration **10/10
   + separate builtin-name unique; writes refuse owner-NULL (clone-to-edit). version OCC + is_archived from
   day one. book-shared tier OUT.
 ### DEBT
-- **D-S01-USE-IN-DECOMPOSE (loop-connection) — BLOCKED on a studio decompose surface (gate #2/#4).**
+- **D-S01-USE-IN-DECOMPOSE (loop-connection) — SPECCED + reclassified 2026-07-18. Now: an M FE-only port,
+  ready to build in the fanout. NOT "blocked", NOT a large track.**
   The audit assumed "Use in decompose" deep-links to a plan-hub decompose action. **That surface does NOT
   exist** (verified 2026-07-18): the structure-template decompose flow is the LEGACY `PlannerView`, mounted
-  only in `CompositionPanel`, not any studio panel; plan-hub has zero decompose refs. So the deep-link has
-  no studio target — it is blocked on porting decompose into the studio, which is **G-STORY-STRUCTURE**, a
-  separate spec/track (large — a new panel + the decompose UX), NOT S-01 scope. Corrected the audit's false
-  "G-STORY-STRUCTURE ✅ built" claim (line ~150).
-  **Crucially, the loop is NOT broken today:** a user's custom structure ALREADY appears in the legacy
-  planner's template picker (`usePlanner` → `listTemplates` returns own + built-in) and the decompose route
-  resolves it (`templates.get(user_id, id)` — locked by `test_the_decompose_consumer_resolves_a_custom_template`).
-  So a custom structure IS usable for decompose via the legacy planner. The deferred part is only the
-  studio-native decompose surface + its deep-link. Defer-eligible: gate #2 (large — needs the G-STORY-STRUCTURE
-  studio port) + gate #4 (blocked on that surface). Re-evaluate when G-STORY-STRUCTURE is specced.
+  only in `CompositionPanel`, reachable only via the chapter-editor route — not any studio panel; plan-hub has
+  zero decompose refs; the studio `plan-forge` `PlannerPanel` is a *different* flow (braindump→compile, no
+  structure template). Corrected the audit's false "G-STORY-STRUCTURE ✅ built" claim (line ~150).
+  **RECLASSIFICATION (anti-laziness gate — verify "blocked" against code):** the debt was carried as
+  "blocked / large — a new panel + the decompose UX". That over-stated it. **Every buildable piece already
+  exists:** the decompose controller (`usePlanner`), render (`PlannerView`/`PlannerTree`), the studio
+  book→work→`project_id` resolver (`useWorkResolution` → `resolveActiveWork`), the empty-state affordance
+  (`WorkSetupCta`), and the route + template consumer. So G-STORY-STRUCTURE is an **M FE-only PORT** — a
+  `decompose` dock-panel shell hosting the existing flow + one GG-8 registration + one deep-link wire in the
+  S-01 panel. No new backend / migration / MCP / HTML draft. It was **never** blocked on missing infra.
+  **Home:** [`docs/specs/2026-07-17-studio-completeness-build/S-13_studio-decompose-surface.md`] (written
+  2026-07-18; added to the roadmap; S-01 §8's false deep-link line corrected in the same pass).
+  Defer-eligible now only under **gate #1 (out of S-01's own scope)** — a sibling studio-completeness spec,
+  buildable alongside S-02..S-12. **Loop is NOT broken meanwhile:** a custom structure already resolves
+  through the legacy planner (`listTemplates` returns own+built-in; route resolves it — locked by
+  `test_the_decompose_consumer_resolves_a_custom_template`). CLOSE this row when S-13 ships.
 
 ### DRIFT
 - Slice C's live smoke CAUGHT a real dead-end (clone-twice 409) that unit tests + a single-clone smoke
   missed — the usability-first QC directive paid off exactly as intended. Fixed at the repo (auto-disambiguate).
 - Slice D scoped down: use-in-decompose moved to DEBT (above) rather than rushed at the end of a long
   session. The bar it touches (#6 loop-connected) is honestly not yet met for decompose; recorded, not hidden.
+- **Near-miss (2026-07-18): the debt was mis-classified as "blocked / large new track".** Brainstorming +
+  a code check (not trusting the doc note) showed the decompose UX, the project resolver, and the empty-state
+  all already exist — it is an M FE-only PORT, never blocked on missing infra. This is exactly the CLAUDE.md
+  anti-laziness tell ("saying blocked when you mean I'd have to build it"). Corrected: specced as S-13, right-
+  sized to M, reason narrowed from gate #2/#4 to gate #1 (out-of-S-01-scope). Recorded so the over-statement
+  doesn't re-surface as "blocked" at the next PLAN.
 
 ## SAME-FOLDER RULES
 Multiple sessions may run in parallel. Never `git add -A` — stage only S-01's files. The studio registry

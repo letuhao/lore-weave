@@ -109,8 +109,16 @@ New panel `structure-templates` (category `storyBible`), GG-8 shape: catalog row
 (`structureTemplateEffects`) so an agent write refreshes it. Surfaces: a list (built-ins badged read-only,
 own editable), a beat-list editor (add/reorder/remove/label beats), create/rename/archive/restore, and a
 **"Clone this built-in"** action that copies a seed's beats into a new own-template. Deep-link OUT: "Use in
-decompose" → the plan-hub decompose action pre-selecting this template. The HTML draft decides the beat-row
-layout + the clone affordance; the component follows it.
+decompose" → **the studio `decompose` panel (S-13 / G-STORY-STRUCTURE), pre-selecting this template**. The HTML
+draft decides the beat-row layout + the clone affordance; the component follows it.
+
+> **CORRECTION (2026-07-18):** the original line said "→ the plan-hub decompose action". **That target did not
+> exist** — decompose is the legacy `PlannerView` inside `CompositionPanel` (reached only via the chapter-editor
+> route), not a studio panel; plan-hub has no decompose. So this panel ships **without** the "Use in decompose"
+> button; the studio-native decompose surface + its deep-link are specced in **[`S-13_studio-decompose-surface.md`]
+> (S-13_studio-decompose-surface.md)** (an M FE port — the decompose UX already exists in `usePlanner`/`PlannerView`).
+> The loop is not broken meanwhile: a custom structure already resolves through the legacy planner (locked by
+> `test_the_decompose_consumer_resolves_a_custom_template`).
 
 ## 9. Tests (evidence gate)
 

@@ -15,6 +15,11 @@
 
 **Status: 12 specs WRITTEN + CLARIFY-SEALED 2026-07-17 (S-01..S-11) + 3 HTML drafts. Decisions: [`01_DECISIONS.md`](01_DECISIONS.md). Ready to BUILD (fanout, Tier-A parallel). G-WORKFLOWS sealed to THIS track (S-12).**
 
+**+ S-13 added 2026-07-18** — `studio decompose surface` (G-STORY-STRUCTURE), the buildable home for the S-01
+`D-S01-USE-IN-DECOMPOSE` debt. It is an **M FE-only port** (the decompose UX already exists in `usePlanner`/
+`PlannerView`; this wraps it in a studio panel + wires the S-01 deep-link), **not** the "large new track" the debt
+was mis-carried as. See [`S-13_studio-decompose-surface.md`](S-13_studio-decompose-surface.md).
+
 | # | Spec | Tier | New verb(s) at DATA layer? | HTML draft? | Size |
 |---|---|---|---|---|---|
 | **S-01** | `structure-template authoring` — create/edit/delete a custom story structure | A | ✅ full write side (repo has only list+get) | ✅ **net-new** (`screen-structure-templates.html`) | M |
@@ -29,6 +34,7 @@
 | **S-11** | `search activity-view` (PO D-a: BUILD) — mount RawSearchPanel + memory_search into the `search` nav | C | ❌ mount/aggregation (BE complete) | ❌ port (`RawSearchPanel` is the reference) | S |
 | **S-12** | `workflows + workflow-proposals GUI` (G-WORKFLOWS, PO: build here) — 3 BE verbs (mirror skills) + 2 panels + mode-binding setting | B | ❌ 3 routes over existing repo | ❌ near-clone of ExtensionsPanel/ProposalsPanel | M |
 | **S-10** | `Tier-C FE orphans` — style-voice + reference-shelf panels · Issues/diagnostics tab · bible/quality rails · MotifBindingLens mount · 3 arc agent-only surfaces · `[[`-create (PO D-d) | C | ❌ FE-only | ❌ (Issues tab layout = a small inline decision; the rest are ports/mounts) | S each |
+| **S-13** | `studio decompose surface` (G-STORY-STRUCTURE) — closes the S-01 `Use in decompose` loop: a studio `decompose` panel hosting the existing decompose flow + a deep-link from `structure-templates` | A follow-on | ❌ FE-only PORT (decompose UX already exists in `usePlanner`/`PlannerView`) | ❌ port (`PlannerView` is the reference) | M |
 
 **HTML drafts required (3):** `screen-structure-templates.html`, `screen-manuscript-parts.html`,
 `screen-kg-triage.html`. Everything else references an existing component or adds an affordance.
