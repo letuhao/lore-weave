@@ -159,6 +159,17 @@ def test_a_non_list_edit_still_DEEP_MERGES_and_an_unknown_kind_is_untouched():
     assert {m["id"] for m in un["motifs"]} == {"m1", "m2"}   # upsert, not replace
 
 
+def test_serialize_run_and_pass_status_AGREE_on_the_compiled_field():
+    """Both `_serialize_run` (checkpoint/detail) and `pass_status` (the ledger route) feed the SAME
+    FE `['plan-passes']` cache — the rail's reviewCheckpoint does setQueryData with the _serialize_run
+    shape. If only one sets `compiled`, an edit makes the ledger briefly render "no compiled package"
+    until the next refetch. The two shapes MUST both carry it."""
+    ser = inspect.getsource(pfs.PlanForgeService._serialize_run)
+    stat = inspect.getsource(pfs.PlanForgeService.pass_status)
+    assert '"compiled":' in ser, "_serialize_run must set compiled (it feeds the ledger cache)"
+    assert '"compiled":' in stat, "pass_status must set compiled"
+
+
 def test_a_SAVE_EDITS_holds_the_pass_PENDING_rather_than_REJECTING_it():
     """A save-edits is `approved=false` WITH `edits` — "keep my revisions, don't decide yet". It must
     save the new artifact but leave the decision PENDING so the author can approve next; recording a

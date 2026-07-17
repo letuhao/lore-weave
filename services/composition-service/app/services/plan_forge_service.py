@@ -635,6 +635,12 @@ class PlanForgeService:
             # what it asked for; a stored-but-never-returned field is indistinguishable from a
             # dropped one.
             "genre_tags": run.genre_tags,
+            # Absent ≠ zero: a run that never compiled has NO package, so every package-reading pass
+            # is un-runnable. `pass_status` returns this too — and BOTH serializers feed the SAME FE
+            # `['plan-passes']` cache (the rail's reviewCheckpoint does setQueryData with THIS shape),
+            # so omitting it here made the ledger briefly render "no compiled package" after a
+            # checkpoint edit until the next refetch corrected it. The two shapes MUST agree.
+            "compiled": package_artifact_id is not None,
             # 27 PF-3 — the pass ledger, WITH its derived fields (per-pass fresh|stale, the
             # contiguous pass_cursor, and blocked_at). Derived HERE, at serialization, and never
             # stored: a persisted freshness flag is a second source of truth that goes stale the
