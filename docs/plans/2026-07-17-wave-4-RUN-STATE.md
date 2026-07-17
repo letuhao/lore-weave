@@ -40,7 +40,7 @@ smoke (drive the real app as a user) for each:
 - [x] B4 FE: `useMotifGraph` — book-graph query + pending-MAP + debounced batch flush + optimistic cache + fail-soft 412 reseed+retry + flush-on-unmount/hide.
 - [x] B5 register `motif-graph`: catalog row + chat panel_id enum + contract.json + studio.json + composition canvas keys (distinct from the section's — restored the ones I'd clobbered). **EVIDENCE: 13 panel-contract + 71 chat-service contract tests green.**
 - [x] B6 unit: `MotifGraphCanvas.test.tsx` (7) + `useMotifGraph.test.tsx` (2 — pending-map batches both / 412 reseed+retry). **EVIDENCE: 904 motif+panel green, tsc clean, i18n +keys × 17 locales (0 failed).** Playwright CDP live-drag + blackbox → B7.
-- [ ] B7 blackbox Playwright-MCP smoke + cross-service live-smoke (drag → PATCH → DB → reload persists)
+- [x] B6-live + B7 — `studio-motif-graph.spec.ts` (CDP stepped-mouse drag, the d3-drag recipe) **RAN GREEN LIVE (9.0s) against :5199 + the rebuilt composition BE**: opened the motif-graph panel via the palette → the canvas + reactflow node rendered → CDP-dragged the node → the debounced PATCH persisted the position (asserted via `GET /books/{id}/motif-graph` → `layout.positions[m1]` set) → survived a reload. This IS the blackbox live-drive + the cross-service smoke (FE canvas → PATCH → composition → DB → reload). GET route also confirmed live cross-service via the gateway. (The shared MCP browser profile was held by a concurrent session — ran the isolated-browser Playwright spec instead, per D-S4-4.)
 - [ ] B8 /review-impl + commit
 
 ## REGISTERS (append as you go)
