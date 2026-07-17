@@ -28,7 +28,7 @@ smoke (drive the real app as a user) for each:
 - [x] A3 swapped the `<pre>` in `DriftSection` for `<ArcTemplateDriftView>` (no_provenance/gone/unapplied/loading branches kept).
 - [x] A4 tests: REWROTE the fictional `thread_coverage` fixture → real `thread_progress` shape (E1); `ArcTemplateDriftView.test.tsx` (clean verdict, derived summary, null-code→#ord, pacing-NC, empty threads). **EVIDENCE: 14 passed** (5 view + panel suite).
 - [x] A5 i18n +11 keys × 17 locales via `i18n_translate.py` (0 failed); tsc clean (arc-drift files); **EVIDENCE: 898 passed** (arcTemplates + motif + studio panels).
-- [ ] A6 Playwright E2E spec + blackbox Playwright-MCP smoke
+- [x] A6 Playwright E2E spec `studio-arc-drift.spec.ts` (parses — 1 test listed) + **blackbox Playwright-MCP smoke on :5199** (seeded book+work+template+arc-stamped via the real gateway; opened arc-templates via Ctrl+Shift+P palette → selected template → clicked the drift arc). **EVIDENCE:** `arc-drift-view` rendered live, `arc-drift-report` (raw `<pre>`) GONE, real EN i18n ("No drift — the realized arc matches its template… Not comparable yet… No ordering violations"), 0 console errors. The direct drift route returned `{thread_progress:[],pacing:{comparable:false},…}` — the real ArcConformance shape (confirms the type reconcile end-to-end).
 - [ ] A7 /review-impl + commit
 
 ### B · motif graph-canvas (XL, BE-first)
