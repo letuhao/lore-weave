@@ -353,8 +353,11 @@ class PlanRunsRepo:
         book's latest compiled `package` for the in-play variables/motifs, independent of which run a
         new propose belongs to. Book scope is transitive via the plan_run join (plan_artifact carries
         no book_id). NULL when the book has no such artifact yet."""
+        # KEEP the `a.` prefix (unlike save_artifact's RETURNING) — this query JOINs plan_run, which
+        # also has an `id`, so a bare `id` is ambiguous. `_row_artifact` reads by column name, and the
+        # `a.`-qualified select yields unprefixed result keys (id, run_id, …) either way.
         query = f"""
-        SELECT {_SELECT_ARTIFACT.replace("a.", "")} FROM plan_artifact a
+        SELECT {_SELECT_ARTIFACT} FROM plan_artifact a
         JOIN plan_run r ON r.id = a.run_id
         WHERE r.book_id = $1 AND a.kind = $2 AND NOT r.is_archived
         ORDER BY a.created_at DESC, a.id DESC

@@ -50,6 +50,17 @@ def test_rules_path_threads_existing_into_propose_spec():
     assert "propose_spec(doc, existing=existing)" in src
 
 
+def test_latest_artifact_for_book_keeps_the_a_prefix_because_it_JOINs():
+    """The JOIN to plan_run (which also has an `id`) makes a bare `id` in the SELECT AMBIGUOUS — a
+    500 the unit suite can't see (it never hits real SQL; caught only by the live A/B measurement).
+    Guard: the JOIN query must select the `a.`-qualified columns, NOT save_artifact's stripped form."""
+    from app.db.repositories import plan_runs
+    src = inspect.getsource(plan_runs.PlanRunsRepo.latest_artifact_for_book)
+    assert "JOIN plan_run r" in src
+    assert '_SELECT_ARTIFACT.replace("a.", "")' not in src  # the stripped form is ambiguous under a JOIN
+    assert "{_SELECT_ARTIFACT}" in src                       # keep the a.-prefixed columns
+
+
 def test_grounded_on_is_nullable_end_to_end_never_silently_empty():
     from app.db.models import PlanRun
     # the model default is None (not {}), so a blind run is honestly "not grounded"
