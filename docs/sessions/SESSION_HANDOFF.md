@@ -1,5 +1,19 @@
 # ▶▶ NEXT SESSION STARTS HERE
 
+## ⭐ Track: STUDIO-S8 TRANSLATION (spec 29) — **CLOSED, 2026-07-17**
+> **RUN-STATE (authoritative):** [`docs/plans/2026-07-16-studio-session-S8-RUN-STATE.md`](../plans/2026-07-16-studio-session-S8-RUN-STATE.md)
+> **Spec:** [`docs/specs/2026-07-01-writing-studio/29_translation_repair.md`](../specs/2026-07-01-writing-studio/29_translation_repair.md)
+>
+> Full spec-29 repair shipped (T1–T10, S1–S12, D1–D13): matrix operable (header CTA, one-row-per-chapter,
+> pagination, orphan footnote), no-silent-fail typed errors + Retry everywhere, the **content-language SSOT**
+> (`contracts/languages.contract.json` + Python mirror + parity tests + write-validation at every writer +
+> MCP enum), and the grant-gate. **D-TRANSL-LANG-BACKFILL EXECUTED** (Vietnamese→vi merged, 0 remaining).
+> Cold-start audit → 5 fixes. **Closure gates green: FE 150 vitest · BE 1053 pytest.** Live-smoke both
+> states + 5 Playwright e2e + a blackbox author journey (verdict: usable). All DEBT/PARKED cleared.
+> **Caveat:** several S8 commits were absorbed into a concurrent session's commit via the shared index
+> (code verified in HEAD, just misattributed — see RUN-STATE DRIFT). Nothing open for S8.
+> **NOT S8's — convergence node §6 (after all 8 sessions close):** loop-③ Studio-only smoke + GG-4 retire `ChapterEditorPage`.
+
 ## ⭐ Track: AGENT-TASK-GOVERNANCE + close-21-28 — **CLOSED TO EVIDENCE, 2026-07-16** (HEAD `7e44b296e`)
 > **Spec (SEALED):** [`docs/specs/2026-07-15-agent-task-governance.md`](../specs/2026-07-15-agent-task-governance.md) ·
 > **Plan + RUN-STATE:** [`docs/plans/2026-07-13-close-21-28-plan.md`](../plans/2026-07-13-close-21-28-plan.md) (§9 = the live registers).
