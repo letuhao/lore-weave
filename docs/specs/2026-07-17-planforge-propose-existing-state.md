@@ -1,10 +1,12 @@
 # PlanForge — propose reads the existing manuscript (D-PLANFORGE-PROPOSE-BLIND)
 
-> **Status:** ✅ **BUILT + QC'd (2026-07-17).** PO lifted the Q-35-OQ5 seal ("build PROPOSE-BLIND and
-> QC it") — the seal read *"needs a PO to own it"*, and the PO did. Built in 5 phases (§6), all
-> committed; live-smoked end-to-end + adversarially reviewed. **Shipped with the deploy ceiling OFF**
-> (`PLANFORGE_GROUND_ON_EXISTING_ALLOWED=false`) — the richer grounding is dark until the A/B eval
-> (§6 P5) proves it improves the plan, then the ceiling flips. See the BUILD CLOSE-OUT at the end.
+> **Status:** ✅ **CLOSED (2026-07-17).** Built in 5 phases + QC'd + all 4 coverage gaps addressed +
+> the OQ-2 A/B eval RUN. **Ships with the deploy ceiling OFF and stays OFF** — the A/B measured no
+> cast-continuity improvement (TIE 0/3, twice), so per OQ-2 the ceiling does not flip. The feature is
+> complete, safe (fails-closed, off by default), and correctly gated dark. Making grounding *actually*
+> improve cast is a SEPARATE follow-up track (deterministic protagonist injection + de-fixturing the
+> LLM prompts) — see the out-of-scope inventory `docs/plans/2026-07-17-planforge-followups-inventory.md`
+> and the eval report `docs/reports/2026-07-17-propose-blind-ab-eval.md`. Nothing more to build here.
 >
 > Commits: P1 `ac0026856` (gather lens) · P2 `38952a21d` (rules merge) · P3 `a7065246a` (LLM/async
 > prompt) · P4 `5596e7e05` (setting+ceiling+wiring) · P5 `39cfbaff1` (planner copy-switch) · QC
