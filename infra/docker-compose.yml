@@ -228,12 +228,27 @@ services:
       # becomes a consequence of a governance-driven rules propose instead of a coin-flip on a weak agent
       # chaining a second plan_compile call (S06 DR-G5-REROLL). Set FALSE to restore a propose→review step.
       PLANFORGE_RULES_AUTOCOMPILE: ${PLANFORGE_RULES_AUTOCOMPILE:-true}
+      # D-PLANFORGE-PROPOSE-BLIND — the deploy CEILING for propose-existing-state grounding (OQ-2).
+      # Default FALSE: the richer cast/spine/systems grounding is gated behind the A/B eval and fails
+      # closed. effective = AND(this, the per-run ground_on_existing flag). Flip TRUE org-wide once the
+      # eval proves grounding improves the plan.
+      PLANFORGE_GROUND_ON_EXISTING_ALLOWED: ${PLANFORGE_GROUND_ON_EXISTING_ALLOWED:-false}
       # W5 motif-conformance — the per-scene producer (judge each generated scene vs
       # its bound motif) + the calibrated label. ENABLED 2026-06-28 (the W5 judge gate
       # is satisfied: kappa 1.0 / 0.762 ≥ thresholds). Single-local-judge, so the FE
       # still surfaces an advisory note; flip CALIBRATED off to fall back to 'unverified'.
       MOTIF_CONFORMANCE_ENABLED: ${MOTIF_CONFORMANCE_ENABLED:-true}
       MOTIF_CONFORMANCE_CALIBRATED: ${MOTIF_CONFORMANCE_CALIBRATED:-true}
+      # Platform motif/arc embedding model (RECONCILE D2 — the shared/system "library"
+      # tier is embedded in ONE platform space so cross-user cosine is comparable). It is a
+      # BYOK-as-platform credential: a bge-m3 user_model owned by the reserved platform-owner
+      # (source is ALWAYS user_model — /internal/embed rejects "platform_model"). The dev
+      # values below are seeded by scripts/seed_platform_embed_model.sh (copies the local
+      # bge-m3 credential under the reserved owner). PROD: point these at a real platform
+      # account's embed model. Unset ⇒ the shared library degrades to genre (honest, no crash).
+      MOTIF_EMBED_MODEL_SOURCE: ${MOTIF_EMBED_MODEL_SOURCE:-user_model}
+      MOTIF_EMBED_OWNER_ID: ${MOTIF_EMBED_OWNER_ID:-00000000-0000-4000-8000-000000000001}
+      MOTIF_EMBED_MODEL_REF: ${MOTIF_EMBED_MODEL_REF:-00000000-0000-4000-8000-0000000e0001}
       LOG_LEVEL: INFO
       # S2 — long-chapter state-compress threshold (chars of raw story-so-far
       # before the packer compresses the older portion). Default 6000; overridable.
@@ -287,6 +302,11 @@ services:
       # any producer path reads these). ENABLED 2026-06-28 (gate satisfied).
       MOTIF_CONFORMANCE_ENABLED: ${MOTIF_CONFORMANCE_ENABLED:-true}
       MOTIF_CONFORMANCE_CALIBRATED: ${MOTIF_CONFORMANCE_CALIBRATED:-true}
+      # Platform motif/arc embedding model — MUST mirror the API (the worker re-embeds on
+      # its own retrieve/back-fill path). See the composition-service block for the contract.
+      MOTIF_EMBED_MODEL_SOURCE: ${MOTIF_EMBED_MODEL_SOURCE:-user_model}
+      MOTIF_EMBED_OWNER_ID: ${MOTIF_EMBED_OWNER_ID:-00000000-0000-4000-8000-000000000001}
+      MOTIF_EMBED_MODEL_REF: ${MOTIF_EMBED_MODEL_REF:-00000000-0000-4000-8000-0000000e0001}
       # Same internal service URLs as the API — the worker re-resolves pack context
       # (book/glossary/knowledge) + the internal-auth LLM for the compute half.
       KNOWLEDGE_INTERNAL_URL: http://knowledge-service:8092
