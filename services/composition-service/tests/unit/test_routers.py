@@ -15,8 +15,8 @@ from fastapi.testclient import TestClient
 from unittest.mock import AsyncMock
 
 from app.clients.book_client import BookClientError
-from app.db.models import CompositionWork
-from app.db.repositories import VersionMismatchError
+from app.db.models import CompositionWork, DivergenceSpec, EntityOverride
+from app.db.repositories import ReferenceViolationError, VersionMismatchError
 
 USER = uuid.uuid4()
 BOOK = uuid.uuid4()
@@ -140,6 +140,29 @@ class StubDerivatives:
 
     async def list_overrides_for_work(self, work_id):
         return self.overrides_for_work
+
+    # S-04 post-derive editing seams
+    async def update_spec(self, work_id, book_id, **kwargs):
+        self.update_spec_call = (work_id, book_id, kwargs)
+        if getattr(self, "update_spec_raises", None):
+            raise self.update_spec_raises
+        return getattr(self, "update_spec_result", None)
+
+    async def add_override(self, work_id, book_id, created_by, target_entity_id,
+                           overridden_fields, *, conn=None):
+        self.add_override_call = (work_id, book_id, created_by, target_entity_id,
+                                  overridden_fields)
+        if getattr(self, "add_override_raises", None):
+            raise self.add_override_raises
+        return getattr(self, "add_override_result", None)
+
+    async def update_override(self, work_id, book_id, override_id, overridden_fields, *, conn=None):
+        self.update_override_call = (work_id, book_id, override_id, overridden_fields)
+        return getattr(self, "update_override_result", None)
+
+    async def delete_override(self, work_id, book_id, override_id, *, conn=None):
+        self.delete_override_call = (work_id, book_id, override_id)
+        return getattr(self, "delete_override_result", False)
 
 
 class _FakeTxn:
@@ -641,6 +664,155 @@ def test_derive_rejects_on_contract_error(ctx):
     r = c.post(f"/v1/composition/works/{PROJECT}/derive", json=_derive_body())
     assert r.status_code == 502
     assert r.json()["detail"]["code"] == "PROJECT_CREATE_FAILED"
+
+
+# ── S-04: derivative delta EDITING (spec PATCH + entity_override CRUD) ──
+
+def _deriv_work(**kw):
+    """A DERIVATIVE Work (source_work_id set) — the only kind with a spec/overrides."""
+    w = _work(**kw)
+    w.source_work_id = kw.get("source_work_id", uuid.uuid4())
+    return w
+
+
+def _spec(**kw):
+    return DivergenceSpec(
+        id=kw.get("id", uuid.uuid4()), created_by=USER, project_id=PROJECT,
+        work_id=kw.get("work_id", uuid.uuid4()),
+        taxonomy=kw.get("taxonomy", "au"), pov_anchor=kw.get("pov_anchor"),
+        canon_rule=kw.get("canon_rule", []),
+    )
+
+
+def _override(**kw):
+    return EntityOverride(
+        id=kw.get("id", uuid.uuid4()), created_by=USER, project_id=PROJECT,
+        work_id=kw.get("work_id", uuid.uuid4()),
+        target_entity_id=kw.get("target_entity_id", uuid.uuid4()),
+        overridden_fields=kw.get("overridden_fields", {}),
+    )
+
+
+def test_update_divergence_spec_persists_provided_fields(ctx):
+    """PATCH divergence-spec passes only the provided fields to the repo; pov_anchor:null
+    reaches the repo as an explicit clear (in model_fields_set), taxonomy round-trips."""
+    c, works, _, _, derivatives = ctx
+    works.work = _deriv_work()
+    derivatives.update_spec_result = _spec(taxonomy="pov_shift", canon_rule=["X"])
+    r = c.patch(f"/v1/composition/works/{PROJECT}/divergence-spec",
+                json={"taxonomy": "pov_shift", "pov_anchor": None, "canon_rule": ["X"]})
+    assert r.status_code == 200, r.text
+    assert r.json()["taxonomy"] == "pov_shift"
+    _, _, kwargs = derivatives.update_spec_call
+    assert kwargs["taxonomy"] == "pov_shift"
+    assert "pov_anchor" in kwargs and kwargs["pov_anchor"] is None  # explicit clear
+    assert kwargs["canon_rule"] == ["X"]
+
+
+def test_update_divergence_spec_omitted_field_not_sent(ctx):
+    """An OMITTED field is not forwarded (left unchanged) — only taxonomy here."""
+    c, works, _, _, derivatives = ctx
+    works.work = _deriv_work()
+    derivatives.update_spec_result = _spec(taxonomy="au")
+    r = c.patch(f"/v1/composition/works/{PROJECT}/divergence-spec", json={"taxonomy": "au"})
+    assert r.status_code == 200
+    _, _, kwargs = derivatives.update_spec_call
+    assert set(kwargs) == {"taxonomy"}  # pov_anchor / canon_rule NOT forwarded
+
+
+def test_update_divergence_spec_off_enum_taxonomy_422(ctx):
+    """An off-enum taxonomy is a 422 at the request boundary — never a DB CHECK 500."""
+    c, works, _, _, _ = ctx
+    works.work = _deriv_work()
+    r = c.patch(f"/v1/composition/works/{PROJECT}/divergence-spec",
+                json={"taxonomy": "not_a_taxonomy"})
+    assert r.status_code == 422
+
+
+def test_update_divergence_spec_non_derivative_400(ctx):
+    """A base (non-derivative) Work has no spec → 400 NOT_A_DERIVATIVE (post-gate)."""
+    c, works, _, _, _ = ctx
+    works.work = _work()  # source_work_id is None
+    r = c.patch(f"/v1/composition/works/{PROJECT}/divergence-spec", json={"taxonomy": "au"})
+    assert r.status_code == 400
+    assert r.json()["detail"]["code"] == "NOT_A_DERIVATIVE"
+
+
+def test_update_divergence_spec_missing_row_404(ctx):
+    c, works, _, _, derivatives = ctx
+    works.work = _deriv_work()
+    derivatives.update_spec_result = None  # repo found no row
+    r = c.patch(f"/v1/composition/works/{PROJECT}/divergence-spec", json={"taxonomy": "au"})
+    assert r.status_code == 404
+
+
+def test_add_entity_override_created_201(ctx):
+    c, works, _, _, derivatives = ctx
+    works.work = _deriv_work()
+    target = uuid.uuid4()
+    derivatives.add_override_result = _override(target_entity_id=target,
+                                                overridden_fields={"role": "hero"})
+    r = c.post(f"/v1/composition/works/{PROJECT}/entity-overrides",
+               json={"target_entity_id": str(target), "overridden_fields": {"role": "hero"}})
+    assert r.status_code == 201, r.text
+    assert r.json()["overridden_fields"] == {"role": "hero"}
+    assert derivatives.add_override_call[3] == target
+
+
+def test_add_entity_override_duplicate_409(ctx):
+    """A second override for the same target → 409 OVERRIDE_EXISTS (PATCH instead)."""
+    c, works, _, _, derivatives = ctx
+    works.work = _deriv_work()
+    derivatives.add_override_raises = asyncpg.UniqueViolationError("dup")
+    r = c.post(f"/v1/composition/works/{PROJECT}/entity-overrides",
+               json={"target_entity_id": str(uuid.uuid4()), "overridden_fields": {}})
+    assert r.status_code == 409
+    assert r.json()["detail"]["code"] == "OVERRIDE_EXISTS"
+
+
+def test_add_entity_override_unresolvable_scope_404(ctx):
+    c, works, _, _, derivatives = ctx
+    works.work = _deriv_work()
+    derivatives.add_override_raises = ReferenceViolationError("scope unresolvable")
+    r = c.post(f"/v1/composition/works/{PROJECT}/entity-overrides",
+               json={"target_entity_id": str(uuid.uuid4()), "overridden_fields": {}})
+    assert r.status_code == 404
+
+
+def test_update_entity_override_200_and_404(ctx):
+    c, works, _, _, derivatives = ctx
+    works.work = _deriv_work()
+    oid = uuid.uuid4()
+    derivatives.update_override_result = _override(id=oid, overridden_fields={"a": 1})
+    r = c.patch(f"/v1/composition/works/{PROJECT}/entity-overrides/{oid}",
+                json={"overridden_fields": {"a": 1}})
+    assert r.status_code == 200 and r.json()["overridden_fields"] == {"a": 1}
+    # not found → 404
+    derivatives.update_override_result = None
+    r = c.patch(f"/v1/composition/works/{PROJECT}/entity-overrides/{uuid.uuid4()}",
+                json={"overridden_fields": {}})
+    assert r.status_code == 404
+
+
+def test_delete_entity_override_204_and_404(ctx):
+    c, works, _, _, derivatives = ctx
+    works.work = _deriv_work()
+    derivatives.delete_override_result = True
+    r = c.delete(f"/v1/composition/works/{PROJECT}/entity-overrides/{uuid.uuid4()}")
+    assert r.status_code == 204
+    # idempotent second delete → 404, never a 500
+    derivatives.delete_override_result = False
+    r = c.delete(f"/v1/composition/works/{PROJECT}/entity-overrides/{uuid.uuid4()}")
+    assert r.status_code == 404
+
+
+def test_list_entity_overrides_200(ctx):
+    c, works, _, _, derivatives = ctx
+    works.work = _deriv_work()
+    derivatives.overrides_for_work = [_override(overridden_fields={"role": "x"})]
+    r = c.get(f"/v1/composition/works/{PROJECT}/entity-overrides")
+    assert r.status_code == 200
+    assert len(r.json()["overrides"]) == 1
 
 
 # ── WS-B2: GET /works/{project_id}/derivative-context (durable read-back) ──

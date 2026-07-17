@@ -29,7 +29,7 @@ from app.engine.assembly import ASSEMBLY_MODES
 from app.clients.knowledge_client import KnowledgeClient, KnowledgeContractError
 from app.db.models import DivergenceSpec, DivergenceTaxonomy, EntityOverride, WorkStatus
 from app.db.pool import get_pool
-from app.db.repositories import VersionMismatchError
+from app.db.repositories import ReferenceViolationError, VersionMismatchError
 from app.db.repositories.derivatives import DerivativesRepo
 from app.db.repositories.works import WorksRepo
 from app.deps import (
@@ -517,6 +517,156 @@ async def get_derivative_context(
             for o in deriv.overrides
         ],
     ).model_dump(mode="json")
+
+
+# ── S-04: derivative delta EDITING (the spec + overrides were frozen at derive-time).
+# Addressed by {project_id} like every other Work route (the FE holds project_id and
+# fetches derivative-context by it); each route resolves work.id + work.book_id and
+# gates EDIT on the book. Only a DERIVATIVE (source_work_id set) has a spec/overrides.
+
+class DivergenceSpecPatchBody(BaseModel):
+    """Partial edit of the divergence_spec. Every field optional; an OMITTED field
+    is left unchanged (Pydantic `model_fields_set` distinguishes omitted from an
+    explicit null — `pov_anchor: null` CLEARS the anchor, taxonomy/canon_rule null
+    are ignored since both are NOT NULL)."""
+
+    taxonomy: DivergenceTaxonomy | None = None
+    pov_anchor: UUID | None = None
+    canon_rule: list[str] | None = None
+
+
+class EntityOverrideAddBody(BaseModel):
+    target_entity_id: UUID
+    overridden_fields: dict[str, Any] = {}
+
+
+class EntityOverrideUpdateBody(BaseModel):
+    overridden_fields: dict[str, Any] = {}
+
+
+async def _require_derivative_work(works: WorksRepo, grant: GrantClient, user_id: UUID,
+                                   project_id: UUID, need: GrantLevel):
+    """Resolve project_id → Work, gate the book grant, and confirm it's a derivative.
+    Returns the Work (with .id + .book_id) for the repo calls. 404 anti-oracle when
+    absent/no-grant; 400 NOT_A_DERIVATIVE only AFTER the grant passes (the caller has
+    book access, so telling them 'this Work is not a derivative' is not an oracle)."""
+    work = await works.get(project_id)
+    if work is None:
+        raise HTTPException(status_code=404, detail=NOT_ACCESSIBLE_MESSAGE)
+    await _gate_book(grant, work.book_id, user_id, need)
+    if work.source_work_id is None:
+        raise HTTPException(status_code=400, detail={"code": "NOT_A_DERIVATIVE"})
+    return work
+
+
+@router.patch("/works/{project_id}/divergence-spec")
+async def update_divergence_spec(
+    project_id: UUID,
+    body: DivergenceSpecPatchBody,
+    user_id: UUID = Depends(get_current_user),
+    works: WorksRepo = Depends(get_works_repo),
+    derivatives: DerivativesRepo = Depends(get_derivatives_repo),
+    grant: GrantClient = Depends(get_grant_client_dep),
+) -> dict[str, Any]:
+    """S-04: mutate the (single) divergence_spec of a derivative — taxonomy / pov_anchor
+    / added canon_rule[]. EDIT grant. Only provided fields change; `taxonomy` off-enum is
+    a 422 (Pydantic + repo guard), never a CHECK 500."""
+    work = await _require_derivative_work(works, grant, user_id, project_id, GrantLevel.EDIT)
+    fs = body.model_fields_set
+    kwargs: dict[str, Any] = {}
+    if "taxonomy" in fs and body.taxonomy is not None:
+        kwargs["taxonomy"] = body.taxonomy
+    if "pov_anchor" in fs:  # explicit null clears the anchor
+        kwargs["pov_anchor"] = body.pov_anchor
+    if "canon_rule" in fs and body.canon_rule is not None:
+        kwargs["canon_rule"] = body.canon_rule
+    try:
+        spec = await derivatives.update_spec(work.id, work.book_id, **kwargs)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail={"code": "INVALID_TAXONOMY", "message": str(exc)})
+    if spec is None:
+        raise HTTPException(status_code=404, detail="divergence spec not found")
+    return spec.model_dump(mode="json")
+
+
+@router.get("/works/{project_id}/entity-overrides")
+async def list_entity_overrides(
+    project_id: UUID,
+    user_id: UUID = Depends(get_current_user),
+    works: WorksRepo = Depends(get_works_repo),
+    derivatives: DerivativesRepo = Depends(get_derivatives_repo),
+    grant: GrantClient = Depends(get_grant_client_dep),
+) -> dict[str, Any]:
+    """S-04: list a derivative's entity_override rows (VIEW grant). The FE's Lane-B
+    `divergenceEffects` refetches this after a mutation to refresh the override list."""
+    work = await _require_derivative_work(works, grant, user_id, project_id, GrantLevel.VIEW)
+    overrides = await derivatives.list_overrides_for_work(work.id)
+    return {"overrides": [o.model_dump(mode="json") for o in overrides]}
+
+
+@router.post("/works/{project_id}/entity-overrides", status_code=201)
+async def add_entity_override(
+    project_id: UUID,
+    body: EntityOverrideAddBody,
+    user_id: UUID = Depends(get_current_user),
+    works: WorksRepo = Depends(get_works_repo),
+    derivatives: DerivativesRepo = Depends(get_derivatives_repo),
+    grant: GrantClient = Depends(get_grant_client_dep),
+) -> dict[str, Any]:
+    """S-04: add an entity_override AFTER derive (the missing 'override another entity
+    later'). EDIT grant. A duplicate target → 409 (PATCH it instead); a target outside
+    the book's graph resolution → 404."""
+    work = await _require_derivative_work(works, grant, user_id, project_id, GrantLevel.EDIT)
+    try:
+        ov = await derivatives.add_override(
+            work.id, work.book_id, user_id, body.target_entity_id, body.overridden_fields,
+        )
+    except asyncpg.UniqueViolationError:
+        raise HTTPException(status_code=409, detail={
+            "code": "OVERRIDE_EXISTS",
+            "message": "an override for this entity already exists; PATCH it instead",
+        })
+    except ReferenceViolationError:
+        raise HTTPException(status_code=404, detail=NOT_ACCESSIBLE_MESSAGE)
+    return ov.model_dump(mode="json")
+
+
+@router.patch("/works/{project_id}/entity-overrides/{override_id}")
+async def update_entity_override(
+    project_id: UUID,
+    override_id: UUID,
+    body: EntityOverrideUpdateBody,
+    user_id: UUID = Depends(get_current_user),
+    works: WorksRepo = Depends(get_works_repo),
+    derivatives: DerivativesRepo = Depends(get_derivatives_repo),
+    grant: GrantClient = Depends(get_grant_client_dep),
+) -> dict[str, Any]:
+    """S-04: replace an override's field-set (whole-object — the override IS the delta).
+    EDIT grant. 404 when the override doesn't belong to this derivative."""
+    work = await _require_derivative_work(works, grant, user_id, project_id, GrantLevel.EDIT)
+    ov = await derivatives.update_override(
+        work.id, work.book_id, override_id, body.overridden_fields,
+    )
+    if ov is None:
+        raise HTTPException(status_code=404, detail="entity override not found")
+    return ov.model_dump(mode="json")
+
+
+@router.delete("/works/{project_id}/entity-overrides/{override_id}", status_code=204)
+async def delete_entity_override(
+    project_id: UUID,
+    override_id: UUID,
+    user_id: UUID = Depends(get_current_user),
+    works: WorksRepo = Depends(get_works_repo),
+    derivatives: DerivativesRepo = Depends(get_derivatives_repo),
+    grant: GrantClient = Depends(get_grant_client_dep),
+) -> None:
+    """S-04: hard-delete an override — reverts that entity to canon. EDIT grant; 404
+    when nothing matched (idempotent second delete is a 404, not a 500)."""
+    work = await _require_derivative_work(works, grant, user_id, project_id, GrantLevel.EDIT)
+    ok = await derivatives.delete_override(work.id, work.book_id, override_id)
+    if not ok:
+        raise HTTPException(status_code=404, detail="entity override not found")
 
 
 @router.get("/works/{project_id}/chapters/{chapter_id}/scene-drafts")

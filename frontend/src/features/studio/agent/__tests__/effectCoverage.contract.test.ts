@@ -63,6 +63,13 @@ const WRITE_TOOLS: Record<string, string> = {
   // S5 — switch_active_work wrote the active-work PREF server-side; its handler re-reads the pref
   // (notifyActiveWorkChanged) + refetches work, so the studio follows an agent switch live.
   composition_switch_active_work: 'compositionEffects',
+  // S-04 — post-derive delta EDIT tools. compositionDivergenceEditEffect invalidates
+  // ['composition','derivative-context'] + ['composition','entity-overrides'] so an agent edit
+  // refreshes the human's DivergenceManagerView + spec editor live (not the frozen pre-edit state).
+  composition_divergence_spec_update: 'compositionEffects',
+  composition_entity_override_add: 'compositionEffects',
+  composition_entity_override_update: 'compositionEffects',
+  composition_entity_override_delete: 'compositionEffects',
   // S1-A3 — the prose WRITE (bookEffects, via /^composition_write_prose/). Now enumerated so the
   // ledger guards it (and its READ sibling composition_get_prose is asserted handler-free below).
   composition_write_prose: 'bookEffects',

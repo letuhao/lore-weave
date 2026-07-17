@@ -327,6 +327,77 @@ async def test_c23_divergence_spec_and_override_roundtrip(pool):
         ))
 
 
+async def test_s04_divergence_spec_post_derive_update(pool):
+    """S-04 — the divergence_spec is mutable after derive (was frozen). Partial
+    updates write only provided fields; pov_anchor can be cleared to NULL; a bad
+    taxonomy is a ValueError (→422), never a CHECK 500; wrong-book → None (404)."""
+    works, drepo = WorksRepo(pool), DerivativesRepo(pool)
+    user, _, book = _ids()
+    src = await works.create(user, uuid.uuid4(), book)
+    deriv = await works.create_derivative(user, uuid.uuid4(), book, src.id, branch_point=3)
+    pov = uuid.uuid4()
+    await drepo.create_spec(DivergenceSpec(
+        created_by=user, project_id=deriv.project_id, work_id=deriv.id,
+        taxonomy="au", pov_anchor=pov, canon_rule=["A"],
+    ))
+    # change taxonomy only — pov_anchor + canon_rule untouched
+    updated = await drepo.update_spec(deriv.id, book, taxonomy="pov_shift")
+    assert updated is not None
+    assert updated.taxonomy == "pov_shift"
+    assert updated.pov_anchor == pov and updated.canon_rule == ["A"]
+    # clear pov_anchor to NULL + replace canon_rule
+    updated = await drepo.update_spec(deriv.id, book, pov_anchor=None, canon_rule=["B", "C"])
+    assert updated.pov_anchor is None and updated.canon_rule == ["B", "C"]
+    assert updated.taxonomy == "pov_shift"  # not touched
+    # no-op patch returns the current row (not None)
+    noop = await drepo.update_spec(deriv.id, book)
+    assert noop is not None and noop.canon_rule == ["B", "C"]
+    # bad taxonomy → ValueError BEFORE the DB CHECK (route maps to 422)
+    with pytest.raises(ValueError):
+        await drepo.update_spec(deriv.id, book, taxonomy="not_a_taxonomy")
+    # wrong book → no row matched → None (route 404)
+    assert await drepo.update_spec(deriv.id, uuid.uuid4(), taxonomy="au") is None
+
+
+async def test_s04_entity_override_crud_post_derive(pool):
+    """S-04 — add/update/delete an entity_override after derive. add is a standalone
+    create (the missing 'override another entity later'); a dup target → 409-class
+    UniqueViolation; a work outside the book → ReferenceViolationError (404); delete
+    reverts the entity to canon (row gone)."""
+    works, drepo = WorksRepo(pool), DerivativesRepo(pool)
+    user, _, book = _ids()
+    src = await works.create(user, uuid.uuid4(), book)
+    deriv = await works.create_derivative(user, uuid.uuid4(), book, src.id, branch_point=4)
+    target = uuid.uuid4()
+    # add-after (no spec/override existed for this target)
+    ov = await drepo.add_override(deriv.id, book, user, target, {"role": "hero"})
+    assert ov.target_entity_id == target and ov.overridden_fields == {"role": "hero"}
+    assert ov.work_id == deriv.id and ov.project_id == deriv.project_id
+    # get_override (the prior-state read a Tier-A undo captures) is book+work scoped
+    got = await drepo.get_override(deriv.id, book, ov.id)
+    assert got is not None and got.overridden_fields == {"role": "hero"}
+    assert await drepo.get_override(deriv.id, uuid.uuid4(), ov.id) is None  # wrong book
+    # a second add for the same target → unique violation (route → 409)
+    with pytest.raises(asyncpg.exceptions.UniqueViolationError):
+        await drepo.add_override(deriv.id, book, user, target, {"role": "villain"})
+    # a work outside the gated book → ReferenceViolationError (route → 404)
+    with pytest.raises(ReferenceViolationError):
+        await drepo.add_override(deriv.id, uuid.uuid4(), user, uuid.uuid4(), {"x": 1})
+    # update replaces the whole field-set
+    upd = await drepo.update_override(deriv.id, book, ov.id, {"role": "antihero", "arc": "fall"})
+    assert upd is not None and upd.overridden_fields == {"role": "antihero", "arc": "fall"}
+    # update with wrong book → None (404)
+    assert await drepo.update_override(deriv.id, uuid.uuid4(), ov.id, {"x": 1}) is None
+    # a SECOND derivative in the SAME book cannot touch this work's override (work-scoped)
+    deriv2 = await works.create_derivative(user, uuid.uuid4(), book, src.id, branch_point=9)
+    assert await drepo.update_override(deriv2.id, book, ov.id, {"x": 1}) is None
+    assert await drepo.get_override(deriv2.id, book, ov.id) is None
+    # delete reverts to canon (row gone); a second delete is a no-op False
+    assert await drepo.delete_override(deriv.id, book, ov.id) is True
+    assert await drepo.delete_override(deriv.id, book, ov.id) is False
+    assert await drepo.list_overrides_for_work(deriv.id) == []
+
+
 async def test_c23_migration_roundtrip_up_down_up_clean(pool):
     """Migration round-trip: the C23 substrate (2 columns + 2 tables + the guard) is
     present after up, GONE after the down SQL, and RESTORED clean on re-up with NO

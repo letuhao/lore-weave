@@ -1348,11 +1348,11 @@ async def _require_derivative(works: WorksRepo, tc, project_id: UUID):
     description=(
         "Edit a what-if derivative's (dị bản) divergence spec AFTER derive — change the "
         "taxonomy (pov_shift|character_transform|au), the pov_anchor, or the added canon_rule[]. "
-        "Only the fields you pass change; pass pov_anchor=null to clear it. EDIT required. "
-        "Rejects the canonical Work (only a derivative has a spec)."
+        "Only the fields you pass change; pass pov_anchor=null to clear it. EDIT required "
+        "(auto-applied; Undo restores the prior values). Rejects the canonical Work."
     ),
     meta=require_meta(
-        "W", "book",
+        "A", "book",
         synonyms=["edit dị bản spec", "update divergence spec", "change branch taxonomy", "edit what-if spec"],
         tool_name="composition_divergence_spec_update",
     ),
@@ -1372,10 +1372,25 @@ async def composition_divergence_spec_update(ctx: MCPContext, args: _DivergenceS
     if "canon_rule" in fs and args.canon_rule is not None:
         kwargs["canon_rule"] = list(args.canon_rule)
     derivatives = DerivativesRepo(get_pool())
+    prior = await derivatives.get_spec_for_work(work.id)  # captured for the Undo hint
+    if prior is None:
+        raise uniform_not_accessible()
     spec = await derivatives.update_spec(work.id, work.book_id, **kwargs)
     if spec is None:
         raise uniform_not_accessible()
-    return {"success": True, "spec": spec.model_dump(mode="json")}
+    # Undo re-applies the prior value of exactly the fields this call changed.
+    undo_fields: dict[str, Any] = {}
+    if "taxonomy" in kwargs:
+        undo_fields["taxonomy"] = prior.taxonomy
+    if "pov_anchor" in kwargs:
+        undo_fields["pov_anchor"] = str(prior.pov_anchor) if prior.pov_anchor else None
+    if "canon_rule" in kwargs:
+        undo_fields["canon_rule"] = list(prior.canon_rule)
+    out = {"success": True, "spec": spec.model_dump(mode="json")}
+    out["_meta"] = {"undo_hint": _undo(
+        "composition_divergence_spec_update", project_id=args.project_id, **undo_fields,
+    ) if undo_fields else None}
+    return out
 
 
 class _EntityOverrideAddArgs(ForbidExtra):
@@ -1390,10 +1405,10 @@ class _EntityOverrideAddArgs(ForbidExtra):
         "Add ONE entity-field override to a what-if derivative (dị bản) AFTER derive — override "
         "another entity's fields later (the delta was otherwise frozen at derive-time). Pass the "
         "derivative's project_id, the target_entity_id, and overridden_fields (field→value JSON). "
-        "EDIT required. One override per entity — a duplicate target is rejected (edit it instead)."
+        "EDIT required (auto-applied; Undo deletes it). One override per entity — a duplicate is rejected."
     ),
     meta=require_meta(
-        "W", "book",
+        "A", "book",
         synonyms=["add dị bản override", "override entity", "add entity override", "override another entity"],
         tool_name="composition_entity_override_add",
     ),
@@ -1413,7 +1428,11 @@ async def composition_entity_override_add(ctx: MCPContext, args: _EntityOverride
         return {"success": False, "error": "OVERRIDE_EXISTS — an override for this entity already exists; update it instead"}
     except ReferenceViolationError as exc:
         raise uniform_not_accessible(exc) from exc
-    return {"success": True, "override": _override_out(ov)}
+    out = {"success": True, "override": _override_out(ov)}
+    out["_meta"] = {"undo_hint": _undo(
+        "composition_entity_override_delete", project_id=args.project_id, override_id=str(ov.id),
+    )}
+    return out
 
 
 class _EntityOverrideUpdateArgs(ForbidExtra):
@@ -1427,10 +1446,10 @@ class _EntityOverrideUpdateArgs(ForbidExtra):
     description=(
         "Replace an entity override's field-set on a what-if derivative (dị bản) — the whole "
         "overridden_fields JSON is replaced (the override IS the delta). Pass the derivative's "
-        "project_id + the override_id. EDIT required."
+        "project_id + the override_id. EDIT required (auto-applied; Undo restores the prior fields)."
     ),
     meta=require_meta(
-        "W", "book",
+        "A", "book",
         synonyms=["edit dị bản override", "update entity override", "change override fields"],
         tool_name="composition_entity_override_update",
     ),
@@ -1440,12 +1459,20 @@ async def composition_entity_override_update(ctx: MCPContext, args: _EntityOverr
     works = WorksRepo(get_pool())
     work = await _require_derivative(works, tc, UUID(args.project_id))
     derivatives = DerivativesRepo(get_pool())
+    prior = await derivatives.get_override(work.id, work.book_id, UUID(args.override_id))  # for Undo
+    if prior is None:
+        raise uniform_not_accessible()
     ov = await derivatives.update_override(
         work.id, work.book_id, UUID(args.override_id), args.overridden_fields,
     )
     if ov is None:
         raise uniform_not_accessible()
-    return {"success": True, "override": _override_out(ov)}
+    out = {"success": True, "override": _override_out(ov)}
+    out["_meta"] = {"undo_hint": _undo(
+        "composition_entity_override_update", project_id=args.project_id,
+        override_id=args.override_id, overridden_fields=prior.overridden_fields,
+    )}
+    return out
 
 
 class _EntityOverrideDeleteArgs(ForbidExtra):
@@ -1458,10 +1485,10 @@ class _EntityOverrideDeleteArgs(ForbidExtra):
     description=(
         "Delete an entity override from a what-if derivative (dị bản) — reverts that entity to "
         "canon (a pure delta, no history preserved). Pass the derivative's project_id + the "
-        "override_id. EDIT required."
+        "override_id. EDIT required (auto-applied; Undo re-adds it)."
     ),
     meta=require_meta(
-        "W", "book",
+        "A", "book",
         synonyms=["remove dị bản override", "delete entity override", "revert override to canon"],
         tool_name="composition_entity_override_delete",
     ),
@@ -1471,10 +1498,18 @@ async def composition_entity_override_delete(ctx: MCPContext, args: _EntityOverr
     works = WorksRepo(get_pool())
     work = await _require_derivative(works, tc, UUID(args.project_id))
     derivatives = DerivativesRepo(get_pool())
+    prior = await derivatives.get_override(work.id, work.book_id, UUID(args.override_id))  # for Undo
+    if prior is None:
+        raise uniform_not_accessible()
     ok = await derivatives.delete_override(work.id, work.book_id, UUID(args.override_id))
     if not ok:
         raise uniform_not_accessible()
-    return {"success": True, "deleted": True}
+    out = {"success": True, "deleted": True}
+    out["_meta"] = {"undo_hint": _undo(
+        "composition_entity_override_add", project_id=args.project_id,
+        target_entity_id=str(prior.target_entity_id), overridden_fields=prior.overridden_fields,
+    )}
+    return out
 
 
 def _override_out(ov) -> dict:

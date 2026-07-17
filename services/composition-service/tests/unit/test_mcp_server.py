@@ -69,7 +69,7 @@ EXPECTED_TOOLS = {
     "composition_archive_derivative",  # Tier A (reversible soft-delete)
     "composition_switch_active_work",  # Tier A (per-user active-work pref)
     "composition_create_derivative",  # Tier W (confirm-gated derive → composition.derive)
-    # ── S-04 — post-derive delta editing (spec + overrides now mutable). Tier W. ──
+    # ── S-04 — post-derive delta editing (spec + overrides now mutable). Tier A (auto-write + Undo). ──
     "composition_divergence_spec_update",
     "composition_entity_override_add",
     "composition_entity_override_update",
@@ -145,9 +145,7 @@ TIER_W = {"composition_publish", "composition_generate", "composition_decompile_
           "composition_authoring_run_start", "composition_authoring_run_resume",
           "composition_authoring_run_revert_all",
           "composition_arc_template_create", "composition_arc_template_update",  # O-3 writes
-          "composition_arc_template_archive",
-          "composition_divergence_spec_update", "composition_entity_override_add",  # S-04
-          "composition_entity_override_update", "composition_entity_override_delete"}
+          "composition_arc_template_archive"}
 
 
 # ── wire-path fixture ─────────────────────────────────────────────────────────
@@ -989,9 +987,11 @@ async def test_divergence_spec_update_forwards_only_provided_fields():
         return deriv
 
     updated = NS(model_dump=lambda mode=None: {"taxonomy": "pov_shift"})
+    prior = NS(taxonomy="au", pov_anchor=None, canon_rule=["A"])
     async with _patched(works_get=get_deriv) as s:
         s.WorksRepo(None).get = AsyncMock(return_value=deriv)
         with patch.object(srv, "DerivativesRepo") as DR:
+            DR.return_value.get_spec_for_work = AsyncMock(return_value=prior)  # prior for the Undo
             DR.return_value.update_spec = AsyncMock(return_value=updated)
             res = await srv.composition_divergence_spec_update(
                 _Ctx(), srv._DivergenceSpecUpdateArgs(
@@ -1001,6 +1001,10 @@ async def test_divergence_spec_update_forwards_only_provided_fields():
     assert res["success"] is True
     assert res["spec"]["taxonomy"] == "pov_shift"
     assert set(kwargs) == {"taxonomy"}  # pov_anchor / canon_rule NOT forwarded (omitted)
+    # Tier-A Undo restores ONLY the changed field to its prior value.
+    undo = res["_meta"]["undo_hint"]
+    assert undo["tool"] == "composition_divergence_spec_update"
+    assert undo["args"]["taxonomy"] == "au" and "pov_anchor" not in undo["args"]
 
 
 async def test_divergence_spec_update_rejects_the_canonical_work():
@@ -1077,9 +1081,12 @@ async def test_entity_override_update_and_delete():
         return deriv
 
     ov = NS(id=oid, target_entity_id=uuid.uuid4(), overridden_fields={"a": 1})
+    tgt = uuid.uuid4()
+    prior = NS(id=oid, target_entity_id=tgt, overridden_fields={"a": 0})
     async with _patched(works_get=get_deriv) as s:
         s.WorksRepo(None).get = AsyncMock(return_value=deriv)
         with patch.object(srv, "DerivativesRepo") as DR:
+            DR.return_value.get_override = AsyncMock(return_value=prior)  # prior for the Undo
             DR.return_value.update_override = AsyncMock(return_value=ov)
             DR.return_value.delete_override = AsyncMock(return_value=True)
             upd = await srv.composition_entity_override_update(
@@ -1092,7 +1099,11 @@ async def test_entity_override_update_and_delete():
                     project_id=str(deriv.project_id), override_id=str(oid)),
             )
     assert upd["success"] is True and upd["override"]["overridden_fields"] == {"a": 1}
+    # update Undo restores the prior field-set; delete Undo re-adds with prior target+fields.
+    assert upd["_meta"]["undo_hint"]["args"]["overridden_fields"] == {"a": 0}
     assert dele["success"] is True and dele["deleted"] is True
+    assert dele["_meta"]["undo_hint"]["tool"] == "composition_entity_override_add"
+    assert dele["_meta"]["undo_hint"]["args"]["target_entity_id"] == str(tgt)
 
 
 async def test_switch_active_work_sets_the_per_book_pref():

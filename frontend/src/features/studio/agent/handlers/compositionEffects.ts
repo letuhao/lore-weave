@@ -55,6 +55,20 @@ export function compositionActiveWorkEffect(ctx: EffectContext): void {
   for (const queryKey of WORK_KEYS) ctx.queryClient.invalidateQueries({ queryKey: [...queryKey] });
 }
 
+// S-04 — post-derive delta EDITING. When an agent edits a dị bản's spec (taxonomy/
+// pov/canon_rule) or its entity overrides, the human's open DivergenceManagerView +
+// its spec editor must refetch, not show the frozen pre-edit state. Invalidate BY
+// PREFIX (the effect result doesn't reliably carry project_id) — this refreshes the
+// manager's durable spec read AND the editor's override-row list for every open branch.
+const DIVERGENCE_EDIT_KEYS = [
+  ['composition', 'derivative-context'],  // useDivergenceManager.spec (manager spec panel)
+  ['composition', 'entity-overrides'],    // useDivergenceSpecEditor.overrides (editable list)
+] as const;
+
+export function compositionDivergenceEditEffect(ctx: EffectContext): void {
+  for (const queryKey of DIVERGENCE_EDIT_KEYS) ctx.queryClient.invalidateQueries({ queryKey: [...queryKey] });
+}
+
 /** Idempotent — register the composition effect handlers once.
  *  Double-fire check (§8.0b): `canon_rule_` vs `(create_work|generate)` — DISJOINT; and neither
  *  overlaps any existing pattern — bookEffects `/^composition_.*(prose|draft)/` (no: create_work/
@@ -74,6 +88,11 @@ export function registerCompositionEffectHandlers(): void {
     /^composition_(create_work|generate|archive_derivative|create_derivative)/, compositionWorkEffect,
   );
   registerEffectHandler(/^composition_switch_active_work/, compositionActiveWorkEffect);
+  // S-04 — the divergence-EDIT family (spec_update + entity_override add/update/delete). DISJOINT from
+  // every pattern above: `divergence_spec_update` / `entity_override_` carry none of the create_work|
+  // generate|archive_derivative|create_derivative|canon_rule_|switch_active_work|arc_|authoring_run_|
+  // outline_node|scene_link|prose|draft tokens ⇒ each tool matches AT MOST one handler (no double-fire).
+  registerEffectHandler(/^composition_(divergence_spec_update|entity_override_)/, compositionDivergenceEditEffect);
 }
 
 /** Test-only: undo the idempotency guard so a test can re-register after clearEffectHandlers(). */
