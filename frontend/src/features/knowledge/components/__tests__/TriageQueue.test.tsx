@@ -71,17 +71,19 @@ describe('TriageQueue', () => {
     );
   });
 
-  it('renders ONLY the suggested_actions the FE can drive (no dead place_edge button)', async () => {
+  it('renders ONLY the resolve-completing actions (no dead place_edge, no silent-partial schema action)', async () => {
     listTriageMock.mockResolvedValue({ groups: [GROUP_EDGE_MISMATCH] });
     render(<TriageQueue projectId="p-1" />, { wrapper: Wrapper });
     await waitFor(() =>
       expect(screen.getByTestId('kg-triage-group')).toBeInTheDocument(),
     );
     expect(screen.getByTestId('kg-triage-action-re_target')).toBeInTheDocument();
-    expect(screen.getByTestId('kg-triage-action-widen_target_kinds')).toBeInTheDocument();
     expect(screen.getByTestId('kg-triage-action-drop_edge')).toBeInTheDocument();
-    // place_edge is a confirm-token flow, not a resolve action → never a button.
+    // place_edge = confirm-token flow, not a resolve action → never a button.
     expect(screen.queryByTestId('kg-triage-action-place_edge')).not.toBeInTheDocument();
+    // widen_target_kinds = schema-mutating: resolve only records intent (no write),
+    // so offering it would vanish the item without changing the schema. Excluded.
+    expect(screen.queryByTestId('kg-triage-action-widen_target_kinds')).not.toBeInTheDocument();
   });
 
   it('a no-param action resolves the signature + toasts', async () => {
