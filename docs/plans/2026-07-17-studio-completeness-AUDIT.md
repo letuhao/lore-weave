@@ -7,9 +7,16 @@
 > [`2026-07-16-studio-completeness-8-session-orchestration.md`](2026-07-16-studio-completeness-8-session-orchestration.md)
 > and its §6 convergence node.
 >
-> **Status:** ROUNDS 1–4 COMPLETE — every §2 axis, every plan-30 gap row, every legacy sub-tab and all
-> 88 catalog panels have been walked. What remains is BUILD (A-3..A-8) + 5 PO decisions + the loop-③
-> smoke. Update in place as those land.
+> **Status:** ROUNDS 1–5. Rounds 1–4 walked every §2 axis, every plan-30 gap row, every legacy sub-tab and
+> all 88 catalog panels. **Round 5 then re-derived the MAP itself — and found plan 30 has a hole** (an
+> entire agent-only triage domain it never names, plus 18 tools it never counted). composition-service
+> (87 tools) is still being re-derived. What remains: BUILD (A-3..A-11) + 7 PO decisions + the loop-③
+> smoke — which is the BEHAVIOURAL audit this static one cannot perform.
+>
+> **Depth of this audit — say it plainly:** STATIC. It proves "a button has no handler", "a panel does not
+> mount the component", "an api function has no caller", "a route does not exist". It does NOT prove
+> "clicking works", "the write persists", "the deep-link opens". Bar axes #1/#6/#7 are only reachable by
+> running the app — the loop-③ smoke is that audit, and it is still owed.
 
 ---
 
@@ -261,6 +268,96 @@ catalog panels · 8/8 session registers.
 
 ---
 
+## Round 5 — the map itself: re-deriving tool→GUI parity from scratch 🔴 **the map had a hole**
+
+Rounds 1–4 verified plan 30's rows. But **nobody had verified that plan 30's map is COMPLETE** — and plan
+30 itself warns you not to assume so: it calls its own scoreboard *"a floor, not a total. Real total ≥
+189"*, and one of its rows is labelled *"G-POLISH-SELFHEAL (NEW — found by the completeness critic; **in
+no original gap**)"*. A map that already lost one feature can lose more.
+
+So the inventory was re-derived from the service registries (142 tools: composition 87 · knowledge 37 ·
+translation 12 · jobs 5 · lore-enrichment 1) and each tool traced **tool → REST route → FE caller → is
+that component mounted in a registered panel**. Three agents, one per disjoint service corpus.
+
+⚠️ **Method note — a name-match sweep does NOT work here and was thrown away.** Matching camelCased tool
+names against the FE reported 78 "no GUI" tools; spot-checking killed it (`composition_canon_rule_create`
+was flagged, but the FE has `compositionApi.createCanonRule` — the FE names verbs **verb-first**, tools are
+**noun-first**). Only capability-level tracing is sound. Every claim below was re-verified by hand.
+
+### F-10 · The whole KG **triage** queue is agent-only — and plan 30 never mentions it 🔴
+
+Extraction parks every off-schema element in a triage queue, and `kg_propose_edge` writes *into* it. Four
+tools operate it — `kg_triage_list` · `kg_triage_resolve` · `kg_triage_place_edge` · `kg_triage_schema_write`.
+**The agent can fill an inbox the human can never open.**
+
+The routes are already **public** (`app/routers/public/triage.py`), and the FE functions already exist —
+with **zero callers**. That is the exact `createEntity`-with-no-callers shape this repo has shipped before.
+
+| Verified | |
+|---|---|
+| `listTriage` / `resolveTriage` / `dismissTriageItem` defined in `features/knowledge/api/ontology.ts` | **3 present** |
+| their callers (excluding tests) | **0 / 0** |
+| occurrences of "triage" in plan 30 | **0** |
+
+`kg-proposals` is **not** the missing panel: `KgProposalsPanel` mounts `ProposalsInboxTab`, whose sources
+(`lib/proposalsInbox.ts`) are `glossaryApi`/`wikiApi`/`enrichmentApi` only.
+
+### F-11 · A human cannot author, or forget, a fact 🔴
+
+- `memory_remember` / `kg_propose_fact` — **no POST route for a fact at all**; `_handle_memory_remember`
+  calls `merge_fact` directly. `pending_facts.py` exposes only `GET ""` + `confirm` + `reject`, so the human
+  is confined to judging what the agent proposed.
+- `memory_forget` — no public route; `invalidate_fact`'s only caller in the entire service is the MCP
+  executor (`app/tools/executor.py`).
+
+Plan 30 caught `memory_forget` (under G-KG-WRITE-HOLES) but **not** the authoring half.
+
+### F-12 · Views are authorable but not applicable — a lens you cannot look through 🔴
+
+`kg_view_upsert`/`delete`/`read` are fully GUI (`ViewBuilder` ← `KgSchemaPanel`). But `kg_graph_query` — the
+only reader that accepts `view` + `as_of_chapter` — has **zero FE callers** (`ontologyApi.readGraph`).
+`KgGraphPanel` renders `ProjectGraphView` → `useProjectSubgraph` → `/subgraph`, whose params are
+`center`/`hops`/`limit` only. **A human can build a saved lens and then never apply it, and cannot view the
+graph as-of a chapter.** In no plan-30 row.
+
+### F-13 · `kg_project_entities_to_nodes` is MCP-only (plan 30 caught this one)
+
+The glossary→graph projection that seeds an empty graph — the prose-less path that unblocks
+`kg_propose_edge` — has no route and no button. Engine at `app/extraction/anchor_loader.py`, exposed only
+at `app/mcp/server.py`.
+
+### F-14 · translation: job **control** is missing from the translation surface 🟠
+
+All 12 translation tools + all 5 jobs tools + the 1 lore tool have a mounted human path — **no agent-only
+writes**. One asymmetry: `translation_job_control` (cancel/pause/resume/retry) is `/internal`-token-gated,
+so the only human path is the generic `jobs-list` panel — the author must leave translation and guess which
+row is theirs. `translationApi.cancelJob` / `getJob` / `listJobs` are **dead code, zero callers** (verified).
+The code already admits it: `studio/agent/handlers/translationEffects.ts` calls translation's cancel/pause
+*"the one real gap"*.
+
+**Inverse gap (agent-side, not GUI-side):** the GUI exposes job `resume` + `retry`, and **no MCP tool
+covers them**.
+
+### F-15 · plan 30's own scoreboard is provably incomplete — and one of its rows is stale
+
+- It contains **zero** occurrences of `translation-service`, `jobs-service`, `lore-enrichment` — those **18
+  tools were never on its scoreboard at all**. Its §3.4 names only provider-registry (14) + catalog (2) as
+  uncounted, concluding *"Real total ≥ 189"*; the floor is really **≥ 207**.
+- It contains **zero** occurrences of `triage`, `memory_remember`, `kg_multi_query`, `lore_` — F-10/F-11/F-12
+  are outside its map.
+- **Stale row:** G-KG-WRITE-HOLES asserts *"No Create anywhere (`grep createEntity` across
+  `features/knowledge/**` → EMPTY)"*. **False at HEAD** — `useEntityMutations.ts` calls
+  `knowledgeApi.createEntity`, surfaced by `CreateEntityDialog`, mounted in `EntitiesTab` (`kg-entities`)
+  **and** `CastPanel` (`cast`). S7 built it.
+- Its `target_language` free-string Frontend-Tool-Contract flag is **also stale** — both
+  `translation_update_settings` and `translation_start_job` now type it as a closed-set `TargetLangCode`
+  Literal with a server-side re-check.
+
+**Dead code surfaced along the way:** `useResolvedSchema.ts` (zero importers), `ontologyApi.updateView`
+(zero callers, `upsertView` won).
+
+---
+
 ## What is left, and who must decide
 
 **Buildable now (no decision needed) — the orphans no charter owns:**
@@ -269,6 +366,10 @@ catalog panels · 8/8 session registers.
 - **A-5** home the `beats` capability (F-6)
 - **A-6** wire the Issues tab + `GET /books/{bid}/diagnostics` (F-5) — **already PO-approved via PO-1**
 - **A-8** give `bible` (and `quality`) a real rail (F-7) — pure FE over 13 + 9 existing panels
+- **A-9** (F-10) a **triage panel** — the routes are already public and the FE api functions already exist
+  with zero callers, so this is FE wiring. It is the largest single hole the audit found.
+- **A-10** (F-12) let `KgGraphPanel` apply a saved `view` + `as_of_chapter` (consume `kg_graph_query`)
+- **A-11** (F-14) put job control on the translation surface — or delete the 3 dead `translationApi` fns
 
 **Needs a PO decision:**
 | Q | Decision |
@@ -278,6 +379,8 @@ catalog panels · 8/8 session registers.
 | **D-c** | **G-WORKFLOWS**: plan 30 flags a head-on collision with Track C's P-5. Ownership call, not a build call. |
 | **D-d** | **`[[`-create** (F-9): build "type `[[NewCharacter` → create it", or leave the affordance hidden? |
 | **D-e** | **D-5 mobile-shell** — GG-4 retirement depends on it (per the orchestration plan's §6.3) |
+| **D-f** | **F-11 — human fact authoring/forgetting.** Should a human be able to write and retract a KG fact directly, or is "the agent proposes, the human confirms/rejects" the intended product boundary? If the latter, it is a conscious won't-fix and should be recorded as one — not left looking like a hole. |
+| **D-g** | **plan 30's scoreboard is a floor, not a total** (F-15). Its 173/23 excludes translation+jobs+lore (18), provider-registry (14) and catalog (2) → the real floor is **≥207**. Do we re-derive the remaining uncounted services (provider-registry, catalog, glossary, book, agent-registry), or declare them out of the Studio's scope? |
 
 **Convergence node, still to run:**
 - **#2 the loop-③ Studio-only live smoke** (import → plan → draft → revise → translate → publish on ONE book). Cannot run before A-3..A-6 land.
