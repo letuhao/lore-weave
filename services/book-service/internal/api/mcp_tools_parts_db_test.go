@@ -212,3 +212,26 @@ func TestMCPParts_TenancyDenied_DB(t *testing.T) {
 		t.Fatalf("stranger created a part: %d rows", n)
 	}
 }
+
+// Parity with REST createPart + toolChapterCreate: you cannot add an act to a
+// trashed book (the book-lifecycle gate holds on the MCP surface too).
+func TestMCPParts_CreateOnTrashedBookRefused_DB(t *testing.T) {
+	s, pool := dbTestServer(t)
+	ctx0 := context.Background()
+	owner := uuid.New()
+	bookID := seedPartsBook(t, ctx0, pool, owner)
+	if _, err := pool.Exec(ctx0, `UPDATE books SET lifecycle_state='trashed' WHERE id=$1`, bookID); err != nil {
+		t.Fatalf("trash book: %v", err)
+	}
+	s.resolveBook = ownerResolver(owner) // owner still has the grant on their trashed book
+	ctx := identityCtxForTest(t, owner)
+
+	if _, _, err := s.toolPartCreate(ctx, nil, partCreateIn{BookID: bookID.String(), Title: "x"}); err == nil {
+		t.Fatal("create on a trashed book should be refused (parity with REST)")
+	}
+	var n int
+	_ = pool.QueryRow(ctx0, `SELECT COUNT(*) FROM parts WHERE book_id=$1`, bookID).Scan(&n)
+	if n != 0 {
+		t.Fatalf("part created on a trashed book: %d rows", n)
+	}
+}

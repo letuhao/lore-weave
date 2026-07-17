@@ -58,6 +58,15 @@ func (s *Server) toolPartCreate(ctx context.Context, _ *mcp.CallToolRequest, in 
 	if _, err := s.mcpRequireGrant(ctx, bookID, userID, GrantEdit); err != nil {
 		return nil, partCreateOut{}, mcpOwnershipError(err)
 	}
+	// Mirror REST createPart + the sibling create tools (toolChapterCreate): you cannot
+	// add an act to a trashed book. Keeps the two surfaces in lockstep.
+	var lifecycle string
+	if err := s.pool.QueryRow(ctx, `SELECT lifecycle_state FROM books WHERE id=$1`, bookID).Scan(&lifecycle); err != nil {
+		return nil, partCreateOut{}, errBookNotAccessible
+	}
+	if lifecycle != "active" {
+		return nil, partCreateOut{}, errors.New("book is not in an editable state")
+	}
 	p, err := s.storeCreatePart(ctx, bookID, in.Title)
 	if err != nil {
 		return nil, partCreateOut{}, mcpMapPartErr(err)
