@@ -8,6 +8,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { IDockviewPanelProps } from 'dockview-react';
 import { useAuth } from '@/auth';
+import { loadPrefFromServer, savePrefToServer } from '@/lib/syncPrefs';
 import { isChatSafeDefault } from '@/features/ai-models/api';
 import { ModelPicker, useUserModels } from '@/components/model-picker';
 import { useStudioHost, useRegisterStudioTool } from '@/features/studio/host/StudioHostProvider';
@@ -21,6 +22,10 @@ import { PlanRunsListView } from './PlanRunsListView';
 import { registerPlanArtifactDocumentProvider, PLAN_ARTIFACT_DOC_TYPE } from '../documents/planArtifactDocument';
 
 type PlannerView = 'list' | 'run';
+
+// D-PLANFORGE-PROPOSE-BLIND — the per-user default for "continue this book" (OQ-2). Server-side,
+// one home; localStorage is only the fast cache syncPrefs manages.
+const GROUND_ON_EXISTING_PREF_KEY = 'planner.groundOnExisting';
 
 export function PlannerPanel(props: IDockviewPanelProps) {
   const { t } = useTranslation('studio');
@@ -37,8 +42,9 @@ export function PlannerPanel(props: IDockviewPanelProps) {
   // real story. 'llm' is the only mode that genuinely reads the pasted text.
   const [mode, setMode] = useState<PlanRunMode>('llm');
   const [modelRef, setModelRef] = useState('');
-  // D-PLANFORGE-PROPOSE-BLIND — the per-run choice to ground on the book's existing state. Off by
-  // default (matches the deploy ceiling default); effective server-side = AND(ceiling, this).
+  // D-PLANFORGE-PROPOSE-BLIND — the choice to ground on the book's existing state. A PER-USER
+  // SETTING (OQ-2): the last choice persists server-side (one home, /v1/me/preferences) and defaults
+  // the toggle on the author's next visit — a continuation-writer keeps it on, never re-ticking it.
   const [groundOnExisting, setGroundOnExisting] = useState(false);
 
   // A bootstrap proposal is scoped to ONE run — switching runs must not leave a stale
@@ -66,6 +72,17 @@ export function PlannerPanel(props: IDockviewPanelProps) {
   // PS-9 — register the read-only plan-artifact json provider so an artifact row can open in the
   // json-editor. Idempotent; mirrors the other feature providers registering on mount.
   useEffect(() => { registerPlanArtifactDocumentProvider(); }, []);
+
+  // Load the per-user "continue this book" default (synchronization — loading a persisted flag, not
+  // a reaction to a user action). Absent ⇒ stays false (matches the deploy-ceiling-off default).
+  useEffect(() => {
+    if (!accessToken) return;
+    let cancelled = false;
+    void loadPrefFromServer<boolean>(GROUND_ON_EXISTING_PREF_KEY, accessToken).then((v) => {
+      if (!cancelled && typeof v === 'boolean') setGroundOnExisting(v);
+    });
+    return () => { cancelled = true; };
+  }, [accessToken]);
   const openArtifact = (artifactId: string) => {
     if (!plan.run) return;
     openPanel('json-editor', {
@@ -195,7 +212,13 @@ export function PlannerPanel(props: IDockviewPanelProps) {
         <label data-testid="plan-ground-toggle" className="mt-1 flex cursor-pointer items-center gap-1.5 text-[10px] text-muted-foreground">
           <input
             type="checkbox" data-testid="plan-ground-checkbox"
-            checked={groundOnExisting} onChange={(e) => setGroundOnExisting(e.target.checked)}
+            checked={groundOnExisting}
+            onChange={(e) => {
+              // Explicit callback (not a useEffect chasing state) — write-through to the server so the
+              // choice persists per-user; localStorage is syncPrefs' cache.
+              setGroundOnExisting(e.target.checked);
+              void savePrefToServer(GROUND_ON_EXISTING_PREF_KEY, e.target.checked, accessToken);
+            }}
             className="h-3 w-3"
           />
           {t('planner.groundOnExisting', { defaultValue: 'Continue this book — ground on its existing cast, arcs & recent chapters' })}

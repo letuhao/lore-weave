@@ -51,9 +51,11 @@ vi.mock('@/features/ai-models/api', async (importOriginal) => {
     },
   };
 });
+const loadPref = vi.fn().mockResolvedValue(undefined);
+const savePref = vi.fn().mockResolvedValue(true);
 vi.mock('@/lib/syncPrefs', () => ({
-  loadPrefFromServer: vi.fn().mockResolvedValue(undefined),
-  savePrefToServer: vi.fn().mockResolvedValue(true),
+  loadPrefFromServer: (...a: unknown[]) => loadPref(...a),
+  savePrefToServer: (...a: unknown[]) => savePref(...a),
   syncPrefsToServer: vi.fn(),
 }));
 
@@ -84,19 +86,34 @@ describe('PlannerPanel model picker (W5 shared ModelPicker)', () => {
     invalidateUserModelsCache();
     listRuns.mockResolvedValue({ items: [], next_cursor: null });
     mockRun = null;  // PROPOSE-BLIND: reset the grounded-run fixture between tests
+    loadPref.mockReset().mockResolvedValue(undefined);  // no persisted ground default by default
+    savePref.mockReset().mockResolvedValue(true);
   });
 
-  it('PROPOSE-BLIND: ticking "continue this book" sends ground_on_existing=true', () => {
+  it('PROPOSE-BLIND: ticking "continue this book" sends ground_on_existing=true AND persists it', () => {
+    loadPref.mockResolvedValue(undefined);
     listUserModelsMock.mockResolvedValue({ items: [] });
     renderPanel();
     fireEvent.click(screen.getByTestId('plan-tab-run'));
     fireEvent.click(screen.getByTestId('plan-mode-rules'));
     fireEvent.change(screen.getByTestId('plan-source-input'), { target: { value: '# system' } });
     fireEvent.click(screen.getByTestId('plan-ground-checkbox'));
+    // write-through to the per-user preference (OQ-2)
+    expect(savePref).toHaveBeenCalledWith('planner.groundOnExisting', true, 'tok');
     fireEvent.click(screen.getByTestId('plan-propose-btn'));
     expect(createRun).toHaveBeenCalledWith({
       source_markdown: '# system', mode: 'rules', ground_on_existing: true,
     });
+  });
+
+  it('PROPOSE-BLIND: a persisted true default pre-checks the toggle (per-user setting)', async () => {
+    loadPref.mockResolvedValue(true);  // the author turned it on last time
+    listUserModelsMock.mockResolvedValue({ items: [] });
+    renderPanel();
+    fireEvent.click(screen.getByTestId('plan-tab-run'));
+    await waitFor(() =>
+      expect((screen.getByTestId('plan-ground-checkbox') as HTMLInputElement).checked).toBe(true),
+    );
   });
 
   it('PROPOSE-BLIND: a GROUNDED run shows the affirmation (real counts), not the honesty copy', () => {
