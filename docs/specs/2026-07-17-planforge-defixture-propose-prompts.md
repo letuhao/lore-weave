@@ -1,6 +1,13 @@
 # PlanForge — de-fixture the LLM propose prompts (A2)
 
-> **Status:** build-ready spec (design). Part of the PlanForge-v2 Proposer-Grounding track
+> **Status:** ✅ **BUILT (prompts) 2026-07-17.** Build-time finding LOWERED the risk: the PROD path
+> already severed the fidelity-POC dependency (`plan_forge_service.py:772`, PF-19 — a plan is scored only
+> against a PER-RUN rubric, else `fidelity_score=None`, never the POC fixture), and `eval_fidelity.py`'s
+> scorer is already cfg-parameterized (expected values live in the rubric, not the code). So A2's real
+> defect was the **PROMPTS telling every book to reproduce the POC**, which is now fixed + guarded.
+> The residual `_check_arc2_events`/`min_arc2_events=7` in the scorer is cfg-gated + prod-unused (only
+> fires when a rubric supplies arc-2 semantics = the POC fixture) — a minor optional cleanup, not the
+> defect. Part of the PlanForge-v2 Proposer-Grounding track
 > (`docs/plans/2026-07-17-planforge-v2-grounding-track.md`). **This is a real latent DEFECT, not just
 > an enhancement** — the LLM-side of the same "fixture severing" bug `propose.py` already fixed for
 > rules mode.

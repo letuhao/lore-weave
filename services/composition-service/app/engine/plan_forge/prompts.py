@@ -11,29 +11,25 @@ Read the user's planning document (natural language, may be Vietnamese). Extract
 Output a single JSON object matching PlanAnalyze v1 with these keys:
 - version: 1
 - document_summary: one paragraph
-- consistency_anchors: string[] (character baseline traits readers must track — use Vietnamese labels from §1.3)
-- variables: [{code, name, range, transition_rules[], not_coupled_to[]}] — must include PA, HA, CD, THR if present
-- mechanics: [{name, rules[], planner_secrets[]}] — capture §2–§3 bullets faithfully
+- consistency_anchors: string[] (the character baseline traits readers must track, AS THE SOURCE STATES THEM — in the source's own language)
+- variables: [{code, name, range, transition_rules[], not_coupled_to[]}] — every state variable the source DECLARES, and only those (none ⇒ [])
+- mechanics: [{name, rules[], planner_secrets[]}] — capture the source's mechanics/rules faithfully
 - arcs: [{id, title, theme, arc_kind, summary}] — arc_kind one of setup|discovery|power|transition|other
 - events: [{id, arc_id, title, synopsis, goal, planner_notes[], var_deltas[], source_excerpt?, source_refs?}]
 - forbids: string[] (things that must never happen in prose)
 - style_constraints: string[]
 - open_questions: string[] (unresolved items — do NOT invent answers)
 
-Fidelity requirements (phần đầu):
+Fidelity requirements — parse what the source says; emit nothing where it says nothing (absent ≠ invented):
 - CONTINUITY (REQUIRED when an "EXISTING STATE" section is present in the user message): that section lists arcs, characters and systems the book ALREADY has. REFERENCE them by their exact existing name/title — never re-invent an existing character under a new name, never duplicate an existing arc title. Proposing genuinely NEW arcs/characters is fine; contradicting or shadowing an existing one is a FAILURE. When no EXISTING STATE section is present, ignore this rule.
-- ARC COVERAGE (REQUIRED — highest priority): EVERY arc you declare in `arcs` MUST have >= 1 event whose `arc_id` is that arc's id. Distribute events across ALL arcs by their scope in the source; never concentrate all events in a single arc. An arc with no events cannot be compiled — leaving one empty is a generation FAILURE, and the named-arc rules below never excuse it.
-- List ALL 5 core traits from §1.3 in consistency_anchors (VN): Thực dụng, Bình dị, Tự giác giới hạn, Giữ lý trí trong khủng hoảng, Hài hước khô
-- Arc 2 MUST have exactly 7 events with Vietnamese titles from source (Nhập Môn through Quyết Định Tiếp Tục)
-- Each arc_2 event: synopsis >= 2 sentences from source bullets; goal from **Goal:** line; source_excerpt with key bullets
-- Mundane-detail anchors from §1.2/§1.3 (mì, mùi, cửa sổ) should appear in anchors or event notes
+- ARC COVERAGE (REQUIRED — highest priority): EVERY arc you declare in `arcs` MUST have >= 1 event whose `arc_id` is that arc's id. Distribute events across ALL arcs by their scope in the source; never concentrate all events in a single arc. An arc with no events cannot be compiled — leaving one empty is a generation FAILURE.
+- Each event: synopsis from the source's own bullets/prose; goal from the source's stated goal; source_excerpt with the key bullets where present.
+- Variables (var_deltas) change per the SOURCE's stated semantics — never a mechanic borrowed from another story.
 
 Critical semantics:
-- PA/HA/CD/THR change by EXPERIENCE not cultivation realm
-- Arc 2 in this story is DISCOVERY not power fantasy if the doc says so
-- THR is long-game; do not explain past-life in early arcs
-- Preserve planner notes verbatim where found
-- Keep Vietnamese for event titles and user-facing anchor text"""
+- An arc's kind, and how a variable moves, is WHAT THE SOURCE SAYS — never a default carried from another novel.
+- Preserve planner notes verbatim where found.
+- Keep the SOURCE's language for event titles and user-facing anchor text (do not translate them)."""
 
 MATERIALIZE_SYSTEM = """You are a novel system architect. Convert PlanAnalyze into NovelSystemSpec v1 — JSON only.
 
@@ -48,21 +44,19 @@ Structure:
 - events: [{id, arc_id, title, synopsis, goal, planner_notes, var_deltas: [{variable, delta, reason, coupled_to_realm: false}]}]
 - links: [{from, to, kind, note}] — kind: event_constrains_variable|event_preserves_anchor|event_foreshadows|arc_depends_on_mechanic|variable_governs_tier
 
-Fidelity requirements:
-- CONTINUITY (REQUIRED, HIGHEST-PRIORITY when an "EXISTING STATE" section is present): that section lists arcs, characters and systems the book ALREADY has. REFERENCE them by their exact existing name/title — never re-invent an existing character under a new name, never duplicate an existing arc title. **When EXISTING STATE lists cast, `layers.characters[].name` MUST be drawn from those existing names — this OVERRIDES the "use Nữ chính" default below, which applies ONLY to a cold-start book with no existing cast.** New arcs/characters are fine; contradicting or shadowing an existing one is a FAILURE. When no EXISTING STATE section is present, ignore this rule.
-- ARC COVERAGE (REQUIRED — highest priority, governs the arc-specific rules below): EVERY arc in `arcs` MUST have >= 1 event whose `arc_id` equals that arc's own id. Distribute events across ALL arcs in proportion to each arc's scope in the source — an arc that spans several chapters gets several events. NEVER put every event in one arc. An arc with zero events CANNOT be compiled and is a generation FAILURE — the arc-specific fixture rules below apply to their named arc but do NOT excuse leaving any other arc empty.
-- layers.characters[0].traits: exactly 5 strings in Vietnamese from §1.3
-- baseline_notes: summarize §1.1–§1.3 in VIETNAMESE (>=200 chars, >=35% VN diacritics); include mundane details (mì, mùi, cửa sổ)
-- character name: use "Nữ chính" or source name — never "Female Protagonist" or "TBD"
-- mechanics: at least 3 entries with >=2 rules each from §2–§3; >=50% rules in Vietnamese; planner_secrets for THR/tiền kiếp
-- arc_2 events: keep Vietnamese titles; synopsis >=80 chars as condensed bullet list from source (not meta summaries)
-- Arc 2 MUST include exactly these 7 events (titles in Vietnamese): Nhập Môn, Biến Hóa Đầu Tiên, Thử Nghiệm, Dị Thường Đầu Tiên, Tiểu Thành, Tác Dụng Phụ Đầu Tiên, Quyết Định Tiếp Tục
-- Event 3 Thử Nghiệm: must mention tốc độ, linh thạch, âm dương, logic nhân vật
-- Do NOT translate event titles to English
+Fidelity requirements — carry the PlanAnalyze through faithfully; emit nothing the source didn't state (absent ≠ invented):
+- CONTINUITY (REQUIRED, HIGHEST-PRIORITY when an "EXISTING STATE" section is present): that section lists arcs, characters and systems the book ALREADY has. REFERENCE them by their exact existing name/title — never re-invent an existing character under a new name, never duplicate an existing arc title. **When EXISTING STATE lists cast, `layers.characters[].name` MUST be drawn from those existing names.** New arcs/characters are fine; contradicting or shadowing an existing one is a FAILURE. When no EXISTING STATE section is present, ignore this rule.
+- ARC COVERAGE (REQUIRED — highest priority): EVERY arc in `arcs` MUST have >= 1 event whose `arc_id` equals that arc's own id. Distribute events across ALL arcs in proportion to each arc's scope in the source — an arc that spans several chapters gets several events. NEVER put every event in one arc. An arc with zero events CANNOT be compiled and is a generation FAILURE.
+- characters[].traits: the traits the analyze/source states for that character — empty if the source states none. Never invent a trait, and never carry one from another story.
+- baseline_notes: summarize the character's baseline FROM THE SOURCE, in the source's language.
+- character name: use the SOURCE's name for the character. If the source leaves them unnamed, use a neutral placeholder in the source's language — never a foreign-language placeholder or "TBD".
+- mechanics: from the source's own mechanics sections; planner_secrets only where the source marks something as not-to-reveal.
+- events: keep the source-language titles; synopsis as a condensed version of the source's own bullets, not a meta-summary.
+- Do NOT translate event titles.
 
 Rules:
 - coupled_to_realm must always be false for var_deltas
-- arc_2 arc_kind must be "discovery" if analyze says discovery/khám phá
+- arc_kind is what the analyze says for that arc — never a default
 - Include links from events to variables and anchors where planner notes imply constraints
 - Do not drop open_questions from analyze"""
 
