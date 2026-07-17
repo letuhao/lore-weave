@@ -153,6 +153,14 @@ export async function listWorldBooks(
   return ok(request.get(`/v1/worlds/${worldId}/books`, auth(token)));
 }
 
+/** A world's maps (S7·2 read route) — used to VERIFY the loop server-side: a map an author built
+ *  in the studio is reachable from the book through the world (book→world→map, not an island). */
+export async function listWorldMapsApi(
+  request: APIRequestContext, token: string, worldId: string,
+): Promise<{ items: Array<{ map_id: string; name: string }>; total: number }> {
+  return ok(request.get(`/v1/worlds/${worldId}/maps`, auth(token)));
+}
+
 /** Attach an existing book to a world (C20 move-book) — pre-seed membership. */
 export async function moveBookIntoWorld(
   request: APIRequestContext, token: string, worldId: string, bookId: string,

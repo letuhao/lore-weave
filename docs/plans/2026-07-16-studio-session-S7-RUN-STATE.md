@@ -37,7 +37,37 @@ no-silent-fail · agent-parity · loop-connected · live-browser-proven · i18n+
 | S7-B3 · place-graph port (s7-3, FE) | DONE | leaf-reuse wrapper + worldEffects handler; vitest green |
 | S7-B4 · cast + character-arc port + light edit (s7-4, FE) | DONE | CastPanel/CharacterArcPanel + useCastEdit; knowledgeEffect extended w/ composition keys |
 | S7-INT · integrator wired registry (catalog/enum/contract/i18n/worldEffects) + verify | DONE (registry UNCOMMITTED — convergence) | tsc EXIT 0; contract regen 20; panelCatalog+effectCoverage 175; enum==openable==contract 63; ai-provider-gate OK |
-| S7-VERIFY · live-browser smoke + /review-impl on stack-up | TODO | pending a stack-up (tracked, not skipped) |
+| S7-VERIFY · live-browser blackbox smoke on a REBUILT stack | DONE | **4/4 blackbox author-journeys PASS on the real app** (vite :5199 → gateway :3123, rebuilt backends): cast+arc 4.9s · kg-authoring 5.7s · place-graph 12.0s · world-map 5.9s = 4 passed (30.1s) |
+
+## S7-VERIFY · BLACKBOX-USER EVALUATION (2026-07-17, on the REAL app)
+
+**Question the goal posed: is S7 actually USABLE, or does it only answer to the BE/agent?**
+**Answer: USABLE. All 4 surfaces pass a blackbox author-journey end-to-end on the real running app.**
+
+Setup: infra rebuilt (postgres/neo4j/redis/rabbitmq/minio), **knowledge-service + book-service images
+REBUILT** (they were baked ~10h stale — see the finding below), gateway :3123, frontend on vite dev :5199
+(the S7 working-tree code). Test account logs in through the real UI; each journey seeds via the real API
+(incl. S7's own createEntity/createWorld routes) and drives the app as a user.
+
+| Journey | Verdict | What a real user proved they can DO |
+|---|---|---|
+| KG authoring | ✅ 5.7s | reach kg-entities from the palette → hand-author a character with the kind ENUM → open its detail (a row OPENS, not a dead tile) → edit → create a relation → **archive → Undo → restore round-trip** → deep-link from the graph. |
+| World-map | ✅ 5.9s | reach world-map → create a map + upload a base image → drop & DRAG a pin (persists on a stable id) → relabel/rebind → draw & RESHAPE a region (the Phase-B dead-read fix) → book→world→map loop. |
+| Place-graph | ✅ 12.0s | reach place-graph (was legacy-stranded) → add a place → link two with a predicate (the edge lands) → DRAG a node (persists) → deep-links to cast + kg-entities. |
+| Cast + arc | ✅ 4.9s | reach cast → the codex groups the seeded cast → open a character's arc → switch subject via the bus → light-edit → +Add-event lands on the timeline. |
+
+🔴 **THE FINDING that this blackbox run exists to catch** (the `live-smoke-rebuild-stale-images-first` law):
+the first run FAILED at KG STEP 6 (restore → 404) and looked like a real bug. Root cause: the deployed
+knowledge-service/book-service were **baked images built 12:09, ~10h OLDER than the S7 route commits
+(21:50)** — so `POST /entities/{id}/restore` hit FastAPI's no-such-route 404, and `kind:'item'` would have
+422'd on the stale 4-kind gate. The restore route + the 5-kind gate + createEvent + the world-map routes
+were all correct on disk (unit tests green); they just weren't deployed. **Rebuilding the two images made
+all 4 journeys pass** and the archive→restore round-trip return 204. A mock-only suite would never have
+caught that the *deployed* backend was stale — the exact value of a real-app blackbox smoke.
+
+**Remaining honest gaps** (do not affect the "usable" verdict): the 4 journeys run SERIALLY (parallel on
+the one shared dev account collides — `shared-dev-db-not-clean-fixture-e2e`); the SVG edge assertion uses
+`toBeAttached` not `toBeVisible` (SVG `<g>` has no CSS box — a Playwright quirk, not a product issue).
 
 **Build committed:** 50 disjoint S7-owned files (components/hooks/tests/backend). The SHARED registry
 (catalog.ts, frontend_tools.py enum, contract.json, i18n, handlers/index.ts) is left UNCOMMITTED as
