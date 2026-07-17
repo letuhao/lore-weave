@@ -58,6 +58,10 @@ EXPECTED_TOOLS = {
     "composition_scene_link_create", "composition_scene_link_delete",
     "composition_canon_rule_create", "composition_canon_rule_update",
     "composition_canon_rule_delete", "composition_canon_rule_restore",
+    # S-01 · structure-template authoring (per-user)
+    "composition_structure_template_create", "composition_structure_template_clone",
+    "composition_structure_template_update", "composition_structure_template_archive",
+    "composition_structure_template_restore",
     "composition_write_prose",
     # ── S5 (D-DIVERGENCE-MCP-TOOLS) — the dị bản manage surface. ──
     "composition_list_derivatives",   # Tier R
@@ -65,6 +69,11 @@ EXPECTED_TOOLS = {
     "composition_archive_derivative",  # Tier A (reversible soft-delete)
     "composition_switch_active_work",  # Tier A (per-user active-work pref)
     "composition_create_derivative",  # Tier W (confirm-gated derive → composition.derive)
+    # ── S-04 — post-derive delta editing (spec + overrides now mutable). Tier W. ──
+    "composition_divergence_spec_update",
+    "composition_entity_override_add",
+    "composition_entity_override_update",
+    "composition_entity_override_delete",
     # Tier W
     "composition_publish", "composition_generate",
     "composition_decompile_arcs",  # close-21-28 P-O2a — confirm-gated arc decompiler
@@ -136,7 +145,9 @@ TIER_W = {"composition_publish", "composition_generate", "composition_decompile_
           "composition_authoring_run_start", "composition_authoring_run_resume",
           "composition_authoring_run_revert_all",
           "composition_arc_template_create", "composition_arc_template_update",  # O-3 writes
-          "composition_arc_template_archive"}
+          "composition_arc_template_archive",
+          "composition_divergence_spec_update", "composition_entity_override_add",  # S-04
+          "composition_entity_override_update", "composition_entity_override_delete"}
 
 
 # ── wire-path fixture ─────────────────────────────────────────────────────────
@@ -963,6 +974,125 @@ async def test_archive_derivative_stale_version_is_applied_conflict():
     assert res["success"] is False
     assert res["outcome"] == "applied_conflict"
     assert res["current_version"] == 7
+
+
+# ── S-04: post-derive delta editing (agent parity) ──
+
+async def test_divergence_spec_update_forwards_only_provided_fields():
+    """The spec edit passes ONLY the fields the agent set to the repo; taxonomy round-trips."""
+    import app.mcp.server as srv
+    from types import SimpleNamespace as NS
+
+    deriv = _derivative()
+
+    async def get_deriv(pid):
+        return deriv
+
+    updated = NS(model_dump=lambda mode=None: {"taxonomy": "pov_shift"})
+    async with _patched(works_get=get_deriv) as s:
+        s.WorksRepo(None).get = AsyncMock(return_value=deriv)
+        with patch.object(srv, "DerivativesRepo") as DR:
+            DR.return_value.update_spec = AsyncMock(return_value=updated)
+            res = await srv.composition_divergence_spec_update(
+                _Ctx(), srv._DivergenceSpecUpdateArgs(
+                    project_id=str(deriv.project_id), taxonomy="pov_shift"),
+            )
+            _, kwargs = DR.return_value.update_spec.call_args
+    assert res["success"] is True
+    assert res["spec"]["taxonomy"] == "pov_shift"
+    assert set(kwargs) == {"taxonomy"}  # pov_anchor / canon_rule NOT forwarded (omitted)
+
+
+async def test_divergence_spec_update_rejects_the_canonical_work():
+    """A base Work has no spec → NOT_A_DERIVATIVE, repo never called."""
+    import app.mcp.server as srv
+
+    async def get_canonical(pid):
+        return _work()
+
+    async with _patched(works_get=get_canonical) as s:
+        with patch.object(srv, "DerivativesRepo") as DR:
+            res = await srv.composition_divergence_spec_update(
+                _Ctx(), srv._DivergenceSpecUpdateArgs(project_id=str(PROJECT), taxonomy="au"),
+            )
+            DR.return_value.update_spec.assert_not_called()
+    assert res["success"] is False and "NOT_A_DERIVATIVE" in res["error"]
+
+
+async def test_divergence_spec_update_taxonomy_is_closed_set():
+    """taxonomy is a closed set (Literal) — a value outside it is rejected at arg
+    construction (422), never reaches the DB CHECK. Mirrors the derive-args discipline."""
+    import app.mcp.server as srv
+    from pydantic import ValidationError
+
+    for good in ("pov_shift", "character_transform", "au"):
+        srv._DivergenceSpecUpdateArgs(project_id=str(PROJECT), taxonomy=good)
+    with pytest.raises(ValidationError):
+        srv._DivergenceSpecUpdateArgs(project_id=str(PROJECT), taxonomy="multiverse")
+
+
+async def test_entity_override_add_success_and_duplicate():
+    """add creates an override after derive; a duplicate target → OVERRIDE_EXISTS (not a 500)."""
+    import asyncpg as _asyncpg
+    import app.mcp.server as srv
+    from types import SimpleNamespace as NS
+
+    deriv = _derivative()
+    target = uuid.uuid4()
+
+    async def get_deriv(pid):
+        return deriv
+
+    ov = NS(id=uuid.uuid4(), target_entity_id=target, overridden_fields={"role": "hero"})
+    async with _patched(works_get=get_deriv) as s:
+        s.WorksRepo(None).get = AsyncMock(return_value=deriv)
+        with patch.object(srv, "DerivativesRepo") as DR:
+            DR.return_value.add_override = AsyncMock(return_value=ov)
+            res = await srv.composition_entity_override_add(
+                _Ctx(), srv._EntityOverrideAddArgs(
+                    project_id=str(deriv.project_id), target_entity_id=str(target),
+                    overridden_fields={"role": "hero"}),
+            )
+            assert res["success"] is True
+            assert res["override"]["overridden_fields"] == {"role": "hero"}
+            # duplicate target → OVERRIDE_EXISTS
+            DR.return_value.add_override = AsyncMock(
+                side_effect=_asyncpg.UniqueViolationError("dup"))
+            res2 = await srv.composition_entity_override_add(
+                _Ctx(), srv._EntityOverrideAddArgs(
+                    project_id=str(deriv.project_id), target_entity_id=str(target)),
+            )
+    assert res2["success"] is False and "OVERRIDE_EXISTS" in res2["error"]
+
+
+async def test_entity_override_update_and_delete():
+    """update replaces the field-set; delete reverts to canon (both return success)."""
+    import app.mcp.server as srv
+    from types import SimpleNamespace as NS
+
+    deriv = _derivative()
+    oid = uuid.uuid4()
+
+    async def get_deriv(pid):
+        return deriv
+
+    ov = NS(id=oid, target_entity_id=uuid.uuid4(), overridden_fields={"a": 1})
+    async with _patched(works_get=get_deriv) as s:
+        s.WorksRepo(None).get = AsyncMock(return_value=deriv)
+        with patch.object(srv, "DerivativesRepo") as DR:
+            DR.return_value.update_override = AsyncMock(return_value=ov)
+            DR.return_value.delete_override = AsyncMock(return_value=True)
+            upd = await srv.composition_entity_override_update(
+                _Ctx(), srv._EntityOverrideUpdateArgs(
+                    project_id=str(deriv.project_id), override_id=str(oid),
+                    overridden_fields={"a": 1}),
+            )
+            dele = await srv.composition_entity_override_delete(
+                _Ctx(), srv._EntityOverrideDeleteArgs(
+                    project_id=str(deriv.project_id), override_id=str(oid)),
+            )
+    assert upd["success"] is True and upd["override"]["overridden_fields"] == {"a": 1}
+    assert dele["success"] is True and dele["deleted"] is True
 
 
 async def test_switch_active_work_sets_the_per_book_pref():

@@ -130,7 +130,7 @@ class StubCanon:
 
 
 class StubTemplates:
-    async def list_for_user(self, u):
+    async def list_for_user(self, u, *, include_archived=False):
         return [StructureTemplate(id=uuid.uuid4(), name="Save the Cat", kind="save_the_cat")]
 
 

@@ -186,6 +186,20 @@ CREATE TABLE IF NOT EXISTS structure_template (
 );
 CREATE INDEX IF NOT EXISTS idx_structure_template_owner ON structure_template(owner_user_id);
 
+-- S-01 · custom-structure authoring. The table shipped read-only (only the built-in seeds ever
+-- wrote it); these add the write-side infra, mirroring canon_rule (version OCC + is_archived).
+ALTER TABLE structure_template ADD COLUMN IF NOT EXISTS updated_at  TIMESTAMPTZ NOT NULL DEFAULT now();
+ALTER TABLE structure_template ADD COLUMN IF NOT EXISTS version     INT         NOT NULL DEFAULT 1;
+ALTER TABLE structure_template ADD COLUMN IF NOT EXISTS is_archived BOOLEAN     NOT NULL DEFAULT false;
+-- Tenancy (User-Boundaries): PARTIAL uniques so the two tiers never collide and this never becomes
+-- the entity_kinds global-unique bug. A user's names are unique within their own tier; built-in
+-- (owner NULL) names are unique among built-ins. NULLs are distinct in a plain UNIQUE, so the two
+-- predicates are required.
+CREATE UNIQUE INDEX IF NOT EXISTS uq_structure_template_user_name
+  ON structure_template(owner_user_id, name) WHERE owner_user_id IS NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS uq_structure_template_builtin_name
+  ON structure_template(name) WHERE owner_user_id IS NULL;
+
 -- ── outline_node: Arc→Chapter→Scene→Beat tree (also = Scene-Graph nodes)
 CREATE TABLE IF NOT EXISTS outline_node (
   id                 UUID PRIMARY KEY DEFAULT uuidv7(),

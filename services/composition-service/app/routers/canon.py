@@ -20,7 +20,11 @@ from app.db.models import RuleScope
 from app.db.pool import get_pool
 from app.db.repositories import VersionMismatchError
 from app.db.repositories.canon_rules import CanonRulesRepo
-from app.db.repositories.structure_templates import StructureTemplatesRepo
+from app.db.repositories.structure_templates import (
+    DuplicateStructureTemplateName,
+    StructureTemplatesRepo,
+    StructureTemplateVersionConflict,
+)
 from app.db.repositories.works import WorksRepo
 from app.deps import (get_canon_rules_repo, get_grant_client_dep,
                       get_structure_templates_repo, get_works_repo)
@@ -223,8 +227,113 @@ async def restore_canon_rule(
 
 @router.get("/templates")
 async def list_templates(
+    include_archived: bool = False,
     user_id: UUID = Depends(get_current_user),
     templates: StructureTemplatesRepo = Depends(get_structure_templates_repo),
 ) -> dict[str, Any]:
-    rows = await templates.list_for_user(user_id)
+    rows = await templates.list_for_user(user_id, include_archived=include_archived)
     return {"templates": [t.model_dump(mode="json") for t in rows]}
+
+
+# ── S-01 · custom structure-template authoring (per-USER; no book/project scope) ──
+
+
+class StructureTemplateCreate(BaseModel):
+    name: str
+    kind: str = "generic"  # free-text label (S-01 CV-1), NOT an enum
+    beats: list[dict[str, Any]] = []
+
+
+class StructureTemplateUpdate(BaseModel):
+    name: str | None = None
+    kind: str | None = None
+    beats: list[dict[str, Any]] | None = None
+
+
+class StructureTemplateClone(BaseModel):
+    name: str | None = None  # default "<src> (copy)"
+
+
+def _dup_409(exc: DuplicateStructureTemplateName) -> HTTPException:
+    return HTTPException(status_code=409, detail=f"you already have a structure named '{exc}'")
+
+
+@router.post("/templates", status_code=201)
+async def create_template(
+    body: StructureTemplateCreate,
+    user_id: UUID = Depends(get_current_user),
+    templates: StructureTemplatesRepo = Depends(get_structure_templates_repo),
+) -> dict[str, Any]:
+    try:
+        t = await templates.create(user_id, name=body.name, kind=body.kind, beats=body.beats)
+    except DuplicateStructureTemplateName as e:
+        raise _dup_409(e)
+    return t.model_dump(mode="json")
+
+
+@router.post("/templates/{template_id}/clone", status_code=201)
+async def clone_template(
+    template_id: UUID,
+    body: StructureTemplateClone,
+    user_id: UUID = Depends(get_current_user),
+    templates: StructureTemplatesRepo = Depends(get_structure_templates_repo),
+) -> dict[str, Any]:
+    """Slice-B entry point: copy a built-in (or any visible template) into the user's own tier."""
+    try:
+        t = await templates.clone_builtin(user_id, template_id, name=body.name)
+    except LookupError:
+        raise HTTPException(status_code=404, detail="structure template not found")
+    except DuplicateStructureTemplateName as e:
+        raise _dup_409(e)
+    return t.model_dump(mode="json")
+
+
+@router.patch("/templates/{template_id}")
+async def patch_template(
+    template_id: UUID,
+    body: StructureTemplateUpdate,
+    user_id: UUID = Depends(get_current_user),
+    templates: StructureTemplatesRepo = Depends(get_structure_templates_repo),
+    if_match: str | None = Header(default=None, alias="If-Match"),
+) -> dict[str, Any]:
+    if if_match is None:
+        raise HTTPException(status_code=428, detail="If-Match (version) required")
+    try:
+        expected = int(if_match.strip('"'))
+    except ValueError:
+        raise HTTPException(status_code=400, detail="If-Match must be an integer version")
+    patch = body.model_dump(exclude_unset=True)
+    try:
+        t = await templates.update(user_id, template_id, expected, **patch)
+    except StructureTemplateVersionConflict:
+        raise HTTPException(status_code=412, detail="structure template was modified; reload")
+    except DuplicateStructureTemplateName as e:
+        raise _dup_409(e)
+    if t is None:
+        # Not the user's own row (a built-in write, or another user's, or gone). Built-ins are
+        # read-only to users — clone first (S-01 §3).
+        raise HTTPException(status_code=404, detail="no editable structure template with that id")
+    return t.model_dump(mode="json")
+
+
+@router.delete("/templates/{template_id}", status_code=204)
+async def archive_template(
+    template_id: UUID,
+    user_id: UUID = Depends(get_current_user),
+    templates: StructureTemplatesRepo = Depends(get_structure_templates_repo),
+) -> None:
+    t = await templates.archive(user_id, template_id)
+    if t is None:
+        raise HTTPException(status_code=404, detail="no active structure template with that id")
+
+
+@router.post("/templates/{template_id}/restore")
+async def restore_template(
+    template_id: UUID,
+    user_id: UUID = Depends(get_current_user),
+    templates: StructureTemplatesRepo = Depends(get_structure_templates_repo),
+) -> dict[str, Any]:
+    t = await templates.restore(user_id, template_id)
+    if t is None:
+        raise HTTPException(status_code=404, detail="no archived structure template with that id")
+    return t.model_dump(mode="json")

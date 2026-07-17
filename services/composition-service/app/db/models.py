@@ -131,9 +131,13 @@ class StructureTemplate(BaseModel):
     id: UUID
     owner_user_id: UUID | None = None  # NULL = global/built-in
     name: _Title
-    kind: str = "generic"
+    kind: str = "generic"  # S-01: a free-text label, NOT a closed enum (read nowhere semantically)
     beats: list[dict[str, Any]] = Field(default_factory=list)
     created_at: datetime | None = None
+    # S-01 write-side (mirror canon_rule): OCC + soft-delete.
+    updated_at: datetime | None = None
+    version: int = 1
+    is_archived: bool = False
 
 
 class NarrativeThread(BaseModel):

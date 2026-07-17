@@ -88,6 +88,11 @@ from app.db.repositories import (
 )
 from app.db.repositories.arc_template_repo import ArcTemplateRepo
 from app.db.repositories.canon_rules import CanonRulesRepo
+from app.db.repositories.structure_templates import (
+    DuplicateStructureTemplateName,
+    StructureTemplatesRepo,
+    StructureTemplateVersionConflict,
+)
 from app.db.repositories.generation_jobs import GenerationJobsRepo
 from app.db.repositories.motif_repo import MotifRepo
 from app.db.repositories.motif_retrieve import MotifRetriever
@@ -1315,6 +1320,171 @@ async def composition_create_derivative(ctx: MCPContext, args: _DeriveArgs) -> d
     }
 
 
+# ── S-04: post-derive delta EDITING (agent parity). The deltas were frozen at
+#    derive-time; these make the spec + overrides mutable. Direct EDIT (like
+#    archive) — no confirm spine: they touch only the derivative's own delta rows,
+#    mint no knowledge partition. taxonomy is a closed set via Literal (no
+#    CLOSED_SET_ARGS registry in composition — Pydantic enforces it at construction).
+
+class _DivergenceSpecUpdateArgs(ForbidExtra):
+    project_id: str  # the DERIVATIVE Work's project_id
+    taxonomy: Literal["pov_shift", "character_transform", "au"] | None = None
+    pov_anchor: str | None = None
+    canon_rule: list[str] | None = None
+
+
+async def _require_derivative(works: WorksRepo, tc, project_id: UUID):
+    """Gate EDIT + resolve the derivative Work (source_work_id set). Returns the Work,
+    or a sentinel dict via raise for the not-accessible / not-a-derivative cases."""
+    await _book_or_deny(works, tc, project_id, GrantLevel.EDIT)
+    work = await works.get(project_id)
+    if work is None:
+        raise uniform_not_accessible()
+    return work
+
+
+@mcp_server.tool(
+    name="composition_divergence_spec_update",
+    description=(
+        "Edit a what-if derivative's (dị bản) divergence spec AFTER derive — change the "
+        "taxonomy (pov_shift|character_transform|au), the pov_anchor, or the added canon_rule[]. "
+        "Only the fields you pass change; pass pov_anchor=null to clear it. EDIT required. "
+        "Rejects the canonical Work (only a derivative has a spec)."
+    ),
+    meta=require_meta(
+        "W", "book",
+        synonyms=["edit dị bản spec", "update divergence spec", "change branch taxonomy", "edit what-if spec"],
+        tool_name="composition_divergence_spec_update",
+    ),
+)
+async def composition_divergence_spec_update(ctx: MCPContext, args: _DivergenceSpecUpdateArgs) -> dict:
+    tc = _ctx(ctx)
+    works = WorksRepo(get_pool())
+    work = await _require_derivative(works, tc, UUID(args.project_id))
+    if work.source_work_id is None:
+        return {"success": False, "error": "NOT_A_DERIVATIVE — the spec exists only on a dị bản"}
+    fs = args.model_fields_set
+    kwargs: dict[str, Any] = {}
+    if "taxonomy" in fs and args.taxonomy is not None:
+        kwargs["taxonomy"] = args.taxonomy
+    if "pov_anchor" in fs:  # explicit null clears the anchor
+        kwargs["pov_anchor"] = UUID(args.pov_anchor) if args.pov_anchor else None
+    if "canon_rule" in fs and args.canon_rule is not None:
+        kwargs["canon_rule"] = list(args.canon_rule)
+    derivatives = DerivativesRepo(get_pool())
+    spec = await derivatives.update_spec(work.id, work.book_id, **kwargs)
+    if spec is None:
+        raise uniform_not_accessible()
+    return {"success": True, "spec": spec.model_dump(mode="json")}
+
+
+class _EntityOverrideAddArgs(ForbidExtra):
+    project_id: str  # the DERIVATIVE Work's project_id
+    target_entity_id: str
+    overridden_fields: dict[str, Any] = {}
+
+
+@mcp_server.tool(
+    name="composition_entity_override_add",
+    description=(
+        "Add ONE entity-field override to a what-if derivative (dị bản) AFTER derive — override "
+        "another entity's fields later (the delta was otherwise frozen at derive-time). Pass the "
+        "derivative's project_id, the target_entity_id, and overridden_fields (field→value JSON). "
+        "EDIT required. One override per entity — a duplicate target is rejected (edit it instead)."
+    ),
+    meta=require_meta(
+        "W", "book",
+        synonyms=["add dị bản override", "override entity", "add entity override", "override another entity"],
+        tool_name="composition_entity_override_add",
+    ),
+)
+async def composition_entity_override_add(ctx: MCPContext, args: _EntityOverrideAddArgs) -> dict:
+    tc = _ctx(ctx)
+    works = WorksRepo(get_pool())
+    work = await _require_derivative(works, tc, UUID(args.project_id))
+    if work.source_work_id is None:
+        return {"success": False, "error": "NOT_A_DERIVATIVE — overrides exist only on a dị bản"}
+    derivatives = DerivativesRepo(get_pool())
+    try:
+        ov = await derivatives.add_override(
+            work.id, work.book_id, tc.user_id, UUID(args.target_entity_id), args.overridden_fields,
+        )
+    except asyncpg.UniqueViolationError:
+        return {"success": False, "error": "OVERRIDE_EXISTS — an override for this entity already exists; update it instead"}
+    except ReferenceViolationError as exc:
+        raise uniform_not_accessible(exc) from exc
+    return {"success": True, "override": _override_out(ov)}
+
+
+class _EntityOverrideUpdateArgs(ForbidExtra):
+    project_id: str  # the DERIVATIVE Work's project_id
+    override_id: str
+    overridden_fields: dict[str, Any] = {}
+
+
+@mcp_server.tool(
+    name="composition_entity_override_update",
+    description=(
+        "Replace an entity override's field-set on a what-if derivative (dị bản) — the whole "
+        "overridden_fields JSON is replaced (the override IS the delta). Pass the derivative's "
+        "project_id + the override_id. EDIT required."
+    ),
+    meta=require_meta(
+        "W", "book",
+        synonyms=["edit dị bản override", "update entity override", "change override fields"],
+        tool_name="composition_entity_override_update",
+    ),
+)
+async def composition_entity_override_update(ctx: MCPContext, args: _EntityOverrideUpdateArgs) -> dict:
+    tc = _ctx(ctx)
+    works = WorksRepo(get_pool())
+    work = await _require_derivative(works, tc, UUID(args.project_id))
+    derivatives = DerivativesRepo(get_pool())
+    ov = await derivatives.update_override(
+        work.id, work.book_id, UUID(args.override_id), args.overridden_fields,
+    )
+    if ov is None:
+        raise uniform_not_accessible()
+    return {"success": True, "override": _override_out(ov)}
+
+
+class _EntityOverrideDeleteArgs(ForbidExtra):
+    project_id: str  # the DERIVATIVE Work's project_id
+    override_id: str
+
+
+@mcp_server.tool(
+    name="composition_entity_override_delete",
+    description=(
+        "Delete an entity override from a what-if derivative (dị bản) — reverts that entity to "
+        "canon (a pure delta, no history preserved). Pass the derivative's project_id + the "
+        "override_id. EDIT required."
+    ),
+    meta=require_meta(
+        "W", "book",
+        synonyms=["remove dị bản override", "delete entity override", "revert override to canon"],
+        tool_name="composition_entity_override_delete",
+    ),
+)
+async def composition_entity_override_delete(ctx: MCPContext, args: _EntityOverrideDeleteArgs) -> dict:
+    tc = _ctx(ctx)
+    works = WorksRepo(get_pool())
+    work = await _require_derivative(works, tc, UUID(args.project_id))
+    derivatives = DerivativesRepo(get_pool())
+    ok = await derivatives.delete_override(work.id, work.book_id, UUID(args.override_id))
+    if not ok:
+        raise uniform_not_accessible()
+    return {"success": True, "deleted": True}
+
+
+def _override_out(ov) -> dict:
+    return {
+        "id": str(ov.id),
+        "target_entity_id": str(ov.target_entity_id),
+        "overridden_fields": ov.overridden_fields,
+    }
+
+
 class _SwitchActiveWorkArgs(ForbidExtra):
     book_id: str
     # The Work to make active for this book; null switches back to the canonical Work.
@@ -1520,6 +1690,144 @@ async def composition_canon_rule_restore(
     if rule is None:
         raise uniform_not_accessible()
     return rule.model_dump(mode="json")
+
+
+# ── S-01 · structure-template authoring (per-USER; agent parity for the human routes) ──
+
+
+class _StructTemplateCreateArgs(ForbidExtra):
+    name: str
+    kind: str = "generic"  # free-text label (S-01 CV-1), NOT an enum
+    beats: list[dict[str, Any]] = []
+
+
+class _StructTemplateCloneArgs(ForbidExtra):
+    template_id: str
+    name: str | None = None
+
+
+class _StructTemplateUpdateArgs(ForbidExtra):
+    template_id: str
+    expected_version: int
+    name: str | None = None
+    kind: str | None = None
+    beats: list[dict[str, Any]] | None = None
+
+
+class _StructTemplateIdArgs(ForbidExtra):
+    template_id: str
+
+
+@mcp_server.tool(
+    name="composition_structure_template_create",
+    description=(
+        "Create a custom STORY STRUCTURE in your library — a named ordered list of beats you can "
+        "decompose a book against (like the built-in Save the Cat / Hero's Journey). Owned by you; "
+        "built-ins are read-only, clone one to customise it."
+    ),
+    meta=require_meta(
+        "A", "user",
+        synonyms=["create story structure", "new structure template", "author a beat sheet",
+                  "define a custom structure"],
+        tool_name="composition_structure_template_create",
+    ),
+)
+async def composition_structure_template_create(ctx: MCPContext, args: _StructTemplateCreateArgs) -> dict:
+    tc = _ctx(ctx)
+    repo = StructureTemplatesRepo(get_pool())
+    try:
+        t = await repo.create(tc.user_id, name=args.name, kind=args.kind, beats=args.beats)
+    except DuplicateStructureTemplateName:
+        return {"success": False, "outcome": "applied_conflict",
+                "error": f"you already have a structure named '{args.name}'"}
+    return t.model_dump(mode="json")
+
+
+@mcp_server.tool(
+    name="composition_structure_template_clone",
+    description=(
+        "Clone a built-in (or any visible) story structure into YOUR library so you can edit it — "
+        "a user never edits a built-in in place. Returns the new own copy."
+    ),
+    meta=require_meta(
+        "A", "user",
+        synonyms=["clone structure", "copy a story structure", "customise a built-in structure"],
+        tool_name="composition_structure_template_clone",
+    ),
+)
+async def composition_structure_template_clone(ctx: MCPContext, args: _StructTemplateCloneArgs) -> dict:
+    tc = _ctx(ctx)
+    repo = StructureTemplatesRepo(get_pool())
+    try:
+        t = await repo.clone_builtin(tc.user_id, UUID(args.template_id), name=args.name)
+    except LookupError:
+        raise uniform_not_accessible()
+    except DuplicateStructureTemplateName:
+        return {"success": False, "outcome": "applied_conflict", "error": "name already in your library"}
+    return t.model_dump(mode="json")
+
+
+@mcp_server.tool(
+    name="composition_structure_template_update",
+    description=(
+        "Edit one of YOUR structure templates (name / kind / beats). OCC: pass expected_version; a "
+        "stale version is rejected. Built-ins are read-only (clone first)."
+    ),
+    meta=require_meta(
+        "A", "user",
+        synonyms=["edit story structure", "update structure template", "change beats"],
+        tool_name="composition_structure_template_update",
+    ),
+)
+async def composition_structure_template_update(ctx: MCPContext, args: _StructTemplateUpdateArgs) -> dict:
+    tc = _ctx(ctx)
+    repo = StructureTemplatesRepo(get_pool())
+    patch = {k: v for k, v in (("name", args.name), ("kind", args.kind), ("beats", args.beats)) if v is not None}
+    try:
+        t = await repo.update(tc.user_id, UUID(args.template_id), args.expected_version, **patch)
+    except StructureTemplateVersionConflict:
+        return {"success": False, "outcome": "applied_conflict", "error": "structure was modified; reload"}
+    except DuplicateStructureTemplateName:
+        return {"success": False, "outcome": "applied_conflict", "error": "name already in your library"}
+    if t is None:
+        raise uniform_not_accessible()
+    return t.model_dump(mode="json")
+
+
+@mcp_server.tool(
+    name="composition_structure_template_archive",
+    description="Archive one of YOUR structure templates (soft — restore brings it back).",
+    meta=require_meta(
+        "A", "user",
+        synonyms=["archive structure", "delete story structure", "remove structure template"],
+        tool_name="composition_structure_template_archive",
+    ),
+)
+async def composition_structure_template_archive(ctx: MCPContext, args: _StructTemplateIdArgs) -> dict:
+    tc = _ctx(ctx)
+    repo = StructureTemplatesRepo(get_pool())
+    t = await repo.archive(tc.user_id, UUID(args.template_id))
+    if t is None:
+        raise uniform_not_accessible()
+    return t.model_dump(mode="json")
+
+
+@mcp_server.tool(
+    name="composition_structure_template_restore",
+    description="Restore an archived structure template of YOURS (reverse of archive).",
+    meta=require_meta(
+        "A", "user",
+        synonyms=["restore structure", "unarchive story structure"],
+        tool_name="composition_structure_template_restore",
+    ),
+)
+async def composition_structure_template_restore(ctx: MCPContext, args: _StructTemplateIdArgs) -> dict:
+    tc = _ctx(ctx)
+    repo = StructureTemplatesRepo(get_pool())
+    t = await repo.restore(tc.user_id, UUID(args.template_id))
+    if t is None:
+        raise uniform_not_accessible()
+    return t.model_dump(mode="json")
 
 
 class _WriteProseArgs(ForbidExtra):
