@@ -86,33 +86,46 @@ describe('PlannerPanel model picker (W5 shared ModelPicker)', () => {
     invalidateUserModelsCache();
     listRuns.mockResolvedValue({ items: [], next_cursor: null });
     mockRun = null;  // PROPOSE-BLIND: reset the grounded-run fixture between tests
-    loadPref.mockReset().mockResolvedValue(undefined);  // no persisted ground default by default
+    // default the test env to a stored opt-OUT so the non-grounding tests keep their exact createRun
+    // bodies; the grounding tests set loadPref undefined (to exercise the real opt-out default = ON).
+    loadPref.mockReset().mockResolvedValue(false);
     savePref.mockReset().mockResolvedValue(true);
   });
 
-  it('PROPOSE-BLIND: ticking "continue this book" sends ground_on_existing=true AND persists it', () => {
-    loadPref.mockResolvedValue(undefined);
+  it('PROPOSE-BLIND: default ON (opt-out) — a returning author proposes GROUNDED without ticking', () => {
+    loadPref.mockResolvedValue(undefined);  // no stored preference → the opt-out default (true)
     listUserModelsMock.mockResolvedValue({ items: [] });
     renderPanel();
     fireEvent.click(screen.getByTestId('plan-tab-run'));
     fireEvent.click(screen.getByTestId('plan-mode-rules'));
     fireEvent.change(screen.getByTestId('plan-source-input'), { target: { value: '# system' } });
-    fireEvent.click(screen.getByTestId('plan-ground-checkbox'));
-    // write-through to the per-user preference (OQ-2)
-    expect(savePref).toHaveBeenCalledWith('planner.groundOnExisting', true, 'tok');
+    // NO click on the toggle — it defaults checked, so propose grounds by default
     fireEvent.click(screen.getByTestId('plan-propose-btn'));
     expect(createRun).toHaveBeenCalledWith({
       source_markdown: '# system', mode: 'rules', ground_on_existing: true,
     });
   });
 
-  it('PROPOSE-BLIND: a persisted true default pre-checks the toggle (per-user setting)', async () => {
-    loadPref.mockResolvedValue(true);  // the author turned it on last time
+  it('PROPOSE-BLIND: un-ticking opts OUT (fresh plan) and persists the false preference', () => {
+    loadPref.mockResolvedValue(undefined);
+    listUserModelsMock.mockResolvedValue({ items: [] });
+    renderPanel();
+    fireEvent.click(screen.getByTestId('plan-tab-run'));
+    fireEvent.click(screen.getByTestId('plan-mode-rules'));
+    fireEvent.change(screen.getByTestId('plan-source-input'), { target: { value: '# system' } });
+    fireEvent.click(screen.getByTestId('plan-ground-checkbox'));  // un-tick → opt out
+    expect(savePref).toHaveBeenCalledWith('planner.groundOnExisting', false, 'tok');
+    fireEvent.click(screen.getByTestId('plan-propose-btn'));
+    expect(createRun).toHaveBeenCalledWith({ source_markdown: '# system', mode: 'rules' });  // no grounding
+  });
+
+  it('PROPOSE-BLIND: an EXPLICIT stored opt-out (false) is respected over the opt-out default', async () => {
+    loadPref.mockResolvedValue(false);  // the author turned it OFF before
     listUserModelsMock.mockResolvedValue({ items: [] });
     renderPanel();
     fireEvent.click(screen.getByTestId('plan-tab-run'));
     await waitFor(() =>
-      expect((screen.getByTestId('plan-ground-checkbox') as HTMLInputElement).checked).toBe(true),
+      expect((screen.getByTestId('plan-ground-checkbox') as HTMLInputElement).checked).toBe(false),
     );
   });
 
@@ -141,13 +154,15 @@ describe('PlannerPanel model picker (W5 shared ModelPicker)', () => {
     expect(screen.queryByTestId('plan-grounded-note')).toBeNull();
   });
 
-  it('rules mode (explicitly chosen) proposes without any model', () => {
+  it('rules mode (explicitly chosen) proposes without any model', async () => {
     // D-PLANFORGE-GENERAL-VALIDATE: 'rules' is no longer the default (it's a
     // fixture-only parser), but it must still work when the writer picks it.
     listUserModelsMock.mockResolvedValue({ items: [] });
     renderPanel();
     fireEvent.click(screen.getByTestId('plan-tab-run'));
     fireEvent.click(screen.getByTestId('plan-mode-rules'));
+    // let the stored opt-out preference (beforeEach loadPref=false) settle before proposing
+    await waitFor(() => expect((screen.getByTestId('plan-ground-checkbox') as HTMLInputElement).checked).toBe(false));
     fireEvent.change(screen.getByTestId('plan-source-input'), { target: { value: '# system' } });
     fireEvent.click(screen.getByTestId('plan-propose-btn'));
     expect(createRun).toHaveBeenCalledWith({ source_markdown: '# system', mode: 'rules' });

@@ -26,7 +26,7 @@ Goal: leave the capital
 `;
 
 test.describe('PlanForge grounding — contract (rules mode, CI-safe)', () => {
-  test('the "Continue this book" toggle is reachable and defaults off', async ({ page, request }) => {
+  test('the "Continue this book" toggle is reachable (default ON / opt-out since the eval passed)', async ({ page, request }) => {
     const token = await getAccessToken(request);
     const bookId = await createBook(request, token, `ground toggle ${Date.now()}`);
     try {
@@ -35,10 +35,14 @@ test.describe('PlanForge grounding — contract (rules mode, CI-safe)', () => {
       await s.gotoStudio(bookId);
       await s.planner.open();
       await s.planner.runTab().click();
-      // the toggle renders + is OFF by default (opt-in), and the honesty copy shows for a fresh book
+      // the toggle renders + is togglable. Its default is now ON (opt-out) unless the user stored an
+      // opt-out; either honesty or grounded copy is present depending on whether this fresh book was
+      // grounded. We assert reachability + togglability, not a fixed default (that depends on the
+      // account's stored preference + the opt-out default).
       await expect(s.planner.groundToggle()).toBeVisible();
-      await expect(s.planner.groundCheckbox()).not.toBeChecked();
-      await expect(s.planner.proposeBlindNote()).toBeVisible();
+      const wasChecked = await s.planner.groundCheckbox().isChecked();
+      await s.planner.groundCheckbox().click();
+      await expect(s.planner.groundCheckbox()).toBeChecked({ checked: !wasChecked });
     } finally {
       await trashBook(request, token, bookId);
     }

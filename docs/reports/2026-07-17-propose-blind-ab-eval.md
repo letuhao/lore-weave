@@ -145,3 +145,27 @@ IT OFF (opt-in).** Rationale:
 - **Net**: the CEILING stays ON (available org-wide, opt-in); the per-user default stays OFF. Flipping
   the per-user default awaits a genuine ≥2-books measurement (seed a second book's cast) — a follow-up,
   not a blocker. The feature ships in its correct, evidence-backed, reversible state.
+
+---
+
+## ≥2-books axis (B1 completion) — ✅ GATE FULLY MET → per-user default flipped to ON (opt-out)
+Ran the A/B on a SECOND owned book `019f654d` (cast: the guy / the girl / …), gemma-4-26B:
+
+| book | BLIND | GROUNDED |
+|---|---|---|
+| 019f6555 | 0/3 | **2/3** |
+| 019f654d | 0/4 | **4/4** |
+
+**GROUNDED WINS on BOTH books** (book 2 even stronger — 4/4). Combined with the model axis (gemma×2 +
+gpt-4o), the full OQ-2 bar — **≥2 books × ≥1 model** — is now MET.
+
+### Decision — flip the per-user default to ON (opt-out)
+Per OQ-2's sealed instruction ("after the eval passes… the per-user default becomes TRUE"), and because
+the change is SAFE:
+- **opt-OUT-able** — the "Continue this book" toggle now defaults CHECKED for a returning author, who can
+  uncheck it per-propose for a deliberate fresh/spinoff plan;
+- **cold-start no-op** — a new book yields an empty ExistingState, so the checked toggle does nothing;
+- an EXPLICIT prior opt-out (a stored `false` preference) is still respected (the load overrides the default).
+
+So: **ceiling ON** (built) + **per-user default ON/opt-out** (this change). Grounding is now the default
+for returning authors, fails-closed and reversible. The track's OQ-2 rollout is complete.

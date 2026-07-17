@@ -44,8 +44,11 @@ export function PlannerPanel(props: IDockviewPanelProps) {
   const [modelRef, setModelRef] = useState('');
   // D-PLANFORGE-PROPOSE-BLIND — the choice to ground on the book's existing state. A PER-USER
   // SETTING (OQ-2): the last choice persists server-side (one home, /v1/me/preferences) and defaults
-  // the toggle on the author's next visit — a continuation-writer keeps it on, never re-ticking it.
-  const [groundOnExisting, setGroundOnExisting] = useState(false);
+  // the toggle on the author's next visit. Default ON (opt-OUT) since 2026-07-17 — the A/B eval passed
+  // the full ≥2-books × ≥1-model bar (grounded beats blind), so a returning author gets continuity by
+  // default and unchecks for a deliberate fresh plan; cold-start books are a no-op (empty state). An
+  // EXPLICIT prior opt-out (a stored `false`) is respected — the load effect overrides this default.
+  const [groundOnExisting, setGroundOnExisting] = useState(true);
 
   // A bootstrap proposal is scoped to ONE run — switching runs must not leave a stale
   // proposal from the previous run showing under the newly-loaded/started one. Same
