@@ -329,6 +329,46 @@ class OutlineRepo:
             for r in rows
         ]
 
+    async def recent_chapter_briefs(
+        self, book_id: UUID, *, limit: int = 12,
+    ) -> tuple[int, list[dict[str, Any]]]:
+        """The book's manuscript SPINE for the PROPOSE-BLIND gather lens: the total chapter-node
+        count, and the LAST-N chapter briefs (title + synopsis + story_order), newest first.
+
+        Returns ``(chapter_count, briefs)`` where briefs is at most ``limit`` items ordered by
+        ``story_order`` DESC (the recent state a re-propose must continue from — the front of the book
+        is context the author already has; the tail is where they are). ``chapter_count`` is the FULL
+        count (not the truncated brief count) — the "how far along is this book" signal the gather lens
+        reports absolutely. A book with no outline chapters yields ``(0, [])`` — an honest empty, which
+        the caller surfaces as absent-with-a-note (never a silent zero).
+        """
+        async with self._pool.acquire() as c:
+            count_row = await c.fetchrow(
+                """
+                SELECT count(*) AS n FROM outline_node
+                WHERE book_id = $1 AND kind = 'chapter' AND NOT is_archived
+                """,
+                book_id,
+            )
+            rows = await c.fetch(
+                """
+                SELECT title, synopsis, story_order FROM outline_node
+                WHERE book_id = $1 AND kind = 'chapter' AND NOT is_archived
+                ORDER BY story_order DESC NULLS LAST
+                LIMIT $2
+                """,
+                book_id, limit,
+            )
+        briefs = [
+            {
+                "title": r["title"] or "",
+                "synopsis": r["synopsis"] or "",
+                "story_order": r["story_order"],
+            }
+            for r in rows
+        ]
+        return (count_row["n"] if count_row else 0), briefs
+
     async def planned_chapter_ids(self, book_id: UUID) -> set[UUID]:
         """The manuscript chapters this book's SPEC covers — every active chapter
         node's `chapter_id` (24 H1.3's coverage diff; the planned half).
