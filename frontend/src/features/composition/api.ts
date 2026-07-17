@@ -4,7 +4,7 @@
 import { apiBase, apiJson } from '../../api';
 import type {
   AutoGeneration, CanonRule, ChapterGeneration, CommitDecomposePayload, CorrectionBody, CorrectionStats,
-  CanonIssue, ConformanceStatus, DecomposePreview, DeriveBody, DerivativeContextResponse, GenerationJob, Grounding, GroundingItemType, NarrativeThread, OutlineNode, OutlineSearchHit, PinAction, ProgressStats, PublishGate, ReferenceList, ReferenceSearch, ReferenceSource, RuleViolationItem, SceneLink, SceneLinkKind, StructureTemplate, StyleProfile, StyleScope, VoiceProfile, Work, WorkResolution,
+  Beat, CanonIssue, ConformanceStatus, DecomposePreview, DeriveBody, DerivativeContextResponse, DivergenceSpecPatch, DivergenceTaxonomy, EntityOverrideRow, GenerationJob, Grounding, GroundingItemType, NarrativeThread, OutlineNode, OutlineSearchHit, PinAction, ProgressStats, PublishGate, ReferenceList, ReferenceSearch, ReferenceSource, RuleViolationItem, SceneLink, SceneLinkKind, StructureTemplate, StyleProfile, StyleScope, VoiceProfile, Work, WorkResolution,
 } from './types';
 import type { MotifBindingsResponse } from './motif/types';
 
@@ -132,6 +132,46 @@ export const compositionApi = {
   // for a greenfield Work (everything else empty).
   getDerivativeContext(projectId: string, token: string): Promise<DerivativeContextResponse> {
     return apiJson<DerivativeContextResponse>(`${BASE}/works/${projectId}/derivative-context`, { token });
+  },
+  // S-04 — edit a derivative's divergence deltas AFTER derive (the spec + overrides
+  // were frozen at derive-time). PATCH the spec (taxonomy/pov_anchor/canon_rule); the
+  // entity_override rows get their own LIST/POST/PATCH/DELETE (with the row id the
+  // derivative-context projection omits). All keyed by the derivative's project_id.
+  patchDivergenceSpec(
+    projectId: string,
+    body: DivergenceSpecPatch,
+    token: string,
+  ): Promise<{ taxonomy: DivergenceTaxonomy; pov_anchor: string | null; canon_rule: string[] }> {
+    return apiJson(`${BASE}/works/${projectId}/divergence-spec`, {
+      method: 'PATCH', body: JSON.stringify(body), token,
+    });
+  },
+  listEntityOverrides(projectId: string, token: string): Promise<{ overrides: EntityOverrideRow[] }> {
+    return apiJson(`${BASE}/works/${projectId}/entity-overrides`, { token });
+  },
+  addEntityOverride(
+    projectId: string,
+    body: { target_entity_id: string; overridden_fields: Record<string, unknown> },
+    token: string,
+  ): Promise<EntityOverrideRow> {
+    return apiJson(`${BASE}/works/${projectId}/entity-overrides`, {
+      method: 'POST', body: JSON.stringify(body), token,
+    });
+  },
+  updateEntityOverride(
+    projectId: string,
+    overrideId: string,
+    body: { overridden_fields: Record<string, unknown> },
+    token: string,
+  ): Promise<EntityOverrideRow> {
+    return apiJson(`${BASE}/works/${projectId}/entity-overrides/${overrideId}`, {
+      method: 'PATCH', body: JSON.stringify(body), token,
+    });
+  },
+  deleteEntityOverride(projectId: string, overrideId: string, token: string): Promise<void> {
+    return apiJson(`${BASE}/works/${projectId}/entity-overrides/${overrideId}`, {
+      method: 'DELETE', token,
+    });
   },
   // S5-B4 — the latest completed scene-draft prose for a chapter in ONE project
   // (node_id + story_order + title + text). Fetched for BOTH the dị bản and its source
@@ -314,9 +354,33 @@ export const compositionApi = {
   // templates; decomposePreview → the proposed (NOT persisted) arc→chapter→scene
   // tree; commitDecompose → persist the edited tree (409 CHAPTER_ALREADY_PLANNED
   // carries .body.detail.chapter_ids → the hook resends with replace=true).
-  listTemplates(token: string): Promise<StructureTemplate[]> {
-    return apiJson<{ templates: StructureTemplate[] }>(`${BASE}/templates`, { token })
+  listTemplates(token: string, includeArchived = false): Promise<StructureTemplate[]> {
+    const q = includeArchived ? '?include_archived=true' : '';
+    return apiJson<{ templates: StructureTemplate[] }>(`${BASE}/templates${q}`, { token })
       .then((r) => r.templates);
+  },
+  // S-01 · custom structure-template authoring (per-user).
+  cloneTemplate(templateId: string, token: string, name?: string): Promise<StructureTemplate> {
+    return apiJson<StructureTemplate>(`${BASE}/templates/${templateId}/clone`, {
+      method: 'POST', token, body: JSON.stringify(name != null ? { name } : {}),
+    });
+  },
+  createTemplate(body: { name: string; kind?: string; beats?: Beat[] }, token: string): Promise<StructureTemplate> {
+    return apiJson<StructureTemplate>(`${BASE}/templates`, { method: 'POST', token, body: JSON.stringify(body) });
+  },
+  updateTemplate(
+    templateId: string, version: number,
+    patch: { name?: string; kind?: string; beats?: Beat[] }, token: string,
+  ): Promise<StructureTemplate> {
+    return apiJson<StructureTemplate>(`${BASE}/templates/${templateId}`, {
+      method: 'PATCH', token, headers: { 'If-Match': String(version) }, body: JSON.stringify(patch),
+    });
+  },
+  archiveTemplate(templateId: string, token: string): Promise<void> {
+    return apiJson<void>(`${BASE}/templates/${templateId}`, { method: 'DELETE', token });
+  },
+  restoreTemplate(templateId: string, token: string): Promise<StructureTemplate> {
+    return apiJson<StructureTemplate>(`${BASE}/templates/${templateId}/restore`, { method: 'POST', token });
   },
   async decomposePreview(projectId: string, body: DecomposeBody, token: string): Promise<DecomposePreview> {
     const resp = await apiJson<DecomposePreview & { job_id?: string; status?: string }>(
@@ -432,6 +496,26 @@ export const compositionApi = {
   },
   deleteReference(referenceId: string, token: string): Promise<{ id: string; deleted: boolean }> {
     return apiJson(`${BASE}/references/${referenceId}`, { method: 'DELETE', token });
+  },
+  // S-03 — edit a reference. Metadata (title/author/source_url) is a CHEAP write, no
+  // re-embed; content is a separate PUT that DOES re-embed (priced — made explicit at
+  // the API so the UI can signal the cost). Both keyed by {projectId, referenceId}.
+  updateReferenceMetadata(
+    projectId: string,
+    referenceId: string,
+    body: { title?: string; author?: string; source_url?: string },
+    token: string,
+  ): Promise<ReferenceSource> {
+    return apiJson(`${BASE}/works/${projectId}/references/${referenceId}`, {
+      method: 'PATCH', body: JSON.stringify(body), token,
+    });
+  },
+  updateReferenceContent(
+    projectId: string, referenceId: string, content: string, token: string,
+  ): Promise<ReferenceSource> {
+    return apiJson(`${BASE}/works/${projectId}/references/${referenceId}/content`, {
+      method: 'PUT', body: JSON.stringify({ content }), token,
+    });
   },
   // Per-scene semantic retrieval. `q` overrides the auto query (scene synopsis/beat).
   searchReferences(

@@ -32,6 +32,23 @@ export type EntityOverride = {
   overridden_fields: Record<string, unknown>;
 };
 
+// S-04 — an entity_override row WITH its id (GET /works/{projectId}/entity-overrides).
+// The derivative-context read-projection omits `id` (it only needs the delta); the
+// editable manage-view needs the id to PATCH/DELETE a specific override.
+export type EntityOverrideRow = {
+  id: string;
+  target_entity_id: string;
+  overridden_fields: Record<string, unknown>;
+};
+
+// S-04 — partial edit of a derivative's divergence_spec. An OMITTED key is left
+// unchanged; `pov_anchor: null` explicitly CLEARS the anchor.
+export type DivergenceSpecPatch = {
+  taxonomy?: DivergenceTaxonomy;
+  pov_anchor?: string | null;
+  canon_rule?: string[];
+};
+
 export type DivergenceSpec = {
   taxonomy: DivergenceTaxonomy;
   pov_anchor: string | null;
@@ -127,8 +144,12 @@ export type NarrativeThread = {
 // ── A3 decompose planner (cycle 13) ──────────────────────────────────────────
 // T1.2 Beat Sheet — a template beat: a `key` (joins to node.beat_role) + its
 // structural `purpose`. Mirrors the BE StructureTemplate.beats (plan.py).
-export type Beat = { key: string; purpose: string };
-export type StructureTemplate = { id: string; name: string; kind?: string; beats: Beat[] };
+export type Beat = { key: string; purpose: string; label?: string; order?: number };
+export type StructureTemplate = {
+  id: string; name: string; kind?: string; beats: Beat[];
+  // S-01 write side. owner_user_id null ⇒ a built-in (read-only to the user).
+  owner_user_id?: string | null; version?: number; is_archived?: boolean;
+};
 
 // Preview shape — mirrors composition-service DecomposeResult (dataclasses.asdict).
 // The chapter is nested under `chapter`; scenes carry resolved present_entity_ids
