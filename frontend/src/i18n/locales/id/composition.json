@@ -171,7 +171,19 @@
     "kind_character": "Karakter",
     "kind_location": "Tempat",
     "kind_faction": "Faksi",
-    "kind_concept": "Konsep"
+    "kind_concept": "Konsep",
+    "rename": "Ubah Nama",
+    "renameConflict": "Diubah di tempat lain — dimuat ulang.",
+    "editEntity": "Edit alias & jenis",
+    "archive": "Pensiunkan entitas",
+    "archiveConfirm": "Pensiunkan «{{name}}»? Relasi dan jangkar glosariumnya akan tetap disimpan; entitas ini akan muncul kembali jika buku menyebutnya lagi (tidak ada tombol pulihkan).",
+    "archived": "Sudah dipensiunkan — akan muncul kembali jika buku menyebutnya lagi.",
+    "newEntity": "Baru",
+    "editFailed": "Gagal mengubah: {{error}}",
+    "truncated": "Menampilkan 200 pertama — pertajam pencarian Anda untuk mempersempit daftar.",
+    "showingOf": "Menampilkan {{loaded}} dari {{total}}.",
+    "loadMore": "Muat lebih banyak",
+    "loadingMore": "Memuat…"
   },
   "relmap": "Relasi",
   "relations": {
@@ -214,7 +226,10 @@
     "gone": "hilang",
     "loading": "Memuat busur karakter...",
     "noProject": "Belum ada graf pengetahuan — ekstrak buku ini untuk memetakan busur karakter.",
-    "empty": "Karakter ini belum memiliki peristiwa."
+    "empty": "Karakter ini belum memiliki peristiwa.",
+    "edit": "Edit",
+    "linkEntity": "+ tautkan entitas",
+    "addEvent": "+ Tambah kejadian"
   },
   "worldmap": "Peta Dunia",
   "wmap": {
@@ -366,6 +381,9 @@
   "statDiverge": "Diverge (Opsi K)",
   "statStream": "Stream",
   "guidePlaceholder": "Panduan opsional untuk co-writer...",
+  "correction": {
+    "capturedToast": "Dicatat — rekan penulis Anda akan belajar dari ini"
+  },
   "reasoning": "Penalaran",
   "reasoningHint": "Auto = server memutuskan per model. Off menonaktifkan proses berpikir; Low/Med/High memaksanya aktif.",
   "reasoningAuto": "Berpikir: auto",
@@ -430,6 +448,12 @@
   "canonUntil": "Sampai (urutan baca)",
   "canonActive": "aktif",
   "canonInactive": "tidak aktif",
+  "canonArchivedTag": "diarsipkan",
+  "canonShowArchived": "Tampilkan yang diarsipkan",
+  "canonRuleArchived": "Aturan diarsipkan",
+  "canonRuleRestored": "Aturan dipulihkan",
+  "restore": "Pulihkan",
+  "undo": "Batalkan",
   "canonWindowInverted": "'Dari' harus ≤ 'Sampai'.",
   "archive": "Arsip",
   "noRules": "Belum ada aturan kanon.",
@@ -611,12 +635,18 @@
     "scope": {
       "label": "Cakupan motif",
       "my": "Perpustakaan saya",
-      "catalog": "Katalog publik"
+      "catalog": "Katalog publik",
+      "book": "Buku",
+      "shared": "Dibagikan",
+      "system": "Sistem",
+      "drafts": "Draf",
+      "needsBook": "Buka buku untuk melihat motifnya"
     },
     "search": "Cari motif",
     "overuse": "\"{{name}}\" sudah digunakan dalam {{chapters}} — pertimbangkan untuk variasi lain.",
     "list": {
-      "noMatch": "Tidak ada motif yang cocok — hapus filter."
+      "noMatch": "Tidak ada motif yang cocok — hapus filter.",
+      "truncated": "Menampilkan 100 pertama — persempit dengan pencarian atau filter untuk melihat sisanya."
     },
     "error": {
       "load": "Gagal memuat — silakan coba lagi."
@@ -711,7 +741,8 @@
     },
     "binding": {
       "freeForm": "Tidak ada motif yang cocok — adegan ini bersifat bebas.",
-      "commitGenerate": "Komit + tulis adegan ini →"
+      "commitGenerate": "Komit + tulis adegan ini →",
+      "noWork": "Buat rencana untuk buku ini guna mengikat motif ke adegan-adegannya."
     },
     "swap": {
       "title": "Tukar motif",
@@ -735,7 +766,8 @@
         "ok": "Sesuai beat",
         "warn": "Penyimpangan intensitas",
         "bad": "Beat terlewat"
-      }
+      },
+      "rerunNeedsModel": "Pilih model untuk menjalankan ulang konformitas"
     },
     "arc": {
       "mobileNotice": "Grid lini masa tersedia di layar yang lebih besar — di sini Anda dapat mengeditnya sebagai daftar.",
@@ -745,7 +777,65 @@
       "moveRight": "Pindahkan lebih lambat",
       "grow": "Perpanjang",
       "shrink": "Pendekkan",
-      "remove": "Hapus"
+      "remove": "Hapus",
+      "libraryEmpty": "Belum ada templat alur. Buat satu, atau impor cerita untuk didekonstruksi.",
+      "templates": {
+        "tabLibrary": "Perpustakaan",
+        "tabCatalog": "Katalog",
+        "tabDeconstruct": "Impor & Dekonstruksi",
+        "tier_all": "Semua",
+        "tier_mine": "Milik Saya",
+        "tier_system": "Sistem",
+        "tier_book": "Buku",
+        "new": "+ Baru",
+        "loading": "Memuat...",
+        "loadError": "Tidak dapat memuat templat.",
+        "retry": "Coba Lagi",
+        "chapters": "{{count}} bab",
+        "chipSystem": "Sistem",
+        "chipMine": "Milik Saya",
+        "chipPublic": "Publik",
+        "archive": "arsip",
+        "adopt": "adopsi",
+        "createCode": "kode (unik)",
+        "createName": "nama",
+        "createShare": "Bagikan dengan kolaborator buku ini (tingkatan buku)",
+        "create": "Buat",
+        "cancel": "Batal",
+        "catalogError": "Tidak dapat memuat katalog.",
+        "catalogEmpty": "Belum ada templat alur publik.",
+        "back": "← Semua templat",
+        "driftTitle": "Drift — digunakan oleh buku ini",
+        "driftUnapplied": "Belum diterapkan ke buku ini — terapkan di atas untuk membandingkan drift.",
+        "driftNoProvenance": "Alur ini ditulis secara langsung — tidak ada templat untuk dijadikan acuan drift.",
+        "driftGone": "Templat sumber tidak lagi tersedia.",
+        "driftLoading": "Memuat drift...",
+        "untitledArc": "(alur tanpa judul)",
+        "truncated": "Menampilkan {{shown}} dari {{count}} pertama — gunakan Katalog atau tingkatan yang lebih sempit untuk menemukan lebih banyak."
+      },
+      "import": {
+        "privacy": "Teks mentah tetap bersifat pribadi bagi Anda dan tidak akan pernah dibagikan. Hanya struktur abstrak yang diturunkan yang dapat dipublikasikan — dan publikasi akan menghapus referensi sumbernya.",
+        "sources": "Sumber referensi",
+        "loading": "Memuat...",
+        "noSources": "Belum ada sumber — tempelkan satu di bawah ini.",
+        "untitled": "(tanpa judul)",
+        "deleteConfirm": "Hapus sumber ini? Tidak dapat dipulihkan.",
+        "deleteTitle": "Hapus (tidak dapat dipulihkan)",
+        "sourceError": "Tidak dapat menyimpan sumber — coba lagi.",
+        "what": "Dekonstruksi referensi menjadi templat alur yang dapat digunakan kembali (menggunakan kuota LLM).",
+        "hint": "Petunjuk alur (opsional)",
+        "useWeb": "Izinkan penc색arian web",
+        "model": "Model dekonstruksi",
+        "estimating": "Mengestimasi...",
+        "running": "Mendekonstruksi...",
+        "run": "Dekonstruksi",
+        "selectFirst": "Pilih sumber di atas terlebih dahulu.",
+        "done": "Templat alur baru telah dibuat — temukan di Perpustakaan.",
+        "pasteTitle": "judul",
+        "pasteBody": "tempelkan teks referensi...",
+        "tooLong": "Terlalu panjang — potong sebelum mengimpor.",
+        "addSource": "Tambah sumber"
+      }
     },
     "simple": {
       "actant": {
@@ -803,6 +893,34 @@
       "knows": "Mengetahui",
       "deceived": "Tertipu",
       "gap": "Celah"
+    },
+    "graph": {
+      "title": "Graf — terdiri dari · mendahului · varian dari",
+      "loading": "Memuat edge…",
+      "error": "Tidak dapat memuat graf motif.",
+      "retry": "Coba lagi",
+      "empty": "Belum ada relasi.",
+      "deleteEdge": "Hapus edge",
+      "addEdge": "Tambah relasi",
+      "pickNeighbor": "Pilih motif…",
+      "add": "Tambah edge",
+      "cancel": "Batal",
+      "kind": {
+        "composed_of": "Terdiri dari",
+        "precedes": "Mendahului",
+        "variant_of": "Variasi dari"
+      }
+    },
+    "suggest": {
+      "button": "Sarankan motif",
+      "loading": "Mengurutkan motif untuk adegan ini…",
+      "error": "Tidak dapat menyarankan motif.",
+      "retry": "Coba lagi",
+      "empty": "Belum ada motif yang cocok untuk adegan ini — tambahkan lebih banyak ke pustaka Anda.",
+      "bind": "Ikat",
+      "degraded": "Tanpa peringkat — pencocokan semantik tidak tersedia (model embedding belum diatur), jadi ini adalah cadangan pustaka, bukan kecocokan yang dinilai.",
+      "sectionMine": "Motif Anda",
+      "sectionLibrary": "Dari pustaka"
     }
   },
   "authoringRun": {

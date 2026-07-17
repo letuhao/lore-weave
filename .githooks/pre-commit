@@ -18,6 +18,13 @@ command -v python >/dev/null 2>&1 || PY=python3
 "$PY" "$ROOT/scripts/knowledge-access-gate.py" --staged
 "$PY" "$ROOT/scripts/knowledge-http-surface-gate.py" --staged
 
+# ML-7 (multilingual.md) — locale completeness. When an i18n locale JSON is staged, every uiLocale
+# must carry the full `en` key-set for the touched namespace(s): i.e. `en` copy was regenerated via
+# scripts/i18n_translate.py (gap-fill), never hand-edited into a locale, never a one-off translator.
+if git diff --cached --name-only | grep -qE 'frontend/src/i18n/locales/.*\.json'; then
+  "$PY" "$ROOT/scripts/i18n-completeness-gate.py" --staged
+fi
+
 # Track A / M9a — the central C-TOOL tier gate: a write-verb-named tool must NOT be Tier-R
 # (Tier-R auto-runs with no confirm/Undo — a mutation tagged R is a silent-write). Runs when a
 # tool-registration file (or the gate itself) is staged; it scans the whole tree, so this

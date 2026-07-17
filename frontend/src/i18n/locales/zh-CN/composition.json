@@ -171,7 +171,19 @@
     "kind_character": "角色",
     "kind_location": "地点",
     "kind_faction": "势力",
-    "kind_concept": "概念"
+    "kind_concept": "概念",
+    "rename": "重命名",
+    "renameConflict": "内容已在别处更改 — 已重新加载。",
+    "editEntity": "编辑别名与类型",
+    "archive": "归档实体",
+    "archiveConfirm": "确定要归档“{{name}}”吗？其关联关系和术语表锚点将被保留；如果书中再次提到它，它将重新出现（没有还原按钮）。",
+    "archived": "已归档 — 如果书中再次提到它，它将重新出现。",
+    "newEntity": "新建",
+    "editFailed": "编辑失败：{{error}}",
+    "truncated": "仅显示前 200 项 — 请通过细化搜索来缩小列表范围。",
+    "showingOf": "正在显示 {{loaded}} / {{total}}。",
+    "loadMore": "加载更多",
+    "loadingMore": "正在加载…"
   },
   "relmap": "关系",
   "relations": {
@@ -214,7 +226,10 @@
     "gone": "已离世/消失",
     "loading": "正在加载角色弧光…",
     "noProject": "尚未生成知识图谱 — 请提取本书以绘制角色弧光。",
-    "empty": "该角色暂无事件。"
+    "empty": "该角色暂无事件。",
+    "edit": "编辑",
+    "linkEntity": "+ 链接实体",
+    "addEvent": "+ 添加事件"
   },
   "worldmap": "世界地图",
   "wmap": {
@@ -366,6 +381,9 @@
   "statDiverge": "Diverge (K 选项)",
   "statStream": "流式生成",
   "guidePlaceholder": "给协同写作者的可选指导…",
+  "correction": {
+    "capturedToast": "已记录 — 您的共同作者将从中学习"
+  },
   "reasoning": "推理",
   "reasoningHint": "Auto = 由服务器根据模型决定。Off = 禁用思考；Low/Med/High = 强制开启。",
   "reasoningAuto": "思考：自动",
@@ -430,6 +448,12 @@
   "canonUntil": "截止 (阅读顺序)",
   "canonActive": "活跃",
   "canonInactive": "非活跃",
+  "canonArchivedTag": "已归档",
+  "canonShowArchived": "显示已归档",
+  "canonRuleArchived": "规则已归档",
+  "canonRuleRestored": "规则已恢复",
+  "restore": "恢复",
+  "undo": "撤销",
   "canonWindowInverted": "“起始”必须 ≤ “截止”。",
   "archive": "存档",
   "noRules": "暂无设定规则。",
@@ -611,12 +635,18 @@
     "scope": {
       "label": "模组范围",
       "my": "我的库",
-      "catalog": "公开目录"
+      "catalog": "公开目录",
+      "book": "书籍",
+      "shared": "共享",
+      "system": "系统",
+      "drafts": "草稿",
+      "needsBook": "打开书籍以查看其主题"
     },
     "search": "搜索模组",
     "overuse": "\"{{name}}\" 已在 {{chapters}} 中使用过 — 建议尝试不同的变化。",
     "list": {
-      "noMatch": "没有匹配的模组 — 请清除筛选条件。"
+      "noMatch": "没有匹配的模组 — 请清除筛选条件。",
+      "truncated": "正在显示前 100 项 — 请通过搜索或筛选来查看其余内容。"
     },
     "error": {
       "load": "无法加载 — 请重试。"
@@ -711,7 +741,8 @@
     },
     "binding": {
       "freeForm": "未匹配到模组 — 此场景为自由创作。",
-      "commitGenerate": "确认并撰写此场景 →"
+      "commitGenerate": "确认并撰写此场景 →",
+      "noWork": "为本书制定一个将主题与场景绑定的计划。"
     },
     "swap": {
       "title": "切换模组",
@@ -735,7 +766,8 @@
         "ok": "符合节拍",
         "warn": "强度偏移",
         "bad": "错过节拍"
-      }
+      },
+      "rerunNeedsModel": "选择一个模型以重新进行一致性检查"
     },
     "arc": {
       "mobileNotice": "时间轴网格在更大的屏幕上可用 — 在此您可以将其作为列表进行编辑。",
@@ -745,7 +777,65 @@
       "moveRight": "推后",
       "grow": "拉长",
       "shrink": "缩短",
-      "remove": "移除"
+      "remove": "移除",
+      "libraryEmpty": "暂无剧情弧模板。创建一个，或导入故事进行拆解。",
+      "templates": {
+        "tabLibrary": "库",
+        "tabCatalog": "目录",
+        "tabDeconstruct": "导入并拆解",
+        "tier_all": "全部",
+        "tier_mine": "我的",
+        "tier_system": "系统",
+        "tier_book": "书籍",
+        "new": "+ 新建",
+        "loading": "加载中…",
+        "loadError": "无法加载模板。",
+        "retry": "重试",
+        "chapters": "{{count}} 章",
+        "chipSystem": "系统",
+        "chipMine": "我的",
+        "chipPublic": "公开",
+        "archive": "存档",
+        "adopt": "采用",
+        "createCode": "代码 (唯一)",
+        "createName": "名称",
+        "createShare": "与本书协作者共享 (书籍层级)",
+        "create": "创建",
+        "cancel": "取消",
+        "catalogError": "无法加载目录。",
+        "catalogEmpty": "暂无公开的弧线模板。",
+        "back": "← 所有模板",
+        "driftTitle": "漂移 — 本书正在使用",
+        "driftUnapplied": "尚未应用于本书 — 请在上方应用以对比漂移。",
+        "driftNoProvenance": "此弧线为直接创作 — 没有可对比的模板。",
+        "driftGone": "源模板已失效。",
+        "driftLoading": "正在加载漂移…",
+        "untitledArc": "（未命名弧线）",
+        "truncated": "正在显示第 {{shown}} / {{count}} 项 — 使用“目录”或更高级别的方案以查找更多内容。"
+      },
+      "import": {
+        "privacy": "原始文本仅供您个人私密使用，绝不会被分享。只有生成的抽象结构可以发布 —— 且发布操作会移除原始引用。",
+        "sources": "引用来源",
+        "loading": "正在加载…",
+        "noSources": "暂无来源 —— 请在下方粘贴。",
+        "untitled": "（未命名）",
+        "deleteConfirm": "确定删除此来源吗？删除后无法恢复。",
+        "deleteTitle": "删除（不可恢复）",
+        "sourceError": "无法保存来源 —— 请重试。",
+        "what": "将引用解构为可重复使用的弧线模板（按 LLM 使用量计费）。",
+        "hint": "情节弧线提示（可选）",
+        "useWeb": "允许网页检索",
+        "model": "解构模型",
+        "estimating": "正在估算…",
+        "running": "正在解构…",
+        "run": "开始解构",
+        "selectFirst": "请先在上方选择一个来源。",
+        "done": "新的情节弧线模板已创建 — 请前往“库”中查看。",
+        "pasteTitle": "标题",
+        "pasteBody": "粘贴参考文本…",
+        "tooLong": "内容过长 — 请在导入前进行裁剪。",
+        "addSource": "添加来源"
+      }
     },
     "simple": {
       "actant": {
@@ -803,6 +893,34 @@
       "knows": "已知",
       "deceived": "被误导",
       "gap": "差距"
+    },
+    "graph": {
+      "title": "关系图 — 由 · 组成 · 的变体",
+      "loading": "正在加载连线…",
+      "error": "无法加载主题图谱。",
+      "retry": "重试",
+      "empty": "暂无关系。",
+      "deleteEdge": "移除连线",
+      "addEdge": "添加关系",
+      "pickNeighbor": "选择一个主题…",
+      "add": "添加连线",
+      "cancel": "取消",
+      "kind": {
+        "composed_of": "由…组成",
+        "precedes": "先于",
+        "variant_of": "…的变体"
+      }
+    },
+    "suggest": {
+      "button": "推荐主题",
+      "loading": "正在为该场景进行主题排序……",
+      "error": "无法推荐主题。",
+      "retry": "重试",
+      "empty": "目前尚无符合该场景的主题 —— 请在您的库中添加更多内容。",
+      "bind": "绑定",
+      "degraded": "未排名 — 语义匹配不可用（未设置嵌入模型），因此这些是库回退结果，而非评分匹配项。",
+      "sectionMine": "您的主题",
+      "sectionLibrary": "来自库"
     }
   },
   "authoringRun": {

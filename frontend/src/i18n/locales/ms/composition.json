@@ -171,7 +171,19 @@
     "kind_character": "Watak",
     "kind_location": "Tempat",
     "kind_faction": "Faksi",
-    "kind_concept": "Konsep"
+    "kind_concept": "Konsep",
+    "rename": "Namakan Semula",
+    "renameConflict": "Telah diubah di tempat lain — dimuat semula.",
+    "editEntity": "Edit gelaran & jenis",
+    "archive": "Persara entiti",
+    "archiveConfirm": "Persarakan «{{name}}»? Hubungan dan sauh glosarinya akan dikekalkan; ia akan muncul semula jika buku menyebutnya lagi (tiada butang pemulihan).",
+    "archived": "Telah dipersarakan — ia akan muncul semula jika buku menyebutnya lagi.",
+    "newEntity": "Baru",
+    "editFailed": "Pengeditan gagal: {{error}}",
+    "truncated": "Menunjukkan 200 yang pertama — perhalusi carian anda untuk mengecilkan senarai.",
+    "showingOf": "Menunjukkan {{loaded}} daripada {{total}}.",
+    "loadMore": "Muat lebih banyak",
+    "loadingMore": "Memuatkan…"
   },
   "relmap": "Hubungan",
   "relations": {
@@ -214,7 +226,10 @@
     "gone": "tiada lagi",
     "loading": "Memuat lengkok watak...",
     "noProject": "Tiada graf pengetahuan lagi — ekstrak buku ini untuk memetakan lengkok watak.",
-    "empty": "Watak ini belum mempunyai sebarang peristiwa."
+    "empty": "Watak ini belum mempunyai sebarang peristiwa.",
+    "edit": "Edit",
+    "linkEntity": "+ paut entiti",
+    "addEvent": "+ Tambah acara"
   },
   "worldmap": "Peta Dunia",
   "wmap": {
@@ -366,6 +381,9 @@
   "statDiverge": "Diverge (pilihan K)",
   "statStream": "Aliran",
   "guidePlaceholder": "Panduan pilihan untuk penulis bersama…",
+  "correction": {
+    "capturedToast": "Dicatat — rakan penulis anda akan belajar daripada ini"
+  },
   "reasoning": "Penaakulan",
   "reasoningHint": "Auto = pelayan memutuskan mengikut model. Off melumpuhkan pemikiran; Low/Med/High memaksanya.",
   "reasoningAuto": "Pemikiran: auto",
@@ -430,6 +448,12 @@
   "canonUntil": "Hingga (urutan bacaan)",
   "canonActive": "aktif",
   "canonInactive": "tidak aktif",
+  "canonArchivedTag": "diarsipkan",
+  "canonShowArchived": "Tunjukkan yang diarkibkan",
+  "canonRuleArchived": "Peraturan diarkibkan",
+  "canonRuleRestored": "Peraturan dipulihkan",
+  "restore": "Pulihkan",
+  "undo": "Batalkan",
   "canonWindowInverted": "'Dari' mesti ≤ 'Hingga'.",
   "archive": "Arkib",
   "noRules": "Tiada peraturan kanon lagi.",
@@ -611,12 +635,18 @@
     "scope": {
       "label": "Skop motif",
       "my": "Perpustakaan saya",
-      "catalog": "Katalog awam"
+      "catalog": "Katalog awam",
+      "book": "Buku",
+      "shared": "Dikongsi",
+      "system": "Sistem",
+      "drafts": "Draf",
+      "needsBook": "Buka buku untuk melihat motifnya"
     },
     "search": "Cari motif",
     "overuse": "\"{{name}}\" sudah digunakan dalam {{chapters}} — cuba pelbagaikan.",
     "list": {
-      "noMatch": "Tiada motif yang sepadan — kosongkan penapis."
+      "noMatch": "Tiada motif yang sepadan — kosongkan penapis.",
+      "truncated": "Menunjukkan 100 yang pertama — kecilkan carian dengan fungsi carian atau penapis untuk melihat selebihnya."
     },
     "error": {
       "load": "Gagal dimuatkan — sila cuba lagi."
@@ -711,7 +741,8 @@
     },
     "binding": {
       "freeForm": "Tiada motif yang sepadan — babak ini adalah bebas.",
-      "commitGenerate": "Sahkan + tulis babak ini →"
+      "commitGenerate": "Sahkan + tulis babak ini →",
+      "noWork": "Buat pelan untuk buku ini bagi mengikat motif pada babaknya."
     },
     "swap": {
       "title": "Tukar motif",
@@ -735,7 +766,8 @@
         "ok": "Mengikut beat",
         "warn": "Sisihan intensiti",
         "bad": "Beat terlepas"
-      }
+      },
+      "rerunNeedsModel": "Pilih model untuk menjalankan semula pematuhan"
     },
     "arc": {
       "mobileNotice": "Grid garis masa tersedia pada skrin yang lebih besar — di sini anda boleh menyuntingnya sebagai senarai.",
@@ -745,7 +777,65 @@
       "moveRight": "Gerak lebih lewat",
       "grow": "Panjangkan",
       "shrink": "Pendekkan",
-      "remove": "Buang"
+      "remove": "Buang",
+      "libraryEmpty": "Belum ada templat lengkungan. Cipta satu, atau import cerita untuk diurai.",
+      "templates": {
+        "tabLibrary": "Perpustakaan",
+        "tabCatalog": "Katalog",
+        "tabDeconstruct": "Import & Urai",
+        "tier_all": "Semua",
+        "tier_mine": "Milik Saya",
+        "tier_system": "Sistem",
+        "tier_book": "Buku",
+        "new": "+ Baru",
+        "loading": "Memuatkan…",
+        "loadError": "Tidak dapat memuatkan templat.",
+        "retry": "Cuba Lagi",
+        "chapters": "{{count}} bab",
+        "chipSystem": "Sistem",
+        "chipMine": "Milik Saya",
+        "chipPublic": "Awam",
+        "archive": "arkib",
+        "adopt": "guna",
+        "createCode": "kod (unik)",
+        "createName": "nama",
+        "createShare": "Kongsi dengan kolaborator buku ini (tahap buku)",
+        "create": "Cipta",
+        "cancel": "Batal",
+        "catalogError": "Tidak dapat memuatkan katalog.",
+        "catalogEmpty": "Belum ada templat lengkungan awam.",
+        "back": "← Semua templat",
+        "driftTitle": "Drift — digunakan oleh buku ini",
+        "driftUnapplied": "Belum digunakan pada buku ini — gunakan di atas untuk membandingkan drift.",
+        "driftNoProvenance": "Lengkungan ini ditulis secara terus — tiada templat untuk dibandingkan.",
+        "driftGone": "Templat sumber tidak lagi tersedia.",
+        "driftLoading": "Memuatkan drift…",
+        "untitledArc": "(lengkungan tanpa tajuk)",
+        "truncated": "Menunjukkan {{shown}} daripada {{count}} yang pertama — gunakan Katalog atau peringkat yang lebih khusus untuk mencari lebih banyak."
+      },
+      "import": {
+        "privacy": "Teks asal kekal peribadi untuk anda dan tidak akan dikongsi. Hanya struktur abstrak yang terhasil boleh diterbitkan — dan penerbitan akan membuang rujukan sumber.",
+        "sources": "Sumber rujukan",
+        "loading": "Memuatkan…",
+        "noSources": "Belum ada sumber — tampal satu di bawah.",
+        "untitled": "(tanpa tajuk)",
+        "deleteConfirm": "Padam sumber ini? Tiada pemulihan boleh dilakukan.",
+        "deleteTitle": "Padam (tiada pemulihan)",
+        "sourceError": "Tidak dapat menyimpan sumber — cuba lagi.",
+        "what": "Urai rujukan menjadi templat lengkungan yang boleh digunakan semula (menggunakan kuota LLM).",
+        "hint": "Petunjuk lengkungan (pilihan)",
+        "useWeb": "Benarkan carian web",
+        "model": "Model uraian",
+        "estimating": "Menganggarkan…",
+        "running": "Mengurai…",
+        "run": "Urai",
+        "selectFirst": "Pilih sumber di atas terlebih dahulu.",
+        "done": "Templat lengkungan baharu telah dicipta — cari di Perpustakaan.",
+        "pasteTitle": "tajuk",
+        "pasteBody": "tampal teks rujukan…",
+        "tooLong": "Terlalu panjang — potong sebelum mengimport.",
+        "addSource": "Tambah sumber"
+      }
     },
     "simple": {
       "actant": {
@@ -803,6 +893,34 @@
       "knows": "Tahu",
       "deceived": "Tertipu",
       "gap": "Jurang"
+    },
+    "graph": {
+      "title": "Graf — terdiri daripada · mendahului · variasi daripada",
+      "loading": "Memuatkan hubungan…",
+      "error": "Tidak dapat memuatkan graf motif.",
+      "retry": "Cuba lagi",
+      "empty": "Tiada hubungan lagi.",
+      "deleteEdge": "Buang hubungan",
+      "addEdge": "Tambah hubungan",
+      "pickNeighbor": "Pilih motif…",
+      "add": "Tambah hubungan",
+      "cancel": "Batal",
+      "kind": {
+        "composed_of": "Terdiri daripada",
+        "precedes": "Mendahului",
+        "variant_of": "Variasi daripada"
+      }
+    },
+    "suggest": {
+      "button": "Cadangkan motif",
+      "loading": "Menyusun motif untuk babak ini...",
+      "error": "Tidak dapat mencadangkan motif.",
+      "retry": "Cuba lagi",
+      "empty": "Tiada motif yang sesuai untuk babak ini lagi — tambah lebih banyak ke dalam perpustakaan anda.",
+      "bind": "Ikat",
+      "degraded": "Tidak berkedudukan — padanan semantik tidak tersedia (model embedding belum ditetapkan), jadi ini adalah sandaran perpustakaan, bukan padanan yang dinilai.",
+      "sectionMine": "Motif anda",
+      "sectionLibrary": "Daripada perpustakaan"
     }
   },
   "authoringRun": {

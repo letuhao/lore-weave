@@ -16,10 +16,56 @@
     "paletteHint": "⌘⇧P → \"Chọn trọng tâm\" hoặc \"Bắt đầu tour hướng dẫn\" bất cứ lúc nào"
   },
   "panels": {
+    "arc-templates": {
+      "title": "Mẫu Cốt truyện",
+      "desc": "Duyệt, tạo, áp dụng và sử dụng lại các cấu trúc cốt truyện đa chương — các tuyến truyện song song và vai trò nhân vật xuyên suốt các chương",
+      "guideBody": "Thư viện Mẫu Cốt truyện lưu trữ các cấu trúc đa chương có thể tái sử dụng — các tuyến truyện song song (tuyến trả thù, lãng mạn, lời nói dối của người thầy) được sắp xếp dưới dạng mô-típ xuyên suốt các chương, cùng với các vai trò nhân vật mà cốt truyện sẽ ràng buộc khi bạn áp dụng. Duyệt theo cấp độ: mẫu của riêng bạn, mẫu hệ thống cung cấp, và (trong Danh mục) các mẫu công khai của người khác. Tạo mẫu mới, áp dụng mẫu của hệ thống/công khai để tùy chỉnh bản sao của riêng bạn, hoặc mở một mẫu để xem dòng thời gian giữa tuyến truyện × chương và xem trước việc áp dụng nó vào cuốn sách này. Bạn cũng có thể lưu một cốt truyện đã viết dưới dạng mẫu, hoặc nhập một câu chuyện tham chiếu và phân tách nó (拆文) thành một mẫu mới. Việc áp dụng mẫu sẽ ở chế độ xem trước trước — nó không bao giờ ghi đè lên các chương của bạn nếu bạn không thực hiện lệnh xác nhận."
+    },
     "arc-inspector": {
       "title": "Trình kiểm tra Cốt truyện",
       "desc": "Đọc và chỉnh sửa MỘT hồi hoặc thiên sử thi — mục tiêu, trạng thái, các tuyến cốt truyện và danh sách nhân vật đã được giải quyết, phạm vi chương, các lời hứa chưa hoàn thành và nguồn gốc khuôn mẫu",
-      "guideBody": "Trình kiểm tra Cốt truyện mở ra một nút trong cây thông số sách của bạn — một thiên sử thi, một hồi, hoặc một tiểu hồi. Cây này không phải để trang trí: các tuyến cốt truyện và liên kết nhân vật của nó được đưa vào mọi câu lệnh tạo nội dung, vì vậy việc chỉnh sửa một hồi tại đây sẽ thay đổi cách AI soạn thảo các chương của nó. Các tuyến và các vị trí trong danh sách nhân vật được giải quyết theo dạng thác đổ — một mục được kế thừa từ thiên sử thi cha sẽ hiển thị màu xám với hành động Ghi đè (việc chỉnh sửa trực tiếp sẽ âm thầm tạo ra một bản sao tách biệt). Phạm vi chương, tổng hợp các lời hứa chưa hoàn thành và nguồn gốc khuôn mẫu là chế độ chỉ đọc. Việc lưu trữ một hồi sẽ đưa các chương của nó trở lại khay chưa lập kế hoạch; việc khôi phục sẽ gắn kết lại chúng. Mở nó từ Trung tâm Lập kế hoạch (chọn một hồi), bảng lệnh, hoặc tác nhân."
+      "guideBody": "Trình kiểm tra Cốt truyện mở ra một nút trong cây thông số sách của bạn — một thiên sử thi, một hồi, hoặc một tiểu hồi. Cây này không phải để trang trí: các tuyến cốt truyện và liên kết nhân vật của nó được đưa vào mọi câu lệnh tạo nội dung, vì vậy việc chỉnh sửa một hồi tại đây sẽ thay đổi cách AI soạn thảo các chương của nó. Các tuyến và các vị trí trong danh sách nhân vật được giải quyết theo dạng thác đổ — một mục được kế thừa từ thiên sử thi cha sẽ hiển thị màu xám với hành động Ghi đè (việc chỉnh sửa trực tiếp sẽ âm thầm tạo ra một bản sao tách biệt). Phạm vi chương, tổng hợp các lời hứa chưa hoàn thành và nguồn gốc khuôn mẫu là chế độ chỉ đọc. Việc lưu trữ một hồi sẽ đưa các chương của nó trở lại khay chưa lập kế hoạch; việc khôi phục sẽ gắn kết lại chúng. Mở nó từ Trung tâm Lập kế hoạch (chọn một hồi), bảng lệnh, hoặc tác nhân.",
+      "body": {
+        "loading": "Đang tải…",
+        "selectArc": "Chọn một cốt truyện để xem kế hoạch.",
+        "archivedBanner": "Đã lưu trữ — các chương đã được chuyển về khay chưa lập kế hoạch. Khôi phục để chỉnh sửa và gắn lại chúng.",
+        "restore": "Khôi phục",
+        "secIdentity": "Danh tính",
+        "fTitle": "Tiêu đề",
+        "fGoal": "Mục tiêu (đạt được gợi ý)",
+        "fSummary": "Tóm tắt (nhãn — không phải gợi ý)",
+        "fStatus": "Trạng thái",
+        "status_empty": "trống",
+        "status_outline": "dàn ý",
+        "status_drafting": "đang soạn thảo",
+        "status_done": "hoàn thành",
+        "secTracks": "Các tuyến cốt truyện → gợi ý",
+        "secRoster": "Danh sách nhân vật (vai diễn)",
+        "empty_track": "Chưa có tuyến cốt truyện nào.",
+        "empty_role": "Chưa có vai diễn nào.",
+        "remove": "xóa",
+        "overrideHere": "ghi đè tại đây",
+        "add_track": "+ tuyến cốt truyện",
+        "add_role": "+ vai diễn",
+        "keyPlaceholder": "khóa",
+        "labelPlaceholder": "nhãn (tùy chọn)",
+        "addBtn": "thêm",
+        "cancel": "hủy",
+        "keyExists": "khóa đã tồn tại",
+        "secChapters": "Chương",
+        "chaptersLabel": "Chương",
+        "noChapters": "Chưa được gán chương nào",
+        "nonContiguous": "không liên tục",
+        "secPromises": "Lời hứa đang mở",
+        "noPromises": "Không có lời hứa nào đang mở tại đây.",
+        "secProvenance": "Nguồn gốc",
+        "fromTemplate": "Từ mẫu",
+        "authoredNoTemplate": "Được soạn thảo từ cuộc hội thoại (không có mẫu).",
+        "secDanger": "Nguy hiểm",
+        "archiveArc": "Lưu trữ cốt truyện",
+        "blast": "cũng lưu trữ {{count}} cốt truyện phụ",
+        "archivingNote": "Lưu trữ sẽ đưa các chương trở lại khay chưa lập kế hoạch; khôi phục sẽ gắn lại chúng."
+      }
     },
     "compose": {
       "title": "Trò chuyện đồng tác giả",
@@ -144,6 +190,16 @@
       "title": "Chỉnh sửa",
       "desc": "Tỷ lệ chấp nhận / chỉnh sửa / tạo lại / từ chối bản thảo AI của bạn — chỉ số đánh giá chất lượng",
       "guideBody": "Chỉnh sửa là tấm gương phản chiếu quá trình biên tập của chính bạn: mỗi khi bạn chấp nhận, chỉnh sửa, chọn một phương án khác, tạo lại hoặc từ chối một bản thảo AI, lựa chọn đó đều được ghi lại — và bảng này hiển thị các tỷ lệ đó, được chia theo Diverge (tùy chọn K) so với Stream. Tỷ lệ chỉnh sửa/tạo lại/từ chối thấp hơn (và tỷ lệ chấp nhận nguyên bản cao hơn) trong chế độ Diverge có nghĩa là bộ xếp hạng lại (reranker) đang xứng đáng với độ trễ tăng thêm của nó. Đây là bảng thông tin tham khảo và chỉ đọc; nó không bao giờ thay đổi văn phong của bạn — nó chỉ cho bạn biết liệu người viết cùng có đang viết tốt hơn cho cuốn sách của bạn hay không."
+    },
+    "quality-heal": {
+      "title": "Tự sửa lỗi",
+      "desc": "Chạy tính năng Trau chuốt cho một chương và chấp nhận từng lỗi sửa trước khi nó tác động vào văn bản của bạn",
+      "guideBody": "Tính năng Tự sửa lỗi thực hiện một lượt kiểm tra lỗi nhanh qua một chương và đề xuất các chỉnh sửa — sự sai lệch đại từ, lỗi đánh máy, lỗi logic cốt truyện, các đoạn mô tả quá dài — mỗi lỗi được hiển thị dưới dạng một hàng chấp nhận/từ chối. Các lỗi xác định (lỗi đánh máy, đại từ) được đánh dấu sẵn; các bản viết lại về ngữ nghĩa sẽ không được đánh dấu để bạn tự đánh giá. Không có gì tác động đến văn bản của bạn cho đến khi bạn nhấn Áp dụng, và ngay cả khi đó, nó sẽ thực hiện với một bước kiểm tra phiên bản: nếu chương đã thay đổi kể từ khi chạy Trau chuốt, lệnh áp dụng sẽ bị từ chối thay vì ghi đè lên các chỉnh sửa mới hơn của bạn."
+    },
+    "progress": {
+      "title": "Tiến độ",
+      "desc": "Số chữ hôm nay, chuỗi ngày viết liên tiếp, tổng số chữ của cuốn sách, mục tiêu hàng ngày và biểu đồ đường",
+      "guideBody": "Tiến độ biến việc viết lách của bạn thành một thói quen có thể quan sát được: số chữ đã viết hôm nay, chuỗi ngày viết liên tiếp hiện tại, tổng số chữ của cuốn sách, và biểu đồ đường trong 7 hoặc 30 ngày. Thiết lập mục tiêu hàng ngày cá nhân và một đường tham chiếu sẽ đánh dấu nó trên biểu đồ — mục tiêu này là của riêng bạn, không chia sẻ với những người cộng tác. Nó đọc số lượng từ mà trình biên tập ghi lại khi bạn lưu; nó không bao giờ thay đổi văn bản của bạn."
     },
     "kg-overview": {
       "title": "Tổng quan",
@@ -553,25 +609,20 @@
       "desc": "Nghiên cứu các mô-típ (套路/爽点/打脸), áp dụng hoặc khai thác chúng, và kiểm tra biểu đồ mối quan hệ motif",
       "guideBody": "Thư viện Motif là bàn làm việc sáng tạo cốt truyện của bạn. Duyệt các motif theo phân cấp — của riêng bạn, nhãn của cuốn sách này, phân cấp sách dùng chung, hạt giống hệ thống, danh mục công khai và các bản nháp bạn đã khai thác. Tạo một motif trực tiếp, áp dụng một motif từ danh mục, hoặc khai thác kho dữ liệu của riêng bạn để khám phá các khuôn mẫu lặp lại. Mở bất kỳ motif nào để đọc các nhịp độ (beats) và vai trò của nó, đồng thời mở rộng biểu đồ để xem nó được cấu thành từ gì, nó diễn ra trước điều gì và các biến thể của nó. Liên kết các motif với các cảnh từ Trình kiểm tra cảnh (Scene Inspector) để bản thảo thực sự hướng tới chúng."
     },
-    "arc-templates": {
-      "title": "Mẫu Cốt truyện",
-      "desc": "Duyệt, tạo, áp dụng và sử dụng lại các cấu trúc cốt truyện đa chương — các tuyến truyện song song và vai trò nhân vật xuyên suốt các chương",
-      "guideBody": "Thư viện Mẫu Cốt truyện lưu trữ các cấu trúc đa chương có thể tái sử dụng — các tuyến truyện song song (tuyến trả thù, lãng mạn, lời nói dối của người thầy) được sắp xếp dưới dạng mô-típ xuyên suốt các chương, cùng với các vai trò nhân vật mà cốt truyện sẽ ràng buộc khi bạn áp dụng. Duyệt theo cấp độ: mẫu của riêng bạn, mẫu hệ thống cung cấp, và (trong Danh mục) các mẫu công khai của người khác. Tạo mẫu mới, áp dụng mẫu của hệ thống/công khai để tùy chỉnh bản sao của riêng bạn, hoặc mở một mẫu để xem dòng thời gian giữa tuyến truyện × chương và xem trước việc áp dụng nó vào cuốn sách này. Bạn cũng có thể lưu một cốt truyện đã viết dưới dạng mẫu, hoặc nhập một câu chuyện tham chiếu và phân tách nó (拆文) thành một mẫu mới. Việc áp dụng mẫu sẽ ở chế độ xem trước trước — nó không bao giờ ghi đè lên các chương của bạn nếu bạn không thực hiện lệnh xác nhận."
-    },
-    "quality-heal": {
-      "title": "Tự sửa lỗi",
-      "desc": "Chạy tính năng Trau chuốt cho một chương và chấp nhận từng lỗi sửa trước khi nó tác động vào văn bản của bạn",
-      "guideBody": "Tính năng Tự sửa lỗi thực hiện một lượt kiểm tra lỗi nhanh qua một chương và đề xuất các chỉnh sửa — sự sai lệch đại từ, lỗi đánh máy, lỗi logic cốt truyện, các đoạn mô tả quá dài — mỗi lỗi được hiển thị dưới dạng một hàng chấp nhận/từ chối. Các lỗi xác định (lỗi đánh máy, đại từ) được đánh dấu sẵn; các bản viết lại về ngữ nghĩa sẽ không được đánh dấu để bạn tự đánh giá. Không có gì tác động đến văn bản của bạn cho đến khi bạn nhấn Áp dụng, và ngay cả khi đó, nó sẽ thực hiện với một bước kiểm tra phiên bản: nếu chương đã thay đổi kể từ khi chạy Trau chuốt, lệnh áp dụng sẽ bị từ chối thay vì ghi đè lên các chỉnh sửa mới hơn của bạn."
-    },
-    "progress": {
-      "title": "Tiến độ",
-      "desc": "Số chữ hôm nay, chuỗi ngày viết liên tiếp, tổng số chữ của cuốn sách, mục tiêu hàng ngày và biểu đồ đường",
-      "guideBody": "Tiến độ biến việc viết lách của bạn thành một thói quen có thể quan sát được: số chữ đã viết hôm nay, chuỗi ngày viết liên tiếp hiện tại, tổng số chữ của cuốn sách, và biểu đồ đường trong 7 hoặc 30 ngày. Thiết lập mục tiêu hàng ngày cá nhân và một đường tham chiếu sẽ đánh dấu nó trên biểu đồ — mục tiêu này là của riêng bạn, không chia sẻ với những người cộng tác. Nó đọc số lượng từ mà trình biên tập ghi lại khi bạn lưu; nó không bao giờ thay đổi văn bản của bạn."
-    },
     "quality-conformance": {
       "title": "Sự nhất quán",
       "desc": "Từng nhịp độ: văn bản đã thực hiện đúng kế hoạch chưa? Trạng thái thực hiện theo từng cảnh (đã thực hiện/chưa thực hiện) + dải căng thẳng",
       "guideBody": "Truy vết sự tương thích, theo từng cảnh, để xem văn phong của bạn có thực sự truyền tải được các nhịp mô-típ đã lên kế hoạch cho một chương hay không. Mỗi cảnh sẽ hiển thị trạng thái đã thực hiện / chưa thực hiện và so sánh mức độ căng thẳng của nó với mục tiêu. Tính năng này giải đáp sự khác biệt giữa kịch bản và văn bản (không phải kịch bản so với khuôn mẫu — đó là chế độ xem độ lệch khuôn mẫu cốt truyện). Các tín hiệu mang tính chất tham khảo (mang tính khái quát, không phải xác minh nguyên nhân trực tiếp). Hãy tạo lại một cảnh đã bỏ lỡ nhịp, hoặc chạy lại toàn bộ quá trình kiểm tra dựa trên một mô hình mà bạn chọn."
+    },
+    "flywheel": {
+      "title": "Flywheel",
+      "desc": "Những gì bản xuất bản gần nhất đã thêm vào chính văn — nhân vật, mối liên kết và sự kiện mới",
+      "guideBody": "Flywheel là phần thưởng cho việc xuất bản: khi bạn xuất bản một chương, một quá trình trích xuất sẽ mở rộng kiến thức về thế giới của bạn, và bảng này hiển thị những gì nó đã thêm vào — các thực thể, mối quan hệ và sự kiện mới — với các điểm nhấn có thể nhấp để đưa bạn trực tiếp đến nhân vật đó trong Cast, liên kết đó trong đồ thị, hoặc khoảnh khắc đó trên dòng thời gian. Nó khép kín vòng lặp: viết lách bồi đắp cho chính văn, và chính văn tạo nền tảng cho chương tiếp theo của bạn."
+    },
+    "canonview": {
+      "title": "Chính văn tại chương",
+      "desc": "Những gì chính văn biết tính đến chương đang xem xét — các thực thể hiện diện/đã được thiết lập, trạng thái chính văn và dòng thời gian",
+      "guideBody": "Trả lời câu hỏi «chính văn biết được những gì tính đến chương tôi đang viết?» — các thực thể hiện diện trong và được thiết lập bởi chương hiện tại (từ bảng thuật ngữ), cộng với trạng thái chính văn (có bao nhiêu thực thể đang hoạt động so với đã biến mất) và các sự kiện dòng thời gian tính đến thời điểm đó (từ đồ thị kiến thức). Nó theo sát chương mà bạn đang tập trung trong bản thảo, và cũng chính là bảng kiểm tra mà khung hình «what-if» hiển thị tại một điểm rẽ nhánh — để bạn có thể kiểm tra những gì đã được thiết lập trước khi bạn đi chệch hướng. Mở một cảnh hoặc một chương để bắt đầu tập trung vào nó."
     }
   },
   "sceneRail": {
@@ -653,6 +704,7 @@
   },
   "planner": {
     "sourcePlaceholder": "Dán markdown hệ thống truyện…",
+    "proposeBlind": "Chỉ đề xuất dựa trên bản nháp này. Các chương hiện có sẽ không được đọc.",
     "propose": "Đề xuất",
     "model": "Model",
     "empty": "Dán markdown hệ thống truyện và bấm Đề xuất để bắt đầu.",
@@ -673,8 +725,7 @@
       "colMode": "Chế độ",
       "colStatus": "Trạng thái",
       "colCreated": "Ngày tạo"
-    },
-    "proposeBlind": "Chỉ đề xuất dựa trên bản nháp này. Các chương hiện có sẽ không được đọc."
+    }
   },
   "editor": {
     "empty": "Chọn một chương trong navigator để soạn ở đây.",
@@ -684,7 +735,15 @@
     "heatmap": "Bản đồ nhiệt",
     "glossary": "Thuật ngữ",
     "focus": "Tập trung",
-    "translate": "Dịch"
+    "translate": "Dịch",
+    "derivativeForked": "Trên một dị bản — chương này đã được TÁCH NHÁNH, tách biệt khỏi chính văn. Các chỉnh sửa sẽ được lưu vào nhánh; chính văn vẫn giữ nguyên.",
+    "derivativeInherit": "Trên một dị bản — chương này vẫn phản chiếu chính văn. Chỉnh sửa tại đây sẽ TÁCH NHÁNH nó vào nhánh (chính văn vẫn giữ nguyên).",
+    "mergeToCanon": "Hợp nhất vào chính văn",
+    "mergeConfirm": "Xác nhận — ghi đè lên bản chính",
+    "merging": "Đang hợp nhất…",
+    "mergeDone": "Đã hợp nhất vào bản chính — nhánh sẽ giữ phiên bản riêng.",
+    "mergeConflict": "Bản chính đã thay đổi — hãy mở lại chương và thực hiện hợp nhất lại.",
+    "mergeFailed": "Không thể hợp nhất — vui lòng thử lại."
   },
   "sceneCompose": {
     "empty": "Chọn một chương trong trình điều hướng bản thảo để soạn thảo các cảnh tại đây.",
@@ -849,6 +908,8 @@
     "canonRulesDesc": "Thiết lập các quy tắc bất biến mà biên tập viên sẽ tuân thủ",
     "correctionsTitle": "Chỉnh sửa",
     "correctionsDesc": "Tỷ lệ chấp nhận / chỉnh sửa / tạo lại / từ chối của bạn",
+    "healTitle": "Tự sửa lỗi",
+    "healDesc": "Chạy chế độ Trau chuốt và chấp nhận từng lỗi sửa trước khi áp dụng vào văn bản của bạn",
     "canonFromRules": "Vi phạm quy tắc ({{n}})",
     "canonRuleError": "Không thể tải các vi phạm quy tắc chính thống — vui lòng thử lại.",
     "canonRuleGone": "Một quy tắc không còn tồn tại",
@@ -863,8 +924,6 @@
     "canonRulesCapped": "Đang hiển thị {{shown}} quy tắc vi phạm gần đây nhất trong tổng số {{total}}.",
     "workUnavailable": "Không thể kết nối với dịch vụ co-writer, vì vậy dữ liệu chất lượng của cuốn sách này không thể tải được. Có thể có các vấn đề tồn tại mà không được hiển thị ở đây. Vui lòng thử lại sau ít phút.",
     "hubUnavailable": "Không thể kết nối với dịch vụ co-writer, vì vậy các cam kết, điểm số phê bình và độ bao phủ cốt truyện hiện không thể tải được. Có thể có các vấn đề tồn tại mà không được hiển thị ở đây.",
-    "healTitle": "Tự sửa lỗi",
-    "healDesc": "Chạy chế độ Trau chuốt và chấp nhận từng lỗi sửa trước khi áp dụng vào văn bản của bạn",
     "conformanceTitle": "Sự tuân thủ",
     "conformanceDesc": "Văn bản có bám sát kế hoạch không? Truy vết từng nhịp độ trong mỗi cảnh",
     "pickModelRerun": "Chọn một mô hình để chạy lại với…",

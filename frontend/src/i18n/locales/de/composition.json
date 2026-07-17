@@ -171,7 +171,19 @@
     "kind_character": "Charaktere",
     "kind_location": "Orte",
     "kind_faction": "Fraktionen",
-    "kind_concept": "Konzepte"
+    "kind_concept": "Konzepte",
+    "rename": "Umbenennen",
+    "renameConflict": "Andernorts geändert – neu geladen.",
+    "editEntity": "Aliase & Typ bearbeiten",
+    "archive": "Entität archivieren",
+    "archiveConfirm": "«{{name}}» archivieren? Die Beziehungen und der Glossar-Anker bleiben erhalten; die Entität kehrt zurück, falls das Buch sie erneut erwähnt (es gibt keine Schaltfläche zum Wiederherstellen).",
+    "archived": "Archiviert – sie kehrt zurück, falls das Buch sie erneut erwähnt.",
+    "newEntity": "Neu",
+    "editFailed": "Bearbeiten fehlgeschlagen: {{error}}",
+    "truncated": "Die ersten 200 werden angezeigt – verfeinern Sie Ihre Suche, um die Liste einzugrenzen.",
+    "showingOf": "Es werden {{loaded}} von {{total}} angezeigt.",
+    "loadMore": "Mehr laden",
+    "loadingMore": "Wird geladen…"
   },
   "relmap": "Beziehungen",
   "relations": {
@@ -214,7 +226,10 @@
     "gone": "vergangen",
     "loading": "Charakterbogen wird geladen…",
     "noProject": "Noch kein Wissensgraph vorhanden – extrahiere dieses Buch, um Charakterbögen zu erstellen.",
-    "empty": "Dieser Charakter hat noch keine Ereignisse."
+    "empty": "Dieser Charakter hat noch keine Ereignisse.",
+    "edit": "Bearbeiten",
+    "linkEntity": "+ Entität verknüpfen",
+    "addEvent": "+ Ereignis hinzufügen"
   },
   "worldmap": "Weltkarte",
   "wmap": {
@@ -366,6 +381,9 @@
   "statDiverge": "Diverge (K-Optionen)",
   "statStream": "Stream",
   "guidePlaceholder": "Optionale Anleitung für den Co-Autor…",
+  "correction": {
+    "capturedToast": "Notiert – dein Co-Autor wird daraus lernen"
+  },
   "reasoning": "Begründung",
   "reasoningHint": "Auto = der Server entscheidet pro Modell. Aus deaktiviert das „Denken“; Niedrig/Mittel/Hoch erzwingt es.",
   "reasoningAuto": "Denken: auto",
@@ -430,6 +448,12 @@
   "canonUntil": "Bis (Lesereihenfolge)",
   "canonActive": "aktiv",
   "canonInactive": "inaktiv",
+  "canonArchivedTag": "archiviert",
+  "canonShowArchived": "Archivierte anzeigen",
+  "canonRuleArchived": "Regel archiviert",
+  "canonRuleRestored": "Regel wiederhergestellt",
+  "restore": "Wiederherstellen",
+  "undo": "Rückgängig machen",
   "canonWindowInverted": "'Von' muss ≤ 'Bis' sein.",
   "archive": "Archiv",
   "noRules": "Noch keine Kanon-Regeln.",
@@ -611,12 +635,18 @@
     "scope": {
       "label": "Motiv-Umfang",
       "my": "Meine Bibliothek",
-      "catalog": "Öffentlicher Katalog"
+      "catalog": "Öffentlicher Katalog",
+      "book": "Buch",
+      "shared": "Geteilt",
+      "system": "System",
+      "drafts": "Entwürfe",
+      "needsBook": "Öffnen Sie ein Buch, um dessen Motive anzuzeigen"
     },
     "search": "Motive suchen",
     "overuse": "\"{{name}}\" wird bereits in {{chapters}} verwendet – versuche eine Variation.",
     "list": {
-      "noMatch": "Keine Motive gefunden – Filter löschen."
+      "noMatch": "Keine Motive gefunden – Filter löschen.",
+      "truncated": "Die ersten 100 werden angezeigt – nutze die Suche oder Filter, um die restlichen Ergebnisse einzugrenzen."
     },
     "error": {
       "load": "Laden fehlgeschlagen – bitte erneut versuchen."
@@ -711,7 +741,8 @@
     },
     "binding": {
       "freeForm": "Kein Motiv passt – diese Szene ist Freiform.",
-      "commitGenerate": "Bestätigen + Szene schreiben →"
+      "commitGenerate": "Bestätigen + Szene schreiben →",
+      "noWork": "Erstellen Sie einen Plan für dieses Buch, um Motive mit seinen Szenen zu verknüpfen."
     },
     "swap": {
       "title": "Motiv tauschen",
@@ -735,7 +766,8 @@
         "ok": "Auf Beat",
         "warn": "Spannungsabweichung",
         "bad": "Beat verpasst"
-      }
+      },
+      "rerunNeedsModel": "Wählen Sie ein Modell aus, um die Konformitätsprüfung erneut durchzuführen"
     },
     "arc": {
       "mobileNotice": "Das Zeitstrahl-Raster ist auf größeren Bildschirmen verfügbar – hier kannst du es als Liste bearbeiten.",
@@ -745,7 +777,65 @@
       "moveRight": "Später",
       "grow": "Verlängern",
       "shrink": "Verkürzen",
-      "remove": "Entfernen"
+      "remove": "Entfernen",
+      "libraryEmpty": "Noch keine Arc-Templates. Erstelle eines oder importiere eine Geschichte zum Dekonstruieren.",
+      "templates": {
+        "tabLibrary": "Bibliothek",
+        "tabCatalog": "Katalog",
+        "tabDeconstruct": "Importieren & Dekonstruieren",
+        "tier_all": "Alle",
+        "tier_mine": "Meine",
+        "tier_system": "System",
+        "tier_book": "Buch",
+        "new": "+ Neu",
+        "loading": "Laden…",
+        "loadError": "Vorlagen konnten nicht geladen werden.",
+        "retry": "Wiederholen",
+        "chapters": "{{count}} Kapitel",
+        "chipSystem": "System",
+        "chipMine": "Mein",
+        "chipPublic": "Öffentlich",
+        "archive": "Archiv",
+        "adopt": "adoptieren",
+        "createCode": "Code (eindeutig)",
+        "createName": "Name",
+        "createShare": "Mit den Mitwirkenden dieses Buches teilen (Buch-Stufe)",
+        "create": "Erstellen",
+        "cancel": "Abbrechen",
+        "catalogError": "Der Katalog konnte nicht geladen werden.",
+        "catalogEmpty": "Noch keine öffentlichen Arc-Templates.",
+        "back": "← Alle Templates",
+        "driftTitle": "Drift — wird von diesem Buch verwendet",
+        "driftUnapplied": "Noch nicht auf dieses Buch angewendet – wende es oben an, um den Drift zu vergleichen.",
+        "driftNoProvenance": "Dieser Arc wurde direkt erstellt – es gibt kein Template, von dem abgewichen werden kann.",
+        "driftGone": "Das Quell-Template ist nicht mehr verfügbar.",
+        "driftLoading": "Drift wird geladen…",
+        "untitledArc": "(unbenannter Arc)",
+        "truncated": "Die ersten {{shown}} von {{count}} werden angezeigt – nutze den Katalog oder eine präzisere Auswahl, um mehr zu finden."
+      },
+      "import": {
+        "privacy": "Der Rohtext bleibt privat und wird niemals geteilt. Nur die abgeleitete abstrakte Struktur kann veröffentlicht werden – und die Veröffentlichung entfernt den Quellenbezug.",
+        "sources": "Referenzquellen",
+        "loading": "Laden…",
+        "noSources": "Noch keine Quellen – füge unten eine ein.",
+        "untitled": "(unbenannt)",
+        "deleteConfirm": "Diese Quelle löschen? Es gibt keine Wiederherstellung.",
+        "deleteTitle": "Löschen (keine Wiederherstellung)",
+        "sourceError": "Quelle konnte nicht gespeichert werden – bitte erneut versuchen.",
+        "what": "Die Referenz in eine wiederverwendbare Arc-Vorlage zerlegen (LLM-basiert).",
+        "hint": "Arc-Hinweis (optional)",
+        "useWeb": "Web-Suche zulassen",
+        "model": "Modell zerlegen",
+        "estimating": "Schätzung läuft…",
+        "running": "Zerlegen…",
+        "run": "Zerlegen",
+        "selectFirst": "Wählen Sie zuerst eine Quelle oben aus.",
+        "done": "Eine neue Arc-Vorlage wurde erstellt – sie findest du in der Bibliothek.",
+        "pasteTitle": "Titel",
+        "pasteBody": "Referenztext einfügen…",
+        "tooLong": "Zu lang – vor dem Import kürzen.",
+        "addSource": "Quelle hinzufügen"
+      }
     },
     "simple": {
       "actant": {
@@ -803,6 +893,34 @@
       "knows": "Weiß",
       "deceived": "Getäuscht",
       "gap": "Lücke"
+    },
+    "graph": {
+      "title": "Graph — zusammengesetzt aus · geht voraus auf · Variante von",
+      "loading": "Kanten werden geladen…",
+      "error": "Motiv-Graph konnte nicht geladen werden.",
+      "retry": "Wiederholen",
+      "empty": "Noch keine Beziehungen vorhanden.",
+      "deleteEdge": "Kante entfernen",
+      "addEdge": "Beziehung hinzufügen",
+      "pickNeighbor": "Motiv auswählen…",
+      "add": "Kante hinzufügen",
+      "cancel": "Abbrechen",
+      "kind": {
+        "composed_of": "Zusammengesetzt aus",
+        "precedes": "Geht voraus auf",
+        "variant_of": "Variante von"
+      }
+    },
+    "suggest": {
+      "button": "Motiv vorschlagen",
+      "loading": "Motive für diese Szene werden bewertet…",
+      "error": "Motive konnten nicht vorgeschlagen werden.",
+      "retry": "Wiederholen",
+      "empty": "Noch kein passendes Motiv für diese Szene gefunden – füge deiner Bibliothek mehr hinzu.",
+      "bind": "Verknüpfen",
+      "degraded": "Nicht bewertet – semantisches Matching ist nicht verfügbar (das Embedding-Modell ist nicht konfiguriert), daher handelt es sich hierbei um Standard-Bibliotheksergebnisse statt bewerteter Treffer.",
+      "sectionMine": "Deine Motive",
+      "sectionLibrary": "Aus der Bibliothek"
     }
   },
   "authoringRun": {

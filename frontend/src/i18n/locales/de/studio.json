@@ -16,6 +16,57 @@
     "paletteHint": "⌘⇧P → jederzeit \"Fokus wählen\" oder \"Geführte Tour starten\""
   },
   "panels": {
+    "arc-templates": {
+      "title": "Handlungsbögen-Vorlagen",
+      "desc": "Durchsuchen, erstellen, übernehmen und wenden Sie wiederverwendbare, mehrkapitelige Handlungsbögen an – parallele Handlungsstränge und Besetzungsrollen über einen Kapitelumfang hinweg",
+      "guideBody": "Die Bibliothek der Handlungsbögen-Vorlagen enthält wiederverwendbare, mehrkapitelige Strukturen – parallele Handlungsstränge (Rachemotiv, Romanze, Lüge des Mentors), die als Motive über einen Kapitelumfang verteilt sind, sowie die Besetzungsrollen, die der Bogen beim Anwenden festlegt. Durchsuchen Sie nach Kategorien: Ihre eigenen Vorlagen, die System-Standardvorlagen und (im Katalog) öffentliche Vorlagen anderer Nutzer. Erstellen Sie eine neue Vorlage, übernehmen Sie eine System-/öffentliche Vorlage, um Ihre eigene Kopie anzupassen, oder öffnen Sie eine Vorlage, um deren Strang-×-Kapitel-Zeitstrahl zu sehen und eine Anwendung auf dieses Buch vorabzuprobieren. Sie können auch einen bereits von Ihnen verfassten Bogen als Vorlage speichern oder eine Referenzgeschichte importieren und diese in eine neue Vorlage dekonstruieren (拆文). Das Anwenden einer Vorlage erfolgt zunächst als Vorschau – sie überschreibt Ihre Kapitel niemals, ohne dass Sie die Umsetzung explizit ausführen."
+    },
+    "arc-inspector": {
+      "title": "Bogen-Inspektor",
+      "desc": "Lesen und bearbeiten Sie EINEN Bogen oder eine Saga – deren Ziel, Status, die kaskadenartig aufgelösten Handlungsstränge und die Besetzung, den Kapitelumfang, offene Versprechen und die Herkunft der Vorlage",
+      "guideBody": "Der Bogen-Inspektor öffnet einen Knoten Ihres Buch-Spezifikationbaums – eine Saga, einen Bogen oder einen Teilbogen. Dieser Baum ist keine Dekoration: Seine Handlungsstränge und Besetzungsbindungen werden in jeden Generierungsprompt eingelesen, sodass die Bearbeitung eines Bogens hier beeinflusst, wie die KI die Kapitel entwirft. Handlungsstränge und Besetzungsslots werden kaskadenartig aufgelöst – ein Eintrag, der von einer übergeordneten Saga geerbt wurde, wird ausgegraut mit einer Option zum Überschreiben (eine Bearbeitung an dieser Stelle würde stillschweigend eine Kopie erstellen). Der Kapitelumfang, die Zusammenfassung offener Versprechen und die Herkunft der Vorlage sind schreibgeschützt. Das Archivieren eines Bogens gibt seine Kapitel in die ungeplante Liste zurück; das Wiederherstellen fügt sie wieder an. Öffnen Sie ihn über den Planungs-Hub (wählen Sie einen Bogen aus), die Befehlspalette oder den Agenten.",
+      "body": {
+        "loading": "Laden…",
+        "selectArc": "Wähle einen Handlungsbogen aus, um dessen Plan anzuzeigen.",
+        "archivedBanner": "Archiviert – die Kapitel wurden in das ungeplante Tray zurückgeführt. Wiederherstellen, um sie zu bearbeiten und erneut hinzuzufügen.",
+        "restore": "Wiederherstellen",
+        "secIdentity": "Identität",
+        "fTitle": "Titel",
+        "fGoal": "Ziel (erreicht den Prompt)",
+        "fSummary": "Zusammenfassung (eine Bezeichnung – nicht der Prompt)",
+        "fStatus": "Status",
+        "status_empty": "leer",
+        "status_outline": "Entwurf",
+        "status_drafting": "Schreiben",
+        "status_done": "erledigt",
+        "secTracks": "Tracks (Handlungsstränge → Prompt)",
+        "secRoster": "Besetzung (Charakter-Slots)",
+        "empty_track": "Noch keine Handlungsstränge vorhanden.",
+        "empty_role": "Noch keine Rollen vorhanden.",
+        "remove": "entfernen",
+        "overrideHere": "hier überschreiben",
+        "add_track": "+ Track",
+        "add_role": "+ Rolle",
+        "keyPlaceholder": "Schlüssel",
+        "labelPlaceholder": "Bezeichnung (optional)",
+        "addBtn": "hinzufügen",
+        "cancel": "Abbrechen",
+        "keyExists": "Schlüssel existiert",
+        "secChapters": "Kapitel",
+        "chaptersLabel": "Kapitel",
+        "noChapters": "Keine Kapitel zugewiesen",
+        "nonContiguous": "nicht zusammenhängend",
+        "secPromises": "Offene Versprechen",
+        "noPromises": "Hier wird kein Versprechen eröffnet.",
+        "secProvenance": "Herkunft",
+        "fromTemplate": "Aus Vorlage",
+        "authoredNoTemplate": "Aus Konversation erstellt (keine Vorlage).",
+        "secDanger": "Gefahr",
+        "archiveArc": "Handlungsbogen archivieren",
+        "blast": "archiviert auch {{count}} Sub-Bögen",
+        "archivingNote": "Durch das Archivieren werden die Kapitel in die ungeplante Ablage zurückgeführt; durch das Wiederherstellen werden sie wieder verknüpft."
+      }
+    },
     "compose": {
       "title": "Co-Autor-Chat",
       "desc": "KI-Co-Writer Chat",
@@ -129,6 +180,26 @@
       "title": "Kanon-Probleme",
       "desc": "Bestätigte Widersprüche aus der Generierung & Wissensextraktion",
       "guideBody": "Canon Issues sammelt bestätigte Widersprüche zwischen deinem Text und deiner etablierten Lore – ein Charakter, der an zwei Orten gleichzeitig ist, eine geänderte Augenfarbe oder eine Magieregel, die die Geschichte gerade gebrochen hat. Jedes Problem verweist auf das Kapitel und die Kanon-Regel, gegen die verstoßen wurde, damit du den Text korrigieren oder die Regel anpassen kannst."
+    },
+    "quality-canon-rules": {
+      "title": "Kanon-Regeln",
+      "desc": "Definiere die Invarianten, die die Kritik erzwingt – erstellen, bearbeiten, archivieren, wiederherstellen",
+      "guideBody": "In den Kanon-Regeln legst du die Konstanten fest, die deine Geschichte niemals verletzen darf – ein Charakter hat nach Kapitel 41 nur noch einen Arm, Geistersteine werden verbraucht und nicht zurückgegeben, die Identität des Sektmeisters bleibt bis zum Salt-Court-Arc verborgen. Dies sind die Regeln, die die Kritik und das Self-Heal bei jeder Generierung erzwingen. Wenn du sie hier festlegst, bringst du dem Co-Writer deinen Kanon bei. Es ist die andere Hälfte von Canon Issues: Das eine Panel zeigt, was gebrochen wurde, dieses hier ist der Ort, an dem du die Regel korrigierst."
+    },
+    "quality-corrections": {
+      "title": "Korrekturen",
+      "desc": "Deine Akzeptanz-, Bearbeitungs-, Regenerierungs- und Ablehnungsraten bei KI-Entwürfen – das Qualitätssignal",
+      "guideBody": "Korrekturen spiegeln deine eigene redaktionelle Arbeit wider: Jedes Mal, wenn du einen KI-Entwurf akzeptierst, bearbeitest, einen anderen Vorschlag wählst, neu generierst oder ablehnst, wird diese Entscheidung aufgezeichnet. Dieses Panel zeigt die Raten, aufgeteilt nach Diverge (K-Option) vs. Stream. Eine niedrigere Bearbeitungs-/Regenerierungs-/Ablehnungsrate (und eine höhere Akzeptanz des Originals) in Diverge bedeutet, dass sich die zusätzliche Latenz des Re-Rankers lohnt. Dies ist ein rein informatives, schreibgeschütztes Panel; es verändert niemals deinen Text – es zeigt dir lediglich, ob der Co-Writer besser auf dein Buch eingestellt ist."
+    },
+    "quality-heal": {
+      "title": "Self-heal",
+      "desc": "Führe ein Polish auf ein Kapitel aus und akzeptiere jede Korrektur, bevor sie deinen Text verändert",
+      "guideBody": "Self-heal führt einen kostengünstigen Korrekturlesedurchlauf über ein Kapitel aus und schlägt Korrekturen vor – Pronomen-Drift, Tippfehler, Logikfehler im Kanon, zu lange Beschreibungen – jede Korrektur wird als Zeile zum Annehmen oder Ablehnen angezeigt. Deterministische Korrekturen (Tippfehler, Pronomen) sind bereits vorausgewählt; semantische Umschreibungen sind nicht markiert, damit Sie diese selbst beurteilen können. Nichts wird an Ihrem Text geändert, bis Sie auf „Anwenden“ klicken; selbst dann erfolgt die Bearbeitung mit einer Versionsprüfung: Falls sich das Kapitel seit dem letzten Durchlauf von Polish geändert hat, wird das Anwenden abgelehnt, anstatt Ihre neueren Änderungen rückgängig zu machen."
+    },
+    "progress": {
+      "title": "Fortschritt",
+      "desc": "Wörter heute, Ihre Serie, die Gesamtzahl des Buches, ein Tagesziel und eine Sparkline",
+      "guideBody": "Der Fortschritt macht Ihr Schreiben zu einer sichtbaren Gewohnheit: heute geschriebene Wörter, Ihre aktuelle Serie, die laufende Gesamtzahl des Buches und eine 7- oder 30-Tage-Sparkline. Legen Sie ein persönliches Tagesziel fest, das als Referenzlinie im Diagramm markiert wird – das Ziel gehört nur Ihnen und wird nicht mit Mitwirkenden geteilt. Es liest die Wortzahlen, die der Editor beim Speichern erfasst; es verändert niemals Ihren Text."
     },
     "kg-overview": {
       "title": "Übersicht",
@@ -292,6 +363,21 @@
       "title": "Plan-Hub",
       "desc": "Der gesamte Buchplan auf einer Grafik-Leinwand – Handlungsbögen, Kapitel, Szenen und deren Verknüpfungen",
       "guideBody": "Der Plan-Hub stellt die gesamte Struktur Ihres Buches als Graph dar: Jede Saga/jeder Bogen/jeder Teilbogen ist eine Spur, seine Kapitel und Szenen sind Karten entlang einer chronologischen Achse, und Szenen-Links zeichnen die kausalen Verbindungen dazwischen. Öffnen Sie das Panel, um jeden Bogen als zusammengefasste Karte zu sehen; erweitern Sie einen Bogen, um seine Kapitel nachzuladen, und ein Kapitel, um seine Szenen anzuzeigen. Bewegen und zoomen Sie, um zu navigieren; Symbole für Probleme oder veraltete Daten weisen darauf hin, wo der Kanon oder Versprechen Aufmerksamkeit erfordern."
+    },
+    "plan-passes": {
+      "title": "Pass-Schiene",
+      "desc": "Erstellen Sie einen Plan Schritt für Schritt und genehmigen Sie jeden Kontrollpunkt",
+      "guideBody": "Die Pass-Schiene steuert den 7-Pass-Compiler von PlanForge – Motive, Besetzung, Welt, Beats, Charakterbögen, Szenen und Self-Heal – jeweils einen Durchgang nach dem anderen. Jeder Pass zeigt an, ob er aktuell ist (die Eingabedaten haben sich seit dem letzten Durchlauf nicht geändert) oder veraltet ist. Die Schiene zeigt Ihnen, wie weit der Compiler selbstständig fortfahren kann und welcher Pass auf Ihre Entscheidung wartet. Zwei Pässe sind blockierende Kontrollpunkte, die Sie genehmigen müssen, bevor der Compiler fortfahren kann: die Besetzung (wer Ihre Charaktere sind) und die Beats (welche Form die Geschichte annimmt). Öffnen Sie einen Pass, um das Ergebnis zu lesen, es zu bearbeiten und dann zu genehmigen oder zurückzustellen. Das Bearbeiten eines Passes setzt automatisch alle nachfolgenden Pässe als veraltet zurück, sodass der Plan niemals aus dem Gleichgewicht gerät."
+    },
+    "whatif-canvas": {
+      "title": "Was-wäre-wenn-Zweige",
+      "desc": "Erforschen Sie alternative Szenen-Versionen, ohne sich festzulegen – verzweigen, eine Alternative generieren, vergleichen und dann den Gewinner übernehmen",
+      "guideBody": "Mit der What-if-Leinwand kannst du eine Szene in einen flüchtigen Zweig aufteilen, eine alternative Fassung erstellen und die Urteils-Badges des Kritikers nebeneinander sehen – und das alles, ohne den kanonischen Entwurf zu verändern. Wenn ein Zweig der richtige ist, kannst du ihn „promoten“: Er wird zu einem echten derivativen Werk, an dem du weiterarbeiten kannst. Es wird nichts gespeichert, bevor du ihn promotest, sodass du völlig frei experimentieren kannst. Dies ist die Bearbeitungsoberfläche hinter der Schaltfläche „Promoten“; während der Plan-Hub den Plan-Graphen anzeigt, ist dies der Ort, an dem du Alternativen daran ausprobierst."
+    },
+    "divergence": {
+      "title": "Divergenz (dị bản)",
+      "desc": "Verwalte die What-if-Derivate eines Buches – liste den Kanon und jeden Zweig auf, verschiebe das gesamte Studio in einen Zweig, archiviere einen oder erstelle einen neuen Zweig aus einem Kapitel",
+      "guideBody": "Eine Divergenz (dị bản) verzweigt dein Buch an einem Kapitel und weicht ab – ein alternatives Universum, ein Perspektivwechsel, ein veränderter Charakter – in ein derivatives Werk mit einer eigenen Wissenspartition, während die Quelle als schreibgeschützter Kanon bestehen bleibt. Dieses Panel listet dein kanonisches Werk und jeden von dir erstellten Zweig auf. „Wechseln zu“ verschiebt dein gesamtes Studio – Editor, Navigator, Qualität, alles – in diesen Zweig; die Auswahl wird pro Buch gespeichert und bleibt auch nach einem Neuladen erhalten. „Archivieren“ blendet einen Zweig aus, ohne ihn zu löschen (seine Kapitel und sein Wissen bleiben erhalten). „Neue Divergenz“ öffnet den 4-Schritte-Assistenten, um eine zu erstellen. Wähle einen Zweig aus, um dessen Spezifikation zu lesen (Taxonomie, Verzweigungspunkt, Kanon-Regeln, Overrides), die bei der Erstellung festgelegt wird."
     },
     "scene-inspector": {
       "title": "Szenen-Inspektor",
@@ -494,51 +580,6 @@
       "desc": "Vollständiger Editor-Diff für ein Paar Kapitel-Revisionen",
       "empty": "Öffne den Revisions-Diff eines Kapitels aus dem Review-Panel des Agenten-Modus."
     },
-    "arc-templates": {
-      "title": "Handlungsbögen-Vorlagen",
-      "desc": "Durchsuchen, erstellen, übernehmen und wenden Sie wiederverwendbare, mehrkapitelige Handlungsbögen an – parallele Handlungsstränge und Besetzungsrollen über einen Kapitelumfang hinweg",
-      "guideBody": "Die Bibliothek der Handlungsbögen-Vorlagen enthält wiederverwendbare, mehrkapitelige Strukturen – parallele Handlungsstränge (Rachemotiv, Romanze, Lüge des Mentors), die als Motive über einen Kapitelumfang verteilt sind, sowie die Besetzungsrollen, die der Bogen beim Anwenden festlegt. Durchsuchen Sie nach Kategorien: Ihre eigenen Vorlagen, die System-Standardvorlagen und (im Katalog) öffentliche Vorlagen anderer Nutzer. Erstellen Sie eine neue Vorlage, übernehmen Sie eine System-/öffentliche Vorlage, um Ihre eigene Kopie anzupassen, oder öffnen Sie eine Vorlage, um deren Strang-×-Kapitel-Zeitstrahl zu sehen und eine Anwendung auf dieses Buch vorabzuprobieren. Sie können auch einen bereits von Ihnen verfassten Bogen als Vorlage speichern oder eine Referenzgeschichte importieren und diese in eine neue Vorlage dekonstruieren (拆文). Das Anwenden einer Vorlage erfolgt zunächst als Vorschau – sie überschreibt Ihre Kapitel niemals, ohne dass Sie die Umsetzung explizit ausführen."
-    },
-    "arc-inspector": {
-      "title": "Bogen-Inspektor",
-      "desc": "Lesen und bearbeiten Sie EINEN Bogen oder eine Saga – deren Ziel, Status, die kaskadenartig aufgelösten Handlungsstränge und die Besetzung, den Kapitelumfang, offene Versprechen und die Herkunft der Vorlage",
-      "guideBody": "Der Bogen-Inspektor öffnet einen Knoten Ihres Buch-Spezifikationbaums – eine Saga, einen Bogen oder einen Teilbogen. Dieser Baum ist keine Dekoration: Seine Handlungsstränge und Besetzungsbindungen werden in jeden Generierungsprompt eingelesen, sodass die Bearbeitung eines Bogens hier beeinflusst, wie die KI die Kapitel entwirft. Handlungsstränge und Besetzungsslots werden kaskadenartig aufgelöst – ein Eintrag, der von einer übergeordneten Saga geerbt wurde, wird ausgegraut mit einer Option zum Überschreiben (eine Bearbeitung an dieser Stelle würde stillschweigend eine Kopie erstellen). Der Kapitelumfang, die Zusammenfassung offener Versprechen und die Herkunft der Vorlage sind schreibgeschützt. Das Archivieren eines Bogens gibt seine Kapitel in die ungeplante Liste zurück; das Wiederherstellen fügt sie wieder an. Öffnen Sie ihn über den Planungs-Hub (wählen Sie einen Bogen aus), die Befehlspalette oder den Agenten."
-    },
-    "quality-canon-rules": {
-      "title": "Kanon-Regeln",
-      "desc": "Definiere die Invarianten, die die Kritik erzwingt – erstellen, bearbeiten, archivieren, wiederherstellen",
-      "guideBody": "In den Kanon-Regeln legst du die Konstanten fest, die deine Geschichte niemals verletzen darf – ein Charakter hat nach Kapitel 41 nur noch einen Arm, Geistersteine werden verbraucht und nicht zurückgegeben, die Identität des Sektmeisters bleibt bis zum Salt-Court-Arc verborgen. Dies sind die Regeln, die die Kritik und das Self-Heal bei jeder Generierung erzwingen. Wenn du sie hier festlegst, bringst du dem Co-Writer deinen Kanon bei. Es ist die andere Hälfte von Canon Issues: Das eine Panel zeigt, was gebrochen wurde, dieses hier ist der Ort, an dem du die Regel korrigierst."
-    },
-    "quality-corrections": {
-      "title": "Korrekturen",
-      "desc": "Deine Akzeptanz-, Bearbeitungs-, Regenerierungs- und Ablehnungsraten bei KI-Entwürfen – das Qualitätssignal",
-      "guideBody": "Korrekturen spiegeln deine eigene redaktionelle Arbeit wider: Jedes Mal, wenn du einen KI-Entwurf akzeptierst, bearbeitest, einen anderen Vorschlag wählst, neu generierst oder ablehnst, wird diese Entscheidung aufgezeichnet. Dieses Panel zeigt die Raten, aufgeteilt nach Diverge (K-Option) vs. Stream. Eine niedrigere Bearbeitungs-/Regenerierungs-/Ablehnungsrate (und eine höhere Akzeptanz des Originals) in Diverge bedeutet, dass sich die zusätzliche Latenz des Re-Rankers lohnt. Dies ist ein rein informatives, schreibgeschütztes Panel; es verändert niemals deinen Text – es zeigt dir lediglich, ob der Co-Writer besser auf dein Buch eingestellt ist."
-    },
-    "quality-heal": {
-      "title": "Self-heal",
-      "desc": "Führe ein Polish auf ein Kapitel aus und akzeptiere jede Korrektur, bevor sie deinen Text verändert",
-      "guideBody": "Self-heal führt einen kostengünstigen Korrekturlesedurchlauf über ein Kapitel aus und schlägt Korrekturen vor – Pronomen-Drift, Tippfehler, Logikfehler im Kanon, zu lange Beschreibungen – jede Korrektur wird als Zeile zum Annehmen oder Ablehnen angezeigt. Deterministische Korrekturen (Tippfehler, Pronomen) sind bereits vorausgewählt; semantische Umschreibungen sind nicht markiert, damit Sie diese selbst beurteilen können. Nichts wird an Ihrem Text geändert, bis Sie auf „Anwenden“ klicken; selbst dann erfolgt die Bearbeitung mit einer Versionsprüfung: Falls sich das Kapitel seit dem letzten Durchlauf von Polish geändert hat, wird das Anwenden abgelehnt, anstatt Ihre neueren Änderungen rückgängig zu machen."
-    },
-    "progress": {
-      "title": "Fortschritt",
-      "desc": "Wörter heute, Ihre Serie, die Gesamtzahl des Buches, ein Tagesziel und eine Sparkline",
-      "guideBody": "Der Fortschritt macht Ihr Schreiben zu einer sichtbaren Gewohnheit: heute geschriebene Wörter, Ihre aktuelle Serie, die laufende Gesamtzahl des Buches und eine 7- oder 30-Tage-Sparkline. Legen Sie ein persönliches Tagesziel fest, das als Referenzlinie im Diagramm markiert wird – das Ziel gehört nur Ihnen und wird nicht mit Mitwirkenden geteilt. Es liest die Wortzahlen, die der Editor beim Speichern erfasst; es verändert niemals Ihren Text."
-    },
-    "plan-passes": {
-      "title": "Pass-Schiene",
-      "desc": "Erstellen Sie einen Plan Schritt für Schritt und genehmigen Sie jeden Kontrollpunkt",
-      "guideBody": "Die Pass-Schiene steuert den 7-Pass-Compiler von PlanForge – Motive, Besetzung, Welt, Beats, Charakterbögen, Szenen und Self-Heal – jeweils einen Durchgang nach dem anderen. Jeder Pass zeigt an, ob er aktuell ist (die Eingabedaten haben sich seit dem letzten Durchlauf nicht geändert) oder veraltet ist. Die Schiene zeigt Ihnen, wie weit der Compiler selbstständig fortfahren kann und welcher Pass auf Ihre Entscheidung wartet. Zwei Pässe sind blockierende Kontrollpunkte, die Sie genehmigen müssen, bevor der Compiler fortfahren kann: die Besetzung (wer Ihre Charaktere sind) und die Beats (welche Form die Geschichte annimmt). Öffnen Sie einen Pass, um das Ergebnis zu lesen, es zu bearbeiten und dann zu genehmigen oder zurückzustellen. Das Bearbeiten eines Passes setzt automatisch alle nachfolgenden Pässe als veraltet zurück, sodass der Plan niemals aus dem Gleichgewicht gerät."
-    },
-    "whatif-canvas": {
-      "title": "Was-wäre-wenn-Zweige",
-      "desc": "Erforschen Sie alternative Szenen-Versionen, ohne sich festzulegen – verzweigen, eine Alternative generieren, vergleichen und dann den Gewinner übernehmen",
-      "guideBody": "Mit der What-if-Leinwand kannst du eine Szene in einen flüchtigen Zweig aufteilen, eine alternative Fassung erstellen und die Urteils-Badges des Kritikers nebeneinander sehen – und das alles, ohne den kanonischen Entwurf zu verändern. Wenn ein Zweig der richtige ist, kannst du ihn „promoten“: Er wird zu einem echten derivativen Werk, an dem du weiterarbeiten kannst. Es wird nichts gespeichert, bevor du ihn promotest, sodass du völlig frei experimentieren kannst. Dies ist die Bearbeitungsoberfläche hinter der Schaltfläche „Promoten“; während der Plan-Hub den Plan-Graphen anzeigt, ist dies der Ort, an dem du Alternativen daran ausprobierst."
-    },
-    "divergence": {
-      "title": "Divergenz (dị bản)",
-      "desc": "Verwalte die What-if-Derivate eines Buches – liste den Kanon und jeden Zweig auf, verschiebe das gesamte Studio in einen Zweig, archiviere einen oder erstelle einen neuen Zweig aus einem Kapitel",
-      "guideBody": "Eine Divergenz (dị bản) verzweigt dein Buch an einem Kapitel und weicht ab – ein alternatives Universum, ein Perspektivwechsel, ein veränderter Charakter – in ein derivatives Werk mit einer eigenen Wissenspartition, während die Quelle als schreibgeschützter Kanon bestehen bleibt. Dieses Panel listet dein kanonisches Werk und jeden von dir erstellten Zweig auf. „Wechseln zu“ verschiebt dein gesamtes Studio – Editor, Navigator, Qualität, alles – in diesen Zweig; die Auswahl wird pro Buch gespeichert und bleibt auch nach einem Neuladen erhalten. „Archivieren“ blendet einen Zweig aus, ohne ihn zu löschen (seine Kapitel und sein Wissen bleiben erhalten). „Neue Divergenz“ öffnet den 4-Schritte-Assistenten, um eine zu erstellen. Wähle einen Zweig aus, um dessen Spezifikation zu lesen (Taxonomie, Verzweigungspunkt, Kanon-Regeln, Overrides), die bei der Erstellung festgelegt wird."
-    },
     "world-map": {
       "title": "Weltkarte",
       "desc": "Erstelle und bearbeite Referenzkarten einer Welt – lade ein Basisbild hoch, ziehe Standort-Pins per Drag-and-Drop auf die Karte und zeichne oder verändere Regionen.",
@@ -572,6 +613,16 @@
       "title": "Konformität",
       "desc": "Beat für Beat: Hat die Prosa den Plan umgesetzt? Realisiert/Nicht realisiert pro Szene + Spannungsbalken",
       "guideBody": "Die Konformität prüft Szene für Szene, ob Ihre geschriebene Prosa tatsächlich die Motiv-Beats umgesetzt hat, die Sie für ein Kapitel geplant haben. Jede Szene zeigt an, ob die Beats realisiert wurden oder nicht, und wie die Spannung im Vergleich zum Zielwert steht. Es beantwortet die Frage Spezifikation vs. Prosa (nicht Spezifikation vs. Template — das ist die Abweichungsansicht der Bogen-Templates). Die Analyse dient als Orientierungshilfe (grob geschätzt, nicht kausal verifiziert). Generieren Sie eine Szene neu, die ihren Beat verpasst hat, oder führen Sie den gesamten Check gegen ein von Ihnen gewähltes Modell erneut aus."
+    },
+    "flywheel": {
+      "title": "Flywheel",
+      "desc": "Was dein letztes Veröffentlichen zum Kanon hinzugefügt hat – neue Personen, Verbindungen und Ereignisse",
+      "guideBody": "Das Flywheel ist die Belohnung für das Veröffentlichen: Wenn du ein Kapitel veröffentlichst, erweitert ein Extraktionslauf das Wissen deiner Welt. Dieses Panel zeigt an, was hinzugefügt wurde – neue Entitäten, Beziehungen und Ereignisse – mit anklickbaren Highlights, die dich direkt zum Charakter in der Besetzung, zum Link im Graphen oder zum Moment in der Timeline springen lassen. Es schließt den Kreis: Das Schreiben füttert den Kanon, und der Kanon bildet das Fundament für dein nächstes Kapitel."
+    },
+    "canonview": {
+      "title": "Kanon zum Kapitel",
+      "desc": "Was der Kanon zum Fokus-Kapitel weiß – vorhandene/etablierte Entitäten, Kanon-Status und Timeline",
+      "guideBody": "Beantwortet die Frage: „Was weiß der Kanon zum Kapitel, an dem ich gerade arbeite?“ – die in diesem Kapitel vorhandenen oder durch es etablierten Entitäten (aus dem Glossar), plus den Kanon-Status (wie viele Entitäten sind aktiv vs. verschwunden) und die Timeline-Ereignisse bis zu diesem Zeitpunkt (aus dem Wissensgraphen). Es folgt dem Kapitel, das du im Manuskript im Fokus hast, und ist derselbe Inspector, den die „Was-wäre-wenn“-Leinwand an einem Verzweigungspunkt anzeigt – so kannst du prüfen, was bereits etabliert ist, bevor du dich abspaltest. Öffne eine Szene oder ein Kapitel, um sie in den Fokus zu rücken."
     }
   },
   "sceneRail": {
@@ -609,8 +660,51 @@
     "revert": "Rücksetzen",
     "openAs": "Als JSON öffnen"
   },
+  "planPasses": {
+    "comingSoon": "Die 7-Pass-Leitung wird hier geladen.",
+    "noBook": "Öffnen Sie ein Buch, um dessen Plan zu erstellen.",
+    "noRun": "Noch kein Plan durchlaufen — öffnen Sie den Planner, um einen vorzuschlagen und zu erstellen.",
+    "loading": "Durchläufe werden geladen…",
+    "notCompiled": "Dieser Durchgang hat noch kein kompiliertes Paket. Kompiliere es im Planner, bevor du die Durchläufe startest.",
+    "openPlanner": "← Planner (vorschlagen / kompilieren)",
+    "blocking": "blockierend",
+    "advisory": "beratend",
+    "running": "läuft…",
+    "done": "erledigt",
+    "failed": "fehlgeschlagen",
+    "notRun": "— nicht ausgeführt",
+    "fresh": "frisch",
+    "stale": "veraltet",
+    "run": "ausführen…",
+    "rerun": "erneut ausführen…",
+    "review": "Review →",
+    "blocked": "blockiert",
+    "blockedBy": "blockiert durch: {{blockers}}",
+    "runSpends": "{{pass}} ausführen — dies verbraucht 1 LLM-Aufruf",
+    "runNow": "{{pass}} ausführen",
+    "cancel": "Abbrechen",
+    "approve": "Genehmigen",
+    "reject": "Ablehnen",
+    "edit": "Bearbeiten",
+    "saveEdits": "Änderungen speichern",
+    "cursor": "{{done}} von {{total}}",
+    "blockedAt": "blockiert um",
+    "reviewTitle": "Review {{pass}}",
+    "reviewLoading": "Lädt…",
+    "reviewNoContent": "Keine Artefakt-Inhalte zum Anzeigen vorhanden.",
+    "reviewPrompt": "{{pass}} genehmigen? Dies ermöglicht dem Compiler, darüber hinaus zu verarbeiten.",
+    "seedUnavailable": "Glossar-Seed-Vorschlag nicht verfügbar.",
+    "seedApplied": "Glossar-Seed angewendet – Besetzung kann genehmigt werden.",
+    "seedGate": "Die Figuren deiner Besetzung müssen zum Glossar hinzugefügt werden, bevor du freigeben kannst. Wende den Seed an, um sie hinzuzufügen.",
+    "applySeed": "Seed anwenden",
+    "approveGated": "Zuerst den Glossar-Seed anwenden (PF-7)",
+    "editAdd": "Hinzufügen",
+    "editRemove": "Entfernen",
+    "editEmpty": "Noch nichts hier — füge eine Zeile hinzu."
+  },
   "planner": {
     "sourcePlaceholder": "Markdown des Roman-Systems einfügen…",
+    "proposeBlind": "Nur aus diesem Braindump vorgeschlagen. Bestehende Kapitel werden nicht gelesen.",
     "propose": "Vorschlagen",
     "model": "Modell",
     "empty": "Füge das Markdown deines Roman-Systems ein und klicke auf „Vorschlagen“, um einen Plan-Lauf zu starten.",
@@ -631,8 +725,7 @@
       "colMode": "Modus",
       "colStatus": "Status",
       "colCreated": "Erstellt"
-    },
-    "proposeBlind": "Nur aus diesem Braindump vorgeschlagen. Bestehende Kapitel werden nicht gelesen."
+    }
   },
   "editor": {
     "empty": "Wähle ein Kapitel im Manuskript-Navigator aus, um es hier zu bearbeiten.",
@@ -642,7 +735,24 @@
     "heatmap": "Heatmap",
     "glossary": "Glossar",
     "focus": "Fokus",
-    "translate": "Übersetzen"
+    "translate": "Übersetzen",
+    "derivativeForked": "In einer dị bản – dieses Kapitel ist ABGESPALTEN (FORKED) und vom Kanon isoliert. Änderungen werden im Zweig gespeichert; der Kanon bleibt unberührt.",
+    "derivativeInherit": "In einer dị bản – dieses Kapitel spiegelt noch den Kanon wider. Das Bearbeiten führt zu einer ABSPALTUNG (FORK) in den Zweig (der Kanon bleibt unberührt).",
+    "mergeToCanon": "In den Kanon integrieren",
+    "mergeConfirm": "Bestätigen – Kanon überschreiben",
+    "merging": "Zusammenführen…",
+    "mergeDone": "In den Kanon übernommen – der Zweig behält seine eigene Version.",
+    "mergeConflict": "Kanon hat sich geändert – öffne das Kapitel erneut und führe es wieder zusammen.",
+    "mergeFailed": "Zusammenführen fehlgeschlagen – bitte erneut versuchen."
+  },
+  "sceneCompose": {
+    "empty": "Wählen Sie ein Kapitel im Manuskript-Navigator aus, um dessen Szenen hier zu entwerfen.",
+    "inserted": "In das Manuskript eingefügt.",
+    "insertFailed": "Einfügen fehlgeschlagen – klicken Sie in den Kapiteltext im Editor und versuchen Sie es erneut mit „Akzeptieren“.",
+    "openedEditor": "Editor für dieses Kapitel geöffnet – Generieren Sie erneut, um den Entwurf hier einzufügen."
+  },
+  "chapterAssemble": {
+    "empty": "Wählen Sie ein Kapitel im Manuskript-Navigator aus, um es hier zusammenzuführen."
   },
   "popout": {
     "invalid": "Dieser Pop-out-Link ist ungültig.",
@@ -769,6 +879,11 @@
   "quality": {
     "noWork": "Dieses Buch hat noch keine Co-Writer-Session – schreibe zuerst ein Kapitel, dann werden hier Qualitätsdaten angezeigt.",
     "hubNoWorkHint": "Versprechen, Kritiker-Scores und Story-Abdeckung erfordern eine Co-Writer-Session – beginne zuerst mit dem Schreiben eines Kapitels. Die unten aufgeführten Kanon-Probleme funktionieren in jedem Fall.",
+    "setupWork": "Co-Autor einrichten",
+    "settingUpWork": "Einrichten…",
+    "setupWorkError": "Co-Autor konnte nicht eingerichtet werden. Versuchen Sie es erneut.",
+    "setupWorkPending": "Ihre Co-Autor-Sitzung wurde erstellt, aber das Wissensprojekt wird noch eingerichtet. Versuchen Sie es in Kürze erneut.",
+    "setupWorkRetry": "Wiederholen",
     "pickModel": "Wähle ein Modell zur Analyse aus…",
     "pickChapter": "Wähle ein Kapitel",
     "pickChapterHint": "Wähle oben ein Kapitel aus, um dessen Qualität zu analysieren.",
@@ -789,6 +904,12 @@
     "coverageDesc": "Abdeckung des Versprechens des gesamten Buches",
     "canonTitle": "Kanon-Probleme",
     "canonDesc": "Bestätigte Widersprüche",
+    "canonRulesTitle": "Kanon-Regeln",
+    "canonRulesDesc": "Legen Sie die unveränderlichen Fakten fest, die der Kritiker erzwingt",
+    "correctionsTitle": "Korrekturen",
+    "correctionsDesc": "Ihre Akzeptanz-, Bearbeitungs-, Regenerierungs- und Ablehnungsraten",
+    "healTitle": "Selbstheilung",
+    "healDesc": "Lassen Sie die Korrektur laufen und akzeptieren Sie jede Änderung, bevor sie Ihren Text verändert",
     "canonFromRules": "Verletzte Regeln ({{n}})",
     "canonRuleError": "Verletzungen der Kanon-Regeln konnten nicht geladen werden – bitte erneut versuchen.",
     "canonRuleGone": "Eine Regel, die nicht mehr existiert",
@@ -803,17 +924,6 @@
     "canonRulesCapped": "Es werden die {{shown}} aktuellsten von {{total}} verletzten Regeln angezeigt.",
     "workUnavailable": "Der Co-Writer-Service konnte nicht erreicht werden, daher konnten die Qualitätsdaten dieses Buches nicht geladen werden. Es können Probleme bestehen, die hier nicht angezeigt werden. Versuchen Sie es in Kürze erneut.",
     "hubUnavailable": "Der Co-Writer-Service konnte nicht erreicht werden, daher können Versprechen, Kritikerbewertungen und die Story-Abdeckung derzeit nicht geladen werden. Es können Probleme bestehen, die hier nicht angezeigt werden.",
-    "setupWork": "Co-Autor einrichten",
-    "settingUpWork": "Einrichten…",
-    "setupWorkError": "Co-Autor konnte nicht eingerichtet werden. Versuchen Sie es erneut.",
-    "setupWorkPending": "Ihre Co-Autor-Sitzung wurde erstellt, aber das Wissensprojekt wird noch eingerichtet. Versuchen Sie es in Kürze erneut.",
-    "setupWorkRetry": "Wiederholen",
-    "canonRulesTitle": "Kanon-Regeln",
-    "canonRulesDesc": "Legen Sie die unveränderlichen Fakten fest, die der Kritiker erzwingt",
-    "correctionsTitle": "Korrekturen",
-    "correctionsDesc": "Ihre Akzeptanz-, Bearbeitungs-, Regenerierungs- und Ablehnungsraten",
-    "healTitle": "Selbstheilung",
-    "healDesc": "Lassen Sie die Korrektur laufen und akzeptieren Sie jede Änderung, bevor sie Ihren Text verändert",
     "conformanceTitle": "Konformität",
     "conformanceDesc": "Hat der Text den Plan umgesetzt? Beat-Verfolgung pro Szene",
     "pickModelRerun": "Wählen Sie ein Modell für den erneuten Durchlauf aus…",
@@ -1268,56 +1378,5 @@
       "viewWorldmap": "Weltkarte",
       "viewSoon": "In einer späteren Phase verfügbar"
     }
-  },
-  "planPasses": {
-    "comingSoon": "Die 7-Pass-Leitung wird hier geladen.",
-    "noBook": "Öffnen Sie ein Buch, um dessen Plan zu erstellen.",
-    "noRun": "Noch kein Plan durchlaufen — öffnen Sie den Planner, um einen vorzuschlagen und zu erstellen.",
-    "loading": "Durchläufe werden geladen…",
-    "notCompiled": "Dieser Durchgang hat noch kein kompiliertes Paket. Kompiliere es im Planner, bevor du die Durchläufe startest.",
-    "openPlanner": "← Planner (vorschlagen / kompilieren)",
-    "blocking": "blockierend",
-    "advisory": "beratend",
-    "running": "läuft…",
-    "done": "erledigt",
-    "failed": "fehlgeschlagen",
-    "notRun": "— nicht ausgeführt",
-    "fresh": "frisch",
-    "stale": "veraltet",
-    "run": "ausführen…",
-    "rerun": "erneut ausführen…",
-    "review": "Review →",
-    "blocked": "blockiert",
-    "blockedBy": "blockiert durch: {{blockers}}",
-    "runSpends": "{{pass}} ausführen — dies verbraucht 1 LLM-Aufruf",
-    "runNow": "{{pass}} ausführen",
-    "cancel": "Abbrechen",
-    "approve": "Genehmigen",
-    "reject": "Ablehnen",
-    "edit": "Bearbeiten",
-    "saveEdits": "Änderungen speichern",
-    "cursor": "{{done}} von {{total}}",
-    "blockedAt": "blockiert um",
-    "reviewTitle": "Review {{pass}}",
-    "reviewLoading": "Lädt…",
-    "reviewNoContent": "Keine Artefakt-Inhalte zum Anzeigen vorhanden.",
-    "reviewPrompt": "{{pass}} genehmigen? Dies ermöglicht dem Compiler, darüber hinaus zu verarbeiten.",
-    "seedUnavailable": "Glossar-Seed-Vorschlag nicht verfügbar.",
-    "seedApplied": "Glossar-Seed angewendet – Besetzung kann genehmigt werden.",
-    "seedGate": "Die Figuren deiner Besetzung müssen zum Glossar hinzugefügt werden, bevor du freigeben kannst. Wende den Seed an, um sie hinzuzufügen.",
-    "applySeed": "Seed anwenden",
-    "approveGated": "Zuerst den Glossar-Seed anwenden (PF-7)",
-    "editAdd": "Hinzufügen",
-    "editRemove": "Entfernen",
-    "editEmpty": "Noch nichts hier — füge eine Zeile hinzu."
-  },
-  "sceneCompose": {
-    "empty": "Wählen Sie ein Kapitel im Manuskript-Navigator aus, um dessen Szenen hier zu entwerfen.",
-    "inserted": "In das Manuskript eingefügt.",
-    "insertFailed": "Einfügen fehlgeschlagen – klicken Sie in den Kapiteltext im Editor und versuchen Sie es erneut mit „Akzeptieren“.",
-    "openedEditor": "Editor für dieses Kapitel geöffnet – Generieren Sie erneut, um den Entwurf hier einzufügen."
-  },
-  "chapterAssemble": {
-    "empty": "Wählen Sie ein Kapitel im Manuskript-Navigator aus, um es hier zusammenzuführen."
   }
 }

@@ -16,6 +16,57 @@
     "paletteHint": "⌘⇧P → \"Escolha seu Foco\" ou \"Iniciar Tour Guiado\" a qualquer momento"
   },
   "panels": {
+    "arc-templates": {
+      "title": "Modelos de Arco",
+      "desc": "Navegue, crie, adote e aplique estruturas de arcos reutilizáveis de múltiplos capítulos — subtramas paralelas e papéis de elenco ao longo de uma sequência de capítulos",
+      "guideBody": "A biblioteca de Modelos de Arco contém estruturas reutilizáveis de múltiplos capítulos — subtramas paralelas (linha de vingança, romance, a mentira do mentor) organizadas como motivos ao longo de uma sequência de capítulos, com os papéis do elenco que o arco vincula quando você o aplica. Navegue por nível: seus próprios modelos, os modelos padrão do sistema e (no Catálogo) os modelos públicos de outros usuários. Crie um novo modelo, adote um do sistema ou público para personalizar sua própria cópia, ou abra um para ver sua linha do tempo subtrama × capítulo e visualizar a aplicação ao livro atual. Você também pode salvar um arco que já escreveu como um modelo, ou importar uma história de referência e desconstruí-la (拆文) em um novo modelo. A aplicação de um modelo é sempre uma prévia — ele nunca sobrescreve seus capítulos sem que você o materialize."
+    },
+    "arc-inspector": {
+      "title": "Inspetor de Arco",
+      "desc": "Leia e edite UM arco ou saga — seu objetivo, status, as trilhas de enredo resolvidas em cascata e a lista de elenco, o intervalo de capítulos, promessas em aberto e a procedência do modelo",
+      "guideBody": "O Inspetor de Arco abre um nó da árvore de especificações do seu livro — uma saga, um arco ou um subarco. Esta árvore não é decorativa: suas trilhas de enredo e vínculos de elenco são lidos em cada prompt de geração, portanto, editar um arco aqui altera a forma como a IA redige seus capítulos. As trilhas e as vagas do elenco são resolvidas em cascata — uma entrada herdada de uma saga pai é exibida em cinza com uma ação de «Substituir» (editá-la no local criaria silenciosamente uma cópia ramificada). O intervalo de capítulos, o resumo de promessas em aberto e a procedência do modelo são apenas para leitura. Arquivar um arco devolve seus capítulos para a bandeja de não planejados; restaurar os reanexa. Abra-o pelo Plan Hub (selecione um arco), pela paleta de comandos ou pelo agente.",
+      "body": {
+        "loading": "Carregando...",
+        "selectArc": "Selecione um arco para ver seu plano.",
+        "archivedBanner": "Arquivado — seus capítulos retornaram para a bandeja de não planejados. Restaure-os para editá-los e anexá-los novamente.",
+        "restore": "Restaurar",
+        "secIdentity": "Identidade",
+        "fTitle": "Título",
+        "fGoal": "Objetivo (alcança o prompt)",
+        "fSummary": "Resumo (um rótulo — não o prompt)",
+        "fStatus": "Status",
+        "status_empty": "vazio",
+        "status_outline": "esboço",
+        "status_drafting": "escrevendo",
+        "status_done": "concluído",
+        "secTracks": "Tramas (linhas do enredo → prompt)",
+        "secRoster": "Elenco (espaços de personagens)",
+        "empty_track": "Nenhuma trama adicionada ainda.",
+        "empty_role": "Nenhum papel de elenco adicionado ainda.",
+        "remove": "remover",
+        "overrideHere": "sobrescrever aqui",
+        "add_track": "+ trama",
+        "add_role": "+ papel",
+        "keyPlaceholder": "chave",
+        "labelPlaceholder": "rótulo (opcional)",
+        "addBtn": "adicionar",
+        "cancel": "cancelar",
+        "keyExists": "a chave existe",
+        "secChapters": "Capítulos",
+        "chaptersLabel": "Capítulos",
+        "noChapters": "Nenhum capítulo atribuído",
+        "nonContiguous": "não contíguos",
+        "secPromises": "Promessas abertas",
+        "noPromises": "Nenhuma promessa aberta aqui.",
+        "secProvenance": "Proveniência",
+        "fromTemplate": "De um modelo",
+        "authoredNoTemplate": "Escrito a partir de uma conversa (sem modelo).",
+        "secDanger": "Perigo",
+        "archiveArc": "Arquivar arco",
+        "blast": "também arquiva {{count}} subarcos",
+        "archivingNote": "Arquivar devolve seus capítulos para a bandeja de não planejados; restaurar os reanexa."
+      }
+    },
     "compose": {
       "title": "Chat do coautor",
       "desc": "Chat de coescrita com IA",
@@ -129,6 +180,26 @@
       "title": "Problemas de cânone",
       "desc": "Contradições confirmadas por geração e extração de conhecimento",
       "guideBody": "Problemas de Cânone reúne contradições confirmadas entre sua prosa e o seu universo estabelecido — um personagem em dois lugares ao mesmo tempo, uma cor de olhos que mudou, uma regra de magia que a história acabou de quebrar. Cada problema está vinculado ao capítulo e à regra do cânone que ele viola, para que você possa corrigir o texto ou alterar a regra."
+    },
+    "quality-canon-rules": {
+      "title": "Regras do cânone",
+      "desc": "Defina os invariantes que o crítico impõe — criar, editar, arquivar, restaurar",
+      "guideBody": "As Regras do Cânone é onde você declara os invariantes que sua história nunca deve quebrar — um personagem tem apenas um braço após o capítulo 41, pedras espirituais são consumidas e nunca retornam, a identidade do Mestre da Seita permanece oculta até o arco da Corte de Sal. Estas são as regras que o Crítico e o Auto-ajuste aplicam em cada geração; portanto, escrevê-las aqui é a forma de ensinar o coautor sobre o seu cânone. É a outra metade dos Problemas de Cânone: este painel mostra o que quebrou, este aqui é onde você corrige a regra."
+    },
+    "quality-corrections": {
+      "title": "Correções",
+      "desc": "Suas taxas de aceitar / editar / regenerar / rejeitar em rascunhos de IA — o sinal de qualidade",
+      "guideBody": "Correções é o espelho da sua própria edição: cada vez que você aceita, edita, escolhe um candidato diferente, regenera ou rejeita um rascunho de IA, essa escolha é registrada — e este painel mostra as taxas, divididas entre Divergir (opção K) vs Fluxo. Uma taxa menor de edição/regeneração/rejeição (e maior de aceitação direta) em Divergir significa que o reclassificador está justificando sua latência extra. É consultivo e apenas para leitura; ele nunca altera sua prosa — ele diz se o coautor está ficando melhor em relação ao seu livro."
+    },
+    "quality-heal": {
+      "title": "Auto-ajuste",
+      "desc": "Execute o Polimento em um capítulo e aceite cada correção antes que ela toque sua prosa",
+      "guideBody": "O Self-heal realiza uma revisão rápida em um capítulo e propõe correções — inconsistência de pronomes, erros de digitação, falhas de cânone, descrições excessivamente longas — cada uma exibida como uma linha de aceitar/rejeitar. Correções determinísticas (erros de digitação, pronomes) vêm pré-marcadas; reescritas semânticas vêm desmarcadas para sua avaliação. Nada toca sua prosa até que você pressione Aplicar e, mesmo assim, ele escreve com uma verificação de versão: se o capítulo tiver mudado desde que o Polish foi executado, a aplicação é recusada em vez de reverter suas edições mais recentes."
+    },
+    "progress": {
+      "title": "Progresso",
+      "desc": "Palavras hoje, sua sequência, o total do livro, uma meta diária e um gráfico de linhas",
+      "guideBody": "O Progresso transforma sua escrita em um hábito visível: palavras escritas hoje, sua sequência atual de dias, o total acumulado do livro e um gráfico de linhas de 7 ou 30 dias. Defina uma meta diária pessoal e uma linha de referência a marcará no gráfico — a meta é apenas sua, não é compartilhada com colaboradores. Ele lê a contagem de palavras que o editor registra conforme você salva; ele nunca altera sua prosa."
     },
     "kg-overview": {
       "title": "Visão Geral",
@@ -292,6 +363,21 @@
       "title": "Plan Hub",
       "desc": "O plano completo do livro em uma tela de gráfico — trilhas de arcos, capítulos, cenas e seus links",
       "guideBody": "O Plan Hub renderiza toda a estrutura do seu livro como um gráfico: cada saga/arco/subarco é uma trilha, seus capítulos e cenas são cartões ao longo de um eixo de ordem narrativa, e os links de cena desenham as conexões causais entre eles. Abra o painel para ver cada arco recolhido em um cartão de resumo; expanda um arco para carregar seus capítulos sob demanda, e um capítulo para ver suas cenas. Use o arrasto e o zoom para navegar; selos de problemas e de obsolescência aparecem onde o cânone ou as promessas da trama precisam de atenção."
+    },
+    "plan-passes": {
+      "title": "Pass Rail",
+      "desc": "Compile um plano passo a passo e aprove cada checkpoint",
+      "guideBody": "O Pass Rail comanda o compilador de 7 etapas do PlanForge — motivos, elenco, mundo, batidas, arcos de personagens, cenas e self-heal — uma etapa por vez. Cada etapa mostra se está atualizada (seus dados de entrada não mudaram desde a última execução) ou obsoleta, e o trilho informa o quanto o compilador pode prosseguir sozinho e qual etapa está aguardando por você. Duas etapas são checkpoints de bloqueio que você deve aprovar antes que o compilador avance: o elenco (quem são seus personagens) e as batidas (qual forma a história assume). Abra uma etapa para ler o que ela produziu, edite-a e, então, aprove ou retenha. Editar uma etapa torna tudo o que vem depois obsoleto automaticamente, para que o plano nunca saia de sincronia consigo mesmo."
+    },
+    "whatif-canvas": {
+      "title": "Ramificações 'E se...'",
+      "desc": "Explore versões alternativas de uma cena sem se comprometer — ramifique, gere uma versão alternativa, compare e, então, promova a vencedora",
+      "guideBody": "O canvas «e se...» permite que você crie uma ramificação efêmera de uma cena, gere uma versão alternativa e veja as medalhas de julgamento do crítico lado a lado — tudo isso sem tocar no rascunho canônico. Quando uma ramificação for a que você deseja, promova-a: ela se tornará uma obra derivada real a partir da qual você poderá continuar escrevendo. Nada é salvo até que você promova, então você pode explorar livremente. Esta é a superfície de edição por trás do botão Promover; o Plan Hub mostra o gráfico do plano, este é o lugar onde você testa alternativas nele."
+    },
+    "divergence": {
+      "title": "Divergência (dị bản)",
+      "desc": "Gerencie as derivadas de «e se...» de um livro — liste o cânone e cada ramificação, mude todo o estúdio para uma delas, arquive uma ou crie uma nova ramificação a partir de um capítulo",
+      "guideBody": "Uma dị bản (divergência) ramifica seu livro em um capítulo e diverge — um universo alternativo, uma mudança de ponto de vista, um personagem alterado — em uma obra derivada com sua própria partição de conhecimento, enquanto a fonte permanece como o cânone de apenas leitura. Este painel lista seu trabalho canônico e cada ramificação que você criou. «Mudar para» move todo o seu estúdio — editor, navegador, qualidade, tudo — para essa ramificação; a escolha é lembrada por livro e sobrevive ao recarregamento. «Arquivar» esconde uma ramificação sem destruí-la (seus capítulos e conhecimento são mantidos). «Nova divergência» abre o assistente de 4 etapas para criar uma. Selecione uma ramificação para ler sua especificação (taxonomia, ponto de ramificação, regras do cânone, sobreposições), que é fixa no momento da criação."
     },
     "scene-inspector": {
       "title": "Inspetor de Cena",
@@ -494,51 +580,6 @@
       "desc": "Diff completo do editor para um par de revisões de capítulo",
       "empty": "Abra o diff de revisão de um capítulo no painel de revisão do Modo Agente."
     },
-    "arc-templates": {
-      "title": "Modelos de Arco",
-      "desc": "Navegue, crie, adote e aplique estruturas de arcos reutilizáveis de múltiplos capítulos — subtramas paralelas e papéis de elenco ao longo de uma sequência de capítulos",
-      "guideBody": "A biblioteca de Modelos de Arco contém estruturas reutilizáveis de múltiplos capítulos — subtramas paralelas (linha de vingança, romance, a mentira do mentor) organizadas como motivos ao longo de uma sequência de capítulos, com os papéis do elenco que o arco vincula quando você o aplica. Navegue por nível: seus próprios modelos, os modelos padrão do sistema e (no Catálogo) os modelos públicos de outros usuários. Crie um novo modelo, adote um do sistema ou público para personalizar sua própria cópia, ou abra um para ver sua linha do tempo subtrama × capítulo e visualizar a aplicação ao livro atual. Você também pode salvar um arco que já escreveu como um modelo, ou importar uma história de referência e desconstruí-la (拆文) em um novo modelo. A aplicação de um modelo é sempre uma prévia — ele nunca sobrescreve seus capítulos sem que você o materialize."
-    },
-    "arc-inspector": {
-      "title": "Inspetor de Arco",
-      "desc": "Leia e edite UM arco ou saga — seu objetivo, status, as trilhas de enredo resolvidas em cascata e a lista de elenco, o intervalo de capítulos, promessas em aberto e a procedência do modelo",
-      "guideBody": "O Inspetor de Arco abre um nó da árvore de especificações do seu livro — uma saga, um arco ou um subarco. Esta árvore não é decorativa: suas trilhas de enredo e vínculos de elenco são lidos em cada prompt de geração, portanto, editar um arco aqui altera a forma como a IA redige seus capítulos. As trilhas e as vagas do elenco são resolvidas em cascata — uma entrada herdada de uma saga pai é exibida em cinza com uma ação de «Substituir» (editá-la no local criaria silenciosamente uma cópia ramificada). O intervalo de capítulos, o resumo de promessas em aberto e a procedência do modelo são apenas para leitura. Arquivar um arco devolve seus capítulos para a bandeja de não planejados; restaurar os reanexa. Abra-o pelo Plan Hub (selecione um arco), pela paleta de comandos ou pelo agente."
-    },
-    "quality-canon-rules": {
-      "title": "Regras do cânone",
-      "desc": "Defina os invariantes que o crítico impõe — criar, editar, arquivar, restaurar",
-      "guideBody": "As Regras do Cânone é onde você declara os invariantes que sua história nunca deve quebrar — um personagem tem apenas um braço após o capítulo 41, pedras espirituais são consumidas e nunca retornam, a identidade do Mestre da Seita permanece oculta até o arco da Corte de Sal. Estas são as regras que o Crítico e o Auto-ajuste aplicam em cada geração; portanto, escrevê-las aqui é a forma de ensinar o coautor sobre o seu cânone. É a outra metade dos Problemas de Cânone: este painel mostra o que quebrou, este aqui é onde você corrige a regra."
-    },
-    "quality-corrections": {
-      "title": "Correções",
-      "desc": "Suas taxas de aceitar / editar / regenerar / rejeitar em rascunhos de IA — o sinal de qualidade",
-      "guideBody": "Correções é o espelho da sua própria edição: cada vez que você aceita, edita, escolhe um candidato diferente, regenera ou rejeita um rascunho de IA, essa escolha é registrada — e este painel mostra as taxas, divididas entre Divergir (opção K) vs Fluxo. Uma taxa menor de edição/regeneração/rejeição (e maior de aceitação direta) em Divergir significa que o reclassificador está justificando sua latência extra. É consultivo e apenas para leitura; ele nunca altera sua prosa — ele diz se o coautor está ficando melhor em relação ao seu livro."
-    },
-    "quality-heal": {
-      "title": "Auto-ajuste",
-      "desc": "Execute o Polimento em um capítulo e aceite cada correção antes que ela toque sua prosa",
-      "guideBody": "O Self-heal realiza uma revisão rápida em um capítulo e propõe correções — inconsistência de pronomes, erros de digitação, falhas de cânone, descrições excessivamente longas — cada uma exibida como uma linha de aceitar/rejeitar. Correções determinísticas (erros de digitação, pronomes) vêm pré-marcadas; reescritas semânticas vêm desmarcadas para sua avaliação. Nada toca sua prosa até que você pressione Aplicar e, mesmo assim, ele escreve com uma verificação de versão: se o capítulo tiver mudado desde que o Polish foi executado, a aplicação é recusada em vez de reverter suas edições mais recentes."
-    },
-    "progress": {
-      "title": "Progresso",
-      "desc": "Palavras hoje, sua sequência, o total do livro, uma meta diária e um gráfico de linhas",
-      "guideBody": "O Progresso transforma sua escrita em um hábito visível: palavras escritas hoje, sua sequência atual de dias, o total acumulado do livro e um gráfico de linhas de 7 ou 30 dias. Defina uma meta diária pessoal e uma linha de referência a marcará no gráfico — a meta é apenas sua, não é compartilhada com colaboradores. Ele lê a contagem de palavras que o editor registra conforme você salva; ele nunca altera sua prosa."
-    },
-    "plan-passes": {
-      "title": "Pass Rail",
-      "desc": "Compile um plano passo a passo e aprove cada checkpoint",
-      "guideBody": "O Pass Rail comanda o compilador de 7 etapas do PlanForge — motivos, elenco, mundo, batidas, arcos de personagens, cenas e self-heal — uma etapa por vez. Cada etapa mostra se está atualizada (seus dados de entrada não mudaram desde a última execução) ou obsoleta, e o trilho informa o quanto o compilador pode prosseguir sozinho e qual etapa está aguardando por você. Duas etapas são checkpoints de bloqueio que você deve aprovar antes que o compilador avance: o elenco (quem são seus personagens) e as batidas (qual forma a história assume). Abra uma etapa para ler o que ela produziu, edite-a e, então, aprove ou retenha. Editar uma etapa torna tudo o que vem depois obsoleto automaticamente, para que o plano nunca saia de sincronia consigo mesmo."
-    },
-    "whatif-canvas": {
-      "title": "Ramificações 'E se...'",
-      "desc": "Explore versões alternativas de uma cena sem se comprometer — ramifique, gere uma versão alternativa, compare e, então, promova a vencedora",
-      "guideBody": "O canvas «e se...» permite que você crie uma ramificação efêmera de uma cena, gere uma versão alternativa e veja as medalhas de julgamento do crítico lado a lado — tudo isso sem tocar no rascunho canônico. Quando uma ramificação for a que você deseja, promova-a: ela se tornará uma obra derivada real a partir da qual você poderá continuar escrevendo. Nada é salvo até que você promova, então você pode explorar livremente. Esta é a superfície de edição por trás do botão Promover; o Plan Hub mostra o gráfico do plano, este é o lugar onde você testa alternativas nele."
-    },
-    "divergence": {
-      "title": "Divergência (dị bản)",
-      "desc": "Gerencie as derivadas de «e se...» de um livro — liste o cânone e cada ramificação, mude todo o estúdio para uma delas, arquive uma ou crie uma nova ramificação a partir de um capítulo",
-      "guideBody": "Uma dị bản (divergência) ramifica seu livro em um capítulo e diverge — um universo alternativo, uma mudança de ponto de vista, um personagem alterado — em uma obra derivada com sua própria partição de conhecimento, enquanto a fonte permanece como o cânone de apenas leitura. Este painel lista seu trabalho canônico e cada ramificação que você criou. «Mudar para» move todo o seu estúdio — editor, navegador, qualidade, tudo — para essa ramificação; a escolha é lembrada por livro e sobrevive ao recarregamento. «Arquivar» esconde uma ramificação sem destruí-la (seus capítulos e conhecimento são mantidos). «Nova divergência» abre o assistente de 4 etapas para criar uma. Selecione uma ramificação para ler sua especificação (taxonomia, ponto de ramificação, regras do cânone, sobreposições), que é fixa no momento da criação."
-    },
     "world-map": {
       "title": "Mapa do Mundo",
       "desc": "Crie e edite mapas de referência de um mundo — faça upload de uma imagem base, arraste e solte pinos de localização, desenhe e reforme regiões.",
@@ -572,6 +613,16 @@
       "title": "Conformidade",
       "desc": "Beat a beat: a prosa realizou o plano? Realizado/não realizado por cena + faixa de tensão",
       "guideBody": "A Conformidade rastreia, cena por cena, se a sua prosa escrita realmente entregou os beats de motivos que você planejou para um capítulo. Cada cena mostra o que foi realizado / não realizado e como sua tensão se compara ao alvo. Ela responde à relação especificação-vs-prosa (não especificação-vs-template — essa é a visualização de desvio de templates de arco). O sinal é consultivo (aproximado, não verificado causalmente). Regenere uma cena que perdeu seu beat ou execute novamente toda a verificação contra um modelo que você escolher."
+    },
+    "flywheel": {
+      "title": "Flywheel",
+      "desc": "O que sua última publicação adicionou ao cânone — novas pessoas, conexões e eventos",
+      "guideBody": "O Flywheel é a recompensa por publicar: quando você publica um capítulo, uma passagem de extração expande o conhecimento do seu mundo, e este painel mostra o que foi adicionado — novas entidades, relações e eventos — com destaques clicáveis que levam você diretamente àquele personagem no Elenco, àquele link no gráfico ou àquele momento na linha do tempo. Ele fecha o ciclo: escrever alimenta o cânone, e o cânone fundamenta seu próximo capítulo."
+    },
+    "canonview": {
+      "title": "Cânone no capítulo",
+      "desc": "O que o cânone sabe até o capítulo em foco — entidades presentes/estabelecidas, estado do cânone e linha do tempo",
+      "guideBody": "Responde a «o que o cânone sabe até o capítulo em que estou?» — as entidades presentes e estabelecidas pelo capítulo atual (do glossário), além do estado do cânone (quantas entidades estão ativas vs. removidas) e eventos da linha do tempo até aquele ponto (do gráfico de conhecimento). Ele acompanha o capítulo que você tem em foco no manuscrito e é o mesmo inspetor que a tela «e se» mostra em um ponto de ramificação — para que você possa verificar o que já está estabelecido antes de divergir. Abra uma cena ou capítulo para dar foco a ele."
     }
   },
   "sceneRail": {
@@ -609,8 +660,51 @@
     "revert": "Reverter",
     "openAs": "Abrir como JSON"
   },
+  "planPasses": {
+    "comingSoon": "O trilho de 7 passagens será carregado aqui.",
+    "noBook": "Abra um livro para compilar seu plano.",
+    "noRun": "Nenhuma execução de plano ainda — abra o Planejador para propor e compilar um.",
+    "loading": "Carregando passagens…",
+    "notCompiled": "Esta execução ainda não possui um pacote compilado. Compile-o no Planner antes de executar as passagens.",
+    "openPlanner": "← Planner (propor / compilar)",
+    "blocking": "bloqueante",
+    "advisory": "consultivo",
+    "running": "executando...",
+    "done": "concluído",
+    "failed": "falhou",
+    "notRun": "— não executado",
+    "fresh": "atualizado",
+    "stale": "desatualizado",
+    "run": "executar...",
+    "rerun": "reexecutar...",
+    "review": "revisar →",
+    "blocked": "bloqueado",
+    "blockedBy": "bloqueado por: {{blockers}}",
+    "runSpends": "Executar {{pass}} — isso consome 1 chamada de LLM",
+    "runNow": "Executar {{pass}}",
+    "cancel": "Cancelar",
+    "approve": "Aprovar",
+    "reject": "Rejeitar",
+    "edit": "Editar",
+    "saveEdits": "Salvar edições",
+    "cursor": "{{done}} de {{total}}",
+    "blockedAt": "bloqueado em",
+    "reviewTitle": "Revisar {{pass}}",
+    "reviewLoading": "Carregando…",
+    "reviewNoContent": "Nenhum conteúdo de artefato para exibir.",
+    "reviewPrompt": "Aprovar {{pass}}? Isso permite que o compilador prossiga além dele.",
+    "seedUnavailable": "Proposta de semente do glossário indisponível.",
+    "seedApplied": "Semente do glossário aplicada — o elenco pode ser aprovado.",
+    "seedGate": "Os personagens do seu elenco precisam ser adicionados ao glossário antes de você aprovar. Aplique o seed para adicioná-los.",
+    "applySeed": "Aplicar semente",
+    "approveGated": "Aplique a semente do glossário primeiro (PF-7)",
+    "editAdd": "Adicionar",
+    "editRemove": "Remover",
+    "editEmpty": "Nada aqui ainda — adicione uma linha."
+  },
   "planner": {
     "sourcePlaceholder": "Cole o markdown do sistema do romance…",
+    "proposeBlind": "Proposto apenas a partir deste braindump. Capítulos existentes não são lidos.",
     "propose": "Propor",
     "model": "Modelo",
     "empty": "Cole o markdown do sistema do romance e clique em Propor para iniciar uma execução de plano.",
@@ -631,8 +725,7 @@
       "colMode": "Modo",
       "colStatus": "Status",
       "colCreated": "Criado em"
-    },
-    "proposeBlind": "Proposto apenas a partir deste braindump. Capítulos existentes não são lidos."
+    }
   },
   "editor": {
     "empty": "Selecione um capítulo no navegador de manuscrito para editá-lo aqui.",
@@ -642,7 +735,24 @@
     "heatmap": "Mapa de calor",
     "glossary": "Glossário",
     "focus": "Foco",
-    "translate": "Traduzir"
+    "translate": "Traduzir",
+    "derivativeForked": "Em um dị bản — este capítulo está RAMIFICADO, isolado do cânone. As edições são salvas no ramo; o cânone permanece intacto.",
+    "derivativeInherit": "Em um dị bản — este capítulo ainda reflete o cânone. Editar aqui RAMIFICA o capítulo para o ramo (o cânone permanece intacto).",
+    "mergeToCanon": "Mesclar ao cânone",
+    "mergeConfirm": "Confirmar — sobrescrever o cânone",
+    "merging": "Mesclando…",
+    "mergeDone": "Mesclado no cânone — o ramo manterá sua própria versão.",
+    "mergeConflict": "O cânone foi alterado — reabra o capítulo e mescle novamente.",
+    "mergeFailed": "Não foi possível mesclar — tente novamente."
+  },
+  "sceneCompose": {
+    "empty": "Selecione um capítulo no navegador do manuscrito para rascunhar suas cenas aqui.",
+    "inserted": "Inserido no manuscrito.",
+    "insertFailed": "Não foi possível inserir — clique no texto do capítulo no Editor e tente Aceitar novamente.",
+    "openedEditor": "Editor aberto neste capítulo — Gere novamente para inserir o rascunho aqui."
+  },
+  "chapterAssemble": {
+    "empty": "Selecione um capítulo no navegador do manuscrito para montá-lo aqui."
   },
   "popout": {
     "invalid": "Este link pop-out é inválido.",
@@ -769,6 +879,11 @@
   "quality": {
     "noWork": "Este livro ainda não possui uma sessão de coescrita — comece a compor um capítulo primeiro, e os dados de qualidade aparecerão aqui.",
     "hubNoWorkHint": "Promessas, notas da crítica e cobertura da história exigem uma sessão de coescrita — comece a compor um capítulo primeiro. Problemas de cânone listados abaixo funcionarão de qualquer maneira.",
+    "setupWork": "Configurar coautor",
+    "settingUpWork": "Configurando...",
+    "setupWorkError": "Não foi possível configurar o coautor. Tente novamente.",
+    "setupWorkPending": "Sua sessão de coautor foi criada, mas o projeto de conhecimento ainda está sendo configurado. Tente novamente em breve.",
+    "setupWorkRetry": "Repetir",
     "pickModel": "Escolha um modelo para analisar com...",
     "pickChapter": "Escolha um capítulo",
     "pickChapterHint": "Escolha um capítulo acima para analisar sua qualidade.",
@@ -789,6 +904,12 @@
     "coverageDesc": "Cobertura da promessa do livro completo",
     "canonTitle": "Problemas de cânone",
     "canonDesc": "Contradições confirmadas",
+    "canonRulesTitle": "Regras de cânone",
+    "canonRulesDesc": "Defina as invariantes que o crítico deve aplicar",
+    "correctionsTitle": "Correções",
+    "correctionsDesc": "Suas taxas de aceitar / editar / regenerar / rejeitar",
+    "healTitle": "Auto-correção",
+    "healDesc": "Execute o Polish e aceite cada correção antes que ela altere sua prosa",
     "canonFromRules": "Regras quebradas ({{n}})",
     "canonRuleError": "Não foi possível carregar as violações das regras canônicas — tente novamente.",
     "canonRuleGone": "Uma regra que não existe mais",
@@ -803,17 +924,6 @@
     "canonRulesCapped": "Exibindo as {{shown}} mais recentes de um total de {{total}} regras violadas.",
     "workUnavailable": "Não foi possível conectar ao serviço de coescrita, portanto, os dados de qualidade deste livro não puderam ser carregados. Podem existir problemas que não estão sendo exibidos aqui. Tente novamente em breve.",
     "hubUnavailable": "Não foi possível conectar ao serviço de coescrita, portanto, promessas, notas de críticos e cobertura da história não podem ser carregados no momento. Podem existir problemas que não estão sendo exibidos aqui.",
-    "setupWork": "Configurar coautor",
-    "settingUpWork": "Configurando...",
-    "setupWorkError": "Não foi possível configurar o coautor. Tente novamente.",
-    "setupWorkPending": "Sua sessão de coautor foi criada, mas o projeto de conhecimento ainda está sendo configurado. Tente novamente em breve.",
-    "setupWorkRetry": "Repetir",
-    "canonRulesTitle": "Regras de cânone",
-    "canonRulesDesc": "Defina as invariantes que o crítico deve aplicar",
-    "correctionsTitle": "Correções",
-    "correctionsDesc": "Suas taxas de aceitar / editar / regenerar / rejeitar",
-    "healTitle": "Auto-correção",
-    "healDesc": "Execute o Polish e aceite cada correção antes que ela altere sua prosa",
     "conformanceTitle": "Conformidade",
     "conformanceDesc": "A prosa seguiu o plano? Rastreamento de batidas por cena",
     "pickModelRerun": "Escolha um modelo para reexecutar com…",
@@ -1268,56 +1378,5 @@
       "viewWorldmap": "Mapa do mundo",
       "viewSoon": "Disponível em uma fase posterior"
     }
-  },
-  "planPasses": {
-    "comingSoon": "O trilho de 7 passagens será carregado aqui.",
-    "noBook": "Abra um livro para compilar seu plano.",
-    "noRun": "Nenhuma execução de plano ainda — abra o Planejador para propor e compilar um.",
-    "loading": "Carregando passagens…",
-    "notCompiled": "Esta execução ainda não possui um pacote compilado. Compile-o no Planner antes de executar as passagens.",
-    "openPlanner": "← Planner (propor / compilar)",
-    "blocking": "bloqueante",
-    "advisory": "consultivo",
-    "running": "executando...",
-    "done": "concluído",
-    "failed": "falhou",
-    "notRun": "— não executado",
-    "fresh": "atualizado",
-    "stale": "desatualizado",
-    "run": "executar...",
-    "rerun": "reexecutar...",
-    "review": "revisar →",
-    "blocked": "bloqueado",
-    "blockedBy": "bloqueado por: {{blockers}}",
-    "runSpends": "Executar {{pass}} — isso consome 1 chamada de LLM",
-    "runNow": "Executar {{pass}}",
-    "cancel": "Cancelar",
-    "approve": "Aprovar",
-    "reject": "Rejeitar",
-    "edit": "Editar",
-    "saveEdits": "Salvar edições",
-    "cursor": "{{done}} de {{total}}",
-    "blockedAt": "bloqueado em",
-    "reviewTitle": "Revisar {{pass}}",
-    "reviewLoading": "Carregando…",
-    "reviewNoContent": "Nenhum conteúdo de artefato para exibir.",
-    "reviewPrompt": "Aprovar {{pass}}? Isso permite que o compilador prossiga além dele.",
-    "seedUnavailable": "Proposta de semente do glossário indisponível.",
-    "seedApplied": "Semente do glossário aplicada — o elenco pode ser aprovado.",
-    "seedGate": "Os personagens do seu elenco precisam ser adicionados ao glossário antes de você aprovar. Aplique o seed para adicioná-los.",
-    "applySeed": "Aplicar semente",
-    "approveGated": "Aplique a semente do glossário primeiro (PF-7)",
-    "editAdd": "Adicionar",
-    "editRemove": "Remover",
-    "editEmpty": "Nada aqui ainda — adicione uma linha."
-  },
-  "sceneCompose": {
-    "empty": "Selecione um capítulo no navegador do manuscrito para rascunhar suas cenas aqui.",
-    "inserted": "Inserido no manuscrito.",
-    "insertFailed": "Não foi possível inserir — clique no texto do capítulo no Editor e tente Aceitar novamente.",
-    "openedEditor": "Editor aberto neste capítulo — Gere novamente para inserir o rascunho aqui."
-  },
-  "chapterAssemble": {
-    "empty": "Selecione um capítulo no navegador do manuscrito para montá-lo aqui."
   }
 }
