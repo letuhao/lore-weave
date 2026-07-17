@@ -3549,7 +3549,10 @@ def _opt_uuid(v: str | None) -> UUID | None:
         "synchronously; mode='llm' enqueues an async job (poll the run). model_ref is "
         "optional for mode='llm' — omit it to use the author's default planner model "
         "(their pinned 'planner' default, else their best chat model); pass one only "
-        "when the author names a specific model. EDIT on the book required."
+        "when the author names a specific model. Set ground_on_existing=true to CONTINUE "
+        "the book — the proposer reads its existing cast/arcs/recent chapters and references "
+        "them instead of re-inventing (effective only when the deploy ceiling allows it). "
+        "EDIT on the book required."
     ),
     meta=require_meta(
         "A", "book",
@@ -3567,6 +3570,12 @@ async def plan_propose_spec(
         str | None,
         "optional user_model id for mode='llm' — omit to use the author's default planner model.",
     ] = None,
+    ground_on_existing: Annotated[
+        bool,
+        "CONTINUE the book: ground the proposer in its existing cast/arcs/recent chapters so it "
+        "references them instead of re-inventing. Effective only when the deploy ceiling allows it "
+        "(AND); a cold-start book is a no-op. Agent-parity with the planner GUI's 'Continue this book'.",
+    ] = False,
 ) -> dict:
     tc = _ctx(ctx)
     bid = UUID(book_id)
@@ -3575,6 +3584,7 @@ async def plan_propose_spec(
     run, is_async, job_id = await svc.create_run(
         tc.user_id, bid, source_markdown=source_markdown, mode=mode,
         model_ref=_opt_uuid(model_ref), force=False,
+        ground_on_existing=ground_on_existing,
     )
     detail = await svc.get_run_detail(tc.user_id, bid, run.id)
     return {
