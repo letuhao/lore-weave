@@ -36,12 +36,33 @@ Proof must be pasted into the transcript, not claimed.
 | phase | status | evidence |
 |---|---|---|
 | A · F-5 governance | ✅ DONE | prompt (ARC COVERAGE rule) + validate rule every_arc_has_events; commit 8b7c5ebdb. VERIFIED real gemma: event dist {arc_2:7}→{arc_1:1,arc_2:7,arc_3:1}; compile ALL arcs OK (1/7/1 chapters), no 400. |
-| — F-6 | DEFER → works-track (root-caused, out of PlanForge scope) | H5 chapter-link: arcs→structure_node ✅ but chapters→outline_node=0. ROOT CAUSE: compile's `_ensure_work` (plan_forge_service:1619) returns a pending null-project Work WITHOUT the D-C16 backfill the works router does (works.py:255-261 create_project→backfill_project) — chapters key on project_id, so a null-project Work silently links 0 chapters. Fix needs the knowledge_client injected into PlanForge (cross-service) or a shared ensure-with-project service method — a WORKS/knowledge-subsystem change, not PlanForge governance. Backfilling the Work via POST /books/{id}/work gave it a project_id (019f6c33) but the re-link still 0'd (a second outline/idempotency layer) — confirming it is genuinely the works/outline linker's concern. DEFER GATE #1 (out of scope: works subsystem) + cross-service. NOT lazy: investigated, root-caused, workaround-verified, fix-located. |
+| — F-6 | ✅ **RESOLVED — was a SYMPTOM of F-5, not a works-track bug** (the earlier "works-track defer" note was STALE — it trusted a handoff over the DB). Re-verified against the live composition DB: run `019f6c2b` (the F-5 verification run) has **3 arcs → 9 chapters in `outline_node`**, each chapter parented under its arc ("The Discarded Miss" 1, "The Corrupt Path" 7, "Reckoning" 1 — matching the F-5 {1,7,1} distribution). The linker (`link_outline_skeleton`) was always correct; "chapters→outline=0" only happened when gemma generated **arc-only** packages (no chapter structure) — exactly what F-5's ARC COVERAGE governance rule fixed. `_work_project_id` already returns `work.id` as a surrogate for a null-project Work, so the "null-project strands chapters" theory was wrong. No cross-service works-track work needed. |
 | B · J8 agent-parity | ✅ DONE (composition-proven) | 3 seams verified live in the built app: (1) barrel registers planEffects (index.ts:21,38) + it is NOT in the PENDING allowlist; (2) planEffects invalidates ['plan-passes']+['plan-runs-latest'] (planEffects.test); (3) rail keys ['plan-passes',bookId,runId] — prefix invalidation matches → refetch (invalidate→refetch demoed live run 2). Agent plan_* write → rail refreshes, tested at every seam. |
 | C · clear all defers | ✅ DONE | Last defer (D-S3-CHECKPOINT-STRUCTURED-EDITS) BUILT + committed 982bde597 — the structured checkpoint editor. All buildable defers now built; remaining rows are genuinely out-of-scope (F-6 works-track) or convergence-gated shared-registry commits (tracked in DECISIONS/DEBT). |
 | D · completeness audit + fix bugs | ✅ DONE | structured-edits: BE _merge_pass_edits (option A list-replace) + save-edits-holds-pending guard; FE PassArtifactEditor + CheckpointReview Edit door; agent-parity via same _review_pass (MCP tool desc corrected). Tests: BE +4 (32 checkpoint green), FE +7 (80 plan-forge green), tsc clean. **LIVE-SMOKE PASSED** (real gateway:3123→composition-service, rebuilt image): save-edits held cast PENDING (not rejected), DELETE stuck 2→1, new artifact saved. |
 | E · Playwright coverage scripts | ✅ DONE | helpers/planforge.ts + StudioPassRailPage PoM + plan-forge-pass-rail.spec.ts (reachability PASSED 8.8s + model-gated journey). Coverage plan docs/plans/2026-07-17-studio-s3-coverage-test.md. |
 | F · blackbox-user scenario | ✅ DONE (scenario authored) | docs/plans/2026-07-17-studio-s3-blackbox-usability.md — Mai persona, 6 goal-only tasks, usability verdict framework. |
+
+## ▶ CLOSURE (2nd /goal — "clear all defers and do closure S3", 2026-07-17)
+**S3 is CLOSED.** Every defer is resolved, built, or a legitimately-gated future-track spec. Verified against code/DB, not handoff notes.
+
+| item | disposition | evidence |
+|---|---|---|
+| F-6 chapters↔outline | ✅ **RESOLVED** (was stale note) | symptom of F-5; DB shows run 019f6c2b = 3 arcs→9 chapters parented. No works-track work. |
+| Panel registration (catalog/enum/contract/i18n) | ✅ **ALREADY LANDED** | committed at HEAD; reachable on clean checkout. Stale "convergence-deferred" note corrected. |
+| planEffects Lane-B registration | ✅ **ALREADY LANDED** | imported+registered+reset at HEAD; plan_* off PENDING; 160 tests green. |
+| Structured-edits (last build defer) | ✅ **BUILT + browser-proven** | commit 982bde597; browser-GUI smoke drove Edit→add/fill→Save→reload→persists (Alpha+Gamma). |
+| Gap #2 browser-GUI smoke | ✅ **DONE** | full Playwright/chrome journey on :5210 static build; caught 2 bugs (below). |
+| Gap #3 id-bearing delete live | ✅ **DONE** | REST smoke: id-bearing roster ['cx1','cx2']→['cx1'] delete stuck through the gateway (proves the `_merge_pass_edits` id-upsert bypass beats/events rely on). |
+| BUG (browser-found): ledger "no compiled package" flash after edit | ✅ **FIXED** | `_serialize_run` missing `compiled` field that `pass_status` sets (both feed the same FE cache) — commit 544a2195f + parity test. |
+| BUG (browser-found): `{{status}}` seed-gate i18n leak | ✅ **FIXED in all 18 locales** | en 544a2195f; 17 others 68f282910; full 40-key parity, no leak. |
+| i18n 17-locale editor keys | ✅ **DONE** | 68f282910 — translated editAdd/editRemove/editEmpty + fixed seedGate across all 17. |
+| D-PLANFORGE-PROPOSE-BLIND | 🔵 **LEGIT design-defer** (NOT built — sealed) | spec complete (docs/specs/2026-07-17-planforge-propose-existing-state.md, 92 lines, code-grounded). Sealed OUT of Wave-5 by Q-35-OQ5; 3 genuine **PO product decisions** (owning track · default on/off · budget split) + needs an A/B eval. Future track — building it would violate a sealed decision. |
+| S05 fixture books, throwaway screenshot | ✅ **CLEANED** | s3-passrail-live.png removed; smoke edits ran on the throwaway test account. |
+
+**Remaining non-S3 tail (explicitly not S3 debt):** the 17-locale parity for OTHER studio namespaces (pre-existing 102-issue backlog, convergence §6.1) and `frontend/dist` + the `:5210` preview (dev fixtures, tear down at convergence). Nothing blocks S3 closure.
+
+**New commits this run:** 982bde597 (structured-edits) · 2b01af0df (run-state) · 544a2195f (2 browser-smoke bug fixes) · 68f282910 (17-locale i18n) · this run-state closure.
 
 ## SCOPE
 - **Persona / files:** features/plan-forge, features/studio/panels/Plan*
@@ -148,14 +169,16 @@ Proof must be pasted into the transcript, not claimed.
   019f6556-… (loreweave_composition) for the M4 screenshot — fake, throwaway test account, delete or
   leave; (2) `frontend/vite.smoke.config.ts` + `frontend/dist/` static build + the `:5210 vite preview`
   background process — kept for the SMOKE slice; tear down at convergence.
-- Shared-registry commit for `plan-passes` (enum/catalog/contract/i18n) is uncommitted, pending the
-  convergence node (see D-S3-DEFER-REGISTRY-COMMIT). Must land at §6 with enum==openable==contract
-  reconciled across all 8 sessions.
-- Lane-B registration for planEffects — `handlers/index.ts` (add register/reset) + the
-  `effectCoverage.contract.test.ts` PENDING-removal — is in the working tree (green there), NOT
-  committed: both files carry S4/S6/S7 uncommitted edits (flywheel/conformance/etc.) and the two must
-  land TOGETHER (register + de-PENDING) or the coverage ledger reds. Lands at convergence. The handler
-  file + the react-query hook ARE committed, so the wiring is one 2-line barrel edit away.
+- ~~Shared-registry commit for `plan-passes` (enum/catalog/contract/i18n) uncommitted~~ → ✅ **LANDED**
+  (verified against HEAD 2026-07-17): `plan-passes` is in the committed catalog (`catalog.ts:237`,
+  component `PassRailPanel`), the committed `frontend-tools.contract.json`, and `en/studio.json`. The
+  panel is reachable on a clean checkout. (A convergence pass by another session merged it; the "pending
+  convergence" note was stale.)
+- ~~Lane-B registration for planEffects uncommitted~~ → ✅ **LANDED** (verified against HEAD): committed
+  `agent/handlers/index.ts` imports (`:21`), registers (`registerPlanEffectHandlers()` `:38`) and resets
+  (`:54`) planEffects; the `plan_*` tools are mapped to `'planEffects'` in `effectCoverage.contract.test.ts`
+  (OFF the PENDING allowlist). `effectCoverage` 158 + `planEffects` 2 tests green at HEAD. Agent-parity is
+  wired at runtime — no convergence dependency remains.
 ### DRIFT  (near-misses, bars nearly lowered, tests nearly skipped)
 - **/review-impl caught a sealed-design drift (fixed):** M4-CP's CheckpointReview shipped a raw-JSON
   Edit textarea → Save-edits, which the pass-rail draft's "What this mock does NOT propose" callout
@@ -168,6 +191,20 @@ Proof must be pasted into the transcript, not claimed.
   list-REPLACE merge (`_merge_pass_edits`) so a delete ACTUALLY deletes (the id-upsert silent-no-op
   is closed). Live-smoke proved the delete sticks (2→1). The drift's root cause is eliminated, not
   just avoided.
+- **CLOSURE run — THREE stale defer-notes trusted over code, all corrected (the anti-pattern this repo
+  warns about):** at closure I nearly carried forward (a) F-6 as a "cross-service works-track defer",
+  (b) the panel registration and (c) planEffects registration as "convergence-deferred, uncommitted".
+  All THREE were false — verified against the live DB + HEAD: F-6 was fixed by F-5 (9 chapters link);
+  both registrations already landed (panel reachable, 160 effect tests green). The RUN-STATE notes had
+  gone stale. Lesson re-applied: **verify a defer against code before carrying it, never trust the
+  handoff** — a defer row has ongoing cost and a stale one sends the next session chasing a non-bug.
+- **Browser-GUI smoke earned its keep — caught 2 bugs unit+API missed:** (1) `_serialize_run` omitted
+  the `compiled` field `pass_status` sets, but both feed the same FE `['plan-passes']` cache → the rail
+  flashed "no compiled package" after a checkpoint edit (fixed 544a2195f + parity test); (2) the
+  `planPasses.seedGate` string leaked a `{{status}}` placeholder in ALL 18 locales (fixed 544a2195f +
+  68f282910). Neither was visible to unit tests (they mock i18n + don't setQueryData across serializers)
+  nor to the API smoke (the shapes are valid JSON) — only DRIVING THE REAL FE surfaced them. This is the
+  "agent-GUI loop needs a live browser smoke, not a raw-stream" rule paying off.
 - **/review-impl found a §2.6 loop-connect gap (fixed):** the rail had no "Link to outline" (relink →
   manuscript spine) and the planner didn't link to the rail. Added api.relink + usePassRail.relink +
   a footer "Link to outline →" button, and a "Pass Rail →" deep-link in the planner. Both live-proven
