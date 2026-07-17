@@ -105,6 +105,7 @@ describe('Gateway proxy routing', () => {
       learningUrl: urlOf(knowledgeServer),
       compositionUrl: urlOf(knowledgeServer),
       jobsUrl: urlOf(knowledgeServer),
+      agentRegistryUrl: urlOf(knowledgeServer),
       mcpPublicGatewayUrl: urlOf(mcpPublicServer),
     });
     await app.init();
