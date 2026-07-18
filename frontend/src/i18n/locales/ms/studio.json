@@ -661,6 +661,12 @@
       "title": "Cadangan Aliran Kerja",
       "desc": "Semak aliran kerja yang dicadangkan oleh ejen",
       "guideBody": "Menyenaraikan resipi aliran kerja yang dicadangkan oleh ejen untuk dicipta, berdasarkan urutan berbilang langkah yang dikesan kerap anda ulangi. Buka panel ini untuk meluluskan cadangan — yang akan menghasilkan aliran kerja tersebut supaya ia boleh dijalankan — atau menolaknya. Di sinilah aliran kerja cadangan ejen menjadi realiti."
+    },
+    "decompose": {
+      "title": "Leraikan",
+      "desc": "Leraikan buku anda mengikut struktur cerita — pratonton pohon arka→bab→babak, sunting, dan sahkan",
+      "guideBody": "Leraikan menukarkan struktur cerita menjadi rangka buku anda. Pilih salah satu struktur yang telah anda tulis (atau yang sedia ada), tambah premis, pilih model, kemudian Pratonton: AI akan mencadangkan pohon arka→bab→babak yang boleh anda sunting secara terus sebelum pengesahan. Sahkan untuk menulis rangka tersebut — pohon Manuskrip anda akan dikemas kini mengikutnya. Buka melalui Palet Perintah, atau daripada struktur dalam panel Templat Struktur melalui «Gunakan dalam leraikan» (yang akan memilih struktur tersebut secara automatik di sini). Belum ada struktur? Panel ini akan menawarkan untuk menetapkannya terlebih dahulu.",
+      "loading": "Menyelesaikan buku anda..."
     }
   },
   "sceneRail": {

@@ -20,6 +20,7 @@ import { QualityConformancePanel } from './QualityConformancePanel';
 import { ArcInspectorPanel } from './ArcInspectorPanel';   /* owner: S2 */
 import { ArcTemplatesPanel } from './ArcTemplatesPanel';   /* owner: S2 */
 import { StructureTemplatesPanel } from './StructureTemplatesPanel';   /* S-01 */
+import { DecomposePanel } from './DecomposePanel';   /* S-13 */
 import { UsagePanel } from './UsagePanel';
 import { NotificationsPanel } from './NotificationsPanel';
 import { SettingsPanel } from './SettingsPanel';
@@ -246,6 +247,7 @@ export const STUDIO_PANELS: StudioPanelDef[] = [
   // Palette + agent openable (panelCatalogContract enforces openable-set == the
   // ui_open_studio_panel enum + regenerated contracts/frontend-tools.contract.json).
   { id: 'plan-hub', component: PlanHubPanel, titleKey: 'panels.plan-hub.title', descKey: 'panels.plan-hub.desc', category: 'editor', guideBodyKey: 'panels.plan-hub.guideBody' },
+  { id: 'decompose', component: DecomposePanel, titleKey: 'panels.decompose.title', descKey: 'panels.decompose.desc', category: 'editor', guideBodyKey: 'panels.decompose.guideBody', tourAnchor: 'studio-decompose-panel' }, /* S-13 — decompose a book against an authored structure */
   // S3 · PlanForge — the 7-pass compiler rail (motifs→…→self_heal) + its 2 blocking checkpoints.
   { id: 'plan-passes', component: PassRailPanel, titleKey: 'panels.plan-passes.title', descKey: 'panels.plan-passes.desc', category: 'editor', guideBodyKey: 'panels.plan-passes.guideBody', tourAnchor: 'studio-plan-passes-panel' },
   { id: 'whatif-canvas', component: WhatIfCanvasPanel, titleKey: 'panels.whatif-canvas.title', descKey: 'panels.whatif-canvas.desc', category: 'editor', guideBodyKey: 'panels.whatif-canvas.guideBody' },

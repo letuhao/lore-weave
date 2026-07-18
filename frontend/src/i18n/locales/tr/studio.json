@@ -661,6 +661,12 @@
       "title": "İş Akışı Teklifleri",
       "desc": "Aracın önerdiği iş akışlarını inceleyin",
       "guideBody": "Aracın, tekrarladığınızı fark ettiği çok adımlı dizilere dayanarak oluşturulmasını önerdiği iş akışı tariflerini listeler. Bir teklifi onaylamak —böylece iş akışı çalıştırılabilir hale gelir— veya reddetmek için açın. Aracın önerdiği bir iş akışının gerçek anlamda hayata geçtiği yer burasıdır."
+    },
+    "decompose": {
+      "title": "Ayrıştır",
+      "desc": "Kitabınızı bir hikâye yapısına göre ayrıştırın — akış→bölüm→sahne ağacını önizleyin, düzenleyin ve onaylayın",
+      "guideBody": "Ayrıştır, bir hikâye yapısını kitabınızın taslağına dönüştürür. Yazdığınız yapılardan birini (veya yerleşik bir yapıyı) seçin, bir olay örgüsü ekleyin, bir model belirleyin ve ardından Önizle'ye tıklayın: Yapay zekâ, onaylamadan önce üzerinde düzenleme yapabileceğiniz bir akış→bölüm→sahne ağacı önerir. Onayla dediğinizde taslak oluşturulur ve Taslak ağacınız buna uyacak şekilde güncellenir. Komut Paleti'nden veya Yapı Şablonları panelindeki bir yapı üzerinden «Ayrıştırmada kullan» seçeneğiyle (bu seçenek yapıyı burada otomatik olarak seçer) açabilirsiniz. Henüz bir yapınız yok mu? Panel, önce bir yapı oluşturmanızı teklif eder.",
+      "loading": "Kitabınız çözümleniyor…"
     }
   },
   "sceneRail": {

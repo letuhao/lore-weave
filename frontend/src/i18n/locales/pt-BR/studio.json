@@ -661,6 +661,12 @@
       "title": "Propostas de Fluxo de Trabalho",
       "desc": "Revise os fluxos de trabalho propostos pelo agente",
       "guideBody": "Lista as receitas de fluxo de trabalho que o agente sugeriu criar, com base em sequências de várias etapas que ele notou que você repete. Abra para aprovar uma proposta — o que gera o fluxo de trabalho para que ele se torne executável — ou para rejeitá-la. É aqui que um fluxo de trabalho proposto pelo agente se torna real."
+    },
+    "decompose": {
+      "title": "Decompor",
+      "desc": "Decomponha seu livro com base em uma estrutura narrativa — visualize a árvore arco→capítulo→cena, edite-a e confirme",
+      "guideBody": "A decomposição transforma uma estrutura narrativa no esboço do seu livro. Escolha uma de suas estruturas criadas (ou uma integrada), adicione uma premissa, escolha um modelo e clique em Visualizar: a IA propõe uma árvore arco→capítulo→cena que você pode editar diretamente antes de confirmar. Ao confirmar, o esboço é gerado — sua árvore de Manuscrito será atualizada para corresponder. Abra o recurso pela Paleta de Comando ou a partir de uma estrutura no painel de Modelos de Estrutura via «Usar na decomposição» (que seleciona essa estrutura automaticamente). Ainda não tem uma estrutura? O painel oferece a opção de configurar uma primeiro.",
+      "loading": "Resolvendo seu livro..."
     }
   },
   "sceneRail": {

@@ -369,6 +369,12 @@
       "desc": "The whole book's plan on a graph canvas — arc lanes, chapters, scenes and their links",
       "guideBody": "The Plan Hub renders your book's entire structure as a graph: each saga/arc/sub-arc is a lane, its chapters and scenes are cards along a story-order axis, and scene-links draw the causal edges between them. Open the panel to see every arc collapsed to a rollup card; expand an arc to lazily load its chapters, and a chapter to see its scenes. Pan and zoom to navigate; problem and staleness badges surface where canon or promises need attention."
     },
+    "decompose": {
+      "title": "Decompose",
+      "desc": "Decompose your book against a story structure — preview the arc→chapter→scene tree, edit it, and commit",
+      "guideBody": "Decompose turns a story structure into your book's outline. Pick one of your authored structures (or a built-in), add a premise, choose a model, then Preview: the AI proposes an arc→chapter→scene tree you can edit inline before committing. Commit writes the outline — your Manuscript tree updates to match. Open it from the Command Palette, or from a structure in the Structure Templates panel via \"Use in decompose\" (which pre-selects that structure here). No Work yet? The panel offers to set one up first.",
+      "loading": "Resolving your book…"
+    },
     "plan-passes": {
       "title": "Pass Rail",
       "desc": "Compile a plan pass-by-pass and approve each checkpoint",

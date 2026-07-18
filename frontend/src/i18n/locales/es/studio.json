@@ -661,6 +661,12 @@
       "title": "Propuestas de flujo de trabajo",
       "desc": "Revisa los flujos de trabajo propuestos por el agente",
       "guideBody": "Lista las recetas de flujo de trabajo que el agente ha sugerido crear, basándose en secuencias de varios pasos que ha detectado que repites. Ábrelo para aprobar una propuesta — lo que genera el flujo de trabajo para que sea ejecutable — o para rechazarla. Aquí es donde un flujo de trabajo propuesto por el agente se vuelve realidad."
+    },
+    "decompose": {
+      "title": "Descomponer",
+      "desc": "Descompón tu libro según una estructura narrativa: previsualiza el árbol de arco→capítulo→escena, edítalo y confírmalo",
+      "guideBody": "La función Descomponer convierte una estructura narrativa en el esquema de tu libro. Elige una de tus estructuras creadas (o una integrada), añade una premisa, selecciona un modelo y haz clic en Vista previa: la IA propondrá un árbol de arco→capítulo→escena que puedes editar directamente antes de confirmarlo. Al confirmar, se escribirá el esquema y el árbol de tu Manuscrito se actualizará para coincidir. Puedes abrirlo desde la Paleta de comandos o desde una estructura en el panel de Plantillas de estructura mediante «Usar en descomposición» (lo que preseleccionará dicha estructura aquí). ¿Aún no tienes ninguna? El panel te ofrecerá configurar una primero.",
+      "loading": "Resolviendo tu libro…"
     }
   },
   "sceneRail": {

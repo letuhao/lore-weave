@@ -661,6 +661,12 @@
       "title": "Workflow-Vorschläge",
       "desc": "Überprüfen Sie die vom Agenten vorgeschlagenen Workflows",
       "guideBody": "Hier werden die Workflow-Rezepte aufgelistet, die der Agent basierend auf mehrstufigen Sequenzen vorgeschlagen hat, die er bei Ihnen wiederkehrend festgestellt hat. Öffnen Sie diesen Bereich, um einen Vorschlag anzunehmen – wodurch der Workflow erstellt wird und ausführbar ist – oder ihn abzulehnen. Hier wird ein vom Agenten vorgeschlagener Workflow tatsächlich realisiert."
+    },
+    "decompose": {
+      "title": "Dekonstruieren",
+      "desc": "Dekonstruieren Sie Ihr Buch anhand einer Story-Struktur – Vorschau der Bogen→Kapitel→Szene-Hierarchie, Bearbeitung und Speichern",
+      "guideBody": "Die Dekonstruktion wandelt eine Story-Struktur in den Entwurf Ihres Buches um. Wählen Sie eine Ihrer eigenen Strukturen (oder eine integrierte), fügen Sie eine Prämisse hinzu, wählen Sie ein Modell und klicken Sie dann auf Vorschau: Die KI schlägt eine Bogen→Kapitel→Szene-Hierarchie vor, die Sie vor dem Speichern direkt bearbeiten können. Durch das Speichern wird der Entwurf geschrieben – Ihr Manuskript-Baum wird entsprechend aktualisiert. Öffnen Sie die Funktion über die Befehlspalette oder über eine Struktur im Panel „Strukturvorlagen“ via „In Dekonstruktion verwenden“ (wodurch diese Struktur hier vorausgewählt wird). Noch keine Struktur vorhanden? Das Panel bietet an, zuerst eine zu erstellen.",
+      "loading": "Ihr Buch wird analysiert…"
     }
   },
   "sceneRail": {
