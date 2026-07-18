@@ -82,6 +82,7 @@
       "table": "Tabelle"
     },
     "placeholder": "Frage etwas zu deiner Story, deinen Charakteren, Worldbuilding...",
+    "assistant_placeholder": "Erzähle von deinem Tag – den Menschen, Projekten und Entscheidungen…",
     "attach_context": "Kontext anhängen",
     "assist": "Unterstützung",
     "voice_assist_on": "Sprachassistent AN — KI-Antworten werden vorgelesen",
@@ -124,8 +125,7 @@
     "mode_write": "Schreiben",
     "mode_ask_hint": "Nur-Lese-Modus — der Agent kann recherchieren, aber nichts ändern",
     "mode_plan_hint": "Planungsmodus — der Agent recherchiert und erstellt einen Plan mit Planungs-Tools; kein Fließtext, bis du zu Schreiben wechselst",
-    "mode_write_hint": "Schreibmodus — der Agent kann Änderungen vornehmen (fragt einmal pro neuem Tool nach)",
-    "assistant_placeholder": "Erzähle von deinem Tag – den Menschen, Projekten und Entscheidungen…"
+    "mode_write_hint": "Schreibmodus — der Agent kann Änderungen vornehmen (fragt einmal pro neuem Tool nach)"
   },
   "new": {
     "create_failed": "Chat konnte nicht erstellt werden: {{error}}",
@@ -229,7 +229,6 @@
   "actionConfirm": {
     "label": "Aktion bestätigen",
     "batch_count": "{{count}} Elemente",
-    "warning": "Diese Änderung hat große Auswirkungen — bitte bestätigen.",
     "warning_destructive": "Dies ist eine destruktive Änderung mit Folgewirkungen — bitte bestätigen.",
     "destructive_skipped": "{{count}} destruktive(s) Op(s) wird übersprungen, sofern du sie oben nicht aktivierst.",
     "confirm": "Bestätigen",
@@ -243,7 +242,8 @@
     "cancelled": "Abgebrochen",
     "reprice": "Die Kosten sind seit der Schätzung auf {{cost}} gestiegen — bitte erneut bestätigen.",
     "reprice_title": "Kosten geändert — nicht angewendet",
-    "reprice_detail": "Geschätzt {{old}}, jetzt {{new}}. Es wurden keine Kosten verursacht — bitte erneut bestätigen."
+    "reprice_detail": "Geschätzt {{old}}, jetzt {{new}}. Es wurden keine Kosten verursacht — bitte erneut bestätigen.",
+    "warning": "Bitte überprüfen Sie diese Änderung, bevor Sie sie anwenden."
   },
   "batchConfirm": {
     "title": "{{count}} Aktionen in einem Schritt bestätigen",

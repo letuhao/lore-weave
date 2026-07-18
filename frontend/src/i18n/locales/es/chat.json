@@ -82,6 +82,7 @@
       "table": "Tabla"
     },
     "placeholder": "Pregunta sobre tu historia, personajes, construcción de mundo...",
+    "assistant_placeholder": "Relata tu día: las personas, los proyectos y las decisiones…",
     "attach_context": "Adjuntar contexto",
     "assist": "Asistir",
     "voice_assist_on": "Asistente de voz ACTIVADO — las respuestas de la IA se leerán en voz alta",
@@ -124,8 +125,7 @@
     "mode_write": "Escribir",
     "mode_ask_hint": "Modo de solo lectura — el agente puede investigar pero no cambiar nada",
     "mode_plan_hint": "Modo de planificación — el agente investiga y construye un plan con las herramientas de planificación; no habrá prosa hasta que cambies a Escribir",
-    "mode_write_hint": "Modo de escritura — el agente puede realizar cambios irreversibles (pregunta una vez por cada nueva herramienta)",
-    "assistant_placeholder": "Relata tu día: las personas, los proyectos y las decisiones…"
+    "mode_write_hint": "Modo de escritura — el agente puede realizar cambios irreversibles (pregunta una vez por cada nueva herramienta)"
   },
   "new": {
     "create_failed": "Error al crear el chat: {{error}}",
@@ -229,7 +229,6 @@
   "actionConfirm": {
     "label": "Confirmar acción",
     "batch_count": "{{count}} elementos",
-    "warning": "Este cambio tiene un gran impacto; por favor, confirma.",
     "warning_destructive": "Esta acción es destructiva y tiene efectos en cascada; por favor, confirma.",
     "destructive_skipped": "Se omitirán {{count}} op(s) destructiva(s) a menos que los habilites arriba.",
     "confirm": "Confirmar",
@@ -243,7 +242,8 @@
     "cancelled": "Cancelado",
     "reprice": "El coste ha subido a {{cost}} desde la estimación; vuelve a solicitarlo para confirmar al nuevo precio.",
     "reprice_title": "El coste ha cambiado — no se ha aplicado",
-    "reprice_detail": "Estimado {{old}}, ahora {{new}}. No se ha gastado nada; vuelve a solicitarlo para confirmar al nuevo precio."
+    "reprice_detail": "Estimado {{old}}, ahora {{new}}. No se ha gastado nada; vuelve a solicitarlo para confirmar al nuevo precio.",
+    "warning": "Por favor, revisa este cambio antes de aplicarlo."
   },
   "batchConfirm": {
     "title": "Confirmar {{count}} acciones en un solo paso",

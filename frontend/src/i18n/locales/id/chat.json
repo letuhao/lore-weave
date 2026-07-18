@@ -82,6 +82,7 @@
       "table": "Tabel"
     },
     "placeholder": "Tanyakan tentang cerita, karakter, pembangunan dunia Anda...",
+    "assistant_placeholder": "Ceritakan tentang harimu — orang-orang, proyek, dan keputusan yang ada...",
     "attach_context": "Lampirkan konteks",
     "assist": "Bantu",
     "voice_assist_on": "Asisten Suara AKTIF — respons AI akan diucapkan",
@@ -124,8 +125,7 @@
     "mode_write": "Tulis",
     "mode_ask_hint": "Mode baca-saja — agen dapat melakukan riset tetapi tidak dapat mengubah apa pun",
     "mode_plan_hint": "Mode rencana — agen melakukan riset dan membangun rencana dengan alat perencanaan; tidak ada prosa sampai Anda beralih ke Tulis",
-    "mode_write_hint": "Mode tulis — agen dapat membuat perubahan yang tidak dapat dibatalkan (bertanya sekali per alat baru)",
-    "assistant_placeholder": "Ceritakan tentang harimu — orang-orang, proyek, dan keputusan yang ada..."
+    "mode_write_hint": "Mode tulis — agen dapat membuat perubahan yang tidak dapat dibatalkan (bertanya sekali per alat baru)"
   },
   "new": {
     "create_failed": "Gagal membuat obrolan: {{error}}",
@@ -229,7 +229,6 @@
   "actionConfirm": {
     "label": "Konfirmasi tindakan",
     "batch_count": "{{count}} item",
-    "warning": "Perubahan ini berdampak tinggi — harap konfirmasi.",
     "warning_destructive": "Ini bersifat destruktif dan berantai — harap konfirmasi.",
     "destructive_skipped": "{{count}} op(s) destruktif akan DILEWATI kecuali Anda mengaktifkannya di atas.",
     "confirm": "Konfirmasi",
@@ -243,7 +242,8 @@
     "cancelled": "Dibatalkan",
     "reprice": "Biaya naik menjadi {{cost}} sejak estimasi ini dibuat — ajukan lagi untuk konfirmasi ulang dengan harga baru.",
     "reprice_title": "Biaya berubah — tidak diterapkan",
-    "reprice_detail": "Estimasi {{old}}, sekarang {{new}}. Tidak ada biaya yang dikeluarkan — ajukan lagi untuk konfirmasi ulang dengan harga baru."
+    "reprice_detail": "Estimasi {{old}}, sekarang {{new}}. Tidak ada biaya yang dikeluarkan — ajukan lagi untuk konfirmasi ulang dengan harga baru.",
+    "warning": "Harap tinjau perubahan ini sebelum diterapkan."
   },
   "batchConfirm": {
     "title": "Konfirmasi {{count}} tindakan dalam satu langkah",

@@ -82,6 +82,7 @@
       "table": "Jadual"
     },
     "placeholder": "Tanya tentang cerita, watak, pembinaan dunia anda...",
+    "assistant_placeholder": "Ceritakan tentang hari anda — orang di sekeliling, projek dan keputusan...",
     "attach_context": "Lampirkan konteks",
     "assist": "Bantuan",
     "voice_assist_on": "Bantuan Suara AKTIF — jawapan AI akan diucapkan",
@@ -124,8 +125,7 @@
     "mode_write": "Tulis",
     "mode_ask_hint": "Mod baca sahaja — ejen boleh membuat penyelidikan tetapi tidak boleh mengubah apa-apa",
     "mode_plan_hint": "Mod rancang — ejen menyelidik dan membina rancangan dengan alatan perancangan; tiada prosa sehingga anda tukar ke Tulis",
-    "mode_write_hint": "Mod tulis — ejen boleh membuat perubahan yang tidak boleh dibatalkan (bertanya sekali bagi setiap alatan baru)",
-    "assistant_placeholder": "Ceritakan tentang hari anda — orang di sekeliling, projek dan keputusan..."
+    "mode_write_hint": "Mod tulis — ejen boleh membuat perubahan yang tidak boleh dibatalkan (bertanya sekali bagi setiap alatan baru)"
   },
   "new": {
     "create_failed": "Gagal mencipta sembang: {{error}}",
@@ -229,7 +229,6 @@
   "actionConfirm": {
     "label": "Sahkan tindakan",
     "batch_count": "{{count}} item",
-    "warning": "Perubahan ini berimpak tinggi — sila sahkan.",
     "warning_destructive": "Ini adalah tindakan pemadaman bersiri — sila sahkan.",
     "destructive_skipped": "{{count}} op(s) pemadaman akan DIKELUARKAN kecuali anda mengaktifkannya di atas.",
     "confirm": "Sahkan",
@@ -243,7 +242,8 @@
     "cancelled": "Dibatalkan",
     "reprice": "Kos meningkat kepada {{cost}} sejak anggaran dibuat — minta semula untuk mengesahkan pada harga baharu.",
     "reprice_title": "Kos berubah — tidak dilaksanakan",
-    "reprice_detail": "Anggaran {{old}}, kini {{new}}. Tiada kos dibelanjakan — minta semula untuk mengesahkan pada harga baharu."
+    "reprice_detail": "Anggaran {{old}}, kini {{new}}. Tiada kos dibelanjakan — minta semula untuk mengesahkan pada harga baharu.",
+    "warning": "Sila semak perubahan ini sebelum melaksanakan."
   },
   "batchConfirm": {
     "title": "Sahkan {{count}} tindakan dalam satu langkah",

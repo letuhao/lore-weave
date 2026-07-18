@@ -82,6 +82,7 @@
       "table": "表格"
     },
     "placeholder": "询问关于你的故事、角色、世界观的问题...",
+    "assistant_placeholder": "聊聊你的一天吧 —— 那些遇见的人、参与的项目和做出的决定……",
     "attach_context": "附加上下文",
     "assist": "辅助",
     "voice_assist_on": "语音辅助已开启 — AI 回复将通过语音播放",
@@ -124,8 +125,7 @@
     "mode_write": "写作",
     "mode_ask_hint": "只读模式 — Agent 可以进行研究但不能更改任何内容",
     "mode_plan_hint": "计划模式 — Agent 使用计划工具进行研究并制定计划；在切换到写作模式前不会生成正文",
-    "mode_write_hint": "写作模式 — Agent 可以进行不可撤销的更改 (每个新工具请求一次)",
-    "assistant_placeholder": "聊聊你的一天吧 —— 那些遇见的人、参与的项目和做出的决定……"
+    "mode_write_hint": "写作模式 — Agent 可以进行不可撤销的更改 (每个新工具请求一次)"
   },
   "new": {
     "create_failed": "创建对话失败：{{error}}",
@@ -229,7 +229,6 @@
   "actionConfirm": {
     "label": "确认操作",
     "batch_count": "{{count}} 项",
-    "warning": "此更改影响较大 — 请确认。",
     "warning_destructive": "此操作具有破坏性且会产生连锁反应 — 请确认。",
     "destructive_skipped": "除非您在上方启用，否则将跳过 {{count}} 个破坏性操作。",
     "confirm": "确认",
@@ -243,7 +242,8 @@
     "cancelled": "已取消",
     "reprice": "由于成本已上升至 {{cost}}，原估算已失效 — 请重新确认新价格。",
     "reprice_title": "价格已变动 — 未应用",
-    "reprice_detail": "原估算 {{old}}，现为 {{new}}。未产生任何费用 — 请重新确认新价格。"
+    "reprice_detail": "原估算 {{old}}，现为 {{new}}。未产生任何费用 — 请重新确认新价格。",
+    "warning": "应用此更改前请进行确认。"
   },
   "batchConfirm": {
     "title": "一键确认 {{count}} 个操作",

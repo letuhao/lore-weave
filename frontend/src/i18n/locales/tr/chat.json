@@ -82,6 +82,7 @@
       "table": "Tablo"
     },
     "placeholder": "Hikayeniz, karakterleriniz veya dünya inşası hakkında soru sorun...",
+    "assistant_placeholder": "Gününüzden bahsedin — insanlar, projeler ve kararlar…",
     "attach_context": "Bağlam ekle",
     "assist": "Asist",
     "voice_assist_on": "Sesli Asist AÇIK — AI yanıtları sesli okunacak",
@@ -124,8 +125,7 @@
     "mode_write": "Yaz",
     "mode_ask_hint": "Salt okunur mod — ajan araştırma yapabilir ancak hiçbir şeyi değiştiremez",
     "mode_plan_hint": "Planlama modu — ajan araştırma yapar ve planlama araçlarıyla bir plan oluşturur; Yaz moduna geçene kadar metin yazılmaz",
-    "mode_write_hint": "Yazma modu — ajan geri alınamaz değişiklikler yapabilir (her yeni araç için bir kez sorar)",
-    "assistant_placeholder": "Gününüzden bahsedin — insanlar, projeler ve kararlar…"
+    "mode_write_hint": "Yazma modu — ajan geri alınamaz değişiklikler yapabilir (her yeni araç için bir kez sorar)"
   },
   "new": {
     "create_failed": "Sohbet oluşturulamadı: {{error}}",
@@ -229,7 +229,6 @@
   "actionConfirm": {
     "label": "İşlemi onayla",
     "batch_count": "{{count}} öğe",
-    "warning": "Bu değişiklik yüksek etkili — lütfen onaylayın.",
     "warning_destructive": "Bu işlem yıkıcıdır ve zincirleme etki yaratır — lütfen onaylayın.",
     "destructive_skipped": "Yukarıdan etkinleştirmediğiniz sürece {{count}} yıkıcı işlem ATLANACAKTIR.",
     "confirm": "Onayla",
@@ -243,7 +242,8 @@
     "cancelled": "İptal edildi",
     "reprice": "Tahmin edilen maliyet {{cost}} seviyesine çıktı — yeni fiyattan tekrar onaylamak için tekrar isteyin.",
     "reprice_title": "Maliyet değişti — uygulanmadı",
-    "reprice_detail": "Tahmini {{old}}, şimdi {{new}}. Hiçbir harcama yapılmadı — yeni fiyattan tekrar onaylamak için tekrar isteyin."
+    "reprice_detail": "Tahmini {{old}}, şimdi {{new}}. Hiçbir harcama yapılmadı — yeni fiyattan tekrar onaylamak için tekrar isteyin.",
+    "warning": "Lütfen bu değişikliği uygulamadan önce gözden geçirin."
   },
   "batchConfirm": {
     "title": "{{count}} işlemi tek adımda onayla",

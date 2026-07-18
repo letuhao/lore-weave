@@ -82,6 +82,7 @@
       "table": "Bảng"
     },
     "placeholder": "Hỏi về truyện, nhân vật, xây dựng thế giới của bạn...",
+    "assistant_placeholder": "Chia sẻ về một ngày của bạn — về những con người, dự án và những quyết định...",
     "attach_context": "Đính kèm ngữ cảnh",
     "assist": "Trợ lý",
     "voice_assist_on": "Trợ lý giọng nói BẬT — phản hồi AI sẽ được đọc",
@@ -124,8 +125,7 @@
     "mode_write": "Ghi",
     "mode_ask_hint": "Chế độ chỉ đọc — trợ lý có thể tra cứu nhưng không thay đổi gì",
     "mode_plan_hint": "Chế độ lập kế hoạch — trợ lý tra cứu và xây dựng kế hoạch bằng công cụ lập kế hoạch; không viết văn cho đến khi bạn chuyển sang Ghi",
-    "mode_write_hint": "Chế độ ghi — trợ lý có thể thực hiện thay đổi hoàn tác được (hỏi một lần cho mỗi công cụ mới)",
-    "assistant_placeholder": "Chia sẻ về một ngày của bạn — về những con người, dự án và những quyết định..."
+    "mode_write_hint": "Chế độ ghi — trợ lý có thể thực hiện thay đổi hoàn tác được (hỏi một lần cho mỗi công cụ mới)"
   },
   "new": {
     "create_failed": "Không thể tạo cuộc trò chuyện: {{error}}",
@@ -229,7 +229,6 @@
   "actionConfirm": {
     "label": "Xác nhận hành động",
     "batch_count": "{{count}} mục",
-    "warning": "Thay đổi này có tác động lớn — vui lòng xác nhận.",
     "warning_destructive": "Hành động này có tính phá hủy và lan truyền — vui lòng xác nhận.",
     "destructive_skipped": "{{count}} thao tác phá hủy sẽ bị BỎ QUA trừ khi bạn bật chúng ở trên.",
     "confirm": "Xác nhận",
@@ -243,7 +242,8 @@
     "cancelled": "Đã hủy",
     "reprice": "Chi phí đã tăng lên {{cost}} so với ước tính — hãy hỏi lại để xác nhận lại theo giá mới.",
     "reprice_title": "Chi phí đã thay đổi — chưa áp dụng",
-    "reprice_detail": "Ước tính {{old}}, hiện là {{new}}. Chưa tốn khoản nào — hãy hỏi lại để xác nhận theo giá mới."
+    "reprice_detail": "Ước tính {{old}}, hiện là {{new}}. Chưa tốn khoản nào — hãy hỏi lại để xác nhận theo giá mới.",
+    "warning": "Vui lòng xem lại thay đổi này trước khi áp dụng."
   },
   "batchConfirm": {
     "title": "Xác nhận {{count}} hành động trong một bước",

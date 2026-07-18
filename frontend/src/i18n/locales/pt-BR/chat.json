@@ -82,6 +82,7 @@
       "table": "Tabela"
     },
     "placeholder": "Pergunte sobre sua história, personagens, construção de mundo...",
+    "assistant_placeholder": "Relate o seu dia — as pessoas, projetos e decisões…",
     "attach_context": "Anexar contexto",
     "assist": "Assistir",
     "voice_assist_on": "Assistente de Voz ATIVADO — as respostas da IA serão faladas",
@@ -124,8 +125,7 @@
     "mode_write": "Escrever",
     "mode_ask_hint": "Modo apenas leitura — o agente pode pesquisar, mas não pode alterar nada",
     "mode_plan_hint": "Modo de planejamento — o agente pesquisa e constrói um plano com ferramentas de planejamento; sem prosa até você mudar para Escrever",
-    "mode_write_hint": "Modo de escrita — o agente pode fazer alterações irreversíveis (pergunta uma vez por nova ferramenta)",
-    "assistant_placeholder": "Relate o seu dia — as pessoas, projetos e decisões…"
+    "mode_write_hint": "Modo de escrita — o agente pode fazer alterações irreversíveis (pergunta uma vez por nova ferramenta)"
   },
   "new": {
     "create_failed": "Falha ao criar chat: {{error}}",
@@ -229,7 +229,6 @@
   "actionConfirm": {
     "label": "Confirmar ação",
     "batch_count": "{{count}} itens",
-    "warning": "Esta alteração tem alto impacto — por favor, confirme.",
     "warning_destructive": "Esta ação é destrutiva e em cascata — por favor, confirme.",
     "destructive_skipped": "{{count}} op(s) destrutiva(s) serão PULADAS, a menos que você as habilite acima.",
     "confirm": "Confirmar",
@@ -243,7 +242,8 @@
     "cancelled": "Cancelado",
     "reprice": "O custo subiu para {{cost}} desde a estimativa — peça novamente para confirmar o novo preço.",
     "reprice_title": "Custo alterado — não aplicado",
-    "reprice_detail": "Estimado {{old}}, agora {{new}}. Nada foi gasto — peça novamente para confirmar o novo preço."
+    "reprice_detail": "Estimado {{old}}, agora {{new}}. Nada foi gasto — peça novamente para confirmar o novo preço.",
+    "warning": "Por favor, revise esta alteração antes de aplicá-la."
   },
   "batchConfirm": {
     "title": "Confirmar {{count}} ações de uma só vez",

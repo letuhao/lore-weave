@@ -82,6 +82,7 @@
       "table": "Tableau"
     },
     "placeholder": "Posez des questions sur votre histoire, vos personnages, votre univers...",
+    "assistant_placeholder": "Racontez votre journée — les personnes, les projets et les décisions…",
     "attach_context": "Attacher le contexte",
     "assist": "Assistance",
     "voice_assist_on": "Assistance vocale ACTIVÉE — les réponses de l'IA seront lues à voix haute",
@@ -124,8 +125,7 @@
     "mode_write": "Écrire",
     "mode_ask_hint": "Mode lecture seule — l'agent peut faire des recherches mais ne peut rien modifier",
     "mode_plan_hint": "Mode planification — l'agent effectue des recherches et construit un plan avec les outils de planification ; pas de prose tant que vous n'êtes pas en mode Écrire",
-    "mode_write_hint": "Mode écriture — l'agent peut effectuer des changements irréversibles (demande une confirmation par nouvel outil)",
-    "assistant_placeholder": "Racontez votre journée — les personnes, les projets et les décisions…"
+    "mode_write_hint": "Mode écriture — l'agent peut effectuer des changements irréversibles (demande une confirmation par nouvel outil)"
   },
   "new": {
     "create_failed": "Échec de la création du chat : {{error}}",
@@ -229,7 +229,6 @@
   "actionConfirm": {
     "label": "Confirmer l'action",
     "batch_count": "{{count}} éléments",
-    "warning": "Cette modification est importante — veuillez confirmer.",
     "warning_destructive": "Cette action est irréversible et s'applique en cascade — veuillez confirmer.",
     "destructive_skipped": "{{count}} op(s) destructif(s) seront IGNORÉ(S) à moins que vous ne les activiez ci-dessus.",
     "confirm": "Confirmer",
@@ -243,7 +242,8 @@
     "cancelled": "Annulé",
     "reprice": "Le coût est passé à {{cost}} depuis l'estimation — veuillez relancer pour confirmer au nouveau prix.",
     "reprice_title": "Le coût a changé — non appliqué",
-    "reprice_detail": "Estimé à {{old}}, maintenant {{new}}. Aucun frais n'a été engagé — veuillez relancer pour confirmer au nouveau prix."
+    "reprice_detail": "Estimé à {{old}}, maintenant {{new}}. Aucun frais n'a été engagé — veuillez relancer pour confirmer au nouveau prix.",
+    "warning": "Veuillez vérifier cette modification avant de l'appliquer."
   },
   "batchConfirm": {
     "title": "Confirmer {{count}} actions en une étape",

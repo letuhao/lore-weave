@@ -82,6 +82,7 @@
       "table": "表格"
     },
     "placeholder": "詢問關於您的故事、角色、世界觀...",
+    "assistant_placeholder": "聊聊你的一天 —— 遇見的人、進行中的計畫與做出的決定……",
     "attach_context": "附加情境",
     "assist": "輔助",
     "voice_assist_on": "語音輔助開啟 — AI 回應將被朗讀",
@@ -124,8 +125,7 @@
     "mode_write": "寫入",
     "mode_ask_hint": "唯讀模式 — 代理可以查詢但不能變更任何內容",
     "mode_plan_hint": "規劃模式 — 代理會研究並以規劃工具建立計畫；切換到寫入前不會撰寫正文",
-    "mode_write_hint": "寫入模式 — 代理可以進行可復原的變更（每個新工具只詢問一次）",
-    "assistant_placeholder": "聊聊你的一天 —— 遇見的人、進行中的計畫與做出的決定……"
+    "mode_write_hint": "寫入模式 — 代理可以進行可復原的變更（每個新工具只詢問一次）"
   },
   "new": {
     "create_failed": "無法建立聊天：{{error}}",
@@ -229,7 +229,6 @@
   "actionConfirm": {
     "label": "確認操作",
     "batch_count": "{{count}} 項",
-    "warning": "此變更影響重大 — 請確認。",
     "warning_destructive": "此操作具破壞性且會連帶影響 — 請確認。",
     "destructive_skipped": "{{count}} 個破壞性操作將被略過，除非你在上方啟用它們。",
     "confirm": "確認",
@@ -243,7 +242,8 @@
     "cancelled": "已取消",
     "reprice": "估價後費用已上漲至 {{cost}} — 請重新詢問以依新價格再次確認。",
     "reprice_title": "費用已變動 — 尚未套用",
-    "reprice_detail": "原估 {{old}}，現為 {{new}}。未產生任何花費 — 請重新詢問以依新價格再次確認。"
+    "reprice_detail": "原估 {{old}}，現為 {{new}}。未產生任何花費 — 請重新詢問以依新價格再次確認。",
+    "warning": "在套用此變更前，請先進行確認。"
   },
   "batchConfirm": {
     "title": "一次確認 {{count}} 項操作",
