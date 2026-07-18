@@ -1,10 +1,14 @@
 // S5-B4 — the branch prose-diff view (a Diff tab inside the divergence panel). Lists
 // the dị bản's changed/added scenes and shows a two-column canon↔branch line diff for
 // the selected one. Renders only; data + correspondence live in useBranchDiff.
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useBranchDiff, type BranchDiffScene } from '../hooks/useBranchDiff';
 import { lineDiff } from '../lib/lineDiff';
+
+// H-5b — below this width the side-by-side canon↔branch diff STACKS vertically (each side gets
+// full width) rather than squeezing into two unreadable columns in a narrow dock.
+const DIFF_STACK_BELOW_PX = 360;
 
 export function BranchDiffView({
   derivativeProjectId,
@@ -73,6 +77,19 @@ export function BranchDiffView({
 function SceneDiff({ scene }: { scene: BranchDiffScene }) {
   const { t } = useTranslation('composition');
   const rows = useMemo(() => lineDiff(scene.canonText, scene.branchText), [scene]);
+  // H-5b — measure the container (a dock column of unknown width, no @container plugin in the app)
+  // and stack the two prose panes vertically when too narrow for a legible side-by-side.
+  const ref = useRef<HTMLDivElement>(null);
+  const [stacked, setStacked] = useState(false);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el || typeof ResizeObserver === 'undefined') return;
+    const update = () => setStacked(el.clientWidth < DIFF_STACK_BELOW_PX);
+    update();
+    const ro = new ResizeObserver(update);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
   if (scene.status === 'no-prose') {
     return (
       <div data-testid="branchdiff-noprose" className="flex h-full flex-col items-center justify-center gap-2 p-6 text-center text-xs text-muted-foreground">
@@ -92,9 +109,15 @@ function SceneDiff({ scene }: { scene: BranchDiffScene }) {
     );
   }
   return (
-    <div data-testid="branchdiff-changed" className="grid h-full min-h-0 grid-cols-2">
-      {/* H-5b — min-w-0 + break-words so each side wraps rather than clipping/overflowing in a narrow dock. */}
-      <div className="min-h-0 min-w-0 overflow-y-auto border-r border-border p-3 text-[12.5px] leading-relaxed">
+    <div
+      ref={ref}
+      data-testid="branchdiff-changed"
+      data-stacked={stacked || undefined}
+      className={`grid h-full min-h-0 ${stacked ? 'grid-rows-2 grid-cols-1' : 'grid-cols-2'}`}
+    >
+      {/* H-5b — min-w-0 + break-words so each side wraps rather than clipping; the divider is on the
+          right when side-by-side, on the bottom when stacked. */}
+      <div className={`min-h-0 min-w-0 overflow-y-auto border-border p-3 text-[12.5px] leading-relaxed ${stacked ? 'border-b' : 'border-r'}`}>
         <div className="sticky top-0 mb-1.5 bg-background pb-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">{t('branchdiff.canon', { defaultValue: 'Canon' })}</div>
         {rows.filter((r) => r.type !== 'add').map((r, i) => (
           <p key={i} className={`break-words ${r.type === 'del' ? 'rounded bg-red-50/70 px-1 dark:bg-red-950/20' : 'px-1'}`}>{r.text}</p>

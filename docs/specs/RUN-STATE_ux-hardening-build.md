@@ -39,10 +39,14 @@ discoverability slice live-smoked, registry change reviewed.
       44px hit area on touch, dense on desktop. EVID: tsc 0; vitest 36 passed (className changes don't break;
       re-export resolves).
 
-## PARKED / DEBT / DRIFT
-- DEBT H-2c: library-row pin/exclude deferred — needs a per-scene pin-state join on library rows (pins are
-  per-scene); studio mount is library-first (no scene); retrieval hits already offer pin. Low value; revisit
-  if per-scene reference-shelf-in-studio lands.
-- DEBT H-5b: full narrow-dock STACKING (Canon/dị bản columns) needs a measured breakpoint — no @container
-  plugin in the app. Shipped the no-clip CSS fix (minmax + min-w-0 + break-words); measured-stack is a follow-up.
+## DECISIONS on the two former defers (2026-07-18 — "defer or close?" → both CLOSE)
+- ✅ CLOSED (built): H-5b measured column-stacking. A ResizeObserver in SceneDiff stacks the Canon/dị bản
+  panes vertically below 360px (each side full-width) — no @container plugin needed. jsdom lacks
+  ResizeObserver → the guard keeps side-by-side (existing tested behavior). 930 composition tests green.
+- 🚫 CLOSED (won't-fix, gate #5 conscious): H-2c library-row pin/exclude. NOT a real capability gap: pinning
+  is PER-SCENE, and (a) the studio reference-shelf mount is library-first with NO scene → pinning is
+  meaningless there; (b) on the legacy page (being retired, GG-4) the retrieval hits already offer pin. The
+  only sliver it'd add — force-pin an off-topic reference the retrieval doesn't surface — is a rare need with
+  real cost (a per-scene pin-state join on every library row). Not deferred pending prerequisites; we don't
+  need it. Retrieval-pin covers the real workflow.
 - DRIFT: spec H-1b said PANELS_BY_CATEGORY; editor category = 19 panels (too broad) → using curated navGroup.
