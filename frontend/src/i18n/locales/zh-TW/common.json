@@ -3,6 +3,7 @@
     "startNew": "開始新的創作",
     "workspace": "工作區",
     "chat": "聊天",
+    "assistant": "助手",
     "roleplay": "角色扮演",
     "knowledge": "知識",
     "worlds": "世界",
@@ -25,8 +26,7 @@
     "home": "首頁",
     "account": "帳號",
     "signin": "登入",
-    "back_to_book": "返回書籍",
-    "assistant": "助手"
+    "back_to_book": "返回書籍"
   },
   "logout_confirm": {
     "title": "有未儲存的變更，仍要登出嗎？",
@@ -170,5 +170,6 @@
     "saved": "已儲存模型排序",
     "saveFailed": "無法儲存排序。",
     "loadFailed": "無法載入模型清單。"
-  }
+  },
+  "reconnecting": "正在重新連線…"
 }

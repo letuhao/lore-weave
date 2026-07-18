@@ -3,6 +3,7 @@
     "startNew": "Bắt đầu điều gì đó mới",
     "workspace": "Không gian làm việc",
     "chat": "Trò chuyện",
+    "assistant": "Trợ lý",
     "roleplay": "Nhập vai",
     "knowledge": "Tri thức",
     "worlds": "Thế giới",
@@ -25,8 +26,7 @@
     "home": "Trang chủ",
     "account": "Tài khoản",
     "signin": "Đăng nhập",
-    "back_to_book": "Quay lại sách",
-    "assistant": "Trợ lý"
+    "back_to_book": "Quay lại sách"
   },
   "logout_confirm": {
     "title": "Đăng xuất khi có thay đổi chưa lưu?",
@@ -170,5 +170,6 @@
     "saved": "Đã lưu thứ tự mô hình",
     "saveFailed": "Không lưu được thứ tự.",
     "loadFailed": "Không tải được danh sách mô hình."
-  }
+  },
+  "reconnecting": "Đang kết nối lại…"
 }

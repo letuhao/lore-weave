@@ -3,6 +3,7 @@
     "startNew": "Yeni bir şey başlat",
     "workspace": "Çalışma Alanı",
     "chat": "Sohbet",
+    "assistant": "Asistan",
     "roleplay": "Rol Yapma",
     "knowledge": "Bilgi",
     "worlds": "Dünyalar",
@@ -25,8 +26,7 @@
     "home": "Ana Sayfa",
     "account": "Hesap",
     "signin": "Giriş Yap",
-    "back_to_book": "Kitaba geri dön",
-    "assistant": "Asistan"
+    "back_to_book": "Kitaba geri dön"
   },
   "logout_confirm": {
     "title": "Kaydedilmemiş değişikliklerle oturum kapatılsın mı?",
@@ -170,5 +170,6 @@
     "saved": "Model sıralaması kaydedildi",
     "saveFailed": "Sıralama kaydedilemedi.",
     "loadFailed": "Modeller yüklenemedi."
-  }
+  },
+  "reconnecting": "Yeniden bağlanılıyor…"
 }

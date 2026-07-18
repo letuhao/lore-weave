@@ -39,6 +39,12 @@ let refreshInFlight: Promise<string | null> | null = null;
 // expires while the tab is idle — no apiJson 401 ever fires there (#11 side-finding).
 export function refreshAccessToken(): Promise<string | null> {
   if (refreshInFlight) return refreshInFlight;
+  // M4 (newcomer polish F1) — announce a real refresh so the shell can show "Reconnecting…" instead
+  // of rendering confident authed chrome while every call transiently 401s (the first-run diary's
+  // "logged in but nothing works" moment). Additive only — does NOT touch the refresh/retry logic.
+  // Only when there's actually a refresh token to exchange (a logged-out miss isn't "reconnecting").
+  const announce = !!readAuth().refreshToken;
+  if (announce) window.dispatchEvent(new CustomEvent('lw-auth-refreshing', { detail: { active: true } }));
   const p = (async (): Promise<string | null> => {
     try {
       const { refreshToken } = readAuth();
@@ -67,7 +73,10 @@ export function refreshAccessToken(): Promise<string | null> {
   // refresh isn't short-circuited by a stale resolved promise. Guard against clobbering a newer
   // in-flight refresh. NOTE: clearing inside the IIFE's `finally` would run BEFORE this
   // assignment on the sync path, leaking the resolved promise forever.
-  void p.finally(() => { if (refreshInFlight === p) refreshInFlight = null; });
+  void p.finally(() => {
+    if (refreshInFlight === p) refreshInFlight = null;
+    if (announce) window.dispatchEvent(new CustomEvent('lw-auth-refreshing', { detail: { active: false } }));
+  });
   return p;
 }
 

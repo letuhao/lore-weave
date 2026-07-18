@@ -3,6 +3,7 @@
     "startNew": "Empezar algo nuevo",
     "workspace": "Espacio de trabajo",
     "chat": "Chat",
+    "assistant": "Asistente",
     "roleplay": "Roleplay",
     "knowledge": "Conocimiento",
     "worlds": "Mundos",
@@ -25,8 +26,7 @@
     "home": "Inicio",
     "account": "Cuenta",
     "signin": "Iniciar sesión",
-    "back_to_book": "Volver al libro",
-    "assistant": "Asistente"
+    "back_to_book": "Volver al libro"
   },
   "logout_confirm": {
     "title": "¿Cerrar sesión con cambios sin guardar?",
@@ -170,5 +170,6 @@
     "saved": "Orden de modelos guardado",
     "saveFailed": "Error al guardar el orden.",
     "loadFailed": "Error al cargar los modelos."
-  }
+  },
+  "reconnecting": "Reconectando…"
 }

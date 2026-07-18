@@ -1,4 +1,5 @@
 {
+  "reconnecting": "Reconnecting…",
   "nav": {
     "startNew": "Start something new",
     "workspace": "Workspace",

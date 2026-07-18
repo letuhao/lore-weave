@@ -3,6 +3,7 @@
     "startNew": "Mulakan sesuatu yang baharu",
     "workspace": "Ruang Kerja",
     "chat": "Sembang",
+    "assistant": "Pembantu",
     "roleplay": "Main Peranan",
     "knowledge": "Pengetahuan",
     "worlds": "Dunia",
@@ -25,8 +26,7 @@
     "home": "Laman Utama",
     "account": "Akaun",
     "signin": "Log masuk",
-    "back_to_book": "Kembali ke buku",
-    "assistant": "Pembantu"
+    "back_to_book": "Kembali ke buku"
   },
   "logout_confirm": {
     "title": "Log keluar dengan perubahan yang belum disimpan?",
@@ -170,5 +170,6 @@
     "saved": "Urutan model disimpan",
     "saveFailed": "Gagal menyimpan urutan.",
     "loadFailed": "Gagal memuatkan model."
-  }
+  },
+  "reconnecting": "Menyambung semula…"
 }

@@ -3,6 +3,7 @@
     "startNew": "Commencer quelque chose de nouveau",
     "workspace": "Espace de travail",
     "chat": "Chat",
+    "assistant": "Assistant",
     "roleplay": "Roleplay",
     "knowledge": "Connaissances",
     "worlds": "Mondes",
@@ -25,8 +26,7 @@
     "home": "Accueil",
     "account": "Compte",
     "signin": "Se connecter",
-    "back_to_book": "Retour au livre",
-    "assistant": "Assistant"
+    "back_to_book": "Retour au livre"
   },
   "logout_confirm": {
     "title": "Déconnexion avec des modifications non enregistrées ?",
@@ -170,5 +170,6 @@
     "saved": "Ordre des modèles enregistré",
     "saveFailed": "Échec de l'enregistrement de l'ordre.",
     "loadFailed": "Échec du chargement des modèles."
-  }
+  },
+  "reconnecting": "Reconnexion…"
 }

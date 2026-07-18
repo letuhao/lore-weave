@@ -3,6 +3,7 @@
     "startNew": "开启新内容",
     "workspace": "工作区",
     "chat": "聊天",
+    "assistant": "助手",
     "roleplay": "角色扮演",
     "knowledge": "知识库",
     "worlds": "世界观",
@@ -25,8 +26,7 @@
     "home": "主页",
     "account": "账户",
     "signin": "登录",
-    "back_to_book": "返回书籍",
-    "assistant": "助手"
+    "back_to_book": "返回书籍"
   },
   "logout_confirm": {
     "title": "确定要退出登录吗？",
@@ -170,5 +170,6 @@
     "saved": "模型顺序已保存",
     "saveFailed": "保存顺序失败。",
     "loadFailed": "加载模型失败。"
-  }
+  },
+  "reconnecting": "正在重新连接…"
 }

@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
-import { apiJson } from '../api';
+import { apiJson, refreshAccessToken } from '../api';
 
 // Mock import.meta.env
 vi.stubEnv('VITE_API_BASE', '');
@@ -281,5 +281,39 @@ describe('apiJson', () => {
     mockFetch(409, { detail: 'nothing to compact' });
     const err = await apiJson('/v1/chat/compact').catch((e) => e as Error);
     expect(err.message).toBe('nothing to compact');
+  });
+
+  // M4 (F1) — a real silent refresh announces itself so the shell can show "Reconnecting…".
+  describe('refreshAccessToken reconnecting signal', () => {
+    const originalFetch2 = globalThis.fetch;
+    beforeEach(() => { localStorage.clear(); vi.restoreAllMocks(); });
+    afterEach(() => { globalThis.fetch = originalFetch2; });
+
+    function captureRefreshing(): boolean[] {
+      const seen: boolean[] = [];
+      window.addEventListener('lw-auth-refreshing', (e) => seen.push(Boolean((e as CustomEvent).detail?.active)));
+      return seen;
+    }
+
+    it('dispatches active:true then active:false around a real refresh', async () => {
+      localStorage.setItem('lw_auth', JSON.stringify({ accessToken: 'old', refreshToken: 'r0' }));
+      globalThis.fetch = vi.fn().mockResolvedValue({
+        ok: true, status: 200, statusText: 'OK', headers: new Headers(),
+        text: () => Promise.resolve(JSON.stringify({ access_token: 'new', refresh_token: 'r1' })),
+        json: () => Promise.resolve({ access_token: 'new', refresh_token: 'r1' }),
+      });
+      const seen = captureRefreshing();
+      const tok = await refreshAccessToken();
+      expect(tok).toBe('new');
+      expect(seen).toEqual([true, false]); // reconnecting shown, then cleared
+    });
+
+    it('does NOT announce when there is no refresh token (a logged-out miss is not "reconnecting")', async () => {
+      // no lw_auth in storage
+      const seen = captureRefreshing();
+      const tok = await refreshAccessToken();
+      expect(tok).toBeNull();
+      expect(seen).toEqual([]); // never showed the chip
+    });
   });
 });

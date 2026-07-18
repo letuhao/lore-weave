@@ -3,6 +3,7 @@
     "startNew": "新しく始める",
     "workspace": "ワークスペース",
     "chat": "チャット",
+    "assistant": "アシスタント",
     "roleplay": "ロールプレイ",
     "knowledge": "ナレッジ",
     "worlds": "ワールド",
@@ -25,8 +26,7 @@
     "home": "ホーム",
     "account": "アカウント",
     "signin": "サインイン",
-    "back_to_book": "書籍に戻る",
-    "assistant": "アシスタント"
+    "back_to_book": "書籍に戻る"
   },
   "logout_confirm": {
     "title": "未保存の変更があるままログアウトしますか？",
@@ -170,5 +170,6 @@
     "saved": "モデルの並び順を保存しました",
     "saveFailed": "並び順の保存に失敗しました。",
     "loadFailed": "モデルの読み込みに失敗しました。"
-  }
+  },
+  "reconnecting": "再接続中…"
 }
