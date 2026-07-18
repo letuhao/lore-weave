@@ -167,7 +167,7 @@ calls `usePlanner` **internally**, so the host cannot call `p.setTemplateId`. Wi
 minimal backward-compatible **`initialTemplateId?` prop** on PlannerView (seeds once on mount; legacy
 `CompositionPanel` omits it → unchanged) — exactly the "thread through PlannerView props" §4/§9 permitted.
 
-- **`DecomposePanel`** (commit `63…`/feature `…`): resolves `project_id` via `useWorkResolution` +
+- **`DecomposePanel`** (feature `662163426`, registration `63ab92916`): resolves `project_id` via `useWorkResolution` +
   `resolveActiveWork`; no Work → `WorkSetupCta` (ENTRY-from-empty); else mounts `PlannerView` with the work's
   `default_model_ref`; DOCK-6 params (templateId at mount + `onDidParametersChange`), keyed to re-seed.
 - **GG-8 registration**: `decompose` catalog row (category `editor`) + `panel_id` enum + `frontend-tools.contract.json`
@@ -183,3 +183,18 @@ minimal backward-compatible **`initialTemplateId?` prop** on PlannerView (seeds 
   flow (covered by its own tests + the DecomposePanel unit that mounts it with `project_id`+model); a full
   author→commit E2E needs a seeded Work+structure+model on a book (heavier setup) — a follow-up live run, not
   a code gap.
+
+## 12. `/review-impl` (2026-07-18) — findings + fixes
+
+Standards gate **COMPLIANT** (`[Frontend-Tool Contract — LOCKED]` — `decompose` in both the BE `panel_id`
+enum and the FE catalog → resolver maps to a real component, machine-checked; no provider/model/secret/table).
+No HIGH. Two big risks cleared on inspection: (a) an empty `modelRef` just **disables Preview** (gated on
+`effRef`) with the ModelPicker always present — not a bug; (b) `modelSource="user_model"` **matches
+CompositionPanel's** own hardcode. Fixed now:
+- **MED-1 [coverage]** — added a test for the DOCK-6 **already-open retarget** (`onDidParametersChange` →
+  re-seed the new deep-linked template), which was untested.
+- **LOW-1 [correctness]** — `DecomposePanel` now shows a **load-error + retry** state instead of conflating a
+  work-resolution failure with "no Work" (which would wrongly offer to create a Work). +test.
+- **LOW-2 [accepted]** — `onSelectScene` not threaded → a committed scene's generate link no-ops (spec §4
+  explicitly permits "pass nothing"); an `openPanel('compose')` wire-up is a conscious follow-up.
+DecomposePanel 6 tests green; tsc 0; i18n gate full parity (added `panels.decompose.{loadError,retry}` ×18).
