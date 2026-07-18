@@ -7,14 +7,20 @@
 > it lifts, so the work is score-driven.
 >
 > **Current scores (post-quick-win):** S-03 ≈5.2/10 (capped by discoverability — stranded on the legacy page);
-> S-04 ≈6.4/10 (capped by discoverability + touch). **Target: S-04 ≥8 (reachable here); S-03 ≥6.8 here, with
-> its ~7 ceiling gated on the S-10 O2 studio mount (cross-track).**
+> S-04 ≈6.4/10 (capped by discoverability + touch). **Target: S-03 ≥7.5, S-04 ≥8.5.**
 >
-> **Sealed reality (verified 2026-07-18):** the biggest S-03 cap (studio mount) and the *proper* nav-rail
-> mechanism are **owned by S-10** (O2 mount + O4 category rails) and are unbuilt — so this spec DEFERS those,
-> coordinates with S-10, and delivers everything else (rename, search, pin-row, CTA, confirms, touch/a11y,
-> BranchDiff, a nav-launcher stopgap). It does NOT touch the shared registry (catalog.ts / panel_id enum /
-> frontend-tools.contract.json) — that's S-10's.
+> **PO DECISION 2026-07-18 — discoverability is IN SCOPE (was: defer to S-10).** The PO pulled the S-10-owned
+> discoverability items into this spec: **this spec now OWNS mounting `ReferencesPanel` as the `reference-shelf`
+> studio panel (absorbs S-10 O2) and building the nav-rail discoverability for `reference-shelf` + `divergence`
+> (absorbs the relevant slice of S-10 O4).** So the S-03 ceiling is no longer external — this spec clears it.
+>
+> **⚠ This means this spec DOES touch the shared studio registry** (`catalog.ts` + the `panel_id` enum in
+> `chat-service/app/services/frontend_tools.py` + `contracts/frontend-tools.contract.json` + the
+> `legacyParityContract` / `panelCatalogContract` tests) — the convergence node. **This spec SUPERSEDES S-10
+> O2 (reference-shelf mount)**; the S-10 track must drop O2 (and the reference-shelf slice of O4) to avoid a
+> double-build. Coordinate before building: confirm no parallel S-10 session is mid-mount, and land the
+> registry edits as one atomic change (catalog + enum + contract + tests move together — the Frontend-Tool
+> Contract discipline).
 
 ---
 
@@ -22,8 +28,8 @@
 
 | ID | Panel | Gap | Metric(s) lifted | Size |
 |---|---|---|---|---|
-| H-1a | S-03 | Reachable ONLY via the deprecated legacy `ChapterEditorPage` — a studio user can't find it | Usability, Discoverability | **DEFER → S-10 O2** |
-| H-1b | S-04 | `divergence` panel is palette-only — no nav-rail entry | Ease-of-use, Discoverability | S (stopgap launcher; proper rail = S-10 O4) |
+| H-1a | S-03 | Reachable ONLY via the deprecated legacy `ChapterEditorPage` — a studio user can't find it | Usability, Discoverability | **M** (mount + registry + contract, absorbs S-10 O2) |
+| H-1b | both | `divergence` (+ new `reference-shelf`) palette-only — no nav-rail entry | Ease-of-use, Discoverability | **M** (PANELS_BY_CATEGORY + category rail, absorbs O4 slice) |
 | H-2a | S-04 | No **rename** for a derivative (name frozen at wizard creation) | Completeness | S |
 | H-2b | S-03 | No **library search/filter** — a large shelf is an unfilterable scroll | Completeness, Usability | S |
 | H-2c | S-03 | **Pin/exclude only on scene-retrieval hits** — can't pin a library row directly | Completeness | S |
@@ -36,32 +42,43 @@
 
 ---
 
-## Part 1 — Discoverability (the biggest score cap) — MOSTLY owned by S-10; this spec coordinates + stopgaps
+## Part 1 — Discoverability (the biggest score cap) — NOW IN SCOPE (PO pulled it in; absorbs S-10 O2 + O4-slice)
 
 **Load-bearing finding (verified):** the "left nav lists a view's panels" mechanism **does not exist** —
 `StudioSideBar.tsx:31-109` is a hardcoded if/else: `manuscript`→`ManuscriptNavigator`, `plan`→`PlanNavigatorRail`
 are real; `bible`/`search`/`quality` are literal "Built next." stubs (`quality` has ONE fallback button →
 `host.openPanel('quality')`, `:97-106`). The general "rail that lists a category's panels from a
-`PANELS_BY_CATEGORY` export" is **S-10 O4** (that export doesn't exist yet). So both discoverability items are
-substantially S-10's charter.
+`PANELS_BY_CATEGORY` export" (S-10 O4) does not exist yet. This spec builds the minimal version of it needed to
+surface the two panels.
 
-### H-1a · S-03 reference-shelf into the studio — **DEFER to S-10 O2 (owned, pending)**
-Verified: `ReferencesPanel` is NOT in `catalog.ts` / the `panel_id` enum; the parity contract records it as
-`unported` "pending the F-1 port … belongs to NO session charter" (`legacyParityContract.test.ts:105`), and
-**S-10 O2** (`S-10_fe-orphans.md:15-18`) owns wrapping it as the `reference-shelf` catalog panel that CARRIES
-the S-03 edit affordance I already built. Git log confirms no mount commit. **This spec does NOT duplicate the
-port** — it is a cross-track dependency. Action: (1) leave the S-03 edit affordance on the component (it rides
-S-10's mount for free); (2) add a coordination note so S-10 O2 knows the affordance + error toasts are ready.
-Until S-10 O2 lands, S-03's studio-discoverability score stays capped — that is the honest ceiling and it is
-not in this spec's power to lift.
+### H-1a · Mount `ReferencesPanel` as the `reference-shelf` studio panel (absorbs S-10 O2)
+The S-03 edit affordance + error toasts already live ON `ReferencesPanel`, so mounting it makes the whole S-03
+feature reachable in the studio. Build (mirrors the GG-8 panel shape of existing catalog panels, e.g.
+`DivergencePanel.tsx`):
+1. **Panel wrapper** `frontend/src/features/studio/panels/ReferenceShelfPanel.tsx` — `useStudioPanel('reference-shelf', props.api)`, reads `host.bookId` → resolves the Work's `project_id` (via `useWorkResolution`, same as DivergencePanel) + the active `sceneId` if the host exposes one (library add/edit/delete works without a scene; retrieval/pin needs one — degrade gracefully), renders `<ReferencesPanel projectId sceneId token models/>`.
+2. **Catalog** — add `{ id: 'reference-shelf', component: ReferenceShelfPanel, category: 'editor', … }` to `STUDIO_PANELS` (`catalog.ts`). **Id is `reference-shelf`, NOT `references`** (collides with the `composition_find_references` tool — the S-10 O2 rule).
+3. **panel_id enum** — add `"reference-shelf"` to the `ui_open_studio_panel` enum (`frontend_tools.py:402`) so the agent can open it.
+4. **Contract + tests** — regenerate `contracts/frontend-tools.contract.json` (`WRITE_FRONTEND_CONTRACT=1 pytest`), and update `legacyParityContract.test.ts:105` (flip `references` from `unported` → ported) + `panelCatalogContract` (palette-openable set == enum == contract). These move together atomically (Frontend-Tool Contract discipline).
+5. **Live-smoke** — open `reference-shelf` from the palette on a built FE, add + edit + delete a reference, confirm it round-trips (the anti-shell proof: the panel is reachable AND operable, not just registered).
 
-### H-1b · S-04 divergence on a nav rail — **stopgap launcher now; proper rail = S-10 O4**
-The proper fix (a rail listing `editor`-category panels) is S-10 O4. **Stopgap (in scope here):** mirror the
-`quality` precedent (`StudioSideBar.tsx:97-106`) — add an explicit "What-if / dị bản" launcher button that
-calls `host.openPanel('divergence')`, so a user browsing the nav finds it before O4 lands. **PO-rail:** which
-view hosts the launcher — recommend the **`plan`** rail (a dị bản is a plan-level what-if; `PlanNavigatorRail`
-is real and already opens plan-hub, so adding a divergence launcher there is natural). Keep it a small addition
-that O4 can later absorb into the generic category rail.
+### H-1b · Nav-rail discoverability for `reference-shelf` + `divergence` (absorbs the O4 slice)
+Build the minimal category-rail so `editor`-category panels are discoverable from the nav (not palette-only):
+1. **`PANELS_BY_CATEGORY`** export in `catalog.ts` — derive `{category: STUDIO_PANELS[]}` from the catalog
+   (the map S-10 O4 references but that doesn't exist yet). One source of truth; no hand-rolled list.
+2. **A rail that lists a category's panels** — extend `StudioSideBar.tsx`'s view→rail resolution so a view
+   renders the list of its category's panels (each row → `host.openPanel(id)`), replacing the "Built next"
+   stub for the view that owns the `editor` category. **PO-rail:** which activity view surfaces `editor`
+   panels (divergence + reference-shelf)? Options: (a) reuse **`bible`** (currently a stub) as the
+   story-authoring rail; (b) reuse **`plan`** (a dị bản is a plan-level what-if — but `plan` already has a
+   real `PlanNavigatorRail`, so this would append a panel list below it); (c) add a new `editor`/`compose`
+   activity view (`types.ts` union + icon + branch). Recommend **(a) `bible`** — it's an empty stub today, and
+   "story bible / references / what-ifs" is a coherent grouping; least disruption.
+3. This also lights up the other `editor`-category panels for free (whatever else is category `editor`), which
+   is the O4 intent — coordinate with S-10 so O4 doesn't rebuild the rail.
+
+**Coordination:** H-1a + H-1b are the S-10 O2 + O4-editor-slice work. This spec SUPERSEDES them; the S-10 track
+retires O2 and the reference-shelf/divergence part of O4. The registry edits (catalog + enum + contract +
+tests) land as ONE atomic change.
 
 ---
 
@@ -144,27 +161,32 @@ for touch.
 | CV-confirm | ConfirmDialog / AddModelCta / FormDialog | **RESOLVED: all exist in `components/shared/` (props in H-3a/H-4a/H-2a)** |
 | CV-rename | patchWork settings patch for rename | **RESOLVED: shallow-merge settings patch (BE-18); FE-only, no MCP** |
 | CV-tap | Shared tap-target convention? | **RESOLVED: `features/knowledge/lib/touchTarget.ts` (min-h-[44px] md:min-h-0); studio hasn't adopted** |
-| **PO-rail** | Which nav view hosts the `divergence` launcher stopgap? | **NEEDS PO** — recommend `plan` rail |
+| **PO-scope** | Is H-1a (studio mount) + the nav rail in scope, or S-10's? | **SEALED 2026-07-18: IN SCOPE** — this spec absorbs S-10 O2 + the editor-slice of O4; SUPERSEDES them |
+| **PO-rail** | Which activity view surfaces the `editor` category panels (divergence + reference-shelf)? | **NEEDS PO** — recommend **`bible`** (empty stub today; coherent "story bible" grouping) |
 | **PO-tap** | Promote touchTarget util to shared + apply mobile-only variant? | **NEEDS PO** — recommend yes (promote + mobile-only) |
 | **PO-ovr-confirm** | Confirm on override remove — inline / modal / none? | **NEEDS PO** — recommend lightweight inline (low stakes, re-addable) |
-| **PO-scope** | Is H-1a in scope or strictly S-10's? | **NEEDS PO** — recommend DEFER to S-10 (don't fork the registry) |
 
 ## Projected score lift (why this is worth building)
-| Panel | Now | After this spec (excl. H-1a, S-10-gated) | The remaining cap |
+| Panel | Now | After this spec (H-1a now IN scope) | Note |
 |---|---|---|---|
-| **S-03** | ≈5.2 | **≈6.8** (search + pin-row + CTA + confirm + touch + aria) | still capped at ~7 until **S-10 O2** mounts it in the studio (discoverability) |
-| **S-04** | ≈6.4 | **≈8.0** (rename + nav launcher + confirms + touch + BranchDiff + aria) | reaches target; proper category rail (S-10 O4) polishes discoverability further |
+| **S-03** | ≈5.2 | **≈7.5** (studio MOUNT + nav rail lift the discoverability cap; + search + pin-row + CTA + confirm + touch + aria) | ceiling removed — the whole feature is now reachable + operable in the studio |
+| **S-04** | ≈6.4 | **≈8.5** (nav rail + rename + confirms + touch + BranchDiff + aria; archive-Undo already shipped) | target exceeded |
 
-S-03 can't clear ~7 from THIS spec alone — its ceiling is the S-10 O2 mount. S-04 reaches the ≥8 target.
+Pulling the mount in-scope is what unlocks S-03 past ~7 — the discoverability cap was the dominant term.
 
 ## Sizing + build order (score-per-effort)
-1. **XS quick wins (do first):** H-3a (AddModelCta), H-4a + H-4b (confirms), H-5c (aria-labels + contrast).
-2. **S:** H-2b (library search), H-2c (library-row pin), H-2a (rename via FormDialog), H-1b (divergence nav
-   launcher stopgap), H-5b (BranchDiff responsive).
-3. **M (one focused pass):** H-5a (promote touchTarget util + apply to both panels).
-4. **DEFERRED to S-10 (not this spec):** H-1a (reference-shelf mount, O2) + the generic category rail (O4).
-   Add a coordination note to S-10 that S-03's edit affordance + error toasts are built and ready to ride O2.
+1. **XS quick wins (do first, no registry risk):** H-3a (AddModelCta), H-4a + H-4b (confirms), H-5c (aria +
+   contrast). Pure composition-FE.
+2. **S:** H-2b (library search), H-2c (library-row pin), H-2a (rename via FormDialog), H-5b (BranchDiff
+   responsive).
+3. **M — the discoverability block (touches the shared registry — land atomically, coordinate with S-10):**
+   H-1a (mount `ReferencesPanel` → `reference-shelf`: catalog + panel_id enum + contract + parity/catalog tests
+   + live-smoke) then H-1b (`PANELS_BY_CATEGORY` + the category rail in `StudioSideBar`). Do H-1a before H-1b
+   (the rail lists what the catalog holds).
+4. **M:** H-5a (promote `touchTarget` util to shared + apply mobile-only variant to both panels).
 
-**Total in-scope: M** (single-service composition FE + one shared-util promotion). Full CLARIFY→…→RETRO when
-built. Registry files (catalog.ts / panel_id enum / frontend-tools.contract.json) are NOT touched here — the
-only nav change is a launcher button in a real navigator, not a catalog/enum edit (those belong to S-10).
+**Total in-scope: L** (composition FE + studio panels + the shared studio registry + contract/test regen +
+cross-service live-smoke through the gateway). Full CLARIFY→…→RETRO when built; **`/review-impl` recommended**
+for the registry/contract change (Frontend-Tool Contract is load-bearing — a drift silently breaks the agent
+open path). **This spec now edits the convergence registry** — build only after confirming no parallel S-10
+mount is in flight, and retire S-10 O2 + the O4 editor-slice so they aren't double-built.

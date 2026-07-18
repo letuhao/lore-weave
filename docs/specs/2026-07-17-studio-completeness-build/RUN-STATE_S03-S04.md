@@ -121,10 +121,12 @@ no-anchor explanatory hint; taxonomy human labels. S-03 mutation error toasts (w
 URL-at-add (was dropped); library-row truncation (min-w-0 flex-1).
 REMAINING → SPEC'D: full CLARIFY spec [`../2026-07-18-studio-s03-s04-ux-hardening.md`](../2026-07-18-studio-s03-s04-ux-hardening.md)
 for every remaining gap (rename, library search, pin-row, embed CTA, delete confirms, touch/a11y,
-BranchDiff responsive, divergence nav launcher). Discoverability (S-03 mount O2 + proper category rail O4)
-DEFERRED to S-10 (verified owner, unbuilt) — my S-03 edit affordance rides O2's mount for free. Projected:
-S-04 →~8, S-03 →~6.8 (ceiling ~7 gated on S-10 O2). 4 PO calls open (rail placement, touch-util promote,
-override-confirm style, H-1a scope).
+BranchDiff responsive, divergence nav launcher). Discoverability: PO (2026-07-18) pulled it IN SCOPE
+— the spec now ABSORBS S-10 O2 (mount ReferencesPanel → reference-shelf) + the editor-slice of O4 (nav
+category rail), and SUPERSEDES those S-10 items (retire them to avoid double-build). Touches the shared
+studio registry (catalog + panel_id enum + frontend-tools.contract + parity/catalog tests) — land atomically,
+/review-impl the contract change. Projected: S-04 →~8.5, S-03 →~7.5 (mount removes the ceiling). Total: L.
+Open PO: rail placement (rec `bible`), touch-util promote, override-confirm style.
 REMAINING (reported, deferred): S-03 reachable only via legacy ChapterEditorPage (S-10 port);
 S-04 palette-only no nav rail; rename-derivative; S-03 library search + pin-on-library-row +
 embed-model dead-end (text no CTA); touch tap-target sizing + BranchDiff narrow-panel layout;
