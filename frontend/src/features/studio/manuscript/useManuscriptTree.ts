@@ -8,7 +8,7 @@ import { resolveActiveWork } from '@/features/composition/workSelect';
 import { appendChildren, flatten, setExpanded, setLoading } from './tree';
 import { ROOT_KEY, emptyTree, type ManuscriptNode, type TreeState } from './types';
 import { partsApi, type Part } from './partsApi';
-import { buildPartsTree } from './partsTree';
+import { buildPartsTree, chapterDisplayTitle } from './partsTree';
 
 const PAGE = 100;
 // Cap for the parts grouping's whole-book chapter load (a structured book with acts is
@@ -20,7 +20,9 @@ function chapterToNode(c: Chapter): ManuscriptNode {
   return {
     id: c.chapter_id,
     kind: 'chapter',
-    title: c.title || c.original_filename || `#${c.sort_order}`,
+    // Never surface the storage filename (`editor-<uuid>.txt`) as a title — a raw filename read as
+    // a chapter title in the first-run diary. Fall back to a localized "Chapter {n}" (F4).
+    title: chapterDisplayTitle(c),
     number: c.sort_order,
     status: null,
     chapterId: c.chapter_id,

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildPartsTree, PART_UNASSIGNED_ID } from '../partsTree';
+import { buildPartsTree, chapterDisplayTitle, PART_UNASSIGNED_ID } from '../partsTree';
 import { flatten } from '../tree';
 import type { Part, ChapterLike } from '../partsApi';
 
@@ -49,5 +49,29 @@ describe('buildPartsTree', () => {
     const t = buildPartsTree([part('p1', 1, 'Empty Act')], []);
     expect(t.nodes['p1'].hasChildren).toBe(false);
     expect(t.nodes['p1'].childCount).toBe(0);
+  });
+});
+
+describe('chapterDisplayTitle (F4 — never leak the storage filename)', () => {
+  it('returns the chapter title when it has one', () => {
+    expect(chapterDisplayTitle({ title: 'The rounding', sort_order: 1 })).toBe('The rounding');
+  });
+
+  it('falls back to a "Chapter {n}" label — NEVER the editor-<uuid>.txt filename', () => {
+    const out = chapterDisplayTitle({ title: '', sort_order: 5, original_filename: 'editor-2d0fc71f.txt' } as any);
+    expect(out).not.toContain('editor-');
+    expect(out).not.toContain('.txt');
+    expect(out).toBeTruthy();
+  });
+
+  it('treats a whitespace-only title as unnamed (still no filename leak)', () => {
+    const out = chapterDisplayTitle({ title: '   ', sort_order: 2, original_filename: 'editor-x.txt' } as any);
+    expect(out).not.toContain('editor-');
+  });
+
+  it('buildPartsTree renders an untitled chapter without its filename', () => {
+    const t = buildPartsTree([], [{ chapter_id: 'c1', title: '', sort_order: 1, part_id: null, original_filename: 'editor-abc.txt' } as any]);
+    expect(t.nodes['c1'].title).not.toContain('editor-');
+    expect(t.nodes['c1'].title).not.toContain('.txt');
   });
 });

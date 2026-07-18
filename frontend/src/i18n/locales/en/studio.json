@@ -1038,6 +1038,7 @@
     "statChapters": "{{n}} ch",
     "statScenes": "{{n}} sc",
     "window": "win {{a}}–{{b}} / {{n}}",
+    "chapterN": "Chapter {{number}}",
     "actShort": "Act",
     "actTag": "ACT",
     "newAct": "New act",

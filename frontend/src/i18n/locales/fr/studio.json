@@ -1053,7 +1053,8 @@
     "restore": "Restaurer",
     "restoreActHint": "Restaurer cet acte (il sera vide — vous devrez réorganiser les chapitres)",
     "actTrashed": "L'acte « {{name}} » a été mis à la corbeille — ses chapitres sont restés dans le livre",
-    "undo": "Annuler"
+    "undo": "Annuler",
+    "chapterN": "Chapitre {{number}}"
   },
   "intro": {
     "title": "Bienvenue sur Writing Studio",

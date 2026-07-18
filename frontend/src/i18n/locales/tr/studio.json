@@ -1053,7 +1053,8 @@
     "restore": "Geri Yükle",
     "restoreActHint": "Bu bölümü geri yükle (bölüm boş olarak gelir — bölümleri gerektiği gibi yeniden dosyala)",
     "actTrashed": "«{{name}}» bölümü çöp kutusuna taşındı — bölümleri kitapta kaldı",
-    "undo": "Geri Al"
+    "undo": "Geri Al",
+    "chapterN": "Bölüm {{number}}"
   },
   "intro": {
     "title": "Writing Studio'ya Hoş Geldiniz",

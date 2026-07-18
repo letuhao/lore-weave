@@ -1053,7 +1053,8 @@
     "restore": "복원",
     "restoreActHint": "이 막을 복원합니다 (빈 상태로 복원되므로, 필요에 따라 챕터를 다시 배치하세요)",
     "actTrashed": "막 «{{name}}»이(가) 삭제되었습니다 — 챕터는 도서에 그대로 유지됩니다",
-    "undo": "실행 취소"
+    "undo": "실행 취소",
+    "chapterN": "{{number}}장"
   },
   "intro": {
     "title": "Writing Studio에 오신 것을 환영합니다",

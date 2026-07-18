@@ -1053,7 +1053,8 @@
     "restore": "还原",
     "restoreActHint": "还原此幕（还原后内容为空 — 请根据需要重新整理章节）",
     "actTrashed": "幕 «{{name}}» 已删除 — 其章节仍保留在书中",
-    "undo": "撤销"
+    "undo": "撤销",
+    "chapterN": "第 {{number}} 章"
   },
   "intro": {
     "title": "欢迎来到写作工作室",

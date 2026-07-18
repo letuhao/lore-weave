@@ -1053,7 +1053,8 @@
     "restore": "Pulihkan",
     "restoreActHint": "Pulihkan bab ini (bab akan kembali dalam keadaan kosong — susun ulang bab di dalamnya jika diperlukan)",
     "actTrashed": "Bab «{{name}}» telah dihapus — bab-bab di dalamnya tetap tersimpan di buku",
-    "undo": "Batalkan"
+    "undo": "Batalkan",
+    "chapterN": "Bab {{number}}"
   },
   "intro": {
     "title": "Selamat Datang di Writing Studio",

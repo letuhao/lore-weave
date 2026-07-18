@@ -35,6 +35,11 @@ export function SimpleChapterRow({ chapter: c, index, onOpen, onRename, onDelete
   const { t } = useTranslation('studio');
   const s = statusOf(c);
   const machine = c.source === 'mined';
+  // Same display rule as the manuscript navigator (chapterDisplayTitle): a named chapter shows its
+  // title; an unnamed one shows "Chapter {n}" — never the storage filename (F4). One rule, both surfaces.
+  const displayTitle = c.title?.trim()
+    ? c.title
+    : t('manuscript.chapterN', { number: c.sort_order, defaultValue: 'Chapter {{number}}' });
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(c.title);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -79,9 +84,9 @@ export function SimpleChapterRow({ chapter: c, index, onOpen, onRename, onDelete
             'min-w-0 flex-1 truncate text-left font-semibold text-foreground/95',
             machine ? 'font-mono text-[13px] text-foreground/85' : 'font-serif text-[15px]',
           )}
-          title={c.title || undefined}
+          title={displayTitle}
         >
-          {c.title || t('planHub.simple.untitled', 'Untitled chapter')}
+          {displayTitle}
         </button>
       )}
 

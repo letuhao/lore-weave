@@ -1053,7 +1053,8 @@
     "restore": "Wiederherstellen",
     "restoreActHint": "Diese Akte wiederherstellen (sie wird leer sein – ordne die Kapitel bei Bedarf neu)",
     "actTrashed": "Akte „{{name}}“ gelöscht – ihre Kapitel verbleiben im Buch",
-    "undo": "Rückgängig machen"
+    "undo": "Rückgängig machen",
+    "chapterN": "Kapitel {{number}}"
   },
   "intro": {
     "title": "Willkommen im Writing Studio",

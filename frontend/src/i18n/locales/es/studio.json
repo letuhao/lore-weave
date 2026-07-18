@@ -1053,7 +1053,8 @@
     "restore": "Restaurar",
     "restoreActHint": "Restaurar este acto (se restaurará vacío; vuelve a organizar los capítulos según sea necesario)",
     "actTrashed": "El acto «{{name}}» ha sido eliminado; sus capítulos permanecen en el libro",
-    "undo": "Deshacer"
+    "undo": "Deshacer",
+    "chapterN": "Capítulo {{number}}"
   },
   "intro": {
     "title": "Bienvenido a Writing Studio",

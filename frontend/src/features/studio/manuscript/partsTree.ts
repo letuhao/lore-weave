@@ -8,6 +8,7 @@
 // them here — so the tree is fully loaded (no per-part cursor, no 'more' rows).
 //
 // Pure + deterministic ⇒ unit-testable without React or a DB.
+import i18n from '@/i18n';
 import { groupChaptersByParts, type Part, type ChapterLike } from './partsApi';
 import { ROOT_KEY, emptyTree, type ManuscriptNode, type TreeState } from './types';
 
@@ -15,16 +16,24 @@ import { ROOT_KEY, emptyTree, type ManuscriptNode, type TreeState } from './type
  *  so it can never collide with a real part_id. */
 export const PART_UNASSIGNED_ID = '__unassigned__';
 
-/** A chapter's display title, matching the flat navigator's chapterToNode. */
-function chapterTitle(c: ChapterLike): string {
-  return c.title || c.original_filename || `#${c.sort_order}`;
+/**
+ * A chapter's DISPLAY title — the ONE home shared by both navigator mappers (flat `chapterToNode`
+ * and the parts tree) so the two never drift. A named chapter shows its title; an unnamed one shows
+ * a localized "Chapter {n}" (from its sort_order) — NEVER the storage filename `editor-<uuid>.txt`,
+ * which read as a chapter title in the first-run diary (F4). Pure fn ⇒ localized via the i18n
+ * singleton (no React hook available here).
+ */
+export function chapterDisplayTitle(c: { title?: string | null; sort_order: number }): string {
+  const named = c.title?.trim();
+  if (named) return named;
+  return i18n.t('studio:manuscript.chapterN', { number: c.sort_order, defaultValue: 'Chapter {{number}}' });
 }
 
 function chapterNode(c: ChapterLike): ManuscriptNode {
   return {
     id: c.chapter_id,
     kind: 'chapter',
-    title: chapterTitle(c),
+    title: chapterDisplayTitle(c),
     number: c.sort_order,
     status: null,
     chapterId: c.chapter_id,
