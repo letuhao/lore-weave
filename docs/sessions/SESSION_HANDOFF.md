@@ -1,5 +1,40 @@
 # ▶▶ NEXT SESSION STARTS HERE
 
+## ✍️ CO-WRITER NEWCOMER-UX — dogfood-driven track **SHIPPED (2026-07-18/19, `feat/context-budget-law`)**
+> Spec: [`docs/specs/2026-07-18-cowriter-newcomer-ux/`](../specs/2026-07-18-cowriter-newcomer-ux/) (SPEC.md +
+> RUN-STATE.md + N5a-FULL_tool-intent-gate.md). Source: the "Cursor-for-writing" newcomer dogfood
+> ([`docs/dogfood/2026-07-18-jamie-cowriter-cursor-for-writing.md`](../dogfood/2026-07-18-jamie-cowriter-cursor-for-writing.md)).
+
+**▶ NEXT SESSION: continue co-writer USAGE feedback (dogfood round 2).** The newcomer-UX findings F1–F8 are
+cleared; the next pass is fresh hands-on co-writer usage to surface the *next* layer of friction (real writing
+sessions, longer books, the propose/approve loop, multi-chapter flow). Drive on an isolated static build + Gemma
+(recipe in the dogfood diary / memory). The stack is up (48 containers); chat/book/glossary already rebuilt with
+this session's changes.
+
+**Shipped this session (all live-QC'd, scoped pathspec commits):**
+- **F1** `b255cb62a` — manuscript rail live-refreshes when the co-writer creates a chapter (agent effect → bus).
+- **N2** `9fb1960ac` — first-class "Insert into chapter" on every AI reply (the Cursor-Apply parity).
+- **N3** `(auth)` — first-run writers land on the onboarding chooser (login-gate; register doesn't auth).
+- **N4** `d0169b6d4` — writing-led sidebar + collapsible "More" (was 16 flat jargon items).
+- **N5a-FULL** `c2ceb4902` — **the control-model fix**: bind co-writer CAPABILITY to intent at the
+  `discovery_catalog` chokepoint (covers hot+find_tools+tool_load; closed the tool_load leak). High-impact
+  ontology-setup tools are UNREACHABLE on a plain write turn, REACHABLE on a setup turn. Two-sided live QC green.
+  **Reusable pattern:** `INTENT_GATED_SETUP_TOOLS` + `filter_intent_gated_setup_tools` (tool_discovery.py) is the
+  primitive for any "the co-writer shouldn't do X unprompted" capability — "request-scoped autonomy + propose the rest".
+- **N5b** `bf27d203f` + i18n `e6664f35d` — de-jargoned the "adopt standards" confirm card (3 Go sites) + ×17 locales.
+- **N6** `(book)` — book_chapter_create idempotency (no dup chapters; sequential-guard, real-DB test).
+- **N7** — notification unread badges sync across surfaces (mutationBus — the user-reported "mark-read won't work"
+  was a split source-of-truth, not a boundary bug); Compose pop-out tooltip explains the chapter-gate.
+
+**Still open (both legitimate, NOT bugs to chase):** N3-follow ("Write" card → studio not /books list) —
+coordinate w/ the concurrent onboarding-door session; SSE `ERR_INCOMPLETE_CHUNKED_ENCODING` console line — a
+browser-native network log on stream drop (app reconnects cleanly), conscious won't-fix.
+
+**Note:** a concurrent session is active in **book-service** (parts import — `parse.go`/`config.go`/`parts_import.go`
+uncommitted are theirs, untouched). All this track's commits were scoped pathspec; nothing of theirs was swept.
+
+---
+
 ## 🧹 WORKING-TREE CLEARED (2026-07-18, `feat/context-budget-law`)
 Prior studio-completeness sessions left an uncommitted docs+infra batch dirty (which blocked those
 sessions from committing cleanly). Audited + committed it in 3 groups; **tree is now clean**:
