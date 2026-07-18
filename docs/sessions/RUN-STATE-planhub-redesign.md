@@ -75,8 +75,13 @@ review + a user-flagged critical downgrade drove these fixes (all live-QC'd on :
   sibling's i18n settles. Target: next session / coordinated i18n commit.
 - **MERGED graph + lane (user: "the graph card is lane?") — commit b75ca5fe5.** The canvas cards
   (ChapterNode/SceneNode/ArcRollupNode) now wear the SAME readable lane treatment (status colour +
-  authorship serif/mono via normalizeSource) as the redesign. So the graph card IS the lane card, on a
-  zoom/pan/drag canvas — one coordinator. Graph|Lane toggle kept (Lane = same cards, wrapping layout).
+  authorship serif/mono via normalizeSource) as the redesign. So the graph card IS the lane card.
+- **COLLAPSED to ONE view (user: "drop the toggle entirely") — commit e6165e84a.** Advanced is now the
+  single navigable canvas (PlanCanvas) with readable cards. Removed the Graph|Lane toggle +
+  usePlanAdvancedView; DELETED the now-dead lane-flow layer (LaneFlowView / FlowLane / FlowChapterCard /
+  layout/laneTree) and trimmed usePlanHub / types / flowPresentation. No capability lost (move = canvas
+  drag; unassigned = canvas strip + HUD; scene-links + camera intact). i18n keys `planHub.adv.*` +
+  `planHub.flow.*` are now UNUSED — drop them in the coordinated i18n commit.
 - **Collapse-scenes affordance ADDED** (the former minor gap) — a revealed scene branch can be hidden.
 - **Env note:** a parallel session wiped book-service's books-with-arcs mid-QC, so graph-specific pixel-
   QC was blocked; the merge uses the same flowPresentation helpers already live-verified in the Lane
