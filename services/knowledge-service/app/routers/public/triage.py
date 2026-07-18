@@ -104,9 +104,21 @@ def _derive_schema_write_params(action: str, signature: str, pending: list, sche
     elif action == "add_to_vocab":  # unknown_vocab_value → add the parked value to its set
         kwargs["set_code"] = str(payload.get("set_code") or "")
         kwargs["code"] = str(payload.get("value") or "")
-    elif action == "widen_target_kinds":  # edge_kind_mismatch → widen to the observed kinds
+    elif action == "widen_target_kinds":  # edge_kind_mismatch → widen the TARGET-kinds list
+        # `widen_edge_target_kinds` (the only widen mutation) touches an edge type's
+        # TARGET-kinds list ONLY, so it can fix a TARGET-endpoint violation and
+        # nothing else. Add JUST the observed `target_kind` — never `source_kind`
+        # (that endpoint is not the target list; adding it would broaden the schema
+        # past the evidence). For a SOURCE-endpoint violation there is no target-widen
+        # that helps: leave `add_kinds` empty so `apply_triage_schema_write` raises
+        # Unsupported (422), and the human uses re_target/drop_edge instead of a
+        # silent "resolved but the mismatch re-parks next extraction".
         kwargs["code"] = str(payload.get("predicate") or "")
-        kwargs["add_kinds"] = [k for k in (payload.get("source_kind"), payload.get("target_kind")) if k]
+        tgt = payload.get("target_kind")
+        if payload.get("violating_endpoint") == "target" and tgt:
+            kwargs["add_kinds"] = [str(tgt)]
+        else:
+            kwargs["add_kinds"] = []
     elif action == "set_multi_active":
         kwargs["code"] = str(payload.get("predicate") or payload.get("code") or "")
     return TriageSchemaWriteParams(**kwargs)

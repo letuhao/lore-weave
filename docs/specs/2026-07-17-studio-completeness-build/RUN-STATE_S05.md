@@ -170,6 +170,35 @@ FIXED:
 **S-05 fully complete: every defer/debt/bug from both audit rounds is FIXED. No open S-05 items.**
 Final verify: BE knowledge 50 + learning 25 + FE 259 = green.
 
+## ═══ COMPLETENESS AUDIT (goal, 2026-07-18) — re-audit vs CODE, not the handoff notes ═══
+Verified the two prior rounds landed (kg-triage in catalog+panel_id both sides; learning registers
+`fact_corrected`+mining IN-list has 'fact'; author/invalidate/revalidate/curation routes present; BE 55 +
+FE consumer suites). Found + FIXED THREE new gaps the prior VERIFY missed:
+- AUD-1 (correctness, reachable): `_derive_schema_write_params` widen branch lumped BOTH source_kind +
+  target_kind into `add_kinds`, ignoring `violating_endpoint`. `widen_edge_target_kinds` widens the
+  TARGET-kinds list ONLY, so a SOURCE-endpoint violation would mark items resolved + bump schema yet
+  the mismatch RE-PARKS next extraction (resolved-but-unfixed); a target-violation got a spurious
+  source_kind. FIX: derive only `target_kind`, only for `violating_endpoint=='target'`; a source-violation
+  → empty add_kinds → apply raises Unsupported (422) BEFORE resolve (write-before-resolve holds). +2 BE
+  unit tests (target→[target_kind]; source→[]). The derive had ZERO unit coverage before.
+- AUD-2 (feature-but-no-button): widen_target_kinds was fully backend-supported (derive+effect+route) yet
+  had NO FE button (excluded on a now-STALE "not derivable" comment). FIX: expose it in TriageQueue for
+  TARGET-endpoint edge_kind_mismatch groups only (matches what the target-widen can fix; source-side keeps
+  re_target/drop_edge), confirm-gated like add_to_schema. +2 FE tests (target renders+writes; source hidden).
+  No new i18n key (label `triage.action.widen_target_kinds` already in all 17 locales).
+- AUD-3 (S-05 regression the S-05b VERIFY missed): S-05 added useCreateEntityFact/useInvalidateFact/
+  useRevalidateFact to EntityDetailPanel, but (a) 2 CONSUMER tests that render the reused panel
+  (ProjectGraphView, WorldRollupGraph) kept STALE useEntityFacts mocks → 8 tests RED; (b) the `EntityFact`
+  FE type never declared `predicate`/`object` (the BE Fact + curation route DO return them), so the S-05b
+  Replace prefill (handleReplaceFact) was 4 tsc errors + read the triple as undefined at the type level.
+  FIX: complete both mocks; add `predicate?`/`object?` to EntityFact. tsc now 0 errors repo-wide.
+VERIFY: BE 55 (fact 12 + triage 33 + pending 10) · FE knowledge+world+composition 1869 green · tsc 0.
+
 ## DRIFT LOG (near-misses — an empty log at end is dishonest)
+- AUD-1: the widen derive bug was LATENT (FE didn't offer widen) — but exposing the button (AUD-2) would
+  have shipped the bug live. Fixed the derive FIRST, then exposed. The two are one change, not two.
+- AUD-3: the S-05b RUN-STATE claimed "tsc: my S-05b files clean" — it was NOT (EntityDetailPanel had 4).
+  The S-05b VERIFY ran vitest on 3 suites + a scoped tsc that missed EntityDetailPanel + 2 consumer suites
+  it never ran. A green subset masked a red whole. Recorded, fixed.
 - Spec Part A "reuse confirm-promotion as-is" would ship an empty shell (T1+T2). Deviating to make the
   confirmed human fact actually appear on the entity — recorded, not silently done.

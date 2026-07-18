@@ -38,7 +38,15 @@ vi.mock('../../hooks/useEntityDetail', () => ({
     error: null,
   }),
 }));
-vi.mock('../../hooks/useEntityFacts', () => ({ useEntityFacts: () => ({ facts: [] }) }));
+// The reused EntityDetailPanel now also pulls the S-05/S-05b fact mutations
+// (author/invalidate/revalidate) on mount — stub them so this graph-view suite
+// renders the panel without a real query client / network.
+vi.mock('../../hooks/useEntityFacts', () => ({
+  useEntityFacts: () => ({ facts: [], windowAvailable: true, isLoading: false, error: null }),
+  useCreateEntityFact: () => ({ create: vi.fn(), isPending: false }),
+  useInvalidateFact: () => ({ invalidate: vi.fn(), isPending: false }),
+  useRevalidateFact: () => ({ revalidate: vi.fn(), isPending: false }),
+}));
 vi.mock('../../hooks/useEntityMutations', () => ({
   useUnlockEntity: () => ({ unlock: vi.fn(), isPending: false }),
   usePromoteEntity: () => ({ promote: vi.fn(), isPending: false }),

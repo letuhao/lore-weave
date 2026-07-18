@@ -20,15 +20,19 @@ import type { TriageAction, TriageGroup } from '../types/ontology';
 // (`RENDERABLE_ACTIONS`), so a backend value the FE can't handle never renders a
 // dead button (e.g. `place_edge`, which is a confirm-token flow, not a resolve).
 
-// The actions the RESOLVE route completes on click. add_to_vocab / add_to_schema
-// now WRITE the schema for real (S-05, D-KG-LH-LC-SCHEMA-WRITE done for the human
-// path — the resolve route applies the ontology mutation, deriving the code from
-// the parked payload). widen_target_kinds / set_multi_active stay OUT: their params
-// aren't cleanly one-click-derivable from the parked payload (endpoint-kind /
-// cardinality choices), so they remain on the agent confirm-token path for now.
+// The actions the RESOLVE route completes on click. add_to_vocab / add_to_schema /
+// widen_target_kinds now WRITE the schema for real (S-05, D-KG-LH-LC-SCHEMA-WRITE
+// done for the human path — the resolve route applies the ontology mutation,
+// deriving the params from the parked payload). widen_target_kinds is additionally
+// gated below to TARGET-endpoint mismatches only (see `groupActions`): the only
+// widen mutation touches the TARGET-kinds list, so a source-endpoint violation
+// isn't fixable by it and the backend would 422. set_multi_active stays OUT — its
+// item_type (edge_cardinality_conflict) is not parked by the validator, so no such
+// group ever appears; it remains on the agent confirm-token path.
 const RENDERABLE_ACTIONS: ReadonlySet<TriageAction> = new Set<TriageAction>([
   'map',
   're_target',
+  'widen_target_kinds',
   'drop_edge',
   'close_previous',
   'add_to_vocab',
@@ -43,6 +47,7 @@ const RENDERABLE_ACTIONS: ReadonlySet<TriageAction> = new Set<TriageAction>([
 const SCHEMA_MUTATING: ReadonlySet<TriageAction> = new Set<TriageAction>([
   'add_to_vocab',
   'add_to_schema',
+  'widen_target_kinds',
 ]);
 
 const GLOSSARY_HANDOFF: ReadonlySet<TriageAction> = new Set<TriageAction>([
@@ -214,8 +219,15 @@ export function TriageQueue({ projectId, bookId, onGlossaryHandoff }: TriageQueu
     <>
     <ul className="space-y-2" data-testid="kg-triage-list" data-book-id={bookId ?? ''}>
       {groups.map((group) => {
+        // widen_target_kinds is only offered for a TARGET-endpoint violation — the
+        // widen mutation touches the target-kinds list only, so a source-endpoint
+        // mismatch it can't fix (re_target / drop_edge remain for those). Hidden
+        // here + rejected by the backend derive (empty add_kinds → 422) as defense.
+        const isTargetWiden = group.sample_payload?.violating_endpoint === 'target';
         const actions = (group.suggested_actions ?? []).filter(
-          (a): a is TriageAction => RENDERABLE_ACTIONS.has(a as TriageAction),
+          (a): a is TriageAction =>
+            RENDERABLE_ACTIONS.has(a as TriageAction) &&
+            (a !== 'widen_target_kinds' || isTargetWiden),
         );
         return (
           <li

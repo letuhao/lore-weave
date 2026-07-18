@@ -563,6 +563,11 @@ export interface EntityFact {
   confidence: number;
   source_chapter: string | null;
   from_order: number | null;
+  // S-05b (F8) — the optional s/p/o triple the BE Fact carries (both NULL for a
+  // coarse fact). The route serializes them, so Replace can prefill them instead
+  // of silently dropping the predicate/object the original fact had.
+  predicate?: string | null;
+  object?: string | null;
 }
 
 /** S-05 — payload to author a fact ABOUT an entity (POST /entities/{id}/facts).

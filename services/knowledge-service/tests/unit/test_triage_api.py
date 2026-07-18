@@ -588,3 +588,62 @@ def test_resolve_dismiss_does_not_reapply(monkeypatch):
     )
     assert r.status_code == 200, r.text
     assert called["n"] == 0  # drop_edge is not a REAPPLY action
+
+
+# ── S-05 completeness — _derive_schema_write_params (widen endpoint-awareness) ──
+# The widen mutation (`widen_edge_target_kinds`) touches the TARGET-kinds list only,
+# so the derived params must (a) add ONLY the observed target_kind, never source_kind,
+# and (b) yield EMPTY add_kinds for a SOURCE-endpoint violation (target-widen can't
+# fix it) so the schema-write effect rejects it (422) instead of silently marking the
+# batch resolved while the mismatch re-parks on the next extraction.
+class _FakeSchema:
+    def __init__(self):
+        self.schema_id = uuid4()
+        self.schema_version = 7
+
+
+def test_derive_widen_target_violation_adds_only_target_kind():
+    from app.routers.public.triage import _derive_schema_write_params
+
+    pending = [
+        _item(
+            item_type="edge_kind_mismatch",
+            signature="edge_kind:MENTORS:place->character",
+            payload={
+                "predicate": "MENTORS",
+                "source_kind": "place",
+                "target_kind": "character",
+                "violating_endpoint": "target",
+            },
+        )
+    ]
+    params = _derive_schema_write_params(
+        "widen_target_kinds", "edge_kind:MENTORS:place->character", pending, _FakeSchema()
+    )
+    assert params.code == "MENTORS"
+    # ONLY the target kind — never the source kind (that endpoint is not the target list).
+    assert params.add_kinds == ["character"]
+
+
+def test_derive_widen_source_violation_yields_empty_add_kinds():
+    from app.routers.public.triage import _derive_schema_write_params
+
+    pending = [
+        _item(
+            item_type="edge_kind_mismatch",
+            signature="edge_kind:MENTORS:place->character",
+            payload={
+                "predicate": "MENTORS",
+                "source_kind": "place",
+                "target_kind": "character",
+                "violating_endpoint": "source",
+            },
+        )
+    ]
+    params = _derive_schema_write_params(
+        "widen_target_kinds", "edge_kind:MENTORS:place->character", pending, _FakeSchema()
+    )
+    assert params.code == "MENTORS"
+    # A source-endpoint violation is NOT fixable by a target-widen → empty add_kinds,
+    # which the effect turns into a 422 (the human uses re_target / drop_edge instead).
+    assert params.add_kinds == []

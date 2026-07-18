@@ -123,9 +123,67 @@ describe('TriageQueue', () => {
     expect(screen.getByTestId('kg-triage-action-drop_edge')).toBeInTheDocument();
     // place_edge = confirm-token flow, not a resolve action → never a button.
     expect(screen.queryByTestId('kg-triage-action-place_edge')).not.toBeInTheDocument();
-    // widen_target_kinds = schema-mutating: resolve only records intent (no write),
-    // so offering it would vanish the item without changing the schema. Excluded.
+    // widen_target_kinds is offered ONLY for a TARGET-endpoint violation (the widen
+    // mutation touches the target-kinds list). This group carries no
+    // violating_endpoint (source-side / unspecified) → widen is NOT offered here;
+    // re_target / drop_edge remain. (A target-violation group is tested below.)
     expect(screen.queryByTestId('kg-triage-action-widen_target_kinds')).not.toBeInTheDocument();
+  });
+
+  it('offers widen_target_kinds ONLY for a TARGET-endpoint mismatch, and writes on confirm', async () => {
+    // S-05 completeness — widen was a backend-supported action with no button
+    // (feature-but-no-button). It fixes a too-narrow schema by accepting the
+    // observed target kind. Offered only when the violation is on the TARGET side.
+    const targetViolation = {
+      signature: 'edge_kind:MENTORS:place->character',
+      item_type: 'edge_kind_mismatch' as const,
+      count: 2,
+      status: 'pending' as const,
+      sample_payload: {
+        predicate: 'MENTORS',
+        source_kind: 'place',
+        target_kind: 'character',
+        violating_endpoint: 'target',
+      },
+      suggested_actions: ['re_target', 'widen_target_kinds', 'drop_edge'],
+    };
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
+    listTriageMock.mockResolvedValue({ groups: [targetViolation] });
+    resolveTriageMock.mockResolvedValue({ status: 'resolved', affected: 2, schema_version: 5 });
+    render(<TriageQueue projectId="p-1" />, { wrapper: Wrapper });
+    await waitFor(() => screen.getByTestId('kg-triage-action-widen_target_kinds'));
+    fireEvent.click(screen.getByTestId('kg-triage-action-widen_target_kinds'));
+    await waitFor(() =>
+      // no FE params — the backend derives add_kinds from the parked payload
+      expect(resolveTriageMock).toHaveBeenCalledWith(
+        'p-1', 'edge_kind:MENTORS:place->character',
+        { action: 'widen_target_kinds', params: {} }, 'tok',
+      ),
+    );
+    expect(confirmSpy).toHaveBeenCalled(); // ontology change is confirmed first
+    confirmSpy.mockRestore();
+  });
+
+  it('does NOT offer widen_target_kinds for a SOURCE-endpoint mismatch', async () => {
+    const sourceViolation = {
+      signature: 'edge_kind:MENTORS:place->character',
+      item_type: 'edge_kind_mismatch' as const,
+      count: 1,
+      status: 'pending' as const,
+      sample_payload: {
+        predicate: 'MENTORS',
+        source_kind: 'place',
+        target_kind: 'character',
+        violating_endpoint: 'source',
+      },
+      suggested_actions: ['re_target', 'widen_target_kinds', 'drop_edge'],
+    };
+    listTriageMock.mockResolvedValue({ groups: [sourceViolation] });
+    render(<TriageQueue projectId="p-1" />, { wrapper: Wrapper });
+    await waitFor(() => screen.getByTestId('kg-triage-action-re_target'));
+    // a target-widen can't fix a source violation → not offered (backend would 422)
+    expect(screen.queryByTestId('kg-triage-action-widen_target_kinds')).not.toBeInTheDocument();
+    expect(screen.getByTestId('kg-triage-action-drop_edge')).toBeInTheDocument();
   });
 
   it('a no-param action resolves the signature + toasts', async () => {
