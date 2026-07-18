@@ -389,6 +389,42 @@ DISCOVER_ONLY_HIGH_IMPACT: frozenset[str] = frozenset({
 })
 
 
+# N5a-FULL (dogfood 2026-07-19) — the CAPABILITY floor for the "request-scoped autonomy"
+# control model. These are the high-impact, book-WIDE ontology-BUILDING tools — "set up /
+# reshape the whole world," not "add the character the writer just named." Keeping them in the
+# per-turn catalog let the co-writer proactively rebuild a newcomer's ontology on a plain
+# "write a chapter 1" turn: three prior fixes failed because hot-seed + find_tools exclusions
+# don't cover `tool_load`, which loads ANY catalog name. So these are filtered out of the turn
+# catalog ITSELF (the one object all three reach-paths read) UNLESS the turn is world-setup
+# intent — signalled by `glossary_shaping` being injected (pinned OR the intent router matched
+# the message to its "set up the book's world ontology" description). Guidance and capability
+# then move as ONE signal. Single-entity / single-kind / read tools stay ALWAYS available
+# (request-scoped: "add Kaila", "add a vampire kind" are the writer's direct asks).
+INTENT_GATED_SETUP_TOOLS: frozenset[str] = frozenset({
+    "glossary_adopt_standards",   # adopt genre/kind STANDARDS (the confirmed over-reach)
+    "glossary_propose_kinds",     # batch-propose MANY kinds at once (build an ontology)
+    "glossary_plan",              # planner: propose a WHOLE ontology behind one card
+    "glossary_propose_batch",     # mixed batch ontology ops
+    "glossary_book_sync_apply",   # bulk-reconcile adopted standards
+})
+
+# The intent skill whose injection means "this turn is world-setup" (pinned OR router-matched).
+SETUP_INTENT_SKILL = "glossary_shaping"
+
+
+def filter_intent_gated_setup_tools(
+    catalog: list[dict], injected_skill_codes: list[str] | set[str],
+) -> list[dict]:
+    """Drop the high-impact world-setup tools from a turn catalog UNLESS the turn is
+    world-setup intent (`glossary_shaping` injected). Applied at catalog assembly so the
+    tool is simultaneously un-seeded, un-findable (find_tools), AND un-loadable (tool_load)
+    — closing the tool_load leak that per-search-function filters missed. Returns the catalog
+    unchanged on a setup turn; returns a filtered copy otherwise. N5a-FULL."""
+    if SETUP_INTENT_SKILL in injected_skill_codes:
+        return catalog
+    return [td for td in catalog if tool_name(td) not in INTENT_GATED_SETUP_TOOLS]
+
+
 def hot_tool_names(catalog: list[dict], domains: set[str]) -> set[str]:
     """The catalog tool names whose domain prefix is in ``domains`` — the set to
     seed into the discovery active-set so they're advertised on the first pass.

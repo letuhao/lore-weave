@@ -4308,9 +4308,13 @@ async def stream_response(
                 discovery_eligible = False
             if discovery_eligible:
                 from app.services.frontend_tools import frontend_tool_defs
+                from app.services.tool_discovery import filter_intent_gated_setup_tools
                 editor = bool(editor_context)
                 book_scoped = bool(editor_context or book_context)
-                discovery_catalog = catalog
+                # N5a-FULL — capability floor: high-impact world-setup tools are dropped from the
+                # turn catalog (all three reach-paths) unless this turn is world-setup intent
+                # (glossary_shaping injected). Request-scoped autonomy for the co-writer.
+                discovery_catalog = filter_intent_gated_setup_tools(catalog, injected_skill_codes)
                 discovery_extra_frontend = frontend_tool_defs(
                     editor=editor, book_scoped=book_scoped, studio=bool(studio_context)
                 )
@@ -4326,7 +4330,7 @@ async def stream_response(
                     if isinstance(s, dict) and s.get("tool")
                 }
                 discovery_seed_names = discovery_seed_for_surface(
-                    catalog,
+                    discovery_catalog,  # N5a-FULL — seed from the filtered catalog too
                     pins=tool_pins,
                     editor=editor,
                     book_scoped=book_scoped,
@@ -5700,7 +5704,9 @@ async def resume_stream_response(
         # (a book-scoped suspend may still propose a glossary edit).
         tool_defs = list(catalog)
         if stream_format == "agui" and catalog:
-            resume_discovery_catalog = catalog
+            from app.services.tool_discovery import filter_intent_gated_setup_tools
+            # N5a-FULL — same capability floor on the resume path (mirror the fresh turn).
+            resume_discovery_catalog = filter_intent_gated_setup_tools(catalog, resume_injected_skills)
             # The generic frontend tools (core) + the glossary write-back tools, both
             # available on resume; _stream_with_tools advertises {core} ∪ {discovered}
             # ∪ extra_frontend per pass.
@@ -5713,7 +5719,7 @@ async def resume_stream_response(
             # Resume superset includes the studio hot domains — a suspend raised on the
             # studio compose surface must resume with its composition family still hot.
             resume_seed_names = discovery_seed_for_surface(
-                catalog,
+                resume_discovery_catalog,  # N5a-FULL — seed from the filtered catalog too
                 pins=tool_pins,
                 editor=True,
                 book_scoped=True,
