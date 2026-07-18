@@ -71,6 +71,16 @@ export function useDivergenceManager(bookId: string | undefined, token: string |
     },
   });
 
+  // H-2a — rename a derivative. The name lives in settings.derivative_name; the server
+  // SHALLOW-MERGES a partial settings patch (BE-18), so send only the changed key.
+  const rename = useMutation({
+    mutationFn: ({ w, name }: { w: Work; name: string }) =>
+      compositionApi.patchWork(w.project_id, { settings: { derivative_name: name } }, token!, { version: w.version }),
+    onSettled: () => {
+      qc.invalidateQueries({ queryKey: ['composition', 'work', bookId] });
+    },
+  });
+
   const isArchiveConflict = (archive.error as { status?: number } | null)?.status === 412;
 
   return {
@@ -84,6 +94,7 @@ export function useDivergenceManager(bookId: string | undefined, token: string |
     spec,
     archive,
     restore,
+    rename,
     isArchiveConflict,
     switchTo,
     isSwitching,

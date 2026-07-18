@@ -38,8 +38,11 @@ export function BranchDiffView({
     );
   }
 
+  // H-5b — narrow-dock responsive: the scene list shrinks (minmax) and the right column gets
+  // minmax(0,1fr) so it can shrink below content width (no clip); prose columns carry min-w-0 +
+  // break-words to wrap rather than overflow.
   return (
-    <div data-testid="branchdiff" className="grid h-full min-h-0 grid-cols-[180px_1fr]">
+    <div data-testid="branchdiff" className="grid h-full min-h-0 grid-cols-[minmax(96px,164px)_minmax(0,1fr)]">
       <div className="overflow-y-auto border-r border-border p-2 text-[11.5px]">
         <div className="px-1 pb-1.5 text-[9.5px] font-semibold uppercase tracking-wide text-muted-foreground">
           {t('branchdiff.scenes', { defaultValue: '{{n}} diverged', n: scenes.length })}
@@ -90,16 +93,17 @@ function SceneDiff({ scene }: { scene: BranchDiffScene }) {
   }
   return (
     <div data-testid="branchdiff-changed" className="grid h-full min-h-0 grid-cols-2">
-      <div className="min-h-0 overflow-y-auto border-r border-border p-3 text-[12.5px] leading-relaxed">
+      {/* H-5b — min-w-0 + break-words so each side wraps rather than clipping/overflowing in a narrow dock. */}
+      <div className="min-h-0 min-w-0 overflow-y-auto border-r border-border p-3 text-[12.5px] leading-relaxed">
         <div className="sticky top-0 mb-1.5 bg-background pb-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">{t('branchdiff.canon', { defaultValue: 'Canon' })}</div>
         {rows.filter((r) => r.type !== 'add').map((r, i) => (
-          <p key={i} className={r.type === 'del' ? 'rounded bg-red-50/70 px-1 dark:bg-red-950/20' : 'px-1'}>{r.text}</p>
+          <p key={i} className={`break-words ${r.type === 'del' ? 'rounded bg-red-50/70 px-1 dark:bg-red-950/20' : 'px-1'}`}>{r.text}</p>
         ))}
       </div>
-      <div className="min-h-0 overflow-y-auto p-3 text-[12.5px] leading-relaxed">
+      <div className="min-h-0 min-w-0 overflow-y-auto p-3 text-[12.5px] leading-relaxed">
         <div className="sticky top-0 mb-1.5 bg-background pb-1 text-[10px] font-semibold uppercase tracking-wide text-purple-500">{t('branchdiff.branch', { defaultValue: 'Dị bản' })}</div>
         {rows.filter((r) => r.type !== 'del').map((r, i) => (
-          <p key={i} className={r.type === 'add' ? 'rounded bg-emerald-50/70 px-1 dark:bg-emerald-950/20' : 'px-1'}>{r.text}</p>
+          <p key={i} className={`break-words ${r.type === 'add' ? 'rounded bg-emerald-50/70 px-1 dark:bg-emerald-950/20' : 'px-1'}`}>{r.text}</p>
         ))}
       </div>
     </div>

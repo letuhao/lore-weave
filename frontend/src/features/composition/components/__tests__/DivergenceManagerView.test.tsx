@@ -143,6 +143,17 @@ describe('DivergenceManagerView', () => {
     expect(screen.getByTestId('wizard-open')).toBeInTheDocument();
   });
 
+  it('H-2a: renames a derivative (settings.derivative_name with If-Match version)', async () => {
+    resolution = { status: 'candidates', work: null, candidates: [canon, derivA] };
+    renderView();
+    fireEvent.click(screen.getByTestId('divergence-row-da'));  // select the derivative
+    fireEvent.click(await screen.findByTestId('divergence-rename'));
+    fireEvent.change(await screen.findByTestId('divergence-rename-input'), { target: { value: 'Renamed Branch' } });
+    fireEvent.click(screen.getByTestId('divergence-rename-save'));
+    await waitFor(() => expect(patchWork).toHaveBeenCalledWith(
+      'da', { settings: { derivative_name: 'Renamed Branch' } }, 'tok', { version: 2 }));
+  });
+
   it('shows a no-work state when the book has no canonical Work', () => {
     resolution = { status: 'none', work: null, candidates: [] };
     renderView();

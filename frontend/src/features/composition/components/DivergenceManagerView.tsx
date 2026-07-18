@@ -9,12 +9,17 @@ import type { Work } from '../types';
 import { DivergenceWizard } from './DivergenceWizard';
 import { BranchDiffView } from './BranchDiffView';
 import { DivergenceSpecEditor } from './DivergenceSpecEditor';
+import { FormDialog } from '@/components/shared/FormDialog';
 
 export function DivergenceManagerView({ bookId, token }: { bookId: string; token: string | null }) {
   const { t } = useTranslation('composition');
   const m = useDivergenceManager(bookId, token);
   const [wizardOpen, setWizardOpen] = useState(false);
   const [detailTab, setDetailTab] = useState<'spec' | 'diff'>('spec');
+  // H-2a — rename a derivative (name → settings.derivative_name).
+  const [renameDraft, setRenameDraft] = useState<string | null>(null);
+  const renameName = (renameDraft ?? '').trim();
+  const renameValid = renameName.length >= 1 && renameName.length <= 200;
   const canonical = m.canonical; // local so TS narrows it to Work past the guard below
 
   const status = m.resolution.data?.status;
@@ -162,7 +167,15 @@ export function DivergenceManagerView({ bookId, token }: { bookId: string; token
       {m.selected && (
         <div data-testid="divergence-detail" className="mt-3 rounded border border-border">
           <div className="flex items-center gap-1 border-b border-border px-2.5 py-1.5">
-            <span className="mr-1 flex-1 truncate text-[12px] font-medium">{derivativeName(m.selected) ?? t('divergence.unnamed', { defaultValue: 'Untitled dị bản' })}</span>
+            <span className="flex-1 truncate text-[12px] font-medium">{derivativeName(m.selected) ?? t('divergence.unnamed', { defaultValue: 'Untitled dị bản' })}</span>
+            {/* H-2a — rename the derivative (settings.derivative_name). */}
+            <button
+              type="button" data-testid="divergence-rename"
+              onClick={() => setRenameDraft(derivativeName(m.selected!) ?? '')}
+              title={t('divergence.rename', { defaultValue: 'Rename' })}
+              aria-label={t('divergence.rename', { defaultValue: 'Rename' })}
+              className="mr-1 rounded px-1 text-muted-foreground hover:text-foreground"
+            >✎</button>
             <button type="button" data-testid="divergence-tab-spec" onClick={() => setDetailTab('spec')} className={`rounded px-2 py-0.5 text-[11px] ${detailTab === 'spec' ? 'bg-secondary text-foreground' : 'text-muted-foreground hover:text-foreground'}`}>{t('divergence.tabSpec', { defaultValue: 'Spec' })}</button>
             <button type="button" data-testid="divergence-tab-diff" onClick={() => setDetailTab('diff')} className={`rounded px-2 py-0.5 text-[11px] ${detailTab === 'diff' ? 'bg-secondary text-foreground' : 'text-muted-foreground hover:text-foreground'}`}>{t('divergence.tabDiff', { defaultValue: 'Diff' })}</button>
           </div>
@@ -214,6 +227,44 @@ export function DivergenceManagerView({ bookId, token }: { bookId: string; token
           }}
         />
       )}
+
+      {/* H-2a — rename dialog (settings.derivative_name; 1..200, If-Match version). */}
+      <FormDialog
+        open={renameDraft !== null}
+        onOpenChange={(o) => { if (!o) setRenameDraft(null); }}
+        title={t('divergence.renameTitle', { defaultValue: 'Rename this what-if' })}
+        size="sm"
+        footer={
+          <button
+            type="button"
+            data-testid="divergence-rename-save"
+            disabled={!renameValid || m.rename.isPending || !m.selected}
+            onClick={() => {
+              if (!m.selected || !renameValid) return;
+              m.rename.mutate({ w: m.selected, name: renameName }, {
+                onSuccess: () => { setRenameDraft(null); toast.success(t('divergence.renamed', { defaultValue: 'Renamed.' })); },
+                onError: (e) => toast[(e as { status?: number }).status === 412 ? 'warning' : 'error'](
+                  (e as { status?: number }).status === 412
+                    ? t('divergence.renameConflict', { defaultValue: 'Changed elsewhere — reload and retry.' })
+                    : t('divergence.renameFailed', { defaultValue: 'Could not rename — try again.' })),
+              });
+            }}
+            className="rounded bg-primary px-3 py-1.5 text-sm text-primary-foreground disabled:opacity-40"
+          >
+            {m.rename.isPending ? t('divergence.saving', { defaultValue: 'Saving…' }) : t('divergence.save', { defaultValue: 'Save' })}
+          </button>
+        }
+      >
+        <input
+          data-testid="divergence-rename-input"
+          autoFocus
+          className="w-full rounded border border-border bg-transparent px-2 py-1.5 text-sm"
+          placeholder={t('divergence.renamePlaceholder', { defaultValue: 'What-if name (1–200 chars)' })}
+          value={renameDraft ?? ''}
+          onChange={(e) => setRenameDraft(e.target.value)}
+          onKeyDown={(e) => { if (e.key === 'Enter' && renameValid && m.selected) { m.rename.mutate({ w: m.selected, name: renameName }, { onSuccess: () => setRenameDraft(null) }); } }}
+        />
+      </FormDialog>
     </div>
   );
 }

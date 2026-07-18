@@ -23,6 +23,8 @@ export function ReferencesPanel({ projectId, sceneId, token, models }: {
   const [draft, setDraft] = useState({ title: '', author: '', source_url: '', content: '', model_ref: '' });
   // H-4a — reference delete is a HARD delete with no restore → confirm before firing.
   const [pendingDelete, setPendingDelete] = useState<ReferenceSource | null>(null);
+  // H-2b — client-side library filter (the shelf is small; no backend search needed).
+  const [librarySearch, setLibrarySearch] = useState('');
   const refs = useReferences(projectId, sceneId, token, query);
   const embedModels = embeddingModels(models);
   // Inherit the shared cascade embedding model (spec §8) before list[0].
@@ -30,6 +32,10 @@ export function ReferencesPanel({ projectId, sceneId, token, models }: {
 
   const needsModel = !refs.embedModelSet;
   const canAdd = draft.content.trim().length > 0 && (!needsModel || !!draft.model_ref || !!inheritedEmbed || embedModels.length > 0);
+  const _q = librarySearch.trim().toLowerCase();
+  const filteredLibrary = _q
+    ? refs.references.filter((r) => `${r.title} ${r.author} ${r.content}`.toLowerCase().includes(_q))
+    : refs.references;
 
   const submit = () => {
     if (!draft.content.trim()) return;
@@ -130,11 +136,23 @@ export function ReferencesPanel({ projectId, sceneId, token, models }: {
 
       {/* library */}
       <div data-testid="references-library">
-        <div className="px-1 py-0.5 text-xs font-medium uppercase tracking-wide text-neutral-500">
-          {t('referencesPanel.library', { defaultValue: 'Library' })} ({refs.references.length})
+        <div className="flex items-center gap-1.5 px-1 py-0.5">
+          <span className="text-xs font-medium uppercase tracking-wide text-neutral-500">
+            {t('referencesPanel.library', { defaultValue: 'Library' })} ({filteredLibrary.length}{librarySearch.trim() ? `/${refs.references.length}` : ''})
+          </span>
+          {/* H-2b — filter the shelf (title/author/content) so a large library isn't an unfilterable scroll. */}
+          {refs.references.length > 0 && (
+            <input
+              data-testid="references-library-search"
+              placeholder={t('referencesPanel.filter', { defaultValue: 'Filter…' })}
+              className="ml-auto w-28 rounded border px-2 py-0.5 text-xs dark:bg-neutral-900"
+              value={librarySearch}
+              onChange={(e) => setLibrarySearch(e.target.value)}
+            />
+          )}
         </div>
         <ul className="flex flex-col gap-0.5">
-          {refs.references.map((r) => (
+          {filteredLibrary.map((r) => (
             <LibraryRow
               key={r.id}
               r={r}
@@ -145,6 +163,11 @@ export function ReferencesPanel({ projectId, sceneId, token, models }: {
               savingContentId={refs.updateContent.isPending ? (refs.updateContent.variables as { id: string } | undefined)?.id : undefined}
             />
           ))}
+          {librarySearch.trim() && filteredLibrary.length === 0 && refs.references.length > 0 && (
+            <li data-testid="references-no-match" className="px-1 py-1 text-xs text-neutral-500">
+              {t('referencesPanel.noMatch', { defaultValue: 'No references match your filter.' })}
+            </li>
+          )}
           {!refs.references.length && (
             <li data-testid="references-empty" className="px-1 py-1 text-xs text-neutral-500">
               {t('referencesPanel.empty', { defaultValue: 'No references yet — add influences above.' })}

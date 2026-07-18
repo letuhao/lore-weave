@@ -136,6 +136,21 @@ describe('ReferencesPanel (T3.6)', () => {
     expect(screen.getByTestId('add-model-cta')).toBeInTheDocument();
   });
 
+  it('H-2b: filters the library by the search box (title/author/content)', () => {
+    h.state.references = [
+      { id: 'r1', title: 'Dune', author: 'Herbert', content: 'spice', embedding_model: 'm', embedding_dim: 1, created_at: null },
+      { id: 'r2', title: 'Neuromancer', author: 'Gibson', content: 'cyberspace', embedding_model: 'm', embedding_dim: 1, created_at: null },
+    ];
+    renderPanel();
+    expect(screen.getByTestId('references-lib-r1')).toBeInTheDocument();
+    expect(screen.getByTestId('references-lib-r2')).toBeInTheDocument();
+    fireEvent.change(screen.getByTestId('references-library-search'), { target: { value: 'gibson' } });
+    expect(screen.queryByTestId('references-lib-r1')).toBeNull();
+    expect(screen.getByTestId('references-lib-r2')).toBeInTheDocument();
+    fireEvent.change(screen.getByTestId('references-library-search'), { target: { value: 'zzz' } });
+    expect(screen.getByTestId('references-no-match')).toBeInTheDocument();
+  });
+
   it('audit fix: captures source_url at ADD time (was silently dropped — no URL input)', () => {
     h.state.embedModelSet = true;
     renderPanel();
