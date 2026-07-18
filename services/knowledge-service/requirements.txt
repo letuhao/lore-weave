@@ -9,7 +9,7 @@ PyJWT>=2.8
 # KM5 — RS256 admin-JWT verification (app/auth/admin_jwt.py) needs the
 # cryptography backend for RSA + SPKI/PKIX PEM parsing. Present transitively
 # today, but pinned explicitly so a security-critical dep can't silently drop.
-cryptography>=42
+cryptography>=49.0.0
 cachetools>=5.3
 prometheus-client>=0.25.0
 
