@@ -117,6 +117,12 @@
       "desc": "Regras de autor que guiam a IA neste livro",
       "guideBody": "Escreva as regras e preferências que guiam como a IA escreve para este livro específico — tom, POV, coisas a evitar, instruções recorrentes que você não quer repetir em cada chat. Abra-o uma vez no início e revise sempre que o conteúdo da IA se desviar do que você deseja."
     },
+    "style-voice": {
+      "title": "Estilo e Voz",
+      "desc": "Controle a densidade e o ritmo da prosa, além da voz distinta de cada personagem — tudo integrado a cada comando de rascunho",
+      "guideBody": "Estilo e Voz direciona a forma como a IA escreve. Defina a densidade e o ritmo da prosa para o livro inteiro (ou limite a um capítulo ou cena) e dê a cada personagem uma voz única. Essas configurações são integradas a cada comando de rascunho, para que a escrita permaneça consistente sem que você precise repetir instruções. Cada controle mostra seu valor efetivo e a origem desse valor (padrão do livro ou uma sobreposição de capítulo/cena). Ajuste cedo para definir o estilo da obra e, depois, faça ajustes por personagem conforme as vozes forem surgindo.",
+      "noWork": "Nenhum projeto de escrita criado ainda — configure um Work primeiro e, então, controle seu estilo e voz aqui."
+    },
     "glossary": {
       "title": "Glossário",
       "desc": "Entidades, busca e ações em massa para este livro",
@@ -669,12 +675,6 @@
       "title": "Propostas de Fluxo de Trabalho",
       "desc": "Revise os fluxos de trabalho propostos pelo agente",
       "guideBody": "Lista as receitas de fluxo de trabalho que o agente sugeriu criar, com base em sequências de várias etapas que ele notou que você repete. Abra para aprovar uma proposta — o que gera o fluxo de trabalho para que ele se torne executável — ou para rejeitá-la. É aqui que um fluxo de trabalho proposto pelo agente se torna real."
-    },
-    "style-voice": {
-      "title": "Estilo e Voz",
-      "desc": "Controle a densidade e o ritmo da prosa, além da voz distinta de cada personagem — tudo integrado a cada comando de rascunho",
-      "guideBody": "Estilo e Voz direciona a forma como a IA escreve. Defina a densidade e o ritmo da prosa para o livro inteiro (ou limite a um capítulo ou cena) e dê a cada personagem uma voz única. Essas configurações são integradas a cada comando de rascunho, para que a escrita permaneça consistente sem que você precise repetir instruções. Cada controle mostra seu valor efetivo e a origem desse valor (padrão do livro ou uma sobreposição de capítulo/cena). Ajuste cedo para definir o estilo da obra e, depois, faça ajustes por personagem conforme as vozes forem surgindo.",
-      "noWork": "Nenhum projeto de escrita criado ainda — configure um Work primeiro e, então, controle seu estilo e voz aqui."
     }
   },
   "sceneRail": {
@@ -797,7 +797,9 @@
     "merging": "Mesclando…",
     "mergeDone": "Mesclado no cânone — o ramo manterá sua própria versão.",
     "mergeConflict": "O cânone foi alterado — reabra o capítulo e mescle novamente.",
-    "mergeFailed": "Não foi possível mesclar — tente novamente."
+    "mergeFailed": "Não foi possível mesclar — tente novamente.",
+    "startFirstChapter": "Comece seu primeiro capítulo",
+    "startingChapter": "Criando..."
   },
   "sceneCompose": {
     "empty": "Selecione um capítulo no navegador do manuscrito para rascunhar suas cenas aqui.",
@@ -1060,7 +1062,11 @@
     "restore": "Restaurar",
     "restoreActHint": "Restaurar este ato (ele voltará vazio — reorganize os capítulos conforme necessário)",
     "actTrashed": "O ato «{{name}}» foi excluído — seus capítulos permaneceram no livro",
-    "undo": "Desfazer"
+    "undo": "Desfazer",
+    "newChapter": "Novo capítulo",
+    "chapterShort": "Capítulo",
+    "startFirstChapter": "Comece seu primeiro capítulo",
+    "creatingChapter": "Criando..."
   },
   "intro": {
     "title": "Bem-vindo ao Writing Studio",

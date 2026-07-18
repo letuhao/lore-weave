@@ -117,6 +117,12 @@
       "desc": "Quy tắc của tác giả hướng dẫn AI cho sách này",
       "guideBody": "Steering là nơi bạn viết ra các quy tắc và sở thích định hướng cách AI viết cho riêng cuốn sách này — giọng văn, ngôi kể (POV), những điều cần tránh, hay các chỉ dẫn lặp lại mà bạn không muốn phải gõ lại mỗi lần trò chuyện. Mở nó một lần từ sớm, rồi quay lại bất cứ khi nào kết quả của AI bắt đầu lệch khỏi những gì bạn mong muốn."
     },
+    "style-voice": {
+      "title": "Phong cách & Giọng văn",
+      "desc": "Điều chỉnh mật độ văn phong, nhịp độ và giọng văn riêng biệt của từng nhân vật — được tích hợp vào mọi câu lệnh bản thảo",
+      "guideBody": "Phong cách & Giọng văn giúp điều hướng cách AI viết lách. Hãy thiết lập mật độ văn phong và nhịp độ cho toàn bộ cuốn sách (hoặc giới hạn trong một chương hoặc một cảnh), đồng thời tạo cho mỗi nhân vật một giọng nói riêng biệt. Các thiết lập này được lồng ghép vào mọi câu lệnh bản thảo, giúp văn phong luôn nhất quán mà bạn không cần phải lặp lại các chỉ dẫn. Mỗi trình điều khiển đều hiển thị giá trị hiệu dụng và nguồn gốc của giá trị đó (mặc định của sách, hoặc thiết lập riêng cho chương/cảnh). Hãy điều chỉnh sớm để thiết lập phong cách chủ đạo, sau đó tinh chỉnh theo từng nhân vật khi giọng văn của họ dần lộ diện.",
+      "noWork": "Chưa có dự án viết nào — hãy thiết lập một Work trước, sau đó điều chỉnh phong cách & giọng văn tại đây."
+    },
     "glossary": {
       "title": "Từ điển",
       "desc": "Thực thể, tìm kiếm và thao tác hàng loạt cho sách này",
@@ -669,12 +675,6 @@
       "title": "Đề xuất Quy trình làm việc",
       "desc": "Xem xét các quy trình mà tác nhân đã đề xuất",
       "guideBody": "Liệt kê các công thức quy trình mà tác nhân đã gợi ý tạo, dựa trên các chuỗi nhiều bước mà nó nhận thấy bạn thường lặp lại. Mở mục này để phê duyệt một đề xuất — việc này sẽ đúc kết quy trình để nó có thể thực thi được — hoặc từ chối nó. Đây là nơi một quy trình do tác nhân đề xuất thực sự trở thành hiện thực."
-    },
-    "style-voice": {
-      "title": "Phong cách & Giọng văn",
-      "desc": "Điều chỉnh mật độ văn phong, nhịp độ và giọng văn riêng biệt của từng nhân vật — được tích hợp vào mọi câu lệnh bản thảo",
-      "guideBody": "Phong cách & Giọng văn giúp điều hướng cách AI viết lách. Hãy thiết lập mật độ văn phong và nhịp độ cho toàn bộ cuốn sách (hoặc giới hạn trong một chương hoặc một cảnh), đồng thời tạo cho mỗi nhân vật một giọng nói riêng biệt. Các thiết lập này được lồng ghép vào mọi câu lệnh bản thảo, giúp văn phong luôn nhất quán mà bạn không cần phải lặp lại các chỉ dẫn. Mỗi trình điều khiển đều hiển thị giá trị hiệu dụng và nguồn gốc của giá trị đó (mặc định của sách, hoặc thiết lập riêng cho chương/cảnh). Hãy điều chỉnh sớm để thiết lập phong cách chủ đạo, sau đó tinh chỉnh theo từng nhân vật khi giọng văn của họ dần lộ diện.",
-      "noWork": "Chưa có dự án viết nào — hãy thiết lập một Work trước, sau đó điều chỉnh phong cách & giọng văn tại đây."
     }
   },
   "sceneRail": {
@@ -797,7 +797,9 @@
     "merging": "Đang hợp nhất…",
     "mergeDone": "Đã hợp nhất vào bản chính — nhánh sẽ giữ phiên bản riêng.",
     "mergeConflict": "Bản chính đã thay đổi — hãy mở lại chương và thực hiện hợp nhất lại.",
-    "mergeFailed": "Không thể hợp nhất — vui lòng thử lại."
+    "mergeFailed": "Không thể hợp nhất — vui lòng thử lại.",
+    "startFirstChapter": "Bắt đầu chương đầu tiên",
+    "startingChapter": "Đang khởi tạo…"
   },
   "sceneCompose": {
     "empty": "Chọn một chương trong trình điều hướng bản thảo để soạn thảo các cảnh tại đây.",
@@ -1060,7 +1062,11 @@
     "restore": "Khôi phục",
     "restoreActHint": "Khôi phục hồi này (hồi sẽ trống — vui lòng sắp xếp lại các chương nếu cần)",
     "actTrashed": "Hồi «{{name}}» đã bị xóa — các chương của nó vẫn được giữ trong sách",
-    "undo": "Hoàn tác"
+    "undo": "Hoàn tác",
+    "newChapter": "Chương mới",
+    "chapterShort": "Chương",
+    "startFirstChapter": "Bắt đầu chương đầu tiên",
+    "creatingChapter": "Đang khởi tạo…"
   },
   "intro": {
     "title": "Chào mừng đến Xưởng Sáng Tác",

@@ -117,6 +117,12 @@
       "desc": "Autor-Regeln zur Steuerung der KI für dieses Buch",
       "guideBody": "Schreibe die Regeln und Vorlieben, die festlegen, wie die KI für dieses spezifische Buch schreibt – Tonfall, POV, Dinge, die vermieden werden sollen, oder wiederkehrende Anweisungen, die du nicht in jedem Chat wiederholen möchtest. Öffne ihn einmal zu Beginn und besuche ihn erneut, wenn die Ausgabe der KI von deinen Wünschen abweicht."
     },
+    "style-voice": {
+      "title": "Stil & Stimme",
+      "desc": "Steuern Sie die Prosadichte, das Tempo und die markante Stimme jedes Charakters – integriert in jeden Entwurfs-Prompt",
+      "guideBody": "Stil & Stimme steuert, wie die KI schreibt. Legen Sie die Prosadichte und das Tempo für das gesamte Buch fest (oder grenzen Sie dies auf ein Kapitel oder eine Szene ein) und verleihen Sie jedem Charakter eine unverwechselbare Sprechstimme. Diese Einstellungen werden in jeden Entwurfs-Prompt integriert, sodass der Schreibstil konsistent bleibt, ohne dass Sie Anweisungen wiederholen müssen. Jedes Steuerelement zeigt seinen effektiven Wert und dessen Herkunft an (Standardwert des Buches oder Überschreibung durch Kapitel/Szene). Passen Sie dies frühzeitig an, um den Hausstil festzulegen, und verfeinern Sie ihn dann pro Charakter, sobald dessen Stimme Gestalt annimmt.",
+      "noWork": "Noch kein Schreibprojekt vorhanden – erstellen Sie zuerst ein „Work“, um hier Stil & Stimme festzulegen."
+    },
     "glossary": {
       "title": "Glossar",
       "desc": "Entitäten, Suche und Massenbearbeitung für dieses Buch",
@@ -669,12 +675,6 @@
       "title": "Workflow-Vorschläge",
       "desc": "Überprüfen Sie die vom Agenten vorgeschlagenen Workflows",
       "guideBody": "Hier werden die Workflow-Rezepte aufgelistet, die der Agent basierend auf mehrstufigen Sequenzen vorgeschlagen hat, die er bei Ihnen wiederkehrend festgestellt hat. Öffnen Sie diesen Bereich, um einen Vorschlag anzunehmen – wodurch der Workflow erstellt wird und ausführbar ist – oder ihn abzulehnen. Hier wird ein vom Agenten vorgeschlagener Workflow tatsächlich realisiert."
-    },
-    "style-voice": {
-      "title": "Stil & Stimme",
-      "desc": "Steuern Sie die Prosadichte, das Tempo und die markante Stimme jedes Charakters – integriert in jeden Entwurfs-Prompt",
-      "guideBody": "Stil & Stimme steuert, wie die KI schreibt. Legen Sie die Prosadichte und das Tempo für das gesamte Buch fest (oder grenzen Sie dies auf ein Kapitel oder eine Szene ein) und verleihen Sie jedem Charakter eine unverwechselbare Sprechstimme. Diese Einstellungen werden in jeden Entwurfs-Prompt integriert, sodass der Schreibstil konsistent bleibt, ohne dass Sie Anweisungen wiederholen müssen. Jedes Steuerelement zeigt seinen effektiven Wert und dessen Herkunft an (Standardwert des Buches oder Überschreibung durch Kapitel/Szene). Passen Sie dies frühzeitig an, um den Hausstil festzulegen, und verfeinern Sie ihn dann pro Charakter, sobald dessen Stimme Gestalt annimmt.",
-      "noWork": "Noch kein Schreibprojekt vorhanden – erstellen Sie zuerst ein „Work“, um hier Stil & Stimme festzulegen."
     }
   },
   "sceneRail": {
@@ -797,7 +797,9 @@
     "merging": "Zusammenführen…",
     "mergeDone": "In den Kanon übernommen – der Zweig behält seine eigene Version.",
     "mergeConflict": "Kanon hat sich geändert – öffne das Kapitel erneut und führe es wieder zusammen.",
-    "mergeFailed": "Zusammenführen fehlgeschlagen – bitte erneut versuchen."
+    "mergeFailed": "Zusammenführen fehlgeschlagen – bitte erneut versuchen.",
+    "startFirstChapter": "Beginnen Sie Ihr erstes Kapitel",
+    "startingChapter": "Wird erstellt…"
   },
   "sceneCompose": {
     "empty": "Wählen Sie ein Kapitel im Manuskript-Navigator aus, um dessen Szenen hier zu entwerfen.",
@@ -1060,7 +1062,11 @@
     "restore": "Wiederherstellen",
     "restoreActHint": "Diese Akte wiederherstellen (sie wird leer sein – ordne die Kapitel bei Bedarf neu)",
     "actTrashed": "Akte „{{name}}“ gelöscht – ihre Kapitel verbleiben im Buch",
-    "undo": "Rückgängig machen"
+    "undo": "Rückgängig machen",
+    "newChapter": "Neues Kapitel",
+    "chapterShort": "Kapitel",
+    "startFirstChapter": "Beginnen Sie Ihr erstes Kapitel",
+    "creatingChapter": "Wird erstellt…"
   },
   "intro": {
     "title": "Willkommen im Writing Studio",

@@ -117,6 +117,12 @@
       "desc": "Peraturan penulis yang memandu AI untuk buku ini",
       "guideBody": "Tulis peraturan dan pilihan yang memandu cara AI menulis untuk buku khusus ini — nada, POV, perkara yang perlu dielakkan, arahan berulang yang anda tidak mahu ulangi dalam setiap sembang. Buka panel ini pada peringkat awal, kemudian semak semula setiap kali output AI menyimpang daripada apa yang anda mahukan."
     },
+    "style-voice": {
+      "title": "Gaya & Suara",
+      "desc": "Kawal kepadatan prosa dan rentak, serta suara unik setiap watak — disepadukan ke dalam setiap draf arahan",
+      "guideBody": "Gaya & Suara mengawal cara AI menulis. Tetapkan kepadatan prosa dan rentak untuk keseluruhan buku (atau kecilkan kepada bab atau babak), dan berikan setiap watak suara pertuturan yang tersendiri. Tetapan ini disepadukan ke dalam setiap draf arahan, supaya penulisan kekal konsisten tanpa anda perlu mengulang arahan. Setiap kawalan menunjukkan nilai berkesannya dan dari mana nilai itu berasal (pilihan lalai buku, atau pengganti bab/babak). Laraskan lebih awal untuk menetapkan gaya penulisan, kemudian sesuaikan mengikut watak apabila suara mereka mula muncul.",
+      "noWork": "Tiada projek penulisan lagi — tetapkan Work terlebih dahulu, kemudian kawal gaya & suaranya di sini."
+    },
     "glossary": {
       "title": "Glosari",
       "desc": "Entiti, carian, dan tindakan pukal untuk buku ini",
@@ -669,12 +675,6 @@
       "title": "Cadangan Aliran Kerja",
       "desc": "Semak aliran kerja yang dicadangkan oleh ejen",
       "guideBody": "Menyenaraikan resipi aliran kerja yang dicadangkan oleh ejen untuk dicipta, berdasarkan urutan berbilang langkah yang dikesan kerap anda ulangi. Buka panel ini untuk meluluskan cadangan — yang akan menghasilkan aliran kerja tersebut supaya ia boleh dijalankan — atau menolaknya. Di sinilah aliran kerja cadangan ejen menjadi realiti."
-    },
-    "style-voice": {
-      "title": "Gaya & Suara",
-      "desc": "Kawal kepadatan prosa dan rentak, serta suara unik setiap watak — disepadukan ke dalam setiap draf arahan",
-      "guideBody": "Gaya & Suara mengawal cara AI menulis. Tetapkan kepadatan prosa dan rentak untuk keseluruhan buku (atau kecilkan kepada bab atau babak), dan berikan setiap watak suara pertuturan yang tersendiri. Tetapan ini disepadukan ke dalam setiap draf arahan, supaya penulisan kekal konsisten tanpa anda perlu mengulang arahan. Setiap kawalan menunjukkan nilai berkesannya dan dari mana nilai itu berasal (pilihan lalai buku, atau pengganti bab/babak). Laraskan lebih awal untuk menetapkan gaya penulisan, kemudian sesuaikan mengikut watak apabila suara mereka mula muncul.",
-      "noWork": "Tiada projek penulisan lagi — tetapkan Work terlebih dahulu, kemudian kawal gaya & suaranya di sini."
     }
   },
   "sceneRail": {
@@ -797,7 +797,9 @@
     "merging": "Sedang menggabungkan…",
     "mergeDone": "Telah digabungkan ke dalam kanon — cawangan akan mengekalkan versi sendiri.",
     "mergeConflict": "Kanon telah berubah — buka semula bab dan gabung semula.",
-    "mergeFailed": "Gagal menggabungkan — cuba lagi."
+    "mergeFailed": "Gagal menggabungkan — cuba lagi.",
+    "startFirstChapter": "Mulakan bab pertama anda",
+    "startingChapter": "Sedang mencipta…"
   },
   "sceneCompose": {
     "empty": "Pilih bab dalam navigasi manuskrip untuk merangka babak di sini.",
@@ -1060,7 +1062,11 @@
     "restore": "Pulihkan",
     "restoreActHint": "Pulihkan babak ini (ia akan kembali kosong — susun semula bab mengikut keperluan)",
     "actTrashed": "Babak «{{name}}» telah dibuang — bab-bab di dalamnya kekal dalam buku",
-    "undo": "Batalkan"
+    "undo": "Batalkan",
+    "newChapter": "Bab baru",
+    "chapterShort": "Bab",
+    "startFirstChapter": "Mulakan bab pertama anda",
+    "creatingChapter": "Sedang mencipta…"
   },
   "intro": {
     "title": "Selamat Datang ke Writing Studio",

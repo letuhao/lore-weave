@@ -117,6 +117,12 @@
       "desc": "Reglas de autor que guían a la IA en este libro",
       "guideBody": "Escribe las reglas y preferencias que guían la forma en que la IA escribe para este libro específico: tono, punto de vista, elementos a evitar e instrucciones recurrentes que no quieras repetir en cada chat. Ábrelo al principio y vuelve a consultarlo siempre que el resultado de la IA se desvíe de lo que buscas."
     },
+    "style-voice": {
+      "title": "Estilo y voz",
+      "desc": "Controla la densidad y el ritmo de la prosa, así como la voz distintiva de cada personaje; todo integrado en cada instrucción de borrador",
+      "guideBody": "«Estilo y voz» dirige la forma en que escribe la IA. Define la densidad y el ritmo de la prosa para todo el libro (o limítalos a un capítulo o escena) y otorga a cada personaje una voz propia al hablar. Estos ajustes se integran en cada instrucción de borrador, de modo que la escritura mantiene la coherencia sin que tengas que repetir instrucciones. Cada control muestra su valor efectivo y su origen (valor predeterminado del libro o ajuste de capítulo/escena). Ajústalo al principio para establecer el estilo general y luego perfecciónalo por personaje a medida que sus voces vayan surgiendo.",
+      "noWork": "Aún no hay ningún proyecto de escritura; primero crea un «Work» y luego podrás configurar su estilo y voz aquí."
+    },
     "glossary": {
       "title": "Glosario",
       "desc": "Entidades, búsqueda y acciones masivas para este libro",
@@ -669,12 +675,6 @@
       "title": "Propuestas de flujo de trabajo",
       "desc": "Revisa los flujos de trabajo propuestos por el agente",
       "guideBody": "Lista las recetas de flujo de trabajo que el agente ha sugerido crear, basándose en secuencias de varios pasos que ha detectado que repites. Ábrelo para aprobar una propuesta — lo que genera el flujo de trabajo para que sea ejecutable — o para rechazarla. Aquí es donde un flujo de trabajo propuesto por el agente se vuelve realidad."
-    },
-    "style-voice": {
-      "title": "Estilo y voz",
-      "desc": "Controla la densidad y el ritmo de la prosa, así como la voz distintiva de cada personaje; todo integrado en cada instrucción de borrador",
-      "guideBody": "«Estilo y voz» dirige la forma en que escribe la IA. Define la densidad y el ritmo de la prosa para todo el libro (o limítalos a un capítulo o escena) y otorga a cada personaje una voz propia al hablar. Estos ajustes se integran en cada instrucción de borrador, de modo que la escritura mantiene la coherencia sin que tengas que repetir instrucciones. Cada control muestra su valor efectivo y su origen (valor predeterminado del libro o ajuste de capítulo/escena). Ajústalo al principio para establecer el estilo general y luego perfecciónalo por personaje a medida que sus voces vayan surgiendo.",
-      "noWork": "Aún no hay ningún proyecto de escritura; primero crea un «Work» y luego podrás configurar su estilo y voz aquí."
     }
   },
   "sceneRail": {
@@ -797,7 +797,9 @@
     "merging": "Fusionando…",
     "mergeDone": "Fusionado con el canon — la rama conserva su propia versión.",
     "mergeConflict": "El canon ha cambiado — vuelve a abrir el capítulo y fusiona de nuevo.",
-    "mergeFailed": "No se pudo fusionar — inténtalo de nuevo."
+    "mergeFailed": "No se pudo fusionar — inténtalo de nuevo.",
+    "startFirstChapter": "Empieza tu primer capítulo",
+    "startingChapter": "Creando…"
   },
   "sceneCompose": {
     "empty": "Selecciona un capítulo en el navegador del manuscrito para redactar sus escenas aquí.",
@@ -1060,7 +1062,11 @@
     "restore": "Restaurar",
     "restoreActHint": "Restaurar este acto (se restaurará vacío; vuelve a organizar los capítulos según sea necesario)",
     "actTrashed": "El acto «{{name}}» ha sido eliminado; sus capítulos permanecen en el libro",
-    "undo": "Deshacer"
+    "undo": "Deshacer",
+    "newChapter": "Nuevo capítulo",
+    "chapterShort": "Capítulo",
+    "startFirstChapter": "Empieza tu primer capítulo",
+    "creatingChapter": "Creando…"
   },
   "intro": {
     "title": "Bienvenido a Writing Studio",

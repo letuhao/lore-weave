@@ -35,6 +35,7 @@ import { usePlanOrigin } from '@/features/plan-hub/hooks/usePlanOrigin';
 import { usePlanChildCreate } from '@/features/plan-hub/hooks/usePlanChildCreate';
 import { usePlanHubMode } from '@/features/plan-hub/hooks/usePlanHubMode';
 import { useSimpleChapters } from '@/features/plan-hub/hooks/useSimpleChapters';
+import { useChapterDoor } from '@/features/studio/manuscript/useChapterDoor';
 import { SimpleChapterList } from '@/features/plan-hub/components/SimpleChapterList';
 import type { CameraFocusTarget, PlanOverlayRef } from '@/features/plan-hub/types';
 import {
@@ -82,14 +83,7 @@ export function PlanHubPanel(props: IDockviewPanelProps) {
   const simpleChapters = useSimpleChapters(bookId, accessToken, mode.simple);
   // The "Write a new chapter" door: create a book chapter, then open it in the editor. This is the
   // content-first entry the pantser + newcomer both said was missing — no arc choice required.
-  const writeChapter = useMutation({
-    mutationFn: () => booksApi.createChapterEditor(accessToken!, bookId, { original_language: originalLanguage, title: '' }),
-    onSuccess: (created) => {
-      void qc.invalidateQueries({ queryKey: ['plan-hub', 'simple-chapters', bookId] });
-      notifyManuscriptChanged();
-      if (created?.chapter_id) focusManuscriptUnit(created.chapter_id);
-    },
-  });
+  const chapterDoor = useChapterDoor(bookId);
   // Simple-mode CRUD — the edit/delete the panel named as missing ("only add and view"). Rename PATCHes
   // the book chapter's title; delete trashes it (soft, restorable). Both refetch the windowed list.
   const invalidateSimple = () => void qc.invalidateQueries({ queryKey: ['plan-hub', 'simple-chapters', bookId] });
@@ -243,8 +237,8 @@ export function PlanHubPanel(props: IDockviewPanelProps) {
           loadMore={simpleChapters.loadMore}
           loadingMore={simpleChapters.loadingMore}
           onOpenChapter={(chapterId) => focusManuscriptUnit(chapterId)}
-          onWriteNew={accessToken ? () => writeChapter.mutate() : null}
-          writing={writeChapter.isPending}
+          onWriteNew={chapterDoor.startNewChapter}
+          writing={chapterDoor.creating}
           onRename={accessToken ? (chapterId, title) => renameChapter.mutate({ chapterId, title }) : null}
           onDelete={accessToken ? (chapterId) => deleteChapter.mutate(chapterId) : null}
           mutating={renameChapter.isPending || deleteChapter.isPending}

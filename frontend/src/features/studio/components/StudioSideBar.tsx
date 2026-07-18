@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { PanelLeftClose } from 'lucide-react';
 import type { ActivityView } from '../types';
 import { ManuscriptNavigator } from '../manuscript/ManuscriptNavigator';
+import { useChapterDoor } from '../manuscript/useChapterDoor';
 import type { ManuscriptNode } from '../manuscript/types';
 import { useStudioHost } from '../host/StudioHostProvider';
 import { useSidebarResize } from '../hooks/useSidebarResize';
@@ -31,6 +32,9 @@ export function StudioSideBar({ activeView, onCollapse, bookId, token, selectedI
   const { t } = useTranslation('studio');
   const host = useStudioHost();
   const { resizing, handleProps } = useSidebarResize({ width, onResize });
+  // M3 (F2) — the rail's own "＋ Chapter" create-and-open door (the sealed amendment). Shares the one
+  // useChapterDoor with the Editor empty state + Plan Hub, so all three doors behave identically.
+  const chapterDoor = useChapterDoor(bookId);
 
   return (
     <div
@@ -60,6 +64,8 @@ export function StudioSideBar({ activeView, onCollapse, bookId, token, selectedI
           selectedId={selectedId}
           onSelect={(node) => onSelectNode(node)}
           onNewChapter={() => host.openPanel('plan-hub', { focus: true })}
+          onCreateChapter={chapterDoor.startNewChapter ?? undefined}
+          creatingChapter={chapterDoor.creating}
           onCollapseSidebar={onCollapse}
         />
       ) : activeView === 'plan' ? (

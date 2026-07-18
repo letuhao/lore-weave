@@ -206,6 +206,29 @@ describe('ManuscriptNavigator', () => {
     expect(screen.getByTestId('manuscript-window')).toBeTruthy();
   });
 
+  // ── M3 (F2): the rail's own create-a-chapter door ───────────────────────────────────────────
+  it('renders a "＋ Chapter" create button and fires onCreateChapter (flat book)', () => {
+    const onCreateChapter = vi.fn();
+    hook.value = base({ rows: [nodeRow(n('c1'))] }); // source 'chapters' by default
+    render(<ManuscriptNavigator bookId="b1" token="t" onCreateChapter={onCreateChapter} />);
+    fireEvent.click(screen.getByTestId('manuscript-chapter-new'));
+    expect(onCreateChapter).toHaveBeenCalledOnce();
+  });
+
+  it('does NOT render the rail create button when no handler is wired', () => {
+    hook.value = base({ rows: [nodeRow(n('c1'))] });
+    render_();
+    expect(screen.queryByTestId('manuscript-chapter-new')).toBeNull();
+  });
+
+  it('an empty book offers a "Start your first chapter" door that fires onCreateChapter', () => {
+    const onCreateChapter = vi.fn();
+    hook.value = base({ rows: [] });
+    render(<ManuscriptNavigator bookId="b1" token="t" onCreateChapter={onCreateChapter} />);
+    fireEvent.click(screen.getByTestId('manuscript-empty-create'));
+    expect(onCreateChapter).toHaveBeenCalledOnce();
+  });
+
   // ── M2 (F3): a cross-panel chapter mutation reloads the tree via the studio bus ──────────────
   it('reloads the tree when the studio bus signals a manuscript change — but NOT on mount', () => {
     const reload = vi.fn();

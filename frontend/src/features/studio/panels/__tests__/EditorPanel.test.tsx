@@ -31,6 +31,9 @@ vi.mock('../../manuscript/unit/useManuscriptCheckpoints', () => ({
 vi.mock('../../manuscript/unit/ManuscriptCheckpoints', () => ({ ManuscriptCheckpoints: () => null }));
 vi.mock('../RevisionHistorySection', () => ({ RevisionHistorySection: () => null }));
 vi.mock('../EditorPublishGate', () => ({ EditorPublishGate: () => null }));
+// M3 — the empty-state "start your first chapter" door; it needs the query-client/auth providers,
+// so stub it here (its own path is tested via useChapterDoor + the navigator/live QC).
+vi.mock('../../manuscript/useChapterDoor', () => ({ useChapterDoor: () => ({ startNewChapter: () => {}, creating: false }) }));
 // #16 Phase 2 (2.1-2.6) — same rationale: out of scope for the P1 registration test, stub every
 // editor-craft addition rather than pull in the auth/query-client/glossary providers they need.
 vi.mock('@/auth', () => ({ useAuth: () => ({ accessToken: 'tok' }) }));

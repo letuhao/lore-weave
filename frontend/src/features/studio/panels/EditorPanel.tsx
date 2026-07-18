@@ -34,6 +34,7 @@ import { useIsMobile } from '@/hooks/useIsMobile';
 import { cn } from '@/lib/utils';
 import { useStudioHost, useRegisterStudioTool, useStudioBusSelector } from '../host/StudioHostProvider';
 import { useManuscriptUnit } from '../manuscript/unit/ManuscriptUnitProvider';
+import { useChapterDoor } from '../manuscript/useChapterDoor';
 import { useManuscriptCheckpoints } from '../manuscript/unit/useManuscriptCheckpoints';
 import { ManuscriptCheckpoints } from '../manuscript/unit/ManuscriptCheckpoints';
 import { SceneRail } from '../manuscript/SceneRail';
@@ -46,6 +47,9 @@ export function EditorPanel(props: IDockviewPanelProps) {
   const host = useStudioHost();
   const { bookId } = host;
   const unit = useManuscriptUnit();
+  // M3 (F2) — the empty state must not dead-end a newcomer: offer the same "start writing" door the
+  // Plan Hub / rail use (create a chapter + open it here), not just "go find a chapter that isn't there".
+  const chapterDoor = useChapterDoor(bookId);
   // #16 1.2 — wraps the hoist's applyProposedEdit so every AI-apply captures a pre-edit
   // restore point BEFORE writing. The wrapped function (not unit.applyProposedEdit directly)
   // is what gets handed to registerEditorTarget below — same seam, now checkpoint-aware.
@@ -270,8 +274,21 @@ export function EditorPanel(props: IDockviewPanelProps) {
 
   if (!unit || !chapterId) {
     return (
-      <div data-testid="studio-editor-panel" className="flex h-full items-center justify-center p-6 text-center text-xs text-muted-foreground">
-        {t('editor.empty', { defaultValue: 'Select a chapter in the manuscript navigator to edit it here.' })}
+      <div data-testid="studio-editor-panel" className="flex h-full flex-col items-center justify-center gap-3 p-6 text-center">
+        <button
+          type="button"
+          data-testid="editor-empty-start-chapter"
+          disabled={!chapterDoor.startNewChapter || chapterDoor.creating}
+          onClick={() => chapterDoor.startNewChapter?.()}
+          className="rounded-lg bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground transition hover:brightness-105 disabled:opacity-50"
+        >
+          {chapterDoor.creating
+            ? t('editor.startingChapter', { defaultValue: 'Creating…' })
+            : `＋  ${t('editor.startFirstChapter', { defaultValue: 'Start your first chapter' })}`}
+        </button>
+        <p className="text-xs text-muted-foreground">
+          {t('editor.empty', { defaultValue: 'Select a chapter in the manuscript navigator to edit it here.' })}
+        </p>
       </div>
     );
   }

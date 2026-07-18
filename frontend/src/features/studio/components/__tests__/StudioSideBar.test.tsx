@@ -11,6 +11,10 @@ vi.mock('../../manuscript/ManuscriptNavigator', () => ({
     return <div data-testid="manuscript-nav-stub" />;
   },
 }));
+// useChapterDoor needs QueryClient + Auth providers (create-and-open a chapter); this is a pure
+// chrome test, so stub it — the door's real behaviour is covered by useChapterDoor's own path.
+const chapterDoor = vi.hoisted(() => ({ startNewChapter: vi.fn(), creating: false }));
+vi.mock('../../manuscript/useChapterDoor', () => ({ useChapterDoor: () => chapterDoor }));
 
 import { StudioHostProvider } from '../../host/StudioHostProvider';
 import { StudioSideBar } from '../StudioSideBar';
@@ -89,6 +93,16 @@ describe('StudioSideBar', () => {
     // button above, dockview internals are out of scope for a chrome test — PlanHubPanel's own
     // tests cover what opening it renders.
     expect(() => (navProps.value?.onNewChapter as () => void)()).not.toThrow();
+  });
+
+  // M3 (F2) — the sealed rail create door. Same caller-wiring proof as onNewChapter above: the
+  // navigator only renders "＋ Chapter" when onCreateChapter is a function, so asserting the wiring
+  // HERE (at the caller) is what proves the app actually offers it (the injecting-a-fake lesson).
+  it('wires onCreateChapter to the navigator (the rail "＋ Chapter" door is real)', () => {
+    renderSideBar({ activeView: 'manuscript' });
+    expect(typeof navProps.value?.onCreateChapter).toBe('function');
+    (navProps.value?.onCreateChapter as () => void)();
+    expect(chapterDoor.startNewChapter).toHaveBeenCalledOnce();
   });
 
   it('fires onCollapse from the chrome collapse button on a stub view', () => {

@@ -31,8 +31,14 @@ interface Props {
   selectedId?: string | null;
   /** Called when a chapter/scene row is chosen. Dock wiring is #03 (Debt #1). */
   onSelect?: (node: ManuscriptNode) => void;
-  /** New-chapter action (header +). When absent the button renders disabled (create flow = Debt). */
+  /** Opens the PLAN (plan-hub) — structure authoring. Header "+". Disabled when absent. */
   onNewChapter?: () => void;
+  /** M3 (F2) — create a chapter and open it in the editor, straight from the rail (the sealed
+   * amendment to the 2026-07-17 "creation lives on the Plan rail" stance: writers expect to make a
+   * chapter where they see their chapters). Absent ⇒ the button is not rendered. */
+  onCreateChapter?: () => void;
+  /** A rail-initiated chapter create is in flight (disables the button). */
+  creatingChapter?: boolean;
   /** Collapse the whole Side Bar (studio chrome). When provided the navigator's own header hosts
    * the button, so the Side Bar doesn't render a duplicate header above it. */
   onCollapseSidebar?: () => void;
@@ -85,7 +91,7 @@ function toRoman(n: number): string {
   return out;
 }
 
-export function ManuscriptNavigator({ bookId, token, selectedId, onSelect, onNewChapter, onCollapseSidebar }: Props) {
+export function ManuscriptNavigator({ bookId, token, selectedId, onSelect, onNewChapter, onCreateChapter, creatingChapter, onCollapseSidebar }: Props) {
   const { t } = useTranslation('studio');
   const {
     // `parts`/`trashedActs` default to [] so the navigator tolerates a hook shape without them
@@ -196,6 +202,22 @@ export function ManuscriptNavigator({ bookId, token, selectedId, onSelect, onNew
               (no composition Work); the outline owns the hierarchy when a Work exists. */}
           {source === 'chapters' && (
             <>
+              {/* M3 (F2) — create a chapter + open it in the editor, right here. The sealed amendment
+                  to the 2026-07-17 "creation lives on the Plan rail" stance: a writer expects to make
+                  a chapter where their chapters are. Distinct from the "+" (Plan) to its right. */}
+              {onCreateChapter && (
+                <button
+                  type="button"
+                  data-testid="manuscript-chapter-new"
+                  onClick={onCreateChapter}
+                  disabled={creatingChapter}
+                  title={t('manuscript.newChapter', { defaultValue: 'New chapter' })}
+                  className="flex h-5 items-center gap-0.5 rounded px-1 text-[10px] font-semibold uppercase tracking-[0.04em] text-muted-foreground hover:bg-secondary hover:text-foreground disabled:opacity-40"
+                >
+                  <Plus className="h-3.5 w-3.5" />
+                  {t('manuscript.chapterShort', { defaultValue: 'Chapter' })}
+                </button>
+              )}
               {/* S-02c B7 — a LABELED "Act" button so it isn't confused with the Plan "+" beside it. */}
               <button
                 type="button"
@@ -324,8 +346,22 @@ export function ManuscriptNavigator({ bookId, token, selectedId, onSelect, onNew
             </div>
           )
         ) : rows.length === 0 && !error ? (
-          <div className="p-4 text-center text-[11px] text-muted-foreground">
-            {t('manuscript.empty', { defaultValue: 'No chapters yet.' })}
+          <div className="flex flex-col items-center gap-2 p-4 text-center">
+            <p className="text-[11px] text-muted-foreground">{t('manuscript.empty', { defaultValue: 'No chapters yet.' })}</p>
+            {/* M3 (F2) — don't dead-end an empty book: offer the write door right here. */}
+            {onCreateChapter && (
+              <button
+                type="button"
+                data-testid="manuscript-empty-create"
+                onClick={onCreateChapter}
+                disabled={creatingChapter}
+                className="rounded-md bg-primary px-3 py-1.5 text-[11px] font-semibold text-primary-foreground transition hover:brightness-105 disabled:opacity-50"
+              >
+                {creatingChapter
+                  ? t('manuscript.creatingChapter', { defaultValue: 'Creating…' })
+                  : `＋ ${t('manuscript.startFirstChapter', { defaultValue: 'Start your first chapter' })}`}
+              </button>
+            )}
           </div>
         ) : (
           /* ── Virtualized tree ───────────────────────────────────────────────── */
