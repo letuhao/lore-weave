@@ -18,7 +18,11 @@ root cause in code (file:line), not the surface symptom — per the repo's anti-
 - **[round-2-feedback.md](round-2-feedback.md)** — a *second* dogfood pass on the build that already
   ships the M1–M6 fixes. Confirms F1–F7 resolved in live use, and captures three new findings one
   layer deeper (**F8–F10**: the Plan panel dead-end, the `Divergence (dị bản)` bilingual label leak,
-  and the un-onboarded "Work" concept). Not yet built.
+  and the un-onboarded "Work" concept). Shipped.
+- **[round-3-feedback.md](round-3-feedback.md)** — a *third* pass on the live stack after the Parts→Arcs
+  merge. Confirms the merge works end-to-end, and captures **F11 (HIGH)**: creating a Work makes an
+  un-decomposed book's chapters vanish from the Manuscript rail — and the onboarding door leads straight
+  into it. Root cause + fix options; not yet built.
 
 ## The findings at a glance (priority-ordered)
 
