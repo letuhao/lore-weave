@@ -37,8 +37,13 @@ C1→C4 cutover, `/review-impl` + cross-service live-smoke on every C-slice.
       has structure_node_id (nullable, coexists w/ part_id) + the index. Review: additive-only, focused
       inline (idempotent, auto-constraint-name verified live, no-FK correct); cold-start review-impl
       reserved for C2+ (data/logic slices). Reversible: nothing reads/writes the new fields.
-- [ ] C2 · DUAL-WRITE — parts mutations mirror to structure_node/structure_node_id; backfill existing
-      parts→structure_node; reads still from parts. Consistency check. review-impl + live-smoke.
+- [ ] C2 · DUAL-WRITE — **mechanism (PO-sealed): transactional outbox + event** (book-service emits
+      `manuscript_part.*` via its existing outbox in the mutation txn; a composition consumer upserts
+      the mirror). **Design refinement: structure_node.id == part.id** (1:1 same-UUID mirror) ⇒
+      chapters.structure_node_id == chapters.part_id numerically, upsert-by-id is trivially idempotent,
+      and C4 becomes a pure column rename. book-service stamps chapters.structure_node_id=part_id in the
+      same txn as setChapterPart (nothing reads it till C3). Backfill: synthetic upsert events for
+      existing parts. Consistency check. review-impl (cold-start) + cross-service live-smoke.
 - [ ] C3 · READ-CUTOVER — Manuscript rail + hierarchy read structure_node via gateway; partsMode
       collapses; two rails unify click contract. FE flips. review-impl + live-smoke + QC :5290.
 - [ ] C4 · RETIRE — drop parts routes/tools/table + chapters.part_id; delete parts FE + tests; update
