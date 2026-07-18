@@ -73,8 +73,16 @@ review + a user-flagged critical downgrade drove these fixes (all live-QC'd on :
   working tree but held out of a45db093b — a sibling session's uncommitted `layout` keys got entangled
   in the same locale files via gap-fill. App works via `t(key, default)` fallbacks; commit when the
   sibling's i18n settles. Target: next session / coordinated i18n commit.
-- **GAP (minor, open): no "collapse scenes" affordance** in the Lane view once a chapter's scenes are
-  revealed. Low priority.
+- **MERGED graph + lane (user: "the graph card is lane?") — commit b75ca5fe5.** The canvas cards
+  (ChapterNode/SceneNode/ArcRollupNode) now wear the SAME readable lane treatment (status colour +
+  authorship serif/mono via normalizeSource) as the redesign. So the graph card IS the lane card, on a
+  zoom/pan/drag canvas — one coordinator. Graph|Lane toggle kept (Lane = same cards, wrapping layout).
+- **Collapse-scenes affordance ADDED** (the former minor gap) — a revealed scene branch can be hidden.
+- **Env note:** a parallel session wiped book-service's books-with-arcs mid-QC, so graph-specific pixel-
+  QC was blocked; the merge uses the same flowPresentation helpers already live-verified in the Lane
+  view + 4 new unit tests asserting the classes.
+- **Open follow-up:** the expanded-lane BAND HEADER arc name in the graph isn't authorship-fonted yet
+  (LaneBand carries no `source`); low priority. i18n: `flow.hideScenes` also pending the coordinated commit.
 
 ## DELIVERED
 Plan-hub redesign, both modes, committed. Simple mode (new, default) + Advanced readable cards + chip
