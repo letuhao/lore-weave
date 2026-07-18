@@ -7,7 +7,9 @@ import { useTranslation } from 'react-i18next';
 import type { UserModel } from '../../ai-models/api';
 import { useReferences } from '../hooks/useReferences';
 import { useEffectiveModel } from '@/features/chat-ai-settings/context/ChatAiSettingsContext';
-import type { ReferenceHit } from '../types';
+import { AddModelCta } from '@/components/shared/AddModelCta';
+import { ConfirmDialog } from '@/components/shared/ConfirmDialog';
+import type { ReferenceHit, ReferenceSource } from '../types';
 
 function embeddingModels(models: UserModel[]): UserModel[] {
   return models.filter((m) => m.is_active && (m.capability_flags?.embed || m.capability_flags?.embedding));
@@ -19,6 +21,8 @@ export function ReferencesPanel({ projectId, sceneId, token, models }: {
   const { t } = useTranslation('composition');
   const [query, setQuery] = useState('');
   const [draft, setDraft] = useState({ title: '', author: '', source_url: '', content: '', model_ref: '' });
+  // H-4a — reference delete is a HARD delete with no restore → confirm before firing.
+  const [pendingDelete, setPendingDelete] = useState<ReferenceSource | null>(null);
   const refs = useReferences(projectId, sceneId, token, query);
   const embedModels = embeddingModels(models);
   // Inherit the shared cascade embedding model (spec §8) before list[0].
@@ -79,8 +83,10 @@ export function ReferencesPanel({ projectId, sceneId, token, models }: {
               ))}
             </select>
           ) : (
-            <div data-testid="references-no-embed-model" className="rounded bg-amber-50 p-1.5 text-xs text-amber-800 dark:bg-amber-950 dark:text-amber-300">
-              {t('referencesPanel.noEmbedModel', { defaultValue: 'Add an embedding model (e.g. bge-m3) in AI settings to enable reference retrieval.' })}
+            <div data-testid="references-no-embed-model" className="flex flex-col items-start gap-1 rounded bg-amber-50 p-1.5 text-xs text-amber-800 dark:bg-amber-950 dark:text-amber-300">
+              <span>{t('referencesPanel.noEmbedModel', { defaultValue: 'Add an embedding model (e.g. bge-m3) to enable reference retrieval.' })}</span>
+              {/* Audit fix H-3a — an actionable CTA (opens AI settings in-dock) instead of a text dead-end. */}
+              <AddModelCta capability="embedding" variant="link" label={t('referencesPanel.addEmbedModel', { defaultValue: 'Add an embedding model' })} />
             </div>
           )
         )}
@@ -134,7 +140,7 @@ export function ReferencesPanel({ projectId, sceneId, token, models }: {
               r={r}
               onSaveMetadata={(patch) => refs.updateMetadata.mutate({ id: r.id, patch })}
               onSaveContent={(content) => refs.updateContent.mutate({ id: r.id, content })}
-              onDelete={() => refs.remove.mutate(r.id)}
+              onDelete={() => setPendingDelete(r)}
               savingMetaId={refs.updateMetadata.isPending ? (refs.updateMetadata.variables as { id: string } | undefined)?.id : undefined}
               savingContentId={refs.updateContent.isPending ? (refs.updateContent.variables as { id: string } | undefined)?.id : undefined}
             />
@@ -146,6 +152,17 @@ export function ReferencesPanel({ projectId, sceneId, token, models }: {
           )}
         </ul>
       </div>
+
+      {/* H-4a — confirm the hard delete (no restore). */}
+      <ConfirmDialog
+        open={pendingDelete !== null}
+        onOpenChange={(o) => { if (!o) setPendingDelete(null); }}
+        variant="destructive"
+        title={t('referencesPanel.deleteTitle', { defaultValue: 'Delete this reference?' })}
+        description={t('referencesPanel.deleteBody', { defaultValue: 'This removes it from the shelf. It can’t be undone.' })}
+        confirmLabel={t('referencesPanel.delete', { defaultValue: 'Delete' })}
+        onConfirm={() => { if (pendingDelete) refs.remove.mutate(pendingDelete.id); setPendingDelete(null); }}
+      />
     </div>
   );
 }
@@ -178,16 +195,19 @@ function LibraryRow({ r, onSaveMetadata, onSaveContent, onDelete, savingMetaId, 
             long title overflows and shoves the action buttons off the row. */}
         <span className="min-w-0 flex-1 truncate" title={r.content}>{r.title || r.content.slice(0, 60)}{r.author ? <span className="text-neutral-400"> — {r.author}</span> : null}</span>
         <div className="flex shrink-0 items-center gap-1.5">
+          {/* H-5c — aria-label (title alone is invisible to AT + touch) + higher resting contrast. */}
           <button
             type="button" data-testid={`references-edit-${r.id}`}
-            className="text-neutral-400 hover:text-foreground"
+            className="rounded px-1 text-neutral-500 hover:text-foreground"
             title={t('referencesPanel.edit', { defaultValue: 'Edit' })}
+            aria-label={t('referencesPanel.edit', { defaultValue: 'Edit' })}
             onClick={() => setEditing(true)}
           >✎</button>
           <button
             type="button" data-testid={`references-delete-${r.id}`}
-            className="text-neutral-400 hover:text-destructive"
+            className="rounded px-1 text-neutral-500 hover:text-destructive"
             title={t('referencesPanel.delete', { defaultValue: 'Delete' })}
+            aria-label={t('referencesPanel.delete', { defaultValue: 'Delete' })}
             onClick={onDelete}
           >✕</button>
         </div>
@@ -268,14 +288,16 @@ function HitRow({ hit, onPin, scorePct }: {
       <div className="flex shrink-0 items-center gap-1">
         <button
           type="button" data-testid={`references-pin-${hit.id}`} aria-pressed={hit.pinned}
-          className={hit.pinned ? 'text-primary' : 'text-neutral-400 hover:text-neutral-600'}
+          className={hit.pinned ? 'rounded px-1 text-primary' : 'rounded px-1 text-neutral-500 hover:text-neutral-700'}
           title={hit.pinned ? t('groundingPins.unpin', { defaultValue: 'Unpin' }) : t('groundingPins.pin', { defaultValue: 'Pin' })}
+          aria-label={hit.pinned ? t('groundingPins.unpin', { defaultValue: 'Unpin' }) : t('groundingPins.pin', { defaultValue: 'Pin' })}
           onClick={() => onPin(hit, hit.pinned ? 'none' : 'pin')}
         >📌</button>
         <button
           type="button" data-testid={`references-exclude-${hit.id}`} aria-pressed={hit.excluded}
-          className={hit.excluded ? 'text-destructive' : 'text-neutral-400 hover:text-neutral-600'}
+          className={hit.excluded ? 'rounded px-1 text-destructive' : 'rounded px-1 text-neutral-500 hover:text-neutral-700'}
           title={hit.excluded ? t('groundingPins.restore', { defaultValue: 'Restore' }) : t('groundingPins.exclude', { defaultValue: 'Exclude' })}
+          aria-label={hit.excluded ? t('groundingPins.restore', { defaultValue: 'Restore' }) : t('groundingPins.exclude', { defaultValue: 'Exclude' })}
           onClick={() => onPin(hit, hit.excluded ? 'none' : 'exclude')}
         >🚫</button>
       </div>

@@ -17,7 +17,9 @@ discoverability slice live-smoked, registry change reviewed.
 - Edge: H-2c library-row pin is scene-gated (absent when no scene).
 
 ## SLICE BOARD (done = evidence string)
-- [ ] S1 XS (no registry): H-3a AddModelCta · H-4a delete-confirm · H-4b override-confirm · H-5c aria — EVID:
+- [x] S1 XS (no registry): H-3a AddModelCta (embed-model CTA in-dock) · H-4a ConfirmDialog on ref delete ·
+      H-4b inline two-step confirm on override Remove · H-5c aria-label + contrast on ✎/✕/📌/🚫 —
+      EVID: vitest 31 passed (ReferencesPanel 14 + DivergenceSpecEditor 12 + useReferences 5); tsc 0 (my files).
 - [ ] S2 S: H-2b library search · H-2c library-row pin (scene-gated) · H-2a rename FormDialog · H-5b BranchDiff — EVID:
 - [ ] S3 M discoverability (REGISTRY, atomic): H-1a mount reference-shelf · H-1b bible nav rail — EVID:
 - [ ] S4 M touch: H-5a promote touchTarget + apply to both panels — EVID:

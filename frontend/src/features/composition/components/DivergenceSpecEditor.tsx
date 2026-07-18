@@ -242,22 +242,40 @@ function OverrideRow({
   const { t } = useTranslation('composition');
   const [nameField, setNameField] = useState(overrideName(row.overridden_fields));
   const [desc, setDesc] = useState(overrideDescription(row.overridden_fields));
+  const [confirmingDelete, setConfirmingDelete] = useState(false);  // H-4b — lightweight inline confirm
   const dirty = nameField !== overrideName(row.overridden_fields) || desc !== overrideDescription(row.overridden_fields);
   return (
     <div data-testid={`divergence-override-row-${row.id}`} className="flex flex-col gap-1 rounded border border-border px-2 py-1.5">
-      <div className="flex items-center justify-between">
-        <span className="truncate text-[11px] font-medium">
+      <div className="flex items-center justify-between gap-2">
+        <span className="min-w-0 flex-1 truncate text-[11px] font-medium">
           {name ?? <span className="font-mono text-[10px] text-muted-foreground">{row.target_entity_id}</span>}
         </span>
-        <button
-          type="button"
-          data-testid={`divergence-override-delete-${row.id}`}
-          disabled={busy}
-          onClick={onDelete}
-          className="rounded px-1.5 py-0.5 text-[10px] text-red-600 hover:bg-red-50 disabled:opacity-50 dark:hover:bg-red-950/30"
-        >
-          {t('divergence.remove', { defaultValue: 'Remove' })}
-        </button>
+        {confirmingDelete ? (
+          // H-4b — two-step inline confirm (not a modal; low stakes, re-addable).
+          <span className="flex shrink-0 items-center gap-1 text-[10px]">
+            <span className="text-muted-foreground">{t('divergence.removeConfirm', { defaultValue: 'Remove?' })}</span>
+            <button
+              type="button" data-testid={`divergence-override-delete-confirm-${row.id}`}
+              disabled={busy} onClick={onDelete}
+              className="rounded px-1.5 py-0.5 font-medium text-red-600 hover:bg-red-50 disabled:opacity-50 dark:hover:bg-red-950/30"
+            >{t('divergence.yes', { defaultValue: 'Yes' })}</button>
+            <button
+              type="button" data-testid={`divergence-override-delete-cancel-${row.id}`}
+              onClick={() => setConfirmingDelete(false)}
+              className="rounded px-1.5 py-0.5 text-muted-foreground hover:bg-muted"
+            >{t('divergence.no', { defaultValue: 'No' })}</button>
+          </span>
+        ) : (
+          <button
+            type="button"
+            data-testid={`divergence-override-delete-${row.id}`}
+            disabled={busy}
+            onClick={() => setConfirmingDelete(true)}
+            className="shrink-0 rounded px-1.5 py-0.5 text-[10px] text-red-600 hover:bg-red-50 disabled:opacity-50 dark:hover:bg-red-950/30"
+          >
+            {t('divergence.remove', { defaultValue: 'Remove' })}
+          </button>
+        )}
       </div>
       <input
         data-testid={`divergence-override-name-${row.id}`}

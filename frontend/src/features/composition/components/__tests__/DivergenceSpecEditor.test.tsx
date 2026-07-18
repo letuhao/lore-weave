@@ -129,8 +129,23 @@ describe('DivergenceSpecEditor', () => {
     });
     renderEditor();
     await waitFor(() => expect(screen.getByTestId('divergence-override-row-o1')).toHaveTextContent('Lam Vũ'));
+    // H-4b — Remove now asks for an inline confirm before firing.
     fireEvent.click(screen.getByTestId('divergence-override-delete-o1'));
+    expect(deleteEntityOverride).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByTestId('divergence-override-delete-confirm-o1'));
     await waitFor(() => expect(deleteEntityOverride).toHaveBeenCalledWith('da', 'o1', 'tok'));
+  });
+
+  it('H-4b: cancelling the override Remove confirm does NOT delete', async () => {
+    listEntityOverrides.mockResolvedValue({
+      overrides: [{ id: 'o1', target_entity_id: 'g1', overridden_fields: {} }],
+    });
+    renderEditor();
+    await waitFor(() => screen.getByTestId('divergence-override-delete-o1'));
+    fireEvent.click(screen.getByTestId('divergence-override-delete-o1'));
+    fireEvent.click(screen.getByTestId('divergence-override-delete-cancel-o1'));
+    expect(deleteEntityOverride).not.toHaveBeenCalled();
+    expect(screen.getByTestId('divergence-override-delete-o1')).toBeInTheDocument();  // back to Remove
   });
 
   it('editing an override description reveals Save and PATCHes the field-set', async () => {

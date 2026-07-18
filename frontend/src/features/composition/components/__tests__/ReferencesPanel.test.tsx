@@ -1,5 +1,16 @@
 import { render, screen, fireEvent } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+
+// AddModelCta uses react-router's useLocation → needs a Router; stub it (it has its own tests).
+vi.mock('@/components/shared/AddModelCta', () => ({
+  AddModelCta: () => <a data-testid="add-model-cta">add model</a>,
+}));
+// ConfirmDialog is radix-portal'd; stub to a simple confirm button so the delete flow is testable.
+vi.mock('@/components/shared/ConfirmDialog', () => ({
+  ConfirmDialog: ({ open, onConfirm }: { open: boolean; onConfirm: () => void }) =>
+    open ? <button data-testid="confirm-delete" onClick={onConfirm}>confirm</button> : null,
+}));
+
 import { ReferencesPanel } from '../ReferencesPanel';
 
 // Mock the controller hook (the view test owns rendering + wiring, not data).
@@ -108,12 +119,21 @@ describe('ReferencesPanel (T3.6)', () => {
     renderPanel();
     expect(screen.getByTestId('references-lib-r9')).toHaveTextContent('Influence');
     fireEvent.click(screen.getByTestId('references-delete-r9'));
+    // H-4a — delete now goes through a confirm; remove fires only after confirming.
+    expect(h.remove).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByTestId('confirm-delete'));
     expect(h.remove).toHaveBeenCalledWith('r9');
   });
 
   it('shows the empty-library state', () => {
     renderPanel();
     expect(screen.getByTestId('references-empty')).toBeInTheDocument();
+  });
+
+  it('H-3a: the no-embed-model state offers an actionable CTA, not just text', () => {
+    renderPanel({ models: [] });
+    expect(screen.getByTestId('references-no-embed-model')).toBeInTheDocument();
+    expect(screen.getByTestId('add-model-cta')).toBeInTheDocument();
   });
 
   it('audit fix: captures source_url at ADD time (was silently dropped — no URL input)', () => {
