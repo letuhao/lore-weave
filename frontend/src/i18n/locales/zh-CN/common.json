@@ -1,4 +1,5 @@
 {
+  "reconnecting": "正在重新连接…",
   "nav": {
     "startNew": "开启新内容",
     "workspace": "工作区",
@@ -26,7 +27,8 @@
     "home": "主页",
     "account": "账户",
     "signin": "登录",
-    "back_to_book": "返回书籍"
+    "back_to_book": "返回书籍",
+    "more": "更多"
   },
   "logout_confirm": {
     "title": "确定要退出登录吗？",
@@ -170,6 +172,5 @@
     "saved": "模型顺序已保存",
     "saveFailed": "保存顺序失败。",
     "loadFailed": "加载模型失败。"
-  },
-  "reconnecting": "正在重新连接…"
+  }
 }

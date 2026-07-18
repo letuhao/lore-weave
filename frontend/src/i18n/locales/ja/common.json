@@ -1,4 +1,5 @@
 {
+  "reconnecting": "再接続中…",
   "nav": {
     "startNew": "新しく始める",
     "workspace": "ワークスペース",
@@ -26,7 +27,8 @@
     "home": "ホーム",
     "account": "アカウント",
     "signin": "サインイン",
-    "back_to_book": "書籍に戻る"
+    "back_to_book": "書籍に戻る",
+    "more": "その他"
   },
   "logout_confirm": {
     "title": "未保存の変更があるままログアウトしますか？",
@@ -170,6 +172,5 @@
     "saved": "モデルの並び順を保存しました",
     "saveFailed": "並び順の保存に失敗しました。",
     "loadFailed": "モデルの読み込みに失敗しました。"
-  },
-  "reconnecting": "再接続中…"
+  }
 }

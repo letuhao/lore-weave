@@ -1,4 +1,5 @@
 {
+  "reconnecting": "Menyambung semula…",
   "nav": {
     "startNew": "Mulakan sesuatu yang baharu",
     "workspace": "Ruang Kerja",
@@ -26,7 +27,8 @@
     "home": "Laman Utama",
     "account": "Akaun",
     "signin": "Log masuk",
-    "back_to_book": "Kembali ke buku"
+    "back_to_book": "Kembali ke buku",
+    "more": "Lagi"
   },
   "logout_confirm": {
     "title": "Log keluar dengan perubahan yang belum disimpan?",
@@ -170,6 +172,5 @@
     "saved": "Urutan model disimpan",
     "saveFailed": "Gagal menyimpan urutan.",
     "loadFailed": "Gagal memuatkan model."
-  },
-  "reconnecting": "Menyambung semula…"
+  }
 }

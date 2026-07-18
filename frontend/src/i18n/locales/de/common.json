@@ -1,4 +1,5 @@
 {
+  "reconnecting": "Verbindung wird wiederhergestellt…",
   "nav": {
     "startNew": "Etwas Neues starten",
     "workspace": "Workspace",
@@ -26,7 +27,8 @@
     "home": "Home",
     "account": "Konto",
     "signin": "Anmelden",
-    "back_to_book": "Zurück zum Buch"
+    "back_to_book": "Zurück zum Buch",
+    "more": "Mehr"
   },
   "logout_confirm": {
     "title": "Abmelden mit ungespeicherten Änderungen?",
@@ -170,6 +172,5 @@
     "saved": "Modell-Reihenfolge gespeichert",
     "saveFailed": "Reihenfolge konnte nicht gespeichert werden.",
     "loadFailed": "Modelle konnten nicht geladen werden."
-  },
-  "reconnecting": "Verbindung wird wiederhergestellt…"
+  }
 }

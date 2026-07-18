@@ -1,4 +1,5 @@
 {
+  "reconnecting": "Reconnexion…",
   "nav": {
     "startNew": "Commencer quelque chose de nouveau",
     "workspace": "Espace de travail",
@@ -26,7 +27,8 @@
     "home": "Accueil",
     "account": "Compte",
     "signin": "Se connecter",
-    "back_to_book": "Retour au livre"
+    "back_to_book": "Retour au livre",
+    "more": "Plus"
   },
   "logout_confirm": {
     "title": "Déconnexion avec des modifications non enregistrées ?",
@@ -170,6 +172,5 @@
     "saved": "Ordre des modèles enregistré",
     "saveFailed": "Échec de l'enregistrement de l'ordre.",
     "loadFailed": "Échec du chargement des modèles."
-  },
-  "reconnecting": "Reconnexion…"
+  }
 }

@@ -1,4 +1,5 @@
 {
+  "reconnecting": "Yeniden bağlanılıyor…",
   "nav": {
     "startNew": "Yeni bir şey başlat",
     "workspace": "Çalışma Alanı",
@@ -26,7 +27,8 @@
     "home": "Ana Sayfa",
     "account": "Hesap",
     "signin": "Giriş Yap",
-    "back_to_book": "Kitaba geri dön"
+    "back_to_book": "Kitaba geri dön",
+    "more": "Daha Fazla"
   },
   "logout_confirm": {
     "title": "Kaydedilmemiş değişikliklerle oturum kapatılsın mı?",
@@ -170,6 +172,5 @@
     "saved": "Model sıralaması kaydedildi",
     "saveFailed": "Sıralama kaydedilemedi.",
     "loadFailed": "Modeller yüklenemedi."
-  },
-  "reconnecting": "Yeniden bağlanılıyor…"
+  }
 }

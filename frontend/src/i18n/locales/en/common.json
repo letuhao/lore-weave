@@ -27,7 +27,8 @@
     "home": "Home",
     "account": "Account",
     "signin": "Sign in",
-    "back_to_book": "Back to book"
+    "back_to_book": "Back to book",
+    "more": "More"
   },
   "logout_confirm": {
     "title": "Log out with unsaved changes?",

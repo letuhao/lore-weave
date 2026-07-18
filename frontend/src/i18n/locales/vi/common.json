@@ -1,4 +1,5 @@
 {
+  "reconnecting": "Đang kết nối lại…",
   "nav": {
     "startNew": "Bắt đầu điều gì đó mới",
     "workspace": "Không gian làm việc",
@@ -26,7 +27,8 @@
     "home": "Trang chủ",
     "account": "Tài khoản",
     "signin": "Đăng nhập",
-    "back_to_book": "Quay lại sách"
+    "back_to_book": "Quay lại sách",
+    "more": "Thêm"
   },
   "logout_confirm": {
     "title": "Đăng xuất khi có thay đổi chưa lưu?",
@@ -170,6 +172,5 @@
     "saved": "Đã lưu thứ tự mô hình",
     "saveFailed": "Không lưu được thứ tự.",
     "loadFailed": "Không tải được danh sách mô hình."
-  },
-  "reconnecting": "Đang kết nối lại…"
+  }
 }

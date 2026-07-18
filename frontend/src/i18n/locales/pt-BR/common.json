@@ -1,4 +1,5 @@
 {
+  "reconnecting": "Reconectando...",
   "nav": {
     "startNew": "Começar algo novo",
     "workspace": "Workspace",
@@ -26,7 +27,8 @@
     "home": "Início",
     "account": "Conta",
     "signin": "Entrar",
-    "back_to_book": "Voltar para o livro"
+    "back_to_book": "Voltar para o livro",
+    "more": "Mais"
   },
   "logout_confirm": {
     "title": "Sair sem salvar as alterações?",
@@ -170,6 +172,5 @@
     "saved": "Ordem dos modelos salva",
     "saveFailed": "Falha ao salvar a ordem.",
     "loadFailed": "Falha ao carregar modelos."
-  },
-  "reconnecting": "Reconectando..."
+  }
 }

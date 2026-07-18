@@ -1,4 +1,5 @@
 {
+  "reconnecting": "Reconectando…",
   "nav": {
     "startNew": "Empezar algo nuevo",
     "workspace": "Espacio de trabajo",
@@ -26,7 +27,8 @@
     "home": "Inicio",
     "account": "Cuenta",
     "signin": "Iniciar sesión",
-    "back_to_book": "Volver al libro"
+    "back_to_book": "Volver al libro",
+    "more": "Más"
   },
   "logout_confirm": {
     "title": "¿Cerrar sesión con cambios sin guardar?",
@@ -170,6 +172,5 @@
     "saved": "Orden de modelos guardado",
     "saveFailed": "Error al guardar el orden.",
     "loadFailed": "Error al cargar los modelos."
-  },
-  "reconnecting": "Reconectando…"
+  }
 }
