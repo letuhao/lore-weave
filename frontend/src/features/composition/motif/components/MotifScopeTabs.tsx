@@ -3,10 +3,10 @@
 import { useTranslation } from 'react-i18next';
 import type { LibraryScope } from '../hooks/useMotifLibrary';
 
-const TABS: LibraryScope[] = ['my', 'book', 'shared', 'system', 'catalog', 'drafts'];
+const TABS: LibraryScope[] = ['my', 'book', 'shared', 'system', 'catalog', 'drafts', 'archived'];
 const TAB_DEFAULT: Record<LibraryScope, string> = {
   my: 'Mine', book: 'Book', shared: 'Shared', system: 'System',
-  catalog: 'Public catalog', drafts: 'Drafts',
+  catalog: 'Public catalog', drafts: 'Drafts', archived: 'Archived',
 };
 // Book + Shared are per-book tiers — disabled (and skipped by arrow-nav) without a book.
 const BOOK_TABS = new Set<LibraryScope>(['book', 'shared']);

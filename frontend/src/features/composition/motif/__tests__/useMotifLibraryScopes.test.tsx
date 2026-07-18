@@ -64,6 +64,15 @@ describe('useMotifLibrary — 6-tab partition', () => {
     expect(result.current.motifs).toEqual([]);
   });
 
+  it('S-08: Archived tab fetches the caller\'s own soft-deleted rows (scope=mine, status=archived)', async () => {
+    // Without this fetch an archived motif is invisible → the Restore affordance has nothing to act
+    // on. Owner-scoped (you only archive/restore your own).
+    (motifApi.list as ReturnType<typeof vi.fn>).mockResolvedValue({ motifs: [{ ...rows[0], status: 'archived' }] });
+    const { result } = renderHook(() => useMotifLibrary('t', { initialScope: 'archived', bookId: BOOK }), { wrapper: wrapper() });
+    await waitFor(() => expect(result.current.motifs.length).toBe(1));
+    expect(motifApi.list).toHaveBeenCalledWith(expect.objectContaining({ scope: 'mine', status: 'archived' }), 't');
+  });
+
   it('System tab calls list with scope=system', async () => {
     (motifApi.list as ReturnType<typeof vi.fn>).mockResolvedValue({ motifs: [rows[0]] });
     const { result } = renderHook(() => useMotifLibrary('t', { initialScope: 'system', bookId: BOOK }), { wrapper: wrapper() });

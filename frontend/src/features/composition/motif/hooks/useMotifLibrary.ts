@@ -18,7 +18,7 @@ import type { CatalogMotif, Motif, MotifKind } from '../types';
 // ONE GET /motifs/book/{id} response, partitioned client-side (book_id vs book_shared);
 // `system` = the seeded defaults; `catalog` = the public allow-list; `drafts` = your mined
 // review queue. `book`/`shared` need a bookId (disabled without one).
-export type LibraryScope = 'my' | 'book' | 'shared' | 'system' | 'catalog' | 'drafts';
+export type LibraryScope = 'my' | 'book' | 'shared' | 'system' | 'catalog' | 'drafts' | 'archived';
 
 export type MotifFacets = {
   kind?: MotifKind;
@@ -80,11 +80,12 @@ export function useMotifLibrary(
   // support offset; book/shared use the merged book endpoint (single page, partitioned client-side
   // — a book rarely exceeds one page). ONE infinite query, dispatched by scope.
   const PAGE = 100;
-  const flatScope = scope === 'my' || scope === 'system' || scope === 'drafts' || scope === 'catalog';
+  const flatScope = scope === 'my' || scope === 'system' || scope === 'drafts' || scope === 'catalog' || scope === 'archived';
 
   const fetchPage = async (offset: number): Promise<Motif[]> => {
     if (scope === 'system') return (await motifApi.list({ scope: 'system', q, limit: PAGE, offset }, token!)).motifs;
     if (scope === 'drafts') return (await motifApi.list({ scope: 'mine', status: 'draft', q, limit: PAGE, offset }, token!)).motifs;
+    if (scope === 'archived') return (await motifApi.list({ scope: 'mine', status: 'archived', q, limit: PAGE, offset }, token!)).motifs;  // S-08 — the restorable soft-deleted tier
     if (scope === 'catalog') return (await motifApi.catalog({ q, limit: PAGE, offset }, token!)).items.map(catalogToMotif);
     return (await motifApi.list({ scope: 'all', q, limit: PAGE, offset }, token!)).motifs;   // 'my'
   };

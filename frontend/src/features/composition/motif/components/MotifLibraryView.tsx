@@ -52,7 +52,7 @@ export function MotifLibraryView({ token, meUserId: meProp, projectId, bookId, h
   const quickCreate = useMotifQuickCreate(token, (m) => { setCreating(false); setOpenId(m.id); });
   const adopt = useAdoptFlow(token, bookId);
   const drafts = useMotifDraftActions(token);
-  const draftBusy = drafts.promote.isPending || drafts.discard.isPending;
+  const draftBusy = drafts.promote.isPending || drafts.discard.isPending || drafts.restore.isPending;
 
   return (
     <div data-testid="motif-library-view" className="flex h-full flex-col">
@@ -150,6 +150,7 @@ export function MotifLibraryView({ token, meUserId: meProp, projectId, bookId, h
                     onAdopt={adopt.begin}
                     onPromote={lib.scope === 'drafts' ? (mm) => drafts.promote.mutate({ id: mm.id, version: mm.version }) : undefined}
                     onDiscard={lib.scope === 'drafts' ? (id) => drafts.discard.mutate(id) : undefined}
+                    onRestore={lib.scope === 'archived' ? (id) => drafts.restore.mutate(id) : undefined}
                     busy={draftBusy}
                   />
                 ))}

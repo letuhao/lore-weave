@@ -16,6 +16,8 @@ type Props = {
   /** WI-1 mining review — present only on the Drafts tab (status='draft' cards). */
   onPromote?: (m: Motif) => void;
   onDiscard?: (id: string) => void;
+  /** S-08 — restore an archived motif (shown only for archived rows, i.e. the Archived scope). */
+  onRestore?: (id: string) => void;
   busy?: boolean;
 };
 
@@ -25,7 +27,7 @@ const TIER_CLASS: Record<'system' | 'user' | 'public', string> = {
   public: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300',
 };
 
-export function MotifCard({ motif, meUserId, onOpen, onAdopt, onPromote, onDiscard, busy }: Props) {
+export function MotifCard({ motif, meUserId, onOpen, onAdopt, onPromote, onDiscard, onRestore, busy }: Props) {
   const { t } = useTranslation('composition');
   const { simple } = useMotifSimpleMode();
   const tier = motifTier(motif, meUserId);
@@ -133,6 +135,18 @@ export function MotifCard({ motif, meUserId, onOpen, onAdopt, onPromote, onDisca
             onClick={() => onPromote(motif)}
           >
             {t('motif.action.promote', { defaultValue: 'Promote' })}
+          </button>
+        )}
+        {/* S-08 — un-archive back into the active library (the reverse of archive/discard). */}
+        {motif.status === 'archived' && onRestore && (
+          <button
+            type="button"
+            data-testid={`motif-card-restore-${motif.id}`}
+            disabled={busy}
+            className="rounded bg-emerald-600 px-2 py-0.5 text-xs font-medium text-white hover:bg-emerald-700 disabled:opacity-50"
+            onClick={() => onRestore(motif.id)}
+          >
+            {t('motif.action.restore', { defaultValue: 'Restore' })}
           </button>
         )}
       </div>
