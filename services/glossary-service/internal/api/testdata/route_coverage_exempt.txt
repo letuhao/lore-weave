@@ -5,12 +5,6 @@
 # contracts/api/glossary-service/ then regenerate to remove it. "# permanent: <reason>"
 # = a /v1 route that legitimately never gets a public contract entry (rare);
 # set it by hand — regen PRESERVES an existing class for a still-present route.
-delete /v1/glossary/books/{}/entities/{} # backfill
-delete /v1/glossary/books/{}/entities/{}/attributes/{} # backfill
-delete /v1/glossary/books/{}/entities/{}/attributes/{}/evidences/{} # backfill
-delete /v1/glossary/books/{}/entities/{}/attributes/{}/translations/{} # backfill
-delete /v1/glossary/books/{}/entities/{}/chapter-links/{} # backfill
-delete /v1/glossary/books/{}/entities/{}/pin # backfill
 delete /v1/glossary/books/{}/recycle-bin/{} # backfill
 delete /v1/glossary/books/{}/wiki/{} # backfill
 delete /v1/glossary/books/{}/wiki/{}/suggestions/{} # backfill
@@ -21,12 +15,6 @@ delete /v1/glossary/user-kinds-trash/{} # backfill
 delete /v1/glossary/user-kinds/{} # backfill
 delete /v1/glossary/user-kinds/{}/attributes/{} # backfill
 get /v1/glossary/books/{}/chapter-entities # backfill
-get /v1/glossary/books/{}/entities # backfill
-get /v1/glossary/books/{}/entities/{} # backfill
-get /v1/glossary/books/{}/entities/{}/chapter-links # backfill
-get /v1/glossary/books/{}/entities/{}/evidences # backfill
-get /v1/glossary/books/{}/entities/{}/revisions # backfill
-get /v1/glossary/books/{}/entities/{}/revisions/{} # backfill
 get /v1/glossary/books/{}/entity-names # backfill
 get /v1/glossary/books/{}/export # backfill
 get /v1/glossary/books/{}/extraction-profile # backfill
@@ -58,12 +46,6 @@ get /v1/glossary/user-kinds # backfill
 get /v1/glossary/user-kinds-trash # backfill
 get /v1/glossary/user-kinds/{} # backfill
 get /v1/glossary/users/{}/wiki-contributions # backfill
-patch /v1/glossary/books/{}/entities/{} # backfill
-patch /v1/glossary/books/{}/entities/{}/attributes/{} # backfill
-patch /v1/glossary/books/{}/entities/{}/attributes/{}/evidences/{} # backfill
-patch /v1/glossary/books/{}/entities/{}/attributes/{}/items/{} # backfill
-patch /v1/glossary/books/{}/entities/{}/attributes/{}/translations/{} # backfill
-patch /v1/glossary/books/{}/entities/{}/chapter-links/{} # backfill
 patch /v1/glossary/books/{}/wiki/{} # backfill
 patch /v1/glossary/books/{}/wiki/{}/suggestions/{} # backfill
 patch /v1/glossary/system-attributes-admin/{} # backfill
@@ -78,18 +60,6 @@ post /v1/glossary/actions/confirm-batch # backfill
 post /v1/glossary/actions/preview # backfill
 post /v1/glossary/actions/preview-batch # backfill
 post /v1/glossary/books/{}/apply-translations # backfill
-post /v1/glossary/books/{}/entities # backfill
-post /v1/glossary/books/{}/entities/bulk-delete # backfill
-post /v1/glossary/books/{}/entities/bulk-status # backfill
-post /v1/glossary/books/{}/entities/{}/apply-edit # backfill
-post /v1/glossary/books/{}/entities/{}/attributes # backfill
-post /v1/glossary/books/{}/entities/{}/attributes/{}/evidences # backfill
-post /v1/glossary/books/{}/entities/{}/attributes/{}/translations # backfill
-post /v1/glossary/books/{}/entities/{}/chapter-links # backfill
-post /v1/glossary/books/{}/entities/{}/merge # backfill
-post /v1/glossary/books/{}/entities/{}/pin # backfill
-post /v1/glossary/books/{}/entities/{}/reassign-kind # backfill
-post /v1/glossary/books/{}/entities/{}/revisions/{}/restore # backfill
 post /v1/glossary/books/{}/kinds/{}/research-jobs # backfill
 post /v1/glossary/books/{}/merge-candidates/{}/dismiss # backfill
 post /v1/glossary/books/{}/merge-journal/{}/revert # backfill

@@ -122,10 +122,13 @@ arrives complete. Opaque `r.Handle` leaves (`/mcp`) are NOT recursed into (we do
   S-09 W5 commit added, absorbed as backfill); a fake `/v1/glossary/__conformance_fake__` route **reds with the
   SD-6 message** (teeth); a `# permanent:` marker **survives regen** (SD-9 fix); a bogus allowlist entry reds
   `(route no longer exists)` (SD-5). SD-8 phantom direction surfaced + reconciled the 6 canon paths (above).
-- **P2 · Document the entity + attr-value family** (the S-06-adjacent surface first, since that's the live gap):
-  a new `entity_attributes.yaml` + `entities.yaml` covering entity CRUD + attribute-value PATCH/POST/DELETE +
-  translations/evidences/items + revisions/chapter-links/genres/status/scope. Remove each from the allowlist as
-  documented. *DoD:* the S-06 add/delete + PATCH are contracted; allowlist shrinks by the family's count.
+- **P2 · Document the entity + attr-value family. ✅ BUILT 2026-07-18** (`entities.yaml` — 30 routes: entity
+  CRUD, attribute-value add/PATCH/DELETE + items, translations, evidences, chapter-links, revisions,
+  merge/reassign/pin, bulk status/delete). Response schemas derived from the real Go response structs; OCC
+  If-Match documented on entity + attr-value PATCH. *DoD (evidence):* gate `-count=1` **green**; allowlist
+  **113→83**; **0 phantoms** (all 30 paths matched walked routes on first run — no typos); review-impl caught +
+  fixed a fabricated `relevance` enum. Request-body schemas are best-effort (SD-7 path+method scope; full schema
+  = P5) — the human review (§6) confirms shapes. **Note: the gate reads YAML at runtime → CI must use `-count=1`.**
 - **P3 · Document the remaining public families** (canon extensions, search, bulk, display-names, …), shrinking
   the allowlist toward only genuine exemptions. *DoD:* allowlist == {health, /mcp, (internal if scoped out)}.
 - **P4 · Flip to strict + wire CI.** With the allowlist down to true exemptions, the gate now enforces

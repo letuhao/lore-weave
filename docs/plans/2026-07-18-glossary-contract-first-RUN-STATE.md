@@ -21,9 +21,9 @@ glossary-service (Go). Size **L** (phased). Each slice: BUILD → review-impl �
 | slice | gain | status | evidence |
 |---|---|---|---|
 | **P1 · gate + generated allowlist** | contract drift reds automatically | **DONE** | `TestOpenAPIRouteConformance` (chi.Walk + YAML line-scan + SD-1 prefix + SD-2 normalize + 2-direction + SD-5/SD-8 honesty). `go test -run … -count=1` **PASS**; allowlist **113** == undocumented /v1 count; fake route **reds w/ SD-6 msg**; `# permanent:` **survives regen** (review-impl fix); bogus entry reds `(route no longer exists)` (SD-5). vet+build clean. |
-| **P2 · document entity + attr-value family** | S-06 add/delete/PATCH + entity CRUD contracted | **TODO** | — |
-| **P3 · document remaining public families** | allowlist → genuine exemptions only | **TODO** | — |
-| **P4 · flip strict + wire CI + CLAUDE.md note** | new undocumented route reds pre-commit | **TODO** | — |
+| **P2 · document entity + attr-value family** | S-06 add/delete/PATCH + entity CRUD contracted | **DONE** | `entities.yaml` — 30 routes (entity CRUD, attr-value add/PATCH/delete, translations/evidences/items, chapter-links, revisions, merge/reassign/pin, bulk). Gate `-count=1` green; allowlist **113→83**; **0 phantoms** (all 30 paths match walked routes). review-impl: fixed a **fabricated `relevance` enum** (`[primary,secondary,mentioned]`→`[major,appears,mentioned]`, verified vs code); merge `loser_ids` + confidence enum verified correct; YAML full-parse valid (OpenAPI 3.0.3). |
+| **P3 · document remaining public families** | allowlist → genuine exemptions only | **TODO** (83 left: wiki, research-jobs, user-kinds attrs, ontology extras, sync, merge-candidates, translation-candidates, unknown-entities, recycle-bin, self/pipeline) | — |
+| **P4 · flip strict + wire CI + CLAUDE.md note** | new undocumented route reds pre-commit | **TODO** — CI must run `-count=1` (gate reads YAML/testdata at runtime; `go test` caches otherwise) | — |
 
 ## REGISTERS
 ### DECISIONS (sealed)
@@ -37,7 +37,14 @@ glossary-service (Go). Size **L** (phased). Each slice: BUILD → review-impl �
   113-line allowlist matches committed HEAD.
 
 ### DEBT
-- **113 backfill routes** in `route_coverage_exempt.txt` — the shrinking debt counter. P2/P3 pay it down.
+- **83 backfill routes** in `route_coverage_exempt.txt` (was 113; P2 documented 30) — P3 pays down the rest.
+- **Request-body shapes are best-effort at P2, not exhaustively verified** — SD-7 scopes P1–P4 to path+method;
+  full request/response schema conformance is optional P5. Response schemas came from the real Go structs;
+  concrete write-body fields were verified (createEntity/addAttr/bulk/merge/translation/evidence/reassign);
+  a few (apply-edit `changes`, EntityPatch subset, evidence PATCH fields) are reasonable-but-unverified,
+  flagged for the human schema review the spec §6 calls for.
+- **CI must run the gate with `-count=1`** — it reads the YAML + testdata at runtime (not compiled inputs), so
+  `go test`'s cache can mask a contract/allowlist change (a false green). Wire this into P4.
 - **YAML lib now unused** (`go.yaml.in/yaml/v2` stays indirect) — the line-scan replaced it. No action.
 - **Canon RPC YAMLs may be mis-homed** — `/v1/canon/*` contracts sit under `contracts/api/glossary-service/`
   but no glossary route serves them (L5.F separate sub-program). Follow-up (not this build): relocate to the
