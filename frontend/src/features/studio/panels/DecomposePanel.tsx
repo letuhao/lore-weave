@@ -51,6 +51,20 @@ export function DecomposePanel(props: IDockviewPanelProps) {
     );
   }
 
+  // review-impl LOW-1 — a LOAD FAILURE is not "no Work". Don't show the setup CTA (which would tell the
+  // user to create a Work when one may already exist) — surface the error + a retry.
+  if (work.isError) {
+    return (
+      <div data-testid="decompose-error" className="p-4 text-xs text-muted-foreground">
+        <p className="mb-2 text-destructive">{t('panels.decompose.loadError', { defaultValue: "Couldn't load this book's plan — try again." })}</p>
+        <button type="button" data-testid="decompose-retry" onClick={() => void work.refetch()}
+          className="rounded border border-border px-2.5 py-1 text-[11px] hover:bg-secondary">
+          {t('panels.decompose.retry', { defaultValue: 'Retry' })}
+        </button>
+      </div>
+    );
+  }
+
   // ENTRY-from-empty (no Work yet) — the setup CTA, NOT a blank/blocked pane (usability gate §7).
   if (projectId == null) {
     return (

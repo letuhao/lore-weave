@@ -1,7 +1,7 @@
 // S-13 — the studio decompose panel is a HOST over the existing PlannerView/usePlanner flow. These
 // tests prove the three things the host owns: the no-Work empty state (not a dead-end), mounting the
 // real planner when a Work resolves, and threading the deep-linked templateId (pre-select).
-import { render, screen } from '@testing-library/react';
+import { render, screen, fireEvent, act } from '@testing-library/react';
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import type { IDockviewPanelProps } from 'dockview-react';
 
@@ -15,7 +15,7 @@ vi.mock('@/features/composition/components/PlannerView', () => ({
   PlannerView: (p: Record<string, unknown>) => { plannerProps.value = p; return <div data-testid="planner-view-stub" />; },
 }));
 
-const work = vi.hoisted(() => ({ value: { data: undefined as unknown, isLoading: false } }));
+const work = vi.hoisted(() => ({ value: { data: undefined as unknown, isLoading: false, isError: false, refetch: vi.fn() } }));
 const active = vi.hoisted(() => ({ value: null as { project_id: string; settings: Record<string, unknown> } | null }));
 vi.mock('@/features/composition/hooks/useWork', () => ({ useWorkResolution: () => work.value }));
 vi.mock('@/features/composition/hooks/useActiveWork', () => ({ useActiveWorkId: () => ({ data: undefined }) }));
@@ -28,7 +28,7 @@ const props = (params?: Record<string, unknown>): IDockviewPanelProps =>
 
 beforeEach(() => {
   plannerProps.value = null;
-  work.value = { data: {}, isLoading: false };
+  work.value = { data: {}, isLoading: false, isError: false, refetch: vi.fn() };
   active.value = null;
 });
 
@@ -61,5 +61,29 @@ describe('DecomposePanel', () => {
     render(<DecomposePanel {...props({ templateId: 'tpl-42' })} />);
     expect(plannerProps.value?.initialTemplateId).toBe('tpl-42');
     expect(plannerProps.value?.modelRef).toBe('');   // no work default → '' (planner's local picker covers it)
+  });
+
+  // review-impl LOW-1 — a LOAD FAILURE must not masquerade as "no Work" (which would tell the user to
+  // create a Work that may already exist). Show an error + retry, not the setup CTA.
+  it('a work-load error shows an error + retry (not the setup CTA)', () => {
+    const refetch = vi.fn();
+    work.value = { data: undefined, isLoading: false, isError: true, refetch };
+    render(<DecomposePanel {...props()} />);
+    expect(screen.getByTestId('decompose-error')).toBeInTheDocument();
+    expect(screen.queryByTestId('decompose-no-work')).toBeNull();
+    fireEvent.click(screen.getByTestId('decompose-retry'));
+    expect(refetch).toHaveBeenCalled();
+  });
+
+  // review-impl MED-1 — DOCK-6: an already-open panel retargets via onDidParametersChange, re-seeding
+  // the new deep-linked template (a second "Use in decompose" while decompose is already open).
+  it('retargets the pre-selected template when the open-param changes (already-open panel)', () => {
+    active.value = { project_id: 'p1', settings: {} };
+    let paramCb: ((n: Record<string, unknown> | undefined) => void) | undefined;
+    const api = { onDidParametersChange: (cb: (n: Record<string, unknown> | undefined) => void) => { paramCb = cb; return { dispose: vi.fn() }; } };
+    render(<DecomposePanel {...({ api, params: { templateId: 'first' } } as unknown as IDockviewPanelProps)} />);
+    expect(plannerProps.value?.initialTemplateId).toBe('first');
+    act(() => paramCb?.({ templateId: 'second' }));   // openPanel updateParameters on the open singleton
+    expect(plannerProps.value?.initialTemplateId).toBe('second');
   });
 });
