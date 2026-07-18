@@ -48,7 +48,7 @@
     "@types/three": "^0.185",
     "@vitejs/plugin-react": "^6.0.3",
     "autoprefixer": "^10.5.2",
-    "eslint": "^9",
+    "eslint": "^10",
     "eslint-plugin-react": "^7",
     "eslint-plugin-react-hooks": "^5",
     "globals": "^17",
