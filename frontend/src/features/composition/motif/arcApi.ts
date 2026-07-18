@@ -106,8 +106,20 @@ export type ArcSuggestArgs = {
   detail?: 'summary' | 'full';
 };
 
+// The FE requests detail:'summary', so arc_template is the route's lightweight projection (not a full
+// ArcTemplate). The view renders only these fields; `mine` distinguishes an owned template from a
+// shared/system one.
+export type ArcSuggestSummary = {
+  id: string;
+  code: string;
+  name: string;
+  chapter_span: number | null;
+  genre_tags: string[];
+  mine: boolean;
+};
+
 export type ArcSuggestCandidate = {
-  arc_template: ArcTemplate;
+  arc_template: ArcSuggestSummary;
   score: number;
   match_reason: string | null;
 };

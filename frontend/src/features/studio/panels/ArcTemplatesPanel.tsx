@@ -17,6 +17,7 @@ import { useArcTemplates, type ArcTemplatesState } from './useArcTemplates';
 import { ArcTimelineEditor } from '@/features/composition/motif/components/ArcTimelineEditor';
 import { ArcApplyPreview } from '@/features/composition/motif/components/ArcApplyPreview';
 import { ImportDeconstructSection } from '@/features/composition/arcImport/ImportDeconstructSection';
+import { ArcSuggestView } from '@/features/composition/motif/components/ArcSuggestView';
 import { listCatalog, getArcTemplateDrift } from '@/features/composition/arcTemplates/api';
 import { ArcTemplateDriftView } from '@/features/composition/arcTemplates/ArcTemplateDriftView';
 import { getArcs } from '@/features/plan-hub/api';
@@ -35,7 +36,7 @@ export function ArcTemplatesPanel(props: IDockviewPanelProps) {
   const { t } = useTranslation('composition');
   const host = useStudioHost();
   const state = useArcTemplates(host.bookId);
-  const [view, setView] = useState<'library' | 'catalog' | 'deconstruct'>('library');
+  const [view, setView] = useState<'library' | 'catalog' | 'suggest' | 'deconstruct'>('library');
   const tab = (key: typeof view, label: string) => (
     <button type="button" role="tab" data-testid={`arc-tab-${key}`} aria-selected={view === key}
       className={`rounded px-2 py-0.5 text-xs ${view === key ? 'bg-muted font-medium' : 'text-muted-foreground hover:bg-muted/50'}`}
@@ -47,11 +48,15 @@ export function ArcTemplatesPanel(props: IDockviewPanelProps) {
       <div className="flex gap-1 border-b p-1" role="tablist">
         {tab('library', t('motif.arc.templates.tabLibrary', { defaultValue: 'Library' }))}
         {tab('catalog', t('motif.arc.templates.tabCatalog', { defaultValue: 'Catalog' }))}
+        {/* S-10 O6b — "Suggest an arc for this premise" (arc-agent verb that had no button). */}
+        {tab('suggest', t('motif.arc.templates.tabSuggest', { defaultValue: 'Suggest' }))}
         {tab('deconstruct', t('motif.arc.templates.tabDeconstruct', { defaultValue: 'Import & Deconstruct' }))}
       </div>
       <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
         {view === 'deconstruct' ? (
           <div className="h-full overflow-auto"><ImportDeconstructSection token={state.token} /></div>
+        ) : view === 'suggest' ? (
+          <ArcSuggestView projectId={state.projectId} token={state.token} />
         ) : view === 'catalog' ? (
           <CatalogView state={state} t={t} />
         ) : state.selected ? (
