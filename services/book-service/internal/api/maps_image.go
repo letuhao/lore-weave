@@ -10,6 +10,7 @@ package api
 // world_map_get / world_map_list then return image_object_key + a resolved image_url.
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"image"
@@ -116,14 +117,8 @@ func (s *Server) uploadWorldMapImageCore(w http.ResponseWriter, r *http.Request,
 		writeError(w, http.StatusInternalServerError, "MEDIA_UPLOAD_FAILED", "upload failed")
 		return
 	}
-	// Bump version too: an image change is a map mutation, so the OCC ETag must advance (a map
-	// rename PATCH that races an image upload then correctly sees a stale version). RETURNING
-	// so the response carries the fresh version (S7·2 R4).
-	var version int
-	if err := s.pool.QueryRow(ctx,
-		`UPDATE world_maps SET image_object_key=$1, image_w=$2, image_h=$3, version=version+1, updated_at=now()
-		 WHERE id=$4 AND owner_user_id=$5 RETURNING version`,
-		objectKey, imgW, imgH, mapID, userID).Scan(&version); err != nil {
+	imageVersion, err := s.recordMapImage(ctx, mapID, userID, objectKey, imgW, imgH)
+	if err != nil {
 		writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT", "failed to record image")
 		return
 	}
@@ -138,8 +133,22 @@ func (s *Server) uploadWorldMapImageCore(w http.ResponseWriter, r *http.Request,
 		"image_w":          imgW,
 		"image_h":          imgH,
 		"image_url":        s.mediaURL(objectKey),
-		"version":          version,
+		"image_version":    imageVersion,
 	})
+}
+
+// recordMapImage writes the uploaded object key + pixel dims onto the map and bumps the
+// image's OWN OCC counter (S-07 §1). It bumps `image_version` — NOT the metadata `version` —
+// so an image upload and a concurrent rename never collide: a rename gates on `version`, which
+// this write leaves untouched. Owner-scoped (a foreign/missing map matches 0 rows → ErrNoRows).
+// Extracted so a test can exercise the exact SQL without a MinIO round-trip.
+func (s *Server) recordMapImage(ctx context.Context, mapID, ownerID uuid.UUID, objectKey string, imgW, imgH *int) (int, error) {
+	var imageVersion int
+	err := s.pool.QueryRow(ctx,
+		`UPDATE world_maps SET image_object_key=$1, image_w=$2, image_h=$3, image_version=image_version+1, updated_at=now()
+		 WHERE id=$4 AND owner_user_id=$5 RETURNING image_version`,
+		objectKey, imgW, imgH, mapID, ownerID).Scan(&imageVersion)
+	return imageVersion, err
 }
 
 // uploadWorldMapImagePublic — S7·2 R4. The PUBLIC, JWT-resolved base-image upload

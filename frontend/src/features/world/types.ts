@@ -128,7 +128,9 @@ export interface WorldMapImageResponse {
   image_w: number | null;
   image_h: number | null;
   image_url: string;
-  version: number;
+  // S-07 §1 — the image's OWN OCC counter (decoupled from the map's metadata `version`),
+  // so an image upload no longer bumps the version a concurrent rename gates on.
+  image_version: number;
 }
 
 /** 🔒 SEALED PO#2 — a marker/region binds a glossary `location` OR a KG entity. The rebind

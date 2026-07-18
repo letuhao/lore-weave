@@ -486,6 +486,10 @@ type mapUpdateIn struct {
 	MapID    string  `json:"map_id" jsonschema:"the map to update (UUID; you must own it)"`
 	Name     *string `json:"name,omitempty" jsonschema:"new map name; omit to leave unchanged"`
 	ImageRef *string `json:"image_ref,omitempty" jsonschema:"new base-image object key (from the upload route); omit to leave unchanged"`
+	// S-07 §1 — optimistic concurrency, matching the REST PATCH's If-Match. When you read the map
+	// (world_map_get) you get its `version`; pass it here and the update is REJECTED if the map
+	// changed since (another rename landed). Omit to force blind last-write-wins.
+	ExpectedVersion *int `json:"expected_version,omitempty" jsonschema:"the map version you last read; when set, the update is rejected (conflict) if the map changed since. Omit for last-write-wins."`
 }
 type mapUpdateOut struct {
 	Map worldMapDetail `json:"map"`
@@ -517,13 +521,35 @@ func (s *Server) toolWorldMapUpdate(ctx context.Context, _ *mcp.CallToolRequest,
 		args = append(args, nullableString(strings.TrimSpace(*in.ImageRef)))
 		idx++
 	}
+	// S-07 §1 — thread the OCC predicate when the caller supplied a version. Without it the write
+	// is last-write-wins (unchanged behaviour); with it, a stale version matches 0 rows and is
+	// disambiguated below into a "changed elsewhere" conflict (mirrors REST's 412), never a 404.
+	whereVersion := ""
+	if in.ExpectedVersion != nil {
+		whereVersion = fmt.Sprintf(" AND version=$%d", idx)
+		args = append(args, *in.ExpectedVersion)
+		idx++
+	}
 	query := fmt.Sprintf(
-		`UPDATE world_maps SET %s WHERE id=$1 AND owner_user_id=$2 RETURNING id, world_id, name, image_object_key, version`,
-		strings.Join(setClauses, ", "))
+		`UPDATE world_maps SET %s WHERE id=$1 AND owner_user_id=$2%s RETURNING id, world_id, name, image_object_key, version`,
+		strings.Join(setClauses, ", "), whereVersion)
 	var d worldMapDetail
 	var gotMap, gotWorld uuid.UUID
 	err = s.pool.QueryRow(ctx, query, args...).Scan(&gotMap, &gotWorld, &d.Name, &d.ImageObjectKey, &d.Version)
 	if errors.Is(err, pgx.ErrNoRows) {
+		// 0 rows: either the map is gone/foreign (not found) OR — only when a version was supplied
+		// — it was stale. One owner-scoped read disambiguates, so a version conflict reports the
+		// CURRENT version (the agent re-reads + retries) instead of a misleading "not found".
+		if in.ExpectedVersion != nil {
+			var curVersion int
+			rerr := s.pool.QueryRow(ctx,
+				`SELECT version FROM world_maps WHERE id=$1 AND owner_user_id=$2`, mapID, ownerID).Scan(&curVersion)
+			if rerr == nil {
+				return nil, mapUpdateOut{}, fmt.Errorf(
+					"map changed elsewhere: expected version %d but current is %d — re-read the map and retry",
+					*in.ExpectedVersion, curVersion)
+			}
+		}
 		return nil, mapUpdateOut{}, errors.New("map not found") // owner-scoped, no oracle
 	}
 	if err != nil {

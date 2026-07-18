@@ -428,6 +428,10 @@ CREATE TABLE IF NOT EXISTS world_maps (
   -- absolute idempotent writes — spec §4.4). DEFAULT 1 is the correct first version for every
   -- existing map, so the ADD COLUMN IF NOT EXISTS below has nothing to revisit.
   version INT NOT NULL DEFAULT 1,
+  -- S-07 §1 — a SEPARATE OCC counter for the BINARY base-image upload, so an image upload and a
+  -- concurrent rename never collide on the same version (they are orthogonal concerns). The
+  -- upload bumps image_version ONLY, never version; a metadata rename bumps version ONLY.
+  image_version INT NOT NULL DEFAULT 1,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
@@ -463,6 +467,8 @@ CREATE INDEX IF NOT EXISTS idx_map_regions_map ON map_regions(map_id);
 -- TABLE literals above carry them for fresh DBs; these ALTERs migrate an already-created DB.
 -- Baselines are correct by construction (version=1, updated_at=now()), so IF NOT EXISTS is safe.
 ALTER TABLE world_maps  ADD COLUMN IF NOT EXISTS version    INT         NOT NULL DEFAULT 1;
+-- S-07 §1 — image_version decouples the binary image upload's OCC from the metadata version.
+ALTER TABLE world_maps  ADD COLUMN IF NOT EXISTS image_version INT       NOT NULL DEFAULT 1;
 ALTER TABLE map_markers ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT now();
 ALTER TABLE map_regions ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT now();
 
