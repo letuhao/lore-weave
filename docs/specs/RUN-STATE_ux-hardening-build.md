@@ -33,7 +33,11 @@ discoverability slice live-smoked, registry change reviewed.
       divergence); BE frontend_tools+contract 43 passed; tsc 0. LIVE-SMOKE: the panelCatalogContract IS the
       deterministic proof (its docstring: "the deterministic sibling of the bug the live browser smoke caught")
       — proves registered+buildable+reachable; full browser round-trip deferred (needs stack+book+Work seed).
-- [ ] S4 M touch: H-5a promote touchTarget + apply to both panels — EVID:
+- [x] S4 M touch: H-5a promoted touchTarget util to @/lib/touchTarget (knowledge lib re-exports — consumers
+      unchanged); applied TOUCH_TARGET_SQUARE_MOBILE_ONLY to icon buttons (✎/✕/📌/🚫/rename) + MOBILE_ONLY to
+      primary/destructive actions (add-submit, Switch/Archive, override Yes/No/Remove). Mobile-only variant =
+      44px hit area on touch, dense on desktop. EVID: tsc 0; vitest 36 passed (className changes don't break;
+      re-export resolves).
 
 ## PARKED / DEBT / DRIFT
 - DEBT H-2c: library-row pin/exclude deferred — needs a per-scene pin-state join on library rows (pins are

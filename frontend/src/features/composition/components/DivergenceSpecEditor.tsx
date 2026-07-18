@@ -6,6 +6,8 @@ import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 import { useDivergenceSpecEditor } from '../hooks/useDivergenceSpecEditor';
+import { cn } from '@/lib/utils';
+import { TOUCH_TARGET_MOBILE_ONLY_CLASS } from '@/lib/touchTarget';
 import type { DivergenceTaxonomy, EntityOverrideRow } from '../types';
 
 const TAXONOMIES: DivergenceTaxonomy[] = ['pov_shift', 'character_transform', 'au'];
@@ -257,12 +259,12 @@ function OverrideRow({
             <button
               type="button" data-testid={`divergence-override-delete-confirm-${row.id}`}
               disabled={busy} onClick={onDelete}
-              className="rounded px-1.5 py-0.5 font-medium text-red-600 hover:bg-red-50 disabled:opacity-50 dark:hover:bg-red-950/30"
+              className={cn('rounded px-1.5 py-0.5 font-medium text-red-600 hover:bg-red-50 disabled:opacity-50 dark:hover:bg-red-950/30', TOUCH_TARGET_MOBILE_ONLY_CLASS)}
             >{t('divergence.yes', { defaultValue: 'Yes' })}</button>
             <button
               type="button" data-testid={`divergence-override-delete-cancel-${row.id}`}
               onClick={() => setConfirmingDelete(false)}
-              className="rounded px-1.5 py-0.5 text-muted-foreground hover:bg-muted"
+              className={cn('rounded px-1.5 py-0.5 text-muted-foreground hover:bg-muted', TOUCH_TARGET_MOBILE_ONLY_CLASS)}
             >{t('divergence.no', { defaultValue: 'No' })}</button>
           </span>
         ) : (
@@ -271,7 +273,7 @@ function OverrideRow({
             data-testid={`divergence-override-delete-${row.id}`}
             disabled={busy}
             onClick={() => setConfirmingDelete(true)}
-            className="shrink-0 rounded px-1.5 py-0.5 text-[10px] text-red-600 hover:bg-red-50 disabled:opacity-50 dark:hover:bg-red-950/30"
+            className={cn('shrink-0 rounded px-1.5 py-0.5 text-[10px] text-red-600 hover:bg-red-50 disabled:opacity-50 dark:hover:bg-red-950/30', TOUCH_TARGET_MOBILE_ONLY_CLASS)}
           >
             {t('divergence.remove', { defaultValue: 'Remove' })}
           </button>

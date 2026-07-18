@@ -9,6 +9,8 @@ import { useReferences } from '../hooks/useReferences';
 import { useEffectiveModel } from '@/features/chat-ai-settings/context/ChatAiSettingsContext';
 import { AddModelCta } from '@/components/shared/AddModelCta';
 import { ConfirmDialog } from '@/components/shared/ConfirmDialog';
+import { cn } from '@/lib/utils';
+import { TOUCH_TARGET_MOBILE_ONLY_CLASS, TOUCH_TARGET_SQUARE_MOBILE_ONLY_CLASS } from '@/lib/touchTarget';
 import type { ReferenceHit, ReferenceSource } from '../types';
 
 function embeddingModels(models: UserModel[]): UserModel[] {
@@ -98,7 +100,7 @@ export function ReferencesPanel({ projectId, sceneId, token, models }: {
         )}
         <button
           type="button" data-testid="references-add-submit" disabled={!canAdd || refs.add.isPending}
-          className="self-end rounded bg-primary px-3 py-1 text-xs text-primary-foreground disabled:opacity-40"
+          className={cn('self-end rounded bg-primary px-3 py-1 text-xs text-primary-foreground disabled:opacity-40', TOUCH_TARGET_MOBILE_ONLY_CLASS)}
           onClick={submit}
         >
           {refs.add.isPending ? t('referencesPanel.adding', { defaultValue: 'Adding…' }) : t('referencesPanel.add', { defaultValue: 'Add reference' })}
@@ -221,14 +223,14 @@ function LibraryRow({ r, onSaveMetadata, onSaveContent, onDelete, savingMetaId, 
           {/* H-5c — aria-label (title alone is invisible to AT + touch) + higher resting contrast. */}
           <button
             type="button" data-testid={`references-edit-${r.id}`}
-            className="rounded px-1 text-neutral-500 hover:text-foreground"
+            className={cn('inline-flex items-center justify-center rounded px-1 text-neutral-500 hover:text-foreground', TOUCH_TARGET_SQUARE_MOBILE_ONLY_CLASS)}
             title={t('referencesPanel.edit', { defaultValue: 'Edit' })}
             aria-label={t('referencesPanel.edit', { defaultValue: 'Edit' })}
             onClick={() => setEditing(true)}
           >✎</button>
           <button
             type="button" data-testid={`references-delete-${r.id}`}
-            className="rounded px-1 text-neutral-500 hover:text-destructive"
+            className={cn('inline-flex items-center justify-center rounded px-1 text-neutral-500 hover:text-destructive', TOUCH_TARGET_SQUARE_MOBILE_ONLY_CLASS)}
             title={t('referencesPanel.delete', { defaultValue: 'Delete' })}
             aria-label={t('referencesPanel.delete', { defaultValue: 'Delete' })}
             onClick={onDelete}
@@ -311,14 +313,14 @@ function HitRow({ hit, onPin, scorePct }: {
       <div className="flex shrink-0 items-center gap-1">
         <button
           type="button" data-testid={`references-pin-${hit.id}`} aria-pressed={hit.pinned}
-          className={hit.pinned ? 'rounded px-1 text-primary' : 'rounded px-1 text-neutral-500 hover:text-neutral-700'}
+          className={cn('inline-flex items-center justify-center rounded px-1', hit.pinned ? 'text-primary' : 'text-neutral-500 hover:text-neutral-700', TOUCH_TARGET_SQUARE_MOBILE_ONLY_CLASS)}
           title={hit.pinned ? t('groundingPins.unpin', { defaultValue: 'Unpin' }) : t('groundingPins.pin', { defaultValue: 'Pin' })}
           aria-label={hit.pinned ? t('groundingPins.unpin', { defaultValue: 'Unpin' }) : t('groundingPins.pin', { defaultValue: 'Pin' })}
           onClick={() => onPin(hit, hit.pinned ? 'none' : 'pin')}
         >📌</button>
         <button
           type="button" data-testid={`references-exclude-${hit.id}`} aria-pressed={hit.excluded}
-          className={hit.excluded ? 'rounded px-1 text-destructive' : 'rounded px-1 text-neutral-500 hover:text-neutral-700'}
+          className={cn('inline-flex items-center justify-center rounded px-1', hit.excluded ? 'text-destructive' : 'text-neutral-500 hover:text-neutral-700', TOUCH_TARGET_SQUARE_MOBILE_ONLY_CLASS)}
           title={hit.excluded ? t('groundingPins.restore', { defaultValue: 'Restore' }) : t('groundingPins.exclude', { defaultValue: 'Exclude' })}
           aria-label={hit.excluded ? t('groundingPins.restore', { defaultValue: 'Restore' }) : t('groundingPins.exclude', { defaultValue: 'Exclude' })}
           onClick={() => onPin(hit, hit.excluded ? 'none' : 'exclude')}

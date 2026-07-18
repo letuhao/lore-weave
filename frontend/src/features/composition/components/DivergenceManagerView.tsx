@@ -10,6 +10,8 @@ import { DivergenceWizard } from './DivergenceWizard';
 import { BranchDiffView } from './BranchDiffView';
 import { DivergenceSpecEditor } from './DivergenceSpecEditor';
 import { FormDialog } from '@/components/shared/FormDialog';
+import { cn } from '@/lib/utils';
+import { TOUCH_TARGET_MOBILE_ONLY_CLASS, TOUCH_TARGET_SQUARE_MOBILE_ONLY_CLASS } from '@/lib/touchTarget';
 
 export function DivergenceManagerView({ bookId, token }: { bookId: string; token: string | null }) {
   const { t } = useTranslation('composition');
@@ -107,7 +109,7 @@ export function DivergenceManagerView({ bookId, token }: { bookId: string; token
               data-testid={`divergence-switch-${w.project_id}`}
               disabled={m.isSwitching}
               onClick={(e) => { e.stopPropagation(); void doSwitch(canon ? null : w); }}
-              className="rounded border border-border px-2 py-0.5 text-[11px] hover:bg-muted disabled:opacity-50"
+              className={cn('rounded border border-border px-2 py-0.5 text-[11px] hover:bg-muted disabled:opacity-50', TOUCH_TARGET_MOBILE_ONLY_CLASS)}
             >
               {t('divergence.switchTo', { defaultValue: 'Switch to' })}
             </button>
@@ -117,7 +119,7 @@ export function DivergenceManagerView({ bookId, token }: { bookId: string; token
               type="button"
               data-testid={`divergence-archive-${w.project_id}`}
               onClick={(e) => { e.stopPropagation(); doArchive(w); }}
-              className="rounded px-2 py-0.5 text-[11px] text-red-600 hover:bg-red-50 dark:hover:bg-red-950/30"
+              className={cn('rounded px-2 py-0.5 text-[11px] text-red-600 hover:bg-red-50 dark:hover:bg-red-950/30', TOUCH_TARGET_MOBILE_ONLY_CLASS)}
             >
               {t('divergence.archive', { defaultValue: 'Archive' })}
             </button>
@@ -174,7 +176,7 @@ export function DivergenceManagerView({ bookId, token }: { bookId: string; token
               onClick={() => setRenameDraft(derivativeName(m.selected!) ?? '')}
               title={t('divergence.rename', { defaultValue: 'Rename' })}
               aria-label={t('divergence.rename', { defaultValue: 'Rename' })}
-              className="mr-1 rounded px-1 text-muted-foreground hover:text-foreground"
+              className={cn('mr-1 inline-flex items-center justify-center rounded px-1 text-muted-foreground hover:text-foreground', TOUCH_TARGET_SQUARE_MOBILE_ONLY_CLASS)}
             >✎</button>
             <button type="button" data-testid="divergence-tab-spec" onClick={() => setDetailTab('spec')} className={`rounded px-2 py-0.5 text-[11px] ${detailTab === 'spec' ? 'bg-secondary text-foreground' : 'text-muted-foreground hover:text-foreground'}`}>{t('divergence.tabSpec', { defaultValue: 'Spec' })}</button>
             <button type="button" data-testid="divergence-tab-diff" onClick={() => setDetailTab('diff')} className={`rounded px-2 py-0.5 text-[11px] ${detailTab === 'diff' ? 'bg-secondary text-foreground' : 'text-muted-foreground hover:text-foreground'}`}>{t('divergence.tabDiff', { defaultValue: 'Diff' })}</button>
