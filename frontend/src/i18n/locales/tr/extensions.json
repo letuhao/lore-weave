@@ -236,5 +236,22 @@
     "view": "Görüntüle",
     "hide": "Gizle",
     "noSteps": "Tanımlanmış adım yok."
+  },
+  "bindings": {
+    "loading": "Yükleniyor…",
+    "autoSetupDesc": "Asistanın bu modda otomatik olarak hazırladığı tarifler.",
+    "none": "Burada otomatik olarak ayarlanmış bir şey yok.",
+    "turnOff": "Kapat",
+    "turnBackOn": "Tekrar aç",
+    "mode": {
+      "ask": "Okuma ve sorma",
+      "write": "Yazma",
+      "plan": "Planlama"
+    },
+    "tier": {
+      "system": "Yerleşik",
+      "user": "Siz ayarladınız",
+      "book": "Bu kitap"
+    }
   }
 }

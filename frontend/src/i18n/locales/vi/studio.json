@@ -369,6 +369,12 @@
       "desc": "Toàn bộ kế hoạch của cuốn sách trên một khung đồ thị — các dải cốt truyện, chương, cảnh và các liên kết của chúng",
       "guideBody": "Trung tâm Kế hoạch hiển thị toàn bộ cấu trúc cuốn sách của bạn dưới dạng đồ thị: mỗi saga/arc/sub-arc là một dải, các chương và cảnh của nó là các thẻ dọc theo trục thứ tự câu chuyện, và các liên kết cảnh tạo ra các cạnh nhân quả giữa chúng. Mở bảng để xem mọi arc được thu gọn thành một thẻ tổng hợp; mở rộng một arc để tải các chương của nó, và mở một chương để xem các cảnh của nó. Di chuyển và phóng to để điều hướng; các huy hiệu cảnh báo vấn đề và dữ liệu cũ sẽ xuất hiện ở những nơi cần chú ý về tính nhất quán hoặc các lời hứa cốt truyện."
     },
+    "decompose": {
+      "title": "Phân rã",
+      "desc": "Phân rã cuốn sách của bạn dựa trên cấu trúc cốt truyện — xem trước sơ đồ cung bậc→chương→cảnh, chỉnh sửa và xác nhận",
+      "guideBody": "Phân rã chuyển đổi một cấu trúc cốt truyện thành dàn ý cho cuốn sách của bạn. Hãy chọn một trong các cấu trúc bạn đã soạn (hoặc cấu trúc có sẵn), thêm tiền đề, chọn một mô hình, sau đó nhấn Xem trước: AI sẽ đề xuất một sơ đồ cung bậc→chương→cảnh mà bạn có thể chỉnh sửa trực tiếp trước khi xác nhận. Xác nhận sẽ ghi lại dàn ý — cây Bản thảo của bạn sẽ cập nhật tương ứng. Mở tính năng này từ Bảng lệnh (Command Palette), hoặc từ một cấu trúc trong bảng Mẫu cấu trúc (Structure Templates) thông qua lệnh «Sử dụng để phân rã» (lệnh này sẽ tự động chọn cấu trúc đó tại đây). Bạn chưa có cấu trúc nào? Bảng điều khiển sẽ đề xuất thiết lập một cấu trúc trước.",
+      "loading": "Đang xử lý cuốn sách của bạn…"
+    },
     "plan-passes": {
       "title": "Đường ray Tiến trình",
       "desc": "Tổng hợp kế hoạch theo từng giai đoạn và phê duyệt từng điểm kiểm soát",
@@ -661,12 +667,6 @@
       "title": "Đề xuất Quy trình làm việc",
       "desc": "Xem xét các quy trình mà tác nhân đã đề xuất",
       "guideBody": "Liệt kê các công thức quy trình mà tác nhân đã gợi ý tạo, dựa trên các chuỗi nhiều bước mà nó nhận thấy bạn thường lặp lại. Mở mục này để phê duyệt một đề xuất — việc này sẽ đúc kết quy trình để nó có thể thực thi được — hoặc từ chối nó. Đây là nơi một quy trình do tác nhân đề xuất thực sự trở thành hiện thực."
-    },
-    "decompose": {
-      "title": "Phân rã",
-      "desc": "Phân rã cuốn sách của bạn dựa trên cấu trúc cốt truyện — xem trước sơ đồ cung bậc→chương→cảnh, chỉnh sửa và xác nhận",
-      "guideBody": "Phân rã chuyển đổi một cấu trúc cốt truyện thành dàn ý cho cuốn sách của bạn. Hãy chọn một trong các cấu trúc bạn đã soạn (hoặc cấu trúc có sẵn), thêm tiền đề, chọn một mô hình, sau đó nhấn Xem trước: AI sẽ đề xuất một sơ đồ cung bậc→chương→cảnh mà bạn có thể chỉnh sửa trực tiếp trước khi xác nhận. Xác nhận sẽ ghi lại dàn ý — cây Bản thảo của bạn sẽ cập nhật tương ứng. Mở tính năng này từ Bảng lệnh (Command Palette), hoặc từ một cấu trúc trong bảng Mẫu cấu trúc (Structure Templates) thông qua lệnh «Sử dụng để phân rã» (lệnh này sẽ tự động chọn cấu trúc đó tại đây). Bạn chưa có cấu trúc nào? Bảng điều khiển sẽ đề xuất thiết lập một cấu trúc trước.",
-      "loading": "Đang xử lý cuốn sách của bạn…"
     }
   },
   "sceneRail": {
@@ -1015,7 +1015,8 @@
     "words": "{{count}} từ",
     "modelPlaceholder": "chưa có model",
     "notifications": "Thông báo",
-    "cost24h": "Chi phí 24h qua"
+    "cost24h": "Chi phí 24h qua",
+    "proposalsPending": "{{count}} đề xuất đang chờ phê duyệt"
   },
   "manuscript": {
     "title": "Bản thảo",

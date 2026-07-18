@@ -236,5 +236,22 @@
     "view": "Ver",
     "hide": "Ocultar",
     "noSteps": "No hay pasos definidos."
+  },
+  "bindings": {
+    "loading": "Cargando…",
+    "autoSetupDesc": "Recetas que el asistente configura automáticamente en este modo.",
+    "none": "No hay nada configurado automáticamente aquí.",
+    "turnOff": "Desactivar",
+    "turnBackOn": "Volver a activar",
+    "mode": {
+      "ask": "Lectura y preguntas",
+      "write": "Escritura",
+      "plan": "Planificación"
+    },
+    "tier": {
+      "system": "Integrado",
+      "user": "Configurado por ti",
+      "book": "Este libro"
+    }
   }
 }

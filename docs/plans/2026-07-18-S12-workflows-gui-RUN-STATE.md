@@ -87,21 +87,19 @@ a subtler re-run of the same hole ("invisible UI"). Audit end-to-end found + cle
 
 ## REGISTERS
 ### DECISIONS — SD-1..SD-3 above.
-### DEBT
-- **D-S12-STUDIO-PROPOSAL-BADGE (GAP-1 residual, gate #2 structural).** A PERSISTENT pending-proposals signal
-  in the studio dock/palette (for the "came back later" case, complementing FIX-1's in-conversation signal).
-  The count exists (`proposals_pending` in /usage, already includes workflow proposals) but is surfaced ONLY on
-  the /extensions page — no studio-level usage poll or badge chrome exists. Building it = a studio usage poll +
-  a palette/dock badge surface (structural, touches studio chrome). Ideally split the count into skill vs
-  workflow so the badge can target the right panel. Deferred — FIX-1 (agent names + can auto-open the panel)
-  closes the common case (proposal made mid-session).
-- **D-S12-WORKFLOW-REVISIONS (GAP-4, gate #2 structural).** `snapshotWorkflowRevision` writes `workflow_revisions`
-  on approve-update, but there's no read route/FE (skills have `listSkillRevisions` + a revisions view). Captured
-  but unreadable — pre-existing, low value (workflows rarely updated). Mirror the skills revisions surface when a
-  workflow-history need arises.
-- **D-S12-BINDINGS-I18N** — `BindingSettings`/`WorkflowRack` hardcode English (no `useTranslation`),
-  pre-existing. The new settings tab surfaces `BindingSettings` as-is; i18n-ing it is a small separate
-  pass (out of S-12 scope — S-12 is about REACHABILITY, not translating a pre-existing component).
+### DEBT — (all S-12 defers CLEARED, see Recently cleared)
+
+### RECENTLY CLEARED (2026-07-18, spec [`../specs/2026-07-18-S12-deferred-cleanup.md`])
+- **D-S12-STUDIO-PROPOSAL-BADGE ✅** — the studio now has a frame-level "pending approvals" badge
+  (`ProposalsStatusItem`, registered in `StudioStatusContributions` beside the bell). Polls `/usage`, shows the
+  skill+workflow total, click routes to the panel with pending items (workflow-proposals first). BE split the
+  count (`skill_proposals_pending` + `workflow_proposals_pending`, `proposals_pending` kept = sum, back-compat).
+  Uses the precedented registered-status-item mechanism — no new chrome. 5 badge tests + 1 BE split test.
+- **D-S12-WORKFLOW-REVISIONS ✅** — `GET /v1/workflows/{id}/revisions` (`listWorkflowRevisions`) mirrors
+  `listSkillRevisions`; reads the rows `snapshotWorkflowRevision` writes. ≥view visibility gate
+  (`workflowVisibleToUser`). BE-only (skills' route also has no FE). 2 route tests.
+- **D-S12-BINDINGS-I18N ✅** — `BindingSettings` (the settings tab) now uses `useTranslation` (`extensions` ns,
+  `bindings.*` keys, 17 locales). `WorkflowRack` verified to have NO visible hardcoded strings (needed no i18n).
 - **D-S12-LIVE-SMOKE** — the full agent-loop E2E (registry_propose_workflow → proposal appears in the
   panel → human approves → workflow runnable/enabled) needs a live stack + browser MCP, unavailable at
   dev time. Each link is proven in isolation (BE pgxmock ↔ FE vitest ↔ contract parity ↔ tsc). Trigger:

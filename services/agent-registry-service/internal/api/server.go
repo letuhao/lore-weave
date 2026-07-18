@@ -299,6 +299,9 @@ func (s *Server) Router() http.Handler {
 		r.Get("/workflows/{workflow_id}", s.getWorkflow)
 		r.Delete("/workflows/{workflow_id}", s.deleteWorkflow)
 		r.Put("/workflows/{workflow_id}/enablement", s.setWorkflowEnabled)
+		// S-12 cleanup — read the revisions the approve-UPDATE path snapshots (mirror
+		// listSkillRevisions; BE-only, as the skills revisions route also has no FE).
+		r.Get("/workflows/{workflow_id}/revisions", s.listWorkflowRevisions)
 
 		r.Get("/workflow-proposals", s.listWorkflowProposals)
 		r.Get("/workflow-proposals/{proposal_id}", s.getWorkflowProposal)

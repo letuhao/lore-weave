@@ -369,6 +369,12 @@
       "desc": "Kitabın tüm planı bir grafik tuvalinde — olay örgüsü şeritleri, bölümler, sahneler ve aralarındaki bağlantılar",
       "guideBody": "Plan Merkezi, kitabınızın tüm yapısını bir grafik olarak sunar: her destan/ark/alt-ark bir şerittir, bölümler ve sahneler hikaye sırasına göre dizilmiş kartlardır ve sahne bağlantıları aralarındaki nedensel bağları çizer. Her arkı özet bir kart olarak görmek için paneli açın; bölümlerini yüklemek için bir arkı, sahnelerini görmek için bir bölümü genişletin. Gezinmek için kaydırın ve yakınlaştırın; kurgu veya vaatlerin dikkat gerektirdiği yerlerde sorun ve güncelliğini yitirme rozetleri görünür."
     },
+    "decompose": {
+      "title": "Ayrıştır",
+      "desc": "Kitabınızı bir hikâye yapısına göre ayrıştırın — akış→bölüm→sahne ağacını önizleyin, düzenleyin ve onaylayın",
+      "guideBody": "Ayrıştır, bir hikâye yapısını kitabınızın taslağına dönüştürür. Yazdığınız yapılardan birini (veya yerleşik bir yapıyı) seçin, bir olay örgüsü ekleyin, bir model belirleyin ve ardından Önizle'ye tıklayın: Yapay zekâ, onaylamadan önce üzerinde düzenleme yapabileceğiniz bir akış→bölüm→sahne ağacı önerir. Onayla dediğinizde taslak oluşturulur ve Taslak ağacınız buna uyacak şekilde güncellenir. Komut Paleti'nden veya Yapı Şablonları panelindeki bir yapı üzerinden «Ayrıştırmada kullan» seçeneğiyle (bu seçenek yapıyı burada otomatik olarak seçer) açabilirsiniz. Henüz bir yapınız yok mu? Panel, önce bir yapı oluşturmanızı teklif eder.",
+      "loading": "Kitabınız çözümleniyor…"
+    },
     "plan-passes": {
       "title": "Pass Rail",
       "desc": "Adım adım bir plan oluşturun ve her kontrol noktasını onaylayın",
@@ -661,12 +667,6 @@
       "title": "İş Akışı Teklifleri",
       "desc": "Aracın önerdiği iş akışlarını inceleyin",
       "guideBody": "Aracın, tekrarladığınızı fark ettiği çok adımlı dizilere dayanarak oluşturulmasını önerdiği iş akışı tariflerini listeler. Bir teklifi onaylamak —böylece iş akışı çalıştırılabilir hale gelir— veya reddetmek için açın. Aracın önerdiği bir iş akışının gerçek anlamda hayata geçtiği yer burasıdır."
-    },
-    "decompose": {
-      "title": "Ayrıştır",
-      "desc": "Kitabınızı bir hikâye yapısına göre ayrıştırın — akış→bölüm→sahne ağacını önizleyin, düzenleyin ve onaylayın",
-      "guideBody": "Ayrıştır, bir hikâye yapısını kitabınızın taslağına dönüştürür. Yazdığınız yapılardan birini (veya yerleşik bir yapıyı) seçin, bir olay örgüsü ekleyin, bir model belirleyin ve ardından Önizle'ye tıklayın: Yapay zekâ, onaylamadan önce üzerinde düzenleme yapabileceğiniz bir akış→bölüm→sahne ağacı önerir. Onayla dediğinizde taslak oluşturulur ve Taslak ağacınız buna uyacak şekilde güncellenir. Komut Paleti'nden veya Yapı Şablonları panelindeki bir yapı üzerinden «Ayrıştırmada kullan» seçeneğiyle (bu seçenek yapıyı burada otomatik olarak seçer) açabilirsiniz. Henüz bir yapınız yok mu? Panel, önce bir yapı oluşturmanızı teklif eder.",
-      "loading": "Kitabınız çözümleniyor…"
     }
   },
   "sceneRail": {
@@ -1015,7 +1015,8 @@
     "words": "{{count}} kelime",
     "modelPlaceholder": "model yok",
     "notifications": "Bildirimler",
-    "cost24h": "Harcama, son 24 saat"
+    "cost24h": "Harcama, son 24 saat",
+    "proposalsPending": "{{count}} onay bekleyen teklif"
   },
   "manuscript": {
     "title": "Taslak",

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/loreweave/grantclient"
@@ -149,6 +150,63 @@ WHERE `+where, uid, wfID).
 	wf.Surfaces = surfaces
 	wf.Enabled = skillEnabled(wf.Status, override)
 	return &wf, nil
+}
+
+// workflowVisibleToUser reports whether the caller may READ this workflow: System ∪ own,
+// or a book-tier workflow they hold ≥view on. Shared by get + revisions (≥view, not ≥edit).
+func (s *Server) workflowVisibleToUser(ctx context.Context, uid, wfID uuid.UUID) bool {
+	if _, err := s.scanRestWorkflowByID(ctx, uid, wfID, true); err == nil {
+		return true
+	}
+	var tier string
+	var book *uuid.UUID
+	if err := s.db.QueryRow(ctx, `SELECT tier, book_id FROM workflows WHERE workflow_id = $1`, wfID).Scan(&tier, &book); err != nil ||
+		tier != "book" || book == nil {
+		return false
+	}
+	ok, _ := s.bookGrantOK(ctx, *book, uid, grantclient.GrantView)
+	return ok
+}
+
+// listWorkflowRevisions — GET /v1/workflows/{workflow_id}/revisions. Mirrors
+// listSkillRevisions: the approve-UPDATE path snapshots a revision (snapshotWorkflowRevision);
+// this reads them back (newest first, capped). Visibility ≥view; anti-oracle 404 without it.
+func (s *Server) listWorkflowRevisions(w http.ResponseWriter, r *http.Request) {
+	uid, ok := s.requireUser(w, r)
+	if !ok {
+		return
+	}
+	if s.db == nil {
+		writeError(w, http.StatusServiceUnavailable, "NO_DB", "database unavailable")
+		return
+	}
+	wfID, ok := parseUUIDParam(w, r, "workflow_id")
+	if !ok {
+		return
+	}
+	if !s.workflowVisibleToUser(r.Context(), uid, wfID) {
+		writeError(w, http.StatusNotFound, "NOT_FOUND", "workflow not found")
+		return
+	}
+	rows, err := s.db.Query(r.Context(),
+		`SELECT revision_id, title, description, notes_md, created_at FROM workflow_revisions
+		 WHERE workflow_id = $1 ORDER BY created_at DESC LIMIT 50`, wfID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "DB_ERROR", "could not list revisions")
+		return
+	}
+	defer rows.Close()
+	items := []map[string]any{}
+	for rows.Next() {
+		var id uuid.UUID
+		var title, desc, notes string
+		var at time.Time
+		if err := rows.Scan(&id, &title, &desc, &notes, &at); err != nil {
+			continue
+		}
+		items = append(items, map[string]any{"revision_id": id, "title": title, "description": desc, "notes_md": notes, "created_at": at})
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"items": items})
 }
 
 // getWorkflow — GET /v1/workflows/{workflow_id}. Mirrors getSkill: System ∪ own first,

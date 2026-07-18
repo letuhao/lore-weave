@@ -236,5 +236,22 @@
     "view": "查看",
     "hide": "隱藏",
     "noSteps": "尚未定義步驟。"
+  },
+  "bindings": {
+    "loading": "載入中…",
+    "autoSetupDesc": "在此模式下，助手會自動設定的配方。",
+    "none": "此處未設定任何自動項目。",
+    "turnOff": "關閉",
+    "turnBackOn": "重新開啟",
+    "mode": {
+      "ask": "閱讀與提問",
+      "write": "寫作",
+      "plan": "規劃"
+    },
+    "tier": {
+      "system": "內建",
+      "user": "由您設定",
+      "book": "此書籍"
+    }
   }
 }

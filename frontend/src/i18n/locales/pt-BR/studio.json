@@ -369,6 +369,12 @@
       "desc": "O plano completo do livro em uma tela de gráfico — trilhas de arcos, capítulos, cenas e seus links",
       "guideBody": "O Plan Hub renderiza toda a estrutura do seu livro como um gráfico: cada saga/arco/subarco é uma trilha, seus capítulos e cenas são cartões ao longo de um eixo de ordem narrativa, e os links de cena desenham as conexões causais entre eles. Abra o painel para ver cada arco recolhido em um cartão de resumo; expanda um arco para carregar seus capítulos sob demanda, e um capítulo para ver suas cenas. Use o arrasto e o zoom para navegar; selos de problemas e de obsolescência aparecem onde o cânone ou as promessas da trama precisam de atenção."
     },
+    "decompose": {
+      "title": "Decompor",
+      "desc": "Decomponha seu livro com base em uma estrutura narrativa — visualize a árvore arco→capítulo→cena, edite-a e confirme",
+      "guideBody": "A decomposição transforma uma estrutura narrativa no esboço do seu livro. Escolha uma de suas estruturas criadas (ou uma integrada), adicione uma premissa, escolha um modelo e clique em Visualizar: a IA propõe uma árvore arco→capítulo→cena que você pode editar diretamente antes de confirmar. Ao confirmar, o esboço é gerado — sua árvore de Manuscrito será atualizada para corresponder. Abra o recurso pela Paleta de Comando ou a partir de uma estrutura no painel de Modelos de Estrutura via «Usar na decomposição» (que seleciona essa estrutura automaticamente). Ainda não tem uma estrutura? O painel oferece a opção de configurar uma primeiro.",
+      "loading": "Resolvendo seu livro..."
+    },
     "plan-passes": {
       "title": "Pass Rail",
       "desc": "Compile um plano passo a passo e aprove cada checkpoint",
@@ -661,12 +667,6 @@
       "title": "Propostas de Fluxo de Trabalho",
       "desc": "Revise os fluxos de trabalho propostos pelo agente",
       "guideBody": "Lista as receitas de fluxo de trabalho que o agente sugeriu criar, com base em sequências de várias etapas que ele notou que você repete. Abra para aprovar uma proposta — o que gera o fluxo de trabalho para que ele se torne executável — ou para rejeitá-la. É aqui que um fluxo de trabalho proposto pelo agente se torna real."
-    },
-    "decompose": {
-      "title": "Decompor",
-      "desc": "Decomponha seu livro com base em uma estrutura narrativa — visualize a árvore arco→capítulo→cena, edite-a e confirme",
-      "guideBody": "A decomposição transforma uma estrutura narrativa no esboço do seu livro. Escolha uma de suas estruturas criadas (ou uma integrada), adicione uma premissa, escolha um modelo e clique em Visualizar: a IA propõe uma árvore arco→capítulo→cena que você pode editar diretamente antes de confirmar. Ao confirmar, o esboço é gerado — sua árvore de Manuscrito será atualizada para corresponder. Abra o recurso pela Paleta de Comando ou a partir de uma estrutura no painel de Modelos de Estrutura via «Usar na decomposição» (que seleciona essa estrutura automaticamente). Ainda não tem uma estrutura? O painel oferece a opção de configurar uma primeiro.",
-      "loading": "Resolvendo seu livro..."
     }
   },
   "sceneRail": {
@@ -1015,7 +1015,8 @@
     "words": "{{count}} palavras",
     "modelPlaceholder": "sem modelo",
     "notifications": "Notificações",
-    "cost24h": "Gasto, últimas 24h"
+    "cost24h": "Gasto, últimas 24h",
+    "proposalsPending": "{{count}} aprovação(ões) pendente(s)"
   },
   "manuscript": {
     "title": "Manuscrito",

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/pashagolub/pgxmock/v4"
@@ -171,6 +172,52 @@ func TestSetWorkflowEnabled_Own_disables(t *testing.T) {
 	}
 	if err := mock.ExpectationsWereMet(); err != nil {
 		t.Errorf("unmet expectations: %v", err)
+	}
+}
+
+func TestListWorkflowRevisions_Own_OK(t *testing.T) {
+	s, mock := newMockServer(t)
+	defer mock.Close()
+	uid := uuid.NewString()
+	wfID := uuid.NewString()
+	// visibility (System∪own) passes → then the revisions read.
+	mock.ExpectQuery("SELECT wf.workflow_id, wf.slug, wf.title").
+		WithArgs(pgxmock.AnyArg(), pgxmock.AnyArg()).
+		WillReturnRows(addVisibleWorkflowRow(wfID, "user", nil))
+	mock.ExpectQuery("FROM workflow_revisions").
+		WithArgs(pgxmock.AnyArg()).
+		WillReturnRows(pgxmock.NewRows([]string{"revision_id", "title", "description", "notes_md", "created_at"}).
+			AddRow(uuid.New(), "My Recipe", "v2", "notes", time.Now()))
+
+	rec := doJSON(s, http.MethodGet, wfBase+wfID+"/revisions", mintJWT(t, uid, ""), "")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d (%s)", rec.Code, rec.Body.String())
+	}
+	var out struct {
+		Items []map[string]any `json:"items"`
+	}
+	_ = json.Unmarshal(rec.Body.Bytes(), &out)
+	if len(out.Items) != 1 || out.Items[0]["title"] != "My Recipe" {
+		t.Errorf("revisions body wrong: %s", rec.Body.String())
+	}
+}
+
+func TestListWorkflowRevisions_NotVisible_404(t *testing.T) {
+	s, mock := newMockServer(t)
+	defer mock.Close()
+	uid := uuid.NewString()
+	wfID := uuid.NewString()
+	// visibility miss → book probe returns a non-book row → not visible → 404 (no revisions read).
+	mock.ExpectQuery("SELECT wf.workflow_id, wf.slug, wf.title").
+		WithArgs(pgxmock.AnyArg(), pgxmock.AnyArg()).
+		WillReturnRows(pgxmock.NewRows(restWorkflowCols))
+	mock.ExpectQuery("SELECT tier, book_id FROM workflows").
+		WithArgs(pgxmock.AnyArg()).
+		WillReturnRows(pgxmock.NewRows([]string{"tier", "book_id"}).AddRow("user", (*uuid.UUID)(nil)))
+
+	rec := doJSON(s, http.MethodGet, wfBase+wfID+"/revisions", mintJWT(t, uid, ""), "")
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("want 404, got %d (%s)", rec.Code, rec.Body.String())
 	}
 }
 

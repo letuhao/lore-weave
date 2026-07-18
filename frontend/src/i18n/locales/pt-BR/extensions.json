@@ -236,5 +236,22 @@
     "view": "Visualizar",
     "hide": "Ocultar",
     "noSteps": "Nenhuma etapa definida."
+  },
+  "bindings": {
+    "loading": "Carregando…",
+    "autoSetupDesc": "Receitas que o assistente configura automaticamente neste modo.",
+    "none": "Nada é configurado automaticamente aqui.",
+    "turnOff": "Desativar",
+    "turnBackOn": "Reativar",
+    "mode": {
+      "ask": "Leitura e perguntas",
+      "write": "Escrita",
+      "plan": "Planejamento"
+    },
+    "tier": {
+      "system": "Nativo",
+      "user": "Você define isso",
+      "book": "Este livro"
+    }
   }
 }

@@ -236,5 +236,22 @@
     "view": "Anzeigen",
     "hide": "Ausblenden",
     "noSteps": "Keine Schritte definiert."
+  },
+  "bindings": {
+    "loading": "Laden…",
+    "autoSetupDesc": "Rezepte, die der Assistent in diesem Modus automatisch einrichtet.",
+    "none": "Hier wird nichts automatisch eingerichtet.",
+    "turnOff": "Ausschalten",
+    "turnBackOn": "Wiedereinschalten",
+    "mode": {
+      "ask": "Lesen & Fragen",
+      "write": "Schreiben",
+      "plan": "Planen"
+    },
+    "tier": {
+      "system": "Integriert",
+      "user": "Von Ihnen festgelegt",
+      "book": "Dieses Buch"
+    }
   }
 }

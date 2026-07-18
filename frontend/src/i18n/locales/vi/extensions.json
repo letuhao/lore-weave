@@ -236,5 +236,22 @@
     "view": "Xem",
     "hide": "Ẩn",
     "noSteps": "Chưa có bước nào được thiết lập."
+  },
+  "bindings": {
+    "loading": "Đang tải…",
+    "autoSetupDesc": "Các công thức mà trợ lý tự động thiết lập trong chế độ này.",
+    "none": "Không có gì được tự động thiết lập ở đây.",
+    "turnOff": "Tắt",
+    "turnBackOn": "Bật lại",
+    "mode": {
+      "ask": "Đọc & hỏi",
+      "write": "Viết",
+      "plan": "Lập kế hoạch"
+    },
+    "tier": {
+      "system": "Có sẵn",
+      "user": "Bạn thiết lập",
+      "book": "Cuốn sách này"
+    }
   }
 }

@@ -236,5 +236,22 @@
     "view": "Lihat",
     "hide": "Sembunyikan",
     "noSteps": "Tidak ada langkah yang ditentukan."
+  },
+  "bindings": {
+    "loading": "Memuat...",
+    "autoSetupDesc": "Resep yang diatur secara otomatis oleh asisten dalam mode ini.",
+    "none": "Tidak ada yang diatur secara otomatis di sini.",
+    "turnOff": "Matikan",
+    "turnBackOn": "Nyalakan kembali",
+    "mode": {
+      "ask": "Membaca & bertanya",
+      "write": "Menulis",
+      "plan": "Perencanaan"
+    },
+    "tier": {
+      "system": "Bawaan",
+      "user": "Anda yang mengatur ini",
+      "book": "Buku ini"
+    }
   }
 }

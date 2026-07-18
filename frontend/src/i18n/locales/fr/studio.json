@@ -369,6 +369,12 @@
       "desc": "Le plan complet du livre sur un canevas graphique — pistes d'arcs, chapitres, scènes et leurs liens",
       "guideBody": "Le Plan Hub représente la structure entière de votre livre sous forme de graphe : chaque saga/arc/sous-arc est une piste, ses chapitres et scènes sont des cartes le long d'un axe chronologique, et les liens de scènes tracent les connexions causales entre eux. Ouvrez le panneau pour voir chaque arc réduit en une carte récapitulative ; développez un arc pour charger ses chapitres, et un chapitre pour voir ses scènes. Panoramisez et zoomez pour naviguer ; des badges de problème ou de décalage apparaissent là où le canon ou les promesses narratives nécessitent votre attention."
     },
+    "decompose": {
+      "title": "Décomposer",
+      "desc": "Décomposez votre livre selon une structure narrative — prévisualisez l'arborescence arc→chapitre→scène, modifiez-la et validez-la",
+      "guideBody": "La décomposition transforme une structure narrative en le plan de votre livre. Choisissez l'une de vos structures (ou une structure intégrée), ajoutez une prémisse, sélectionnez un modèle, puis cliquez sur Aperçu : l'IA propose une arborescence arc→chapitre→scène que vous pouvez modifier directement avant de la valider. La validation génère le plan — l'arborescence de votre manuscrit est alors mise à jour en conséquence. Ouvrez cet outil via la Palette de commandes, ou depuis une structure dans le panneau Modèles de structure via « Utiliser pour la décomposition » (ce qui sélectionne automatiquement cette structure). Pas encore de structure ? Le panneau vous propose d'en créer une d'abord.",
+      "loading": "Analyse de votre livre…"
+    },
     "plan-passes": {
       "title": "Rail de Planification",
       "desc": "Compilez un plan étape par étape et approuvez chaque point de contrôle",
@@ -661,12 +667,6 @@
       "title": "Workflow Proposals",
       "desc": "Examiner les workflows proposés par l'agent",
       "guideBody": "Affiche la liste des recettes de workflows que l'agent a suggéré de créer, sur la base de séquences multi-étapes qu'il a remarqué que vous répétez. Ouvrez ce panneau pour approuver une proposition — ce qui génère le workflow pour qu'il devienne exécutable — ou pour la rejeter. C'est ici qu'un workflow proposé par l'agent devient réellement concret."
-    },
-    "decompose": {
-      "title": "Décomposer",
-      "desc": "Décomposez votre livre selon une structure narrative — prévisualisez l'arborescence arc→chapitre→scène, modifiez-la et validez-la",
-      "guideBody": "La décomposition transforme une structure narrative en le plan de votre livre. Choisissez l'une de vos structures (ou une structure intégrée), ajoutez une prémisse, sélectionnez un modèle, puis cliquez sur Aperçu : l'IA propose une arborescence arc→chapitre→scène que vous pouvez modifier directement avant de la valider. La validation génère le plan — l'arborescence de votre manuscrit est alors mise à jour en conséquence. Ouvrez cet outil via la Palette de commandes, ou depuis une structure dans le panneau Modèles de structure via « Utiliser pour la décomposition » (ce qui sélectionne automatiquement cette structure). Pas encore de structure ? Le panneau vous propose d'en créer une d'abord.",
-      "loading": "Analyse de votre livre…"
     }
   },
   "sceneRail": {
@@ -1015,7 +1015,8 @@
     "words": "{{count}} mots",
     "modelPlaceholder": "aucun modèle",
     "notifications": "Notifications",
-    "cost24h": "Dépense, dernières 24h"
+    "cost24h": "Dépense, dernières 24h",
+    "proposalsPending": "{{count}} approbation(s) en attente"
   },
   "manuscript": {
     "title": "Manuscrit",

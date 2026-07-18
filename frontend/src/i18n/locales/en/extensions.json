@@ -236,5 +236,22 @@
     "view": "View",
     "hide": "Hide",
     "noSteps": "No steps defined."
+  },
+  "bindings": {
+    "loading": "Loading…",
+    "autoSetupDesc": "Recipes the assistant sets up automatically in this mode.",
+    "none": "Nothing is auto-set-up here.",
+    "turnOff": "Turn off",
+    "turnBackOn": "Turn back on",
+    "mode": {
+      "ask": "Reading & asking",
+      "write": "Writing",
+      "plan": "Planning"
+    },
+    "tier": {
+      "system": "Built-in",
+      "user": "You set this",
+      "book": "This book"
+    }
   }
 }

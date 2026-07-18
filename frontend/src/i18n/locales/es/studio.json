@@ -369,6 +369,12 @@
       "desc": "El plan de todo el libro en un lienzo gráfico: carriles de arcos, capítulos, escenas y sus vínculos",
       "guideBody": "El Plan Hub representa la estructura completa de tu libro como un gráfico: cada saga, arco o subarco es un carril; sus capítulos y escenas son tarjetas a lo largo de un eje de orden narrativo, y los enlaces de escena trazan las conexiones causales entre ellos. Abre el panel para ver cada arco colapsado en una tarjeta de resumen; expande un arco para cargar sus capítulos de forma dinámica, y un capítulo para ver sus escenas. Desplaza y haz zoom para navegar; las insignias de problemas o desactualización aparecerán donde el canon o las promesas requieran atención."
     },
+    "decompose": {
+      "title": "Descomponer",
+      "desc": "Descompón tu libro según una estructura narrativa: previsualiza el árbol de arco→capítulo→escena, edítalo y confírmalo",
+      "guideBody": "La función Descomponer convierte una estructura narrativa en el esquema de tu libro. Elige una de tus estructuras creadas (o una integrada), añade una premisa, selecciona un modelo y haz clic en Vista previa: la IA propondrá un árbol de arco→capítulo→escena que puedes editar directamente antes de confirmarlo. Al confirmar, se escribirá el esquema y el árbol de tu Manuscrito se actualizará para coincidir. Puedes abrirlo desde la Paleta de comandos o desde una estructura en el panel de Plantillas de estructura mediante «Usar en descomposición» (lo que preseleccionará dicha estructura aquí). ¿Aún no tienes ninguna? El panel te ofrecerá configurar una primero.",
+      "loading": "Resolviendo tu libro…"
+    },
     "plan-passes": {
       "title": "Pasarela de Planificación",
       "desc": "Compila un plan paso a paso y aprueba cada punto de control",
@@ -661,12 +667,6 @@
       "title": "Propuestas de flujo de trabajo",
       "desc": "Revisa los flujos de trabajo propuestos por el agente",
       "guideBody": "Lista las recetas de flujo de trabajo que el agente ha sugerido crear, basándose en secuencias de varios pasos que ha detectado que repites. Ábrelo para aprobar una propuesta — lo que genera el flujo de trabajo para que sea ejecutable — o para rechazarla. Aquí es donde un flujo de trabajo propuesto por el agente se vuelve realidad."
-    },
-    "decompose": {
-      "title": "Descomponer",
-      "desc": "Descompón tu libro según una estructura narrativa: previsualiza el árbol de arco→capítulo→escena, edítalo y confírmalo",
-      "guideBody": "La función Descomponer convierte una estructura narrativa en el esquema de tu libro. Elige una de tus estructuras creadas (o una integrada), añade una premisa, selecciona un modelo y haz clic en Vista previa: la IA propondrá un árbol de arco→capítulo→escena que puedes editar directamente antes de confirmarlo. Al confirmar, se escribirá el esquema y el árbol de tu Manuscrito se actualizará para coincidir. Puedes abrirlo desde la Paleta de comandos o desde una estructura en el panel de Plantillas de estructura mediante «Usar en descomposición» (lo que preseleccionará dicha estructura aquí). ¿Aún no tienes ninguna? El panel te ofrecerá configurar una primero.",
-      "loading": "Resolviendo tu libro…"
     }
   },
   "sceneRail": {
@@ -1015,7 +1015,8 @@
     "words": "{{count}} palabras",
     "modelPlaceholder": "sin modelo",
     "notifications": "Notificaciones",
-    "cost24h": "Gasto, últimas 24h"
+    "cost24h": "Gasto, últimas 24h",
+    "proposalsPending": "{{count}} propuesta(s) pendiente(s) de aprobación"
   },
   "manuscript": {
     "title": "Manuscrito",

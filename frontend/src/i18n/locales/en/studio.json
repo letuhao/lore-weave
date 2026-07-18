@@ -1015,7 +1015,8 @@
     "words": "{{count}} words",
     "modelPlaceholder": "no model",
     "notifications": "Notifications",
-    "cost24h": "Spend, last 24h"
+    "cost24h": "Spend, last 24h",
+    "proposalsPending": "{{count}} pending approval(s)"
   },
   "manuscript": {
     "title": "Manuscript",

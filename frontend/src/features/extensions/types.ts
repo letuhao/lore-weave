@@ -54,6 +54,9 @@ export interface UsageCounters {
   mcp_servers: { used: number; limit: number };
   commands: { used: number; limit: number };
   proposals_pending: number;
+  // S-12 badge: the split of proposals_pending (optional — back-compat with older responses).
+  skill_proposals_pending?: number;
+  workflow_proposals_pending?: number;
 }
 
 // ── P3: external MCP servers ────────────────────────────────────────────────

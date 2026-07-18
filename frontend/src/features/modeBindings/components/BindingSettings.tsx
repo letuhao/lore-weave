@@ -2,15 +2,9 @@
 // For each mode it shows the EFFECTIVE injected workflows, each tagged with the TIER it came from
 // (Settings & Config SET-1: effective value + source, never a silent hidden default), and lets the
 // user VETO a System pin (toggle it off) — the affordance that makes this a real per-user setting.
+import { useTranslation } from 'react-i18next';
 import type { Mode, ModeBinding, Tier } from '../types';
 import { MODES } from '../types';
-
-const MODE_LABEL: Record<Mode, string> = {
-  ask: 'Reading & asking',
-  write: 'Writing',
-  plan: 'Planning',
-};
-const TIER_LABEL: Record<Tier, string> = { system: 'Built-in', user: 'You set this', book: 'This book' };
 
 export interface BindingSettingsProps {
   bindings: Record<Mode, ModeBinding | null>;
@@ -30,7 +24,8 @@ function sourceOf(b: ModeBinding, slug: string): Tier {
 }
 
 export function BindingSettings({ bindings, loading, error, busyMode, onToggleDisabled }: BindingSettingsProps) {
-  if (loading) return <div className="p-4 text-sm text-muted-foreground" data-testid="bindings-loading">Loading…</div>;
+  const { t } = useTranslation('extensions');
+  if (loading) return <div className="p-4 text-sm text-muted-foreground" data-testid="bindings-loading">{t('bindings.loading')}</div>;
   if (error) return <div className="p-4 text-sm text-destructive" role="alert" data-testid="bindings-error">{error}</div>;
 
   return (
@@ -40,16 +35,15 @@ export function BindingSettings({ bindings, loading, error, busyMode, onToggleDi
         if (!b) return null;
         const effective = b.inject_workflows ?? [];
         const vetoed = b.disable_workflows ?? [];
+        const modeLabel = t(`bindings.mode.${mode}`);
         return (
-          <section key={mode} aria-label={MODE_LABEL[mode]}>
-            <h3 className="mb-1 text-sm font-semibold text-foreground">{MODE_LABEL[mode]}</h3>
-            <p className="mb-2 text-xs text-muted-foreground">
-              Recipes the assistant sets up automatically in this mode.
-            </p>
+          <section key={mode} aria-label={modeLabel}>
+            <h3 className="mb-1 text-sm font-semibold text-foreground">{modeLabel}</h3>
+            <p className="mb-2 text-xs text-muted-foreground">{t('bindings.autoSetupDesc')}</p>
 
             {effective.length === 0 && vetoed.length === 0 && (
               <div className="text-xs text-muted-foreground" data-testid={`bindings-${mode}-none`}>
-                Nothing is auto-set-up here.
+                {t('bindings.none')}
               </div>
             )}
 
@@ -61,7 +55,7 @@ export function BindingSettings({ bindings, loading, error, busyMode, onToggleDi
                     <span className="text-sm text-foreground">
                       {slug}
                       <span className="ml-2 rounded bg-muted px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-muted-foreground">
-                        {TIER_LABEL[tier]}
+                        {t(`bindings.tier.${tier}`)}
                       </span>
                     </span>
                     <button
@@ -71,7 +65,7 @@ export function BindingSettings({ bindings, loading, error, busyMode, onToggleDi
                       className="text-xs text-muted-foreground hover:text-destructive disabled:opacity-50"
                       data-testid={`binding-${mode}-${slug}-disable`}
                     >
-                      Turn off
+                      {t('bindings.turnOff')}
                     </button>
                   </li>
                 );
@@ -86,7 +80,7 @@ export function BindingSettings({ bindings, loading, error, busyMode, onToggleDi
                     className="text-xs text-primary hover:underline disabled:opacity-50"
                     data-testid={`binding-${mode}-${slug}-enable`}
                   >
-                    Turn back on
+                    {t('bindings.turnBackOn')}
                   </button>
                 </li>
               ))}

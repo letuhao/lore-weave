@@ -236,5 +236,22 @@
     "view": "Lihat",
     "hide": "Sembunyi",
     "noSteps": "Tiada langkah ditakrifkan."
+  },
+  "bindings": {
+    "loading": "Memuatkan…",
+    "autoSetupDesc": "Resipi yang ditetapkan secara automatik oleh pembantu dalam mod ini.",
+    "none": "Tiada apa-apa yang ditetapkan secara automatik di sini.",
+    "turnOff": "Matikan",
+    "turnBackOn": "Hidupkan semula",
+    "mode": {
+      "ask": "Membaca & bertanya",
+      "write": "Menulis",
+      "plan": "Perancangan"
+    },
+    "tier": {
+      "system": "Binaan dalaman",
+      "user": "Anda tetapkan ini",
+      "book": "Buku ini"
+    }
   }
 }

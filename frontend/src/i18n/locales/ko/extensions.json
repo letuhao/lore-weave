@@ -236,5 +236,22 @@
     "view": "보기",
     "hide": "숨기기",
     "noSteps": "정의된 단계가 없습니다."
+  },
+  "bindings": {
+    "loading": "로딩 중…",
+    "autoSetupDesc": "이 모드에서 어시스턴트가 자동으로 설정하는 레시피입니다.",
+    "none": "자동 설정된 항목이 없습니다.",
+    "turnOff": "끄기",
+    "turnBackOn": "다시 켜기",
+    "mode": {
+      "ask": "읽기 및 질문하기",
+      "write": "쓰기",
+      "plan": "플랜 짜기"
+    },
+    "tier": {
+      "system": "기본 설정",
+      "user": "사용자 설정",
+      "book": "이 책"
+    }
   }
 }

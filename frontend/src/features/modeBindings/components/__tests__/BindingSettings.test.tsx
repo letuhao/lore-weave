@@ -29,8 +29,9 @@ describe('BindingSettings (M6 — presentational)', () => {
     render(<BindingSettings bindings={bindings} loading={false} error={null} busyMode={null} onToggleDisabled={vi.fn()} />);
 
     // both workflows render under the Writing mode, each with its source-tier badge
-    expect(screen.getByTestId('binding-write-vision-to-book')).toHaveTextContent('Built-in');
-    expect(screen.getByTestId('binding-write-my-own')).toHaveTextContent('You set this');
+    // i18n keys (the test i18n returns keys, not English) — the tier badge is now translated.
+    expect(screen.getByTestId('binding-write-vision-to-book')).toHaveTextContent('bindings.tier.system');
+    expect(screen.getByTestId('binding-write-my-own')).toHaveTextContent('bindings.tier.user');
   });
 
   it('turning off a System pin calls onToggleDisabled(mode, slug, true) — the veto', () => {
