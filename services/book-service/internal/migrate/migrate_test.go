@@ -9,19 +9,18 @@ import (
 // Pure string check; real live-DB validation runs at VERIFY (Alice EPUB smoke).
 // Catches accidental removal during refactors.
 
-func TestSchemaContainsPartsTable(t *testing.T) {
-	if !strings.Contains(schemaSQL, "CREATE TABLE IF NOT EXISTS parts") {
-		t.Fatal("schemaSQL missing parts table — P1 hierarchical extraction broke")
+// C-merge C4 — the parts table is RETIRED. schemaSQL must NOT create it, and the one-time drop must
+// retire the pre-existing table + chapters.part_id (structure_node_id is the SSOT link now).
+func TestSchemaRetiresPartsTable(t *testing.T) {
+	if strings.Contains(schemaSQL, "CREATE TABLE IF NOT EXISTS parts") {
+		t.Fatal("schemaSQL still creates the retired parts table — C4 removed it")
 	}
-	for _, col := range []string{
-		"book_id         UUID NOT NULL REFERENCES books(id) ON DELETE CASCADE",
-		"sort_order      INT  NOT NULL",
-		"parse_version   INT  NOT NULL DEFAULT 1",
-		"lifecycle_state TEXT NOT NULL DEFAULT 'active'",
-		"UNIQUE (book_id, sort_order)",
+	for _, drop := range []string{
+		"ALTER TABLE chapters DROP COLUMN IF EXISTS part_id",
+		"DROP TABLE IF EXISTS parts CASCADE",
 	} {
-		if !strings.Contains(schemaSQL, col) {
-			t.Fatalf("parts table missing column/constraint: %q", col)
+		if !strings.Contains(c4DropPartsSQL, drop) {
+			t.Fatalf("c4DropPartsSQL missing retire step: %q", drop)
 		}
 	}
 }
@@ -63,12 +62,10 @@ func TestSchemaTenantAuditCoalesceIndex(t *testing.T) {
 	}
 }
 
-func TestSchemaAddsChaptersPartAndStructuralPath(t *testing.T) {
+func TestSchemaAddsChaptersStructuralPathAndStructureNode(t *testing.T) {
 	for _, alter := range []string{
-		"ALTER TABLE chapters ADD COLUMN IF NOT EXISTS part_id UUID",
-		"REFERENCES parts(id) ON DELETE SET NULL",
 		"ALTER TABLE chapters ADD COLUMN IF NOT EXISTS structural_path TEXT",
-		// C-merge C1: the additive unified chapter→structure link (no FK — cross-service id).
+		// C-merge: the chapter→structure link (no FK — cross-service id). part_id is retired (C4).
 		"ALTER TABLE chapters ADD COLUMN IF NOT EXISTS structure_node_id UUID",
 	} {
 		if !strings.Contains(schemaSQL, alter) {
@@ -81,8 +78,7 @@ func TestSchemaP1IndexesPresent(t *testing.T) {
 	for _, idx := range []string{
 		"idx_scenes_chapter_sort_active",
 		"idx_scenes_content_hash",
-		"idx_chapters_part",
-		"idx_chapters_structure_node", // C-merge C1
+		"idx_chapters_structure_node", // C-merge (part_id index retired at C4)
 	} {
 		if !strings.Contains(schemaSQL, idx) {
 			t.Fatalf("missing P1 index: %q", idx)

@@ -270,19 +270,9 @@ CREATE INDEX IF NOT EXISTS idx_favorites_book ON user_favorites(book_id);
 -- exist (R-SELF-1 fix). NO backfill.
 -- ═══════════════════════════════════════════════════════════════
 
-CREATE TABLE IF NOT EXISTS parts (
-  id              UUID PRIMARY KEY DEFAULT uuidv7(),
-  book_id         UUID NOT NULL REFERENCES books(id) ON DELETE CASCADE,
-  sort_order      INT  NOT NULL,
-  title           TEXT,
-  path            TEXT NOT NULL,
-  parse_version   INT  NOT NULL DEFAULT 1,
-  lifecycle_state TEXT NOT NULL DEFAULT 'active',
-  trashed_at      TIMESTAMPTZ,
-  created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
-  updated_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
-  UNIQUE (book_id, sort_order)
-);
+-- C-merge C4 — the parts table is RETIRED. Manuscript parts now live in composition
+-- (structure_node kind=part); a chapter grouping is chapters.structure_node_id (below). The
+-- gated one-time drop of the pre-existing table + chapters.part_id is in c4DropPartsSQL (Up()).
 
 CREATE TABLE IF NOT EXISTS scenes (
   id              UUID PRIMARY KEY DEFAULT uuidv7(),
@@ -302,21 +292,17 @@ CREATE TABLE IF NOT EXISTS scenes (
   UNIQUE (chapter_id, sort_order)
 );
 
-ALTER TABLE chapters ADD COLUMN IF NOT EXISTS part_id UUID
-  REFERENCES parts(id) ON DELETE SET NULL;
 ALTER TABLE chapters ADD COLUMN IF NOT EXISTS structural_path TEXT;
 
--- C-merge C1 (additive) — the unified chapter→structure link. A book-scoped, cross-DB id pointing at
--- composition's structure_node (NO FK — structure_node lives in a different service's DB, same pattern
--- as scenes.source_scene_id). Nullable, sits ALONGSIDE part_id; nothing WRITES it until C2 dual-write
--- and nothing READS it until C3. Reversible until then. Replaces part_id as the SSOT at C4.
+-- C-merge — the chapter's manuscript grouping. A book-scoped, cross-DB id pointing at composition's
+-- structure_node kind=part (NO FK — it lives in a different service's DB, same pattern as
+-- scenes.source_scene_id). Nullable (a chapter may be un-grouped). This is the SSOT link after the C4
+-- retire of the old parts table + chapters.part_id.
 ALTER TABLE chapters ADD COLUMN IF NOT EXISTS structure_node_id UUID;
 
 CREATE INDEX IF NOT EXISTS idx_scenes_chapter_sort_active
   ON scenes(chapter_id, sort_order) WHERE lifecycle_state = 'active';
 CREATE INDEX IF NOT EXISTS idx_scenes_content_hash ON scenes(content_hash);
-CREATE INDEX IF NOT EXISTS idx_chapters_part ON chapters(part_id)
-  WHERE part_id IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_chapters_structure_node ON chapters(structure_node_id)
   WHERE structure_node_id IS NOT NULL;
 
@@ -756,8 +742,28 @@ func execGuarded(ctx context.Context, pool *pgxpool.Pool, name, sql string) erro
 	return tx.Commit(ctx)
 }
 
+// c4DropPartsSQL — C-merge C4, the one-time retire of the old parts subsystem. Idempotent (IF EXISTS)
+// and self-guarding: it finishes the chapters.part_id → structure_node_id migration first, then drops
+// the redundant column + its index + the retired table. Runs unconditionally now (dev cleanup: no
+// production data, no soak needed); on a schema where parts was already dropped it is a full no-op.
+const c4DropPartsSQL = `
+DO $$ BEGIN
+  IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='chapters' AND column_name='part_id') THEN
+    UPDATE chapters SET structure_node_id = part_id WHERE part_id IS NOT NULL AND structure_node_id IS NULL;
+  END IF;
+END $$;
+DROP INDEX IF EXISTS idx_chapters_part;
+ALTER TABLE chapters DROP COLUMN IF EXISTS part_id;
+DROP TABLE IF EXISTS parts CASCADE;
+`
+
 func Up(ctx context.Context, pool *pgxpool.Pool) error {
 	if err := execGuarded(ctx, pool, "schema", schemaSQL); err != nil {
+		return err
+	}
+
+	// C-merge C4 — retire the parts table + chapters.part_id (structure_node_id is the SSOT link now).
+	if err := execGuarded(ctx, pool, "c4-drop-parts", c4DropPartsSQL); err != nil {
 		return err
 	}
 

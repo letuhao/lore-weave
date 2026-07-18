@@ -166,42 +166,12 @@ func (s *Server) newMCPServer() *mcp.Server {
 	// S-02 — manuscript parts (acts / volumes). These let the assistant reorganise
 	// the manuscript hierarchy the same way the navigator will: create/rename/reorder/
 	// trash an act and move a chapter between acts. All Tier-A, scope=book, EDIT grant.
-	addTool(srv, "book_part_create",
-		"Create a new act/volume ('part') in a book. Parts are the optional layer ABOVE "+
-			"chapters (Act I, Volume 2, …). Returns the new part_id + its sort_order (appended "+
-			"at the end). Reverse: book_part_archive.",
-		lwmcp.NewToolMeta(lwmcp.TierA, lwmcp.ScopeBook, nil, []string{"new act", "add volume", "create part", "add act"}),
-		s.toolPartCreate)
-
-	addTool(srv, "book_part_rename",
-		"Rename an act/volume. Reverse: book_part_rename with the prior title.",
-		lwmcp.NewToolMeta(lwmcp.TierA, lwmcp.ScopeBook, nil, []string{"rename act", "rename volume", "rename part"}),
-		s.toolPartRename)
-
-	addTool(srv, "book_part_reorder",
-		"Reorder a book's acts. ordered_ids must be EXACTLY the book's active part ids in "+
-			"the new order (a permutation of the current set — not a subset). Reverse: "+
-			"book_part_reorder with the prior order.",
-		lwmcp.NewToolMeta(lwmcp.TierA, lwmcp.ScopeBook, nil, []string{"reorder acts", "reorder volumes", "reorder parts"}),
-		s.toolPartReorder)
-
-	addTool(srv, "book_part_archive",
-		"Soft-trash an act. Its chapters are NOT deleted — they are un-homed (fall back to "+
-			"the flat manuscript). Reverse: book_part_restore (which restores the act but does "+
-			"NOT re-home the chapters).",
-		lwmcp.NewToolMeta(lwmcp.TierA, lwmcp.ScopeBook, nil, []string{"delete act", "trash volume", "remove part", "archive act"}),
-		s.toolPartArchive)
-
-	addTool(srv, "book_part_restore",
-		"Restore a soft-trashed act. Does NOT re-home the chapters it previously held. "+
-			"Reverse: book_part_archive.",
-		lwmcp.NewToolMeta(lwmcp.TierA, lwmcp.ScopeBook, nil, []string{"restore act", "restore volume", "restore part"}),
-		s.toolPartRestore)
-
+	// C-merge C4 — part CRUD tools (book_part_*) moved to composition (structure_node kind='part').
+	// Only the chapter→part ASSIGNMENT stays here (it writes chapters.structure_node_id).
 	addTool(srv, "book_chapter_set_part",
-		"Move a chapter into / out of / between acts. part_id = the target act, or null to "+
-			"un-home it into the flat manuscript. The target act must belong to the SAME book. "+
-			"Reverse: book_chapter_set_part with the chapter's prior part_id.",
+		"Move a chapter into / out of / between manuscript parts. part_id = the target part (a "+
+			"structure_node id from the book's parts list), or null to un-home it into the flat "+
+			"manuscript. Reverse: book_chapter_set_part with the chapter's prior part_id.",
 		lwmcp.NewToolMeta(lwmcp.TierA, lwmcp.ScopeBook, nil, []string{"move chapter to act", "put chapter in volume", "home chapter", "un-home chapter"}),
 		s.toolChapterSetPart)
 

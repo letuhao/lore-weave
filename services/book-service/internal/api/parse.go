@@ -8,7 +8,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"log/slog"
 	"net/http"
 	"strings"
 	"time"
@@ -182,25 +181,11 @@ func (s *Server) processTxtImport(
 	totalCount := 0
 	var lastChapterID uuid.UUID
 
+	// C-merge C4 — the import no longer creates book-service parts (parts moved to composition,
+	// structure_node kind='part'). Chapters import FLAT (structure_node_id NULL); part grouping is a
+	// post-import authoring act in the Studio (composition). The source's part boundaries still drive
+	// the per-chapter filename + the global sort order below.
 	for partIdx, part := range tree.Parts {
-		// (a) Per-part Tx: one parts row.
-		var titleArg any
-		if part.Title != nil && strings.TrimSpace(*part.Title) != "" {
-			titleArg = *part.Title
-		}
-		var partID uuid.UUID
-		err := s.pool.QueryRow(r.Context(), `
-INSERT INTO parts(book_id, sort_order, title, path)
-VALUES($1, $2, $3, $4)
-ON CONFLICT (book_id, sort_order) DO UPDATE SET title = EXCLUDED.title, path = EXCLUDED.path, updated_at = now()
-RETURNING id
-`, bookID, partIdx+1, titleArg, part.Path).Scan(&partID)
-		if err != nil {
-			writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT",
-				fmt.Sprintf("insert part: %v", err))
-			return
-		}
-
 		for chIdxInPart, ch := range part.Chapters {
 			// Per-chapter body = concatenation of scene leaf_texts (joined by \n\n).
 			// For plain-text imports, ch.HTML is "" (D8 — plain has no html slice).
@@ -238,16 +223,15 @@ RETURNING id
 			}
 
 			var chapterID uuid.UUID
-			// C-merge C2: structure_node_id mirrors part_id (structure_node.id == part.id) on the
-			// IMPORT write too — else imported books (the commonest source of parts) would diverge
-			// from the mirror invariant with part_id set but structure_node_id NULL.
+			// C-merge C4 — flat import: no part_id/structure_node_id (parts are a composition authoring
+			// act now). structural_path keeps the source path for reference.
 			err = tx.QueryRow(r.Context(), `
-INSERT INTO chapters(book_id, title, original_filename, original_language, content_type, byte_size, sort_order, storage_key, lifecycle_state, draft_updated_at, updated_at, part_id, structure_node_id, structural_path)
-VALUES($1, $2, $3, $4, 'text/plain', $5, $6, $7, 'active', now(), now(), $8, $8, $9)
+INSERT INTO chapters(book_id, title, original_filename, original_language, content_type, byte_size, sort_order, storage_key, lifecycle_state, draft_updated_at, updated_at, structural_path)
+VALUES($1, $2, $3, $4, 'text/plain', $5, $6, $7, 'active', now(), now(), $8)
 RETURNING id
 `, bookID, nullIfEmpty(chapterTitle), chFilename, lang,
 				int64(len(chapterBody)), chapterGlobalSort, storageKey,
-				partID, ch.Path,
+				ch.Path,
 			).Scan(&chapterID)
 			if err != nil {
 				tx.Rollback(r.Context())
@@ -356,21 +340,6 @@ RETURNING id
 			totalCount++
 			chapterGlobalSort++
 			lastChapterID = chapterID
-		}
-	}
-
-	// C-merge C2: the import wrote parts + chapters.part_id/structure_node_id above; tell composition to
-	// mirror them. A bulk import can't be one txn (per-chapter commits above), so this is a best-effort
-	// post-loop emit; the /internal/parts-mirror/backfill endpoint is the documented recovery if it fails.
-	if len(tree.Parts) > 0 {
-		if tx, err := s.pool.Begin(r.Context()); err == nil {
-			if emitErr := emitManuscriptPartChanged(r.Context(), tx, bookID); emitErr != nil {
-				_ = tx.Rollback(r.Context())
-				slog.Warn("import: manuscript_part.changed emit failed; mirror lags until backfill",
-					"book_id", bookID, "err", emitErr)
-			} else if err := tx.Commit(r.Context()); err != nil {
-				slog.Warn("import: manuscript_part.changed commit failed", "book_id", bookID, "err", err)
-			}
 		}
 	}
 

@@ -208,10 +208,6 @@ func (s *Server) Router() http.Handler {
 		r.Get("/book/jobs", s.reconcileImportJobs)                               // Unified Job Control Plane reconcile source (book-import, D-JOBS-BOOK-IMPORT-UNWIRED)
 		r.Get("/books/{book_id}/lexical-search", s.searchChapterTextInternal)    // raw-search Phase 2 (lexical leg for the knowledge orchestrator)
 		r.Get("/books/{book_id}/chapters", s.getInternalBookChapters)
-		// C-merge C2 — composition's structure_node mirror consumer re-reads a book's active parts
-		// here to reconcile its kind='part' nodes. Temporary bridge, removed at C4.
-		r.Get("/books/{book_id}/parts-mirror", s.getInternalPartsMirror)
-		r.Post("/parts-mirror/backfill", s.postInternalPartsMirrorBackfill) // C2 one-time backfill / drift re-sync
 		// chat-service calls this ONCE PER TURN: "how many chapters, and how many
 		// actually hold prose?" — one query, no paging. Deliberately NOT served by
 		// /chapters above: that route clamps limit to 100 (a >100-chapter book would
@@ -321,15 +317,9 @@ func (s *Server) Router() http.Handler {
 			// /chapters/{chapter_id}) — same reason as bulk/page above.
 			r.Post("/chapters/reorder", s.reorderChapters)
 
-			// S-02 — manuscript parts (acts / volumes) editor CRUD. The `parts` layer was
-			// write-only from the import decomposer; these routes let a user create/rename/
-			// reorder/trash an act and move a chapter between acts (VIEW to list, EDIT to write).
-			r.Get("/parts", s.listParts)
-			r.Post("/parts", s.createPart)
-			r.Post("/parts/reorder", s.reorderParts) // static — before /parts/{part_id}
-			r.Patch("/parts/{part_id}", s.renamePart)
-			r.Delete("/parts/{part_id}", s.archivePart)
-			r.Post("/parts/{part_id}/restore", s.restorePart)
+			// C-merge C4 — manuscript part CRUD moved to composition (structure_node kind='part').
+			// book-service keeps only the chapter→part ASSIGNMENT (below, /chapters/{id}/part),
+			// which writes chapters.structure_node_id.
 
 			// 22-A2/A3 — scene browser (read-only, VIEW-gated; SC5 inverted authoring
 			// to composition). Book-wide keyset-paged list + single-scene get. Static
@@ -1387,7 +1377,7 @@ func (s *Server) listChapters(w http.ResponseWriter, r *http.Request) {
 	var total int
 	_ = s.pool.QueryRow(r.Context(), `SELECT COUNT(*) FROM chapters WHERE `+where, countArgs...).Scan(&total)
 	args = append(args, limit, offset)
-	rows, err := s.pool.Query(r.Context(), `SELECT id,book_id,title,original_filename,original_language,content_type,byte_size,sort_order,draft_updated_at,draft_revision_count,lifecycle_state,trashed_at,purge_eligible_at,created_at,updated_at,word_count,editorial_status,published_revision_id,part_id FROM chapters WHERE `+where+` ORDER BY `+orderBy+` LIMIT $`+strconv.Itoa(len(args)-1)+` OFFSET $`+strconv.Itoa(len(args)), args...)
+	rows, err := s.pool.Query(r.Context(), `SELECT id,book_id,title,original_filename,original_language,content_type,byte_size,sort_order,draft_updated_at,draft_revision_count,lifecycle_state,trashed_at,purge_eligible_at,created_at,updated_at,word_count,editorial_status,published_revision_id,structure_node_id FROM chapters WHERE `+where+` ORDER BY `+orderBy+` LIMIT $`+strconv.Itoa(len(args)-1)+` OFFSET $`+strconv.Itoa(len(args)), args...)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "CHAPTER_NOT_FOUND", "failed to list chapters")
 		return
@@ -1615,7 +1605,7 @@ func (s *Server) listChaptersKeyset(w http.ResponseWriter, r *http.Request) {
 
 	// Fetch limit+1 to detect a further page without a second COUNT.
 	args = append(args, limit+1)
-	rows, err := s.pool.Query(r.Context(), `SELECT id,book_id,title,original_filename,original_language,content_type,byte_size,sort_order,draft_updated_at,draft_revision_count,lifecycle_state,trashed_at,purge_eligible_at,created_at,updated_at,word_count,editorial_status,published_revision_id,part_id FROM chapters WHERE `+where+` ORDER BY `+orderBy+` LIMIT $`+strconv.Itoa(len(args)), args...)
+	rows, err := s.pool.Query(r.Context(), `SELECT id,book_id,title,original_filename,original_language,content_type,byte_size,sort_order,draft_updated_at,draft_revision_count,lifecycle_state,trashed_at,purge_eligible_at,created_at,updated_at,word_count,editorial_status,published_revision_id,structure_node_id FROM chapters WHERE `+where+` ORDER BY `+orderBy+` LIMIT $`+strconv.Itoa(len(args)), args...)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "CHAPTER_NOT_FOUND", "failed to list chapters")
 		return
@@ -1854,7 +1844,7 @@ func (s *Server) getChapterByID(w http.ResponseWriter, ctx context.Context, book
 	var kgExclude bool
 	var partID *uuid.UUID // S-02: which act (parts row) this chapter is homed in; NULL = flat manuscript
 	err := s.pool.QueryRow(ctx, `
-SELECT c.id,c.book_id,c.title,c.original_filename,c.original_language,c.content_type,c.byte_size,c.sort_order,c.draft_updated_at,c.draft_revision_count,c.lifecycle_state,c.trashed_at,c.purge_eligible_at,c.created_at,c.updated_at,c.editorial_status,c.published_revision_id,c.kg_indexed_revision_id,c.kg_exclude,c.word_count,c.part_id
+SELECT c.id,c.book_id,c.title,c.original_filename,c.original_language,c.content_type,c.byte_size,c.sort_order,c.draft_updated_at,c.draft_revision_count,c.lifecycle_state,c.trashed_at,c.purge_eligible_at,c.created_at,c.updated_at,c.editorial_status,c.published_revision_id,c.kg_indexed_revision_id,c.kg_exclude,c.word_count,c.structure_node_id
 FROM chapters c
 WHERE c.id=$1 AND c.book_id=$2
 `, chapterID, bookID).Scan(&id, &bid, &title, &fn, &lang, &ctype, &size, &order, &draftUpdated, &revCount, &state, &trashedAt, &purgeAt, &createdAt, &updatedAt, &editorialStatus, &publishedRevID, &kgIndexedRevID, &kgExclude, &wordCount, &partID)
