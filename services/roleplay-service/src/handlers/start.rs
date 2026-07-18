@@ -52,7 +52,8 @@ pub async fn start(
     };
 
     // 3. Freeze the charter from the scenario (+ optional rubric sidecar).
-    let (charter, seed) = charter::freeze(&script.scenario, script.rubric.as_ref(), &script.name);
+    let (charter, seed) =
+        charter::freeze(&script.scenario, script.rubric.as_ref(), &script.name, &script.genre);
 
     // 4. Create the chat session FIRST (it owns the session id) — EC-3.
     let payload = json!({

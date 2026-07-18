@@ -51,6 +51,47 @@ function renderOverview(
 
 beforeEach(() => backlinks.mockReset());
 
+describe('OverviewSection triage nudge (S-05 deep-link IN)', () => {
+  it('shows the nudge and opens triage ONLY when count > 0 and the callback is given', () => {
+    backlinks.mockReturnValue({ bookTitle: 'B', worldId: null });
+    const onOpenTriage = vi.fn();
+    render(
+      <OverviewSection
+        project={project}
+        onExploreGraph={vi.fn()}
+        onOpenBook={vi.fn()}
+        onOpenWorld={vi.fn()}
+        triageCount={3}
+        onOpenTriage={onOpenTriage}
+      />,
+    );
+    const nudge = screen.getByTestId('shell-overview-triage-nudge');
+    fireEvent.click(nudge);
+    expect(onOpenTriage).toHaveBeenCalledTimes(1);
+  });
+
+  it('hides the nudge when the count is 0 (no clutter on a clean graph)', () => {
+    backlinks.mockReturnValue({ bookTitle: 'B', worldId: null });
+    render(
+      <OverviewSection
+        project={project}
+        onExploreGraph={vi.fn()}
+        onOpenBook={vi.fn()}
+        onOpenWorld={vi.fn()}
+        triageCount={0}
+        onOpenTriage={vi.fn()}
+      />,
+    );
+    expect(screen.queryByTestId('shell-overview-triage-nudge')).not.toBeInTheDocument();
+  });
+
+  it('hides the nudge on the classic route (no onOpenTriage)', () => {
+    backlinks.mockReturnValue({ bookTitle: 'B', worldId: null });
+    renderOverview(project);
+    expect(screen.queryByTestId('shell-overview-triage-nudge')).not.toBeInTheDocument();
+  });
+});
+
 describe('OverviewSection backlinks (D-WORLD-PROJECT-BACKLINK)', () => {
   it('links to the book by title and to the world when grouped (DOCK-7: via callback, not <Link>)', () => {
     backlinks.mockReturnValue({ bookTitle: 'Cradle', worldId: 'w1', worldName: 'Aethyr', isLoading: false });

@@ -57,7 +57,8 @@
     "cancel": "取消",
     "cancelConfirm": "要取消此翻译任务吗？已处理的实体将保留其翻译。",
     "cancelRequested": "正在请求取消",
-    "noEntities": "该语言无需翻译任何实体。"
+    "noEntities": "该语言无需翻译任何实体。",
+    "pollFailed": "无法获取翻译进度——服务可能不可用。正在重试…"
   },
   "results": {
     "title": "翻译完成",

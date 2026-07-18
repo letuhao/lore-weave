@@ -82,6 +82,7 @@
       "table": "Tabel"
     },
     "placeholder": "Tanyakan tentang cerita, karakter, pembangunan dunia Anda...",
+    "assistant_placeholder": "Ceritakan tentang harimu — orang-orang, proyek, dan keputusan yang ada...",
     "attach_context": "Lampirkan konteks",
     "assist": "Bantu",
     "voice_assist_on": "Asisten Suara AKTIF — respons AI akan diucapkan",
@@ -127,12 +128,6 @@
     "mode_write_hint": "Mode tulis — agen dapat membuat perubahan yang tidak dapat dibatalkan (bertanya sekali per alat baru)"
   },
   "new": {
-    "preset": {
-      "novel": "Asisten Novel",
-      "translator": "Penerjemah",
-      "worldbuilder": "Pembangun Dunia",
-      "editor": "Editor"
-    },
     "create_failed": "Gagal membuat obrolan: {{error}}",
     "title": "Mulai Obrolan Baru",
     "model": "Model",
@@ -234,7 +229,6 @@
   "actionConfirm": {
     "label": "Konfirmasi tindakan",
     "batch_count": "{{count}} item",
-    "warning": "Perubahan ini berdampak tinggi — harap konfirmasi.",
     "warning_destructive": "Ini bersifat destruktif dan berantai — harap konfirmasi.",
     "destructive_skipped": "{{count}} op(s) destruktif akan DILEWATI kecuali Anda mengaktifkannya di atas.",
     "confirm": "Konfirmasi",
@@ -248,7 +242,8 @@
     "cancelled": "Dibatalkan",
     "reprice": "Biaya naik menjadi {{cost}} sejak estimasi ini dibuat — ajukan lagi untuk konfirmasi ulang dengan harga baru.",
     "reprice_title": "Biaya berubah — tidak diterapkan",
-    "reprice_detail": "Estimasi {{old}}, sekarang {{new}}. Tidak ada biaya yang dikeluarkan — ajukan lagi untuk konfirmasi ulang dengan harga baru."
+    "reprice_detail": "Estimasi {{old}}, sekarang {{new}}. Tidak ada biaya yang dikeluarkan — ajukan lagi untuk konfirmasi ulang dengan harga baru.",
+    "warning": "Harap tinjau perubahan ini sebelum diterapkan."
   },
   "batchConfirm": {
     "title": "Konfirmasi {{count}} tindakan dalam satu langkah",
@@ -345,14 +340,6 @@
     "title": "Pengaturan Sesi",
     "model": "Model",
     "system_prompt": "Prompt Sistem",
-    "preset": {
-      "Custom": "Kustom",
-      "Novelist": "Novelis",
-      "Translator": "Penerjemah",
-      "Worldbuilder": "Pembangun Dunia",
-      "Editor": "Editor",
-      "Analyst": "Analis"
-    },
     "prompt_placeholder": "Berikan peran, kepribadian, atau instruksi khusus kepada AI...",
     "gen_params": "Parameter Generasi",
     "max_tokens": "Token Maksimum",
@@ -389,9 +376,11 @@
     "approve_once": "Setujui sekali",
     "always_allow": "Selalu izinkan",
     "deny": "Tolak",
+    "never_allow": "Never allow",
     "approved": "Disetujui — sedang berjalan ✓",
     "always_allowed": "Selalu diizinkan — sedang berjalan ✓",
-    "denied": "Ditolak"
+    "denied": "Ditolak",
+    "never_allowed": "Never allowed — you can undo this in Settings → Permissions"
   },
   "rack": {
     "label": "Konteks",
@@ -416,6 +405,9 @@
     "more": "+{{count}} lagi",
     "more_tooltip": "{{count}} alat yang ditemukan lainnya tidak ditampilkan",
     "remove": "Hapus",
+    "advanced_tools": "Alat tingkat lanjut ({{count}})",
+    "advanced_tools_hint": "Alat yang sudah digantikan tetap disimpan untuk panggilan lama. Gunakan alat di atas kecuali Anda secara khusus membutuhkan salah satu dari alat ini.",
+    "legacy_pin_tooltip": "Anda mengaktifkan alat lama ini untuk sesi ini",
     "server": {
       "knowledge": "Pengetahuan",
       "glossary": "Glosarium",
@@ -426,10 +418,7 @@
       "ui": "UI",
       "chat": "Chat",
       "other": "Lainnya"
-    },
-    "advanced_tools": "Alat tingkat lanjut ({{count}})",
-    "advanced_tools_hint": "Alat yang sudah digantikan tetap disimpan untuk panggilan lama. Gunakan alat di atas kecuali Anda secara khusus membutuhkan salah satu dari alat ini.",
-    "legacy_pin_tooltip": "Anda mengaktifkan alat lama ini untuk sesi ini"
+    }
   },
   "inspector": {
     "title": "Runtime agen",
@@ -449,5 +438,13 @@
       "activated": "Diaktifkan",
       "tool_running": "Menjalankan alat"
     }
+  },
+  "presets": {
+    "custom": "Kustom",
+    "novelist": "Novelis",
+    "translator": "Penerjemah",
+    "worldbuilder": "Pembangun Dunia",
+    "editor": "Editor",
+    "analyst": "Analis"
   }
 }

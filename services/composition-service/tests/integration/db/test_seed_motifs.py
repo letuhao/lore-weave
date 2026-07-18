@@ -22,9 +22,15 @@ from app.db.seed_motifs import load_link_edges, load_motif_rows, seed_motif_pack
 
 _DSN = os.environ.get("TEST_COMPOSITION_DB_URL")
 
-pytestmark = pytest.mark.skipif(
-    not _DSN, reason="set TEST_COMPOSITION_DB_URL to a throwaway DB to run",
-)
+pytestmark = [
+    pytest.mark.skipif(
+        not _DSN, reason="set TEST_COMPOSITION_DB_URL to a throwaway DB to run",
+    ),
+    # MANDATORY (CLAUDE.md test-parallelization): this file DROPs/re-migrates tables on the
+    # shared dev PG. Without the group, xdist schedules it on a DIFFERENT worker than the
+    # other real-DB files and they drop each other's tables mid-run — the counts then lie.
+    pytest.mark.xdist_group("pg"),
+]
 
 _MOTIF_TABLES = [
     "consumed_tokens", "motif_application", "motif_link",

@@ -66,7 +66,7 @@ class BootstrapService:
         self._jobs = jobs
 
     async def propose(
-        self, owner_user_id: UUID, book_id: UUID, run_id: UUID, bearer: str,
+        self, created_by: UUID, book_id: UUID, run_id: UUID, bearer: str,
     ) -> PlanBootstrapProposal:
         """One deterministic diff pass — zero LLM calls for this scope (the
         diff is title-matched against real chapters + every non-rejected
@@ -77,11 +77,11 @@ class BootstrapService:
         this, calling propose() twice before applying the first would
         silently double-offer (and, if both got applied, double-create)
         the same chapters)."""
-        run = await self._runs.get_for_owner(owner_user_id, book_id, run_id)
+        run = await self._runs.get_for_book(book_id, run_id)
         if run is None:
             raise LookupError("run not found")
 
-        pkg_art = await self._runs.latest_artifact(owner_user_id, run_id, "package")
+        pkg_art = await self._runs.latest_artifact(book_id, run_id, "package")
         package = pkg_art.content.get("planning_package") if pkg_art else None
         if not package:
             raise ValueError("run has no compiled package yet — call compile() first")
@@ -119,7 +119,7 @@ class BootstrapService:
         pipeline_job_id = run.checkpoint_state.get("pipeline_job_id")
         if pipeline_job_id:
             try:
-                job = await self._jobs.get(owner_user_id, UUID(pipeline_job_id))
+                job = await self._jobs.get(UUID(pipeline_job_id))
                 if job is not None and job.status == "completed" and job.result:
                     drafting_guides = _drafting_guides_by_event_id(job.result)
             except (ValueError, TypeError) as exc:
@@ -161,7 +161,7 @@ class BootstrapService:
         ]
 
         diff = {"new_chapters": new_chapters, "new_glossary_entities": new_glossary_entities}
-        record = await self._proposals.create(owner_user_id, book_id, run_id, diff=diff)
+        record = await self._proposals.create(created_by, book_id, run_id, diff=diff)
         logger.info(
             "bootstrap propose: book=%s run=%s proposal=%s new_chapters=%d "
             "(%d with a drafting guide from job %s) new_glossary_entities=%d "
@@ -174,46 +174,206 @@ class BootstrapService:
         )
         return record
 
-    async def get(
-        self, owner_user_id: UUID, book_id: UUID, proposal_id: UUID,
+    # ── 27 PF-7 — the GLOSSARY-ONLY seed proposal (passes 2 and 3) ───────────────────────────
+    #: Which glossary kind each pass's entities are seeded as. `cast` is all characters; `world`
+    #: carries its own kind per entity, clamped to the three the world pass can emit.
+    SEED_KINDS: dict[str, tuple[str, ...]] = {
+        "cast": ("character",),
+        "world": ("location", "faction", "concept"),
+    }
+
+    async def propose_seed(
+        self,
+        created_by: UUID,
+        book_id: UUID,
+        run_id: UUID,
+        pass_id: str,
+        entities: list[dict[str, Any]],
     ) -> PlanBootstrapProposal | None:
-        return await self._proposals.get_for_owner(owner_user_id, book_id, proposal_id)
+        """A glossary-ONLY bootstrap proposal built from a PASS artifact (27 PF-7).
+
+        Returns **None** when every entity is already claimed by an active (or applied) proposal —
+        i.e. there is nothing to ask the human about. See the empty-diff branch at the bottom.
+
+        Why this exists rather than the pass seeding the glossary directly: **one approval
+        mechanism, not two.** The glossary is the author's canon. A compiler pass that wrote into it
+        on its own would be a second, invisible path into the exact surface the bootstrap quarantine
+        was built to guard — and the author would discover the LLM's inventions already in their
+        canon, with no diff and nothing to reject.
+
+        So a pass PROPOSES; the human applies. And because pass 2 is a blocking checkpoint whose
+        acceptance requires this proposal to be `applied` (see `plan_forge_service.review_checkpoint`),
+        the blocking gate and the mutation gate are the SAME gate — they cannot disagree.
+
+        Deduped against every still-active proposal's claims by the same `_glossary_item_key`
+        mechanism `propose()` uses: a second `propose_seed` before the first is applied must not
+        double-offer (and, if both were applied, double-create) the same entity.
+
+        Emits `new_chapters: []` — the shape stays the one `apply()` already knows how to read. A
+        seed proposal never touches the manuscript; the skeleton link is the compiler's job, and it
+        already happened at `compile()`.
+        """
+        if pass_id not in self.SEED_KINDS:
+            raise ValueError(
+                f"pass '{pass_id}' does not seed the glossary "
+                f"(only {sorted(self.SEED_KINDS)} do)",
+            )
+        run = await self._runs.get_for_book(book_id, run_id)
+        if run is None:
+            raise LookupError("run not found")
+
+        allowed = self.SEED_KINDS[pass_id]
+        default_kind = allowed[0]
+
+        claimed: set[str] = set()
+        for rec in await self._proposals.list_active_for_book(book_id):
+            for ge in rec.diff.get("new_glossary_entities", []):
+                if isinstance(ge, dict) and ge.get("name"):
+                    claimed.add(_glossary_item_key(ge.get("kind_code"), ge["name"]))
+
+        seen: set[str] = set()
+        new_glossary_entities: list[dict[str, Any]] = []
+        for e in entities:
+            name = (e.get("name") or "").strip() if isinstance(e, dict) else ""
+            if not name:
+                continue
+            kind = e.get("kind") or e.get("kind_code") or default_kind
+            if kind not in allowed:
+                # An unknown kind is clamped, never dropped and never passed through: passing it
+                # through would push an unvalidated kind_code at glossary-service, and dropping it
+                # would silently lose an entity the LLM did propose.
+                logger.info(
+                    "propose_seed: pass=%s entity=%r has kind %r outside %s — clamping to %r",
+                    pass_id, name, kind, allowed, default_kind,
+                )
+                kind = default_kind
+            key = _glossary_item_key(kind, name)
+            if key in claimed or key in seen:
+                continue
+            seen.add(key)
+            new_glossary_entities.append({
+                "name": name, "kind_code": kind,
+                "attributes": e.get("attributes") or {},
+            })
+
+        if not new_glossary_entities:
+            # NOTHING NEW TO OFFER ⇒ NO PROPOSAL. This is the re-run case, and creating a row here
+            # was a bug with a long tail.
+            #
+            # `list_active_for_book` counts APPLIED proposals as claiming their entities, so
+            # re-running `cast` after its seed was applied dedups to zero — and an empty proposal
+            # would then: (1) overwrite `pass_state.cast.bootstrap_proposal_id`, so (2) accepting
+            # cast REFUSES (the new proposal is `pending`) and the author has to approve and apply an
+            # EMPTY diff to proceed, after which (3) its `applied_results` is `{}`, the roster join
+            # resolves no ids, and every scene silently loses its cast.
+            #
+            # Returning None leaves the caller's `record_pass(bootstrap_proposal_id=None)` to leave
+            # the field UNTOUCHED — so the already-applied proposal stays pointed at, and the
+            # re-run is the no-op it should be. Re-running a pass is this compiler's whole selling
+            # point; it must not be the thing that breaks it.
+            logger.info(
+                "propose_seed: book=%s run=%s pass=%s — all %d entit(ies) are already claimed by "
+                "an active proposal; no new proposal opened",
+                book_id, run_id, pass_id, len(entities),
+            )
+            return None
+
+        diff = {"new_chapters": [], "new_glossary_entities": new_glossary_entities}
+        record = await self._proposals.create(created_by, book_id, run_id, diff=diff)
+        logger.info(
+            "propose_seed: book=%s run=%s pass=%s proposal=%s entities=%d "
+            "(%d offered, %d already claimed by an active proposal)",
+            book_id, run_id, pass_id, record.id, len(entities),
+            len(new_glossary_entities), len(claimed),
+        )
+        return record
+
+    async def _stamp_planned_node(
+        self, book_id: UUID, event_id: str, chapter_id: Any,
+    ) -> None:
+        """27 V2-E3 — join the planned node to the chapter that now exists.
+
+        Idempotent and NON-CLOBBERING: `chapter_id IS NULL` in the WHERE. A node already bound to a
+        chapter keeps it — a re-applied proposal (the resume path) must not re-point a node at a
+        second, newly-created chapter and orphan the first.
+
+        ADVISORY. A failure here must not fail the apply: the chapter has ALREADY been created in
+        book-service, and raising would roll back nothing (it is a different database) while leaving
+        the proposal `failed` and the user staring at a chapter that exists. So it logs loudly and
+        the node stays NULL — recoverable, and honestly reported as "planned", which is what the
+        Hub will show until someone re-links.
+        """
+        if not chapter_id:
+            return
+        try:
+            pool = self._runs._pool
+            async with pool.acquire() as conn:
+                await conn.execute(
+                    """
+                    UPDATE outline_node
+                       SET chapter_id = $1, updated_at = now()
+                     WHERE book_id = $2 AND plan_event_id = $3
+                       AND chapter_id IS NULL AND NOT is_archived
+                    """,
+                    UUID(str(chapter_id)), book_id, event_id,
+                )
+        except Exception:  # noqa: BLE001 — advisory: the chapter is already created
+            logger.warning(
+                "bootstrap apply: could not stamp outline_node.chapter_id for book=%s event=%s "
+                "chapter=%s — the node stays 'planned, not yet written' until it is re-linked",
+                book_id, event_id, chapter_id, exc_info=True,
+            )
+
+    async def get(
+        self, book_id: UUID, proposal_id: UUID,
+    ) -> PlanBootstrapProposal | None:
+        # Book-scoped read (OQ-3): the router's E0 book VIEW gate is the access
+        # decision, made BEFORE this call; the repo never filters on the actor,
+        # so a read carries no created_by.
+        return await self._proposals.get_for_book(book_id, proposal_id)
 
     async def approve(
-        self, owner_user_id: UUID, book_id: UUID, proposal_id: UUID,
+        self, book_id: UUID, proposal_id: UUID,
     ) -> PlanBootstrapProposal:
-        result = await self._proposals.mark_approved(owner_user_id, book_id, proposal_id)
+        # Book-scoped status transition (OQ-3): the router's E0 book EDIT gate is
+        # the access decision; the actor isn't stamped on the state change (the
+        # repo's mark_approved stores nothing about the caller), so no created_by.
+        result = await self._proposals.mark_approved(book_id, proposal_id)
         if result is not None:
             logger.info("bootstrap approve: book=%s proposal=%s", book_id, proposal_id)
             return result
-        existing = await self._proposals.get_for_owner(owner_user_id, book_id, proposal_id)
+        existing = await self._proposals.get_for_book(book_id, proposal_id)
         if existing is None:
             raise LookupError("proposal not found")
         raise ValueError(f"cannot approve a proposal in status '{existing.status}'")
 
     async def reject(
-        self, owner_user_id: UUID, book_id: UUID, proposal_id: UUID,
+        self, book_id: UUID, proposal_id: UUID,
     ) -> PlanBootstrapProposal:
-        result = await self._proposals.mark_rejected(owner_user_id, book_id, proposal_id)
+        # Book-scoped status transition (OQ-3): the router's E0 book EDIT gate is
+        # the access decision; the actor isn't stamped on the state change (the
+        # repo's mark_rejected stores nothing about the caller), so no created_by.
+        result = await self._proposals.mark_rejected(book_id, proposal_id)
         if result is not None:
             logger.info("bootstrap reject: book=%s proposal=%s", book_id, proposal_id)
             return result
-        existing = await self._proposals.get_for_owner(owner_user_id, book_id, proposal_id)
+        existing = await self._proposals.get_for_book(book_id, proposal_id)
         if existing is None:
             raise LookupError("proposal not found")
         raise ValueError(f"cannot reject a proposal in status '{existing.status}'")
 
     async def apply(
-        self, owner_user_id: UUID, book_id: UUID, proposal_id: UUID, bearer: str,
+        self, created_by: UUID, book_id: UUID, proposal_id: UUID, bearer: str,
     ) -> PlanBootstrapProposal:
         """Deterministic, zero LLM calls. Claims the record atomically
         (approved|failed → applying); a claim miss means another apply
         already ran or the record isn't in an applicable state — the
         current record is returned as-is (safe no-op / caller inspects
         `status`), never a blind re-run."""
-        claimed = await self._proposals.claim_for_apply(owner_user_id, book_id, proposal_id)
+        del created_by  # actor arity kept; apply replays the approved diff, book-scoped
+        claimed = await self._proposals.claim_for_apply(book_id, proposal_id)
         if claimed is None:
-            existing = await self._proposals.get_for_owner(owner_user_id, book_id, proposal_id)
+            existing = await self._proposals.get_for_book(book_id, proposal_id)
             if existing is None:
                 raise LookupError("proposal not found")
             logger.info(
@@ -252,6 +412,19 @@ class BootstrapService:
                     title=ch["title"], original_language=original_language,
                 )
                 result: dict[str, Any] = {"chapter_id": created.get("chapter_id"), "title": ch["title"]}
+                # 27 V2-E3 — STAMP THE PLANNED NODE.
+                #
+                # The linker deliberately writes `outline_node.chapter_id = NULL` — "planned, not
+                # yet written" — because at compile time the manuscript chapter does not exist. THIS
+                # is the moment it starts existing, and it is the only moment at which the plan node
+                # and the real chapter can be joined.
+                #
+                # Without this stamp the two halves never meet: the Plan Hub's two-truths view can
+                # never resolve a planned chapter to a written one, so a fully-drafted book would go
+                # on reporting every chapter as "planned, not yet written", forever. And nothing
+                # would look broken — the nodes are all there, the chapters are all there, and the
+                # only thing missing is the pointer between them.
+                await self._stamp_planned_node(book_id, event_id, created.get("chapter_id"))
                 if ch.get("drafting_guide"):
                     # §6 M3 [C]/[D]: carried through verbatim from PROPOSE (computed
                     # once, from an already-completed pipeline job — never
@@ -259,7 +432,7 @@ class BootstrapService:
                     # suggested scene/beat guide" for the chapter it just created.
                     result["drafting_guide"] = ch["drafting_guide"]
                 await self._proposals.mark_item_applied(
-                    owner_user_id, book_id, proposal_id,
+                    book_id, proposal_id,
                     item_key=event_id, result=result,
                 )
 
@@ -282,7 +455,7 @@ class BootstrapService:
                     raise
                 for item in created_entities:
                     await self._proposals.mark_item_applied(
-                        owner_user_id, book_id, proposal_id,
+                        book_id, proposal_id,
                         item_key=_glossary_item_key(item.get("kind_code"), item.get("name")),
                         result={
                             "entity_id": item.get("entity_id"),
@@ -312,10 +485,10 @@ class BootstrapService:
                 book_id, proposal_id, error_detail, type(exc).__name__,
             )
             await self._proposals.mark_failed(
-                owner_user_id, book_id, proposal_id, error_detail=error_detail,
+                book_id, proposal_id, error_detail=error_detail,
             )
             raise
 
-        applied = await self._proposals.mark_applied(owner_user_id, book_id, proposal_id)
+        applied = await self._proposals.mark_applied(book_id, proposal_id)
         logger.info("bootstrap apply: book=%s proposal=%s all items applied", book_id, proposal_id)
         return applied if applied is not None else claimed

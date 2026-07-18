@@ -16,6 +16,7 @@ from typing import Any, Literal
 from uuid import UUID
 
 import httpx
+from pydantic import ValidationError
 
 from loreweave_llm.attribution import merge_attribution_into_job_meta
 from loreweave_llm.errors import (
@@ -1222,7 +1223,24 @@ class Client:
         if kind == "done":
             return DoneEvent.model_validate(parsed)
         if kind == "error":
-            return ErrorEvent.model_validate(parsed)
+            try:
+                return ErrorEvent.model_validate(parsed)
+            except ValidationError:
+                # D-ERROREVENT-MASKS-UPSTREAM — a producer that emits an error
+                # event without the required `message` field (or any other
+                # schema drift) must not crash the SSE consumer with an opaque,
+                # unrelated pydantic ValidationError that hides the ACTUAL
+                # upstream failure. Found live 2026-07-08: an LM Studio
+                # tool-call-parser crash surfaced this way — the real cause
+                # was only recoverable from LM Studio's own server logs,
+                # not from this SDK's exception, because the ValidationError
+                # itself became the visible error. Degrade to a best-effort
+                # ErrorEvent carrying whatever fields ARE present instead.
+                return ErrorEvent(
+                    event="error",
+                    code=str(parsed.get("code") or "LLM_ERROR"),
+                    message=str(parsed.get("message") or json.dumps(parsed, ensure_ascii=False)),
+                )
         if kind == "audio-chunk":
             # Phase 5a — TTS streamed audio frame.
             return AudioChunkEvent.model_validate(parsed)

@@ -36,7 +36,7 @@ func TestPerLanguageAliases_ResolverCrossLanguage(t *testing.T) {
 	}
 
 	// Before: the English name does NOT resolve.
-	if got, err := f.srv.findEntityByNameOrAlias(ctx, f.srv.pool, f.bookID, charKind, "Flame Demon"); err != nil || got != uuid.Nil {
+	if got, err := f.srv.findEntityByNameOrAlias(ctx, f.srv.pool, f.bookID, charKind, "Flame Demon", ""); err != nil || got != uuid.Nil {
 		t.Fatalf("pre: 'Flame Demon' must not resolve yet (got %v, err %v)", got, err)
 	}
 
@@ -49,18 +49,18 @@ func TestPerLanguageAliases_ResolverCrossLanguage(t *testing.T) {
 	}
 
 	// After: the English alias resolves to the entity (Step 3 cross-language match).
-	if got, err := f.srv.findEntityByNameOrAlias(ctx, f.srv.pool, f.bookID, charKind, "Flame Demon"); err != nil || got != eid {
+	if got, err := f.srv.findEntityByNameOrAlias(ctx, f.srv.pool, f.bookID, charKind, "Flame Demon", ""); err != nil || got != eid {
 		t.Errorf("'Flame Demon' must resolve to the entity via its en alias set (got %v want %v, err %v)", got, eid, err)
 	}
-	if got, _ := f.srv.findEntityByNameOrAlias(ctx, f.srv.pool, f.bookID, charKind, "Yan Mo"); got != eid {
+	if got, _ := f.srv.findEntityByNameOrAlias(ctx, f.srv.pool, f.bookID, charKind, "Yan Mo", ""); got != eid {
 		t.Errorf("'Yan Mo' must resolve via the en alias set (got %v)", got)
 	}
 	// The source-language name still resolves (Step 1 unchanged).
-	if got, _ := f.srv.findEntityByNameOrAlias(ctx, f.srv.pool, f.bookID, charKind, "焰魔"); got != eid {
+	if got, _ := f.srv.findEntityByNameOrAlias(ctx, f.srv.pool, f.bookID, charKind, "焰魔", ""); got != eid {
 		t.Errorf("source name must still resolve (got %v)", got)
 	}
 	// A genuinely unknown name still misses.
-	if got, _ := f.srv.findEntityByNameOrAlias(ctx, f.srv.pool, f.bookID, charKind, "Nobody"); got != uuid.Nil {
+	if got, _ := f.srv.findEntityByNameOrAlias(ctx, f.srv.pool, f.bookID, charKind, "Nobody", ""); got != uuid.Nil {
 		t.Errorf("an unknown name must not resolve (got %v)", got)
 	}
 }
@@ -98,10 +98,10 @@ func TestPerLanguageAliases_ResolverExcludesDeleted(t *testing.T) {
 	}
 
 	// None of the three steps resolve to the deleted entity.
-	if got, _ := f.srv.findEntityByNameOrAlias(ctx, f.srv.pool, f.bookID, charKind, "幽灵"); got != uuid.Nil {
+	if got, _ := f.srv.findEntityByNameOrAlias(ctx, f.srv.pool, f.bookID, charKind, "幽灵", ""); got != uuid.Nil {
 		t.Errorf("Step 1: a deleted entity's name must not resolve (got %v)", got)
 	}
-	if got, _ := f.srv.findEntityByNameOrAlias(ctx, f.srv.pool, f.bookID, charKind, "Ghost"); got != uuid.Nil {
+	if got, _ := f.srv.findEntityByNameOrAlias(ctx, f.srv.pool, f.bookID, charKind, "Ghost", ""); got != uuid.Nil {
 		t.Errorf("Step 3: a deleted entity's per-language alias must not resolve (got %v)", got)
 	}
 }

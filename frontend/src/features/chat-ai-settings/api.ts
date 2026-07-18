@@ -1,8 +1,15 @@
 // Chat & AI settings — API layer (spec §6). Mirrors features/chat/api.ts.
 import { apiJson } from '@/api';
-import type { AiPrefs, AiPrefsPatch, EffectiveSettings } from './types';
+import type { AiPrefs, AiPrefsPatch, ChatCapabilities, EffectiveSettings } from './types';
 
 export const aiSettingsApi = {
+  /** Deploy-tier capability ceilings (D-WS4C-EFFECTIVE-VALUE). Process-global, so a
+   *  consumer ANDs `deploy_allows` with its own user/project knob to show the honest
+   *  effective value — otherwise a kill-switched capability toggles silently. */
+  getCapabilities(token: string): Promise<ChatCapabilities> {
+    return apiJson<ChatCapabilities>('/v1/chat/capabilities', { token });
+  },
+
   /** The resolved cascade for a context. Studio-tool callers omit sessionId
    *  (Session tier skipped); a chat session passes both. */
   getEffective(

@@ -146,5 +146,13 @@
       "system": "sistema"
     },
     "error": "No se pudo cargar el historial de versiones."
+  },
+  "createAs": "Crear «{{name}}» como…",
+  "kind": {
+    "character": "Personaje",
+    "location": "Lugar",
+    "organization": "Organización",
+    "concept": "Concepto",
+    "item": "Objeto"
   }
 }

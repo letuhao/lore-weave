@@ -42,6 +42,13 @@ CREATE TABLE IF NOT EXISTS chat_messages (
 CREATE INDEX IF NOT EXISTS idx_chat_messages_session
   ON chat_messages (session_id, sequence_num);
 
+-- WS-3.5 / C7 (SD-C7) — who INITIATED a message. 'user' (the default, every existing + interactive
+-- message) vs 'assistant_proactive' (a message the assistant started on its own — the weekly reflection
+-- or a proactive nudge, never in reply to a user turn). Lets the FE badge a proactive turn and lets
+-- analytics separate assistant-initiated from user-initiated spend/engagement. Additive, default 'user'.
+ALTER TABLE chat_messages ADD COLUMN IF NOT EXISTS initiated_by TEXT NOT NULL DEFAULT 'user'
+  CHECK (initiated_by IN ('user', 'assistant_proactive'));
+
 CREATE TABLE IF NOT EXISTS chat_outputs (
   output_id         UUID PRIMARY KEY DEFAULT uuidv7(),
   message_id        UUID NOT NULL REFERENCES chat_messages(message_id) ON DELETE CASCADE,
@@ -224,6 +231,63 @@ DO $$ BEGIN
   END IF;
 END $$;
 
+-- WS-1.6 (spec 05 §Q7) — the per-turn capture decision, PERSISTED so the assistant home
+-- strip can show capture visibly ON or OFF *with a reason* ({"fire": bool, "reason": str}).
+-- The decision was computed + logged every turn but discarded by the caller; a status that is
+-- computed-but-not-surfaced is exactly the silent-no-op "collecting" chip this repo shipped
+-- twice. NULL until the first post-turn write.
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='chat_sessions' AND column_name='capture_status') THEN
+    ALTER TABLE chat_sessions ADD COLUMN capture_status JSONB;
+  END IF;
+END $$;
+
+-- WS-1.8 / sealed decision T-4 (spec 02 §Q1) — the ASSISTANT-SESSION DISCRIMINATOR. An EXPLICIT
+-- column, not a book_id=diary derivation: three consumers key off it (the day-window read, the
+-- voice-disable gate, and chat_search scoping), and an explicit flag is self-describing where a
+-- book_id overload is implicit (and would misfire for a future coach session that is assistant-
+-- family but not diary-bound). 'chat' = a normal/roleplay/interview session (the default for every
+-- existing row); 'assistant' = a Work Assistant session (stamped at create by WS-1.10). Closed set.
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='chat_sessions' AND column_name='session_kind') THEN
+    ALTER TABLE chat_sessions ADD COLUMN session_kind TEXT NOT NULL DEFAULT 'chat'
+      CHECK (session_kind IN ('chat','assistant'));
+  END IF;
+END $$;
+-- The assistant-session lookups (day-window read · voice gate · search scoping) — a partial index
+-- since 'assistant' rows are a small minority of all sessions.
+CREATE INDEX IF NOT EXISTS idx_chat_sessions_assistant
+  ON chat_sessions (owner_user_id) WHERE session_kind = 'assistant';
+
+-- WS-1.8 / DBT-11 (spec 01) — chat_messages.local_date: the LOCAL calendar day a message
+-- belongs to, stamped at write-time so the distiller can bucket "one day's" messages without
+-- re-deriving the day later (which would let a timezone change silently re-bucket history).
+-- D-R14: populated SERVER-side from the user's prefs.timezone with a UTC fallback. This
+-- migration adds the column + the UTC-fallback DEFAULT for new rows; the timezone-aware
+-- override (resolve prefs.timezone in the message-write path) is the follow-up. Existing rows
+-- stay NULL (no wrong backfill to today's date). The only reader (the day-window query) filters
+-- `local_date = $day` with STRICT equality, so a legacy NULL row is simply EXCLUDED — correct here:
+-- those pre-column rows predate the assistant and are never diary-session messages (the reader also
+-- scopes to s.book_id = the diary), and new diary messages always carry the default. (A future
+-- reader that must include legacy rows would add COALESCE(local_date, created_at::date); the
+-- day-window read deliberately does NOT — there is no missing diary data to fall back for.)
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='chat_messages' AND column_name='local_date') THEN
+    ALTER TABLE chat_messages ADD COLUMN local_date DATE;
+    ALTER TABLE chat_messages ALTER COLUMN local_date SET DEFAULT ((now() AT TIME ZONE 'UTC')::date);
+  END IF;
+END $$;
+
+-- The distiller's per-day query: a user's messages for one local day, newest last.
+CREATE INDEX IF NOT EXISTS idx_chat_messages_local_date
+  ON chat_messages (owner_user_id, local_date, sequence_num) WHERE local_date IS NOT NULL;
+
+-- WS-2.9 (spec 09 §Q6) — the per-turn "don't remember this" escape hatch. When a user turns grounding
+-- OFF for a turn, that turn must not be captured in real time (already true) AND must not be distilled
+-- into the diary (the leak this closes — the distiller read the whole day regardless). A message flagged
+-- here is EXCLUDED from the day-window read. DEFAULT false keeps every existing message rememberable.
+ALTER TABLE chat_messages ADD COLUMN IF NOT EXISTS exclude_from_memory BOOLEAN NOT NULL DEFAULT false;
+
 -- ARCH-1 C6 — suspended runs for AG-UI frontend-tool-calls. When the model
 -- calls a frontend tool (e.g. propose_edit), the turn pauses: the in-flight
 -- conversation `working` list + the dangling assistant tool-call cannot be
@@ -267,6 +331,28 @@ DO $$ BEGIN
   END IF;
 END $$;
 
+-- WS-3 — the PINNED rail's step tools, captured at suspend time.
+-- The rail's TEXT rides the suspend for free (it is in the system message, which lives in
+-- `working`), but its TOOLS did not: the resume pass re-derives the tool surface from
+-- scratch and has no book_id to re-fetch the binding with, so the resumed turn read a
+-- recipe naming tools it could not call. the flagship rail's first confirm gate is step 3 of 12, so the
+-- flagship rail broke at its very first gate. NULL/absent ⇒ no pin (pre-WS-3 rows).
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='chat_suspended_runs' AND column_name='pinned_step_tools') THEN
+    ALTER TABLE chat_suspended_runs ADD COLUMN pinned_step_tools JSONB;
+  END IF;
+END $$;
+
+-- Track C P-1 (the step-runner) — carry the rail's book across the suspend so the RESUME
+-- pass can re-fetch the pinned workflows + re-probe and KEEP DRIVING the rail past its
+-- confirm gate. Without it the rail dead-ends at the confirm (assent turn drives to the
+-- confirm → suspend → resume had no book_id → stall). NULL/absent ⇒ no rail (pre-P-1 rows).
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='chat_suspended_runs' AND column_name='book_id') THEN
+    ALTER TABLE chat_suspended_runs ADD COLUMN book_id UUID;
+  END IF;
+END $$;
+
 -- ══════════════════════════════════════════════════════════════════════
 -- RAID Wave C2 (DR-C2) — per-tool approval allowlist ("Always allow").
 -- In Write mode a Tier-A server tool NOT on the user's allowlist suspends
@@ -282,6 +368,26 @@ CREATE TABLE IF NOT EXISTS user_tool_approvals (
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   PRIMARY KEY (user_id, tool_name)
 );
+
+-- Track C WS-3 (D-C-ALLOWLIST-WRITE-ONLY) — the table was INSERT-ONLY: a user could
+-- grant "Always allow" and never view, revoke, or refuse it. Consent without
+-- withdrawal is broken by design, so the row now carries the DECISION rather than
+-- meaning "granted" by its mere existence:
+--   'allow' — the legacy "Always allow" (every pre-existing row IS a grant, so the
+--             backfill default is exactly right and needs no data fix-up);
+--   'deny'  — a persistent "Never allow" (the spec's deny-list). The gate must then
+--             BLOCK the call outright instead of raising an approval card: re-asking
+--             for something the user already refused forever is the same consent bug
+--             wearing a different hat.
+-- allow/deny are MUTUALLY EXCLUSIVE by construction — one row per (user, tool, kind)
+-- on the existing PK, so a decision can only ever be flipped, never doubled.
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='user_tool_approvals' AND column_name='decision') THEN
+    ALTER TABLE user_tool_approvals ADD COLUMN decision TEXT NOT NULL DEFAULT 'allow';
+    ALTER TABLE user_tool_approvals ADD CONSTRAINT user_tool_approvals_decision_chk
+      CHECK (decision IN ('allow', 'deny'));
+  END IF;
+END $$;
 
 -- ══════════════════════════════════════════════════════════════════════
 -- Track "Production Eval + Feedback Flywheel" — Q3: chat-turn feedback.
@@ -441,6 +547,15 @@ CREATE TABLE IF NOT EXISTS user_chat_ai_prefs (
   version        BIGINT NOT NULL DEFAULT 0,
   updated_at     TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+-- WS-5.4 (spec 08, P5-D10) — `assistant` settings category. `coaching_enabled` is the
+-- opt-out a user who wants the diary but NOT to be judged needs; DEFAULT OFF (opt-IN to
+-- coaching, per P5-D10 — a spend/judgement-causing setting fails closed). A per-user
+-- setting (not an env flag): two users legitimately differ.
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='user_chat_ai_prefs' AND column_name='assistant') THEN
+    ALTER TABLE user_chat_ai_prefs ADD COLUMN assistant JSONB NOT NULL DEFAULT '{}'::jsonb;
+  END IF;
+END $$;
 
 -- Per-session overrides for the settings resolution cascade. NULL = inherit
 -- from the next tier down (Book ▸ Account ▸ System) — never a hidden default at
@@ -498,9 +613,114 @@ VALUES
    '{"goal":"Assess senior system-design skill: requirements, architecture, scaling, and trade-offs","phases":["requirements","high_level","deep_dive","wrap"],"checklist":["clarifies functional and scale requirements","proposes a clear high-level architecture","reasons about a data store and partitioning","discusses bottlenecks and failure modes"],"time_budget_min":50,"language":"en"}'::jsonb,
    '{"dimensions":["requirements","architecture","scalability","trade-off reasoning"]}'::jsonb)
 ON CONFLICT (code) WHERE owner_user_id IS NULL DO NOTHING;
+
+-- WS-5.1 (spec 08 §A1) — reflection_notes: the user's OWN end-of-day notes (what went well /
+-- what to improve). This is the reflection substrate the recurring-theme + co-occurrence
+-- detectors read (verified zero home repo-wide before this). PER-USER tier (User Boundaries):
+-- owner_user_id scopes every row; UNIQUE(owner,entry_date) makes end-of-day capture an UPSERT
+-- (one note per user per local day). Nothing here is canon — it is the user's private reflection.
+CREATE TABLE IF NOT EXISTS reflection_notes (
+  id             UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  owner_user_id  UUID NOT NULL,
+  entry_date     DATE NOT NULL,
+  went_well      TEXT,
+  to_improve     TEXT,
+  created_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE (owner_user_id, entry_date)
+);
+CREATE INDEX IF NOT EXISTS idx_reflection_notes_owner_date
+  ON reflection_notes (owner_user_id, entry_date);
+
+-- WS-5.6 / C2 (SD-C2) — reflection_dismissals: the user's tombstoned reflection patterns. A
+-- dismissed pattern must never resurface as a "new" row next week, so worker-ai's reflection
+-- detector drops any candidate whose PERIOD-INDEPENDENT pattern_key is here (dropped AT DETECTION,
+-- before any phrasing). PER-USER tier (User Boundaries): owner_user_id scopes every row;
+-- UNIQUE(owner,pattern_key) makes a dismiss idempotent (dismissing twice is a no-op, never a dup).
+CREATE TABLE IF NOT EXISTS reflection_dismissals (
+  id             UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  owner_user_id  UUID NOT NULL,
+  pattern_key    TEXT NOT NULL,
+  created_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE (owner_user_id, pattern_key)
+);
+CREATE INDEX IF NOT EXISTS idx_reflection_dismissals_owner
+  ON reflection_dismissals (owner_user_id);
+
+-- R1 (D-REFLECTION-PATTERNS-FEED) — reflection_patterns: the STRUCTURED patterns worker-ai's
+-- deterministic detectors surfaced for a week (detector_code, summary, period-independent
+-- pattern_key, evidence_refs), persisted alongside the prose reflection draft so the FE can render
+-- DISMISSABLE chips (the dismiss chain FE→BFF→reflection_dismissals already exists; it just had
+-- nothing to render against). worker-ai already tombstone-filters AT DETECTION; the READ additionally
+-- filters against reflection_dismissals so a pattern dismissed AFTER generation vanishes on refresh
+-- (server is SoT). PER-USER tier: owner_user_id scopes every row. Get-or-REPLACE per (owner, week_end)
+-- — a re-run for the same week replaces its pattern set. UNIQUE(owner,week_end,pattern_key) dedups.
+CREATE TABLE IF NOT EXISTS reflection_patterns (
+  id             UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  owner_user_id  UUID NOT NULL,
+  week_start     DATE NOT NULL,
+  week_end       DATE NOT NULL,
+  detector_code  TEXT NOT NULL,
+  summary        TEXT NOT NULL,
+  pattern_key    TEXT NOT NULL,
+  evidence_refs  JSONB NOT NULL DEFAULT '[]'::jsonb,
+  created_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE (owner_user_id, week_end, pattern_key)
+);
+CREATE INDEX IF NOT EXISTS idx_reflection_patterns_owner_week
+  ON reflection_patterns (owner_user_id, week_end DESC);
+
+-- WS-5.20 (spec 08 §Scorer) — coaching_rubrics: the SCORING STANDARD, versioned + cited,
+-- replacing the free-form SessionTemplate.rubric (dict[str,Any], no schema — "improvised
+-- standards already ship"). SYSTEM tier: admin-seeded, everyone reads, a regular user never
+-- writes (User Boundaries). `dimensions` = [{key,label,anchors:{1..5}}] — the server-
+-- authoritative dimension set the Scorecard coerces against (coerce_scorecard's safe-when-wrong
+-- guarantee is anchored to THIS, not the model's output). A coach session with NO resolvable
+-- rubric REFUSES to score (P5-D5). `tier` carries the quarantine state until Gate 4 clears.
+CREATE TABLE IF NOT EXISTS coaching_rubrics (
+  rubric_id       UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  code            TEXT NOT NULL,
+  version         INT  NOT NULL DEFAULT 1,
+  label           TEXT NOT NULL,
+  dimensions      JSONB NOT NULL,                 -- [{key,label,anchors:{"1":..,"5":..}}]
+  source_citation TEXT NOT NULL DEFAULT '',
+  license         TEXT NOT NULL DEFAULT '',
+  tier            TEXT NOT NULL DEFAULT 'quarantine' CHECK (tier IN ('quarantine','validated')),
+  is_active       BOOLEAN NOT NULL DEFAULT true,
+  created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE (code, version)
+);
+-- Seed ONE System-tier default rubric so a coach session can resolve a standard (a coaching
+-- interview scores the user's STAR/clarity/structure). Idempotent; tier='quarantine' until
+-- the Gate-4 human eval clears.
+INSERT INTO coaching_rubrics (code, version, label, dimensions, source_citation, tier)
+VALUES ('interview_v1', 1, 'Behavioral interview (STAR)',
+  '[{"key":"star_structure","label":"STAR structure","anchors":{"1":"no discernible structure","3":"partial STAR (missing Result)","5":"complete Situation-Task-Action-Result"}},
+    {"key":"clarity","label":"Clarity","anchors":{"1":"hard to follow","3":"mostly clear","5":"crisp and well-sequenced"}},
+    {"key":"specificity","label":"Specificity","anchors":{"1":"vague generalities","3":"some concrete detail","5":"concrete, quantified examples"}}]'::jsonb,
+  'STAR method (Situation-Task-Action-Result), widely-used behavioral-interview framework', 'quarantine')
+ON CONFLICT (code, version) DO NOTHING;
 """
 
 
 async def run_migrations(pool: asyncpg.Pool) -> None:
     async with pool.acquire() as conn:
         await conn.execute(DDL)
+    # B1 / spec 07 §Q3 (T31) — a pg_trgm GIN index accelerates chat_search_sessions' ILIKE '%…%'
+    # cross-session recall (the existing GIN is English tsvector, useless for VI/CJK names). CREATE
+    # EXTENSION + the index run OUTSIDE the main DDL as BEST-EFFORT: a role lacking CREATE-EXTENSION
+    # privilege must NOT abort the migration (chat-service would fail to start). Recall still works
+    # without the index (a scan); this is purely a performance optimization. No CONCURRENTLY inside
+    # the transactional migrator.
+    import logging as _logging
+    _log = _logging.getLogger(__name__)
+    for stmt in (
+        "CREATE EXTENSION IF NOT EXISTS pg_trgm",
+        "CREATE INDEX IF NOT EXISTS idx_chat_messages_content_trgm "
+        "ON chat_messages USING gin (content gin_trgm_ops)",
+    ):
+        try:
+            async with pool.acquire() as conn:
+                await conn.execute(stmt)
+        except Exception:  # noqa: BLE001 — best-effort; recall degrades to a scan, never a failed boot
+            _log.warning("best-effort trigram index step skipped (recall falls back to a scan): %s", stmt)

@@ -32,19 +32,21 @@ import (
 // RegisterBookTools/RegisterUserTools (append-only convention) since both tools span
 // BOTH tiers via `scope`.
 func (s *Server) RegisterOntologyTools(srv *mcp.Server) {
-	mcp.AddTool(srv, &mcp.Tool{
+	lwmcp.RegisterTool(srv, &mcp.Tool{
 		Name: "glossary_ontology_upsert",
 		Description: "Create or update book- or user-tier ontology rows (genre, kind, or " +
-			"attribute) — one call may mix creates and updates freely. Omit base_version on " +
-			"an item to create it; include the current base_version to update it with " +
-			"optimistic locking. Accepts 1-50 items; each item succeeds or fails independently.",
+			"attribute) — WRITES IMMEDIATELY, no confirmation (Tier A). One call may mix " +
+			"creates and updates freely. Omit base_version on an item to create it; include " +
+			"the current base_version to update it with optimistic locking. Accepts 1-50 " +
+			"items; each item succeeds or fails independently. (For a human-confirmed proposal " +
+			"of a single new attribute instead, use glossary_propose_new_attribute.)",
 		InputSchema: ontologyUpsertSchema(),
 		Meta: lwmcp.NewToolMeta(lwmcp.TierA, lwmcp.ScopeBook, nil, []string{
 			"add a kind", "add a genre", "add an attribute", "edit a kind", "rename a kind", "new entity type",
 		}),
 	}, s.toolOntologyUpsert)
 
-	mcp.AddTool(srv, &mcp.Tool{
+	lwmcp.RegisterTool(srv, &mcp.Tool{
 		Name: "glossary_ontology_delete",
 		Description: "Delete book- or user-tier ontology row(s). scope=book mints a confirm " +
 			"token — a human must approve before the delete executes; returns {confirm_token, " +
@@ -451,6 +453,10 @@ type ontologyDeleteOut struct {
 	Preview      []previewRow               `json:"preview,omitempty"`
 	Results      []ontologyDeleteItemResult `json:"results,omitempty"`
 	Summary      *ontologyDeleteSummary     `json:"summary,omitempty"`
+	// Warning (external MCP discoverability audit #11, scope=book branch only) — set
+	// when EVERY item in the batch already resolved to "already removed" at mint time,
+	// so confirming the minted token is guaranteed to delete nothing.
+	Warning string `json:"warning,omitempty"`
 }
 
 func (s *Server) toolOntologyDelete(ctx context.Context, _ *mcp.CallToolRequest, in ontologyDeleteToolIn) (*mcp.CallToolResult, ontologyDeleteOut, error) {
@@ -496,6 +502,7 @@ func (s *Server) toolOntologyDelete(ctx context.Context, _ *mcp.CallToolRequest,
 	}
 	items := make([]bookDeleteParams, 0, len(in.Items))
 	rows := make([]previewRow, 0, len(in.Items))
+	alreadyGone := 0
 	for _, it := range in.Items {
 		p := bookDeleteParams{Level: strings.TrimSpace(it.Level), Code: strings.TrimSpace(it.Code),
 			KindCode: strings.TrimSpace(it.KindCode), GenreCode: strings.TrimSpace(it.GenreCode)}
@@ -503,6 +510,7 @@ func (s *Server) toolOntologyDelete(ctx context.Context, _ *mcp.CallToolRequest,
 		targetID, terr := s.resolveDeleteTarget(ctx, bookID, p)
 		if isNoRows(terr) {
 			rows = append(rows, previewRow{Label: p.Level, Value: p.Code, Note: "already removed — nothing to delete"})
+			alreadyGone++
 			continue
 		}
 		if terr != nil {
@@ -520,7 +528,13 @@ func (s *Server) toolOntologyDelete(ctx context.Context, _ *mcp.CallToolRequest,
 	if merr != nil {
 		return nil, ontologyDeleteOut{}, merr
 	}
-	return nil, ontologyDeleteOut{ConfirmToken: card.ConfirmToken, Preview: card.PreviewRows}, nil
+	out := ontologyDeleteOut{ConfirmToken: card.ConfirmToken, Preview: card.PreviewRows}
+	// External MCP discoverability audit #11 — every item in the batch already resolved
+	// to "not found" at mint time, so confirming changes nothing.
+	if alreadyGone == len(items) {
+		out.Warning = fmt.Sprintf("all %d item(s) are already removed — this will delete nothing", len(items))
+	}
+	return nil, out, nil
 }
 
 // deleteOneUserOntologyItem is the direct (no confirm), reversible soft-delete

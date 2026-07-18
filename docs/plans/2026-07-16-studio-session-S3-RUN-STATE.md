@@ -1,0 +1,233 @@
+# Studio Session S3 — PlanForge compiler — RUN-STATE
+
+> Anchor for the 8-session Writing-Studio completeness build. **Re-read this file FIRST after any
+> compaction**, then `git log --oneline -15`, then continue at the first non-DONE slice.
+> Framework: docs/plans/2026-07-16-studio-completeness-8-session-orchestration.md (read §2 the bar, §4 your charter, §5 the rules).
+
+## COMMITMENT
+S3 is DONE when: a GUI-only user can drive a plan run through all 7 passes incl. the checkpoints — each to the §2 production-ready bar (operable · CRUD · reachable ·
+no-silent-fail · agent-parity · loop-connected · live-browser-proven · i18n+responsive · scale).
+
+## ▶ GOAL (set 2026-07-16 — autonomous run to CLEAR S3)
+**Done-condition (bounded; the transcript must contain the PROOF, not a claim it passed):**
+1. Every SLICE BOARD row is DONE with an evidence string (test counts pasted / live-smoke line / sha).
+2. **QC each slice**: scoped tests GREEN (output pasted) AND — for any FE surface — a live-browser
+   check on the **static build at :5210** (never :5199 — other sessions' HMR churns it). Claiming a
+   check passed without its pasted output does NOT satisfy this.
+3. REPAIR + I18N built to the §2 bar; SESSION_HANDOFF updated; RETRO note if non-obvious.
+4. The full-loop SMOKE (run real passes → approve cast → cursor advances past pass 2) is either
+   PROVEN live (pasted) or its blocker is a tracked defer row naming exactly why (cross-session stack
+   rebuild at convergence). Registry-commit deferrals stay tracked in DECISIONS/DEBT.
+5. STOP only for the 4 critical classes, or after the board is DONE. Blocked ≠ stopped — park + continue.
+
+**Run parameters (LOCKED for this run):**
+- **LLM smokes use gemma-4-26B-A4B QAT** — `model_ref = 019ebb72-27a2-72f3-a42d-d2d0e0ded179`
+  (test account, local lm_studio, $0). Resolve live if it changes.
+- **FE live-smoke ALWAYS on the static build at :5210** (`npx vite build` → `vite preview
+  --config vite.smoke.config.ts`, /v1 proxied to :3123). Rebuild before each FE smoke (stale dist =
+  false green). Never smoke on :5199 (host vite, shadowed + churned by concurrent sessions' HMR).
+
+## ▶ GOAL-2 (set 2026-07-17 — post-coverage, PO-directed)
+Phases: **(A)** F-5 governance fix · **(B)** J8 agent-parity live · **(C)** clear ALL remaining defers (no lazy) ·
+**(D)** completeness audit + fix all bugs · **(E)** Playwright coverage scripts + scenarios (full S3) ·
+**(F)** blackbox-user test scenario (real app, "is it actually usable?").
+Proof must be pasted into the transcript, not claimed.
+
+| phase | status | evidence |
+|---|---|---|
+| A · F-5 governance | ✅ DONE | prompt (ARC COVERAGE rule) + validate rule every_arc_has_events; commit 8b7c5ebdb. VERIFIED real gemma: event dist {arc_2:7}→{arc_1:1,arc_2:7,arc_3:1}; compile ALL arcs OK (1/7/1 chapters), no 400. |
+| — F-6 | ✅ **RESOLVED — was a SYMPTOM of F-5, not a works-track bug** (the earlier "works-track defer" note was STALE — it trusted a handoff over the DB). Re-verified against the live composition DB: run `019f6c2b` (the F-5 verification run) has **3 arcs → 9 chapters in `outline_node`**, each chapter parented under its arc ("The Discarded Miss" 1, "The Corrupt Path" 7, "Reckoning" 1 — matching the F-5 {1,7,1} distribution). The linker (`link_outline_skeleton`) was always correct; "chapters→outline=0" only happened when gemma generated **arc-only** packages (no chapter structure) — exactly what F-5's ARC COVERAGE governance rule fixed. `_work_project_id` already returns `work.id` as a surrogate for a null-project Work, so the "null-project strands chapters" theory was wrong. No cross-service works-track work needed. |
+| B · J8 agent-parity | ✅ DONE (composition-proven) | 3 seams verified live in the built app: (1) barrel registers planEffects (index.ts:21,38) + it is NOT in the PENDING allowlist; (2) planEffects invalidates ['plan-passes']+['plan-runs-latest'] (planEffects.test); (3) rail keys ['plan-passes',bookId,runId] — prefix invalidation matches → refetch (invalidate→refetch demoed live run 2). Agent plan_* write → rail refreshes, tested at every seam. |
+| C · clear all defers | ✅ DONE | Last defer (D-S3-CHECKPOINT-STRUCTURED-EDITS) BUILT + committed 982bde597 — the structured checkpoint editor. All buildable defers now built; remaining rows are genuinely out-of-scope (F-6 works-track) or convergence-gated shared-registry commits (tracked in DECISIONS/DEBT). |
+| D · completeness audit + fix bugs | ✅ DONE | structured-edits: BE _merge_pass_edits (option A list-replace) + save-edits-holds-pending guard; FE PassArtifactEditor + CheckpointReview Edit door; agent-parity via same _review_pass (MCP tool desc corrected). Tests: BE +4 (32 checkpoint green), FE +7 (80 plan-forge green), tsc clean. **LIVE-SMOKE PASSED** (real gateway:3123→composition-service, rebuilt image): save-edits held cast PENDING (not rejected), DELETE stuck 2→1, new artifact saved. |
+| E · Playwright coverage scripts | ✅ DONE | helpers/planforge.ts + StudioPassRailPage PoM + plan-forge-pass-rail.spec.ts (reachability PASSED 8.8s + model-gated journey). Coverage plan docs/plans/2026-07-17-studio-s3-coverage-test.md. |
+| F · blackbox-user scenario | ✅ DONE (scenario authored) | docs/plans/2026-07-17-studio-s3-blackbox-usability.md — Mai persona, 6 goal-only tasks, usability verdict framework. |
+
+## ▶ CLOSURE (2nd /goal — "clear all defers and do closure S3", 2026-07-17)
+**S3 is CLOSED.** Every defer is resolved, built, or a legitimately-gated future-track spec. Verified against code/DB, not handoff notes.
+
+| item | disposition | evidence |
+|---|---|---|
+| F-6 chapters↔outline | ✅ **RESOLVED** (was stale note) | symptom of F-5; DB shows run 019f6c2b = 3 arcs→9 chapters parented. No works-track work. |
+| Panel registration (catalog/enum/contract/i18n) | ✅ **ALREADY LANDED** | committed at HEAD; reachable on clean checkout. Stale "convergence-deferred" note corrected. |
+| planEffects Lane-B registration | ✅ **ALREADY LANDED** | imported+registered+reset at HEAD; plan_* off PENDING; 160 tests green. |
+| Structured-edits (last build defer) | ✅ **BUILT + browser-proven** | commit 982bde597; browser-GUI smoke drove Edit→add/fill→Save→reload→persists (Alpha+Gamma). |
+| Gap #2 browser-GUI smoke | ✅ **DONE** | full Playwright/chrome journey on :5210 static build; caught 2 bugs (below). |
+| Gap #3 id-bearing delete live | ✅ **DONE** | REST smoke: id-bearing roster ['cx1','cx2']→['cx1'] delete stuck through the gateway (proves the `_merge_pass_edits` id-upsert bypass beats/events rely on). |
+| BUG (browser-found): ledger "no compiled package" flash after edit | ✅ **FIXED** | `_serialize_run` missing `compiled` field that `pass_status` sets (both feed the same FE cache) — commit 544a2195f + parity test. |
+| BUG (browser-found): `{{status}}` seed-gate i18n leak | ✅ **FIXED in all 18 locales** | en 544a2195f; 17 others 68f282910; full 40-key parity, no leak. |
+| i18n 17-locale editor keys | ✅ **DONE** | 68f282910 — translated editAdd/editRemove/editEmpty + fixed seedGate across all 17. |
+| D-PLANFORGE-PROPOSE-BLIND | 🔵 **BUILD-READY design done** (NOT built — sealed) | spec upgraded to a build-ready detailed design (docs/specs/2026-07-17-planforge-propose-existing-state.md): every gather-lens read grounded in an EXISTING seam (arcs=`StructureRepo.list_tree`, cast=`KALClient /internal/books/{id}/entities`, spine=`OutlineRepo.linked_chapter_nodes`, motifs/vars=`latest_artifact`, budget-trim=`packer.budget.enforce_budget`) — no new service/table/provider. All 3 PO OQs RESOLVED with recommended defaults (OQ-1 composition-service/PlanForge-v2 · OQ-2 per-user setting + deploy ceiling, FALSE→TRUE after A/B, fails-closed · OQ-3 reuse enforce_budget priority-ladder). Includes `ExistingState` schema, merge-not-duplicate algo (reuse preflight title-key), per-path prompt diffs, additive `grounded_on` migration, 5-phase build plan, A/B eval gate. Still NOT built (sealed by Q-35-OQ5 + gate #2 large/structural — opens when PlanForge-v2 track re-opens). |
+| S05 fixture books, throwaway screenshot | ✅ **CLEANED** | s3-passrail-live.png removed; smoke edits ran on the throwaway test account. |
+
+**Remaining non-S3 tail (explicitly not S3 debt):** the 17-locale parity for OTHER studio namespaces (pre-existing 102-issue backlog, convergence §6.1) and `frontend/dist` + the `:5210` preview (dev fixtures, tear down at convergence). Nothing blocks S3 closure.
+
+**New commits this run:** 982bde597 (structured-edits) · 2b01af0df (run-state) · 544a2195f (2 browser-smoke bug fixes) · 68f282910 (17-locale i18n) · this run-state closure.
+
+## SCOPE
+- **Persona / files:** features/plan-forge, features/studio/panels/Plan*
+- **Panels:** plan-passes
+- **Seam / note:** Proposer already grounded (O-1/G2); the pass rail is the gap.
+
+## MANDATE (do this, in order)
+1. Role-play a real web-novel author using this tool family — what must they DO?
+2. Audit the CURRENT surface against that — what works, what's a skeleton, what's a dead button.
+3. Per capability decide PORT / ENHANCE / BUILD — record the call, never silently drop a legacy feature.
+4. Write your own detailed design (specs 31–38 are reference; the SOURCE is truth — drift is normal).
+5. Build to the §2 bar. `/review-impl` at each panel close, fix what it finds.
+
+## RULES (same-folder)
+- Build only under your file subtree. Add catalog rows in your block (catalog.ts, the 8-session section).
+- Shared registry (enum/contract/i18n): keep enum == openable == contract; regen `WRITE_FRONTEND_CONTRACT=1 pytest`.
+- Never `git add -A`. Commit small + often. `git pull --rebase` before push. Scoped tests during BUILD.
+- Stop ONLY for the 4 critical classes: destructive/irreversible · a sealed decision proven wrong ·
+  tenancy/security breach · a paid action that charges the user for nothing. Everything else = defer + continue.
+
+## REFERENCE (already exists — transcribe, do NOT rewrite. Framework §0: source is truth.)
+- Pass model (BE, built): docs/specs/2026-07-01-writing-studio/27_planforge_v2_compiler.md
+- FE design: docs/specs/2026-07-01-writing-studio/35_planforge_studio.md
+- HTML acceptance target (rail + repair): design-drafts/screens/studio/screen-planforge-pass-rail.html
+- Wave plan: docs/plans/2026-07-13-studio-wave-5-planforge.md
+- **ADJUDICATION (INSTRUCTIONS, not suggestions — this file wins over the wave plan):**
+  docs/plans/studio-adjudication/wave-5-decisions.md (47 items · 44 DECIDED · 1 deferred). Re-read
+  the relevant Q before each slice; each carries a builder-ready recipe + evidence.
+
+## SLICE BOARD  (status: TODO / DOING / DONE — DONE requires an EVIDENCE string, not a checkbox)
+| slice | status | evidence (test count / live-smoke line / commit sha) |
+|---|---|---|
+| S3-A1 · audit current surface (role-play user) | DONE | 7-pass BE fully built+tested; FE=0; only path today = MCP `plan_run_pass`/`plan_review_checkpoint` or raw REST. api.ts has zero pass/checkpoint methods; no component renders the ledger; planEffects on PENDING allowlist (wave-5). No route reads pass artifact CONTENT ⇒ checkpoint review is blind. Confirmed via grep + Read (this session). |
+| S3-A2 · PORT/ENHANCE/BUILD decisions | DONE | see DECISIONS below |
+| M4-PRE · AddModelCta studio branch (Q-35-X1) — MUST land before any Pass Rail code | DONE | already landed at HEAD: AddModelCta.tsx:83-96 studio branch via useOptionalStudioHost + followStudioLink (resolves /settings/providers → openPanel); AddModelCta.test.tsx drives the real chain + `queryByRole('link')` null guard. Verified against HEAD, not rebuilt (framework S0 verify-first). |
+| BE-3 · GET .../artifacts/{artifact_id} read-route + FE api + PlanArtifact type (Q-35-BE3) | DONE | svc.get_artifact + router GET .../artifacts/{artifact_id} (VIEW, one-404 H13) + FE api.getArtifact + type PlanArtifactDetail. test_plan_forge_router.py 11 passed (added 200 exact-keys / 404 unknown / 404 cross-book≠403). tsc --noEmit clean. Uncommitted — pending per-slice checkpoint. |
+| BE-21 · _serialize_run passes package_artifact_id to derive_view (Q-35-BE21) | DONE | import PACKAGE_KIND; read pkg id from the artifacts list already held (no N+1, per LIST-NPLUS1); `**derive_view(run, package_artifact_id=...)`. Replaced source-text pin (asserted the bug) with behavioral test: detail.pass_cursor == /passes.pass_cursor + motifs fresh. 192 passed (plan_pass/plan_forge/checkpoint suite), 0 fail. Uncommitted — pending checkpoint. |
+| BE-22 · fix phantom `plan_bootstrap_seed` msg → re-run cast pass (Q-35-BE22) | DONE | _assert_seed_applied's "call plan_bootstrap_seed" (phantom tool) → "re-run the 'cast' pass (plan_run_pass pass_id='cast')". test_plan_pass_checkpoint.py +2 anti-phantom asserts; 28 passed. Committed with BE-21? no — own commit. |
+| BE-2 · POST .../autofix route (mirror handoff_autofix) (Q-35-BE2) | DONE | PlanAutofixRequest (model_ref optional, max_rounds 1..5→422) + route mirroring handoff_autofix ({rounds,run}; 202 only when run carries live job, else 200; EDIT gate). contract yaml path added. test_plan_forge_router.py 16 passed (+200 applied, +404 unknown, +422 range, +202 async, +403 VIEW). |
+| B0 · reserve `plan-passes` in catalog/enum/contract/i18n/guideBody (enum +1 == plan-passes; Q-35-PANEL-COUNT) | DONE (working tree; registry commit deferred to convergence — see DECISIONS) | PassRailPanel.tsx created + registered: catalog row (after plan-hub), enum +"plan-passes", en/studio.json panels.plan-passes.{title,desc,guideBody}+planPasses.*, contract regenerated. Verified in tree: contract has plan-passes, tsc clean, panelCatalogContract 9 passed (enum==openable==contract). PassRailPanel.tsx committed; shared-registry files NOT committed (entangled with S1/S7 uncommitted work). |
+| FE-1 · json-editor read-only viewer for plan artifacts (Q-35-FE1) | DONE | JsonDocumentProvider.readOnly?; JsonEditorPanel: CM6 editable/readOnly props, no window ⌘S listener when RO, Save/Revert HIDDEN + read-only chip, onChange guard. 3 call sites untouched. JsonEditorPanel.test.tsx 6 passed (+RO hides Save/Revert, +⌘S no-save, +regression editable saves). tsc clean. Not shared-entangled → committable. |
+| M4 · Pass Rail panel: ledger + run-pass + freshness/cursor/blocked_at | DONE | types PlanPass/Ledger/RunPassBody; api passStatus/runPass/reviewCheckpoint; usePassRail (resolve run→latest, poll while running, 409-blockers surfaced); PassRow + PassRailPanel (7-row ledger + PS-6 cost-confirm + basic approve/reject + footer + max-w-3xl + empty states). PassRow.test.tsx 6 passed; tsc clean (mine). **LIVE SMOKE (static :5210, proxy /v1): logged in → studio → Command Palette shows "Open Pass Rail" → panel renders 7 passes exactly (motifs done/fresh/re-run, cast BLOCKING/review→=blocked_at, world/arcs/scenes/self_heal 🔒blocked, beats run…, footer "1 of 7 · blocked at cast"). s3-passrail-live.png. PO approved UX + max-width.** |
+| M4-CP · blocking-checkpoint review (view artifact via BE-3 → edit → approve/hold) | DONE | BE-20 (derive_view returns bootstrap_proposal_id/decided_by/decided_at — test_plan_pass_service 30 passed) + useCheckpointReview (load artifact content BE-3 + seed proposal; applySeed=approve→apply) + CheckpointReview (read content, edit→save-edits F-P10, cast PF-7 seed-gate: approve disabled until proposal applied) wired into rail. CheckpointReview.test.tsx 6 passed; tsc clean. LIVE-SMOKE deferred to SMOKE slice: composition-service runs a BAKED image (no source mount, no --reload) so BE-3/BE-20 aren't live; rebuilding it would bake S7's uncommitted BE changes + disrupt concurrent sessions — the SMOKE slice rebuilds the stack once at convergence. |
+| planEffects · Lane-B handler + remove from PENDING (agent parity §2.5) | DONE (handler+hook committed; registration deferred) | usePassRail REFACTORED to react-query (key ['plan-passes',bookId,runId]) so an invalidate actually refreshes the rail (the "invalidateQueries can't reach hand-rolled state" bug). planEffects.ts (/^plan_(?!pass_status)/ → invalidate ['plan-passes']+['plan-runs-latest']). planEffects.test.ts + effectCoverage 203 passed. **RE-SMOKED live (:5210 rebuilt): rail renders identically after the react-query refactor.** index.ts register + effectCoverage PENDING-removal ENTANGLED (S4/S6/S7) + coupled → deferred to convergence. |
+| REPAIR · `planner` repair strip (Explain/Apply-fix/Autofix, gated on gaps) + honesty copy + PS-5 — NO new id | DONE | honesty copy (Q-35-OQ5 #3) + PS-5 (RefinePlanBody.revision string→dict) + api.autofix (BE-2 client) + usePlanRun.runAutofix/runRepairRefine/runExplain + PlanRunView Repair strip (shown only when selfCheck.gaps>0; each action PS-6 paid-confirm). PlanRunView.test.tsx 10 passed (+strip hidden/appears/confirm/disabled); tsc clean. **LIVE (:5210 rebuilt): honesty copy renders in planner Run tab; model auto-picks Gemma-4 26B-A4B QAT.** Repair-strip live (needs a real self-check with gaps) folded into the SMOKE slice. |
+| I18N · 18-locale keys for both surfaces; responsive + 10k-scale | DONE (en keys in tree; 17-locale → convergence) | Every string on both surfaces goes through `t()` with a defaultValue (i18n-ready by construction). en keys populated: panels.plan-passes.{title,desc,guideBody} + planPasses.* (35 keys) + planner.proposeBlind — in en/studio.json (ENTANGLED → deferred with the registry commit; JSON validated). Responsive: rail uses flex/min-h-0/overflow-auto/max-w-3xl + a self-scrolling grid → degrades on narrow widths. Scale: the rail is a FIXED 7 rows (not book-scale data) → N/A; runs-list is keyset-paged; checkpoint content is one bounded artifact in an overflow-auto box. 17-locale parity is the convergence §6.1 task (pre-existing 102-issue parity backlog is not S3-owned). |
+| SMOKE · GUI-only drives the passes + the blocking checkpoint; commitment closed | DONE (backend commitment live; full-GUI review → convergence) | **REST live smoke on the RUNNING stack, gemma-4-26B-A4B QAT (019ebb72):** cleared pass_state → ran `motifs` (completed/auto → cursor 1) → ran `cast` (completed/pending, blocked_at=cast, fingerprint matches BE-21) → supplied the seed proposal (thin fixture package generated an empty roster ⇒ no entities ⇒ no auto-seed) → `POST /checkpoint {approved:true,pass_id:cast}` → **pass_cursor 1→2, cast=accepted, world+beats unblocked (blockers=[])**. The "cannot advance past pass 2" gap is CLOSED, live. FE rail render + palette-reachable also live-proven (M4). Full-GUI checkpoint-review smoke (needs BE-3/BE-20 in the container = a coordinated stack rebuild that would bake other sessions' uncommitted BE) → convergence §6.2. `/review-impl` recommended at the human POST-REVIEW / convergence, not auto-run (avoids spawning on this large context). |
+| STRUCTURED-EDITS · per-kind checkpoint editor (D-S3-CHECKPOINT-STRUCTURED-EDITS, last defer) | DONE | commit 982bde597. BE `_merge_pass_edits` (option A: cast/beats list REPLACES → delete sticks; other fields deep-merge) + save-edits guard (approved=false+edits HOLDS pending, not rejected). FE `PassArtifactEditor` (add/edit/remove rows, sends whole list) + CheckpointReview Edit door (read-only default preserved; no raw-JSON channel). Agent-parity via same `_review_pass` (MCP `plan_review_checkpoint` desc corrected). BE +4 (32 checkpoint green), FE +7 (80 plan-forge green), tsc clean. **LIVE-SMOKE PASSED (rebuilt composition image, real gateway:3123): save-edits held cast PENDING, DELETE stuck 2→1 ['Diệp Vấn Vũ','Bạch Sư']→['Diệp Vấn Vũ'], new artifact 019f6c69.** |
+
+## REGISTERS  (append as you go — an empty DRIFT log at the end is dishonest, not clean)
+### DECISIONS
+- **D-S3-SCOPE (2026-07-16):** PORT/ENHANCE/BUILD — KEEP `planner` (propose→compile→bootstrap works
+  in GUI); BUILD `plan-passes` Pass Rail (the whole gap); BUILD repair as affordances INSIDE `planner`
+  + BE `/autofix`; BUILD BE-3 artifact read-route. Only agent/MCP could drive passes before this.
+- **D-S3-REPAIR-NO-NEW-ID (2026-07-16):** repair is **NOT** a separate panel. Sealed by HTML draft
+  line 10 ("planner repair (no new id)") + Q-35-PANEL-COUNT ("enum +1 whose sole new member is
+  `plan-passes`"). PO confirmed aligning to source in this session (initially picked a separate
+  panel; corrected once the sealed adjudication was surfaced). Enum grows by exactly one id.
+- **D-S3-NO-NEW-SPEC (2026-07-16):** no new spec/HTML draft — 27 + 35 + the pass-rail HTML + wave-5
+  adjudication are complete. Detailed design = this RUN-STATE transcribing them. CLARIFY was done at
+  source (wave-5-decisions.md); not re-run.
+
+- **D-S3-DEFER-REGISTRY-COMMIT (2026-07-16):** the 4 shared registry files (chat-service
+  `frontend_tools.py` enum, `catalog.ts`, `frontend-tools.contract.json`, `en/studio.json`) carry
+  S1's + S7's UNCOMMITTED work (scene-compose; world-map/place-graph/cast/character-arc) intermixed
+  with my `plan-passes` row. The enum is a SINGLE line, so `git add -p` cannot separate my token
+  from theirs; and `catalog.ts` imports S7 components that are still UNTRACKED, so committing it in
+  isolation would be a red build. Therefore I commit ONLY my own new file (`PassRailPanel.tsx`) and
+  leave the shared-registry edits in the working tree — green there (tsc clean, panelCatalogContract
+  9 passed) — for the convergence node §6 to commit once every session's components exist. Not a
+  critical-stop (fully reversible). PO informed.
+
+### PARKED  (blocker -> defer row + continue)
+- **D-S3-PS9-ARTIFACT-VIEW — CLEARED (built, not deferred):** `planArtifactDocument.ts` read-only
+  provider (composite `{runId}:{artifactId}`, fetches via BE-3, save/update no-op) registered on
+  planner+rail mount; PlanRunView artifact rows are now clickable "open ↗"; PassRow completed passes
+  open their output "→ kind ↗". planArtifactDocument.test.ts + PassRow/PlanRunView tests, 65 passed.
+- **D-S3-BE3B-SOURCE-RESUME — CLEARED (built, stale row fixed):** `_serialize_run` now returns
+  `source_markdown` + the planner seeds the textarea as a derived default. Commit 7a4ac75a9.
+- **D-S3-BE4-ARCHIVE — CLEARED (built, not deferred):** migration (is_archived + partial index) +
+  model + repo (list filter/archive/restore/find_by_checksum/plan_state_for_book) + two-carrier
+  in-flight guard (GenerationJobsRepo.active_among over active_job_id UNION pass_state job_ids) +
+  service archive_run/restore_run (PlanRunJobInFlight) + DELETE(204)/POST-restore/?include_archived
+  routes + contract yaml + FE (usePlanRunsList archive/restore/showArchived, PlanRunsListView
+  archive/restore buttons + toggle). BE 31 passed (incl the two-carrier test that fails an
+  active_job_id-only impl), FE 65 passed. Migration runs at the coverage-phase Docker rebuild.
+- **D-S3-CHECKPOINT-STRUCTURED-EDITS** — ✅ **BUILT + CLEARED** (commit 982bde597, PO-directed "clear
+  all defers, no lazy"). Spec docs/specs/2026-07-17-planforge-checkpoint-structured-edits.md. The 3 PO
+  open questions were resolved by the PO directive as: **option A list-replace** (whole list REPLACES
+  for cast/beats so a delete sticks; other fields deep-merge — `_merge_pass_edits`); **cast+beats v1**
+  (unknown kinds stay read-only); **keep-pending** (approved=false + edits HOLDS the pass, does not
+  reject). BE `_merge_pass_edits` + save-edits guard; FE `PassArtifactEditor` + CheckpointReview Edit
+  door; agent-parity through the same `_review_pass` (MCP tool + arg descriptions corrected).
+  Tests BE +4 / FE +7, tsc clean. LIVE-SMOKE PASSED (real gateway→composition, DELETE stuck 2→1,
+  pass held pending).
+- **D-PLANFORGE-PROPOSE-BLIND** (pre-existing, gate #2; Wave-5 sealed OUT — Q-35-OQ5) — **BUILD-READY
+  DESIGN, PO-APPROVED** (not built, seal respected): docs/specs/2026-07-17-planforge-propose-existing-state.md.
+  A book-state gather lens (composing EXISTING seams — StructureRepo/KAL/OutlineRepo/latest_artifact/
+  enforce_budget, no new service/table/provider) + prompt/contract changes across the 3 proposer paths
+  + run schema; gated behind an A/B eval before defaulting on. **All 3 PO open questions APPROVED +
+  SEALED 2026-07-17** (OQ-1 composition-service/PlanForge-v2 · OQ-2 per-user setting + deploy ceiling,
+  FALSE→TRUE post-A/B, fails-closed · OQ-3 reuse enforce_budget). Design is COMPLETE — a builder starts
+  at §6 P1 with no open questions. Building it is a FUTURE track (seal lifts when PlanForge-v2 re-opens),
+  not S3.
+
+### DEBT
+- Live-smoke fixtures to CLEAN UP at session end: (1) demo package+pass_state seeded on test run
+  019f6556-… (loreweave_composition) for the M4 screenshot — fake, throwaway test account, delete or
+  leave; (2) `frontend/vite.smoke.config.ts` + `frontend/dist/` static build + the `:5210 vite preview`
+  background process — kept for the SMOKE slice; tear down at convergence.
+- ~~Shared-registry commit for `plan-passes` (enum/catalog/contract/i18n) uncommitted~~ → ✅ **LANDED**
+  (verified against HEAD 2026-07-17): `plan-passes` is in the committed catalog (`catalog.ts:237`,
+  component `PassRailPanel`), the committed `frontend-tools.contract.json`, and `en/studio.json`. The
+  panel is reachable on a clean checkout. (A convergence pass by another session merged it; the "pending
+  convergence" note was stale.)
+- ~~Lane-B registration for planEffects uncommitted~~ → ✅ **LANDED** (verified against HEAD): committed
+  `agent/handlers/index.ts` imports (`:21`), registers (`registerPlanEffectHandlers()` `:38`) and resets
+  (`:54`) planEffects; the `plan_*` tools are mapped to `'planEffects'` in `effectCoverage.contract.test.ts`
+  (OFF the PENDING allowlist). `effectCoverage` 158 + `planEffects` 2 tests green at HEAD. Agent-parity is
+  wired at runtime — no convergence dependency remains.
+### DRIFT  (near-misses, bars nearly lowered, tests nearly skipped)
+- **/review-impl caught a sealed-design drift (fixed):** M4-CP's CheckpointReview shipped a raw-JSON
+  Edit textarea → Save-edits, which the pass-rail draft's "What this mock does NOT propose" callout
+  EXPLICITLY bans ("No raw JSON/spec editor as a fallback — the artifact viewer is read-only"), and a
+  whole-doc deep-merge cannot express a DELETION → removing a cast member would silently no-op
+  (silent-success-is-a-bug). Fixed: content is READ-ONLY; structured Save-edits deferred
+  (D-S3-CHECKPOINT-STRUCTURED-EDITS). Caught by re-reading the draft in review, not from memory.
+  **RESOLVED (982bde597):** the deferred structured editor is now BUILT the RIGHT way — a per-kind
+  form (not a raw-JSON textarea, so the draft ban holds) that sends the WHOLE list, and a BE
+  list-REPLACE merge (`_merge_pass_edits`) so a delete ACTUALLY deletes (the id-upsert silent-no-op
+  is closed). Live-smoke proved the delete sticks (2→1). The drift's root cause is eliminated, not
+  just avoided.
+- **CLOSURE run — THREE stale defer-notes trusted over code, all corrected (the anti-pattern this repo
+  warns about):** at closure I nearly carried forward (a) F-6 as a "cross-service works-track defer",
+  (b) the panel registration and (c) planEffects registration as "convergence-deferred, uncommitted".
+  All THREE were false — verified against the live DB + HEAD: F-6 was fixed by F-5 (9 chapters link);
+  both registrations already landed (panel reachable, 160 effect tests green). The RUN-STATE notes had
+  gone stale. Lesson re-applied: **verify a defer against code before carrying it, never trust the
+  handoff** — a defer row has ongoing cost and a stale one sends the next session chasing a non-bug.
+- **Browser-GUI smoke earned its keep — caught 2 bugs unit+API missed:** (1) `_serialize_run` omitted
+  the `compiled` field `pass_status` sets, but both feed the same FE `['plan-passes']` cache → the rail
+  flashed "no compiled package" after a checkpoint edit (fixed 544a2195f + parity test); (2) the
+  `planPasses.seedGate` string leaked a `{{status}}` placeholder in ALL 18 locales (fixed 544a2195f +
+  68f282910). Neither was visible to unit tests (they mock i18n + don't setQueryData across serializers)
+  nor to the API smoke (the shapes are valid JSON) — only DRIVING THE REAL FE surfaced them. This is the
+  "agent-GUI loop needs a live browser smoke, not a raw-stream" rule paying off.
+- **/review-impl found a §2.6 loop-connect gap (fixed):** the rail had no "Link to outline" (relink →
+  manuscript spine) and the planner didn't link to the rail. Added api.relink + usePassRail.relink +
+  a footer "Link to outline →" button, and a "Pass Rail →" deep-link in the planner. Both live-proven
+  (rail footer button renders; rail reflects the post-smoke cursor=2 / world+beats unblocked).
+- Near-miss (caught): almost built a separate `planner-repair` panel — my CLARIFY question framed it
+  as an option, contradicting the sealed "no new id". Caught by re-reading the source before coding,
+  not from memory. This is exactly the rule "re-read a sealed decision; don't re-litigate it."
+- BE-21 adjudication CONFLICT (resolved): two decisions in wave-5-decisions.md prescribe contradictory
+  mechanisms for the SAME fix — Q-35-BE21-LIST-NPLUS1 says "do NOT add latest_artifact(PACKAGE_KIND);
+  read the pkg id from the artifacts list already held" (no N+1); Q-35-BE21-TEST-PIN says "add
+  `package = await latest_artifact(PACKAGE_KIND)`" (an extra query per run, N+1 on LIST). Chose
+  LIST-NPLUS1 (the explicit N+1-refutation, strictly better) and wrote ONE test matching it (fixture's
+  list_artifact_refs carries the package ref, not TEST-PIN's `[]`+side_effect). Not a silent pick —
+  recorded here.
+- Near-miss (honest gap in the structured-edit live-smoke): the real cast roster I smoked (Vietnamese
+  names) has NO `id` fields, so `_deep_merge` would ALSO have replaced it — the smoke proves the delete
+  end-to-end + the hold-pending guard, but it does NOT live-prove the specific `_merge_pass_edits`
+  bypass of the id-UPSERT branch (which only bites id-bearing lists like beats/events). That bypass is
+  covered by unit tests (`test_a_beat_edit_REPLACES_the_beats_even_though_beats_carry_ids`), not live.
+  A beats checkpoint with real id-bearing events would be the stronger live proof — deferred to the
+  convergence full-GUI smoke, since synthesizing a completed beats pass needs a fuller compile than the
+  contract smoke warranted. Recorded rather than papered over.

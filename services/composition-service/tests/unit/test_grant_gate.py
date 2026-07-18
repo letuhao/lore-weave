@@ -2,8 +2,9 @@
 
 Proves the book-grant chokepoint: none → 404 (OwnershipError, no oracle),
 grantee-under-tier → 403 (InsufficientGrant), at/above tier → allowed. The works
-router maps these and enforces read=VIEW / write=EDIT; composition_work stays
-per-user.
+router maps these and enforces read=VIEW / write=EDIT; composition_work is
+BOOK-scoped (25 PM-9) — access is decided at this E0 book-grant gate, never in
+the repo (which no longer filters on the actor).
 """
 
 from __future__ import annotations
@@ -60,7 +61,7 @@ async def test_authorize_book_at_or_above_tier_ok(held, need):
 
 
 def _work():
-    return CompositionWork(project_id=PROJECT, user_id=USER, book_id=BOOK, version=1)
+    return CompositionWork(project_id=PROJECT, created_by=USER, book_id=BOOK, version=1)
 
 
 def _client(level, *, work=None):

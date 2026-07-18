@@ -3,7 +3,7 @@
 // arc→chapter→scene tree → inline edit → commit (409 CHAPTER_ALREADY_PLANNED →
 // inline replace-confirm). Mounted always-on (CSS-hidden) by CompositionPanel so
 // a half-edited tree survives a tab switch (CLAUDE.md no-ternary-unmount rule).
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ModelPicker } from '@/components/model-picker';
 import { usePlanner, type PlannerError } from '../hooks/usePlanner';
@@ -21,6 +21,10 @@ type Props = {
    *  compose tab (the W2 seam: CompositionPanel wires selectTab('compose')+setSceneId).
    *  Optional: when absent the binding cards still swap/bind; only the generate link no-ops. */
   onSelectScene?: (sceneId: string) => void;
+  /** S-13 — pre-select a structure template on mount (the studio DecomposePanel's deep-link from
+   *  "Use in decompose"). Legacy callers omit it → unchanged. Seeds once (usePlanner lives inside
+   *  this view, so the host cannot call setTemplateId itself); remount (a new key) re-seeds. */
+  initialTemplateId?: string;
 };
 
 function errorText(e: PlannerError, t: (k: string) => string): string {
@@ -31,9 +35,16 @@ function errorText(e: PlannerError, t: (k: string) => string): string {
   return e.message;
 }
 
-export function PlannerView({ projectId, bookId, modelRef, modelSource, token, onSelectScene }: Props) {
+export function PlannerView({ projectId, bookId, modelRef, modelSource, token, onSelectScene, initialTemplateId }: Props) {
   const { t } = useTranslation('composition');
   const p = usePlanner(projectId, token);
+  // S-13 — seed the deep-linked template once on mount (before any preview). A remount via a new
+  // `key` (the host keys on the deep-link id) re-runs this for a fresh "Use in decompose".
+  const setTemplateId = p.setTemplateId;
+  useEffect(() => {
+    if (initialTemplateId) setTemplateId(initialTemplateId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- seed once from the open-param, not on every setter identity change
+  }, []);
   const templates = p.templates.data ?? [];
   const roster = useGlossaryRoster(bookId, token);
   const committedChapterIds = p.committedChapterIds ?? [];

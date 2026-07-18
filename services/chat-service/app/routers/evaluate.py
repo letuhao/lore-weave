@@ -29,6 +29,7 @@ from app.config import settings
 from app.client.knowledge_client import get_knowledge_client
 from app.deps import get_current_user, get_db
 from app.models import EvaluateResponse
+from app.services.coaching_rubrics import coerce_dimensions, resolve_active_rubric
 from app.services.evaluate import (
     build_eval_messages,
     coerce_scorecard,
@@ -36,6 +37,10 @@ from app.services.evaluate import (
     parse_json_object,
     render_summary_text,
 )
+
+# C3 (SD-C3) — the default coaching rubric code when a charter names none. A charter may pin a
+# different rubric via `charter.rubric_code`; a code that resolves to NO active rubric → 409 (P5-D5).
+_DEFAULT_RUBRIC_CODE = "interview_v1"
 
 logger = logging.getLogger(__name__)
 
@@ -146,18 +151,57 @@ async def evaluate_session(
     if not row:
         raise HTTPException(status_code=404, detail="session not found")
 
-    model_source = row["model_source"]
-    model_ref = row["model_ref"]
-    if not model_source or not model_ref:
+    actor_source = row["model_source"]
+    actor_ref = row["model_ref"]
+    if not actor_source or not actor_ref:
         # EC-10 — no model to evaluate with. A clear, non-hardcoded failure.
         raise HTTPException(
             status_code=409,
             detail="no model configured for this session — cannot evaluate",
         )
 
+    # ── Gate 2 (WS-5.10 / P5) — judge ≠ actor. The session's model PLAYED the roleplay
+    # partner; letting it score its own performance is the exact conflict this gate exists
+    # to stop. Resolve a distinct CRITIC (the account critic default, falling back to the
+    # account chat default), and REFUSE to score if none resolves distinct from the actor —
+    # a weak/self judge yields NO score, not a self-flattering one (WS-5.18). The refusal is
+    # explicit + actionable (the single-model degraded path — never a silent refuse-all).
+    from app.client.provider_client import get_provider_client
+    _pc = get_provider_client()
+    judge = await _pc.get_default_model("critic", user_id)
+    if not judge:
+        judge = await _pc.get_default_model("chat", user_id)
+    if not judge or str(judge[1]) == str(actor_ref):
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                "scoring needs a CRITIC model distinct from this session's model (the session "
+                "model played the roleplay partner and must not grade itself). Set a critic model "
+                "in Settings › Chat & AI › default models."
+            ),
+        )
+    model_source, model_ref = judge  # the JUDGE drives the evaluator LLM from here on
+
     charter, state, rubric = await _resolve_working_memory(
         sid, user_id, row["working_memory_seed"]
     )
+
+    # ── C3 (SD-C3) — resolve the SoT coaching rubric. The scored dimensions come from the
+    # System-tier `coaching_rubrics` standard (versioned + cited), NOT the free-form seed rubric.
+    # No active rubric for the code ⇒ 409 REFUSE to score (P5-D5): an improvised standard is worse
+    # than none. The rubric stays QUARANTINE-tier (SD-7) — wiring it does not clear the number.
+    _code = charter.get("rubric_code")
+    if not isinstance(_code, str) or not _code.strip():
+        _code = _DEFAULT_RUBRIC_CODE
+    rubric_obj = await resolve_active_rubric(pool, _code)
+    if rubric_obj is None:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                f"no active coaching rubric for code '{_code}' — cannot score. Seed a "
+                "coaching_rubrics standard (an improvised standard is worse than none)."
+            ),
+        )
 
     # Transcript (non-error turns, in order). Anchor the scorecard to the LAST
     # message so the NOT-NULL FK holds and it cascades on delete.
@@ -174,7 +218,11 @@ async def evaluate_session(
     transcript = [{"role": r["role"], "content": r["content"]} for r in msg_rows]
     last_message_id = msg_rows[-1]["message_id"]
 
-    messages, clipped = build_eval_messages(charter, state, rubric, transcript)
+    # Serialize the rubric's dimensions ([{key,label,anchors}]) so the judge scores each 1-5.
+    dim_spec = [
+        {"key": d.key, "label": d.label, "anchors": d.anchors} for d in rubric_obj.dimensions
+    ]
+    messages, clipped = build_eval_messages(charter, state, rubric, transcript, dimensions=dim_spec)
     partial = is_partial(state, clipped)
 
     try:
@@ -195,6 +243,12 @@ async def evaluate_session(
         )
 
     card = coerce_scorecard(raw, charter, partial=partial)
+    # C3 — rebuild the N-dimensional score SERVER-AUTHORITATIVELY from the rubric's fixed keys
+    # (the model contributes only a clamped 1-5 + note per known key). SD-7: `card.quarantine`
+    # stays True and MUST remain INDEPENDENT of `rubric_obj.tier` — a 'validated' rubric does NOT
+    # clear the score's quarantine; only the human-rating (numeric-eval) milestone does. Do not
+    # wire `quarantine = rubric_obj.tier == 'validated'` here (that would be an SD-7 violation).
+    card.dimensions = coerce_dimensions(raw, rubric_obj)
 
     output_id = uuid4()
     language = charter.get("language")

@@ -82,6 +82,7 @@
       "table": "表格"
     },
     "placeholder": "询问关于你的故事、角色、世界观的问题...",
+    "assistant_placeholder": "聊聊你的一天吧 —— 那些遇见的人、参与的项目和做出的决定……",
     "attach_context": "附加上下文",
     "assist": "辅助",
     "voice_assist_on": "语音辅助已开启 — AI 回复将通过语音播放",
@@ -127,12 +128,6 @@
     "mode_write_hint": "写作模式 — Agent 可以进行不可撤销的更改 (每个新工具请求一次)"
   },
   "new": {
-    "preset": {
-      "novel": "小说助手",
-      "translator": "翻译官",
-      "worldbuilder": "世界构建者",
-      "editor": "编辑"
-    },
     "create_failed": "创建对话失败：{{error}}",
     "title": "开始新对话",
     "model": "模型",
@@ -234,7 +229,6 @@
   "actionConfirm": {
     "label": "确认操作",
     "batch_count": "{{count}} 项",
-    "warning": "此更改影响较大 — 请确认。",
     "warning_destructive": "此操作具有破坏性且会产生连锁反应 — 请确认。",
     "destructive_skipped": "除非您在上方启用，否则将跳过 {{count}} 个破坏性操作。",
     "confirm": "确认",
@@ -248,7 +242,8 @@
     "cancelled": "已取消",
     "reprice": "由于成本已上升至 {{cost}}，原估算已失效 — 请重新确认新价格。",
     "reprice_title": "价格已变动 — 未应用",
-    "reprice_detail": "原估算 {{old}}，现为 {{new}}。未产生任何费用 — 请重新确认新价格。"
+    "reprice_detail": "原估算 {{old}}，现为 {{new}}。未产生任何费用 — 请重新确认新价格。",
+    "warning": "应用此更改前请进行确认。"
   },
   "batchConfirm": {
     "title": "一键确认 {{count}} 个操作",
@@ -345,14 +340,6 @@
     "title": "会话设置",
     "model": "模型",
     "system_prompt": "系统提示词",
-    "preset": {
-      "Custom": "自定义",
-      "Novelist": "小说家",
-      "Translator": "翻译官",
-      "Worldbuilder": "世界构建者",
-      "Editor": "编辑",
-      "Analyst": "分析师"
-    },
     "prompt_placeholder": "为 AI 设定角色、性格或具体指令...",
     "gen_params": "生成参数",
     "max_tokens": "最大 Token 数",
@@ -389,9 +376,11 @@
     "approve_once": "仅允许一次",
     "always_allow": "始终允许",
     "deny": "拒绝",
+    "never_allow": "Never allow",
     "approved": "已批准 — 正在运行 ✓",
     "always_allowed": "始终允许 — 正在运行 ✓",
-    "denied": "已拒绝"
+    "denied": "已拒绝",
+    "never_allowed": "Never allowed — you can undo this in Settings → Permissions"
   },
   "rack": {
     "label": "上下文",
@@ -416,6 +405,9 @@
     "more": "+{{count}} 个",
     "more_tooltip": "有 {{count}} 个已发现但未显示的工具",
     "remove": "移除",
+    "advanced_tools": "高级工具 ({{count}})",
+    "advanced_tools_hint": "保留这些旧版工具是为了兼容旧版调用。除非您明确需要其中之一，否则请优先使用上方的工具。",
+    "legacy_pin_tooltip": "您已在此会话中启用了此旧版工具",
     "server": {
       "knowledge": "知识",
       "glossary": "术语表",
@@ -426,10 +418,7 @@
       "ui": "UI",
       "chat": "聊天",
       "other": "其他"
-    },
-    "advanced_tools": "高级工具 ({{count}})",
-    "advanced_tools_hint": "保留这些旧版工具是为了兼容旧版调用。除非您明确需要其中之一，否则请优先使用上方的工具。",
-    "legacy_pin_tooltip": "您已在此会话中启用了此旧版工具"
+    }
   },
   "inspector": {
     "title": "代理运行时",
@@ -449,5 +438,13 @@
       "activated": "已激活",
       "tool_running": "正在运行工具"
     }
+  },
+  "presets": {
+    "custom": "自定义",
+    "novelist": "小说家",
+    "translator": "翻译官",
+    "worldbuilder": "世界构建者",
+    "editor": "编辑",
+    "analyst": "分析师"
   }
 }

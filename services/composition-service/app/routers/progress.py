@@ -7,9 +7,15 @@ POST /works/{project_id}/progress/report {chapter_id, words, date} — the edito
      reports the active chapter's current total word count on save (a SNAPSHOT,
      keyed to the user's LOCAL date). Idempotent per (chapter, local date).
 
-Per-user: both gate on `works.get(user_id, project_id)` (the composition_work row
-is per-user → a cross-user/unknown project is a 404, no existence oracle). The
-client supplies its local date so streaks honor the writer's midnight, not UTC.
+Access (spec 25 PM-8/PM-9/PM-16): the Work is resolved by `project_id` (un-user-
+scoped) and every route gates the caller's E0 VIEW grant on the row's `book_id`
+BEFORE it trusts the project_id — de-usering `works.get` without this gate would
+be zero access control (any authenticated user could read/write any book's stats
+by guessing the project id). The daily-progress/baseline tables themselves stay
+OUTSIDE the package and PER-USER (PM-16): the stat is the caller's OWN authoring,
+so `progress.*` keeps `user_id` — a legitimate viewer only ever sees/writes their
+own words. The client supplies its local date so streaks honor the writer's
+midnight, not UTC.
 """
 
 from __future__ import annotations
@@ -23,12 +29,28 @@ from pydantic import BaseModel, Field
 
 from app.db.repositories.daily_progress import DailyProgressRepo
 from app.db.repositories.works import WorksRepo
-from app.deps import get_daily_progress_repo, get_works_repo
+from app.deps import get_daily_progress_repo, get_grant_client_dep, get_works_repo
+from app.grant_client import GrantClient, GrantLevel
+from app.grant_deps import InsufficientGrant, authorize_book
 from app.middleware.jwt_auth import get_current_user
+from app.packer.pack import OwnershipError
 
 router = APIRouter(prefix="/v1/composition")
 
 _SPARKLINE_DAYS = 30
+
+
+async def _gate_book(grant: GrantClient, book_id: UUID, caller: UUID, need: GrantLevel) -> None:
+    """E0-4c book-grant chokepoint → HTTP. none→404 (no oracle), under→403.
+    composition_work is PER-BOOK (spec 25 PM-9); this gate is the ONLY access
+    decision that lets the route trust the project_id (the per-user progress stat
+    it then reads/writes is the caller's own — PM-16)."""
+    try:
+        await authorize_book(grant, book_id, caller, need)
+    except OwnershipError:
+        raise HTTPException(status_code=404, detail="work not found")
+    except InsufficientGrant:
+        raise HTTPException(status_code=403, detail="insufficient access")
 
 
 def _parse_local_date(raw: str) -> date:
@@ -84,21 +106,64 @@ async def get_progress(
     user_id: UUID = Depends(get_current_user),
     works: WorksRepo = Depends(get_works_repo),
     progress: DailyProgressRepo = Depends(get_daily_progress_repo),
+    grant: GrantClient = Depends(get_grant_client_dep),
 ) -> dict[str, Any]:
-    work = await works.get(user_id, project_id)
+    work = await works.get(project_id)
     if work is None:
         raise HTTPException(status_code=404, detail="work not found")
+    # VIEW gate on the book before trusting project_id (PM-8); the per-user stat
+    # below is still keyed to the caller (PM-16).
+    await _gate_book(grant, work.book_id, user_id, GrantLevel.VIEW)
     anchor = _parse_local_date(today)
     agg = await progress.read_aggregate(user_id, project_id, anchor)
     by_date = dict(agg.day_words)
+    # BE-P2 — the goal is PER-USER (composition_progress_goal). Read-through fallback to the
+    # legacy shared work.settings.daily_goal so no existing user loses a goal on cutover; the
+    # WRITER only ever writes the new per-user table (the legacy window is closed in the writer).
+    # SET-1: expose the source tier so the panel can show WHERE the effective value came from.
+    user_goal = await progress.get_goal(user_id, project_id)
+    legacy_goal = _coerce_goal(work.settings or {})
+    if user_goal is not None:
+        daily_goal, goal_source = user_goal, "user"
+    elif legacy_goal is not None:
+        daily_goal, goal_source = legacy_goal, "work_legacy"
+    else:
+        daily_goal, goal_source = None, "none"
     return {
         "today": anchor.isoformat(),
         "today_words": by_date.get(anchor, 0),
         "book_total": agg.book_total,
-        "daily_goal": _coerce_goal(work.settings or {}),
+        "daily_goal": daily_goal,
+        "daily_goal_source": goal_source,
         "current_streak": _current_streak(by_date, anchor),
         "sparkline": _sparkline(by_date, anchor),
     }
+
+
+class ProgressGoalBody(BaseModel):
+    # 0 clears the goal (per-user row deleted); a positive int sets it. Same sane upper cap.
+    daily_goal: int = Field(ge=0, le=5_000_000)
+
+
+@router.put("/works/{project_id}/progress/goal")
+async def set_progress_goal(
+    project_id: UUID,
+    body: ProgressGoalBody,
+    user_id: UUID = Depends(get_current_user),
+    works: WorksRepo = Depends(get_works_repo),
+    progress: DailyProgressRepo = Depends(get_daily_progress_repo),
+    grant: GrantClient = Depends(get_grant_client_dep),
+) -> dict[str, Any]:
+    """BE-P2 — set the caller's OWN daily word goal for this Work (0 clears it). Per-user:
+    one collaborator's goal never moves another's. VIEW-gated like the other progress routes
+    (the goal is the caller's own stat, not a package mutation), then written to the per-user
+    composition_progress_goal table — NOT work.settings (the tenancy defect this replaces)."""
+    work = await works.get(project_id)
+    if work is None:
+        raise HTTPException(status_code=404, detail="work not found")
+    await _gate_book(grant, work.book_id, user_id, GrantLevel.VIEW)
+    await progress.set_goal(user_id, project_id, body.daily_goal)
+    return {"ok": True, "daily_goal": body.daily_goal or None}
 
 
 class ProgressReportBody(BaseModel):
@@ -117,13 +182,17 @@ async def report_progress(
     user_id: UUID = Depends(get_current_user),
     works: WorksRepo = Depends(get_works_repo),
     progress: DailyProgressRepo = Depends(get_daily_progress_repo),
+    grant: GrantClient = Depends(get_grant_client_dep),
 ) -> dict[str, Any]:
     """Record the active chapter's current total word count for the caller's local
     date. Idempotent per (chapter, date) — a re-save the same day overwrites the
     snapshot. Advisory: the FE fires this best-effort after a successful save."""
-    work = await works.get(user_id, project_id)
+    work = await works.get(project_id)
     if work is None:
         raise HTTPException(status_code=404, detail="work not found")
+    # VIEW gate on the book before trusting project_id (PM-8); the snapshot is
+    # written to the caller's OWN per-user progress row (PM-16).
+    await _gate_book(grant, work.book_id, user_id, GrantLevel.VIEW)
     snapshot_date = _parse_local_date(body.date)
     await progress.report(user_id, project_id, body.chapter_id, body.words, snapshot_date)
     return {"ok": True, "date": snapshot_date.isoformat(), "words": body.words}
@@ -142,13 +211,17 @@ async def baseline_progress(
     user_id: UUID = Depends(get_current_user),
     works: WorksRepo = Depends(get_works_repo),
     progress: DailyProgressRepo = Depends(get_daily_progress_repo),
+    grant: GrantClient = Depends(get_grant_client_dep),
 ) -> dict[str, Any]:
     """Capture a chapter's pre-existing word count the first time it is opened after
     tracking starts (insert-once; re-opens never overwrite). The FE fires this on
     chapter load so the chapter's first daily snapshot counts only NEW words. Advisory
     / best-effort — like the report, a failure never blocks editing."""
-    work = await works.get(user_id, project_id)
+    work = await works.get(project_id)
     if work is None:
         raise HTTPException(status_code=404, detail="work not found")
+    # VIEW gate on the book before trusting project_id (PM-8); the baseline is the
+    # caller's OWN per-user row (PM-16).
+    await _gate_book(grant, work.book_id, user_id, GrantLevel.VIEW)
     await progress.ensure_baseline(user_id, project_id, body.chapter_id, body.words)
     return {"ok": True}

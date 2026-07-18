@@ -36,6 +36,10 @@ type unknownEntityOut struct {
 	SourceKindCode *string `json:"source_kind_code"`
 	Status         string  `json:"status"`
 	CreatedAt      string  `json:"created_at"`
+	// ScopeLabel (D-GLOSSARY-ENTITY-SCOPE) surfaces an existing disambiguator so a
+	// triaging agent/human can tell two same-named unknowns apart before deciding
+	// whether one is a duplicate of the other or a genuinely distinct entity.
+	ScopeLabel string `json:"scope_label,omitempty"`
 }
 
 // listUnknownEntities handles GET /v1/glossary/books/{book_id}/unknown-entities
@@ -52,7 +56,10 @@ func (s *Server) listUnknownEntities(w http.ResponseWriter, r *http.Request) {
 	if !s.requireGrant(w, r.Context(), bookUUID, userID, grantclient.GrantView) {
 		return
 	}
-	out, total, err := s.queryUnknownEntities(r.Context(), bookUUID)
+	// REST callers keep the pre-existing status-blind behavior unchanged — the
+	// default-to-"draft" narrowing (2026-07-08 MCP feedback) is scoped to the
+	// glossary_list_unknown_entities MCP tool, not this REST endpoint.
+	out, total, err := s.queryUnknownEntities(r.Context(), bookUUID, "all")
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "failed to query unknown entities")
 		return

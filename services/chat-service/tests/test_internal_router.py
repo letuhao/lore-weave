@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from unittest.mock import AsyncMock
+from datetime import date, datetime, timedelta, timezone
+from unittest.mock import AsyncMock, patch
 from uuid import uuid4
 
 import pytest
@@ -119,3 +120,344 @@ async def test_tool_health_requires_internal_token(client):
     assert (await client.get("/internal/tool-health")).status_code == 401
     r = await client.get("/internal/tool-health", headers={"X-Internal-Token": "wrong"})
     assert r.status_code == 401
+
+
+# ── WS-1.8 (spec 06 §Q10) — GET /internal/chat/messages/day-window ───────────
+
+_DW = "/internal/chat/messages/day-window"
+
+
+def _dw_params(**over):
+    p = {"user_id": str(uuid4()), "book_id": str(uuid4()), "local_date": "2026-03-10"}
+    p.update(over)
+    return p
+
+
+@pytest.mark.asyncio
+async def test_day_window_requires_internal_token(client):
+    # The guard fires before any DB access — no token / wrong token → 401.
+    assert (await client.get(_DW, params=_dw_params())).status_code == 401
+    r = await client.get(_DW, params=_dw_params(), headers={"X-Internal-Token": "wrong"})
+    assert r.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_day_window_limit_is_bounded(client, mock_pool):
+    # A caller cannot ask for an unbounded window: limit is clamped to [1, 50000].
+    mock_pool.fetch = AsyncMock(return_value=[])
+    assert (await client.get(_DW, params=_dw_params(limit=0), headers=_AUTH)).status_code == 422
+    assert (await client.get(_DW, params=_dw_params(limit=50001), headers=_AUTH)).status_code == 422
+    # book_id is OPTIONAL (T-4: session_kind='assistant' is the server-side discriminator, so a
+    # missing book_id does NOT widen the scope) — the required params are user_id + local_date.
+    ok = {"user_id": str(uuid4()), "local_date": "2026-03-10"}  # no book_id
+    assert (await client.get(_DW, params=ok, headers=_AUTH)).status_code == 200
+    bad = {"local_date": "2026-03-10"}  # no user_id
+    assert (await client.get(_DW, params=bad, headers=_AUTH)).status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_day_window_shape_and_truncation_via_mock(client, mock_pool):
+    # Even with the dev DB down, prove the handler's shaping: fetch returns limit+1 rows → the
+    # extra is dropped and truncated=true; tool_names/timestamps are serialized as JSON-safe.
+    now = datetime(2026, 3, 10, 9, 0, tzinfo=timezone.utc)
+
+    def row(seq, tools):
+        return FakeRecord({
+            "message_id": uuid4(), "session_id": uuid4(), "role": "user",
+            "content": f"m{seq}", "sequence_num": seq, "local_date": date(2026, 3, 10),
+            "created_at": now, "tool_names": tools,
+        })
+
+    # limit=2 → handler fetches 3; returning 3 signals truncation.
+    mock_pool.fetch = AsyncMock(return_value=[row(0, ["glossary_recall"]), row(1, None), row(2, None)])
+    r = await client.get(_DW, params=_dw_params(limit=2), headers=_AUTH)
+    assert r.status_code == 200
+    body = r.json()
+    assert body["message_count"] == 2  # the +1 probe row is dropped
+    assert body["truncated"] is True
+    assert body["messages"][0]["tool_names"] == ["glossary_recall"]
+    assert body["messages"][1]["tool_names"] == []  # NULL tool_calls → empty list, not null
+    assert body["messages"][0]["local_date"] == "2026-03-10"
+    assert body["messages"][0]["created_at"].startswith("2026-03-10T09:00")
+
+
+# ── A1 / P-10 — POST /internal/assistant/distill (the "End my day" trigger) ──
+
+_DISTILL = "/internal/chat/assistant/distill"
+
+
+def _distill_body(**over):
+    b = {"user_id": str(uuid4()), "book_id": str(uuid4()),
+         "model_source": "user_model", "model_ref": str(uuid4())}
+    b.update(over)
+    return b
+
+
+@pytest.mark.asyncio
+async def test_distill_trigger_requires_internal_token(client):
+    r = await client.post(_DISTILL, json=_distill_body())
+    assert r.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_distill_trigger_enqueues_with_server_default_entry_date(client):
+    # entry_date omitted → the endpoint stamps TODAY server-side (D-R14: never trust a client day).
+    today = datetime.now(timezone.utc).date().isoformat()
+    with patch("app.events.distill_enqueue.enqueue_distill", new=AsyncMock(return_value="1-0")) as enq:
+        r = await client.post(_DISTILL, json=_distill_body(language="vi"), headers=_AUTH)
+    assert r.status_code == 202
+    body = r.json()
+    assert body["enqueued"] is True and body["entry_date"] == today and body["message_id"] == "1-0"
+    kw = enq.await_args.kwargs
+    assert kw["entry_date"] == today and kw["entry_zone"] == "UTC" and kw["language"] == "vi"
+    assert kw["model_source"] == "user_model"
+
+
+@pytest.mark.asyncio
+async def test_distill_trigger_honours_an_explicit_entry_date(client):
+    with patch("app.events.distill_enqueue.enqueue_distill", new=AsyncMock(return_value="1-0")) as enq:
+        r = await client.post(_DISTILL, json=_distill_body(entry_date="2026-03-10"), headers=_AUTH)
+    assert r.status_code == 202 and r.json()["entry_date"] == "2026-03-10"
+    assert enq.await_args.kwargs["entry_date"] == "2026-03-10"
+
+
+@pytest.mark.asyncio
+async def test_distill_trigger_surfaces_an_enqueue_failure_as_503(client):
+    # A lost enqueue = a silently un-journaled day → must NOT be swallowed (503, not 202).
+    with patch("app.events.distill_enqueue.enqueue_distill", new=AsyncMock(side_effect=RuntimeError("redis down"))):
+        r = await client.post(_DISTILL, json=_distill_body(), headers=_AUTH)
+    assert r.status_code == 503
+
+
+# ── WS-2.6a legs 2+3 — POST /internal/assistant/reextract (correction reconcile) ──
+
+_REEXTRACT = "/internal/chat/assistant/reextract"
+
+
+def _reextract_body(**over):
+    b = {"user_id": str(uuid4()), "book_id": str(uuid4()), "entry_date": "2026-03-10",
+         "body": "Alice froze the Q3 budget, not Minh.",
+         "model_source": "user_model", "model_ref": str(uuid4())}
+    b.update(over)
+    return b
+
+
+# ── WS-3.0 — server-side distill-context resolution (headless scheduled run) ──
+
+
+class _FakeResp:
+    def __init__(self, status_code, payload):
+        self.status_code = status_code
+        self._payload = payload
+
+    def json(self):
+        return self._payload
+
+
+class _FakeInternalClient:
+    """Async-context-manager stand-in for build_internal_client — returns the diary book."""
+
+    def __init__(self, book_id):
+        self._book_id = book_id
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *a):
+        return False
+
+    async def get(self, url, params=None):
+        if "diary" in url:
+            return _FakeResp(200, {"book_id": self._book_id, "lifecycle": "active"})
+        return _FakeResp(404, {})
+
+
+@pytest.mark.asyncio
+async def test_distill_headless_resolves_book_model_tz_serverside(client):
+    """WS-3.0 (D-B1) — a scheduled tick posts ONLY {user_id}; the trigger resolves the diary book,
+    the distill model (distill default), and the tz server-side."""
+    uid = str(uuid4())
+    book_id = str(uuid4())
+    model_ref = str(uuid4())
+
+    prov = AsyncMock()
+    # 'distill' default resolves first (chat fallback not reached).
+    prov.get_default_model = AsyncMock(side_effect=lambda cap, u: ("user_model", model_ref) if cap == "distill" else None)
+    auth = AsyncMock()
+    auth.get_user_timezone = AsyncMock(return_value="Asia/Ho_Chi_Minh")
+
+    with patch("app.routers.internal.build_internal_client", return_value=_FakeInternalClient(book_id)), \
+         patch("app.client.provider_client.get_provider_client", return_value=prov), \
+         patch("app.client.auth_client.get_auth_client", return_value=auth), \
+         patch("app.events.distill_enqueue.enqueue_distill", new=AsyncMock(return_value="7-0")) as enq:
+        r = await client.post(_DISTILL, json={"user_id": uid}, headers=_AUTH)
+
+    assert r.status_code == 202, r.text
+    kw = enq.await_args.kwargs
+    assert kw["book_id"] == book_id
+    assert kw["model_source"] == "user_model" and kw["model_ref"] == model_ref
+    assert kw["entry_zone"] == "Asia/Ho_Chi_Minh"
+    prov.get_default_model.assert_any_await("distill", uid)
+
+
+@pytest.mark.asyncio
+async def test_distill_catchup_enqueues_today_plus_bounded_days(client):
+    """WS-3.3 — a catch-up enqueues today + the previous N days (bounded to 14), each a normal distill."""
+    uid = str(uuid4())
+    book_id = str(uuid4())
+    model_ref = str(uuid4())
+    today = datetime.now(timezone.utc).date()
+    prov = AsyncMock()
+    prov.get_default_model = AsyncMock(side_effect=lambda cap, u: ("user_model", model_ref) if cap == "distill" else None)
+    auth = AsyncMock()
+    auth.get_user_timezone = AsyncMock(return_value="UTC")
+
+    with patch("app.routers.internal.build_internal_client", return_value=_FakeInternalClient(book_id)), \
+         patch("app.client.provider_client.get_provider_client", return_value=prov), \
+         patch("app.client.auth_client.get_auth_client", return_value=auth), \
+         patch("app.events.distill_enqueue.enqueue_distill", new=AsyncMock(return_value="d-0")) as enq:
+        # ask for 100 days of catch-up → bounded to 14 → today + 14 = 15 enqueues.
+        r = await client.post(_DISTILL, json={"user_id": uid, "catchup_days": 100}, headers=_AUTH)
+
+    assert r.status_code == 202, r.text
+    assert r.json()["days_enqueued"] == 15  # today + 14 (the _MAX_CATCHUP_DAYS ceiling)
+    assert enq.await_count == 15
+    dates = sorted(call.kwargs["entry_date"] for call in enq.await_args_list)
+    assert dates[-1] == today.isoformat()                       # includes today
+    assert dates[0] == (today - timedelta(days=14)).isoformat()  # oldest is bounded to today-14
+
+
+@pytest.mark.asyncio
+async def test_distill_headless_422_when_no_model_configured(client):
+    """A user with no distill/chat default → 422 (the scheduler logs + skips; never a silent no-op)."""
+    uid = str(uuid4())
+    prov = AsyncMock()
+    prov.get_default_model = AsyncMock(return_value=None)  # neither distill nor chat
+    auth = AsyncMock()
+    auth.get_user_timezone = AsyncMock(return_value="UTC")
+
+    with patch("app.routers.internal.build_internal_client", return_value=_FakeInternalClient(str(uuid4()))), \
+         patch("app.client.provider_client.get_provider_client", return_value=prov), \
+         patch("app.client.auth_client.get_auth_client", return_value=auth):
+        r = await client.post(_DISTILL, json={"user_id": uid}, headers=_AUTH)
+    assert r.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_weekly_rollup_headless_resolves_and_defaults_the_week(client):
+    """WS-3.7 — the scheduler posts only {user_id}; the trigger resolves book/model/tz and defaults the
+    week to yesterday-minus-6 .. yesterday."""
+    uid = str(uuid4())
+    book_id = str(uuid4())
+    model_ref = str(uuid4())
+    today = datetime.now(timezone.utc).date()
+    prov = AsyncMock()
+    prov.get_default_model = AsyncMock(side_effect=lambda cap, u: ("user_model", model_ref) if cap == "distill" else None)
+    auth = AsyncMock()
+    auth.get_user_timezone = AsyncMock(return_value="UTC")
+
+    with patch("app.routers.internal.build_internal_client", return_value=_FakeInternalClient(book_id)), \
+         patch("app.client.provider_client.get_provider_client", return_value=prov), \
+         patch("app.client.auth_client.get_auth_client", return_value=auth), \
+         patch("app.events.distill_enqueue.enqueue_weekly_rollup", new=AsyncMock(return_value="w-0")) as enq:
+        r = await client.post("/internal/chat/assistant/weekly-rollup", json={"user_id": uid}, headers=_AUTH)
+
+    assert r.status_code == 202, r.text
+    kw = enq.await_args.kwargs
+    assert kw["book_id"] == book_id and kw["model_ref"] == model_ref
+    assert kw["week_end"] == (today - timedelta(days=1)).isoformat()
+    assert kw["week_start"] == (today - timedelta(days=7)).isoformat()
+
+
+@pytest.mark.asyncio
+async def test_reextract_trigger_requires_internal_token(client):
+    r = await client.post(_REEXTRACT, json=_reextract_body())
+    assert r.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_reextract_trigger_enqueues_the_corrected_body_and_day(client):
+    with patch("app.events.distill_enqueue.enqueue_reextract", new=AsyncMock(return_value="9-0")) as enq:
+        r = await client.post(_REEXTRACT, json=_reextract_body(language="vi"), headers=_AUTH)
+    assert r.status_code == 202
+    body = r.json()
+    assert body["enqueued"] is True and body["entry_date"] == "2026-03-10" and body["message_id"] == "9-0"
+    kw = enq.await_args.kwargs
+    assert kw["entry_date"] == "2026-03-10" and kw["language"] == "vi"
+    assert "Alice" in kw["body"] and kw["model_source"] == "user_model"
+
+
+@pytest.mark.asyncio
+async def test_reextract_trigger_rejects_an_empty_body(client):
+    r = await client.post(_REEXTRACT, json=_reextract_body(body="   "), headers=_AUTH)
+    assert r.status_code == 422  # a correction must carry text
+
+
+@pytest.mark.asyncio
+async def test_reextract_trigger_surfaces_an_enqueue_failure_as_503(client):
+    # A lost enqueue = a correction that never reconciles (recall keeps the wrong fact) → not swallowed.
+    with patch("app.events.distill_enqueue.enqueue_reextract", new=AsyncMock(side_effect=RuntimeError("redis down"))):
+        r = await client.post(_REEXTRACT, json=_reextract_body(), headers=_AUTH)
+    assert r.status_code == 503
+
+
+# ── WS-5.13 (P5 Gate-3) — practice-start refuses a disclosed abuse/self-harm scenario ──
+def _create_session_body(**over):
+    body = {
+        "owner_user_id": str(uuid4()), "title": "Practice",
+        "model_source": "user_model", "model_ref": str(uuid4()),
+        "system_prompt": "You are an interviewer.",
+        "working_memory_seed": {"charter": {"goal": "practice a salary negotiation"}},
+    }
+    body.update(over)
+    return body
+
+
+@pytest.mark.asyncio
+async def test_practice_start_refuses_abuse_scenario(client, mock_pool):
+    body = _create_session_body(
+        working_memory_seed={"scenario": "roleplay my manager who keeps harassing me and won't stop"},
+    )
+    r = await client.post("/internal/chat/sessions", json=body, headers=_AUTH)
+    assert r.status_code == 422
+    assert "roleplay" in r.text.lower() or "support" in r.text.lower()
+
+
+@pytest.mark.asyncio
+async def test_practice_start_allows_clean_scenario(client, mock_pool):
+    mock_pool.fetchrow.return_value = FakeRecord({"session_id": uuid4()})
+    r = await client.post("/internal/chat/sessions", json=_create_session_body(), headers=_AUTH)
+    assert r.status_code == 201
+
+
+@pytest.mark.asyncio
+async def test_practice_start_refuses_abuse_in_charter_checklist(client, mock_pool):
+    # cold-review H1 — the abuse narrative lives in charter.checklist/beats, NOT scenario/goal.
+    # The gate must screen the WHOLE seed so this can't bypass it.
+    body = _create_session_body(working_memory_seed={
+        "charter": {"goal": "practice a difficult conversation",
+                    "checklist": ["the character reenacts how my stepfather assaulted me",
+                                  "I practice staying calm while he threatens me"]},
+    })
+    r = await client.post("/internal/chat/sessions", json=body, headers=_AUTH)
+    assert r.status_code == 422  # bypass closed
+
+
+@pytest.mark.asyncio
+async def test_weekly_reflection_headless_resolves_book_and_zone_no_model(client):
+    """D-REFLECTION-WIRE — the reflection trigger resolves book + tz ONLY (deterministic, no model)
+    and defaults the week; it must NOT require a distill/chat model."""
+    uid = str(uuid4())
+    book_id = str(uuid4())
+    today = datetime.now(timezone.utc).date()
+    auth = AsyncMock()
+    auth.get_user_timezone = AsyncMock(return_value="UTC")
+    with patch("app.routers.internal.build_internal_client", return_value=_FakeInternalClient(book_id)), \
+         patch("app.client.auth_client.get_auth_client", return_value=auth), \
+         patch("app.events.distill_enqueue.enqueue_reflection", new=AsyncMock(return_value="r-0")) as enq:
+        r = await client.post("/internal/chat/assistant/weekly-reflection", json={"user_id": uid}, headers=_AUTH)
+    assert r.status_code == 202, r.text
+    kw = enq.await_args.kwargs
+    assert kw["book_id"] == book_id and kw["entry_zone"] == "UTC"
+    assert "model_ref" not in kw and "model_source" not in kw  # deterministic — no model plumbed
+    assert kw["week_end"] == (today - timedelta(days=1)).isoformat()

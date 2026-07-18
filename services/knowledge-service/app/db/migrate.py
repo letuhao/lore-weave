@@ -728,11 +728,74 @@ CREATE TABLE IF NOT EXISTS knowledge_pending_facts (
   pending_fact_id  UUID PRIMARY KEY DEFAULT uuidv7(),
   user_id          UUID NOT NULL,                    -- no FK (cross-DB)
   project_id       UUID,                             -- nullable: no-project chats
-  session_id       TEXT NOT NULL,
+  session_id       TEXT,                             -- WS-2.1: nullable — a diary fact has no session
   fact_type        TEXT NOT NULL
-    CHECK (fact_type IN ('decision','preference','milestone','negation')),
+    -- WS-2.1: 'statement' is the diary's fact kind (the distiller's coarse facts land here). The
+    -- narrower chat-memory kinds stay for the memory_remember path.
+    CHECK (fact_type IN ('decision','preference','milestone','negation','statement','commitment')),
   fact_text        TEXT NOT NULL,
   created_at       TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- WS-2.1 — bring EXISTING knowledge_pending_facts rows up to the new shape (the CREATE TABLE above
+-- only runs on a fresh DB). Idempotent: widen the fact_type CHECK to include 'statement' and drop the
+-- session_id NOT NULL so a diary fact (no session) can queue. (Memory: a new enum value must widen
+-- the CHECK via DROP-then-ADD, and NOT NULL must be dropped explicitly — the CREATE TABLE won't.)
+DO $$
+BEGIN
+  -- Replace whatever fact_type CHECK exists with the widened one. WS-5.7 adds 'commitment':
+  -- an ALREADY-migrated DB has the `_ck` constraint WITHOUT it, so we must DROP-then-re-ADD
+  -- (a bare `IF NOT EXISTS ADD` would skip the re-widen — the recurring "migration must
+  -- re-widen an existing CHECK, not just add-if-absent" trap).
+  IF EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'knowledge_pending_facts_fact_type_check') THEN
+    ALTER TABLE knowledge_pending_facts DROP CONSTRAINT knowledge_pending_facts_fact_type_check;
+  END IF;
+  IF EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'knowledge_pending_facts_fact_type_ck') THEN
+    ALTER TABLE knowledge_pending_facts DROP CONSTRAINT knowledge_pending_facts_fact_type_ck;
+  END IF;
+  ALTER TABLE knowledge_pending_facts
+    ADD CONSTRAINT knowledge_pending_facts_fact_type_ck
+    CHECK (fact_type IN ('decision','preference','milestone','negation','statement','commitment'));
+  -- Drop the legacy session_id NOT NULL (diary facts have no session).
+  IF EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_name = 'knowledge_pending_facts' AND column_name = 'session_id' AND is_nullable = 'NO'
+  ) THEN
+    ALTER TABLE knowledge_pending_facts ALTER COLUMN session_id DROP NOT NULL;
+  END IF;
+END$$;
+
+-- WS-2.2 (dedup) — a stable dedup key so a re-distill of the same day does NOT duplicate its facts in
+-- the inbox (the distiller re-queues on every "End my day"; without this the inbox grows unbounded on
+-- re-runs). NULL for the legacy chat-memory queue path (no dedup there). The partial UNIQUE only
+-- covers the diary path (dedup_key IS NOT NULL), so the ON CONFLICT DO NOTHING insert is idempotent.
+ALTER TABLE knowledge_pending_facts ADD COLUMN IF NOT EXISTS dedup_key TEXT;
+CREATE UNIQUE INDEX IF NOT EXISTS uq_knowledge_pending_facts_dedup
+  ON knowledge_pending_facts(user_id, project_id, dedup_key)
+  WHERE dedup_key IS NOT NULL;
+
+-- WS-2.2 (structured s/p/o) — recall must answer "what did <person> SAY about <topic>", which needs the
+-- fact decomposed: subject (who/what it is about — the :ABOUT anchor at promote time), predicate, object,
+-- and the event_date (the day it is true of, distinct from created_at). provenance separates what the USER
+-- said from a QUOTED third party (a pasted email) so the review UI and recall never mis-attribute. All
+-- nullable: a coarse legacy statement fact carries only fact_text; a structured one carries the trio too.
+-- The dedup_key is derived from the trio when present (stable across LLM re-phrasings), else from fact_text.
+ALTER TABLE knowledge_pending_facts ADD COLUMN IF NOT EXISTS subject     TEXT;
+ALTER TABLE knowledge_pending_facts ADD COLUMN IF NOT EXISTS predicate   TEXT;
+ALTER TABLE knowledge_pending_facts ADD COLUMN IF NOT EXISTS object      TEXT;
+ALTER TABLE knowledge_pending_facts ADD COLUMN IF NOT EXISTS event_date  DATE;
+ALTER TABLE knowledge_pending_facts ADD COLUMN IF NOT EXISTS provenance  TEXT;
+
+-- WS-2.2 (rejection tombstone) — today reject is a hard DELETE, so the very next distill re-proposes the
+-- exact fact the user just dismissed (a re-nagging loop). A tombstone remembers the dismissal by the SAME
+-- dedup_key the queue uses, so the queue skips a tombstoned fact. Scoped per (user, project, dedup_key);
+-- keyed identically to the pending dedup so a promote/queue and a reject can never disagree on identity.
+CREATE TABLE IF NOT EXISTS knowledge_rejected_facts (
+  user_id      UUID NOT NULL,
+  project_id   UUID NOT NULL,   -- diary facts are always project-scoped; PK forbids NULL anyway
+  dedup_key    TEXT NOT NULL,
+  rejected_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+  PRIMARY KEY (user_id, project_id, dedup_key)
 );
 
 -- List path: WHERE user_id=$1 [AND session_id=$2] ORDER BY created_at.
@@ -788,6 +851,100 @@ CREATE TABLE IF NOT EXISTS extraction_leaves_raw (
 -- D6: opt-in raw retention; defaults OFF (D-P2-FE-SAVE-RAW for FE toggle).
 ALTER TABLE knowledge_projects
   ADD COLUMN IF NOT EXISTS save_raw_extraction BOOLEAN NOT NULL DEFAULT false;
+
+-- ── WS-1.3 · the assistant project (spec 01 §4.1.1, decision D6) — 2026-07-12 ──
+--
+-- is_assistant marks the ONE project that backs a user's work-assistant / diary. Additive
+-- marker column; project_type's CHECK is deliberately NOT widened (it stays
+-- book|translation|code|general) — the assistant project IS a book project (its book is the
+-- diary), and widening a CHECK that five services switch on would be a far larger blast
+-- radius than a boolean.
+ALTER TABLE knowledge_projects
+  ADD COLUMN IF NOT EXISTS is_assistant BOOLEAN NOT NULL DEFAULT false;
+
+-- Exactly ONE assistant project per user. Provisioning is a multi-service fan-out that can
+-- be retried, double-clicked, or raced across two devices; without this a user ends up with
+-- two assistant projects and their memory silently splits in half.
+-- (Partial index — it must exempt archived rows, or a user who archived an old assistant
+-- project could never provision a new one: the partial-unique-must-exempt-tombstones lesson.)
+CREATE UNIQUE INDEX IF NOT EXISTS uq_knowledge_projects_one_assistant_per_user
+  ON knowledge_projects(user_id)
+  WHERE is_assistant = true AND is_archived = false;
+
+-- ⚠️ chat_turn_extraction_enabled DEFAULTS **FALSE** — fail CLOSED.
+--
+-- The v2 spec had this DEFAULT true. That is fail-OPEN on a privacy flag, on the exact
+-- table that already shipped this bug once (canon_capture_enabled ships DEFAULT false and
+-- carries a corrective self-disarm migration for precisely this mistake).
+--
+-- Why it matters: provisioning is a multi-service fan-out that CAN partially fail. With a
+-- true default, a half-provisioned assistant would extract EVERY TURN of an all-day work
+-- session as trusted canon — the exact outcome D6 exists to prevent. A privacy flag must
+-- never arrive switched on by accident.
+--
+-- NOTE: the effective gate is DERIVED, never stored:
+--     may_extract_chat_turn = (NOT is_assistant) AND chat_turn_extraction_enabled
+-- Storing a copy of that answer is how the two consumers (handle_chat_turn and worker-ai's
+-- drainer) drift apart, and a one-sided gate is a silent-success bug. See
+-- app/events/gating.py.
+ALTER TABLE knowledge_projects
+  ADD COLUMN IF NOT EXISTS chat_turn_extraction_enabled BOOLEAN NOT NULL DEFAULT false;
+
+-- One-row-per-step marker so a DATA backfill runs EXACTLY ONCE, not on every startup.
+-- (knowledge-service has no migration ledger; this mirrors book-service's
+-- canon_model_migration table, which exists for precisely this reason.)
+CREATE TABLE IF NOT EXISTS knowledge_data_migration (
+  id         TEXT PRIMARY KEY,
+  applied_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- Explicit backfill: EXISTING projects were extracting chat turns unconditionally, so a
+-- DEFAULT false would silently switch that off for every current user. A DEFAULT never
+-- revisits existing rows, so this must be a real UPDATE. The assistant project is the ONE
+-- kind that stays off (its facts come from the confirmed daily entry — D6).
+--
+-- ⚠️ MARKER-GATED, and that is the whole point — this is a USER SETTING, not a derived value.
+-- migrate.py runs on EVERY service start. An ungated UPDATE would therefore re-run forever
+-- and silently flip `chat_turn_extraction_enabled` back to TRUE for any user who had
+-- deliberately turned it OFF for one of their projects — a privacy toggle undone by a
+-- restart, with no event and nothing in any log.
+--
+-- This is the SAME bug the kg_indexed backfill was marker-gated to prevent (RUN-STATE D-R7),
+-- one slice later, after I had written the lesson down. A backfill that touches a column a
+-- HUMAN can change must run exactly once. See RUN-STATE DR-9.
+DO $ctx1$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM knowledge_data_migration WHERE id = 'chat_turn_extraction_backfill_v1') THEN
+    UPDATE knowledge_projects
+       SET chat_turn_extraction_enabled = true
+     WHERE is_assistant = false AND chat_turn_extraction_enabled = false;
+    INSERT INTO knowledge_data_migration (id) VALUES ('chat_turn_extraction_backfill_v1');
+  END IF;
+END $ctx1$;
+
+-- WS-0.1 (2026-07-11) — chapter-scoped cache invalidation.
+-- Spec: docs/specs/2026-07-11-publish-independent-kg-indexing.md §3.3 (P0-4).
+--
+-- `chapter.scenes_reparsed` used to invalidate BOOK-scoped (delete_by_book), which
+-- was tolerable only while publish was rare and deliberate. Publish-independent
+-- indexing makes "add to knowledge" a frequent per-chapter click, so a book-scoped
+-- wipe would re-pay the LLM cost for all 200 chapters on every single click.
+--
+-- Why a NEW column rather than keying the delete on `scene_id`: `scene_id` currently
+-- holds the chapter_id as an explicit PLACEHOLDER (pass2_orchestrator: "placeholder
+-- until per-scene fanout", D-P2-PER-SCENE-FANOUT). A delete keyed on scene_id works
+-- today and would silently match ZERO rows the day real per-scene fanout lands —
+-- leaving a stale extraction cache (a correctness bug), not just a cost bug.
+--
+-- Backfill is correct by construction: every existing row was written with
+-- scene_id := chapter_id. NOT NULL is then enforced so a future writer that forgets
+-- to set chapter_id fails loudly instead of orphaning a leaf that no invalidation
+-- can ever reach.
+ALTER TABLE extraction_leaves
+  ADD COLUMN IF NOT EXISTS chapter_id UUID;
+UPDATE extraction_leaves SET chapter_id = scene_id WHERE chapter_id IS NULL;
+ALTER TABLE extraction_leaves ALTER COLUMN chapter_id SET NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_extraction_leaves_chapter
+  ON extraction_leaves(book_id, chapter_id);
 
 
 -- ═══════════════════════════════════════════════════════════════
@@ -1381,6 +1538,85 @@ CREATE INDEX IF NOT EXISTS idx_entity_access_log_last_retrieved
 ALTER TABLE entity_access_log
   ADD COLUMN IF NOT EXISTS last_session_id UUID,
   ADD COLUMN IF NOT EXISTS feedback_score DOUBLE PRECISION NOT NULL DEFAULT 0;
+
+-- ═══════════════════════════════════════════════════════════════
+-- WS-4C Half A — per-project canon auto-capture toggle.
+-- Spec: docs/specs/2026-07-10-ws4c-half-a-canon-auto-capture.md
+--
+-- Whether chat-service, every Nth assistant turn, extracts the newly-named
+-- entities the exchange established and lands them in this book's glossary
+-- review inbox as `draft` + `ai-suggested` entities (never canon).
+--
+-- A USER setting, not an env flag (Settings & Config Boundary): capture spends
+-- the user's own BYOK tokens, so two users genuinely want different values. The
+-- deploy-time env ceiling lives in chat (`CHAT_CANON_CAPTURE_ENABLED`) and only
+-- NARROWS this — effective = AND(deploy_allows, project_enables) — it is never
+-- itself a per-user knob.
+--
+-- DEFAULT **false** — capture is OPT-IN, deliberately NOT mirroring
+-- tool_calling_enabled's default-true. Capture is AMBIENT spend: it fires on
+-- ordinary chatting, on the user's own paid model, for a turn they didn't ask it
+-- for. Turning it on by default would charge every existing project for a feature
+-- its owner never requested. That is the same consent boundary the Track-D spend
+-- gate draws (spend is irreversible ⇒ fail closed); the toggle IS the consent, so
+-- it must start un-granted. The FE toggle lives in the project settings modal
+-- beside tool_calling_enabled / memory_remember_confirm.
+--
+-- ONE-TIME NORMALIZATION, self-disarming. An earlier revision of this same
+-- (unreleased) branch shipped `ADD COLUMN ... DEFAULT true`, which back-fills every
+-- existing row to true. `ADD COLUMN IF NOT EXISTS` never revisits a column, so
+-- simply changing the literal above would leave those rows opted IN — silently
+-- spending on every project in any database that ran the bad revision. Observed for
+-- real on the dev DB (21/21 projects true).
+--
+-- The column's own `column_default` is the version marker: `true` ⇒ this database
+-- ran the bad revision, so normalize the rows and fix the default. Fixing the
+-- default disarms the block, so it can NEVER run again — a user who later opts IN
+-- is not silently opted back out by a redeploy. Nobody could have legitimately
+-- opted in while the marker is set: the toggle UI ships in the same change that
+-- removes it.
+-- ═══════════════════════════════════════════════════════════════
+DO $$
+DECLARE _bad_default boolean;
+BEGIN
+  ALTER TABLE knowledge_projects
+    ADD COLUMN IF NOT EXISTS canon_capture_enabled BOOLEAN NOT NULL DEFAULT false;
+
+  SELECT column_default = 'true' INTO _bad_default
+    FROM information_schema.columns
+   WHERE table_schema = current_schema()
+     AND table_name   = 'knowledge_projects'
+     AND column_name  = 'canon_capture_enabled';
+
+  IF coalesce(_bad_default, false) THEN
+    UPDATE knowledge_projects SET canon_capture_enabled = false
+     WHERE canon_capture_enabled;
+    ALTER TABLE knowledge_projects
+      ALTER COLUMN canon_capture_enabled SET DEFAULT false;
+  END IF;
+END$$;
+
+-- ═══════════════════════════════════════════════════════════════
+-- book_id lookup index — the per-chat-turn KG-state probe.
+--
+-- GET /internal/books/{book_id}/kg-state (app/routers/internal_kg_state.py) is
+-- called ONCE PER CHAT TURN by chat-service and resolves the newest live project
+-- for a book. Until now NOTHING indexed knowledge_projects.book_id — the only
+-- indexes are on user_id and extraction_status — so every book_id lookup was a
+-- seq scan. Tolerable for the existing low-frequency callers (internal_timeline,
+-- the extraction handlers); NOT tolerable on the chat hot path.
+--
+-- Partial + covering:
+--   * `book_id IS NOT NULL` — 'code'/'general' projects carry a NULL book_id and
+--     can never match this lookup; excluding them keeps the index small.
+--   * `NOT is_archived` — mirrors idx_knowledge_projects_user; the probe only
+--     ever wants live projects.
+--   * `created_at DESC` as the second key serves the ORDER BY directly, so the
+--     "newest project for this book" read is an index-only top-1, no sort.
+-- ═══════════════════════════════════════════════════════════════
+CREATE INDEX IF NOT EXISTS idx_knowledge_projects_book_active
+  ON knowledge_projects(book_id, created_at DESC)
+  WHERE book_id IS NOT NULL AND NOT is_archived;
 """
 
 

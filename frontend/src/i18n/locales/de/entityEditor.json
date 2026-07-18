@@ -16,6 +16,11 @@
       "translations": "{{count}} Übersetzungen",
       "evidences": "{{count}} Belege"
     },
+    "scope_label": {
+      "placeholder": "Eindeutigkeit schaffen (z. B. Welt/Reich)...",
+      "aria": "Scope-Label – dient der Unterscheidung von Entitäten mit gleichem Namen in unterschiedlichen Kontexten der Geschichte",
+      "duplicate": "Eine Entität mit diesem Namen, diesem Typ und diesem Scope existiert bereits in diesem Buch"
+    },
     "tab": {
       "attributes": "Attribute",
       "evidences": "Belege",
@@ -34,12 +39,20 @@
       "saved": "Entität gespeichert",
       "status_changed": "Status geändert in {{status}}",
       "invalid_lang": "Ungültiger Sprachcode (z. B. en, zh, zh-tw)"
-    }
+    },
+    "remove_attr_confirm": "Diesen Attributwert entfernen? Sie können ihn später wieder hinzufügen.",
+    "remove_attr_success": "Attributwert entfernt",
+    "add_attr_heading": "Einen Wert für ein weiteres Attribut hinzufügen",
+    "add_attr_pick": "Attribut auswählen…",
+    "add_attr_value_placeholder": "Wert",
+    "add_attr_button": "Hinzufügen",
+    "add_attr_success": "Attribut hinzugefügt"
   },
   "attr_card": {
     "required": "*erforderlich",
     "modified": "geändert",
-    "has_translations": "Hat Übersetzungen"
+    "has_translations": "Hat Übersetzungen",
+    "remove": "Diesen Wert entfernen"
   },
   "translation_row": {
     "confidence": {

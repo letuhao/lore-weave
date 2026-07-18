@@ -297,3 +297,75 @@ async def test_list_facts_for_entity_selects_order_fragment(mock_read):
     )
     cypher_default = mock_read.await_args_list[0].args[1]
     assert "event_date_iso" not in cypher_default
+
+
+# ── WS-2.4 (spec 07 §Q2) — diary recall: days_since_epoch + the date-filtered read ─────────────────
+
+from datetime import date as _date  # noqa: E402
+
+
+def test_days_since_epoch_is_strictly_increasing_per_day():
+    assert fm.days_since_epoch(_date(1970, 1, 1)) == 0
+    assert fm.days_since_epoch(_date(1970, 1, 2)) == 1
+    d1 = fm.days_since_epoch(_date(2026, 7, 12))
+    d2 = fm.days_since_epoch(_date(2026, 7, 13))
+    assert d2 == d1 + 1  # one calendar day → +1 ordinal (diary is perfectly ordinal)
+    assert d1 > 20000    # sanity: ~56 years of days
+
+
+@pytest.mark.asyncio
+async def test_recall_facts_requires_explicit_project_scope():
+    # D16 — recall must never span all of a user's projects (a novel-writing session must not pull work
+    # facts). An empty project_id is a hard error, not an all-projects fallback.
+    with pytest.raises(ValueError, match="project_id"):
+        await fm.recall_facts(MagicMock(), user_id="u1", project_id="")
+
+
+def test_recall_cypher_filters_by_date_range_and_project_and_about_subject():
+    # The read is the net-new capability: a date range on event_date_iso (mirroring :Event), a REQUIRED
+    # project filter, and an optional :ABOUT-subject narrow. Assert the query encodes all three.
+    q = fm._RECALL_FACTS_CYPHER
+    assert "f.project_id = $project_id" in q                       # project-scoped (D16)
+    assert "f.event_date_iso >= $event_date_from" in q            # lower bound
+    assert "f.event_date_iso <= $event_date_to" in q              # upper bound
+    assert "[:ABOUT]->(e:Entity)" in q                            # subject narrow via the ABOUT edge
+    assert "coalesce(f.pending_validation, false) = false" in q   # confirmed only (not inbox)
+
+
+def test_fact_types_tuple_stays_in_lockstep_with_the_literal():
+    # WS-2.1/2.4 regression: FACT_TYPES (merge_fact's runtime guard) MUST equal the FactType Literal, or
+    # a type valid at queue time (e.g. 'statement') 500s at promote time. Derive, never hand-maintain.
+    from typing import get_args
+    assert set(fm.FACT_TYPES) == set(get_args(fm.FactType))
+    assert "statement" in fm.FACT_TYPES
+
+
+def test_recall_cypher_matches_subject_by_canonical_name_not_raw_lower():
+    # audit MED: the :ABOUT subject is matched by CANONICAL name (honorific/punctuation/CJK folded), not a
+    # raw toLower — else "Dr. Smith" (stored canonical "smith") is unrecallable. The Cypher must compare
+    # e.canonical_name = $subject_canonical, and recall_facts must canonicalize the input.
+    q = fm._RECALL_FACTS_CYPHER
+    assert "e.canonical_name = $subject_canonical" in q
+    assert "toLower(e.canonical_name)" not in q  # the buggy raw-lower compare is gone
+
+
+@pytest.mark.asyncio
+async def test_recall_facts_canonicalizes_the_subject_name_before_matching(monkeypatch):
+    # Prove recall_facts runs the subject through canonicalize_entity_name (so "Dr. Smith" → "smith")
+    # and binds it as $subject_canonical — the same transform that stored e.canonical_name at promote.
+    captured = {}
+
+    class _Res:
+        def __aiter__(self):
+            async def _gen():
+                if False:
+                    yield None
+            return _gen()
+
+    async def _fake_run_read(session, cypher, **params):
+        captured.update(params)
+        return _Res()
+
+    monkeypatch.setattr(fm, "run_read", _fake_run_read)
+    await fm.recall_facts(MagicMock(), user_id="u1", project_id="p1", subject_name="Dr. Smith")
+    assert captured["subject_canonical"] == "smith", captured.get("subject_canonical")

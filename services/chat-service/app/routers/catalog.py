@@ -7,7 +7,7 @@ from app.client.knowledge_client import get_knowledge_client
 from app.deps import get_current_user
 from app.models import SkillCatalogResponse, ToolCatalogResponse, ToolCatalogItem, SkillCatalogItem
 from app.services.skill_registry import catalog_items as skill_catalog_items
-from app.services.tool_discovery import _provider_prefix, tool_name, tool_tier, tool_visibility, _fn
+from app.services.tool_discovery import _domain_of, tool_name, tool_tier, tool_visibility, _fn
 
 router = APIRouter(prefix="/v1/chat", tags=["catalog"])
 
@@ -37,7 +37,10 @@ async def list_tools_catalog(
         desc = _fn(td).get("description", "") or ""
         items.append(ToolCatalogItem(
             name=name,
-            domain=_provider_prefix(name),
+            # 2026-07-07: resolve through the domain-alias map, not the raw literal
+            # prefix — a kg_*/memory_* tool's real GROUP_DIRECTORY domain is
+            # "knowledge", not "kg"/"memory" (see tool_discovery._DOMAIN_ALIASES).
+            domain=_domain_of(name),
             tier=tier,
             description=desc,
             visibility=tool_visibility(td),

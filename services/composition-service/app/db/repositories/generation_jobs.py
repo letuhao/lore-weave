@@ -1,7 +1,12 @@
 """generation_job repository — AI generation + critic tracking (§1.2/§5).
 
-SECURITY RULE (M5 isolation): every method takes `user_id` first and filters
-`user_id = $1`. `create` honours `idempotency_key` via the partial UNIQUE index
+SCOPE RULE (BPS-1 package re-key, spec 25 §Repo/service layer — supersedes the
+old M5 per-user isolation): READ methods take `project_id` (the Work partition
+key, PM-3) and NO user_id; WRITE methods additionally take `created_by` — a
+plain actor stamp, STORED for BYOK spend attribution (25 T5), never filtered
+on. Access is decided BEFORE the repo, at the gate (E0 grant on the row's
+`book_id`); inserts derive `book_id` from `composition_work` inside the
+statement. `create` honours `idempotency_key` via the partial UNIQUE index
 (idx_generation_job_idem): a replay returns the existing job instead of a
 duplicate (the M6 engine's idempotency surface, §13 S2). `base_revision_id` is
 captured at draft time (OI-2 accept-staleness guard).
@@ -40,9 +45,9 @@ def _job_error(result: dict[str, Any] | None) -> dict[str, str] | None:
     return {"code": "error", "message": str(err)}
 
 _SELECT_COLS = """
-  id, user_id, project_id, outline_node_id, operation, mode, status, llm_job_id,
-  input, result, critic, target_chapter_id, base_revision_id, target_revision_id,
-  cost_usd, idempotency_key, created_at, updated_at
+  id, created_by, project_id, book_id, outline_node_id, operation, mode, status,
+  llm_job_id, input, result, critic, target_chapter_id, base_revision_id,
+  target_revision_id, cost_usd, idempotency_key, created_at, updated_at
 """
 
 # Active = not yet terminal. Used by the M6 engine to cancel an in-flight job
@@ -61,6 +66,12 @@ _CHAPTER_JOB_LOCK_NS = 0x10B0
 # the take prose back — with NO new table. Idempotent on (project_id,
 # outline_node_id): a re-promote overwrites the prior promoted row, never duplicates.
 _PROMOTED_SCENE_PROSE_KIND = "promoted_scene_prose"
+
+#: BE-7c — ops whose jobs are genuinely NOT Work-bound. Their ONLY scope key is
+#: `created_by`. Keep this list HERE (in the writer), never in the DDL CHECK: a new
+#: Work-less op must not need a migration (the
+#: `migration-check-constraint-must-backfill-all-historical-blocks` trap).
+UNBOUND_OPERATIONS = frozenset({"mine_motifs", "analyze_reference"})
 
 
 def _jsonb(value: dict[str, Any] | None) -> str | None:
@@ -82,9 +93,9 @@ class GenerationJobsRepo:
 
     async def create(
         self,
-        user_id: UUID,
         project_id: UUID,
         *,
+        created_by: UUID,
         operation: str,
         outline_node_id: UUID | None = None,
         mode: str = "cowrite",
@@ -97,10 +108,14 @@ class GenerationJobsRepo:
     ) -> tuple[GenerationJob, bool]:
         """Insert a job. Returns ``(job, created)``.
 
-        When `idempotency_key` is set and already exists for this user, the
-        existing job is returned with ``created=False`` (no duplicate) — the
-        replay-safe surface for POST /generate. The conflict target carries the
-        index's partial predicate so it matches idx_generation_job_idem.
+        When `idempotency_key` is set and already exists for this project (the
+        Work partition — the PM-10 dedup scope), the existing job is returned
+        with ``created=False`` (no duplicate) — the replay-safe surface for
+        POST /generate. The conflict target carries the index's partial
+        predicate so it matches idx_generation_job_idem. `created_by` is the
+        acting caller — a plain stamp (spend attribution rides the actor, 25
+        T5), never a filter; `book_id` is derived from `composition_work`
+        inside the statement so it can never be NULL.
         """
         # P4 usage emit — a whitelisted params dict (cheap, no I/O) + the resolved model
         # NAME on the create event; the projection's COALESCE keeps them across later
@@ -137,51 +152,67 @@ class GenerationJobsRepo:
         async def _do(c: asyncpg.Connection) -> tuple[GenerationJob, bool]:
             if outline_node_id is not None:
                 # Defense-in-depth (D-COMP-M2-XREF-OWNERSHIP): the job's node must
-                # be the caller's in THIS project (the FK only proves existence).
+                # live in THIS project (the FK only proves existence).
                 owned = await c.fetchval(
                     "SELECT 1 FROM outline_node "
-                    "WHERE user_id = $1 AND project_id = $2 AND id = $3",
-                    user_id, project_id, outline_node_id,
+                    "WHERE project_id = $1 AND id = $2",
+                    project_id, outline_node_id,
                 )
                 if owned is None:
                     raise ReferenceViolationError(
-                        f"outline_node {outline_node_id} is not the caller's node in this project"
+                        f"outline_node {outline_node_id} is not a node in this project"
                     )
             row = await c.fetchrow(
                 f"""
                 INSERT INTO generation_job
-                  (user_id, project_id, outline_node_id, operation, mode, status,
-                   input, base_revision_id, idempotency_key)
-                VALUES ($1,$2,$3,$4,$5,$6,$7::jsonb,$8,$9)
+                  (created_by, project_id, book_id, outline_node_id, operation,
+                   mode, status, input, base_revision_id, idempotency_key)
+                SELECT $1, $2, w.book_id, $3, $4,
+                       $5, $6, $7::jsonb, $8, $9
+                FROM composition_work w
+                WHERE (w.project_id = $2 OR (w.project_id IS NULL AND w.id = $2))
                 ON CONFLICT (idempotency_key) WHERE idempotency_key IS NOT NULL
                 DO NOTHING
                 RETURNING {_SELECT_COLS}
                 """,
-                user_id, project_id, outline_node_id, operation, mode, status,
+                created_by, project_id, outline_node_id, operation, mode, status,
                 json.dumps(input or {}), base_revision_id, idempotency_key,
             )
             if row is not None:
                 job = _row_to_job(row)
                 # Unified Job Control Plane P1 — emit the lifecycle event in the SAME
                 # tx/conn as the INSERT (only on a genuinely-new job, not a replay).
+                # owner_user_id = the actor stamp: BYOK spend attribution (25 T5).
                 await emit_job_event(
                     c, service=_JOB_SERVICE, job_id=str(job.id),
-                    owner_user_id=str(job.user_id), kind=job.operation, status=job.status,
+                    owner_user_id=str(job.created_by), kind=job.operation, status=job.status,
                     model=_model_name, params=_job_params,
                 )
                 return job, True
-            # Conflict: the key already exists. Return the existing job (scoped
-            # to this user so a cross-user key collision can't leak a row).
-            existing = await c.fetchrow(
-                f"SELECT {_SELECT_COLS} FROM generation_job "
-                f"WHERE user_id = $1 AND idempotency_key = $2",
-                user_id, idempotency_key,
+            # No row: either an idempotency conflict OR the INSERT … SELECT found no
+            # composition_work to derive book_id from — distinguish loudly. First,
+            # the replay path: return the existing job (scoped to this project so a
+            # cross-project key collision can't leak a row).
+            if idempotency_key is not None:
+                existing = await c.fetchrow(
+                    f"SELECT {_SELECT_COLS} FROM generation_job "
+                    f"WHERE project_id = $1 AND idempotency_key = $2",
+                    project_id, idempotency_key,
+                )
+                if existing is not None:
+                    return _row_to_job(existing), False
+            has_work = await c.fetchval(
+                "SELECT 1 FROM composition_work WHERE project_id = $1", project_id,
             )
-            if existing is None:
-                # Key belongs to another user → behave as not-found-for-us; the
-                # router maps this to a conflict rather than silently reusing.
-                raise KeyError("idempotency_key conflict across users")
-            return _row_to_job(existing), False
+            if has_work is None:
+                # Dangling project_id (PM-7 spirit): never mint a job without a
+                # book_id home — and never misreport it as a key conflict.
+                raise ReferenceViolationError(
+                    f"project {project_id} has no composition_work row"
+                )
+            # Key belongs to another project → behave as not-found-for-us; the
+            # router maps this to a conflict rather than silently reusing.
+            raise KeyError("idempotency_key conflict across projects")
 
         if conn is not None:
             return await _do(conn)
@@ -189,12 +220,74 @@ class GenerationJobsRepo:
             async with c.transaction():  # INSERT + emit_job_event atomic (H1)
                 return await _do(c)
 
+    async def create_unbound(
+        self,
+        *,
+        created_by: UUID,
+        operation: str,
+        input: dict[str, Any] | None = None,
+        status: str = "pending",
+    ) -> GenerationJob:
+        """Insert an OWNER-scoped, Work-LESS job (BE-7c). project_id/book_id are NULL —
+        the row's ONLY scope key is `created_by`, and every read of it MUST gate on that
+        (see GET /motif-jobs/{job_id}).
+
+        `create()` cannot express this: it DERIVES book_id from composition_work inside
+        the INSERT…SELECT, and a corpus/book motif-mine or an arc-import has no Work. The
+        old code papered over that with a synthetic uuid4() project_id, which matched no
+        Work row ⇒ zero rows inserted ⇒ ReferenceViolationError ⇒ /actions/confirm 500'd
+        AFTER burning the confirm token and reserving the billing hold. The user paid and
+        got nothing. NEVER back-fill a phantom composition_work per mine.
+
+        Raises ValueError for an operation not in UNBOUND_OPERATIONS — a Work-BOUND op
+        arriving here would silently lose its tenancy keys, which is a tenancy defect,
+        not a shortcut.
+        """
+        if operation not in UNBOUND_OPERATIONS:
+            raise ValueError(
+                f"operation {operation!r} is Work-bound — use create(); "
+                f"unbound ops are {sorted(UNBOUND_OPERATIONS)}"
+            )
+        _in = input or {}
+        # Resolve the model NAME out-of-tx (H1: it is HTTP; never inside the tx below).
+        _model_name = await resolve_model_name(_in.get("model_source"), _in.get("model_ref"))
+        _job_params = {
+            "model": _model_name,
+            "model_ref": _in.get("model_ref"),
+            "operation": operation,
+            "mode": "auto",
+            "reasoning": _in.get("reasoning"),
+            "reasoning_effort": _in.get("reasoning_effort"),
+            "retryable": is_worker_drivable(operation, _in),
+        }
+        async with self._pool.acquire() as c:
+            async with c.transaction():  # INSERT + emit_job_event atomic (H1)
+                row = await c.fetchrow(
+                    f"""
+                    INSERT INTO generation_job
+                      (created_by, project_id, book_id, operation, mode, status, input)
+                    VALUES ($1, NULL, NULL, $2, 'auto', $3, $4::jsonb)
+                    RETURNING {_SELECT_COLS}
+                    """,
+                    created_by, operation, status, json.dumps(_in),
+                )
+                job = _row_to_job(row)
+                # The job-event plane is OWNER-keyed, not project-keyed — this works
+                # unchanged for a Work-less job. Let it raise → the tx rolls back → the
+                # sweeper redelivers (transactional-outbox-must-not-swallow).
+                await emit_job_event(
+                    c, service=_JOB_SERVICE, job_id=str(job.id),
+                    owner_user_id=str(job.created_by), kind=job.operation, status=job.status,
+                    model=_model_name, params=_job_params,
+                )
+                return job
+
     async def create_chapter_job_guarded(
         self,
-        user_id: UUID,
         project_id: UUID,
         chapter_id: UUID,
         *,
+        created_by: UUID,
         operation: str,
         mode: str = "auto",
         status: str = "running",
@@ -214,9 +307,9 @@ class GenerationJobsRepo:
         no-key concurrent submits would both see "no active job" and both run
         (the Cycle-1 decompose-commit TOCTOU lesson). Under the lock, in order:
 
-          1. **Replay first** — if `idempotency_key` already exists for this user,
-             return that job (``created=False``). A same-key replay is NOT a
-             concurrent duplicate, so it must bypass the guard (else a replay of a
+          1. **Replay first** — if `idempotency_key` already exists for this
+             project, return that job (``created=False``). A same-key replay is NOT
+             a concurrent duplicate, so it must bypass the guard (else a replay of a
              still-running job would 409 — AC#2).
           2. **Guard** — if ANY active (pending/running) chapter-level job exists
              for this chapter (regardless of operation: a running generate blocks a
@@ -253,21 +346,21 @@ class GenerationJobsRepo:
                 await c.execute(
                     """
                     UPDATE generation_job SET status = 'failed', updated_at = now()
-                    WHERE user_id = $1 AND project_id = $2 AND outline_node_id IS NULL
-                      AND input->>'chapter_id' = $3 AND status = ANY($4::text[])
-                      AND created_at <= $5
+                    WHERE project_id = $1 AND outline_node_id IS NULL
+                      AND input->>'chapter_id' = $2 AND status = ANY($3::text[])
+                      AND created_at <= $4
                     """,
-                    user_id, project_id, str(chapter_id), list(_ACTIVE_STATUSES), cutoff,
+                    project_id, str(chapter_id), list(_ACTIVE_STATUSES), cutoff,
                 )
                 # 1. Replay-under-lock: a same-key replay returns the existing job
-                # and must short-circuit BEFORE the guard. Scoped to user_id (the
-                # idempotency index is global on the key) so a cross-user key
-                # collision falls through to create()'s cross-user handling.
+                # and must short-circuit BEFORE the guard. Scoped to project_id (the
+                # idempotency index is global on the key) so a cross-project key
+                # collision falls through to create()'s cross-project handling.
                 if idempotency_key:
                     existing = await c.fetchrow(
                         f"SELECT {_SELECT_COLS} FROM generation_job "
-                        f"WHERE user_id = $1 AND idempotency_key = $2",
-                        user_id, idempotency_key,
+                        f"WHERE project_id = $1 AND idempotency_key = $2",
+                        project_id, idempotency_key,
                     )
                     if existing is not None:
                         return _row_to_job(existing), False
@@ -278,15 +371,15 @@ class GenerationJobsRepo:
                 active = await c.fetchrow(
                     """
                     SELECT id FROM generation_job
-                    WHERE user_id = $1 AND project_id = $2
+                    WHERE project_id = $1
                       AND outline_node_id IS NULL
-                      AND input->>'chapter_id' = $3
-                      AND status = ANY($4::text[])
-                      AND created_at > $5
+                      AND input->>'chapter_id' = $2
+                      AND status = ANY($3::text[])
+                      AND created_at > $4
                     ORDER BY created_at
                     LIMIT 1
                     """,
-                    user_id, project_id, str(chapter_id), list(_ACTIVE_STATUSES), cutoff,
+                    project_id, str(chapter_id), list(_ACTIVE_STATUSES), cutoff,
                 )
                 if active is not None:
                     raise ChapterJobInFlightError(str(active["id"]))
@@ -294,8 +387,8 @@ class GenerationJobsRepo:
                 # resolved OUT-OF-TX by the caller (D-JOBS-P4-COMPOSITION-GUARDED-MODEL) so
                 # the create emit carries the real name without an in-lock HTTP call.
                 return await self.create(
-                    user_id, project_id, operation=operation, outline_node_id=None,
-                    mode=mode, status=status, input=input,
+                    project_id, created_by=created_by, operation=operation,
+                    outline_node_id=None, mode=mode, status=status, input=input,
                     idempotency_key=idempotency_key, conn=c, model_name=model_name,
                 )
 
@@ -342,39 +435,59 @@ class GenerationJobsRepo:
             rows = await c.fetch(query, list(_ACTIVE_STATUSES), cutoff)
         return len(rows)
 
-    async def get(self, user_id: UUID, job_id: UUID) -> GenerationJob | None:
-        query = f"SELECT {_SELECT_COLS} FROM generation_job WHERE user_id = $1 AND id = $2"
+    async def get(self, job_id: UUID) -> GenerationJob | None:
+        query = f"SELECT {_SELECT_COLS} FROM generation_job WHERE id = $1"
         async with self._pool.acquire() as c:
-            row = await c.fetchrow(query, user_id, job_id)
+            row = await c.fetchrow(query, job_id)
         return _row_to_job(row) if row else None
 
+    async def active_among(
+        self, job_ids: list[UUID], book_id: UUID, *, stale_secs: int = 1800,
+    ) -> UUID | None:
+        """BE-4 — is ANY of these jobs still in flight for this book? Returns the first live id.
+
+        `book_id` in the WHERE is the tenancy assert (a bare-id job read must be re-scoped to the
+        run's book, same guard as sync_from_job). `stale_secs` bounds it: a crash-orphaned job must
+        NOT make a failed run un-archivable forever (same window as create_chapter_job_guarded)."""
+        if not job_ids:
+            return None
+        cutoff = datetime.now(timezone.utc) - timedelta(seconds=max(0, stale_secs))
+        query = (
+            "SELECT id FROM generation_job "
+            "WHERE id = ANY($1::uuid[]) AND book_id = $2 AND status = ANY($3) AND created_at > $4 "
+            "LIMIT 1"
+        )
+        async with self._pool.acquire() as c:
+            row = await c.fetchrow(query, job_ids, book_id, list(_ACTIVE_STATUSES), cutoff)
+        return row["id"] if row else None
+
     async def get_by_idempotency_key(
-        self, user_id: UUID, key: str
+        self, project_id: UUID, key: str
     ) -> GenerationJob | None:
         query = (
             f"SELECT {_SELECT_COLS} FROM generation_job "
-            f"WHERE user_id = $1 AND idempotency_key = $2"
+            f"WHERE project_id = $1 AND idempotency_key = $2"
         )
         async with self._pool.acquire() as c:
-            row = await c.fetchrow(query, user_id, key)
+            row = await c.fetchrow(query, project_id, key)
         return _row_to_job(row) if row else None
 
     async def list_active_for_node(
-        self, user_id: UUID, project_id: UUID, outline_node_id: UUID
+        self, project_id: UUID, outline_node_id: UUID
     ) -> list[GenerationJob]:
         """Pending/running jobs for a node — the M6 cancel-in-flight input."""
         query = f"""
         SELECT {_SELECT_COLS} FROM generation_job
-        WHERE user_id = $1 AND project_id = $2 AND outline_node_id = $3
-          AND status = ANY($4::text[])
+        WHERE project_id = $1 AND outline_node_id = $2
+          AND status = ANY($3::text[])
         ORDER BY created_at
         """
         async with self._pool.acquire() as c:
-            rows = await c.fetch(query, user_id, project_id, outline_node_id, list(_ACTIVE_STATUSES))
+            rows = await c.fetch(query, project_id, outline_node_id, list(_ACTIVE_STATUSES))
         return [_row_to_job(r) for r in rows]
 
     async def prior_scene_drafts(
-        self, user_id: UUID, project_id: UUID, chapter_id: UUID, before_story_order: int,
+        self, project_id: UUID, chapter_id: UUID, before_story_order: int,
     ) -> list[str]:
         """S1 state-reinjection fallback (used when no accepted chapter draft yet):
         the latest COMPLETED generation winner text for each scene in `chapter_id`
@@ -384,18 +497,19 @@ class GenerationJobsRepo:
         BEFORE the current one — a scene must never see its own future. Latest job
         per node (DISTINCT ON + created_at DESC). Empty text is filtered out.
         Scope: INTRA-chapter only (`o.chapter_id`) — cross-chapter context comes
-        from the canon/timeline KG lenses, not here. M5 isolation: filters
-        user_id/project_id on BOTH the job AND the joined node (defense-in-depth)."""
+        from the canon/timeline KG lenses, not here. Package tenancy (25 PM-3):
+        project_id filtered on BOTH the job AND the joined node (the kinds-bug
+        double-filter rule)."""
         query = """
         SELECT story_order, text FROM (
             SELECT DISTINCT ON (o.id)
                    o.story_order AS story_order, j.result->>'text' AS text
             FROM generation_job j
             JOIN outline_node o ON o.id = j.outline_node_id
-            WHERE j.user_id = $1 AND j.project_id = $2
-              AND o.user_id = $1 AND o.project_id = $2
-              AND o.chapter_id = $3 AND o.kind = 'scene'
-              AND o.story_order IS NOT NULL AND o.story_order < $4
+            WHERE j.project_id = $1
+              AND o.project_id = $1
+              AND o.chapter_id = $2 AND o.kind = 'scene'
+              AND o.story_order IS NOT NULL AND o.story_order < $3
               AND j.status = 'completed'
             ORDER BY o.id, j.created_at DESC
         ) latest
@@ -403,11 +517,11 @@ class GenerationJobsRepo:
         ORDER BY story_order
         """
         async with self._pool.acquire() as c:
-            rows = await c.fetch(query, user_id, project_id, chapter_id, before_story_order)
+            rows = await c.fetch(query, project_id, chapter_id, before_story_order)
         return [r["text"] for r in rows]
 
     async def chapter_scene_drafts(
-        self, user_id: UUID, project_id: UUID, chapter_id: UUID,
+        self, project_id: UUID, chapter_id: UUID,
     ) -> list[dict[str, str]]:
         """B3 stitch input — the latest COMPLETED generation winner text for EVERY
         scene in `chapter_id`, in story_order, as `{title, text}` rows (F4
@@ -416,7 +530,7 @@ class GenerationJobsRepo:
         `prior_scene_drafts` there is NO upper position bound (we want the whole
         chapter's drafts to stitch). Latest job per node (DISTINCT ON +
         created_at DESC); empty text filtered.
-        M5 isolation: user_id/project_id on BOTH the job AND the joined node."""
+        Package tenancy (25 PM-3): project_id on BOTH the job AND the joined node."""
         query = """
         SELECT title, text FROM (
             SELECT DISTINCT ON (o.id)
@@ -424,9 +538,9 @@ class GenerationJobsRepo:
                    j.result->>'text' AS text
             FROM generation_job j
             JOIN outline_node o ON o.id = j.outline_node_id
-            WHERE j.user_id = $1 AND j.project_id = $2
-              AND o.user_id = $1 AND o.project_id = $2
-              AND o.chapter_id = $3 AND o.kind = 'scene'
+            WHERE j.project_id = $1
+              AND o.project_id = $1
+              AND o.chapter_id = $2 AND o.kind = 'scene'
               AND o.story_order IS NOT NULL
               AND j.status = 'completed'
             ORDER BY o.id, j.created_at DESC
@@ -435,12 +549,52 @@ class GenerationJobsRepo:
         ORDER BY story_order
         """
         async with self._pool.acquire() as c:
-            rows = await c.fetch(query, user_id, project_id, chapter_id)
+            rows = await c.fetch(query, project_id, chapter_id)
         return [{"title": r["title"] or "", "text": r["text"]} for r in rows]
 
+    async def scene_drafts_detailed(
+        self, project_id: UUID, chapter_id: UUID,
+    ) -> list[dict[str, object]]:
+        """S5-B4 (branch prose-diff) — like `chapter_scene_drafts` but WITH the node id
+        and story_order, so a caller can correspond scenes ACROSS two projects (a dị bản
+        vs its source canon) by (chapter_id, story_order). Latest completed draft per node,
+        empty text filtered, ordered by story_order. Read-only; separate from the stitch
+        path so it never perturbs it. Package tenancy: project_id on BOTH job AND node."""
+        query = """
+        SELECT id, story_order, title, text, anchor_node_id FROM (
+            SELECT DISTINCT ON (o.id)
+                   o.id AS id, o.story_order AS story_order, o.title AS title,
+                   j.result->>'text' AS text,
+                   j.input->>'anchor_node_id' AS anchor_node_id
+            FROM generation_job j
+            JOIN outline_node o ON o.id = j.outline_node_id
+            WHERE j.project_id = $1
+              AND o.project_id = $1
+              AND o.chapter_id = $2 AND o.kind = 'scene'
+              AND o.story_order IS NOT NULL
+              AND j.status = 'completed'
+            ORDER BY o.id, j.created_at DESC
+        ) latest
+        WHERE text IS NOT NULL AND text <> ''
+        ORDER BY story_order
+        """
+        async with self._pool.acquire() as c:
+            rows = await c.fetch(query, project_id, chapter_id)
+        return [
+            {
+                "node_id": str(r["id"]), "story_order": r["story_order"],
+                "title": r["title"] or "", "text": r["text"],
+                # S5-B4 — the canon scene this derivative scene is an alternate of (if a
+                # promoted take carried it); null for a canon scene's own draft.
+                "anchor_node_id": r["anchor_node_id"],
+            }
+            for r in rows
+        ]
+
     async def upsert_promoted_scene_prose(
-        self, user_id: UUID, project_id: UUID, outline_node_id: UUID, text: str,
-        *, idempotency_key: str | None = None,
+        self, project_id: UUID, outline_node_id: UUID, text: str,
+        *, created_by: UUID, idempotency_key: str | None = None,
+        anchor_node_id: UUID | None = None,
     ) -> tuple[GenerationJob, int]:
         """M3 (WS-B3) — persist a promoted scene's PROSE into the synthetic-job store,
         keyed by `outline_node_id`, IDEMPOTENTLY on (project, node). Returns
@@ -459,10 +613,12 @@ class GenerationJobsRepo:
         one — so a re-promote / double-submit OVERWRITES, never duplicates. The
         version carries over (prior + 1) so the response reflects the promote count.
 
-        Defense-in-depth (mirrors `create`): the node must be the caller's scene in
-        THIS project (the FK only proves existence) → ReferenceViolationError else.
-        Emits the lifecycle event in the same tx (a synthetic but real completed job
-        the unified control plane should still mirror)."""
+        Defense-in-depth (mirrors `create`): the node must be a scene in THIS
+        project (the FK only proves existence) → ReferenceViolationError else.
+        `created_by` is a plain actor stamp; `book_id` derives from
+        `composition_work` inside the INSERT. Emits the lifecycle event in the
+        same tx (a synthetic but real completed job the unified control plane
+        should still mirror)."""
         async with self._pool.acquire() as c:
             async with c.transaction():
                 # Serialize concurrent promotes of the SAME node so the
@@ -475,31 +631,31 @@ class GenerationJobsRepo:
                 )
                 owned = await c.fetchval(
                     "SELECT 1 FROM outline_node "
-                    "WHERE user_id = $1 AND project_id = $2 AND id = $3 AND kind = 'scene'",
-                    user_id, project_id, outline_node_id,
+                    "WHERE project_id = $1 AND id = $2 AND kind = 'scene'",
+                    project_id, outline_node_id,
                 )
                 if owned is None:
                     raise ReferenceViolationError(
-                        f"outline_node {outline_node_id} is not the caller's scene in this project"
+                        f"outline_node {outline_node_id} is not a scene in this project"
                     )
                 # Idempotent overwrite: drop prior promoted rows for this node, but
                 # carry the version forward so the count reflects every promote.
                 prior_version = await c.fetchval(
                     """
                     SELECT max((input->>'version')::int) FROM generation_job
-                    WHERE user_id = $1 AND project_id = $2 AND outline_node_id = $3
-                      AND input->>'kind' = $4
+                    WHERE project_id = $1 AND outline_node_id = $2
+                      AND input->>'kind' = $3
                     """,
-                    user_id, project_id, outline_node_id, _PROMOTED_SCENE_PROSE_KIND,
+                    project_id, outline_node_id, _PROMOTED_SCENE_PROSE_KIND,
                 )
                 version = (prior_version or 0) + 1
                 await c.execute(
                     """
                     DELETE FROM generation_job
-                    WHERE user_id = $1 AND project_id = $2 AND outline_node_id = $3
-                      AND input->>'kind' = $4
+                    WHERE project_id = $1 AND outline_node_id = $2
+                      AND input->>'kind' = $3
                     """,
-                    user_id, project_id, outline_node_id, _PROMOTED_SCENE_PROSE_KIND,
+                    project_id, outline_node_id, _PROMOTED_SCENE_PROSE_KIND,
                 )
                 # The natural dedup key is (project, node) — enforced by the
                 # lock+delete above — so the optional request `idempotency_key` is
@@ -509,27 +665,44 @@ class GenerationJobsRepo:
                 _input = {"kind": _PROMOTED_SCENE_PROSE_KIND, "version": version}
                 if idempotency_key:
                     _input["idempotency_key"] = idempotency_key
+                # S5-B4 (D-S5-BRANCHDIFF-CORRESPONDENCE) — the canon scene this take is an
+                # alternate of. A promoted derivative scene gets a fresh dense story_order
+                # that does NOT align with canon's, so the branch-diff can't pair by order;
+                # this back-ref lets it pair the derivative scene to its canon counterpart
+                # RELIABLY (a real canon↔branch diff instead of a false "added").
+                if anchor_node_id is not None:
+                    _input["anchor_node_id"] = str(anchor_node_id)
                 row = await c.fetchrow(
                     f"""
                     INSERT INTO generation_job
-                      (user_id, project_id, outline_node_id, operation, mode, status,
-                       input, result)
-                    VALUES ($1,$2,$3,$4,'cowrite','completed',$5::jsonb,$6::jsonb)
+                      (created_by, project_id, book_id, outline_node_id, operation,
+                       mode, status, input, result)
+                    SELECT $1, $2, w.book_id, $3, $4,
+                           'cowrite', 'completed', $5::jsonb, $6::jsonb
+                    FROM composition_work w
+                    WHERE (w.project_id = $2 OR (w.project_id IS NULL AND w.id = $2))
                     RETURNING {_SELECT_COLS}
                     """,
-                    user_id, project_id, outline_node_id, _PROMOTED_SCENE_PROSE_KIND,
+                    created_by, project_id, outline_node_id,
+                    _PROMOTED_SCENE_PROSE_KIND,
                     json.dumps(_input), json.dumps({"text": text}),
                 )
+                if row is None:
+                    # The INSERT … SELECT found no composition_work → dangling
+                    # project_id. Loud failure (PM-7 spirit): never mint a job
+                    # without a book_id home.
+                    raise ReferenceViolationError(
+                        f"project {project_id} has no composition_work row"
+                    )
                 job = _row_to_job(row)
                 await emit_job_event(
                     c, service=_JOB_SERVICE, job_id=str(job.id),
-                    owner_user_id=str(job.user_id), kind=job.operation, status=job.status,
+                    owner_user_id=str(job.created_by), kind=job.operation, status=job.status,
                 )
                 return job, version
 
     async def update_status(
         self,
-        user_id: UUID,
         job_id: UUID,
         status: str,
         *,
@@ -546,22 +719,22 @@ class GenerationJobsRepo:
         Only the explicitly-passed optional fields are written (COALESCE keeps
         the existing value when None) — a critique call can set `critic` +
         `target_revision_id` without clobbering `result`. Returns the updated
-        job or None (missing / cross-user)."""
+        job or None (missing)."""
         query = f"""
         UPDATE generation_job
-        SET status = $3,
-            result = COALESCE($4::jsonb, result),
-            critic = COALESCE($5::jsonb, critic),
-            llm_job_id = COALESCE($6, llm_job_id),
-            target_chapter_id = COALESCE($7, target_chapter_id),
-            target_revision_id = COALESCE($8, target_revision_id),
-            cost_usd = COALESCE($9, cost_usd),
+        SET status = $2,
+            result = COALESCE($3::jsonb, result),
+            critic = COALESCE($4::jsonb, critic),
+            llm_job_id = COALESCE($5, llm_job_id),
+            target_chapter_id = COALESCE($6, target_chapter_id),
+            target_revision_id = COALESCE($7, target_revision_id),
+            cost_usd = COALESCE($8, cost_usd),
             updated_at = now()
-        WHERE user_id = $1 AND id = $2
+        WHERE id = $1
         RETURNING {_SELECT_COLS}
         """
         args = (
-            user_id, job_id, status, _jsonb(result), _jsonb(critic), llm_job_id,
+            job_id, status, _jsonb(result), _jsonb(critic), llm_job_id,
             target_chapter_id, target_revision_id, cost_usd,
         )
         async def _do(c: asyncpg.Connection) -> GenerationJob | None:
@@ -573,7 +746,7 @@ class GenerationJobsRepo:
             # tx/conn as the UPDATE (H1: status change + event commit atomically).
             await emit_job_event(
                 c, service=_JOB_SERVICE, job_id=str(job.id),
-                owner_user_id=str(job.user_id), kind=job.operation, status=status,
+                owner_user_id=str(job.created_by), kind=job.operation, status=status,
                 error=_job_error(result) if status == "failed" else None,
             )
             return job
@@ -586,9 +759,9 @@ class GenerationJobsRepo:
 
     async def list_since(self, since: datetime, *, limit: int = 1000) -> list[GenerationJob]:
         """Reconcile snapshot (Unified Job Control Plane H1 backstop): generation jobs
-        updated at/after `since`, oldest-first, capped. ALL owners (the jobs-service
-        projection mirrors every owner; user-scoping is at its read API). Used by the
-        jobs-service reconcile sweep to heal any outbox drift."""
+        updated at/after `since`, oldest-first, capped. ALL actors/projects (the
+        jobs-service projection mirrors every row; user-scoping is at its read API).
+        Used by the jobs-service reconcile sweep to heal any outbox drift."""
         rows = await self._pool.fetch(
             f"SELECT {_SELECT_COLS} FROM generation_job "
             f"WHERE updated_at >= $1 ORDER BY updated_at ASC LIMIT $2",
@@ -597,15 +770,16 @@ class GenerationJobsRepo:
         return [_row_to_job(r) for r in rows]
 
     async def cancel(
-        self, user_id: UUID, job_id: UUID, *, conn: asyncpg.Connection | None = None
+        self, job_id: UUID, *, conn: asyncpg.Connection | None = None
     ) -> GenerationJob | None:
         """Race-safe cancel for the unified control plane (P3): CAS the row to
-        'cancelled' ONLY from an active state, scoped to the owner. Returns the
-        cancelled job, or None when nothing transitioned — i.e. the job is
-        missing/cross-user OR already terminal (the caller distinguishes those
-        with a prior owner-scoped ``get``: get→None ⇒ 404, get-ok+cancel→None ⇒ 409).
+        'cancelled' ONLY from an active state. Returns the cancelled job, or None
+        when nothing transitioned — i.e. the job is missing OR already terminal
+        (the caller distinguishes those with a prior ``get``: get→None ⇒ 404,
+        get-ok+cancel→None ⇒ 409). Access is gated BEFORE the repo (E0 grant on
+        the row's book_id — the new-law chokepoint).
 
-        Unlike ``update_status`` (a plain owner-scoped UPDATE, used by the engine
+        Unlike ``update_status`` (a plain by-id UPDATE, used by the engine
         which already knows the job is active), this guards ``status = ANY(active)``
         so a control-plane cancel can never clobber a job that completed in the
         TOCTOU window. Emits the terminal event on the SAME conn as the UPDATE (H1),
@@ -613,17 +787,17 @@ class GenerationJobsRepo:
         query = f"""
         UPDATE generation_job
            SET status = 'cancelled', updated_at = now()
-         WHERE user_id = $1 AND id = $2 AND status = ANY($3::text[])
+         WHERE id = $1 AND status = ANY($2::text[])
         RETURNING {_SELECT_COLS}
         """
         async def _do(c: asyncpg.Connection) -> GenerationJob | None:
-            row = await c.fetchrow(query, user_id, job_id, list(_ACTIVE_STATUSES))
+            row = await c.fetchrow(query, job_id, list(_ACTIVE_STATUSES))
             if row is None:
                 return None
             job = _row_to_job(row)
             await emit_job_event(
                 c, service=_JOB_SERVICE, job_id=str(job.id),
-                owner_user_id=str(job.user_id), kind=job.operation, status="cancelled",
+                owner_user_id=str(job.created_by), kind=job.operation, status="cancelled",
             )
             return job
 

@@ -17,6 +17,10 @@
     "explore": {
       "title": "Explorar",
       "desc": "Navega por tu conocimiento: entidades, líneas temporales y el gráfico de relaciones."
+    },
+    "assistant": {
+      "title": "Asistente de trabajo",
+      "desc": "Un diario personal que recuerda discretamente a tus personas, proyectos y decisiones."
     }
   }
 }

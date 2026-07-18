@@ -101,6 +101,17 @@ services:
       PUBLIC_APP_URL: ${PUBLIC_APP_URL:-http://localhost:5174}
       NOTIFICATION_SERVICE_INTERNAL_URL: http://notification-service:8091
       INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-dev_internal_token}
+      # WS-1.0 (PO-2) — the deployment KEK that WRAPS each user's DEK. auth-service stores
+      # only the wrapped blob; consumers unwrap with the SAME key from their own env, so
+      # the plaintext key never crosses the network.
+      #
+      # ⚠️ PRODUCTION: this MUST come from a KMS/secret manager, never a compose default.
+      # Losing it makes every diary unrecoverable; leaking it plus a DB dump undoes the
+      # whole scheme. The dev default exists so the local stack boots — it is not a secret.
+      # Rotating it? Put the OLD value in DIARY_ENCRYPTION_KEYS_RETIRED or you will orphan
+      # every existing user's key.
+      DIARY_ENCRYPTION_KEY: ${DIARY_ENCRYPTION_KEY:-loreweave_local_dev_diary_kek_change_me}
+      DIARY_ENCRYPTION_KEYS_RETIRED: ${DIARY_ENCRYPTION_KEYS_RETIRED:-}
       # Q-GATE (public MCP): gate mcp_api_keys creation behind this flag (kill-switch).
       PUBLIC_MCP_ENABLED: ${PUBLIC_MCP_ENABLED:-false}
       # D-PMCP-SELFCONFIRM-ROUTES — Tier-W confirm replay (self-confirm + human-approve)
@@ -163,6 +174,13 @@ services:
       LLM_GATEWAY_INTERNAL_URL: http://provider-registry-service:8085
       USAGE_BILLING_SERVICE_URL: http://usage-billing-service:8086
       INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-dev_internal_token}
+      AUTH_SERVICE_INTERNAL_URL: http://auth-service:8081
+      # C5 / SD-C5 (P-12) — diary encryption-at-rest. MUST be the SAME value as auth-service's
+      # DIARY_ENCRYPTION_KEY: auth WRAPS each per-user DEK under this KEK, book-service UNWRAPS with
+      # it. A dedicated key (never JWT_SECRET). Rotating? Add the OLD value to
+      # DIARY_ENCRYPTION_KEYS_RETIRED on EVERY service at once or you orphan diaries.
+      DIARY_ENCRYPTION_KEY: ${DIARY_ENCRYPTION_KEY:-loreweave_local_dev_diary_kek_change_me}
+      DIARY_ENCRYPTION_KEYS_RETIRED: ${DIARY_ENCRYPTION_KEYS_RETIRED:-}
       # Phase 6c — OpenTelemetry trace export (see provider-registry-service).
       OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
     depends_on:
@@ -204,12 +222,33 @@ services:
       # pending forever. The batch endpoints (decompose/generate/stitch) become 202+poll
       # (the FE already polls GET /jobs/{id}).
       COMPOSITION_WORKER_ENABLED: ${COMPOSITION_WORKER_ENABLED:-true}
+      # close-21-28 D-G5-DRIVE-EXEC — rules-mode propose auto-compiles its parsed arcs inline
+      # (deterministic, $0, idempotent). Platform default ON (PO-decided 2026-07-16): rules mode is a
+      # deterministic transcription with nothing to review between propose and compile, so structure_node>0
+      # becomes a consequence of a governance-driven rules propose instead of a coin-flip on a weak agent
+      # chaining a second plan_compile call (S06 DR-G5-REROLL). Set FALSE to restore a propose→review step.
+      PLANFORGE_RULES_AUTOCOMPILE: ${PLANFORGE_RULES_AUTOCOMPILE:-true}
+      # D-PLANFORGE-PROPOSE-BLIND — the deploy CEILING for propose-existing-state grounding (OQ-2).
+      # Default FALSE: the richer cast/spine/systems grounding is gated behind the A/B eval and fails
+      # closed. effective = AND(this, the per-run ground_on_existing flag). Flip TRUE org-wide once the
+      # eval proves grounding improves the plan.
+      PLANFORGE_GROUND_ON_EXISTING_ALLOWED: ${PLANFORGE_GROUND_ON_EXISTING_ALLOWED:-true}
       # W5 motif-conformance — the per-scene producer (judge each generated scene vs
       # its bound motif) + the calibrated label. ENABLED 2026-06-28 (the W5 judge gate
       # is satisfied: kappa 1.0 / 0.762 ≥ thresholds). Single-local-judge, so the FE
       # still surfaces an advisory note; flip CALIBRATED off to fall back to 'unverified'.
       MOTIF_CONFORMANCE_ENABLED: ${MOTIF_CONFORMANCE_ENABLED:-true}
       MOTIF_CONFORMANCE_CALIBRATED: ${MOTIF_CONFORMANCE_CALIBRATED:-true}
+      # Platform motif/arc embedding model (RECONCILE D2 — the shared/system "library"
+      # tier is embedded in ONE platform space so cross-user cosine is comparable). It is a
+      # BYOK-as-platform credential: a bge-m3 user_model owned by the reserved platform-owner
+      # (source is ALWAYS user_model — /internal/embed rejects "platform_model"). The dev
+      # values below are seeded by scripts/seed_platform_embed_model.sh (copies the local
+      # bge-m3 credential under the reserved owner). PROD: point these at a real platform
+      # account's embed model. Unset ⇒ the shared library degrades to genre (honest, no crash).
+      MOTIF_EMBED_MODEL_SOURCE: ${MOTIF_EMBED_MODEL_SOURCE:-user_model}
+      MOTIF_EMBED_OWNER_ID: ${MOTIF_EMBED_OWNER_ID:-00000000-0000-4000-8000-000000000001}
+      MOTIF_EMBED_MODEL_REF: ${MOTIF_EMBED_MODEL_REF:-00000000-0000-4000-8000-0000000e0001}
       LOG_LEVEL: INFO
       # S2 — long-chapter state-compress threshold (chars of raw story-so-far
       # before the packer compresses the older portion). Default 6000; overridable.
@@ -263,6 +302,11 @@ services:
       # any producer path reads these). ENABLED 2026-06-28 (gate satisfied).
       MOTIF_CONFORMANCE_ENABLED: ${MOTIF_CONFORMANCE_ENABLED:-true}
       MOTIF_CONFORMANCE_CALIBRATED: ${MOTIF_CONFORMANCE_CALIBRATED:-true}
+      # Platform motif/arc embedding model — MUST mirror the API (the worker re-embeds on
+      # its own retrieve/back-fill path). See the composition-service block for the contract.
+      MOTIF_EMBED_MODEL_SOURCE: ${MOTIF_EMBED_MODEL_SOURCE:-user_model}
+      MOTIF_EMBED_OWNER_ID: ${MOTIF_EMBED_OWNER_ID:-00000000-0000-4000-8000-000000000001}
+      MOTIF_EMBED_MODEL_REF: ${MOTIF_EMBED_MODEL_REF:-00000000-0000-4000-8000-0000000e0001}
       # Same internal service URLs as the API — the worker re-resolves pack context
       # (book/glossary/knowledge) + the internal-auth LLM for the compute half.
       KNOWLEDGE_INTERNAL_URL: http://knowledge-service:8092
@@ -306,6 +350,38 @@ services:
       retries: 3
     ports:
       - "8206:8083"
+
+  # WS-3.1 — the per-user scheduler (the platform's one true "time trigger" hole). Owns the clock;
+  # claims due scheduled_agent_runs rows and posts eod_distill to the chat trigger (WS-3.2/WS-3.0).
+  scheduler-service:
+    build:
+      context: ..
+      dockerfile: services/scheduler-service/Dockerfile
+      labels: *build-labels
+    environment:
+      HTTP_ADDR: ":8095"
+      DATABASE_URL: postgres://loreweave:loreweave_dev@postgres:5432/loreweave_scheduler?sslmode=disable
+      # A3 — the scheduler enqueues eod_distill/weekly_rollup/weekly_reflection/proactive_nudge to chat.
+      # The service hostname is `chat-service` (every other service uses it); `chat` has no alias, so the
+      # armed autonomous jobs used to fail DNS ("no such host") and never fire — arming was hollow.
+      CHAT_SERVICE_INTERNAL_URL: http://chat-service:8090
+      # nudge (WS-3.6) delivers a content-free reminder via notification-service (:8091, as every other
+      # service addresses it); without this it no-ops.
+      NOTIFICATION_SERVICE_INTERNAL_URL: ${NOTIFICATION_SERVICE_INTERNAL_URL:-http://notification-service:8091}
+      INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-dev_internal_token}
+      SCHEDULER_TICK_INTERVAL: ${SCHEDULER_TICK_INTERVAL:-60s}
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8095/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    ports:
+      # C7 — host 8213 collided with video-gen-service (which also mapped 8213); moved to a free port.
+      - "8228:8095"
 
   catalog-service:
     # Phase 6c — repo-root build context so the Dockerfile can COPY
@@ -896,6 +972,14 @@ services:
       MINIO_USE_SSL: "false"
       MINIO_EXTERNAL_URL: ${MINIO_EXTERNAL_URL:-http://localhost:9123}
       INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-dev_internal_token}
+      # R3 (D-PROACTIVE-DELIVERY) — the content-free proactive check-in push sink (best-effort).
+      NOTIFICATION_SERVICE_INTERNAL_URL: http://notification-service:8091
+      # WS-1.0 (review-impl) — the SAME deployment KEK auth-service uses to WRAP each DEK.
+      # This consumer unwraps the DEK with it to decrypt the user's private content, so a
+      # value here that differs from auth-service's is a total decrypt failure. Rotations
+      # must add the old value to DIARY_ENCRYPTION_KEYS_RETIRED on EVERY service at once.
+      DIARY_ENCRYPTION_KEY: ${DIARY_ENCRYPTION_KEY:-loreweave_local_dev_diary_kek_change_me}
+      DIARY_ENCRYPTION_KEYS_RETIRED: ${DIARY_ENCRYPTION_KEYS_RETIRED:-}
       # Phase 6c-γ — OpenTelemetry trace export (see provider-registry-service).
       OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
       REDIS_URL: redis://redis:6379
@@ -1038,6 +1122,12 @@ services:
       GLOSSARY_DB_URL: postgresql://loreweave:loreweave_dev@postgres:5432/loreweave_glossary
       JWT_SECRET: ${JWT_SECRET:-loreweave_local_dev_jwt_secret_change_me_32chars}
       INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-dev_internal_token}
+      # WS-1.0 (review-impl) — the SAME deployment KEK auth-service uses to WRAP each DEK.
+      # This consumer unwraps the DEK with it to decrypt the user's private content, so a
+      # value here that differs from auth-service's is a total decrypt failure. Rotations
+      # must add the old value to DIARY_ENCRYPTION_KEYS_RETIRED on EVERY service at once.
+      DIARY_ENCRYPTION_KEY: ${DIARY_ENCRYPTION_KEY:-loreweave_local_dev_diary_kek_change_me}
+      DIARY_ENCRYPTION_KEYS_RETIRED: ${DIARY_ENCRYPTION_KEYS_RETIRED:-}
       # KM5 (D-KM5-M3) — SPKI/PKIX PEM (or base64) of the platform admin-signing
       # key's public half (same value glossary-service gets). When set, the System-
       # tier admin write endpoints + the /mcp/admin server verify an RS256 admin JWT
@@ -1325,6 +1415,8 @@ services:
       MINIO_SECRET_KEY: loreweave_dev_minio_secret
       MINIO_BUCKET: loreweave-dev-books
       BOOK_SERVICE_URL: http://book-service:8082
+      # 26 IX-12 — import tail decompiles imported prose into spec scenes + writes back source_scene_id.
+      COMPOSITION_SERVICE_URL: http://composition-service:8093
       INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-dev_internal_token}
       RABBITMQ_URL: amqp://loreweave:loreweave_dev@rabbitmq:5672/
       # Phase 6c — OpenTelemetry trace export (see provider-registry-service).
@@ -1352,6 +1444,12 @@ services:
     environment:
       KNOWLEDGE_DB_URL: postgresql://loreweave:loreweave_dev@postgres:5432/loreweave_knowledge
       INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-dev_internal_token}
+      # WS-1.0 (review-impl) — the SAME deployment KEK auth-service uses to WRAP each DEK.
+      # This consumer unwraps the DEK with it to decrypt the user's private content, so a
+      # value here that differs from auth-service's is a total decrypt failure. Rotations
+      # must add the old value to DIARY_ENCRYPTION_KEYS_RETIRED on EVERY service at once.
+      DIARY_ENCRYPTION_KEY: ${DIARY_ENCRYPTION_KEY:-loreweave_local_dev_diary_kek_change_me}
+      DIARY_ENCRYPTION_KEYS_RETIRED: ${DIARY_ENCRYPTION_KEYS_RETIRED:-}
       # Phase 6c-γ — OpenTelemetry trace export (see provider-registry-service).
       OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
       KNOWLEDGE_SERVICE_URL: http://knowledge-service:8092
@@ -1366,6 +1464,10 @@ services:
       # Phase 4b-γ: SDK posts to provider-registry's internal LLM
       # gateway for entity/relation/event/fact extraction jobs.
       PROVIDER_REGISTRY_INTERNAL_URL: http://provider-registry-service:8085
+      # WS-2.8: usage-billing internal API for the distiller's daily-cap degrade pre-check. :8086 is
+      # usage-billing's HTTP_ADDR (mirrors USAGE_BILLING_SERVICE_URL elsewhere in this file) — same
+      # stale-port trap the GLOSSARY_SERVICE_URL note above records; the pre-check fails OPEN anyway.
+      USAGE_BILLING_SERVICE_URL: http://usage-billing-service:8086
       LOG_LEVEL: INFO
       POLL_INTERVAL_S: "5"
       # Pass-2 precision filter — NO env config (D-WX-PRECISION-FILTER-MODEL-ARCH).
@@ -1509,6 +1611,8 @@ services:
       STATISTICS_SERVICE_URL: http://statistics-service:8089
       NOTIFICATION_SERVICE_URL: http://notification-service:8091
       KNOWLEDGE_SERVICE_URL: http://knowledge-service:8092
+      # WS-3.2 — the assistant schedule toggle proxies to scheduler-service.
+      SCHEDULER_SERVICE_URL: http://scheduler-service:8095
       # Auto-Draft Factory S1 — campaign saga API (/v1/campaigns).
       CAMPAIGN_SERVICE_URL: http://campaign-service:8095
       LORE_ENRICHMENT_SERVICE_URL: http://lore-enrichment-service:8093
@@ -1823,9 +1927,10 @@ services:
       LOREWEAVE_INTERNAL_TOKEN: ${INTERNAL_SERVICE_TOKEN:-dev_internal_token}
       TILEMAP_HTTP_BIND: "0.0.0.0:7100"
       # CORS origins for browser smoke (Session D V0 demo, spec AC-FG-13).
-      # Comma-separated; defaults to frontend-game dev server on :5174.
+      # Comma-separated; defaults to the frontend-game origin on :5176
+      # (was :5174 until that port collided with the main `frontend`).
       # Prod goes through api-gateway-bff (single-origin per spec §8).
-      LOREWEAVE_CORS_ORIGINS: ${LOREWEAVE_CORS_ORIGINS:-http://localhost:5174}
+      LOREWEAVE_CORS_ORIGINS: ${LOREWEAVE_CORS_ORIGINS:-http://localhost:5176}
       RUST_LOG: ${RUST_LOG:-info,tilemap_service=debug}
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:7100/livez"]
@@ -1876,7 +1981,9 @@ services:
       LOREWEAVE_INTERNAL_TOKEN: ${INTERNAL_SERVICE_TOKEN:-dev_internal_token}
       CHAT_SERVICE_URL: http://chat-service:8090
       ROLEPLAY_HTTP_BIND: "0.0.0.0:7110"
-      LOREWEAVE_CORS_ORIGINS: ${LOREWEAVE_CORS_ORIGINS:-http://localhost:5174}
+      # Defaults to the frontend-game origin on :5176 (was :5174 until that
+      # port collided with the main `frontend`).
+      LOREWEAVE_CORS_ORIGINS: ${LOREWEAVE_CORS_ORIGINS:-http://localhost:5176}
       RUST_LOG: ${RUST_LOG:-info,roleplay_service=debug}
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:7110/livez"]
@@ -1908,8 +2015,9 @@ services:
       # Same env name convention as tilemap-service for cross-service consistency.
       LOREWEAVE_INTERNAL_TOKEN: ${INTERNAL_SERVICE_TOKEN:-dev_internal_token}
       # CORS for matchmaking HTTP endpoint (POST /matchmake/<room>);
-      # WS upgrade itself doesn't preflight. Default frontend-game dev :5174.
-      LOREWEAVE_CORS_ORIGINS: ${LOREWEAVE_CORS_ORIGINS:-http://localhost:5174}
+      # WS upgrade itself doesn't preflight. Default = the frontend-game
+      # origin :5176 (was :5174 until it collided with the main `frontend`).
+      LOREWEAVE_CORS_ORIGINS: ${LOREWEAVE_CORS_ORIGINS:-http://localhost:5176}
       NODE_ENV: production
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:2567/livez"]
@@ -1929,8 +2037,18 @@ services:
   # V0 final piece (Session F per spec §16) — completes the
   # one-command local stack: `docker compose --profile full up`
   # boots tilemap-service + game-server + frontend-game and the user
-  # opens http://localhost:5174 for the V0 demo (iso tilemap +
+  # opens http://localhost:5176 for the V0 demo (iso tilemap +
   # click-to-walk Player + HUD reading /livez + WS echo panel).
+  #
+  # PORT: host 5176 → container 5174. It was 5174:5174, which COLLIDED
+  # with the main `frontend` (5174:80, no profile ⇒ always up), so
+  # `docker compose --profile game up` failed to bind. Host ports now:
+  # 5174 = frontend (main app) · 5175 = cms-frontend · 5176 = this.
+  # The container port stays 5174 (nginx + the /livez healthcheck below
+  # are internal, so they are unaffected). Anything that must allow this
+  # SPA's browser ORIGIN — the LOREWEAVE_CORS_ORIGINS defaults on
+  # tilemap-service, roleplay-service, and game-server — must therefore
+  # say 5176, not 5174.
   # Build context = repo root (pnpm-workspace.yaml lives there +
   # frontend-game depends on @loreweave/* packages).
   # ────────────────────────────────────────────────────────────────
@@ -1949,7 +2067,9 @@ services:
       start_period: 5s
     restart: on-failure:5
     ports:
-      - "5174:5174"
+      # host 5176 → container 5174 (see the PORT note above; 5174 is taken
+      # by the main `frontend`, which has no profile and is always up).
+      - "5176:5174"
     # V0 demo: frontend-game's bundled JS still hardcodes
     # localhost:8220 (tilemap-service) and localhost:2567 (game-server).
     # Both are exposed to host via compose port maps; browser sees them

@@ -171,7 +171,19 @@
     "kind_character": "Characters",
     "kind_location": "Places",
     "kind_faction": "Factions",
-    "kind_concept": "Concepts"
+    "kind_concept": "Concepts",
+    "rename": "Rename",
+    "renameConflict": "Changed elsewhere — reloaded.",
+    "editEntity": "Edit aliases & kind",
+    "archive": "Retire entity",
+    "archiveConfirm": "Retire \"{{name}}\"? Its relations and glossary anchor are kept; it returns if the book mentions it again (there is no restore button).",
+    "archived": "Retired — it returns if the book mentions it again.",
+    "newEntity": "New",
+    "editFailed": "Edit failed: {{error}}",
+    "truncated": "Showing the first 200 — refine your search to narrow the list.",
+    "showingOf": "Showing {{loaded}} of {{total}}.",
+    "loadMore": "Load more",
+    "loadingMore": "Loading…"
   },
   "relmap": "Relations",
   "relations": {
@@ -214,7 +226,10 @@
     "gone": "gone",
     "loading": "Loading character arc…",
     "noProject": "No knowledge graph yet — extract this book to chart character arcs.",
-    "empty": "This character has no events yet."
+    "empty": "This character has no events yet.",
+    "edit": "Edit",
+    "linkEntity": "+ link entity",
+    "addEvent": "+ Add event"
   },
   "worldmap": "World Map",
   "wmap": {
@@ -236,7 +251,10 @@
     "loading": "Loading world map…",
     "addFailed": "Could not add the place.",
     "linkFailed": "Could not link the places.",
-    "linkMissing": "One of those places no longer exists."
+    "linkMissing": "One of those places no longer exists.",
+    "delete": "Remove {{name}}",
+    "deleteConfirm": "Remove “{{name}}” from the world map? This archives the place.",
+    "deleteFailed": "Could not remove the place."
   },
   "grounding": "Grounding",
   "canon": "Canon",
@@ -251,7 +269,11 @@
     "densityRange": "lean ◂▸ lush",
     "pace": "Pace",
     "paceRange": "slow ◂▸ fast",
-    "scope": { "work": "Book", "chapter": "Chapter", "scene": "Scene" },
+    "scope": {
+      "work": "Book",
+      "chapter": "Chapter",
+      "scene": "Scene"
+    },
     "scopeHint": "Most specific scope wins (scene › chapter › book). A mid value is balanced — no steer.",
     "voices": "Character voices",
     "noVoices": "No character voices yet.",
@@ -259,15 +281,66 @@
     "addTag": "+ tag",
     "remove": "Remove"
   },
-  "heatmap": { "title": "Mention heatmap", "inProse": "In prose" },
-  "provenance": { "title": "AI provenance", "unreviewedCount": "{{n}} unreviewed", "show": "Show", "hide": "Hide", "markAllReviewed": "Mark all reviewed", "ai": "AI", "reviewed": "reviewed", "unreviewed": "unreviewed", "clickToReview": "(click to review)" },
+  "heatmap": {
+    "title": "Mention heatmap",
+    "inProse": "In prose"
+  },
+  "provenance": {
+    "title": "AI provenance",
+    "unreviewedCount": "{{n}} unreviewed",
+    "show": "Show",
+    "hide": "Hide",
+    "markAllReviewed": "Mark all reviewed",
+    "ai": "AI",
+    "reviewed": "reviewed",
+    "unreviewed": "unreviewed",
+    "clickToReview": "(click to review)"
+  },
   "flywheel": "Flywheel",
-  "flywheelPanel": { "loading": "Loading…", "empty": "Publish a chapter to grow your canon — new entities, relations and events will show up here.", "subtitle": "Your latest publish grew the canon:", "entities": "entities", "relations": "relations", "events": "events", "highlights": "New highlights", "kind": { "entity": "Entity", "event": "Event", "relation": "Relation" } },
-  "view": { "power_view": "Power view", "back_to_editor": "Back to editor" },
-  "dock": { "addPanel": "Add panel", "float": "Float", "dock": "Dock", "popout": "Pop out" },
-  "popout": { "invalid": "This pop-out link is invalid." },
+  "flywheelPanel": {
+    "loading": "Loading…",
+    "empty": "Publish a chapter to grow your canon — new entities, relations and events will show up here.",
+    "subtitle": "Your latest publish grew the canon:",
+    "entities": "entities",
+    "relations": "relations",
+    "events": "events",
+    "highlights": "New highlights",
+    "kind": {
+      "entity": "Entity",
+      "event": "Event",
+      "relation": "Relation"
+    }
+  },
+  "view": {
+    "power_view": "Power view",
+    "back_to_editor": "Back to editor"
+  },
+  "dock": {
+    "addPanel": "Add panel",
+    "float": "Float",
+    "dock": "Dock",
+    "popout": "Pop out"
+  },
+  "popout": {
+    "invalid": "This pop-out link is invalid."
+  },
   "references": "References",
-  "referencesPanel": { "title": "Title", "author": "Author", "contentPlaceholder": "Paste a reference passage / influence…", "pickEmbedModel": "Embedding model (set once for this work)", "noEmbedModel": "Add an embedding model (e.g. bge-m3) in AI settings to enable reference retrieval.", "add": "Add reference", "adding": "Adding…", "relevant": "For this scene", "searchPlaceholder": "Search…", "unavailable": "Retrieval unavailable (embedding provider down).", "noHits": "No matching references yet.", "library": "Library", "delete": "Delete", "empty": "No references yet — add influences above." },
+  "referencesPanel": {
+    "title": "Title",
+    "author": "Author",
+    "contentPlaceholder": "Paste a reference passage / influence…",
+    "pickEmbedModel": "Embedding model (set once for this work)",
+    "noEmbedModel": "Add an embedding model (e.g. bge-m3) in AI settings to enable reference retrieval.",
+    "add": "Add reference",
+    "adding": "Adding…",
+    "relevant": "For this scene",
+    "searchPlaceholder": "Search…",
+    "unavailable": "Retrieval unavailable (embedding provider down).",
+    "noHits": "No matching references yet.",
+    "library": "Library",
+    "delete": "Delete",
+    "empty": "No references yet — add influences above."
+  },
   "progressPanel": {
     "loading": "Loading progress…",
     "error": "Couldn't load progress.",
@@ -311,6 +384,9 @@
   "statDiverge": "Diverge (K)",
   "statStream": "Stream",
   "guidePlaceholder": "Optional guidance for the co-writer…",
+  "correction": {
+    "capturedToast": "Noted — your co-writer will learn from this"
+  },
   "reasoning": "Reasoning",
   "reasoningHint": "Auto = the server decides per model. Off disables thinking; Low/Med/High force it.",
   "reasoningAuto": "Thinking: auto",
@@ -352,7 +428,7 @@
   "pacing": "pacing",
   "canon_consistency": "canon",
   "dismiss": "dismiss",
-  "overrideSlipBlocked": "Accept blocked: a dị bản override slipped back to the canon value. Regenerate before accepting.",
+  "overrideSlipBlocked": "Accept blocked: a what-if-version override slipped back to the canon value. Regenerate before accepting.",
   "overrideSlipExhausted": "Override still slipping after the regeneration cap — surfaced for your review (accept is no longer blocked).",
   "overrideSlipDetail": "{{name}} ({{field}}): expected “{{expected}}”, found “{{found}}”",
   "deltaInconsistencyDetail": "{{name}}: contradicts the delta rule “{{rule}}”",
@@ -375,6 +451,12 @@
   "canonUntil": "Until (reading order)",
   "canonActive": "active",
   "canonInactive": "inactive",
+  "canonArchivedTag": "archived",
+  "canonShowArchived": "Show archived",
+  "canonRuleArchived": "Rule archived",
+  "canonRuleRestored": "Rule restored",
+  "restore": "Restore",
+  "undo": "Undo",
   "canonWindowInverted": "'From' must be ≤ 'Until'.",
   "archive": "Archive",
   "noRules": "No canon rules yet.",
@@ -555,13 +637,19 @@
     },
     "scope": {
       "label": "Motif scope",
-      "my": "My library",
-      "catalog": "Public catalog"
+      "my": "Mine",
+      "catalog": "Public catalog",
+      "book": "Book",
+      "shared": "Shared",
+      "system": "System",
+      "drafts": "Drafts",
+      "needsBook": "Open a book to see its motifs"
     },
     "search": "Search motifs",
     "overuse": "\"{{name}}\" is already used in {{chapters}} — consider varying it.",
     "list": {
-      "noMatch": "No motifs match — clear filters."
+      "noMatch": "No motifs match — clear filters.",
+      "truncated": "Showing the first 100 — narrow with search or filters to see the rest."
     },
     "error": {
       "load": "Couldn't load — please retry."
@@ -656,7 +744,8 @@
     },
     "binding": {
       "freeForm": "No motif matched — this scene is free-form.",
-      "commitGenerate": "Commit + write this scene →"
+      "commitGenerate": "Commit + write this scene →",
+      "noWork": "Create a plan for this book to bind motifs to its scenes."
     },
     "swap": {
       "title": "Swap motif",
@@ -680,7 +769,8 @@
         "ok": "On beat",
         "warn": "Tension drift",
         "bad": "Beat missed"
-      }
+      },
+      "rerunNeedsModel": "Pick a model to re-run conformance"
     },
     "arc": {
       "mobileNotice": "The timeline grid is available on a larger screen — here you can edit it as a list.",
@@ -690,7 +780,110 @@
       "moveRight": "Move later",
       "grow": "Lengthen",
       "shrink": "Shorten",
-      "remove": "Remove"
+      "remove": "Remove",
+      "libraryEmpty": "No arc templates yet. Create one, or import a story to deconstruct.",
+      "templates": {
+        "tabLibrary": "Library",
+        "tabCatalog": "Catalog",
+        "tabDeconstruct": "Import & Deconstruct",
+        "tier_all": "All",
+        "tier_mine": "Mine",
+        "tier_system": "System",
+        "tier_book": "Book",
+        "new": "+ New",
+        "loading": "Loading…",
+        "loadError": "Could not load templates.",
+        "retry": "Retry",
+        "chapters": "{{count}} chapters",
+        "chipSystem": "System",
+        "chipMine": "Mine",
+        "chipPublic": "Public",
+        "archive": "archive",
+        "adopt": "adopt",
+        "createCode": "code (unique)",
+        "createName": "name",
+        "createShare": "Share with this book's collaborators (book tier)",
+        "create": "Create",
+        "cancel": "Cancel",
+        "catalogError": "Could not load the catalog.",
+        "catalogEmpty": "No public arc templates yet.",
+        "back": "← All templates",
+        "driftTitle": "Drift — used by this book",
+        "driftUnapplied": "Not applied to this book yet — apply it above to compare drift.",
+        "driftNoProvenance": "This arc was authored directly — there is no template to drift from.",
+        "driftGone": "The source template is no longer available.",
+        "driftLoading": "Loading drift…",
+        "driftClean": "No drift — the realized arc matches its template.",
+        "driftSummary": "{{gaps}} coverage gap(s) · {{violations}} ordering issue(s) · {{folded}} folded placement(s)",
+        "driftPacingOnly": "Structure matches, but the pacing drifted (max {{drift}}).",
+        "driftThreads": "Thread coverage",
+        "driftNoThreads": "The template has no threads to compare.",
+        "driftPacing": "Pacing",
+        "driftMax": "max drift {{drift}}",
+        "driftPacingNC": "Not comparable yet — the template has no tension curve.",
+        "driftSuccession": "Ordering",
+        "driftSuccessionOk": "No ordering violations.",
+        "driftViolation": "{{label}}: {{n}} out-of-order",
+        "driftFolded": "Folded (never bound)",
+        "untitledArc": "(untitled arc)",
+        "truncated": "Showing the first {{shown}} of {{count}} — use Catalog or a narrower tier to find more.",
+        "tabSuggest": "Suggest"
+      },
+      "import": {
+        "privacy": "The raw text stays private to you and is never shared. Only the derived abstract structure can be published — and publishing strips the source reference.",
+        "sources": "Reference sources",
+        "loading": "Loading…",
+        "noSources": "No sources yet — paste one below.",
+        "untitled": "(untitled)",
+        "deleteConfirm": "Delete this source? There is no restore.",
+        "deleteTitle": "Delete (no restore)",
+        "sourceError": "Could not save the source — try again.",
+        "what": "Deconstruct the reference into a reusable arc template (LLM-metered).",
+        "hint": "Arc hint (optional)",
+        "useWeb": "Allow web lookup",
+        "model": "Deconstruct model",
+        "estimating": "Estimating…",
+        "running": "Deconstructing…",
+        "run": "Deconstruct",
+        "selectFirst": "Select a source above first.",
+        "done": "A new arc template was created — find it in the Library.",
+        "pasteTitle": "title",
+        "pasteBody": "paste reference text…",
+        "tooLong": "Too long — trim before importing.",
+        "addSource": "Add source"
+      },
+      "extract": {
+        "blurb": "Save this arc’s shape as a reusable template in your library.",
+        "open": "Save as template…",
+        "namePlaceholder": "Template name",
+        "saving": "Saving…",
+        "save": "Save",
+        "cancel": "Cancel",
+        "conflict": "You already have a template with that name — rename it.",
+        "error": "Could not save this arc as a template.",
+        "done": "Saved “{{name}}” to your template library."
+      },
+      "suggest": {
+        "noProject": "Open a book with a Work to get arc suggestions for its premise.",
+        "premisePlaceholder": "Describe the premise — e.g. \"a reluctant heir must reclaim a fallen house\"",
+        "genrePlaceholder": "Genre (optional)",
+        "running": "Ranking…",
+        "run": "Suggest arcs",
+        "error": "Could not rank arc suggestions.",
+        "empty": "No arc templates fit yet — create one, or import a story to deconstruct.",
+        "mine": "yours",
+        "span": "{{count}} ch"
+      },
+      "decompile": {
+        "open": "Group chapters into arcs",
+        "confirm": "Automatically group this book’s chapters into arcs (~{{n}} chapters each). Safe to re-run — existing arcs are reused.",
+        "running": "Grouping…",
+        "run": "Group into arcs",
+        "cancel": "Cancel",
+        "error": "Could not group the chapters into arcs.",
+        "done": "Grouped {{chapters}} chapters into {{arcs}} arcs.",
+        "none": "No chapters to group into arcs yet."
+      }
     },
     "simple": {
       "actant": {
@@ -748,6 +941,38 @@
       "knows": "Knows",
       "deceived": "Deceived",
       "gap": "Gap"
+    },
+    "graph": {
+      "title": "Graph — composed of · precedes · variant of",
+      "loading": "Loading edges…",
+      "error": "Could not load the motif graph.",
+      "retry": "Retry",
+      "empty": "No relationships yet.",
+      "deleteEdge": "Remove edge",
+      "addEdge": "Add relationship",
+      "pickNeighbor": "Pick a motif…",
+      "add": "Add edge",
+      "cancel": "Cancel",
+      "kind": {
+        "composed_of": "Composed of",
+        "precedes": "Precedes",
+        "variant_of": "Variant of"
+      },
+      "truncated": "Showing the first {{cap}} motifs — narrow by tier or search to see more.",
+      "canvasLoading": "Loading the motif graph…",
+      "canvasEmpty": "No motifs to graph yet — create or adopt motifs, then link them."
+    },
+    "suggest": {
+      "button": "Suggest a motif",
+      "loading": "Ranking motifs for this scene…",
+      "error": "Could not suggest motifs.",
+      "retry": "Retry",
+      "empty": "No motif fits this scene yet — add more to your library.",
+      "bind": "Bind",
+      "degradedMine": "Your motifs aren't ranked by fit — set up an embedding model in your settings to rank them semantically.",
+      "degradedLibrary": "Not ranked by fit — the shared library's embedding model isn't configured, so these are genre fallbacks, not scored matches.",
+      "sectionMine": "Your motifs",
+      "sectionLibrary": "From the library"
     }
   },
   "authoringRun": {
@@ -840,7 +1065,11 @@
       "failedUnit": "This unit failed:",
       "verdictShow": "Show detail ▾",
       "verdictHide": "Hide detail ▴",
-      "sev": { "ok": "ok", "warn": "warn", "severe": "severe" },
+      "sev": {
+        "ok": "ok",
+        "warn": "warn",
+        "severe": "severe"
+      },
       "cascadeWarning": "{{count}} downstream unit(s) already drafted/accepted ({{chapters}}) — this is advisory only; rejecting this unit does NOT auto-revert them.",
       "accept": "Accept",
       "reject": "Reject",

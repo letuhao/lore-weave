@@ -26,6 +26,8 @@ tower-http = { workspace = true }
 sqlx = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
+# ACP A3 — produce the working-memory seed via typed contract structs, not hand-rolled JSON.
+contracts-agent-control = { path = "../../crates/contracts-agent-control" }
 thiserror = { workspace = true }
 anyhow = { workspace = true }
 uuid = { workspace = true }

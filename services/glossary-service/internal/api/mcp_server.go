@@ -7,13 +7,13 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"sort"
 	"strings"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
-	"github.com/loreweave/glossary-service/internal/domain"
 	"github.com/loreweave/grantclient"
 	lwmcp "github.com/loreweave/loreweave_mcp"
 )
@@ -25,28 +25,34 @@ import (
 func (s *Server) mcpHandler() http.Handler {
 	srv := mcp.NewServer(&mcp.Implementation{Name: "glossary", Version: "0.1.0"}, nil)
 
-	mcp.AddTool(srv, &mcp.Tool{
+	lwmcp.RegisterTool(srv, &mcp.Tool{
 		Name: "glossary_search",
 		Description: "Search a book's glossary for entities (characters, places, items, " +
 			"concepts) by name, alias, or natural-language terms. Returns ranked entities " +
 			"with name, aliases, kind, and a short description. Use this to find what the " +
 			"glossary already knows before answering or proposing changes.",
+		Meta: lwmcp.NewToolMeta(lwmcp.TierR, lwmcp.ScopeBook, nil, nil),
 	}, s.toolSearch)
 
-	mcp.AddTool(srv, &mcp.Tool{
+	lwmcp.RegisterTool(srv, &mcp.Tool{
 		Name: "glossary_get_entity",
 		Description: "Fetch one glossary entity's full detail (attributes, aliases, kind, " +
 			"counts) by id, within a book. Use after glossary_search to read an entity in depth.",
+		Meta: lwmcp.NewToolMeta(lwmcp.TierR, lwmcp.ScopeBook, nil, nil),
 	}, s.toolGetEntity)
 
 	// F2 (§12.3): retarget of the old glossary_list_kinds → the "what CAN I adopt"
 	// standards-browse role. Use BEFORE adopting; for the in-book schema use
 	// glossary_book_ontology_read.
-	mcp.AddTool(srv, &mcp.Tool{
+	lwmcp.RegisterTool(srv, &mcp.Tool{
 		Name: "glossary_list_system_standards",
-		Description: "List the SYSTEM standards catalogue (entity kinds + their attribute " +
-			"definitions) — the templates a book can adopt. Use to learn what standards exist " +
-			"BEFORE scaffolding a book. For what a specific book ALREADY has, use glossary_book_ontology_read.",
+		Description: "List the SYSTEM standards catalogue — the entity kinds a book can adopt, " +
+			"by CODE. Use once to learn what exists BEFORE scaffolding a book, then pass the codes " +
+			"you want to glossary_adopt_standards; each kind's attributes come down with it. " +
+			"Calling this twice returns the identical list. For what a specific book ALREADY has, " +
+			"use glossary_book_ontology_read.",
+		// Global System-standards read, no scope key (not book/user scoped) ⇒ ScopeNone.
+		Meta: lwmcp.NewToolMeta(lwmcp.TierR, lwmcp.ScopeNone, nil, nil),
 	}, s.toolListKinds)
 
 	// T1: book-tier ontology tools (read, adopt, create/patch/delete, set-genres,
@@ -79,8 +85,21 @@ func (s *Server) mcpHandler() http.Handler {
 	// tool with a batch-capable sibling (a confirmed near-term need: a
 	// KG-extraction pipeline minting many entities per pass).
 	s.RegisterEntityBatchTools(srv)
+	// Real-usage feedback finding — glossary_entity_delete (Tier-W propose+confirm)
+	// + glossary_entity_restore (Tier-A direct): the FE's Undo allowlist already
+	// carries these exact tool names (useActivityUndo.ts); this wires them up.
+	s.RegisterEntityDeleteTools(srv)
+	// Real-usage feedback finding (2026-07-08) — glossary_entity_set_attributes:
+	// entities were write-once for attribute values via MCP (creation only); no
+	// reachable editor existed for an already-existing entity.
+	s.RegisterEntityAttributeEditTools(srv)
+	// WS-4A (agent-discoverability spec) — glossary_extract_entities_from_doc: the
+	// seed-doc → entity-candidates bridge (workflow W2 / scenario S02 Path B). Tier-R
+	// derive: turns a pasted notes doc into {kind,name,attributes} candidates the
+	// agent then feeds to glossary_propose_entities. Writes nothing itself.
+	s.RegisterEntityDocExtractTools(srv)
 
-	mcp.AddTool(srv, &mcp.Tool{
+	lwmcp.RegisterTool(srv, &mcp.Tool{
 		Name: "glossary_propose_new_entity",
 		Description: "Propose a NEW entity (character, place, item, concept, …) for a book's " +
 			"glossary. It is created as a DRAFT suggestion in the review inbox — NOT canon — and " +
@@ -99,7 +118,7 @@ func (s *Server) mcpHandler() http.Handler {
 	// /v1/glossary/actions/confirm (there is deliberately NO MCP tool that writes —
 	// INV-T1/INV-T3). After calling one, pass its confirm_token to the
 	// glossary_confirm_action frontend tool so the human can review and confirm.
-	mcp.AddTool(srv, &mcp.Tool{
+	lwmcp.RegisterTool(srv, &mcp.Tool{
 		Name: "glossary_propose_new_kind",
 		Description: "Propose a NEW entity KIND (a schema-level type like 'Power System' that every " +
 			"entity of that kind is described by). PASS the kind's defining `attributes` in the SAME call " +
@@ -112,9 +131,11 @@ func (s *Server) mcpHandler() http.Handler {
 		InputSchema: closedSetSchemaFor[proposeKindToolIn](map[string][]any{
 			"attributes[].field_type": enumFieldTypes,
 		}),
+		// Mints a grant confirm_token (no direct write) ⇒ Tier W.
+		Meta: lwmcp.NewToolMeta(lwmcp.TierW, lwmcp.ScopeBook, nil, nil),
 	}, s.toolProposeNewKind)
 
-	mcp.AddTool(srv, &mcp.Tool{
+	lwmcp.RegisterTool(srv, &mcp.Tool{
 		Name: "glossary_propose_kinds",
 		Description: "Propose MANY entity kinds AT ONCE — the whole ontology in ONE confirm. PREFER this over " +
 			"calling glossary_propose_new_kind repeatedly: the user wants to create an ONTOLOGY, not one kind at a " +
@@ -126,9 +147,10 @@ func (s *Server) mcpHandler() http.Handler {
 		InputSchema: closedSetSchemaFor[proposeKindsToolIn](map[string][]any{
 			"kinds[].attributes[].field_type": enumFieldTypes,
 		}),
+		Meta: lwmcp.NewToolMeta(lwmcp.TierW, lwmcp.ScopeBook, nil, nil),
 	}, s.toolProposeKinds)
 
-	mcp.AddTool(srv, &mcp.Tool{
+	lwmcp.RegisterTool(srv, &mcp.Tool{
 		Name: "glossary_plan",
 		Description: "PLAN a multi-step ontology goal in ONE shot. Given a natural-language `goal` (e.g. " +
 			"'design an ontology for this xianxia novel'), a capable PLANNER model reads the book's current " +
@@ -138,9 +160,12 @@ func (s *Server) mcpHandler() http.Handler {
 			"rows are skipped). PREFER this for any goal needing more than one or two writes — do NOT loop the " +
 			"individual propose tools. Optional `model_ref` overrides the user's default 'planner' model. Creates " +
 			"nothing until confirmed.",
+		// Mints a grant confirm_token ⇒ Tier W. Calls a PLANNER LLM synchronously at
+		// mint time (runPlanner → provider-registry) ⇒ Paid (spends real money on call).
+		Meta: lwmcp.WithPaid(lwmcp.NewToolMeta(lwmcp.TierW, lwmcp.ScopeBook, nil, nil)),
 	}, s.toolPlan)
 
-	mcp.AddTool(srv, &mcp.Tool{
+	lwmcp.RegisterTool(srv, &mcp.Tool{
 		Name: "glossary_propose_batch",
 		Description: "Apply MANY ontology changes on ONE confirm — the DETERMINISTIC batch path. Pass the " +
 			"operations EXPLICITLY in `ops` and they are validated + minted into a SINGLE execute_plan confirm " +
@@ -176,9 +201,11 @@ func (s *Server) mcpHandler() http.Handler {
 			// the op `type` enum stays strict, unknowns are admitted (W0 soak).
 			"", "ops[]",
 		),
+		// Mints a grant confirm_token ⇒ Tier W. NO planner LLM (deterministic) ⇒ not paid.
+		Meta: lwmcp.NewToolMeta(lwmcp.TierW, lwmcp.ScopeBook, nil, nil),
 	}, s.toolProposeBatch)
 
-	mcp.AddTool(srv, &mcp.Tool{
+	lwmcp.RegisterTool(srv, &mcp.Tool{
 		Name: "glossary_propose_new_attribute",
 		Description: "Propose a NEW attribute on an existing kind (e.g. add 'cultivation_realm' to the " +
 			"character kind). Schema-level and high-impact — it does NOT write; it returns a confirm_token + " +
@@ -187,6 +214,7 @@ func (s *Server) mcpHandler() http.Handler {
 		InputSchema: closedSetSchemaFor[proposeAttrToolIn](map[string][]any{
 			"field_type": enumFieldTypes,
 		}),
+		Meta: lwmcp.NewToolMeta(lwmcp.TierW, lwmcp.ScopeBook, nil, nil),
 	}, s.toolProposeNewAttribute)
 	// glossary_book_delete + glossary_book_* tools are registered in RegisterBookTools (T1).
 
@@ -275,8 +303,37 @@ type getEntityToolOut struct {
 }
 
 type listKindsToolIn struct{}
+
+// standardKind — the COMPACT view of a System standard, and the only thing an agent needs
+// in order to answer the one question this tool exists to answer: "which of these do I
+// adopt?" You adopt BY CODE (glossary_adopt_standards takes genre/kind codes), and the
+// attribute definitions come down with the kind automatically when you do.
+//
+// It used to return domain.EntityKind — every kind with every attribute definition inlined,
+// each carrying its own UUID, auto_fill_prompt, translation_hint, sort_order, is_active…
+// **44,254 characters. 86% of it was `default_attributes` (114 objects the model cannot act
+// on).** That is ~11k tokens — a THIRD of a turn's entire budget — for one read.
+//
+// The cost was not theoretical. Measured live: gemma called this tool TWENTY-FOUR times in a
+// single S01 run and built nothing. Each call buried the previous call's answer deeper in the
+// window, so the model could never see what it had already fetched, so it fetched it again.
+// A tool whose result cannot fit in the context of the agent that calls it is not a tool the
+// agent can use — it is a context bomb with a friendly description.
+//
+// 44,254 chars → ~1,500. Same decision, 3% of the cost.
+type standardKind struct {
+	Code        string   `json:"code"`
+	Name        string   `json:"name"`
+	Description string   `json:"description,omitempty"`
+	GenreTags   []string `json:"genre_tags,omitempty"`
+	// AttributeCount, not the attributes: enough for the agent to know the kind carries a
+	// schema, without shipping the schema it never reads.
+	AttributeCount int `json:"attribute_count"`
+}
+
 type listKindsToolOut struct {
-	Kinds []domain.EntityKind `json:"kinds"`
+	Kinds []standardKind `json:"kinds"`
+	Note  string         `json:"note,omitempty"`
 }
 
 // ── tool handlers ─────────────────────────────────────────────────────────────
@@ -345,7 +402,9 @@ type bookOntologyReadToolIn struct {
 	BookID string `json:"book_id" jsonschema:"the book whose local ontology to read (UUID)"`
 }
 type bookOntologyReadToolOut struct {
-	Ontology *bookOntologyResp `json:"ontology"`
+	// D-2-ONTOLOGY-BLOAT: the COMPACT projection (identifiers + counts + base_version), not the full
+	// per-attribute definitions — those inlined up to 117KB and crowded the model's context out.
+	Ontology *compactBookOntology `json:"ontology"`
 }
 
 // toolBookOntologyRead reads a book's local ontology (genres/kinds/attributes/links).
@@ -366,7 +425,8 @@ func (s *Server) toolBookOntologyRead(ctx context.Context, _ *mcp.CallToolReques
 	if err != nil {
 		return nil, bookOntologyReadToolOut{}, errors.New("failed to load book ontology")
 	}
-	return nil, bookOntologyReadToolOut{Ontology: ont}, nil
+	// D-2-ONTOLOGY-BLOAT: return the compact projection (patch-able + counts), not the full defs.
+	return nil, bookOntologyReadToolOut{Ontology: compactBookOntologyOf(ont)}, nil
 }
 
 func (s *Server) toolListKinds(ctx context.Context, _ *mcp.CallToolRequest, _ listKindsToolIn) (*mcp.CallToolResult, listKindsToolOut, error) {
@@ -375,14 +435,33 @@ func (s *Server) toolListKinds(ctx context.Context, _ *mcp.CallToolRequest, _ li
 	if err != nil {
 		return nil, listKindsToolOut{}, errors.New("failed to load kinds")
 	}
-	// /review-impl MED-1: loadKinds' EntityCount is a GLOBAL (cross-book)
-	// aggregate — both a cross-tenant info leak and misleading for a single-book
-	// assistant (the LLM would read it as "this book's count"). Strip it; the
-	// schema (kinds + attributes) is what the assistant needs, not counts.
-	for i := range kinds {
-		kinds[i].EntityCount = 0
+	// Project down to the compact view (see standardKind). Two things are deliberately
+	// dropped here:
+	//   * EntityCount — /review-impl MED-1: loadKinds' count is a GLOBAL, cross-book
+	//     aggregate. A cross-tenant leak, and misleading to a single-book assistant, which
+	//     would read it as "this book's count".
+	//   * DefaultAttributes — 86% of the old payload and unusable by the caller: you adopt a
+	//     standard by CODE, and its attributes come down with it.
+	out := make([]standardKind, 0, len(kinds))
+	for _, k := range kinds {
+		desc := ""
+		if k.Description != nil {
+			desc = *k.Description
+		}
+		out = append(out, standardKind{
+			Code:           k.Code,
+			Name:           k.Name,
+			Description:    desc,
+			GenreTags:      k.GenreTags,
+			AttributeCount: len(k.Attributes),
+		})
 	}
-	return nil, listKindsToolOut{Kinds: kinds}, nil
+	return nil, listKindsToolOut{
+		Kinds: out,
+		Note: "Adopt these by CODE with glossary_adopt_standards (pass the kind/genre codes). " +
+			"Each kind's attribute definitions come with it — you do not need to fetch or " +
+			"re-state them.",
+	}, nil
 }
 
 // ── Tier-W: propose a new entity (draft) ─────────────────────────────────────
@@ -397,14 +476,21 @@ type proposeEntityToolIn struct {
 	Kind       string         `json:"kind" jsonschema:"the entity kind code (e.g. character, place) — see glossary_book_ontology_read"`
 	Name       string         `json:"name" jsonschema:"the entity's name"`
 	Attributes map[string]any `json:"attributes,omitempty" jsonschema:"optional attribute code → value map"`
+	// ScopeLabel (D-GLOSSARY-ENTITY-SCOPE, optional) disambiguates two entities that
+	// would otherwise share the same name+kind but are genuinely different (e.g. a
+	// world/realm name in a multi-world story) — a free-text label, not a reference
+	// to any other entity. Leave empty unless disambiguation is actually needed.
+	ScopeLabel string `json:"scope_label,omitempty" jsonschema:"optional free-text disambiguator (e.g. a world/realm name) for a name that legitimately recurs across different in-story contexts"`
 }
 type proposeEntityToolOut struct {
 	EntityID string `json:"entity_id"`
 	// Status is created | skipped_exists | skipped_tombstoned.
 	Status string `json:"status"`
-	// AttributesSkipped (070): attribute codes the caller supplied that don't
-	// exist on the kind and were therefore dropped — surfaced so the LLM knows
-	// they didn't land (mirrors the bulk extract's entityResult.AttributesSkipped).
+	// AttributesSkipped (070): attribute codes the caller supplied that were NOT
+	// applied — either they don't exist on the kind (status=created) OR the entity
+	// already exists and this tool never mutates one (status=skipped_exists /
+	// skipped_tombstoned, in which case ALL supplied attrs are listed). Surfaced so
+	// the LLM knows they didn't land and can reapply via glossary_entity_set_attributes.
 	AttributesSkipped []string `json:"attributes_skipped,omitempty"`
 }
 
@@ -424,6 +510,10 @@ func (s *Server) toolProposeNewEntity(ctx context.Context, _ *mcp.CallToolReques
 	if strings.TrimSpace(in.Kind) == "" {
 		return nil, proposeEntityToolOut{}, errors.New("kind is required")
 	}
+	scopeLabel, err := validateScopeLabel(in.ScopeLabel)
+	if err != nil {
+		return nil, proposeEntityToolOut{}, err
+	}
 	if err := s.checkGrant(ctx, bookID, userID, grantclient.GrantEdit); err != nil {
 		return nil, proposeEntityToolOut{}, uniformOwnershipError(err)
 	}
@@ -435,7 +525,7 @@ func (s *Server) toolProposeNewEntity(ctx context.Context, _ *mcp.CallToolReques
 	if !ok {
 		return nil, proposeEntityToolOut{}, errors.New("unknown kind: " + in.Kind)
 	}
-	entityID, status, skipped, err := s.proposeNewEntity(ctx, bookID, kindID, name, in.Attributes)
+	entityID, status, skipped, err := s.proposeNewEntity(ctx, bookID, kindID, name, in.Attributes, scopeLabel)
 	if err != nil {
 		return nil, proposeEntityToolOut{}, errors.New("propose failed")
 	}
@@ -448,27 +538,82 @@ func (s *Server) toolProposeNewEntity(ctx context.Context, _ *mcp.CallToolReques
 // indistinguishable from a pipeline-discovered one (INV-1: draft never reaches
 // canon). The caller must have verified book ownership. Returns the entity id +
 // a status: created | skipped_exists | skipped_tombstoned.
-func (s *Server) proposeNewEntity(ctx context.Context, bookID, kindID uuid.UUID, name string, attrs map[string]any) (uuid.UUID, string, []string, error) {
-	existingID, err := s.findEntityByNameOrAlias(ctx, s.pool, bookID, kindID, name)
+//
+// scopeLabel (D-GLOSSARY-ENTITY-SCOPE, optional) — a plain author-set disambiguator
+// (e.g. a world/realm name) so two entities that share a name+kind but are
+// genuinely different aren't folded together by the dedup check below. "" behaves
+// exactly as before (empty only matches another empty-scope entity).
+// sortedAttrKeys returns the attribute codes in a caller-supplied attrs map, sorted
+// for a stable result. Empty/nil map → nil (nothing to report).
+func sortedAttrKeys(attrs map[string]any) []string {
+	if len(attrs) == 0 {
+		return nil
+	}
+	keys := make([]string, 0, len(attrs))
+	for k := range attrs {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	return keys
+}
+
+func (s *Server) proposeNewEntity(ctx context.Context, bookID, kindID uuid.UUID, name string, attrs map[string]any, scopeLabel string) (uuid.UUID, string, []string, error) {
+	// D-GLOSSARY-PROPOSE-LOCK (cleared 2026-07-09): dedup check, tombstone check,
+	// attr-def load, create, and the scope_label set all now run on ONE tx, held
+	// under the SAME per-book advisory lock the bulk extraction pipeline already
+	// uses (extractionWritebackLockNS, INV-C1) — this closes the TOCTOU race that
+	// let 8 truly concurrent identical proposals create 8 duplicate rows.
+	//
+	// Two earlier attempts at this deadlocked under concurrent test load (each
+	// hanging the full 600s timeout): both mixed tx-bound calls with a call that
+	// hit s.pool directly (a SEPARATE connection) while the tx's own connection
+	// was still held open — with a small pool and enough concurrent callers,
+	// every goroutine ends up holding one connection while waiting on a second,
+	// and nothing ever completes. The fix isn't "add a lock", it's "never need a
+	// 2nd connection": every call below — including loadAttrDefMap, which used to
+	// hardcode s.pool with no querier param at all — now takes tx explicitly, so
+	// this whole function runs on exactly one connection start to finish.
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return uuid.Nil, "", nil, fmt.Errorf("begin tx: %w", err)
+	}
+	defer tx.Rollback(ctx) //nolint:errcheck // no-op after a successful Commit
+
+	if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock($1, hashtext($2))`,
+		extractionWritebackLockNS, bookID.String()); err != nil {
+		return uuid.Nil, "", nil, fmt.Errorf("book lock: %w", err)
+	}
+
+	existingID, err := s.findEntityByNameOrAlias(ctx, tx, bookID, kindID, name, scopeLabel)
 	if err != nil {
 		return uuid.Nil, "", nil, fmt.Errorf("entity lookup: %w", err)
 	}
 	if existingID != uuid.Nil {
-		rejected, err := s.entityHasTag(ctx, s.pool, existingID, tagAIRejected)
+		rejected, err := s.entityHasTag(ctx, tx, existingID, tagAIRejected)
 		if err != nil {
 			return uuid.Nil, "", nil, fmt.Errorf("tombstone check: %w", err)
 		}
+		// The entity already exists and this tool NEVER mutates an existing one, so
+		// none of the caller's attributes were applied. Surface them (rather than drop
+		// them silently) so a weak model can see they didn't land and reapply via
+		// glossary_entity_set_attributes.
+		discarded := sortedAttrKeys(attrs)
 		if rejected {
-			return existingID, "skipped_tombstoned", nil, nil
+			return existingID, "skipped_tombstoned", discarded, nil
 		}
-		return existingID, "skipped_exists", nil, nil
+		return existingID, "skipped_exists", discarded, nil
 	}
 
-	attrDefMap, err := s.loadAttrDefMap(ctx, bookID)
+	attrDefMap, err := s.loadAttrDefMap(ctx, tx, bookID)
 	if err != nil {
 		return uuid.Nil, "", nil, fmt.Errorf("attr defs: %w", err)
 	}
 	ent := extractedEntity{Name: name, Attributes: attrs}
+
+	// /review-impl HIGH fix (2026-07-09): entity creation + the scope_label set
+	// share this same tx — a uq_entity_dedup collision on the scope_label UPDATE
+	// rolls back the whole creation instead of leaving a wrongly-scoped orphan.
+
 	// "und" (ISO 639-2 undetermined) for the tool-proposed name's language — the
 	// human can correct it when reviewing the draft in the inbox.
 	//
@@ -478,9 +623,22 @@ func (s *Server) proposeNewEntity(ctx context.Context, bookID, kindID uuid.UUID,
 	// captures them into "description" (D-GLOSSARY-UNMATCHED-ATTR-FALLBACK). Use
 	// createExtractedEntity's own returned skip list instead of duplicating
 	// (now-stale) logic about what it does with an unmatched code.
-	entityID, _, skippedAttrs, err := s.createExtractedEntity(ctx, s.pool, bookID, kindID, ent, nil, attrDefMap, "und", []string{tagAISuggested, tagAssistant})
+	entityID, _, skippedAttrs, err := s.createExtractedEntity(ctx, tx, bookID, kindID, ent, nil, attrDefMap, "und", []string{tagAISuggested, tagAssistant})
 	if err != nil {
 		return uuid.Nil, "", nil, fmt.Errorf("create draft: %w", err)
+	}
+	if scopeLabel != "" {
+		if _, err := tx.Exec(ctx,
+			`UPDATE glossary_entities SET scope_label = $1 WHERE entity_id = $2`,
+			scopeLabel, entityID,
+		); err != nil {
+			// entityID is real but never committed (the deferred Rollback above
+			// undoes the whole tx) — safe to discard here, unlike before this fix.
+			return uuid.Nil, "", nil, fmt.Errorf("set scope_label: %w", err)
+		}
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return uuid.Nil, "", nil, fmt.Errorf("commit: %w", err)
 	}
 	var skipped []string
 	for _, sa := range skippedAttrs {

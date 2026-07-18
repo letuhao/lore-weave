@@ -143,6 +143,19 @@ async def test_mode1_defaults_tool_calling_enabled_true():
     assert built.tool_calling_enabled is True
 
 
+@pytest.mark.asyncio
+async def test_mode1_canon_capture_fails_closed():
+    """WS-4C Half A — capture spends the user's BYOK tokens, so it must fail
+    CLOSED where tool_calling fails open. Mode 1 has no project (hence no book,
+    hence no glossary inbox); a `True` default here would have chat try to
+    capture on every no-project chat."""
+    repo = AsyncMock()
+    repo.get = AsyncMock(return_value=None)
+
+    built = await build_no_project_mode(repo, uuid4())
+    assert built.canon_capture_enabled is False
+
+
 # ── W1 — per-section token map (additive) ───────────────────────────────────
 
 

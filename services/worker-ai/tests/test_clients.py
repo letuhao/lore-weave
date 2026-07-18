@@ -84,6 +84,44 @@ def _knowledge_with(handler):
 
 
 @pytest.mark.asyncio
+async def test_recall_facts_range_failclosed_branches():
+    """P2 (D-REFLECTION-FACTS-RECALL-FAIL-CLOSED) — the client-level contract for all four branches:
+    empty 200 → [] in BOTH modes; non-200 & transport error → RAISE only when fail_closed=True, else []."""
+    from app.clients import KnowledgeUnavailable
+
+    async def run(handler, *, fail_closed):
+        kc = _knowledge_with(handler)
+        try:
+            return await kc.recall_facts_range(
+                user_id="u", book_id="b", date_from="2026-07-06", date_to="2026-07-12",
+                fail_closed=fail_closed,
+            )
+        finally:
+            await kc.aclose()
+
+    ok_empty = lambda req: httpx.Response(200, json={"facts": []})
+    ok_facts = lambda req: httpx.Response(200, json={"facts": [{"content": "x"}]})
+    err_500 = lambda req: httpx.Response(500, json={"error": "boom"})
+
+    def boom(req):
+        raise httpx.ConnectError("down")
+
+    # empty 200 is NOT an error — [] in both modes.
+    assert await run(ok_empty, fail_closed=False) == []
+    assert await run(ok_empty, fail_closed=True) == []
+    # a genuine 200 with facts returns them.
+    assert await run(ok_facts, fail_closed=True) == [{"content": "x"}]
+    # best-effort (rollup): non-200 and transport error → [] (the intended degrade).
+    assert await run(err_500, fail_closed=False) == []
+    assert await run(boom, fail_closed=False) == []
+    # fail-closed (reflection): non-200 and transport error → RAISE.
+    with pytest.raises(KnowledgeUnavailable):
+        await run(err_500, fail_closed=True)
+    with pytest.raises(KnowledgeUnavailable):
+        await run(boom, fail_closed=True)
+
+
+@pytest.mark.asyncio
 async def test_resolve_schema_no_project_short_circuits_no_http():
     """project_id=None → None without any HTTP call (chat/global path)."""
     called = {"n": 0}

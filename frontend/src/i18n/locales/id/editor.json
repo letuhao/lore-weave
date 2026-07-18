@@ -371,5 +371,26 @@
     "no_restore": "Tidak ada versi sebelumnya untuk dipulihkan",
     "confirm_title": "Pulihkan ke sebelum edit AI ini?",
     "confirm_desc": "Draf saat ini akan diambil snapshot-nya terlebih dahulu, sehingga tindakan ini dapat dibatalkan melalui riwayat revisi."
+  },
+  "knowledge": {
+    "add": "Tambahkan ke pengetahuan",
+    "reindex": "Perbarui pengetahuan",
+    "indexed_badge": "Dalam pengetahuan Anda",
+    "not_indexed_badge": "Tidak dalam pengetahuan",
+    "excluded_badge": "Dikecualikan",
+    "forget": "Lupakan bab ini",
+    "keep_out": "Jangan masukkan ke pengetahuan",
+    "allow": "Izinkan dalam pengetahuan",
+    "save_first": "Simpan sebelum menambahkan ke pengetahuan",
+    "indexed_toast": "Berhasil ditambahkan ke pengetahuan Anda",
+    "reused_toast": "Sudah mutakhir — tidak ada perubahan",
+    "empty_toast": "Bab ini tidak memiliki konten untuk ditambahkan — tulis sesuatu terlebih dahulu.",
+    "excluded_toast": "Bab ini tidak dimasukkan ke dalam pengetahuan Anda — izinkan terlebih dahulu.",
+    "forgotten_toast": "Dilupakan — dihapus dari pengetahuan Anda",
+    "allowed_toast": "Diizinkan. Pilih «Tambahkan ke pengetahuan» saat Anda siap.",
+    "failed_toast": "Gagal memperbarui pengetahuan Anda — coba lagi.",
+    "forget_confirm_title": "Lupakan bab ini?",
+    "forget_confirm_body": "Semua yang dipelajari dari bab ini akan dihapus dari pengetahuan Anda. Bab itu sendiri tidak dihapus, dan Anda dapat menambahkannya kembali nanti.",
+    "hint": "Menambahkan bab ke pengetahuan Anda memungkinkan asisten untuk menggunakannya. Anda tidak harus menerbitkannya."
   }
 }

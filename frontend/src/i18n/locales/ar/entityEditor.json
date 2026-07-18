@@ -16,6 +16,11 @@
       "translations": "{{count}} ترجمات",
       "evidences": "{{count}} أدلة"
     },
+    "scope_label": {
+      "placeholder": "توضيح النطاق (مثال: عالم/مملكة)...",
+      "aria": "تسمية النطاق — لإزالة اللبس بين الكيانات المتشابهة في الأسماء عبر سياقات مختلفة داخل القصة",
+      "duplicate": "يوجد بالفعل كيان بهذا الاسم والنوع والنطاق في هذا الكتاب"
+    },
     "tab": {
       "attributes": "السمات",
       "evidences": "الأدلة",
@@ -34,12 +39,20 @@
       "saved": "تم حفظ الكيان",
       "status_changed": "تغيرت الحالة إلى {{status}}",
       "invalid_lang": "رمز لغة غير صالح (مثلاً en, zh, zh-tw)"
-    }
+    },
+    "remove_attr_confirm": "هل تريد إزالة قيمة هذه السمة؟ يمكنك إضافتها مرة أخرى لاحقاً.",
+    "remove_attr_success": "تمت إزالة قيمة السمة",
+    "add_attr_heading": "إضافة قيمة لسمة أخرى",
+    "add_attr_pick": "اختر سمة…",
+    "add_attr_value_placeholder": "القيمة",
+    "add_attr_button": "إضافة",
+    "add_attr_success": "تمت إضافة السمة"
   },
   "attr_card": {
     "required": "*مطلوب",
     "modified": "مُعدّل",
-    "has_translations": "يحتوي على ترجمات"
+    "has_translations": "يحتوي على ترجمات",
+    "remove": "إزالة هذه القيمة"
   },
   "translation_row": {
     "confidence": {

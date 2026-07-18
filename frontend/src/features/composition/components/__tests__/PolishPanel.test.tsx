@@ -18,6 +18,9 @@ function base(over: Record<string, unknown> = {}) {
     error: null,
     ran: false,
     stats: undefined,
+    // M3 apply-seam — the hook carries the OCC draft_version alongside the healed text;
+    // the mock must mirror the real return shape or it silently under-tests the seam.
+    draftVersion: 7,
     healedText: '',
     rerank: false,
     setRerank: vi.fn(),
@@ -77,7 +80,9 @@ describe('PolishPanel', () => {
     expect(box0.checked).toBe(true);
     expect(box1.checked).toBe(false);
     fireEvent.click(screen.getByTestId('polish-apply'));
-    expect(onApply).toHaveBeenCalledWith('HEALED');
+    // Apply must forward BOTH the healed text and the OCC draft_version — the version is what
+    // lets the write 412 instead of clobbering a draft the author changed since the propose pass.
+    expect(onApply).toHaveBeenCalledWith('HEALED', 7);
   });
 });
 

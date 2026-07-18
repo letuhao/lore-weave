@@ -118,6 +118,7 @@
     "count": "{{count}} Kapitel",
     "count_other": "{{count}} Kapitel",
     "import": "Importieren",
+    "importPdf": "PDF importieren",
     "new": "Neues Kapitel",
     "col": {
       "title": "Titel",
@@ -150,8 +151,7 @@
       "title": "Kapitel in den Papierkorb verschieben?",
       "description": "„{{title}}“ wird in den Papierkorb verschoben.",
       "confirm": "In den Papierkorb verschieben"
-    },
-    "importPdf": "PDF importieren"
+    }
   },
   "glossary": {
     "header": "Glossar & Lore",
@@ -211,7 +211,8 @@
     "status": {
       "draft": "Entwurf",
       "active": "Aktiv",
-      "inactive": "Inaktiv"
+      "inactive": "Inaktiv",
+      "rejected": "Abgelehnt"
     },
     "bulk": {
       "select_row": "Entität auswählen",
@@ -228,7 +229,8 @@
       "delete_confirm": {
         "title": "{{count}} Entitäten löschen?",
         "description": "{{count}} ausgewählte Entitäten werden in den Papierkorb verschoben."
-      }
+      },
+      "reject": "Ablehnen"
     },
     "clear_filters": "Alle Filter löschen",
     "deleted": "Entität gel됨",
@@ -252,7 +254,8 @@
       "title": "Entität löschen?",
       "description": "\"{{title}}\" wird in den Papierkorb verschoben.",
       "confirm": "Löschen"
-    }
+    },
+    "scope_label_title": "Geltungsbereich — unterscheidet diesen Eintrag von anderen mit demselben Namen"
   },
   "sharing": {
     "title": "Sichtbarkeit",

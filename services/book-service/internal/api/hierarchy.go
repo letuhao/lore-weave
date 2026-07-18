@@ -103,22 +103,22 @@ SELECT title FROM books WHERE id=$1 AND lifecycle_state='active'
 	// Chapter row + optional part join. LEFT JOIN so legacy chapters
 	// (NULL part_id) still return — worker-ai checks part-null and
 	// skips P3 enqueue for those.
+	// C-merge C4 — parts moved to composition; book-service no longer joins a parts table. Chapters
+	// resolve part-less here, so worker-ai/KG uses the synthetic single-part fallback (the same path
+	// legacy/flat books always took). The part tier for a grouped book is a composition concern.
 	var (
-		chapterPath, chapterTitle     *string
-		chapterSortOrder              int
-		partID                        *uuid.UUID
-		partPath, partTitle           *string
-		partSortOrder                 *int
+		chapterPath, chapterTitle *string
+		chapterSortOrder          int
+		partID                    *uuid.UUID
+		partPath, partTitle       *string
+		partSortOrder             *int
 	)
 	err = s.pool.QueryRow(r.Context(), `
-SELECT c.structural_path, c.title, c.sort_order,
-       p.id, p.path, p.title, p.sort_order
+SELECT c.structural_path, c.title, c.sort_order
 FROM chapters c
-LEFT JOIN parts p ON p.id = c.part_id
 WHERE c.id=$1 AND c.book_id=$2 AND c.lifecycle_state='active'
 `, chapterID, bookID).Scan(
 		&chapterPath, &chapterTitle, &chapterSortOrder,
-		&partID, &partPath, &partTitle, &partSortOrder,
 	)
 	if errors.Is(err, pgx.ErrNoRows) {
 		writeError(w, http.StatusNotFound, "CHAPTER_NOT_FOUND", "chapter not found in book")
@@ -154,31 +154,9 @@ ORDER BY sort_order
 	}
 	rows.Close()
 
-	// All parts in the book — for the is_last_chapter_of_book →
-	// summary.part × N enqueue tail. Empty for legacy books.
+	// C-merge C4 — no book-service parts table; the synthetic-part fallback (resolveHierarchyPart)
+	// supplies the single implicit part for the summary pipeline. Empty here.
 	bookParts := []hierarchyPart{}
-	rows, err = s.pool.Query(r.Context(), `
-SELECT id, path, sort_order, title
-FROM parts
-WHERE book_id=$1 AND lifecycle_state='active'
-ORDER BY sort_order
-`, bookID)
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "parts query failed")
-		return
-	}
-	for rows.Next() {
-		var id uuid.UUID
-		var path string
-		var sortOrder int
-		var title *string
-		if err := rows.Scan(&id, &path, &sortOrder, &title); err == nil {
-			bookParts = append(bookParts, hierarchyPart{
-				ID: id.String(), Path: path, Index: sortOrder, Title: title,
-			})
-		}
-	}
-	rows.Close()
 
 	// Assemble response.
 	book := hierarchyBook{

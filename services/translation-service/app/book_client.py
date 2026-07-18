@@ -112,6 +112,37 @@ async def get_chapter_word_counts(book_id, chapter_ids) -> dict[str, int]:
     return out
 
 
+async def list_chapter_ids(book_id) -> list[str]:
+    """ALL of a book's chapter ids, in book order (paginated). translation_coverage derives its
+    chapter list from `chapter_translations`, so a chapter that has NEVER been translated is
+    structurally invisible to it (D-S05-COVERAGE-MISMATCH) — exactly the chapters a "translate
+    what's new" pass must find. This gives coverage the book's REAL chapter set so it can mark the
+    untranslated ones. Returns [] on ANY error — coverage then degrades to translated-only rather
+    than failing (a read must never break the turn)."""
+    base = f"{settings.book_service_internal_url}/internal/books/{book_id}/chapters"
+    out: list[str] = []
+    offset = 0
+    try:
+        async with build_internal_client(
+            settings.book_service_internal_url,
+            internal_token=settings.internal_service_token, timeout_s=15,
+        ) as client:
+            for _ in range(_CHAPTER_LIST_MAX_PAGES):
+                r = await client.get(base, params={"limit": _CHAPTER_LIST_PAGE, "offset": offset})
+                r.raise_for_status()
+                items = r.json().get("items") or []
+                for it in items:
+                    cid = str(it.get("chapter_id") or "")
+                    if cid:
+                        out.append(cid)
+                if len(items) < _CHAPTER_LIST_PAGE:
+                    break
+                offset += _CHAPTER_LIST_PAGE
+    except Exception:  # noqa: BLE001 — advisory; coverage degrades to translated-only
+        return []
+    return out
+
+
 async def build_chapters_meta(book_id, chapter_ids) -> list[dict]:
     """#36 — chapters_meta for `estimate_extraction_cost`, carrying REAL per-chapter
     sizes (best-effort) instead of the flat `[{'text_length': 8000}]` placeholder that

@@ -82,6 +82,7 @@
       "table": "表"
     },
     "placeholder": "ストーリー、キャラクター、世界観について質問...",
+    "assistant_placeholder": "今日一日の出来事を話してみましょう — 出会った人々、進捗中のプロジェクト、そして下した決断について…",
     "attach_context": "コンテキストを添付",
     "assist": "アシスト",
     "voice_assist_on": "音声アシストON — AIの応答が読み上げられます",
@@ -127,12 +128,6 @@
     "mode_write_hint": "書き込みモード — エージェントは取り消し可能な変更を実行できます（新しいツールごとに一度確認）"
   },
   "new": {
-    "preset": {
-      "novel": "小説アシスタント",
-      "translator": "翻訳者",
-      "worldbuilder": "世界構築",
-      "editor": "編集者"
-    },
     "create_failed": "チャットの作成に失敗しました: {{error}}",
     "title": "新しいチャットを開始",
     "model": "モデル",
@@ -234,7 +229,6 @@
   "actionConfirm": {
     "label": "操作を確認",
     "batch_count": "{{count}}件",
-    "warning": "影響の大きい変更です。確認してください。",
     "warning_destructive": "破壊的で連鎖する操作です。確認してください。",
     "destructive_skipped": "{{count}} 件の破壊的な操作は、上で有効にしない限りスキップされます。",
     "confirm": "確認",
@@ -248,7 +242,8 @@
     "cancelled": "キャンセルしました",
     "reprice": "見積もり以降にコストが {{cost}} に上がりました — 新しい価格で再確認するにはもう一度依頼してください。",
     "reprice_title": "コストが変わりました — 未適用",
-    "reprice_detail": "見積もり {{old}}、現在 {{new}}。費用は発生していません — 新しい価格で再確認するにはもう一度依頼してください。"
+    "reprice_detail": "見積もり {{old}}、現在 {{new}}。費用は発生していません — 新しい価格で再確認するにはもう一度依頼してください。",
+    "warning": "適用する前に、この変更内容を再確認してください。"
   },
   "batchConfirm": {
     "title": "{{count}} 件の操作をまとめて確認",
@@ -345,14 +340,6 @@
     "title": "セッション設定",
     "model": "モデル",
     "system_prompt": "システムプロンプト",
-    "preset": {
-      "Custom": "カスタム",
-      "Novelist": "小説家",
-      "Translator": "翻訳者",
-      "Worldbuilder": "世界構築",
-      "Editor": "編集者",
-      "Analyst": "分析者"
-    },
     "prompt_placeholder": "AIに役割、性格、または具体的な指示を与えます...",
     "gen_params": "生成パラメータ",
     "max_tokens": "最大トークン",
@@ -389,9 +376,11 @@
     "approve_once": "今回のみ許可",
     "always_allow": "常に許可",
     "deny": "拒否",
+    "never_allow": "Never allow",
     "approved": "許可しました — 実行中 ✓",
     "always_allowed": "常に許可 — 実行中 ✓",
-    "denied": "拒否しました"
+    "denied": "拒否しました",
+    "never_allowed": "Never allowed — you can undo this in Settings → Permissions"
   },
   "rack": {
     "label": "コンテキスト",
@@ -416,6 +405,9 @@
     "more": "他 {{count}} 件",
     "more_tooltip": "未表示の検出ツールが他 {{count}} 件あります",
     "remove": "削除",
+    "advanced_tools": "高度なツール ({{count}})",
+    "advanced_tools_hint": "旧バージョンの呼び出し元のために、非推奨となったツールが保持されています。特定のツールがどうしても必要な場合を除き、上のツールを使用してください。",
+    "legacy_pin_tooltip": "このセッションでは、このレガシーツールが有効になっています",
     "server": {
       "knowledge": "ナレッジ",
       "glossary": "用語集",
@@ -426,10 +418,7 @@
       "ui": "UI",
       "chat": "チャット",
       "other": "その他"
-    },
-    "advanced_tools": "高度なツール ({{count}})",
-    "advanced_tools_hint": "旧バージョンの呼び出し元のために、非推奨となったツールが保持されています。特定のツールがどうしても必要な場合を除き、上のツールを使用してください。",
-    "legacy_pin_tooltip": "このセッションでは、このレガシーツールが有効になっています"
+    }
   },
   "inspector": {
     "title": "エージェントランタイム",
@@ -449,5 +438,13 @@
       "activated": "アクティブ化",
       "tool_running": "ツール実行中"
     }
+  },
+  "presets": {
+    "custom": "カスタム",
+    "novelist": "小説家",
+    "translator": "翻訳者",
+    "worldbuilder": "世界構築",
+    "editor": "編集者",
+    "analyst": "分析者"
   }
 }

@@ -24,7 +24,7 @@ from typing import Any
 from uuid import UUID
 
 from app.clients.llm_client import LLMClient
-from app.engine.arc_plan import shape_tension_curve
+from app.engine.arc_plan import ChapterTension, shape_tension_curve
 from app.engine.plan import (
     ChapterPlan, ChapterScenes, DecomposeResult, _llm_json,
     build_chapter_map_messages, build_scene_decompose_messages,
@@ -32,6 +32,41 @@ from app.engine.plan import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+async def map_beats_and_shape(
+    llm: LLMClient, *, user_id: str, model_source: str, model_ref: str,
+    premise: str, beats: list[dict[str, Any]], chapters: list[ChapterPlan],
+    source_language: str = "auto", l1_max_tokens: int = 2048,
+    trace_id: str | None = None,
+    cancel_check: Callable[[], Awaitable[bool]] | None = None,
+) -> tuple[list[ChapterPlan], list[str], list[ChapterTension]]:
+    """27 V2-C4 — PASS 4 (`beats`) as a DISCRETE step: the L1 beat map + the tension curve.
+
+    This used to be the opening third of `grounded_decompose`, reachable only by running the whole
+    scene decomposition. Hoisting it out is what makes `beats` a pass a human can BLOCK on (it is a
+    `blocking` checkpoint: "what shape does the story take?"), review, and edit — before the
+    expensive per-chapter L2 decomposition spends tokens against a shape they were going to reject.
+
+    Returns `(mapped_chapters, unmapped_BEAT_KEYS, curve)` — the middle element is the beats the
+    model could not place, NOT chapters (every chapter always comes back; an unplaced one just keeps
+    `beat_role=None`). Degrade-safe: an L1 failure leaves every chapter's `beat_role` None, and the
+    curve then sits at the neutral mid band — a flat plan, not a crash.
+    """
+    beat_keys = {b.get("key") for b in beats if isinstance(b.get("key"), str)}
+    mapped: list[ChapterPlan] = chapters
+    unmapped: list[str] = []
+    sys1, usr1 = build_chapter_map_messages(premise, beats, chapters, source_language)
+    l1 = await _llm_json(
+        llm, system=sys1, user=usr1, max_tokens=l1_max_tokens,
+        user_id=user_id, model_source=model_source, model_ref=model_ref,
+        trace_id=trace_id, cancel_check=cancel_check,
+    )
+    if l1 is not None:
+        mapped, unmapped = parse_chapter_map(l1, chapters, beat_keys)
+    else:
+        logger.warning("map_beats_and_shape: L1 degraded — chapters keep beat_role=None")
+    return mapped, unmapped, shape_tension_curve([ch.beat_role for ch in mapped])
 
 # Which selected motifs to emphasise for a chapter, by the motif's arc role × the beat.
 # The spine/recurring motifs are always live; a foil sharpens during conflict; a climax
@@ -88,6 +123,7 @@ async def grounded_decompose(
     k_ceiling: int, high_threshold: int, min_scenes: int, max_scenes: int,
     source_language: str = "auto", trace_id: str | None = None,
     l1_max_tokens: int = 2048, l2_max_tokens: int = 2560, skip_l1: bool = False,
+    tension_curve: list[ChapterTension] | None = None,
     cancel_check: Callable[[], Awaitable[bool]] | None = None,
 ) -> DecomposeResult:
     """L1 map → tension curve → SEQUENTIAL grounded L2 (cast/motifs/tension/intros + the
@@ -122,7 +158,18 @@ async def grounded_decompose(
             logger.warning("grounded_decompose L1 degraded — chapters keep beat_role=None")
 
     # Stage-2 tension curve + Stage-3 introduction schedule, indexed by 1-based chapter.
-    curve = shape_tension_curve([ch.beat_role for ch in mapped])
+    #
+    # 27 V2-C4 — HONOUR A SUPPLIED CURVE. `beats` (pass 4) is a BLOCKING checkpoint: the human
+    # reviews the beat plan and may EDIT the tension curve there. If we recomputed it from the beat
+    # roles we would silently discard that edit — the same "a re-run reclaims the author's edit" bug
+    # class PF-11 exists to stop, one layer down. So when pass 4 hands us its curve, we use it.
+    #
+    # `shape_tension_curve` is pure and deterministic, so an UNEDITED curve recomputes identically;
+    # the difference is only ever visible when a human has changed something, which is exactly when
+    # it must be.
+    curve = tension_curve if tension_curve else shape_tension_curve(
+        [ch.beat_role for ch in mapped],
+    )
     tension_by_idx = {c.chapter_index: c.tension_target for c in curve}
     intro_by_idx = intros_by_chapter(char_arcs, len(mapped))
 

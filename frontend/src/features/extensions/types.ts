@@ -54,6 +54,9 @@ export interface UsageCounters {
   mcp_servers: { used: number; limit: number };
   commands: { used: number; limit: number };
   proposals_pending: number;
+  // S-12 badge: the split of proposals_pending (optional — back-compat with older responses).
+  skill_proposals_pending?: number;
+  workflow_proposals_pending?: number;
 }
 
 // ── P3: external MCP servers ────────────────────────────────────────────────
@@ -306,4 +309,32 @@ export interface IngestPullCounts {
   updated: number;
   skipped_no_remote: number;
   truncated: boolean;
+}
+
+// Track C WS-3 — the tool-consent allowlist (chat-service `user_tool_approvals`).
+// `mutation` = "may write my data"; `spend` = "may cost me money" — two ORTHOGONAL
+// consents, separately granted and separately revocable.
+export type ApprovalKind = 'mutation' | 'spend';
+export type ToolDecision = 'allow' | 'deny';
+export interface ToolPermission {
+  tool_name: string;
+  kind: ApprovalKind;
+  decision: ToolDecision;
+  created_at: string;
+}
+export interface ToolPermissionList {
+  permissions: ToolPermission[];
+}
+
+// The chat-service tool catalog (GET /v1/chat/tools/catalog) — backs the permissions
+// panel's tool PICKER, so a user cannot block a tool that does not exist.
+export interface ToolCatalogItem {
+  name: string;
+  domain: string;
+  tier: string;
+  description: string;
+  visibility: string;
+}
+export interface ToolCatalogResponse {
+  items: ToolCatalogItem[];
 }

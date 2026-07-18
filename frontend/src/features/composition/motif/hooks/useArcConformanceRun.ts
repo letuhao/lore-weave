@@ -19,8 +19,11 @@ export function useArcConformanceRun(
   // Step 1 — mint the cost estimate + confirm token for the chosen model (no spend).
   const mint = useMutation({
     mutationFn: (modelRef: string) =>
+      // M-BUG-4: the wire arg is `arc_id` (a structure_node.id). The hook's `arcTemplateId`
+      // param is the caller's value — the arc-templates caller (Wave 4) must pass a structure
+      // node id, not an arc_template id (tracked: D-M-BUG-4-ARC-CALLER).
       motifApi.arcConformanceRunPropose(
-        { projectId: projectId!, arcTemplateId: arcTemplateId!, modelRef },
+        { projectId: projectId!, arcId: arcTemplateId!, modelRef },
         token!,
       ),
     onSuccess: setEstimate,

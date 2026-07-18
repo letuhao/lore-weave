@@ -115,6 +115,44 @@ func TestResolveGrant_AllLevels(t *testing.T) {
 	}
 }
 
+func TestResolveAccess_ParsesKind(t *testing.T) {
+	// WS-1.6 — the extended /access contract carries the book kind alongside grant + lifecycle,
+	// so a server-side consumer can branch on kind (e.g. the work-capture flavour) without
+	// trusting a caller-supplied arg.
+	t.Parallel()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"grant_level":"owner","lifecycle_state":"active","kind":"diary"}`))
+	}))
+	t.Cleanup(srv.Close)
+	c := testClient(t, srv.URL)
+	acc, err := c.ResolveAccess(context.Background(), uuid.New(), uuid.New())
+	if err != nil {
+		t.Fatalf("ResolveAccess: %v", err)
+	}
+	if acc.Kind != "diary" {
+		t.Errorf("acc.Kind=%q want diary", acc.Kind)
+	}
+	if acc.Level != GrantOwner || acc.Lifecycle != "active" {
+		t.Errorf("acc=%+v — level/lifecycle must still parse alongside kind", acc)
+	}
+}
+
+func TestResolveAccess_KindEmptyWhenAuthorityOmitsIt(t *testing.T) {
+	// A non-grantee (book-service omits kind — no oracle) or a pre-WS-1.2 authority → "".
+	// Consumers must default safely (the fiction flavour), never mis-select work capture.
+	t.Parallel()
+	srv, _ := stubAuthority(t, "view") // returns only grant_level, no kind
+	c := testClient(t, srv.URL)
+	acc, err := c.ResolveAccess(context.Background(), uuid.New(), uuid.New())
+	if err != nil {
+		t.Fatalf("ResolveAccess: %v", err)
+	}
+	if acc.Kind != "" {
+		t.Errorf("acc.Kind=%q want empty when the authority omits it", acc.Kind)
+	}
+}
+
 func TestResolveGrant_SendsInternalToken(t *testing.T) {
 	t.Parallel()
 	srv, _ := stubAuthority(t, "edit")

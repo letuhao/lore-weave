@@ -13,6 +13,18 @@ vi.mock('@/features/composition/api', () => ({ compositionApi: {
   listOutlineChildren: (...a: unknown[]) => listOutlineChildren(...a),
   outlineStats: (...a: unknown[]) => outlineStats(...a),
 } }));
+// S-02: default parts = none, so these tests exercise the FLAT chapters path (the grouped-tree
+// path is covered by partsTree.test.ts + a dedicated case below). Keep groupChaptersByParts real
+// (buildPartsTree depends on it). Individual tests can override listParts.
+const listParts = vi.fn(() => Promise.resolve({ items: [] }));
+const reorderParts = vi.fn(() => Promise.resolve({ items: [] }));
+const restorePart = vi.fn(() => Promise.resolve({}));
+vi.mock('../partsApi', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../partsApi')>();
+  return { ...actual, partsApi: { ...actual.partsApi, list: (...a: unknown[]) => listParts(...a), reorder: (...a: unknown[]) => reorderParts(...a), restore: (...a: unknown[]) => restorePart(...a) } };
+});
+
+const mkAct = (id: string, sort: number, state: 'active' | 'trashed' = 'active') => ({ part_id: id, book_id: 'b1', title: id.toUpperCase(), path: id, sort_order: sort, lifecycle_state: state });
 
 import { useManuscriptTree } from '../useManuscriptTree';
 import type { ManuscriptRow } from '../types';
@@ -22,6 +34,12 @@ const isNode = (r: ManuscriptRow, id: string) => r.type === 'node' && r.node.id 
 beforeEach(() => {
   listChaptersPage.mockReset();
   listOutlineChildren.mockReset();
+  listParts.mockReset();
+  reorderParts.mockReset();
+  restorePart.mockReset();
+  restorePart.mockResolvedValue({});
+  reorderParts.mockResolvedValue({ items: [] });
+  listParts.mockResolvedValue({ items: [] }); // default: flat mode
   work.value = { data: { status: 'none' }, isLoading: false };
 });
 
@@ -37,6 +55,22 @@ describe('useManuscriptTree', () => {
     expect(result.current.total).toBe(10);
     expect(result.current.rows.some((r) => isNode(r, 'c1'))).toBe(true);
     expect(result.current.rows.some((r) => r.type === 'more')).toBe(true); // next_cursor → paging affordance
+  });
+
+  // F11 — a Work whose outline is EMPTY (chapters never decomposed) must NOT show "No chapters yet."
+  // over a book that has chapters. Fall back to the flat book-service chapters.
+  it('has Work but EMPTY outline → falls back to book-service chapters (F11: chapters do not vanish)', async () => {
+    work.value = { data: { status: 'found', work: { project_id: 'p1' } }, isLoading: false };
+    listOutlineChildren.mockResolvedValue({ items: [], next_cursor: null }); // un-decomposed Work
+    listChaptersPage.mockResolvedValue({
+      items: [{ chapter_id: 'c1', sort_order: 1, title: 'Chapter 1', original_filename: 'a.txt' }],
+      next_cursor: null, total: 1,
+    });
+    listParts.mockResolvedValue({ items: [] });
+    const { result } = renderHook(() => useManuscriptTree('b1', 't'));
+    await waitFor(() => expect(result.current.rows.some((r) => isNode(r, 'c1'))).toBe(true));
+    expect(result.current.source).toBe('chapters'); // fell back
+    expect(listChaptersPage).toHaveBeenCalled();     // the real chapters loaded
   });
 
   it('has Work → outline source: loads top-level arcs with parentId null', async () => {
@@ -84,6 +118,56 @@ describe('useManuscriptTree', () => {
     });
     expect(result.current.rows.some((r) => isNode(r, 'c-b1'))).toBe(false); // no leak
     expect(result.current.rows.some((r) => isNode(r, 'c-b2'))).toBe(true);
+  });
+
+  it('S-02: a book WITH parts renders the grouped act tree (part header + nested chapter)', async () => {
+    listParts.mockResolvedValue({
+      items: [{ part_id: 'p1', book_id: 'b1', title: 'Act I', path: 'act-i', sort_order: 1, lifecycle_state: 'active' }],
+    });
+    listChaptersPage.mockResolvedValue({
+      items: [{ chapter_id: 'c1', sort_order: 1, title: 'Ch', original_filename: 'a.txt', part_id: 'p1' }],
+      next_cursor: null, total: 1,
+    });
+    const { result } = renderHook(() => useManuscriptTree('b1', 't'));
+    await waitFor(() => expect(result.current.partsMode).toBe(true));
+    await waitFor(() => expect(result.current.rows.some((r) => isNode(r, 'p1'))).toBe(true));
+    const head = result.current.rows.find((r) => isNode(r, 'p1'));
+    expect(head && head.type === 'node' && head.node.kind).toBe('part');
+    // the act is expanded by default → its chapter is visible, nested one level deeper
+    const chap = result.current.rows.find((r) => isNode(r, 'c1'));
+    expect(chap && chap.type === 'node' && chap.depth).toBe(1);
+    // no paging affordance in grouped mode (whole book loaded)
+    expect(result.current.rows.some((r) => r.type === 'more')).toBe(false);
+  });
+
+  it('S-02b: moveAct swaps with a neighbour and reorders the FULL id set; boundary = no-op', async () => {
+    listParts.mockResolvedValue({ items: [mkAct('p1', 1), mkAct('p2', 2), mkAct('p3', 3)] });
+    listChaptersPage.mockResolvedValue({ items: [], next_cursor: null, total: 0 });
+    const { result } = renderHook(() => useManuscriptTree('b1', 't'));
+    await waitFor(() => expect(result.current.partsMode).toBe(true));
+
+    // move p2 up → [p2, p1, p3]
+    await act(async () => { await result.current.moveAct('p2', 'up'); });
+    expect(reorderParts).toHaveBeenLastCalledWith('t', 'b1', ['p2', 'p1', 'p3']);
+
+    // move p1 up when it's first → no-op (boundary), no new reorder call
+    reorderParts.mockClear();
+    await act(async () => { await result.current.moveAct('p1', 'up'); });
+    expect(reorderParts).not.toHaveBeenCalled();
+  });
+
+  it('S-02b: splits include_trashed into active `parts` + `trashedActs`; restoreAct calls restore', async () => {
+    listParts.mockResolvedValue({ items: [mkAct('p1', 1), mkAct('gone', 2, 'trashed')] });
+    listChaptersPage.mockResolvedValue({ items: [], next_cursor: null, total: 0 });
+    const { result } = renderHook(() => useManuscriptTree('b1', 't'));
+    await waitFor(() => expect(result.current.partsMode).toBe(true));
+    expect(result.current.parts.map((p) => p.part_id)).toEqual(['p1']);
+    expect(result.current.trashedActs.map((p) => p.part_id)).toEqual(['gone']);
+    // list was called WITH include_trashed
+    expect(listParts).toHaveBeenCalledWith('t', 'b1', { includeTrashed: true });
+
+    await act(async () => { await result.current.restoreAct('gone'); });
+    expect(restorePart).toHaveBeenCalledWith('t', 'b1', 'gone');
   });
 
   it('filters structural `beat` nodes out of the outline', async () => {

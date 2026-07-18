@@ -1,0 +1,321 @@
+openapi: 3.0.3
+info:
+  title: LoreWeave Glossary Service — Book Operations API
+  version: 1.0.0
+  description: >-
+    Book-scoped operational routes that don't belong to the core entity/wiki/ontology
+    families: batch entity-research jobs, the recycle bin, merge candidates + journal,
+    ontology per-row revert-to-parent-tier, batch translation, exports/profiles, and
+    the public canon-at-chapter reads. Documented under D-GLOSSARY-CONTRACT-FIRST (P3).
+servers:
+  - url: https://glossary-service.loreweave.dev
+
+paths:
+  /v1/glossary/books/{book_id}/export:
+    get:
+      tags: [book-ops]
+      summary: Export the book's glossary (entities + attributes + translations)
+      parameters: [ { $ref: '#/components/parameters/BookId' } ]
+      responses:
+        '200': { description: The exported glossary }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /v1/glossary/books/{book_id}/extraction-profile:
+    get:
+      tags: [book-ops]
+      summary: Get the book's extraction profile (kinds/attrs the extractor targets)
+      parameters: [ { $ref: '#/components/parameters/BookId' } ]
+      responses:
+        '200': { description: Extraction profile }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /v1/glossary/books/{book_id}/entity-names:
+    get:
+      tags: [book-ops]
+      summary: List entity names in the book (lightweight picker source)
+      parameters:
+        - { $ref: '#/components/parameters/BookId' }
+        - { name: limit, in: query, schema: { type: integer } }
+        - { name: offset, in: query, schema: { type: integer } }
+      responses:
+        '200': { description: Entity names page }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /v1/glossary/books/{book_id}/translation-languages:
+    get:
+      tags: [book-ops]
+      summary: List the languages the book has translations in
+      parameters: [ { $ref: '#/components/parameters/BookId' } ]
+      responses:
+        '200': { description: Language list }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /v1/glossary/books/{book_id}/translation-candidates:
+    get:
+      tags: [book-ops]
+      summary: List entities/attrs that are candidates for batch translation (View)
+      parameters:
+        - { $ref: '#/components/parameters/BookId' }
+        - { name: target_language, in: query, schema: { type: string } }
+      responses:
+        '200': { description: Candidates }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /v1/glossary/books/{book_id}/apply-translations:
+    post:
+      tags: [book-ops]
+      summary: Apply draft translations produced by the batch-translate dialog (Edit)
+      parameters: [ { $ref: '#/components/parameters/BookId' } ]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                target_language: { type: string }
+                items: { type: array, items: { type: object } }
+      responses:
+        '200': { description: Apply result }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /v1/glossary/books/{book_id}/known-entities:
+    get:
+      tags: [book-ops]
+      summary: "Canon at chapter N — the known entities read surface (composition inspector)"
+      parameters:
+        - { $ref: '#/components/parameters/BookId' }
+        - { name: chapter_id, in: query, schema: { type: string, format: uuid } }
+      responses:
+        '200': { description: Known entities (bare array) }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /v1/glossary/books/{book_id}/chapter-entities:
+    get:
+      tags: [book-ops]
+      summary: "Chapter → entities direction of the canon-at-chapter read"
+      parameters:
+        - { $ref: '#/components/parameters/BookId' }
+        - { name: chapter_id, in: query, schema: { type: string, format: uuid } }
+      responses:
+        '200': { description: Entities for the chapter (bare array) }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /v1/glossary/books/{book_id}/unknown-entities:
+    get:
+      tags: [book-ops]
+      summary: The per-book unknown-kind review queue
+      parameters: [ { $ref: '#/components/parameters/BookId' } ]
+      responses:
+        '200': { description: Unknown-kind entities }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /v1/glossary/books/{book_id}/recycle-bin:
+    get:
+      tags: [book-ops]
+      summary: List the book's soft-deleted entities (recycle bin)
+      parameters: [ { $ref: '#/components/parameters/BookId' } ]
+      responses:
+        '200': { description: Trashed entities }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /v1/glossary/books/{book_id}/recycle-bin/{entity_id}/restore:
+    post:
+      tags: [book-ops]
+      summary: Restore a soft-deleted entity
+      parameters:
+        - { $ref: '#/components/parameters/BookId' }
+        - { name: entity_id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '200': { description: Restored }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /v1/glossary/books/{book_id}/recycle-bin/{entity_id}:
+    delete:
+      tags: [book-ops]
+      summary: Permanently purge a soft-deleted entity
+      parameters:
+        - { $ref: '#/components/parameters/BookId' }
+        - { name: entity_id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '204': { description: Purged }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /v1/glossary/books/{book_id}/merge-candidates:
+    get:
+      tags: [book-ops]
+      summary: The merge-candidate review inbox (coref-proposed clusters)
+      parameters: [ { $ref: '#/components/parameters/BookId' } ]
+      responses:
+        '200': { description: Merge candidates }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /v1/glossary/books/{book_id}/merge-candidates/{candidate_id}/dismiss:
+    post:
+      tags: [book-ops]
+      summary: Dismiss a merge candidate
+      parameters:
+        - { $ref: '#/components/parameters/BookId' }
+        - { name: candidate_id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '200': { description: Dismissed }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /v1/glossary/books/{book_id}/merge-journal/{journal_id}/revert:
+    post:
+      tags: [book-ops]
+      summary: Revert a recorded entity merge
+      parameters:
+        - { $ref: '#/components/parameters/BookId' }
+        - { name: journal_id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '200': { description: Reverted }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /v1/glossary/books/{book_id}/ontology/genres/{genre_id}/revert:
+    post:
+      tags: [book-ops]
+      summary: Revert a book-tier genre override to its parent tier (G-U1)
+      parameters:
+        - { $ref: '#/components/parameters/BookId' }
+        - { name: genre_id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '200': { description: Reverted to parent tier }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /v1/glossary/books/{book_id}/ontology/kinds/{book_kind_id}/revert:
+    post:
+      tags: [book-ops]
+      summary: Revert a book-tier kind override to its parent tier (G-U1)
+      parameters:
+        - { $ref: '#/components/parameters/BookId' }
+        - { name: book_kind_id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '200': { description: Reverted to parent tier }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /v1/glossary/books/{book_id}/ontology/attributes/{attr_id}/revert:
+    post:
+      tags: [book-ops]
+      summary: Revert a book-tier attribute override to its parent tier (G-U1)
+      parameters:
+        - { $ref: '#/components/parameters/BookId' }
+        - { name: attr_id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '200': { description: Reverted to parent tier }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /v1/glossary/books/{book_id}/kinds/{kind_id}/research-jobs:
+    post:
+      tags: [research-jobs]
+      summary: Create an async batch entity-research job over a kind (Manage)
+      parameters:
+        - { $ref: '#/components/parameters/BookId' }
+        - { name: kind_id, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object }
+      responses:
+        '201': { description: The created research job }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /v1/glossary/books/{book_id}/kinds/{kind_id}/research-estimate:
+    get:
+      tags: [research-jobs]
+      summary: Estimate the cost of a research job over a kind (View)
+      parameters:
+        - { $ref: '#/components/parameters/BookId' }
+        - { name: kind_id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '200': { description: Estimate }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /v1/glossary/books/{book_id}/research-jobs:
+    get:
+      tags: [research-jobs]
+      summary: List the book's research jobs (View)
+      parameters: [ { $ref: '#/components/parameters/BookId' } ]
+      responses:
+        '200': { description: Research jobs }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /v1/glossary/books/{book_id}/research-jobs/{job_id}:
+    get:
+      tags: [research-jobs]
+      summary: Get one research job's status
+      parameters:
+        - { $ref: '#/components/parameters/BookId' }
+        - { name: job_id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '200': { description: Job status }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /v1/glossary/books/{book_id}/research-jobs/{job_id}/pause:
+    post:
+      tags: [research-jobs]
+      summary: Pause a research job
+      parameters:
+        - { $ref: '#/components/parameters/BookId' }
+        - { name: job_id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '200': { description: Paused }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /v1/glossary/books/{book_id}/research-jobs/{job_id}/resume:
+    post:
+      tags: [research-jobs]
+      summary: Resume a research job
+      parameters:
+        - { $ref: '#/components/parameters/BookId' }
+        - { name: job_id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '200': { description: Resumed }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /v1/glossary/books/{book_id}/research-jobs/{job_id}/cancel:
+    post:
+      tags: [research-jobs]
+      summary: Cancel a research job
+      parameters:
+        - { $ref: '#/components/parameters/BookId' }
+        - { name: job_id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '200': { description: Cancelled }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /v1/glossary/users/{user_id}/wiki-contributions:
+    get:
+      tags: [book-ops]
+      summary: List a user's cross-book wiki contributions (public profile UI-2a)
+      description: Optional auth — self sees private/draft; others see public+published only.
+      parameters:
+        - { name: user_id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '200': { description: The user's wiki contributions }
+
+components:
+  parameters:
+    BookId:
+      name: book_id
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+  responses:
+    Forbidden:
+      description: Caller lacks the required grant on this book
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    NotFound:
+      description: Not found in this book
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+  schemas:
+    Error:
+      type: object
+      properties:
+        code: { type: string }
+        message: { type: string }

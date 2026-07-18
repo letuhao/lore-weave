@@ -98,7 +98,8 @@ describe('ArcConformancePanel', () => {
     const call = apiJson.mock.calls.find((c) => String(c[0]).includes('/conformance'));
     expect(String(call?.[0])).toContain('/works/p1/conformance');
     expect(String(call?.[0])).toContain('scope=arc');
-    expect(String(call?.[0])).toContain('arc_template_id=a1');
+    expect(String(call?.[0])).toContain('arc_id=a1');           // M-BUG-4: wire arg is arc_id, not arc_template_id
+    expect(String(call?.[0])).not.toContain('arc_template_id');   // the old (dropped-by-FastAPI → 422) arg is gone
   });
 
   it('surfaces a succession violation when the realized order is reversed', async () => {
@@ -146,7 +147,7 @@ describe('ArcConformancePanel', () => {
     const [tool, callArgs] = mcpExecute.mock.calls[0];
     expect(tool).toBe('composition_conformance_run');
     // FastMCP nests the tool's single pydantic `args` param.
-    expect(callArgs).toMatchObject({ args: { project_id: 'p1', scope: 'arc', arc_template_id: 'a1', model_ref: 'm1' } });
+    expect(callArgs).toMatchObject({ args: { project_id: 'p1', scope: 'arc', arc_id: 'a1', model_ref: 'm1' } });  // M-BUG-4
   });
 
   it('deep overlay degrades honestly when no prose is extracted yet', async () => {

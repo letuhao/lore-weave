@@ -9,7 +9,8 @@
       "translation": "अनुवाद",
       "reading": "रीडिंग",
       "language": "भाषा",
-      "mcp": "MCP एक्सेस"
+      "mcp": "MCP एक्सेस",
+      "workflow-bindings": "वर्कफ़्लो ऑटो-सेटअप"
     }
   },
   "mcp": {
@@ -492,6 +493,18 @@
       "testing": "परीक्षण किया जा रहा है...",
       "reverify": "पुनः सत्यापित करें",
       "verify": "सत्यापित करें",
+      "pricing_title": "मूल्य निर्धारण (USD प्रति 1M टोकन)",
+      "pricing_input": "इनपुट",
+      "pricing_output": "आउटपुट",
+      "pricing_free_local": "मुफ़्त — आपके अपने हार्डवेयर पर चलता है",
+      "pricing_hint": "निर्माण के समय पहले से भरा हुआ। यदि प्रदाता की प्रकाशित दर बदल गई है तो इसे संपादित करें, या लाइव अनुमान के लिए OpenRouter देखें।",
+      "pricing_check": "OpenRouter देखें",
+      "pricing_checking": "जाँच की जा रही है...",
+      "pricing_suggestion_found": "OpenRouter ({{source}}): ${{input}} इन / ${{output}} आउट",
+      "pricing_apply": "लागू करें",
+      "pricing_not_found": "OpenRouter पर कोई मेल खाने वाला मॉडल नहीं मिला — इस स्रोत से मूल्य निर्धारण उपलब्ध नहीं है।",
+      "pricing_check_failed": "OpenRouter मूल्य निर्धारण जाँचने में विफल",
+      "pricing_negative_error": "मूल्य निर्धारण शून्य या उससे अधिक होना चाहिए",
       "delete_model": "मॉडल हटाएं",
       "confirm_delete": "हटाने की पुष्टि करें",
       "deleting": "हटाया जा रहा है...",

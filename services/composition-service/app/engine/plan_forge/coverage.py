@@ -20,9 +20,14 @@ def _excerpt_hash(text: str) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()[:12]
 
 
-def build_section_map(md_path: Path) -> list[dict[str, Any]]:
-    """Parse ## 1.x / 2.x / 3.x and ### Event N headings into section records."""
-    text = md_path.read_text(encoding="utf-8")
+def build_section_map_from_text(text: str) -> list[dict[str, Any]]:
+    """Parse ## 1.x / 2.x / 3.x and ### Event N headings into section records.
+
+    27 PF-19 — takes the TEXT, so the caller can pass the RUN'S OWN document. It used to take only a
+    path, and every caller passed `story-plan-v1.md`: so a user's "what is missing from my plan" was
+    computed against the POC's novel. `build_section_map(path)` is kept for the regression harness,
+    which legitimately does read that fixture off disk.
+    """
     lines = text.splitlines()
     headers: list[tuple[str, str, int]] = []
 
@@ -144,6 +149,12 @@ def write_fidelity_artifacts(
         __import__("json").dumps(gate, ensure_ascii=False, indent=2),
         encoding="utf-8",
     )
+
+
+def build_section_map(md_path: Path) -> list[dict[str, Any]]:
+    """Path form — the regression harness reads the POC fixture off disk. Production reads the run's
+    own `document` artifact and calls `build_section_map_from_text`."""
+    return build_section_map_from_text(md_path.read_text(encoding="utf-8"))
 
 
 def load_coverage_context(fixture: Path, fidelity_path: Path) -> tuple[list[dict[str, Any]], dict[str, Any]]:

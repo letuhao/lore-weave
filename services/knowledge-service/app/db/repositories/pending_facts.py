@@ -34,7 +34,8 @@ __all__ = ["PendingFactsRepo"]
 # RETURNING and the read queries can't drift.
 _SELECT_COLS = """
   pending_fact_id, user_id, project_id, session_id,
-  fact_type, fact_text, created_at
+  fact_type, fact_text, created_at,
+  subject, predicate, object, event_date, provenance
 """
 
 
@@ -62,7 +63,7 @@ class PendingFactsRepo:
         user_id: UUID,
         *,
         project_id: UUID | None,
-        session_id: str,
+        session_id: str | None,
         fact_type: FactType,
         fact_text: str,
     ) -> PendingFact:
@@ -90,6 +91,7 @@ class PendingFactsRepo:
         user_id: UUID,
         *,
         session_id: str | None = None,
+        diary_only: bool = False,
     ) -> list[PendingFact]:
         """List the caller's pending facts, oldest-first.
 
@@ -97,12 +99,21 @@ class PendingFactsRepo:
         chat session; otherwise every pending fact the user owns is
         returned. Always filtered by `user_id` — a cross-user caller
         sees an empty list.
+
+        WS-2.5 (audit MED): `diary_only=True` narrows to the SESSION-LESS
+        facts (`session_id IS NULL`) — the DIARY distiller's facts, which
+        the fact-inbox surfaces. Without it a `session_id=None` list means
+        "ALL pending facts", so chat-memory facts (which carry a session_id)
+        from unrelated projects would leak into the diary inbox. `diary_only`
+        and `session_id` are mutually exclusive (a diary fact has no session).
         """
         params: list[object] = [user_id]
         session_pred = ""
         if session_id is not None:
             params.append(session_id)
             session_pred = " AND session_id = $2"
+        elif diary_only:
+            session_pred = " AND session_id IS NULL"
         query = f"""
         SELECT {_SELECT_COLS}
         FROM knowledge_pending_facts
@@ -134,7 +145,8 @@ class PendingFactsRepo:
         """Delete one pending fact. Returns True if a row was removed,
         False if it did not exist or belongs to another user.
 
-        Used by both confirm (after merge_fact) and reject."""
+        Used by confirm (after merge_fact). For REJECT use `reject` — it
+        also writes the tombstone."""
         query = """
         DELETE FROM knowledge_pending_facts
         WHERE user_id = $1 AND pending_fact_id = $2
@@ -142,3 +154,58 @@ class PendingFactsRepo:
         async with self._pool.acquire() as conn:
             status = await conn.execute(query, user_id, pending_fact_id)
         return _rows_changed(status) >= 1
+
+    async def reject(self, user_id: UUID, pending_fact_id: UUID) -> bool:
+        """WS-2.2 (rejection tombstone) — reject-with-tombstone, the SINGLE reject path for both the
+        public FE drain route and the internal admin route (audit MED: a public reject that only DELETEs
+        re-nags the user, because the next distill re-proposes the dismissed fact). Deletes the pending
+        row and, when it carried a dedup_key (a diary fact), writes a `knowledge_rejected_facts` tombstone
+        on the SAME key so the fact stays dismissed. Owner-scoped. Idempotent (ON CONFLICT DO NOTHING).
+        Returns True if a row was removed."""
+        async with self._pool.acquire() as conn:
+            async with conn.transaction():
+                row = await conn.fetchrow(
+                    "DELETE FROM knowledge_pending_facts "
+                    "WHERE user_id = $1 AND pending_fact_id = $2 "
+                    "RETURNING project_id, dedup_key",
+                    user_id, pending_fact_id,
+                )
+                if row is None:
+                    return False
+                if row["project_id"] is not None and row["dedup_key"]:
+                    await conn.execute(
+                        "INSERT INTO knowledge_rejected_facts (user_id, project_id, dedup_key) "
+                        "VALUES ($1, $2, $3) ON CONFLICT DO NOTHING",
+                        user_id, row["project_id"], row["dedup_key"],
+                    )
+        return True
+
+    async def tombstone_by_subject(
+        self, user_id: UUID, project_id: UUID, subject_name: str,
+    ) -> int:
+        """WS-2.6c (D17 forget-a-person) — the pending-inbox leg of the scoped-erasure primitive. Delete
+        every PENDING fact ABOUT the forgotten person (subject matched case-insensitively) and write a
+        `knowledge_rejected_facts` tombstone on each one's dedup_key, so a later re-distill of a day that
+        still mentions them can NEVER re-propose the fact (the no-resurrection guarantee). Owner+project
+        scoped; idempotent (ON CONFLICT DO NOTHING). Returns the number of pending rows removed."""
+        name = (subject_name or "").strip()
+        if not name:
+            return 0
+        removed = 0
+        async with self._pool.acquire() as conn:
+            async with conn.transaction():
+                rows = await conn.fetch(
+                    "DELETE FROM knowledge_pending_facts "
+                    "WHERE user_id = $1 AND project_id = $2 AND lower(subject) = lower($3) "
+                    "RETURNING dedup_key",
+                    user_id, project_id, name,
+                )
+                for r in rows:
+                    removed += 1
+                    if r["dedup_key"]:
+                        await conn.execute(
+                            "INSERT INTO knowledge_rejected_facts (user_id, project_id, dedup_key) "
+                            "VALUES ($1, $2, $3) ON CONFLICT DO NOTHING",
+                            user_id, project_id, r["dedup_key"],
+                        )
+        return removed

@@ -2,11 +2,15 @@ import { fireEvent, render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { describe, expect, it, vi } from 'vitest';
 import { StudioTopBar } from '../StudioTopBar';
+import { StudioHostProvider } from '../../host/StudioHostProvider';
 
+// StudioTopBar now hosts the layout-preset button (uses useStudioHost), so the provider is required.
 const setup = (bookTitle = 'My Book', onOpenQuickOpen = vi.fn()) =>
   render(
     <MemoryRouter>
-      <StudioTopBar bookId="b1" bookTitle={bookTitle} onOpenQuickOpen={onOpenQuickOpen} />
+      <StudioHostProvider bookId="b1">
+        <StudioTopBar bookId="b1" bookTitle={bookTitle} onOpenQuickOpen={onOpenQuickOpen} />
+      </StudioHostProvider>
     </MemoryRouter>,
   );
 

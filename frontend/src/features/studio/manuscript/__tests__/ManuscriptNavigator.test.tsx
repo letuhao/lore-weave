@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { JumpResult, ManuscriptNode, ManuscriptRow } from '../types';
 
@@ -19,6 +19,7 @@ const jump = vi.hoisted(() => ({ value: {} as Record<string, unknown> }));
 vi.mock('../useManuscriptJump', () => ({ useManuscriptJump: () => jump.value }));
 
 import { ManuscriptNavigator } from '../ManuscriptNavigator';
+import { StudioHostProvider, useStudioHost } from '../../host/StudioHostProvider';
 
 const jumpBase = (over: Record<string, unknown> = {}) => ({
   query: '', setQuery: vi.fn(), results: [], searching: false, active: false, ...over,
@@ -162,12 +163,18 @@ describe('ManuscriptNavigator', () => {
     expect(reload).toHaveBeenCalledOnce();
   });
 
-  it('New-chapter is disabled without a handler, fires it when provided', () => {
+  // The header button fires the handler it is GIVEN. That is all this component can honestly assert.
+  //
+  // ⚠ This test used to also assert `disabled === true` when no handler was passed, and called that
+  // correct behaviour. It was the bug's accomplice: it injected its OWN `onNewChapter`, so it proved
+  // the mechanism and could never prove the APP wires it. The real consumer (StudioSideBar) never
+  // passed the prop, so the button was disabled 100% of the time in production while this stayed
+  // green. Injecting a fake at the chokepoint cannot prove the chokepoint is wired — the wiring is
+  // asserted in StudioSideBar.test.tsx, which mounts the CALLER.
+  it('fires the handler it is given', () => {
     hook.value = base({ rows: [nodeRow(n('c1'))] });
-    const { rerender } = render_();
-    expect((screen.getByTestId('manuscript-new') as HTMLButtonElement).disabled).toBe(true);
     const onNewChapter = vi.fn();
-    rerender(<ManuscriptNavigator bookId="b1" token="t" onNewChapter={onNewChapter} />);
+    render(<ManuscriptNavigator bookId="b1" token="t" onNewChapter={onNewChapter} />);
     fireEvent.click(screen.getByTestId('manuscript-new'));
     expect(onNewChapter).toHaveBeenCalledOnce();
   });
@@ -197,5 +204,48 @@ describe('ManuscriptNavigator', () => {
     render_();
     expect(screen.getByTestId('manuscript-skeleton')).toBeTruthy();
     expect(screen.getByTestId('manuscript-window')).toBeTruthy();
+  });
+
+  // ── M3 (F2): the rail's own create-a-chapter door ───────────────────────────────────────────
+  it('renders a "＋ Chapter" create button and fires onCreateChapter (flat book)', () => {
+    const onCreateChapter = vi.fn();
+    hook.value = base({ rows: [nodeRow(n('c1'))] }); // source 'chapters' by default
+    render(<ManuscriptNavigator bookId="b1" token="t" onCreateChapter={onCreateChapter} />);
+    fireEvent.click(screen.getByTestId('manuscript-chapter-new'));
+    expect(onCreateChapter).toHaveBeenCalledOnce();
+  });
+
+  it('does NOT render the rail create button when no handler is wired', () => {
+    hook.value = base({ rows: [nodeRow(n('c1'))] });
+    render_();
+    expect(screen.queryByTestId('manuscript-chapter-new')).toBeNull();
+  });
+
+  it('an empty book offers a "Start your first chapter" door that fires onCreateChapter', () => {
+    const onCreateChapter = vi.fn();
+    hook.value = base({ rows: [] });
+    render(<ManuscriptNavigator bookId="b1" token="t" onCreateChapter={onCreateChapter} />);
+    fireEvent.click(screen.getByTestId('manuscript-empty-create'));
+    expect(onCreateChapter).toHaveBeenCalledOnce();
+  });
+
+  // ── M2 (F3): a cross-panel chapter mutation reloads the tree via the studio bus ──────────────
+  it('reloads the tree when the studio bus signals a manuscript change — but NOT on mount', () => {
+    const reload = vi.fn();
+    hook.value = base({ rows: [nodeRow(n('c1'))], reload });
+    // A tiny consumer that hands the test the host so it can publish the bus event.
+    let publish: ((e: { type: 'manuscriptChanged' }) => void) | null = null;
+    function Grab() { publish = useStudioHost().publish; return null; }
+    render(
+      <StudioHostProvider bookId="b1">
+        <Grab />
+        <ManuscriptNavigator bookId="b1" token="t" />
+      </StudioHostProvider>,
+    );
+    expect(reload).not.toHaveBeenCalled(); // mount must not reload (the initial seq is 0)
+    act(() => publish!({ type: 'manuscriptChanged' }));
+    expect(reload).toHaveBeenCalledTimes(1); // the bump reloads exactly once
+    act(() => publish!({ type: 'manuscriptChanged' }));
+    expect(reload).toHaveBeenCalledTimes(2);
   });
 });

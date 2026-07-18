@@ -738,6 +738,28 @@ async def persist_pass2(body: PersistPass2Request) -> ExtractItemResponse:
 
     project_id_str = str(body.project_id) if body.project_id else None
 
+    # PP-5 (spec 08 R7) — resolve WORK mode: an assistant/diary project's facts must not carry durable
+    # behavioral-TRAIT (`preference`) claims about real colleagues. One cheap PG read per persist (this
+    # is per-extraction-item, not a hot per-token path); default False (novel/global) on any miss so the
+    # fiction path is unchanged. The writer coerces preference→statement when this is True.
+    #
+    # DEFENSE-IN-DEPTH (review H2): the PRIMARY R7 guarantee is upstream — `queue_diary_facts` writes
+    # every distilled diary fact as `fact_type='statement'` (never a preference), and per-turn chat
+    # extraction is gated OFF for `is_assistant` projects (`may_extract_chat_turn`), so a diary fact
+    # never reaches this writer today. PP-5 here is a fail-safe for the future case where an assistant
+    # project's CHAPTERS are chapter-extracted, or per-turn work-capture is ever enabled — so a
+    # `preference` can never slip in via this path either. It defaults False (fail-open is acceptable
+    # BECAUSE the primary guard is elsewhere; failing closed here would over-coerce every novel's
+    # preferences on a transient DB blip).
+    work_mode = False
+    if body.project_id is not None:
+        try:
+            work_mode = bool(await get_knowledge_pool().fetchval(
+                "SELECT is_assistant FROM knowledge_projects WHERE project_id=$1", body.project_id,
+            ))
+        except Exception:  # noqa: BLE001 — a resolution failure must not fail the extraction; fail to novel-mode.
+            logger.warning("persist_pass2: PP-5 is_assistant resolve failed; defaulting work_mode=False", exc_info=True)
+
     # L7 activation — resolve the project's effective KG schema for the write
     # boundary. None (chat/global, or resolve failure) → today's behavior (no
     # stamp/guard). When present, the writer stamps schema_version on every edge
@@ -801,6 +823,7 @@ async def persist_pass2(body: PersistPass2Request) -> ExtractItemResponse:
             provenance=body.provenance,  # CM5
             schema=schema,  # L7 — schema_version stamp + closed-edge guard
             triage_repo=triage_repo,  # L7/C4 — park off-schema edge drops
+            work_mode=work_mode,  # PP-5 — coerce preference→statement in an assistant/diary project
         )
         # CM3b-RETRACT-FIX: after re-writing, sweep nodes whose evidence the
         # retract dropped to zero (disappeared from the new revision) — this

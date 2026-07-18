@@ -6,6 +6,7 @@
     "commands": "Perintah & Hook",
     "subagents": "Subagen",
     "plugins": "Plugin",
+    "permissions": "Izin alat",
     "proposals": "Proposal",
     "activity": "Log aktivitas",
     "ingest": "Sumber registri"
@@ -52,11 +53,11 @@
   "mcp": {
     "status": {
       "active": "aktif",
-      "pending": "memindai…",
+      "pending": "memindai...",
       "suspended": "dikarantina",
       "error": "tidak dapat dijangkau"
     },
-    "search": "Cari server…",
+    "search": "Cari server...",
     "filter": {
       "all": "Status: Semua",
       "active": "Aktif",
@@ -66,7 +67,7 @@
     },
     "add": "+ Tambah server",
     "empty": "Belum ada server MCP. Tambahkan satu untuk memberi agen alat tambahan.",
-    "review": "⚠ tinjauan",
+    "review": "⚠ tinjau",
     "detail": {
       "back": "‹ Kembali",
       "connection": "Koneksi",
@@ -79,7 +80,7 @@
       "healthOk": "oke · {{count}} alat · {{latency}}ms",
       "healthError": "error: {{error}}",
       "unreachable": "tidak dapat dijangkau",
-      "scanning": "Memindai...",
+      "scanning": "Memindai…",
       "rescan": "Pindai ulang",
       "reconnect": "Hubungkan ulang OAuth",
       "acceptRisk": "Terima risiko & aktifkan"
@@ -96,7 +97,7 @@
         "connection": "Koneksi",
         "auth": "Autentikasi",
         "scan": "Kesehatan & Pemindaian",
-        "review": "Tinjau"
+        "review": "Tinjauan"
       },
       "displayName": "Nama tampilan",
       "displayNamePlaceholder": "Server alat saya",
@@ -106,18 +107,18 @@
       "authNone": "Tidak ada",
       "authBearer": "Token Bearer",
       "authOauth": "OAuth 2.1",
-      "noAuthHint": "Tanpa autentikasi — server ini terbuka. Lanjutkan untuk mendaftarkan dan memindainya.",
+      "noAuthHint": "Tanpa autentikasi — server ini bersifat terbuka. Lanjutkan untuk mendaftar dan memindainya.",
       "bearerLabel": "Token Bearer (disimpan aman di vault; tidak akan ditampilkan lagi)",
       "bearerPlaceholder": "tempel token",
       "authzEndpoint": "Endpoint otorisasi",
       "tokenEndpoint": "Endpoint token",
       "clientId": "ID Klien",
-      "scopes": "Scope (dipisahkan dengan spasi)",
+      "scopes": "Scope (pisahkan dengan spasi)",
       "registering": "Mendaftarkan…",
       "registerScan": "Daftar & pindai",
       "statusLabel": "Status:",
       "connectOauth": "Hubungkan dengan OAuth →",
-      "runScan": "Jalankan pemeriksaan & pindai",
+      "runScan": "Jalankan pemeriksaan & pemindaian",
       "refresh": "Segarkan",
       "continue": "Lanjutkan",
       "authKind": "auth: {{kind}}",
@@ -137,27 +138,27 @@
     "description": "Aturan deklaratif yang berjalan pada jeda loop agen. Tanpa kode — cukup sebuah peristiwa, kecocokan alat opsional, dan sebuah tindakan.",
     "matchPlaceholder": "kecocokan alat (misal. glossary_delete_*)",
     "textPlaceholder": "teks untuk disisipkan / dianotasi",
-    "empty": "Belum ada hooks."
+    "empty": "Belum ada hook."
   },
   "subagents": {
-    "title": "Subagen",
-    "description": "Persona bernama yang dapat didelegasikan oleh agen untuk sub-tugas terbatas melalui <code>run_subagent</code>. Berjalan dalam giliran terisolasi HANYA dengan alat yang cakupannya ditentukan. Kosongkan cakupan untuk persona penalaran/ringkasan murni.",
+    "title": "Subagent",
+    "description": "Persona bernama yang dapat diberikan sub-tugas terbatas oleh agent melalui <code>run_subagent</code>. Ia berjalan dalam giliran terisolasi HANYA dengan alat yang cakupannya ditentukan. Kosongkan cakupan untuk persona penalaran/ringkasan murni.",
     "namePlaceholder": "nama (misal. lore-scout)",
     "scopePlaceholder": "cakupan alat: glossary_*, kg_*",
     "modelPlaceholder": "model (opsional, id user_model)",
-    "promptPlaceholder": "Prompt Sistem — siapa persona ini dan bagaimana cara kerjanya...",
-    "create": "Buat subagen",
-    "empty": "Belum ada subagen.",
+    "promptPlaceholder": "Prompt sistem — siapa persona ini dan bagaimana cara kerjanya…",
+    "create": "Buat subagent",
+    "empty": "Belum ada subagent.",
     "reasoningOnly": "hanya penalaran (tanpa alat)",
     "modelPinned": "model dipaku"
   },
   "plugins": {
-    "description": "Plugin membundel keterampilan, perintah & hook — ekspor untuk berbagi, impor untuk instalasi.",
+    "description": "Plugin menggabungkan keterampilan, perintah & hook — ekspor untuk berbagi, impor untuk instalasi.",
     "importing": "Mengimpor...",
-    "import": "Impor bundel",
-    "invalidJson": "File tersebut bukan JSON yang valid.",
-    "notBundle": "Bukan bundel LoreWeave (manifest.name hilang).",
-    "empty": "Belum ada plugin. Impor bundel untuk menginstal plugin.",
+    "import": "Impor bundle",
+    "invalidJson": "File tersebut bukan format JSON yang valid.",
+    "notBundle": "Bukan bundle LoreWeave (manifest.name hilang).",
+    "empty": "Belum ada plugin. Impor bundle untuk menginstal plugin.",
     "export": "Ekspor"
   },
   "proposals": {
@@ -169,7 +170,7 @@
       "all": "Semua"
     },
     "total": "{{count}} total",
-    "empty": "Tidak ada proposal. Keterampilan yang diusulkan agen akan muncul di sini untuk persetujuan Anda.",
+    "empty": "Tidak ada proposal. Keterampilan yang diusulkan agen akan muncul di sini untuk Anda setujui.",
     "approve": "Setujui",
     "reject": "Tolak",
     "reason": "Alasan: {{reason}}"
@@ -182,15 +183,15 @@
       "7d": "7 hari terakhir",
       "30d": "30 hari terakhir"
     },
-    "empty": "Tidak ada aktivitas dalam rentang ini.",
+    "empty": "Tidak ada aktivitas dalam rentang waktu ini.",
     "secondsAgo": "{{count}} detik yang lalu",
     "minutesAgo": "{{count}} menit yang lalu",
-    "hoursAgo": "{{count}} jam yang lalu",
-    "daysAgo": "{{count}} hari yang lalu"
+    "hoursAgo": "{{count}}j yang lalu",
+    "daysAgo": "{{count}}h yang lalu"
   },
   "ingest": {
     "title": "Sumber registri (admin)",
-    "description": "Kurasi katalog Sistem dari MCP Registry resmi. verifikasi ≠ keamanan — setiap persetujuan menjalankan ulang SSRF guard + pemindaian rantai pasokan sebelum difederasikan.",
+    "description": "Kurasi katalog Sistem dari MCP Registry resmi. verifikasi ≠ keamanan — setiap persetujuan akan menjalankan ulang SSRF guard + pemindaian rantai pasokan sebelum difederasi.",
     "all": "Semua",
     "pulling": "Menarik data…",
     "pull": "Tarik registri",
@@ -199,5 +200,58 @@
     "empty": "Tidak ada entri dalam tampilan ini. Tarik registri untuk mengisi antrean.",
     "approve": "Setujui",
     "reject": "Tolak"
+  },
+  "permissions": {
+    "blurb": "Alat yang telah Anda berikan izin permanen untuk digunakan asisten — dan alat yang telah Anda blokir. Memilih «Selalu izinkan» pada kartu persetujuan akan menambah baris di sini. Mencabut izin berarti asisten akan bertanya kepada Anda lagi saat ingin menggunakan alat tersebut di lain waktu.",
+    "loading": "Memuat…",
+    "allowedTitle": "Selalu diizinkan",
+    "deniedTitle": "Diblokir",
+    "blockTitle": "Blokir alat",
+    "emptyAllowed": "Anda belum memberikan izin permanen pada alat apa pun. Asisten akan selalu meminta izin setiap saat.",
+    "emptyDenied": "Tidak ada alat yang diblokir.",
+    "toolPlaceholder": "Nama alat (misalnya chapter_delete)",
+    "unknownTool": "Itu bukan salah satu alat asisten. Pilih nama dari daftar.",
+    "kind": {
+      "mutation": "Dapat mengubah karya saya",
+      "spend": "Dapat menggunakan uang"
+    },
+    "decision": {
+      "allow": "Berjalan tanpa bertanya",
+      "deny": "Jangan jalankan lagi"
+    },
+    "actions": {
+      "revoke": "Tanyakan lagi nanti",
+      "deny": "Jangan izinkan",
+      "allow": "Izinkan",
+      "block": "Blokir"
+    }
+  },
+  "workflows": {
+    "total": "{{count}} alur kerja",
+    "empty": "Belum ada alur kerja. Setujui proposal alur kerja untuk menambahkannya.",
+    "enabled": "Aktif",
+    "disabled": "Nonaktif",
+    "delete": "Hapus",
+    "proposalsEmpty": "Tidak ada proposal alur kerja. Saat agen mengajukan alur kerja, ia akan muncul di sini untuk Anda setujui.",
+    "view": "Lihat",
+    "hide": "Sembunyikan",
+    "noSteps": "Tidak ada langkah yang ditentukan."
+  },
+  "bindings": {
+    "loading": "Memuat...",
+    "autoSetupDesc": "Resep yang diatur secara otomatis oleh asisten dalam mode ini.",
+    "none": "Tidak ada yang diatur secara otomatis di sini.",
+    "turnOff": "Matikan",
+    "turnBackOn": "Nyalakan kembali",
+    "mode": {
+      "ask": "Membaca & bertanya",
+      "write": "Menulis",
+      "plan": "Perencanaan"
+    },
+    "tier": {
+      "system": "Bawaan",
+      "user": "Anda yang mengatur ini",
+      "book": "Buku ini"
+    }
   }
 }

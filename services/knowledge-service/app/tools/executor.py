@@ -81,6 +81,9 @@ from app.tools.definitions import (
 from app.tools.build_tools import BUILD_TOOL_HANDLERS
 from app.tools.graph_schema_tools import GRAPH_SCHEMA_HANDLERS
 from app.tools.project_tools import PROJECT_TOOL_HANDLERS
+# W11-M2: imported AFTER graph_schema_tools so reader_tools' `_resolve_project_owner`
+# import resolves against an already-loaded module (no import cycle).
+from app.tools.reader_tools import READER_TOOL_HANDLERS
 
 logger = logging.getLogger(__name__)
 
@@ -143,11 +146,18 @@ def _one_line(text: str | None, limit: int = _PREVIEW_CHARS) -> str:
 @dataclass
 class ToolResult:
     """Outcome of one tool call. `success=False` ⇒ `error` is set and
-    `result` is None; `success=True` ⇒ `result` is the payload dict."""
+    `result` is None; `success=True` ⇒ `result` is the payload dict.
+
+    `code`/`detail` (optional) carry a STABLE machine-readable error code and
+    structured detail for a tool failure (e.g. `KG_ENDPOINT_NOT_NODE` +
+    `{"missing": [...]}`), so a caller/workflow can branch on the code instead
+    of parsing free text (contract C4/C5). None for a plain string error."""
 
     success: bool
     result: dict | None = None
     error: str | None = None
+    code: str | None = None
+    detail: dict | None = None
 
 
 @dataclass
@@ -192,7 +202,23 @@ class ToolContext:
 class ToolExecutionError(Exception):
     """A tool-level failure (bad input, rejection) — surfaced to the
     caller as `success=False`, NOT a 5xx. Distinct from an unexpected
-    exception, which propagates as an infra error."""
+    exception, which propagates as an infra error.
+
+    Optional `code`/`detail` attach a STABLE machine-readable error code +
+    structured detail (e.g. `KG_ENDPOINT_NOT_NODE` + `{"missing": [...]}`) so a
+    caller can branch on the code, not the message (contract C4/C5). Omitting
+    them keeps the legacy string-only behavior."""
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        code: str | None = None,
+        detail: dict | None = None,
+    ) -> None:
+        super().__init__(message)
+        self.code = code
+        self.detail = detail
 
 
 # ── Redis (rate limiter) ──────────────────────────────────────────────
@@ -321,6 +347,21 @@ async def _handle_story_search(ctx: ToolContext, args: StorySearchArgs) -> dict:
     # Late import — retriever pulls heavy search deps; keep executor import light.
     from app.search.retriever import run_hybrid_search
 
+    # D-1 spoiler cutoff — mirror raw_search.py: resolve the optional before_chapter_id to a
+    # passage-axis sort-order ONLY when supplied (an omitted cutoff means the full manuscript,
+    # NOT the fail-closed -1). An unresolvable id resolves to -1 → windows out everything, so a
+    # bad/hostile id can never leak the whole corpus past a reader's position.
+    before_sort_order: int | None = None
+    if args.before_chapter_id is not None:
+        from uuid import UUID
+
+        from app.spoiler_window import resolve_before_sort_order
+        try:
+            _cut_id = UUID(str(args.before_chapter_id))
+        except (ValueError, AttributeError, TypeError):
+            _cut_id = None
+        before_sort_order, _ = await resolve_before_sort_order(ctx.book_client, _cut_id)
+
     mode = "lexical" if args.mode == "exact" else args.mode
     result = await run_hybrid_search(
         user_id=ctx.user_id,
@@ -333,6 +374,7 @@ async def _handle_story_search(ctx: ToolContext, args: StorySearchArgs) -> dict:
         mode=mode,  # type: ignore[arg-type]
         granularity=args.granularity,
         limit=args.limit,
+        before_sort_order=before_sort_order,
     )
     hits = result.hits[: args.limit]
     # L1/L2 reference-first (§6b): at detail="summary" drop the heavy passage
@@ -485,6 +527,16 @@ async def _handle_memory_search(ctx: ToolContext, args: MemorySearchArgs) -> dic
     return out
 
 
+async def _diary_exclusion(ctx: ToolContext) -> list[str]:
+    """D16 (spec 07 §Q4) — the project ids a project-less memory read must EXCLUDE. With an explicit
+    project the scope is already correct (nothing to exclude); with none, the all-projects fallback would
+    surface the user's ASSISTANT (work-diary) entities into e.g. a novel-writing session, so we exclude
+    the user's assistant projects. Empty list when there is no assistant project or a project is scoped."""
+    if ctx.project_id is not None:
+        return []
+    return await ctx.projects_repo.list_assistant_project_ids(ctx.user_id)
+
+
 async def _handle_memory_recall_entity(
     ctx: ToolContext, args: MemoryRecallEntityArgs
 ) -> dict:
@@ -494,12 +546,14 @@ async def _handle_memory_recall_entity(
     # body to shed, so no `detail` lever (spec §6b small/single-object exemption).
     await _require_project_owner_memory(ctx)  # H-U: owner-only project gate
     project_id = str(ctx.project_id) if ctx.project_id else None
+    exclude = await _diary_exclusion(ctx)  # D16 — no diary leak into a non-assistant session
     async with neo4j_session() as session:
         matches = await find_entities_by_name(
             session,
             user_id=str(ctx.user_id),
             project_id=project_id,
             name=args.entity_name,
+            exclude_project_ids=exclude,
         )
         if not matches:
             return {"found": False, "entity_name": args.entity_name}
@@ -537,6 +591,7 @@ async def _handle_memory_timeline(
 ) -> dict:
     await _require_project_owner_memory(ctx)  # H-U: owner-only project gate
     project_id = str(ctx.project_id) if ctx.project_id else None
+    exclude = await _diary_exclusion(ctx)  # D16 — no diary leak into a non-assistant session
     async with neo4j_session() as session:
         participant_candidates: list[str] | None = None
         if args.entity_name:
@@ -545,6 +600,7 @@ async def _handle_memory_timeline(
                 user_id=str(ctx.user_id),
                 project_id=project_id,
                 name=args.entity_name,
+                exclude_project_ids=exclude,
             )
             if not matches:
                 # Entity not found ⇒ empty candidate list ⇒ zero events
@@ -567,6 +623,7 @@ async def _handle_memory_timeline(
             participant_candidates=participant_candidates,
             limit=args.limit,
             offset=0,
+            exclude_project_ids=exclude,  # D16 — the timeline must also drop diary events (audit HIGH-1)
         )
 
     items = [
@@ -699,6 +756,9 @@ _HANDLERS = {
     # Cost-gated job triggers (kg_build_graph) — mint a confirm-token; the human
     # confirms + the job starts in the confirm route (D-KG-LF-BUILDKG-MCP).
     **BUILD_TOOL_HANDLERS,
+    # W11-M2 reader "ask the lore" tools — spoiler-windowed reads, cutoff server-
+    # enforced from the reader's own position (lore_ask/browse/entity/timeline).
+    **READER_TOOL_HANDLERS,
 }
 
 
@@ -746,7 +806,9 @@ async def execute_tool(ctx: ToolContext, tool_name: str, tool_args: dict) -> Too
             result_payload = await _HANDLERS[tool_name](ctx, args)
         except ToolExecutionError as exc:
             outcome = "tool_error"
-            return ToolResult(success=False, error=str(exc))
+            return ToolResult(
+                success=False, error=str(exc), code=exc.code, detail=exc.detail,
+            )
 
         outcome = "ok"
         return ToolResult(success=True, result=result_payload)

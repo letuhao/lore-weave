@@ -82,6 +82,7 @@
       "table": "표"
     },
     "placeholder": "스토리, 캐릭터, 세계관에 대해 물어보세요...",
+    "assistant_placeholder": "오늘 하루는 어땠나요? 만났던 사람, 진행한 프로젝트, 내렸던 결정들에 대해 이야기해 보세요…",
     "attach_context": "컨텍스트 첨부",
     "assist": "어시스트",
     "voice_assist_on": "음성 어시스트 ON — AI 답변이 음성으로 재생됩니다",
@@ -127,12 +128,6 @@
     "mode_write_hint": "쓰기 모드 — 에이전트가 되돌릴 수 없는 변경을 수행할 수 있습니다 (새 도구 사용 시 한 번씩 확인 요청)"
   },
   "new": {
-    "preset": {
-      "novel": "소설 어시스턴트",
-      "translator": "번역가",
-      "worldbuilder": "세계관 구축가",
-      "editor": "편집자"
-    },
     "create_failed": "채팅 생성 실패: {{error}}",
     "title": "새 채팅 시작",
     "model": "모델",
@@ -234,7 +229,6 @@
   "actionConfirm": {
     "label": "작업 확인",
     "batch_count": "{{count}}개 항목",
-    "warning": "이 변경 사항은 영향도가 높습니다 — 확인해 주세요.",
     "warning_destructive": "이 작업은 파괴적인 변경을 포함하며 연쇄적으로 적용됩니다 — 확인해 주세요.",
     "destructive_skipped": "위에서 활성화하지 않으면 {{count}}개의 파괴적 작업이 건너뛰어집니다.",
     "confirm": "확인",
@@ -248,7 +242,8 @@
     "cancelled": "취소됨",
     "reprice": "예상 비용이 {{cost}}으로 변경되었습니다 — 새 가격으로 다시 확인하시겠습니까?",
     "reprice_title": "비용 변경됨 — 적용되지 않음",
-    "reprice_detail": "예상 비용 {{old}} → 현재 {{new}}. 비용이 발생하지 않았습니다 — 새 가격으로 다시 확인하시겠습니까?"
+    "reprice_detail": "예상 비용 {{old}} → 현재 {{new}}. 비용이 발생하지 않았습니다 — 새 가격으로 다시 확인하시겠습니까?",
+    "warning": "변경 사항을 적용하기 전에 검토해 주세요."
   },
   "batchConfirm": {
     "title": "{{count}}개 작업을 한 번에 확인",
@@ -345,14 +340,6 @@
     "title": "세션 설정",
     "model": "모델",
     "system_prompt": "시스템 프롬프트",
-    "preset": {
-      "Custom": "사용자 정의",
-      "Novelist": "소설가",
-      "Translator": "번역가",
-      "Worldbuilder": "세계관 구축가",
-      "Editor": "에디터",
-      "Analyst": "분석가"
-    },
     "prompt_placeholder": "AI에게 역할, 성격 또는 특정 지침을 부여하세요...",
     "gen_params": "생성 파라미터",
     "max_tokens": "최대 토큰",
@@ -389,9 +376,11 @@
     "approve_once": "한 번만 승인",
     "always_allow": "항상 허용",
     "deny": "거부",
+    "never_allow": "Never allow",
     "approved": "승인됨 — 실행 중 ✓",
     "always_allowed": "항상 허용됨 — 실행 중 ✓",
-    "denied": "거부됨"
+    "denied": "거부됨",
+    "never_allowed": "Never allowed — you can undo this in Settings → Permissions"
   },
   "rack": {
     "label": "컨텍스트",
@@ -416,6 +405,9 @@
     "more": "+{{count}}개 더",
     "more_tooltip": "표시되지 않은 발견된 도구 {{count}}개 더 있음",
     "remove": "제거",
+    "advanced_tools": "고급 도구 ({{count}}개)",
+    "advanced_tools_hint": "이 도구들은 이전 버전의 호출자를 위해 유지되고 있습니다. 특정 도구가 꼭 필요한 경우가 아니라면 위의 도구들을 우선적으로 사용하세요.",
+    "legacy_pin_tooltip": "이번 세션 동안 이 레거시 도구를 활성화했습니다",
     "server": {
       "knowledge": "지식",
       "glossary": "용어 사전",
@@ -426,10 +418,7 @@
       "ui": "UI",
       "chat": "채팅",
       "other": "기타"
-    },
-    "advanced_tools": "고급 도구 ({{count}}개)",
-    "advanced_tools_hint": "이 도구들은 이전 버전의 호출자를 위해 유지되고 있습니다. 특정 도구가 꼭 필요한 경우가 아니라면 위의 도구들을 우선적으로 사용하세요.",
-    "legacy_pin_tooltip": "이번 세션 동안 이 레거시 도구를 활성화했습니다"
+    }
   },
   "inspector": {
     "title": "에이전트 런타임",
@@ -449,5 +438,13 @@
       "activated": "활성화됨",
       "tool_running": "도구 실행 중"
     }
+  },
+  "presets": {
+    "custom": "사용자 정의",
+    "novelist": "소설가",
+    "translator": "번역가",
+    "worldbuilder": "세계관 구축가",
+    "editor": "에디터",
+    "analyst": "분석가"
   }
 }

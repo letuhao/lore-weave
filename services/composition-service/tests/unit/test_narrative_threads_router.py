@@ -11,12 +11,13 @@ from fastapi.testclient import TestClient
 
 USER = uuid4()
 PROJECT = uuid4()
+BOOK = uuid4()
 
 
 def _thread(summary: str, kind: str = "promise", status: str = "open"):
     from app.db.models import NarrativeThread
     return NarrativeThread(
-        id=uuid4(), user_id=USER, project_id=PROJECT, kind=kind, status=status, summary=summary,
+        id=uuid4(), created_by=USER, project_id=PROJECT, kind=kind, status=status, summary=summary,
     )
 
 
@@ -24,8 +25,9 @@ class _Works:
     def __init__(self, exists=True):
         self.exists = exists
 
-    async def get(self, user_id, project_id):
-        return SimpleNamespace() if self.exists else None
+    async def get(self, project_id):
+        # non-None carries a book_id for the E0 gate; None → uniform 404.
+        return SimpleNamespace(book_id=BOOK) if self.exists else None
 
 
 class _Threads:
@@ -36,13 +38,13 @@ class _Threads:
         # but a test can set it distinct to prove the route uses count_open, not len.
         self._count = open_count if open_count is not None else len(self._open)
 
-    async def list_open(self, user_id, project_id, *, limit=100):
+    async def list_open(self, project_id, *, limit=100):
         return self._open
 
-    async def list_for_project(self, user_id, project_id):
+    async def list_for_project(self, project_id):
         return self._all
 
-    async def count_open(self, user_id, project_id):
+    async def count_open(self, project_id):
         return self._count
 
 
@@ -53,13 +55,23 @@ def client(monkeypatch):
     monkeypatch.setattr("app.main.close_pool", AsyncMock())
     monkeypatch.setattr("app.main.get_pool", lambda: object())
     from app.main import app
-    from app.deps import get_narrative_thread_repo, get_works_repo
+    from app.deps import get_grant_client_dep, get_narrative_thread_repo, get_works_repo
+    from app.grant_client import GrantLevel
     from app.middleware.jwt_auth import get_current_user
+
+    # E0 book-grant authority stubbed at OWNER; the route resolves the Work's book
+    # then gates VIEW (deny paths in test_grant_gate).
+    class _StubGrant:
+        async def resolve_grant(self, book_id, user_id):
+            return GrantLevel.OWNER
+        async def resolve_access(self, book_id, user_id):
+            return GrantLevel.OWNER, "active"
 
     state = {"works": _Works(), "threads": _Threads()}
     app.dependency_overrides[get_current_user] = lambda: USER
     app.dependency_overrides[get_works_repo] = lambda: state["works"]
     app.dependency_overrides[get_narrative_thread_repo] = lambda: state["threads"]
+    app.dependency_overrides[get_grant_client_dep] = lambda: _StubGrant()
     with TestClient(app) as c:
         yield c, state
     app.dependency_overrides.clear()
@@ -132,7 +144,7 @@ async def test_open_promise_count_helper_gate(monkeypatch):
             self.n, self.boom = n, boom
             self.called = 0
 
-        async def count_open(self, user_id, project_id):
+        async def count_open(self, project_id):
             self.called += 1
             if self.boom:
                 raise RuntimeError("boom")
@@ -140,15 +152,15 @@ async def test_open_promise_count_helper_gate(monkeypatch):
 
     off = _R(n=3)
     assert await engine_mod._open_promise_count(
-        SimpleNamespace(settings={}), repo=off, user_id=USER, project_id=PROJECT) is None
+        SimpleNamespace(settings={}), repo=off, project_id=PROJECT) is None
     assert off.called == 0  # gate off → no read
 
     on = _R(n=3)
     assert await engine_mod._open_promise_count(
         SimpleNamespace(settings={"narrative_thread_enabled": True}),
-        repo=on, user_id=USER, project_id=PROJECT) == 3
+        repo=on, project_id=PROJECT) == 3
 
     err = _R(boom=True)
     assert await engine_mod._open_promise_count(
         SimpleNamespace(settings={"narrative_thread_enabled": True}),
-        repo=err, user_id=USER, project_id=PROJECT) is None  # swallowed
+        repo=err, project_id=PROJECT) is None  # swallowed

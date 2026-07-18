@@ -17,6 +17,13 @@ import { RawSearchResultCard } from './RawSearchResultCard';
 
 export interface RawSearchPanelProps {
   bookId: string;
+  // S-11 — the studio hosts this panel and wants a hit to open the in-dock editor at the
+  // chapter (host.focusManuscriptUnit), NOT navigate away to the reader route. Optional so the
+  // standalone RawSearchPage + ChapterBrowser keep the default reader-navigation behaviour.
+  onJump?: (chapterId: string, blockIndex?: number) => void;
+  // S-11 — seed the query box (the studio search rail passes the query the user typed). Optional;
+  // uncontrolled thereafter (the box owns edits). Remount (key=query) to re-seed a new rail query.
+  initialQuery?: string;
 }
 
 const MODES: RawSearchMode[] = ['hybrid', 'lexical'];
@@ -24,10 +31,10 @@ const GRANULARITIES: RawSearchGranularity[] = ['chapter', 'block'];
 const SURFACES: RawSearchSurface[] = ['canon', 'all'];
 const LIMITS = [10, 20, 50, 100] as const;
 
-export function RawSearchPanel({ bookId }: RawSearchPanelProps) {
+export function RawSearchPanel({ bookId, onJump: onJumpProp, initialQuery }: RawSearchPanelProps) {
   const { t } = useTranslation('rawSearch');
   const navigate = useNavigate();
-  const [input, setInput] = useState('');
+  const [input, setInput] = useState(initialQuery ?? '');
   const [mode, setMode] = useState<RawSearchMode>('hybrid');
   // E6 — Navigate (chapter, best-per-chapter) vs Mine (block, every match).
   const [granularity, setGranularity] = useState<RawSearchGranularity>('chapter');
@@ -50,6 +57,12 @@ export function RawSearchPanel({ bookId }: RawSearchPanelProps) {
   // Semantic hits have only a chunkIndex (not a block index) → open the chapter
   // without precise scroll (full semantic precision deferred).
   const onJump = (chapterId: string, blockIndex?: number) => {
+    // S-11 — a studio host injects onJump to open the in-dock editor at the chapter; without it
+    // (standalone page / chapter-browser) we keep the reader-route navigation.
+    if (onJumpProp) {
+      onJumpProp(chapterId, blockIndex);
+      return;
+    }
     const target = blockIndex != null ? `?block=${blockIndex}` : '';
     navigate(`/books/${bookId}/chapters/${chapterId}/read${target}`);
   };

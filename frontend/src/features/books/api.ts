@@ -3,9 +3,17 @@ import type { RevisionCompare } from './types';
 
 export type Visibility = 'private' | 'unlisted' | 'public';
 
+/** The caller's effective grant on a book, computed server-side on the book read
+ *  (book-service getBookByID: owner if books.owner_user_id matches, else the
+ *  book_collaborators.role, else 'none'). Spec 29 T9/D10-C: the frontend gates
+ *  edit-only affordances on this instead of guessing from owner_user_id. */
+export type BookAccessLevel = 'owner' | 'manage' | 'edit' | 'view' | 'none';
+
 export type Book = {
   book_id: string;
   owner_user_id: string;
+  /** Caller's effective grant (see {@link BookAccessLevel}). Present on the single-book read. */
+  access_level?: BookAccessLevel;
   title: string;
   description?: string | null;
   original_language?: string | null;
@@ -38,14 +46,30 @@ export type Chapter = {
   trashed_at?: string | null;
   created_at?: string | null;
   updated_at?: string | null;
-  // Canon Model (CM1): editorial lifecycle. canon = published. New chapters
-  // start 'draft'; existing chapters were migrated to 'published'.
+  // Canon Model (CM1): editorial lifecycle. New chapters start 'draft'; existing
+  // chapters were migrated to 'published'. NOTE: publish no longer decides knowledge-
+  // graph membership — see kg_indexed_revision_id below (WS-0.2+).
   editorial_status?: 'draft' | 'published';
   published_revision_id?: string | null;
+  // Publish-independent KG indexing (spec 2026-07-11). "Is this chapter in my knowledge
+  // graph?" is now a SEPARATE question from "is it published":
+  //   kg_indexed_revision_id — the revision the knowledge layer reflects. Non-null ⇒ the
+  //                            chapter is in the KG (possibly as a DRAFT the user
+  //                            explicitly indexed).
+  //   kg_exclude             — the user's explicit "keep this out of my knowledge graph"
+  //                            (also retracts what was already extracted).
+  // Both are optional: an older book-service may not return them, so every consumer must
+  // tolerate `undefined` rather than assume the field exists.
+  kg_indexed_revision_id?: string | null;
+  kg_exclude?: boolean;
   // 15_chapter_browser.md CB3 — multilingual char/word count. Additive + optional:
   // the BE column/backfill (Phase A) may not have landed yet on a given deploy, so
   // every consumer must tolerate `undefined` rather than assume the field exists.
   word_count?: number;
+  // S-02 — the manuscript part (act/volume) this chapter is homed in, or null when it
+  // lives in the flat manuscript. Additive + optional: an older book-service may not
+  // return it, so the navigator must tolerate `undefined` (treated as unassigned).
+  part_id?: string | null;
 };
 
 // Shared base from @/api (relative '' default → proxy→gateway). For multipart
@@ -63,6 +87,38 @@ export type ChapterListResponse = {
 // `total` present only on the first page (no cursor) — see #02 navigator.
 export type ChapterPage = {
   items: Chapter[];
+  next_cursor: string | null;
+  total: number | null;
+};
+
+// 22-C1 — a parse-leaf scene from book-service (`scenes`), the INDEX/identity side of a
+// scene (SC1/SC2). This is book-service's TRUTH (per-book, E0-shared), distinct from the
+// composition `OutlineNode` spec/intent side. `source_scene_id` is the join key back onto
+// composition's spec (`source_scene_id → outline_node.id`); NULL ⇒ "written, not decompiled"
+// (or anchor lost) — the union row shape the scene-browser renders (spec 22 §GUI, BPS-13).
+export type Scene = {
+  // book-service's public scene list names the identity `scene_id` (NOT `id`) — the row's PK is
+  // exposed under that key so it never collides with `source_scene_id` (the spec node it links to).
+  // Matching the wire name here is load-bearing: a mismatch renders every row with a `undefined` key.
+  scene_id: string;
+  book_id: string;
+  chapter_id: string;
+  sort_order: number;
+  title: string | null;      // a parsed heading (SC1) — NEVER the authored intent title
+  path: string;
+  leaf_text: string;         // read-only projection of chapter.body (D17) — never editable
+  content_hash: string;
+  source_scene_id: string | null; // → outline_node.id; null = not-yet-decompiled / anchor lost
+  parse_version: number;
+  lifecycle_state: string;
+  created_at?: string;
+  updated_at?: string;
+};
+
+// Keyset/cursor page of book-wide scenes (GET /v1/books/{id}/scenes). Same envelope as
+// ChapterPage: `next_cursor` null on the last page; `total` on the first page only.
+export type ScenePage = {
+  items: Scene[];
   next_cursor: string | null;
   total: number | null;
 };
@@ -181,6 +237,26 @@ export const booksApi = {
     if (opts.sort) qs.set('sort', opts.sort);
     const query = qs.toString();
     return apiJson<ChapterPage>(`/v1/books/${bookId}/chapters/page${query ? `?${query}` : ''}`, { token });
+  },
+
+  // 22-C1 — the book-wide scene list (VIEW-gated), keyset-paged by (chapter_id, sort_order).
+  // This is the scene-browser's IDENTITY source; the panel joins each row onto composition's
+  // spec via `source_scene_id`. Server-side filters: `chapter_id`, `source_scene_id` (the
+  // go-to-prose join key, 28 AN-5b), and `q` (a bounded ILIKE over title + leaf_text). Status/
+  // POV/beat filters are CLIENT-side — they live in composition, not here (spec 22 §GUI).
+  listScenes(
+    token: string,
+    bookId: string,
+    opts: { cursor?: string | null; limit?: number; chapter_id?: string; source_scene_id?: string; q?: string } = {},
+  ) {
+    const qs = new URLSearchParams();
+    if (opts.cursor) qs.set('cursor', opts.cursor);
+    if (opts.limit !== undefined) qs.set('limit', String(opts.limit));
+    if (opts.chapter_id) qs.set('chapter_id', opts.chapter_id);
+    if (opts.source_scene_id) qs.set('source_scene_id', opts.source_scene_id);
+    if (opts.q) qs.set('q', opts.q);
+    const query = qs.toString();
+    return apiJson<ScenePage>(`/v1/books/${bookId}/scenes${query ? `?${query}` : ''}`, { token });
   },
   /** Chapter Browser A3 — bulk lifecycle change (trash/restore/purge many chapters
    *  in one call). Response is a PER-ID outcome array (CB5) — a partial failure
@@ -310,13 +386,41 @@ export const booksApi = {
       ),
     });
   },
-  // Unpublish flips the chapter back to draft and retracts its canon (KG facts
-  // + L3 passages) via chapter.unpublished. Destructive-ish — the UI confirms.
+  // Unpublish flips the chapter back to draft. It is an EDITORIAL act only.
+  //
+  // ⚠️ It NO LONGER retracts the knowledge graph (WS-0.8, spec §3.8 / acceptance #9).
+  // Publishing and indexing are independent now, so a user who added a chapter to their
+  // knowledge graph and later unpublished it for editorial reasons keeps their KG. The
+  // chapter's passages are demoted to non-canon, but its facts and its index request
+  // survive. To actually remove a chapter from the graph, use setChapterKgExclude(true).
   unpublishChapter(token: string, bookId: string, chapterId: string) {
     return apiJson<Chapter>(`/v1/books/${bookId}/chapters/${chapterId}/unpublish`, {
       method: 'POST',
       token,
     });
+  },
+  // "Add to knowledge" — index this chapter into the knowledge graph. Works on a DRAFT;
+  // publishing is neither required nor implied. Emits chapter.kg_indexed → the graph
+  // extracts + L3 passages ingest at the pinned revision. Re-indexing an unchanged draft
+  // reuses the existing revision and costs nothing (`reused_revision: true`).
+  indexChapter(token: string, bookId: string, chapterId: string) {
+    return apiJson<{
+      chapter_id: string;
+      revision_id: string;
+      reused_revision: boolean;
+      reparse?: { unchanged: number; updated: number; inserted: number; deleted: number };
+    }>(`/v1/books/${bookId}/chapters/${chapterId}/index`, { method: 'POST', token });
+  },
+  // Include/exclude a chapter from the knowledge graph.
+  // `true` KEEPS IT OUT and RETRACTS anything already extracted from it (facts +
+  // passages) — this is the real "forget this chapter". `false` merely re-allows
+  // indexing; it does NOT re-index by itself (call indexChapter for that), because a
+  // toggle that silently re-ingests the user's prose is a privacy surprise.
+  setChapterKgExclude(token: string, bookId: string, chapterId: string, kgExclude: boolean) {
+    return apiJson<{ chapter_id: string; kg_exclude: boolean }>(
+      `/v1/books/${bookId}/chapters/${chapterId}/kg-exclude`,
+      { method: 'PUT', token, body: JSON.stringify({ kg_exclude: kgExclude }) },
+    );
   },
   restoreChapter(token: string, bookId: string, chapterId: string) {
     return apiJson<Chapter>(`/v1/books/${bookId}/chapters/${chapterId}/restore`, { method: 'POST', token });

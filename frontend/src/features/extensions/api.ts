@@ -25,9 +25,17 @@ import type {
   AuditList,
   IngestQueueList,
   IngestPullCounts,
+  ApprovalKind,
+  ToolDecision,
+  ToolPermission,
+  ToolPermissionList,
+  ToolCatalogResponse,
 } from './types';
 
 const BASE = '/v1/agent-registry';
+// The tool-consent allowlist is owned by chat-service (it is the tool loop's gate),
+// not the registry — same page, different service.
+const CHAT_BASE = '/v1/chat';
 
 export const extensionsApi = {
   listSkills(
@@ -244,5 +252,27 @@ export const extensionsApi = {
   },
   rejectIngest(token: string, id: string, reason = ''): Promise<{ ingest_id: string; status: string }> {
     return apiJson(`${BASE}/admin/ingest/queue/${id}/reject`, { method: 'POST', token, body: JSON.stringify({ reason }) });
+  },
+
+  // ── Track C WS-3 — the tool-consent allowlist. NOTE the different base: these live
+  // on chat-service (/v1/chat), which owns `user_tool_approvals`, not the registry.
+  listToolPermissions(token: string): Promise<ToolPermissionList> {
+    return apiJson<ToolPermissionList>(`${CHAT_BASE}/tool-permissions`, { token });
+  },
+  setToolPermission(
+    token: string, toolName: string, kind: ApprovalKind, decision: ToolDecision,
+  ): Promise<ToolPermission> {
+    return apiJson<ToolPermission>(`${CHAT_BASE}/tool-permissions/${encodeURIComponent(toolName)}`, {
+      method: 'PUT', token, body: JSON.stringify({ kind, decision }),
+    });
+  },
+  listToolCatalog(token: string): Promise<ToolCatalogResponse> {
+    return apiJson<ToolCatalogResponse>(`${CHAT_BASE}/tools/catalog`, { token });
+  },
+  revokeToolPermission(token: string, toolName: string, kind: ApprovalKind): Promise<void> {
+    return apiJson<void>(
+      `${CHAT_BASE}/tool-permissions/${encodeURIComponent(toolName)}?kind=${kind}`,
+      { method: 'DELETE', token },
+    );
   },
 };

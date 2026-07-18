@@ -275,9 +275,15 @@ async def ingest_chapter_passages(
     `canon` (D-RAWSEARCH-CANON-WIRING): stamped onto every passage. The
     `chapter.published` handler keeps the default True; the on-demand
     owner-only draft-indexing endpoint passes False so `surface=all` can
-    surface drafts while `surface=canon` (default) excludes them. A later
-    publish re-ingests at the pinned revision (canon=True) and the
-    delete-by-source step above flips the draft passages to canon.
+    surface drafts while `surface=canon` (default) excludes them.
+
+    D-R20 (P-3, keep-both): the canon and draft passages of a chapter are
+    DISTINCT nodes (`passage_canonical_id` gains a `draft:` segment for
+    canon=False) and the pre-write reap is bucket-scoped. So indexing a NEWER
+    draft on a PUBLISHED chapter now KEEPS BOTH — the published canon passages
+    stay in `surface=canon`, the draft is added under `surface=all`. A later
+    publish (canon=True) reaps BOTH buckets and re-writes the pinned revision as
+    canon, superseding the ahead-of-canon draft.
     """
     result = IngestResult(chunks_created=0, chunks_skipped=0)
 
@@ -322,12 +328,15 @@ async def ingest_chapter_passages(
             chapter_id,
         )
         # Still delete any stale passages so a chapter that becomes
-        # unavailable doesn't keep orphaned :Passage rows.
+        # unavailable doesn't keep orphaned :Passage rows. D-R20 (P-3): scope to
+        # the bucket being (not) written — a draft whose live text vanished reaps
+        # only the draft bucket, never the published canon passages.
         await delete_passages_for_source(
             session,
             user_id=str(user_id),
             source_type="chapter",
             source_id=str(chapter_id),
+            canon=None if canon else False,
         )
         return result
 
@@ -350,6 +359,9 @@ async def ingest_chapter_passages(
         source_type="chapter",
         source_id=str(chapter_id),
         source_lang=resolved_lang,
+        # D-R20 (P-3) — per-bucket skip-gate: read the SAME bucket we're about to
+        # write so the canon and draft sets never cross-contaminate the hash gate.
+        canon=canon,
     )
     if (
         state is not None
@@ -442,12 +454,19 @@ async def ingest_chapter_passages(
 
     # 4. Delete stale passages (THIS language only — never wipe the other
     # language's passages of the same chapter), then upsert fresh.
+    #
+    # D-R20 (P-3, keep-both): the reap is BUCKET-scoped. A DRAFT index (canon=False)
+    # reaps ONLY the draft bucket, so the chapter's PUBLISHED canon passages survive
+    # side by side (canon search still sees the published revision; surface=all sees
+    # the newer draft). A PUBLISH (canon=True) reaps BOTH buckets (canon=None) —
+    # publishing establishes the new canon and supersedes any ahead-of-canon draft.
     await delete_passages_for_source(
         session,
         user_id=str(user_id),
         source_type="chapter",
         source_id=str(chapter_id),
         source_lang=resolved_lang,
+        canon=None if canon else False,
     )
 
     for idx, ((chunk, block_pos), vector) in enumerate(
@@ -571,7 +590,16 @@ async def backfill_published_passages(
     published canon at setup time; a later edit+republish re-ingests at the pinned
     revision via the event path.
     """
-    items = await book_client.list_chapters(book_id, editorial_status="published")
+    # WS-0.6: enumerate the chapters that are IN the knowledge graph, not the published
+    # ones — a user's explicitly-indexed drafts must get :Passage nodes too, or they are
+    # invisible to L3 semantic retrieval and to chat grounding.
+    #
+    # ⚠️ This re-keys the ENUMERATION ONLY. The `canon` flag on the ingested passages is
+    # NOT re-keyed: `canon = (revision_id == published_revision_id)` stays the rule
+    # (spec §3.7 / P1-8). Draft prose must not become canon=True passages — raw_search
+    # documents a deliberate draft/canon split, and blindly flipping it here would be
+    # the inverse bug: unreviewed draft prose surfacing as canon.
+    items = await book_client.list_chapters(book_id, kg_indexed=True)
     if not items:
         return BackfillResult(0, 0, 0)
 
@@ -604,6 +632,37 @@ async def backfill_published_passages(
         # (per-chapter, never a book-level default) so a multi-source-language
         # book is tagged correctly; falls back to text detection in the ingester.
         declared_lang = item.get("original_language")
+
+        # ── review-impl P0 — PIN the revision and DERIVE canon ──
+        #
+        # This used to pass `revision_id=None, canon=True`, which was defensible when the
+        # enumeration was `editorial_status=published`: "live text == canon at setup time".
+        # WS-0.6b re-keyed the enumeration to kg_indexed=True, and that assumption died
+        # with it. The set now contains never-published, user-indexed DRAFT chapters, so:
+        #
+        #   revision_id=None -> ingest_chapter_passages reads the LIVE DRAFT, including
+        #                       prose typed AFTER the user's index action. The passages no
+        #                       longer correspond to the revision the graph facts were
+        #                       extracted from, and we pay embedding cost on text the user
+        #                       never asked us to index.
+        #   canon=True       -> stamps that unreviewed draft prose CANONICAL, so it is
+        #                       returned by the DEFAULT `surface=canon` vector search used
+        #                       for chat grounding, and cited as canon.
+        #
+        # Both are now derived from the row, matching handle_chapter_kg_indexed exactly
+        # (spec §3.7 / P1-8: canon = (revision_id == published_revision_id)).
+        rev = item.get("kg_indexed_revision_id") or item.get("published_revision_id")
+        if not rev:
+            logger.warning(
+                "D-KG-PASSAGE-BACKFILL: chapter=%s is enumerated but has NO pinned "
+                "revision — skipping rather than embedding its live draft as canon",
+                chapter_id,
+            )
+            skipped += 1
+            continue
+        published_rev = item.get("published_revision_id")
+        canon = bool(published_rev) and str(published_rev) == str(rev)
+
         try:
             res = await ingest_chapter_passages(
                 session,
@@ -616,8 +675,8 @@ async def backfill_published_passages(
                 chapter_index=chapter_index,
                 embedding_model=embedding_model,
                 embedding_dim=embedding_dim,
-                revision_id=None,  # live published text (== canon at setup time)
-                canon=True,
+                revision_id=UUID(str(rev)),
+                canon=canon,
                 source_lang=declared_lang,
                 pool=pool,
             )

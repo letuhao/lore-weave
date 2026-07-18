@@ -35,7 +35,7 @@ export function isToolApprovalRecord(tc: ToolCallRecord): boolean {
   );
 }
 
-type CardState = null | 'approved' | 'always' | 'denied';
+type CardState = null | 'approved' | 'always' | 'denied' | 'never';
 
 export function ToolApprovalCard({ record }: Props) {
   const { t } = useTranslation('chat');
@@ -125,12 +125,24 @@ export function ToolApprovalCard({ record }: Props) {
             <X className="h-3 w-3" />
             {t('toolApproval.deny', { defaultValue: 'Deny' })}
           </button>
+          {/* D3 (PO sign-off) — "Never allow": persist a standing deny for this tool
+              right here, the moment it is asking. Revocable later in the permissions panel. */}
+          <button
+            type="button"
+            onClick={() => void decide('denied_always', 'never')}
+            disabled={busy}
+            className="inline-flex items-center gap-1 rounded-sm border border-red-500/40 px-2 py-0.5 text-[11px] text-red-500 hover:bg-red-500/10 disabled:opacity-50"
+          >
+            <X className="h-3 w-3" />
+            {t('toolApproval.never_allow', { defaultValue: 'Never allow' })}
+          </button>
         </div>
       ) : (
         <div className="mt-1.5 text-[10px] text-muted-foreground">
           {state === 'approved' && t('toolApproval.approved', { defaultValue: 'Approved — running ✓' })}
           {state === 'always' && t('toolApproval.always_allowed', { defaultValue: 'Always allowed — running ✓' })}
           {state === 'denied' && t('toolApproval.denied', { defaultValue: 'Denied' })}
+          {state === 'never' && t('toolApproval.never_allowed', { defaultValue: 'Never allowed — you can undo this in Settings → Permissions' })}
         </div>
       )}
     </div>

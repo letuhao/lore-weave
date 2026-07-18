@@ -34,9 +34,13 @@ from app.engine.motif_select import (
 )
 
 _DSN = os.environ.get("TEST_COMPOSITION_DB_URL")
-pytestmark = pytest.mark.skipif(
-    not _DSN, reason="set TEST_COMPOSITION_DB_URL to a throwaway DB to run",
-)
+pytestmark = [
+    pytest.mark.skipif(
+        not _DSN, reason="set TEST_COMPOSITION_DB_URL to a throwaway DB to run",
+    ),
+    # Shared-Postgres tests serialize onto one xdist worker (CLAUDE.md).
+    pytest.mark.xdist_group("pg"),
+]
 
 _TABLES = [
     "motif_application", "motif_link", "import_source", "arc_template", "motif",
@@ -97,18 +101,31 @@ def _binding() -> MotifBinding:
                         unresolved_roles=[], annotations={}, warning=None)
 
 
-async def _chapter_with_scenes(pool, user, project, chapter_id, *, n_scenes=2):
+async def _seed_work(c, user, project, book) -> None:
+    """Seed the project's composition_work row so create_node can derive book_id
+    in-SQL (25 re-key: every outline_node INSERT does INSERT … SELECT w.book_id
+    FROM composition_work WHERE project_id = $n). `created_by` is a plain actor
+    stamp (never filtered)."""
+    await c.execute(
+        "INSERT INTO composition_work (created_by, project_id, book_id, status) "
+        "VALUES ($1,$2,$3,'active')",
+        user, project, book,
+    )
+
+
+async def _chapter_with_scenes(pool, user, project, book, chapter_id, *, n_scenes=2):
     """Create an arc→chapter→scenes tree; return (chapter_node, scene_nodes)."""
     outline = OutlineRepo(pool)
     async with pool.acquire() as c:
-        arc = await outline.create_node(user, project, kind="arc", title="Arc",
+        await _seed_work(c, user, project, book)
+        arc = await outline.create_node(project, created_by=user, kind="arc", title="Arc",
                                         status="outline", conn=c)
-        ch = await outline.create_node(user, project, kind="chapter", parent_id=arc.id,
+        ch = await outline.create_node(project, created_by=user, kind="chapter", parent_id=arc.id,
                                        chapter_id=chapter_id, title="Ch",
                                        beat_role="climax", status="outline", conn=c)
         scenes = []
         for i in range(n_scenes):
-            sn = await outline.create_node(user, project, kind="scene", parent_id=ch.id,
+            sn = await outline.create_node(project, created_by=user, kind="scene", parent_id=ch.id,
                                            chapter_id=chapter_id, beat_role="climax",
                                            title=f"S{i}", tension=50, status="outline", conn=c)
             scenes.append(sn)
@@ -123,14 +140,14 @@ async def _is_archived(pool, node_id) -> bool:
 async def test_apply_swap_archives_scenes_keeps_chapter_preserves_prose(pool):
     user, project, book = uuid.uuid4(), uuid.uuid4(), uuid.uuid4()
     chapter_id = uuid.uuid4()
-    ch, scenes = await _chapter_with_scenes(pool, user, project, chapter_id)
+    ch, scenes = await _chapter_with_scenes(pool, user, project, book, chapter_id)
     # attach a generation_job (prose) to scene 0
     async with pool.acquire() as c:
         job_id = await c.fetchval(
-            "INSERT INTO generation_job (user_id, project_id, outline_node_id, operation, "
-            "status, result) VALUES ($1,$2,$3,'generate','completed','{\"text\":\"prose\"}'::jsonb) "
+            "INSERT INTO generation_job (created_by, project_id, book_id, outline_node_id, operation, "
+            "status, result) VALUES ($1,$2,$3,$4,'generate','completed','{\"text\":\"prose\"}'::jsonb) "
             "RETURNING id",
-            user, project, scenes[0].id,
+            user, project, book, scenes[0].id,
         )
 
     outline = OutlineRepo(pool)
@@ -140,7 +157,7 @@ async def test_apply_swap_archives_scenes_keeps_chapter_preserves_prose(pool):
     async with pool.acquire() as c:
         async with c.transaction():
             res = await apply_motif_swap(
-                outline, apps, user, project, book, ch.id,
+                outline, apps, project, book, ch.id, created_by=user,
                 new_motif=_sel(new_m), binding=_binding(), cast_names={},
                 k_ceiling=3, high_threshold=70, min_scenes=1, max_scenes=6, conn=c,
             )
@@ -166,19 +183,19 @@ async def test_apply_swap_archives_scenes_keeps_chapter_preserves_prose(pool):
 async def test_undo_swap_is_lossless_inverse(pool):
     user, project, book = uuid.uuid4(), uuid.uuid4(), uuid.uuid4()
     chapter_id = uuid.uuid4()
-    ch, scenes = await _chapter_with_scenes(pool, user, project, chapter_id)
+    ch, scenes = await _chapter_with_scenes(pool, user, project, book, chapter_id)
     outline, apps = OutlineRepo(pool), MotifApplicationRepo(pool)
     new_m = _motif(code="new")
     await _insert_motif(pool, new_m)
     async with pool.acquire() as c:
         async with c.transaction():
             res = await apply_motif_swap(
-                outline, apps, user, project, book, ch.id,
+                outline, apps, project, book, ch.id, created_by=user,
                 new_motif=_sel(new_m), binding=_binding(), cast_names={},
                 k_ceiling=3, high_threshold=70, min_scenes=1, max_scenes=6, conn=c,
             )
         async with c.transaction():
-            await undo_motif_swap(outline, apps, user, project, res.undo_token, conn=c)
+            await undo_motif_swap(outline, apps, project, res.undo_token, conn=c)
 
     # prior scenes restored (active again); new scenes archived
     for s in scenes:
@@ -190,12 +207,12 @@ async def test_undo_swap_is_lossless_inverse(pool):
 async def test_clear_motif_archives_scenes_no_new(pool):
     user, project, book = uuid.uuid4(), uuid.uuid4(), uuid.uuid4()
     chapter_id = uuid.uuid4()
-    ch, scenes = await _chapter_with_scenes(pool, user, project, chapter_id)
+    ch, scenes = await _chapter_with_scenes(pool, user, project, book, chapter_id)
     outline, apps = OutlineRepo(pool), MotifApplicationRepo(pool)
     async with pool.acquire() as c:
         async with c.transaction():
             res = await apply_motif_swap(
-                outline, apps, user, project, book, ch.id,
+                outline, apps, project, book, ch.id, created_by=user,
                 new_motif=None, binding=None, cast_names={},
                 k_ceiling=3, high_threshold=70, min_scenes=1, max_scenes=6, conn=c,
             )
@@ -209,13 +226,13 @@ async def test_swap_idor_other_project_rejected(pool):
     user, project, book = uuid.uuid4(), uuid.uuid4(), uuid.uuid4()
     other_project = uuid.uuid4()
     chapter_id = uuid.uuid4()
-    ch, _ = await _chapter_with_scenes(pool, user, project, chapter_id)
+    ch, _ = await _chapter_with_scenes(pool, user, project, book, chapter_id)
     outline, apps = OutlineRepo(pool), MotifApplicationRepo(pool)
     async with pool.acquire() as c:
         async with c.transaction():
             with pytest.raises(MotifSwapError):
                 await apply_motif_swap(
-                    outline, apps, user, other_project, book, ch.id,  # wrong project
+                    outline, apps, other_project, book, ch.id, created_by=user,  # wrong project
                     new_motif=_sel(_motif()), binding=_binding(), cast_names={},
                     k_ceiling=3, high_threshold=70, min_scenes=1, max_scenes=6, conn=c,
                 )
@@ -224,13 +241,13 @@ async def test_swap_idor_other_project_rejected(pool):
 async def test_orphaned_thread_surfaced_not_closed(pool):
     user, project, book = uuid.uuid4(), uuid.uuid4(), uuid.uuid4()
     chapter_id = uuid.uuid4()
-    ch, scenes = await _chapter_with_scenes(pool, user, project, chapter_id)
+    ch, scenes = await _chapter_with_scenes(pool, user, project, book, chapter_id)
     # open a promise anchored at scene 0
     async with pool.acquire() as c:
         thread_id = await c.fetchval(
-            "INSERT INTO narrative_thread (user_id, project_id, kind, status, opened_at_node, summary) "
-            "VALUES ($1,$2,'promise','open',$3,'a promise') RETURNING id",
-            user, project, scenes[0].id,
+            "INSERT INTO narrative_thread (created_by, project_id, book_id, kind, status, opened_at_node, summary) "
+            "VALUES ($1,$2,$3,'promise','open',$4,'a promise') RETURNING id",
+            user, project, book, scenes[0].id,
         )
     outline, apps = OutlineRepo(pool), MotifApplicationRepo(pool)
     m = _motif()
@@ -238,7 +255,7 @@ async def test_orphaned_thread_surfaced_not_closed(pool):
     async with pool.acquire() as c:
         async with c.transaction():
             res = await apply_motif_swap(
-                outline, apps, user, project, book, ch.id,
+                outline, apps, project, book, ch.id, created_by=user,
                 new_motif=_sel(m), binding=_binding(), cast_names={},
                 k_ceiling=3, high_threshold=70, min_scenes=1, max_scenes=6, conn=c,
             )
@@ -253,16 +270,16 @@ async def test_orphaned_thread_surfaced_not_closed(pool):
 async def test_count_by_motif_for_book_aggregates(pool):
     user, project, book = uuid.uuid4(), uuid.uuid4(), uuid.uuid4()
     chapter_id = uuid.uuid4()
-    ch, _ = await _chapter_with_scenes(pool, user, project, chapter_id)
+    ch, _ = await _chapter_with_scenes(pool, user, project, book, chapter_id)
     outline, apps = OutlineRepo(pool), MotifApplicationRepo(pool)
     m = _motif()
     await _insert_motif(pool, m)
     async with pool.acquire() as c:
         async with c.transaction():
             await apply_motif_swap(
-                outline, apps, user, project, book, ch.id,
+                outline, apps, project, book, ch.id, created_by=user,
                 new_motif=_sel(m), binding=_binding(), cast_names={},
                 k_ceiling=3, high_threshold=70, min_scenes=1, max_scenes=6, conn=c,
             )
-    counts = await apps.count_by_motif_for_book(user, book)
+    counts = await apps.count_by_motif_for_book(book)
     assert counts.get(str(m.id)) == 2  # 2 beats → 2 application rows

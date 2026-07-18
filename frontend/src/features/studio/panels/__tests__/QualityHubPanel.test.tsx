@@ -11,6 +11,13 @@ vi.mock('@/auth', () => ({ useAuth: () => ({ accessToken: 'tok' }) }));
 const useWorkResolution = vi.fn();
 vi.mock('@/features/composition/hooks/useWork', () => ({
   useWorkResolution: (bookId: string, token: string | null) => useWorkResolution(bookId, token),
+  // D0 — the no-work branch now renders <WorkSetupCta>, which reuses these hooks.
+  useCreateWork: () => ({ mutateAsync: vi.fn().mockResolvedValue({ project_id: 'proj-new' }), isPending: false }),
+  usePendingWorkResolver: () => ({ state: 'idle', start: vi.fn(), retry: vi.fn() }),
+}));
+// useQualityWork also reads the active-Work pref (9262ed53e) — a real useQuery; stub it.
+vi.mock('@/features/composition/hooks/useActiveWork', () => ({
+  useActiveWorkId: () => ({ data: undefined }),
 }));
 
 import { QualityHubPanel } from '../QualityHubPanel';
@@ -39,12 +46,15 @@ describe('QualityHubPanel', () => {
     expect(hostRef!.getRegisteredTool('quality')!.commandId).toBe('studio.openPanel.quality');
   });
 
-  it('renders exactly the 4 capability cards', () => {
+  it('renders the quality capability cards (canon-rules + corrections are S6 additions)', () => {
     withHost('b1', <QualityHubPanel {...dockProps()} />);
     expect(screen.getByTestId('quality-hub-card-quality-promises')).toBeInTheDocument();
     expect(screen.getByTestId('quality-hub-card-quality-critic')).toBeInTheDocument();
     expect(screen.getByTestId('quality-hub-card-quality-coverage')).toBeInTheDocument();
     expect(screen.getByTestId('quality-hub-card-quality-canon')).toBeInTheDocument();
+    expect(screen.getByTestId('quality-hub-card-quality-canon-rules')).toBeInTheDocument();
+    expect(screen.getByTestId('quality-hub-card-quality-corrections')).toBeInTheDocument();
+    expect(screen.getByTestId('quality-hub-card-quality-heal')).toBeInTheDocument();
   });
 
   it('each card opens its own sibling panel via the host, never an internal view-switch', () => {
@@ -60,5 +70,14 @@ describe('QualityHubPanel', () => {
     expect(screen.getByTestId('quality-hub-no-work')).toBeInTheDocument();
     // The cards still render — canon issues don't need a composition Work.
     expect(screen.getByTestId('quality-hub-card-quality-canon')).toBeInTheDocument();
+  });
+
+  // /review-impl MED — the hub fronts all four quality panels, so it carried the same collapse:
+  // `unavailable` (composition-service DOWN) rendered the "start composing a chapter first" hint.
+  it('composition-service UNAVAILABLE shows an error, never the "go compose" hint', () => {
+    useWorkResolution.mockReturnValue({ isLoading: false, data: { status: 'unavailable', work: null } });
+    withHost('b1', <QualityHubPanel {...dockProps()} />);
+    expect(screen.getByTestId('quality-hub-unavailable')).toBeInTheDocument();
+    expect(screen.queryByTestId('quality-hub-no-work')).toBeNull();
   });
 });

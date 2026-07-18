@@ -82,6 +82,7 @@
       "table": "Tablo"
     },
     "placeholder": "Hikayeniz, karakterleriniz veya dünya inşası hakkında soru sorun...",
+    "assistant_placeholder": "Gününüzden bahsedin — insanlar, projeler ve kararlar…",
     "attach_context": "Bağlam ekle",
     "assist": "Asist",
     "voice_assist_on": "Sesli Asist AÇIK — AI yanıtları sesli okunacak",
@@ -127,12 +128,6 @@
     "mode_write_hint": "Yazma modu — ajan geri alınamaz değişiklikler yapabilir (her yeni araç için bir kez sorar)"
   },
   "new": {
-    "preset": {
-      "novel": "Roman Asistanı",
-      "translator": "Çevirmen",
-      "worldbuilder": "Dünya Kurucu",
-      "editor": "Editör"
-    },
     "create_failed": "Sohbet oluşturulamadı: {{error}}",
     "title": "Yeni Sohbet Başlat",
     "model": "Model",
@@ -234,7 +229,6 @@
   "actionConfirm": {
     "label": "İşlemi onayla",
     "batch_count": "{{count}} öğe",
-    "warning": "Bu değişiklik yüksek etkili — lütfen onaylayın.",
     "warning_destructive": "Bu işlem yıkıcıdır ve zincirleme etki yaratır — lütfen onaylayın.",
     "destructive_skipped": "Yukarıdan etkinleştirmediğiniz sürece {{count}} yıkıcı işlem ATLANACAKTIR.",
     "confirm": "Onayla",
@@ -248,7 +242,8 @@
     "cancelled": "İptal edildi",
     "reprice": "Tahmin edilen maliyet {{cost}} seviyesine çıktı — yeni fiyattan tekrar onaylamak için tekrar isteyin.",
     "reprice_title": "Maliyet değişti — uygulanmadı",
-    "reprice_detail": "Tahmini {{old}}, şimdi {{new}}. Hiçbir harcama yapılmadı — yeni fiyattan tekrar onaylamak için tekrar isteyin."
+    "reprice_detail": "Tahmini {{old}}, şimdi {{new}}. Hiçbir harcama yapılmadı — yeni fiyattan tekrar onaylamak için tekrar isteyin.",
+    "warning": "Lütfen bu değişikliği uygulamadan önce gözden geçirin."
   },
   "batchConfirm": {
     "title": "{{count}} işlemi tek adımda onayla",
@@ -345,14 +340,6 @@
     "title": "Oturum Ayarları",
     "model": "Model",
     "system_prompt": "Sistem Komutu",
-    "preset": {
-      "Custom": "Özel",
-      "Novelist": "Roman Yazarı",
-      "Translator": "Çevirmen",
-      "Worldbuilder": "Dünya Kurucu",
-      "Editor": "Editör",
-      "Analyst": "Analist"
-    },
     "prompt_placeholder": "Yapay zekaya bir rol, kişilik veya özel talimatlar verin...",
     "gen_params": "Üretim Parametreleri",
     "max_tokens": "Maksimum Token",
@@ -389,9 +376,11 @@
     "approve_once": "Bir kez onayla",
     "always_allow": "Her zaman izin ver",
     "deny": "Reddet",
+    "never_allow": "Never allow",
     "approved": "Onaylandı — çalışıyor ✓",
     "always_allowed": "Her zaman izin verildi — çalışıyor ✓",
-    "denied": "Reddedildi"
+    "denied": "Reddedildi",
+    "never_allowed": "Never allowed — you can undo this in Settings → Permissions"
   },
   "rack": {
     "label": "Bağlam",
@@ -416,6 +405,9 @@
     "more": "+{{count}} daha fazla",
     "more_tooltip": "{{count}} keşfedilen ancak gösterilmeyen araç var",
     "remove": "Kaldır",
+    "advanced_tools": "Gelişmiş araçlar ({{count}})",
+    "advanced_tools_hint": "Eski çağrılar için geçerliliğini yitirmiş araçlar burada tutulmaktadır. Eğer bunlardan birine özel olarak ihtiyacınız yoksa, yukarıdaki araçları kullanmanız önerilir.",
+    "legacy_pin_tooltip": "Bu oturum için bu eski aracı etkinleştirdiniz",
     "server": {
       "knowledge": "Bilgi",
       "glossary": "Sözlük",
@@ -426,10 +418,7 @@
       "ui": "UI",
       "chat": "Sohbet",
       "other": "Diğer"
-    },
-    "advanced_tools": "Gelişmiş araçlar ({{count}})",
-    "advanced_tools_hint": "Eski çağrılar için geçerliliğini yitirmiş araçlar burada tutulmaktadır. Eğer bunlardan birine özel olarak ihtiyacınız yoksa, yukarıdaki araçları kullanmanız önerilir.",
-    "legacy_pin_tooltip": "Bu oturum için bu eski aracı etkinleştirdiniz"
+    }
   },
   "inspector": {
     "title": "Ajan çalışma zamanı",
@@ -449,5 +438,13 @@
       "activated": "Aktif",
       "tool_running": "Araç çalışıyor"
     }
+  },
+  "presets": {
+    "custom": "Özel",
+    "novelist": "Roman Yazarı",
+    "translator": "Çevirmen",
+    "worldbuilder": "Dünya Kurucu",
+    "editor": "Editör",
+    "analyst": "Analist"
   }
 }

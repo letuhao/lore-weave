@@ -29,6 +29,7 @@ from app.db.repositories.generation_jobs import GenerationJobsRepo
 from app.db.repositories.grounding_pins import GroundingPinsRepo
 from app.db.repositories.import_source_repo import ImportSourceRepo
 from app.db.repositories.motif_application import MotifApplicationRepo
+from app.db.repositories.work_chapter_drafts import WorkChapterDraftsRepo
 from app.db.repositories.motif_repo import MotifRepo
 from app.db.repositories.motif_retrieve import MotifRetriever
 from app.db.repositories.narrative_thread import NarrativeThreadRepo
@@ -98,6 +99,7 @@ async def get_authoring_run_service() -> "AuthoringRunService":
         EngineDraftingSeam(),
         AuthoringRunUnitsRepo(get_pool()),
         BookRevisionCapture(),
+        corrections=GenerationCorrectionsRepo(get_pool()),  # BE-9b — reject-correction capture
     )
 
 
@@ -113,6 +115,26 @@ async def get_derivatives_repo() -> DerivativesRepo:
 
 async def get_outline_repo() -> OutlineRepo:
     return OutlineRepo(get_pool())
+
+
+async def get_work_chapter_drafts_repo() -> WorkChapterDraftsRepo:
+    """D-S5-DERIVATIVE-MANUSCRIPT-FORK — a derivative Work's work-scoped chapter drafts."""
+    return WorkChapterDraftsRepo(get_pool())
+
+
+async def get_structure_repo() -> "StructureRepo | None":
+    """The arc lens repo (23 BA12). Tolerant of an uninitialised pool: this dep was added
+    to existing pack-calling handlers, and their many unit tests override only the deps
+    they knew about — a hard get_pool() here would 500 every such test. The packer treats
+    structure_repo=None as the DORMANT arc lens (no <arc> frame, zero extra reads), which
+    is the correct behaviour when no pool exists. Production always has a pool, so the arc
+    is injected there; the wired DB test proves that path explicitly."""
+    from app.db.pool import get_pool as _get_pool
+    from app.db.repositories.structure import StructureRepo
+    try:
+        return StructureRepo(_get_pool())
+    except RuntimeError:
+        return None  # pool not initialised (unit test) → arc lens dormant
 
 
 async def get_scene_links_repo() -> SceneLinksRepo:
@@ -185,6 +207,36 @@ async def get_import_source_repo() -> ImportSourceRepo:
     (engine/motif_deconstruct) loads the row owner-checked off the same table.
     Mirrors get_motif_repo (cheap per-request wrapper over the shared pool)."""
     return ImportSourceRepo(get_pool())
+
+
+async def get_motif_repo_opt() -> "MotifRepo | None":
+    """X-7 — the MOTIF lens's repo, for the pack-calling handlers ONLY.
+
+    Pool-tolerant, for exactly the reason `get_structure_repo` (:118) is: this dep is being
+    added to EXISTING pack-calling handlers whose many unit tests override only the deps they
+    knew about, so a hard get_pool() here would 500 every one of them. The packer treats a
+    None motif repo as the DORMANT motif lens (no <motif> frame, zero extra reads) — the
+    correct behaviour when there is no pool. Production always has a pool, so the motif IS
+    injected there, and test_pack_motif_wired.py proves that path against a real DB.
+
+    ⚠ Deliberately SEPARATE from `get_motif_repo` (:183), which the motif CRUD routers use and
+    which must keep returning a non-Optional repo — do not merge them.
+    """
+    from app.db.pool import get_pool as _get_pool
+    try:
+        return MotifRepo(_get_pool())
+    except RuntimeError:
+        return None  # pool not initialised (unit test) → motif lens dormant
+
+
+async def get_motif_application_repo_opt() -> "MotifApplicationRepo | None":
+    """X-7 — the motif BINDING ledger for the pack-calling handlers. See
+    `get_motif_repo_opt` above; same pool-tolerant rationale, same dormant-lens contract."""
+    from app.db.pool import get_pool as _get_pool
+    try:
+        return MotifApplicationRepo(_get_pool())
+    except RuntimeError:
+        return None  # pool not initialised (unit test) → motif lens dormant
 
 
 async def get_motif_retriever() -> MotifRetriever:

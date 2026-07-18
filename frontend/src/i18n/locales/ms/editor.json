@@ -371,5 +371,26 @@
     "no_restore": "Tiada versi terdahulu untuk dipulihkan",
     "confirm_title": "Pulihkan ke keadaan sebelum suntingan AI ini?",
     "confirm_desc": "Draf semasa akan diambil gambar skrin (snapshot) terlebih dahulu, jadi tindakan ini boleh dibatalkan melalui sejarah semakan."
+  },
+  "knowledge": {
+    "add": "Tambah ke pengetahuan",
+    "reindex": "Kemas kini pengetahuan",
+    "indexed_badge": "Dalam pengetahuan anda",
+    "not_indexed_badge": "Tiada dalam pengetahuan",
+    "excluded_badge": "Dikecualikan",
+    "forget": "Lupakan bab ini",
+    "keep_out": "Jangan masukkan ke pengetahuan",
+    "allow": "Benarkan dalam pengetahuan",
+    "save_first": "Simpan sebelum menambah ke pengetahuan",
+    "indexed_toast": "Telah ditambah ke pengetahuan anda",
+    "reused_toast": "Sudah dikemas kini — tiada perubahan",
+    "empty_toast": "Bab ini tiada kandungan untuk ditambah — tulis sesuatu terlebih dahulu.",
+    "excluded_toast": "Bab ini dikecualikan daripada pengetahuan anda — benarkan dahulu.",
+    "forgotten_toast": "Dilupakan — telah dikeluarkan daripada pengetahuan anda",
+    "allowed_toast": "Dibenarkan. Pilih «Tambah ke pengetahuan» apabila anda sudah bersedia.",
+    "failed_toast": "Tidak dapat mengemas kini pengetahuan anda — cuba lagi.",
+    "forget_confirm_title": "Lupakan bab ini?",
+    "forget_confirm_body": "Segala yang dipelajari daripada bab ini akan dikeluarkan daripada pengetahuan anda. Bab itu sendiri tidak dipadamkan, dan anda boleh menambahnya semula kemudian.",
+    "hint": "Menambah bab ke pengetahuan anda membolehkan pembantu menggunakannya. Anda tidak perlu menerbitkannya."
   }
 }

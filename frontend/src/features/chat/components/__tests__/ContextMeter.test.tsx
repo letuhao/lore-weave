@@ -79,6 +79,23 @@ describe('ContextMeter', () => {
     expect(el.className).toContain('text-destructive');
   });
 
+  // D-CHAT-CONTEXT-METER-OVERCOUNT — a genuine overflow still renders its real
+  // pct (actionable), but a runaway value (the token-sum bug once produced
+  // 469% on a real 17%-full window) is clamped so the badge can't render as
+  // absurd/untrustworthy again if some future bug reintroduces it.
+  it('renders a real over-limit pct as-is', () => {
+    render(<ContextMeter budget={budget(1.42)} />);
+    expect(screen.getByText('142%')).toBeInTheDocument();
+  });
+
+  it('clamps a runaway pct instead of rendering an absurd percentage', () => {
+    // 4.6904 is the exact pct the token-sum bug produced on a real session
+    // (935,676 used_tokens / 199,488 effective_limit) before the backend fix.
+    render(<ContextMeter budget={budget(4.6904)} />);
+    expect(screen.getByText('>299%')).toBeInTheDocument();
+    expect(screen.queryByText('469%')).toBeNull();
+  });
+
   it('shows "—" and does not crash when pct is null', () => {
     render(<ContextMeter budget={budget(null, { context_length: null, effective_limit: null })} />);
     expect(screen.getByText('—')).toBeInTheDocument();

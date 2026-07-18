@@ -73,6 +73,13 @@ _MOTIF_ADOPT_DESCRIPTOR = "composition.motif_adopt"
 _MOTIF_MINE_DESCRIPTOR = "composition.motif_mine"
 _ARC_IMPORT_DESCRIPTOR = "composition.arc_import"
 _CONFORMANCE_RUN_DESCRIPTOR = "composition.conformance_run"
+# close-21-28 P-O2a — the deterministic arc decompiler (book-scoped, EDIT-gated at confirm).
+_DECOMPILE_DESCRIPTOR = "composition.decompile"
+# D-DIVERGENCE-MCP-TOOLS (S5) — the derive (spawn a dị bản). BOOK-scoped (payload carries the
+# source project_id + book_id), EDIT-gated at confirm. Mints a knowledge partition + persists the
+# branch spec via the shared `perform_derive`. No replay ledger (like publish/generate — a re-
+# confirmed token would mint a SECOND partition, but the token is single-use by the confirm flow).
+_DERIVE_DESCRIPTOR = "composition.derive"
 
 # D-AGENT-MODE §20 D5/D6 — the authoring-run confirm-gated descriptors. Like
 # motif_adopt/arc_import, these are BOOK-scoped (a book_id in the payload), NOT
@@ -97,6 +104,7 @@ _ALL_DESCRIPTORS = (
     _PUBLISH_DESCRIPTOR, _GENERATE_DESCRIPTOR,
     _MOTIF_ADOPT_DESCRIPTOR, _MOTIF_MINE_DESCRIPTOR,
     _ARC_IMPORT_DESCRIPTOR, _CONFORMANCE_RUN_DESCRIPTOR,
+    _DECOMPILE_DESCRIPTOR, _DERIVE_DESCRIPTOR,
     *_AUTHORING_RUN_DESCRIPTORS,
 )
 
@@ -273,6 +281,34 @@ async def confirm_action(
     if claims.descriptor == _ARC_IMPORT_DESCRIPTOR:
         return await _execute_arc_import(payload, envelope_user, token=token, claims=claims)
 
+    # ── P-O2a: decompile is BOOK-scoped + deterministic ($0, no LLM, no worker). Re-check EDIT on
+    # the book at confirm (a grant revoked since propose stops the mutation), then apply the effect
+    # synchronously (mirrors the authoring-run per-book re-gate, minus the billing/worker path).
+    if claims.descriptor == _DECOMPILE_DESCRIPTOR:
+        try:
+            book_id = UUID(str(payload["book_id"]))
+        except (KeyError, ValueError, TypeError) as exc:
+            raise HTTPException(status_code=400, detail={"code": "action_error"}) from exc
+        try:
+            await authorize_book(grant, book_id, envelope_user, GrantLevel.EDIT)
+        except (OwnershipError, InsufficientGrant) as exc:
+            raise HTTPException(status_code=403, detail={"code": "action_error"}) from exc
+        return await _execute_decompile(payload, book_id, envelope_user, token=token, claims=claims)
+
+    # ── D-DIVERGENCE-MCP-TOOLS: derive is BOOK-scoped (payload has the source project_id + book_id).
+    # Re-gate EDIT on the book at confirm (a grant revoked since propose stops the mint), then run the
+    # shared perform_derive (mint knowledge partition + persist the branch spec in one txn).
+    if claims.descriptor == _DERIVE_DESCRIPTOR:
+        try:
+            book_id = UUID(str(payload["book_id"]))
+        except (KeyError, ValueError, TypeError) as exc:
+            raise HTTPException(status_code=400, detail={"code": "action_error"}) from exc
+        try:
+            await authorize_book(grant, book_id, envelope_user, GrantLevel.EDIT)
+        except (OwnershipError, InsufficientGrant) as exc:
+            raise HTTPException(status_code=403, detail={"code": "action_error"}) from exc
+        return await _execute_derive(payload, envelope_user, works=works, book=book)
+
     # ── mine is BOOK/CORPUS-scoped, NOT Work-scoped (its payload has no project_id —
     # it binds book_id for scope='book', user for 'corpus'). Re-check the BOOK grant
     # directly for scope='book' (a grant revoked since propose stops the spend); a
@@ -319,7 +355,7 @@ async def confirm_action(
     except (KeyError, ValueError, TypeError) as exc:
         raise HTTPException(status_code=400, detail={"code": "action_error"}) from exc
 
-    work = await works.get(envelope_user, project_id)
+    work = await works.get(project_id)
     if work is None:
         raise HTTPException(status_code=400, detail={"code": "action_error"})
     try:
@@ -357,7 +393,7 @@ async def _execute_publish(
     # Canonization gate (CM1 / OI-1): a chapter is publishable ONLY when all its
     # composition scenes are 'done' and no unresolved canon contradiction survives
     # (the SAME gate the FE's Publish affordance reads). Re-check at execute time.
-    gate = await outline.chapter_scene_gate(envelope_user, project_id, chapter_id)
+    gate = await outline.chapter_scene_gate(project_id, chapter_id)
     if not gate.get("can_publish"):
         raise HTTPException(
             status_code=409,
@@ -536,27 +572,39 @@ async def _enqueue_motif_job(
 ) -> str:
     """Create a pending generation_job + best-effort enqueue the worker trigger.
     Returns the job id. The job row persists even if the Redis XADD blips (the
-    sweeper re-drives) — consistent with the platform best-effort enqueue rail."""
-    from uuid import uuid4
+    sweeper re-drives) — consistent with the platform best-effort enqueue rail.
 
+    BE-7c — the PAID-ACTION FIX. This used to stamp a SYNTHETIC `uuid4()` project_id
+    when the caller had none (a corpus/book mine is genuinely not Work-bound). But
+    `create()` DERIVES book_id from `composition_work` inside its INSERT…SELECT, so a
+    synthetic pid matched no row ⇒ zero rows inserted ⇒ ReferenceViolationError ⇒
+    /actions/confirm 500'd — AFTER `_claim_or_replay` burnt the confirm token and
+    `_precheck_or_402` reserved the billing hold. The user paid and got nothing, and
+    there was no job row to poll. A Work-less job now says so: project_id/book_id NULL,
+    scoped by `created_by`. NEVER back-fill a phantom composition_work per mine.
+    """
     from app.db.pool import get_pool
     from app.db.repositories.generation_jobs import GenerationJobsRepo
-    from app.worker.events import enqueue_job
+    from app.worker import events as worker_events
 
     jobs = GenerationJobsRepo(get_pool())
-    # mine/import/conformance are not Work-bound for the corpus case; generation_job
-    # requires a project_id (NOT NULL). For a book/corpus mine with no Work, stamp a
-    # synthetic project_id from the user so the row is valid + user-scoped. (The
-    # Wave-2 worker reads worker_op from input, not project_id.) Where a real Work
-    # project_id exists (conformance), use it.
-    pid = project_id if project_id is not None else uuid4()
-    job, _created = await jobs.create(
-        envelope_user, pid, operation=operation,
-        input={"worker_op": operation, **spec}, status="pending",
-    )
-    await enqueue_job(
+    if project_id is None:
+        job = await jobs.create_unbound(
+            created_by=envelope_user, operation=operation,
+            input={"worker_op": operation, **spec}, status="pending",
+        )
+    else:
+        job, _created = await jobs.create(
+            project_id, created_by=envelope_user, operation=operation,
+            input={"worker_op": operation, **spec}, status="pending",
+        )
+    # An unbound job carries no project on the stream. Safe: `run_job`
+    # (job_consumer.py:225-237) re-loads the job from the DB by id and never reads the
+    # stream's project_id (dispatch_job_message forwards only job_id + user_id).
+    await worker_events.enqueue_job(
         settings.redis_url, job_id=str(job.id),
-        user_id=str(envelope_user), project_id=str(pid),
+        user_id=str(envelope_user),
+        project_id=str(project_id) if project_id is not None else "",
     )
     return str(job.id)
 
@@ -666,6 +714,85 @@ async def _execute_motif_mine(
     }
 
 
+async def _execute_decompile(
+    payload: dict[str, Any], book_id: UUID, envelope_user: UUID, *, token: str, claims: Any,
+) -> dict[str, Any]:
+    """composition.decompile effect (P-O2a) — the DETERMINISTIC arc decompiler. The grant was
+    re-checked at the dispatch above; here we ledger-claim (replay guard) then run the engine
+    synchronously ($0, no LLM, idempotent — reuses existing decompiled arcs by position). Returns
+    the engine's `{arcs, chapters_assigned, arc_ids, reason?}` so the caller sees exactly what landed."""
+    from app.db.pool import get_pool
+    from app.engine.arc_decompile import decompile_arcs
+
+    try:
+        per = max(1, int(payload.get("chapters_per_arc") or 10))
+    except (ValueError, TypeError) as exc:
+        raise HTTPException(status_code=400, detail={"code": "action_error"}) from exc
+    # Replay guard: a re-submitted token returns the prior outcome, never a second mutation.
+    await _claim_or_replay(token, claims)
+    result = await decompile_arcs(
+        get_pool(), book_id, created_by=envelope_user, chapters_per_arc=per,
+    )
+    return {"outcome": "action_accepted", "descriptor": _DECOMPILE_DESCRIPTOR, **result}
+
+
+async def _execute_derive(
+    payload: dict[str, Any], envelope_user: UUID, *, works: WorksRepo, book: BookClient,
+) -> dict[str, Any]:
+    """composition.derive effect (D-DIVERGENCE-MCP-TOOLS) — mint a fresh knowledge partition +
+    persist the derivative Work + divergence_spec + entity_override[] via the SHARED perform_derive
+    (the same path the REST /derive route runs). The grant was re-checked at the dispatch above.
+    Rebuilds the DeriveBody from the SIGNED payload (the LLM can't alter the target between propose
+    and confirm). Mints a user-scoped service bearer for book.get_book + knowledge.create_project."""
+    from app.clients.knowledge_client import get_knowledge_client
+    from app.db.pool import get_pool
+    from app.db.repositories.derivatives import DerivativesRepo
+    from app.routers.works import (
+        DeriveBody, DivergenceSpecBody, EntityOverrideBody, perform_derive,
+    )
+
+    try:
+        source_pid = UUID(str(payload["source_project_id"]))
+    except (KeyError, ValueError, TypeError) as exc:
+        raise HTTPException(status_code=400, detail={"code": "action_error"}) from exc
+    source = await works.get(source_pid)
+    if source is None or source.source_work_id is not None:
+        # gone since propose, or somehow a derivative — uniform refusal (anti-oracle).
+        raise HTTPException(status_code=400, detail={"code": "action_error"})
+    try:
+        overrides = [
+            EntityOverrideBody(
+                target_entity_id=UUID(str(o["target_entity_id"])),
+                overridden_fields=o.get("overridden_fields") or {},
+            )
+            for o in (payload.get("entity_overrides") or [])
+        ]
+        body = DeriveBody(
+            name=payload.get("name"),
+            branch_point=payload.get("branch_point"),
+            divergence=DivergenceSpecBody(
+                taxonomy=payload.get("taxonomy") or "au",
+                pov_anchor=(UUID(str(payload["pov_anchor"])) if payload.get("pov_anchor") else None),
+                canon_rule=list(payload.get("canon_rule") or []),
+            ),
+            entity_overrides=overrides,
+        )
+    except (ValueError, TypeError) as exc:
+        raise HTTPException(status_code=400, detail={"code": "action_error"}) from exc
+
+    bearer = mint_service_bearer(envelope_user, settings.jwt_secret, ttl=120)
+    pool = get_pool()
+    work = await perform_derive(
+        source, body, envelope_user,
+        works=works, derivatives=DerivativesRepo(pool),
+        knowledge=get_knowledge_client(), book=book, bearer=bearer,
+    )
+    return {
+        "outcome": "action_accepted", "descriptor": _DERIVE_DESCRIPTOR,
+        "project_id": work.get("project_id"), "derivative": work,
+    }
+
+
 async def _execute_arc_import(
     payload: dict[str, Any], envelope_user: UUID, *, token: str, claims: Any,
 ) -> dict[str, Any]:
@@ -728,7 +855,8 @@ async def _execute_conformance_run(
             "chapter_id": payload.get("chapter_id"),
             # D-W10-ARC-CONFORMANCE-DEEP-JOB — the arc deep overlay's inputs (the tagging storm
             # the worker runs); the BYOK classify model rides through (provider-gateway invariant).
-            "arc_template_id": payload.get("arc_template_id"),
+            # 23-A4/BA4: the arc axis is a structure_node (`arc_id`), not the template it came from.
+            "arc_id": payload.get("arc_id"),
             "model_ref": payload.get("model_ref"),
             "model_source": payload.get("model_source"),
         },
@@ -846,6 +974,7 @@ async def _execute_authoring_run_gate(
     except (KeyError, ValueError, TypeError) as exc:
         raise HTTPException(status_code=400, detail={"code": "action_error"}) from exc
     svc = await get_authoring_run_service()
+    await _authoring_run_in_book(svc, run_id, book_id, envelope_user)
     bearer = mint_service_bearer(envelope_user, settings.jwt_secret)
     try:
         chapters = await book.list_chapters(book_id, bearer)
@@ -853,7 +982,7 @@ async def _execute_authoring_run_gate(
         raise HTTPException(status_code=502, detail={"code": "action_error"}) from exc
     chapter_ids = {str(c["chapter_id"]) for c in chapters if c.get("chapter_id")}
     try:
-        run = await svc.gate(envelope_user, run_id, book_chapter_ids=chapter_ids)
+        run = await svc.gate(run_id, book_chapter_ids=chapter_ids)
     except LookupError as exc:
         raise HTTPException(status_code=400, detail={"code": "action_error"}) from exc
     except ActiveRunOverlapError as exc:
@@ -874,19 +1003,44 @@ async def _execute_authoring_run_gate(
     }
 
 
+async def _authoring_run_in_book(
+    svc: Any, run_id: UUID, book_id: UUID, envelope_user: UUID,
+) -> Any:
+    """Reconcile the confirm-gated book with the run's OWN book, then re-assert the
+    creator rule (REST `_run_for_mutation` parity).
+
+    The EDIT gate at the dispatch above proves only that the caller may edit the book
+    they NAMED in the confirm payload — never that the run they named lives in it.
+    Before the 25 re-key the service scoped every transition by the acting owner
+    (`svc.start(envelope_user, run_id)`); de-scoping the repos moved that duty here
+    (`worker-loaded-id-needs-parent-scoping`). Without it, an EDIT grant on ANY book
+    lets a caller start/resume/gate an arbitrary run — spending its creator's BYOK
+    budget — or `revert_all` it, destroying their drafted chapters.
+
+    Book-owner escalation is pause/close ONLY (see the REST router); none of the
+    confirm-gated descriptors are pause/close, so this fence is creator-only. Missing,
+    foreign, and not-yours all raise the SAME `action_error` — no existence oracle.
+    """
+    run = await svc.get(run_id)
+    if run is None or run.book_id != book_id or run.created_by != envelope_user:
+        raise HTTPException(status_code=400, detail={"code": "action_error"})
+    return run
+
+
 async def _apply_pause_override(
-    svc: Any, envelope_user: UUID, run_id: UUID, payload: dict[str, Any],
+    svc: Any, run_id: UUID, payload: dict[str, Any],
 ) -> None:
     """D4b: start/resume optionally OVERRIDE the run's pause_after_each_unit
     policy at the same time. `None`/absent = leave the run's existing policy
-    untouched (set at create time)."""
+    untouched (set at create time). Callers MUST have fenced `run_id` against the
+    gated book first (`_authoring_run_in_book`) — this itself writes to the run."""
     from app.services.authoring_run_service import TransitionConflictError
 
     override = payload.get("pause_after_each_unit")
     if override is None:
         return
     try:
-        await svc.set_pause_policy(envelope_user, run_id, bool(override))
+        await svc.set_pause_policy(run_id, bool(override))
     except LookupError as exc:
         raise HTTPException(status_code=400, detail={"code": "action_error"}) from exc
     except TransitionConflictError as exc:
@@ -907,9 +1061,10 @@ async def _execute_authoring_run_start(
     except (KeyError, ValueError, TypeError) as exc:
         raise HTTPException(status_code=400, detail={"code": "action_error"}) from exc
     svc = await get_authoring_run_service()
-    await _apply_pause_override(svc, envelope_user, run_id, payload)
+    await _authoring_run_in_book(svc, run_id, book_id, envelope_user)
+    await _apply_pause_override(svc, run_id, payload)
     try:
-        run = await svc.start(envelope_user, run_id)
+        run = await svc.start(run_id)
     except LookupError as exc:
         raise HTTPException(status_code=400, detail={"code": "action_error"}) from exc
     except TransitionConflictError as exc:
@@ -935,9 +1090,10 @@ async def _execute_authoring_run_resume(
     except (KeyError, ValueError, TypeError) as exc:
         raise HTTPException(status_code=400, detail={"code": "action_error"}) from exc
     svc = await get_authoring_run_service()
-    await _apply_pause_override(svc, envelope_user, run_id, payload)
+    await _authoring_run_in_book(svc, run_id, book_id, envelope_user)
+    await _apply_pause_override(svc, run_id, payload)
     try:
-        run = await svc.resume(envelope_user, run_id)
+        run = await svc.resume(run_id)
     except LookupError as exc:
         raise HTTPException(status_code=400, detail={"code": "action_error"}) from exc
     except TransitionConflictError as exc:
@@ -965,13 +1121,14 @@ async def _execute_authoring_run_revert_all(
     except (KeyError, ValueError, TypeError) as exc:
         raise HTTPException(status_code=400, detail={"code": "action_error"}) from exc
     svc = await get_authoring_run_service()
+    await _authoring_run_in_book(svc, run_id, book_id, envelope_user)
     bearer = mint_service_bearer(envelope_user, settings.jwt_secret)
 
     async def _restore(bid: UUID, chapter_id: UUID, revision_id: UUID) -> None:
         await book.restore_revision(bid, chapter_id, revision_id, bearer)
 
     try:
-        result = await svc.revert_all(envelope_user, run_id, restore=_restore)
+        result = await svc.revert_all(run_id, restore=_restore)
     except LookupError as exc:
         raise HTTPException(status_code=400, detail={"code": "action_error"}) from exc
     except TransitionConflictError as exc:

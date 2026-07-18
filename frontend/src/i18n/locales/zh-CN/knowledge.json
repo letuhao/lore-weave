@@ -22,7 +22,17 @@
     "hint": "滚动缩放 · 拖拽空白处平移 · 点击节点查看详情 · ⊞ 展开",
     "loading": "正在加载图谱…",
     "loadFailed": "图谱加载失败: {{error}}",
-    "empty": "暂无知识图谱 — 构建此项目以探索其网络。"
+    "empty": "暂无知识图谱 — 构建此项目以探索其网络。",
+    "emptyLens": "没有符合此视图的关系 — 请尝试其他视图、之前的章节，或清除当前视图。",
+    "truncatedLens": "正在显示此视图的前 {{n}} 条关系",
+    "hintLens": "滚动缩放 · 拖拽平移 · 点击节点查看详情",
+    "lens": {
+      "view": "视图",
+      "noView": "所有关系",
+      "asOf": "截至章节",
+      "latest": "最新",
+      "clear": "清除视图"
+    }
   },
   "schemaSection": {
     "title": "模式 (Schema)",
@@ -72,7 +82,8 @@
       "extractionDisabled": "已禁用",
       "book": "书籍",
       "world": "世界观",
-      "none": "—"
+      "none": "—",
+      "triageNudge": "有 {{count}} 个提取的元素需要进行分拣"
     },
     "placeholder": {
       "proposals": "待处理提案将显示在此处 (C11)。",
@@ -404,7 +415,8 @@
         "global": "全局",
         "confidence": "置信度",
         "mentions": "提及次数",
-        "anchor": "锚点评分"
+        "anchor": "锚点评分",
+        "scope": "范围"
       },
       "promote": "提升至术语表",
       "promoteHint": "已发现的实体。将其提升以创建 AI 建议的术语表草稿供您审核。",
@@ -421,8 +433,32 @@
         "decision": "决策",
         "preference": "偏好",
         "milestone": "里程碑",
-        "negation": "否定"
-      }
+        "negation": "否定",
+        "statement": "陈述",
+        "commitment": "承诺"
+      },
+      "addFact": "添加事实",
+      "addFactTitle": "添加关于此实体的描述",
+      "factContentLabel": "事实内容",
+      "factContentPlaceholder": "例如：在背叛后不再信任议会",
+      "factTypeLabel": "类型",
+      "factPredicatePlaceholder": "谓词（可选，例如：loyal_to）",
+      "factObjectPlaceholder": "宾语（可选，例如：House Vaeth）",
+      "addFactSave": "保存事实",
+      "addFactCancel": "取消",
+      "addFactSuccess": "事实已添加",
+      "addFactFailed": "无法添加事实：{{error}}",
+      "markWrong": "标记为错误",
+      "markWrongConfirm": "将此事实标记为错误？它将被作废（从复习中移除），但会保留在历史记录中。",
+      "markWrongSuccess": "事实已标记为错误",
+      "markWrongFailed": "无法作废事实：{{error}}",
+      "factTypeHelp": "这是哪种事实？",
+      "factAdvancedToggle": "链接到另一个实体（可选）",
+      "replaceFact": "替换此事实",
+      "replaceFactSave": "保存替换",
+      "replaceFactSuccess": "事实已替换",
+      "markWrongUndo": "撤销",
+      "markWrongUndoFailed": "无法撤销：{{error}}"
     },
     "edit": {
       "title": "编辑实体",
@@ -462,6 +498,41 @@
       "errArchived": "无法合并已归档的实体。请先将其恢复。",
       "errGlossaryConflict": "两个实体关联了不同的术语表条目。请在合并前解决术语表锚点冲突。",
       "errUnknown": "合并失败：{{reason}}"
+    },
+    "create": {
+      "title": "新实体",
+      "description": "手动编写知识图谱实体。初始状态为“已发现”；稍后将其锚定为“规范实体”。",
+      "newButton": "新建实体",
+      "needsProject": "请先选择一个项目",
+      "field": {
+        "name": "名称",
+        "kind": "类型"
+      },
+      "save": "创建",
+      "saving": "正在创建…",
+      "cancel": "取消",
+      "success": "实体已创建 — {{name}} ({{kind}})",
+      "dedup": "已存在 — 显示 {{name}} ({{kind}})",
+      "failed": "无法创建实体 — {{error}}",
+      "discoveredHint": "新实体初始状态为“已发现”。通过关联至术语表可获得“规范”状态。"
+    },
+    "kind": {
+      "character": "角色",
+      "location": "地点",
+      "organization": "组织",
+      "concept": "概念",
+      "item": "物品"
+    },
+    "archive": {
+      "action": "归档",
+      "confirm": "隐藏此实体？其关联关系和术语表锚点将被保留，但会从活动列表中消失。您可以立即撤销，或通过“已归档”过滤器重新显示它。",
+      "success": "实体已归档。",
+      "failed": "无法归档 — {{error}}",
+      "undo": "撤销"
+    },
+    "restore": {
+      "success": "实体已恢复。",
+      "failed": "无法恢复 — {{error}}"
     }
   },
   "jobs": {
@@ -1079,9 +1150,34 @@
       "markWrong": "标记为错误",
       "invalidating": "正在移除…",
       "failed": "无法保存修正：{{error}}"
+    },
+    "create": {
+      "title": "链接实体",
+      "description": "建立从 {{subject}} 到你另一个实体的关系。",
+      "action": "链接实体",
+      "subject": "从",
+      "predicate": "关系",
+      "object": "至",
+      "objectPlaceholder": "搜索您的实体…",
+      "noMatches": "未找到匹配的实体。",
+      "save": "创建链接",
+      "saving": "正在链接…",
+      "cancel": "取消",
+      "success": "关系已创建。",
+      "notYours": "无法创建链接 — 该端点不属于您的实体。",
+      "selfLoop": "实体不能与自身建立关系。",
+      "failed": "无法创建链接 — {{error}}"
     }
   },
   "events": {
+    "create": {
+      "title": "添加事件",
+      "description": "为该角色创作一个新的时间线事件。",
+      "success": "事件已添加。",
+      "failed": "添加失败：{{error}}",
+      "saving": "正在添加…",
+      "save": "添加事件"
+    },
     "edit": {
       "cta": "编辑",
       "title": "编辑事件",
@@ -1157,5 +1253,64 @@
       "divergent": "趋异"
     },
     "totalRuns": "总计 {{count}} 次运行"
+  },
+  "triage": {
+    "loading": "正在加载分拣队列…",
+    "loadFailed": "无法加载分拣队列：{{error}}",
+    "empty": "暂无待分拣内容 — 所有提取的元素均符合您的模式。",
+    "resolved": "已解决 {{count}} 项",
+    "resolveFailed": "无法解决：{{error}}",
+    "handoffToGlossary": "正在打开术语表，以便在您的法典中完成此项…",
+    "itemType": {
+      "unknown_node_kind": "未知的实体类型",
+      "unknown_edge_type": "未知的关系类型",
+      "edge_kind_mismatch": "关系端点不匹配",
+      "unknown_vocab_value": "不在词汇表内的数值",
+      "edge_cardinality_conflict": "存在冲突的活动关系"
+    },
+    "action": {
+      "map": "映射至现有项",
+      "add_to_vocab": "添加到词汇表",
+      "add_to_schema": "添加到架构",
+      "re_target": "修正终点",
+      "widen_target_kinds": "扩大允许的类型",
+      "drop_edge": "丢弃",
+      "close_previous": "关闭前一个",
+      "set_multi_active": "允许复数",
+      "promote_to_glossary_kind": "提升为术语类型",
+      "demote_to_attribute": "降级为属性",
+      "dismiss": "忽略"
+    },
+    "prompt": {
+      "target_entity_id": "已修正的终点实体 ID",
+      "map_to": "映射至（留空则使用检测到的值）"
+    },
+    "itemDismissed": "项目已忽略",
+    "confirmSchemaWrite": "将此内容添加到您的模式中？这会改变未来提取内容的验证方式。",
+    "evidence": {
+      "unknown_edge_type": "关系“{{predicate}}”尚未包含在您的模式中。",
+      "unknown_vocab_value": "值“{{value}}”尚未包含在“{{set}}”列表中。",
+      "edge_kind_mismatch": "在 {{source}} 与 {{target}} 之间使用了“{{predicate}}”，这不符合您的模式设定。",
+      "unknown_node_kind": "类型“{{kind}}”尚未包含在您的模式中。",
+      "edge_cardinality_conflict": "存在冲突的有效“{{predicate}}”关系。",
+      "generic": "提取的元素与您的模式不匹配。"
+    },
+    "retarget": {
+      "title": "指向正确的实体",
+      "description": "搜索您的实体，并选择此关系应指向的对象。",
+      "searchPlaceholder": "按名称搜索实体…",
+      "noMatches": "未找到匹配的实体。",
+      "cancel": "取消",
+      "confirm": "重新指向"
+    },
+    "map": {
+      "title": "映射到现有项目",
+      "description": "请选择该非模式元素应被视为哪一个模式项目。",
+      "label": "映射至",
+      "keepDetected": "保留检测到的值",
+      "cancel": "取消",
+      "confirm": "映射"
+    },
+    "emptyHint": "Triage 会收集所有尚未符合您模式的提取内容——队列清空意味着一切都已归位。"
   }
 }

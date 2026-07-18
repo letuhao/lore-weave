@@ -73,6 +73,40 @@ CREATE TABLE IF NOT EXISTS notification_preferences (
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   PRIMARY KEY (user_id, category)
 );
+
+-- M5 (D-MOB-4 push delivery). One row per DEVICE push subscription. The Web Push endpoint URL IS
+-- the device key (a browser mints a distinct endpoint per install), so multi-device = multiple
+-- rows; UNIQUE(owner_user_id, endpoint) makes registration an idempotent upsert (§8-S1/H4). Per-user
+-- scope tier (owner_user_id) — a user only ever sees/mutates their own subscriptions. p256dh+auth are
+-- the subscription's public key material used to ENCRYPT the payload (not secrets — they're the
+-- recipient's public keys). fail_count/last_success_at drive the stale-sweep GC; a 404/410 on send
+-- hard-deletes the row (the primary GC, §8-B3).
+CREATE TABLE IF NOT EXISTS push_subscriptions (
+  id              UUID PRIMARY KEY DEFAULT uuidv7(),
+  owner_user_id   UUID NOT NULL,
+  endpoint        TEXT NOT NULL,
+  p256dh          TEXT NOT NULL,
+  auth            TEXT NOT NULL,
+  ua              TEXT,
+  created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+  last_success_at TIMESTAMPTZ,
+  fail_count      INT NOT NULL DEFAULT 0,
+  UNIQUE (owner_user_id, endpoint)
+);
+CREATE INDEX IF NOT EXISTS idx_push_sub_owner ON push_subscriptions(owner_user_id);
+
+-- M5 (§8-H1/H3). The PUSH channel preference, keyed by push_topic (the 7 user-facing toggles, NOT
+-- the 9 raw categories — the sender maps category+message_key → topic). Per-user scope tier. A topic
+-- with NO row uses its code default (social off, everything else on); a row overrides it. This is a
+-- SEPARATE dimension from notification_preferences (which governs in-app storage): a user can keep a
+-- category in the feed while silencing its buzz.
+CREATE TABLE IF NOT EXISTS push_preferences (
+  user_id      UUID    NOT NULL,
+  push_topic   TEXT    NOT NULL,
+  push_enabled BOOLEAN NOT NULL,
+  updated_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+  PRIMARY KEY (user_id, push_topic)
+);
 `
 
 func Up(ctx context.Context, pool *pgxpool.Pool) error {

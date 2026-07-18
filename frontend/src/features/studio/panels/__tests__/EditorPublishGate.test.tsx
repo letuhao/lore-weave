@@ -11,6 +11,9 @@ import type { PropsWithChildren } from 'react';
 
 vi.mock('@/auth', () => ({ useAuth: () => ({ accessToken: 'tok' }) }));
 vi.mock('react-i18next', () => ({ useTranslation: () => ({ t: (k: string) => k }) }));
+// F2 — the gate flashes the flywheel on publish; stub the host so the test doesn't need the provider.
+const openPanel = vi.fn();
+vi.mock('../../host/StudioHostProvider', () => ({ useStudioHost: () => ({ openPanel }) }));
 
 const h = vi.hoisted(() => ({
   getChapter: vi.fn(),
@@ -71,6 +74,9 @@ describe('EditorPublishGate (Studio wiring — #16 1.4)', () => {
     const btn = await screen.findByText('publish.publish');
     await waitFor(() => expect((btn.closest('button') as HTMLButtonElement).disabled).toBe(true));
     expect((btn.closest('button') as HTMLButtonElement).title).toContain('publish.gate_pending');
+    // D-S1-GATE-REASON-INLINE (S1 blackbox): the reason is surfaced INLINE too, not tooltip-only.
+    const reasonChip = await screen.findByTestId('studio-publish-blocked-reason');
+    expect(reasonChip.textContent).toContain('publish.gate_pending');
     expect(h.publishGate).toHaveBeenCalledWith('p1', 'c1', 'tok');
   });
 
@@ -104,5 +110,7 @@ describe('EditorPublishGate (Studio wiring — #16 1.4)', () => {
     await waitFor(() => expect(h.publishChapter).toHaveBeenCalledWith('tok', 'b1', 'c1', 4));
     await screen.findByText('publish.republish'); // badge/label flipped after the refetch
     expect(h.getChapter).toHaveBeenCalledTimes(2); // initial load + post-publish invalidation
+    // F2 — a publish (pre-change status was 'draft') flashes the flywheel in the background (no focus steal).
+    expect(openPanel).toHaveBeenCalledWith('flywheel', { focus: false });
   });
 });

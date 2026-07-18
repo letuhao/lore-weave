@@ -28,6 +28,12 @@ class BookNotFound(Exception):
     """The book does not exist."""
 
 
+class BookIsDiary(Exception):
+    """P-1 / D-R19 — the target is a kind='diary' book. A campaign (batch translation) must NEVER
+    run on a private diary — it would ship the user's diary content to a translation provider. The
+    caller maps this to a 403 (not a 502/404)."""
+
+
 @dataclass(frozen=True)
 class ChapterRef:
     chapter_id: str
@@ -63,15 +69,24 @@ class BookClient:
             raise BookServiceError(
                 f"projection {resp.status_code}", status_code=resp.status_code,
             )
-        owner = resp.json().get("owner_user_id")
+        body = resp.json()
+        owner = body.get("owner_user_id")
         if not owner:
             raise BookServiceError("projection missing owner_user_id")
+        # P-1 / D-R19 — a campaign must NEVER run on a private diary (kind='diary'), which would
+        # batch-translate the user's diary and ship it to a provider. The projection carries `kind`
+        # (WS-1.2 egress-guard contract); this is the ONE resolution chokepoint both create+estimate
+        # pass through, so the guard holds for both.
+        if body.get("kind") == "diary":
+            raise BookIsDiary(str(book_id))
         return str(owner)
 
-    async def list_published_chapters(self, book_id: UUID) -> list[ChapterRef]:
-        """Enumerate the book's PUBLISHED chapters (canon = published; decision I
-        — ingest precondition). Returns [] on an empty book; raises on failure."""
-        url = f"{self._base_url}/internal/books/{book_id}/chapters?limit=1000&editorial_status=published"
+    async def list_indexed_chapters(self, book_id: UUID) -> list[ChapterRef]:
+        """P-1 / D-R19 — enumerate the book's KG-INDEXED chapters (was published-only; the human
+        chose platform consistency with the WS-0.6 publish-independent KG work: a chapter is
+        translatable once the user has INDEXED it, not only once published). Returns [] on an empty
+        book; raises on failure. (Diaries are already refused at owner-resolution.)"""
+        url = f"{self._base_url}/internal/books/{book_id}/chapters?limit=1000&kg_indexed=true"
         try:
             resp = await self._http.get(url)
         except httpx.RequestError as exc:

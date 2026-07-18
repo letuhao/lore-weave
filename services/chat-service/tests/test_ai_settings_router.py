@@ -123,6 +123,51 @@ async def test_patch_accepts_valid_enum(client, mock_pool):
     assert resp.status_code == 200
 
 
+# ── D-CHATAI-VOICE-TWO-STORES — the account write door normalizes voice sources ──
+async def test_patch_rejects_unknown_voice_source(client, mock_pool):
+    # a genuinely-unknown source 422s at the door → proves the router wires
+    # normalize_voice_sources (the flat SETTING_ENUMS can't reach nested voice paths).
+    resp = await client.patch(
+        "/v1/chat/ai-prefs", json={"voice": {"chat": {"tts_source": "banana"}}}
+    )
+    assert resp.status_code == 422
+
+
+async def test_patch_accepts_and_coerces_legacy_voice_source(client, mock_pool):
+    # legacy 'ai_model' is ACCEPTED (not 422'd) — a live client sending the old word
+    # is coerced to canonical 'user_model', never rejected.
+    mock_pool._conn.fetchrow.return_value = None
+    resp = await client.patch(
+        "/v1/chat/ai-prefs", json={"voice": {"stt": {"source": "ai_model"}}}
+    )
+    assert resp.status_code == 200
+
+
+# ── WS-4.3 — the per-user audio-retention setting is range-validated at the door ──
+async def test_patch_accepts_in_range_audio_retention(client, mock_pool):
+    mock_pool._conn.fetchrow.return_value = None
+    resp = await client.patch("/v1/chat/ai-prefs", json={"voice": {"audio_retention_hours": 12}})
+    assert resp.status_code == 200
+
+
+async def test_patch_rejects_audio_retention_over_ceiling(client, mock_pool):
+    resp = await client.patch("/v1/chat/ai-prefs", json={"voice": {"audio_retention_hours": 999}})
+    assert resp.status_code == 422
+
+
+# ── WS-5.4 — assistant.coaching_enabled (default OFF, strict bool) ────────────
+async def test_patch_accepts_coaching_enabled_bool(client, mock_pool):
+    mock_pool._conn.fetchrow.return_value = None
+    resp = await client.patch("/v1/chat/ai-prefs", json={"assistant": {"coaching_enabled": True}})
+    assert resp.status_code == 200
+    assert resp.json()["assistant"]["coaching_enabled"] is True
+
+
+async def test_patch_rejects_non_bool_coaching_enabled(client, mock_pool):
+    resp = await client.patch("/v1/chat/ai-prefs", json={"assistant": {"coaching_enabled": "yes"}})
+    assert resp.status_code == 422
+
+
 async def test_create_session_seeds_behavior_from_account(client, mock_pool):
     # HIGH fix: a new session inherits the account behavior defaults so the panel
     # isn't a write-only store. get_prefs (1st fetchrow) then INSERT (2nd).
@@ -185,3 +230,36 @@ async def test_effective_settings_no_book_id_skips_book_tier(client, mock_pool, 
     fake_provider._live = True
     resp = await client.get("/v1/chat/effective-settings")
     assert resp.json()["models"]["chat"]["source_tier"] == "account"
+
+
+# ── deploy capability ceilings (D-WS4C-EFFECTIVE-VALUE) ──────────────────────
+async def test_capabilities_reports_canon_capture_ceiling_on(client, monkeypatch):
+    # Default deploy ceiling permits capture → deploy_allows True, tier=system.
+    monkeypatch.setattr(ai_settings.settings, "canon_capture_enabled", True)
+    resp = await client.get("/v1/chat/capabilities")
+    assert resp.status_code == 200
+    cap = resp.json()["canon_capture"]
+    assert cap == {"deploy_allows": True, "source_tier": "system"}
+
+
+async def test_capabilities_reports_canon_capture_ceiling_off(client, monkeypatch):
+    # A deployment kill-switches capture off → deploy_allows False. The consumer
+    # ANDs this with its user knob, so a user who toggled ON still sees effective OFF
+    # (the "silently-off" bug the boundary rule prevents).
+    monkeypatch.setattr(ai_settings.settings, "canon_capture_enabled", False)
+    resp = await client.get("/v1/chat/capabilities")
+    assert resp.status_code == 200
+    assert resp.json()["canon_capture"]["deploy_allows"] is False
+
+
+async def test_capabilities_requires_auth(monkeypatch):
+    # No get_current_user override → the route rejects an unauthenticated caller
+    # (it rides the same JWT edge as every /v1/chat route).
+    from httpx import ASGITransport, AsyncClient
+
+    from app.main import app
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as ac:
+        resp = await ac.get("/v1/chat/capabilities")
+    assert resp.status_code in (401, 403)

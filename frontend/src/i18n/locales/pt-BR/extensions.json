@@ -6,6 +6,7 @@
     "commands": "Comandos e Hooks",
     "subagents": "Subagentes",
     "plugins": "Plugins",
+    "permissions": "Permissões de ferramentas",
     "proposals": "Propostas",
     "activity": "Log de atividade",
     "ingest": "Fontes do registro"
@@ -19,8 +20,8 @@
     "label": "Escopo:",
     "mine": "Minhas extensões",
     "orBook": "ou um livro:",
-    "bookPlaceholder": "específico do livro…",
-    "bookHint": "específico do livro — novos itens aplicam-se apenas a este livro"
+    "bookPlaceholder": "limitado ao livro…",
+    "bookHint": "limitado ao livro — novos itens aplicam-se apenas a este livro"
   },
   "common": {
     "loading": "Carregando…",
@@ -65,7 +66,7 @@
       "error": "Inalcançável"
     },
     "add": "+ Adicionar servidor",
-    "empty": "Nenhum servidor MCP ainda. Adicione um para dar ferramentas extras ao agente.",
+    "empty": "Ainda não há servidores MCP. Adicione um para dar ferramentas extras ao agente.",
     "review": "⚠ revisão",
     "detail": {
       "back": "‹ Voltar",
@@ -79,10 +80,10 @@
       "healthOk": "ok · {{count}} ferramentas · {{latency}}ms",
       "healthError": "erro: {{error}}",
       "unreachable": "inalcançável",
-      "scanning": "Escaneando...",
-      "rescan": "Refazer escaneamento",
+      "scanning": "Escaneando…",
+      "rescan": "Reescanear",
       "reconnect": "Reconectar OAuth",
-      "acceptRisk": "Aceitar riscos e ativar"
+      "acceptRisk": "Aceitar risco e ativar"
     },
     "scan": {
       "label": "Escaneamento de cadeia de suprimentos:",
@@ -95,8 +96,8 @@
       "steps": {
         "connection": "Conexão",
         "auth": "Autenticação",
-        "scan": "Saúde e Escaneamento",
-        "review": "Revisar"
+        "scan": "Saúde e Varredura",
+        "review": "Revisão"
       },
       "displayName": "Nome de exibição",
       "displayNamePlaceholder": "Meu servidor de ferramentas",
@@ -106,7 +107,7 @@
       "authNone": "Nenhuma",
       "authBearer": "Token Bearer",
       "authOauth": "OAuth 2.1",
-      "noAuthHint": "Sem autenticação — este servidor é aberto. Continue para registrar e escaneá-lo.",
+      "noAuthHint": "Sem autenticação — este servidor está aberto. Continue para registrá-lo e fazer a varredura.",
       "bearerLabel": "Token Bearer (armazenado no cofre; nunca será exibido novamente)",
       "bearerPlaceholder": "cole o token",
       "authzEndpoint": "Endpoint de autorização",
@@ -129,31 +130,31 @@
     "title": "Comandos de barra",
     "description": "Digite <code>/nome</code> no chat para expandir um template. Use <code>{{args}}</code> ou <code>{{key}}</code> para argumentos.",
     "namePlaceholder": "nome (ex: planejar-cena)",
-    "templatePlaceholder": "Template: Planejar uma cena sobre {{topic}}...",
-    "empty": "Nenhum comando encontrado."
+    "templatePlaceholder": "Template: Planejar uma cena sobre {{topic}}…",
+    "empty": "Nenhum comando ainda."
   },
   "hooks": {
     "title": "Hooks",
     "description": "Regras declarativas que são acionadas em pontos de transição do loop do agente. Sem código — apenas um evento, uma correspondência de ferramenta opcional e uma ação.",
     "matchPlaceholder": "correspondência de ferramenta (ex: glossario_deletar_*)",
     "textPlaceholder": "texto para injetar / anotar",
-    "empty": "Nenhum hook encontrado."
+    "empty": "Nenhum hook até o momento."
   },
   "subagents": {
     "title": "Subagentes",
-    "description": "Uma persona nomeada para a qual o agente pode delegar uma subtarefa limitada via <code>run_subagent</code>. Ela é executada em um turno isolado com APENAS suas ferramentas de escopo. Deixe o escopo vazio para uma persona de puro raciocínio/resumo.",
+    "description": "Uma persona nomeada para a qual o agente pode delegar uma sub-tarefa delimitada via <code>run_subagent</code>. Ela é executada em um turno isolado com APENAS suas ferramentas de escopo. Deixe o escopo vazio para uma persona de raciocínio/resumo puro.",
     "namePlaceholder": "nome (ex: explorador-lore)",
     "scopePlaceholder": "escopo de ferramentas: glossary_*, kg_*",
     "modelPlaceholder": "modelo (opcional, id do user_model)",
-    "promptPlaceholder": "Prompt de sistema — quem é esta persona e como ela funciona...",
+    "promptPlaceholder": "Prompt do sistema — quem é esta persona e como ela funciona...",
     "create": "Criar subagente",
-    "empty": "Nenhum subagente ainda.",
+    "empty": "Nenhum subagente até o momento.",
     "reasoningOnly": "apenas raciocínio (sem ferramentas)",
     "modelPinned": "modelo fixado"
   },
   "plugins": {
     "description": "Um plugin agrupa habilidades, comandos e hooks — exporte para compartilhar, importe para instalar.",
-    "importing": "Importando...",
+    "importing": "Importando…",
     "import": "Importar pacote",
     "invalidJson": "Este arquivo não é um JSON válido.",
     "notBundle": "Não é um pacote LoreWeave (falta o manifest.name).",
@@ -169,7 +170,7 @@
       "all": "Todos"
     },
     "total": "{{count}} no total",
-    "empty": "Nenhuma proposta. As habilidades que o agente propõe aparecem aqui para sua aprovação.",
+    "empty": "Nenhuma proposta. As habilidades que o agente propõe aparecerão aqui para sua aprovação.",
     "approve": "Aprovar",
     "reject": "Rejeitar",
     "reason": "Motivo: {{reason}}"
@@ -183,21 +184,74 @@
       "30d": "Últimos 30 dias"
     },
     "empty": "Nenhuma atividade neste período.",
-    "secondsAgo": "Há {{count}}s",
-    "minutesAgo": "Há {{count}}m",
-    "hoursAgo": "Há {{count}}h",
+    "secondsAgo": "há {{count}}s",
+    "minutesAgo": "há {{count}}min",
+    "hoursAgo": "há {{count}}h",
     "daysAgo": "há {{count}}d"
   },
   "ingest": {
-    "title": "Fontes de registro (admin)",
-    "description": "Curadoria do catálogo do Sistema a partir do MCP Registry oficial. Verificação ≠ segurança — cada aprovação executa novamente o SSRF guard + varredura de supply-chain antes da federação.",
+    "title": "Fontes do Registro (admin)",
+    "description": "Curadoria do catálogo do Sistema a partir do MCP Registry oficial. verificação ≠ segurança — cada aprovação executa novamente o SSRF guard + varredura de supply-chain antes da federação.",
     "all": "Tudo",
     "pulling": "Puxando…",
     "pull": "Puxar registro",
-    "pullResult": "Puxado: buscados {{fetched}} · novos {{new}} · atualizados {{updated}} · sem-remoto {{skipped}}",
+    "pullResult": "Puxado: {{fetched}} buscados · {{new}} novos · {{updated}} atualizados · {{skipped}} sem remoto",
     "truncated": "· parcial (truncado)",
     "empty": "Nenhum item nesta visualização. Puxe o registro para preencher a fila.",
     "approve": "Aprovar",
     "reject": "Rejeitar"
+  },
+  "permissions": {
+    "blurb": "Ferramentas que você deu permissão permanente para o assistente usar — e ferramentas que você bloqueou. «Sempre permitir» em um cartão de aprovação adiciona uma linha aqui. Revogar uma permissão significa que o assistente perguntará novamente na próxima vez que quiser usar essa ferramenta.",
+    "loading": "Carregando…",
+    "allowedTitle": "Sempre permitido",
+    "deniedTitle": "Bloqueado",
+    "blockTitle": "Bloquear uma ferramenta",
+    "emptyAllowed": "Você não deu permissão permanente a nenhuma ferramenta. O assistente perguntará todas as vezes.",
+    "emptyDenied": "Nenhuma ferramenta está bloqueada.",
+    "toolPlaceholder": "Nome da ferramenta (ex: chapter_delete)",
+    "unknownTool": "Esta não é uma das ferramentas do assistente. Escolha um nome da lista.",
+    "kind": {
+      "mutation": "Pode alterar meu trabalho",
+      "spend": "Pode gastar dinheiro"
+    },
+    "decision": {
+      "allow": "Executa sem perguntar",
+      "deny": "Nunca executar"
+    },
+    "actions": {
+      "revoke": "Perguntar novamente",
+      "deny": "Nunca permitir",
+      "allow": "Permitir",
+      "block": "Bloquear"
+    }
+  },
+  "workflows": {
+    "total": "{{count}} fluxos de trabalho",
+    "empty": "Nenhum fluxo de trabalho ainda. Aprove uma proposta de fluxo de trabalho para adicionar um.",
+    "enabled": "Ativado",
+    "disabled": "Desativado",
+    "delete": "Excluir",
+    "proposalsEmpty": "Sem propostas de fluxo de trabalho. Quando o agente propõe um fluxo de trabalho, ele aparece aqui para sua aprovação.",
+    "view": "Visualizar",
+    "hide": "Ocultar",
+    "noSteps": "Nenhuma etapa definida."
+  },
+  "bindings": {
+    "loading": "Carregando…",
+    "autoSetupDesc": "Receitas que o assistente configura automaticamente neste modo.",
+    "none": "Nada é configurado automaticamente aqui.",
+    "turnOff": "Desativar",
+    "turnBackOn": "Reativar",
+    "mode": {
+      "ask": "Leitura e perguntas",
+      "write": "Escrita",
+      "plan": "Planejamento"
+    },
+    "tier": {
+      "system": "Nativo",
+      "user": "Você define isso",
+      "book": "Este livro"
+    }
   }
 }

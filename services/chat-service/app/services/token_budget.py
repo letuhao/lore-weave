@@ -278,11 +278,14 @@ def context_budget_event(
     if intent is not None:
         payload["intent"] = intent
     if llm_call_count is not None:
-        # Observability (context-explosion fix #5): `used_tokens` is the SUM of
-        # input over this many provider completions in the turn (each tool-loop
-        # iteration re-sends the full prompt incl. tool schemas). Per-call input
-        # ≈ used_tokens / llm_call_count — this is what makes a 137K "turn" on an
-        # 8K conversation legible instead of an unexplained gap.
+        # Observability (context-explosion fix #5): the number of provider
+        # completions this turn made (each tool-loop iteration re-sends the full
+        # prompt incl. tool schemas — the SUM of their input IS the real billed
+        # cost, tracked separately on chat_messages.input_tokens). `used_tokens`
+        # (D-CHAT-CONTEXT-METER-OVERCOUNT, 2026-07-09) is the true occupancy of
+        # the LAST completion, not that sum — llm_call_count is what makes the
+        # gap between the two legible in the Inspector (billed ≈ used_tokens ×
+        # llm_call_count, roughly, when the loop keeps resending a similar size).
         payload["llm_call_count"] = int(llm_call_count)
     if caching is not None:
         # Prompt-cache monitoring section (Provider Context Strategy §7–§8): the

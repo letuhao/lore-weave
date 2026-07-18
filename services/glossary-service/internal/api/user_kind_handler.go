@@ -54,6 +54,10 @@ type userKindSummaryResp struct {
 	Color            string    `json:"color"`
 	GenreTags        []string  `json:"genre_tags"`
 	IsActive         bool      `json:"is_active"`
+	// C4/SD-C4 · D-WIKI-PERSON-USER-TIER — the REAL-person flag on the USER tier (mirrors the
+	// book tier). A user-authored person kind must carry it so the adopt-clone into a book keeps
+	// is_person=true and the wiki-gen/enrichment `NOT is_person` filters exclude a real person.
+	IsPerson         bool      `json:"is_person"`
 	ClonedFromKindID *string   `json:"cloned_from_kind_id,omitempty"`
 	AttributeCount   int       `json:"attribute_count"`
 	CreatedAt        time.Time `json:"created_at"`
@@ -129,7 +133,7 @@ func (s *Server) loadUserKindDetail(ctx context.Context, userKindID, userID uuid
 	var d userKindDetailResp
 	err := s.pool.QueryRow(ctx, `
 		SELECT uk.user_kind_id, uk.owner_user_id, uk.code, uk.name, uk.description,
-		       uk.icon, uk.color, uk.is_active,
+		       uk.icon, uk.color, uk.is_active, uk.is_person,
 		       uk.cloned_from_kind_id, uk.created_at, uk.updated_at,
 		       COUNT(uka.attr_id) AS attribute_count
 		FROM user_kinds uk
@@ -143,7 +147,7 @@ func (s *Server) loadUserKindDetail(ctx context.Context, userKindID, userID uuid
 		userKindID, userID,
 	).Scan(
 		&d.UserKindID, &d.OwnerUserID, &d.Code, &d.Name, &d.Description,
-		&d.Icon, &d.Color, &d.IsActive,
+		&d.Icon, &d.Color, &d.IsActive, &d.IsPerson,
 		&d.ClonedFromKindID, &d.CreatedAt, &d.UpdatedAt,
 		&d.AttributeCount,
 	)
@@ -249,7 +253,7 @@ func (s *Server) listUserKinds(w http.ResponseWriter, r *http.Request) {
 	args = append(args, limit, offset)
 	listSQL := fmt.Sprintf(`
 		SELECT uk.user_kind_id, uk.owner_user_id, uk.code, uk.name, uk.description,
-		       uk.icon, uk.color, uk.is_active,
+		       uk.icon, uk.color, uk.is_active, uk.is_person,
 		       uk.cloned_from_kind_id, uk.created_at, uk.updated_at,
 		       COUNT(uka.attr_id) AS attribute_count
 		FROM user_kinds uk
@@ -272,7 +276,7 @@ func (s *Server) listUserKinds(w http.ResponseWriter, r *http.Request) {
 		var uk userKindSummaryResp
 		if err := rows.Scan(
 			&uk.UserKindID, &uk.OwnerUserID, &uk.Code, &uk.Name, &uk.Description,
-			&uk.Icon, &uk.Color, &uk.IsActive,
+			&uk.Icon, &uk.Color, &uk.IsActive, &uk.IsPerson,
 			&uk.ClonedFromKindID, &uk.CreatedAt, &uk.UpdatedAt, &uk.AttributeCount,
 		); err != nil {
 			writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "scan failed")
@@ -304,6 +308,7 @@ func (s *Server) createUserKind(w http.ResponseWriter, r *http.Request) {
 		Icon            string   `json:"icon"`
 		Color           string   `json:"color"`
 		GenreTags       []string `json:"genre_tags"`
+		IsPerson        bool     `json:"is_person"` // C4/SD-C4 · D-WIKI-PERSON-USER-TIER — REAL-person flag
 		CloneFromKindID *string  `json:"clone_from_kind_id"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
@@ -356,10 +361,16 @@ func (s *Server) createUserKind(w http.ResponseWriter, r *http.Request) {
 	var ukID uuid.UUID
 	err = tx.QueryRow(ctx, `
 		INSERT INTO user_kinds
-		  (owner_user_id, code, name, description, icon, color, cloned_from_kind_id)
-		VALUES ($1,$2,$3,$4,$5,$6,$7)
+		  (owner_user_id, code, name, description, icon, color, is_person, cloned_from_kind_id)
+		VALUES ($1,$2,$3,$4,$5,$6,
+		        -- cold-review HIGH: CLONING a system person-kind (e.g. 'colleague') is the PRIMARY way a
+		        -- user gets a person kind; inherit is_person from the source so the flag isn't silently
+		        -- dropped to false and re-opened as a leak. An explicit is_person=true on a from-scratch
+		        -- kind still wins; a NULL clone source COALESCEs to false so it's just in.IsPerson.
+		        $7 OR COALESCE((SELECT sk.is_person FROM system_kinds sk WHERE sk.kind_id = $8), false),
+		        $8)
 		RETURNING user_kind_id`,
-		userID, in.Code, in.Name, in.Description, in.Icon, in.Color, cloneFromKindID,
+		userID, in.Code, in.Name, in.Description, in.Icon, in.Color, in.IsPerson, cloneFromKindID,
 	).Scan(&ukID)
 	if err != nil {
 		if isUniqueViolation(err) {
@@ -512,6 +523,36 @@ func (s *Server) patchUserKind(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		setClauses = append(setClauses, fmt.Sprintf("is_active = $%d", argN))
+		args = append(args, v)
+		argN++
+	}
+	if raw, ok := in["is_person"]; ok {
+		// C4/SD-C4 · D-WIKI-PERSON-USER-TIER — the REAL-person flag on the user tier. Setting it true
+		// closes the leak (a user-authored person kind now carries is_person into the adopt-clone). A
+		// from-scratch kind (no clone source) is freely togglable both ways — the owner classified it.
+		var v bool
+		if err := json.Unmarshal(raw, &v); err != nil {
+			writeError(w, http.StatusBadRequest, "GLOSS_INVALID_BODY", "invalid is_person")
+			return
+		}
+		if !v {
+			// cold-review parity with the book-tier MED-2 guard: PP-4 protects the THIRD PARTY, not
+			// owner preference. A kind CLONED from a system PERSON kind (e.g. 'colleague') may not have
+			// is_person cleared — that would re-enable AI biographies of a real, non-consenting person
+			// after adopt. A from-scratch kind (cloned_from_kind_id IS NULL) stays clearable.
+			var clonedFromIsPerson bool
+			if qerr := s.pool.QueryRow(r.Context(),
+				`SELECT COALESCE(sk.is_person, false)
+				 FROM user_kinds uk
+				 LEFT JOIN system_kinds sk ON sk.kind_id = uk.cloned_from_kind_id
+				 WHERE uk.user_kind_id = $1 AND uk.owner_user_id = $2`,
+				userKindID, userID).Scan(&clonedFromIsPerson); qerr == nil && clonedFromIsPerson {
+				writeError(w, http.StatusForbidden, "GLOSS_CANNOT_CLEAR_PERSON",
+					"cannot clear is_person on a kind cloned from a system person kind")
+				return
+			}
+		}
+		setClauses = append(setClauses, fmt.Sprintf("is_person = $%d", argN))
 		args = append(args, v)
 		argN++
 	}

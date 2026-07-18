@@ -6,6 +6,7 @@
     "commands": "Komutlar ve Kancalar",
     "subagents": "Alt Aracılar",
     "plugins": "Eklentiler",
+    "permissions": "Araç izinleri",
     "proposals": "Öneriler",
     "activity": "Etkinlik günlüğü",
     "ingest": "Kayıt kaynakları"
@@ -13,7 +14,7 @@
   "quota": {
     "skills": "Yetenekler",
     "mcp": "MCP sunucuları",
-    "proposals": "Öneriler"
+    "proposals": "Teklifler"
   },
   "scope": {
     "label": "Kapsam:",
@@ -56,7 +57,7 @@
       "suspended": "karantinada",
       "error": "erişilemiyor"
     },
-    "search": "Sunucuları ara…",
+    "search": "Sunucular aranıyor…",
     "filter": {
       "all": "Durum: Hepsi",
       "active": "Aktif",
@@ -66,12 +67,12 @@
     },
     "add": "+ Sunucu ekle",
     "empty": "Henüz MCP sunucusu yok. Ajanın ekstra araçlara sahip olması için bir tane ekleyin.",
-    "review": "⚠ inceleme",
+    "review": "⚠ incele",
     "detail": {
       "back": "‹ Geri",
       "connection": "Bağlantı",
       "auth": "Kimlik Doğrulama",
-      "prefix": "Önek",
+      "prefix": "Ön Ek",
       "egress": "Çıkış izin listesi",
       "health": "Sağlık Durumu",
       "lastScanned": "Son tarama",
@@ -81,7 +82,7 @@
       "unreachable": "erişilemiyor",
       "scanning": "Taranıyor…",
       "rescan": "Yeniden Tara",
-      "reconnect": "OAuth Bağlantısını Yenile",
+      "reconnect": "OAuth ile Yeniden Bağlan",
       "acceptRisk": "Riski kabul et ve etkinleştir"
     },
     "scan": {
@@ -111,7 +112,7 @@
       "bearerPlaceholder": "token yapıştırın",
       "authzEndpoint": "Yetkilendirme uç noktası",
       "tokenEndpoint": "Token uç noktası",
-      "clientId": "İstemci Kimliği",
+      "clientId": "Client ID",
       "scopes": "Kapsamlar (boşlukla ayrılmış)",
       "registering": "Kaydediliyor…",
       "registerScan": "Kaydet ve tara",
@@ -141,10 +142,10 @@
   },
   "subagents": {
     "title": "Alt Ajanlar",
-    "description": "Ajanın <code>run_subagent</code> aracılığıyla sınırlı bir alt görevi devredebileceği, isimlendirilmiş bir persona. Sadece kendi kapsamındaki araçlarla izole bir turda çalışır. Saf akıl yürütme/özetleme personası için kapsamı boş bırakın.",
+    "description": "Ajanın, <code>run_subagent</code> aracılığıyla belirli bir alt görevi devredebileceği, isimlendirilmiş bir persona. Sadece kendi kapsamındaki araçlarla izole bir turda çalışır. Saf akıl yürütme/özetleme personası için kapsamı boş bırakın.",
     "namePlaceholder": "isim (ör. lore-scout)",
     "scopePlaceholder": "araç kapsamı: glossary_*, kg_*",
-    "modelPlaceholder": "model (isteğe bağlı, user_model ID'si)",
+    "modelPlaceholder": "model (isteğe bağlı, user_model ID)",
     "promptPlaceholder": "Sistem istemi — bu personanın kim olduğu ve nasıl çalıştığı...",
     "create": "Alt ajan oluştur",
     "empty": "Henüz alt ajan yok.",
@@ -154,10 +155,10 @@
   "plugins": {
     "description": "Bir eklenti; yetenekleri, komutları ve kancaları bir araya getirir — paylaşmak için dışa aktarın, yüklemek için içe aktarın.",
     "importing": "İçe aktarılıyor…",
-    "import": "Paketi içe aktar",
+    "import": "Paket içe aktar",
     "invalidJson": "Bu dosya geçerli bir JSON değil.",
     "notBundle": "LoreWeave paketi değil (manifest.name eksik).",
-    "empty": "Henüz eklenti yok. Bir eklenti yüklemek için bir paket içe aktarın.",
+    "empty": "Henüz eklenti yok. Bir eklenti yüklemek için paket içe aktarın.",
     "export": "Dışa aktar"
   },
   "proposals": {
@@ -166,13 +167,13 @@
       "approved": "Onaylandı",
       "rejected": "Reddedildi",
       "expired": "Süresi doldu",
-      "all": "Tümü"
+      "all": "Hepsi"
     },
     "total": "Toplam {{count}}",
-    "empty": "Teklif yok. Aracının onayınız için önerdiği yetenekler burada görünür.",
+    "empty": "Teklif yok. Aracının onayınız için önerdiği beceriler burada görünür.",
     "approve": "Onayla",
     "reject": "Reddet",
-    "reason": "Sebep: {{reason}}"
+    "reason": "Neden: {{reason}}"
   },
   "activity": {
     "title": "Etkinlik günlüğü",
@@ -183,21 +184,74 @@
       "30d": "Son 30 gün"
     },
     "empty": "Bu aralıkta etkinlik bulunamadı.",
-    "secondsAgo": "{{count}} saniye önce",
-    "minutesAgo": "{{count}} dakika önce",
+    "secondsAgo": "{{count}}s önce",
+    "minutesAgo": "{{count}}dk önce",
     "hoursAgo": "{{count}} saat önce",
     "daysAgo": "{{count}} gün önce"
   },
   "ingest": {
     "title": "Kayıt kaynakları (yönetici)",
-    "description": "Sistem kataloğunu resmi MCP Kayıt Defteri'nden düzenleyin. Doğrulama ≠ güvenlik — her onay, federasyon öncesinde SSRF korumasını ve tedarik zinciri taramasını yeniden çalıştırır.",
+    "description": "Sistem kataloğunu resmi MCP Kayıt Defteri'nden (Registry) düzenleyin. Doğrulama ≠ güvenlik — her onay, federasyon öncesinde SSRF korumasını ve tedarik zinciri taramasını yeniden çalıştırır.",
     "all": "Hepsi",
     "pulling": "Çekiliyor…",
     "pull": "Kayıt defterini çek",
-    "pullResult": "Çekildi: getirilen {{fetched}} · yeni {{new}} · güncellenen {{updated}} · uzak sunucuda yok {{skipped}}",
+    "pullResult": "Çekildi: getirilen {{fetched}} · yeni {{new}} · güncellenen {{updated}} · atlanan {{skipped}}",
     "truncated": "· kısmi (kesilmiş)",
     "empty": "Bu görünümde kayıt yok. Kuyruğu doldurmak için kayıt defterini çekin.",
     "approve": "Onayla",
     "reject": "Reddet"
+  },
+  "permissions": {
+    "blurb": "Asistana kullanması için kalıcı izin verdiğiniz araçlar — ve engellediğiniz araçlar. Bir onay kartında «Her zaman izin ver» seçeneğini işaretlemek buraya bir satır ekler. Bir izni geri çekmek, asistanın o aracı tekrar kullanmak istediğinde size yeniden sorması anlamına gelir.",
+    "loading": "Yükleniyor…",
+    "allowedTitle": "Her zaman izin verildi",
+    "deniedTitle": "Engellendi",
+    "blockTitle": "Bir aracı engelle",
+    "emptyAllowed": "Herhangi bir araca kalıcı izin vermediniz. Asistan her seferinde size soracaktır.",
+    "emptyDenied": "Engellenmiş araç yok.",
+    "toolPlaceholder": "Araç adı (ör. chapter_delete)",
+    "unknownTool": "Bu, asistanın araçlarından biri değil. Listeden bir isim seçin.",
+    "kind": {
+      "mutation": "Çalışmamı değiştirebilir",
+      "spend": "Para harcayabilir"
+    },
+    "decision": {
+      "allow": "Sormadan çalıştırır",
+      "deny": "Bir daha asla çalıştırma"
+    },
+    "actions": {
+      "revoke": "Tekrar sor",
+      "deny": "Asla izin verme",
+      "allow": "İzin ver",
+      "block": "Engelle"
+    }
+  },
+  "workflows": {
+    "total": "{{count}} iş akışı",
+    "empty": "Henüz iş akışı yok. Bir iş akışı eklemek için bir iş akışı önerisini onaylayın.",
+    "enabled": "Açık",
+    "disabled": "Kapalı",
+    "delete": "Sil",
+    "proposalsEmpty": "İş akışı önerisi yok. Aracılar bir iş akışı önerdiğinde, onaylamanız için burada görünecektir.",
+    "view": "Görüntüle",
+    "hide": "Gizle",
+    "noSteps": "Tanımlanmış adım yok."
+  },
+  "bindings": {
+    "loading": "Yükleniyor…",
+    "autoSetupDesc": "Asistanın bu modda otomatik olarak hazırladığı tarifler.",
+    "none": "Burada otomatik olarak ayarlanmış bir şey yok.",
+    "turnOff": "Kapat",
+    "turnBackOn": "Tekrar aç",
+    "mode": {
+      "ask": "Okuma ve sorma",
+      "write": "Yazma",
+      "plan": "Planlama"
+    },
+    "tier": {
+      "system": "Yerleşik",
+      "user": "Siz ayarladınız",
+      "book": "Bu kitap"
+    }
   }
 }

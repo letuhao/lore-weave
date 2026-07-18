@@ -1,5 +1,5 @@
 import { computeCatalog, ProviderResult } from '../src/federation/catalog.js';
-import { ProviderConfig } from '../src/config/config.js';
+import { EXTRA_PREFIX_MAP, ProviderConfig } from '../src/config/config.js';
 
 const knowledge: ProviderConfig = { name: 'knowledge', mcpUrl: 'http://k/mcp' };
 const glossary: ProviderConfig = { name: 'glossary', mcpUrl: 'http://g/mcp' };
@@ -126,5 +126,39 @@ describe('computeCatalog', () => {
       { name: 'glossary', available: false },
     ]);
     expect(c.partial).toBe(true);
+  });
+});
+
+// Track D Wave 0 (0d) — the C-GW prefix gate is a *silent* warn-and-drop, so the
+// universal `web_search` tool hosted on provider-registry (logical name `settings`)
+// needs `web_` in EXTRA_PREFIX_MAP.settings or it vanishes from the federated catalog.
+// This is exactly how `story_search` was once lost (see config.ts EXTRA_PREFIX_MAP docs).
+describe('C-GW prefix gate — universal `web_search` on the settings provider', () => {
+  const settingsNoExtra: ProviderConfig = { name: 'settings', mcpUrl: 'http://p/mcp', prefix: 'settings_' };
+  const settingsWithWeb: ProviderConfig = {
+    name: 'settings',
+    mcpUrl: 'http://p/mcp',
+    prefix: 'settings_',
+    extraPrefixes: ['web_'],
+  };
+
+  it('WITHOUT `web_` the gate silently drops web_search (the failure mode)', () => {
+    const c = computeCatalog([
+      { provider: settingsNoExtra, tools: [tool('settings_list_models'), tool('web_search')] },
+    ]);
+    expect(c.toolList.map((t) => t.name)).toEqual(['settings_list_models']);
+    expect(c.toolToProvider.get('web_search')).toBeUndefined();
+  });
+
+  it('WITH `web_` the tool survives and routes to provider-registry', () => {
+    const c = computeCatalog([
+      { provider: settingsWithWeb, tools: [tool('settings_list_models'), tool('web_search')] },
+    ]);
+    expect(c.toolList.map((t) => t.name)).toContain('web_search');
+    expect(c.toolToProvider.get('web_search')).toBe(settingsWithWeb);
+  });
+
+  it('EXTRA_PREFIX_MAP.settings declares `web_` (the real config, not a fixture)', () => {
+    expect(EXTRA_PREFIX_MAP.settings).toContain('web_');
   });
 });

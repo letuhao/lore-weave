@@ -1,18 +1,11 @@
-import { Outlet } from 'react-router-dom';
-import { Sidebar } from '@/components/layout/Sidebar';
+import { AppShell } from '@/app/shell/AppShell';
 
 /**
- * ChatLayout — app sidebar + full-bleed content area.
- * Unlike DashboardLayout, no max-width/padding wrapper.
- * Unlike FullBleedLayout, includes the app sidebar.
+ * ChatLayout — full-bleed content area (no max-width/padding wrapper), Sidebar on desktop
+ * and bottom tabs on mobile. The assistant + chat surfaces live here. All chrome/viewport
+ * logic lives in AppShell (one persistent Outlet, chrome-only swap); this is just the
+ * full-bleed variant selector.
  */
 export function ChatLayout() {
-  return (
-    <div className="flex h-screen overflow-hidden">
-      <Sidebar />
-      <main className="flex-1 overflow-hidden">
-        <Outlet />
-      </main>
-    </div>
-  );
+  return <AppShell variant="chat" />;
 }

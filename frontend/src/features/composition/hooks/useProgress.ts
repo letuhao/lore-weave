@@ -63,24 +63,17 @@ export function useEnsureBaseline(projectId: string | undefined, token: string |
 }
 
 /**
- * Persist the editable daily word goal into work.settings (the server REPLACES the
- * whole settings blob, so we MERGE current settings + { daily_goal } — same rule as
- * useSetWorkSettings). `goal <= 0` clears the goal (stored as null). Keyed by bookId
- * for the work-query invalidation so the panel reflects the new goal.
+ * BE-P2 — persist the editable daily word goal to the caller's OWN per-user row
+ * (PUT /progress/goal), NOT the shared work.settings blob. This closes the tenancy
+ * defect (one user's goal became everyone's) AND drops the read-modify-write of the
+ * whole settings blob. `goal <= 0` clears it. Keyed to invalidate the progress query.
  */
-export function useSetDailyGoal(
-  bookId: string | undefined, token: string | null,
-) {
+export function useSetDailyGoal(_bookId: string | undefined, token: string | null) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (v: { projectId: string; currentSettings: Record<string, unknown>; goal: number }) =>
-      compositionApi.patchWork(
-        v.projectId,
-        { settings: { ...v.currentSettings, daily_goal: v.goal > 0 ? v.goal : null } },
-        token!,
-      ),
+    mutationFn: (v: { projectId: string; goal: number }) =>
+      compositionApi.setDailyGoal(v.projectId, v.goal, token!),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['composition', 'work', bookId] });
       qc.invalidateQueries({ queryKey: ['composition', 'progress'] });
     },
   });

@@ -404,6 +404,10 @@ export interface EntitiesListParams {
   sort_by?: EntitySortBy;
   limit?: number;
   offset?: number;
+  /** W11 reader spoiler window: restrict to entities met by this chapter
+   *  (a fact established by it). Fail-closed on an unresolvable chapter →
+   *  empty list. Omit for the editor/curation view (whole cast). */
+  before_chapter_id?: string;
 }
 
 export interface EntitiesBrowseResponse {
@@ -538,7 +542,16 @@ export interface EntityStatusesResponse {
   window_available: boolean;
 }
 
-export type EntityFactType = 'decision' | 'preference' | 'milestone' | 'negation';
+// S-05 — the FULL closed set (mirrors BE `FactType` = `get_args(FactType)`, 6 values).
+// Was 4 here while the BE had 6, so a `statement`/`commitment` fact rendered a blank
+// label; the author form now offers all 6, so all 6 must be renderable.
+export type EntityFactType =
+  | 'decision'
+  | 'preference'
+  | 'milestone'
+  | 'negation'
+  | 'statement'
+  | 'commitment';
 
 /** A known fact ABOUT an entity (decision/preference/…). Spoiler-windowed by
  *  `from_order` server-side. Mirrors the BE Fact projection (subset the codex
@@ -550,6 +563,21 @@ export interface EntityFact {
   confidence: number;
   source_chapter: string | null;
   from_order: number | null;
+  // S-05b (F8) — the optional s/p/o triple the BE Fact carries (both NULL for a
+  // coarse fact). The route serializes them, so Replace can prefill them instead
+  // of silently dropping the predicate/object the original fact had.
+  predicate?: string | null;
+  object?: string | null;
+}
+
+/** S-05 — payload to author a fact ABOUT an entity (POST /entities/{id}/facts).
+ *  `fact_type` is the closed 6-value set; the server 422s an out-of-set value. */
+export interface CreateEntityFactPayload {
+  fact_type: EntityFactType;
+  content: string;
+  predicate?: string | null;
+  object?: string | null;
+  event_date_iso?: string | null;
 }
 
 export interface EntityFactsResponse {
@@ -575,9 +603,10 @@ export interface EntityUpdatePayload {
 
 // ── T2.5 World Map — manual entity / relation authoring ──────────────
 
-/** Create a user-authored entity (World Map "+ add place"). `kind` is one of
- *  character|location|faction|concept (BE-enforced). Idempotent on (name, kind)
- *  within the project. */
+/** Create a user-authored entity (World Map "+ add place" / KG "+ New Entity").
+ *  `kind` is one of the authorable closed set — see AUTHORABLE_ENTITY_KINDS in
+ *  lib/entityKinds.ts (character|location|organization|concept|item), BE-enforced
+ *  against the same gate. Idempotent on (name, kind) within the project. */
 export interface CreateEntityPayload {
   project_id: string;
   name: string;
@@ -719,6 +748,20 @@ export interface EventUpdatePayload {
   summary?: string;
   time_cue?: string;
   event_date_iso?: string;
+}
+
+/** D-KG-EVENT-CREATE-ROUTE — author a new user-created timeline event. `project_id`
+ *  scopes it to the book's KG; `chapter_id` (optional) anchors narrative order + the
+ *  spoiler cutoff; `participants` are the display names it involves (pass the focused
+ *  character's name so it lands on that character's arc). */
+export interface EventCreatePayload {
+  project_id: string;
+  title: string;
+  summary?: string;
+  time_cue?: string;
+  event_date_iso?: string;
+  chapter_id?: string | null;
+  participants?: string[];
 }
 
 export interface TimelineListParams {
@@ -1428,6 +1471,15 @@ export const knowledgeApi = {
     });
   },
 
+  // D-KG-ENTITY-RESTORE (S7) — the inverse of archiveMyEntity, so a hidden
+  // entity can come back (archive is otherwise a one-way trap). 204 on success.
+  restoreMyEntity(entityId: string, token: string): Promise<void> {
+    return apiJson<void>(`${BASE}/me/entities/${entityId}/restore`, {
+      method: 'POST',
+      token,
+    });
+  },
+
   // ── K19b.8 — extraction job logs ───────────────────────────────────────
 
   listJobLogs(
@@ -1512,6 +1564,9 @@ export const knowledgeApi = {
     if (params.sort_by != null) qs.set('sort_by', params.sort_by);
     if (params.limit != null) qs.set('limit', String(params.limit));
     if (params.offset != null) qs.set('offset', String(params.offset));
+    // W11 reader spoiler window — restricts the list to entities met by this chapter.
+    if (params.before_chapter_id != null)
+      qs.set('before_chapter_id', params.before_chapter_id);
     const q = qs.toString();
     return apiJson<EntitiesBrowseResponse>(
       `${BASE}/entities${q ? `?${q}` : ''}`,
@@ -1741,6 +1796,16 @@ export const knowledgeApi = {
 
   // ── Phase B C — event corrections ────────────────────────────────────
 
+  /** D-KG-EVENT-CREATE-ROUTE — author a new timeline event. 201 → the created
+   *  Event (idempotent on (project, chapter, title) server-side). */
+  createEvent(body: EventCreatePayload, token: string): Promise<TimelineEvent> {
+    return apiJson<TimelineEvent>(`${BASE}/events`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+      token,
+    });
+  },
+
   updateEvent(
     eventId: string,
     body: EventUpdatePayload,
@@ -1903,16 +1968,49 @@ export const knowledgeApi = {
   /** The known-facts list ABOUT one entity, spoiler-windowed by chapter. */
   getEntityFacts(
     entityId: string,
-    params: { before_chapter_id?: string },
+    params: { before_chapter_id?: string; curation?: boolean },
     token: string,
   ): Promise<EntityFactsResponse> {
     const qs = new URLSearchParams();
     if (params.before_chapter_id != null)
       qs.set('before_chapter_id', params.before_chapter_id);
+    // S-05 — the studio curation view reads whole-book (no spoiler window) so
+    // authored + extracted facts both show; without it the server fails closed
+    // (before_order=-1) and the list is always empty.
+    if (params.curation) qs.set('curation', 'true');
     const q = qs.toString();
     return apiJson<EntityFactsResponse>(
       `${BASE}/entities/${encodeURIComponent(entityId)}/facts${q ? `?${q}` : ''}`,
       { token },
+    );
+  },
+
+  /** S-05 — author a fact ABOUT an entity (direct-write, 201). The fact lands
+   *  committed + high-confidence so it appears at once in the curation list. */
+  createEntityFact(
+    entityId: string,
+    payload: CreateEntityFactPayload,
+    token: string,
+  ): Promise<EntityFact> {
+    return apiJson<EntityFact>(
+      `${BASE}/entities/${encodeURIComponent(entityId)}/facts`,
+      { method: 'POST', body: JSON.stringify(payload), token },
+    );
+  },
+
+  /** S-05 — mark a committed fact wrong → soft-invalidate (fact_corrected). */
+  invalidateFact(factId: string, token: string): Promise<EntityFact> {
+    return apiJson<EntityFact>(
+      `${BASE}/facts/${encodeURIComponent(factId)}/invalidate`,
+      { method: 'POST', token },
+    );
+  },
+
+  /** S-05b — UNDO a mark-wrong: clear valid_until so the fact re-appears. */
+  revalidateFact(factId: string, token: string): Promise<EntityFact> {
+    return apiJson<EntityFact>(
+      `${BASE}/facts/${encodeURIComponent(factId)}/revalidate`,
+      { method: 'POST', token },
     );
   },
 

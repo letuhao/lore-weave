@@ -13,7 +13,7 @@
       --secondary: #282320; --muted-fg: #9e9488;
       --accent: #3da692; --accent-muted: #1a2e2a; --accent-fg: #c8ede6;
       --success: #3dba6a; --warning: #e8a832; --info: #5496e8;
-      --danger: #d95d5d; --danger-muted: #3a1f1f;
+      --destructive: #d9584f; --destructive-muted: #3a1f1c;
       --motif: #b482e0; --motif-muted: #2a1f38;
     }
     * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -96,7 +96,7 @@
     }
     .node.scene .title { font-size: 10.5px; font-weight: 600; line-height: 1.25; }
     .node.selected { border-color: var(--primary); box-shadow: 0 0 0 2px rgba(232,168,50,.25), 0 2px 6px rgba(0,0,0,.3); }
-    .node.canon-issue { border-color: var(--danger); box-shadow: 0 0 0 2px rgba(217,93,93,.2); }
+    .node.canon-issue { border-color: var(--destructive); box-shadow: 0 0 0 2px rgba(217,88,79,.2); }
     .node.ai-pending { border-style: dashed; border-color: var(--primary); }
     .node .ai-badge {
       position: absolute; top: -8px; right: -8px; width: 17px; height: 17px; border-radius: 50%;
@@ -105,7 +105,7 @@
     }
     .node .canon-badge {
       position: absolute; top: -8px; right: -8px; width: 17px; height: 17px; border-radius: 50%;
-      background: var(--danger); color: #fff; display: flex; align-items: center; justify-content: center;
+      background: var(--destructive); color: #fff; display: flex; align-items: center; justify-content: center;
       border: 2px solid var(--background-alt);
     }
     .row-badges { display: flex; align-items: center; gap: 4px; margin-top: 2px; }
@@ -164,10 +164,10 @@
     .cast-chip-lg .av { width: 16px; height: 16px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 8px; font-weight: 700; color: var(--primary-fg); }
     .motif-chip-lg { font-size: 10.5px; font-weight: 600; padding: 3px 9px; border-radius: 12px; background: var(--motif-muted); color: var(--motif); border: 1px solid var(--motif); }
     .canon-banner {
-      display: flex; gap: 8px; padding: 9px 10px; border-radius: 7px; background: var(--danger-muted);
-      border: 1px solid var(--danger); font-size: 11px; line-height: 1.5; color: #f0c4c4;
+      display: flex; gap: 8px; padding: 9px 10px; border-radius: 7px; background: var(--destructive-muted);
+      border: 1px solid var(--destructive); font-size: 11px; line-height: 1.5; color: #f0c4c4;
     }
-    .canon-banner svg { flex-shrink: 0; color: var(--danger); margin-top: 1px; }
+    .canon-banner svg { flex-shrink: 0; color: var(--destructive); margin-top: 1px; }
     .drawer-actions { display: flex; flex-direction: column; gap: 6px; margin-top: 4px; }
     .drawer-actions .btn { width: 100%; justify-content: center; height: 30px; }
     .future-tag { font-size: 9px; color: var(--muted-fg); font-style: italic; margin-top: 4px; text-align: center; }
@@ -207,7 +207,7 @@
         <span class="item"><span class="sw" style="background:var(--accent);border-radius:3px"></span>Chapter</span>
         <span class="item"><span class="sw" style="background:var(--border-hover);border-radius:20px 3px 3px 3px"></span>Scene</span>
         <span class="item"><span class="sw" style="background:var(--motif)"></span>Motif</span>
-        <span class="item"><span class="sw" style="background:var(--danger)"></span>Canon issue</span>
+        <span class="item"><span class="sw" style="background:var(--destructive)"></span>Canon issue</span>
       </div>
       <div class="spacer"></div>
       <div class="btn primary">

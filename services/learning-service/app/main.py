@@ -55,6 +55,7 @@ def build_dispatcher() -> EventDispatcher:
     dispatcher.register("knowledge.entity_corrected", handle_knowledge_corrected)
     dispatcher.register("knowledge.relation_corrected", handle_knowledge_corrected)
     dispatcher.register("knowledge.event_corrected", handle_knowledge_corrected)
+    dispatcher.register("knowledge.fact_corrected", handle_knowledge_corrected)  # S-05
     dispatcher.register("knowledge.extraction_run_completed", handle_run_completed)
     dispatcher.register("knowledge.config_adjusted", handle_config_adjusted)
     dispatcher.register("chat.message_feedback", handle_chat_feedback)  # Q3

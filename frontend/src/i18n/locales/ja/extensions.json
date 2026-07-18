@@ -6,6 +6,7 @@
     "commands": "コマンド & フック",
     "subagents": "サブエージェント",
     "plugins": "プラグイン",
+    "permissions": "ツールの権限",
     "proposals": "プロポーザル",
     "activity": "アクティビティログ",
     "ingest": "レジストリソース"
@@ -13,14 +14,14 @@
   "quota": {
     "skills": "スキル",
     "mcp": "MCPサーバー",
-    "proposals": "プロポーザル"
+    "proposals": "提案"
   },
   "scope": {
     "label": "範囲:",
-    "mine": "マイ拡張機能",
+    "mine": "自分の拡張機能",
     "orBook": "または書籍:",
-    "bookPlaceholder": "書籍スコープ…",
-    "bookHint": "書籍スコープ — 新しいアイテムはこの書籍にのみ適用されます"
+    "bookPlaceholder": "書籍限定…",
+    "bookHint": "書籍限定 — 新しいアイテムはこの書籍にのみ適用されます"
   },
   "common": {
     "loading": "読み込み中…",
@@ -29,7 +30,7 @@
     "cancel": "キャンセル",
     "back": "戻る",
     "next": "次へ",
-    "of": "中",
+    "of": "の",
     "system": "システム",
     "book": "書籍"
   },
@@ -42,8 +43,8 @@
       "book": "書籍"
     },
     "sort": {
-      "updated": "並べ替え：更新順",
-      "name": "名前 A→Z",
+      "updated": "並び替え：更新順",
+      "name": "名前 (A→Z)",
       "lastTriggered": "最後に発動した順"
     },
     "empty": "スキルはまだありません。エージェントに提案させるか、エディターで作成してください。",
@@ -53,20 +54,20 @@
     "status": {
       "active": "アクティブ",
       "pending": "スキャン中…",
-      "suspended": "隔離済み",
+      "suspended": "隔離中",
       "error": "接続不可"
     },
     "search": "サーバーを検索…",
     "filter": {
-      "all": "ステータス：すべて",
+      "all": "ステータス: すべて",
       "active": "アクティブ",
       "pending": "スキャン中",
-      "suspended": "隔離済み",
+      "suspended": "隔離中",
       "error": "接続不可"
     },
     "add": "+ サーバーを追加",
-    "empty": "MCPサーバーがまだありません。エージェントにツールを追加するには、サーバーを追加してください。",
-    "review": "⚠ レビュー",
+    "empty": "MCPサーバーがまだありません。エージェントに追加のツール機能を与えるには、サーバーを追加してください。",
+    "review": "⚠ 確認",
     "detail": {
       "back": "‹ 戻る",
       "connection": "接続",
@@ -78,7 +79,7 @@
       "credentialStored": "資格情報が保存されています",
       "healthOk": "正常 · {{count}} 個のツール · {{latency}}ms",
       "healthError": "エラー: {{error}}",
-      "unreachable": "接続不可",
+      "unreachable": "到達不能",
       "scanning": "スキャン中…",
       "rescan": "再スキャン",
       "reconnect": "OAuthを再接続",
@@ -89,7 +90,7 @@
       "clean": "クリーン",
       "findings": "{{count}} 件の検出",
       "tools": "ツール ({{count}})",
-      "flagged": "フラグ済み"
+      "flagged": "フラグ付き"
     },
     "wizard": {
       "steps": {
@@ -99,7 +100,7 @@
         "review": "確認"
       },
       "displayName": "表示名",
-      "displayNamePlaceholder": "My tools server",
+      "displayNamePlaceholder": "マイツールサーバー",
       "url": "サーバーURL (streamable-http)",
       "urlPlaceholder": "https://mcp.example.com/mcp",
       "authentication": "認証",
@@ -107,7 +108,7 @@
       "authBearer": "Bearerトークン",
       "authOauth": "OAuth 2.1",
       "noAuthHint": "認証なし — このサーバーは公開されています。このまま登録とスキャンに進みます。",
-      "bearerLabel": "Bearerトークン (Vaultに保存され、二度と表示されません)",
+      "bearerLabel": "Bearerトークン (Vaultに安全に保存されます。二度と表示されません)",
       "bearerPlaceholder": "トークンを貼り付け",
       "authzEndpoint": "認可エンドポイント",
       "tokenEndpoint": "トークンエンドポイント",
@@ -120,8 +121,8 @@
       "runScan": "ヘルスチェックとスキャンを実行",
       "refresh": "更新",
       "continue": "続行",
-      "authKind": "auth: {{kind}}",
-      "enable": "自分のセッションで有効にする",
+      "authKind": "認証: {{kind}}",
+      "enable": "セッションで有効にする",
       "done": "完了"
     }
   },
@@ -129,19 +130,19 @@
     "title": "スラッシュコマンド",
     "description": "チャットで <code>/name</code> と入力するとテンプレートが展開されます。引数には <code>{{args}}</code> または <code>{{key}}</code> を使用してください。",
     "namePlaceholder": "名前 (例: plan-scene)",
-    "templatePlaceholder": "テンプレート: {{topic}} に関するシーンの計画…",
+    "templatePlaceholder": "テンプレート: {{topic}} に関するシーンを計画する…",
     "empty": "コマンドはまだありません。"
   },
   "hooks": {
     "title": "フック",
-    "description": "エージェントのループの節目で実行される宣言的なルールです。コードは不要です。イベント、オプションのツール一致、そしてアクションを指定するだけです。",
-    "matchPlaceholder": "ツールのマッチング (例: glossary_delete_*)",
-    "textPlaceholder": "注入または注釈を追加するテキスト",
+    "description": "エージェント・ループの接点で実行される宣言的なルールです。コードは不要です。イベント、オプションのツール一致、およびアクションを指定するだけです。",
+    "matchPlaceholder": "ツール一致 (例: glossary_delete_*)",
+    "textPlaceholder": "注入または注釈を加えるテキスト",
     "empty": "フックはまだありません。"
   },
   "subagents": {
     "title": "サブエージェント",
-    "description": "エージェントが <code>run_subagent</code> を介して、特定の範囲のサブタスクを委任できる名前付きのペルソナです。そのペルソナは、割り当てられたツールのみを使用する隔離されたターンで実行されます。純粋な推論や要約のみを行うペルソナにする場合は、スコープを空にしてください。",
+    "description": "<code>run_subagent</code> を介して、エージェントが特定のサブタスクを委任できる名前付きのペルソナです。スコープ内のツールのみを使用し、隔離されたターン内で実行されます。純粋な推論や要約のみを行うペルソナにする場合は、スコープを空にしてください。",
     "namePlaceholder": "名前 (例: lore-scout)",
     "scopePlaceholder": "ツールスコープ: glossary_*, kg_*",
     "modelPlaceholder": "モデル (任意、user_model ID)",
@@ -152,7 +153,7 @@
     "modelPinned": "モデルを固定済み"
   },
   "plugins": {
-    "description": "プラグインは、スキル、コマンド、フックをまとめたものです。エクスポートして共有したり、インポートしてインストールしたりできます。",
+    "description": "プラグインはスキル、コマンド、フックをパッケージ化したものです。エクスポートして共有したり、インポートしてインストールしたりできます。",
     "importing": "インポート中…",
     "import": "バンドルをインポート",
     "invalidJson": "このファイルは有効なJSONではありません。",
@@ -169,9 +170,9 @@
       "all": "すべて"
     },
     "total": "合計 {{count}} 件",
-    "empty": "提案はありません。エージェントが提案したスキルは、承認待ちとしてここに表示されます。",
+    "empty": "提案はありません。エージェントが提案したスキルがここに表示され、承認待ちの状態になります。",
     "approve": "承認",
-    "reject": "却下",
+    "reject": "拒否",
     "reason": "理由: {{reason}}"
   },
   "activity": {
@@ -190,7 +191,7 @@
   },
   "ingest": {
     "title": "レジストリソース (管理者)",
-    "description": "公式のMCPレジストリからシステムカタログをキュレーションします。検証 ≠ 安全性 — すべての承認は、フェデレーション前にSSRFガードとサプライチェーンスキャンを再実行します。",
+    "description": "公式のMCPレジストリからシステムカタログをキュレーションします。検証 ≠ 安全性 — すべての承認は、フェデレーションの前にSSRFガードとサプライチェーンスキャンを再実行します。",
     "all": "すべて",
     "pulling": "取得中…",
     "pull": "レジストリを取得",
@@ -199,5 +200,58 @@
     "empty": "このビューにエントリはありません。レジストリを取得してキューを更新してください。",
     "approve": "承認",
     "reject": "拒否"
+  },
+  "permissions": {
+    "blurb": "アシスタントに常に使用を許可したツール、およびブロックしたツールです。「承認」カードで「常に許可」を選択すると、ここにリストに追加されます。許可を取り消すと、アシスタントがそのツールを使用するたびに、再度あなたの確認を求めるようになります。",
+    "loading": "読み込み中…",
+    "allowedTitle": "常に許可",
+    "deniedTitle": "ブロック済み",
+    "blockTitle": "ツールをブロックする",
+    "emptyAllowed": "ツールに対して常時許可を与えられているものはありません。アシスタントは使用のたびに確認を求めます。",
+    "emptyDenied": "ブロックされているツールはありません。",
+    "toolPlaceholder": "ツール名 (例: chapter_delete)",
+    "unknownTool": "それはアシスタントのツールではありません。リストから名前を選択してください。",
+    "kind": {
+      "mutation": "作品の変更が可能",
+      "spend": "支払いが可能"
+    },
+    "decision": {
+      "allow": "確認なしで実行",
+      "deny": "実行しない"
+    },
+    "actions": {
+      "revoke": "再度確認する",
+      "deny": "常に許可しない",
+      "allow": "許可",
+      "block": "ブロック"
+    }
+  },
+  "workflows": {
+    "total": "{{count}} 件のワークフロー",
+    "empty": "ワークフローはまだありません。ワークフローの提案を承認して追加してください。",
+    "enabled": "オン",
+    "disabled": "オフ",
+    "delete": "削除",
+    "proposalsEmpty": "ワークフローの提案はありません。エージェントがワークフローを提案すると、ここに表示され、承認できるようになります。",
+    "view": "表示",
+    "hide": "非表示",
+    "noSteps": "ステップが定義されていません。"
+  },
+  "bindings": {
+    "loading": "読み込み中…",
+    "autoSetupDesc": "このモードでは、アシスタントがレシピを自動的に設定します。",
+    "none": "自動設定される項目はありません。",
+    "turnOff": "オフにする",
+    "turnBackOn": "オンに戻す",
+    "mode": {
+      "ask": "読解と質問",
+      "write": "執筆",
+      "plan": "プランニング"
+    },
+    "tier": {
+      "system": "システム標準",
+      "user": "ユーザー設定",
+      "book": "この書籍"
+    }
   }
 }

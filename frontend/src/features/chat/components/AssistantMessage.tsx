@@ -56,6 +56,12 @@ interface AssistantMessageProps {
   toolCalls?: ToolCallRecord[] | null;
   /** MCP fan-out (C-ACTIVITY): Tier-A auto-applied ops streamed this turn. */
   activities?: ActivityEvent[] | null;
+  /** N2 (dogfood 2026-07-18 F4) — host-aware "insert this reply into the chapter". When a parent
+   * supplies it (the studio co-writer, via useAcceptIntoEditor) it wins; otherwise the button falls
+   * back to the paste-to-editor event, which the studio EditorPanel + the legacy editor page both
+   * listen for. AssistantMessage never touches useStudioHost itself — it renders in /chat too, which
+   * has no StudioHostProvider — so the host-aware handler is INJECTED, never imported here. */
+  onInsert?: (text: string) => void;
 }
 
 // ── Auto-rendered confirm cards (model-independent human gate) ────────────────
@@ -122,6 +128,7 @@ export function AssistantMessage({
   voiceTtsSentences,
   toolCalls,
   activities,
+  onInsert,
 }: AssistantMessageProps) {
   const { t } = useTranslation('chat');
   const [showMore, setShowMore] = useState(false);
@@ -157,8 +164,12 @@ export function AssistantMessage({
     setShowMore(false);
   }
 
-  function handleSendToEditor() {
-    firePasteToEditor({ text: content });
+  // N2 — converge the (previously buried, overflow-only) "send to editor" into one first-class
+  // "Insert" action. Host-aware handler wins when the parent injects it (studio); else fall back to
+  // the paste-to-editor event that the studio EditorPanel + the legacy editor page both consume.
+  function handleInsert() {
+    if (onInsert) onInsert(content);
+    else firePasteToEditor({ text: content });
     toast.success(t('message.sent_to_editor'));
     setShowMore(false);
   }
@@ -426,6 +437,18 @@ export function AssistantMessage({
               >
                 <Copy className="h-3.5 w-3.5" />
               </button>
+              {/* N2 (F4) — first-class "Insert into chapter": the Cursor-"Apply" parity a newcomer
+                  expects, promoted out of the buried overflow. Shown on a completed reply with text. */}
+              {!isStreaming && content.trim() && (
+                <button
+                  type="button"
+                  onClick={handleInsert}
+                  title={t('message.insert_into_chapter', { defaultValue: 'Insert into chapter' })}
+                  className="rounded p-1 text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors"
+                >
+                  <Send className="h-3.5 w-3.5" />
+                </button>
+              )}
               {onRegenerate && (
                 <button
                   type="button"
@@ -455,14 +478,6 @@ export function AssistantMessage({
                     >
                       <Copy className="h-3 w-3" />
                       {t('message.copy_markdown')}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={handleSendToEditor}
-                      className="flex w-full items-center gap-2 px-3 py-1.5 text-xs text-foreground hover:bg-secondary transition-colors"
-                    >
-                      <Send className="h-3 w-3" />
-                      {t('message.send_to_editor')}
                     </button>
                   </div>
                 )}

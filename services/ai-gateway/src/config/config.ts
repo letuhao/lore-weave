@@ -108,9 +108,24 @@ export const DEFAULT_PREFIX_MAP: Record<string, string> = {
  * N" even though the raw text was reachable. Any future `story_*` tool is covered here.
  */
 export const EXTRA_PREFIX_MAP: Record<string, string[]> = {
-  knowledge: ['kg_', 'story_'],
+  // `lore_` is knowledge's FOURTH namespace: the W11-M2 reader "ask the lore" tools
+  // (lore_ask / lore_browse_entities / lore_entity / lore_timeline — spoiler-windowed
+  // reader reads). Without it the C-GW gate silently drops all four, exactly as it once
+  // dropped `story_search`, leaving a reader's chat agent with no way to explore lore.
+  knowledge: ['kg_', 'story_', 'lore_'],
   // PlanForge MCP tools (composition-service) — federated alongside composition_*
   composition: ['plan_'],
+  // `web_` is provider-registry's ("settings") SECOND namespace: the universal `web_search`
+  // tool (Track D CD5). provider-registry OWNS the outward web-search call
+  // (`/internal/web-search`, provider-gateway invariant), so it hosts the tool — but the
+  // tool is universal and therefore carries NO service prefix. Without `web_` here the C-GW
+  // gate would silently drop it, exactly as it once dropped `story_search` (see above).
+  settings: ['web_'],
+  // `world_` is book-service's SECOND namespace: the W10-M1 world-container tools
+  // (world_create / world_get / world_list / world_move_book). A world groups books but
+  // isn't itself a `book_`, so without this the C-GW gate silently drops the whole
+  // agent-native worldbuilding surface (same drop class as story_search / kg_).
+  book: ['world_'],
 };
 
 /** Back-compat default registry: P0 knowledge + P1 glossary. */

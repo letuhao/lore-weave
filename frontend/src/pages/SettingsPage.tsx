@@ -1,43 +1,23 @@
 import { Navigate, useParams, Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { User, Cpu, Languages, BookOpen, Globe, KeyRound, MessagesSquare } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/auth';
-import { AccountTab } from '@/features/settings/AccountTab';
-import { ProvidersTab } from '@/features/settings/ProvidersTab';
-import { TranslationTab } from '@/features/settings/TranslationTab';
-import { ReadingTab } from '@/features/settings/ReadingTab';
-import { LanguageTab } from '@/features/settings/LanguageTab';
-import { McpAccessTab } from '@/features/settings/McpAccessTab';
-import { ChatAiSettingsPanel } from '@/features/chat-ai-settings/components/ChatAiSettingsPanel';
-
-type Tab = 'account' | 'chat-ai' | 'providers' | 'translation' | 'reading' | 'language' | 'mcp';
-
-const BASE_TABS: { id: Tab; icon: React.ComponentType<{ className?: string }> }[] = [
-  { id: 'account', icon: User },
-  { id: 'chat-ai', icon: MessagesSquare },
-  { id: 'providers', icon: Cpu },
-  { id: 'translation', icon: Languages },
-  { id: 'reading', icon: BookOpen },
-  { id: 'language', icon: Globe },
-];
+import { settingsTabsFor, SettingsTabContent, type SettingsTabId } from '@/features/settings/tabs';
 
 export function SettingsPage() {
   const { t } = useTranslation('settings');
   const { tab } = useParams<{ tab: string }>();
   const { user } = useAuth();
 
-  // Q-GATE: the public-MCP tab only appears when the platform flag is on. When
-  // off, a deep link to /settings/mcp falls through to the redirect below.
-  const tabs = user?.public_mcp_enabled
-    ? [...BASE_TABS, { id: 'mcp' as Tab, icon: KeyRound }]
-    : BASE_TABS;
+  // Q-GATE lives in the shared registry: the public-MCP tab only appears when the platform
+  // flag is on. When off, a deep link to /settings/mcp falls through to the redirect below.
+  const tabs = settingsTabsFor(user?.public_mcp_enabled);
 
   if (!tab || !tabs.some((tb) => tb.id === tab)) {
     return <Navigate to="/settings/account" replace />;
   }
 
-  const activeTab = tab as Tab;
+  const activeTab = tab as SettingsTabId;
 
   return (
     <div className="mx-auto max-w-[800px] px-6 py-6">
@@ -68,13 +48,7 @@ export function SettingsPage() {
       </nav>
 
       {/* Tab content */}
-      {activeTab === 'account' && <AccountTab />}
-      {activeTab === 'chat-ai' && <ChatAiSettingsPanel />}
-      {activeTab === 'providers' && <ProvidersTab />}
-      {activeTab === 'translation' && <TranslationTab />}
-      {activeTab === 'reading' && <ReadingTab />}
-      {activeTab === 'language' && <LanguageTab />}
-      {activeTab === 'mcp' && <McpAccessTab />}
+      <SettingsTabContent tab={activeTab} />
     </div>
   );
 }

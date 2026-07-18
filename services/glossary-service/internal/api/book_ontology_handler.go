@@ -55,10 +55,10 @@ func (s *Server) loadBookKindOne(ctx context.Context, bookID, kindID uuid.UUID) 
 	var k bookKindResp
 	var updatedAt time.Time
 	err := s.pool.QueryRow(ctx, `
-		SELECT book_kind_id::text, code, name, description, icon, color, sort_order, is_hidden, source_ref, updated_at
+		SELECT book_kind_id::text, code, name, description, icon, color, sort_order, is_hidden, is_person, source_ref, updated_at
 		FROM book_kinds WHERE book_id = $1 AND book_kind_id = $2 AND deprecated_at IS NULL`,
 		bookID, kindID,
-	).Scan(&k.BookKindID, &k.Code, &k.Name, &k.Description, &k.Icon, &k.Color, &k.SortOrder, &k.IsHidden, &k.SourceRef, &updatedAt)
+	).Scan(&k.BookKindID, &k.Code, &k.Name, &k.Description, &k.Icon, &k.Color, &k.SortOrder, &k.IsHidden, &k.IsPerson, &k.SourceRef, &updatedAt)
 	if err != nil {
 		return nil, err
 	}
@@ -291,6 +291,7 @@ func (s *Server) createBookKind(w http.ResponseWriter, r *http.Request) {
 		Color       string  `json:"color"`
 		SortOrder   int     `json:"sort_order"`
 		IsHidden    bool    `json:"is_hidden"`
+		IsPerson    bool    `json:"is_person"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
 		writeError(w, http.StatusBadRequest, "GLOSS_INVALID_BODY", "invalid JSON")
@@ -298,7 +299,7 @@ func (s *Server) createBookKind(w http.ResponseWriter, r *http.Request) {
 	}
 	detail, err := s.createBookKindCore(r.Context(), bookID, bookKindCreateParams{
 		Code: in.Code, Name: in.Name, Description: in.Description, Icon: in.Icon,
-		Color: in.Color, SortOrder: in.SortOrder, IsHidden: in.IsHidden,
+		Color: in.Color, SortOrder: in.SortOrder, IsHidden: in.IsHidden, IsPerson: in.IsPerson,
 	})
 	if err != nil {
 		writeBookCreateErr(w, err, "book kind")

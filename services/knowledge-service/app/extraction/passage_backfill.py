@@ -45,7 +45,10 @@ async def backfill_project_passages(
     chapter_range so passages are ingested ONLY for the chapters being extracted, never
     the whole book. Returns per-run counts. Callers guarantee the embedding config
     (``embedding_model``/``embedding_dim``) + Neo4j are present before calling."""
-    chapters = await book_client.list_chapters(book_id, editorial_status="published")
+    # WS-0.6: enumerate the chapters in the KNOWLEDGE GRAPH, not the published ones.
+    # Both the enumeration and the revision pin below must move together — either alone
+    # still yields zero passages.
+    chapters = await book_client.list_chapters(book_id, kg_indexed=True)
     if chapters is None:
         return {
             "chapters_ingested": 0, "passages_created": 0, "chapters_failed": 0,
@@ -61,10 +64,38 @@ async def backfill_project_passages(
 
     ingested = passages = failed = 0
     for ch in chapters:
-        rev = ch.get("published_revision_id")
+        # Pin the revision the KNOWLEDGE LAYER reflects (possibly a draft the user
+        # explicitly indexed), falling back to the published revision for safety.
+        rev = ch.get("kg_indexed_revision_id") or ch.get("published_revision_id")
         cid = ch.get("chapter_id")
         if not rev or not cid:
-            continue  # a published row missing its pinned revision — skip cleanly
+            # Was a bare `continue`. A chapter that is IN the graph but has no pinned
+            # revision is a real anomaly (the sweeper cannot heal it either) — say so,
+            # rather than silently ingesting zero passages for it.
+            logger.warning(
+                "WS-0.6: chapter %s is kg-indexed but has no pinned revision — skipping "
+                "passage ingest; re-index it to pin a revision",
+                cid,
+            )
+            continue
+        # review-impl P0/P1 — DERIVE canon; do NOT accept ingest_chapter_passages'
+        # `canon: bool = True` default.
+        #
+        # WS-0.6b re-keyed the ENUMERATION above onto kg_indexed=True, which now returns
+        # never-published, user-indexed DRAFT chapters. The canon flag was left on its
+        # True default, so this backfill silently CANONIZED them — overwriting the correct
+        # canon=False that handle_chapter_kg_indexed had just written. And the content-hash
+        # skip-gate does not save us: it requires `state["canon"] == canon`, so a
+        # False→True flip is a deliberate cache MISS that delete-then-upserts at canon=True.
+        #
+        # The result: unreviewed draft prose returned from every `surface=canon` read
+        # (chat grounding's default, wiki, story search) — and `surface=canon`, the exact
+        # control that exists to exclude it, could no longer filter it out.
+        #
+        # The rule is spec §3.7 / P1-8: canon = (revision_id == published_revision_id).
+        # The data was already on the row and was being thrown away.
+        published_rev = ch.get("published_revision_id")
+        canon = bool(published_rev) and str(published_rev) == str(rev)
         try:
             async with neo4j_session() as session:
                 res = await ingest_chapter_passages(
@@ -73,6 +104,7 @@ async def backfill_project_passages(
                     chapter_id=UUID(cid), chapter_index=ch.get("sort_order"),
                     embedding_model=embedding_model, embedding_dim=embedding_dim,
                     revision_id=UUID(rev),
+                    canon=canon,
                     # A transient revision-fetch miss must not wipe existing canon.
                     delete_stale_on_missing=False,
                 )

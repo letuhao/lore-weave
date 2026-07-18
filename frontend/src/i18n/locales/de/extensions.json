@@ -6,6 +6,7 @@
     "commands": "Befehle & Hooks",
     "subagents": "Subagenten",
     "plugins": "Plugins",
+    "permissions": "Tool-Berechtigungen",
     "proposals": "Vorschläge",
     "activity": "Aktivitätsprotokoll",
     "ingest": "Registry-Quellen"
@@ -16,11 +17,11 @@
     "proposals": "Vorschläge"
   },
   "scope": {
-    "label": "Geltungsbereich:",
+    "label": "Bereich:",
     "mine": "Meine Erweiterungen",
     "orBook": "oder ein Buch:",
-    "bookPlaceholder": "Buch-spezifisch…",
-    "bookHint": "Buch-spezifisch — neue Elemente gelten nur für dieses Buch"
+    "bookPlaceholder": "buchbezogen…",
+    "bookHint": "buchbezogen — neue Elemente gelten nur für dieses Buch"
   },
   "common": {
     "loading": "Laden…",
@@ -42,7 +43,7 @@
       "book": "Buch"
     },
     "sort": {
-      "updated": "Sortieren nach: Aktualisiert",
+      "updated": "Sortierung: Aktualisiert",
       "name": "Name A→Z",
       "lastTriggered": "Zuletzt ausgelöst"
     },
@@ -60,13 +61,13 @@
     "filter": {
       "all": "Status: Alle",
       "active": "Aktiv",
-      "pending": "Scan läuft",
+      "pending": "Scan",
       "suspended": "Quarantäne",
       "error": "Nicht erreichbar"
     },
     "add": "+ Server hinzufügen",
-    "empty": "Noch keine MCP-Server vorhanden. Füge einen hinzu, um dem Agenten zusätzliche Werkzeuge zur Verfügung zu stellen.",
-    "review": "⚠ Überprüfung",
+    "empty": "Noch keine MCP-Server. Füge einen hinzu, um dem Agenten zusätzliche Werkzeuge zur Verfügung zu stellen.",
+    "review": "⚠ Überprüfen",
     "detail": {
       "back": "‹ Zurück",
       "connection": "Verbindung",
@@ -76,7 +77,7 @@
       "health": "Status",
       "lastScanned": "Zuletzt gescannt",
       "credentialStored": "Anmeldedaten gespeichert",
-      "healthOk": "ok · {{count}} Tools · {{latency}}ms",
+      "healthOk": "ok · {{count}} Werkzeuge · {{latency}}ms",
       "healthError": "Fehler: {{error}}",
       "unreachable": "nicht erreichbar",
       "scanning": "Scannen…",
@@ -85,7 +86,7 @@
       "acceptRisk": "Risiko akzeptieren & aktivieren"
     },
     "scan": {
-      "label": "Lieferketten-Scan:",
+      "label": "Supply-Chain-Scan:",
       "clean": "sauber",
       "findings": "{{count}} Fund(e)",
       "tools": "Tools ({{count}})",
@@ -96,7 +97,7 @@
         "connection": "Verbindung",
         "auth": "Authentifizierung",
         "scan": "Status & Scan",
-        "review": "Überprüfen"
+        "review": "Überprüfung"
       },
       "displayName": "Anzeigename",
       "displayNamePlaceholder": "Mein Tool-Server",
@@ -106,13 +107,13 @@
       "authNone": "Keine",
       "authBearer": "Bearer-Token",
       "authOauth": "OAuth 2.1",
-      "noAuthHint": "Keine Authentifizierung – dieser Server ist offen. Fahren Sie fort, um ihn zu registrieren und zu scannen.",
+      "noAuthHint": "Keine Authentifizierung — dieser Server ist offen. Fahren Sie fort, um ihn zu registrieren und zu scannen.",
       "bearerLabel": "Bearer-Token (im Tresor gesichert; wird nie wieder angezeigt)",
       "bearerPlaceholder": "Token einfügen",
-      "authzEndpoint": "Autorisierungs-Endpunkt",
+      "authzEndpoint": "Authorization-Endpunkt",
       "tokenEndpoint": "Token-Endpunkt",
       "clientId": "Client-ID",
-      "scopes": "Bereiche (durch Leerzeichen getrennt)",
+      "scopes": "Scopes (durch Leerzeichen getrennt)",
       "registering": "Registrierung läuft…",
       "registerScan": "Registrieren & scannen",
       "statusLabel": "Status:",
@@ -120,7 +121,7 @@
       "runScan": "Health-Check & Scan ausführen",
       "refresh": "Aktualisieren",
       "continue": "Weiter",
-      "authKind": "auth: {{kind}}",
+      "authKind": "Auth: {{kind}}",
       "enable": "Für meine Sitzungen aktivieren",
       "done": "Fertig"
     }
@@ -145,14 +146,14 @@
     "namePlaceholder": "Name (z. B. lore-scout)",
     "scopePlaceholder": "Tool-Scope: glossary_*, kg_*",
     "modelPlaceholder": "Modell (optional, user_model ID)",
-    "promptPlaceholder": "System-Prompt — wer diese Persona ist und wie sie arbeitet…",
-    "create": "Subagent erstellen",
+    "promptPlaceholder": "System-Prompt – wer diese Persona ist und wie sie arbeitet…",
+    "create": "Subagenten erstellen",
     "empty": "Noch keine Subagenten vorhanden.",
     "reasoningOnly": "Nur Denken (keine Tools)",
     "modelPinned": "Modell fixiert"
   },
   "plugins": {
-    "description": "Ein Plugin bündelt Fähigkeiten, Befehle & Hooks — exportieren zum Teilen, importieren zum Installieren.",
+    "description": "Ein Plugin bündelt Fähigkeiten, Befehle & Hooks – exportieren zum Teilen, importieren zum Installieren.",
     "importing": "Importieren…",
     "import": "Bundle importieren",
     "invalidJson": "Diese Datei ist kein gültiges JSON.",
@@ -170,7 +171,7 @@
     },
     "total": "{{count}} insgesamt",
     "empty": "Keine Vorschläge. Die vom Agenten vorgeschlagenen Fähigkeiten erscheinen hier zur Genehmigung.",
-    "approve": "Annehmen",
+    "approve": "Genehmigen",
     "reject": "Ablehnen",
     "reason": "Grund: {{reason}}"
   },
@@ -185,19 +186,72 @@
     "empty": "Keine Aktivitäten in diesem Zeitraum.",
     "secondsAgo": "Vor {{count}}s",
     "minutesAgo": "Vor {{count}}m",
-    "hoursAgo": "Vor {{count}}h",
+    "hoursAgo": "vor {{count}} Std.",
     "daysAgo": "vor {{count}} T."
   },
   "ingest": {
     "title": "Registry-Quellen (Admin)",
-    "description": "Kuratiere den Systemkatalog aus dem offiziellen MCP-Registry. Verifizierung ≠ Sicherheit — jede Freigabe führt erneut den SSRF-Schutz + Supply-Chain-Scan aus, bevor sie federiert wird.",
+    "description": "Kuratiere den Systemkatalog aus dem offiziellen MCP-Registry. Verifizierung ≠ Sicherheit — jede Freigabe führt erneut den SSRF-Schutz + den Supply-Chain-Scan aus, bevor sie federiert wird.",
     "all": "Alle",
     "pulling": "Wird geladen…",
     "pull": "Registry abrufen",
-    "pullResult": "Abgerufen: {{fetched}} abgerufen · {{new}} neu · {{updated}} aktualisiert · {{skipped}} übersprungen (kein Remote)",
-    "truncated": "· teilweise (gekürzt)",
+    "pullResult": "Abgerufen: {{fetched}} abgerufen · {{new}} neu · {{updated}} aktualisiert · {{skipped}} übersprungen",
+    "truncated": "· unvollständig (gekürzt)",
     "empty": "Keine Einträge in dieser Ansicht. Rufe die Registry ab, um die Warteschlange zu füllen.",
     "approve": "Genehmigen",
     "reject": "Ablehnen"
+  },
+  "permissions": {
+    "blurb": "Werkzeuge, denen Sie dem Assistenten dauerhafte Berechtigungen erteilt haben – und Werkzeuge, die Sie blockiert haben. Wenn Sie auf einer Genehmigungskarte „Immer erlauben“ wählen, wird hier eine Zeile hinzugefügt. Wenn Sie eine Berechtigung widerrufen, wird der Assistent beim nächsten Mal, wenn er dieses Werkzeug verwenden möchte, erneut bei Ihnen nachfragen.",
+    "loading": "Lädt…",
+    "allowedTitle": "Immer erlaubt",
+    "deniedTitle": "Blockiert",
+    "blockTitle": "Ein Werkzeug blockieren",
+    "emptyAllowed": "Sie haben keinem Werkzeug eine dauerhafte Berechtigung erteilt. Der Assistent wird jedes Mal nachfragen.",
+    "emptyDenied": "Es sind keine Werkzeuge blockiert.",
+    "toolPlaceholder": "Name des Werkzeugs (z. B. chapter_delete)",
+    "unknownTool": "Dies ist kein Werkzeug des Assistenten. Bitte wählen Sie einen Namen aus der Liste aus.",
+    "kind": {
+      "mutation": "Kann an meinem Werk arbeiten",
+      "spend": "Kann Geld ausgeben"
+    },
+    "decision": {
+      "allow": "Wird ohne Nachfrage ausgeführt",
+      "deny": "Nie mehr ausführen"
+    },
+    "actions": {
+      "revoke": "Erneut fragen",
+      "deny": "Nie zulassen",
+      "allow": "Zulassen",
+      "block": "Blockieren"
+    }
+  },
+  "workflows": {
+    "total": "{{count}} Workflows",
+    "empty": "Noch keine Workflows vorhanden. Genehmigen Sie einen Workflow-Vorschlag, um einen hinzuzufügen.",
+    "enabled": "An",
+    "disabled": "Aus",
+    "delete": "Löschen",
+    "proposalsEmpty": "Keine Workflow-Vorschläge. Wenn der Agent einen Workflow vorschlägt, erscheint er hier zur Genehmigung.",
+    "view": "Anzeigen",
+    "hide": "Ausblenden",
+    "noSteps": "Keine Schritte definiert."
+  },
+  "bindings": {
+    "loading": "Laden…",
+    "autoSetupDesc": "Rezepte, die der Assistent in diesem Modus automatisch einrichtet.",
+    "none": "Hier wird nichts automatisch eingerichtet.",
+    "turnOff": "Ausschalten",
+    "turnBackOn": "Wiedereinschalten",
+    "mode": {
+      "ask": "Lesen & Fragen",
+      "write": "Schreiben",
+      "plan": "Planen"
+    },
+    "tier": {
+      "system": "Integriert",
+      "user": "Von Ihnen festgelegt",
+      "book": "Dieses Buch"
+    }
   }
 }

@@ -51,22 +51,23 @@ __all__ = ["maybe_conformance_patch", "resolve_bound_application"]
 
 
 async def resolve_bound_application(
-    pool: Any, user_id: UUID, project_id: UUID, node_id: UUID,
+    pool: Any, project_id: UUID, node_id: UUID,
 ) -> MotifApplication | None:
     """The most-recent ``motif_application`` for ``node_id`` (a re-bind supersedes),
-    user+project scoped (tenancy). READ-only — W2 is the sole writer. Mirrors the
-    trace reader's ``apps_by_nodes`` query for one node. None when the scene has no
-    bound motif (nothing planned to conform to)."""
+    project scoped (access is gated on the book BEFORE this — 25 PM-8). READ-only —
+    W2 is the sole writer. Mirrors the trace reader's ``apps_by_nodes`` query for
+    one node. None when the scene has no bound motif (nothing planned to conform
+    to)."""
     row = await pool.fetchrow(
         """
         SELECT DISTINCT ON (outline_node_id)
-               id, user_id, project_id, book_id, motif_id, motif_version,
+               id, created_by, project_id, book_id, motif_id, motif_version,
                outline_node_id, role_bindings, annotations, created_at
         FROM motif_application
-        WHERE user_id = $1 AND project_id = $2 AND outline_node_id = $3
+        WHERE project_id = $1 AND outline_node_id = $2
         ORDER BY outline_node_id, created_at DESC
         """,
-        user_id, project_id, node_id,
+        project_id, node_id,
     )
     if row is None:
         return None
@@ -116,7 +117,7 @@ async def maybe_conformance_patch(
     try:
         node_uuid = UUID(str(outline_node_id))
         app = await resolve_bound_application(
-            pool, UUID(user_id), UUID(project_id), node_uuid,
+            pool, UUID(project_id), node_uuid,
         )
         if app is None or app.motif_id is None:
             return None  # nothing planned to conform to

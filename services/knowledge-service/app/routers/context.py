@@ -124,6 +124,10 @@ class ContextBuildResponse(BaseModel):
     # chat-service that doesn't read this field still behaves as before
     # (tools offered) and a degraded build stays tool-enabled.
     tool_calling_enabled: bool = True
+    # WS-4C Half A — per-project canon auto-capture toggle. Read off BuiltContext
+    # via from_attributes. Defaults FALSE (unlike tool_calling_enabled): capture
+    # spends the user's tokens, so an unset/degraded value must fail CLOSED.
+    canon_capture_enabled: bool = False
     # Interview-roleplay — the rendered working_memory anchor text (charter +
     # state). chat-service pins this into the system block AND tail-injects it
     # (depth-0). Default "" so a session with no working_memory block, and an

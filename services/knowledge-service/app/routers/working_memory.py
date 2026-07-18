@@ -36,6 +36,7 @@ class WorkingMemoryCharter(BaseModel):
     checklist: list[str] = []
     time_budget_min: int | None = None
     language: str = "en"
+    question_target: int | None = None  # ACP A4 (RV-M4) — optional/additive
 
 
 class InitWorkingMemoryRequest(BaseModel):

@@ -46,6 +46,12 @@ __all__ = [
     "embed_motif_summary",
     "embed_query",
     "embedded_with",
+    # Tenancy re-design (2026-07-17): shared tiers embed in the PLATFORM space; a user's
+    # STRICTLY-PRIVATE motifs/arcs embed in the OWNER's own BYOK space (the owner pays).
+    "is_strictly_private",
+    "embed_private_summary",
+    "embed_query_with",
+    "user_embedded_with",
 ]
 
 
@@ -62,7 +68,9 @@ def _platform_embed_model() -> tuple[str, str]:
     single chokepoint that makes cross-model contamination impossible. Fails closed
     (EmbedConfigError) if the ref is unset, so an unconfigured deploy never embeds
     against an empty model id."""
-    source = settings.motif_embed_model_source or "platform_model"
+    # ALWAYS "user_model" — /internal/embed rejects "platform_model" (see config.py). The
+    # fallback is the accepted value, never the rejected one, so a blanked source can't 400.
+    source = settings.motif_embed_model_source or "user_model"
     ref = settings.motif_embed_model_ref
     if not ref:
         raise EmbedConfigError(
@@ -167,6 +175,77 @@ def embedded_with(model_source: str, model_ref: str) -> bool:
         return (model_source, model_ref) == _platform_embed_model()
     except EmbedConfigError:
         return False
+
+
+# ── Tenancy re-design (2026-07-17) — two embedding SPACES ──────────────────────────────
+# The B-1 "one platform model for ALL vectors" rule mis-attributed cost: the platform bore
+# the embedding compute for a user's STRICTLY-PRIVATE content (only that user ever sees it).
+# The fix: SHARED tiers (system / public / unlisted / book_shared) stay in the ONE platform
+# space (P-space) — cross-user retrieval needs them comparable. A user's STRICTLY-PRIVATE
+# motif/arc embeds in the OWNER's OWN BYOK space (U-space) — `embed(user_id=owner, …)` bills
+# the owner's ledger. The retriever then embeds the query ONCE PER SPACE and ranks each
+# separately (cosine is only meaningful within a space); it NEVER cosines a P-vector against
+# a U-query. A row's space is decided by its CURRENT tier (below) for (re-)embedding, and by
+# its STORED `embedding_model` for which query to compare against — a tier transition
+# (publish a private motif) leaves a stale-space vector that is lazily re-embedded on read.
+
+
+def is_strictly_private(
+    *, owner_user_id: Any, visibility: str | None, book_shared: bool = False,
+) -> bool:
+    """A motif/arc only its owner can ever see: owner set, visibility='private', not
+    book-shared. THESE embed in the owner's own BYOK space (U-space; the owner pays).
+    Everything else — system (owner NULL), public/unlisted, or a book_shared collaborator
+    tier — is shared and embeds in the platform space (P-space). `arc_template` has no
+    `book_shared` column, so callers pass the default False (its private = owner+private)."""
+    return owner_user_id is not None and visibility == "private" and not book_shared
+
+
+async def embed_private_summary(
+    text: str, *, owner_id: UUID, user_model: tuple[str, str],
+) -> EmbeddingResult:
+    """Embed a STRICTLY-PRIVATE motif/arc summary with the OWNER's OWN BYOK embedding
+    model → the call bills the owner's ledger (the tenancy fix). Mirrors
+    `embed_motif_summary` (empty-vector → retryable EmbeddingError) but takes the owner +
+    model explicitly instead of the fixed platform credential. The caller resolves
+    `user_model` from the Work settings (`reference_embed_model`) and must have verified
+    it is non-None (no model ⇒ the retriever's non-semantic fallback, not this path)."""
+    source, ref = user_model
+    client = get_embedding_client()
+    res = await client.embed(
+        user_id=owner_id, model_source=source, model_ref=ref, texts=[text],
+    )
+    if not res.embeddings or not res.embeddings[0]:
+        raise EmbeddingError("user embed returned an empty vector", retryable=True)
+    return res
+
+
+async def embed_query_with(
+    text: str, *, user_id: UUID, model: tuple[str, str],
+) -> list[float]:
+    """Embed a query string with an EXPLICIT (source, ref) model as `user_id` — the
+    U-space query vector (the caller's own model), the counterpart to `embed_query`
+    (which is always the platform/P-space query). Returns the bare vector; raises
+    EmbeddingError (the retrieve degrade branch catches it)."""
+    source, ref = model
+    client = get_embedding_client()
+    res = await client.embed(
+        user_id=user_id, model_source=source, model_ref=ref, texts=[text],
+    )
+    if not res.embeddings or not res.embeddings[0]:
+        raise EmbeddingError("user query embed returned an empty vector", retryable=True)
+    return res.embeddings[0]
+
+
+def user_embedded_with(stored_model_ref: str | None, user_model: tuple[str, str] | None) -> bool:
+    """True iff a stored vector's `embedding_model` matches the caller's CURRENT BYOK
+    embed model ref — i.e. the stored U-space vector is still in the caller's live space
+    (so its cosine against a U-query is valid). A mismatch (NULL, a stale user model, or a
+    platform-model vector left on a since-privatised row) means the row must be re-embedded
+    with `user_model` before it can be ranked in U-space."""
+    if not stored_model_ref or user_model is None:
+        return False
+    return stored_model_ref == user_model[1]
 
 
 # ── internals ────────────────────────────────────────────────────────────────────

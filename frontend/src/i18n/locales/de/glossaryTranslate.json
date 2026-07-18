@@ -57,7 +57,8 @@
     "cancel": "Abbrechen",
     "cancelConfirm": "Diesen Übersetzungsauftrag abbrechen? Bereits verarbeitete Entitäten behalten ihre Übersetzungen.",
     "cancelRequested": "Abbruch angefordert",
-    "noEntities": "Für diese Sprache müssen keine Entitäten übersetzt werden."
+    "noEntities": "Für diese Sprache müssen keine Entitäten übersetzt werden.",
+    "pollFailed": "Der Übersetzungsfortschritt konnte nicht abgerufen werden – der Dienst ist möglicherweise nicht verfügbar. Wird wiederholt…"
   },
   "results": {
     "title": "Übersetzung abgeschlossen",

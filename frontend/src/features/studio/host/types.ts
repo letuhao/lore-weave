@@ -57,7 +57,28 @@ export type StudioBusEvent =
   // that boundary). `tourId` is a plain string (not the `StudioTourId` union) — the host layer
   // stays domain-agnostic; the consumer (StudioFrame.tsx) validates it against STUDIO_TOURS.
   // Omitted `tourId` (the WelcomePanel's quick-start button) falls back to the account's role tour.
-  | { type: 'startGuidedTour'; tourId?: string };
+  | { type: 'startGuidedTour'; tourId?: string }
+  // 24 PH25 — the Plan navigator rail lives in the ACTIVITY BAR, outside the dock, so it cannot
+  // hand the Plan Hub a callback. Its click contract is fixed: "row click focuses the node on the
+  // Hub canvas (opening plan-hub if closed) — NEVER the Editor". It therefore asks via the bus,
+  // exactly like the guided-tour request above (a one-shot request + a seq, so focusing the SAME
+  // node twice still pans).
+  | { type: 'planFocusNode'; nodeId: string }
+  // 32 AI-1 — the arc-inspector's subject. plan-hub publishes it on an arc/saga node selection;
+  // the inspector subscribes. The ONLY studio-internal transport the agent needs to drive the
+  // panel (a bare-id `ui_open_studio_panel` open lands here; the panel's picker is the fallback).
+  | { type: 'arc'; arcId: string }
+  // S7 D-CAST-ARC-BUS-SLICE — the cast codex's selected character. CastPanel publishes it when a
+  // row's "view arc" is clicked; an ALREADY-OPEN character-arc panel subscribes so clicking a
+  // different cast row switches the arc's subject (tier-2 live update). Mirrors 'arc'/'scene':
+  // params (tier-1 deep-link) still win, the in-panel picker (tier-3) remains the fallback.
+  | { type: 'castEntity'; entityId: string }
+  // M2 (newcomer polish F3) — a book's chapter set changed (created/renamed/deleted/moved) from a
+  // panel OTHER than the manuscript navigator (e.g. the Plan Hub "Write a new chapter" door, the
+  // editor's create, the drawer's +Chapter). The navigator's tree is hand-rolled useState that a
+  // react-query invalidation can't reach, so it subscribes to this one-shot bump and reloads —
+  // fixing the "saved but the sidebar still says 0 chapters" scare from the first-run diary.
+  | { type: 'manuscriptChanged' };
 
 /** The bus's current merged snapshot. `revision` increments on every publish (so a chat turn can
  * stamp `context_revision`). */
@@ -76,6 +97,20 @@ export interface StudioBusSnapshot {
   /** The tourId of the most recent 'startGuidedTour' request, or undefined for "use the
    *  account's role tour" (the WelcomePanel's quick-start button never sets this). */
   guidedTourRequestedId?: string;
+  /** 24 PH25 — the node the Plan rail last asked the Hub to focus, and a seq the Hub diffs so a
+   *  repeat request on the SAME node still pans (and a mount never fires a stale one). */
+  planFocusNodeId?: string;
+  planFocusSeq?: number;
+  /** 32 AI-1 — the arc/saga the inspector is showing (an outline `structure_node` id). */
+  activeArcId?: string;
+  /** S7 D-CAST-ARC-BUS-SLICE — the cast character last selected for its arc (a KG entity id).
+   *  The character-arc panel reads it as tier-2 (params ?? this ?? picker) so an open panel
+   *  re-subjects when a different cast row is clicked. */
+  activeCastEntityId?: string;
+  /** M2 (F3) — bumped on every 'manuscriptChanged' event. The manuscript navigator diffs it
+   *  against the last value it reloaded on, so a cross-panel chapter mutation refreshes the tree
+   *  exactly once (never on initial mount). */
+  manuscriptChangeSeq?: number;
 }
 
 /** Reduce a bus event onto the snapshot (pure — one new object, revision bumped). */
@@ -96,6 +131,14 @@ export function applyBusEvent(s: StudioBusSnapshot, e: StudioBusEvent): StudioBu
       return { ...base, notificationsUnread: Math.max(0, e.count) };
     case 'startGuidedTour':
       return { ...base, guidedTourRequestSeq: (s.guidedTourRequestSeq ?? 0) + 1, guidedTourRequestedId: e.tourId };
+    case 'planFocusNode':
+      return { ...base, planFocusNodeId: e.nodeId, planFocusSeq: (s.planFocusSeq ?? 0) + 1 };
+    case 'arc':
+      return { ...base, activeArcId: e.arcId };
+    case 'castEntity':
+      return { ...base, activeCastEntityId: e.entityId };
+    case 'manuscriptChanged':
+      return { ...base, manuscriptChangeSeq: (s.manuscriptChangeSeq ?? 0) + 1 };
     default:
       return base;
   }

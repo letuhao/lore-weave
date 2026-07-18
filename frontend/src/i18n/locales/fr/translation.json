@@ -5,6 +5,14 @@
     "failed": "échoué",
     "pending": "en attente"
   },
+  "error": {
+    "retryable": "Impossible de charger les traductions — le service de traduction est peut-être indisponible. Réessayez.",
+    "forbidden": "Vous n'avez pas accès aux traductions de ce livre.",
+    "notfound": "Ces traductions sont introuvables.",
+    "retry": "Réessayer",
+    "chapters_failed": "Impossible de charger la liste des chapitres.",
+    "chapters_timeout": "Le chargement de la liste des chapitres a expiré — le service est peut-être lent ou hors ligne."
+  },
   "page": {
     "breadcrumb_book": "Livre",
     "breadcrumb_chapters": "Chapitres",
@@ -81,7 +89,8 @@
     "original_label": "Original — {{lang}}",
     "translation_label": "Traduction — {{lang}}",
     "source_fallback": "Source",
-    "no_translated": "(Aucun contenu traduit)"
+    "no_translated": "(Aucun contenu traduit)",
+    "original_unavailable": "Le texte original est actuellement indisponible."
   },
   "block_review": {
     "unchanged": "Inchangé",
@@ -151,8 +160,18 @@
     "show_filter": "Afficher le filtre",
     "chapters_selected": "{{count}} chapitres sélectionnés",
     "translate_selected": "Traduire la sélection",
+    "translate_cta": "Traduire…",
+    "select_all_chapters": "Tout sélectionner",
+    "orphan_footnote": "{{count}} traduction(s) appartiennent à des chapitres qui ne sont plus actifs.",
+    "page": "Page",
+    "prev": "Page précédente",
+    "next": "Page suivante",
     "extract_glossary": "Extraire le glossaire",
-    "clear": "Effacer"
+    "clear": "Effacer",
+    "loading": "Chargement de la couverture de traduction…",
+    "translate_no_edit": "Vous avez un accès en lecture seule — demandez au propriétaire un accès en modification pour traduire.",
+    "all_filtered_title": "Toutes les langues sont filtrées",
+    "all_filtered_desc": "Réactivez une langue dans le filtre pour voir sa couverture."
   },
   "segments": {
     "title": "Statut des segments",
@@ -165,6 +184,7 @@
     "retranslate_changed": "Re-traduire les modifications ({{count}})",
     "retranslate_started": "Re-traduction lancée",
     "empty": "Aucun segment généré pour le moment.",
-    "close": "Fermer"
+    "close": "Fermer",
+    "retranslate_failed": "Impossible de lancer la retraduction. Veuillez réessayer."
   }
 }

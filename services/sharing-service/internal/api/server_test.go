@@ -106,6 +106,66 @@ func TestFetchBookProjectionHandlesBadJSON(t *testing.T) {
 	}
 }
 
+// TestDiaryVisibilityGuard — a diary can never be made non-private (P-4 / D16),
+// and the guard FAILS CLOSED when book-service can't confirm the kind.
+func TestDiaryVisibilityGuard(t *testing.T) {
+	t.Parallel()
+
+	projServer := func(kind string) *httptest.Server {
+		return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"book_id": uuid.New(), "owner_user_id": uuid.New(),
+				"kind": kind, "title": "X", "lifecycle_state": "active",
+				"created_at": time.Now().UTC(),
+			})
+		}))
+	}
+
+	t.Run("diary cannot go public", func(t *testing.T) {
+		up := projServer("diary")
+		defer up.Close()
+		srv := &Server{cfg: &config.Config{BookServiceInternalURL: up.URL}}
+		if code, _ := srv.diaryVisibilityGuard(uuid.New(), "public"); code != http.StatusForbidden {
+			t.Fatalf("diary→public: want 403, got %d", code)
+		}
+		if code, _ := srv.diaryVisibilityGuard(uuid.New(), "unlisted"); code != http.StatusForbidden {
+			t.Fatalf("diary→unlisted: want 403, got %d", code)
+		}
+	})
+
+	t.Run("diary stays private with no fetch", func(t *testing.T) {
+		// A private (or empty no-op) set must be allowed WITHOUT even calling
+		// book-service — proven by pointing at a dead URL and still getting allow.
+		srv := &Server{cfg: &config.Config{BookServiceInternalURL: "http://127.0.0.1:0"}}
+		if code, _ := srv.diaryVisibilityGuard(uuid.New(), "private"); code != 0 {
+			t.Fatalf("diary→private: want allow(0), got %d", code)
+		}
+		if code, _ := srv.diaryVisibilityGuard(uuid.New(), ""); code != 0 {
+			t.Fatalf("empty→noop: want allow(0), got %d", code)
+		}
+	})
+
+	t.Run("a normal book can go public", func(t *testing.T) {
+		up := projServer("novel")
+		defer up.Close()
+		srv := &Server{cfg: &config.Config{BookServiceInternalURL: up.URL}}
+		if code, _ := srv.diaryVisibilityGuard(uuid.New(), "public"); code != 0 {
+			t.Fatalf("novel→public: want allow(0), got %d", code)
+		}
+	})
+
+	t.Run("fail closed when book-service is unreachable", func(t *testing.T) {
+		up := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			w.WriteHeader(http.StatusServiceUnavailable)
+		}))
+		defer up.Close()
+		srv := &Server{cfg: &config.Config{BookServiceInternalURL: up.URL}}
+		if code, _ := srv.diaryVisibilityGuard(uuid.New(), "public"); code != http.StatusBadGateway {
+			t.Fatalf("unreachable→public: want 502 fail-closed, got %d", code)
+		}
+	})
+}
+
 func TestFetchBookChaptersInternal(t *testing.T) {
 	t.Parallel()
 
@@ -151,5 +211,77 @@ func TestFetchBookChapterInternal(t *testing.T) {
 	out, status := srv.fetchBookChapterInternal(bookID, chapterID)
 	if status != http.StatusOK || out == nil {
 		t.Fatalf("expected status 200 with payload, got status=%d out=%v", status, out)
+	}
+}
+
+// ── W11-M3 public canon-only lore ─────────────────────────────────────────────
+
+func TestUnlistedLoreBeforeChapterIndex(t *testing.T) {
+	// Glossary is exclusive (chapter_index < before), so N → N+1 to include chapter N.
+	// Absent → (-1, valid) = whole canon; malformed/negative → (_, INVALID) = 400.
+	type want struct {
+		idx   int
+		valid bool
+	}
+	cases := map[string]want{
+		"":    {-1, true}, // absent → deliberate whole-canon
+		"0":   {1, true},
+		"5":   {6, true},
+		"12":  {13, true},
+		"-3":  {0, false}, // negative → invalid (fail closed, not whole-canon)
+		"abc": {0, false}, // malformed → invalid
+	}
+	for in, w := range cases {
+		gotIdx, gotOK := unlistedLoreBeforeChapterIndex(in)
+		if gotIdx != w.idx || gotOK != w.valid {
+			t.Fatalf("before_chapter=%q: want (%d,%v), got (%d,%v)", in, w.idx, w.valid, gotIdx, gotOK)
+		}
+	}
+}
+
+// The load-bearing security assertion: the public lore fetch MUST pin canon-only
+// (status=active) so a status='draft'/ai-suggested entity can never reach the
+// public surface — never relying on the implicit "drafts have no chapter links".
+// The mock emits the REAL wire shape — a BARE JSON ARRAY (getKnownEntities), NOT an
+// {entities,count} object — because a prior object-decode silently failed and the
+// route always returned empty while an object-mock test passed against fiction.
+func TestFetchCanonLoreInternalPinsCanonOnly(t *testing.T) {
+	var gotQuery string
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotQuery = r.URL.RawQuery
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`[{"entity_id":"e1","name":"Alice","kind_code":"character"}]`))
+	}))
+	defer upstream.Close()
+
+	srv := &Server{cfg: &config.Config{GlossaryServiceInternalURL: upstream.URL}}
+	ents, status := srv.fetchCanonLoreInternal(uuid.New(), 6, 50)
+	if status != http.StatusOK {
+		t.Fatalf("expected 200, got %d", status)
+	}
+	if !strings.Contains(gotQuery, "status=active") {
+		t.Fatalf("canon-only NOT enforced — query missing status=active: %s", gotQuery)
+	}
+	if !strings.Contains(gotQuery, "before_chapter_index=6") {
+		t.Fatalf("spoiler window not passed: %s", gotQuery)
+	}
+	if !strings.Contains(gotQuery, "alive=true") || !strings.Contains(gotQuery, "min_frequency=1") {
+		t.Fatalf("belt-and-suspenders filters missing: %s", gotQuery)
+	}
+	// The bare array must decode to the entity slice (the shape-bug regression).
+	if len(ents) != 1 || ents[0]["name"] != "Alice" {
+		t.Fatalf("expected the bare-array entity to decode, got %v", ents)
+	}
+}
+
+func TestFetchCanonLoreInternalUpstreamErrorDegrades(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer upstream.Close()
+	srv := &Server{cfg: &config.Config{GlossaryServiceInternalURL: upstream.URL}}
+	_, status := srv.fetchCanonLoreInternal(uuid.New(), -1, 50)
+	if status == http.StatusOK {
+		t.Fatalf("expected non-200 on upstream 500, got %d", status)
 	}
 }

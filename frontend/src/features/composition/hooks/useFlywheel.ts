@@ -13,5 +13,10 @@ export function useFlywheel(projectId: string | undefined, token: string | null)
     queryKey: ['composition', 'flywheel', projectId],
     queryFn: () => knowledgeApi.getFlywheel(projectId!, token!),
     enabled: !!projectId && !!token,
+    // The delta is produced by an ASYNC extraction that finishes AFTER publish (E2 — never keyable
+    // on the publish confirm alone). So while there is no delta yet, poll to catch it when it lands —
+    // and STOP once it has (`has_delta`). Bounded to a focused, open panel (refetchIntervalInBackground
+    // is false by default), so an unpublished book doesn't poll unattended.
+    refetchInterval: (query) => (query.state.data?.has_delta ? false : 6000),
   });
 }

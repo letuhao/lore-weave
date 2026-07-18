@@ -84,7 +84,18 @@ export function ContextMeter({
   const pct = known ? (budget.pct as number) : null;
   const band = pct != null ? contextBand(pct) : 'normal';
 
-  const label = known ? `${Math.round((pct as number) * 100)}%` : '—';
+  // D-CHAT-CONTEXT-METER-OVERCOUNT — a genuine overflow (pct > 1) is real signal
+  // and stays visible (e.g. "142%"); compaction triggers at 75% so a turn
+  // legitimately reaching a real, uncompacted multiple of the window is not
+  // expected. This only guards the DISPLAY against a runaway/misreported value
+  // reading as absurd rather than actionable (the backend once showed "469%"
+  // from a token-sum bug — fixed at the source, but the badge shouldn't be
+  // able to render nonsense again if some future bug reintroduces it).
+  const label = known
+    ? (pct as number) > 2.99
+      ? '>299%'
+      : `${Math.round((pct as number) * 100)}%`
+    : '—';
 
   // W2 tooltip — primary phrasing is "until auto-compact: X%" (Claude Code),
   // then used/limit, then the baseline transparency line (Copilot) when the

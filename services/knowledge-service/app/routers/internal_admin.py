@@ -12,16 +12,24 @@ Authentication: X-Internal-Token (service-to-service).
 from __future__ import annotations
 
 import dataclasses
+import hashlib
 import logging
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from typing import Any, Literal
 
 import redis.asyncio as aioredis
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field, model_validator
 
+from uuid import UUID
+
 from app.config import settings
 from app.db.neo4j import neo4j_session
+from app.db.neo4j_repos.passages import (
+    delete_all_kg_nodes_for_project,
+    delete_all_passages_for_project,
+)
+from app.db.repositories.projects import ProjectsRepo
 from app.db.neo4j_helpers import (
     drop_summary_index,
     list_summary_vector_indexes,
@@ -44,6 +52,483 @@ router = APIRouter(
     tags=["Internal", "Admin"],
     dependencies=[Depends(require_internal_token)],
 )
+
+
+async def _erase_one_assistant_project(pool, user_id: UUID, project_id: UUID) -> dict:
+    """Erase ONE assistant project + its entire semantic index. Neo4j passages FIRST, PG rows LAST (erase
+    review MED-3): the project_id identifies the passages, so a PG-first delete that then failed on Neo4j
+    would strand the raw diary passages under a project_id nothing can re-resolve. Also clears the
+    pending-facts inbox + rejection tombstones (they hold decryptable diary fact text, no FK cascade)."""
+    async with neo4j_session() as session:
+        passages_deleted = await delete_all_passages_for_project(
+            session, user_id=str(user_id), project_id=str(project_id),
+        )
+        # D-R27 — also delete the CONFIRMED-fact graph (WS-2.4 promote → :Fact/:Entity/:ABOUT), else a
+        # confirmed diary fact + the colleague it names survives erasure (caught by the E2E erase smoke).
+        kg_nodes_deleted = await delete_all_kg_nodes_for_project(
+            session, user_id=str(user_id), project_id=str(project_id),
+        )
+    async with pool.acquire() as conn:
+        pf = await conn.execute(
+            "DELETE FROM knowledge_pending_facts WHERE user_id=$1 AND project_id=$2", user_id, project_id,
+        )
+        await conn.execute(
+            "DELETE FROM knowledge_rejected_facts WHERE user_id=$1 AND project_id=$2", user_id, project_id,
+        )
+    pending_facts_deleted = int(pf.split()[-1]) if pf else 0
+    project_deleted = await ProjectsRepo(pool).delete(user_id, project_id)
+    return {
+        "project_deleted": bool(project_deleted),
+        "passages_deleted": passages_deleted,
+        "kg_nodes_deleted": kg_nodes_deleted,
+        "pending_facts_deleted": pending_facts_deleted,
+    }
+
+
+@router.delete("/assistant/erase")
+async def erase_assistant_knowledge(
+    user_id: UUID = Query(...),
+    project_id: UUID | None = Query(None),
+) -> dict:
+    """D-R27 (human-authorized erasure) — delete a user's ASSISTANT knowledge + its ENTIRE semantic index
+    (Neo4j `:Passage` nodes + the `knowledge_projects` row + the pending/rejected fact inboxes). Every
+    store is tenant-scoped on (user_id, project_id), so this only reaches the caller's own data.
+
+    project_id is OPTIONAL (audit HIGH-2): when omitted, ALL of the user's assistant projects are resolved
+    by the `is_assistant` flag (via `list_all_assistant_project_ids`, **archived-INCLUSIVE** — A1) and each
+    is erased. The gateway erase calls it WITHOUT a project_id — so the KG erase runs by user_id alone,
+    independent of whether the diary BOOK still exists. A book-keyed project resolution that fails after the
+    book is deleted used to skip this leg while still reporting `erased:true`, leaving decryptable diary
+    passages + fact text behind.
+
+    A1 (data-rights fix): the resolver is `list_all_assistant_project_ids`, which INCLUDES archived epochs.
+    `close-epoch` (a job change) archives + soft-invalidates but does NOT purge; an erase resolved with
+    `NOT is_archived` skipped those closed epochs, stranding decryptable diary data — a right-to-erasure
+    hole. Recall/exclude paths keep the active-only `list_assistant_project_ids`."""
+    pool = get_knowledge_pool()
+    if project_id is not None:
+        targets = [project_id]
+    else:
+        targets = [UUID(p) for p in await ProjectsRepo(pool).list_all_assistant_project_ids(user_id)]
+    results = [await _erase_one_assistant_project(pool, user_id, pid) for pid in targets]
+    return {
+        "projects_erased": len(results),
+        "project_deleted": any(r["project_deleted"] for r in results),
+        "passages_deleted": sum(r["passages_deleted"] for r in results),
+        "kg_nodes_deleted": sum(r["kg_nodes_deleted"] for r in results),
+        "pending_facts_deleted": sum(r["pending_facts_deleted"] for r in results),
+    }
+
+
+class _DiaryFactIn(BaseModel):
+    kind: str
+    text: str
+    # WS-2.2 (structured s/p/o) — optional; a coarse fact carries only text, a structured one the trio.
+    subject: str | None = None
+    predicate: str | None = None
+    object: str | None = None
+    event_date: str | None = None  # ISO 'YYYY-MM-DD'; the day the fact is true of
+    provenance: str | None = None  # 'user' | 'quoted_third_party'
+
+
+class _QueueDiaryFactsIn(BaseModel):
+    user_id: UUID
+    book_id: UUID
+    entry_date: str | None = None
+    facts: list[_DiaryFactIn]
+
+
+def _parse_iso_date(value: str | None) -> date | None:
+    """Parse an ISO 'YYYY-MM-DD' into a date for an asyncpg ::date bind, tolerating None/garbage (→ None
+    rather than a 500). A trailing time component (an ISO datetime) is accepted by taking the date part."""
+    if not value:
+        return None
+    try:
+        return date.fromisoformat(str(value)[:10])
+    except (ValueError, TypeError):
+        return None
+
+
+def _diary_fact_dedup_key(project_id: object, kind: str, text: str, fact: _DiaryFactIn, day: str) -> str:
+    """A STABLE, PER-DAY dedup identity for a distilled fact. When the structured trio is present, key on
+    the normalized (subject, predicate, object) so an LLM re-phrasing of the SAME fact across re-distills
+    collides (the semantic-dedup fix — fact_text alone drifts with wording). Else fall back to the coarse
+    fact_text. Normalization: casefold + collapse whitespace, so "The Q3 Budget" == "q3 budget".
+
+    `day` (the fact's effective ISO date) is part of the key so dedup + the rejection tombstone are
+    per-DAY (audit MED-2): the same (Alice, said, budget) on Mon and Fri are DISTINCT facts — a Friday
+    re-affirmation isn't silently dropped, and rejecting Monday's doesn't tombstone Friday's forever."""
+    def _norm(s: str | None) -> str:
+        return " ".join((s or "").split()).casefold()
+
+    if fact.subject and fact.object:
+        basis = f"spo:{_norm(fact.subject)}|{_norm(fact.predicate)}|{_norm(fact.object)}"
+    else:
+        basis = f"text:{_norm(kind)}|{_norm(text)}"
+    return hashlib.sha256(f"{project_id}:{day}:{basis}".encode("utf-8")).hexdigest()
+
+
+@router.post("/assistant/queue-facts")
+async def queue_diary_facts(body: _QueueDiaryFactsIn) -> dict:
+    """WS-2.1/2.3/2.2 — the assistant's DIVERT-TO-INBOX fact write. A distilled day's facts are queued
+    into the pending-facts INBOX (never `pending_validation=False`; the diary's facts are human-gated,
+    D4), resolving the user's assistant project by (user, book). Each fact lands as `fact_type='statement'`
+    with the kind + entry_date encoded in `fact_text`, PLUS the WS-2.2 structured s/p/o + event_date +
+    provenance columns when the distiller extracted them. `session_id` is None (a diary fact has no chat
+    session). Internal-token.
+
+    Two idempotency guards (WS-2.2): the `dedup_key` (semantic when the trio is present, else text-based)
+    makes a re-distill of the SAME day a no-op via ON CONFLICT DO NOTHING; a `knowledge_rejected_facts`
+    tombstone on the same key makes a fact the user already DISMISSED stay dismissed (no re-nag loop)."""
+    pool = get_knowledge_pool()
+    project, _ = await ProjectsRepo(pool).get_or_create_assistant_project(body.user_id, body.book_id)
+    queued = 0
+    skipped_tombstoned = 0
+    async with pool.acquire() as conn:
+        for f in body.facts:
+            text = (f.text or "").strip()
+            if not text:
+                continue
+            date_sfx = f" ({body.entry_date})" if body.entry_date else ""
+            fact_text = f"[{(f.kind or 'event').strip()}] {text}{date_sfx}"
+            # asyncpg encodes a ::date param as a Python date (not a str) BEFORE the cast, so parse the ISO
+            # string here. Parse EACH candidate independently (audit MED-3): `_parse_iso_date(f.event_date)
+            # or _parse_iso_date(body.entry_date)` — a non-ISO f.event_date ("yesterday") must NOT swallow
+            # the valid entry_date fallback (memory: asyncpg-timestamptz-param-needs-datetime).
+            event_date = _parse_iso_date(f.event_date) or _parse_iso_date(body.entry_date)
+            # The dedup/tombstone identity is PER-DAY (audit MED-2): include the effective date so the same
+            # s/p/o on two different days are distinct facts (a re-affirmation isn't dropped; a Monday
+            # reject doesn't tombstone Friday's). '' when no date at all → collapses to a single bucket.
+            day_key = event_date.isoformat() if event_date is not None else ""
+            dedup_key = _diary_fact_dedup_key(project.project_id, f.kind, text, f, day_key)
+            # Tombstone gate: a fact the user rejected must not re-appear on the next distill. Skip BEFORE
+            # the insert so a re-nag never even touches the inbox. (Keyed identically to the dedup so a
+            # reject and a re-queue can never disagree on identity.)
+            tomb = await conn.fetchval(
+                "SELECT 1 FROM knowledge_rejected_facts "
+                "WHERE user_id=$1 AND project_id=$2 AND dedup_key=$3",
+                body.user_id, project.project_id, dedup_key,
+            )
+            if tomb is not None:
+                skipped_tombstoned += 1
+                continue
+            row = await conn.fetchrow(
+                """
+                INSERT INTO knowledge_pending_facts
+                  (user_id, project_id, session_id, fact_type, fact_text, dedup_key,
+                   subject, predicate, object, event_date, provenance)
+                VALUES ($1, $2, NULL, 'statement', $3, $4, $5, $6, $7, $8, $9)
+                ON CONFLICT (user_id, project_id, dedup_key) WHERE dedup_key IS NOT NULL
+                DO NOTHING
+                RETURNING pending_fact_id
+                """,
+                body.user_id, project.project_id, fact_text, dedup_key,
+                f.subject, f.predicate, f.object, event_date, (f.provenance or "user"),
+            )
+            if row is not None:  # None ⇒ a duplicate was skipped
+                queued += 1
+    return {
+        "queued": queued,
+        "skipped_tombstoned": skipped_tombstoned,
+        "project_id": str(project.project_id),
+    }
+
+
+class _RecallFactsIn(BaseModel):
+    user_id: UUID
+    book_id: UUID
+    event_date_from: str | None = None   # ISO 'YYYY-MM-DD' inclusive lower bound
+    event_date_to: str | None = None     # ISO 'YYYY-MM-DD' inclusive upper bound
+    subject_name: str | None = None      # narrow to facts ABOUT this person/thing
+    limit: int = 50
+
+
+@router.post("/assistant/recall-facts")
+async def recall_assistant_facts(body: _RecallFactsIn) -> dict:
+    """WS-2.4 — the diary's date-filtered KG recall. Resolves the user's assistant project by (user,
+    book), then returns confirmed :Fact nodes in the event_date range (optionally ABOUT a subject),
+    newest-first. This is the read that answers "what did <subject> say about <topic> last month" — it
+    is project-scoped (never all-projects), so it cannot surface another project's facts (D16)."""
+    from app.db.neo4j import neo4j_session
+    from app.db.neo4j_repos.facts import group_supersessions, recall_facts
+
+    pool = get_knowledge_pool()
+    project, _ = await ProjectsRepo(pool).get_or_create_assistant_project(body.user_id, body.book_id)
+    async with neo4j_session() as session:
+        facts = await recall_facts(
+            session,
+            user_id=str(body.user_id),
+            project_id=str(project.project_id),
+            event_date_from=body.event_date_from,
+            event_date_to=body.event_date_to,
+            subject_name=body.subject_name,
+            limit=body.limit,
+        )
+    # WS-2.6b (spec 07 §Q5) — surface a SUPERSESSION ("it changed") rather than two independent truths
+    # when a claim's object changed over time (same subject+predicate, different object across dates).
+    supersessions = group_supersessions(facts)
+    return {
+        "project_id": str(project.project_id),
+        "count": len(facts),
+        "facts": [
+            {
+                "type": f.type, "content": f.content,
+                "event_date_iso": f.event_date_iso,
+                "valid_from_ordinal": f.valid_from_ordinal,
+                "subject": f.subject_canonical, "predicate": f.predicate, "object": f.object,
+            }
+            for f in facts
+        ],
+        "supersessions": supersessions,
+    }
+
+
+class _RejectDiaryFactIn(BaseModel):
+    user_id: UUID
+    pending_fact_id: UUID
+
+
+@router.post("/assistant/reject-fact")
+async def reject_diary_fact(body: _RejectDiaryFactIn) -> dict:
+    """WS-2.2 (rejection tombstone) — the user dismisses a proposed diary fact. Delegates to the SINGLE
+    reject-with-tombstone repo path (shared with the public FE reject route, so the two can never drift):
+    it deletes the pending row and writes a `knowledge_rejected_facts` tombstone on its dedup_key so the
+    next "End my day" does NOT re-propose the dismissed fact. Owner-scoped + idempotent."""
+    from app.db.repositories.pending_facts import PendingFactsRepo
+    rejected = await PendingFactsRepo(get_knowledge_pool()).reject(body.user_id, body.pending_fact_id)
+    return {"rejected": 1 if rejected else 0, "tombstoned": rejected}
+
+
+class _MergeEntitiesIn(BaseModel):
+    user_id: UUID
+    book_id: UUID
+    from_name: str   # the DUPLICATE/old spelling to fold away (e.g. "Minh")
+    into_name: str   # the entity to keep (e.g. "Minh Nguyen")
+
+
+@router.post("/assistant/merge-entities")
+async def merge_assistant_entities(body: _MergeEntitiesIn) -> dict:
+    """WS-2.6d (D17 merge-a-renamed-entity) — fold one diary person/thing into another BY NAME within the
+    user's assistant project. The diary agent knows colleague NAMES, not KG ids, so this resolves both
+    names → the best-matching :Entity in the assistant project (never all-projects — D16) and runs the
+    proven `merge_entities` surgery: re-point the loser's `(:Fact)-[:ABOUT]->` edges onto the winner (so
+    recall attributes BOTH names' facts to one person), move aliases, then DETACH DELETE the loser.
+
+    Idempotent-ish: a `from_name` that no longer resolves (already merged) → 404 `from_not_found`. Same
+    entity both sides → 400 `same_entity`. Internal-token; the diary subjects are KG-only auto-created
+    entities (no glossary anchor), so this never touches an authored glossary row."""
+    from app.db.neo4j import neo4j_session
+    from app.db.neo4j_repos.entities import (
+        MergeEntitiesError,
+        find_entities_by_name,
+        merge_entities,
+    )
+
+    from_name = (body.from_name or "").strip()
+    into_name = (body.into_name or "").strip()
+    if not from_name or not into_name:
+        raise HTTPException(status_code=422, detail="from_name and into_name are required")
+
+    pool = get_knowledge_pool()
+    project, _ = await ProjectsRepo(pool).get_or_create_assistant_project(body.user_id, body.book_id)
+    pid = str(project.project_id)
+    async with neo4j_session() as session:
+        # Resolve within the assistant project only (D16 — never fold a novel entity into a diary one).
+        src = await find_entities_by_name(session, user_id=str(body.user_id), project_id=pid, name=from_name)
+        dst = await find_entities_by_name(session, user_id=str(body.user_id), project_id=pid, name=into_name)
+        if not src:
+            raise HTTPException(status_code=404, detail={"error_code": "from_not_found",
+                                "message": f"no assistant entity named {from_name!r}"})
+        if not dst:
+            raise HTTPException(status_code=404, detail={"error_code": "into_not_found",
+                                "message": f"no assistant entity named {into_name!r}"})
+        source_id, target_id = src[0].id, dst[0].id
+        if source_id == target_id:
+            raise HTTPException(status_code=400, detail={"error_code": "same_entity",
+                                "message": "from_name and into_name resolve to the same entity"})
+        try:
+            target = await merge_entities(
+                session, user_id=str(body.user_id), source_id=source_id, target_id=target_id,
+            )
+        except MergeEntitiesError as exc:
+            code = exc.error_code
+            http = 409 if code in ("glossary_conflict",) else 400
+            raise HTTPException(status_code=http, detail={"error_code": code, "message": str(exc)})
+    return {
+        "merged": True, "project_id": pid,
+        "target_id": target.id, "target_name": target.name,
+        "merged_from_id": source_id, "aliases": list(target.aliases or []),
+    }
+
+
+class _CloseEpochIn(BaseModel):
+    user_id: UUID
+    book_id: UUID
+
+
+@router.post("/assistant/close-epoch")
+async def close_assistant_epoch(body: _CloseEpochIn) -> dict:
+    """WS-2.10a (T18 employment epoch) — CLOSE the user's current employment epoch. On a job change the
+    ex-employer's confidential facts must stop blending into the new job. An epoch IS the user's current
+    assistant-project generation (the ONE `is_assistant AND NOT is_archived` project + its diary book);
+    recall is project-scoped, so closing the epoch and provisioning a fresh project already isolates the
+    new job. This endpoint does the KNOWLEDGE half: bulk-invalidate the current project's facts
+    (`valid_until` — the bi-temporal close) then ARCHIVE the project so default recall can never resolve
+    it again. The gateway `new-epoch` orchestration then trashes the old diary book + provisions a fresh
+    project + diary volume (WS-2.10b). Internal-token; idempotent. Returns the closed project id."""
+    from app.db.neo4j import neo4j_session
+    from app.db.neo4j_repos.facts import invalidate_all_facts_for_project
+
+    pool = get_knowledge_pool()
+    project, created = await ProjectsRepo(pool).get_or_create_assistant_project(body.user_id, body.book_id)
+    if created:
+        # There was no prior epoch to close (a get_or_create just minted an empty one). Nothing to do.
+        return {"closed": False, "reason": "no_active_epoch", "project_id": str(project.project_id)}
+    async with neo4j_session() as session:
+        invalidated = await invalidate_all_facts_for_project(
+            session, user_id=str(body.user_id), project_id=str(project.project_id),
+        )
+    archived = await ProjectsRepo(pool).archive(body.user_id, project.project_id)
+    return {"closed": archived is not None, "project_id": str(project.project_id),
+            "facts_invalidated": invalidated}
+
+
+class _ExportPurgeEpochIn(BaseModel):
+    user_id: UUID
+    project_id: UUID  # the CLOSED (archived) epoch's assistant project to export + purge
+
+
+@router.post("/assistant/export-purge-epoch")
+async def export_purge_assistant_epoch(body: _ExportPurgeEpochIn) -> dict:
+    """WS-2.10d (T18 export-then-purge) — the SCOPED-ERASURE PRIMITIVE @ scope=epoch (D-R31). At an
+    employment boundary the user may export the closed epoch and then purge it. EXPORT first (dump every
+    confirmed fact, including the invalidated ones a close produced), THEN purge via the same
+    `_erase_one_assistant_project` cascade the account-erase uses (passages + KG nodes + pending/rejected
+    inboxes + the project row) — so this is the epoch-scoped sibling of the account-scoped D-R27 erase and
+    the entity-scoped WS-2.6c forget: one primitive, three scopes. Export-before-purge order means a purge
+    failure never loses the export. Owner/project scoped; internal-token."""
+    from app.db.neo4j import neo4j_session
+    from app.db.neo4j_repos.facts import export_facts_for_project
+
+    pool = get_knowledge_pool()
+    # SAFETY (final review) — purge only a CLOSED epoch. The endpoint takes a raw project_id, so guard
+    # that it belongs to the caller AND is archived: a caller must never purge their ACTIVE epoch through
+    # the epoch-boundary path (account-erase is the separate, deliberate D-R27 flow). Everything is
+    # user_id-scoped regardless, so a cross-user project_id already no-ops; this adds the active-epoch guard.
+    proj = await ProjectsRepo(pool).get(body.user_id, body.project_id)
+    if proj is None:
+        raise HTTPException(status_code=404, detail="epoch project not found")
+    if not proj.is_archived:
+        raise HTTPException(status_code=409, detail={"error_code": "epoch_not_closed",
+                            "message": "export-purge targets a CLOSED epoch; close it first"})
+    async with neo4j_session() as session:
+        facts = await export_facts_for_project(
+            session, user_id=str(body.user_id), project_id=str(body.project_id),
+        )
+    export = [
+        {"content": f.content, "type": f.type, "event_date": f.event_date_iso,
+         "subject": f.subject_canonical, "predicate": f.predicate, "object": f.object}
+        for f in facts
+    ]
+    purged = await _erase_one_assistant_project(pool, body.user_id, body.project_id)
+    return {"exported_count": len(export), "export": export, "purged": purged}
+
+
+class _ForgetEntityIn(BaseModel):
+    user_id: UUID
+    book_id: UUID
+    name: str  # the person/thing to forget (e.g. "Minh")
+
+
+@router.post("/assistant/forget-entity")
+async def forget_assistant_entity(body: _ForgetEntityIn) -> dict:
+    """WS-2.6c (D17 forget-a-person) — the KNOWLEDGE leg of the SCOPED-ERASURE PRIMITIVE at scope=entity.
+    Resolve the person BY NAME within the user's assistant project (never all-projects — D16), then:
+      1. KG cascade — DETACH DELETE the :Entity + every :Fact ABOUT it (`erase_entity_subgraph`).
+      2. inbox tombstone — delete pending facts ABOUT them + tombstone each dedup_key, so a later
+         re-distill of a day that still mentions them can NEVER re-propose the fact (no resurrection).
+      3. emit `knowledge.entity_forgotten` (best-effort outbox) so every derived consumer reconciles.
+
+    This is the STRUCTURED-memory half of forget. The SOURCE-text half — redacting the name from the
+    diary entry bodies (book-service) so a re-index can't resurface it — is the diary-span REDACTION leg,
+    driven by the gateway `/v1/assistant/forget` orchestration (book-service owns the entry text). Both
+    are needed for a complete forget; this endpoint returns the resolved name so the caller can redact.
+
+    Idempotent: a name that no longer resolves → `forgotten:false` (already gone). Internal-token."""
+    from app.db.neo4j import neo4j_session
+    from app.db.neo4j_repos.entities import erase_entity_subgraph, find_entities_by_name
+    from app.db.repositories.pending_facts import PendingFactsRepo
+    from app.events.outbox_emit import ENTITY_FORGOTTEN, emit_correction
+
+    name = (body.name or "").strip()
+    if not name:
+        raise HTTPException(status_code=422, detail="name is required")
+
+    pool = get_knowledge_pool()
+    project, _ = await ProjectsRepo(pool).get_or_create_assistant_project(body.user_id, body.book_id)
+    pid = str(project.project_id)
+    async with neo4j_session() as session:
+        matches = await find_entities_by_name(session, user_id=str(body.user_id), project_id=pid, name=name)
+        if not matches:
+            # Nothing in the KG under that name; still tombstone any pending proposals so a forget of a
+            # not-yet-confirmed person also can't resurrect.
+            tombstoned = await PendingFactsRepo(pool).tombstone_by_subject(body.user_id, project.project_id, name)
+            return {"forgotten": tombstoned > 0, "entities_deleted": 0, "facts_deleted": 0,
+                    "pending_tombstoned": tombstoned, "project_id": pid, "name": name}
+        entity = matches[0]
+        cascade = await erase_entity_subgraph(
+            session, user_id=str(body.user_id), entity_id=entity.id, project_id=pid,
+        )
+    tombstoned = await PendingFactsRepo(pool).tombstone_by_subject(body.user_id, project.project_id, name)
+    # Best-effort event so downstream consumers (search caches, etc.) reconcile; the cascade already did
+    # the destructive work, so a lost event under-notifies but never leaves the graph half-erased.
+    await emit_correction(
+        event_type=ENTITY_FORGOTTEN,
+        aggregate_id=entity.id,
+        payload={"user_id": str(body.user_id), "project_id": pid, "entity_id": entity.id,
+                 "name": entity.name, "scope": "entity",
+                 "facts_deleted": cascade["facts_deleted"], "pending_tombstoned": tombstoned},
+    )
+    return {
+        "forgotten": True, "project_id": pid, "name": entity.name, "entity_id": entity.id,
+        "entities_deleted": cascade["entities_deleted"], "facts_deleted": cascade["facts_deleted"],
+        "pending_tombstoned": tombstoned,
+    }
+
+
+class _InvalidateDayIn(BaseModel):
+    user_id: UUID
+    book_id: UUID
+    entry_date: str  # ISO 'YYYY-MM-DD' — the corrected diary day whose facts are superseded
+
+
+@router.post("/assistant/invalidate-day")
+async def invalidate_diary_day(body: _InvalidateDayIn) -> dict:
+    """WS-2.6a leg 3 (D17 amendment reconcile) — soft-invalidate a corrected diary day's CONFIRMED facts.
+
+    Called by worker-ai's re-extract path AFTER the user amends a day's entry (book-service leg 1) and
+    the corrected facts are re-queued to the inbox (leg 2). Resolves the user's assistant project by
+    (user, book) — never all-projects (D16) — then sets `valid_until` on every active confirmed :Fact
+    whose `event_date_iso` equals the corrected day. This is the leg that makes the OLD fact stop
+    resurrecting: without it a KG rebuild re-derives the superseded fact and recall shows both the wrong
+    and the corrected value (the `memory_forget`-stops-at-leg-3 lie D17 exists to kill). Internal-token;
+    idempotent (only active facts are touched)."""
+    day = _parse_iso_date(body.entry_date)
+    if day is None:
+        raise HTTPException(status_code=422, detail="entry_date must be ISO 'YYYY-MM-DD'")
+    from app.db.neo4j_repos.facts import invalidate_facts_for_day
+
+    pool = get_knowledge_pool()
+    project, _ = await ProjectsRepo(pool).get_or_create_assistant_project(body.user_id, body.book_id)
+    async with neo4j_session() as session:
+        invalidated = await invalidate_facts_for_day(
+            session,
+            user_id=str(body.user_id),
+            project_id=str(project.project_id),
+            event_date=day.isoformat(),
+        )
+    return {"invalidated": invalidated, "project_id": str(project.project_id),
+            "entry_date": day.isoformat()}
 
 
 class OrphanIndex(BaseModel):

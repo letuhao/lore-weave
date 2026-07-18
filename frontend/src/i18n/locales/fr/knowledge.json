@@ -22,7 +22,17 @@
     "hint": "Défilez pour zoomer · glissez l'espace vide pour déplacer · cliquez sur un nœud pour le détail · ⊞ pour développer",
     "loading": "Chargement du graphe…",
     "loadFailed": "Échec du chargement du graphe : {{error}}",
-    "empty": "Aucun graphe de connaissances pour le moment — construisez ce projet pour explorer son réseau."
+    "empty": "Aucun graphe de connaissances pour le moment — construisez ce projet pour explorer son réseau.",
+    "emptyLens": "Aucune relation ne correspond à cette vue — essayez une autre vue, un chapitre précédent ou effacez la vue.",
+    "truncatedLens": "affichage des {{n}} premières relations de cette vue",
+    "hintLens": "Faites défiler pour zoomer · glissez pour déplacer · cliquez sur un nœud pour les détails",
+    "lens": {
+      "view": "Vue",
+      "noView": "Toutes les relations",
+      "asOf": "À partir du chapitre",
+      "latest": "dernière",
+      "clear": "Effacer la vue"
+    }
   },
   "schemaSection": {
     "title": "Schéma",
@@ -72,7 +82,8 @@
       "extractionDisabled": "Désactivée",
       "book": "Livre",
       "world": "Monde",
-      "none": "—"
+      "none": "—",
+      "triageNudge": "{{count}} élément(s) extrait(s) nécessite un tri"
     },
     "placeholder": {
       "proposals": "Les propositions en attente arrivent ici (C11).",
@@ -404,7 +415,8 @@
         "global": "Global",
         "confidence": "Confiance",
         "mentions": "Mentions",
-        "anchor": "Score d'ancrage"
+        "anchor": "Score d'ancrage",
+        "scope": "Portée"
       },
       "promote": "Promouvoir au glossaire",
       "promoteHint": "Entité découverte. Promouvez-la pour créer un brouillon de glossaire suggéré par l'IA pour révision.",
@@ -421,8 +433,32 @@
         "decision": "Décision",
         "preference": "Préférence",
         "milestone": "Jalon",
-        "negation": "Négation"
-      }
+        "negation": "Négation",
+        "statement": "Déclaration",
+        "commitment": "Engagement"
+      },
+      "addFact": "Ajouter un fait",
+      "addFactTitle": "Ajouter un fait sur cette entité",
+      "factContentLabel": "Fait",
+      "factContentPlaceholder": "ex. Se méfie du Conseil après la trahison",
+      "factTypeLabel": "Type",
+      "factPredicatePlaceholder": "prédicat (optionnel, ex. loyal_à)",
+      "factObjectPlaceholder": "objet (optionnel, ex. Maison Vaeth)",
+      "addFactSave": "Enregistrer le fait",
+      "addFactCancel": "Annuler",
+      "addFactSuccess": "Fait ajouté",
+      "addFactFailed": "Impossible d'ajouter le fait : {{error}}",
+      "markWrong": "Marquer comme incorrect",
+      "markWrongConfirm": "Marquer ce fait comme incorrect ? Il sera invalidé (retiré de la mémorisation) mais conservé dans l'historique.",
+      "markWrongSuccess": "Fait marqué comme incorrect",
+      "markWrongFailed": "Impossible d'invalider le fait : {{error}}",
+      "factTypeHelp": "Quel type de fait s'agit-il ?",
+      "factAdvancedToggle": "Lier à une autre entité (optionnel)",
+      "replaceFact": "Remplacer ce fait",
+      "replaceFactSave": "Enregistrer le remplacement",
+      "replaceFactSuccess": "Fait remplacé",
+      "markWrongUndo": "Annuler",
+      "markWrongUndoFailed": "Impossible d'annuler : {{error}}"
     },
     "edit": {
       "title": "Modifier l'entité",
@@ -462,6 +498,41 @@
       "errArchived": "Impossible de fusionner des entités archivées. Restaurez-les d'abord.",
       "errGlossaryConflict": "Les deux entités sont liées à des entrées de glossaire différentes. Résolvez les ancres du glossaire avant la fusion.",
       "errUnknown": "Échec de la fusion : {{reason}}"
+    },
+    "create": {
+      "title": "Nouvelle entité",
+      "description": "Rédigez manuellement une entité du graphe de connaissances. Elle commence au statut « découverte » ; ancrez-la plus tard pour la rendre canonique.",
+      "newButton": "Nouvelle entité",
+      "needsProject": "Sélectionnez d'abord un projet",
+      "field": {
+        "name": "Nom",
+        "kind": "Type"
+      },
+      "save": "Créer",
+      "saving": "Création…",
+      "cancel": "Annuler",
+      "success": "Entité créée — {{name}} ({{kind}})",
+      "dedup": "Existait déjà — affichage de {{name}} ({{kind}})",
+      "failed": "Impossible de créer l'entité — {{error}}",
+      "discoveredHint": "Les nouvelles entités commencent avec le statut « découverte ». Le statut canonique est obtenu en les ancrant au glossaire."
+    },
+    "kind": {
+      "character": "Personnage",
+      "location": "Lieu",
+      "organization": "Organisation",
+      "concept": "Concept",
+      "item": "Objet"
+    },
+    "archive": {
+      "action": "Archiver",
+      "confirm": "Masquer cette entité ? Ses relations et son ancrage au glossaire sont conservés ; elle disparaît de la liste active. Vous pouvez annuler l'action immédiatement ou la faire réapparaître via le filtre « Archivé ».",
+      "success": "Entité archivée.",
+      "failed": "Impossible d'archiver — {{error}}",
+      "undo": "Annuler"
+    },
+    "restore": {
+      "success": "Entité restaurée.",
+      "failed": "Échec de la restauration — {{error}}"
     }
   },
   "jobs": {
@@ -1079,9 +1150,34 @@
       "markWrong": "Marquer comme erronée",
       "invalidating": "Suppression…",
       "failed": "Impossible d'enregistrer la correction : {{error}}"
+    },
+    "create": {
+      "title": "Lier l'entité",
+      "description": "Créez une relation de {{subject}} vers une autre de vos entités.",
+      "action": "Lier l'entité",
+      "subject": "De",
+      "predicate": "Relation",
+      "object": "Vers",
+      "objectPlaceholder": "Rechercher vos entités…",
+      "noMatches": "Aucune entité correspondante.",
+      "save": "Créer le lien",
+      "saving": "Liaison en cours…",
+      "cancel": "Annuler",
+      "success": "Relation créée.",
+      "notYours": "Impossible de créer le lien — un point de terminaison n'est pas l'une de vos entités.",
+      "selfLoop": "Une entité ne peut pas être liée à elle-même.",
+      "failed": "Impossible de créer le lien — {{error}}"
     }
   },
   "events": {
+    "create": {
+      "title": "Ajouter un événement",
+      "description": "Créez un nouvel événement chronologique pour ce personnage.",
+      "success": "Événement ajouté.",
+      "failed": "Échec de l'ajout : {{error}}",
+      "saving": "Ajout en cours…",
+      "save": "Ajouter l'événement"
+    },
     "edit": {
       "cta": "Modifier",
       "title": "Modifier l'événement",
@@ -1157,5 +1253,64 @@
       "divergent": "Divergent"
     },
     "totalRuns": "{{count}} cycles au total"
+  },
+  "triage": {
+    "loading": "Chargement de la file de tri…",
+    "loadFailed": "Impossible de charger la file de tri : {{error}}",
+    "empty": "Rien à trier — tous les éléments extraits correspondent à votre schéma.",
+    "resolved": "{{count}} élément(s) résolu(s)",
+    "resolveFailed": "Impossible de résoudre : {{error}}",
+    "handoffToGlossary": "Ouverture du glossaire pour finaliser cela dans votre codex…",
+    "itemType": {
+      "unknown_node_kind": "Type d'entité inconnu",
+      "unknown_edge_type": "Type de relation inconnu",
+      "edge_kind_mismatch": "Incohérence de l'extrémité de la relation",
+      "unknown_vocab_value": "Valeur hors vocabulaire",
+      "edge_cardinality_conflict": "Conflit de relations actives"
+    },
+    "action": {
+      "map": "Mapper vers l'existant",
+      "add_to_vocab": "Ajouter au vocabulaire",
+      "add_to_schema": "Ajouter au schéma",
+      "re_target": "Corriger le point de terminaison",
+      "widen_target_kinds": "Élargir les types autorisés",
+      "drop_edge": "Supprimer",
+      "close_previous": "Fermer le précédent",
+      "set_multi_active": "Autoriser plusieurs",
+      "promote_to_glossary_kind": "Promouvoir en type de glossaire",
+      "demote_to_attribute": "Rétrograder en attribut",
+      "dismiss": "Ignorer"
+    },
+    "prompt": {
+      "target_entity_id": "ID de l'entité cible corrigé",
+      "map_to": "Mapper vers (laisser vide pour utiliser la valeur détectée)"
+    },
+    "itemDismissed": "Élément ignoré",
+    "confirmSchemaWrite": "Ajouter ceci à votre schéma ? Cela modifiera la validation des futures extractions.",
+    "evidence": {
+      "unknown_edge_type": "La relation « {{predicate}} » n’est pas encore dans votre schéma.",
+      "unknown_vocab_value": "La valeur « {{value}} » n’est pas encore dans la liste « {{set}} ».",
+      "edge_kind_mismatch": "« {{predicate}} » a été utilisé entre un {{source}} et un {{target}}, ce que votre schéma n’autorise pas.",
+      "unknown_node_kind": "Le type « {{kind}} » n’est pas encore dans votre schéma.",
+      "edge_cardinality_conflict": "Il existe des relations « {{predicate}} » actives conflictuelles.",
+      "generic": "Cet élément extrait ne correspond pas à votre schéma."
+    },
+    "retarget": {
+      "title": "Pointer vers la bonne entité",
+      "description": "Recherchez vos entités et choisissez celle vers laquelle cette relation doit pointer.",
+      "searchPlaceholder": "Rechercher des entités par nom…",
+      "noMatches": "Aucune entité correspondante.",
+      "cancel": "Annuler",
+      "confirm": "Rediriger"
+    },
+    "map": {
+      "title": "Mapper vers un élément existant",
+      "description": "Choisissez l'élément du schéma auquel cet élément hors schéma doit être associé.",
+      "label": "Mapper vers",
+      "keepDetected": "Conserver la valeur détectée",
+      "cancel": "Annuler",
+      "confirm": "Mapper"
+    },
+    "emptyHint": "Le triage collecte tout élément extrait qui ne correspond pas encore à votre schéma — une file d'attente vide signifie que tout est bien classé."
   }
 }

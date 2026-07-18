@@ -12,6 +12,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/minio/minio-go/v7"
 	amqp "github.com/rabbitmq/amqp091-go"
@@ -36,8 +38,9 @@ type ImportProcessor struct {
 	BookDB  *pgxpool.Pool
 	Minio   *minio.Client
 
-	amqpCh      amqpPublisher
-	parseClient *ParseClient // P1 — initialised lazily in Run()
+	amqpCh            amqpPublisher
+	parseClient       *ParseClient        // P1 — initialised lazily in Run()
+	materializeClient *MaterializeClient  // 26 IX-12 — initialised lazily in Run()
 }
 
 func (t *ImportProcessor) Name() string { return "import-processor" }
@@ -54,6 +57,10 @@ func (t *ImportProcessor) Run(ctx context.Context) error {
 	// P1 — initialise the structural-decomposer client.
 	if t.parseClient == nil {
 		t.parseClient = NewParseClient(t.Cfg.KnowledgeServiceURL, t.Cfg.InternalToken)
+	}
+	// 26 IX-12 — the scene-decompile / back-link-write client.
+	if t.materializeClient == nil {
+		t.materializeClient = NewMaterializeClient(t.Cfg.CompositionServiceURL, t.Cfg.InternalToken)
 	}
 
 	// Connect to RabbitMQ for WebSocket push events
@@ -280,19 +287,59 @@ RETURNING id
 			_, _ = tx.Exec(ctx,
 				`INSERT INTO chapter_drafts(chapter_id, body, draft_format, draft_updated_at, draft_version) VALUES($1, $2, 'json', now(), 1)`,
 				chapterID, tiptapJSON)
-			_, _ = tx.Exec(ctx,
-				`INSERT INTO chapter_revisions(chapter_id, body, body_format, message, author_user_id) VALUES($1, $2, 'json', $3, $4)`,
-				chapterID, tiptapJSON, "imported from "+origFilename, payload.UserID)
-			_, _ = tx.Exec(ctx, `UPDATE chapters SET draft_revision_count=1 WHERE id=$1`, chapterID)
+			// 26 IX-1 corollary: the epub/docx worker importer gains the sync .txt
+			// path's auto-publish so every import path births index rows that parse
+			// the pinned PUBLISHED revision (F1: this importer used to leave chapters
+			// at 'draft'). Capture the import revision id (error-checked — it is what
+			// we pin) and mark the index fresh (last_parsed_revision_id=importRevID),
+			// since the scenes inserted below ARE that revision's parse. Born
+			// published+fresh ⇒ never needlessly re-swept.
+			var importRevID string
+			if err := tx.QueryRow(ctx,
+				`INSERT INTO chapter_revisions(chapter_id, body, body_format, message, author_user_id) VALUES($1, $2, 'json', $3, $4) RETURNING id`,
+				chapterID, tiptapJSON, "imported from "+origFilename, payload.UserID).Scan(&importRevID); err != nil {
+				tx.Rollback(ctx)
+				return count, fmt.Errorf("insert revision: %w", err)
+			}
+			if _, err := tx.Exec(ctx,
+				// WS-0.3 (spec §3.2): worker-infra writes book-service's `chapters` table
+				// DIRECTLY — a second service in the blast radius. It must set the KG pointer
+				// too, or every book imported through the async worker becomes invisible to
+				// the re-keyed reparse sweeper and never enters the knowledge graph.
+				// A freshly-imported chapter is never kg_exclude'd (column defaults false).
+				`UPDATE chapters SET draft_revision_count=1, editorial_status='published', published_revision_id=$2, kg_indexed_revision_id=$2, last_parsed_revision_id=$2 WHERE id=$1`,
+				chapterID, importRevID); err != nil {
+				tx.Rollback(ctx)
+				return count, fmt.Errorf("publish imported chapter: %w", err)
+			}
 
 			// Insert scenes for this chapter.
+			anyLinked := false
 			for _, sc := range ch.Scenes {
+				// 22-A5: set book_id (SC1 direct scope) AND source_scene_id (the SC7
+				// `data-scene-id` anchor back-link, when the parser recovered one) at
+				// INSERT — the same window-closing write the .txt path (parse.go) makes.
+				ssid := sceneSourceSceneIDArg(sc.SourceSceneID)
 				_, err := tx.Exec(ctx,
-					`INSERT INTO scenes(chapter_id, sort_order, path, leaf_text, content_hash, parse_version) VALUES($1, $2, $3, $4, $5, 1)`,
-					chapterID, sc.SortOrder, sc.Path, sc.LeafText, sc.ContentHash)
+					`INSERT INTO scenes(chapter_id, book_id, sort_order, path, leaf_text, content_hash, source_scene_id, parse_version) VALUES($1, $2, $3, $4, $5, $6, $7, 1)`,
+					chapterID, payload.BookID, sc.SortOrder, sc.Path, sc.LeafText, sc.ContentHash, ssid)
 				if err != nil {
 					tx.Rollback(ctx)
 					return count, fmt.Errorf("insert scene: %w", err)
+				}
+				if ssid != nil {
+					anyLinked = true
+				}
+			}
+
+			// SC11-amendment Phase 0 — WRITER #3. A RE-IMPORT of an exported book arrives with its
+			// anchors intact, so these scenes are born linked — and the IX-12 write-back below will
+			// never see them (it only fills NULLs). If this stayed silent, the round-trip case would
+			// render as an entirely unwritten book. Same tx as the INSERTs (INV-O12).
+			if anyLinked {
+				if err := emitScenesLinkedTx(ctx, tx, payload.BookID, chapterID); err != nil {
+					tx.Rollback(ctx)
+					return count, fmt.Errorf("emit scenes_linked: %w", err)
 				}
 			}
 
@@ -304,10 +351,153 @@ RETURNING id
 		}
 	}
 
+	// 5.5 — 26 IX-12 decompile write-back. The book's prose is imported+published; ask
+	// composition to decompile it into spec scenes and write the returned back-link map
+	// onto scenes.source_scene_id. BEST-EFFORT: the import's primary output (chapters +
+	// scenes + prose) is already committed, so a decompile/write-back failure must NOT
+	// fail the import — the leaves simply stay "unplanned" (a recoverable state) until the
+	// Hub's decompile CTA re-runs. A Work-less book is a graceful no-op (work_resolved=false).
+	t.writeBackSceneLinks(ctx, payload.BookID, payload.UserID)
+
 	// 6. Clean up import file from MinIO.
 	_ = t.Minio.RemoveObject(ctx, t.Cfg.MinioBucket, payload.FileStorageKey, minio.RemoveObjectOptions{})
 
 	return count, nil
+}
+
+// writeBackSceneLinks runs the 26 IX-12 loop: decompile via composition, then write the
+// returned mappings onto scenes.source_scene_id. book-service (this worker's book DB) is
+// the sole writer of source_scene_id (SCOPE-2 / DA-8 index-owner role). Only fills a leaf
+// whose back-link is still NULL — IX-5 rule 1 (a recovered anchor) WINS over the decompile
+// map, so an anchor-derived id set at INSERT is never clobbered. Idempotent: a re-run finds
+// the same decompile_key nodes and re-writes the same ids.
+func (t *ImportProcessor) writeBackSceneLinks(ctx context.Context, bookID, ownerUserID string) {
+	// Self-contained: lazily build the client so a caller that bypassed Run() (or a test)
+	// never nil-derefs. No-ops silently if the URL is unset (defense-in-depth).
+	if t.materializeClient == nil {
+		if t.Cfg == nil || t.Cfg.CompositionServiceURL == "" {
+			return
+		}
+		t.materializeClient = NewMaterializeClient(t.Cfg.CompositionServiceURL, t.Cfg.InternalToken)
+	}
+	res, err := t.materializeClient.Materialize(ctx, bookID, ownerUserID)
+	if err != nil {
+		slog.Warn("import: IX-12 decompile failed (leaves stay unplanned; recoverable via Hub)",
+			"book", bookID, "err", err)
+		return
+	}
+	if !res.WorkResolved || len(res.Mappings) == 0 {
+		slog.Info("import: IX-12 decompile no-op",
+			"book", bookID, "work_resolved", res.WorkResolved, "mappings", len(res.Mappings))
+		return
+	}
+	// SC11-amendment Phase 0 — WRITER #3, and the one that emitted NOTHING.
+	//
+	// This is the write that CREATES the spec back-link for a plain (non-round-tripped) import:
+	// the parser recovers no anchor, so `parse.go` inserts every scene with a NULL
+	// source_scene_id, and it is this decompile write-back that fills them. Before Phase 0 it
+	// fired no event at all — so composition's mirror would never learn the links exist, and a
+	// decompiled book would render as ENTIRELY UNWRITTEN. A confident, wrong, whole-book answer.
+	//
+	// Grouped PER CHAPTER and wrapped in a tx so the UPDATEs and the outbox row commit together
+	// (INV-O12). The best-effort, continue-on-error posture is preserved at the CHAPTER level: a
+	// chapter that fails is logged and skipped, the rest still land — the write-back has always
+	// been recoverable-by-retry, and one bad chapter must not strand the book.
+	byChapter := make(map[string][]SceneMapping, len(res.Mappings))
+	order := make([]string, 0, len(res.Mappings))
+	for _, m := range res.Mappings {
+		if _, seen := byChapter[m.ChapterID]; !seen {
+			order = append(order, m.ChapterID)
+		}
+		byChapter[m.ChapterID] = append(byChapter[m.ChapterID], m)
+	}
+
+	written, chaptersLinked := 0, 0
+	for _, chID := range order {
+		n, err := t.linkChapterScenes(ctx, bookID, chID, byChapter[chID])
+		if err != nil {
+			slog.Warn("import: IX-12 back-link write failed for chapter (partial; recoverable)",
+				"book", bookID, "chapter", chID, "err", err)
+			continue
+		}
+		written += n
+		if n > 0 {
+			chaptersLinked++
+		}
+	}
+	slog.Info("import: IX-12 decompile write-back done",
+		"book", bookID, "created", res.Created, "matched", res.Matched,
+		"mappings", len(res.Mappings), "linked", written, "chapters_linked", chaptersLinked)
+}
+
+// emitScenesLinkedTx writes `chapter.scenes_linked` into book-service's transactional outbox,
+// inside the caller's tx (INV-O12: an emit that cannot be written must roll the mutation back).
+//
+// THE CENSUS THAT WAS WRONG TWICE. `scenes.source_scene_id` is written in FIVE places, not three:
+//   1. book-service parse.go        — the .txt import INSERT
+//   2. book-service reparse.go      — via FOUR emit sites (publish, kg-index, mcp-publish, sweeper)
+//   3. worker-infra import (here)   — the HTML/txt import INSERT      <- emitted NOTHING
+//   4. worker-infra import_pdf      — the PDF import INSERT           <- emitted NOTHING
+//   5. worker-infra IX-12 write-back— the decompile back-link fill    <- emitted NOTHING
+//
+// (3) and (4) matter because they set the link from a parser-recovered anchor, and the IX-12
+// write-back at (5) only fills NULLs — so a scene that arrives ALREADY ANCHORED is never touched
+// by it and, before this, never announced. That is the ROUND-TRIP case: a user exports their book
+// and re-imports it, every scene arrives linked, and composition's mirror renders the whole book
+// as UNWRITTEN. A confident, wrong, whole-book answer.
+func emitScenesLinkedTx(ctx context.Context, tx pgx.Tx, bookID, chapterID string) error {
+	payload, err := json.Marshal(map[string]any{"book_id": bookID, "chapter_id": chapterID})
+	if err != nil {
+		return fmt.Errorf("scenes_linked marshal: %w", err)
+	}
+	if _, err := tx.Exec(ctx, `
+		INSERT INTO outbox_events (aggregate_type, aggregate_id, event_type, payload)
+		VALUES ('chapter', $1, 'chapter.scenes_linked', $2)
+	`, chapterID, payload); err != nil {
+		return fmt.Errorf("scenes_linked outbox insert: %w", err)
+	}
+	return nil
+}
+
+// linkChapterScenes writes one chapter's IX-12 back-links and emits `chapter.scenes_linked` in
+// the SAME transaction. Returns the number of scenes actually linked (0 ⇒ nothing changed ⇒ NO
+// event: a re-run of an already-linked book is a no-op, and a no-op must not fire).
+//
+// The event carries only {book_id, chapter_id} — composition re-reads and reconciles. Shipping the
+// mappings in the payload would let a stale redelivery overwrite newer state; a re-read cannot.
+func (t *ImportProcessor) linkChapterScenes(
+	ctx context.Context, bookID, chapterID string, ms []SceneMapping,
+) (int, error) {
+	tx, err := t.BookDB.Begin(ctx)
+	if err != nil {
+		return 0, fmt.Errorf("begin: %w", err)
+	}
+	defer tx.Rollback(ctx) // no-op after a successful Commit
+
+	linked := 0
+	for _, m := range ms {
+		tag, err := tx.Exec(ctx,
+			`UPDATE scenes SET source_scene_id=$1
+			   WHERE book_id=$2 AND chapter_id=$3 AND sort_order=$4 AND source_scene_id IS NULL`,
+			m.OutlineNodeID, bookID, m.ChapterID, m.SortOrder)
+		if err != nil {
+			return 0, fmt.Errorf("link scene (sort_order=%d): %w", m.SortOrder, err)
+		}
+		linked += int(tag.RowsAffected())
+	}
+	if linked == 0 {
+		return 0, tx.Commit(ctx) // nothing changed — commit the (empty) tx, emit nothing
+	}
+
+	// The emit MUST be able to fail the tx (INV-O12). Swallowing it would leave links that no
+	// consumer ever hears about — the projection silently diverges from the truth it mirrors.
+	if err := emitScenesLinkedTx(ctx, tx, bookID, chapterID); err != nil {
+		return 0, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return 0, fmt.Errorf("commit: %w", err)
+	}
+	return linked, nil
 }
 
 // insertPart writes a single parts row in its own short transaction
@@ -341,6 +531,22 @@ func nullIfEmpty(s string) any {
 		return nil
 	}
 	return s
+}
+
+// sceneSourceSceneIDArg maps the parser's optional `data-scene-id` anchor (22-A5/
+// SC7) to the scenes.source_scene_id INSERT bind: a valid UUID → that UUID, absent
+// or malformed → NULL. A malformed anchor is deliberately NOT fatal — the scene
+// still gets its index row with a NULL back-link ("anchor lost", the F6 re-anchor
+// path), never a failed import. Mirrors book-service parse.go's helper.
+func sceneSourceSceneIDArg(raw *string) any {
+	if raw == nil {
+		return nil
+	}
+	id, err := uuid.Parse(strings.TrimSpace(*raw))
+	if err != nil {
+		return nil
+	}
+	return id
 }
 
 // callPandoc sends the file to pandoc-server and returns HTML.

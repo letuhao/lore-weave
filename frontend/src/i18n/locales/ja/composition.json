@@ -171,7 +171,19 @@
     "kind_character": "キャラクター",
     "kind_location": "場所",
     "kind_faction": "勢力",
-    "kind_concept": "概念"
+    "kind_concept": "概念",
+    "rename": "名前を変更",
+    "renameConflict": "他の場所で変更されました。再読み込みしました。",
+    "editEntity": "別名と種別の編集",
+    "archive": "エンティティを退役させる",
+    "archiveConfirm": "「{{name}}」を退役させますか？ その関係性と用語集のアンカーは保持されます。本の中で再び言及されると、再び表示されます（復元ボタンはありません）。",
+    "archived": "退役済み — 本の中で再び言及されると、再び表示されます。",
+    "newEntity": "新規作成",
+    "editFailed": "編集に失敗しました: {{error}}",
+    "truncated": "最初の200件を表示しています。リストを絞り込むには検索条件を詳細に設定してください。",
+    "showingOf": "{{total}}件中 {{loaded}}件を表示中。",
+    "loadMore": "さらに読み込む",
+    "loadingMore": "読み込み中…"
   },
   "relmap": "関係",
   "relations": {
@@ -214,7 +226,10 @@
     "gone": "退場",
     "loading": "キャラクターアークを読み込み中…",
     "noProject": "ナレッジグラフがまだありません — この本を抽出してキャラクターアークを描いてください。",
-    "empty": "このキャラクターにはまだイベントがありません。"
+    "empty": "このキャラクターにはまだイベントがありません。",
+    "edit": "編集",
+    "linkEntity": "+ エンティティをリンク",
+    "addEvent": "+ イベントを追加"
   },
   "worldmap": "地図",
   "wmap": {
@@ -236,7 +251,10 @@
     "loading": "ワールドマップを読み込み中…",
     "addFailed": "場所を追加できませんでした。",
     "linkFailed": "場所をリンクできませんでした。",
-    "linkMissing": "それらの場所のいずれかはもう存在しません。"
+    "linkMissing": "それらの場所のいずれかはもう存在しません。",
+    "delete": "{{name}}を削除",
+    "deleteConfirm": "ワールドマップから「{{name}}」を削除しますか？削除すると、その場所はアーカイブされます。",
+    "deleteFailed": "場所を削除できませんでした。"
   },
   "grounding": "グラウンディング",
   "canon": "正典",
@@ -251,7 +269,11 @@
     "densityRange": "簡潔 ◂▸ 濃密",
     "pace": "テンポ",
     "paceRange": "緩 ◂▸ 急",
-    "scope": { "work": "作品", "chapter": "章", "scene": "シーン" },
+    "scope": {
+      "work": "作品",
+      "chapter": "章",
+      "scene": "シーン"
+    },
     "scopeHint": "最も具体的なスコープが優先（シーン › 章 › 作品）。中間値はバランス＝指示なし。",
     "voices": "キャラクターの声",
     "noVoices": "キャラクターの声はまだありません。",
@@ -259,15 +281,66 @@
     "addTag": "+ タグ",
     "remove": "削除"
   },
-  "heatmap": { "title": "言及ヒートマップ", "inProse": "本文中" },
-  "provenance": { "title": "AI来歴", "unreviewedCount": "未確認 {{n}} 件", "show": "表示", "hide": "非表示", "markAllReviewed": "すべて確認済みにする", "ai": "AI", "reviewed": "確認済み", "unreviewed": "未確認", "clickToReview": "（クリックで確認）" },
+  "heatmap": {
+    "title": "言及ヒートマップ",
+    "inProse": "本文中"
+  },
+  "provenance": {
+    "title": "AI来歴",
+    "unreviewedCount": "未確認 {{n}} 件",
+    "show": "表示",
+    "hide": "非表示",
+    "markAllReviewed": "すべて確認済みにする",
+    "ai": "AI",
+    "reviewed": "確認済み",
+    "unreviewed": "未確認",
+    "clickToReview": "（クリックで確認）"
+  },
   "flywheel": "フライホイール",
-  "flywheelPanel": { "loading": "読み込み中…", "empty": "章を公開すると正典が育ちます — 新しいエンティティ・関係・イベントがここに表示されます。", "subtitle": "最新の公開で正典が成長しました:", "entities": "エンティティ", "relations": "関係", "events": "イベント", "highlights": "新しいハイライト", "kind": { "entity": "エンティティ", "event": "イベント", "relation": "関係" } },
-  "view": { "power_view": "パワービュー", "back_to_editor": "エディターに戻る" },
-  "dock": { "addPanel": "パネルを追加", "float": "フロート", "dock": "ドック", "popout": "別ウィンドウ" },
-  "popout": { "invalid": "このポップアウトリンクは無効です。" },
+  "flywheelPanel": {
+    "loading": "読み込み中…",
+    "empty": "章を公開すると正典が育ちます — 新しいエンティティ・関係・イベントがここに表示されます。",
+    "subtitle": "最新の公開で正典が成長しました:",
+    "entities": "エンティティ",
+    "relations": "関係",
+    "events": "イベント",
+    "highlights": "新しいハイライト",
+    "kind": {
+      "entity": "エンティティ",
+      "event": "イベント",
+      "relation": "関係"
+    }
+  },
+  "view": {
+    "power_view": "パワービュー",
+    "back_to_editor": "エディターに戻る"
+  },
+  "dock": {
+    "addPanel": "パネルを追加",
+    "float": "フロート",
+    "dock": "ドック",
+    "popout": "別ウィンドウ"
+  },
+  "popout": {
+    "invalid": "このポップアウトリンクは無効です。"
+  },
   "references": "参考資料",
-  "referencesPanel": { "title": "タイトル", "author": "著者", "contentPlaceholder": "参考になる一節・影響元を貼り付け…", "pickEmbedModel": "埋め込みモデル（この作品で一度だけ設定）", "noEmbedModel": "参考資料の検索を有効にするには、AI設定で埋め込みモデル（例：bge-m3）を追加してください。", "add": "参考資料を追加", "adding": "追加中…", "relevant": "このシーン向け", "searchPlaceholder": "検索…", "unavailable": "検索を利用できません（埋め込みプロバイダー停止中）。", "noHits": "一致する参考資料はまだありません。", "library": "ライブラリ", "delete": "削除", "empty": "参考資料がまだありません — 上から影響元を追加してください。" },
+  "referencesPanel": {
+    "title": "タイトル",
+    "author": "著者",
+    "contentPlaceholder": "参考になる一節・影響元を貼り付け…",
+    "pickEmbedModel": "埋め込みモデル（この作品で一度だけ設定）",
+    "noEmbedModel": "参考資料の検索を有効にするには、AI設定で埋め込みモデル（例：bge-m3）を追加してください。",
+    "add": "参考資料を追加",
+    "adding": "追加中…",
+    "relevant": "このシーン向け",
+    "searchPlaceholder": "検索…",
+    "unavailable": "検索を利用できません（埋め込みプロバイダー停止中）。",
+    "noHits": "一致する参考資料はまだありません。",
+    "library": "ライブラリ",
+    "delete": "削除",
+    "empty": "参考資料がまだありません — 上から影響元を追加してください。"
+  },
   "progressPanel": {
     "loading": "進捗を読み込み中…",
     "error": "進捗を読み込めませんでした。",
@@ -311,6 +384,9 @@
   "statDiverge": "分岐（K）",
   "statStream": "ストリーム",
   "guidePlaceholder": "共作AIへの任意の指示…",
+  "correction": {
+    "capturedToast": "記録しました — 共著者（AI）がこれを学習します"
+  },
   "reasoning": "推論",
   "reasoningHint": "自動＝サーバーがモデルごとに判断します。オフは思考を無効化、低／中／高は強制します。",
   "reasoningAuto": "思考：自動",
@@ -352,7 +428,6 @@
   "pacing": "テンポ",
   "canon_consistency": "正典整合",
   "dismiss": "却下",
-  "overrideSlipBlocked": "承認をブロックしました：異本のオーバーライドが原作の値に戻りました。承認する前に再生成してください。",
   "overrideSlipExhausted": "再生成上限に達してもオーバーライドが戻り続けています。確認のため表示します（承認はブロックされません）。",
   "overrideSlipDetail": "{{name}}（{{field}}）：期待値「{{expected}}」、検出値「{{found}}」",
   "deltaInconsistencyDetail": "{{name}}：差分ルール「{{rule}}」と矛盾します",
@@ -375,6 +450,12 @@
   "canonUntil": "終了（読む順）",
   "canonActive": "有効",
   "canonInactive": "無効",
+  "canonArchivedTag": "退役済み",
+  "canonShowArchived": "アーカイブを表示",
+  "canonRuleArchived": "ルールをアーカイブしました",
+  "canonRuleRestored": "ルールを復元しました",
+  "restore": "復元",
+  "undo": "元に戻す",
   "canonWindowInverted": "「開始」は「終了」以下である必要があります。",
   "archive": "アーカイブ",
   "noRules": "正典ルールはまだありません。",
@@ -556,12 +637,18 @@
     "scope": {
       "label": "Motif scope",
       "my": "My library",
-      "catalog": "Public catalog"
+      "catalog": "Public catalog",
+      "book": "本",
+      "shared": "共有済み",
+      "system": "システム",
+      "drafts": "下書き",
+      "needsBook": "モチーフを表示するには本を開いてください"
     },
     "search": "Search motifs",
     "overuse": "\"{{name}}\" is already used in {{chapters}} — consider varying it.",
     "list": {
-      "noMatch": "No motifs match — clear filters."
+      "noMatch": "No motifs match — clear filters.",
+      "truncated": "最初の100件を表示しています — 残りを見るには検索やフィルターで絞り込んでください。"
     },
     "error": {
       "load": "Couldn't load — please retry."
@@ -656,7 +743,8 @@
     },
     "binding": {
       "freeForm": "No motif matched — this scene is free-form.",
-      "commitGenerate": "Commit + write this scene →"
+      "commitGenerate": "Commit + write this scene →",
+      "noWork": "この本のシーンにモチーフを紐付けるためのプランを作成します。"
     },
     "swap": {
       "title": "Swap motif",
@@ -680,7 +768,8 @@
         "ok": "On beat",
         "warn": "Tension drift",
         "bad": "Beat missed"
-      }
+      },
+      "rerunNeedsModel": "適合性を再計算するモデルを選択してください"
     },
     "arc": {
       "mobileNotice": "The timeline grid is available on a larger screen — here you can edit it as a list.",
@@ -690,7 +779,110 @@
       "moveRight": "Move later",
       "grow": "Lengthen",
       "shrink": "Shorten",
-      "remove": "Remove"
+      "remove": "Remove",
+      "libraryEmpty": "アークのテンプレートがまだありません。新しく作成するか、ストーリーをインポートして分析しましょう。",
+      "templates": {
+        "tabLibrary": "ライブラリ",
+        "tabCatalog": "カタログ",
+        "tabDeconstruct": "インポートして分析",
+        "tier_all": "すべて",
+        "tier_mine": "マイテンプレート",
+        "tier_system": "システム",
+        "tier_book": "書籍",
+        "new": "+ 新規作成",
+        "loading": "読み込み中…",
+        "loadError": "テンプレートを読み込めませんでした。",
+        "retry": "再試行",
+        "chapters": "{{count}} 章",
+        "chipSystem": "システム",
+        "chipMine": "マイ",
+        "chipPublic": "公開",
+        "archive": "アーカイブ",
+        "adopt": "採用",
+        "createCode": "コード (一意)",
+        "createName": "名前",
+        "createShare": "この本の共同作業者と共有する (本のティアによる)",
+        "create": "作成",
+        "cancel": "キャンセル",
+        "catalogError": "カタログを読み込めませんでした。",
+        "catalogEmpty": "公開されているアークテンプレートはまだありません。",
+        "back": "← すべてのテンプレート",
+        "driftTitle": "ドリフト — この本で使用中",
+        "driftUnapplied": "この本にはまだ適用されていません — 上記から適用してドリフトを比較してください。",
+        "driftNoProvenance": "このアークは直接作成されました — 比較対象となるテンプレートはありません。",
+        "driftGone": "ソーステンプレートが利用できなくなっています。",
+        "driftLoading": "ドリフトを読み込み中…",
+        "driftClean": "ドリフトなし — 実績値はテンプレートと一致しています。",
+        "driftSummary": "{{gaps}} のカバー範囲の乖離 · {{violations}} の順序の問題 · {{folded}} の折り返し配置",
+        "driftPacingOnly": "構成は一致していますが、ペースにズレが生じました（最大 {{drift}}）。",
+        "driftThreads": "スレッドのカバー範囲",
+        "driftNoThreads": "比較対象となるスレッドがテンプレートにありません。",
+        "driftPacing": "ペース配分",
+        "driftMax": "最大ドリフト {{drift}}",
+        "driftPacingNC": "比較不能 — テンプレートにテンション曲線がありません。",
+        "driftSuccession": "順序",
+        "driftSuccessionOk": "順序の違反はありません。",
+        "driftViolation": "{{label}}: {{n}} 件の順序違い",
+        "driftFolded": "折り返し（未結合）",
+        "untitledArc": "（無題のアーク）",
+        "truncated": "全 {{count}} 件のうち最初の {{shown}} 件を表示しています — もっと探すにはカタログまたは上位プランをご利用ください。",
+        "tabSuggest": "提案"
+      },
+      "import": {
+        "privacy": "元のテキストはあなただけのプライベートなものであり、共有されることはありません。公開できるのは、そこから生成された抽象的な構造のみです。また、公開時にソースへの参照は削除されます。",
+        "sources": "参照ソース",
+        "loading": "読み込み中…",
+        "noSources": "ソースがありません — 下に貼り付けてください。",
+        "untitled": "（無題）",
+        "deleteConfirm": "このソースを削除しますか？復元はできません。",
+        "deleteTitle": "削除（復元不可）",
+        "sourceError": "ソースを保存できませんでした — もう一度お試しください。",
+        "what": "参照内容を再利用可能なアークテンプレートに解体します（LLM使用量に応じて課金されます）。",
+        "hint": "アークのヒント（任意）",
+        "useWeb": "ウェブ検索を許可",
+        "model": "モデルを解体",
+        "estimating": "見積もり中…",
+        "running": "解体中…",
+        "run": "解体する",
+        "selectFirst": "先にソースを選択してください。",
+        "done": "新しいアークテンプレートが作成されました。ライブラリを確認してください。",
+        "pasteTitle": "タイトル",
+        "pasteBody": "参照テキストを貼り付け…",
+        "tooLong": "長すぎます — インポートする前に短くしてください。",
+        "addSource": "ソースを追加"
+      },
+      "extract": {
+        "blurb": "このアークの構成を、ライブラリ内の再利用可能なテンプレートとして保存します。",
+        "open": "テンプレートとして保存…",
+        "namePlaceholder": "テンプレート名",
+        "saving": "保存中…",
+        "save": "保存",
+        "cancel": "キャンセル",
+        "conflict": "その名前のテンプレートは既に存在します。名前を変更してください。",
+        "error": "このアークをテンプレートとして保存できませんでした。",
+        "done": "「{{name}}」をテンプレートライブラリに保存しました。"
+      },
+      "suggest": {
+        "noProject": "作品（Work）を含む本を開くと、その前提条件に基づいたアークの提案が表示されます。",
+        "premisePlaceholder": "前提条件を入力してください — 例：「不本意な継承者が、没落した家門を再興しなければならない」",
+        "genrePlaceholder": "ジャンル（任意）",
+        "running": "ランキング中…",
+        "run": "アークを提案",
+        "error": "アークの提案をランク付けできませんでした。",
+        "empty": "適合するアークのテンプレートがまだありません。新しく作成するか、物語をインポートして解析してください。",
+        "mine": "あなたの",
+        "span": "{{count}} 章"
+      },
+      "decompile": {
+        "open": "チャプターをアークにグループ化",
+        "confirm": "この本のチャプターをアークに自動的にグループ化します（1アークあたり約{{n}}チャプター）。再実行しても問題ありません。既存のアークは再利用されます。",
+        "running": "グループ化中…",
+        "run": "アークにグループ化",
+        "cancel": "キャンセル",
+        "error": "チャプターをアークにグループ化できませんでした。",
+        "done": "{{chapters}}個のチャプターを{{arcs}}個のアークにグループ化しました。",
+        "none": "アークにグループ化するチャプターがまだありません。"
+      }
     },
     "simple": {
       "actant": {
@@ -748,6 +940,38 @@
       "knows": "Knows",
       "deceived": "Deceived",
       "gap": "Gap"
+    },
+    "graph": {
+      "title": "グラフ — 「composed of」の「precedes」のバリエーション",
+      "loading": "エッジを読み込み中…",
+      "error": "モチーフグラフを読み込めませんでした。",
+      "retry": "リトライ",
+      "empty": "まだ関係性は存在しません。",
+      "deleteEdge": "エッジを削除",
+      "addEdge": "関係を追加",
+      "pickNeighbor": "モチーフを選択…",
+      "add": "エッジを追加",
+      "cancel": "キャンセル",
+      "kind": {
+        "composed_of": "〜で構成される",
+        "precedes": "〜に先行する",
+        "variant_of": "〜のバリエーション"
+      },
+      "truncated": "最初の {{cap}} 個のモチーフを表示中 — さらに表示するには、ティアで絞り込むか検索してください。",
+      "canvasLoading": "モチーフグラフを読み込み中…",
+      "canvasEmpty": "グラフに表示するモチーフがまだありません — モチーフを作成または採用し、それらをリンクさせてください。"
+    },
+    "suggest": {
+      "button": "モチーフを提案",
+      "loading": "このシーンに合うモチーフをランク付け中…",
+      "error": "モチーフを提案できませんでした。",
+      "retry": "再試行",
+      "empty": "このシーンに合うモチーフがまだありません。ライブラリを増やしてください。",
+      "bind": "紐付ける",
+      "degradedMine": "モチーフは適合度順にランク付けされていません。設定で埋め込みモデルをセットアップすると、意味的な類似度に基づいてランク付けされます。",
+      "degradedLibrary": "適合度順ではありません。共有ライブラリの埋め込みモデルが設定されていないため、これらはスコア化された一致ではなく、ジャンルによるフォールバックです。",
+      "sectionMine": "あなたのモチーフ",
+      "sectionLibrary": "ライブラリから"
     }
   },
   "authoringRun": {
@@ -840,7 +1064,11 @@
       "failedUnit": "このユニットは失敗しました：",
       "verdictShow": "詳細を表示 ▾",
       "verdictHide": "詳細を隠す ▴",
-      "sev": { "ok": "問題なし", "warn": "警告", "severe": "重大" },
+      "sev": {
+        "ok": "問題なし",
+        "warn": "警告",
+        "severe": "重大"
+      },
       "cascadeWarning": "後続の{{count}}件のユニットがすでに下書き／承認済みです（{{chapters}}）— これは参考情報のみで、このユニットを却下しても自動的には取り消されません。",
       "accept": "承認",
       "reject": "却下",
@@ -864,5 +1092,6 @@
       "loading": "実行を読み込み中…",
       "back": "← 実行一覧に戻る"
     }
-  }
+  },
+  "overrideSlipBlocked": "ブロックされた上書き: 「もしも」バージョンの上書きが、正典の値へと戻ってしまいました。承認する前に再生成してください。"
 }

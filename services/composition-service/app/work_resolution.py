@@ -44,9 +44,7 @@ class WorkResolution:
 
 
 class _WorksRepo(Protocol):
-    async def resolve_by_book(
-        self, user_id: UUID, book_id: UUID
-    ) -> list[CompositionWork]: ...
+    async def resolve_by_book(self, book_id: UUID) -> list[CompositionWork]: ...
 
 
 class _KnowledgeClient(Protocol):
@@ -80,15 +78,19 @@ def _book_project_ids(projects: list[dict[str, Any]], book_id: UUID) -> list[UUI
 
 
 async def resolve_work(
-    user_id: UUID,
     book_id: UUID,
     *,
     bearer: str,
     works_repo: _WorksRepo,
     knowledge_client: _KnowledgeClient,
 ) -> WorkResolution:
-    """Resolve a book to its Work per §6.2. See module docstring for branches."""
-    marked = await works_repo.resolve_by_book(user_id, book_id)
+    """Resolve a book to its Work per §6.2. See module docstring for branches.
+
+    BOOK-driven, caller-independent (PM-9, spec 25): Work rows are per-book, so
+    resolution takes no user id — the caller's access is decided upstream at the
+    E0 book-grant gate. The `bearer` still forwards the CALLER's JWT to
+    knowledge-service (actor identity, not scope)."""
+    marked = await works_repo.resolve_by_book(book_id)
     if len(marked) == 1:
         return WorkResolution(status="found", work=marked[0])
     if len(marked) > 1:

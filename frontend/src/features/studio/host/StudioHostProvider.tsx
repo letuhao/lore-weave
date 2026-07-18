@@ -11,6 +11,7 @@
 import { createContext, useContext, useEffect, useMemo, useRef, useState, type MutableRefObject, type ReactNode } from 'react';
 import { useSyncExternalStore } from 'react';
 import type { DockviewApi } from 'dockview-react';
+import { reflowDockGrid } from '../layout/dockLayout';
 import { applyBusEvent, type StudioBusEvent, type StudioBusSnapshot, type StudioStatusBarItem, type StudioToolRegistration } from './types';
 
 interface Store<S> {
@@ -51,6 +52,10 @@ export interface StudioHost {
   // panel id IS the component id (the singleton panels).
   openPanel: (panelId: string, opts?: { focus?: boolean; title?: string; params?: Record<string, unknown>; component?: string }) => void;
   focusManuscriptUnit: (chapterId: string, panelId?: string) => void;
+  // Arrange the open dock panels into a cols×rows grid (the layout-preset picker's one seam). Wraps
+  // reflowDockGrid so the dock api stays encapsulated; the resulting layout persists via the
+  // existing onDidLayoutChange writer. No-op if the dock api isn't ready or <2 panels are open.
+  applyDockLayout: (cols: number, rows: number) => void;
   // Internals for the reactive hooks + the dock wiring (not part of the public contract).
   _regStore: Store<StudioToolRegistration[]>;
   _busStore: Store<StudioBusSnapshot>;
@@ -120,6 +125,10 @@ export function StudioHostProvider({ bookId, children }: { bookId: string; child
         busStore.set(applyBusEvent(busStore.get(), { type: 'chapter', chapterId, bookId }));
         openPanel(panelId);
       },
+      applyDockLayout: (cols, rows) => {
+        const api = dockApiRef.current;
+        if (api) reflowDockGrid(api, cols, rows);
+      },
       _regStore: regStore,
       _busStore: busStore,
       _statusStore: statusStore,
@@ -172,6 +181,27 @@ export function useStudioBusSelector<T>(selector: (s: StudioBusSnapshot) => T): 
     return _busStore.subscribe(check);
   }, [_busStore]);
   return value;
+}
+
+/** Subscribe to ONE bus slice, tolerating a MISSING host (returns `fallback` unchanged when
+ * rendered outside a StudioHostProvider). For shared components — e.g. ManuscriptNavigator, which
+ * has unit tests that render it with no studio host — that must read the bus when present but never
+ * throw when absent. Same selector granularity as useStudioBusSelector. */
+export function useOptionalStudioBusSelector<T>(selector: (s: StudioBusSnapshot) => T, fallback: T): T {
+  const host = useOptionalStudioHost();
+  const selRef = useRef(selector);
+  selRef.current = selector;
+  const [value, setValue] = useState<T>(() => (host ? selector(host._busStore.get()) : fallback));
+  useEffect(() => {
+    if (!host) return;
+    const check = () => {
+      const next = selRef.current(host._busStore.get());
+      setValue((prev) => (Object.is(prev, next) ? prev : next));
+    };
+    check(); // reconcile anything that changed between render and effect
+    return host._busStore.subscribe(check);
+  }, [host]);
+  return host ? value : fallback;
 }
 
 /** The live sorted status-bar items for one side (#11 F2) — re-renders on (un)register only;

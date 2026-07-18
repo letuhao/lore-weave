@@ -49,6 +49,10 @@ export interface JsonDocumentProvider {
   schema?: object;
   /** Human-readable dock-tab label key (studio i18n ns), e.g. 'documents.manuscriptUnit'. */
   titleKey?: string;
+  /** The doc type is immutable output (e.g. a plan-pass artifact). The json-editor renders it as
+   *  a VIEWER: no Save, no Revert, no ⌘S. Default false = today's editable behaviour. A property
+   *  of the TYPE, not a resource instance — every artifact of this type is read-only. */
+  readOnly?: boolean;
   /** Open (or join) the shared handle for one resource. The registry refcounts. */
   open(ctx: DocContext, resourceId: string): Promise<DocumentHandle> | DocumentHandle;
 }

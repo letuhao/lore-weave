@@ -135,7 +135,7 @@ async def detect_and_update_threads(
     if not scene_text or not scene_text.strip():
         return ThreadUpdateResult(status="empty")
 
-    open_threads = await repo.list_open(user_id, project_id, limit=_OPEN_CONTEXT_CAP)
+    open_threads = await repo.list_open(project_id, limit=_OPEN_CONTEXT_CAP)
     open_ids = {str(t.id) for t in open_threads}
     # review-impl LOW#2 (accepted): the fold-dedup is best-effort against THIS
     # snapshot — two scenes generating concurrently for the same project could
@@ -177,7 +177,7 @@ async def detect_and_update_threads(
             continue
         try:
             updated = await repo.update_status(
-                user_id, project_id, UUID(tid), status="paid", payoff_node=opened_at_node,
+                project_id, UUID(tid), status="paid", payoff_node=opened_at_node,
             )
         except Exception:  # noqa: BLE001 — best-effort per-thread (incl bad UUID)
             continue
@@ -195,7 +195,7 @@ async def detect_and_update_threads(
             continue
         try:
             await repo.open_thread(
-                user_id, project_id, kind=it["kind"], summary=it["summary"],
+                project_id, created_by=user_id, kind=it["kind"], summary=it["summary"],
                 opened_at_node=opened_at_node, trigger=it.get("trigger", "") or "",
             )
         except Exception:  # noqa: BLE001 — best-effort per-thread

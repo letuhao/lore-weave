@@ -72,6 +72,16 @@ export function useGlossaryEntity(bookId: string, entityId: string) {
     await reload();
   };
 
+  // D-GLOSSARY-ENTITY-SCOPE — an optional author-set disambiguator (e.g. a
+  // world/realm name) for a name that legitimately recurs across different
+  // in-story contexts. A colliding value throws (GLOSS_DUPLICATE_NAME, 409);
+  // the caller decides how to surface it (mirrors save/setStatus above).
+  const setScopeLabel = async (scopeLabel: string) => {
+    if (!accessToken || !entity) return;
+    await glossaryApi.patchEntity(bookId, entityId, { scope_label: scopeLabel }, accessToken);
+    await reload();
+  };
+
   // Pure local merge — the actual translation write already happened inside
   // AttrTranslationRow; this just folds the result into the shared entity snapshot.
   const applyTranslationChange = useCallback(
@@ -108,6 +118,42 @@ export function useGlossaryEntity(bookId: string, entityId: string) {
     setEntity((prev) => (prev ? { ...prev, evidence_count: prev.evidence_count + delta } : prev));
   };
 
+  // Drop any pending edits whose target row no longer exists (used after add/remove so the user's
+  // OTHER unsaved edits are PRESERVED — a plain reload() clears ALL pending, silently losing edits
+  // on unrelated attrs).
+  const prunePending = (validIds: Set<string>) =>
+    setPendingChanges((prev) => {
+      const next = new Map<string, string>();
+      for (const [k, v] of prev) if (validIds.has(k)) next.set(k, v);
+      return next;
+    });
+
+  // S-06 — add a value for a kind attr-def the entity has NO row for yet (added to the ontology
+  // after this entity was created; until now only the MCP path could fill it). Refetch for the
+  // complete new-row data, but PRESERVE the user's other unsaved edits (reload() would clear them).
+  const addAttributeValue = async (attributeDefId: string, value: string) => {
+    if (!accessToken || !entity) return;
+    await glossaryApi.addAttributeValue(bookId, entityId, { attribute_def_id: attributeDefId, value }, accessToken);
+    const e = await glossaryApi.getEntity(bookId, entityId, accessToken);
+    setEntity(e);
+    prunePending(new Set(e.attribute_values.map((v) => v.attr_value_id)));
+  };
+
+  // S-06 — remove a value ROW entirely (distinct from blanking it to empty). Local update — drop
+  // the row + its pending edit — so OTHER unsaved edits survive (no clear-all reload).
+  const removeAttributeValue = async (attrValueId: string) => {
+    if (!accessToken || !entity) return;
+    await glossaryApi.deleteAttributeValue(bookId, entityId, attrValueId, accessToken);
+    setEntity((prev) =>
+      prev ? { ...prev, attribute_values: prev.attribute_values.filter((av) => av.attr_value_id !== attrValueId) } : prev,
+    );
+    setPendingChanges((prev) => {
+      const m = new Map(prev);
+      m.delete(attrValueId);
+      return m;
+    });
+  };
+
   return {
     entity,
     loading,
@@ -119,9 +165,12 @@ export function useGlossaryEntity(bookId: string, entityId: string) {
     discard,
     save,
     setStatus,
+    setScopeLabel,
     reload,
     applyTranslationChange,
     bumpEvidenceCount,
+    addAttributeValue,
+    removeAttributeValue,
   };
 }
 

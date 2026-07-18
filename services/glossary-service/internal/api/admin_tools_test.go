@@ -273,3 +273,57 @@ func TestAdminMCP_FailClosedWhenDisabled(t *testing.T) {
 		t.Errorf("admin disabled: want 401 fail-closed, got %d", w.Code)
 	}
 }
+
+// External MCP discoverability audit #11 — every Patch* field on adminPatchToolIn is a
+// pointer (nil = unchanged). Proposing a patch with NO fields supplied changes nothing;
+// it must still mint (not an error) but must carry a warning. Calls the handler directly
+// (no RSA/MCP transport needed — adminSubFromCtx just reads a context value).
+func TestAdminTool_ProposePatchNoOpWarnsOnEmptyPayload(t *testing.T) {
+	pool := openTestDB(t)
+	runK2aMigrations(t, pool)
+	srv := NewServer(pool, &config.Config{JWTSecret: versionTestSecret, InternalServiceToken: adminMCPInternalToken})
+	code := "adm_patch_noop_" + uuid.NewString()[:8]
+	if _, err := pool.Exec(context.Background(),
+		`INSERT INTO system_genres (code,name,content_hash) VALUES ($1,'AdmPatchNoop','g0')`, code); err != nil {
+		t.Fatalf("seed system genre: %v", err)
+	}
+	t.Cleanup(func() { pool.Exec(context.Background(), `DELETE FROM system_genres WHERE code=$1`, code) }) //nolint:errcheck
+
+	ctx := context.WithValue(context.Background(), ctxKeyAdminSub, uuid.NewString())
+	_, card, err := srv.toolAdminProposePatch(ctx, nil, adminPatchToolIn{Level: "genre", Code: code})
+	if err != nil {
+		t.Fatalf("propose patch with no fields: %v", err)
+	}
+	if card.ConfirmToken == "" {
+		t.Fatal("a no-op patch must still mint a valid confirm_token (it is not an error)")
+	}
+	if card.Warning == "" {
+		t.Fatalf("a patch with no fields supplied must carry a no-op warning, got card=%+v", card)
+	}
+	if !strings.Contains(card.Warning, "no fields") {
+		t.Errorf("warning should state no fields were given, got %q", card.Warning)
+	}
+}
+
+// A patch that actually supplies a field must NOT carry the no-op warning.
+func TestAdminTool_ProposePatchWithFieldCarriesNoWarning(t *testing.T) {
+	pool := openTestDB(t)
+	runK2aMigrations(t, pool)
+	srv := NewServer(pool, &config.Config{JWTSecret: versionTestSecret, InternalServiceToken: adminMCPInternalToken})
+	code := "adm_patch_real_" + uuid.NewString()[:8]
+	if _, err := pool.Exec(context.Background(),
+		`INSERT INTO system_genres (code,name,content_hash) VALUES ($1,'AdmPatchReal','g0')`, code); err != nil {
+		t.Fatalf("seed system genre: %v", err)
+	}
+	t.Cleanup(func() { pool.Exec(context.Background(), `DELETE FROM system_genres WHERE code=$1`, code) }) //nolint:errcheck
+
+	ctx := context.WithValue(context.Background(), ctxKeyAdminSub, uuid.NewString())
+	newName := "AdmPatchReal Renamed"
+	_, card, err := srv.toolAdminProposePatch(ctx, nil, adminPatchToolIn{Level: "genre", Code: code, Name: &newName})
+	if err != nil {
+		t.Fatalf("propose patch: %v", err)
+	}
+	if card.Warning != "" {
+		t.Errorf("a patch with a real field must not carry the no-op warning, got %q", card.Warning)
+	}
+}

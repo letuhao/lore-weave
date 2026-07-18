@@ -18,6 +18,39 @@ import type {
 
 const BASE = '/v1/composition';
 
+// ── the motif graph (BE-M3) edge shapes ──────────────────────────────────────
+export type MotifLinkKind = 'composed_of' | 'precedes' | 'variant_of';
+export type MotifLinkDirection = 'out' | 'in' | 'both';
+/** One relationship edge as GET /motifs/{id}/links returns it — the edge id/kind/ord/
+ *  direction plus the NEIGHBOR stub (id/code/name), so a list needs no second fetch. */
+export type MotifLinkRow = {
+  id: string;
+  kind: MotifLinkKind;
+  ord: number | null;
+  direction: 'out' | 'in';
+  neighbor_id: string;
+  neighbor_code: string;
+  neighbor_name: string;
+};
+
+// ── the book-wide motif graph canvas (Wave-4) ──────────────────────────────────
+export type MotifGraphNode = { id: string; code: string; name: string; kind: string; mine: boolean; book_shared: boolean };
+export type MotifGraphEdge = { id: string; from_motif_id: string; to_motif_id: string; kind: MotifLinkKind; ord: number | null };
+export type MotifGraphLayout = { positions: Record<string, { x: number; y: number }>; version: number };
+export type MotifGraphMove = { motif_id: string; x: number; y: number };
+export type MotifGraphData = {
+  nodes: MotifGraphNode[]; edges: MotifGraphEdge[]; layout: MotifGraphLayout;
+  truncated: boolean; node_cap: number;
+};
+
+// One ranked suggest candidate (BE-M4): the motif + its score + the "why this motif"
+// breakdown (tension/genre/precondition/cosine, optionally degraded).
+export type MotifSuggestion = {
+  motif: Motif;
+  score: number;
+  match_reason: Record<string, unknown>;
+};
+
 /** GET /motifs scope — the router accepts ONLY mine|system|all (NOT 'public';
  *  others' public rows are the CATALOG route, never this list). */
 export type MotifListParams = {
@@ -28,6 +61,7 @@ export type MotifListParams = {
   q?: string;
   language?: string;
   limit?: number;
+  offset?: number;   // §2#9 scale — paginate a >limit library
 };
 
 /** GET /motifs/catalog params — the catalog route has NO scope (always public)
@@ -75,6 +109,11 @@ export const motifApi = {
   archive(motifId: string, token: string): Promise<void> {
     return apiJson<void>(`${BASE}/motifs/${motifId}`, { method: 'DELETE', token });
   },
+  /** S-08 — un-archive (reverse of archive). Owner-only; pass bookId to restore a shared row. */
+  restore(motifId: string, token: string, bookId?: string): Promise<Motif> {
+    const qs = bookId ? `?book_id=${encodeURIComponent(bookId)}` : '';
+    return apiJson<Motif>(`${BASE}/motifs/${motifId}/restore${qs}`, { method: 'POST', token });
+  },
 
   // ── catalog (W1 — the B-3 allow-list projection) ───────────────────────────
   // Hits GET /motifs/catalog → list_public (the _CATALOG_COLS allow-list), NOT
@@ -82,6 +121,49 @@ export const motifApi = {
   // Answers the `{ items, total, limit, offset }` envelope, NOT `{ motifs }`.
   catalog(params: CatalogParams, token: string): Promise<CatalogList> {
     return apiJson<CatalogList>(`${BASE}/motifs/catalog${_qs(params)}`, { token });
+  },
+
+  // ── the book's library (3a) — GET /motifs/book/{book_id}. Returns, MERGED in one
+  //    list: the caller's globals (the Mine tier) + this book's private labels + its
+  //    book_shared rows. Every row carries book_id + book_shared, so the FE partitions
+  //    ONE response into the Book tab (book_id===bookId && !book_shared) and the Shared
+  //    tab (book_shared===true) — do NOT fetch it twice (§3.1).
+  book(bookId: string, token: string,
+       params?: { genre?: string; kind?: string; status?: string; q?: string }): Promise<{ motifs: Motif[] }> {
+    return apiJson<{ motifs: Motif[] }>(`${BASE}/motifs/book/${bookId}${_qs(params ?? {})}`, { token });
+  },
+
+  // ── the motif graph (BE-M3, 3a-C) — composed_of · precedes · variant_of ─────
+  links(motifId: string, token: string,
+        opts?: { direction?: MotifLinkDirection; bookId?: string | null }): Promise<{ motif_id: string; links: MotifLinkRow[]; count: number }> {
+    return apiJson(`${BASE}/motifs/${motifId}/links${_qs({ direction: opts?.direction, book_id: opts?.bookId ?? undefined })}`, { token });
+  },
+  createLink(motifId: string, args: { to_motif_id: string; kind: MotifLinkKind; ord?: number | null; book_id?: string | null }, token: string): Promise<MotifLinkRow> {
+    return apiJson<MotifLinkRow>(`${BASE}/motifs/${motifId}/links`, {
+      method: 'POST', body: JSON.stringify(args), token,
+    });
+  },
+  deleteLink(linkId: string, token: string, bookId?: string | null): Promise<{ deleted: boolean; link_id: string }> {
+    return apiJson(`${BASE}/motif-links/${linkId}${_qs({ book_id: bookId ?? undefined })}`, { method: 'DELETE', token });
+  },
+
+  // ── the book-wide motif graph CANVAS (Wave-4 D-MOTIF-GRAPH-CANVAS) — nodes+edges+the
+  //    caller's own persisted layout; the PATCH persists per-viewer node positions (OCC).
+  motifGraph(bookId: string, token: string): Promise<MotifGraphData> {
+    return apiJson<MotifGraphData>(`${BASE}/books/${bookId}/motif-graph`, { token });
+  },
+  patchGraphLayout(
+    bookId: string, moves: MotifGraphMove[], ifVersion: number, token: string,
+  ): Promise<MotifGraphLayout> {
+    return apiJson<MotifGraphLayout>(`${BASE}/books/${bookId}/motif-graph/layout`, {
+      method: 'PATCH', body: JSON.stringify({ moves, if_version: ifVersion }), token,
+    });
+  },
+
+  // ── ranked suggest (BE-M4, 3b) — the GUI twin of composition_motif_suggest_for_chapter,
+  //    replacing the flat list(scope=all,100) behind SwapMotifPopover (GG-1 Determinism).
+  suggestForChapter(projectId: string, nodeId: string, token: string, limit = 5): Promise<{ candidates: MotifSuggestion[] }> {
+    return apiJson(`${BASE}/works/${projectId}/scenes/${nodeId}/suggest-motifs${_qs({ limit })}`, { token });
   },
 
   // ── Tier-W: adopt = clone into YOUR library (R2.8 confirm-token), via the
@@ -169,10 +251,13 @@ export const motifApi = {
     if (!resp.job_id) {
       return ((resp as { result?: MineResult }).result ?? (resp as unknown as MineResult));
     }
-    let job = await compositionApi.getJob(resp.job_id, token);
+    // BE-7c — a motif-mine job is Work-LESS (project_id=NULL). Poll the OWNER-scoped
+    // /motif-jobs/{id}, NOT getJob (/jobs/{id}), which gates on a Work that does not exist
+    // and 404s forever after the user has paid for the mine.
+    let job = await compositionApi.getMotifJob(resp.job_id, token);
     for (let i = 0; i < _POLL_MAX && (job.status === 'pending' || job.status === 'running'); i += 1) {
       await _sleep(_POLL_INTERVAL_MS);
-      job = await compositionApi.getJob(resp.job_id, token);
+      job = await compositionApi.getMotifJob(resp.job_id, token);
     }
     if (job.status === 'failed') {
       throw new Error((job.result as { error?: string } | null)?.error || 'mining failed');
@@ -207,12 +292,14 @@ export const motifApi = {
       { token },
     );
   },
-  /** Coarse arc-conformance (D-W10-ARC-CONFORMANCE) — the structural diff of the
-   *  materialized bindings vs the arc template (scope=arc). */
-  arcConformance(projectId: string, arcTemplateId: string, token: string, deep = false, modelRef?: string | null): Promise<ArcConformance> {
+  /** Coarse arc-conformance (D-W10-ARC-CONFORMANCE) — the structural diff of the durable
+   *  SPEC arc (scope=arc) vs the realized prose. `arcId` is a **`structure_node.id`** (spec 23
+   *  BA4 retarget), NOT an arc_template id — M-BUG-4: the wire arg is `arc_id`, and sending
+   *  `arc_template_id` made FastAPI drop it → arc_id=None → 422 ARC_ID_REQUIRED on every call. */
+  arcConformance(projectId: string, arcId: string, token: string, deep = false, modelRef?: string | null): Promise<ArcConformance> {
     return apiJson<ArcConformance>(
       `${BASE}/works/${projectId}/conformance${_qs({
-        scope: 'arc', arc_template_id: arcTemplateId,
+        scope: 'arc', arc_id: arcId,
         ...(deep ? { deep: 'true' } : {}),
         // model_ref opts into thread-tagging (deep thread-progression); omit ⇒ pacing + existing tags.
         ...(deep && modelRef ? { model_ref: modelRef, model_source: 'user_model' } : {}),
@@ -220,18 +307,40 @@ export const motifApi = {
       { token },
     );
   },
-  conformanceRunEstimate(projectId: string, chapterId: string, token: string): Promise<CostEstimate> {
-    return apiJson<CostEstimate>(`${BASE}/actions/conformance_run/estimate`, {
-      method: 'POST', body: JSON.stringify({ project_id: projectId, chapter_id: chapterId }), token,
-    });
+  /** Chapter conformance RE-RUN (Tier-W + BYOK) — spec 33 §3.4: the run goes through the
+   *  generic MCP spine (composition_conformance_run), NOT the deleted bespoke
+   *  /actions/conformance_run/* REST twins. PROPOSE mints a confirm_token + estimate (no spend);
+   *  mirror of arcConformanceRunPropose. */
+  async chapterConformanceRunPropose(
+    args: { projectId: string; chapterId: string; modelRef: string; modelSource?: string },
+    token: string,
+  ): Promise<CostEstimate> {
+    const res = await mcpExecute<_McpProposeResult>('composition_conformance_run', {
+      args: {
+        project_id: args.projectId, scope: 'chapter', chapter_id: args.chapterId,
+        model_ref: args.modelRef, model_source: args.modelSource ?? 'user_model',
+      },
+    }, token);
+    return {
+      confirm_token: res.confirm_token, descriptor: 'composition.conformance_run',
+      est_usd: res.estimate?.estimated_usd ?? 0, est_tokens: 0, quota_remaining: null,
+    };
   },
-  async conformanceRunConfirm(confirmToken: string, token: string): Promise<ChapterConformance> {
-    const resp = await apiJson<{ job_id?: string; status?: string } & Record<string, unknown>>(
-      `${BASE}/actions/conformance_run/confirm`,
-      { method: 'POST', body: JSON.stringify({ confirm_token: confirmToken }), token },
+  /** Confirm the re-run token (the JWT-authed write path) → poll the job to terminal. The
+   *  caller invalidates the conformance query on success, so the GET re-fetches the fresh trace
+   *  (no result-shape parsing needed). */
+  async chapterConformanceRunConfirm(confirmToken: string, token: string): Promise<void> {
+    const resp = await apiJson<{ job_id?: string } & Record<string, unknown>>(
+      `${BASE}/actions/confirm${_qs({ token: confirmToken })}`, { method: 'POST', token },
     );
-    const job = await _resolveActionJob(resp, token);
-    return (job.result as { conformance: ChapterConformance }).conformance;
+    if (!resp.job_id) return;
+    let job = await compositionApi.getJob(resp.job_id, token);
+    for (let i = 0; i < _POLL_MAX && (job.status === 'pending' || job.status === 'running'); i += 1) {
+      await _sleep(_POLL_INTERVAL_MS);
+      job = await compositionApi.getJob(resp.job_id, token);
+    }
+    if (job.status === 'failed') throw new Error((job.result as { error?: string } | null)?.error || 'conformance run failed');
+    if (job.status !== 'completed') throw new Error('conformance run did not complete in time');
   },
 
   // ── DEEP arc-conformance JOB (D-W10-ARC-CONFORMANCE-DEEP-FE) ─────────────────
@@ -243,18 +352,20 @@ export const motifApi = {
   /** Step 1 — PROPOSE `composition_conformance_run` (scope=arc) → a cost estimate +
    *  confirm_token. No spend yet (the worker runs only after confirm). */
   async arcConformanceRunPropose(
-    args: { projectId: string; arcTemplateId: string; modelRef: string; modelSource?: string },
+    args: { projectId: string; arcId: string; modelRef: string; modelSource?: string },
     token: string,
   ): Promise<CostEstimate> {
     const res = await mcpExecute<_McpProposeResult>(
       'composition_conformance_run',
       // The MCP tool takes a single pydantic `args` parameter, so FastMCP nests the
       // fields under `args` (verified live — a flat body fails arg validation).
+      // M-BUG-4: the tool's _ConformanceRunArgs is ForbidExtra with `arc_id` (a structure_node.id)
+      // and NO `arc_template_id` — sending the latter 422'd every deep-arc run.
       {
         args: {
           project_id: args.projectId,
           scope: 'arc',
-          arc_template_id: args.arcTemplateId,
+          arc_id: args.arcId,
           model_ref: args.modelRef,
           model_source: args.modelSource ?? 'user_model',
         },
@@ -296,10 +407,14 @@ export const motifApi = {
     }
     return job.result as ArcConformance;
   },
-  /** Regenerate one scene within its bound beat (reuses the scene-regenerate path). */
-  regenerateToBeat(projectId: string, nodeId: string, token: string): Promise<void> {
-    return apiJson<void>(`${BASE}/works/${projectId}/scenes/${nodeId}/regenerate-to-beat`, {
-      method: 'POST', token,
+  /** Regenerate one scene — spec 33 §5.1: reuse the EXISTING scene-generate route
+   *  (composition_generate's REST twin, `outline_node_id`), NOT the removed
+   *  regenerate-to-beat endpoint (BE-5 was never built; §5.1). The bound motif now steers
+   *  generation through the packer's gather_motif lens (BE-M2), so a plain regenerate honours
+   *  the beat. */
+  regenerateScene(projectId: string, outlineNodeId: string, token: string): Promise<{ job_id?: string }> {
+    return apiJson(`${BASE}/works/${projectId}/generate`, {
+      method: 'POST', body: JSON.stringify({ outline_node_id: outlineNodeId }), token,
     });
   },
 };
@@ -320,31 +435,6 @@ type _McpProposeResult = {
 const _POLL_INTERVAL_MS = 1500;
 const _POLL_MAX = 200;
 const _sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
-
-async function _resolveActionJob(
-  resp: { job_id?: string; status?: string } & Record<string, unknown>,
-  token: string,
-): Promise<GenerationJob> {
-  // Inline (already-consumed / synchronous) — the result is on the response.
-  if (!resp.job_id) {
-    return resp as unknown as GenerationJob;
-  }
-  if (resp.status !== 'pending' && resp.status !== 'running') {
-    return resp as unknown as GenerationJob;
-  }
-  let job = await compositionApi.getJob(resp.job_id, token);
-  for (let i = 0; i < _POLL_MAX && (job.status === 'pending' || job.status === 'running'); i += 1) {
-    await _sleep(_POLL_INTERVAL_MS);
-    job = await compositionApi.getJob(resp.job_id, token);
-  }
-  if (job.status === 'failed') {
-    throw new Error((job.result as { error?: string } | null)?.error || 'action failed');
-  }
-  if (job.status !== 'completed') {
-    throw new Error('action did not complete in time');
-  }
-  return job;
-}
 
 /** A QuotaError thrown by the api carries `code: 'quota_exceeded'` (the legacy estimate
  *  shape) OR the composition confirm-effect 402 shape `{code:'action_error',

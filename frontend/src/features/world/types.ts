@@ -73,3 +73,73 @@ export interface WorldBookListResponse {
   items: WorldBook[];
   total: number;
 }
+
+// W10 maps — the image-based map canvas (base image + pins + regions), served by
+// GET /v1/worlds/{id}/maps and /maps/{map_id} (book-service).
+export interface WorldMapSummary {
+  map_id: string;
+  world_id: string;
+  name: string;
+  image_object_key: string | null;
+  image_url?: string | null;
+  /** S7·2 — OCC ETag. Sent back as `If-Match` on a map rename PATCH (428 absent / 412 stale). */
+  version: number;
+}
+export interface WorldMapMarker {
+  marker_id: string;
+  label: string;
+  x: number; // normalized 0..1 across the image width
+  y: number; // normalized 0..1 down the image height
+  entity_id: string | null;
+  marker_type: string | null;
+  /** S7·2 — RFC3339 "last touched"; advances on every marker PATCH (drag/relabel/rebind). */
+  updated_at: string;
+}
+export interface WorldMapRegion {
+  region_id: string;
+  name: string;
+  polygon: number[][]; // [[x,y], …] normalized 0..1
+  entity_id: string | null;
+  /** S7·2 — RFC3339 "last touched"; advances on every region PATCH (reshape/rename/rebind). */
+  updated_at: string;
+}
+export interface WorldMapDetail {
+  map: WorldMapSummary;
+  markers: WorldMapMarker[];
+  regions: WorldMapRegion[];
+}
+export interface WorldMapListResponse {
+  items: WorldMapSummary[];
+  total: number;
+}
+
+// ── write responses (S7·2) — the editor's create/update/add routes echo the affected row ──
+export interface WorldMapCreateResponse {
+  map: WorldMapSummary;
+}
+export interface WorldMapMarkerResponse {
+  marker: WorldMapMarker;
+}
+export interface WorldMapRegionResponse {
+  region: WorldMapRegion;
+}
+export interface WorldMapImageResponse {
+  image_object_key: string;
+  image_w: number | null;
+  image_h: number | null;
+  image_url: string;
+  // S-07 §1 — the image's OWN OCC counter (decoupled from the map's metadata `version`),
+  // so an image upload no longer bumps the version a concurrent rename gates on.
+  image_version: number;
+}
+
+/** 🔒 SEALED PO#2 — a marker/region binds a glossary `location` OR a KG entity. The rebind
+ *  picker offers BOTH and MUST label the source so the user knows which layer a pin ties into
+ *  (the two-layer distinction is surfaced, not hidden). The write stays a soft untyped
+ *  `entity_id` (no FK), so this is purely a picker-side label. */
+export interface EntityBindingOption {
+  entity_id: string;
+  label: string;
+  source: 'glossary' | 'kg';
+  kind?: string | null;
+}

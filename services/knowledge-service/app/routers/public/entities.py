@@ -27,6 +27,7 @@ from app.db.neo4j import neo4j_session
 from app.db.neo4j_helpers import run_read
 from app.db.neo4j_repos.canonical import canonicalize_entity_name
 from app.db.neo4j_repos.entities import (
+    AUTHORABLE_KINDS,
     ENTITIES_MAX_LIMIT,
     ENTITY_SORT_KEYS,
     ENTITY_STATUSES,
@@ -35,6 +36,7 @@ from app.db.neo4j_repos.entities import (
     EntityDetail,
     MergeEntitiesError,
     user_archive_entity,
+    restore_entity,
     find_entities_by_vector,
     find_gap_candidates,
     get_entity,
@@ -48,7 +50,12 @@ from app.db.neo4j_repos.entities import (
     update_entity_fields,
 )
 from app.db.neo4j_repos.entity_status import statuses_detail_at_order
-from app.db.neo4j_repos.facts import Fact, list_facts_for_entity
+from app.db.neo4j_repos.facts import (
+    Fact,
+    FactType,
+    list_facts_for_entity,
+    merge_fact,
+)
 from app.db.neo4j_repos.relations import (
     SUBGRAPH_MAX_HOPS,
     SUBGRAPH_MAX_NODE_CAP,
@@ -65,6 +72,10 @@ from app.clients.embedding_client import EmbeddingClient, EmbeddingError
 from app.clients.glossary_client import GlossaryClient
 from app.extraction.entity_resolver import normalize_kind_for_anchor_lookup
 from app.extraction.glossary_writeback import WRITEBACK_TAG
+# S-09 W2 — the glossary→graph projection engine + the project-scoped grant deps.
+import dataclasses
+from app.auth.grant_deps import GrantLevel, project_meta_dep, require_project_grant
+from app.extraction.anchor_loader import project_glossary_entities_to_nodes
 from app.deps import (
     get_book_client,
     get_embedding_client,
@@ -241,6 +252,45 @@ async def archive_user_entity(
     )
 
 
+@router.post(
+    "/entities/{entity_id}/restore",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+async def restore_user_entity(
+    entity_id: str,
+    user_id: UUID = Depends(get_current_user),
+) -> None:
+    """D-KG-ENTITY-RESTORE (S7) — un-archive a user entity: the inverse of the
+    soft-delete above. Without this, archiving is a **one-way trap** — the UI can
+    hide an entity but never bring it back (the only prior path was re-extraction).
+
+    Clears `archived_at`/`archive_reason` via `restore_entity` (which PRESERVES the
+    `glossary_entity_id` anchor). **Idempotent**: restoring an already-active entity
+    is a no-op that still returns 204 (the row comes back with `archived_at` already
+    null). 404 only when the entity doesn't exist for this user at all.
+
+    ⚠ `restore_entity` does NOT recompute `anchor_score` (that is K11.5b's job) — a
+    restored entity ranks at score 0.0 until the next recompute pass. This is
+    documented, not a bug: the row is visible and anchored immediately; only its
+    ranking weight lags one pass.
+    """
+    async with neo4j_session() as session:
+        result = await restore_entity(
+            session,
+            user_id=str(user_id),
+            canonical_id=entity_id,
+        )
+    if result is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="entity not found",
+        )
+    logger.info(
+        "S7 D-KG-ENTITY-RESTORE: user restored entity user_id=%s entity_id=%s",
+        user_id, entity_id,
+    )
+
+
 # ── K19d browse / detail endpoints ───────────────────────────────────
 
 
@@ -336,7 +386,21 @@ async def list_entities(
     ),
     limit: int = Query(50, ge=1, le=ENTITIES_MAX_LIMIT),
     offset: int = Query(0, ge=0),
+    before_chapter_id: UUID | None = Query(
+        default=None,
+        description=(
+            "W11 reader SPOILER WINDOW. When set, the list is restricted to "
+            "entities the reader has actually MET — those with at least one "
+            "fact established by this chapter. FAIL-CLOSED: an unresolvable "
+            "chapter returns an EMPTY list, never the full cast. Omit for the "
+            "editor/curation view (whole cast). The reader lore-seeker passes "
+            "the chapter being read; without this, listing entity NAMES leaks "
+            "the existence of later-introduced characters (adversarial-review "
+            "finding — the facts were windowed but the name list was not)."
+        ),
+    ),
     user_id: UUID = Depends(get_current_user),
+    book_client: BookClient = Depends(get_book_client),
 ) -> EntitiesListResponse:
     """K19d.2 + C8 — browse / search entities.
 
@@ -362,6 +426,16 @@ async def list_entities(
                 detail="pass either `search` (FTS) or `semantic_query` "
                 "(vector), not both",
             )
+        if before_chapter_id is not None:
+            # The W11 spoiler window is not implemented on the vector path (the
+            # reader lore-seeker uses plain FTS). REJECT rather than silently
+            # return an UNWINDOWED semantic result set — a windowed request that
+            # comes back unwindowed would be exactly the leak this closes.
+            raise HTTPException(
+                status_code=status_codes.HTTP_422_UNPROCESSABLE_CONTENT,
+                detail="`before_chapter_id` (spoiler window) is not supported "
+                "with `semantic_query`; use plain `search` for the reader view",
+            )
         if project_id is None:
             raise HTTPException(
                 status_code=status_codes.HTTP_422_UNPROCESSABLE_CONTENT,
@@ -385,6 +459,14 @@ async def list_entities(
             embedding_client=await get_embedding_client(),
         )
 
+    # W11 spoiler window: resolve the reader's chapter to its fact-ordinal cutoff.
+    # resolve_before_order FAILS CLOSED — an omitted/unresolvable chapter → -1, so the
+    # windowed query keeps nothing. before_order stays None ONLY when the caller did not
+    # ask for a window (editor/curation), which the repo reads as "unfiltered".
+    before_order: int | None = None
+    if before_chapter_id is not None:
+        before_order, _ = await resolve_before_order(book_client, before_chapter_id)
+
     async with neo4j_session() as session:
         rows, total = await list_entities_filtered(
             session,
@@ -396,6 +478,7 @@ async def list_entities(
             sort_by=sort_by,
             limit=limit,
             offset=offset,
+            before_order=before_order,
         )
     return EntitiesListResponse(entities=rows, total=total)
 
@@ -641,14 +724,39 @@ async def list_entity_facts(
             "established-at order). Omitted / unresolvable → fail-closed (no facts)."
         ),
     ),
+    curation: bool = Query(
+        default=False,
+        description=(
+            "S-05 — AUTHOR-facing whole-book read (the studio entity-detail curation "
+            "view, NOT the reader codex). Skips spoiler-windowing so every known fact "
+            "shows regardless of chapter position — including user-authored facts that "
+            "carry no chapter `from_order`. Without it the fail-closed window (before_"
+            "order=-1) hides EVERY fact, so the curation list renders empty. When true, "
+            "`before_chapter_id` is ignored. Reader surfaces MUST NOT set this."
+        ),
+    ),
     user_id: UUID = Depends(get_current_user),
     book_client: BookClient = Depends(get_book_client),
 ) -> EntityFactsResponse:
-    """T2.1 — the known-facts list (`decision|preference|milestone|negation`) ABOUT
-    one entity, spoiler-windowed by `before_chapter_id`. A cross-user / unknown
-    entity simply yields no facts (no existence leak). L2-loader filters apply
-    (confidence ≥ 0.8, not pending) so quarantine candidates don't surface."""
-    before_order, available = await resolve_before_order(book_client, before_chapter_id)
+    """T2.1 — the known-facts list ABOUT one entity. A cross-user / unknown entity
+    simply yields no facts (no existence leak). L2-loader filters apply
+    (confidence ≥ 0.8, not pending) so quarantine candidates don't surface.
+
+    Two read modes:
+      * READER (default): spoiler-windowed by `before_chapter_id`; an omitted /
+        unresolvable chapter fails CLOSED (no facts) so future reveals never leak.
+      * CURATION (`curation=true`, S-05): the author's whole-book view — no window,
+        so every known fact (extraction-derived AND user-authored, the latter having
+        NULL `from_order`) is visible. This is what makes `POST /entities/{id}/facts`
+        actually operable: an authored fact appears at once instead of being hidden
+        by the fail-closed window."""
+    if curation:
+        # No spoiler window for the author view: before_order=None makes the
+        # projection's `($before_order IS NULL OR …)` branch pass every fact.
+        before_order: int | None = None
+        available = True
+    else:
+        before_order, available = await resolve_before_order(book_client, before_chapter_id)
     async with neo4j_session() as session:
         facts = await list_facts_for_entity(
             session,
@@ -657,6 +765,137 @@ async def list_entity_facts(
             before_order=before_order,
         )
     return EntityFactsResponse(facts=facts, window_available=available)
+
+
+# ── S-05 — author a fact ABOUT an entity (human, direct-write) ─────────
+
+
+class CreateEntityFactRequest(BaseModel):
+    """S-05 — author a fact ABOUT an entity from the studio curation view.
+
+    Written DIRECTLY as a committed `:Fact` (`source_type='manual'`, confidence 1.0,
+    `provenance='human_authored'`) linked to the entity by an `:ABOUT` edge — the
+    same user-authored posture as a manual `:Event`/`:Entity`. No pending queue: a
+    human reviewing their own input is pointless friction (the pending lane gates
+    AGENT proposals). `invalidate` is the correction path.
+
+    `fact_type` is the CLOSED 6-value `FactType` — an out-of-set value 422s (FastAPI
+    validates the Literal) instead of reaching `merge_fact`'s `ValueError` → 500
+    (the enum-must-422-not-500 discipline)."""
+
+    fact_type: FactType
+    content: str = Field(min_length=1, max_length=2000)
+    # WS-2.6b structured claim (optional) — lets recall detect a supersession.
+    predicate: str | None = Field(default=None, max_length=200)
+    object: str | None = Field(default=None, max_length=500)
+    # dec-3 — optional in-story date ("YYYY" / "YYYY-MM" / "YYYY-MM-DD"), additive.
+    event_date_iso: str | None = Field(default=None, max_length=10)
+
+    @model_validator(mode="after")
+    def _validate(self) -> "CreateEntityFactRequest":
+        if not self.content.strip():
+            raise ValueError("content must not be blank")
+        return self
+
+
+@entities_router.post(
+    "/entities/{entity_id}/facts",
+    response_model=Fact,
+    status_code=status.HTTP_201_CREATED,
+)
+async def create_entity_fact(
+    body: CreateEntityFactRequest,
+    entity_id: str = Path(min_length=1, max_length=200),
+    user_id: UUID = Depends(get_current_user),
+) -> Fact:
+    """S-05 — author a human fact ABOUT `entity_id`, written straight to the graph.
+
+    Multi-tenant: the entity is loaded under the caller's `user_id` FIRST; a
+    cross-user / unknown entity 404s (no existence leak) BEFORE any write, so a
+    caller can never attach a fact to another tenant's entity nor orphan a fact on
+    a subject that isn't theirs. The fact inherits the entity's `project_id` so the
+    curation read (which is project-agnostic here) and any project-scoped recall see
+    it consistently. `confidence=1.0` clears the L2 `≥0.8` floor so the authored
+    fact is immediately visible in the `curation=true` list; `subject_id` MERGEs the
+    `:ABOUT` edge so `list_facts_for_entity` (which matches on that edge) returns it.
+    Idempotent on (user, project, type, normalized content) — re-authoring the same
+    fact returns the same node, not a duplicate."""
+    async with neo4j_session() as session:
+        entity = await get_entity(
+            session, user_id=str(user_id), canonical_id=entity_id
+        )
+        if entity is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail="entity not found"
+            )
+        fact = await merge_fact(
+            session,
+            user_id=str(user_id),
+            project_id=entity.project_id,
+            type=body.fact_type,
+            content=body.content.strip(),
+            confidence=1.0,
+            pending_validation=False,
+            source_type="manual",
+            provenance="human_authored",
+            subject_id=entity_id,
+            predicate=body.predicate,
+            object=body.object,
+            event_date_iso=body.event_date_iso,
+        )
+    logger.info(
+        "S-05: user authored fact user_id=%s entity_id=%s type=%s fact_id=%s",
+        user_id, entity_id, body.fact_type, fact.id,
+    )
+    return fact
+
+
+class ProjectFromGlossaryRequest(BaseModel):
+    """Optional subset; omit / null → project the WHOLE active glossary."""
+    entity_ids: list[str] | None = None
+
+
+@entities_router.post("/projects/{project_id}/entities/from-glossary")
+async def project_entities_from_glossary(
+    project_id: UUID = Path(description="knowledge project id (uuid)"),
+    body: ProjectFromGlossaryRequest | None = None,
+    owner: UUID = Depends(require_project_grant(GrantLevel.EDIT)),
+    meta: "tuple[UUID, UUID | None] | None" = Depends(project_meta_dep),
+    projects_repo: ProjectsRepo = Depends(get_projects_repo),
+    glossary: GlossaryClient = Depends(get_glossary_client),
+) -> dict:
+    """S-09 W2 — deterministically project a book's glossary entities into the KG as
+    canonical :Entity nodes ("seed the graph from my lore, no prose"). The REST twin of
+    the `kg_project_entities_to_nodes` MCP tool, so this becomes a GUI one-click, not an
+    agent-only capability. EDIT grant on the project's book; the projection is idempotent
+    (re-seed upserts, never duplicates). `entity_ids=null` → the whole active glossary;
+    a subset targets those. Returns the {created, existing, seen, skipped, truncated,
+    conflicted} counts so the caller can explain a partial projection."""
+    if meta is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="project not found")
+    _owner, book_id = meta
+    if book_id is None:
+        # A book-less project has no glossary to project from.
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="project has no book")
+    # Normalize the subset exactly as the kg_project_entities_to_nodes MCP handler does
+    # (strip whitespace, drop empties, empty-list → None = whole glossary) so the REST
+    # twin and the tool behave identically on a sloppy client payload.
+    raw_ids = body.entity_ids if body else None
+    entity_ids = [e.strip() for e in raw_ids if e and e.strip()] if raw_ids else None
+    async with neo4j_session() as session:
+        result = await project_glossary_entities_to_nodes(
+            session, glossary, user_id=str(owner), project_id=str(project_id),
+            book_id=book_id, entity_ids=entity_ids or None,
+        )
+        # The projection changed the graph → refresh the cached stat counters now (the
+        # one production writer of stat_updated_at; mirrors the MCP tool). Best-effort:
+        # the projection itself is the contract, so a recount hiccup never fails it.
+        try:
+            from app.jobs.stats_updater import reconcile_project_stats
+            await reconcile_project_stats(projects_repo._pool, session, owner, project_id)
+        except Exception:  # pragma: no cover — advisory cache, never blocks the projection
+            logger.warning("from-glossary: stat recount failed (project=%s)", project_id, exc_info=True)
+    return dataclasses.asdict(result)
 
 
 # ── C10 (C10-gap-report) — GET /projects/{id}/gaps ───────────────────
@@ -969,12 +1208,11 @@ class EntityUpdate(BaseModel):
 
 # ── T2.5 World Map — manual entity authoring ──────────────────────────
 
-# Closed set of entity kinds the manual-create path accepts. The graph is
-# otherwise extraction-built; this gate keeps user authoring (T2.5 "+ add
-# place" sends kind='location') from minting arbitrary kind strings.
-_AUTHORABLE_KINDS = {"character", "location", "faction", "concept"}
-
-
+# S7-1 — the human create path gates ``kind`` to ``AUTHORABLE_KINDS`` (the
+# ONE home, defined in neo4j_repos/entities.py). The old local set used the
+# ``faction`` misnomer and omitted ``organization``/``item`` — a create form
+# built to the 7-value browse filter silently 422'd 4 of them. The set is now
+# shared with the agent gate (KgCreateNodeArgs) so create == agent (INV-parity).
 class CreateEntityRequest(BaseModel):
     """T2.5 — create a user-authored entity (e.g. a World Map place). Idempotent:
     re-creating the same (name, kind) in a project returns the existing node
@@ -989,9 +1227,9 @@ class CreateEntityRequest(BaseModel):
     def _validate(self) -> "CreateEntityRequest":
         if not self.name.strip():
             raise ValueError("name must not be blank")
-        if self.kind not in _AUTHORABLE_KINDS:
+        if self.kind not in AUTHORABLE_KINDS:
             raise ValueError(
-                f"kind must be one of {sorted(_AUTHORABLE_KINDS)}"
+                f"kind must be one of {sorted(AUTHORABLE_KINDS)}"
             )
         return self
 

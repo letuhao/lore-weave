@@ -17,6 +17,10 @@
     "explore": {
       "title": "Jelajahi",
       "desc": "Telusuri pengetahuan Anda — entitas, lini masa, dan grafik hubungan."
+    },
+    "assistant": {
+      "title": "Asisten kerja",
+      "desc": "Jurnal harian pribadi yang mengingat orang-orang, proyek, dan keputusan Anda secara tenang."
     }
   }
 }

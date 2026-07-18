@@ -16,10 +16,12 @@ from loreweave_obs import setup_logging, setup_tracing
 
 from app.clients import (
     BookClient,
+    ChatAssistantClient,
     ChatClient,
     GlossaryClient,
     KnowledgeClient,
     ProviderRegistryClient,
+    UsageBillingClient,
 )
 from app.config import settings
 from app.llm_client import close_llm_client, get_llm_client
@@ -83,6 +85,13 @@ async def main() -> None:
         internal_token=settings.internal_service_token,
         timeout_s=settings.chat_client_timeout_s,
     )
+    # C2 (SD-C2) — assistant-domain client: the weekly-reflection consumer reads the week's
+    # reflection_notes (→ co-occurrence detector) + the user's dismissed pattern_keys (→ tombstone).
+    chat_assistant_client = ChatAssistantClient(
+        base_url=settings.chat_service_url,
+        internal_token=settings.internal_service_token,
+        timeout_s=settings.chat_client_timeout_s,
+    )
     # C12c-a: client for the scope='glossary_sync' branch + all-scope tail.
     glossary_client = GlossaryClient(
         base_url=settings.glossary_service_url,
@@ -95,6 +104,12 @@ async def main() -> None:
         base_url=settings.provider_registry_internal_url,
         internal_token=settings.internal_service_token,
         timeout_s=settings.provider_registry_client_timeout_s,
+    )
+    # WS-2.8 — usage-billing client for the distiller's daily-cap degrade pre-check (fail-open).
+    usage_billing_client = UsageBillingClient(
+        base_url=settings.usage_billing_service_url,
+        internal_token=settings.internal_service_token,
+        timeout_s=settings.usage_billing_client_timeout_s,
     )
     # Phase 4b-γ — loreweave_llm SDK wrapper for in-process Pass 2
     # extraction. Touched here so SDK construction errors (bad
@@ -155,6 +170,79 @@ async def main() -> None:
         coroutines.append(_summary_consumer.run())
     else:
         logger.info("summary consumer disabled via config")
+
+    # A1 / P-10 (spec 06 §Q2) — the "End my day" distiller trigger. Consumes `assistant.distill`
+    # jobs and runs the built distiller pipeline (day-window read → map-reduce → diary-entry write)
+    # with the real chat/book clients + the provider-gateway LLM adapter. Config-gated so it is inert
+    # until an assistant is provisioned to enqueue.
+    if settings.distill_consumer_enabled:
+        from app.distill_consumer import DistillConsumer
+        _distill_consumer = DistillConsumer(
+            settings.redis_url,
+            chat_client,
+            book_client,
+            llm_client,
+            consumer_group=settings.distill_consumer_group,
+            consumer_name=settings.distill_consumer_name,
+            block_ms=settings.summary_consumer_block_ms,
+            knowledge_client=knowledge_client,  # WS-2.3 — divert distilled facts to the KG inbox
+            billing_client=usage_billing_client,  # WS-2.8 — daily-cap degrade pre-check
+            provider_client=provider_client,  # B2 — resolve the distill model's context length
+        )
+        coroutines.append(_distill_consumer.run())
+        logger.info("A1: assistant.distill consumer started (group=%s)", settings.distill_consumer_group)
+
+        # WS-2.6a legs 2+3 (D17 amendment) — the CORRECTION re-extract consumer. Consumes
+        # `assistant.reextract` jobs (emitted when a user amends a diary day) and reconciles the day's
+        # graph: re-extract the corrected entry's facts to the inbox (leg 2) + invalidate the day's old
+        # confirmed facts (leg 3). Gated by the SAME assistant toggle as distill (it is the same feature)
+        # and given a distinct consumer group so its PEL is independent of the distiller's.
+        from app.reextract_consumer import ReextractConsumer
+        _reextract_consumer = ReextractConsumer(
+            settings.redis_url,
+            knowledge_client,
+            llm_client,
+            consumer_group=f"{settings.distill_consumer_group}-reextract",
+            consumer_name=settings.distill_consumer_name,
+            block_ms=settings.summary_consumer_block_ms,
+            billing_client=usage_billing_client,  # WS-2.8 — daily-cap degrade pre-check
+        )
+        coroutines.append(_reextract_consumer.run())
+        logger.info("WS-2.6a: assistant.reextract consumer started (group=%s-reextract)",
+                    settings.distill_consumer_group)
+
+        # WS-3.7 — the weekly-rollup consumer. Same assistant toggle; its own group.
+        from app.weekly_rollup_consumer import WeeklyRollupConsumer
+        _weekly_rollup_consumer = WeeklyRollupConsumer(
+            settings.redis_url,
+            knowledge_client,
+            book_client,
+            llm_client,
+            consumer_group=f"{settings.distill_consumer_group}-weekly",
+            consumer_name=settings.distill_consumer_name,
+            block_ms=settings.summary_consumer_block_ms,
+            billing_client=usage_billing_client,
+        )
+        coroutines.append(_weekly_rollup_consumer.run())
+        logger.info("WS-3.7: assistant.weekly_rollup consumer started (group=%s-weekly)",
+                    settings.distill_consumer_group)
+
+        # D-REFLECTION-WIRE — the weekly-reflection consumer (deterministic: no LLM/billing).
+        from app.reflection_consumer import ReflectionConsumer
+        _reflection_consumer = ReflectionConsumer(
+            settings.redis_url,
+            knowledge_client,
+            book_client,
+            consumer_group=f"{settings.distill_consumer_group}-reflection",
+            consumer_name=settings.distill_consumer_name,
+            block_ms=settings.summary_consumer_block_ms,
+            chat_client=chat_assistant_client,  # C2 — notes + dismissals substrate
+        )
+        coroutines.append(_reflection_consumer.run())
+        logger.info("D-REFLECTION-WIRE: assistant.weekly_reflection consumer started (group=%s-reflection)",
+                    settings.distill_consumer_group)
+    else:
+        logger.info("distill consumer disabled via config")
 
     # LLM re-arch Phase 2b WX-T3b — decoupled-extraction terminal-event consumer.
     # Started only when the decouple flag is on (inert otherwise — no decoupled
@@ -230,8 +318,10 @@ async def main() -> None:
         await knowledge_client.aclose()
         await book_client.aclose()
         await chat_client.aclose()
+        await chat_assistant_client.aclose()
         await glossary_client.aclose()
         await provider_client.aclose()
+        await usage_billing_client.aclose()
         if wake_waiter is not None:
             await wake_waiter.aclose()
         await pool.close()

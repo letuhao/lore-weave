@@ -118,6 +118,7 @@
     "count": "{{count}} bab",
     "count_other": "{{count}} bab",
     "import": "Impor",
+    "importPdf": "Impor PDF",
     "new": "Bab Baru",
     "col": {
       "title": "Judul",
@@ -150,8 +151,7 @@
       "title": "Pindahkan bab ke tempat sampah?",
       "description": "\"{{title}}\" akan dipindahkan ke tempat sampah.",
       "confirm": "Pindahkan ke Tempat Sampah"
-    },
-    "importPdf": "Impor PDF"
+    }
   },
   "glossary": {
     "header": "Glosarium & Lore",
@@ -211,7 +211,8 @@
     "status": {
       "draft": "Draf",
       "active": "Aktif",
-      "inactive": "Tidak aktif"
+      "inactive": "Tidak aktif",
+      "rejected": "Ditolak"
     },
     "bulk": {
       "select_row": "Pilih entitas",
@@ -228,7 +229,8 @@
       "delete_confirm": {
         "title": "Hapus {{count}} entitas?",
         "description": "{{count}} entitas yang dipilih akan dipindahkan ke tempat sampah."
-      }
+      },
+      "reject": "Tolak"
     },
     "clear_filters": "Hapus semua filter",
     "deleted": "Entitas dihapus",
@@ -252,7 +254,8 @@
       "title": "Hapus entitas?",
       "description": "\"{{title}}\" akan dipindahkan ke tempat sampah.",
       "confirm": "Hapus"
-    }
+    },
+    "scope_label_title": "Cakupan — membedakan entitas ini dari entitas lain dengan nama yang sama"
   },
   "sharing": {
     "title": "Visibilitas",

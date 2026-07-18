@@ -666,3 +666,62 @@ def test_index_drafts_book_service_unavailable_502():
     with patch("app.routers.public.raw_search.settings.neo4j_uri", "bolt://x"):
         resp = client.post(_drafts_url())
     assert resp.status_code == 502
+
+
+# ── W11-M1 (spec §4.3) — reader spoiler cutoff wiring at the endpoint seam ────
+# The two halves are unit-tested apart (resolve_before_sort_order in
+# test_spoiler_window; the per-leg filter in test_retriever). These pin the SEAM:
+# the endpoint reads before_chapter_id, resolves it, and threads it through.
+_CUTOFF_CH = uuid4()
+
+
+def _url_cutoff(chapter_id, mode="hybrid", query="duel"):
+    return f"/v1/knowledge/books/{_BOOK}/search?query={query}&mode={mode}&before_chapter_id={chapter_id}"
+
+
+@patch("app.search.retriever.find_passages_by_vector", new_callable=AsyncMock)
+@patch("app.search.retriever.neo4j_session", new=lambda: _noop_session())
+@patch("app.search.retriever.embed_query_cached", new_callable=AsyncMock)
+def test_before_chapter_id_drops_future_chapters(mock_embed, mock_find):
+    # Reader's furthest chapter resolves to sort_order 5. The semantic hit is
+    # chapter 9 (future → dropped); the lexical hit is chapter 3 (kept).
+    mock_embed.return_value = [0.1] * 1024
+    mock_find.return_value = [_passage_hit(0, 0.9)]  # chapter_index=9
+    client, _, book_client = _make_client()  # lexical _lex_hit sortOrder=3
+    book_client.get_chapter_sort_orders = AsyncMock(return_value={_CUTOFF_CH: 5})
+    resp = client.get(_url_cutoff(_CUTOFF_CH))
+    assert resp.status_code == 200, resp.json()
+    surfaces = {h["surface"] for h in resp.json()["results"]}
+    assert surfaces == {"draft"}  # the chapter-9 canon (semantic) hit is gone
+    book_client.get_chapter_sort_orders.assert_awaited_once_with([_CUTOFF_CH])
+
+
+@patch("app.search.retriever.find_passages_by_vector", new_callable=AsyncMock)
+@patch("app.search.retriever.neo4j_session", new=lambda: _noop_session())
+@patch("app.search.retriever.embed_query_cached", new_callable=AsyncMock)
+def test_before_chapter_id_unresolvable_fails_closed(mock_embed, mock_find):
+    # book-service can't resolve the reader's chapter ({}) → endpoint-level
+    # fail-closed: ZERO hits, never the whole corpus.
+    mock_embed.return_value = [0.1] * 1024
+    mock_find.return_value = [_passage_hit(0, 0.9)]
+    client, _, book_client = _make_client()
+    book_client.get_chapter_sort_orders = AsyncMock(return_value={})  # unresolvable
+    resp = client.get(_url_cutoff(_CUTOFF_CH))
+    assert resp.status_code == 200
+    assert resp.json()["results"] == []
+
+
+@patch("app.search.retriever.find_passages_by_vector", new_callable=AsyncMock)
+@patch("app.search.retriever.neo4j_session", new=lambda: _noop_session())
+@patch("app.search.retriever.embed_query_cached", new_callable=AsyncMock)
+def test_before_chapter_id_omitted_is_author_path(mock_embed, mock_find):
+    # No cutoff → author behavior: both surfaces present, and the resolver is
+    # never even called (no needless book-service round-trip).
+    mock_embed.return_value = [0.1] * 1024
+    mock_find.return_value = [_passage_hit(0, 0.9)]
+    client, _, book_client = _make_client()
+    book_client.get_chapter_sort_orders = AsyncMock(return_value={_CUTOFF_CH: 5})
+    resp = client.get(_url("hybrid"))  # no before_chapter_id
+    assert resp.status_code == 200
+    assert {h["surface"] for h in resp.json()["results"]} == {"draft", "canon"}
+    book_client.get_chapter_sort_orders.assert_not_awaited()

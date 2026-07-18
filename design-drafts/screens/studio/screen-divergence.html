@@ -1,0 +1,1162 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>LoreWeave — Divergence / dị bản + the book-settings Composition section (studio, draft)</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  /* ══════════════════════════════════════════════════════════════════════
+     DIVERGENCE — dị bản / AU what-if derivative Works (`divergence`)
+       + THE COMPOSITION SECTION inside the existing `book-settings` panel
+       + THE BEATS FACET inside the existing `plan-hub` PlanDrawer
+     (the last two are NOT new panels — plan 30 §5.3 re-map. They are drawn
+      HERE because plan 30 §11 pairs them with divergence as Wave 6's second
+      draft; the file name predates the pairing. Do not split it.)
+     Spec: docs/specs/2026-07-01-writing-studio/36_editor_craft_ports.md
+     Wave 6 of 30_TOOL_GUI_GAP_AUDIT_AND_PLAN.md
+     Closes G-DIVERGENCE · G-WORK-SETTINGS · G-STORY-STRUCTURE
+
+     WHY THIS EXISTS
+     Divergence is a whole SHIPPED subsystem — a DB schema (divergence_spec,
+     entity_override, a derived knowledge partition), a 4-step wizard, a
+     promotion path (useWhatIfPromotion), a grounding-layer view
+     (DerivativeGroundingLayers), a banner. All of it hangs off
+     ChapterEditorPage → CompositionPanel: the page under the 18-line DO NOT
+     EDIT banner. A Studio user cannot reach ANY of it, and there are ZERO
+     divergence MCP tools, so the agent cannot either.
+
+     THREE BUGS THIS MOCK IS DRAWN AROUND. Read them before you redraw it.
+
+     ① F-EC3a — THE WIZARD COLLECTS A NAME AND THROWS IT AWAY.
+        useDivergenceWizard.submit() REFUSES TO FIRE unless
+        `name.trim().length > 0` (:169). buildBody() (:106-121) returns
+        {branch_point, divergence, entity_overrides}. NO `name`. DeriveBody
+        (types.ts:41) has no such field. `composition_work` has no name
+        column (migrate.py:34-44). The user is FORCED to type a label that
+        goes nowhere. That is this repo's own `silent-success-is-a-bug`
+        class, shipped — and it is exactly why nobody can tell two dị bản
+        apart. A derivative must be NAMEABLE before it can be LISTED.
+        ⇒ BE-13a is a HARD PREREQUISITE of this panel. (XS, no DDL —
+        settings.derivative_name; `settings` is a jsonb the Work carries.)
+
+     ② F-EC3b — THE STUDIO IDENTIFIES "MY WORK" BY ARRAY POSITION —
+        AT TWELVE SITES, NOT THREE. The audit said three. It is twelve
+        (grep -rn "candidates\[0\]" frontend/src services/ at 9262ed53e,
+        minus tests and the unrelated `candidates`):
+          STUDIO (7): ManuscriptUnitProvider.tsx:138 · useManuscriptJump.ts:48
+            · useManuscriptTree.ts:55 · EditorPanel.tsx:189 (THE EDITOR)
+            · useQualityWork.ts:49 (EVERY QUALITY PANEL) ·
+            useSceneInspector.ts:31 · useChapterBrowserGroups.ts:89
+          LEGACY (4): CompositionPanel.tsx:156 · OutlineTree.tsx:118 ·
+            usePublishGate.ts:51 · ChapterEditorPage.tsx:218  — IN SCOPE: the
+            legacy page is NOT deleted this wave (GG-4/OQ-2), so a user who
+            derives in the Studio and then opens it gets the WRONG Work.
+          BACKEND (1): internal_model_settings.py:85 — which even DOCUMENTS
+            the assumption ("rows[0] is the canonical manifest… minted before
+            any C23 derivative").
+        It works only because resolve_by_book is ORDER BY created_at and a
+        derive requires a pre-existing source.
+        The predicate is `source_work_id IS NULL`, NOT "index 0".
+        ⚠ AND IT MUST BE NULLISH, NOT `=== null`: Work.source_work_id is
+        OPTIONAL in the FE type (types.ts:19) and absent from most fixtures,
+        so `=== null` resolves NO canonical Work for every pre-C23 book.
+        Write `!w.source_work_id`.
+        Dormant today ONLY because the Studio cannot create a derivative.
+        ► THIS WAVE ARMS IT. EC-3c fixes ALL TWELVE in this same slice —
+        shipping the panel first would ship the bug. The DoD is a HYGIENE GREP
+        (`candidates[0]` appears nowhere outside tests), not a count: a count
+        is exactly how 9 of the 12 were missed the first time.
+
+     ②b EC-3d — AND `selectCanonicalWork` IS NOT WHAT THE PANELS CALL.
+        EC-3c and "Switch to" CONTRADICT each other if left naive:
+        selectCanonicalWork() returns the CANONICAL Work, so a user who
+        switches to a dị bản would have the Editor, the navigator, the
+        scene-inspector and the quality panels each independently re-resolve
+        straight back to canon. The resolver is:
+            useActiveWork(bookId)
+              = activeWorkProjectId ?? selectCanonicalWork(candidates)
+        and ALL SEVEN studio sites call THAT. selectCanonicalWork is the
+        FALLBACK, not the resolver.
+        WHERE activeWorkProjectId LIVES: a PER-USER, PER-BOOK server
+        preference (/v1/me/preferences, key `lw_active_work.<book_id>`),
+        hydrated into the studio bus on mount.
+          • NOT the bus alone — a reload would silently drop the user back
+            into canon, with the DerivativeBanner the only thing that had
+            ever told them which Work they were in.
+          • NOT work.settings — that blob is PER-BOOK and SHARED; one user
+            switching would move every collaborator's Editor. That is the
+            `entity_kinds` tenancy bug, re-shipped.
+          • NOT localStorage (CLAUDE.md: UI state that must persist → DB).
+        ⚠ The studio bus has NO active-Work concept today: host/types.ts
+        carries activeChapterId/activeSceneId (:36-37, :73-74) and nothing
+        else. `work:switch` + `activeWorkProjectId` are a real, additive
+        change to host/types.ts and its reducer.
+
+     ③ THE SPEC IS WRITE-ONCE. divergence_spec + entity_override[] are
+        written exactly once, INSIDE the POST /works/{pid}/derive transaction
+        (works.py:378-405). No route, no repo method, no tool ever touches
+        them again. So the proposed "manage entity_override rows" leg is
+        UNBUILDABLE on today's backend, and this mock does NOT draw it.
+
+     WHAT THE AUDIT GOT WRONG (verified at HEAD 9262ed53e — this correction
+     is load-bearing, because it is the difference between "we must build
+     three routes" and "the LIST already exists and nothing surfaces it")
+        Audit: "CREATE-ONCE + READ-ONE… no UPDATE, no DELETE, no LIST."
+        • UPDATE — ✅ correct, genuinely missing (BE-13, deferred v2).
+        • DELETE — ❌ REFUTED. `status` is in _UPDATABLE_COLUMNS
+          (repositories/works.py:42) and in WorkPatch (works.py:61), and
+          resolve_by_book filters status='active' (:268). So
+          PATCH /works/{pid} {status:'archived'} IS the sibling-consistent
+          SOFT DELETE, today, with If-Match OCC.
+        • LIST — ❌ REFUTED, and derivable with ZERO backend work.
+          GET /books/{bid}/work returns {status, work, candidates[]}; with >1
+          marked Work it returns status:"candidates" + EVERY Work row
+          (work_resolution.py:93-97), each carrying source_work_id +
+          branch_point. The canonical Work is the one with
+          `source_work_id === null`. The derivatives are the rest.
+     ⇒ Three of the four verbs already exist. The panel is worth building
+       PRECISELY BECAUSE the list exists and nothing surfaces it.
+
+     THE ARCHITECTURE THIS MOCK RENDERS (EC-3, EC-3a, EC-3b, EC-3c)
+       `divergence` is a MANAGE panel, not a wizard launcher.
+         LIST     ← GET /books/{bid}/work → selectDerivatives(candidates)
+         READ     ← GET /works/{pid}/derivative-context
+                     (taxonomy · branch_point · pov_anchor · canon_rules ·
+                      entity_overrides)
+         CREATE   → POST /works/{pid}/derive  (the ported 4-step wizard,
+                     with step 4's name now PERSISTED — BE-13a)
+         SWITCH   → writes the per-user preference AND publishes onto the
+                     studio bus; the Editor's DerivativeBanner lights up.
+                     THE ONE cross-panel effect in this wave — it lives in the
+                     BUS (+ a durable preference), not in a singleton. ②b.
+         ARCHIVE  → PATCH /works/{pid} {status:'archived'} + If-Match
+       The spec section renders READ-ONLY, and says WHY, naming the line.
+
+     THE COMPOSITION SECTION (⑦) — it is NOT "a settings form".
+       It is THE BOOK-TIER WRITER OF THE MODEL CASCADE. The cascade already
+       HAS a Book tier, fed by work.settings.model_roles
+       (internal_model_settings.py:46-65), with `critic` already in the
+       canonical role set (chat-service settings_resolution.py:39). And
+       `grep -rn "model_roles" frontend/src` → NOTHING. No GUI has ever
+       written it. So the section writes settings.model_roles.{composer,
+       critic,planner} — NOT a fourth bespoke critic_model_ref picker (SET-8:
+       one home, one name). Every row shows EFFECTIVE VALUE + SOURCE TIER.
+
+     ► ⑦'s TRAP, AND THE REASON BE-21 EXISTS (F-EC4b).
+       `model_roles` HAS NO READER IN composition-service. Its engine picks
+       the critic from the LEGACY SCALAR, at SEVEN sites:
+         routers/engine.py:465, 529, 1029, 1099, 1261, 1345, and 1644 —
+         `settings_dict.get("critic_model_ref")`, the "critique skipped" gate.
+       (internal_model_settings.py is an /internal route serving CHAT-service's
+       cascade — a DIFFERENT consumer.) So a section that writes ONLY
+       model_roles.critic leaves the engine returning "critique skipped: no
+       distinct critic model configured" FOREVER, while this panel proudly
+       renders "critic · gpt-4o · book". That is stored-but-unread /
+       silent-success — the very class this wave exists to kill — shipped BY
+       the wave. The fix is NOT "write both keys" (two homes; SET-8 again):
+       it is BE-21, one resolve_model_role(settings, role) helper that reads
+       model_roles first and falls back to the scalar, called from all seven.
+
+     BACKEND WORK THIS SCREEN IMPLIES (flagged up front, not silently)
+       • BE-13a (XS, MUST-BUILD, no DDL) — extend DeriveBody with
+         `name: str (1..200)`; persist to settings.derivative_name; echo it
+         on /derivative-context AND in candidates[] (which dumps the whole
+         Work model, settings included — so candidates[] is free). Without it
+         the panel is a list of unnamed UUIDs. HARD PREREQUISITE.
+       • BE-21 (S, MUST-BUILD) — the model-role resolver above. HARD
+         PREREQUISITE of ⑦; without it ⑦ is a write-only editor.
+       • BE-18 (XS, MUST-BUILD) — repositories/works.py:311 is a FULL-BLOB
+         REPLACE (`settings = $n::jsonb`). Make it
+         `COALESCE(settings,'{}'::jsonb) || $n::jsonb`.
+         ⚠ AND DO NOT PUT If-Match ON `patchWork`. It is ONE SHARED FUNCTION
+         with FIVE call sites (api.ts:443): useSetWorkSettings,
+         useChapterAssembly, useProgress, the divergence archive — and
+         useWorldMap, WHICH WRITES ONE PATCH PER NODE DRAG. A blanket If-Match
+         makes the world map 412 against its own previous write on the second
+         drag: `instant-commit-control-over-occ-entity-needs-write-
+         serialization`, verbatim, on a route this wave touches for an
+         unrelated reason. If-Match is OPT-IN PER CALL SITE (the Composition
+         save + the archive — human-paced, conflict-meaningful). The BE-18
+         merge already closes the world map's lost-update window.
+       • EC-3c (FE + 1 BE line) — selectCanonicalWork/selectDerivatives in
+         features/composition/workSelect.ts replaces candidates[0] at ELEVEN
+         FE sites (7 studio + 4 legacy); internal_model_settings.py:85 gains
+         the same predicate. EC-3d adds useActiveWork + host/types.ts.
+       • BE-13 (M) — ⏸ DEFERRED v2: PATCH /works/{pid}/divergence-spec +
+         POST|PATCH|DELETE /works/{pid}/overrides. The panel does NOT depend
+         on it. D-DIVERGENCE-SPEC-EDIT.
+       • BE-12 (M) — ⏸ structure_template AUTHORING is OUT of v1 (EC-5a). The
+         repo has exactly list_for_user + get ("Read-only in V0.", its own
+         docstring). The table advertises a user tier (owner_user_id nullable,
+         migrate.py:179) and NO CODE ANYWHERE CAN INSERT ONE. The 6 built-ins
+         are SYSTEM TIER (owner_user_id IS NULL) — a user CLONES, never
+         mutates (CLAUDE.md User Boundaries; the entity_kinds bug). ⑦ renders
+         an honest empty affordance, not a disabled button.
+       • ZERO divergence MCP tools, and none in this wave — an INVERSE gap
+         RECORDED, not hidden (D-DIVERGENCE-MCP-TOOLS). Deriving MINTS A
+         FRESH KNOWLEDGE PROJECT and forks the book's whole grounding
+         partition (works.py:363-376); that is an AN-8 Tier-W-shaped action
+         that deserves its own confirm design, not a bolt-on.
+       • NO migration. NO gateway change. NO new table.
+
+     STATES THIS MOCK MUST SHOW (all rendered below, none hand-waved)
+       ① the manage list — canonical + 2 named derivatives, with Switch to /
+          Archive, and the read-only spec of the selected one.
+       ② no derivatives yet — the canonical row alone + what a dị bản IS.
+       ③ the 4-step wizard, at step 4 — where the name is finally REAL.
+       ④ derive in flight, and its two real failures: 503
+          PROJECT_CREATE_UNAVAILABLE (surfaced verbatim) and a 412 on archive.
+       ⑤ BEFORE — the wizard's discarded name, and candidates[0]-as-identity.
+       ⑥ the DerivativeBanner in the Editor chrome after a Switch to.
+       ⑦ the Composition section in `book-settings` — every row with its
+          effective value + source tier; the critic's honest warning; the
+          story-structure picker; the read-only embed model; and the
+          user-template empty affordance.
+       ⑧ the Beats facet in `plan-hub`'s PlanDrawer — beat_role as a
+          TEMPLATE-FED closed set (never free text), and the no-structure
+          state that deep-links to ⑦.
+
+     SCALE — a book has ONE canonical Work and a handful of dị bản (2-5, not
+     500): this list is never paged. But a derive is EXPENSIVE (a new
+     knowledge project + a forked grounding partition), so the wizard's
+     submit is one-at-a-time, disabled while in flight, and the 503 is real.
+  ═══════════════════════════════════════════════════════════════════════ */
+  :root {
+    --background: #181412; --background-alt: #1e1a17; --foreground: #f5efe8;
+    --card: #1e1a17; --card-hover: #272220; --border: #332d28; --border-hover: #4a423b;
+    --primary: #e8a832; --primary-fg: #141010; --primary-muted: #3d2e12;
+    --secondary: #282320; --muted-fg: #9e9488;
+    --accent: #3da692; --accent-muted: #1a2e2a; --accent-fg: #c8ede6;
+    --success: #3dba6a; --warning: #e8a832; --info: #5496e8; --destructive: #d9584f; --destructive-muted: #3a1f1c;
+    /* domain: the three DivergenceTaxonomy members (db/models.py:78) */
+    --tax-au: #b482e0; --tax-pov: #5496e8; --tax-transform: #e8b87e;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Inter', system-ui, sans-serif; background: #0f0c0b; color: var(--foreground); -webkit-font-smoothing: antialiased; padding: 24px; }
+  .mono { font-family: 'JetBrains Mono', monospace; }
+  svg { display: block; }
+  ::-webkit-scrollbar { width: 8px; height: 8px; } ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--border-hover); border-radius: 4px; }
+
+  h1 { font-size: 18px; font-weight: 600; margin-bottom: 4px; }
+  h2 { font-size: 13px; font-weight: 600; margin: 28px 0 10px; display: flex; align-items: center; gap: 8px; }
+  h2 .tag { font-size: 9px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--muted-fg); border: 1px solid var(--border); border-radius: 4px; padding: 2px 6px; }
+  .sub { font-size: 12px; color: var(--muted-fg); margin-bottom: 16px; max-width: 1000px; line-height: 1.55; }
+  .sub b { color: var(--foreground); font-weight: 600; }
+  .sub code { font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--accent-fg); background: var(--accent-muted); padding: 1px 4px; border-radius: 3px; }
+
+  /* ── Taxonomy legend (the closed set, db/models.py:78) ─────────────────── */
+  .legend { display: flex; gap: 18px; align-items: center; flex-wrap: wrap; padding: 10px 14px; margin-bottom: 20px;
+            background: var(--background-alt); border: 1px solid var(--border); border-radius: 8px; font-size: 11.5px; }
+  .legend .item { display: flex; align-items: center; gap: 7px; color: var(--muted-fg); }
+  .legend .item b { color: var(--foreground); font-weight: 600; }
+
+  .tax { display: inline-flex; align-items: center; gap: 5px; height: 18px; padding: 0 7px; border-radius: 100px;
+         font-family: 'JetBrains Mono', monospace; font-size: 9.5px; font-weight: 500; white-space: nowrap; border: 1px solid transparent; }
+  .tax::before { content: ''; width: 5px; height: 5px; border-radius: 50%; background: currentColor; flex-shrink: 0; }
+  .tax.au        { color: var(--tax-au);        background: #2a1f38; border-color: #3d2d52; }
+  .tax.pov       { color: var(--tax-pov);       background: #1a2432; border-color: #23303f; }
+  .tax.transform { color: var(--tax-transform); background: #2b2318; border-color: #3d3226; }
+  .tax.canon     { color: var(--accent);        background: var(--accent-muted); border-color: #245049; }
+
+  /* ── Dock panel frame ─────────────────────────────────────────────────── */
+  .panel { background: var(--background-alt); border: 1px solid var(--border); border-radius: 10px; display: flex; flex-direction: column; overflow: hidden; }
+  .panel-head { height: 34px; flex-shrink: 0; display: flex; align-items: center; justify-content: space-between;
+    padding: 0 10px 0 12px; border-bottom: 1px solid var(--border);
+    font-size: 10px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--muted-fg); }
+  .panel-head .acts { display: flex; gap: 4px; }
+  .ico { width: 20px; height: 20px; display: flex; align-items: center; justify-content: center; border-radius: 5px; color: var(--muted-fg); cursor: pointer; flex-shrink: 0; }
+  .ico:hover { background: var(--secondary); color: var(--foreground); }
+  .ico svg { width: 13px; height: 13px; }
+  .body { flex: 1; min-height: 0; overflow-y: auto; position: relative; }   /* min-height:0 is load-bearing */
+  .panel-foot { flex-shrink: 0; border-top: 1px solid var(--border); padding: 7px 12px; display: flex;
+    align-items: center; justify-content: space-between; gap: 10px; font-size: 10.5px; color: var(--muted-fg); }
+  .panel-foot .note { display: flex; align-items: center; gap: 6px; min-width: 0; }
+  .panel-foot .note svg { width: 12px; height: 12px; color: var(--info); flex-shrink: 0; }
+
+  .div-panel { width: 520px; max-width: 100%; height: 660px; flex-shrink: 0; }
+  .wiz-panel { width: 470px; max-width: 100%; height: 660px; flex-shrink: 0; }
+
+  /* ── Work rows (the LIST that already exists and nothing surfaces) ─────── */
+  .sect { border-bottom: 1px solid var(--border); }
+  .sect-head { display: flex; align-items: center; gap: 7px; padding: 10px 12px 7px;
+    font-size: 9.5px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--muted-fg); }
+  .sect-head .src { margin-left: auto; font-family: 'JetBrains Mono', monospace; font-size: 9px; opacity: .75; text-transform: none; letter-spacing: 0; }
+  .sect-head svg { width: 12px; height: 12px; }
+  .sect-body { padding: 0 12px 12px; display: flex; flex-direction: column; gap: 8px; }
+
+  .work-row { border: 1px solid var(--border); border-radius: 8px; background: var(--background); padding: 9px 10px;
+    display: flex; flex-direction: column; gap: 6px; cursor: pointer; }
+  .work-row:hover { border-color: var(--border-hover); }
+  .work-row.active { border-color: var(--accent); box-shadow: inset 2px 0 0 var(--accent); background: var(--card-hover); }
+  .work-row.canon { border-color: var(--primary-muted); }
+  .work-row .top { display: flex; align-items: center; gap: 7px; }
+  .work-row .radio { width: 12px; height: 12px; border-radius: 50%; border: 1.5px solid var(--border-hover); flex-shrink: 0; }
+  .work-row .radio.on { border-color: var(--accent); box-shadow: inset 0 0 0 2.5px var(--accent); }
+  .work-row .nm { font-size: 12.5px; font-weight: 500; flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .work-row .meta { font-size: 10.5px; color: var(--muted-fg); line-height: 1.5; }
+  .work-row .meta .mono { font-size: 10px; }
+  .work-row .acts { display: flex; gap: 6px; margin-top: 2px; }
+
+  .badge { display: inline-flex; align-items: center; gap: 4px; height: 18px; padding: 0 7px; border-radius: 4px;
+    font-size: 9.5px; font-weight: 600; letter-spacing: .02em; white-space: nowrap; }
+  .b-active   { background: var(--accent-muted); color: var(--accent-fg); }
+  .b-canon    { background: var(--primary-muted); color: var(--primary); }
+  .b-readonly { background: var(--secondary); color: var(--muted-fg); }
+
+  .btn { height: 25px; padding: 0 10px; border-radius: 6px; font-size: 11px; font-weight: 500; cursor: pointer;
+    border: 1px solid var(--border); background: var(--background); color: var(--foreground); display: inline-flex; align-items: center; gap: 5px; }
+  .btn:hover { border-color: var(--border-hover); background: var(--card-hover); }
+  .btn.primary { background: var(--primary); border-color: var(--primary); color: var(--primary-fg); font-weight: 600; }
+  .btn.danger:hover { border-color: var(--destructive); color: var(--destructive); }
+  .btn[disabled] { opacity: .5; cursor: not-allowed; }
+  .btn svg { width: 12px; height: 12px; }
+  .btn.big { height: 29px; font-size: 12px; }
+
+  /* ── The read-only spec (EC-3a) ───────────────────────────────────────── */
+  .field { display: grid; grid-template-columns: 92px 1fr; gap: 10px; align-items: start; font-size: 11.5px; }
+  .field > label { color: var(--muted-fg); padding-top: 2px; }
+  .field .ro { color: var(--foreground); line-height: 1.5; }
+  .av { width: 17px; height: 17px; border-radius: 50%; flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center;
+    font-size: 8px; font-weight: 700; color: #141010; vertical-align: -3px; margin-right: 5px; }
+
+  .rule { display: flex; gap: 7px; align-items: flex-start; padding: 5px 0; font-size: 11px; line-height: 1.5; color: var(--foreground); }
+  .rule svg { width: 12px; height: 12px; color: var(--accent); flex-shrink: 0; margin-top: 2px; }
+
+  .ovr { display: grid; grid-template-columns: 1fr auto; gap: 8px; align-items: center; padding: 6px 8px; border-radius: 6px;
+    background: var(--secondary); font-size: 11px; }
+  .ovr .who { display: flex; align-items: center; gap: 2px; min-width: 0; }
+  .ovr .chg { font-family: 'JetBrains Mono', monospace; font-size: 10px; color: var(--muted-fg); }
+  .ovr .chg b { color: var(--tax-au); font-weight: 500; }
+
+  .locked { display: flex; gap: 8px; align-items: flex-start; margin-top: 6px; padding: 8px 10px; border-radius: 7px;
+    background: var(--destructive-muted); border: 1px solid #4c2a26; font-size: 10.5px; line-height: 1.55; color: #e8b0aa; }
+  .locked svg { width: 13px; height: 13px; flex-shrink: 0; margin-top: 1px; }
+  .locked b { color: var(--foreground); font-weight: 600; }
+  .locked code { font-family: 'JetBrains Mono', monospace; font-size: 9.5px; color: #f0c4bf; }
+
+  .info-strip { display: flex; gap: 8px; align-items: flex-start; padding: 8px 10px; border-radius: 7px;
+    background: var(--background); border: 1px solid var(--border); font-size: 10.5px; line-height: 1.55; color: var(--muted-fg); }
+  .info-strip svg { width: 12px; height: 12px; color: var(--info); flex-shrink: 0; margin-top: 1px; }
+  .info-strip b { color: var(--foreground); font-weight: 600; }
+  .info-strip.warn svg { color: var(--warning); }
+  .info-strip.bad  { background: var(--destructive-muted); border-color: #4c2a26; color: #e8b0aa; }
+  .info-strip.bad svg { color: var(--destructive); }
+
+  /* ── The wizard (ported DivergenceWizard, 4 steps) ─────────────────────── */
+  .steps { display: flex; align-items: center; gap: 0; padding: 10px 12px; border-bottom: 1px solid var(--border); flex-shrink: 0; }
+  .step { display: flex; align-items: center; gap: 6px; font-size: 10.5px; color: var(--muted-fg); }
+  .step .n { width: 18px; height: 18px; border-radius: 50%; border: 1px solid var(--border-hover); display: flex; align-items: center;
+    justify-content: center; font-family: 'JetBrains Mono', monospace; font-size: 9.5px; flex-shrink: 0; }
+  .step.done .n { background: var(--accent-muted); border-color: var(--accent); color: var(--accent); }
+  .step.on   .n { background: var(--primary); border-color: var(--primary); color: var(--primary-fg); font-weight: 700; }
+  .step.on { color: var(--foreground); font-weight: 600; }
+  .step-line { flex: 1; height: 1px; background: var(--border); margin: 0 7px; }
+
+  .inp { background: var(--background); border: 1px solid var(--border); border-radius: 6px; color: var(--foreground);
+    font: inherit; font-size: 12px; padding: 6px 8px; outline: none; width: 100%; }
+  .inp:focus { border-color: var(--primary); }
+  .inp::placeholder { color: var(--muted-fg); }
+  textarea.inp { resize: vertical; min-height: 42px; line-height: 1.45; font-size: 11.5px; }
+  .lbl { font-size: 10px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; color: var(--muted-fg); }
+  .hint { font-size: 10px; color: var(--muted-fg); line-height: 1.55; }
+  .hint b { color: var(--foreground); font-weight: 600; }
+
+  .recap { border: 1px solid var(--border); border-radius: 8px; background: var(--background); padding: 9px 10px; display: flex; flex-direction: column; gap: 7px; }
+  .recap .r { display: grid; grid-template-columns: 80px 1fr; gap: 8px; font-size: 11px; align-items: center; }
+  .recap .r label { color: var(--muted-fg); }
+
+  /* ── Editor chrome (the DerivativeBanner — the ONE cross-panel effect) ─── */
+  .editor-mock { width: 1010px; max-width: 100%; }
+  .banner { display: flex; align-items: center; gap: 9px; padding: 8px 12px; background: #2a1f38; border-bottom: 1px solid #3d2d52;
+    font-size: 11.5px; color: #d8c4f0; }
+  .banner svg { width: 14px; height: 14px; color: var(--tax-au); flex-shrink: 0; }
+  .banner b { color: var(--foreground); font-weight: 600; }
+  .banner .layers { margin-left: auto; display: flex; gap: 5px; }
+  .layer { font-family: 'JetBrains Mono', monospace; font-size: 9.5px; padding: 2px 6px; border-radius: 3px;
+    background: rgba(0,0,0,.28); border: 1px solid #3d2d52; }
+  .layer.ro { color: var(--muted-fg); }
+  .layer.au { color: var(--tax-au); }
+  .prose { padding: 16px 20px; font-size: 13px; line-height: 1.75; color: var(--foreground); }
+  .prose .dim { color: var(--muted-fg); }
+
+  /* ── Layout + annotation ──────────────────────────────────────────────── */
+  .stack { display: flex; gap: 20px; align-items: flex-start; flex-wrap: wrap; }
+  .callout { max-width: 1010px; margin-top: 12px; padding: 10px 13px; border-radius: 8px; font-size: 11.5px; line-height: 1.6;
+    background: var(--background-alt); border: 1px solid var(--border); border-left: 3px solid var(--info); color: var(--muted-fg); }
+  .callout.warn { border-left-color: var(--warning); }
+  .callout.bad { border-left-color: var(--destructive); }
+  .callout b { color: var(--foreground); }
+  .callout code { font-family: 'JetBrains Mono', monospace; font-size: 10.5px; color: var(--accent-fg); }
+
+  /* ── ⑦ the Composition SECTION in `book-settings` (NOT a new panel) ────── */
+  /* TierChip again — the SAME shipped component as style-voice, on its ALREADY-
+     EXISTING tiers (`book` / `account`). No new rows needed here: the model cascade
+     is what TierChip was written for. `work`/`scene`/`chapter` (the style cascade)
+     are the four rows M1 adds. One chip, two cascades, one vocabulary. */
+  .tier { display: inline-flex; align-items: center; gap: 5px; height: 18px; padding: 0 7px; border-radius: 100px;
+          font-family: 'JetBrains Mono', monospace; font-size: 9.5px; font-weight: 500; white-space: nowrap;
+          border: 1px solid transparent; background: var(--secondary); color: var(--muted-fg); flex-shrink: 0; }
+  .tier::before { content: ''; width: 5px; height: 5px; border-radius: 50%; background: currentColor; flex-shrink: 0; }
+  .tier.book    { color: var(--tax-au);  background: #2a1f38; border-color: #3d2d52; }
+  .tier.account { color: var(--accent);  background: var(--accent-muted); border-color: #245049; }
+  .tier.system  { color: var(--primary); background: var(--primary-muted); border-color: #5a441c; }
+
+  .set-panel { width: 560px; max-width: 100%; height: 660px; flex-shrink: 0; }
+  .srow { display: flex; flex-direction: column; gap: 5px; padding: 10px 12px; border-bottom: 1px solid var(--border); }
+  .srow .top { display: flex; align-items: center; gap: 8px; }
+  .srow .top .k { font-size: 11.5px; font-weight: 500; flex: 1; min-width: 0; }
+  .srow .why { font-size: 10px; color: var(--muted-fg); line-height: 1.55; }
+  .srow .why b { color: var(--foreground); font-weight: 600; }
+  .sel { display: flex; align-items: center; justify-content: space-between; gap: 6px; height: 26px; padding: 0 8px;
+    background: var(--background); border: 1px solid var(--border); border-radius: 6px; font-size: 11.5px; color: var(--foreground); }
+  .sel svg { width: 11px; height: 11px; color: var(--muted-fg); flex-shrink: 0; }
+  .sel.ro { color: var(--muted-fg); background: var(--secondary); border-style: dashed; }
+  .tog { width: 30px; height: 17px; border-radius: 100px; background: var(--secondary); border: 1px solid var(--border);
+    position: relative; flex-shrink: 0; cursor: pointer; }
+  .tog::after { content: ''; position: absolute; top: 2px; left: 2px; width: 11px; height: 11px; border-radius: 50%; background: var(--muted-fg); }
+  .tog.on { background: var(--primary-muted); border-color: var(--primary); }
+  .tog.on::after { left: 16px; background: var(--primary); }
+
+  /* ── ⑧ the Beats facet in plan-hub's PlanDrawer (NOT a new panel) ──────── */
+  .drawer { width: 380px; max-width: 100%; height: 660px; flex-shrink: 0; }
+  .beat { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-radius: 6px; font-size: 11.5px;
+    border: 1px solid transparent; cursor: pointer; }
+  .beat:hover { background: var(--card-hover); }
+  .beat.on { background: var(--primary-muted); border-color: var(--primary); color: var(--primary); font-weight: 600; }
+  .beat .n { font-family: 'JetBrains Mono', monospace; font-size: 9.5px; color: var(--muted-fg); width: 16px; flex-shrink: 0; }
+  .beat.on .n { color: var(--primary); }
+  .beat .pct { margin-left: auto; font-family: 'JetBrains Mono', monospace; font-size: 9.5px; color: var(--muted-fg); }
+
+  .mini { width: 258px; height: 320px; }
+  .mini .panel-head { height: 28px; font-size: 9px; }
+  .empty { padding: 22px 16px; text-align: center; font-size: 11px; color: var(--muted-fg); line-height: 1.65; }
+  .empty svg { width: 22px; height: 22px; margin: 0 auto 8px; color: var(--border-hover); }
+  .empty b { color: var(--foreground); font-weight: 600; }
+  .strike { text-decoration: line-through; opacity: .5; }
+  .code-block { font-family: 'JetBrains Mono', monospace; font-size: 10px; line-height: 1.6; background: var(--background);
+    border: 1px solid var(--border); border-radius: 6px; padding: 8px 9px; color: var(--muted-fg); white-space: pre; overflow-x: auto; }
+  .code-block .k { color: var(--accent-fg); } .code-block .s { color: var(--primary); } .code-block .b { color: var(--destructive); }
+</style>
+</head>
+<body>
+
+<h1>Divergence — dị bản <span class="mono" style="font-size:12px;color:var(--muted-fg);font-weight:400">— + the book-settings Composition section + the plan-hub Beats facet · draft</span></h1>
+<p class="sub">
+  Spec: <b>36_editor_craft_ports.md</b> (Wave 6). A <b>dị bản</b> branches your book at a chapter and diverges — an AU, a POV shift, a
+  character transformed — into a <b>derivative Work</b> with its own knowledge partition, while the source stays <b>read-only canon</b>.
+  The whole subsystem is <b>already shipped</b> — schema, wizard, promotion path, grounding-layer view — and lives entirely on
+  <code>ChapterEditorPage</code>, the page that says <b>DO NOT EDIT</b>. This panel is a <b>MANAGE</b> surface, not a wizard launcher (EC-3):
+  <b>the LIST already exists</b> (<code>candidates[]</code>) and nothing surfaces it.<br />
+  <b>This file also draws Wave 6's two NON-panel surfaces</b> (plan 30 §11 pairs them here): <b>⑦</b> the Composition section inside the
+  existing <code>book-settings</code> — <b>the Book tier of the model cascade, which has never had a writer in any GUI</b> — and <b>⑧</b> the
+  Beats facet inside the existing <code>plan-hub</code> drawer. Neither is a new panel id.
+</p>
+
+<div class="legend">
+  <div class="item"><b>Taxonomy</b> — the closed set (<code class="mono" style="font-size:10.5px">db/models.py:78</code>):</div>
+  <div class="item"><span class="tax au">au</span> a what-if world</div>
+  <div class="item"><span class="tax pov">pov_shift</span> the same events, another pair of eyes</div>
+  <div class="item"><span class="tax transform">character_transform</span> one person, changed</div>
+  <div class="item" style="margin-left:auto">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:13px;height:13px"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
+    Canonical = <code class="mono" style="font-size:10.5px;color:var(--accent-fg)">source_work_id IS NULL</code> — <b>not</b> <code class="mono" style="font-size:10.5px;color:var(--destructive)">candidates[0]</code>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════════════
+     ① The manage panel + the read-only spec of the selected derivative
+     ══════════════════════════════════════════════════════════════════════ -->
+<h2>① The manage list <span class="tag">divergence</span> — canonical + 2 named derivatives</h2>
+<p class="sub">
+  Every row here comes from <b>one call that already exists</b>: <code>GET /books/{bid}/work</code> → <code>candidates[]</code>
+  (<code>work_resolution.py:93-97</code>), each row carrying <code>source_work_id</code> and <code>branch_point</code>.
+  <b>Switch to</b> publishes the active Work to the studio bus. <b>Archive</b> is <code>PATCH {status:'archived'}</code> — a real,
+  sibling-consistent soft delete that <i>already ships</i>, and which the audit said did not exist.
+</p>
+
+<div class="stack">
+<div class="panel div-panel">
+  <div class="panel-head">
+    <span>Divergence (dị bản)</span>
+    <div class="acts">
+      <div class="ico" title="Refresh"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 1 1-2.6-6.4M21 3v6h-6"/></svg></div>
+      <div class="ico" title="Pop out"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 3h6v6M10 14 21 3M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/></svg></div>
+      <div class="ico" title="Close"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6 6 18M6 6l12 12"/></svg></div>
+    </div>
+  </div>
+
+  <div class="body">
+    <!-- The canonical Work -->
+    <div class="sect">
+      <div class="sect-head">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
+        Canonical <span class="src mono">source_work_id = null</span>
+      </div>
+      <div class="sect-body">
+        <div class="work-row canon">
+          <div class="top">
+            <span class="radio on"></span>
+            <span class="nm">Nghịch thiên</span>
+            <span class="badge b-canon">active</span>
+          </div>
+          <div class="meta">
+            1,842 chapters · <span class="mono">work 4c1e…a09f</span> · the book everything else branches from
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- The derivatives -->
+    <div class="sect">
+      <div class="sect-head">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 3v12M18 9a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM6 21a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM18 9a9 9 0 0 1-9 9"/></svg>
+        Derivatives (2) <span class="src mono">source_work_id = 4c1e…a09f</span>
+      </div>
+      <div class="sect-body">
+        <div class="work-row active">
+          <div class="top">
+            <span class="radio"></span>
+            <span class="nm">Nếu Lam Vũ chết ở hồi 3</span>
+            <span class="tax au">au</span>
+          </div>
+          <div class="meta">
+            branched at <b style="color:var(--foreground);font-weight:500">Ch. 62 · Tro tàn</b> ·
+            3 entity overrides · 2 added canon rules · <span class="mono">created 4 days ago</span>
+          </div>
+          <div class="acts">
+            <button class="btn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 3v4h4M21 7l-6-6M7 21v-4H3M3 17l6 6"/></svg> Switch to</button>
+            <button class="btn danger"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="4" rx="1"/><path d="M5 8v11a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V8M10 12h4"/></svg> Archive</button>
+          </div>
+        </div>
+
+        <div class="work-row">
+          <div class="top">
+            <span class="radio"></span>
+            <span class="nm">POV: Diệp Thanh</span>
+            <span class="tax pov">pov_shift</span>
+          </div>
+          <div class="meta">
+            branched at <b style="color:var(--foreground);font-weight:500">Ch. 1 · Mở đầu</b> ·
+            anchor <span class="av" style="background:#5496e8">DT</span>Diệp Thanh · 0 overrides · <span class="mono">created 3 weeks ago</span>
+          </div>
+          <div class="acts">
+            <button class="btn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 3v4h4M21 7l-6-6M7 21v-4H3M3 17l6 6"/></svg> Switch to</button>
+            <button class="btn danger"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="4" rx="1"/><path d="M5 8v11a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V8M10 12h4"/></svg> Archive</button>
+          </div>
+        </div>
+
+        <button class="btn primary big" style="align-self:flex-start;margin-top:2px">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>
+          New divergence
+        </button>
+      </div>
+    </div>
+
+    <!-- The READ-ONLY spec of the selected derivative -->
+    <div class="sect" style="border-bottom:none">
+      <div class="sect-head">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>
+        Spec — “Nếu Lam Vũ chết ở hồi 3”
+        <span class="badge b-readonly" style="margin-left:auto">read-only</span>
+      </div>
+      <div class="sect-body" style="gap:9px">
+        <div class="field"><label>Taxonomy</label><div class="ro"><span class="tax au">au</span></div></div>
+        <div class="field"><label>Branch point</label><div class="ro">Ch. 62 · Tro tàn <span class="mono" style="font-size:10px;color:var(--muted-fg)">— chapters 1–61 are read-only canon</span></div></div>
+        <div class="field"><label>POV anchor</label><div class="ro" style="color:var(--muted-fg)">— none (au keeps the source's POV)</div></div>
+        <div class="field" style="align-items:start"><label>Canon rules</label>
+          <div>
+            <div class="rule">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6 9 17l-5-5"/></svg>
+              Lam Vũ dies at the Ash Gate. No resurrection, no body double, no cultivation loophole.
+            </div>
+            <div class="rule">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6 9 17l-5-5"/></svg>
+              Diệp Thanh inherits the sword — and the debt that came with it.
+            </div>
+          </div>
+        </div>
+        <div class="field" style="align-items:start"><label>Entity overrides</label>
+          <div style="display:flex;flex-direction:column;gap:5px">
+            <div class="ovr">
+              <span class="who"><span class="av" style="background:#e8a832">LV</span>Lam Vũ</span>
+              <span class="chg">status → <b>deceased</b></span>
+            </div>
+            <div class="ovr">
+              <span class="who"><span class="av" style="background:#5496e8">DT</span>Diệp Thanh</span>
+              <span class="chg">role → <b>protagonist</b></span>
+            </div>
+            <div class="ovr">
+              <span class="who"><span class="av" style="background:#3da692">HG</span>Hàn Giác</span>
+              <span class="chg">allegiance → <b>Salt Court</b></span>
+            </div>
+          </div>
+        </div>
+
+        <div class="locked">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>
+          <span><b>The spec is written ONCE, at derive.</b> <code>divergence_spec</code> and every <code>entity_override</code> row are
+            inserted inside the <code>POST /works/{pid}/derive</code> transaction (<code>works.py:378-405</code>) and <b>no route, no repo
+            method and no tool ever touches them again</b>. Editing them needs <b>BE-13</b> (<code>PATCH /divergence-spec</code> +
+            override CRUD), which is <b>deferred to v2</b>. So this section is read-only — <b>and it says why</b>, instead of shipping a
+            disabled pencil with no explanation.</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="panel-foot">
+    <div class="note">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
+      3 Works · <b style="color:var(--muted-fg);font-weight:400">1 canonical, 2 derivatives</b>
+    </div>
+    <span class="mono">v4 · If-Match on archive</span>
+  </div>
+</div>
+
+<!-- ── PANEL 2 — the ported wizard, at step 4 ─────────────────────────────── -->
+<div class="panel wiz-panel">
+  <div class="panel-head">
+    <span>New divergence — step 4 of 4</span>
+    <div class="acts">
+      <div class="ico" title="Cancel"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6 6 18M6 6l12 12"/></svg></div>
+    </div>
+  </div>
+
+  <div class="steps">
+    <div class="step done"><span class="n"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" style="width:9px;height:9px"><path d="M20 6 9 17l-5-5"/></svg></span>Branch</div>
+    <div class="step-line"></div>
+    <div class="step done"><span class="n"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" style="width:9px;height:9px"><path d="M20 6 9 17l-5-5"/></svg></span>Kind</div>
+    <div class="step-line"></div>
+    <div class="step done"><span class="n"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" style="width:9px;height:9px"><path d="M20 6 9 17l-5-5"/></svg></span>Rules</div>
+    <div class="step-line"></div>
+    <div class="step on"><span class="n">4</span>Name</div>
+  </div>
+
+  <div class="body">
+    <div class="sect-body" style="padding:12px; gap:11px">
+      <div>
+        <div class="lbl" style="margin-bottom:5px">Name this dị bản</div>
+        <input class="inp" value="Nếu Lam Vũ chết ở hồi 3" />
+        <div class="hint" style="margin-top:5px">
+          <b>Required, 1–200 chars.</b> Persisted to <code class="mono" style="font-size:9.5px">settings.derivative_name</code> (BE-13a) and echoed on
+          <code class="mono" style="font-size:9.5px">/derivative-context</code> + in <code class="mono" style="font-size:9.5px">candidates[]</code>.
+          <b>This is the field that is thrown away today.</b>
+        </div>
+      </div>
+
+      <div class="recap">
+        <div class="r"><label>Branch at</label><span>Ch. 62 · Tro tàn</span></div>
+        <div class="r"><label>Taxonomy</label><span><span class="tax au">au</span></span></div>
+        <div class="r"><label>POV anchor</label><span style="color:var(--muted-fg)">— none</span></div>
+        <div class="r" style="align-items:start"><label>Canon rules</label><span>2 rules</span></div>
+        <div class="r" style="align-items:start"><label>Overrides</label><span>3 entities</span></div>
+      </div>
+
+      <div class="info-strip warn">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 9v4M12 17h.01M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg>
+        <span><b>Deriving mints a fresh knowledge project</b> and forks this book's whole grounding partition
+          (<code class="mono" style="font-size:9.5px">works.py:363-376</code>). It is not a cheap copy, and it
+          <b>cannot be undone</b> — only archived. Chapters 1–61 stay <b>read-only canon</b> in the new Work.</span>
+      </div>
+
+      <div class="info-strip bad">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>
+        <span><b>Everything above is FINAL.</b> The taxonomy, the branch point, the POV anchor, the canon rules and the 3 entity
+          overrides are written <b>once</b>, in this transaction, and there is <b>no edit route</b>. Get it right here, or archive and
+          re-derive. The wizard says so <i>before</i> submit, not after.</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="panel-foot" style="padding:9px 12px">
+    <button class="btn">Back</button>
+    <button class="btn primary big">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 3v12M18 9a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM6 21a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM18 9a9 9 0 0 1-9 9"/></svg>
+      Create the dị bản
+    </button>
+  </div>
+</div>
+</div>
+
+<div class="callout">
+  <b>Three of the four verbs already exist — and that is the argument for the panel.</b> LIST is <code>candidates[]</code> off a route the Studio
+  <i>already calls</i>; DELETE is <code>PATCH {status:'archived'}</code> against <code>_UPDATABLE_COLUMNS</code>
+  (<code>repositories/works.py:42</code>), which <code>resolve_by_book</code> then filters out (<code>:268</code>); READ is
+  <code>GET /works/{pid}/derivative-context</code>. Only <b>UPDATE</b> is genuinely missing. The plan-30 audit called all three missing;
+  <b>they were verified against code and two were refuted.</b> This panel is <b>not</b> gated on new backend — it is gated on
+  <b>one XS slice</b> (BE-13a: a name), because a list of unnamed UUIDs is not a surface.
+</div>
+
+<div class="callout warn">
+  <b>Archiving is a SOFT delete, and the dialog must not imply destruction.</b> <code>ConfirmDialog</code> (DOCK-9) says:
+  <i>"Archive this dị bản? Its chapters and knowledge partition are kept; it disappears from this list."</i> The <code>PATCH</code> carries
+  <code>If-Match: &lt;version&gt;</code>; a stale write returns <b>412 <code>WORK_VERSION_CONFLICT</code></b> and the panel <b>reloads and says so</b> —
+  <i>"changed elsewhere — reloaded"</i>, the SceneRail wording, verbatim (PH20). It never silently overwrites.
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════════════
+     ② + ④ — empty, in-flight, and the two real failures
+     ══════════════════════════════════════════════════════════════════════ -->
+<h2>② ④ No derivatives · derive in flight · 503 · 412 <span class="tag">all four rendered</span></h2>
+<p class="sub">
+  The 503 is <b>not</b> a generic failure and must not be rendered as one: a derive mints a <b>knowledge project</b>, and knowledge-service
+  can be down. <code>PROJECT_CREATE_UNAVAILABLE</code> means <i>"your book is fine, the fork could not start"</i> — surface it verbatim.
+</p>
+
+<div class="stack">
+  <div class="panel mini">
+    <div class="panel-head"><span>No derivatives yet</span></div>
+    <div class="sect-body" style="padding:10px">
+      <div class="work-row canon">
+        <div class="top"><span class="radio on"></span><span class="nm">山海遺聞</span><span class="badge b-canon">active</span></div>
+        <div class="meta">204 chapters · canonical</div>
+      </div>
+    </div>
+    <div class="empty" style="padding-top:0">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 3v12M18 9a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM6 21a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM18 9a9 9 0 0 1-9 9"/></svg>
+      A <b>dị bản</b> branches your book at a chapter and diverges — <b>the source stays read-only canon</b>.
+      <div style="margin-top:12px"><button class="btn primary" style="margin:0 auto">+ New divergence</button></div>
+    </div>
+  </div>
+
+  <div class="panel mini">
+    <div class="panel-head"><span>Derive in flight</span></div>
+    <div class="empty" style="flex:1;display:flex;flex-direction:column;justify-content:center">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color:var(--primary)"><path d="M21 12a9 9 0 1 1-2.6-6.4"/></svg>
+      <b>Forking the grounding partition…</b>
+      <div style="margin-top:10px;font-size:10px;line-height:1.6;text-align:left">
+        The wizard's own <code class="mono" style="font-size:9px">isSubmitting</code>. The submit button is
+        <b>disabled</b> and the step nav is locked: a derive is <b>expensive</b> (a new knowledge project) and
+        <b>one-at-a-time</b>. Double-submitting would mint two dị bản with the same name.
+      </div>
+      <div style="margin-top:10px"><button class="btn primary" disabled style="margin:0 auto">Creating…</button></div>
+    </div>
+  </div>
+
+  <div class="panel mini">
+    <div class="panel-head"><span style="color:var(--destructive)">503 · derive failed</span></div>
+    <div class="sect-body" style="padding:12px;justify-content:center;flex:1">
+      <div class="info-strip bad">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 9v4M12 17h.01M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg>
+        <span><b>PROJECT_CREATE_UNAVAILABLE</b><br />
+          The knowledge partition for this dị bản could not be created. <b>Your book is unchanged</b> — nothing was branched.
+          Try again when knowledge-service is back.</span>
+      </div>
+      <div class="hint" style="margin-top:8px">
+        Rendered <b>verbatim</b>, with the code. <span class="strike">“Something went wrong.”</span> is not an error message —
+        it hides which of two systems failed, and whether anything was written.
+      </div>
+      <button class="btn" style="align-self:flex-start;margin-top:6px">Retry</button>
+    </div>
+  </div>
+
+  <div class="panel mini">
+    <div class="panel-head"><span style="color:var(--warning)">412 · archive conflict</span></div>
+    <div class="sect-body" style="padding:12px;justify-content:center;flex:1">
+      <div class="info-strip warn">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 1 1-2.6-6.4M21 3v6h-6"/></svg>
+        <span><b>Changed elsewhere — reloaded.</b><br />
+          Someone (or an agent) patched this Work while the panel was open. <code>WORK_VERSION_CONFLICT</code>: the 412 body carries the
+          <b>current row</b>, so the panel re-renders from it instead of guessing.</span>
+      </div>
+      <div class="hint" style="margin-top:8px">
+        The exact <b>SceneRail</b> recovery wording (PH20). One phrase for one event, product-wide —
+        <b>never</b> a second dialect of the same conflict.
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════════════
+     ⑤ BEFORE — the two shipped bugs this panel is drawn around
+     ══════════════════════════════════════════════════════════════════════ -->
+<h2>⑤ Before — today <span class="tag">legacy CompositionPanel → divergence</span> — the name is discarded, the identity is an index</h2>
+<p class="sub">
+  Both of these are live at HEAD <code>9262ed53e</code>. The first is a shipped <code>silent-success-is-a-bug</code>: the wizard
+  <b>refuses to submit</b> without a name and then <b>does not send it</b>. The second is dormant only because the Studio
+  <b>cannot create a derivative</b> — <b>this wave arms it</b>.
+</p>
+
+<div class="stack">
+  <div class="panel mini" style="height:340px">
+    <div class="panel-head"><span style="color:var(--destructive)">Before — the discarded name</span></div>
+    <div class="sect-body" style="padding:11px;gap:8px">
+      <div class="lbl">Name this dị bản</div>
+      <input class="inp" value="Nếu Lam Vũ chết ở hồi 3" style="border-color:var(--destructive)" />
+      <div class="code-block"><span class="k">submit</span>() <span class="s">// :169</span>
+  <span class="b">if</span> (!name.trim()) <span class="b">return</span>;   <span class="s">// REQUIRED</span>
+
+<span class="k">buildBody</span>() <span class="s">// :106-121</span>
+  <span class="b">return</span> {
+    branch_point,
+    divergence,
+    entity_overrides,
+  };            <span class="b">// ← no name.</span></div>
+      <div style="font-size:10px;color:var(--muted-fg);line-height:1.65">
+        <span class="strike">DeriveBody.name</span> — not in <code class="mono" style="font-size:9px">types.ts:41</code>.<br />
+        <span class="strike">composition_work.name</span> — no such column.<br />
+        <b style="color:var(--destructive)">The user is forced to type a label that goes nowhere.</b>
+      </div>
+    </div>
+  </div>
+
+  <div class="panel mini" style="height:340px">
+    <div class="panel-head"><span style="color:var(--destructive)">Before — identity by index</span></div>
+    <div class="sect-body" style="padding:11px;gap:8px">
+      <div class="code-block"><span class="s">// ManuscriptUnitProvider.tsx:138</span>
+<span class="s">// useManuscriptJump.ts:48</span>
+<span class="s">// useManuscriptTree.ts:55</span>
+<span class="s">// internal_model_settings.py:85</span>
+
+d.candidates[<span class="b">0</span>]?.project_id</div>
+      <div style="font-size:10px;color:var(--muted-fg);line-height:1.65">
+        Works <b>only</b> because <code class="mono" style="font-size:9px">resolve_by_book</code> is
+        <code class="mono" style="font-size:9px">ORDER BY created_at</code> and a derive needs a source to exist first.
+        The server-side site even <b>documents</b> the assumption.<br /><br />
+        <b style="color:var(--destructive)">The predicate is <code class="mono" style="font-size:9px;color:var(--destructive)">source_work_id IS NULL</code>.</b>
+        Dormant — <b>until this wave lets you make a derivative.</b>
+      </div>
+    </div>
+  </div>
+
+  <div class="panel mini" style="height:340px">
+    <div class="panel-head"><span style="color:var(--success)">After — EC-3c + EC-3d</span></div>
+    <div class="sect-body" style="padding:11px;gap:8px">
+      <div class="code-block"><span class="s">// features/composition/workSelect.ts</span>
+<span class="k">selectCanonicalWork</span>(c)
+  → c.<span class="k">find</span>(w =&gt; <span class="b">!</span>w.source_work_id)
+     <span class="s">// NOT `=== null` — the field is</span>
+     <span class="s">// OPTIONAL (types.ts:19).</span>
+
+<span class="k">selectDerivatives</span>(c)
+  → c.<span class="k">filter</span>(w =&gt; w.source_work_id)
+
+<span class="s">// …but the PANELS call this:</span>
+<span class="k">useActiveWork</span>(bookId)
+  → activeWorkProjectId
+    <span class="b">??</span> selectCanonicalWork(c)</div>
+      <div style="font-size:10px;color:var(--muted-fg);line-height:1.65">
+        <b style="color:var(--foreground)">All twelve sites</b> switch in the <b>same slice</b> — fixing it
+        <i>after</i> shipping means <b>shipping the bug</b>.<br />
+        <b style="color:var(--destructive)">Switch to would not work</b> if the panels called
+        <code class="mono" style="font-size:9px">selectCanonicalWork</code> directly: each would re-resolve
+        <b>straight back to canon</b>. It is the <b>fallback</b>, not the resolver (EC-3d).
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="callout warn">
+  <b>The DoD is a hygiene grep, not a count.</b> The audit said three sites; there are <b>twelve</b>. A milestone that says
+  <i>"fix the 3 sites"</i> gets you three. The test is: <code>candidates[0]</code> appears <b>nowhere</b> in <code>frontend/src</code> or
+  <code>services/</code> outside tests. Plus two fixtures the old code passes and the new one must too — a <b>derivative sorted first</b>
+  (still resolves canonical), and a Work with <code>source_work_id: undefined</code> (still resolves at all — the <code>=== null</code> trap).
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════════════
+     ⑥ The one cross-panel effect — the DerivativeBanner
+     ══════════════════════════════════════════════════════════════════════ -->
+<h2>⑥ After “Switch to” <span class="tag">editor chrome</span> — the DerivativeBanner (the wave's only cross-panel effect)</h2>
+<p class="sub">
+  <b>Switch to</b> publishes the active Work onto the <b>studio bus</b>. The Editor's banner lights up, and
+  <code>DerivativeGroundingLayers</code> shows which layer each fact is coming from. <b>This effect lives in the bus, not in a singleton</b> —
+  a global <code>registerEditorTarget</code>-shaped shortcut here is how <code>editorBridge</code> got 10 referencing files.
+</p>
+
+<div class="panel editor-mock">
+  <div class="panel-head">
+    <span>Editor — Ch. 63 · Người thừa kế</span>
+    <div class="acts">
+      <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6 6 18M6 6l12 12"/></svg></div>
+    </div>
+  </div>
+
+  <div class="banner">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 3v12M18 9a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM6 21a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM18 9a9 9 0 0 1-9 9"/></svg>
+    <span>You are writing <b>“Nếu Lam Vũ chết ở hồi 3”</b> <span class="tax au" style="vertical-align:1px">au</span> —
+      <b>adapting from read-only canon</b>. Chapters 1–61 belong to <b>Nghịch thiên</b> and cannot be edited from here.</span>
+    <div class="layers">
+      <span class="layer ro">canon · 1–61</span>
+      <span class="layer au">divergent · 62+</span>
+      <span class="layer">3 overrides</span>
+      <span class="layer">2 rules</span>
+    </div>
+  </div>
+
+  <div class="prose">
+    Diệp Thanh đứng trước Tro Môn, tay nắm chặt thanh kiếm không phải của mình.
+    <span class="dim">Chín năm trước, người đứng ở đây là Lam Vũ — và người đó đã không bước ra.</span>
+    Nàng không biết cái giá phải trả, nhưng nàng biết ai đã trả nó.
+  </div>
+
+  <div class="panel-foot">
+    <div class="note">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
+      Grounding resolves through <b style="color:var(--muted-fg);font-weight:400">the derivative's knowledge partition first</b>, then the canon layer
+    </div>
+    <span class="mono">1,204 words · saved 40s ago</span>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════════════
+     ⑦ The Composition SECTION in `book-settings` — NOT a new panel
+     ══════════════════════════════════════════════════════════════════════ -->
+<h2>⑦ The Composition section <span class="tag">inside book-settings</span> — the Book tier of the model cascade, which has never had a writer</h2>
+<p class="sub">
+  <b>Not a new panel.</b> A self-contained <code>&lt;CompositionSettingsSection bookId&gt;</code> inside
+  <code>pages/book-tabs/SettingsTab.tsx</code> (which <code>book-settings</code> already wraps), with <b>its own save path</b>
+  (<code>PATCH /works</code>) — two resources, two saves; it does <b>not</b> join the book form's dirty-save bar.
+  Every row carries its <b>effective value + source tier</b> (SET-1). <b>No row shows a value the engine will not use</b> —
+  which is precisely why <b>BE-21</b> is a hard prerequisite and not a nicety.
+</p>
+
+<div class="stack">
+<div class="panel set-panel">
+  <div class="panel-head">
+    <span>Book settings — Composition</span>
+    <div class="acts">
+      <div class="ico" title="Refresh"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 1 1-2.6-6.4M21 3v6h-6"/></svg></div>
+      <div class="ico" title="Close"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6 6 18M6 6l12 12"/></svg></div>
+    </div>
+  </div>
+
+  <div class="body">
+    <div class="sect-head" style="border-bottom:1px solid var(--border)">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
+      Story structure <span class="src mono">composition_work.active_template_id</span>
+    </div>
+    <div class="srow">
+      <div class="top">
+        <span class="k">Structure</span>
+        <div class="sel" style="width:230px">Save the Cat (15 beats)
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg></div>
+        <span class="tier book">book</span>
+      </div>
+      <div class="why">
+        <b>This column is WRITE-ONLY today.</b> <code class="mono" style="font-size:9px">active_template_id</code> is declared
+        (<code class="mono" style="font-size:9px">migrate.py:39</code>), updatable, accepted by <code class="mono" style="font-size:9px">PATCH /works</code>,
+        typed in the FE — and <b>read by nothing</b>: zero hits in <code class="mono" style="font-size:9px">routers/ engine/ packer/</code>
+        and zero non-test hits in <code class="mono" style="font-size:9px">frontend/src</code>. Decompose takes
+        <code class="mono" style="font-size:9px">structure_template_id</code> in the body <b>every single time</b>
+        (<code class="mono" style="font-size:9px">plan.py:71</code>). <b>EC-5 fills the resident:</b> this picker writes it, Decompose
+        <i>defaults</i> to it, the Beats facet (⑧) <i>reads</i> it.
+      </div>
+      <div class="hint" style="display:flex;align-items:center;gap:6px;color:var(--muted-fg)">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:11px;height:11px"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
+        6 built-in structures. <b>Saving your own is not in v1</b> (BE-12) — the table advertises a user tier and
+        <b>no code anywhere can insert one</b>. Said out loud; not a disabled button with no explanation.
+      </div>
+    </div>
+
+    <div class="sect-head" style="border-bottom:1px solid var(--border)">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a10 10 0 1 0 10 10M12 6v6l4 2"/></svg>
+      Models <span class="src mono">settings.model_roles · the ONE home (SET-8)</span>
+    </div>
+
+    <div class="srow">
+      <div class="top"><span class="k">Prose composer</span>
+        <div class="sel" style="width:200px">Qwen3 35B <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg></div>
+        <span class="tier book">book</span></div>
+      <div class="why">→ <code class="mono" style="font-size:9px">model_roles.composer</code></div>
+    </div>
+
+    <div class="srow" style="background:var(--background)">
+      <div class="top"><span class="k">Critic</span>
+        <div class="sel" style="width:200px">Gemma-4 26B <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg></div>
+        <span class="tier book">book</span></div>
+      <div class="why" style="color:#e8c88a">
+        ⚠ <b>The critic is SKIPPED unless it is a different model from the drafter.</b> Anti-self-reinforcement, enforced at
+        <code class="mono" style="font-size:9px">engine.py:1649</code>. Say it here, where the choice is made — not as a warning
+        string in a JSON body after the run.
+      </div>
+      <div class="why">
+        → <code class="mono" style="font-size:9px">model_roles.critic</code>. <b style="color:var(--destructive)">This row is the
+        write-only trap.</b> Until <b>BE-21</b> lands, the engine reads <code class="mono" style="font-size:9px">critic_model_ref</code>
+        at <b>7 sites</b> and <code class="mono" style="font-size:9px">model_roles</code> at <b>none</b> — so this control would look
+        set and change <b>nothing</b>. <b>Today, for every Studio user, the LLM critic is off, permanently, with no way to turn it on.</b>
+      </div>
+    </div>
+
+    <div class="srow">
+      <div class="top"><span class="k">Planner</span>
+        <div class="sel" style="width:200px">Gemma-4 26B <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg></div>
+        <span class="tier account">account</span></div>
+      <div class="why">Unset at the book tier ⇒ <b>inherited from your account default</b>, and the chip <b>says so</b>.
+        A blank control that quietly carries an account default is the bug the chip exists to kill.</div>
+    </div>
+
+    <div class="sect-head" style="border-bottom:1px solid var(--border)">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 7h-9M14 17H5M17 3l4 4-4 4M7 21l-4-4 4-4"/></svg>
+      Behaviour <span class="src mono">work.settings · consumed, proven by effect</span>
+    </div>
+
+    <div class="srow">
+      <div class="top"><span class="k">Assembly mode</span>
+        <div class="sel" style="width:150px">per_scene <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg></div>
+        <span class="tier book">book</span></div>
+      <div class="why">A <b>closed set</b>, 422'd at the write boundary today (<code class="mono" style="font-size:9px">works.py:64-72</code>).</div>
+    </div>
+
+    <div class="srow">
+      <div class="top"><span class="k">Track narrative threads</span><span class="tog on"></span><span class="tier book">book</span></div>
+      <div class="why">→ <code class="mono" style="font-size:9px">narrative_thread_enabled</code></div>
+    </div>
+
+    <div class="srow" style="background:var(--background)">
+      <div class="top"><span class="k">Capture correction prose</span><span class="tog"></span><span class="tier system">default (off)</span></div>
+      <div class="why">
+        <b>Stores the verbatim before/after prose of each correction so the model can learn your taste.</b> Off = structural
+        signal only. Consumed at <code class="mono" style="font-size:9px">engine.py:1766</code>
+        (<code class="mono" style="font-size:9px">raw_before/raw_after</code> stay NULL otherwise). <b>ZERO FE writers today</b> — a
+        genuine SET-1 silent hidden default, and <b>Wave 1's correction flywheel captures structure only until this is switchable</b>.
+        Defaults <b>OFF</b> and <b>says what it does</b>: it is prose retention, and the user opts in.
+      </div>
+    </div>
+
+    <div class="srow" style="border-bottom:none">
+      <div class="top"><span class="k">Reference embedding model</span>
+        <div class="sel ro" style="width:200px">bge-m3
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg></div>
+        <span class="tier book">book</span></div>
+      <div class="why"><b>Read-only.</b> Set on the first reference add and authoritative thereafter — <i>"a differing value here is
+        ignored"</i> (<code class="mono" style="font-size:9px">references.py:54-57</code>). Changing it would <b>re-embed every
+        passage</b>. One Work = one vector space. <b>Shown, not hidden</b> (BE-17 widens LIST to return the ref; ⚠ OQ-4: the
+        "re-embeds all N" copy needs a <b>real N</b> — measure it).</div>
+    </div>
+  </div>
+
+  <div class="panel-foot">
+    <div class="note">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
+      Its <b style="color:var(--muted-fg);font-weight:400">own</b> save path — <span class="mono">PATCH /works</span>, If-Match
+    </div>
+    <button class="btn primary">Save composition settings</button>
+  </div>
+</div>
+
+<!-- ── ⑧ the Beats facet ─────────────────────────────────────────────────── -->
+<div class="panel drawer">
+  <div class="panel-head">
+    <span>Plan Hub — Ch. 62 · Tro tàn</span>
+    <div class="acts"><div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6 6 18M6 6l12 12"/></svg></div></div>
+  </div>
+  <div class="body">
+    <div class="sect">
+      <div class="sect-head">Overview</div>
+      <div class="sect-body" style="gap:6px">
+        <div class="field"><label>Status</label><div class="ro">drafted</div></div>
+        <div class="field"><label>Tension</label><div class="ro">8 / 10</div></div>
+      </div>
+    </div>
+
+    <div class="sect" style="border-bottom:none">
+      <div class="sect-head" style="color:var(--primary)">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2 3 14h9l-1 8 10-12h-9l1-8z"/></svg>
+        Beats <span class="src mono">Save the Cat · from active_template_id</span>
+      </div>
+      <div class="sect-body" style="gap:2px">
+        <div class="beat"><span class="n">09</span>Bad Guys Close In<span class="pct">55%</span></div>
+        <div class="beat on"><span class="n">10</span>All Is Lost<span class="pct">75%</span></div>
+        <div class="beat"><span class="n">11</span>Dark Night of the Soul<span class="pct">75%</span></div>
+        <div class="beat"><span class="n">12</span>Break Into Three<span class="pct">80%</span></div>
+        <div class="info-strip" style="margin-top:8px">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
+          <span><b>A closed set, fed by the template</b> — never a free-text input.
+            <code class="mono" style="font-size:9px">PATCH /outline/nodes/{id} {beat_role}</code> with
+            <code class="mono" style="font-size:9px">If-Match</code> → 412 → <i>"changed elsewhere — reloaded."</i>
+            <b>Zero backend:</b> <code class="mono" style="font-size:9px">beat_role</code> is already in
+            <code class="mono" style="font-size:9px">NodePatch</code> (<code class="mono" style="font-size:9px">outline.py:88</code>).</span>
+        </div>
+        <div class="info-strip bad" style="margin-top:6px">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 9v4M12 17h.01M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg>
+          <span><b>PH16 named this facet and it never shipped.</b> What shipped is Overview · Cast &amp; Setting · Craft · Canon here ·
+            Open threads · References · Critic (<code class="mono" style="font-size:9px">PlanDrawer.tsx:232-293</code>) — <b>no Beats</b>,
+            and <code class="mono" style="font-size:9px">beat_role</code> is a <b>read-only <code>&lt;Field&gt;</code></b> inside Overview
+            (<code class="mono" style="font-size:9px">:236</code>). <code class="mono" style="font-size:9px">PlanDrawerEdit</code> edits
+            title/status/tension/goal/synopsis/chapter_id — <b>not <code>beat_role</code></b>. Yet the route has taken it all along.</span>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="panel-foot">
+    <div class="note">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
+      <b style="color:var(--muted-fg);font-weight:400">No structure chosen</b> ⇒ deep-link to ⑦, never an empty list
+    </div>
+    <span class="mono">v7</span>
+  </div>
+</div>
+</div>
+
+<div class="callout warn">
+  <b>⑦ is where this wave was one commit away from shipping its own headline bug.</b> The Book tier of the model cascade exists
+  (<code>internal_model_settings.py:46-65</code>), <code>critic</code> is already in the canonical role set
+  (<code>settings_resolution.py:39</code>), and <code>grep -rn "model_roles" frontend/src</code> returns <b>nothing</b> — no GUI has ever
+  written it. So EC-4 writes <code>model_roles</code>. But <code>grep -rn "model_roles" services/composition-service/app</code> returns
+  <b>exactly one file — the <code>/internal</code> route serving CHAT-service</b>. The composition engine picks its critic from the
+  <b>legacy scalar</b>, at <b>seven sites</b> (<code>engine.py:465, 529, 1029, 1099, 1261, 1345, 1644</code>). Write only
+  <code>model_roles.critic</code> and the critique stays skipped <b>forever</b> while this panel says it is on. <b>BE-21</b> — one
+  <code>resolve_model_role()</code> with the legacy scalar as fallback, called from all seven — is what makes the control real.
+  <b>The chip must never name a tier the engine does not read.</b>
+</div>
+
+<div class="callout bad">
+  <b>The immutability constraint — and what this mock therefore does NOT propose.</b><br />
+  <span style="color:var(--foreground)">(1) No <code>entity_override</code> editor.</span> The divergence spec and its overrides are
+  <b>CREATE-ONCE</b>: written inside the <code>/derive</code> transaction (<code>works.py:378-405</code>), never touched again by any route, repo
+  method, or tool. An override editor is <b>unbuildable on today's backend</b> — it needs <b>BE-13</b> (<code>PATCH /divergence-spec</code> +
+  <code>POST|PATCH|DELETE /overrides</code>), deferred to v2 as <code>D-DIVERGENCE-SPEC-EDIT</code>. This mock draws
+  <b>the v1 that respects the backend</b>: a read-only spec that names the line and the missing route.
+  <span style="color:var(--foreground)">(2) No divergence MCP tools.</span> Zero today, zero in this wave — an <b>INVERSE gap recorded, not
+  hidden</b> (<code>D-DIVERGENCE-MCP-TOOLS</code>): a derive forks a whole knowledge partition, which is a Tier-W-shaped action that deserves its
+  own AN-8 confirm design, not a bolt-on.
+  <span style="color:var(--foreground)">(3) No hard delete.</span> Archive is <code>status='archived'</code>; the chapters and the partition survive.
+  <span style="color:var(--foreground)">(4) No <code>&lt;CompositionPanel soloPanel="divergence" /&gt;</code>.</span> Reuse the leaves —
+  <code>DivergenceWizard</code>, <code>DerivativeBanner</code>, <code>useDerivativeContext</code>, <code>useWhatIfPromotion</code> — never the shell (EC-6).
+  <span style="color:var(--foreground)">(5) No fourth <code>critic_model_ref</code> picker in ⑦.</span> Models have <b>one home</b>
+  (<code>settings.model_roles</code>) — SET-8. Writing <i>both</i> keys to dodge BE-21 is <b>two homes</b>, the same violation wearing a hat.
+  <span style="color:var(--foreground)">(6) No blanket <code>If-Match</code> on <code>patchWork</code>.</span> It is one shared function over five
+  call sites, one of which drags a world map. Opt in <b>per call site</b> (EC-4b).
+  <span style="color:var(--foreground)">(7) No <code>entity_override</code> editing, and no story-template authoring.</span> Both are backend-shaped
+  (BE-13, BE-12) and both are said <b>out loud</b> rather than shipped as a pencil that 405s.
+</div>
+
+<div class="callout warn">
+  <b>Correcting the audit is not pedantry — it is the difference between a 3-route build and a zero-route one.</b> Plan 30 recorded
+  <i>"no UPDATE, no DELETE, no LIST"</i>. Verified at HEAD <code>9262ed53e</code>: <b>DELETE exists</b> (<code>status</code> ∈
+  <code>_UPDATABLE_COLUMNS</code>, and <code>resolve_by_book</code> filters <code>status='active'</code>) and <b>LIST is derivable with zero backend
+  work</b> (<code>candidates[]</code> already carries <code>source_work_id</code>). A builder who trusts the audit writes three routes that already
+  exist. <b>Re-verify handoff claims against code</b> — this repo has shipped a "blocked on the missing route" item twice whose route already existed.
+</div>
+
+<script>
+  /* Selecting a Work re-renders the read-only spec — the panel's whole job is
+     LIST → READ, so the selection had better be clickable. */
+  const SPECS = {
+    'Nếu Lam Vũ chết ở hồi 3': { tax: 'au',  cls: 'au',
+      branch: 'Ch. 62 · Tro tàn', anchor: '— none (au keeps the source\'s POV)', ovr: 3, rules: 2 },
+    'POV: Diệp Thanh':        { tax: 'pov_shift', cls: 'pov',
+      branch: 'Ch. 1 · Mở đầu', anchor: 'Diệp Thanh', ovr: 0, rules: 1 },
+  };
+  const panel = document.querySelector('.div-panel');
+  const specHead = panel.querySelectorAll('.sect-head')[2];
+  panel.querySelectorAll('.work-row').forEach((row) => {
+    row.addEventListener('click', () => {
+      const name = row.querySelector('.nm').textContent.trim();
+      const s = SPECS[name];
+      if (!s) return;   /* the canonical row has no divergence spec — by definition */
+      panel.querySelectorAll('.work-row').forEach((r) => r.classList.remove('active'));
+      row.classList.add('active');
+      specHead.childNodes[2].textContent = ' Spec — “' + name + '” ';
+      const fields = panel.querySelectorAll('.sect-body .field');
+      fields[0].querySelector('.ro').innerHTML = '<span class="tax ' + s.cls + '">' + s.tax + '</span>';
+      fields[1].querySelector('.ro').innerHTML = s.branch +
+        ' <span class="mono" style="font-size:10px;color:var(--muted-fg)">— everything before it is read-only canon</span>';
+      fields[2].querySelector('.ro').textContent = s.anchor;
+    });
+  });
+</script>
+</body>
+</html>

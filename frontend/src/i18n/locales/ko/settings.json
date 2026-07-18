@@ -9,7 +9,8 @@
       "translation": "번역",
       "reading": "읽기",
       "language": "언어",
-      "mcp": "MCP 액세스"
+      "mcp": "MCP 액세스",
+      "workflow-bindings": "워크플로 자동 설정"
     }
   },
   "mcp": {
@@ -492,6 +493,18 @@
       "testing": "테스트 중...",
       "reverify": "재검증",
       "verify": "검증",
+      "pricing_title": "가격 (1M 토큰당 USD)",
+      "pricing_input": "입력",
+      "pricing_output": "출력",
+      "pricing_free_local": "무료 — 사용자 로컬 하드웨어에서 실행",
+      "pricing_hint": "생성 시 자동 입력됩니다. 제공업체의 공시 가격이 변경된 경우 수정하거나, OpenRouter에서 실시간 예상 가격을 확인하세요.",
+      "pricing_check": "OpenRouter 확인",
+      "pricing_checking": "확인 중...",
+      "pricing_suggestion_found": "OpenRouter ({{source}}): 입력 ${{input}} / 출력 ${{output}}",
+      "pricing_apply": "적용",
+      "pricing_not_found": "OpenRouter에서 일치하는 모델을 찾을 수 없습니다. 이 소스로부터는 가격 정보를 가져올 수 없습니다.",
+      "pricing_check_failed": "OpenRouter 가격 확인 실패",
+      "pricing_negative_error": "가격은 0 또는 그 이상의 숫자여야 합니다",
       "delete_model": "모델 삭제",
       "confirm_delete": "삭제 확인",
       "deleting": "삭제 중...",

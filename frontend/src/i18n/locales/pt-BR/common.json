@@ -1,8 +1,10 @@
 {
+  "reconnecting": "Reconectando...",
   "nav": {
     "startNew": "Começar algo novo",
     "workspace": "Workspace",
     "chat": "Chat",
+    "assistant": "Assistente",
     "roleplay": "Roleplay",
     "knowledge": "Conhecimento",
     "worlds": "Mundos",
@@ -25,7 +27,8 @@
     "home": "Início",
     "account": "Conta",
     "signin": "Entrar",
-    "back_to_book": "Voltar para o livro"
+    "back_to_book": "Voltar para o livro",
+    "more": "Mais"
   },
   "logout_confirm": {
     "title": "Sair sem salvar as alterações?",

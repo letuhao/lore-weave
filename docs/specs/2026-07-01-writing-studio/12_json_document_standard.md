@@ -114,7 +114,7 @@ chapter-editing unit ON the standard:
 
 Chapter editor (↑cycle 1, ✅ built) → **Glossary (✅ built — re-scoped as shared-foundation-then-fanout,
 see [`13_glossary_panels.md`](13_glossary_panels.md); Phase A serial + Phase B 8-way parallel fanout)**
-→ Wiki → Knowledge/Ontology (underway, see `14_kg_panels.md`) → Translation (job-based — gate needs the job-terminal→refresh path) →
+→ Wiki → Knowledge/Ontology (underway, see `14a_kg_panels.md`) → Translation (job-based — gate needs the job-terminal→refresh path) →
 Reader/Compare (read-only — gate = display refresh on agent chapter edits, mostly free via the
 existing `book_*` handler). Order re-confirmable per cycle; queue lives here, detail specs land
 per-cycle (build-while-plan).

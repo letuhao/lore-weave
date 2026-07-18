@@ -79,6 +79,22 @@ func main() {
 		ReadHeaderTimeout: 10 * time.Second,
 	}
 
+	// 26 IX-3 — the index-freshness sweeper. Runs on a shutdown-scoped context so
+	// a SIGTERM stops it cleanly. interval <= 0 disables it (RunReparseSweeper).
+	sweepCtx, sweepCancel := context.WithCancel(context.Background())
+	go srv.RunReparseSweeper(
+		sweepCtx,
+		time.Duration(cfg.ReparseSweepIntervalSeconds)*time.Second,
+		cfg.ReparseSweepBatchSize,
+	)
+	// P4 (D-DIARY-SHRED-OUTBOX-RETRY) — converge any owed diary-DEK crypto-shred whose inline attempt
+	// blipped. Same shutdown-scoped ctx; self-disables when crypto is off. Reuses the reparse cadence.
+	go srv.RunDekShredSweeper(
+		sweepCtx,
+		time.Duration(cfg.ReparseSweepIntervalSeconds)*time.Second,
+		cfg.ReparseSweepBatchSize,
+	)
+
 	go func() {
 		slog.Info("listening", "addr", cfg.HTTPAddr)
 		if err := httpSrv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
@@ -91,6 +107,7 @@ func main() {
 	signal.Notify(stop, syscall.SIGINT, syscall.SIGTERM)
 	<-stop
 
+	sweepCancel()
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 	if err := httpSrv.Shutdown(shutdownCtx); err != nil {

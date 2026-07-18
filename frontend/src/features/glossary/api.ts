@@ -22,6 +22,13 @@ import type {
 
 const BASE = '/v1/glossary';
 
+/** One keyset page of the widened entity-names endpoint (F-H9/PH26). */
+type EntityNamesPage = {
+  items: EntityNameEntry[];
+  truncated: boolean;
+  next_cursor: string | null;
+};
+
 export const glossaryApi = {
   getKinds(token: string): Promise<EntityKind[]> {
     return apiJson<EntityKind[]>(`${BASE}/kinds`, { token });
@@ -150,7 +157,13 @@ export const glossaryApi = {
   patchEntity(
     bookId: string,
     entityId: string,
-    changes: { status?: string; tags?: string[]; alive?: boolean; short_description?: string | null },
+    changes: {
+      status?: string;
+      tags?: string[];
+      alive?: boolean;
+      short_description?: string | null;
+      scope_label?: string;
+    },
     token: string,
     // Glossary-assistant P3 (H5): when set, sent as `If-Match` so the PATCH is
     // optimistic-concurrency checked — 412 if the entity changed since read.
@@ -169,7 +182,7 @@ export const glossaryApi = {
    *  actually updated (book-scoped; absent/foreign ids are ignored). */
   bulkSetStatus(
     bookId: string,
-    status: 'active' | 'inactive' | 'draft',
+    status: 'active' | 'inactive' | 'draft' | 'rejected',
     entityIds: string[],
     token: string,
   ): Promise<{ updated: number }> {
@@ -232,9 +245,47 @@ export const glossaryApi = {
     );
   },
 
-  /** Lightweight names-only list for editor decoration scanning */
-  listEntityNames(bookId: string, token: string): Promise<EntityNameEntry[]> {
-    return apiJson<EntityNameEntry[]>(`${BASE}/books/${bookId}/entity-names`, { token });
+  /** Lightweight names-only list for editor decoration scanning + the Plan Hub
+   *  badge name map. The backend endpoint is now KEYSET-paginated (F-H9/PH26) and
+   *  returns ALL non-deleted entities (draft/inactive/active), not just active —
+   *  so we follow next_cursor until truncated=false and accumulate every page.
+   *
+   *  `complete` is the load-bearing half for PH26. The safety cap below can, in
+   *  principle, stop paging with entities still unread — and then an id that is
+   *  ABSENT from the map means "we didn't fetch it", not "it doesn't exist". The
+   *  Hub renders those two completely differently (a MISSING-entity warning chip vs
+   *  a neutral unresolved one), so collapsing them would make it accuse the user's
+   *  glossary of losing an entity it merely hadn't loaded — the
+   *  `paged-join-against-complete-set-mislabels-not-yet-loaded-as-absent` bug class. */
+  async listEntityNamesWithMeta(
+    bookId: string,
+    token: string,
+  ): Promise<{ items: EntityNameEntry[]; complete: boolean }> {
+    const acc: EntityNameEntry[] = [];
+    let cursor: string | null = null;
+    // Safety cap: 500/page × 500 pages = 250k entities before we bail (never hit
+    // in practice; guards against a misbehaving server looping forever).
+    for (let page = 0; page < 500; page++) {
+      const params = new URLSearchParams({ limit: '500' });
+      if (cursor) params.set('cursor', cursor);
+      const res = await apiJson<EntityNamesPage>(
+        `${BASE}/books/${bookId}/entity-names?${params.toString()}`,
+        { token },
+      );
+      if (res.items?.length) acc.push(...res.items);
+      // Exhausted ⇒ the map is the WHOLE book's entity set.
+      if (!res.truncated || !res.next_cursor) return { items: acc, complete: true };
+      cursor = res.next_cursor;
+    }
+    // Fell out of the loop ⇒ the cap tripped ⇒ there is more we never read.
+    return { items: acc, complete: false };
+  },
+
+  /** The names alone — for consumers (editor decoration, the compose picker) that only ever look ids
+   *  UP and never reason about an ABSENT one. ONE implementation: it delegates. */
+  async listEntityNames(bookId: string, token: string): Promise<EntityNameEntry[]> {
+    const { items } = await glossaryApi.listEntityNamesWithMeta(bookId, token);
+    return items;
   },
 
   deleteEntity(bookId: string, entityId: string, token: string): Promise<void> {
@@ -430,6 +481,33 @@ export const glossaryApi = {
         token,
         ...(opts?.ifMatch ? { headers: { 'If-Match': opts.ifMatch } } : {}),
       },
+    );
+  },
+
+  // S-06 — add a value for an attr-def added to the ontology AFTER this entity existed (the
+  // "add-later" path that was MCP-only). 409 if a value row already exists (edit it via PATCH).
+  addAttributeValue(
+    bookId: string,
+    entityId: string,
+    payload: { attribute_def_id: string; value: string },
+    token: string,
+  ) {
+    return apiJson(
+      `${BASE}/books/${bookId}/entities/${entityId}/attributes`,
+      { method: 'POST', body: JSON.stringify(payload), token },
+    );
+  },
+
+  // S-06 — remove a value ROW entirely (distinct from PATCH-to-empty which keeps a blank row).
+  deleteAttributeValue(
+    bookId: string,
+    entityId: string,
+    attrValueId: string,
+    token: string,
+  ) {
+    return apiJson<void>(
+      `${BASE}/books/${bookId}/entities/${entityId}/attributes/${attrValueId}`,
+      { method: 'DELETE', token },
     );
   },
 

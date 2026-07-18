@@ -540,3 +540,98 @@ def test_filter_reload_invalid_max_items_per_batch_returns_422(client: TestClien
         json={"model_ref": "x", "max_items_per_batch": 0},
     )
     assert resp.status_code == 422
+
+
+# ── WS-2.2 (structured s/p/o) — the semantic dedup key ─────────────────────────
+# The distiller re-runs on every "End my day" at temperature > 0, so it re-phrases the SAME fact
+# across runs. A text-only dedup key drifts with wording (double-queues); the structured s/p/o key
+# is stable, so a re-phrased-but-same fact collides. These prove the helper directly (pure fn).
+
+from app.routers.internal_admin import _DiaryFactIn, _diary_fact_dedup_key  # noqa: E402
+
+
+def _fact(**kw):
+    kw.setdefault("kind", "decision")
+    kw.setdefault("text", "")
+    return _DiaryFactIn(**kw)
+
+
+_D = "2026-06-15"  # a shared day for the within-day dedup tests
+
+
+def test_dedup_key_is_stable_across_text_rephrasing_when_spo_present():
+    # Same subject/predicate/object + SAME day, DIFFERENT free text + case/whitespace → SAME key.
+    a = _fact(text="Minh froze the Q3 budget until billing ships.",
+              subject="Minh", predicate="froze", object="the Q3 budget")
+    b = _fact(text="The Q3 budget was frozen by Minh pending the billing revamp.",
+              subject="  minh ", predicate="FROZE", object="The  Q3   Budget")
+    k1 = _diary_fact_dedup_key("proj-1", a.kind, a.text.strip(), a, _D)
+    k2 = _diary_fact_dedup_key("proj-1", b.kind, b.text.strip(), b, _D)
+    assert k1 == k2, "a re-phrasing of the same s/p/o fact on the same day must dedup"
+
+
+def test_dedup_key_is_per_day():
+    # audit MED-2: the SAME s/p/o on TWO different days is a DISTINCT fact (a re-affirmation isn't
+    # dropped; a Monday reject doesn't tombstone Friday's). Different day → different key.
+    a = _fact(subject="Alice", predicate="said", object="the budget is frozen")
+    assert _diary_fact_dedup_key("p", "decision", "x", a, "2026-06-15") != \
+           _diary_fact_dedup_key("p", "decision", "x", a, "2026-06-19")
+
+
+def test_dedup_key_differs_for_different_object():
+    a = _fact(subject="Minh", predicate="froze", object="the Q3 budget")
+    b = _fact(subject="Minh", predicate="froze", object="the Q4 budget")
+    assert _diary_fact_dedup_key("p", "decision", "x", a, _D) != _diary_fact_dedup_key("p", "decision", "x", b, _D)
+
+
+def test_dedup_key_is_project_scoped():
+    a = _fact(subject="Minh", predicate="froze", object="the Q3 budget")
+    assert _diary_fact_dedup_key("proj-1", "decision", "x", a, _D) != _diary_fact_dedup_key("proj-2", "decision", "x", a, _D)
+
+
+def test_dedup_key_falls_back_to_text_when_no_spo():
+    # No structured trio → key on (kind, text). Same text → same; different text → different (same day).
+    a = _fact(kind="event", text="Shipped the release.")
+    b = _fact(kind="event", text="Shipped the release.")
+    c = _fact(kind="event", text="Something else entirely.")
+    assert _diary_fact_dedup_key("p", a.kind, a.text, a, _D) == _diary_fact_dedup_key("p", b.kind, b.text, b, _D)
+    assert _diary_fact_dedup_key("p", a.kind, a.text, a, _D) != _diary_fact_dedup_key("p", c.kind, c.text, c, _D)
+
+
+def test_dedup_key_text_fallback_when_subject_but_no_object():
+    # A partial trio (subject only, no object) is NOT enough to anchor — fall back to text so we don't
+    # collide two unrelated subject-only facts under an empty-object key.
+    a = _fact(text="A", subject="Minh")
+    b = _fact(text="B", subject="Minh")
+    assert _diary_fact_dedup_key("p", "decision", "A", a, _D) != _diary_fact_dedup_key("p", "decision", "B", b, _D)
+
+
+def test_parse_iso_date_tolerates_garbage_and_none():
+    from datetime import date as _date
+    from app.routers.internal_admin import _parse_iso_date
+    assert _parse_iso_date("2026-07-12") == _date(2026, 7, 12)
+    assert _parse_iso_date("2026-07-12T09:30:00Z") == _date(2026, 7, 12)  # datetime → date part
+    assert _parse_iso_date(None) is None
+    assert _parse_iso_date("") is None
+    assert _parse_iso_date("not-a-date") is None
+
+
+# ── D-R27 (erasure) — the confirmed-fact graph must be deleted, not just passages ──────────────────
+
+def test_erasure_kg_node_delete_cypher_targets_fact_entity_event():
+    # E2E erase smoke caught this: the erase deleted :Passage but not the :Fact/:Entity nodes WS-2.4's
+    # promote creates, so a confirmed diary fact + the colleague it names survived "erase my account".
+    from app.db.neo4j_repos import passages as pm
+    q = pm._DELETE_ALL_KG_NODES_FOR_PROJECT_CYPHER
+    assert "n:Fact" in q and "n:Entity" in q and "n:Event" in q  # all confirmed-fact node types
+    assert "DETACH DELETE n" in q                                 # removes the nodes + every edge
+    assert "n.user_id = $user_id" in q and "n.project_id = $project_id" in q  # tenant-scoped on BOTH keys
+
+
+def test_erase_handler_imports_and_calls_the_kg_node_delete():
+    # Prove the erase path is WIRED to it (not just that the function exists) — the wiring is the bug.
+    import inspect
+    from app.routers import internal_admin as ia
+    src = inspect.getsource(ia._erase_one_assistant_project)
+    assert "delete_all_kg_nodes_for_project" in src
+    assert "kg_nodes_deleted" in src

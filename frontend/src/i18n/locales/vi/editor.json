@@ -371,5 +371,26 @@
     "no_restore": "Không có phiên bản trước đó để khôi phục",
     "confirm_title": "Khôi phục về trước lần chỉnh sửa AI này?",
     "confirm_desc": "Bản nháp hiện tại được lưu ảnh trước, nên thao tác này có thể hoàn tác từ lịch sử phiên bản."
+  },
+  "knowledge": {
+    "add": "Thêm vào kiến thức",
+    "reindex": "Cập nhật kiến thức",
+    "indexed_badge": "Trong kiến thức của bạn",
+    "not_indexed_badge": "Chưa có trong kiến thức",
+    "excluded_badge": "Đã loại bỏ",
+    "forget": "Quên chương này",
+    "keep_out": "Không đưa vào kiến thức",
+    "allow": "Cho phép đưa vào kiến thức",
+    "save_first": "Hãy lưu trước khi thêm vào kiến thức",
+    "indexed_toast": "Đã thêm vào kiến thức của bạn",
+    "reused_toast": "Đã cập nhật — không có thay đổi nào",
+    "empty_toast": "Chương này chưa có nội dung để thêm — hãy viết gì đó trước.",
+    "excluded_toast": "Chương này đang bị loại khỏi kho kiến thức của bạn — hãy cho phép nó trước.",
+    "forgotten_toast": "Đã quên — đã loại khỏi kho kiến thức của bạn",
+    "allowed_toast": "Đã cho phép. Chọn «Thêm vào kho kiến thức» khi bạn đã sẵn sàng.",
+    "failed_toast": "Không thể cập nhật kho kiến thức — vui lòng thử lại.",
+    "forget_confirm_title": "Quên chương này?",
+    "forget_confirm_body": "Mọi thông tin học được từ chương này sẽ bị loại khỏi kho kiến thức của bạn. Bản thân chương này không bị xóa và bạn có thể thêm lại nó sau.",
+    "hint": "Thêm một chương vào kho kiến thức sẽ cho phép trợ lý sử dụng nội dung đó. Bạn không nhất thiết phải xuất bản nó."
   }
 }

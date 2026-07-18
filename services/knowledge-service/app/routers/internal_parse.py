@@ -39,9 +39,9 @@ router = APIRouter(
     response_model=StructuralTree,
     summary="Structural decomposer (P1)",
     description=(
-        "Parse pandoc HTML or plain text into a StructuralTree "
-        "(book -> part -> chapter -> scene). Stateless; no persistence. "
-        f"Body cap: {settings.max_parse_body_bytes} bytes."
+        "Parse pandoc HTML, plain text, or a Tiptap JSON doc (26 IX-6 re-parse) "
+        "into a StructuralTree (book -> part -> chapter -> scene). Stateless; no "
+        f"persistence. Body cap: {settings.max_parse_body_bytes} bytes."
     ),
 )
 async def parse_endpoint(request: Request) -> StructuralTree:

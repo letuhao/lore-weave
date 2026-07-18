@@ -959,6 +959,12 @@ func (s *Server) generateWikiStubs(w http.ResponseWriter, r *http.Request) {
 	if !s.requireGrant(w, r.Context(), bookID, userID, grantclient.GrantEdit) {
 		return
 	}
+	// PP-3 (spec 08 R5) — a diary has NO wiki. generateWikiStubs AUTO-WRITES prose about an entity
+	// ("Auto-generated from KG") REGARDLESS of visibility, so the visibility chokepoint (PP-2) is not
+	// enough here — the article must never be MANUFACTURED for a diary colleague in the first place.
+	if s.refuseDiaryWikiSurface(w, r, bookID) {
+		return
+	}
 
 	var req struct {
 		KindCodes []string `json:"kind_codes"`
@@ -1056,7 +1062,13 @@ func (s *Server) generateWikiStubs(w http.ResponseWriter, r *http.Request) {
 		WHERE ge.book_id = $1
 		  AND ge.deleted_at IS NULL
 		  AND ge.status = 'active'
-		  AND NOT EXISTS (SELECT 1 FROM wiki_articles wa WHERE wa.entity_id = ge.entity_id)`
+		  AND NOT EXISTS (SELECT 1 FROM wiki_articles wa WHERE wa.entity_id = ge.entity_id)
+		  -- PP-4 (spec 08 R6) — ENTITY-level guard: never manufacture a wiki page for a REAL PERSON.
+		  -- The book-level PP-3 guard blocks a diary; this closes the cross-book/merged case. C4/SD-C4:
+		  -- filter the STRUCTURAL is_person flag (a renamed/custom real-person kind is also excluded; a
+		  -- legitimately-public 'org' is is_person=false so it is NOT over-blocked, and fiction 'character'
+		  -- is is_person=false so it still gets a page).
+		  AND NOT ek.is_person`
 
 	args := []any{bookID}
 	argN := 2
@@ -2113,4 +2125,165 @@ func (s *Server) reviewWikiSuggestion(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, sug)
+}
+
+// ── 4. withdrawWikiSuggestion (submitter retracts own pending) ────────────────
+
+// withdrawWikiSuggestion lets the ORIGINAL submitter delete their own suggestion
+// while it is still pending — the submitter-side counterpart to the owner's
+// accept/reject (reviewWikiSuggestion). It needs no book grant: the gate is submitter
+// identity (user_id match), because a community contributor is typically grant-less.
+// A reviewed suggestion (accepted/rejected) is immutable history and cannot be
+// withdrawn (409). To a NON-submitter the row is reported as not-found (404, not 403)
+// so a suggestion_id can't be probed for existence by a third party (anti-oracle).
+func (s *Server) withdrawWikiSuggestion(w http.ResponseWriter, r *http.Request) {
+	userID, ok := s.requireUserID(r)
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "GLOSS_UNAUTHORIZED", "unauthorized")
+		return
+	}
+	articleID, ok := parsePathUUID(w, r, "article_id")
+	if !ok {
+		return
+	}
+	sugID, ok := parsePathUUID(w, r, "sug_id")
+	if !ok {
+		return
+	}
+
+	var sugUserID uuid.UUID
+	var sugStatus string
+	err := s.pool.QueryRow(r.Context(),
+		`SELECT user_id, status FROM wiki_suggestions WHERE suggestion_id=$1 AND article_id=$2`,
+		sugID, articleID).Scan(&sugUserID, &sugStatus)
+	if err == pgx.ErrNoRows {
+		writeError(w, http.StatusNotFound, "WIKI_SUGGESTION_NOT_FOUND", "suggestion not found")
+		return
+	}
+	if err != nil {
+		slog.Error("withdrawWikiSuggestion fetch", "error", err)
+		writeError(w, http.StatusInternalServerError, "WIKI_INTERNAL", "internal error")
+		return
+	}
+	// Anti-oracle: a non-submitter is told the suggestion does not exist.
+	if sugUserID != userID {
+		writeError(w, http.StatusNotFound, "WIKI_SUGGESTION_NOT_FOUND", "suggestion not found")
+		return
+	}
+	if sugStatus != "pending" {
+		writeError(w, http.StatusConflict, "WIKI_SUGGESTION_ALREADY_REVIEWED", "suggestion already reviewed")
+		return
+	}
+
+	// The status='pending' predicate is repeated on the mutation (not just the fetch
+	// above) so a concurrent owner-accept — which flips status under its own tx BEFORE
+	// this DELETE acquires the row lock — makes the delete a no-op rather than erasing a
+	// just-accepted suggestion (TOCTOU close). The earlier 409 covers the common case.
+	if _, err := s.pool.Exec(r.Context(),
+		`DELETE FROM wiki_suggestions WHERE suggestion_id=$1 AND status='pending'`, sugID); err != nil {
+		slog.Error("withdrawWikiSuggestion delete", "error", err)
+		writeError(w, http.StatusInternalServerError, "WIKI_INTERNAL", "internal error")
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// ── 5. listMyWikiSuggestions (submitter's own, book-level, WITH status) ───────
+
+// listMyWikiSuggestions returns the CALLER's own suggestions for a book together with
+// their accept/reject status + reviewer_note — the submitter-facing counterpart to the
+// owner-facing listWikiSuggestions. It needs no grant: `ws.user_id = caller` IS the
+// scope, and a grant-less community contributor must still be able to read the outcome
+// of what they submitted. Without this route a submitter could POST a suggestion but
+// never learn whether it was accepted or rejected — the outcome was write-only.
+func (s *Server) listMyWikiSuggestions(w http.ResponseWriter, r *http.Request) {
+	userID, ok := s.requireUserID(r)
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "GLOSS_UNAUTHORIZED", "unauthorized")
+		return
+	}
+	bookID, ok := parsePathUUID(w, r, "book_id")
+	if !ok {
+		return
+	}
+
+	q := r.URL.Query()
+	limit, _ := strconv.Atoi(q.Get("limit"))
+	if limit <= 0 || limit > 100 {
+		limit = 20
+	}
+	offset, _ := strconv.Atoi(q.Get("offset"))
+	if offset < 0 {
+		offset = 0
+	}
+
+	where := []string{"wa.book_id = $1", "ws.user_id = $2"}
+	args := []any{bookID, userID}
+	argN := 3
+	if statusFilter := q.Get("status"); statusFilter != "" {
+		where = append(where, fmt.Sprintf("ws.status = $%d", argN))
+		args = append(args, statusFilter)
+		argN++
+	}
+	whereClause := strings.Join(where, " AND ")
+
+	var total int
+	countSQL := fmt.Sprintf(`
+		SELECT COUNT(*)
+		FROM wiki_suggestions ws
+		JOIN wiki_articles wa ON wa.article_id = ws.article_id
+		WHERE %s`, whereClause)
+	if err := s.pool.QueryRow(r.Context(), countSQL, args...).Scan(&total); err != nil {
+		slog.Error("listMyWikiSuggestions count", "error", err)
+		writeError(w, http.StatusInternalServerError, "WIKI_INTERNAL", "internal error")
+		return
+	}
+
+	fetchSQL := fmt.Sprintf(`
+		SELECT
+			ws.suggestion_id, ws.article_id, ws.user_id,
+			ws.diff_json, ws.reason, ws.status, ws.reviewer_note,
+			ws.created_at, ws.reviewed_at
+		FROM wiki_suggestions ws
+		JOIN wiki_articles wa ON wa.article_id = ws.article_id
+		WHERE %s
+		ORDER BY ws.created_at DESC
+		LIMIT $%d OFFSET $%d`, whereClause, argN, argN+1)
+	args = append(args, limit, offset)
+
+	rows, err := s.pool.Query(r.Context(), fetchSQL, args...)
+	if err != nil {
+		slog.Error("listMyWikiSuggestions fetch", "error", err)
+		writeError(w, http.StatusInternalServerError, "WIKI_INTERNAL", "internal error")
+		return
+	}
+	defer rows.Close()
+
+	items := []wikiSuggestionResp{}
+	for rows.Next() {
+		var it wikiSuggestionResp
+		if err := rows.Scan(
+			&it.SuggestionID, &it.ArticleID, &it.UserID,
+			&it.DiffJSON, &it.Reason, &it.Status, &it.ReviewerNote,
+			&it.CreatedAt, &it.ReviewedAt,
+		); err != nil {
+			slog.Error("listMyWikiSuggestions scan", "error", err)
+			writeError(w, http.StatusInternalServerError, "WIKI_INTERNAL", "internal error")
+			return
+		}
+		items = append(items, it)
+	}
+	if err := rows.Err(); err != nil {
+		slog.Error("listMyWikiSuggestions rows", "error", err)
+		writeError(w, http.StatusInternalServerError, "WIKI_INTERNAL", "internal error")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{
+		"items":  items,
+		"total":  total,
+		"limit":  limit,
+		"offset": offset,
+	})
 }

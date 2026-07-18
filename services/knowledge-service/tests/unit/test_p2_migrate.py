@@ -54,6 +54,20 @@ def test_p2_knowledge_projects_save_raw_extraction_added():
     )
 
 
+# Forms that are inherently re-runnable but have NO `IF NOT EXISTS` clause in
+# Postgres to grep for. This test is a cheap STATIC backstop; the semantic
+# guarantee ("a startup re-run is a clean no-op") is proven by effect in
+# tests/integration/db/test_migrations.py::test_migrations_idempotent, which runs
+# the real DDL twice against a real Postgres.
+#
+#   ALTER COLUMN ... SET NOT NULL — re-running on an already-NOT NULL column
+#   succeeds as a no-op. Postgres offers no IF NOT EXISTS spelling for it, so the
+#   grep below cannot express its idempotency. (WS-0.1: extraction_leaves.chapter_id
+#   is backfilled and then pinned NOT NULL so a writer that forgets to set it fails
+#   loudly rather than orphaning an unreachable leaf.)
+_INHERENTLY_IDEMPOTENT_ALTERS = ("SET NOT NULL",)
+
+
 def test_p2_block_is_idempotent():
     """All P2 CREATE/ALTER must use IF NOT EXISTS so a startup re-run is no-op.
     R-SELF-1 from P1 lessons. Multi-line ALTER allowed (IF NOT EXISTS may
@@ -71,7 +85,11 @@ def test_p2_block_is_idempotent():
         head = stmt.lstrip().upper()
         if head.startswith("CREATE TABLE") and "IF NOT EXISTS" not in stmt.upper():
             raise AssertionError(f"P2 non-idempotent CREATE TABLE: {stmt[:80]!r}")
-        if head.startswith("ALTER TABLE") and "IF NOT EXISTS" not in stmt.upper():
+        if (
+            head.startswith("ALTER TABLE")
+            and "IF NOT EXISTS" not in stmt.upper()
+            and not any(form in stmt.upper() for form in _INHERENTLY_IDEMPOTENT_ALTERS)
+        ):
             raise AssertionError(f"P2 non-idempotent ALTER TABLE: {stmt[:80]!r}")
         if head.startswith("CREATE INDEX") and "IF NOT EXISTS" not in stmt.upper():
             raise AssertionError(f"P2 non-idempotent CREATE INDEX: {stmt[:80]!r}")

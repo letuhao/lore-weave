@@ -2,19 +2,88 @@
   "title": "Writing Studio",
   "back": "Kembali ke buku",
   "settings": "Pengaturan buku",
+  "planNav": {
+    "title": "Rencana",
+    "loading": "Memuat…",
+    "empty": "Belum ada arc.",
+    "emptyGuided": "Belum ada alur cerita — rencana ini adalah panduan yang mengarahkan buku Anda. Susun alur dan babnya untuk memulai.",
+    "planCta": "Rencanakan buku ini"
+  },
   "welcome": {
     "tab": "Selamat Datang",
     "title": "Writing Studio",
     "body": "Ruang kerja yang dapat ditempelkan untuk buku ini. Panel (compose, planner, cast, quality…) akan ditambahkan di sini satu per satu. Seret tab untuk membagi, menumpuk, mengambang, atau memisahkan ke jendela tersendiri.",
     "openUserGuide": "Buka Panduan Pengguna",
-    "paletteHint": "⌘⇧P → \"Choose Your Focus\" atau \"Start Guided Tour\" kapan saja",
-    "startGuidedTour": "Mulai Panduan Tur"
+    "startGuidedTour": "Mulai Panduan Tur",
+    "paletteHint": "⌘⇧P → \"Choose Your Focus\" atau \"Start Guided Tour\" kapan saja"
   },
   "panels": {
+    "arc-templates": {
+      "title": "Templat Alur",
+      "desc": "Jelajahi, buat, adopsi, dan terapkan struktur alur multi-bab yang dapat digunakan kembali — alur cerita paralel dan peran karakter dalam rentang bab tertentu",
+      "guideBody": "Perpustakaan Templat Alur berisi struktur multi-bab yang dapat digunakan kembali — alur cerita paralel (garis balas dendam, romansa, kebohongan mentor) yang disusun sebagai motif di sepanjang rentang bab, dengan peran karakter yang terikat saat Anda menerapkannya. Jelajahi berdasarkan tingkatan: templat milik Anda sendiri, templat bawaan sistem, dan (di Katalog) templat publik milik orang lain. Buat templat baru, adopsi templat sistem/publik untuk menyesuaikan salinan Anda sendiri, atau buka satu untuk melihat garis waktu alur × bab serta pratinjau penerapannya pada buku ini. Anda juga dapat menyimpan alur yang telah Anda tulis sebagai templat, atau mengimpor cerita referensi dan membedahnya (拆文) menjadi templat baru. Penerapan templat bersifat pratinjau terlebih dahulu — ia tidak akan menimpa bab Anda tanpa Anda mewujudkannya secara nyata."
+    },
+    "arc-inspector": {
+      "title": "Inspektur Alur",
+      "desc": "Baca dan edit SATU alur atau saga — tujuan, status, pelacakan plot yang telah terselesaikan secara berjenjang dan daftar karakter, rentang bab, janji yang belum terpenuhi, dan asal-usul templat",
+      "guideBody": "Inspektur Alur membuka satu simpul dari pohon spesifikasi buku Anda — sebuah saga, alur, atau sub-alur. Pohon ini bukan sekadar dekorasi: pelacakan plot dan ikatan karakternya dibaca ke dalam setiap perintah pembuatan (prompt) generasi, sehingga mengedit alur di sini akan mengubah cara AI menyusun draf babnya. Pelacakan dan slot daftar karakter diselesaikan secara berjenjang — entri yang diwarisi dari saga induk akan ditampilkan berwarna abu-abu dengan tindakan 'Override' (mengeditnya di tempat akan secara diam-diam membuat salinan baru). Rentang bab, ringkasan janji yang terbuka, dan asal-usul templat bersifat hanya-baca. Mengarsipkan alur akan mengembalikan bab-babnya ke baki yang belum direncanakan; memulihkan akan menyambungkannya kembali. Buka dari Hub Rencana (pilih alur), palet perintah, atau agen.",
+      "body": {
+        "loading": "Memuat…",
+        "selectArc": "Pilih alur untuk melihat rencananya.",
+        "archivedBanner": " Diarsipkan — bab-babnya telah dikembalikan ke wadah tidak terencana. Pulihkan untuk mengedit dan menyambungkannya kembali.",
+        "restore": "Pulihkan",
+        "secIdentity": "Identitas",
+        "fTitle": "Judul",
+        "fGoal": "Tujuan (mencapai petunjuk)",
+        "fSummary": "Ringkasan (label — bukan petunjuk)",
+        "fStatus": "Status",
+        "status_empty": "kosong",
+        "status_outline": "kerangka",
+        "status_drafting": "drafting",
+        "status_done": "selesai",
+        "secTracks": "Alur (plot lines → prompt)",
+        "secRoster": "Roster (slot pemeran)",
+        "empty_track": "Belum ada alur cerita.",
+        "empty_role": "Belum ada peran pemeran.",
+        "remove": "hapus",
+        "overrideHere": "timpa di sini",
+        "add_track": "+ alur",
+        "add_role": "+ peran",
+        "keyPlaceholder": "kunci",
+        "labelPlaceholder": "label (opsional)",
+        "addBtn": "tambah",
+        "cancel": "batalkan",
+        "keyExists": "kunci ada",
+        "secChapters": "Bab",
+        "chaptersLabel": "Bab",
+        "noChapters": "Tidak ada bab yang ditetapkan",
+        "nonContiguous": "tidak berurutan",
+        "secPromises": "Janji terbuka",
+        "noPromises": "Tidak ada janji terbuka di sini.",
+        "secProvenance": "Asal-usul",
+        "fromTemplate": "Dari templat",
+        "authoredNoTemplate": "Ditulis dari percakapan (tanpa templat).",
+        "secDanger": "Bahaya",
+        "archiveArc": "Arsipkan busur cerita",
+        "blast": "juga mengarsipkan {{count}} sub-busur",
+        "archivingNote": "Mengarsipkan akan mengembalikan bab-babnya ke baki tidak terencana; memulihkan akan menyambungkannya kembali.",
+        "secTemplate": "Templat"
+      }
+    },
     "compose": {
-      "title": "Compose",
+      "title": "Obrolan Co-writer",
       "desc": "Chat co-writer AI",
       "guideBody": "Co-writer AI untuk buku ini — ajak mengobrol tentang sebuah adegan, minta ia membuat draf atau merevisi paragraf, atau curah pendapat tentang apa yang terjadi selanjutnya. Buka panel ini saat Anda menginginkan mitra percakapan yang sudah memahami karakter, glosarium, dan bab-bab sebelumnya dalam buku ini."
+    },
+    "scene-compose": {
+      "title": "Susun adegan",
+      "desc": "Rancang sebuah adegan dengan kandidat AI",
+      "guideBody": "Rancang sebuah adegan bersama co-writer AI: pilih adegan dan model, lalu klik Hasilkan untuk mengalirkan draf bayangan — atau nyalakan Divergensi untuk mendapat beberapa kandidat yang bisa Anda bandingkan, sunting, dan terima. Menerima akan menyisipkan prosa ke Editor bab ini, dan pilihan hasilkan-ulang/tolak/sunting Anda melatih model. Buka saat Anda ingin menulis adegan berikutnya, bukan sekadar membahasnya."
+    },
+    "chapter-assemble": {
+      "title": "Rakit bab",
+      "desc": "Rakit atau jahit adegan menjadi satu bab",
+      "guideBody": "Ubah adegan-adegan sebuah bab menjadi prosa bab yang utuh: 'Hasilkan bab' menyusunnya sekali jalan, atau 'Jahit' menggabungkan draf adegan Anda yang telah selesai menjadi satu bab yang mengalir. Tinjau pratinjau yang dapat disunting, lalu klik Terima untuk menyisipkannya ke Editor — pilihan sunting/hasilkan-ulang/tolak Anda melatih model, roda gila koreksi yang sama seperti Susun adegan. Buka setelah adegan sebuah bab dirancang dan Anda ingin merakitnya."
     },
     "editor": {
       "title": "Editor",
@@ -50,6 +119,12 @@
       "title": "Steering",
       "desc": "Aturan penulis yang memandu AI untuk buku ini",
       "guideBody": "Tulis aturan dan preferensi yang memandu cara AI menulis untuk buku spesifik ini — nada, POV, hal-hal yang harus dihindari, instruksi berulang yang tidak ingin Anda ulangi di setiap chat. Buka sekali di awal, lalu tinjau kembali kapan pun hasil output AI melenceng dari keinginan Anda."
+    },
+    "style-voice": {
+      "title": "Gaya & Suara",
+      "desc": "Atur kepadatan prosa dan tempo, serta karakter suara unik setiap tokoh — terintegrasi dalam setiap perintah draf",
+      "guideBody": "Gaya & Suara mengarahkan cara AI menulis. Atur kepadatan prosa dan tempo untuk seluruh buku (atau persempit ke bab atau adegan tertentu), dan berikan setiap karakter suara bicara yang khas. Pengaturan ini terintegrasi dalam setiap perintah draf, sehingga tulisan tetap konsisten tanpa Anda perlu mengulang instruksi. Setiap kontrol menunjukkan nilai efektifnya dan dari mana nilai tersebut berasal (setelan default buku, atau perubahan pada bab/adegan). Atur di awal untuk menetapkan gaya penulisan utama, lalu sesuaikan per karakter saat karakter mereka mulai muncul.",
+      "noWork": "Penulisan belum diatur untuk buku ini — atur terlebih dahulu untuk mengarahkan gaya & suara di sini."
     },
     "glossary": {
       "title": "Glosarium",
@@ -89,6 +164,56 @@
       "title": "Pengetahuan",
       "desc": "Jelajahi dan buka proyek knowledge-graph Anda",
       "guideBody": "Pengetahuan adalah pintu masuk Anda ke knowledge graph sebuah buku — entitas, peristiwa, dan lore yang telah diekstraksi dan disusun oleh agen AI Anda. Buka menu ini untuk memilih proyek (buku) mana yang ingin dikerjakan sebelum mendalami entitas, lini masa, atau graf itu sendiri."
+    },
+    "quality": {
+      "title": "Kualitas",
+      "desc": "Janji yang belum terpenuhi, skor kritikus, cakupan cerita & masalah kanon",
+      "guideBody": "Kualitas adalah dasbor diagnostik Anda — hanya bersifat saran, tidak ada yang mengubah prosa Anda di sini. Pilih kartu untuk melihat daftar utang janji yang belum terpenuhi, skor kritikus per bab, cakupan janji seluruh buku, atau kontradiksi kanon yang terkonfirmasi."
+    },
+    "quality-promises": {
+      "title": "Janji",
+      "desc": "Daftar utang janji yang belum terpenuhi (setup yang belum diselesaikan)",
+      "guideBody": "Janji adalah buku besar utang naratif Anda — setiap petunjuk yang telah dibuat cerita dan belum dibayar lunas. Sebuah janji dimulai saat Anda menanamnya (pengkhianatan yang disinggung, pistol yang terisi, bekas luka yang tak terjelaskan) dan ditutup saat naskah menepatinya. Selesaikan daftar ini sebelum Anda menyelesaikan buku; apa pun yang masih terbuka di akhir adalah alur yang akan disadari pembaca telah Anda abaikan."
+    },
+    "quality-critic": {
+      "title": "Kritikus",
+      "desc": "Skor koherensi, gaya bahasa, tempo & kanon per bab",
+      "guideBody": "Kritikus menilai bab berdasarkan koherensi, gaya bahasa, tempo, dan kesetiaan kanon, lengkap dengan alasan di balik setiap keputusan. Ini bersifat saran — ia tidak pernah mengubah prosa Anda. Gunakan ini untuk mendeteksi bab yang mulai melenceng sebelum pembaca menyadarinya, bukan sebagai nilai untuk optimasi."
+    },
+    "quality-coverage": {
+      "title": "Cakupan cerita",
+      "desc": "Audit seluruh buku mengenai janji kerangka mana yang telah terpenuhi",
+      "guideBody": "Cakupan cerita adalah pandangan menyeluruh buku terhadap daftar janji narasi: kerangka mana yang benar-benar tersampaikan dalam manuskrip, mana yang masih belum terpenuhi, dan di mana titik-titik resolusi berkumpul. Bacalah saat draf sudah selesai untuk menemukan bagian cerita yang menjanjikan terlalu banyak namun kurang memberikan hasil."
+    },
+    "quality-canon": {
+      "title": "Masalah kanon",
+      "desc": "Kontradiksi terkonfirmasi dari hasil generasi & ekstraksi pengetahuan",
+      "guideBody": "Masalah kanon mengumpulkan kontradiksi yang terkonfirmasi antara prosa Anda dan lore yang telah ditetapkan — karakter yang berada di dua tempat sekaligus, warna mata yang berubah, atau aturan sihir yang dilanggar cerita. Setiap masalah tertaut kembali ke bab dan aturan kanon yang dilanggar, sehingga Anda dapat memperbaiki teks atau mengubah aturannya."
+    },
+    "quality-canon-rules": {
+      "title": "Aturan kanon",
+      "desc": "Susun aturan tetap yang ditegakkan oleh kritikus — buat, edit, arsipkan, pulihkan",
+      "guideBody": "Aturan kanon adalah tempat Anda menetapkan hal-hal yang tidak boleh dilanggar oleh cerita Anda — seorang karakter hanya memiliki satu lengan setelah bab 41, batu roh dikonsumsi dan tidak pernah kembali, atau identitas Master Sekte tetap tersembunyi hingga busur Salt Court. Ini adalah aturan yang ditegakkan oleh kritikus dan fitur self-heal pada setiap generasi, jadi menulisnya di sini adalah cara Anda mengajarkan kanon Anda kepada co-writer. Ini adalah sisi penulisan dari Masalah kanon: panel tersebut menunjukkan apa yang rusak, panel ini adalah tempat Anda memperbaiki aturannya."
+    },
+    "quality-corrections": {
+      "title": "Koreksi",
+      "desc": "Tingkat terima / edit / regenerasi / tolak Anda pada draf AI — sinyal kualitas",
+      "guideBody": "Koreksi adalah cermin dari penyuntingan Anda sendiri: setiap kali Anda menerima, mengedit, memilih kandidat lain, melakukan regenerasi, atau menolak draf AI, pilihan tersebut akan dicatat — dan panel ini menunjukkan tingkatannya, dipisahkan antara Diverge (opsi-K) vs Stream. Tingkat edit/regenerasi/tolak yang lebih rendah (dan tingkat terima-apa-adanya yang lebih tinggi) di Diverge berarti sistem reranker memberikan hasil yang sepadan dengan latensinya. Ini bersifat saran dan hanya baca; ia tidak pernah mengubah prosa Anda — ia memberi tahu Anda apakah co-writer semakin mahir dalam menulis buku Anda."
+    },
+    "quality-heal": {
+      "title": "Self-heal",
+      "desc": "Jalankan Polish pada sebuah bab dan terima setiap perbaikan sebelum diterapkan ke prosa Anda",
+      "guideBody": "Self-heal melakukan pemeriksaan ulang cepat pada bab Anda dan mengusulkan perbaikan — pergeseran kata ganti, salah ketik, kesalahan kanon, hingga deskripsi yang terlalu panjang — masing-masing ditampilkan dalam baris terima/tolak. Perbaikan deterministik (salah ketik, kata ganti) sudah dicentang secara otomatis; penulisan ulang semantik tidak dicentang agar Anda dapat menilainya sendiri. Tidak ada yang mengubah prosa Anda sampai Anda menekan Apply, dan bahkan saat itu, sistem melakukan pengecekan versi: jika bab telah berubah sejak Polish dijalankan, proses apply akan ditolak alih-alih menghapus editan terbaru Anda."
+    },
+    "progress": {
+      "title": "Progres",
+      "desc": "Jumlah kata hari ini, streak Anda, total buku, target harian, dan sparkline",
+      "guideBody": "Progres mengubah kegiatan menulis Anda menjadi kebiasaan yang dapat dipantau: jumlah kata yang ditulis hari ini, streak harian Anda saat ini, total keseluruhan buku, serta sparkline 7 atau 30 hari. Tetapkan target harian pribadi dan garis referensi akan menandainya pada grafik — target ini hanya milik Anda sendiri, tidak dibagikan dengan kolaborator. Sistem membaca jumlah kata yang dicatat editor saat Anda menyimpan; sistem tidak akan pernah mengubah prosa Anda."
+    },
+    "flywheel": {
+      "title": "Flywheel",
+      "desc": "Apa yang ditambahkan oleh publikasi terakhir Anda ke kanon — orang baru, keterkaitan, dan peristiwa",
+      "guideBody": "Flywheel adalah imbalan dari proses publikasi: saat Anda menerbitkan bab, proses ekstraksi akan memperluas pengetahuan dunia Anda, dan panel ini menunjukkan apa yang telah ditambahkan — entitas, relasi, dan peristiwa baru — dengan sorotan yang dapat diklik untuk langsung menuju ke karakter tersebut di Cast, tautan di grafik, atau momen di lini masa. Ini menutup siklusnya: menulis memberi makan kanon, dan kanon memperkuat bab Anda berikutnya."
     },
     "kg-overview": {
       "title": "Ikhtisar",
@@ -193,6 +318,160 @@
       "title": "Pemeriksa Konteks",
       "desc": "Lacak apa yang dilakukan manajemen konteks per giliran — anggaran, alokasi, keputusan Planner→Compiler",
       "guideBody": "Menunjukkan secara tepat konteks apa yang dikirim ke AI untuk giliran tertentu — anggaran token, apa yang disertakan atau dihapus, dan apakah menggunakan proses cepat atau perencanaan penuh. Buka saat respons AI terasa tidak tepat dan Anda ingin melihat apa yang sebenarnya ia \"lihat\", atau saat Anda penasaran bagaimana anggaran konteks Anda digunakan."
+    },
+    "book-import": {
+      "title": "Impor",
+      "desc": "Impor bab dari teks/.docx/.epub, atau seluruh buku dari PDF",
+      "intro": "Masukkan konten manuskrip yang sudah ada ke dalam buku ini.",
+      "guideBody": "Impor bab dari file teks biasa, .docx, atau .epub, atau seluruh buku dari PDF (dengan opsi keterangan gambar AI — Anda dapat memilih model visi secara eksplisit). Buka menu ini kapan pun Anda memiliki konten yang sudah ada untuk dimasukkan daripada menulis dari awal.",
+      "text": {
+        "title": "Impor bab",
+        "desc": ".txt, .docx, atau .epub — satu bab per file"
+      },
+      "pdf": {
+        "title": "Impor dari PDF",
+        "desc": "Pecah PDF menjadi bab, dengan opsi keterangan AI untuk gambar"
+      }
+    },
+    "scene-browser": {
+      "title": "Penjelajah Adegan",
+      "desc": "Jelajahi setiap adegan dalam buku ini — prosa yang telah diproses dan rencana penulisannya, berdampingan",
+      "guideBody": "Penjelajah Adegan mencantumkan setiap adegan di seluruh buku dengan menggabungkan dua fakta: prosa yang benar-benar ditulis (dari book-service) dan niat/rencana penulisan (dari composition). Sebuah adegan dapat berstatus ditulis-dan-direncanakan (normal), direncanakan-tetapi-belum-ditulis, atau ditulis-tetapi-belum-didekompilasi menjadi rencana — sehingga adegan dari buku yang diimpor akan muncul di sini bahkan sebelum Anda membuat rencana.",
+      "noBook": "Buka buku untuk menjelajahi adegannya.",
+      "search": "Cari judul & prosa…",
+      "count": "{{n}} adegan",
+      "workless": "Belum ada rencana — niat adegan (status, POV, ketegangan) tidak tersedia sampai Anda membuat rencana untuk buku ini.",
+      "intentUnavailable": "Rencana adegan untuk sementara tidak tersedia — hanya menampilkan prosa yang telah ditulis.",
+      "dirty": "kanon berpindah",
+      "dirtyTitle": "Kanon berpindah sejak pemeriksaan kesesuaian terakhir",
+      "anchorLost": "Anchor hilang",
+      "empty": "Tidak ada adegan yang cocok.",
+      "loadMore": "Muat lebih banyak",
+      "loading": "Memuat…",
+      "col": {
+        "num": "#",
+        "scene": "Adegan",
+        "status": "Status",
+        "tension": "Ketegangan",
+        "words": "Kata"
+      },
+      "badge": {
+        "notWritten": "belum ditulis",
+        "notPlanned": "belum direncanakan",
+        "anchorLost": "jangkar hilang"
+      },
+      "bulk": {
+        "count": "{{n}} terpilih",
+        "selectAll": "Pilih semua",
+        "selectRow": "Pilih adegan: {{title}}",
+        "setStatus": "Atur status…",
+        "words": "Target kata",
+        "trash": "Hapus",
+        "clear": "Bersihkan",
+        "updated": "{{n}} diperbarui",
+        "conflicted": "{{n}} konflik",
+        "failed": "{{n}} gagal"
+      }
+    },
+    "plan-hub": {
+      "title": "Plan Hub",
+      "desc": "Rencana seluruh buku dalam kanvas grafis — jalur alur, bab, adegan, dan keterkaitannya",
+      "guideBody": "Plan Hub merender seluruh struktur buku Anda sebagai graf: setiap saga/alur/sub-alur adalah sebuah jalur, bab dan adegannya adalah kartu di sepanjang sumbu urutan cerita, dan tautan adegan membentuk garis kausal di antara mereka. Buka panel untuk melihat setiap alur yang diringkas menjadi kartu ringkasan; perluas alur untuk memuat bab secara otomatis, dan perluas bab untuk melihat adegannya. Geser dan perbesar untuk navigasi; lencana masalah dan ketidaksinkronan akan muncul di bagian yang memerlukan perhatian kanon atau janji cerita."
+    },
+    "decompose": {
+      "title": "Dekomposisi",
+      "desc": "Dekomposisi buku Anda berdasarkan struktur cerita — pratinjau pohon busur→bab→adegan, edit, dan simpan",
+      "guideBody": "Dekomposisi mengubah struktur cerita menjadi kerangka buku Anda. Pilih salah satu struktur yang telah Anda buat (atau struktur bawaan), tambahkan premis, pilih model, lalu Pratinjau: AI akan mengusulkan pohon busur→bab→adegan yang dapat Anda edit secara langsung sebelum disimpan. Simpan akan menulis kerangka tersebut — pohon Manuskrip Anda akan diperbarui agar sesuai. Buka melalui Command Palette, atau dari struktur di panel Struktur Template melalui «Gunakan dalam dekomposisi» (yang akan memilih struktur tersebut secara otomatis). Belum ada struktur? Panel ini menawarkan untuk membuatnya terlebih dahulu.",
+      "loading": "Menyusun buku Anda...",
+      "loadError": "Gagal memuat rencana buku ini — coba lagi.",
+      "retry": "Coba lagi"
+    },
+    "plan-passes": {
+      "title": "Pass Rail",
+      "desc": "Susun rencana langkah demi langkah dan setujui setiap titik pemeriksaan",
+      "guideBody": "Pass Rail menggerakkan compiler 7-langkah PlanForge — motif, pemeran, dunia, beats, busur karakter, adegan, dan self-heal — satu per satu. Setiap langkah menunjukkan apakah statusnya masih segar (input tidak berubah sejak dijalankan terakhir kali) atau usang, dan rail akan memberi tahu sejauh mana compiler dapat berjalan sendiri serta langkah mana yang menunggu persetujuan Anda. Ada dua langkah yang merupakan titik pemeriksaan penghalang yang harus Anda setujui sebelum compiler dapat berlanjut: pemeran (siapa karakter Anda) dan beats (bagaimana alur cerita terbentuk). Buka sebuah langkah untuk membaca hasilnya, edit, lalu setujui atau tahan. Mengedit sebuah langkah akan memperbarui status semua langkah berikutnya secara otomatis, sehingga rencana tidak akan pernah kehilangan sinkronisasi."
+    },
+    "whatif-canvas": {
+      "title": "Cabang What-If",
+      "desc": "Jelajahi versi alternatif dari sebuah adegan tanpa harus berkomitmen — buat cabang, hasilkan versi alternatif, bandingkan, lalu promosikan pemenangnya",
+      "guideBody": "Kanvas what-if memungkinkan Anda memisahkan adegan ke dalam cabang sementara, membuat versi alternatif, dan melihat lencana penilaian kritikus secara berdampingan — semuanya tanpa menyentuh draf kanon. Saat Anda menemukan cabang yang diinginkan, promosikan: ia akan menjadi karya turunan nyata yang dapat Anda lanjutkan penulisannya. Tidak ada yang tersimpan sampai Anda mempromosikannya, jadi Anda dapat bereksplorasi dengan bebas. Ini adalah permukaan penyuntingan di balik tombol Promote; Plan Hub menampilkan grafik rencana, sedangkan di sini adalah tempat Anda mencoba berbagai alternatif di dalamnya.",
+      "noPlan": "Buku ini belum memiliki rencana — susun alur dan babnya terlebih dahulu, lalu jelajahi cabang «what if» di sini."
+    },
+    "divergence": {
+      "title": "Versi what-if",
+      "desc": "Kelola turunan what-if sebuah buku — daftar kanon dan setiap cabang, pindahkan seluruh studio ke salah satu cabang, arsipkan, atau buat cabang baru dari sebuah bab",
+      "guideBody": "Versi what-if mencabangkan buku Anda pada suatu bab dan menyimpang — baik itu alam semesta alternatif, pergeseran POV, atau perubahan karakter — menjadi sebuah karya turunan dengan partisi pengetahuan tersendiri, sementara sumber aslinya tetap menjadi kanon yang bersifat read-only. Panel ini mencantumkan karya kanon Anda dan setiap cabang yang telah Anda buat. ‘Pindah ke’ akan memindahkan seluruh studio Anda — editor, navigator, kualitas, semuanya — ke cabang tersebut; pilihan ini akan diingat per buku dan tetap ada setelah memuat ulang. ‘Arsipkan’ menyembunyikan cabang tanpa menghapusnya (bab dan pengetahuannya tetap tersimpan). ‘Versi baru’ membuka wizard 4 langkah untuk membuat versi baru. Pilih cabang untuk membaca spesifikasinya (taksonomi, titik cabang, aturan kanon, override), yang bersifat tetap saat dibuat."
+    },
+    "reference-shelf": {
+      "title": "Rak Referensi",
+      "desc": "Kurasi kutipan referensi (pengaruh eksternal) yang mendasari tulisan Anda — tambahkan, edit, dan hapus; kutipan relevan per adegan akan diambil dan dapat disematkan ke dalam paket pendukung.",
+      "guideBody": "Rak referensi adalah korpus pengaruh buku Anda — kutipan, sumber, dan contoh gaya bahasa yang digunakan AI saat menyusun draf. Tambahkan referensi dengan judul, penulis, URL sumber, dan teks; teks tersebut akan disematkan agar studio dapat mengambil yang paling relevan per adegan. Edit detail referensi (perubahan metadata ringan) atau kontennya (yang akan melakukan penyematan ulang). Filter rak yang besar dengan kotak pencarian. Pengambilan dan penyematan per adegan akan muncul saat Anda membuka rak bersamaan dengan sebuah adegan; jika dibuka sendiri, rak ini berfungsi untuk mengelola pustaka. Model embedding harus dikonfigurasi (tambahkan dari pengaturan AI) agar pengambilan data dapat berfungsi.",
+      "noWork": "Penulisan belum diatur untuk buku ini — atur terlebih dahulu untuk mengelola rak referensi di sini."
+    },
+    "canonview": {
+      "title": "Kanon pada bab",
+      "desc": "Apa yang diketahui kanon per bab yang sedang difokuskan — entitas yang hadir/terbentuk, status kanon, dan lini masa",
+      "guideBody": "Menjawab pertanyaan «apa yang diketahui kanon pada bab yang sedang saya kerjakan?» — entitas yang hadir dalam dan dibentuk oleh bab saat ini (dari glosarium), ditambah status kanon (berapa banyak entitas yang aktif vs yang sudah tidak ada) dan peristiwa lini masa hingga titik tersebut (dari grafik pengetahuan). Ini mengikuti bab yang Anda fokuskan dalam manuskrip, dan merupakan inspektur yang sama dengan yang ditampilkan kanvas what-if pada titik percabangan — sehingga Anda dapat memeriksa apa yang sudah terbentuk sebelum Anda menyimpang. Buka adegan atau bab untuk menjadikannya fokus."
+    },
+    "scene-inspector": {
+      "title": "Inspektur Adegan",
+      "desc": "Baca dan edit setiap bidang dalam satu adegan — niat, teknik, ketegangan, dan dasar cerita",
+      "guideBody": "Scene Inspector adalah panel detail untuk satu adegan: pilih sebuah adegan (di Scene Browser atau manuskrip) dan rencana lengkapnya akan terbuka di sini — status, tujuan, sinopsis, peran beat, ketegangan, dan bidang teknik (konflik, hasil, taruhan, waktu cerita, pergeseran nilai, target kata) — semuanya dapat diedit, dengan pin dasar cerita yang terlipat di dalamnya. Perubahan disimpan secara instan dan terlindungi dari perubahan yang saling bertentangan.",
+      "none": "Pilih sebuah adegan untuk melihat rencana lengkapnya.",
+      "loading": "Memuat...",
+      "dirty": "Kanun telah berubah sejak pemeriksaan kesesuaian terakhir — rencana ini mungkin sudah tidak relevan.",
+      "section": {
+        "identity": "Identitas",
+        "intent": "Niat",
+        "cast": "Pemeran & Latar",
+        "craft": "Teknik",
+        "links": "Tautan",
+        "grounding": "Dasar Cerita",
+        "motifs": "Motif"
+      },
+      "links": {
+        "empty": "Belum ada tautan kausal.",
+        "setup": "setup→payoff",
+        "custom": "kustom",
+        "remove": "Hapus tautan",
+        "target": "Tautkan ke adegan",
+        "pick": "Tautkan ke…",
+        "kind": "Jenis tautan",
+        "label": "label",
+        "add": "tautan",
+        "dup": "Tautan dengan jenis yang sama sudah ada di antara adegan ini.",
+        "failed": "Tidak dapat membuat tautan."
+      },
+      "f": {
+        "title": "Judul",
+        "status": "Status",
+        "goal": "Tujuan",
+        "synopsis": "Sinopsis",
+        "beat": "Peran beat",
+        "tension": "Ketegangan (0–100)",
+        "pov": "Karakter POV",
+        "present": "Karakter yang hadir",
+        "location": "Lokasi",
+        "conflict": "Konflik",
+        "outcome": "Hasil",
+        "stakes": "Taruhan",
+        "storyTime": "Waktu cerita",
+        "valueShift": "Pergeseran nilai (−100…100)",
+        "targetWords": "Kata target"
+      },
+      "ref": {
+        "none": "— tidak ada —",
+        "add": "+ tambah",
+        "empty": "tidak ada",
+        "loading": "(memuat…)",
+        "remove": "Hapus {{name}}"
+      },
+      "status": {
+        "empty": "Kosong",
+        "outline": "Kerangka",
+        "drafting": "Drafting",
+        "done": "Selesai"
+      }
     },
     "chapter-browser": {
       "title": "Penjelajah Bab",
@@ -327,18 +606,86 @@
     },
     "agent-mode": {
       "title": "Mode Agen",
-      "desc": "Penulisan multi-bab otonom — kendali misi"
+      "desc": "Penulisan multi-bab otonom — kendali misi",
+      "guideBody": "Agent Mode adalah pusat kendali untuk penulisan multi-bab otonom: agen akan menyusun draf langsung melalui rencana yang telah disetujui sementara Anda mengawasinya. Mulai, jeda, dan lanjutkan penulisan dari sini, serta tinjau setiap bab saat selesai — perbedaan (diff) dan vonis kritikusnya — lalu terima, tolak, atau batalkan. Tidak ada yang ditulisnya yang bersifat final sampai Anda menerimanya."
     },
     "chapter-revision-compare": {
       "title": "Perbandingan Revisi Bab",
       "desc": "Perbedaan editor lengkap untuk sepasang revisi bab",
       "empty": "Buka diff revisi bab dari panel tinjauan Agent Mode."
+    },
+    "world-map": {
+      "title": "Peta Dunia",
+      "desc": "Buat dan sunting peta referensi dunia — unggah gambar dasar, seret dan lepas pin lokasi, gambar dan bentuk ulang wilayah.",
+      "guideBody": "Buat peta raster dunia. Unggah gambar dasar, lalu pasang pin dan gambar wilayah di atasnya. Seret pin untuk memindahkannya (seretan adalah satu PATCH koordinat-absolut pada id penanda yang stabil — bukan hapus-dan-buat-ulang) dan seret titik poligon untuk mengubah bentuk wilayah. Hubungkan pin atau wilayah ke entitas lokasi glosarium ATAU KG (pemilih akan melabeli sumbernya). Setiap perubahan disimpan ke book-service; alat world_map_* asisten mengedit peta yang sama secara langsung. Ubah nama peta dengan optimisme-konkurensi (If-Match), sehingga pengeditan yang bentrok akan memuat ulang alih-alih menimpa data."
+    },
+    "place-graph": {
+      "title": "Graf Tempat",
+      "desc": "Tempat-tempat (lokasi) dalam buku sebagai graf simpul yang dapat diseret",
+      "guideBody": "Tambahkan dan hubungkan tempat-tempat (lokasi) dalam buku sebagai graf simpul. Ketik nama dan tekan + Place untuk membuat lokasi; aktifkan Link places, pilih dua simpul dan predikat (contains / borders / route_to) untuk menghubungkannya; seret untuk mengatur posisi (disimpan di sisi server, dibagikan ke seluruh perangkat Anda); atur gambar latar belakang (memerlukan bab yang terbuka). Klik simpul untuk membukanya di kodeks Cast. Hanya untuk Lokasi — gunakan Author other kinds untuk menambahkan karakter, item, dan lainnya.",
+      "noWork": "Penulisan belum diatur untuk buku ini — atur terlebih dahulu untuk menyusun tempat-tempatnya di sini.",
+      "openCompose": "Buka Compose",
+      "loading": "Memuat peta dunia...",
+      "authorOther": "Buat jenis lainnya →"
+    },
+    "cast": {
+      "title": "Cast",
+      "desc": "Cast dalam buku — dikelompokkan, dapat dicari, aman dari spoiler; buat & pensiunkan entitas",
+      "guideBody": "Setiap karakter, tempat, organisasi, dan konsep dalam graf pengetahuan buku ini, dikelompokkan berdasarkan jenis dan dapat dicari, masing-masing dengan status cerita yang aman dari spoiler (aktif/hilang pada posisi baca Anda). Buat entitas baru dengan + New, ubah nama secara langsung, edit alias/jenis, atau pensiunkan (arsip-lunak) satu entitas. Klik glif busur pada baris untuk membuka Busur Karakter-nya."
+    },
+    "character-arc": {
+      "title": "Busur Karakter",
+      "desc": "Kejadian satu karakter dalam garis waktu, pita status aktif→hilang, dan relasi 1-langkah",
+      "guideBody": "Kejadian satu karakter secara berurutan dalam busur ringkas, dipotong pada posisi baca Anda, dengan pita status aktif→hilang dan relasi 1-langkah saat ini. Pilih karakter, edit, atau tambahkan relasi dengan + link entity."
+    },
+    "motif-library": {
+      "title": "Perpustakaan Motif",
+      "desc": "Pelajari trope (套路/爽点/打脸), adopsi atau gali motif tersebut, dan periksa grafik hubungan motif",
+      "guideBody": "Perpustakaan Motif adalah meja kerja narasi Anda. Telusuri motif berdasarkan tingkatan — milik Anda sendiri, label buku ini, tingkatan buku bersama, benih sistem, katalog publik, dan draf hasil temuan Anda. Buat motif secara langsung, adopsi dari katalog, atau gali korpus Anda sendiri untuk menemukan pola yang berulang. Buka motif apa pun untuk membaca ritme dan perannya, serta perluas grafiknya untuk melihat penyusunnya, apa yang mendahuluinya, dan variannya. Hubungkan motif ke adegan dari Scene Inspector agar draf yang Anda tulis benar-benar mengarah ke sana."
+    },
+    "quality-conformance": {
+      "title": "Kesesuaian",
+      "desc": "Beat-per-beat: apakah prosa telah mewujudkan rencana? Realisasi per-adegan (ya/tidak) + pita ketegangan",
+      "guideBody": "Kesesuaian melacak, adegan demi adegan, apakah prosa yang Anda tulis benar-benar menyampaikan ritme motif yang Anda rencanakan untuk sebuah bab. Setiap adegan menunjukkan status terealisasi / tidak terealisasi dan bagaimana ketegangannya dibandingkan dengan target. Ini menjawab perbandingan spesifikasi-vs-prosa (bukan spesifikasi-vs-templat — itu adalah tampilan drift arc-template). Sinyal ini bersifat saran (kasar, bukan diverifikasi secara kausal). Regenerasi adegan yang melewatkan ritmenya, atau jalankan ulang seluruh pemeriksaan terhadap model yang Anda pilih."
+    },
+    "motif-graph": {
+      "title": "Grafik Motif",
+      "desc": "Grafik hubungan motif di seluruh buku dalam kanvas yang dapat digeser — motif milik Anda + motif bersama buku tersebut beserta relasi composed-of / precedes / variant-of, dengan tata letak tersimpan Anda sendiri.",
+      "guideBody": "DAG visual dari motif-motif dalam buku ini. Node adalah motif Anda ditambah motif tier bersama; edge adalah tautan composed_of / precedes / variant_of. Seret node untuk mengatur grafik — tata letak Anda disimpan per-buku dan tersinkronisasi di berbagai perangkat (setiap kolaborator memiliki pengaturan sendiri). Tata letak awal dihitung otomatis dari kiri ke kanan di sepanjang rantai precedes. Buat dan hapus edge dari detail motif di Perpustakaan Motif.",
+      "signedOut": "Masuk untuk melihat grafik motif.",
+      "noBook": "Buka buku untuk melihat grafik motifnya."
+    },
+    "structure-templates": {
+      "title": "Templat Struktur",
+      "desc": "Buat struktur cerita kustom (daftar urutan beat yang dinamai) dan bedah buku Anda berdasarkan struktur tersebut — seperti fitur bawaan Save the Cat atau Hero's Journey",
+      "guideBody": "Struktur cerita adalah lembar beat berurutan yang digunakan untuk membedah bab-bab buku Anda. Panel ini mencantumkan struktur bawaan (Save the Cat, Hero's Journey, Kishōtenketsu, Three-Act, Story Circle, Web-Novel Arc — hanya baca) serta struktur buatan Anda sendiri. Duplikat struktur bawaan untuk mendapatkan salinan yang dapat diedit, lalu tambahkan, urutkan ulang, ubah nama, hapus beat-nya, dan simpan. Gunakan struktur dalam fitur Decompose untuk memetakan beat ke dalam bab Anda. Struktur kustom Anda bersifat pribadi dan dapat digunakan kembali di setiap buku; arsipkan untuk menyembunyikannya dan pulihkan nanti. Struktur bawaan tetap utuh bagi semua orang — Anda selalu mengedit salinan Anda sendiri."
+    },
+    "kg-triage": {
+      "title": "Triage",
+      "desc": "Tinjau elemen yang diekstraksi yang tidak cocok dengan skema Anda dan selesaikan.",
+      "guideBody": "Saat ekstraksi menemukan jenis entitas, relasi, atau nilai yang belum ada dalam skema Anda, sistem akan menyimpannya di sini alih-alih menebak. Setiap baris hanya menawarkan perbaikan yang valid untuk elemen tersebut — petakan ke sesuatu yang sudah Anda miliki, tambahkan ke skema/kosakata Anda, perbaiki endpoint, atau abaikan."
+    },
+    "search": {
+      "title": "Cari",
+      "desc": "Cari prosa (teks) buku Anda atau laci lore (semantik); hasil yang ditemukan akan langsung membuka editor di bagian tersebut.",
+      "guideBody": "Pencarian memiliki dua mode. Mode Teks menemukan kata dan frasa yang tepat dalam prosa manuskrip Anda. Mode Semantik menemukan bagian berdasarkan makna di seluruh laci lore Anda (bab, obrolan, glosarium). Klik hasil untuk membuka editor pada bab tersebut — pencarian adalah jalan masuk ke manuskrip Anda, bukan sekadar daftar mati."
+    },
+    "workflows": {
+      "title": "Alur Kerja",
+      "desc": "Kelola resep alur kerja yang tersimpan",
+      "guideBody": "Menampilkan daftar resep alur kerja multi-langkah yang dapat dijalankan agen Anda sebagai rel — termasuk Sistem bawaan serta resep milik Anda sendiri. Buka panel ini untuk mengaktifkan atau menonaktifkan resep untuk diri Anda, atau menghapus resep milik Anda. Resep baru ditambahkan dengan menyetujui proposal di panel Proposal Alur Kerja, bukan dibuat langsung di sini."
+    },
+    "workflow-proposals": {
+      "title": "Proposal Alur Kerja",
+      "desc": "Tinjau alur kerja yang diusulkan oleh agen",
+      "guideBody": "Menampilkan daftar resep alur kerja yang disarankan oleh agen untuk dibuat, berdasarkan urutan multi-langkah yang ia perhatikan sering Anda ulangi. Buka panel ini untuk menyetujui proposal — yang akan mencetak alur kerja tersebut agar dapat dijalankan — atau menolaknya. Di sinilah alur kerja usulan agen benar-benar menjadi nyata."
     }
   },
   "sceneRail": {
     "title": "Adegan",
     "toggle": "Adegan",
     "empty": "Tidak ada adegan untuk bab ini (buat kerangka di composer).",
+    "editTitle": "Ubah nama adegan",
     "synopsisPlaceholder": "Sinopsis…",
     "stale": "berubah di tempat lain — dimuat ulang",
     "notAnchored": "Adegan belum tertaut di teks — gunakan ⚓ untuk menautkan heading.",
@@ -369,8 +716,51 @@
     "revert": "Kembalikan",
     "openAs": "Buka sebagai JSON"
   },
+  "planPasses": {
+    "comingSoon": "Lintasan 7-langkah akan muncul di sini.",
+    "noBook": "Buka buku untuk menyusun rencananya.",
+    "noRun": "Belum ada rencana yang dijalankan — buka Planner untuk mengusulkan dan menyusun satu rencana.",
+    "loading": "Memuat langkah...",
+    "notCompiled": "Run ini belum memiliki paket yang dikompilasi. Kompilasi di Planner sebelum menjalankan passes.",
+    "openPlanner": "← Planner (usulkan / kompilasi)",
+    "blocking": "blocking",
+    "advisory": "advisory",
+    "running": "sedang berjalan…",
+    "done": "selesai",
+    "failed": "gagal",
+    "notRun": "— belum dijalankan",
+    "fresh": "baru",
+    "stale": "usang",
+    "run": "jalankan…",
+    "rerun": "jalankan ulang…",
+    "review": "tinjau →",
+    "blocked": "terblokir",
+    "blockedBy": "terblokir oleh: {{blockers}}",
+    "runSpends": "Jalankan {{pass}} — ini menghabiskan 1 panggilan LLM",
+    "runNow": "Jalankan {{pass}}",
+    "cancel": "Batal",
+    "approve": "Setujui",
+    "reject": "Tolak",
+    "edit": "Edit",
+    "saveEdits": "Simpan perubahan",
+    "cursor": "{{done}} dari {{total}}",
+    "blockedAt": "terblokir pada",
+    "reviewTitle": "Tinjauan {{pass}}",
+    "reviewLoading": "Memuat…",
+    "reviewNoContent": "Tidak ada konten artefak untuk ditampilkan.",
+    "reviewPrompt": "Setujui {{pass}}? Ini memungkinkan kompiler untuk melanjutkannya.",
+    "seedUnavailable": "Usulan benih glosarium tidak tersedia.",
+    "seedApplied": "Benih glosarium telah diterapkan — cast dapat disetujui.",
+    "seedGate": "Karakter pemeran Anda harus ditambahkan ke glosarium sebelum Anda dapat menyetujui. Terapkan seed untuk menambahkannya.",
+    "applySeed": "Terapkan benih",
+    "approveGated": "Terapkan benih glosarium terlebih dahulu (PF-7)",
+    "editAdd": "Tambah",
+    "editRemove": "Hapus",
+    "editEmpty": "Belum ada apa-apa di sini — tambahkan baris."
+  },
   "planner": {
     "sourcePlaceholder": "Tempel markdown novel-system…",
+    "proposeBlind": "Hanya diusulkan dari braindump ini. Bab yang sudah ada tidak dibaca.",
     "propose": "Usulkan",
     "model": "Model",
     "empty": "Tempel markdown novel-system Anda dan klik Propose untuk memulai proses perencanaan.",
@@ -391,22 +781,44 @@
       "colMode": "Mode",
       "colStatus": "Status",
       "colCreated": "Dibuat"
-    }
+    },
+    "grounded": "Berdasarkan {{chapters}} bab yang sudah ada + {{cast}} anggota cast; {{arcs}} arc yang sudah ada dilanjutkan.",
+    "groundOnExisting": "Lanjutkan buku ini — sesuaikan dengan cast, arc & bab terbaru yang sudah ada"
   },
   "editor": {
     "empty": "Pilih bab di navigator manuskrip untuk mengeditnya di sini.",
+    "startFirstChapter": "Mulai bab pertama Anda",
+    "startingChapter": "Sedang membuat...",
     "unsaved": "● belum disimpan",
     "save": "Simpan",
     "grammar": "Tata Bahasa",
     "heatmap": "Heatmap",
+    "glossary": "Glosarium",
     "focus": "Fokus",
     "translate": "Terjemahkan",
-    "glossary": "Glosarium"
+    "derivativeForked": "Pada versi what-if — bab ini adalah PERCABANGAN (FORKED), terisolasi dari kanon. Perubahan disimpan ke cabang tersebut; kanon tetap tidak tersentuh.",
+    "derivativeInherit": "Pada versi what-if — bab ini masih mencerminkan kanon. Mengedit di sini akan PERCABANG (FORK) bab tersebut ke dalam cabang (kanon tetap tidak tersentuh).",
+    "mergeToCanon": "Gabungkan ke kanon",
+    "mergeConfirm": "Konfirmasi — timpa kanon",
+    "merging": "Menggabungkan...",
+    "mergeDone": "Berhasil digabungkan ke kanon — cabang tetap menggunakan versinya sendiri.",
+    "mergeConflict": "Kanon telah berubah — buka kembali bab ini dan gabungkan lagi.",
+    "mergeFailed": "Gagal menggabungkan — coba lagi."
+  },
+  "sceneCompose": {
+    "empty": "Pilih bab dalam navigator manuskrip untuk menyusun adegan di sini.",
+    "inserted": "Berhasil dimasukkan ke dalam manuskrip.",
+    "insertFailed": "Tidak dapat memasukkan — klik pada teks bab di Editor, lalu klik Terima lagi.",
+    "openedEditor": "Editor telah dibuka pada bab ini — Buat ulang untuk memasukkan draf di sini."
+  },
+  "chapterAssemble": {
+    "empty": "Pilih bab dalam navigasi manuskrip untuk menyusunnya di sini."
   },
   "popout": {
     "invalid": "Tautan pop-out ini tidak valid.",
     "open": "Pop out",
-    "openTitle": "Buka Compose di jendela terpisah"
+    "openTitle": "Buka Compose di jendela terpisah",
+    "needChapter": "Buka bab terlebih dahulu — fitur pop-out akan membuka bab saat ini di jendela terpisah"
   },
   "dock": {
     "dock": "Dock"
@@ -469,6 +881,7 @@
       "editor": "Editor & Bab",
       "storyBible": "Story Bible",
       "knowledge": "Knowledge Graph",
+      "quality": "Kualitas",
       "translation": "Terjemahan",
       "enrichment": "Pengayaan",
       "sharing": "Berbagi & Pengaturan",
@@ -502,6 +915,7 @@
   },
   "activity": {
     "manuscript": "Manuskrip",
+    "plan": "Rencana",
     "bible": "Story Bible",
     "search": "Pencarian",
     "quality": "Kualitas"
@@ -524,8 +938,80 @@
       "body": "Skor kritik, utas janji & masalah kanon. Segera hadir."
     }
   },
+  "quality": {
+    "noWork": "Buku ini belum memiliki sesi co-writer — tulis satu bab terlebih dahulu, maka data kualitas akan muncul di sini.",
+    "hubNoWorkHint": "Janji, skor kritikus, dan cakupan cerita memerlukan sesi co-writer — tulis satu bab terlebih dahulu. Masalah kanon di bawah tetap dapat berfungsi dengan cara apa pun.",
+    "setupWork": "Atur penulisan",
+    "settingUpWork": "Sedang menyiapkan...",
+    "setupWorkError": "Tidak dapat menyiapkan penulisan. Coba lagi.",
+    "setupWorkPending": "Penulisan telah disiapkan, tetapi proyek pengetahuannya masih dalam proses persiapan. Coba lagi sebentar lagi.",
+    "setupWorkRetry": "Coba lagi",
+    "pickModel": "Pilih model untuk menganalisis dengan…",
+    "pickChapter": "Pilih bab",
+    "pickChapterHint": "Pilih bab di atas untuk menganalisis kualitasnya.",
+    "chaptersTruncated": "menampilkan {{shown}} dari {{total}} bab pertama",
+    "canonIntro": "Peringatan — ditemukan kontradiksi yang terkonfirmasi dengan konten yang ditandai hilang/berubah sebelumnya di dalam buku. Tidak ada yang diterapkan secara otomatis di sini.",
+    "canonEmpty": "Tidak ada masalah kanon yang ditemukan.",
+    "canonCompositionError": "Tidak dapat memuat masalah kanon dari pembuatan — coba lagi.",
+    "canonExtractionError": "Tidak dapat memuat bendera kanon dari ekstraksi pengetahuan — coba lagi.",
+    "canonFromGeneration": "Dari pembuatan ({{n}})",
+    "canonFromExtraction": "Dari ekstraksi pengetahuan ({{n}})",
+    "untitledScene": "Adegan tanpa judul",
+    "jumpToChapter": "Buka bab",
+    "promisesTitle": "Janji",
+    "promisesDesc": "Buku besar utang janji yang terbuka",
+    "criticTitle": "Kritikus",
+    "criticDesc": "Skor koherensi, gaya bahasa, tempo & kanon per bab",
+    "coverageTitle": "Cakupan cerita",
+    "coverageDesc": "Cakupan janji seluruh buku",
+    "canonTitle": "Masalah kanon",
+    "canonDesc": "Kontradiksi yang terkonfirmasi",
+    "canonRulesTitle": "Aturan kanon",
+    "canonRulesDesc": "Tentukan aturan baku yang harus dipatuhi oleh kritikus",
+    "correctionsTitle": "Koreksi",
+    "correctionsDesc": "Tingkat penerimaan / pengeditan / pembuatan ulang / penolakan Anda",
+    "healTitle": "Self-heal",
+    "healDesc": "Jalankan Polish dan terima setiap perbaikan sebelum menyentuh prosa Anda",
+    "canonFromRules": "Aturan yang dilanggar ({{n}})",
+    "canonRuleError": "Tidak dapat memuat pelanggaran aturan kanon — coba lagi.",
+    "canonRuleGone": "Aturan yang tidak lagi ada",
+    "canonRuleUnnamed": "aturan itu",
+    "canonRuleFocused": "Menampilkan pelanggaran dari aturan asal Anda terlebih dahulu ({{n}}): «{{rule}}»",
+    "canonRuleFocusedEmpty": "Aturan asal Anda tidak memiliki pelanggaran terbuka. Aturan tersebut tertanam di sini, tetapi tidak ada yang melanggarnya.",
+    "canonFocused": "Menampilkan bab asal Anda terlebih dahulu ({{n}} temuan).",
+    "canonFocusedEmpty": "Bab asal Anda tidak memiliki temuan kanon di sini.",
+    "canonUnavailable": "Tidak dapat terhubung ke layanan co-writer — temuan kanon saat waktu pembuatan TIDAK disertakan di bawah ini.",
+    "canonNoWork": "Buku ini belum memiliki sesi penulis pendamping, sehingga pemeriksaan kanon saat pembuatan belum dijalankan. Hanya temuan ekstraksi pengetahuan yang ditampilkan.",
+    "canonRuleFocusUnknown": "Aturan asal Anda tidak dapat diperiksa karena layanan co-writer tidak tersedia. Aturan tersebut mungkin saja masih melanggar di suatu tempat — ini bukan hasil akhir.",
+    "canonRulesCapped": "Menampilkan {{shown}} aturan terlanggar terbaru dari {{total}} aturan.",
+    "workUnavailable": "Tidak dapat terhubung ke layanan co-writer, sehingga data kualitas buku ini tidak dapat dimuat. Masalah mungkin ada namun tidak ditampilkan di sini. Coba lagi beberapa saat lagi.",
+    "hubUnavailable": "Tidak dapat terhubung ke layanan co-writer, sehingga janji, skor kritikus, dan cakupan cerita tidak dapat dimuat saat ini. Masalah mungkin ada namun tidak ditampilkan di sini.",
+    "conformanceTitle": "Kesesuaian",
+    "conformanceDesc": "Apakah prosa sudah mewujudkan rencana? Pelacakan beat per adegan",
+    "pickModelRerun": "Pilih model untuk dijalankan ulang dengan…",
+    "pickChapterConformanceHint": "Pilih bab di atas untuk melacak bagaimana prosanya mewujudkan rencana tersebut."
+  },
   "sidebar": {
-    "collapse": "Sembunyikan"
+    "collapse": "Sembunyikan",
+    "resize": "Ubah ukuran bilah sisi"
+  },
+  "layout": {
+    "title": "Tata letak panel",
+    "hint": "Mengatur {{count}} panel yang terbuka.",
+    "empty": "Buka panel untuk mengaturnya.",
+    "needPanels": "Buka setidaknya dua panel terlebih dahulu",
+    "tooNarrow": "Membutuhkan jendela yang lebih lebar",
+    "presets": {
+      "single": "Satu panel",
+      "cols2": "Dua kolom",
+      "cols3": "Tiga kolom",
+      "cols4": "Empat kolom",
+      "grid2x2": "Kisi 2×2",
+      "grid3x2": "Kisi 3×2",
+      "grid4x2": "Grid 4×2",
+      "cols6": "Enam kolom",
+      "cols8": "Delapan kolom"
+    }
   },
   "bottom": {
     "jobs": "Tugas",
@@ -533,23 +1019,33 @@
     "issues": "Masalah",
     "collapse": "Sembunyikan panel",
     "toggle": "Toggle panel bawah",
-    "label": "Panel"
-  },
-  "bottomStub": {
-    "jobs": "Tugas latar belakang akan muncul di sini setelah terhubung.",
-    "generation": "Progres generasi langsung akan muncul di sini setelah terhubung.",
-    "issues": "Masalah kualitas akan muncul di sini setelah terhubung."
+    "label": "Panel",
+    "launch": {
+      "jobs": "Umpan pekerjaan terbuka di panel tersendiri.",
+      "generation": "Umpan pembuatan terbuka di panel tersendiri."
+    },
+    "openJobs": "Buka panel Pekerjaan",
+    "issuesLoading": "Memeriksa masalah…",
+    "issuesError": "Tidak dapat memuat panel masalah.",
+    "issuesEmpty": "Tidak ada masalah yang ditemukan dalam buku ini.",
+    "issuesCapped": "menampilkan baris teratas dari {{total}}",
+    "sev": {
+      "error": "Kesalahan",
+      "warn": "Peringatan",
+      "info": "Info"
+    }
   },
   "status": {
     "wordsPlaceholder": "— kata",
     "words": "{{count}} kata",
     "modelPlaceholder": "tidak ada model",
     "notifications": "Notifikasi",
-    "cost24h": "Pengeluaran, 24 jam terakhir"
+    "cost24h": "Pengeluaran, 24 jam terakhir",
+    "proposalsPending": "{{count}} menunggu persetujuan"
   },
   "manuscript": {
     "title": "Manuskrip",
-    "newChapter": "Bab baru",
+    "openPlan": "Rencanakan buku ini",
     "collapseAll": "Sembunyikan semua",
     "reload": "Muat ulang",
     "arc": "ARC",
@@ -561,9 +1057,33 @@
     "loadingMore": "Memuat lebih banyak...",
     "count": "{{n}} bab",
     "statArcs": "{{n}} alur",
+    "statActs": "{{n}} babak",
     "statChapters": "{{n}} bab",
     "statScenes": "{{n}} adegan",
-    "window": "win {{a}}–{{b}} / {{n}}"
+    "window": "win {{a}}–{{b}} / {{n}}",
+    "chapterN": "Bab {{number}}",
+    "newChapter": "Bab baru",
+    "chapterShort": "Bab",
+    "startFirstChapter": "Mulai bab pertama Anda",
+    "creatingChapter": "Sedang membuat...",
+    "actShort": "Babak",
+    "actTag": "BABAK",
+    "newAct": "Babak baru",
+    "newActPlaceholder": "Nama babak baru…",
+    "renameAct": "Ubah nama babak",
+    "renameActPlaceholder": "Nama babak…",
+    "trashAct": "Hapus babak",
+    "moveActUp": "Pindahkan babak ke atas",
+    "moveActDown": "Pindahkan babak ke bawah",
+    "untitledAct": "(babak tanpa judul)",
+    "unassignedBucket": "Belum Ditugaskan",
+    "emptyActHint": "seret babak ke sini",
+    "trashedActs": "Bab yang dihapus",
+    "restore": "Pulihkan",
+    "restoreActHint": "Pulihkan bab ini (bab akan kembali dalam keadaan kosong — susun ulang bab di dalamnya jika diperlukan)",
+    "actTrashed": "Bab «{{name}}» telah dihapus — bab-bab di dalamnya tetap tersimpan di buku",
+    "partVsArc": "Bagian mengelompokkan manuskrip Anda. Alur adalah rencananya.",
+    "undo": "Batalkan"
   },
   "intro": {
     "title": "Selamat Datang di Writing Studio",
@@ -633,10 +1153,6 @@
           "title": "Haluskan prosa",
           "body": "Setelah adegan memiliki kata-kata, sempurnakan di sini — pemeriksaan tata bahasa, petunjuk glosarium, dan mode fokus semuanya ada di editor ini."
         },
-        "planner": {
-          "title": "Rencanakan alur cerita",
-          "body": "Susun alur, bab, dan poin penting sebelum atau di antara sesi menulis, sehingga Compose dan Editor memiliki struktur untuk ditulis."
-        },
         "grammar": {
           "title": "Temukan salah ketik saat menulis",
           "body": "Aktifkan pemeriksaan tata bahasa dan ejaan secara langsung tanpa meninggalkan halaman."
@@ -644,6 +1160,10 @@
         "heatmap": {
           "title": "Deteksi penyimpangan kontinuitas",
           "body": "Menyoroti baris yang mungkin bertentangan dengan kanon yang telah ditetapkan — perlu diperiksa sekilas sebelum Anda melanjutkan."
+        },
+        "planner": {
+          "title": "Rencanakan alur cerita",
+          "body": "Susun alur, bab, dan poin penting sebelum atau di antara sesi menulis, sehingga Compose dan Editor memiliki struktur untuk ditulis."
         }
       },
       "worldbuilder": {
@@ -941,5 +1461,193 @@
       "label": "Jendela Popout",
       "desc": "Pisahkan Compose ke jendela OS tersendiri untuk penggunaan monitor kedua."
     }
+  },
+  "planHub": {
+    "undo": "Urungkan",
+    "empty": {
+      "title": "Belum ada rencana untuk buku ini",
+      "body": "Plan Hub menampilkan spesifikasi — alur, bab, adegan. Buku ini belum memilikinya. Spesifikasi tidak akan muncul secara otomatis dari manuskrip Anda: ekstraklah, atau buatlah secara manual.",
+      "extractCta": "Ekstrak rencana dari manuskrip",
+      "extracting": "Mengekstrak...",
+      "planCta": "Buat rencana dari awal",
+      "extractNote": "Ekstraksi membaca adegan yang telah diparsing dari bab Anda dan mengubah setiap adegan menjadi simpul spesifikasi. Mengelompokkannya ke dalam alur adalah langkah AI terpisah — mintalah agen untuk melakukannya. Hingga saat itu, bab yang diekstrak akan berada di baris «Tidak Terpilih».",
+      "nothingParsed": "Tidak ada yang bisa diekstrak — buku ini belum memiliki adegan yang diparsing. Parsing atau impor bab terlebih dahulu, baru kemudian ekstrak.",
+      "startArcCta": "Mulai dengan alur pertama Anda",
+      "startingArc": "Sedang membuat...",
+      "arcPlaceholder": "Beri nama alur pertama Anda...",
+      "untitledArc": "Alur tanpa judul",
+      "extractNeedsChapters": "Mengekstrak bab yang dibutuhkan — buku ini belum memilikinya."
+    },
+    "node": {
+      "unplannedTray": "Bab yang tidak terencana",
+      "unplannedUnknown": "Bab yang tidak terencana: tidak diketahui (manuskrip tidak dapat dibaca)",
+      "unplannedCapped": "...dan {{n}} lainnya (daftar dibatasi)",
+      "unassignedStrip": "{{count}} bab tanpa alur — tarik ke dalam jalur",
+      "unassignedStrip_other": "{{count}} bab tanpa alur — seret ke dalam jalur",
+      "untitled": "Tanpa Judul",
+      "unassignedFlow": "{{count}} bab belum masuk ke alur cerita mana pun",
+      "unassignedFlow_other": "{{count}} bab belum masuk ke alur cerita mana pun"
+    },
+    "loading": "Memuat rencana…",
+    "toolbar": {
+      "search": "Cari node…",
+      "fit": "Sesuaikan",
+      "problems": "Masalah",
+      "askAi": "Tanya AI",
+      "askAiHint": "Pilih node untuk bertanya",
+      "viewNarrative": "Narasi",
+      "viewTimeline": "Lini Masa",
+      "viewWorldmap": "Peta Dunia",
+      "viewSoon": "Akan datang di fase berikutnya"
+    },
+    "mode": {
+      "simple": "Sederhana",
+      "advanced": "Lanjutan"
+    },
+    "simple": {
+      "guide": "Buku Anda, bab demi bab. Klik satu bab untuk lanjut menulis, atau mulai bab baru di bawah.",
+      "loading": "Memuat bab Anda...",
+      "error": "Tidak dapat memuat bab Anda. Coba lagi sebentar lagi.",
+      "emptyLine": "Buku kosong. Mulailah dengan satu kalimat — struktur bisa disusun kemudian.",
+      "untitled": "Bab tanpa judul",
+      "words": "{{n}} kata",
+      "status": {
+        "done": "selesai",
+        "drafting": "sedang menulis",
+        "empty": "belum dimulai",
+        "aiIdea": "Ide AI"
+      },
+      "more": "+ {{n}} lagi",
+      "loadingMore": "Memuat...",
+      "writeCta": "Tulis bab baru",
+      "writing": "Sedang membuat...",
+      "doorNote": "Langsung membuka halaman kosong.",
+      "goAdvanced": "Atur ke dalam alur cerita →",
+      "rename": "Ubah nama",
+      "delete": "Hapus bab",
+      "aiDraft": "Atau biarkan AI membuat drafnya →",
+      "legend": {
+        "authored": "Anda menulisnya",
+        "ai": "Ide AI"
+      }
+    },
+    "costHint": "Mengedit struktur tidak menggunakan panggilan model.",
+    "flow": {
+      "chNo": "bab {{n}}",
+      "chCount": "{{n}} bab",
+      "gap": "⚠ celah",
+      "aiCollapsed": "AI · diciutkan",
+      "subArcTag": "sub-busur",
+      "untitledArc": "Busur tanpa judul",
+      "untitledChapter": "Bab tanpa judul",
+      "untitledScene": "Adegan tanpa judul",
+      "addChapter": "+ bab",
+      "addScene": "+ adegan",
+      "addSubArc": "+ sub-busur",
+      "showScenes": "▸ adegan",
+      "moreChapters": "+ {{n}} lagi",
+      "empty": "Belum ada alur cerita — tambahkan busur dari toolbar untuk memulai.",
+      "status": {
+        "empty": "kosong",
+        "outline": "kerangka",
+        "drafting": "drafting",
+        "done": "selesai"
+      },
+      "moveTo": "pindah ke alur…",
+      "unassigned": "{{count}} bab tanpa alur cerita",
+      "unassigned_other": "{{count}} bab tanpa alur cerita"
+    },
+    "adv": {
+      "graph": "Grafik",
+      "lane": "Lajur",
+      "graphHint": "Grafik — perbesar, geser, dan seret untuk bergerak (terbaik untuk struktur besar)",
+      "laneHint": "Lajur — kartu berbalut yang mudah dibaca (tanpa perbesaran)"
+    }
+  },
+  "structTpl": {
+    "subtitle": "struktur cerita untuk membedah bab",
+    "builtin": "Bawaan (hanya baca)",
+    "mine": "Milik Saya",
+    "mineEmpty": "Belum ada — duplikat struktur bawaan untuk memulai.",
+    "loading": "Memuat...",
+    "pickHint": "Pilih struktur untuk melihat beat-nya.",
+    "beats": "beat",
+    "builtinNote": "Ini adalah struktur bawaan. Duplikat untuk menyesuaikan — Anda mengedit salinan Anda, versi aslinya tetap utuh bagi semua orang.",
+    "cloneBuiltin": "Duplikat ke struktur saya",
+    "duplicate": "Duplikat",
+    "cloning": "Mengkloning…",
+    "beatLabel": "Label",
+    "beatPurpose": "Apa fungsi beat ini...",
+    "addBeat": "Tambah beat",
+    "save": "Simpan",
+    "saving": "Menyimpan...",
+    "showArchived": "diarsipkan",
+    "archive": "Arsipkan",
+    "restore": "Pulihkan",
+    "archivedNote": "Struktur ini telah diarsipkan. Pulihkan untuk mengedit atau menggunakannya kembali.",
+    "newStructure": "Struktur baru",
+    "createStructure": "Buat struktur",
+    "creating": "Membuat…",
+    "cancel": "Batal",
+    "unsaved": "Belum disimpan",
+    "discard": "Buang",
+    "discardTitle": "Buang perubahan yang belum disimpan?",
+    "discardBody": "Edit Anda pada struktur ini belum disimpan. Keluar sekarang akan membuang semua perubahan tersebut.",
+    "archiveTitle": "Arsipkan struktur ini?",
+    "archiveBody": "«{{name}}» dipindahkan ke arsip — Anda dapat memulihkannya nanti.",
+    "nameLabel": "Nama struktur",
+    "namePlaceholder": "Beri nama struktur Anda…",
+    "kindLabel": "Jenis (label teks bebas)",
+    "beatKey": "kunci",
+    "beatKeyLabel": "Kunci beat",
+    "beatLabelLabel": "Label beat",
+    "moveUp": "Pindahkan beat ke atas",
+    "moveDown": "Pindahkan beat ke bawah",
+    "removeBeat": "Hapus beat",
+    "decomposeHint": "Untuk menggunakan struktur ini, buka bab dan jalankan langkah Dekomposisi — struktur Anda akan muncul di pemilih di sana.",
+    "err": {
+      "conflict": "Struktur ini telah berubah di tempat lain — muat ulang dan terapkan kembali suntingan Anda.",
+      "duplicate": "Anda sudah memiliki struktur dengan nama tersebut.",
+      "blank": "Struktur memerlukan nama.",
+      "unknown": "Terjadi kesalahan — silakan coba lagi."
+    },
+    "toast": {
+      "saved": "Struktur disimpan",
+      "archived": "Struktur diarsipkan",
+      "restored": "Struktur dipulihkan",
+      "created": "Struktur dibuat"
+    },
+    "badge": {
+      "builtin": "bawaan",
+      "mine": "milik saya",
+      "archived": "diarsipkan"
+    }
+  },
+  "search": {
+    "modeLabel": "Mode pencarian",
+    "mode": {
+      "text": "Teks",
+      "semantic": "Semantik"
+    },
+    "rail": {
+      "placeholder": "Cari buku Anda…",
+      "go": "Cari",
+      "hint": "Teks menemukan kata yang tepat dalam prosa Anda; Semantik menemukan bagian berdasarkan makna. Hasil yang ditemukan akan membuka editor di bagian tersebut."
+    },
+    "semantic": {
+      "placeholder": "Cari makna di seluruh lore Anda…",
+      "loadingProject": "Memuat…",
+      "noProject": "Buku ini belum memiliki proyek pengetahuan — ekstrak atau bangun pengetahuan terlebih dahulu.",
+      "error": "Pencarian semantik saat ini tidak tersedia.",
+      "hint": "Ketik minimal 3 karakter untuk mencari berdasarkan makna.",
+      "searching": "Mencari...",
+      "empty": "Tidak ada kutipan yang cocok.",
+      "openChapter": "buka →"
+    }
+  },
+  "setup": {
+    "firstStructureTitle": "Bab Satu",
+    "everything": "Atau atur buku ini sepenuhnya",
+    "everythingBusy": "Sedang mengatur..."
   }
 }

@@ -31,7 +31,7 @@ AUTH = {"Authorization": "Bearer test-jwt"}
 
 def _run(status="draft", **over) -> AuthoringRun:
     base = dict(
-        run_id=RUN, owner_user_id=USER, book_id=BOOK, plan_run_id=PLAN, level=3,
+        run_id=RUN, created_by=USER, book_id=BOOK, plan_run_id=PLAN, level=3,
         scope=[str(CH1), str(CH2)], budget_usd=Decimal("1.00"),
         spent_usd=Decimal("0"), tool_allowlist=["composition_write_prose"],
         params={"model_source": "user_model", "model_ref": str(uuid.uuid4())},
@@ -84,6 +84,12 @@ def _unit(unit_index=0, status="drafted", **over) -> AuthoringRunUnit:
 
 
 class StubService:
+    """Bare-id AuthoringRunService double (spec 25): reads/mutations key on
+    run_id/book_id only — access (creator + book-grant, or the OWNER escalation
+    for pause/close) is decided by the ROUTER's `_run_for_mutation`, never by an
+    actor filter here. `create` keeps `created_by` as its leading positional
+    (a plain actor stamp)."""
+
     def __init__(self):
         self.runs = {RUN: _run()}
         self.gate_error: Exception | None = None
@@ -93,58 +99,49 @@ class StubService:
             "error": None, "run_status": "closed", "closed": True,
         }
 
-    async def create(self, owner_user_id, book_id, **kwargs):
+    async def create(self, created_by, book_id, **kwargs):
         self.create_kwargs = kwargs
         if kwargs.get("plan_run_id") != PLAN:
             raise LookupError("plan run not found")
         return self.runs[RUN]
 
-    async def get(self, owner_user_id, run_id):
-        run = self.runs.get(run_id)
-        if run is not None and run.owner_user_id != owner_user_id:
-            return None  # owner-scoped, like the real repo
-        return run
+    async def get(self, run_id):
+        return self.runs.get(run_id)  # bare-id; the route gates on run.book_id
 
-    async def list(self, owner_user_id, book_id, *, limit=20):
+    async def list(self, book_id, *, limit=20):
         return list(self.runs.values())
 
-    async def gate(self, owner_user_id, run_id, *, book_chapter_ids):
+    async def gate(self, run_id, *, book_chapter_ids):
         self.seen_chapter_ids = book_chapter_ids
         if self.gate_error is not None:
             raise self.gate_error
         return _run(status="gated")
 
-    async def start(self, owner_user_id, run_id):
-        run = self.runs.get(run_id)
-        if run is None or run.owner_user_id != owner_user_id:
-            raise LookupError("run not found")  # owner-only, like the real svc
+    async def start(self, run_id):
         return _run(status="running")
 
-    async def pause(self, owner_user_id, run_id):
+    async def pause(self, run_id):
         raise TransitionConflictError("pause requires status=running, run is draft")
 
-    async def resume(self, owner_user_id, run_id):
+    async def resume(self, run_id):
         return _run(status="running")
 
-    async def close(self, owner_user_id, run_id):
+    async def close(self, run_id):
         self.close_calls = getattr(self, "close_calls", [])
-        self.close_calls.append((owner_user_id, run_id))
+        self.close_calls.append(run_id)
         return _run(status="closed")
 
-    async def set_pause_policy(self, owner_user_id, run_id, pause_after_each_unit):
+    async def set_pause_policy(self, run_id, pause_after_each_unit):
         if self.review_error is not None:
             raise self.review_error
         run = self.runs.get(run_id)
-        if run is None or run.owner_user_id != owner_user_id:
+        if run is None:
             raise LookupError("run not found")
         updated = run.model_copy(update={"pause_after_each_unit": pause_after_each_unit})
         self.runs[run_id] = updated
         return updated
 
     # ── D3 — report + review ────────────────────────────────────────────
-
-    async def get_any(self, run_id):
-        return self.runs.get(run_id)
 
     async def unit_report(self, run):
         if run.status not in ("report_ready", "failed", "paused", "closed"):
@@ -158,12 +155,12 @@ class StubService:
              "cost_usd": "0.02", "error_message": None, "downstream_unit_indexes": []},
         ]
 
-    async def accept_unit(self, owner_user_id, run_id, unit_index):
+    async def accept_unit(self, run_id, unit_index):
         if self.review_error is not None:
             raise self.review_error
         return _unit(unit_index=unit_index, status="accepted")
 
-    async def reject_unit(self, owner_user_id, run_id, unit_index, *, restore):
+    async def reject_unit(self, run_id, unit_index, *, restore):
         if self.review_error is not None:
             raise self.review_error
         # exercise the router-bound restore closure (proves BookClient + the
@@ -171,7 +168,7 @@ class StubService:
         await restore(BOOK, CH1, PRE_REV)
         return _unit(unit_index=unit_index, status="rejected"), [1], True
 
-    async def revert_all(self, owner_user_id, run_id, *, restore):
+    async def revert_all(self, run_id, *, restore):
         if self.review_error is not None:
             raise self.review_error
         await restore(BOOK, CH2, PRE_REV)
@@ -339,18 +336,18 @@ def test_gate_maps_revoked_access_403_not_502(client, stub, book):
 def test_book_owner_can_close_collaborators_run(client, stub):
     """The scope fence is per-BOOK across users — the book's OWNER-grant holder
     must be able to clear a collaborator's abandoned run (else the book is
-    locked out of autonomous runs forever). The action executes AS the run's
-    owner (row tenancy preserved)."""
+    locked out of autonomous runs forever). The service transition is bare-id
+    (spec 25 — the run's `created_by` stamp is untouched by the close)."""
     other = uuid.uuid4()
-    stub.runs[RUN] = _run(owner_user_id=other, status="paused")
+    stub.runs[RUN] = _run(created_by=other, status="paused")
     app.dependency_overrides[get_grant_client_dep] = lambda: StubGrant("OWNER")
     r = client.post(f"/v1/composition/authoring-runs/{RUN}/close", headers=AUTH)
     assert r.status_code == 200
-    assert stub.close_calls == [(other, RUN)]  # acted AS the run's owner
+    assert stub.close_calls == [RUN]  # bare-id transition; created_by preserved
 
 
 def test_non_owner_grant_cannot_close_foreign_run(client, stub):
-    stub.runs[RUN] = _run(owner_user_id=uuid.uuid4(), status="paused")
+    stub.runs[RUN] = _run(created_by=uuid.uuid4(), status="paused")
     # EDIT grantee (default stub) — knows the book exists → 403, never executes
     r = client.post(f"/v1/composition/authoring-runs/{RUN}/close", headers=AUTH)
     assert r.status_code == 403
@@ -363,7 +360,7 @@ def test_non_owner_grant_cannot_close_foreign_run(client, stub):
 def test_start_stays_run_owner_only(client, stub):
     """start (and resume) spend the run owner's budget/models — a book OWNER
     grant must NOT be able to start someone else's run."""
-    stub.runs[RUN] = _run(owner_user_id=uuid.uuid4(), status="gated")
+    stub.runs[RUN] = _run(created_by=uuid.uuid4(), status="gated")
     app.dependency_overrides[get_grant_client_dep] = lambda: StubGrant("OWNER")
     r = client.post(f"/v1/composition/authoring-runs/{RUN}/start", headers=AUTH)
     assert r.status_code == 404  # foreign run invisible on the owner-only path

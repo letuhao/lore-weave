@@ -17,6 +17,10 @@
     "explore": {
       "title": "Entdecken",
       "desc": "Durchsuche dein Wissen – Entitäten, Zeitlinien und den Beziehungs-Graph."
+    },
+    "assistant": {
+      "title": "Arbeitsassistent",
+      "desc": "Ein privates Tagebuch, das sich stillschweigend an Ihre Kontakte, Projekte und Entscheidungen erinnert."
     }
   }
 }

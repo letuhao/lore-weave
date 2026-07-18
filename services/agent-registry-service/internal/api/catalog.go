@@ -13,6 +13,7 @@ import (
 // here so the FE quota strip renders.
 const (
 	quotaSkills     = 50
+	quotaWorkflows  = 50
 	quotaMCPServers = 10
 	quotaCommands   = 20
 	quotaHooks      = 20
@@ -100,12 +101,19 @@ func (s *Server) getUsage(w http.ResponseWriter, r *http.Request) {
 	plugins := s.queryInt(r.Context(), `SELECT COUNT(*) FROM plugins WHERE tier = 'user' AND owner_user_id = $1`, uid)
 	// skills / mcp_servers / commands counts land as their tables arrive (P1/P2/P4);
 	// their columns are 0 until then so the strip renders from day one.
+	skillPending, wfPending := s.countPendingProposals(r, uid)
 	writeJSON(w, http.StatusOK, map[string]any{
-		"plugins":           plugins,
-		"skills":            map[string]int{"used": s.countIfExists(r, "skills", uid), "limit": quotaSkills},
-		"mcp_servers":       map[string]int{"used": s.countIfExists(r, "mcp_server_registrations", uid), "limit": quotaMCPServers},
-		"commands":          map[string]int{"used": s.countIfExists(r, "slash_commands", uid), "limit": quotaCommands},
-		"proposals_pending": s.countProposalsIfExists(r, uid),
+		"plugins":     plugins,
+		"skills":      map[string]int{"used": s.countIfExists(r, "skills", uid), "limit": quotaSkills},
+		"workflows":   map[string]int{"used": s.countIfExists(r, "workflows", uid), "limit": quotaWorkflows},
+		"mcp_servers": map[string]int{"used": s.countIfExists(r, "mcp_server_registrations", uid), "limit": quotaMCPServers},
+		"commands":    map[string]int{"used": s.countIfExists(r, "slash_commands", uid), "limit": quotaCommands},
+		// S-12 badge: split the pending count so the studio status badge can route a click to
+		// the right panel (workflow vs skill). proposals_pending stays = the SUM (back-compat:
+		// the /extensions strip + existing consumers read it unchanged).
+		"skill_proposals_pending":    skillPending,
+		"workflow_proposals_pending": wfPending,
+		"proposals_pending":          skillPending + wfPending,
 	})
 }
 
@@ -118,11 +126,17 @@ func (s *Server) countIfExists(r *http.Request, table string, uid uuid.UUID) int
 	return s.queryInt(r.Context(), `SELECT COUNT(*) FROM `+table+` WHERE owner_user_id = $1`, uid)
 }
 
-func (s *Server) countProposalsIfExists(r *http.Request, uid uuid.UUID) int {
-	if !tableExists("skill_proposals") {
-		return 0
+// countPendingProposals returns the owner's pending skill-proposal + workflow-proposal
+// counts SEPARATELY (the caller sums them for the back-compat proposals_pending). Split so
+// the S-12 studio badge can route a click to the panel that actually has pending items.
+func (s *Server) countPendingProposals(r *http.Request, uid uuid.UUID) (skill, workflow int) {
+	if tableExists("skill_proposals") {
+		skill = s.queryInt(r.Context(), `SELECT COUNT(*) FROM skill_proposals WHERE owner_user_id = $1 AND status = 'pending'`, uid)
 	}
-	return s.queryInt(r.Context(), `SELECT COUNT(*) FROM skill_proposals WHERE owner_user_id = $1 AND status = 'pending'`, uid)
+	if tableExists("workflow_proposals") {
+		workflow = s.queryInt(r.Context(), `SELECT COUNT(*) FROM workflow_proposals WHERE owner_user_id = $1 AND status = 'pending'`, uid)
+	}
+	return skill, workflow
 }
 
 // tableExists is a compile-time-known allowlist of tables present per phase.
@@ -132,7 +146,8 @@ func tableExists(name string) bool {
 	switch name {
 	// P0/P1/P2 tables; later phases flip on their own as migrations land.
 	case "plugins", "plugin_enablement", "registry_audit", "registry_meta",
-		"skills", "skill_proposals", "mcp_server_registrations", "mcp_server_enablement":
+		"skills", "skill_proposals", "workflows", "workflow_proposals",
+		"mcp_server_registrations", "mcp_server_enablement":
 		return true
 	}
 	return false

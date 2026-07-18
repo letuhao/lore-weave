@@ -6,6 +6,7 @@
     "commands": "Lệnh & Hook",
     "subagents": "Đại lý phụ",
     "plugins": "Plugin",
+    "permissions": "Quyền của công cụ",
     "proposals": "Đề xuất",
     "activity": "Nhật ký hoạt động",
     "ingest": "Nguồn đăng ký"
@@ -19,8 +20,8 @@
     "label": "Phạm vi:",
     "mine": "Tiện ích mở rộng của tôi",
     "orBook": "hoặc một cuốn sách:",
-    "bookPlaceholder": "phạm vi cuốn sách…",
-    "bookHint": "phạm vi cuốn sách — các mục mới chỉ áp dụng cho cuốn sách này"
+    "bookPlaceholder": "giới hạn trong sách…",
+    "bookHint": "giới hạn trong sách — các mục mới chỉ áp dụng cho cuốn sách này"
   },
   "common": {
     "loading": "Đang tải…",
@@ -29,25 +30,25 @@
     "cancel": "Hủy",
     "back": "Quay lại",
     "next": "Tiếp theo",
-    "of": "trong",
+    "of": "của",
     "system": "hệ thống",
     "book": "sách"
   },
   "skills": {
     "search": "Tìm kiếm kỹ năng…",
     "tier": {
-      "all": "Phân cấp: Tất cả",
+      "all": "Bậc: Tất cả",
       "system": "Hệ thống",
       "user": "Người dùng",
       "book": "Sách"
     },
     "sort": {
-      "updated": "Sắp xếp: Cập nhật",
+      "updated": "Sắp xếp: Mới nhất",
       "name": "Tên A→Z",
       "lastTriggered": "Kích hoạt lần cuối"
     },
-    "empty": "Chưa có kỹ năng nào. Agent có thể đề xuất một kỹ năng mới, hoặc bạn có thể tạo trong trình chỉnh sửa.",
-    "draft": "bản nháp"
+    "empty": "Chưa có kỹ năng nào. Tác nhân có thể đề xuất một kỹ năng mới, hoặc bạn có thể tạo trong trình chỉnh sửa.",
+    "draft": "bản thảo"
   },
   "mcp": {
     "status": {
@@ -95,7 +96,7 @@
       "steps": {
         "connection": "Kết nối",
         "auth": "Xác thực",
-        "scan": "Sức khỏe & Quét",
+        "scan": "Kiểm tra & Quét",
         "review": "Xem lại"
       },
       "displayName": "Tên hiển thị",
@@ -106,54 +107,54 @@
       "authNone": "Không",
       "authBearer": "Mã thông báo Bearer",
       "authOauth": "OAuth 2.1",
-      "noAuthHint": "Không có xác thực — máy chủ này đang ở chế độ mở. Tiếp tục để đăng ký và quét máy chủ.",
+      "noAuthHint": "Không có xác thực — máy chủ này đang ở chế độ mở. Tiếp tục để đăng ký và quét nó.",
       "bearerLabel": "Mã thông báo Bearer (được bảo mật trong kho lưu trữ; sẽ không hiển thị lại)",
-      "bearerPlaceholder": "Dán mã thông báo",
-      "authzEndpoint": "Điểm cuối ủy quyền",
-      "tokenEndpoint": "Điểm cuối mã thông báo",
-      "clientId": "ID ứng dụng",
+      "bearerPlaceholder": "dán mã token",
+      "authzEndpoint": "Endpoint ủy quyền",
+      "tokenEndpoint": "Endpoint cấp token",
+      "clientId": "ID Client",
       "scopes": "Phạm vi truy cập (cách nhau bằng dấu cách)",
       "registering": "Đang đăng ký…",
       "registerScan": "Đăng ký & quét",
       "statusLabel": "Trạng thái:",
       "connectOauth": "Kết nối với OAuth →",
-      "runScan": "Kiểm tra sức khỏe & quét",
+      "runScan": "Kiểm tra & quét",
       "refresh": "Làm mới",
       "continue": "Tiếp tục",
       "authKind": "auth: {{kind}}",
-      "enable": "Kích hoạt cho các phiên làm việc của tôi",
-      "done": "Xong"
+      "enable": "Kích hoạt cho các phiên của tôi",
+      "done": "Hoàn tất"
     }
   },
   "commands": {
     "title": "Lệnh gạch chéo",
-    "description": "Nhập <code>/tên</code> vào khung chat để mở rộng một mẫu. Sử dụng <code>{{args}}</code> hoặc <code>{{key}}</code> cho các tham số.",
+    "description": "Nhập <code>/name</code> trong khung chat để mở rộng một mẫu. Sử dụng <code>{{args}}</code> hoặc <code>{{key}}</code> cho các đối số.",
     "namePlaceholder": "tên (ví dụ: plan-scene)",
-    "templatePlaceholder": "Mẫu: Lập kế hoạch cho một cảnh về {{topic}}…",
+    "templatePlaceholder": "Mẫu: Lập kế hoạch một cảnh về {{topic}}…",
     "empty": "Chưa có lệnh nào."
   },
   "hooks": {
     "title": "Hooks",
-    "description": "Các quy tắc khai báo được kích hoạt tại các điểm nối của vòng lặp tác nhân. Không cần mã nguồn — chỉ cần một sự kiện, một khớp công cụ tùy chọn và một hành động.",
+    "description": "Các quy tắc khai báo được kích hoạt tại các điểm nối của vòng lặp tác nhân. Không cần mã — chỉ cần một sự kiện, một khớp công cụ tùy chọn và một hành động.",
     "matchPlaceholder": "khớp công cụ (ví dụ: glossary_delete_*)",
     "textPlaceholder": "văn bản để chèn / chú thích",
-    "empty": "Chưa có hooks nào."
+    "empty": "Chưa có hook nào."
   },
   "subagents": {
-    "title": "Phụ tác nhân",
-    "description": "Một nhân vật được đặt tên mà tác nhân có thể ủy quyền một tác vụ con có phạm vi giới hạn thông qua <code>run_subagent</code>. Nó chạy trong một lượt cô lập với CHỈ các công cụ trong phạm vi được chỉ định. Để trống phạm vi nếu muốn tạo một nhân vật chuyên về suy luận/tóm tắt.",
+    "title": "Subagent",
+    "description": "Một nhân vật được đặt tên mà agent có thể ủy thác một tác vụ phụ có phạm vi giới hạn thông qua <code>run_subagent</code>. Nó chạy trong một lượt cô lập CHỈ với các công cụ được cấp quyền. Để trống phạm vi nếu đây là một nhân vật thuần túy về suy luận/tóm tắt.",
     "namePlaceholder": "tên (ví dụ: lore-scout)",
     "scopePlaceholder": "phạm vi công cụ: glossary_*, kg_*",
     "modelPlaceholder": "mô hình (tùy chọn, id user_model)",
     "promptPlaceholder": "System prompt — nhân vật này là ai và cách thức hoạt động...",
-    "create": "Tạo phụ tác nhân",
-    "empty": "Chưa có phụ tác nhân nào.",
+    "create": "Tạo subagent",
+    "empty": "Chưa có subagent nào.",
     "reasoningOnly": "chỉ suy luận (không có công cụ)",
     "modelPinned": "đã ghim mô hình"
   },
   "plugins": {
-    "description": "Một plugin đóng gói các kỹ năng, lệnh & hooks — xuất để chia sẻ, nhập để cài đặt.",
-    "importing": "Đang nhập...",
+    "description": "Một plugin đóng gói các kỹ năng, lệnh & hook — xuất để chia sẻ, nhập để cài đặt.",
+    "importing": "Đang nhập…",
     "import": "Nhập gói dữ liệu",
     "invalidJson": "Tệp này không phải là định dạng JSON hợp lệ.",
     "notBundle": "Không phải gói LoreWeave (thiếu manifest.name).",
@@ -176,7 +177,7 @@
   },
   "activity": {
     "title": "Nhật ký hoạt động",
-    "allKinds": "Tất cả",
+    "allKinds": "Tất cả các loại",
     "range": {
       "all": "Tất cả thời gian",
       "7d": "7 ngày qua",
@@ -185,19 +186,72 @@
     "empty": "Không có hoạt động nào trong khoảng thời gian này.",
     "secondsAgo": " {{count}} giây trước",
     "minutesAgo": " {{count}} phút trước",
-    "hoursAgo": " {{count}} giờ trước",
+    "hoursAgo": "{{count}} giờ trước",
     "daysAgo": "{{count}} ngày trước"
   },
   "ingest": {
     "title": "Nguồn đăng ký (admin)",
-    "description": "Chỉnh sửa danh mục Hệ thống từ MCP Registry chính thức. việc xác minh ≠ sự an toàn — mọi phê duyệt đều chạy lại SSRF guard + quét chuỗi cung ứng trước khi liên kết.",
+    "description": "Chỉnh sửa danh mục Hệ thống từ MCP Registry chính thức. việc xác minh ≠ tính an toàn — mọi phê duyệt đều chạy lại SSRF guard + quét chuỗi cung ứng trước khi liên kết.",
     "all": "Tất cả",
     "pulling": "Đang tải…",
     "pull": "Tải registry",
-    "pullResult": "Đã tải: lấy được {{fetched}} · mới {{new}} · đã cập nhật {{updated}} · không có từ máy chủ {{skipped}}",
+    "pullResult": "Đã tải: lấy được {{fetched}} · mới {{new}} · đã cập nhật {{updated}} · không có ở bản xa {{skipped}}",
     "truncated": "· một phần (bị cắt bớt)",
-    "empty": "Không có mục nào trong chế độ xem này. Hãy tải registry để làm đầy hàng đợi.",
+    "empty": "Không có mục nào trong chế độ xem này. Hãy tải registry để lấp đầy hàng đợi.",
     "approve": "Phê duyệt",
     "reject": "Từ chối"
+  },
+  "permissions": {
+    "blurb": "Các công cụ bạn đã cấp quyền sử dụng vĩnh viễn cho trợ lý — và các công cụ bạn đã chặn. Chọn «Luôn cho phép» trên thẻ phê duyệt sẽ thêm một dòng vào đây. Việc thu hồi quyền có nghĩa là trợ lý sẽ hỏi lại bạn vào lần tới khi nó muốn sử dụng công cụ đó.",
+    "loading": "Đang tải…",
+    "allowedTitle": "Luôn cho phép",
+    "deniedTitle": "Đã chặn",
+    "blockTitle": "Chặn một công cụ",
+    "emptyAllowed": "Bạn chưa cấp quyền vĩnh viễn cho bất kỳ công cụ nào. Trợ lý sẽ hỏi ý kiến bạn mỗi lần thực hiện.",
+    "emptyDenied": "Không có công cụ nào bị chặn.",
+    "toolPlaceholder": "Tên công cụ (ví dụ: chapter_delete)",
+    "unknownTool": "Đây không phải là một trong các công cụ của trợ lý. Vui lòng chọn một tên từ danh sách.",
+    "kind": {
+      "mutation": "Có thể thay đổi tác phẩm của tôi",
+      "spend": "Có thể chi tiêu tiền"
+    },
+    "decision": {
+      "allow": "Chạy mà không cần hỏi",
+      "deny": "Không bao giờ chạy"
+    },
+    "actions": {
+      "revoke": "Hỏi lại tôi sau",
+      "deny": "Không bao giờ cho phép",
+      "allow": "Cho phép",
+      "block": "Chặn"
+    }
+  },
+  "workflows": {
+    "total": "{{count}} quy trình",
+    "empty": "Chưa có quy trình nào. Hãy phê duyệt một đề xuất quy trình để thêm mới.",
+    "enabled": "Bật",
+    "disabled": "Tắt",
+    "delete": "Xóa",
+    "proposalsEmpty": "Không có đề xuất quy trình nào. Khi tác nhân đề xuất một quy trình, nó sẽ xuất hiện ở đây để bạn phê duyệt.",
+    "view": "Xem",
+    "hide": "Ẩn",
+    "noSteps": "Chưa có bước nào được thiết lập."
+  },
+  "bindings": {
+    "loading": "Đang tải…",
+    "autoSetupDesc": "Các công thức mà trợ lý tự động thiết lập trong chế độ này.",
+    "none": "Không có gì được tự động thiết lập ở đây.",
+    "turnOff": "Tắt",
+    "turnBackOn": "Bật lại",
+    "mode": {
+      "ask": "Đọc & hỏi",
+      "write": "Viết",
+      "plan": "Lập kế hoạch"
+    },
+    "tier": {
+      "system": "Có sẵn",
+      "user": "Bạn thiết lập",
+      "book": "Cuốn sách này"
+    }
   }
 }

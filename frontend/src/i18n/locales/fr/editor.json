@@ -371,5 +371,26 @@
     "no_restore": "Aucune version antérieure disponible pour la restauration",
     "confirm_title": "Restaurer l'état précédant cette édition IA ?",
     "confirm_desc": "Le brouillon actuel sera d'abord sauvegardé sous forme de cliché, cette action est donc réversible via l'historique des révisions."
+  },
+  "knowledge": {
+    "add": "Ajouter à la base de connaissances",
+    "reindex": "Mettre à jour la base de connaissances",
+    "indexed_badge": "Dans votre base de connaissances",
+    "not_indexed_badge": "Non inclus dans la base",
+    "excluded_badge": "Exclu",
+    "forget": "Oublier ce chapitre",
+    "keep_out": "Ne pas inclure dans la base",
+    "allow": "Inclure dans la base",
+    "save_first": "Enregistrez avant d'ajouter à la base de connaissances",
+    "indexed_toast": "Ajouté à votre base de connaissances",
+    "reused_toast": "Déjà à jour — aucun changement",
+    "empty_toast": "Ce chapitre ne contient aucun contenu à ajouter — écrivez d'abord quelque chose.",
+    "excluded_toast": "Ce chapitre est exclu de votre base de connaissances — autorisez-le d'abord.",
+    "forgotten_toast": "Oublié — supprimé de votre base de connaissances",
+    "allowed_toast": "Autorisé. Choisissez « Ajouter à la base de connaissances » quand vous serez prêt.",
+    "failed_toast": "Impossible de mettre à jour votre base de connaissances — réessayez.",
+    "forget_confirm_title": "Oublier ce chapitre ?",
+    "forget_confirm_body": "Tout ce qui a été appris de ce chapitre sera supprimé de votre base de connaissances. Le chapitre lui-même n'est pas supprimé et vous pourrez le rajouter plus tard.",
+    "hint": "Ajouter un chapitre à votre base de connaissances permet à l'assistant de l'utiliser. Vous n'êtes pas obligé de le publier."
   }
 }

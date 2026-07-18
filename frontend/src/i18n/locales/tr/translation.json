@@ -81,7 +81,8 @@
     "original_label": "Orijinal — {{lang}}",
     "translation_label": "Çeviri — {{lang}}",
     "source_fallback": "Kaynak",
-    "no_translated": "(Çevrilmiş içerik yok)"
+    "no_translated": "(Çevrilmiş içerik yok)",
+    "original_unavailable": "Orijinal metin şu anda kullanılamıyor."
   },
   "block_review": {
     "unchanged": "Değişmedi",
@@ -152,7 +153,17 @@
     "chapters_selected": "{{count}} bölüm seçildi",
     "translate_selected": "Seçilenleri Çevir",
     "extract_glossary": "Sözlük Oluştur",
-    "clear": "Temizle"
+    "clear": "Temizle",
+    "loading": "Çeviri kapsamı yükleniyor…",
+    "translate_cta": "Çevir…",
+    "select_all_chapters": "Tüm bölümleri seç",
+    "orphan_footnote": "{{count}} çeviri, artık aktif olmayan bölümlere ait.",
+    "page": "Sayfa",
+    "prev": "Önceki sayfa",
+    "next": "Sonraki sayfa",
+    "translate_no_edit": "Yalnızca görüntüleme erişiminiz var — çevirmek için sahibinden düzenleme erişimi isteyin.",
+    "all_filtered_title": "Tüm diller filtrelendi",
+    "all_filtered_desc": "Kapsamını görmek için filtrede bir dili yeniden etkinleştirin."
   },
   "segments": {
     "title": "Segment durumu",
@@ -165,6 +176,15 @@
     "retranslate_changed": "Değişenleri yeniden çevir ({{count}})",
     "retranslate_started": "Yeniden çeviri başlatıldı",
     "empty": "Henüz segment oluşturulmadı.",
-    "close": "Kapat"
+    "close": "Kapat",
+    "retranslate_failed": "Yeniden çeviri başlatılamadı. Lütfen tekrar deneyin."
+  },
+  "error": {
+    "retryable": "Çeviriler yüklenemedi — çeviri servisi kullanım dışı olabilir. Tekrar deneyin.",
+    "forbidden": "Bu kitabın çevirilerine erişim yetkiniz yok.",
+    "notfound": "Bu çeviriler bulunamadı.",
+    "retry": "Tekrar Dene",
+    "chapters_failed": "Bölüm listesi yüklenemedi.",
+    "chapters_timeout": "Bölüm listesinin yüklenmesi zaman aşımına uğradı — servis yavaş olabilir veya kapalı olabilir."
   }
 }

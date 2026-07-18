@@ -1,0 +1,389 @@
+"""WS-1.8 (spec 06) — the distiller ORCHESTRATOR (read -> distill -> write).
+
+Proves the read/distill/write flow and every terminal status with fake clients + a fake model, so
+no branch depends on a live stack: written, low-signal no_entry, giant-paste oversized, a kept-day
+supplement signal, a day-window transport failure, and a write failure. Also proves the write
+receives the rendered entry body (not raw messages) and that `truncated` propagates.
+"""
+
+from __future__ import annotations
+
+import json
+
+from app import distill_job
+from app.distiller import GIANT_PASTE_TOKENS
+
+
+class FakeChat:
+    def __init__(self, messages, truncated=False, fail=False):
+        self._messages = messages
+        self._truncated = truncated
+        self._fail = fail
+        self.calls: list[dict] = []
+
+    async def get_day_window(self, *, user_id, book_id, local_date, limit):
+        self.calls.append({"user_id": user_id, "book_id": book_id, "local_date": local_date, "limit": limit})
+        if self._fail:
+            return None
+        return self._messages, self._truncated
+
+
+class FakeBook:
+    def __init__(self, result=None, kept=False):
+        self._result = result if result is not None else {"chapter_id": "ch-1", "created": True}
+        self._kept = kept
+        self.writes: list[dict] = []
+
+    async def diary_day_kept(self, **kwargs):
+        return self._kept  # WS-3.3 M1 pre-LLM gate (default: not kept → the distill proceeds)
+
+    async def write_diary_entry(self, **kwargs):
+        self.writes.append(kwargs)
+        return self._result
+
+
+class FakeLLM:
+    """Answers map calls ('MESSAGES:') with canned facts, reduce ('FACTS:') with a canned entry."""
+
+    def __init__(self, map_facts, reduce_obj=None):
+        self._map_facts = map_facts
+        self._reduce_obj = reduce_obj or {"summary": "A good day.", "decisions": ["Ship v2."]}
+
+    async def __call__(self, prompt: str) -> str:
+        if "FACTS:" in prompt and "MESSAGES:" not in prompt:
+            return json.dumps(self._reduce_obj)
+        return json.dumps({"facts": self._map_facts})
+
+
+class FakeKnowledge:
+    def __init__(self, fail=False):
+        self._fail = fail
+        self.calls: list[dict] = []
+
+    async def queue_diary_facts(self, *, user_id, book_id, entry_date, facts):
+        self.calls.append({"user_id": user_id, "book_id": book_id, "entry_date": entry_date, "facts": facts})
+        if self._fail:
+            raise RuntimeError("inbox down")
+        return {"queued": len(facts)}
+
+
+def _msg(role, content, tools=None):
+    return {"role": role, "content": content, "tool_names": tools or []}
+
+
+async def test_written_flow_passes_rendered_body_to_the_write_seam():
+    chat = FakeChat([_msg("user", "Met Minh about the redesign.")], truncated=True)
+    book = FakeBook()
+    llm = FakeLLM(map_facts=[{"kind": "decision", "text": "Ship v2.", "provenance": "user"}])
+
+    out = await distill_job.distill_and_write(
+        user_id="u1", book_id="b1", entry_date="2026-03-10", entry_zone="UTC",
+        language="en", llm=llm, chat_client=chat, book_client=book,
+    )
+
+    assert out["status"] == "written"
+    assert out["chapter_id"] == "ch-1"
+    assert out["facts_found"] == 1
+    assert out["truncated"] is True  # propagated from the read
+    # The write got the RENDERED entry body (sections), never the raw messages.
+    assert len(book.writes) == 1
+    w = book.writes[0]
+    assert w["book_id"] == "b1" and w["owner_user_id"] == "u1"
+    assert w["entry_date"] == "2026-03-10" and w["entry_zone"] == "UTC"
+    assert w["journal_kind"] == "primary" and w["language"] == "en"
+    assert "A good day." in w["body"] and "## Decisions" in w["body"]
+    assert "Met Minh" not in w["body"]  # the transcript is NOT copied into the entry
+
+
+async def test_written_flow_queues_facts_to_the_kg_inbox():
+    # WS-2.3: after the entry is written, the day's facts are DIVERTED to the pending-facts inbox.
+    chat = FakeChat([_msg("user", "Met Minh; froze the Q3 budget.")])
+    book = FakeBook()
+    know = FakeKnowledge()
+    llm = FakeLLM(map_facts=[
+        {"kind": "decision", "text": "froze the Q3 budget", "provenance": "user"},
+        {"kind": "person", "text": "Minh", "provenance": "user"},
+    ])
+    out = await distill_job.distill_and_write(
+        user_id="u1", book_id="b1", entry_date="2026-03-10", entry_zone="UTC",
+        language="en", llm=llm, chat_client=chat, book_client=book, knowledge_client=know,
+    )
+    assert out["status"] == "written" and out["facts_queued"] == 2
+    assert len(know.calls) == 1
+    c = know.calls[0]
+    assert c["user_id"] == "u1" and c["book_id"] == "b1" and c["entry_date"] == "2026-03-10"
+    assert {f["kind"] for f in c["facts"]} == {"decision", "person"}
+
+
+async def test_fact_queue_failure_does_not_fail_the_written_day():
+    # BEST-EFFORT: the entry is already durably written, so an inbox failure must NOT fail the distill
+    # or lose the day — the facts are a reviewable enrichment, retried on the next distill.
+    chat = FakeChat([_msg("user", "Froze the budget.")])
+    book = FakeBook()
+    llm = FakeLLM(map_facts=[{"kind": "decision", "text": "froze the budget", "provenance": "user"}])
+    out = await distill_job.distill_and_write(
+        user_id="u1", book_id="b1", entry_date="2026-03-10", entry_zone="UTC",
+        language="en", llm=llm, chat_client=chat, book_client=book, knowledge_client=FakeKnowledge(fail=True),
+    )
+    assert out["status"] == "written" and out["facts_queued"] == 0  # entry stands; inbox failure swallowed
+
+
+async def test_low_signal_day_writes_nothing():
+    chat = FakeChat([_msg("user", "ok"), _msg("user", "sure")])
+    book = FakeBook()
+    out = await distill_job.distill_and_write(
+        user_id="u1", book_id="b1", entry_date="2026-03-10", entry_zone="UTC",
+        language="en", llm=FakeLLM(map_facts=[]), chat_client=chat, book_client=book,
+    )
+    assert out["status"] == "no_entry" and out["reason"] == "low_signal"
+    assert book.writes == []  # never wrote a stub
+
+
+async def test_reasoning_model_blank_completion_is_actionable_not_a_silent_no_entry():
+    # DBT-15 — a model that emits only reasoning_content (blank text) must NOT masquerade as a
+    # low-signal "quiet day". The day HAS content, but the model wrote nothing → model_no_output,
+    # surfaced ACTIONABLY (why + fix) and non-retryable, so an unattended Phase-3 distill can't
+    # silently drop the day.
+    class BlankLLM:
+        async def __call__(self, prompt: str) -> str:
+            return ""  # a reasoning model: all output went to reasoning_content
+
+    chat = FakeChat([_msg("user", "Met Minh about the Q3 redesign and froze the budget.")])
+    book = FakeBook()
+    out = await distill_job.distill_and_write(
+        user_id="u1", book_id="b1", entry_date="2026-03-10", entry_zone="UTC",
+        language="en", llm=BlankLLM(), chat_client=chat, book_client=book,
+    )
+    assert out["status"] == "no_entry"
+    assert out["reason"] == "model_no_output"
+    assert out["advisory"] == "distill_model_no_output"
+    assert out["retryable"] is False
+    assert "reasoning model" in out["message"].lower()
+    # A low-signal quiet day, by contrast, carries NO advisory — the two are distinguishable.
+    assert book.writes == []  # never wrote a stub
+
+
+async def test_a_day_of_only_a_giant_paste_is_oversized_and_not_written():
+    big = _msg("user", "x" * (GIANT_PASTE_TOKENS * 4 + 8))  # C1: token-sized (Latin ≈ 0.25 tok/char)
+    chat = FakeChat([big])
+    book = FakeBook()
+    out = await distill_job.distill_and_write(
+        user_id="u1", book_id="b1", entry_date="2026-03-10", entry_zone="UTC",
+        language="en", llm=FakeLLM(map_facts=[{"kind": "e", "text": "nope"}]),
+        chat_client=chat, book_client=book,
+    )
+    assert out["status"] == "oversized" and out["reason"] == "giant_paste"
+    assert out["oversized_count"] == 1
+    assert book.writes == []
+
+
+async def test_a_giant_paste_alongside_a_real_day_still_writes_the_entry():
+    # The T38 fix at the orchestrator level: a real day + a paste → the entry IS written and the
+    # paste is surfaced (oversized_count) for the attach-offer, not dropped.
+    big = _msg("user", "x" * (GIANT_PASTE_TOKENS * 4 + 8))  # C1: token-sized (Latin ≈ 0.25 tok/char)
+    chat = FakeChat([_msg("user", "Met Minh."), big])
+    book = FakeBook()
+    out = await distill_job.distill_and_write(
+        user_id="u1", book_id="b1", entry_date="2026-03-10", entry_zone="UTC",
+        language="en", llm=FakeLLM(map_facts=[{"kind": "e", "text": "a fact"}]),
+        chat_client=chat, book_client=book,
+    )
+    assert out["status"] == "written" and out["oversized_count"] == 1
+    assert len(book.writes) == 1
+
+
+async def test_day_window_unavailable_is_retryable_error_not_an_empty_entry():
+    chat = FakeChat([], fail=True)
+    book = FakeBook()
+    out = await distill_job.distill_and_write(
+        user_id="u1", book_id="b1", entry_date="2026-03-10", entry_zone="UTC",
+        language="en", llm=FakeLLM(map_facts=[]), chat_client=chat, book_client=book,
+    )
+    assert out["status"] == "error" and out["reason"] == "day_window_unavailable"
+    assert out["retryable"] is True
+    assert book.writes == []  # a read failure must NEVER produce an entry
+
+
+async def test_kept_day_returns_kept_so_caller_supplements():
+    chat = FakeChat([_msg("user", "Met Minh.")])
+    book = FakeBook(result={"kept": True})
+    out = await distill_job.distill_and_write(
+        user_id="u1", book_id="b1", entry_date="2026-03-10", entry_zone="UTC",
+        language="en", llm=FakeLLM(map_facts=[{"kind": "e", "text": "a fact"}]),
+        chat_client=chat, book_client=book,
+    )
+    assert out["status"] == "kept"
+
+
+async def test_a_model_outage_is_retryable_and_never_drops_the_day():
+    # Finding 1 at the orchestrator level: a map/reduce provider outage → status error + retryable,
+    # and NOTHING is written (the day is retried later, not silently lost as a low-signal no-entry).
+    async def boom(_prompt):
+        raise RuntimeError("LLM_CIRCUIT_OPEN")
+
+    chat = FakeChat([_msg("user", "A busy, productive day.")])
+    book = FakeBook()
+    out = await distill_job.distill_and_write(
+        user_id="u1", book_id="b1", entry_date="2026-03-10", entry_zone="UTC",
+        language="en", llm=boom, chat_client=chat, book_client=book,
+    )
+    assert out["status"] == "error" and out["reason"] == "map_failed" and out["retryable"] is True
+    assert book.writes == []
+
+
+async def test_write_failure_is_a_retryable_error():
+    chat = FakeChat([_msg("user", "Met Minh.")])
+    book = FakeBook(result={"error": "HTTP 503", "retryable": True})
+    out = await distill_job.distill_and_write(
+        user_id="u1", book_id="b1", entry_date="2026-03-10", entry_zone="UTC",
+        language="en", llm=FakeLLM(map_facts=[{"kind": "e", "text": "a fact"}]),
+        chat_client=chat, book_client=book,
+    )
+    assert out["status"] == "error" and out["reason"] == "write_failed" and out["retryable"] is True
+
+
+# ── the SDK LLM adapter (the provider-gateway path) ───────────────────────────
+
+
+class _FakeJob:
+    def __init__(self, status, result=None, error=None):
+        self.status = status
+        self.result = result
+        self.error = error
+
+
+class FakeSubmitter:
+    def __init__(self, job):
+        self._job = job
+        self.calls: list[dict] = []
+
+    async def submit_and_wait(self, **kwargs):
+        self.calls.append(kwargs)
+        return self._job
+
+
+async def test_distill_llm_adapter_sends_a_chat_job_and_returns_the_content():
+    sub = FakeSubmitter(_FakeJob("completed", result={"messages": [{"role": "assistant", "content": "hi there"}]}))
+    call = distill_job.make_distill_llm(sub, user_id="u1", model_source="user_model", model_ref="m1")
+    text = await call("some prompt")
+    assert text == "hi there"
+    k = sub.calls[0]
+    assert k["operation"] == "chat" and k["model_ref"] == "m1" and k["user_id"] == "u1"
+    assert k["input"]["messages"][0]["content"] == "some prompt"
+    assert k["input"]["chat_template_kwargs"]["thinking"] is False  # anti-reasoning-burn
+
+
+async def test_distill_llm_adapter_raises_on_a_failed_job():
+    sub = FakeSubmitter(_FakeJob("failed", error="LLM_CIRCUIT_OPEN"))
+    call = distill_job.make_distill_llm(sub, user_id="u1", model_source="user_model", model_ref="m1")
+    try:
+        await call("x")
+    except RuntimeError as e:
+        assert "failed" in str(e)
+    else:
+        raise AssertionError("a non-completed job must raise so the day degrades, not fabricates")
+
+
+async def test_distill_llm_adapter_end_to_end_with_the_core():
+    # The adapter + the pure core together: a fake submitter that answers map vs reduce by prompt.
+    class RoutingSubmitter:
+        async def submit_and_wait(self, **kwargs):
+            prompt = kwargs["input"]["messages"][0]["content"]
+            if "FACTS:" in prompt and "MESSAGES:" not in prompt:
+                body = json.dumps({"summary": "Distilled via the gateway path."})
+            else:
+                body = json.dumps({"facts": [{"kind": "event", "text": "a real fact", "provenance": "user"}]})
+            return _FakeJob("completed", result={"messages": [{"content": body}]})
+
+    llm = distill_job.make_distill_llm(RoutingSubmitter(), user_id="u1", model_source="user_model", model_ref="m1")
+    chat = FakeChat([_msg("user", "Something happened today.")])
+    book = FakeBook()
+    out = await distill_job.distill_and_write(
+        user_id="u1", book_id="b1", entry_date="2026-03-10", entry_zone="UTC",
+        language="en", llm=llm, chat_client=chat, book_client=book,
+    )
+    assert out["status"] == "written"
+    assert "Distilled via the gateway path." in book.writes[0]["body"]
+
+
+# ── WS-2.8 — the daily-cap degrade pre-check ──────────────────────────────────
+
+class FakeBilling:
+    def __init__(self, exhausted=False, fail=False):
+        self._exhausted = exhausted
+        self._fail = fail
+        self.calls = 0
+
+    async def daily_cap_exhausted(self, *, user_id):
+        self.calls += 1
+        if self._fail:
+            raise RuntimeError("usage-billing down")
+        return self._exhausted
+
+
+async def test_daily_cap_exhausted_pauses_the_day_before_any_spend():
+    # The degrade ladder's first rung: cap hit → status 'paused', reason 'daily_cap_reached', NOT
+    # retryable, and NOTHING is read/distilled/written (no LLM spend, the whole point).
+    chat = FakeChat([_msg("user", "A busy day.")])
+    book = FakeBook()
+
+    async def _boom_llm(_p):
+        raise AssertionError("the LLM must NOT be called when the daily cap is exhausted")
+
+    out = await distill_job.distill_and_write(
+        user_id="u1", book_id="b1", entry_date="2026-03-10", entry_zone="UTC",
+        language="en", llm=_boom_llm, chat_client=chat, book_client=book,
+        billing_client=FakeBilling(exhausted=True),
+    )
+    assert out["status"] == "paused" and out["reason"] == "daily_cap_reached"
+    assert out["retryable"] is False
+    assert chat.calls == []   # never even read the day
+    assert book.writes == []  # never wrote
+
+
+async def test_daily_cap_not_exhausted_proceeds_normally():
+    chat = FakeChat([_msg("user", "Met Minh.")])
+    book = FakeBook()
+    billing = FakeBilling(exhausted=False)
+    out = await distill_job.distill_and_write(
+        user_id="u1", book_id="b1", entry_date="2026-03-10", entry_zone="UTC",
+        language="en", llm=FakeLLM(map_facts=[{"kind": "e", "text": "a fact"}]),
+        chat_client=chat, book_client=book, billing_client=billing,
+    )
+    assert out["status"] == "written"
+    assert billing.calls == 1  # the pre-check ran
+
+
+async def test_daily_cap_check_failure_FAILS_OPEN_so_memory_is_never_silently_paused():
+    # usage-billing down → the pre-check errors → the distill PROCEEDS (the provider-gateway reserve is
+    # the hard backstop). A transient infra blip must not stop a user's memory.
+    chat = FakeChat([_msg("user", "Met Minh.")])
+    book = FakeBook()
+    out = await distill_job.distill_and_write(
+        user_id="u1", book_id="b1", entry_date="2026-03-10", entry_zone="UTC",
+        language="en", llm=FakeLLM(map_facts=[{"kind": "e", "text": "a fact"}]),
+        chat_client=chat, book_client=book, billing_client=FakeBilling(fail=True),
+    )
+    assert out["status"] == "written"  # fail-open: proceeded despite the check error
+
+
+async def test_m1_a_kept_day_skips_the_llm_and_the_write():
+    """WS-3.3 M1 — the catch-up must NOT re-run the map-reduce on an already-KEPT day. A pre-LLM
+    kept-check short-circuits: no LLM call, no write."""
+    calls = {"llm": 0}
+
+    class CountingLLM:
+        async def __call__(self, prompt: str) -> str:
+            calls["llm"] += 1
+            return json.dumps({"facts": []})
+
+    chat = FakeChat([_msg("user", "Some day.")])
+    book = FakeBook(kept=True)  # this day's primary is already kept
+    out = await distill_job.distill_and_write(
+        user_id="u1", book_id="b1", entry_date="2026-03-10", entry_zone="UTC",
+        language="en", llm=CountingLLM(), chat_client=chat, book_client=book,
+    )
+    assert out["status"] == "kept" and out["reason"] == "already_kept_skipped"
+    assert calls["llm"] == 0      # the LLM never ran
+    assert book.writes == []       # nothing written
+    assert chat.calls == []        # not even the day-window read

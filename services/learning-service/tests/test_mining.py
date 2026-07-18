@@ -198,7 +198,7 @@ async def test_outcome_recompute_excludes_generation_corrections():
     pool = FakeMiningPool(rows=[], total=0)
     await get_outcome_recompute(pool, user_id=USER_ID)
     data_sql = pool.fetch_calls[0][0]
-    assert "c.target_type IN ('entity', 'relation', 'event')" in data_sql
+    assert "c.target_type IN ('entity', 'relation', 'event', 'fact')" in data_sql
 
 
 # ── Mining API endpoint tests ─────────────────────────────────────────

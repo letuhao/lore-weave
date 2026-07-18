@@ -18,11 +18,35 @@ command -v python >/dev/null 2>&1 || PY=python3
 "$PY" "$ROOT/scripts/knowledge-access-gate.py" --staged
 "$PY" "$ROOT/scripts/knowledge-http-surface-gate.py" --staged
 
+# ML-7 (multilingual.md) — locale completeness. When an i18n locale JSON is staged, every uiLocale
+# must carry the full `en` key-set for the touched namespace(s): i.e. `en` copy was regenerated via
+# scripts/i18n_translate.py (gap-fill), never hand-edited into a locale, never a one-off translator.
+if git diff --cached --name-only | grep -qE 'frontend/src/i18n/locales/.*\.json'; then
+  "$PY" "$ROOT/scripts/i18n-completeness-gate.py" --staged
+fi
+
+# Track A / M9a — the central C-TOOL tier gate: a write-verb-named tool must NOT be Tier-R
+# (Tier-R auto-runs with no confirm/Undo — a mutation tagged R is a silent-write). Runs when a
+# tool-registration file (or the gate itself) is staged; it scans the whole tree, so this
+# condition only skips it on commits that can't affect a tool's tier.
+if git diff --cached --name-only | grep -qE 'NewToolMeta|mcp_server\.go|_tools\.go|tool_discovery|tier-tag-gate'; then
+  "$PY" "$ROOT/scripts/tier-tag-gate.py"
+fi
+
 # Context Budget Law §13c — keep the §11a Inspector coverage manifest un-gameable:
 # whenever the spec or any Inspector test/component is staged, every §11a checklist
 # item must still bind to an existing proving test (static, no suite execution).
 if git diff --cached --name-only | grep -qE '2026-07-03-context-budget-law\.md|features/chat/inspector/|context-inspector'; then
   "$PY" "$ROOT/scripts/context-inspector-checklist-gate.py"
+fi
+
+# Spec 30 §8.3 / X-8 — destructive+warning token drift in the studio design drafts.
+# The original audit grepped token NAMES and so missed a 5th drift wearing a THIRD name
+# (`--error: #e85a5a`), a raw hex with no token at all, and an `rgba(217,93,93)` that is
+# #d95d5d spelled in decimal. This lint greps by the COLOR (HSL), not by the name.
+# Runs only when a studio draft is staged (same conditional shape as the gate above).
+if git diff --cached --name-only | grep -qE 'design-drafts/screens/studio/.*\.html'; then
+  "$PY" "$ROOT/scripts/design-draft-token-lint.py"
 fi
 
 # SEC-1 / audit P0-6: catch secrets BEFORE they enter a commit. gitleaks scans

@@ -4,6 +4,7 @@ from __future__ import annotations
 import os
 from unittest.mock import AsyncMock, patch, MagicMock
 
+import httpx
 import pytest
 
 os.environ.setdefault("DATABASE_URL", "postgresql://test:test@localhost/test")
@@ -11,6 +12,7 @@ os.environ.setdefault("JWT_SECRET", "test-secret-key-for-unit-tests")
 
 from app.client.provider_client import ProviderRegistryClient
 from app.client.billing_client import BillingClient
+from app.client.embedding_client import EmbeddingClient, EmbeddingError
 
 
 class TestProviderRegistryClient:
@@ -141,3 +143,86 @@ class TestBillingClient:
             session_id="sess-1",
             message_id="msg-1",
         )
+
+
+class TestEmbeddingClient:
+    """chat-service's FIRST embedding-provider call site (design item 1,
+    embeddings sub-item of docs/plans/2026-07-07-mcp-discovery-and-reliability-
+    hardening.md) — ported from knowledge-service's `EmbeddingClient`. Unlike
+    `ProviderRegistryClient`/`BillingClient` above, `EmbeddingClient` builds its
+    `build_internal_client` ONCE in `__init__` (not per-call via `async with`),
+    matching knowledge-service's/composition-service's own embedding client
+    shape — so the mock is the http client directly, no `__aenter__` needed."""
+
+    @pytest.mark.asyncio
+    @patch("app.client.embedding_client.build_internal_client")
+    async def test_embed_success(self, mock_build_client):
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.json.return_value = {
+            "embeddings": [[0.1, 0.2, 0.3]],
+            "dimension": 3,
+            "model": "bge-m3",
+            "prompt_tokens": 4,
+        }
+        mock_http = AsyncMock()
+        mock_http.post.return_value = mock_resp
+        mock_build_client.return_value = mock_http
+
+        client = EmbeddingClient("http://provider-registry-service:8085", "test-token")
+        result = await client.embed(
+            user_id="user-1", model_source="user_model", model_ref="ref-1", texts=["hello"],
+        )
+        assert result.embeddings == [[0.1, 0.2, 0.3]]
+        assert result.dimension == 3
+        assert result.model == "bge-m3"
+        assert result.prompt_tokens == 4
+        mock_http.post.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    @patch("app.client.embedding_client.build_internal_client")
+    async def test_embed_sends_internal_token_via_shared_factory(self, mock_build_client):
+        """Mirrors D-CHAT-BILLING-01's regression-lock discipline: assert the
+        factory actually received the token, not just that post() was called."""
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.json.return_value = {"embeddings": [[0.0]], "dimension": 1, "model": "m"}
+        mock_http = AsyncMock()
+        mock_http.post.return_value = mock_resp
+        mock_build_client.return_value = mock_http
+
+        EmbeddingClient("http://provider-registry-service:8085", "test-internal-token")
+        _args, kwargs = mock_build_client.call_args
+        assert kwargs.get("internal_token") == "test-internal-token"
+
+    @pytest.mark.asyncio
+    @patch("app.client.embedding_client.build_internal_client")
+    async def test_embed_timeout_raises_retryable_embedding_error(self, mock_build_client):
+        mock_http = AsyncMock()
+        mock_http.post.side_effect = httpx.TimeoutException("slow provider")
+        mock_build_client.return_value = mock_http
+
+        client = EmbeddingClient("http://provider-registry-service:8085", "test-token")
+        with pytest.raises(EmbeddingError) as exc_info:
+            await client.embed(
+                user_id="user-1", model_source="user_model", model_ref="ref-1", texts=["hi"],
+            )
+        assert exc_info.value.retryable is True
+
+    @pytest.mark.asyncio
+    @patch("app.client.embedding_client.build_internal_client")
+    async def test_embed_non_200_raises_embedding_error_with_status_code(self, mock_build_client):
+        mock_resp = MagicMock()
+        mock_resp.status_code = 400
+        mock_resp.text = '{"detail": "unsupported model"}'
+        mock_resp.json.return_value = {"detail": "unsupported model"}
+        mock_http = AsyncMock()
+        mock_http.post.return_value = mock_resp
+        mock_build_client.return_value = mock_http
+
+        client = EmbeddingClient("http://provider-registry-service:8085", "test-token")
+        with pytest.raises(EmbeddingError) as exc_info:
+            await client.embed(
+                user_id="user-1", model_source="user_model", model_ref="ref-1", texts=["hi"],
+            )
+        assert exc_info.value.status_code == 400

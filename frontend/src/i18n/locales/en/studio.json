@@ -2,6 +2,13 @@
   "title": "Writing Studio",
   "back": "Back to books",
   "settings": "Book settings",
+  "planNav": {
+    "title": "Plan",
+    "loading": "Loading…",
+    "empty": "No arcs yet.",
+    "emptyGuided": "No arcs yet — the plan is the spec that steers your book. Lay out its arcs and chapters to get started.",
+    "planCta": "Plan this book"
+  },
   "welcome": {
     "tab": "Welcome",
     "title": "Writing Studio",
@@ -11,10 +18,72 @@
     "paletteHint": "⌘⇧P also opens the Command Palette anytime"
   },
   "panels": {
+    "arc-templates": {
+      "title": "Arc Templates",
+      "desc": "Browse, create, adopt and apply reusable multi-chapter arc structures — parallel plot threads and cast roles over a chapter span",
+      "guideBody": "The Arc Template library holds reusable multi-chapter structures — parallel plot threads (revenge line, romance, mentor's lie) laid out as motifs across a chapter span, with cast roles the arc binds when you apply it. Browse by tier: your own templates, the system-seeded ones, and (in the Catalog) others' public ones. Create a new template, adopt a system/public one to customize your own copy, or open one to see its thread × chapter timeline and preview applying it to this book. You can also save an arc you have already authored as a template, or import a reference story and deconstruct it (拆文) into a new template. Applying a template is a preview first — it never overwrites your chapters without you materializing it."
+    },
+    "arc-inspector": {
+      "title": "Arc Inspector",
+      "desc": "Read and edit ONE arc or saga — its goal, status, the cascade-resolved plot tracks and cast roster, chapter span, open promises, and template provenance",
+      "guideBody": "The Arc Inspector opens one node of your book's spec tree — a saga, an arc, or a sub-arc. This tree is not decoration: its plot tracks and cast bindings are read into every generation prompt, so editing an arc here changes how the AI drafts its chapters. Tracks and roster slots resolve as a cascade — an entry inherited from a parent saga is shown greyed with an Override action (editing it in place would silently fork a copy). The chapter span, open-promise rollup, and template provenance are read-only. Archiving an arc returns its chapters to the unplanned tray; restoring re-attaches them. Open it from the Plan Hub (select an arc), the command palette, or the agent.",
+      "body": {
+        "loading": "Loading…",
+        "selectArc": "Select an arc to see its plan.",
+        "archivedBanner": "Archived — its chapters returned to the unplanned tray. Restore to edit and re-attach them.",
+        "restore": "Restore",
+        "secIdentity": "Identity",
+        "fTitle": "Title",
+        "fGoal": "Goal (reaches the prompt)",
+        "fSummary": "Summary (a label — not the prompt)",
+        "fStatus": "Status",
+        "status_empty": "empty",
+        "status_outline": "outline",
+        "status_drafting": "drafting",
+        "status_done": "done",
+        "secTracks": "Tracks (plot lines → prompt)",
+        "secRoster": "Roster (cast slots)",
+        "empty_track": "No plot tracks yet.",
+        "empty_role": "No cast roles yet.",
+        "remove": "remove",
+        "overrideHere": "override here",
+        "add_track": "+ track",
+        "add_role": "+ role",
+        "keyPlaceholder": "key",
+        "labelPlaceholder": "label (optional)",
+        "addBtn": "add",
+        "cancel": "cancel",
+        "keyExists": "key exists",
+        "secChapters": "Chapters",
+        "chaptersLabel": "Chapters",
+        "noChapters": "No chapters assigned",
+        "nonContiguous": "non-contiguous",
+        "secPromises": "Open promises",
+        "noPromises": "No promise opens here.",
+        "secProvenance": "Provenance",
+        "fromTemplate": "From template",
+        "authoredNoTemplate": "Authored from conversation (no template).",
+        "secDanger": "Danger",
+        "archiveArc": "Archive arc",
+        "blast": "also archives {{count}} sub-arcs",
+        "archivingNote": "Archiving returns its chapters to the unplanned tray; restoring re-attaches them.",
+        "secTemplate": "Template"
+      }
+    },
     "compose": {
-      "title": "Compose",
+      "title": "Co-writer Chat",
       "desc": "AI co-writer chat",
       "guideBody": "The AI co-writer for this book — chat with it about a scene, ask it to draft or revise a passage, or brainstorm what happens next. Open it when you want a conversational partner that already knows this book's characters, glossary, and prior chapters."
+    },
+    "scene-compose": {
+      "title": "Scene Compose",
+      "desc": "Draft a scene with AI candidates",
+      "guideBody": "Draft a scene with the AI co-writer: pick a scene and a model, then Generate to stream a ghost draft — or turn on Diverge to get several candidates you can compare, edit, and accept. Accepting inserts the prose into the Editor for this chapter, and your regenerate/reject/edit choices teach the model. Open it when you want to write the next scene, not just chat about it."
+    },
+    "chapter-assemble": {
+      "title": "Chapter Assemble",
+      "desc": "Assemble or stitch scenes into a chapter",
+      "guideBody": "Turn a chapter's scenes into finished chapter prose: 'Generate chapter' drafts it in one pass, or 'Stitch' merges your completed scene drafts into a single flowing chapter. Review the editable preview, then Accept to insert it into the Editor — and your edit/regenerate/reject choices teach the model, the same correction flywheel as Scene Compose. Open it once a chapter's scenes are drafted and you want to assemble them."
     },
     "editor": {
       "title": "Editor",
@@ -38,8 +107,8 @@
     },
     "settings": {
       "title": "Settings",
-      "desc": "Account, providers & translation",
-      "guideBody": "Manage your account, connect your own AI providers (OpenAI, local models, etc.), and configure translation defaults like target language and glossary behavior. Open it before starting a new project to set things up, or any time you need to swap providers, update credentials, or change how translations behave by default."
+      "desc": "Account, Chat & AI, providers & translation",
+      "guideBody": "Manage your account, set your Chat & AI defaults (models, reasoning effort, tool authority, grounding, voice), connect your own AI providers (OpenAI, local models, etc.), and configure translation defaults like target language and glossary behavior. Open it before starting a new project to set things up, or any time you need to swap providers, update credentials, or change how the assistant behaves by default."
     },
     "trash": {
       "title": "Trash",
@@ -50,6 +119,12 @@
       "title": "Steering",
       "desc": "Author rules that guide AI on this book",
       "guideBody": "Write the rules and preferences that guide how the AI writes for this specific book — tone, POV, things to avoid, recurring instructions you don't want to repeat every chat. Open it once early on, then revisit whenever the AI's output drifts from what you want."
+    },
+    "style-voice": {
+      "title": "Style & Voice",
+      "desc": "Steer prose density and pace, and the distinct voice of each character — folded into every draft prompt",
+      "guideBody": "Style & Voice steers how the AI writes. Set the prose density and pace for the whole book (or narrow to a chapter or scene), and give each character a distinct speaking voice. These settings are folded into every draft prompt, so the writing stays consistent without you repeating instructions. Each control shows its effective value and where that value comes from (book default, or a chapter/scene override). Adjust it early to set the house style, then tweak per character as their voices emerge.",
+      "noWork": "Writing isn't set up for this book yet — set it up to steer its style & voice here."
     },
     "glossary": {
       "title": "Glossary",
@@ -97,19 +172,48 @@
     },
     "quality-promises": {
       "title": "Promises",
-      "desc": "The open-promise debt ledger (setups not yet paid off)"
+      "desc": "The open-promise debt ledger (setups not yet paid off)",
+      "guideBody": "Promises is your narrative debt ledger — every setup the story has made and not yet paid off. A promise opens where you plant it (a hinted betrayal, a loaded gun, an unexplained scar) and closes where the manuscript delivers on it. Work the list down before you finish a book; anything still open at the end is a thread readers will notice you dropped."
     },
     "quality-critic": {
       "title": "Critic",
-      "desc": "Per-chapter coherence, voice, pacing & canon scores"
+      "desc": "Per-chapter coherence, voice, pacing & canon scores",
+      "guideBody": "Critic scores a chapter on coherence, voice, pacing, and canon fidelity, with the reasoning behind each verdict. It is advisory — it never edits your prose. Use it to spot the chapter that drifted before a reader does, not as a grade to optimize."
     },
     "quality-coverage": {
       "title": "Story coverage",
-      "desc": "Whole-book audit of which outline promises got paid off"
+      "desc": "Whole-book audit of which outline promises got paid off",
+      "guideBody": "Story coverage is the whole-book view of the promise ledger: which outline beats the manuscript actually delivered, which are still outstanding, and where the payoffs cluster. Read it when a draft is complete to find the acts that promised more than they paid."
     },
     "quality-canon": {
       "title": "Canon issues",
-      "desc": "Confirmed contradictions from generation & knowledge extraction"
+      "desc": "Confirmed contradictions from generation & knowledge extraction",
+      "guideBody": "Canon issues collects confirmed contradictions between your prose and your established lore — a character in two places at once, an eye colour that changed, a rule of magic the story just broke. Each issue links back to the chapter and the canon rule it violates, so you can fix the text or amend the rule."
+    },
+    "quality-canon-rules": {
+      "title": "Canon rules",
+      "desc": "Author the invariants the critic enforces — create, edit, archive, restore",
+      "guideBody": "Canon rules is where you declare the invariants your story must never break — a character has one arm after chapter 41, spirit stones are consumed and never returned, the Sect Master's identity stays hidden until the Salt Court arc. These are the rules the critic and self-heal enforce on every generation, so writing them here is how you teach the co-writer your canon. It is the write half of Canon issues: that panel shows what broke, this one is where you fix the rule."
+    },
+    "quality-corrections": {
+      "title": "Corrections",
+      "desc": "Your accept / edit / regenerate / reject rates on AI drafts — the quality signal",
+      "guideBody": "Corrections is the mirror on your own editing: every time you accept, edit, pick a different candidate, regenerate, or reject an AI draft, that choice is recorded — and this panel shows the rates, split by Diverge (K-option) vs Stream. A lower edit/regenerate/reject rate (and higher accept-as-is) in Diverge means the reranker is earning its extra latency. It is advisory and read-only; it never changes your prose — it tells you whether the co-writer is getting better at your book."
+    },
+    "quality-heal": {
+      "title": "Self-heal",
+      "desc": "Run Polish on a chapter and accept each fix before it touches your prose",
+      "guideBody": "Self-heal runs a cheap proof-reading pass over a chapter and proposes fixes — pronoun drift, typos, canon slips, over-long descriptive beats — each shown as an accept/reject row. Deterministic fixes (typos, pronouns) come pre-ticked; semantic rewrites are unticked for you to judge. Nothing touches your prose until you press Apply, and even then it writes with a version check: if the chapter changed since Polish ran, the apply is refused rather than reverting your newer edits."
+    },
+    "progress": {
+      "title": "Progress",
+      "desc": "Words today, your streak, the book total, a daily goal and a sparkline",
+      "guideBody": "Progress turns your writing into a habit you can see: words written today, your current day-streak, the book's running total, and a 7- or 30-day sparkline. Set a personal daily goal and a reference line marks it on the chart — the goal is yours alone, not shared with collaborators. It reads the word-counts the editor records as you save; it never changes your prose."
+    },
+    "flywheel": {
+      "title": "Flywheel",
+      "desc": "What your last publish added to canon — new people, ties and events",
+      "guideBody": "Flywheel is the reward for publishing: when you publish a chapter, an extraction pass grows your world's knowledge, and this panel shows what it added — new entities, relations, and events — with clickable highlights that jump you straight to that character in Cast, that link in the graph, or that moment on the timeline. It closes the loop: writing feeds the canon, and the canon grounds your next chapter."
     },
     "kg-overview": {
       "title": "Overview",
@@ -214,6 +318,160 @@
       "title": "Context Inspector",
       "desc": "Trace what context management did per turn — budget, allocation, Planner→Compiler decisions",
       "guideBody": "Shows exactly what context was sent to the AI for a given turn — the token budget, what got included or dropped, and whether a quick pass or a fuller planning pass handled it. Open it when the AI's response seems off and you want to see what it actually \"saw\", or when you're curious how your context budget is being spent."
+    },
+    "book-import": {
+      "title": "Import",
+      "desc": "Import chapters from text/.docx/.epub, or a whole book from a PDF",
+      "intro": "Bring existing manuscript content into this book.",
+      "guideBody": "Import chapters from plain text, .docx, or .epub files, or a whole book from a PDF (with optional AI image captioning — you pick the vision model explicitly). Open it whenever you have existing content to bring in rather than writing from scratch.",
+      "text": {
+        "title": "Import chapters",
+        "desc": ".txt, .docx, or .epub — one chapter per file"
+      },
+      "pdf": {
+        "title": "Import from PDF",
+        "desc": "Chunk a PDF into chapters, with optional AI captioning for images"
+      }
+    },
+    "scene-browser": {
+      "title": "Scene Browser",
+      "desc": "Browse every scene in this book — the parsed prose and its authored plan, side by side",
+      "guideBody": "The Scene Browser lists every scene across the whole book by joining two truths: the prose actually written (from book-service) and the authored intent/plan (from composition). A scene can be written-and-planned (normal), planned-but-not-yet-written, or written-but-not-yet-decompiled into a plan — so an imported book's scenes show here even before you make a plan.",
+      "noBook": "Open a book to browse its scenes.",
+      "search": "Search titles & prose…",
+      "count": "{{n}} scenes",
+      "workless": "No plan yet — scene intent (status, POV, tension) is unavailable until you create a plan for this book.",
+      "intentUnavailable": "Scene plan is temporarily unavailable — showing the written prose only.",
+      "dirty": "canon moved",
+      "dirtyTitle": "Canon moved since the last conformance run",
+      "anchorLost": "Anchor lost",
+      "empty": "No scenes match.",
+      "loadMore": "Load more",
+      "loading": "Loading…",
+      "col": {
+        "num": "#",
+        "scene": "Scene",
+        "status": "Status",
+        "tension": "Tension",
+        "words": "Words"
+      },
+      "badge": {
+        "notWritten": "not yet written",
+        "notPlanned": "not planned",
+        "anchorLost": "anchor lost"
+      },
+      "bulk": {
+        "count": "{{n}} selected",
+        "selectAll": "Select all",
+        "selectRow": "Select scene: {{title}}",
+        "setStatus": "Set status…",
+        "words": "Target words",
+        "trash": "Trash",
+        "clear": "Clear",
+        "updated": "{{n}} updated",
+        "conflicted": "{{n}} conflicted",
+        "failed": "{{n}} failed"
+      }
+    },
+    "plan-hub": {
+      "title": "Plan Hub",
+      "desc": "The whole book's plan on a graph canvas — arc lanes, chapters, scenes and their links",
+      "guideBody": "The Plan Hub renders your book's entire structure as a graph: each saga/arc/sub-arc is a lane, its chapters and scenes are cards along a story-order axis, and scene-links draw the causal edges between them. Open the panel to see every arc collapsed to a rollup card; expand an arc to lazily load its chapters, and a chapter to see its scenes. Pan and zoom to navigate; problem and staleness badges surface where canon or promises need attention."
+    },
+    "decompose": {
+      "title": "Decompose",
+      "desc": "Decompose your book against a story structure — preview the arc→chapter→scene tree, edit it, and commit",
+      "guideBody": "Decompose turns a story structure into your book's outline. Pick one of your authored structures (or a built-in), add a premise, choose a model, then Preview: the AI proposes an arc→chapter→scene tree you can edit inline before committing. Commit writes the outline — your Manuscript tree updates to match. Open it from the Command Palette, or from a structure in the Structure Templates panel via \"Use in decompose\" (which pre-selects that structure here). No Work yet? The panel offers to set one up first.",
+      "loading": "Resolving your book…",
+      "loadError": "Couldn't load this book's plan — try again.",
+      "retry": "Retry"
+    },
+    "plan-passes": {
+      "title": "Pass Rail",
+      "desc": "Compile a plan pass-by-pass and approve each checkpoint",
+      "guideBody": "The Pass Rail drives PlanForge's 7-pass compiler — motifs, cast, world, beats, character arcs, scenes, and self-heal — one pass at a time. Each pass shows whether it is fresh (its inputs are unchanged since it last ran) or stale, and the rail tells you how far the compiler can proceed on its own and which pass is waiting on you. Two passes are blocking checkpoints you must approve before the compiler moves past them: the cast (who your characters are) and the beats (what shape the story takes). Open a pass to read what it produced, edit it, then approve or hold. Editing a pass restales everything downstream automatically, so the plan can never drift out of sync with itself."
+    },
+    "whatif-canvas": {
+      "title": "What-If Branches",
+      "desc": "Explore alternate takes on a scene without committing — branch, generate an alt-take, compare, then promote the winner",
+      "guideBody": "The what-if canvas lets you fork a scene into an ephemeral branch, generate an alternate take, and see the critic's judge badges side by side — all without touching the canonical draft. When a branch is the one you want, promote it: it becomes a real derivative work you can keep writing from. Nothing is saved until you promote, so you can explore freely. This is the editing surface behind the Promote button; the Plan Hub shows the plan graph, this is where you try alternatives on it.",
+      "noPlan": "This book has no plan yet — lay out its arcs and chapters first, then explore “what if” branches here."
+    },
+    "divergence": {
+      "title": "What-if versions",
+      "desc": "Manage a book's what-if versions — list the canon and every branch, switch the whole studio to one, archive one, or spawn a new branch from a chapter",
+      "guideBody": "A what-if version branches your book at a chapter and diverges — an alternate universe, a POV shift, a character changed — into a derivative work with its own knowledge partition, while the source stays read-only canon. This panel lists your canonical work and every branch you've spawned. 'Switch to' moves your whole studio — editor, navigator, quality, everything — onto that branch; the choice is remembered per book and survives a reload. 'Archive' hides a branch without destroying it (its chapters and knowledge are kept). 'New version' opens the 4-step wizard to spawn one. Select a branch to read its spec (taxonomy, branch point, canon rules, overrides), which is fixed at creation."
+    },
+    "reference-shelf": {
+      "title": "Reference shelf",
+      "desc": "Curate the reference passages (external influences) that ground the writing — add, edit, and remove them; per scene the relevant ones are retrieved and can be pinned into the grounding pack",
+      "guideBody": "The reference shelf is your book's corpus of influences — passages, sources, and style exemplars the AI draws on when it drafts. Add a reference with its title, author, source URL, and text; the text is embedded so the studio can retrieve the most relevant ones per scene. Edit a reference's details (a cheap metadata change) or its content (which re-embeds it). Filter a large shelf with the search box. Per-scene retrieval and pinning appear when you open the shelf alongside a scene; on its own it manages the library. An embedding model must be configured (add one from AI settings) for retrieval to work.",
+      "noWork": "Writing isn't set up for this book yet — set it up to curate its reference shelf here."
+    },
+    "canonview": {
+      "title": "Canon at chapter",
+      "desc": "What canon knows as of the chapter in focus — entities present/established, canon state and timeline",
+      "guideBody": "Answers 'what does canon know as of the chapter I'm on?' — the entities present in and established by the current chapter (from the glossary), plus the canon state (how many entities are active vs gone) and timeline events up to that point (from the knowledge graph). It follows the chapter you have in focus in the manuscript, and is the same inspector the what-if canvas shows at a branch point — so you can check what's already established before you diverge. Open a scene or chapter to give it a focus."
+    },
+    "scene-inspector": {
+      "title": "Scene Inspector",
+      "desc": "Read and edit every field of one scene — intent, craft, tension and grounding",
+      "guideBody": "The Scene Inspector is the detail pane for a single scene: select a scene (in the Scene Browser or the manuscript) and its full plan opens here — status, goal, synopsis, beat role, tension, and the craft fields (conflict, outcome, stakes, story time, value shift, target words) — all editable, with grounding pins folded in. Edits save immediately and are guarded against conflicting changes.",
+      "none": "Select a scene to inspect its full plan.",
+      "loading": "Loading…",
+      "dirty": "Canon moved since the last conformance run — this plan may be stale.",
+      "section": {
+        "identity": "Identity",
+        "intent": "Intent",
+        "cast": "Cast & Setting",
+        "craft": "Craft",
+        "links": "Links",
+        "grounding": "Grounding",
+        "motifs": "Motifs"
+      },
+      "links": {
+        "empty": "No causal links yet.",
+        "setup": "setup→payoff",
+        "custom": "custom",
+        "remove": "Remove link",
+        "target": "Link to scene",
+        "pick": "Link to…",
+        "kind": "Link kind",
+        "label": "label",
+        "add": "link",
+        "dup": "A link of that kind already exists between these scenes.",
+        "failed": "Could not create the link."
+      },
+      "f": {
+        "title": "Title",
+        "status": "Status",
+        "goal": "Goal",
+        "synopsis": "Synopsis",
+        "beat": "Beat role",
+        "tension": "Tension (0–100)",
+        "pov": "POV character",
+        "present": "Present characters",
+        "location": "Location",
+        "conflict": "Conflict",
+        "outcome": "Outcome",
+        "stakes": "Stakes",
+        "storyTime": "Story time",
+        "valueShift": "Value shift (−100…100)",
+        "targetWords": "Target words"
+      },
+      "ref": {
+        "none": "— none —",
+        "add": "+ add",
+        "empty": "none",
+        "loading": "(loading…)",
+        "remove": "Remove {{name}}"
+      },
+      "status": {
+        "empty": "Empty",
+        "outline": "Outline",
+        "drafting": "Drafting",
+        "done": "Done"
+      }
     },
     "chapter-browser": {
       "title": "Chapter Browser",
@@ -348,18 +606,86 @@
     },
     "agent-mode": {
       "title": "Agent Mode",
-      "desc": "Autonomous multi-chapter authoring runs — mission control"
+      "desc": "Autonomous multi-chapter authoring runs — mission control",
+      "guideBody": "Agent Mode is mission control for autonomous multi-chapter runs: the agent drafts straight through an approved plan while you watch. Start, pause, and resume a run from here, and review each chapter as it lands — its diff and its critic verdict — then accept, reject, or revert. Nothing it writes is final until you accept it."
     },
     "chapter-revision-compare": {
       "title": "Chapter Revision Compare",
       "desc": "Full editor diff for one chapter revision pair",
       "empty": "Open a chapter's revision diff from Agent Mode's review panel."
+    },
+    "world-map": {
+      "title": "World Map",
+      "desc": "Create and edit a world's reference maps — upload a base image, drop and drag location pins, draw and reshape regions.",
+      "guideBody": "Author a world's raster maps. Upload a base image, then drop pins and draw regions on it. Drag a pin to move it (a drag is one absolute-coord PATCH on a stable marker id — never a delete-and-recreate) and drag a polygon vertex to reshape a region. Bind a pin or region to a glossary OR KG location entity (the picker labels the source). Every change saves to book-service; the assistant's world_map_* tools edit the same map live. Rename a map with optimistic-concurrency (If-Match), so a conflicting edit reloads instead of clobbering."
+    },
+    "place-graph": {
+      "title": "Place Graph",
+      "desc": "The book's places (locations) as a draggable node graph",
+      "guideBody": "Add and connect the book's places (locations) as a node graph. Type a name and press + Place to author a location; toggle Link places, pick two nodes and a predicate (contains / borders / route_to) to connect them; drag to arrange (saved server-side, shared across your devices); set a backdrop image (needs an open chapter). Click a node to open it in the Cast codex. Locations only — use Author other kinds to add characters, items, and the rest.",
+      "noWork": "Writing isn't set up for this book yet — set it up to arrange its places here.",
+      "openCompose": "Open Compose",
+      "loading": "Loading world map…",
+      "authorOther": "Author other kinds →"
+    },
+    "cast": {
+      "title": "Cast",
+      "desc": "The book's cast — grouped, searchable, spoiler-safe; author & retire entities",
+      "guideBody": "Every character, place, organization and concept in this book's knowledge graph, grouped by kind and searchable, each with its spoiler-safe story-state (active/gone at your reading position). Create a new entity with + New, rename inline, edit aliases/kind, or retire (soft-archive) one. Click a row's arc glyph to open its Character Arc."
+    },
+    "character-arc": {
+      "title": "Character Arc",
+      "desc": "One character's events on a timeline, the active→gone band, and 1-hop relations",
+      "guideBody": "One character's events in order on a compact arc, spoiler-cut at your reading position, with the active→gone state band and the current 1-hop relations. Pick a character, edit it, or add a relation with + link entity."
+    },
+    "motif-library": {
+      "title": "Motif Library",
+      "desc": "Study tropes (套路/爽点/打脸), adopt or mine them, and inspect the motif relationship graph",
+      "guideBody": "The Motif Library is your narrative-craft workbench. Browse motifs by tier — your own, this book's labels, the shared book tier, the system seeds, the public catalog, and your mined drafts. Create a motif inline, adopt one from the catalog, or mine your own corpus to discover recurring patterns. Open any motif to read its beats and roles, and expand its graph to see what it is composed of, what it precedes, and its variants. Bind motifs to scenes from the Scene Inspector so the drafter actually writes toward them."
+    },
+    "quality-conformance": {
+      "title": "Conformance",
+      "desc": "Beat-by-beat: did the prose realize the plan? Per-scene realized/not + tension band",
+      "guideBody": "Conformance traces, scene by scene, whether your written prose actually delivered the motif beats you planned for a chapter. Each scene shows realized / not-realized and how its tension compares to the target. It answers spec-vs-prose (not spec-vs-template — that is the arc-templates drift view). The signal is advisory (coarse, not causally verified). Regenerate a scene that missed its beat, or re-run the whole check against a model you pick."
+    },
+    "motif-graph": {
+      "title": "Motif Graph",
+      "desc": "The book-wide motif relationship graph as a draggable canvas — your + book-shared motifs and their composed-of / precedes / variant-of edges, with your own saved layout.",
+      "guideBody": "A visual DAG of this book's motifs. Nodes are your motifs plus the book's shared-tier ones; edges are the composed_of / precedes / variant_of links. Drag a node to arrange the graph — your layout is saved per-book and follows you across devices (each collaborator has their own arrangement). The initial layout is auto-computed left-to-right along the precedes chains. Create and delete edges from a motif's detail in the Motif Library.",
+      "signedOut": "Sign in to see the motif graph.",
+      "noBook": "Open a book to see its motif graph."
+    },
+    "structure-templates": {
+      "title": "Structure Templates",
+      "desc": "Author custom story structures (a named ordered list of beats) and decompose your book against them — like the built-in Save the Cat or Hero's Journey",
+      "guideBody": "Story structures are ordered beat sheets you decompose a book's chapters against. This panel lists the built-in structures (Save the Cat, Hero's Journey, Kishōtenketsu, Three-Act, Story Circle, Web-Novel Arc — read-only) plus your own. Clone a built-in to get an editable copy, then add, reorder, rename and remove its beats and save. Use a structure in Decompose to map its beats onto your chapters. Your custom structures are private to you and reusable across every book; archive one to hide it and restore it later. Built-ins stay intact for everyone — you always edit your own copy."
+    },
+    "kg-triage": {
+      "title": "Triage",
+      "desc": "Review extracted elements that didn't match your schema and resolve them.",
+      "guideBody": "When extraction finds an entity kind, relationship, or value that isn't in your schema yet, it parks it here instead of guessing. Each row offers only the fixes that are valid for it — map it to something you already have, add it to your schema/vocabulary, fix an endpoint, or dismiss it."
+    },
+    "search": {
+      "title": "Search",
+      "desc": "Search your book's prose (text) or lore drawers (semantic); a hit opens the editor there.",
+      "guideBody": "Search has two modes. Text finds exact words and phrases in your manuscript prose. Semantic finds passages by meaning across your lore drawers (chapters, chat, glossary). Click a result to open the editor at that chapter — search is a way into your manuscript, not a dead-end list."
+    },
+    "workflows": {
+      "title": "Workflows",
+      "desc": "Manage saved workflow recipes",
+      "guideBody": "Lists the multi-step workflow recipes your agent can run as a rail — the built-in System ones plus any you own. Open it to enable or disable a recipe for yourself, or delete one of your own. New recipes are added by approving a proposal in the Workflow Proposals panel, not created directly here."
+    },
+    "workflow-proposals": {
+      "title": "Workflow Proposals",
+      "desc": "Review workflows the agent proposed",
+      "guideBody": "Lists the workflow recipes the agent has suggested creating, based on multi-step sequences it noticed you repeat. Open it to approve a proposal — which mints the workflow so it becomes runnable — or reject it. This is where an agent-proposed workflow actually becomes real."
     }
   },
   "sceneRail": {
     "title": "Scenes",
     "toggle": "Scenes",
     "empty": "No scenes for this chapter (outline it in the composer).",
+    "editTitle": "Rename scene",
     "synopsisPlaceholder": "Synopsis…",
     "stale": "changed elsewhere — reloaded",
     "notAnchored": "Scene not anchored in the text yet — use ⚓ to link headings.",
@@ -390,8 +716,51 @@
     "revert": "Revert",
     "openAs": "Open as JSON"
   },
+  "planPasses": {
+    "comingSoon": "The 7-pass rail loads here.",
+    "noBook": "Open a book to compile its plan.",
+    "noRun": "No plan run yet — open the Planner to propose and compile one.",
+    "loading": "Loading passes…",
+    "notCompiled": "This run has no compiled package yet. Compile it in the Planner before running passes.",
+    "openPlanner": "← Planner (propose / compile)",
+    "blocking": "blocking",
+    "advisory": "advisory",
+    "running": "running…",
+    "done": "done",
+    "failed": "failed",
+    "notRun": "— not run",
+    "fresh": "fresh",
+    "stale": "stale",
+    "run": "run…",
+    "rerun": "re-run…",
+    "review": "review →",
+    "blocked": "blocked",
+    "blockedBy": "blocked by: {{blockers}}",
+    "runSpends": "Run {{pass}} — this spends 1 LLM call",
+    "runNow": "Run {{pass}}",
+    "cancel": "Cancel",
+    "approve": "Approve",
+    "reject": "Reject",
+    "edit": "Edit",
+    "saveEdits": "Save edits",
+    "cursor": "{{done}} of {{total}}",
+    "blockedAt": "blocked at",
+    "reviewTitle": "Review {{pass}}",
+    "reviewLoading": "Loading…",
+    "reviewNoContent": "No artifact content to show.",
+    "reviewPrompt": "Approve {{pass}}? This lets the compiler proceed past it.",
+    "seedUnavailable": "Glossary seed proposal unavailable.",
+    "seedApplied": "Glossary seed applied — cast can be approved.",
+    "seedGate": "Your cast’s characters must be added to the glossary before you can approve. Apply the seed to add them.",
+    "applySeed": "Apply seed",
+    "approveGated": "Apply the glossary seed first (PF-7)",
+    "editAdd": "Add",
+    "editRemove": "Remove",
+    "editEmpty": "Nothing here yet — add a row."
+  },
   "planner": {
     "sourcePlaceholder": "Paste the novel-system markdown…",
+    "proposeBlind": "Proposed from this braindump only. Existing chapters are not read.",
     "propose": "Propose",
     "model": "Model",
     "empty": "Paste your novel-system markdown and Propose to start a plan run.",
@@ -412,22 +781,44 @@
       "colMode": "Mode",
       "colStatus": "Status",
       "colCreated": "Created"
-    }
+    },
+    "grounded": "Grounded on {{chapters}} existing chapter(s) + {{cast}} cast member(s); {{arcs}} existing arc(s) continued.",
+    "groundOnExisting": "Continue this book — ground on its existing cast, arcs & recent chapters"
   },
   "editor": {
     "empty": "Select a chapter in the manuscript navigator to edit it here.",
+    "startFirstChapter": "Start your first chapter",
+    "startingChapter": "Creating…",
     "unsaved": "● unsaved",
     "save": "Save",
     "grammar": "Grammar",
     "heatmap": "Heatmap",
     "glossary": "Glossary",
     "focus": "Focus",
-    "translate": "Translate"
+    "translate": "Translate",
+    "derivativeForked": "On a what-if version — this chapter is FORKED, isolated from canon. Edits save to the branch; canon stays untouched.",
+    "derivativeInherit": "On a what-if version — this chapter still mirrors canon. Editing here FORKS it into the branch (canon stays untouched).",
+    "mergeToCanon": "Merge to canon",
+    "mergeConfirm": "Confirm — overwrite canon",
+    "merging": "Merging…",
+    "mergeDone": "Merged into canon — the branch keeps its own version.",
+    "mergeConflict": "Canon changed since — reopen the chapter and merge again.",
+    "mergeFailed": "Could not merge — try again."
+  },
+  "sceneCompose": {
+    "empty": "Select a chapter in the manuscript navigator to draft its scenes here.",
+    "inserted": "Accepted into the manuscript.",
+    "insertFailed": "Could not insert — click into the chapter text in the Editor, then Accept again.",
+    "openedEditor": "Opened the Editor on this chapter — Generate again to insert the draft here."
+  },
+  "chapterAssemble": {
+    "empty": "Select a chapter in the manuscript navigator to assemble it here."
   },
   "popout": {
     "invalid": "This pop-out link is invalid.",
     "open": "Pop out",
-    "openTitle": "Open Compose in its own window"
+    "openTitle": "Open Compose in its own window",
+    "needChapter": "Open a chapter first — pop-out opens the current chapter in its own window"
   },
   "dock": {
     "dock": "Dock"
@@ -490,6 +881,7 @@
       "editor": "Editor & Chapters",
       "storyBible": "Story Bible",
       "knowledge": "Knowledge Graph",
+      "quality": "Quality",
       "translation": "Translation",
       "enrichment": "Enrichment",
       "sharing": "Sharing & Settings",
@@ -523,6 +915,7 @@
   },
   "activity": {
     "manuscript": "Manuscript",
+    "plan": "Plan",
     "bible": "Story Bible",
     "search": "Search",
     "quality": "Quality"
@@ -546,8 +939,13 @@
     }
   },
   "quality": {
-    "noWork": "This book has no co-writer session yet — start composing a chapter first, then quality data will appear here.",
-    "hubNoWorkHint": "Promises, critic scores, and story coverage need a co-writer session — start composing a chapter first. Canon issues below still work either way.",
+    "noWork": "This book has no co-writer session yet — set one up (or start composing a chapter), then quality data will appear here.",
+    "hubNoWorkHint": "Promises, critic scores, and story coverage need a co-writer session — set one up (or start composing a chapter). Canon issues below still work either way.",
+    "setupWork": "Set up writing",
+    "settingUpWork": "Setting up…",
+    "setupWorkError": "Could not set up writing. Try again.",
+    "setupWorkPending": "Writing was set up but its knowledge project is still being prepared. Try again shortly.",
+    "setupWorkRetry": "Retry",
     "pickModel": "Pick a model to analyze with…",
     "pickChapter": "Pick a chapter",
     "pickChapterHint": "Pick a chapter above to analyze its quality.",
@@ -567,10 +965,53 @@
     "coverageTitle": "Story coverage",
     "coverageDesc": "Whole-book promise coverage",
     "canonTitle": "Canon issues",
-    "canonDesc": "Confirmed contradictions"
+    "canonDesc": "Confirmed contradictions",
+    "canonRulesTitle": "Canon rules",
+    "canonRulesDesc": "Author the invariants the critic enforces",
+    "correctionsTitle": "Corrections",
+    "correctionsDesc": "Your accept / edit / regenerate / reject rates",
+    "healTitle": "Self-heal",
+    "healDesc": "Run Polish and accept each fix before it touches your prose",
+    "canonFromRules": "Broken rules ({{n}})",
+    "canonRuleError": "Could not load canon-rule violations — try again.",
+    "canonRuleGone": "A rule that no longer exists",
+    "canonRuleUnnamed": "that rule",
+    "canonRuleFocused": "Showing violations of the rule you came from first ({{n}}): “{{rule}}”",
+    "canonRuleFocusedEmpty": "The rule you came from has no open violations. It is anchored here, but nothing has broken it.",
+    "canonFocused": "Showing the chapter you came from first ({{n}} finding(s)).",
+    "canonFocusedEmpty": "The chapter you came from has no canon findings here.",
+    "canonUnavailable": "Could not reach the co-writer service — generation-time canon findings are NOT included below.",
+    "canonNoWork": "This book has no co-writer session yet, so generation-time canon checks have not run. Only knowledge-extraction findings are shown.",
+    "canonRuleFocusUnknown": "The rule you came from could not be checked, because the co-writer service is unavailable. It may still be broken somewhere — this is not a result.",
+    "canonRulesCapped": "Showing the {{shown}} most recent of {{total}} broken rules.",
+    "workUnavailable": "Could not reach the co-writer service, so this book’s quality data could not be loaded. Problems may exist that are not shown here. Try again shortly.",
+    "hubUnavailable": "Could not reach the co-writer service, so promises, critic scores and story coverage cannot be loaded right now. Problems may exist that are not shown here.",
+    "conformanceTitle": "Conformance",
+    "conformanceDesc": "Did the prose realize the plan? Per-scene beat trace",
+    "pickModelRerun": "Pick a model to re-run with…",
+    "pickChapterConformanceHint": "Pick a chapter above to trace how its prose realized the plan."
   },
   "sidebar": {
-    "collapse": "Collapse"
+    "collapse": "Collapse",
+    "resize": "Resize side bar"
+  },
+  "layout": {
+    "title": "Panel layout",
+    "hint": "Arranges your {{count}} open panels.",
+    "empty": "Open panels to arrange them.",
+    "needPanels": "Open at least two panels first",
+    "tooNarrow": "Needs a wider window",
+    "presets": {
+      "single": "Single",
+      "cols2": "Two columns",
+      "cols3": "Three columns",
+      "cols4": "Four columns",
+      "grid2x2": "Grid 2×2",
+      "grid3x2": "Grid 3×2",
+      "grid4x2": "Grid 4×2",
+      "cols6": "Six columns",
+      "cols8": "Eight columns"
+    }
   },
   "bottom": {
     "jobs": "Jobs",
@@ -578,23 +1019,33 @@
     "issues": "Issues",
     "collapse": "Collapse panel",
     "toggle": "Toggle bottom panel",
-    "label": "Panel"
-  },
-  "bottomStub": {
-    "jobs": "Background jobs appear here once wired.",
-    "generation": "Live generation progress appears here once wired.",
-    "issues": "Quality issues appear here once wired."
+    "label": "Panel",
+    "launch": {
+      "jobs": "The jobs feed opens in its own panel.",
+      "generation": "The generation feed opens in its own panel."
+    },
+    "openJobs": "Open the Jobs panel",
+    "issuesLoading": "Checking for problems…",
+    "issuesError": "Could not load the problems panel.",
+    "issuesEmpty": "No problems found in this book.",
+    "issuesCapped": "showing the top rows of {{total}}",
+    "sev": {
+      "error": "Error",
+      "warn": "Warning",
+      "info": "Info"
+    }
   },
   "status": {
     "wordsPlaceholder": "— words",
     "words": "{{count}} words",
     "modelPlaceholder": "no model",
     "notifications": "Notifications",
-    "cost24h": "Spend, last 24h"
+    "cost24h": "Spend, last 24h",
+    "proposalsPending": "{{count}} pending approval(s)"
   },
   "manuscript": {
     "title": "Manuscript",
-    "newChapter": "New chapter",
+    "openPlan": "Plan this book",
     "collapseAll": "Collapse all",
     "reload": "Reload",
     "arc": "ARC",
@@ -606,9 +1057,33 @@
     "loadingMore": "Loading more…",
     "count": "{{n}} chapters",
     "statArcs": "{{n}} arc",
+    "statActs": "{{n}} part",
     "statChapters": "{{n}} ch",
     "statScenes": "{{n}} sc",
-    "window": "win {{a}}–{{b}} / {{n}}"
+    "window": "win {{a}}–{{b}} / {{n}}",
+    "chapterN": "Chapter {{number}}",
+    "newChapter": "New chapter",
+    "chapterShort": "Chapter",
+    "startFirstChapter": "Start your first chapter",
+    "creatingChapter": "Creating…",
+    "actShort": "Part",
+    "actTag": "PART",
+    "newAct": "New part",
+    "newActPlaceholder": "New part name…",
+    "renameAct": "Rename part",
+    "renameActPlaceholder": "Part name…",
+    "trashAct": "Trash part",
+    "moveActUp": "Move part up",
+    "moveActDown": "Move part down",
+    "untitledAct": "(untitled part)",
+    "unassignedBucket": "Unassigned",
+    "emptyActHint": "drag chapters here",
+    "trashedActs": "Trashed parts",
+    "restore": "Restore",
+    "restoreActHint": "Restore this part (it comes back empty — re-file chapters as needed)",
+    "actTrashed": "Part \"{{name}}\" trashed — its chapters stayed in the book",
+    "partVsArc": "Parts group your manuscript. Arcs are the plan.",
+    "undo": "Undo"
   },
   "intro": {
     "title": "Welcome to Writing Studio",
@@ -986,5 +1461,193 @@
       "label": "Popout Window",
       "desc": "Pop Compose out into its own OS window for a second monitor."
     }
+  },
+  "planHub": {
+    "undo": "Undo",
+    "empty": {
+      "title": "No plan for this book yet",
+      "body": "The Plan Hub shows the spec — arcs, chapters, scenes. This book has none yet. It will never be invented from your manuscript: extract it, or write one.",
+      "extractCta": "Extract the plan from the manuscript",
+      "extracting": "Extracting…",
+      "planCta": "Paste a plan you've already written",
+      "extractNote": "Extracting reads the scenes already parsed from your chapters and turns each into a spec node. Grouping them into arcs is a separate AI step — ask the agent for it. Until then the extracted chapters sit in the “Unassigned” strip.",
+      "nothingParsed": "Nothing to extract — this book has no parsed scenes yet. Parse or import the chapters first, then extract.",
+      "startArcCta": "Start with your first arc",
+      "startingArc": "Creating…",
+      "arcPlaceholder": "Name your first arc…",
+      "untitledArc": "Untitled arc",
+      "extractNeedsChapters": "Extracting needs chapters — this book has none yet."
+    },
+    "node": {
+      "unplannedTray": "Unplanned chapters",
+      "unplannedUnknown": "Unplanned chapters: unknown (the manuscript could not be read)",
+      "unplannedCapped": "…and {{n}} more (list capped)",
+      "unassignedStrip": "{{count}} chapter in no arc — drag it into a lane",
+      "unassignedStrip_other": "{{count}} chapters in no arc — drag them into a lane",
+      "untitled": "Untitled",
+      "unassignedFlow": "{{count}} chapter not in any storyline yet",
+      "unassignedFlow_other": "{{count}} chapters not in any storyline yet"
+    },
+    "loading": "Loading the plan…",
+    "toolbar": {
+      "search": "Find a node…",
+      "fit": "Fit",
+      "problems": "Problems",
+      "askAi": "Ask AI",
+      "askAiHint": "Select a node to ask about it",
+      "viewNarrative": "Narrative",
+      "viewTimeline": "Timeline",
+      "viewWorldmap": "World map",
+      "viewSoon": "Coming in a later phase"
+    },
+    "mode": {
+      "simple": "Simple",
+      "advanced": "Advanced"
+    },
+    "simple": {
+      "guide": "Your book, chapter by chapter. Click one to keep writing, or start a new chapter below.",
+      "loading": "Loading your chapters…",
+      "error": "Couldn't load your chapters. Try again in a moment.",
+      "emptyLine": "A blank book. Start with a sentence — the structure can come later.",
+      "untitled": "Untitled chapter",
+      "words": "{{n}}w",
+      "status": {
+        "done": "done",
+        "drafting": "drafting",
+        "empty": "not started",
+        "aiIdea": "AI idea"
+      },
+      "more": "+ {{n}} more",
+      "loadingMore": "Loading…",
+      "writeCta": "Write a new chapter",
+      "writing": "Creating…",
+      "doorNote": "Opens a blank page straight away.",
+      "goAdvanced": "Organise into storylines →",
+      "rename": "Rename",
+      "delete": "Delete chapter",
+      "aiDraft": "Or let the AI draft one →",
+      "legend": {
+        "authored": "you wrote it",
+        "ai": "AI idea"
+      }
+    },
+    "costHint": "Editing structure makes no model calls.",
+    "flow": {
+      "chNo": "ch {{n}}",
+      "chCount": "{{n}} ch",
+      "gap": "⚠ gap",
+      "aiCollapsed": "AI · collapsed",
+      "subArcTag": "sub-arc",
+      "untitledArc": "Untitled arc",
+      "untitledChapter": "Untitled chapter",
+      "untitledScene": "Untitled scene",
+      "addChapter": "+ chapter",
+      "addScene": "+ scene",
+      "addSubArc": "+ sub-arc",
+      "showScenes": "▸ scenes",
+      "moreChapters": "+ {{n}} more",
+      "empty": "No storylines yet — add an arc from the toolbar to begin.",
+      "status": {
+        "empty": "empty",
+        "outline": "outline",
+        "drafting": "drafting",
+        "done": "done"
+      },
+      "moveTo": "move to arc…",
+      "unassigned": "{{count}} chapter in no storyline",
+      "unassigned_other": "{{count}} chapters in no storyline"
+    },
+    "adv": {
+      "graph": "Graph",
+      "lane": "Lane",
+      "graphHint": "Graph — zoom, pan and drag to move (best for a large structure)",
+      "laneHint": "Lane — readable wrapping cards (no zoom)"
+    }
+  },
+  "structTpl": {
+    "subtitle": "story structures you decompose chapters against",
+    "builtin": "Built-in (read-only)",
+    "mine": "Mine",
+    "mineEmpty": "None yet — clone a built-in above, or “New structure”.",
+    "loading": "Loading…",
+    "pickHint": "Pick a structure to view its beats — or create a new one.",
+    "beats": "beats",
+    "builtinNote": "This is a built-in structure. Clone it to customise — you edit your copy, the original stays intact for everyone.",
+    "cloneBuiltin": "Clone to my structures",
+    "duplicate": "Duplicate",
+    "cloning": "Cloning…",
+    "beatLabel": "Label",
+    "beatPurpose": "What this beat does…",
+    "addBeat": "Add beat",
+    "save": "Save",
+    "saving": "Saving…",
+    "showArchived": "archived",
+    "archive": "Archive",
+    "restore": "Restore",
+    "archivedNote": "This structure is archived. Restore it to edit or use it again.",
+    "newStructure": "New structure",
+    "createStructure": "Create structure",
+    "creating": "Creating…",
+    "cancel": "Cancel",
+    "unsaved": "Unsaved",
+    "discard": "Discard",
+    "discardTitle": "Discard unsaved changes?",
+    "discardBody": "Your edits to this structure haven't been saved. Leaving now discards them.",
+    "archiveTitle": "Archive this structure?",
+    "archiveBody": "\"{{name}}\" moves to archived — you can restore it later.",
+    "nameLabel": "Structure name",
+    "namePlaceholder": "Name your structure…",
+    "kindLabel": "Kind (a free-text label)",
+    "beatKey": "key",
+    "beatKeyLabel": "Beat key",
+    "beatLabelLabel": "Beat label",
+    "moveUp": "Move beat up",
+    "moveDown": "Move beat down",
+    "removeBeat": "Remove beat",
+    "decomposeHint": "To use this structure, open a chapter and run its Decompose step — your structures appear in the picker there.",
+    "err": {
+      "conflict": "This structure changed elsewhere — reload and reapply your edits.",
+      "duplicate": "You already have a structure with that name.",
+      "blank": "A structure needs a name.",
+      "unknown": "Something went wrong — please try again."
+    },
+    "toast": {
+      "saved": "Structure saved",
+      "archived": "Structure archived",
+      "restored": "Structure restored",
+      "created": "Structure created"
+    },
+    "badge": {
+      "builtin": "built-in",
+      "mine": "mine",
+      "archived": "archived"
+    }
+  },
+  "search": {
+    "modeLabel": "Search mode",
+    "mode": {
+      "text": "Text",
+      "semantic": "Semantic"
+    },
+    "rail": {
+      "placeholder": "Search your book…",
+      "go": "Search",
+      "hint": "Text finds exact words in your prose; Semantic finds passages by meaning. A hit opens the editor there."
+    },
+    "semantic": {
+      "placeholder": "Search meaning across your lore…",
+      "loadingProject": "Loading…",
+      "noProject": "This book has no knowledge project yet — extract or build knowledge first.",
+      "error": "Semantic search is unavailable right now.",
+      "hint": "Type at least 3 characters to search by meaning.",
+      "searching": "Searching…",
+      "empty": "No passages match.",
+      "openChapter": "open →"
+    }
+  },
+  "setup": {
+    "firstStructureTitle": "Act One",
+    "everything": "Or set up this book completely",
+    "everythingBusy": "Setting up…"
   }
 }

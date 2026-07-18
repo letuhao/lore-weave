@@ -13,11 +13,13 @@
 // (outline search for a Work, book-service chapter search for imports), so it reaches nodes
 // NOT yet lazy-loaded into the tree (the v1 client-filter's blind spot). Typing switches the
 // body from the tree to a flat result list; clearing returns to the tree.
-import { useEffect, useMemo, useRef } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useVirtualizer } from '@tanstack/react-virtual';
-import { ChevronRight, ChevronsDownUp, Loader2, PanelLeftClose, Plus, RotateCw, Search } from 'lucide-react';
+import { ChevronDown, ChevronRight, ChevronsDownUp, ChevronUp, FolderPlus, Loader2, PanelLeftClose, Pencil, Plus, RotateCw, Search, Trash2 } from 'lucide-react';
+import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
+import { useOptionalStudioBusSelector } from '../host/StudioHostProvider';
 import { useManuscriptTree } from './useManuscriptTree';
 import { useManuscriptJump } from './useManuscriptJump';
 import { jumpResultToNode, type ManuscriptNode } from './types';
@@ -29,14 +31,53 @@ interface Props {
   selectedId?: string | null;
   /** Called when a chapter/scene row is chosen. Dock wiring is #03 (Debt #1). */
   onSelect?: (node: ManuscriptNode) => void;
-  /** New-chapter action (header +). When absent the button renders disabled (create flow = Debt). */
+  /** Opens the PLAN (plan-hub) — structure authoring. Header "+". Disabled when absent. */
   onNewChapter?: () => void;
+  /** M3 (F2) — create a chapter and open it in the editor, straight from the rail (the sealed
+   * amendment to the 2026-07-17 "creation lives on the Plan rail" stance: writers expect to make a
+   * chapter where they see their chapters). Absent ⇒ the button is not rendered. */
+  onCreateChapter?: () => void;
+  /** A rail-initiated chapter create is in flight (disables the button). */
+  creatingChapter?: boolean;
   /** Collapse the whole Side Bar (studio chrome). When provided the navigator's own header hosts
    * the button, so the Side Bar doesn't render a duplicate header above it. */
   onCollapseSidebar?: () => void;
 }
 
 const ROW_H = 26;
+
+/**
+ * S-02c — a tiny in-place text input for creating / renaming an act (replaces window.prompt).
+ * Auto-focuses + selects; Enter commits, Esc cancels, blur commits. A `done` guard makes Enter
+ * (which unmounts the input → fires blur) commit exactly once. Module-scope so it never remounts
+ * from the parent's render (the "component-defined-in-render-body-remounts" trap).
+ */
+function ActNameInput({
+  initial, placeholder, testid, onCommit, onCancel,
+}: { initial: string; placeholder: string; testid: string; onCommit: (v: string) => void; onCancel: () => void }) {
+  const [val, setVal] = useState(initial);
+  const done = useRef(false);
+  const ref = useRef<HTMLInputElement>(null);
+  useEffect(() => { ref.current?.focus(); ref.current?.select(); }, []);
+  const commit = () => { if (done.current) return; done.current = true; onCommit(val); };
+  const cancel = () => { if (done.current) return; done.current = true; onCancel(); };
+  return (
+    <input
+      ref={ref}
+      data-testid={testid}
+      value={val}
+      onChange={(e) => setVal(e.target.value)}
+      onClick={(e) => e.stopPropagation()}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter') { e.preventDefault(); commit(); }
+        else if (e.key === 'Escape') { e.preventDefault(); cancel(); }
+      }}
+      onBlur={commit}
+      placeholder={placeholder}
+      className="min-w-0 flex-1 rounded border border-primary/40 bg-background px-1 py-0.5 text-xs text-foreground outline-none focus:border-primary"
+    />
+  );
+}
 
 /** 1→I, 4→IV, … (arcs never exceed a few dozen, but the full converter is trivial + safe). */
 function toRoman(n: number): string {
@@ -50,11 +91,57 @@ function toRoman(n: number): string {
   return out;
 }
 
-export function ManuscriptNavigator({ bookId, token, selectedId, onSelect, onNewChapter, onCollapseSidebar }: Props) {
+export function ManuscriptNavigator({ bookId, token, selectedId, onSelect, onNewChapter, onCreateChapter, creatingChapter, onCollapseSidebar }: Props) {
   const { t } = useTranslation('studio');
-  const { source, rows, total, counts, error, toggleExpand, loadMore, collapseAll, reload } = useManuscriptTree(bookId, token);
+  const {
+    // `parts`/`trashedActs` default to [] so the navigator tolerates a hook shape without them
+    // (older/partial mocks) — reading .length/.findIndex on undefined would crash every render.
+    source, rows, total, counts, error, partsMode, parts = [], trashedActs = [],
+    toggleExpand, loadMore, collapseAll, reload,
+    createAct, renameAct, trashAct, moveChapterToAct, moveAct, restoreAct,
+  } = useManuscriptTree(bookId, token);
   const jump = useManuscriptJump(bookId, token);
   const parentRef = useRef<HTMLDivElement>(null);
+
+  // M2 (F3) — a chapter created/renamed/deleted from ANOTHER panel (Plan Hub write door, editor
+  // create, drawer +Chapter) bumps `manuscriptChangeSeq` on the studio bus. The tree is hand-rolled
+  // useState a react-query invalidation can't reach, so we reload() on the bump — never on mount
+  // (the ref starts at the current value). Tolerates a missing host (unit tests render without one).
+  const manuscriptChangeSeq = useOptionalStudioBusSelector((s) => s.manuscriptChangeSeq ?? 0, 0);
+  const lastChangeSeq = useRef(manuscriptChangeSeq);
+  useEffect(() => {
+    if (manuscriptChangeSeq === lastChangeSeq.current) return; // initial mount / no change
+    lastChangeSeq.current = manuscriptChangeSeq;
+    reload();
+  }, [manuscriptChangeSeq, reload]);
+  // S-02 — the chapter id currently dragged onto an act (native HTML5 DnD, trusted user drag).
+  const dragChapterId = useRef<string | null>(null);
+
+  // S-02c — inline act create/rename (no window.prompt). `creatingAct` shows an input at the top
+  // of the act list; `editingActId` turns one act's title into an input in place.
+  const [creatingAct, setCreatingAct] = useState(false);
+  const [editingActId, setEditingActId] = useState<string | null>(null);
+  // S-02c B6 — the act currently under a dragged chapter (drop-target highlight).
+  const [dragOverPartId, setDragOverPartId] = useState<string | null>(null);
+  const onNewAct = useCallback(() => { setEditingActId(null); setCreatingAct(true); }, []);
+  const commitNewAct = useCallback((val: string) => {
+    const title = val.trim();
+    if (title) void createAct(title); // blank = no-op (don't create an untitled act by accident)
+    setCreatingAct(false);
+  }, [createAct]);
+  const commitRename = useCallback((id: string, val: string) => {
+    void renameAct(id, val.trim()); // blank clears the title → "(untitled act)"
+    setEditingActId(null);
+  }, [renameAct]);
+  // S-02b — trash is INSTANT + UNDOABLE (no blocking confirm): trash, then a toast whose Undo
+  // restores the act. Copy notes chapters were kept (un-filed), so it doesn't read as data loss.
+  const onTrashAct = useCallback((id: string, name: string) => {
+    void trashAct(id);
+    toast(t('manuscript.actTrashed', { name, defaultValue: `Act "${name}" trashed — its chapters stayed in the book` }), {
+      duration: 10000,
+      action: { label: t('manuscript.undo', { defaultValue: 'Undo' }), onClick: () => void restoreAct(id) },
+    });
+  }, [trashAct, restoreAct, t]);
 
   // 1-based ordinal per top-level arc → roman numeral label (ARC I / II / …). Computed over the
   // full loaded row list (not the virtual window) so it's stable as you scroll.
@@ -94,6 +181,8 @@ export function ManuscriptNavigator({ bookId, token, selectedId, onSelect, onNew
   const fmt = (n: number) => n.toLocaleString();
   const statParts: string[] = [];
   if (counts.arcs != null && counts.arcs > 0) statParts.push(t('manuscript.statArcs', { n: fmt(counts.arcs), defaultValue: '{{n}} arc' }));
+  // S-02c B1 — acts count as "act", never "arc".
+  if (partsMode && parts.length > 0) statParts.push(t('manuscript.statActs', { count: parts.length, n: fmt(parts.length), defaultValue: '{{n}} act' }));
   if (counts.chapters != null) statParts.push(t('manuscript.statChapters', { n: fmt(counts.chapters), defaultValue: '{{n}} ch' }));
   if (counts.scenes != null && counts.scenes > 0) statParts.push(t('manuscript.statScenes', { n: fmt(counts.scenes), defaultValue: '{{n}} sc' }));
 
@@ -109,12 +198,52 @@ export function ManuscriptNavigator({ bookId, token, selectedId, onSelect, onNew
       <div className="flex h-[34px] flex-shrink-0 items-center justify-between border-b pl-3 pr-2 text-[10px] font-bold uppercase tracking-[0.06em] text-muted-foreground">
         <span>{t('manuscript.title', { defaultValue: 'Manuscript' })}</span>
         <div className="flex items-center gap-0.5">
+          {/* S-02 — New act (manuscript part). Only meaningful for a manuscript-structured book
+              (no composition Work); the outline owns the hierarchy when a Work exists. */}
+          {source === 'chapters' && (
+            <>
+              {/* M3 (F2) — create a chapter + open it in the editor, right here. The sealed amendment
+                  to the 2026-07-17 "creation lives on the Plan rail" stance: a writer expects to make
+                  a chapter where their chapters are. Distinct from the "+" (Plan) to its right. */}
+              {onCreateChapter && (
+                <button
+                  type="button"
+                  data-testid="manuscript-chapter-new"
+                  onClick={onCreateChapter}
+                  disabled={creatingChapter}
+                  title={t('manuscript.newChapter', { defaultValue: 'New chapter' })}
+                  className="flex h-5 items-center gap-0.5 rounded px-1 text-[10px] font-semibold uppercase tracking-[0.04em] text-muted-foreground hover:bg-secondary hover:text-foreground disabled:opacity-40"
+                >
+                  <Plus className="h-3.5 w-3.5" />
+                  {t('manuscript.chapterShort', { defaultValue: 'Chapter' })}
+                </button>
+              )}
+              {/* S-02c B7 — a LABELED "Act" button so it isn't confused with the Plan "+" beside it. */}
+              <button
+                type="button"
+                data-testid="manuscript-part-new"
+                onClick={onNewAct}
+                // The label reads "Part"; the tooltip does double duty as the F6 explainer, at the
+                // exact spot the "Part" vs "Arc" distinction could confuse (renamed from "Act").
+                title={t('manuscript.partVsArc', { defaultValue: 'Parts group your manuscript. Arcs are the plan.' })}
+                className="flex h-5 items-center gap-0.5 rounded px-1 text-[10px] font-semibold uppercase tracking-[0.04em] text-muted-foreground hover:bg-secondary hover:text-foreground"
+              >
+                <FolderPlus className="h-3.5 w-3.5" />
+                {t('manuscript.actShort', { defaultValue: 'Act' })}
+              </button>
+              <span className="mx-0.5 h-3.5 w-px bg-border" />
+            </>
+          )}
+          {/* Opens the PLAN (plan-hub), it does not create a chapter — structure authoring is a spec
+              act and lives on the Plan rail (StudioSideBar's rail contract). The label changed with
+              the behaviour on 2026-07-17: it read "New chapter" while being permanently disabled,
+              which is the worst of both — a promise it never kept and couldn't. */}
           <button
             type="button"
             data-testid="manuscript-new"
             onClick={onNewChapter}
             disabled={!onNewChapter}
-            title={t('manuscript.newChapter', { defaultValue: 'New chapter' })}
+            title={t('manuscript.openPlan', { defaultValue: 'Plan this book' })}
             className="flex h-5 w-5 items-center justify-center rounded text-muted-foreground hover:bg-secondary hover:text-foreground disabled:pointer-events-none disabled:opacity-40"
           >
             <Plus className="h-3.5 w-3.5" />
@@ -172,6 +301,19 @@ export function ManuscriptNavigator({ bookId, token, selectedId, onSelect, onNew
       {error && !jump.active && <div className="px-3 py-1.5 text-[11px] text-amber-600">{error}</div>}
 
       <div ref={parentRef} data-testid="manuscript-scroll" className="min-h-0 flex-1 overflow-y-auto">
+        {/* S-02c — inline "new act" input at the top of the list (replaces window.prompt) */}
+        {creatingAct && !jump.active && (
+          <div className="flex items-center gap-1 px-2 py-1">
+            <FolderPlus className="h-3.5 w-3.5 flex-shrink-0 text-accent" />
+            <ActNameInput
+              testid="manuscript-part-new-input"
+              initial=""
+              placeholder={t('manuscript.newActPlaceholder', { defaultValue: 'New act name…' })}
+              onCommit={commitNewAct}
+              onCancel={() => setCreatingAct(false)}
+            />
+          </div>
+        )}
         {jump.active ? (
           /* ── Server search results (flat list across the WHOLE book) ─────────── */
           jump.results.length === 0 ? (
@@ -206,8 +348,22 @@ export function ManuscriptNavigator({ bookId, token, selectedId, onSelect, onNew
             </div>
           )
         ) : rows.length === 0 && !error ? (
-          <div className="p-4 text-center text-[11px] text-muted-foreground">
-            {t('manuscript.empty', { defaultValue: 'No chapters yet.' })}
+          <div className="flex flex-col items-center gap-2 p-4 text-center">
+            <p className="text-[11px] text-muted-foreground">{t('manuscript.empty', { defaultValue: 'No chapters yet.' })}</p>
+            {/* M3 (F2) — don't dead-end an empty book: offer the write door right here. */}
+            {onCreateChapter && (
+              <button
+                type="button"
+                data-testid="manuscript-empty-create"
+                onClick={onCreateChapter}
+                disabled={creatingChapter}
+                className="rounded-md bg-primary px-3 py-1.5 text-[11px] font-semibold text-primary-foreground transition hover:brightness-105 disabled:opacity-50"
+              >
+                {creatingChapter
+                  ? t('manuscript.creatingChapter', { defaultValue: 'Creating…' })
+                  : `＋ ${t('manuscript.startFirstChapter', { defaultValue: 'Start your first chapter' })}`}
+              </button>
+            )}
           </div>
         ) : (
           /* ── Virtualized tree ───────────────────────────────────────────────── */
@@ -250,7 +406,14 @@ export function ManuscriptNavigator({ bookId, token, selectedId, onSelect, onNew
               const { node, depth, expanded, loading } = row;
               const selected = selectedId === node.id;
               const isArc = node.kind === 'arc';
+              const isPart = node.kind === 'part';                       // S-02 act group header
+              const isUnassigned = isPart && node.status === 'unassigned'; // the flat-manuscript bucket
               const isScene = node.kind === 'scene';
+              const isChapter = node.kind === 'chapter';
+              const isGroup = isArc || isPart; // an expandable group header (click toggles, not select)
+              // S-02b — this act's position among active acts, for the ↑/↓ reorder buttons.
+              const actIdx = isPart && !isUnassigned ? parts.findIndex((p) => p.part_id === node.id) : -1;
+              const canReorder = parts.length >= 2;
               return (
                 <div
                   key={node.id}
@@ -258,15 +421,33 @@ export function ManuscriptNavigator({ bookId, token, selectedId, onSelect, onNew
                   role="treeitem"
                   aria-expanded={node.hasChildren ? expanded : undefined}
                   aria-selected={selected}
-                  onClick={() => (isArc ? (node.hasChildren && toggleExpand(node.id)) : onSelect?.(node))}
+                  // S-02 drag-a-chapter-between-acts: chapters are draggable; act headers are drop
+                  // targets → PATCH .../chapters/{id}/part (moveChapterToAct). Trusted HTML5 DnD.
+                  draggable={isChapter}
+                  onDragStart={isChapter ? (() => { dragChapterId.current = node.chapterId; }) : undefined}
+                  onDragEnd={isChapter ? (() => { dragChapterId.current = null; }) : undefined}
+                  onDragOver={isPart ? ((e) => e.preventDefault()) : undefined}
+                  onDragEnter={isPart ? (() => { if (dragChapterId.current) setDragOverPartId(node.id); }) : undefined}
+                  onDragLeave={isPart ? (() => setDragOverPartId((cur) => (cur === node.id ? null : cur))) : undefined}
+                  onDrop={isPart ? ((e) => {
+                    e.preventDefault();
+                    setDragOverPartId(null);
+                    const cid = dragChapterId.current;
+                    dragChapterId.current = null;
+                    if (cid) void moveChapterToAct(cid, isUnassigned ? null : node.id);
+                  }) : undefined}
+                  onClick={() => (isGroup ? (node.hasChildren && toggleExpand(node.id)) : onSelect?.(node))}
                   style={{ ...style, paddingLeft: 4 + depth * 16 }}
                   className={cn(
-                    'flex cursor-pointer items-center gap-1 pr-2 text-xs',
+                    'group/row flex cursor-pointer items-center gap-1 pr-2 text-xs',
                     selected ? 'bg-primary/10 text-primary' : 'hover:bg-secondary',
-                    isArc && 'font-bold',
+                    (isArc || isPart) && 'font-bold',
                     isArc && !selected && 'text-accent-foreground',
-                    node.kind === 'chapter' && 'font-medium',
+                    isUnassigned && !selected && 'text-amber-600',
+                    isChapter && 'font-medium',
                     isScene && !selected && 'text-muted-foreground',
+                    // S-02c B6 — drop-target highlight while a chapter is dragged over this act
+                    isPart && dragOverPartId === node.id && 'bg-primary/10 ring-1 ring-inset ring-primary',
                   )}
                 >
                   {/* selected-row accent bar (mockup .row.active::before) */}
@@ -278,7 +459,7 @@ export function ManuscriptNavigator({ bookId, token, selectedId, onSelect, onNew
                       type="button"
                       data-testid={`manuscript-caret-${node.id}`}
                       onClick={(e) => { e.stopPropagation(); toggleExpand(node.id); }}
-                      className={cn('flex h-4 w-4 flex-shrink-0 items-center justify-center', isArc ? 'text-accent' : 'text-muted-foreground')}
+                      className={cn('flex h-4 w-4 flex-shrink-0 items-center justify-center', (isArc || isPart) ? 'text-accent' : 'text-muted-foreground')}
                       aria-label={expanded ? 'collapse' : 'expand'}
                     >
                       {loading
@@ -294,24 +475,101 @@ export function ManuscriptNavigator({ bookId, token, selectedId, onSelect, onNew
                     </span>
                   )}
 
-                  {/* arc roman numeral / chapter number */}
+                  {/* arc roman numeral / act tag / chapter number */}
                   {isArc && (
                     <span className="flex-shrink-0 font-mono text-[9px] text-accent">
                       {t('manuscript.arc', { defaultValue: 'ARC' })} {toRoman(arcOrdinal.get(node.id) ?? 0)}
                     </span>
                   )}
-                  {node.kind === 'chapter' && node.number != null && (
+                  {isPart && !isUnassigned && (
+                    <span className="flex-shrink-0 font-mono text-[9px] text-accent">
+                      {t('manuscript.actTag', { defaultValue: 'ACT' })}
+                    </span>
+                  )}
+                  {isChapter && node.number != null && (
                     <span className="w-9 flex-shrink-0 text-left font-mono text-[10px] text-muted-foreground/50">
                       {String(node.number).padStart(4, '0')}
                     </span>
                   )}
 
-                  <span className="truncate">{node.title}</span>
+                  {isPart && !isUnassigned && editingActId === node.id ? (
+                    <ActNameInput
+                      testid={`manuscript-part-rename-input-${node.id}`}
+                      initial={node.title}
+                      placeholder={t('manuscript.renameActPlaceholder', { defaultValue: 'Act name…' })}
+                      onCommit={(v) => commitRename(node.id, v)}
+                      onCancel={() => setEditingActId(null)}
+                    />
+                  ) : (
+                    <span
+                      className="truncate"
+                      onDoubleClick={isPart && !isUnassigned ? ((e) => { e.stopPropagation(); setEditingActId(node.id); }) : undefined}
+                    >
+                      {node.title}
+                    </span>
+                  )}
 
-                  {/* child-count badge: chapter → scenes, arc → chapters */}
+                  {/* child-count badge: chapter → scenes, arc → chapters, act → chapters */}
                   {node.childCount != null && node.childCount > 0 && (
-                    <span className={cn('ml-auto flex-shrink-0 font-mono text-[9px]', isArc ? 'text-accent' : 'text-muted-foreground')}>
+                    <span className={cn('flex-shrink-0 font-mono text-[9px]', isPart ? 'ml-1' : 'ml-auto', (isArc || isPart) ? 'text-accent' : 'text-muted-foreground')}>
                       {node.childCount}
+                    </span>
+                  )}
+                  {/* S-02c B6 — an empty act reads as a drop target ("drag chapters here") */}
+                  {isPart && !isUnassigned && node.childCount === 0 && editingActId !== node.id && (
+                    <span className="ml-1 flex-shrink-0 truncate text-[10px] italic text-muted-foreground/50" data-testid={`manuscript-part-empty-hint-${node.id}`}>
+                      {t('manuscript.emptyActHint', { defaultValue: 'drag chapters here' })}
+                    </span>
+                  )}
+
+                  {/* S-02 act affordances (reorder / rename / trash) — real acts only. Revealed on
+                      hover for a fine pointer; on FOCUS-WITHIN (keyboard); and ALWAYS on a coarse
+                      pointer (touch — a stated platform, which has no hover). S-02c B5. */}
+                  {isPart && !isUnassigned && (
+                    <span className="ml-auto flex flex-shrink-0 items-center gap-0.5 opacity-0 group-hover/row:opacity-100 group-focus-within/row:opacity-100 [@media(pointer:coarse)]:opacity-100">
+                      {/* S-02b — reorder this act up/down (only with ≥2 acts; disabled at the ends) */}
+                      {canReorder && (
+                        <>
+                          <button
+                            type="button"
+                            data-testid={`manuscript-part-up-${node.id}`}
+                            disabled={actIdx <= 0}
+                            onClick={(e) => { e.stopPropagation(); void moveAct(node.id, 'up'); }}
+                            title={t('manuscript.moveActUp', { defaultValue: 'Move act up' })}
+                            className="flex h-4 w-4 items-center justify-center rounded text-muted-foreground hover:text-foreground disabled:pointer-events-none disabled:opacity-30"
+                          >
+                            <ChevronUp className="h-3 w-3" />
+                          </button>
+                          <button
+                            type="button"
+                            data-testid={`manuscript-part-down-${node.id}`}
+                            disabled={actIdx < 0 || actIdx >= parts.length - 1}
+                            onClick={(e) => { e.stopPropagation(); void moveAct(node.id, 'down'); }}
+                            title={t('manuscript.moveActDown', { defaultValue: 'Move act down' })}
+                            className="flex h-4 w-4 items-center justify-center rounded text-muted-foreground hover:text-foreground disabled:pointer-events-none disabled:opacity-30"
+                          >
+                            <ChevronDown className="h-3 w-3" />
+                          </button>
+                        </>
+                      )}
+                      <button
+                        type="button"
+                        data-testid={`manuscript-part-rename-${node.id}`}
+                        onClick={(e) => { e.stopPropagation(); setEditingActId(node.id); }}
+                        title={t('manuscript.renameAct', { defaultValue: 'Rename act' })}
+                        className="flex h-4 w-4 items-center justify-center rounded text-muted-foreground hover:text-foreground"
+                      >
+                        <Pencil className="h-3 w-3" />
+                      </button>
+                      <button
+                        type="button"
+                        data-testid={`manuscript-part-trash-${node.id}`}
+                        onClick={(e) => { e.stopPropagation(); onTrashAct(node.id, node.title); }}
+                        title={t('manuscript.trashAct', { defaultValue: 'Trash act' })}
+                        className="flex h-4 w-4 items-center justify-center rounded text-muted-foreground hover:text-destructive"
+                      >
+                        <Trash2 className="h-3 w-3" />
+                      </button>
                     </span>
                   )}
                 </div>
@@ -320,6 +578,32 @@ export function ManuscriptNavigator({ bookId, token, selectedId, onSelect, onNew
           </div>
         )}
       </div>
+
+      {/* S-02b — Trashed acts: the durable restore path (the undo toast is the immediate one).
+          Shown only when there are trashed acts; a restored act comes back EMPTY (chapters were
+          un-filed on trash and are NOT re-homed — S-02 sealed), so the hint says so. */}
+      {!jump.active && trashedActs.length > 0 && (
+        <div data-testid="manuscript-trashed-acts" className="flex-shrink-0 border-t bg-muted/20 px-2 py-1.5">
+          <div className="px-1 pb-1 text-[10px] font-bold uppercase tracking-[0.06em] text-muted-foreground">
+            {t('manuscript.trashedActs', { defaultValue: 'Trashed acts' })} · {trashedActs.length}
+          </div>
+          {trashedActs.map((p) => (
+            <div key={p.part_id} className="flex items-center gap-1 rounded px-1 py-0.5 text-xs text-muted-foreground hover:bg-secondary">
+              <Trash2 className="h-3 w-3 flex-shrink-0 opacity-50" />
+              <span className="truncate line-through">{p.title || t('manuscript.untitledAct', { defaultValue: '(untitled act)' })}</span>
+              <button
+                type="button"
+                data-testid={`manuscript-part-restore-${p.part_id}`}
+                onClick={() => void restoreAct(p.part_id)}
+                title={t('manuscript.restoreActHint', { defaultValue: 'Restore this act (it comes back empty — re-file chapters as needed)' })}
+                className="ml-auto flex-shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium text-primary hover:bg-primary/10"
+              >
+                {t('manuscript.restore', { defaultValue: 'Restore' })}
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
 
       {/* Footer: whole-book totals (arc·ch·sc) + virtual window position (mockup .nav-foot) */}
       <div className="flex h-6 flex-shrink-0 items-center gap-2 border-t px-3 font-mono text-[10px] text-muted-foreground">

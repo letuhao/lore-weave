@@ -371,5 +371,26 @@
     "no_restore": "No hay versiones anteriores para restaurar",
     "confirm_title": "¿Restaurar al estado anterior a esta edición de IA?",
     "confirm_desc": "Primero se guardará una captura del borrador actual, por lo que esto es reversible desde el historial de revisiones."
+  },
+  "knowledge": {
+    "add": "Añadir al conocimiento",
+    "reindex": "Actualizar conocimiento",
+    "indexed_badge": "En tu conocimiento",
+    "not_indexed_badge": "No está en el conocimiento",
+    "excluded_badge": "Excluido",
+    "forget": "Olvidar este capítulo",
+    "keep_out": "Excluir del conocimiento",
+    "allow": "Permitir en el conocimiento",
+    "save_first": "Guarda antes de añadir al conocimiento",
+    "indexed_toast": "Añadido a tu conocimiento",
+    "reused_toast": "Ya está actualizado; no ha habido cambios",
+    "empty_toast": "Este capítulo no tiene contenido para añadir; escribe algo primero.",
+    "excluded_toast": "Este capítulo se ha excluido de tu conocimiento; primero debes permitirlo.",
+    "forgotten_toast": "Olvidado: eliminado de tu conocimiento",
+    "allowed_toast": "Permitido. Elige «Añadir al conocimiento» cuando estés listo.",
+    "failed_toast": "No se pudo actualizar tu conocimiento; inténtalo de nuevo.",
+    "forget_confirm_title": "¿Olvidar este capítulo?",
+    "forget_confirm_body": "Todo lo aprendido de este capítulo se eliminará de tu conocimiento. El capítulo en sí no se elimina y podrás volver a añadirlo más tarde.",
+    "hint": "Añadir un capítulo a tu conocimiento permite que el asistente lo utilice. No es necesario publicarlo."
   }
 }

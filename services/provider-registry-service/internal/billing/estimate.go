@@ -299,6 +299,31 @@ func PriceEmbedding(inputTokens int, p Pricing) (float64, error) {
 	return embeddingCost(inputTokens, p)
 }
 
+// PriceSTT prices a REAL-TIME voice speech-to-text invocation by AUDIO DURATION (C6 / SD-C6). The
+// model's rate is `per_second` (a per-minute rate is per_second×60; pricing the seconds directly is
+// equivalent), so the billing math lives with the model in provider-registry — never hardcoded in a
+// consumer. A model with no per_second rate is ErrUnpriced (fail closed) — the price-voice endpoint
+// surfaces that as status='unpriced' and the chat caller WARNS (a paid model billing $0 is observable,
+// not silent). A $0 local model (Whisper) carries an explicit per_second=0 → priced, cost 0.
+//
+// NOTE (cold-review HIGH-1): the async STT-JOB estimate path (EstimateUSD case "stt") prices by
+// per_kchar(audio_chars) — a pre-flight PROXY for a different operation. Voice STT (accurate duration
+// meter) uses per_second. A model intended for VOICE must carry per_second. Unifying the two STT
+// metering conventions is tracked as D-STT-METER-UNIFY.
+func PriceSTT(audioSeconds float64, p Pricing) (float64, error) {
+	return perUnitCost(audioSeconds, p.PerSecond)
+}
+
+// PriceTTS prices a text-to-speech invocation by CHARACTER count (C6 / SD-C6). The model's rate is
+// `per_kchar` (per 1000 characters). Mirrors the estimate path's tts/audio_gen op so an estimate and the
+// real charge never disagree. Unpriced ⇒ fail closed (a local Kokoro carries per_kchar=0).
+func PriceTTS(chars int, p Pricing) (float64, error) {
+	if chars < 0 {
+		chars = 0
+	}
+	return perUnitCost(float64(chars)/1000.0, p.PerKChar)
+}
+
 // perUnitCost prices a job with a single per-unit dimension (per_image,
 // per_second, per_kchar). A nil rate is unpriced → fail closed.
 func perUnitCost(units float64, rate *float64) (float64, error) {

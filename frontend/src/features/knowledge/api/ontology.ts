@@ -35,6 +35,7 @@ import type {
   SyncApplyResult,
   SyncDiff,
   TriageGroupList,
+  TriageItemList,
   TriageListParams,
   TriageResolvePayload,
   TriageResolveResult,
@@ -517,6 +518,19 @@ export const ontologyApi = {
     return apiJson(
       `${BASE}/projects/${projectId}/triage/${triageId}/dismiss`,
       { method: 'POST', token },
+    );
+  },
+
+  // S-05 — the pending items of one signature (per-item drill-in), so the FE can
+  // dismiss a single noisy item via dismissTriageItem instead of the whole group.
+  listTriageItems(
+    projectId: string,
+    signature: string,
+    token: string,
+  ): Promise<TriageItemList> {
+    return apiJson(
+      `${BASE}/projects/${projectId}/triage/${encodeURIComponent(signature)}/items`,
+      { token },
     );
   },
 };

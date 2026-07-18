@@ -32,6 +32,11 @@ export interface Project {
   // queues a pending fact for the user to confirm/reject instead of
   // writing it straight to the graph. Default false — opt-in.
   memory_remember_confirm: boolean;
+  // WS-4C Half A: when true, every 4th chat turn is sent to glossary to
+  // extract the entities it newly NAMED, which land in the book's review
+  // inbox as ai-suggested drafts (never canon). Default false — OPT-IN,
+  // because each capture is an LLM call billed to the user's own model.
+  canon_capture_enabled: boolean;
   extraction_status: ExtractionStatus;
   embedding_model: string | null;
   // K12.4: dimension derived from embedding_model server-side.
@@ -90,6 +95,8 @@ export interface ProjectUpdatePayload {
   // K21-C (D4): per-project `memory_remember` confirmation gate.
   // Omit to leave unchanged.
   memory_remember_confirm?: boolean;
+  // WS-4C Half A: per-project canon auto-capture. Omit to leave unchanged.
+  canon_capture_enabled?: boolean;
 }
 
 export interface ProjectListResponse {

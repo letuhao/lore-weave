@@ -24,7 +24,10 @@ type Props = {
   settings: Record<string, unknown>;
   scenesAllDone: boolean;
   token: string | null;
-  onAccept: (text: string) => void;
+  // Returns TRUE only when the assembled chapter actually landed in the editor. We keep the preview
+  // (and skip the edit-correction) on false, so accepting a whole generated chapter before the Editor
+  // is open on this chapter doesn't evaporate it (legacy co-mount always returns true).
+  onAccept: (text: string) => boolean;
 };
 
 export function ChapterAssembleView({
@@ -69,10 +72,12 @@ export function ChapterAssembleView({
   const correct = (body: CorrectionBody) => { if (result) correction.mutate({ jobId: result.job_id, body }); };
   const accept = () => {
     if (!result) return;
+    // Insert first; if it failed (no editor open on this chapter in the dock) keep the preview and do
+    // NOT capture a correction or clear — the writer can Accept again once the Editor is up.
+    if (!onAccept(edited)) return;
     // edit-capture: only a REAL change is a correction (the BE 422s a zero-change
     // edit; accept-as-is is not a kind — H2 self-reinforcement guard).
     if (edited.trim() !== result.text.trim()) correct({ kind: 'edit', edited_text: edited });
-    onAccept(edited);
     setResult(null);
   };
   const regenerate = () => { correct({ kind: 'regenerate' }); rerun(); };
@@ -126,6 +131,13 @@ export function ChapterAssembleView({
           {stitch.isPending ? t('stitching', { defaultValue: 'Stitching…' }) : t('stitchChapter', { defaultValue: 'Stitch chapter' })}
         </button>
         {!modelRef && <span className="self-center text-xs text-amber-600">{t('needModel', { defaultValue: 'Pick a model' })}</span>}
+        {/* D-S1-GATE-REASON-INLINE: once a model IS picked, the only remaining stitch gate is
+            scenes-done — surface it inline (not just the disabled button's tooltip). */}
+        {modelRef && !scenesAllDone && (
+          <span data-testid="assemble-stitch-blocked" className="self-center text-xs text-muted-foreground">
+            {t('stitchNeedsDone', { defaultValue: 'All scenes must be done to stitch' })}
+          </span>
+        )}
       </div>
 
       {errMsg && <div data-testid="assemble-error" className="rounded bg-red-50 p-2 text-xs text-red-700 dark:bg-red-950">{errMsg}</div>}

@@ -14,7 +14,7 @@ import logging
 from typing import Annotated, Any, Literal
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi import status as http_status
 from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, Field, StringConstraints
@@ -35,8 +35,12 @@ from app.db.repositories.generation_jobs import GenerationJobsRepo
 from app.db.repositories.grounding_pins import GroundingPinsRepo
 from app.db.repositories.style_voice import StyleProfileRepo, VoiceProfileRepo
 from app.db.repositories.narrative_thread import NarrativeThreadRepo
+from app.db.repositories.motif_application import MotifApplicationRepo
+from app.db.repositories.motif_repo import MotifRepo
+from app.db.repositories.motif_retrieve import MotifRetriever
+from app.db.pool import get_pool
 from app.db.repositories.outline import OutlineRepo
-from app.db.repositories.references import ReferencesRepo
+from app.db.repositories.references import ReferencesRepo, reference_embed_model
 from app.db.repositories.scene_links import SceneLinksRepo
 from app.db.repositories.works import WorksRepo
 from app.clients.embedding_client import EmbeddingClient
@@ -44,11 +48,13 @@ from app.deps import (
     get_book_client_dep, get_canon_rules_repo, get_derivatives_repo,
     get_embedding_client_dep, get_generation_corrections_repo, get_generation_jobs_repo,
     get_glossary_client_dep, get_grant_client_dep, get_grounding_pins_repo,
-    get_knowledge_client_dep, get_llm_client_dep, get_narrative_thread_repo,
+    get_knowledge_client_dep, get_llm_client_dep, get_motif_application_repo_opt,
+    get_motif_repo_opt, get_narrative_thread_repo,
     get_outline_repo, get_references_repo, get_scene_links_repo,
-    get_style_profile_repo, get_voice_profile_repo, get_works_repo,
+    get_structure_repo, get_style_profile_repo, get_voice_profile_repo, get_works_repo,
 )
 from app.db.repositories.derivatives import DerivativesRepo
+from app.db.repositories.structure import StructureRepo
 from app.db.models import CorrectionKind
 from app.engine.adaptive_k import adaptive_k
 from app.engine.chapter_gen import build_chapter_pack_node, union_cast
@@ -180,6 +186,10 @@ class ScenePromoteProseBody(BaseModel):
     # node_id; the key is trace-only).
     text: Annotated[str, StringConstraints(max_length=200_000)]
     idempotency_key: Annotated[str, StringConstraints(max_length=200)] | None = None
+    # S5-B4 (D-S5-BRANCHDIFF-CORRESPONDENCE) — the CANON scene this take is an alternate
+    # of, so the branch-diff can pair this derivative scene to its canon counterpart
+    # (the promoted scene gets a fresh dense story_order that can't be paired by order).
+    anchor_node_id: UUID | None = None
 
 
 class CritiqueBody(BaseModel):
@@ -215,11 +225,28 @@ class CorrectionBody(BaseModel):
     regenerated_to_job_id: UUID | None = None
 
 
-async def _load_work_node(works, outline, user_id, project_id, node_id):
-    work = await works.get(user_id, project_id)
+async def _gate_work(works, grant, user_id, project_id, need=GrantLevel.EDIT):
+    """Resolve the Work by project (un-user-scoped — 25 PM-9) and gate the
+    caller's E0 grant on its book (PM-8: access is decided HERE, never in the
+    repos). Default EDIT — prose-gen/spend tier (E0-4c); reads pass VIEW.
+    none→404 (no oracle), under-tier→403. pack()'s own authorize_book stays as
+    the defense-in-depth chokepoint on the packing paths."""
+    work = await works.get(project_id)
     if work is None:
         raise HTTPException(status_code=404, detail="work not found")
-    node = await outline.get_node(user_id, node_id)
+    try:
+        await authorize_book(grant, work.book_id, user_id, need)
+    except OwnershipError:
+        raise HTTPException(status_code=404, detail="work not found")
+    except InsufficientGrant:
+        raise HTTPException(status_code=403, detail="insufficient access")
+    return work
+
+
+async def _load_work_node(works, outline, grant, user_id, project_id, node_id,
+                          need=GrantLevel.EDIT):
+    work = await _gate_work(works, grant, user_id, project_id, need)
+    node = await outline.get_node(node_id)
     if node is None or str(node.project_id) != str(project_id):
         raise HTTPException(status_code=404, detail="scene not found")
     return work, node
@@ -247,14 +274,14 @@ async def _maybe_detect_narrative_threads(
         logger.warning("narrative_thread S2 producer failed (advisory)", exc_info=True)
 
 
-async def _open_promise_count(work, *, repo, user_id, project_id) -> int | None:
+async def _open_promise_count(work, *, repo, project_id) -> int | None:
     """FD-1 S4a — the advisory unpaid-promise DEBT count (§7) after a generated
     chapter. None when narrative_thread is off (no read); best-effort — never
     raises into the generate path. Extracted so the gate/swallow is unit-testable."""
     if not (work.settings or {}).get("narrative_thread_enabled"):
         return None
     try:
-        return await repo.count_open(user_id, project_id)
+        return await repo.count_open(project_id)
     except Exception:  # noqa: BLE001 — advisory; must not fail the generate
         logger.warning("open_promise_count read failed (advisory)", exc_info=True)
         return None
@@ -313,6 +340,9 @@ async def generate(
     bearer: str = Depends(get_bearer_token),
     works: WorksRepo = Depends(get_works_repo),
     outline: OutlineRepo = Depends(get_outline_repo),
+    structures: StructureRepo | None = Depends(get_structure_repo),
+    motif_apps: MotifApplicationRepo | None = Depends(get_motif_application_repo_opt),  # X-7 motif lens
+    motifs: MotifRepo | None = Depends(get_motif_repo_opt),  # X-7 motif lens
     scene_links: SceneLinksRepo = Depends(get_scene_links_repo),
     canon: CanonRulesRepo = Depends(get_canon_rules_repo),
     jobs: GenerationJobsRepo = Depends(get_generation_jobs_repo),
@@ -327,8 +357,10 @@ async def generate(
     references: ReferencesRepo = Depends(get_references_repo),
     embedder: EmbeddingClient = Depends(get_embedding_client_dep),
     derivatives: DerivativesRepo = Depends(get_derivatives_repo),
+    grant: GrantClient = Depends(get_grant_client_dep),
 ) -> Any:  # StreamingResponse (cowrite) | JSONResponse (auto)
-    work, node = await _load_work_node(works, outline, user_id, project_id, body.outline_node_id)
+    work, node = await _load_work_node(
+        works, outline, grant, user_id, project_id, body.outline_node_id)
 
     # B2 — this is the PER-SCENE endpoint. An explicit assembly_mode='chapter'
     # override here is a caller mistake (chapter assembly has its own endpoint),
@@ -364,7 +396,7 @@ async def generate(
     # C25 — dị bản two-project merge inputs (base project + branch + fresh
     # overrides); empty for a non-derivative Work.
     deriv = await build_derivative_context(
-        work, user_id=user_id, works_repo=works, derivatives_repo=derivatives)
+        work, works_repo=works, derivatives_repo=derivatives)
     # Retrieve (M4 packer) — raises OwnershipError (404) / BookClientError (502).
     try:
         pc = await pack(
@@ -375,9 +407,13 @@ async def generate(
                         # fires gather_source_scene; every other op is byte-unchanged.
                         operation=body.operation,
                         source_project_id=deriv.source_project_id,
-                        branch_point=deriv.branch_point, overrides=deriv.overrides),
+                        branch_point=deriv.branch_point, overrides=deriv.overrides,
+                        pov_anchor=deriv.pov_anchor),
             book=book, glossary=glossary, knowledge=knowledge, canon_repo=canon,
             outline_repo=outline, scene_links_repo=scene_links,
+            structure_repo=structures,  # 23 BA12 — the arc lens
+            motif_application_repo=motif_apps,  # X-7 — the motif lens (scene beats)
+            motif_repo=motifs,  # X-7 — ditto; BOTH must ride or the lens is dormant
             budget_tokens=_pack_budget,
             jobs_repo=jobs,  # S1 state-reinjection fallback source (prior generated scenes)
             compress_fn=_compress_fn,  # S2 long-chapter state compression
@@ -411,7 +447,7 @@ async def generate(
     # NOTE: canon counts are PROJECT-LEVEL (all active rules), not scene-windowed —
     # a deliberate conservative approximation that biases early scenes toward more
     # thinking; precise per-scene scoping is a tuning follow-up (D-AUTO-REASONING-SCENE-SIGNALS).
-    active_rules = await canon.list_active(user_id, project_id)
+    active_rules = await canon.list_active(project_id)
     signals = ReasoningSignals(
         operation=body.operation,
         n_canon_rules=len(active_rules),
@@ -459,7 +495,7 @@ async def generate(
         })
 
     job, created = await jobs.create(
-        user_id, project_id, operation=body.operation, outline_node_id=node.id,
+        project_id, created_by=user_id, operation=body.operation, outline_node_id=node.id,
         mode=body.mode, status="pending" if worker_auto else "running",
         input=job_input,
         idempotency_key=body.idempotency_key,
@@ -468,9 +504,9 @@ async def generate(
     # created a new one (an idempotent replay must NOT cancel the original
     # still-streaming job). Exclude the new job itself. /review-impl M6 MED#1.
     if created:
-        for active in await jobs.list_active_for_node(user_id, project_id, node.id):
+        for active in await jobs.list_active_for_node(project_id, node.id):
             if str(active.id) != str(job.id):
-                await jobs.update_status(user_id, active.id, "cancelled")
+                await jobs.update_status(active.id, "cancelled")
 
     # M4 worker auto path: the pack/cancel/reasoning all ran above (bearer); now
     # persist-input + enqueue + 202. GET /jobs/{id} polls the result. A same-key
@@ -531,7 +567,7 @@ async def generate(
             )
         except Exception as exc:  # diverge produced nothing / transport — fail the job, 502
             logger.warning("auto select failed: %s", exc)
-            await jobs.update_status(user_id, job.id, "failed")
+            await jobs.update_status(job.id, "failed")
             raise HTTPException(status_code=502, detail={"code": "GENERATE_FAILED"})
         w = sel.winner
         # ── A2-S3b: canon check→revise on the converged winner (D1). The SCORE
@@ -584,7 +620,7 @@ async def generate(
         # else a cut-off repair is a silent green.
         truncated = (w.metering.finish_reason == "length") or (revise_finish == "length")
         await jobs.update_status(
-            user_id, job.id, "completed",
+            job.id, "completed",
             result={"text": final_text, "input_tokens": w.metering.input_tokens,
                     "output_tokens": total_out, "measured": w.metering.measured,
                     "k": len(sel.candidates), "winner_index": sel.winner_index,
@@ -638,28 +674,41 @@ async def generate(
                 final = ev
             else:
                 yield _sse(ev)
-        if final is not None:
+        # D-ENGINE-ERRORED-JOB-MARKED-COMPLETED: an LLMError with NO content (a
+        # resolve failure metered at 0) still yields a terminal usage frame — but it
+        # is a FAILURE, not a completed zero-token job (a retry/idempotency layer must
+        # not treat it as done). Partial-content-then-error stays completed+truncated.
+        if final is not None and not (final.get("error") and not final["text"]):
             m = final["metering"]
             # D-COMP-TRUNCATION-SURFACING: "length" ⇒ the model hit its max_tokens
             # cap. DISTINCT from `capped` (composition's own hard-cap abort, which
             # breaks BEFORE the DoneEvent so finish_reason stays None). Both mean the
             # output was cut — a consumer wanting "incomplete?" should treat
             # (capped OR truncated) as the signal; both are surfaced below.
-            truncated = m.finish_reason == "length"
-            await jobs.update_status(
-                user_id, job.id, "completed",
-                result={"text": final["text"], "input_tokens": m.input_tokens,
-                        "output_tokens": m.output_tokens, "measured": m.measured,
-                        "capped": final.get("capped", False),
-                        "truncated": truncated, "finish_reason": m.finish_reason},
-            )
+            # A mid-stream error AFTER partial content also lands here (we keep the
+            # partial work), but finish_reason is None on an error interruption — so OR
+            # in the error to mark it truncated + surface the reason, else the abruptly
+            # cut fragment renders as a clean, finished draft (review MED).
+            stream_error = final.get("error")
+            truncated = m.finish_reason == "length" or bool(stream_error)
+            result = {"text": final["text"], "input_tokens": m.input_tokens,
+                      "output_tokens": m.output_tokens, "measured": m.measured,
+                      "capped": final.get("capped", False),
+                      "truncated": truncated, "finish_reason": m.finish_reason}
+            if stream_error:
+                result["error"] = stream_error
+            await jobs.update_status(job.id, "completed", result=result)
             yield _sse({"type": "done", "job_id": str(job.id), "status": "completed",
                         "output_tokens": m.output_tokens, "measured": m.measured,
                         "capped": final.get("capped", False),
-                        "truncated": truncated, "finish_reason": m.finish_reason})
+                        "truncated": truncated, "finish_reason": m.finish_reason,
+                        **({"error": stream_error} if stream_error else {})})
         else:
-            await jobs.update_status(user_id, job.id, "failed")
-            yield _sse({"type": "done", "job_id": str(job.id), "status": "failed"})
+            err = final.get("error") if final is not None else None
+            await jobs.update_status(
+                job.id, "failed", result={"error": err} if err else None)
+            yield _sse({"type": "done", "job_id": str(job.id), "status": "failed",
+                        **({"error": err} if err else {})})
 
     return StreamingResponse(event_gen(), media_type="text/event-stream")
 
@@ -672,6 +721,9 @@ async def selection_edit(
     bearer: str = Depends(get_bearer_token),
     works: WorksRepo = Depends(get_works_repo),
     outline: OutlineRepo = Depends(get_outline_repo),
+    structures: StructureRepo | None = Depends(get_structure_repo),
+    motif_apps: MotifApplicationRepo | None = Depends(get_motif_application_repo_opt),  # X-7 motif lens
+    motifs: MotifRepo | None = Depends(get_motif_repo_opt),  # X-7 motif lens
     scene_links: SceneLinksRepo = Depends(get_scene_links_repo),
     canon: CanonRulesRepo = Depends(get_canon_rules_repo),
     jobs: GenerationJobsRepo = Depends(get_generation_jobs_repo),
@@ -686,6 +738,7 @@ async def selection_edit(
     references: ReferencesRepo = Depends(get_references_repo),
     embedder: EmbeddingClient = Depends(get_embedding_client_dep),
     derivatives: DerivativesRepo = Depends(get_derivatives_repo),
+    grant: GrantClient = Depends(get_grant_client_dep),
 ) -> Any:
     """T3.2 — selection-scoped edit (rewrite/expand/describe) over the author's
     highlighted prose. Decoupled from outline_node_id (AH-1): a selection may sit
@@ -694,9 +747,7 @@ async def selection_edit(
     valid node (degrades to voice-only on any pack failure — never 404s on the
     grounding source). Streams the replacement (same SSE as cowrite); the FE
     replaces the Tiptap range on Accept (no server persistence until then)."""
-    work = await works.get(user_id, project_id)
-    if work is None:
-        raise HTTPException(status_code=404, detail="work not found")
+    work = await _gate_work(works, grant, user_id, project_id)
     profile = from_settings(work.settings)
     _src_lang = profile.source_language
     # T3.5 — the EFFECTIVE profile the prompt is built from. Upgraded to the packer's
@@ -714,7 +765,7 @@ async def selection_edit(
     grounding = ""
     node = None
     if body.scene_context is not None:
-        cand = await outline.get_node(user_id, body.scene_context)
+        cand = await outline.get_node(body.scene_context)
         if cand is not None and str(cand.project_id) == str(project_id):
             node = cand
 
@@ -728,15 +779,19 @@ async def selection_edit(
             try:
                 # C25 — dị bản two-project merge inputs (best-effort, like the pack).
                 deriv = await build_derivative_context(
-                    work, user_id=user_id, works_repo=works, derivatives_repo=derivatives)
+                    work, works_repo=works, derivatives_repo=derivatives)
                 pc = await pack(
                     PackRequest(user_id=user_id, project_id=project_id, book_id=work.book_id,
                                 node=node.model_dump(mode="python"), bearer=bearer, guide=body.guide,
                                 settings=work.settings,
                                 source_project_id=deriv.source_project_id,
-                                branch_point=deriv.branch_point, overrides=deriv.overrides),
+                                branch_point=deriv.branch_point, overrides=deriv.overrides,
+                        pov_anchor=deriv.pov_anchor),
                     book=book, glossary=glossary, knowledge=knowledge, canon_repo=canon,
                     outline_repo=outline, scene_links_repo=scene_links,
+                    structure_repo=structures,  # 23 BA12 — the arc lens
+                    motif_application_repo=motif_apps,  # X-7 — the motif lens
+                    motif_repo=motifs,  # X-7 — ditto; BOTH or dormant
                     budget_tokens=_pack_budget, jobs_repo=jobs,
                     compress_fn=_compress_fn, narrative_threads_repo=narrative_threads,
                     grounding_pins_repo=grounding_pins,  # T3.4 — honor per-scene pins
@@ -785,7 +840,7 @@ async def selection_edit(
         # stores the result; the FE polls GET /jobs/{id} then replaces the range on
         # Accept. outline_node_id stays None (same HIGH rationale above).
         job, _created = await jobs.create(
-            user_id, project_id, operation=body.operation, outline_node_id=None,
+            project_id, created_by=user_id, operation=body.operation, outline_node_id=None,
             mode="cowrite", status="pending",
             input={"model_source": body.model_source, "model_ref": str(body.model_ref),
                    "operation": body.operation, "worker_op": "selection_edit",
@@ -805,7 +860,7 @@ async def selection_edit(
                      "enqueued": "ok" if enqueued else "retriggerable"})
 
     job, created = await jobs.create(
-        user_id, project_id, operation=body.operation,
+        project_id, created_by=user_id, operation=body.operation,
         outline_node_id=None,
         mode="cowrite", status="running",
         input={"model_source": body.model_source, "model_ref": str(body.model_ref),
@@ -831,19 +886,31 @@ async def selection_edit(
                 final = ev
             else:
                 yield _sse(ev)
-        if final is not None:
+        # D-ENGINE-ERRORED-JOB-MARKED-COMPLETED (see draft-scene handler): an errored
+        # terminal frame with no content is a FAILURE, not a completed zero-token job.
+        if final is not None and not (final.get("error") and not final["text"]):
             m = final["metering"]
-            await jobs.update_status(
-                user_id, job.id, "completed",
-                result={"text": final["text"], "input_tokens": m.input_tokens,
-                        "output_tokens": m.output_tokens, "measured": m.measured,
-                        "finish_reason": m.finish_reason, "selection_edit": True})
+            # Partial-content-then-error keeps the work but must be flagged truncated + carry the
+            # reason (else the cut edit looks clean — review MED).
+            stream_error = final.get("error")
+            truncated = m.finish_reason == "length" or bool(stream_error)
+            result = {"text": final["text"], "input_tokens": m.input_tokens,
+                      "output_tokens": m.output_tokens, "measured": m.measured,
+                      "truncated": truncated, "finish_reason": m.finish_reason,
+                      "selection_edit": True}
+            if stream_error:
+                result["error"] = stream_error
+            await jobs.update_status(job.id, "completed", result=result)
             yield _sse({"type": "done", "job_id": str(job.id), "status": "completed",
                         "output_tokens": m.output_tokens, "measured": m.measured,
-                        "finish_reason": m.finish_reason})
+                        "truncated": truncated, "finish_reason": m.finish_reason,
+                        **({"error": stream_error} if stream_error else {})})
         else:
-            await jobs.update_status(user_id, job.id, "failed")
-            yield _sse({"type": "done", "job_id": str(job.id), "status": "failed"})
+            err = final.get("error") if final is not None else None
+            await jobs.update_status(
+                job.id, "failed", result={"error": err} if err else None)
+            yield _sse({"type": "done", "job_id": str(job.id), "status": "failed",
+                        **({"error": err} if err else {})})
 
     return StreamingResponse(event_gen(), media_type="text/event-stream")
 
@@ -857,6 +924,9 @@ async def generate_chapter(
     bearer: str = Depends(get_bearer_token),
     works: WorksRepo = Depends(get_works_repo),
     outline: OutlineRepo = Depends(get_outline_repo),
+    structures: StructureRepo | None = Depends(get_structure_repo),
+    motif_apps: MotifApplicationRepo | None = Depends(get_motif_application_repo_opt),  # X-7 motif lens
+    motifs: MotifRepo | None = Depends(get_motif_repo_opt),  # X-7 motif lens
     scene_links: SceneLinksRepo = Depends(get_scene_links_repo),
     canon: CanonRulesRepo = Depends(get_canon_rules_repo),
     jobs: GenerationJobsRepo = Depends(get_generation_jobs_repo),
@@ -871,17 +941,16 @@ async def generate_chapter(
     references: ReferencesRepo = Depends(get_references_repo),
     embedder: EmbeddingClient = Depends(get_embedding_client_dep),
     derivatives: DerivativesRepo = Depends(get_derivatives_repo),
+    grant: GrantClient = Depends(get_grant_client_dep),
 ) -> Any:
     """B2 chapter single-pass (assembly_mode='chapter'): generate a WHOLE chapter
     in ONE drafter pass from its A3 decompose plan (scene nodes), grounded at the
     chapter reading position, then run a chapter-level canon check+reflect over
     the union cast. Non-stream JSON (like the auto path). The synthetic pack node
     is in-memory only — never persisted (MED-1)."""
-    work = await works.get(user_id, project_id)
-    if work is None:
-        raise HTTPException(status_code=404, detail="work not found")
+    work = await _gate_work(works, grant, user_id, project_id)
 
-    scenes = await outline.scenes_for_chapter(user_id, project_id, chapter_id)
+    scenes = await outline.scenes_for_chapter(project_id, chapter_id)
     if not scenes:
         raise HTTPException(status_code=400, detail={
             "code": "NO_CHAPTER_PLAN", "detail": "chapter has no scene plan; decompose it first"})
@@ -891,7 +960,7 @@ async def generate_chapter(
     chapter_intent, chapter_title = "", ""
     parent_id = scenes[0].parent_id
     if parent_id is not None:
-        parent = await outline.get_node(user_id, parent_id)
+        parent = await outline.get_node(parent_id)
         if parent is not None and parent.kind == "chapter":
             chapter_intent, chapter_title = parent.goal, parent.title
 
@@ -920,16 +989,20 @@ async def generate_chapter(
     # C25 — dị bản two-project merge inputs (base project + branch + fresh
     # overrides); empty for a non-derivative Work.
     deriv = await build_derivative_context(
-        work, user_id=user_id, works_repo=works, derivatives_repo=derivatives)
+        work, works_repo=works, derivatives_repo=derivatives)
     try:
         pc = await pack(
             PackRequest(user_id=user_id, project_id=project_id, book_id=work.book_id,
                         node=pack_node, bearer=bearer, guide=body.guide,
                         settings=work.settings, chapter_sort_hint=chapter_sort,
                         source_project_id=deriv.source_project_id,
-                        branch_point=deriv.branch_point, overrides=deriv.overrides),
+                        branch_point=deriv.branch_point, overrides=deriv.overrides,
+                        pov_anchor=deriv.pov_anchor),
             book=book, glossary=glossary, knowledge=knowledge, canon_repo=canon,
             outline_repo=outline, scene_links_repo=scene_links,
+            structure_repo=structures,  # 23 BA12 — the arc lens
+            motif_application_repo=motif_apps,  # X-7 — the motif lens (scene beats)
+            motif_repo=motifs,  # X-7 — ditto; BOTH must ride or the lens is dormant
             budget_tokens=_pack_budget, jobs_repo=jobs,
             compress_fn=_compress_fn,
             narrative_threads_repo=narrative_threads,  # FD-1 S3 open-promise re-injection
@@ -953,7 +1026,7 @@ async def generate_chapter(
         raise HTTPException(status_code=413, detail={
             "code": "PROMPT_TOO_LARGE", "estimate": prompt_estimate, "ceiling": prompt_ceiling})
 
-    active_rules = await canon.list_active(user_id, project_id)
+    active_rules = await canon.list_active(project_id)
     signals = ReasoningSignals(
         operation=body.operation, n_canon_rules=len(active_rules),
         n_present_entities=len(pack_node["present_entity_ids"]),
@@ -996,7 +1069,7 @@ async def generate_chapter(
         }
         try:
             job, created = await jobs.create_chapter_job_guarded(
-                user_id, project_id, chapter_id, operation=body.operation,
+                project_id, chapter_id, created_by=user_id, operation=body.operation,
                 mode="auto", status="pending", input=job_input,
                 idempotency_key=body.idempotency_key,
                 stale_secs=settings.chapter_inflight_stale_secs,
@@ -1027,7 +1100,7 @@ async def generate_chapter(
     # once double-spend the LLM and race the persist. Same-key replay is honored.
     try:
         job, created = await jobs.create_chapter_job_guarded(
-            user_id, project_id, chapter_id, operation=body.operation,
+            project_id, chapter_id, created_by=user_id, operation=body.operation,
             mode="auto", status="running",
             input={"model_source": body.model_source, "model_ref": str(body.model_ref),
                    "operation": body.operation, "prompt_estimate": prompt_estimate,
@@ -1058,7 +1131,7 @@ async def generate_chapter(
             reasoning_effort=None if reasoning.passthrough else reasoning.effort)
     except Exception as exc:  # no candidate / transport — fail the job, 502
         logger.warning("chapter draft failed: %s", exc)
-        await jobs.update_status(user_id, job.id, "failed")
+        await jobs.update_status(job.id, "failed")
         raise HTTPException(status_code=502, detail={"code": "GENERATE_FAILED"})
     winner = cands[0]
 
@@ -1103,7 +1176,7 @@ async def generate_chapter(
     # detector just ran). None when off; best-effort. Uses count_open (a true
     # COUNT, not a capped list — review-impl MED#1).
     open_promise_count = await _open_promise_count(
-        work, repo=narrative_threads, user_id=user_id, project_id=project_id)
+        work, repo=narrative_threads, project_id=project_id)
 
     # MED-2 — best-effort persist of the assembled chapter to the book draft.
     persisted, draft_version, persist_error = False, None, None
@@ -1123,7 +1196,7 @@ async def generate_chapter(
     # A canon-revise repair can also truncate → OR in its stop reason (cy16).
     truncated = (winner.metering.finish_reason == "length") or (revise_finish == "length")
     await jobs.update_status(
-        user_id, job.id, "completed",
+        job.id, "completed",
         result={"text": final_text, "input_tokens": winner.metering.input_tokens,
                 "output_tokens": total_out, "measured": winner.metering.measured,
                 "truncated": truncated, "finish_reason": winner.metering.finish_reason,
@@ -1150,27 +1223,27 @@ async def stitch_chapter_endpoint(
     bearer: str = Depends(get_bearer_token),
     works: WorksRepo = Depends(get_works_repo),
     outline: OutlineRepo = Depends(get_outline_repo),
+    structures: StructureRepo | None = Depends(get_structure_repo),
     canon: CanonRulesRepo = Depends(get_canon_rules_repo),
     jobs: GenerationJobsRepo = Depends(get_generation_jobs_repo),
     book: BookClient = Depends(get_book_client_dep),
     knowledge: KnowledgeClient = Depends(get_knowledge_client_dep),
     llm: LLMClient = Depends(get_llm_client_dep),
+    grant: GrantClient = Depends(get_grant_client_dep),
 ) -> Any:
     """B3 per_scene+stitch: merge a chapter's done scene drafts into one seamless
     chapter (ONE LLM pass; degrade→raw concat), re-run the chapter-level canon
     guard, and best-effort persist to the book draft (MED-2). Gated on all scenes
     `done` (the publishable artifact). Non-stream JSON."""
-    work = await works.get(user_id, project_id)
-    if work is None:
-        raise HTTPException(status_code=404, detail="work not found")
+    work = await _gate_work(works, grant, user_id, project_id)
 
     # Trigger guard: the stitch is the publishable artifact → require all scenes
     # done (mirrors the publish-gate's done==total). 409 otherwise.
-    gate = await outline.chapter_scene_gate(user_id, project_id, chapter_id)
+    gate = await outline.chapter_scene_gate(project_id, chapter_id)
     if not (gate["scenes_total"] > 0 and gate["scenes_done"] == gate["scenes_total"]):
         raise HTTPException(status_code=409, detail={"code": "SCENES_NOT_DONE", "gate": gate})
 
-    draft_rows = await jobs.chapter_scene_drafts(user_id, project_id, chapter_id)
+    draft_rows = await jobs.chapter_scene_drafts(project_id, chapter_id)
     if not draft_rows:
         raise HTTPException(status_code=400, detail={
             "code": "NO_SCENE_DRAFTS", "detail": "no completed scene drafts to stitch"})
@@ -1178,15 +1251,15 @@ async def stitch_chapter_endpoint(
     # the persist step (prose_doc) lifts these into sceneId-anchored heading nodes.
     drafts = prepend_scene_headings(draft_rows)
 
-    scenes = await outline.scenes_for_chapter(user_id, project_id, chapter_id)
+    scenes = await outline.scenes_for_chapter(project_id, chapter_id)
     chapter_intent = ""
     if scenes and scenes[0].parent_id is not None:
-        parent = await outline.get_node(user_id, scenes[0].parent_id)
+        parent = await outline.get_node(scenes[0].parent_id)
         if parent is not None and parent.kind == "chapter":
             chapter_intent = parent.goal
     profile = from_settings(work.settings)
 
-    active_rules = await canon.list_active(user_id, project_id)
+    active_rules = await canon.list_active(project_id)
     signals = ReasoningSignals(
         operation="stitch_chapter", n_canon_rules=len(active_rules),
         n_present_entities=len(union_cast(scenes)),
@@ -1226,7 +1299,7 @@ async def stitch_chapter_endpoint(
         }
         try:
             job, created = await jobs.create_chapter_job_guarded(
-                user_id, project_id, chapter_id, operation="stitch_chapter",
+                project_id, chapter_id, created_by=user_id, operation="stitch_chapter",
                 mode="auto", status="pending", input=job_input,
                 idempotency_key=body.idempotency_key,
                 stale_secs=settings.chapter_inflight_stale_secs,
@@ -1254,7 +1327,7 @@ async def stitch_chapter_endpoint(
     # draft. Same-key idempotent replay is honored before the guard.
     try:
         job, created = await jobs.create_chapter_job_guarded(
-            user_id, project_id, chapter_id, operation="stitch_chapter",
+            project_id, chapter_id, created_by=user_id, operation="stitch_chapter",
             mode="auto", status="running",
             input={"model_source": body.model_source, "model_ref": str(body.model_ref),
                    "operation": "stitch_chapter", "assembly_mode": "per_scene_stitch",
@@ -1330,7 +1403,7 @@ async def stitch_chapter_endpoint(
             scenes=_scene_marker_rows(scenes))
 
     await jobs.update_status(
-        user_id, job.id, "completed",
+        job.id, "completed",
         result={"text": final_text, "canon": canon_v, "assembly_mode": "per_scene_stitch",
                 "stitched": not degraded, "chapter_id": str(chapter_id),
                 "truncated": truncated, "finish_reason": stitch_finish,
@@ -1351,13 +1424,50 @@ async def suggest_cast(
     user_id: UUID = Depends(get_current_user),
     works: WorksRepo = Depends(get_works_repo),
     outline: OutlineRepo = Depends(get_outline_repo),
+    structures: StructureRepo | None = Depends(get_structure_repo),
     glossary: GlossaryClient = Depends(get_glossary_client_dep),
+    grant: GrantClient = Depends(get_grant_client_dep),
 ) -> dict[str, Any]:
-    work, node = await _load_work_node(works, outline, user_id, project_id, node_id)
+    work, node = await _load_work_node(
+        works, outline, grant, user_id, project_id, node_id, GrantLevel.VIEW)
     query = " ".join(str(x) for x in [node.goal, node.synopsis, node.title, body.guide] if x)
     bios = await glossary.select_for_context(work.book_id, user_id, query)
     suggested = [b["entity_id"] for b in bios if b.get("entity_id")]
     return {"suggested_entity_ids": suggested}
+
+
+@router.get("/works/{project_id}/scenes/{node_id}/suggest-motifs")
+async def suggest_motifs(
+    project_id: UUID, node_id: UUID,
+    limit: int = Query(default=5, ge=1, le=20),
+    user_id: UUID = Depends(get_current_user),
+    works: WorksRepo = Depends(get_works_repo),
+    outline: OutlineRepo = Depends(get_outline_repo),
+    grant: GrantClient = Depends(get_grant_client_dep),
+) -> dict[str, Any]:
+    """BE-M4 — ranked motif candidates for a chapter node, each with a `match_reason`
+    breakdown (tension/genre/precondition/semantic). The GUI twin of the agent-only
+    `composition_motif_suggest_for_chapter` — it replaces the FE's flat `list(scope=all,100)`
+    behind SwapMotifPopover (spec 33 §2.5: a GG-1 Determinism gap in one hook). VIEW-gated on
+    the Work's book; a node from another Work → uniform 404 (per-tool IDOR)."""
+    work, node = await _load_work_node(
+        works, outline, grant, user_id, project_id, node_id, GrantLevel.VIEW)
+    retriever = MotifRetriever(get_pool())
+    # Two-space retrieval (2026-07-17 tenancy re-design): the caller's OWN BYOK embed model
+    # (from the Work settings) ranks their STRICTLY-PRIVATE motifs in their own space
+    # (section='mine'); shared motifs rank in the platform space (section='library'). None ⇒
+    # private motifs degrade to genre+tension (the platform never embeds private content).
+    candidates = await retriever.retrieve(
+        user_id, book_id=work.book_id, project_id=project_id,
+        genre_tags=list(getattr(work, "genre_tags", []) or []),
+        language=getattr(work, "language", None) or "en",
+        beat_role=None, tension=getattr(node, "tension_target", None), limit=limit,
+        user_model=reference_embed_model(getattr(work, "settings", None)),
+    )
+    return {"candidates": [
+        {"motif": c.motif.model_dump(mode="json"), "score": c.score, "match_reason": c.match_reason}
+        for c in candidates
+    ]}
 
 
 @router.get("/jobs/{job_id}")
@@ -1365,9 +1475,43 @@ async def get_job(
     job_id: UUID,
     user_id: UUID = Depends(get_current_user),
     jobs: GenerationJobsRepo = Depends(get_generation_jobs_repo),
+    works: WorksRepo = Depends(get_works_repo),
+    grant: GrantClient = Depends(get_grant_client_dep),
 ) -> dict[str, Any]:
-    job = await jobs.get(user_id, job_id)
+    job = await jobs.get(job_id)
     if job is None:
+        raise HTTPException(status_code=404, detail="job not found")
+    # By-id route: gate on the job's OWN project→book (PM-8; VIEW = read tier).
+    # An UNBOUND job (BE-7c: project_id IS NULL) has no Work to gate on, so it can never
+    # be read here — that is correct and deliberate. Its route is /motif-jobs/{job_id}.
+    if job.project_id is None:
+        raise HTTPException(status_code=404, detail="job not found")
+    await _gate_work(works, grant, user_id, job.project_id, GrantLevel.VIEW)
+    return job.model_dump(mode="json")
+
+
+@router.get("/motif-jobs/{job_id}")
+async def get_motif_job(
+    job_id: UUID,
+    user_id: UUID = Depends(get_current_user),
+    jobs: GenerationJobsRepo = Depends(get_generation_jobs_repo),
+) -> dict[str, Any]:
+    """BE-7c — the OWNER-scoped job read.
+
+    `GET /jobs/{job_id}` gates on the job's project→book grant (`_gate_work`). That is
+    correct for Work-bound jobs and IMPOSSIBLE for the ones that aren't: a book/corpus
+    motif-mine and an arc-import are enqueued with `project_id=None` — they are genuinely
+    not Work-bound, so the row carries NO composition_work and the Work gate 404s FOREVER,
+    after the user has already paid for the LLM run. This route gates on the actor stamp
+    the row DOES carry (`created_by`) instead.
+
+    ⚠ NEVER "fix" this by back-filling a synthetic project_id into a Work — that would
+    mint a phantom Work row per mine. The job is genuinely user-scoped, not Work-scoped.
+    ⚠ Missing and denied return the SAME 404, byte for byte (H13 — no enumeration oracle).
+    A 403 here would confirm to a stranger that the job exists.
+    """
+    job = await jobs.get(job_id)
+    if job is None or job.created_by != user_id:
         raise HTTPException(status_code=404, detail="job not found")
     return job.model_dump(mode="json")
 
@@ -1381,7 +1525,9 @@ async def persist_job(
     jobs: GenerationJobsRepo = Depends(get_generation_jobs_repo),
     works: WorksRepo = Depends(get_works_repo),
     outline: OutlineRepo = Depends(get_outline_repo),
+    structures: StructureRepo | None = Depends(get_structure_repo),
     book: BookClient = Depends(get_book_client_dep),
+    grant: GrantClient = Depends(get_grant_client_dep),
 ) -> dict[str, Any]:
     """M4 Option A — the accept/persist step for a WORKER-computed chapter result.
 
@@ -1397,9 +1543,11 @@ async def persist_job(
     422, never mis-persisted as a chapter). Idempotent: a job already
     ``persisted`` returns success without a second write (the cross-store
     best-effort rule — the text is durable in the job regardless)."""
-    job = await jobs.get(user_id, job_id)
+    job = await jobs.get(job_id)
     if job is None:
         raise HTTPException(status_code=404, detail="job not found")
+    # By-id route: gate on the job's OWN project→book (PM-8; persist = EDIT tier).
+    await _gate_work(works, grant, user_id, job.project_id, GrantLevel.EDIT)
     if job.status != "completed":
         raise HTTPException(status_code=409, detail={
             "code": "JOB_NOT_COMPLETED", "status": job.status})
@@ -1433,7 +1581,7 @@ async def persist_job(
             "derivative_findings": critic.get("derivative_findings") or [],
         })
 
-    work = await works.get(user_id, job.project_id)
+    work = await works.get(job.project_id)
     if work is None:
         raise HTTPException(status_code=404, detail="work not found")
 
@@ -1444,7 +1592,7 @@ async def persist_job(
     scene_rows: list[dict[str, Any]] | None = None
     try:
         scene_rows = _scene_marker_rows(await outline.scenes_for_chapter(
-            user_id, job.project_id, UUID(str(chapter_id))))
+            job.project_id, UUID(str(chapter_id))))
     except Exception:  # noqa: BLE001 — advisory; the accept must proceed
         logger.warning("scene-marker fetch failed (advisory) — persisting without markers",
                        exc_info=True)
@@ -1453,7 +1601,7 @@ async def persist_job(
     if persisted:
         # Stamp the result so a re-accept is idempotent + the job reflects the write.
         await jobs.update_status(
-            user_id, job.id, job.status,
+            job.id, job.status,
             result={**result, "persisted": True, "draft_version": draft_version})
     return {"job_id": str(job.id), "persisted": persisted,
             "draft_version": draft_version, "persist_error": persist_error}
@@ -1499,7 +1647,7 @@ async def persist_scene_prose(
             "code": "EMPTY_SCENE_PROSE",
             "detail": "scene prose is empty/whitespace — nothing to persist"})
 
-    work = await works.get(user_id, project_id)
+    work = await works.get(project_id)
     if work is None:
         raise HTTPException(status_code=404, detail="work not found")
     # Persisting a promoted take into the derivative is an authoring write → EDIT.
@@ -1524,8 +1672,9 @@ async def persist_scene_prose(
     # ReferenceViolationError → 404 (no existence oracle).
     try:
         _job, version = await jobs.upsert_promoted_scene_prose(
-            user_id, project_id, node_id, body.text,
-            idempotency_key=body.idempotency_key)
+            project_id, node_id, body.text,
+            created_by=user_id, idempotency_key=body.idempotency_key,
+            anchor_node_id=body.anchor_node_id)
     except ReferenceViolationError:
         raise HTTPException(status_code=404, detail="scene not found")
 
@@ -1545,13 +1694,14 @@ async def critique(
     glossary: GlossaryClient = Depends(get_glossary_client_dep),
     knowledge: KnowledgeClient = Depends(get_knowledge_client_dep),
     book: BookClient = Depends(get_book_client_dep),
+    grant: GrantClient = Depends(get_grant_client_dep),
 ) -> dict[str, Any]:
-    job = await jobs.get(user_id, job_id)
+    job = await jobs.get(job_id)
     if job is None:
         raise HTTPException(status_code=404, detail="job not found")
-    work = await works.get(user_id, job.project_id)
-    if work is None:
-        raise HTTPException(status_code=404, detail="work not found")
+    # By-id route: gate on the job's OWN project→book (PM-8; critique writes the
+    # job's critic → EDIT tier).
+    work = await _gate_work(works, grant, user_id, job.project_id, GrantLevel.EDIT)
 
     settings_dict = work.settings or {}
     passage = body.passage if body.passage is not None else (job.result or {}).get("text", "")
@@ -1589,14 +1739,14 @@ async def critique(
         critic = ({"derivative_findings": derivative_findings, **gate}
                   if derivative_findings else None)
         if critic is not None:
-            await jobs.update_status(user_id, job_id, job.status, critic=critic,
+            await jobs.update_status(job_id, job.status, critic=critic,
                                      target_revision_id=body.target_revision_id)
         return {"critic": critic,
                 "warning": "critique skipped: no distinct critic model configured"}
 
     # CC2: re-resolve the ACTIVE canon at critique time — a deleted/archived rule
     # is never enforced.
-    rules = await canon.list_active(user_id, job.project_id)
+    rules = await canon.list_active(job.project_id)
     active_rules = [{"rule_id": str(r.id), "text": r.text} for r in rules]
 
     critic = await judge_prose(
@@ -1615,7 +1765,7 @@ async def critique(
         # next slip restarts the cap at 0 (a re-spend loop). Persist the prior count so
         # the cap keeps bounding the total ≤ REGEN_ATTEMPT_CAP across mixed critiques.
         critic = {**critic, "regen_attempts": prior_attempts}
-    await jobs.update_status(user_id, job_id, job.status, critic=critic,
+    await jobs.update_status(job_id, job.status, critic=critic,
                              target_revision_id=body.target_revision_id)
     return {"critic": critic}
 
@@ -1625,10 +1775,15 @@ async def dismiss_violation(
     job_id: UUID, body: DismissBody,
     user_id: UUID = Depends(get_current_user),
     jobs: GenerationJobsRepo = Depends(get_generation_jobs_repo),
+    works: WorksRepo = Depends(get_works_repo),
+    grant: GrantClient = Depends(get_grant_client_dep),
 ) -> dict[str, Any]:
-    job = await jobs.get(user_id, job_id)
+    job = await jobs.get(job_id)
     if job is None:
         raise HTTPException(status_code=404, detail="job not found")
+    # By-id route: gate on the job's OWN project→book (PM-8; EDIT — it rewrites
+    # the job's critic verdict).
+    await _gate_work(works, grant, user_id, job.project_id, GrantLevel.EDIT)
     critic = dict(job.critic or {})
     violations = critic.get("violations") or []
     found = False
@@ -1639,7 +1794,7 @@ async def dismiss_violation(
     if not found:
         raise HTTPException(status_code=404, detail="violation not found")
     critic["violations"] = violations
-    await jobs.update_status(user_id, job_id, job.status, critic=critic)
+    await jobs.update_status(job_id, job.status, critic=critic)
     return {"critic": critic}
 
 
@@ -1650,6 +1805,7 @@ async def correction(
     jobs: GenerationJobsRepo = Depends(get_generation_jobs_repo),
     works: WorksRepo = Depends(get_works_repo),
     corrections: GenerationCorrectionsRepo = Depends(get_generation_corrections_repo),
+    grant: GrantClient = Depends(get_grant_client_dep),
 ) -> dict[str, Any]:
     """Capture a human-gate correction on a generation (V1 flywheel slice 1, §3).
 
@@ -1659,12 +1815,12 @@ async def correction(
     work opted into `capture_correction_prose` (§5); the change magnitude +
     structural shape are always captured. `accept` is deliberately not an action
     here (H2 — it trains the reranker on its own pick)."""
-    job = await jobs.get(user_id, job_id)
+    job = await jobs.get(job_id)
     if job is None:
         raise HTTPException(status_code=404, detail="job not found")
-    work = await works.get(user_id, job.project_id)
-    if work is None:
-        raise HTTPException(status_code=404, detail="work not found")
+    # By-id route: gate on the job's OWN project→book (PM-8; EDIT — it records a
+    # correction + emits the learning event).
+    work = await _gate_work(works, grant, user_id, job.project_id, GrantLevel.EDIT)
 
     result = job.result or {}
     winner_text: str = result.get("text", "") or ""
@@ -1707,7 +1863,7 @@ async def correction(
 
     try:
         corr = await corrections.create(
-            user_id, job.project_id, job_id,
+            job.project_id, job_id, created_by=user_id,
             kind=body.kind, chosen_candidate_index=chosen_index,
             guidance=body.guidance, changed_blocks=changed_blocks,
             raw_before=raw_before, raw_after=raw_after,
@@ -1716,7 +1872,6 @@ async def correction(
             # so slice-2 learning can reconstruct `j ≻ i` from the wire (LOW#4).
             winner_index=result.get("winner_index"),
             candidate_count=len(candidates) if candidates else None,
-            book_id=work.book_id,  # owner-scope context for the corrections store
         )
     except ReferenceViolationError:
         # job/project mismatch slipped past the get() (cross-user / cross-project).
@@ -1730,6 +1885,7 @@ async def correction_stats(
     user_id: UUID = Depends(get_current_user),
     works: WorksRepo = Depends(get_works_repo),
     corrections: GenerationCorrectionsRepo = Depends(get_generation_corrections_repo),
+    grant: GrantClient = Depends(get_grant_client_dep),
 ) -> dict[str, Any]:
     """The V1 eval-gate dashboard (§6): per-mode correction rates for this Work.
 
@@ -1737,8 +1893,24 @@ async def correction_stats(
     correction rates (accept-as-is ↑, edit/pick/regenerate/reject ↓). Both modes
     are always present (zero-filled) for the auto-vs-cowrite A/B; the auto-judge
     script stays as the cold-start proxy until real corrections accumulate."""
-    work = await works.get(user_id, project_id)
-    if work is None:
-        raise HTTPException(status_code=404, detail="work not found")
-    stats = await corrections.correction_stats(user_id, project_id)
+    await _gate_work(works, grant, user_id, project_id, GrantLevel.VIEW)
+    stats = await corrections.correction_stats(project_id)
     return stats.model_dump(mode="json")
+
+
+@router.get("/works/{project_id}/jobs/{job_id}/corrections")
+async def list_job_corrections(
+    project_id: UUID,
+    job_id: UUID,
+    user_id: UUID = Depends(get_current_user),
+    works: WorksRepo = Depends(get_works_repo),
+    corrections: GenerationCorrectionsRepo = Depends(get_generation_corrections_repo),
+    grant: GrantClient = Depends(get_grant_client_dep),
+) -> dict[str, Any]:
+    """S-09 W1 — the INDIVIDUAL corrections a human recorded on a generation job (what they
+    actually changed — accept/edit/pick/regenerate/reject with the prose), not just the
+    accept-rate aggregate that `correction-stats` surfaces. Newest first, project-scoped.
+    VIEW grant on the Work's book. Append-only preference log — no update/delete (by design)."""
+    await _gate_work(works, grant, user_id, project_id, GrantLevel.VIEW)
+    rows = await corrections.list_for_job(project_id, job_id)
+    return {"corrections": [r.model_dump(mode="json") for r in rows]}

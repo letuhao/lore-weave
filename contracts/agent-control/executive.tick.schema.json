@@ -1,0 +1,37 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://loreweave.dev/contracts/agent-control/executive.tick.schema.json",
+  "title": "ExecutiveTickRequest",
+  "description": "POST /internal/working-memory/tick request (ACP RW-6) — the executive pass: refresh state from recent turns. The `#/$defs/response` sub-schema is the 200 body. RV-M8: `user_id` MUST be SERVER-AUTHENTICATED. The model (`model_source`/`model_ref`) is the caller's per-user provider-registry model — never an SDK default, never a literal (ACP-11).",
+  "type": "object",
+  "required": ["session_id", "user_id"],
+  "additionalProperties": false,
+  "properties": {
+    "session_id": { "type": "string", "format": "uuid" },
+    "user_id": { "type": "string", "format": "uuid", "description": "server-authenticated (RV-M8)" },
+    "model_source": { "type": ["string", "null"] },
+    "model_ref": { "type": ["string", "null"] },
+    "recent_turns": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["role", "content"],
+        "additionalProperties": false,
+        "properties": {
+          "role": { "type": "string" },
+          "content": { "type": "string" }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "response": {
+      "type": "object",
+      "required": ["status"],
+      "additionalProperties": false,
+      "properties": {
+        "status": { "enum": ["updated", "no_block", "no_model", "llm_failed", "bad_json"] }
+      }
+    }
+  }
+}

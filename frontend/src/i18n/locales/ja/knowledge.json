@@ -22,7 +22,17 @@
     "hint": "スクロールでズーム · 空白をドラッグでパン · ノードをクリックで詳細 · ⊞ で展開",
     "loading": "グラフを読み込み中…",
     "loadFailed": "グラフの読み込みに失敗しました: {{error}}",
-    "empty": "まだナレッジグラフがありません — このプロジェクトをビルドしてネットワークを探索しましょう。"
+    "empty": "まだナレッジグラフがありません — このプロジェクトをビルドしてネットワークを探索しましょう。",
+    "emptyLens": "このレンズに一致する関係はありません。別のビューを試すか、前の章に戻るか、レンズをクリアしてください。",
+    "truncatedLens": "このレンズの最初の {{n}} 件の関係を表示中",
+    "hintLens": "スクロールでズーム · ドラッグで移動 · ノードをクリックして詳細を表示",
+    "lens": {
+      "view": "ビュー",
+      "noView": "すべての関係",
+      "asOf": "章の時点",
+      "latest": "最新",
+      "clear": "レンズをクリア"
+    }
   },
   "schemaSection": {
     "title": "スキーマ",
@@ -70,9 +80,10 @@
       "extraction": "抽出",
       "extractionEnabled": "有効",
       "extractionDisabled": "無効",
-      "none": "—",
       "book": "本",
-      "world": "世界"
+      "world": "世界",
+      "none": "—",
+      "triageNudge": "{{count}} 個の抽出要素に仕分けが必要です"
     },
     "placeholder": {
       "proposals": "保留中の提案はここに表示されます（C11）。",
@@ -404,7 +415,8 @@
         "global": "グローバル",
         "confidence": "信頼度",
         "mentions": "言及回数",
-        "anchor": "アンカースコア"
+        "anchor": "アンカースコア",
+        "scope": "スコープ"
       },
       "promote": "用語集へ昇格",
       "promoteHint": "発見されたエンティティです。昇格するとレビュー用のAI提案下書きが作成されます。",
@@ -421,8 +433,32 @@
         "decision": "決定",
         "preference": "嗜好",
         "milestone": "節目",
-        "negation": "否定"
-      }
+        "negation": "否定",
+        "statement": "記述",
+        "commitment": "誓約"
+      },
+      "addFact": "事実を追加",
+      "addFactTitle": "このエンティティに関する事実を追加",
+      "factContentLabel": "事実",
+      "factContentPlaceholder": "例：裏切りを経て評議会を不信視している",
+      "factTypeLabel": "タイプ",
+      "factPredicatePlaceholder": "述語（任意、例：loyal_to）",
+      "factObjectPlaceholder": "目的語（任意、例：House Vaeth）",
+      "addFactSave": "事実を保存",
+      "addFactCancel": "キャンセル",
+      "addFactSuccess": "事実を追加しました",
+      "addFactFailed": "事実を追加できませんでした: {{error}}",
+      "markWrong": "間違いとしてマーク",
+      "markWrongConfirm": "この事実を間違いとしてマークしますか？無効化（復習から削除）されますが、履歴には残ります。",
+      "markWrongSuccess": "事実を間違いとしてマークしました",
+      "markWrongFailed": "事実を無効化できませんでした: {{error}}",
+      "factTypeHelp": "これはどのような事実ですか？",
+      "factAdvancedToggle": "別のエンティティにリンクする（任意）",
+      "replaceFact": "この事実を置換",
+      "replaceFactSave": "置換を保存",
+      "replaceFactSuccess": "事実を置換しました",
+      "markWrongUndo": "元に戻す",
+      "markWrongUndoFailed": "元に戻せませんでした: {{error}}"
     },
     "edit": {
       "title": "エンティティを編集",
@@ -462,6 +498,41 @@
       "errArchived": "アーカイブ済みのエンティティは結合できません。先に復元してください。",
       "errGlossaryConflict": "両方が異なる用語集エントリにリンクしています。先に用語集アンカーを調整してください。",
       "errUnknown": "結合に失敗しました：{{reason}}"
+    },
+    "create": {
+      "title": "新規エンティティ",
+      "description": "ナレッジグラフのエンティティを手動で作成します。最初は「発見済み」として作成され、後でアンカーを設定することで「正規」として確定できます。",
+      "newButton": "新規エンティティ",
+      "needsProject": "先にプロジェクトを選択してください",
+      "field": {
+        "name": "名前",
+        "kind": "種類"
+      },
+      "save": "作成",
+      "saving": "作成中…",
+      "cancel": "キャンセル",
+      "success": "エンティティを作成しました — {{name}} ({{kind}})",
+      "dedup": "既に存在します — {{name}} ({{kind}}) を表示中",
+      "failed": "エンティティを作成できませんでした — {{error}}",
+      "discoveredHint": "新しいエンティティは「発見済み」として作成されます。用語集に紐付けることで「正規」ステータスになります。"
+    },
+    "kind": {
+      "character": "キャラクター",
+      "location": "場所",
+      "organization": "組織",
+      "concept": "概念",
+      "item": "アイテム"
+    },
+    "archive": {
+      "action": "アーカイブ",
+      "confirm": "このエンティティを非表示にしますか？関係性や用語集への紐付けは保持されますが、アクティブなリストからは消えます。作成直後であれば「元に戻す」が可能ですし、アーカイブフィルタから再度表示させることもできます。",
+      "success": "エンティティをアーカイブしました。",
+      "failed": "アーカイブできませんでした — {{error}}",
+      "undo": "元に戻す"
+    },
+    "restore": {
+      "success": "エンティティを復元しました。",
+      "failed": "復元できませんでした — {{error}}"
     }
   },
   "jobs": {
@@ -1079,9 +1150,34 @@
       "markWrong": "Mark wrong",
       "invalidating": "Removing…",
       "failed": "Couldn't save the correction: {{error}}"
+    },
+    "create": {
+      "title": "エンティティをリンク",
+      "description": "{{subject}} から別のエンティティへの関係を作成します。",
+      "action": "エンティティをリンク",
+      "subject": "元",
+      "predicate": "関係",
+      "object": "先",
+      "objectPlaceholder": "エンティティを検索…",
+      "noMatches": "一致するエンティティがありません。",
+      "save": "リンクを作成",
+      "saving": "リンク中…",
+      "cancel": "キャンセル",
+      "success": "関係を作成しました。",
+      "notYours": "リンクを作成できませんでした。エンドポイントがあなたのエンティティのいずれかではありません。",
+      "selfLoop": "エンティティが自分自身と関係を持つことはできません。",
+      "failed": "リンクを作成できませんでした — {{error}}"
     }
   },
   "events": {
+    "create": {
+      "title": "イベントを追加",
+      "description": "このキャラクターの新しいタイムラインイベントを作成します。",
+      "success": "イベントが追加されました。",
+      "failed": "追加に失敗しました: {{error}}",
+      "saving": "追加中…",
+      "save": "イベントを追加"
+    },
     "edit": {
       "cta": "Edit",
       "title": "Edit event",
@@ -1157,5 +1253,64 @@
       "divergent": "分岐"
     },
     "totalRuns": "合計 {{count}} 件"
+  },
+  "triage": {
+    "loading": "トリアージキューを読み込み中…",
+    "loadFailed": "トリアージキューを読み込めませんでした: {{error}}",
+    "empty": "トリアージする項目はありません — すべての抽出済み要素がスキーマに一致しました。",
+    "resolved": "{{count}} 件の項目を解決しました",
+    "resolveFailed": "解決できませんでした: {{error}}",
+    "handoffToGlossary": "コーデックスで処理を完了するために用語集を開いています…",
+    "itemType": {
+      "unknown_node_kind": "不明なエンティティの種類",
+      "unknown_edge_type": "不明なリレーションシップの種類",
+      "edge_kind_mismatch": "リレーションシップの終端不一致",
+      "unknown_vocab_value": "語彙外の値",
+      "edge_cardinality_conflict": "競合するアクティブなリレーションシップ"
+    },
+    "action": {
+      "map": "既存の項目にマッピング",
+      "add_to_vocab": "語彙に追加",
+      "add_to_schema": "スキーマに追加",
+      "re_target": "エンドポイントを修正",
+      "widen_target_kinds": "許可する種類を拡大",
+      "drop_edge": "削除",
+      "close_previous": "前の項目を閉じる",
+      "set_multi_active": "複数選択を許可",
+      "promote_to_glossary_kind": "用語集の種類に昇格",
+      "demote_to_attribute": "属性に降格",
+      "dismiss": "無視"
+    },
+    "prompt": {
+      "target_entity_id": "修正後のターゲットエンティティID",
+      "map_to": "マッピング先（空欄の場合は検出された値を使用）"
+    },
+    "itemDismissed": "アイテムを非表示にしました",
+    "confirmSchemaWrite": "これをスキーマに追加しますか？追加すると、今後の抽出データの検証方法が変更されます。",
+    "evidence": {
+      "unknown_edge_type": "関係性「{{predicate}}」は、まだスキーマに登録されていません。",
+      "unknown_vocab_value": "値「{{value}}」は、まだ「{{set}}」リストに含まれていません。",
+      "edge_kind_mismatch": "スキーマでは許可されていない「{{source}}」と「{{target}}」の間で「{{predicate}}」が使用されています。",
+      "unknown_node_kind": "種類「{{kind}}」は、まだスキーマに登録されていません。",
+      "edge_cardinality_conflict": "競合するアクティブな「{{predicate}}」関係が存在します。",
+      "generic": "抽出された要素がスキーマと一致しませんでした。"
+    },
+    "retarget": {
+      "title": "正しいエンティティを指定する",
+      "description": "エンティティを検索し、このリレーションシップが指し示すべきものを選択してください。",
+      "searchPlaceholder": "名前でエンティティを検索…",
+      "noMatches": "一致するエンティティがありません。",
+      "cancel": "キャンセル",
+      "confirm": "再設定"
+    },
+    "map": {
+      "title": "既存のアイテムにマッピング",
+      "description": "このスキーマ外の要素を、どのスキーマ項目として扱うかを指定してください。",
+      "label": "マッピング先",
+      "keepDetected": "検出された値を保持",
+      "cancel": "キャンセル",
+      "confirm": "マッピング"
+    },
+    "emptyHint": "Triageは、まだスキーマに適合していない抽出結果をすべて収集します。キューが空であることは、すべてのデータが整理されたことを意味します。"
   }
 }

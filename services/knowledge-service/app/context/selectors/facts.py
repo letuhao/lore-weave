@@ -155,6 +155,49 @@ async def _resolve_entity_ids(
     return resolved
 
 
+# WS-4C — the source tag memory_remember writes onto its facts (canonical:
+# app/tools/executor.py TOOL_FACT_SOURCE_TYPE). Facts carrying it are the
+# assistant's explicit "remember this" decisions/preferences/milestones —
+# project-level, unanchored, written below the 0.8 L2 gate on purpose.
+_TOOL_FACT_SOURCE_TYPE = "llm_tool_call"
+
+
+async def _select_tool_facts(
+    session: CypherSession,
+    *,
+    user_id: str,
+    project_id: str,
+    result: L2FactResult,
+    min_confidence: float,
+    limit: int,
+) -> None:
+    """WS-4C — admit memory_remember / llm_tool_call facts into per-turn L2.
+
+    These are PROJECT-LEVEL session canon ("we decided the villain dies in
+    ch.10", "the user wants a grimdark tone") — deliberately unanchored (no
+    :ABOUT entity edge) and written at 0.7, so the entity-anchored relation/
+    negation path never surfaced them. Selected project-wide (not gated on the
+    message naming an entity, since they aren't about a specific entity) at
+    their own lower floor. All go to `current` (each is a full sentence that
+    carries its own polarity, so a saved negation reads fine as a plain fact) —
+    keeping `negative` purely entity-anchored so the caller's widened-retry
+    miss-detection isn't perturbed. Mutates `result` in place.
+    """
+    tool_facts = await list_facts_by_type(
+        session,
+        user_id=user_id,
+        project_id=project_id,
+        type=None,  # any of decision/preference/milestone/negation
+        source_type=_TOOL_FACT_SOURCE_TYPE,
+        min_confidence=min_confidence,
+        limit=limit,
+    )
+    for fact in tool_facts:
+        text = (fact.content or "").strip()
+        if text:
+            result.current.append(text)
+
+
 async def select_l2_facts(
     session: CypherSession,
     *,
@@ -162,6 +205,9 @@ async def select_l2_facts(
     project_id: str,
     intent: IntentResult,
     min_confidence: float = 0.8,
+    tool_facts: bool = True,
+    tool_fact_min_confidence: float = 0.7,
+    tool_facts_limit: int = 20,
 ) -> L2FactResult:
     """Gather L2 fact strings for the intent's entity set.
 
@@ -172,13 +218,50 @@ async def select_l2_facts(
         intent: K18.2a result; drives hop count and which entities to
             query.
         min_confidence: default 0.8 (matches KSA §4.2 L2 RAG loader).
+        tool_facts: WS-4C — also admit project-level memory_remember /
+            llm_tool_call facts (default on). Runs regardless of whether the
+            message named an entity (these facts are project-level, not
+            entity-anchored).
+        tool_fact_min_confidence: floor for the tool-fact branch (0.7, below
+            the 0.8 entity-fact gate — that lower floor is the whole point).
+        tool_facts_limit: cap on tool-facts injected per turn.
 
     Returns:
-        L2FactResult with separate buckets. ``total()`` is zero when
-        the intent extracted no entities (nothing to anchor queries
-        against) — not an error, just no L2 material.
+        L2FactResult with separate buckets. Entity-anchored relations/negations
+        need the intent to name an entity; the tool-fact branch does not.
     """
     result = L2FactResult()
+
+    # WS-4C tool facts first — project-level, entity-independent, so they are
+    # recalled even on a turn whose message names no entity (the early-return
+    # below only skips the entity-ANCHORED material).
+    #
+    # In its OWN try/except (same discipline as the 2-hop call below): this is a
+    # STRICTLY-ADDITIVE recall branch, and it runs FIRST — an unguarded failure
+    # here would propagate out of select_l2_facts, be swallowed by Mode 3's
+    # `_safe_l2_facts`, and silently zero the ENTIRE L2 layer (relations +
+    # negations) that would otherwise have succeeded. A non-positive limit is
+    # skipped rather than passed down (list_facts_by_type raises on limit<=0, so
+    # an operator setting CONTEXT_L2_TOOL_FACTS_LIMIT=0 to "disable" the feature
+    # would otherwise kill all L2 memory).
+    if tool_facts and tool_facts_limit > 0:
+        try:
+            await _select_tool_facts(
+                session,
+                user_id=user_id,
+                project_id=project_id,
+                result=result,
+                min_confidence=tool_fact_min_confidence,
+                limit=tool_facts_limit,
+            )
+        except Exception:  # noqa: BLE001 — additive branch, never nuke L2
+            logger.warning(
+                "WS-4C: tool-fact selection failed for project %s; "
+                "continuing with entity-anchored L2 only",
+                project_id,
+                exc_info=True,
+            )
+
     if not intent.entities:
         return result
 
@@ -265,10 +348,11 @@ async def select_l2_facts(
 
     logger.debug(
         "K18.2: L2 fact selection intent=%s entities=%d resolved=%d "
-        "background=%d negative=%d",
+        "current=%d background=%d negative=%d",
         intent.intent.value,
         len(intent.entities),
         len(resolved),
+        len(result.current),
         len(result.background),
         len(result.negative),
     )

@@ -87,3 +87,32 @@ The public MCP gateway dumps too many tool schemas at an external agent, bloatin
   search for now (same algorithm); pointing it at the gateway's find_tools is a separate refactor
   (a network hop per discovery) → `D-FINDTOOLS-CHAT-SHARE`. The user's "shared via ai-gateway"
   intent is met by the gateway OWNING the canonical impl the public edge uses.
+
+## Amendment (2026-07-07) — `list_changed` never worked; replaced by an `invoke_tool` facade
+
+An external bug report (an outside Claude Code agent testing the live public MCP edge) confirmed
+the design gap this plan's line 63 flagged as "best-effort": **`notifications/tools/list_changed`
+was never implemented**, and even if it had been, a standard MCP client (Claude Code confirmed;
+most others too) caches `tools/list` ONCE at connect and never re-polls mid-session. So a tool
+`find_tools` "activated" into the session set was **permanently uncallable** — the client refuses
+to send a `tools/call` for a name it never saw listed. The state-machine design (session-scoped
+activation, scope-safety, anti-oracle contract) above is all still correct and unchanged; only the
+"the client will re-list" assumption was wrong.
+
+**Fix:** keep everything above as-is, add a third ALWAYS-present synthetic edge tool —
+`invoke_tool(name, arguments)` (`src/scope/invoke-tool.ts`) — that a client CAN call (it's always
+in `tools/list`, like `find_tools`). The edge unwraps it into a normal `tools/call` for the real
+target at the very top of the request pipeline (`public-mcp.controller.ts`, before rate-limiting/
+scope-gate/idempotency read the body), so every gate documented above keeps working completely
+unmodified — the request is indistinguishable from the agent having called the real tool directly
+once unwrapped. An additional activation gate (skipped for the wildcard key) denies an
+`invoke_tool` target that was never `find_tools`-activated this session, with a message pointing
+the agent at `find_tools` (never a silent no-op).
+
+Also fixed in the same pass: ai-gateway's MCP `initialize` response carried no `instructions` at
+all (zero onboarding for a fresh client — it had to reverse-engineer the domain from ~150+ tool
+names). `proxy-server.factory.ts` now sets `instructions` describing the system + the
+find_tools→invoke_tool flow; the edge additionally rewrites `find_tools`'s OWN description in
+`tools/list` to state the edge-specific detail (calling a matched name directly won't work here —
+use `invoke_tool`), since that claim is only true behind this edge, not for a direct ai-gateway
+consumer whose `tools/list` is never filtered.

@@ -171,7 +171,19 @@
     "kind_character": "Personagens",
     "kind_location": "Lugares",
     "kind_faction": "Facções",
-    "kind_concept": "Conceitos"
+    "kind_concept": "Conceitos",
+    "rename": "Renomear",
+    "renameConflict": "Alterado em outro lugar — recarregado.",
+    "editEntity": "Editar apelidos e tipo",
+    "archive": "Retirar entidade",
+    "archiveConfirm": "Retirar «{{name}}»? Suas relações e âncora de glossário serão mantidas; ela retorna se o livro a mencionar novamente (não há botão de restaurar).",
+    "archived": "Retirada — ela retorna se o livro a mencionar novamente.",
+    "newEntity": "Novo",
+    "editFailed": "Falha ao editar: {{error}}",
+    "truncated": "Mostrando os primeiros 200 — refine sua busca para restringir a lista.",
+    "showingOf": "Mostrando {{loaded}} de {{total}}.",
+    "loadMore": "Carregar mais",
+    "loadingMore": "Carregando…"
   },
   "relmap": "Relações",
   "relations": {
@@ -214,7 +226,10 @@
     "gone": "ausente",
     "loading": "Carregando arco do personagem...",
     "noProject": "Nenhum grafo de conhecimento ainda — extraia este livro para traçar arcos de personagens.",
-    "empty": "Este personagem ainda não possui eventos."
+    "empty": "Este personagem ainda não possui eventos.",
+    "edit": "Editar",
+    "linkEntity": "+ vincular entidade",
+    "addEvent": "+ Adicionar evento"
   },
   "worldmap": "Mapa Mundi",
   "wmap": {
@@ -236,7 +251,10 @@
     "loading": "Carregando mapa mundi...",
     "addFailed": "Não foi possível adicionar o lugar.",
     "linkFailed": "Não foi possível vincular os lugares.",
-    "linkMissing": "Um desses lugares não existe mais."
+    "linkMissing": "Um desses lugares não existe mais.",
+    "delete": "Remover {{name}}",
+    "deleteConfirm": "Remover «{{name}}» do mapa do mundo? Isso arquivará o lugar.",
+    "deleteFailed": "Não foi possível remover o lugar."
   },
   "grounding": "Fundamentação",
   "canon": "Cânone",
@@ -366,6 +384,9 @@
   "statDiverge": "Divergência (K opções)",
   "statStream": "Fluxo",
   "guidePlaceholder": "Orientação opcional para o coautor...",
+  "correction": {
+    "capturedToast": "Anotado — seu coautor aprenderá com isso"
+  },
   "reasoning": "Raciocínio",
   "reasoningHint": "Auto = o servidor decide por modelo. Off desativa o pensamento; Low/Med/High força o pensamento.",
   "reasoningAuto": "Pensamento: automático",
@@ -407,7 +428,6 @@
   "pacing": "ritmo",
   "canon_consistency": "cânone",
   "dismiss": "descartar",
-  "overrideSlipBlocked": "Aceitação bloqueada: uma sobreposição de variante (dịton) escapou de volta ao valor do cânone. Regenere antes de aceitar.",
   "overrideSlipExhausted": "Sobreposição persistente após o limite de regeneração — exibida para sua revisão (a aceitação não está mais bloqueada).",
   "overrideSlipDetail": "{{name}} ({{field}}): esperado “{{expected}}”, encontrado “{{found}}”",
   "deltaInconsistencyDetail": "{{name}}: contradiz a regra delta “{{rule}}”",
@@ -430,6 +450,12 @@
   "canonUntil": "Até (ordem de leitura)",
   "canonActive": "ativo",
   "canonInactive": "inativo",
+  "canonArchivedTag": "arquivado",
+  "canonShowArchived": "Mostrar arquivados",
+  "canonRuleArchived": "Regra arquivada",
+  "canonRuleRestored": "Regra restaurada",
+  "restore": "Restaurar",
+  "undo": "Desfazer",
   "canonWindowInverted": "'De' deve ser ≤ 'Até'.",
   "archive": "Arquivo",
   "noRules": "Nenhuma regra de cânone ainda.",
@@ -611,12 +637,18 @@
     "scope": {
       "label": "Escopo do motivo",
       "my": "Minha biblioteca",
-      "catalog": "Catálogo público"
+      "catalog": "Catálogo público",
+      "book": "Livro",
+      "shared": "Compartilhado",
+      "system": "Sistema",
+      "drafts": "Rascunhos",
+      "needsBook": "Abra um livro para ver seus motivos"
     },
     "search": "Buscar motivos",
     "overuse": "\"{{name}}\" já é usado em {{chapters}} — considere variar.",
     "list": {
-      "noMatch": "Nenhum motivo correspondente — limpe os filtros."
+      "noMatch": "Nenhum motivo correspondente — limpe os filtros.",
+      "truncated": "Mostrando os primeiros 100 — refine com busca ou filtros para ver o restante."
     },
     "error": {
       "load": "Não foi possível carregar — tente novamente."
@@ -711,7 +743,8 @@
     },
     "binding": {
       "freeForm": "Nenhum motivo correspondente — esta cena é livre.",
-      "commitGenerate": "Confirmar + escrever esta cena →"
+      "commitGenerate": "Confirmar + escrever esta cena →",
+      "noWork": "Crie um plano para este livro para vincular motivos às suas cenas."
     },
     "swap": {
       "title": "Trocar motivo",
@@ -735,7 +768,8 @@
         "ok": "No ritmo",
         "warn": "Desvio de tensão",
         "bad": "Batida perdida"
-      }
+      },
+      "rerunNeedsModel": "Escolha um modelo para reexecutar a conformidade"
     },
     "arc": {
       "mobileNotice": "A grade da linha do tempo está disponível em uma tela maior — aqui você pode editá-la como uma lista.",
@@ -745,7 +779,110 @@
       "moveRight": "Mover para depois",
       "grow": "Alongar",
       "shrink": "Encurtar",
-      "remove": "Remover"
+      "remove": "Remover",
+      "libraryEmpty": "Ainda não há modelos de arco. Crie um ou importe uma história para desconstruir.",
+      "templates": {
+        "tabLibrary": "Biblioteca",
+        "tabCatalog": "Catálogo",
+        "tabDeconstruct": "Importar e Desconstruir",
+        "tier_all": "Todos",
+        "tier_mine": "Meus",
+        "tier_system": "Sistema",
+        "tier_book": "Livro",
+        "new": "+ Novo",
+        "loading": "Carregando…",
+        "loadError": "Não foi possível carregar os modelos.",
+        "retry": "Tentar novamente",
+        "chapters": "{{count}} capítulos",
+        "chipSystem": "Sistema",
+        "chipMine": "Meus",
+        "chipPublic": "Público",
+        "archive": "arquivo",
+        "adopt": "adotar",
+        "createCode": "código (único)",
+        "createName": "nome",
+        "createShare": "Compartilhar com os colaboradores deste livro (nível do livro)",
+        "create": "Criar",
+        "cancel": "Cancelar",
+        "catalogError": "Não foi possível carregar o catálogo.",
+        "catalogEmpty": "Ainda não há modelos de arco públicos.",
+        "back": "← Todos os modelos",
+        "driftTitle": "Drift — usado por este livro",
+        "driftUnapplied": "Ainda não aplicado a este livro — aplique-o acima para comparar o drift.",
+        "driftNoProvenance": "Este arco foi escrito diretamente — não há um modelo para comparação de drift.",
+        "driftGone": "O modelo de origem não está mais disponível.",
+        "driftLoading": "Carregando drift…",
+        "driftClean": "Sem desvio — o arco realizado corresponde ao seu modelo.",
+        "driftSummary": "lacuna(s) de cobertura: {{gaps}} · problema(s) de ordenação: {{violations}} · posicionamento(s) dobrado(s): {{folded}}",
+        "driftPacingOnly": "A estrutura coincide, mas o ritmo oscilou (máx. {{drift}}).",
+        "driftThreads": "Cobertura de fios",
+        "driftNoThreads": "O modelo não possui fios para comparação.",
+        "driftPacing": "Ritmo",
+        "driftMax": "desvio máx. {{drift}}",
+        "driftPacingNC": "Ainda não é possível comparar — o modelo não possui curva de tensão.",
+        "driftSuccession": "Ordenação",
+        "driftSuccessionOk": "Sem violações de ordenação.",
+        "driftViolation": "{{label}}: {{n}} fora de ordem",
+        "driftFolded": "Dobrado (nunca vinculado)",
+        "untitledArc": "(arco sem título)",
+        "truncated": "Mostrando os primeiros {{shown}} de {{count}} — use o Catálogo ou um nível mais restrito para encontrar mais.",
+        "tabSuggest": "Sugerir"
+      },
+      "import": {
+        "privacy": "O texto bruto permanece privado para você e nunca é compartilhado. Apenas a estrutura abstrata derivada pode ser publicada — e a publicação remove a referência da fonte.",
+        "sources": "Fontes de referência",
+        "loading": "Carregando…",
+        "noSources": "Nenhuma fonte ainda — cole uma abaixo.",
+        "untitled": "(sem título)",
+        "deleteConfirm": "Excluir esta fonte? Não há como restaurar.",
+        "deleteTitle": "Excluir (sem restauração)",
+        "sourceError": "Não foi possível salvar a fonte — tente novamente.",
+        "what": "Desconstrua a referência em um modelo de arco reutilizável (consumo de LLM).",
+        "hint": "Dica de arco (opcional)",
+        "useWeb": "Permitir busca na web",
+        "model": "Modelo de desconstrução",
+        "estimating": "Estimando…",
+        "running": "Desconstruindo…",
+        "run": "Desconstruir",
+        "selectFirst": "Selecione uma fonte acima primeiro.",
+        "done": "Um novo modelo de arco foi criado — encontre-o na Biblioteca.",
+        "pasteTitle": "título",
+        "pasteBody": "cole o texto de referência...",
+        "tooLong": "Muito longo — recorte antes de importar.",
+        "addSource": "Adicionar fonte"
+      },
+      "extract": {
+        "blurb": "Salve a estrutura deste arco como um modelo reutilizável em sua biblioteca.",
+        "open": "Salvar como modelo…",
+        "namePlaceholder": "Nome do modelo",
+        "saving": "Salvando…",
+        "save": "Salvar",
+        "cancel": "Cancelar",
+        "conflict": "Você já possui um modelo com esse nome — renomeie-o.",
+        "error": "Não foi possível salvar este arco como um modelo.",
+        "done": "“{{name}}” foi salvo em sua biblioteca de modelos."
+      },
+      "suggest": {
+        "noProject": "Abra um livro com uma Obra para obter sugestões de arco para a premissa.",
+        "premisePlaceholder": "Descreva a premissa — ex: «um herdeiro relutante deve recuperar uma casa caída»",
+        "genrePlaceholder": "Gênero (opcional)",
+        "running": "Ranqueando…",
+        "run": "Sugerir arcos",
+        "error": "Não foi possível ranquear as sugestões de arcos.",
+        "empty": "Nenhum modelo de arco compatível ainda — crie um ou importe uma história para desconstruir.",
+        "mine": "seu(s)",
+        "span": "{{count}} cap."
+      },
+      "decompile": {
+        "open": "Agrupar capítulos em arcos",
+        "confirm": "Agrupar automaticamente os capítulos deste livro em arcos (aprox. {{n}} capítulos cada). É seguro executar novamente — os arcos existentes serão reutilizados.",
+        "running": "Agrupando…",
+        "run": "Agrupar em arcos",
+        "cancel": "Cancelar",
+        "error": "Não foi possível agrupar os capítulos em arcos.",
+        "done": "Agrupou {{chapters}} capítulos em {{arcs}} arcos.",
+        "none": "Ainda não há capítulos para agrupar em arcos."
+      }
     },
     "simple": {
       "actant": {
@@ -803,6 +940,38 @@
       "knows": "Sabe",
       "deceived": "Enganado",
       "gap": "Lacuna"
+    },
+    "graph": {
+      "title": "Grafo — composto por · precede · variante de",
+      "loading": "Carregando arestas…",
+      "error": "Não foi possível carregar o grafo de motivos.",
+      "retry": "Tentar novamente",
+      "empty": "Sem relacionamentos ainda.",
+      "deleteEdge": "Remover aresta",
+      "addEdge": "Adicionar relacionamento",
+      "pickNeighbor": "Escolher um motivo…",
+      "add": "Adicionar aresta",
+      "cancel": "Cancelar",
+      "kind": {
+        "composed_of": "Composto por",
+        "precedes": "Precede",
+        "variant_of": "Variante de"
+      },
+      "truncated": "Mostrando os primeiros {{cap}} motivos — refine por nível ou pesquise para ver mais.",
+      "canvasLoading": "Carregando o gráfico de motivos...",
+      "canvasEmpty": "Ainda não há motivos para exibir no gráfico — crie ou adote motivos e, em seguida, vincule-os."
+    },
+    "suggest": {
+      "button": "Sugerir um motivo",
+      "loading": "Ranqueando motivos para esta cena...",
+      "error": "Não foi possível sugerir motivos.",
+      "retry": "Tentar novamente",
+      "empty": "Nenhum motivo se encaixa nesta cena ainda — adicione mais à sua biblioteca.",
+      "bind": "Vincular",
+      "degradedMine": "Seus motivos não estão classificados por afinidade — configure um modelo de embedding nas suas configurações para classificá-los semanticamente.",
+      "degradedLibrary": "Não classificados por afinidade — o modelo de embedding da biblioteca compartilhada não está configurado, portanto, estes são resultados genéricos de gênero, não correspondências pontuadas.",
+      "sectionMine": "Seus motivos",
+      "sectionLibrary": "Da biblioteca"
     }
   },
   "authoringRun": {
@@ -923,5 +1092,6 @@
       "loading": "Carregando execução…",
       "back": "← Voltar para a lista de execuções"
     }
-  }
+  },
+  "overrideSlipBlocked": "Aceitar bloqueio: uma versão «e se» (what-if) sobrepôs o valor canônico. Regenere antes de aceitar."
 }

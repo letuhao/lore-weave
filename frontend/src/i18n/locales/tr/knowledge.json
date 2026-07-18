@@ -22,7 +22,17 @@
     "hint": "Yakınlaştırmak için kaydırın · hareket ettirmek için boş alandan sürükleyin · ayrıntılar için bir düğüme tıklayın · genişletmek için ⊞",
     "loading": "Grafik yükleniyor…",
     "loadFailed": "Grafik yüklenemedi: {{error}}",
-    "empty": "Henüz bir bilgi grafiği yok — ağını keşfetmek için bu projeyi oluşturun."
+    "empty": "Henüz bir bilgi grafiği yok — ağını keşfetmek için bu projeyi oluşturun.",
+    "emptyLens": "Bu lens ile eşleşen ilişki bulunamadı — başka bir görünüm deneyin, daha önceki bir bölüme gidin veya lensi temizleyin.",
+    "truncatedLens": "bu lensin ilk {{n}} ilişkisi gösteriliyor",
+    "hintLens": "Yakınlaştırmak için kaydırın · hareket ettirmek için sürükleyin · detaylar için bir düğüme tıklayın",
+    "lens": {
+      "view": "Görünüm",
+      "noView": "Tüm ilişkiler",
+      "asOf": "Bölüm itibarıyla",
+      "latest": "en son",
+      "clear": "Lensi temizle"
+    }
   },
   "schemaSection": {
     "title": "Şema",
@@ -72,7 +82,8 @@
       "extractionDisabled": "Devre Dışı",
       "book": "Kitap",
       "world": "Dünya",
-      "none": "—"
+      "none": "—",
+      "triageNudge": "{{count}} çıkarılan öğenin tasnif edilmesi gerekiyor"
     },
     "placeholder": {
       "proposals": "Bekleyen öneriler buraya düşer (C11).",
@@ -404,7 +415,8 @@
         "global": "Global",
         "confidence": "Güven",
         "mentions": "Bahsetmeler",
-        "anchor": "Çapa puanı"
+        "anchor": "Çapa puanı",
+        "scope": "Kapsam"
       },
       "promote": "Sözlüğe tanıt",
       "promoteHint": "Bulunan varlık. İnceleme için yapay zeka tarafından önerilen bir sözlük taslağı oluşturmak üzere tanıtın.",
@@ -421,8 +433,32 @@
         "decision": "Karar",
         "preference": "Tercih",
         "milestone": "Kilometre Taşı",
-        "negation": "İnkar"
-      }
+        "negation": "İnkar",
+        "statement": "Beyan",
+        "commitment": "Bağlılık"
+      },
+      "addFact": "Bilgi ekle",
+      "addFactTitle": "Bu varlık hakkında bir bilgi ekleyin",
+      "factContentLabel": "Bilgi",
+      "factContentPlaceholder": "ör. İhanetten sonra Konsey'e güvenmiyor",
+      "factTypeLabel": "Tür",
+      "factPredicatePlaceholder": "yüklem (isteğe bağlı, ör. sadık_olan)",
+      "factObjectPlaceholder": "nesne (isteğe bağlı, ör. House Vaeth)",
+      "addFactSave": "Bilgiyi kaydet",
+      "addFactCancel": "İptal",
+      "addFactSuccess": "Bilgi eklendi",
+      "addFactFailed": "Bilgi eklenemedi: {{error}}",
+      "markWrong": "Yanlış olarak işaretle",
+      "markWrongConfirm": "Bu bilgiyi yanlış olarak işaretlemek istiyor musunuz? Bilgi geçersiz sayılacak (tekrar hatırlatılmayacak) ancak geçmişte tutulmaya devam edilecek.",
+      "markWrongSuccess": "Bilgi yanlış olarak işaretlendi",
+      "markWrongFailed": "Bilgi geçersiz kılınamadı: {{error}}",
+      "factTypeHelp": "Bu ne tür bir bilgi?",
+      "factAdvancedToggle": "Başka bir varlığa bağlantı ekle (isteğe bağlı)",
+      "replaceFact": "Bu bilgiyi değiştir",
+      "replaceFactSave": "Değişikliği kaydet",
+      "replaceFactSuccess": "Bilgi değiştirildi",
+      "markWrongUndo": "Geri al",
+      "markWrongUndoFailed": "Geri alınamadı: {{error}}"
     },
     "edit": {
       "title": "Varlığı düzenle",
@@ -462,6 +498,41 @@
       "errArchived": "Arşivlenmiş varlıklar birleştirilemez. Önce onları geri yükleyin.",
       "errGlossaryConflict": "Her iki varlık da farklı sözlük girişlerine bağlı. Birleştirmeden önce sözlük bağlantılarını çözün.",
       "errUnknown": "Birleştirme başarısız oldu: {{reason}}"
+    },
+    "create": {
+      "title": "Yeni varlık",
+      "description": "Bir bilgi grafiği varlığı oluşturun. Başlangıçta keşfedilmiş olarak işaretlenir; daha sonra temel hale getirmek için sabitleyebilirsiniz.",
+      "newButton": "Yeni Varlık",
+      "needsProject": "Önce bir proje seçin",
+      "field": {
+        "name": "İsim",
+        "kind": "Tür"
+      },
+      "save": "Oluştur",
+      "saving": "Oluşturuluyor…",
+      "cancel": "İptal",
+      "success": "Varlık oluşturuldu — {{name}} ({{kind}})",
+      "dedup": "Zaten mevcut — {{name}} ({{kind}}) gösteriliyor",
+      "failed": "Varlık oluşturulamadı — {{error}}",
+      "discoveredHint": "Yeni varlıklar «keşfedildi» olarak başlar. Sözlüğe sabitlenerek «kanonik» statüsü kazanılır."
+    },
+    "kind": {
+      "character": "Karakter",
+      "location": "Mekan",
+      "organization": "Organizasyon",
+      "concept": "Kavram",
+      "item": "Eşya"
+    },
+    "archive": {
+      "action": "Arşivle",
+      "confirm": "Bu varlık gizlensin mi? İlişkileri ve sözlük bağlantısı korunur; aktif listeden kaldırılır. Hemen ardından Geri Al yapabilir veya Arşivlenmiş filtresiyle tekrar görünür kılabilirsiniz.",
+      "success": "Varlık arşivlendi.",
+      "failed": "Arşivlenemedi — {{error}}",
+      "undo": "Geri Al"
+    },
+    "restore": {
+      "success": "Varlık geri yüklendi.",
+      "failed": "Geri yüklenemedi — {{error}}"
     }
   },
   "jobs": {
@@ -1079,9 +1150,34 @@
       "markWrong": "Yanlış olarak işaretle",
       "invalidating": "Kaldırılıyor…",
       "failed": "Düzeltme kaydedilemedi: {{error}}"
+    },
+    "create": {
+      "title": "Varlığı bağla",
+      "description": "{{subject}} öğesinden diğer bir varlığınıza bir ilişki oluşturun.",
+      "action": "Varlığı bağla",
+      "subject": "Kimden",
+      "predicate": "İlişki",
+      "object": "Kime",
+      "objectPlaceholder": "Varlıklarınızda ara…",
+      "noMatches": "Eşleşen varlık bulunamadı.",
+      "save": "Bağlantı oluştur",
+      "saving": "Bağlanıyor…",
+      "cancel": "İptal",
+      "success": "İlişki oluşturuldu.",
+      "notYours": "Bağlantı oluşturulamadı — uç nokta sizin varlıklarınızdan biri değil.",
+      "selfLoop": "Bir varlık kendisiyle ilişki kuramaz.",
+      "failed": "Bağlantı oluşturulamadı — {{error}}"
     }
   },
   "events": {
+    "create": {
+      "title": "Etkinlik ekle",
+      "description": "Bu karakter için yeni bir zaman çizelgesi etkinliği oluşturun.",
+      "success": "Etkinlik eklendi.",
+      "failed": "Ekleme başarısız oldu: {{error}}",
+      "saving": "Ekleniyor…",
+      "save": "Etkinlik ekle"
+    },
     "edit": {
       "cta": "Düzenle",
       "title": "Etkinliği düzenle",
@@ -1157,5 +1253,64 @@
       "divergent": "Iraksak"
     },
     "totalRuns": "Toplam {{count}} çalışma"
+  },
+  "triage": {
+    "loading": "Triage kuyruğu yükleniyor…",
+    "loadFailed": "Triage kuyruğu yüklenemedi: {{error}}",
+    "empty": "Triage edilecek bir şey yok — çıkarılan tüm öğeler şemanızla eşleşti.",
+    "resolved": "{{count}} öğe çözümlendi",
+    "resolveFailed": "Çözümlenemedi: {{error}}",
+    "handoffToGlossary": "Bunu sözlüğünüzde tamamlamak için sözlük açılıyor…",
+    "itemType": {
+      "unknown_node_kind": "Bilinmeyen varlık türü",
+      "unknown_edge_type": "Bilinmeyen ilişki türü",
+      "edge_kind_mismatch": "İlişki uç noktası uyuşmazlığı",
+      "unknown_vocab_value": "Sözlük dışı değer",
+      "edge_cardinality_conflict": "Çakışan aktif ilişkiler"
+    },
+    "action": {
+      "map": "Mevcut olana eşle",
+      "add_to_vocab": "Kelime dağarcığına ekle",
+      "add_to_schema": "Şemaya ekle",
+      "re_target": "Uç noktayı düzelt",
+      "widen_target_kinds": "İzin verilen türleri genişlet",
+      "drop_edge": "Kaldır",
+      "close_previous": "Önceki olanı kapat",
+      "set_multi_active": "Çoklu seçime izin ver",
+      "promote_to_glossary_kind": "Sözlük türüne yükselt",
+      "demote_to_attribute": "Özniteliğe düşür",
+      "dismiss": "Kapat"
+    },
+    "prompt": {
+      "target_entity_id": "Düzeltilmiş hedef varlık ID'si",
+      "map_to": "Şuna eşle (tespit edilen değeri kullanmak için boş bırakın)"
+    },
+    "itemDismissed": "Öğe elendi",
+    "confirmSchemaWrite": "Bunu şemanıza eklemek istiyor musunuz? Bu işlem, gelecekteki çıkarımların nasıl doğrulandığını değiştirir.",
+    "evidence": {
+      "unknown_edge_type": "«{{predicate}}» ilişkisi henüz şemanızda yer almıyor.",
+      "unknown_vocab_value": "«{{value}}» değeri henüz «{{set}}» listesinde bulunmuyor.",
+      "edge_kind_mismatch": "Şemanızın izin vermediği şekilde, bir {{source}} ile bir {{target}} arasında «{{predicate}}» kullanıldı.",
+      "unknown_node_kind": "«{{kind}}» türü henüz şemanızda yer almıyor.",
+      "edge_cardinality_conflict": "Çakışan aktif «{{predicate}}» ilişkileri mevcut.",
+      "generic": "Bu çıkarılan öğe şemanızla eşleşmedi."
+    },
+    "retarget": {
+      "title": "Doğru varlığa yönlendirin",
+      "description": "Varlıklarınız arasında arama yapın ve bu ilişkinin hangi varlığa yönlendirilmesi gerektiğini seçin.",
+      "searchPlaceholder": "İsme göre varlık ara…",
+      "noMatches": "Eşleşen varlık bulunamadı.",
+      "cancel": "İptal",
+      "confirm": "Yeniden Yönlendir"
+    },
+    "map": {
+      "title": "Mevcut bir öğeyle eşleştir",
+      "description": "Bu şema dışı öğenin hangi şema öğesi olarak kabul edileceğini seçin.",
+      "label": "Şuna eşle",
+      "keepDetected": "Tespit edilen değeri koru",
+      "cancel": "İptal",
+      "confirm": "Eşleştir"
+    },
+    "emptyHint": "Triage, henüz şemanıza uymayan tüm çıkarılan verileri toplar — temiz bir kuyruk, her şeyin yerli yerine oturduğu anlamına gelir."
   }
 }

@@ -22,6 +22,10 @@ var (
 	// errInvalidFieldType → 422: an attribute field_type outside the allowed set (no DB
 	// CHECK backstops it, so the core is the guard for BOTH the HTTP and MCP write paths).
 	errInvalidFieldType = errors.New("invalid field_type (text|textarea|select|number|date|tags|url|boolean)")
+	// errCannotClearSystemPersonFlag → 403 (C4/SD-C4, PP-4): an owner may not clear is_person on a
+	// SYSTEM-adopted person kind (e.g. 'colleague') — that would re-enable AI biographies of a real,
+	// non-consenting third party. Custom (user-authored) kinds stay togglable.
+	errCannotClearSystemPersonFlag = errors.New("cannot disable the real-person flag on a system person kind (it protects a real, non-consenting person)")
 )
 
 type bookGenreCreateParams struct {
@@ -36,6 +40,7 @@ type bookKindCreateParams struct {
 	Icon, Color string
 	SortOrder   int
 	IsHidden    bool
+	IsPerson    bool // C4/SD-C4 — user-settable REAL-person flag on a custom kind (excludes it from AI wiki/enrich)
 }
 
 type bookAttrCreateParams struct {
@@ -115,9 +120,9 @@ func (s *Server) createBookKindCore(ctx context.Context, bookID uuid.UUID, p boo
 	}
 	var kindID uuid.UUID
 	if err := s.pool.QueryRow(ctx, `
-		INSERT INTO book_kinds (book_id, code, name, description, icon, color, sort_order, is_hidden)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING book_kind_id`,
-		bookID, p.Code, p.Name, p.Description, p.Icon, p.Color, p.SortOrder, p.IsHidden,
+		INSERT INTO book_kinds (book_id, code, name, description, icon, color, sort_order, is_hidden, is_person)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING book_kind_id`,
+		bookID, p.Code, p.Name, p.Description, p.Icon, p.Color, p.SortOrder, p.IsHidden, p.IsPerson,
 	).Scan(&kindID); err != nil {
 		if isUniqueViolation(err) {
 			return nil, errDuplicateBookCode

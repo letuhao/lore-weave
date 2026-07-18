@@ -300,3 +300,25 @@ services/migration-orchestrator/migrate-drill
 tests/perf/roleplay-load/rpload
 
 docs/specs/2026-06-30-editor-compose-overhaul/poc/io/
+
+# Discoverability scenario eval scratch (run_discoverability_scenario.py temp output;
+# real runs are saved under docs/eval/discoverability/runs/)
+/scratch-s06*/
+/.stage1-wave1-report.json
+docs/eval/discoverability/runs/
+
+# Per-session isolated static FE builds (a session smokes on its own baked build so
+# the shared :5199 vite HMR can't confound it — see the multi-session HMR lesson).
+frontend/dist-s1-iso/
+frontend/dist-s6/
+frontend/dist-s01/
+
+# Live-smoke evidence artifacts: ad-hoc screenshots dropped at the repo root by
+# blackbox journey runs, and playwright's run manifests. Reproducible by re-running
+# the specs; the RUN-STATE docs reference them by path but never commit them.
+/*.png
+/test-results/
+
+.playwright-cli/
+
+frontend/dist-jamie/

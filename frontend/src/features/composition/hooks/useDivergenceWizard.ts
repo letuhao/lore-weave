@@ -108,6 +108,9 @@ export function useDivergenceWizard({
       ([target_entity_id, overridden_fields]) => ({ target_entity_id, overridden_fields }),
     );
     return {
+      // BE-13a — send the name the wizard collected (previously dropped here, so every
+      // derivative was unnamed). submit() already gates on name.trim().length > 0.
+      name: name.trim(),
       branch_point: branchPoint,
       divergence: {
         taxonomy,
@@ -118,7 +121,7 @@ export function useDivergenceWizard({
       },
       entity_overrides,
     };
-  }, [branchPoint, taxonomy, povAnchor, canonRules, overrides]);
+  }, [name, branchPoint, taxonomy, povAnchor, canonRules, overrides]);
 
   const derive = useMutation({
     mutationFn: () => compositionApi.deriveWork(sourceWork.project_id, buildBody(), token!),

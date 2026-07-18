@@ -27,8 +27,8 @@ TMPL = uuid.uuid4()
 
 class StubWorks:
     def __init__(self):
-        self.work = CompositionWork(project_id=PROJECT, user_id=USER, book_id=BOOK, settings={})
-    async def get(self, u, p):
+        self.work = CompositionWork(project_id=PROJECT, created_by=USER, book_id=BOOK, settings={})
+    async def get(self, p):
         return self.work
 
 
@@ -69,17 +69,17 @@ class StubOutline:
         # the swap route now dispatches on node.kind — default to a chapter node so
         # the chapter-swap test keeps routing to apply_motif_swap.
         self.node_kind = "chapter"
-    async def get_node(self, user_id, node_id, *, conn=None):
+    async def get_node(self, node_id, *, conn=None):
         from types import SimpleNamespace
         return SimpleNamespace(project_id=PROJECT, kind=self.node_kind)
-    async def commit_decomposed_tree(self, u, p, *, arc_title, chapters, replace=False, idempotency_key=None):
+    async def commit_decomposed_tree(self, p, *, book_id=None, created_by=None, arc_title, chapters, replace=False, idempotency_key=None):
         if idempotency_key and idempotency_key in self.ledger:
             return {**self.ledger[idempotency_key], "replay": True}
         clash = [ch["chapter_id"] for ch in chapters if ch["chapter_id"] in self.existing]
         if clash and not replace:
             from app.db.repositories import AlreadyPlannedError
             raise AlreadyPlannedError(clash)
-        self.created = {"arc_title": arc_title, "chapters": chapters, "replace": replace}
+        self.created = {"arc_title": arc_title, "chapters": chapters, "replace": replace, "book_id": book_id}
         result = {"arc_id": str(uuid.uuid4()),
                   "chapter_ids": [str(uuid.uuid4()) for _ in chapters],
                   "scene_ids": [str(uuid.uuid4()) for ch in chapters for _ in ch["scenes"]]}
@@ -106,14 +106,26 @@ def ctx(monkeypatch):
     monkeypatch.setattr("app.main.get_pool", lambda: object())
 
     from app.main import app
-    from app.deps import (get_book_client_dep, get_kal_client_dep, get_llm_client_dep,
-                          get_outline_repo, get_structure_templates_repo, get_works_repo)
+    from app.deps import (get_book_client_dep, get_grant_client_dep, get_kal_client_dep,
+                          get_llm_client_dep, get_outline_repo,
+                          get_structure_templates_repo, get_works_repo)
+    from app.grant_client import GrantLevel
     from app.middleware.jwt_auth import get_bearer_token, get_current_user
+
+    # E0 book-grant authority stubbed at OWNER; the plan endpoints resolve the
+    # Work's book then gate EDIT before decompose/commit/swap (deny paths in
+    # test_grant_gate).
+    class _StubGrant:
+        async def resolve_grant(self, book_id, user_id):
+            return GrantLevel.OWNER
+        async def resolve_access(self, book_id, user_id):
+            return GrantLevel.OWNER, "active"
 
     works, book, kal, outline, templates = (
         StubWorks(), StubBook(), StubKal(), StubOutline(), StubTemplates())
     app.dependency_overrides[get_current_user] = lambda: USER
     app.dependency_overrides[get_bearer_token] = lambda: "jwt"
+    app.dependency_overrides[get_grant_client_dep] = lambda: _StubGrant()
     app.dependency_overrides[get_works_repo] = lambda: works
     app.dependency_overrides[get_book_client_dep] = lambda: book
     app.dependency_overrides[get_kal_client_dep] = lambda: kal
@@ -172,7 +184,7 @@ def test_decompose_preview_worker_enabled_enqueues_202(ctx, monkeypatch):
         id = job_id
 
     class FakeJobsRepo:
-        async def create(self, user_id, project_id, *, operation, mode, status, input):
+        async def create(self, project_id, *, created_by=None, operation, mode, status, input):
             created.update(operation=operation, mode=mode, status=status, input=input)
             return FakeJob(), True
 
@@ -285,7 +297,7 @@ def test_decompose_commit_persists_motif_applications(ctx, monkeypatch):
 
     class _Apps:
         def __init__(self, pool): pass
-        async def insert_many(self, u, p, b, rows, *, conn=None):
+        async def insert_many(self, p, b, rows, *, created_by=None, conn=None):
             captured["rows"] = rows
             return rows
 

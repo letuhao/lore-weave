@@ -13,6 +13,7 @@ import { useMotifSync } from '../hooks/useMotifSync';
 import { InfoAsymmetryCard } from './InfoAsymmetryCard';
 import { MotifEditorForm } from './MotifEditorForm';
 import { SyncDiffDrawer } from './SyncDiffDrawer';
+import { MotifGraphSection } from './MotifGraphSection';
 
 type Props = {
   motif: Motif | null;
@@ -148,6 +149,11 @@ export function MotifDetailDrawer({ motif, meUserId, readOnly, isLoading, isErro
                 </Section>
               </div>
             )}
+            {/* 3a-C — the motif graph (composed_of/precedes/variant_of). Read-only for a
+                system/foreign motif (you can only link motifs you own). Keyed by motif.id so
+                its internal add-form/selection state can never carry across a motif switch
+                (bind-the-target-entity discipline). */}
+            <MotifGraphSection key={motif.id} motifId={motif.id} token={token ?? null} readOnly={readOnly} />
           </>
         )}
       </div>

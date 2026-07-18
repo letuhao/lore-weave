@@ -16,6 +16,12 @@ export function useMotifDraftActions(token: string | null) {
     mutationFn: (id: string) => motifApi.archive(id, token!),
     onSuccess: invalidate,
   });
+  // S-08 — un-archive back into the active library (the reverse of discard/archive). Invalidates the
+  // motif lists so the row leaves the Archived scope and reappears under My library.
+  const restore = useMutation({
+    mutationFn: (id: string) => motifApi.restore(id, token!),
+    onSuccess: invalidate,
+  });
 
-  return { promote, discard };
+  return { promote, discard, restore };
 }

@@ -46,6 +46,9 @@ export function projectFixture(overrides: Partial<Project> = {}): Project {
     // column defaults — tool calling on, confirm-before-save off.
     tool_calling_enabled: true,
     memory_remember_confirm: false,
+    // WS-4C Half A: canon auto-capture is opt-in (the BE column defaults false)
+    // — each capture is an LLM call billed to the user's own model.
+    canon_capture_enabled: false,
     extraction_status: 'ready',
     embedding_model: 'bge-m3',
     embedding_dimension: 1024,

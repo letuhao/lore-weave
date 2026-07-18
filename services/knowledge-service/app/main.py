@@ -33,6 +33,7 @@ from app.routers import (
     internal_job_control,
     internal_enrichment,
     internal_extraction,
+    internal_kg_state,
     internal_parse,
     internal_parse_pdf,
     internal_summarize,
@@ -53,6 +54,7 @@ from app.routers.public import pending_facts as public_pending_facts
 from app.routers.public import events as public_events
 from app.routers.public import projects as public_projects
 from app.routers.public import relations as public_relations
+from app.routers.public import facts as public_facts
 from app.routers.public import summaries as public_summaries
 from app.routers.public.summaries import close_cooldown_client
 from app.routers.public import timeline as public_timeline
@@ -227,6 +229,9 @@ async def lifespan(app: FastAPI):
             handle_chat_turn,
             handle_chapter_published,
             handle_chapter_unpublished,
+            handle_chapter_kg_indexed,
+            handle_chapter_kg_excluded,
+            handle_chapter_scenes_reparsed,
             handle_chapter_deleted,
             handle_chat_message_feedback,
             handle_glossary_entity_updated,
@@ -249,6 +254,32 @@ async def lifespan(app: FastAPI):
         # handler was dropped); statistics-service still consumes it separately.
         dispatcher.register("chapter.published", handle_chapter_published)
         dispatcher.register("chapter.unpublished", handle_chapter_unpublished)
+        # WS-0.8 (spec 2026-07-11-publish-independent-kg-indexing §3.7/§3.8) — publishing
+        # no longer gates the knowledge graph. These two registrations are what make the
+        # feature EXIST: the dispatcher drops an unregistered event_type at DEBUG level,
+        # so without them book-service commits the pointer, re-parses the scenes, returns
+        # 200, the UI shows "indexed" — and the event is acked into the void. No
+        # extraction_pending row, no passages, nothing in the graph. A perfect silent
+        # success.
+        #
+        #   chapter.kg_indexed  — the user added a (possibly DRAFT) chapter to their KG.
+        #                         Mirrors chapter.published's two writes, but stamps
+        #                         passage canon = (revision_id == published_revision_id),
+        #                         so draft prose never becomes canon (§3.7 / P1-8).
+        #   chapter.kg_excluded — the user retracted a chapter ("forget this"). This is
+        #                         the retraction path that chapter.unpublished used to
+        #                         perform; unpublish is now an EDITORIAL act that must
+        #                         NOT destroy the user's index (§3.8 / acceptance #9).
+        #
+        # chapter.saved stays UNREGISTERED (see above): indexing is an explicit act,
+        # autosave is not.
+        dispatcher.register("chapter.kg_indexed", handle_chapter_kg_indexed)
+        dispatcher.register("chapter.kg_excluded", handle_chapter_kg_excluded)
+        # IX-10 (spec 26 / RB-5) — book-service re-parsed a chapter's index
+        # (publish path or sweeper); invalidate this book's extraction cache so
+        # the graph re-derives from the fresh scenes (the F6 endpoint's logic,
+        # finally wired to its event trigger). Arrives on the chapter stream.
+        dispatcher.register("chapter.scenes_reparsed", handle_chapter_scenes_reparsed)
         dispatcher.register("chapter.deleted", handle_chapter_deleted)
         # C4 (K14) — auto glossary→KG propagation. glossary-service emits
         # glossary.entity_updated on every entity write (single + bulk
@@ -725,6 +756,7 @@ app.include_router(internal_dispatch.router)
 app.include_router(internal_job_control.router)
 app.include_router(internal_enrichment.router)
 app.include_router(internal_extraction.router)
+app.include_router(internal_kg_state.router)
 app.include_router(internal_parse.router)
 app.include_router(internal_parse_pdf.router)
 app.include_router(internal_summarize.router)
@@ -738,6 +770,7 @@ app.include_router(public_labels.router)
 app.include_router(public_entities.router)
 app.include_router(public_entities.entities_router)
 app.include_router(public_relations.relations_router)
+app.include_router(public_facts.facts_router)
 app.include_router(public_events.events_router)
 app.include_router(public_extraction.router)
 app.include_router(public_extraction.jobs_router)

@@ -16,6 +16,11 @@
       "translations": "{{count}} traductions",
       "evidences": "{{count}} preuves"
     },
+    "scope_label": {
+      "placeholder": "Désambiguïser (ex. : monde/royaume)...",
+      "aria": "Libellé de portée — permet de différencier des entités portant le même nom dans différents contextes de l'histoire",
+      "duplicate": "Une entité avec ce nom, ce type et cette portée existe déjà dans ce livre"
+    },
     "tab": {
       "attributes": "Attributs",
       "evidences": "Preuves",
@@ -34,12 +39,20 @@
       "saved": "Entité enregistrée",
       "status_changed": "Statut modifié en {{status}}",
       "invalid_lang": "Code de langue invalide (ex. fr, en, zh-tw)"
-    }
+    },
+    "remove_attr_confirm": "Supprimer cette valeur d'attribut ? Vous pourrez l'ajouter à nouveau plus tard.",
+    "remove_attr_success": "Valeur de l'attribut supprimée",
+    "add_attr_heading": "Ajouter une valeur pour un autre attribut",
+    "add_attr_pick": "Choisir un attribut…",
+    "add_attr_value_placeholder": "Valeur",
+    "add_attr_button": "Ajouter",
+    "add_attr_success": "Attribut ajouté"
   },
   "attr_card": {
     "required": "*requis",
     "modified": "modifié",
-    "has_translations": "Possède des traductions"
+    "has_translations": "Possède des traductions",
+    "remove": "Supprimer cette valeur"
   },
   "translation_row": {
     "confidence": {

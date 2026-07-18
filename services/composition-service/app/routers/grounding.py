@@ -2,9 +2,10 @@
 
 GET /works/{project_id}/scenes/{node_id}/grounding → the packed context for a
 target scene (the Grounding panel preview, M8; also the M6 engine's retrieve
-step). Loads the Work + node (user-scoped → 404), then runs the packer, which
-enforces the A1 (project scope) + SEC2 (book ownership) chokepoints. C3a:
+step). Loads the Work + node (project-scoped → 404), then runs the packer, which
+enforces the A1 (project scope) + E0 book-grant (25 PM-8) chokepoints. C3a:
 `grounding_available=false` + a warning when no knowledge graph backs the scene.
+The pin PUT gates EDIT on the book grant explicitly (it does not run the packer).
 """
 
 from __future__ import annotations
@@ -33,12 +34,18 @@ from app.db.repositories.works import WorksRepo
 from app.deps import (
     get_book_client_dep, get_canon_rules_repo, get_derivatives_repo,
     get_embedding_client_dep, get_generation_jobs_repo, get_glossary_client_dep,
-    get_grounding_pins_repo, get_knowledge_client_dep, get_outline_repo,
-    get_references_repo, get_scene_links_repo, get_style_profile_repo,
-    get_voice_profile_repo, get_works_repo,
+    get_grounding_pins_repo, get_knowledge_client_dep, get_motif_application_repo_opt,
+    get_motif_repo_opt, get_outline_repo,
+    get_references_repo, get_scene_links_repo, get_structure_repo,
+    get_style_profile_repo, get_voice_profile_repo, get_works_repo,
 )
+from app.db.repositories.structure import StructureRepo
+from app.db.repositories.motif_application import MotifApplicationRepo
+from app.db.repositories.motif_repo import MotifRepo
+from app.deps import get_grant_client_dep
+from app.grant_client import GrantClient, GrantLevel
 from app.middleware.jwt_auth import get_bearer_token, get_current_user
-from app.grant_deps import InsufficientGrant
+from app.grant_deps import InsufficientGrant, authorize_book
 from app.packer.pack import OwnershipError, PackRequest, build_derivative_context, pack
 
 router = APIRouter(prefix="/v1/composition")
@@ -63,6 +70,9 @@ async def get_grounding(
     bearer: str = Depends(get_bearer_token),
     works: WorksRepo = Depends(get_works_repo),
     outline: OutlineRepo = Depends(get_outline_repo),
+    structures: StructureRepo | None = Depends(get_structure_repo),
+    motif_apps: MotifApplicationRepo | None = Depends(get_motif_application_repo_opt),  # X-7 motif lens
+    motifs: MotifRepo | None = Depends(get_motif_repo_opt),  # X-7 motif lens
     scene_links: SceneLinksRepo = Depends(get_scene_links_repo),
     canon: CanonRulesRepo = Depends(get_canon_rules_repo),
     book: BookClient = Depends(get_book_client_dep),
@@ -76,28 +86,31 @@ async def get_grounding(
     references: ReferencesRepo = Depends(get_references_repo),
     embedder: EmbeddingClient = Depends(get_embedding_client_dep),
 ) -> dict[str, Any]:
-    work = await works.get(user_id, project_id)
+    work = await works.get(project_id)
     if work is None:
         raise HTTPException(status_code=404, detail="work not found")
-    node = await outline.get_node(user_id, node_id)
+    node = await outline.get_node(node_id)
     if node is None or str(node.project_id) != str(project_id):
         raise HTTPException(status_code=404, detail="scene not found")
 
     # C25 — resolve the dị bản two-project merge inputs (base project + branch +
     # fresh overrides). Empty for a non-derivative Work.
     deriv = await build_derivative_context(
-        work, user_id=user_id, works_repo=works, derivatives_repo=derivatives)
+        work, works_repo=works, derivatives_repo=derivatives)
     req = PackRequest(
         user_id=user_id, project_id=project_id, book_id=work.book_id,
         node=node.model_dump(mode="python"), bearer=bearer, guide=guide,
         settings=work.settings,
         source_project_id=deriv.source_project_id, branch_point=deriv.branch_point,
-        overrides=deriv.overrides,
+        overrides=deriv.overrides, pov_anchor=deriv.pov_anchor,
     )
     try:
         pc = await pack(
             req, book=book, glossary=glossary, knowledge=knowledge,
             canon_repo=canon, outline_repo=outline, scene_links_repo=scene_links,
+            structure_repo=structures,  # 23 BA12 — the arc lens
+            motif_application_repo=motif_apps,  # X-7 — the motif lens (scene beats)
+            motif_repo=motifs,  # X-7 — ditto; BOTH must ride or the lens is dormant
             budget_tokens=settings.pack_token_budget, jobs_repo=jobs,
             grounding_pins_repo=grounding_pins,  # T3.4 — honor per-scene pins
             style_profile_repo=style_profiles,  # T3.5 — density/pace
@@ -150,20 +163,29 @@ async def set_grounding_pin(
     works: WorksRepo = Depends(get_works_repo),
     outline: OutlineRepo = Depends(get_outline_repo),
     grounding_pins: GroundingPinsRepo = Depends(get_grounding_pins_repo),
+    grant: GrantClient = Depends(get_grant_client_dep),
 ) -> dict[str, Any]:
     """T3.4 — pin / exclude / clear one addressable grounding item for a scene.
-    Gated by the same work+scene ownership check as the preview (user-scoped →
-    404, no existence oracle). Honored on the next pack (preview AND generation)."""
-    work = await works.get(user_id, project_id)
+    Gated on the E0 book grant (25 PM-8: EDIT — it writes the shared pin set;
+    none→404, no existence oracle). Honored on the next pack (preview AND
+    generation)."""
+    work = await works.get(project_id)
     if work is None:
         raise HTTPException(status_code=404, detail="work not found")
-    node = await outline.get_node(user_id, node_id)
+    try:
+        await authorize_book(grant, work.book_id, user_id, GrantLevel.EDIT)
+    except OwnershipError:
+        raise HTTPException(status_code=404, detail="work not found")
+    except InsufficientGrant:
+        raise HTTPException(status_code=403, detail="insufficient access")
+    node = await outline.get_node(node_id)
     if node is None or str(node.project_id) != str(project_id):
         raise HTTPException(status_code=404, detail="scene not found")
 
     if body.action == "none":
-        await grounding_pins.clear(user_id, project_id, node_id, body.item_type, body.item_id)
+        await grounding_pins.clear(project_id, node_id, body.item_type, body.item_id)
     else:
         await grounding_pins.set_action(
-            user_id, project_id, node_id, body.item_type, body.item_id, body.action)
+            project_id, node_id, body.item_type, body.item_id, body.action,
+            created_by=user_id)
     return {"item_type": body.item_type, "item_id": body.item_id, "action": body.action}

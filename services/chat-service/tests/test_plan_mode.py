@@ -31,11 +31,13 @@ from app.db.suspended_runs import SuspendedRun
 from app.services.frontend_tools import PROPOSE_EDIT_TOOL
 from app.services.skill_registry import resolve_skills_to_inject
 from app.services.stream_service import (
+    ASK_MODE_NUDGE,
     PLAN_MODE_NUDGE,
     _stream_with_tools,
     resume_stream_response,
     stream_response,
 )
+from app.services.tool_surface import SessionToolPins, discovery_seed_for_surface
 from tests.conftest import (
     TEST_MODEL_REF,
     TEST_SESSION_ID,
@@ -73,7 +75,7 @@ def _run_plan(
     knowledge_client,
     tools=None,
     permission_mode="plan",
-    approval_check=None,
+    decision_check=None,
     discovery_catalog=None,
     discovery_seed_names=None,
 ):
@@ -88,7 +90,7 @@ def _run_plan(
         session_id=TEST_SESSION_ID,
         project_id="proj-1",
         permission_mode=permission_mode,
-        approval_check=approval_check,
+        decision_check=decision_check,
         discovery_catalog=discovery_catalog,
         discovery_seed_names=discovery_seed_names,
     )
@@ -107,9 +109,12 @@ class TestPlanChokepoint:
         with _patch_client(scripts):
             await _drain(_run_plan(scripts, knowledge_client=kc))
         req = _FakeClient.instances[0].requests[0]
-        # + conversation_search (T6/D6) — always appended when tools are offered.
+        # + the always-on recovery pair appended when tools are offered:
+        #   conversation_search (T6/D6, same-session) + chat_search_sessions (B1/WS-1.9, cross-session).
+        # (chat_search_sessions added here by M4/P-2 — a concurrent session wired it in and left this
+        #  assertion listing only conversation_search.)
         assert {t["function"]["name"] for t in req.tools} == (
-            R_CATALOG_NAMES | PLAN_TOOL_NAMES | {"conversation_search"}
+            R_CATALOG_NAMES | PLAN_TOOL_NAMES | {"conversation_search", "chat_search_sessions"}
         )
 
     @pytest.mark.asyncio
@@ -128,6 +133,102 @@ class TestPlanChokepoint:
         assert names & ALL_PLAN_ACTIVE == R_CATALOG_NAMES | PLAN_TOOL_NAMES
         # discovery machinery intact in plan mode
         assert "find_tools" in names
+
+
+# ════════════════════════════════════════════════════════════════════════════
+# the REAL discovery-seeding function — every other test in this module
+# hand-injects `discovery_seed_names`, which masked a real gap: turn 1 of a
+# Plan-mode session never seeded plan_* tools at all (tool_discovery.py's
+# hot-domain sets never included "plan"), so the plan_forge skill's "Act — do
+# NOT narrate, emit the tool call" instruction pointed at a tool the model had
+# no schema for. These exercise `discovery_seed_for_surface` itself.
+# ════════════════════════════════════════════════════════════════════════════
+
+
+class TestPlanModeRealSeeding:
+    def _auto_pins(self) -> SessionToolPins:
+        return SessionToolPins(
+            effective_enabled=[],
+            effective_skills=[],
+            curated_mode=False,
+            activation_state={"activated_tools": [], "dirty": False},
+        )
+
+    def test_plan_mode_seeds_plan_tools_on_book_surface(self):
+        names = discovery_seed_for_surface(
+            _catalog_with_plan(), pins=self._auto_pins(),
+            editor=False, book_scoped=True, permission_mode="plan",
+        )
+        assert PLAN_TOOL_NAMES <= names
+
+    def test_plan_mode_seeds_plan_tools_on_editor_surface(self):
+        names = discovery_seed_for_surface(
+            _catalog_with_plan(), pins=self._auto_pins(),
+            editor=True, book_scoped=True, permission_mode="plan",
+        )
+        assert PLAN_TOOL_NAMES <= names
+
+    def test_write_mode_does_not_seed_plan_tools(self):
+        """Regression guard: the plan hot-domain must not leak into write mode."""
+        names = discovery_seed_for_surface(
+            _catalog_with_plan(), pins=self._auto_pins(),
+            editor=False, book_scoped=True, permission_mode="write",
+        )
+        assert not (PLAN_TOOL_NAMES & names)
+
+    def test_ask_mode_does_not_seed_plan_tools(self):
+        names = discovery_seed_for_surface(
+            _catalog_with_plan(), pins=self._auto_pins(),
+            editor=False, book_scoped=True, permission_mode="ask",
+        )
+        assert not (PLAN_TOOL_NAMES & names)
+
+    def test_curated_plan_mode_seeds_plan_tools_even_when_unpinned(self):
+        """A curated session (explicit tool-name pins) that pinned only
+        ["glossary_search"] — no plan_* name, no "glossary" skill — must still
+        get plan_* tools in Plan mode: plan_forge auto-injects regardless of
+        curated pins (skill_registry.resolve_skills_to_inject), so its tools
+        can't be stranded behind the glossary-specific union gate. Exercises the
+        SHARED-budget path (empty effective_skills on a book-scoped surface
+        already triggers the glossary-gate's union, which now includes "plan"
+        via surface_hot_domains — no separate carve-out call needed here)."""
+        pins = SessionToolPins(
+            effective_enabled=["glossary_search"],
+            effective_skills=[],
+            curated_mode=True,
+            activation_state={"activated_tools": [], "dirty": False},
+        )
+        names = discovery_seed_for_surface(
+            _catalog_with_plan(), pins=pins,
+            editor=False, book_scoped=True, permission_mode="plan",
+        )
+        assert PLAN_TOOL_NAMES <= names
+        assert "glossary_search" in names
+
+    def test_curated_plan_mode_seeds_plan_tools_via_separate_carveout_when_glossary_gate_skips(self):
+        """review-impl follow-up: a curated session with a NON-EMPTY pinned skill
+        set that excludes "glossary" (so the glossary-gate union in
+        `effective_enabled_tools` is skipped entirely — `glossary_in_skills` is
+        False) must still get plan_* tools via the separate carve-out branch,
+        and that branch must NOT ALSO double-run the shared union (there is
+        nothing shared to double here — this is the one place a second,
+        independently-budgeted call is correct)."""
+        pins = SessionToolPins(
+            effective_enabled=["glossary_search"],
+            effective_skills=["knowledge"],  # non-empty, excludes "glossary"
+            curated_mode=True,
+            activation_state={"activated_tools": [], "dirty": False},
+        )
+        names = discovery_seed_for_surface(
+            _catalog_with_plan(), pins=pins,
+            editor=False, book_scoped=True, permission_mode="plan",
+        )
+        assert PLAN_TOOL_NAMES <= names
+        assert "glossary_search" in names  # the explicit pin still rides along
+        # the glossary hot-domain union did NOT run (gate skipped) — story/glossary
+        # hot tools beyond the explicit pin are absent, proving this came from the
+        # carve-out, not the shared union.
+        assert "glossary_get_entity" not in names
 
 
 # ════════════════════════════════════════════════════════════════════════════
@@ -175,7 +276,7 @@ class TestPlanDefenseInDepth:
         kc.get_catalog_meta = MagicMock(return_value={})
         kc.mcp_execute_tool.return_value = _envelope(
             success=True, result={"run_id": "pr-1"})
-        check = AsyncMock(return_value=False)  # would gate in write mode
+        check = AsyncMock(return_value=None)  # would gate in write mode
         scripts = [
             [
                 tool_frag(index=0, id="c1", name="plan_propose_spec"),
@@ -186,12 +287,16 @@ class TestPlanDefenseInDepth:
         ]
         with _patch_client(scripts):
             chunks = await _drain(_run_plan(
-                scripts, knowledge_client=kc, approval_check=check,
+                scripts, knowledge_client=kc, decision_check=check,
                 discovery_catalog=_catalog_with_plan(),
                 discovery_seed_names=set(ALL_PLAN_ACTIVE),
             ))
         kc.mcp_execute_tool.assert_awaited_once()
-        check.assert_not_awaited()  # the write-mode gate never consults
+        # The write-mode approval CARD never fires in plan mode (planning artifacts are
+        # the mode's whole point and are reversible plan_runs rows). Track C WS-3: the
+        # standing REFUSAL is still read — plan-mode Tier-A was one of the two silent holes
+        # where a tool the user had blocked in Settings kept running — but with no decision
+        # on file it neither prompts nor blocks, so the tool executes exactly as before.
         assert not [c for c in chunks if "suspend" in c]
         tc = [c["tool_call"] for c in chunks if "tool_call" in c][0]
         assert tc["ok"] is True and tc["tool"] == "plan_propose_spec"
@@ -358,12 +463,51 @@ class TestPlanNudgeBothAssemblyPaths:
 
     @pytest.mark.asyncio
     async def test_write_mode_has_no_nudge_or_auto_skill(self):
-        """Write mode stays byte-identical: no nudge, no plan_forge body."""
+        """Write mode stays byte-identical: no nudge, no plan_forge body. Checks
+        a phrase unique to the skill BODY, not a bare tool name (the always-on
+        group directory legitimately names every plan_* tool as a find_tools
+        pointer in every mode) nor the "Act — do NOT narrate" heading (shared
+        verbatim with glossary_skill.py) nor "hand off to drafting" (also in
+        the surface-gated, mode-independent L1 skill-metadata description)."""
         kc = _patched_knowledge(tool_defs=_catalog_with_plan())
         msgs = await _drive_stream_response(kc, _creds(), "write")
         system = next(m for m in msgs if m["role"] == "system")
         assert PLAN_MODE_NUDGE not in system["content"]
-        assert "plan_propose_spec" not in system["content"]
+        assert "propose → refine → validate → compile" not in system["content"]
+
+
+class TestAskNudgeBothAssemblyPaths:
+    """Ask mode had no nudge at all — the model only learned it was read-only
+    reactively, from a rejected tool-call error, instead of upfront the way
+    plan mode explains itself. Mirrors TestPlanNudgeBothAssemblyPaths."""
+
+    @pytest.mark.asyncio
+    async def test_plain_string_path_carries_ask_nudge(self):
+        kc = _patched_knowledge(tool_defs=_catalog_with_plan())
+        msgs = await _drive_stream_response(kc, _creds(), "ask")
+        system = next(m for m in msgs if m["role"] == "system")
+        assert isinstance(system["content"], str)
+        assert ASK_MODE_NUDGE in system["content"]
+        assert PLAN_MODE_NUDGE not in system["content"]
+
+    @pytest.mark.asyncio
+    async def test_anthropic_parts_path_carries_ask_nudge(self):
+        kc = _patched_knowledge(
+            stable='<memory mode="static"><project/></memory>',
+            tool_defs=_catalog_with_plan(),
+        )
+        msgs = await _drive_stream_response(kc, _make_creds(), "ask")
+        system = next(m for m in msgs if m["role"] == "system")
+        assert isinstance(system["content"], list)
+        texts = [p["text"] for p in system["content"]]
+        assert ASK_MODE_NUDGE in texts
+
+    @pytest.mark.asyncio
+    async def test_write_mode_has_no_ask_nudge(self):
+        kc = _patched_knowledge(tool_defs=_catalog_with_plan())
+        msgs = await _drive_stream_response(kc, _creds(), "write")
+        system = next(m for m in msgs if m["role"] == "system")
+        assert ASK_MODE_NUDGE not in system["content"]
 
 
 # ════════════════════════════════════════════════════════════════════════════

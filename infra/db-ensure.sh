@@ -13,6 +13,7 @@ DATABASES="
 loreweave_auth
 loreweave_book
 loreweave_sharing
+loreweave_scheduler
 loreweave_catalog
 loreweave_provider_registry
 loreweave_usage_billing

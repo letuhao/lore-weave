@@ -86,8 +86,14 @@ func (s *Server) mcpHandler() http.Handler {
 	registerTool(srv, &mcp.Tool{
 		Name:        "settings_provider_inventory",
 		Description: "List the upstream models a configured provider credential currently offers (its live inventory), so the user can pick one to register. Takes a provider_credential_id. No secrets returned.",
-		Meta:        lwmcp.NewToolMeta(lwmcp.TierR, lwmcp.ScopeUser, nil, []string{"inventory", "available models", "provider models", "what models"}),
+		Meta:        lwmcp.NewToolMeta(lwmcp.TierR, lwmcp.ScopeUser, nil, []string{"inventory", "models this provider offers", "provider models", "what models"}),
 	}, s.toolProviderInventory)
+
+	// ── Tier R, PAID (universal web research — Track D CD5) ────────────────────
+	// Not `settings_`-prefixed: `web_search` is this server's SECOND namespace, so
+	// ai-gateway's EXTRA_PREFIX_MAP.settings must list `web_` or the C-GW prefix gate
+	// silently drops it. See mcp_web_search_tool.go.
+	s.registerWebSearchTool(srv)
 
 	// ── Tier A (auto-commit + Undo; all free/reversible) ───────────────────────
 	registerTool(srv, &mcp.Tool{
@@ -115,7 +121,7 @@ func (s *Server) mcpHandler() http.Handler {
 	registerTool(srv, &mcp.Tool{
 		Name:        "settings_model_set_favorite",
 		Description: "Mark a registered model as a favorite (or un-favorite it). Free and reversible.",
-		Meta:        lwmcp.NewToolMeta(lwmcp.TierA, lwmcp.ScopeUser, nil, []string{"favorite", "star model", "pin model", "unfavorite"}),
+		Meta:        lwmcp.NewToolMeta(lwmcp.TierA, lwmcp.ScopeUser, nil, []string{"favorite", "mark model as favorite", "pin model", "unfavorite"}),
 	}, s.toolModelSetFavorite)
 
 	registerTool(srv, &mcp.Tool{
@@ -127,7 +133,7 @@ func (s *Server) mcpHandler() http.Handler {
 	registerTool(srv, &mcp.Tool{
 		Name:        "settings_model_set_default",
 		Description: "Set (or clear) the user's default model for a capability (rerank or embedding). Free and reversible — set it back to the previous default to undo.",
-		Meta:        lwmcp.NewToolMeta(lwmcp.TierA, lwmcp.ScopeUser, nil, []string{"set default", "default model", "make default", "clear default"}),
+		Meta:        lwmcp.NewToolMeta(lwmcp.TierA, lwmcp.ScopeUser, nil, []string{"set default", "set my default model", "make default", "clear default"}),
 	}, s.toolModelSetDefault)
 
 	// ── Tier W (confirm_action; descriptor settings.model_delete) ──────────────
@@ -146,7 +152,7 @@ func (s *Server) mcpHandler() http.Handler {
 // can't be threaded through an `any`, hence this helper.
 func registerTool[In, Out any](srv *mcp.Server, t *mcp.Tool, h func(context.Context, *mcp.CallToolRequest, In) (*mcp.CallToolResult, Out, error)) {
 	lwmcp.MustValidateToolMeta(t)
-	mcp.AddTool(srv, t, h)
+	lwmcp.RegisterTool(srv, t, h)
 }
 
 // callerID extracts the envelope user id; a tool MUST refuse on absence rather than
@@ -190,8 +196,31 @@ func (s *Server) providerCredGuard() lwmcp.Guard {
 
 type emptyIn struct{}
 
+// profileObject decodes the auth-service profile body into a plain object.
+//
+// It must NOT be `json.RawMessage`. That type is `[]byte`, so the MCP Go SDK's schema
+// inference declares the field as `["null","array"]` — while `encoding/json` marshals it
+// as the raw JSON it holds, an OBJECT. The SDK then validates the tool's OUTPUT against
+// its own declared schema and rejects every call:
+//
+//	validating /properties/profile: type: map[...] has type "object", want one of "null, array"
+//
+// Both settings_get_profile and settings_update_profile were broken this way — 100% of
+// calls, for every user, since the tools were written. Nothing caught it: the wire gates
+// assert over `tools/list` metadata and never call `tools/call`, and no NL probe covered
+// them. A deterministic capability sweep (scripts/eval/tool_liveness/sweep.py) found it.
+//
+// Rule: an MCP tool's Out struct must never carry a `json.RawMessage` field.
+func profileObject(body json.RawMessage) map[string]any {
+	var m map[string]any
+	if err := json.Unmarshal(body, &m); err != nil {
+		return map[string]any{}
+	}
+	return m
+}
+
 type getProfileOut struct {
-	Profile json.RawMessage `json:"profile"`
+	Profile map[string]any `json:"profile"`
 }
 
 func (s *Server) toolGetProfile(ctx context.Context, _ *mcp.CallToolRequest, _ emptyIn) (*mcp.CallToolResult, getProfileOut, error) {
@@ -203,7 +232,7 @@ func (s *Server) toolGetProfile(ctx context.Context, _ *mcp.CallToolRequest, _ e
 	if err != nil {
 		return nil, getProfileOut{}, err
 	}
-	return nil, getProfileOut{Profile: body}, nil
+	return nil, getProfileOut{Profile: profileObject(body)}, nil
 }
 
 // ── Tier R: providers (NO secret) ──────────────────────────────────────────────
@@ -416,8 +445,9 @@ type updateProfileIn struct {
 	Languages   []string `json:"languages,omitempty" jsonschema:"languages the user reads/writes (max 20)"`
 }
 type updateProfileOut struct {
-	Profile  json.RawMessage `json:"profile"`
-	UndoHint map[string]any  `json:"_meta_undo_hint,omitempty"`
+	// map, not json.RawMessage — see profileObject. Same output-schema break.
+	Profile  map[string]any `json:"profile"`
+	UndoHint map[string]any `json:"_meta_undo_hint,omitempty"`
 }
 
 func (s *Server) toolUpdateProfile(ctx context.Context, _ *mcp.CallToolRequest, in updateProfileIn) (*mcp.CallToolResult, updateProfileOut, error) {
@@ -456,7 +486,7 @@ func (s *Server) toolUpdateProfile(ctx context.Context, _ *mcp.CallToolRequest, 
 		return nil, updateProfileOut{}, err
 	}
 	res := mcpResultWithUndo(undoHintForProfile(before, patch))
-	return res, updateProfileOut{Profile: body, UndoHint: undoHintForProfile(before, patch)}, nil
+	return res, updateProfileOut{Profile: profileObject(body), UndoHint: undoHintForProfile(before, patch)}, nil
 }
 
 // undoHintForProfile builds the reverse settings_update_profile args from the

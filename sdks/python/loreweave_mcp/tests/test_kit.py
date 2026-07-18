@@ -671,6 +671,19 @@ def test_require_meta_happy():
     assert meta["tier"] == "W" and meta["scope"] == "book"
 
 
+def test_require_meta_deprecation_fields():
+    """visibility/superseded_by (mirrors the Go kit's WithVisibility/WithSupersededBy) —
+    a tool deprecated in favour of a canonical twin sets both, and they are OMITTED when
+    absent (so undeprecated tools stay byte-identical)."""
+    legacy = require_meta("A", "book", visibility="legacy",
+                          superseded_by="book_chapter_save_draft")
+    assert legacy["visibility"] == "legacy"
+    assert legacy["superseded_by"] == "book_chapter_save_draft"
+
+    plain = require_meta("A", "book")
+    assert "visibility" not in plain and "superseded_by" not in plain
+
+
 def test_validate_tool_meta_rejects_missing_meta():
     with pytest.raises(MetaValidationError):
         validate_tool_meta(None, tool_name="book_x")

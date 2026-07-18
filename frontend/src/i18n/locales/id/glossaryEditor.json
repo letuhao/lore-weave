@@ -146,5 +146,13 @@
       "system": "sistem"
     },
     "error": "Tidak dapat memuat riwayat versi."
+  },
+  "createAs": "Buat «{{name}}» sebagai…",
+  "kind": {
+    "character": "Karakter",
+    "location": "Lokasi",
+    "organization": "Organisasi",
+    "concept": "Konsep",
+    "item": "Item"
   }
 }

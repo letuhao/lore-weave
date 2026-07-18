@@ -592,6 +592,55 @@ async def test_facts_merged_with_evidence(
     assert kwargs["subject_id"] is None
 
 
+# ── PP-5 (spec 08 R7) — work-mode preference→statement coercion ─────────
+
+
+@pytest.mark.asyncio
+@patch(f"{_PATCH_BASE}.add_evidence", new_callable=AsyncMock)
+@patch(f"{_PATCH_BASE}.merge_fact", new_callable=AsyncMock)
+@patch(f"{_PATCH_BASE}.upsert_extraction_source", new_callable=AsyncMock)
+async def test_pp5_work_mode_coerces_preference_to_statement(
+    mock_upsert_source, mock_merge_fact, mock_evidence,
+):
+    """In a WORK/assistant extraction, a `preference` fact (a durable behavioral-trait claim about a
+    real colleague) is coerced to `statement` — never persisted as a trait (spec 08 R7 / Q10)."""
+    mock_upsert_source.return_value = _make_source_result()
+    mock_merge_fact.return_value = _make_fact_result("fid-x")
+    mock_evidence.return_value = _make_evidence_result(True)
+
+    await write_pass2_extraction(
+        _fake_session(),
+        user_id=USER_ID, project_id=PROJECT_ID,
+        source_type="chat_message", source_id="msg-1", job_id=JOB_ID,
+        facts=[_fact("Minh always pushes back in reviews.", "preference", subject="Minh")],
+        work_mode=True,
+    )
+    assert mock_merge_fact.call_args.kwargs["type"] == "statement"
+
+
+@pytest.mark.asyncio
+@patch(f"{_PATCH_BASE}.add_evidence", new_callable=AsyncMock)
+@patch(f"{_PATCH_BASE}.merge_fact", new_callable=AsyncMock)
+@patch(f"{_PATCH_BASE}.upsert_extraction_source", new_callable=AsyncMock)
+async def test_pp5_novel_mode_preserves_preference(
+    mock_upsert_source, mock_merge_fact, mock_evidence,
+):
+    """The novel/fiction path is UNCHANGED — a `preference` ("Kai always carries a sword") stays a
+    preference; work_mode defaults False so PP-5 never touches fiction."""
+    mock_upsert_source.return_value = _make_source_result()
+    mock_merge_fact.return_value = _make_fact_result("fid-y")
+    mock_evidence.return_value = _make_evidence_result(True)
+
+    await write_pass2_extraction(
+        _fake_session(),
+        user_id=USER_ID, project_id=PROJECT_ID,
+        source_type="chapter", source_id="ch-1", job_id=JOB_ID,
+        facts=[_fact("Kai always carries a sword.", "preference", subject="Kai")],
+        # work_mode omitted → default False
+    )
+    assert mock_merge_fact.call_args.kwargs["type"] == "preference"
+
+
 # ── K17.9 Injection defense regressions ────────────────────────
 #
 # Verify that every text field K17.8 writer persists to Neo4j is

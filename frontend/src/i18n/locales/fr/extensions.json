@@ -6,6 +6,7 @@
     "commands": "Commandes et Hooks",
     "subagents": "Sous-agents",
     "plugins": "Plugins",
+    "permissions": "Permissions des outils",
     "proposals": "Propositions",
     "activity": "Journal d'activité",
     "ingest": "Sources du registre"
@@ -36,7 +37,7 @@
   "skills": {
     "search": "Rechercher des compétences…",
     "tier": {
-      "all": "Rang : Tous",
+      "all": "Niveau : Tous",
       "system": "Système",
       "user": "Utilisateur",
       "book": "Livre"
@@ -94,8 +95,8 @@
     "wizard": {
       "steps": {
         "connection": "Connexion",
-        "auth": "Authentification",
-        "scan": "Santé et analyse",
+        "auth": "Auth",
+        "scan": "Santé et scan",
         "review": "Révision"
       },
       "displayName": "Nom d'affichage",
@@ -106,18 +107,18 @@
       "authNone": "Aucune",
       "authBearer": "Jeton Bearer",
       "authOauth": "OAuth 2.1",
-      "noAuthHint": "Aucune authentification — ce serveur est ouvert. Continuez pour l'enregistrer et l'analyser.",
+      "noAuthHint": "Aucune authentification — ce serveur est ouvert. Continuez pour l'enregistrer et le scanner.",
       "bearerLabel": "Jeton Bearer (scellé dans le coffre-fort ; ne sera plus jamais affiché)",
       "bearerPlaceholder": "coller le jeton",
       "authzEndpoint": "Point de terminaison d'autorisation",
       "tokenEndpoint": "Point de terminaison du jeton",
-      "clientId": "ID client",
+      "clientId": "ID du client",
       "scopes": "Scopes (séparés par des espaces)",
       "registering": "Enregistrement…",
       "registerScan": "Enregistrer et analyser",
       "statusLabel": "Statut :",
       "connectOauth": "Se connecter avec OAuth →",
-      "runScan": "Lancer l'analyse de santé et le scan",
+      "runScan": "Vérifier l'état et analyser",
       "refresh": "Actualiser",
       "continue": "Continuer",
       "authKind": "auth : {{kind}}",
@@ -141,9 +142,9 @@
   },
   "subagents": {
     "title": "Sous-agents",
-    "description": "Une persona nommée à laquelle l'agent peut déléguer une sous-tâche limitée via <code>run_subagent</code>. Elle s'exécute dans un tour isolé avec UNIQUEMENT ses outils configurés. Laissez le champ « scope » vide pour une persona de pur raisonnement ou de résumé.",
+    "description": "Une persona nommée à laquelle l'agent peut déléguer une sous-tâche limitée via <code>run_subagent</code>. Elle s'exécute dans un tour isolé avec UNIQUEMENT ses outils spécifiques. Laissez le champ « scope » vide pour une persona de pur raisonnement ou de résumé.",
     "namePlaceholder": "nom (ex. lore-scout)",
-    "scopePlaceholder": "périmètre d'outils : glossary_*, kg_*",
+    "scopePlaceholder": "périmètre des outils : glossary_*, kg_*",
     "modelPlaceholder": "modèle (optionnel, id user_model)",
     "promptPlaceholder": "Prompt système — qui est cette persona et comment elle fonctionne…",
     "create": "Créer un sous-agent",
@@ -169,10 +170,10 @@
       "all": "Tous"
     },
     "total": "{{count}} au total",
-    "empty": "Aucune proposition. Les compétences proposées par l'agent apparaîtront ici pour approbation.",
+    "empty": "Aucune proposition. Les compétences proposées par l'agent apparaîtront ici pour votre approbation.",
     "approve": "Approuver",
     "reject": "Rejeter",
-    "reason": "Motif : {{reason}}"
+    "reason": "Raison : {{reason}}"
   },
   "activity": {
     "title": "Journal d'activité",
@@ -186,18 +187,71 @@
     "secondsAgo": "Il y a {{count}}s",
     "minutesAgo": "Il y a {{count}}m",
     "hoursAgo": "Il y a {{count}}h",
-    "daysAgo": "il y a {{count}}j"
+    "daysAgo": "Il y a {{count}}j"
   },
   "ingest": {
     "title": "Sources du registre (admin)",
     "description": "Organisez le catalogue du système à partir du registre MCP officiel. La vérification ≠ la sécurité — chaque approbation relance la protection SSRF + le scan de la chaîne d'approvisionnement avant la fédération.",
     "all": "Tout",
-    "pulling": "Récupération…",
+    "pulling": "Récupération en cours…",
     "pull": "Récupérer le registre",
-    "pullResult": "Récupéré : {{fetched}} récupérés · {{new}} nouveaux · {{updated}} mis à jour · {{skipped}} ignorés (distant)",
+    "pullResult": "Récupéré : {{fetched}} récupérés · {{new}} nouveaux · {{updated}} mis à jour · {{skipped}} ignorés (déjà à jour)",
     "truncated": "· partiel (tronqué)",
     "empty": "Aucune entrée dans cette vue. Récupérez le registre pour remplir la file d'attente.",
     "approve": "Approuver",
     "reject": "Rejeter"
+  },
+  "permissions": {
+    "blurb": "Outils auxquels vous avez accordé une autorisation permanente — et outils que vous avez bloqués. « Toujours autoriser » sur une carte d'approbation ajoute une ligne ici. Révoquer une autorisation signifie que l'assistant vous demandera à nouveau son avis la prochaine fois qu'il voudra utiliser cet outil.",
+    "loading": "Chargement…",
+    "allowedTitle": "Toujours autorisé",
+    "deniedTitle": "Bloqué",
+    "blockTitle": "Bloquer un outil",
+    "emptyAllowed": "Vous n'avez accordé aucune autorisation permanente à un outil. L'assistant vous demandera l'autorisation à chaque fois.",
+    "emptyDenied": "Aucun outil n'est bloqué.",
+    "toolPlaceholder": "Nom de l'outil (ex. chapter_delete)",
+    "unknownTool": "Ceci ne fait pas partie des outils de l'assistant. Veuillez choisir un nom dans la liste.",
+    "kind": {
+      "mutation": "Peut modifier mon travail",
+      "spend": "Peut dépenser de l'argent"
+    },
+    "decision": {
+      "allow": "S'exécute sans demander",
+      "deny": "Ne plus exécuter"
+    },
+    "actions": {
+      "revoke": "Me redemander",
+      "deny": "Ne jamais autoriser",
+      "allow": "Autoriser",
+      "block": "Bloquer"
+    }
+  },
+  "workflows": {
+    "total": "{{count}} workflows",
+    "empty": "Aucun workflow pour le moment. Approuvez une proposition de workflow pour en ajouter un.",
+    "enabled": "Activé",
+    "disabled": "Désactivé",
+    "delete": "Supprimer",
+    "proposalsEmpty": "Aucune proposition de workflow. Lorsqu'un agent propose un workflow, il apparaît ici pour approbation.",
+    "view": "Voir",
+    "hide": "Masquer",
+    "noSteps": "Aucune étape définie."
+  },
+  "bindings": {
+    "loading": "Chargement…",
+    "autoSetupDesc": "Recettes que l'assistant configure automatiquement dans ce mode.",
+    "none": "Rien n'est configuré automatiquement ici.",
+    "turnOff": "Désactiver",
+    "turnBackOn": "Réactiver",
+    "mode": {
+      "ask": "Lecture et questions",
+      "write": "Écriture",
+      "plan": "Planification"
+    },
+    "tier": {
+      "system": "Intégré",
+      "user": "Définis par vous",
+      "book": "Ce livre"
+    }
   }
 }

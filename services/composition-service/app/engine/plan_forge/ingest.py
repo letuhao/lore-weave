@@ -7,14 +7,24 @@ import re
 from pathlib import Path
 from typing import Any
 
+# 27 V2-G — the section classifier is STRUCTURAL, not fixture-bound.
+#
+# It used to match only the POC's own Vietnamese headings ("công pháp", "âm dương hợp hoan",
+# "đạo hóa", "cuồng mỹ"), so an English document's "# 1. Characters" fell through to `other` and its
+# character section was simply never seen. The POC's titles are kept — that document must still
+# parse — but each kind now also matches the ordinary words a person would actually write.
+#
+# An unmatched section is `other`, and `other` is IGNORED, not guessed at. A section we cannot
+# classify is a section we do not understand, and inventing a kind for it would put the user's prose
+# into a slot the compiler then reasons about as if it meant something.
 SECTION_KIND_MAP: list[tuple[re.Pattern[str], str]] = [
-    (re.compile(r"nhân vật|character seed", re.I), "character_seed"),
-    (re.compile(r"công pháp|âm dương hợp hoan", re.I), "mechanics"),
-    (re.compile(r"đạo hóa|cuồng mỹ", re.I), "mechanics"),
-    (re.compile(r"planner variables", re.I), "planner_variables"),
-    (re.compile(r"arc overview", re.I), "arc_overview"),
-    (re.compile(r"nguyên tắc viết", re.I), "writing_principles"),
-    (re.compile(r"open questions", re.I), "open_questions"),
+    (re.compile(r"nhân vật|character|protagonist|cast|dramatis", re.I), "character_seed"),
+    (re.compile(r"công pháp|âm dương hợp hoan|đạo hóa|cuồng mỹ", re.I), "mechanics"),
+    (re.compile(r"mechanic|system|magic|power|rules? of", re.I), "mechanics"),
+    (re.compile(r"planner variables|variables|state var|stat", re.I), "planner_variables"),
+    (re.compile(r"arc overview|arcs?\b|outline|structure|plot", re.I), "arc_overview"),
+    (re.compile(r"nguyên tắc viết|writing principles|style|voice|tone", re.I), "writing_principles"),
+    (re.compile(r"open questions|questions|unknowns|todo", re.I), "open_questions"),
 ]
 
 

@@ -42,7 +42,8 @@ MOTIF_TOOLS = {
     "composition_motif_search", "composition_motif_get",
     "composition_motif_suggest_for_chapter", "composition_arc_suggest",
     "composition_get_mine_job",
-    "composition_motif_create", "composition_motif_archive", "composition_motif_patch",
+    "composition_motif_create", "composition_motif_archive", "composition_motif_restore",
+    "composition_motif_patch",
     "composition_motif_bind", "composition_motif_unbind",
     "composition_motif_adopt", "composition_motif_mine",
     "composition_arc_import_analyze", "composition_conformance_run",
@@ -52,7 +53,8 @@ MOTIF_TOOLS = {
 }
 MOTIF_USER_SCOPE = {
     "composition_motif_search", "composition_motif_get",
-    "composition_motif_create", "composition_motif_archive", "composition_motif_patch",
+    "composition_motif_create", "composition_motif_archive", "composition_motif_restore",
+    "composition_motif_patch",
     "composition_motif_adopt", "composition_arc_import_analyze",
     "composition_motif_link_list", "composition_motif_link_create",
     "composition_motif_link_delete",
@@ -172,7 +174,7 @@ class _Ctx:
 
 def _work(user=TEST_USER):
     from app.db.models import CompositionWork
-    return CompositionWork(project_id=PROJECT, user_id=user, book_id=BOOK, id=PROJECT, version=1)
+    return CompositionWork(project_id=PROJECT, created_by=user, book_id=BOOK, id=PROJECT, version=1)
 
 
 @asynccontextmanager
@@ -258,7 +260,7 @@ async def test_suggest_foreign_node_uniform():
     from loreweave_mcp import NotAccessibleError
     from app.db.models import OutlineNode
 
-    foreign = OutlineNode(id=NODE, user_id=TEST_USER, project_id=OTHER_PROJECT,
+    foreign = OutlineNode(id=NODE, created_by=TEST_USER, book_id=BOOK, project_id=OTHER_PROJECT,
                           kind="chapter", rank="a0", title="C", status="empty", version=1)
     outline = AsyncMock()
     outline.get_node = AsyncMock(return_value=foreign)
@@ -299,6 +301,63 @@ async def test_archive_user_scope_foreign_rejected():
         with pytest.raises(NotAccessibleError):
             await srv.composition_motif_archive(_Ctx(), motif_id=str(uuid.uuid4()))
     repo.archive.assert_not_awaited()
+
+
+async def test_motif_restore_owner_roundtrip_and_honest_undo():
+    """S-08: composition_motif_restore un-archives the caller's OWN motif via repo.restore, returns
+    the row, and carries an undo pointing back at archive (the reverse of the reverse)."""
+    import app.mcp.server as srv
+
+    restored = _motif(status="active")
+    repo = AsyncMock()
+    repo.restore = AsyncMock(return_value=restored)
+    async with _patched(MotifRepo=repo):
+        res = await srv.composition_motif_restore(_Ctx(), motif_id=str(restored.id))
+    assert repo.restore.await_args.args[0] == TEST_USER          # owner-scoped
+    assert res["id"] == str(restored.id) and res["status"] == "active"
+    assert res["_meta"]["undo_hint"]["tool"] == "composition_motif_archive"
+
+
+async def test_motif_restore_not_archived_or_foreign_denied():
+    """A missing/foreign/not-archived id → repo.restore returns None → uniform deny (no oracle)."""
+    import app.mcp.server as srv
+    from loreweave_mcp import NotAccessibleError
+
+    repo = AsyncMock()
+    repo.restore = AsyncMock(return_value=None)
+    async with _patched(MotifRepo=repo):
+        with pytest.raises(NotAccessibleError):
+            await srv.composition_motif_restore(_Ctx(), motif_id=str(uuid.uuid4()))
+
+
+async def test_motif_restore_shared_tier_edit_gated():
+    """With book_id, restore_shared runs after the EDIT gate (grant_level=2); the undo carries book_id."""
+    import app.mcp.server as srv
+
+    restored = _motif(status="active", owner_user_id=OTHER_USER, book_id=BOOK, book_shared=True)
+    repo = AsyncMock()
+    repo.restore_shared = AsyncMock(return_value=restored)
+    async with _patched(grant_level=2, MotifRepo=repo):   # EDIT
+        res = await srv.composition_motif_restore(
+            _Ctx(), motif_id=str(restored.id), book_id=str(BOOK),
+        )
+    repo.restore_shared.assert_awaited_once_with(TEST_USER, restored.id, BOOK)
+    assert res["_meta"]["undo_hint"]["args"].get("book_id") == str(BOOK)
+
+
+async def test_motif_restore_shared_denied_without_edit():
+    """review-impl MED-1: a VIEW-only caller (grant_level=1) restoring a shared row is the H13 deny
+    BEFORE any write — the EDIT gate is the shared-tier tenancy defense."""
+    import app.mcp.server as srv
+    from loreweave_mcp import NotAccessibleError
+
+    repo = AsyncMock()
+    async with _patched(grant_level=1, MotifRepo=repo):   # VIEW only
+        with pytest.raises(NotAccessibleError):
+            await srv.composition_motif_restore(
+                _Ctx(), motif_id=str(uuid.uuid4()), book_id=str(BOOK),
+            )
+    repo.restore_shared.assert_not_awaited()
 
 
 class _FakeTxn:
@@ -343,7 +402,7 @@ async def test_bind_wires_to_swap_engine_and_returns_undo_token():
     import app.mcp.server as srv
     from app.db.models import OutlineNode
 
-    node = OutlineNode(id=NODE, user_id=TEST_USER, project_id=PROJECT,
+    node = OutlineNode(id=NODE, created_by=TEST_USER, book_id=BOOK, project_id=PROJECT,
                        kind="chapter", rank="a0", title="C", status="empty", version=1)
     outline = AsyncMock()
     outline.get_node = AsyncMock(return_value=node)
@@ -380,7 +439,7 @@ async def test_bind_idor_foreign_motif_still_rejected():
     from app.db.models import OutlineNode
     from loreweave_mcp import NotAccessibleError
 
-    node = OutlineNode(id=NODE, user_id=TEST_USER, project_id=PROJECT,
+    node = OutlineNode(id=NODE, created_by=TEST_USER, book_id=BOOK, project_id=PROJECT,
                        kind="chapter", rank="a0", title="C", status="empty", version=1)
     outline = AsyncMock()
     outline.get_node = AsyncMock(return_value=node)
@@ -401,7 +460,7 @@ async def test_unbind_clears_chapter_when_no_token():
     import app.mcp.server as srv
     from app.db.models import OutlineNode
 
-    node = OutlineNode(id=NODE, user_id=TEST_USER, project_id=PROJECT,
+    node = OutlineNode(id=NODE, created_by=TEST_USER, book_id=BOOK, project_id=PROJECT,
                        kind="chapter", rank="a0", title="C", status="empty", version=1)
     outline = AsyncMock()
     outline.get_node = AsyncMock(return_value=node)
@@ -425,7 +484,7 @@ async def test_unbind_with_token_does_exact_inverse():
     import app.mcp.server as srv
     from app.db.models import OutlineNode
 
-    node = OutlineNode(id=NODE, user_id=TEST_USER, project_id=PROJECT,
+    node = OutlineNode(id=NODE, created_by=TEST_USER, book_id=BOOK, project_id=PROJECT,
                        kind="chapter", rank="a0", title="C", status="empty", version=1)
     outline = AsyncMock()
     outline.get_node = AsyncMock(return_value=node)
@@ -1082,21 +1141,53 @@ async def test_arc_import_propose_threads_model_ref():
     assert claims.payload["model_source"] == "user_model"
 
 
-async def test_get_mine_job_foreign_project_uniform():
-    """S1: a job under a different project → H13 (the cloned cross-Work guard)."""
+async def test_get_mine_job_foreign_owner_uniform():
+    """BE-7c / S1: a job created by ANOTHER user → H13 uniform deny.
+
+    The gate moved from the Work (a mine has none) to the OWNER stamp. A foreign
+    owner must be indistinguishable from a missing job — never a 403."""
     import app.mcp.server as srv
     from loreweave_mcp import NotAccessibleError
     from app.db.models import GenerationJob
 
-    job = GenerationJob(id=uuid.uuid4(), user_id=TEST_USER, project_id=OTHER_PROJECT,
+    job = GenerationJob(id=uuid.uuid4(), created_by=uuid.uuid4(),  # NOT TEST_USER
+                        project_id=None, book_id=None,
                         operation="mine_motifs", status="pending")
     jobs = AsyncMock()
     jobs.get = AsyncMock(return_value=job)
     async with _patched(grant_level=1, GenerationJobsRepo=jobs):
         with pytest.raises(NotAccessibleError):
-            await srv.composition_get_mine_job(
-                _Ctx(), project_id=str(PROJECT), job_id=str(job.id),
-            )
+            await srv.composition_get_mine_job(_Ctx(), job_id=str(job.id))
+
+
+async def test_get_mine_job_missing_is_uniform():
+    """A missing job denies IDENTICALLY to a foreign one (no enumeration oracle)."""
+    import app.mcp.server as srv
+    from loreweave_mcp import NotAccessibleError
+
+    jobs = AsyncMock()
+    jobs.get = AsyncMock(return_value=None)
+    async with _patched(grant_level=1, GenerationJobsRepo=jobs):
+        with pytest.raises(NotAccessibleError):
+            await srv.composition_get_mine_job(_Ctx(), job_id=str(uuid.uuid4()))
+
+
+async def test_get_mine_job_happy_path_needs_ONLY_a_job_id():
+    """🔴 The tool the confirm response advertises must be CALLABLE. It used to demand a
+    `project_id` that, for an UNBOUND job, does not exist — so the poll named in the
+    confirm envelope's own `poll` field could never be invoked."""
+    import app.mcp.server as srv
+    from app.db.models import GenerationJob
+
+    job = GenerationJob(id=uuid.uuid4(), created_by=TEST_USER,
+                        project_id=None, book_id=None,  # an UNBOUND job — no Work at all
+                        operation="mine_motifs", status="completed")
+    jobs = AsyncMock()
+    jobs.get = AsyncMock(return_value=job)
+    async with _patched(grant_level=1, GenerationJobsRepo=jobs):
+        out = await srv.composition_get_mine_job(_Ctx(), job_id=str(job.id))
+    assert out["status"] == "completed"
+    assert out["project_id"] is None and out["book_id"] is None
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -1313,13 +1404,19 @@ def test_w_replay_blocked_by_ledger(client):
 
 def test_mine_confirm_enqueues_202(client):
     """MCP-R4: mine confirm enqueues a pending mine_motifs job (202 action_accepted),
-    NOT in-process compute. The precheck passes; the worker compute is W8 (Wave 2)."""
+    NOT in-process compute. The precheck passes; the worker compute is W8 (Wave 2).
+
+    BE-7c: a corpus mine is Work-LESS, so it must go through `create_unbound()`. Asserting
+    WHICH writer ran is the point — the previous version of this test stubbed `create()`
+    and passed happily while the real `create()` raised ReferenceViolationError on the
+    synthetic pid and the paid action 500'd. A mock encodes your assumption; make it
+    encode the right one."""
     from app.db.models import GenerationJob
 
-    job = GenerationJob(id=uuid.uuid4(), user_id=TEST_USER, project_id=uuid.uuid4(),
+    job = GenerationJob(id=uuid.uuid4(), created_by=TEST_USER, project_id=None, book_id=None,
                         operation="mine_motifs", status="pending")
     jobs = AsyncMock()
-    jobs.create = AsyncMock(return_value=(job, True))
+    jobs.create_unbound = AsyncMock(return_value=job)
     ledger = AsyncMock()
     ledger.consume = AsyncMock(return_value=True)
     billing = AsyncMock()
@@ -1337,10 +1434,15 @@ def test_mine_confirm_enqueues_202(client):
     assert body["outcome"] == "action_accepted"
     assert body["job_id"] == str(job.id)
     assert body["poll"] == "composition_get_mine_job"
+    # The Work-LESS writer ran, and the Work-bound one did NOT (it would have raised).
+    jobs.create_unbound.assert_awaited_once()
+    jobs.create.assert_not_awaited()
+    # No synthetic project on the stream either.
+    assert enq.await_args.kwargs["project_id"] == ""
     # The job is pending + carries the worker_op stamp; the precheck ran before enqueue.
     billing.precheck.assert_awaited_once()
-    assert jobs.create.await_args.kwargs["operation"] == "mine_motifs"
-    assert jobs.create.await_args.kwargs["input"]["worker_op"] == "mine_motifs"
+    assert jobs.create_unbound.await_args.kwargs["operation"] == "mine_motifs"
+    assert jobs.create_unbound.await_args.kwargs["input"]["worker_op"] == "mine_motifs"
     enq.assert_awaited_once()
 
 
@@ -1440,3 +1542,32 @@ def test_adopt_quota_rejects(client):
         _settings.motif_max_adopt = 0
     assert resp.status_code == 402
     repo.clone.assert_not_awaited()
+
+
+async def test_arc_template_restore_functional_and_honest_undo():
+    """review-impl MED-2: composition_arc_template_restore was in the tool-list but had no functional
+    test. It un-archives via repo.restore, returns the row, and its undo points back at archive."""
+    import app.mcp.server as srv
+
+    arc_id = str(uuid.uuid4())
+    arc = MagicMock()
+    arc.model_dump.return_value = {"id": arc_id, "status": "active"}
+    repo = AsyncMock()
+    repo.restore = AsyncMock(return_value=arc)
+    async with _patched(ArcTemplateRepo=repo):
+        res = await srv.composition_arc_template_restore(_Ctx(), arc_id=arc_id)
+    repo.restore.assert_awaited_once()
+    assert res["status"] == "active"
+    assert res["_meta"]["undo_hint"]["tool"] == "composition_arc_template_archive"
+
+
+async def test_arc_template_restore_not_archived_denied():
+    """A missing/foreign/not-archived id → repo.restore returns None → uniform deny (no oracle)."""
+    import app.mcp.server as srv
+    from loreweave_mcp import NotAccessibleError
+
+    repo = AsyncMock()
+    repo.restore = AsyncMock(return_value=None)
+    async with _patched(ArcTemplateRepo=repo):
+        with pytest.raises(NotAccessibleError):
+            await srv.composition_arc_template_restore(_Ctx(), arc_id=str(uuid.uuid4()))

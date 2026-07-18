@@ -171,7 +171,19 @@
     "kind_character": "캐릭터",
     "kind_location": "장소",
     "kind_faction": "세력",
-    "kind_concept": "개념"
+    "kind_concept": "개념",
+    "rename": "이름 변경",
+    "renameConflict": "다른 곳에서 변경되었습니다 — 다시 불러왔습니다.",
+    "editEntity": "별칭 및 유형 편집",
+    "archive": "엔티티 은퇴",
+    "archiveConfirm": "{{name}}을(를) 은퇴시키겠습니까? 관계 및 용어 사전 앵커는 유지되며, 책에서 해당 항목이 다시 언급되면 다시 나타납니다 (복구 버튼은 없습니다).",
+    "archived": "은퇴됨 — 책에서 다시 언급되면 다시 나타납니다.",
+    "newEntity": "새 항목",
+    "editFailed": "편집 실패: {{error}}",
+    "truncated": "처음 200개만 표시 중 — 목록을 좁히려면 검색어를 구체화하세요.",
+    "showingOf": "{{total}}개 중 {{loaded}}개 표시 중.",
+    "loadMore": "더 보기",
+    "loadingMore": "로딩 중…"
   },
   "relmap": "관계",
   "relations": {
@@ -214,7 +226,10 @@
     "gone": "사망/퇴장",
     "loading": "캐릭터 아크 로딩 중…",
     "noProject": "지식 그래프가 아직 없습니다 — 캐릭터 아크를 그리려면 이 책을 추출하세요.",
-    "empty": "이 캐릭터에는 아직 이벤트가 없습니다."
+    "empty": "이 캐릭터에는 아직 이벤트가 없습니다.",
+    "edit": "편집",
+    "linkEntity": "+ 엔티티 연결",
+    "addEvent": "+ 이벤트 추가"
   },
   "worldmap": "세계 지도",
   "wmap": {
@@ -236,7 +251,10 @@
     "loading": "세계 지도 로딩 중…",
     "addFailed": "장소를 추가할 수 없습니다.",
     "linkFailed": "장소를 연결할 수 없습니다.",
-    "linkMissing": "해당 장소 중 하나가 더 이상 존재하지 않습니다."
+    "linkMissing": "해당 장소 중 하나가 더 이상 존재하지 않습니다.",
+    "delete": "{{name}} 삭제",
+    "deleteConfirm": "월드맵에서 «{{name}}»을(를) 삭제할까요? 삭제하면 해당 장소가 아카이브로 이동합니다.",
+    "deleteFailed": "장소를 삭제하지 못했습니다."
   },
   "grounding": "그라운딩",
   "canon": "설정(Canon)",
@@ -366,6 +384,9 @@
   "statDiverge": "Diverge (K 옵션)",
   "statStream": "스트림",
   "guidePlaceholder": "공동 작가를 위한 선택적 가이드...",
+  "correction": {
+    "capturedToast": "기록되었습니다 — 공동 작가가 이를 학습하게 됩니다"
+  },
   "reasoning": "추론",
   "reasoningHint": "Auto = 모델이 결정. Off = 추론 비활성화. Low/Med/High = 추론 강제 적용.",
   "reasoningAuto": "추론: 자동",
@@ -407,7 +428,6 @@
   "pacing": "호흡",
   "canon_consistency": "설정",
   "dismiss": "무시",
-  "overrideSlipBlocked": "차단된 수락: 설정값(canon)을 벗어난 변형이 다시 침투했습니다. 수락하기 전에 재생성하세요.",
   "overrideSlipExhausted": "재생성 한도 초과 후에도 변형이 지속됨 — 검토를 위해 표시되었습니다 (이제 수락이 차단되지 않음).",
   "overrideSlipDetail": "{{name}} ({{field}}): 예상값 “{{expected}}”, 실제값 “{{found}}”",
   "deltaInconsistencyDetail": "{{name}}: 델타 규칙 “{{rule}}”과 충돌함",
@@ -430,6 +450,12 @@
   "canonUntil": "종료 (읽기 순서)",
   "canonActive": "활성",
   "canonInactive": "비활성",
+  "canonArchivedTag": "은퇴됨",
+  "canonShowArchived": "보관된 항목 표시",
+  "canonRuleArchived": "규칙 보관됨",
+  "canonRuleRestored": "규칙 복구됨",
+  "restore": "복구",
+  "undo": "실행 취소",
   "canonWindowInverted": "'시작'은 '종료'보다 작거나 같아야 합니다.",
   "archive": "아카이브",
   "noRules": "설정 규칙이 없습니다.",
@@ -611,12 +637,18 @@
     "scope": {
       "label": "모티프 범위",
       "my": "내 라이브러리",
-      "catalog": "공개 카탈로그"
+      "catalog": "공개 카탈로그",
+      "book": "도서",
+      "shared": "공유됨",
+      "system": "시스템",
+      "drafts": "초안",
+      "needsBook": "모티프를 보려면 도서를 여세요"
     },
     "search": "모티프 검색",
     "overuse": "\"{{name}}\"이(가) {{chapters}}개 장에서 이미 사용되었습니다 — 변형을 고려해 보세요.",
     "list": {
-      "noMatch": "일치하는 모티프가 없습니다 — 필터를 해제하세요."
+      "noMatch": "일치하는 모티프가 없습니다 — 필터를 해제하세요.",
+      "truncated": "처음 100개만 표시 중 — 검색이나 필터를 사용하여 범위를 좁히면 나머지를 볼 수 있습니다."
     },
     "error": {
       "load": "로드할 수 없습니다 — 다시 시도해 주세요."
@@ -711,7 +743,8 @@
     },
     "binding": {
       "freeForm": "일치하는 모티프가 없습니다 — 이 장면은 자유 형식입니다.",
-      "commitGenerate": "확정 + 이 장면 쓰기 →"
+      "commitGenerate": "확정 + 이 장면 쓰기 →",
+      "noWork": "이 책의 장면들에 모티프를 연결할 계획을 세워보세요."
     },
     "swap": {
       "title": "모티프 교체",
@@ -735,7 +768,8 @@
         "ok": "비트 일치",
         "warn": "강도 편차",
         "bad": "비트 이탈"
-      }
+      },
+      "rerunNeedsModel": "일치 여부를 다시 확인하려면 모델을 선택하세요"
     },
     "arc": {
       "mobileNotice": "타임라인 그리드는 큰 화면에서 사용할 수 있습니다 — 여기서는 목록 형태로 편집할 수 있습니다.",
@@ -745,7 +779,110 @@
       "moveRight": "뒤로 이동",
       "grow": "길게",
       "shrink": "짧게",
-      "remove": "제거"
+      "remove": "제거",
+      "libraryEmpty": "아직 아크 템플릿이 없습니다. 새로 만들거나 이야기를 가져와 분석해 보세요.",
+      "templates": {
+        "tabLibrary": "라이브러리",
+        "tabCatalog": "카탈로그",
+        "tabDeconstruct": "가져오기 및 분석",
+        "tier_all": "전체",
+        "tier_mine": "내 항목",
+        "tier_system": "시스템",
+        "tier_book": "도서",
+        "new": "+ 새로 만들기",
+        "loading": "로딩 중…",
+        "loadError": "템플릿을 불러올 수 없습니다.",
+        "retry": "재시도",
+        "chapters": "{{count}}개 챕터",
+        "chipSystem": "시스템",
+        "chipMine": "마이닝",
+        "chipPublic": "공개",
+        "archive": "아카이브",
+        "adopt": "채택",
+        "createCode": "코드 (고유값)",
+        "createName": "이름",
+        "createShare": "이 책의 공동 작업자와 공유 (도서 등급)",
+        "create": "생성",
+        "cancel": "취소",
+        "catalogError": "카탈로그를 불러올 수 없습니다.",
+        "catalogEmpty": "공개된 아크 템플릿이 아직 없습니다.",
+        "back": "← 모든 템플릿",
+        "driftTitle": "드리프트 — 이 책에서 사용 중",
+        "driftUnapplied": "아직 이 책에 적용되지 않았습니다 — 위에서 적용하여 드리프트를 비교해 보세요.",
+        "driftNoProvenance": "이 아크는 직접 작성되었습니다 — 비교할 원본 템플릿이 없습니다.",
+        "driftGone": "원본 템플릿을 더 이상 사용할 수 없습니다.",
+        "driftLoading": "드리프트 로딩 중…",
+        "driftClean": "편차 없음 — 실제 아크가 템플릿과 일치합니다.",
+        "driftSummary": "{{gaps}} 커버리지 공백 · {{violations}} 순서 오류 · {{folded}} 중첩 배치",
+        "driftPacingOnly": "구조는 일치하지만, 페이싱이 어긋났습니다 (최대 {{drift}}).",
+        "driftThreads": "스레드 커버리지",
+        "driftNoThreads": "비교할 스레드가 템플릿에 없습니다.",
+        "driftPacing": "페이싱",
+        "driftMax": "최대 편차 {{drift}}",
+        "driftPacingNC": "비교 불가 — 템플릿에 텐션 곡선이 없습니다.",
+        "driftSuccession": "순서",
+        "driftSuccessionOk": "순서 위반 없음.",
+        "driftViolation": "{{label}}: {{n}}개 순서 어긋남",
+        "driftFolded": "중첩됨 (결합되지 않음)",
+        "untitledArc": "(제목 없는 아크)",
+        "truncated": "{{count}}개 중 처음 {{shown}}개만 표시됨 — 더 많은 내용을 찾으려면 카탈로그를 이용하거나 더 높은 등급을 사용하세요.",
+        "tabSuggest": "추천"
+      },
+      "import": {
+        "privacy": "원문 텍스트는 사용자 본인만 볼 수 있으며 절대 공유되지 않습니다. 파생된 추상적 구조만 게시할 수 있으며, 게시 시 소스 참조 정보는 삭제됩니다.",
+        "sources": "참조 소스",
+        "loading": "로딩 중…",
+        "noSources": "아직 소스가 없습니다 — 아래에 붙여넣으세요.",
+        "untitled": "(제목 없음)",
+        "deleteConfirm": "이 소스를 삭제할까요? 복구할 수 없습니다.",
+        "deleteTitle": "삭제 (복구 불가)",
+        "sourceError": "소스를 저장할 수 없습니다 — 다시 시도해 주세요.",
+        "what": "참조 내용을 재사용 가능한 아크 템플릿으로 해체합니다 (LLM 사용량 적용).",
+        "hint": "아크 힌트 (선택 사항)",
+        "useWeb": "웹 검색 허용",
+        "model": "모델 해체하기",
+        "estimating": "추정 중…",
+        "running": "해체 중…",
+        "run": "해체하기",
+        "selectFirst": "먼저 위에서 소스를 선택하세요.",
+        "done": "새로운 아크 템플릿이 생성되었습니다 — 라이브러리에서 확인하세요.",
+        "pasteTitle": "제목",
+        "pasteBody": "참조 텍스트 붙여넣기…",
+        "tooLong": "텍스트가 너무 깁니다 — 가져오기 전에 길이를 줄여주세요.",
+        "addSource": "소스 추가"
+      },
+      "extract": {
+        "blurb": "이 플롯 구조를 라이브러리에 재사용 가능한 템플릿으로 저장하세요.",
+        "open": "템플릿으로 저장…",
+        "namePlaceholder": "템플릿 이름",
+        "saving": "저장 중…",
+        "save": "저장",
+        "cancel": "취소",
+        "conflict": "이미 동일한 이름의 템플릿이 있습니다. 이름을 변경해 주세요.",
+        "error": "이 플롯 구조를 템플릿으로 저장할 수 없습니다.",
+        "done": "“{{name}}”을(를) 템플릿 라이브러리에 저장했습니다."
+      },
+      "suggest": {
+        "noProject": "작품(Work)이 포함된 책을 열면 줄거리에 따른 플롯 구조를 추천받을 수 있습니다.",
+        "premisePlaceholder": "줄거리를 입력하세요 — 예: «몰락한 가문을 되찾아야 하는 망설이는 후계자»",
+        "genrePlaceholder": "장르 (선택 사항)",
+        "running": "순위 산정 중…",
+        "run": "아크 제안하기",
+        "error": "아크 제안 순위를 산정할 수 없습니다.",
+        "empty": "일치하는 아크 템플릿이 없습니다. 직접 만들거나 이야기를 가져와 분석해 보세요.",
+        "mine": "내 것",
+        "span": "{{count}}화"
+      },
+      "decompile": {
+        "open": "챕터를 아크로 그룹화",
+        "confirm": "이 책의 챕터들을 아크로 자동 그룹화합니다 (각 아크당 약 {{n}}화). 기존 아크는 재사용되므로 다시 실행해도 안전합니다.",
+        "running": "그룹화 중…",
+        "run": "아크로 그룹화",
+        "cancel": "취소",
+        "error": "챕터를 에피소드로 그룹화할 수 없습니다.",
+        "done": "{{chapters}}개의 챕터를 {{arcs}}개의 에피소드로 그룹화했습니다.",
+        "none": "아직 그룹화할 챕터가 없습니다."
+      }
     },
     "simple": {
       "actant": {
@@ -803,6 +940,38 @@
       "knows": "知っている",
       "deceived": "欺かれている",
       "gap": "ギャップ"
+    },
+    "graph": {
+      "title": "Graph — composed of · precedes · variant of",
+      "loading": "관계 로딩 중…",
+      "error": "모티프 그래프를 불러올 수 없습니다.",
+      "retry": "다시 시도",
+      "empty": "관계가 아직 없습니다.",
+      "deleteEdge": "엣지 삭제",
+      "addEdge": "관계 추가",
+      "pickNeighbor": "모티프 선택…",
+      "add": "엣지 추가",
+      "cancel": "취소",
+      "kind": {
+        "composed_of": "구성 요소",
+        "precedes": "이전 단계",
+        "variant_of": "변형"
+      },
+      "truncated": "{{cap}}개의 모티프를 표시 중입니다 — 더 많은 모티프를 보려면 티어별로 좁히거나 검색해 보세요.",
+      "canvasLoading": "모티프 그래프를 불러오는 중…",
+      "canvasEmpty": "아직 그래프로 표시할 모티프가 없습니다 — 모티프를 생성하거나 가져온 뒤 연결해 보세요."
+    },
+    "suggest": {
+      "button": "모티프 제안",
+      "loading": "이 장면에 적합한 모티프 순위 매기는 중…",
+      "error": "모티프를 제안할 수 없습니다.",
+      "retry": "재시도",
+      "empty": "아직 이 장면에 어울리는 모티프가 없습니다. 라이브러리에 더 많은 모티프를 추가해 보세요.",
+      "bind": "연결",
+      "degradedMine": "모티프가 적합도순으로 정렬되지 않았습니다. 설정에서 임베딩 모델을 설정하면 의미론적 유사도에 따라 정렬할 수 있습니다.",
+      "degradedLibrary": "적합도순으로 정렬되지 않았습니다. 공유 라이브러리의 임베딩 모델이 구성되지 않아, 점수가 매겨진 매칭 결과가 아닌 장르별 대체 항목을 보여줍니다.",
+      "sectionMine": "내 모티프",
+      "sectionLibrary": "라이브러리에서"
     }
   },
   "authoringRun": {
@@ -923,5 +1092,6 @@
       "loading": "실행 로딩 중…",
       "back": "← 실행 목록으로 돌아가기"
     }
-  }
+  },
+  "overrideSlipBlocked": "차단된 오버라이드: ‘만약에’ 버전의 오버라이드가 정사(canon) 값으로 되돌아갔습니다. 수락하기 전에 다시 생성하세요."
 }

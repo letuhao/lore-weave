@@ -858,6 +858,55 @@ async def test_story_search_degraded_legs_surface(monkeypatch):
     assert res.result["degraded"] == {"semantic": "not_indexed"}
 
 
+# ── D-1: the spoiler cutoff `story_search` now shares with `raw_search` ────────
+_CUT_CH = "019f0000-0000-7000-8000-000000000abc"
+
+
+@pytest.mark.asyncio
+async def test_story_search_no_cutoff_searches_whole_manuscript(monkeypatch):
+    # OMITTED before_chapter_id ⇒ before_sort_order=None ⇒ NO window (the owner's authoring
+    # default). Critically NOT the fail-closed -1 — that would return nothing for every plain
+    # search the flagship makes.
+    calls = _patch_hybrid(monkeypatch, hits=[{"chapterId": "c1"}])
+    res = await execute_tool(_story_ctx(), "story_search", {"query": "q"})
+    assert res.success
+    assert calls[0]["before_sort_order"] is None
+
+
+@pytest.mark.asyncio
+async def test_story_search_cutoff_resolves_to_sort_order_and_windows(monkeypatch):
+    from uuid import UUID
+    calls = _patch_hybrid(monkeypatch, hits=[{"chapterId": "c1"}])
+    ctx = _story_ctx()
+    # the resolver asks book_client.get_chapter_sort_orders([id]) → {id: sort_order}
+    ctx.book_client.get_chapter_sort_orders = AsyncMock(return_value={UUID(_CUT_CH): 5})
+    res = await execute_tool(ctx, "story_search", {"query": "q", "before_chapter_id": _CUT_CH})
+    assert res.success
+    assert calls[0]["before_sort_order"] == 5  # windowed to the cutoff chapter's order
+
+
+@pytest.mark.asyncio
+async def test_story_search_unresolvable_cutoff_fails_closed(monkeypatch):
+    # An unknown/cross-book chapter id must window out EVERYTHING (-1), never leak the whole
+    # corpus to a reader whose position couldn't be pinned. This is the spoiler-safety contract.
+    calls = _patch_hybrid(monkeypatch, hits=[{"chapterId": "c1"}])
+    ctx = _story_ctx()
+    ctx.book_client.get_chapter_sort_orders = AsyncMock(return_value={})  # id resolves to nothing
+    res = await execute_tool(ctx, "story_search", {"query": "q", "before_chapter_id": _CUT_CH})
+    assert res.success
+    assert calls[0]["before_sort_order"] == -1
+
+
+@pytest.mark.asyncio
+async def test_story_search_malformed_cutoff_id_fails_closed(monkeypatch):
+    # A non-UUID cutoff must also fail closed (-1), not raise and not search wide.
+    calls = _patch_hybrid(monkeypatch, hits=[{"chapterId": "c1"}])
+    res = await execute_tool(_story_ctx(), "story_search",
+                             {"query": "q", "before_chapter_id": "not-a-uuid"})
+    assert res.success
+    assert calls[0]["before_sort_order"] == -1
+
+
 @pytest.mark.asyncio
 async def test_story_search_no_project_returns_empty_note_not_error():
     ctx = _story_ctx()
@@ -888,3 +937,86 @@ async def test_story_search_missing_deps_is_tool_error():
     res = await execute_tool(_story_ctx(with_deps=False), "story_search", {"query": "q"})
     assert not res.success
     assert "not available" in (res.error or "")
+
+
+# ── D16 (spec 07 §Q4) — a non-assistant session must never surface diary entities ─────────────────
+
+@pytest.mark.asyncio
+async def test_diary_exclusion_is_empty_when_a_project_is_scoped(monkeypatch):
+    # With an explicit project the scope is already correct — exclude nothing, and DON'T even query PG.
+    from app.tools.executor import _diary_exclusion
+    ctx = _ctx(project_id=_PROJECT)
+    ctx.projects_repo.list_assistant_project_ids = AsyncMock(
+        side_effect=AssertionError("must not query assistant projects when a project is scoped"))
+    assert await _diary_exclusion(ctx) == []
+
+
+@pytest.mark.asyncio
+async def test_diary_exclusion_returns_assistant_ids_when_projectless(monkeypatch):
+    from app.tools.executor import _diary_exclusion
+    ctx = _ctx(project_id=None)
+    ctx.projects_repo.list_assistant_project_ids = AsyncMock(return_value=["assistant-proj-1"])
+    assert await _diary_exclusion(ctx) == ["assistant-proj-1"]
+
+
+@pytest.mark.asyncio
+async def test_memory_recall_entity_excludes_diary_projects_when_projectless(monkeypatch):
+    # THE leak test: a projectless (novel-writing) session recalling an entity must pass the user's
+    # assistant project ids as exclude_project_ids, so a work-diary entity can't be resolved.
+    fe = AsyncMock(return_value=[])
+    monkeypatch.setattr("app.tools.executor.find_entities_by_name", fe)
+    ctx = _ctx(project_id=None)
+    ctx.projects_repo.list_assistant_project_ids = AsyncMock(return_value=["assistant-proj-1"])
+    res = await execute_tool(ctx, "memory_recall_entity", {"entity_name": "Sarah"})
+    assert res.success and res.result["found"] is False
+    # the exclusion was threaded to the repo read (not the all-projects fallback)
+    assert fe.await_args.kwargs["exclude_project_ids"] == ["assistant-proj-1"]
+    assert fe.await_args.kwargs["project_id"] is None
+
+
+@pytest.mark.asyncio
+async def test_memory_timeline_excludes_diary_projects_when_projectless(monkeypatch):
+    # audit HIGH-1, locked at the EXECUTOR level (the Cypher regression below is separate): a
+    # projectless timeline must thread the user's assistant project ids as exclude_project_ids
+    # to the events read, or diary events leak into a novel-writing session.
+    lef = AsyncMock(return_value=([], 0))
+    monkeypatch.setattr("app.tools.executor.list_events_filtered", lef)
+    monkeypatch.setattr("app.tools.executor.find_entities_by_name", AsyncMock(return_value=[]))
+    ctx = _ctx(project_id=None)
+    ctx.projects_repo.list_assistant_project_ids = AsyncMock(return_value=["assistant-proj-1"])
+    res = await execute_tool(ctx, "memory_timeline", {"limit": 10})
+    assert res.success
+    assert lef.await_args.kwargs["exclude_project_ids"] == ["assistant-proj-1"]
+
+
+@pytest.mark.asyncio
+async def test_memory_search_projectless_never_searches_across_projects(monkeypatch):
+    # P-4 #5 leak LOCK: memory_search has NO all-projects fallback — a projectless call is a
+    # clean empty, so a diary passage can never be surfaced into a novel session. If a future
+    # refactor "helpfully" made either search leg project-agnostic, this guard fires.
+    monkeypatch.setattr(
+        "app.search.retriever.run_hybrid_search",
+        AsyncMock(side_effect=AssertionError("no manuscript search may run when projectless")),
+    )
+    res = await execute_tool(_ctx(project_id=None), "memory_search", {"query": "the layoff"})
+    assert res.success and res.result["count"] == 0 and res.result["hits"] == []
+
+
+# ── D16 (audit) — the EXCLUSION Cypher itself has a regression test, not just the executor threading ──
+# The mock-based tests above prove the executor PASSES exclude_project_ids; these prove the Cypher
+# actually FILTERS on it. A refactor that drops the clause but keeps the kwarg would pass the mock tests
+# yet silently reopen the diary→novel leak (the mocked-client-hides-server-filters bug class).
+
+def test_find_entities_cypher_carries_the_diary_exclusion_predicate():
+    from app.db.neo4j_repos import entities as em
+    for cypher in (em._FIND_BY_NAME_CYPHER_ACTIVE, em._FIND_BY_NAME_CYPHER_ALL):
+        assert "exclude_project_ids" in cypher
+        assert "NOT coalesce(e.project_id, '') IN exclude_project_ids" in cypher
+
+
+def test_events_filter_cypher_carries_the_diary_exclusion_predicate():
+    # audit HIGH-1 regression: memory_timeline reads through _LIST_EVENTS_FILTER_WHERE — it MUST carry the
+    # same exclusion, or a projectless timeline leaks diary events even though entity-resolution is guarded.
+    from app.db.neo4j_repos import events as ev
+    assert "exclude_project_ids" in ev._LIST_EVENTS_FILTER_WHERE
+    assert "NOT coalesce(e.project_id, '') IN $exclude_project_ids" in ev._LIST_EVENTS_FILTER_WHERE

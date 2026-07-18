@@ -221,11 +221,16 @@ class _FakeConn:
         self._rows = rows
         self.fetched_sql: list[str] = []
         self.fetched_args: list[tuple] = []
+        self.executed: list[tuple] = []
 
     async def fetch(self, sql, *args):
         self.fetched_sql.append(sql)
         self.fetched_args.append(args)
         return self._rows
+
+    async def execute(self, sql, *args):
+        self.executed.append((sql, args))
+        return "UPDATE 1"
 
 
 class _FakeAcquire:
@@ -269,6 +274,41 @@ def _patch_query_embed(monkeypatch, vector):
     async def _fake_embed_query(_text):
         return vector
     monkeypatch.setattr("app.db.repositories.motif_retrieve.embed_query", _fake_embed_query)
+
+
+def _patch_user_query(monkeypatch, vector):
+    """The U-space (caller's BYOK) query embedding — the counterpart to _patch_query_embed's
+    platform/P-space one."""
+    async def _q(_text, *, user_id, model):
+        return vector
+    monkeypatch.setattr("app.db.repositories.motif_retrieve.embed_query_with", _q)
+
+
+def _patch_private_embed(monkeypatch, vector, *, record=None, raises=False):
+    """The private-motif write embed (owner's BYOK model). `record` captures the owner_id +
+    user_model each call is billed to → a test asserts the OWNER pays (the tenancy fix)."""
+    class _Res:
+        embeddings = [vector]
+
+    async def _embed(_text, *, owner_id, user_model):
+        if record is not None:
+            record.append({"owner_id": owner_id, "user_model": user_model})
+        if raises:
+            raise EmbeddingError("provider down", retryable=True)
+        return _Res()
+    monkeypatch.setattr("app.db.repositories.motif_retrieve.embed_private_summary", _embed)
+
+
+def _patch_platform_backfill_embed(monkeypatch, vector):
+    """The platform-space write embed for a shared/system motif's inline back-fill."""
+    class _Res:
+        embeddings = [vector]
+
+    async def _embed(_text):
+        return _Res()
+    monkeypatch.setattr("app.db.repositories.motif_retrieve.embed_motif_summary", _embed)
+    monkeypatch.setattr("app.db.repositories.motif_retrieve._platform_embed_model",
+                        lambda: ("platform_model", "platform-embed-v1"))
 
 
 async def test_retrieve_empty_prefilter_returns_empty(monkeypatch):
@@ -469,3 +509,123 @@ async def test_retrieve_respects_limit(monkeypatch):
         genre_tags=["xianxia"], language="en", beat_role="hook", tension=50, limit=5,
     )
     assert len(out) == 5
+
+
+# ── 2026-07-17 tenancy re-design — two embedding SPACES (shared→platform, private→owner) ──
+
+
+async def test_private_motif_embeds_with_owner_model_and_bills_owner(monkeypatch):
+    """The tenancy fix: a caller's STRICTLY-PRIVATE motif is embedded (inline back-fill —
+    the persist path that previously never ran) with the caller's OWN BYOK model, billed to
+    the caller, and lands in section='mine' ranked against the U-query. NOT the platform."""
+    from app.db.repositories.motif_retrieve import MotifRetriever
+
+    caller = uuid.uuid4()
+    _patch_query_embed(monkeypatch, [0.0, 1.0, 0.0])     # P-space query
+    _patch_user_query(monkeypatch, [1.0, 0.0, 0.0])      # U-space query (the private motif uses this)
+    calls: list[dict] = []
+    _patch_private_embed(monkeypatch, [1.0, 0.0, 0.0], record=calls)
+    row = _row("secret", embedding=None, owner=caller, genre_tags=["xianxia"])  # private, no vector
+    retr = MotifRetriever(_FakePool([row]))
+    out = await retr.retrieve(
+        caller, book_id=uuid.uuid4(), project_id=uuid.uuid4(),
+        genre_tags=["xianxia"], language="en", beat_role="hook", tension=50,
+        user_model=("user_model", "user-embed-42"))
+    assert [c.motif.code for c in out] == ["secret"]
+    assert out[0].match_reason["section"] == "mine"
+    assert out[0].match_reason["cosine"] == pytest.approx(1.0)     # ranked vs the U-query
+    assert "degraded" not in out[0].match_reason
+    assert calls == [{"owner_id": caller, "user_model": ("user_model", "user-embed-42")}]
+    # persisted scoped to the owner's OWN private, non-shared row
+    assert retr._pool.conn.executed
+    assert "owner_user_id = $6 AND visibility = 'private' AND NOT book_shared" in \
+        retr._pool.conn.executed[0][0]
+
+
+async def test_private_motif_without_user_model_degrades_never_platform_embeds(monkeypatch):
+    """No BYOK embed model → a private motif ranks NON-SEMANTICALLY (genre+tension, degraded)
+    and is NEVER embedded by the platform (the whole point of the fix). No write, no embed."""
+    from app.db.repositories.motif_retrieve import MotifRetriever
+
+    caller = uuid.uuid4()
+    _patch_query_embed(monkeypatch, [1.0, 0.0, 0.0])
+    _patch_platform_backfill_embed(monkeypatch, [1.0, 0.0, 0.0])   # platform embed available…
+    calls: list[dict] = []
+    _patch_private_embed(monkeypatch, [1.0, 0.0, 0.0], record=calls)
+    row = _row("secret", embedding=None, owner=caller, genre_tags=["xianxia"], tension_target=5)
+    retr = MotifRetriever(_FakePool([row]))
+    out = await retr.retrieve(
+        caller, book_id=uuid.uuid4(), project_id=uuid.uuid4(),
+        genre_tags=["xianxia"], language="en", beat_role="climax", tension=90, user_model=None)
+    assert out[0].match_reason["section"] == "mine"
+    assert out[0].match_reason.get("degraded") is True
+    assert calls == []                          # …never called for a private motif
+    assert retr._pool.conn.executed == []       # and NO platform write to private content
+
+
+async def test_two_spaces_rank_against_their_own_query_no_cross_cosine(monkeypatch):
+    """A private (U-space) and a shared (P-space) motif each cosine against their OWN query
+    vector — never each other's. Both align to their space → ~1.0, separate sections, mine-first."""
+    from app.db.repositories.motif_retrieve import MotifRetriever
+
+    caller = uuid.uuid4()
+    _patch_query_embed(monkeypatch, [1.0, 0.0, 0.0])     # P query
+    _patch_user_query(monkeypatch, [0.0, 1.0, 0.0])      # U query (orthogonal to P)
+    shared = _row("lib", embedding=[1.0, 0.0, 0.0])                 # owner None → P-space
+    private = _row("mine", embedding=[0.0, 1.0, 0.0], owner=caller)  # U-space
+    private["embedding_model"] = "user-embed-42"         # stored in the caller's model space → trusted
+    retr = MotifRetriever(_FakePool([shared, private]))
+    out = await retr.retrieve(
+        caller, book_id=uuid.uuid4(), project_id=uuid.uuid4(),
+        genre_tags=["xianxia"], language="en", beat_role="hook", tension=50,
+        user_model=("user_model", "user-embed-42"))
+    by = {c.motif.code: c for c in out}
+    assert by["mine"].match_reason["section"] == "mine"
+    assert by["lib"].match_reason["section"] == "library"
+    assert by["mine"].match_reason["cosine"] == pytest.approx(1.0)   # vs U query
+    assert by["lib"].match_reason["cosine"] == pytest.approx(1.0)    # vs P query
+    assert out[0].motif.code == "mine"                   # mine-first
+    assert retr._pool.conn.executed == []                # both fresh → no re-embed
+
+
+async def test_shared_row_with_stale_user_vector_not_cross_cosined(monkeypatch):
+    """Cross-space guard: a PUBLIC (shared/P-space) motif still holding a stale USER-model
+    vector — a since-PUBLISHED private motif whose owner hasn't re-embedded it yet — is NOT
+    cosined against the platform query when the platform ref is known. It is skipped +
+    queued, never wrong-space ranked. (On the pre-fix logic this row would score 1.0.)"""
+    from app.db.repositories.motif_retrieve import MotifRetriever
+
+    caller = uuid.uuid4()
+    _patch_query_embed(monkeypatch, [1.0, 0.0, 0.0])          # platform (P) query
+    monkeypatch.setattr("app.db.repositories.motif_retrieve._platform_embed_model",
+                        lambda: ("platform_model", "platform-embed-v1"))
+    row = _row("published", embedding=[1.0, 0.0, 0.0], genre_tags=["xianxia"])
+    row["owner_user_id"] = uuid.uuid4()                       # another user's now-public motif
+    row["visibility"] = "public"
+    row["embedding_model"] = "someones-user-embed"            # a stale U-space vector, NOT platform
+    retr = MotifRetriever(_FakePool([row]))
+    out = await retr.retrieve(
+        caller, book_id=uuid.uuid4(), project_id=uuid.uuid4(),
+        genre_tags=["xianxia"], language="en", beat_role="hook", tension=50, user_model=None)
+    assert out == []                                          # skipped — never cross-space cosined
+    assert any(r["code"] == "published" for r in retr.drain_backfill_queue())
+
+
+async def test_book_shared_motif_is_library_space_not_private(monkeypatch):
+    """A book_shared motif (visibility='private' but shared to a book's grantees) is a SHARED
+    tier → P-space/section='library', embedded by the platform — NOT the owner's private space."""
+    from app.db.repositories.motif_retrieve import MotifRetriever
+
+    caller = uuid.uuid4()
+    _patch_query_embed(monkeypatch, [1.0, 0.0, 0.0])
+    calls: list[dict] = []
+    _patch_private_embed(monkeypatch, [1.0, 0.0, 0.0], record=calls)
+    row = _row("shared", embedding=[1.0, 0.0, 0.0], owner=caller)   # owner+private…
+    row["book_shared"] = True                                       # …but book-shared → SHARED tier
+    retr = MotifRetriever(_FakePool([row]))
+    out = await retr.retrieve(
+        caller, book_id=uuid.uuid4(), project_id=uuid.uuid4(),
+        genre_tags=["xianxia"], language="en", beat_role="hook", tension=50,
+        user_model=("user_model", "user-embed-42"))
+    assert out[0].match_reason["section"] == "library"   # shared, not 'mine'
+    assert calls == []                                   # never billed to the owner as private

@@ -14,12 +14,13 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/loreweave/grantclient"
+	lwmcp "github.com/loreweave/loreweave_mcp"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
 // RegisterPipelineWriteTools adds the M2 direct (class-W) write tools to the /mcp server.
 func (s *Server) RegisterPipelineWriteTools(srv *mcp.Server) {
-	mcp.AddTool(srv, &mcp.Tool{
+	lwmcp.RegisterTool(srv, &mcp.Tool{
 		Name: "glossary_create_chapter_link",
 		Description: "Link an entity to a chapter it appears in (additive, takes effect immediately; Edit). " +
 			"book_id + entity_id + chapter_id (the chapter must belong to the book). relevance = " +
@@ -27,9 +28,13 @@ func (s *Server) RegisterPipelineWriteTools(srv *mcp.Server) {
 		InputSchema: closedSetSchemaFor[createChapterLinkToolIn](map[string][]any{
 			"relevance": {"major", "appears", "mentioned"},
 		}),
+		// Direct, additive, reversible write (no confirm_token) ⇒ lwmcp Tier A. (The file's
+		// "class W" is internal jargon for a direct Edit-gated write, NOT lwmcp's TierW,
+		// which means confirm_action — those are the "class C" propose tools.)
+		Meta: lwmcp.NewToolMeta(lwmcp.TierA, lwmcp.ScopeBook, nil, nil),
 	}, s.toolCreateChapterLink)
 
-	mcp.AddTool(srv, &mcp.Tool{
+	lwmcp.RegisterTool(srv, &mcp.Tool{
 		Name: "glossary_create_evidence",
 		Description: "Attach an evidence excerpt (a quote / summary / reference supporting an attribute value) " +
 			"to an entity's attribute (additive, takes effect immediately; Edit). book_id + entity_id + " +
@@ -40,6 +45,8 @@ func (s *Server) RegisterPipelineWriteTools(srv *mcp.Server) {
 		InputSchema: closedSetSchemaFor[createEvidenceToolIn](map[string][]any{
 			"evidence_type": {"quote", "summary", "reference"},
 		}),
+		// Direct, additive, reversible write (no confirm_token) ⇒ lwmcp Tier A.
+		Meta: lwmcp.NewToolMeta(lwmcp.TierA, lwmcp.ScopeBook, nil, nil),
 	}, s.toolCreateEvidence)
 }
 

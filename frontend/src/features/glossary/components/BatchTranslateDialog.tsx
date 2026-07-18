@@ -2,6 +2,8 @@ import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Loader2, Check } from 'lucide-react';
 import { FormDialog } from '@/components/shared';
+import { LanguagePicker } from '@/components/shared/LanguagePicker';
+import { TRANSLATION_TARGETS } from '@/lib/languages';
 import { useBatchTranslate } from '../hooks/useBatchTranslate';
 import type { TranslationCandidateEntity } from '../types';
 
@@ -16,17 +18,13 @@ import type { TranslationCandidateEntity } from '../types';
 // called directly with no busy-guard, preserving the pre-migration behavior
 // (this component never blocked dismissal while submitting).
 
-const LANG_RE = /^[a-zA-Z]{2,3}(-[a-zA-Z]{2,4})?$/;
-
 export function BatchTranslateDialog({ bookId, onClose }: { bookId: string; onClose: () => void }) {
   const { t } = useTranslation('glossaryTiering');
   const bt = useBatchTranslate(bookId);
-  const [langInput, setLangInput] = useState('');
-
-  const loadLang = () => {
-    const v = langInput.trim().toLowerCase();
-    if (LANG_RE.test(v)) bt.selectLanguage(v);
-  };
+  // S7/D13: a closed-set picker replaces the free-text input + regex. The old code silently
+  // no-op'd on a value the regex rejected; a picker can only emit a valid registry code, and
+  // selecting one loads its candidates directly (no separate "Load" step to forget).
+  const [lang, setLang] = useState('');
 
   return (
     <FormDialog
@@ -66,20 +64,14 @@ export function BatchTranslateDialog({ bookId, onClose }: { bookId: string; onCl
           <label className="text-xs text-muted-foreground">
             {t('batch_translate.target_lang', { defaultValue: 'Target language' })}
           </label>
-          <input
-            value={langInput}
-            onChange={(e) => setLangInput(e.target.value)}
-            onKeyDown={(e) => { if (e.key === 'Enter') loadLang(); }}
-            placeholder="en"
-            maxLength={5}
-            className="w-20 rounded border bg-background px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-ring"
+          <LanguagePicker
+            value={lang}
+            onChange={(code) => { setLang(code); if (code) bt.selectLanguage(code); }}
+            codes={TRANSLATION_TARGETS.map((l) => l.code)}
+            placeholder={t('batch_translate.select_lang', { defaultValue: 'Select…' })}
+            aria-label={t('batch_translate.target_lang', { defaultValue: 'Target language' })}
+            className="w-44 rounded border bg-background px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-ring"
           />
-          <button
-            onClick={loadLang}
-            className="rounded-md border px-2.5 py-1 text-xs font-medium hover:bg-secondary"
-          >
-            {t('batch_translate.load', { defaultValue: 'Load candidates' })}
-          </button>
           {bt.targetLanguage && (
             <span className="text-[11px] text-muted-foreground">
               {t('batch_translate.count', { defaultValue: '{{n}} entities to translate', n: bt.total })}

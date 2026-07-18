@@ -16,6 +16,7 @@ vi.mock('../hooks/useMotifDraftActions', () => ({
   useMotifDraftActions: () => ({
     promote: { mutate: vi.fn(), isPending: false },
     discard: { mutate: vi.fn(), isPending: false },
+    restore: { mutate: vi.fn(), isPending: false },
   }),
 }));
 vi.mock('../context/MotifSimpleModeContext', () => ({ useMotifSimpleMode: () => ({ simple: true, toggle: vi.fn() }) }));

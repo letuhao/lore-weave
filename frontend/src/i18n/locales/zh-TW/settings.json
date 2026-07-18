@@ -9,7 +9,8 @@
       "translation": "翻譯",
       "reading": "閱讀",
       "language": "語言",
-      "mcp": "MCP 存取"
+      "mcp": "MCP 存取",
+      "workflow-bindings": "工作流自動設定"
     }
   },
   "mcp": {
@@ -492,6 +493,18 @@
       "testing": "測試中...",
       "reverify": "重新驗證",
       "verify": "驗證",
+      "pricing_title": "定價 (每 100 萬 token 之 USD 費用)",
+      "pricing_input": "輸入",
+      "pricing_output": "輸出",
+      "pricing_free_local": "免費 — 在您自己的硬體上執行",
+      "pricing_hint": "建立時已預填。若供應商的公開費率有所變動，請進行編輯，或前往 OpenRouter 查看即時估算值。",
+      "pricing_check": "檢查 OpenRouter",
+      "pricing_checking": "檢查中...",
+      "pricing_suggestion_found": "OpenRouter ({{source}}): 輸入 ${{input}} / 輸出 ${{output}}",
+      "pricing_apply": "套用",
+      "pricing_not_found": "在 OpenRouter 上找不到匹配的模型 — 無法從此來源獲取定價。",
+      "pricing_check_failed": "無法檢查 OpenRouter 定價",
+      "pricing_negative_error": "定價必須為大於或等於零的數值",
       "delete_model": "刪除模型",
       "confirm_delete": "確認刪除",
       "deleting": "刪除中...",

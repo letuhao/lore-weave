@@ -118,6 +118,7 @@
     "count": "{{count}}章",
     "count_other": "{{count}}章",
     "import": "インポート",
+    "importPdf": "PDFをインポート",
     "new": "新しい章",
     "col": {
       "title": "タイトル",
@@ -150,8 +151,7 @@
       "title": "章をゴミ箱に移動しますか？",
       "description": "「{{title}}」がゴミ箱に移動されます。",
       "confirm": "ゴミ箱に移動"
-    },
-    "importPdf": "PDFをインポート"
+    }
   },
   "glossary": {
     "header": "用語集とロア",
@@ -211,7 +211,8 @@
     "status": {
       "draft": "下書き",
       "active": "アクティブ",
-      "inactive": "非アクティブ"
+      "inactive": "非アクティブ",
+      "rejected": "却下済み"
     },
     "bulk": {
       "select_row": "エンティティを選択",
@@ -228,7 +229,8 @@
       "delete_confirm": {
         "title": "{{count}} 件のエンティティを削除しますか？",
         "description": "選択した {{count}} 件のエンティティはゴミ箱に移動されます。"
-      }
+      },
+      "reject": "却下"
     },
     "clear_filters": "すべてのフィルターをクリア",
     "deleted": "エンティティを削除しました",
@@ -252,7 +254,8 @@
       "title": "エンティティを削除しますか？",
       "description": "「{{title}}」はゴミ箱に移動されます。",
       "confirm": "削除"
-    }
+    },
+    "scope_label_title": "スコープ — 同名の他のエンティティとこのエンティティを区別します"
   },
   "sharing": {
     "title": "公開設定",

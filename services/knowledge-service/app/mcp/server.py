@@ -46,6 +46,8 @@ from mcp.server.fastmcp import Context as MCPContext
 from mcp.server.fastmcp import FastMCP
 from mcp.server.fastmcp.exceptions import ToolError
 from mcp.server.transport_security import TransportSecuritySettings
+
+from loreweave_mcp import patch_convert_result, require_meta
 from pydantic import Field, ValidationError
 
 from app.clients.book_client import get_book_client
@@ -54,7 +56,7 @@ from app.clients.reranker_client import get_reranker_client
 from app.clients.grant_client import get_grant_client
 from app.config import settings
 from app.db.neo4j import neo4j_session
-from app.db.neo4j_repos.entities import list_entities_filtered
+from app.db.neo4j_repos.entities import AuthorableKind, list_entities_filtered
 from app.db.neo4j_repos.facts import FactType
 from app.db.pool import get_knowledge_pool
 from app.db.repositories.graph_schemas import GraphSchemasRepo
@@ -101,6 +103,20 @@ from app.tools.graph_schema_tools import (
 logger = logging.getLogger(__name__)
 
 __all__ = ["mcp_server", "build_mcp_app"]
+
+# External MCP discoverability audit #9 — every structured tool result used
+# to duplicate its full payload into content[0].text (already-JSON-parsed
+# structuredContent sitting right next to a JSON-STRINGIFIED copy of the same
+# data). knowledge-service builds its own FastMCP instance directly (unlike
+# composition/jobs/translation/lore-enrichment-service, which go through the
+# shared `loreweave_mcp.make_stateless_fastmcp` chokepoint and get this for
+# free) — this service already ships `loreweave_mcp` as a dependency (it's
+# installed via `pip install /sdk` in the Dockerfile) even though it doesn't
+# use the rest of the kit, so this is a plain function import, not a new
+# dependency. See sdks/python/loreweave_mcp/compact_content.py for the fix
+# itself (a defensive FastMCP monkeypatch — never raises even if a future mcp
+# release changes the shape it targets).
+patch_convert_result()
 
 # Module-level FastMCP instance. build_mcp_app() converts it to an ASGI
 # app for mounting in main.py. stateless_http=True + path="/" so the
@@ -321,14 +337,26 @@ def _build_tool_context(ctx: MCPContext) -> ToolContext:
 
 
 async def _dispatch(ctx: MCPContext, tool_name: str, tool_args: dict) -> dict:
-    """Build a ToolContext, call execute_tool(), return a result dict.
+    """Build a ToolContext, call execute_tool(), return the result dict.
 
-    A tool-level failure (ToolResult.success=False) returns
-    ``{"success": False, "error": str}`` — FastMCP surfaces this as a
-    normal tool result, not an exception. An infrastructure exception
-    (Neo4j down, etc.) propagates so FastMCP reports it as a tool error
-    the client sees as a backend failure, mirroring the bespoke
-    /internal/tools/execute 503 contract.
+    A tool-level failure (ToolResult.success=False) RAISES ``ToolError`` so the
+    MCP result carries ``isError: true`` (D-KNOWLEDGE-TOOL-ERRORS-NOT-ISERROR).
+    It used to return ``{"success": False, "error": ...}`` on an otherwise
+    *successful* tool result, which meant:
+      * ai-gateway's C4 normalizer (which triggers on isError / a throw) never
+        saw a knowledge tool failure, so it was never normalized; and
+      * any consumer branching on ``isError`` read a failed call as a success —
+        the silent-success bug class.
+
+    The error body is JSON — ``{"code"?, "message", "detail"?}`` — matching the
+    exact shape ai-gateway itself puts in ``content[0].text``
+    (``JSON.stringify({code, message})``), so a stable ``code`` (e.g.
+    ``KG_ENDPOINT_NOT_NODE``) and ``detail`` (``{"missing": [...]}``) survive to
+    the caller and a workflow can branch on them instead of parsing prose
+    (contract C4/C5). chat-service's ``knowledge_client.mcp_execute_tool``
+    decodes it back out of the isError branch.
+
+    An infrastructure exception (Neo4j down, etc.) still propagates as itself.
     """
     tool_ctx = _build_tool_context(ctx)
     result = await execute_tool(tool_ctx, tool_name, tool_args)
@@ -339,9 +367,13 @@ async def _dispatch(ctx: MCPContext, tool_name: str, tool_args: dict) -> dict:
         # knowledge_client.mcp_execute_tool). Coercing only on `is None`
         # (not `or`) stops silently swallowing a falsy-but-not-None payload.
         return result.result if result.result is not None else {}
-    # Structured tool error so the MCP client can inspect it without
-    # parsing free text.
-    return {"success": False, "error": result.error}
+
+    err: dict[str, Any] = {"message": result.error or "tool error"}
+    if result.code is not None:
+        err["code"] = result.code
+    if result.detail is not None:
+        err["detail"] = result.detail
+    raise ToolError(json.dumps(err, default=str))
 
 
 # ── Tool registrations ────────────────────────────────────────────────
@@ -360,6 +392,10 @@ async def _dispatch(ctx: MCPContext, tool_name: str, tool_args: dict) -> dict:
         "best for most queries). granularity=chapter tells you WHICH chapters "
         "match; granularity=block drills into the matching passages with "
         "snippets. Follow up with book_get_chapter to read."
+    ),
+    meta=require_meta(
+        "R", "project",
+        tool_name="story_search",
     ),
 )
 async def story_search(
@@ -380,6 +416,12 @@ async def story_search(
     ] = SEARCH_LIMIT_DEFAULT,
     detail: _DETAIL_ARG = "full",
     project_id: _PROJECT_ID_ARG = None,
+    before_chapter_id: Annotated[
+        str | None,
+        "Optional spoiler cutoff (D-1): window results to this chapter and everything before it "
+        "(by chapter order), so a reader-facing search can't surface a hit past the reader's "
+        "position. Omit to search the whole manuscript.",
+    ] = None,
 ) -> dict:
     args: dict[str, Any] = {
         "query": query, "mode": mode, "granularity": granularity, "limit": limit,
@@ -387,6 +429,8 @@ async def story_search(
     }
     if project_id is not None:
         args["project_id"] = project_id
+    if before_chapter_id is not None:
+        args["before_chapter_id"] = before_chapter_id
     return await _dispatch(ctx, "story_search", args)
 
 
@@ -399,6 +443,10 @@ async def story_search(
         "indexed yet), past chat turns, and glossary entries. Returns the most "
         "relevant snippets. (For locating/reading manuscript prose specifically, "
         "`story_search` is the primary find tool.)"
+    ),
+    meta=require_meta(
+        "R", "project",
+        tool_name="memory_search",
     ),
 )
 async def memory_search(
@@ -434,6 +482,10 @@ async def memory_search(
         "to other entities. Use this when the user asks about a named thing "
         "and you need what memory holds on it."
     ),
+    meta=require_meta(
+        "R", "project",
+        tool_name="memory_recall_entity",
+    ),
 )
 async def memory_recall_entity(
     ctx: MCPContext,
@@ -452,6 +504,10 @@ async def memory_recall_entity(
         "Retrieve narrative events in order for the current project, "
         "optionally filtered by a date range or by an entity that took part. "
         "Use this to answer 'what happened' or 'when did' questions."
+    ),
+    meta=require_meta(
+        "R", "project",
+        tool_name="memory_timeline",
     ),
 )
 async def memory_timeline(
@@ -498,6 +554,10 @@ async def memory_timeline(
         "confirmed. Stored facts are recorded at low confidence and tagged "
         "as assistant-created so the user can review them."
     ),
+    meta=require_meta(
+        "A", "project",
+        tool_name="memory_remember",
+    ),
 )
 async def memory_remember(
     ctx: MCPContext,
@@ -523,6 +583,10 @@ async def memory_remember(
         "appears in memory. Only use a fact_id you have seen in an earlier "
         "tool result."
     ),
+    meta=require_meta(
+        "A", "project",
+        tool_name="memory_forget",
+    ),
 )
 async def memory_forget(
     ctx: MCPContext,
@@ -547,6 +611,10 @@ async def memory_forget(
         "project (book_id set) can only be created by the book's owner; omit "
         "book_id for a personal project. Idempotent per book. Returns the "
         "project_id — use it as the active project for subsequent KG tools."
+    ),
+    meta=require_meta(
+        "A", "user",
+        tool_name="kg_project_create",
     ),
 )
 async def kg_project_create(
@@ -580,6 +648,10 @@ async def kg_project_create(
         "to find the `project_id` to pass to a project-scoped kg_* tool when no "
         "project is in scope. Owner-scoped: only the caller's projects are returned."
     ),
+    meta=require_meta(
+        "R", "user",
+        tool_name="kg_project_list",
+    ),
 )
 async def kg_project_list(
     ctx: MCPContext,
@@ -593,6 +665,35 @@ async def kg_project_list(
     return await _dispatch(
         ctx, "kg_project_list", {"include_archived": include_archived, "limit": limit}
     )
+
+
+@mcp_server.tool(
+    name="kg_project_set_embedding_model",
+    description=(
+        "Configure the project's EMBEDDING MODEL — the one-time setup that "
+        "kg_run_benchmark and kg_build_graph both require. Call this when a build "
+        "reports the project has no embedding model configured, instead of sending "
+        "the user to the UI. Pass a provider-registry user_model UUID for one of your "
+        "own embedding models (find one with settings_list_models). The vector "
+        "dimension is probed automatically. Free, reversible, owner-only. Then call "
+        "kg_run_benchmark, then kg_build_graph."
+    ),
+    meta=require_meta(
+        "A", "project",
+        tool_name="kg_project_set_embedding_model",
+    ),
+)
+async def kg_project_set_embedding_model(
+    ctx: MCPContext,
+    embedding_model: Annotated[
+        str, "provider-registry user_model UUID of an embedding model you own."
+    ],
+    project_id: _PROJECT_ID_ARG = None,
+) -> dict:
+    args: dict[str, Any] = {"embedding_model": embedding_model}
+    if project_id is not None:
+        args["project_id"] = project_id
+    return await _dispatch(ctx, "kg_project_set_embedding_model", args)
 
 
 # ── KG ontology tools (lane LF; KM1/KM2 + R-class KM3/KM4) ─────────────
@@ -614,6 +715,10 @@ async def kg_project_list(
         "optionally narrowed to a named view (lens) and to a point in the "
         "story via a chapter ordinal. Use this to see who relates to whom as "
         "of a given chapter. Returns nodes, edges, and any warnings."
+    ),
+    meta=require_meta(
+        "R", "project",
+        tool_name="kg_graph_query",
     ),
 )
 async def kg_graph_query(
@@ -655,6 +760,10 @@ async def kg_graph_query(
         "relationships), not one project at a time. Owner-only: partitions owned by "
         "others are skipped and reported in partitions_unreadable."
     ),
+    meta=require_meta(
+        "R", "project",
+        tool_name="kg_world_query",
+    ),
 )
 async def kg_world_query(
     ctx: MCPContext,
@@ -691,6 +800,10 @@ async def kg_world_query(
         "or load two unrelated books at once. Unlike kg_world_query (a whole world), "
         "you name the exact project_ids. Owner-only: ids you don't own are skipped and "
         "reported in partitions_unreadable (the result also carries partitions_read)."
+    ),
+    meta=require_meta(
+        "R", "user",
+        tool_name="kg_multi_query",
     ),
 )
 async def kg_multi_query(
@@ -729,6 +842,10 @@ async def kg_multi_query(
         "edge-type code seen in an earlier graph result. Returns the full arc, "
         "including closed (superseded) instances."
     ),
+    meta=require_meta(
+        "R", "project",
+        tool_name="kg_entity_edge_timeline",
+    ),
 )
 async def kg_entity_edge_timeline(
     ctx: MCPContext,
@@ -758,6 +875,10 @@ async def kg_entity_edge_timeline(
         "kinds. Use this to learn what relationship and fact codes are valid "
         "before proposing an edge or fact."
     ),
+    meta=require_meta(
+        "R", "project",
+        tool_name="kg_schema_read",
+    ),
 )
 async def kg_schema_read(
     ctx: MCPContext, project_id: _PROJECT_ID_ARG = None
@@ -774,6 +895,10 @@ async def kg_schema_read(
         "List the graph-schema templates available to adopt — the system "
         "(built-in) templates and the caller's own user templates. Use this to "
         "discover what ontologies a project could be based on."
+    ),
+    meta=require_meta(
+        "R", "user",
+        tool_name="kg_list_templates",
     ),
 )
 async def kg_list_templates(
@@ -808,6 +933,10 @@ async def kg_list_templates(
         "template updates available to pull (a tree-granular diff). Read-only: "
         "reports what changed; it does NOT apply anything."
     ),
+    meta=require_meta(
+        "R", "project",
+        tool_name="kg_sync_available",
+    ),
 )
 async def kg_sync_available(
     ctx: MCPContext, project_id: _PROJECT_ID_ARG = None
@@ -823,6 +952,10 @@ async def kg_sync_available(
     description=(
         "List the caller's saved views (named lenses of edge/node kinds) for "
         "the current project. Views are per-user — you only ever see your own."
+    ),
+    meta=require_meta(
+        "R", "user",
+        tool_name="kg_view_read",
     ),
 )
 async def kg_view_read(
@@ -840,6 +973,10 @@ async def kg_view_read(
         "List the project's triage queue — extracted graph elements that did "
         "not match the schema and are parked for human review — grouped by "
         "signature with a count and a suggested-action list."
+    ),
+    meta=require_meta(
+        "R", "project",
+        tool_name="kg_triage_list",
     ),
 )
 async def kg_triage_list(
@@ -870,12 +1007,16 @@ async def kg_triage_list(
         "the graph immediately). Use for durable, important facts the user "
         "stated or confirmed."
     ),
+    meta=require_meta(
+        "A", "project",
+        tool_name="kg_propose_fact",
+    ),
 )
 async def kg_propose_fact(
     ctx: MCPContext,
     fact_text: Annotated[str, "The fact to propose, as a clear statement."],
     fact_type: Annotated[
-        Literal["decision", "preference", "milestone", "negation"],
+        Literal["decision", "preference", "milestone", "negation", "statement", "commitment"],
         "decision = a choice made; preference = a standing like/dislike; "
         "milestone = a notable achievement; negation = something NOT true.",
     ],
@@ -895,6 +1036,10 @@ async def kg_propose_fact(
         "triage inbox — it is NEVER written to the graph directly. If the edge "
         "type is temporal you MUST supply valid_from (the chapter ordinal it "
         "began); otherwise the proposal is rejected."
+    ),
+    meta=require_meta(
+        "A", "project",
+        tool_name="kg_propose_edge",
     ),
 )
 async def kg_propose_edge(
@@ -940,11 +1085,74 @@ async def kg_propose_edge(
 
 
 @mcp_server.tool(
+    name="kg_project_entities_to_nodes",
+    description=(
+        "Project this book's recorded glossary entities into the knowledge "
+        "graph as nodes — the structured way to seed the graph from lore you "
+        "already entered, WITHOUT needing any chapter prose written. "
+        "Deterministic and idempotent: re-running adds no duplicates. Returns "
+        "how many nodes were newly created vs. already existed. Do this before "
+        "proposing edges between entities (an edge needs both endpoints to be "
+        "nodes first)."
+    ),
+    meta=require_meta(
+        "A", "project",
+        tool_name="kg_project_entities_to_nodes",
+    ),
+)
+async def kg_project_entities_to_nodes(
+    ctx: MCPContext,
+    entity_ids: Annotated[
+        list[str] | None,
+        "Optional — the specific glossary entity ids to project. Omit to "
+        "project the book's whole active glossary.",
+    ] = None,
+    project_id: _PROJECT_ID_ARG = None,
+) -> dict:
+    args: dict[str, Any] = {}
+    if entity_ids is not None:
+        args["entity_ids"] = entity_ids
+    if project_id is not None:
+        args["project_id"] = project_id
+    return await _dispatch(ctx, "kg_project_entities_to_nodes", args)
+
+
+@mcp_server.tool(
+    name="kg_create_node",
+    description=(
+        "Manually create ONE knowledge-graph entity node (a character, location, "
+        "organization, item, …). Use this BEFORE kg_propose_edge when a relationship's "
+        "endpoint isn't in the graph yet — an edge whose endpoints aren't nodes is "
+        "parked and later fails. Idempotent: the same name+kind returns the existing "
+        "node. Returns the entity_id to use as an edge endpoint."
+    ),
+    meta=require_meta("A", "project", tool_name="kg_create_node"),
+)
+async def kg_create_node(
+    ctx: MCPContext,
+    name: Annotated[str, "the entity's name"],
+    kind: Annotated[
+        AuthorableKind,
+        "the entity kind (closed set)",
+    ],
+    project_id: _PROJECT_ID_ARG = None,
+) -> dict:
+    args: dict[str, Any] = {"name": name, "kind": kind}
+    if project_id is not None:
+        args["project_id"] = project_id
+    return await _dispatch(ctx, "kg_create_node", args)
+
+
+@mcp_server.tool(
     name="kg_view_upsert",
     description=(
         "Create or replace one of the caller's saved views (a named lens of "
         "edge-type + node-kind codes) for the current project. Owner-scoped: "
         "only ever touches your own view."
+    ),
+    meta=require_meta(
+        "A", "user",
+        tool_name="kg_view_upsert",
     ),
 )
 async def kg_view_upsert(
@@ -978,6 +1186,10 @@ async def kg_view_upsert(
         "Delete one of the caller's saved views by code for the current "
         "project. Owner-scoped and reversible (recreate with kg_view_upsert)."
     ),
+    meta=require_meta(
+        "A", "user",
+        tool_name="kg_view_delete",
+    ),
 )
 async def kg_view_delete(
     ctx: MCPContext,
@@ -998,6 +1210,10 @@ async def kg_view_delete(
         "Schema-changing actions (add to vocab/schema, widen, promote to "
         "glossary) are NOT available here — those need explicit human "
         "confirmation via the review surface."
+    ),
+    meta=require_meta(
+        "A", "project",
+        tool_name="kg_triage_resolve",
     ),
 )
 async def kg_triage_resolve(
@@ -1032,6 +1248,10 @@ async def kg_triage_resolve(
         "confirm_token and a summary; a human must confirm it on the review "
         "surface. Requires the project to have adopted its own ontology first."
     ),
+    meta=require_meta(
+        "W", "project",
+        tool_name="kg_schema_edit",
+    ),
 )
 async def kg_schema_edit(
     ctx: MCPContext,
@@ -1064,6 +1284,10 @@ async def kg_schema_edit(
         "confirm_token and a summary, and a human confirms on the review "
         "surface. Pick a source_schema_id from kg_list_templates."
     ),
+    meta=require_meta(
+        "W", "project",
+        tool_name="kg_adopt_template",
+    ),
 )
 async def kg_adopt_template(
     ctx: MCPContext,
@@ -1086,6 +1310,10 @@ async def kg_adopt_template(
         "with kg_sync_available first). High-impact (overwrites/deprecates rows "
         "+ bumps the schema version), so it returns a confirm_token and summary; "
         "a human confirms on the review surface."
+    ),
+    meta=require_meta(
+        "W", "project",
+        tool_name="kg_sync_apply",
     ),
 )
 async def kg_sync_apply(
@@ -1119,6 +1347,10 @@ async def kg_sync_apply(
         "real edge), so it does NOT apply immediately — it returns a "
         "confirm_token and a summary; a human confirms on the review surface."
     ),
+    meta=require_meta(
+        "W", "project",
+        tool_name="kg_triage_place_edge",
+    ),
 )
 async def kg_triage_place_edge(
     ctx: MCPContext,
@@ -1143,6 +1375,10 @@ async def kg_triage_place_edge(
         "changes the project ontology and bumps the schema version, so it does "
         "NOT apply immediately — it returns a confirm_token and a summary; a "
         "human confirms on the review surface."
+    ),
+    meta=require_meta(
+        "W", "project",
+        tool_name="kg_triage_schema_write",
     ),
 )
 async def kg_triage_schema_write(
@@ -1193,8 +1429,14 @@ async def kg_triage_schema_write(
         "the book's chapters. EXPENSIVE (LLM cost) so it does NOT run immediately — it "
         "returns a confirm_token + summary; a human confirms on the review surface (which "
         "shows the estimated cost) and the job starts then. Requires the project to have "
-        "an embedding model configured (run extraction setup once in the UI first). Pick "
+        "an embedding model configured — if it does not, call kg_project_set_embedding_model "
+        "then kg_run_benchmark first, rather than sending the user to the UI. Pick "
         "the extraction llm_model from settings_list_models."
+    ),
+    meta=require_meta(
+        "W", "project",
+        async_job=True,
+        tool_name="kg_build_graph",
     ),
 )
 async def kg_build_graph(
@@ -1245,6 +1487,11 @@ async def kg_build_graph(
         "book's glossary entities (extract the glossary first); pick the model_ref from "
         "settings_list_models."
     ),
+    meta=require_meta(
+        "W", "project",
+        async_job=True,
+        tool_name="kg_build_wiki",
+    ),
 )
 async def kg_build_wiki(
     ctx: MCPContext,
@@ -1285,6 +1532,10 @@ async def kg_build_wiki(
         "the UI. Cheap (embeddings only, no LLM cost) and runs immediately on a hidden "
         "sandbox. Returns passed + gate_failures; a pass enables Build-KG for this model."
     ),
+    meta=require_meta(
+        "A", "project",
+        tool_name="kg_run_benchmark",
+    ),
 )
 async def kg_run_benchmark(
     ctx: MCPContext, project_id: _PROJECT_ID_ARG = None
@@ -1293,6 +1544,108 @@ async def kg_run_benchmark(
     if project_id is not None:
         args["project_id"] = project_id
     return await _dispatch(ctx, "kg_run_benchmark", args)
+
+
+# ── W11-M2 reader "ask the lore" tools ────────────────────────────────
+# Spoiler-windowed reads for a reader's chat agent. The cutoff is SERVER-enforced
+# from the reader's OWN furthest-read chapter — there is deliberately no
+# before_chapter arg, so an agent cannot widen its own spoiler window. All Tier-R,
+# scope=project; a non-grantee gets a uniform "project not found" (anti-oracle).
+@mcp_server.tool(
+    name="lore_ask",
+    description=(
+        "Ask about a book's lore SPOILER-SAFELY on the reader's behalf. Returns a "
+        "spoiler-windowed evidence bundle — canon entities the reader has met + "
+        "manuscript passages — bounded to the reader's OWN furthest-read chapter (you "
+        "cannot widen it). Compose the answer from this evidence on your own model; if "
+        "window_available is false the reader's position couldn't be pinned so nothing "
+        "is shown."
+    ),
+    meta=require_meta("R", "project", tool_name="lore_ask"),
+)
+async def lore_ask(
+    ctx: MCPContext,
+    query: Annotated[
+        str,
+        "What the reader is asking — a name, a relationship, or 'what has happened so "
+        "far', in natural language.",
+    ],
+    limit: Annotated[
+        int, Field(ge=1, le=50), "Max passages + canon entities each (default 25)."
+    ] = 25,
+    project_id: _PROJECT_ID_ARG = None,
+) -> dict:
+    args: dict[str, Any] = {"query": query, "limit": limit}
+    if project_id is not None:
+        args["project_id"] = project_id
+    return await _dispatch(ctx, "lore_ask", args)
+
+
+@mcp_server.tool(
+    name="lore_browse_entities",
+    description=(
+        "List the CANON cast (characters, places, factions) the reader has met so far "
+        "— spoiler-windowed to their furthest-read chapter. A reader whose position "
+        "can't be pinned gets an empty list, never the whole cast."
+    ),
+    meta=require_meta("R", "project", tool_name="lore_browse_entities"),
+)
+async def lore_browse_entities(
+    ctx: MCPContext,
+    kind: Annotated[
+        str | None,
+        "Optional — restrict to one entity kind (e.g. 'character', 'location'). Omit "
+        "for the whole windowed cast.",
+    ] = None,
+    limit: Annotated[int, Field(ge=1, le=50), "Max entities (default/max 50)."] = 50,
+    project_id: _PROJECT_ID_ARG = None,
+) -> dict:
+    args: dict[str, Any] = {"limit": limit}
+    if kind is not None:
+        args["kind"] = kind
+    if project_id is not None:
+        args["project_id"] = project_id
+    return await _dispatch(ctx, "lore_browse_entities", args)
+
+
+@mcp_server.tool(
+    name="lore_entity",
+    description=(
+        "One entity's spoiler-windowed status + known facts, bounded to the reader's "
+        "furthest-read chapter (facts established later are hidden)."
+    ),
+    meta=require_meta("R", "project", tool_name="lore_entity"),
+)
+async def lore_entity(
+    ctx: MCPContext,
+    entity_id: Annotated[
+        str, "The entity id returned by lore_browse_entities / lore_ask."
+    ],
+    project_id: _PROJECT_ID_ARG = None,
+) -> dict:
+    args: dict[str, Any] = {"entity_id": entity_id}
+    if project_id is not None:
+        args["project_id"] = project_id
+    return await _dispatch(ctx, "lore_entity", args)
+
+
+@mcp_server.tool(
+    name="lore_timeline",
+    description=(
+        "The sequence of events up to the reader's position — spoiler-windowed so "
+        "later events are hidden. Empty when the reader's position can't be pinned."
+    ),
+    meta=require_meta("R", "project", tool_name="lore_timeline"),
+)
+async def lore_timeline(
+    ctx: MCPContext,
+    limit: Annotated[int, Field(ge=1, le=50), "Max events (default/max 50)."] = 50,
+    project_id: _PROJECT_ID_ARG = None,
+) -> dict:
+    args: dict[str, Any] = {"limit": limit}
+    if project_id is not None:
+        args["project_id"] = project_id
+    return await _dispatch(ctx, "lore_timeline", args)
 
 
 # ── MCP resources (RAID Wave C5) ──────────────────────────────────────

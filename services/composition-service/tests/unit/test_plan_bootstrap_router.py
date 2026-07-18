@@ -29,7 +29,7 @@ class StubGrant:
 
 def _record(status="pending", diff=None, applied_results=None):
     return PlanBootstrapProposal(
-        id=PROPOSAL, run_id=RUN, book_id=BOOK, owner_user_id=USER,
+        id=PROPOSAL, run_id=RUN, book_id=BOOK, created_by=USER,
         status=status, diff=diff or {"new_chapters": []},
         applied_results=applied_results or {},
     )
@@ -39,15 +39,15 @@ class StubBootstrapService:
     def __init__(self):
         self.record = _record()
 
-    async def propose(self, owner_user_id, book_id, run_id, bearer):
+    async def propose(self, created_by, book_id, run_id, bearer):
         if run_id != RUN:
             raise LookupError("run not found")
         return self.record
 
-    async def get(self, owner_user_id, book_id, proposal_id):
+    async def get(self, book_id, proposal_id):
         return self.record if proposal_id == PROPOSAL else None
 
-    async def approve(self, owner_user_id, book_id, proposal_id):
+    async def approve(self, book_id, proposal_id):
         if proposal_id != PROPOSAL:
             raise LookupError("proposal not found")
         if self.record.status != "pending":
@@ -55,11 +55,11 @@ class StubBootstrapService:
         self.record = self.record.model_copy(update={"status": "approved"})
         return self.record
 
-    async def reject(self, owner_user_id, book_id, proposal_id):
+    async def reject(self, book_id, proposal_id):
         self.record = self.record.model_copy(update={"status": "rejected"})
         return self.record
 
-    async def apply(self, owner_user_id, book_id, proposal_id, bearer):
+    async def apply(self, created_by, book_id, proposal_id, bearer):
         self.record = self.record.model_copy(update={"status": "applied"})
         return self.record
 

@@ -15,8 +15,8 @@ from fastapi.testclient import TestClient
 from unittest.mock import AsyncMock
 
 from app.clients.book_client import BookClientError
-from app.db.models import CompositionWork
-from app.db.repositories import VersionMismatchError
+from app.db.models import CompositionWork, DivergenceSpec, EntityOverride
+from app.db.repositories import ReferenceViolationError, VersionMismatchError
 
 USER = uuid.uuid4()
 BOOK = uuid.uuid4()
@@ -25,7 +25,7 @@ CHAPTER = uuid.uuid4()
 
 
 def _work(**kw) -> CompositionWork:
-    return CompositionWork(project_id=kw.get("project_id", PROJECT), user_id=USER,
+    return CompositionWork(project_id=kw.get("project_id", PROJECT), created_by=USER,
                            book_id=BOOK, id=kw.get("id", uuid.uuid4()),
                            version=kw.get("version", 1),
                            status=kw.get("status", "active"))
@@ -33,7 +33,7 @@ def _work(**kw) -> CompositionWork:
 
 def _pending_work(**kw) -> CompositionWork:
     """C16: a lazy greenfield Work — null project_id, backfill marker set."""
-    return CompositionWork(project_id=None, user_id=USER,
+    return CompositionWork(project_id=None, created_by=USER,
                            book_id=kw.get("book_id", BOOK),
                            id=kw.get("id", uuid.uuid4()),
                            pending_project_backfill=True)
@@ -58,32 +58,42 @@ class StubWorks:
         self.by_id_result = None
         self.by_id_results = None      # if a list, pop per get_by_id call
 
-    async def get_by_id(self, user_id, work_id):
+    async def get_by_id(self, work_id):
         if self.by_id_results is not None:
             return self.by_id_results.pop(0) if self.by_id_results else None
         return self.by_id_result
 
-    async def get(self, user_id, project_id):
+    async def get(self, project_id):
         if self.get_results is not None:
             return self.get_results.pop(0) if self.get_results else None
         return self.work
 
-    async def resolve_by_book(self, user_id, book_id):
+    async def resolve_by_book(self, book_id):
         return self.marked
 
-    async def update(self, user_id, project_id, patch, *, expected_version=None):
+    async def scope_meta(self, project_id):
+        # PM-8 ids-only scope row for the E0 book gate (book_id_for_project).
+        # Derived from the stubbed work: None → uniform 404 at the gate.
+        from app.db.repositories.works import WorkScopeMeta
+        if self.work is None:
+            return None
+        return WorkScopeMeta(
+            book_id=self.work.book_id, work_id=self.work.id, project_id=project_id,
+        )
+
+    async def update(self, project_id, patch, *, created_by=None, expected_version=None):
         if self.update_raises:
             raise self.update_raises
         return self.update_result
 
-    async def create(self, user_id, project_id, book_id, **kw):
+    async def create(self, created_by, project_id, book_id, **kw):
         if self.create_raises:
             raise self.create_raises
         self.created_with = (project_id, book_id)
         return _work(project_id=project_id)
 
     # C23 (dị bản) derivative create
-    async def create_derivative(self, user_id, project_id, book_id, source_work_id,
+    async def create_derivative(self, created_by, project_id, book_id, source_work_id,
                                 *, branch_point=None, settings=None, conn=None):
         self.derived_with = {"project_id": project_id, "book_id": book_id,
                              "source_work_id": source_work_id, "branch_point": branch_point}
@@ -93,16 +103,16 @@ class StubWorks:
         return w
 
     # C16 (WG-3) lazy null-project + backfill
-    async def create_pending(self, user_id, book_id, **kw):
+    async def create_pending(self, created_by, book_id, **kw):
         if self.create_pending_raises:
             raise self.create_pending_raises
         self.created_pending = True
         return _pending_work(book_id=book_id)
 
-    async def get_pending_for_book(self, user_id, book_id):
+    async def get_pending_for_book(self, book_id):
         return self.pending
 
-    async def backfill_project(self, user_id, work_id, project_id):
+    async def backfill_project(self, work_id, project_id, *, created_by=None):
         self.backfilled_with = (work_id, project_id)
         if self.backfill_raises:
             raise self.backfill_raises
@@ -125,11 +135,34 @@ class StubDerivatives:
         self.overrides.append(override)
         return override
 
-    async def get_spec_for_work(self, user_id, work_id):
+    async def get_spec_for_work(self, work_id):
         return self.spec_for_work
 
-    async def list_overrides_for_work(self, user_id, work_id):
+    async def list_overrides_for_work(self, work_id):
         return self.overrides_for_work
+
+    # S-04 post-derive editing seams
+    async def update_spec(self, work_id, book_id, **kwargs):
+        self.update_spec_call = (work_id, book_id, kwargs)
+        if getattr(self, "update_spec_raises", None):
+            raise self.update_spec_raises
+        return getattr(self, "update_spec_result", None)
+
+    async def add_override(self, work_id, book_id, created_by, target_entity_id,
+                           overridden_fields, *, conn=None):
+        self.add_override_call = (work_id, book_id, created_by, target_entity_id,
+                                  overridden_fields)
+        if getattr(self, "add_override_raises", None):
+            raise self.add_override_raises
+        return getattr(self, "add_override_result", None)
+
+    async def update_override(self, work_id, book_id, override_id, overridden_fields, *, conn=None):
+        self.update_override_call = (work_id, book_id, override_id, overridden_fields)
+        return getattr(self, "update_override_result", None)
+
+    async def delete_override(self, work_id, book_id, override_id, *, conn=None):
+        self.delete_override_call = (work_id, book_id, override_id)
+        return getattr(self, "delete_override_result", False)
 
 
 class _FakeTxn:
@@ -543,6 +576,25 @@ def test_resolve_candidates_serializes_marked_works(ctx):
     assert {w["project_id"] for w in body["candidates"]} == {str(w1.project_id), str(w2.project_id)}
 
 
+def test_list_book_derivatives(ctx):
+    """S-09 W4 — a book's Works (canon + derivatives) with is_canonical + the dị bản name/branch."""
+    c, works, _, _, _ = ctx
+    canon = _work(project_id=uuid.uuid4())  # source_work_id None → canonical
+    deriv = _work(project_id=uuid.uuid4())
+    deriv.source_work_id = uuid.uuid4()
+    deriv.branch_point = 3
+    deriv.settings = {"derivative_name": "What if Kai stayed"}
+    works.marked = [canon, deriv]
+    r = c.get(f"/v1/composition/books/{BOOK}/derivatives")
+    assert r.status_code == 200
+    rows = r.json()["works"]
+    assert len(rows) == 2
+    canon_row = next(w for w in rows if w["is_canonical"])
+    deriv_row = next(w for w in rows if not w["is_canonical"])
+    assert canon_row["name"] is None
+    assert deriv_row["name"] == "What if Kai stayed" and deriv_row["branch_point"] == 3
+
+
 # ── C23 (dị bản) derive ──
 
 def _derive_body(**kw):
@@ -633,6 +685,155 @@ def test_derive_rejects_on_contract_error(ctx):
     assert r.json()["detail"]["code"] == "PROJECT_CREATE_FAILED"
 
 
+# ── S-04: derivative delta EDITING (spec PATCH + entity_override CRUD) ──
+
+def _deriv_work(**kw):
+    """A DERIVATIVE Work (source_work_id set) — the only kind with a spec/overrides."""
+    w = _work(**kw)
+    w.source_work_id = kw.get("source_work_id", uuid.uuid4())
+    return w
+
+
+def _spec(**kw):
+    return DivergenceSpec(
+        id=kw.get("id", uuid.uuid4()), created_by=USER, project_id=PROJECT,
+        work_id=kw.get("work_id", uuid.uuid4()),
+        taxonomy=kw.get("taxonomy", "au"), pov_anchor=kw.get("pov_anchor"),
+        canon_rule=kw.get("canon_rule", []),
+    )
+
+
+def _override(**kw):
+    return EntityOverride(
+        id=kw.get("id", uuid.uuid4()), created_by=USER, project_id=PROJECT,
+        work_id=kw.get("work_id", uuid.uuid4()),
+        target_entity_id=kw.get("target_entity_id", uuid.uuid4()),
+        overridden_fields=kw.get("overridden_fields", {}),
+    )
+
+
+def test_update_divergence_spec_persists_provided_fields(ctx):
+    """PATCH divergence-spec passes only the provided fields to the repo; pov_anchor:null
+    reaches the repo as an explicit clear (in model_fields_set), taxonomy round-trips."""
+    c, works, _, _, derivatives = ctx
+    works.work = _deriv_work()
+    derivatives.update_spec_result = _spec(taxonomy="pov_shift", canon_rule=["X"])
+    r = c.patch(f"/v1/composition/works/{PROJECT}/divergence-spec",
+                json={"taxonomy": "pov_shift", "pov_anchor": None, "canon_rule": ["X"]})
+    assert r.status_code == 200, r.text
+    assert r.json()["taxonomy"] == "pov_shift"
+    _, _, kwargs = derivatives.update_spec_call
+    assert kwargs["taxonomy"] == "pov_shift"
+    assert "pov_anchor" in kwargs and kwargs["pov_anchor"] is None  # explicit clear
+    assert kwargs["canon_rule"] == ["X"]
+
+
+def test_update_divergence_spec_omitted_field_not_sent(ctx):
+    """An OMITTED field is not forwarded (left unchanged) — only taxonomy here."""
+    c, works, _, _, derivatives = ctx
+    works.work = _deriv_work()
+    derivatives.update_spec_result = _spec(taxonomy="au")
+    r = c.patch(f"/v1/composition/works/{PROJECT}/divergence-spec", json={"taxonomy": "au"})
+    assert r.status_code == 200
+    _, _, kwargs = derivatives.update_spec_call
+    assert set(kwargs) == {"taxonomy"}  # pov_anchor / canon_rule NOT forwarded
+
+
+def test_update_divergence_spec_off_enum_taxonomy_422(ctx):
+    """An off-enum taxonomy is a 422 at the request boundary — never a DB CHECK 500."""
+    c, works, _, _, _ = ctx
+    works.work = _deriv_work()
+    r = c.patch(f"/v1/composition/works/{PROJECT}/divergence-spec",
+                json={"taxonomy": "not_a_taxonomy"})
+    assert r.status_code == 422
+
+
+def test_update_divergence_spec_non_derivative_400(ctx):
+    """A base (non-derivative) Work has no spec → 400 NOT_A_DERIVATIVE (post-gate)."""
+    c, works, _, _, _ = ctx
+    works.work = _work()  # source_work_id is None
+    r = c.patch(f"/v1/composition/works/{PROJECT}/divergence-spec", json={"taxonomy": "au"})
+    assert r.status_code == 400
+    assert r.json()["detail"]["code"] == "NOT_A_DERIVATIVE"
+
+
+def test_update_divergence_spec_missing_row_404(ctx):
+    c, works, _, _, derivatives = ctx
+    works.work = _deriv_work()
+    derivatives.update_spec_result = None  # repo found no row
+    r = c.patch(f"/v1/composition/works/{PROJECT}/divergence-spec", json={"taxonomy": "au"})
+    assert r.status_code == 404
+
+
+def test_add_entity_override_created_201(ctx):
+    c, works, _, _, derivatives = ctx
+    works.work = _deriv_work()
+    target = uuid.uuid4()
+    derivatives.add_override_result = _override(target_entity_id=target,
+                                                overridden_fields={"role": "hero"})
+    r = c.post(f"/v1/composition/works/{PROJECT}/entity-overrides",
+               json={"target_entity_id": str(target), "overridden_fields": {"role": "hero"}})
+    assert r.status_code == 201, r.text
+    assert r.json()["overridden_fields"] == {"role": "hero"}
+    assert derivatives.add_override_call[3] == target
+
+
+def test_add_entity_override_duplicate_409(ctx):
+    """A second override for the same target → 409 OVERRIDE_EXISTS (PATCH instead)."""
+    c, works, _, _, derivatives = ctx
+    works.work = _deriv_work()
+    derivatives.add_override_raises = asyncpg.UniqueViolationError("dup")
+    r = c.post(f"/v1/composition/works/{PROJECT}/entity-overrides",
+               json={"target_entity_id": str(uuid.uuid4()), "overridden_fields": {}})
+    assert r.status_code == 409
+    assert r.json()["detail"]["code"] == "OVERRIDE_EXISTS"
+
+
+def test_add_entity_override_unresolvable_scope_404(ctx):
+    c, works, _, _, derivatives = ctx
+    works.work = _deriv_work()
+    derivatives.add_override_raises = ReferenceViolationError("scope unresolvable")
+    r = c.post(f"/v1/composition/works/{PROJECT}/entity-overrides",
+               json={"target_entity_id": str(uuid.uuid4()), "overridden_fields": {}})
+    assert r.status_code == 404
+
+
+def test_update_entity_override_200_and_404(ctx):
+    c, works, _, _, derivatives = ctx
+    works.work = _deriv_work()
+    oid = uuid.uuid4()
+    derivatives.update_override_result = _override(id=oid, overridden_fields={"a": 1})
+    r = c.patch(f"/v1/composition/works/{PROJECT}/entity-overrides/{oid}",
+                json={"overridden_fields": {"a": 1}})
+    assert r.status_code == 200 and r.json()["overridden_fields"] == {"a": 1}
+    # not found → 404
+    derivatives.update_override_result = None
+    r = c.patch(f"/v1/composition/works/{PROJECT}/entity-overrides/{uuid.uuid4()}",
+                json={"overridden_fields": {}})
+    assert r.status_code == 404
+
+
+def test_delete_entity_override_204_and_404(ctx):
+    c, works, _, _, derivatives = ctx
+    works.work = _deriv_work()
+    derivatives.delete_override_result = True
+    r = c.delete(f"/v1/composition/works/{PROJECT}/entity-overrides/{uuid.uuid4()}")
+    assert r.status_code == 204
+    # idempotent second delete → 404, never a 500
+    derivatives.delete_override_result = False
+    r = c.delete(f"/v1/composition/works/{PROJECT}/entity-overrides/{uuid.uuid4()}")
+    assert r.status_code == 404
+
+
+def test_list_entity_overrides_200(ctx):
+    c, works, _, _, derivatives = ctx
+    works.work = _deriv_work()
+    derivatives.overrides_for_work = [_override(overridden_fields={"role": "x"})]
+    r = c.get(f"/v1/composition/works/{PROJECT}/entity-overrides")
+    assert r.status_code == 200
+    assert len(r.json()["overrides"]) == 1
+
+
 # ── WS-B2: GET /works/{project_id}/derivative-context (durable read-back) ──
 
 def test_get_derivative_context_returns_persisted_spec(ctx):
@@ -652,11 +853,11 @@ def test_get_derivative_context_returns_persisted_spec(ctx):
     target = uuid.uuid4()
     pov = uuid.uuid4()
     derivatives.spec_for_work = DivergenceSpec(
-        user_id=USER, project_id=PROJECT, work_id=deriv_work.id,
+        created_by=USER, project_id=PROJECT, work_id=deriv_work.id,
         taxonomy="pov_shift", pov_anchor=pov, canon_rule=["The hero dies"],
     )
     derivatives.overrides_for_work = [
-        EntityOverride(user_id=USER, project_id=PROJECT, work_id=deriv_work.id,
+        EntityOverride(created_by=USER, project_id=PROJECT, work_id=deriv_work.id,
                        target_entity_id=target, overridden_fields={"description": "now a woman"}),
     ]
     r = c.get(f"/v1/composition/works/{PROJECT}/derivative-context")
@@ -795,3 +996,212 @@ def test_get_prose_502_on_book_down(ctx):
     works.work = _work()
     book.get_raises = BookClientError(502, "BOOK_SERVICE_UNAVAILABLE")
     assert c.get(f"/v1/composition/works/{PROJECT}/chapters/{CHAPTER}/prose").status_code == 502
+
+
+# ── D-S5-DERIVATIVE-MANUSCRIPT-FORK — work-scoped chapter drafts (the fork) ───────────
+
+
+class StubWorkChapterDrafts:
+    def __init__(self):
+        self.row = None            # get() result (None = not forked yet → inherit canon)
+        self.insert_result = None  # insert_fork() result (None = ON CONFLICT = already forked)
+        self.update_result = None
+        self.update_raises = None  # set to VersionMismatchError to simulate a stale OCC token
+        self.forked_with = None
+        self.updated_with = None
+        self.merged_called = False
+
+    async def get(self, project_id, chapter_id):
+        return self.row
+
+    async def insert_fork(self, project_id, chapter_id, book_id, created_by, body, draft_format="json"):
+        self.forked_with = {"body": body, "book_id": book_id}
+        return self.insert_result
+
+    async def update_occ(self, project_id, chapter_id, body, expected_version, draft_format="json"):
+        self.updated_with = {"body": body, "expected_version": expected_version}
+        if self.update_raises:
+            raise self.update_raises
+        return self.update_result
+
+    async def mark_merged(self, project_id, chapter_id):
+        self.merged_called = True
+        return self.row
+
+
+def _deriv_work(**kw) -> CompositionWork:
+    w = _work(**kw)
+    w.source_work_id = kw.get("source_work_id", uuid.uuid4())
+    w.branch_point = kw.get("branch_point", 0)
+    return w
+
+
+def _wcd(**kw):
+    from app.db.models import WorkChapterDraft
+    return WorkChapterDraft(
+        project_id=kw.get("project_id", PROJECT), chapter_id=kw.get("chapter_id", CHAPTER),
+        book_id=BOOK, created_by=USER, body=kw.get("body", {"v": 1}),
+        draft_version=kw.get("draft_version", 1), merged_at=kw.get("merged_at"),
+    )
+
+
+@pytest.fixture
+def wcd_ctx(monkeypatch):
+    monkeypatch.setattr("app.main.create_pool", AsyncMock())
+    monkeypatch.setattr("app.main.run_migrations", AsyncMock())
+    monkeypatch.setattr("app.main.close_pool", AsyncMock())
+    monkeypatch.setattr("app.main.get_pool", lambda: object())
+    from app.main import app
+    from app.deps import (
+        get_book_client_dep, get_grant_client_dep, get_work_chapter_drafts_repo, get_works_repo,
+    )
+    from app.grant_client import GrantLevel
+    from app.middleware.jwt_auth import get_bearer_token, get_current_user
+
+    class _StubGrant:
+        async def resolve_grant(self, book_id, user_id):
+            return GrantLevel.OWNER
+        async def resolve_access(self, book_id, user_id):
+            return GrantLevel.OWNER, "active"
+
+    works, book, wcd = StubWorks(), StubBook(), StubWorkChapterDrafts()
+    app.dependency_overrides[get_current_user] = lambda: USER
+    app.dependency_overrides[get_bearer_token] = lambda: "jwt"
+    app.dependency_overrides[get_works_repo] = lambda: works
+    app.dependency_overrides[get_book_client_dep] = lambda: book
+    app.dependency_overrides[get_grant_client_dep] = lambda: _StubGrant()
+    app.dependency_overrides[get_work_chapter_drafts_repo] = lambda: wcd
+    with TestClient(app) as c:
+        yield c, works, book, wcd
+    app.dependency_overrides.clear()
+
+
+_WD_URL = f"/v1/composition/works/{PROJECT}/chapters/{CHAPTER}/work-draft"
+
+
+def test_work_draft_get_inherits_canon_when_not_forked(wcd_ctx):
+    c, works, book, wcd = wcd_ctx
+    works.work = _deriv_work()
+    wcd.row = None  # not forked → read-through to canon
+    r = c.get(_WD_URL)
+    assert r.status_code == 200
+    j = r.json()
+    assert j["forked"] is False and j["inherited"] is True
+    assert j["draft_version"] == 0            # the "fork token" the FE sends to fork
+    assert j["body"] == {"x": 1}              # StubBook.draft body — inherited from canon
+    assert j["canon_version"] == 5
+
+
+def test_work_draft_get_returns_the_fork_when_forked(wcd_ctx):
+    c, works, book, wcd = wcd_ctx
+    works.work = _deriv_work()
+    wcd.row = _wcd(body={"y": 2}, draft_version=3)
+    j = c.get(_WD_URL).json()
+    assert j["forked"] is True and j["draft_version"] == 3 and j["body"] == {"y": 2}
+
+
+def test_work_draft_get_rejects_the_canonical_work(wcd_ctx):
+    c, works, book, wcd = wcd_ctx
+    works.work = _work()  # source_work_id None — canonical has no fork layer
+    r = c.get(_WD_URL)
+    assert r.status_code == 400 and r.json()["detail"]["code"] == "NOT_A_DERIVATIVE"
+
+
+def test_work_draft_patch_forks_on_first_edit_and_never_touches_canon(wcd_ctx):
+    c, works, book, wcd = wcd_ctx
+    works.work = _deriv_work()
+    wcd.insert_result = _wcd(body={"edited": True}, draft_version=1)
+    r = c.patch(_WD_URL, json={"body": {"edited": True}, "expected_version": 0})
+    assert r.status_code == 200
+    assert r.json()["forked"] is True and r.json()["draft_version"] == 1
+    assert wcd.forked_with["body"] == {"edited": True}
+    # THE ISOLATION GUARANTEE: canon (book-service) was never patched.
+    assert book.patched_with is None
+
+
+def test_work_draft_patch_fork_conflict_when_already_forked(wcd_ctx):
+    c, works, book, wcd = wcd_ctx
+    works.work = _deriv_work()
+    wcd.insert_result = None  # ON CONFLICT DO NOTHING — a concurrent fork won
+    r = c.patch(_WD_URL, json={"body": {"x": 1}, "expected_version": 0})
+    assert r.status_code == 409 and r.json()["detail"]["code"] == "ALREADY_FORKED"
+
+
+def test_work_draft_patch_occ_updates_an_existing_fork(wcd_ctx):
+    c, works, book, wcd = wcd_ctx
+    works.work = _deriv_work()
+    wcd.update_result = _wcd(body={"v": 9}, draft_version=4)
+    r = c.patch(_WD_URL, json={"body": {"v": 9}, "expected_version": 3})
+    assert r.status_code == 200 and r.json()["draft_version"] == 4
+    assert wcd.updated_with["expected_version"] == 3
+    assert book.patched_with is None  # still never touches canon
+
+
+def test_work_draft_patch_stale_version_is_412(wcd_ctx):
+    from app.db.repositories import VersionMismatchError
+    c, works, book, wcd = wcd_ctx
+    works.work = _deriv_work()
+    wcd.update_raises = VersionMismatchError(_wcd(draft_version=7))
+    r = c.patch(_WD_URL, json={"body": {"v": 1}, "expected_version": 3})
+    assert r.status_code == 412
+    assert r.json()["detail"]["code"] == "STALE_VERSION"
+    assert r.json()["detail"]["current_version"] == 7
+
+
+def test_work_draft_patch_rejects_the_canonical_work(wcd_ctx):
+    c, works, book, wcd = wcd_ctx
+    works.work = _work()  # canonical
+    r = c.patch(_WD_URL, json={"body": {"x": 1}, "expected_version": 0})
+    assert r.status_code == 400 and r.json()["detail"]["code"] == "NOT_A_DERIVATIVE"
+
+
+# ── M2 — merge a forked chapter back into canon ──────────────────────────────────────
+
+_MERGE_URL = f"/v1/composition/works/{PROJECT}/chapters/{CHAPTER}/merge-to-canon"
+
+
+def test_merge_to_canon_writes_canon_and_marks_merged(wcd_ctx):
+    c, works, book, wcd = wcd_ctx
+    works.work = _deriv_work()
+    wcd.row = _wcd(body={"m": 1}, draft_version=2)
+    r = c.post(_MERGE_URL, json={})
+    assert r.status_code == 200
+    assert r.json()["merged"] is True and r.json()["canon_draft_version"] == 6
+    assert book.patched_with["body"] == {"m": 1}
+    assert book.patched_with["expected_draft_version"] == 5
+    assert wcd.merged_called is True
+
+
+def test_merge_to_canon_rejects_when_not_forked(wcd_ctx):
+    c, works, book, wcd = wcd_ctx
+    works.work = _deriv_work()
+    wcd.row = None
+    r = c.post(_MERGE_URL, json={})
+    assert r.status_code == 409 and r.json()["detail"]["code"] == "NOT_FORKED"
+    assert book.patched_with is None
+
+
+def test_merge_to_canon_canon_conflict_is_409(wcd_ctx):
+    c, works, book, wcd = wcd_ctx
+    works.work = _deriv_work()
+    wcd.row = _wcd(body={"m": 1})
+    book.patch_raises = BookClientError(409, "CHAPTER_DRAFT_CONFLICT")
+    r = c.post(_MERGE_URL, json={})
+    assert r.status_code == 409 and r.json()["detail"]["code"] == "CANON_CONFLICT"
+    assert wcd.merged_called is False
+
+
+def test_merge_to_canon_rejects_the_canonical_work(wcd_ctx):
+    c, works, book, wcd = wcd_ctx
+    works.work = _work()
+    r = c.post(_MERGE_URL, json={})
+    assert r.status_code == 400 and r.json()["detail"]["code"] == "NOT_A_DERIVATIVE"
+
+
+def test_merge_to_canon_honors_client_expected_canon_version(wcd_ctx):
+    c, works, book, wcd = wcd_ctx
+    works.work = _deriv_work()
+    wcd.row = _wcd(body={"m": 1})
+    r = c.post(_MERGE_URL, json={"expected_canon_version": 3})
+    assert r.status_code == 200
+    assert book.patched_with["expected_draft_version"] == 3

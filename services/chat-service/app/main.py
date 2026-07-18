@@ -9,11 +9,16 @@ from fastapi.responses import JSONResponse, PlainTextResponse
 from loreweave_obs import current_otel_trace_id, setup_tracing
 
 from app.client.book_steering_client import close_book_steering_client, init_book_steering_client
+from app.client.glossary_capture_client import (
+    close_canon_capture_client,
+    init_canon_capture_client,
+)
 from app.client.known_entities_client import (
     close_known_entities_client,
     init_known_entities_client,
 )
 from app.client.user_skills_client import close_user_skills_client, init_user_skills_client
+from app.client.registry_workflows_client import close_workflows_client, init_workflows_client
 from app.client.registry_commands_client import close_commands_client, init_commands_client
 from app.client.registry_hooks_client import close_hooks_client, init_hooks_client
 from app.client.registry_subagents_client import (
@@ -25,31 +30,40 @@ from app.config import settings
 from app.db.migrate import run_migrations
 from app.db.pool import close_pool, create_pool, get_pool
 from app.middleware.trace_id import TraceIdMiddleware, current_trace_id
-from app.routers import ai_settings, catalog, evaluate, feedback, internal, messages, outputs, sessions, voice
+from app.routers import (
+    ai_settings, catalog, evaluate, feedback, internal, messages, outputs,
+    sessions, tool_permissions, voice,
+)
 from app.storage.minio_client import delete_object, ensure_bucket
 
 logger = logging.getLogger(__name__)
 
+# Optional per-deploy log level for the app loggers (default WARNING). Set LOG_LEVEL=INFO to
+# surface the step-runner's per-hop decisions when diagnosing a rail run.
+import os as _os
+_lvl = _os.getenv("LOG_LEVEL", "").upper()
+if _lvl in ("DEBUG", "INFO", "WARNING", "ERROR"):
+    logging.getLogger("app").setLevel(getattr(logging, _lvl))
+
 async def _audio_cleanup_loop():
-    """Periodically delete expired voice audio segments. Config via AUDIO_TTL_HOURS + AUDIO_CLEANUP_INTERVAL_HOURS."""
+    """Periodically delete expired voice audio segments. AUDIO_TTL_HOURS is the deploy
+    CEILING; each user's effective TTL is resolved per-segment (WS-4.3). Interval via
+    AUDIO_CLEANUP_INTERVAL_HOURS."""
     from app.db.pool import get_pool
+    from app.services.audio_retention import delete_expired_audio
     interval = settings.audio_cleanup_interval_hours * 3600
-    ttl_hours = settings.audio_ttl_hours
     while True:
         await asyncio.sleep(interval)
         try:
             pool = get_pool()
-            rows = await pool.fetch(
-                "DELETE FROM message_audio_segments WHERE created_at < now() - make_interval(hours => $1) RETURNING object_key",
-                ttl_hours,
-            )
-            for r in rows:
+            object_keys = await delete_expired_audio(pool, settings.audio_ttl_hours)
+            for key in object_keys:
                 try:
-                    await delete_object(r["object_key"])
+                    await delete_object(key)
                 except Exception:
                     pass  # S3 lifecycle is safety net
-            if rows:
-                logger.info("audio cleanup: deleted %d expired segments", len(rows))
+            if object_keys:
+                logger.info("audio cleanup: deleted %d expired segments", len(object_keys))
         except Exception:
             logger.warning("audio cleanup failed", exc_info=True)
 
@@ -69,8 +83,13 @@ async def lifespan(app: FastAPI):
     # T5 (D2): long-lived known-entities client for the intent gate (degrades to
     # an empty set → gate opens, bias-to-include).
     init_known_entities_client()
+    # WS-4C Half A: long-lived glossary canon-capture client (degrades to a skipped
+    # capture; the post-turn task swallows every failure).
+    init_canon_capture_client()
     # REG-P1-05: long-lived agent-registry user-skills client (degrades to constants).
     init_user_skills_client()
+    # WS-2b: long-lived agent-registry workflows client (degrades to no curated workflows).
+    init_workflows_client()
     # REG-P4-01: long-lived agent-registry commands client (degrades to pass-through).
     init_commands_client()
     # REG-P4-03: long-lived agent-registry hooks client (degrades to unhooked turn).
@@ -84,7 +103,9 @@ async def lifespan(app: FastAPI):
     await close_knowledge_client()
     await close_book_steering_client()
     await close_known_entities_client()
+    await close_canon_capture_client()
     await close_user_skills_client()
+    await close_workflows_client()
     await close_commands_client()
     await close_hooks_client()
     await close_subagents_client()
@@ -151,6 +172,8 @@ app.include_router(internal.router)  # FD-2: chat-turn text fetch for KG extract
 app.include_router(internal.telemetry_router)  # W1: /internal/tool-health telemetry
 app.include_router(ai_settings.prefs_router)  # Chat & AI settings — per-user prefs blob
 app.include_router(ai_settings.effective_router)  # Chat & AI settings — resolved cascade
+app.include_router(ai_settings.capabilities_router)  # Deploy-tier capability ceilings (D-WS4C-EFFECTIVE-VALUE)
+app.include_router(tool_permissions.router)  # Track C WS-3: view/revoke/deny the tool-consent allowlist
 
 
 @app.get("/health", response_class=PlainTextResponse)

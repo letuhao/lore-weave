@@ -51,8 +51,11 @@ from app.engine.arc_materialize import build_materialize_spec
 from app.db.models import ArcApplyArgs
 from app.db.repositories.arc_template_repo import ArcTemplateRepo
 from app.db.repositories.motif_repo import MotifRepo
-from app.deps import get_arc_template_repo, get_motif_repo
+from app.deps import get_arc_template_repo, get_grant_client_dep, get_motif_repo
+from app.grant_client import GrantClient, GrantLevel
+from app.grant_deps import InsufficientGrant, authorize_book
 from app.middleware.jwt_auth import get_bearer_token, get_current_user
+from app.packer.pack import OwnershipError
 from app.engine.heal_canon import convention_for, render_canon
 from app.engine.prose_doc import tiptap_doc_to_text
 from app.packer.profile import from_settings
@@ -130,10 +133,24 @@ class CommitRequest(BaseModel):
     idempotency_key: str | None = None
 
 
-async def _require_work(works: WorksRepo, user_id: UUID, project_id: UUID):
-    work = await works.get(user_id, project_id)
+async def _require_work(
+    works: WorksRepo, grant: GrantClient, user_id: UUID, project_id: UUID,
+    need: GrantLevel = GrantLevel.EDIT,
+):
+    """Resolve the Work by project (un-user-scoped — 25 PM-9) and gate the
+    caller's E0 grant on its book (PM-8: access is decided HERE, never in the
+    repos). Default EDIT — every planner route below mutates the spec tree or
+    spends LLM via a generation_job; the one read (motif-bindings) passes VIEW.
+    none→404 (no oracle), under-tier→403."""
+    work = await works.get(project_id)
     if work is None:
         raise HTTPException(status_code=404, detail="work not found")
+    try:
+        await authorize_book(grant, work.book_id, user_id, need)
+    except OwnershipError:
+        raise HTTPException(status_code=404, detail="work not found")
+    except InsufficientGrant:
+        raise HTTPException(status_code=403, detail="insufficient access")
     return work
 
 
@@ -189,6 +206,7 @@ async def self_heal_propose_endpoint(
     book: BookClient = Depends(get_book_client_dep),
     kal: KalClient = Depends(get_kal_client_dep),
     llm: LLMClient = Depends(get_llm_client_dep),
+    grant: GrantClient = Depends(get_grant_client_dep),
 ):
     """M6 Polish — PROPOSE self-heal edits for a chapter draft (the review-gate). Resolves the
     draft text (Tiptap→prose) + a canon (override via `body.canon`, else best-effort from the
@@ -196,7 +214,7 @@ async def self_heal_propose_endpoint(
     EditProposals — NOT applied. The human accepts a subset; the accepted edits are spliced +
     saved by the caller (composition_write_prose). Worker when enabled (202 + job_id), else
     inline. Never auto-writes (do-no-harm: the imperfect pass is gated by the human)."""
-    work = await _require_work(works, user_id, project_id)
+    work = await _require_work(works, grant, user_id, project_id)
     try:
         draft = await book.get_draft(work.book_id, body.chapter_id, bearer)
     except BookClientError as exc:
@@ -225,7 +243,7 @@ async def self_heal_propose_endpoint(
     if settings.composition_worker_enabled:
         jobs = await get_generation_jobs_repo()
         job, _created = await jobs.create(
-            user_id, project_id, operation="self_heal_propose", mode="auto",
+            project_id, created_by=user_id, operation="self_heal_propose", mode="auto",
             status="pending", input=heal_input)
         enqueued = await enqueue_job(settings.redis_url, job_id=str(job.id),
                                      user_id=str(user_id), project_id=str(project_id))
@@ -256,13 +274,14 @@ async def quality_report_endpoint(
     book: BookClient = Depends(get_book_client_dep),
     kal: KalClient = Depends(get_kal_client_dep),
     llm: LLMClient = Depends(get_llm_client_dep),
+    grant: GrantClient = Depends(get_grant_client_dep),
 ):
     """Q1+Q2 Quality Report — surface the planner's advisory judges for a chapter draft as a
     READ-ONLY report (M6 Polish gate). Resolves the draft text (Tiptap→prose) + a canon (override
     else best-effort from the cast roster), then runs the 4-dim critic + the promise audit. Unlike
     self-heal this produces NO applyable edits — it is diagnostic (the author reads it and decides).
     Worker when enabled (202 + job_id), else inline."""
-    work = await _require_work(works, user_id, project_id)
+    work = await _require_work(works, grant, user_id, project_id)
     try:
         draft = await book.get_draft(work.book_id, body.chapter_id, bearer)
     except BookClientError as exc:
@@ -290,7 +309,7 @@ async def quality_report_endpoint(
     if settings.composition_worker_enabled:
         jobs = await get_generation_jobs_repo()
         job, _created = await jobs.create(
-            user_id, project_id, operation="quality_report", mode="auto",
+            project_id, created_by=user_id, operation="quality_report", mode="auto",
             status="pending", input=qr_input)
         enqueued = await enqueue_job(settings.redis_url, job_id=str(job.id),
                                      user_id=str(user_id), project_id=str(project_id))
@@ -352,14 +371,15 @@ async def promise_coverage_endpoint(
     book: BookClient = Depends(get_book_client_dep),
     outline: OutlineRepo = Depends(get_outline_repo),
     llm: LLMClient = Depends(get_llm_client_dep),
+    grant: GrantClient = Depends(get_grant_client_dep),
 ):
     """Q3 Book-level promise coverage — does the finished book pay off what the outline
     promised? Renders the outline tree as the plan spec, assembles every ACTIVE chapter's
     prose, derives a STABLE tracked-promise set from the spec, and scores the book against it
     (paid/progressing/abandoned/absent + rates). READ-ONLY (book-scoped; no per-chapter edits).
     Worker when enabled (202 + job_id), else inline."""
-    work = await _require_work(works, user_id, project_id)
-    nodes = await outline.list_tree(user_id, project_id)
+    work = await _require_work(works, grant, user_id, project_id)
+    nodes = await outline.list_tree(project_id)
     plan_text = _render_outline_plan(nodes)
 
     # Assemble every active chapter's prose in reading order (skip empty/failed — degrade).
@@ -394,7 +414,7 @@ async def promise_coverage_endpoint(
     if settings.composition_worker_enabled:
         jobs = await get_generation_jobs_repo()
         job, _created = await jobs.create(
-            user_id, project_id, operation="promise_coverage", mode="auto",
+            project_id, created_by=user_id, operation="promise_coverage", mode="auto",
             status="pending", input=cov_input)
         enqueued = await enqueue_job(settings.redis_url, job_id=str(job.id),
                                      user_id=str(user_id), project_id=str(project_id))
@@ -476,6 +496,7 @@ async def decompose_preview(
     kal: KalClient = Depends(get_kal_client_dep),
     llm: LLMClient = Depends(get_llm_client_dep),
     templates: StructureTemplatesRepo = Depends(get_structure_templates_repo),
+    grant: GrantClient = Depends(get_grant_client_dep),
 ):
     """Run the planner; return the proposed tree (NOT persisted).
 
@@ -483,7 +504,7 @@ async def decompose_preview(
     (book chapters, cast) is resolved HERE, persisted in the job's input, and the
     LLM compute runs OFF the request path: returns 202 + job_id; GET /jobs/{id}
     polls for the proposed tree. Default (flag off) → inline behavior verbatim."""
-    work = await _require_work(works, user_id, project_id)
+    work = await _require_work(works, grant, user_id, project_id)
     tmpl = await templates.get(user_id, body.structure_template_id)
     if tmpl is None:
         raise HTTPException(status_code=404, detail="structure template not found")
@@ -524,7 +545,7 @@ async def decompose_preview(
         if settings.composition_worker_enabled:
             jobs = await get_generation_jobs_repo()
             job, _created = await jobs.create(
-                user_id, project_id, operation="plan_pipeline", mode="auto",
+                project_id, created_by=user_id, operation="plan_pipeline", mode="auto",
                 status="pending", input=pipe_input)
             enqueued = await enqueue_job(
                 settings.redis_url, job_id=str(job.id),
@@ -554,7 +575,7 @@ async def decompose_preview(
     if body.motifs_enabled:
         motif_genres = await _book_genre_tags(book, work.book_id, bearer)
         motif_applied_counts = await MotifApplicationRepo(get_pool()).count_by_motif_for_book(
-            user_id, work.book_id,
+            work.book_id,
         )
 
     if settings.composition_worker_enabled:
@@ -588,7 +609,7 @@ async def decompose_preview(
             "book_id": str(work.book_id),
         }
         job, _created = await jobs.create(
-            user_id, project_id, operation="decompose_preview",
+            project_id, created_by=user_id, operation="decompose_preview",
             mode="auto", status="pending", input=job_input,
         )
         enqueued = await enqueue_job(
@@ -633,12 +654,13 @@ async def decompose_commit(
     book: BookClient = Depends(get_book_client_dep),
     kal: KalClient = Depends(get_kal_client_dep),
     outline: OutlineRepo = Depends(get_outline_repo),
+    grant: GrantClient = Depends(get_grant_client_dep),
 ):
     """Persist the accepted tree (arc→chapter→scene) atomically. Validates every
     chapter_id belongs to the book (IDOR) + every present_entity_id is a real
     glossary id; refuses to re-plan a chapter that already has scenes unless
     `replace=true`."""
-    work = await _require_work(works, user_id, project_id)
+    work = await _require_work(works, grant, user_id, project_id)
     req_chapter_ids = [ch.chapter_id for ch in body.chapters]
 
     # IDOR: every committed chapter_id must be one of THIS book's chapters
@@ -696,6 +718,9 @@ async def decompose_commit(
     spec = [{
         "chapter_id": ch.chapter_id, "title": ch.title, "intent": ch.intent,
         "beat_role": ch.beat_role,
+        # The CHAPTER's own position on the same axis (= its scene 0). It was missing, so every
+        # persisted chapter node carried story_order NULL — see _insert_decomposed_tree.
+        "story_order": sort_by_chapter[str(ch.chapter_id)] * STORY_ORDER_CHAPTER_STRIDE,
         "scenes": [{"title": sc.title, "synopsis": sc.synopsis, "tension": sc.tension,
                     "present_entity_ids": sc.present_entity_ids,
                     "story_order": sort_by_chapter[str(ch.chapter_id)] * STORY_ORDER_CHAPTER_STRIDE + i}
@@ -703,8 +728,8 @@ async def decompose_commit(
     } for ch in body.chapters]
     try:
         created = await outline.commit_decomposed_tree(
-            user_id, project_id, arc_title=body.arc_title, chapters=spec,
-            replace=body.replace or body.force, idempotency_key=body.idempotency_key,
+            project_id, book_id=work.book_id, created_by=user_id, arc_title=body.arc_title,
+            chapters=spec, replace=body.replace or body.force, idempotency_key=body.idempotency_key,
         )
     except AlreadyPlannedError as exc:
         raise HTTPException(status_code=409, detail={
@@ -747,7 +772,7 @@ async def decompose_commit(
         if ledger_rows:
             try:
                 await MotifApplicationRepo(get_pool()).insert_many(
-                    user_id, project_id, work.book_id, ledger_rows,
+                    project_id, work.book_id, ledger_rows, created_by=user_id,
                 )
                 applied = len(ledger_rows)
             except asyncpg.ForeignKeyViolationError:
@@ -786,11 +811,12 @@ async def _bind_scene_motif(
     atomically REPLACING any prior binding on the node. No scene is archived or
     instantiated. `motif_id=None` clears the node's binding (→ free-form). `bound_via`
     stamps the provenance in annotations (`manual_scene` for a hand-bind, `chain` for a
-    legal-succession pre-seed)."""
+    legal-succession pre-seed). `user_id` is the ACTOR (created_by stamp +
+    motif-registry visibility + KAL identity) — never a row filter (25 law)."""
     if motif_id is None:
         async with pool.acquire() as c:
             async with c.transaction():
-                removed = await apps.delete_for_nodes(user_id, project_id, [node_id], conn=c)
+                removed = await apps.delete_for_nodes(project_id, [node_id], conn=c)
         return {"node_id": str(node_id), "cleared": True, "removed": removed}
 
     from app.db.repositories.motif_repo import MotifRepo
@@ -814,8 +840,8 @@ async def _bind_scene_motif(
     }
     async with pool.acquire() as c:
         async with c.transaction():
-            await apps.delete_for_nodes(user_id, project_id, [node_id], conn=c)
-            await apps.insert_many(user_id, project_id, book_id, [row], conn=c)
+            await apps.delete_for_nodes(project_id, [node_id], conn=c)
+            await apps.insert_many(project_id, book_id, [row], created_by=user_id, conn=c)
     return {
         "node_id": str(node_id),
         "motif_id": str(motif.id),
@@ -837,6 +863,7 @@ async def swap_node_motif(
     book: BookClient = Depends(get_book_client_dep),
     kal: KalClient = Depends(get_kal_client_dep),
     outline: OutlineRepo = Depends(get_outline_repo),
+    grant: GrantClient = Depends(get_grant_client_dep),
 ):
     """Bind / swap / clear a node's motif — NODE-KIND-AWARE (one URL, the FE's seam):
     - a **chapter** node → the heavy CHAPTER swap (`apply_motif_swap`): archives the
@@ -846,7 +873,7 @@ async def swap_node_motif(
     - a **scene** node → the lightweight per-SCENE ledger bind (`_bind_scene_motif`):
       one motif_application replacing the node's prior binding, no scene regeneration.
     `motif_id=null` clears (→ free-form) in both modes."""
-    work = await _require_work(works, user_id, project_id)
+    work = await _require_work(works, grant, user_id, project_id)
     apps = MotifApplicationRepo(get_pool())
     pool = get_pool()
 
@@ -854,11 +881,11 @@ async def swap_node_motif(
     if body.undo_token is not None:
         async with pool.acquire() as c:
             async with c.transaction():
-                res = await undo_motif_swap(outline, apps, user_id, project_id,
+                res = await undo_motif_swap(outline, apps, project_id,
                                             body.undo_token, conn=c)
         return {"undone": True, **res}
 
-    node = await outline.get_node(user_id, node_id)
+    node = await outline.get_node(node_id)
     if node is None or node.project_id != project_id:
         # H13 uniform — no existence oracle for a foreign/missing node.
         raise HTTPException(status_code=404, detail={"code": "NOT_FOUND"})
@@ -895,7 +922,8 @@ async def swap_node_motif(
         async with pool.acquire() as c:
             async with c.transaction():
                 res = await apply_motif_swap(
-                    outline, apps, user_id, project_id, work.book_id, node_id,
+                    outline, apps, project_id, work.book_id, node_id,
+                    created_by=user_id,
                     new_motif=new_sel, binding=binding, cast_names=cast_names,
                     k_ceiling=settings.compose_diverge_k,
                     high_threshold=settings.plan_high_tension_threshold,
@@ -923,23 +951,24 @@ async def clear_node_motif(
     bearer: str = Depends(get_bearer_token),
     works: WorksRepo = Depends(get_works_repo),
     outline: OutlineRepo = Depends(get_outline_repo),
+    grant: GrantClient = Depends(get_grant_client_dep),
 ):
     """Clear a node's bound motif → free-form. NODE-KIND-AWARE: a **scene** drops its
     single ledger row (`delete_for_nodes`); a **chapter** runs the heavy clear
     (`apply_motif_swap` with no motif → archives the motif's scenes, prose preserved).
     The DELETE twin of the PATCH `motif_id=null` clear (the FE's `clearMotif`)."""
-    work = await _require_work(works, user_id, project_id)
+    work = await _require_work(works, grant, user_id, project_id)
     apps = MotifApplicationRepo(get_pool())
     pool = get_pool()
 
-    node = await outline.get_node(user_id, node_id)
+    node = await outline.get_node(node_id)
     if node is None or node.project_id != project_id:
         raise HTTPException(status_code=404, detail={"code": "NOT_FOUND"})
 
     if node.kind == "scene":
         async with pool.acquire() as c:
             async with c.transaction():
-                removed = await apps.delete_for_nodes(user_id, project_id, [node_id], conn=c)
+                removed = await apps.delete_for_nodes(project_id, [node_id], conn=c)
         return {"node_id": str(node_id), "cleared": True, "removed": removed}
 
     # chapter clear → the heavy archive-scenes path (motif-less apply_motif_swap).
@@ -947,7 +976,8 @@ async def clear_node_motif(
         async with pool.acquire() as c:
             async with c.transaction():
                 res = await apply_motif_swap(
-                    outline, apps, user_id, project_id, work.book_id, node_id,
+                    outline, apps, project_id, work.book_id, node_id,
+                    created_by=user_id,
                     new_motif=None, binding=None, cast_names={},
                     k_ceiling=settings.compose_diverge_k,
                     high_threshold=settings.plan_high_tension_threshold,
@@ -986,6 +1016,7 @@ async def rebind_node_motif_role(
     works: WorksRepo = Depends(get_works_repo),
     kal: KalClient = Depends(get_kal_client_dep),
     outline: OutlineRepo = Depends(get_outline_repo),
+    grant: GrantClient = Depends(get_grant_client_dep),
 ):
     """Rebind ONE role of a node's bound motif → a cast entity (or null = unresolve) —
     the FE ``RoleBindingRow`` → ``useMotifBinding.rebindRole`` seam (`PATCH …/motif/role`).
@@ -994,13 +1025,13 @@ async def rebind_node_motif_role(
     a foreign/missing node, a node with NO bound motif (nothing to rebind), a ``role_key``
     the binding doesn't have, or an ``entity_id`` not in THIS book's cast (tenant-scoped —
     a rebind can only point at the book's own glossary entities)."""
-    work = await _require_work(works, user_id, project_id)
-    node = await outline.get_node(user_id, node_id)
+    work = await _require_work(works, grant, user_id, project_id)
+    node = await outline.get_node(node_id)
     if node is None or node.project_id != project_id:
         raise HTTPException(status_code=404, detail={"code": "NOT_FOUND"})
 
     apps = MotifApplicationRepo(get_pool())
-    bound = await apps.by_nodes(user_id, project_id, [node_id])
+    bound = await apps.by_nodes(project_id, [node_id])
     app = bound[0] if bound else None
     if app is None or app.motif_id is None:
         # nothing bound on the node → no role to rebind.
@@ -1018,7 +1049,7 @@ async def rebind_node_motif_role(
     async with pool.acquire() as c:
         async with c.transaction():
             updated = await apps.set_role_binding(
-                user_id, project_id, node_id, body.role_key, body.entity_id, conn=c)
+                project_id, node_id, body.role_key, body.entity_id, conn=c)
     return {
         "node_id": str(node_id),
         "role_key": body.role_key,
@@ -1037,6 +1068,7 @@ async def chain_node_motif(
     works: WorksRepo = Depends(get_works_repo),
     kal: KalClient = Depends(get_kal_client_dep),
     outline: OutlineRepo = Depends(get_outline_repo),
+    grant: GrantClient = Depends(get_grant_client_dep),
 ):
     """Pre-seed a node with a legal-succession motif resolved BY CODE — the FE
     ``ChainItHint`` → ``useMotifBinding.chainIt`` seam (`POST …/motif/chain`, where
@@ -1045,8 +1077,8 @@ async def chain_node_motif(
     ledger binding (``bound_via='chain'``, no scene regeneration) reusing
     ``_bind_scene_motif``. H13 uniform 404 (no oracle) on a foreign/missing node or an
     unresolvable/foreign code."""
-    work = await _require_work(works, user_id, project_id)
-    node = await outline.get_node(user_id, node_id)
+    work = await _require_work(works, grant, user_id, project_id)
+    node = await outline.get_node(node_id)
     if node is None or node.project_id != project_id:
         raise HTTPException(status_code=404, detail={"code": "NOT_FOUND"})
 
@@ -1144,21 +1176,22 @@ async def get_motif_bindings(
     works: WorksRepo = Depends(get_works_repo),
     outline: OutlineRepo = Depends(get_outline_repo),
     kal: KalClient = Depends(get_kal_client_dep),
+    grant: GrantClient = Depends(get_grant_client_dep),
 ) -> dict[str, Any]:
     """D-MOTIF-FE-PLANNERVIEW-WIRING (Shape A) — the POST-commit per-scene motif
     binding for a chapter's committed scene nodes, so the FE renders
     ``MotifBindingCard`` per scene wired to ``useMotifBinding(node_id)``.
 
     Returns ``{chapter_id, bindings: {node_id: BoundMotif | null}}``. READ-only over
-    W2's ``motif_application``; tenant-scoped on BOTH the application AND the scene
-    (the kinds-bug rule — ``by_nodes`` + ``scenes_for_chapter`` both filter user+project).
+    W2's ``motif_application``; project-scoped on BOTH the application AND the scene
+    (the kinds-bug rule — ``by_nodes`` + ``scenes_for_chapter`` both filter project).
     A foreign/missing motif (get_visible → None) degrades that scene to null (no oracle)."""
     from app.db.repositories.motif_repo import MotifRepo
 
-    work = await _require_work(works, user_id, project_id)
-    scenes = await outline.scenes_for_chapter(user_id, project_id, chapter_id)
+    work = await _require_work(works, grant, user_id, project_id, GrantLevel.VIEW)
+    scenes = await outline.scenes_for_chapter(project_id, chapter_id)
     apps = await MotifApplicationRepo(get_pool()).by_nodes(
-        user_id, project_id, [s.id for s in scenes])
+        project_id, [s.id for s in scenes])
 
     # latest application per node (by_nodes is created_at ASC → last wins on a re-bind).
     apps_by_node: dict[UUID, Any] = {
@@ -1236,6 +1269,7 @@ async def materialize_arc(
     outline: OutlineRepo = Depends(get_outline_repo),
     arcs: ArcTemplateRepo = Depends(get_arc_template_repo),
     motifs: MotifRepo = Depends(get_motif_repo),
+    grant: GrantClient = Depends(get_grant_client_dep),
 ):
     """Materialize an arc template onto THIS work's book — turn the rescaled placements
     into a committed arc→chapter→scene outline + a motif_application ledger
@@ -1246,117 +1280,30 @@ async def materialize_arc(
     then `build_materialize_spec` distributes each motif's beats across its chapter span.
     Reuses the A3 commit primitives (atomic + idempotent + replace). A not-visible arc →
     H13 404; an all-empty plan (nothing resolved) → 400 with the unresolved report."""
-    work = await _require_work(works, user_id, project_id)
+    work = await _require_work(works, grant, user_id, project_id)
     arc = await arcs.get_visible(user_id, body.arc_template_id)
     if arc is None:
         raise HTTPException(status_code=404, detail={
             "code": "ARC_TEMPLATE_NOT_FOUND",
             "message": "arc template not found or not accessible"})
 
-    book_chapters = await _book_chapter_ids(book, work.book_id, bearer)
-    if not book_chapters:
-        raise HTTPException(status_code=400, detail={
-            "code": "NO_CHAPTERS",
-            "detail": "materialize maps onto existing chapters — create chapters first"})
-    if len(book_chapters) > settings.plan_max_chapters:
-        raise HTTPException(status_code=400, detail={
-            "code": "TOO_MANY_CHAPTERS", "count": len(book_chapters), "max": settings.plan_max_chapters})
-
-    chapters_sorted = sorted(book_chapters, key=lambda c: c.get("sort_order") or 0)
-    target = len(chapters_sorted)
-
-    plan = build_apply_plan(arc, ArcApplyArgs(
-        target_chapters=target, roster_bindings=dict(body.roster_bindings)))
-
-    resolved = await _resolve_plan_motifs(motifs, user_id, plan.placements)
-
-    cast = await _cast_roster(kal, work.book_id, user_id)
-    cast_index = {c["name"].strip().casefold(): c["entity_id"] for c in cast if c.get("name")}
-    cast_names = {c["entity_id"]: c["name"] for c in cast}
-
-    spec = build_materialize_spec(
-        plan, resolved,
-        cast_index=cast_index, cast_names=cast_names,
-        roster_bindings=dict(body.roster_bindings), arc_template_id=str(arc.id),
-        k_ceiling=settings.compose_diverge_k, high_threshold=settings.plan_high_tension_threshold,
-        min_scenes=settings.plan_min_scenes_per_chapter, max_scenes=settings.plan_max_scenes_per_chapter,
-    )
-
-    if not spec.chapters:
-        raise HTTPException(status_code=400, detail={
-            "code": "NO_MATERIALIZABLE_PLACEMENTS",
-            "detail": "no placement resolved to a motif with beats — nothing to commit",
-            "unresolved_placements": spec.unresolved_placements})
-
-    # build the A3 commit spec (chapter_index → real chapter_id + story_order) + the flat,
-    # chapter-major ledger payloads (parallel to the scene_ids the commit returns).
-    commit_chapters: list[dict[str, Any]] = []
-    flat_app_rows: list[dict[str, Any]] = []
-    for mc in spec.chapters:
-        ch = chapters_sorted[mc.chapter_index - 1]
-        sort_order = ch.get("sort_order") or 0
-        scenes_spec: list[dict[str, Any]] = []
-        for i, sc in enumerate(mc.scenes):
-            present = []
-            for eid in sc.present_entity_ids:
-                try:
-                    present.append(UUID(str(eid)))
-                except (ValueError, TypeError):
-                    continue            # a non-UUID binding value (shouldn't happen) → skip
-            scenes_spec.append({
-                "title": sc.title, "synopsis": sc.synopsis, "tension": sc.tension,
-                "present_entity_ids": present,
-                "story_order": sort_order * STORY_ORDER_CHAPTER_STRIDE + i,
-            })
-            flat_app_rows.append(sc.application_row)
-        commit_chapters.append({
-            "chapter_id": UUID(str(ch["chapter_id"])), "title": ch.get("title", ""),
-            "intent": "", "beat_role": None, "scenes": scenes_spec,
-        })
-
+    # The orchestration (chapters→plan→resolve→spec→commit→ledger) is the SHARED engine
+    # `apply_arc_to_spec` — the SAME path the MCP tool `composition_arc_apply` runs (D-W10 dedupe:
+    # one apply for the GUI and the agent). This route resolves + EDIT-gates the Work above; the
+    # engine does the deterministic work and raises typed failures we map to HTTP.
+    from app.engine.arc_apply import apply_arc_to_spec, ArcApplyError, ArcApplyConflict
+    _STATUS = {"BOOK_SERVICE_UNAVAILABLE": 502}  # the rest are 400 client errors
     try:
-        created = await outline.commit_decomposed_tree(
-            user_id, project_id, arc_title=arc.name, chapters=commit_chapters,
-            replace=body.replace, idempotency_key=body.idempotency_key,
+        return await apply_arc_to_spec(
+            get_pool(), book_id=work.book_id, project_id=project_id, arc_template=arc,
+            roster_bindings=dict(body.roster_bindings), replace=body.replace,
+            idempotency_key=body.idempotency_key, created_by=user_id,
+            book_client=book, kal_client=kal, motifs_repo=motifs, outline_repo=outline, bearer=bearer,
         )
-    except AlreadyPlannedError as exc:
+    except ArcApplyConflict as exc:
         raise HTTPException(status_code=409, detail={
-            "code": "CHAPTER_ALREADY_PLANNED",
-            "chapter_ids": sorted(str(c) for c in exc.chapter_ids),
+            "code": "CHAPTER_ALREADY_PLANNED", "chapter_ids": exc.chapter_ids,
             "detail": "chapters already have scenes — resend with replace=true"}) from exc
-    except ReferenceViolationError as exc:
-        raise HTTPException(status_code=400,
-                            detail={"code": "BAD_REFERENCE", "detail": exc.message}) from exc
-
-    # ledger the bindings (positional with the flat scene_ids). Mirrors decompose_commit:
-    # NOT atomic with the tree Tx, FK-tolerant (an archived motif → soft-skip), skipped on
-    # an idempotency replay (the prior commit already wrote them).
-    applied = 0
-    if not created.get("replay") and flat_app_rows:
-        scene_ids = [UUID(s) for s in created["scene_ids"]]
-        ledger_rows = [
-            {**row, "outline_node_id": str(node_id)}
-            for row, node_id in zip(flat_app_rows, scene_ids)
-        ]
-        if ledger_rows:
-            try:
-                await MotifApplicationRepo(get_pool()).insert_many(
-                    user_id, project_id, work.book_id, ledger_rows)
-                applied = len(ledger_rows)
-            except asyncpg.ForeignKeyViolationError:
-                logger.warning("arc materialize: motif_application FK violation — ledger skipped")
-
-    return {
-        "arc_id": str(created["arc_id"]),
-        "arc_template_id": str(arc.id),
-        "chapter_ids": [str(i) for i in created["chapter_ids"]],
-        "scene_ids": [str(i) for i in created["scene_ids"]],
-        "motif_applications": applied,
-        "scenes_total": spec.scenes_total,
-        "beats_distributed": spec.beats_distributed,
-        "unresolved_placements": spec.unresolved_placements,
-        # §12.6 — when the book has fewer chapters than the arc span, placements merge
-        # and the folded-away motifs are NOT materialized; surface that (never silent).
-        "drop_merge_report": [d.model_dump(mode="json") for d in plan.drop_merge_report],
-        "replay": bool(created.get("replay")),
-    }
+    except ArcApplyError as exc:
+        raise HTTPException(status_code=_STATUS.get(exc.detail.get("code"), 400),
+                            detail=exc.detail) from exc

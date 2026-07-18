@@ -12,6 +12,13 @@ vi.mock('@/auth', () => ({ useAuth: () => ({ accessToken: 'tok' }) }));
 const useWorkResolution = vi.fn();
 vi.mock('@/features/composition/hooks/useWork', () => ({
   useWorkResolution: (bookId: string, token: string | null) => useWorkResolution(bookId, token),
+  // D0 — the no-work branch now renders <WorkSetupCta>, which reuses these hooks.
+  useCreateWork: () => ({ mutateAsync: vi.fn().mockResolvedValue({ project_id: 'proj-new' }), isPending: false }),
+  usePendingWorkResolver: () => ({ state: 'idle', start: vi.fn(), retry: vi.fn() }),
+}));
+// useQualityWork also reads the active-Work pref (9262ed53e) — a real useQuery; stub it.
+vi.mock('@/features/composition/hooks/useActiveWork', () => ({
+  useActiveWorkId: () => ({ data: undefined }),
 }));
 
 vi.mock('@/features/composition/components/ThreadsPanel', () => ({
@@ -56,5 +63,16 @@ describe('QualityPromisesPanel', () => {
     expect(stub).toHaveAttribute('data-project', 'proj-1');
     expect(stub).toHaveAttribute('data-token', 'tok');
     expect(stub).toHaveAttribute('data-enabled', 'true');
+  });
+
+  // /review-impl (D-04 follow-up) — `unavailable` means composition-service is DOWN. Rendering the
+  // no-work sentence there tells the user "start composing a chapter first" when the data may well
+  // exist and we simply could not look. Unconsulted is not empty. RUN-STATE DR-27.
+  it('composition-service UNAVAILABLE is an ERROR, never the no-work empty state', () => {
+    useWorkResolution.mockReturnValue({ isLoading: false, data: { status: 'unavailable', work: null } });
+    withHost('b1');
+    expect(screen.getByTestId('quality-promises-unavailable')).toBeInTheDocument();
+    expect(screen.queryByTestId('quality-promises-no-work')).toBeNull();
+    expect(screen.queryByTestId('stub-threads-panel')).toBeNull();
   });
 });

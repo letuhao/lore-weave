@@ -9,7 +9,8 @@
       "translation": "অনুবাদ",
       "reading": "পড়া",
       "language": "ভাষা",
-      "mcp": "MCP অ্যাক্সেস"
+      "mcp": "MCP অ্যাক্সেস",
+      "workflow-bindings": "ওয়ার্কফ্লো অটো-সেটআপ"
     }
   },
   "mcp": {
@@ -492,6 +493,18 @@
       "testing": "পরীক্ষা করা হচ্ছে...",
       "reverify": "পুনরায় যাচাই করুন",
       "verify": "যাচাই করুন",
+      "pricing_title": "মূল্য নির্ধারণ (প্রতি ১M টোকেনে USD)",
+      "pricing_input": "ইনপুট",
+      "pricing_output": "আউটপুট",
+      "pricing_free_local": "বিনামূল্যে — আপনার নিজস্ব হার্ডওয়্যারে চলবে",
+      "pricing_hint": "তৈরির সময় স্বয়ংক্রিয়ভাবে পূরণ করা হয়। প্রোভাইডারের প্রকাশিত রেট পরিবর্তন হলে এডিট করুন, অথবা লাইভ এস্টিমেট দেখতে OpenRouter দেখুন।",
+      "pricing_check": "OpenRouter দেখুন",
+      "pricing_checking": "চেক করা হচ্ছে...",
+      "pricing_suggestion_found": "OpenRouter ({{source}}): ${{input}} ইন / ${{output}} আউট",
+      "pricing_apply": "প্রয়োগ করুন",
+      "pricing_not_found": "OpenRouter-এ কোনো মিল থাকা মডেল পাওয়া যায়নি — এই উৎস থেকে মূল্য নির্ধারণ করা সম্ভব নয়।",
+      "pricing_check_failed": "OpenRouter মূল্য নির্ধারণ চেক করতে ব্যর্থ হয়েছে",
+      "pricing_negative_error": "মূল্য অবশ্যই শূন্য বা তার বেশি হতে হবে",
       "delete_model": "মডেল ডিলিট করুন",
       "confirm_delete": "ডিলিট নিশ্চিত করুন",
       "deleting": "ডিলিট করা হচ্ছে...",

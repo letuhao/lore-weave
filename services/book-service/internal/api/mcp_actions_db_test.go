@@ -85,6 +85,23 @@ func confirmReq(t *testing.T, s *Server, userID uuid.UUID, tok string) *httptest
 	return rr
 }
 
+// confirmReqViaInternalEnvelope drives confirmBookAction exactly the way
+// auth-service's public-MCP confirm-replay does (mcp_approvals.go::replayConfirm):
+// query-param token, nil body, X-Internal-Token+X-User-Id, NO Authorization
+// header — the shape that 401'd unconditionally before resolveConfirmCaller.
+func confirmReqViaInternalEnvelope(s *Server, internalTok, userID, tok string) *httptest.ResponseRecorder {
+	req := httptest.NewRequest(http.MethodPost, "/v1/book/actions/confirm?token="+tok, nil)
+	if internalTok != "" {
+		req.Header.Set("X-Internal-Token", internalTok)
+	}
+	if userID != "" {
+		req.Header.Set("X-User-Id", userID)
+	}
+	rr := httptest.NewRecorder()
+	s.confirmBookAction(rr, req)
+	return rr
+}
+
 // /review-impl HIGH — single-use confirm-token ledger. A REPLAY of a VALID,
 // unexpired publish token must be refused on the 2nd confirm: the 1st publishes
 // (200, inserts ONE chapter_revisions row + ONE chapter.published outbox event),
@@ -141,6 +158,66 @@ func TestMCP_ConfirmToken_SingleUse_RefusesReplay_DB(t *testing.T) {
 	}
 }
 
+// Internal confirm-replay envelope (D-PMCP-WORKER-CARRIER retrofit). Found live
+// 2026-07-08: auth-service's public-MCP confirm-replay (self-confirm AND
+// human-approve, mcp_approvals.go::replayConfirm) sends a query-param token +
+// nil body + X-Internal-Token/X-User-Id (never a Bearer JWT, since it's a
+// trusted internal caller, not the browser) — confirmBookAction 401'd that
+// shape unconditionally before resolveConfirmCaller.
+func TestMCP_ConfirmToken_InternalReplayEnvelope_DB(t *testing.T) {
+	s, pool := dbTestServer(t)
+	ctx := context.Background()
+	owner := uuid.New()
+	bookID, chID := seedChapter(t, ctx, pool, owner)
+	s.resolveBook = func(_ context.Context, _, _ uuid.UUID) (GrantLevel, uuid.UUID, string, error) {
+		return GrantOwner, owner, "active", nil
+	}
+	tok, err := lwmcp.MintConfirmToken(mcpConfirmSecret, owner, bookID, descBookPublish,
+		actionPayload{Op: "publish", ChapterID: chID.String()}, actionTokenTTL)
+	if err != nil {
+		t.Fatalf("mint: %v", err)
+	}
+
+	// Exactly the shape auth-service's replayConfirm sends.
+	rr := confirmReqViaInternalEnvelope(s, mcpTestToken, owner.String(), tok)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("internal-envelope confirm-replay = %d, want 200; body=%s", rr.Code, rr.Body.String())
+	}
+	var revCount int
+	if err := pool.QueryRow(ctx, `SELECT count(*) FROM chapter_revisions WHERE chapter_id=$1 AND message='publish'`, chID).Scan(&revCount); err != nil {
+		t.Fatalf("count revisions: %v", err)
+	}
+	if revCount != 1 {
+		t.Errorf("publish revisions = %d, want 1", revCount)
+	}
+
+	// Wrong internal token → 401, never falls through.
+	tok2, _ := lwmcp.MintConfirmToken(mcpConfirmSecret, owner, bookID, descBookPublish,
+		actionPayload{Op: "publish", ChapterID: chID.String()}, actionTokenTTL)
+	if rr := confirmReqViaInternalEnvelope(s, "wrong-token", owner.String(), tok2); rr.Code != http.StatusUnauthorized {
+		t.Errorf("wrong internal token = %d, want 401; body=%s", rr.Code, rr.Body.String())
+	}
+	// Correct internal token, no X-User-Id → 401 (fail closed).
+	if rr := confirmReqViaInternalEnvelope(s, mcpTestToken, "", tok2); rr.Code != http.StatusUnauthorized {
+		t.Errorf("internal token with no X-User-Id = %d, want 401; body=%s", rr.Code, rr.Body.String())
+	}
+	// Correct internal token, malformed X-User-Id → 401.
+	if rr := confirmReqViaInternalEnvelope(s, mcpTestToken, "not-a-uuid", tok2); rr.Code != http.StatusUnauthorized {
+		t.Errorf("internal token with malformed X-User-Id = %d, want 401; body=%s", rr.Code, rr.Body.String())
+	}
+	// Correct internal token, SYNTACTICALLY-valid X-User-Id naming a DIFFERENT user
+	// than the token's bound proposer → still 403: resolveConfirmCaller resolves the
+	// (wrong) caller successfully via the envelope path, but decodeActionToken's
+	// claims.UserID != userID check fires identically regardless of which auth path
+	// produced userID. tok2 is never actually consumed by any of the negative cases
+	// above (they all fail before decodeActionToken's consume step), so it is still
+	// cryptographically valid here — mirrors glossary's
+	// TestConfirmAction_InternalReplayEnvelope_WrongOrMissingCredsRejected.
+	if rr := confirmReqViaInternalEnvelope(s, mcpTestToken, uuid.New().String(), tok2); rr.Code != http.StatusForbidden {
+		t.Errorf("internal envelope naming a different user than the proposer = %d, want 403; body=%s", rr.Code, rr.Body.String())
+	}
+}
+
 // The priced-media confirm round-trip (mint→verify→user-bind→consume→open_ui).
 // Moved here from the nil-pool unit suite because the single-use claim now hits
 // the DB before the open_ui outcome.
@@ -187,7 +264,7 @@ func TestMCP_SaveDraft_StaleBaseVersion_StopsNoOverwrite_DB(t *testing.T) {
 		BookID:      bookID.String(),
 		ChapterID:   chID.String(),
 		BaseVersion: 5,
-		Body:        json.RawMessage(`{"type":"doc","content":[{"type":"paragraph","_text":"OVERWRITE"}]}`),
+		Body:        "OVERWRITE",
 	}
 	_, _, err := s.toolChapterSaveDraft(tctx, nil, in)
 	if err != ErrStaleDraftVersion {

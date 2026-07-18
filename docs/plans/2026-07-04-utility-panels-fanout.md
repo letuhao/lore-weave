@@ -1,12 +1,12 @@
 # Utility Panels — Fan-out Build Plan
 
-> Executes [`14_utility_panels.md`](../specs/2026-07-01-writing-studio/14_utility_panels.md) (Jobs / Books Browser+Reader / Leaderboard dockable migration). PO-approved spec, now in PLAN.
+> Executes [`14b_utility_panels.md`](../specs/2026-07-01-writing-studio/14b_utility_panels.md) (Jobs / Books Browser+Reader / Leaderboard dockable migration). PO-approved spec, now in PLAN.
 
 ## Size classification (manual — see note)
 
 **XL** by this repo's rubric: ~15 distinct semantic changes (Jobs: 2 panels + injectable-prop refactor + enum ≈5; Books: 2 hook extractions + 2 panels ≈4; Leaderboard: 1 hook extraction + 4 panels + DOCK-8 split ≈6) across ~27 files, with 3 side effects (BE enum change, i18n ×4 locales, a standards-adjacent DOCK-1..11 compliance surface). Per `CLAUDE.md`'s table this needs a written plan (this doc) + spec (already written); subagent fan-out is recommended, not just allowed.
 
-**⚠️ Not tracked via `.workflow-state.json` / `scripts/workflow-gate.py`.** That file is gitignored (shared per-checkout local state, not per-session) and is **currently owned by the concurrent KG-panels effort** (`docs/specs/2026-07-01-writing-studio/14_kg_panels.md`, confirmed mid-BUILD, phase `build`, size XL). Running `workflow-gate.py size`/`phase` for this task would clobber that in-progress state. This plan tracks phase/evidence manually instead; do not invoke the gate script for this task while the KG effort is active on this same checkout.
+**⚠️ Not tracked via `.workflow-state.json` / `scripts/workflow-gate.py`.** That file is gitignored (shared per-checkout local state, not per-session) and is **currently owned by the concurrent KG-panels effort** (`docs/specs/2026-07-01-writing-studio/14a_kg_panels.md`, confirmed mid-BUILD, phase `build`, size XL). Running `workflow-gate.py size`/`phase` for this task would clobber that in-progress state. This plan tracks phase/evidence manually instead; do not invoke the gate script for this task while the KG effort is active on this same checkout.
 
 ## Why fan-out is safe here
 
@@ -42,7 +42,7 @@ PARALLEL ├─ Agent: Phase C (Books)        ├─→ BARRIER (all 3 done)
 ### Phase-agent contract (all 3 agents get this shape)
 
 Each phase-agent is briefed with:
-- Its exact task rows from `14_utility_panels.md` (B1-B3/B6-B7 for Jobs; C1-C4 for Books; D1-D2/D5 for Leaderboard) — the catalog/i18n/enum rows (B4-B5, C5-C6, D3-D4) are **excluded**, replaced by an instruction to return a structured manifest instead.
+- Its exact task rows from `14b_utility_panels.md` (B1-B3/B6-B7 for Jobs; C1-C4 for Books; D1-D2/D5 for Leaderboard) — the catalog/i18n/enum rows (B4-B5, C5-C6, D3-D4) are **excluded**, replaced by an instruction to return a structured manifest instead.
 - Explicit list of forbidden files: `features/studio/panels/catalog.ts`, `frontend/src/i18n/locales/*/studio.json`, `services/chat-service/app/services/frontend_tools.py`, `contracts/frontend-tools.contract.json`, `features/studio/agent/useStudioEffectReconciler.ts` — "if your task seems to need one of these, STOP and report it in your manifest instead of editing it."
 - Instruction to run its own phase-scoped tests (`vitest run <its new/changed files>` + relevant existing suites) before returning, and to report pass/fail honestly — not to assume they'll pass.
 - The DOCK-1..11 checklist reference (`docs/standards/dockable-gui.md`) so it self-checks compliance (register/self-title/route-decoupled/no-fork/no-hand-rolled-overlay) before returning.
@@ -67,7 +67,7 @@ Phase-agents run **without** `isolation: 'worktree'` — they touch fully disjoi
 | Phase | This task's state |
 |---|---|
 | CLARIFY | Done — 2 rounds of `AskUserQuestion`, PO-approved 2026-07-04 |
-| DESIGN | Done — `14_utility_panels.md`, including the DOCK-12→dropped correction |
+| DESIGN | Done — `14b_utility_panels.md`, including the DOCK-12→dropped correction |
 | REVIEW (design) | Done — self-review during spec-sealing (structural-mismatch findings, DOCK-7/8 analysis, coordination section) |
 | PLAN | This document |
 | BUILD | Next — all 3 phase-agents launched together |

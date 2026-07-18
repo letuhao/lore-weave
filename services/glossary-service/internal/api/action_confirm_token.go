@@ -58,6 +58,12 @@ const (
 	descReassignKind    = "reassign_kind"    // move an entity to another kind (drops non-matching attrs)
 	descMerge           = "merge"            // merge loser entities into a winner (destructive; journaled)
 
+	// glossary_entity_delete — Tier-W propose+confirm soft-delete of ONE glossary
+	// entity (real-usage feedback finding: no MCP way to remove a genuinely empty/
+	// garbage extraction-draft entity). Its restore counterpart, glossary_entity_restore,
+	// is Tier-A/direct (no token) — see entity_delete_tools.go.
+	descEntityDelete = "entity_delete"
+
 	// S5 — web-search deep-research (authorityGrant, Manage-gated). Class-C because it is
 	// a PAID outward call (S21 cost gate); the effect runs the search + attaches sources as
 	// draft evidence. Additive (not destructive).
@@ -94,7 +100,7 @@ var (
 func liveDescriptor(d string) bool {
 	switch d {
 	case descBookDelete, descBookDeleteBatch, descSchemaCreateKind, descSchemaCreateKinds, descSchemaCreateAttr, descAdopt, descSyncApply, descBookRevert,
-		descStatusChange, descRestoreRevision, descReassignKind, descMerge, descDeepResearch, descExecutePlan,
+		descStatusChange, descRestoreRevision, descReassignKind, descMerge, descDeepResearch, descExecutePlan, descEntityDelete,
 		descSystemCreate, descSystemPatch, descSystemDelete, descSystemRestore:
 		return true
 	default:

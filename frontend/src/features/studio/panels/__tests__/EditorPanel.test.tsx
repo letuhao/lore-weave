@@ -31,6 +31,9 @@ vi.mock('../../manuscript/unit/useManuscriptCheckpoints', () => ({
 vi.mock('../../manuscript/unit/ManuscriptCheckpoints', () => ({ ManuscriptCheckpoints: () => null }));
 vi.mock('../RevisionHistorySection', () => ({ RevisionHistorySection: () => null }));
 vi.mock('../EditorPublishGate', () => ({ EditorPublishGate: () => null }));
+// M3 — the empty-state "start your first chapter" door; it needs the query-client/auth providers,
+// so stub it here (its own path is tested via useChapterDoor + the navigator/live QC).
+vi.mock('../../manuscript/useChapterDoor', () => ({ useChapterDoor: () => ({ startNewChapter: () => {}, creating: false }) }));
 // #16 Phase 2 (2.1-2.6) — same rationale: out of scope for the P1 registration test, stub every
 // editor-craft addition rather than pull in the auth/query-client/glossary providers they need.
 vi.mock('@/auth', () => ({ useAuth: () => ({ accessToken: 'tok' }) }));
@@ -57,10 +60,16 @@ vi.mock('@/components/editor/GlossaryAutocomplete', () => ({ GlossaryAutocomplet
 vi.mock('@tanstack/react-query', () => ({ useQuery: () => ({ data: undefined, isLoading: false }) }));
 
 const applyProposedEdit = vi.hoisted(() => vi.fn(() => true));
-const unitState = vi.hoisted(() => ({ chapterId: 'ch1' as string | null, scenes: [] as { id: string }[] }));
+const unitState = vi.hoisted(() => ({
+  chapterId: 'ch1' as string | null, scenes: [] as { id: string }[],
+  isDerivative: false, forked: false,
+}));
 vi.mock('../../manuscript/unit/ManuscriptUnitProvider', () => ({
   useManuscriptUnit: () => ({
-    state: { chapterId: unitState.chapterId, scenes: unitState.scenes, loadedBody: {}, saveState: 'idle' },
+    state: {
+      chapterId: unitState.chapterId, scenes: unitState.scenes, loadedBody: {}, saveState: 'idle',
+      isDerivative: unitState.isDerivative, forked: unitState.forked,
+    },
     isDirty: false,
     editorRef: { current: null },
     save: vi.fn(),
@@ -200,5 +209,37 @@ describe('EditorPanel — D-COMPOSE-SEND-TO-EDITOR', () => {
     expect(applyProposedEdit).toHaveBeenCalledWith(
       expect.objectContaining({ operation: 'insert_at_cursor', text: 'Some AI-generated prose.' }),
     );
+  });
+});
+
+// D-S5-DERIVATIVE-MANUSCRIPT-FORK — the fork-isolation banner + merge affordance. The banner gates
+// on the hoist's isDerivative/forked (the ManuscriptUnitProvider routes the actual draft I/O — its
+// own suite proves the isolation). Here we prove the EDITOR surfaces the right state + affordance.
+describe('EditorPanel — dị bản fork isolation banner + merge affordance', () => {
+  beforeEach(() => { unitState.chapterId = 'ch1'; unitState.isDerivative = false; unitState.forked = false; });
+
+  it('shows NO derivative banner on the canonical Work', () => {
+    unitState.isDerivative = false;
+    const { queryByTestId } = render(<StudioHostProvider bookId="book-1"><EditorPanel {...dockProps} /></StudioHostProvider>);
+    expect(queryByTestId('studio-editor-derivative-guard')).toBeNull();
+  });
+
+  it('on a dị bản still inheriting canon: shows the fork-state indicator, NO merge button', () => {
+    unitState.isDerivative = true; unitState.forked = false;
+    const { getByTestId, queryByTestId } = render(<StudioHostProvider bookId="book-1"><EditorPanel {...dockProps} /></StudioHostProvider>);
+    expect(getByTestId('studio-editor-derivative-guard')).toBeTruthy();
+    expect(getByTestId('studio-editor-fork-state').textContent).toMatch(/mirrors canon|FORKS it/i);
+    expect(queryByTestId('studio-editor-merge-canon')).toBeNull();  // nothing to merge yet
+  });
+
+  it('on a FORKED chapter: shows the isolated state + a Merge-to-canon button (two-step confirm)', () => {
+    unitState.isDerivative = true; unitState.forked = true;
+    const { getByTestId } = render(<StudioHostProvider bookId="book-1"><EditorPanel {...dockProps} /></StudioHostProvider>);
+    expect(getByTestId('studio-editor-fork-state').textContent).toMatch(/FORKED|isolated/i);
+    const merge = getByTestId('studio-editor-merge-canon');
+    expect(merge.textContent).toMatch(/merge to canon/i);
+    // first click ARMS the confirm (does not merge)
+    fireEvent.click(merge);
+    expect(getByTestId('studio-editor-merge-canon').textContent).toMatch(/confirm/i);
   });
 });

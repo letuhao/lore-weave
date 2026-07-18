@@ -6,6 +6,7 @@
     "commands": "Comandos y Hooks",
     "subagents": "Subagentes",
     "plugins": "Plugins",
+    "permissions": "Permisos de herramientas",
     "proposals": "Propuestas",
     "activity": "Registro de actividad",
     "ingest": "Fuentes del registro"
@@ -19,8 +20,8 @@
     "label": "Alcance:",
     "mine": "Mis extensiones",
     "orBook": "o un libro:",
-    "bookPlaceholder": "específico del libro…",
-    "bookHint": "específico del libro — los nuevos elementos se aplicarán solo a este libro"
+    "bookPlaceholder": "limitado al libro…",
+    "bookHint": "limitado al libro — los nuevos elementos se aplicarán solo a este libro"
   },
   "common": {
     "loading": "Cargando…",
@@ -44,7 +45,7 @@
     "sort": {
       "updated": "Ordenar: Actualizado",
       "name": "Nombre A→Z",
-      "lastTriggered": "Última activación"
+      "lastTriggered": "Última vez activado"
     },
     "empty": "Aún no hay habilidades. El agente puede proponer una o puedes crearla en el editor.",
     "draft": "borrador"
@@ -65,7 +66,7 @@
       "error": "Inalcanzable"
     },
     "add": "+ Añadir servidor",
-    "empty": "Aún no hay servidores MCP. Añade uno para darle herramientas extra al agente.",
+    "empty": "Aún no hay servidores MCP. Añade uno para darle herramientas adicionales al agente.",
     "review": "⚠ revisión",
     "detail": {
       "back": "‹ Atrás",
@@ -85,7 +86,7 @@
       "acceptRisk": "Aceptar riesgo y activar"
     },
     "scan": {
-      "label": "Escaneo de la cadena de suministro:",
+      "label": "Escaneo de cadena de suministro:",
       "clean": "limpio",
       "findings": "{{count}} hallazgo(s)",
       "tools": "Herramientas ({{count}})",
@@ -95,8 +96,8 @@
       "steps": {
         "connection": "Conexión",
         "auth": "Autenticación",
-        "scan": "Estado y escaneo",
-        "review": "Revisar"
+        "scan": "Salud y escaneo",
+        "review": "Revisión"
       },
       "displayName": "Nombre para mostrar",
       "displayNamePlaceholder": "Mi servidor de herramientas",
@@ -107,7 +108,7 @@
       "authBearer": "Token Bearer",
       "authOauth": "OAuth 2.1",
       "noAuthHint": "Sin autenticación: este servidor es abierto. Continúa para registrarlo y escanearlo.",
-      "bearerLabel": "Token Bearer (almacenado de forma segura en la bóveda; no se volverá a mostrar)",
+      "bearerLabel": "Token Bearer (protegido en la bóveda; no se volverá a mostrar)",
       "bearerPlaceholder": "pegar token",
       "authzEndpoint": "Endpoint de autorización",
       "tokenEndpoint": "Endpoint de token",
@@ -117,24 +118,24 @@
       "registerScan": "Registrar y escanear",
       "statusLabel": "Estado:",
       "connectOauth": "Conectar con OAuth →",
-      "runScan": "Ejecutar diagnóstico y escaneo",
+      "runScan": "Realizar comprobación y escaneo",
       "refresh": "Actualizar",
       "continue": "Continuar",
       "authKind": "auth: {{kind}}",
-      "enable": "Habilitar para mis sesiones",
-      "done": "Hecho"
+      "enable": "Activar para mis sesiones",
+      "done": "Listo"
     }
   },
   "commands": {
     "title": "Comandos de barra",
     "description": "Escribe <code>/nombre</code> en el chat para expandir una plantilla. Usa <code>{{args}}</code> o <code>{{key}}</code> para los argumentos.",
-    "namePlaceholder": "nombre (p. ej. plan-escena)",
-    "templatePlaceholder": "Plantilla: Planificar una escena sobre {{topic}}…",
+    "namePlaceholder": "nombre (p. ej. plan-scene)",
+    "templatePlaceholder": "Plantilla: Planear una escena sobre {{topic}}…",
     "empty": "Aún no hay comandos."
   },
   "hooks": {
     "title": "Hooks",
-    "description": "Reglas declarativas que se activan en los puntos de transición del bucle del agente. Sin código: solo un evento, una coincidencia de herramienta opcional y una acción.",
+    "description": "Reglas declarativas que se ejecutan en los puntos de transición del bucle del agente. Sin código: solo un evento, una coincidencia de herramienta opcional y una acción.",
     "matchPlaceholder": "coincidencia de herramienta (p. ej. glossary_delete_*)",
     "textPlaceholder": "texto para inyectar / anotar",
     "empty": "Aún no hay hooks."
@@ -145,15 +146,15 @@
     "namePlaceholder": "nombre (p. ej. explorador-lore)",
     "scopePlaceholder": "alcance de herramientas: glossary_*, kg_*",
     "modelPlaceholder": "modelo (opcional, id de user_model)",
-    "promptPlaceholder": "Prompt del sistema — quién es esta persona y cómo funciona...",
+    "promptPlaceholder": "Prompt de sistema: quién es esta persona y cómo funciona...",
     "create": "Crear subagente",
     "empty": "Aún no hay subagentes.",
     "reasoningOnly": "solo razonamiento (sin herramientas)",
     "modelPinned": "modelo fijado"
   },
   "plugins": {
-    "description": "Un plugin agrupa habilidades, comandos y hooks; expórtalo para compartirlo o impórtalo para instalarlo.",
-    "importing": "Importando...",
+    "description": "Un plugin agrupa habilidades, comandos y hooks: exporta para compartir, importa para instalar.",
+    "importing": "Importando…",
     "import": "Importar paquete",
     "invalidJson": "Ese archivo no es un JSON válido.",
     "notBundle": "No es un paquete de LoreWeave (falta manifest.name).",
@@ -183,10 +184,10 @@
       "30d": "Últimos 30 días"
     },
     "empty": "No hay actividad en este periodo.",
-    "secondsAgo": "Hace {{count}}s",
-    "minutesAgo": "Hace {{count}}m",
-    "hoursAgo": "Hace {{count}}h",
-    "daysAgo": "hace {{count}} d"
+    "secondsAgo": "hace {{count}}s",
+    "minutesAgo": "hace {{count}}m",
+    "hoursAgo": "hace {{count}}h",
+    "daysAgo": "hace {{count}}d"
   },
   "ingest": {
     "title": "Fuentes del registro (admin)",
@@ -199,5 +200,58 @@
     "empty": "No hay entradas en esta vista. Sincroniza el registro para completar la cola.",
     "approve": "Aprobar",
     "reject": "Rechazar"
+  },
+  "permissions": {
+    "blurb": "Herramientas a las que has otorgado permiso permanente — y herramientas que has bloqueado. Seleccionar «Permitir siempre» en una tarjeta de aprobación añadirá una fila aquí. Revocar un permiso significa que el asistente te lo volverá a preguntar la próxima vez que quiera usar esa herramienta.",
+    "loading": "Cargando…",
+    "allowedTitle": "Permitido siempre",
+    "deniedTitle": "Bloqueado",
+    "blockTitle": "Bloquear una herramienta",
+    "emptyAllowed": "No has otorgado permisos permanentes a ninguna herramienta. El asistente te preguntará cada vez.",
+    "emptyDenied": "No hay herramientas bloqueadas.",
+    "toolPlaceholder": "Nombre de la herramienta (p. ej. chapter_delete)",
+    "unknownTool": "Esa no es una de las herramientas del asistente. Elige un nombre de la lista.",
+    "kind": {
+      "mutation": "Puede modificar mi trabajo",
+      "spend": "Puede gastar dinero"
+    },
+    "decision": {
+      "allow": "Se ejecuta sin preguntar",
+      "deny": "No ejecutar nunca"
+    },
+    "actions": {
+      "revoke": "Volver a preguntar",
+      "deny": "No permitir nunca",
+      "allow": "Permitir",
+      "block": "Bloquear"
+    }
+  },
+  "workflows": {
+    "total": "{{count}} flujos de trabajo",
+    "empty": "Aún no hay flujos de trabajo. Aprueba una propuesta de flujo de trabajo para añadir uno.",
+    "enabled": "Activado",
+    "disabled": "Desactivado",
+    "delete": "Eliminar",
+    "proposalsEmpty": "No hay propuestas de flujo de trabajo. Cuando el agente proponga un flujo de trabajo, aparecerá aquí para que lo apruebes.",
+    "view": "Ver",
+    "hide": "Ocultar",
+    "noSteps": "No hay pasos definidos."
+  },
+  "bindings": {
+    "loading": "Cargando…",
+    "autoSetupDesc": "Recetas que el asistente configura automáticamente en este modo.",
+    "none": "No hay nada configurado automáticamente aquí.",
+    "turnOff": "Desactivar",
+    "turnBackOn": "Volver a activar",
+    "mode": {
+      "ask": "Lectura y preguntas",
+      "write": "Escritura",
+      "plan": "Planificación"
+    },
+    "tier": {
+      "system": "Integrado",
+      "user": "Configurado por ti",
+      "book": "Este libro"
+    }
   }
 }

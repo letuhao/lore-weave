@@ -44,6 +44,47 @@ class ProviderRegistryClient:
         except Exception:
             return None
 
+    async def price_voice(
+        self, model_source: str, model_ref: str, user_id: str, kind: str, units: float
+    ) -> float:
+        """C6 / SD-C6 — resolve the $ cost of ONE STT/TTS invocation from the model's registered rate
+        (per_second for kind='stt' with units=audio-seconds; per_kchar for kind='tts' with units=chars).
+        The rate lives with the model in provider-registry (invariant: never hardcode a rate here).
+        Best-effort: any error / not-found / unpriced ⇒ 0.0 (a local Whisper/Kokoro is genuinely $0, so
+        an un-priced voice model correctly contributes no cost rather than blocking the turn).
+
+        cold-review HIGH-1/MED-4 — a genuinely-unpriced model (status != 'ok') is WARNED, so a PAID
+        cloud voice model that silently bills $0 (e.g. it carries per_kchar but not per_second, or a
+        transient pricing error) is OBSERVABLE. A local $0 model returns status='ok' (priced, cost 0)
+        and does NOT warn — the warn fires only for the real revenue-drop cases."""
+        import logging as _logging
+        url = f"{self._base}/internal/billing/price-voice"
+        try:
+            async with build_internal_client(
+                self._base, internal_token=self._token,
+                timeout_s=5, trace_id_provider=trace_id_var.get,
+            ) as client:
+                resp = await client.post(url, json={
+                    "owner_user_id": user_id, "model_source": model_source,
+                    "model_ref": model_ref, "kind": kind, "units": units,
+                })
+            if resp.status_code == 200:
+                data = resp.json()
+                status = data.get("status")
+                if status != "ok":
+                    _logging.getLogger(__name__).warning(
+                        "voice %s model %s/%s priced as %s (cost $0) — a PAID model billing $0 is a "
+                        "revenue drop; confirm it carries the right rate (per_second for STT, per_kchar "
+                        "for TTS)", kind, model_source, model_ref, status)
+                return float(data.get("cost_usd", 0.0) or 0.0)
+            _logging.getLogger(__name__).warning(
+                "voice price-voice HTTP %s for %s/%s — billing $0 (transient?); a paid model's cost is "
+                "silently dropped on this turn", resp.status_code, model_source, model_ref)
+            return 0.0
+        except Exception as exc:
+            _logging.getLogger(__name__).warning("voice price-voice failed (%s) — billing $0", exc)
+            return 0.0
+
     async def is_live(self, model_source: str, model_ref: str, user_id: str) -> bool:
         """Liveness probe for the settings resolver (spec §3.1). Owner-scoped —
         reuses the existing credential-resolve route (404 ⇒ not found / inactive

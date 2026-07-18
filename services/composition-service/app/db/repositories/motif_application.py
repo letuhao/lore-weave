@@ -5,7 +5,10 @@ A row records "this motif (at this pinned version) was bound to this outline sce
 node, with these role→entity bindings + annotations (beat_key, reversal, …)". W5's
 conformance trace JOINs this table per scene `outline_node_id` (read-only). The
 table + its scope/cycle guards are F0-frozen (migrate.py); this repo only
-reads/writes rows under the per-(user, project, book) tenancy keys.
+reads/writes rows under the (project, book) package scope keys — access is decided
+BEFORE the repo, at the gate (E0 grant on the row's `book_id`); `created_by` is a
+plain actor stamp (STORED, never filtered on). The motif/template FKs keep their
+2-tier registry tenancy (untouched by the package re-key).
 
 Anti-repetition (W2 §7.6): `count_by_motif_for_book` is the per-book aggregate the
 planner reads at select time (the idx_motif_application_book_motif hot index) so a
@@ -23,8 +26,8 @@ import asyncpg
 from app.db.models import MotifApplication
 
 _SELECT_COLS = (
-    "id, user_id, project_id, book_id, motif_id, motif_version, outline_node_id, "
-    "role_bindings, annotations, created_at"
+    "id, created_by, project_id, book_id, motif_id, motif_version, outline_node_id, "
+    "structure_node_id, role_bindings, annotations, created_at"
 )
 _JSONB_FIELDS = ("role_bindings", "annotations")
 
@@ -43,33 +46,37 @@ class MotifApplicationRepo:
         self._pool = pool
 
     async def insert_many(
-        self, user_id: UUID, project_id: UUID, book_id: UUID,
-        rows: list[dict[str, Any]], *, conn: asyncpg.Connection | None = None,
+        self, project_id: UUID, book_id: UUID,
+        rows: list[dict[str, Any]], *, created_by: UUID,
+        conn: asyncpg.Connection | None = None,
     ) -> list[MotifApplication]:
         """Insert binding-ledger rows (one per bound scene). Each `row` carries
         motif_id, motif_version, outline_node_id, role_bindings, annotations. Runs on
         an OPEN connection when `conn` is given (atomic with the tree/swap Tx). The
         H-5 scope-guard trigger rejects a node not in `project_id` (CheckViolation).
-        book_id is the per-book aggregate key (NOT NULL)."""
+        book_id is the per-book aggregate key (NOT NULL, already threaded here —
+        this table predates the package re-key's derive-in-SQL variants)."""
         if not rows:
             return []
 
         async def _do(c: asyncpg.Connection) -> list[asyncpg.Record]:
             out: list[asyncpg.Record] = []
             for row in rows:
+                _sn = row.get("structure_node_id")
                 rec = await c.fetchrow(
                     f"""
                     INSERT INTO motif_application
-                      (user_id, project_id, book_id, motif_id, motif_version,
-                       outline_node_id, role_bindings, annotations)
-                    VALUES ($1,$2,$3,$4,$5,$6,$7::jsonb,$8::jsonb)
+                      (created_by, project_id, book_id, motif_id, motif_version,
+                       outline_node_id, structure_node_id, role_bindings, annotations)
+                    VALUES ($1,$2,$3,$4,$5,$6,$7,$8::jsonb,$9::jsonb)
                     RETURNING {_SELECT_COLS}
                     """,
-                    user_id, project_id, book_id,
+                    created_by, project_id, book_id,
                     UUID(row["motif_id"]) if isinstance(row.get("motif_id"), str) else row.get("motif_id"),
                     row.get("motif_version"),
                     UUID(row["outline_node_id"]) if isinstance(row.get("outline_node_id"), str)
                     else row.get("outline_node_id"),
+                    UUID(_sn) if isinstance(_sn, str) else _sn,   # BA5: first-class arc link
                     json.dumps(row.get("role_bindings") or {}),
                     json.dumps(row.get("annotations") or {}),
                 )
@@ -85,39 +92,40 @@ class MotifApplicationRepo:
         return [_row(r) for r in recs]
 
     async def by_nodes(
-        self, user_id: UUID, project_id: UUID, node_ids: list[UUID],
+        self, project_id: UUID, node_ids: list[UUID],
     ) -> list[MotifApplication]:
         """The bound motif per node (W5's conformance trace read). MUST filter
-        user_id + project_id (the kinds-bug tenancy rule — a node-id-only query is a
-        cross-tenant read). Returns the rows for the given scene nodes."""
+        project_id (the kinds-bug tenancy rule — a node-id-only query is a
+        cross-scope read). Returns the rows for the given scene nodes."""
         if not node_ids:
             return []
         async with self._pool.acquire() as c:
             rows = await c.fetch(
                 f"""
                 SELECT {_SELECT_COLS} FROM motif_application
-                WHERE user_id = $1 AND project_id = $2 AND outline_node_id = ANY($3)
+                WHERE project_id = $1 AND outline_node_id = ANY($2)
                 ORDER BY created_at
                 """,
-                user_id, project_id, node_ids,
+                project_id, node_ids,
             )
         return [_row(r) for r in rows]
 
     async def count_by_motif_for_book(
-        self, user_id: UUID, book_id: UUID, *, conn: asyncpg.Connection | None = None,
+        self, book_id: UUID, *, conn: asyncpg.Connection | None = None,
     ) -> dict[str, int]:
         """{motif_id(str): distinct-bound-chapter count} for the book — the
         anti-repetition aggregate (W2 §7.6). Counts DISTINCT motif applications by
         motif so the same trope reused across the book trips the cap. Scoped to the
-        book (per-book scope, R1.1.4) across the user's own rows."""
+        book (per-book scope, R1.1.4) — a book-wide read, gated on the book's E0
+        grant before the repo."""
         query = """
             SELECT motif_id, count(*) AS n FROM motif_application
-            WHERE user_id = $1 AND book_id = $2 AND motif_id IS NOT NULL
+            WHERE book_id = $1 AND motif_id IS NOT NULL
             GROUP BY motif_id
         """
 
         async def _do(c: asyncpg.Connection) -> list[asyncpg.Record]:
-            return await c.fetch(query, user_id, book_id)
+            return await c.fetch(query, book_id)
 
         if conn is not None:
             recs = await _do(conn)
@@ -127,7 +135,7 @@ class MotifApplicationRepo:
         return {str(r["motif_id"]): int(r["n"]) for r in recs}
 
     async def set_role_binding(
-        self, user_id: UUID, project_id: UUID, node_id: UUID,
+        self, project_id: UUID, node_id: UUID,
         role_key: str, entity_id: UUID | None, *, conn: asyncpg.Connection,
     ) -> int:
         """Rebind ONE role on the node's bound application (D-MOTIF-SCENE-REBIND-CHAIN).
@@ -136,7 +144,7 @@ class MotifApplicationRepo:
         role rebind never disturbs the other resolved roles, the motif lineage, or
         ``created_at``. ``entity_id=None`` writes a JSON ``null`` — the role stays visible
         but unresolved (matching the FE ``RoleBinding.entity_id=null``). Scoped to
-        user+project+node (the kinds-bug tenancy rule). ``create_missing=false`` so a
+        project+node (the kinds-bug tenancy rule). ``create_missing=false`` so a
         role the binding never had is a no-op (the router guards key membership; this is
         belt-and-suspenders). Returns the rows updated (0 = nothing bound on the node)."""
         val = json.dumps(str(entity_id)) if entity_id is not None else "null"
@@ -144,10 +152,10 @@ class MotifApplicationRepo:
             """
             UPDATE motif_application
             SET role_bindings = jsonb_set(
-                  COALESCE(role_bindings, '{}'::jsonb), ARRAY[$4], $5::jsonb, false)
-            WHERE user_id = $1 AND project_id = $2 AND outline_node_id = $3
+                  COALESCE(role_bindings, '{}'::jsonb), ARRAY[$3], $4::jsonb, false)
+            WHERE project_id = $1 AND outline_node_id = $2
             """,
-            user_id, project_id, node_id, role_key, val,
+            project_id, node_id, role_key, val,
         )
         try:
             return int(res.split()[-1])
@@ -155,21 +163,21 @@ class MotifApplicationRepo:
             return 0
 
     async def delete_for_nodes(
-        self, user_id: UUID, project_id: UUID, node_ids: list[UUID],
+        self, project_id: UUID, node_ids: list[UUID],
         *, conn: asyncpg.Connection,
     ) -> int:
         """Remove the ledger rows for a set of scene nodes (used on a swap — the
         superseded binding's rows are dropped after the scenes are archived; the
         prose generation_job rows are NOT touched, only the binding ledger). Runs on
-        the open swap Tx. Scoped to user+project. Returns the deleted count."""
+        the open swap Tx. Scoped to project. Returns the deleted count."""
         if not node_ids:
             return 0
         res = await conn.execute(
             """
             DELETE FROM motif_application
-            WHERE user_id = $1 AND project_id = $2 AND outline_node_id = ANY($3)
+            WHERE project_id = $1 AND outline_node_id = ANY($2)
             """,
-            user_id, project_id, node_ids,
+            project_id, node_ids,
         )
         # asyncpg returns 'DELETE <n>'
         try:

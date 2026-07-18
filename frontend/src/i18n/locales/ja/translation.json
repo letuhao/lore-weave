@@ -5,6 +5,14 @@
     "failed": "失敗",
     "pending": "保留中"
   },
+  "error": {
+    "retryable": "翻訳を読み込めませんでした。翻訳サービスが利用できない可能性があります。もう一度お試しください。",
+    "forbidden": "この本の翻訳へのアクセス権がありません。",
+    "notfound": "翻訳が見つかりませんでした。",
+    "retry": "再試行",
+    "chapters_failed": "チャプターリストを読み込めませんでした。",
+    "chapters_timeout": "チャプターリストの読み込みがタイムアウトしました。サービスが低速か、停止している可能性があります。"
+  },
   "page": {
     "breadcrumb_book": "書籍",
     "breadcrumb_chapters": "章",
@@ -81,7 +89,8 @@
     "original_label": "原文 — {{lang}}",
     "translation_label": "翻訳 — {{lang}}",
     "source_fallback": "ソース",
-    "no_translated": "（翻訳された内容なし）"
+    "no_translated": "（翻訳された内容なし）",
+    "original_unavailable": "原文は現在利用できません。"
   },
   "block_review": {
     "unchanged": "変更なし",
@@ -151,8 +160,18 @@
     "show_filter": "フィルターを表示",
     "chapters_selected": "{{count}} 章を選択中",
     "translate_selected": "選択した章を翻訳",
+    "translate_cta": "翻訳する…",
+    "select_all_chapters": "すべてのチャプターを選択",
+    "orphan_footnote": "{{count}} 件の翻訳は、現在はアクティブではないチャプターに属しています。",
+    "page": "ページ",
+    "prev": "前のページ",
+    "next": "次のページ",
     "extract_glossary": "用語を抽出",
-    "clear": "クリア"
+    "clear": "クリア",
+    "loading": "翻訳カバー率を読み込み中…",
+    "translate_no_edit": "閲覧のみの権限です。翻訳するには所有者に編集権限を依頼してください。",
+    "all_filtered_title": "すべての言語がフィルターで除外されています",
+    "all_filtered_desc": "フィルターで言語を再度有効にすると、その進捗が表示されます。"
   },
   "segments": {
     "title": "セグメント状態",
@@ -165,6 +184,7 @@
     "retranslate_changed": "変更分を再翻訳 ({{count}})",
     "retranslate_started": "再翻訳を開始しました",
     "empty": "セグメントがまだありません。",
-    "close": "閉じる"
+    "close": "閉じる",
+    "retranslate_failed": "再翻訳を開始できませんでした。もう一度お試しください。"
   }
 }

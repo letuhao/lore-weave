@@ -17,6 +17,10 @@
     "explore": {
       "title": "Khám phá",
       "desc": "Duyệt tri thức của bạn — thực thể, dòng thời gian và đồ thị quan hệ."
+    },
+    "assistant": {
+      "title": "Trợ lý công việc",
+      "desc": "Một cuốn nhật ký cá nhân giúp bạn lưu giữ thầm lặng những con người, dự án và những quyết định của mình."
     }
   }
 }

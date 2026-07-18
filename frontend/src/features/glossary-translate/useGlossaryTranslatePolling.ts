@@ -27,6 +27,7 @@ export function useGlossaryTranslatePolling(
       try {
         const data = await glossaryTranslateApi.getJobStatus(jobId, token);
         setStatus(data);
+        setError(null); // S1: a recovered poll clears a prior transient error
         if (TERMINAL_STATUSES.has(data.status)) {
           stopPolling();
         }

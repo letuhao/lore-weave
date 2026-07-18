@@ -1,7 +1,7 @@
 import { useEffect, useState, useMemo, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import * as Dialog from '@radix-ui/react-dialog';
-import { X, Save, Loader2, Link2, Languages, FileText, Tag, Trash2, History } from 'lucide-react';
+import { X, Save, Loader2, Link2, Languages, FileText, Tag, Trash2, History, MapPin } from 'lucide-react';
 import { toast } from 'sonner';
 import { useGlossaryEntity } from '@/features/glossary/hooks/useGlossaryEntity';
 import { _setGlossaryEntityBinding, registerGlossaryEntityDocumentProvider } from '@/features/glossary/documents/entityDocument';
@@ -11,6 +11,7 @@ import { getLanguageName } from '@/lib/languages';
 import { Skeleton } from '@/components/shared/Skeleton';
 import { LanguagePicker } from '@/components/shared';
 import { AttrCard } from './AttrCard';
+import { AddAttributeValueSection } from './AddAttributeValueSection';
 import { SummarizeAttrBody } from './SummarizeAttrBody';
 import { AttrTranslationRow } from './AttrTranslationRow';
 import { getCardComponent, SHORT_TYPES } from './cardRegistry';
@@ -40,6 +41,16 @@ export function EntityEditorModal({ bookId, entityId, bookGenreTags = [], kindGe
   const { entity, loading, saving, isDirty, pendingChanges, getValue, discard } = glossaryEntity;
   const [activeTab, setActiveTab] = useState<EditorTab>(initialTab);
   const [translationLang, setTranslationLang] = useState('');
+  // /review-impl MED fix (2026-07-09): scope_label is now a CONTROLLED input, synced
+  // to the loaded entity (mount, entity switch, or post-save reload — a genuine
+  // synchronization case, not event-handling). Previously it was uncontrolled
+  // (defaultValue), so a REJECTED edit (e.g. a scope collision) left the input
+  // showing the failed value as if it had stuck, with no re-render to correct it
+  // until the whole modal remounted.
+  const [scopeLabelDraft, setScopeLabelDraft] = useState('');
+  useEffect(() => {
+    setScopeLabelDraft(entity?.scope_label ?? '');
+  }, [entity?.scope_label, entityId]);
 
   // 13_glossary_panels.md A2 — publish the live hook instance for the
   // `loreweave.glossary-entity.v1` JSON document provider (modal-scoped, mirrors
@@ -63,6 +74,19 @@ export function EntityEditorModal({ bookId, entityId, bookGenreTags = [], kindGe
 
   const handleChange = (attrValueId: string, value: string) => glossaryEntity.setValue(attrValueId, value);
 
+  // S-06 — remove a value ROW entirely (confirmed; distinct from blanking it to empty). The hook
+  // reloads the entity so the card drops; onSaved refreshes the parent list snapshot.
+  const handleRemoveAttr = async (attrValueId: string) => {
+    if (!window.confirm(t('modal.remove_attr_confirm', { defaultValue: 'Remove this attribute value? You can add it again later.' }))) return;
+    try {
+      await glossaryEntity.removeAttributeValue(attrValueId);
+      toast.success(t('modal.remove_attr_success', { defaultValue: 'Attribute value removed' }));
+      onSaved();
+    } catch (e) {
+      toast.error((e as Error).message);
+    }
+  };
+
   const handleSave = async () => {
     try {
       await glossaryEntity.save();
@@ -77,6 +101,23 @@ export function EntityEditorModal({ bookId, entityId, bookGenreTags = [], kindGe
       toast.success(t('modal.toast.status_changed', { status }));
       onSaved();
     } catch (e) { toast.error((e as Error).message); }
+  };
+
+  // D-GLOSSARY-ENTITY-SCOPE — commits on blur (not per-keystroke); a no-op when
+  // the value is unchanged. A colliding scope surfaces the backend's specific
+  // GLOSS_DUPLICATE_NAME message via the toast, same posture as save()/setStatus.
+  // /review-impl MED fix (2026-07-09): on failure, revert the draft to the entity's
+  // actual (unchanged) scope_label — the input must never keep showing a value
+  // that was never actually persisted.
+  const handleScopeLabelBlur = async (value: string) => {
+    if (!entity || value === (entity.scope_label ?? '')) return;
+    try {
+      await glossaryEntity.setScopeLabel(value);
+      onSaved();
+    } catch (e) {
+      toast.error((e as Error).message);
+      setScopeLabelDraft(entity.scope_label ?? '');
+    }
   };
 
   const handleDiscard = () => discard();
@@ -213,6 +254,21 @@ export function EntityEditorModal({ bookId, entityId, bookGenreTags = [], kindGe
             <span className="inline-flex items-center gap-1"><Link2 className="h-3 w-3" />{t('modal.meta.chapters', { count: entity.chapter_link_count })}</span>
             <span className="inline-flex items-center gap-1"><Languages className="h-3 w-3" />{t('modal.meta.translations', { count: entity.translation_count })}</span>
             <button type="button" onClick={() => setActiveTab('evidences')} className="inline-flex items-center gap-1 hover:text-primary transition-colors"><FileText className="h-3 w-3" />{t('modal.meta.evidences', { count: entity.evidence_count })}</button>
+            <span className="inline-flex items-center gap-1">
+              <MapPin className="h-3 w-3" />
+              <input
+                type="text"
+                value={scopeLabelDraft}
+                onChange={(e) => setScopeLabelDraft(e.target.value)}
+                placeholder={t('modal.scope_label.placeholder')}
+                aria-label={t('modal.scope_label.aria')}
+                // Mirrors the backend's scopeLabelMaxLen (entity_attribute_edit_tools.go) —
+                // /review-impl MED fix: this field had no length bound anywhere before.
+                maxLength={200}
+                onBlur={(e) => void handleScopeLabelBlur(e.target.value.trim())}
+                className="w-40 rounded border-none bg-transparent px-1 py-0.5 text-[11px] text-muted-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:ring-1 focus:ring-primary/40"
+              />
+            </span>
             {entity.tags.length > 0 && (
               <>
                 <span className="flex-1" />
@@ -330,8 +386,19 @@ export function EntityEditorModal({ bookId, entityId, bookGenreTags = [], kindGe
                       displayLanguage={displayLanguage}
                       bookOriginalLanguage={bookOriginalLanguage}
                       bookId={bookId} entityId={entityId} onTranslationChanged={handleTranslationChanged}
+                      onRemove={handleRemoveAttr}
                     />
                   </>
+                )}
+
+                {/* S-06 — add a value for an attr-def the entity is missing (add-later). */}
+                {!viewTranslationMode && entity && (
+                  <AddAttributeValueSection
+                    bookId={bookId}
+                    entity={entity}
+                    onAdd={glossaryEntity.addAttributeValue}
+                    onAdded={onSaved}
+                  />
                 )}
 
                 {sortedAttrs.length === 0 && (
@@ -413,7 +480,7 @@ function SectionLabel({ color, children }: { color: 'info' | 'primary'; children
   );
 }
 
-function AttrGrid({ attrs, getValue, onChange, pendingChanges, translationLang, viewTranslationMode, displayLanguage, bookOriginalLanguage, bookId, entityId, onTranslationChanged }: {
+function AttrGrid({ attrs, getValue, onChange, pendingChanges, translationLang, viewTranslationMode, displayLanguage, bookOriginalLanguage, bookId, entityId, onTranslationChanged, onRemove }: {
   attrs: AttributeValue[];
   getValue: (attr: AttributeValue) => string;
   onChange: (id: string, value: string) => void;
@@ -425,6 +492,8 @@ function AttrGrid({ attrs, getValue, onChange, pendingChanges, translationLang, 
   bookId: string;
   entityId: string;
   onTranslationChanged: (attrValueId: string, updated: Translation | null, oldTranslationId?: string) => void;
+  // S-06 — remove a value row (non-system attrs only). Absent ⇒ no remove button.
+  onRemove?: (attrValueId: string) => void;
 }) {
   const { t } = useTranslation('entityEditor');
   const rendered: ReactNode[] = [];
@@ -486,6 +555,8 @@ function AttrGrid({ attrs, getValue, onChange, pendingChanges, translationLang, 
         modified={modified}
         hasTranslations={hasTranslations}
         translationSlot={translationSlot}
+        // S-06 — only non-system attrs are removable (name/description etc. are structural).
+        onRemove={!def.is_system && onRemove ? () => onRemove(attr.attr_value_id) : undefined}
       >
         {!viewTranslationMode && (
           def.merge_strategy === 'summarize' ? (

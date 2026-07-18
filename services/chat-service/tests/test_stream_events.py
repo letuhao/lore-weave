@@ -325,3 +325,100 @@ class TestAgUiEmitter:
 
     def test_done_is_empty(self):
         assert self._em().done() == []
+
+
+# ── Track C §4 vocabulary guard — deterministic "speak plainly" ─────────────────
+from app.services.stream_events import scrub_jargon
+
+
+def _streamed_text(deltas: list[str]) -> str:
+    """Feed deltas through a fresh AgUiEmitter (as the tool loop does), close the message,
+    and return the ACCUMULATED user-visible text — exactly what the eval harness / FE see."""
+    em = AgUiEmitter("t", "m")
+    lines: list[str] = []
+    for d in deltas:
+        lines += em.text_delta(d)
+    lines += em.close_message()
+    out = ""
+    for ln in lines:
+        ev = _parse(ln)
+        if ev.get("type") == "TEXT_MESSAGE_CONTENT":
+            out += ev["delta"]
+    return out
+
+
+class TestJargonGuard:
+    def test_scrub_replaces_unambiguous_system_jargon(self):
+        assert scrub_jargon("Let's set up your glossary.") == "Let's set up your story bible."
+        assert scrub_jargon("a new entity") == "a new element"
+        assert scrub_jargon("the specific types of entities") == "the specific types of elements"
+        # case is preserved from the original token's leading letter
+        assert scrub_jargon('handle the "Knowledge Graph"') == 'handle the "Connection map"'
+        assert scrub_jargon("a Character Attribute") == "a Character Detail"
+        assert scrub_jargon("the Ontology") == "the Categories"
+        assert scrub_jargon("use the vision-to-book process") == "use the book-building process"
+
+    def test_scrub_preserves_case(self):
+        assert scrub_jargon("Glossary") == "Story bible"
+        assert scrub_jargon("ENTITY") == "ELEMENT"
+
+    def test_scrub_leaves_innocuous_english_untouched(self):
+        # 'kind'/'tool' have innocuous uses and are NOT scrubbed; normal writing words stay.
+        t = "What kind of story? I'm a tool for your creativity — let's draft the outline and the arc."
+        assert scrub_jargon(t) == t
+
+    def test_streaming_scrubs_a_single_word(self):
+        assert _streamed_text(["Set up your ", "glossary", " now."]) == "Set up your story bible now."
+
+    def test_streaming_scrubs_a_phrase_split_across_deltas(self):
+        # "knowledge" and "graph" arrive in SEPARATE deltas — the buffer must hold "knowledge"
+        # so the phrase is scrubbed as a whole, not emitted word-by-word.
+        assert _streamed_text(["This is the ", "knowledge", " ", "graph", " part."]) \
+            == "This is the connection map part."
+
+    def test_streaming_scrubs_char_by_char(self):
+        # worst case: one character per delta — the buffer still reassembles + scrubs.
+        got = _streamed_text(list("the entity here"))
+        assert got == "the element here"
+
+    def test_streaming_preserves_full_text_for_clean_input(self):
+        clean = "She stands over him. The rain does not care."
+        got = _streamed_text([clean[i:i+3] for i in range(0, len(clean), 3)])
+        assert got == clean
+
+
+class TestJargonGuardReviewFixes:
+    """Regression cases the /review-impl on the guard found (multi-word phrase leaks)."""
+
+    def test_spaced_vision_to_book_whole_words(self):
+        # the 3-word spaced form leaked (phrase-hold only guarded 2-word "knowledge graph")
+        assert _streamed_text(["I'll use ", "vision", " to", " book", " now."]) \
+            == "I'll use book-building now."
+
+    def test_knowledge_graph_char_by_char(self):
+        # "graph" arriving char-by-char used to EVICT the held "knowledge"
+        assert _streamed_text(list("build the knowledge graph today")) \
+            == "build the connection map today"
+
+    def test_vision_to_book_char_by_char(self):
+        assert _streamed_text(list("the vision to book thing")) == "the book-building thing"
+
+    def test_knowledge_graph_at_very_end(self):
+        assert _streamed_text(["This is the ", "knowledge", " graph"]) \
+            == "This is the connection map"
+
+    def test_common_words_to_and_graph_not_over_scrubbed(self):
+        # "to" and a lone "graph" are NOT jargon — they must survive intact (held briefly, then
+        # emitted unchanged since no phrase completes).
+        t = "I want to draw a graph to show the plot to my editor."
+        assert _streamed_text([t[i:i+2] for i in range(0, len(t), 2)]) == t
+
+    def test_failsafe_does_not_duplicate(self, monkeypatch):
+        # force the guard to raise; the delta must be emitted exactly ONCE, not twice.
+        import app.services.stream_events as se
+        em = AgUiEmitter("t", "m")
+        em.text_delta("Hello ")  # settles "Hello "
+        monkeypatch.setattr(em, "_split_settled", lambda buf: (_ for _ in ()).throw(RuntimeError("boom")))
+        lines = em.text_delta("world")
+        emitted = "".join(_parse(l)["delta"] for l in lines if _parse(l).get("type") == "TEXT_MESSAGE_CONTENT")
+        assert emitted == "world"  # exactly once (buffer was empty after "Hello " settled)

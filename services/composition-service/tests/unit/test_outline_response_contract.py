@@ -17,7 +17,7 @@ from app.mcp.server import _OUTLINE_REF_FIELDS
 
 def _node(**over) -> dict:
     base = dict(
-        id=uuid4(), user_id=uuid4(), project_id=uuid4(), parent_id=None,
+        id=uuid4(), created_by=uuid4(), project_id=uuid4(), book_id=uuid4(), parent_id=None,
         kind="scene", rank="a0", title="A scene", goal="do the thing",
         status="drafting", synopsis="x" * 500, version=4, story_order=1,
     )

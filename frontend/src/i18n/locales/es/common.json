@@ -1,8 +1,10 @@
 {
+  "reconnecting": "Reconectando…",
   "nav": {
     "startNew": "Empezar algo nuevo",
     "workspace": "Espacio de trabajo",
     "chat": "Chat",
+    "assistant": "Asistente",
     "roleplay": "Roleplay",
     "knowledge": "Conocimiento",
     "worlds": "Mundos",
@@ -25,7 +27,8 @@
     "home": "Inicio",
     "account": "Cuenta",
     "signin": "Iniciar sesión",
-    "back_to_book": "Volver al libro"
+    "back_to_book": "Volver al libro",
+    "more": "Más"
   },
   "logout_confirm": {
     "title": "¿Cerrar sesión con cambios sin guardar?",

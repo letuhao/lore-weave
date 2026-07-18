@@ -87,7 +87,7 @@ async def _run(**overrides):
         session_id="s1",
         project_id="p1",
         caller_max_iterations=20,
-        approval_check=None,
+        decision_check=None,
         hooks=None,
         effective_limit=None,
         subagent_depth=0,

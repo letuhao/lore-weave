@@ -14,9 +14,12 @@ interface AttrCardProps {
   hasTranslations?: boolean;
   /** Rendered below the main field when a translation language is selected */
   translationSlot?: ReactNode;
+  /** S-06 — remove this value ROW entirely (distinct from blanking it). Absent ⇒ no remove
+   *  button (system/structural attrs, or a read-only context). */
+  onRemove?: () => void;
 }
 
-export function AttrCard({ name, code, fieldType, isSystem, isRequired, modified, children, hasTranslations, translationSlot }: AttrCardProps) {
+export function AttrCard({ name, code, fieldType, isSystem, isRequired, modified, children, hasTranslations, translationSlot, onRemove }: AttrCardProps) {
   const { t } = useTranslation('entityEditor');
   return (
     <div className={cn(
@@ -35,7 +38,21 @@ export function AttrCard({ name, code, fieldType, isSystem, isRequired, modified
           {modified && <span className="rounded bg-warning/8 px-1.5 py-0.5 text-[9px] text-warning">{t('attr_card.modified')}</span>}
           {hasTranslations && <span className="h-1.5 w-1.5 rounded-full bg-blue-400" title={t('attr_card.has_translations')} />}
         </div>
-        <span className="font-mono text-[9px] text-muted-foreground">{code} · {fieldType}</span>
+        <div className="flex items-center gap-2">
+          <span className="font-mono text-[9px] text-muted-foreground">{code} · {fieldType}</span>
+          {onRemove && (
+            <button
+              type="button"
+              onClick={onRemove}
+              title={t('attr_card.remove', { defaultValue: 'Remove this value' })}
+              aria-label={t('attr_card.remove', { defaultValue: 'Remove this value' })}
+              data-testid="attr-card-remove"
+              className="text-muted-foreground transition-colors hover:text-destructive"
+            >
+              ✕
+            </button>
+          )}
+        </div>
       </div>
       <div className="px-3.5 py-2.5">
         {children}

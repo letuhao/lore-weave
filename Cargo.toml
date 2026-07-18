@@ -76,6 +76,10 @@ members = [
     # Q-L6-1 the gateway WS impl lives in NestJS api-gateway-bff; this
     # crate is server-LIB types only (no Rust WS server).
     "crates/contracts-ws",
+    # ACP A3 (2026-07-16) — typed Rust mirror of the Agent Control Plane contracts
+    # (working-memory/charter). roleplay-service produces its seed via these structs
+    # instead of hand-rolled JSON; a schema-conformance test proves both-sides agreement.
+    "crates/contracts-agent-control",
     # Cycle 14 — L3.D per-aggregate parallel rebuilder. Consumes
     # `dp-kernel::Projection` + `ProjectionRunner` (cycle 12) to replay events
     # from the L2.A event log into the cycle-13 projection tables. Used by

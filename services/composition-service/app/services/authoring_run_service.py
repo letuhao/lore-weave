@@ -102,6 +102,7 @@ import asyncpg
 from app.config import settings
 from app.db.models import AuthoringRun, AuthoringRunUnit
 from app.db.repositories.authoring_runs import AuthoringRunsRepo, AuthoringRunUnitsRepo
+from app.db.repositories.generation_corrections import GenerationCorrectionsRepo
 from app.db.repositories.plan_runs import PlanRunsRepo
 
 logger = logging.getLogger(__name__)
@@ -200,17 +201,21 @@ class DraftOutcome:
     ok: bool
     cost_usd: Decimal = Decimal("0")
     error: str | None = None
+    # BE-9a: the generation_job that produced this unit's draft. Persisted onto the unit so accept/
+    # reject can attach a generation_correction to it. None when the engine returned no job id.
+    job_id: UUID | None = None
 
 
 class DraftingSeam(Protocol):
-    """ONE callable seam per chapter unit: draft chapter C of book B for
-    owner U under the run's params (model ref etc.). Implementations must
-    never raise — report failure via DraftOutcome (the driver fail-stops)."""
+    """ONE callable seam per chapter unit: draft chapter C of book B AS the
+    run's `created_by` actor (spend attribution + bearer identity) under the
+    run's params (model ref etc.). Implementations must never raise — report
+    failure via DraftOutcome (the driver fail-stops)."""
 
     async def draft_chapter(
         self,
         *,
-        owner_user_id: UUID,
+        created_by: UUID,
         book_id: UUID,
         chapter_id: UUID,
         plan_run_id: UUID,
@@ -226,7 +231,7 @@ class RevisionCapture(Protocol):
     best-effort (the draft landed; the report just loses its diff anchor)."""
 
     async def latest_revision_id(
-        self, *, owner_user_id: UUID, book_id: UUID, chapter_id: UUID,
+        self, *, created_by: UUID, book_id: UUID, chapter_id: UUID,
     ) -> UUID | None: ...
 
 
@@ -238,16 +243,17 @@ class BookRevisionCapture:
     current draft content — captured before the seam it is the pre-run restore
     point, captured after it is the run's own draft. The driver runs headless
     (no caller request in flight), so we mint a short-lived service bearer for
-    the run OWNER (actions.py precedent — book-service still enforces the real
-    grant boundary on the JWT `sub`)."""
+    the run's CREATOR (`created_by` — the stored actor stamp; actions.py
+    precedent — book-service still enforces the real grant boundary on the JWT
+    `sub`)."""
 
     async def latest_revision_id(
-        self, *, owner_user_id: UUID, book_id: UUID, chapter_id: UUID,
+        self, *, created_by: UUID, book_id: UUID, chapter_id: UUID,
     ) -> UUID | None:
         from app.clients.book_client import get_book_client
         from app.mcp.service_bearer import mint_service_bearer
 
-        bearer = mint_service_bearer(owner_user_id, settings.jwt_secret)
+        bearer = mint_service_bearer(created_by, settings.jwt_secret)
         body = await get_book_client().list_revisions(
             book_id, chapter_id, bearer, limit=1,
         )
@@ -270,7 +276,7 @@ class EngineDraftingSeam:
     async def draft_chapter(
         self,
         *,
-        owner_user_id: UUID,
+        created_by: UUID,
         book_id: UUID,
         chapter_id: UUID,
         plan_run_id: UUID,
@@ -312,8 +318,9 @@ class EngineDraftingSeam:
         works = WorksRepo(pool)
         jobs = GenerationJobsRepo(pool)
         # The engine is keyed on the Work's knowledge project_id (works.get
-        # filters project_id) — resolve the book's single marked Work.
-        marked = await works.resolve_by_book(owner_user_id, book_id)
+        # filters project_id) — resolve the book's single marked Work (PM-9:
+        # caller-independent; the canonical Work is THE book's Work).
+        marked = await works.resolve_by_book(book_id)
         if len(marked) != 1 or marked[0].project_id is None:
             return DraftOutcome(
                 ok=False,
@@ -324,7 +331,7 @@ class EngineDraftingSeam:
         # Generation can run for minutes and the chapter path REUSES the bearer
         # to persist the draft afterwards — mint a generous TTL (actions.py).
         bearer = mint_service_bearer(
-            owner_user_id, settings.jwt_secret,
+            created_by, settings.jwt_secret,
             ttl=settings.authoring_draft_bearer_ttl_secs,
         )
         try:
@@ -359,7 +366,7 @@ class EngineDraftingSeam:
         try:
             resp = await engine_router.generate_chapter(
                 project_id, chapter_id, body,
-                user_id=owner_user_id, bearer=bearer, **deps,
+                user_id=created_by, bearer=bearer, **deps,
             )
         except HTTPException as exc:
             return DraftOutcome(ok=False, error=f"engine {exc.status_code}: {exc.detail}")
@@ -376,29 +383,34 @@ class EngineDraftingSeam:
 
         if status == "pending" and job_id_raw:
             # Worker path (202) — poll the generation_job to terminal.
-            return await self._poll_job(jobs, owner_user_id, UUID(str(job_id_raw)))
+            return await self._poll_job(jobs, project_id, UUID(str(job_id_raw)))
         if status == "completed":
             cost = Decimal("0")
-            if job_id_raw:
-                job = await jobs.get(owner_user_id, UUID(str(job_id_raw)))
-                if job is not None:
+            job_id = UUID(str(job_id_raw)) if job_id_raw else None
+            if job_id is not None:
+                # `jobs.get` is bare-id since the 25 re-key — re-scope the loaded row to
+                # this run's Work partition (worker-loaded-id-needs-parent-scoping).
+                job = await jobs.get(job_id)
+                if job is not None and job.project_id == project_id:
                     cost = job.cost_usd or Decimal("0")
-            return DraftOutcome(ok=True, cost_usd=cost)
+            return DraftOutcome(ok=True, cost_usd=cost, job_id=job_id)  # BE-9a: carry the job id
         return DraftOutcome(ok=False, error=f"engine returned status={status or 'unknown'}")
 
     @staticmethod
-    async def _poll_job(jobs: Any, owner_user_id: UUID, job_id: UUID) -> DraftOutcome:
+    async def _poll_job(jobs: Any, project_id: UUID, job_id: UUID) -> DraftOutcome:
         interval = settings.authoring_job_poll_secs
         deadline = settings.authoring_job_poll_timeout_secs
         waited = 0.0
         while waited < deadline:
             await asyncio.sleep(interval)
             waited += interval
-            job = await jobs.get(owner_user_id, job_id)
-            if job is None:
+            # Bare-id load (25 re-key): a job outside this run's partition is treated as
+            # absent — never polled, never billed against this run.
+            job = await jobs.get(job_id)
+            if job is None or job.project_id != project_id:
                 return DraftOutcome(ok=False, error=f"generation job {job_id} vanished")
             if job.status == "completed":
-                return DraftOutcome(ok=True, cost_usd=job.cost_usd or Decimal("0"))
+                return DraftOutcome(ok=True, cost_usd=job.cost_usd or Decimal("0"), job_id=job_id)  # BE-9a
             if job.status in ("failed", "cancelled"):
                 err = (job.result or {}).get("error", job.status)
                 return DraftOutcome(ok=False, error=f"generation job {job.status}: {err}")
@@ -440,15 +452,16 @@ class CriticVerdict:
 
 class CriticSeam(Protocol):
     """ONE callable per drafted chapter unit (mirrors DraftingSeam): judge the
-    continuity/craft of chapter C of book B for owner U under the run's params.
-    Implementations must never raise — report failure via a 'warn' verdict
-    ('critic unavailable'); the driver additionally guards (a critic failure is
-    NEVER fatal to the run — 07S: the report just shows the gap)."""
+    continuity/craft of chapter C of book B AS the run's `created_by` actor
+    under the run's params. Implementations must never raise — report failure
+    via a 'warn' verdict ('critic unavailable'); the driver additionally guards
+    (a critic failure is NEVER fatal to the run — 07S: the report just shows
+    the gap)."""
 
     async def critique(
         self,
         *,
-        owner_user_id: UUID,
+        created_by: UUID,
         book_id: UUID,
         chapter_id: UUID,
         plan_run_id: UUID,
@@ -501,9 +514,10 @@ class EngineCriticSeam:
     canon_consistency + per-rule canon violations; the same judge the Quality
     Report endpoint runs, routers/plan.py quality_report_endpoint) invoked
     IN-PROCESS the way EngineDraftingSeam invokes the chapter engine: deferred
-    imports, a minted service bearer for the run OWNER (book-service still
-    enforces the real grant boundary on the JWT `sub`), the chapter's CURRENT
-    draft fetched via BookClient.get_draft → tiptap_doc_to_text.
+    imports, a minted service bearer for the run's CREATOR (`created_by` —
+    book-service still enforces the real grant boundary on the JWT `sub`), the
+    chapter's CURRENT draft fetched via BookClient.get_draft →
+    tiptap_doc_to_text.
 
     Model: params.critic_model_ref when set — anti-self-reinforcement (§4,
     engine/critic.py header: the critic model SHOULD differ from the drafter) —
@@ -526,7 +540,7 @@ class EngineCriticSeam:
     async def critique(
         self,
         *,
-        owner_user_id: UUID,
+        created_by: UUID,
         book_id: UUID,
         chapter_id: UUID,
         plan_run_id: UUID,
@@ -534,7 +548,7 @@ class EngineCriticSeam:
     ) -> CriticVerdict:
         try:
             return await self._critique(
-                owner_user_id=owner_user_id, book_id=book_id,
+                created_by=created_by, book_id=book_id,
                 chapter_id=chapter_id, params=params,
             )
         except Exception as exc:  # noqa: BLE001 — seam contract: never raise
@@ -547,7 +561,7 @@ class EngineCriticSeam:
     async def _critique(
         self,
         *,
-        owner_user_id: UUID,
+        created_by: UUID,
         book_id: UUID,
         chapter_id: UUID,
         params: dict[str, Any],
@@ -573,7 +587,7 @@ class EngineCriticSeam:
             or "user_model"
         )
 
-        bearer = mint_service_bearer(owner_user_id, settings.jwt_secret)
+        bearer = mint_service_bearer(created_by, settings.jwt_secret)
         draft = await get_book_client().get_draft(book_id, chapter_id, bearer)
         text = tiptap_doc_to_text(
             draft.get("body") or draft.get("doc") or draft.get("content")
@@ -588,7 +602,7 @@ class EngineCriticSeam:
         # language) from the book's marked Work — 'auto' when unresolvable.
         profile = BookProfile()
         try:
-            marked = await WorksRepo(get_pool()).resolve_by_book(owner_user_id, book_id)
+            marked = await WorksRepo(get_pool()).resolve_by_book(book_id)
             if len(marked) == 1:
                 profile = from_settings(marked[0].settings)
         except Exception:  # noqa: BLE001 — language resolve is best-effort
@@ -596,7 +610,7 @@ class EngineCriticSeam:
                          exc_info=True)
 
         critique = await judge_prose(
-            get_llm_client(), user_id=str(owner_user_id),
+            get_llm_client(), user_id=str(created_by),
             model_source=model_source, model_ref=str(model_ref),
             passage=text, active_rules=[], present_facts=[], profile=profile,
         )
@@ -625,12 +639,17 @@ class AuthoringRunService:
         driver_id: str | None = None,
         critic: CriticSeam | None = None,
         late_restore: RestoreFn | None = None,
+        corrections: GenerationCorrectionsRepo | None = None,
     ) -> None:
         self._runs = runs
         self._plan_runs = plan_runs
         self._seam = seam
         self._units = units
         self._revisions = revisions
+        # BE-9b: the human-gate correction capture. A reject on a drafted unit IS a `kind='reject'`
+        # correction on that unit's generation_job — the taste signal the corrections panel + learning
+        # consume. Fire-and-forget (None → skip; a failed capture NEVER blocks the review).
+        self._corrections = corrections
         # D4 late-swallow content restore (None → the real book-service restore
         # with a minted service bearer; tests inject a spy): when a seam result
         # lands after close/fail, the engine ALREADY persisted the draft into
@@ -651,7 +670,7 @@ class AuthoringRunService:
 
     async def create(
         self,
-        owner_user_id: UUID,
+        created_by: UUID,
         book_id: UUID,
         *,
         plan_run_id: UUID,
@@ -663,9 +682,11 @@ class AuthoringRunService:
         background: bool = False,
         pause_after_each_unit: bool = True,
     ) -> AuthoringRun:
-        """Create the run in `draft`. Deliberately permissive — ALL semantic
-        validation happens at gate() (the start-gate is the enforcement point);
-        only the referenced plan_run must exist+be owned (FK + tenancy).
+        """Create the run in `draft`, stamped `created_by` = the acting caller
+        (a plain actor stamp — never filtered on; the route already E0-gated
+        EDIT on the book). Deliberately permissive — ALL semantic validation
+        happens at gate() (the start-gate is the enforcement point); only the
+        referenced plan_run must exist on this book (FK + book scope).
         `background` (D4): a pure FE display/filter flag surfaced in GET/list —
         sweep-resume durability applies to BOTH fg and bg runs; the real fg/bg
         UX is FE-side later. `pause_after_each_unit` (D-AGENT-MODE §20 D4):
@@ -673,11 +694,11 @@ class AuthoringRunService:
         column default); the REST router's Pydantic model also defaults it True
         for the human path, and the MCP create tool requires it explicitly (no
         silent default there — D4b)."""
-        plan = await self._plan_runs.get_for_owner(owner_user_id, book_id, plan_run_id)
+        plan = await self._plan_runs.get_for_book(book_id, plan_run_id)
         if plan is None:
             raise LookupError("plan run not found")
         return await self._runs.create(
-            owner_user_id, book_id,
+            created_by, book_id,
             plan_run_id=plan_run_id, level=level, scope=scope,
             budget_usd=budget_usd, tool_allowlist=tool_allowlist,
             params=params or {}, background=background,
@@ -685,24 +706,22 @@ class AuthoringRunService:
         )
 
     async def set_pause_policy(
-        self, owner_user_id: UUID, run_id: UUID, pause_after_each_unit: bool,
+        self, run_id: UUID, pause_after_each_unit: bool,
     ) -> AuthoringRun:
         """D-AGENT-MODE §20 D4a: flip the auto-pause-after-each-unit policy —
         allowed at any status except `closed` (a run-header toggle, not itself
-        an FSM transition)."""
-        run = await self._require(owner_user_id, run_id)
+        an FSM transition). Access was decided at the route (creator + EDIT
+        gate on the run's book)."""
+        run = await self._require(run_id)
         if run.status == "closed":
             raise TransitionConflictError("cannot change pause policy on a closed run")
-        updated = await self._runs.set_pause_policy(
-            owner_user_id, run_id, pause_after_each_unit,
-        )
+        updated = await self._runs.set_pause_policy(run_id, pause_after_each_unit)
         if updated is None:
             raise TransitionConflictError("run closed while updating pause policy (raced)")
         return updated
 
     async def gate(
         self,
-        owner_user_id: UUID,
         run_id: UUID,
         *,
         book_chapter_ids: set[str],
@@ -711,15 +730,13 @@ class AuthoringRunService:
         resolves `book_chapter_ids` (the book's active chapter-id set, via
         BookClient.list_chapters with the caller's bearer) so this stays
         unit-testable without HTTP."""
-        run = await self._runs.get_for_owner(owner_user_id, run_id)
+        run = await self._runs.get_by_id(run_id)
         if run is None:
             raise LookupError("run not found")
         if run.status != "draft":
             raise TransitionConflictError(f"gate requires status=draft, run is {run.status}")
 
-        plan = await self._plan_runs.get_for_owner(
-            owner_user_id, run.book_id, run.plan_run_id,
-        )
+        plan = await self._plan_runs.get_for_book(run.book_id, run.plan_run_id)
         if plan is None:
             raise ValueError("plan run not found")
         if plan.status not in _APPROVED_PLAN_STATUSES:
@@ -762,7 +779,7 @@ class AuthoringRunService:
 
         try:
             gated = await self._runs.transition(
-                owner_user_id, run_id,
+                run_id,
                 from_statuses=("draft",), to_status="gated",
             )
         except asyncpg.UniqueViolationError as exc:  # scope fence (edge #11)
@@ -773,52 +790,52 @@ class AuthoringRunService:
             raise TransitionConflictError("run left draft while gating (raced)")
         return gated
 
-    async def start(self, owner_user_id: UUID, run_id: UUID) -> AuthoringRun:
-        run = await self._require(owner_user_id, run_id)
+    async def start(self, run_id: UUID) -> AuthoringRun:
+        run = await self._require(run_id)
         # D4: the →running transition CLAIMS the run for this driver (driver_id
         # + heartbeat) in the same guarded UPDATE — no running-but-unclaimed gap.
         started = await self._runs.transition(
-            owner_user_id, run_id, from_statuses=("gated",), to_status="running",
+            run_id, from_statuses=("gated",), to_status="running",
             claim_driver_id=self._driver_id,
         )
         if started is None:
             raise TransitionConflictError(f"start requires status=gated, run is {run.status}")
-        if not self._spawn_driver(owner_user_id, run_id):
+        if not self._spawn_driver(run_id):
             # Deferred at the inflight cap: NULL the just-claimed heartbeat so
             # the NEXT sweep can pick the run up — a fresh heartbeat would make
             # it invisible to sweepers for the whole stale window.
             await self._runs.release_claim(run_id, self._driver_id)
         return started
 
-    async def pause(self, owner_user_id: UUID, run_id: UUID) -> AuthoringRun:
-        run = await self._require(owner_user_id, run_id)
+    async def pause(self, run_id: UUID) -> AuthoringRun:
+        run = await self._require(run_id)
         paused = await self._runs.transition(
-            owner_user_id, run_id, from_statuses=("running",), to_status="paused",
+            run_id, from_statuses=("running",), to_status="paused",
         )
         if paused is None:
             raise TransitionConflictError(f"pause requires status=running, run is {run.status}")
         return paused
 
-    async def resume(self, owner_user_id: UUID, run_id: UUID) -> AuthoringRun:
-        run = await self._require(owner_user_id, run_id)
+    async def resume(self, run_id: UUID) -> AuthoringRun:
+        run = await self._require(run_id)
         resumed = await self._runs.transition(
-            owner_user_id, run_id, from_statuses=("paused",), to_status="running",
+            run_id, from_statuses=("paused",), to_status="running",
             claim_driver_id=self._driver_id,
         )
         if resumed is None:
             raise TransitionConflictError(f"resume requires status=paused, run is {run.status}")
-        if not self._spawn_driver(owner_user_id, run_id):
+        if not self._spawn_driver(run_id):
             await self._runs.release_claim(run_id, self._driver_id)  # see start()
         return resumed
 
-    async def close(self, owner_user_id: UUID, run_id: UUID) -> AuthoringRun:
+    async def close(self, run_id: UUID) -> AuthoringRun:
         """Terminal close. Allowed from every non-running state (a running run
         must be paused first — the driver owns it). Closing a gated/paused run
         releases the book's scope fence (the partial index only covers
         gated/running/paused)."""
-        run = await self._require(owner_user_id, run_id)
+        run = await self._require(run_id)
         closed = await self._runs.transition(
-            owner_user_id, run_id,
+            run_id,
             from_statuses=("draft", "gated", "paused", "failed", "report_ready"),
             to_status="closed",
         )
@@ -826,26 +843,27 @@ class AuthoringRunService:
             raise TransitionConflictError(f"close not allowed from status {run.status}")
         return closed
 
-    async def get(self, owner_user_id: UUID, run_id: UUID) -> AuthoringRun | None:
-        return await self._runs.get_for_owner(owner_user_id, run_id)
+    async def get(self, run_id: UUID) -> AuthoringRun | None:
+        """By-id load (OQ-3 load-then-gate): the ROUTE must E0-gate the caller
+        on the returned run's book_id (VIEW for reads; EDIT/creator or the
+        OWNER escalation for mutations) before acting — OwnershipError → 404,
+        no existence oracle."""
+        return await self._runs.get_by_id(run_id)
 
     async def list(
-        self, owner_user_id: UUID, book_id: UUID, *, limit: int = 20,
+        self, book_id: UUID, *, limit: int = 20,
     ) -> list[AuthoringRun]:
-        return await self._runs.list_for_owner(owner_user_id, book_id, limit=limit)
+        """Book-wide list — the route gates VIEW on book_id (OQ-3: every
+        grantee sees the book's runs, whoever created them)."""
+        return await self._runs.list_for_book(book_id, limit=limit)
 
-    async def _require(self, owner_user_id: UUID, run_id: UUID) -> AuthoringRun:
-        run = await self._runs.get_for_owner(owner_user_id, run_id)
+    async def _require(self, run_id: UUID) -> AuthoringRun:
+        run = await self._runs.get_by_id(run_id)
         if run is None:
             raise LookupError("run not found")
         return run
 
     # ── D3 Run Report + dependency-ordered review ──────────────────────────
-
-    async def get_any(self, run_id: UUID) -> AuthoringRun | None:
-        """UNSCOPED — Run Report route only; the router grant-gates VIEW on
-        run.book_id before using it (OwnershipError → 404, no oracle)."""
-        return await self._runs.get_by_id(run_id)
 
     async def unit_report(self, run: AuthoringRun) -> list[dict[str, Any]]:
         """Per-unit report rows over the FULL scope (un-attempted units are
@@ -886,20 +904,21 @@ class AuthoringRunService:
         return rows
 
     async def accept_unit(
-        self, owner_user_id: UUID, run_id: UUID, unit_index: int,
+        self, run_id: UUID, unit_index: int,
     ) -> AuthoringRunUnit:
-        """Owner-only guarded drafted→accepted."""
-        run = await self._require(owner_user_id, run_id)
+        """Guarded drafted→accepted (route-gated: run creator + EDIT on the
+        run's book)."""
+        run = await self._require(run_id)
         if run.status not in _REVIEWABLE_STATUSES:
             raise TransitionConflictError(
                 f"review requires run status in {_REVIEWABLE_STATUSES}, run is {run.status}"
             )
         unit = await self._units.transition_unit(
-            owner_user_id, run_id, unit_index,
+            run_id, unit_index,
             from_statuses=("drafted",), to_status="accepted",
         )
         if unit is None:
-            existing = await self._units.get_for_owner(owner_user_id, run_id, unit_index)
+            existing = await self._units.get_for_run(run_id, unit_index)
             if existing is None:
                 raise LookupError("unit not found")
             raise TransitionConflictError(
@@ -908,22 +927,23 @@ class AuthoringRunService:
         return unit
 
     async def reject_unit(
-        self, owner_user_id: UUID, run_id: UUID, unit_index: int, *, restore: RestoreFn,
+        self, run_id: UUID, unit_index: int, *, restore: RestoreFn,
     ) -> tuple[AuthoringRunUnit, list[int], bool]:
-        """Owner-only guarded drafted→rejected. When the unit pinned a
-        pre_revision_id, the chapter is FIRST rolled back via `restore` (the
-        router binds BookClient.restore_revision with the CALLER's bearer); a
-        restore failure propagates (→502) with the unit LEFT drafted — never
-        mark rejected without the actual revert. pre_revision_id=None (chapter
-        had no revisions before the run) → reject without a restore, flagged by
+        """Guarded drafted→rejected (route-gated: run creator + EDIT on the
+        run's book). When the unit pinned a pre_revision_id, the chapter is
+        FIRST rolled back via `restore` (the router binds
+        BookClient.restore_revision with the CALLER's bearer); a restore
+        failure propagates (→502) with the unit LEFT drafted — never mark
+        rejected without the actual revert. pre_revision_id=None (chapter had
+        no revisions before the run) → reject without a restore, flagged by
         reverted=False. Returns (unit, downstream drafted/accepted indexes for
         the cascade_warning — edge #3, v1 warns only, no auto-reject)."""
-        run = await self._require(owner_user_id, run_id)
+        run = await self._require(run_id)
         if run.status not in _REVIEWABLE_STATUSES:
             raise TransitionConflictError(
                 f"review requires run status in {_REVIEWABLE_STATUSES}, run is {run.status}"
             )
-        unit = await self._units.get_for_owner(owner_user_id, run_id, unit_index)
+        unit = await self._units.get_for_run(run_id, unit_index)
         if unit is None:
             raise LookupError("unit not found")
         if unit.status != "drafted":
@@ -935,28 +955,40 @@ class AuthoringRunService:
             await restore(run.book_id, unit.chapter_id, unit.pre_revision_id)
             reverted = True
         rejected = await self._units.transition_unit(
-            owner_user_id, run_id, unit_index,
+            run_id, unit_index,
             from_statuses=("drafted",), to_status="rejected",
         )
         if rejected is None:
             raise TransitionConflictError("unit left drafted while rejecting (raced)")
+        # BE-9b: a reject is a textbook `kind='reject'` correction on the unit's draft job — the
+        # human-gate taste signal (previously thrown away every time). Fire-and-forget: a null job_id
+        # (pre-BE-9a unit) records nothing (never backfill a guess), and a capture failure NEVER blocks
+        # the review it rides on. Actor = the run's owner (the reviewer of their own run).
+        if self._corrections is not None and unit.job_id is not None:
+            try:
+                await self._corrections.record_for_job(
+                    unit.job_id, created_by=run.created_by, kind="reject",
+                )
+            except Exception:  # noqa: BLE001 — telemetry must never fail the reject
+                logger.warning("BE-9b: reject-correction capture failed", exc_info=True)
         cascade = [
             u.unit_index
-            for u in await self._units.list_for_owner(owner_user_id, run_id)
+            for u in await self._units.list_for_run(run_id)
             if u.unit_index > unit_index and u.status in ("drafted", "accepted")
         ]
         return rejected, cascade, reverted
 
     async def revert_all(
-        self, owner_user_id: UUID, run_id: UUID, *, restore: RestoreFn,
+        self, run_id: UUID, *, restore: RestoreFn,
     ) -> dict[str, Any]:
-        """Owner-only: reject EVERY drafted/accepted unit in REVERSE unit order
-        (downstream first — the sequentially-threaded restores unwind cleanly).
-        First restore failure STOPS the sweep; the result reports which units
-        reverted and which failed (run left as-is). Full success → run closed
-        (for a paused run that also releases the book's scope fence — the
-        partial index covers gated/running/paused)."""
-        run = await self._require(owner_user_id, run_id)
+        """Reject EVERY drafted/accepted unit in REVERSE unit order (downstream
+        first — the sequentially-threaded restores unwind cleanly; route-gated:
+        run creator + EDIT on the run's book). First restore failure STOPS the
+        sweep; the result reports which units reverted and which failed (run
+        left as-is). Full success → run closed (for a paused run that also
+        releases the book's scope fence — the partial index covers
+        gated/running/paused)."""
+        run = await self._require(run_id)
         if run.status not in _REVIEWABLE_STATUSES:
             raise TransitionConflictError(
                 f"revert-all requires run status in {_REVIEWABLE_STATUSES}, "
@@ -964,7 +996,7 @@ class AuthoringRunService:
             )
         targets = sorted(
             (
-                u for u in await self._units.list_for_owner(owner_user_id, run_id)
+                u for u in await self._units.list_for_run(run_id)
                 if u.status in ("drafted", "accepted")
             ),
             key=lambda u: u.unit_index,
@@ -988,7 +1020,7 @@ class AuthoringRunService:
                         "closed": False,
                     }
             updated = await self._units.transition_unit(
-                owner_user_id, run_id, u.unit_index,
+                run_id, u.unit_index,
                 from_statuses=("drafted", "accepted"), to_status="rejected",
             )
             if updated is not None:
@@ -996,7 +1028,7 @@ class AuthoringRunService:
             # None = raced away (already rejected) — the restore was applied or
             # already done; treat as unwound and continue.
         closed = await self._runs.transition(
-            owner_user_id, run_id,
+            run_id,
             from_statuses=_REVIEWABLE_STATUSES, to_status="closed",
         )
         return {
@@ -1013,11 +1045,13 @@ class AuthoringRunService:
     def _live_driver_count() -> int:
         return sum(1 for t in _DRIVER_TASKS.values() if not t.done())
 
-    def _spawn_driver(self, owner_user_id: UUID, run_id: UUID) -> bool:
+    def _spawn_driver(self, run_id: UUID) -> bool:
         """Spawn the per-run driver task, respecting DRIVER_MAX_INFLIGHT.
         Returns False when the cap is hit — the run stays `running` unclaimed
         (its heartbeat goes stale) and the periodic sweep resumes it once a
-        slot frees; durability, not loss."""
+        slot frees; durability, not loss. The driver reads its acting identity
+        from the claimed row's `created_by` stamp (F7 spirit: a resumed drive
+        runs AS the row's actor)."""
         if run_id in _DRIVER_TASKS and not _DRIVER_TASKS[run_id].done():
             return True  # already driving (resume raced a live task)
         if self._live_driver_count() >= settings.authoring_driver_max_inflight:
@@ -1028,7 +1062,7 @@ class AuthoringRunService:
                 settings.authoring_driver_max_inflight,
             )
             return False
-        task = asyncio.create_task(self._drive_safe(owner_user_id, run_id))
+        task = asyncio.create_task(self._drive_safe(run_id))
         _DRIVER_TASKS[run_id] = task
         task.add_done_callback(lambda _t: _DRIVER_TASKS.pop(run_id, None))
         return True
@@ -1054,21 +1088,21 @@ class AuthoringRunService:
                 "authoring sweep: re-claimed stale run %s (unit %d/%d) — resuming",
                 run.run_id, run.current_unit, len(run.scope),
             )
-            if not self._spawn_driver(run.owner_user_id, run.run_id):
+            if not self._spawn_driver(run.run_id):
                 # Lost a capacity race since the claim — hand the run back
                 # (NULL heartbeat) so the next sweep retries immediately.
                 await self._runs.release_claim(run.run_id, self._driver_id)
         return claimed
 
-    async def _drive_safe(self, owner_user_id: UUID, run_id: UUID) -> None:
+    async def _drive_safe(self, run_id: UUID) -> None:
         try:
-            await self.run_driver(owner_user_id, run_id)
+            await self.run_driver(run_id)
         except asyncio.CancelledError:
             raise
         except Exception:  # noqa: BLE001 — a driver crash must land as failed, not vanish
             logger.exception("authoring driver crashed for run %s", run_id)
             failed = await self._runs.transition(
-                owner_user_id, run_id,
+                run_id,
                 from_statuses=("running",), to_status="failed",
                 breaker_state={"reason": "driver_crashed"},
                 error_message="driver crashed — see service logs",
@@ -1076,21 +1110,22 @@ class AuthoringRunService:
             if failed is not None:
                 await self._notify_terminal(failed)
 
-    async def run_driver(self, owner_user_id: UUID, run_id: UUID) -> None:
+    async def run_driver(self, run_id: UUID) -> None:
         """Sequential per-unit loop. Each iteration re-CLAIMS the row (D4:
         guarded heartbeat bump — status='running' AND driver_id=mine) so an
         external pause/fail/close, or a sweep steal after a stale heartbeat,
-        stops the driver at the unit boundary BEFORE the next seam call."""
+        stops the driver at the unit boundary BEFORE the next seam call. The
+        acting identity is the claimed row's `created_by` stamp — seams,
+        bearers, and spend all run AS the run's creator (F7 spirit)."""
         while True:
-            run = await self._runs.heartbeat_claim(
-                owner_user_id, run_id, self._driver_id,
-            )
+            run = await self._runs.heartbeat_claim(run_id, self._driver_id)
             if run is None:
                 return  # paused/failed/closed externally, or claimed away — stop
+            actor = run.created_by
             scope = run.scope
             if run.current_unit >= len(scope):
                 ready = await self._runs.transition(
-                    owner_user_id, run_id,
+                    run_id,
                     from_statuses=("running",), to_status="report_ready",
                 )
                 if ready is not None:  # terminal for the driver → notify (D4)
@@ -1098,7 +1133,7 @@ class AuthoringRunService:
                 return
             if run.spent_usd >= run.budget_usd:
                 paused = await self._runs.transition(
-                    owner_user_id, run_id,
+                    run_id,
                     from_statuses=("running",), to_status="paused",
                     breaker_state={
                         "reason": "budget",
@@ -1118,33 +1153,32 @@ class AuthoringRunService:
             # draft a chapter whose rollback spine could not be pinned.
             try:
                 pre_rev = await self._revisions.latest_revision_id(
-                    owner_user_id=owner_user_id,
+                    created_by=actor,
                     book_id=run.book_id,
                     chapter_id=chapter_id,
                 )
             except Exception as exc:  # noqa: BLE001 — capture seam, fail the unit
                 error = f"pre-revision capture failed: {exc}"
                 await self._units.upsert_pending(
-                    owner_user_id, run_id, run.current_unit, chapter_id,
+                    run_id, run.current_unit, chapter_id,
                     pre_revision_id=None,
                 )
-                await self._fail_unit(owner_user_id, run_id, run.current_unit,
-                                      chapter_id, error)
+                await self._fail_unit(run_id, run.current_unit, chapter_id, error)
                 return
             await self._units.upsert_pending(
-                owner_user_id, run_id, run.current_unit, chapter_id,
+                run_id, run.current_unit, chapter_id,
                 pre_revision_id=pre_rev,
             )
             outcome = await self._seam.draft_chapter(
-                owner_user_id=owner_user_id,
+                created_by=actor,
                 book_id=run.book_id,
                 chapter_id=chapter_id,
                 plan_run_id=run.plan_run_id,
                 params=run.params,
             )
             if not outcome.ok:
-                await self._fail_unit(owner_user_id, run_id, run.current_unit,
-                                      chapter_id, outcome.error or "")
+                await self._fail_unit(run_id, run.current_unit, chapter_id,
+                                      outcome.error or "")
                 return
             cost = outcome.cost_usd if outcome.cost_usd and outcome.cost_usd > 0 else (
                 Decimal(str(settings.authoring_unit_estimate_usd))
@@ -1154,7 +1188,7 @@ class AuthoringRunService:
             post_rev: UUID | None = None
             try:
                 post_rev = await self._revisions.latest_revision_id(
-                    owner_user_id=owner_user_id,
+                    created_by=actor,
                     book_id=run.book_id,
                     chapter_id=chapter_id,
                 )
@@ -1171,8 +1205,8 @@ class AuthoringRunService:
             # sweep-STOLEN mid-flight must leave the unit row entirely to the
             # new driver (its re-run owns it).
             drafted = await self._units.mark_drafted(
-                owner_user_id, run_id, run.current_unit,
-                post_revision_id=post_rev, cost_usd=cost,
+                run_id, run.current_unit,
+                post_revision_id=post_rev, cost_usd=cost, job_id=outcome.job_id,  # BE-9a
                 run_statuses=_LATE_RESULT_RUN_STATUSES,
                 run_driver_id=self._driver_id,
             )
@@ -1181,12 +1215,12 @@ class AuthoringRunService:
             # cursor half is driver-fenced (a superseded driver must not rewind
             # the new driver's cursor); the spend half always lands.
             await self._runs.record_unit_progress(
-                owner_user_id, run_id,
+                run_id,
                 add_spent_usd=cost, current_unit=run.current_unit + 1,
                 driver_id=self._driver_id,
             )
             if drafted is None:
-                fresh = await self._runs.get_for_owner(owner_user_id, run_id)
+                fresh = await self._runs.get_by_id(run_id)
                 stolen = (
                     fresh is not None
                     and fresh.status in _LATE_RESULT_RUN_STATUSES
@@ -1208,7 +1242,7 @@ class AuthoringRunService:
                 if pre_rev is not None:
                     try:
                         await self._late_restore(
-                            owner_user_id, run.book_id, chapter_id, pre_rev,
+                            actor, run.book_id, chapter_id, pre_rev,
                         )
                         error += "; draft reverted to pre-run revision"
                     except Exception as exc:  # noqa: BLE001 — best-effort
@@ -1219,7 +1253,7 @@ class AuthoringRunService:
                         )
                         error += f"; pre-run restore FAILED ({exc}) — draft left in place"
                 await self._units.mark_failed(
-                    owner_user_id, run_id, run.current_unit, error=error,
+                    run_id, run.current_unit, error=error,
                 )
                 logger.warning(
                     "authoring run %s unit %d: late seam result after close/fail "
@@ -1233,8 +1267,7 @@ class AuthoringRunService:
             # the run). params.critic_enabled defaults TRUE; explicit falsy
             # disables (an autonomous run keeps the net unless told otherwise).
             if run.params.get("critic_enabled", True):
-                if not await self._critique_unit(owner_user_id, run_id, run,
-                                                 chapter_id):
+                if not await self._critique_unit(run_id, run, chapter_id):
                     return
             # D-AGENT-MODE §20 D4: server-side auto-pause-after-each-unit. THIS
             # unit (run.current_unit, from the snapshot claimed at the top of
@@ -1250,7 +1283,7 @@ class AuthoringRunService:
             # poll.
             if run.pause_after_each_unit and (run.current_unit + 1) < len(scope):
                 paused = await self._runs.transition(
-                    owner_user_id, run_id,
+                    run_id,
                     from_statuses=("running",), to_status="paused",
                     breaker_state={
                         "reason": "pause_after_each_unit",
@@ -1263,7 +1296,6 @@ class AuthoringRunService:
 
     async def _critique_unit(
         self,
-        owner_user_id: UUID,
         run_id: UUID,
         run: AuthoringRun,
         chapter_id: UUID,
@@ -1278,14 +1310,12 @@ class AuthoringRunService:
           the human reviews the report and resumes/reverts).
         A critic exception is never fatal: it lands as a 'warn' verdict
         ('critic unavailable') and the run continues."""
-        claim = await self._runs.heartbeat_claim(
-            owner_user_id, run_id, self._driver_id,
-        )
+        claim = await self._runs.heartbeat_claim(run_id, self._driver_id)
         if claim is None:
             return False  # stopped/stolen at the boundary — skip the critique
         try:
             verdict = await self._critic.critique(
-                owner_user_id=owner_user_id, book_id=run.book_id,
+                created_by=run.created_by, book_id=run.book_id,
                 chapter_id=chapter_id, plan_run_id=run.plan_run_id,
                 params=run.params,
             )
@@ -1297,7 +1327,7 @@ class AuthoringRunService:
             verdict = CriticVerdict(severity="warn", summary="critic unavailable")
         row = verdict.as_row()  # sanitizes an off-contract severity to 'warn'
         stored = await self._units.set_critic_verdict(
-            owner_user_id, run_id, run.current_unit, verdict=row,
+            run_id, run.current_unit, verdict=row,
         )
         if stored is None:  # unit raced away from drafted — verdict dropped
             logger.warning(
@@ -1309,13 +1339,13 @@ class AuthoringRunService:
         # it is idempotent, record_unit_progress is status-agnostic).
         if verdict.cost_usd and verdict.cost_usd > 0:
             await self._runs.record_unit_progress(
-                owner_user_id, run_id,
+                run_id,
                 add_spent_usd=verdict.cost_usd, current_unit=run.current_unit + 1,
                 driver_id=self._driver_id,
             )
         if row["severity"] == "severe":
             paused = await self._runs.transition(
-                owner_user_id, run_id,
+                run_id,
                 from_statuses=("running",), to_status="paused",
                 breaker_state={
                     "reason": "critic_severe",
@@ -1333,16 +1363,15 @@ class AuthoringRunService:
 
     async def _fail_unit(
         self,
-        owner_user_id: UUID,
         run_id: UUID,
         unit_index: int,
         chapter_id: UUID,
         error: str,
     ) -> None:
         """Fail-stop: mark the ledger row failed + trip the run breaker."""
-        await self._units.mark_failed(owner_user_id, run_id, unit_index, error=error)
+        await self._units.mark_failed(run_id, unit_index, error=error)
         failed = await self._runs.transition(
-            owner_user_id, run_id,
+            run_id,
             from_statuses=("running",), to_status="failed",
             breaker_state={
                 "reason": "unit_failed",
@@ -1357,23 +1386,24 @@ class AuthoringRunService:
 
     async def _late_restore(
         self,
-        owner_user_id: UUID,
+        created_by: UUID,
         book_id: UUID,
         chapter_id: UUID,
         revision_id: UUID,
     ) -> None:
         """Roll a late-swallowed unit's chapter back to its pinned pre-run
         revision. Headless (no caller request in flight) — the real path mints
-        a service bearer for the run OWNER exactly like BookRevisionCapture
-        (book-service still enforces the grant boundary on the JWT `sub`).
-        Tests inject a 3-arg RestoreFn spy via the ctor's `late_restore`."""
+        a service bearer for the run's CREATOR (`created_by`) exactly like
+        BookRevisionCapture (book-service still enforces the grant boundary on
+        the JWT `sub`). Tests inject a 3-arg RestoreFn spy via the ctor's
+        `late_restore`."""
         if self._late_restore_impl is not None:
             await self._late_restore_impl(book_id, chapter_id, revision_id)
             return
         from app.clients.book_client import get_book_client
         from app.mcp.service_bearer import mint_service_bearer
 
-        bearer = mint_service_bearer(owner_user_id, settings.jwt_secret)
+        bearer = mint_service_bearer(created_by, settings.jwt_secret)
         await get_book_client().restore_revision(
             book_id, chapter_id, revision_id, bearer,
         )
@@ -1418,7 +1448,7 @@ class AuthoringRunService:
 
                 notify = OutboxNotifier()
             await notify.notify(
-                run.owner_user_id,
+                run.created_by,
                 title=title,
                 metadata={
                     "operation": "autonomous_authoring",

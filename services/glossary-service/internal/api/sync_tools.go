@@ -8,6 +8,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/loreweave/grantclient"
+	lwmcp "github.com/loreweave/loreweave_mcp"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
@@ -22,15 +23,16 @@ import (
 
 // RegisterSyncTools adds the sync-tier tools to the user/book MCP server.
 func (s *Server) RegisterSyncTools(srv *mcp.Server) {
-	mcp.AddTool(srv, &mcp.Tool{
+	lwmcp.RegisterTool(srv, &mcp.Tool{
 		Name: "glossary_book_sync_available",
 		Description: "List the standard updates AVAILABLE for a book: for each genre/kind/attribute the " +
 			"book adopted from System or your user-tier standards, whether the source has since changed " +
 			"(an update is available) or been retired. Read this before proposing a sync. Returns each " +
 			"row's current (mine) vs upstream (theirs) values so you can recommend per-row choices.",
+		Meta: lwmcp.NewToolMeta(lwmcp.TierR, lwmcp.ScopeBook, nil, nil),
 	}, s.toolBookSyncAvailable)
 
-	mcp.AddTool(srv, &mcp.Tool{
+	lwmcp.RegisterTool(srv, &mcp.Tool{
 		Name: "glossary_book_sync_apply",
 		Description: "Propose APPLYING a set of per-row sync choices to a book (take_theirs = overwrite the " +
 			"book row from its source; keep_mine = keep the book's value but stop prompting). High-impact: it " +
@@ -41,6 +43,8 @@ func (s *Server) RegisterSyncTools(srv *mcp.Server) {
 			"items[].entity": enumLevels,
 			"items[].choice": {"take_theirs", "keep_mine"},
 		}),
+		// Mints a grant confirm_token (no direct write) ⇒ Tier W.
+		Meta: lwmcp.NewToolMeta(lwmcp.TierW, lwmcp.ScopeBook, nil, nil),
 	}, s.toolBookSyncApply)
 }
 
@@ -123,6 +127,28 @@ func (s *Server) toolBookSyncApply(ctx context.Context, _ *mcp.CallToolRequest, 
 		{Label: "rows to update from source", Value: fmt.Sprint(takeN), Note: "take_theirs"},
 		{Label: "rows to keep as-is", Value: fmt.Sprint(keepN), Note: "keep_mine (accept divergence)"},
 	}
-	return s.mintGrantActionCard(userID, bookID, descSyncApply, "Apply standard updates to this book",
+	res, out, err := s.mintGrantActionCard(userID, bookID, descSyncApply, "Apply standard updates to this book",
 		syncApplyParams{Items: items}, rows, true)
+	// External MCP discoverability audit #11 — applySyncRow (book_sync_handler.go) only
+	// affects a row whose recorded source is STILL LIVE (its UPDATE joins FROM the live
+	// source row); a retired/purged source matches nothing regardless of take_theirs vs
+	// keep_mine. So if EVERY proposed row's source has already retired, confirming this
+	// card is guaranteed to apply zero rows. bookSyncSourceLiveByID is the SAME liveness
+	// predicate previewSyncApply/applySyncRow use — best-effort here (a lookup failure
+	// just skips the warning rather than failing an otherwise-valid proposal).
+	if err == nil {
+		if liveMap, lerr := s.bookSyncSourceLiveByID(ctx, bookID, userID); lerr == nil {
+			liveCount := 0
+			for _, it := range items {
+				if liveMap[it.ID] {
+					liveCount++
+				}
+			}
+			if liveCount == 0 {
+				out.Warning = fmt.Sprintf(
+					"none of the %d proposed row(s) still have a live source — applying will change nothing", len(items))
+			}
+		}
+	}
+	return res, out, err
 }

@@ -69,6 +69,16 @@ def render_pinned(wm: WorkingMemory) -> str:
         if s.elapsed_min is not None:
             t += f" (~{s.elapsed_min} min elapsed)"
         lines.append(t)
+    # A4 (RV-M5) — the server-enforced interview structure. `question_count`/`wrap` are computed
+    # deterministically at anchor-render (resolve_anchor → compute_progress); render_pinned only
+    # READS them, staying pure. A freeform charter has no `question_target` ⇒ no progress line.
+    if c.question_target and s.question_count is not None:
+        lines.append(f"Question {s.question_count} of {c.question_target}")
+    if s.wrap:
+        lines.append(
+            "This is the FINAL question — move to the wrap phase and CLOSE the interview NOW: "
+            "give brief closing remarks, do NOT open a new topic or ask another question."
+        )
     if s.redirect_hint:
         lines.append(f"Steer back: {s.redirect_hint}")
     lines.append(f"Respond in: {c.language}")
@@ -96,14 +106,34 @@ def render_tail(wm: WorkingMemory) -> str:
     )
 
 
-def resolve_anchor(kctx_working_memory: str | None, seed_raw: Any) -> tuple[str, str]:
+def resolve_anchor(
+    kctx_working_memory: str | None,
+    seed_raw: Any,
+    *,
+    message_count: int | None = None,
+    elapsed_min: int | None = None,
+) -> tuple[str, str]:
     """Return (pinned, tail) anchor strings. ("", "") when there is no block.
 
     Prefers the live block from knowledge-service; falls back to the frozen
     seed (M3 / degraded EC-4). The seed's charter == the live charter (charter
     is immutable), so the goal anchor is identical either way.
+
+    A4 (RV-M5): when ``message_count`` is supplied, ENRICH the parsed ``wm.state`` with the
+    deterministic interview progress (``question_count``/``wrap``) via the SDK's
+    ``compute_progress`` BEFORE rendering — so ``render_pinned`` stays PURE (it only reads state).
+    ``elapsed_min`` (minutes since the session started) drives the time-budget wrap. Callers that
+    pass neither get the pre-A4 anchor unchanged (no progress line — freeform/non-interview).
     """
     wm = parse_working_memory(kctx_working_memory) or parse_working_memory(seed_raw)
     if wm is None:
         return "", ""
+    if message_count is not None:
+        from loreweave_agent_control import compute_progress
+
+        prog = compute_progress(wm.charter.model_dump(), message_count, elapsed_min)
+        wm.state.question_count = prog["question_count"]
+        wm.state.wrap = prog["wrap"]
+        if elapsed_min is not None:
+            wm.state.elapsed_min = elapsed_min
     return render_pinned(wm), render_tail(wm)

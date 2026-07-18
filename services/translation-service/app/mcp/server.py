@@ -58,6 +58,7 @@ from ..database import get_pool
 from ..grant_client import GrantLevel, get_grant_client
 from ..grant_deps import clamp_effort_to_grant
 from ..effective_settings import resolve_effective_settings
+from ..languages import TRANSLATION_TARGET_CODES, is_translation_target, normalize_language
 from ..mcp.estimate import SCOPE_CHAPTERS, SCOPE_DIRTY, estimate_job_cost
 from ..routers.actions import (
     DESC_RETRANSLATE_DIRTY,
@@ -66,6 +67,18 @@ from ..routers.actions import (
 )
 from ..workers.extraction_prompt import estimate_extraction_cost
 from ..workers.glossary_client import fetch_extraction_profile
+
+# D13 (closed-set arg ⇒ enum, docs/standards/mcp-tool-io.md) — the closed set of content-language
+# codes an agent may WRITE (translate into / set as the book's target). Reads keep a free-string
+# arg so a legacy unknown code (e.g. "Vietnamese") stays queryable. The assert fails at import if
+# this Literal drifts from the content-language registry (languages.py / the SSOT contract).
+TargetLangCode = Literal[
+    "en", "vi", "ja", "ko", "zh-CN", "zh-TW", "es", "pt-BR", "fr", "de",
+    "ru", "id", "ms", "tr", "ar", "hi", "bn", "th",
+]
+assert set(TargetLangCode.__args__) == set(TRANSLATION_TARGET_CODES), (
+    "MCP TargetLangCode Literal drifted from the content-language registry (languages.py)"
+)
 
 logger = logging.getLogger(__name__)
 
@@ -172,7 +185,9 @@ def _ctx(ctx: MCPContext) -> ToolContext:
         "Get a book's translation coverage matrix: per chapter × language, how many "
         "versions exist, the latest status, whether a version is active, and whether "
         "it's glossary-stale. Use this to answer 'how much of my book is translated' "
-        "or 'what languages does this book have'. Book-scoped (you must have access)."
+        "or 'what languages does this book have'. The `untranslated_chapter_ids` field "
+        "lists chapters that have NO translation yet — these are exactly what a "
+        "'translate what's new/changed' pass must cover. Book-scoped (you must have access)."
     ),
     meta=require_meta(
         "R", "book",
@@ -195,7 +210,12 @@ async def translation_coverage(
     await _require_view(tc, bid)
     db = get_pool()
     rows = await db.fetch(_COVERAGE_SQL, bid)
-    return _coverage_payload(rows, bid)
+    # D-S05-COVERAGE-MISMATCH — _COVERAGE_SQL derives its chapter list from chapter_translations,
+    # so a NEVER-translated chapter is invisible. Fetch the book's REAL chapters (cross-service)
+    # so coverage surfaces the untranslated ones — the whole point of a "translate what's new" pass.
+    from ..book_client import list_chapter_ids
+    all_chapter_ids = await list_chapter_ids(book_id)
+    return _coverage_payload(rows, bid, all_chapter_ids)
 
 
 @mcp_server.tool(
@@ -209,7 +229,7 @@ async def translation_coverage(
     meta=require_meta(
         "R", "book",
         synonyms=["segment status", "dirty segments", "what changed",
-                  "needs re-translation", "stale segments"],
+                  "which segments are outdated", "stale segments"],
         tool_name="translation_segment_status",
     ),
 )
@@ -533,7 +553,7 @@ async def translation_save_edited_version(
         undo_hint={"tool": "translation_patch_block",
                    "args": {"note": "re-patch the block with the prior text"}},
         synonyms=["fix block", "correct block", "patch translation",
-                  "edit one paragraph"],
+                  "correct one translated paragraph"],
         tool_name="translation_patch_block",
     ),
 )
@@ -653,7 +673,7 @@ async def translation_patch_block(
 async def translation_update_settings(
     ctx: MCPContext,
     book_id: Annotated[str, "The book's id (UUID)."],
-    target_language: Annotated[str | None, "New target language code, or omit to keep."] = None,
+    target_language: Annotated[TargetLangCode | None, "New target language code (closed set), or omit to keep."] = None,
     model_source: Annotated[str | None, "New model source ('user_model'|'platform_model'), or omit."] = None,
     model_ref: Annotated[
         str | list[str] | None,
@@ -664,6 +684,14 @@ async def translation_update_settings(
     tc = _ctx(ctx)
     bid = _uuid(book_id)
     await _require_edit(tc, bid)
+    # D13 — this tool writes book_translation_settings DIRECTLY (not via the validated REST
+    # route), so normalize + validate the target_language here too. The Literal enum already
+    # closes the set at the schema; this defends the direct DB write and canonicalizes the value.
+    if target_language is not None:
+        norm = normalize_language(target_language)
+        if not is_translation_target(norm):
+            raise ToolError(f"'{target_language}' is not a supported target language.")
+        target_language = norm
     db = get_pool()
     prior, _is_default, _u = await resolve_effective_settings(tc.user_id, bid, db)
     row = await db.fetchrow(
@@ -693,7 +721,11 @@ async def translation_update_settings(
                 "tool": "translation_update_settings",
                 "args": {
                     "book_id": book_id,
-                    "target_language": prior.get("target_language"),
+                    # D13: only echo a prior target_language the tool's own enum would accept — a
+                    # legacy non-canonical value (reads tolerate it) must not be handed back as an
+                    # undo arg the schema would then reject. Omit it in that (pre-migration) case.
+                    **({"target_language": prior["target_language"]}
+                       if is_translation_target(str(prior.get("target_language") or "")) else {}),
                     "model_source": prior.get("model_source"),
                     "model_ref": str(prior["model_ref"]) if prior.get("model_ref") else None,
                 },
@@ -717,6 +749,7 @@ async def translation_update_settings(
         "W", "book",
         synonyms=["translate", "translate book", "start translation",
                   "translate chapters", "run translation"],
+        async_job=True,
         tool_name="translation_start_job",
     ),
 )
@@ -724,7 +757,7 @@ async def translation_start_job(
     ctx: MCPContext,
     book_id: Annotated[str, "The book's id (UUID)."],
     chapter_ids: Annotated[list[str], "The chapter ids (UUIDs) to translate."],
-    target_language: Annotated[str | None, "Target language code; omit to use the book's setting."] = None,
+    target_language: Annotated[TargetLangCode | None, "Target language code (closed set); omit to use the book's setting."] = None,
     force_retranslate: Annotated[bool, "Re-translate chapters that are already translated."] = False,
 ) -> dict:
     tc = _ctx(ctx)
@@ -763,6 +796,7 @@ async def translation_start_job(
         "W", "book",
         synonyms=["retranslate dirty", "re-translate changed", "refresh translation",
                   "update stale translation", "retranslate needs"],
+        async_job=True,
         tool_name="translation_retranslate_dirty",
     ),
 )
@@ -770,7 +804,7 @@ async def translation_retranslate_dirty(
     ctx: MCPContext,
     book_id: Annotated[str, "The book's id (UUID) the chapter belongs to."],
     chapter_id: Annotated[str, "The chapter's id (UUID)."],
-    target_language: Annotated[str, "The target language code (e.g. 'en')."],
+    target_language: Annotated[TargetLangCode, "The target language code (closed set, e.g. 'en')."],
 ) -> dict:
     tc = _ctx(ctx)
     bid = _uuid(book_id)
@@ -811,6 +845,7 @@ async def translation_retranslate_dirty(
         "W", "book",
         synonyms=["extract glossary", "extract entities", "scan chapters for entities",
                   "build glossary", "extract characters"],
+        async_job=True,
         tool_name="translation_start_extraction",
     ),
 )
@@ -1042,7 +1077,7 @@ ORDER BY ct.chapter_id, ct.target_language
 """
 
 
-def _coverage_payload(rows, book_id: UUID) -> dict:
+def _coverage_payload(rows, book_id: UUID, all_chapter_ids: "list[str] | None" = None) -> dict:
     chapter_map: dict[str, dict] = {}
     known: set[str] = set()
     for r in rows:
@@ -1056,22 +1091,47 @@ def _coverage_payload(rows, book_id: UUID) -> dict:
             "latest_status": r["latest_status"],
             "version_count": r["version_count"],
         }
+    # D-S05 — surface chapters that exist in the BOOK but have no translation row at all. Preserve
+    # book order (all_chapter_ids is ordered), append any translation-only ids that book-service
+    # didn't return (e.g. a deleted chapter still carrying history), and give the agent an explicit
+    # `untranslated_chapter_ids` list so it doesn't have to diff two structures.
+    untranslated: list[str] = []
+    ordered: list[str] = []
+    if all_chapter_ids:
+        for cid in all_chapter_ids:
+            ordered.append(cid)
+            langs = chapter_map.get(cid, {})
+            if not any(v.get("has_active") for v in langs.values()):
+                untranslated.append(cid)
+        for cid in chapter_map:  # translation-only rows book-service didn't list
+            if cid not in all_chapter_ids:
+                ordered.append(cid)
+    else:
+        ordered = list(chapter_map)  # degraded: no book chapter list available
     return {
         "book_id": str(book_id),
-        "coverage": [{"chapter_id": cid, "languages": langs}
-                     for cid, langs in chapter_map.items()],
+        "coverage": [{"chapter_id": cid, "languages": chapter_map.get(cid, {})}
+                     for cid in ordered],
         "known_languages": sorted(known),
+        "untranslated_chapter_ids": untranslated,
     }
 
 
+# `model_source` / `model_ref` live on translation_jobs, NOT on chapter_translations — the
+# model is a property of the JOB that produced a version. Selecting them off `ct` made
+# Postgres reject the whole statement (`column ct.model_source does not exist`), so
+# translation_list_versions failed on EVERY real chapter, always. Nothing caught it: this
+# service's tests assert the tool's NAME and TIER, never run its SQL.
+# LEFT JOIN, not INNER: a hand-edited version has a NULL job_id and hence no model.
 _VERSIONS_SQL = """
 SELECT ct.id, ct.version_num, ct.job_id, ct.status, ct.target_language,
-       ct.model_source, ct.model_ref, ct.input_tokens, ct.output_tokens,
+       tj.model_source, tj.model_ref, ct.input_tokens, ct.output_tokens,
        ct.created_at, ct.authored_by,
        (actv.chapter_translation_id = ct.id) AS is_active
 FROM chapter_translations ct
 LEFT JOIN active_chapter_translation_versions actv
   ON actv.chapter_id=ct.chapter_id AND actv.target_language=ct.target_language
+LEFT JOIN translation_jobs tj ON tj.job_id = ct.job_id
 WHERE ct.chapter_id=$1
 ORDER BY ct.target_language, ct.version_num DESC
 """

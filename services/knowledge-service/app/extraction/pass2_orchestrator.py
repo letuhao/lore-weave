@@ -703,6 +703,7 @@ async def _p2_cache_wrap(
     leaf_path = f"book/legacy/chapter-{chapter_id}/scene-1"
     await repo.claim_pending(
         book_id=book_id,
+        chapter_id=chapter_id,  # WS-0.1: the invalidation key (delete_by_chapter)
         scene_id=chapter_id,  # placeholder until per-scene fanout (D-P2-PER-SCENE-FANOUT)
         leaf_path=leaf_path,
         op=op,

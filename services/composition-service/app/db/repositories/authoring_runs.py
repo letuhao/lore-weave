@@ -1,11 +1,15 @@
 """authoring_runs repository (RAID Wave D2, DR-D).
 
-Tenancy: every method takes owner_user_id and filters on it — a foreign/missing
-run_id returns None (routers map to 404, no existence oracle). Every FSM
-transition is a guarded ``UPDATE … WHERE status = ANY(from) RETURNING`` so a
-raced double-transition loses cleanly (returns None), mirroring the OCC
-discipline of the plan_forge/campaign drivers. The draft→gated transition may
-raise ``asyncpg.UniqueViolationError`` from the active-book scope fence
+Tenancy (BPS re-key, spec 25 OQ-3): rows are BOOK-scoped — book-wide reads
+filter by book_id, by-run-id reads return the row for the ROUTE to gate on its
+book_id (the load-then-gate shape the Run Report path pioneered — access is
+decided BEFORE the repo, at the E0 book-grant gate). `created_by` is a plain
+actor stamp (stored at create, never filtered on); a missing id returns None
+(routers map to 404, no existence oracle). Every FSM transition is a guarded
+``UPDATE … WHERE status = ANY(from) RETURNING`` so a raced double-transition
+loses cleanly (returns None), mirroring the OCC discipline of the
+plan_forge/campaign drivers. The draft→gated transition may raise
+``asyncpg.UniqueViolationError`` from the active-book scope fence
 (uq_authoring_runs_active_book) — the service maps it to a 409 overlap.
 """
 
@@ -26,7 +30,7 @@ from app.db.models import (
 )
 
 _SELECT = """
-  run_id, owner_user_id, book_id, plan_run_id, level, scope, budget_usd,
+  run_id, created_by, book_id, plan_run_id, level, scope, budget_usd,
   spent_usd, tool_allowlist, params, breaker_state, status, current_unit,
   error_message, driver_id, driver_heartbeat_at, background,
   pause_after_each_unit, created_at, updated_at
@@ -35,7 +39,7 @@ _SELECT = """
 _UNIT_SELECT = """
   u.run_id, u.unit_index, u.chapter_id, u.status, u.pre_revision_id,
   u.post_revision_id, u.cost_usd, u.error_message, u.critic_verdict,
-  u.created_at, u.updated_at
+  u.job_id, u.created_at, u.updated_at
 """
 
 
@@ -54,7 +58,7 @@ class AuthoringRunsRepo:
 
     async def create(
         self,
-        owner_user_id: UUID,
+        created_by: UUID,
         book_id: UUID,
         *,
         plan_run_id: UUID,
@@ -68,7 +72,7 @@ class AuthoringRunsRepo:
     ) -> AuthoringRun:
         query = f"""
         INSERT INTO authoring_runs
-          (owner_user_id, book_id, plan_run_id, level, scope, budget_usd,
+          (created_by, book_id, plan_run_id, level, scope, budget_usd,
            tool_allowlist, params, background, pause_after_each_unit)
         VALUES ($1, $2, $3, $4, $5::jsonb, $6, $7::jsonb, $8::jsonb, $9, $10)
         RETURNING {_SELECT}
@@ -76,7 +80,7 @@ class AuthoringRunsRepo:
         async with self._pool.acquire() as c:
             row = await c.fetchrow(
                 query,
-                owner_user_id,
+                created_by,
                 book_id,
                 plan_run_id,
                 level,
@@ -89,43 +93,31 @@ class AuthoringRunsRepo:
             )
         return _row(row)
 
-    async def get_for_owner(
-        self, owner_user_id: UUID, run_id: UUID,
-    ) -> AuthoringRun | None:
-        query = f"""
-        SELECT {_SELECT} FROM authoring_runs
-        WHERE run_id = $1 AND owner_user_id = $2
-        """
-        async with self._pool.acquire() as c:
-            row = await c.fetchrow(query, run_id, owner_user_id)
-        return _row(row) if row else None
-
     async def get_by_id(self, run_id: UUID) -> AuthoringRun | None:
-        """UNSCOPED read — Run Report path ONLY (D3): the router MUST grant-gate
-        the caller on run.book_id (E0 VIEW; OwnershipError → 404, preserving the
-        no-existence-oracle) before returning anything derived from this row.
-        Every other read stays get_for_owner."""
+        """By-run-id read (OQ-3 load-then-gate): every caller MUST grant-gate
+        on the returned row's book_id (E0; OwnershipError → 404, preserving the
+        no-existence-oracle) before acting on anything derived from it — the
+        parent scope of a client-supplied run_id IS the book gate."""
         query = f"SELECT {_SELECT} FROM authoring_runs WHERE run_id = $1"
         async with self._pool.acquire() as c:
             row = await c.fetchrow(query, run_id)
         return _row(row) if row else None
 
-    async def list_for_owner(
-        self, owner_user_id: UUID, book_id: UUID, *, limit: int = 20,
+    async def list_for_book(
+        self, book_id: UUID, *, limit: int = 20,
     ) -> list[AuthoringRun]:
         query = f"""
         SELECT {_SELECT} FROM authoring_runs
-        WHERE owner_user_id = $1 AND book_id = $2
+        WHERE book_id = $1
         ORDER BY created_at DESC, run_id DESC
-        LIMIT $3
+        LIMIT $2
         """
         async with self._pool.acquire() as c:
-            rows = await c.fetch(query, owner_user_id, book_id, min(max(limit, 1), 50))
+            rows = await c.fetch(query, book_id, min(max(limit, 1), 50))
         return [_row(r) for r in rows]
 
     async def transition(
         self,
-        owner_user_id: UUID,
         run_id: UUID,
         *,
         from_statuses: tuple[AuthoringRunStatus, ...],
@@ -135,14 +127,14 @@ class AuthoringRunsRepo:
         claim_driver_id: str | None = None,
     ) -> AuthoringRun | None:
         """Guarded FSM transition. Returns the updated run, or None when the
-        row is missing / not owned / not in a `from` status (lost race — the
-        caller decides whether that is a 404 or a 409). May raise
+        row is missing / not in a `from` status (lost race — the caller decides
+        whether that is a 404 or a 409). May raise
         asyncpg.UniqueViolationError on →gated (active-book scope fence).
         `claim_driver_id` (D4): a →running transition additionally CLAIMS the
         run for that driver (driver_id + fresh heartbeat) in the SAME guarded
         UPDATE — no window where a run is running but unclaimed."""
-        sets = ["status = $3", "updated_at = now()"]
-        args: list[Any] = [run_id, owner_user_id, to_status]
+        sets = ["status = $2", "updated_at = now()"]
+        args: list[Any] = [run_id, to_status]
         if breaker_state is not None:
             args.append(json.dumps(breaker_state))
             sets.append(f"breaker_state = ${len(args)}::jsonb")
@@ -156,7 +148,7 @@ class AuthoringRunsRepo:
         args.append(list(from_statuses))
         query = f"""
         UPDATE authoring_runs SET {", ".join(sets)}
-        WHERE run_id = $1 AND owner_user_id = $2 AND status = ANY(${len(args)})
+        WHERE run_id = $1 AND status = ANY(${len(args)})
         RETURNING {_SELECT}
         """
         async with self._pool.acquire() as c:
@@ -165,7 +157,6 @@ class AuthoringRunsRepo:
 
     async def record_unit_progress(
         self,
-        owner_user_id: UUID,
         run_id: UUID,
         *,
         add_spent_usd: Decimal,
@@ -181,24 +172,23 @@ class AuthoringRunsRepo:
         driver's cursor and trigger a duplicate generation."""
         query = f"""
         UPDATE authoring_runs
-        SET spent_usd = spent_usd + $3,
+        SET spent_usd = spent_usd + $2,
             current_unit = CASE
-              WHEN $5::text IS NULL OR driver_id = $5 THEN $4
+              WHEN $4::text IS NULL OR driver_id = $4 THEN $3
               ELSE current_unit
             END,
             updated_at = now()
-        WHERE run_id = $1 AND owner_user_id = $2
+        WHERE run_id = $1
         RETURNING {_SELECT}
         """
         async with self._pool.acquire() as c:
             row = await c.fetchrow(
-                query, run_id, owner_user_id, add_spent_usd, current_unit,
-                driver_id,
+                query, run_id, add_spent_usd, current_unit, driver_id,
             )
         return _row(row) if row else None
 
     async def set_pause_policy(
-        self, owner_user_id: UUID, run_id: UUID, pause_after_each_unit: bool,
+        self, run_id: UUID, pause_after_each_unit: bool,
     ) -> AuthoringRun | None:
         """D-AGENT-MODE §20 D4a: flip the auto-pause-after-each-unit policy at
         create time OR mid-run (a run-header toggle). Allowed at any status
@@ -208,18 +198,18 @@ class AuthoringRunsRepo:
         not itself an FSM transition)."""
         query = f"""
         UPDATE authoring_runs
-        SET pause_after_each_unit = $3, updated_at = now()
-        WHERE run_id = $1 AND owner_user_id = $2 AND status != 'closed'
+        SET pause_after_each_unit = $2, updated_at = now()
+        WHERE run_id = $1 AND status != 'closed'
         RETURNING {_SELECT}
         """
         async with self._pool.acquire() as c:
-            row = await c.fetchrow(query, run_id, owner_user_id, pause_after_each_unit)
+            row = await c.fetchrow(query, run_id, pause_after_each_unit)
         return _row(row) if row else None
 
     # ── D4 durable driver — guarded claims + sweep ─────────────────────────
 
     async def heartbeat_claim(
-        self, owner_user_id: UUID, run_id: UUID, driver_id: str,
+        self, run_id: UUID, driver_id: str,
     ) -> AuthoringRun | None:
         """Per-unit guarded claim (D4): ONE guarded UPDATE that both re-checks
         the run is still `running` AND owned by THIS driver, and bumps the
@@ -229,12 +219,11 @@ class AuthoringRunsRepo:
         query = f"""
         UPDATE authoring_runs
         SET driver_heartbeat_at = now(), updated_at = now()
-        WHERE run_id = $1 AND owner_user_id = $2
-          AND status = 'running' AND driver_id = $3
+        WHERE run_id = $1 AND status = 'running' AND driver_id = $2
         RETURNING {_SELECT}
         """
         async with self._pool.acquire() as c:
-            row = await c.fetchrow(query, run_id, owner_user_id, driver_id)
+            row = await c.fetchrow(query, run_id, driver_id)
         return _row(row) if row else None
 
     async def release_claim(self, run_id: UUID, driver_id: str) -> bool:
@@ -261,8 +250,9 @@ class AuthoringRunsRepo:
         claim up to `limit` `running` runs with NO live driver — heartbeat NULL
         or older than `stale_secs` (which must exceed the worst-case single-unit
         wall-clock, or a slow unit's run would be stolen mid-unit). Deliberately
-        UNSCOPED by owner: the sweep is a system-level durability backstop — each
-        resumed drive still runs AS the row's owner_user_id (tenancy preserved).
+        UNSCOPED: the sweep is a system-level durability backstop — each resumed
+        drive still runs AS the row's `created_by` actor stamp (spend
+        attribution + bearer identity preserved, the F7 sweeper rule).
         FOR UPDATE SKIP LOCKED gives disjoint claims across concurrent sweepers;
         a run whose driver died in THIS process is also re-claimable (same
         driver_id, stale heartbeat) — the in-process task registry dedupes."""
@@ -294,20 +284,20 @@ def _unit_row(row: asyncpg.Record) -> AuthoringRunUnit:
 
 
 class AuthoringRunUnitsRepo:
-    """Per-unit ledger (RAID Wave D3). Tenancy: the units table carries no owner
-    column — every method takes owner_user_id and joins authoring_runs on it (the
-    parent run's tenancy IS the units' tenancy; a foreign run yields None/[], no
-    existence oracle). ``list_for_run`` is the one UNSCOPED read, for the Run
-    Report path where the router already grant-gated VIEW on the run's book.
-    Accept/reject use the same guarded-OCC discipline as the run FSM
-    (``UPDATE … WHERE status = ANY(from) RETURNING``)."""
+    """Per-unit ledger (RAID Wave D3). The units table carries no scope column
+    of its own — its scope IS the parent run's book (OQ-3): the route gates the
+    run's book_id (E0) before any unit read/write, and repo predicates key on
+    run_id (plus the parent-run join where a write must also guard the run's
+    status/driver — the D4 late-result fence). A foreign/missing key yields
+    None/[] (no existence oracle). Accept/reject use the same guarded-OCC
+    discipline as the run FSM (``UPDATE … WHERE status = ANY(from)
+    RETURNING``)."""
 
     def __init__(self, pool: asyncpg.Pool) -> None:
         self._pool = pool
 
     async def upsert_pending(
         self,
-        owner_user_id: UUID,
         run_id: UUID,
         unit_index: int,
         chapter_id: UUID,
@@ -316,11 +306,13 @@ class AuthoringRunUnitsRepo:
     ) -> AuthoringRunUnit | None:
         """Driver writes this BEFORE invoking the drafting seam. Upsert (not
         insert): a resume after a pause/crash re-runs the cursor unit, which
-        must re-pin its pre-revision baseline and reset the row to pending."""
+        must re-pin its pre-revision baseline and reset the row to pending.
+        The INSERT … SELECT keeps the parent-run existence guard (a vanished
+        run yields None, never an orphan row)."""
         query = f"""
         INSERT INTO authoring_run_units (run_id, unit_index, chapter_id, pre_revision_id)
-        SELECT r.run_id, $3, $4, $5 FROM authoring_runs r
-        WHERE r.run_id = $1 AND r.owner_user_id = $2
+        SELECT r.run_id, $2, $3, $4 FROM authoring_runs r
+        WHERE r.run_id = $1
         ON CONFLICT (run_id, unit_index) DO UPDATE SET
           chapter_id = EXCLUDED.chapter_id,
           pre_revision_id = EXCLUDED.pre_revision_id,
@@ -330,18 +322,18 @@ class AuthoringRunUnitsRepo:
         """
         async with self._pool.acquire() as c:
             row = await c.fetchrow(
-                query, run_id, owner_user_id, unit_index, chapter_id, pre_revision_id,
+                query, run_id, unit_index, chapter_id, pre_revision_id,
             )
         return _unit_row(row) if row else None
 
     async def mark_drafted(
         self,
-        owner_user_id: UUID,
         run_id: UUID,
         unit_index: int,
         *,
         post_revision_id: UUID | None,
         cost_usd: Decimal,
+        job_id: UUID | None = None,
         run_statuses: tuple[AuthoringRunStatus, ...] | None = None,
         run_driver_id: str | None = None,
     ) -> AuthoringRunUnit | None:
@@ -352,15 +344,14 @@ class AuthoringRunUnitsRepo:
         sweep steals: a superseded driver's late result cannot mint a drafted
         row over the new driver's in-progress re-run of the same unit."""
         return await self.transition_unit(
-            owner_user_id, run_id, unit_index,
+            run_id, unit_index,
             from_statuses=("pending",), to_status="drafted",
-            post_revision_id=post_revision_id, cost_usd=cost_usd,
+            post_revision_id=post_revision_id, cost_usd=cost_usd, job_id=job_id,
             run_statuses=run_statuses, run_driver_id=run_driver_id,
         )
 
     async def set_critic_verdict(
         self,
-        owner_user_id: UUID,
         run_id: UUID,
         unit_index: int,
         *,
@@ -369,38 +360,34 @@ class AuthoringRunUnitsRepo:
         """D5: land the continuity-critic verdict on a DRAFTED unit row (the
         critic runs post-draft; the status guard is the same OCC fence as the
         review transitions — a row raced away from `drafted` loses cleanly and
-        returns None). Tenancy via the parent-run join, like every unit write."""
+        returns None)."""
         query = f"""
         UPDATE authoring_run_units u
-        SET critic_verdict = $4::jsonb, updated_at = now()
-        FROM authoring_runs r
-        WHERE u.run_id = $1 AND r.run_id = u.run_id AND r.owner_user_id = $2
-          AND u.unit_index = $3 AND u.status = 'drafted'
+        SET critic_verdict = $3::jsonb, updated_at = now()
+        WHERE u.run_id = $1 AND u.unit_index = $2 AND u.status = 'drafted'
         RETURNING {_UNIT_SELECT}
         """
         async with self._pool.acquire() as c:
             row = await c.fetchrow(
-                query, run_id, owner_user_id, unit_index, json.dumps(verdict),
+                query, run_id, unit_index, json.dumps(verdict),
             )
         return _unit_row(row) if row else None
 
     async def mark_failed(
         self,
-        owner_user_id: UUID,
         run_id: UUID,
         unit_index: int,
         *,
         error: str,
     ) -> AuthoringRunUnit | None:
         return await self.transition_unit(
-            owner_user_id, run_id, unit_index,
+            run_id, unit_index,
             from_statuses=("pending",), to_status="failed",
             error_message=error,
         )
 
     async def transition_unit(
         self,
-        owner_user_id: UUID,
         run_id: UUID,
         unit_index: int,
         *,
@@ -409,22 +396,28 @@ class AuthoringRunUnitsRepo:
         post_revision_id: UUID | None = None,
         cost_usd: Decimal | None = None,
         error_message: str | None = None,
+        job_id: UUID | None = None,
         run_statuses: tuple[AuthoringRunStatus, ...] | None = None,
         run_driver_id: str | None = None,
     ) -> AuthoringRunUnit | None:
         """Guarded unit transition (OCC, mirrors the run FSM). Returns None when
-        the unit is missing / foreign / not in a `from` status (lost race).
+        the unit is missing / not in a `from` status (lost race).
         `run_statuses` (D4) additionally guards on the PARENT run's status, and
         `run_driver_id` on the parent's current driver, in the same statement —
         the late-result fence (close/fail AND sweep-steal variants)."""
-        sets = ["status = $4", "updated_at = now()"]
-        args: list[Any] = [run_id, owner_user_id, unit_index, to_status]
+        sets = ["status = $3", "updated_at = now()"]
+        args: list[Any] = [run_id, unit_index, to_status]
         if post_revision_id is not None:
             args.append(post_revision_id)
             sets.append(f"post_revision_id = ${len(args)}")
         if cost_usd is not None:
             args.append(cost_usd)
             sets.append(f"cost_usd = ${len(args)}")
+        if job_id is not None:
+            # BE-9a: the generation_job that drafted this unit — so accept/reject can attach a
+            # correction to it. Nullable (never backfilled): a pre-BE-9a unit records nothing.
+            args.append(job_id)
+            sets.append(f"job_id = ${len(args)}")
         if error_message is not None:
             args.append(error_message)
             sets.append(f"error_message = ${len(args)}")
@@ -439,41 +432,28 @@ class AuthoringRunUnitsRepo:
         query = f"""
         UPDATE authoring_run_units u SET {", ".join(sets)}
         FROM authoring_runs r
-        WHERE u.run_id = $1 AND r.run_id = u.run_id AND r.owner_user_id = $2
-          AND u.unit_index = $3 AND u.status = ANY(${len(args)}){run_guard}
+        WHERE u.run_id = $1 AND r.run_id = u.run_id
+          AND u.unit_index = $2 AND u.status = ANY(${len(args)}){run_guard}
         RETURNING {_UNIT_SELECT}
         """
         async with self._pool.acquire() as c:
             row = await c.fetchrow(query, *args)
         return _unit_row(row) if row else None
 
-    async def get_for_owner(
-        self, owner_user_id: UUID, run_id: UUID, unit_index: int,
+    async def get_for_run(
+        self, run_id: UUID, unit_index: int,
     ) -> AuthoringRunUnit | None:
         query = f"""
         SELECT {_UNIT_SELECT} FROM authoring_run_units u
-        JOIN authoring_runs r ON r.run_id = u.run_id
-        WHERE u.run_id = $1 AND r.owner_user_id = $2 AND u.unit_index = $3
+        WHERE u.run_id = $1 AND u.unit_index = $2
         """
         async with self._pool.acquire() as c:
-            row = await c.fetchrow(query, run_id, owner_user_id, unit_index)
+            row = await c.fetchrow(query, run_id, unit_index)
         return _unit_row(row) if row else None
 
-    async def list_for_owner(
-        self, owner_user_id: UUID, run_id: UUID,
-    ) -> list[AuthoringRunUnit]:
-        query = f"""
-        SELECT {_UNIT_SELECT} FROM authoring_run_units u
-        JOIN authoring_runs r ON r.run_id = u.run_id
-        WHERE u.run_id = $1 AND r.owner_user_id = $2
-        ORDER BY u.unit_index
-        """
-        async with self._pool.acquire() as c:
-            rows = await c.fetch(query, run_id, owner_user_id)
-        return [_unit_row(r) for r in rows]
-
     async def list_for_run(self, run_id: UUID) -> list[AuthoringRunUnit]:
-        """UNSCOPED — Run Report path only (router grant-gates VIEW first)."""
+        """All unit rows for a run — the caller has already gated the parent
+        run's book (OQ-3 load-then-gate)."""
         query = f"""
         SELECT {_UNIT_SELECT} FROM authoring_run_units u
         WHERE u.run_id = $1

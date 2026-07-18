@@ -22,7 +22,17 @@
     "hint": "滾動以縮放 · 拖曳空白處以平移 · 點擊節點查看詳情 · ⊞ 以展開",
     "loading": "正在載入圖譜…",
     "loadFailed": "載入圖譜失敗：{{error}}",
-    "empty": "尚無知識圖譜 — 建立此專案以探索其網路。"
+    "empty": "尚無知識圖譜 — 建立此專案以探索其網路。",
+    "emptyLens": "沒有符合此視圖的關係 — 請嘗試其他視圖、較早的章節，或清除篩選條件。",
+    "truncatedLens": "正在顯示此視圖的前 {{n}} 條關係",
+    "hintLens": "滾動縮放 · 拖曳平移 · 點擊節點查看詳情",
+    "lens": {
+      "view": "視圖",
+      "noView": "所有關係",
+      "asOf": "截至章節",
+      "latest": "最新",
+      "clear": "清除篩選"
+    }
   },
   "schemaSection": {
     "title": "綱要",
@@ -70,9 +80,10 @@
       "extraction": "擷取",
       "extractionEnabled": "已啟用",
       "extractionDisabled": "已停用",
-      "none": "—",
       "book": "書籍",
-      "world": "世界觀"
+      "world": "世界觀",
+      "none": "—",
+      "triageNudge": "有 {{count}} 個擷取的元素需要進行分類"
     },
     "placeholder": {
       "proposals": "待處理提案將顯示於此（C11）。",
@@ -404,7 +415,8 @@
         "global": "全域",
         "confidence": "信心度",
         "mentions": "提及次數",
-        "anchor": "錨定分數"
+        "anchor": "錨定分數",
+        "scope": "範圍"
       },
       "promote": "提升至詞彙表",
       "promoteHint": "已發現的實體。提升後會建立一份待審的 AI 建議詞彙表草稿。",
@@ -421,8 +433,32 @@
         "decision": "決定",
         "preference": "偏好",
         "milestone": "里程碑",
-        "negation": "否定"
-      }
+        "negation": "否定",
+        "statement": "陳述",
+        "commitment": "承諾"
+      },
+      "addFact": "新增事實",
+      "addFactTitle": "新增關於此實體的相關事實",
+      "factContentLabel": "事實內容",
+      "factContentPlaceholder": "例如：在背叛後對議會失去信任",
+      "factTypeLabel": "類型",
+      "factPredicatePlaceholder": "謂詞（選填，例如：loyal_to）",
+      "factObjectPlaceholder": "受詞（選填，例如：House Vaeth）",
+      "addFactSave": "儲存事實",
+      "addFactCancel": "取消",
+      "addFactSuccess": "事實已新增",
+      "addFactFailed": "無法新增事實：{{error}}",
+      "markWrong": "標記為錯誤",
+      "markWrongConfirm": "要將此事實標記為錯誤嗎？它將被作廢（從複習中移除），但會保留在歷史紀錄中。",
+      "markWrongSuccess": "事實已標記為錯誤",
+      "markWrongFailed": "無法作廢事實：{{error}}",
+      "factTypeHelp": "這是什麼類型的事實？",
+      "factAdvancedToggle": "連結至另一個實體（選填）",
+      "replaceFact": "替換此事實",
+      "replaceFactSave": "儲存替換",
+      "replaceFactSuccess": "事實已替換",
+      "markWrongUndo": "復原",
+      "markWrongUndoFailed": "無法復原：{{error}}"
     },
     "edit": {
       "title": "編輯實體",
@@ -462,6 +498,41 @@
       "errArchived": "無法合併已封存的實體。請先還原。",
       "errGlossaryConflict": "兩個實體分別錨定在不同的詞彙表條目。請先解決詞彙表錨點衝突。",
       "errUnknown": "合併失敗：{{reason}}"
+    },
+    "create": {
+      "title": "新實體",
+      "description": "手動建立知識圖譜實體。初始狀態為「已發現」；稍後可將其錨定為「規範實體」。",
+      "newButton": "新增實體",
+      "needsProject": "請先選擇一個專案",
+      "field": {
+        "name": "名稱",
+        "kind": "類型"
+      },
+      "save": "建立",
+      "saving": "建立中…",
+      "cancel": "取消",
+      "success": "實體已建立 — {{name}} ({{kind}})",
+      "dedup": "實體已存在 — 顯示 {{name}} ({{kind}})",
+      "failed": "無法建立實體 — {{error}}",
+      "discoveredHint": "新實體初始狀態為「已發現」。透過與術語表建立關聯即可獲得「標準」狀態。"
+    },
+    "kind": {
+      "character": "角色",
+      "location": "地點",
+      "organization": "組織",
+      "concept": "概念",
+      "item": "物品"
+    },
+    "archive": {
+      "action": "封存",
+      "confirm": "要隱藏此實體嗎？其關聯與術語表錨點將予以保留，但會從活動清單中消失。您可以在操作後立即「復原」，或透過「已封存」篩選器再次將其顯示。",
+      "success": "實體已封存。",
+      "failed": "無法封存 — {{error}}",
+      "undo": "復原"
+    },
+    "restore": {
+      "success": "實體已還原。",
+      "failed": "無法還原 — {{error}}"
     }
   },
   "jobs": {
@@ -1079,9 +1150,34 @@
       "markWrong": "Mark wrong",
       "invalidating": "Removing…",
       "failed": "Couldn't save the correction: {{error}}"
+    },
+    "create": {
+      "title": "連結實體",
+      "description": "建立從 {{subject}} 到您另一個實體的關係。",
+      "action": "連結實體",
+      "subject": "從",
+      "predicate": "關係",
+      "object": "至",
+      "objectPlaceholder": "搜尋您的實體…",
+      "noMatches": "無符合的實體。",
+      "save": "建立連結",
+      "saving": "連結中…",
+      "cancel": "取消",
+      "success": "關係已建立。",
+      "notYours": "無法建立連結 — 端點並非您的實體之一。",
+      "selfLoop": "實體不能與自身建立關係。",
+      "failed": "無法建立連結 — {{error}}"
     }
   },
   "events": {
+    "create": {
+      "title": "新增事件",
+      "description": "為此角色撰寫一個新的時間線事件。",
+      "success": "事件已新增。",
+      "failed": "新增失敗：{{error}}",
+      "saving": "新增中…",
+      "save": "新增事件"
+    },
     "edit": {
       "cta": "Edit",
       "title": "Edit event",
@@ -1157,5 +1253,64 @@
       "divergent": "發散"
     },
     "totalRuns": "共 {{count}} 次執行"
+  },
+  "triage": {
+    "loading": "正在載入分流隊列…",
+    "loadFailed": "無法載入分流隊列：{{error}}",
+    "empty": "無須分流 — 所有提取的元素皆符合您的架構。",
+    "resolved": "已處理 {{count}} 個項目",
+    "resolveFailed": "無法處理：{{error}}",
+    "handoffToGlossary": "正在開啟術語表，以便在您的法典中完成此項工作…",
+    "itemType": {
+      "unknown_node_kind": "不明實體類型",
+      "unknown_edge_type": "不明關係類型",
+      "edge_kind_mismatch": "關係端點不匹配",
+      "unknown_vocab_value": "超出詞彙表範圍的值",
+      "edge_cardinality_conflict": "衝突的活動關係"
+    },
+    "action": {
+      "map": "映射至現有項目",
+      "add_to_vocab": "加入詞彙表",
+      "add_to_schema": "加入結構定義",
+      "re_target": "修正端點",
+      "widen_target_kinds": "擴大允許類型",
+      "drop_edge": "捨棄",
+      "close_previous": "關閉前一個",
+      "set_multi_active": "允許複數個",
+      "promote_to_glossary_kind": "提升為術語類型",
+      "demote_to_attribute": "降級為屬性",
+      "dismiss": "忽略"
+    },
+    "prompt": {
+      "target_entity_id": "已修正的目標實體 ID",
+      "map_to": "映射至 (留空則使用偵測到的值)"
+    },
+    "itemDismissed": "項目已移除",
+    "confirmSchemaWrite": "要將此內容新增至您的架構（Schema）中嗎？這會改變未來擷取內容的驗證方式。",
+    "evidence": {
+      "unknown_edge_type": "關係「{{predicate}}」尚未包含在您的架構中。",
+      "unknown_vocab_value": "值「{{value}}」尚未包含在「{{set}}」清單中。",
+      "edge_kind_mismatch": "「{{predicate}}」被用於 {{source}} 與 {{target}} 之間，這不符合您的架構規範。",
+      "unknown_node_kind": "類型「{{kind}}」尚未包含在您的架構中。",
+      "edge_cardinality_conflict": "存在衝突的「{{predicate}}」活動關係。",
+      "generic": "此擷取元素與您的架構不符。"
+    },
+    "retarget": {
+      "title": "指向正確的實體",
+      "description": "搜尋您的實體，並選擇此關係應指向的對象。",
+      "searchPlaceholder": "按名稱搜尋實體…",
+      "noMatches": "無符合的實體。",
+      "cancel": "取消",
+      "confirm": "重新指向"
+    },
+    "map": {
+      "title": "對應至現有項目",
+      "description": "請選擇此非結構化元素應被視為哪一個架構項目。",
+      "label": "對應至",
+      "keepDetected": "保留偵測到的值",
+      "cancel": "取消",
+      "confirm": "對應"
+    },
+    "emptyHint": "Triage 會收集所有尚未符合您架構的擷取內容 — 佇列清空代表所有內容都已歸位。"
   }
 }

@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import uuid
 
+from loreweave_llm.errors import LLMError
 from loreweave_llm.models import DoneEvent, TokenEvent, UsageEvent
 
 from app.engine.cowrite import stream_draft
@@ -55,6 +56,44 @@ async def test_stream_draft_captures_stop_finish_reason():
 async def test_stream_draft_none_finish_reason_when_absent():
     final = await _drain(_FakeSDK(None))
     assert final["metering"].finish_reason is None
+
+
+# ── D-ENGINE-ERRORED-JOB-MARKED-COMPLETED — the terminal frame carries `error` ──
+# so the router can fail (not complete-at-zero) a resolve failure. stream_draft
+# ALWAYS yields a terminal usage frame even after an LLMError, so the error signal
+# must ride that frame or the router marks the job completed with 0 tokens.
+
+class _ResolveFailSDK:
+    """Model never resolves — raises before any token (the observed bug shape)."""
+    async def stream(self, req, *, user_id):
+        raise LLMError("model_ref could not be resolved")
+        yield  # pragma: no cover — make this an async generator
+
+
+class _MidStreamFailSDK:
+    """Yields real content, THEN errors — the taxonomy case the router keeps."""
+    async def stream(self, req, *, user_id):
+        yield TokenEvent(delta="partial ")
+        yield TokenEvent(delta="prose")
+        raise LLMError("stream dropped mid-flight")
+
+
+async def test_stream_draft_error_no_content_flags_error_on_terminal_frame():
+    final = await _drain(_ResolveFailSDK())
+    assert final["error"] == "model_ref could not be resolved"
+    assert final["text"] == ""  # zero content → the router must mark this FAILED
+    assert final["metering"].output_tokens == 0
+
+
+async def test_stream_draft_error_after_content_keeps_text():
+    final = await _drain(_MidStreamFailSDK())
+    assert final["error"] == "stream dropped mid-flight"
+    assert final["text"] == "partial prose"  # non-empty → router keeps completed+truncated
+
+
+async def test_stream_draft_clean_finish_has_no_error():
+    final = await _drain(_FakeSDK("stop"))
+    assert final["error"] is None
 
 
 class _FakeJob:

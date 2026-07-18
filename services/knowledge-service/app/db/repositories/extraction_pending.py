@@ -196,6 +196,7 @@ class ExtractionPendingRepo:
         project_id: UUID,
         chapter_id: UUID,
         revision_id: UUID,
+        event_type: str = "chapter.published",
     ) -> ExtractionPending | None:
         """Canon Model CM3b — queue (or re-arm) a chapter for graph
         extraction at its PINNED published revision.
@@ -218,19 +219,29 @@ class ExtractionPendingRepo:
           INSERT INTO extraction_pending
             (user_id, project_id, event_id, event_type,
              aggregate_type, aggregate_id, revision_id)
-          SELECT $1, $2, $3, 'chapter.published', 'chapter', $3, $4
+          SELECT $1, $2, $3, $5, 'chapter', $3, $4
           WHERE EXISTS (SELECT 1 FROM owned)
           ON CONFLICT (project_id, event_id) DO UPDATE
             SET revision_id = EXCLUDED.revision_id,
+                event_type  = EXCLUDED.event_type,
                 processed_at = NULL,
                 created_at = now()
+          -- review-impl P2 (belt-and-braces on the cost gate): only RE-ARM when the
+          -- revision actually changed. Without this, an at-least-once REDELIVERY of
+          -- chapter.kg_indexed / chapter.published resets processed_at on an
+          -- already-drained row and triggers a full LLM re-extraction of the chapter —
+          -- for an event we have already handled. book-service now also suppresses the
+          -- emit when its pointer did not move (kg_index.go `moved`), but the bus can
+          -- redeliver a message we already processed, and only THIS predicate can stop
+          -- that. A genuine re-publish/re-index at a NEW revision still re-arms.
+          WHERE extraction_pending.revision_id IS DISTINCT FROM EXCLUDED.revision_id
           RETURNING {_SELECT_COLS}
         )
         SELECT * FROM upserted
         """
         async with self._pool.acquire() as conn:
             row = await conn.fetchrow(
-                query, user_id, project_id, chapter_id, revision_id,
+                query, user_id, project_id, chapter_id, revision_id, event_type,
             )
         return _row_to_pending(row) if row else None
 

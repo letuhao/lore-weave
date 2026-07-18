@@ -294,7 +294,8 @@ from app.routers import conformance as conf  # noqa: E402
 
 def _scene(node_id, *, title="S", beat_role="bait", tension=72, chapter_id=None):
     return OutlineNode(
-        id=node_id, user_id=_uuid.uuid4(), project_id=_uuid.uuid4(), kind="scene",
+        id=node_id, created_by=_uuid.uuid4(), project_id=_uuid.uuid4(),
+        book_id=_uuid.uuid4(), kind="scene",
         rank="aaa", title=title, beat_role=beat_role, status="done",
         chapter_id=chapter_id or _uuid.uuid4(), tension=tension,
     )
@@ -302,7 +303,7 @@ def _scene(node_id, *, title="S", beat_role="bait", tension=72, chapter_id=None)
 
 def _app(node_id, *, motif_id, beat_key="bait", role_bindings=None):
     return MotifApplication(
-        id=_uuid.uuid4(), user_id=_uuid.uuid4(), project_id=_uuid.uuid4(),
+        id=_uuid.uuid4(), created_by=_uuid.uuid4(), project_id=_uuid.uuid4(),
         book_id=_uuid.uuid4(), motif_id=motif_id, motif_version=1,
         outline_node_id=node_id, role_bindings=role_bindings or {"schemer": "ent-1"},
         annotations={"beat_key": beat_key} if beat_key else {},

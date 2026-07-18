@@ -40,6 +40,24 @@ const approvalDefaultTTL = 30 * time.Minute
 // model, so this mirrors the generous bearer TTL the effect itself uses (15m) + headroom.
 const approvalExecuteTimeout = 16 * time.Minute
 
+// confirmDomainAliases maps a caller-facing domain name to the internal routing
+// string DomainConfirmServiceURLs is keyed by (and the literal /v1/<domain>/actions/confirm
+// path segment). "knowledge" is the find_tools GROUP name kg_*/memory_* tools are
+// discovered under (chat-service's tool_discovery.py `_DOMAIN_ALIASES` maps the reverse
+// direction so that group resolves to those prefixes) — but the real confirm route is
+// /v1/kg/actions/confirm. A caller that reuses the group name it just discovered the tool
+// under (the natural thing to do — nothing tells it these differ) hit
+// AUTH_CONFIRM_DOMAIN_UNROUTABLE for a perfectly valid token. Normalize here rather than
+// making every caller guess right (real feedback repro, 2026-07-08).
+var confirmDomainAliases = map[string]string{"knowledge": "kg"}
+
+func normalizeConfirmDomain(domain string) string {
+	if alias, ok := confirmDomainAliases[domain]; ok {
+		return alias
+	}
+	return domain
+}
+
 type mcpApprovalCreateReq struct {
 	KeyID        string          `json:"key_id"`
 	OwnerUserID  string          `json:"owner_user_id"`
@@ -87,6 +105,7 @@ func (s *Server) internalCreateApproval(w http.ResponseWriter, r *http.Request) 
 		writeErr(w, http.StatusBadRequest, "AUTH_VALIDATION_ERROR", "tool_name, domain and confirm_token are required")
 		return
 	}
+	req.Domain = normalizeConfirmDomain(req.Domain)
 	expiresAt := time.Now().Add(approvalDefaultTTL)
 	if req.ExpiresAt != "" {
 		if t, perr := time.Parse(time.RFC3339, req.ExpiresAt); perr == nil {
@@ -169,6 +188,7 @@ func (s *Server) internalSelfConfirm(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, "AUTH_VALIDATION_ERROR", "domain and confirm_token are required")
 		return
 	}
+	req.Domain = normalizeConfirmDomain(req.Domain)
 	baseURL, ok := s.cfg.DomainConfirmServiceURLs[req.Domain]
 	if !ok || baseURL == "" {
 		writeErr(w, http.StatusUnprocessableEntity, "AUTH_CONFIRM_DOMAIN_UNROUTABLE", "this action's domain is not executable on this deployment")

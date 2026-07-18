@@ -108,6 +108,7 @@ func (s *Server) Router() http.Handler {
 		r.Get("/unlisted/{access_token}", s.getUnlistedBook)
 		r.Get("/unlisted/{access_token}/chapters", s.listUnlistedChapters)
 		r.Get("/unlisted/{access_token}/chapters/{chapter_id}", s.getUnlistedChapter)
+		r.Get("/unlisted/{access_token}/lore", s.getUnlistedLore) // W11-M3 public canon-only lore
 	})
 	return r
 }
@@ -146,6 +147,10 @@ func (s *Server) requireUserID(r *http.Request) (uuid.UUID, bool) {
 type bookProjection struct {
 	BookID           uuid.UUID `json:"book_id"`
 	OwnerUserID      uuid.UUID `json:"owner_user_id"`
+	// Kind rides the projection (WS-1.2 / D16). A diary is private-forever: no
+	// sharing policy may ever expose it. Empty on a legacy book-service that
+	// predates the field — treated as non-diary (normal book).
+	Kind             string    `json:"kind"`
 	Title            string    `json:"title"`
 	Description      *string   `json:"description"`
 	OriginalLanguage *string   `json:"original_language"`
@@ -155,6 +160,26 @@ type bookProjection struct {
 	ChapterCount     int       `json:"chapter_count"`
 	LifecycleState   string    `json:"lifecycle_state"`
 	CreatedAt        time.Time `json:"created_at"`
+}
+
+// diaryVisibilityGuard blocks any attempt to make a diary book non-private
+// (P-4 egress / D16). A diary is private-forever; only 'private' (or an empty
+// no-op patch) is ever allowed. Returns (0,"") to allow; a non-zero HTTP code
+// to refuse. FAIL-CLOSED: if book-service can't confirm the kind, a non-private
+// set is refused rather than risk exposing a diary during an outage. Pool-free
+// (only reads the projection), so it is unit-testable without a DB.
+func (s *Server) diaryVisibilityGuard(bookID uuid.UUID, visibility string) (code int, msg string) {
+	if visibility == "" || visibility == "private" {
+		return 0, ""
+	}
+	proj, status := s.fetchBookProjection(bookID)
+	if status != http.StatusOK {
+		return http.StatusBadGateway, "cannot verify book privacy"
+	}
+	if proj.Kind == "diary" {
+		return http.StatusForbidden, "a diary cannot be shared"
+	}
+	return 0, ""
 }
 
 func (s *Server) fetchBookProjection(bookID uuid.UUID) (*bookProjection, int) {
@@ -278,6 +303,12 @@ func (s *Server) patchSharingPolicy(w http.ResponseWriter, r *http.Request) {
 	}
 	if in.Visibility != "private" && in.Visibility != "unlisted" && in.Visibility != "public" {
 		writeError(w, http.StatusBadRequest, "SHARE_POLICY_INVALID", "invalid visibility")
+		return
+	}
+	// P-4 egress (D16): a diary can never be made shareable. Ownership is checked
+	// above, so only the owner ever reaches this — no diary oracle to a stranger.
+	if code, msg := s.diaryVisibilityGuard(bookID, in.Visibility); code != 0 {
+		writeError(w, code, "SHARE_POLICY_DIARY_FORBIDDEN", msg)
 		return
 	}
 	var tok *string
@@ -420,6 +451,112 @@ func (s *Server) getUnlistedChapter(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, out)
+}
+
+// unlistedLoreBeforeChapterIndex parses the self-declared `?before_chapter=N` into
+// the glossary `before_chapter_index` + a `valid` flag. Glossary is EXCLUSIVE
+// (`chapter_index < before_chapter_index`), so to INCLUDE the reader's current
+// chapter N we return N+1.
+//   - ABSENT ("") → (-1, true): deliberate "no window" = the whole published canon.
+//     (The unlisted link already exposes the full book TEXT, so its derived canon is
+//     no greater exposure; the `windowed:false` response flag lets the UI prompt for
+//     a position. The cutoff is an opt-in reader courtesy, not a security boundary.)
+//   - VALID N≥0 → (N+1, true).
+//   - MALFORMED / negative → (0, FALSE): a reader who TRIED to scope but fat-fingered
+//     it must NOT silently get the whole (spoiler-laden) canon — the caller 400s.
+func unlistedLoreBeforeChapterIndex(param string) (int, bool) {
+	if param == "" {
+		return -1, true
+	}
+	n, err := strconv.Atoi(param)
+	if err != nil || n < 0 {
+		return 0, false // present-but-invalid → fail closed at the handler
+	}
+	return n + 1, true
+}
+
+// fetchCanonLoreInternal pulls the book's CANON-ONLY glossary cast from glossary-
+// service, windowed to beforeChapterIndex (-1 = whole book, no window). The
+// canon-only guarantee is EXPLICIT here (`status=active`) — this is a public,
+// unauthenticated surface, so it must NOT rely on the implicit "drafts have no
+// chapter links" behaviour the grant-gated reader facade leans on. glossary_entities
+// defaults status='draft'; WS-4C AI-suggested captures are 'draft'; only a
+// human-promoted entity is 'active'. `alive=true` + `min_frequency>=1` are
+// belt-and-suspenders (and glossary now also drops soft-deleted rows).
+//
+// The known-entities endpoint returns a BARE JSON ARRAY of entity objects
+// (extraction_handler.go getKnownEntities), NOT an {entities,count} object — decode
+// accordingly (a prior object-decode silently failed → the route always returned
+// empty). Returns the entity slice; the handler wraps it.
+func (s *Server) fetchCanonLoreInternal(bookID uuid.UUID, beforeChapterIndex, limit int) ([]map[string]any, int) {
+	base := strings.TrimRight(s.cfg.GlossaryServiceInternalURL, "/")
+	url := fmt.Sprintf(
+		"%s/internal/books/%s/known-entities?alive=true&status=active&min_frequency=1&recency_window=0&limit=%d&before_chapter_index=%d",
+		base, bookID, limit, beforeChapterIndex,
+	)
+	res, err := s.internalGet(url)
+	if err != nil {
+		return nil, http.StatusBadGateway
+	}
+	defer res.Body.Close()
+	if res.StatusCode != http.StatusOK {
+		return nil, res.StatusCode
+	}
+	var out []map[string]any
+	if err := json.NewDecoder(res.Body).Decode(&out); err != nil {
+		return nil, http.StatusBadGateway
+	}
+	return out, http.StatusOK
+}
+
+// getUnlistedLore (W11-M3) — a public, spoiler-windowed, CANON-ONLY view of an
+// unlisted book's glossary cast. Anonymous (no auth); reached only via the secret
+// unlisted access token, so a bad/non-unlisted token → 404 (anti-oracle, same as
+// the chapter reads). The spoiler cutoff is SELF-DECLARED (`?before_chapter=N`, the
+// reader's own "I've read up to here") because an anonymous reader has no server
+// reading position.
+func (s *Server) getUnlistedLore(w http.ResponseWriter, r *http.Request) {
+	tokenValue := chi.URLParam(r, "access_token")
+	bookID, ok := s.resolveUnlistedBookID(r.Context(), tokenValue)
+	if !ok {
+		writeError(w, http.StatusNotFound, "BOOK_NOT_FOUND", "not found")
+		return
+	}
+	// Confirm the book is live (mirror getUnlistedBook) so a trashed book's lore
+	// isn't served through a still-valid token.
+	p, status := s.fetchBookProjection(bookID)
+	if status != http.StatusOK || p.LifecycleState != "active" {
+		writeError(w, http.StatusNotFound, "BOOK_NOT_FOUND", "not found")
+		return
+	}
+
+	beforeChapterIndex, cutoffOK := unlistedLoreBeforeChapterIndex(r.URL.Query().Get("before_chapter"))
+	if !cutoffOK {
+		// A present-but-malformed cutoff fails CLOSED: never fall through to whole
+		// canon for a reader who intended a spoiler window but mistyped it.
+		writeError(w, http.StatusBadRequest, "BOOK_VALIDATION_ERROR", "before_chapter must be a non-negative integer")
+		return
+	}
+	limit := 50
+	if v := r.URL.Query().Get("limit"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 && n <= 200 {
+			limit = n
+		}
+	}
+
+	ents, st := s.fetchCanonLoreInternal(bookID, beforeChapterIndex, limit)
+	if st != http.StatusOK {
+		// Any glossary failure → an empty cast, never a 5xx that leaks structure.
+		ents = []map[string]any{}
+	}
+	if ents == nil {
+		ents = []map[string]any{}
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"entities": ents,
+		"book_id":  bookID,
+		"windowed": beforeChapterIndex >= 0, // false ⇒ whole canon; UI should prompt for a position
+	})
 }
 
 func (s *Server) getBookVisibilityInternal(w http.ResponseWriter, r *http.Request) {

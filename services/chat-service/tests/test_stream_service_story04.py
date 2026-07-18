@@ -256,7 +256,7 @@ class TestStudioSurface:
         assert system is not None
         content = system["content"] if isinstance(system["content"], str) \
             else " ".join(p["text"] for p in system["content"])
-        assert "Tool domains (use find_tools with group=<name> to search one):" in content
+        assert "Tool domains (call tool_list with category=<name> to see every tool in one):" in content
         assert "- glossary: Lore entities" in content
 
     @pytest.mark.asyncio
@@ -371,9 +371,14 @@ class TestActivatedToolsPersist:
                 events.append(line)
 
         pool.execute.assert_awaited()
-        sql = pool.execute.await_args.args[0]
-        assert "activated_tools" in sql
-        assert pool.execute.await_args.args[2] == ["book_get_chapter"]
+        # The post-turn block issues MORE than one UPDATE (activated_tools AND capture_status),
+        # so find the activated_tools call among ALL execute calls rather than assuming it is last.
+        activation_calls = [
+            c for c in pool.execute.await_args_list
+            if c.args and isinstance(c.args[0], str) and "activated_tools" in c.args[0]
+        ]
+        assert activation_calls, "expected an activated_tools UPDATE among the post-turn writes"
+        assert activation_calls[-1].args[2] == ["book_get_chapter"]
 
 
 class TestResumeCuratedSurface:

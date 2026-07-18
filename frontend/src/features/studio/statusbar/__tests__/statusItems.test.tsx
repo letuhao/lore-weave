@@ -86,12 +86,12 @@ describe('UsageCostStatusItem', () => {
 });
 
 describe('StudioStatusContributions', () => {
-  it('registers the right-side items in edge-first order (#12 M-H adds word-count)', () => {
+  it('registers the right-side items in edge-first order (S-12 adds proposals-pending)', () => {
     let ids: string[] = [];
     function Probe() { ids = useStatusBarItems('right').map((i) => i.id); return null; }
     render(
       <StudioHostProvider bookId="b1"><Probe /><StudioStatusContributions /></StudioHostProvider>,
     );
-    expect(ids).toEqual(['notifications-unread', 'usage-cost', 'word-count']);
+    expect(ids).toEqual(['notifications-unread', 'proposals-pending', 'usage-cost', 'word-count']);
   });
 });

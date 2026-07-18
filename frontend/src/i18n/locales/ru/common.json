@@ -1,8 +1,10 @@
 {
+  "reconnecting": "Переподключение…",
   "nav": {
     "startNew": "Начать новое",
     "workspace": "Рабочее пространство",
     "chat": "Чат",
+    "assistant": "Ассистент",
     "roleplay": "Ролевая игра",
     "knowledge": "Знания",
     "worlds": "Миры",
@@ -25,7 +27,8 @@
     "home": "Главная",
     "account": "Аккаунт",
     "signin": "Войти",
-    "back_to_book": "Вернуться к книге"
+    "back_to_book": "Вернуться к книге",
+    "more": "Ещё"
   },
   "logout_confirm": {
     "title": "Выйти без сохранения изменений?",

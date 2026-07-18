@@ -400,6 +400,10 @@ export function configureGatewayApp(
   // proxy paths (that would break SSE / large uploads). Registered before the proxy
   // middleware so req.body is populated by the time Nest routes to the controller.
   instance.use('/v1/ai/tools', json());
+  // WS-1.4 — the assistant-provision orchestrator is a locally-served controller too, so it
+  // needs its JSON body parsed here (same reason as /v1/ai/tools). It is NOT in the proxy
+  // dispatch chain below, so it falls through to the Nest controller.
+  instance.use('/v1/assistant', json());
   const authProxyFn = authProxy as unknown as (
     req: Request,
     res: Response,

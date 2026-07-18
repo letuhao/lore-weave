@@ -22,7 +22,17 @@
     "hint": "Desliza para hacer zoom · arrastra espacio vacío para mover · haz clic en un nodo para ver detalles · ⊞ para expandir",
     "loading": "Cargando grafo…",
     "loadFailed": "Error al cargar el grafo: {{error}}",
-    "empty": "Aún no hay grafo de conocimiento — construye este proyecto para explorar su red."
+    "empty": "Aún no hay grafo de conocimiento — construye este proyecto para explorar su red.",
+    "emptyLens": "Ninguna relación coincide con este filtro; prueba con otra vista, un capítulo anterior o limpia el filtro.",
+    "truncatedLens": "mostrando las primeras {{n}} relaciones de este filtro",
+    "hintLens": "Desliza para acercar · arrastra para mover · haz clic en un nodo para ver detalles",
+    "lens": {
+      "view": "Vista",
+      "noView": "Todas las relaciones",
+      "asOf": "A partir del capítulo",
+      "latest": "más reciente",
+      "clear": "Limpiar filtro"
+    }
   },
   "schemaSection": {
     "title": "Esquema",
@@ -72,7 +82,8 @@
       "extractionDisabled": "Desactivada",
       "book": "Libro",
       "world": "Mundo",
-      "none": "—"
+      "none": "—",
+      "triageNudge": "{{count}} elemento(s) extraído(s) requiere triaje"
     },
     "placeholder": {
       "proposals": "Las propuestas pendientes aparecen aquí (C11).",
@@ -404,7 +415,8 @@
         "global": "Global",
         "confidence": "Confianza",
         "mentions": "Menciones",
-        "anchor": "Puntuación de anclaje"
+        "anchor": "Puntuación de anclaje",
+        "scope": "Alcance"
       },
       "promote": "Promover al glosario",
       "promoteHint": "Entidad descubierta. Promuévela para crear un borrador de glosario sugerido por IA para su revisión.",
@@ -421,8 +433,32 @@
         "decision": "Decisión",
         "preference": "Preferencia",
         "milestone": "Hito",
-        "negation": "Negación"
-      }
+        "negation": "Negación",
+        "statement": "Declaración",
+        "commitment": "Compromiso"
+      },
+      "addFact": "Añadir hecho",
+      "addFactTitle": "Añadir un hecho sobre esta entidad",
+      "factContentLabel": "Hecho",
+      "factContentPlaceholder": "p. ej. Desconfía del Consejo tras la traición",
+      "factTypeLabel": "Tipo",
+      "factPredicatePlaceholder": "predicado (opcional, p. ej. leal_a)",
+      "factObjectPlaceholder": "objeto (opcional, p. ej. Casa Vaeth)",
+      "addFactSave": "Guardar hecho",
+      "addFactCancel": "Cancelar",
+      "addFactSuccess": "Hecho añadido",
+      "addFactFailed": "No se pudo añadir el hecho: {{error}}",
+      "markWrong": "Marcar como incorrecto",
+      "markWrongConfirm": "¿Marcar este hecho como incorrecto? Se invalidará (se eliminará del repaso) pero se mantendrá en el historial.",
+      "markWrongSuccess": "Hecho marcado como incorrecto",
+      "markWrongFailed": "No se pudo invalidar el hecho: {{error}}",
+      "factTypeHelp": "¿Qué tipo de dato es este?",
+      "factAdvancedToggle": "Vincular con otra entidad (opcional)",
+      "replaceFact": "Reemplazar este dato",
+      "replaceFactSave": "Guardar reemplazo",
+      "replaceFactSuccess": "Dato reemplazado",
+      "markWrongUndo": "Deshacer",
+      "markWrongUndoFailed": "No se pudo deshacer: {{error}}"
     },
     "edit": {
       "title": "Editar entidad",
@@ -462,6 +498,41 @@
       "errArchived": "No se pueden fusionar entidades archivadas. Restáuralas primero.",
       "errGlossaryConflict": "Ambas entidades están vinculadas a entradas de glosario diferentes. Resuelve los vínculos del glosario antes de fusionar.",
       "errUnknown": "Error en la fusión: {{reason}}"
+    },
+    "create": {
+      "title": "Nueva entidad",
+      "description": "Redacta manualmente una entidad del grafo de conocimiento. Comienza como «descubierta»; anclala más tarde para que sea canónica.",
+      "newButton": "Nueva entidad",
+      "needsProject": "Selecciona un proyecto primero",
+      "field": {
+        "name": "Nombre",
+        "kind": "Tipo"
+      },
+      "save": "Crear",
+      "saving": "Creando…",
+      "cancel": "Cancelar",
+      "success": "Entidad creada — {{name}} ({{kind}})",
+      "dedup": "Ya existía — mostrando {{name}} ({{kind}})",
+      "failed": "No se pudo crear la entidad — {{error}}",
+      "discoveredHint": "Las nuevas entidades comienzan como «descubiertas». El estado canónico se obtiene al anclarlas al glosario."
+    },
+    "kind": {
+      "character": "Personaje",
+      "location": "Ubicación",
+      "organization": "Organización",
+      "concept": "Concepto",
+      "item": "Objeto"
+    },
+    "archive": {
+      "action": "Archivar",
+      "confirm": "¿Ocultar esta entidad? Sus relaciones y su anclaje al glosario se conservarán; la entidad desaparecerá de la lista activa. Puedes usar «Deshacer» inmediatamente después o volver a mostrarla mediante el filtro de Archivados.",
+      "success": "Entidad archivada.",
+      "failed": "No se pudo archivar — {{error}}",
+      "undo": "Deshacer"
+    },
+    "restore": {
+      "success": "Entidad restaurada.",
+      "failed": "No se pudo restaurar — {{error}}"
     }
   },
   "jobs": {
@@ -1079,9 +1150,34 @@
       "markWrong": "Marcar como incorrecta",
       "invalidating": "Eliminando…",
       "failed": "No se pudo guardar la corrección: {{error}}"
+    },
+    "create": {
+      "title": "Vincular entidad",
+      "description": "Crea una relación desde {{subject}} hacia otra de tus entidades.",
+      "action": "Vincular entidad",
+      "subject": "Desde",
+      "predicate": "Relación",
+      "object": "Hacia",
+      "objectPlaceholder": "Buscar tus entidades…",
+      "noMatches": "No hay entidades que coincidan.",
+      "save": "Crear vínculo",
+      "saving": "Vinculando…",
+      "cancel": "Cancelar",
+      "success": "Relación creada.",
+      "notYours": "No se pudo crear el vínculo: uno de los extremos no es una de tus entidades.",
+      "selfLoop": "Una entidad no puede relacionarse consigo misma.",
+      "failed": "No se pudo crear el vínculo: {{error}}"
     }
   },
   "events": {
+    "create": {
+      "title": "Añadir evento",
+      "description": "Crea un nuevo evento en la línea de tiempo de este personaje.",
+      "success": "Evento añadido.",
+      "failed": "Error al añadir: {{error}}",
+      "saving": "Añadiendo…",
+      "save": "Añadir evento"
+    },
     "edit": {
       "cta": "Editar",
       "title": "Editar evento",
@@ -1157,5 +1253,64 @@
       "divergent": "Divergente"
     },
     "totalRuns": "{{count}} ejecuciones en total"
+  },
+  "triage": {
+    "loading": "Cargando cola de triaje…",
+    "loadFailed": "No se pudo cargar la cola de triaje: {{error}}",
+    "empty": "No hay nada que triar: todos los elementos extraídos coinciden con su esquema.",
+    "resolved": "Se resolvieron {{count}} elemento(s)",
+    "resolveFailed": "No se pudo resolver: {{error}}",
+    "handoffToGlossary": "Abriendo glosario para finalizar esto en su códice…",
+    "itemType": {
+      "unknown_node_kind": "Tipo de entidad desconocido",
+      "unknown_edge_type": "Tipo de relación desconocido",
+      "edge_kind_mismatch": "Discrepancia en el extremo de la relación",
+      "unknown_vocab_value": "Valor fuera de vocabulario",
+      "edge_cardinality_conflict": "Conflictos de relaciones activas"
+    },
+    "action": {
+      "map": "Mapear a existente",
+      "add_to_vocab": "Añadir al vocabulario",
+      "add_to_schema": "Añadir al esquema",
+      "re_target": "Corregir endpoint",
+      "widen_target_kinds": "Ampliar tipos permitidos",
+      "drop_edge": "Eliminar",
+      "close_previous": "Cerrar anterior",
+      "set_multi_active": "Permitir múltiples",
+      "promote_to_glossary_kind": "Promover a tipo de glosario",
+      "demote_to_attribute": "Degradar a atributo",
+      "dismiss": "Descartar"
+    },
+    "prompt": {
+      "target_entity_id": "ID de entidad de destino corregida",
+      "map_to": "Mapear a (dejar en blanco para usar el valor detectado)"
+    },
+    "itemDismissed": "Elemento descartado",
+    "confirmSchemaWrite": "¿Añadir esto a su esquema? Esto cambiará la forma en que se validan las futuras extracciones.",
+    "evidence": {
+      "unknown_edge_type": "La relación «{{predicate}}» aún no está en tu esquema.",
+      "unknown_vocab_value": "El valor «{{value}}» aún no está en la lista «{{set}}».",
+      "edge_kind_mismatch": "Se utilizó «{{predicate}}» entre un {{source}} y un {{target}}, lo cual no está permitido en tu esquema.",
+      "unknown_node_kind": "El tipo «{{kind}}» aún no está en tu esquema.",
+      "edge_cardinality_conflict": "Existen relaciones «{{predicate}}» activas que presentan conflictos.",
+      "generic": "Este elemento extraído no coincide con tu esquema."
+    },
+    "retarget": {
+      "title": "Señala la entidad correcta",
+      "description": "Busca tus entidades y elige aquella a la que debe apuntar esta relación.",
+      "searchPlaceholder": "Buscar entidades por nombre…",
+      "noMatches": "No hay entidades que coincidan.",
+      "cancel": "Cancelar",
+      "confirm": "Reasignar"
+    },
+    "map": {
+      "title": "Mapear a un elemento existente",
+      "description": "Selecciona el elemento del esquema que debe representar a este elemento fuera de esquema.",
+      "label": "Mapear a",
+      "keepDetected": "Mantener el valor detectado",
+      "cancel": "Cancelar",
+      "confirm": "Mapear"
+    },
+    "emptyHint": "Triage recopila cualquier dato extraído que aún no encaje en tu esquema; una cola vacía significa que todo está en orden."
   }
 }

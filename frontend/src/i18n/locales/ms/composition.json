@@ -171,7 +171,19 @@
     "kind_character": "Watak",
     "kind_location": "Tempat",
     "kind_faction": "Faksi",
-    "kind_concept": "Konsep"
+    "kind_concept": "Konsep",
+    "rename": "Namakan Semula",
+    "renameConflict": "Telah diubah di tempat lain — dimuat semula.",
+    "editEntity": "Edit gelaran & jenis",
+    "archive": "Persara entiti",
+    "archiveConfirm": "Persarakan «{{name}}»? Hubungan dan sauh glosarinya akan dikekalkan; ia akan muncul semula jika buku menyebutnya lagi (tiada butang pemulihan).",
+    "archived": "Telah dipersarakan — ia akan muncul semula jika buku menyebutnya lagi.",
+    "newEntity": "Baru",
+    "editFailed": "Pengeditan gagal: {{error}}",
+    "truncated": "Menunjukkan 200 yang pertama — perhalusi carian anda untuk mengecilkan senarai.",
+    "showingOf": "Menunjukkan {{loaded}} daripada {{total}}.",
+    "loadMore": "Muat lebih banyak",
+    "loadingMore": "Memuatkan…"
   },
   "relmap": "Hubungan",
   "relations": {
@@ -214,7 +226,10 @@
     "gone": "tiada lagi",
     "loading": "Memuat lengkok watak...",
     "noProject": "Tiada graf pengetahuan lagi — ekstrak buku ini untuk memetakan lengkok watak.",
-    "empty": "Watak ini belum mempunyai sebarang peristiwa."
+    "empty": "Watak ini belum mempunyai sebarang peristiwa.",
+    "edit": "Edit",
+    "linkEntity": "+ paut entiti",
+    "addEvent": "+ Tambah acara"
   },
   "worldmap": "Peta Dunia",
   "wmap": {
@@ -236,7 +251,10 @@
     "loading": "Memuat peta dunia...",
     "addFailed": "Tidak dapat menambah tempat tersebut.",
     "linkFailed": "Tidak dapat memautkan tempat tersebut.",
-    "linkMissing": "Salah satu tempat tersebut tidak lagi wujud."
+    "linkMissing": "Salah satu tempat tersebut tidak lagi wujud.",
+    "delete": "Padam {{name}}",
+    "deleteConfirm": "Padam «{{name}}» daripada peta dunia? Ini akan mengarkibkan tempat tersebut.",
+    "deleteFailed": "Tidak dapat memadam tempat tersebut."
   },
   "grounding": "Asas",
   "canon": "Kanun",
@@ -366,6 +384,9 @@
   "statDiverge": "Diverge (pilihan K)",
   "statStream": "Aliran",
   "guidePlaceholder": "Panduan pilihan untuk penulis bersama…",
+  "correction": {
+    "capturedToast": "Dicatat — rakan penulis anda akan belajar daripada ini"
+  },
   "reasoning": "Penaakulan",
   "reasoningHint": "Auto = pelayan memutuskan mengikut model. Off melumpuhkan pemikiran; Low/Med/High memaksanya.",
   "reasoningAuto": "Pemikiran: auto",
@@ -407,7 +428,6 @@
   "pacing": "rentak",
   "canon_consistency": "kanon",
   "dismiss": "abaikan",
-  "overrideSlipBlocked": "Penerimaan terhalang: satu draf override telah terlepas kembali ke nilai kanon. Jana semula sebelum menerima.",
   "overrideSlipExhausted": "Override masih terlepas selepas had penjanaan semula — dipaparkan untuk semakan anda (penerimaan tidak lagi terhalang).",
   "overrideSlipDetail": "{{name}} ({{field}}): dijangka “{{expected}}”, didapati “{{found}}”",
   "deltaInconsistencyDetail": "{{name}}: bercanggah dengan peraturan delta “{{rule}}”",
@@ -430,6 +450,12 @@
   "canonUntil": "Hingga (urutan bacaan)",
   "canonActive": "aktif",
   "canonInactive": "tidak aktif",
+  "canonArchivedTag": "diarsipkan",
+  "canonShowArchived": "Tunjukkan yang diarkibkan",
+  "canonRuleArchived": "Peraturan diarkibkan",
+  "canonRuleRestored": "Peraturan dipulihkan",
+  "restore": "Pulihkan",
+  "undo": "Batalkan",
   "canonWindowInverted": "'Dari' mesti ≤ 'Hingga'.",
   "archive": "Arkib",
   "noRules": "Tiada peraturan kanon lagi.",
@@ -611,12 +637,18 @@
     "scope": {
       "label": "Skop motif",
       "my": "Perpustakaan saya",
-      "catalog": "Katalog awam"
+      "catalog": "Katalog awam",
+      "book": "Buku",
+      "shared": "Dikongsi",
+      "system": "Sistem",
+      "drafts": "Draf",
+      "needsBook": "Buka buku untuk melihat motifnya"
     },
     "search": "Cari motif",
     "overuse": "\"{{name}}\" sudah digunakan dalam {{chapters}} — cuba pelbagaikan.",
     "list": {
-      "noMatch": "Tiada motif yang sepadan — kosongkan penapis."
+      "noMatch": "Tiada motif yang sepadan — kosongkan penapis.",
+      "truncated": "Menunjukkan 100 yang pertama — kecilkan carian dengan fungsi carian atau penapis untuk melihat selebihnya."
     },
     "error": {
       "load": "Gagal dimuatkan — sila cuba lagi."
@@ -711,7 +743,8 @@
     },
     "binding": {
       "freeForm": "Tiada motif yang sepadan — babak ini adalah bebas.",
-      "commitGenerate": "Sahkan + tulis babak ini →"
+      "commitGenerate": "Sahkan + tulis babak ini →",
+      "noWork": "Buat pelan untuk buku ini bagi mengikat motif pada babaknya."
     },
     "swap": {
       "title": "Tukar motif",
@@ -735,7 +768,8 @@
         "ok": "Mengikut beat",
         "warn": "Sisihan intensiti",
         "bad": "Beat terlepas"
-      }
+      },
+      "rerunNeedsModel": "Pilih model untuk menjalankan semula pematuhan"
     },
     "arc": {
       "mobileNotice": "Grid garis masa tersedia pada skrin yang lebih besar — di sini anda boleh menyuntingnya sebagai senarai.",
@@ -745,7 +779,110 @@
       "moveRight": "Gerak lebih lewat",
       "grow": "Panjangkan",
       "shrink": "Pendekkan",
-      "remove": "Buang"
+      "remove": "Buang",
+      "libraryEmpty": "Belum ada templat lengkungan. Cipta satu, atau import cerita untuk diurai.",
+      "templates": {
+        "tabLibrary": "Perpustakaan",
+        "tabCatalog": "Katalog",
+        "tabDeconstruct": "Import & Urai",
+        "tier_all": "Semua",
+        "tier_mine": "Milik Saya",
+        "tier_system": "Sistem",
+        "tier_book": "Buku",
+        "new": "+ Baru",
+        "loading": "Memuatkan…",
+        "loadError": "Tidak dapat memuatkan templat.",
+        "retry": "Cuba Lagi",
+        "chapters": "{{count}} bab",
+        "chipSystem": "Sistem",
+        "chipMine": "Milik Saya",
+        "chipPublic": "Awam",
+        "archive": "arkib",
+        "adopt": "guna",
+        "createCode": "kod (unik)",
+        "createName": "nama",
+        "createShare": "Kongsi dengan kolaborator buku ini (tahap buku)",
+        "create": "Cipta",
+        "cancel": "Batal",
+        "catalogError": "Tidak dapat memuatkan katalog.",
+        "catalogEmpty": "Belum ada templat lengkungan awam.",
+        "back": "← Semua templat",
+        "driftTitle": "Drift — digunakan oleh buku ini",
+        "driftUnapplied": "Belum digunakan pada buku ini — gunakan di atas untuk membandingkan drift.",
+        "driftNoProvenance": "Lengkungan ini ditulis secara terus — tiada templat untuk dibandingkan.",
+        "driftGone": "Templat sumber tidak lagi tersedia.",
+        "driftLoading": "Memuatkan drift…",
+        "driftClean": "Tiada hanyutan — lengkok yang dihasilkan sepadan dengan templatnya.",
+        "driftSummary": "jurang liputan {{gaps}} · isu turutan {{violations}} · penempatan terlipat {{folded}}",
+        "driftPacingOnly": "Struktur sepadan, tetapi rentak berubah (maksimum {{drift}}).",
+        "driftThreads": "Liputan benang",
+        "driftNoThreads": "Templat tidak mempunyai benang untuk dibandingkan.",
+        "driftPacing": "Tempo",
+        "driftMax": "hanyutan maks {{drift}}",
+        "driftPacingNC": "Belum boleh dibandingkan — templat tidak mempunyai lengkung ketegangan.",
+        "driftSuccession": "Turutan",
+        "driftSuccessionOk": "Tiada pelanggaran turutan.",
+        "driftViolation": "{{label}}: {{n}} tidak mengikut turutan",
+        "driftFolded": "Terlipat (tidak pernah terikat)",
+        "untitledArc": "(lengkungan tanpa tajuk)",
+        "truncated": "Menunjukkan {{shown}} daripada {{count}} yang pertama — gunakan Katalog atau peringkat yang lebih khusus untuk mencari lebih banyak.",
+        "tabSuggest": "Cadangkan"
+      },
+      "import": {
+        "privacy": "Teks asal kekal peribadi untuk anda dan tidak akan dikongsi. Hanya struktur abstrak yang terhasil boleh diterbitkan — dan penerbitan akan membuang rujukan sumber.",
+        "sources": "Sumber rujukan",
+        "loading": "Memuatkan…",
+        "noSources": "Belum ada sumber — tampal satu di bawah.",
+        "untitled": "(tanpa tajuk)",
+        "deleteConfirm": "Padam sumber ini? Tiada pemulihan boleh dilakukan.",
+        "deleteTitle": "Padam (tiada pemulihan)",
+        "sourceError": "Tidak dapat menyimpan sumber — cuba lagi.",
+        "what": "Urai rujukan menjadi templat lengkungan yang boleh digunakan semula (menggunakan kuota LLM).",
+        "hint": "Petunjuk lengkungan (pilihan)",
+        "useWeb": "Benarkan carian web",
+        "model": "Model uraian",
+        "estimating": "Menganggarkan…",
+        "running": "Mengurai…",
+        "run": "Urai",
+        "selectFirst": "Pilih sumber di atas terlebih dahulu.",
+        "done": "Templat lengkungan baharu telah dicipta — cari di Perpustakaan.",
+        "pasteTitle": "tajuk",
+        "pasteBody": "tampal teks rujukan…",
+        "tooLong": "Terlalu panjang — potong sebelum mengimport.",
+        "addSource": "Tambah sumber"
+      },
+      "extract": {
+        "blurb": "Simpan bentuk lengkok ini sebagai templat boleh guna semula dalam perpustakaan anda.",
+        "open": "Simpan sebagai templat…",
+        "namePlaceholder": "Nama templat",
+        "saving": "Menyimpan…",
+        "save": "Simpan",
+        "cancel": "Batal",
+        "conflict": "Anda sudah mempunyai templat dengan nama tersebut — sila namakan semula.",
+        "error": "Tidak dapat menyimpan lengkok ini sebagai templat.",
+        "done": "“{{name}}” telah disimpan ke dalam perpustakaan templat anda."
+      },
+      "suggest": {
+        "noProject": "Buka buku dengan Karya untuk mendapatkan cadangan lengkok bagi premisnya.",
+        "premisePlaceholder": "Huraikan premis — contohnya «seorang pewaris yang enggan mesti menuntut semula rumah yang telah jatuh»",
+        "genrePlaceholder": "Genre (pilihan)",
+        "running": "Menyusun kedudukan…",
+        "run": "Cadangkan lengkok cerita",
+        "error": "Tidak dapat menyusun kedudukan cadangan lengkok cerita.",
+        "empty": "Tiada templat lengkok yang sesuai lagi — cipta satu, atau import cerita untuk dianalisis.",
+        "mine": "milik anda",
+        "span": "{{count}} bab"
+      },
+      "decompile": {
+        "open": "Kumpulkan bab ke dalam lengkok cerita",
+        "confirm": "Kumpulkan bab buku ini secara automatik ke dalam lengkok cerita (~{{n}} bab setiap satu). Selamat untuk dijalankan semula — lengkok sedia ada akan digunakan semula.",
+        "running": "Mengumpulkan…",
+        "run": "Kumpulkan ke dalam lengkok cerita",
+        "cancel": "Batal",
+        "error": "Tidak dapat mengumpulkan bab ke dalam arka.",
+        "done": "Mengumpulkan {{chapters}} bab ke dalam {{arcs}} arka.",
+        "none": "Tiada bab untuk dikumpulkan ke dalam arka lagi."
+      }
     },
     "simple": {
       "actant": {
@@ -803,6 +940,38 @@
       "knows": "Tahu",
       "deceived": "Tertipu",
       "gap": "Jurang"
+    },
+    "graph": {
+      "title": "Graf — terdiri daripada · mendahului · variasi daripada",
+      "loading": "Memuatkan hubungan…",
+      "error": "Tidak dapat memuatkan graf motif.",
+      "retry": "Cuba lagi",
+      "empty": "Tiada hubungan lagi.",
+      "deleteEdge": "Buang hubungan",
+      "addEdge": "Tambah hubungan",
+      "pickNeighbor": "Pilih motif…",
+      "add": "Tambah hubungan",
+      "cancel": "Batal",
+      "kind": {
+        "composed_of": "Terdiri daripada",
+        "precedes": "Mendahului",
+        "variant_of": "Variasi daripada"
+      },
+      "truncated": "Menunjukkan {{cap}} motif pertama — kecilkan julat mengikut tahap atau cari untuk melihat lebih banyak.",
+      "canvasLoading": "Memuatkan graf motif...",
+      "canvasEmpty": "Tiada motif untuk digrafkan lagi — cipta atau ambil motif, kemudian hubungkannya."
+    },
+    "suggest": {
+      "button": "Cadangkan motif",
+      "loading": "Menyusun motif untuk babak ini...",
+      "error": "Tidak dapat mencadangkan motif.",
+      "retry": "Cuba lagi",
+      "empty": "Tiada motif yang sesuai untuk babak ini lagi — tambah lebih banyak ke dalam perpustakaan anda.",
+      "bind": "Ikat",
+      "degradedMine": "Motif anda tidak disusun mengikut kesesuaian — tetapkan model embedding dalam tetapan anda untuk menyusunnya secara semantik.",
+      "degradedLibrary": "Tidak disusun mengikut kesesuaian — model embedding perpustakaan kongsi belum dikonfigurasi, jadi ini adalah pilihan fallback genre, bukannya padanan yang diberi skor.",
+      "sectionMine": "Motif anda",
+      "sectionLibrary": "Daripada perpustakaan"
     }
   },
   "authoringRun": {
@@ -923,5 +1092,6 @@
       "loading": "Memuatkan sesi…",
       "back": "← Kembali ke senarai runs"
     }
-  }
+  },
+  "overrideSlipBlocked": "Terima yang tersegel: versi «what-if» yang tergelincir kembali ke nilai kanon. Jana semula sebelum menerima."
 }

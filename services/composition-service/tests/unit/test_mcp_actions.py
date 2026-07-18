@@ -41,7 +41,8 @@ GOOD_TOKEN = "test_token"  # tests/conftest.py INTERNAL_SERVICE_TOKEN
 
 
 def _work() -> CompositionWork:
-    return CompositionWork(project_id=PROJECT, user_id=USER, book_id=BOOK, id=PROJECT, version=1)
+    # spec 25: CompositionWork renamed user_id -> created_by (a plain actor stamp).
+    return CompositionWork(project_id=PROJECT, created_by=USER, book_id=BOOK, id=PROJECT)
 
 
 def _publish_token(user=USER, *, ttl=600, now=None) -> str:
@@ -68,6 +69,28 @@ def _generate_token(user=USER, *, target_kind="chapter", target_id=None, ttl=600
     }
     return mint_confirm_token(
         settings.confirm_token_signing_secret, user, tid, "composition.generate",
+        payload, ttl=ttl, now=now,
+    )
+
+
+def _decompile_token(user=USER, *, ttl=600, now=None) -> str:
+    # close-21-28 P-O2a — the arc-decompiler confirm token (book-scoped, deterministic effect).
+    payload = {"book_id": str(BOOK), "chapters_per_arc": 10}
+    return mint_confirm_token(
+        settings.confirm_token_signing_secret, user, BOOK, "composition.decompile",
+        payload, ttl=ttl, now=now,
+    )
+
+
+def _derive_token(user=USER, *, ttl=600, now=None) -> str:
+    # D-DIVERGENCE-MCP-TOOLS — the derive (spawn a dị bản) confirm token (book-scoped).
+    payload = {
+        "source_project_id": str(PROJECT), "book_id": str(BOOK), "name": "My dị bản",
+        "branch_point": 0, "taxonomy": "au", "pov_anchor": None,
+        "canon_rule": [], "entity_overrides": [],
+    }
+    return mint_confirm_token(
+        settings.confirm_token_signing_secret, user, BOOK, "composition.derive",
         payload, ttl=ttl, now=now,
     )
 
@@ -108,7 +131,9 @@ def client():
 
         # Stub the repos + book client the confirm route depends on.
         works = AsyncMock()
-        works.get = AsyncMock(side_effect=lambda u, p: _work() if u == USER else None)
+        # spec 25: WorksRepo.get is bare project-id (get(project_id), no owner arg);
+        # access is decided at the confirm route's grant gate, not by an owner filter.
+        works.get = AsyncMock(side_effect=lambda p: _work() if p == PROJECT else None)
 
         outline = AsyncMock()
         outline.chapter_scene_gate = AsyncMock(
@@ -131,6 +156,7 @@ def client():
         with TestClient(app, raise_server_exceptions=True) as c:
             c._book = book  # expose for assertions
             c._outline = outline
+            c._works = works
             yield c
         app.dependency_overrides.clear()
 
@@ -188,6 +214,59 @@ def test_confirm_executes_publish(client):
     assert body["outcome"] == "action_done"
     assert body["chapter_id"] == str(CHAPTER)
     client._book.publish_chapter.assert_awaited_once()
+
+
+def test_confirm_executes_decompile(client, monkeypatch):
+    """close-21-28 P-O2a — a confirmed decompile token re-checks the book EDIT grant, then runs the
+    deterministic engine and returns its counts. The engine is patched (its DB effect has its own
+    integration test); this pins the confirm-spine wiring: descriptor → grant re-check → engine."""
+    fake = AsyncMock(return_value={"arcs": 3, "chapters_assigned": 28, "arc_ids": ["a", "b", "c"]})
+    monkeypatch.setattr("app.engine.arc_decompile.decompile_arcs", fake)
+
+    resp = _confirm(client, _decompile_token())
+
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["outcome"] == "action_accepted"
+    assert body["descriptor"] == "composition.decompile"
+    assert body["arcs"] == 3 and body["chapters_assigned"] == 28
+    fake.assert_awaited_once()
+    # the engine was called with the book_id from the token payload + EDIT-scoped caller
+    assert fake.await_args.args[1] == BOOK  # decompile_arcs(pool, book_id, ...)
+
+
+def test_confirm_executes_derive(client, monkeypatch):
+    """D-DIVERGENCE-MCP-TOOLS — a confirmed derive token re-checks the book EDIT grant, then runs the
+    SHARED perform_derive (patched; its mint+txn has its own coverage). Pins the confirm-spine wiring:
+    descriptor → grant re-check → perform_derive(source, body, user) with the SIGNED target."""
+    new_pid = str(uuid.uuid4())
+    fake = AsyncMock(return_value={"project_id": new_pid, "source_work_id": str(PROJECT)})
+    monkeypatch.setattr("app.routers.works.perform_derive", fake)
+
+    resp = _confirm(client, _derive_token())
+
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["outcome"] == "action_accepted"
+    assert body["descriptor"] == "composition.derive"
+    assert body["project_id"] == new_pid
+    fake.assert_awaited_once()
+    # perform_derive got the acting user (envelope) + the source resolved from the signed payload.
+    assert fake.await_args.args[2] == USER  # perform_derive(source, body, user_id, ...)
+
+
+def test_confirm_derive_rejects_a_derivative_source(client, monkeypatch):
+    """If the payload's source resolves to a DERIVATIVE (or is gone) at confirm, refuse uniformly —
+    never mint a partition off a branch."""
+    # works.get returns a DERIVATIVE for PROJECT (source_work_id set).
+    deriv = CompositionWork(project_id=PROJECT, created_by=USER, book_id=BOOK, id=PROJECT, source_work_id=CHAPTER)
+    client._works.get = AsyncMock(side_effect=lambda p: deriv if p == PROJECT else None)
+    fake = AsyncMock()
+    monkeypatch.setattr("app.routers.works.perform_derive", fake)
+
+    resp = _confirm(client, _derive_token())
+    assert resp.status_code == 400
+    fake.assert_not_awaited()  # never derived off a derivative
 
 
 def test_preview_describes_without_writing(client):
@@ -417,7 +496,22 @@ def _authoring_svc(svc):
 
 @pytest.fixture
 def authoring_svc():
+    from decimal import Decimal
+
+    from app.db.models import AuthoringRun
+
     svc = AsyncMock()
+    # spec 25: the run-scoped confirm effects (gate/start/resume/revert_all) now
+    # re-resolve the run BARE-ID and fence it against the confirm-gated book +
+    # creator (`_authoring_run_in_book` → `svc.get`). Default `get` to the
+    # caller's OWN run in BOOK so those effects proceed; the cross-book/foreign-
+    # creator IDOR refusals are covered in test_authoring_run_tenancy.py. (create
+    # has no run_id, so it never calls `get`.)
+    svc.get = AsyncMock(return_value=AuthoringRun(
+        run_id=RUN, created_by=USER, book_id=BOOK, plan_run_id=PLAN_RUN, level=3,
+        scope=[str(CHAPTER)], budget_usd=Decimal("2.00"),
+        tool_allowlist=["composition_write_prose"], status="gated",
+    ))
     yield svc
 
 
@@ -426,7 +520,7 @@ def test_confirm_executes_authoring_run_create(client, authoring_svc):
     from decimal import Decimal
 
     run = AuthoringRun(
-        run_id=RUN, owner_user_id=USER, book_id=BOOK, plan_run_id=PLAN_RUN,
+        run_id=RUN, created_by=USER, book_id=BOOK, plan_run_id=PLAN_RUN,
         level=3, scope=[str(CHAPTER)], budget_usd=Decimal("2.00"),
         tool_allowlist=["composition_write_prose"], pause_after_each_unit=True,
     )
@@ -470,7 +564,7 @@ def test_confirm_authoring_run_create_does_not_itself_validate_tool_allowlist(cl
     from decimal import Decimal
 
     run = AuthoringRun(
-        run_id=RUN, owner_user_id=USER, book_id=BOOK, plan_run_id=PLAN_RUN,
+        run_id=RUN, created_by=USER, book_id=BOOK, plan_run_id=PLAN_RUN,
         level=3, scope=[str(CHAPTER)], budget_usd=Decimal("2.00"),
         tool_allowlist=["not_a_real_tool"], pause_after_each_unit=True,
     )
@@ -510,7 +604,7 @@ def test_confirm_executes_authoring_run_gate(client, authoring_svc):
     from decimal import Decimal
 
     gated = AuthoringRun(
-        run_id=RUN, owner_user_id=USER, book_id=BOOK, plan_run_id=PLAN_RUN,
+        run_id=RUN, created_by=USER, book_id=BOOK, plan_run_id=PLAN_RUN,
         level=3, scope=[str(CHAPTER)], budget_usd=Decimal("2.00"),
         tool_allowlist=["composition_write_prose"], status="gated",
     )
@@ -549,7 +643,7 @@ def test_confirm_executes_authoring_run_start_with_pause_override(client, author
     from decimal import Decimal
 
     running = AuthoringRun(
-        run_id=RUN, owner_user_id=USER, book_id=BOOK, plan_run_id=PLAN_RUN,
+        run_id=RUN, created_by=USER, book_id=BOOK, plan_run_id=PLAN_RUN,
         level=3, scope=[str(CHAPTER)], budget_usd=Decimal("2.00"),
         tool_allowlist=["composition_write_prose"], status="running",
     )
@@ -564,8 +658,8 @@ def test_confirm_executes_authoring_run_start_with_pause_override(client, author
         resp = _confirm(client, token)
     assert resp.status_code == 200, resp.text
     assert resp.json()["run"]["status"] == "running"
-    authoring_svc.set_pause_policy.assert_awaited_once_with(USER, RUN, False)
-    authoring_svc.start.assert_awaited_once_with(USER, RUN)
+    authoring_svc.set_pause_policy.assert_awaited_once_with(RUN, False)  # spec 25: bare-id
+    authoring_svc.start.assert_awaited_once_with(RUN)
 
 
 def test_confirm_executes_authoring_run_start_without_override_skips_policy_call(client, authoring_svc):
@@ -573,7 +667,7 @@ def test_confirm_executes_authoring_run_start_without_override_skips_policy_call
     from decimal import Decimal
 
     running = AuthoringRun(
-        run_id=RUN, owner_user_id=USER, book_id=BOOK, plan_run_id=PLAN_RUN,
+        run_id=RUN, created_by=USER, book_id=BOOK, plan_run_id=PLAN_RUN,
         level=3, scope=[str(CHAPTER)], budget_usd=Decimal("2.00"), tool_allowlist=["composition_write_prose"],
         status="running",
     )
@@ -585,7 +679,7 @@ def test_confirm_executes_authoring_run_start_without_override_skips_policy_call
         resp = _confirm(client, token)
     assert resp.status_code == 200, resp.text
     authoring_svc.set_pause_policy.assert_not_awaited()
-    authoring_svc.start.assert_awaited_once_with(USER, RUN)
+    authoring_svc.start.assert_awaited_once_with(RUN)
 
 
 def test_confirm_executes_authoring_run_resume(client, authoring_svc):
@@ -593,7 +687,7 @@ def test_confirm_executes_authoring_run_resume(client, authoring_svc):
     from decimal import Decimal
 
     running = AuthoringRun(
-        run_id=RUN, owner_user_id=USER, book_id=BOOK, plan_run_id=PLAN_RUN,
+        run_id=RUN, created_by=USER, book_id=BOOK, plan_run_id=PLAN_RUN,
         level=3, scope=[str(CHAPTER)], budget_usd=Decimal("2.00"), tool_allowlist=["composition_write_prose"],
         status="running",
     )
@@ -604,7 +698,7 @@ def test_confirm_executes_authoring_run_resume(client, authoring_svc):
     with _authoring_svc(authoring_svc):
         resp = _confirm(client, token)
     assert resp.status_code == 200, resp.text
-    authoring_svc.resume.assert_awaited_once_with(USER, RUN)
+    authoring_svc.resume.assert_awaited_once_with(RUN)
 
 
 def test_confirm_executes_authoring_run_revert_all_full_success(client, authoring_svc):
@@ -657,3 +751,40 @@ def test_confirm_authoring_run_denied_without_edit_grant(client, authoring_svc):
         resp = _confirm(client, token)
     assert resp.status_code == 403
     authoring_svc.gate.assert_not_awaited()
+
+
+# ── D-MOTIF-BOOKSHARED-QUOTA (REFUTED — locked, 2026-07-17) ─────────────────────────────
+# The Wave-3 "does adopt-into-book_shared spend against a quota/ledger?" question was
+# refuted: motif adopt is a $0 CLONE — it never calls the usage-billing precheck. Its only
+# ceiling is the LOCAL row-count `motif_max_adopt` (→ 402), a tenancy guard, not a spend.
+# This AST guard locks that: if a future edit silently adds a billing hold to the free
+# adopt effect, it reds. (AST, not a substring grep — the docstring literally says "no
+# billing precheck", which a text search would false-match; hygiene-grep lesson.)
+def _called_names(fn):
+    import ast
+    import inspect
+    tree = ast.parse(inspect.getsource(fn))
+    return {
+        n.func.id for n in ast.walk(tree)
+        if isinstance(n, ast.Call) and isinstance(n.func, ast.Name)
+    }
+
+
+def test_motif_adopt_effect_never_prechecks_billing():
+    """Adopt is a $0 clone — its confirm effect must NEVER call `_precheck_or_402`."""
+    from app.routers import actions
+
+    assert "_precheck_or_402" not in _called_names(actions._execute_motif_adopt), (
+        "motif adopt must not call the billing precheck — adopt is a $0 clone, its ceiling "
+        "is the local motif_max_adopt row count (D-MOTIF-BOOKSHARED-QUOTA, refuted)."
+    )
+
+
+def test_motif_mine_effect_does_precheck_billing_contrast():
+    """Contrast that proves the guard discriminates: a genuine SPEND path (mine) DOES call
+    the precheck — so the adopt assertion above is meaningful, not vacuously true."""
+    from app.routers import actions
+
+    assert "_precheck_or_402" in _called_names(actions._execute_motif_mine), (
+        "motif mine spends on the LLM extractor and MUST precheck the billing hold."
+    )

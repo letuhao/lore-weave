@@ -15,7 +15,11 @@ from loreweave_context.compaction import (
 )
 from loreweave_context.plan import CompilePlan, Planner
 from loreweave_context.system_message import build_system_message
-from loreweave_context.tokens import estimate_messages_tokens, estimate_tokens
+from loreweave_context.tokens import (
+    estimate_messages_tokens,
+    estimate_tokens,
+    split_to_token_budget,
+)
 from loreweave_context.trace import (
     PHASES,
     TIERS,
@@ -32,6 +36,7 @@ __all__ = [
     "Planner",
     "estimate_tokens",
     "estimate_messages_tokens",
+    "split_to_token_budget",
     "compact_messages",
     "CompactionReport",
     "CompactionStrategy",

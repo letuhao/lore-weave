@@ -1142,10 +1142,16 @@ func (s *Server) internalGetUserProfile(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	var displayName, avatarURL *string
+	var displayName, avatarURL, timezone *string
+	// timezone (sealed T-1) lives in user_preferences.prefs JSONB. chat-service
+	// reads it here to bucket chat_messages.local_date by the user's LOCAL day
+	// (DBT-11) — a message-write internal call, so it rides this token-gated
+	// profile endpoint rather than adding a new one. NULL when unset (→ UTC).
 	err = s.pool.QueryRow(r.Context(),
-		`SELECT display_name, avatar_url FROM users WHERE id = $1`, userID,
-	).Scan(&displayName, &avatarURL)
+		`SELECT u.display_name, u.avatar_url,
+		        (SELECT NULLIF(prefs->>'timezone', '') FROM user_preferences WHERE user_id = u.id)
+		   FROM users u WHERE u.id = $1`, userID,
+	).Scan(&displayName, &avatarURL, &timezone)
 	if err != nil {
 		writeErr(w, http.StatusNotFound, "AUTH_USER_NOT_FOUND", "user not found")
 		return
@@ -1159,6 +1165,9 @@ func (s *Server) internalGetUserProfile(w http.ResponseWriter, r *http.Request) 
 	}
 	if avatarURL != nil {
 		m["avatar_url"] = *avatarURL
+	}
+	if timezone != nil {
+		m["timezone"] = *timezone
 	}
 	writeJSON(w, http.StatusOK, m)
 }

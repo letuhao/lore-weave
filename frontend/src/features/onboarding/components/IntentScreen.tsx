@@ -1,11 +1,11 @@
 import { useTranslation } from 'react-i18next';
-import { PenLine, Globe2, Languages, Compass, type LucideIcon } from 'lucide-react';
+import { PenLine, Globe2, Languages, Compass, NotebookPen, type LucideIcon } from 'lucide-react';
 import { INTENT_CHOICES } from '../lib/intentRoutes';
 import type { IntentId } from '../types';
 
-const ICONS: Record<string, LucideIcon> = { PenLine, Globe2, Languages, Compass };
+const ICONS: Record<string, LucideIcon> = { PenLine, Globe2, Languages, Compass, NotebookPen };
 
-// C22 — first-run intent fork view. Renders exactly the four BL-15 choices and
+// C22 — first-run intent fork view. Renders the BL-15 choices and
 // reports the picked intent through onChoose (an EXPLICIT callback — the parent
 // hook routes; no useEffect-for-events here). Pure render: no state, no logic.
 export function IntentScreen({ onChoose }: { onChoose: (id: IntentId) => void }) {

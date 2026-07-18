@@ -5,6 +5,14 @@
     "failed": "Fehlgeschlagen",
     "pending": "Ausstehend"
   },
+  "error": {
+    "retryable": "Übersetzungen konnten nicht geladen werden – der Übersetzungsdienst ist möglicherweise nicht verfügbar. Bitte versuchen Sie es erneut.",
+    "forbidden": "Sie haben keinen Zugriff auf die Übersetzungen dieses Buches.",
+    "notfound": "Diese Übersetzungen konnten nicht gefunden werden.",
+    "retry": "Wiederholen",
+    "chapters_failed": "Kapitelliste konnte nicht geladen werden.",
+    "chapters_timeout": "Das Laden der Kapitelliste ist fehlgeschlagen – der Dienst ist möglicherweise langsam oder nicht erreichbar."
+  },
   "page": {
     "breadcrumb_book": "Buch",
     "breadcrumb_chapters": "Kapitel",
@@ -81,7 +89,8 @@
     "original_label": "Original — {{lang}}",
     "translation_label": "Übersetzung — {{lang}}",
     "source_fallback": "Quelle",
-    "no_translated": "(Keine Übersetzung vorhanden)"
+    "no_translated": "(Keine Übersetzung vorhanden)",
+    "original_unavailable": "Der Originaltext ist derzeit nicht verfügbar."
   },
   "block_review": {
     "unchanged": "Unverändert",
@@ -151,8 +160,18 @@
     "show_filter": "Filter anzeigen",
     "chapters_selected": "{{count}} Kapitel ausgewählt",
     "translate_selected": "Auswahl übersetzen",
+    "translate_cta": "Übersetzen…",
+    "select_all_chapters": "Alle Kapitel auswählen",
+    "orphan_footnote": "{{count}} Übersetzung(en) gehören zu Kapiteln, die nicht mehr aktiv sind.",
+    "page": "Seite",
+    "prev": "Vorherige Seite",
+    "next": "Nächste Seite",
     "extract_glossary": "Glossar extrahieren",
-    "clear": "Löschen"
+    "clear": "Löschen",
+    "loading": "Übersetzungsumfang wird geladen…",
+    "translate_no_edit": "Sie haben nur Lesezugriff – bitten Sie den Eigentümer um Bearbeitungszugriff, um zu übersetzen.",
+    "all_filtered_title": "Alle Sprachen sind ausgefiltert",
+    "all_filtered_desc": "Aktivieren Sie eine Sprache im Filter wieder, um deren Abdeckung zu sehen."
   },
   "segments": {
     "title": "Segmentstatus",
@@ -165,6 +184,7 @@
     "retranslate_changed": "Geänderte neu übersetzen ({{count}})",
     "retranslate_started": "Neuübersetzung gestartet",
     "empty": "Noch keine Segmente erstellt.",
-    "close": "Schließen"
+    "close": "Schließen",
+    "retranslate_failed": "Die erneute Übersetzung konnte nicht gestartet werden. Bitte versuchen Sie es erneut."
   }
 }

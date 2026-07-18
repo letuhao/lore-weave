@@ -285,6 +285,29 @@ func (s *Server) Router() http.Handler {
 		r.Put("/proposals/{proposal_id}/approve", s.approveProposal)
 		r.Post("/proposals/{proposal_id}/reject", s.rejectProposal)
 
+		// Workflow proposals (WS-2a — same propose→approve/reject HITL spine)
+		// Mode → capability binding (WS-3 / C6) — a USER setting (own tier or a book
+		// they hold EDIT on); the System tier is seeded + read-only here.
+		r.Get("/mode-bindings/{mode}", s.getModeBinding)
+		r.Put("/mode-bindings/{mode}", s.putModeBinding)
+
+		// M5 — the FE workflow rack lists a user's visible recipes (System + own + granted book).
+		r.Get("/workflows", s.listUserWorkflows)
+		// S-12 (G-WORKFLOWS): get-one / delete / enablement, mirroring the skills surface so
+		// the workflows GUI reaches skills-parity (view, disable, delete). Create stays
+		// propose→approve (no direct POST; the approve route mints the workflow).
+		r.Get("/workflows/{workflow_id}", s.getWorkflow)
+		r.Delete("/workflows/{workflow_id}", s.deleteWorkflow)
+		r.Put("/workflows/{workflow_id}/enablement", s.setWorkflowEnabled)
+		// S-12 cleanup — read the revisions the approve-UPDATE path snapshots (mirror
+		// listSkillRevisions; BE-only, as the skills revisions route also has no FE).
+		r.Get("/workflows/{workflow_id}/revisions", s.listWorkflowRevisions)
+
+		r.Get("/workflow-proposals", s.listWorkflowProposals)
+		r.Get("/workflow-proposals/{proposal_id}", s.getWorkflowProposal)
+		r.Put("/workflow-proposals/{proposal_id}/approve", s.approveWorkflowProposal)
+		r.Post("/workflow-proposals/{proposal_id}/reject", s.rejectWorkflowProposal)
+
 		r.Get("/usage", s.getUsage)
 		r.Get("/audit", s.listAudit)
 	})
@@ -299,6 +322,7 @@ func (s *Server) Router() http.Handler {
 		r.Use(s.requireInternalToken)
 		r.Get("/effective-catalog", s.effectiveCatalog)
 		r.Get("/skills", s.internalSkills)
+		r.Get("/workflows", s.internalWorkflows) // WS-2b step-runner source (full defs)
 		r.Get("/effective-mcp-servers", s.internalEffectiveMcpServers)              // P2 federation overlay source
 		r.Get("/mcp-servers/{mcp_server_id}/credentials", s.internalMcpCredentials) // P3 vault decrypt (egress auth)
 		r.Get("/commands", s.internalCommands)                                      // P4 command-expansion resolver

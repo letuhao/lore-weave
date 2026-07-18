@@ -21,6 +21,7 @@ Lessons baked in from K4 reviews:
   - K4-I5: no dead `self._token` field; token lives in the headers
 """
 
+import json
 import logging
 import re
 import time
@@ -114,6 +115,12 @@ class KnowledgeContext(BaseModel):
     # an older knowledge-service that omits the field, the no-project
     # path, and the degraded path all leave tool-calling enabled.
     tool_calling_enabled: bool = True
+    # WS-4C Half A — per-project canon auto-capture, surfaced from
+    # knowledge-service `projects.canon_capture_enabled`. Defaults FALSE, the
+    # opposite of tool_calling_enabled and deliberately so: capture spends the
+    # user's BYOK tokens, so an older knowledge-service that omits the field, the
+    # no-project path, and the degraded path must all leave capture OFF.
+    canon_capture_enabled: bool = False
     # Interview-roleplay — rendered working_memory anchor (charter + state).
     # Pinned into the system block AND tail-injected by stream_service. "" when
     # the session has no working_memory block or on the degraded path; chat-service
@@ -128,6 +135,39 @@ def _degraded() -> KnowledgeContext:
         recent_message_count=DEGRADED_RECENT_MESSAGE_COUNT,
         token_count=0,
     )
+
+
+def _error_envelope(err_text: str) -> dict:
+    """Build the `{"success": False, ...}` envelope from an MCP isError payload.
+
+    D-KNOWLEDGE-TOOL-ERRORS-NOT-ISERROR — knowledge-service raises on a tool
+    failure and puts a C4-shaped JSON body in `content[0].text`:
+    ``{"code"?, "message", "detail"?}`` (the same shape ai-gateway writes). Decode
+    it so a STABLE machine code (e.g. ``KG_ENDPOINT_NOT_NODE``) and its ``detail``
+    (``{"missing": [...]}``) survive to the caller, letting a workflow branch on the
+    code rather than pattern-match prose (contract C5).
+
+    Anything that isn't such a JSON object (plain-text errors from overlay/external
+    tools, or older services) degrades to the raw text — never raises.
+    """
+    text = (err_text or "").strip()
+    if text.startswith("{"):
+        try:
+            body = json.loads(text)
+        except (ValueError, TypeError):
+            body = None
+        if isinstance(body, dict) and "message" in body:
+            out: dict = {
+                "success": False,
+                "result": None,
+                "error": str(body.get("message") or "mcp tool error"),
+            }
+            if body.get("code") is not None:
+                out["code"] = body["code"]
+            if body.get("detail") is not None:
+                out["detail"] = body["detail"]
+            return out
+    return {"success": False, "result": None, "error": text or "mcp tool error"}
 
 
 def _normalize_tool_parameters(input_schema: dict | None) -> dict:
@@ -721,15 +761,19 @@ class KnowledgeClient:
         # An MCP-level tool error (e.g. an auth ValueError raised inside the
         # server handler) surfaces as isError=True with the message in the
         # first text content item — map it to a success=False envelope.
+        #
+        # D-KNOWLEDGE-TOOL-ERRORS-NOT-ISERROR: knowledge-service now raises on a
+        # tool failure, and its error text is the C4-shaped JSON body
+        # {"code"?, "message", "detail"?} (the same shape ai-gateway puts in
+        # content[0].text). Decode it so a stable `code` (e.g.
+        # KG_ENDPOINT_NOT_NODE) and `detail` ({"missing": [...]}) reach the caller
+        # — a workflow branches on the code, never on prose. Plain-text errors
+        # (external/overlay tools, older services) fall back to the raw text.
         if getattr(result, "isError", False):
             err_text = ""
             if result.content:
                 err_text = getattr(result.content[0], "text", "") or ""
-            return {
-                "success": False,
-                "result": None,
-                "error": err_text or "mcp tool error",
-            }
+            return _error_envelope(err_text)
 
         # FastMCP returns content as a list of TextContent/ImageContent items.
         # The knowledge-service handlers return JSON dicts serialised as the
@@ -738,23 +782,32 @@ class KnowledgeClient:
             return {"success": False, "result": None, "error": "mcp tool returned empty content"}
 
         first = result.content[0]
-        try:
-            import json as _json  # noqa: PLC0415
-            payload = _json.loads(first.text)
-        except Exception as exc:
-            # External federated (overlay) tools may return PLAIN TEXT (prose/markdown),
-            # which is a VALID result — e.g. a DeepWiki tool returning a repo's wiki
-            # structure. Wrap it as {"text": ...} so the model can consume it. Internal
-            # LoreWeave tools always return JSON, so a decode failure there IS an error
-            # (never mask a real internal-tool bug as success).
-            if _OVERLAY_TOOL_RE.match(tool_name):
-                text = getattr(first, "text", "") or ""
-                return {"success": True, "result": {"text": text}, "error": None}
-            logger.warning(
-                "mcp_execute_tool decode error: %s — raw: %s",
-                exc, getattr(first, "text", "?")[:200],
-            )
-            return {"success": False, "result": None, "error": "mcp tool returned unparseable content"}
+        import json as _json  # noqa: PLC0415
+        # #9B token-efficiency: heavy reads (e.g. glossary_book_ontology_read, ~42KB) now
+        # return a SHORT PLACEHOLDER in content[0].text ("ok — see structuredContent") + the
+        # real payload in `structuredContent`. Prefer structuredContent when present — otherwise
+        # json.loads() of the placeholder fails with "unparseable content" and a working tool
+        # reads as broken (the measured S02 blocker once book_id was being supplied).
+        _sc = getattr(result, "structuredContent", None)
+        if isinstance(_sc, dict) and _sc:
+            payload = _sc
+        else:
+            try:
+                payload = _json.loads(first.text)
+            except Exception as exc:
+                # External federated (overlay) tools may return PLAIN TEXT (prose/markdown),
+                # which is a VALID result — e.g. a DeepWiki tool returning a repo's wiki
+                # structure. Wrap it as {"text": ...} so the model can consume it. Internal
+                # LoreWeave tools always return JSON, so a decode failure there IS an error
+                # (never mask a real internal-tool bug as success).
+                if _OVERLAY_TOOL_RE.match(tool_name):
+                    text = getattr(first, "text", "") or ""
+                    return {"success": True, "result": {"text": text}, "error": None}
+                logger.warning(
+                    "mcp_execute_tool decode error: %s — raw: %s",
+                    exc, getattr(first, "text", "?")[:200],
+                )
+                return {"success": False, "result": None, "error": "mcp tool returned unparseable content"}
 
         if isinstance(payload, dict) and payload.get("success") is False:
             # Server-side tool error propagated as a structured dict.

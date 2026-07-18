@@ -86,6 +86,13 @@ jobs:
           # by the normal vitest/pytest CI jobs, and the §13d refute-pass is the net
           # for a gutted test that a static check can't see.
           - context-inspector-checklist-gate
+          # Track A / M9a — the central C-TOOL tier gate. The shared kit's ValidateToolMeta
+          # checks a tool's tier is VALID (R|A|W|S) but not that it MATCHES the tool — so a
+          # WRITE tool mis-tagged Tier-R (auto-runs, no confirm/Undo) passed every per-service
+          # test. This asserts, across ALL services, that every write-verb-named tool carries a
+          # non-R tier. Stdlib-only; also wired into the pre-commit hook so it runs on EVERY
+          # branch's every commit (the byte-compile-only Python CI job never ran the tier tests).
+          - tier-tag-gate
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5

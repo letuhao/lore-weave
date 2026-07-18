@@ -21,6 +21,12 @@ type Server struct {
 	mcpResolveRL *ratelimit.Limiter // per-prefix Argon2-DoS guard for /internal/mcp-keys/resolve (H-H)
 	admin        *adminDeps         // nil => admin-JWT issuance (074/075) disabled
 	oauth        *oauthDeps         // nil => P5 public-MCP OAuth endpoints disabled
+	// WS-1.0 — the KEK that WRAPS each user's DEK (DIARY_ENCRYPTION_KEY). auth-service
+	// only ever wraps; it never sees a user's plaintext content, and it hands out the
+	// WRAPPED dek so the plaintext key never crosses the network.
+	// Empty => /internal/users/{id}/dek fails CLOSED with 503 rather than letting a
+	// deployment quietly store private content unencrypted.
+	dekKEK []byte
 }
 
 func NewServer(pool *pgxpool.Pool, cfg *config.Config) *Server {
@@ -28,6 +34,7 @@ func NewServer(pool *pgxpool.Pool, cfg *config.Config) *Server {
 		pool:         pool,
 		cfg:          cfg,
 		secret:       []byte(cfg.JWTSecret),
+		dekKEK:       deriveKEK(cfg.DiaryEncryptionKey),
 		rl:           ratelimit.New(cfg.RateLimitWindow, cfg.RateLimitMax),
 		mcpResolveRL: newMcpResolveLimiter(),
 	}
@@ -89,6 +96,18 @@ func (s *Server) Router() http.Handler {
 		// the platform service token, even though /internal is network-isolated.
 		r.Group(func(r chi.Router) {
 			r.Use(s.requireInternalServiceToken)
+			// WS-1.0 (PO-2) — the per-user DEK, WRAPPED. Consumers unwrap it with the KEK
+			// from their own env, so the plaintext key never crosses the network.
+			// Token-gated: an anonymous wrapped-DEK read would hand an attacker exactly
+			// the blob they need to attack offline the moment they also obtain the KEK.
+			// Provisions on first read, idempotently — there is no separate "enable
+			// encryption" step that could be skipped and leave content in the clear.
+			r.Get("/users/{user_id}/dek", http.HandlerFunc(s.internalGetUserDEK))
+			// WS-2.7 (D18 / PO-4) — the crypto-shred. Irreversibly destroys the user's
+			// wrapped DEK so content encrypted under it cannot be recovered, even from a
+			// backup. The explicit erasure worker calls this AFTER removing the content
+			// rows; it is intentionally NOT the account soft-delete path (see user_dek.go).
+			r.Delete("/users/{user_id}/dek", http.HandlerFunc(s.internalDeleteUserDEK))
 			r.Get("/users/{user_id}/full-profile", http.HandlerFunc(s.internalGetFullProfile))
 			r.Patch("/users/{user_id}/full-profile", http.HandlerFunc(s.internalUpdateFullProfile))
 			// Public MCP credential resolve — the mcp-public-gateway edge turns an

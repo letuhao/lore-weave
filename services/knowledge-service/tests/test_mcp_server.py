@@ -143,6 +143,117 @@ async def test_mcp_tools_list_each_tool_has_name_and_description(mcp_base_url):
         assert tool.description, f"tool {tool.name!r} is missing a description"
 
 
+async def test_mcp_tools_list_every_tool_declares_meta_tier_and_scope(mcp_base_url):
+    """C-TOOL / D-KNOWLEDGE-META-ADOPTION regression gate.
+
+    Every tool MUST declare `_meta.tier` + `_meta.scope`. This is load-bearing: a
+    consumer reads `_meta.tier` to gate execution, and an ABSENT tier silently
+    defaults to "R" (read/inert) — which once let every knowledge WRITE tool
+    (kg_view_delete, memory_forget, kg_schema_edit, kg_sync_apply, …) run in
+    read-only *ask* mode and skip the Tier-A approval card. A new untiered tool
+    must fail here rather than reintroduce that hole.
+    """
+    headers = {"X-Internal-Token": _GOOD_TOKEN}
+    async with _mcp_client(mcp_base_url, headers) as session:
+        listing = await session.list_tools()
+    assert listing.tools, "tools/list returned an empty tool list"
+    for tool in listing.tools:
+        meta = getattr(tool, "meta", None)
+        assert isinstance(meta, dict) and meta, f"tool {tool.name!r} carries no _meta"
+        assert meta.get("tier") in ("R", "A", "W", "S"), (
+            f"tool {tool.name!r} has an invalid/absent _meta.tier {meta.get('tier')!r} — "
+            "an absent tier silently defaults to R (inert) and un-gates a write"
+        )
+        assert meta.get("scope") in ("book", "project", "user", "none"), (
+            f"tool {tool.name!r} has an invalid/absent _meta.scope {meta.get('scope')!r}"
+        )
+
+
+async def test_mcp_tools_list_async_job_tools_declare_meta_async(mcp_base_url):
+    """The two job-STARTING tools carry `_meta.async` so the workflow step-runner
+    annotates them without a tool-name heuristic (async-honesty, OQ9/F7). Both are
+    also Tier-W: they return a confirm_token and the job starts only after a human
+    confirms — so "called" never means "done"."""
+    headers = {"X-Internal-Token": _GOOD_TOKEN}
+    async with _mcp_client(mcp_base_url, headers) as session:
+        listing = await session.list_tools()
+    by_name = {t.name: (getattr(t, "meta", None) or {}) for t in listing.tools}
+    for name in ("kg_build_graph", "kg_build_wiki"):
+        assert by_name[name].get("async") is True, f"{name} must declare _meta.async"
+        assert by_name[name].get("tier") == "W", f"{name} must be Tier-W (confirm_token)"
+    # a read tool must NOT be flagged async
+    assert "async" not in by_name["memory_search"]
+
+
+# ── CD2 · the `propose_*` semantics law (Track D WS-D1) ──────────────────────────
+# `propose_*` spans two legitimate behaviors and the NAME does not say which:
+#   token pattern (tier W) — mints a confirm_token; writes NOTHING
+#   draft pattern (tier A) — writes a clearly-marked draft a human must approve
+# Rule 1: a propose_* tool is never tier R (an R propose_* is callable in read-only
+# `ask` mode and skips the approval card). Rule 4: its DESCRIPTION must declare which
+# pattern it is — that prose is the only signal the model gets, and a Tier-W tool that
+# omits it is exactly how a model claims success for work that never happened.
+# Spec: docs/specs/2026-07-09-mcp-tool-liveness-eval/contracts.md § CD2.
+_CD2_CONFIRM_MARKERS = ("confirm card", "confirm_token", "confirm token")
+_CD2_DRAFT_MARKERS = (
+    "draft", "triage inbox", "pending", "awaiting", "human review", "for review", "proposal",
+)
+
+
+def _contains_any(text: str, needles) -> bool:
+    low = (text or "").lower()
+    return any(n in low for n in needles)
+
+
+async def test_cd2_propose_tools_are_never_tier_r_and_declare_their_pattern(mcp_base_url):
+    headers = {"X-Internal-Token": _GOOD_TOKEN}
+    async with _mcp_client(mcp_base_url, headers) as session:
+        listing = await session.list_tools()
+
+    proposers = [t for t in listing.tools if "propose" in t.name]
+    assert proposers, "no propose_* tools on the wire — this lint is testing nothing"
+
+    saw_a = False
+    for tool in proposers:
+        meta = getattr(tool, "meta", None) or {}
+        tier = meta.get("tier")
+        assert tier in ("A", "W"), (
+            f"CD2: propose_* tool {tool.name!r} has tier {tier!r} — must be W (mints a "
+            "confirm_token) or A (writes a draft)."
+        )
+        desc = tool.description or ""
+        assert desc.strip(), f"CD2: propose_* tool {tool.name!r} has no description"
+        if tier == "W":
+            assert _contains_any(desc, _CD2_CONFIRM_MARKERS), (
+                f"CD2: Tier-W propose_* tool {tool.name!r} never tells the model a human "
+                f"must confirm (no {_CD2_CONFIRM_MARKERS} in its description)."
+            )
+        else:
+            saw_a = True
+            assert _contains_any(desc, _CD2_DRAFT_MARKERS), (
+                f"CD2: Tier-A propose_* tool {tool.name!r} never says it writes a DRAFT "
+                f"awaiting approval (no {_CD2_DRAFT_MARKERS} in its description)."
+            )
+            assert not _contains_any(desc, ("confirm_token", "confirm token")), (
+                f"CD2: Tier-A propose_* tool {tool.name!r} claims a confirm_token it never "
+                "mints — the model waits for a round-trip that never comes."
+            )
+    # knowledge's propose_* tools are all draft-pattern (kg_propose_edge/fact park rows in
+    # the triage inbox); if that ever stops being true, this reminds the author to check
+    # the W branch is exercised somewhere.
+    assert saw_a, "expected at least one Tier-A (draft) propose_* tool in knowledge"
+
+
+def test_cd2_marker_predicate_discriminates():
+    """The lint above is worthless if its predicate matches everything. Prove it doesn't."""
+    assert not _contains_any("Propose a merge of two entities. The merge happens.", _CD2_CONFIRM_MARKERS)
+    assert not _contains_any("Immediately writes the value into canon.", _CD2_DRAFT_MARKERS)
+    assert _contains_any("Returns a confirm card; a human approves.", _CD2_CONFIRM_MARKERS)
+    assert _contains_any("parked in the triage inbox — NEVER written to the graph", _CD2_DRAFT_MARKERS)
+    # the `draft` STATUS VALUE must never satisfy a Tier-W confirm requirement
+    assert not _contains_any("status change (active | inactive | draft | rejected)", _CD2_CONFIRM_MARKERS)
+
+
 async def test_mcp_tools_list_exposes_no_scope_args(mcp_base_url):
     """Design D3 / INV-K2 (H-I-amended) — user_id / session_id are NEVER tool
     parameters (identity arrives via context headers); the injected FastMCP ctx

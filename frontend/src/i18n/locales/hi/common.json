@@ -1,8 +1,10 @@
 {
+  "reconnecting": "पुनः जुड़ रहा है…",
   "nav": {
     "startNew": "कुछ नया शुरू करें",
     "workspace": "वर्कस्पेस",
     "chat": "चैट",
+    "assistant": "सहायक",
     "roleplay": "रोलप्ले",
     "knowledge": "ज्ञान",
     "worlds": "दुनियाएँ",
@@ -25,7 +27,8 @@
     "home": "होम",
     "account": "अकाउंट",
     "signin": "साइन इन",
-    "back_to_book": "किताब पर वापस जाएं"
+    "back_to_book": "किताब पर वापस जाएं",
+    "more": "अधिक"
   },
   "logout_confirm": {
     "title": "बिना सेव किए गए बदलावों के लॉग आउट करें?",

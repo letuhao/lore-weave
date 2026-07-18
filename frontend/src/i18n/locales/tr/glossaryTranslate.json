@@ -57,7 +57,8 @@
     "cancel": "İptal Et",
     "cancelConfirm": "Bu çeviri işini iptal etmek istiyor musunuz? İşlenen varlıklar çevirilerini koruyacaktır.",
     "cancelRequested": "İptal talebi alındı",
-    "noEntities": "Bu dil için çevrilmesi gereken varlık bulunamadı."
+    "noEntities": "Bu dil için çevrilmesi gereken varlık bulunamadı.",
+    "pollFailed": "Çeviri ilerlemesi alınamadı — hizmet kullanılamıyor olabilir. Yeniden deneniyor…"
   },
   "results": {
     "title": "Çeviri Tamamlandı",

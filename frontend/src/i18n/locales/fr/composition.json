@@ -171,7 +171,19 @@
     "kind_character": "Personnages",
     "kind_location": "Lieux",
     "kind_faction": "Factions",
-    "kind_concept": "Concepts"
+    "kind_concept": "Concepts",
+    "rename": "Renommer",
+    "renameConflict": "Modifié ailleurs — rechargé.",
+    "editEntity": "Modifier les alias et le type",
+    "archive": "Retirer l'entité",
+    "archiveConfirm": "Retirer « {{name}} » ? Ses relations et son ancrage de glossaire sont conservés ; elle réapparaîtra si le livre la mentionne à nouveau (il n'y a pas de bouton de restauration).",
+    "archived": "Retirée — elle réapparaîtra si le livre la mentionne à nouveau.",
+    "newEntity": "Nouveau",
+    "editFailed": "Échec de la modification : {{error}}",
+    "truncated": "Affichage des 200 premiers — affinez votre recherche pour limiter la liste.",
+    "showingOf": "Affichage de {{loaded}} sur {{total}}.",
+    "loadMore": "Charger plus",
+    "loadingMore": "Chargement…"
   },
   "relmap": "Relations",
   "relations": {
@@ -214,7 +226,10 @@
     "gone": "disparue",
     "loading": "Chargement de l'arc du personnage…",
     "noProject": "Aucun graphe de connaissances — extrayez ce livre pour tracer les arcs des personnages.",
-    "empty": "Ce personnage n'a pas encore d'événements."
+    "empty": "Ce personnage n'a pas encore d'événements.",
+    "edit": "Modifier",
+    "linkEntity": "+ lier l'entité",
+    "addEvent": "+ Ajouter un événement"
   },
   "worldmap": "Carte du monde",
   "wmap": {
@@ -236,7 +251,10 @@
     "loading": "Chargement de la carte du monde…",
     "addFailed": "Impossible d'ajouter le lieu.",
     "linkFailed": "Impossible de lier les lieux.",
-    "linkMissing": "L'un de ces lieux n'existe plus."
+    "linkMissing": "L'un de ces lieux n'existe plus.",
+    "delete": "Supprimer {{name}}",
+    "deleteConfirm": "Supprimer « {{name}} » de la carte du monde ? Cela archivera le lieu.",
+    "deleteFailed": "Impossible de supprimer le lieu."
   },
   "grounding": "Ancrage",
   "canon": "Canon",
@@ -366,6 +384,9 @@
   "statDiverge": "Diverge (K options)",
   "statStream": "Flux",
   "guidePlaceholder": "Instructions optionnelles pour le co-écrivain...",
+  "correction": {
+    "capturedToast": "Note prise — votre co-écrivain en tiendra compte"
+  },
   "reasoning": "Raisonnement",
   "reasoningHint": "Auto = le serveur décide par modèle. Off désactive la réflexion ; Low/Med/High la force.",
   "reasoningAuto": "Réflexion : auto",
@@ -407,7 +428,6 @@
   "pacing": "rythme",
   "canon_consistency": "canon",
   "dismiss": "ignorer",
-  "overrideSlipBlocked": "Acceptation bloquée : une variante a glissé vers la valeur canonique. Régénérez avant d'accepter.",
   "overrideSlipExhausted": "L'écrasement persiste après la limite de régénération — signalé pour examen (l'acceptation n'est plus bloquée).",
   "overrideSlipDetail": "{{name}} ({{field}}): attendu « {{expected}} », trouvé « {{found}} »",
   "deltaInconsistencyDetail": "{{name}} : contredit la règle delta « {{rule}} »",
@@ -430,6 +450,12 @@
   "canonUntil": "À (ordre de lecture)",
   "canonActive": "actif",
   "canonInactive": "inactif",
+  "canonArchivedTag": "archivée",
+  "canonShowArchived": "Afficher les archives",
+  "canonRuleArchived": "Règle archivée",
+  "canonRuleRestored": "Règle restaurée",
+  "restore": "Restaurer",
+  "undo": "Annuler",
   "canonWindowInverted": "'De' doit être ≤ 'À'.",
   "archive": "Archive",
   "noRules": "Aucune règle de canon pour le moment.",
@@ -611,12 +637,18 @@
     "scope": {
       "label": "Portée du motif",
       "my": "Ma bibliothèque",
-      "catalog": "Catalogue public"
+      "catalog": "Catalogue public",
+      "book": "Livre",
+      "shared": "Partagé",
+      "system": "Système",
+      "drafts": "Brouillons",
+      "needsBook": "Ouvrez un livre pour voir ses motifs"
     },
     "search": "Rechercher des motifs",
     "overuse": "\"{{name}}\" est déjà utilisé dans {{chapters}} — essayez de varier.",
     "list": {
-      "noMatch": "Aucun motif ne correspond — effacez les filtres."
+      "noMatch": "Aucun motif ne correspond — effacez les filtres.",
+      "truncated": "Affichage des 100 premiers — affinez avec la recherche ou les filtres pour voir le reste."
     },
     "error": {
       "load": "Impossible de charger — veuillez réessayer."
@@ -711,7 +743,8 @@
     },
     "binding": {
       "freeForm": "Aucun motif ne correspond — cette scène est libre.",
-      "commitGenerate": "Valider + écrire cette scène →"
+      "commitGenerate": "Valider + écrire cette scène →",
+      "noWork": "Créez un plan pour ce livre afin de lier les motifs à ses scènes."
     },
     "swap": {
       "title": "Échanger le motif",
@@ -735,7 +768,8 @@
         "ok": "Conforme au battement",
         "warn": "Dérive de tension",
         "bad": "Battement manqué"
-      }
+      },
+      "rerunNeedsModel": "Choisissez un modèle pour relancer la conformité"
     },
     "arc": {
       "mobileNotice": "La grille chronologique est disponible sur un écran plus large — ici, vous pouvez l'éditer sous forme de liste.",
@@ -745,7 +779,110 @@
       "moveRight": "Reculer (plus tard)",
       "grow": "Allonger",
       "shrink": "Raccourcir",
-      "remove": "Supprimer"
+      "remove": "Supprimer",
+      "libraryEmpty": "Aucun modèle d'arc pour le moment. Créez-en un ou importez une histoire pour la déconstruire.",
+      "templates": {
+        "tabLibrary": "Bibliothèque",
+        "tabCatalog": "Catalogue",
+        "tabDeconstruct": "Importer et déconstruire",
+        "tier_all": "Tous",
+        "tier_mine": "Mes",
+        "tier_system": "Système",
+        "tier_book": "Livre",
+        "new": "+ Nouveau",
+        "loading": "Chargement…",
+        "loadError": "Impossible de charger les modèles.",
+        "retry": "Réessayer",
+        "chapters": "{{count}} chapitres",
+        "chipSystem": "Système",
+        "chipMine": "Mes",
+        "chipPublic": "Public",
+        "archive": "archive",
+        "adopt": "adopter",
+        "createCode": "code (unique)",
+        "createName": "nom",
+        "createShare": "Partager avec les collaborateurs de ce livre (niveau du livre)",
+        "create": "Créer",
+        "cancel": "Annuler",
+        "catalogError": "Impossible de charger le catalogue.",
+        "catalogEmpty": "Aucun modèle d'arc public pour le moment.",
+        "back": "← Tous les modèles",
+        "driftTitle": "Dérive — utilisée par ce livre",
+        "driftUnapplied": "Pas encore appliqué à ce livre — appliquez-le ci-dessus pour comparer la dérive.",
+        "driftNoProvenance": "Cet arc a été écrit directement — il n'y a pas de modèle de référence.",
+        "driftGone": "Le modèle source n'est plus disponible.",
+        "driftLoading": "Chargement de la dérive…",
+        "driftClean": "Aucun écart — l'arc réalisé correspond à son modèle.",
+        "driftSummary": "Lacune(s) de couverture {{gaps}} · Problème(s) d'ordre {{violations}} · Placement(s) replié(s) {{folded}}",
+        "driftPacingOnly": "La structure correspond, mais le rythme a dérivé (max {{drift}}).",
+        "driftThreads": "Couverture des fils",
+        "driftNoThreads": "Le modèle ne contient aucun fil à comparer.",
+        "driftPacing": "Rythme",
+        "driftMax": "écart max {{drift}}",
+        "driftPacingNC": "Pas encore comparable — le modèle n'a pas de courbe de tension.",
+        "driftSuccession": "Ordre",
+        "driftSuccessionOk": "Aucune violation d'ordre.",
+        "driftViolation": "{{label}} : {{n}} hors séquence",
+        "driftFolded": "Replié (jamais lié)",
+        "untitledArc": "(arc sans titre)",
+        "truncated": "Affichage des {{shown}} premiers sur {{count}} — utilisez le Catalogue ou un forfait supérieur pour en trouver davantage.",
+        "tabSuggest": "Suggérer"
+      },
+      "import": {
+        "privacy": "Le texte brut vous reste privé et n'est jamais partagé. Seule la structure abstraite dérivée peut être publiée — et la publication supprime la référence source.",
+        "sources": "Sources de référence",
+        "loading": "Chargement…",
+        "noSources": "Aucune source pour le moment — collez-en une ci-dessous.",
+        "untitled": "(sans titre)",
+        "deleteConfirm": "Supprimer cette source ? Cette action est irréversible.",
+        "deleteTitle": "Supprimer (irréversible)",
+        "sourceError": "Impossible d'enregistrer la source — réessayez.",
+        "what": "Déconstruire la référence en un modèle d'arc réutilisable (consommation LLM).",
+        "hint": "Indice d'arc (optionnel)",
+        "useWeb": "Autoriser la recherche sur le web",
+        "model": "Modèle de déconstruction",
+        "estimating": "Estimation…",
+        "running": "Déconstruction en cours…",
+        "run": "Déconstruire",
+        "selectFirst": "Sélectionnez d'abord une source ci-dessus.",
+        "done": "Un nouveau modèle d'arc a été créé — retrouvez-le dans la Bibliothèque.",
+        "pasteTitle": "titre",
+        "pasteBody": "coller le texte de référence…",
+        "tooLong": "Trop long — coupez le texte avant l'importation.",
+        "addSource": "Ajouter une source"
+      },
+      "extract": {
+        "blurb": "Enregistrez la structure de cet arc comme un modèle réutilisable dans votre bibliothèque.",
+        "open": "Enregistrer comme modèle…",
+        "namePlaceholder": "Nom du modèle",
+        "saving": "Enregistrement…",
+        "save": "Enregistrer",
+        "cancel": "Annuler",
+        "conflict": "Vous avez déjà un modèle portant ce nom — veuillez le renommer.",
+        "error": "Impossible d'enregistrer cet arc en tant que modèle.",
+        "done": "« {{name}} » a été enregistré dans votre bibliothèque de modèles."
+      },
+      "suggest": {
+        "noProject": "Ouvrez un livre contenant une œuvre pour obtenir des suggestions d'arc basées sur son intrigue.",
+        "premisePlaceholder": "Décrivez l'intrigue — ex. « un héritier réticent doit restaurer une maison déchue »",
+        "genrePlaceholder": "Genre (optionnel)",
+        "running": "Classement…",
+        "run": "Suggérer des arcs",
+        "error": "Impossible de classer les suggestions d'arcs.",
+        "empty": "Aucun modèle d'arc ne correspond pour l'instant — créez-en un ou importez une histoire pour la décomposer.",
+        "mine": "vôtre",
+        "span": "{{count}} chap."
+      },
+      "decompile": {
+        "open": "Grouper les chapitres en arcs",
+        "confirm": "Grouper automatiquement les chapitres de ce livre en arcs (environ {{n}} chapitres chacun). Vous pouvez relancer l'opération en toute sécurité — les arcs existants seront réutilisés.",
+        "running": "Groupement…",
+        "run": "Grouper en arcs",
+        "cancel": "Annuler",
+        "error": "Impossible de regrouper les chapitres en arcs.",
+        "done": "{{chapters}} chapitres ont été regroupés en {{arcs}} arcs.",
+        "none": "Aucun chapitre à regrouper en arcs pour le moment."
+      }
     },
     "simple": {
       "actant": {
@@ -803,6 +940,38 @@
       "knows": "Sait",
       "deceived": "Est trompé",
       "gap": "Écart"
+    },
+    "graph": {
+      "title": "Graphe — composé de · précède · variante de",
+      "loading": "Chargement des liens…",
+      "error": "Impossible de charger le graphe de motifs.",
+      "retry": "Réessayer",
+      "empty": "Aucune relation pour le moment.",
+      "deleteEdge": "Supprimer le lien",
+      "addEdge": "Ajouter une relation",
+      "pickNeighbor": "Choisir un motif…",
+      "add": "Ajouter un lien",
+      "cancel": "Annuler",
+      "kind": {
+        "composed_of": "Composé de",
+        "precedes": "Précède",
+        "variant_of": "Variante de"
+      },
+      "truncated": "Affichage des {{cap}} premiers motifs — affinez par niveau ou effectuez une recherche pour en voir davantage.",
+      "canvasLoading": "Chargement du graphique des motifs…",
+      "canvasEmpty": "Aucun motif à afficher — créez ou adoptez des motifs, puis liez-les."
+    },
+    "suggest": {
+      "button": "Suggérer un motif",
+      "loading": "Classement des motifs pour cette scène…",
+      "error": "Impossible de suggérer des motifs.",
+      "retry": "Réessayer",
+      "empty": "Aucun motif ne correspond encore à cette scène — ajoutez-en davantage à votre bibliothèque.",
+      "bind": "Lier",
+      "degradedMine": "Vos motifs ne sont pas classés par pertinence — configurez un modèle d'embedding dans vos paramètres pour les classer sémantiquement.",
+      "degradedLibrary": "Non classés par pertinence — le modèle d'embedding de la bibliothèque partagée n'est pas configuré ; il s'agit de suggestions par genre et non de correspondances évaluées.",
+      "sectionMine": "Vos motifs",
+      "sectionLibrary": "Depuis la bibliothèque"
     }
   },
   "authoringRun": {
@@ -923,5 +1092,6 @@
       "loading": "Chargement de la session…",
       "back": "← Retour à la liste des sessions"
     }
-  }
+  },
+  "overrideSlipBlocked": "Acceptation du blocage : une version « et si » a glissé vers la valeur canonique. Régénérez avant d'accepter."
 }

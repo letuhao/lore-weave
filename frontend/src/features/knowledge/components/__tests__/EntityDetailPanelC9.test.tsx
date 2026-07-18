@@ -27,8 +27,48 @@ vi.mock('../../hooks/useEntityDetail', () => ({
 }));
 
 const useEntityFactsMock = vi.fn();
+const createFactMock = vi.fn();
+const invalidateFactMock = vi.fn();
+const revalidateFactMock = vi.fn();
 vi.mock('../../hooks/useEntityFacts', () => ({
   useEntityFacts: () => useEntityFactsMock(),
+  // S-05 — the author + invalidate mutations the panel now consumes.
+  useCreateEntityFact: (
+    _entityId: string | null,
+    opts?: { onSuccess?: () => void; onError?: (e: Error) => void },
+  ) => ({
+    create: (...args: unknown[]) => {
+      const p = createFactMock(...args);
+      return Promise.resolve(p)
+        .then((r) => { opts?.onSuccess?.(); return r; })
+        .catch((e) => { opts?.onError?.(e as Error); throw e; });
+    },
+    isPending: false,
+  }),
+  useInvalidateFact: (
+    _entityId: string | null,
+    opts?: { onSuccess?: () => void; onError?: (e: Error) => void },
+  ) => ({
+    invalidate: (...args: unknown[]) => {
+      const p = invalidateFactMock(...args);
+      return Promise.resolve(p)
+        .then((r) => { opts?.onSuccess?.(); return r; })
+        .catch((e) => { opts?.onError?.(e as Error); throw e; });
+    },
+    isPending: false,
+  }),
+  useRevalidateFact: (
+    _entityId: string | null,
+    opts?: { onSuccess?: () => void; onError?: (e: Error) => void },
+  ) => ({
+    revalidate: (...args: unknown[]) => {
+      const p = revalidateFactMock(...args);
+      return Promise.resolve(p)
+        .then((r) => { opts?.onSuccess?.(); return r; })
+        .catch((e) => { opts?.onError?.(e as Error); throw e; });
+    },
+    isPending: false,
+  }),
 }));
 
 const promoteEntityMock = vi.fn();
@@ -116,6 +156,9 @@ describe('EntityDetailPanel — C9 promote / facts / unpin', () => {
     toastMocks.error.mockReset();
     useEntityDetailMock.mockReset();
     useEntityFactsMock.mockReset();
+    createFactMock.mockReset();
+    invalidateFactMock.mockReset();
+    revalidateFactMock.mockReset();
     setFacts([]);
   });
 
@@ -274,15 +317,158 @@ describe('EntityDetailPanel — C9 promote / facts / unpin', () => {
     ).toBeInTheDocument();
   });
 
-  it('hides the facts section when there are no facts', () => {
+  // S-05 — the section now ALWAYS renders (so an empty entity can still author).
+  // Only the fact LIST rows are hidden when there are none; the "Add fact" CTA stays.
+  it('keeps the facts section + Add-fact CTA even with zero facts (no empty-shell)', () => {
     setDetail({ status: 'discovered' });
     setFacts([]);
     render(
       <EntityDetailPanel open onOpenChange={vi.fn()} entityId="ent-1" />,
       { wrapper: Wrapper },
     );
+    expect(screen.getByTestId('entity-detail-facts')).toBeInTheDocument();
+    expect(screen.getByTestId('entity-detail-add-fact')).toBeInTheDocument();
+    // no fact rows when the list is empty
+    expect(screen.queryByTestId('entity-detail-fact')).not.toBeInTheDocument();
+  });
+
+  // ── S-05 author + invalidate ─────────────────────────────────────────
+
+  it('authors a fact: opens form, offers all 6 types, POSTs, toasts success', async () => {
+    setDetail({ status: 'discovered' });
+    setFacts([]);
+    createFactMock.mockResolvedValue({ id: 'f-new', type: 'statement' });
+    render(
+      <EntityDetailPanel open onOpenChange={vi.fn()} entityId="ent-1" />,
+      { wrapper: Wrapper },
+    );
+    fireEvent.click(screen.getByTestId('entity-detail-add-fact'));
+    const typeSelect = screen.getByTestId(
+      'entity-detail-add-fact-type',
+    ) as HTMLSelectElement;
+    // all 6 FactType values are offered (the 4-vs-6 label drift is closed)
+    expect(typeSelect.querySelectorAll('option')).toHaveLength(6);
+    fireEvent.change(typeSelect, { target: { value: 'commitment' } });
+    fireEvent.change(screen.getByTestId('entity-detail-add-fact-content'), {
+      target: { value: 'Swears fealty to the Queen.' },
+    });
+    fireEvent.click(screen.getByTestId('entity-detail-add-fact-save'));
+    await waitFor(() => expect(createFactMock).toHaveBeenCalledTimes(1));
+    expect(createFactMock).toHaveBeenCalledWith({
+      fact_type: 'commitment',
+      content: 'Swears fealty to the Queen.',
+      predicate: null,
+      object: null,
+    });
+    await waitFor(() => expect(toastMocks.success).toHaveBeenCalled());
+  });
+
+  it('S-05b: the s/p/o inputs are behind an Advanced disclosure, collapsed by default', () => {
+    setDetail({ status: 'discovered' });
+    setFacts([]);
+    render(
+      <EntityDetailPanel open onOpenChange={vi.fn()} entityId="ent-1" />,
+      { wrapper: Wrapper },
+    );
+    fireEvent.click(screen.getByTestId('entity-detail-add-fact'));
+    const adv = screen.getByTestId('entity-detail-add-fact-advanced') as HTMLDetailsElement;
+    // a novelist isn't confronted with predicate/object up front
+    expect(adv.open).toBe(false);
+    // the type helper is shown so the taxonomy isn't a guess
+    expect(screen.getByText('entities.detail.factTypeHelp')).toBeInTheDocument();
+  });
+
+  it('renders a statement fact without crashing (6-vs-4 label closed)', () => {
+    // Pre-fix, FACT_TYPE_LABEL['statement'] was undefined → t(undefined). The map
+    // now covers all 6, so a statement fact renders its row + content cleanly.
+    setDetail({ status: 'discovered' });
+    setFacts([
+      {
+        id: 'f-s',
+        type: 'statement',
+        content: 'Is the last heir of House Vaeth.',
+        confidence: 1,
+        source_chapter: null,
+        from_order: null,
+      },
+    ]);
+    render(
+      <EntityDetailPanel open onOpenChange={vi.fn()} entityId="ent-1" />,
+      { wrapper: Wrapper },
+    );
+    expect(screen.getByTestId('entity-detail-fact')).toBeInTheDocument();
     expect(
-      screen.queryByTestId('entity-detail-facts'),
-    ).not.toBeInTheDocument();
+      screen.getByText('Is the last heir of House Vaeth.'),
+    ).toBeInTheDocument();
+    // the label span resolves to the statement key (not undefined / blank)
+    expect(
+      screen.getByText('entities.detail.factType.statement'),
+    ).toBeInTheDocument();
+  });
+
+  it('S-05b: Replace prefills the form + on save authors new THEN invalidates old', async () => {
+    setDetail({ status: 'discovered' });
+    setFacts([
+      { id: 'f-old', type: 'statement', content: 'Is the heir.', confidence: 1, source_chapter: null, from_order: null },
+    ]);
+    createFactMock.mockResolvedValue({ id: 'f-new' });
+    invalidateFactMock.mockResolvedValue({ id: 'f-old' });
+    render(<EntityDetailPanel open onOpenChange={vi.fn()} entityId="ent-1" />, { wrapper: Wrapper });
+    fireEvent.click(screen.getByTestId('entity-detail-fact-replace'));
+    // form prefilled with the fact's content
+    const content = screen.getByTestId('entity-detail-add-fact-content') as HTMLTextAreaElement;
+    expect(content.value).toBe('Is the heir.');
+    fireEvent.change(content, { target: { value: 'Is the last heir.' } });
+    fireEvent.click(screen.getByTestId('entity-detail-add-fact-save'));
+    await waitFor(() => expect(createFactMock).toHaveBeenCalled());
+    // the OLD fact is invalidated as part of the replace
+    await waitFor(() => expect(invalidateFactMock).toHaveBeenCalledWith('f-old'));
+    await waitFor(() => expect(toastMocks.success).toHaveBeenCalled());
+  });
+
+  it('S-05b: mark-wrong shows an Undo that revalidates the fact', async () => {
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
+    setDetail({ status: 'discovered' });
+    setFacts([
+      { id: 'f-1', type: 'decision', content: 'Vowed revenge.', confidence: 0.95, source_chapter: null, from_order: null },
+    ]);
+    invalidateFactMock.mockResolvedValue({ id: 'f-1' });
+    revalidateFactMock.mockResolvedValue({ id: 'f-1' });
+    render(<EntityDetailPanel open onOpenChange={vi.fn()} entityId="ent-1" />, { wrapper: Wrapper });
+    fireEvent.click(screen.getByTestId('entity-detail-fact-mark-wrong'));
+    await waitFor(() => expect(invalidateFactMock).toHaveBeenCalledWith('f-1'));
+    // the success toast carries an Undo action → invoke it → revalidate fires
+    await waitFor(() => expect(toastMocks.success).toHaveBeenCalled());
+    const action = toastMocks.success.mock.calls.at(-1)?.[1]?.action;
+    expect(action?.label).toBeTruthy();
+    action.onClick();
+    await waitFor(() => expect(revalidateFactMock).toHaveBeenCalledWith('f-1'));
+    confirmSpy.mockRestore();
+  });
+
+  it('marks a fact wrong: confirms then invalidates + toasts', async () => {
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
+    setDetail({ status: 'discovered' });
+    setFacts([
+      {
+        id: 'f-1',
+        type: 'decision',
+        content: 'Vowed revenge.',
+        confidence: 0.95,
+        source_chapter: null,
+        from_order: null,
+      },
+    ]);
+    invalidateFactMock.mockResolvedValue({ id: 'f-1' });
+    render(
+      <EntityDetailPanel open onOpenChange={vi.fn()} entityId="ent-1" />,
+      { wrapper: Wrapper },
+    );
+    fireEvent.click(screen.getByTestId('entity-detail-fact-mark-wrong'));
+    await waitFor(() =>
+      expect(invalidateFactMock).toHaveBeenCalledWith('f-1'),
+    );
+    await waitFor(() => expect(toastMocks.success).toHaveBeenCalled());
+    confirmSpy.mockRestore();
   });
 });

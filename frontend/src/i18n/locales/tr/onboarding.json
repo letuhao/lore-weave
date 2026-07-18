@@ -17,6 +17,10 @@
     "explore": {
       "title": "Keşfet",
       "desc": "Bilgi birikiminizi —varlıklar, zaman çizelgeleri ve ilişki grafiği— inceleyin."
+    },
+    "assistant": {
+      "title": "Çalışma asistanı",
+      "desc": "İnsanları, projeleri ve kararları sessizce hatırlayan size özel bir günlük."
     }
   }
 }

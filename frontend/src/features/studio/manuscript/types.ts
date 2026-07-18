@@ -5,7 +5,11 @@
 // the composition outline as arc → chapter → scene (lazy-paged children). Both produce the
 // same ManuscriptNode/Row shapes so the view is one component.
 
-export type ManuscriptRowKind = 'arc' | 'chapter' | 'scene';
+// 'part' = a manuscript act/volume group header (S-02). Rendered like an arc group
+// header but backed by a book-service `parts` row, and — unlike an arc — editable
+// (rename/trash) + a drop target for moving chapters between acts. Its node id is the
+// part_id, or PART_UNASSIGNED_ID for the synthetic "flat manuscript" bucket.
+export type ManuscriptRowKind = 'arc' | 'chapter' | 'scene' | 'part';
 
 /** A node in the in-memory manuscript tree. */
 export interface ManuscriptNode {

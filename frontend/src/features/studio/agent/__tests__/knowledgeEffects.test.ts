@@ -45,6 +45,17 @@ describe('knowledgeEffect (Lane B handler)', () => {
     expect(keys).toContainEqual(['kg-schema-usage']);
     expect(keys).toContainEqual(['kg-schema-observed']);
     expect(keys).toContainEqual(['kg-adopt-preview']);
+    // s7-4 — the Cast codex / Character-arc panels read the composition
+    // namespace; an agent kg_create_node must refresh them too (else the next
+    // human rename 412s against an unseen version).
+    expect(keys).toContainEqual(['composition', 'cast']);
+    expect(keys).toContainEqual(['composition', 'arc']);
+    // S7-C — the Place-Graph panel (<WorldMap>/useWorldMap) authors places via kg_* writes and
+    // reads the composition worldmap keys; folded into THIS handler (integrator resolution-(a))
+    // so kg_create_node stays single-handler (effectCoverage `<=1`) instead of a 2nd worldEffects
+    // handler. Assert the fold is live so a future refactor can't silently drop the refresh.
+    expect(keys).toContainEqual(['composition', 'worldmap', 'places']);
+    expect(keys).toContainEqual(['composition', 'worldmap', 'detail']);
   });
 });
 
@@ -54,8 +65,20 @@ describe('KNOWLEDGE_WRITE_PATTERN (write vs read tool names)', () => {
     'kg_propose_fact', 'kg_propose_edge', 'kg_view_upsert', 'kg_view_delete',
     'kg_triage_resolve', 'kg_triage_place_edge', 'kg_triage_schema_write',
     'kg_schema_edit', 'kg_adopt_template', 'kg_sync_apply',
+    // W0-S4 / X-4d — PINNED. Plan 30's X-4 listed kg_create_node as having "no handler"; it already
+    // has one, because KNOWLEDGE_WRITE_PATTERN is a NEGATIVE-lookahead (allow-by-default over kg_*,
+    // minus the reads) and kg_create_node is not in the lookahead. Wave 0's job is to VERIFY, not to
+    // ADD: a second handler would DOUBLE-FIRE (effectCoverage.contract.test.ts's <=1 assertion reds).
+    // This explicit positive case keeps the truth true, so Wave 8a finds a green assertion instead of
+    // re-deriving the lookahead at 3am.
+    'kg_create_node',
   ])('matches %s (a write)', (tool) => {
     expect(KNOWLEDGE_WRITE_PATTERN.test(tool)).toBe(true);
+  });
+
+  it('X-4d — kg_create_node routes through the REGISTERED handler (not just the pattern)', () => {
+    registerKnowledgeEffectHandlers();
+    expect(matchEffectHandlers('kg_create_node')).toEqual([knowledgeEffect]);
   });
 
   it.each([

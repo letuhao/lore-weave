@@ -9,7 +9,8 @@
       "translation": "翻訳",
       "reading": "読書",
       "language": "言語",
-      "mcp": "MCPアクセス"
+      "mcp": "MCPアクセス",
+      "workflow-bindings": "ワークフローの自動設定"
     }
   },
   "mcp": {
@@ -492,6 +493,18 @@
       "testing": "テスト中...",
       "reverify": "再検証",
       "verify": "検証",
+      "pricing_title": "料金 (100万トークンあたりのUSD)",
+      "pricing_input": "入力",
+      "pricing_output": "出力",
+      "pricing_free_local": "無料 — ローカル環境で実行",
+      "pricing_hint": "作成時に自動入力されます。プロバイダーの公開料金が変更された場合は編集するか、OpenRouterで最新の推定値を確認してください。",
+      "pricing_check": "OpenRouterを確認",
+      "pricing_checking": "確認中...",
+      "pricing_suggestion_found": "OpenRouter ({{source}}): 入力 ${{input}} / 出力 ${{output}}",
+      "pricing_apply": "適用",
+      "pricing_not_found": "OpenRouterに一致するモデルが見つかりません。このソースからは料金を取得できません。",
+      "pricing_check_failed": "OpenRouterの料金確認に失敗しました",
+      "pricing_negative_error": "料金は0以上である必要があります",
       "delete_model": "モデルを削除",
       "confirm_delete": "削除を確認",
       "deleting": "削除中...",

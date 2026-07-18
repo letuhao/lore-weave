@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Diary view — Work Assistant drafts</title>
+<link rel="stylesheet" href="assets/draft.css">
+</head>
+<body>
+<div class="app">
+
+  <aside class="sidebar">
+    <div class="brand"><div class="logo">L</div><div class="name">LoreWeave</div></div>
+    <div class="nav-label">Main</div>
+    <div class="nav-item"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3l1.8 4.6L18 9l-4.2 1.4L12 15l-1.8-4.6L6 9l4.2-1.4z"/></svg>Assistant</div>
+    <div class="nav-item active"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 5h16v14H4z"/><path d="M4 9h16"/></svg>Your Work Diary <span class="new-dot"></span></div>
+    <div class="nav-item"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 4l8 4-8 4-8-4z"/><path d="M4 12l8 4 8-4"/></svg>Coaching</div>
+    <div class="nav-item"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3a4 4 0 0 1 4 4c1.5.5 2 2 2 3a3 3 0 0 1-1 5H7a3 3 0 0 1-1-5c0-1 .5-2.5 2-3a4 4 0 0 1 4-4z"/></svg>Knowledge</div>
+    <div class="side-foot"><div class="userchip"><div class="avatar">L</div><div class="grow tiny">Le Tu Hao</div></div></div>
+  </aside>
+
+  <main class="main">
+    <div class="wrap">
+      <div class="between">
+        <div>
+          <div class="eyebrow">Reused book workspace · kind = diary</div>
+          <h1 class="h-page mt6">Your Work Diary</h1>
+        </div>
+        <span class="chip lock"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg> Private · only you</span>
+      </div>
+
+      <!-- activity heatmap: makes consistency tangible -->
+      <div class="card pad mt16">
+        <div class="between"><div class="eyebrow">Last 5 weeks</div><small>32 entries · 9-day streak</small></div>
+        <div class="heat mt10">
+          <i class="l2"></i><i class="l3"></i><i class="l1"></i><i class="l2"></i><i class="l3"></i><i></i><i></i>
+          <i class="l3"></i><i class="l2"></i><i class="l3"></i><i class="l3"></i><i class="l1"></i><i></i><i></i>
+          <i class="l1"></i><i class="l2"></i><i class="l2"></i><i class="l3"></i><i class="l2"></i><i class="l1"></i><i></i>
+          <i class="l2"></i><i class="l3"></i><i class="l3"></i><i class="l2"></i><i class="l3"></i><i></i><i></i>
+          <i class="l2"></i><i class="l3"></i><i class="l3"></i><i class="l2"></i><i class="l3"></i>
+        </div>
+      </div>
+
+      <div class="diary-grid mt24">
+        <!-- entry list -->
+        <div class="stack">
+          <div class="entry-item active">
+            <div class="between"><div class="d">Thursday, 9 July</div><span class="chip on tiny" style="padding:1px 8px"><span class="dot"></span>kept</span></div>
+            <div class="tiny muted mt6">Q3 billing standup, launch risk, risk note for Minh.</div>
+            <div class="mt6"><span class="tag person">Minh</span><span class="tag person">Sarah</span><span class="tag project">Q3 Billing</span></div>
+          </div>
+          <div class="entry-item">
+            <div class="between"><div class="d">Wednesday, 8 July</div><span class="chip warn tiny" style="padding:1px 8px">draft</span></div>
+            <div class="tiny muted mt6">Design review, onboarding copy, 1:1 with Tuan.</div>
+          </div>
+          <div class="entry-item">
+            <div class="d">Tuesday, 7 July</div>
+            <div class="tiny muted mt6">Sprint planning; scoped the mobile onboarding.</div>
+          </div>
+          <div class="entry-item">
+            <div class="d">Monday, 6 July</div>
+            <div class="tiny muted mt6">Quiet day — inbox, two code reviews.</div>
+          </div>
+        </div>
+
+        <!-- entry detail: the distilled day -->
+        <article class="entry-doc">
+          <div class="between">
+            <div>
+              <div class="eyebrow">Diary entry · not a chapter, never published</div>
+              <h2 class="mt6">Thursday, 9 July</h2>
+            </div>
+            <div class="row">
+              <button class="btn btn-sm btn-ghost">View the conversation</button>
+              <button class="btn btn-sm">Edit</button>
+            </div>
+          </div>
+
+          <p class="mt16" style="font-size:15px;line-height:1.65">A busy day centered on the <b>Q3 Billing revamp</b>. The standup surfaced a real timeline risk — QA hasn't signed off and the launch is set for Friday. You drafted a risk note for Minh and left onboarding to next sprint per Sarah's call.</p>
+
+          <div class="field-h">Decisions</div>
+          <div class="leaf"><b>Minh</b> froze the Q3 budget until the billing revamp ships. <small>· from the 10:00 standup</small></div>
+          <div class="leaf"><b>Sarah</b> moved the new onboarding flow to next sprint.</div>
+
+          <div class="field-h">People &amp; projects</div>
+          <div><span class="tag person">Minh — PM</span><span class="tag person">Sarah — Design lead</span><span class="tag project">Q3 Billing revamp</span><span class="tag project">Mobile onboarding</span></div>
+
+          <div class="field-h">Open threads</div>
+          <div class="leaf">⚠️ Friday launch at risk — QA sign-off still pending. <small>· carried to tomorrow</small></div>
+
+          <div class="field-h">Looking back</div>
+          <div class="card pad" style="background:var(--card-2)">
+            <div class="tiny muted">Went well</div><div>Turned a vague worry into a concrete risk note the same hour.</div>
+            <div class="tiny muted mt10">To improve</div><div>Raise QA sign-off earlier in the sprint, not at launch week.</div>
+          </div>
+        </article>
+      </div>
+    </div>
+  </main>
+</div>
+<div class="frame-note">Draft · Screen 2/4 · Diary view — <b>REUSED</b> book GUI, kind-adapted (Entry, no publish/share)</div>
+</body>
+</html>

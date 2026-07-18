@@ -1,6 +1,15 @@
 # #20 — Agent Mode / Mission Control
 
-> **Status:** 📐 CLARIFY complete, ready for DESIGN/PLAN · not yet built
+> **Status:** ✅ **SHIPPED** — the `agent-mode` panel is in
+> [`catalog.ts`](../../../frontend/src/features/studio/panels/catalog.ts) **and** in the
+> `ui_open_studio_panel` enum (verified by [30 §4](30_TOOL_GUI_GAP_AUDIT_AND_PLAN.md), 2026-07-12).
+> **Unshipped tail** (each tracked, none of it blocking): no Lane-B effect handler for
+> `composition_authoring_run_*` (→ fixed by Wave 0 `W0-S4`); a now-false comment at
+> `useStudioEffectReconciler.ts:10` (→ `W0-S4`); a missing `guideBodyKey` (→ `W0-S2`); and **no
+> `compaction_failed` breaker** for its L3/L4 autonomous runs ([07S](07S_studio_agent_standard.md) §3/§10
+> makes it MANDATORY — P1 Deferred row in `SESSION_HANDOFF.md`).
+> *(Un-staled 2026-07-13, X-8. This now agrees with `00_OVERVIEW.md:109` and `00C:34`, which already said
+> shipped — the three files no longer contradict each other.)*
 > **Register:** "Cursor-for-novels" gap #4 (memory `writing-studio-fragmented-not-underbuilt`) — the last
 > remaining item; #1 COHERENCE, #2, #3 LIVE-SYNC are all closed.
 > **Mockup:** [`screen-studio-agent-mode.html`](../../../design-drafts/screens/studio/screen-studio-agent-mode.html) (v2, live-verified via chrome-devtools at desktop + 390px mobile)

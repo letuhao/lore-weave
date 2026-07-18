@@ -21,6 +21,8 @@ vi.mock('@/features/books/api', () => ({
 }));
 vi.mock('@/lib/tiptap-utils', () => ({ addTextSnapshots: (d: unknown) => d, extractText: () => '' }));
 vi.mock('@/features/composition/hooks/useWork', () => ({ useWorkResolution: () => ({ data: null }) }));
+// Resolve the active-work pref synchronously (null = canonical) so loadChapter never defers (D-S5).
+vi.mock('@/features/composition/hooks/useActiveWork', () => ({ useActiveWorkId: () => ({ data: null }) }));
 vi.mock('@/features/composition/hooks/useProgress', () => ({
   useReportProgress: () => vi.fn(),
   useEnsureBaseline: () => vi.fn(),

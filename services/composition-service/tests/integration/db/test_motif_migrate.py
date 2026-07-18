@@ -30,9 +30,13 @@ from app.db.migrate import run_migrations
 
 _DSN = os.environ.get("TEST_COMPOSITION_DB_URL")
 
-pytestmark = pytest.mark.skipif(
-    not _DSN, reason="set TEST_COMPOSITION_DB_URL to a throwaway DB to run",
-)
+pytestmark = [
+    pytest.mark.skipif(
+        not _DSN, reason="set TEST_COMPOSITION_DB_URL to a throwaway DB to run",
+    ),
+    # Shared-Postgres tests serialize onto one xdist worker (CLAUDE.md).
+    pytest.mark.xdist_group("pg"),
+]
 
 # Children first (FK + dependency order) so the drop is clean.
 _MOTIF_TABLES = [
@@ -182,30 +186,32 @@ async def test_motif_application_scope_and_book_required(pool):
     u1, p1, p2, book = uuid.uuid4(), uuid.uuid4(), uuid.uuid4(), uuid.uuid4()
     async with pool.acquire() as c:
         motif_id = await _seed_motif(c, owner=u1, code="ap")
-        # a chapter node in project p1.
+        # a chapter node in project p1. outline_node is 25-re-keyed: user_id →
+        # created_by (a plain actor stamp) and book_id is NOT NULL, so a direct
+        # INSERT (bypassing the repo's INSERT … SELECT derive) must supply it.
         node = await c.fetchval(
-            "INSERT INTO outline_node (user_id, project_id, kind, rank, chapter_id) "
-            "VALUES ($1,$2,'chapter','a0',$3) RETURNING id",
-            u1, p1, uuid.uuid4(),
+            "INSERT INTO outline_node (created_by, project_id, book_id, kind, rank, chapter_id) "
+            "VALUES ($1,$2,$3,'chapter','a0',$4) RETURNING id",
+            u1, p1, book, uuid.uuid4(),
         )
 
         # cross-project: node∈p1 but application says project p2 → rejected (H-5).
         with pytest.raises(asyncpg.CheckViolationError):
             await c.execute(
-                "INSERT INTO motif_application (user_id, project_id, book_id, motif_id, outline_node_id) "
+                "INSERT INTO motif_application (created_by, project_id, book_id, motif_id, outline_node_id) "
                 "VALUES ($1,$2,$3,$4,$5)",
                 u1, p2, book, motif_id, node,
             )
         # matching project → OK.
         app_id = await c.fetchval(
-            "INSERT INTO motif_application (user_id, project_id, book_id, motif_id, outline_node_id) "
+            "INSERT INTO motif_application (created_by, project_id, book_id, motif_id, outline_node_id) "
             "VALUES ($1,$2,$3,$4,$5) RETURNING id",
             u1, p1, book, motif_id, node,
         )
         # book_id NOT NULL.
         with pytest.raises(asyncpg.NotNullViolationError):
             await c.execute(
-                "INSERT INTO motif_application (user_id, project_id, book_id, motif_id) "
+                "INSERT INTO motif_application (created_by, project_id, book_id, motif_id) "
                 "VALUES ($1,$2,NULL,$3)",
                 u1, p1, motif_id,
             )

@@ -371,5 +371,26 @@
     "no_restore": "没有更早的版本可供还原",
     "confirm_title": "还原至本次 AI 编辑前的状态？",
     "confirm_desc": "当前草稿将首先被快照保存，因此可以通过修订历史记录进行撤销。"
+  },
+  "knowledge": {
+    "add": "添加到知识库",
+    "reindex": "更新知识库",
+    "indexed_badge": "已在知识库中",
+    "not_indexed_badge": "不在知识库中",
+    "excluded_badge": "已排除",
+    "forget": "忘记此章节",
+    "keep_out": "不纳入知识库",
+    "allow": "纳入知识库",
+    "save_first": "请先保存再添加到知识库",
+    "indexed_toast": "已添加到您的知识库",
+    "reused_toast": "内容已是最新 —— 无需更改",
+    "empty_toast": "此章节没有可添加的内容 —— 请先进行创作。",
+    "excluded_toast": "本章节已排除在您的知识库之外 —— 请先点击允许。",
+    "forgotten_toast": "已遗忘 —— 已从您的知识库中移除",
+    "allowed_toast": "已允许。准备就绪后，请选择“添加到知识库”。",
+    "failed_toast": "无法更新您的知识库 —— 请重试。",
+    "forget_confirm_title": "遗忘本章节？",
+    "forget_confirm_body": "从本章节中学习到的所有内容都将从您的知识库中移除。章节本身不会被删除，您稍后可以将其重新添加。",
+    "hint": "将章节添加到知识库可以让助手使用它。您无需发布该章节。"
   }
 }

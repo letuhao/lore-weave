@@ -249,10 +249,10 @@ async def run_stitch(
     jobs_repo = GenerationJobsRepo(pool)
     works = WorksRepo(pool)
 
-    work = await works.get(UUID(user_id), UUID(project_id))
+    work = await works.get(UUID(project_id))
     profile = from_settings(work.settings if work else None)
     rows = await jobs_repo.chapter_scene_drafts(
-        UUID(user_id), UUID(project_id), UUID(chapter_id)
+        UUID(project_id), UUID(chapter_id)
     )
     if not rows:
         raise ValueError("no completed scene drafts to stitch")
@@ -330,7 +330,7 @@ async def run_generate(
 
     user_id = input["user_id"]
     project_id = input["project_id"]
-    work = await WorksRepo(pool).get(UUID(user_id), UUID(project_id))
+    work = await WorksRepo(pool).get(UUID(project_id))
     sdict = (work.settings if work else None) or {}
     profile = from_settings(work.settings if work else None)
 
@@ -455,7 +455,7 @@ async def run_chapter_generate(
 
     user_id = input["user_id"]
     project_id = input["project_id"]
-    work = await WorksRepo(pool).get(UUID(user_id), UUID(project_id))
+    work = await WorksRepo(pool).get(UUID(project_id))
     sdict = (work.settings if work else None) or {}
     profile = from_settings(work.settings if work else None)
 
@@ -520,7 +520,7 @@ async def run_chapter_generate(
     if sdict.get("narrative_thread_enabled"):
         try:
             open_promise_count = await NarrativeThreadRepo(pool).count_open(
-                UUID(user_id), UUID(project_id))
+                UUID(project_id))
         except Exception:  # noqa: BLE001 — advisory; must not fail the generate
             logger.warning("open_promise_count read failed (advisory)", exc_info=True)
 
@@ -569,16 +569,31 @@ async def run_selection_edit(llm: LLMClient, *, input: dict[str, Any]) -> dict[s
             final = ev
     if final is None:  # no usage frame → the stream produced nothing (terminal fail)
         raise ValueError("selection edit produced no output")
+    if final.get("error") and not final["text"]:
+        # D-ENGINE-ERRORED-JOB-MARKED-COMPLETED: stream_draft ALWAYS yields a terminal
+        # frame, even after an LLMError. An error with NO content is a failure, not a
+        # completed empty edit — raise so the worker marks the job failed (mirrors the
+        # inline draft-scene handler; partial-content-then-error keeps its text).
+        raise ValueError(f"selection edit failed: {final['error']}")
 
     m = final["metering"]
-    return {
+    # Partial-content-then-error: keep the drafted text but flag it truncated + carry the reason,
+    # so a polling FE sees the edit was cut short (the worker path doesn't stream, so this result
+    # is the ONLY interruption signal it gets — review MED).
+    stream_error = final.get("error")
+    out = {
         "text": final["text"], "input_tokens": m.input_tokens,
         "output_tokens": m.output_tokens, "measured": m.measured,
-        "finish_reason": m.finish_reason, "selection_edit": True,
+        "finish_reason": m.finish_reason,
+        "truncated": m.finish_reason == "length" or bool(stream_error),
+        "selection_edit": True,
         "grounding_available": input.get("grounding_available"),
         "reasoning_source": input.get("reasoning"), "reasoning_effort": effort,
         "persisted": False,
     }
+    if stream_error:
+        out["error"] = stream_error
+    return out
 
 
 async def run_plan_forge_propose(
@@ -604,7 +619,25 @@ async def run_plan_forge_propose(
         io_log=io_log,
         cancel_check=cancel_check,
     )
-    spec, analyze, logged = await propose_spec_llm_async(source, client)
+    # A1 — reconstruct a minimal ExistingState (cast only) from the job input so the LLM propose can
+    # DETERMINISTICALLY inject the existing protagonist over a placeholder. Absent ⇒ blind (existing=None).
+    existing = None
+    raw_cast = input.get("existing_cast")
+    inject_cast_max = int(input.get("inject_cast_max", 1))
+    if raw_cast:
+        from app.engine.plan_forge.existing_state import CastMember, ExistingState
+        cast = [
+            CastMember(name=str(c["name"]), glossary_entity_id=str(c["entity_id"]))
+            for c in raw_cast if c.get("name") and c.get("entity_id")
+        ]
+        if cast:
+            existing = ExistingState(
+                chapter_count=0, recent_chapters=[], cast=cast, arcs=[],
+                variables=[], motifs=[], notes={}, grounded_fingerprint="",
+            )
+    spec, analyze, logged = await propose_spec_llm_async(
+        source, client, existing=existing, inject_cast_max=inject_cast_max,
+    )
     return {
         "status": "completed",
         "novel_system_spec": spec,
@@ -648,3 +681,209 @@ async def run_plan_forge_refine(
         fidelity_before=input.get("fidelity_before"),
         fidelity_after=input.get("fidelity_after"),
     )
+
+
+# ── 27 V2-C2 · the `plan_pass` worker op ─────────────────────────────────────────────────────────
+async def run_plan_pass(
+    pool: asyncpg.Pool, llm: LLMClient, *, user_id: str, input: dict[str, Any],
+    cancel_check: Callable[[], Awaitable[bool]] | None = None,
+) -> dict[str, Any]:
+    """Run ONE compiler pass to its artifact (27 V2-C2).
+
+    This op does the LLM compute and returns the artifact; it writes NOTHING. The finalize hook
+    (`_finalize_plan_pass_job`) persists the artifact and records the pass in `pass_state` — the
+    same split every other PlanForge op uses, and the reason a crashed worker cannot leave a pass
+    half-recorded.
+
+    The two things it must get right:
+
+    **Inputs resolve BY POINTER** (PF-3). We compute the pass's input pointers from the run's
+    CURRENT `pass_state`, load exactly those artifacts by id, and fingerprint exactly those ids. So
+    the fingerprint we record is the one a later freshness check will recompute — if we resolved
+    inputs one way and fingerprinted another, every pass would read as permanently stale.
+
+    **A blocked pass does not run.** `assert_runnable` raises `UpstreamStale` (a ValueError ⇒ a
+    BUSINESS error ⇒ the job fails cleanly and is ACKed) rather than burning tokens on a plan whose
+    upstream a human has not accepted yet.
+    """
+    from app.db.repositories.plan_runs import PlanRunsRepo
+    from app.services.plan_pass_adapters import PASS_ADAPTERS, PassContext
+    from app.services.plan_pass_service import (
+        PACKAGE_KIND, PASS_REGISTRY, assert_runnable, fingerprint, input_pointers, package_body,
+    )
+
+    book_id = UUID(str(input["book_id"]))
+    run_id = UUID(str(input["run_id"]))
+    pass_id = str(input["pass_id"])
+    if pass_id not in PASS_REGISTRY:
+        raise ValueError(f"unknown pass_id: {pass_id}")
+    model_ref = input.get("model_ref") or ""
+    if not model_ref:
+        raise ValueError("model_ref required")
+
+    spec = PASS_REGISTRY[pass_id]
+    runs = PlanRunsRepo(pool)
+    run = await runs.get_for_book(book_id, run_id)
+    if run is None:
+        raise ValueError(f"plan run {run_id} not found for book {book_id}")
+
+    # The package is an INPUT (it is what `compile()` produced). A pass that reads it and does not
+    # fingerprint it is fresh forever — re-compiling with a different arc or genre would leave
+    # `motifs`/`cast` (which have no pass dependencies) pointing at a plan that no longer exists.
+    #
+    # ALWAYS LOAD IT — even for a pass that does not read it. The package is a property of the RUN,
+    # not of the pass being run, and the PF-5 gate below has to recompute the fingerprints of this
+    # pass's UPSTREAMS, which may well read it.
+    #
+    # Loading it only when `spec.reads_package` was a real bug, and only the full seven-pass smoke
+    # could find it: `character_arcs` reads_package=False, but it depends on `cast` and `beats`,
+    # which both DO. So their freshness was recomputed with `package_artifact_id=None`, their
+    # fingerprints could not match what they had recorded, and they read as STALE — the worker
+    # refused a pass that the service had just said (HTTP 200) was runnable. The two disagreed
+    # because they were answering the question with different inputs.
+    package_art = await runs.latest_artifact(book_id, run_id, PACKAGE_KIND)
+    if spec.reads_package and package_art is None:
+        raise ValueError(
+            f"pass '{pass_id}' reads the planning package, but this run has none — compile first",
+        )
+    package_id = package_art.id if package_art else None
+
+    params = dict(input.get("params") or {})
+    force = bool(input.get("force"))
+    assert_runnable(run, pass_id, force=force, package_artifact_id=package_id)
+
+    pointers = input_pointers(run, pass_id, package_artifact_id=package_id)
+    loaded = await runs.artifacts_by_ids(book_id, run_id, pointers)
+
+    # Resolve each upstream pass's body by ITS artifact pointer, keyed by the PASS that produced it.
+    # Keying by KIND would collide: pass 7 re-emits `scene_plan`.
+    inputs: dict[str, Any] = {}
+    missing: list[str] = []
+    for dep in spec.depends_on:
+        dep_entry = run.pass_state.get(dep) or {}
+        dep_art_id = str(
+            dep_entry.get("artifact_id") if isinstance(dep_entry, dict)
+            else getattr(dep_entry, "artifact_id", "") or "",
+        )
+        art = loaded.get(dep_art_id)
+        if art is None:
+            # Not "empty" — MISSING. `assert_runnable` should already have refused, so reaching
+            # here means the pointer names an artifact that is gone (or another book's). Fail
+            # loudly: silently running a pass with an absent input produces a plan that looks
+            # complete and is built on nothing.
+            missing.append(dep)
+            continue
+        inputs[dep] = art.content
+    if missing:
+        raise ValueError(
+            f"pass '{pass_id}' cannot resolve its input artifact(s): {', '.join(missing)}",
+        )
+
+    fp = fingerprint(input_artifact_ids=pointers, params=params)
+
+    # THE ROSTER JOIN (27 PF-8b / H3). The `cast` artifact holds NAMES — the glossary `entity_id`s
+    # do not exist until the human has applied the seed proposal (PF-7). So before any pass reads the
+    # cast, resolve each member to the id that proposal minted.
+    #
+    # Without this, `grounded_decompose`'s `cast_index` is EMPTY (it keys on `entity_id`, and there
+    # is none), every scene comes back with `present_entity_ids: []`, and the linker writes scene
+    # nodes with no cast on them. The live 7-pass smoke showed it plainly — `present=0` on every
+    # scene — while the plan looked complete in every other respect. Absent, silently.
+    if "cast" in inputs:
+        inputs["cast"] = {
+            **inputs["cast"],
+            "cast": await _resolve_cast_entity_ids(pool, book_id, run, inputs["cast"]),
+        }
+
+    retriever = None
+    if pass_id == "motifs":
+        from app.db.repositories.motif_retrieve import MotifRetriever
+
+        retriever = MotifRetriever(pool)
+
+    ctx = PassContext(
+        llm=llm, user_id=user_id, book_id=book_id,
+        project_id=UUID(str(input.get("project_id") or run.work_id or book_id)),
+        model_source=input.get("model_source", "user_model"), model_ref=model_ref,
+        package=package_body(package_art.content) if package_art else {},
+        inputs=inputs,
+        genre_tags=list(run.genre_tags or []),
+        source_language=str(input.get("source_language") or "auto"),
+        params=params, retriever=retriever,
+        trace_id=input.get("trace_id"), cancel_check=cancel_check,
+    )
+    body = await PASS_ADAPTERS[pass_id](ctx)
+
+    return {
+        "status": "completed",
+        "pass_id": pass_id,
+        "output_kind": spec.output_kind,
+        "artifact": body,
+        # Recorded verbatim into `pass_state` by the finalize hook. The fingerprint is over the
+        # SAME pointers we just resolved, and the params are stored WITH the pass so a later
+        # freshness check recomputes with them (a caller that had to remember them would forget).
+        "input_fingerprint": fp,
+        "input_artifact_ids": pointers,
+        "params": params,
+    }
+
+
+async def _resolve_cast_entity_ids(
+    pool: asyncpg.Pool, book_id: UUID, run, cast_artifact: dict[str, Any],
+) -> list[dict[str, Any]]:
+    """The roster join: cast NAME → glossary `entity_id`, from the APPLIED seed proposal.
+
+    Read from the proposal's `applied_results` rather than asking glossary directly — that is where
+    the ids were MINTED, and composition reads the cast through the knowledge-gateway roster, never
+    glossary (INV-KAL).
+
+    Degrade-safe and HONEST: a member we cannot resolve keeps its name and gets NO `entity_id`. It
+    is then absent from `cast_index`, so pass 6 falls back to `present_entity_names_unresolved` —
+    which is exactly the field that exists to say "this character is in the scene and I could not
+    tell you which glossary entity they are". Inventing an id would be worse than admitting it.
+    """
+    from app.db.repositories.plan_bootstrap_proposals import PlanBootstrapProposalsRepo
+
+    members = list(cast_artifact.get("cast") or [])
+    if not members:
+        return members
+
+    # Union the ids across EVERY applied proposal for this book — not just the one this pass points
+    # at. A glossary entity id is a fact about the BOOK, not about the proposal that happened to mint
+    # it. Re-run `cast` and the LLM adds one new character: the re-run's proposal contains only the
+    # NEW one, and reading it alone would leave every character from the first batch un-resolved —
+    # so the scenes would quietly lose the cast that was already correctly seeded.
+    try:
+        proposals = await PlanBootstrapProposalsRepo(pool).list_active_for_book(book_id)
+    except Exception:  # noqa: BLE001 — advisory join; a read failure must not fail the pass
+        logger.warning("roster join: could not load the seed proposals", exc_info=True)
+        return members
+
+    by_name: dict[str, str] = {}
+    for proposal in proposals:
+        # Only an APPLIED proposal has minted ids. A pending one is a request, not a fact.
+        if proposal.status != "applied":
+            continue
+        for row in (proposal.applied_results or {}).values():
+            if isinstance(row, dict) and row.get("name") and row.get("entity_id"):
+                by_name[str(row["name"]).strip().casefold()] = str(row["entity_id"])
+    if not by_name:
+        # Nothing applied yet ⇒ there ARE no ids. For `cast` itself that is fine (it is a blocking
+        # checkpoint the human has not passed); for anything downstream, PF-5 already refused.
+        return members
+
+    resolved = 0
+    out: list[dict[str, Any]] = []
+    for m in members:
+        name = str(m.get("name") or "").strip()
+        eid = by_name.get(name.casefold())
+        if eid:
+            resolved += 1
+            out.append({**m, "entity_id": eid})
+        else:
+            out.append(dict(m))
+    logger.info(
+        "roster join: book=%s resolved %d/%d cast member(s) to glossary entities",
+        book_id, resolved, len(members),
+    )
+    return out

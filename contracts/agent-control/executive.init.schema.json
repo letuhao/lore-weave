@@ -1,0 +1,14 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://loreweave.dev/contracts/agent-control/executive.init.schema.json",
+  "title": "ExecutiveInitRequest",
+  "description": "POST /internal/working-memory/init request — the goal-authority write path (ACP RW-6). Freezes the charter for a session. Response is 204 (no body). RV-M8: `user_id` MUST be a SERVER-AUTHENTICATED identity (the caller asserts it under the internal-service token), never a client-supplied field. The `charter` reuses the canonical working_memory charter (no drift — ACP-6).",
+  "type": "object",
+  "required": ["session_id", "user_id", "charter"],
+  "additionalProperties": false,
+  "properties": {
+    "session_id": { "type": "string", "format": "uuid" },
+    "user_id": { "type": "string", "format": "uuid", "description": "server-authenticated (RV-M8)" },
+    "charter": { "$ref": "https://loreweave.dev/contracts/agent-control/working_memory.schema.json#/properties/charter" }
+  }
+}

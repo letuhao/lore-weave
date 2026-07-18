@@ -1,5 +1,5 @@
 import { apiJson } from '@/api';
-import { aiModelsApi, type UserModel } from '@/features/ai-models/api';
+import { aiModelsApi, type UserModel, type ModelPricing } from '@/features/ai-models/api';
 
 // W5 consolidation: the canonical UserModel type + list client live in
 // features/ai-models/api.ts — re-exported here so existing settings imports
@@ -177,10 +177,24 @@ export const providerApi = {
     context_length?: number | null;
     capability_flags?: Record<string, unknown>;
     notes?: string;
+    /** D-PRICING-REFRESH — omit to leave pricing unchanged; a full replace
+     *  when present (not a per-field merge), so callers must spread the
+     *  model's existing pricing first if they only mean to edit one field. */
+    pricing?: ModelPricing;
   }) {
     return apiJson<UserModel>(`/v1/model-registry/user-models/${modelId}`, {
       method: 'PATCH', token, body: JSON.stringify(payload),
     });
+  },
+
+  /** D-PRICING-REFRESH — best-effort live-pricing suggestion from OpenRouter's
+   *  public catalog for this model. Never auto-applied: the caller reviews
+   *  `pricing`/`source_model_id` and, if it looks right, calls patchUserModel
+   *  itself to persist it. */
+  suggestPricing(token: string, modelId: string) {
+    return apiJson<{ found: boolean; source_model_id?: string; pricing?: ModelPricing }>(
+      `/v1/model-registry/user-models/${modelId}/pricing/suggest`, { token },
+    );
   },
 
   putUserModelTags(token: string, modelId: string, tags: Array<{ tag_name: string; note?: string }>) {

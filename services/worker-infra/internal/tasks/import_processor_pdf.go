@@ -163,18 +163,53 @@ RETURNING id
 		_, _ = tx.Exec(ctx,
 			`INSERT INTO chapter_drafts(chapter_id, body, draft_format, draft_updated_at, draft_version) VALUES($1, $2, 'json', now(), 1)`,
 			chapterID, tiptapJSON)
-		_, _ = tx.Exec(ctx,
-			`INSERT INTO chapter_revisions(chapter_id, body, body_format, message, author_user_id) VALUES($1, $2, 'json', $3, $4)`,
-			chapterID, tiptapJSON, fmt.Sprintf("imported from PDF (pages %d-%d)", pageStart, pageEnd), payload.UserID)
-		_, _ = tx.Exec(ctx, `UPDATE chapters SET draft_revision_count=1 WHERE id=$1`, chapterID)
+		// 26 IX-1 corollary: the PDF worker importer gains the sync .txt path's
+		// auto-publish so every import path births index rows that parse the pinned
+		// PUBLISHED revision (F1). Capture the import revision id (error-checked) and
+		// mark the index fresh (last_parsed_revision_id=importRevID) — the scenes
+		// inserted below ARE that revision's parse, so the chapter is born
+		// published+fresh and is never needlessly re-swept.
+		var importRevID string
+		if err := tx.QueryRow(ctx,
+			`INSERT INTO chapter_revisions(chapter_id, body, body_format, message, author_user_id) VALUES($1, $2, 'json', $3, $4) RETURNING id`,
+			chapterID, tiptapJSON, fmt.Sprintf("imported from PDF (pages %d-%d)", pageStart, pageEnd), payload.UserID).Scan(&importRevID); err != nil {
+			tx.Rollback(ctx)
+			return t.countPdfChapters(ctx, payload.JobID), fmt.Errorf("insert revision: %w", err)
+		}
+		if _, err := tx.Exec(ctx,
+			// WS-0.3 (spec §3.2): same as import_processor.go — worker-infra writes
+			// book-service's chapters table directly and must set the KG pointer, else
+			// PDF-imported books never reach the knowledge graph.
+			`UPDATE chapters SET draft_revision_count=1, editorial_status='published', published_revision_id=$2, kg_indexed_revision_id=$2, last_parsed_revision_id=$2 WHERE id=$1`,
+			chapterID, importRevID); err != nil {
+			tx.Rollback(ctx)
+			return t.countPdfChapters(ctx, payload.JobID), fmt.Errorf("publish imported chapter: %w", err)
+		}
 
+		anyLinked := false
 		for _, sc := range ch.Scenes {
+			// 22-A5: set book_id (SC1) AND source_scene_id (SC7 anchor, when present)
+			// at INSERT — closes the A1 window for the PDF import branch too.
+			ssid := sceneSourceSceneIDArg(sc.SourceSceneID)
 			if _, err := tx.Exec(ctx,
-				`INSERT INTO scenes(chapter_id, sort_order, path, leaf_text, content_hash, parse_version) VALUES($1, $2, $3, $4, $5, 1)`,
-				chapterID, sc.SortOrder, sc.Path, sc.LeafText, sc.ContentHash,
+				`INSERT INTO scenes(chapter_id, book_id, sort_order, path, leaf_text, content_hash, source_scene_id, parse_version) VALUES($1, $2, $3, $4, $5, $6, $7, 1)`,
+				chapterID, payload.BookID, sc.SortOrder, sc.Path, sc.LeafText, sc.ContentHash, ssid,
 			); err != nil {
 				tx.Rollback(ctx)
 				return t.countPdfChapters(ctx, payload.JobID), fmt.Errorf("insert scene: %w", err)
+			}
+			if ssid != nil {
+				anyLinked = true
+			}
+		}
+
+		// SC11-amendment Phase 0 — WRITER #4. Same reason as the HTML/txt path: a scene born with an
+		// anchor is never touched by the IX-12 write-back (it only fills NULLs), so without this the
+		// link exists and nothing announces it. Same tx as the INSERTs (INV-O12).
+		if anyLinked {
+			if err := emitScenesLinkedTx(ctx, tx, payload.BookID, chapterID); err != nil {
+				tx.Rollback(ctx)
+				return t.countPdfChapters(ctx, payload.JobID), fmt.Errorf("emit scenes_linked: %w", err)
 			}
 		}
 
@@ -207,6 +242,9 @@ RETURNING id
 		// listens for this instead of one opaque "processing" state.
 		t.publishWSEvent(ctx, payload.UserID, payload.JobID, "processing", chunkIdx+1, nil)
 	}
+
+	// 4.5 — 26 IX-12 decompile write-back (mirrors processImport step 5.5). Best-effort.
+	t.writeBackSceneLinks(ctx, payload.BookID, payload.UserID)
 
 	// 5. Clean up the source PDF from MinIO (mirrors processImport step 6).
 	_ = t.Minio.RemoveObject(ctx, t.Cfg.MinioBucket, payload.FileStorageKey, minio.RemoveObjectOptions{})

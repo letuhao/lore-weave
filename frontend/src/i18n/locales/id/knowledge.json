@@ -22,7 +22,17 @@
     "hint": "Gulir untuk zoom · seret ruang kosong untuk geser · klik simpul untuk detail · ⊞ untuk memperluas",
     "loading": "Memuat graf...",
     "loadFailed": "Gagal memuat graf: {{error}}",
-    "empty": "Belum ada graf pengetahuan — bangun proyek ini untuk menjelajahi jaringannya."
+    "empty": "Belum ada graf pengetahuan — bangun proyek ini untuk menjelajahi jaringannya.",
+    "emptyLens": "Tidak ada relasi yang cocok dengan lensa ini — coba tampilan lain atau bab sebelumnya, atau hapus lensa.",
+    "truncatedLens": "menampilkan {{n}} relasi pertama dari lensa ini",
+    "hintLens": "Gulir untuk memperbesar · seret untuk menggeser · klik simpul untuk detail",
+    "lens": {
+      "view": "Tampilan",
+      "noView": "Semua relasi",
+      "asOf": "Per bab",
+      "latest": "terbaru",
+      "clear": "Hapus lensa"
+    }
   },
   "schemaSection": {
     "title": "Skema",
@@ -72,7 +82,8 @@
       "extractionDisabled": "Nonaktif",
       "book": "Buku",
       "world": "Dunia",
-      "none": "—"
+      "none": "—",
+      "triageNudge": "{{count}} elemen yang diekstrak perlu ditinjau"
     },
     "placeholder": {
       "proposals": "Proposal tertunda muncul di sini (C11).",
@@ -404,7 +415,8 @@
         "global": "Global",
         "confidence": "Keyakinan",
         "mentions": "Penyebutan",
-        "anchor": "Skor jangkar"
+        "anchor": "Skor jangkar",
+        "scope": "Cakupan"
       },
       "promote": "Promosikan ke glosarium",
       "promoteHint": "Entitas ditemukan. Promosikan untuk membuat draf glosarium saran AI untuk ditinjau.",
@@ -421,8 +433,32 @@
         "decision": "Keputusan",
         "preference": "Preferensi",
         "milestone": "Tonggak sejarah",
-        "negation": "Negasi"
-      }
+        "negation": "Negasi",
+        "statement": "Pernyataan",
+        "commitment": "Komitmen"
+      },
+      "addFact": "Tambah fakta",
+      "addFactTitle": "Tambah fakta tentang entitas ini",
+      "factContentLabel": "Fakta",
+      "factContentPlaceholder": "mis. Tidak percaya pada Dewan setelah pengkhianatan",
+      "factTypeLabel": "Tipe",
+      "factPredicatePlaceholder": "predikat (opsional, mis. loyal_to)",
+      "factObjectPlaceholder": "objek (opsional, mis. House Vaeth)",
+      "addFactSave": "Simpan fakta",
+      "addFactCancel": "Batal",
+      "addFactSuccess": "Fakta ditambahkan",
+      "addFactFailed": "Tidak dapat menambah fakta: {{error}}",
+      "markWrong": "Tandai salah",
+      "markWrongConfirm": "Tandai fakta ini sebagai salah? Fakta ini akan dibatalkan (dihapus dari pengulangan) tetapi tetap disimpan dalam riwayat.",
+      "markWrongSuccess": "Fakta ditandai salah",
+      "markWrongFailed": "Tidak dapat membatalkan fakta: {{error}}",
+      "factTypeHelp": "Fakta jenis apa ini?",
+      "factAdvancedToggle": "Tautkan ke entitas lain (opsional)",
+      "replaceFact": "Ganti fakta ini",
+      "replaceFactSave": "Simpan penggantian",
+      "replaceFactSuccess": "Fakta berhasil diganti",
+      "markWrongUndo": "Batalkan",
+      "markWrongUndoFailed": "Tidak dapat membatalkan: {{error}}"
     },
     "edit": {
       "title": "Edit entitas",
@@ -462,6 +498,41 @@
       "errArchived": "Tidak dapat menggabungkan entitas yang diarsipkan. Pulihkan terlebih dahulu.",
       "errGlossaryConflict": "Kedua entitas tertambat pada entri glosarium yang berbeda. Selesaikan penambatan glosarium sebelum menggabungkan.",
       "errUnknown": "Penggabungan gagal: {{reason}}"
+    },
+    "create": {
+      "title": "Entitas baru",
+      "description": "Buat entitas graph-pengetahuan secara manual. Dimulai sebagai entitas yang ditemukan; jangkar nanti untuk menjadikannya kanonikal.",
+      "newButton": "Entitas Baru",
+      "needsProject": "Pilih proyek terlebih dahulu",
+      "field": {
+        "name": "Nama",
+        "kind": "Jenis"
+      },
+      "save": "Buat",
+      "saving": "Membuat…",
+      "cancel": "Batal",
+      "success": "Entitas berhasil dibuat — {{name}} ({{kind}})",
+      "dedup": "Sudah ada — menampilkan {{name}} ({{kind}})",
+      "failed": "Gagal membuat entitas — {{error}}",
+      "discoveredHint": "Entitas baru dimulai sebagai entitas yang ditemukan. Status kanonikal diperoleh dengan menambatkannya ke glosarium."
+    },
+    "kind": {
+      "character": "Karakter",
+      "location": "Lokasi",
+      "organization": "Organisasi",
+      "concept": "Konsep",
+      "item": "Item"
+    },
+    "archive": {
+      "action": "Arsipkan",
+      "confirm": "Sembunyikan entitas ini? Relasi dan penambatan glosariumnya akan tetap disimpan; entitas ini akan hilang dari daftar aktif. Anda dapat membatalkannya segera setelah tindakan ini, atau menampilkannya kembali melalui filter Diarsipkan.",
+      "success": "Entitas berhasil diarsipkan.",
+      "failed": "Gagal mengarsipkan — {{error}}",
+      "undo": "Batalkan"
+    },
+    "restore": {
+      "success": "Entitas dipulihkan.",
+      "failed": "Gagal memulihkan — {{error}}"
     }
   },
   "jobs": {
@@ -1079,9 +1150,34 @@
       "markWrong": "Tandai salah",
       "invalidating": "Menghapus...",
       "failed": "Tidak dapat menyimpan perbaikan: {{error}}"
+    },
+    "create": {
+      "title": "Tautkan entitas",
+      "description": "Buat relasi dari {{subject}} ke entitas Anda yang lain.",
+      "action": "Tautkan entitas",
+      "subject": "Dari",
+      "predicate": "Relasi",
+      "object": "Ke",
+      "objectPlaceholder": "Cari entitas Anda…",
+      "noMatches": "Tidak ada entitas yang cocok.",
+      "save": "Buat tautan",
+      "saving": "Menautkan…",
+      "cancel": "Batal",
+      "success": "Relasi berhasil dibuat.",
+      "notYours": "Tidak dapat membuat tautan — salah satu titik akhir bukan merupakan entitas Anda.",
+      "selfLoop": "Sebuah entitas tidak dapat berelasi dengan dirinya sendiri.",
+      "failed": "Tidak dapat membuat tautan — {{error}}"
     }
   },
   "events": {
+    "create": {
+      "title": "Tambah kejadian",
+      "description": "Buat kejadian lini masa baru untuk karakter ini.",
+      "success": "Kejadian berhasil ditambahkan.",
+      "failed": "Penambahan gagal: {{error}}",
+      "saving": "Menambahkan…",
+      "save": "Tambah kejadian"
+    },
     "edit": {
       "cta": "Edit",
       "title": "Edit peristiwa",
@@ -1157,5 +1253,64 @@
       "divergent": "Divergen"
     },
     "totalRuns": "{{count}} proses total"
+  },
+  "triage": {
+    "loading": "Memuat antrean triase…",
+    "loadFailed": "Tidak dapat memuat antrean triase: {{error}}",
+    "empty": "Tidak ada yang perlu ditriase — setiap elemen yang diekstrak telah sesuai dengan skema Anda.",
+    "resolved": "Menyelesaikan {{count}} item",
+    "resolveFailed": "Tidak dapat menyelesaikan: {{error}}",
+    "handoffToGlossary": "Membuka glosarium untuk menyelesaikan ini di dalam kodeks Anda…",
+    "itemType": {
+      "unknown_node_kind": "Jenis entitas tidak dikenal",
+      "unknown_edge_type": "Jenis relasi tidak dikenal",
+      "edge_kind_mismatch": "Ketidakcocokan titik akhir relasi",
+      "unknown_vocab_value": "Nilai di luar kosakata",
+      "edge_cardinality_conflict": "Konflik relasi aktif"
+    },
+    "action": {
+      "map": "Petakan ke yang sudah ada",
+      "add_to_vocab": "Tambahkan ke kosakata",
+      "add_to_schema": "Tambahkan ke skema",
+      "re_target": "Perbaiki endpoint",
+      "widen_target_kinds": "Perluas jenis yang diizinkan",
+      "drop_edge": "Hapus",
+      "close_previous": "Tutup sebelumnya",
+      "set_multi_active": "Izinkan banyak",
+      "promote_to_glossary_kind": "Promosikan ke jenis glosarium",
+      "demote_to_attribute": "Turunkan ke atribut",
+      "dismiss": "Abaikan"
+    },
+    "prompt": {
+      "target_entity_id": "ID entitas target yang diperbaiki",
+      "map_to": "Petakan ke (kosongkan untuk menggunakan nilai yang terdeteksi)"
+    },
+    "itemDismissed": "Item diabaikan",
+    "confirmSchemaWrite": "Tambahkan ini ke skema Anda? Ini akan mengubah cara validasi ekstraksi di masa mendatang.",
+    "evidence": {
+      "unknown_edge_type": "Hubungan «{{predicate}}» belum ada dalam skema Anda.",
+      "unknown_vocab_value": "Nilai «{{value}}» belum ada dalam daftar «{{set}}».",
+      "edge_kind_mismatch": "«{{predicate}}» digunakan antara {{source}} dan {{target}}, yang tidak diizinkan oleh skema Anda.",
+      "unknown_node_kind": "Jenis «{{kind}}» belum ada dalam skema Anda.",
+      "edge_cardinality_conflict": "Terdapat konflik pada hubungan «{{predicate}}» yang aktif.",
+      "generic": "Elemen yang diekstraksi ini tidak sesuai dengan skema Anda."
+    },
+    "retarget": {
+      "title": "Arahkan ke entitas yang tepat",
+      "description": "Cari entitas Anda dan pilih entitas yang seharusnya dituju oleh relasi ini.",
+      "searchPlaceholder": "Cari entitas berdasarkan nama…",
+      "noMatches": "Tidak ada entitas yang cocok.",
+      "cancel": "Batal",
+      "confirm": "Arahkan ulang"
+    },
+    "map": {
+      "title": "Petakan ke item yang sudah ada",
+      "description": "Pilih item skema yang akan digunakan untuk elemen di luar skema ini.",
+      "label": "Petakan ke",
+      "keepDetected": "Pertahankan nilai yang terdeteksi",
+      "cancel": "Batal",
+      "confirm": "Petakan"
+    },
+    "emptyHint": "Triage mengumpulkan semua hasil ekstraksi yang belum sesuai dengan skema Anda — antrean yang bersih berarti semuanya sudah tersusun rapi."
   }
 }

@@ -1,6 +1,9 @@
+import { useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import {
+  ChevronDown,
+  ChevronRight,
   BookOpen,
   Brain,
   Globe2,
@@ -24,6 +27,7 @@ import {
   Monitor,
   Sparkles,
   Library,
+  NotebookPen,
 } from 'lucide-react';
 import { useAuth } from '@/auth';
 import { useSidebar } from '@/providers/SidebarProvider';
@@ -35,13 +39,16 @@ import { NotificationBell } from '@/components/notifications/NotificationBell';
 type NavItem = { to: string; icon: React.ElementType; labelKey: string; auth?: boolean };
 
 // auth: true = only show when logged in, undefined = always show
+// N4 (dogfood 2026-07-18 F6) — the rail was 16 flat items; a newcomer couldn't find "write my
+// book with AI" in the wall of jargon. Now writing-led: the core creation surfaces stay visible,
+// power-user surfaces fold under a collapsible "More", and the essentials stay in "Manage".
 const mainNav: NavItem[] = [
   // C22 — re-entry into the intent fork ("start something new"); first-run is
   // gated via /onboarding, this is the always-available door back in.
   { to: '/onboarding/new', icon: Sparkles, labelKey: 'nav.startNew', auth: true },
   { to: '/books', icon: BookOpen, labelKey: 'nav.workspace', auth: true },
   { to: '/chat', icon: MessageCircle, labelKey: 'nav.chat', auth: true },
-  { to: '/roleplay', icon: GraduationCap, labelKey: 'nav.roleplay', auth: true },
+  { to: '/assistant', icon: NotebookPen, labelKey: 'nav.assistant', auth: true },
   // K8.1-R1: `to` is `/knowledge` (not `/knowledge/projects`) so NavLink's
   // `startsWith(to + '/')` match keeps the entry active across all
   // tab sub-routes. The /knowledge path itself redirects to /projects.
@@ -49,20 +56,26 @@ const mainNav: NavItem[] = [
   // C21 — prose-less worldbuilding entry. `/worlds` (workspace sub-routes keep
   // the entry active via the startsWith match).
   { to: '/worlds', icon: Globe2, labelKey: 'nav.worlds', auth: true },
+  { to: '/browse', icon: Search, labelKey: 'nav.browse' },
+];
+
+// N4 — power-user / less-common surfaces, folded under a collapsible "More" so the default rail
+// stays short and writing-focused. All still one click away when expanded.
+const moreNav: NavItem[] = [
+  { to: '/roleplay', icon: GraduationCap, labelKey: 'nav.roleplay', auth: true },
   { to: '/campaigns', icon: Factory, labelKey: 'nav.campaigns', auth: true },
   // Per-user glossary standards library (genres/kinds/attributes) — feeds book adopt.
   { to: '/standards', icon: Library, labelKey: 'nav.standards', auth: true },
-  { to: '/browse', icon: Search, labelKey: 'nav.browse' },
+  { to: '/leaderboard', icon: Trophy, labelKey: 'nav.leaderboard' },
+  // Agent Extensibility Registry — skills/MCP/commands/hooks/subagents/plugins + proposals.
+  // The registry GUI (route /extensions) previously had NO nav entry point (orphaned route).
+  { to: '/extensions', icon: Puzzle, labelKey: 'nav.extensions', auth: true },
 ];
 
 const manageNav: NavItem[] = [
   { to: '/jobs', icon: ListChecks, labelKey: 'nav.jobs', auth: true },
   { to: '/trash', icon: Trash2, labelKey: 'nav.trash', auth: true },
   { to: '/usage', icon: BarChart3, labelKey: 'nav.usage', auth: true },
-  { to: '/leaderboard', icon: Trophy, labelKey: 'nav.leaderboard' },
-  // Agent Extensibility Registry — skills/MCP/commands/hooks/subagents/plugins + proposals.
-  // The registry GUI (route /extensions) previously had NO nav entry point (orphaned route).
-  { to: '/extensions', icon: Puzzle, labelKey: 'nav.extensions', auth: true },
   { to: '/settings/account', icon: Settings, labelKey: 'nav.settings', auth: true },
 ];
 
@@ -73,6 +86,11 @@ export function Sidebar() {
   const { collapsed, toggle } = useSidebar();
   const { appTheme, setAppTheme } = useAppTheme();
   const isLoggedIn = !!accessToken;
+  // N4 — "More" starts open when the active route lives inside it, so a power-user on e.g.
+  // /extensions isn't hunting for a collapsed group; otherwise it's tucked away by default.
+  const [moreExpanded, setMoreExpanded] = useState(() =>
+    moreNav.some((i) => location.pathname.startsWith(i.to)),
+  );
 
   const themeIcons: Record<AppTheme, React.ElementType> = { dark: Moon, light: Sun, sepia: Sunset, oled: Monitor };
   const ThemeIcon = themeIcons[appTheme];
@@ -141,6 +159,33 @@ export function Sidebar() {
             currentPath={location.pathname}
             collapsed={collapsed}
           />
+        ))}
+
+        {/* N4 — power-user "More" group. Collapsible when the rail is expanded (keeps the default
+            rail short + writing-led); inline icons when the whole rail is icon-collapsed. */}
+        {moreNav.some((i) => !i.auth || isLoggedIn) && (collapsed ? (
+          <>
+            <div className="mx-2 my-3 border-t" />
+            {moreNav.filter((i) => !i.auth || isLoggedIn).map((item) => (
+              <NavLink key={item.to} item={item} label={t(item.labelKey)} currentPath={location.pathname} collapsed={collapsed} />
+            ))}
+          </>
+        ) : (
+          <>
+            <button
+              type="button"
+              onClick={() => setMoreExpanded((v) => !v)}
+              aria-expanded={moreExpanded}
+              data-testid="sidebar-more-toggle"
+              className="mt-4 flex w-full items-center gap-1 px-3 pb-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground hover:text-foreground"
+            >
+              {moreExpanded ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
+              {t('nav.more', { defaultValue: 'More' })}
+            </button>
+            {moreExpanded && moreNav.filter((i) => !i.auth || isLoggedIn).map((item) => (
+              <NavLink key={item.to} item={item} label={t(item.labelKey)} currentPath={location.pathname} collapsed={collapsed} />
+            ))}
+          </>
         ))}
 
         {/* Manage section */}

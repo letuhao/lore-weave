@@ -31,7 +31,7 @@ def _client(owner, settings):
 
     works = AsyncMock()
     rows = (
-        [CompositionWork(project_id=uuid4(), user_id=OWNER, book_id=BOOK, version=1, settings=settings)]
+        [CompositionWork(project_id=uuid4(), created_by=OWNER, book_id=BOOK, version=1, settings=settings)]
         if settings is not None else []
     )
     works.resolve_by_book = AsyncMock(return_value=rows)

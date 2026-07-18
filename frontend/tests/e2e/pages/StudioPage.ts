@@ -59,6 +59,9 @@ export class StudioPage {
   async closePanel(title: string): Promise<void> {
     const tab = this.page.locator('.dv-default-tab', { hasText: title });
     await tab.waitFor({ state: 'visible' });
-    await tab.locator('.dv-default-tab-action').click();
+    // dockview hides the close affordance (.dv-default-tab-action) on INACTIVE tabs until hover;
+    // hovering first lets us close a background tab (not just the active one), a real user action.
+    await tab.hover();
+    await tab.locator('.dv-default-tab-action').click({ force: true });
   }
 }

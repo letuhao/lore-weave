@@ -14,6 +14,7 @@ Lens map: L0 canon (COMP DB) · L1a present = glossary bios + knowledge relation
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from dataclasses import dataclass, field
 from typing import Any
@@ -27,6 +28,7 @@ from app.db.repositories.canon_rules import CanonRulesRepo
 from app.db.repositories.generation_jobs import GenerationJobsRepo
 from app.db.repositories.outline import OutlineRepo
 from app.db.repositories.scene_links import SceneLinksRepo
+from app.packer.sanitize import sanitize_lore
 
 logger = logging.getLogger(__name__)
 
@@ -88,11 +90,11 @@ def _applies_at(rule: CanonRule, story_order: int | None) -> bool:
 
 
 async def gather_canon(
-    canon_repo: CanonRulesRepo, user_id: UUID, project_id: UUID, story_order: int | None,
+    canon_repo: CanonRulesRepo, project_id: UUID, story_order: int | None,
 ) -> list[CanonRule]:
     """L0 — active canon rules applying at the scene's in-world position."""
     try:
-        rules = await canon_repo.list_active(user_id, project_id)
+        rules = await canon_repo.list_active(project_id)
     except Exception:  # noqa: BLE001 — repo failure degrades the lens
         logger.warning("gather_canon failed", exc_info=True)
         return []
@@ -100,7 +102,7 @@ async def gather_canon(
 
 
 async def gather_open_promises(
-    repo, user_id: UUID, project_id: UUID, *, cap: int,
+    repo, project_id: UUID, *, cap: int,
 ) -> list[dict[str, Any]]:
     """FD-1 S3 — the open promise/foreshadow set to re-inject (F2). Returns the
     top-`cap` open threads (list_open is priority DESC, created ASC) as
@@ -114,7 +116,7 @@ async def gather_open_promises(
     this is an edge case; the spoiler-axis filter (compare opened_at_node position
     to the scene's story_order) belongs with S4's debt/spoiler work."""
     try:
-        threads = await repo.list_open(user_id, project_id, limit=cap)
+        threads = await repo.list_open(project_id, limit=cap)
     except Exception:  # noqa: BLE001 — repo failure degrades the lens
         logger.warning("gather_open_promises failed", exc_info=True)
         return []
@@ -201,7 +203,7 @@ async def gather_timeline(
 
 async def gather_structural(
     outline_repo: OutlineRepo, scene_links_repo: SceneLinksRepo, *,
-    user_id: UUID, project_id: UUID, node: dict[str, Any],
+    project_id: UUID, node: dict[str, Any],
 ) -> tuple[dict[str, Any], list[dict[str, Any]], list[dict[str, Any]]]:
     """L2 beat/goal/POV/synopsis + setup_payoff threads, and L2′ planned
     synopses of unwritten scenes at/before this position."""
@@ -214,7 +216,7 @@ async def gather_structural(
     planned: list[dict[str, Any]] = []
     node_id = node.get("id")
     try:
-        links = await scene_links_repo.list_by_project(user_id, project_id)
+        links = await scene_links_repo.list_by_project(project_id)
         threads = [
             {"kind": l.kind, "label": l.label, "to": str(l.to_node_id)}
             for l in links if str(l.from_node_id) == str(node_id) or str(l.to_node_id) == str(node_id)
@@ -222,7 +224,7 @@ async def gather_structural(
     except Exception:  # noqa: BLE001
         logger.warning("gather threads failed", exc_info=True)
     try:
-        tree = await outline_repo.list_tree(user_id, project_id)
+        tree = await outline_repo.list_tree(project_id)
         my_order = node.get("story_order")
         for n in tree:
             if n.kind != "scene" or n.status == "done" or str(n.id) == str(node_id):
@@ -236,11 +238,253 @@ async def gather_structural(
     return beat, threads, planned
 
 
+def _arc_position(story_order: int | None, span: dict[str, Any]) -> int | None:
+    """The scene's pacing position within a node's DERIVED span (BA6/BPS-3): a
+    0..100 percentage of `story_order` across [min_story_order, max_story_order]
+    over the node's member chapters. None when unplaceable (no story_order, an
+    empty/unplaced span). A single-chapter span (max<=min) reads as 0% (the scene
+    IS the whole span — clamped, never a divide-by-zero)."""
+    lo = span.get("min_story_order")
+    hi = span.get("max_story_order")
+    if story_order is None or lo is None or hi is None:
+        return None
+    if hi <= lo:
+        return 0
+    pct = round((story_order - lo) / (hi - lo) * 100)
+    return max(0, min(100, pct))
+
+
+async def gather_arc(
+    structure_repo, structure_node_id: UUID, *,
+    story_order: int | None, narrative_threads_repo=None,
+    open_promises_cap: int = 8,
+) -> str:
+    """23 BA12 — the ARC lens: the durable spec layer (`structure_node`) reaching
+    the prompt. This is the anti-write-only proof for the whole spec — a chapter
+    assigned to an arc must STEER generation, and the D2 effect test asserts this
+    frame CHANGES when the arc's `tracks` change.
+
+    Renders (BA12) a compact structural frame the drafter reads FIRST:
+      · the resolved arc CHAIN — saga→arc→sub-arc titles, root→leaf (`ancestor_chain`)
+      · the merged `tracks` (`resolve_tracks` — the ONE cascade impl, BA7; never
+        re-derived here) shadowed by `key`
+      · the pacing POSITION of this scene within EACH ancestor's derived span
+        (`span` + this scene's `story_order`) — the coexisting curves BA7 calls out
+        ("~60% through arc 'Betrayal'; ~20% through saga 'Ascension'")
+      · the merged `roster_bindings` (`resolve_roster_bindings`, shadow by role_key)
+      · the open-promise rollup over the arc's chapter subtree (`open_promises`, BA15)
+
+    Best-effort (the packer `_safe_*` posture): any repo failure degrades to '' — the
+    arc frame THINS, never fails a pack. Every author-authored string (titles, goals,
+    track labels, binding ids, promise summaries) is neutralised (SEC3) before
+    assembly so a crafted title can't forge a block delimiter on re-injection."""
+    try:
+        chain, tracks, bindings = await asyncio.gather(
+            structure_repo.ancestor_chain(structure_node_id),
+            structure_repo.resolve_tracks(structure_node_id),
+            structure_repo.resolve_roster_bindings(structure_node_id),
+        )
+    except Exception:  # noqa: BLE001 — the arc frame degrades; never fail a pack
+        logger.warning("gather_arc resolve failed", exc_info=True)
+        return ""
+    if not chain:  # a dangling structure_node_id (deleted arc) → nothing to inject
+        return ""
+
+    def _title(n: Any) -> str:
+        return sanitize_lore((getattr(n, "title", "") or "").strip()) or "(untitled)"
+
+    lines: list[str] = []
+
+    # 1. CHAIN — the saga→arc→sub-arc frame (root→leaf).
+    lines.append("Arc chain: " + " → ".join(
+        f'{getattr(n, "kind", "arc")} "{_title(n)}"' for n in chain))
+
+    # the leaf (the arc this chapter is assigned to) intent
+    goal = sanitize_lore((getattr(chain[-1], "goal", "") or "").strip())
+    if goal:
+        lines.append(f"Arc goal: {goal}")
+
+    # 2. TRACKS — the merged parallel plotlines (BA7 cascade), shadow by key.
+    track_parts: list[str] = []
+    for t in tracks or []:
+        key = sanitize_lore(str(t.get("key", "")).strip())
+        label = sanitize_lore(str(t.get("label", "")).strip())
+        piece = f"{key}: {label}" if key and label else (key or label)
+        if piece:
+            track_parts.append(piece)
+    if track_parts:
+        lines.append("Tracks: " + "; ".join(track_parts))
+
+    # 3. PACING — this scene's position within each ancestor's derived span
+    #    (coexisting curves, BA7). One span() per chain node (depth<=2), gathered
+    #    concurrently; a per-node failure just drops that node's curve.
+    spans = await asyncio.gather(
+        *(structure_repo.span(getattr(n, "id")) for n in chain),
+        return_exceptions=True,
+    )
+    pacing_parts: list[str] = []
+    for n, sp in zip(chain, spans):
+        if isinstance(sp, BaseException):
+            continue
+        pct = _arc_position(story_order, sp)
+        if pct is not None:
+            pacing_parts.append(f'~{pct}% through {getattr(n, "kind", "arc")} "{_title(n)}"')
+    if pacing_parts:
+        lines.append("Pacing: " + "; ".join(pacing_parts))
+
+    # 4. CAST — the merged roster_bindings (role_key → glossary entity), shadow by
+    #    role_key. The concrete cast the abstract roster slots resolve to.
+    binding_parts: list[str] = []
+    for role_key, entity_id in (bindings or {}).items():
+        rk = sanitize_lore(str(role_key).strip())
+        ev = sanitize_lore(str(entity_id).strip())
+        if rk and ev:
+            binding_parts.append(f"{rk} → {ev}")
+    if binding_parts:
+        lines.append("Cast bindings: " + "; ".join(binding_parts))
+
+    # 5. OPEN PROMISES — the rollup over the arc's chapter subtree (BA15). Needs the
+    #    promise-ledger repo's pool (open_promises borrows it); skip when unwired.
+    if narrative_threads_repo is not None:
+        try:
+            promises = await structure_repo.open_promises(
+                structure_node_id, narrative_threads_repo=narrative_threads_repo)
+        except Exception:  # noqa: BLE001 — the rollup degrades; never fail a pack
+            logger.warning("gather_arc open_promises failed", exc_info=True)
+            promises = []
+        promise_parts: list[str] = []
+        for p in promises[:open_promises_cap]:
+            summary = sanitize_lore((getattr(p, "summary", "") or "").strip())
+            if summary:
+                promise_parts.append(f'{getattr(p, "kind", "promise")}: {summary}')
+        if promise_parts:
+            lines.append("Open threads: " + "; ".join(promise_parts))
+
+    return "\n".join(lines)
+
+
+#: X-7 caps. The <motif> block rides OUTSIDE enforce_budget (like <arc>), so every
+#: unbounded surface in it is a Context-Budget-Law hole. Two exist: the motif's `beats[]`
+#: (listed as the scene's shape when no beat is bound — a motif may carry dozens) and the
+#: free author text (`summary`, beat intents).
+_MOTIF_BEAT_CAP = 3
+_MOTIF_SUMMARY_CHARS = 240
+
+
+def _clip(text: str, limit: int = _MOTIF_SUMMARY_CHARS) -> str:
+    """Sanitize + truncate one author-authored string."""
+    s = sanitize_lore((text or "").strip())
+    return s if len(s) <= limit else s[:limit].rstrip() + "…"
+
+
+async def gather_motif(
+    applications_repo, motif_repo, project_id: UUID, node_id: UUID, *,
+    user_id: UUID,
+    beat_cap: int = _MOTIF_BEAT_CAP,
+    summary_chars: int = _MOTIF_SUMMARY_CHARS,
+) -> str:
+    """X-7 == spec 30 BE-19 == spec 33 BE-M2 — the MOTIF lens: the narrative-craft layer
+    (套路 / 爽点 / 打脸) finally reaching the prompt.
+
+    This is the anti-write-only proof for the whole motif cluster. The author binds 打脸 to
+    a scene, the Hub renders the chip, the binder writes `motif_application`, and the
+    conformance engine GRADES the prose against it — and until this lens existed, `pack()`
+    never told the drafter. A motif bound to a scene must STEER generation; the effect test
+    asserts this frame CHANGES when the binding changes.
+
+    Resolution — LAST-WINS, the one shipped rule:
+      `by_nodes` is ORDER BY created_at ASC and the binder INSERTs a NEW row per re-bind
+      (no upsert, no unique index), so a scene can carry N rows. They are SUPERSEDED
+      VERSIONS, not N co-bound motifs — so we take the LAST, exactly as the shipped
+      `plan.py:1196` does. Rendering the older rows would steer the drafter with a binding
+      the author already replaced, which is worse than verbose.
+
+    Degradation (no oracle): no binding → "". An archived motif (`motif_id` is SET NULL per
+    models.py:545) or a foreign one (`get_visible` → None) → "", exactly as plan.py:1188
+    degrades. Any repo failure → "" — the motif frame THINS, never fails a pack.
+
+    SEC3: `sanitize_lore` EVERY author-authored string. Stricter than gather_arc's need, not
+    looser — motifs can be MINED from imported third-party text (`source`/`imported_derived`,
+    models.py:519-521), so the delimiter-forging surface is LARGER here.
+
+    CAPPED: see _MOTIF_BEAT_CAP / _MOTIF_SUMMARY_CHARS above.
+    """
+    try:
+        apps = await applications_repo.by_nodes(project_id, [node_id])
+        if not apps:
+            return ""
+        app = apps[-1]  # last-wins on a re-bind (created_at ASC)
+        if app.motif_id is None:  # the motif was archived → SET NULL
+            return ""
+        m = await motif_repo.get_visible(user_id, app.motif_id)
+    except Exception:  # noqa: BLE001 — the motif frame degrades; never fail a pack
+        logger.warning("gather_motif resolve failed", exc_info=True)
+        return ""
+    if m is None:  # archived / foreign motif — degrade silently (no existence oracle)
+        return ""
+
+    annotations = getattr(app, "annotations", None) or {}
+    beats = list(getattr(m, "beats", None) or [])
+    lines: list[str] = []
+
+    # 1. THE MOTIF — what pattern this scene is executing.
+    name = _clip(str(getattr(m, "name", "") or ""), summary_chars) or "(untitled)"
+    kind = _clip(str(getattr(m, "kind", "") or "sequence"), 40)
+    lines.append(f'Motif: "{name}" ({kind})')
+    summary = _clip(str(getattr(m, "summary", "") or ""), summary_chars)
+    if summary:
+        lines.append(f"Motif intent: {summary}")
+
+    # 2. THE BOUND BEAT — the scene's target shape within the motif.
+    beat_key = annotations.get("beat_key")
+    bound_beat: dict[str, Any] | None = None
+    if beat_key:
+        bound_beat = next(
+            (b for b in beats if str(b.get("key")) == str(beat_key)), None)
+    if bound_beat is not None:
+        label = _clip(str(bound_beat.get("label") or ""), summary_chars)
+        intent = _clip(str(bound_beat.get("intent") or ""), summary_chars)
+        lines.append(f"Beat: {label} — {intent}" if intent else f"Beat: {label}")
+        tension = bound_beat.get("tension_target")
+        if tension is not None:
+            lines.append(f"Tension target: {int(tension)}/5")
+    elif beats:
+        # No beat bound → give the drafter the motif's SHAPE (capped: a motif may carry
+        # dozens of beats and this block is outside the budget).
+        ordered = sorted(beats, key=lambda b: b.get("order") or 0)[:beat_cap]
+        shape = "; ".join(
+            _clip(str(b.get("label") or b.get("key") or ""), 60) for b in ordered
+        )
+        if shape:
+            lines.append(f"Motif shape: {shape}")
+
+    # 3. REVERSAL / ALLIANCE SHIFT — from the application, else the bound beat (§15.2).
+    for key, label in (("reversal", "Reversal"), ("alliance_shift", "Alliance shift")):
+        val = annotations.get(key) or (bound_beat or {}).get(key)
+        if val:
+            lines.append(f"{label}: {_clip(str(val), summary_chars)}")
+
+    # 4. ROLES — role_key → entity, rendered exactly like gather_arc's "Cast bindings".
+    #    An UNRESOLVED role (set_role_binding writes JSON null) is RENDERED, never dropped:
+    #    silence would read to the drafter as "no such role" (fe-status-default-fallback).
+    role_parts: list[str] = []
+    for role_key, entity_id in (getattr(app, "role_bindings", None) or {}).items():
+        rk = _clip(str(role_key), 60)
+        if not rk:
+            continue
+        ev = _clip(str(entity_id), 80) if entity_id else ""
+        role_parts.append(f"{rk} → {ev}" if ev else f"{rk} → (unresolved)")
+    if role_parts:
+        lines.append("Motif roles: " + "; ".join(role_parts))
+
+    return "\n".join(lines)
+
+
 async def gather_recent(
     book: BookClient, book_id: UUID, chapter_id: UUID, bearer: str, *,
     k: int = _RECENT_PARAGRAPHS,
     jobs_repo: GenerationJobsRepo | None = None,
-    user_id: UUID | None = None, project_id: UUID | None = None,
+    project_id: UUID | None = None,
     story_order: int | None = None,
 ) -> list[str]:
     """L3 — the chapter's 'story so far'. PRIMARY source = the accepted chapter
@@ -263,9 +507,9 @@ async def gather_recent(
     if paras:
         return paras[-k:]  # primary: the accepted draft tail
     # Fallback: no accepted draft → prior generated scene winners (strictly prior).
-    if jobs_repo is not None and user_id is not None and project_id is not None and story_order is not None:
+    if jobs_repo is not None and project_id is not None and story_order is not None:
         try:
-            prior = await jobs_repo.prior_scene_drafts(user_id, project_id, chapter_id, story_order)
+            prior = await jobs_repo.prior_scene_drafts(project_id, chapter_id, story_order)
         except Exception:  # noqa: BLE001
             logger.warning("gather_recent prior-scene fallback failed", exc_info=True)
             return []
@@ -352,7 +596,7 @@ async def gather_references(
             user_id=user_id, model_source=model_source, model_ref=model_ref, texts=[query])
         if not result.embeddings or not result.embeddings[0]:
             return [], False
-        hits = await refs_repo.search(user_id, project_id, result.embeddings[0], limit=limit)
+        hits = await refs_repo.search(project_id, result.embeddings[0], limit=limit)
     except Exception:  # noqa: BLE001 — references are advisory; never fail a pack
         logger.warning("gather_references failed", exc_info=True)
         return [], False

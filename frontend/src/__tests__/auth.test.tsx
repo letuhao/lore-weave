@@ -34,6 +34,20 @@ describe('AuthProvider', () => {
     expect(screen.getByTestId('token').textContent).toBe('none');
   });
 
+  // M4 (F1) — the "Reconnecting…" chip appears only while a silent refresh is in flight.
+  it('shows a Reconnecting chip on lw-auth-refreshing active:true and hides it on false', () => {
+    render(
+      <MemoryRouter>
+        <AuthProvider><TestConsumer /></AuthProvider>
+      </MemoryRouter>,
+    );
+    expect(screen.queryByTestId('auth-reconnecting')).toBeNull(); // idle: no chip
+    act(() => { window.dispatchEvent(new CustomEvent('lw-auth-refreshing', { detail: { active: true } })); });
+    expect(screen.getByTestId('auth-reconnecting')).toBeTruthy(); // refreshing: shown
+    act(() => { window.dispatchEvent(new CustomEvent('lw-auth-refreshing', { detail: { active: false } })); });
+    expect(screen.queryByTestId('auth-reconnecting')).toBeNull(); // recovered: gone
+  });
+
   it('reads token from localStorage on mount', () => {
     localStorage.setItem('lw_auth', JSON.stringify({ accessToken: 'saved-tok', refreshToken: 'saved-ref' }));
     render(

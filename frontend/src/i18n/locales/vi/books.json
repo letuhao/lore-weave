@@ -118,6 +118,7 @@
     "count": "{{count}} chương",
     "count_other": "{{count}} chương",
     "import": "Nhập",
+    "importPdf": "Nhập PDF",
     "new": "Chương mới",
     "col": {
       "title": "Tiêu đề",
@@ -150,8 +151,7 @@
       "title": "Chuyển chương vào thùng rác?",
       "description": "\"{{title}}\" sẽ được chuyển vào thùng rác.",
       "confirm": "Chuyển vào thùng rác"
-    },
-    "importPdf": "Nhập PDF"
+    }
   },
   "glossary": {
     "header": "Thuật ngữ & Tri thức",
@@ -211,7 +211,8 @@
     "status": {
       "draft": "Bản nháp",
       "active": "Hoạt động",
-      "inactive": "Không hoạt động"
+      "inactive": "Không hoạt động",
+      "rejected": "Đã từ chối"
     },
     "bulk": {
       "select_row": "Chọn thực thể",
@@ -228,7 +229,8 @@
       "delete_confirm": {
         "title": "Xóa {{count}} thực thể?",
         "description": "{{count}} thực thể đã chọn sẽ được chuyển vào thùng rác."
-      }
+      },
+      "reject": "Từ chối"
     },
     "clear_filters": "Xóa tất cả bộ lọc",
     "deleted": "Đã xóa thực thể",
@@ -252,7 +254,8 @@
       "title": "Xóa thực thể?",
       "description": "\"{{title}}\" sẽ được chuyển vào thùng rác.",
       "confirm": "Xóa"
-    }
+    },
+    "scope_label_title": "Phạm vi — giúp phân biệt thực thể này với các thực thể khác có cùng tên"
   },
   "sharing": {
     "title": "Hiển thị",
