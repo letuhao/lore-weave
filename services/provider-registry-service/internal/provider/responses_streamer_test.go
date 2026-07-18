@@ -89,6 +89,123 @@ data: {"type":"response.completed","response":{"id":"resp_x","usage":{"input_tok
 	}
 }
 
+// LM Studio's /v1/responses emits NO function_call_arguments.delta events — it
+// delivers the WHOLE argument string only on the batched `.done` (llama.cpp #20607).
+// Before the fix the consumer got the tool NAME (from output_item.added) with EMPTY
+// args, so a weaker local model "couldn't add entities". Assert the batched args
+// are recovered as one fragment. Live-proven against gemma-4-26b-a4b-qat 2026-07-09.
+func TestStreamResponsesSSE_LmStudioBatchedArgs(t *testing.T) {
+	body := `data: {"type":"response.output_item.added","output_index":0,"item":{"type":"function_call","id":"fc_1","call_id":"call_1","name":"glossary_propose_entities","arguments":""}}
+
+data: {"type":"response.function_call_arguments.done","output_index":0,"item_id":"fc_1","arguments":"{\"book_id\":\"b1\",\"items\":[{\"kind\":\"character\",\"name\":\"Lam Uyen\"}]}"}
+
+data: {"type":"response.output_item.done","output_index":0,"item":{"type":"function_call","id":"fc_1","call_id":"call_1","name":"glossary_propose_entities","arguments":"{\"book_id\":\"b1\",\"items\":[{\"kind\":\"character\",\"name\":\"Lam Uyen\"}]}"}}
+
+data: {"type":"response.completed","response":{"id":"resp_x","usage":{"input_tokens":10,"output_tokens":30}}}
+
+`
+	chunks := collectResponsesChunks(t, body)
+	var first *StreamChunk
+	var args strings.Builder
+	for i := range chunks {
+		if chunks[i].Kind == StreamChunkToolCall {
+			if first == nil {
+				first = &chunks[i]
+			}
+			args.WriteString(chunks[i].ArgumentsDelta)
+		}
+	}
+	if first == nil || first.ToolCallID != "call_1" || first.ToolName != "glossary_propose_entities" {
+		t.Fatalf("first tool_call must carry id+name from output_item.added, got %+v", first)
+	}
+	// output_item.done repeats the same args as function_call_arguments.done — the
+	// argsSeen guard must emit them EXACTLY ONCE (no doubling across the two variants).
+	if args.String() != `{"book_id":"b1","items":[{"kind":"character","name":"Lam Uyen"}]}` {
+		t.Fatalf("batched args recovered once: got %q", args.String())
+	}
+}
+
+// A compliant provider (OpenAI) streams `.delta` fragments AND repeats the full args
+// on `.done`. The argsSeen guard must NOT re-append the batched copy — else the args
+// double to invalid JSON. Regression companion to the LM Studio fallback above.
+func TestStreamResponsesSSE_NoDoubleCountDeltasThenDone(t *testing.T) {
+	body := `data: {"type":"response.output_item.added","output_index":0,"item":{"type":"function_call","id":"fc_1","call_id":"call_1","name":"glossary_search"}}
+
+data: {"type":"response.function_call_arguments.delta","output_index":0,"delta":"{\"q\":"}
+
+data: {"type":"response.function_call_arguments.delta","output_index":0,"delta":"\"elf\"}"}
+
+data: {"type":"response.function_call_arguments.done","output_index":0,"arguments":"{\"q\":\"elf\"}"}
+
+data: {"type":"response.completed","response":{"id":"resp_x","usage":{"input_tokens":10,"output_tokens":4}}}
+
+`
+	chunks := collectResponsesChunks(t, body)
+	var args strings.Builder
+	for i := range chunks {
+		if chunks[i].Kind == StreamChunkToolCall {
+			args.WriteString(chunks[i].ArgumentsDelta)
+		}
+	}
+	if args.String() != `{"q":"elf"}` {
+		t.Fatalf("streamed deltas + done must NOT double: got %q", args.String())
+	}
+}
+
+// Case (c) isolation: a provider that delivers the full args ONLY on
+// response.output_item.done (no function_call_arguments.done, no deltas). The
+// output_item.done fallback must still recover them exactly once.
+func TestStreamResponsesSSE_OutputItemDoneSoleArgsCarrier(t *testing.T) {
+	body := `data: {"type":"response.output_item.added","output_index":0,"item":{"type":"function_call","id":"fc_1","call_id":"call_1","name":"book_get","arguments":""}}
+
+data: {"type":"response.output_item.done","output_index":0,"item":{"type":"function_call","id":"fc_1","call_id":"call_1","name":"book_get","arguments":"{\"book_id\":\"b1\"}"}}
+
+data: {"type":"response.completed","response":{"id":"resp_x","usage":{"input_tokens":5,"output_tokens":6}}}
+
+`
+	var args strings.Builder
+	for _, c := range collectResponsesChunks(t, body) {
+		if c.Kind == StreamChunkToolCall {
+			args.WriteString(c.ArgumentsDelta)
+		}
+	}
+	if args.String() != `{"book_id":"b1"}` {
+		t.Fatalf("output_item.done as sole carrier: got %q", args.String())
+	}
+}
+
+// Case (d): two PARALLEL function calls at different output_index. Args must be
+// attributed to the correct call via the per-index argsSeen/toolStarted maps.
+func TestStreamResponsesSSE_ParallelToolCallsByIndex(t *testing.T) {
+	body := `data: {"type":"response.output_item.added","output_index":0,"item":{"type":"function_call","id":"fc_0","call_id":"call_0","name":"book_get"}}
+
+data: {"type":"response.output_item.added","output_index":1,"item":{"type":"function_call","id":"fc_1","call_id":"call_1","name":"glossary_search"}}
+
+data: {"type":"response.function_call_arguments.done","output_index":0,"arguments":"{\"book_id\":\"b0\"}"}
+
+data: {"type":"response.function_call_arguments.done","output_index":1,"arguments":"{\"q\":\"elf\"}"}
+
+data: {"type":"response.completed","response":{"id":"resp_x","usage":{"input_tokens":9,"output_tokens":8}}}
+
+`
+	byIndex := map[int]*strings.Builder{0: {}, 1: {}}
+	name := map[int]string{}
+	for _, c := range collectResponsesChunks(t, body) {
+		if c.Kind == StreamChunkToolCall {
+			byIndex[c.Index].WriteString(c.ArgumentsDelta)
+			if c.ToolName != "" {
+				name[c.Index] = c.ToolName
+			}
+		}
+	}
+	if name[0] != "book_get" || byIndex[0].String() != `{"book_id":"b0"}` {
+		t.Fatalf("call 0 mis-attributed: name=%q args=%q", name[0], byIndex[0].String())
+	}
+	if name[1] != "glossary_search" || byIndex[1].String() != `{"q":"elf"}` {
+		t.Fatalf("call 1 mis-attributed: name=%q args=%q", name[1], byIndex[1].String())
+	}
+}
+
 func TestStreamResponsesSSE_FailedSurfacesError(t *testing.T) {
 	body := `data: {"type":"response.failed","response":{"error":{"message":"model overloaded"}}}
 

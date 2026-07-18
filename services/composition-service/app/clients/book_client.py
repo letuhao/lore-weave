@@ -167,6 +167,59 @@ class BookClient:
             logger.warning("book sort-orders unavailable: %s", exc)
             return {}
 
+    async def canon_markers(
+        self, book_id: UUID, chapter_ids: list[UUID],
+    ) -> dict[str, dict[str, Any]]:
+        """26 IX-9 — batch chapter canon/index markers for the conformance-staleness
+        read: `{chapter_id: {published_revision_id, kg_indexed_revision_id, kg_exclude,
+        last_parsed_revision_id, parse_version, editorial_status}}`
+        (parse_version = the IX-4 chapter scalar).
+
+        WS-0.7: `kg_indexed_revision_id` + `kg_exclude` are what make the post-WS-0.5
+        staleness predicate expressible here at all. `_dirty_reasons` mirrors the
+        book-service sweeper's WHERE clause in Python, and the sweeper now keys on the
+        KG pointer — so without these two fields this service would keep evaluating the
+        OLD predicate and render a permanently-stuck `index_stale` badge on any chapter
+        that is published@A but indexed@B.
+        Calls book-service's INTERNAL batch route
+        `POST /internal/books/{book_id}/chapters/canon-markers` (B5, mirrors
+        `/internal/chapters/sort-orders` — ≤200 ids, partial responses,
+        missing/inactive ids silently absent). Uses the INTERNAL token (book-scoped,
+        no user check); the CALLER MUST have gated the book first — the conformance
+        status route's E0 VIEW gate is that SEC2 chokepoint (same discipline as
+        `get_chapter_sort_orders`). Returns {} on ANY non-200 / transport failure: a
+        degraded markers read renders conformance freshness conservatively (a snapshot
+        reads `fresh`/`never_run`), never 500s the Hub."""
+        if not chapter_ids:
+            return {}
+        url = f"{self._base_url}/internal/books/{book_id}/chapters/canon-markers"
+        headers = {"X-Internal-Token": self._internal_token}
+        tid = trace_id_var.get()
+        if tid:
+            headers["X-Trace-Id"] = tid
+        try:
+            resp = await self._http.post(
+                url, json={"chapter_ids": [str(c) for c in chapter_ids]}, headers=headers,
+            )
+            if resp.status_code != 200:
+                logger.warning("book canon-markers → %d", resp.status_code)
+                return {}
+            body = resp.json()
+        except (httpx.HTTPError, ValueError, AttributeError) as exc:
+            logger.warning("book canon-markers unavailable: %s", exc)
+            return {}
+        # Contract (IX-9): the map rides under `markers` (mirrors sort-orders' named
+        # field). Tolerate `canon_markers` + a bare {chapter_id: {...}} body so a benign
+        # producer-side field-name choice degrades to a normalized read, never a crash.
+        if isinstance(body, dict):
+            for key in ("markers", "canon_markers"):
+                inner = body.get(key)
+                if isinstance(inner, dict):
+                    return inner
+            if body and all(isinstance(v, dict) for v in body.values()):
+                return body
+        return {}
+
     async def get_reader_language(self, book_id: UUID, user_id: UUID) -> str | None:
         """KG-ML M7 (C6) — the user's stored reader-language for this book (M3),
         via the INTERNAL resolver `GET /internal/books/{id}/reader-language?user_id=`
@@ -250,12 +303,33 @@ class BookClient:
         )
         return self._raise_for_status(resp)
 
+    async def reorder_chapters(
+        self, book_id: UUID, chapter_id: UUID, after_chapter_id: UUID | None, bearer: str,
+    ) -> dict[str, Any]:
+        """24 PH20 Row-3 — move a chapter in the book's READING order (book-service owns it).
+
+        Places `chapter_id` directly AFTER `after_chapter_id` (None ⇒ first). book-service does the
+        whole renumber in one transaction — it is the only thing that can, because the partial
+        UNIQUE slot index forbids writing a permutation row-by-row. Returns the new dense sequence.
+
+        A 400/404/409 is book-service's own rule (unknown chapter, an after_id from another book, a
+        non-active lifecycle) and is re-raised for the caller to relay verbatim, never flattened."""
+        resp = await self._request(
+            "POST", f"/v1/books/{book_id}/chapters/reorder", bearer,
+            json={
+                "chapter_id": str(chapter_id),
+                "after_chapter_id": str(after_chapter_id) if after_chapter_id else None,
+            },
+        )
+        return self._raise_for_status(resp)
+
     # book-service parseLimitOffset CLAMPS limit to 100 (server.go) — asking for
     # more silently returns 100, so a full listing must paginate by offset.
     _CHAPTERS_PAGE_LIMIT = 100
 
     async def list_chapters(
         self, book_id: UUID, bearer: str, *, limit: int = 2000,
+        raise_on_404: bool = False,
     ) -> list[dict[str, Any]]:
         """The book's ACTIVE chapters in reading order (`sort_order,
         created_at`), each `{chapter_id, title, sort_order}` — the A3 planner's
@@ -264,9 +338,17 @@ class BookClient:
         page limit to 100 — a single request can NEVER see a >100-chapter book
         whole) until a short page or `limit` total rows.
 
-        404 (book missing / not owned) → `[]` (the endpoint already gated on the
-        Work, so this is effectively "no chapters"); 5xx / transport →
-        BookClientError. `title` may be null (untitled chapter) → coerced to ''."""
+        `limit` is a REAL CEILING, not a page size: a book with more chapters than
+        `limit` comes back TRUNCATED, silently. Callers that must be exhaustive
+        (the coverage diff, whose whole contract is an exact count) have to pass a
+        limit above the book's size and check — see `coverage.py`.
+
+        404 (book missing / not owned) → `[]` by default, because the original
+        callers had already gated the Work and treat it as "no chapters". That
+        default is DANGEROUS for anyone who reasons about ABSENCE: a 404 then reads
+        as a confirmed-empty book. `raise_on_404=True` makes it a BookClientError
+        so such a caller can degrade instead of reporting a green-looking zero.
+        5xx / transport → BookClientError always. `title` may be null → ''."""
         out: list[dict[str, Any]] = []
         offset = 0
         while len(out) < limit:
@@ -279,6 +361,8 @@ class BookClient:
                 },
             )
             if resp.status_code == 404:
+                if raise_on_404:
+                    raise BookClientError(404, "BOOK_NOT_FOUND")
                 return []
             body = self._raise_for_status(resp)
             items = body.get("items", []) or []

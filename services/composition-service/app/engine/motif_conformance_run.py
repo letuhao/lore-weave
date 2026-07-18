@@ -33,18 +33,21 @@ frozen.
 
 from __future__ import annotations
 
+import logging
 from typing import Any
 
 import asyncpg
 
 from app.clients.llm_client import LLMClient
 
+logger = logging.getLogger(__name__)
+
 __all__ = ["run_conformance_run"]
 
 
 async def run_conformance_run(
     pool: asyncpg.Pool, llm: LLMClient, knowledge, *, user_id: str, project_id: str,
-    input: dict[str, Any],
+    input: dict[str, Any], job_id: str | None = None,
 ) -> dict[str, Any]:
     """Run the cost-gated arc conformance extract-diff (D-W10-ARC-CONFORMANCE-DEEP-JOB).
 
@@ -61,8 +64,8 @@ async def run_conformance_run(
     via the passed ``model_ref``/``model_source``."""
     from uuid import UUID
 
-    from app.db.repositories.arc_template_repo import ArcTemplateRepo
     from app.db.repositories.motif_repo import MotifRepo
+    from app.db.repositories.structure import StructureRepo
     from app.db.repositories.works import WorksRepo
     from app.engine.arc_conformance_orchestrate import compute_arc_report
     from app.routers.conformance import ConformanceTraceReader
@@ -75,22 +78,40 @@ async def run_conformance_run(
             "(tracked D-MOTIF-CONFORMANCE-ENGINE-WIRING)"
         )
 
-    arc_template_id = input.get("arc_template_id")
-    if not arc_template_id:
-        raise ValueError("conformance_run arc scope requires arc_template_id")
+    # 23-A4/BA4: the arc scope is measured against the DURABLE spec (structure_node), not the
+    # template it came from. `arc_id` = structure_node.id; the deep report reads the realized
+    # bindings via the first-class motif_application.structure_node_id column (by_structure=True).
+    arc_id = input.get("arc_id")
+    if not arc_id:
+        raise ValueError("conformance_run arc scope requires arc_id (a structure_node id)")
 
     uid, pid = UUID(user_id), UUID(project_id)
-    work = await WorksRepo(pool).get(uid, pid)
+    work = await WorksRepo(pool).get(pid)
     if work is None:
         raise ValueError("conformance_run: work not found")
-    arc_repo = ArcTemplateRepo(pool)
-    arc = await arc_repo.get_visible(uid, UUID(arc_template_id))
-    if arc is None:
-        raise ValueError("conformance_run: arc template not found / not visible")
+    node = await StructureRepo(pool).get(UUID(arc_id))
+    if node is None or node.book_id != work.book_id:
+        raise ValueError("conformance_run: arc not found / not in this book")
 
-    return await compute_arc_report(
+    report = await compute_arc_report(
         reader=ConformanceTraceReader(pool), mrepo=MotifRepo(pool), knowledge=knowledge,
-        user_id=uid, project_id=pid, book_id=work.book_id, arc=arc,
+        user_id=uid, project_id=pid, book_id=work.book_id, arc=node, by_structure=True,
         deep=True, model_ref=input.get("model_ref"), model_source=input.get("model_source"),
         llm=llm,  # the job runs the deepest signal — the entailment judge (the GET does not)
     )
+
+    # IX-8 — persist the durable, input-pinned snapshot through the ONE seam the sync
+    # GET also uses (deep=True here; provenance = this job). BEST-EFFORT: the report is
+    # already the job result the poll returns, so a snapshot-write failure is logged,
+    # never fails the job (OQ-1 philosophy).
+    try:
+        from app.clients.book_client import get_book_client
+        from app.engine.arc_conformance_orchestrate import persist_conformance_state
+
+        await persist_conformance_state(
+            pool=pool, book_client=get_book_client(), book_id=work.book_id, arc=node,
+            report=report, deep=True, generation_job_id=job_id)
+    except Exception:  # noqa: BLE001 — best-effort snapshot (IX-8); logged, never fatal
+        logger.warning(
+            "arc_conformance_state persist failed for arc %s", arc_id, exc_info=True)
+    return report

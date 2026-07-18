@@ -1,0 +1,1194 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>LoreWeave — KG Write Affordances (additive, on existing panels — draft)</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  /* ══════════════════════════════════════════════════════════════════════
+     KG WRITE AFFORDANCES — four additive controls on THREE EXISTING PANELS
+     (`kg-entities` · `kg-graph` · `kg-overview`)
+     Spec: docs/specs/2026-07-01-writing-studio/38_kg_and_world.md  (slice 8a)
+
+     ► NO NEW PANEL ID. Every control below lands INSIDE a panel that already
+       ships, on the component that already renders the read. DOCK-2 (no fork)
+       and DOCK-8 (no new hub) both hold. That is why this mock renders the
+       affordances IN SITU — a reviewer must be able to see that nothing here
+       is a new surface, only a missing button on an old one.
+
+     WHY THIS EXISTS — the graph the agent can build and you cannot
+       knowledge-service exposes 12 `kg-*` dock panels (catalog.ts:153-164).
+       They read the graph beautifully. NOTHING in them creates a node,
+       creates an edge, seeds the graph, or forgets a fact. Four holes:
+
+       ① No entity create in ANY KG panel. `knowledgeApi.createEntity`
+          (api.ts:1600) and `POST /v1/knowledge/entities` (entities.py:999)
+          BOTH EXIST — built, tested, 201. Their ONLY caller in the whole
+          frontend is `features/composition/hooks/useWorldMap.ts:129`, which
+          is mounted only on the legacy ChapterEditorPage — the page spec 16
+          slates for DELETION. `grep createEntity features/knowledge/**` →
+          EMPTY. Retire that page today and the capability leaves with it.
+       ② No relation CREATE. Same shape: `createRelation` (api.ts:1610) →
+          `POST /v1/knowledge/relations` (relations.py:182). One caller:
+          useWorldMap.ts:134. Zero in features/knowledge/**.
+          🟢 BUT — AND THIS CHANGES THE DESIGN — RELATION *DELETE* AND *CORRECT*
+          ALREADY SHIP. `RelationEditDialog.tsx` (mounted at
+          EntityDetailPanel.tsx:623, i.e. live in BOTH `kg-entities` AND
+          `kg-graph`) offers "Mark wrong" → POST /relations/{id}/invalidate and
+          "Correct" → POST /relations/correct, via useRelationMutations.ts.
+          ⇒ CREATE IS THE MISSING *THIRD VERB ON AN EXISTING DIALOG*, not a new
+            dialog. Forking a second "new relation" modal is a DOCK-2 fork.
+          ⇒ 🔴 AND ITS PREDICATE FIELD IS A FREE-TEXT <input maxLength=100>
+            (RelationEditDialog.tsx:127-134). So a schema-fed <select> on CREATE
+            beside a free string on CORRECT — same object, same dialog — is a
+            closed-set/free-string SPLIT BRAIN, the exact IN-* violation BE-14d
+            exists to kill. Both verbs get the same control, in this slice.
+       ③ THE EMPTY-GRAPH STATE HAS NO BUTTON — AND THE AGENT'S OWN ERROR
+          MESSAGE TELLS YOU TO PRESS IT. `kg_propose_edge` fails with
+          "project the glossary entities into the graph first
+          (kg_project_entities_to_nodes)" (graph_schema_tools.py:1589-1603).
+          That tool is MCP-ONLY. The engine behind it is fully built and
+          hardened (anchor_loader.py:194 — returns created/existing/seen/
+          skipped/conflicted/truncated) and has NO REST ROUTE. A human
+          staring at an empty graph is told to run a tool they cannot run.
+       ④ An agent can forget a fact; a human cannot. `memory_forget` →
+          `invalidate_fact` (neo4j_repos/facts.py:675, a soft `valid_until`).
+          No REST mirror. The FACT INSTANCE is the one object with no human
+          delete (entities archive; relations invalidate — see ②; fact *types*
+          delete via useGraphSchema). The facts list a user READS every day
+          (EntityDetailPanel.tsx:135 → useEntityFacts) has no row action at all.
+          ⚠ THE SURFACE IS `EntityDetailPanel`, **NOT `kg-bio`**. kg-bio
+            (KgGlobalBioPanel → GlobalBioTab) renders the user's global bio
+            *SUMMARY* — one text blob over useSummaries. It has NO facts list,
+            NO fact rows, and does not import useEntityFacts. There is nothing
+            there to hang a row action on. Because EntityDetailPanel is mounted
+            by BOTH EntitiesTab (kg-entities) AND ProjectGraphView (kg-graph),
+            one edit lights the action up in two panels anyway.
+
+     🔴 AND THE DEAD DELETE IS THREE DEAD BUTTONS.
+       `OverviewSection.tsx:56` declares `const noop = () => {}` and passes it
+       as onArchive / onRestore / onDelete (:67-69). `ProjectRow.tsx:293-314`
+       renders ALL THREE buttons UNCONDITIONALLY. In the shipped `kg-overview`
+       panel a user can click Archive, Restore and Delete on their knowledge
+       project and NOTHING HAPPENS, WITH NO ERROR. That is this repo's
+       `silent-success-is-a-bug-not-environment` class in its purest form —
+       shipped, green, and invisible to every unit test.
+
+     THE ARCHITECTURE THIS MOCK RENDERS
+       Two writers, one graph, and a visible seam between them:
+         ANCHORED node  — projected from glossary-service, carries
+                          `glossary_entity_id`. The two-layer pattern.
+         GRAPH-ONLY node — created by this form. Carries NO anchor, will
+                          never join the glossary layer, and can SHADOW a
+                          glossary entity a later projection tries to anchor
+                          (→ the engine's `conflicted` counter).
+       ► The mock COLOR-CODES this. Every node/row carries a tick:
+           teal   = anchored   (glossary_entity_id present)
+           violet = graph-only (manual create — no anchor, ever)
+       This is not decoration. `kg-glossary-fk-is-globally-unique` is a bug
+       this repo already shipped once; the fix is to make the consequence of
+       the choice VISIBLE AT THE POINT OF AUTHORING, not to hide the form.
+
+     BACKEND WORK THIS SCREEN IMPLIES (flagged up front, not silently)
+       • BE-14a  POST /v1/knowledge/projects/{project_id}/project-entities
+                 — a thin REST mirror over the EXISTING engine
+                 `project_glossary_entities_to_nodes` (anchor_loader.py:194).
+                 Body `{entity_ids?: string[] (≤1000)}`; omit ⇒ whole active
+                 glossary. Returns ALL SIX counters. Size S.
+                 🔴 THE WIRE NAMES ARE NOT THE ENGINE'S NAMES. The dataclass
+                    says created/existing/seen/…; the TOOL re-spells them and
+                    OMITS the last two when falsy. The route's contract is:
+                      { nodes_created, nodes_existing, entities_seen, skipped,
+                        nodes_conflicted, truncated, note? }
+                    with EVERY KEY ALWAYS PRESENT (zero-fill, default false).
+                    An FE that reads `res.conflicted` gets undefined and
+                    renders nothing — a partial projection reported as a clean
+                    one, i.e. the exact bug the counters were added to expose.
+                 🔴 "Thin" hides two things: the engine takes a BOOK_ID the
+                    route doesn't have (resolve via projects_repo.project_meta,
+                    409 when the project has no book), and the TOOL runs under
+                    GrantLevel.EDIT — so gate the route with
+                    require_project_grant(GrantLevel.EDIT), NOT the raw JWT, or
+                    an EDIT collaborator can seed by ASKING and not by CLICKING.
+       • BE-14b  POST /v1/knowledge/facts/{fact_id}/invalidate — a mirror over
+                 `invalidate_fact`. An owner-keyed miss returns
+                 `{invalidated:false, reason:"no matching fact found"}` with
+                 **200, not 404** — mirror the tool exactly. Size S.
+       • BE-14c  GET /v1/knowledge/entity-kinds → `{kinds:[…]}` so the FE
+                 <select> has ONE HOME for the closed set instead of a
+                 hand-copied array. Size XS.
+       • BE-14d  🔴 UNIFY THE CLOSED SET ACROSS TRANSPORTS. `kg_create_node`'s
+                 `kind` is a FREE STRING (KgCreateNodeArgs.kind: str,
+                 max_length=100) while REST enforces
+                 `_AUTHORABLE_KINDS = {character,location,faction,concept}`
+                 (entities.py:975). THE AGENT CAN MINT A KIND THE HUMAN CANNOT.
+                 One shared constant → a `Literal[…]` on the tool → served by
+                 BE-14c. (A closed-set arg that is a free string is the exact
+                 IN-* violation `panel_id` was fixed for.) Size S.
+       • FE-only Lane-B: register `/^memory_(remember|forget)$/` in
+                 knowledgeEffects.ts. `KNOWLEDGE_WRITE_PATTERN` is
+                 `/^kg_(?!…)/` and CANNOT match `memory_forget`.
+       🟢 REFUTATION — do NOT "fix" this: `kg_create_node` and
+          `kg_project_entities_to_nodes` ALREADY have a Lane-B handler.
+          KNOWLEDGE_WRITE_PATTERN (knowledgeEffects.ts:18) is a negative
+          lookahead over the WHOLE `^kg_` namespace, so both already match and
+          already invalidate ['knowledge-entities'] / ['knowledge-subgraph'].
+          The audit's X-4 sub-claim is wrong. Leave the pattern alone.
+       ✗ NO cost gate, NO estimate route, NO propose→confirm on any of these.
+         Every write here is deterministic, LLM-free and spends zero tokens.
+
+     STATES THIS MOCK MUST SHOW (all rendered below, none hand-waved)
+       ① `kg-entities` + New entity — the form, the BE-14c-fed <select>, and
+          the anchor warning that keeps a human out of the shadowing trap.
+       ② `kg-entities` create — no project scope ⇒ the button is DISABLED with
+          a reason; and the idempotent re-create ⇒ "already exists — opened it"
+          (it does NOT claim a create; the silent-success rule cuts both ways).
+       ③ `kg-graph` EMPTY — the seed-from-glossary CTA (hole ③), plus the FULL
+          six-counter result card, BY WIRE NAME: nodes_created · nodes_existing
+          · entities_seen · skipped · 🔴 nodes_conflicted · truncated. A toast
+          that says only "Created N" re-introduces the bug those counters were
+          added to expose.
+       ④ `kg-graph` POPULATED — Link entities: subject / predicate-from-schema
+          / object; self-loop disabled; 409 rendered without an oracle. PLUS
+          🔴 THE EMPTY-ONTOLOGY STATE: a project may have NO adopted schema
+          (ontology.py:516 — "create a BLANK project schema"), so edge_types can
+          be []. A <select> with zero options is a DEAD FORM WITH NO ERROR — the
+          same silent-no-op class this whole mock is hunting. It routes to
+          kg-schema instead. It does NOT fall back to free text (that re-opens
+          the split brain in ②).
+       ⑤ The facts list on `EntityDetailPanel` (live in kg-entities AND
+          kg-graph — NOT kg-bio, which has no facts) — the per-fact ⋯ → Forget
+          row action, its confirm (honest copy: there is NO un-forget), and the
+          stale-row outcome `{invalidated:false}` ⇒ "already gone", NEVER a fake
+          success.
+       ⑥ 🔴 BEFORE / AFTER — `kg-overview`'s THREE DEAD BUTTONS, struck
+          through, beside the wired version where a handler-less button
+          CANNOT RENDER AT ALL (optional props + a vitest).
+
+     SCALE — a KG project on a 1,842-chapter book runs 4k–20k entities and
+     100k+ facts. The entity list is already paged server-side; nothing here
+     changes that. The ONE scale hazard is BE-14a: the projection is
+     SYNCHRONOUS and can take seconds over a large glossary, so it is a
+     disabled button + spinner — NOT a job, NOT a progress bar it cannot
+     honour — and `truncated:true` is a first-class rendered outcome, not an
+     error, because the glossary read has a page cap and the honest answer is
+     "more entities remain — run it again".
+  ═══════════════════════════════════════════════════════════════════════ */
+  :root {
+    --background: #181412; --background-alt: #1e1a17; --foreground: #f5efe8;
+    --card: #1e1a17; --card-hover: #272220; --border: #332d28; --border-hover: #4a423b;
+    --primary: #e8a832; --primary-fg: #141010; --primary-muted: #3d2e12;
+    --secondary: #282320; --muted-fg: #9e9488;
+    --accent: #3da692; --accent-muted: #1a2e2a; --accent-fg: #c8ede6;
+    --success: #3dba6a; --warning: #e8a832; --info: #5496e8;
+    --destructive: #d9584f; --destructive-muted: #3a1f1c;
+    /* domain: the two node provenances this spec makes visible */
+    --node: #b89ee8; --node-muted: #2e2440; --edge: #8ab6e8;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Inter', system-ui, sans-serif; background: #0f0c0b; color: var(--foreground); -webkit-font-smoothing: antialiased; padding: 24px; }
+  .mono { font-family: 'JetBrains Mono', monospace; }
+  svg { display: block; }
+  ::-webkit-scrollbar { width: 8px; height: 8px; } ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--border-hover); border-radius: 4px; }
+
+  h1 { font-size: 18px; font-weight: 600; margin-bottom: 4px; }
+  h2 { font-size: 13px; font-weight: 600; margin: 28px 0 10px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  h2 .tag { font-size: 9px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--muted-fg); border: 1px solid var(--border); border-radius: 4px; padding: 2px 6px; }
+  h2 .tag.add { color: var(--primary); border-color: var(--primary-muted); background: var(--primary-muted); }
+  .sub { font-size: 12px; color: var(--muted-fg); margin-bottom: 16px; max-width: 1000px; line-height: 1.55; }
+  .sub b { color: var(--foreground); font-weight: 600; }
+  .sub code { font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--accent-fg); background: var(--accent-muted); padding: 1px 4px; border-radius: 3px; }
+
+  /* ── Provenance legend ────────────────────────────────────────────────── */
+  .legend { display: flex; gap: 18px; align-items: center; flex-wrap: wrap; padding: 10px 14px; margin-bottom: 20px;
+            background: var(--background-alt); border: 1px solid var(--border); border-radius: 8px; font-size: 11.5px; }
+  .legend .item { display: flex; align-items: center; gap: 7px; color: var(--muted-fg); }
+  .legend .item b { color: var(--foreground); font-weight: 600; }
+  .swatch { width: 3px; height: 15px; border-radius: 2px; flex-shrink: 0; }
+  .swatch.a { background: var(--accent); } .swatch.g { background: var(--node); }
+  .prov { position: relative; padding-left: 8px; }
+  .prov::before { content: ''; position: absolute; left: 0; top: 50%; transform: translateY(-50%); width: 2px; height: 12px; border-radius: 1px; }
+  .prov-a::before { background: var(--accent); } .prov-g::before { background: var(--node); }
+
+  /* the "this control is what slice 8a ADDS" marker */
+  .add { position: relative; outline: 1px dashed var(--primary); outline-offset: 2px; border-radius: 6px; }
+  .add-pin { position: absolute; top: -8px; right: -6px; z-index: 3; font-family: 'JetBrains Mono'; font-size: 8px; font-weight: 500;
+             letter-spacing: .06em; background: var(--primary); color: var(--primary-fg); border-radius: 3px; padding: 1px 4px; }
+
+  /* ── Dock panel frame ─────────────────────────────────────────────────── */
+  .panel { background: var(--background-alt); border: 1px solid var(--border); border-radius: 10px; display: flex; flex-direction: column; overflow: hidden; }
+  .panel-head { height: 34px; flex-shrink: 0; display: flex; align-items: center; justify-content: space-between;
+    padding: 0 10px 0 12px; border-bottom: 1px solid var(--border);
+    font-size: 10px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--muted-fg); }
+  .panel-head .acts { display: flex; gap: 4px; align-items: center; }
+  .ico { width: 20px; height: 20px; display: flex; align-items: center; justify-content: center; border-radius: 5px; color: var(--muted-fg); cursor: pointer; }
+  .ico:hover { background: var(--secondary); color: var(--foreground); }
+  .ico svg { width: 13px; height: 13px; }
+  .body { flex: 1; min-height: 0; overflow-y: auto; position: relative; }   /* min-height:0 is load-bearing */
+  .panel-foot { flex-shrink: 0; border-top: 1px solid var(--border); padding: 7px 12px; display: flex;
+    align-items: center; justify-content: space-between; font-size: 10.5px; color: var(--muted-fg); }
+  .panel-foot .note { display: flex; align-items: center; gap: 6px; }
+  .panel-foot .note svg { width: 12px; height: 12px; color: var(--info); flex-shrink: 0; }
+
+  .p-entities { width: 560px; height: 480px; }
+  .p-form     { width: 400px; height: 480px; flex-shrink: 0; }
+  .p-graph    { width: 700px; height: 470px; }
+  .p-relform  { width: 400px; height: 470px; flex-shrink: 0; }
+  .p-bio      { width: 620px; height: 380px; }
+  .p-confirm  { width: 400px; height: 380px; flex-shrink: 0; }
+  .p-overview { width: 480px; height: 300px; }
+
+  /* ── Toolbar ──────────────────────────────────────────────────────────── */
+  .toolbar { padding: 9px 12px; border-bottom: 1px solid var(--border); display: flex; flex-direction: column; gap: 8px; flex-shrink: 0; }
+  .row1 { display: flex; align-items: center; gap: 8px; }
+  .search-box { flex: 1; display: flex; align-items: center; gap: 7px; height: 28px; padding: 0 9px; border-radius: 7px;
+    background: var(--background); border: 1px solid var(--border); color: var(--muted-fg); font-size: 12px; }
+  .search-box svg { width: 13px; height: 13px; flex-shrink: 0; }
+  .search-box input { flex: 1; background: transparent; border: none; outline: none; color: var(--foreground); font-size: 12px; }
+  .select-wrap { position: relative; flex-shrink: 0; }
+  select { appearance: none; background: var(--background); border: 1px solid var(--border); color: var(--foreground);
+    font: inherit; font-size: 11.5px; font-weight: 500; padding: 6px 24px 6px 9px; border-radius: 7px; cursor: pointer; }
+  select:hover { border-color: var(--border-hover); }
+  .select-wrap > svg { position: absolute; right: 7px; top: 50%; transform: translateY(-50%); width: 11px; height: 11px; color: var(--muted-fg); pointer-events: none; }
+  .lbl { font-size: 10px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; color: var(--muted-fg); flex-shrink: 0; }
+  .row2 { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+  .chip { display: flex; align-items: center; gap: 5px; height: 23px; padding: 0 9px; border-radius: 100px;
+    background: var(--secondary); border: 1px solid transparent; color: var(--muted-fg); font-size: 11px; font-weight: 500; cursor: pointer; }
+  .chip.active { background: var(--accent-muted); border-color: var(--accent); color: var(--accent-fg); }
+
+  /* ── Buttons ──────────────────────────────────────────────────────────── */
+  .btn { display: inline-flex; align-items: center; gap: 6px; height: 26px; padding: 0 10px; border-radius: 6px; font-size: 11.5px; font-weight: 600;
+    cursor: pointer; border: 1px solid var(--border); background: var(--background); color: var(--foreground); font-family: inherit; }
+  .btn:hover { border-color: var(--border-hover); background: var(--card-hover); }
+  .btn svg { width: 13px; height: 13px; }
+  .btn.primary { background: var(--primary); border-color: var(--primary); color: var(--primary-fg); }
+  .btn.danger  { color: var(--destructive); border-color: var(--destructive-muted); }
+  .btn.danger:hover { background: var(--destructive-muted); }
+  .btn.big { height: 30px; padding: 0 14px; font-size: 12px; }
+  .btn[disabled], .btn.off { opacity: .42; cursor: not-allowed; }
+  .btn.ghost { background: transparent; border-color: transparent; color: var(--muted-fg); font-weight: 500; }
+
+  /* ── Entity table ─────────────────────────────────────────────────────── */
+  .cols { display: grid; grid-template-columns: 1fr 96px 74px 88px 26px; gap: 9px; align-items: center; }
+  .thead { position: sticky; top: 0; z-index: 2; background: var(--background-alt); border-bottom: 1px solid var(--border);
+    padding: 7px 12px; font-size: 9.5px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: var(--muted-fg); }
+  .trow { padding: 8px 12px; border-bottom: 1px solid var(--border); cursor: pointer; font-size: 12.5px; }
+  .trow:hover { background: var(--card-hover); }
+  .trow.fresh { background: var(--accent-muted); box-shadow: inset 2px 0 0 var(--accent); }
+  .e-name { display: flex; align-items: center; gap: 7px; min-width: 0; }
+  .e-name .t { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-weight: 500; }
+  .badge { display: inline-flex; align-items: center; gap: 4px; height: 19px; padding: 0 7px; border-radius: 4px;
+    font-size: 10px; font-weight: 600; letter-spacing: .02em; white-space: nowrap; }
+  .b-char   { background: #23303f; color: #8ab6e8; }
+  .b-loc    { background: #16301f; color: var(--success); }
+  .b-fac    { background: var(--primary-muted); color: var(--primary); }
+  .b-con    { background: var(--node-muted); color: #c0a8e8; }
+  .b-anchor { background: var(--accent-muted); color: var(--accent-fg); }
+  .b-graph  { background: var(--node-muted); color: #c0a8e8; }
+  .num { font-family: 'JetBrains Mono'; font-size: 10.5px; color: var(--muted-fg); }
+  .dots { color: var(--muted-fg); font-weight: 700; letter-spacing: 1px; text-align: center; }
+
+  /* ── Form panel ───────────────────────────────────────────────────────── */
+  .form-body { flex: 1; min-height: 0; overflow-y: auto; padding: 12px; display: flex; flex-direction: column; gap: 11px; }
+  .field { display: flex; flex-direction: column; gap: 5px; }
+  .field > label { font-size: 10px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; color: var(--muted-fg); display: flex; align-items: center; gap: 6px; }
+  .field > label .req { color: var(--destructive); }
+  .field > label .src { margin-left: auto; font-family: 'JetBrains Mono'; font-size: 9px; text-transform: none; letter-spacing: 0; opacity: .8; }
+  .inp { background: var(--background); border: 1px solid var(--border); border-radius: 6px; color: var(--foreground);
+    font: inherit; font-size: 12px; padding: 6px 9px; outline: none; width: 100%; }
+  .inp:focus { border-color: var(--border-hover); }
+  .inp.bad { border-color: var(--destructive); }
+  .err { display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--destructive); }
+  .err svg { width: 12px; height: 12px; flex-shrink: 0; }
+  .hint { font-size: 10.5px; color: var(--muted-fg); line-height: 1.5; }
+  .hint code { font-family: 'JetBrains Mono'; font-size: 9.5px; color: var(--accent-fg); }
+  .form-foot { flex-shrink: 0; border-top: 1px solid var(--border); padding: 9px 12px; display: flex; align-items: center; gap: 8px; justify-content: flex-end; }
+
+  /* the anchor warning — this must be IN the UI, not just in the spec */
+  .warn-card { border: 1px solid var(--warning); background: rgba(232,168,50,.08); border-radius: 7px; padding: 9px 10px;
+    font-size: 10.5px; line-height: 1.55; color: var(--muted-fg); display: flex; gap: 8px; }
+  .warn-card svg { width: 14px; height: 14px; color: var(--warning); flex-shrink: 0; margin-top: 1px; }
+  .warn-card b { color: var(--foreground); font-weight: 600; }
+  .warn-card a { color: var(--accent); text-decoration: underline; cursor: pointer; }
+
+  .ok-card { border: 1px solid var(--accent); background: var(--accent-muted); border-radius: 7px; padding: 8px 10px;
+    font-size: 11px; line-height: 1.5; color: var(--accent-fg); display: flex; gap: 7px; align-items: center; }
+  .ok-card svg { width: 14px; height: 14px; flex-shrink: 0; }
+
+  /* ── Graph canvas ─────────────────────────────────────────────────────── */
+  .canvas { flex: 1; min-height: 0; position: relative; background:
+      radial-gradient(circle at 1px 1px, #241f1c 1px, transparent 0) 0 0 / 18px 18px, var(--background); overflow: hidden; }
+  .gnode { position: absolute; display: flex; align-items: center; gap: 6px; height: 26px; padding: 0 9px 0 7px; border-radius: 100px;
+    background: var(--card); border: 1px solid var(--border-hover); font-size: 11.5px; font-weight: 500; white-space: nowrap; }
+  .gnode .dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
+  .gnode.anchored { border-color: var(--accent); box-shadow: 0 0 0 1px rgba(61,166,146,.2); }
+  .gnode.anchored .dot { background: var(--accent); }
+  .gnode.graphonly { border-color: var(--node); box-shadow: 0 0 0 1px rgba(184,158,232,.2); }
+  .gnode.graphonly .dot { background: var(--node); }
+  .gnode.sel { background: var(--primary-muted); border-color: var(--primary); }
+  .gedge-lbl { position: absolute; font-family: 'JetBrains Mono'; font-size: 9px; color: var(--edge);
+    background: var(--background); padding: 1px 4px; border-radius: 3px; border: 1px solid var(--border); }
+  .empty-state { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 12px; text-align: center; padding: 24px; }
+  .empty-state .ill { width: 44px; height: 44px; color: var(--border-hover); }
+  .empty-state h4 { font-size: 13px; font-weight: 600; }
+  .empty-state p { font-size: 11.5px; color: var(--muted-fg); line-height: 1.6; max-width: 430px; }
+  .empty-state .quoted { font-family: 'JetBrains Mono'; font-size: 10px; color: var(--warning); background: var(--primary-muted);
+    border: 1px solid var(--primary-muted); border-radius: 5px; padding: 6px 9px; line-height: 1.6; max-width: 460px; text-align: left; }
+
+  /* projection result card — ALL SIX counters, always */
+  .result { margin: 0 12px 12px; border: 1px solid var(--border); border-radius: 8px; background: var(--background-alt); overflow: hidden; flex-shrink: 0; }
+  .result-head { display: flex; align-items: center; gap: 7px; padding: 8px 11px; border-bottom: 1px solid var(--border); font-size: 11.5px; font-weight: 600; }
+  .result-head svg { width: 14px; height: 14px; color: var(--success); }
+  .counters { display: grid; grid-template-columns: repeat(6, 1fr); gap: 1px; background: var(--border); }
+  .ctr { background: var(--background-alt); padding: 8px 6px; text-align: center; }
+  .ctr .v { font-family: 'JetBrains Mono'; font-size: 15px; font-weight: 500; }
+  .ctr .k { font-size: 9px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; color: var(--muted-fg); margin-top: 2px; }
+  .ctr.hot .v { color: var(--warning); } .ctr.hot { background: rgba(232,168,50,.07); }
+  .ctr.good .v { color: var(--success); }
+  .ctr.zero .v { color: var(--border-hover); }
+  .result-rows { padding: 4px 0; }
+  .rrow { display: flex; align-items: flex-start; gap: 7px; padding: 5px 11px; font-size: 11px; line-height: 1.5; color: var(--muted-fg); }
+  .rrow svg { width: 12px; height: 12px; flex-shrink: 0; margin-top: 2px; }
+  .rrow.warn { color: var(--warning); } .rrow.warn b { color: var(--foreground); }
+  .rrow b { color: var(--foreground); font-weight: 600; }
+
+  /* ── Facts list (EntityDetailPanel — kg-entities + kg-graph) ──────────── */
+  .fact { display: flex; align-items: flex-start; gap: 9px; padding: 9px 12px; border-bottom: 1px solid var(--border); font-size: 12px; }
+  .fact:hover { background: var(--card-hover); }
+  .fact .txt { flex: 1; line-height: 1.5; }
+  .fact .meta { display: flex; align-items: center; gap: 8px; margin-top: 4px; font-family: 'JetBrains Mono'; font-size: 9.5px; color: var(--muted-fg); }
+  .fact .conf { color: var(--accent); }
+  .fact .kebab { flex-shrink: 0; }
+  .fact.gone { opacity: .45; }
+  .fact.gone .txt { text-decoration: line-through; }
+  .menu { position: absolute; right: 12px; z-index: 5; width: 150px; background: var(--card); border: 1px solid var(--border-hover);
+    border-radius: 7px; padding: 4px; box-shadow: 0 8px 24px rgba(0,0,0,.5); }
+  .menu-item { display: flex; align-items: center; gap: 7px; padding: 6px 8px; border-radius: 5px; font-size: 11.5px; cursor: pointer; }
+  .menu-item:hover { background: var(--secondary); }
+  .menu-item svg { width: 13px; height: 13px; }
+  .menu-item.danger { color: var(--destructive); }
+
+  /* ── Overview project row (before/after) ──────────────────────────────── */
+  .prow { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-bottom: 1px solid var(--border); }
+  .prow .pn { flex: 1; min-width: 0; }
+  .prow .pn .t { font-size: 12.5px; font-weight: 500; }
+  .prow .pn .s { font-family: 'JetBrains Mono'; font-size: 9.5px; color: var(--muted-fg); margin-top: 3px; }
+  .pacts { display: flex; gap: 4px; }
+  .iconbtn { width: 24px; height: 24px; display: flex; align-items: center; justify-content: center; border-radius: 5px;
+    border: 1px solid var(--border); background: var(--background); color: var(--muted-fg); cursor: pointer; }
+  .iconbtn svg { width: 13px; height: 13px; }
+  .iconbtn:hover { border-color: var(--border-hover); color: var(--foreground); }
+  .iconbtn.danger:hover { color: var(--destructive); border-color: var(--destructive); }
+  .dead { position: relative; opacity: .5; }
+  .dead::after { content: ''; position: absolute; left: -2px; right: -2px; top: 50%; height: 1px; background: var(--destructive); transform: rotate(-12deg); }
+  .strike { text-decoration: line-through; opacity: .5; }
+  .codeblk { font-family: 'JetBrains Mono'; font-size: 10px; line-height: 1.65; background: var(--background); border: 1px solid var(--border);
+    border-radius: 6px; padding: 8px 10px; color: var(--muted-fg); white-space: pre; overflow-x: auto; }
+  .codeblk .c { color: #6b5f56; } .codeblk .r { color: var(--destructive); } .codeblk .g { color: var(--success); } .codeblk .k { color: var(--accent-fg); }
+
+  /* ── Layout + annotation ──────────────────────────────────────────────── */
+  .stack { display: flex; gap: 20px; align-items: flex-start; flex-wrap: wrap; }
+  .callout { max-width: 1120px; margin-top: 12px; padding: 10px 13px; border-radius: 8px; font-size: 11.5px; line-height: 1.6;
+    background: var(--background-alt); border: 1px solid var(--border); border-left: 3px solid var(--info); color: var(--muted-fg); }
+  .callout.warn { border-left-color: var(--warning); }
+  .callout.bad { border-left-color: var(--destructive); }
+  .callout.good { border-left-color: var(--success); }
+  .callout b { color: var(--foreground); }
+  .callout code { font-family: 'JetBrains Mono'; font-size: 10.5px; color: var(--accent-fg); }
+</style>
+</head>
+<body>
+
+<h1>KG Write Affordances <span class="mono" style="font-size:12px;color:var(--muted-fg);font-weight:400">— four additive controls on four EXISTING panels, draft</span></h1>
+<p class="sub">
+  Spec: <b>38_kg_and_world.md</b>, slice <b>8a</b>. knowledge-service ships <b>13 <code>kg-*</code> dock panels</b> that read the graph and
+  <b>cannot write a single node, edge, or forget a single fact</b>. <code>POST /v1/knowledge/entities</code> and <code>POST /relations</code>
+  <b>already exist</b> — their only caller in the entire frontend is <code>features/composition/hooks/useWorldMap.ts</code>, mounted on the
+  <b>legacy page spec 16 slates for deletion</b>. Meanwhile the agent's own error message tells a human to run
+  <code>kg_project_entities_to_nodes</code> — an <b>MCP-only</b> tool with no button and no route.
+  <b>No new panel id.</b> Every control below is drawn <b>in situ</b> on the panel that already ships.
+</p>
+
+<div class="legend">
+  <div class="item"><span class="swatch a"></span><b>Anchored</b> · projected from glossary · carries <code class="mono" style="font-size:10px">glossary_entity_id</code></div>
+  <div class="item"><span class="swatch g"></span><b>Graph-only</b> · manually created · <b>no anchor, ever</b> · can shadow a glossary entity</div>
+  <div class="item" style="margin-left:auto"><span style="font-family:'JetBrains Mono';font-size:9px;background:var(--primary);color:var(--primary-fg);border-radius:3px;padding:1px 4px">8a</span>
+    &nbsp;= the control this slice <b>adds</b>. Everything not so marked <b>ships today</b>.</div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════════════
+     ① kg-entities — Create entity
+     ══════════════════════════════════════════════════════════════════════ -->
+<h2>① Create entity <span class="tag">kg-entities</span> <span class="tag add">A1 · additive</span> — the form, and the trap it keeps you out of</h2>
+
+<div class="stack">
+<div class="panel p-entities">
+  <div class="panel-head">
+    <span>Knowledge — Entities · Nghịch thiên</span>
+    <div class="acts">
+      <div class="add" style="display:flex"><span class="add-pin">8a</span>
+        <button class="btn primary" style="height:22px;padding:0 8px;font-size:11px">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 5v14M5 12h14"/></svg> New entity</button>
+      </div>
+      <div class="ico" title="Refresh"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 1 1-2.6-6.4M21 3v6h-6"/></svg></div>
+      <div class="ico" title="Close"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6 6 18M6 6l12 12"/></svg></div>
+    </div>
+  </div>
+
+  <div class="toolbar">
+    <div class="row1">
+      <div class="search-box">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+        <input placeholder="Search entities…" />
+      </div>
+      <div class="select-wrap">
+        <select><option>All kinds</option><option>character</option><option>location</option><option>faction</option><option>concept</option></select>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg>
+      </div>
+    </div>
+    <div class="row2">
+      <div class="chip active">Project: Nghịch thiên</div>
+      <div class="chip">Anchored only</div>
+      <div class="chip">Graph-only</div>
+    </div>
+  </div>
+
+  <div class="thead cols">
+    <div>Entity</div><div>Kind</div><div>Facts</div><div>Provenance</div><div></div>
+  </div>
+
+  <div class="body">
+    <div class="trow cols fresh">
+      <div class="e-name prov prov-g"><span class="t">Hắc Diện Nhân</span></div>
+      <div><span class="badge b-char">character</span></div>
+      <div class="num">0</div>
+      <div><span class="badge b-graph">graph-only</span></div>
+      <div class="dots">⋯</div>
+    </div>
+    <div class="trow cols">
+      <div class="e-name prov prov-a"><span class="t">Vân Lam</span></div>
+      <div><span class="badge b-char">character</span></div>
+      <div class="num">412</div>
+      <div><span class="badge b-anchor">anchored</span></div>
+      <div class="dots">⋯</div>
+    </div>
+    <div class="trow cols">
+      <div class="e-name prov prov-a"><span class="t">Bắc Vực</span></div>
+      <div><span class="badge b-loc">location</span></div>
+      <div class="num">96</div>
+      <div><span class="badge b-anchor">anchored</span></div>
+      <div class="dots">⋯</div>
+    </div>
+    <div class="trow cols">
+      <div class="e-name prov prov-a"><span class="t">鹽庭 · The Salt Court</span></div>
+      <div><span class="badge b-fac">faction</span></div>
+      <div class="num">208</div>
+      <div><span class="badge b-anchor">anchored</span></div>
+      <div class="dots">⋯</div>
+    </div>
+    <div class="trow cols">
+      <div class="e-name prov prov-a"><span class="t">Cửu Niên Tĩnh Mặc</span></div>
+      <div><span class="badge b-con">concept</span></div>
+      <div class="num">31</div>
+      <div><span class="badge b-anchor">anchored</span></div>
+      <div class="dots">⋯</div>
+    </div>
+    <div class="trow cols">
+      <div class="e-name prov prov-a"><span class="t">Nhậm Mục</span></div>
+      <div><span class="badge b-char">character</span></div>
+      <div class="num">287</div>
+      <div><span class="badge b-anchor">anchored</span></div>
+      <div class="dots">⋯</div>
+    </div>
+  </div>
+
+  <div class="panel-foot">
+    <div class="note">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
+      1–50 of <b style="color:var(--muted-fg);font-weight:500">4,127 entities</b> · 1 graph-only
+    </div>
+    <button class="btn ghost">Load more</button>
+  </div>
+</div>
+
+<!-- the create form (a dialog over the panel; drawn beside it so both are legible) -->
+<div class="panel p-form add"><span class="add-pin">8a</span>
+  <div class="panel-head"><span>New entity</span>
+    <div class="acts"><div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6 6 18M6 6l12 12"/></svg></div></div>
+  </div>
+  <div class="form-body">
+    <div class="field">
+      <label>Name <span class="req">*</span> <span class="src mono">≤ 200</span></label>
+      <input class="inp" value="Hắc Diện Nhân" />
+    </div>
+    <div class="field">
+      <label>Kind <span class="req">*</span> <span class="src mono">GET /entity-kinds</span></label>
+      <div class="select-wrap" style="width:100%">
+        <select style="width:100%"><option>character</option><option>location</option><option>faction</option><option>concept</option></select>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg>
+      </div>
+      <div class="hint">A <b style="color:var(--foreground)">&lt;select&gt;</b>, never a free text. The four values are fetched from
+        <code>BE-14c</code> — <b style="color:var(--foreground)">one home</b> for the closed set. A hand-copied FE array is the
+        cross-service drift the Frontend-Tool-Contract discipline exists to kill.</div>
+    </div>
+
+    <div class="warn-card">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/><path d="M12 9v4M12 17h.01"/></svg>
+      <div>
+        <b>This node will have no glossary anchor.</b> It can never join the glossary layer, and it can
+        <b>shadow</b> a glossary entity a later projection tries to anchor.<br />
+        Authoring lore? Create it in the <a>glossary</a> and press <b>Seed from glossary</b> — that keeps the node anchored.
+        Use this form only for <b>graph-only</b> nodes.
+      </div>
+    </div>
+
+    <div class="hint" style="margin-top:auto">
+      <b style="color:var(--foreground)">Idempotent.</b> Re-creating <code>(name, kind)</code> in the same project returns the existing
+      node and the UI says <i>"already exists — opened it"</i>. It does <b style="color:var(--foreground)">not</b> claim a create —
+      the <code>silent-success</code> rule cuts both ways.
+    </div>
+  </div>
+  <div class="form-foot">
+    <button class="btn">Cancel</button>
+    <button class="btn primary">Create entity</button>
+  </div>
+</div>
+</div>
+
+<div class="callout">
+  <b>The route was always there. Only the button was missing.</b> <code>POST /v1/knowledge/entities</code> is built, tested and returns
+  <b>201</b> (<code>entities.py:999</code>), with <code>source_type='manual'</code>, <code>provenance='human_authored'</code>, confidence 1.0.
+  Its one frontend caller lives on the page spec 16 deletes. <b>GG-3 applies: legacy-only ≠ unbuilt.</b> Retire that page before this
+  slice lands and the capability leaves the product with it.
+</div>
+
+<div class="callout warn">
+  <b>The closed set is unified in BOTH directions (BE-14d).</b> Today <code>kg_create_node</code>'s <code>kind</code> is a
+  <b>free string</b> (<code>max_length=100</code>) while REST enforces four values — <b>the agent can mint a kind the human cannot.</b>
+  That is the inverse of every other gap in this wave, and it is fixed at the root: one <code>AUTHORABLE_ENTITY_KINDS</code> constant,
+  a <code>Literal[…]</code> on the tool arg, and <code>GET /entity-kinds</code> serving the same constant to this <code>&lt;select&gt;</code>.
+  One name, one home.
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════════════
+     ② The two failure/edge states of the same form
+     ══════════════════════════════════════════════════════════════════════ -->
+<h2>② The states the form must actually have <span class="tag">kg-entities</span> — no project · 422 · already-exists</h2>
+<p class="sub">
+  A create needs a project scope. The global cross-project browse has none — so the button is <b>disabled with a reason</b>,
+  never hidden and never a silent no-op. And the two outcomes a naive form gets wrong: a <b>422 surfaced verbatim</b>, and an
+  idempotent re-create reported <b>honestly</b>.
+</p>
+
+<div class="stack">
+  <div class="panel p-form" style="height:250px;width:340px">
+    <div class="panel-head"><span style="color:var(--warning)">No project scope</span></div>
+    <div class="form-body" style="justify-content:center;align-items:center;text-align:center;gap:10px">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:32px;height:32px;color:var(--border-hover)"><path d="M3 7a2 2 0 0 1 2-2h4l2 3h8a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>
+      <div style="font-size:12px;font-weight:600">Browsing all projects</div>
+      <button class="btn primary off" disabled>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 5v14M5 12h14"/></svg> New entity</button>
+      <div class="hint" style="max-width:250px">Pick a project to create in — an entity belongs to exactly one. The tooltip says
+        so; the button does not vanish.</div>
+    </div>
+  </div>
+
+  <div class="panel p-form" style="height:250px;width:340px">
+    <div class="panel-head"><span style="color:var(--destructive)">422 · surfaced verbatim</span></div>
+    <div class="form-body">
+      <div class="field">
+        <label>Name <span class="req">*</span></label>
+        <input class="inp bad" value="" placeholder="—" />
+        <div class="err">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 8v4M12 16h.01"/></svg>
+          name must not be blank
+        </div>
+      </div>
+      <div class="field">
+        <label>Kind <span class="req">*</span></label>
+        <div class="select-wrap" style="width:100%">
+          <select style="width:100%"><option>item</option></select>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg>
+        </div>
+        <div class="err">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 8v4M12 16h.01"/></svg>
+          kind must be one of: character, location, faction, concept
+        </div>
+      </div>
+      <div class="hint">The BE message is rendered <b style="color:var(--foreground)">as written</b>. We do not re-word it — a
+        re-worded validation error drifts from the validator the moment the set changes.</div>
+    </div>
+    <div class="form-foot"><button class="btn">Cancel</button><button class="btn primary off" disabled>Create entity</button></div>
+  </div>
+
+  <div class="panel p-form" style="height:250px;width:340px">
+    <div class="panel-head"><span style="color:var(--accent)">Idempotent re-create</span></div>
+    <div class="form-body">
+      <div class="ok-card">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6 9 17l-5-5"/></svg>
+        <div><b>“Vân Lam” already exists — opened it.</b></div>
+      </div>
+      <div class="hint">
+        The BE is idempotent on <code>(name, kind)</code> per project, so a re-create is a <b style="color:var(--foreground)">200-shaped
+        no-op that returns the existing node</b>. The UI must say <b style="color:var(--foreground)">that</b> — not
+        <span class="strike">“Entity created”</span>.
+      </div>
+      <div class="hint">
+        Reporting a create that did not happen is the same defect as reporting a delete that did not happen. Both are
+        <code>silent-success-is-a-bug</code>.
+      </div>
+      <div class="trow cols" style="margin-top:auto;border:1px solid var(--border);border-radius:6px">
+        <div class="e-name prov prov-a"><span class="t">Vân Lam</span> <span class="badge b-anchor">anchored</span></div>
+      </div>
+    </div>
+    <div class="form-foot"><button class="btn primary">Open entity ↗</button></div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════════════
+     ③ kg-graph EMPTY — the CTA the agent's error message demands
+     ══════════════════════════════════════════════════════════════════════ -->
+<h2>③ The empty graph <span class="tag">kg-graph</span> <span class="tag add">A3 · additive</span> — the button the agent tells you to press</h2>
+<p class="sub">
+  <b>This is hole ③, and it is the one that reads as a joke when you find it.</b> <code>kg_propose_edge</code> fails with a message that
+  instructs the user to run <code>kg_project_entities_to_nodes</code>. That tool is <b>MCP-only</b>. The engine behind it is fully built
+  and hardened (<code>anchor_loader.py:194</code>). It has <b>no REST route and no button</b>. So the product's own error copy points a
+  human at a control that does not exist.
+</p>
+
+<div class="stack">
+<div class="panel p-graph">
+  <div class="panel-head">
+    <span>Knowledge — Graph · Nghịch thiên</span>
+    <div class="acts">
+      <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 1 1-2.6-6.4M21 3v6h-6"/></svg></div>
+      <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6 6 18M6 6l12 12"/></svg></div>
+    </div>
+  </div>
+  <div class="canvas">
+    <div class="empty-state">
+      <svg class="ill" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6">
+        <circle cx="5" cy="6" r="2.5"/><circle cx="19" cy="6" r="2.5"/><circle cx="12" cy="18" r="2.5"/>
+        <path d="M7.2 7.3 10 16M16.8 7.3 14 16M7.5 6h9" stroke-dasharray="2 2"/>
+      </svg>
+      <h4>This graph is empty</h4>
+      <p>
+        The book's glossary holds <b style="color:var(--foreground)">1,206 active entities</b>. None of them are nodes yet —
+        projecting them is what anchors the graph to the glossary layer.
+      </p>
+      <div class="add" style="display:inline-flex"><span class="add-pin">8a</span>
+        <button class="btn primary big">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v12M7 10l5 5 5-5M5 21h14"/></svg>
+          Seed the graph from the glossary
+        </button>
+      </div>
+      <div class="quoted">
+        <b style="color:var(--foreground)">Today, this is what the product says instead:</b><br />
+        kg_propose_edge → error: "project the glossary entities into the<br />
+        graph first (kg_project_entities_to_nodes)"<br />
+        <span style="color:var(--destructive)">↳ an MCP-only tool. No route. No button. No way for a human to comply.</span>
+      </div>
+    </div>
+  </div>
+  <div class="panel-foot">
+    <div class="note">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
+      0 nodes · 0 edges · glossary: 1,206 active
+    </div>
+    <span class="mono">project 4f2c…9a1</span>
+  </div>
+</div>
+
+<div class="panel" style="width:400px;height:470px">
+  <div class="panel-head"><span style="color:var(--primary)">Projection finished — partial</span></div>
+  <div class="body" style="padding-top:12px">
+    <div class="result" style="margin-top:0">
+      <div class="result-head">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6 9 17l-5-5"/></svg>
+        Seeded from the glossary of <b style="font-weight:600">Nghịch thiên</b>
+      </div>
+      <div class="counters">
+        <div class="ctr good"><div class="v">834</div><div class="k">nodes_created</div></div>
+        <div class="ctr"><div class="v">361</div><div class="k">nodes_existing</div></div>
+        <div class="ctr"><div class="v">1206</div><div class="k">entities_seen</div></div>
+        <div class="ctr"><div class="v">4</div><div class="k">skipped</div></div>
+        <div class="ctr hot"><div class="v">7</div><div class="k">nodes_conflicted</div></div>
+        <div class="ctr hot"><div class="v">yes</div><div class="k">truncated</div></div>
+      </div>
+      <div class="result-rows">
+        <div class="rrow">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color:var(--success)"><path d="M20 6 9 17l-5-5"/></svg>
+          <div><b>834 nodes created</b>, 361 already existed. All 1,195 carry a <code class="mono" style="font-size:9.5px;color:var(--accent-fg)">glossary_entity_id</code>.</div>
+        </div>
+        <div class="rrow warn">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/><path d="M12 9v4M12 17h.01"/></svg>
+          <div><b>7 entities are already anchored by another node in this project.</b> They were left alone. This is the
+            <code class="mono" style="font-size:9.5px">conflicted</code> counter — see the graph-only nodes you (or an agent) created by hand.</div>
+        </div>
+        <div class="rrow warn">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 8v4M12 16h.01"/></svg>
+          <div><b>The glossary read hit its page cap.</b> More entities remain — <b style="text-decoration:underline;cursor:pointer">run it again</b>.</div>
+        </div>
+        <div class="rrow">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6 6 18M6 6l12 12"/></svg>
+          <div>4 skipped (blank name or unsupported kind).</div>
+        </div>
+      </div>
+    </div>
+
+    <div style="padding:0 12px">
+      <div class="hint" style="line-height:1.65">
+        <b style="color:var(--foreground)">All six counters are rendered, always.</b> The engine returns
+        <code>nodes_created / nodes_existing / entities_seen / skipped / nodes_conflicted / truncated</code> <i>on purpose</i> — the counting was hardened by
+        <code>D-KG-GLOSSARY-FK-GLOBAL-UNIQUE</code> (2026-07-10) precisely so a partial projection can <b style="color:var(--foreground)">explain
+        itself</b>. A toast that shows only <span class="strike">“Created 834”</span> re-introduces the exact bug those counters were added
+        to expose.
+      </div>
+      <div class="hint" style="margin-top:10px;line-height:1.65">
+        <b style="color:var(--foreground)">Synchronous, not a job.</b> A disabled button + a spinner. It can take seconds on a
+        1,206-entity glossary and that is fine — inventing a job queue for a deterministic idempotent call is over-engineering, and a
+        fake progress bar it cannot honour is a lie.
+      </div>
+    </div>
+  </div>
+  <div class="panel-foot">
+    <span class="mono">POST /projects/{id}/project-entities · 1.9s</span>
+    <button class="btn">Run again</button>
+  </div>
+</div>
+</div>
+
+<div class="callout warn">
+  <b><code>seen == 0</code> is not success, and 503 is not "nothing to project".</b> If the glossary is empty the panel says
+  <i>"this book's glossary is empty — add entities there first"</i> with a deep link to the <code>glossary</code> panel
+  (<code>host.openPanel('glossary')</code>). If glossary-service is unreachable the engine degrades to <b>all-zero counters</b> — the route
+  must surface that as <b>503 · "couldn't read the glossary"</b>, never as a cheerful "0 created". Same class of lie, one layer down.
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════════════
+     ④ kg-graph POPULATED — Link entities
+     ══════════════════════════════════════════════════════════════════════ -->
+<h2>④ Link entities <span class="tag">kg-graph</span> <span class="tag add">A2 · additive</span> — a human edge is not a proposal</h2>
+
+<div class="stack">
+<div class="panel p-graph">
+  <div class="panel-head">
+    <span>Knowledge — Graph · Nghịch thiên</span>
+    <div class="acts">
+      <div class="add" style="display:flex"><span class="add-pin">8a</span>
+        <button class="btn" style="height:22px;padding:0 8px;font-size:11px">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 17H7a5 5 0 0 1 0-10h2M15 7h2a5 5 0 0 1 0 10h-2M8 12h8"/></svg> Link entities</button>
+      </div>
+      <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6 6 18M6 6l12 12"/></svg></div>
+    </div>
+  </div>
+  <div class="canvas">
+    <div class="gnode anchored sel" style="left:70px;top:60px"><span class="dot"></span>Vân Lam</div>
+    <div class="gnode anchored" style="left:300px;top:40px"><span class="dot"></span>鹽庭 · Salt Court</div>
+    <div class="gnode anchored" style="left:330px;top:190px"><span class="dot"></span>Bắc Vực</div>
+    <div class="gnode anchored" style="left:90px;top:230px"><span class="dot"></span>Nhậm Mục</div>
+    <div class="gnode anchored" style="left:520px;top:120px"><span class="dot"></span>Cửu Niên Tĩnh Mặc</div>
+    <div class="gnode graphonly" style="left:170px;top:330px"><span class="dot"></span>Hắc Diện Nhân</div>
+    <svg style="position:absolute;inset:0;width:100%;height:100%;pointer-events:none" fill="none" stroke="var(--border-hover)" stroke-width="1.4">
+      <path d="M160 74 L300 56" /><path d="M150 82 L340 195" /><path d="M120 88 L120 228" />
+      <path d="M420 55 L525 122" /><path d="M420 200 L525 140" />
+      <path d="M130 90 L200 328" stroke="var(--node)" stroke-dasharray="4 3" />
+    </svg>
+    <div class="gedge-lbl" style="left:196px;top:52px">member_of</div>
+    <div class="gedge-lbl" style="left:222px;top:132px">located_in</div>
+    <div class="gedge-lbl" style="left:56px;top:150px">ally_of</div>
+    <div class="gedge-lbl" style="left:130px;top:200px;color:var(--node);border-color:var(--node)">knows_of ?</div>
+  </div>
+  <div class="panel-foot">
+    <div class="note">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
+      1,195 nodes · 3,408 edges · <b style="color:var(--node);font-weight:500">1 graph-only</b>
+    </div>
+    <span class="mono">force layout · zoom 0.8</span>
+  </div>
+</div>
+
+<div class="panel p-relform add"><span class="add-pin">8a</span>
+  <div class="panel-head"><span>Link entities</span>
+    <div class="acts"><div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6 6 18M6 6l12 12"/></svg></div></div>
+  </div>
+  <div class="form-body">
+    <div class="field">
+      <label>Subject <span class="src mono">from selection</span></label>
+      <div class="inp" style="display:flex;align-items:center;gap:7px">
+        <span style="width:7px;height:7px;border-radius:50%;background:var(--accent)"></span>Vân Lam
+        <span class="badge b-char" style="margin-left:auto">character</span>
+      </div>
+    </div>
+    <div class="field">
+      <label>Predicate <span class="req">*</span> <span class="src mono">graph schema</span></label>
+      <div class="select-wrap" style="width:100%">
+        <select style="width:100%"><option>knows_of</option><option>ally_of</option><option>member_of</option><option>located_in</option><option>rival_of</option><option>owns</option></select>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg>
+      </div>
+      <div class="hint">Fed from the project's <b style="color:var(--foreground)">resolved graph schema</b> (<code>useGraphSchema</code>
+        — the <code>kg-schema</code> panel already reads it). A free-text predicate would mint an off-ontology edge type.</div>
+    </div>
+    <div class="field">
+      <label>Object <span class="req">*</span></label>
+      <div class="inp" style="display:flex;align-items:center;gap:7px">
+        <span style="width:7px;height:7px;border-radius:50%;background:var(--node)"></span>Hắc Diện Nhân
+        <span class="badge b-graph" style="margin-left:auto">graph-only</span>
+      </div>
+    </div>
+
+    <div class="hint" style="line-height:1.65">
+      <b style="color:var(--foreground)">Self-loop:</b> Save is <b style="color:var(--foreground)">disabled</b> when subject === object.
+      The BE's 422 guard stays as defense — a disabled button is a courtesy, not a control.
+    </div>
+    <div class="err">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 8v4M12 16h.01"/></svg>
+      409 → rendered as <b style="color:var(--foreground);font-weight:600">“one of those entities isn't yours”</b>
+    </div>
+    <div class="hint" style="margin-top:-4px">
+      The BE says <i>"subject or object entity not found for this user"</i>. We do not tell the caller <b style="color:var(--foreground)">which</b>
+      — and we do not tell them it <b style="color:var(--foreground)">exists</b>. No enumeration oracle, ever.
+    </div>
+
+    <div class="hint" style="margin-top:auto;line-height:1.65">
+      <b style="color:var(--foreground)">The optimistic edge is drawn only AFTER the 201.</b> Painting it on submit and rolling back on
+      failure is how a UI ends up showing an edge the graph does not have.
+    </div>
+  </div>
+  <div class="form-foot">
+    <button class="btn">Cancel</button>
+    <button class="btn primary">Create relation</button>
+  </div>
+</div>
+</div>
+
+<div class="callout bad">
+  <b>What this mock does NOT propose.</b> This does <b>not</b> route the human through the triage/propose spine.
+  <code>kg_propose_edge</code> exists for the <b>agent</b>: it proposes, a human confirms. <b>A human writing their own edge IS the
+  confirmation</b> — it goes straight to <code>POST /v1/knowledge/relations</code> (201, confidence 1.0,
+  <code>pending_validation: false</code>). Stated here because the next reviewer to open this file will otherwise "fix" the human path
+  into the proposal queue and quietly make the human a second-class writer of their own graph.
+</div>
+
+<div class="callout warn">
+  <b>The predicate is closed in the FORM and open in the BACKEND — and that is a known, filed gap.</b>
+  <code>POST /relations</code> takes <code>predicate</code> as a free string (<code>max_length=100</code>), so curl (or a future tool)
+  can still mint an off-ontology edge. Widening the ontology check is a knowledge-service design call, not this wave's.
+  Tracked: <b>D-KG-RELATION-PREDICATE-UNCONSTRAINED</b> (OQ-6, <b>BE half only</b>). It is written here so nobody reads the pretty
+  <code>&lt;select&gt;</code> and concludes the set is enforced.
+</div>
+
+<div class="callout bad">
+  <b>This is the THIRD verb on a dialog that already ships — not a new dialog.</b>
+  <code>RelationEditDialog.tsx</code> is mounted at <code>EntityDetailPanel.tsx:623</code>, so it is <b>already live in both
+  <code>kg-entities</code> and <code>kg-graph</code></b>, and it already offers <b>Correct</b> (re-predicate → <code>POST
+  /relations/correct</code>) and <b>Mark wrong</b> (→ <code>POST /relations/{id}/invalidate</code>) through
+  <code>useRelationMutations.ts</code>. <b>Relation DELETE is therefore NOT a hole — only CREATE is.</b> Building a second
+  "new relation" modal beside it is a <b>DOCK-2 fork</b>: add a <code>create</code> mode + a <code>useCreateRelation</code>
+  mutation to the existing pair. <b>And the FE half of OQ-6 gets fixed HERE, not deferred:</b> that dialog's Correct field is a
+  free-text <code>&lt;input maxLength=100&gt;</code> (<code>:127-134</code>) — shipping a schema-fed <code>&lt;select&gt;</code>
+  on <i>create</i> beside a free string on <i>correct</i>, <b>same object, same dialog</b>, is a closed-set/free-string split
+  brain and is exactly the <code>panel_id</code> bug BE-14d exists to kill. <b>Both verbs get the same control.</b> Zero backend.
+</div>
+
+<h2>④b 🔴 The empty ontology <span class="tag">kg-graph</span> — a <code>&lt;select&gt;</code> with no options is a dead form</h2>
+<p class="sub">
+  A project can have <b>no adopted schema</b> — <code>ontology.py:516</code> ships "create a <b>BLANK</b> project schema from
+  scratch (no 'adopt a template first')". So <code>schema.edge_types</code> can legitimately be <code>[]</code>, and the
+  predicate <code>&lt;select&gt;</code> renders <b>zero options with no error</b>: the user clicks Create relation and nothing
+  can happen. <b>That is the same silent-no-op class every other state on this page exists to kill</b>, so it gets a state of its
+  own rather than a shrug.
+</p>
+
+<div class="stack">
+<div class="panel" style="width:470px;height:250px">
+  <div class="panel-head"><span>Link entities — Nghịch thiên</span>
+    <div class="acts"><div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6 6 18M6 6l12 12"/></svg></div></div>
+  </div>
+  <div class="body" style="display:flex;flex-direction:column;align-items:center;justify-content:center;gap:11px;padding:22px;text-align:center">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" style="width:30px;height:30px;color:var(--warning);opacity:.8"><path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M18.4 5.6l-2.1 2.1M7.7 16.3l-2.1 2.1"/><circle cx="12" cy="12" r="3.2"/></svg>
+    <div style="font-size:12.5px;font-weight:600">This project has no ontology yet.</div>
+    <div style="font-size:11.5px;color:var(--muted-fg);line-height:1.6;max-width:330px">
+      An edge needs an <b style="color:var(--foreground)">edge type</b>, and this project's schema has none
+      (<code class="mono" style="font-size:9.5px;color:var(--accent-fg)">edge_types: []</code>). Adopt a template or author a
+      schema first — <b style="color:var(--foreground)">the form does not fall back to free text</b>, because that would
+      re-open the split brain above.
+    </div>
+    <button class="btn primary" style="margin-top:2px">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 7V5a1 1 0 0 1 1-1h4l2 2h8a1 1 0 0 1 1 1v2M2 9h20l-2 10a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1L2 9Z"/></svg>
+      Open the schema panel
+    </button>
+    <div class="mono" style="font-size:9.5px;color:var(--muted-fg)">host.openPanel('kg-schema')</div>
+  </div>
+</div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════════════
+     ⑤ EntityDetailPanel's facts list — Forget a fact
+     ══════════════════════════════════════════════════════════════════════ -->
+<h2>⑤ Forget a fact <span class="tag">kg-entities</span> <span class="tag">kg-graph</span> <span class="tag add">A4 · additive</span> — an agent can; a human cannot</h2>
+<p class="sub">
+  <code>memory_forget</code> → <code>invalidate_fact</code> (<code>facts.py:675</code>) is a <b>soft</b> invalidate — it sets
+  <code>valid_until</code> and keeps history. There is <b>no REST mirror</b>. The facts list a user reads every single day
+  (<code>EntityDetailPanel.tsx:135</code> → <code>useEntityFacts</code>) has <b>no row action at all</b>.
+  <b>The host is <code>EntityDetailPanel</code>, NOT <code>kg-bio</code></b> — <code>kg-bio</code> renders the global bio
+  <i>summary</i> (a text blob over <code>useSummaries</code>) and has no fact rows. Because <code>EntityDetailPanel</code> is
+  mounted by <b>both</b> <code>EntitiesTab</code> and <code>ProjectGraphView</code>, one edit lights this up in two panels.
+</p>
+
+<div class="stack">
+<div class="panel p-bio">
+  <div class="panel-head">
+    <span>Knowledge — Bio · Vân Lam</span>
+    <div class="acts">
+      <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 1 1-2.6-6.4M21 3v6h-6"/></svg></div>
+      <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6 6 18M6 6l12 12"/></svg></div>
+    </div>
+  </div>
+  <div class="body" style="position:relative">
+    <div class="fact">
+      <div class="txt">Vân Lam lost the use of her left hand at the Ash Gate.
+        <div class="meta"><span>ch. 12</span><span class="conf">0.94</span><span>extracted</span><span>valid from ch.12</span></div>
+      </div>
+      <div class="add" style="display:flex"><span class="add-pin">8a</span><div class="ico kebab">⋯</div></div>
+    </div>
+    <div class="menu" style="top:52px">
+      <div class="menu-item"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 3h6v6M10 14 21 3M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/></svg> Open source chapter</div>
+      <div class="menu-item"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg> Copy fact id</div>
+      <div class="menu-item danger"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9.9 4.2a10 10 0 1 1-5.7 5.7M3 3l18 18M8 12h8"/></svg> Forget</div>
+    </div>
+
+    <div class="fact">
+      <div class="txt">Vân Lam owes a debt to the Gatekeeper she does not remember incurring.
+        <div class="meta"><span>ch. 12</span><span class="conf">0.81</span><span>extracted</span></div>
+      </div>
+      <div class="ico kebab">⋯</div>
+    </div>
+    <div class="fact gone">
+      <div class="txt">Vân Lam is the second daughter of the Salt Court.
+        <div class="meta"><span>ch. 3</span><span class="conf">0.62</span><span style="color:var(--destructive)">forgotten · valid_until ch.31</span></div>
+      </div>
+      <div class="ico kebab">⋯</div>
+    </div>
+    <div class="fact">
+      <div class="txt">Vân Lam can hear the Bắc Vực wind speak her true name.
+        <div class="meta"><span>ch. 31</span><span class="conf">0.88</span><span>human_authored</span></div>
+      </div>
+      <div class="ico kebab">⋯</div>
+    </div>
+    <div class="fact">
+      <div class="txt">Vân Lam and Nhậm Mục were sworn siblings before the nine-year silence.
+        <div class="meta"><span>ch. 7</span><span class="conf">0.90</span><span>extracted</span></div>
+      </div>
+      <div class="ico kebab">⋯</div>
+    </div>
+  </div>
+  <div class="panel-foot">
+    <div class="note">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
+      412 facts · 1 forgotten · forgotten facts are hidden from future <b style="color:var(--muted-fg);font-weight:500">L2</b> context loads
+    </div>
+    <span class="mono">GET /entities/{id}/facts</span>
+  </div>
+</div>
+
+<div class="panel p-confirm add"><span class="add-pin">8a</span>
+  <div class="panel-head"><span style="color:var(--destructive)">Forget this fact?</span></div>
+  <div class="form-body">
+    <div style="font-size:12px;line-height:1.55;padding:8px 10px;border-left:2px solid var(--border-hover);color:var(--muted-fg)">
+      “Vân Lam lost the use of her left hand at the Ash Gate.”
+    </div>
+    <div class="warn-card">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/><path d="M12 9v4M12 17h.01"/></svg>
+      <div>
+        Forgetting <b>hides this fact from every future context load</b>. It is not deleted from history — but
+        <b>there is no un-forget button.</b>
+      </div>
+    </div>
+    <div class="hint" style="line-height:1.65">
+      That last clause is <b style="color:var(--foreground)">not softened</b>. <code>invalidate_fact</code> sets
+      <code>valid_until</code>; <b style="color:var(--foreground)">nothing clears it</b>, at any layer. A restore needs a new engine fn +
+      route + tool — filed as <b style="color:var(--foreground)">D-KG-FACT-RESTORE</b> (OQ-4). Until it lands, this confirm dialog
+      <b style="color:var(--foreground)">is</b> the mitigation, so the copy has to say so.
+    </div>
+    <div class="hint" style="margin-top:auto;line-height:1.65">
+      <b style="color:var(--foreground)">The stale-row outcome:</b> the tool returns
+      <code>{invalidated:false, reason:"no matching fact found"}</code> with <b style="color:var(--foreground)">200, not 404</b> — the REST
+      mirror copies that verbatim. The row was already gone ⇒ <b style="color:var(--foreground)">refetch and say "already gone"</b>.
+      <span class="strike">Never report success.</span>
+    </div>
+  </div>
+  <div class="form-foot">
+    <button class="btn">Cancel</button>
+    <button class="btn danger">Forget</button>
+  </div>
+</div>
+</div>
+
+<div class="callout bad">
+  <b>Do NOT wire this to the triage queue.</b> <code>POST /pending-facts/{id}/reject</code> (the <i>pre-commit</i> triage queue) and
+  <code>/internal/admin/…/reject-fact</code> are <b>different objects with different lifecycles</b>. A committed fact is not a pending
+  proposal. Wiring Forget to reject would silently do nothing to the fact the user is looking at — and would report success while doing it.
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════════════
+     ⑥ THE THREE DEAD BUTTONS — before / after
+     ══════════════════════════════════════════════════════════════════════ -->
+<h2>⑥ 🔴 The three dead buttons <span class="tag">kg-overview</span> <span class="tag add">A5 · the fix</span> — shipped, green, and silently inert</h2>
+<p class="sub">
+  The audit called this <i>"a dead delete"</i>. It is <b>three</b>. <code>OverviewSection.tsx:56</code> declares
+  <code>const noop = () =&gt; {}</code> and passes it as <b>onArchive</b>, <b>onRestore</b> <i>and</i> <b>onDelete</b> (<code>:67-69</code>).
+  <code>ProjectRow.tsx:293-314</code> renders all three <b>unconditionally</b>. Click any of them today and nothing happens — no error,
+  no toast, no network call. Every unit test passes.
+</p>
+
+<div class="stack">
+  <div class="panel p-overview">
+    <div class="panel-head"><span style="color:var(--destructive)">Before — today (shipped)</span></div>
+    <div class="body">
+      <div class="prow">
+        <div class="pn">
+          <div class="t">Nghịch thiên — knowledge</div>
+          <div class="s">4,127 entities · 18,904 facts · synced 2 days ago</div>
+        </div>
+        <div class="pacts">
+          <div class="iconbtn dead" title="Archive"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="4" rx="1"/><path d="M5 8v11a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V8M10 12h4"/></svg></div>
+          <div class="iconbtn dead" title="Restore"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 1 0 2.6-6.4M3 3v6h6"/></svg></div>
+          <div class="iconbtn dead danger" title="Delete"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6"/></svg></div>
+        </div>
+      </div>
+      <div class="prow">
+        <div class="pn">
+          <div class="t">山海遺聞 — knowledge</div>
+          <div class="s">1,860 entities · 6,204 facts · synced 6 hours ago</div>
+        </div>
+        <div class="pacts">
+          <div class="iconbtn dead"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="4" rx="1"/><path d="M5 8v11a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V8M10 12h4"/></svg></div>
+          <div class="iconbtn dead"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 1 0 2.6-6.4M3 3v6h6"/></svg></div>
+          <div class="iconbtn dead danger"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6"/></svg></div>
+        </div>
+      </div>
+      <div style="padding:11px 12px">
+        <div class="codeblk"><span class="c">// OverviewSection.tsx:56</span>
+const noop = () <span class="k">=&gt;</span> {};
+<span class="c">// :67-69</span>
+onArchive={<span class="r">noop</span>}
+onRestore={<span class="r">noop</span>}
+onDelete={<span class="r">noop</span>}</div>
+        <div style="margin-top:8px;font-size:10.5px;color:var(--destructive);line-height:1.6">
+          <span class="strike">Archive</span> · <span class="strike">Restore</span> · <span class="strike">Delete</span><br />
+          Three buttons that render, hover, focus, and <b>cannot act</b>.
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="panel p-overview" style="height:300px">
+    <div class="panel-head"><span style="color:var(--success)">After — wired, and un-renderable without a handler</span></div>
+    <div class="body">
+      <div class="prow">
+        <div class="pn">
+          <div class="t">Nghịch thiên — knowledge</div>
+          <div class="s">4,127 entities · 18,904 facts · synced 2 days ago</div>
+        </div>
+        <div class="pacts">
+          <div class="iconbtn" title="Archive"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="4" rx="1"/><path d="M5 8v11a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V8M10 12h4"/></svg></div>
+          <div class="iconbtn danger" title="Delete"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6"/></svg></div>
+        </div>
+      </div>
+      <div class="prow" style="background:var(--card-hover)">
+        <div class="pn">
+          <div class="t">山海遺聞 — knowledge <span class="badge b-graph" style="margin-left:5px">archived</span></div>
+          <div class="s">1,860 entities · archived 5 days ago</div>
+        </div>
+        <div class="pacts">
+          <div class="iconbtn" title="Restore"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 1 0 2.6-6.4M3 3v6h6"/></svg></div>
+          <div class="iconbtn danger" title="Delete"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6"/></svg></div>
+        </div>
+      </div>
+      <div style="padding:11px 12px">
+        <div class="codeblk"><span class="c">// ProjectRow.tsx — the change that MATTERS</span>
+onArchive<span class="g">?</span>: () <span class="k">=&gt;</span> void;
+onRestore<span class="g">?</span>: () <span class="k">=&gt;</span> void;
+onDelete<span class="g">?</span>: () <span class="k">=&gt;</span> void;
+<span class="c">// a button whose handler is absent</span>
+<span class="c">// MUST NOT EXIST:</span>
+{onDelete <span class="k">&amp;&amp;</span> <span class="g">&lt;DeleteButton …/&gt;</span>}</div>
+        <div style="margin-top:8px;font-size:10.5px;color:var(--success);line-height:1.6">
+          Archive shown on active · <b>Restore only on archived</b> · Delete always, behind
+          <code class="mono" style="font-size:9.5px;color:var(--accent-fg)">ProjectsBrowser</code>'s existing confirm.
+        </div>
+        <div style="margin-top:9px;padding:8px 9px;border-radius:6px;background:var(--destructive-muted);border:1px solid var(--destructive);font-size:10.5px;line-height:1.65;color:var(--foreground)">
+          🔴 <b>There is no <code class="mono" style="font-size:9.5px">restoreProject</code>.</b>
+          <code class="mono" style="font-size:9.5px;color:var(--accent-fg)">useProjects</code> exposes exactly
+          <code class="mono" style="font-size:9.5px">create / update / archive / delete</code> (<code class="mono" style="font-size:9.5px">useProjects.ts:144-147</code>).
+          <b>Restore is an OCC PATCH:</b>
+          <code class="mono" style="font-size:9.5px;color:var(--accent-fg)">updateProject({ payload:{is_archived:false}, expectedVersion: project.version })</code>
+          (<code class="mono" style="font-size:9.5px">ProjectsBrowser.tsx:142-150</code>). The version is <b>load-bearing</b> —
+          <b>D-K8-03</b>: without it a stale "Show archived" snapshot silently wins over an edit from another device
+          (BE: <b>428</b> with no If-Match, <b>412</b> when stale). Reuse that call verbatim; do <b>not</b> invent a
+          <code class="mono" style="font-size:9.5px">restoreProject</code>, and do <b>not</b> drop the version to make it tidier.
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="panel" style="width:400px;height:300px">
+    <div class="panel-head"><span style="color:var(--primary)">The vitest that keeps it dead-button-free</span></div>
+    <div class="body" style="padding:12px">
+      <div class="codeblk" style="white-space:pre-wrap"><span class="c">// the next `noop` must RED, not ship</span>
+it(<span class="g">'renders no delete button without a handler'</span>, () <span class="k">=&gt;</span> {
+  render(<span class="g">&lt;ProjectRow project={p} /&gt;</span>);   <span class="c">// no onDelete</span>
+  expect(
+    screen.queryByTitle(<span class="g">'projects.card.delete'</span>)
+  ).toBeNull();
+});</div>
+      <div class="hint" style="margin-top:12px;line-height:1.7">
+        <b style="color:var(--foreground)">Wiring the handlers is the easy half.</b> The half that matters is making the props
+        <b style="color:var(--foreground)">optional</b> so a handler-less button <b style="color:var(--foreground)">cannot render at
+        all</b> — and asserting it in a test.
+        <br /><br />
+        Without the test, the next <code>noop</code> re-creates this exact defect and every suite stays green. This repo already has a law
+        for that: <b style="color:var(--foreground)">an item is DONE only when a test asserts its effect</b>
+        (<code>checklist-is-self-report-enforce-by-tests</code>).
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="callout bad">
+  <b>Why this is the most important item in slice 8a even though it is the smallest.</b> A missing button is a gap. A button that renders,
+  hovers, focuses, accepts a click and <b>does nothing, with no error</b> is worse than a gap — it is a <b>lie the UI tells about its own
+  capability</b>, and it is indistinguishable from a working button until the user checks whether the row actually went away. That is
+  precisely this repo's <code>silent-success-is-a-bug-not-environment</code> class, shipped to production, in the panel whose job is to
+  <i>show you the state of your knowledge</i>.
+</div>
+
+<div class="callout good">
+  <b>What slice 8a costs.</b> Four FE affordances + <b>three thin routes</b> (BE-14a/b/c — each a router over an engine that already
+  exists and is already hardened) + <b>one closed-set unification</b> (BE-14d) + <b>one line of Lane-B registration</b>
+  (<code>/^memory_(remember|forget)$/</code> — outside <code>^kg_</code>, so <code>KNOWLEDGE_WRITE_PATTERN</code> genuinely cannot match it).
+  <b>No new panel. No new category. No new table. No migration. No setting. No token spent.</b>
+  8a is shippable on its own — which is exactly why it is split from 8b.
+</div>
+
+<div class="callout">
+  <b>🟢 And one thing NOT to do.</b> The audit claimed <code>kg_create_node</code> and <code>kg_project_entities_to_nodes</code> have no
+  Lane-B effect handler. <b>That is refuted.</b> <code>KNOWLEDGE_WRITE_PATTERN</code> (<code>knowledgeEffects.ts:18</code>) is a
+  <b>negative lookahead over the whole <code>^kg_</code> namespace</b> — both tools already match it and already invalidate
+  <code>['knowledge-entities']</code> / <code>['knowledge-subgraph']</code>. <b>Do not add a handler for them. Do not "fix" the pattern.</b>
+  The genuinely unhandled tools are <code>memory_forget</code> (outside <code>^kg_</code>) and, in slice 8b, every <code>world_*</code>.
+</div>
+
+<script>
+  /* the one interactive bit: toggle the kebab menu on the facts list */
+  const menu = document.querySelector('.menu');
+  document.querySelectorAll('.kebab').forEach(k => k.addEventListener('click', () => {
+    menu.style.display = menu.style.display === 'none' ? 'block' : 'none';
+  }));
+</script>
+</body>
+</html>

@@ -109,9 +109,13 @@ async def preview_build_graph(
     scope = params.scope
     chapters = 0
     if scope in ("chapters", "all") and project.book_id is not None:
+        # WS-0.6: the preview must count what the JOB will extract. The job enumerates
+        # kg-indexed chapters (worker-ai runner), so a preview keyed on publish would
+        # quote "0 chapters" and then the job would extract 50 — preview and job MUST
+        # agree, or the cost card is a lie.
         c = await book_client.count_chapters(
             project.book_id, from_sort=params.chapter_from, to_sort=params.chapter_to,
-            editorial_status="published",
+            kg_indexed=True,
         )
         chapters = c or 0
 

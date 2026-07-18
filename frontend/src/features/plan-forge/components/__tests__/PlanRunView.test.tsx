@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { render, screen, fireEvent } from '@testing-library/react';
 import { describe, it, expect, vi } from 'vitest';
 import { PlanRunView } from '../PlanRunView';
 import type { PlanRunDetail } from '../../types';
@@ -103,6 +103,53 @@ describe('PlanRunView — null fidelity_score', () => {
       />,
     );
     expect(screen.getByTestId('plan-compile-result').textContent).toContain('019f356a');
+  });
+});
+
+// ⑨ Repair strip — appears only when self-check surfaced gaps; each action is paid (PS-6 confirm).
+describe('PlanRunView — repair strip', () => {
+  const repairProps = {
+    run: RUN, polling: false, busy: false, validation: null, compileResult: null,
+    onSelfCheck: noop, onValidate: noop, onCompile: noop, onOpenArtifact: noop,
+    repairOutput: null, canRepair: true, onExplain: noop, onApplyFix: noop, onAutofix: noop,
+  };
+
+  it('is HIDDEN when self-check found no gaps (no always-on paid buttons)', () => {
+    render(<PlanRunView {...repairProps} selfCheck={{ gaps: [], fidelity_score: null }} />);
+    expect(screen.queryByTestId('plan-repair-strip')).toBeNull();
+  });
+
+  it('appears when gaps > 0, and a paid action confirms before firing (PS-6)', () => {
+    const onAutofix = vi.fn();
+    render(<PlanRunView {...repairProps} onAutofix={onAutofix}
+      selfCheck={{ gaps: [{ path: 'arcs.0', severity: 'error', message: 'missing climax' }], fidelity_score: null }} />);
+    expect(screen.getByTestId('plan-repair-strip')).toBeInTheDocument();
+    fireEvent.click(screen.getByTestId('plan-repair-autofix'));
+    expect(onAutofix).not.toHaveBeenCalled();                 // not until confirmed
+    fireEvent.click(screen.getByTestId('plan-repair-confirm-btn'));
+    expect(onAutofix).toHaveBeenCalledTimes(1);
+  });
+
+  it('disables the actions when no chat model is chosen (canRepair=false)', () => {
+    render(<PlanRunView {...repairProps} canRepair={false}
+      selfCheck={{ gaps: [{ path: 'x', severity: 'error', message: 'y' }], fidelity_score: null }} />);
+    expect((screen.getByTestId('plan-repair-autofix') as HTMLButtonElement).disabled).toBe(true);
+  });
+});
+
+// PS-9 — the artifact rows used to be dead <li>s (the plan the user paid to write was unreachable).
+describe('PlanRunView — artifact rows open read-only (PS-9)', () => {
+  it('each artifact row opens the artifact', () => {
+    const onOpenArtifact = vi.fn();
+    render(
+      <PlanRunView
+        run={{ ...RUN, artifacts: [{ kind: 'package', artifact_id: 'art-pkg' }] }}
+        polling={false} busy={false} selfCheck={null} validation={null} compileResult={null}
+        onSelfCheck={noop} onValidate={noop} onCompile={noop} onOpenArtifact={onOpenArtifact}
+      />,
+    );
+    fireEvent.click(screen.getByTestId('plan-artifact-package'));
+    expect(onOpenArtifact).toHaveBeenCalledWith('art-pkg');
   });
 });
 

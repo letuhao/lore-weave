@@ -139,3 +139,39 @@ func OwnerOnlyFromCtx(ctx context.Context) bool {
 	_, ok := McpKeyIDFromCtx(ctx)
 	return ok
 }
+
+// ResolveEnvelopeOrBearerCaller returns the trusted caller's user id for a
+// confirm/preview-style HTTP route that must accept EITHER a trusted
+// internal-service envelope (X-Internal-Token, constant-time-compared against
+// internalToken, + X-User-Id) OR the caller's own Bearer-JWT verifier
+// (bearerFallback). JWT secrets/verification differ per service, so that half
+// deliberately stays out of this shared kit — only the envelope's
+// compare-then-lift-X-User-Id logic (identical to IdentityMiddleware above) is
+// consolidated here.
+//
+// The internal-token branch is checked FIRST and, once the header is present,
+// is authoritative: a matching token with a missing/malformed X-User-Id fails
+// closed (ok=false) rather than falling through to bearerFallback — an
+// internal caller that got the envelope wrong must not silently succeed via
+// some unrelated Bearer header it happens to also carry. When X-Internal-Token
+// is absent entirely, control passes to bearerFallback unconditionally (the
+// ordinary browser-JWT path).
+//
+// This consolidates the identical resolveConfirmCaller logic independently
+// duplicated across glossary-service, book-service, and
+// provider-registry-service's settings confirm routes (SDK-First) — each
+// service passes its own requireUserID/auth as bearerFallback.
+func ResolveEnvelopeOrBearerCaller(r *http.Request, internalToken string, bearerFallback func(*http.Request) (uuid.UUID, bool)) (uuid.UUID, bool) {
+	if tok := r.Header.Get(HeaderInternalToken); tok != "" {
+		if internalToken == "" ||
+			subtle.ConstantTimeCompare([]byte(tok), []byte(internalToken)) != 1 {
+			return uuid.Nil, false
+		}
+		uid, err := uuid.Parse(r.Header.Get(HeaderUserID))
+		if err != nil {
+			return uuid.Nil, false
+		}
+		return uid, true
+	}
+	return bearerFallback(r)
+}

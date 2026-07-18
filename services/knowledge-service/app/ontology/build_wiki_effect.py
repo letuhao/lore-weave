@@ -60,11 +60,21 @@ async def _resolve_entity_ids(params: BuildWikiParams, book_id: UUID, glossary_c
     # extracted entity has ≥1 chapter link, so min_frequency=1 includes them all
     # (the default 2 is the extraction-ANCHOR semantics and silently drops every
     # entity on a single-chapter book → spurious "no entities" → 422).
-    rows = await glossary_client.list_entities(
-        book_id, status_filter="active", min_frequency=1,
+    #
+    # `status_filter` is deliberately NOT "active" (it used to say so, but the
+    # handler ignored the param entirely — D-GLOSSARY-KNOWN-ENTITIES-STATUS-PARAM).
+    # Now that it is honored, passing "active" would empty the wiki: BOTH entity
+    # creation paths insert `status='draft'`, so entities stay draft until triaged.
+    # None = no status filter = the behavior this call has always actually had.
+    #
+    # Paged (D-ANCHOR-PRELOAD-50-CAP): the un-limited call inherited the handler's
+    # silent default of 50, so a book with more entities only ever got 50 wiki stubs.
+    page = await glossary_client.list_all_entities(
+        book_id, status_filter=None, min_frequency=1,
     )
-    if not rows:
+    if not page:
         return []
+    rows, _truncated = page
     return [r["entity_id"] for r in rows if r.get("entity_id")]
 
 

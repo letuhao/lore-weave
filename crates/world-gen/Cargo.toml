@@ -62,7 +62,7 @@ tokio = { version = "1", default-features = false, features = ["rt-multi-thread"
 
 [dev-dependencies]
 # Statistical benchmark harness — `cargo bench` (see benches/generate.rs).
-criterion = "0.5"
+criterion = "0.8"
 # Mock gateway for naming.rs / author.rs tests — same as loreweave_llm's
 # own test harness in sdks/rust/loreweave_llm/tests/gateway_mock.rs.
 wiremock = { workspace = true }

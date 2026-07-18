@@ -18,19 +18,19 @@ const ctx = (over: Partial<EffectContext> = {}): EffectContext => ({
 });
 
 describe('effect registry matching', () => {
-  it('string pattern matches exact + prefix; RegExp matches by test', () => {
+  it('RegExp patterns match by test', () => {
     const s = vi.fn(); const r = vi.fn();
-    registerEffectHandler('book_save', s);
+    registerEffectHandler(/^book_save/, s);
     registerEffectHandler(/draft$/, r);
-    expect(matchEffectHandlers('book_save')).toContain(s);       // exact
-    expect(matchEffectHandlers('book_save_chapter')).toContain(s); // prefix
-    expect(matchEffectHandlers('composition_draft')).toContain(r); // regex
+    expect(matchEffectHandlers('book_save')).toContain(s);        // anchored prefix
+    expect(matchEffectHandlers('book_save_chapter')).toContain(s);
+    expect(matchEffectHandlers('composition_draft')).toContain(r);
     expect(matchEffectHandlers('unrelated_tool')).toHaveLength(0);
   });
 
   it('runEffectHandlers awaits every matching handler', async () => {
     const a = vi.fn(); const b = vi.fn();
-    registerEffectHandler('book_', a);
+    registerEffectHandler(/^book_/, a);
     registerEffectHandler(/book/, b);
     await runEffectHandlers(ctx({ tool: 'book_x' }));
     expect(a).toHaveBeenCalledOnce();
@@ -38,13 +38,49 @@ describe('effect registry matching', () => {
   });
 });
 
+// X-4.0 (Q-30-REGISTEREFFECT-STRING-BRANCH) — the string branch is DELETED, not documented.
+// It was `tool === p || tool.startsWith(p)` — exact-or-prefix, NOT a pattern. A caller writing
+// 'composition_(style|voice)_' as a STRING matched NOTHING and shipped a silent no-op handler that
+// no per-handler unit test could see (the test registers and calls its own fake, so it stays green).
+// tsc now rejects a string; this asserts the RUNTIME throw too, because TS types are erased and an
+// `as any` / a JS caller must still fail loudly.
+describe('registerEffectHandler REJECTS the string-pattern bug class (X-4.0)', () => {
+  it('REJECTS a string pattern — an alternation string would silently match nothing (§8.0b)', () => {
+    expect(() => registerEffectHandler('composition_(style|voice)_' as unknown as RegExp, vi.fn()))
+      .toThrow(/must be a RegExp/);
+    expect(matchEffectHandlers('composition_style_set')).toHaveLength(0);
+  });
+
+  it('the RegExp form of the same pattern DOES match', () => {
+    const h = vi.fn();
+    registerEffectHandler(/^composition_(style|voice)_/, h);
+    expect(matchEffectHandlers('composition_style_set')).toContain(h);
+    expect(matchEffectHandlers('composition_voice_apply')).toContain(h);
+  });
+
+  it('REJECTS the /g flag (test() advances lastIndex and alternates true/false across calls)', () => {
+    expect(() => registerEffectHandler(/^book_/g, vi.fn())).toThrow(/\/g flag/);
+  });
+});
+
 describe('bookDraftEffect (Lane B v1 handler)', () => {
-  it('invalidates the chapter query + reloads the Tier-4 hoist (does NOT publish a chapter — no editor hijack)', () => {
+  it('invalidates the chapter query + reloads the Tier-4 hoist + publishes manuscriptChanged (tree refresh), but NEVER the chapter focus event (no editor hijack)', () => {
     const c = ctx();
     bookDraftEffect(c);
     expect(c.queryClient.invalidateQueries).toHaveBeenCalledWith({ queryKey: ['chapter', 'b1', 'ch1'] });
     expect(c.reloadChapter).toHaveBeenCalledWith('ch1');
-    expect(c.host.publish).not.toHaveBeenCalled(); // reconcile must not switch the user's editor
+    // The hand-rolled navigator tree only reloads on this bus event — dogfood 2026-07-18: an agent
+    // chapter create left the rail on "0 chapters" until a full page reload without it.
+    expect(c.host.publish).toHaveBeenCalledWith({ type: 'manuscriptChanged' });
+    // …but STILL never the `chapter` FOCUS event — reconcile must not switch the user's editor.
+    expect(c.host.publish).not.toHaveBeenCalledWith(expect.objectContaining({ type: 'chapter' }));
+  });
+
+  it('publishes manuscriptChanged BEFORE the G7 dirty-guard, so a dirty editor never hides a new sibling chapter', () => {
+    const c = ctx({ isChapterDirty: () => true });
+    bookDraftEffect(c);
+    expect(c.host.publish).toHaveBeenCalledWith({ type: 'manuscriptChanged' }); // tree still refreshes
+    expect(c.reloadChapter).not.toHaveBeenCalled(); // …but the dirty hoist is protected
   });
 
   it('G7: skips the reload when the hoist is DIRTY (never clobbers unsaved edits); still invalidates cache', () => {

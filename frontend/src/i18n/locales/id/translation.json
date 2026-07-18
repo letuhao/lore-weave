@@ -81,7 +81,8 @@
     "original_label": "Asli — {{lang}}",
     "translation_label": "Terjemahan — {{lang}}",
     "source_fallback": "Sumber",
-    "no_translated": "(Tidak ada konten terjemahan)"
+    "no_translated": "(Tidak ada konten terjemahan)",
+    "original_unavailable": "Teks asli saat ini tidak tersedia."
   },
   "block_review": {
     "unchanged": "Tidak berubah",
@@ -152,7 +153,17 @@
     "chapters_selected": "{{count}} bab terpilih",
     "translate_selected": "Terjemahkan yang Terpilih",
     "extract_glossary": "Ekstrak Glosarium",
-    "clear": "Hapus"
+    "clear": "Hapus",
+    "loading": "Memuat cakupan terjemahan...",
+    "translate_cta": "Terjemahkan...",
+    "select_all_chapters": "Pilih semua bab",
+    "orphan_footnote": "{{count}} terjemahan berasal dari bab yang sudah tidak aktif.",
+    "page": "Halaman",
+    "prev": "Halaman sebelumnya",
+    "next": "Halaman berikutnya",
+    "translate_no_edit": "Anda memiliki akses hanya-lihat — minta akses edit kepada pemilik untuk menerjemahkan.",
+    "all_filtered_title": "Semua bahasa tersaring",
+    "all_filtered_desc": "Aktifkan kembali sebuah bahasa di filter untuk melihat cakupannya."
   },
   "segments": {
     "title": "Status segmen",
@@ -165,6 +176,15 @@
     "retranslate_changed": "Terjemahkan ulang perubahan ({{count}})",
     "retranslate_started": "Penerjemahan ulang dimulai",
     "empty": "Belum ada segmen yang dibuat.",
-    "close": "Tutup"
+    "close": "Tutup",
+    "retranslate_failed": "Penerjemahan ulang tidak dapat dimulai. Silakan coba lagi."
+  },
+  "error": {
+    "retryable": "Tidak dapat memuat terjemahan — layanan terjemahan mungkin tidak tersedia. Coba lagi.",
+    "forbidden": "Anda tidak memiliki akses ke terjemahan buku ini.",
+    "notfound": "Terjemahan ini tidak dapat ditemukan.",
+    "retry": "Coba lagi",
+    "chapters_failed": "Tidak dapat memuat daftar bab.",
+    "chapters_timeout": "Waktu pemuatan daftar bab habis — layanan mungkin lambat atau sedang gangguan."
   }
 }

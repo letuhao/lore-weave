@@ -4,6 +4,11 @@
 see docs/specs/2026-07-06-planforge-auto-bootstrap.md §3.1/§4. A raw JSON
 response is acceptable review UI for this POC (§4's explicit out-of-scope
 list) — the plain-language review treatment is a later, separate pass.
+
+Auth (BPS re-key, spec 25 OQ-3): the E0 book-grant gate here is the ONLY
+access decision — proposals are book-scoped rows (VIEW reads, EDIT mutates);
+`created_by` is a plain actor stamp on the writes that create rows (propose)
+or replay them as the caller (apply), never an access filter.
 """
 
 from __future__ import annotations
@@ -63,7 +68,7 @@ async def get_bootstrap_proposal(
     svc: BootstrapService = Depends(get_bootstrap_service),
 ):
     await _gate_book(grant, book_id, user_id, GrantLevel.VIEW)
-    record = await svc.get(user_id, book_id, proposal_id)
+    record = await svc.get(book_id, proposal_id)
     if record is None:
         raise HTTPException(status_code=404, detail="proposal not found")
     return record.model_dump(mode="json")
@@ -79,7 +84,7 @@ async def approve_bootstrap(
 ):
     await _gate_book(grant, book_id, user_id, GrantLevel.EDIT)
     try:
-        record = await svc.approve(user_id, book_id, proposal_id)
+        record = await svc.approve(book_id, proposal_id)
     except LookupError:
         raise HTTPException(status_code=404, detail="proposal not found")
     except ValueError as exc:
@@ -97,7 +102,7 @@ async def reject_bootstrap(
 ):
     await _gate_book(grant, book_id, user_id, GrantLevel.EDIT)
     try:
-        record = await svc.reject(user_id, book_id, proposal_id)
+        record = await svc.reject(book_id, proposal_id)
     except LookupError:
         raise HTTPException(status_code=404, detail="proposal not found")
     except ValueError as exc:

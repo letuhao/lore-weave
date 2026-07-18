@@ -55,17 +55,28 @@ func streamResponsesSSE(ctx context.Context, body io.Reader, emit EmitFn) error 
 	// map output_index → the tool call's id/name, captured on output_item.added so the
 	// arguments-delta fragments (which carry only the index) can be attributed.
 	toolStarted := map[int]bool{}
+	// argsSeen[output_index] — true once ANY argument bytes have been emitted for a
+	// tool call (either via streamed `.delta` fragments or a batched `.done`). Guards
+	// the batched-`.done` fallback so a compliant provider that BOTH streams deltas
+	// and repeats the full args on `.done` never double-appends them.
+	argsSeen := map[int]bool{}
 
 	err := readSSELines(ctx, body, func(_event, data string) error {
 		var ev struct {
 			Type        string `json:"type"`
 			Delta       string `json:"delta"`
 			OutputIndex int    `json:"output_index"`
-			Item        struct {
-				Type   string `json:"type"`
-				ID     string `json:"id"`
-				CallID string `json:"call_id"`
-				Name   string `json:"name"`
+			// Arguments — top-level on `response.function_call_arguments.done`: the
+			// FULL argument string. OpenAI sends this redundantly after streaming
+			// `.delta` fragments; LM Studio's /v1/responses sends NO `.delta` at all
+			// and delivers the whole thing ONLY here (bug parity: llama.cpp #20607).
+			Arguments string `json:"arguments"`
+			Item      struct {
+				Type      string `json:"type"`
+				ID        string `json:"id"`
+				CallID    string `json:"call_id"`
+				Name      string `json:"name"`
+				Arguments string `json:"arguments"` // full args on output_item.done (function_call)
 			} `json:"item"`
 			Response struct {
 				ID     string `json:"id"`
@@ -141,10 +152,35 @@ func streamResponsesSSE(ctx context.Context, body io.Reader, emit EmitFn) error 
 			if ev.Delta == "" {
 				return nil
 			}
+			argsSeen[ev.OutputIndex] = true
 			if err := emit(StreamChunk{
 				Kind:           StreamChunkToolCall,
 				Index:          ev.OutputIndex,
 				ArgumentsDelta: ev.Delta,
+			}); err != nil {
+				return err
+			}
+		case "response.function_call_arguments.done", "response.output_item.done":
+			// Batched-args fallback. A COMPLIANT provider (OpenAI) streams the args as
+			// `.delta` fragments and then repeats the full string here — already
+			// accumulated, so we skip. LM Studio's /v1/responses emits NO `.delta` and
+			// delivers the WHOLE argument string only on `.done` (llama.cpp #20607); the
+			// call would otherwise reach the consumer with EMPTY args (the name arrives on
+			// output_item.added, the args nowhere). Emit the full args as one fragment,
+			// but ONLY when nothing was streamed for this index — the argsSeen guard makes
+			// this idempotent across the two `.done` variants and vs streamed deltas.
+			args := ev.Arguments
+			if args == "" && ev.Item.Type == "function_call" {
+				args = ev.Item.Arguments
+			}
+			if args == "" || argsSeen[ev.OutputIndex] {
+				return nil
+			}
+			argsSeen[ev.OutputIndex] = true
+			if err := emit(StreamChunk{
+				Kind:           StreamChunkToolCall,
+				Index:          ev.OutputIndex,
+				ArgumentsDelta: args,
 			}); err != nil {
 				return err
 			}

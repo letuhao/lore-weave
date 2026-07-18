@@ -11,6 +11,7 @@ import { useRoleplaySetup } from '../hooks/useRoleplaySetup';
 import { useEvaluation } from '../hooks/useEvaluation';
 import { PersonaPicker } from '../components/PersonaPicker';
 import { EndEvaluateBar } from '../components/EndEvaluateBar';
+import { PracticeProgressHeader } from '../components/PracticeProgressHeader';
 import { ScorecardView } from '../components/ScorecardView';
 
 export function RoleplayPage() {
@@ -27,6 +28,8 @@ function RoleplayRoom() {
   const { activeSession, selectSession } = useChatSession();
   const setup = useRoleplaySetup();
   const { scorecard, evaluating, evaluate, reset } = useEvaluation();
+  // A4.3 — the script whose charter drives the Q-progress/wrap (interview presets only).
+  const selectedScript = setup.scripts.find((s) => s.script_id === setup.selectedScriptId);
 
   const handleStart = useCallback(async () => {
     const session = await setup.start();
@@ -47,6 +50,15 @@ function RoleplayRoom() {
       {/* Picker shown until a session is active; ChatView stays mounted (never
           conditionally unmounted) so voice/audio state survives — CLAUDE.md. */}
       {!activeSession && <PersonaPicker setup={setup} onStart={handleStart} />}
+      {/* A4.3 — the Practice progress/wrap header (interview sessions only; renders null for
+          freeform). Mobile + desktop both get it; the server enforces the wrap, this mirrors it. */}
+      {activeSession && (
+        <PracticeProgressHeader
+          messageCount={activeSession.message_count}
+          startedAt={activeSession.created_at}
+          script={selectedScript}
+        />
+      )}
       <ChatView
         className={!activeSession ? 'hidden' : 'flex-1'}
         footerSlot={activeSession ? <EndEvaluateBar evaluating={evaluating} onEvaluate={handleEvaluate} /> : undefined}

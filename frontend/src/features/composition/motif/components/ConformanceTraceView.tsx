@@ -11,11 +11,17 @@ type Props = {
   projectId: string | undefined;
   chapterId: string | undefined;
   token: string | null;
+  /** BYOK model for the Tier-W re-run (composition_conformance_run). No model ⇒ the Re-run
+   *  button is disabled with a hint; the read + regenerate still work. */
+  modelRef?: string | null;
+  /** §2#6 loop-connect — deep-link to the scene-inspector for a scene (to bind/fix a beat). The
+   *  host-owning panel wires it to host.publish + openPanel('scene-inspector'). */
+  onOpenScene?: (sceneId: string, chapterId: string) => void;
 };
 
-export function ConformanceTraceView({ projectId, chapterId, token }: Props) {
+export function ConformanceTraceView({ projectId, chapterId, token, modelRef, onOpenScene }: Props) {
   const { t } = useTranslation('composition');
-  const trace = useConformanceTrace(projectId, chapterId, token);
+  const trace = useConformanceTrace(projectId, chapterId, token, modelRef);
   const conf = trace.conformance;
   const scenes = conf?.scenes ?? [];
   const isEmpty = !trace.isLoading && !trace.isError && scenes.length === 0;
@@ -40,7 +46,8 @@ export function ConformanceTraceView({ projectId, chapterId, token }: Props) {
           type="button"
           data-testid="conformance-rerun"
           className="rounded border border-amber-400 px-2 py-0.5 text-xs text-amber-700 disabled:opacity-50 dark:text-amber-300"
-          disabled={!projectId || !chapterId || trace.mintRun.isPending}
+          disabled={!projectId || !chapterId || !trace.canRerun || trace.mintRun.isPending}
+          title={!trace.canRerun ? t('motif.conf.rerunNeedsModel', { defaultValue: 'Pick a model to re-run conformance' }) : undefined}
           onClick={() => trace.mintRun.mutate()}
         >
           {t('motif.conf.rerun', { defaultValue: 'Re-run' })}
@@ -60,13 +67,30 @@ export function ConformanceTraceView({ projectId, chapterId, token }: Props) {
 
       <MotifStateBoundary isLoading={trace.isLoading} isError={trace.isError} onRetry={() => trace.refetch()} skeleton="rows">
         {isEmpty ? (
-          <p data-testid="conformance-empty" className="p-4 text-center text-xs text-neutral-500">
-            {t('motif.conf.empty', { defaultValue: 'Not generated yet — generate scenes to see conformance.' })}
-          </p>
+          <div data-testid="conformance-empty" className="p-4 text-center text-xs text-neutral-500">
+            <p>{t('motif.conf.empty', { defaultValue: 'Not generated yet — generate scenes to see conformance.' })}</p>
+            {/* §2#6 loop-connect — the empty state is a dead-end without a next step; deep-link to the
+                scene-inspector where a motif is bound to a scene (spec 33 §3.4). */}
+            {onOpenScene && chapterId && (
+              <button
+                type="button"
+                data-testid="conformance-empty-bind-cta"
+                onClick={() => onOpenScene('', chapterId)}
+                className="mt-2 rounded border border-amber-400 px-2 py-0.5 text-[11px] text-amber-700 hover:bg-amber-50 dark:text-amber-300 dark:hover:bg-amber-950/30"
+              >
+                {t('motif.conf.bindCta', { defaultValue: 'Bind a motif to a scene →' })}
+              </button>
+            )}
+          </div>
         ) : (
           <div>
             {scenes.map((s) => (
-              <ConformanceSceneRow key={s.outline_node_id} scene={s} onRegenerate={(id) => trace.regenerateToBeat.mutate(id)} />
+              <ConformanceSceneRow
+                key={s.outline_node_id}
+                scene={s}
+                onRegenerate={(id) => trace.regenerateScene.mutate(id)}
+                onOpenScene={onOpenScene && chapterId ? (sid) => onOpenScene(sid, chapterId) : undefined}
+              />
             ))}
           </div>
         )}

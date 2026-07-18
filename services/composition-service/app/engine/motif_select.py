@@ -353,43 +353,44 @@ class SwapResult:
 
 
 async def _scene_ids_for_chapter(
-    conn: asyncpg.Connection, user_id: UUID, project_id: UUID, chapter_id: UUID,
+    conn: asyncpg.Connection, project_id: UUID, chapter_id: UUID,
     *, archived: bool,
 ) -> list[UUID]:
     """Active (or archived) scene-node ids for a chapter (by the shared chapter_id
-    key — the replace-path shape), scoped to user+project."""
+    key — the replace-path shape), scoped to the project (access is gated on the
+    book BEFORE this — 25 PM-8)."""
     rows = await conn.fetch(
         f"""
         SELECT id FROM outline_node
-        WHERE user_id = $1 AND project_id = $2 AND kind = 'scene'
-          AND chapter_id = $3 AND is_archived = {'true' if archived else 'false'}
+        WHERE project_id = $1 AND kind = 'scene'
+          AND chapter_id = $2 AND is_archived = {'true' if archived else 'false'}
         """,
-        user_id, project_id, chapter_id,
+        project_id, chapter_id,
     )
     return [r["id"] for r in rows]
 
 
 async def _set_scenes_archived(
-    conn: asyncpg.Connection, user_id: UUID, project_id: UUID,
+    conn: asyncpg.Connection, project_id: UUID,
     scene_ids: list[UUID], *, archived: bool,
 ) -> None:
     """Flip is_archived on a scene id-set (symmetric archive/restore). Scoped to
-    user+project + kind='scene'. The scenes' generation_job rows are NEVER deleted —
+    project + kind='scene'. The scenes' generation_job rows are NEVER deleted —
     archiving the node keeps the prose attached (FK is ON DELETE SET NULL but we
     never delete), so an un-archive restores the prose-bearing scenes losslessly."""
     if not scene_ids:
         return
     await conn.execute(
         """
-        UPDATE outline_node SET is_archived = $4, updated_at = now()
-        WHERE user_id = $1 AND project_id = $2 AND kind = 'scene' AND id = ANY($3)
+        UPDATE outline_node SET is_archived = $3, updated_at = now()
+        WHERE project_id = $1 AND kind = 'scene' AND id = ANY($2)
         """,
-        user_id, project_id, scene_ids, archived,
+        project_id, scene_ids, archived,
     )
 
 
 async def _open_threads_anchored_at(
-    conn: asyncpg.Connection, user_id: UUID, project_id: UUID, scene_ids: list[UUID],
+    conn: asyncpg.Connection, project_id: UUID, scene_ids: list[UUID],
 ) -> list[UUID]:
     """Open/progressing narrative_thread ids whose promise (opened_at_node) is in the
     archived scene set — SURFACED for author review, NEVER auto-closed (§R2.6). A
@@ -399,28 +400,28 @@ async def _open_threads_anchored_at(
     rows = await conn.fetch(
         """
         SELECT id FROM narrative_thread
-        WHERE user_id = $1 AND project_id = $2 AND NOT is_archived
+        WHERE project_id = $1 AND NOT is_archived
           AND status IN ('open', 'progressing')
-          AND opened_at_node = ANY($3)
+          AND opened_at_node = ANY($2)
         """,
-        user_id, project_id, scene_ids,
+        project_id, scene_ids,
     )
     return [r["id"] for r in rows]
 
 
 async def plan_swap(
-    outline: Any, user_id: UUID, project_id: UUID, chapter_node_id: UUID,
+    outline: Any, project_id: UUID, chapter_node_id: UUID,
     *, conn: asyncpg.Connection,
 ) -> dict[str, Any]:
     """Read-only preview of what a swap would archive + which threads it would orphan
     (for the confirm/undo UX). Does NOT mutate. Raises MotifSwapError if the node is
-    not the caller's chapter node in this project (H13)."""
-    target = await outline.get_node(user_id, chapter_node_id, conn=conn)
+    not a chapter node in this project (H13)."""
+    target = await outline.get_node(chapter_node_id, conn=conn)
     if target is None or target.project_id != project_id or target.kind != "chapter":
         raise MotifSwapError("chapter node not found or not accessible")
-    scene_ids = await _scene_ids_for_chapter(conn, user_id, project_id, target.chapter_id,
+    scene_ids = await _scene_ids_for_chapter(conn, project_id, target.chapter_id,
                                              archived=False)
-    orphaned = await _open_threads_anchored_at(conn, user_id, project_id, scene_ids)
+    orphaned = await _open_threads_anchored_at(conn, project_id, scene_ids)
     return {
         "chapter_node_id": str(chapter_node_id),
         "scene_ids_to_archive": [str(s) for s in scene_ids],
@@ -430,8 +431,8 @@ async def plan_swap(
 
 async def apply_motif_swap(
     outline: Any, applications: Any,
-    user_id: UUID, project_id: UUID, book_id: UUID, chapter_node_id: UUID,
-    *, new_motif: SelectedMotif | None, binding: MotifBinding | None,
+    project_id: UUID, book_id: UUID, chapter_node_id: UUID,
+    *, created_by: UUID, new_motif: SelectedMotif | None, binding: MotifBinding | None,
     cast_names: dict[str, str] | None = None,
     k_ceiling: int, high_threshold: int, min_scenes: int, max_scenes: int,
     conn: asyncpg.Connection,
@@ -458,15 +459,15 @@ async def apply_motif_swap(
     inverse."""
     from app.engine.plan import ChapterPlan  # local: avoid the import cycle
 
-    target = await outline.get_node(user_id, chapter_node_id, conn=conn)
+    target = await outline.get_node(chapter_node_id, conn=conn)
     if target is None or target.project_id != project_id or target.kind != "chapter":
         raise MotifSwapError("chapter node not found or not accessible")
 
-    archived_ids = await _scene_ids_for_chapter(conn, user_id, project_id,
+    archived_ids = await _scene_ids_for_chapter(conn, project_id,
                                                 target.chapter_id, archived=False)
-    orphaned = await _open_threads_anchored_at(conn, user_id, project_id, archived_ids)
-    await _set_scenes_archived(conn, user_id, project_id, archived_ids, archived=True)
-    await applications.delete_for_nodes(user_id, project_id, archived_ids, conn=conn)
+    orphaned = await _open_threads_anchored_at(conn, project_id, archived_ids)
+    await _set_scenes_archived(conn, project_id, archived_ids, archived=True)
+    await applications.delete_for_nodes(project_id, archived_ids, conn=conn)
 
     new_scene_ids: list[UUID] = []
     if new_motif is not None and binding is not None:
@@ -479,7 +480,7 @@ async def apply_motif_swap(
         rows = build_application_rows(new_motif, binding, scenes)
         for sc, row in zip(scenes, rows):
             node = await outline.create_node(
-                user_id, project_id, kind="scene", parent_id=target.id,
+                project_id, created_by=created_by, kind="scene", parent_id=target.id,
                 chapter_id=target.chapter_id, beat_role=target.beat_role,
                 title=sc.title, synopsis=sc.synopsis, tension=sc.tension,
                 present_entity_ids=[UUID(e) for e in sc.present_entity_ids],
@@ -487,7 +488,8 @@ async def apply_motif_swap(
             )
             new_scene_ids.append(node.id)
             row["outline_node_id"] = str(node.id)
-        await applications.insert_many(user_id, project_id, book_id, rows, conn=conn)
+        await applications.insert_many(project_id, book_id, rows,
+                                       created_by=created_by, conn=conn)
 
     undo_token = {
         "chapter_node_id": str(chapter_node_id),
@@ -506,7 +508,7 @@ async def apply_motif_swap(
 
 async def undo_motif_swap(
     outline: Any, applications: Any,
-    user_id: UUID, project_id: UUID, undo_token: dict[str, Any],
+    project_id: UUID, undo_token: dict[str, Any],
     *, conn: asyncpg.Connection,
 ) -> dict[str, Any]:
     """Inverse of apply_motif_swap (the Tier-A _bind undo hint, made real — clears
@@ -520,9 +522,9 @@ async def undo_motif_swap(
     restores already-active scenes (no-op)."""
     new_ids = [UUID(s) for s in undo_token.get("new_scene_ids", [])]
     archived_ids = [UUID(s) for s in undo_token.get("archived_scene_ids", [])]
-    await _set_scenes_archived(conn, user_id, project_id, new_ids, archived=True)
-    await applications.delete_for_nodes(user_id, project_id, new_ids, conn=conn)
-    await _set_scenes_archived(conn, user_id, project_id, archived_ids, archived=False)
+    await _set_scenes_archived(conn, project_id, new_ids, archived=True)
+    await applications.delete_for_nodes(project_id, new_ids, conn=conn)
+    await _set_scenes_archived(conn, project_id, archived_ids, archived=False)
     return {
         "chapter_node_id": undo_token.get("chapter_node_id"),
         "restored_scene_ids": [str(s) for s in archived_ids],

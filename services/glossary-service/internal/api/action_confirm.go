@@ -11,6 +11,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/loreweave/grantclient"
+	lwmcp "github.com/loreweave/loreweave_mcp"
 )
 
 // Generalized class-C confirm + preview endpoints (spec §13.5). One JWT-gated
@@ -55,29 +56,72 @@ func (s *Server) consumeToken(ctx context.Context, jti, descriptor string, exp t
 	return tag.RowsAffected() > 0, nil
 }
 
-// decodeConfirmToken reads {confirm_token, enabled_ops?} and verifies the token;
-// writes the 4xx itself on a missing/expired/invalid token and returns ok=false.
+// resolveConfirmCaller returns the redeeming user's ID for a confirm/preview call,
+// trusting EITHER:
+//   - a valid Bearer JWT (the browser UI calling directly), or
+//   - a trusted internal-service envelope: X-Internal-Token (constant-time compare
+//     against the shared internal token) + X-User-Id (the owner uuid).
+//
+// The second path is how `auth-service`'s public-MCP confirm-replay (self-confirm
+// AND human-approve, `mcp_approvals.go::replayConfirm`) calls this route — it is a
+// trusted internal caller, never a browser, so it cannot present a user's Bearer JWT
+// and instead carries the already-verified owner identity in a header. This mirrors
+// the SAME dual-auth pattern composition/translation/knowledge-service's Python
+// confirm routes already implement (`_resolve_envelope_user` / `_resolve_confirm_caller`
+// / `_resolve_kg_confirm_caller`, decision tag D-PMCP-WORKER-CARRIER,
+// docs/plans/2026-06-28-public-mcp-p4-wave-c.md §"domain confirm routes") — glossary
+// (along with book-service and provider-registry-service's settings routes) was never
+// retrofitted with it, so EVERY confirm-replay to this route 401'd unconditionally
+// (found live 2026-07-08 via the MCP discoverability audit's confirm_action repro).
+// The internal-token branch is checked FIRST and, if the token matches but X-User-Id
+// is missing/malformed, this fails closed rather than falling through to the Bearer
+// path (an internal caller that got the envelope wrong should not silently succeed
+// via some unrelated Bearer header it happens to also be carrying).
+func (s *Server) resolveConfirmCaller(r *http.Request) (uuid.UUID, bool) {
+	return lwmcp.ResolveEnvelopeOrBearerCaller(r, s.cfg.InternalServiceToken, s.requireUserID)
+}
+
+// decodeConfirmToken reads the confirm token — from the `token` query param (the
+// shape auth-service's internal confirm-replay sends, nil body) or the JSON body
+// `{confirm_token, enabled_ops?}` (the shape the browser UI sends) — and verifies
+// it; writes the 4xx itself on a missing/expired/invalid token and returns ok=false.
 // enabled_ops is the per-op destructive opt-in for an execute_plan confirm (§4 G1);
-// nil/absent for every other action (and ignored by the read-only preview path).
+// nil/absent for every other action (and ignored by the read-only preview path, and
+// by definition absent on the query-param/replay path — a self-confirm/human-approve
+// replay never carries execute_plan's per-op opt-ins today).
 func (s *Server) decodeConfirmToken(w http.ResponseWriter, r *http.Request) (actionClaims, []string, bool) {
-	var body struct {
-		ConfirmToken string   `json:"confirm_token"`
-		EnabledOps   []string `json:"enabled_ops"`
+	token := strings.TrimSpace(r.URL.Query().Get("token"))
+	var enabledOps []string
+	if token == "" {
+		var body struct {
+			ConfirmToken string   `json:"confirm_token"`
+			EnabledOps   []string `json:"enabled_ops"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil || strings.TrimSpace(body.ConfirmToken) == "" {
+			writeError(w, http.StatusBadRequest, "GLOSS_VALIDATION", "confirm_token is required")
+			return actionClaims{}, nil, false
+		}
+		token = body.ConfirmToken
+		enabledOps = body.EnabledOps
 	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || strings.TrimSpace(body.ConfirmToken) == "" {
-		writeError(w, http.StatusBadRequest, "GLOSS_VALIDATION", "confirm_token is required")
-		return actionClaims{}, nil, false
-	}
-	claims, err := verifyActionToken(s.cfg.JWTSecret, body.ConfirmToken, time.Now())
+	claims, err := verifyActionToken(s.cfg.JWTSecret, token, time.Now())
 	if errors.Is(err, ErrActionTokenExpired) {
 		writeError(w, http.StatusUnprocessableEntity, "GLOSS_ACTION_TOKEN", "confirmation expired — propose again")
 		return actionClaims{}, nil, false
 	}
 	if err != nil {
-		writeError(w, http.StatusUnprocessableEntity, "GLOSS_ACTION_TOKEN", "invalid confirmation")
+		// IN-6 (mcp-tool-io.md): a concrete, actionable reason instead of a bare
+		// "invalid confirmation" — the specific cause (bad signature vs unknown
+		// descriptor vs malformed payload) is intentionally NOT distinguished further
+		// here (same anti-oracle posture as a forbidden-grant check: telling a caller
+		// exactly WHICH structural check failed would help someone probing a forged
+		// token). The fix pointer is always the same regardless of which sub-case hit.
+		writeError(w, http.StatusUnprocessableEntity, "GLOSS_ACTION_TOKEN",
+			"invalid confirmation — the token is malformed, was tampered with, or was signed by a "+
+				"different server/environment; propose the action again to get a fresh confirm_token")
 		return actionClaims{}, nil, false
 	}
-	return claims, body.EnabledOps, true
+	return claims, enabledOps, true
 }
 
 // authorizeAction re-checks authority at confirm/preview time (C3 + defense in
@@ -90,15 +134,23 @@ func (s *Server) authorizeAction(w http.ResponseWriter, r *http.Request, userID 
 		// Bound to the proposer — a different signed-in user cannot redeem it even
 		// with the string. Checked BEFORE consuming so a stranger can't burn it.
 		if claims.UserID != userID {
-			writeError(w, http.StatusForbidden, "GLOSS_FORBIDDEN", "confirmation not valid for this user")
+			writeError(w, http.StatusForbidden, "GLOSS_FORBIDDEN",
+				"confirmation not valid for this user — this confirm_token was proposed by a "+
+					"different account; only that account can redeem it. Propose the action again "+
+					"from your own account to get your own confirm_token")
 			return false
 		}
 		return s.requireGrant(w, r.Context(), claims.BookID, userID, grantclient.GrantManage)
 	case authorityAdmin:
-		writeError(w, http.StatusNotImplemented, "GLOSS_ADMIN_DISABLED", "admin actions are not enabled yet")
+		writeError(w, http.StatusNotImplemented, "GLOSS_ADMIN_DISABLED",
+			"system-tier admin actions are not enabled on the regular user confirm path — this token "+
+				"requires a platform admin to apply it via the RS256-gated admin confirm route, not "+
+				"this one")
 		return false
 	default:
-		writeError(w, http.StatusUnprocessableEntity, "GLOSS_ACTION_TOKEN", "unknown authority")
+		writeError(w, http.StatusUnprocessableEntity, "GLOSS_ACTION_TOKEN",
+			"unknown confirmation authority — this token looks corrupted or was minted by an "+
+				"incompatible server version; propose the action again to get a fresh confirm_token")
 		return false
 	}
 }
@@ -108,9 +160,9 @@ func (s *Server) authorizeAction(w http.ResponseWriter, r *http.Request, userID 
 // jti (single-use) → re-validate + run the effect. Authority is checked BEFORE the
 // jti is consumed so a stranger submitting a victim's token can't burn it.
 func (s *Server) confirmAction(w http.ResponseWriter, r *http.Request) {
-	userID, ok := s.requireUserID(r)
+	userID, ok := s.resolveConfirmCaller(r)
 	if !ok {
-		writeError(w, http.StatusUnauthorized, "GLOSS_UNAUTHORIZED", "valid Bearer token required")
+		writeError(w, http.StatusUnauthorized, "GLOSS_UNAUTHORIZED", "valid Bearer token or internal-service confirm envelope required")
 		return
 	}
 	claims, enabledOps, ok := s.decodeConfirmToken(w, r)
@@ -166,6 +218,8 @@ func (s *Server) dispatchConfirmEffect(w http.ResponseWriter, ctx context.Contex
 		s.effectReassignKind(w, ctx, claims)
 	case descMerge:
 		s.effectMerge(w, ctx, claims)
+	case descEntityDelete:
+		s.effectEntityDelete(w, ctx, claims)
 	case descDeepResearch:
 		s.effectDeepResearch(w, ctx, claims)
 	case descExecutePlan:
@@ -201,6 +255,8 @@ func (s *Server) dispatchPreviewEffect(w http.ResponseWriter, ctx context.Contex
 		s.previewReassignKind(w, ctx, claims)
 	case descMerge:
 		s.previewMerge(w, ctx, claims)
+	case descEntityDelete:
+		s.previewEntityDelete(w, ctx, claims)
 	case descDeepResearch:
 		s.previewDeepResearch(w, ctx, claims)
 	case descExecutePlan:
@@ -530,10 +586,10 @@ func (s *Server) previewAdopt(w http.ResponseWriter, ctx context.Context, claims
 		return
 	}
 	writeJSON(w, http.StatusOK, actionPreview{
-		Descriptor: descAdopt, Title: "Adopt standards into this book", Destructive: false,
+		Descriptor: descAdopt, Title: "Set up your book's world", Destructive: false,
 		PreviewRows: []previewRow{
-			{Label: "genres newly adopted", Value: fmt.Sprint(newGenres), Note: "+ universal (always)"},
-			{Label: "kinds newly adopted", Value: fmt.Sprint(newKinds), Note: "+ unknown (always)"},
+			{Label: "Story genres to add", Value: fmt.Sprint(newGenres), Note: "plus the always-on baseline"},
+			{Label: "Lore categories to add", Value: fmt.Sprint(newKinds), Note: "plus the always-on baseline"},
 		},
 	})
 }

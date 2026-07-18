@@ -24,7 +24,10 @@ type Props = {
   modelKind?: string;
   modelName?: string;
   token: string | null;
-  onAccept: (text: string) => void;
+  // Returns TRUE only when the prose actually landed in the editor. We clear the ghost / cards ONLY
+  // on true, so a failed insert (no editor open on this chapter in the studio dock) keeps the draft
+  // instead of dropping it (the legacy co-mounted path always returns true).
+  onAccept: (text: string) => boolean;
   /** T3.1: the compose guide is lifted to CompositionPanel so the co-writer chat's
    *  "Use as guide" can pre-fill it. A SetStateAction setter so the canon-revise
    *  append (functional updater) keeps working. */
@@ -76,7 +79,7 @@ export function ComposeView({ projectId, sceneId, modelRef, modelKind, modelName
 
   const accept = () => {
     if (!stream.ghost) return;
-    onAccept(stream.ghost);
+    if (!onAccept(stream.ghost)) return; // insert failed (no editor) — keep the ghost, don't critique/clear
     if (stream.jobId) {
       const jobId = stream.jobId;
       critique.mutate(
@@ -92,7 +95,7 @@ export function ComposeView({ projectId, sceneId, modelRef, modelKind, modelName
   // advisory critique on the auto job, then clears the cards. Correction capture
   // is fire-and-forget — it never blocks the insert.
   const acceptText = (text: string) => {
-    onAccept(text);
+    if (!onAccept(text)) return; // insert failed (no editor) — keep the cards, don't critique/reset
     if (auto.data?.job_id) {
       const jobId = auto.data.job_id;
       const canon = auto.data.canon ?? null;

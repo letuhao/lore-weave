@@ -4,11 +4,11 @@ from datetime import datetime
 from typing import Any, Literal
 from uuid import UUID
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 
 # ── Interview-roleplay: working_memory (charter + state) ─────────────────────
-# The pinned goal-state block. Mirrors contracts/interview/working_memory.schema.json.
+# The pinned goal-state block. Mirrors contracts/agent-control/working_memory.schema.json.
 # `charter` is written ONLY by the goal authority (template here) and is the frozen
 # anchor; `state` is the executive-rewritten progress estimate (safe-when-wrong).
 # Spec: docs/specs/2026-06-23-interview-roleplay.md.
@@ -21,6 +21,10 @@ class WorkingMemoryCharter(BaseModel):
     checklist: list[str] = Field(default_factory=list)
     time_budget_min: int | None = None
     language: str
+    # ACP A4 (RV-M4/RV-M7) — the fixed question count an interview drives before wrapping.
+    # MUST be declared here: the model defaults to extra='ignore', so an undeclared field would
+    # be silently DROPPED and the anchor would never see it. Optional/additive (older charters ok).
+    question_target: int | None = None
 
 
 class WorkingMemoryState(BaseModel):
@@ -31,6 +35,10 @@ class WorkingMemoryState(BaseModel):
     elapsed_min: int | None = None
     drift_note: str | None = None
     redirect_hint: str | None = None
+    # ACP A4 (RV-M5) — computed at anchor-render (NOT executive-written): the interviewer
+    # question count + the server wrap signal that enforces question_target / time_budget.
+    question_count: int | None = None
+    wrap: bool = False
 
 
 class WorkingMemory(BaseModel):
@@ -149,6 +157,15 @@ class Scorecard(BaseModel):
     # Server-set: the transcript didn't reach `wrap`, was short, or was clipped
     # to the prompt budget — the scorecard scores only what exists (EC-13).
     partial: bool = False
+    # WS-5.22 (P5 Gate-4 / SD-7) — quarantine tier: a coaching score is SHOWN but NEVER
+    # trended until the numeric eval gate clears in a human-rating milestone. Defaults TRUE
+    # (fail-closed): every score a code run produces is quarantine, because `evaluate_gate`
+    # can never clear without human labels. The FE excludes quarantine scores from any trend.
+    quarantine: bool = True
+    # WS-5.21 — N-dimensional score, SERVER-AUTHORITATIVE from the coaching_rubrics dimensions
+    # (the model contributes a 1-5 score per FIXED key; it can't drop/invent a dimension).
+    # Empty for a legacy interview scorecard (the named STAR fields above stay for that path).
+    dimensions: list[dict] = Field(default_factory=list)
 
 
 class EvaluateResponse(BaseModel):
@@ -235,6 +252,11 @@ class CreateSessionRequest(BaseModel):
     # Compose) so the session survives being found again on the next open,
     # independent of whether a knowledge project is linked yet.
     book_id: UUID | None = None
+    # T-4 (sealed) — the assistant-session discriminator. The Work Assistant FE
+    # (WS-1.10) creates its session with session_kind='assistant'; the day-window
+    # read, voice gate, and search scoping key off it. Closed set (enum-validated
+    # on write); every other caller omits it → a regular 'chat' session.
+    session_kind: Literal["chat", "assistant"] = "chat"
 
 
 class PatchSessionRequest(BaseModel):
@@ -266,6 +288,34 @@ class PatchSessionRequest(BaseModel):
     # D-PLAN-PLANNER-DEFAULT-FE phase 2: set/clear the per-session planner model.
     planner_model_source: str | None = None
     planner_model_ref: UUID | None = None
+    # ── Chat & AI settings, SESSION tier (spec 2026-07-05 §3.5) ──────────────
+    # These three columns already existed and were READ by the effective-settings
+    # resolver (and `grounding_enabled` by the turn itself, messages.py), but had no
+    # write path anywhere — so the Session tier of the cascade was permanently NULL.
+    # A tier that is read and never written is the mirror of a write-only setting.
+    #
+    # All three carry 3-state semantics, like `project_id`: omitted ⇒ untouched;
+    # explicit `null` ⇒ CLEAR the override (inherit from Book/Account/System);
+    # a value ⇒ override for this session. Presence is detected via
+    # `model_fields_set`, never `is not None` (which cannot see a clear).
+    grounding_enabled: bool | None = None
+    voice_overrides: dict[str, Any] | None = None
+    context_overrides: dict[str, Any] | None = None
+
+    @model_validator(mode="after")
+    def _check_session_enums(self) -> "PatchSessionRequest":
+        """The session row is the SECOND write door onto settings the turn consumes,
+        so it validates against the SAME closed sets the account patch uses. Without
+        this, a bad `context_overrides.mode` stores fine and every reader silently
+        treats it as 'auto' — a value-shaped silent no-op."""
+        from app.services import settings_resolution as sr
+
+        sr.validate_setting_enums("context", self.context_overrides)
+        if self.generation_params is not None:
+            sr.validate_setting_enums(
+                "behavior", self.generation_params.model_dump(exclude_unset=True)
+            )
+        return self
 
 
 class ChatSession(BaseModel):
@@ -284,6 +334,7 @@ class ChatSession(BaseModel):
     updated_at: datetime
     project_id: UUID | None = None  # K5
     book_id: UUID | None = None  # D-COMPOSE-SESSION-RESTORE
+    session_kind: str = "chat"  # T-4 — 'chat' | 'assistant' (the assistant-session discriminator)
     # Track B B1(2) — multi-KG grounding set. Empty list = the legacy
     # single-project path. Default-empty so an older row / no-project session
     # stays back-compatible.
@@ -292,6 +343,13 @@ class ChatSession(BaseModel):
     composer_model_ref: UUID | None = None
     planner_model_source: str | None = None  # D-PLAN-PLANNER-DEFAULT-FE phase 2
     planner_model_ref: UUID | None = None
+    # Chat & AI settings, SESSION tier. `None` = no session override (inherit).
+    # Surfaced on read so the session settings panel can distinguish "set HERE"
+    # from "inherited" without a second request — the tier chip needs the raw
+    # session value, not just the resolved cascade.
+    grounding_enabled: bool | None = None
+    voice_overrides: dict[str, Any] = Field(default_factory=dict)
+    context_overrides: dict[str, Any] = Field(default_factory=dict)
     # K-CLEAN-5 (D-K8-04): client-derived initial memory mode for the
     # session header indicator. The router computes this from
     # `project_id` alone (no_project / static) on GET — `degraded` only
@@ -300,6 +358,10 @@ class ChatSession(BaseModel):
     # FE consumes both: the GET response sets the initial badge, the
     # SSE stream updates it on each turn.
     memory_mode: str = "no_project"
+    # WS-1.6 (spec 05 §Q7) — the last persisted per-turn capture decision
+    # ({"fire": bool, "reason": str}) so the assistant home strip can render capture
+    # visibly ON/OFF with a reason on GET. None until the first post-turn write.
+    capture_status: dict[str, Any] | None = None
     enabled_tools: list[str] = Field(default_factory=list)
     enabled_skills: list[str] = Field(default_factory=list)
     activated_tools: list[str] = Field(default_factory=list)

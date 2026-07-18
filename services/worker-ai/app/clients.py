@@ -43,8 +43,20 @@ __all__ = [
     "GlossarySyncResult",
     "SummarizeMessageResult",
     "ChatClient",
+    "ChatAssistantClient",
+    "ChatAssistantUnavailable",
+    "KnowledgeUnavailable",
     "ProviderRegistryClient",
 ]
+
+
+class KnowledgeUnavailable(Exception):
+    """P2 (D-REFLECTION-FACTS-RECALL-FAIL-CLOSED) — a TRANSPORT / non-200 failure recalling the
+    diary FACTS. Raised ONLY when a caller opts in via `fail_closed=True` (the weekly-reflection
+    path), because the recalled facts are the dominant input to the fail-CLOSED Gate-3 safety
+    screen: on a knowledge-service blip a reflection must RETRY, never be written having screened
+    fewer facts. Best-effort callers (roll_up_week — empty-on-error is the intended 'nothing to
+    summarize' degrade) do NOT pass fail_closed and keep the swallow. An empty 200 is NOT this."""
 
 logger = logging.getLogger(__name__)
 
@@ -202,6 +214,72 @@ class KnowledgeClient:
         await self._http.aclose()
         if self._summarize_http is not self._http:
             await self._summarize_http.aclose()
+
+    async def queue_diary_facts(
+        self,
+        *,
+        user_id: str,
+        book_id: str,
+        entry_date: str,
+        facts: list[dict],
+    ) -> dict:
+        """WS-2.3 — divert a distilled day's facts into knowledge-service's pending-facts INBOX. The
+        entry is already written by the time this runs, so a failure here is BEST-EFFORT (the facts
+        are a reviewable enrichment, not the diary entry) — the caller swallows it."""
+        resp = await self._http.post(
+            f"{self._base_url}/internal/admin/assistant/queue-facts",
+            json={"user_id": user_id, "book_id": book_id, "entry_date": entry_date, "facts": facts},
+        )
+        resp.raise_for_status()
+        return resp.json()
+
+    async def invalidate_diary_day(
+        self, *, user_id: str, book_id: str, entry_date: str,
+    ) -> dict:
+        """WS-2.6a leg 3 (D17) — soft-invalidate a corrected diary day's CONFIRMED :Facts (set
+        `valid_until`), so the superseded facts vanish from recall and a rebuild can't resurrect them.
+        Called by the re-extract path AFTER the corrected facts are queued. RAISES on a non-2xx /
+        transport error so the re-extract job leaves the message un-acked and retries — leaving the OLD
+        fact live is a correctness bug (recall would show both the wrong + corrected value), NOT a
+        best-effort enrichment like queue_diary_facts."""
+        resp = await self._http.post(
+            f"{self._base_url}/internal/admin/assistant/invalidate-day",
+            json={"user_id": user_id, "book_id": book_id, "entry_date": entry_date},
+        )
+        resp.raise_for_status()
+        return resp.json()
+
+    async def recall_facts_range(
+        self, *, user_id: str, book_id: str, date_from: str, date_to: str, limit: int = 200,
+        fail_closed: bool = False,
+    ) -> list[dict]:
+        """WS-3.7 — read a date-range of the user's CONFIRMED diary facts (the WS-2.4 recall endpoint),
+        the input to a weekly rollup's reduce OR the weekly reflection's safety screen. Returns the fact
+        dicts (content/type/event_date/...).
+
+        P2 (D-REFLECTION-FACTS-RECALL-FAIL-CLOSED): the failure mode is caller-dependent.
+        - `fail_closed=False` (default, roll_up_week): best-effort — a transport/non-200 → [] (the rollup
+          simply has nothing to summarize → no draft; empty-on-error IS the intended degrade).
+        - `fail_closed=True` (reflect_week): a transport/non-200 RAISES `KnowledgeUnavailable`, because the
+          facts are the dominant input to the fail-CLOSED Gate-3 safety screen — a blip must retry the
+          reflection, never write one that screened fewer facts. An empty 200 still returns [] in BOTH modes
+          (a genuinely empty week is not an error)."""
+        try:
+            resp = await self._http.post(
+                f"{self._base_url}/internal/admin/assistant/recall-facts",
+                json={"user_id": user_id, "book_id": book_id,
+                      "event_date_from": date_from, "event_date_to": date_to, "limit": limit},
+            )
+            if resp.status_code != 200:
+                if fail_closed:
+                    raise KnowledgeUnavailable(
+                        f"recall-facts non-200 ({resp.status_code}) — reflection un-acked for retry")
+                return []
+            return list(resp.json().get("facts") or [])
+        except (httpx.HTTPError, ValueError, KeyError) as exc:
+            if fail_closed:
+                raise KnowledgeUnavailable(f"recall-facts transport error: {exc}") from exc
+            return []
 
     async def persist_pass2(
         self,
@@ -556,6 +634,129 @@ class ChatClient:
             logger.warning("chat-service turn-text failed: %s", exc)
             return None
 
+    async def get_day_window(
+        self, *, user_id: str | UUID, book_id: str | UUID, local_date: str, limit: int = 5000,
+    ) -> tuple[list[dict[str, Any]], bool] | None:
+        """WS-1.8 (spec 06 §Q10) — GET /internal/chat/messages/day-window → the distiller's input:
+        one user's assistant-session messages for one local day (raw dicts + a `truncated` flag).
+        Returns None on transport / non-200 (the job retries), else (messages, truncated). The
+        assistant-only + window-cap filtering is enforced SERVER-side; this is a thin reader."""
+        url = f"{self._base_url}/internal/chat/messages/day-window"
+        params = {
+            "user_id": str(user_id), "book_id": str(book_id),
+            "local_date": local_date, "limit": str(limit),
+        }
+        try:
+            resp = await self._http.get(url, params=params)
+            if resp.status_code != 200:
+                logger.warning("chat-service day-window %d for %s/%s", resp.status_code, user_id, local_date)
+                return None
+            data = resp.json()
+            return list(data.get("messages") or []), bool(data.get("truncated"))
+        except (httpx.HTTPError, ValueError, KeyError) as exc:
+            logger.warning("chat-service day-window failed: %s", exc)
+            return None
+
+
+# ── ChatAssistantClient ──────────────────────────────────────────────
+
+
+class ChatAssistantUnavailable(Exception):
+    """C2 (cold-review MED-1) — a TRANSPORT / non-200 failure fetching the safety-feeding
+    reflection_notes. RAISED (not swallowed) because those notes feed the fail-CLOSED Gate-3 safety
+    screen (X-2 SEALED): a transient chat-service outage must make the reflection RETRY, never
+    silently write a reflection that skipped screening note-borne distress. An empty 200 ('no notes
+    this week') is NOT this — it returns []."""
+
+
+class ChatAssistantClient:
+    """C2 (SD-C2) — reads the ASSISTANT-domain reflection substrate from chat-service so the
+    weekly-reflection worker can fire the co-occurrence detector (needs the week's reflection_notes)
+    and honour the user's tombstoned patterns (needs the dismissed pattern_keys). Separate from
+    ChatClient (which reads chat turns / the distiller day-window) — this is the reflection substrate,
+    a distinct concern. Both methods are BEST-EFFORT: a transport/non-200 degrades to empty, so a
+    transiently-down chat-service yields a reflection with fewer detectors, never a crash or a lost
+    job. Internal-token boundary."""
+
+    def __init__(self, base_url: str, internal_token: str, timeout_s: float) -> None:
+        self._base_url = base_url.rstrip("/")
+        self._http = httpx.AsyncClient(
+            timeout=httpx.Timeout(timeout_s),
+            headers={"X-Internal-Token": internal_token},
+        )
+
+    async def aclose(self) -> None:
+        await self._http.aclose()
+
+    async def list_reflection_notes(
+        self, *, user_id: str | UUID, date_from: str, date_to: str,
+    ) -> list[dict]:
+        """GET /internal/chat/assistant/reflection-notes → the week's end-of-day notes
+        ([{entry_date, went_well, to_improve}]).
+
+        NOT best-effort (cold-review MED-1): these notes feed the fail-CLOSED Gate-3 safety screen
+        (reflect_week screens facts AND notes before surfacing anything), so a TRANSPORT/non-200
+        failure RAISES `ChatAssistantUnavailable` — the consumer un-ACKs and retries rather than
+        silently writing a reflection that skipped screening note-borne distress. An empty 200 ('no
+        notes this week') is a valid result → returns []."""
+        url = f"{self._base_url}/internal/chat/assistant/reflection-notes"
+        params = {"user_id": str(user_id), "date_from": date_from, "date_to": date_to}
+        try:
+            resp = await self._http.get(url, params=params)
+        except httpx.HTTPError as exc:
+            logger.warning("chat reflection-notes transport error for %s: %s", user_id, exc)
+            raise ChatAssistantUnavailable(f"reflection-notes transport error: {exc}") from exc
+        if resp.status_code != 200:
+            logger.warning("chat reflection-notes %d for %s [%s..%s]",
+                           resp.status_code, user_id, date_from, date_to)
+            raise ChatAssistantUnavailable(f"reflection-notes HTTP {resp.status_code}")
+        try:
+            return list(resp.json().get("notes") or [])
+        except (ValueError, KeyError) as exc:
+            # a malformed 200 body is as opaque as a transport failure for the safety screen → retry
+            logger.warning("chat reflection-notes bad body for %s: %s", user_id, exc)
+            raise ChatAssistantUnavailable(f"reflection-notes bad body: {exc}") from exc
+
+    async def list_dismissed_pattern_keys(self, *, user_id: str | UUID) -> frozenset[str]:
+        """GET /internal/chat/assistant/reflection-dismissals → the user's tombstoned pattern_keys.
+        Best-effort: any transport/non-200 → empty set. NOTE the fail-open here is SAFE — an empty
+        set means a previously-dismissed pattern could momentarily reappear (annoying, recoverable),
+        never that a live pattern is wrongly hidden; correctness-over-cost the other way would risk
+        hiding a real observation on a blip."""
+        url = f"{self._base_url}/internal/chat/assistant/reflection-dismissals"
+        try:
+            resp = await self._http.get(url, params={"user_id": str(user_id)})
+            if resp.status_code != 200:
+                logger.warning("chat reflection-dismissals %d for %s", resp.status_code, user_id)
+                return frozenset()
+            return frozenset(resp.json().get("pattern_keys") or [])
+        except (httpx.HTTPError, ValueError, KeyError) as exc:
+            logger.warning("chat reflection-dismissals failed: %s", exc)
+            return frozenset()
+
+    async def put_reflection_patterns(
+        self, *, user_id: str | UUID, week_start: str, week_end: str, patterns: list[dict],
+    ) -> bool:
+        """R1 (D-REFLECTION-PATTERNS-FEED) — PUT the week's STRUCTURED patterns (already tombstone-
+        filtered at detection) to chat so the FE can render dismissable chips. Get-or-REPLACE per week
+        (empty list clears the week). BEST-EFFORT: the prose DRAFT is the primary artifact (already
+        written to book-service); if this write blips the card simply shows the draft with no chips
+        until the next run — a degraded surface, never a lost/failed reflection or a safety gap. Returns
+        True on success."""
+        url = f"{self._base_url}/internal/chat/assistant/reflection-patterns"
+        body = {"owner_user_id": str(user_id), "week_start": week_start,
+                "week_end": week_end, "patterns": patterns}
+        try:
+            resp = await self._http.put(url, json=body)
+            if resp.status_code != 200:
+                logger.warning("chat reflection-patterns PUT %d for %s [%s..%s]",
+                               resp.status_code, user_id, week_start, week_end)
+                return False
+            return True
+        except httpx.HTTPError as exc:
+            logger.warning("chat reflection-patterns PUT failed for %s: %s", user_id, exc)
+            return False
+
 
 # ── ProviderRegistryClient ───────────────────────────────────────────
 
@@ -603,6 +804,13 @@ class ProviderRegistryClient:
 # ── BookClient ───────────────────────────────────────────────────────
 
 
+# book-service clamps chapter-list page size to 100 (parseLimitOffset). Asking for more
+# does not get more — it silently gets 100. So we page. The cap bounds a runaway loop on a
+# pathological book; hitting it is logged as an ERROR, never a silent truncation.
+_LIST_CHAPTERS_PAGE = 100
+_LIST_CHAPTERS_MAX = 5000
+
+
 class BookClient:
     """Calls book-service's internal API for chapter data."""
 
@@ -618,40 +826,140 @@ class BookClient:
 
     async def list_chapters(
         self, book_id: UUID, editorial_status: str | None = None,
+        kg_indexed: bool | None = None,
     ) -> list[ChapterInfo] | None:
         """GET /internal/books/{book_id}/chapters — returns chapters.
 
-        CM3c: pass ``editorial_status='published'`` to server-filter the list
-        (and its count) to canon=published chapters only — the manual
-        ``/extraction/start`` rebuild skips drafts this way, and the gate
-        matches the knowledge cost-estimate (no count divergence). Each item's
-        ``published_revision_id`` is mapped onto ``ChapterInfo.revision_id`` so
-        the per-chapter fetch loop reads the pinned published revision.
+        WS-0.6 (spec 2026-07-11-publish-independent-kg-indexing §3.5, red-team P0-2):
+        the knowledge-graph enumeration gate is now ``kg_indexed=True``, NOT
+        ``editorial_status='published'``.
+
+        Publishing no longer gates the graph. Pass ``kg_indexed=True`` to server-filter
+        the list AND its count to the chapters the user actually put in their knowledge
+        graph (``kg_indexed_revision_id IS NOT NULL AND NOT kg_exclude`` — the same
+        predicate the reparse sweeper uses, so enumerate and heal cannot disagree).
+        Filtering on ``editorial_status='published'`` instead would enumerate ZERO of a
+        user's 50 explicitly-indexed DRAFT chapters, and the rebuild would report success
+        having extracted nothing.
+
+        ``ChapterInfo.revision_id`` is mapped from ``kg_indexed_revision_id`` — the
+        revision the knowledge layer reflects (possibly a draft) — falling back to
+        ``published_revision_id`` so a caller that still asks the publish question keeps
+        the old pinning behavior.
+
+        ``editorial_status`` is retained for the non-KG callers that legitimately ask the
+        publish question.
+
+        ⚠️ PAGINATES (review-impl P1). This used to issue a single GET with `?limit=1000`
+        and no offset loop. book-service CLAMPS page size to 100 (parseLimitOffset), so
+        the whole-book rebuild silently enumerated only the FIRST 100 kg-indexed chapters
+        of a large book and reported SUCCESS — chapters 101+ never reached the graph, with
+        no error and no warning. A book at the hard cap is logged, never silently truncated.
 
         Returns None on failure.
         """
-        url = f"{self._base_url}/internal/books/{book_id}/chapters?limit=1000"
-        if editorial_status:
-            url += f"&editorial_status={editorial_status}"
+        base = f"{self._base_url}/internal/books/{book_id}/chapters"
+        out: list[ChapterInfo] = []
+        offset = 0
         try:
-            resp = await self._http.get(url)
-            if resp.status_code != 200:
-                logger.warning("book-service chapters %d for %s", resp.status_code, book_id)
-                return None
-            data = resp.json()
-            return [
-                ChapterInfo(
-                    chapter_id=item["chapter_id"],
-                    title=item.get("title") or "",
-                    sort_order=item.get("sort_order", 0),
-                    revision_id=item.get("published_revision_id"),
-                    editorial_status=item.get("editorial_status"),
+            while True:
+                url = f"{base}?limit={_LIST_CHAPTERS_PAGE}&offset={offset}"
+                if editorial_status:
+                    url += f"&editorial_status={editorial_status}"
+                if kg_indexed:
+                    url += "&kg_indexed=true"
+                resp = await self._http.get(url)
+                if resp.status_code != 200:
+                    logger.warning("book-service chapters %d for %s", resp.status_code, book_id)
+                    return None
+                data = resp.json()
+                items = data.get("items") or []
+                out.extend(
+                    ChapterInfo(
+                        chapter_id=item["chapter_id"],
+                        title=item.get("title") or "",
+                        sort_order=item.get("sort_order", 0),
+                        # The revision the KG reflects. The fallback keeps publish-question
+                        # callers pinning the published revision exactly as before.
+                        revision_id=(
+                            item.get("kg_indexed_revision_id")
+                            or item.get("published_revision_id")
+                        ),
+                        editorial_status=item.get("editorial_status"),
+                    )
+                    for item in items
                 )
-                for item in data.get("items", [])
-            ]
+                if len(items) < _LIST_CHAPTERS_PAGE:
+                    break  # last page
+                offset += _LIST_CHAPTERS_PAGE
+                if offset >= _LIST_CHAPTERS_MAX:
+                    # Bound a runaway loop / pathological book — but SAY SO. A silent
+                    # truncation here is the exact bug this pagination fixes.
+                    logger.error(
+                        "book-service chapters: book=%s hit the %d-chapter enumeration cap "
+                        "— the rebuild will be INCOMPLETE (chapters beyond the cap are not "
+                        "extracted)",
+                        book_id, _LIST_CHAPTERS_MAX,
+                    )
+                    break
+            return out
         except (httpx.HTTPError, ValueError, KeyError) as exc:
             logger.warning("book-service chapters failed: %s", exc)
             return None
+
+    async def diary_day_kept(self, *, book_id: str | UUID, owner_user_id: str | UUID, entry_date: str) -> bool:
+        """WS-3.3 M1 — a cheap pre-LLM gate: is (book, entry_date)'s primary entry already KEPT? The
+        catch-up sweep skips the map-reduce for a kept day (the write seam only 409s AFTER the LLM).
+        Best-effort: any transport/non-200 → False (proceed with the distill; correctness over cost)."""
+        url = f"{self._base_url}/internal/books/{book_id}/diary/day-kept"
+        try:
+            resp = await self._http.get(url, params={"owner_user_id": str(owner_user_id), "entry_date": entry_date})
+            if resp.status_code != 200:
+                return False
+            return bool(resp.json().get("kept"))
+        except (httpx.HTTPError, ValueError, KeyError):
+            return False
+
+    async def write_diary_entry(
+        self,
+        *,
+        book_id: str | UUID,
+        owner_user_id: str | UUID,
+        entry_date: str,
+        entry_zone: str,
+        body: str,
+        title: str | None = None,
+        journal_kind: str = "primary",
+        language: str = "en",
+    ) -> dict[str, Any] | None:
+        """WS-1.8 (spec 06 §Q10) — POST /internal/books/{id}/diary/entry, the distiller's write
+        seam. Returns the parsed body on 200/201 (created or replaced). A 409 DIARY_ENTRY_KEPT is
+        surfaced as {'kept': True} so the caller can re-run as a supplement; any other non-2xx /
+        transport error → {'error': ...} (the job logs + retries). Never raises."""
+        url = f"{self._base_url}/internal/books/{book_id}/diary/entry"
+        payload = {
+            "owner_user_id": str(owner_user_id),
+            "entry_date": entry_date,
+            "entry_zone": entry_zone,
+            "body": body,
+            "title": title or "",
+            "journal_kind": journal_kind,
+            "language": language,
+        }
+        try:
+            resp = await self._http.post(url, json=payload)
+        except httpx.HTTPError as exc:
+            logger.warning("book-service diary-entry HTTP error: %s", exc)
+            return {"error": f"HTTP error: {exc}", "retryable": True}
+        if resp.status_code in (200, 201):
+            try:
+                return resp.json()
+            except ValueError:
+                return {"error": "bad json"}
+        if resp.status_code == 409 and "DIARY_ENTRY_KEPT" in resp.text:
+            return {"kept": True}
+        logger.warning("book-service diary-entry %d: %s", resp.status_code, resp.text[:200])
+        return {"error": f"HTTP {resp.status_code}", "retryable": is_retryable_status(resp.status_code)}
 
     async def get_chapter_hierarchy(
         self, book_id: UUID, chapter_id: str,
@@ -879,3 +1187,39 @@ class GlossaryClient:
         except (httpx.HTTPError, ValueError, KeyError) as exc:
             logger.warning("glossary entities/by-ids failed: %s", exc)
             return []
+
+
+class UsageBillingClient:
+    """WS-2.8 — reads a user's spend guardrail so the distiller can degrade the BACKGROUND memory path
+    when the daily cap is exhausted. Internal-token. Every method FAILS OPEN (returns the not-exhausted
+    answer) on any transport/parse error — the provider-gateway reserves against the SAME guardrail and
+    is the hard backstop, so a transiently-down usage-billing must never silently pause a user's memory."""
+
+    def __init__(self, base_url: str, internal_token: str, timeout_s: float) -> None:
+        self._base_url = base_url.rstrip("/")
+        self._http = httpx.AsyncClient(
+            timeout=httpx.Timeout(timeout_s),
+            headers={"X-Internal-Token": internal_token},
+        )
+
+    async def aclose(self) -> None:
+        await self._http.aclose()
+
+    async def daily_cap_exhausted(self, *, user_id: str) -> bool:
+        """True iff the user has a positive daily limit AND no daily budget left (available <= 0). The
+        distiller pauses the day when this is True. False on any error (fail-open)."""
+        try:
+            resp = await self._http.get(
+                f"{self._base_url}/internal/billing/guardrail/status",
+                params={"owner_user_id": user_id},
+            )
+            resp.raise_for_status()
+            body = resp.json()
+            daily_limit = float(body.get("daily_limit_usd") or 0.0)
+            daily_available = float(body.get("daily_available_usd") or 0.0)
+            # A zero/absent daily limit means "no cap" → never pause. Otherwise pause once the day's
+            # budget (limit − spent − reserved) is gone.
+            return daily_limit > 0.0 and daily_available <= 0.0
+        except (httpx.HTTPError, ValueError, KeyError, TypeError, AttributeError) as exc:
+            logger.warning("usage-billing guardrail status failed (fail-open, memory proceeds): %s", exc)
+            return False

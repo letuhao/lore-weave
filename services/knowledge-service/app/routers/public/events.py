@@ -1,12 +1,16 @@
 """Phase B sub-session C2 — public event-correction endpoints.
 
-PATCH /v1/knowledge/events/{id}  — edit title/summary/time_cue/event_date_iso
-DELETE /v1/knowledge/events/{id} — soft-archive (user "delete")
+POST  /v1/knowledge/events        — author a new timeline event (D-KG-EVENT-CREATE-ROUTE)
+PATCH /v1/knowledge/events/{id}   — edit title/summary/time_cue/event_date_iso
+DELETE /v1/knowledge/events/{id}  — soft-archive (user "delete")
 
 Each emits a `knowledge.event_corrected` event for the corrections log. PATCH
 uses the same optimistic-concurrency If-Match/428/412 contract as entities;
 archive is idempotent + If-Match-free (one-way flag flip), mirroring the entity
-archive. Cross-user/missing → 404 (KSA §6.4).
+archive. Cross-user/missing → 404 (KSA §6.4). Create mirrors the T2.5 entity
+create: user-authored (`source_type='manual'`, confidence 1.0), idempotent on
+(user, project, chapter, title) via `merge_event`, and written under the JWT
+`user_id` so a caller can only ever author in their own scope.
 """
 
 from __future__ import annotations
@@ -23,6 +27,7 @@ from app.db.neo4j_repos.events import (
     Event,
     archive_event,
     get_event,
+    merge_event,
     update_event_fields,
 )
 from app.db.repositories import VersionMismatchError
@@ -66,6 +71,93 @@ events_router = APIRouter(
     tags=["events"],
     dependencies=[Depends(get_current_user)],
 )
+
+
+class EventCreate(BaseModel):
+    """POST body — author a new timeline event (D-KG-EVENT-CREATE-ROUTE).
+
+    ``project_id`` scopes the event to a book's knowledge graph (a tag on the
+    caller's own node, never a cross-tenant handle). ``chapter_id`` optionally
+    anchors it to a chapter (drives narrative event_order + the spoiler cutoff);
+    ``participants`` are the display names the event involves — passing the
+    focused character's name is what makes the event appear on that character's
+    arc. Idempotent: the same (project, chapter, title) returns the existing
+    node (``merge_event`` dedups on a canonical hash), so re-adding is a no-op
+    rather than a duplicate.
+    """
+
+    project_id: UUID
+    title: str = Field(min_length=1, max_length=300)
+    summary: str | None = Field(default=None, max_length=4000)
+    time_cue: str | None = Field(default=None, max_length=300)
+    event_date_iso: str | None = Field(default=None, max_length=20)
+    chapter_id: str | None = Field(default=None, max_length=200)
+    participants: list[str] = Field(default_factory=list, max_length=64)
+
+    @model_validator(mode="after")
+    def _validate(self) -> "EventCreate":
+        if not self.title.strip():
+            raise ValueError("title must not be blank")
+        return self
+
+
+@events_router.post(
+    "/events",
+    response_model=Event,
+    status_code=status.HTTP_201_CREATED,
+)
+async def create_event_endpoint(
+    body: EventCreate,
+    user_id: UUID = Depends(get_current_user),
+) -> Event:
+    """Author a new user-created timeline event (the Character-Arc "+ Add event").
+
+    Multi-tenant: the node is written under the JWT ``user_id`` (threaded into
+    ``merge_event``'s Cypher `WHERE e.user_id = $user_id`), so a caller can only
+    ever author in their own scope. ``source_type='manual'`` + confidence 1.0
+    mark it user-asserted (distinct from extraction's `book_content`). Idempotent
+    on (user, project, chapter, title). Emits a `knowledge.event_corrected`
+    correction (op=create, before=null) for the corrections log.
+    """
+    participants = [p.strip() for p in body.participants if p and p.strip()]
+    async with neo4j_session() as session:
+        event = await merge_event(
+            session,
+            user_id=str(user_id),
+            project_id=str(body.project_id),
+            title=body.title.strip(),
+            summary=body.summary,
+            chapter_id=body.chapter_id,
+            event_date_iso=body.event_date_iso,
+            time_cue=body.time_cue,
+            participants=participants,
+            source_type="manual",
+            confidence=1.0,
+            provenance="human_authored",
+        )
+    await emit_correction(
+        event_type=EVENT_CORRECTED,
+        aggregate_id=event.id,
+        payload=event_correction_payload(
+            user_id=str(user_id),
+            project_id=event.project_id,
+            book_id=None,
+            target_id=event.id,
+            op="create",
+            before=None,
+            after=event_snapshot_dict(
+                title=event.title, summary=event.summary, time_cue=event.time_cue,
+                event_date_iso=event.event_date_iso, participants=event.participants,
+            ),
+            source_chapter=event.chapter_id,
+            actor_id=str(user_id),
+        ),
+    )
+    logger.info(
+        "user created event user_id=%s project_id=%s event_id=%s",
+        user_id, body.project_id, event.id,
+    )
+    return event
 
 
 class EventUpdate(BaseModel):

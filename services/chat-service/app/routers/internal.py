@@ -9,16 +9,27 @@ aggregated from chat_messages.tool_calls so MCP-reliability work is measurable.
 """
 
 import json
+import logging
+from datetime import date, datetime, timedelta, timezone
 from uuid import UUID
 
 import asyncpg
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, status
+from loreweave_internal_client import build_internal_client
 from pydantic import BaseModel
 
 from app.config import settings
 from app.deps import get_db
+from app.middleware.trace_id import trace_id_var
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/internal/chat", tags=["internal"])
+
+# WS-3.3 (T20) — the hard ceiling on a catch-up sweep. A returning user with a 3-month gap must not
+# trigger 90 distills (spend). Beyond this, the tail is dropped (a period-digest for very old gaps is a
+# refinement); the recent N days are the high-value catch-up.
+_MAX_CATCHUP_DAYS = 14
 
 # W1 — sibling router WITHOUT the /chat segment so the telemetry route is
 # GET /internal/tool-health (the W0/W1 contract), same internal-token guard.
@@ -55,6 +66,23 @@ async def internal_create_session(
     INSERT `/templates/{id}/start` uses — extracted so roleplay-service (the new
     goal authority) can own scripts while chat-service still owns the session +
     turn loop + M3 anchoring + M6 debrief."""
+    # WS-5.13 (P5 Gate-3) — NEVER roleplay a disclosed harassment/abuse (or self-harm)
+    # scenario. Screen the ENTIRE practice source material — a cold review found that
+    # picking `scenario`/`charter.goal` MISSED the real narrative, which the caller
+    # (roleplay-service) maps into `charter.checklist`/`beats`. Serialize the WHOLE seed +
+    # the system prompt + title so no field carries a disclosure past the gate (shape-agnostic).
+    from loreweave_safety import screen
+    _source = " ".join(str(x) for x in [
+        body.system_prompt, body.title, json.dumps(body.working_memory_seed or {}),
+    ] if x)
+    _verdict = screen(_source)
+    if _verdict.tripped:
+        raise HTTPException(
+            status_code=422,
+            detail="this practice scenario can't be started — it describes a situation that "
+                   "shouldn't be roleplayed. If you're dealing with this, please reach out to "
+                   "someone you trust or a support service.",
+        )
     row = await db.fetchrow(
         """
         INSERT INTO chat_sessions
@@ -102,6 +130,846 @@ async def get_turn_text(message_id: UUID, db: asyncpg.Pool = Depends(get_db)) ->
     if (row["content"] or "").strip():
         parts.append(row["content"].strip())
     return {"found": True, "text": "\n\n".join(parts)}
+
+
+# ── WS-5.1 — reflection_notes (the reflection substrate) ─────────────────────
+class ReflectionNoteUpsert(BaseModel):
+    """End-of-day reflection capture (spec 08 §A1). owner_user_id is in the body —
+    the caller (assistant/distiller) already authenticated the user; X-Internal-Token
+    gates the boundary. One note per user per local day (UPSERT on entry_date)."""
+
+    owner_user_id: UUID
+    entry_date: date
+    went_well: str | None = None
+    to_improve: str | None = None
+
+
+@router.put("/assistant/reflection-note", dependencies=[Depends(require_internal_token)])
+async def upsert_reflection_note(body: ReflectionNoteUpsert, db: asyncpg.Pool = Depends(get_db)) -> dict:
+    """Upsert one day's reflection note (PER-USER tier). Idempotent on (owner, entry_date):
+    re-capturing the same day REPLACES the note, never duplicates it."""
+    row = await db.fetchrow(
+        """
+        INSERT INTO reflection_notes (owner_user_id, entry_date, went_well, to_improve)
+        VALUES ($1,$2,$3,$4)
+        ON CONFLICT (owner_user_id, entry_date) DO UPDATE
+          SET went_well = EXCLUDED.went_well,
+              to_improve = EXCLUDED.to_improve,
+              updated_at = now()
+        RETURNING id
+        """,
+        str(body.owner_user_id), body.entry_date, body.went_well, body.to_improve,
+    )
+    return {"id": str(row["id"]), "entry_date": body.entry_date.isoformat()}
+
+
+@router.get("/assistant/coaching-enabled", dependencies=[Depends(require_internal_token)])
+async def get_coaching_enabled(user_id: UUID = Query(...), db: asyncpg.Pool = Depends(get_db)) -> dict:
+    """WS-5.4 — the user's `assistant.coaching_enabled` (default FALSE, P5-D10 opt-in). The
+    coaching scorer / reflection-coaching path reads this to honour a user who wants the diary
+    but NOT to be judged. Fails CLOSED: no row / missing key ⇒ False."""
+    from app.db.user_chat_ai_prefs import get_prefs
+    prefs = await get_prefs(db, owner_user_id=str(user_id))
+    return {"coaching_enabled": bool((prefs.assistant or {}).get("coaching_enabled", False))}
+
+
+@router.get("/assistant/reflection-notes", dependencies=[Depends(require_internal_token)])
+async def list_reflection_notes(
+    user_id: UUID = Query(...),
+    date_from: date = Query(...),
+    date_to: date = Query(...),
+    db: asyncpg.Pool = Depends(get_db),
+) -> dict:
+    """List a user's reflection notes in [date_from, date_to] (owner-scoped) — the
+    co-occurrence + recurring-theme detectors' substrate (worker-ai reflection_job)."""
+    rows = await db.fetch(
+        """
+        SELECT entry_date, went_well, to_improve FROM reflection_notes
+        WHERE owner_user_id=$1 AND entry_date BETWEEN $2 AND $3
+        ORDER BY entry_date ASC
+        """,
+        str(user_id), date_from, date_to,
+    )
+    return {"notes": [
+        {"entry_date": r["entry_date"].isoformat(), "went_well": r["went_well"], "to_improve": r["to_improve"]}
+        for r in rows
+    ]}
+
+
+# ── WS-5.6 / C2 — reflection_dismissals (the tombstone substrate) ─────────────
+class ReflectionDismiss(BaseModel):
+    """Dismiss a reflection pattern permanently (spec 08 §WS-5.6). owner_user_id is in the body
+    (the FE already authenticated the user; X-Internal-Token gates the boundary). Idempotent on
+    (owner, pattern_key) — the pattern_key is PERIOD-INDEPENDENT so the tombstone holds across weeks."""
+
+    owner_user_id: UUID
+    pattern_key: str
+
+
+@router.put("/assistant/reflection-dismiss", dependencies=[Depends(require_internal_token)])
+async def dismiss_reflection_pattern(body: ReflectionDismiss, db: asyncpg.Pool = Depends(get_db)) -> dict:
+    """Tombstone one reflection pattern (PER-USER tier). Idempotent: dismissing the same
+    pattern_key twice is a no-op (ON CONFLICT DO NOTHING), never a duplicate row."""
+    key = (body.pattern_key or "").strip()
+    if not key:
+        raise HTTPException(status_code=422, detail="pattern_key must be non-empty")
+    await db.execute(
+        """
+        INSERT INTO reflection_dismissals (owner_user_id, pattern_key)
+        VALUES ($1, $2)
+        ON CONFLICT (owner_user_id, pattern_key) DO NOTHING
+        """,
+        str(body.owner_user_id), key,
+    )
+    return {"owner_user_id": str(body.owner_user_id), "pattern_key": key, "dismissed": True}
+
+
+@router.get("/assistant/reflection-dismissals", dependencies=[Depends(require_internal_token)])
+async def list_reflection_dismissals(
+    user_id: UUID = Query(...),
+    db: asyncpg.Pool = Depends(get_db),
+) -> dict:
+    """List a user's tombstoned reflection pattern_keys (owner-scoped) — worker-ai's reflection
+    detector fetches these to drop dismissed patterns AT DETECTION (WS-5.6, tombstone LIVE)."""
+    rows = await db.fetch(
+        "SELECT pattern_key FROM reflection_dismissals WHERE owner_user_id=$1 ORDER BY pattern_key ASC",
+        str(user_id),
+    )
+    return {"pattern_keys": [r["pattern_key"] for r in rows]}
+
+
+# ── R1 (D-REFLECTION-PATTERNS-FEED) — reflection_patterns: persist + expose the structured patterns ──
+class ReflectionPatternIn(BaseModel):
+    detector_code: str
+    summary: str
+    pattern_key: str
+    evidence_refs: list[str] = []
+
+
+class ReflectionPatternsPut(BaseModel):
+    """worker-ai writes the week's structured patterns alongside the prose draft (get-or-REPLACE per
+    week). owner_user_id in the body (internal-token boundary). The patterns are ALREADY tombstone-
+    filtered at detection; storing them lets the FE render dismissable chips."""
+
+    owner_user_id: UUID
+    week_start: str
+    week_end: str
+    patterns: list[ReflectionPatternIn] = []
+
+
+@router.put("/assistant/reflection-patterns", dependencies=[Depends(require_internal_token)])
+async def put_reflection_patterns(body: ReflectionPatternsPut, db: asyncpg.Pool = Depends(get_db)) -> dict:
+    """Get-or-REPLACE the structured patterns for one (owner, week_end): a reflection re-run for the
+    same week replaces its set. Empty `patterns` clears the week (a calm week has no chips)."""
+    try:
+        ws, we = date.fromisoformat(body.week_start), date.fromisoformat(body.week_end)
+    except (ValueError, TypeError):
+        raise HTTPException(status_code=422, detail="week_start/week_end must be ISO dates (YYYY-MM-DD)")
+    async with db.acquire() as conn:
+        async with conn.transaction():
+            await conn.execute(
+                "DELETE FROM reflection_patterns WHERE owner_user_id=$1 AND week_end=$2",
+                str(body.owner_user_id), we,
+            )
+            for p in body.patterns:
+                key = (p.pattern_key or "").strip()
+                code = (p.detector_code or "").strip()
+                if not key or not code:
+                    continue  # a pattern with no stable key/detector can't be dismissed — skip it
+                await conn.execute(
+                    """
+                    INSERT INTO reflection_patterns
+                      (owner_user_id, week_start, week_end, detector_code, summary, pattern_key, evidence_refs)
+                    VALUES ($1,$2,$3,$4,$5,$6,$7::jsonb)
+                    ON CONFLICT (owner_user_id, week_end, pattern_key) DO UPDATE
+                      SET summary=EXCLUDED.summary, detector_code=EXCLUDED.detector_code,
+                          evidence_refs=EXCLUDED.evidence_refs
+                    """,
+                    str(body.owner_user_id), ws, we, code, p.summary, key,
+                    json.dumps(list(p.evidence_refs or [])),
+                )
+    return {"owner_user_id": str(body.owner_user_id), "week_end": body.week_end,
+            "stored": len([p for p in body.patterns if (p.pattern_key or '').strip()])}
+
+
+@router.get("/assistant/reflection-patterns", dependencies=[Depends(require_internal_token)])
+async def list_reflection_patterns(
+    user_id: UUID = Query(...),
+    week_end: str | None = Query(None),
+    db: asyncpg.Pool = Depends(get_db),
+) -> dict:
+    """The dismissable-chip feed for the FE reflection card. Returns the patterns for `week_end` (or
+    the LATEST week if omitted), EXCLUDING any the user has since tombstoned (reflection_dismissals) —
+    so a dismiss takes effect on refresh even though worker-ai already filters at the next detection.
+    Server is SoT (no localStorage)."""
+    try:
+        we = date.fromisoformat(week_end) if week_end else None
+    except (ValueError, TypeError):
+        raise HTTPException(status_code=422, detail="week_end must be an ISO date (YYYY-MM-DD)")
+    rows = await db.fetch(
+        """
+        SELECT rp.detector_code, rp.summary, rp.pattern_key, rp.evidence_refs, rp.week_start, rp.week_end
+        FROM reflection_patterns rp
+        WHERE rp.owner_user_id = $1
+          AND rp.week_end = COALESCE(
+                $2::date,
+                (SELECT max(week_end) FROM reflection_patterns WHERE owner_user_id = $1))
+          AND NOT EXISTS (
+                SELECT 1 FROM reflection_dismissals d
+                WHERE d.owner_user_id = rp.owner_user_id AND d.pattern_key = rp.pattern_key)
+        ORDER BY rp.detector_code ASC, rp.pattern_key ASC
+        """,
+        str(user_id), we,
+    )
+    return {"week_end": rows[0]["week_end"].isoformat() if rows else week_end,
+            "patterns": [
+                {"detector_code": r["detector_code"], "summary": r["summary"],
+                 "pattern_key": r["pattern_key"],
+                 "evidence_refs": list(json.loads(r["evidence_refs"]) if isinstance(r["evidence_refs"], str) else (r["evidence_refs"] or []))}
+                for r in rows
+            ]}
+
+
+# ── R2 (D-COACHING-SCORECARD-MOUNT) — read the user's persisted coaching scorecards ──
+@router.get("/assistant/scorecards", dependencies=[Depends(require_internal_token)])
+async def list_scorecards(
+    user_id: UUID = Query(...),
+    limit: int = Query(10, ge=1, le=50),
+    db: asyncpg.Pool = Depends(get_db),
+) -> dict:
+    """Owner-scoped read of the user's coaching SCORECARDS (evaluate.py persists each as a
+    chat_outputs row, output_type='scorecard', metadata = the full Scorecard JSON). Newest-first.
+    Makes the built-but-unmounted CoachingScorecard reachable. SD-7 is preserved end-to-end: the
+    stored card carries `quarantine` (server-authoritative True on every self-run), and the FE trend
+    logic excludes quarantine cards — this route neither reads nor mutates that flag."""
+    rows = await db.fetch(
+        """
+        SELECT output_id, session_id, title, metadata, created_at
+        FROM chat_outputs
+        WHERE owner_user_id = $1 AND output_type = 'scorecard'
+        ORDER BY created_at DESC
+        LIMIT $2
+        """,
+        str(user_id), limit,
+    )
+    out = []
+    for r in rows:
+        meta = r["metadata"]
+        card = json.loads(meta) if isinstance(meta, str) else (meta or {})
+        # cold-review MED: a malformed/legacy row whose metadata is JSON null / a list / a scalar must
+        # not 500 the WHOLE feed — degrade that one card to an empty (quarantined) shell.
+        if not isinstance(card, dict):
+            card = {}
+        # SD-7 defense-in-depth: coerce `quarantine` fail-closed at READ. Legacy cards (pre-C3) have no
+        # quarantine field; a missing/null value MUST present as True (shown-never-trended) so no consumer
+        # can trend an uncertified score. Only an EXPLICIT False (a future certified card) is preserved.
+        card["quarantine"] = False if card.get("quarantine") is False else True
+        out.append({
+            "output_id": str(r["output_id"]),
+            "session_id": str(r["session_id"]) if r["session_id"] else None,
+            "title": r["title"],
+            "created_at": r["created_at"].isoformat() if r["created_at"] else None,
+            "card": card,
+        })
+    return {"scorecards": out}
+
+
+# WS-1.8 (spec 06 §Q10) — the distiller's day-window read. The map-reduce worker has no user
+# JWT, so it fetches a day's assistant conversation over the internal-token trust boundary. Two
+# safety properties are enforced HERE, server-side, not left to the caller:
+#   1. ASSISTANT-ONLY (spec 02 §Q1 discriminator): filtered to sessions bound to the caller-named
+#      diary `book_id`. A user's novel/roleplay chats (a different book_id, or NULL) are never
+#      returned — the distiller cannot accidentally journal non-assistant conversation.
+#   2. WINDOW-CAPPED: `limit`-bounded with a hard ceiling, and `truncated` signalled, so an
+#      enormous day can never stream unbounded rows into the worker (T20/T38 cost containment).
+# owner_user_id is required and filtered on the message row itself (defense in depth alongside the
+# session join). Ordered chronologically ACROSS sessions (created_at, then sequence_num) because a
+# single local day may span several assistant sessions. Per-message `tool_names` are returned so
+# the map step can apply the self-feeding guard (§Q9 — skip assistant turns that quoted recall).
+#
+# DISCRIMINATOR (sealed T-4): the assistant-only property is `s.session_kind = 'assistant'` — an
+# EXPLICIT column, not a book_id=diary derivation (the day-window read, the voice gate, and search
+# scoping all key off the same flag; an explicit flag is self-describing and future-proofs a coach
+# session that is assistant-family but not diary-bound). Cross-USER reads are fully blocked by the
+# owner_user_id filter. `book_id` is an OPTIONAL extra scope (the distiller passes the diary book so
+# a user with multiple assistant contexts is disambiguated); the diary-kind taint is enforced
+# authoritatively at the WRITE seam (book-service rejects an entry to any non-diary/other-owner book).
+DAY_WINDOW_DEFAULT_LIMIT = 5000
+DAY_WINDOW_MAX_LIMIT = 50000
+
+
+@router.get("/messages/day-window", dependencies=[Depends(require_internal_token)])
+async def day_window(
+    user_id: UUID = Query(...),
+    local_date: date = Query(..., description="the LOCAL calendar day to distill (chat_messages.local_date)"),
+    book_id: UUID | None = Query(None, description="optional extra scope: the diary book to restrict to"),
+    limit: int = Query(default=DAY_WINDOW_DEFAULT_LIMIT, ge=1, le=DAY_WINDOW_MAX_LIMIT),
+    db: asyncpg.Pool = Depends(get_db),
+) -> dict:
+    """Return one user's assistant-session messages for one local day, chronologically, capped.
+
+    Non-error messages only (an error turn is not journalable content). `truncated=true` means the
+    day exceeded `limit` — the returned window is the OLDEST `limit` messages (ORDER BY … LIMIT), so
+    a huge day degrades to a bounded prefix rather than failing; the caller decides how to proceed
+    (period-digest / attach-as-document paths live in the worker, spec §Q4/§T38)."""
+    rows = await db.fetch(
+        """
+        SELECT m.message_id, m.session_id, m.role, m.content, m.sequence_num,
+               m.local_date, m.created_at,
+               (
+                 SELECT array_agg(tc->>'tool')
+                 FROM jsonb_array_elements(COALESCE(m.tool_calls, '[]'::jsonb)) AS tc
+                 WHERE tc->>'tool' IS NOT NULL
+               ) AS tool_names
+        FROM chat_messages m
+        JOIN chat_sessions s ON s.session_id = m.session_id
+        WHERE m.owner_user_id = $1
+          AND s.session_kind = 'assistant'
+          AND ($2::uuid IS NULL OR s.book_id = $2)
+          AND m.local_date = $3
+          AND m.is_error = false
+          -- WS-2.9 (spec 09 §Q6) — a "don't remember this" turn (grounding off) is NOT distilled.
+          AND m.exclude_from_memory = false
+        ORDER BY m.created_at, m.sequence_num
+        LIMIT $4
+        """,
+        str(user_id),
+        str(book_id) if book_id else None,
+        local_date,
+        limit + 1,  # fetch one extra to detect truncation without a second COUNT query
+    )
+    truncated = len(rows) > limit
+    rows = rows[:limit]
+    messages = [
+        {
+            "message_id": str(r["message_id"]),
+            "session_id": str(r["session_id"]),
+            "role": r["role"],
+            "content": r["content"] or "",
+            "sequence_num": r["sequence_num"],
+            "local_date": r["local_date"].isoformat() if r["local_date"] else None,
+            "created_at": r["created_at"].isoformat() if r["created_at"] else None,
+            "tool_names": list(r["tool_names"]) if r["tool_names"] else [],
+        }
+        for r in rows
+    ]
+    return {
+        "user_id": str(user_id),
+        "book_id": str(book_id) if book_id else None,
+        "local_date": local_date.isoformat(),
+        "message_count": len(messages),
+        "truncated": truncated,
+        "messages": messages,
+    }
+
+
+class DistillTrigger(BaseModel):
+    """A1 / P-10 / WS-3.0 — the "End my day" trigger body. `book_id`, `model_source`, `model_ref`,
+    `entry_zone` are now OPTIONAL and resolve SERVER-SIDE when omitted (D-B1), so a HEADLESS scheduled
+    run (WS-3.2) can POST only `{user_id}`. A caller that supplies them (the FE "End my day") is
+    unchanged. `entry_date`/`entry_zone` default server-side (D-R14: never trust a client calendar day)."""
+
+    user_id: UUID
+    # Optional (WS-3.0): omitted → resolve the user's diary book / their default distill model / their tz.
+    book_id: UUID | None = None
+    model_source: str | None = None
+    model_ref: UUID | None = None
+    language: str = "en"
+    # entry_date is OPTIONAL for internal/catch-up use (the P-10 sweep distills a specific past day
+    # and computes that date SERVER-side). ⚠️ CONTRACT (review LOW-4): when the public "End my day"
+    # is wired, the gateway MUST compute entry_date server-side and NEVER forward a user-supplied
+    # value — a client-controlled calendar day could overwrite/mis-bucket a historical entry. Today
+    # this route is X-Internal-Token-only with no public caller, so it is a contract note, not a hole.
+    entry_date: date | None = None  # default: today in entry_zone (server-computed on omission)
+    entry_zone: str | None = None   # omitted → resolve the user's IANA zone from prefs.timezone (else UTC)
+    # WS-3.3 (spec 11 catch-up / T20) — a returning user's missed days. When >0, ALSO enqueue a distill
+    # for each of the previous N days (bounded), so a gap is journaled, not lost. Each is a normal
+    # spend-capped distill; the write seam is idempotent (a KEPT day 409s → skipped; an un-kept day is
+    # replaced). Bounded server-side to _MAX_CATCHUP_DAYS so a huge gap can't blow the budget.
+    catchup_days: int = 0
+
+
+@router.post("/assistant/distill", dependencies=[Depends(require_internal_token)], status_code=status.HTTP_202_ACCEPTED)
+async def trigger_distill(body: DistillTrigger) -> dict:
+    """Enqueue an `assistant.distill` job — the "End my day" trigger. worker-ai's DistillConsumer
+    runs the map-reduce → diary-entry pipeline. Returns 202 with the enqueued entry_date + message id.
+
+    `entry_date` is SERVER-authoritative (D-R14): if the caller omits it we stamp today's date in
+    `entry_zone` — a client-controlled calendar day could otherwise mis-bucket or overwrite history.
+
+    WS-3.0 (D-B1) — `book_id`/`model`/`entry_zone` resolve SERVER-SIDE when omitted, so a headless
+    scheduled run (WS-3.2) posts only `{user_id}`: the diary book from book-service, the distill model
+    from provider-registry (the user's `distill` default, falling back to `chat`), the zone from auth."""
+    from app.events.distill_enqueue import enqueue_distill
+
+    book_id, model_source, model_ref, entry_zone = await _resolve_distill_context(body)
+
+    # cold-review #2 — the "primary today" date must be the LOCAL day in entry_zone (the
+    # docstring's own contract), not UTC: for a negative-offset user a 21:00-local fire lands
+    # after UTC midnight, so a UTC `today` targets the wrong local day (empty) and salvages the
+    # real day only via catch-up. Resolve in the zone; fall back to UTC on a bad zone string.
+    if body.entry_date:
+        entry_date = body.entry_date
+    else:
+        try:
+            from zoneinfo import ZoneInfo
+            entry_date = datetime.now(ZoneInfo(entry_zone)).date()
+        except Exception:  # noqa: BLE001 — unknown/blank zone → UTC (never crash the tick)
+            entry_date = datetime.now(timezone.utc).date()
+    # WS-3.3 — the day list to distill: today, plus (bounded) the previous N days for a catch-up.
+    days = [entry_date]
+    if body.catchup_days > 0:
+        n = min(body.catchup_days, _MAX_CATCHUP_DAYS)
+        days += [entry_date - timedelta(days=i) for i in range(1, n + 1)]
+    try:
+        first_msg = None
+        for d in days:
+            msg_id = await enqueue_distill(
+                user_id=str(body.user_id), book_id=book_id, entry_date=d.isoformat(),
+                entry_zone=entry_zone, language=body.language or "en",
+                model_source=model_source, model_ref=model_ref,
+            )
+            first_msg = first_msg or msg_id
+    except Exception as exc:  # noqa: BLE001 — a lost enqueue = a silently un-journaled day; surface it.
+        raise HTTPException(status_code=503, detail=f"failed to enqueue distill: {exc}") from exc
+    return {"enqueued": True, "entry_date": entry_date.isoformat(),
+            "days_enqueued": len(days), "message_id": first_msg}
+
+
+async def _resolve_distill_context(body: "DistillTrigger") -> tuple[str, str, str, str]:
+    """WS-3.0 (D-B1) — resolve (book_id, model_source, model_ref, entry_zone) for a distill, filling any
+    field the caller omitted from server-side sources. Returns strings ready for the enqueue. Raises 422
+    when a REQUIRED piece can't be resolved (no diary / no distill model) — a scheduled tick must log +
+    skip that user, never silently enqueue a job that can't run (silent-success is a bug)."""
+    from app.client.auth_client import get_auth_client
+    from app.client.provider_client import get_provider_client
+
+    user_id = str(body.user_id)
+
+    # 1. book_id + 3. entry_zone — shared with the reflection path (no model needed there).
+    book_id, entry_zone = await _resolve_book_and_zone(
+        user_id, str(body.book_id) if body.book_id else None, body.entry_zone)
+
+    # 2. model — the caller's supplied model, else the user's `distill` default, else the `chat` default.
+    model_source = body.model_source
+    model_ref = str(body.model_ref) if body.model_ref else None
+    if not model_ref:
+        provider = get_provider_client()
+        resolved = await provider.get_default_model("distill", user_id) \
+            or await provider.get_default_model("chat", user_id)
+        if resolved is None:
+            raise HTTPException(status_code=422,
+                                detail="no distill/chat default model configured for user")
+        model_source, model_ref = resolved
+    model_source = model_source or "user_model"
+
+    return book_id, model_source, model_ref, entry_zone
+
+
+async def _resolve_book_and_zone(user_id: str, book_id: str | None, entry_zone: str | None) -> tuple[str, str]:
+    """Resolve (diary book_id, entry_zone) server-side — the model-free subset of the distill
+    resolution, shared by the reflection path (D-REFLECTION-WIRE, which uses NO LLM). Raises 422
+    when no diary book resolves; the zone degrades to UTC on any miss (safe day bucket)."""
+    from app.client.auth_client import get_auth_client
+
+    if book_id is None:
+        try:
+            async with build_internal_client(
+                settings.book_service_url, internal_token=settings.internal_service_token,
+                timeout_s=5, trace_id_provider=trace_id_var.get,
+            ) as client:
+                resp = await client.get("/internal/books/diary", params={"user_id": user_id})
+            if resp.status_code == 200:
+                book_id = resp.json().get("book_id")
+        except Exception:  # noqa: BLE001 — treated as unresolved below (422), never a 500.
+            book_id = None
+        if not book_id:
+            raise HTTPException(status_code=422, detail="no diary book for user (provision the assistant first)")
+
+    if not entry_zone:
+        entry_zone = await get_auth_client().get_user_timezone(user_id) or "UTC"
+    return book_id, entry_zone
+
+
+class ReextractTrigger(BaseModel):
+    """WS-2.6a legs 2+3 (D17) — the CORRECTION re-extract trigger body. The gateway `/v1/assistant/correct`
+    calls this AFTER book-service amends the day's entry (leg 1); it forwards the corrected `body` (the
+    same text it sent to amend) + the server-authoritative `entry_date` the amend returned, so the
+    re-extract reconciles exactly the day that was corrected."""
+
+    user_id: UUID
+    book_id: UUID
+    entry_date: date          # the corrected day — server-authoritative (from the amend response)
+    body: str                 # the corrected entry text
+    model_source: str
+    model_ref: UUID
+    language: str = "en"
+
+
+@router.post("/assistant/reextract", dependencies=[Depends(require_internal_token)], status_code=status.HTTP_202_ACCEPTED)
+async def trigger_reextract(body: ReextractTrigger) -> dict:
+    """WS-2.6a legs 2+3 (D17) — enqueue an `assistant.reextract` job so worker-ai re-extracts the
+    corrected entry's facts to the inbox (leg 2) and invalidates the day's superseded facts (leg 3).
+    Returns 202 with the entry_date + message id. A lost enqueue means the correction never reconciles,
+    so a Redis failure surfaces as 503 (not swallowed)."""
+    from app.events.distill_enqueue import enqueue_reextract
+
+    corrected = (body.body or "").strip()
+    if not corrected:
+        raise HTTPException(status_code=422, detail="body required (a correction must have text)")
+    try:
+        msg_id = await enqueue_reextract(
+            user_id=str(body.user_id),
+            book_id=str(body.book_id),
+            entry_date=body.entry_date.isoformat(),
+            body=corrected,
+            language=body.language or "en",
+            model_source=body.model_source,
+            model_ref=str(body.model_ref),
+        )
+    except Exception as exc:  # noqa: BLE001 — a lost enqueue = a correction that never reconciles.
+        raise HTTPException(status_code=503, detail=f"failed to enqueue reextract: {exc}") from exc
+    return {"enqueued": True, "entry_date": body.entry_date.isoformat(), "message_id": msg_id}
+
+
+class WeeklyRollupTrigger(BaseModel):
+    """WS-3.7 — the scheduler posts ONLY {user_id}; book/model/tz resolve server-side (WS-3.0) and the
+    week defaults to the last 7 completed days (ending yesterday, server-authoritative — D-R14)."""
+
+    user_id: UUID
+    book_id: UUID | None = None
+    model_source: str | None = None
+    model_ref: UUID | None = None
+    language: str = "en"
+    week_start: date | None = None
+    week_end: date | None = None
+
+
+@router.post("/assistant/weekly-rollup", dependencies=[Depends(require_internal_token)], status_code=status.HTTP_202_ACCEPTED)
+async def trigger_weekly_rollup(body: WeeklyRollupTrigger) -> dict:
+    """WS-3.7 — enqueue a weekly-rollup job (a summary DRAFT over the week's confirmed diary facts).
+    Resolves book/model/tz server-side (WS-3.0); the week defaults to yesterday-minus-6 .. yesterday."""
+    from app.events.distill_enqueue import enqueue_weekly_rollup
+
+    # Reuse the WS-3.0 headless resolution (book + distill model + tz) — a DistillTrigger-shaped view.
+    ctx = DistillTrigger(user_id=body.user_id, book_id=body.book_id,
+                         model_source=body.model_source, model_ref=body.model_ref, language=body.language)
+    book_id, model_source, model_ref, entry_zone = await _resolve_distill_context(ctx)
+
+    today = datetime.now(timezone.utc).date()
+    week_end = body.week_end or (today - timedelta(days=1))
+    week_start = body.week_start or (week_end - timedelta(days=6))
+    try:
+        msg_id = await enqueue_weekly_rollup(
+            user_id=str(body.user_id), book_id=book_id,
+            week_start=week_start.isoformat(), week_end=week_end.isoformat(),
+            entry_zone=entry_zone, language=body.language or "en",
+            model_source=model_source, model_ref=model_ref,
+        )
+    except Exception as exc:  # noqa: BLE001 — a lost enqueue = a missed weekly review.
+        raise HTTPException(status_code=503, detail=f"failed to enqueue weekly rollup: {exc}") from exc
+    return {"enqueued": True, "week_start": week_start.isoformat(), "week_end": week_end.isoformat(),
+            "message_id": msg_id}
+
+
+class ReflectionTrigger(BaseModel):
+    """D-REFLECTION-WIRE — the scheduler/FE posts ONLY {user_id}; book/tz resolve server-side.
+    No model (reflection is deterministic). Week defaults to the last 7 completed days."""
+
+    user_id: UUID
+    book_id: UUID | None = None
+    language: str = "en"
+    entry_zone: str | None = None
+    week_start: date | None = None
+    week_end: date | None = None
+
+
+@router.post("/assistant/weekly-reflection", dependencies=[Depends(require_internal_token)], status_code=status.HTTP_202_ACCEPTED)
+async def trigger_weekly_reflection(body: ReflectionTrigger) -> dict:
+    """D-REFLECTION-WIRE — enqueue a weekly-reflection job (recall → safety screen → detectors →
+    a descriptive 'reflection' draft). Deterministic: resolves book + tz only (no model)."""
+    from app.events.distill_enqueue import enqueue_reflection
+
+    book_id, entry_zone = await _resolve_book_and_zone(
+        str(body.user_id), str(body.book_id) if body.book_id else None, body.entry_zone)
+    today = datetime.now(timezone.utc).date()
+    week_end = body.week_end or (today - timedelta(days=1))
+    week_start = body.week_start or (week_end - timedelta(days=6))
+    try:
+        msg_id = await enqueue_reflection(
+            user_id=str(body.user_id), book_id=book_id,
+            week_start=week_start.isoformat(), week_end=week_end.isoformat(),
+            entry_zone=entry_zone, language=body.language or "en",
+        )
+    except Exception as exc:  # noqa: BLE001 — a lost enqueue = a missed reflection.
+        raise HTTPException(status_code=503, detail=f"failed to enqueue reflection: {exc}") from exc
+    return {"enqueued": True, "week_start": week_start.isoformat(), "week_end": week_end.isoformat(),
+            "message_id": msg_id}
+
+
+# ── WS-3.5 / C7 (SD-C7) — the proactive-turn seam ────────────────────────────
+@router.get("/assistant/proactive-enabled", dependencies=[Depends(require_internal_token)])
+async def get_proactive_enabled(user_id: UUID = Query(...), db: asyncpg.Pool = Depends(get_db)) -> dict:
+    """C7 — the user's `assistant.proactive_enabled` (default FALSE, opt-in). The proactive-turn
+    entrypoint reads this to fail CLOSED: a user who hasn't opted in is NEVER proactively pinged."""
+    from app.db.user_chat_ai_prefs import get_prefs
+    prefs = await get_prefs(db, owner_user_id=str(user_id))
+    return {"proactive_enabled": bool((prefs.assistant or {}).get("proactive_enabled", False))}
+
+
+async def _notify_proactive_checkin(user_id: str, session_id: str) -> bool:
+    """R3 (D-PROACTIVE-DELIVERY) — push a CONTENT-FREE notification so an opted-in user is actually
+    REACHED (not only if they happen to open the app). Mirrors the nudge's content-free discipline:
+    NO diary text ever leaves the auth boundary — only a stable title + i18n key (a proactive check-in
+    can land on a lock screen). category='assistant' so a user can opt out of assistant pings alone.
+    dedup_key ties it to the session so an at-least-once retry can't double-post. Best-effort: a
+    notification blip must NOT fail the proactive turn (the message is already persisted) — swallow +
+    warn. Returns True when the sink accepted it."""
+    try:
+        async with build_internal_client(
+            settings.notification_service_internal_url, internal_token=settings.internal_service_token,
+            timeout_s=5, trace_id_provider=trace_id_var.get,
+        ) as client:
+            resp = await client.post("/internal/notifications/", json={
+                "user_id": user_id,
+                "category": "assistant",
+                "title": "Weekly check-in",                       # content-free (no diary data)
+                "body": "Your assistant has a check-in ready when you are.",
+                "message_key": "assistant.proactive_checkin",     # locale-aware FE render
+                "dedup_key": f"proactive:{session_id}",           # idempotent per proactive turn
+            })
+        if 200 <= resp.status_code < 300:
+            return True
+        logger.warning("proactive check-in notification returned %d for %s", resp.status_code, user_id)
+        return False
+    except Exception as exc:  # noqa: BLE001 — best-effort; the turn is already persisted.
+        logger.warning("proactive check-in notification failed for %s: %s", user_id, exc)
+        return False
+
+
+class ProactiveTurnTrigger(BaseModel):
+    """The scheduler's proactive_nudge fires this with ONLY {user_id}; book/model/tz resolve server-side."""
+
+    user_id: UUID
+    book_id: UUID | None = None
+    model_source: str | None = None
+    model_ref: UUID | None = None
+    language: str = "en"
+
+
+# A4.2 (D-PROACTIVE-LLM-CONTENT) — the fail-safe fallback when grounded generation is unavailable.
+_PROACTIVE_STATIC = (
+    "It's been a little while — want to take a few minutes to reflect on how your week has "
+    "been going? I'm here whenever you're ready."
+)
+
+
+async def _recent_assistant_snippets(db: asyncpg.Pool, user_id: str, limit: int = 5) -> list[str]:
+    """A4.2 grounding — the user's most recent OWN messages in their assistant sessions, so a proactive
+    check-in can reference what they've actually been working on. Owner-scoped; plaintext user turns only
+    (never the assistant's own proactive messages, which are role='assistant')."""
+    rows = await db.fetch(
+        """
+        SELECT m.content
+        FROM chat_messages m
+        JOIN chat_sessions s ON s.session_id = m.session_id
+        WHERE s.owner_user_id = $1 AND s.session_kind = 'assistant'
+          AND m.role = 'user' AND length(trim(m.content)) > 0
+        ORDER BY m.created_at DESC
+        LIMIT $2
+        """,
+        user_id, limit,
+    )
+    return [str(r["content"])[:280] for r in rows]
+
+
+async def _generate_proactive_content(
+    user_id: UUID, model_source: str, model_ref: str, snippets: list[str]
+) -> str | None:
+    """A4.2 — generate a warm, GROUNDED proactive check-in via provider-registry (no direct SDK; mirrors
+    the evaluator/title non-streaming pattern). Returns None on ANY failure so the caller falls back to a
+    static line — a proactive turn is NEVER blocked or errored by content generation."""
+    from loreweave_llm import Client, ReasoningEvent, StreamRequest, TokenEvent
+
+    context = "\n".join(f"- {s}" for s in snippets if s.strip())
+    # A persona-only system line + a direct user ask — NOT a spec-shaped system prompt (some local models
+    # echo a spec's fields back as a filled-in template / show their drafting). The constraints go in the
+    # user turn as a plain request.
+    system = "You are the user's warm, thoughtful private work assistant."
+    if context:
+        user = (
+            "It's been a quiet stretch since you last heard from them. Their most recent notes to you were:\n"
+            f"{context}\n\n"
+            "Write a brief, genuine check-in — ONE or TWO sentences — that gently acknowledges what they've "
+            "been working on and invites them to reflect on how it's going. Reply with ONLY the message text: "
+            "no preamble, headings, bullet points, drafts, options, or quotation marks."
+        )
+    else:
+        user = (
+            "It's been a quiet stretch. Write a brief, genuine, warm check-in — ONE or TWO sentences — "
+            "inviting them to reflect on how things have been going. Reply with ONLY the message text: no "
+            "preamble, headings, drafts, or quotation marks."
+        )
+    client = Client(
+        base_url=settings.provider_registry_internal_url,
+        auth_mode="internal",
+        internal_token=settings.internal_service_token,
+        user_id=str(user_id),
+    )
+    try:
+        request = StreamRequest(
+            model_source=model_source,
+            model_ref=model_ref,
+            messages=[{"role": "system", "content": system}, {"role": "user", "content": user}],
+            temperature=0.7,
+            max_tokens=320,  # enough for a thinking model to finish (a truncated draft is worse than static)
+        )
+        parts: list[str] = []
+        reasoning: list[str] = []
+        async for ev in client.stream(request):
+            if isinstance(ev, TokenEvent):
+                parts.append(ev.delta)
+            elif isinstance(ev, ReasoningEvent):
+                reasoning.append(ev.delta)
+        return _clean_proactive_text("".join(parts)) or _clean_proactive_text("".join(reasoning))
+    except Exception:
+        logger.warning("proactive check-in content generation failed; using static fallback", exc_info=True)
+        return None
+    finally:
+        await client.aclose()
+
+
+# Scaffolding some local reasoning models emit before their final line (planning/labels/drafts). A message
+# that is ONLY scaffolding (no clean prose) returns None → the caller falls back to the static line rather
+# than persist junk.
+_SCAFFOLD_PREFIXES = ("*", "-", "#", ">", "role:", "goal:", "format:", "tone:", "context:", "draft", "here", "sure", "okay", "note:")
+
+
+def _clean_proactive_text(raw: str) -> str | None:
+    """Reduce a model reply to just the check-in message: drop markdown/planning scaffolding lines, unwrap
+    surrounding quotes, and take the last clean prose paragraph (the final answer, after any 'thinking')."""
+    if not raw or not raw.strip():
+        return None
+    lines = [ln.strip() for ln in raw.strip().splitlines()]
+    clean = [
+        ln for ln in lines
+        if ln and not ln.lower().startswith(_SCAFFOLD_PREFIXES) and not ln.endswith(":")
+    ]
+    if not clean:
+        return None
+    # The final answer is the last contiguous prose block; join its lines.
+    msg = " ".join(clean).strip().strip('"').strip("*").strip()
+    # A plausible check-in is a real sentence, not a stray fragment.
+    return msg if len(msg) >= 12 else None
+
+
+@router.post("/assistant/proactive-turn", dependencies=[Depends(require_internal_token)],
+             status_code=status.HTTP_202_ACCEPTED)
+async def proactive_turn(body: ProactiveTurnTrigger, db: asyncpg.Pool = Depends(get_db)) -> dict:
+    """WS-3.5 / C7 — the headless proactive-turn entrypoint (the scheduler's proactive_nudge fires it,
+    away-gated). It FAILS CLOSED on the per-user `proactive_enabled` setting (default OFF): a user who
+    hasn't opted in gets a NO-OP — never a proactive ping or an LLM spend. When enabled, it starts an
+    assistant-INITIATED turn: a proactive check-in persisted as an `initiated_by='assistant_proactive'`
+    message in a fresh assistant session, so the FE can badge it and analytics can separate assistant-
+    from user-initiated engagement. (The grounded LLM copy of the check-in is a content follow-on,
+    D-PROACTIVE-LLM-CONTENT; this seam persists the attributed turn + the fail-closed gate.)"""
+    from app.db.user_chat_ai_prefs import get_prefs
+    prefs = await get_prefs(db, owner_user_id=str(body.user_id))
+    if not bool((prefs.assistant or {}).get("proactive_enabled", False)):
+        # Fail-closed no-op — the whole point of the opt-in: no session, no message, no spend.
+        return {"proactive": False, "reason": "not_enabled"}
+
+    # cold-review MED-2 — dedup: don't create a NEW proactive check-in if one already fired for this user
+    # in the last 6 days (a daily-scheduled proactive_nudge must not pile up duplicate sessions). One
+    # unanswered proactive turn per week is the intent.
+    recent = await db.fetchval(
+        """SELECT 1 FROM chat_messages
+           WHERE owner_user_id=$1 AND initiated_by='assistant_proactive'
+             AND created_at > now() - interval '6 days' LIMIT 1""",
+        str(body.user_id))
+    if recent:
+        return {"proactive": False, "reason": "already_recent"}
+
+    # Resolve the user's diary book + assistant model server-side (reuse the WS-3.0 headless resolution).
+    ctx = DistillTrigger(user_id=body.user_id, book_id=body.book_id,
+                         model_source=body.model_source, model_ref=body.model_ref, language=body.language)
+    book_id, model_source, model_ref, _entry_zone = await _resolve_distill_context(ctx)
+
+    # A4.2 (D-PROACTIVE-LLM-CONTENT) — a grounded LLM check-in (references what they've been working on),
+    # fail-safe: any generation failure/empty falls back to the static line, so the turn always lands.
+    snippets = await _recent_assistant_snippets(db, str(body.user_id))
+    content = await _generate_proactive_content(body.user_id, model_source, str(model_ref), snippets) or _PROACTIVE_STATIC
+    async with db.acquire() as conn:
+        async with conn.transaction():
+            # cold-review MED-1/MED-3 — bind the session to the diary book (consistent with interactive
+            # assistant sessions; avoids the recall self-feed of a book-less session) AND set
+            # message_count/last_message_at so the check-in sorts into the session list (a NULL
+            # last_message_at sorts to the bottom under NULLS LAST and escapes the loaded page).
+            sess = await conn.fetchrow(
+                """INSERT INTO chat_sessions
+                     (owner_user_id, book_id, title, model_source, model_ref, session_kind,
+                      message_count, last_message_at)
+                   VALUES ($1, $2, 'Weekly check-in', $3, $4, 'assistant', 1, now()) RETURNING session_id""",
+                str(body.user_id), book_id, model_source, str(model_ref))
+            session_id = sess["session_id"]
+            msg = await conn.fetchrow(
+                """INSERT INTO chat_messages (session_id, owner_user_id, role, content, sequence_num, initiated_by)
+                   VALUES ($1, $2, 'assistant', $3, 0, 'assistant_proactive') RETURNING message_id""",
+                session_id, str(body.user_id), content)
+
+    # R3 (D-PROACTIVE-DELIVERY) — AFTER the turn is committed, push a content-free notification so an
+    # opted-in user is actually reached even without opening the app. Best-effort (the message stands
+    # regardless); `notified` is surfaced so the caller/analytics can see whether the push landed.
+    notified = await _notify_proactive_checkin(str(body.user_id), str(session_id))
+    return {"proactive": True, "session_id": str(session_id), "message_id": str(msg["message_id"]),
+            "initiated_by": "assistant_proactive", "notified": notified}
+
+
+@router.delete("/assistant/data", dependencies=[Depends(require_internal_token)])
+async def erase_assistant_data(
+    user_id: UUID = Query(...),
+    book_id: UUID | None = Query(None, description="restrict to one diary book's assistant sessions"),
+    db: asyncpg.Pool = Depends(get_db),
+) -> dict:
+    """D-R27 (human-authorized) — HARD-delete a user's ASSISTANT chat sessions (+ their messages, via
+    ON DELETE CASCADE on chat_messages/chat_session_blocks/chat_suspended_runs). The distiller re-reads
+    these messages (the day-window) to rebuild a diary entry, so erasing them is precisely what makes
+    the erasure 're-index CAN'T resurrect': after this, a re-distill of ANY day finds no source
+    messages → empty_day → no entry. SCOPED to `session_kind='assistant'` (a user's normal chat is
+    NEVER touched) + `owner_user_id`; optionally to one diary `book_id`. Internal-token only."""
+    # ONE predicate + param tuple for BOTH the audio pre-SELECT and the session DELETE,
+    # so the audio scope can never drift from the erasure scope.
+    where = "owner_user_id=$1 AND session_kind='assistant'"
+    params: tuple = (str(user_id),)
+    if book_id is not None:
+        where += " AND book_id=$2"
+        params = (str(user_id), str(book_id))
+
+    # WS-4.4 — the DELETE cascades chat_sessions → chat_messages → message_audio_segments
+    # ROWS, but the cascade can't RETURN their MinIO object_keys, so the audio objects would
+    # be ORPHANED (a real erasure hole: "hard-deleted" audio still readable in the bucket).
+    # Collect the keys BEFORE the cascade removes their rows, using the SAME session scope.
+    audio_rows = await db.fetch(
+        "SELECT object_key FROM message_audio_segments "
+        f"WHERE session_id IN (SELECT session_id FROM chat_sessions WHERE {where})",
+        *params,
+    )
+
+    result = await db.execute(f"DELETE FROM chat_sessions WHERE {where}", *params)
+
+    # Best-effort MinIO delete AFTER the rows are gone (S3 lifecycle is the safety net).
+    from app.storage.minio_client import delete_object
+    deleted_objects = 0
+    for r in audio_rows:
+        try:
+            await delete_object(r["object_key"])
+            deleted_objects += 1
+        except Exception:
+            pass
+
+    # asyncpg returns a status string like "DELETE 3".
+    deleted = int(result.split()[-1]) if result and result.startswith("DELETE") else 0
+    return {"deleted_sessions": deleted, "deleted_audio_objects": deleted_objects}
 
 
 @telemetry_router.get("/tool-health", dependencies=[Depends(require_internal_token)])

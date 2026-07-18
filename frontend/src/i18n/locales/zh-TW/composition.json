@@ -171,7 +171,19 @@
     "kind_character": "角色",
     "kind_location": "地點",
     "kind_faction": "派系",
-    "kind_concept": "概念"
+    "kind_concept": "概念",
+    "rename": "重新命名",
+    "renameConflict": "內容已在其他地方變更 — 已重新載入。",
+    "editEntity": "編輯別名與類型",
+    "archive": "停用實體",
+    "archiveConfirm": "要停用「{{name}}」嗎？其關聯與術語表錨點將被保留；若書中再次提到它，它將自動恢復（沒有復原按鈕）。",
+    "archived": "已停用 — 若書中再次提到它，它將自動恢復。",
+    "newEntity": "新增",
+    "editFailed": "編輯失敗：{{error}}",
+    "truncated": "僅顯示前 200 筆 — 請縮小搜尋範圍以獲得更精確的列表。",
+    "showingOf": "顯示 {{loaded}} / {{total}}。",
+    "loadMore": "載入更多",
+    "loadingMore": "載入中…"
   },
   "relmap": "關係",
   "relations": {
@@ -214,7 +226,10 @@
     "gone": "已離場",
     "loading": "載入角色弧中…",
     "noProject": "尚無知識圖譜 — 擷取本書以繪製角色弧。",
-    "empty": "此角色尚無事件。"
+    "empty": "此角色尚無事件。",
+    "edit": "編輯",
+    "linkEntity": "+ 連結實體",
+    "addEvent": "+ 新增事件"
   },
   "worldmap": "地圖",
   "wmap": {
@@ -236,7 +251,10 @@
     "loading": "載入世界地圖中…",
     "addFailed": "無法新增地點。",
     "linkFailed": "無法連結地點。",
-    "linkMissing": "其中一個地點已不存在。"
+    "linkMissing": "其中一個地點已不存在。",
+    "delete": "移除 {{name}}",
+    "deleteConfirm": "要從世界地圖中移除「{{name}}」嗎？這將把該地點存入封存檔。",
+    "deleteFailed": "無法移除該地點。"
   },
   "grounding": "依據",
   "canon": "正典",
@@ -251,7 +269,11 @@
     "densityRange": "簡練 ◂▸ 濃麗",
     "pace": "節奏",
     "paceRange": "慢 ◂▸ 快",
-    "scope": { "work": "書籍", "chapter": "章節", "scene": "場景" },
+    "scope": {
+      "work": "書籍",
+      "chapter": "章節",
+      "scene": "場景"
+    },
     "scopeHint": "最具體的範圍優先（場景 › 章節 › 書籍）。中間值為平衡——不引導。",
     "voices": "角色聲音",
     "noVoices": "尚無角色聲音。",
@@ -259,15 +281,66 @@
     "addTag": "+ 標籤",
     "remove": "移除"
   },
-  "heatmap": { "title": "提及熱度圖", "inProse": "正文中" },
-  "provenance": { "title": "AI 來源", "unreviewedCount": "{{n}} 項未審閱", "show": "顯示", "hide": "隱藏", "markAllReviewed": "全部標記為已審閱", "ai": "AI", "reviewed": "已審閱", "unreviewed": "未審閱", "clickToReview": "（點擊以審閱）" },
+  "heatmap": {
+    "title": "提及熱度圖",
+    "inProse": "正文中"
+  },
+  "provenance": {
+    "title": "AI 來源",
+    "unreviewedCount": "{{n}} 項未審閱",
+    "show": "顯示",
+    "hide": "隱藏",
+    "markAllReviewed": "全部標記為已審閱",
+    "ai": "AI",
+    "reviewed": "已審閱",
+    "unreviewed": "未審閱",
+    "clickToReview": "（點擊以審閱）"
+  },
   "flywheel": "飛輪",
-  "flywheelPanel": { "loading": "載入中…", "empty": "發佈章節以擴充你的正典 — 新的實體、關係與事件將顯示於此。", "subtitle": "最近一次發佈擴充了正典:", "entities": "實體", "relations": "關係", "events": "事件", "highlights": "新亮點", "kind": { "entity": "實體", "event": "事件", "relation": "關係" } },
-  "view": { "power_view": "全景檢視", "back_to_editor": "返回編輯器" },
-  "dock": { "addPanel": "新增面板", "float": "浮動視窗", "dock": "停駐", "popout": "彈出視窗" },
-  "popout": { "invalid": "此彈出視窗連結無效。" },
+  "flywheelPanel": {
+    "loading": "載入中…",
+    "empty": "發佈章節以擴充你的正典 — 新的實體、關係與事件將顯示於此。",
+    "subtitle": "最近一次發佈擴充了正典:",
+    "entities": "實體",
+    "relations": "關係",
+    "events": "事件",
+    "highlights": "新亮點",
+    "kind": {
+      "entity": "實體",
+      "event": "事件",
+      "relation": "關係"
+    }
+  },
+  "view": {
+    "power_view": "全景檢視",
+    "back_to_editor": "返回編輯器"
+  },
+  "dock": {
+    "addPanel": "新增面板",
+    "float": "浮動視窗",
+    "dock": "停駐",
+    "popout": "彈出視窗"
+  },
+  "popout": {
+    "invalid": "此彈出視窗連結無效。"
+  },
   "references": "參考資料",
-  "referencesPanel": { "title": "標題", "author": "作者", "contentPlaceholder": "貼上一段參考文字／影響來源…", "pickEmbedModel": "嵌入模型（此作品設定一次）", "noEmbedModel": "在 AI 設定中新增嵌入模型（例如 bge-m3）以啟用參考檢索。", "add": "新增參考", "adding": "新增中…", "relevant": "用於此場景", "searchPlaceholder": "搜尋…", "unavailable": "檢索無法使用（嵌入供應商停擺）。", "noHits": "尚無相符的參考資料。", "library": "資料庫", "delete": "刪除", "empty": "尚無參考資料 — 在上方新增影響來源。" },
+  "referencesPanel": {
+    "title": "標題",
+    "author": "作者",
+    "contentPlaceholder": "貼上一段參考文字／影響來源…",
+    "pickEmbedModel": "嵌入模型（此作品設定一次）",
+    "noEmbedModel": "在 AI 設定中新增嵌入模型（例如 bge-m3）以啟用參考檢索。",
+    "add": "新增參考",
+    "adding": "新增中…",
+    "relevant": "用於此場景",
+    "searchPlaceholder": "搜尋…",
+    "unavailable": "檢索無法使用（嵌入供應商停擺）。",
+    "noHits": "尚無相符的參考資料。",
+    "library": "資料庫",
+    "delete": "刪除",
+    "empty": "尚無參考資料 — 在上方新增影響來源。"
+  },
   "progressPanel": {
     "loading": "載入進度中…",
     "error": "無法載入進度。",
@@ -311,6 +384,9 @@
   "statDiverge": "分歧（K）",
   "statStream": "串流",
   "guidePlaceholder": "給共筆 AI 的選填指引…",
+  "correction": {
+    "capturedToast": "已記錄 — 您的共同作者將從中學習"
+  },
   "reasoning": "推理",
   "reasoningHint": "自動＝由伺服器依模型決定。關閉會停用思考；低／中／高則強制啟用。",
   "reasoningAuto": "思考：自動",
@@ -352,7 +428,6 @@
   "pacing": "節奏",
   "canon_consistency": "正典一致",
   "dismiss": "忽略",
-  "overrideSlipBlocked": "已封鎖接受：異本覆寫滑回了原典值。請先重新生成再接受。",
   "overrideSlipExhausted": "達到重生成上限後覆寫仍在滑回——已列出供你檢視（不再封鎖接受）。",
   "overrideSlipDetail": "{{name}}（{{field}}）：預期「{{expected}}」，發現「{{found}}」",
   "deltaInconsistencyDetail": "{{name}}：與差異規則「{{rule}}」相矛盾",
@@ -375,6 +450,12 @@
   "canonUntil": "迄（閱讀順序）",
   "canonActive": "啟用",
   "canonInactive": "停用",
+  "canonArchivedTag": "已停用",
+  "canonShowArchived": "顯示已封存",
+  "canonRuleArchived": "規則已封存",
+  "canonRuleRestored": "規則已還原",
+  "restore": "還原",
+  "undo": "復原",
   "canonWindowInverted": "「起」必須 ≤ 「迄」。",
   "archive": "封存",
   "noRules": "尚無正典規則。",
@@ -556,12 +637,18 @@
     "scope": {
       "label": "Motif scope",
       "my": "My library",
-      "catalog": "Public catalog"
+      "catalog": "Public catalog",
+      "book": "書籍",
+      "shared": "共享",
+      "system": "系統",
+      "drafts": "草稿",
+      "needsBook": "開啟書籍以查看其主題元素"
     },
     "search": "Search motifs",
     "overuse": "\"{{name}}\" is already used in {{chapters}} — consider varying it.",
     "list": {
-      "noMatch": "No motifs match — clear filters."
+      "noMatch": "No motifs match — clear filters.",
+      "truncated": "僅顯示前 100 筆 — 請使用搜尋或篩選來查看其餘內容。"
     },
     "error": {
       "load": "Couldn't load — please retry."
@@ -656,7 +743,8 @@
     },
     "binding": {
       "freeForm": "No motif matched — this scene is free-form.",
-      "commitGenerate": "Commit + write this scene →"
+      "commitGenerate": "Commit + write this scene →",
+      "noWork": "為這本書制定一個將主題與場景進行綁定的計畫。"
     },
     "swap": {
       "title": "Swap motif",
@@ -680,7 +768,8 @@
         "ok": "On beat",
         "warn": "Tension drift",
         "bad": "Beat missed"
-      }
+      },
+      "rerunNeedsModel": "選擇一個模型來重新執行一致性檢查"
     },
     "arc": {
       "mobileNotice": "The timeline grid is available on a larger screen — here you can edit it as a list.",
@@ -690,7 +779,110 @@
       "moveRight": "Move later",
       "grow": "Lengthen",
       "shrink": "Shorten",
-      "remove": "Remove"
+      "remove": "Remove",
+      "libraryEmpty": "目前尚無故事弧模板。您可以建立一個，或匯入故事進行解構。",
+      "templates": {
+        "tabLibrary": "圖書館",
+        "tabCatalog": "目錄",
+        "tabDeconstruct": "匯入與解構",
+        "tier_all": "全部",
+        "tier_mine": "我的",
+        "tier_system": "系統",
+        "tier_book": "書籍",
+        "new": "+ 新增",
+        "loading": "載入中…",
+        "loadError": "無法載入模板。",
+        "retry": "重試",
+        "chapters": "{{count}} 個章節",
+        "chipSystem": "系統",
+        "chipMine": "我的",
+        "chipPublic": "公開",
+        "archive": "封存",
+        "adopt": "採用",
+        "createCode": "代碼 (唯一)",
+        "createName": "名稱",
+        "createShare": "與此書的協作者分享 (書籍層級)",
+        "create": "建立",
+        "cancel": "取消",
+        "catalogError": "無法載入目錄。",
+        "catalogEmpty": "尚無公開的弧線模板。",
+        "back": "← 所有模板",
+        "driftTitle": "漂移 — 此書正在使用",
+        "driftUnapplied": "尚未套用於此書 — 請在上方套用以比較漂移。",
+        "driftNoProvenance": "此弧線為直接撰寫 — 無可對照的模板。",
+        "driftGone": "來源模板已失效。",
+        "driftLoading": "正在載入漂移…",
+        "driftClean": "無偏差 — 實際弧線與模板相符。",
+        "driftSummary": "{{gaps}} 覆蓋缺口 · {{violations}} 順序問題 · {{folded}} 折疊位置",
+        "driftPacingOnly": "結構吻合，但節奏出現偏差（最大值 {{drift}}）。",
+        "driftThreads": "線索覆蓋率",
+        "driftNoThreads": "模板中沒有可比較的線索。",
+        "driftPacing": "節奏",
+        "driftMax": "最大偏差 {{drift}}",
+        "driftPacingNC": "尚無法比較 — 模板中沒有張力曲線。",
+        "driftSuccession": "順序",
+        "driftSuccessionOk": "無順序違規。",
+        "driftViolation": "{{label}}: {{n}} 順序錯誤",
+        "driftFolded": "折疊（從未綁定）",
+        "untitledArc": "（未命名弧線）",
+        "truncated": "目前顯示 {{count}} 個中的前 {{shown}} 個 — 請使用目錄或更高級別的方案以尋找更多內容。",
+        "tabSuggest": "建議"
+      },
+      "import": {
+        "privacy": "原始文本僅供您個人私密使用，絕不外流。只有衍生出的抽象結構可以發佈 — 且發佈時會移除原始引用。",
+        "sources": "引用來源",
+        "loading": "載入中…",
+        "noSources": "尚未有來源 — 請在下方貼上內容。",
+        "untitled": "（未命名）",
+        "deleteConfirm": "確定刪除此來源嗎？刪除後無法復原。",
+        "deleteTitle": "刪除（無法復原）",
+        "sourceError": "無法儲存來源 — 請再試一次。",
+        "what": "將引用內容解構為可重複使用的弧線模板（需消耗 LLM 額度）。",
+        "hint": "弧線提示（選填）",
+        "useWeb": "允許網路檢索",
+        "model": "解構模型",
+        "estimating": "預估中…",
+        "running": "解構中…",
+        "run": "開始解構",
+        "selectFirst": "請先選擇上方來源。",
+        "done": "已建立新的弧線模板 — 請至「圖書館」查看。",
+        "pasteTitle": "標題",
+        "pasteBody": "貼上參考文本…",
+        "tooLong": "內容過長 — 請在匯入前進行修剪。",
+        "addSource": "新增來源"
+      },
+      "extract": {
+        "blurb": "將此故事弧線的結構儲存為圖書館中可重複使用的範本。",
+        "open": "儲存為範本…",
+        "namePlaceholder": "範本名稱",
+        "saving": "儲存中…",
+        "save": "儲存",
+        "cancel": "取消",
+        "conflict": "您已擁有同名的範本 — 請重新命名。",
+        "error": "無法將此故事弧線儲存為範本。",
+        "done": "已將「{{name}}」儲存至您的範本圖書館。"
+      },
+      "suggest": {
+        "noProject": "請開啟包含「作品」的書籍，以便針對其前提取得故事弧線建議。",
+        "premisePlaceholder": "描述前提 — 例如：「一位不情願的繼承人必須奪回沒落的家族」",
+        "genrePlaceholder": "類型（選填）",
+        "running": "排名中…",
+        "run": "建議劇情弧",
+        "error": "無法對劇情弧建議進行排名。",
+        "empty": "目前尚無符合的劇情弧模板 — 請建立一個，或匯入故事進行解析。",
+        "mine": "您的",
+        "span": "{{count}} 章"
+      },
+      "decompile": {
+        "open": "將章節分組為劇情弧",
+        "confirm": "自動將本書章節分組為劇情弧（每組約 {{n}} 章）。可安全重複執行 — 現有劇情弧將被重複使用。",
+        "running": "分組中…",
+        "run": "分組為劇情弧",
+        "cancel": "取消",
+        "error": "無法將章節分組為故事弧。",
+        "done": "已將 {{chapters}} 個章節分組為 {{arcs}} 個故事弧。",
+        "none": "目前尚無章節可進行故事弧分組。"
+      }
     },
     "simple": {
       "actant": {
@@ -748,6 +940,38 @@
       "knows": "Knows",
       "deceived": "Deceived",
       "gap": "Gap"
+    },
+    "graph": {
+      "title": "圖表 — 由 · 組成 · 為 · 的變體",
+      "loading": "正在載入連線…",
+      "error": "無法載入圖譜。",
+      "retry": "重試",
+      "empty": "尚無關係。",
+      "deleteEdge": "移除連線",
+      "addEdge": "新增關係",
+      "pickNeighbor": "選擇圖譜…",
+      "add": "新增連線",
+      "cancel": "取消",
+      "kind": {
+        "composed_of": "由…組成",
+        "precedes": "先於",
+        "variant_of": "…的變體"
+      },
+      "truncated": "目前僅顯示前 {{cap}} 個主題 — 您可以透過分級篩選或搜尋來查看更多內容。",
+      "canvasLoading": "正在載入主題圖譜…",
+      "canvasEmpty": "尚未有可繪製的主題 — 請先建立或採用主題，然後將它們進行關聯。"
+    },
+    "suggest": {
+      "button": "建議主題",
+      "loading": "正在為此場景進行主題排名…",
+      "error": "無法建議主題。",
+      "retry": "重試",
+      "empty": "目前尚無符合此場景的主題 — 請在您的庫中添加更多內容。",
+      "bind": "綁定",
+      "degradedMine": "您的主題（motifs）尚未依據契合度排序 — 請在設定中建立嵌入模型（embedding model），以便進行語義排序。",
+      "degradedLibrary": "尚未依據契合度排序 — 由於共享圖書館的嵌入模型尚未配置，因此這些是類型回退（genre fallbacks），而非評分匹配項。",
+      "sectionMine": "您的主題",
+      "sectionLibrary": "來自圖庫"
     }
   },
   "authoringRun": {
@@ -840,7 +1064,11 @@
       "failedUnit": "此單元失敗：",
       "verdictShow": "顯示詳情 ▾",
       "verdictHide": "隱藏詳情 ▴",
-      "sev": { "ok": "正常", "warn": "警告", "severe": "嚴重" },
+      "sev": {
+        "ok": "正常",
+        "warn": "警告",
+        "severe": "嚴重"
+      },
       "cascadeWarning": "{{count}} 個下游單元已草擬/接受（{{chapters}}）— 此為僅供參考的提示；拒絕此單元並不會自動還原它們。",
       "accept": "接受",
       "reject": "拒絕",
@@ -864,5 +1092,6 @@
       "loading": "載入運行中…",
       "back": "← 返回運行清單"
     }
-  }
+  },
+  "overrideSlipBlocked": "接受已封鎖：一個「假設版本」的覆蓋值已滑回正典數值。請在接受前重新生成。"
 }

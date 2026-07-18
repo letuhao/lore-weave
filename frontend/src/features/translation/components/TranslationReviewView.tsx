@@ -14,6 +14,7 @@ import { versionsApi, type ChapterTranslation } from '@/features/translation/api
 import { BlockAlignedReview, computeReviewStats } from '@/features/translation/components/BlockAlignedReview';
 import { SplitCompareView } from '@/features/translation/components/SplitCompareView';
 import { ConfirmNameDialog } from '@/features/translation/components/ConfirmNameDialog';
+import { TranslationErrorState } from '@/features/translation/components/TranslationErrorState';
 import { useBlockCorrection } from '@/features/translation/hooks/useBlockCorrection';
 import { cn } from '@/lib/utils';
 import type { JSONContent } from '@tiptap/react';
@@ -34,6 +35,11 @@ export function TranslationReviewView({ bookId, chapterId, versionId, onBack, on
   const { accessToken } = useAuth();
 
   const [loading, setLoading] = useState(true);
+  // S5: the four initial fetches were `.catch(() => null)` with no toast — a failed version
+  // load silently degraded to SplitCompareView, dropping the stats + Confirm-name button. The
+  // version is load-bearing: if it fails, show a typed error + Retry instead.
+  const [loadError, setLoadError] = useState<unknown>(null);
+  const [reloadKey, setReloadKey] = useState(0);
   const [originalBlocks, setOriginalBlocks] = useState<JSONContent[]>([]);
   const [translatedBlocks, setTranslatedBlocks] = useState<JSONContent[]>([]);
   const [version, setVersion] = useState<ChapterTranslation | null>(null);
@@ -63,18 +69,23 @@ export function TranslationReviewView({ bookId, chapterId, versionId, onBack, on
     if (!accessToken || !bookId || !chapterId || !versionId) return;
     let mounted = true;
     setLoading(true);
+    setLoadError(null);
 
+    // The version is load-bearing (the review can't render without it); the other three are
+    // best-effort. Capture the version error so a failure surfaces instead of degrading silently.
+    let verError: unknown = null;
     Promise.all([
       // Load original chapter
       booksApi.getDraft(accessToken, bookId, chapterId).catch(() => null),
       // Load translation version
-      versionsApi.getChapterVersion(accessToken, chapterId, versionId).catch(() => null),
+      versionsApi.getChapterVersion(accessToken, chapterId, versionId).catch((e) => { verError = e; return null; }),
       // Load book info
       booksApi.getBook(accessToken, bookId).catch(() => null),
       // Load version list
       versionsApi.listChapterVersions(accessToken, chapterId).catch(() => null),
     ]).then(([draft, ver, book, verList]) => {
       if (!mounted) return;
+      if (!ver) { setLoadError(verError ?? new Error('version_unavailable')); return; }
 
       // Original blocks from Tiptap JSON body
       if (draft?.body && typeof draft.body === 'object' && Array.isArray((draft.body as any).content)) {
@@ -120,7 +131,7 @@ export function TranslationReviewView({ bookId, chapterId, versionId, onBack, on
     });
 
     return () => { mounted = false; };
-  }, [accessToken, bookId, chapterId, versionId]);
+  }, [accessToken, bookId, chapterId, versionId, reloadKey]);
 
   // AC4: a newer machine translation exists after the human-version's edits. The LLM
   // never auto-overwrites a human-version (BE _PROMOTE_ACTIVE_SQL guard) — adopting it
@@ -169,6 +180,14 @@ export function TranslationReviewView({ bookId, chapterId, versionId, onBack, on
     return (
       <div data-testid="translation-review-loading" className="flex h-full items-center justify-center">
         <div className="h-8 w-8 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+      </div>
+    );
+  }
+
+  if (loadError) {
+    return (
+      <div data-testid="translation-review-view" className="flex h-full items-center justify-center p-6">
+        <TranslationErrorState error={loadError} onRetry={() => setReloadKey((k) => k + 1)} className="max-w-md" />
       </div>
     );
   }

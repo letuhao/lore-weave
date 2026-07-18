@@ -83,7 +83,7 @@ async def test_no_block_skips():
     status = await ex.run_executive(repo=repo, llm_client=AsyncMock(),
                                     session_id="s", user_id="u", recent_turns=[], **_MODEL)
     assert status == "no_block"
-    repo.update_state.assert_not_awaited()
+    repo.apply_state_update.assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -95,7 +95,7 @@ async def test_no_model_skips():
                                     session_id="s", user_id="u", recent_turns=[],
                                     model_source="user_model", model_ref=None)
     assert status == "no_model"
-    repo.update_state.assert_not_awaited()
+    repo.apply_state_update.assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -107,7 +107,7 @@ async def test_bad_json_skips():
     status = await ex.run_executive(repo=repo, llm_client=llm,
                                     session_id="s", user_id="u", recent_turns=[], **_MODEL)
     assert status == "bad_json"
-    repo.update_state.assert_not_awaited()
+    repo.apply_state_update.assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -144,15 +144,21 @@ async def test_happy_path_updates_state_only():
                                     session_id="s", user_id="u",
                                     recent_turns=[{"role": "user", "content": "hi"}], **_MODEL)
     assert status == "updated"
-    repo.update_state.assert_awaited_once()
-    written = repo.update_state.call_args.args[1]
-    # monotonic: the prior covered item survives even though the LLM dropped it
-    assert "system design" in written["covered"]
-    assert "conflict story" in written["covered"]
-    assert written["phase"] == "technical"
-    assert written["redirect_hint"] == "quay lại system design"
-    # update_state receives STATE only — never the charter
-    assert "charter" not in written and "goal" not in written
+    # RV-M6: run_executive now delegates the read-modify-write to the LOCKED, owner-scoped
+    # apply_state_update(session_id, user_id, charter, llm_state, merger). The merge itself
+    # (monotonic covered, phase-gate) is proven by merge_state's own tests + the SDK golden.
+    repo.apply_state_update.assert_awaited_once()
+    repo.update_state.assert_not_awaited()  # the unlocked path is no longer used by the executive
+    args = repo.apply_state_update.call_args.args
+    assert args[1] == "u"          # owner (RV-H4)
+    assert args[2] == _CHARTER     # charter (stable, frozen)
+    assert args[3] == {            # the PARSED llm_state passed to the merger
+        "phase": "technical",
+        "covered": ["conflict story"],
+        "redirect_hint": "quay lại system design",
+    }
+    from loreweave_agent_control.state_merge import merge_state as _sdk_merge
+    assert args[4] is ex.merge_state is _sdk_merge  # the pure merger is injected (repo stays SDK-free)
 
 
 @pytest.mark.asyncio
@@ -164,7 +170,7 @@ async def test_llm_failed_status_skips():
     status = await ex.run_executive(repo=repo, llm_client=llm,
                                     session_id="s", user_id="u", recent_turns=[], **_MODEL)
     assert status == "llm_failed"
-    repo.update_state.assert_not_awaited()
+    repo.apply_state_update.assert_not_awaited()
 
 
 def test_parse_json_object_handles_fences_and_prose():

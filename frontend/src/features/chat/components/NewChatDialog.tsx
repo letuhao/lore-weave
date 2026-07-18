@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { PROMPT_PRESETS } from '../prompts/presets';
 import { MessageSquare, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '@/auth';
@@ -8,12 +9,11 @@ import { ModelPicker, useUserModels } from '@/components/model-picker';
 import type { GenerationParams } from '../types';
 
 // `key` → i18n label; `prompt` stays English (it is an LLM system directive).
-const PRESETS: { key: string; prompt: string; icon: string }[] = [
-  { key: 'novel', icon: '📖', prompt: 'You are a creative writing assistant specializing in novels. Analyze character arcs, plot structure, and worldbuilding. Provide concrete scene rewrites when suggesting changes.' },
-  { key: 'translator', icon: '🌐', prompt: 'You are a literary translator. Preserve tone, style, and nuance. Explain translation choices involving cultural adaptation or idioms.' },
-  { key: 'worldbuilder', icon: '🗺️', prompt: 'You are a worldbuilding consultant. Help create consistent magic systems, politics, geography, and cultures. Flag inconsistencies.' },
-  { key: 'editor', icon: '✏️', prompt: 'You are a professional book editor. Focus on pacing, dialogue, show-vs-tell, and narrative voice. Be specific and constructive.' },
-];
+// The ONE preset list (../prompts/presets). This file used to declare its own 4 presets
+// with lowercase keys and slightly different prompt TEXT than SessionSettingsPanel's 6 —
+// so the prompt a new chat was seeded with was not the prompt the settings panel showed
+// you under that name, and re-picking it there silently rewrote your system prompt.
+const PRESETS = PROMPT_PRESETS;
 
 interface NewChatDialogProps {
   open: boolean;
@@ -99,14 +99,14 @@ export function NewChatDialog({ open, onClose, onCreate }: NewChatDialogProps) {
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={onClose} data-testid="new-chat-dialog">
       <div
         className="w-full max-w-md rounded-lg border bg-card p-5 shadow-lg"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="mb-4 flex items-center justify-between">
           <h3 className="text-sm font-semibold">{t('new.title')}</h3>
-          <button type="button" onClick={onClose} className="rounded p-1 text-muted-foreground hover:bg-secondary hover:text-foreground">
+          <button type="button" onClick={onClose} data-testid="new-chat-dismiss" className="rounded p-1 text-muted-foreground hover:bg-secondary hover:text-foreground">
             <X className="h-4 w-4" />
           </button>
         </div>
@@ -161,7 +161,12 @@ export function NewChatDialog({ open, onClose, onCreate }: NewChatDialogProps) {
                   }`}
                 >
                   <span className="text-base">{p.icon}</span>
-                  <p className="mt-0.5 text-[11px] font-medium text-foreground">{t(`new.preset.${p.key}`)}</p>
+                  {/* The shared registry renamed `novel`→`novelist` and added `analyst`, so a locale
+                      that predates it has no key — fall back to the registry's English label
+                      rather than rendering the raw key at the user. */}
+                  <p className="mt-0.5 text-[11px] font-medium text-foreground">
+                    {t(`presets.${p.key}`, { defaultValue: p.label })}
+                  </p>
                 </button>
               ))}
             </div>

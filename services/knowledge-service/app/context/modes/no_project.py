@@ -68,6 +68,13 @@ class BuiltContext:
     # also keeps any degraded path tool-enabled rather than silently
     # disabling tools.
     tool_calling_enabled: bool = True
+    # WS-4C Half A: per-project canon auto-capture toggle, surfaced to chat so it
+    # can gate its post-turn capture task. Defaults FALSE — the opposite of
+    # tool_calling_enabled, deliberately: capture spends the user's tokens, so a
+    # mode with no project row (Mode 1) or a degraded build must fail CLOSED. Mode
+    # 2 overwrites it from the loaded project; MULTI leaves it false (no single
+    # book to capture into).
+    canon_capture_enabled: bool = False
     # Track 4 P0 — the glossary entity ids that actually reached the rendered
     # block (post-budget-trim). The router records these to `entity_access_log`
     # fire-and-forget (off the latency path) so retrieval salience can be

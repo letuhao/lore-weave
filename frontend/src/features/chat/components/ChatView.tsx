@@ -12,7 +12,6 @@ import { MessageList } from './MessageList';
 import { PendingFactsCard } from './PendingFactsCard';
 import { SessionSettingsPanel } from './SessionSettingsPanel';
 import { VoiceChatOverlay } from './VoiceChatOverlay';
-import { VoiceSettingsPanel } from './VoiceSettingsPanel';
 import { useVoiceChat } from '../hooks/useVoiceChat';
 import { useAutoTTS } from '../hooks/useAutoTTS';
 import { useUiToolExecutor } from '../hooks/useUiToolExecutor';
@@ -63,6 +62,11 @@ export function ChatView({ className, composeMode, footerSlot, headerSlot }: Cha
   // W3 — the "Compact now" controller for the context breakdown panel.
   const compactControls = useCompactSession();
   const isArchived = activeSession?.status === 'archived';
+  // WS-4.5 — voice affordance gate. A voice turn in an assistant session does NOT
+  // fire canon capture yet (the WS-4.1 gap), so capturing the user's spoken diary
+  // would silently drop it. Hide ALL voice controls for assistant sessions until
+  // WS-4.1 lands; ordinary chat sessions keep voice.
+  const voiceEnabled = activeSession?.session_kind !== 'assistant';
   // W2: the context breakdown panel's tool rows open the rack's add modal.
   const [rackAddOpen, setRackAddOpen] = useState(false);
   // W6: the rack's summary chip opens the header's context breakdown panel.
@@ -172,11 +176,11 @@ export function ChatView({ className, composeMode, footerSlot, headerSlot }: Cha
         onOpenSettings={() => setSettingsOpen(true)}
         onOpenSidebar={() => setMobileSidebarOpen(true)}
         isVoiceModeActive={voiceChat.isActive}
-        onToggleVoiceMode={() => {
+        onToggleVoiceMode={voiceEnabled ? () => {
           if (voiceChat.isActive) voiceChat.deactivate();
           else voiceChat.activate();
-        }}
-        onOpenVoiceSettings={() => setVoiceSettingsOpen(true)}
+        } : undefined}
+        onOpenVoiceSettings={voiceEnabled ? () => setVoiceSettingsOpen(true) : undefined}
       />
 
       {!rackHidden && (
@@ -245,9 +249,11 @@ export function ChatView({ className, composeMode, footerSlot, headerSlot }: Cha
         onStop={chat.stop}
         isStreaming={chat.isStreaming}
         disabled={!!isArchived}
+        placeholder={activeSession.session_kind === 'assistant' ? t('input.assistant_placeholder') : undefined}
         voiceModeActive={voiceChat.isActive}
+        voiceEnabled={voiceEnabled}
         voiceAssistOn={voiceAssistOn}
-        onToggleVoiceAssist={toggleVoiceAssist}
+        onToggleVoiceAssist={voiceEnabled ? toggleVoiceAssist : undefined}
         ttsPlaying={autoTTS.isPlaying}
         onStopTTS={autoTTS.stop}
         permissionMode={chat.permissionMode}
@@ -272,11 +278,15 @@ export function ChatView({ className, composeMode, footerSlot, headerSlot }: Cha
         onClearContext={clearContext}
       />
 
-      {settingsOpen && (
+      {/* ONE session settings surface (spec §8). Voice is a section inside it, not a
+          rival slide-over: the mic button deep-links to that section instead of opening
+          a second panel that fought this one for the right edge. */}
+      {(settingsOpen || voiceSettingsOpen) && (
         <SessionSettingsPanel
           session={activeSession}
           onSessionUpdate={updateActiveSession}
-          onClose={() => setSettingsOpen(false)}
+          initialSection={voiceSettingsOpen ? 'voice' : undefined}
+          onClose={() => { setSettingsOpen(false); setVoiceSettingsOpen(false); }}
         />
       )}
 
@@ -317,10 +327,6 @@ export function ChatView({ className, composeMode, footerSlot, headerSlot }: Cha
         </div>
       )}
 
-      <VoiceSettingsPanel
-        open={voiceSettingsOpen}
-        onClose={() => setVoiceSettingsOpen(false)}
-      />
     </div>
   );
 }

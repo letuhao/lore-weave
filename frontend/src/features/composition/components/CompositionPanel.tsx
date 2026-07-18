@@ -12,6 +12,8 @@ import { ModelPicker, useUserModels } from '@/components/model-picker';
 import { useEffectiveModel } from '@/features/chat-ai-settings/context/ChatAiSettingsContext';
 import { compositionApi } from '../api';
 import { useChapterScenes, useCreateScene, useCreateWork, usePendingWorkResolver, useSetSceneStatus, useWorkResolution } from '../hooks/useWork';
+import { useActiveWorkId } from '../hooks/useActiveWork';
+import { resolveActiveWork } from '../workSelect';
 import { useGuidedFirstRun } from '../hooks/useGuidedFirstRun';
 import type { Work } from '../types';
 import { ComposeView } from './ComposeView';
@@ -65,8 +67,11 @@ type Props = {
   chapterId: string;
   token: string | null;
   // insert accepted prose into the editor; `meta.model` attributes the AI
-  // provenance mark (T5.3) with the model that wrote it.
-  onAccept: (text: string, meta?: { model?: string }) => void;
+  // provenance mark (T5.3) with the model that wrote it. Returns TRUE only when the prose actually
+  // landed — the compose/assemble views clear their draft ONLY on true, so a failed insert (e.g. no
+  // editor open on this chapter in the studio dock) never loses the draft. Legacy ChapterEditorPage
+  // co-mounts the editor and always succeeds synchronously → returns true.
+  onAccept: (text: string, meta?: { model?: string }) => boolean;
   /** M6 Polish — replace the chapter doc with the self-heal-accepted text. Owned by
    *  ChapterEditorPage (it holds the Tiptap editor ref). Omitted ⇒ Apply is a no-op. */
   onApplyPolish?: (healedText: string) => void;
@@ -91,6 +96,7 @@ export function CompositionPanel({ bookId, chapterId, token, onAccept, onApplyPo
   const { t } = useTranslation('composition');
   const qc = useQueryClient();
   const resolution = useWorkResolution(bookId, token);
+  const { data: activeWorkId } = useActiveWorkId(bookId, token);
   const createWork = useCreateWork(bookId, token);
   // D-C16: a Work created during a knowledge-service outage comes back pending
   // (null project_id) and is invisible to the resolution query; this resolver
@@ -147,13 +153,13 @@ export function CompositionPanel({ bookId, chapterId, token, onAccept, onApplyPo
   const deepLinkWork = deepLinkWorkId
     ? allResolved.find((w) => (w.id ?? w.project_id) === deepLinkWorkId) ?? null
     : null;
-  // 'found' → the marked Work; 'candidates' (rare multi-marked) → the first,
-  // so the panel doesn't loop on "set up" forever. A just-spawned dị bản overrides;
-  // a `?work=` deep-link selects the named Work next.
+  // 'found' → the marked Work; 'candidates' → the ACTIVE Work (EC-3d: the per-book
+  // pref, else canonical) so the panel follows a "Switch to". A just-spawned dị bản
+  // overrides; a `?work=` deep-link selects the named Work next.
   const work: Work | null =
     activeWorkOverride ??
     deepLinkWork ??
-    (res?.status === 'found' ? res.work : res?.status === 'candidates' ? (res.candidates[0] ?? null) : null);
+    resolveActiveWork(res, activeWorkId);
   const projectId = work?.project_id;
 
   // C24 (dị bản M0) — derivative-context controller. Surfaces the dị bản banner +
@@ -209,7 +215,7 @@ export function CompositionPanel({ bookId, chapterId, token, onAccept, onApplyPo
   // read via a ref (assigned below, after the Work resolves) so the deps stay stable.
   const modelNameRef = useRef<string | undefined>(undefined);
   const acceptProse = useCallback(
-    (text: string) => onAccept(text, { model: modelNameRef.current }),
+    (text: string): boolean => onAccept(text, { model: modelNameRef.current }),
     [onAccept],
   );
   // T5.4 — the windowing layout/flag (null without a provider, e.g. unit tests / the
@@ -537,10 +543,16 @@ export function CompositionPanel({ bookId, chapterId, token, onAccept, onApplyPo
         {/* C24 (dị bản M0) — spawn a what-if derivative branching from this canon.
             The wizard mints a fresh Work + its own knowledge project (delta), persists
             the divergence_spec + entity overrides, then routes the writer into the new
-            dị bản studio (re-resolved via the book's work query). */}
-        <div className="ml-auto">
-          <DivergenceWizardButton sourceWork={work} token={token} onDerived={onDerivedWork} />
-        </div>
+            dị bản studio (re-resolved via the book's work query).
+            D-S1-COMPOSE-ASSEMBLE-VISUAL-SAMENESS: the chapter-assemble solo panel stitches DONE
+            scenes into a chapter — what-if exploration is a scene-drafting concern, not an assembly
+            one — so its what-if chrome (this Spawn button + the promote row below) is hidden there,
+            which also gives assemble a distinct identity from scene-compose. */}
+        {soloPanel !== 'assemble' && (
+          <div className="ml-auto">
+            <DivergenceWizardButton sourceWork={work} token={token} onDerived={onDerivedWork} />
+          </div>
+        )}
       </div>
 
       {/* C27 (dị bản M4) — what-if → derivative PROMOTION. Only on a CANON work
@@ -549,7 +561,7 @@ export function CompositionPanel({ bookId, chapterId, token, onAccept, onApplyPo
           derive path (fresh project_id + spec + overrides carried over). The full
           spec/overrides authoring is the C24 wizard; this is the explicit
           ephemeral→persistent seam for a quick what-if. */}
-      {!derivativeCtx.isDerivative && (
+      {!derivativeCtx.isDerivative && soloPanel !== 'assemble' && (
         <div
           data-testid="composition-whatif-promote"
           className="flex flex-wrap items-center gap-2 border-b border-neutral-200 px-2 py-1.5 dark:border-neutral-700"
@@ -844,7 +856,7 @@ export function CompositionPanel({ bookId, chapterId, token, onAccept, onApplyPo
           </DockSlot>
         )}
         <DockSlot {...slot('progress')}>
-          <ProgressPanel projectId={work.project_id} bookId={bookId} settings={work.settings} token={token} />
+          <ProgressPanel projectId={work.project_id} bookId={bookId} token={token} />
         </DockSlot>
         <DockSlot {...slot('quality')}>
           <QualityPanel projectId={work.project_id} token={token} modelRef={effectiveModelRef} />

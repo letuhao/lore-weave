@@ -48,7 +48,14 @@ from typing import Union
 from loreweave_context.tokens import estimate_messages_tokens
 
 # Tool names whose results are NEVER evicted (their output is load-bearing / cited).
-DEFAULT_EXCLUDE_TOOLS = frozenset({"web_search"})
+#
+# These are WIRE names — what the model actually calls — not aspirational ones. Until Track
+# D WS-D0 Wave 2 registered the universal `web_search`, the only real wire name was
+# `glossary_web_search`, so this set matched NOTHING: every web-search result was silently
+# evictable despite the intent stated above. Both names are listed while the glossary alias
+# survives (demoted `legacy` + `superseded_by: web_search`, never deleted). A test pins the
+# set against the real tool names so this can't silently rot again.
+DEFAULT_EXCLUDE_TOOLS = frozenset({"web_search", "glossary_web_search"})
 _PLACEHOLDER = "[tool result cleared to save context]"
 _DUP_PLACEHOLDER = "[duplicate of a later identical tool result — see the most recent read]"
 

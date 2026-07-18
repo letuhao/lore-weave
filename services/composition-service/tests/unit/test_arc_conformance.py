@@ -22,6 +22,9 @@ from app.engine.arc_conformance import build_arc_conformance, build_deep_report
 U, P = uuid.uuid4(), uuid.uuid4()
 # stable motif ids for the precedes graph.
 M_HUMIL, M_EXILE, M_SLAP, M_TRYST = (str(uuid.uuid4()) for _ in range(4))
+# BA4 — a durable-spec arc (structure_node.id) is the arc axis; NID is the node the
+# route resolves, AID its (default) arc_template provenance for the drift path.
+NID, AID = uuid.uuid4(), uuid.uuid4()
 
 
 def _arc(*, layout, threads=None, pacing=None, name="Revenge Arc"):
@@ -147,23 +150,51 @@ def client(monkeypatch):
     monkeypatch.setattr("app.routers.conformance.get_pool", lambda: object())
 
     from app.main import app
-    from app.deps import (get_arc_template_repo, get_knowledge_client_dep,
+    from app.deps import (get_arc_template_repo, get_grant_client_dep,
+                          get_knowledge_client_dep,
                           get_outline_repo, get_works_repo)
+    from app.grant_client import GrantLevel
     from app.middleware.jwt_auth import get_current_user
-    from app.routers.conformance import get_conformance_trace_reader
+    from app.routers.conformance import (get_conformance_trace_reader,
+                                         get_structure_repo)
 
+    # book_id is deterministic so the resolved Work's book matches the spec node's book
+    # (the arc-scope path defends-in-depth: node.book_id == work.book_id).
+    BOOK = uuid.uuid4()
     state = SimpleNamespace(arc=None, rows=[], sequences=[], tag_calls=[],
                             motif_tag_calls=[], placement_motifs={}, succ_map={},
-                            causal_calls=[], causal_pairs=[])
+                            causal_calls=[], causal_pairs=[], book_id=BOOK,
+                            node_id=NID, node_template_id=AID, tracks=[],
+                            by_structure_id=None)
+
+    # E0 book-grant authority stubbed at OWNER; the conformance route resolves the
+    # Work's book then gates VIEW (deny paths in test_grant_gate).
+    class _StubGrant:
+        async def resolve_grant(self, book_id, user_id):
+            return GrantLevel.OWNER
+        async def resolve_access(self, book_id, user_id):
+            return GrantLevel.OWNER, "active"
 
     class _Works:
-        async def get(self, u, p):
-            return SimpleNamespace(project_id=P, user_id=U, book_id=uuid.uuid4())
+        async def get(self, p):
+            return SimpleNamespace(project_id=P, created_by=U, book_id=state.book_id)
     class _ArcRepo:
         async def get_visible(self, caller_id, arc_id):
             return state.arc
+    class _StructureRepo:
+        async def get(self, node_id, *, conn=None):
+            if node_id != state.node_id:
+                return None                     # a foreign/absent spec node → 404
+            return SimpleNamespace(id=state.node_id, book_id=state.book_id,
+                                   title="Revenge Arc", tracks=state.tracks,
+                                   arc_template_id=state.node_template_id)
     class _Reader:
-        async def arc_bindings(self, u, p, arc_id):
+        async def arc_bindings(self, p, arc_id):
+            return state.rows
+        async def arc_bindings_by_structure(self, p, structure_node_id):
+            # BA4 — the spec axis reads by structure_node_id; record it so the test can
+            # prove the resolution went through the new column (not arc_template_id).
+            state.by_structure_id = structure_node_id
             return state.rows
     class _Knowledge:
         async def get_motif_beat_sequences(self, user_id, *, book_id=None, corpus=False, language=None):
@@ -190,8 +221,10 @@ def client(monkeypatch):
     monkeypatch.setattr("app.routers.conformance.MotifRepo", _MotifRepo)
 
     app.dependency_overrides[get_current_user] = lambda: U
+    app.dependency_overrides[get_grant_client_dep] = lambda: _StubGrant()
     app.dependency_overrides[get_works_repo] = lambda: _Works()
     app.dependency_overrides[get_arc_template_repo] = lambda: _ArcRepo()
+    app.dependency_overrides[get_structure_repo] = lambda: _StructureRepo()
     app.dependency_overrides[get_conformance_trace_reader] = lambda: _Reader()
     app.dependency_overrides[get_knowledge_client_dep] = lambda: _Knowledge()
     app.dependency_overrides[get_outline_repo] = lambda: object()  # arc branch never uses it
@@ -200,20 +233,92 @@ def client(monkeypatch):
     app.dependency_overrides.clear()
 
 
-def test_route_arc_scope_requires_arc_template_id(client):
+# ── BA4 arc scope: diff(structure_node, prose) — keyed by structure_node_id ──────────
+
+def test_route_arc_scope_requires_arc_id(client):
     c, _ = client
     r = c.get(f"/v1/composition/works/{P}/conformance?scope=arc")
-    assert r.status_code == 422 and r.json()["detail"]["code"] == "ARC_TEMPLATE_ID_REQUIRED"
+    assert r.status_code == 422 and r.json()["detail"]["code"] == "ARC_ID_REQUIRED"
 
 
-def test_route_foreign_or_missing_arc_is_404(client):
+def test_route_arc_scope_foreign_or_missing_node_is_404(client):
     c, state = client
-    state.arc = None  # get_visible → None
-    r = c.get(f"/v1/composition/works/{P}/conformance?scope=arc&arc_template_id={uuid.uuid4()}")
+    # a node id that isn't the fixture's node → StructureRepo.get returns None → 404.
+    r = c.get(f"/v1/composition/works/{P}/conformance?scope=arc&arc_id={uuid.uuid4()}")
     assert r.status_code == 404
 
 
-def test_route_arc_scope_returns_the_coarse_report(client):
+def test_route_arc_scope_reads_bindings_via_structure_node_id(client):
+    # THE BA4 assertion — the spec path resolves realized bindings through the
+    # motif_application.structure_node_id column, NOT annotations->>'arc_template_id'.
+    c, state = client
+    state.tracks = [{"key": "revenge", "label": "Revenge"}]
+    ch1 = uuid.uuid4()
+    state.rows = [{"motif_id": M_HUMIL, "motif_code": "humiliation",
+                   "annotations": {"thread": "revenge"},
+                   "chapter_id": ch1, "tension": 55, "story_order": 1}]
+    r = c.get(f"/v1/composition/works/{P}/conformance?scope=arc&arc_id={NID}")
+    assert r.status_code == 200
+    body = r.json()
+    assert body["scope"] == "arc" and body["available"] is True and body["coarse"] is True
+    assert body["arc_id"] == str(NID) and body["arc_name"] == "Revenge Arc"
+    assert body["chapter_count"] == 1
+    # the read went through arc_bindings_by_structure(project, structure_node_id=NID).
+    assert state.by_structure_id == NID
+    # spec has NO planned layout (BA5) → nothing 'unmaterialized', tracks still listed.
+    assert body["unmaterialized"] == []
+    assert [t["thread"] for t in body["thread_progress"]] == ["revenge"]
+    # no deep overlay unless deep=true (it's the expensive cross-service path).
+    assert "deep" not in body
+
+
+def test_route_arc_scope_deep_overlay_adds_prose_pacing(client):
+    c, state = client
+    state.tracks = [{"key": "revenge", "label": "Revenge"}]
+    ch1 = uuid.uuid4()
+    # planned outline tension 50 on chapter 1 (index 1).
+    state.rows = [{"motif_id": M_HUMIL, "motif_code": "humiliation",
+                   "annotations": {"thread": "revenge"},
+                   "chapter_id": ch1, "tension": 50, "story_order": 1}]
+    # realized prose: two :Event steps on chapter ch1, tension band 5 → 100/100.
+    state.sequences = [[{"beat": "the slap", "thread": str(ch1), "tension": 5},
+                        {"beat": "the vow", "thread": str(ch1), "tension": 5}]]
+    r = c.get(f"/v1/composition/works/{P}/conformance?scope=arc&arc_id={NID}&deep=true")
+    assert r.status_code == 200
+    assert state.by_structure_id == NID
+    deep = r.json()["deep"]
+    assert deep["available"] is True
+    assert deep["pacing"]["realized"][0] == {"chapter_index": 1, "avg_tension": 100.0, "events": 2}
+    # drift = |100 (prose) − 50 (planned outline)|.
+    assert deep["pacing"]["max_drift"] == 50.0
+    # the two honestly-blocked dims.
+    assert deep["thread_progression"]["available"] is False
+    assert deep["succession"]["available"] is False
+
+
+# ── BA4 template-drift scope: the SPLIT-OUT optional diff vs the source arc_template ──
+
+def test_route_arc_template_drift_requires_arc_id(client):
+    c, _ = client
+    r = c.get(f"/v1/composition/works/{P}/conformance?scope=arc_template_drift")
+    assert r.status_code == 422 and r.json()["detail"]["code"] == "ARC_ID_REQUIRED"
+
+
+def test_route_arc_template_drift_without_provenance_is_422(client):
+    c, state = client
+    state.node_template_id = None  # BA13 — a conversation-authored arc has no template
+    r = c.get(f"/v1/composition/works/{P}/conformance?scope=arc_template_drift&arc_id={NID}")
+    assert r.status_code == 422 and r.json()["detail"]["code"] == "NO_TEMPLATE_PROVENANCE"
+
+
+def test_route_arc_template_drift_foreign_template_is_404(client):
+    c, state = client
+    state.arc = None  # node has provenance, but the template is gone/foreign → get_visible None
+    r = c.get(f"/v1/composition/works/{P}/conformance?scope=arc_template_drift&arc_id={NID}")
+    assert r.status_code == 404
+
+
+def test_route_arc_template_drift_returns_the_coarse_report(client):
     c, state = client
     aid = uuid.uuid4()
     state.arc = _arc(layout=[_placement("humiliation"), _placement("exile")])
@@ -222,18 +327,19 @@ def test_route_arc_scope_returns_the_coarse_report(client):
     state.rows = [{"motif_id": M_HUMIL, "motif_code": "humiliation",
                    "annotations": {"thread": "revenge", "arc_template_id": str(aid)},
                    "chapter_id": ch1, "tension": 55, "story_order": 1}]
-    r = c.get(f"/v1/composition/works/{P}/conformance?scope=arc&arc_template_id={aid}")
+    r = c.get(f"/v1/composition/works/{P}/conformance?scope=arc_template_drift&arc_id={NID}")
     assert r.status_code == 200
     body = r.json()
     assert body["scope"] == "arc" and body["available"] is True and body["coarse"] is True
     assert body["chapter_count"] == 1
+    # the drift path reads the LEGACY annotations axis, not structure_node_id.
+    assert state.by_structure_id is None
     # 'exile' was planned but never bound → surfaced as unmaterialized.
     assert [p["motif_code"] for p in body["unmaterialized"]] == ["exile"]
-    # no deep overlay unless deep=true (it's the expensive cross-service path).
     assert "deep" not in body
 
 
-def test_route_deep_overlay_adds_prose_pacing(client):
+def test_route_arc_template_drift_deep_overlay_adds_prose_pacing(client):
     c, state = client
     aid = uuid.uuid4()
     state.arc = _arc(layout=[_placement("humiliation")])
@@ -246,7 +352,7 @@ def test_route_deep_overlay_adds_prose_pacing(client):
     # realized prose: two :Event steps on chapter ch1, tension band 5 → 100/100.
     state.sequences = [[{"beat": "the slap", "thread": str(ch1), "tension": 5},
                         {"beat": "the vow", "thread": str(ch1), "tension": 5}]]
-    r = c.get(f"/v1/composition/works/{P}/conformance?scope=arc&arc_template_id={aid}&deep=true")
+    r = c.get(f"/v1/composition/works/{P}/conformance?scope=arc_template_drift&arc_id={NID}&deep=true")
     assert r.status_code == 200
     deep = r.json()["deep"]
     assert deep["available"] is True
@@ -408,7 +514,7 @@ def test_route_deep_with_model_ref_also_tags_motifs_and_reports_succession(clien
     state.succ_map = {M_HUMIL: [{"id": M_SLAP, "code": "face_slap", "name": "Face Slap", "ord": 0}]}
     state.sequences = [[{"realized_motif_code": "humiliation", "thread": str(ch1)},
                         {"realized_motif_code": "face_slap", "thread": str(ch1)}]]
-    r = c.get(f"/v1/composition/works/{P}/conformance?scope=arc&arc_template_id={aid}"
+    r = c.get(f"/v1/composition/works/{P}/conformance?scope=arc_template_drift&arc_id={NID}"
               f"&deep=true&model_ref=m1&model_source=user_model")
     assert r.status_code == 200
     # the motif vocab (code+name+summary) was sent to tag-motifs.
@@ -437,7 +543,7 @@ def test_route_deep_causal_verified_when_causal_pairs_present(client):
     state.sequences = [[{"realized_motif_code": "humiliation", "thread": str(ch1)},
                         {"realized_motif_code": "face_slap", "thread": str(ch1)}]]
     state.causal_pairs = [("humiliation", "face_slap")]   # a realized CAUSES edge in code space
-    r = c.get(f"/v1/composition/works/{P}/conformance?scope=arc&arc_template_id={aid}"
+    r = c.get(f"/v1/composition/works/{P}/conformance?scope=arc_template_drift&arc_id={NID}"
               f"&deep=true&model_ref=m1&model_source=user_model")
     s = r.json()["deep"]["succession"]
     assert s["legal"] == 1 and s["caused"] == 1 and s["causal_verified"] is True
@@ -463,7 +569,7 @@ def test_route_deep_with_model_ref_tags_threads_then_reports_progression(client)
                    "chapter_id": ch1, "tension": 50, "story_order": 1}]
     state.sequences = [[{"beat": "slap", "thread": str(ch1),
                          "narrative_thread": "revenge", "tension": 5}]]
-    r = c.get(f"/v1/composition/works/{P}/conformance?scope=arc&arc_template_id={aid}"
+    r = c.get(f"/v1/composition/works/{P}/conformance?scope=arc_template_drift&arc_id={NID}"
               f"&deep=true&model_ref=m1&model_source=user_model")
     assert r.status_code == 200
     # the model_ref opt-in triggered a tag-threads call with the arc's vocabulary.

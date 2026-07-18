@@ -252,6 +252,19 @@ def _lexical_score(a: UnifySeed, b: UnifySeed) -> float | None:
 # ── semantic matching (T1) ─────────────────────────────────────────────
 
 
+# NOT migrated to `loreweave_vecmath.cosine_similarity` (2026-07-08 review,
+# /review-impl finding on the vecmath promotion sweep): that SDK function
+# returns a plain `float`, collapsing "zero-norm/length-mismatched" (degenerate)
+# and "computed cosine of exactly 0.0" (orthogonal vectors) into the same 0.0
+# value. This `_cosine` deliberately keeps them distinct via `Optional[float]`
+# so `_semantic_score` can tell "no usable signal, fall back to lexical" apart
+# from "a real, computed score" — see EC-M19. Reusing the SDK's plain-float
+# form here would silently fold that distinction away for any future caller
+# (or any future change to `UNIFY_SEM_TAU_LOW`), even though today the single
+# caller (`_semantic_score`, below) happens to treat both the same because
+# `UNIFY_SEM_TAU_LOW` (0.72) is positive. Kept as a one-off local
+# implementation rather than promoted to the shared module for a single
+# call site.
 def _cosine(a: tuple[float, ...], b: tuple[float, ...]) -> float | None:
     """Cosine similarity, or None if either vector is zero-norm / length-mismatched
     (EC-M19 — no divide-by-zero / NaN; such a pair falls back to lexical)."""

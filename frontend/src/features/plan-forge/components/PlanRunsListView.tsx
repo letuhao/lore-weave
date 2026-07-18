@@ -27,14 +27,22 @@ function statusBadgeClass(status: PlanRunStatus): string {
 export function PlanRunsListView({ bookId, onOpenRun, onNewRun }: Props) {
   const { t } = useTranslation('studio');
   const { accessToken } = useAuth();
-  const { items, loading, error } = usePlanRunsList(bookId, accessToken ?? null);
+  const { items, loading, error, showArchived, setShowArchived, archive, restore } =
+    usePlanRunsList(bookId, accessToken ?? null);
 
   return (
     <div className="p-3" data-testid="plan-runs-list">
-      <div className="mb-3 flex items-center justify-between">
+      <div className="mb-3 flex items-center justify-between gap-2">
         <h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
           {t('planner.list.title', { defaultValue: 'Runs for this book' })}
         </h2>
+        <label className="ml-auto flex items-center gap-1 text-[10px] text-muted-foreground">
+          <input
+            type="checkbox" data-testid="plan-runs-show-archived"
+            checked={showArchived} onChange={(e) => setShowArchived(e.target.checked)}
+          />
+          {t('planner.list.showArchived', { defaultValue: 'Show archived' })}
+        </label>
         <button
           type="button"
           data-testid="plan-new-run-button"
@@ -69,6 +77,7 @@ export function PlanRunsListView({ bookId, onOpenRun, onNewRun }: Props) {
               <th className="px-2 py-1.5">{t('planner.list.colMode', { defaultValue: 'Mode' })}</th>
               <th className="px-2 py-1.5">{t('planner.list.colStatus', { defaultValue: 'Status' })}</th>
               <th className="px-2 py-1.5">{t('planner.list.colCreated', { defaultValue: 'Created' })}</th>
+              <th className="px-2 py-1.5" />
             </tr>
           </thead>
           <tbody>
@@ -88,6 +97,22 @@ export function PlanRunsListView({ bookId, onOpenRun, onNewRun }: Props) {
                 </td>
                 <td className="px-2 py-1.5 font-mono text-[10.5px]">
                   {r.created_at ? new Date(r.created_at).toLocaleString() : '—'}
+                </td>
+                <td className="px-2 py-1.5 text-right">
+                  {/* BE-4 — archive/restore; stopPropagation so the row-click doesn't open the run. */}
+                  {r.is_archived ? (
+                    <button
+                      type="button" data-testid={`plan-run-restore-${r.id.slice(0, 8)}`}
+                      onClick={(e) => { e.stopPropagation(); void restore(r.id); }}
+                      className="rounded border border-border px-1.5 py-0.5 text-[10px] hover:bg-secondary"
+                    >{t('planner.list.restore', { defaultValue: 'Restore' })}</button>
+                  ) : (
+                    <button
+                      type="button" data-testid={`plan-run-archive-${r.id.slice(0, 8)}`}
+                      onClick={(e) => { e.stopPropagation(); void archive(r.id); }}
+                      className="rounded border border-border px-1.5 py-0.5 text-[10px] text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+                    >{t('planner.list.archive', { defaultValue: 'Archive' })}</button>
+                  )}
                 </td>
               </tr>
             ))}

@@ -22,7 +22,17 @@
     "hint": "Scrollen zum Zoomen · Leerraum ziehen zum Verschieben · Knoten klicken für Details · ⊞ zum Erweitern",
     "loading": "Graph wird geladen…",
     "loadFailed": "Graph konnte nicht geladen werden: {{error}}",
-    "empty": "Noch kein Wissensgraph vorhanden — erstelle dieses Projekt, um das Netzwerk zu erkunden."
+    "empty": "Noch kein Wissensgraph vorhanden — erstelle dieses Projekt, um das Netzwerk zu erkunden.",
+    "emptyLens": "Keine Beziehungen entsprechen diesem Filter – versuchen Sie eine andere Ansicht, ein früheres Kapitel oder löschen Sie den Filter.",
+    "truncatedLens": "zeigt die ersten {{n}} Beziehungen dieses Filters an",
+    "hintLens": "Scrollen zum Zoomen · Ziehen zum Verschieben · Klicken Sie auf einen Knoten für Details",
+    "lens": {
+      "view": "Ansicht",
+      "noView": "Alle Beziehungen",
+      "asOf": "Stand Kapitel",
+      "latest": "aktuellste",
+      "clear": "Filter löschen"
+    }
   },
   "schemaSection": {
     "title": "Schema",
@@ -72,7 +82,8 @@
       "extractionDisabled": "Deaktiviert",
       "book": "Buch",
       "world": "Welt",
-      "none": "—"
+      "none": "—",
+      "triageNudge": "{{count}} extrahierte(s) Element(e) müssen sortiert werden"
     },
     "placeholder": {
       "proposals": "Ausstehende Vorschläge landen hier (C11).",
@@ -404,7 +415,8 @@
         "global": "Global",
         "confidence": "Konfidenz",
         "mentions": "Erwähnungen",
-        "anchor": "Anchor-Score"
+        "anchor": "Anchor-Score",
+        "scope": "Umfang"
       },
       "promote": "Zum Glossar befördern",
       "promoteHint": "Gefundene Entität. Befördere sie, um einen KI-vorgeschlagenen Glossarentwurf zur Überprüfung zu erstellen.",
@@ -421,8 +433,32 @@
         "decision": "Entscheidung",
         "preference": "Präferenz",
         "milestone": "Meilenstein",
-        "negation": "Negation"
-      }
+        "negation": "Negation",
+        "statement": "Aussage",
+        "commitment": "Verpflichtung"
+      },
+      "addFact": "Fakt hinzufügen",
+      "addFactTitle": "Einen Fakt über diese Entität hinzufügen",
+      "factContentLabel": "Fakt",
+      "factContentPlaceholder": "z. B. Misstraut dem Rat nach dem Verrat",
+      "factTypeLabel": "Typ",
+      "factPredicatePlaceholder": "Prädikat (optional, z. B. loyal_zu)",
+      "factObjectPlaceholder": "Objekt (optional, z. B. Haus Vaeth)",
+      "addFactSave": "Fakt speichern",
+      "addFactCancel": "Abbrechen",
+      "addFactSuccess": "Fakt hinzugefügt",
+      "addFactFailed": "Fakt konnte nicht hinzugefügt werden: {{error}}",
+      "markWrong": "Als falsch markieren",
+      "markWrongConfirm": "Dieses Fakt als falsch markieren? Es wird ungültig gemacht (aus dem Abruf entfernt), aber im Verlauf behalten.",
+      "markWrongSuccess": "Fakt als falsch markiert",
+      "markWrongFailed": "Fakt konnte nicht ungültig gemacht werden: {{error}}",
+      "factTypeHelp": "Was für eine Art von Fakt ist dies?",
+      "factAdvancedToggle": "Mit einer anderen Entität verknüpfen (optional)",
+      "replaceFact": "Diesen Fakt ersetzen",
+      "replaceFactSave": "Ersetzung speichern",
+      "replaceFactSuccess": "Fakt ersetzt",
+      "markWrongUndo": "Rückgängig machen",
+      "markWrongUndoFailed": "Rückgängig machen fehlgeschlagen: {{error}}"
     },
     "edit": {
       "title": "Entität bearbeiten",
@@ -462,6 +498,41 @@
       "errArchived": "Archivierte Entitäten können nicht zusammengeführt werden. Wiederstelle sie zuerst.",
       "errGlossaryConflict": "Beide Entitäten sind an unterschiedlichen Glossareinträgen verankert. Löse die Glossar-Verankerungen vor dem Zusammenführen.",
       "errUnknown": "Zusammenführung fehlgeschlagen: {{reason}}"
+    },
+    "create": {
+      "title": "Neue Entität",
+      "description": "Erstellen Sie manuell eine Entität für den Wissensgraphen. Sie beginnt als „entdeckt“; verankern Sie sie später, um sie als kanonisch zu markieren.",
+      "newButton": "Neue Entität",
+      "needsProject": "Wählen Sie zuerst ein Projekt aus",
+      "field": {
+        "name": "Name",
+        "kind": "Art"
+      },
+      "save": "Erstellen",
+      "saving": "Wird erstellt…",
+      "cancel": "Abbrechen",
+      "success": "Entität erstellt — {{name}} ({{kind}})",
+      "dedup": "Bereits vorhanden — zeigt {{name}} ({{kind}})",
+      "failed": "Entität konnte nicht erstellt werden — {{error}}",
+      "discoveredHint": "Neue Entitäten werden als „entdeckt“ markiert. Der Status „Kanonisch“ wird durch das Verankern im Glossar erreicht."
+    },
+    "kind": {
+      "character": "Charakter",
+      "location": "Ort",
+      "organization": "Organisation",
+      "concept": "Konzept",
+      "item": "Gegenstand"
+    },
+    "archive": {
+      "action": "Archivieren",
+      "confirm": "Diese Entität ausblenden? Ihre Beziehungen und Glossar-Verankerungen bleiben erhalten; sie verschwindet aus der aktiven Liste. Sie können dies direkt über „Rückgängig“ korrigieren oder sie über den Filter „Archiviert“ wieder einblenden.",
+      "success": "Entität archiviert.",
+      "failed": "Archivierung fehlgeschlagen — {{error}}",
+      "undo": "Rückgängig"
+    },
+    "restore": {
+      "success": "Entity wiederhergestellt.",
+      "failed": "Wiederherstellung fehlgeschlagen — {{error}}"
     }
   },
   "jobs": {
@@ -1079,9 +1150,34 @@
       "markWrong": "Als falsch markieren",
       "invalidating": "Entferne…",
       "failed": "Korrektur konnte nicht gespeichert werden: {{error}}"
+    },
+    "create": {
+      "title": "Entity verknüpfen",
+      "description": "Erstelle eine Beziehung von {{subject}} zu einer anderen deiner Entities.",
+      "action": "Entity verknüpfen",
+      "subject": "Von",
+      "predicate": "Beziehung",
+      "object": "Zu",
+      "objectPlaceholder": "Deine Entities durchsuchen…",
+      "noMatches": "Keine passenden Entities gefunden.",
+      "save": "Verknüpfung erstellen",
+      "saving": "Verknüpfe…",
+      "cancel": "Abbrechen",
+      "success": "Verknüpfung erstellt.",
+      "notYours": "Verknüpfung konnte nicht erstellt werden – ein Endpunkt ist keine Ihrer Entitäten.",
+      "selfLoop": "Eine Entität kann nicht mit sich selbst verknüpft werden.",
+      "failed": "Verknüpfung konnte nicht erstellt werden – {{error}}"
     }
   },
   "events": {
+    "create": {
+      "title": "Ereignis hinzufügen",
+      "description": "Erstellen Sie ein neues Zeitlinenereignis für diesen Charakter.",
+      "success": "Ereignis hinzugefügt.",
+      "failed": "Hinzufügen fehlgeschlagen: {{error}}",
+      "saving": "Wird hinzugefügt…",
+      "save": "Ereignis hinzufügen"
+    },
     "edit": {
       "cta": "Bearbeiten",
       "title": "Event bearbeiten",
@@ -1157,5 +1253,64 @@
       "divergent": "Divergent"
     },
     "totalRuns": "{{count}} Läufe insgesamt"
+  },
+  "triage": {
+    "loading": "Triage-Warteschlange wird geladen…",
+    "loadFailed": "Warteschlange konnte nicht geladen werden: {{error}}",
+    "empty": "Nichts zu triagieren – jedes extrahierte Element entspricht Ihrem Schema.",
+    "resolved": "{{count}} Element(e) gelöst",
+    "resolveFailed": "Konnte nicht gelöst werden: {{error}}",
+    "handoffToGlossary": "Glossar wird geöffnet, um dies in Ihrem Codex zu vervollständigen…",
+    "itemType": {
+      "unknown_node_kind": "Unbekannte Entitätstyp",
+      "unknown_edge_type": "Unbekannter Beziehungstyp",
+      "edge_kind_mismatch": "Beziehungsendpunkt-Abweichung",
+      "unknown_vocab_value": "Wert außerhalb des Vokabulars",
+      "edge_cardinality_conflict": "Konfliktierende aktive Beziehungen"
+    },
+    "action": {
+      "map": "Zuweisen zu bestehendem",
+      "add_to_vocab": "Zum Vokabular hinzufügen",
+      "add_to_schema": "Zum Schema hinzufügen",
+      "re_target": "Endpunkt korrigieren",
+      "widen_target_kinds": "Zugelassene Typen erweitern",
+      "drop_edge": "Verwerfen",
+      "close_previous": "Vorherige schließen",
+      "set_multi_active": "Mehrere zulassen",
+      "promote_to_glossary_kind": "Zum Glossar-Typ befördern",
+      "demote_to_attribute": "Zum Attribut herabstufen",
+      "dismiss": "Ignorieren"
+    },
+    "prompt": {
+      "target_entity_id": "Korrigierte Ziel-Entitäts-ID",
+      "map_to": "Zuweisen zu (leer lassen, um den erkannten Wert zu verwenden)"
+    },
+    "itemDismissed": "Element entfernt",
+    "confirmSchemaWrite": "Dies zum Schema hinzufügen? Dadurch wird geändert, wie zukünftige Extrahierungen validiert werden.",
+    "evidence": {
+      "unknown_edge_type": "Die Beziehung „{{predicate}}“ ist noch nicht in Ihrem Schema enthalten.",
+      "unknown_vocab_value": "Der Wert „{{value}}“ ist noch nicht in der Liste „{{set}}“ enthalten.",
+      "edge_kind_mismatch": "„{{predicate}}“ wurde zwischen einem {{source}} und einem {{target}} verwendet, was Ihr Schema nicht zulässt.",
+      "unknown_node_kind": "Der Typ „{{kind}}“ ist noch nicht in Ihrem Schema enthalten.",
+      "edge_cardinality_conflict": "Es gibt widersprüchliche aktive „{{predicate}}“-Beziehungen.",
+      "generic": "Dieses extrahierte Element entspricht nicht Ihrem Schema."
+    },
+    "retarget": {
+      "title": "Auf die richtige Entität zeigen",
+      "description": "Suchen Sie in Ihren Entitäten und wählen Sie diejenige aus, auf die diese Beziehung zeigen soll.",
+      "searchPlaceholder": "Entitäten nach Name suchen…",
+      "noMatches": "Keine passenden Entitäten gefunden.",
+      "cancel": "Abbrechen",
+      "confirm": "Neu zuweisen"
+    },
+    "map": {
+      "title": "Mit einem bestehenden Element verknüpfen",
+      "description": "Wählen Sie das Schema-Element aus, als das dieses Element außerhalb des Schemas behandelt werden soll.",
+      "label": "Verknüpfen mit",
+      "keepDetected": "Erkannten Wert beibehalten",
+      "cancel": "Abbrechen",
+      "confirm": "Verknüpfen"
+    },
+    "emptyHint": "Triage sammelt alle extrahierten Informationen, die noch nicht in dein Schema passen – eine leere Warteschlange bedeutet, dass alles korrekt zugeordnet wurde."
   }
 }

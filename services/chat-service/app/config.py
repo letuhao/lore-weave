@@ -12,11 +12,45 @@ class Settings(BaseSettings):
     minio_bucket: str = "lw-chat"
     minio_use_ssl: bool = False
     minio_external_url: str = ""  # Browser-accessible MinIO URL for presigned URLs
-    audio_ttl_hours: int = 48         # Voice audio retention period
+    audio_ttl_hours: int = 48         # Voice audio retention DEPLOY CEILING (WS-4.3): the max;
+                                      # each user narrows within it via voice.audio_retention_hours
     audio_cleanup_interval_hours: int = 4  # How often to run cleanup
     internal_service_token: str
     statistics_service_internal_url: str = "http://statistics-service:8089"
-    composition_service_internal_url: str = "http://composition-service:8092"
+    # R3 (D-PROACTIVE-DELIVERY) — the notification sink for the proactive check-in's content-free push.
+    # Unconfigured ⇒ the proactive turn still persists its message; the push simply no-ops (best-effort).
+    notification_service_internal_url: str = "http://notification-service:8091"
+    # composition-service listens on 8093 (infra/docker-compose.yml PORT: "8093"), not 8092.
+    # This default said 8092 and no env var overrode it, so EVERY chat-service call to
+    # composition-service has been a ConnectError — and its only consumer
+    # (CompositionClient.get_book_model_roles) is degrade-safe by contract, returning {} on
+    # any failure. So the Book tier of the Chat & AI settings cascade (D-CHATAI-M1B) has
+    # silently never applied, and nothing ever said a word. Found by the Track C book-state
+    # probe, which is the first consumer that LOGS a dead source instead of shrugging.
+    composition_service_internal_url: str = "http://composition-service:8093"
+
+    # Track C Phase 2 — the rail driver (server-side book-state grounding in the pinned
+    # rail). A deploy-time kill switch, NOT a user setting: it gates an always-on prompt
+    # block, and a prompt regression is invisible to every unit test in the repo. Default
+    # ON; set RAIL_DRIVER_ENABLED=0 to run the pinned rail ungrounded (the pre-Phase-2
+    # behavior) — which is also how the A/B control run is measured.
+    rail_driver_enabled: bool = True
+
+    # Phase G · G2 — enforcement strength + the per-step hold cap. SIBLINGS of
+    # rail_driver_enabled and, like it, DEPLOY-level (a kill-switch / ceiling, per the Settings
+    # Boundary), NOT a per-user knob — the rail's other loop bounds (RAIL_REDRIVE_CAP,
+    # REPEAT_READ_CAP) are platform constants too. A per-USER SET-1 tuning is a deferred,
+    # flagged item (D-G2-SETUSER) — it needs the full ai-prefs pipeline + FE and is genuinely
+    # debatable against this established deploy-level pattern.
+    #   "enforce" (default) — a REQUIRED step is HELD to rail_required_nudge_cap redrives, then
+    #                         released with an honest give-up (GOV-7). This is the S06 fix.
+    #   "nudge"             — the gentle pre-G1 behavior: every step nudged once, never held.
+    #   "off"              — the drive does not fire at all (equivalent to the pre-drive rail).
+    rail_enforcement: str = "enforce"
+    # The N in GOV-7's bounded auto-release. A ceiling a deploy narrows within; the effective
+    # hold count. Clamped ≥1 at the consumer so a mis-set 0 can never disable the hold silently.
+    rail_required_nudge_cap: int = 3
+
     redis_url: str = "redis://redis:6379"
     port: int = 8090
 
@@ -51,6 +85,14 @@ class Settings(BaseSettings):
     book_service_url: str = "http://book-service:8082"
     book_steering_timeout_s: float = 2.0
 
+    # DBT-11 / D-R14 — chat_messages.local_date is bucketed by the user's LOCAL day,
+    # resolved from prefs.timezone via auth-service's token-gated internal profile.
+    # Cached in-process; a failure degrades to the UTC day (the DB DEFAULT), so the
+    # message write is never blocked on auth.
+    auth_service_url: str = "http://auth-service:8081"
+    user_timezone_timeout_s: float = 2.0
+    user_timezone_cache_ttl_s: float = 900.0
+
     # T5 (Context Budget Law D2) — entity-presence intent gate. chat-service reads
     # the book's known-entity token set from glossary-service's internal route and
     # caches it in-process (A3: no new table). Used ONLY to decide whether a turn's
@@ -68,6 +110,33 @@ class Settings(BaseSettings):
     # So on a small/thin book `mode=auto` keeps it OFF (the 2026-07-04 audit case,
     # unchanged) and on a big-lore book it turns ON. Set False to force-kill globally.
     t5_intent_gate_enabled: bool = True
+
+    # ── WS-4C Half A — canon auto-capture ────────────────────────────────────────
+    # Spec: docs/specs/2026-07-10-ws4c-half-a-canon-auto-capture.md
+    # Every Nth assistant turn, POST the exchange to glossary's /capture-canon: the
+    # entities it newly NAMED land in the book's review inbox as ai-suggested drafts
+    # (never canon). This closes F4's write side — a name coined at turn 3 survives to
+    # turn 40 because the glossary is re-read every turn.
+    #
+    # `canon_capture_enabled` is a deploy CEILING / kill-switch, NOT the enablement
+    # knob (Settings & Config Boundary: env is never a per-user toggle). The per-user
+    # knob is `knowledge_projects.canon_capture_enabled` (OPT-IN, default false),
+    # surfaced on kctx and toggled in the project settings modal.
+    # effective = AND(this, kctx.canon_capture_enabled). Default True here means
+    # "the deployment permits it"; nothing captures until a user opts their project
+    # in. Set False to force-kill capture platform-wide regardless of user choice.
+    canon_capture_enabled: bool = True
+    # Cadence — capture costs one small LLM call, billed to the user's own BYOK model.
+    # 4 mirrors EXECUTIVE_EVERY_N_TURNS: often enough that a coined name survives the
+    # window, rare enough that it is a rounding error on the turn's own cost.
+    canon_capture_every_n_turns: int = 4
+    # A turn shorter than this establishes nothing worth a model call ("ok", "go on").
+    canon_capture_min_chars: int = 200
+    # Per-side cap on the exchange text sent for extraction (glossary re-clamps).
+    canon_capture_max_chars_per_side: int = 4000
+    # The capture call is a background task; this bounds it so a hung local model can't
+    # leak a task for the process's lifetime.
+    canon_capture_timeout_s: float = 90.0
 
     # ── T6/D13a (Context Budget Law) — reversible dup-read collapse ──────────────
     # When a compaction pass fires AND this is ON, collapse EXACT-duplicate tool results
@@ -169,6 +238,50 @@ class Settings(BaseSettings):
     # "agui" (AG-UI protocol). Per-request header overrides this; the default
     # stays "legacy" until the AG-UI frontend (C4) ships.
     default_stream_format: str = "legacy"
+
+    # ── F7c (2026-07-19) Lazy-context enforcement — index+load-on-demand ─────────
+    # docs/plans/2026-07-19-lazy-context-enforcement.md. Three DEPLOY-LEVEL
+    # kill-switches (SIBLINGS of rail_driver_enabled — NOT per-user knobs; per the
+    # Settings & Config Boundary, env is the sanctioned home for a platform-wide
+    # ceiling / A-B control, never a per-user behavior toggle). Each ENFORCES the
+    # index+load-on-demand discipline the platform already had for tools (tool_list/
+    # tool_load) but never applied to skills / studio panels / the workflow rail.
+    #
+    # DEFAULT TRUE (the enforce step). Validated by the capability-first A/B on the
+    # target MEDIUM model gemma-4-26b (eval/run_lazy_context_ab_eval.py): skill usage
+    # 3/3=3/3, panel selection 6/6=6/6 — NO capability loss — at ~5.4k tokens/turn
+    # saved on a studio co-writer turn. Set the env var to 0 to revert a lever to the
+    # pre-F7c behavior (the kill-switch, and how the A/B control run is measured).
+    #
+    # `lazy_skill_bodies` — when ON, a NON-curated turn injects only the L1 skill
+    # INDEX (skill_metadata_block, ~117 tok) instead of force-injecting full L2
+    # skill bodies (~5-7k). The Intent→Skill Router still preloads the matching
+    # skill's L2 (smart preload), pins + mode-bindings (plan_forge/co_write) still
+    # inject L2, and the new `load_skill` control tool pulls any skill's body on
+    # demand. The domain's TOOLS stay hot regardless (surface_hot_domains is
+    # surface-driven, not skill-body-driven) — only the verbose prose defers.
+    lazy_skill_bodies: bool = True
+    # `compact_studio_panel_desc` — when ON, ui_open_studio_panel advertises a
+    # compact area-grouped description (~2.4k → ~0.8k) while KEEPING the full
+    # panel_id enum (Frontend-Tool Contract: the closed set is correctness, never
+    # trimmed — only the prose guidance is compacted).
+    compact_studio_panel_desc: bool = True
+    # `lazy_workflow_directive` — when ON, the WS-5 workflow-preference block lists
+    # workflow SLUGS + short titles only (drops each workflow's full description,
+    # ~1-2k), keeping the "call workflow_load(<slug>) FIRST" directive that steers
+    # the model to load the rail's real detail on demand.
+    lazy_workflow_directive: bool = True
+    # `studio_panel_intent_gated` (F7c M4) — the studio panel navigator
+    # (ui_open_studio_panel) is a click/keypress the user can do manually, yet it
+    # cost ~880 tok on EVERY studio turn. When ON, advertise it ONLY on a
+    # navigation-intent turn (a nav verb + a panel-specific noun) → ~0 tok on the
+    # common writing turn, full enum-safe capability when the user asks to open a
+    # panel. ui_focus_manuscript_unit (open a chapter, part of the writing loop)
+    # stays always-on. Off ⇒ pre-M4 behavior (always advertised). Deterministic gate,
+    # biased to PRECISION: a false-negative just means the user clicks the panel; a
+    # false-positive (opening a panel mid-write) is the harmful error, so overloaded
+    # writing words (scene/arc/plan/character) are NOT panel-noun triggers.
+    studio_panel_intent_gated: bool = True
 
     # D-T2-03 — degraded-mode fallback when knowledge-service is unreachable
     # or returns an error. Must agree with knowledge-service's Mode 1 + Mode 2

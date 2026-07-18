@@ -37,7 +37,7 @@ async def main() -> int:
         session_id="e2e-p5a",
         project_id=None,
         caller_max_iterations=4,
-        approval_check=None,
+        decision_check=None,   # Track C WS-3 renamed approval_check -> decision_check
         hooks=None,
         effective_limit=None,
         subagent_depth=0,

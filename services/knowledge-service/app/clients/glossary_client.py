@@ -23,9 +23,20 @@ from app.config import settings
 from app.logging_config import trace_id_var
 from app.metrics import circuit_open as circuit_open_gauge
 
-__all__ = ["GlossaryClient", "GlossaryEntityForContext"]
+__all__ = [
+    "KNOWN_ENTITIES_MAX_PAGE",
+    "KNOWN_ENTITIES_MAX_PAGES",
+    "GlossaryClient",
+    "GlossaryEntityForContext",
+]
 
 logger = logging.getLogger(__name__)
+
+# The known-entities handler caps `limit` at 500 (its own default is a silent 50).
+KNOWN_ENTITIES_MAX_PAGE = 500
+# Runaway guard for the paging walk: 40 × 500 = 20k entities. Hitting it reports
+# `truncated=True` rather than silently under-reading (no silent caps).
+KNOWN_ENTITIES_MAX_PAGES = 40
 
 
 class GlossaryEntityForContext(BaseModel):
@@ -321,24 +332,52 @@ class GlossaryClient:
     # ── K11.10 — HTTP methods for extraction pipeline ────────────────
 
     async def list_entities(
-        self, book_id: UUID, *, status_filter: str = "active", min_frequency: int = 2,
+        self,
+        book_id: UUID,
+        *,
+        status_filter: str | None = None,
+        min_frequency: int = 2,
+        limit: int | None = None,
+        offset: int = 0,
+        include_dead: bool = False,
     ) -> list[dict] | None:
-        """GET /internal/books/{book_id}/known-entities.
+        """GET /internal/books/{book_id}/known-entities. One PAGE of entities.
 
-        Returns entity list for anchor pre-loading (K13.0).
-        Returns None on failure.
+        Returns None on failure. Prefer :meth:`list_all_entities` when "every
+        entity" is meant — this method returns at most one server page.
 
         ``min_frequency`` gates on chapter-appearance count (the Go handler's
-        ``HAVING COUNT(chapter_entity_links) >= min_frequency``, default 2 — the
+        ``HAVING COUNT(cl.link_id) >= min_frequency``, default 2 — the
         extraction-anchor semantics). Callers that want EVERY entity regardless of
-        chapter spread (e.g. wiki generation on a low-chapter book) pass 1.
+        chapter spread (e.g. wiki generation on a low-chapter book, or the WS-4B
+        prose-less graph projection) must pass **0**: the chapter join is a LEFT
+        JOIN, so an entity with no chapter links has COUNT=0 and even `1` excludes it.
+
+        ``limit`` maps to the handler's ``limit`` — whose default is **50** (capped
+        at 500). ``offset`` pages beyond it (the handler's ORDER BY carries a
+        deterministic ``e.entity_id`` tiebreak, so paging is stable).
+
+        ``include_dead``: the handler defaults to ``alive=true``, which filters out
+        narratively-DEAD entities (`alive` is a story flag, NOT a review status).
+        Pass True to include them — a dead character is still a graph node.
+
+        ``status_filter``: one of ``active|inactive|draft|rejected``; **None (the
+        default) applies no status filter** — which is what every caller has always
+        effectively gotten, because the handler historically ignored this parameter
+        (D-GLOSSARY-KNOWN-ENTITIES-STATUS-PARAM, now fixed server-side).
         """
         url = f"{self._base_url}/internal/books/{book_id}/known-entities"
+        params: dict[str, str] = {"min_frequency": str(min_frequency)}
+        if status_filter:
+            params["status"] = status_filter
+        if limit is not None:
+            params["limit"] = str(limit)
+        if offset:
+            params["offset"] = str(offset)
+        if include_dead:
+            params["alive"] = "false"  # handler: alive != "false" ⇒ require alive
         try:
-            resp = await self._http.get(
-                url,
-                params={"status": status_filter, "min_frequency": str(min_frequency)},
-            )
+            resp = await self._http.get(url, params=params)
             if resp.status_code != 200:
                 logger.warning("glossary list-entities %d", resp.status_code)
                 return None
@@ -346,6 +385,56 @@ class GlossaryClient:
         except (httpx.HTTPError, ValueError) as exc:
             logger.warning("glossary list-entities failed: %s", exc)
             return None
+
+    async def list_all_entities(
+        self,
+        book_id: UUID,
+        *,
+        status_filter: str | None = None,
+        min_frequency: int = 2,
+        include_dead: bool = False,
+        page_size: int = KNOWN_ENTITIES_MAX_PAGE,
+        max_pages: int = KNOWN_ENTITIES_MAX_PAGES,
+    ) -> tuple[list[dict], bool] | None:
+        """Walk EVERY page of `known-entities` (D-ANCHOR-PRELOAD-50-CAP).
+
+        The handler's `limit` defaults to 50 and is capped at 500, so any caller
+        that meant "all entities" and passed no limit was silently truncated at 50
+        — extraction's anchor pre-load included, which let the extractor mint
+        duplicate nodes for every entity past the 50th. This pages via `offset`
+        until a short page arrives.
+
+        Returns ``(rows, truncated)`` — `truncated` True only if `max_pages` was
+        exhausted with a full page still coming (a runaway guard; never a silent
+        cap). Returns None if the FIRST page fails; a later page failing stops the
+        walk and returns what was gathered with ``truncated=True`` (honest partial).
+        """
+        rows: list[dict] = []
+        for page in range(max_pages):
+            batch = await self.list_entities(
+                book_id,
+                status_filter=status_filter,
+                min_frequency=min_frequency,
+                include_dead=include_dead,
+                limit=page_size,
+                offset=page * page_size,
+            )
+            if batch is None:
+                if page == 0:
+                    return None
+                logger.warning(
+                    "glossary list_all_entities: page %d failed for book=%s — "
+                    "returning %d partial rows", page, book_id, len(rows),
+                )
+                return rows, True
+            rows.extend(batch)
+            if len(batch) < page_size:
+                return rows, False
+        logger.warning(
+            "glossary list_all_entities: hit max_pages=%d for book=%s (%d rows) — "
+            "more entities remain", max_pages, book_id, len(rows),
+        )
+        return rows, True
 
     async def list_known_entities_for_chapter(
         self,

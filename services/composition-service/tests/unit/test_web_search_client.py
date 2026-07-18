@@ -1,11 +1,13 @@
-"""D-W9-WEBSEARCH — web_search_client neutralization + degrade contract (no network).
+"""D-W9-WEBSEARCH / Track D S-PRODUCER — web_search_client relay + degrade contract.
 
-Proves, with a stubbed httpx transport:
-  - INV-6: every returned title/url/snippet is neutralized (control chars / newlines
-    collapsed, length-capped) and non-http(s) URLs are DROPPED;
-  - a 404 → ``error='not_configured'`` (no BYOK web_search credential);
-  - any transport error / non-200 / bad-JSON → ``error='unavailable'`` (never raises);
-  - the request shape matches provider-registry's ``/internal/web-search`` contract.
+INV-6 neutralization moved to the PRODUCER (provider-registry's ``/internal/web-search``);
+this client no longer neutralizes. These tests prove, with a stubbed httpx transport:
+  - the client RELAYS the (already-neutralized) producer response into WebSearchHits and
+    matches provider-registry's ``/internal/web-search`` request contract;
+  - the GRACEFUL-DEGRADE contract still holds after removing local neutralization: a 404 →
+    ``error='not_configured'``; any transport error / non-200 / bad-JSON → ``error=
+    'unavailable'`` with EMPTY hits, and the call NEVER raises (a web outage must not fail
+    the caller — a deconstruct proceeds without the augment).
 """
 
 from __future__ import annotations
@@ -31,7 +33,9 @@ def _client(handler) -> WebSearchClient:
     return c
 
 
-async def test_neutralizes_and_drops_non_http_urls():
+async def test_relays_producer_results_and_request_contract():
+    """The producer returns already-neutralized results; the client relays them
+    (mapping content→snippet) and posts the correct /internal/web-search request."""
     seen: dict = {}
 
     def handler(request: httpx.Request) -> httpx.Response:
@@ -39,12 +43,12 @@ async def test_neutralizes_and_drops_non_http_urls():
         seen["token"] = request.headers.get("X-Internal-Token")
         import json
         seen["body"] = json.loads(request.content)
+        # Producer-shaped, already-neutralized payload (single inert lines, safe URLs).
         return httpx.Response(200, json={
-            "answer": "line one\nline two\n\n\tindented",
+            "answer": "a neutralized answer",
             "results": [
-                {"title": "good\nsource", "url": "https://ok.example/x", "content": "a\tb\nc"},
-                {"title": "evil", "url": "javascript:alert(1)", "content": "drop me"},
-                {"title": "data", "url": "data:text/html,xss", "content": "drop me too"},
+                {"title": "Good Source", "url": "https://ok.example/x", "content": "inert snippet"},
+                {"title": "Second", "url": "https://ok.example/y", "content": "more data"},
             ],
         })
 
@@ -53,12 +57,13 @@ async def test_neutralizes_and_drops_non_http_urls():
     assert "/internal/web-search" in seen["url"] and str(USER) in seen["url"]
     assert seen["token"] == "tok"
     assert seen["body"] == {"query": "q", "max_results": 5}
-    # INV-6: newlines/tabs collapsed in the answer; the two non-http hits dropped.
-    assert "\n" not in res.answer and "\t" not in res.answer
+    # relayed faithfully: answer + both hits, content mapped to snippet.
     assert res.error is None
-    assert len(res.hits) == 1
+    assert res.answer == "a neutralized answer"
+    assert len(res.hits) == 2
     assert res.hits[0].url == "https://ok.example/x"
-    assert "\n" not in res.hits[0].title and "\t" not in res.hits[0].snippet
+    assert res.hits[0].title == "Good Source"
+    assert res.hits[0].snippet == "inert snippet"
 
 
 async def test_404_is_not_configured():

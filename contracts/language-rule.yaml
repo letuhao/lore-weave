@@ -52,6 +52,7 @@ services:
   provider-registry-service: go
   publisher: go
   retention-worker: go
+  scheduler-service: go   # WS-3.1 — the per-user tick driver (meta/domain infra ⇒ Go, P3-D1)
   sharing-service: go
   slo-budget-calculator: go
   statistics-service: go

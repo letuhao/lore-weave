@@ -107,8 +107,8 @@ def test_list_pending_facts_returns_callers_queue():
     body = resp.json()
     assert len(body) == 2
     assert body[0]["fact_text"] == "a"
-    # JWT-scoped: the caller's id reaches the repo, no session filter.
-    repo.list_for_user.assert_awaited_once_with(_TEST_USER, session_id=None)
+    # JWT-scoped: the caller's id reaches the repo, no session/diary filter.
+    repo.list_for_user.assert_awaited_once_with(_TEST_USER, session_id=None, diary_only=False)
 
 
 def test_list_pending_facts_forwards_session_id():
@@ -119,8 +119,20 @@ def test_list_pending_facts_forwards_session_id():
     resp = client.get("/v1/knowledge/pending-facts?session_id=sess-42")
     assert resp.status_code == 200
     repo.list_for_user.assert_awaited_once_with(
-        _TEST_USER, session_id="sess-42"
+        _TEST_USER, session_id="sess-42", diary_only=False
     )
+
+
+def test_list_pending_facts_forwards_diary_only():
+    # WS-2.5 (audit MED): the assistant fact inbox passes diary_only=true so chat-memory facts from
+    # other projects don't leak into it.
+    repo = AsyncMock()
+    repo.list_for_user = AsyncMock(return_value=[])
+    client = _make_client(repo)
+
+    resp = client.get("/v1/knowledge/pending-facts?diary_only=true")
+    assert resp.status_code == 200
+    repo.list_for_user.assert_awaited_once_with(_TEST_USER, session_id=None, diary_only=True)
 
 
 def test_list_pending_facts_empty():
@@ -207,22 +219,24 @@ def test_confirm_cross_user_or_missing_returns_404(monkeypatch):
 
 
 def test_reject_deletes_row_returns_204():
+    # WS-2.2 (audit): the FE reject goes through repo.reject (delete + tombstone), NOT a plain delete,
+    # so a dismissed diary fact is not re-proposed on the next distill.
     pf = _pending_fact()
     repo = AsyncMock()
-    repo.delete = AsyncMock(return_value=True)
+    repo.reject = AsyncMock(return_value=True)
     client = _make_client(repo)
 
     resp = client.post(
         f"/v1/knowledge/pending-facts/{pf.pending_fact_id}/reject"
     )
     assert resp.status_code == 204
-    repo.delete.assert_awaited_once_with(_TEST_USER, pf.pending_fact_id)
+    repo.reject.assert_awaited_once_with(_TEST_USER, pf.pending_fact_id)
 
 
 def test_reject_cross_user_or_missing_returns_404():
-    """repo.delete returns False for a cross-user / missing id → 404."""
+    """repo.reject returns False for a cross-user / missing id → 404."""
     repo = AsyncMock()
-    repo.delete = AsyncMock(return_value=False)
+    repo.reject = AsyncMock(return_value=False)
     client = _make_client(repo)
 
     resp = client.post(f"/v1/knowledge/pending-facts/{uuid4()}/reject")

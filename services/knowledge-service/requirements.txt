@@ -1,6 +1,6 @@
 fastapi>=0.111
 uvicorn[standard]>=0.29
-asyncpg>=0.29
+asyncpg>=0.31.0
 pydantic>=2.6
 pydantic-settings>=2.2
 python-json-logger>=2.0
@@ -9,9 +9,9 @@ PyJWT>=2.8
 # KM5 — RS256 admin-JWT verification (app/auth/admin_jwt.py) needs the
 # cryptography backend for RSA + SPKI/PKIX PEM parsing. Present transitively
 # today, but pinned explicitly so a security-critical dep can't silently drop.
-cryptography>=42
+cryptography>=49.0.0
 cachetools>=5.3
-prometheus-client>=0.20
+prometheus-client>=0.25.0
 
 # loreweave_llm SDK (Phase 4a-α) — installed via Dockerfile COPY of
 # sdks/python (build context is repo root). For host-side pytest:
@@ -46,17 +46,17 @@ pyahocorasick>=2.0
 tiktoken>=0.7
 # P1 (2026-05-23) — loreweave_parse SDK uses bs4 + stdlib html.parser
 # for the /internal/parse endpoint. Pure Python, no native deps.
-beautifulsoup4>=4.12,<5
+beautifulsoup4>=4.15.0,<5
 
 # Eval framework overhaul (2026-05-27 spec D8 + plan LOW-10 pinning).
 # Pinned for reproducibility — DeepEval especially has rapid API churn.
 # Realistic added image footprint ~500MB-1GB including transitive
 # pydantic v2 + sentence-transformers + pyarrow (per plan LOW-12).
 # Used only in tests/quality/* and only opt-in via --run-quality.
-deepeval==4.0.4
+deepeval==4.1.0
 seqeval==1.2.2
 datasets==2.21.0
-krippendorff==0.7.0
+krippendorff==0.8.2
 
 # ARCH-1 C1 (2026-06-01) — MCP server facade for the memory tools.
 # FastMCP ships inside the official `mcp` SDK; the [cli] extra adds the
@@ -75,4 +75,4 @@ mcp[cli]>=1.9,<2
 pymupdf>=1.24
 pytesseract>=0.3.10
 pdf2image>=1.17
-Pillow>=10.3
+Pillow>=12.3.0

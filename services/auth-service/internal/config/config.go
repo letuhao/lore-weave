@@ -30,6 +30,12 @@ type Config struct {
 	NotificationServiceInternalURL string
 	InternalServiceToken           string
 
+	// WS-1.0 (DECISIONS-SEALED PO-2) — the deployment KEK that WRAPS each user's DEK.
+	// auth-service stores only the wrapped blob; it never sees a user's content.
+	// Unset => GET /internal/users/{id}/dek fails CLOSED (503) rather than letting a
+	// deployment silently store diaries, assistant chat and facts in the clear.
+	DiaryEncryptionKey string
+
 	// Public MCP human-approval execute (P4 / OD-2): base URLs of the domain
 	// services whose POST /v1/<domain>/actions/confirm the approve handler replays
 	// an approved confirm token to, KEYED by the propose result's `domain`. Only a
@@ -92,6 +98,7 @@ func Load() (*Config, error) {
 		PublicAppURL:                   getEnv("PUBLIC_APP_URL", ""),
 		NotificationServiceInternalURL: getEnv("NOTIFICATION_SERVICE_INTERNAL_URL", ""),
 		InternalServiceToken:           os.Getenv("INTERNAL_SERVICE_TOKEN"),
+		DiaryEncryptionKey:             os.Getenv("DIARY_ENCRYPTION_KEY"),
 		PublicMcpEnabled:               getBool("PUBLIC_MCP_ENABLED", false),
 		KMSAdminSigningKeyID:           os.Getenv("KMS_ADMIN_SIGNING_KEY_ID"),
 		KMSEndpoint:                    os.Getenv("KMS_ENDPOINT"),
@@ -117,6 +124,20 @@ func Load() (*Config, error) {
 	}
 	if c.InternalServiceToken == "" {
 		return nil, fmt.Errorf("INTERNAL_SERVICE_TOKEN is required")
+	}
+	// DIARY_ENCRYPTION_KEY may be empty — a deployment that stores no private content, in
+	// which case the DEK read fails closed at REQUEST time (503), never at boot. But when it
+	// IS set it is the ENTIRE confidentiality boundary for diary/assistant/facts, so hold it
+	// to the same bar as JWT_SECRET: ≥32 chars, and never the SAME value as JWT_SECRET (a
+	// shared secret means one leak breaks both auth and content-at-rest). Mirrors the
+	// admin-secret distinctness guard below. (Review WS-2.7 finding-6.)
+	if c.DiaryEncryptionKey != "" {
+		if len(c.DiaryEncryptionKey) < 32 {
+			return nil, fmt.Errorf("DIARY_ENCRYPTION_KEY must be at least 32 characters when set")
+		}
+		if c.DiaryEncryptionKey == c.JWTSecret {
+			return nil, fmt.Errorf("DIARY_ENCRYPTION_KEY must differ from JWT_SECRET (separate confidentiality boundary)")
+		}
 	}
 	c.DomainConfirmServiceURLs = loadDomainConfirmURLs()
 

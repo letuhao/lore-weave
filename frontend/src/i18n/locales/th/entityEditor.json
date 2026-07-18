@@ -16,6 +16,11 @@
       "translations": "{{count}} คำแปล",
       "evidences": "{{count}} หลักฐาน"
     },
+    "scope_label": {
+      "placeholder": "ระบุความแตกต่าง (เช่น โลก/อาณาจักร)...",
+      "aria": "ป้ายกำกับขอบเขต — ใช้เพื่อแยกแยะเอนทิตีที่มีชื่อเดียวกันในบริบทที่ต่างกันภายในเรื่อง",
+      "duplicate": "มีเอนทิตีที่มีชื่อ ประเภท และขอบเขตนี้อยู่ในหนังสือเล่มนี้แล้ว"
+    },
     "tab": {
       "attributes": "คุณลักษณะ",
       "evidences": "หลักฐาน",
@@ -34,12 +39,20 @@
       "saved": "บันทึกเอนทิตีแล้ว",
       "status_changed": "เปลี่ยนสถานะเป็น {{status}} แล้ว",
       "invalid_lang": "รหัสภาษาไม่ถูกต้อง (เช่น en, zh, zh-tw)"
-    }
+    },
+    "remove_attr_confirm": "ลบค่าคุณสมบัตินี้หรือไม่? คุณสามารถเพิ่มกลับมาใหม่ได้ในภายหลัง",
+    "remove_attr_success": "ลบค่าคุณสมบัติออกแล้ว",
+    "add_attr_heading": "เพิ่มค่าสำหรับคุณสมบัติอื่น",
+    "add_attr_pick": "เลือกคุณสมบัติ…",
+    "add_attr_value_placeholder": "ค่า",
+    "add_attr_button": "เพิ่ม",
+    "add_attr_success": "เพิ่มคุณสมบัติแล้ว"
   },
   "attr_card": {
     "required": "*จำเป็นต้องระบุ",
     "modified": "แก้ไขเมื่อ",
-    "has_translations": "มีคำแปลแล้ว"
+    "has_translations": "มีคำแปลแล้ว",
+    "remove": "ลบค่านี้"
   },
   "translation_row": {
     "confidence": {

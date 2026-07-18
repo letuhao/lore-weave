@@ -153,6 +153,14 @@ export async function listWorldBooks(
   return ok(request.get(`/v1/worlds/${worldId}/books`, auth(token)));
 }
 
+/** A world's maps (S7·2 read route) — used to VERIFY the loop server-side: a map an author built
+ *  in the studio is reachable from the book through the world (book→world→map, not an island). */
+export async function listWorldMapsApi(
+  request: APIRequestContext, token: string, worldId: string,
+): Promise<{ items: Array<{ map_id: string; name: string }>; total: number }> {
+  return ok(request.get(`/v1/worlds/${worldId}/maps`, auth(token)));
+}
+
 /** Attach an existing book to a world (C20 move-book) — pre-seed membership. */
 export async function moveBookIntoWorld(
   request: APIRequestContext, token: string, worldId: string, bookId: string,
@@ -309,6 +317,27 @@ export async function createCompositionWork(request: APIRequestContext, token: s
   return w.project_id;
 }
 
+/** S5 — derive a dị bản (derivative Work) from a canon Work via the real route the wizard
+ *  calls. Returns the new derivative's project_id + version (for If-Match archive). Throws on
+ *  the 503 PROJECT_CREATE_UNAVAILABLE (knowledge-service can't mint the delta partition) so a
+ *  seeding test can `test.skip()` on a genuine infra outage instead of failing spuriously. */
+export async function createDerivative(
+  request: APIRequestContext, token: string, sourceProjectId: string,
+  opts: { name: string; branchPoint?: number; taxonomy?: 'au' | 'pov_shift' | 'character_transform'; canonRules?: string[] },
+): Promise<{ project_id: string; version: number }> {
+  const r = await request.post(`/v1/composition/works/${sourceProjectId}/derive`, {
+    ...auth(token),
+    data: {
+      name: opts.name,
+      branch_point: opts.branchPoint ?? 0,
+      divergence: { taxonomy: opts.taxonomy ?? 'au', canon_rule: opts.canonRules ?? [] },
+    },
+  });
+  if (!r.ok()) throw new Error(`createDerivative ${r.url()} → ${r.status()} ${await r.text()}`);
+  const w = (await r.json()) as { project_id: string; version: number };
+  return { project_id: w.project_id, version: w.version };
+}
+
 export async function createCompositionScene(
   request: APIRequestContext, token: string, projectId: string, chapterId: string, title: string,
 ): Promise<string> {
@@ -352,6 +381,20 @@ export async function setWorkCriticModel(
     request.patch(`/v1/composition/works/${projectId}`, {
       ...auth(token),
       data: { settings: { critic_model_source: 'user_model', critic_model_ref: criticModelRef } },
+    }),
+  );
+}
+
+/** Persist the Work's default drafter model (settings.default_model_ref). The studio editor's inline
+ *  "Continue from cursor" is gated on a RESOLVED default (composeDefaultModel = persisted ?? sole-model);
+ *  the test account has no `user_default_models`, so a spec that drives the inline ghost must set this. */
+export async function setWorkDefaultModel(
+  request: APIRequestContext, token: string, projectId: string, modelRef: string,
+): Promise<void> {
+  await ok(
+    request.patch(`/v1/composition/works/${projectId}`, {
+      ...auth(token),
+      data: { settings: { default_model_ref: modelRef } },
     }),
   );
 }

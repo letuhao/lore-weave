@@ -42,6 +42,7 @@ imported verbatim from `app.routers.public.graph_views`).
 
 from __future__ import annotations
 
+import logging
 import time
 from typing import TYPE_CHECKING, Literal
 from uuid import UUID, uuid4
@@ -83,6 +84,8 @@ if TYPE_CHECKING:  # avoid an import cycle (executor imports this module)
 
 from loreweave_grants import GrantLevel
 
+logger = logging.getLogger(__name__)
+
 __all__ = [
     "GRAPH_SCHEMA_ARG_MODELS",
     "GRAPH_SCHEMA_TOOL_DEFINITIONS",
@@ -117,8 +120,12 @@ TRIAGE_LIMIT_DEFAULT = 100
 _CODE_MAX = 120  # SchemaCode/view code slug cap (ontology_models.SchemaCode)
 _NAME_MAX = 200
 
-# Fact-types accepted by the pending-facts inbox (mirrors db.models.FactType).
-_PROPOSE_FACT_TYPES = ("decision", "preference", "milestone", "negation")
+# Fact-types accepted by the pending-facts inbox. DERIVE from the SoT — a hand-kept tuple
+# drifted (cold review: it was missing 'statement' AND 'commitment'), so a well-behaved LLM
+# reading kg_propose_fact's advertised enum would never emit them though the validator accepts
+# them. Same lockstep discipline as memory_remember (which already uses list(FACT_TYPES)).
+from app.db.neo4j_repos.facts import FACT_TYPES as _FACT_TYPES
+_PROPOSE_FACT_TYPES = tuple(_FACT_TYPES)
 
 # B1(4) — cross-partition unification mode for the multi-KG read tools
 # (kg_world_query / kg_multi_query). "off" (default) = today's forest,
@@ -287,7 +294,7 @@ class KgProposeFactArgs(ProjectScopedArgs):
     model_config = ConfigDict(extra="forbid")
 
     fact_text: str = Field(min_length=1, max_length=2000)
-    fact_type: Literal["decision", "preference", "milestone", "negation"]
+    fact_type: Literal["decision", "preference", "milestone", "negation", "statement", "commitment"]
 
 
 class KgProposeEdgeArgs(ProjectScopedArgs):
@@ -432,6 +439,49 @@ class KgTriageSchemaWriteArgs(ProjectScopedArgs):
     add_kinds: list[str] = Field(default_factory=list, max_length=50)
 
 
+class KgProjectEntitiesToNodesArgs(ProjectScopedArgs):
+    """`kg_project_entities_to_nodes` — deterministically project a book's
+    glossary entities into the graph as canonical `:Entity` nodes (WS-4B /
+    scenario S04). Tier-A: idempotent (re-projection is a no-op) + reversible.
+    Optional `entity_ids` limits it to a subset; omit to project the whole
+    active glossary. This is the structured, prose-less path to seed the graph
+    (no chapter extraction needed)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    entity_ids: list[str] | None = Field(default=None, max_length=1000)
+
+
+class KgCreateNodeArgs(ProjectScopedArgs):
+    """`kg_create_node` — manually create ONE knowledge-graph entity node (a
+    character, location, organization, item, …). Tier-A: idempotent (the same
+    name+kind upserts the existing node) + reversible. Use this BEFORE
+    `kg_propose_edge` when a relationship's endpoint isn't in the graph yet — an
+    edge whose endpoints aren't nodes is parked and later fails at confirm.
+    Returns the node's entity_id to use as an edge endpoint."""
+
+    name: str = Field(min_length=1, max_length=200, description="the entity's name")
+    kind: str = Field(
+        min_length=1, max_length=100,
+        description=(
+            "the entity kind — one of: character, location, organization, "
+            "concept, item"
+        ),
+    )
+
+    @model_validator(mode="after")
+    def _gate_kind(self) -> "KgCreateNodeArgs":
+        # S7-1 (INV-parity): close the free-string agent path so the agent can
+        # only mint the same closed set the human REST create accepts. ONE home
+        # for the set: neo4j_repos.entities.AUTHORABLE_KINDS (imported lazily to
+        # keep the tools layer free of an eager data-layer import at class-def).
+        from app.db.neo4j_repos.entities import AUTHORABLE_KINDS
+
+        if self.kind.strip() not in AUTHORABLE_KINDS:
+            raise ValueError(f"kind must be one of {sorted(AUTHORABLE_KINDS)}")
+        return self
+
+
 GRAPH_SCHEMA_ARG_MODELS: dict[str, type[BaseModel]] = {
     # ── R (read) ──────────────────────────────────────────────────────
     "kg_graph_query": KgGraphQueryArgs,
@@ -446,6 +496,8 @@ GRAPH_SCHEMA_ARG_MODELS: dict[str, type[BaseModel]] = {
     # ── W (low-impact, reversible, owner/grant-gated) ─────────────────
     "kg_propose_fact": KgProposeFactArgs,
     "kg_propose_edge": KgProposeEdgeArgs,
+    "kg_project_entities_to_nodes": KgProjectEntitiesToNodesArgs,  # WS-4B: A, deterministic projection
+    "kg_create_node": KgCreateNodeArgs,  # W10-M1: A, manual single-node create (unblocks kg_propose_edge)
     "kg_view_upsert": KgViewUpsertArgs,
     "kg_view_delete": KgViewDeleteArgs,
     "kg_triage_resolve": KgTriageResolveArgs,
@@ -768,6 +820,51 @@ GRAPH_SCHEMA_TOOL_DEFINITIONS: list[dict] = [
             "project_id": _PROJECT_ID_PROP,
         },
         ["source_entity_id", "target_entity_id", "edge_type"],
+    ),
+    _tool(
+        "kg_project_entities_to_nodes",
+        "Project this book's recorded glossary entities into the knowledge "
+        "graph as nodes — the structured way to seed the graph from lore you "
+        "already entered, WITHOUT needing any chapter prose written. "
+        "Deterministic and idempotent: re-running adds no duplicates. Returns "
+        "how many nodes were newly created vs. already existed. Do this before "
+        "proposing edges between entities (an edge needs both endpoints to be "
+        "nodes first).",
+        {
+            "entity_ids": {
+                "type": "array",
+                "items": {"type": "string"},
+                "description": (
+                    "Optional — the specific glossary entity ids to project. "
+                    "Omit to project the book's whole active glossary."
+                ),
+            },
+            "project_id": _PROJECT_ID_PROP,
+        },
+        [],
+    ),
+    _tool(
+        "kg_create_node",
+        "Manually create ONE knowledge-graph entity node (a character, location, "
+        "organization, item, …). Use this BEFORE kg_propose_edge when a relationship's "
+        "endpoint isn't in the graph yet — an edge whose endpoints aren't nodes is "
+        "parked and later fails. Idempotent: the same name+kind returns the existing "
+        "node. Returns the entity_id to use as an edge endpoint.",
+        {
+            "name": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 200,
+                "description": "the entity's name",
+            },
+            "kind": {
+                "type": "string",
+                "enum": ["character", "location", "organization", "concept", "item"],
+                "description": "the entity kind (closed set)",
+            },
+            "project_id": _PROJECT_ID_PROP,
+        },
+        ["name", "kind"],
     ),
     _tool(
         "kg_view_upsert",
@@ -1449,9 +1546,14 @@ async def _handle_kg_propose_fact(ctx: "ToolContext", args: KgProposeFactArgs) -
 
 async def _handle_kg_propose_edge(ctx: "ToolContext", args: KgProposeEdgeArgs) -> dict:
     # W (draft) — validate against the resolved schema, enforce temporal-
-    # required at MINT, then park to the triage inbox. NEVER writes Neo4j
+    # required at MINT, then park to the triage inbox. NEVER WRITES Neo4j
     # (INV-K1): the central write-path applies it only after human review.
+    # WS-4B ADDS a read-only endpoint-existence PRECHECK (below) so an edge
+    # whose endpoints aren't nodes yet is rejected UP FRONT (KG_ENDPOINT_NOT_NODE)
+    # instead of parking then failing two steps later at confirm — this reads
+    # Neo4j but never writes it, so the human-gated-write invariant is intact.
     from app.tools.executor import ToolExecutionError
+    from app.db.neo4j_repos.entities import existing_entity_node_ids
 
     owner = await _resolve_project_owner(ctx, GrantLevel.EDIT)
     project_str = str(ctx.project_id)
@@ -1496,6 +1598,31 @@ async def _handle_kg_propose_edge(ctx: "ToolContext", args: KgProposeEdgeArgs) -
         item_type = "proposed_edge"
         signature = f"propose_edge:{args.edge_type}:{args.source_entity_id}->{args.target_entity_id}"
 
+    # Fail-fast endpoint precheck (WS-4B / contract C5) — the LAST gate before
+    # parking, so the cheap in-memory schema/temporal checks reject first. The
+    # confirm-time write (`create_relation`) matches both endpoints by
+    # `Entity.id`; an edge referencing an id that isn't a node would park then
+    # fail two steps later at confirm with a late, confusing error. Reject now
+    # with KG_ENDPOINT_NOT_NODE and tell the agent exactly what to do: project
+    # the glossary entities into the graph first (kg_project_entities_to_nodes).
+    # This READS Neo4j (INV-K1 is about not WRITING it — the write stays human-
+    # gated), the one stateful check worth a round-trip to avoid the dead-end.
+    endpoint_ids = [args.source_entity_id, args.target_entity_id]
+    async with neo4j_session() as session:
+        present = await existing_entity_node_ids(
+            session, user_id=str(owner), ids=endpoint_ids,
+        )
+    missing = [eid for eid in endpoint_ids if eid not in present]
+    if missing:
+        raise ToolExecutionError(
+            "edge endpoint(s) are not yet graph nodes: "
+            + ", ".join(missing)
+            + " — project the glossary entities into the graph first "
+            "(kg_project_entities_to_nodes), then propose the edge",
+            code="KG_ENDPOINT_NOT_NODE",
+            detail={"missing": missing},
+        )
+
     parked = await ctx.triage_repo.park(
         user_id=owner,
         project_id=project_str,
@@ -1511,6 +1638,122 @@ async def _handle_kg_propose_edge(ctx: "ToolContext", args: KgProposeEdgeArgs) -
         "item_type": parked.item_type,
         "signature": parked.signature,
         "on_schema": issue is None,
+    }
+
+
+async def _handle_kg_project_entities_to_nodes(
+    ctx: "ToolContext", args: KgProjectEntitiesToNodesArgs,
+) -> dict:
+    # A (deterministic, idempotent projection). Reads the book's glossary
+    # entities (all active, or the `entity_ids` subset) and upserts each as a
+    # canonical :Entity node — the structured "seed the graph from recorded
+    # lore" path (WS-4B / S04), so a prose-less book can build a graph without
+    # chapter extraction. Runs under the project OWNER (resolve-to-owner).
+    from app.tools.executor import ToolExecutionError
+    from app.clients.glossary_client import get_glossary_client
+    from app.extraction.anchor_loader import project_glossary_entities_to_nodes
+
+    owner = await _resolve_project_owner(ctx, GrantLevel.EDIT)
+    meta = await ctx.projects_repo.project_meta(ctx.project_id)
+    if meta is None:  # the owner gate passed above; stay defensive
+        raise ToolExecutionError("project not found")
+    _, book_id = meta
+    if book_id is None:
+        raise ToolExecutionError(
+            "this project isn't linked to a book, so it has no glossary "
+            "entities to project — link a book to the project first"
+        )
+
+    entity_ids = [e.strip() for e in (args.entity_ids or []) if e and e.strip()]
+    async with neo4j_session() as session:
+        res = await project_glossary_entities_to_nodes(
+            session,
+            get_glossary_client(),
+            user_id=str(owner),
+            project_id=str(ctx.project_id),
+            book_id=book_id,
+            entity_ids=entity_ids or None,
+        )
+        # D-KG-STAT-CACHE-DEAD (rail HIGH): the projection just changed the graph, so
+        # refresh the cached counters NOW — reusing the open Neo4j session for an
+        # authoritative recount. This is the ONLY production writer of stat_updated_at:
+        # the K16.14 stats_updater was never wired to a caller, so entity_count stayed
+        # UNKNOWN forever, and the flagship vision-to-book rail (connect-people is
+        # done_when "connections > 0") could never see its own projection land and
+        # stalled at STOP_UNKNOWN. Recounting here makes `connections` become KNOWN the
+        # moment the cast is placed. Best-effort: the stats are advisory (the projection
+        # itself is the contract), so a recount hiccup must not fail a successful placement.
+        try:
+            from app.jobs.stats_updater import reconcile_project_stats
+
+            await reconcile_project_stats(
+                ctx.projects_repo._pool, session, owner, ctx.project_id
+            )
+        except Exception:  # pragma: no cover - advisory cache, never blocks the projection
+            logger.warning(
+                "kg_project_entities_to_nodes: stat recount failed (project_id=%s); "
+                "counters stay stale but the projection succeeded",
+                ctx.project_id,
+                exc_info=True,
+            )
+    out: dict = {
+        "nodes_created": res.created,
+        "nodes_existing": res.existing,
+        "entities_seen": res.seen,
+        "skipped": res.skipped,
+    }
+    # Never report a PARTIAL projection as a complete one.
+    notes: list[str] = []
+    if res.truncated:
+        out["truncated"] = True
+        notes.append(
+            "the book has more entities than one projection pass could read; "
+            "re-run with explicit entity_ids to project the remainder"
+        )
+    if res.conflicted:
+        # D-KG-GLOSSARY-FK-GLOBAL-UNIQUE: Entity.glossary_entity_id carries a GLOBAL
+        # uniqueness constraint, so entities already anchored by this book's other
+        # knowledge project cannot be anchored again here. Say so plainly instead of
+        # silently returning a smaller nodes_created.
+        out["nodes_conflicted"] = res.conflicted
+        notes.append(
+            f"{res.conflicted} entit{'y' if res.conflicted == 1 else 'ies'} could not "
+            "be added because another knowledge project for this book already owns "
+            "them in the graph; query that project, or use it for this book's graph"
+        )
+    if notes:
+        out["note"] = " · ".join(notes)
+    return out
+
+
+async def _handle_kg_create_node(ctx: "ToolContext", args: KgCreateNodeArgs) -> dict:
+    """A (reversible, idempotent). Manually mint ONE :Entity node so an agent can
+    give kg_propose_edge a real endpoint (an edge whose endpoints aren't nodes is
+    parked, then fails). Runs under the project OWNER (resolve-to-owner, EDIT grant),
+    so a collaborator resolves the grant but the write is still owner-scoped."""
+    from app.tools.executor import ToolExecutionError
+    from app.db.neo4j_repos.entities import merge_entity
+
+    owner = await _resolve_project_owner(ctx, GrantLevel.EDIT)
+    name = args.name.strip()
+    kind = args.kind.strip()
+    if not name or not kind:
+        raise ToolExecutionError("name and kind must both be non-empty")
+    async with neo4j_session() as session:
+        entity = await merge_entity(
+            session,
+            user_id=str(owner),
+            project_id=str(ctx.project_id),
+            name=name,
+            kind=kind,
+            source_type="manual",
+            provenance="human_authored",
+        )
+    return {
+        "entity_id": entity.id,
+        "name": entity.name,
+        "kind": entity.kind,
+        "note": "node ready — pass entity_id as a subject/object endpoint to kg_propose_edge",
     }
 
 
@@ -1874,6 +2117,8 @@ GRAPH_SCHEMA_HANDLERS = {
     "kg_triage_list": _handle_kg_triage_list,
     "kg_propose_fact": _handle_kg_propose_fact,
     "kg_propose_edge": _handle_kg_propose_edge,
+    "kg_project_entities_to_nodes": _handle_kg_project_entities_to_nodes,
+    "kg_create_node": _handle_kg_create_node,
     "kg_view_upsert": _handle_kg_view_upsert,
     "kg_view_delete": _handle_kg_view_delete,
     "kg_triage_resolve": _handle_kg_triage_resolve,

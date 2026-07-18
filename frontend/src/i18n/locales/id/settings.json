@@ -9,7 +9,8 @@
       "translation": "Terjemahan",
       "reading": "Membaca",
       "language": "Bahasa",
-      "mcp": "Akses MCP"
+      "mcp": "Akses MCP",
+      "workflow-bindings": "Pengaturan Otomatis Alur Kerja"
     }
   },
   "mcp": {
@@ -492,6 +493,18 @@
       "testing": "Menguji...",
       "reverify": "Verifikasi Ulang",
       "verify": "Verifikasi",
+      "pricing_title": "Harga (USD per 1M token)",
+      "pricing_input": "Input",
+      "pricing_output": "Output",
+      "pricing_free_local": "Gratis — berjalan di perangkat Anda sendiri",
+      "pricing_hint": "Terisi otomatis saat pembuatan. Ubah jika tarif resmi penyedia berubah, atau periksa OpenRouter untuk estimasi langsung.",
+      "pricing_check": "Periksa OpenRouter",
+      "pricing_checking": "Memeriksa...",
+      "pricing_suggestion_found": "OpenRouter ({{source}}): ${{input}} in / ${{output}} out",
+      "pricing_apply": "Terapkan",
+      "pricing_not_found": "Model yang cocok tidak ditemukan di OpenRouter — harga tidak tersedia dari sumber ini.",
+      "pricing_check_failed": "Gagal memeriksa harga OpenRouter",
+      "pricing_negative_error": "Harga harus nol atau lebih besar",
       "delete_model": "Hapus Model",
       "confirm_delete": "Konfirmasi Hapus",
       "deleting": "Menghapus...",

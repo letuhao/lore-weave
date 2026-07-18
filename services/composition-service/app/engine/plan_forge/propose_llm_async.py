@@ -6,6 +6,11 @@ import hashlib
 import json
 from typing import Any
 
+from app.engine.plan_forge.existing_state import (
+    ExistingState,
+    merge_existing_into_spec,
+    render_existing_state_prompt,
+)
 from app.engine.plan_forge.json_extract import extract_json_object
 from app.engine.plan_forge.llm import PlanForgeLLMError, ProviderPlanForgeLLM
 from app.engine.plan_forge.propose_llm import normalize_spec
@@ -50,13 +55,16 @@ async def _parse_with_repair(
 async def analyze_markdown(
     source_markdown: str,
     client: ProviderPlanForgeLLM,
+    *,
+    existing: ExistingState | None = None,
 ) -> tuple[dict[str, Any], str]:
     checksum = hashlib.sha256(source_markdown.encode("utf-8")).hexdigest()
+    block = render_existing_state_prompt(existing) if existing is not None else ""
     analyze = await _parse_with_repair(
         client,
         "analyze",
         ANALYZE_SYSTEM,
-        analyze_user_prompt(source_markdown),
+        analyze_user_prompt(source_markdown, block),
         "analyze_repair",
     )
     analyze.setdefault("version", 1)
@@ -67,29 +75,42 @@ async def materialize_from_analyze_async(
     analyze: dict[str, Any],
     source_checksum: str,
     client: ProviderPlanForgeLLM,
+    *,
+    existing: ExistingState | None = None,
+    inject_cast_max: int = 1,
 ) -> dict[str, Any]:
     analyze_json = json.dumps(analyze, ensure_ascii=False, indent=2)
+    block = render_existing_state_prompt(existing) if existing is not None else ""
     spec = await _parse_with_repair(
         client,
         "materialize",
         MATERIALIZE_SYSTEM,
-        materialize_user_prompt(analyze_json, source_checksum),
+        materialize_user_prompt(analyze_json, source_checksum, block),
         "materialize_repair",
         max_tokens=12000,
     )
     spec = normalize_spec(spec, source_checksum, analyze=analyze)
     if analyze.get("open_questions") and not spec.get("meta", {}).get("open_questions"):
         spec["meta"]["open_questions"] = analyze["open_questions"]
+    if existing is not None:
+        # A1 — the deterministic backstop: annotate + INJECT the existing protagonist over a placeholder
+        # (prompt grounding alone proved insufficient in the A/B). Runs AFTER normalize's pad.
+        spec = merge_existing_into_spec(spec, existing, inject_cast_max=inject_cast_max)
     return spec
 
 
 async def propose_spec_llm_async(
     source_markdown: str,
     client: ProviderPlanForgeLLM,
+    *,
+    existing: ExistingState | None = None,
+    inject_cast_max: int = 1,
 ) -> tuple[dict[str, Any], dict[str, Any], list[dict[str, Any]]]:
-    """Returns (spec, analyze, llm_io_log)."""
-    analyze, checksum = await analyze_markdown(source_markdown, client)
-    spec = await materialize_from_analyze_async(analyze, checksum, client)
+    """Returns (spec, analyze, llm_io_log). PROPOSE-BLIND: `existing` grounds both steps; A1 injects."""
+    analyze, checksum = await analyze_markdown(source_markdown, client, existing=existing)
+    spec = await materialize_from_analyze_async(
+        analyze, checksum, client, existing=existing, inject_cast_max=inject_cast_max,
+    )
     return spec, analyze, client.io_log
 
 

@@ -37,7 +37,7 @@ func (s *Server) mcpHandler() http.Handler {
 	registerARTool(srv, &mcp.Tool{
 		Name:        "registry_propose_skill",
 		Description: "PROPOSE a new prompt-only skill (SKILL.md) for the user. Does NOT create it — it records a proposal the user must approve in the UI. Provide slug (lowercase a-z0-9-), a one-line description, and the markdown body (instructions). Use this to save a useful workflow as a reusable skill.",
-		Meta:        lwmcp.NewToolMeta(lwmcp.TierA, lwmcp.ScopeUser, nil, []string{"save skill", "propose skill", "create skill", "remember this as a skill"}),
+		Meta:        lwmcp.NewToolMeta(lwmcp.TierA, lwmcp.ScopeUser, nil, []string{"save skill", "propose skill", "create skill", "author a reusable skill"}),
 		InputSchema: closedSetSchemaFor[proposeSkillIn](map[string][]any{
 			"surfaces[]": enumSurfaces,
 		}),
@@ -58,12 +58,50 @@ func (s *Server) mcpHandler() http.Handler {
 		Meta:        lwmcp.NewToolMeta(lwmcp.TierA, lwmcp.ScopeUser, nil, []string{"enable skill", "disable skill", "turn off skill", "turn on skill"}),
 	}, s.toolSetSkillEnabled)
 
+	// WS-2a — curated multi-step WORKFLOWS (C3). A workflow is an ordered list of
+	// tool steps the user runs as one named capability; authoring is propose→approve
+	// (never a direct write), same HITL spine as skills.
+	registerARTool(srv, &mcp.Tool{
+		Name:        "registry_list_workflows",
+		Description: "List the curated multi-step workflows visible to the signed-in user (System defaults + their own). Returns each workflow's slug + title + description — not the full step list. Use to see what workflows exist before proposing a new one or reading one in full.",
+		Meta:        lwmcp.NewToolMeta(lwmcp.TierR, lwmcp.ScopeUser, nil, []string{"workflows", "list workflows", "my workflows", "what workflows", "recipes"}),
+		InputSchema: closedSetSchemaFor[listWorkflowsIn](map[string][]any{
+			"surface": enumSurfaces,
+		}),
+	}, s.toolListWorkflows)
+
+	registerARTool(srv, &mcp.Tool{
+		Name:        "registry_get_workflow",
+		Description: "Get the full definition of one workflow the user can see, by slug — its inputs and ordered steps. Read-only.",
+		Meta:        lwmcp.NewToolMeta(lwmcp.TierR, lwmcp.ScopeUser, nil, []string{"read workflow", "workflow steps", "get workflow", "show workflow"}),
+	}, s.toolGetWorkflow)
+
+	registerARTool(srv, &mcp.Tool{
+		Name:        "registry_propose_workflow",
+		Description: "PROPOSE a new curated multi-step workflow. Does NOT create or run it — it records a proposal the user must approve in the UI. Provide slug, title, a one-line description, and an ordered list of steps (each with a tool name and a gate: none | confirm | approval). Optionally declare inputs. By default it's saved as the user's own private workflow; pass book_id to share it with a book you can edit (book-tier). Use this to save a repeatable sequence of tool calls as a reusable workflow.",
+		Meta:        lwmcp.NewToolMeta(lwmcp.TierA, lwmcp.ScopeUser, nil, []string{"save workflow", "propose workflow", "create workflow", "remember this as a workflow", "make a recipe"}),
+		InputSchema: closedSetSchemaFor[proposeWorkflowIn](map[string][]any{
+			"surfaces[]":   enumSurfaces,
+			"steps[].gate": enumWorkflowGates,
+		}),
+	}, s.toolProposeWorkflow)
+
+	registerARTool(srv, &mcp.Tool{
+		Name:        "registry_update_workflow",
+		Description: "PROPOSE an update to one of the user's OWN workflows (by slug). Does NOT apply immediately — the user approves the diff in the UI. Provide the slug and the new title/description/inputs/steps.",
+		Meta:        lwmcp.NewToolMeta(lwmcp.TierA, lwmcp.ScopeUser, nil, []string{"update workflow", "edit workflow", "change workflow"}),
+		InputSchema: closedSetSchemaFor[updateWorkflowIn](map[string][]any{
+			"surfaces[]":   enumSurfaces,
+			"steps[].gate": enumWorkflowGates,
+		}),
+	}, s.toolUpdateWorkflow)
+
 	return lwmcp.NewStatelessHandler(srv, s.cfg.InternalServiceToken)
 }
 
 func registerARTool[In, Out any](srv *mcp.Server, t *mcp.Tool, h func(context.Context, *mcp.CallToolRequest, In) (*mcp.CallToolResult, Out, error)) {
 	lwmcp.MustValidateToolMeta(t)
-	mcp.AddTool(srv, t, h)
+	lwmcp.RegisterTool(srv, t, h)
 }
 
 func arCallerID(ctx context.Context) (uuid.UUID, error) {

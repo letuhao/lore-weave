@@ -14,7 +14,9 @@ no ownership guard (spec OD-1 / C-FT).
 Key pieces
 ----------
 * ``FIND_TOOLS_TOOL`` / ``FIND_TOOLS_NAME`` — the meta-tool schema (C-FT).
-* ``ALWAYS_ON_CORE`` — the ≤8 tools advertised every universal ``/chat`` turn.
+* ``ALWAYS_ON_CORE`` — the ≤10 tools advertised every universal ``/chat`` turn
+  (the deterministic discovery pair ``tool_list``/``tool_load`` + ``find_tools`` + the
+  generic frontend tools).
 * ``search_catalog()`` — in-memory fuzzy search over name + description +
   ``_meta.synonyms`` (stdlib token-overlap + difflib; no embeddings in v1, no
   new dependency). Returns ``(matches, confident)`` so the loop can apply the
@@ -28,12 +30,25 @@ Key pieces
 """
 from __future__ import annotations
 
+import logging
 import re
+import time
 from difflib import SequenceMatcher
+
+from loreweave_vecmath import cosine_similarity
+
+from app.services.tool_liveness import tool_is_broken  # CD4 ship gate
+
+logger = logging.getLogger(__name__)
 
 # ── C-FT: the find_tools meta-tool ───────────────────────────────────────────
 
 FIND_TOOLS_NAME = "find_tools"
+
+# WS-1a (contracts.md C2) — the deterministic discovery pair that replaces mandatory
+# find_tools semantic search. Advertised as core (see ALWAYS_ON_CORE_NAMES), listed FIRST.
+TOOL_LIST_NAME = "tool_list"
+TOOL_LOAD_NAME = "tool_load"
 
 # Default number of matches returned to the agent.
 FIND_TOOLS_DEFAULT_LIMIT = 8
@@ -48,28 +63,82 @@ FIND_TOOLS_DEFAULT_LIMIT = 8
 # fuzzy search to one entry instead of the full ~150-tool flat catalog.
 GROUP_DIRECTORY: dict[str, str] = {
     "glossary": "Lore entities (characters/locations/items/kinds) — CRUD + wiki + standards ontology.",
-    "story": "Manuscript search + chapter reads (story_search, book_get_chapter).",
-    "composition": "Outline/scene/canon planning — PlanForge, Story Grid rules.",
+    # `book_get_chapter` is prefix `book_`, not `story_` — it lives in the "book" group below;
+    # the group filter is prefix-based (see `_provider_prefix`), so this entry must only claim
+    # tools this group's search can actually surface.
+    "story": "Manuscript search (story_search).",
+    "composition": "Outline/scene/canon planning — Story Grid rules, motif/arc library.",
     "knowledge": "Derived KG facts (Neo4j-backed), passage retrieval, memory_search.",
     "translation": "Job-based chapter/book translation pipeline.",
-    "book": "Book/chapter CRUD, publishing, chapter body reads.",
+    "book": "Book/chapter CRUD, publishing, chapter body reads (incl. book_get_chapter).",
+    # W10 worldbuilding — book-service's SECOND federated namespace (world_*, world_map_*).
+    # A distinct group from "book" (prose): worlds are prose-less containers + reference
+    # maps. `_domain_of` maps the `world_` prefix straight here (no _DOMAIN_ALIASES entry
+    # needed — the prefix already equals the group name). Without this entry the tools
+    # reach the raw catalog but are NOT enumerable by group and are excluded from "book".
+    # Keep in lockstep with ai-gateway find-tools.ts GROUP_DIRECTORY.
+    "world": "Worldbuilding containers + reference maps — world create/get/list/move, plus map/marker/region authoring (world_*, world_map_*).",
     "jobs": "Job status/cancel for any long-running operation.",
     "catalog": "Public catalog browsing (published books, discovery).",
     "registry": "Agent/tool registry administration.",
     "settings": "User/account settings and provider-model configuration.",
+    # Track D CD5/C1: EXTERNAL retrieval (`web_search`, prefix `web_` → alias below).
+    # Deliberately NOT folded into `knowledge`, which is the INTERNAL knowledge graph.
+    "research": "External web research — search the open web for background facts (web_search). PAID.",
+    # PlanForge tools federate under their own `plan_` prefix (composition-service's M4
+    # federation contract), NOT `composition_` — a separate group so group="plan" actually
+    # surfaces them (they used to be mis-claimed under "composition" above, which the
+    # prefix-based filter could never honor).
+    "plan": (
+        "Novel planning workflow — PlanForge. THE SEQUENCE MATTERS: plan_propose_spec drafts a "
+        "spec, but a proposal ALONE creates NOTHING the book can use. To actually lay out a story "
+        "you MUST finish by calling plan_compile — that is the step that MATERIALISES the linked "
+        "chapter/scene structure (the outline the manuscript hangs on). After a user asks you to "
+        "plan or lay out their story: propose_spec → (refine with the user) → plan_compile. Do not "
+        "stop at propose; a plan with no compiled structure is an unfinished plan. Also: "
+        "plan_self_check, plan_interpret_feedback, plan_apply_revision, plan_review_checkpoint, "
+        "plan_handoff_autofix, plan_validate."
+    ),
 }
 
+# WS-1a (contracts.md C1) — the closed category enum for tool_list/tool_load: the
+# GROUP_DIRECTORY domains + the "all" sentinel. Single-sourced here; the tool defs
+# and the result builders both read it (no re-declaration).
+CATEGORY_ENUM: list[str] = sorted(GROUP_DIRECTORY) + ["all"]
+
+# Design item 1 (2026-07-07 discovery-hardening plan) reworded this description
+# twice over, mirroring ai-gateway's find-tools.ts FIND_TOOLS_TOOL byte-for-byte
+# in intent (not necessarily literal wording — the two engines are documented to
+# rank/enumerate/cap IDENTICALLY, per the CAT-4 discipline already extended to
+# this fix): (1) it now tells the caller about the enumeration affordance
+# (`group` + no/empty `intent` lists everything in a domain — external audit #5,
+# "no list-all-tools-in-a-domain affordance"); (2) it DROPS the old unconditional
+# "if it returns nothing useful, you may try once more... before telling the user
+# you can't" invitation — that unbounded retry bias is exactly what let one real
+# session hit 40 find_tools iterations / 53.8s / a 0-length final answer (see the
+# plan's Problem section). The retry-cap machinery below (FindToolsAttemptTracker)
+# is what actually bounds it; the wording here just stops encouraging the failure
+# mode in the first place.
 FIND_TOOLS_TOOL: dict = {
     "type": "function",
     "function": {
         "name": FIND_TOOLS_NAME,
         "description": (
-            "Find tools that can perform an intent. Call this FIRST when the user "
-            "asks for something you don't already have a tool advertised for "
-            "(e.g. editing a book, starting a translation, changing settings). "
-            "Returns matching tool names + descriptions; the matched tools become "
-            "callable on your NEXT step. If it returns nothing useful, you may try "
-            "once more with broader wording before telling the user you can't."
+            "OPTIONAL (legacy) intent search for tools — PREFER `tool_list`/`tool_load`, "
+            "which are deterministic and complete. Use `find_tools` only when you don't "
+            "know which category fits and want to search by intent. Pass "
+            "`group` (a tool domain) with `intent` omitted or empty to list EVERY "
+            "tool in that domain, unranked — the fastest way to check whether a "
+            "whole domain has what you need. With `intent` set, returns the "
+            "best-matching tool names + descriptions; matched tools become "
+            "callable next. If `group` is set and your query scores weak or empty "
+            "against it, you automatically get the FULL domain list instead of a "
+            "poor guess — no need to retry with different wording first. Without "
+            "`group`, an empty/weak `intent` instead returns the tool-domain "
+            "directory so you can pick one and search again scoped to it. If a "
+            "second attempt on the same ask ALSO comes back empty or weak, stop "
+            "searching and tell the user this isn't supported rather than "
+            "guessing again."
         ),
         "parameters": {
             "type": "object",
@@ -86,17 +155,97 @@ FIND_TOOLS_TOOL: dict = {
                 "group": {
                     "type": "string",
                     "enum": sorted(GROUP_DIRECTORY),
-                    "description": "Optional — scope the search to one tool domain from your tool-domain directory. Omit to search everything.",
+                    "description": "Optional — scope the search to one tool domain from your tool-domain directory. Omit `intent` (or leave it blank) to list EVERY tool in this domain, unranked. Omit `group` entirely to search everything.",
                 },
             },
             "required": ["intent"],
             "additionalProperties": False,
         },
+        # C-TOOL — declared, not inferred. These are pure disclosure over the catalog:
+        # they execute nothing and take no scope key. Without an explicit tier they
+        # relied on tool_tier()'s silent "R" default — the exact hole the wire gates
+        # exist to close, and the reason a federated catalog showed 3 untiered tools.
+        "_meta": {"tier": "R", "scope": "none"},
     },
 }
 
 
-# ── C-FT: the always-on core (advertised on every discovery turn, ≤8) ─────────
+# WS-1a (contracts.md C2) — the deterministic discovery pair, advertised as core and FIRST
+# (before find_tools). Mirror of ai-gateway's TOOL_LIST_TOOL / TOOL_LOAD_TOOL (find-tools.ts).
+TOOL_LIST_TOOL: dict = {
+    "type": "function",
+    "function": {
+        "name": TOOL_LIST_NAME,
+        "description": (
+            "List EVERY tool in a category (or \"all\"), complete and deterministic — the "
+            "reliable way to see what you can do here. Prefer this over find_tools when you know "
+            "the rough area. Returns {name, description, tier} per tool; deprecated tools are "
+            "labeled with their replacement. Then call tool_load(name) to get a tool's exact "
+            "arguments before using it."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "category": {
+                    "type": "string",
+                    "enum": CATEGORY_ENUM,
+                    "description": "A tool domain, or \"all\" for the whole catalog. Omit = all.",
+                },
+                "include_deprecated": {
+                    "type": "boolean",
+                    "description": "Include deprecated tools (shown labeled). Default true.",
+                    "default": True,
+                },
+            },
+            "additionalProperties": False,
+        },
+        # C-TOOL — declared, not inferred. These are pure disclosure over the catalog:
+        # they execute nothing and take no scope key. Without an explicit tier they
+        # relied on tool_tier()'s silent "R" default — the exact hole the wire gates
+        # exist to close, and the reason a federated catalog showed 3 untiered tools.
+        "_meta": {"tier": "R", "scope": "none"},
+    },
+}
+
+TOOL_LOAD_TOOL: dict = {
+    "type": "function",
+    "function": {
+        "name": TOOL_LOAD_NAME,
+        "description": (
+            "Load the exact input schema(s) for one or more tools — by `name`, a list of `names`, "
+            "or every tool in a `category` — so you can call them correctly. Loading makes them "
+            "callable; it does NOT run anything. Use it after tool_list to pick tools by name."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "name": {"type": "string", "description": "A single tool name."},
+                "names": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Several tool names.",
+                },
+                "category": {
+                    "type": "string",
+                    "enum": CATEGORY_ENUM,
+                    "description": "Load every tool in this category.",
+                },
+            },
+            "additionalProperties": False,
+        },
+        # C-TOOL — declared, not inferred. These are pure disclosure over the catalog:
+        # they execute nothing and take no scope key. Without an explicit tier they
+        # relied on tool_tier()'s silent "R" default — the exact hole the wire gates
+        # exist to close, and the reason a federated catalog showed 3 untiered tools.
+        "_meta": {"tier": "R", "scope": "none"},
+    },
+}
+
+
+# ── C-FT: the always-on core (advertised on every discovery turn, ≤10) ─────────
+# WS-1a bumped the ceiling 8→10: the deterministic discovery pair tool_list/tool_load
+# joined find_tools as core (the primary "what can I do here" path). Still small — the
+# whole point of core is a tiny always-present set; domain tools stay lazy via discovery.
 # Domain reads/writes are discovered via find_tools; only the meta-tool + the
 # truly GENERIC, surface-agnostic frontend tools are always present. The
 # frontend-tool schemas live in frontend_tools.py (S-CONSUMER sole-owns that
@@ -109,6 +258,9 @@ FIND_TOOLS_TOOL: dict = {
 # no open chapter. (`propose_record_edit` is the generic, surface-agnostic record
 # diff card and stays core.)
 ALWAYS_ON_CORE_NAMES: tuple[str, ...] = (
+    # WS-1a (OQ1): the deterministic pair FIRST, then find_tools (optional semantic convenience).
+    TOOL_LIST_NAME,
+    TOOL_LOAD_NAME,
     FIND_TOOLS_NAME,
     "ui_navigate",
     "ui_open_book",
@@ -116,6 +268,14 @@ ALWAYS_ON_CORE_NAMES: tuple[str, ...] = (
     "ui_watch_job",
     "propose_record_edit",
     "confirm_action",
+    # Track D CD5 — `web_search` is fundamental: grounding an answer in the open web is a
+    # base capability, not a glossary errand, so it must not cost a find_tools round-trip.
+    # It is the ONLY backend (federated) tool in this set, so it resolves from the CATALOG
+    # def, not `generic_frontend_tool_def` — which returns None for it, meaning a degraded
+    # gateway simply omits it rather than advertising a fabricated schema.
+    # It is PAID: advertising it is safe because chat's spend gate asks for consent at CALL
+    # time, independently of tier and of permission mode.
+    "web_search",
 )
 
 
@@ -146,37 +306,123 @@ ALWAYS_ON_CORE_NAMES: tuple[str, ...] = (
 # that surface's domain list opts them in here.
 # `story` = the `story_search` universal manuscript find (exact/lexical + semantic +
 # block snippets). It is HOT on every book-bound surface, NOT find_tools-lazy, for the
-# SAME reason composition_* is (below): a weak model asked "where is X at chapter N" /
-# "the firm the character works for" reaches for memory_search (semantic, empty without
-# ingested passages) and then PUNTS — "paste the manuscript" — instead of discovering the
-# lexical search it's standing on. Measured 2026-07-05 on the Dracula eval: after
-# story_search was un-dropped from federation the agent STILL never found it via
-# find_tools (ranked 7th / missed), so it must be seeded. It needs no embeddings/KG (the
-# exact leg is book-service full-text), so it is the grounding-of-last-resort for ANY
-# book — including ones with no glossary/KG built.
-_BOOK_SCOPED_HOT_DOMAINS: frozenset[str] = frozenset({"glossary", "story"})
-# The Writing Studio compose panel IS the composition surface — its own tool family
-# (outline/scene/canon reads + writes) must be hot, not find_tools-lazy. Live M-E
-# gate evidence: with composition_* lazy, a local model spun for minutes in
-# memory/glossary searches concluding "I don't see a list_scenes tool" and never
-# discovered the family it was standing on. (`story` hot here too — same lesson.)
-_STUDIO_HOT_DOMAINS: frozenset[str] = frozenset({"glossary", "composition", "story"})
+# SAME reason a book-bound skill's own domain is (below): a weak model asked "where is
+# X at chapter N" / "the firm the character works for" reaches for memory_search
+# (semantic, empty without ingested passages) and then PUNTS — "paste the manuscript" —
+# instead of discovering the lexical search it's standing on. Measured 2026-07-05 on the
+# Dracula eval: after story_search was un-dropped from federation the agent STILL never
+# found it via find_tools (ranked 7th / missed), so it must be seeded. It needs no
+# embeddings/KG (the exact leg is book-service full-text), so it is the
+# grounding-of-last-resort for ANY book — including ones with no glossary/KG built. No
+# skill declares "story" in its own `hot_domains` (it's not any one skill's tool family),
+# so it is unioned in here explicitly rather than derived — the one deliberate
+# surface-level exception to "hot = what an injected skill names."
+_ALWAYS_HOT_ON_BOOK_BOUND_SURFACE: frozenset[str] = frozenset({"story"})
 
 
 def surface_hot_domains(
-    *, editor: bool = False, book_scoped: bool = False, studio: bool = False
+    *,
+    editor: bool = False,
+    book_scoped: bool = False,
+    studio: bool = False,
+    permission_mode: str = "write",
 ) -> set[str]:
     """The domain prefixes whose tools are HOT (advertised every turn) for a
-    surface. Any book-scoped surface (the glossary page/reader OR the chapter
-    editor — both inject the glossary skill) gets the glossary domain hot; the
-    editor adds no extra backend domain (its prose write-back is a frontend tool).
-    The STUDIO compose surface adds the composition domain (its own tool family).
-    Universal (no flag) returns ∅ — pure discovery."""
-    if studio:
-        return set(_STUDIO_HOT_DOMAINS)
-    if book_scoped or editor:
-        return set(_BOOK_SCOPED_HOT_DOMAINS)
-    return set()
+    surface — Part D of docs/specs/2026-07-07-skill-authoring-and-mcp-exposure-
+    standard.md (the generic derivation promised in that spec's Part A design
+    text and mandated by its §8b.9 edge case).
+
+    Previously three hand-authored constants (`_BOOK_SCOPED_HOT_DOMAINS`,
+    `_STUDIO_HOT_DOMAINS`, `PLAN_HOT_DOMAINS`) had to independently track which
+    domain(s) each surface's DEFAULT-injected skill(s) name directly — the exact
+    shape that already caused one miss (plan_forge shipped, "plan" wasn't added to
+    any of them). Now derived from a SINGLE source of truth: whichever skills
+    `resolve_skills_to_inject` would inject BY DEFAULT (empty ``enabled_skills`` —
+    the surface's legacy/auto behavior, never the curated pins) on this surface,
+    unioned with each one's declared `SkillDef.hot_domains`, plus `story` (the one
+    surface-level-not-skill-owned exception, see above).
+
+    Deliberate, sign-off'd behavior change (2026-07-07): `knowledge_skill` already
+    auto-injects on EVERY non-admin surface (including universal/chat) and always
+    honestly declared `hot_domains={"knowledge"}` — but until this refactor that
+    declaration was inert (no hand-authored constant ever included it). This
+    function now honors it, so "knowledge" becomes hot EVERYWHERE knowledge_skill
+    is injected, including the universal/chat surface, which previously hot-seeded
+    nothing. This finally closes `D-SKILL-HOTDOMAIN-RUNTIME-WIRING` — see the
+    token-budget regression test proving the shared `HOT_SEED_TOKEN_BUDGET` ceiling
+    still holds with the extra domain in play (`tool_surface.py`'s existing
+    `budget_names_by_tokens` gracefully truncates a wider candidate set to the same
+    token cap, it does not widen the cap itself)."""
+    from app.services.skill_registry import SYSTEM_SKILLS, resolve_skills_to_inject
+
+    codes = resolve_skills_to_inject(
+        enabled_skills=[],
+        stream_format="agui",
+        disable_tools=False,
+        tool_calling_enabled=True,
+        editor=editor,
+        book_scoped=book_scoped,
+        admin=False,
+        permission_mode=permission_mode,
+        studio=studio,
+    )
+    domains: set[str] = set()
+    for code in codes:
+        skill = SYSTEM_SKILLS.get(code)
+        if skill:
+            domains |= set(skill.hot_domains)
+    if book_scoped or editor or studio:
+        domains |= set(_ALWAYS_HOT_ON_BOOK_BOUND_SURFACE)
+    return domains
+
+
+# N5a (dogfood 2026-07-18 F3) — high-impact, book-WIDE tools that must NEVER ride the domain
+# hot-seed. Keeping `glossary_adopt_standards` advertised let the co-writer proactively "set up
+# the world" on a plain "write a chapter 1" turn and block the newcomer with a confirm they never
+# asked for. A prompt guard-line AND removing it from ALWAYS_HOT_WRITES both FAILED live QC — the
+# tool was still budget-hot (small schema fit the seed) and called directly (no find_tools). So it
+# joins the never-hot-seed set: fully reachable via find_tools/tool_load when the writer EXPLICITLY
+# asks to set up their world (the lean glossary skill instructs exactly that), just not advertised
+# by default. Same "not on the wire by default" mechanism as CAT-4's legacy exclusion.
+DISCOVER_ONLY_HIGH_IMPACT: frozenset[str] = frozenset({
+    "glossary_adopt_standards",
+})
+
+
+# N5a-FULL (dogfood 2026-07-19) — the CAPABILITY floor for the "request-scoped autonomy"
+# control model. These are the high-impact, book-WIDE ontology-BUILDING tools — "set up /
+# reshape the whole world," not "add the character the writer just named." Keeping them in the
+# per-turn catalog let the co-writer proactively rebuild a newcomer's ontology on a plain
+# "write a chapter 1" turn: three prior fixes failed because hot-seed + find_tools exclusions
+# don't cover `tool_load`, which loads ANY catalog name. So these are filtered out of the turn
+# catalog ITSELF (the one object all three reach-paths read) UNLESS the turn is world-setup
+# intent — signalled by `glossary_shaping` being injected (pinned OR the intent router matched
+# the message to its "set up the book's world ontology" description). Guidance and capability
+# then move as ONE signal. Single-entity / single-kind / read tools stay ALWAYS available
+# (request-scoped: "add Kaila", "add a vampire kind" are the writer's direct asks).
+INTENT_GATED_SETUP_TOOLS: frozenset[str] = frozenset({
+    "glossary_adopt_standards",   # adopt genre/kind STANDARDS (the confirmed over-reach)
+    "glossary_propose_kinds",     # batch-propose MANY kinds at once (build an ontology)
+    "glossary_plan",              # planner: propose a WHOLE ontology behind one card
+    "glossary_propose_batch",     # mixed batch ontology ops
+    "glossary_book_sync_apply",   # bulk-reconcile adopted standards
+})
+
+# The intent skill whose injection means "this turn is world-setup" (pinned OR router-matched).
+SETUP_INTENT_SKILL = "glossary_shaping"
+
+
+def filter_intent_gated_setup_tools(
+    catalog: list[dict], injected_skill_codes: list[str] | set[str],
+) -> list[dict]:
+    """Drop the high-impact world-setup tools from a turn catalog UNLESS the turn is
+    world-setup intent (`glossary_shaping` injected). Applied at catalog assembly so the
+    tool is simultaneously un-seeded, un-findable (find_tools), AND un-loadable (tool_load)
+    — closing the tool_load leak that per-search-function filters missed. Returns the catalog
+    unchanged on a setup turn; returns a filtered copy otherwise. N5a-FULL."""
+    if SETUP_INTENT_SKILL in injected_skill_codes:
+        return catalog
+    return [td for td in catalog if tool_name(td) not in INTENT_GATED_SETUP_TOOLS]
 
 
 def hot_tool_names(catalog: list[dict], domains: set[str]) -> set[str]:
@@ -185,13 +431,16 @@ def hot_tool_names(catalog: list[dict], domains: set[str]) -> set[str]:
     Empty ``domains`` → empty set (universal surface: nothing pre-seeded).
     CAT-4: a `legacy`-tagged tool is NEVER hot-seeded, even when its domain is —
     the whole point of tagging it legacy is that it stops riding the wire by
-    default; a domain hot-seed that ignored this would silently defeat CAT-4."""
+    default; a domain hot-seed that ignored this would silently defeat CAT-4.
+    N5a: `DISCOVER_ONLY_HIGH_IMPACT` tools are excluded for the same reason (kept
+    off the default wire; reachable via find_tools when explicitly asked)."""
     if not domains:
         return set()
     out: set[str] = set()
     for td in catalog:
         name = tool_name(td)
-        if name and _provider_prefix(name) in domains and not is_legacy_tool(td):
+        if (name and _domain_of(name) in domains and not is_legacy_tool(td)
+                and name not in DISCOVER_ONLY_HIGH_IMPACT):
             out.add(name)
     return out
 
@@ -200,7 +449,7 @@ def group_directory_text() -> str:
     """Render GROUP_DIRECTORY as the plain-text block injected into a surface's
     system prompt alongside ALWAYS_ON_CORE. Deterministic order (sorted by key)."""
     lines = [f"- {name}: {desc}" for name, desc in sorted(GROUP_DIRECTORY.items())]
-    return "Tool domains (use find_tools with group=<name> to search one):\n" + "\n".join(lines)
+    return "Tool domains (call tool_list with category=<name> to see every tool in one):\n" + "\n".join(lines)
 
 
 # ── C-TOOL: tier + meta readers ──────────────────────────────────────────────
@@ -230,6 +479,23 @@ def tool_tier(tool_def: dict) -> str:
     return tier if tier in ("R", "A", "W", "S") else "R"
 
 
+def tool_async(tool_def: dict) -> bool:
+    """C-TOOL `_meta.async` — True when a tool STARTS a background job (queued, not
+    done on return). The durable async-honesty signal the workflow step-runner reads
+    from the catalog (vs. the tool-name heuristic). Absent ⇒ False."""
+    return bool(tool_meta(tool_def).get("async"))
+
+
+def tool_paid(tool_def: dict) -> bool:
+    """Track D CD1 `_meta.paid` — True when CALLING this tool spends real money.
+
+    ORTHOGONAL to `tier`: spend governs money, tier governs mutation. A paid READ
+    (e.g. `web_search`) stays tier "R" and remains callable in `ask` mode, but must
+    clear the SPEND gate. Never coerce a paid tool to tier A/W just because it costs.
+    Absent ⇒ False (a tool that doesn't declare a cost is assumed free)."""
+    return bool(tool_meta(tool_def).get("paid"))
+
+
 # CAT-4 (mcp-tool-io.md Part 4) — a superseded tool is tagged `_meta.visibility:
 # "legacy"` rather than deleted, so any existing caller keeps working. A legacy
 # tool must never be discoverable: excluded from search_catalog() and from every
@@ -249,6 +515,13 @@ def tool_visibility(tool_def: dict) -> str:
 
 def is_legacy_tool(tool_def: dict) -> bool:
     return tool_visibility(tool_def) == _VISIBILITY_LEGACY
+
+
+def tool_superseded_by(tool_def: dict) -> str | None:
+    """C-TOOL `_meta.superseded_by` — the replacement a deprecated tool points at,
+    so ``tool_list`` can name it instead of silently dropping the deprecated one."""
+    sb = tool_meta(tool_def).get("superseded_by")
+    return sb if isinstance(sb, str) and sb else None
 
 
 def unknown_pinned_legacy_names(catalog: list[dict], requested: list[str]) -> list[str]:
@@ -403,7 +676,7 @@ def search_catalog(
         name = tool_name(tool_def)
         if not name or name in exclude or is_legacy_tool(tool_def):
             continue
-        if group is not None and _provider_prefix(name) != group:
+        if group is not None and _domain_of(name) != group:
             continue
         s = _score(intent_tokens, intent, tool_def)
         if s >= INCLUSION_FLOOR:
@@ -425,6 +698,527 @@ def _provider_prefix(name: str) -> str:
     """The provider prefix of a tool name (`book_create` → `book`). Frontend
     + meta tools (no prefix convention) return ""."""
     return name.split("_", 1)[0] if "_" in name else ""
+
+
+# The "knowledge" GROUP_DIRECTORY entry covers TWO literal tool-name prefixes
+# (`kg_*` — the Neo4j-backed graph, and `memory_*` — conversation/passage recall) under
+# one conceptual domain, but domain/group matching elsewhere compares the LITERAL
+# prefix against the domain name directly — so `_provider_prefix("kg_graph_query")` is
+# `"kg"`, never `"knowledge"`, and `hot_tool_names(catalog, {"knowledge"})` /
+# `find_tools(group="knowledge")` silently matched NOTHING before this alias existed
+# (found 2026-07-07 while auditing GROUP_DIRECTORY for the skill-authoring lint — same
+# root cause as the "story"/"composition" GROUP_DIRECTORY text mismatches fixed the
+# same day, just at the matching-mechanism layer instead of the description-text layer).
+# WS-0 (contracts.md C1): `lore_enrichment_auto_enrich` (prefix `lore`) is the one orphan tool with
+# no GROUP_DIRECTORY home — fold it into `glossary` (lore-enrichment is entity-enrichment, glossary's
+# derived layer) rather than mint a new category. Keep in lockstep with ai-gateway's DOMAIN_ALIASES.
+# Track D: `web_search` (prefix `web`) → the `research` group (EXTERNAL retrieval, not the
+# internal KG). Keep in lockstep with ai-gateway's DOMAIN_ALIASES.
+_DOMAIN_ALIASES: dict[str, str] = {
+    "kg": "knowledge",
+    "memory": "knowledge",
+    "lore": "glossary",
+    "web": "research",
+}
+
+
+def _domain_of(name: str) -> str:
+    """The canonical GROUP_DIRECTORY domain for a tool name — `_provider_prefix`
+    resolved through `_DOMAIN_ALIASES` (a no-op for every prefix that already equals
+    its own domain name)."""
+    prefix = _provider_prefix(name)
+    return _DOMAIN_ALIASES.get(prefix, prefix)
+
+
+# ── Design item 1 — true per-domain enumeration (external audit #1/#5) ───────
+# `search_catalog("")` always scores 0 (empty intent_tokens), so a caller could
+# never tell "this domain truly has nothing matching" from "my wording didn't
+# overlap enough tokens." Mirrors ai-gateway's `enumerateGroup` (find-tools.ts)
+# — keep the two in lockstep, same discipline as GROUP_DIRECTORY/_domain_of.
+
+
+def enumerate_group(
+    catalog: list[dict],
+    group: str,
+    *,
+    exclude: set[str] | None = None,
+) -> list[dict]:
+    """Return EVERY non-legacy tool in ``group``, UNRANKED (catalog order — no
+    score, no sort; a sort would itself be an implicit rank) and UNFILTERED by
+    ``INCLUSION_FLOOR``/``CONFIDENCE_THRESHOLD`` — mirrors what GROUP_DIRECTORY
+    already does one level up (domain-level enumeration). CAT-4 still applies:
+    a legacy-tagged tool is excluded from enumeration exactly like it is from
+    a ranked search."""
+    exclude = exclude or set()
+    out: list[dict] = []
+    for tool_def in catalog:
+        name = tool_name(tool_def)
+        if not name or name in exclude or is_legacy_tool(tool_def):
+            continue
+        if _domain_of(name) != group:
+            continue
+        out.append({"name": name, "description": _fn(tool_def).get("description", "") or ""})
+    return out
+
+
+# ── Track A / WS-0 · visible-set + deprecated-LABELING (contracts.md C2) ─────
+# The Python twin of ai-gateway's `visibleTools` (find-tools.ts) — keep in lockstep.
+# Unlike `enumerate_group`/`search_catalog` (which DROP legacy tools — you don't want a
+# deprecated tool ranked in fuzzy search), `visible_tools` LABELS them (`deprecated` +
+# `superseded_by`) so `tool_list` can show + redirect rather than hide-but-keep-callable
+# (the invisible-but-callable drift class). The policy-allowed ∩ of the C2 visible-set is
+# applied at the public edge (mcp-public-gateway), the only layer holding the key scope.
+def visible_tools(
+    catalog: list[dict],
+    group: str | None = None,
+    *,
+    include_deprecated: bool = True,
+    exclude: set[str] | None = None,
+) -> list[dict]:
+    """The deterministic, complete visible set for ``tool_list`` (contracts.md C2):
+    EVERY tool (optionally scoped to ``group``), unranked, in catalog order — legacy
+    tools LABELED ``deprecated: True`` (+ ``superseded_by``) rather than dropped.
+    ``include_deprecated=False`` filters them out entirely."""
+    exclude = exclude or set()
+    out: list[dict] = []
+    for tool_def in catalog:
+        name = tool_name(tool_def)
+        if not name or name in exclude:
+            continue
+        # CD4 ship gate — never advertise a tool the liveness matrix proved cannot
+        # execute. A broken tool is WORSE than an absent one: the model spends a turn
+        # calling it, gets an error, and often reports success anyway (the false-persist
+        # bug class). Only an explicit `executes: false` hides a tool — an unprobed or
+        # unchecked tool stays visible, and a RED-SELECT tool (works; the model just
+        # doesn't pick it) stays visible too, because hiding it would guarantee it is
+        # never picked. See tool_liveness.py.
+        if tool_is_broken(name):
+            continue
+        if group is not None and _domain_of(name) != group:
+            continue
+        deprecated = is_legacy_tool(tool_def)
+        if deprecated and not include_deprecated:
+            continue
+        entry: dict = {
+            "name": name,
+            "description": _fn(tool_def).get("description", "") or "",
+            "tier": tool_tier(tool_def),
+        }
+        if deprecated:
+            entry["deprecated"] = True
+            sb = tool_superseded_by(tool_def)
+            if sb:
+                entry["superseded_by"] = sb
+        out.append(entry)
+    return out
+
+
+# ── Track A / WS-1a · tool_list + tool_load result builders (contracts.md C2) ─
+# Python twin of ai-gateway's tool_list/tool_load (find-tools.ts) — the deterministic
+# discovery pair that replaces mandatory find_tools semantic search. Keep in lockstep.
+# (CATEGORY_ENUM + the tool defs live up near GROUP_DIRECTORY / FIND_TOOLS_TOOL.)
+
+
+def tool_parameters(tool_def: dict) -> dict:
+    """The tool's JSON-Schema arguments (the OpenAI `function.parameters`), or an
+    empty object schema when absent — what ``tool_load`` returns so the model can
+    call the tool correctly."""
+    params = _fn(tool_def).get("parameters")
+    return params if isinstance(params, dict) else {"type": "object", "properties": {}}
+
+
+def tool_list_result(
+    catalog: list[dict],
+    category: str | None = None,
+    *,
+    include_deprecated: bool = True,
+    exclude: set[str] | None = None,
+) -> dict:
+    """Build the ``tool_list`` payload (contracts.md C2). ``category`` omitted or
+    "all" → the whole visible catalog grouped by category; a specific category → its
+    flat ``tools`` list (+ a ``reason`` when empty). Deterministic, unranked."""
+    exclude = exclude or set()
+    if category is None or category == "all":
+        tools = visible_tools(catalog, None, include_deprecated=include_deprecated, exclude=exclude)
+        categories: dict[str, list] = {}
+        for t in tools:
+            categories.setdefault(_domain_of(t["name"]), []).append(t)
+        return {"categories": categories, "count": len(tools)}
+    tools = visible_tools(catalog, category, include_deprecated=include_deprecated, exclude=exclude)
+    payload: dict = {"category": category, "count": len(tools), "tools": tools}
+    if not tools:
+        payload["reason"] = "no tools currently available in this category"
+    return payload
+
+
+def tool_load_result(
+    catalog: list[dict],
+    *,
+    name: str | None = None,
+    names: list[str] | None = None,
+    category: str | None = None,
+) -> tuple[dict, list[str]]:
+    """Build the ``tool_load`` payload + the names to activate (contracts.md C2).
+    Pure disclosure — returns full ``input_schema``(s); executes nothing. Unknown
+    requested names come back under ``not_found`` (never a silent drop)."""
+    want: set[str] = set()
+    if name:
+        want.add(name)
+    for n in names or []:
+        if n:
+            want.add(n)
+    whole = category == "all"
+    by_category = category if category and category != "all" else None
+    loaded: list[dict] = []
+    seen: set[str] = set()
+    broken: set[str] = set()
+    for tool_def in catalog:
+        nm = tool_name(tool_def)
+        if not nm or nm in seen or nm in broken:
+            continue
+        match = nm in want or whole or (by_category is not None and _domain_of(nm) == by_category)
+        if not match:
+            continue
+        # CD4 — never ACTIVATE a proven-broken tool either. Report it with a reason
+        # rather than silently omitting it: a resolver that drops a request without
+        # saying so is how a model ends up hallucinating that the call succeeded.
+        if tool_is_broken(nm):
+            broken.add(nm)
+            continue
+        seen.add(nm)
+        entry: dict = {
+            "name": nm,
+            "description": _fn(tool_def).get("description", "") or "",
+            "tier": tool_tier(tool_def),
+            "input_schema": tool_parameters(tool_def),
+        }
+        if is_legacy_tool(tool_def):
+            entry["deprecated"] = True
+            sb = tool_superseded_by(tool_def)
+            if sb:
+                entry["superseded_by"] = sb
+        loaded.append(entry)
+    payload: dict = {"tools": loaded}
+    missing = sorted(n for n in want if n not in seen and n not in broken)
+    if missing:
+        payload["not_found"] = missing
+    if broken & want:
+        payload["unavailable"] = sorted(broken & want)
+        payload["unavailable_reason"] = (
+            "this tool is known to fail when called — it is temporarily withdrawn. "
+            "Do not retry it; use another tool or tell the user it is unavailable."
+        )
+    return payload, [t["name"] for t in loaded]
+
+
+# ── Design item 1 — retry-cap (bounds the unbounded-retry bias) ─────────────
+#
+# Mirrors ai-gateway's `FindToolsAttemptTracker` (find-tools.ts). The closest
+# stable per-exchange key available to `find_tools_result` is the caller's
+# `session_id` — tracked here as an in-PROCESS, TTL-bounded map (the same shape
+# as other bounded in-memory per-session state in this codebase). A caller with
+# no session id is never tracked (fail-open — a caller we can't key can't be
+# safely capped without risking cross-talk).
+_RETRY_WINDOW_S = 10 * 60.0  # bounds one exchange's worth of guessing, not a whole day
+_RETRY_REPEAT_AT = 2  # the 2nd attempt at the same (group, intent) this window is a "repeat"
+
+
+class FindToolsAttemptTracker:
+    """Per-session tracker of prior ``(group, normalized-intent)`` `find_tools`
+    attempts. A repeated or near-duplicate call — SAME group + a token-set-equal
+    intent (order/casing/punctuation-insensitive, the same ``_tokens()`` splitter
+    ``search_catalog`` scores with, so "search the web" and "web search" collide)
+    — reports ``True``, the signal ``find_tools_result`` uses to stop inviting
+    further guessing and instead permit "tell the user this isn't supported"."""
+
+    def __init__(self, ttl_s: float = _RETRY_WINDOW_S, *, now=time.monotonic) -> None:
+        self._ttl_s = ttl_s
+        self._now = now
+        self._sessions: dict[str, dict[str, tuple[int, float]]] = {}
+
+    @staticmethod
+    def _key(group: str | None, intent: str) -> str:
+        toks = " ".join(sorted(_tokens(intent)))
+        return f"{group or ''} {toks}"
+
+    def record(self, session_id: str | None, group: str | None, intent: str) -> bool:
+        """Record this attempt for ``session_id`` and report whether it is a
+        REPEAT. Blank/enumeration calls (no intent to guess with) are never
+        tracked — there is no "wording" to repeat.
+
+        review-impl fix (mirrors ai-gateway's `FindToolsAttemptTracker.record`,
+        same root cause, same fix, patched independently in each engine): the
+        previous version only pruned stale entries INSIDE the CURRENT
+        session's own bucket and never deleted the top-level ``session_id``
+        key once that bucket went empty — so every distinct session ever seen
+        leaked a dict entry for the life of the process, unbounded by however
+        many sessions the caller produces. A narrower fix that only swept the
+        current caller's own bucket is observably inert: THIS call always
+        re-populates its own bucket with the entry it's about to record before
+        returning, so the top-level key for THIS session is back immediately —
+        no net shrinkage. The actual fix sweeps EVERY tracked session on each
+        call: drop each session's expired entries, then drop that session's
+        top-level key if its bucket is now empty. O(sessions currently
+        tracked) per call, but that count is itself bounded by "sessions active
+        within the last TTL window" — the busier the tracker gets, the more
+        aggressively each call prunes it, so it can never grow unbounded the
+        way the un-swept version could. Negligible cost at this tracker's real
+        cardinality (session ids scoped to one exchange, TTL = 10 minutes)."""
+        if not session_id or not intent.strip():
+            return False
+        now = self._now()
+        for sid in list(self._sessions.keys()):
+            bucket = self._sessions[sid]
+            for k in [k for k, (_, exp) in bucket.items() if exp <= now]:
+                del bucket[k]
+            if not bucket:
+                del self._sessions[sid]
+        bucket = self._sessions.setdefault(session_id, {})
+        key = self._key(group, intent)
+        existing = bucket.get(key)
+        if existing is not None:
+            count, _ = existing
+            count += 1
+            bucket[key] = (count, now + self._ttl_s)
+            return count >= _RETRY_REPEAT_AT
+        bucket[key] = (1, now + self._ttl_s)
+        return False
+
+    @property
+    def session_count(self) -> int:
+        """Test-only accessor (mirrors the TS twin's `sessionCount` getter) —
+        lets tests assert the top-level map actually shrinks back down after
+        entries expire, not just that lookups still behave correctly. Not used
+        by production code."""
+        return len(self._sessions)
+
+
+# Process-wide singleton shared across all find_tools calls in this process —
+# mirrors ai-gateway's module-level `findToolsAttempts`.
+find_tools_attempts = FindToolsAttemptTracker()
+
+
+# ── Design item 1 (embeddings sub-item, OQ4) — embeddings-backed search ─────
+#
+# `search_catalog()`'s token-overlap/difflib scorer stays the MANDATORY fallback
+# (never removed): on any embedding-client failure/timeout, `search_catalog_semantic`
+# degrades to identical behaviour to `search_catalog()` — a find_tools call must
+# NEVER fail, block indefinitely, or rank worse than today because of this upgrade.
+#
+# Tool vectors are cached PER TOOL-CATALOG SIGNATURE (the sorted tuple of tool
+# names) with the SAME TTL `knowledge_client.py`'s `_TOOL_CATALOG_TTL_S` uses for
+# the catalog itself (60s) — so the vector cache invalidates on the same schedule
+# as the catalog it was computed from, never a separate one. `test_tool_discovery.py`
+# carries a drift-lock asserting the two constants stay equal.
+#
+# review-impl HIGH-1 fix: the cache key MUST also fold in which embedding model
+# produced the vectors (`model_source`, `model_ref`), not just the catalog
+# signature. Two callers within the same 60s TTL window using DIFFERENT
+# embedding models (different users/sessions with different BYOK embedding
+# configs) would otherwise share the FIRST caller's vectors — and
+# `cosine_similarity` between two different embedding models' vector spaces is
+# meaningless (can only inflate scores via the `max(token_score, cosine_score)`
+# blend in `search_catalog_semantic`, never deflate them — a false-positive-only
+# failure mode, silent cross-model cache poisoning).
+TOOL_VECTOR_CACHE_TTL_S = 60.0
+
+_TOOL_VECTOR_CACHE: dict[tuple[int, str, str], tuple[float, dict[str, list[float]]]] = {}
+
+
+def _embedding_text(tool_def: dict) -> str:
+    """The same name+description+synonyms haystack `_score()` token-overlaps
+    over, embedded instead of tokenized."""
+    name = tool_name(tool_def)
+    desc = _fn(tool_def).get("description", "") or ""
+    synonyms = tool_meta(tool_def).get("synonyms") or []
+    syn_text = " ".join(s for s in synonyms if isinstance(s, str))
+    return f"{name.replace('_', ' ')} {desc} {syn_text}".strip()
+
+
+def _catalog_signature(catalog: list[dict]) -> int:
+    """A cheap fingerprint of a catalog's tool-name SET (sorted, hashed) — used
+    to key the tool-vector cache. Recomputing this is O(N) string work, no
+    network call, so checking it before deciding to skip re-embedding is far
+    cheaper than the embed round trip it guards."""
+    names = tuple(sorted(n for n in (tool_name(td) for td in catalog) if n))
+    return hash(names)
+
+
+# ── review-impl HIGH-2 fix — resolve a REAL embedding-capable model ─────────
+#
+# The embeddings-blended search used to reuse the TURN's own chat
+# `model_source`/`model_ref` (the completion model the user picked, e.g.
+# gpt-4o or a local chat GGUF) for the embed call. Most chat models can't
+# embed at all, so this either failed upstream (safely caught by the
+# mandatory-fallback try/except below — but silently made the whole
+# embeddings feature INERT for real usage, since it degraded to
+# token-overlap on essentially every real call) or, worse, some backends may
+# "helpfully" return an improvised vector for a model that was never meant to
+# embed anything.
+#
+# Fix: resolve the user's own configured embedding-capable model — the
+# Account-tier default for the `embedding` capability (provider-registry,
+# same route `app/client/provider_client.py`'s `get_default_model()` already
+# exposes for exactly this "which model for which capability" question, spec
+# §3.4) — BEFORE ever attempting an embed call. `get_default_model()` is
+# already best-effort (never raises; returns None on 404/unset/any upstream
+# error), so a user with nothing configured resolves to None here — the
+# caller then skips the embed round trip ENTIRELY (no doomed network call)
+# and goes straight to the token-overlap fallback.
+#
+# Cached briefly per user (mirrors the tool-vector cache's TTL discipline) so
+# a burst of find_tools calls within one turn/session doesn't re-hit
+# provider-registry for the same answer on every single call.
+_EMBEDDING_MODEL_CACHE_TTL_S = 60.0
+
+_EMBEDDING_MODEL_CACHE: dict[str, tuple[float, tuple[str, str] | None]] = {}
+
+
+async def _resolve_embedding_model(user_id: str) -> tuple[str, str] | None:
+    """The caller's configured embedding-capable model as ``(model_source,
+    model_ref)``, or ``None`` when the user has no `embedding`-capability
+    default configured. Never raises — `get_default_model()` itself is
+    best-effort."""
+    now = time.monotonic()
+    cached = _EMBEDDING_MODEL_CACHE.get(user_id)
+    if cached is not None and now < cached[0]:
+        return cached[1]
+    from app.client.provider_client import get_provider_client  # noqa: PLC0415
+
+    ref = await get_provider_client().get_default_model("embedding", user_id)
+    _EMBEDDING_MODEL_CACHE[user_id] = (now + _EMBEDDING_MODEL_CACHE_TTL_S, ref)
+    return ref
+
+
+async def _get_tool_vectors(
+    catalog: list[dict],
+    *,
+    user_id: str,
+    model_source: str,
+    model_ref: str,
+) -> dict[str, list[float]] | None:
+    """Best-effort per-tool embedding vectors for ``catalog``, cached until the
+    catalog's own tool-name set changes or ``TOOL_VECTOR_CACHE_TTL_S`` elapses.
+
+    Returns ``None`` on ANY embedding-client failure — the caller MUST fall
+    back to the token-overlap scorer unconditionally; this never raises."""
+    names = [tool_name(td) for td in catalog if tool_name(td)]
+    if not names:
+        return {}
+    # HIGH-1: key by (catalog signature, model_source, model_ref) — NOT the
+    # catalog signature alone — so two distinct embedding models never share a
+    # cached vector set (see the constant's docstring above).
+    cache_key = (_catalog_signature(catalog), model_source, model_ref)
+    now = time.monotonic()
+    cached = _TOOL_VECTOR_CACHE.get(cache_key)
+    if cached is not None and now < cached[0]:
+        return cached[1]
+    texts = [_embedding_text(td) for td in catalog if tool_name(td)]
+    try:
+        from app.client.embedding_client import get_embedding_client  # noqa: PLC0415
+
+        result = await get_embedding_client().embed(
+            user_id=user_id, model_source=model_source, model_ref=model_ref, texts=texts,
+        )
+    except Exception:  # noqa: BLE001 — mandatory fallback, never raise into find_tools
+        logger.warning("tool-vector embedding failed; falling back to token-overlap search", exc_info=True)
+        return None
+    vectors = dict(zip(names, result.embeddings))
+    _TOOL_VECTOR_CACHE[cache_key] = (now + TOOL_VECTOR_CACHE_TTL_S, vectors)
+    return vectors
+
+
+async def search_catalog_semantic(
+    catalog: list[dict],
+    intent: str,
+    limit: int = FIND_TOOLS_DEFAULT_LIMIT,
+    *,
+    exclude: set[str] | None = None,
+    group: str | None = None,
+    user_id: str,
+) -> tuple[list[dict], bool]:
+    """Embeddings-blended twin of ``search_catalog()`` (design item 1, OQ4).
+
+    Ranks by ``max(token-overlap score, cosine similarity)`` — a BLEND, not a
+    replacement. This is a deliberate choice, not a half-measure: the
+    token-overlap floor/threshold stay the safety net (CAT-4 legacy exclusion
+    happens before either score is computed; the "no bogus suggestion" H10
+    discipline is preserved) even when embeddings succeed, while a genuinely
+    semantic match with near-zero token overlap (e.g. "look up who the king's
+    rival is" ~ glossary_search) can still surface via the embedding term. A
+    full replacement would risk regressing the already-tested precision
+    behaviour tied to token overlap (CAT-4, the "one shared word" fix) any time
+    the embedding model itself is noisy/mediocre — blending means embeddings
+    can only ADD recall, never subtract precision the token scorer already had.
+
+    review-impl HIGH-2 fix: this used to take the TURN's own chat
+    `model_source`/`model_ref` and reuse them for the embed call — removed.
+    The embedding model is now resolved independently per `user_id` via
+    `_resolve_embedding_model()` (the user's configured `embedding`-capability
+    default from provider-registry), never the chat completion model. When
+    the user has no embedding model configured, this is a FAST PRE-NETWORK
+    SKIP straight to the token-overlap score — no doomed embed round trip.
+
+    MANDATORY fallback: on ANY embedding-client failure/timeout (tool-vector
+    embedding OR intent embedding), this returns EXACTLY what ``search_catalog()``
+    would — same ranking, same tests — never raises, never blocks past the
+    embedding client's own timeout.
+    """
+    exclude = exclude or set()
+    intent_tokens = _tokens(intent)
+    candidates: list[dict] = []
+    for tool_def in catalog:
+        name = tool_name(tool_def)
+        if not name or name in exclude or is_legacy_tool(tool_def):
+            continue
+        if group is not None and _domain_of(name) != group:
+            continue
+        candidates.append(tool_def)
+
+    tool_vectors: dict[str, list[float]] | None = None
+    intent_vector: list[float] | None = None
+    embedding_ref = await _resolve_embedding_model(user_id)
+    if embedding_ref is not None:
+        embed_source, embed_ref = embedding_ref
+        try:
+            tool_vectors = await _get_tool_vectors(
+                catalog, user_id=user_id, model_source=embed_source, model_ref=embed_ref,
+            )
+            if tool_vectors is not None:
+                from app.client.embedding_client import get_embedding_client  # noqa: PLC0415
+
+                intent_result = await get_embedding_client().embed(
+                    user_id=user_id, model_source=embed_source, model_ref=embed_ref, texts=[intent],
+                )
+                intent_vector = intent_result.embeddings[0] if intent_result.embeddings else None
+        except Exception:  # noqa: BLE001 — mandatory fallback, never raise into find_tools
+            logger.warning("intent embedding failed; falling back to token-overlap search", exc_info=True)
+            tool_vectors = None
+            intent_vector = None
+    # else: no embedding-capable model configured for this user — skip the
+    # embed round trip entirely (HIGH-2 fast pre-network skip) instead of
+    # paying a network call that would only fail against a non-embedding model.
+
+    scored: list[tuple[float, dict]] = []
+    for tool_def in candidates:
+        name = tool_name(tool_def)
+        base = _score(intent_tokens, intent, tool_def)
+        sim = 0.0
+        if tool_vectors is not None and intent_vector is not None:
+            vec = tool_vectors.get(name)
+            if vec:
+                sim = max(0.0, cosine_similarity(intent_vector, vec))
+        s = max(base, sim)
+        if s >= INCLUSION_FLOOR:
+            scored.append((s, tool_def))
+    scored.sort(key=lambda x: x[0], reverse=True)
+    top = scored[: max(1, limit)] if scored else []
+    matches = [
+        {"name": tool_name(td), "description": _fn(td).get("description", "") or ""}
+        for _, td in top
+    ]
+    confident = bool(scored) and scored[0][0] >= CONFIDENCE_THRESHOLD
+    return matches, confident
 
 
 def provider_availability(catalog_meta: dict) -> set[str]:
@@ -455,6 +1249,110 @@ def provider_availability(catalog_meta: dict) -> set[str]:
     return set()
 
 
+def _enumeration_result(
+    catalog: list[dict], group: str, exclude: set[str], *, fallback_reason: str | None = None,
+) -> tuple[dict, list[str]]:
+    """Shared ENUMERATION-mode payload assembly — used by both
+    `find_tools_result()` and `find_tools_result_async()` so the two search
+    backends never drift on enumeration wording/shape. Two callers:
+    (1) `group` set + blank `intent` (the original design-item-1 case), and
+    (2) external audit #1 (2026-07-08 re-verification pass) — `group` set +
+    a NON-blank but low-signal/generic `intent` (e.g. "list everything you
+    can do in this domain") that scores below `CONFIDENCE_THRESHOLD`.
+    Real measurement from that audit: `book` returned 1/~15 tools (7% recall)
+    for exactly this shape, because a generic phrase token-overlaps poorly
+    against specific tool descriptions — the ORIGINAL blank-intent
+    enumeration fix never fired since the caller's intent wasn't literally
+    empty. ``fallback_reason``, when given (case 2), replaces the "domain
+    genuinely has no tools" note with an explanation of why a full list is
+    being returned instead of a weak top-K, so the caller understands this
+    wasn't what they explicitly asked for."""
+    matches = enumerate_group(catalog, group, exclude=exclude)
+    payload: dict = {"tools": matches, "enumerated": True}
+    if not matches:
+        payload["note"] = (
+            f"The \"{group}\" domain genuinely has no tools right now — this "
+            "capability isn't supported; no need to keep searching."
+        )
+    elif fallback_reason:
+        payload["note"] = fallback_reason
+    return payload, [m["name"] for m in matches]
+
+
+def _blank_intent_result() -> tuple[dict, list[str]]:
+    """Shared "missing/blank intent, NO group" directory payload. External
+    audit #5 (2026-07-08 re-verification): a caller with neither a `group`
+    nor a real `intent` had no safe path forward — the old response was just
+    a scold ("intent is required") with nothing to act on, and returning the
+    full ~200-tool federated catalog unranked would defeat the entire reason
+    `find_tools` exists (context/schema bloat). The safe middle ground is
+    `GROUP_DIRECTORY` itself (domain names + one-line descriptions, the same
+    ~300-500 token block already injected into system prompts via
+    `group_directory_text()`) — cheap, and gives the caller a concrete next
+    step: pick a domain, call again with that `group`."""
+    return (
+        {
+            "tools": [],
+            "domains": dict(GROUP_DIRECTORY),
+            "note": (
+                "`intent` was missing/empty and no `group` was given either — "
+                "pick a domain from `domains` above and call find_tools again "
+                "with that `group` (leave `intent` empty to list everything in "
+                "it, unranked), or describe what you want to do in your own "
+                "words as a non-empty `intent`."
+            ),
+        },
+        [],
+    )
+
+
+def _scored_result_payload(
+    matches: list[dict], confident: bool, *, catalog_meta: dict, is_repeat: bool,
+) -> dict:
+    """Shared note/payload assembly for a SCORED (non-enumeration) find_tools
+    result — the H10 (provider-availability) / retry-cap note wording, used by
+    both `find_tools_result()` (token-overlap) and `find_tools_result_async()`
+    (embeddings-blended) so the two scorers' notes never drift apart."""
+    unavailable = provider_availability(catalog_meta)
+    payload: dict = {"tools": matches}
+    if not matches:
+        if unavailable:
+            # H10: capability may exist but its provider is briefly down —
+            # unaffected by repeat status, transient outages ARE worth retrying.
+            payload["unavailable_providers"] = sorted(unavailable)
+            payload["note"] = (
+                "No matching tool is currently available. One or more services are "
+                "temporarily unavailable — tell the user the capability exists but "
+                "to try again shortly; do NOT say you can't do it."
+            )
+        elif is_repeat:
+            payload["note"] = (
+                "No tool matched, and this is a repeat of a search you already "
+                "tried. Stop searching — tell the user this capability is not "
+                "supported."
+            )
+        else:
+            payload["note"] = (
+                "No tool matched. You may try once more with different wording "
+                "(or list a `group` instead), but if that also comes back empty, "
+                "tell the user this isn't supported rather than continuing to retry."
+            )
+    elif not confident:
+        payload["low_confidence"] = True
+        if is_repeat:
+            payload["note"] = (
+                "These are still only weak matches on a repeated search. Pick the "
+                "closest one if it genuinely fits, or tell the user this isn't "
+                "well supported — don't search again."
+            )
+        else:
+            payload["note"] = (
+                "These are weak matches. If none fit, you may search once more with "
+                "different wording."
+            )
+    return payload
+
+
 def find_tools_result(
     catalog: list[dict],
     intent: str,
@@ -463,35 +1361,146 @@ def find_tools_result(
     exclude: set[str],
     catalog_meta: dict,
     group: str | None = None,
+    session_id: str | None = None,
 ) -> tuple[dict, list[str]]:
     """Build the ``find_tools`` tool RESULT payload + the list of matched names
-    to union into the active set (C-FT loop semantics).
+    to union into the active set (C-FT loop semantics), scored via the
+    token-overlap `search_catalog()`.
 
     The payload distinguishes (H10): a genuinely empty result from one where the
     only plausible providers are *temporarily unavailable* — so the agent says
-    "try again", never a false "I can't"."""
+    "try again", never a false "I can't".
+
+    2026-07-07 (Part E eval finding, `D-SKILL-EVAL-DISCOVERY-LOOP-FLAKE` root
+    cause): a weak/quantized local model sometimes emits `find_tools()` with NO
+    `intent` at all despite the schema marking it `required` — the schema-level
+    requirement was never enforced server-side, so an empty intent silently
+    degraded into a genuine zero-token search (`_score()` returns 0.0 for empty
+    `intent_tokens`), landing on the SAME generic "No tool matched. Reconsider the
+    wording..." note a real no-match gets. That note gives the model no signal
+    that its OWN call was malformed, so it retried identically — live-observed
+    30+ consecutive empty-`intent` calls in one turn, ending in an empty final
+    reply. Mirrors the "model-directed validation error" pattern jobs-service's
+    kit already uses for pydantic failures (`_validation_directive`): reject a
+    missing/blank intent with a directive naming the exact fix, instead of
+    silently degrading to an uninformative empty-match note.
+
+    Design item 1 (2026-07-07 discovery-hardening plan) — `group` set + a
+    blank/missing `intent` switches to ENUMERATION mode (mirrors ai-gateway's
+    `findToolsResult`/`enumerateGroup`): the true fix for "a whole domain
+    under-returns on generic queries" (external audit #1/#5), instead of the
+    "intent required" directive below or a zero-token fuzzy search.
+
+    2026-07-08 re-verification pass (external audit, same #1/#5) — the
+    original fix above only covered a LITERALLY blank `intent`; a real
+    exploratory agent instead phrases a broad ask as non-blank generic text
+    ("list everything you can do in this domain"), which token-overlaps
+    poorly and got silently filtered to near-nothing (measured: `book` →
+    7% recall). Two further fixes close that gap: (1) `group` set + a
+    NON-blank intent that scores below `CONFIDENCE_THRESHOLD` now ALSO falls
+    back to full enumeration (see `_enumeration_result`'s `fallback_reason`);
+    (2) no `group` + blank `intent` no longer returns a bare scold — see
+    `_blank_intent_result()`, now returns the `GROUP_DIRECTORY` listing too,
+    so the caller has a concrete next step instead of nothing to act on.
+
+    `session_id` (optional, keyword-only, default None) feeds the module-level
+    `find_tools_attempts` retry-cap tracker (`FindToolsAttemptTracker`) — a
+    caller that omits it (or passes None) is simply never tracked (fail-open,
+    same discipline as "no session id" on the ai-gateway TS mirror), so this
+    stays fully backward-compatible for any existing caller that doesn't thread
+    a session id through yet.
+
+    Stays SYNCHRONOUS on purpose (no embeddings call) — see
+    `find_tools_result_async()` for the embeddings-blended twin the live
+    `_stream_with_tools()` call path actually uses; this sync version remains
+    for any caller (and the bulk of this module's existing tests) that only
+    needs the token-overlap scorer.
+    """
+    if bool(group) and not intent.strip():
+        return _enumeration_result(catalog, group, exclude)
+
+    if not intent.strip():
+        return _blank_intent_result()
+
+    is_repeat = find_tools_attempts.record(session_id, group, intent)
     matches, confident = search_catalog(catalog, intent, limit, exclude=exclude, group=group)
-    unavailable = provider_availability(catalog_meta)
-    payload: dict = {"tools": matches}
-    if not matches:
-        if unavailable:
-            # H10: capability may exist but its provider is briefly down.
-            payload["unavailable_providers"] = sorted(unavailable)
-            payload["note"] = (
-                "No matching tool is currently available. One or more services are "
-                "temporarily unavailable — tell the user the capability exists but "
-                "to try again shortly; do NOT say you can't do it."
-            )
-        else:
-            payload["note"] = (
-                "No tool matched. Reconsider the wording and search once more before "
-                "telling the user this isn't supported."
-            )
-    elif not confident:
-        payload["low_confidence"] = True
-        payload["note"] = (
-            "These are weak matches. If none fit, you may search once more with "
-            "different wording."
+    if group is not None and not confident:
+        # External audit #1 (2026-07-08 re-verification) — see _enumeration_result's
+        # docstring: a low-signal/generic non-blank intent, scoped to a known
+        # group, gets the SAME enumeration safety net as a literal blank intent
+        # instead of a mostly-empty/weak top-K silently under-returning.
+        return _enumeration_result(
+            catalog, group, exclude,
+            fallback_reason=(
+                "Your query didn't score well against anything specific in the "
+                f"\"{group}\" domain — showing the FULL domain list instead of a "
+                "weak/empty guess. Pick whichever tool(s) actually fit."
+            ),
         )
+    payload = _scored_result_payload(matches, confident, catalog_meta=catalog_meta, is_repeat=is_repeat)
+    matched_names = [m["name"] for m in matches]
+    return payload, matched_names
+
+
+async def find_tools_result_async(
+    catalog: list[dict],
+    intent: str,
+    limit: int,
+    *,
+    exclude: set[str],
+    catalog_meta: dict,
+    group: str | None = None,
+    session_id: str | None = None,
+    user_id: str,
+) -> tuple[dict, list[str]]:
+    """Embeddings-blended twin of `find_tools_result()` — IDENTICAL enumeration /
+    blank-intent / retry-cap / H10 semantics (delegated to the same
+    `_enumeration_result` / `_blank_intent_result` / `_scored_result_payload`
+    helpers, so the two never drift), but scores a non-enumeration search via
+    `search_catalog_semantic()` (cosine-blended) instead of `search_catalog()`
+    (token-overlap only).
+
+    This is the variant the live `_stream_with_tools()` tool-loop call site
+    awaits, so a real `find_tools` invocation actually exercises the
+    embeddings path (design item 1 / OQ4) instead of leaving it built-but-
+    unwired.
+
+    review-impl HIGH-2 fix: `model_source`/`model_ref` were REMOVED from this
+    signature — they used to be the SAME turn-scoped chat-completion model
+    values threaded through `_stream_with_tools()`, reused here for the embed
+    call. Most chat models can't embed, so that either failed upstream (caught
+    by the mandatory fallback, but silently made the whole embeddings feature
+    inert for real usage) or risked an improvised vector from a model never
+    meant to embed anything. `search_catalog_semantic()` now resolves a real
+    embedding-capable model independently per `user_id` (the account's
+    `embedding`-capability default), so only `user_id` is needed here. The
+    MANDATORY fallback contract is unchanged: on ANY embed-call failure, OR
+    when the user has no embedding model configured at all, this degrades to
+    the identical token-overlap ranking `find_tools_result()` would have
+    produced — a find_tools call must never fail or rank worse because of this
+    upgrade.
+    """
+    if bool(group) and not intent.strip():
+        return _enumeration_result(catalog, group, exclude)
+
+    if not intent.strip():
+        return _blank_intent_result()
+
+    is_repeat = find_tools_attempts.record(session_id, group, intent)
+    matches, confident = await search_catalog_semantic(
+        catalog, intent, limit, exclude=exclude, group=group, user_id=user_id,
+    )
+    if group is not None and not confident:
+        # Mirrors find_tools_result()'s fallback — see _enumeration_result's
+        # docstring (external audit #1). Kept in lockstep with the sync scorer.
+        return _enumeration_result(
+            catalog, group, exclude,
+            fallback_reason=(
+                "Your query didn't score well against anything specific in the "
+                f"\"{group}\" domain — showing the FULL domain list instead of a "
+                "weak/empty guess. Pick whichever tool(s) actually fit."
+            ),
+        )
+    payload = _scored_result_payload(matches, confident, catalog_meta=catalog_meta, is_repeat=is_repeat)
     matched_names = [m["name"] for m in matches]
     return payload, matched_names

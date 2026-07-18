@@ -86,12 +86,94 @@ def test_propose_four_variables(pipeline_artifacts):
     assert codes == {"PA", "HA", "CD", "THR"}
 
 
-def test_arc2_discovery_and_events(pipeline_artifacts):
+def test_arc2_is_PARSED_from_the_document_not_hardcoded(pipeline_artifacts):
+    """27 V2-G. This test used to assert `arc2["arc_kind"] == "discovery"` — and it passed because
+    the PROPOSER hardcoded that string, along with arc 2's title ("Bước Lên Tiên Lộ"), its theme and
+    its summary. It was pinning the bug: rules mode returned one specific novel's arcs for ANY input
+    document, so the test was really asserting "the constant is still the constant".
+
+    What must be true instead is that these values come OUT OF THE DOCUMENT. The title is the header
+    the author wrote; the theme is their `**Chủ đề:**` field. `arc_kind` is now EMPTY, because this
+    document never states one — it says what kind of arc it is in prose, and that prose is carried
+    verbatim in the summary (and reaches the premise). Absent, not invented."""
     _, spec, _, _ = pipeline_artifacts
     arc2 = next(a for a in spec["arcs"] if a["id"] == "arc_2")
-    assert arc2["arc_kind"] == "discovery"
+
+    # …straight out of the document's `## Arc 2 — Bước Lên Tiên Lộ` header
+    assert arc2["title"] == "Bước Lên Tiên Lộ"
+    # …out of its `**Chủ đề:**` field, not a hardcoded paraphrase
+    assert "phàm nhân" in arc2["theme"]
+    # …the author's own emphasised line about what this arc IS
+    assert "khám phá" in arc2["summary"]
+    # …and no fabricated kind. The document does not declare one, so neither do we.
+    assert arc2["arc_kind"] == ""
+
     arc2_events = [e for e in spec["events"] if e["arc_id"] == "arc_2"]
     assert len(arc2_events) >= 5
+    # each event id is unique — an earlier cut of the new parser made the arc's PREAMBLE a phantom
+    # "event 1" that collided with the real Event 1, and the linker's unique index would have
+    # silently merged them into one node, losing a chapter
+    assert len({e["id"] for e in arc2_events}) == len(arc2_events)
+
+
+def test_a_DIFFERENT_book_gets_ITS_OWN_content_not_the_POCs():
+    """The whole point of V2-G, stated as a test.
+
+    Before: `propose_spec` returned, for ANY document, four Vietnamese planner variables (PA/HA/CD/
+    THR), six consistency anchors from one novel's protagonist, four forbids about that novel's plot
+    secrets, a protagonist with that novel's backstory, and arcs titled from it. A user planning a
+    detective story in rules mode got a xianxia cultivation charter and never knew.
+
+    A silent wrong answer is the worst failure mode there is: it does not crash, it does not return
+    empty, it returns something that LOOKS like a plan."""
+    from app.engine.plan_forge.ingest import ingest_markdown
+
+    md = """# 1. Characters
+
+## The Detective
+**Name:** Mara Vance
+**Baseline:** A homicide detective who no longer believes anyone is innocent.
+
+### Refuses to lie, even kindly
+### Keeps a list of everyone she failed
+
+# 2. Variables
+
+```
+DBT = Doubt        [0 → 100]
+      ↑ each time a witness is caught lying
+```
+
+# 3. Arc Overview
+
+## Arc 1 — The Body in the Canal
+
+**Theme:** A city that would rather the truth stayed drowned.
+
+### Event 1 — The Call
+Mara is handed a case nobody wants.
+
+**Goal:** Establish that the department wants this closed, not solved.
+"""
+    spec = propose_spec(ingest_markdown(md))
+
+    # ITS characters, ITS variables, ITS arcs.
+    assert [c["name"] for c in spec["layers"]["characters"]] == ["Mara Vance"]
+    assert [v["code"] for v in spec["layers"]["variables"]] == ["DBT"]
+    assert spec["layers"]["variables"][0]["name"] == "Doubt"
+    assert [a["title"] for a in spec["arcs"]] == ["The Body in the Canal"]
+    assert "drowned" in spec["arcs"][0]["theme"]
+    assert [e["title"] for e in spec["events"]] == ["Event 1 — The Call"]
+    assert spec["charter"]["consistency_anchors"] == [
+        "Refuses to lie, even kindly",
+        "Keeps a list of everyone she failed",
+    ]
+
+    # …and NONE of the POC's.
+    blob = json.dumps(spec, ensure_ascii=False).lower()
+    for leaked in ("perfection_addiction", "humanity_anchor", "than_hon", "corruption_debt",
+                   "linh căn", "bước lên tiên lộ", "hài hước", "đạo hóa"):
+        assert leaked.lower() not in blob, f"the POC's {leaked!r} leaked into another book's plan"
 
 
 def test_planning_package_premise_under_4k(pipeline_artifacts):
@@ -509,3 +591,85 @@ def test_spec_slice_bounded(pipeline_artifacts):
     paths = [h["path"] for h in hits[:2]]
     slice_ = spec_slice_for_paths(spec, paths, max_chars=2000)
     assert len(slice_) <= 2000
+
+
+# ── 27 V2-G — the compile gate must gate on STRUCTURE, not on the POC's taste ────────────────────
+
+def _hard_failures(md: str) -> list[str]:
+    from app.engine.plan_forge.ingest import ingest_markdown
+    from app.engine.plan_forge.validate import run_rules
+
+    spec = propose_spec(ingest_markdown(md))
+    pkg = compile_artifacts(spec, arc_id="arc_1")["planning_package"]
+    return [
+        r["rule"] for r in run_rules(spec, pkg)
+        if r.get("tier", "hard") == "hard" and not r["pass"]
+    ]
+
+
+_DETECTIVE = """# 1. Characters
+
+## The Detective
+**Name:** Mara Vance
+
+### Refuses to lie, even kindly
+
+# 3. Arc Overview
+
+## Arc 1 - The Body in the Canal
+
+**Theme:** A city that would rather the truth stayed drowned.
+
+### Event 1 - The Call
+Mara is handed a case nobody wants.
+
+**Goal:** Establish that the department wants this closed.
+"""
+
+
+def test_a_NON_POC_book_can_actually_COMPILE():
+    """`anchors_min` (>= 4) was the last fixture rule still GATING compile, and it blocked every book
+    with a shorter charter than the POC's — a 422, on a perfectly valid plan.
+
+    `>= 4` is not a general truth about novels; it is the POC's own anchor count. A braindump that
+    names two things about its protagonist is a legitimate plan, and the `cast` pass exists to
+    propose more. Reporting a thin charter is useful; REFUSING TO COMPILE it is the tool overruling
+    the author about their own book."""
+    assert _hard_failures(_DETECTIVE) == []
+
+
+def test_an_EMPTY_plan_is_STILL_blocked_and_told_why():
+    """The gate must still gate. Loosening it until everything passes would just move the silent
+    failure downstream — the compile would 'succeed' into a package with no arc and no events, and
+    the linker would then refuse (E4). Catching it here is the same law, one layer earlier, where
+    the user can still act on it."""
+    assert set(_hard_failures("# 1. Characters\n\nNothing yet.\n")) == {
+        "spec_has_arc", "spec_has_events",
+    }
+
+
+def test_the_fixture_rules_are_ALL_advisory_now():
+    """Every rule that encodes the POC's own story is REPORTED, never GATING. A rule that asks "does
+    your book have PA/HA/CD/THR" or "is your arc 2 a discovery arc" cannot be a gate on other
+    people's novels — it could only ever have been satisfied by the one document it was written
+    from."""
+    from app.engine.plan_forge.ingest import ingest_markdown
+    from app.engine.plan_forge.validate import run_rules
+
+    spec = propose_spec(ingest_markdown(_DETECTIVE))
+    pkg = compile_artifacts(spec, arc_id="arc_1")["planning_package"]
+    tier = {r["rule"]: r.get("tier", "hard") for r in run_rules(spec, pkg)}
+
+    for fixture_rule in (
+        "vars_four",            # "your book has exactly PA/HA/CD/THR"
+        "pa_not_realm",         # about ONE novel's PA variable; vacuous for every other book
+        "arc2_discovery",       # "your arc 2 is a 'discovery' arc"
+        "anchors_min",          # ">= 4 anchors", i.e. the POC's own count
+        "thr_no_early_explain",  # about ONE novel's THR seed
+    ):
+        assert tier[fixture_rule] == "advisory", f"{fixture_rule} still gates other people's books"
+
+    # …and what DOES gate is structural, and true of any novel in any language.
+    assert tier["spec_has_arc"] == "hard"
+    assert tier["spec_has_events"] == "hard"
+    assert tier["premise_max"] == "hard"

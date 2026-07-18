@@ -674,7 +674,13 @@ async def test_process_job_chat_records_spending_on_success(mock_extract_persist
     bc = _mock_book_client()
     gc = _mock_glossary_client()
 
-    await process_job(pool, kc, llm, bc, gc, _mock_chat_client(), _mock_provider_client(), job)
+    # The turns must carry TEXT. D-EXTRACTION-SILENT-NOOP later made an empty turn a
+    # deliberate skip that is not charged, so `_mock_chat_client()`'s default of no text
+    # stopped exercising the success path this test names — it was asserting the spend of
+    # a branch it no longer entered. Non-empty text puts it back on the paid path.
+    chat = _mock_chat_client(text="Kai told Master Lin he would leave the sect.")
+
+    await process_job(pool, kc, llm, bc, gc, chat, _mock_provider_client(), job)
 
     spending_calls = [
         c for c in pool.execute.call_args_list
@@ -2629,23 +2635,37 @@ def _full_hierarchy(chapter_id: str) -> ChapterHierarchy:
 
 
 @pytest.mark.asyncio
-async def test_enumerate_chapters_requests_published_and_skips_null_revision():
-    """CM3c: _enumerate_chapters asks book-service for editorial_status=
-    'published' (server-side draft gate) and skips any published chapter
-    whose published_revision_id is NULL (can't pin canon — R2-NEW-2 edge)."""
+async def test_enumerate_chapters_requests_kg_indexed_and_skips_null_revision():
+    """WS-0.6 (spec 2026-07-11-publish-independent-kg-indexing §3.5, red-team P0-2).
+
+    _enumerate_chapters asks book-service for the chapters that are IN THE KNOWLEDGE
+    GRAPH (``kg_indexed=True``), NOT the ones that happen to be published. This
+    REPLACES the old CM3c canon=published gate.
+
+    Publishing no longer decides KG membership: a draft can be explicitly indexed, and
+    a kind='diary' book never publishes at all. Asking the publish question here would
+    enumerate ZERO of a user's 50 indexed drafts, and the rebuild would report success
+    having extracted nothing — the user's explicit act silently undone.
+
+    The null-revision skip is KEPT and is load-bearing: with ``revision_id=None`` the
+    per-chapter fetch falls back to the LIVE DRAFT text, which would extract unreviewed
+    prose and break the pinned-revision guarantee.
+    """
     book_id = uuid4()
     bc = AsyncMock(spec=BookClient)
     bc.list_chapters = AsyncMock(return_value=[
+        # a DRAFT chapter the user explicitly indexed — the case the old gate dropped
         ChapterInfo(chapter_id="ch-1", title="C1", sort_order=1,
-                    revision_id="rev-1", editorial_status="published"),
-        # published but no pinned revision → must be skipped (with a WARNING)
+                    revision_id="rev-1", editorial_status="draft"),
+        # in the graph but no pinned revision → must be skipped (with a WARNING),
+        # never silently read from the live draft
         ChapterInfo(chapter_id="ch-2", title="C2", sort_order=2,
                     revision_id=None, editorial_status="published"),
     ])
 
     result = await _enumerate_chapters(bc, book_id, None)
 
-    bc.list_chapters.assert_awaited_once_with(book_id, editorial_status="published")
+    bc.list_chapters.assert_awaited_once_with(book_id, kg_indexed=True)
     assert [c.chapter_id for c in result] == ["ch-1"]  # null-revision dropped
 
 

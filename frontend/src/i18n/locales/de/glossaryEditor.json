@@ -146,5 +146,13 @@
       "system": "System"
     },
     "error": "Versionsverlauf konnte nicht geladen werden."
+  },
+  "createAs": "Erstelle „{{name}}“ als…",
+  "kind": {
+    "character": "Charakter",
+    "location": "Ort",
+    "organization": "Organisation",
+    "concept": "Konzept",
+    "item": "Gegenstand"
   }
 }

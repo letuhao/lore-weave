@@ -15,6 +15,7 @@ from dataclasses import dataclass, field
 from typing import Any, Iterable
 
 from app.db.conversation_search import CONVERSATION_SEARCH_NAME
+from app.db.session_search import CHAT_SEARCH_SESSIONS_NAME
 from app.services.frontend_tools import FRONTEND_TOOL_NAMES
 from app.services.tool_discovery import FIND_TOOLS_NAME
 
@@ -62,9 +63,9 @@ def server_key_for_tool(name: str) -> str:
     browser-executed frontend tools despite their ``glossary_`` prefix."""
     if not name:
         return SERVER_KEY_OTHER
-    # Both consumer-local, chat-native (never federated): the find_tools meta-tool
-    # and the conversation_search recovery tool group under "chat".
-    if name in (FIND_TOOLS_NAME, CONVERSATION_SEARCH_NAME):
+    # Consumer-local, chat-native (never federated): the find_tools meta-tool, the
+    # conversation_search recovery tool, and chat_search_sessions recall group under "chat".
+    if name in (FIND_TOOLS_NAME, CONVERSATION_SEARCH_NAME, CHAT_SEARCH_SESSIONS_NAME):
         return SERVER_KEY_CHAT
     if name in FRONTEND_TOOL_NAMES:
         return SERVER_KEY_UI

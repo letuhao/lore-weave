@@ -22,7 +22,17 @@
     "hint": "Scroll to zoom · drag empty space to pan · click a node for detail · ⊞ to expand",
     "loading": "Loading graph…",
     "loadFailed": "Failed to load graph: {{error}}",
-    "empty": "No knowledge graph yet — build this project to explore its network."
+    "empty": "No knowledge graph yet — build this project to explore its network.",
+    "emptyLens": "No relations match this lens — try another view or an earlier chapter, or clear the lens.",
+    "truncatedLens": "showing the first {{n}} relations of this lens",
+    "hintLens": "Scroll to zoom · drag to pan · click a node for detail",
+    "lens": {
+      "view": "View",
+      "noView": "All relations",
+      "asOf": "As of chapter",
+      "latest": "latest",
+      "clear": "Clear lens"
+    }
   },
   "schemaSection": {
     "title": "Schema",
@@ -72,7 +82,8 @@
       "extractionDisabled": "Disabled",
       "book": "Book",
       "world": "World",
-      "none": "—"
+      "none": "—",
+      "triageNudge": "{{count}} extracted element(s) need triage"
     },
     "placeholder": {
       "proposals": "Pending proposals land here (C11).",
@@ -404,7 +415,8 @@
         "global": "Global",
         "confidence": "Confidence",
         "mentions": "Mentions",
-        "anchor": "Anchor score"
+        "anchor": "Anchor score",
+        "scope": "Scope"
       },
       "promote": "Promote to glossary",
       "promoteHint": "Discovered entity. Promote it to create an AI-suggested glossary draft for review.",
@@ -419,10 +431,34 @@
       "factSource": "Chapter {{chapter}}",
       "factType": {
         "decision": "Decision",
-        "preference": "Preference",
-        "milestone": "Milestone",
-        "negation": "Negation"
-      }
+        "preference": "Likes / dislikes",
+        "milestone": "Milestone / event",
+        "negation": "Denial (not true)",
+        "statement": "Trait / fact",
+        "commitment": "Promise / commitment"
+      },
+      "addFact": "Add fact",
+      "addFactTitle": "Add a fact about this entity",
+      "factContentLabel": "Fact",
+      "factContentPlaceholder": "e.g. Distrusts the Council after the betrayal",
+      "factTypeLabel": "Type",
+      "factPredicatePlaceholder": "how they relate (e.g. loyal to)",
+      "factObjectPlaceholder": "the other entity (e.g. House Vaeth)",
+      "addFactSave": "Save fact",
+      "addFactCancel": "Cancel",
+      "addFactSuccess": "Fact added",
+      "addFactFailed": "Could not add fact: {{error}}",
+      "markWrong": "Mark wrong",
+      "markWrongConfirm": "Mark this fact as wrong? It will be invalidated (removed from recall) but kept in history.",
+      "markWrongSuccess": "Fact marked wrong",
+      "markWrongFailed": "Could not invalidate fact: {{error}}",
+      "factTypeHelp": "What kind of fact is this?",
+      "factAdvancedToggle": "Link to another entity (optional)",
+      "replaceFact": "Replace this fact",
+      "replaceFactSave": "Save replacement",
+      "replaceFactSuccess": "Fact replaced",
+      "markWrongUndo": "Undo",
+      "markWrongUndoFailed": "Could not undo: {{error}}"
     },
     "edit": {
       "title": "Edit entity",
@@ -462,6 +498,41 @@
       "errArchived": "Cannot merge archived entities. Restore them first.",
       "errGlossaryConflict": "Both entities are anchored to different glossary entries. Resolve the glossary anchors before merging.",
       "errUnknown": "Merge failed: {{reason}}"
+    },
+    "create": {
+      "title": "New entity",
+      "description": "Hand-author a knowledge-graph entity. It starts as discovered; anchor it later to make it canonical.",
+      "newButton": "New Entity",
+      "needsProject": "Select a project first",
+      "field": {
+        "name": "Name",
+        "kind": "Kind"
+      },
+      "save": "Create",
+      "saving": "Creating…",
+      "cancel": "Cancel",
+      "success": "Entity created — {{name}} ({{kind}})",
+      "dedup": "Already existed — showing {{name}} ({{kind}})",
+      "failed": "Could not create entity — {{error}}",
+      "discoveredHint": "New entities start as discovered. Canonical status is earned by anchoring to the glossary."
+    },
+    "kind": {
+      "character": "Character",
+      "location": "Location",
+      "organization": "Organization",
+      "concept": "Concept",
+      "item": "Item"
+    },
+    "archive": {
+      "action": "Archive",
+      "confirm": "Hide this entity? Its relations and glossary anchor are kept; it disappears from the active list. You can Undo right after, or surface it again via the Archived filter.",
+      "success": "Entity archived.",
+      "failed": "Could not archive — {{error}}",
+      "undo": "Undo"
+    },
+    "restore": {
+      "success": "Entity restored.",
+      "failed": "Could not restore — {{error}}"
     }
   },
   "jobs": {
@@ -1079,9 +1150,34 @@
       "markWrong": "Mark wrong",
       "invalidating": "Removing…",
       "failed": "Couldn't save the correction: {{error}}"
+    },
+    "create": {
+      "title": "Link entity",
+      "description": "Create a relation from {{subject}} to another of your entities.",
+      "action": "Link entity",
+      "subject": "From",
+      "predicate": "Relation",
+      "object": "To",
+      "objectPlaceholder": "Search your entities…",
+      "noMatches": "No matching entities.",
+      "save": "Create link",
+      "saving": "Linking…",
+      "cancel": "Cancel",
+      "success": "Relation created.",
+      "notYours": "Could not create link — an endpoint isn't one of your entities.",
+      "selfLoop": "An entity cannot relate to itself.",
+      "failed": "Could not create link — {{error}}"
     }
   },
   "events": {
+    "create": {
+      "title": "Add event",
+      "description": "Author a new timeline event for this character.",
+      "success": "Event added.",
+      "failed": "Add failed: {{error}}",
+      "saving": "Adding…",
+      "save": "Add event"
+    },
     "edit": {
       "cta": "Edit",
       "title": "Edit event",
@@ -1157,5 +1253,64 @@
       "divergent": "Divergent"
     },
     "totalRuns": "{{count}} runs total"
+  },
+  "triage": {
+    "loading": "Loading triage queue…",
+    "loadFailed": "Could not load the triage queue: {{error}}",
+    "empty": "Nothing to triage — every extracted element matched your schema.",
+    "resolved": "Resolved {{count}} item(s)",
+    "resolveFailed": "Could not resolve: {{error}}",
+    "handoffToGlossary": "Opening glossary to finish this in your codex…",
+    "itemType": {
+      "unknown_node_kind": "Unknown entity kind",
+      "unknown_edge_type": "Unknown relationship type",
+      "edge_kind_mismatch": "Relationship endpoint mismatch",
+      "unknown_vocab_value": "Off-vocabulary value",
+      "edge_cardinality_conflict": "Conflicting active relationships"
+    },
+    "action": {
+      "map": "Map to existing",
+      "add_to_vocab": "Add to vocabulary",
+      "add_to_schema": "Add to schema",
+      "re_target": "Point to the right entity",
+      "widen_target_kinds": "Widen allowed kinds",
+      "drop_edge": "Drop",
+      "close_previous": "Close previous",
+      "set_multi_active": "Allow multiple",
+      "promote_to_glossary_kind": "Promote to glossary kind",
+      "demote_to_attribute": "Demote to attribute",
+      "dismiss": "Dismiss"
+    },
+    "prompt": {
+      "target_entity_id": "Corrected target entity id",
+      "map_to": "Map to (leave blank to use the detected value)"
+    },
+    "itemDismissed": "Item dismissed",
+    "confirmSchemaWrite": "Add this to your schema? It changes how future extractions are validated.",
+    "evidence": {
+      "unknown_edge_type": "The relationship “{{predicate}}” isn’t in your schema yet.",
+      "unknown_vocab_value": "The value “{{value}}” isn’t in the “{{set}}” list yet.",
+      "edge_kind_mismatch": "“{{predicate}}” was used between a {{source}} and a {{target}}, which your schema doesn’t allow.",
+      "unknown_node_kind": "The kind “{{kind}}” isn’t in your schema yet.",
+      "edge_cardinality_conflict": "There are conflicting active “{{predicate}}” relationships.",
+      "generic": "This extracted element didn’t match your schema."
+    },
+    "retarget": {
+      "title": "Point to the right entity",
+      "description": "Search your entities and pick the one this relationship should point to.",
+      "searchPlaceholder": "Search entities by name…",
+      "noMatches": "No matching entities.",
+      "cancel": "Cancel",
+      "confirm": "Re-point"
+    },
+    "map": {
+      "title": "Map to an existing item",
+      "description": "Pick the schema item this off-schema element should be treated as.",
+      "label": "Map to",
+      "keepDetected": "Keep the detected value",
+      "cancel": "Cancel",
+      "confirm": "Map"
+    },
+    "emptyHint": "Triage collects anything extraction found that doesn’t fit your schema yet — a clean queue means everything lined up."
   }
 }

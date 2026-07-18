@@ -1147,3 +1147,53 @@ func TestGetPlatformBalance_ReflectsAReservation(t *testing.T) {
 		t.Fatalf("platform-balance GET should reflect the held reservation: %+v", m)
 	}
 }
+
+// ── WS-2.8 — internal guardrail status read (the distiller's degrade pre-check) ──
+
+func callGuardrailStatus(t *testing.T, srv *Server, ownerArg string) *httptest.ResponseRecorder {
+	t.Helper()
+	req := httptest.NewRequest(http.MethodGet, "/internal/billing/guardrail/status?owner_user_id="+ownerArg, nil)
+	rr := httptest.NewRecorder()
+	srv.getGuardrailStatusInternal(rr, req)
+	return rr
+}
+
+func TestGuardrailStatusInternal_ReflectsSpendAndExhaustion(t *testing.T) {
+	pool := openGuardrailTestDB(t)
+	srv := newGuardrailServer(t, pool)
+	owner := uuid.New()
+
+	// No row yet → config defaults, nothing spent, full daily available.
+	rr := callGuardrailStatus(t, srv, owner.String())
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d (%s)", rr.Code, rr.Body.String())
+	}
+	var s struct {
+		DailyLimit     float64 `json:"daily_limit_usd"`
+		DailyAvailable float64 `json:"daily_available_usd"`
+		DailySpent     float64 `json:"daily_spent_usd"`
+	}
+	if err := json.Unmarshal(rr.Body.Bytes(), &s); err != nil {
+		t.Fatalf("decode status: %v", err)
+	}
+	if s.DailyLimit != guardrailTestDaily || s.DailyAvailable != guardrailTestDaily || s.DailySpent != 0 {
+		t.Fatalf("fresh status: got limit=%v avail=%v spent=%v", s.DailyLimit, s.DailyAvailable, s.DailySpent)
+	}
+
+	// Reserve the WHOLE daily cap → the distiller's degrade condition (daily_available_usd <= 0) holds.
+	if callReserve(t, srv, owner, uuid.New(), guardrailTestDaily).Code != http.StatusOK {
+		t.Fatal("reserve of the full daily cap should succeed")
+	}
+	rr2 := callGuardrailStatus(t, srv, owner.String())
+	_ = json.Unmarshal(rr2.Body.Bytes(), &s)
+	if s.DailyAvailable > 0 {
+		t.Fatalf("after reserving the full cap, daily_available should be <= 0, got %v", s.DailyAvailable)
+	}
+}
+
+func TestGuardrailStatusInternal_BadOwner_400(t *testing.T) {
+	srv := newGuardrailServer(t, nil)
+	if rr := callGuardrailStatus(t, srv, "not-a-uuid"); rr.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for a non-UUID owner, got %d", rr.Code)
+	}
+}

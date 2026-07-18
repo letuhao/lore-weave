@@ -11,8 +11,10 @@ import dataclasses
 from types import SimpleNamespace
 from uuid import uuid4
 
+import pytest
+
 from app.worker import job_consumer as jc
-from app.worker.operations import run_decompose, run_plan_pipeline
+from app.worker.operations import run_decompose, run_plan_pipeline, run_selection_edit
 
 
 def _llm_stub():
@@ -29,17 +31,18 @@ class _FakeRepo:
         self._job = job
         self.updates: list = []
 
-    async def get(self, uid, jid):
+    async def get(self, jid):
         return self._job
 
-    async def update_status(self, uid, jid, status, *, result=None, **kw):
+    async def update_status(self, jid, status, *, result=None, **kw):
         self.updates.append((status, result))
         return self._job
 
 
 def _job(operation="decompose_preview", status="pending", input=None):
+    _uid = uuid4()
     return SimpleNamespace(
-        id=uuid4(), user_id=uuid4(), project_id=uuid4(), operation=operation,
+        id=uuid4(), created_by=_uid, user_id=_uid, project_id=uuid4(), operation=operation,
         status=status, input=input if input is not None else {},
     )
 
@@ -83,6 +86,46 @@ async def test_run_job_business_error_marks_failed(monkeypatch):
     assert repo.updates[0][0] == "running"
     assert repo.updates[-1][0] == "failed"
     assert "bad plan output" in repo.updates[-1][1]["error"]
+
+
+async def test_run_selection_edit_errored_no_content_raises(monkeypatch):
+    # D-ENGINE-ERRORED-JOB-MARKED-COMPLETED (worker path): stream_draft always yields a
+    # terminal frame even after an LLMError, so `final is not None` — the errored-empty
+    # case must RAISE (→ job failed via the business-error path above), never return an
+    # empty completed edit.
+    async def errored_stream(sdk, **kw):
+        yield {"type": "error", "error": "model_ref could not be resolved"}
+        yield {"type": "usage", "text": "", "metering": SimpleNamespace(
+            input_tokens=10, output_tokens=0, measured=False, finish_reason=None),
+            "capped": False, "error": "model_ref could not be resolved"}
+
+    monkeypatch.setattr("app.engine.cowrite.stream_draft", errored_stream)
+    with pytest.raises(ValueError, match="model_ref could not be resolved"):
+        await run_selection_edit(SimpleNamespace(sdk=object()), input={
+            "user_id": "u", "messages": [{"role": "user", "content": "x"}],
+            "prompt_estimate": 10, "max_out": 100, "model_source": "user_model",
+            "model_ref": str(uuid4())})
+
+
+async def test_run_selection_edit_error_after_content_succeeds(monkeypatch):
+    # The taxonomy boundary: partial content then error keeps the prose (not a failure).
+    async def partial_then_error(sdk, **kw):
+        yield {"type": "token", "delta": "partial"}
+        yield {"type": "error", "error": "dropped"}
+        yield {"type": "usage", "text": "partial", "metering": SimpleNamespace(
+            input_tokens=10, output_tokens=2, measured=True, finish_reason=None),
+            "capped": False, "error": "dropped"}
+
+    monkeypatch.setattr("app.engine.cowrite.stream_draft", partial_then_error)
+    out = await run_selection_edit(SimpleNamespace(sdk=object()), input={
+        "user_id": "u", "messages": [{"role": "user", "content": "x"}],
+        "prompt_estimate": 10, "max_out": 100, "model_source": "user_model",
+        "model_ref": str(uuid4())})
+    assert out["text"] == "partial"
+    # review MED: the worker path doesn't stream, so this result is the ONLY interruption signal —
+    # it must flag truncated + carry the error, not look like a clean edit.
+    assert out["truncated"] is True
+    assert out["error"] == "dropped"
 
 
 async def test_run_job_unknown_operation_fails(monkeypatch):
@@ -144,12 +187,12 @@ async def test_run_stitch_computes_and_stores_no_persist(monkeypatch):
 
     class _FakeWorks:
         def __init__(self, pool): ...
-        async def get(self, uid, pid):
+        async def get(self, pid):
             return SimpleNamespace(settings={"source_language": "en"})
 
     class _FakeJobsRepo:
         def __init__(self, pool): ...
-        async def chapter_scene_drafts(self, uid, pid, cid):
+        async def chapter_scene_drafts(self, pid, cid):
             return [{"title": "Scene One", "text": "scene 1 draft"},
                     {"title": "Scene Two", "text": "scene 2 draft"}]
 
@@ -197,12 +240,12 @@ async def test_run_stitch_raises_when_no_drafts(monkeypatch):
 
     class _FakeWorks:
         def __init__(self, pool): ...
-        async def get(self, uid, pid):
+        async def get(self, pid):
             return SimpleNamespace(settings={})
 
     class _FakeJobsRepo:
         def __init__(self, pool): ...
-        async def chapter_scene_drafts(self, uid, pid, cid):
+        async def chapter_scene_drafts(self, pid, cid):
             return []  # nothing to stitch
 
     monkeypatch.setattr(works_mod, "WorksRepo", _FakeWorks)
@@ -247,7 +290,7 @@ async def test_run_generate_computes_winner_and_canon(monkeypatch):
 
     class _FakeWorks:
         def __init__(self, pool): ...
-        async def get(self, uid, pid):
+        async def get(self, pid):
             return SimpleNamespace(settings={"source_language": "en"})
 
     seen: dict = {}
@@ -299,7 +342,7 @@ async def test_run_generate_select_failure_is_terminal(monkeypatch):
 
     class _FakeWorks:
         def __init__(self, pool): ...
-        async def get(self, uid, pid):
+        async def get(self, pid):
             return SimpleNamespace(settings={})
 
     async def _boom(llm, judge, **kw):
@@ -347,7 +390,7 @@ async def test_run_chapter_generate_single_pass_no_persist(monkeypatch):
 
     class _FakeWorks:
         def __init__(self, pool): ...
-        async def get(self, uid, pid):
+        async def get(self, pid):
             return SimpleNamespace(settings={})  # narrative_thread off
 
     seen: dict = {}

@@ -44,6 +44,11 @@ dependencies = [
   # service drops its own PyJWT pin). fastapi is already a core dep of every
   # consuming FastAPI service, so it stays in the test extras here.
   "PyJWT>=2.8",
+  # WS-1.0 (review-impl) — loreweave_crypto is the envelope-encryption module (per-user
+  # DEK wrap/unwrap, blind index, encrypted embeddings). Every service that stores or reads
+  # private user content pip-installs the SDK and imports it, so `cryptography` MUST be a
+  # declared dependency — without it the import fails at runtime on a fresh install.
+  "cryptography>=42",
 ]
 
 [project.optional-dependencies]
@@ -67,6 +72,11 @@ include = [
   "loreweave_extraction*",
   "loreweave_obs*",
   "loreweave_parse*",
+  # WS-5.11/5.13 (2026-07-15) — `loreweave_safety` (the deterministic distress/harassment/
+  # self-harm FLOOR + clinical deny-list). Pure-stdlib; ONE home so worker-ai (weekly
+  # reflection) + chat-service (practice gate) screen identically — a second copy of a
+  # safety lexicon is a drift.
+  "loreweave_safety*",
   # Q0 (2026-06-01) — `loreweave_eval` added (extraction-quality scorer lifted
   # from knowledge-service/tests/quality). Depends on loreweave_extraction
   # (canonical + prompts) + loreweave_llm (errors) + PyYAML; the LLM client is
@@ -114,6 +124,25 @@ include = [
   # canon_check.py + knowledge-service's near-duplicate mirror). Pure pydantic +
   # stdlib, no LLM/HTTP hard dep (the caller injects its own submit_and_wait).
   "loreweave_canon_check*",
+  # D-COSINE-SDK-PROMOTE (2026-07-08) — `loreweave_vecmath` added (shared cosine-
+  # similarity math, promoted from near-duplicate copies in lore-enrichment/
+  # composition/knowledge-service). Pure stdlib (math + typing only), no deps.
+  "loreweave_vecmath*",
+  # WS-1.0 (2026-07-12, review-impl) — `loreweave_crypto` added (envelope encryption for
+  # private user content: per-user DEK wrap/unwrap under a deployment KEK, HMAC blind
+  # index, encrypted embeddings + cosine, and the DEKClient). WITHOUT THIS LINE the module
+  # is silently absent from `pip install /sdk`, so every consumer's `import loreweave_crypto`
+  # fails at runtime and the whole encryption slice is unreachable — a shipped-but-unusable
+  # feature. Depends on `cryptography` (declared in [project.dependencies] above).
+  "loreweave_crypto*",
+  # ACP A1 (2026-07-16) — `loreweave_agent_control` added (the Agent Control Plane SDK:
+  # the rail verdict-machine + the executive state-merge, extracted from chat-service +
+  # knowledge-service so any agent-runtime consumes ONE surface). WITHOUT THIS LINE the
+  # module is silently absent from `pip install /sdk`, so chat's `rail_progress` shim and
+  # knowledge's `executive` import fail at RUNTIME and BOTH services fail to start — the
+  # A1 /review-impl caught exactly this (tests use PYTHONPATH=sdks/python, which hides it).
+  # Pure-stdlib (no deps); consumers: chat-service, knowledge-service (roleplay/game later).
+  "loreweave_agent_control*",
 ]
 exclude = ["tests*"]
 

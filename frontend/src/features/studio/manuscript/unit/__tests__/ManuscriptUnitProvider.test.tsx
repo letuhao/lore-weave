@@ -10,6 +10,8 @@ vi.mock('@/lib/tiptap-utils', () => ({ addTextSnapshots: (d: unknown) => d, extr
 // #12 — the hoist now resolves the composition Work for scenes[]; this suite exercises the
 // body path, so the book has NO Work (scenes stay []) and react-query is bypassed entirely.
 vi.mock('@/features/composition/hooks/useWork', () => ({ useWorkResolution: () => ({ data: null }) }));
+// Resolve the active-work pref synchronously (null = canonical) so loadChapter never defers (D-S5).
+vi.mock('@/features/composition/hooks/useActiveWork', () => ({ useActiveWorkId: () => ({ data: null }) }));
 // #16 2.10 — progress-reporting is a best-effort side effect of save()/loadChapter(); this suite
 // has no Work (projectId null) so the real hooks would no-op anyway, but they still call
 // react-query's useQueryClient() internally — stub them out rather than add a QueryClientProvider.

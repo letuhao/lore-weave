@@ -1,11 +1,14 @@
 """reference_source repository — LOOM T3.6 the author's per-Work reference shelf.
 
-SECURITY (M5 isolation): every method takes `user_id` first and filters
-`user_id = $1 AND project_id = $2`. References are composition-owned authoring
-data; the embedding vector is stored as a plain `real[]` and the SEARCH ranks by
-brute-force cosine IN APP CODE (a reference shelf is small — dozens to low-hundreds
-of rows — so a kNN index is unnecessary; this avoids a pgvector dependency and the
-fixed-dimension column it would force). DELETE is a hard delete (unlike canon_rule's
+SCOPE RULE (package re-key, spec 25 §Repo/service layer): reads key on
+`project_id` — access is decided BEFORE the repo, at the gate (E0 grant on the
+row's `book_id`). Writes stamp `created_by` (a plain actor stamp — STORED,
+never filtered on) and derive `book_id` from composition_work inside the
+INSERT. References are composition-owned authoring data; the embedding vector
+is stored as a plain `real[]` and the SEARCH ranks by brute-force cosine IN APP
+CODE (a reference shelf is small — dozens to low-hundreds of rows — so a kNN
+index is unnecessary; this avoids a pgvector dependency and the fixed-dimension
+column it would force). DELETE is a hard delete (unlike canon_rule's
 soft-archive — a reference has no critic-calibration history to preserve).
 
 The `embedding` column is NEVER projected into a returned model (the vector stays on
@@ -14,17 +17,18 @@ the server); `_SELECT_COLS` is the attribution projection only.
 
 from __future__ import annotations
 
-import math
 from typing import Any
 from uuid import UUID
 
 import asyncpg
+from loreweave_vecmath import cosine_similarity as _cosine
 
 from app.db.models import ReferenceSource
+from app.db.repositories import ReferenceViolationError
 
 # Attribution projection — the vector is deliberately excluded (stays server-side).
 _SELECT_COLS = """
-  id, user_id, project_id, title, author, source_url, content,
+  id, created_by, project_id, title, author, source_url, content,
   embedding_model, embedding_dim, created_at
 """
 
@@ -49,21 +53,17 @@ def _row_to_ref(row: asyncpg.Record) -> ReferenceSource:
     return ReferenceSource.model_validate(dict(row))
 
 
-def _cosine(a: list[float], b: list[float]) -> float:
-    """Cosine similarity of two equal-length vectors. Returns 0.0 for a zero or
-    mismatched-length vector (a degenerate row never out-ranks a real hit)."""
-    if not a or not b or len(a) != len(b):
-        return 0.0
-    dot = 0.0
-    na = 0.0
-    nb = 0.0
-    for x, y in zip(a, b):
-        dot += x * y
-        na += x * x
-        nb += y * y
-    if na <= 0.0 or nb <= 0.0:
-        return 0.0
-    return dot / (math.sqrt(na) * math.sqrt(nb))
+# Sentinel for update_metadata partial-update: distinguishes "field omitted" from
+# "field set to '' " (title/author/source_url are NOT NULL DEFAULT '' — clearing one
+# to empty is a legitimate edit, not the same as leaving it unchanged).
+_UNSET: Any = object()
+
+
+# `_cosine` is the shared loreweave_vecmath.cosine_similarity (imported above,
+# aliased to keep this module's existing call sites unchanged). D-COSINE-SDK-
+# PROMOTE: this was the origin copy that motif_retrieve.py's own `_cosine`
+# explicitly documented itself as a copy of — both now import the one shared
+# implementation.
 
 
 class ReferencesRepo:
@@ -72,9 +72,9 @@ class ReferencesRepo:
 
     async def create(
         self,
-        user_id: UUID,
         project_id: UUID,
         *,
+        created_by: UUID,
         content: str,
         embedding: list[float],
         title: str = "",
@@ -85,47 +85,115 @@ class ReferencesRepo:
     ) -> ReferenceSource:
         query = f"""
         INSERT INTO reference_source
-          (user_id, project_id, title, author, source_url, content,
+          (created_by, project_id, book_id, title, author, source_url, content,
            embedding, embedding_model, embedding_dim)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+        SELECT $1, $2, w.book_id, $3, $4, $5, $6, $7, $8, $9
+        FROM composition_work w WHERE (w.project_id = $2 OR (w.project_id IS NULL AND w.id = $2))
         RETURNING {_SELECT_COLS}
         """
         async with self._pool.acquire() as c:
             row = await c.fetchrow(
-                query, user_id, project_id, title, author, source_url, content,
+                query, created_by, project_id, title, author, source_url, content,
                 embedding, embedding_model, embedding_dim,
+            )
+        if row is None:
+            raise ReferenceViolationError(
+                f"project {project_id} has no composition work (book scope unresolvable)"
             )
         return _row_to_ref(row)
 
-    async def list(self, user_id: UUID, project_id: UUID) -> list[ReferenceSource]:
+    async def list(self, project_id: UUID) -> list[ReferenceSource]:
         """The Work's reference library (newest first) — the management list."""
         query = f"""
         SELECT {_SELECT_COLS} FROM reference_source
-        WHERE user_id = $1 AND project_id = $2
+        WHERE project_id = $1
         ORDER BY created_at DESC, id DESC
         """
         async with self._pool.acquire() as c:
-            rows = await c.fetch(query, user_id, project_id)
+            rows = await c.fetch(query, project_id)
         return [_row_to_ref(r) for r in rows]
 
-    async def get(self, user_id: UUID, reference_id: UUID) -> ReferenceSource | None:
-        query = f"SELECT {_SELECT_COLS} FROM reference_source WHERE user_id = $1 AND id = $2"
+    async def get(self, project_id: UUID, reference_id: UUID) -> ReferenceSource | None:
+        query = f"SELECT {_SELECT_COLS} FROM reference_source WHERE project_id = $1 AND id = $2"
         async with self._pool.acquire() as c:
-            row = await c.fetchrow(query, user_id, reference_id)
+            row = await c.fetchrow(query, project_id, reference_id)
         return _row_to_ref(row) if row else None
 
-    async def delete(self, user_id: UUID, reference_id: UUID) -> bool:
-        """Hard delete. Returns True if a row was removed (False if missing /
-        cross-user — the router maps False → 404, no existence oracle)."""
+    async def delete(self, project_id: UUID, reference_id: UUID) -> bool:
+        """Hard delete, project-bound. Returns True if a row was removed (False if
+        missing / another project's — the router maps False → 404, no existence
+        oracle)."""
         async with self._pool.acquire() as c:
             status = await c.execute(
-                "DELETE FROM reference_source WHERE user_id = $1 AND id = $2",
-                user_id, reference_id,
+                "DELETE FROM reference_source WHERE project_id = $1 AND id = $2",
+                project_id, reference_id,
             )
         return status.rsplit(" ", 1)[-1] != "0"
 
+    async def update_metadata(
+        self,
+        project_id: UUID,
+        reference_id: UUID,
+        *,
+        title: Any = _UNSET,
+        author: Any = _UNSET,
+        source_url: Any = _UNSET,
+    ) -> ReferenceSource | None:
+        """S-03: edit a reference's METADATA only (title/author/source_url) — NO
+        embedding recompute (fixing a typo in an author's name is a cheap column
+        write, not a full re-embed). Only provided fields change. Project-scoped
+        (book scope is fixed at create; the row can't cross projects). Returns None
+        when no row matches (id, project_id) — the router maps that to 404."""
+        sets: list[str] = []
+        args: list[Any] = []
+        for col, val in (("title", title), ("author", author), ("source_url", source_url)):
+            if val is not _UNSET:
+                args.append(val)
+                sets.append(f"{col} = ${len(args)}")
+        if not sets:
+            return await self.get(project_id, reference_id)  # no-op patch → current row
+        args.append(reference_id)
+        id_pos = len(args)
+        args.append(project_id)
+        pid_pos = len(args)
+        query = f"""
+        UPDATE reference_source SET {", ".join(sets)}
+        WHERE id = ${id_pos} AND project_id = ${pid_pos}
+        RETURNING {_SELECT_COLS}
+        """
+        async with self._pool.acquire() as c:
+            row = await c.fetchrow(query, *args)
+        return _row_to_ref(row) if row else None
+
+    async def update_content(
+        self,
+        project_id: UUID,
+        reference_id: UUID,
+        *,
+        content: str,
+        embedding: list[float],
+        embedding_model: str,
+        embedding_dim: int | None,
+    ) -> ReferenceSource | None:
+        """S-03: replace a reference's CONTENT and its recomputed embedding. The
+        CALLER (service/router) runs the embed via provider-registry BEFORE calling
+        this — the repo never embeds (provider-gateway invariant), exactly as the
+        create route does. Project-scoped; None when no row matches → 404."""
+        query = f"""
+        UPDATE reference_source
+        SET content = $1, embedding = $2, embedding_model = $3, embedding_dim = $4
+        WHERE id = $5 AND project_id = $6
+        RETURNING {_SELECT_COLS}
+        """
+        async with self._pool.acquire() as c:
+            row = await c.fetchrow(
+                query, content, embedding, embedding_model, embedding_dim,
+                reference_id, project_id,
+            )
+        return _row_to_ref(row) if row else None
+
     async def search(
-        self, user_id: UUID, project_id: UUID, query_vector: list[float], *, limit: int = 8,
+        self, project_id: UUID, query_vector: list[float], *, limit: int = 8,
     ) -> list[dict[str, Any]]:
         """Brute-force cosine top-K over the Work's references. Returns a list of
         attribution dicts each with a `score` (cosine, 0..1), highest first. Rows
@@ -134,10 +202,10 @@ class ReferencesRepo:
         (the vector stays on the server)."""
         sql = f"""
         SELECT {_SELECT_COLS}, embedding FROM reference_source
-        WHERE user_id = $1 AND project_id = $2 AND embedding IS NOT NULL
+        WHERE project_id = $1 AND embedding IS NOT NULL
         """
         async with self._pool.acquire() as c:
-            rows = await c.fetch(sql, user_id, project_id)
+            rows = await c.fetch(sql, project_id)
         scored: list[tuple[float, asyncpg.Record]] = []
         for r in rows:
             vec = r["embedding"]

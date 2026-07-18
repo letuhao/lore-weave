@@ -37,6 +37,7 @@ from app.clients.grant_client import GrantClient, GrantLevel
 from app.extraction.patterns import detect_primary_language
 from app.middleware.jwt_auth import get_current_user
 from app.search.hybrid_fusion import language_coverage
+from app.spoiler_window import resolve_before_sort_order
 from app.search.retriever import (
     MIN_RELEVANCE_DEFAULT,
     Granularity,
@@ -99,6 +100,13 @@ async def search_book(
         "not a filter. Omit to use the caller's stored reader-language for this book, "
         "else the detected query language.",
     ),
+    before_chapter_id: UUID | None = Query(
+        None,
+        description="W11 reader spoiler cutoff — restrict hits to passages from "
+        "chapters at or before this one (by the chapter's sort_order). Omitted → no "
+        "cutoff (author behavior). Unresolvable → fail-closed (no hits). The reader "
+        "facade passes the reader's furthest-read chapter here (server-enforced).",
+    ),
     caller: UUID = Depends(get_current_user),
     projects_repo: ProjectsRepo = Depends(get_projects_repo),
     grant_client: GrantClient = Depends(get_grant_client),
@@ -145,6 +153,13 @@ async def search_book(
         detected = detect_primary_language(q)
         pref_lang = detected if detected and detected != "mixed" else None
 
+    # W11 reader spoiler cutoff — resolve the caller-supplied chapter to its
+    # sort_order (fail-closed to -1 if unresolvable → no passages pass). None when
+    # no cutoff was supplied, so the author/wiki path is unchanged.
+    before_sort_order: int | None = None
+    if before_chapter_id is not None:
+        before_sort_order, _ = await resolve_before_sort_order(book_client, before_chapter_id)
+
     result = await run_hybrid_search(
         user_id=project.user_id,
         book_id=book_id,
@@ -161,6 +176,7 @@ async def search_book(
         min_rerank_score=min_rerank_score,
         surface=effective_surface,
         pref_lang=pref_lang,
+        before_sort_order=before_sort_order,
     )
     coverage = language_coverage(
         [h.get("sourceLang") for h in result.hits], pref_lang
@@ -224,6 +240,34 @@ async def index_drafts(
     if items is None:
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY, detail="book_service_unavailable",
+        )
+
+    # ── review-impl P1: honour kg_exclude ──
+    #
+    # This endpoint enumerates DRAFT chapters, and it was the one chapter enumerator never
+    # re-keyed onto the KG gate. So clicking "Index drafts" re-embedded and re-ingested
+    # :Passage nodes for a chapter the owner had explicitly EXCLUDED from their knowledge
+    # graph — silently undoing the retraction, and paying embedding cost on prose the user
+    # asked us to forget.
+    #
+    # kg_exclude ships on the chapter LIST projection (WS-0.6a), so we filter on it.
+    #
+    # An ABSENT field is treated as not-excluded, deliberately. That is not fail-open: a
+    # book-service old enough to omit the field has no kg_exclude CONCEPT, so no chapter
+    # can be excluded there and including everything is correct. Defaulting absent→True
+    # instead would filter out every chapter and turn this endpoint into a silent no-op on
+    # exactly that deployment.
+    #
+    # (This endpoint is superseded by publish-independent indexing — RUN-STATE P-2 tracks
+    # retiring it — but "redundant" is not "harmless", and it must not undo a retraction
+    # while it still exists.)
+    before = len(items)
+    items = [it for it in items if not it.get("kg_exclude")]
+    if (excluded := before - len(items)) > 0:
+        logger.info(
+            "index-drafts: skipped %d kg-excluded chapter(s) in book %s — the user "
+            "removed them from their knowledge graph",
+            excluded, book_id,
         )
 
     # Inline imports mirror the event-handler pattern (avoid circular import at

@@ -1113,17 +1113,25 @@ async def _enumerate_chapters(
 ) -> list[ChapterInfo]:
     """Get chapters to process, respecting cursor for resume.
 
-    CM3c — canon=published gate: the manual whole-book rebuild only extracts
-    PUBLISHED chapters (drafts are not canon), reading each at its PINNED
-    revision (`ChapterInfo.revision_id` ← `published_revision_id`). Drafts are
-    filtered server-side via `editorial_status='published'`. A chapter that is
-    published but has NO pinned revision (the FK `ON DELETE SET NULL` purge edge
-    — §8.9 adversary-R2-NEW-2) is skipped with a WARNING (not silently), since
-    it represents a published chapter we cannot pin canon for.
+    WS-0.6 — the KG-membership gate (spec 2026-07-11-publish-independent-kg-indexing
+    §3.5, red-team P0-2). This REPLACES the old CM3c canon=published gate.
+
+    The whole-book rebuild extracts the chapters the user actually put in their
+    KNOWLEDGE GRAPH — not the chapters they published. Those are different sets now:
+    a draft can be indexed (and a kind='diary' book never publishes at all). Filtering
+    server-side on `editorial_status='published'` would enumerate ZERO of a user's 50
+    explicitly-indexed drafts, and this job would report success having extracted
+    nothing — the user's explicit act silently undone by an unrelated button.
+
+    Each chapter is read at its PINNED revision (`ChapterInfo.revision_id` ←
+    `kg_indexed_revision_id`). The no-pinned-revision skip is KEPT and is load-bearing:
+    with `revision_id=None` the per-chapter fetch falls back to `get_chapter_text()` =
+    the LIVE DRAFT, which would extract unreviewed prose and break the pinned-revision
+    guarantee. It stays a WARNING, never a silent drop.
     """
     if book_id is None:
         return []
-    chapters = await book_client.list_chapters(book_id, editorial_status="published")
+    chapters = await book_client.list_chapters(book_id, kg_indexed=True)
     if chapters is None:
         return []
 
@@ -1131,8 +1139,9 @@ async def _enumerate_chapters(
     for ch in chapters:
         if ch.revision_id is None:
             logger.warning(
-                "CM3c: published chapter %s has no pinned revision "
-                "(published_revision_id NULL) — skipping; re-publish to pin canon",
+                "WS-0.6: chapter %s is in the knowledge graph but has no pinned "
+                "revision (kg_indexed_revision_id NULL) — skipping rather than falling "
+                "back to live draft text; re-index it to pin a revision",
                 ch.chapter_id,
             )
             continue
@@ -1275,6 +1284,17 @@ async def _enumerate_pending_chat_turns(
           ON p.project_id = ep.project_id AND p.user_id = $1
         WHERE ep.project_id = $2 AND ep.processed_at IS NULL
           AND ep.aggregate_type = 'chat'
+          -- ── WS-1.3 · the D6 gate, ENFORCED ON BOTH SIDES (review-impl P1) ──
+          -- knowledge-service's handle_chat_turn gates at ENQUEUE, but a one-sided gate
+          -- is a silent-success bug (spec 09 says so explicitly, and I wrote a comment
+          -- claiming both sides were covered — they were not). A row can be enqueued and
+          -- THEN the project flipped to assistant, or the extraction re-run over an old
+          -- row. This is the same derived predicate (fail-closed): the ASSISTANT never
+          -- extracts per turn (its facts come once a day from the confirmed entry), and a
+          -- project with per-turn extraction disabled is skipped. A NULL is_assistant or
+          -- flag cannot pass (both are NOT NULL columns, so this reads as false-safe).
+          AND p.is_assistant = false
+          AND p.chat_turn_extraction_enabled = true
         ORDER BY ep.created_at ASC
         LIMIT 1000
         """,

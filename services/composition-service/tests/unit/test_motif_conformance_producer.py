@@ -68,7 +68,7 @@ def _motif() -> Motif:
 
 def _app(beat_key="reversal") -> MotifApplication:
     return MotifApplication(
-        id=uuid.uuid4(), user_id=uuid.UUID(USER), project_id=uuid.UUID(PROJECT),
+        id=uuid.uuid4(), created_by=uuid.UUID(USER), project_id=uuid.UUID(PROJECT),
         book_id=uuid.uuid4(), motif_id=MOTIF_ID, motif_version=1,
         outline_node_id=uuid.UUID(NODE), role_bindings={}, annotations={"beat_key": beat_key},
     )
@@ -81,7 +81,7 @@ def _enable(monkeypatch):
     monkeypatch.setattr(settings, "motif_conformance_calibrated", False, raising=False)
     monkeypatch.setattr(settings, "motif_conformance_sample_random_pct", 20, raising=False)
     # patch the two DB-touching seams so no Postgres is needed.
-    async def _fake_resolve(pool, u, p, n):
+    async def _fake_resolve(pool, p, n):
         return _app()
     monkeypatch.setattr(prod, "resolve_bound_application", _fake_resolve)
 

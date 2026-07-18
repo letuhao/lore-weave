@@ -10,12 +10,30 @@ import (
 	"encoding/json"
 	stderrors "errors"
 	"net/http"
+	"strings"
 	"testing"
 
 	"github.com/google/uuid"
 )
 
 // ── mint-side validation (no DB) ──────────────────────────────────────────────
+
+// validEntityStatus is the single source of truth reused by effectStatusChange,
+// toolProposeStatusChange, and (post-consolidation) both entity_handler.go PATCH
+// and bulk-status call sites. "rejected" is a 4th valid value added so the triage
+// workflow (glossary_list_ai_suggestions' "not yet user-rejected" inbox language)
+// has a real terminal status distinct from active/inactive/draft.
+func TestValidEntityStatus(t *testing.T) {
+	cases := map[string]bool{
+		"active": true, "inactive": true, "draft": true, "rejected": true,
+		"bogus": false, "": false, "Active": false, "REJECTED": false,
+	}
+	for s, want := range cases {
+		if got := validEntityStatus(s); got != want {
+			t.Errorf("validEntityStatus(%q) = %v, want %v", s, got, want)
+		}
+	}
+}
 
 func TestPipelinePropose_InputGuards(t *testing.T) {
 	s := &Server{}
@@ -155,6 +173,73 @@ func TestPipelinePropose_StatusChangeRoundTrip(t *testing.T) {
 	}
 }
 
+// External MCP discoverability audit #11 — effectStatusChange's UPDATE has no
+// `status <> target` guard, so it always reports every live id as "updated" even when
+// they ALL already have the target status. A status_change proposing the status an
+// entity already has must still mint (not an error) but must carry a warning.
+func TestPipelinePropose_StatusChangeNoOpWarnsWhenAlreadyAtTarget(t *testing.T) {
+	pool := openTestDB(t)
+	f := newActionFixture(t, pool)
+	ctx := context.Background()
+	charKind := bookKindID(t, pool, f.bookID, "character")
+
+	var id uuid.UUID
+	if err := pool.QueryRow(ctx,
+		`INSERT INTO glossary_entities(book_id, kind_id, status, short_description)
+		 VALUES($1,$2,'active','sc-noop') RETURNING entity_id`, f.bookID, charKind).Scan(&id); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	t.Cleanup(func() { pool.Exec(context.Background(), `DELETE FROM glossary_entities WHERE entity_id=$1`, id) }) //nolint:errcheck
+
+	_, card, err := f.srv.toolProposeStatusChange(ctxWithUser(f.ownerID), nil, struct {
+		BookID    string   `json:"book_id" jsonschema:"the book (UUID)"`
+		Status    string   `json:"status" jsonschema:"active | inactive | draft"`
+		EntityIDs []string `json:"entity_ids" jsonschema:"the entities to change (UUIDs)"`
+	}{BookID: f.bookID.String(), Status: "active", EntityIDs: []string{id.String()}})
+	if err != nil {
+		t.Fatalf("propose status_change to the entity's current status: %v", err)
+	}
+	if card.ConfirmToken == "" {
+		t.Fatal("a no-op status_change must still mint a valid confirm_token (it is not an error)")
+	}
+	if card.Warning == "" {
+		t.Fatalf("a status_change to the CURRENT status must carry a no-op warning, got card=%+v", card)
+	}
+	if !strings.Contains(card.Warning, "already have status") {
+		t.Errorf("warning should state entities already have that status, got %q", card.Warning)
+	}
+}
+
+// A status_change that actually flips entities to a NEW status must not carry the
+// no-op warning (regression guard on TestPipelinePropose_StatusChangeRoundTrip's
+// happy path).
+func TestPipelinePropose_StatusChangeRealChangeCarriesNoWarning(t *testing.T) {
+	pool := openTestDB(t)
+	f := newActionFixture(t, pool)
+	ctx := context.Background()
+	charKind := bookKindID(t, pool, f.bookID, "character")
+
+	var id uuid.UUID
+	if err := pool.QueryRow(ctx,
+		`INSERT INTO glossary_entities(book_id, kind_id, status, short_description)
+		 VALUES($1,$2,'draft','sc-real') RETURNING entity_id`, f.bookID, charKind).Scan(&id); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	t.Cleanup(func() { pool.Exec(context.Background(), `DELETE FROM glossary_entities WHERE entity_id=$1`, id) }) //nolint:errcheck
+
+	_, card, err := f.srv.toolProposeStatusChange(ctxWithUser(f.ownerID), nil, struct {
+		BookID    string   `json:"book_id" jsonschema:"the book (UUID)"`
+		Status    string   `json:"status" jsonschema:"active | inactive | draft"`
+		EntityIDs []string `json:"entity_ids" jsonschema:"the entities to change (UUIDs)"`
+	}{BookID: f.bookID.String(), Status: "active", EntityIDs: []string{id.String()}})
+	if err != nil {
+		t.Fatalf("propose: %v", err)
+	}
+	if card.Warning != "" {
+		t.Errorf("a real status change must not carry the no-op warning, got %q", card.Warning)
+	}
+}
+
 // ── merge round-trip (destructive, journaled) ─────────────────────────────────
 
 func TestPipelinePropose_MergeRoundTrip(t *testing.T) {
@@ -266,5 +351,46 @@ func TestPipelinePropose_ReassignPreviewsDroppedAttrs(t *testing.T) {
 	if !found {
 		b, _ := json.Marshal(card.PreviewRows)
 		t.Errorf("reassign card must surface dropped attrs: %s", b)
+	}
+	// regression guard: a real kind change must NOT carry the same-kind no-op warning.
+	if card.Warning != "" {
+		t.Errorf("a real reassign to a DIFFERENT kind must not carry the no-op warning, got %q", card.Warning)
+	}
+}
+
+// External MCP discoverability audit #11 — reassigning an entity to the kind it is
+// ALREADY on is a genuine no-op (rekeyEntityToKind's re-key/drop UPDATEs all filter
+// `kind_id <> target`, so none of them touch a row). Must still mint (not an error)
+// but must carry a warning.
+func TestPipelinePropose_ReassignSameKindWarnsOnNoOp(t *testing.T) {
+	pool := openTestDB(t)
+	f := newActionFixture(t, pool)
+	ctx := context.Background()
+	charKind := bookKindID(t, pool, f.bookID, "character")
+
+	var entityID uuid.UUID
+	if err := pool.QueryRow(ctx,
+		`INSERT INTO glossary_entities(book_id, kind_id, short_description) VALUES($1,$2,'same-kind') RETURNING entity_id`,
+		f.bookID, charKind).Scan(&entityID); err != nil {
+		t.Fatalf("seed entity: %v", err)
+	}
+	t.Cleanup(func() { pool.Exec(context.Background(), `DELETE FROM glossary_entities WHERE entity_id=$1`, entityID) }) //nolint:errcheck
+
+	_, card, err := f.srv.toolProposeReassignKind(ctxWithUser(f.ownerID), nil, struct {
+		BookID   string `json:"book_id" jsonschema:"the book (UUID)"`
+		EntityID string `json:"entity_id" jsonschema:"the entity to move (UUID)"`
+		KindCode string `json:"kind_code" jsonschema:"the target kind's code (see glossary_book_ontology_read)"`
+	}{BookID: f.bookID.String(), EntityID: entityID.String(), KindCode: "character"}) // same kind it's already on
+	if err != nil {
+		t.Fatalf("propose reassign to the entity's current kind: %v", err)
+	}
+	if card.ConfirmToken == "" {
+		t.Fatal("a same-kind reassign must still mint a valid confirm_token (it is not an error)")
+	}
+	if card.Warning == "" {
+		t.Fatalf("a reassign to the entity's CURRENT kind must carry a no-op warning, got card=%+v", card)
+	}
+	if !strings.Contains(card.Warning, "already kind") {
+		t.Errorf("warning should state the entity is already that kind, got %q", card.Warning)
 	}
 }

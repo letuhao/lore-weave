@@ -17,6 +17,9 @@ carry editor_context); other clients never have these tools advertised.
 """
 from __future__ import annotations
 
+import re as _re
+from copy import deepcopy
+
 # Tool names that the FRONTEND executes (suspend the run, don't call a backend).
 #   propose_edit                  — editor prose write-back (chapter editor only)
 #   glossary_propose_entity_edit  — edit an existing glossary entity (any book-scoped
@@ -399,9 +402,17 @@ UI_OPEN_STUDIO_PANEL_TOOL: dict = {
             "properties": {
                 "panel_id": {
                     "type": "string",
-                    "enum": ["compose", "editor", "planner", "agent-mode", "usage", "notifications", "settings", "trash", "steering", "extensions", "proposals", "glossary", "glossary-ontology", "glossary-unknown", "glossary-ai-suggestions", "glossary-merge-candidates", "wiki", "knowledge", "kg-overview", "kg-entities", "kg-timeline", "kg-evidence", "kg-gap", "kg-proposals", "kg-schema", "kg-graph", "kg-insights", "kg-jobs", "kg-bio", "kg-privacy", "jobs-list", "books", "leaderboard-books", "leaderboard-authors", "leaderboard-translators", "leaderboard-trending", "chapter-browser", "context-inspector", "sharing", "book-settings", "translation", "enrichment-compose", "enrichment-proposals", "enrichment-gaps", "enrichment-sources", "enrichment-jobs", "enrichment-settings", "user-guide", "quality", "quality-promises", "quality-critic", "quality-coverage", "quality-canon"],
+                    "enum": ["compose", "scene-compose", "chapter-assemble", "editor", "planner", "agent-mode", "usage", "notifications", "settings", "trash", "steering", "style-voice", "extensions", "proposals", "workflows", "workflow-proposals", "glossary", "glossary-ontology", "glossary-unknown", "glossary-ai-suggestions", "glossary-merge-candidates", "wiki", "knowledge", "kg-overview", "kg-entities", "kg-timeline", "kg-evidence", "kg-gap", "kg-proposals", "kg-schema", "kg-graph", "kg-insights", "kg-jobs", "kg-bio", "kg-privacy", "kg-triage", "search", "jobs-list", "books", "leaderboard-books", "leaderboard-authors", "leaderboard-translators", "leaderboard-trending", "chapter-browser", "scene-browser", "scene-inspector", "plan-hub", "decompose", "arc-inspector", "arc-templates", "structure-templates", "plan-passes", "whatif-canvas", "divergence", "reference-shelf", "canonview", "book-import", "context-inspector", "sharing", "book-settings", "translation", "enrichment-compose", "enrichment-proposals", "enrichment-gaps", "enrichment-sources", "enrichment-jobs", "enrichment-settings", "user-guide", "quality", "quality-promises", "quality-critic", "quality-coverage", "quality-canon", "quality-canon-rules", "quality-corrections", "quality-heal", "progress", "flywheel", "motif-library", "motif-graph", "quality-conformance", "world-map", "place-graph", "cast", "character-arc"],
                     "description": (
                         "The studio panel to open. 'compose' = the AI co-writer chat; "
+                        "'scene-compose' = draft a scene with the AI — stream a ghost "
+                        "draft or Diverge into several candidates, edit/accept one into "
+                        "the editor, and your regenerate/reject/edit choices train the "
+                        "model (the correction flywheel); "
+                        "'chapter-assemble' = assemble a whole chapter from its scenes — "
+                        "single-pass generate or stitch the done scene drafts, review the "
+                        "editable preview, accept it into the editor (the second correction "
+                        "producer); "
                         "'editor' = the manuscript editor; 'planner' = the PlanForge "
                         "novel-system planner; 'agent-mode' = mission control for an "
                         "autonomous multi-chapter authoring run — start/pause/resume a run "
@@ -413,6 +424,9 @@ UI_OPEN_STUDIO_PANEL_TOOL: dict = {
                         "rules (persistent author guidance injected into book-scoped turns); "
                         "'extensions' = manage plugins, skills, MCP servers, commands & "
                         "hooks; 'proposals' = review skills the agent proposed (approve/reject); "
+                        "'workflows' = manage saved multi-step workflow recipes (enable/disable, "
+                        "delete your own); 'workflow-proposals' = review workflows the agent "
+                        "proposed and approve (mints the workflow) or reject; "
                         "'glossary' = the book's entity list — search, filter, bulk status/delete; "
                         "'glossary-ontology' = the book's kinds/genres/attributes; "
                         "'glossary-unknown' = reassign unrecognized entities to a kind; "
@@ -433,6 +447,8 @@ UI_OPEN_STUDIO_PANEL_TOOL: dict = {
                         "'kg-jobs' = monitor extraction jobs across all projects; "
                         "'kg-bio' = the user's cross-book author bio; "
                         "'kg-privacy' = export or delete the user's knowledge-graph data; "
+                        "'kg-triage' = resolve extracted elements that didn't match the schema (map/add/dismiss); "
+                        "'search' = search the book's prose (text) or lore drawers (semantic); a hit opens the editor there; "
                         "'jobs-list' = monitor the user's background jobs and tasks; "
                         "'books' = browse and read the user's other books (view-only, does not "
                         "leave the current book's studio); 'leaderboard-books' = top-ranked books; "
@@ -440,6 +456,29 @@ UI_OPEN_STUDIO_PANEL_TOOL: dict = {
                         "top-ranked translators; 'leaderboard-trending' = currently trending books; "
                         "'chapter-browser' = sort/filter/search and bulk-act across this book's "
                         "chapters (title or full-text content search); "
+                        "'scene-browser' = browse every scene in the book — the written prose and "
+                        "its authored plan joined side by side (shows imported scenes even before a "
+                        "plan exists); "
+                        "'scene-inspector' = read/edit every field of ONE selected scene (intent, "
+                        "craft, tension, grounding) — the detail pane over a selection; "
+                        "'plan-hub' = the whole book's plan as a graph canvas — arc/sub-arc lanes "
+                        "with their chapters and scenes, scene-link edges, and problem/staleness "
+                        "decorations; pan/zoom, expand an arc to see its chapters; "
+                        "'arc-inspector' = read/edit ONE arc or saga of the book's spec tree — "
+                        "title/goal/status, the cascade-resolved plot tracks and cast roster, its "
+                        "chapter span, open promises, and template provenance. This is the structure "
+                        "that steers every generation; "
+                        "'arc-templates' = the arc-template library — browse/create/adopt reusable "
+                        "multi-chapter arc structures (parallel plot threads over a chapter span), "
+                        "apply one onto this book, or save one of your arcs as a template; "
+                        "'divergence' = manage the book's what-if derivatives (dị bản) — list "
+                        "the canonical Work and every branched version, switch the whole studio "
+                        "to one, archive one, read its spec, or spawn a new branch from a chapter; "
+                        "'canonview' = what canon knows as of the chapter in focus — entities "
+                        "present/established by now (glossary) and canon state + timeline "
+                        "(knowledge), windowed to the active chapter; "
+                        "'book-import' = import chapters from text/.docx/.epub files, or a whole "
+                        "book from a PDF (with optional AI image captioning); "
                         "'context-inspector' = trace what context management did per turn "
                         "(budget gauge, allocation map, Planner→Compiler decisions); "
                         "'sharing' = this book's visibility (private/unlisted/public), unlisted "
@@ -467,7 +506,28 @@ UI_OPEN_STUDIO_PANEL_TOOL: dict = {
                         "'quality-critic' = per-chapter coherence/voice/pacing/canon critic scores; "
                         "'quality-coverage' = whole-book audit of which outline promises got paid off; "
                         "'quality-canon' = book-wide confirmed canon contradictions from generation "
-                        "and knowledge extraction."
+                        "and knowledge extraction; "
+                        "'motif-library' = the narrative-craft library (套路/爽点/打脸 tropes) — browse "
+                        "by tier (yours/book/shared/system/public catalog/mined drafts), create, "
+                        "adopt from the catalog, mine your corpus, inspect a motif's detail and its "
+                        "relationship graph (composed_of/precedes/variant_of); "
+                        "'motif-graph' = the book-wide motif relationship graph as a draggable "
+                        "canvas (nodes = your + book-shared motifs, edges = composed_of/precedes/"
+                        "variant_of) with your own saved node layout; "
+                        "'quality-conformance' = the beat-by-beat trace of whether a chapter's PROSE "
+                        "realized its planned motif beats (spec-vs-prose) — per-scene realized/not + "
+                        "tension band, regenerate a missed scene, or re-run the check (BYOK); "
+                        "'world-map' = create and edit a world's reference map(s) — upload a base "
+                        "image, drop and drag location pins, draw and reshape regions, and bind them "
+                        "to glossary/KG location entities; "
+                        "'place-graph' = the book's places (locations) as a draggable node graph — add "
+                        "a place, link two places (contains/borders/route_to), arrange them (saved "
+                        "server-side), set a backdrop; location entities only; "
+                        "'cast' = the book's cast codex — every character/place/organization/concept, "
+                        "grouped and searchable, each with its spoiler-safe story-state; create/rename/"
+                        "retire entities and edit aliases/kind; "
+                        "'character-arc' = ONE character's events on a timeline (spoiler-cut at the "
+                        "reading position), the active→gone band, and the 1-hop relations."
                     ),
                 },
             },
@@ -476,6 +536,91 @@ UI_OPEN_STUDIO_PANEL_TOOL: dict = {
         },
     },
 }
+
+# F7c (2026-07-19) — compact variant of ui_open_studio_panel. The full per-panel prose
+# above is ~2.4k tokens on EVERY studio turn though a panel is opened rarely. This variant
+# KEEPS the exact panel_id enum (Frontend-Tool Contract: the closed set is correctness — a
+# free-string panel_id was the original silent-no-op bug; never trim the enum) and replaces
+# the prose with a terse area-grouped guide (~0.7k). Most enum ids are self-describing
+# (`kg-timeline`, `quality-critic`, `motif-graph`); the groups orient the model, and it can
+# still pass any id. Gated by settings.compact_studio_panel_desc (default off) → A/B.
+_COMPACT_PANEL_DESC = (
+    "The studio panel to open (pass one panel_id from the enum). Panels by area — "
+    "WRITE: compose (AI co-writer chat), scene-compose, chapter-assemble, editor, agent-mode "
+    "(autonomous multi-chapter run). "
+    "PLAN/STRUCTURE: planner (PlanForge), plan-hub, plan-passes, decompose, arc-inspector, "
+    "arc-templates, structure-templates, scene-browser, scene-inspector, chapter-browser, "
+    "whatif-canvas, divergence (what-if versions), reference-shelf, canonview. "
+    "LORE (glossary): glossary, glossary-ontology, glossary-unknown, glossary-ai-suggestions, "
+    "glossary-merge-candidates, wiki, cast, character-arc. "
+    "KNOWLEDGE GRAPH: knowledge, kg-overview, kg-entities, kg-timeline, kg-evidence, kg-gap, "
+    "kg-proposals, kg-schema, kg-graph, kg-insights, kg-jobs, kg-bio, kg-privacy, kg-triage. "
+    "QUALITY: quality, quality-promises, quality-critic, quality-coverage, quality-canon, "
+    "quality-canon-rules, quality-corrections, quality-heal, quality-conformance, progress, flywheel. "
+    "MOTIFS: motif-library, motif-graph. "
+    "WORLD: world-map, place-graph. "
+    "LANGUAGES: translation (the multi-language translation coverage matrix — translate "
+    "chapters into other languages, per-language version history). "
+    "ENRICH LORE (expanding descriptions, NOT languages): enrichment-compose, "
+    "enrichment-proposals, enrichment-gaps, enrichment-sources, enrichment-jobs, enrichment-settings. "
+    "BOOK/ACCOUNT: books, book-import, book-settings, sharing, steering, context-inspector, "
+    "extensions, proposals, workflows, workflow-proposals, settings, usage, notifications, "
+    "jobs-list, trash, search, user-guide, quality-canon. "
+    "DISCOVER: leaderboard-books, leaderboard-authors, leaderboard-translators, leaderboard-trending. "
+    "If unsure which panel fits, open 'user-guide' (the catalog of every Studio tool)."
+)
+
+
+# F7c M4 — deterministic navigation-intent gate for ui_open_studio_panel. The panel
+# navigator is a click/keypress the user can do manually, so it is advertised (paying its
+# ~880 tok) ONLY when the turn actually asks to open/see a panel. Biased to PRECISION: a
+# missed nav request just means the user clicks the panel; a FALSE POSITIVE (opening a panel
+# on a plain writing turn) is the harmful error. So the trigger is a nav VERB *and* a
+# PANEL-SPECIFIC noun — and the overloaded writing words (scene/arc/plan/chapter/character/
+# beat) are deliberately NOT panel nouns, so "write a scene" / "plan the arc" never fire.
+_NAV_VERBS: tuple[str, ...] = (
+    "open", "show", "view", "display", "navigate", "go to", "goto", "bring up",
+    "pull up", "switch to", "jump to", "take me to", "let me see", "let me open",
+    "where is", "where can i", "i want to see", "manage", "let me manage",
+    "import", "upload",  # the book-import panel's own opener verbs
+)
+_PANEL_NOUNS: frozenset[str] = frozenset({
+    # panel-shape words (rare in prose-writing instructions)
+    "panel", "tab", "dock", "matrix", "canvas", "inspector", "browser", "timeline",
+    "graph", "leaderboard", "dashboard", "hub", "shelf", "codex",
+    # panel-name words (a view, not a writing noun)
+    "glossary", "wiki", "ontology", "settings", "notifications", "translation",
+    "translations", "enrichment", "motif", "motifs", "quality", "critic", "coverage",
+    "conformance", "divergence", "what-if", "whatif", "kg", "knowledge", "world",
+    "map", "cast", "editor", "compose", "planner", "import", "proposals", "workflow",
+    "workflows", "steering", "usage", "trash", "sharing", "flywheel", "promises",
+    "leaderboards", "wireframe",
+})
+
+
+def _is_panel_nav_intent(message: str | None) -> bool:
+    """True when the turn reads as a request to OPEN/SEE a studio panel (nav verb +
+    panel-specific noun). Deterministic; precision-biased (see the note above)."""
+    m = (message or "").lower()
+    if not m.strip():
+        return False
+    if not any(v in m for v in _NAV_VERBS):
+        return False
+    # word-ish token scan so "map" doesn't match "roadmap"; the [a-z\-]* class keeps
+    # hyphenated panel nouns ("what-if") intact as a single token.
+    tokens = set(_re.findall(r"[a-z][a-z\-]*", m))
+    return bool(tokens & _PANEL_NOUNS)
+
+
+def _studio_panel_tool(*, compact: bool) -> dict:
+    """ui_open_studio_panel with the full (default) or compact panel_id description.
+    Same schema + IDENTICAL enum either way — only the guidance prose differs."""
+    if not compact:
+        return UI_OPEN_STUDIO_PANEL_TOOL
+    td = deepcopy(UI_OPEN_STUDIO_PANEL_TOOL)
+    td["function"]["parameters"]["properties"]["panel_id"]["description"] = _COMPACT_PANEL_DESC
+    return td
+
 
 UI_FOCUS_MANUSCRIPT_UNIT_TOOL: dict = {
     "type": "function",
@@ -657,7 +802,14 @@ def generic_frontend_tool_def(name: str) -> dict | None:
     return _GENERIC_FRONTEND_TOOLS_BY_NAME.get(name)
 
 
-def frontend_tool_defs(*, editor: bool = False, book_scoped: bool = False, studio: bool = False) -> list[dict]:
+def frontend_tool_defs(
+    *,
+    editor: bool = False,
+    book_scoped: bool = False,
+    studio: bool = False,
+    compact_studio_panel: bool = False,
+    studio_panel_nav: bool = True,
+) -> list[dict]:
     """Frontend tool schemas to advertise, by surface.
 
     ``editor`` — the chapter editor panel (book_id + chapter_id): adds the prose
@@ -666,6 +818,13 @@ def frontend_tool_defs(*, editor: bool = False, book_scoped: bool = False, studi
     carrying a book context): adds ``glossary_propose_entity_edit``.
     ``studio`` — the Writing Studio compose panel (studio_context): adds the studio
     dock-navigation tools (open panel / focus manuscript unit — #09 Lane A).
+    ``compact_studio_panel`` (F7c) — advertise ui_open_studio_panel with the compact
+    area-grouped description instead of the full per-panel prose (same enum). Off ⇒
+    byte-identical to pre-F7c.
+    ``studio_panel_nav`` (F7c M4) — include the ui_open_studio_panel NAVIGATOR this turn.
+    Pass False on a plain writing turn (no navigation intent) to omit its ~880 tok;
+    ui_focus_manuscript_unit (open a chapter, part of the writing loop) is unaffected.
+    Default True ⇒ pre-M4 behavior.
 
     The flags are independent: a glossary-page chat is book_scoped but not editor.
     """
@@ -676,7 +835,9 @@ def frontend_tool_defs(*, editor: bool = False, book_scoped: bool = False, studi
         defs.append(GLOSSARY_PROPOSE_EDIT_TOOL)
         defs.append(GLOSSARY_CONFIRM_ACTION_TOOL)
     if studio:
-        defs.extend(_STUDIO_UI_TOOLS)
+        if studio_panel_nav:
+            defs.append(_studio_panel_tool(compact=compact_studio_panel))
+        defs.append(UI_FOCUS_MANUSCRIPT_UNIT_TOOL)
     return defs
 
 

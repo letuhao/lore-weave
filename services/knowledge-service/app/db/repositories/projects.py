@@ -26,6 +26,7 @@ _SELECT_COLS = """
   rerank_model, rerank_model_source,
   extraction_config, last_extracted_at, estimated_cost_usd, actual_cost_usd,
   is_archived, tool_calling_enabled, memory_remember_confirm, save_raw_extraction,
+  canon_capture_enabled,
   genre, is_derivative, world_id, version, created_at, updated_at
 """
 
@@ -43,6 +44,12 @@ _UPDATABLE_COLUMNS: frozenset[str] = frozenset(
      # gate. NOT NULL, so — like tool_calling_enabled — deliberately
      # absent from _NULLABLE_UPDATE_COLUMNS; explicit None is skipped.
      "memory_remember_confirm",
+     # WS-4C Half A: per-project canon auto-capture CONSENT toggle. NOT NULL
+     # DEFAULT **false** (fail-closed — corrected from a once-shipped `true`;
+     # migrate.py:1520/1532 heals+resets it) — do NOT "fix" this to true. Like
+     # tool_calling_enabled it is deliberately absent from _NULLABLE_UPDATE_COLUMNS;
+     # an explicit None is skipped.
+     "canon_capture_enabled",
      # P2 (D6): opt-in raw-response retention. NOT NULL DEFAULT false;
      # FE follow-up D-P2-FE-SAVE-RAW will expose a toggle. PATCH updates
      # the flag; leaf_processor reads it at extraction time.
@@ -144,11 +151,24 @@ class ProjectsRepo:
     async def _insert(
         self, conn: asyncpg.Connection, user_id: UUID, data: ProjectCreate
     ) -> asyncpg.Record:
+        # review-impl (Phase 1) — MUST set chat_turn_extraction_enabled=true here.
+        #
+        # WS-1.3 added that column with DEFAULT FALSE (fail-closed) and a D6 gate that now
+        # HARD-BLOCKS the chat-turn enqueue when it is false. The one-time backfill only
+        # touched PRE-EXISTING rows. So without setting it here, EVERY project created after
+        # the WS-1.3 deploy would silently stop extracting chat knowledge — a regression I
+        # introduced in the very slice that added the gate.
+        #
+        # A normal project opts in (true); this preserves the pre-WS-1.3 behavior. The
+        # assistant project is the exception (facts come once a day from the confirmed
+        # entry, D6) — and it is NOT created through this path: WS-1.4's provisioner inserts
+        # it with is_assistant=true AND chat_turn_extraction_enabled=false explicitly. This
+        # path never sets is_assistant, so it only ever mints normal projects.
         query = f"""
         INSERT INTO knowledge_projects
           (user_id, name, description, project_type, book_id, instructions,
-           genre, is_derivative, world_id)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+           genre, is_derivative, world_id, chat_turn_extraction_enabled)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, true)
         RETURNING {_SELECT_COLS}
         """
         return await conn.fetchrow(
@@ -211,6 +231,12 @@ class ProjectsRepo:
                     WHERE user_id = $1 AND project_type = 'book'
                       AND book_id = $2 AND NOT is_archived
                       AND NOT is_derivative
+                      -- WS-1.4: the assistant project is a project_type='book' bound to the
+                      -- diary book; it must NEVER be handed back to a normal book-project
+                      -- flow (which would treat the assistant's memory as a novel's KG,
+                      -- wrong partition + wrong extraction semantics). Same guard as
+                      -- NOT is_derivative, for the same "shares a book_id" reason.
+                      AND NOT is_assistant
                     ORDER BY created_at ASC
                     LIMIT 1
                     """,
@@ -284,6 +310,68 @@ class ProjectsRepo:
                     embedding_model, embedding_dimension,
                 )
                 return _row_to_project(row)
+
+    async def get_or_create_assistant_project(
+        self, user_id: UUID, book_id: UUID, name: str = "Work Assistant"
+    ) -> tuple[Project, bool]:
+        """WS-1.4 (spec 02 §Q2.2) — resolve (or create) the user's ONE assistant
+        knowledge project, bound to their diary book. Returns ``(project, created)``.
+
+        ``is_assistant=true`` marks it as the assistant's memory. The one-per-user
+        partial unique (``uq_knowledge_projects_one_assistant_per_user``) means two
+        concurrent provisions (two devices, a retried BFF call) converge on ONE project
+        instead of splitting the assistant's memory into two graphs; the per-(user)
+        advisory lock makes the get-or-create race-safe within a single Tx window.
+
+        ``chat_turn_extraction_enabled=FALSE``, explicitly and fail-closed (D6): the
+        assistant's facts come once a day from the CONFIRMED diary entry
+        (``chapter.kg_indexed``), never per chat turn. Extracting every turn as trusted
+        canon about the user's real colleagues, at ~100x spend, is exactly the bug the
+        D6 gate exists to stop — so this path must not inherit the normal project's
+        opt-in ``true``."""
+        async with self._pool.acquire() as conn:
+            async with conn.transaction():
+                await conn.execute(
+                    "SELECT pg_advisory_xact_lock($1, hashtext($2))",
+                    _PROJECT_BOOK_LOCK_NS, f"assistant:{user_id}",
+                )
+                existing = await conn.fetchrow(
+                    f"""
+                    SELECT {_SELECT_COLS} FROM knowledge_projects
+                    WHERE user_id = $1 AND is_assistant AND NOT is_archived
+                    ORDER BY created_at ASC
+                    LIMIT 1
+                    """,
+                    user_id,
+                )
+                if existing is not None:
+                    # Idempotent book-binding: bind the diary book if a prior provision
+                    # created the assistant project book-less (or before the diary
+                    # existed). Never REBIND to a different book — the assistant belongs
+                    # to exactly one diary; a differing book_id is a caller bug, refused
+                    # by leaving the existing binding intact.
+                    if existing["book_id"] is None and book_id is not None:
+                        existing = await conn.fetchrow(
+                            f"""
+                            UPDATE knowledge_projects
+                            SET book_id = $3, updated_at = now()
+                            WHERE user_id = $1 AND project_id = $2
+                            RETURNING {_SELECT_COLS}
+                            """,
+                            user_id, existing["project_id"], book_id,
+                        )
+                    return _row_to_project(existing), False
+                row = await conn.fetchrow(
+                    f"""
+                    INSERT INTO knowledge_projects
+                      (user_id, name, project_type, book_id, is_assistant,
+                       chat_turn_extraction_enabled)
+                    VALUES ($1, $2, 'book', $3, true, false)
+                    RETURNING {_SELECT_COLS}
+                    """,
+                    user_id, name, book_id,
+                )
+                return _row_to_project(row), True
 
     async def list(
         self,
@@ -474,6 +562,9 @@ class ProjectsRepo:
         FROM knowledge_projects
         WHERE book_id = $1 AND project_type = 'book' AND NOT is_archived
           AND NOT is_derivative
+          -- WS-1.4: never resolve the diary's assistant project as a normal book
+          -- project (same "shares a book_id" reason as NOT is_derivative).
+          AND NOT is_assistant
         ORDER BY created_at
         LIMIT 1
         """
@@ -684,6 +775,25 @@ class ProjectsRepo:
             )
         return _row_to_project(row) if row else None
 
+    async def set_canon_capture_consent(
+        self, user_id: UUID, project_id: UUID, *, enabled: bool,
+    ) -> Project | None:
+        """A2 / D-R17 — the per-turn work-capture CONSENT toggle (`canon_capture_enabled`). The
+        column is fail-closed by DEFAULT false; this is the user turning capture ON/OFF. Owner-
+        scoped (None if not owned / not found). The chat-service capture gate reads this via
+        `project_enables`, so the effect lands on the NEXT turn — E8: "consent off mid-day stops
+        capture next tick". The effective value is still AND(deploy_ceiling, this) — a deployment
+        kill-switch can force it off regardless (surfaced by the capabilities read)."""
+        query = f"""
+        UPDATE knowledge_projects
+        SET canon_capture_enabled = $3, updated_at = now()
+        WHERE user_id = $1 AND project_id = $2
+        RETURNING {_SELECT_COLS}
+        """
+        async with self._pool.acquire() as c:
+            row = await c.fetchrow(query, user_id, project_id, enabled)
+        return _row_to_project(row) if row else None
+
     async def archive(
         self, user_id: UUID, project_id: UUID
     ) -> Project | None:
@@ -751,3 +861,36 @@ class ProjectsRepo:
                 )
         cache.invalidate_l1(user_id, project_id)
         return True
+
+    async def list_assistant_project_ids(self, user_id: UUID) -> "list[str]":
+        """D16 (spec 07 §Q4) — the ids of the user's ACTIVE ASSISTANT (diary) projects, as strings for a
+        Neo4j param. The memory_* read tools pass these as `exclude_project_ids` when a session has no
+        explicit project, so the all-projects fallback can never surface work-diary entities into a
+        novel-writing session. Excludes archived epochs: a closed epoch must stay OUT of default recall.
+        Normally 0 or 1 row (one assistant per user), so this is a cheap indexed lookup.
+
+        NOTE: for the account-ERASE path use `list_all_assistant_project_ids` (archived-inclusive) — an
+        archived epoch must stay out of recall but MUST still be reachable by right-to-erasure (A1)."""
+        async with self._pool.acquire() as conn:
+            rows = await conn.fetch(
+                "SELECT project_id FROM knowledge_projects "
+                "WHERE user_id = $1 AND is_assistant AND NOT is_archived",
+                user_id,
+            )
+        return [str(r["project_id"]) for r in rows]
+
+    async def list_all_assistant_project_ids(self, user_id: UUID) -> "list[str]":
+        """A1 (data-rights / right-to-erasure) — EVERY assistant project of the user, INCLUDING archived
+        (closed-epoch) ones. The account-erase path (`erase_assistant_knowledge` with no project_id) uses
+        this, NOT the D16 read-exclude variant: `close-epoch` (a job change) only *archives* the old
+        assistant project + soft-invalidates its facts — it does NOT purge the decryptable diary passages
+        or confirmed `:Fact`/`:Entity` nodes. Resolving erase targets with `NOT is_archived` (the old bug)
+        silently skipped every archived epoch, leaving that data behind — a GDPR erasure hole. Erase is
+        the ONE path that must see archived rows; recall/exclude keep `list_assistant_project_ids`."""
+        async with self._pool.acquire() as conn:
+            rows = await conn.fetch(
+                "SELECT project_id FROM knowledge_projects "
+                "WHERE user_id = $1 AND is_assistant",
+                user_id,
+            )
+        return [str(r["project_id"]) for r in rows]

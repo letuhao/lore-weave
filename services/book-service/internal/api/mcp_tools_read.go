@@ -57,10 +57,15 @@ type bookListOut struct {
 // SHARED to the caller (it would otherwise leak another tenant's book ids/titles),
 // matching the per-book owner gate (mcpRequireGrant). First-party keeps owned+shared.
 func bookListFilter(ownerOnly bool) string {
+	// WS-1.2 · EGRESS GUARD #7, MCP twin (review-impl P1). The REST library LIST filters
+	// out kind='diary', but this MCP book_list tool — the agent-facing enumerator in the
+	// SAME service — did not. So the moment WS-1.4 provisions a diary, ANY agent (including
+	// a public MCP key) could enumerate it here and then read its plaintext prose. The
+	// guard belongs on BOTH list surfaces, not just the browser one.
 	if ownerOnly {
-		return `b.owner_user_id=$1 AND b.is_bible=false AND b.lifecycle_state='active'`
+		return `b.owner_user_id=$1 AND b.is_bible=false AND b.kind<>'diary' AND b.lifecycle_state='active'`
 	}
-	return `(b.owner_user_id=$1 OR EXISTS(SELECT 1 FROM book_collaborators bc WHERE bc.book_id=b.id AND bc.user_id=$1)) AND b.is_bible=false AND b.lifecycle_state='active'`
+	return `(b.owner_user_id=$1 OR EXISTS(SELECT 1 FROM book_collaborators bc WHERE bc.book_id=b.id AND bc.user_id=$1)) AND b.is_bible=false AND b.kind<>'diary' AND b.lifecycle_state='active'`
 }
 
 func (s *Server) toolBookList(ctx context.Context, _ *mcp.CallToolRequest, in bookListIn) (*mcp.CallToolResult, bookListOut, error) {
@@ -225,8 +230,20 @@ type getChapterIn struct {
 	// field) alongside the metadata. Default false — the body can be thousands of
 	// tokens, so a caller that only needs metadata does not pay for it. Use it to
 	// READ a chapter after story_search locates it (the grep→read loop).
-	IncludeBody bool `json:"include_body,omitempty" jsonschema:"return the chapter's full plain-text prose in 'body' (default false; the body can be large)"`
+	IncludeBody bool `json:"include_body,omitempty" jsonschema:"return the chapter's plain-text prose in 'body' (default false; the body can be large)"`
+	// D-2-CHAPTER-PAGINATION. include_body used to be an UNBOUNDED string_agg over every block:
+	// a long chapter dumped its whole prose into one tool result, which is the context problem in
+	// miniature (and, past the MCP result-size ceiling, an outright failure). Now the read is
+	// bounded by DEFAULT and always SIGNALS when it stopped early — a truncation the caller cannot
+	// see is the silent-truncation bug class this repo treats as a defect.
+	Offset int `json:"offset,omitempty" jsonschema:"paging: block index to start the body at (default 0)"`
+	Limit  int `json:"limit,omitempty" jsonschema:"paging: how many blocks of prose to return (default 300, max 300). If the chapter has more, the result sets truncated=true and next_offset — call again with offset=next_offset to continue."`
 }
+
+// maxChapterBlocks bounds ONE body read. Deliberately not "unlimited": the previous unbounded
+// read is exactly how a 10k-word chapter silently ate a turn's context budget. A caller that
+// wants the rest gets told to ask for it (truncated + next_offset), never quietly short-changed.
+const maxChapterBlocks = 300
 type chapterDetail struct {
 	ChapterID           string  `json:"chapter_id"`
 	BookID              string  `json:"book_id"`
@@ -252,9 +269,16 @@ func uuidPtrToStr(p *uuid.UUID) *string {
 }
 type getChapterOut struct {
 	Chapter chapterDetail `json:"chapter"`
-	// Body is the chapter's full plain-text prose, present only when the caller
-	// passed include_body=true. omitempty so a metadata-only fetch stays lean.
+	// Body is the chapter's plain-text prose for the requested block window, present only when
+	// the caller passed include_body=true. omitempty so a metadata-only fetch stays lean.
 	Body *string `json:"body,omitempty"`
+	// Truncated is true when this body is only PART of the chapter — i.e. more blocks exist past
+	// the window. Paired with NextOffset so the caller can continue. Never silently short.
+	Truncated bool `json:"truncated,omitempty"`
+	// NextOffset is the block index to pass as `offset` to fetch the next page. Set iff Truncated.
+	NextOffset *int `json:"next_offset,omitempty"`
+	// TotalBlocks is the chapter's full block count, so a caller knows the size of what it is paging.
+	TotalBlocks *int `json:"total_blocks,omitempty"`
 }
 
 func (s *Server) toolBookGetChapter(ctx context.Context, _ *mcp.CallToolRequest, in getChapterIn) (*mcp.CallToolResult, getChapterOut, error) {
@@ -274,13 +298,15 @@ func (s *Server) toolBookGetChapter(ctx context.Context, _ *mcp.CallToolRequest,
 		return nil, getChapterOut{}, mcpOwnershipError(err)
 	}
 	var c chapterDetail
-	var titleRaw string
 	var chIDScan, bookIDScan uuid.UUID
 	var pubRevID *uuid.UUID
+	// chapters.title is NULLABLE (a titleless chapter is valid), so scan straight
+	// into the *string field (like toolBookListChapters) — a plain-string target
+	// errors "cannot scan NULL into *string" on every titleless chapter.
 	err = s.pool.QueryRow(ctx, `
 SELECT c.id,c.book_id,c.title,c.original_language,c.sort_order,c.editorial_status,c.published_revision_id,c.draft_revision_count,c.lifecycle_state
 FROM chapters c WHERE c.id=$1 AND c.book_id=$2`, chID, bookID).
-		Scan(&chIDScan, &bookIDScan, &titleRaw, &c.OriginalLanguage, &c.SortOrder, &c.EditorialStatus, &pubRevID, &c.DraftRevisions, &c.LifecycleState)
+		Scan(&chIDScan, &bookIDScan, &c.Title, &c.OriginalLanguage, &c.SortOrder, &c.EditorialStatus, &pubRevID, &c.DraftRevisions, &c.LifecycleState)
 	if errors.Is(err, pgx.ErrNoRows) || c.LifecycleState == "purge_pending" {
 		return nil, getChapterOut{}, errBookNotAccessible
 	}
@@ -290,22 +316,45 @@ FROM chapters c WHERE c.id=$1 AND c.book_id=$2`, chID, bookID).
 	c.ChapterID = chIDScan.String()
 	c.BookID = bookIDScan.String()
 	c.PublishedRevisionID = uuidPtrToStr(pubRevID)
-	if titleRaw != "" {
-		c.Title = &titleRaw
-	}
 	out := getChapterOut{Chapter: c}
 	if in.IncludeBody {
 		// The chapter's plain-text prose from the extracted, searchable blocks
 		// (same source story_search's lexical leg hits — so "find then read" is
 		// consistent). COALESCE guards NULL text_content on non-text blocks
 		// (D-CHAPTER-BLOCKS null-nontext class); ordered by block_index.
+		//
+		// D-2-CHAPTER-PAGINATION: bounded window + an explicit truncation signal.
+		offset := in.Offset
+		if offset < 0 {
+			offset = 0
+		}
+		limit := in.Limit
+		if limit <= 0 || limit > maxChapterBlocks {
+			limit = maxChapterBlocks
+		}
+
+		var total int
+		if err := s.pool.QueryRow(ctx,
+			`SELECT count(*) FROM chapter_blocks WHERE chapter_id=$1`, chID).Scan(&total); err != nil {
+			return nil, getChapterOut{}, errors.New("failed to read chapter body")
+		}
+
 		var prose string
 		if err := s.pool.QueryRow(ctx, `
-SELECT COALESCE(string_agg(COALESCE(text_content, ''), E'\n\n' ORDER BY block_index), '')
-FROM chapter_blocks WHERE chapter_id=$1`, chID).Scan(&prose); err != nil {
+SELECT COALESCE(string_agg(text, E'\n\n' ORDER BY block_index), '') FROM (
+  SELECT block_index, COALESCE(text_content, '') AS text
+  FROM chapter_blocks WHERE chapter_id=$1
+  ORDER BY block_index OFFSET $2 LIMIT $3
+) w`, chID, offset, limit).Scan(&prose); err != nil {
 			return nil, getChapterOut{}, errors.New("failed to read chapter body")
 		}
 		out.Body = &prose
+		out.TotalBlocks = &total
+		if end := offset + limit; end < total {
+			out.Truncated = true
+			next := end
+			out.NextOffset = &next
+		}
 	}
 	return nil, out, nil
 }

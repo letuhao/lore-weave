@@ -6,6 +6,7 @@
     "commands": "Commands & Hooks",
     "subagents": "Subagents",
     "plugins": "Plugins",
+    "permissions": "Tool permissions",
     "proposals": "Proposals",
     "activity": "Activity log",
     "ingest": "Registry sources"
@@ -199,5 +200,58 @@
     "empty": "No entries in this view. Pull the registry to populate the queue.",
     "approve": "Approve",
     "reject": "Reject"
+  },
+  "permissions": {
+    "blurb": "Tools you have given the assistant standing permission to use — and tools you have blocked. \"Always allow\" on an approval card adds a row here. Revoking one means the assistant will ask you again the next time it wants to use that tool.",
+    "loading": "Loading…",
+    "allowedTitle": "Always allowed",
+    "deniedTitle": "Blocked",
+    "blockTitle": "Block a tool",
+    "emptyAllowed": "You have not given any tool a standing permission. The assistant will ask you each time.",
+    "emptyDenied": "No tools are blocked.",
+    "toolPlaceholder": "Tool name (e.g. chapter_delete)",
+    "unknownTool": "That is not one of the assistant's tools. Pick a name from the list.",
+    "kind": {
+      "mutation": "Can change my work",
+      "spend": "Can spend money"
+    },
+    "decision": {
+      "allow": "Runs without asking",
+      "deny": "Never runs"
+    },
+    "actions": {
+      "revoke": "Ask me again",
+      "deny": "Never allow",
+      "allow": "Allow",
+      "block": "Block"
+    }
+  },
+  "workflows": {
+    "total": "{{count}} workflows",
+    "empty": "No workflows yet. Approve a workflow proposal to add one.",
+    "enabled": "On",
+    "disabled": "Off",
+    "delete": "Delete",
+    "proposalsEmpty": "No workflow proposals. When the agent proposes a workflow, it appears here for you to approve.",
+    "view": "View",
+    "hide": "Hide",
+    "noSteps": "No steps defined."
+  },
+  "bindings": {
+    "loading": "Loading…",
+    "autoSetupDesc": "Recipes the assistant sets up automatically in this mode.",
+    "none": "Nothing is auto-set-up here.",
+    "turnOff": "Turn off",
+    "turnBackOn": "Turn back on",
+    "mode": {
+      "ask": "Reading & asking",
+      "write": "Writing",
+      "plan": "Planning"
+    },
+    "tier": {
+      "system": "Built-in",
+      "user": "You set this",
+      "book": "This book"
+    }
   }
 }

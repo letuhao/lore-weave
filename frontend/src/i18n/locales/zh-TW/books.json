@@ -118,6 +118,7 @@
     "count": "{{count}} 章節",
     "count_other": "{{count}} 章節",
     "import": "匯入",
+    "importPdf": "匯入 PDF",
     "new": "新章節",
     "col": {
       "title": "標題",
@@ -150,8 +151,7 @@
       "title": "將章節移至回收筒？",
       "description": "「{{title}}」將移至回收筒。",
       "confirm": "移至回收筒"
-    },
-    "importPdf": "匯入 PDF"
+    }
   },
   "glossary": {
     "header": "詞彙表與設定",
@@ -211,7 +211,8 @@
     "status": {
       "draft": "草稿",
       "active": "啟用",
-      "inactive": "停用"
+      "inactive": "停用",
+      "rejected": "已拒絕"
     },
     "bulk": {
       "select_row": "選擇實體",
@@ -228,7 +229,8 @@
       "delete_confirm": {
         "title": "刪除 {{count}} 個實體？",
         "description": "選取的 {{count}} 個實體將移至回收桶。"
-      }
+      },
+      "reject": "拒絕"
     },
     "clear_filters": "清除所有篩選",
     "deleted": "已刪除實體",
@@ -252,7 +254,8 @@
       "title": "刪除實體？",
       "description": "「{{title}}」將移至資源回收筒。",
       "confirm": "刪除"
-    }
+    },
+    "scope_label_title": "範圍 — 用於區分與其他同名實體"
   },
   "sharing": {
     "title": "可見性",

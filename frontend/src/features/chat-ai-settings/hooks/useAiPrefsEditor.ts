@@ -7,7 +7,9 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useAuth } from '@/auth';
 import { invalidateUserModelsCache } from '@/components/model-picker';
+import { loadVoicePrefs, saveVoicePrefs } from '@/features/chat/voicePrefs';
 import { aiSettingsApi } from '../api';
+import { accountVoiceDiffers, mergeAccountVoiceIntoPrefs, type AccountVoiceBlob } from '../voiceBridge';
 import type { AiPrefs, AiPrefsPatch, EffectiveSettings } from '../types';
 
 export type AiPrefsEditor = {
@@ -58,6 +60,27 @@ export function useAiPrefsEditor(): AiPrefsEditor {
       const updated = await aiSettingsApi.patchPrefs(accessToken, p, prefs.version);
       setPrefs(updated);
       invalidateUserModelsCache();
+      // D-CHATAI-VOICE-TWO-STORES — dual-write the shared voice leaves into the store the
+      // voice RUNTIME actually reads (`lw_voice_prefs` + auth-service `voice_prefs`). Until
+      // now, picking a TTS voice here changed nothing you could hear: the runtime never
+      // looks at `user_chat_ai_prefs.voice`. Spec §7.1 MIG-4 requires this dual-write during
+      // compat so a rollback loses nothing. Best-effort — a settings save must not fail
+      // because the legacy mirror did.
+      if (p.voice) {
+        try {
+          const blob = updated.voice as AccountVoiceBlob;
+          const current = loadVoicePrefs();
+          // Skip a no-op mirror: `saveVoicePrefs` also POSTs to auth-service, so writing an
+          // identical blob costs a request per edit. `accountVoiceDiffers` compares only the
+          // SHARED leaves, and treats the `user_model`/`ai_model` split as equal — so a
+          // legacy-worded blob doesn't look like a change forever.
+          if (accountVoiceDiffers(blob, current)) {
+            saveVoicePrefs(mergeAccountVoiceIntoPrefs(blob, current), accessToken);
+          }
+        } catch {
+          /* the authoritative write already succeeded; the mirror self-heals on next save */
+        }
+      }
       // refetch the effective cascade so source-tier chips reflect the change.
       const e = await aiSettingsApi.getEffective(accessToken, {});
       setEffective(e);

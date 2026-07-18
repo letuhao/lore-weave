@@ -31,6 +31,7 @@ import (
 
 	"github.com/loreweave/notification-service/internal/category"
 	"github.com/loreweave/notification-service/internal/prefs"
+	"github.com/loreweave/notification-service/internal/push"
 	"github.com/loreweave/notification-service/internal/redact"
 )
 
@@ -189,13 +190,14 @@ type Consumer struct {
 	ch     *rabbitmq.Channel
 	pool   *pgxpool.Pool
 	logger *slog.Logger
+	sender *push.Sender // M5 — fires a content-free push on a fresh insert (may be a no-op)
 }
 
 // Start dials the broker, declares the topic exchange + queue + binding,
 // and spawns a goroutine that consumes deliveries until ctx is cancelled
 // (or the connection drops). Caller owns the returned Consumer's Close
-// lifecycle.
-func Start(ctx context.Context, amqpURL string, pool *pgxpool.Pool, logger *slog.Logger) (*Consumer, error) {
+// lifecycle. `sender` may be nil (push disabled) — handle() guards it.
+func Start(ctx context.Context, amqpURL string, pool *pgxpool.Pool, logger *slog.Logger, sender *push.Sender) (*Consumer, error) {
 	if logger == nil {
 		logger = slog.Default()
 	}
@@ -230,7 +232,7 @@ func Start(ctx context.Context, amqpURL string, pool *pgxpool.Pool, logger *slog
 		return nil, fmt.Errorf("consume: %w", err)
 	}
 
-	c := &Consumer{conn: conn, ch: ch, pool: pool, logger: logger}
+	c := &Consumer{conn: conn, ch: ch, pool: pool, logger: logger, sender: sender}
 	go c.run(ctx, deliveries)
 	logger.Info("llm-jobs consumer started",
 		"exchange", exchangeName, "queue", queueName, "binding", bindingKey)
@@ -310,7 +312,7 @@ func (c *Consumer) handle(ctx context.Context, d rabbitmq.Delivery) {
 	// P2·C — dedup on (user_id, dedup_key): a broker redelivery of an already-
 	// inserted terminal event is collapsed to one row (partial-unique index). The
 	// ON CONFLICT predicate mirrors the index's WHERE so it targets that index.
-	_, err := c.pool.Exec(ctx, `
+	tag, err := c.pool.Exec(ctx, `
 INSERT INTO notifications (user_id, category, title, body, metadata, message_key, message_params, dedup_key)
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
 ON CONFLICT (user_id, dedup_key) WHERE dedup_key IS NOT NULL DO NOTHING
@@ -323,6 +325,12 @@ ON CONFLICT (user_id, dedup_key) WHERE dedup_key IS NOT NULL DO NOTHING
 		// Requeue so a transient DB hiccup doesn't lose the event.
 		_ = d.Nack(false, true)
 		return
+	}
+	// B4 (§8-B4) exactly-once push: fire ONLY when this delivery actually INSERTED a row
+	// (RowsAffected==1). Under at-least-once redelivery the ON CONFLICT DO NOTHING makes a
+	// duplicate a 0-row no-op → no second buzz. Best-effort + out-of-band (the row is committed).
+	if c.sender != nil && tag.RowsAffected() == 1 {
+		go c.sender.MaybeSend(context.Background(), args.UserID, args.Category, args.MessageKey, "/activity", "")
 	}
 	_ = d.Ack(false)
 }

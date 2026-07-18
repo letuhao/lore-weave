@@ -5,6 +5,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useQuery } from '@tanstack/react-query';
+import { toast } from 'sonner';
+import { compositionApi } from '@/features/composition/api';
 import type { IDockviewPanelProps } from 'dockview-react';
 import { TiptapEditor, type TiptapEditorHandle } from '@/components/editor/TiptapEditor';
 import { registerEditorTarget } from '@/features/chat/context/editorBridge';
@@ -18,17 +20,21 @@ import { ProvenanceTag } from '@/features/composition/components/ProvenanceTag';
 import { SelectionToolbar } from '@/features/composition/components/SelectionToolbar';
 import { InlineAiLayer } from '@/features/composition/components/InlineAiLayer';
 import { useWorkResolution } from '@/features/composition/hooks/useWork';
+import { useActiveWorkId } from '@/features/composition/hooks/useActiveWork';
+import { resolveActiveWork } from '@/features/composition/workSelect';
 import { aiModelsApi } from '@/features/ai-models/api';
 import { glossaryApi } from '@/features/glossary/api';
 import type { EntityNameEntry } from '@/features/glossary/types';
 import { GlossaryTooltip } from '@/components/editor/GlossaryTooltip';
 import { GlossaryAutocomplete } from '@/components/editor/GlossaryAutocomplete';
+import { useGlossaryQuickCreate } from '@/components/editor/useGlossaryQuickCreate';
 import { usePopoutInsertRelay } from '@/features/composition/hooks/usePopoutInsertRelay';
 import { onPasteToEditor } from '@/features/chat/utils/pasteToEditor';
 import { useIsMobile } from '@/hooks/useIsMobile';
 import { cn } from '@/lib/utils';
 import { useStudioHost, useRegisterStudioTool, useStudioBusSelector } from '../host/StudioHostProvider';
 import { useManuscriptUnit } from '../manuscript/unit/ManuscriptUnitProvider';
+import { useChapterDoor } from '../manuscript/useChapterDoor';
 import { useManuscriptCheckpoints } from '../manuscript/unit/useManuscriptCheckpoints';
 import { ManuscriptCheckpoints } from '../manuscript/unit/ManuscriptCheckpoints';
 import { SceneRail } from '../manuscript/SceneRail';
@@ -41,6 +47,9 @@ export function EditorPanel(props: IDockviewPanelProps) {
   const host = useStudioHost();
   const { bookId } = host;
   const unit = useManuscriptUnit();
+  // M3 (F2) — the empty state must not dead-end a newcomer: offer the same "start writing" door the
+  // Plan Hub / rail use (create a chapter + open it here), not just "go find a chapter that isn't there".
+  const chapterDoor = useChapterDoor(bookId);
   // #16 1.2 — wraps the hoist's applyProposedEdit so every AI-apply captures a pre-edit
   // restore point BEFORE writing. The wrapped function (not unit.applyProposedEdit directly)
   // is what gets handed to registerEditorTarget below — same seam, now checkpoint-aware.
@@ -67,6 +76,9 @@ export function EditorPanel(props: IDockviewPanelProps) {
   // multi-instance landmine flagged for item #10's upload-context singleton).
   const editorContainerRef = useRef<HTMLDivElement | null>(null);
   const [editorEl, setEditorEl] = useState<HTMLElement | null>(null);
+  // D-S5-DERIVATIVE-MANUSCRIPT-FORK — two-step confirm for merging a forked chapter into canon.
+  const [mergeConfirm, setMergeConfirm] = useState(false);
+  const [merging, setMerging] = useState(false);
 
   const label = t('panels.editor.title', { defaultValue: 'Editor' });
   const registration = useMemo<StudioToolRegistration>(() => ({
@@ -185,10 +197,28 @@ export function EditorPanel(props: IDockviewPanelProps) {
   // cursor). Both render-prop slots already exist on TiptapEditor untouched — the missing piece
   // was resolving projectId/sceneId/default-model, not new editor capability.
   const workResolution = useWorkResolution(bookId, accessToken);
-  const composeWork = workResolution.data?.status === 'found' ? workResolution.data.work
-    : workResolution.data?.status === 'candidates' ? (workResolution.data.candidates[0] ?? null)
-      : null;
+  const { data: activeWorkId } = useActiveWorkId(bookId, accessToken);
+  // EC-3d: the ACTIVE Work (per-book pref, else canonical) so the editor follows a
+  // "Switch to" a dị bản instead of always loading canon.
+  const composeWork = resolveActiveWork(workResolution.data, activeWorkId);
   const composeProjectId = composeWork?.project_id ?? null;
+  // D-S5-DERIVATIVE-MANUSCRIPT-FORK — promote THIS forked chapter into canon. Two-step confirm
+  // (the first click arms it). The branch keeps its own version; only canon is overwritten.
+  const handleMergeToCanon = async () => {
+    if (!mergeConfirm) { setMergeConfirm(true); return; }
+    if (!composeProjectId || !chapterId) return;
+    setMerging(true);
+    try {
+      await compositionApi.mergeWorkChapterToCanon(composeProjectId, chapterId, accessToken);
+      toast.success(t('editor.mergeDone', { defaultValue: 'Merged into canon — the branch keeps its own version.' }));
+      setMergeConfirm(false);
+    } catch (e) {
+      const conflict = (e as { status?: number }).status === 409;
+      toast[conflict ? 'warning' : 'error'](conflict
+        ? t('editor.mergeConflict', { defaultValue: 'Canon changed since — reopen the chapter and merge again.' })
+        : t('editor.mergeFailed', { defaultValue: 'Could not merge — try again.' }));
+    } finally { setMerging(false); }
+  };
   const chatModels = useQuery({
     queryKey: ['composition', 'chat-models'],
     queryFn: () => aiModelsApi.listUserModels(accessToken!, { capability: 'chat' }),
@@ -215,6 +245,15 @@ export function EditorPanel(props: IDockviewPanelProps) {
     editorRef.current?.insertAtCursor(name);
   };
 
+  // S-10 O7 (PO D-d) — the `[[`-create flow: typing `[[NewName` + picking a kind creates the KG entity
+  // and inserts it (same insert path as picking an existing one). undefined until the Work's project
+  // resolves, so GlossaryAutocomplete hides "＋ Create" rather than offering a create that would fail.
+  const handleCreateGlossaryEntity = useGlossaryQuickCreate(
+    composeProjectId,
+    accessToken,
+    (name) => handleInsertGlossaryEntity(0, 0, name),
+  );
+
   // #16 2.5 — AI-provenance review UI. Mark-writing already works (Lane-C applyProposedEdit
   // threads ProvenanceAttrs) — this is purely the missing review affordance (unreviewed count,
   // toggle-visible, mark-all-reviewed). docJson drives the recompute on every doc mutation.
@@ -235,8 +274,21 @@ export function EditorPanel(props: IDockviewPanelProps) {
 
   if (!unit || !chapterId) {
     return (
-      <div data-testid="studio-editor-panel" className="flex h-full items-center justify-center p-6 text-center text-xs text-muted-foreground">
-        {t('editor.empty', { defaultValue: 'Select a chapter in the manuscript navigator to edit it here.' })}
+      <div data-testid="studio-editor-panel" className="flex h-full flex-col items-center justify-center gap-3 p-6 text-center">
+        <button
+          type="button"
+          data-testid="editor-empty-start-chapter"
+          disabled={!chapterDoor.startNewChapter || chapterDoor.creating}
+          onClick={() => chapterDoor.startNewChapter?.()}
+          className="rounded-lg bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground transition hover:brightness-105 disabled:opacity-50"
+        >
+          {chapterDoor.creating
+            ? t('editor.startingChapter', { defaultValue: 'Creating…' })
+            : `＋  ${t('editor.startFirstChapter', { defaultValue: 'Start your first chapter' })}`}
+        </button>
+        <p className="text-xs text-muted-foreground">
+          {t('editor.empty', { defaultValue: 'Select a chapter in the manuscript navigator to edit it here.' })}
+        </p>
       </div>
     );
   }
@@ -253,6 +305,38 @@ export function EditorPanel(props: IDockviewPanelProps) {
 
   return (
     <div data-testid="studio-editor-panel" className="flex h-full min-h-0 flex-col">
+      {/* D-S5-DERIVATIVE-MANUSCRIPT-FORK — a dị bản now has its OWN manuscript per chapter
+          (work-scoped draft; the ManuscriptUnitProvider routes load/save there). Signal the real
+          isolation state — inherited (still mirrors canon, editing forks it) vs forked (isolated) —
+          and offer Merge-to-canon on a forked chapter. Canon is never touched by editing here. */}
+      {unit?.state.isDerivative ? (
+        <div
+          data-testid="studio-editor-derivative-guard"
+          className="flex flex-shrink-0 flex-wrap items-center gap-1.5 border-b border-amber-300 bg-amber-50 px-3 py-1 text-[11px] text-amber-800 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-200"
+        >
+          <span data-testid="studio-editor-fork-state">
+            ⑂ {unit.state.forked
+              ? t('editor.derivativeForked', { defaultValue: "On a what-if version — this chapter is FORKED, isolated from canon. Edits save to the branch; canon stays untouched." })
+              : t('editor.derivativeInherit', { defaultValue: "On a what-if version — this chapter still mirrors canon. Editing here FORKS it into the branch (canon stays untouched)." })}
+          </span>
+          {unit.state.forked && (
+            <button
+              type="button"
+              data-testid="studio-editor-merge-canon"
+              disabled={merging}
+              onClick={handleMergeToCanon}
+              onBlur={() => setMergeConfirm(false)}
+              className="ml-auto rounded border border-amber-400 px-1.5 py-0.5 hover:bg-amber-100 disabled:opacity-50 dark:hover:bg-amber-900/40"
+            >
+              {merging
+                ? t('editor.merging', { defaultValue: 'Merging…' })
+                : mergeConfirm
+                  ? t('editor.mergeConfirm', { defaultValue: 'Confirm — overwrite canon' })
+                  : t('editor.mergeToCanon', { defaultValue: 'Merge to canon' })}
+            </button>
+          )}
+        </div>
+      ) : null}
       <div className="flex h-7 flex-shrink-0 items-center gap-2 overflow-x-auto whitespace-nowrap border-b px-3 text-[11px] text-muted-foreground">
         <span data-testid="studio-editor-dirty" className={isDirty ? 'text-warning' : 'text-muted-foreground/60'}>
           {isDirty ? t('editor.unsaved', { defaultValue: '● unsaved' }) : t(`editor.state.${state.saveState}`, { defaultValue: state.saveState })}
@@ -348,11 +432,10 @@ export function EditorPanel(props: IDockviewPanelProps) {
         <button
           type="button"
           data-testid="studio-editor-open-translate"
-          onClick={() => host.openPanel(`translation-versions:${chapterId}`, {
-            component: 'translation-versions',
-            title: `${t('panels.translation-versions.title', { defaultValue: 'Translation Versions' })} · ${chapterId.slice(0, 8)}`,
-            params: { chapterId },
-          })}
+          // D11 (spec 29): open the BARE `translation-versions` id — the params-retargeting
+          // singleton — the same id the `translation` panel uses, so the editor and the matrix
+          // share ONE dock tab (retargeted per open) instead of minting a per-chapter override tab.
+          onClick={() => host.openPanel('translation-versions', { params: { chapterId } })}
           className="rounded px-1.5 py-0.5 hover:bg-secondary hover:text-foreground"
         >
           {t('editor.translate', { defaultValue: 'Translate' })}
@@ -420,13 +503,15 @@ export function EditorPanel(props: IDockviewPanelProps) {
       </div>
       {/* #16 2.4 — glossary hover tooltip + `[[` autocomplete, scoped to this panel's own editor. */}
       {glossaryEnabled && <GlossaryTooltip bookId={bookId} />}
+      {/* S-10 O7 — the `[[`-create flow is now wired (onCreateNew). It's undefined until the Work's
+          project resolves, so GlossaryAutocomplete still HIDES "＋ Create" rather than offering a
+          create that would fail — the 2026-07-17 audit's no-dead-affordance rule still holds. */}
       {glossaryEnabled && (
         <GlossaryAutocomplete
           entities={glossaryEntities}
           editorEl={editorEl}
           onInsertEntity={handleInsertGlossaryEntity}
-          onSelect={() => {}}
-          onCreateNew={() => {}}
+          onCreateNew={handleCreateGlossaryEntity}
         />
       )}
     </div>

@@ -52,4 +52,19 @@ describe('MotifCard variants + co-encoding', () => {
     render(<MotifCard motif={makeMotif({ tension_target: 3 })} meUserId={ME} onOpen={noop} />);
     expect(screen.getByTestId('motif-card-tension-m1').textContent).toContain('T3');
   });
+
+  it('S-08: an archived motif with onRestore shows a Restore action that fires restore', () => {
+    const onRestore = vi.fn();
+    render(<MotifCard motif={makeMotif({ status: 'archived' })} meUserId={ME} onOpen={noop} onRestore={onRestore} />);
+    const btn = screen.getByTestId('motif-card-restore-m1');
+    btn.click();
+    expect(onRestore).toHaveBeenCalledWith('m1');
+  });
+
+  it('S-08: Restore is NOT shown on a non-archived row, nor when onRestore is absent', () => {
+    render(<MotifCard motif={makeMotif({ status: 'active' })} meUserId={ME} onOpen={noop} onRestore={vi.fn()} />);
+    expect(screen.queryByTestId('motif-card-restore-m1')).toBeNull();        // active row → no restore
+    render(<MotifCard motif={makeMotif({ status: 'archived' })} meUserId={ME} onOpen={noop} />);
+    expect(screen.queryByTestId('motif-card-restore-m1')).toBeNull();        // no handler → no restore
+  });
 });

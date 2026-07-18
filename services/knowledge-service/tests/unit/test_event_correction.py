@@ -105,6 +105,56 @@ async def _noop_session():
     yield MagicMock()
 
 
+# ── create route (D-KG-EVENT-CREATE-ROUTE) ──────────────────────────
+
+@patch("app.routers.public.events.neo4j_session", new=lambda: _noop_session())
+@patch("app.routers.public.events.emit_correction", new_callable=AsyncMock)
+@patch("app.routers.public.events.merge_event", new_callable=AsyncMock)
+def test_create_event_happy(mock_merge, mock_emit):
+    created = Event(
+        id="new-evt", user_id=str(_USER), project_id="p-1", title="The Duel",
+        canonical_title="the duel", chapter_id="ch-9", participants=["Liu"],
+        version=1, created_at=datetime.now(timezone.utc), updated_at=datetime.now(timezone.utc),
+    )
+    mock_merge.return_value = created
+    resp = _client().post(
+        "/v1/knowledge/events",
+        json={"project_id": str(uuid4()), "title": "The Duel",
+              "chapter_id": "ch-9", "participants": ["Liu"]},
+    )
+    assert resp.status_code == 201, resp.json()
+    assert resp.json()["id"] == "new-evt"
+    # user-authored provenance + tenancy: written under the JWT user_id.
+    kwargs = mock_merge.call_args.kwargs
+    assert kwargs["user_id"] == str(_USER)
+    assert kwargs["source_type"] == "manual"
+    assert kwargs["provenance"] == "human_authored"
+    assert kwargs["participants"] == ["Liu"]
+    # emits a create correction (op=create, before=null) — no silent write.
+    emit_kwargs = mock_emit.call_args.kwargs
+    assert emit_kwargs["payload"]["op"] == "create"
+    assert emit_kwargs["payload"]["before"] is None
+
+
+@patch("app.routers.public.events.neo4j_session", new=lambda: _noop_session())
+@patch("app.routers.public.events.merge_event", new_callable=AsyncMock)
+def test_create_event_blank_title_422(mock_merge):
+    resp = _client().post(
+        "/v1/knowledge/events",
+        json={"project_id": str(uuid4()), "title": "   "},
+    )
+    assert resp.status_code == 422
+    mock_merge.assert_not_awaited()
+
+
+@patch("app.routers.public.events.neo4j_session", new=lambda: _noop_session())
+@patch("app.routers.public.events.merge_event", new_callable=AsyncMock)
+def test_create_event_missing_project_422(mock_merge):
+    resp = _client().post("/v1/knowledge/events", json={"title": "The Duel"})
+    assert resp.status_code == 422
+    mock_merge.assert_not_awaited()
+
+
 @pytest.fixture(autouse=True)
 def _clear():
     from app.main import app

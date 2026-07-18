@@ -1,7 +1,7 @@
-asyncpg>=0.29
+asyncpg>=0.31.0
 httpx>=0.27
-pydantic>=2.6
-pydantic-settings>=2.2
+pydantic>=2.13.4
+pydantic-settings>=2.14.2
 python-json-logger>=2.0
 # P3 D-P3-WORKER-AI-CONSUMER-WIRING — Redis Stream consumer for the
 # extraction.summarize job feed. Async client only (sync API unused).
@@ -9,9 +9,13 @@ redis>=5.0
 # Cycle 73h D-WORKER-AI-METRICS-INFRA — Prometheus client for the
 # worker_ai_filter_reload_total counter + /metrics scrape endpoint
 # (built-in WSGI server via start_http_server; runs alongside asyncio).
-prometheus-client>=0.20
+prometheus-client>=0.25.0
 
 # Phase 4b-γ: loreweave_llm + loreweave_extraction SDKs are installed
 # via Dockerfile COPY of sdks/python (build context is repo root).
+# C1 (SD-C1) — the distiller now sizes its map-reduce window in TOKENS via
+# loreweave_context.estimate_tokens / split_to_token_budget (closes DBT-12).
+# loreweave_context ships in that same sdks/python distribution (RUN pip install /sdk),
+# so no separate package pin is needed; it is now a RUNTIME dep of worker-ai, not just chat.
 # For host-side pytest:
 #   pip install -e ../../sdks/python   (from services/worker-ai)

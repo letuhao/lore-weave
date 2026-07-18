@@ -158,3 +158,174 @@ async def test_project_list_signals_overflow_and_respects_limit():
     assert res.success, res.error
     assert len(res.result["projects"]) == 2
     assert res.result["more"] is True
+
+
+# ── kg_project_set_embedding_model (F6 — Track D liveness eval) ──────────────────
+#
+# The gap this tool closes: an agent could kg_project_create → kg_run_benchmark →
+# kg_build_graph, but the ONE step between create and benchmark — setting the project's
+# embedding model — existed only as a REST route behind the Build-KG dialog. So every
+# agent-created project dead-ended at "run extraction setup once in the ... dialog", an
+# instruction a tool-calling model cannot act on. kg_build_graph was, in effect,
+# unreachable by an agent.
+
+_PROJECT = uuid4()
+
+
+def _mk_project_ctx(*, user_id=_USER, projects_repo=None, embedding_client=None) -> ToolContext:
+    ctx = _mk_ctx(user_id=user_id, projects_repo=projects_repo)
+    return type(ctx)(**{**ctx.__dict__, "project_id": _PROJECT})
+
+
+def _fake_full_project(*, embedding_model=None, embedding_dimension=None,
+                       extraction_status="disabled"):
+    return SimpleNamespace(
+        project_id=_PROJECT, name="Dracula KG", project_type="book", book_id=_BOOK,
+        embedding_model=embedding_model, embedding_dimension=embedding_dimension,
+        extraction_status=extraction_status,
+    )
+
+
+@pytest.mark.asyncio
+async def test_set_embedding_model_probes_dimension_and_persists(monkeypatch):
+    """The caller never knows the vector dimension — the tool probes the model for it
+    and stores the pair, exactly as the REST route does."""
+    repo = AsyncMock()
+    repo.project_meta = AsyncMock(return_value=(_USER, _BOOK))
+    repo.get = AsyncMock(return_value=_fake_full_project())
+    repo.update = AsyncMock(
+        return_value=_fake_full_project(embedding_model="model-uuid", embedding_dimension=1024)
+    )
+    monkeypatch.setattr(
+        "app.clients.embedding_client.probe_embedding_dimension",
+        AsyncMock(return_value=1024),
+    )
+    ctx = _mk_project_ctx(projects_repo=repo)
+
+    res = await execute_tool(
+        ctx, "kg_project_set_embedding_model", {"embedding_model": "model-uuid"}
+    )
+    assert res.success, res.error
+    assert res.result["changed"] is True
+    assert res.result["embedding_dimension"] == 1024
+    # the model+dimension are written as a PAIR (a model-less-but-dimensioned row is a bug)
+    patch = repo.update.await_args.args[2]
+    assert patch.embedding_model == "model-uuid"
+    assert patch.embedding_dimension == 1024
+    # and the agent is told what to do next — no dialog
+    assert "kg_run_benchmark" in res.result["note"]
+
+
+@pytest.mark.asyncio
+async def test_set_embedding_model_is_idempotent_same_value(monkeypatch):
+    repo = AsyncMock()
+    repo.project_meta = AsyncMock(return_value=(_USER, _BOOK))
+    repo.get = AsyncMock(
+        return_value=_fake_full_project(embedding_model="m1", embedding_dimension=1024)
+    )
+    probe = AsyncMock(return_value=1024)
+    monkeypatch.setattr("app.clients.embedding_client.probe_embedding_dimension", probe)
+    ctx = _mk_project_ctx(projects_repo=repo)
+
+    res = await execute_tool(ctx, "kg_project_set_embedding_model", {"embedding_model": "m1"})
+    assert res.success and res.result["changed"] is False
+    repo.update.assert_not_awaited()  # no write
+    probe.assert_not_awaited()  # and no needless paid/embedding round-trip
+
+
+@pytest.mark.asyncio
+async def test_changing_model_on_a_built_graph_is_refused_not_silently_orphaning(monkeypatch):
+    """D-EMB-MODEL-REF-04: changing the model on a project that already has a graph would
+    leave its passages in Neo4j tagged with the OLD model while retrieval queries the NEW
+    vector space — silent zero-recall. That path deletes vectors, so it stays a
+    confirm-gated REST op; this Tier-A tool must refuse and say where to go."""
+    repo = AsyncMock()
+    repo.project_meta = AsyncMock(return_value=(_USER, _BOOK))
+    repo.get = AsyncMock(
+        return_value=_fake_full_project(
+            embedding_model="old", embedding_dimension=1024, extraction_status="completed"
+        )
+    )
+    monkeypatch.setattr(
+        "app.clients.embedding_client.probe_embedding_dimension", AsyncMock(return_value=1024)
+    )
+    ctx = _mk_project_ctx(projects_repo=repo)
+
+    res = await execute_tool(ctx, "kg_project_set_embedding_model", {"embedding_model": "new"})
+    assert not res.success
+    assert "orphan" in res.error and "confirm=true" in res.error
+    repo.update.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_unsupported_dimension_is_rejected_before_any_write(monkeypatch):
+    repo = AsyncMock()
+    repo.project_meta = AsyncMock(return_value=(_USER, _BOOK))
+    repo.get = AsyncMock(return_value=_fake_full_project())
+    monkeypatch.setattr(
+        "app.clients.embedding_client.probe_embedding_dimension", AsyncMock(return_value=777)
+    )
+    ctx = _mk_project_ctx(projects_repo=repo)
+
+    res = await execute_tool(ctx, "kg_project_set_embedding_model", {"embedding_model": "weird"})
+    assert not res.success
+    assert "777" in res.error and "vector index" in res.error
+    repo.update.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_probe_failure_names_the_discovery_tool(monkeypatch):
+    """A bad ref must not surface a raw provider error — it must tell the model how to
+    find a real embedding model."""
+    from app.clients.embedding_client import EmbeddingError
+
+    repo = AsyncMock()
+    repo.project_meta = AsyncMock(return_value=(_USER, _BOOK))
+    repo.get = AsyncMock(return_value=_fake_full_project())
+    monkeypatch.setattr(
+        "app.clients.embedding_client.probe_embedding_dimension",
+        AsyncMock(side_effect=EmbeddingError("not an embedding model")),
+    )
+    ctx = _mk_project_ctx(projects_repo=repo)
+
+    res = await execute_tool(ctx, "kg_project_set_embedding_model", {"embedding_model": "chat-m"})
+    assert not res.success
+    assert "settings_list_models" in res.error
+    repo.update.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_non_owner_cannot_set_the_projects_embedding_model():
+    """A book collaborator resolves an EDIT grant but is NOT the project owner — the repo
+    update is owner-scoped, so the tool refuses before it writes (no oracle)."""
+    other = uuid4()
+    repo = AsyncMock()
+    repo.project_meta = AsyncMock(return_value=(other, _BOOK))  # owner is someone else
+    grant = AsyncMock()
+    grant.resolve_grant = AsyncMock(return_value=GrantLevel.EDIT)
+    ctx = _mk_ctx(user_id=_USER, grant_client=grant, projects_repo=repo)
+    ctx = type(ctx)(**{**ctx.__dict__, "project_id": _PROJECT})
+
+    res = await execute_tool(ctx, "kg_project_set_embedding_model", {"embedding_model": "m"})
+    assert not res.success
+    assert "owner" in res.error
+    repo.update.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_build_graph_error_names_the_unblocking_tools_not_a_dialog():
+    """The F6 regression. kg_build_graph's precondition error is the ONLY instruction a
+    tool-calling model gets; it used to say 'run extraction setup once in the Build
+    Knowledge Graph dialog' — which an agent cannot do, and which named no tool."""
+    repo = AsyncMock()
+    repo.project_meta = AsyncMock(return_value=(_USER, _BOOK))
+    repo.get = AsyncMock(return_value=_fake_full_project(embedding_model=None))
+    ctx = _mk_project_ctx(projects_repo=repo)
+
+    res = await execute_tool(
+        ctx, "kg_build_graph", {"llm_model": str(uuid4()), "scope": "glossary_sync"}
+    )
+    assert not res.success
+    assert "kg_project_set_embedding_model" in res.error
+    assert "kg_run_benchmark" in res.error
+    assert "dialog" not in res.error.lower()

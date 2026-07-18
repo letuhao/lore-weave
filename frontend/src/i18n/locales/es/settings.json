@@ -9,7 +9,8 @@
       "translation": "Traducción",
       "reading": "Lectura",
       "language": "Idioma",
-      "mcp": "Acceso MCP"
+      "mcp": "Acceso MCP",
+      "workflow-bindings": "Configuración automática del flujo de trabajo"
     }
   },
   "mcp": {
@@ -492,6 +493,18 @@
       "testing": "Probando...",
       "reverify": "Re-verificar",
       "verify": "Verificar",
+      "pricing_title": "Precios (USD por 1M de tokens)",
+      "pricing_input": "Entrada",
+      "pricing_output": "Salida",
+      "pricing_free_local": "Gratis — se ejecuta en tu propio hardware",
+      "pricing_hint": "Se rellena automáticamente al crear. Edítalo si la tarifa publicada del proveedor ha cambiado, o consulta OpenRouter para obtener una estimación en tiempo real.",
+      "pricing_check": "Consultar OpenRouter",
+      "pricing_checking": "Consultando...",
+      "pricing_suggestion_found": "OpenRouter ({{source}}): ${{input}} en / ${{output}} fuera",
+      "pricing_apply": "Aplicar",
+      "pricing_not_found": "No se encontró ningún modelo coincidente en OpenRouter; los precios no están disponibles desde esta fuente.",
+      "pricing_check_failed": "Error al consultar los precios de OpenRouter",
+      "pricing_negative_error": "El precio debe ser cero o mayor",
       "delete_model": "Eliminar Modelo",
       "confirm_delete": "Confirmar eliminación",
       "deleting": "Eliminando...",

@@ -1,8 +1,11 @@
 {
+  "reconnecting": "正在重新連線…",
   "nav": {
     "startNew": "開始新的創作",
     "workspace": "工作區",
     "chat": "聊天",
+    "assistant": "助手",
+    "roleplay": "角色扮演",
     "knowledge": "知識",
     "worlds": "世界",
     "campaigns": "活動",
@@ -25,7 +28,7 @@
     "account": "帳號",
     "signin": "登入",
     "back_to_book": "返回書籍",
-    "roleplay": "角色扮演"
+    "more": "更多"
   },
   "logout_confirm": {
     "title": "有未儲存的變更，仍要登出嗎？",

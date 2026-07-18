@@ -3,6 +3,7 @@
 // (search, auto query unless `query` is given), add/delete mutations, and pin/
 // exclude reuse (the T3.4 grounding-pin PUT with item_type='reference'). View-free.
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { toast } from 'sonner';
 import { compositionApi } from '../api';
 import type { PinAction, ReferenceHit, ReferenceList, ReferenceSearch } from '../types';
 
@@ -13,6 +14,9 @@ export function useReferences(
   query = '',
 ) {
   const qc = useQueryClient();
+  // Audit fix — mutations were silent on failure (onSuccess only). Surface errors so a
+  // failed add/edit/delete/re-embed isn't an invisible no-op.
+  const fail = (msg: string) => () => toast.error(msg);
   const listKey = ['composition', 'references', projectId];
   const searchKey = ['composition', 'references', 'search', projectId, sceneId, query];
 
@@ -38,6 +42,7 @@ export function useReferences(
       qc.invalidateQueries({ queryKey: listKey });
       qc.invalidateQueries({ queryKey: ['composition', 'references', 'search', projectId] });
     },
+    onError: fail('Could not add the reference — try again.'),
   });
 
   const remove = useMutation({
@@ -46,6 +51,29 @@ export function useReferences(
       qc.invalidateQueries({ queryKey: listKey });
       qc.invalidateQueries({ queryKey: ['composition', 'references', 'search', projectId] });
     },
+    onError: fail('Could not delete the reference — try again.'),
+  });
+
+  // S-03 — edit a reference. Metadata is cheap (no re-embed); content re-embeds. Both
+  // refresh the library + per-scene retrieval (an edited passage changes both).
+  const updateMetadata = useMutation({
+    mutationFn: ({ id, patch }: { id: string; patch: { title?: string; author?: string; source_url?: string } }) =>
+      compositionApi.updateReferenceMetadata(projectId!, id, patch, token!),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: listKey });
+      qc.invalidateQueries({ queryKey: ['composition', 'references', 'search', projectId] });
+    },
+    onError: fail('Could not save the details — try again.'),
+  });
+
+  const updateContent = useMutation({
+    mutationFn: ({ id, content }: { id: string; content: string }) =>
+      compositionApi.updateReferenceContent(projectId!, id, content, token!),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: listKey });
+      qc.invalidateQueries({ queryKey: ['composition', 'references', 'search', projectId] });
+    },
+    onError: fail('Could not save the content (re-embed failed) — try again.'),
   });
 
   const pin = useMutation({
@@ -79,6 +107,8 @@ export function useReferences(
     isSearching: search.isFetching,
     add,
     remove,
+    updateMetadata,
+    updateContent,
     setPin,
   };
 }

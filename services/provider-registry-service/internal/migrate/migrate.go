@@ -54,10 +54,19 @@ CREATE INDEX IF NOT EXISTS idx_user_models_owner_flags ON user_models(owner_user
 ALTER TABLE user_models ADD COLUMN IF NOT EXISTS notes TEXT NOT NULL DEFAULT '';
 
 -- v3: support custom providers + api_standard
--- Drop CHECK constraints to allow any provider_kind string
+-- Drop CHECK constraints to allow any provider_kind string. platform_models is
+-- created further below in this same script (CREATE TABLE IF NOT EXISTS
+-- platform_models) — its DROP CONSTRAINT is deferred to right after that
+-- CREATE (not here) because this whole schemaSQL string replays in order on
+-- every startup with no per-statement version tracking (see the 'vision'
+-- CHECK note further down): on a genuinely fresh database this ALTER used to
+-- run before platform_models existed, aborting the entire migration with
+-- "relation platform_models does not exist" and leaving EVERY later
+-- CREATE TABLE in this script un-applied (found 2026-07-08 bootstrapping a
+-- throwaway test DB — every long-lived dev/prod DB masked this because
+-- platform_models has existed in them since before this ALTER was added).
 ALTER TABLE provider_credentials DROP CONSTRAINT IF EXISTS provider_credentials_provider_kind_check;
 ALTER TABLE user_models DROP CONSTRAINT IF EXISTS user_models_provider_kind_check;
-ALTER TABLE platform_models DROP CONSTRAINT IF EXISTS platform_models_provider_kind_check;
 -- api_standard: which API protocol this provider speaks (openai_compatible, anthropic, ollama, lm_studio)
 ALTER TABLE provider_credentials ADD COLUMN IF NOT EXISTS api_standard TEXT NOT NULL DEFAULT 'openai_compatible';
 
@@ -89,6 +98,9 @@ CREATE TABLE IF NOT EXISTS platform_models (
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   UNIQUE(provider_kind, provider_model_name)
 );
+-- v3 (moved here, see the note above): now that platform_models exists, allow
+-- any provider_kind string on it too, matching provider_credentials/user_models.
+ALTER TABLE platform_models DROP CONSTRAINT IF EXISTS platform_models_provider_kind_check;
 
 -- Phase 2a (LLM_PIPELINE_UNIFIED_REFACTOR_PLAN): async LLM job state.
 -- Single source of truth for jobs submitted via POST /v1/llm/jobs;

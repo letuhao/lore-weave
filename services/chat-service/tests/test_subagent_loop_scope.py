@@ -125,7 +125,7 @@ class TestWriteDelegation:
         kc = AsyncMock()
         kc.get_catalog_meta = MagicMock(return_value={})
         kc.mcp_execute_tool.return_value = _envelope(success=True, result={"book_id": "b1"})
-        check = AsyncMock(return_value=True)  # book_create IS allowlisted
+        check = AsyncMock(return_value="allow")  # book_create IS allowlisted
         scripts = [
             [
                 tool_frag(index=0, id="c1", name="book_create"),
@@ -137,11 +137,13 @@ class TestWriteDelegation:
         with _patch_client(scripts):
             chunks = await _drain(_run(
                 scripts, knowledge_client=kc, permission_mode="write",
-                approval_check=check,
+                decision_check=check,
                 allowed_tool_names={"book_create"}, subagent_depth=1,
             ))
         kc.mcp_execute_tool.assert_awaited_once()            # it really wrote
-        check.assert_awaited_once_with("book_create")
+        # the mutation grant is what let it auto-commit. (WS-3 also reads both axes
+        # up-front for the standing-refusal check, so this is no longer the only await.)
+        assert ("book_create",) in [c.args for c in check.await_args_list]
         assert not [c for c in chunks if "suspend" in c]     # a sub-run never suspends
         tc = [c["tool_call"] for c in chunks if "tool_call" in c][0]
         assert tc["ok"] is True
@@ -150,7 +152,7 @@ class TestWriteDelegation:
     async def test_unallowlisted_tier_a_errors_not_suspends_in_write_subrun(self):
         kc = AsyncMock()
         kc.get_catalog_meta = MagicMock(return_value={})
-        check = AsyncMock(return_value=False)  # book_create NOT allowlisted
+        check = AsyncMock(return_value=None)  # book_create NOT allowlisted
         scripts = [
             [
                 tool_frag(index=0, id="c1", name="book_create"),
@@ -162,7 +164,7 @@ class TestWriteDelegation:
         with _patch_client(scripts):
             chunks = await _drain(_run(
                 scripts, knowledge_client=kc, permission_mode="write",
-                approval_check=check,
+                decision_check=check,
                 allowed_tool_names={"book_create"}, subagent_depth=1,
             ))
         kc.mcp_execute_tool.assert_not_awaited()             # never executed
@@ -184,7 +186,7 @@ class TestWriteDelegation:
         kc = AsyncMock()
         kc.get_catalog_meta = MagicMock(return_value={})
         kc.mcp_execute_tool.return_value = _envelope(success=True, result={"book_id": "b"})
-        check = AsyncMock(return_value=True)  # all allowlisted → they auto-commit
+        check = AsyncMock(return_value="allow")  # all allowlisted → they auto-commit
         frags = []
         for i in range(6):  # TIER_A_SAME_OP_CAP=5 → the 6th trips the per-op cap
             frags.append(tool_frag(index=i, id=f"c{i}", name="book_create"))
@@ -194,7 +196,7 @@ class TestWriteDelegation:
         with _patch_client(scripts):
             chunks = await _drain(_run(
                 scripts, knowledge_client=kc, permission_mode="write",
-                approval_check=check,
+                decision_check=check,
                 allowed_tool_names={"book_create"}, subagent_depth=1,
             ))
         assert kc.mcp_execute_tool.await_count == 5          # first 5 wrote

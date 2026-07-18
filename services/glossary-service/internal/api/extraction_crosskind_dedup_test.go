@@ -152,3 +152,45 @@ func TestCrossKindDedup_FoldedNameVariant_ReusesEntity(t *testing.T) {
 		t.Errorf("folded variant: want STILL 1 entity, got %d", n)
 	}
 }
+
+// D-GLOSSARY-ENTITY-SCOPE — cross-kind dedup must NOT merge an unscoped extraction
+// onto an entity a human already disambiguated with a scope_label. The bulk
+// pipeline has no scope concept of its own (always passes ""), so it should
+// create a fresh (unscoped) entity rather than silently attaching new attributes
+// to whichever world's entity happens to be oldest.
+func TestCrossKindDedup_ScopedEntityNotReusedByUnscopedExtraction(t *testing.T) {
+	pool := openTestDB(t)
+	ctx := context.Background()
+	runK2aMigrations(t, pool)
+	bookID := uuid.NewString()
+	adoptTestBook(t, pool, uuid.MustParse(bookID))
+	t.Cleanup(func() { cleanupExtractBook(pool, bookID) })
+	srv, token := newEntitiesListServer(t)
+	srv.pool = pool
+
+	postExtract(t, srv, token, bookID, map[string]any{
+		"source_language": "en",
+		"entities":        []map[string]any{{"kind_code": "character", "name": "Lam Gia"}},
+	})
+	if n := liveEntityCount(t, pool, ctx, bookID); n != 1 {
+		t.Fatalf("after first extract: want 1 entity, got %d", n)
+	}
+	if _, err := pool.Exec(ctx,
+		`UPDATE glossary_entities SET scope_label='World A' WHERE book_id=$1`, bookID,
+	); err != nil {
+		t.Fatalf("set scope_label: %v", err)
+	}
+
+	// Same name, different kind, but the FIRST entity is now scoped — the unscoped
+	// extraction must NOT reuse it.
+	r2 := postExtract(t, srv, token, bookID, map[string]any{
+		"source_language": "en",
+		"entities":        []map[string]any{{"kind_code": "location", "name": "Lam Gia"}},
+	})
+	if r2["created"] != float64(1) {
+		t.Errorf("scoped entity must not be reused by an unscoped extraction: want created=1, got %v (resp=%v)", r2["created"], r2)
+	}
+	if n := liveEntityCount(t, pool, ctx, bookID); n != 2 {
+		t.Errorf("want 2 entities (scoped original + fresh unscoped draft), got %d", n)
+	}
+}

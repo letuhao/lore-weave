@@ -137,6 +137,11 @@ func (s *Server) Router() http.Handler {
 		r.Post("/books/{book_id}/select-for-context", s.internalSelectForContext)
 		r.Get("/books/{book_id}/known-entities", s.getKnownEntities)
 		r.Post("/books/{book_id}/extract-entities", s.bulkExtractEntities)
+		// WS-4C Half A — chat's post-turn canon auto-capture. UNLIKE its siblings here,
+		// this route grant-checks the supplied owner_user_id (Edit) against the book: it
+		// is driven by a chat session, so its book_id traces back to user-supplied data
+		// and the internal token alone must not authorize a write into it.
+		r.Post("/books/{book_id}/capture-canon", s.captureCanon)
 		// M7 backfill — deterministic per-chapter mention_count recount (no LLM). The
 		// producer computes counts (it holds chapter text + matcher) and POSTs a targeted,
 		// idempotent UPDATE batch here.
@@ -144,6 +149,10 @@ func (s *Server) Router() http.Handler {
 		r.Get("/books/{book_id}/translation-candidates", s.internalTranslationCandidates)
 		r.Post("/books/{book_id}/apply-translations", s.internalApplyTranslations)
 		r.Get("/books/{book_id}/entity-count", s.internalEntityCount)
+		// Track-C rail driver — the entity-triage rail's completion signal: how many
+		// AI-suggested items still await a triage decision (the review pile). Grounds
+		// `done_when:"suggestions < 1"` so the driver knows a half-triaged pile from a clean one.
+		r.Get("/books/{book_id}/suggestions-count", s.internalSuggestionsCount)
 		r.Get("/books/{book_id}/entities", s.internalListEntities)
 		// mui #4 — batch fetch by id for the knowledge semantic selector.
 		r.Post("/books/{book_id}/entities/by-ids", s.internalEntitiesByIDs)
@@ -226,6 +235,12 @@ func (s *Server) Router() http.Handler {
 		// KG_ADOPT_NEEDS_GLOSSARY and silently does nothing. Internal-token gated;
 		// the caller (knowledge-service) already verified the user's MANAGE grant.
 		r.Post("/books/{book_id}/ontology/adopt-kinds", s.internalAdoptBookKinds)
+		// WS-1.6 (spec 05 §Q5) — get-or-create the user's is_self identity entity in their
+		// diary (the assistant provisioner calls this after adopt-kinds).
+		r.Post("/books/{book_id}/self-entity", s.internalSeedSelfEntity)
+		// D-R27 — the assistant-erase orchestrator (gateway) HARD-deletes all captured entities of a
+		// diary (the flip side of self-entity/adopt-kinds). Internal-token; book-scoped.
+		r.Delete("/books/{book_id}/entities", s.internalEraseBookEntities)
 	})
 
 	r.Route("/v1/glossary", func(r chi.Router) {
@@ -422,6 +437,10 @@ func (s *Server) Router() http.Handler {
 					r.Post("/{staleness_id}/dismiss", s.dismissWikiStaleness)
 				})
 				r.Get("/suggestions", s.listWikiSuggestions)
+				// Submitter-facing read of their OWN suggestions WITH accept/reject status
+				// (no grant — `ws.user_id = caller` is the scope). Static 2-seg route wins
+				// over `/{article_id}/...` in chi's trie, so "mine" is never an article_id.
+				r.Get("/suggestions/mine", s.listMyWikiSuggestions)
 				r.Get("/public", s.publicListWikiArticles)
 				r.Get("/public/{article_id}", s.publicGetWikiArticle)
 				r.Route("/{article_id}", func(r chi.Router) {
@@ -431,6 +450,7 @@ func (s *Server) Router() http.Handler {
 					r.Post("/suggestions", s.submitWikiSuggestion)
 					r.Route("/suggestions/{sug_id}", func(r chi.Router) {
 						r.Patch("/", s.reviewWikiSuggestion)
+						r.Delete("/", s.withdrawWikiSuggestion)
 					})
 					r.Route("/revisions", func(r chi.Router) {
 						r.Get("/", s.listWikiRevisions)
@@ -516,8 +536,14 @@ func (s *Server) Router() http.Handler {
 							r.Post("/restore", s.restoreEntityRevision)
 						})
 					})
+					// S-06 — add a value for an attr-def added AFTER the entity existed (the
+					// add-later path that was MCP-only). Collection-level POST.
+					r.Post("/attributes", s.addAttributeValue)
 					r.Route("/attributes/{attr_value_id}", func(r chi.Router) {
 						r.Patch("/", s.patchAttributeValue)
+						// S-06 — remove the value ROW entirely (cascades children), distinct
+						// from a PATCH-to-empty which keeps the blank row.
+						r.Delete("/", s.deleteAttributeValue)
 						// D-GLOSSARY-MULTIROW-ATTR-VALUES slice 3 — per-item verify/tombstone.
 						r.Patch("/items/{item_id}", s.patchAttributeValueItem)
 						r.Route("/translations", func(r chi.Router) {

@@ -20,13 +20,13 @@ MODEL_REF = str(uuid.uuid4())
 
 
 def _work(settings: dict | None = None) -> CompositionWork:
-    return CompositionWork(project_id=PROJECT, user_id=USER, book_id=BOOK,
+    return CompositionWork(project_id=PROJECT, created_by=USER, book_id=BOOK,
                            id=uuid.uuid4(), version=1, status="active",
                            settings=settings or {})
 
 
 def _ref(content="ref body", title="Influence", **kw) -> ReferenceSource:
-    return ReferenceSource(id=kw.get("id", uuid.uuid4()), user_id=USER, project_id=PROJECT,
+    return ReferenceSource(id=kw.get("id", uuid.uuid4()), created_by=USER, project_id=PROJECT,
                            title=title, author=kw.get("author", ""), source_url="",
                            content=content, embedding_model="bge-m3", embedding_dim=3)
 
@@ -36,10 +36,10 @@ class StubWorks:
         self.work = work
         self.updates = []
 
-    async def get(self, user_id, project_id):
+    async def get(self, project_id):
         return self.work
 
-    async def update(self, user_id, project_id, patch, *, expected_version=None):
+    async def update(self, project_id, patch, *, created_by=None, expected_version=None):
         self.updates.append(patch)
         # reflect the settings write-through onto the in-memory work
         if "settings" in patch and self.work is not None:
@@ -53,21 +53,43 @@ class StubRefs:
         self.deleted = []
         self._hits = hits or []
         self.delete_ok = True
+        # S-03 edit seams
+        self.get_result = _ref()        # PUT-content pre-check (set None → 404)
+        self.metadata_found = True      # PATCH result (set False → 404)
+        self.content_found = True       # PUT-content result (set False → 404)
+        self.metadata_calls = []
+        self.content_calls = []
 
-    async def create(self, user_id, project_id, *, content, embedding, title="", author="",
-                     source_url="", embedding_model="", embedding_dim=None):
+    async def create(self, project_id, *, created_by=None, content, embedding, title="",
+                     author="", source_url="", embedding_model="", embedding_dim=None):
         self.created.append({"content": content, "embedding": embedding, "title": title,
                              "embedding_model": embedding_model})
         return _ref(content=content, title=title, author=author)
 
-    async def list(self, user_id, project_id):
+    async def list(self, project_id):
         return [_ref()]
 
-    async def delete(self, user_id, reference_id):
+    async def get(self, project_id, reference_id):
+        return self.get_result
+
+    async def update_metadata(self, project_id, reference_id, **kwargs):
+        self.metadata_calls.append(kwargs)
+        if not self.metadata_found:
+            return None
+        return _ref(title=kwargs.get("title", "Influence"), author=kwargs.get("author", ""))
+
+    async def update_content(self, project_id, reference_id, *, content, embedding,
+                             embedding_model, embedding_dim):
+        self.content_calls.append({"content": content, "embedding_model": embedding_model})
+        if not self.content_found:
+            return None
+        return _ref(content=content)
+
+    async def delete(self, project_id, reference_id):
         self.deleted.append(reference_id)
         return self.delete_ok
 
-    async def search(self, user_id, project_id, vector, *, limit=8):
+    async def search(self, project_id, vector, *, limit=8):
         return list(self._hits)
 
 
@@ -77,7 +99,7 @@ class StubOutline:
             project_id=PROJECT, goal="duel on the bridge", synopsis="", beat_role="climax",
             title="The Bridge")
 
-    async def get_node(self, user_id, node_id):
+    async def get_node(self, node_id):
         return self.node
 
 
@@ -85,7 +107,7 @@ class StubPins:
     def __init__(self, rows=None):
         self.rows = rows or []
 
-    async def list_for_scene(self, user_id, project_id, node_id):
+    async def list_for_scene(self, project_id, node_id):
         return self.rows
 
 
@@ -109,10 +131,29 @@ def ctx(monkeypatch):
     monkeypatch.setattr("app.main.run_migrations", AsyncMock())
     monkeypatch.setattr("app.main.close_pool", AsyncMock())
     monkeypatch.setattr("app.main.get_pool", lambda: object())
+
+    # The by-id DELETE resolves the reference's scope from the row itself via
+    # get_pool().fetchrow (PM-8 scope-bootstrap) before gating — give it a fake
+    # pool that returns this project's row.
+    class _FakePool:
+        async def fetchrow(self, query, *args):
+            return {"project_id": PROJECT}
+    monkeypatch.setattr("app.routers.references.get_pool", lambda: _FakePool())
+
     from app.main import app
-    from app.deps import (get_embedding_client_dep, get_grounding_pins_repo,
-                          get_outline_repo, get_references_repo, get_works_repo)
+    from app.deps import (get_embedding_client_dep, get_grant_client_dep,
+                          get_grounding_pins_repo, get_outline_repo,
+                          get_references_repo, get_works_repo)
+    from app.grant_client import GrantLevel
     from app.middleware.jwt_auth import get_current_user
+
+    # E0 book-grant authority stubbed at OWNER; the references router resolves
+    # the Work's book then gates VIEW/EDIT (deny paths in test_grant_gate).
+    class _StubGrant:
+        async def resolve_grant(self, book_id, user_id):
+            return GrantLevel.OWNER
+        async def resolve_access(self, book_id, user_id):
+            return GrantLevel.OWNER, "active"
 
     state = SimpleNamespace(
         works=StubWorks(_work()), refs=StubRefs(), outline=StubOutline(),
@@ -123,6 +164,7 @@ def ctx(monkeypatch):
     app.dependency_overrides[get_outline_repo] = lambda: state.outline
     app.dependency_overrides[get_grounding_pins_repo] = lambda: state.pins
     app.dependency_overrides[get_embedding_client_dep] = lambda: state.embedder
+    app.dependency_overrides[get_grant_client_dep] = lambda: _StubGrant()
     with TestClient(app) as c:
         yield c, state
     app.dependency_overrides.clear()
@@ -200,6 +242,59 @@ def test_first_add_with_failing_model_does_NOT_persist_it(ctx):
     assert r.status_code == 502
     assert st.works.updates == []   # model NOT persisted — the work stays unset/recoverable
     assert st.refs.created == []
+
+
+def test_patch_reference_metadata_does_not_reembed(ctx):
+    """S-03 core guarantee: a metadata edit forwards ONLY the provided fields and
+    NEVER calls the embedder (fixing a typo must not pay for a re-embed)."""
+    client, st = ctx
+    rid = uuid.uuid4()
+    r = client.patch(f"/v1/composition/works/{PROJECT}/references/{rid}", json={"author": "New Author"})
+    assert r.status_code == 200
+    assert r.json()["author"] == "New Author"
+    assert st.refs.metadata_calls == [{"author": "New Author"}]  # only the provided field
+    assert st.embedder.calls == []  # NO re-embed
+
+
+def test_patch_reference_metadata_404_when_missing(ctx):
+    client, st = ctx
+    st.refs.metadata_found = False
+    r = client.patch(f"/v1/composition/works/{PROJECT}/references/{uuid.uuid4()}", json={"title": "X"})
+    assert r.status_code == 404
+
+
+def test_put_reference_content_reembeds_with_pinned_model(ctx):
+    """S-03: a content edit DOES re-embed, using the Work's PINNED model (never body)."""
+    client, st = ctx
+    st.works.work = _work({"reference_embed_model_ref": MODEL_REF})
+    rid = uuid.uuid4()
+    r = client.put(f"/v1/composition/works/{PROJECT}/references/{rid}/content",
+                   json={"content": "rewritten passage"})
+    assert r.status_code == 200
+    assert st.embedder.calls[0][1] == MODEL_REF  # the Work's stored model
+    assert st.refs.content_calls[0]["content"] == "rewritten passage"
+    assert st.refs.content_calls[0]["embedding_model"] == "bge-m3"
+
+
+def test_put_reference_content_404_before_paying_for_embed(ctx):
+    """A reference from another project 404s at the pre-check — never after an embed."""
+    client, st = ctx
+    st.works.work = _work({"reference_embed_model_ref": MODEL_REF})
+    st.refs.get_result = None  # not in this project
+    r = client.put(f"/v1/composition/works/{PROJECT}/references/{uuid.uuid4()}/content",
+                   json={"content": "x"})
+    assert r.status_code == 404
+    assert st.embedder.calls == []  # never embedded
+
+
+def test_put_reference_content_502_on_embed_failure(ctx):
+    client, st = ctx
+    st.works.work = _work({"reference_embed_model_ref": MODEL_REF})
+    st.embedder.error = EmbeddingError("down", retryable=True)
+    r = client.put(f"/v1/composition/works/{PROJECT}/references/{uuid.uuid4()}/content",
+                   json={"content": "x"})
+    assert r.status_code == 502
+    assert st.refs.content_calls == []  # nothing persisted on embed failure
 
 
 def test_delete_reference(ctx):

@@ -3,11 +3,11 @@
 // refresh (G3). Dedupes so a re-render / message refetch never re-runs a handler.
 //
 // Mounted only in the studio Compose panel (via the chat provider-slot), so useStudioHost() is
-// inside a provider. Handlers registered below (book/glossary/knowledge/translation) are real,
-// not stubs — see #16 Phase 4's LIVE-SYNC audit (2026-07-05) for the last gap it closed
-// (translation_job_control) and the two tool families it confirmed DON'T need a handler
-// (composition_generate's actual write already reaches a separately-matched tool name;
-// authoring_run has no MCP tools at all, REST-only, no Studio consumer to go stale).
+// inside a provider.
+//
+// Handlers are registered per-domain in `handlers/*.ts`; §8.0b of spec 30 is the one-file-per-domain
+// owner map. Coverage is machine-checked by `__tests__/effectCoverage.contract.test.ts` — do not add a
+// domain without a row there.
 import { useEffect, useRef } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useChatStream } from '@/features/chat/providers';
@@ -15,10 +15,7 @@ import type { ToolCallRecord } from '@/features/chat/types';
 import { useStudioHost } from '../host/StudioHostProvider';
 import { useManuscriptUnit } from '../manuscript/unit/ManuscriptUnitProvider';
 import { runEffectHandlers } from './effectRegistry';
-import { registerDefaultEffectHandlers } from './handlers/bookEffects';
-import { registerGlossaryEffectHandlers } from './handlers/glossaryEffects';
-import { registerKnowledgeEffectHandlers } from './handlers/knowledgeEffects';
-import { registerTranslationEffectHandlers } from './handlers/translationEffects';
+import { registerAllStudioEffectHandlers } from './handlers';
 
 export function useStudioEffectReconciler(): void {
   const host = useStudioHost();
@@ -30,12 +27,11 @@ export function useStudioEffectReconciler(): void {
   const unitRef = useRef(unit);
   unitRef.current = unit;
 
-  // Register the default handlers once (idempotent).
+  // Register every Lane-B domain handler once (idempotent). Goes through the handlers/index.ts
+  // BARREL — the same function effectCoverage.contract.test.ts calls, so a handler file that is not
+  // in the barrel is dead in the app AND reds the ledger. Do not hand-roll the list back in here.
   useEffect(() => {
-    registerDefaultEffectHandlers();
-    registerGlossaryEffectHandlers();
-    registerKnowledgeEffectHandlers();
-    registerTranslationEffectHandlers();
+    registerAllStudioEffectHandlers();
   }, []);
 
   useEffect(() => {

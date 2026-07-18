@@ -41,9 +41,9 @@ from app.packer import merge as M
 from app.packer import profile as profile_mod
 from app.packer import spoiler
 from app.packer.lenses import (
-    LensBundle, gather_canon, gather_lore, gather_open_promises, gather_present,
-    gather_recent, gather_references, gather_source_scene, gather_structural,
-    gather_timeline,
+    LensBundle, gather_arc, gather_canon, gather_lore, gather_motif, gather_open_promises,
+    gather_present, gather_recent, gather_references, gather_source_scene,
+    gather_structural, gather_timeline,
 )
 from app.db.repositories.references import reference_embed_model
 
@@ -57,6 +57,10 @@ class OwnershipError(Exception):
 
 @dataclass
 class PackRequest:
+    # The ACTING CALLER (25 signature law): the E0 gate's subject (authorize_book)
+    # + the cross-service identity (knowledge/glossary/book reads) + the BYOK
+    # spend attribution for the reference-embed (OQ-9). NEVER a row filter — the
+    # composition repos are project-keyed; access is decided at the gate.
     user_id: UUID
     project_id: UUID
     book_id: UUID
@@ -78,6 +82,11 @@ class PackRequest:
     source_project_id: UUID | None = None
     branch_point: int | None = None
     overrides: list[Any] | None = None
+    # Part A (2026-07-18 spec) — the derivative's POV-shift anchor (divergence_spec.
+    # pov_anchor), a GLOSSARY entity id. When set on a derivative Work, pack() default-
+    # fills it as the effective scene POV where the scene sets none (PO-1 default-fill,
+    # PO-3 apply-when-set — no taxonomy gate). None for a non-derivative / unset spec.
+    pov_anchor: UUID | None = None
     # M1 (D-DERIVATIVE-ADAPT-FROM-SOURCE) — the free-form prose operation this pack
     # serves. Op-AWARE only for `adapt_scene`: that op (and ONLY that op, on a
     # derivative) fires the `gather_source_scene` lens to read the inherited source
@@ -131,10 +140,13 @@ class DerivativeContext:
     source_project_id: UUID | None = None
     branch_point: int | None = None
     overrides: list[Any] = field(default_factory=list)
+    # Part A — the divergence_spec's pov_anchor (a GLOSSARY entity id), read fresh each
+    # pack alongside the overrides. None for a non-derivative / spec without a pov_anchor.
+    pov_anchor: UUID | None = None
 
 
 async def build_derivative_context(
-    work: Any, *, user_id: UUID, works_repo: Any, derivatives_repo: Any | None,
+    work: Any, *, works_repo: Any, derivatives_repo: Any | None,
 ) -> DerivativeContext:
     """C25 — resolve the two-project merge inputs for a Work at a pack call site.
 
@@ -156,21 +168,30 @@ async def build_derivative_context(
         return DerivativeContext()
     base_project_id: UUID | None = None
     try:
-        source = await works_repo.get_by_id(user_id, src)
+        source = await works_repo.get_by_id(src)
         if source is not None:
             base_project_id = source.project_id
     except Exception:  # noqa: BLE001 — source lookup degrades to a refused derivative pack
         logger.warning("build_derivative_context: source work lookup failed", exc_info=True)
     overrides: list[Any] = []
+    pov_anchor: UUID | None = None
     if derivatives_repo is not None and getattr(work, "id", None) is not None:
         try:
-            overrides = await derivatives_repo.list_overrides_for_work(user_id, work.id)
+            overrides = await derivatives_repo.list_overrides_for_work(work.id)
         except Exception:  # noqa: BLE001 — override read degrades (pack never 500s on it)
             logger.warning("build_derivative_context: override read failed", exc_info=True)
             overrides = []
+        # Part A — the divergence spec carries the POV-shift anchor. Read fresh (self-
+        # syncing); a missing spec / read failure degrades to no anchor (never 500s).
+        try:
+            spec = await derivatives_repo.get_spec_for_work(work.id)
+            pov_anchor = spec.pov_anchor if spec is not None else None
+        except Exception:  # noqa: BLE001 — spec read degrades to no POV default
+            logger.warning("build_derivative_context: spec read failed", exc_info=True)
+            pov_anchor = None
     return DerivativeContext(
         source_project_id=base_project_id, branch_point=getattr(work, "branch_point", None),
-        overrides=overrides,
+        overrides=overrides, pov_anchor=pov_anchor,
     )
 
 
@@ -187,6 +208,9 @@ async def pack(
     voice_profile_repo=None,  # T3.5 — per-character voice tags (gated)
     references_repo=None,  # T3.6 — author reference shelf (gated)
     embedding_client=None,  # T3.6 — provider-registry embed for reference retrieval (gated)
+    structure_repo=None,  # 23 BA12 — the arc lens (durable spec layer; gated)
+    motif_application_repo=None,  # X-7 / BE-M2 — the motif lens (scene beat structure; gated)
+    motif_repo=None,  # X-7 / BE-M2 — ditto; BOTH must be wired or the lens stays dormant
     grant: "GrantClient | None" = None,
     need: "GrantLevel | None" = None,
 ) -> PackedContext:
@@ -231,8 +255,32 @@ async def pack(
 
     profile = profile_mod.from_settings(req.settings)
     node = req.node
+    # Part A (2026-07-18 spec) — POV-shift derivative: DEFAULT-FILL the effective scene
+    # POV from the divergence spec's pov_anchor when the scene sets none (PO-1 default-
+    # fill: a scene's own pov_entity_id wins; the anchor covers the rest. PO-3 apply-
+    # when-set: any derivative with a pov_anchor, no taxonomy gate). pov_anchor is a
+    # GLOSSARY anchor in the SAME id-space as pov_entity_id, so the copied node flows
+    # through the beat lens + present_ids unchanged — its bio grounds and the assemble
+    # beat block renders `pov=<name>`. Copy the node (never mutate the caller's dict).
+    if is_derivative and req.pov_anchor is not None and not node.get("pov_entity_id"):
+        node = {**node, "pov_entity_id": str(req.pov_anchor)}
     story_order = node.get("story_order")
     chapter_id = _as_uuid(node.get("chapter_id"))
+    # 23 BA12 — the arc this scene's chapter is assigned to (structure_node.id). A SCENE
+    # never carries structure_node_id itself (the outline_structure_kind CHECK forbids
+    # it — only chapters may), so resolve it through the chapter: node → chapter_id →
+    # the outline chapter node's structure_node_id. If the node dict already carries one
+    # (a chapter-mode pack, or a caller that pre-resolved), that wins. None → the arc
+    # lens stays dormant (the gate below). Best-effort: a lookup failure never fails a
+    # pack. Requires structure_repo to be wired (the packer's own arc lens gate).
+    structure_node_id = _as_uuid(node.get("structure_node_id"))
+    if structure_node_id is None and structure_repo is not None and chapter_id is not None \
+            and req.project_id is not None:
+        try:
+            structure_node_id = await outline_repo.chapter_structure_node_id(
+                req.project_id, chapter_id)
+        except Exception:  # noqa: BLE001 — the arc frame is a soft steer; dormant on failure
+            logger.warning("pack: arc resolution failed", exc_info=True)
     query = " ".join(
         str(x) for x in [node.get("goal"), node.get("synopsis"), node.get("beat_role"), node.get("title")] if x
     )
@@ -249,7 +297,7 @@ async def pack(
     if style_profile_repo is not None:
         try:
             sp = await style_profile_repo.resolve(
-                req.user_id, req.project_id, _as_uuid(node.get("id")), chapter_id)
+                req.project_id, _as_uuid(node.get("id")), chapter_id)
             if sp is not None:
                 profile = _replace(profile, density_level=sp.density, pace_level=sp.pace)
         except Exception:  # noqa: BLE001 — style is a soft steer; neutral on failure
@@ -257,7 +305,7 @@ async def pack(
     if voice_profile_repo is not None and present_ids:
         try:
             vps = await voice_profile_repo.list_for_entities(
-                req.user_id, req.project_id, present_ids)
+                req.project_id, present_ids)
             cv = tuple((vp.entity_name, tuple(vp.tags)) for vp in vps if vp.tags)
             if cv:
                 profile = _replace(profile, character_voices=cv)
@@ -306,23 +354,44 @@ async def pack(
     # authoring, never inherited). The embed model is the Work's configured one;
     # None (unset) → the lens no-ops. Gated on both the repo and client being wired.
     ref_model = reference_embed_model(req.settings)
-    canon, (present, seen_p), (timeline, seen_t), (beat, threads, planned), recent, (lore, seen_l), open_promises, (references, _seen_r) = (
+    # 23 BA12 — the arc lens is GATED (structure_repo wired AND the scene's chapter
+    # carries a structure_node_id) and best-effort. When dormant it costs nothing (an
+    # empty string), riding the same parallel gather as the other soft lenses.
+    arc_gated = (
+        gather_arc(structure_repo, structure_node_id, story_order=story_order,
+                   narrative_threads_repo=narrative_threads_repo,
+                   open_promises_cap=settings.pack_open_promises_cap)
+        if (structure_repo is not None and structure_node_id is not None) else _empty_str()
+    )
+    # X-7 / BE-M2 — the MOTIF lens, gated exactly like the arc lens (both repos wired AND
+    # the node carries an id) and best-effort. Dormant ⇒ an empty string ⇒ byte-unchanged.
+    motif_node_id = _as_uuid(node.get("id"))
+    motif_gated = (
+        gather_motif(motif_application_repo, motif_repo, req.project_id, motif_node_id,
+                     user_id=req.user_id)
+        if (motif_application_repo is not None and motif_repo is not None
+            and motif_node_id is not None and req.project_id is not None)
+        else _empty_str()
+    )
+    canon, (present, seen_p), (timeline, seen_t), (beat, threads, planned), recent, (lore, seen_l), open_promises, (references, _seen_r), arc_text, motif_text = (
         await asyncio.gather(
-            gather_canon(canon_repo, req.user_id, req.project_id, story_order),
+            gather_canon(canon_repo, req.project_id, story_order),
             gather_present(glossary, knowledge, book_id=req.book_id, user_id=req.user_id,
                            project_id=req.project_id, bearer=req.bearer, query=query,
                            present_entity_ids=present_ids, language=reader_lang),
             gather_timeline(knowledge, req.bearer, req.project_id, at_order, after_order=timeline_after),
-            gather_structural(outline_repo, scene_links_repo, user_id=req.user_id,
+            gather_structural(outline_repo, scene_links_repo,
                               project_id=req.project_id, node=node),
             gather_recent(book, req.book_id, chapter_id, req.bearer,
-                          jobs_repo=jobs_repo, user_id=req.user_id, project_id=req.project_id,
+                          jobs_repo=jobs_repo, project_id=req.project_id,
                           story_order=story_order) if chapter_id else _empty_list(),
             gather_lore(knowledge, req.bearer, req.project_id, query, language=reader_lang),
-            gather_open_promises(narrative_threads_repo, req.user_id, req.project_id,
+            gather_open_promises(narrative_threads_repo, req.project_id,
                                  cap=settings.pack_open_promises_cap) if nt_enabled else _empty_list(),
             gather_references(references_repo, embedding_client, user_id=req.user_id,
                               project_id=req.project_id, query=query, model=ref_model),
+            arc_gated,
+            motif_gated,
         )
     )
 
@@ -431,7 +500,7 @@ async def pack(
     # through the budget (protected in build_segments below).
     grounding_items, canon, present, lore_kept, references_kept, pinned_lore_ids, pinned_reference_ids = (
         await _apply_grounding_pins(
-            grounding_pins_repo, req.user_id, req.project_id, node.get("id"),
+            grounding_pins_repo, req.project_id, node.get("id"),
             canon=canon, present=present, lore_hits=l4.kept, references=references,
         )
     )
@@ -480,6 +549,27 @@ async def pack(
                                    pinned_reference_ids=pinned_reference_ids)
     bres = B.enforce_budget(segs, budget_tokens, counter or B.default_counter())
     blocks = assemble.segments_to_blocks(bres.kept)
+    prompt = assemble.render(blocks)
+
+    # 23 BA12 — inject the ARC frame as a protected structural header, FIRST (it
+    # frames every other block: "this scene is ~60% through arc 'Betrayal'…"). It
+    # rides OUTSIDE the budget like the block delimiters themselves — a compact,
+    # high-value steer (chain/tracks/pacing/cast + a capped promise rollup), same
+    # protected posture as canon/present/beat. `render()` only knows _BLOCK_ORDER,
+    # so the <arc> frame is composed here rather than in assemble.py. Empty (the
+    # gate: no structure_repo / no structure_node_id / a deleted arc) → byte-unchanged.
+    # X-7 / BE-M2 — the MOTIF frame, injected IMMEDIATELY AFTER <arc> (so the prompt reads
+    # <arc> → <motif> → the rest). The arc is the durable CHAPTER-level spec frame; the
+    # motif is the SCENE-level beat structure inside it. Like <arc> it is composed here,
+    # not via assemble.py's _BLOCK_ORDER ("arc" is deliberately absent from assemble.py:25),
+    # and it rides OUTSIDE enforce_budget — which is why gather_motif caps it. Empty (the
+    # gate: repos unwired / no binding / an archived motif) → byte-unchanged.
+    if motif_text:
+        blocks["motif"] = motif_text
+        prompt = f"<motif>\n{motif_text}\n</motif>" + (f"\n{prompt}" if prompt else "")
+    if arc_text:
+        blocks["arc"] = arc_text
+        prompt = f"<arc>\n{arc_text}\n</arc>" + (f"\n{prompt}" if prompt else "")
 
     warnings: list[str] = []
     if not bundle.knowledge_seen:
@@ -490,7 +580,7 @@ async def pack(
         warnings.append("over_budget: protected context exceeds the token target")
 
     return PackedContext(
-        blocks=blocks, prompt=assemble.render(blocks), profile=profile,
+        blocks=blocks, prompt=prompt, profile=profile,
         token_count=bres.total_tokens, dropped_count=bres.dropped_count,
         l4_dropped_no_position=l4.dropped_no_position,
         grounding_available=bundle.knowledge_seen, over_budget=bres.over_budget,
@@ -554,6 +644,12 @@ async def _empty_list() -> list[Any]:
     return []
 
 
+async def _empty_str() -> str:
+    """gather() placeholder for the 23 BA12 arc lens when it is dormant (no
+    structure_repo wired / the scene's chapter carries no structure_node_id)."""
+    return ""
+
+
 _GROUNDING_LABEL_MAX = 160
 
 
@@ -565,7 +661,7 @@ def _trim_label(text: str) -> str:
 
 
 async def _apply_grounding_pins(
-    repo, user_id: UUID, project_id: UUID, node_id: Any, *,
+    repo, project_id: UUID, node_id: Any, *,
     canon: list[Any], present: list[dict[str, Any]], lore_hits: list[dict[str, Any]],
     references: list[dict[str, Any]] | None = None,
 ) -> tuple[list[dict[str, Any]], list[Any], list[dict[str, Any]], list[dict[str, Any]], list[dict[str, Any]], set[str], set[str]]:
@@ -579,7 +675,7 @@ async def _apply_grounding_pins(
     if repo is None or node_uuid is None:
         return [], canon, present, lore_hits, references, set(), set()
     try:
-        rows = await repo.list_for_scene(user_id, project_id, node_uuid)
+        rows = await repo.list_for_scene(project_id, node_uuid)
     except Exception:  # noqa: BLE001 — steering is advisory; never fail a pack
         logger.warning("grounding pins read failed", exc_info=True)
         return [], canon, present, lore_hits, references, set(), set()

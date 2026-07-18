@@ -290,14 +290,16 @@ async def test_clone_invisible_source_raises_lookup():
 
 # ── catalog allow-list (B-3 analogue: no embedding / no raw source_ref leak) ───────
 async def test_catalog_projection_is_allow_list_no_leak():
-    cols = ArcTemplateRepo._CATALOG_COLS
-    assert "embedding" not in cols
-    assert "source_ref" not in cols          # raw lineage id never leaves on the catalog
-    assert "layout" not in cols              # heavy placement detail is a get_visible away
-    assert "arc_roster" not in cols
-    # the at-a-glance fields ARE present.
+    # The effective RESULT key of each projected column (25 M5.2: the track skeleton is now the
+    # `tracks` column aliased back to the `threads` result key — the API name is unchanged).
+    keys = {c.split(" AS ")[-1].strip() for c in ArcTemplateRepo._CATALOG_COLS}
+    assert "embedding" not in keys
+    assert "source_ref" not in keys          # raw lineage id never leaves on the catalog
+    assert "layout" not in keys              # heavy placement detail is a get_visible away
+    assert "arc_roster" not in keys and "roster" not in keys
+    # the at-a-glance fields ARE present (threads = the aliased tracks column).
     for c in ("id", "code", "name", "summary", "genre_tags", "chapter_span", "threads"):
-        assert c in cols
+        assert c in keys
 
 
 async def test_list_public_filters_public_active_and_returns_total():

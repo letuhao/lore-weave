@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>LoreWeave — KG Triage Queue (studio dock panel, draft)</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  /* ══════════════════════════════════════════════════════════════════════
+     KG TRIAGE (`kg-triage`) — category `storyBible`
+     Spec: docs/specs/2026-07-17-studio-completeness-build/S-05_fact-authoring-and-triage.md (Part B)
+
+     WHY THIS EXISTS
+     Extraction parks every element that didn't match the resolved schema in a
+     triage queue. kg_propose_edge writes INTO it. The backend is COMPLETE and
+     PUBLIC (routers/public/triage.py, mounted main.py:784) — but the FE api
+     functions (ontologyApi.listTriage / resolveTriage / dismissTriageItem)
+     have ZERO callers. The agent fills an inbox no human can open. This panel
+     opens it. Pure FE wire-up over existing routes.
+
+     THE ONE LOAD-BEARING UX RULE (S-05 §B.2):
+     each item carries `suggested_actions` (a SUBSET of the TriageAction enum
+     the backend will accept for THIS item_type). Render ONLY those as buttons.
+     Never offer an action the router would 400 — Frontend-Tool-Contract
+     discipline applied to a human surface.
+
+     TriageAction closed set: map · add_to_vocab · add_to_schema · re_target ·
+       widen_target_kinds · drop_edge · close_previous · set_multi_active ·
+       promote_to_glossary_kind · demote_to_attribute · dismiss
+     ────────────────────────────────────────────────────────────────────── */
+  :root {
+    --bg:#0f1115; --panel:#161a21; --panel-2:#1c2129; --border:#262c36;
+    --text:#e6e9ee; --muted:#8b93a1; --primary:#6ea8fe; --primary-dim:#2b3a55;
+    --ok:#56d364; --warning:#e8a832; --destructive:#d9584f; --evi:#1a2530;
+  }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--text); font:13px/1.5 Inter, sans-serif; }
+  .panel { display:flex; flex-direction:column; height:100vh; background:var(--panel); }
+  .titlebar { display:flex; align-items:center; gap:8px; padding:8px 12px; border-bottom:1px solid var(--border); font-size:11px; }
+  .titlebar .spacer { flex:1; }
+  .pill { font:600 10px 'JetBrains Mono'; background:#2a2320; color:var(--warning); padding:2px 8px; border-radius:999px; }
+  .body { flex:1; overflow-y:auto; padding:8px 12px; }
+  .group-label { display:flex; align-items:center; gap:8px; margin:12px 0 6px; font-size:10px; text-transform:uppercase; letter-spacing:.08em; color:var(--muted); }
+  .group-label .n { font-family:'JetBrains Mono'; }
+  .item { border:1px solid var(--border); border-radius:9px; background:var(--panel-2); margin-bottom:8px; overflow:hidden; }
+  .item-top { display:flex; align-items:baseline; gap:8px; padding:9px 11px 4px; }
+  .item-top .subj { font-weight:600; }
+  .item-top .pred { font:500 11px 'JetBrains Mono'; color:var(--primary); }
+  .item-top .obj { font-weight:600; }
+  .item-top .kind { margin-left:auto; font:500 10px 'JetBrains Mono'; color:var(--muted); }
+  .evidence { margin:2px 11px 8px; padding:6px 9px; background:var(--evi); border-left:2px solid var(--primary-dim); border-radius:5px; font-size:11px; color:#b9c2cf; }
+  .evidence .src { color:var(--muted); font:500 10px 'JetBrains Mono'; }
+  .actions { display:flex; flex-wrap:wrap; gap:6px; padding:0 11px 10px; }
+  .a { font:500 11px Inter; padding:4px 10px; border-radius:6px; border:1px solid var(--border); background:var(--bg); color:var(--text); cursor:pointer; }
+  .a.suggested { border-color:var(--primary); color:var(--primary); background:var(--primary-dim); }
+  .a.dismiss { margin-left:auto; color:var(--muted); }
+  .empty { text-align:center; color:var(--muted); padding:48px 20px; }
+  .empty .big { font-size:15px; color:var(--text); margin-bottom:6px; }
+</style>
+</head>
+<body>
+<div class="panel">
+  <div class="titlebar">
+    <strong>Triage</strong>
+    <span style="color:var(--muted)">— extracted elements that didn't fit the schema</span>
+    <span class="spacer"></span>
+    <span class="pill">7 to review</span>
+  </div>
+
+  <div class="body">
+    <!-- ── GROUP: unknown edge-type ── -->
+    <div class="group-label">Unknown relationship type <span class="n">(3)</span></div>
+
+    <div class="item">
+      <div class="item-top">
+        <span class="subj">Kai</span><span class="pred">betrayed_by</span><span class="obj">Master Lin</span>
+        <span class="kind">edge · unknown_type</span>
+      </div>
+      <div class="evidence">“…when Lin turned him over to the sect elders, Kai finally understood the betrayal.” <span class="src">— ch.12</span></div>
+      <!-- ONLY the item's suggested_actions render (S-05 §B.2). This edge item permits: -->
+      <div class="actions">
+        <button class="a suggested">Add “betrayed_by” to schema</button>
+        <button class="a">Re-target</button>
+        <button class="a">Drop edge</button>
+        <button class="a dismiss">Dismiss</button>
+      </div>
+    </div>
+
+    <div class="item">
+      <div class="item-top">
+        <span class="subj">青云门</span><span class="pred">rivals</span><span class="obj">幽冥谷</span>
+        <span class="kind">edge · unknown_type</span>
+      </div>
+      <div class="evidence">“The two sects had been rivals for a hundred years.” <span class="src">— ch.3</span></div>
+      <div class="actions">
+        <button class="a suggested">Map to “borders”</button>
+        <button class="a suggested">Add “rivals” to schema</button>
+        <button class="a">Drop edge</button>
+        <button class="a dismiss">Dismiss</button>
+      </div>
+    </div>
+
+    <!-- ── GROUP: off-schema node-kind ── -->
+    <div class="group-label">Unknown entity kind <span class="n">(2)</span></div>
+
+    <div class="item">
+      <div class="item-top">
+        <span class="subj">The Nine Heavens Sword</span>
+        <span class="kind">node · unknown_kind “artifact”</span>
+      </div>
+      <div class="evidence">“He drew the Nine Heavens Sword, an artifact of the ancient era.” <span class="src">— ch.9</span></div>
+      <!-- a node item permits a DIFFERENT action subset -->
+      <div class="actions">
+        <button class="a suggested">Promote “artifact” to a glossary kind</button>
+        <button class="a">Add to vocab</button>
+        <button class="a">Demote to attribute</button>
+        <button class="a dismiss">Dismiss</button>
+      </div>
+    </div>
+
+    <!-- ── GROUP: multi-active conflict ── -->
+    <div class="group-label">Conflicting current state <span class="n">(2)</span></div>
+
+    <div class="item">
+      <div class="item-top">
+        <span class="subj">Kai</span><span class="pred">location =</span><span class="obj">青云门 · 幽冥谷</span>
+        <span class="kind">2 active values</span>
+      </div>
+      <div class="evidence">Two “current location” facts are both marked active — one must close the other.</div>
+      <div class="actions">
+        <button class="a suggested">Close previous (幽冥谷)</button>
+        <button class="a">Allow multiple (set_multi_active)</button>
+        <button class="a dismiss">Dismiss</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!--
+  EMPTY STATE (the healthy default most of the time):
+    <div class="empty">
+      <div class="big">Nothing to triage 🎉</div>
+      Extraction found nothing that didn't fit your schema.
+      New off-schema elements will appear here for review.
+    </div>
+
+  DEEP-LINKS IN (S-05 §B.2): the empty-graph state and the KG panels show
+  "N items need triage →" pointing here. A Lane-B triageEffects handler
+  refreshes the list when an AGENT resolves an item (agent parity).
+-->
+</body>
+</html>

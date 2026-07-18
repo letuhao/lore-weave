@@ -25,25 +25,28 @@ import (
 
 // RegisterBookTools adds every book-tier tool to the user/book MCP server.
 func (s *Server) RegisterBookTools(srv *mcp.Server) {
-	mcp.AddTool(srv, &mcp.Tool{
+	lwmcp.RegisterTool(srv, &mcp.Tool{
 		Name: "glossary_book_ontology_read",
 		Description: "Read a BOOK's local ontology: its adopted/native genres, kinds, attribute " +
 			"definitions, and kind↔genre links. This is what entities in the book are described by. " +
 			"Use before proposing entities or shaping the book's schema. Every genre/kind/attribute " +
 			"row carries a `base_version` — copy it verbatim into glossary_book_patch to get " +
 			"concurrent-edit detection.",
+		Meta: lwmcp.NewToolMeta(lwmcp.TierR, lwmcp.ScopeBook, nil, nil),
 	}, s.toolBookOntologyRead)
 
-	mcp.AddTool(srv, &mcp.Tool{
+	lwmcp.RegisterTool(srv, &mcp.Tool{
 		Name: "glossary_adopt_standards",
 		Description: "Propose ADOPTING System standards into a book — scaffolds the book's ontology by " +
 			"copying the picked genres/kinds (+ their attributes & links) down into the book tier. " +
 			"High-impact: it does NOT adopt; it returns a confirm_token + a preview of how many are new, " +
 			"which a human confirms via glossary_confirm_action. `universal` genre + `unknown` kind are " +
 			"always included. Args are genre/kind CODES (see glossary_list_system_standards).",
+		// Mints a grant confirm_token (no direct write) ⇒ Tier W.
+		Meta: lwmcp.NewToolMeta(lwmcp.TierW, lwmcp.ScopeBook, nil, nil),
 	}, s.toolAdoptStandards)
 
-	mcp.AddTool(srv, &mcp.Tool{
+	lwmcp.RegisterTool(srv, &mcp.Tool{
 		Name: "glossary_book_create",
 		Description: "Create a book-native genre, kind, or attribute (additive, takes effect immediately). " +
 			"level=genre|kind|attribute + code + name (+ for attribute: kind_code & genre_code). Use " +
@@ -55,7 +58,7 @@ func (s *Server) RegisterBookTools(srv *mcp.Server) {
 		Meta: lwmcp.WithVisibility(lwmcp.NewToolMeta(lwmcp.TierA, lwmcp.ScopeBook, nil, nil), lwmcp.VisibilityLegacy),
 	}, s.toolBookCreate)
 
-	mcp.AddTool(srv, &mcp.Tool{
+	lwmcp.RegisterTool(srv, &mcp.Tool{
 		Name: "glossary_book_patch",
 		Description: "Edit a book genre/kind/attribute in place. level + code identify the row; pass the " +
 			"row's `base_version` EXACTLY as returned by glossary_book_ontology_read (or by a prior " +
@@ -71,7 +74,7 @@ func (s *Server) RegisterBookTools(srv *mcp.Server) {
 		Meta: lwmcp.WithVisibility(lwmcp.NewToolMeta(lwmcp.TierA, lwmcp.ScopeBook, nil, nil), lwmcp.VisibilityLegacy),
 	}, s.toolBookPatch)
 
-	mcp.AddTool(srv, &mcp.Tool{
+	lwmcp.RegisterTool(srv, &mcp.Tool{
 		Name: "glossary_book_delete",
 		Description: "Propose DELETING a book's genre, kind, or attribute (soft-delete with cascade). " +
 			"High-impact and destructive — it does NOT delete; it returns a confirm_token + a preview of " +
@@ -82,7 +85,7 @@ func (s *Server) RegisterBookTools(srv *mcp.Server) {
 		Meta:        lwmcp.WithVisibility(lwmcp.NewToolMeta(lwmcp.TierW, lwmcp.ScopeBook, nil, nil), lwmcp.VisibilityLegacy),
 	}, s.toolBookDelete)
 
-	mcp.AddTool(srv, &mcp.Tool{
+	lwmcp.RegisterTool(srv, &mcp.Tool{
 		Name: "glossary_book_revert",
 		Description: "Propose REVERTING a book genre/kind/attribute back to the System/User standard it was " +
 			"adopted from — discards the book's local edits to this row and re-pulls the parent's CURRENT values. " +
@@ -90,30 +93,38 @@ func (s *Server) RegisterBookTools(srv *mcp.Server) {
 			"confirms via glossary_confirm_action. Only works on adopted rows (not book-native ones). Address by " +
 			"code: level=genre|kind|attribute + code (for attribute also kind_code + genre_code).",
 		InputSchema: closedSetSchemaFor[bookRevertToolIn](map[string][]any{"level": enumLevels}),
+		// Mints a grant confirm_token (no direct write) ⇒ Tier W.
+		Meta: lwmcp.NewToolMeta(lwmcp.TierW, lwmcp.ScopeBook, nil, nil),
 	}, s.toolBookRevert)
 
-	mcp.AddTool(srv, &mcp.Tool{
+	lwmcp.RegisterTool(srv, &mcp.Tool{
 		Name: "glossary_book_set_active_genres",
 		Description: "Turn book genres on/off as active matrix columns by DELTA — `add` and/or `remove` " +
 			"lists of genre codes. (Delta, not replace, so you never silently drop a column you didn't mention.)",
+		// Direct, reversible delta write (INSERT/DELETE active-genre rows) ⇒ Tier A.
+		Meta: lwmcp.NewToolMeta(lwmcp.TierA, lwmcp.ScopeBook, nil, nil),
 	}, s.toolBookSetActiveGenres)
 
-	mcp.AddTool(srv, &mcp.Tool{
+	lwmcp.RegisterTool(srv, &mcp.Tool{
 		Name: "glossary_book_set_kind_genres",
 		Description: "Wire a kind's genre links (matrix row) by DELTA — kind_code + `add`/`remove` lists " +
 			"of genre codes. Adds or removes which genres' attributes apply to that kind.",
+		Meta: lwmcp.NewToolMeta(lwmcp.TierA, lwmcp.ScopeBook, nil, nil),
 	}, s.toolBookSetKindGenres)
 
-	mcp.AddTool(srv, &mcp.Tool{
+	lwmcp.RegisterTool(srv, &mcp.Tool{
 		Name: "glossary_entity_get_genres",
 		Description: "Read one entity's genre override (which genres' attributes apply to it). Empty ⇒ the " +
 			"entity follows the book's active genres.",
+		Meta: lwmcp.NewToolMeta(lwmcp.TierR, lwmcp.ScopeBook, nil, nil),
 	}, s.toolEntityGetGenres)
 
-	mcp.AddTool(srv, &mcp.Tool{
+	lwmcp.RegisterTool(srv, &mcp.Tool{
 		Name: "glossary_entity_set_genres",
 		Description: "Set one entity's genre override by CODE list (replaces the override; `universal` is " +
 			"always included; an empty list clears back to the book default). Every code must be a live book genre.",
+		// Direct, reversible write (replaces the entity's genre override) ⇒ Tier A.
+		Meta: lwmcp.NewToolMeta(lwmcp.TierA, lwmcp.ScopeBook, nil, nil),
 	}, s.toolEntitySetGenres)
 }
 
@@ -141,11 +152,20 @@ func (s *Server) toolAdoptStandards(ctx context.Context, _ *mcp.CallToolRequest,
 		return nil, confirmCardOut{}, errors.New("failed to preview the adopt")
 	}
 	rows := []previewRow{
-		{Label: "genres newly adopted", Value: fmt.Sprint(newGenres), Note: "+ universal (always)"},
-		{Label: "kinds newly adopted", Value: fmt.Sprint(newKinds), Note: "+ unknown (always)"},
+		{Label: "Story genres to add", Value: fmt.Sprint(newGenres), Note: "plus the always-on baseline"},
+		{Label: "Lore categories to add", Value: fmt.Sprint(newKinds), Note: "plus the always-on baseline"},
 	}
-	return s.mintGrantActionCard(userID, bookID, descAdopt, "Adopt standards into this book",
+	res, out, err := s.mintGrantActionCard(userID, bookID, descAdopt, "Set up your book's world",
 		adoptParams{Genres: in.Genres, Kinds: in.Kinds}, rows, false)
+	// External MCP discoverability audit #11 — a call with no real target (no genres/kinds
+	// specified) mints a valid-looking, confirmable token whose preview counts are already
+	// honest (they'll read 0 new beyond the always-included universal/unknown), but a caller
+	// that doesn't inspect the preview closely could confirm it and believe something happened.
+	// Flag it explicitly instead of relying on the caller to notice.
+	if err == nil && len(in.Genres) == 0 && len(in.Kinds) == 0 {
+		out.Warning = "no genres or kinds specified — this will adopt nothing new"
+	}
+	return res, out, err
 }
 
 // ── create (W) ────────────────────────────────────────────────────────────────
@@ -160,6 +180,7 @@ type bookCreateToolIn struct {
 	Color           string   `json:"color,omitempty"`
 	SortOrder       int      `json:"sort_order,omitempty"`
 	IsHidden        bool     `json:"is_hidden,omitempty" jsonschema:"kind only"`
+	IsPerson        bool     `json:"is_person,omitempty" jsonschema:"kind only: mark this kind a REAL person (colleague/self/client) — excludes its entities from AI wiki-gen + enrichment"`
 	KindCode        string   `json:"kind_code,omitempty" jsonschema:"attribute only: the kind it belongs to"`
 	GenreCode       string   `json:"genre_code,omitempty" jsonschema:"attribute only: the genre cell (e.g. universal)"`
 	FieldType       string   `json:"field_type,omitempty" jsonschema:"attribute only: text|textarea|select|number|date|tags|url|boolean — omit this argument for the default; do not send an empty string"`
@@ -191,7 +212,7 @@ func (s *Server) toolBookCreate(ctx context.Context, _ *mcp.CallToolRequest, in 
 		}
 		return nil, bookWriteOut{Level: bookLevelGenre, ID: g.GenreID, Code: g.Code, Version: g.BaseVersion, Status: "created"}, nil
 	case bookLevelKind:
-		k, err := s.createBookKindCore(ctx, bookID, bookKindCreateParams{Code: in.Code, Name: in.Name, Description: desc, Icon: in.Icon, Color: in.Color, SortOrder: in.SortOrder, IsHidden: in.IsHidden})
+		k, err := s.createBookKindCore(ctx, bookID, bookKindCreateParams{Code: in.Code, Name: in.Name, Description: desc, Icon: in.Icon, Color: in.Color, SortOrder: in.SortOrder, IsHidden: in.IsHidden, IsPerson: in.IsPerson})
 		if err != nil {
 			return nil, bookWriteOut{}, bookCreateToolErr(err, firstNonEmpty(strings.TrimSpace(in.Code), strings.TrimSpace(in.Name)))
 		}
@@ -250,6 +271,7 @@ type bookPatchToolIn struct {
 	Color           *string   `json:"color,omitempty"`
 	SortOrder       *int      `json:"sort_order,omitempty"`
 	IsHidden        *bool     `json:"is_hidden,omitempty" jsonschema:"kind only"`
+	IsPerson        *bool     `json:"is_person,omitempty" jsonschema:"kind only: mark/unmark this kind a REAL person (excludes its entities from AI wiki-gen + enrichment)"`
 	FieldType       *string   `json:"field_type,omitempty" jsonschema:"attribute only — omit this argument to leave it unchanged; do not send an empty string"`
 	IsRequired      *bool     `json:"is_required,omitempty" jsonschema:"attribute only"`
 	Options         *[]string `json:"options,omitempty" jsonschema:"attribute only"`
@@ -429,6 +451,24 @@ func (s *Server) resolveBookPatch(ctx context.Context, bookID uuid.UUID, level s
 		}
 		if in.IsHidden != nil {
 			add("is_hidden", *in.IsHidden)
+		}
+		if in.IsPerson != nil {
+			// MED-2 (C4 cold-review) — PP-4 protects the THIRD PARTY, not the owner's preference. Do
+			// NOT let an owner CLEAR is_person on a SYSTEM-adopted person kind (the seeded 'colleague')
+			// and thereby re-enable AI biographies of real, non-consenting people. Custom (user-authored)
+			// book kinds stay fully togglable both ways.
+			if !*in.IsPerson {
+				var srcRef *string
+				var curPerson bool
+				if qerr := s.pool.QueryRow(ctx,
+					`SELECT source_ref, is_person FROM book_kinds WHERE book_id=$1 AND book_kind_id=$2`,
+					bookID, id).Scan(&srcRef, &curPerson); qerr == nil &&
+					curPerson && srcRef != nil && strings.HasPrefix(*srcRef, "system:") {
+					err = errCannotClearSystemPersonFlag
+					return
+				}
+			}
+			add("is_person", *in.IsPerson)
 		}
 	case bookLevelAttr:
 		id, err = s.resolveBookAttrID(ctx, bookID, strings.TrimSpace(in.KindCode), strings.TrimSpace(in.GenreCode), code)

@@ -18,13 +18,25 @@ interface Props {
   onSelfCheck: () => void;
   onValidate: () => void;
   onCompile: (arcId: string) => void;
+  /** PS-9 — open one artifact read-only in the json-editor (fed by BE-3). */
+  onOpenArtifact: (artifactId: string) => void;
+  // ⑨ Repair strip — appears ONLY when self-check found gaps (recovery tools are meaningless
+  // without a diagnosis; an always-on row of three paid buttons is a leaky abstraction).
+  repairOutput: string | null;
+  canRepair: boolean; // a chat model is chosen and nothing is in flight
+  onExplain: () => void;
+  onApplyFix: () => void;
+  onAutofix: () => void;
 }
 
 export function PlanRunView({
   run, polling, busy, selfCheck, validation, compileResult,
-  onSelfCheck, onValidate, onCompile,
+  onSelfCheck, onValidate, onCompile, onOpenArtifact,
+  repairOutput, canRepair, onExplain, onApplyFix, onAutofix,
 }: Props) {
   const [pickedArcId, setPickedArcId] = useState('');
+  // PS-6 — a paid repair action confirms before spending; one confirm at a time.
+  const [pendingRepair, setPendingRepair] = useState<null | { label: string; run: () => void }>(null);
   // Derived default (same pattern as PlannerPanel's effectiveModelRef) — no
   // effect needed to "sync" the picker once arcs load, since this recomputes
   // on every render from the current props instead of chasing a prop change.
@@ -50,9 +62,17 @@ export function PlanRunView({
           <p className="mb-1 text-[10px] uppercase text-muted-foreground">Artifacts</p>
           <ul className="space-y-0.5">
             {run.artifacts.map((a) => (
-              <li key={a.artifact_id} className="flex justify-between gap-2 rounded bg-muted/40 px-2 py-0.5">
-                <span>{a.kind}</span>
-                <span className="font-mono text-[10px] text-muted-foreground/60">{a.artifact_id.slice(0, 8)}</span>
+              <li key={a.artifact_id}>
+                {/* PS-9 — each row opens the artifact read-only (was a dead <li> — the body of the
+                    plan the user paid an LLM to write was unreachable by any client). */}
+                <button
+                  type="button" data-testid={`plan-artifact-${a.kind}`}
+                  onClick={() => onOpenArtifact(a.artifact_id)}
+                  className="flex w-full items-center justify-between gap-2 rounded bg-muted/40 px-2 py-0.5 text-left hover:bg-muted"
+                >
+                  <span>{a.kind}</span>
+                  <span className="font-mono text-[10px] text-accent-foreground underline">open ↗</span>
+                </button>
               </li>
             ))}
           </ul>
@@ -86,6 +106,53 @@ export function PlanRunView({
                 </li>
               ))}
             </ul>
+          )}
+        </div>
+      )}
+
+      {/* ⑨ Repair strip — only when self-check surfaced gaps. All three actions are PAID. */}
+      {selfCheck && selfCheck.gaps.length > 0 && (
+        <div data-testid="plan-repair-strip" className="rounded border border-warning/40 bg-warning/5 p-2">
+          <p className="mb-1.5 text-[10px] uppercase text-warning">
+            Self-check found {selfCheck.gaps.length} gap(s) — repair
+          </p>
+          {pendingRepair ? (
+            <div data-testid="plan-repair-confirm" className="flex items-center gap-2 text-[11px]">
+              <span className="text-muted-foreground">{pendingRepair.label} · spends 1 LLM call</span>
+              <button
+                type="button" data-testid="plan-repair-confirm-btn"
+                onClick={() => { pendingRepair.run(); setPendingRepair(null); }}
+                className="ml-auto rounded bg-primary px-2 py-1 font-medium text-primary-foreground hover:brightness-110"
+              >Confirm</button>
+              <button type="button" onClick={() => setPendingRepair(null)}
+                className="rounded border border-border px-2 py-1 hover:bg-secondary">Cancel</button>
+            </div>
+          ) : (
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button" data-testid="plan-repair-explain" disabled={!canRepair}
+                onClick={() => setPendingRepair({ label: 'Explain what’s wrong', run: onExplain })}
+                className="rounded border border-border px-2 py-1 text-[11px] hover:bg-secondary disabled:opacity-40"
+              >Explain what’s wrong</button>
+              <button
+                type="button" data-testid="plan-repair-apply" disabled={!canRepair}
+                onClick={() => setPendingRepair({ label: 'Apply the suggested fix', run: onApplyFix })}
+                className="rounded border border-border px-2 py-1 text-[11px] hover:bg-secondary disabled:opacity-40"
+              >Apply the suggested fix</button>
+              <button
+                type="button" data-testid="plan-repair-autofix" disabled={!canRepair}
+                onClick={() => setPendingRepair({ label: 'Fix the top gaps automatically', run: onAutofix })}
+                className="rounded bg-primary px-2 py-1 text-[11px] font-medium text-primary-foreground hover:brightness-110 disabled:opacity-40"
+              >Fix the top gaps automatically</button>
+            </div>
+          )}
+          {repairOutput && (
+            <p data-testid="plan-repair-output" className="mt-1.5 rounded bg-muted/40 px-2 py-1 text-[10px] text-muted-foreground">
+              {repairOutput}
+            </p>
+          )}
+          {!canRepair && !pendingRepair && (
+            <p className="mt-1 text-[10px] text-muted-foreground/70">Choose a chat model above to enable repair.</p>
           )}
         </div>
       )}

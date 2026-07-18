@@ -23,6 +23,7 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Query
 from pydantic import BaseModel, Field, model_validator
 
 from app.client.provider_client import get_provider_client
+from app.config import settings
 from app.db.user_chat_ai_prefs import VersionConflict, get_prefs, patch_prefs
 from app.deps import get_current_user, get_db
 from app.services import settings_resolution as sr
@@ -31,6 +32,7 @@ logger = logging.getLogger(__name__)
 
 prefs_router = APIRouter(prefix="/v1/chat/ai-prefs", tags=["ai-settings"])
 effective_router = APIRouter(prefix="/v1/chat/effective-settings", tags=["ai-settings"])
+capabilities_router = APIRouter(prefix="/v1/chat/capabilities", tags=["ai-settings"])
 
 # System-tier defaults — the ONLY place a literal default lives (spec §3.3). These
 # surface today's silent behaviors as explicit, visible values.
@@ -42,17 +44,9 @@ _SYSTEM_VOICE: dict = {}
 # Account-tier model capabilities provider-registry's default-models route supports.
 _ACCOUNT_CAPS = ("chat", "planner", "embedding", "rerank")
 
-# Closed-set values for the fields that flow to the turn (Frontend-Tool Contract
-# enum discipline, spec §8.1). A patch is a field-merge, so we validate only the
-# keys we know are enums — an out-of-set value is a 422, never silently stored
-# (a bad context.mode would else be treated as 'auto', a silent no-op).
-_ENUMS: dict[str, dict[str, set[str]]] = {
-    "behavior": {
-        "permission_mode": {"ask", "write", "plan"},
-        "reasoning_effort": {"off", "low", "medium", "high"},
-    },
-    "context": {"mode": {"auto", "on", "off"}},
-}
+# Closed-set values (spec §8.1) now live in the shared resolution module: the SESSION
+# row is a SECOND write door onto the same settings, and an enum registry private to
+# this router could not defend it. See `settings_resolution.SETTING_ENUMS`.
 
 
 # ── ai-prefs CRUD ────────────────────────────────────────────────────────────
@@ -61,6 +55,7 @@ class AiPrefsResponse(BaseModel):
     grounding: dict = Field(default_factory=dict)
     voice: dict = Field(default_factory=dict)
     context: dict = Field(default_factory=dict)
+    assistant: dict = Field(default_factory=dict)  # WS-5.4 — coaching_enabled
     version: int = 0
 
 
@@ -71,17 +66,33 @@ class AiPrefsPatch(BaseModel):
     grounding: dict | None = None
     voice: dict | None = None
     context: dict | None = None
+    assistant: dict | None = None  # WS-5.4 — {coaching_enabled: bool}
 
     @model_validator(mode="after")
     def _check_enums(self) -> "AiPrefsPatch":
-        for cat, fields in _ENUMS.items():
-            blob = getattr(self, cat) or {}
-            for field, allowed in fields.items():
-                val = blob.get(field)
-                if val is not None and val not in allowed:
-                    raise ValueError(
-                        f"{cat}.{field} must be one of {sorted(allowed)}, got {val!r}"
-                    )
+        for cat in sr.SETTING_ENUMS:
+            sr.validate_setting_enums(cat, getattr(self, cat))
+        # WS-5.4 — coaching_enabled is a strict bool (a spend/judgement-causing toggle;
+        # a value-shaped junk here must 422 at the door, not be read as truthy).
+        if self.assistant and "coaching_enabled" in self.assistant:
+            v = self.assistant["coaching_enabled"]
+            if v is not None and not isinstance(v, bool):
+                raise ValueError(f"assistant.coaching_enabled must be a boolean, got {v!r}")
+        # C7 (SD-C7) — proactive_enabled: a spend/INTERRUPTION-causing opt-in (default OFF, fail-closed).
+        # Strict bool at the door (same discipline as coaching_enabled — a junk value must 422, not be
+        # read as truthy and start pinging the user).
+        if self.assistant and "proactive_enabled" in self.assistant:
+            v = self.assistant["proactive_enabled"]
+            if v is not None and not isinstance(v, bool):
+                raise ValueError(f"assistant.proactive_enabled must be a boolean, got {v!r}")
+        # Voice source fields nest inside the voice blob (flat SETTING_ENUMS can't
+        # reach them). Normalize legacy 'ai_model' → 'user_model' so the STORE
+        # converges to one vocabulary, and reject a genuinely unknown source
+        # (D-CHATAI-VOICE-TWO-STORES).
+        self.voice = sr.normalize_voice_sources(self.voice)
+        # WS-4.3 — the per-user audio-retention setting is bounded by the deploy ceiling.
+        from app.config import settings as _settings
+        sr.validate_audio_retention(self.voice, _settings.audio_ttl_hours)
         return self
 
 
@@ -93,7 +104,7 @@ async def read_ai_prefs(
     p = await get_prefs(pool, owner_user_id=user_id)
     return AiPrefsResponse(
         behavior=p.behavior, grounding=p.grounding, voice=p.voice,
-        context=p.context, version=p.version,
+        context=p.context, assistant=p.assistant, version=p.version,
     )
 
 
@@ -116,7 +127,7 @@ async def update_ai_prefs(
             raise HTTPException(status_code=412, detail=str(exc))
     return AiPrefsResponse(
         behavior=p.behavior, grounding=p.grounding, voice=p.voice,
-        context=p.context, version=p.version,
+        context=p.context, assistant=p.assistant, version=p.version,
     )
 
 
@@ -243,4 +254,30 @@ async def read_effective_settings(
         "grounding": _cat("grounding", _SYSTEM_GROUNDING),
         "voice": _cat("voice", _SYSTEM_VOICE),
         "context": _cat("context", _SYSTEM_CONTEXT),
+    }
+
+
+# ── deploy capability ceilings ───────────────────────────────────────────────
+# D-WS4C-EFFECTIVE-VALUE. A capability like canon auto-capture is `effective =
+# AND(deploy_allows, user_enables)` (Settings & Config Boundary: env is a CEILING,
+# never a per-user knob). The two halves live in different services — the ceiling
+# is chat-service env (`settings.canon_capture_enabled`), the user knob is
+# `knowledge_projects.canon_capture_enabled` — so the join can only be computed
+# where the ceiling is visible. This route publishes the deploy-tier ceiling so a
+# consumer that already holds the user knob (the knowledge project settings modal)
+# can render the HONEST effective value + source, instead of the toggle silently
+# doing nothing when a deployment kill-switches capture off (the "silently-off" bug
+# class the boundary rule exists to prevent). `source_tier` uses the shared cascade
+# vocabulary (TIER_SYSTEM) so a ceiling reads the same as any other system default.
+@capabilities_router.get("")
+async def read_capabilities(
+    user_id: str = Depends(get_current_user),
+) -> dict:
+    """Deploy-tier capability ceilings. A consumer ANDs `deploy_allows` with its own
+    user/project opt-in to get the effective value: `effective = AND(ceiling, knob)`."""
+    return {
+        "canon_capture": {
+            "deploy_allows": settings.canon_capture_enabled,
+            "source_tier": sr.TIER_SYSTEM,
+        },
     }

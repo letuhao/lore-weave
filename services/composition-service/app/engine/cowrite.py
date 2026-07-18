@@ -245,6 +245,7 @@ async def stream_draft(
     est_out = 0
     capped = False
     finish_reason: str | None = None
+    error: str | None = None
     try:
         async for ev in sdk.stream(req, user_id=user_id):
             if isinstance(ev, TokenEvent):
@@ -267,7 +268,8 @@ async def stream_draft(
                 finish_reason = ev.finish_reason
     except LLMError as exc:
         logger.warning("stream_draft LLM error: %s", exc)
-        yield {"type": "error", "error": str(exc)}
+        error = str(exc)
+        yield {"type": "error", "error": error}
 
     text = "".join(parts)
     # Gate OUTPUT metering on a non-zero output frame specifically: an absent OR
@@ -281,4 +283,11 @@ async def stream_draft(
         measured=out_measured,
         finish_reason=finish_reason,
     )
-    yield {"type": "usage", "text": text, "metering": metering, "capped": capped}
+    # `error` rides the terminal frame so the router can distinguish a real failure
+    # (an LLMError with NO content — a resolve failure metered at 0 → the job is marked
+    # FAILED) from a clean finish. A mid-stream error AFTER partial content keeps `text`
+    # non-empty: the router keeps the partial work as `completed` but sets truncated=True
+    # and carries `error` (finish_reason is None on an error interruption, so the error is
+    # what marks it incomplete — the consumers OR it into `truncated`).
+    yield {"type": "usage", "text": text, "metering": metering, "capped": capped,
+           "error": error}

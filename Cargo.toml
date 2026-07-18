@@ -76,6 +76,10 @@ members = [
     # Q-L6-1 the gateway WS impl lives in NestJS api-gateway-bff; this
     # crate is server-LIB types only (no Rust WS server).
     "crates/contracts-ws",
+    # ACP A3 (2026-07-16) — typed Rust mirror of the Agent Control Plane contracts
+    # (working-memory/charter). roleplay-service produces its seed via these structs
+    # instead of hand-rolled JSON; a schema-conformance test proves both-sides agreement.
+    "crates/contracts-agent-control",
     # Cycle 14 — L3.D per-aggregate parallel rebuilder. Consumes
     # `dp-kernel::Projection` + `ProjectionRunner` (cycle 12) to replay events
     # from the L2.A event log into the cycle-13 projection tables. Used by
@@ -112,14 +116,14 @@ tokio = { version = "1.40", features = ["rt-multi-thread", "macros", "signal"] }
 reqwest = { version = "0.12", features = ["json", "rustls-tls", "stream"], default-features = false }
 
 # HTTP server (tilemap-service `serve` subcommand — POST /internal/v1/tilemaps/render)
-axum = "0.7"
+axum = "0.8"
 tower = "0.5"
-tower-http = { version = "0.6", features = ["timeout", "trace", "cors"] }
+tower-http = { version = "0.7", features = ["timeout", "trace", "cors"] }
 
 # Serialization
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
-toml = "0.8"
+toml = "1.1"
 
 # TMP-A4 deterministic seed
 blake3 = "1.5"
@@ -130,7 +134,7 @@ rand = "0.8"
 rand_chacha = "0.3"
 
 # Error handling
-thiserror = "1.0"
+thiserror = "2.0"
 anyhow = "1.0"
 
 # UUIDs (gateway StreamRequest.model_ref + user_id query param).

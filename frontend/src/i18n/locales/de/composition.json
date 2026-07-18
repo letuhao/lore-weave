@@ -171,7 +171,19 @@
     "kind_character": "Charaktere",
     "kind_location": "Orte",
     "kind_faction": "Fraktionen",
-    "kind_concept": "Konzepte"
+    "kind_concept": "Konzepte",
+    "rename": "Umbenennen",
+    "renameConflict": "Andernorts geändert – neu geladen.",
+    "editEntity": "Aliase & Typ bearbeiten",
+    "archive": "Entität archivieren",
+    "archiveConfirm": "«{{name}}» archivieren? Die Beziehungen und der Glossar-Anker bleiben erhalten; die Entität kehrt zurück, falls das Buch sie erneut erwähnt (es gibt keine Schaltfläche zum Wiederherstellen).",
+    "archived": "Archiviert – sie kehrt zurück, falls das Buch sie erneut erwähnt.",
+    "newEntity": "Neu",
+    "editFailed": "Bearbeiten fehlgeschlagen: {{error}}",
+    "truncated": "Die ersten 200 werden angezeigt – verfeinern Sie Ihre Suche, um die Liste einzugrenzen.",
+    "showingOf": "Es werden {{loaded}} von {{total}} angezeigt.",
+    "loadMore": "Mehr laden",
+    "loadingMore": "Wird geladen…"
   },
   "relmap": "Beziehungen",
   "relations": {
@@ -214,7 +226,10 @@
     "gone": "vergangen",
     "loading": "Charakterbogen wird geladen…",
     "noProject": "Noch kein Wissensgraph vorhanden – extrahiere dieses Buch, um Charakterbögen zu erstellen.",
-    "empty": "Dieser Charakter hat noch keine Ereignisse."
+    "empty": "Dieser Charakter hat noch keine Ereignisse.",
+    "edit": "Bearbeiten",
+    "linkEntity": "+ Entität verknüpfen",
+    "addEvent": "+ Ereignis hinzufügen"
   },
   "worldmap": "Weltkarte",
   "wmap": {
@@ -236,7 +251,10 @@
     "loading": "Weltkarte wird geladen…",
     "addFailed": "Ort konnte nicht hinzugefügt werden.",
     "linkFailed": "Orte konnten nicht verknüpft werden.",
-    "linkMissing": "Einer dieser Orte existiert nicht mehr."
+    "linkMissing": "Einer dieser Orte existiert nicht mehr.",
+    "delete": "{{name}} entfernen",
+    "deleteConfirm": "„{{name}}“ von der Weltkarte entfernen? Dadurch wird der Ort archiviert.",
+    "deleteFailed": "Der Ort konnte nicht entfernt werden."
   },
   "grounding": "Fundierung",
   "canon": "Kanon",
@@ -366,6 +384,9 @@
   "statDiverge": "Diverge (K-Optionen)",
   "statStream": "Stream",
   "guidePlaceholder": "Optionale Anleitung für den Co-Autor…",
+  "correction": {
+    "capturedToast": "Notiert – dein Co-Autor wird daraus lernen"
+  },
   "reasoning": "Begründung",
   "reasoningHint": "Auto = der Server entscheidet pro Modell. Aus deaktiviert das „Denken“; Niedrig/Mittel/Hoch erzwingt es.",
   "reasoningAuto": "Denken: auto",
@@ -407,7 +428,6 @@
   "pacing": "Tempo",
   "canon_consistency": "Kanon",
   "dismiss": "Verwerfen",
-  "overrideSlipBlocked": "Blockierte Akzeptanz: Eine Abweichung wurde wieder auf den Kanon-Wert gesetzt. Vor dem Akzeptieren erneut generieren.",
   "overrideSlipExhausted": "Abweichung besteht trotz Regenerations-Limit weiterhin – zur Überprüfung markiert (Akzeptieren ist nicht mehr blockiert).",
   "overrideSlipDetail": "{{name}} ({{field}}): erwartet „{{expected}}“, gefunden „{{found}}“",
   "deltaInconsistencyDetail": "{{name}}: widerspricht der Delta-Regel „{{rule}}“",
@@ -430,6 +450,12 @@
   "canonUntil": "Bis (Lesereihenfolge)",
   "canonActive": "aktiv",
   "canonInactive": "inaktiv",
+  "canonArchivedTag": "archiviert",
+  "canonShowArchived": "Archivierte anzeigen",
+  "canonRuleArchived": "Regel archiviert",
+  "canonRuleRestored": "Regel wiederhergestellt",
+  "restore": "Wiederherstellen",
+  "undo": "Rückgängig machen",
   "canonWindowInverted": "'Von' muss ≤ 'Bis' sein.",
   "archive": "Archiv",
   "noRules": "Noch keine Kanon-Regeln.",
@@ -611,12 +637,18 @@
     "scope": {
       "label": "Motiv-Umfang",
       "my": "Meine Bibliothek",
-      "catalog": "Öffentlicher Katalog"
+      "catalog": "Öffentlicher Katalog",
+      "book": "Buch",
+      "shared": "Geteilt",
+      "system": "System",
+      "drafts": "Entwürfe",
+      "needsBook": "Öffnen Sie ein Buch, um dessen Motive anzuzeigen"
     },
     "search": "Motive suchen",
     "overuse": "\"{{name}}\" wird bereits in {{chapters}} verwendet – versuche eine Variation.",
     "list": {
-      "noMatch": "Keine Motive gefunden – Filter löschen."
+      "noMatch": "Keine Motive gefunden – Filter löschen.",
+      "truncated": "Die ersten 100 werden angezeigt – nutze die Suche oder Filter, um die restlichen Ergebnisse einzugrenzen."
     },
     "error": {
       "load": "Laden fehlgeschlagen – bitte erneut versuchen."
@@ -711,7 +743,8 @@
     },
     "binding": {
       "freeForm": "Kein Motiv passt – diese Szene ist Freiform.",
-      "commitGenerate": "Bestätigen + Szene schreiben →"
+      "commitGenerate": "Bestätigen + Szene schreiben →",
+      "noWork": "Erstellen Sie einen Plan für dieses Buch, um Motive mit seinen Szenen zu verknüpfen."
     },
     "swap": {
       "title": "Motiv tauschen",
@@ -735,7 +768,8 @@
         "ok": "Auf Beat",
         "warn": "Spannungsabweichung",
         "bad": "Beat verpasst"
-      }
+      },
+      "rerunNeedsModel": "Wählen Sie ein Modell aus, um die Konformitätsprüfung erneut durchzuführen"
     },
     "arc": {
       "mobileNotice": "Das Zeitstrahl-Raster ist auf größeren Bildschirmen verfügbar – hier kannst du es als Liste bearbeiten.",
@@ -745,7 +779,110 @@
       "moveRight": "Später",
       "grow": "Verlängern",
       "shrink": "Verkürzen",
-      "remove": "Entfernen"
+      "remove": "Entfernen",
+      "libraryEmpty": "Noch keine Arc-Templates. Erstelle eines oder importiere eine Geschichte zum Dekonstruieren.",
+      "templates": {
+        "tabLibrary": "Bibliothek",
+        "tabCatalog": "Katalog",
+        "tabDeconstruct": "Importieren & Dekonstruieren",
+        "tier_all": "Alle",
+        "tier_mine": "Meine",
+        "tier_system": "System",
+        "tier_book": "Buch",
+        "new": "+ Neu",
+        "loading": "Laden…",
+        "loadError": "Vorlagen konnten nicht geladen werden.",
+        "retry": "Wiederholen",
+        "chapters": "{{count}} Kapitel",
+        "chipSystem": "System",
+        "chipMine": "Mein",
+        "chipPublic": "Öffentlich",
+        "archive": "Archiv",
+        "adopt": "adoptieren",
+        "createCode": "Code (eindeutig)",
+        "createName": "Name",
+        "createShare": "Mit den Mitwirkenden dieses Buches teilen (Buch-Stufe)",
+        "create": "Erstellen",
+        "cancel": "Abbrechen",
+        "catalogError": "Der Katalog konnte nicht geladen werden.",
+        "catalogEmpty": "Noch keine öffentlichen Arc-Templates.",
+        "back": "← Alle Templates",
+        "driftTitle": "Drift — wird von diesem Buch verwendet",
+        "driftUnapplied": "Noch nicht auf dieses Buch angewendet – wende es oben an, um den Drift zu vergleichen.",
+        "driftNoProvenance": "Dieser Arc wurde direkt erstellt – es gibt kein Template, von dem abgewichen werden kann.",
+        "driftGone": "Das Quell-Template ist nicht mehr verfügbar.",
+        "driftLoading": "Drift wird geladen…",
+        "driftClean": "Keine Abweichung — der realisierte Bogen entspricht seiner Vorlage.",
+        "driftSummary": "{{gaps}} Abdeckungslücke(n) · {{violations}} Ordnungsfehler · {{folded}} Faltung(en)",
+        "driftPacingOnly": "Struktur stimmt, aber das Tempo hat abgewichen (max. {{drift}}).",
+        "driftThreads": "Fadenabdeckung",
+        "driftNoThreads": "Die Vorlage enthält keine Fäden zum Vergleichen.",
+        "driftPacing": "Pacing",
+        "driftMax": "max. Abweichung {{drift}}",
+        "driftPacingNC": "Noch nicht vergleichbar — die Vorlage hat keine Spannungskurve.",
+        "driftSuccession": "Reihenfolge",
+        "driftSuccessionOk": "Keine Ordnungsverstöße.",
+        "driftViolation": "{{label}}: {{n}} außerhalb der Reihenfolge",
+        "driftFolded": "Gefaltet (nie gebunden)",
+        "untitledArc": "(unbenannter Arc)",
+        "truncated": "Die ersten {{shown}} von {{count}} werden angezeigt – nutze den Katalog oder eine präzisere Auswahl, um mehr zu finden.",
+        "tabSuggest": "Vorschlagen"
+      },
+      "import": {
+        "privacy": "Der Rohtext bleibt privat und wird niemals geteilt. Nur die abgeleitete abstrakte Struktur kann veröffentlicht werden – und die Veröffentlichung entfernt den Quellenbezug.",
+        "sources": "Referenzquellen",
+        "loading": "Laden…",
+        "noSources": "Noch keine Quellen – füge unten eine ein.",
+        "untitled": "(unbenannt)",
+        "deleteConfirm": "Diese Quelle löschen? Es gibt keine Wiederherstellung.",
+        "deleteTitle": "Löschen (keine Wiederherstellung)",
+        "sourceError": "Quelle konnte nicht gespeichert werden – bitte erneut versuchen.",
+        "what": "Die Referenz in eine wiederverwendbare Arc-Vorlage zerlegen (LLM-basiert).",
+        "hint": "Arc-Hinweis (optional)",
+        "useWeb": "Web-Suche zulassen",
+        "model": "Modell zerlegen",
+        "estimating": "Schätzung läuft…",
+        "running": "Zerlegen…",
+        "run": "Zerlegen",
+        "selectFirst": "Wählen Sie zuerst eine Quelle oben aus.",
+        "done": "Eine neue Arc-Vorlage wurde erstellt – sie findest du in der Bibliothek.",
+        "pasteTitle": "Titel",
+        "pasteBody": "Referenztext einfügen…",
+        "tooLong": "Zu lang – vor dem Import kürzen.",
+        "addSource": "Quelle hinzufügen"
+      },
+      "extract": {
+        "blurb": "Speichere die Struktur dieses Handlungsbogens als wiederverwendbare Vorlage in deiner Bibliothek.",
+        "open": "Als Vorlage speichern…",
+        "namePlaceholder": "Name der Vorlage",
+        "saving": "Wird gespeichert…",
+        "save": "Speichern",
+        "cancel": "Abbrechen",
+        "conflict": "Du hast bereits eine Vorlage mit diesem Namen – bitte benenne sie um.",
+        "error": "Der Handlungsbogen konnte nicht als Vorlage gespeichert werden.",
+        "done": "„{{name}}“ wurde in deiner Vorlagenbibliothek gespeichert."
+      },
+      "suggest": {
+        "noProject": "Öffne ein Buch mit einem Werk, um Vorschläge für den Handlungsbogen basierend auf der Prämisse zu erhalten.",
+        "premisePlaceholder": "Beschreibe die Prämisse – z. B. „ein widerwilliger Erbe muss ein gestürztes Haus zurückfordern“",
+        "genrePlaceholder": "Genre (optional)",
+        "running": "Ranking…",
+        "run": "Handlungsbögen vorschlagen",
+        "error": "Handlungsbogen-Vorschläge konnten nicht bewertet werden.",
+        "empty": "Noch keine passenden Handlungsbogen-Vorlagen gefunden – erstelle eine oder importiere eine Geschichte zur Analyse.",
+        "mine": "deine",
+        "span": "{{count}} Kap."
+      },
+      "decompile": {
+        "open": "Kapitel in Handlungsbögen gruppieren",
+        "confirm": "Die Kapitel dieses Buches automatisch in Handlungsbögen gruppieren (~{{n}} Kapitel pro Bogen). Ein erneutes Ausführen ist sicher – bestehende Bögen werden wiederverwendet.",
+        "running": "Gruppierung…",
+        "run": "In Handlungsbögen gruppieren",
+        "cancel": "Abbrechen",
+        "error": "Die Kapitel konnten nicht zu Story-Arcs gruppiert werden.",
+        "done": "{{chapters}} Kapitel wurden in {{arcs}} Story-Arcs gruppiert.",
+        "none": "Noch keine Kapitel zum Gruppieren in Story-Arcs vorhanden."
+      }
     },
     "simple": {
       "actant": {
@@ -803,6 +940,38 @@
       "knows": "Weiß",
       "deceived": "Getäuscht",
       "gap": "Lücke"
+    },
+    "graph": {
+      "title": "Graph — zusammengesetzt aus · geht voraus auf · Variante von",
+      "loading": "Kanten werden geladen…",
+      "error": "Motiv-Graph konnte nicht geladen werden.",
+      "retry": "Wiederholen",
+      "empty": "Noch keine Beziehungen vorhanden.",
+      "deleteEdge": "Kante entfernen",
+      "addEdge": "Beziehung hinzufügen",
+      "pickNeighbor": "Motiv auswählen…",
+      "add": "Kante hinzufügen",
+      "cancel": "Abbrechen",
+      "kind": {
+        "composed_of": "Zusammengesetzt aus",
+        "precedes": "Geht voraus auf",
+        "variant_of": "Variante von"
+      },
+      "truncated": "Es werden die ersten {{cap}} Motive angezeigt – verfeinern Sie die Auswahl nach Stufe oder nutzen Sie die Suche, um mehr zu sehen.",
+      "canvasLoading": "Motiv-Graph wird geladen…",
+      "canvasEmpty": "Noch keine Motive zum Darstellen vorhanden – erstellen oder übernehmen Sie Motive und verknüpfen Sie diese anschließend."
+    },
+    "suggest": {
+      "button": "Motiv vorschlagen",
+      "loading": "Motive für diese Szene werden bewertet…",
+      "error": "Motive konnten nicht vorgeschlagen werden.",
+      "retry": "Wiederholen",
+      "empty": "Noch kein passendes Motiv für diese Szene gefunden – füge deiner Bibliothek mehr hinzu.",
+      "bind": "Verknüpfen",
+      "degradedMine": "Deine Motive sind nicht nach Relevanz sortiert – richte in deinen Einstellungen ein Embedding-Modell ein, um sie semantisch zu bewerten.",
+      "degradedLibrary": "Nicht nach Relevanz sortiert – das Embedding-Modell der gemeinsamen Bibliothek ist nicht konfiguriert. Daher handelt es sich hierbei um Genre-Alternativen und nicht um bewertete Treffer.",
+      "sectionMine": "Deine Motive",
+      "sectionLibrary": "Aus der Bibliothek"
     }
   },
   "authoringRun": {
@@ -923,5 +1092,6 @@
       "loading": "Durchlauf wird geladen…",
       "back": "← Zurück zur Liste der Durchläufe"
     }
-  }
+  },
+  "overrideSlipBlocked": "Blockierte Überschreibung akzeptieren: Eine „Was-wäre-wenn“-Version ist zum Kanon-Wert zurückgefallen. Vor dem Akzeptieren neu generieren."
 }

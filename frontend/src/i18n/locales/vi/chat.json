@@ -82,6 +82,7 @@
       "table": "Bảng"
     },
     "placeholder": "Hỏi về truyện, nhân vật, xây dựng thế giới của bạn...",
+    "assistant_placeholder": "Chia sẻ về một ngày của bạn — về những con người, dự án và những quyết định...",
     "attach_context": "Đính kèm ngữ cảnh",
     "assist": "Trợ lý",
     "voice_assist_on": "Trợ lý giọng nói BẬT — phản hồi AI sẽ được đọc",
@@ -127,12 +128,6 @@
     "mode_write_hint": "Chế độ ghi — trợ lý có thể thực hiện thay đổi hoàn tác được (hỏi một lần cho mỗi công cụ mới)"
   },
   "new": {
-    "preset": {
-      "novel": "Trợ lý tiểu thuyết",
-      "translator": "Phiên dịch",
-      "worldbuilder": "Kiến tạo thế giới",
-      "editor": "Biên tập"
-    },
     "create_failed": "Không thể tạo cuộc trò chuyện: {{error}}",
     "title": "Bắt đầu trò chuyện mới",
     "model": "Mô hình",
@@ -234,7 +229,6 @@
   "actionConfirm": {
     "label": "Xác nhận hành động",
     "batch_count": "{{count}} mục",
-    "warning": "Thay đổi này có tác động lớn — vui lòng xác nhận.",
     "warning_destructive": "Hành động này có tính phá hủy và lan truyền — vui lòng xác nhận.",
     "destructive_skipped": "{{count}} thao tác phá hủy sẽ bị BỎ QUA trừ khi bạn bật chúng ở trên.",
     "confirm": "Xác nhận",
@@ -248,7 +242,8 @@
     "cancelled": "Đã hủy",
     "reprice": "Chi phí đã tăng lên {{cost}} so với ước tính — hãy hỏi lại để xác nhận lại theo giá mới.",
     "reprice_title": "Chi phí đã thay đổi — chưa áp dụng",
-    "reprice_detail": "Ước tính {{old}}, hiện là {{new}}. Chưa tốn khoản nào — hãy hỏi lại để xác nhận theo giá mới."
+    "reprice_detail": "Ước tính {{old}}, hiện là {{new}}. Chưa tốn khoản nào — hãy hỏi lại để xác nhận theo giá mới.",
+    "warning": "Vui lòng xem lại thay đổi này trước khi áp dụng."
   },
   "batchConfirm": {
     "title": "Xác nhận {{count}} hành động trong một bước",
@@ -345,14 +340,6 @@
     "title": "Cài đặt phiên",
     "model": "Mô hình",
     "system_prompt": "System Prompt",
-    "preset": {
-      "Custom": "Tùy chỉnh",
-      "Novelist": "Tiểu thuyết gia",
-      "Translator": "Phiên dịch",
-      "Worldbuilder": "Kiến tạo thế giới",
-      "Editor": "Biên tập",
-      "Analyst": "Phân tích"
-    },
     "prompt_placeholder": "Cho AI một vai trò, tính cách hoặc chỉ dẫn cụ thể...",
     "gen_params": "Tham số tạo sinh",
     "max_tokens": "Token tối đa",
@@ -389,9 +376,11 @@
     "approve_once": "Cho phép một lần",
     "always_allow": "Luôn cho phép",
     "deny": "Từ chối",
+    "never_allow": "Never allow",
     "approved": "Đã cho phép — đang chạy ✓",
     "always_allowed": "Luôn cho phép — đang chạy ✓",
-    "denied": "Đã từ chối"
+    "denied": "Đã từ chối",
+    "never_allowed": "Never allowed — you can undo this in Settings → Permissions"
   },
   "rack": {
     "label": "Ngữ cảnh",
@@ -416,6 +405,9 @@
     "more": "+{{count}} nữa",
     "more_tooltip": "còn {{count}} công cụ đã khám phá chưa hiển thị",
     "remove": "Xóa",
+    "advanced_tools": "Công cụ nâng cao ({{count}})",
+    "advanced_tools_hint": "Các công cụ cũ được giữ lại để hỗ trợ các trình gọi cũ hơn. Hãy ưu tiên sử dụng các công cụ ở trên trừ khi bạn thực sự cần một trong số các công cụ này.",
+    "legacy_pin_tooltip": "Bạn đã kích hoạt công cụ cũ này cho phiên làm việc này",
     "server": {
       "knowledge": "Tri thức",
       "glossary": "Thuật ngữ",
@@ -426,10 +418,7 @@
       "ui": "Giao diện",
       "chat": "Trò chuyện",
       "other": "Khác"
-    },
-    "advanced_tools": "Công cụ nâng cao ({{count}})",
-    "advanced_tools_hint": "Các công cụ cũ được giữ lại để hỗ trợ các trình gọi cũ hơn. Hãy ưu tiên sử dụng các công cụ ở trên trừ khi bạn thực sự cần một trong số các công cụ này.",
-    "legacy_pin_tooltip": "Bạn đã kích hoạt công cụ cũ này cho phiên làm việc này"
+    }
   },
   "inspector": {
     "title": "Trạng thái agent",
@@ -449,5 +438,13 @@
       "activated": "Đã kích hoạt",
       "tool_running": "Đang chạy công cụ"
     }
+  },
+  "presets": {
+    "custom": "Tùy chỉnh",
+    "novelist": "Tiểu thuyết gia",
+    "translator": "Phiên dịch",
+    "worldbuilder": "Kiến tạo thế giới",
+    "editor": "Biên tập",
+    "analyst": "Phân tích"
   }
 }

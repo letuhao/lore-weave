@@ -347,13 +347,17 @@ describe('PublicMcpController', () => {
     expect(relay).toBeUndefined();
   });
 
-  it('a FRESH session lists only find_tools — lazy loading (the in-scope catalogue is hidden until discovered)', async () => {
+  it('a FRESH session on a BROAD (>=20-tool) scope lists only find_tools — lazy loading (the in-scope catalogue is hidden until discovered)', async () => {
     setEnv();
     (global as unknown as { fetch: jest.Mock }).fetch = jest.fn().mockImplementation((url: string) => {
       if (String(url).includes('/internal/mcp-keys/resolve')) {
         return Promise.resolve({
           status: 200,
-          json: async () => ({ user_id: 'u', key_id: 'k', scopes: ['read', 'domain:knowledge'] }),
+          // read+domain:knowledge (11 tools) alone is BELOW the scope-size-adaptive threshold
+          // (2026-07-07 spec §6) and would now get the direct-list path (see the dedicated
+          // small-scope test below) — add domain:composition (15 more read tools) so this key
+          // resolves to 26 tools, safely >=20, to keep testing the COLLAPSED-path regression.
+          json: async () => ({ user_id: 'u', key_id: 'k', scopes: ['read', 'domain:knowledge', 'domain:composition'] }),
           headers: { get: () => 'application/json' },
         });
       }
@@ -381,11 +385,137 @@ describe('PublicMcpController', () => {
     );
     expect(r.statusCode).toBe(200);
     const parsed = JSON.parse(r.sentBody as string);
-    // Minimal session surface: only find_tools. Out-of-scope tools (book_get/memory_remember) are
-    // scope-filtered AND the in-scope kg_graph_query is hidden by lazy loading until find_tools
-    // activates it — so nothing but the discovery entrypoint is advertised on a fresh session.
-    expect(parsed.result.tools.map((t: { name: string }) => t.name)).toEqual(['find_tools']);
+    // Minimal session surface: find_tools + invoke_tool (the always-present discover+execute
+    // pair). Out-of-scope tools (book_get/memory_remember) are scope-filtered AND the in-scope
+    // kg_graph_query is hidden by lazy loading until find_tools activates it — so nothing but
+    // the two synthetic edge tools is advertised on a fresh session.
+    expect(parsed.result.tools.map((t: { name: string }) => t.name).sort()).toEqual(['find_tools', 'invoke_tool']);
     expect(r.headers['content-type']).toBe('application/json');
+  });
+
+  // ── Scope-size-adaptive exposure (2026-07-07 spec §3.3/§6/§8b.7) ────────────
+  it('a SMALL (<20-tool) scope gets the FULL scope-filtered list directly — no lazy collapse', async () => {
+    setEnv();
+    (global as unknown as { fetch: jest.Mock }).fetch = jest.fn().mockImplementation((url: string) => {
+      if (String(url).includes('/internal/mcp-keys/resolve')) {
+        // read+domain:book resolves to exactly 5 tools (book_list/get/list_chapters/
+        // get_chapter/list_revisions) — well under the 20-tool threshold.
+        return Promise.resolve({
+          status: 200,
+          json: async () => ({ user_id: 'u', key_id: 'k', scopes: ['read', 'domain:book'] }),
+          headers: { get: () => 'application/json' },
+        });
+      }
+      return Promise.resolve({
+        status: 200,
+        text: async () =>
+          JSON.stringify({
+            jsonrpc: '2.0',
+            result: {
+              tools: [{ name: 'find_tools' }, { name: 'book_list' }, { name: 'book_get' }, { name: 'kg_graph_query' }],
+            },
+            id: 1,
+          }),
+        headers: { get: (h: string) => (h.toLowerCase() === 'content-type' ? 'application/json' : null) },
+      });
+    });
+    const r = mockRes();
+    await new PublicMcpController().handle(
+      mockReq({
+        headers: { authorization: 'Bearer lw_pk_smallkey' },
+        body: { jsonrpc: '2.0', method: 'tools/list', id: 1 },
+      }),
+      r.res,
+    );
+    expect(r.statusCode).toBe(200);
+    const parsed = JSON.parse(r.sentBody as string);
+    const names = parsed.result.tools.map((t: { name: string }) => t.name).sort();
+    // book_list/book_get are advertised DIRECTLY on a fresh session — no find_tools-then-
+    // activate round trip needed. kg_graph_query is correctly scope-filtered out (out of
+    // scope). invoke_tool stays present (unconditional today — harmless if unused; the
+    // change here is only about WHEN the collapse happens, not invoke_tool's availability).
+    expect(names).toEqual(['book_get', 'book_list', 'find_tools', 'invoke_tool']);
+    expect(r.headers['content-type']).toBe('application/json');
+  });
+
+  it('an EMPTY-scope key (scopeToolCount=0) also takes the direct-list path safely — no leak beyond find_tools', async () => {
+    // review-impl finding (2026-07-08, LOW): scopeToolCount([]) is 0 (< 20) so this key
+    // takes the SAME directList=true branch as a small real scope — verify at the
+    // controller/tools-list level (not just the pure-function level in tool-policy.spec.ts)
+    // that this doesn't leak anything beyond find_tools, since filterTools/isToolAllowed
+    // still gate every entry identically regardless of which list-mode advertised it.
+    setEnv();
+    (global as unknown as { fetch: jest.Mock }).fetch = jest.fn().mockImplementation((url: string) => {
+      if (String(url).includes('/internal/mcp-keys/resolve')) {
+        return Promise.resolve({
+          status: 200,
+          json: async () => ({ user_id: 'u', key_id: 'k', scopes: [] }),
+          headers: { get: () => 'application/json' },
+        });
+      }
+      return Promise.resolve({
+        status: 200,
+        text: async () =>
+          JSON.stringify({
+            jsonrpc: '2.0',
+            result: { tools: [{ name: 'find_tools' }, { name: 'book_list' }, { name: 'kg_graph_query' }] },
+            id: 1,
+          }),
+        headers: { get: (h: string) => (h.toLowerCase() === 'content-type' ? 'application/json' : null) },
+      });
+    });
+    const r = mockRes();
+    await new PublicMcpController().handle(
+      mockReq({
+        headers: { authorization: 'Bearer lw_pk_emptyscope' },
+        body: { jsonrpc: '2.0', method: 'tools/list', id: 1 },
+      }),
+      r.res,
+    );
+    expect(r.statusCode).toBe(200);
+    const parsed = JSON.parse(r.sentBody as string);
+    const names = parsed.result.tools.map((t: { name: string }) => t.name).sort();
+    // No domain tool leaks through — an empty scope is allowed exactly find_tools + invoke_tool,
+    // identical to what the collapsed (large-scope) path would have shown.
+    expect(names).toEqual(['find_tools', 'invoke_tool']);
+  });
+
+  it('a directly-listed tool (small scope) is immediately callable via a normal tools/call — no find_tools/activation needed first', async () => {
+    setEnv();
+    const f = jest.fn().mockImplementation((url: string) => {
+      if (String(url).includes('/internal/mcp-keys/resolve')) {
+        return Promise.resolve({
+          status: 200,
+          json: async () => ({ user_id: 'u', key_id: 'k', scopes: ['read', 'domain:book'] }),
+          headers: { get: () => 'application/json' },
+        });
+      }
+      return Promise.resolve({
+        status: 200,
+        text: async () => JSON.stringify({ jsonrpc: '2.0', id: 1, result: { structuredContent: { books: [] } } }),
+        headers: { get: (h: string) => (h.toLowerCase() === 'content-type' ? 'application/json' : null) },
+      });
+    });
+    (global as unknown as { fetch: jest.Mock }).fetch = f;
+    const r = mockRes();
+    await new PublicMcpController().handle(
+      mockReq({
+        headers: { authorization: 'Bearer lw_pk_directcall' },
+        body: { jsonrpc: '2.0', method: 'tools/call', params: { name: 'book_list' }, id: 1 },
+      }),
+      r.res,
+    );
+    expect(r.statusCode).toBe(200);
+    // Relayed straight through as a normal tools/call — no invoke_tool unwrap, no "not
+    // activated" denial. The security boundary is `isToolAllowed` (the scope gate), never
+    // the list-mode/activation bookkeeping — a raw tools/call was never activation-gated to
+    // begin with (only the invoke_tool facade's unwrap path checks activation), so this holds
+    // for a small-scope key exactly the same way it already did for a large-scope key.
+    const relay = f.mock.calls.find((c) => String(c[0]).endsWith('/mcp'));
+    expect(relay).toBeDefined();
+    expect(JSON.parse((relay![1] as { body: string }).body).params.name).toBe('book_list');
+    const out = JSON.parse(r.sentBody as string);
+    expect(out.result.structuredContent).toEqual({ books: [] });
   });
 
   it('strips a STORED `*` wildcard from an auth-resolved key (no scope bypass)', async () => {
@@ -614,9 +744,10 @@ describe('PublicMcpController', () => {
     const sent = JSON.parse(r.sentBody as string) as Array<{ id: unknown; result: { tools?: Array<{ name: string }>; structuredContent?: unknown } }>;
     const listItem = sent.find((x) => x.id === 'L')!;
     const names = (listItem.result.tools ?? []).map((t) => t.name);
-    // Fresh session → only find_tools is advertised (lazy loading). book_get/kg_graph_query are
-    // out of scope; the in-scope composition_publish is hidden until find_tools activates it.
-    expect(names).toEqual(['find_tools']);
+    // Fresh session → only find_tools + invoke_tool advertised (lazy loading). book_get/
+    // kg_graph_query are out of scope; the in-scope composition_publish is hidden until
+    // find_tools activates it.
+    expect(names.sort()).toEqual(['find_tools', 'invoke_tool']);
     expect(sent.find((x) => x.id === 5)!.result.structuredContent).toEqual({ status: 'pending_human_approval', approval_id: 'appr-mix' });
   });
 
@@ -955,6 +1086,172 @@ describe('PublicMcpController', () => {
     const j = oauthKeys.publicKey.export({ format: 'jwk' }) as { n: string; e: string };
     return { keys: [{ kty: 'RSA', use: 'sig', alg: 'RS256', kid, n: j.n, e: j.e }] };
   }
+
+  // ── invoke_tool — the execution facade that makes lazy tool-loading actually callable ──
+  describe('invoke_tool', () => {
+    const bookReadScopes = { user_id: 'u', key_id: 'k', scopes: ['read', 'domain:book'] };
+
+    function invokeFetch(resolve: Record<string, unknown>) {
+      return jest.fn().mockImplementation((url: string, init?: { body?: string }) => {
+        if (String(url).includes('/internal/mcp-keys/resolve')) {
+          return Promise.resolve({ status: 200, json: async () => resolve, headers: { get: () => 'application/json' } });
+        }
+        const sent = init?.body ? JSON.parse(init.body) : undefined;
+        if (sent?.params?.name === 'find_tools') {
+          const payload = { tools: [{ name: 'book_list', description: 'List books' }] };
+          return Promise.resolve({
+            status: 200,
+            text: async () => JSON.stringify({ jsonrpc: '2.0', id: sent.id, result: { content: [{ type: 'text', text: JSON.stringify(payload) }], structuredContent: payload } }),
+            headers: { get: (h: string) => (h.toLowerCase() === 'content-type' ? 'application/json' : null) },
+          });
+        }
+        if (sent?.method === 'tools/list') {
+          return Promise.resolve({
+            status: 200,
+            text: async () => JSON.stringify({ jsonrpc: '2.0', id: sent.id, result: { tools: [{ name: 'find_tools' }] } }),
+            headers: { get: (h: string) => (h.toLowerCase() === 'content-type' ? 'application/json' : null) },
+          });
+        }
+        // the unwrapped real-tool relay
+        return Promise.resolve({
+          status: 200,
+          text: async () => JSON.stringify({ jsonrpc: '2.0', id: sent?.id, result: { structuredContent: { books: [] } } }),
+          headers: { get: (h: string) => (h.toLowerCase() === 'content-type' ? 'application/json' : null) },
+        });
+      });
+    }
+
+    it('relays to the REAL target after find_tools activates it (unwrap makes every existing gate see the genuine name)', async () => {
+      setEnv();
+      const f = invokeFetch(bookReadScopes);
+      (global as unknown as { fetch: jest.Mock }).fetch = f;
+      const ctrl = new PublicMcpController();
+
+      // Step 1 — discover.
+      await ctrl.handle(
+        mockReq({ headers: { authorization: 'Bearer lw_pk_inv' }, body: { jsonrpc: '2.0', method: 'tools/call', params: { name: 'find_tools', arguments: { intent: 'list books' } }, id: 1 } }),
+        mockRes().res,
+      );
+
+      // Step 2 — invoke_tool with the name find_tools returned.
+      const r = mockRes();
+      await ctrl.handle(
+        mockReq({
+          headers: { authorization: 'Bearer lw_pk_inv' },
+          body: { jsonrpc: '2.0', method: 'tools/call', params: { name: 'invoke_tool', arguments: { name: 'book_list', arguments: { limit: 5 } } }, id: 2 },
+        }),
+        r.res,
+      );
+      expect(r.statusCode).toBe(200);
+      // The relay saw a normal tools/call for the REAL tool — invoke_tool never reached upstream.
+      const relayCalls = f.mock.calls.filter((c) => String(c[0]).endsWith('/mcp'));
+      const secondRelay = JSON.parse((relayCalls[relayCalls.length - 1][1] as { body: string }).body);
+      expect(secondRelay.params.name).toBe('book_list');
+      expect(secondRelay.params.arguments).toEqual({ limit: 5 });
+      const out = JSON.parse(r.sentBody as string);
+      expect(out.result.structuredContent).toEqual({ books: [] });
+    });
+
+    it('denies invoke_tool for a target that was never find_tools-activated (no relay, actionable hint)', async () => {
+      setEnv();
+      const f = invokeFetch(bookReadScopes);
+      (global as unknown as { fetch: jest.Mock }).fetch = f;
+      const ctrl = new PublicMcpController();
+      const r = mockRes();
+      await ctrl.handle(
+        mockReq({
+          headers: { authorization: 'Bearer lw_pk_inv2' },
+          body: { jsonrpc: '2.0', method: 'tools/call', params: { name: 'invoke_tool', arguments: { name: 'book_list', arguments: {} } }, id: 1 },
+        }),
+        r.res,
+      );
+      const out = r.jsonBody as { result: { isError: boolean; content: Array<{ text: string }> } };
+      expect(out.result.isError).toBe(true);
+      expect(out.result.content[0].text).toContain('find_tools');
+      expect(f.mock.calls.some((c) => String(c[0]).endsWith('/mcp'))).toBe(false);
+    });
+
+    it('audits a not-activated denial as tool_error, not denied_scope (review-impl MED — a first-call-flow miss is not a scope violation)', async () => {
+      setEnv();
+      const f = invokeFetch(bookReadScopes);
+      (global as unknown as { fetch: jest.Mock }).fetch = f;
+      const ctrl = new PublicMcpController();
+      await ctrl.handle(
+        mockReq({
+          headers: { authorization: 'Bearer lw_pk_inv_audit' },
+          body: { jsonrpc: '2.0', method: 'tools/call', params: { name: 'invoke_tool', arguments: { name: 'book_list', arguments: {} } }, id: 1 },
+        }),
+        mockRes().res,
+      );
+      const auditCall = f.mock.calls.find((c) => String(c[0]).includes('/internal/mcp-keys/audit'));
+      expect(auditCall).toBeDefined();
+      const rows = JSON.parse((auditCall![1] as { body: string }).body) as Array<{ outcome: string; tool_name: string }>;
+      expect(rows[0]).toMatchObject({ tool_name: 'book_list', outcome: 'tool_error' });
+    });
+
+    it('rejects a malformed invoke_tool call (after rate-limiting, per review-impl — an authenticated key still burns its budget on a bad call) with no relay', async () => {
+      setEnv();
+      const f = invokeFetch(bookReadScopes);
+      (global as unknown as { fetch: jest.Mock }).fetch = f;
+      const ctrl = new PublicMcpController();
+      let checked = false;
+      (ctrl as unknown as { limiter: { check: () => Promise<unknown> } }).limiter = {
+        check: async () => {
+          checked = true;
+          return { allowed: true, retryAfter: 0, limit: 60, remaining: 59 };
+        },
+      };
+      const r = mockRes();
+      await ctrl.handle(
+        mockReq({
+          headers: { authorization: 'Bearer lw_pk_inv3' },
+          body: { jsonrpc: '2.0', method: 'tools/call', params: { name: 'invoke_tool', arguments: {} }, id: 9 },
+        }),
+        r.res,
+      );
+      expect(checked).toBe(true); // the rate limiter DID run before the malformed-shape rejection
+      const out = r.jsonBody as { result: { isError: boolean } };
+      expect(out.result.isError).toBe(true);
+      expect(f.mock.calls.some((c) => String(c[0]).endsWith('/mcp'))).toBe(false);
+    });
+
+    it('the wildcard dev key bypasses the activation gate (already sees the full catalogue directly)', async () => {
+      setEnv();
+      // The TRUE wildcard is the dev/smoke static key (TEST_KEY) — it short-circuits auth-service
+      // entirely (key-resolver.ts) and is the only credential that keeps a real `['*']` scope; an
+      // auth-service-resolved key's `'*'` is stripped (see the "strips a STORED wildcard" test).
+      const f = invokeFetch(bookReadScopes);
+      (global as unknown as { fetch: jest.Mock }).fetch = f;
+      const ctrl = new PublicMcpController();
+      const r = mockRes();
+      await ctrl.handle(
+        mockReq({
+          headers: { authorization: `Bearer ${TEST_KEY}` },
+          body: { jsonrpc: '2.0', method: 'tools/call', params: { name: 'invoke_tool', arguments: { name: 'book_list', arguments: {} } }, id: 1 },
+        }),
+        r.res,
+      );
+      expect(r.statusCode).toBe(200);
+      const relay = f.mock.calls.find((c) => String(c[0]).endsWith('/mcp'));
+      expect(relay).toBeDefined();
+      expect(JSON.parse((relay![1] as { body: string }).body).params.name).toBe('book_list');
+    });
+
+    it('every tools/list carries invoke_tool + an edge-specific find_tools description', async () => {
+      setEnv();
+      const f = invokeFetch(bookReadScopes);
+      (global as unknown as { fetch: jest.Mock }).fetch = f;
+      const r = mockRes();
+      await new PublicMcpController().handle(
+        mockReq({ headers: { authorization: 'Bearer lw_pk_list' }, body: { jsonrpc: '2.0', method: 'tools/list', id: 1 } }),
+        r.res,
+      );
+      // the default relay text for a plain tools/list is a bare {tools:[]} — the invoke_tool
+      // injection still runs and finds no find_tools entry to rewrite, which is fine (no-op).
+      const parsed = JSON.parse(r.sentBody as string);
+      expect(parsed.result.tools.map((t: { name: string }) => t.name)).toContain('invoke_tool');
+    });
+  });
 
   it('serves the RFC 9728 Protected Resource Metadata doc', () => {
     setEnv({ MCP_RESOURCE_URL: OAUTH_RES });

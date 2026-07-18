@@ -171,7 +171,19 @@
     "kind_character": "Karakterler",
     "kind_location": "Mekanlar",
     "kind_faction": "Gruplar",
-    "kind_concept": "Kavramlar"
+    "kind_concept": "Kavramlar",
+    "rename": "Yeniden Adlandır",
+    "renameConflict": "Başka bir yerde değiştirildi — yeniden yüklendi.",
+    "editEntity": "Takma adları ve türü düzenle",
+    "archive": "Varlığı emekli et",
+    "archiveConfirm": "«{{name}}» emekli edilsin mi? İlişkileri ve sözlük çapası korunur; kitap onu tekrar anarsa geri döner (geri yükle butonu yoktur).",
+    "archived": "Emekli edildi — kitap onu tekrar anarsa geri döner.",
+    "newEntity": "Yeni",
+    "editFailed": "Düzenleme başarısız oldu: {{error}}",
+    "truncated": "İlk 200 gösteriliyor — listeyi daraltmak için aramanızı detaylandırın.",
+    "showingOf": "{{loaded}} / {{total}} gösteriliyor.",
+    "loadMore": "Daha fazla yükle",
+    "loadingMore": "Yükleniyor…"
   },
   "relmap": "İlişkiler",
   "relations": {
@@ -214,7 +226,10 @@
     "gone": "gitti",
     "loading": "Karakter arkı yükleniyor…",
     "noProject": "Henüz bilgi grafiği yok — karakter arklarını çizmek için bu kitabı çıkarın.",
-    "empty": "Bu karakterin henüz bir olayı yok."
+    "empty": "Bu karakterin henüz bir olayı yok.",
+    "edit": "Düzenle",
+    "linkEntity": "+ varlık bağla",
+    "addEvent": "+ Etkinlik ekle"
   },
   "worldmap": "Dünya Haritası",
   "wmap": {
@@ -236,7 +251,10 @@
     "loading": "Dünya haritası yükleniyor…",
     "addFailed": "Mekan eklenemedi.",
     "linkFailed": "Mekanlar bağlanamadı.",
-    "linkMissing": "Mekanlardan biri artık mevcut değil."
+    "linkMissing": "Mekanlardan biri artık mevcut değil.",
+    "delete": "{{name}} öğesini kaldır",
+    "deleteConfirm": "“{{name}}” dünya haritasından kaldırılsın mı? Bu işlem mekanı arşivler.",
+    "deleteFailed": "Mekan kaldırılamadı."
   },
   "grounding": "Temellendirme",
   "canon": "Kanun",
@@ -366,6 +384,9 @@
   "statDiverge": "Diverge (K seçenekleri)",
   "statStream": "Akış",
   "guidePlaceholder": "Ortak yazar için isteğe bağlı rehberlik…",
+  "correction": {
+    "capturedToast": "Not edildi — ortak yazarınız bundan ders çıkaracak"
+  },
   "reasoning": "Akıl yürütme",
   "reasoningHint": "Auto = sunucu model başına karar verir. Off = düşünme özelliğini kapatır. Low/Med/High = düşünmeyi zorunlu kılar.",
   "reasoningAuto": "Düşünme: otomatik",
@@ -407,7 +428,6 @@
   "pacing": "tempo",
   "canon_consistency": "kanon",
   "dismiss": "kapat",
-  "overrideSlipBlocked": "Engellenen kabul: bir varyant (override) kanon değerine geri sızdı. Kabul etmeden önce yeniden oluşturun.",
   "overrideSlipExhausted": "Yeniden oluşturma sınırından sonra bile varyant sızmaya devam ediyor — incelemeniz için sunuldu (kabul artık engellenmiş değil).",
   "overrideSlipDetail": "{{name}} ({{field}}): beklenen “{{expected}}”, bulunan “{{found}}”",
   "deltaInconsistencyDetail": "{{name}}: “{{rule}}” delta kuralıyla çelişiyor",
@@ -430,6 +450,12 @@
   "canonUntil": "Bitiş (okuma sırası)",
   "canonActive": "aktif",
   "canonInactive": "pasif",
+  "canonArchivedTag": "arşivlendi",
+  "canonShowArchived": "Arşivlenmişleri göster",
+  "canonRuleArchived": "Kural arşivlendi",
+  "canonRuleRestored": "Kural geri yüklendi",
+  "restore": "Geri yükle",
+  "undo": "Geri al",
   "canonWindowInverted": "'Başlangıç', 'Bitiş'ten küçük veya eşit olmalıdır.",
   "archive": "Arşiv",
   "noRules": "Henüz kanon kuralı yok.",
@@ -611,12 +637,18 @@
     "scope": {
       "label": "Motif kapsamı",
       "my": "Kütüphanem",
-      "catalog": "Genel katalog"
+      "catalog": "Genel katalog",
+      "book": "Kitap",
+      "shared": "Paylaşılan",
+      "system": "Sistem",
+      "drafts": "Taslaklar",
+      "needsBook": "Motifleri görmek için bir kitap açın"
     },
     "search": "Motif ara",
     "overuse": "\"{{name}}\" zaten {{chapters}} bölümünde kullanılmış — çeşitlendirmeyi düşünün.",
     "list": {
-      "noMatch": "Eşleşen motif yok — filtreleri temizleyin."
+      "noMatch": "Eşleşen motif yok — filtreleri temizleyin.",
+      "truncated": "İlk 100 gösteriliyor — geri kalanını görmek için arama veya filtreleri kullanarak daraltın."
     },
     "error": {
       "load": "Yüklenemedi — lütfen tekrar deneyin."
@@ -711,7 +743,8 @@
     },
     "binding": {
       "freeForm": "Eşleşen motif yok — bu sahne serbest biçimlidir.",
-      "commitGenerate": "Onayla + bu sahneyi yaz →"
+      "commitGenerate": "Onayla + bu sahneyi yaz →",
+      "noWork": "Motifleri sahnelerle ilişkilendirmek için bu kitap için bir plan oluşturun."
     },
     "swap": {
       "title": "Motifi değiştir",
@@ -735,7 +768,8 @@
         "ok": "Vuruşa uygun",
         "warn": "Gerilim sapması",
         "bad": "Vuruş kaçırıldı"
-      }
+      },
+      "rerunNeedsModel": "Uyumluluğu yeniden çalıştırmak için bir model seçin"
     },
     "arc": {
       "mobileNotice": "Zaman çizelgesi ızgarası daha büyük bir ekranda mevcuttur — burada liste olarak düzenleyebilirsiniz.",
@@ -745,7 +779,110 @@
       "moveRight": "Daha geçe taşı",
       "grow": "Uzat",
       "shrink": "Kısalt",
-      "remove": "Kaldır"
+      "remove": "Kaldır",
+      "libraryEmpty": "Henüz bir olay örgüsü şablonu yok. Bir tane oluşturun veya analiz etmek için bir hikâye içe aktarın.",
+      "templates": {
+        "tabLibrary": "Kütüphane",
+        "tabCatalog": "Katalog",
+        "tabDeconstruct": "İçe Aktar ve Analiz Et",
+        "tier_all": "Hepsi",
+        "tier_mine": "Benimkiler",
+        "tier_system": "Sistem",
+        "tier_book": "Kitap",
+        "new": "+ Yeni",
+        "loading": "Yükleniyor…",
+        "loadError": "Şablonlar yüklenemedi.",
+        "retry": "Tekrar Dene",
+        "chapters": "{{count}} bölüm",
+        "chipSystem": "Sistem",
+        "chipMine": "Madem",
+        "chipPublic": "Genel",
+        "archive": "arşiv",
+        "adopt": "benimse",
+        "createCode": "kod (benzersiz)",
+        "createName": "isim",
+        "createShare": "Bu kitabın iş birliyeleriyle paylaş (kitap kademesi)",
+        "create": "Oluştur",
+        "cancel": "İptal",
+        "catalogError": "Katalog yüklenemedi.",
+        "catalogEmpty": "Henüz halka açık bir ark şablonu yok.",
+        "back": "← Tüm şablonlar",
+        "driftTitle": "Sapma — bu kitap tarafından kullanılıyor",
+        "driftUnapplied": "Bu kitaba henüz uygulanmadı — sapmayı karşılaştırmak için yukarıdan uygulayın.",
+        "driftNoProvenance": "Bu ark doğrudan yazıldı — sapma yapılacak bir şablon yok.",
+        "driftGone": "Kaynak şablon artık mevcut değil.",
+        "driftLoading": "Sürüklenme yükleniyor…",
+        "driftClean": "Sapma yok — gerçekleşen ark şablonla eşleşiyor.",
+        "driftSummary": "{{gaps}} kapsama boşluğu · {{violations}} sıralama sorunu · {{folded}} katlanmış yerleşim",
+        "driftPacingOnly": "Yapı eşleşiyor ancak tempo sapma gösterdi (maks. {{drift}}).",
+        "driftThreads": "İplik kapsamı",
+        "driftNoThreads": "Şablonun karşılaştırılacak ipliği yok.",
+        "driftPacing": "Tempo",
+        "driftMax": "maksimum sapma {{drift}}",
+        "driftPacingNC": "Henüz karşılaştırılamıyor — şablonun gerilim eğrisi yok.",
+        "driftSuccession": "Sıralama",
+        "driftSuccessionOk": "Sıralama ihlali yok.",
+        "driftViolation": "{{label}}: {{n}} sıralama hatası",
+        "driftFolded": "Katlanmış (hiç bağlanmamış)",
+        "untitledArc": "(başlıksız ark)",
+        "truncated": "Toplam {{count}} öğeden ilk {{shown}} tanesi gösteriliyor — daha fazlasını bulmak için Katalog'u veya daha dar bir kademeyi kullanın.",
+        "tabSuggest": "Öner"
+      },
+      "import": {
+        "privacy": "Ham metin size özel kalır ve asla paylaşılmaz. Sadece türetilen soyut yapı yayınlanabilir — yayınlama işlemi kaynak referansını kaldırır.",
+        "sources": "Referans kaynakları",
+        "loading": "Yükleniyor…",
+        "noSources": "Henüz kaynak yok — aşağıya bir tane yapıştırın.",
+        "untitled": "(başlıksız)",
+        "deleteConfirm": "Bu kaynak silinsin mi? Geri yükleme yapılamaz.",
+        "deleteTitle": "Sil (geri yükleme yapılamaz)",
+        "sourceError": "Kaynak kaydedilemedi — tekrar deneyin.",
+        "what": "Referansı yeniden kullanılabilir bir ark şablonuna dönüştürün (LLM ölçümlüdür).",
+        "hint": "Ark ipucu (isteğe bağlı)",
+        "useWeb": "Web aramasına izin ver",
+        "model": "Yapı modelini çözümle",
+        "estimating": "Tahmin ediliyor…",
+        "running": "Çözümleniyor…",
+        "run": "Çözümle",
+        "selectFirst": "Önce yukarıdan bir kaynak seçin.",
+        "done": "Yeni bir ark şablonu oluşturuldu — Kitaplık'ta bulabilirsiniz.",
+        "pasteTitle": "başlık",
+        "pasteBody": "referans metni yapıştırın…",
+        "tooLong": "Çok uzun — içe aktarmadan önce kısaltın.",
+        "addSource": "Kaynak ekle"
+      },
+      "extract": {
+        "blurb": "Bu olay örgüsü yapısını kütüphanenizde yeniden kullanılabilir bir şablon olarak kaydedin.",
+        "open": "Şablon olarak kaydet…",
+        "namePlaceholder": "Şablon adı",
+        "saving": "Kaydediliyor…",
+        "save": "Kaydet",
+        "cancel": "İptal",
+        "conflict": "Aynı isimde bir şablonunuz zaten var — adını değiştirin.",
+        "error": "Bu olay örgüsü şablon olarak kaydedilemedi.",
+        "done": "“{{name}}” şablon kütüphanenize kaydedildi."
+      },
+      "suggest": {
+        "noProject": "Öncülüne göre olay örgüsü önerileri almak için bir Çalışma içeren kitap açın.",
+        "premisePlaceholder": "Öncülü tanımlayın — örneğin «düşmüş bir hanedanı geri kazanması gereken isteksiz bir varis»",
+        "genrePlaceholder": "Tür (isteğe bağlı)",
+        "running": "Sıralanıyor…",
+        "run": "Ark öner",
+        "error": "Ark önerileri sıralanamadı.",
+        "empty": "Henüz uygun bir ark şablonu bulunamadı — bir tane oluşturun veya analiz etmek için bir hikâye içe aktarın.",
+        "mine": "seninki",
+        "span": "{{count}} bölüm"
+      },
+      "decompile": {
+        "open": "Bölümleri arklar halinde gruplandır",
+        "confirm": "Bu kitabın bölümlerini otomatik olarak arklar halinde gruplandır (~her biri {{n}} bölüm). Yeniden çalıştırmak güvenlidir; mevcut arklar tekrar kullanılır.",
+        "running": "Gruplandırılıyor…",
+        "run": "Arklar halinde gruplandır",
+        "cancel": "İptal et",
+        "error": "Bölümler arklar halinde gruplandırılamadı.",
+        "done": "{{chapters}} bölüm {{arcs}} ark olarak gruplandırıldı.",
+        "none": "Henüz arklar için gruplandırılacak bölüm yok."
+      }
     },
     "simple": {
       "actant": {
@@ -803,6 +940,38 @@
       "knows": "Biliyor",
       "deceived": "Aldatıldı",
       "gap": "Boşluk"
+    },
+    "graph": {
+      "title": "Graf — · şunlardan oluşur · şunun varyantıdır",
+      "loading": "Kenarlar yükleniyor…",
+      "error": "Motif grafiği yüklenemedi.",
+      "retry": "Tekrar Dene",
+      "empty": "Henüz ilişki yok.",
+      "deleteEdge": "Kenarı kaldır",
+      "addEdge": "İlişki ekle",
+      "pickNeighbor": "Bir motif seç…",
+      "add": "Kenar ekle",
+      "cancel": "İptal",
+      "kind": {
+        "composed_of": "Şunlardan oluşur",
+        "precedes": "Öncesinde gelir",
+        "variant_of": "Varyasyonu"
+      },
+      "truncated": "İlk {{cap}} motif gösteriliyor — daha fazlasını görmek için kademeye göre daraltın veya arama yapın.",
+      "canvasLoading": "Motif grafiği yükleniyor…",
+      "canvasEmpty": "Henüz grafiğe eklenecek motif yok — önce motif oluşturun veya benimseyin, ardından onları birbirine bağlayın."
+    },
+    "suggest": {
+      "button": "Bir motif öner",
+      "loading": "Bu sahne için motifler sıralanıyor…",
+      "error": "Motif önerilemedi.",
+      "retry": "Tekrar dene",
+      "empty": "Bu sahneye uygun henüz bir motif bulunamadı — kütüphanenize daha fazla ekleyin.",
+      "bind": "Bağla",
+      "degradedMine": "Motifleriniz uyumluluk sırasına göre sıralanmıyor — bunları anlamsal olarak sıralamak için ayarlarınızdan bir gömme (embedding) modeli kurun.",
+      "degradedLibrary": "Uyumluluk sırasına göre sıralanmadı — ortak kütüphanenin gömme (embedding) modeli yapılandırılmadığı için bunlar puanlanmış eşleşmeler değil, tür bazlı yedek seçeneklerdir.",
+      "sectionMine": "Motifleriniz",
+      "sectionLibrary": "Kütüphaneden"
     }
   },
   "authoringRun": {
@@ -923,5 +1092,6 @@
       "loading": "Çalıştırma yükleniyor…",
       "back": "← Çalıştırmalar listesine dön"
     }
-  }
+  },
+  "overrideSlipBlocked": "Engellenen sürüm kabul edildi: bir «ya şöyle olsaydı» sürümü orijinal kanon değerine geri kaydı. Kabul etmeden önce yeniden oluşturun."
 }

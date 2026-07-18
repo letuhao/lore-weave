@@ -281,6 +281,48 @@ class TestMicrocompact:
         assert rep.tool_results_cleared == 0
         assert all(m["content"] != _PLACEHOLDER for m in out if m.get("role") == "tool")
 
+    async def test_legacy_glossary_alias_results_are_also_never_evicted(self):
+        # `glossary_web_search` is the superseded alias (still callable by existing public
+        # keys). Its results are just as load-bearing/cited as web_search's, so they must
+        # survive compaction for as long as the alias exists.
+        msgs = [
+            _tool("glossary_web_search"), _tool("glossary_web_search"),
+            _tool("glossary_web_search"), {"role": "user", "content": "q"},
+        ]
+        out, rep = await compact_messages(msgs, effective_limit=500, keep_tool_results=1)
+        assert rep.tool_results_cleared == 0
+        assert all(m["content"] != _PLACEHOLDER for m in out if m.get("role") == "tool")
+
+
+class TestExcludeToolsAreRealWireNames:
+    """The bug this class exists to prevent.
+
+    `DEFAULT_EXCLUDE_TOOLS` was `{"web_search"}` from the day it was written — but no tool
+    named `web_search` existed. The only wire name was `glossary_web_search`, so the set
+    matched NOTHING and every web-search result was silently evictable, contradicting the
+    constant's own docstring. `test_never_evicts_excluded_tool` above passed the whole
+    time, because it fed the compactor the same fictional name the constant used: the test
+    encoded the assumption instead of reality.
+
+    So: pin the set against names the platform ACTUALLY registers, not against itself.
+    """
+
+    async def test_web_search_is_a_real_always_on_core_tool(self):
+        import app.services.tool_discovery as td
+        from app.services.compaction import DEFAULT_EXCLUDE_TOOLS
+
+        # If this reds, `web_search` stopped being a real advertised tool and the
+        # exclusion is dead again — fix the set, don't delete the test.
+        assert "web_search" in td.ALWAYS_ON_CORE_NAMES
+        assert "web_search" in DEFAULT_EXCLUDE_TOOLS
+
+    async def test_the_superseded_alias_is_excluded_while_it_still_exists(self):
+        from app.services.compaction import DEFAULT_EXCLUDE_TOOLS
+
+        # Retire this line only when glossary_web_search is actually deleted (not merely
+        # marked legacy) — public keys scoped to `domain:glossary` still call it.
+        assert "glossary_web_search" in DEFAULT_EXCLUDE_TOOLS
+
     async def test_does_not_mutate_caller_messages(self):
         msgs = [_tool("a"), _tool("b"), _tool("c"), _tool("d"), {"role": "user", "content": "x"}]
         original_first = msgs[0]["content"]

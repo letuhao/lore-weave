@@ -30,6 +30,37 @@ func insertOutboxEvent(ctx context.Context, tx pgx.Tx, eventType string, aggrega
 	return nil
 }
 
+// ScenesLinkedEvent is the event_type emitted whenever this chapter's scene→spec back-links
+// (`scenes.source_scene_id`) may have changed. SC11-amendment Phase 0.
+//
+// WHY IT CARRIES NO LINK DATA. The payload is {book_id, chapter_id} and nothing else: the
+// consumer RE-READS the chapter's scenes and reconciles. An event carrying the mappings would
+// let a stale or out-of-order delivery overwrite newer state — a re-read is idempotent,
+// order-insensitive and self-healing. (The relay is at-least-once; design for redelivery.)
+//
+// WHY NOT REUSE `chapter.scenes_reparsed`. knowledge-service already consumes that one to drive
+// extraction (`main.py` dispatcher.register). Emitting it from two MORE sites would silently
+// change another service's event volume. A new type has exactly one consumer and zero blast
+// radius.
+//
+// THE THREE WRITERS of `scenes.source_scene_id` — all three must emit, or a book renders as
+// partly/entirely unwritten:
+//  1. parse.go       — the import INSERT (guarded: only when the parser actually recovered an anchor)
+//  2. reparse.go     — via its callers' `counts.changed()` guard (kg_index.go, mcp_actions.go)
+//  3. worker-infra   — the IX-12 decompile write-back. THIS ONE EMITTED NOTHING before Phase 0,
+//     which is precisely the write that creates the link for a decompiled book.
+const ScenesLinkedEvent = "chapter.scenes_linked"
+
+// emitScenesLinked writes `chapter.scenes_linked` into the outbox in the caller's tx (atomic with
+// the link write — INV-O12: an emit that cannot be written must roll the mutation back, never be
+// swallowed, or the projection silently diverges from the truth it mirrors).
+func emitScenesLinked(ctx context.Context, tx pgx.Tx, bookID, chapterID uuid.UUID) error {
+	return insertOutboxEvent(ctx, tx, ScenesLinkedEvent, chapterID, map[string]any{
+		"book_id":    bookID,
+		"chapter_id": chapterID,
+	})
+}
+
 // jobServiceName is the value stored in the JobEvent payload's `service` field (and the
 // jobs-service `job_projection.service` + reconcile `_RECONCILE` key). The physical owner.
 const jobServiceName = "book"

@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	lwmcp "github.com/loreweave/loreweave_mcp"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
@@ -24,14 +25,16 @@ import (
 
 // RegisterAdminTools adds every System-tier admin tool to the admin MCP server.
 func (s *Server) RegisterAdminTools(srv *mcp.Server) {
-	mcp.AddTool(srv, &mcp.Tool{
+	lwmcp.RegisterTool(srv, &mcp.Tool{
 		Name: "glossary_admin_standards_read",
 		Description: "Read the SYSTEM standards catalogue you administer: system genres + kinds (and, with " +
 			"kind_code + genre_code, the attributes for that cell). These are the platform-wide defaults every " +
 			"book can adopt. Read before proposing any System change.",
+		// System-tier read, no scope key (addressed by code, System-wide).
+		Meta: lwmcp.NewToolMeta(lwmcp.TierR, lwmcp.ScopeNone, nil, nil),
 	}, s.toolAdminStandardsRead)
 
-	mcp.AddTool(srv, &mcp.Tool{
+	lwmcp.RegisterTool(srv, &mcp.Tool{
 		Name: "glossary_admin_propose_create",
 		Description: "Propose CREATING a System-tier genre, kind, or attribute (the shared platform defaults). " +
 			"High-impact and shared across ALL users — it does NOT write; it returns a confirm_token + preview " +
@@ -39,9 +42,11 @@ func (s *Server) RegisterAdminTools(srv *mcp.Server) {
 		InputSchema: closedSetSchemaFor[adminCreateToolIn](map[string][]any{
 			"level": enumLevels, "field_type": enumFieldTypes,
 		}),
+		// Mints an admin confirm_token (no direct write) ⇒ Tier W. System-tier ⇒ no scope key.
+		Meta: lwmcp.NewToolMeta(lwmcp.TierW, lwmcp.ScopeNone, nil, nil),
 	}, s.toolAdminProposeCreate)
 
-	mcp.AddTool(srv, &mcp.Tool{
+	lwmcp.RegisterTool(srv, &mcp.Tool{
 		Name: "glossary_admin_propose_patch",
 		Description: "Propose EDITING a System-tier genre/kind/attribute in place. level + code identify the row " +
 			"(attribute also needs kind_code + genre_code). Returns a confirm_token + preview a human admin confirms. " +
@@ -49,24 +54,27 @@ func (s *Server) RegisterAdminTools(srv *mcp.Server) {
 		InputSchema: closedSetSchemaFor[adminPatchToolIn](map[string][]any{
 			"level": enumLevels, "field_type": enumFieldTypes,
 		}),
+		Meta: lwmcp.NewToolMeta(lwmcp.TierW, lwmcp.ScopeNone, nil, nil),
 	}, s.toolAdminProposePatch)
 
-	mcp.AddTool(srv, &mcp.Tool{
+	lwmcp.RegisterTool(srv, &mcp.Tool{
 		Name: "glossary_admin_propose_delete",
 		Description: "Propose DELETING a System-tier genre/kind/attribute. level + code (attribute also needs " +
 			"kind_code + genre_code). High-impact, shared — returns a confirm_token + preview a human admin confirms. " +
 			"`universal` genre and `unknown` kind are never deletable. Deletes are SOFT — the row moves to the recycle " +
 			"bin and can be restored with glossary_admin_propose_restore.",
 		InputSchema: closedSetSchemaFor[adminDeleteToolIn](map[string][]any{"level": enumLevels}),
+		Meta:        lwmcp.NewToolMeta(lwmcp.TierW, lwmcp.ScopeNone, nil, nil),
 	}, s.toolAdminProposeDelete)
 
-	mcp.AddTool(srv, &mcp.Tool{
+	lwmcp.RegisterTool(srv, &mcp.Tool{
 		Name: "glossary_admin_propose_restore",
 		Description: "Propose RESTORING a soft-deleted System-tier genre/kind/attribute from the recycle bin. " +
 			"level + code (attribute also needs kind_code + genre_code). Returns a confirm_token + preview a human " +
 			"admin confirms. Only works on a row currently in the recycle bin; restoring an attribute requires its " +
 			"parent kind & genre to be live (restore those first).",
 		InputSchema: closedSetSchemaFor[adminDeleteToolIn](map[string][]any{"level": enumLevels}),
+		Meta:        lwmcp.NewToolMeta(lwmcp.TierW, lwmcp.ScopeNone, nil, nil),
 	}, s.toolAdminProposeRestore)
 }
 
@@ -297,8 +305,17 @@ func (s *Server) toolAdminProposePatch(ctx context.Context, _ *mcp.CallToolReque
 		PatchAutoFillPrompt: in.AutoFillPrompt, PatchTranslationHint: in.TranslationHint,
 	}
 	rows := []previewRow{{Label: "level", Value: level}, {Label: "code", Value: code}}
-	return s.mintAdminActionCard(adminSub, descSystemPatch,
+	res, out, err := s.mintAdminActionCard(adminSub, descSystemPatch,
 		fmt.Sprintf("Edit System %s %q", level, code), p, rows, false)
+	// External MCP discoverability audit #11 — every Patch* field is a pointer (nil =
+	// unchanged, per systemActionParams' doc comment). If none were supplied, the patch
+	// changes nothing (effectSystemPatch/patchSystem*Core have nothing to apply).
+	if err == nil && in.Name == nil && in.Description == nil && in.Icon == nil && in.Color == nil &&
+		in.SortOrder == nil && in.IsHidden == nil && in.FieldType == nil && in.IsRequired == nil &&
+		in.Options == nil && in.AutoFillPrompt == nil && in.TranslationHint == nil {
+		out.Warning = "no fields were given to patch — this will change nothing"
+	}
+	return res, out, err
 }
 
 type adminDeleteToolIn struct {

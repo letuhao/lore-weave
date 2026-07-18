@@ -35,14 +35,21 @@ import asyncpg
 from app.db.models import ArcTemplate, ArcTemplateCreateArgs, ArcTemplatePatchArgs
 from app.db.repositories import VersionMismatchError
 
+# 25 M5.2 (BA5) renamed the arc_template columns threads→tracks, arc_roster→roster. The Pydantic
+# model + MCP/API keep the field names threads/arc_roster (the full BA10 vocabulary rename across
+# the API is a separate refactor), so the SQL reads the new columns ALIASED back to the field names
+# and writes the new column names — one file, every contract stable (23-A7 reader code).
+_COL_FOR = {"threads": "tracks", "arc_roster": "roster"}  # model field → renamed DB column
+
 # embedding + raw embed cols deliberately excluded — projection is the model shape only.
 _SELECT_COLS = """
-  id, owner_user_id, code, language, visibility, name, summary, genre_tags,
-  chapter_span, threads, layout, pacing, arc_roster, source, imported_derived,
+  id, owner_user_id, book_id, book_shared, code, language, visibility, name, summary, genre_tags,
+  chapter_span, tracks AS threads, layout, pacing, roster AS arc_roster, source, imported_derived,
   source_ref, source_version, embedding_model, embedding_dim, status, version,
   created_at, updated_at
 """
-# JSONB columns json.loads'd on read (asyncpg returns them as str).
+# JSONB columns json.loads'd on read (asyncpg returns them as str) — keyed by the RESULT dict
+# names (post-alias): threads/arc_roster.
 _JSONB_FIELDS = ("threads", "layout", "pacing", "arc_roster")
 # The read predicate (R1.1) — system | public | owned-by-caller. $1 = caller_id.
 _VISIBLE_PREDICATE = "(owner_user_id IS NULL OR visibility = 'public' OR owner_user_id = $1)"
@@ -88,6 +95,7 @@ class ArcTemplateRepo:
         self, user_id: UUID, args: ArcTemplateCreateArgs,
         *, source: str = "authored", status: str = "active",
         imported_derived: bool = False,
+        book_id: UUID | None = None, book_shared: bool = False,
     ) -> ArcTemplate:
         """Create a USER-tier arc_template. owner_user_id is STAMPED = user_id (never an
         arg → a both-NULL/system row is impossible from this path; the DB CHECK is the
@@ -97,14 +105,19 @@ class ArcTemplateRepo:
         `source`/`status` default to the authored-active path (every existing caller is
         unchanged). W9's deconstruct passes source='imported', status='draft' so the
         proposed arc lands as a reviewable draft (§12.3); the arc_template.source CHECK
-        allows ('authored','mined','imported')."""
+        allows ('authored','mined','imported').
+
+        D-ARC-TEMPLATE-BOOK-TIER (34a, mirrors motif model B): `book_shared=True` targets a
+        book's SHARED tier — the row keeps visibility='private' and carries book_id (the
+        `arc_template_book_shared_shape` CHECK backstops book+owner+private). The CALLER MUST
+        be EDIT-gated on `book_id` at the route BEFORE this runs — the repo does not gate."""
         query = f"""
         INSERT INTO arc_template
           (owner_user_id, code, language, visibility, name, summary, genre_tags,
-           chapter_span, threads, layout, pacing, arc_roster, source, status,
-           imported_derived)
+           chapter_span, tracks, layout, pacing, roster, source, status,
+           imported_derived, book_id, book_shared)
         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,
-                $9::jsonb,$10::jsonb,$11::jsonb,$12::jsonb,$13,$14,$15)
+                $9::jsonb,$10::jsonb,$11::jsonb,$12::jsonb,$13,$14,$15,$16,$17)
         RETURNING {_SELECT_COLS}
         """
         async with self._pool.acquire() as c:
@@ -114,43 +127,57 @@ class ArcTemplateRepo:
                 args.summary, args.genre_tags, args.chapter_span,
                 _jsonb(_dump_models(args.threads)), _jsonb(_dump_models(args.layout)),
                 _jsonb(args.pacing), _jsonb(_dump_models(args.arc_roster)), source, status,
-                imported_derived,
+                imported_derived, book_id, book_shared,
             )
         return _row_to_arc(row)
 
-    async def get_visible(self, caller_id: UUID, arc_id: UUID) -> ArcTemplate | None:
+    async def get_visible(
+        self, caller_id: UUID, arc_id: UUID, *, book_id: UUID | None = None,
+    ) -> ArcTemplate | None:
         """THE read predicate (R1.1): returns the arc IFF system | public | owned by
         caller. A foreign PRIVATE arc returns None (IDOR-safe — the router maps None →
-        the H13 uniform 'not found or not accessible', no existence oracle)."""
-        query = f"""
-        SELECT {_SELECT_COLS} FROM arc_template
-        WHERE id = $2 AND {_VISIBLE_PREDICATE}
-        """
+        the H13 uniform 'not found or not accessible', no existence oracle).
+
+        D-ARC-TEMPLATE-BOOK-TIER: with a VIEW-gated `book_id`, ALSO returns that book's
+        shared rows (`book_shared AND book_id=$3`)."""
+        if book_id is not None:
+            pred = f"({_VISIBLE_PREDICATE} OR (book_shared AND book_id = $3))"
+            args_: tuple = (caller_id, arc_id, book_id)
+        else:
+            pred = _VISIBLE_PREDICATE
+            args_ = (caller_id, arc_id)
+        query = f"SELECT {_SELECT_COLS} FROM arc_template WHERE id = $2 AND {pred}"
         async with self._pool.acquire() as c:
-            row = await c.fetchrow(query, caller_id, arc_id)
+            row = await c.fetchrow(query, *args_)
         return _row_to_arc(row) if row is not None else None
 
     async def patch(
         self, caller_id: UUID, arc_id: UUID, args: ArcTemplatePatchArgs,
-        *, expected_version: int | None,
+        *, expected_version: int | None, book_id: UUID | None = None,
     ) -> ArcTemplate | None:
-        """Optimistic-lock edit, OWNER-only (WHERE owner_user_id = caller_id — a system
-        or foreign arc is never patchable here). Bumps version, sets updated_at. On a
+        """Optimistic-lock edit. OWNER-only by default (WHERE owner_user_id = caller_id — a
+        system or foreign arc is never patchable). Bumps version, sets updated_at. On a
         summary change, embedded_summary_hash is cleared so the re-embed fires. Returns
-        None if the row isn't the caller's (router → H13); raises VersionMismatchError(
-        current) on a stale expected_version (None skips the version guard)."""
+        None if the row isn't editable (router → H13); raises VersionMismatchError(current)
+        on a stale expected_version (None skips the version guard).
+
+        D-ARC-TEMPLATE-BOOK-TIER: with an EDIT-gated `book_id` (the route resolved the book
+        grant), a NON-OWNER collaborator may edit that book's SHARED rows — the write
+        predicate becomes `owner_user_id=$1 OR (book_shared AND book_id=<gated>)`. The repo
+        does NOT gate; the route MUST have EDIT on `book_id` before passing it."""
         sets: list[str] = []
         params: list[Any] = [caller_id, arc_id]
         data = args.model_dump(exclude_unset=True)
         for field, value in data.items():
+            col = _COL_FOR.get(field, field)  # threads→tracks, arc_roster→roster (renamed columns)
             if field in ("threads", "layout", "arc_roster"):
                 value = _dump_models(getattr(args, field) or [])
             if field in _JSONB_FIELDS:
                 params.append(_jsonb(value) if value is not None else None)
-                sets.append(f"{field} = ${len(params)}::jsonb")
+                sets.append(f"{col} = ${len(params)}::jsonb")
             else:
                 params.append(value)
-                sets.append(f"{field} = ${len(params)}")
+                sets.append(f"{col} = ${len(params)}")
         if "summary" in data:
             sets.append("embedded_summary_hash = NULL")  # re-embed on next retrieve
         sets.append("version = version + 1")
@@ -159,21 +186,35 @@ class ArcTemplateRepo:
         if expected_version is not None:
             params.append(expected_version)
             version_clause = f" AND version = ${len(params)}"
+        # edit-by-grantee: owner, OR a book_shared row whose book the route EDIT-gated.
+        if book_id is not None:
+            params.append(book_id)
+            edit_pred = f"(owner_user_id = $1 OR (book_shared AND book_id = ${len(params)}))"
+        else:
+            edit_pred = "owner_user_id = $1"
         query = f"""
         UPDATE arc_template SET {", ".join(sets)}
-        WHERE owner_user_id = $1 AND id = $2{version_clause}
+        WHERE {edit_pred} AND id = $2{version_clause}
         RETURNING {_SELECT_COLS}
         """
         async with self._pool.acquire() as c:
             row = await c.fetchrow(query, *params)
             if row is not None:
                 return _row_to_arc(row)
-            # distinguish not-owned/not-found (→ None) from a stale version (→ raise).
-            current = await c.fetchrow(
-                f"SELECT {_SELECT_COLS} FROM arc_template "
-                "WHERE owner_user_id = $1 AND id = $2",
-                caller_id, arc_id,
-            )
+            # distinguish not-editable/not-found (→ None) from a stale version (→ raise),
+            # under the SAME edit predicate so a grantee's stale edit still 412s.
+            if book_id is not None:
+                current = await c.fetchrow(
+                    f"SELECT {_SELECT_COLS} FROM arc_template "
+                    "WHERE (owner_user_id = $1 OR (book_shared AND book_id = $3)) AND id = $2",
+                    caller_id, arc_id, book_id,
+                )
+            else:
+                current = await c.fetchrow(
+                    f"SELECT {_SELECT_COLS} FROM arc_template "
+                    "WHERE owner_user_id = $1 AND id = $2",
+                    caller_id, arc_id,
+                )
         if current is None:
             return None
         if expected_version is None:
@@ -181,25 +222,61 @@ class ArcTemplateRepo:
             return None
         raise VersionMismatchError(_row_to_arc(current))
 
-    async def archive(self, caller_id: UUID, arc_id: UUID) -> None:
-        """Soft-archive (status='archived'), OWNER-only. Idempotent. A foreign/missing
-        id is a no-op the router maps to H13 (no oracle)."""
+    async def archive(self, caller_id: UUID, arc_id: UUID, *, book_id: UUID | None = None) -> None:
+        """Soft-archive (status='archived'). OWNER-only by default; with an EDIT-gated
+        `book_id` a collaborator may archive that book's SHARED rows (D-ARC-TEMPLATE-BOOK-TIER).
+        Idempotent. A foreign/missing id is a no-op the router maps to H13 (no oracle)."""
         async with self._pool.acquire() as c:
-            await c.execute(
-                "UPDATE arc_template SET status = 'archived', updated_at = now() "
-                "WHERE owner_user_id = $1 AND id = $2 AND status <> 'archived'",
-                caller_id, arc_id,
-            )
+            if book_id is not None:
+                await c.execute(
+                    "UPDATE arc_template SET status = 'archived', updated_at = now() "
+                    "WHERE (owner_user_id = $1 OR (book_shared AND book_id = $3)) "
+                    "AND id = $2 AND status <> 'archived'",
+                    caller_id, arc_id, book_id,
+                )
+            else:
+                await c.execute(
+                    "UPDATE arc_template SET status = 'archived', updated_at = now() "
+                    "WHERE owner_user_id = $1 AND id = $2 AND status <> 'archived'",
+                    caller_id, arc_id,
+                )
+
+    async def restore(self, caller_id: UUID, arc_id: UUID, *, book_id: UUID | None = None) -> ArcTemplate | None:
+        """S-08 — archive()'s exact inverse. OWNER-only by default; with an EDIT-gated `book_id` a
+        collaborator may restore that book's SHARED rows (mirror of archive's book-tier arm). A
+        status-only flip archived→active that RETURNS the row (so the FE refreshes); None if the row is
+        missing / not-editable / NOT archived (router → 404). No version bump (mirrors canon_rules.restore)."""
+        async with self._pool.acquire() as c:
+            if book_id is not None:
+                row = await c.fetchrow(
+                    f"UPDATE arc_template SET status = 'active', updated_at = now() "
+                    f"WHERE (owner_user_id = $1 OR (book_shared AND book_id = $3)) "
+                    f"AND id = $2 AND status = 'archived' RETURNING {_SELECT_COLS}",
+                    caller_id, arc_id, book_id,
+                )
+            else:
+                row = await c.fetchrow(
+                    f"UPDATE arc_template SET status = 'active', updated_at = now() "
+                    f"WHERE owner_user_id = $1 AND id = $2 AND status = 'archived' "
+                    f"RETURNING {_SELECT_COLS}",
+                    caller_id, arc_id,
+                )
+        return _row_to_arc(row) if row is not None else None
 
     async def list_for_caller(
         self, caller_id: UUID, *, scope: str = "all", genre: str | None = None,
         status: str | None = "active", q: str | None = None,
-        language: str | None = None, limit: int = 100,
+        language: str | None = None, limit: int = 100, book_id: UUID | None = None,
     ) -> list[ArcTemplate]:
         """Tier-merged list under the read predicate (system | public | owner). `scope`
         narrows: 'system' (owner NULL), 'user' (owner=caller), 'public' (visibility=
         public), 'all' (the full predicate). genre filters the GIN array; q is an ILIKE
         on name/summary; language/status are exact. System rows sort first.
+
+        D-ARC-TEMPLATE-BOOK-TIER (34a): when `book_id` is given (the CALLER MUST be VIEW-gated
+        on it at the route), the 'all' predicate ALSO surfaces that book's SHARED rows
+        (`book_shared AND book_id=$book`) — so a collaborator sees the book's shared library.
+        A non-grantee passes no book_id ⇒ never sees a book_shared row (mirrors motif).
 
         caller_id is bound as $1 ONLY when the scope's SQL references it (R-NODE-P1: a
         'system'/'public' scope binding an UNUSED $1 makes asyncpg raise
@@ -214,7 +291,11 @@ class ArcTemplateRepo:
             where = ["owner_user_id = $1"]
         else:  # 'all' — the tier-merged predicate references $1 (caller_id)
             params.append(caller_id)            # $1
-            where = [_VISIBLE_PREDICATE]
+            if book_id is not None:
+                params.append(book_id)          # $2
+                where = [f"({_VISIBLE_PREDICATE} OR (book_shared AND book_id = ${len(params)}))"]
+            else:
+                where = [_VISIBLE_PREDICATE]
         if genre is not None:
             params.append(genre)
             where.append(f"${len(params)} = ANY(genre_tags)")
@@ -272,7 +353,7 @@ class ArcTemplateRepo:
                 f"""
                 INSERT INTO arc_template
                   (owner_user_id, code, language, visibility, name, summary, genre_tags,
-                   chapter_span, threads, layout, pacing, arc_roster, source, source_ref,
+                   chapter_span, tracks, layout, pacing, roster, source, source_ref,
                    source_version, embedding, embedding_model, embedding_dim,
                    embedded_summary_hash, imported_derived)
                 VALUES ($1,$2,$3,'private',$4,$5,$6,$7,
@@ -295,7 +376,7 @@ class ArcTemplateRepo:
     # away). Mirrors motif_repo._CATALOG_COLS.
     _CATALOG_COLS = (
         "id", "code", "language", "name", "summary", "genre_tags", "chapter_span",
-        "threads", "source", "version", "updated_at",
+        "tracks AS threads", "source", "version", "updated_at",
     )
 
     async def list_public(

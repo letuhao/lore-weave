@@ -5,6 +5,7 @@ import { Pencil } from 'lucide-react';
 import { FormDialog } from '@/components/shared';
 import type { Entity } from '../api';
 import { useUpdateEntity } from '../hooks/useEntityMutations';
+import { AUTHORABLE_ENTITY_KINDS } from '../lib/entityKinds';
 
 // K19d γ-b — edit dialog. Splits aliases on newlines; trims + dedupes
 // before submit. On success, hook invalidation refreshes the open
@@ -153,14 +154,28 @@ export function EntityEditDialog({
           <span className="text-[11px] font-medium text-muted-foreground">
             {t('entities.edit.field.kind')}
           </span>
-          <input
-            type="text"
+          {/* S7-1: kind is a CLOSED-SET enum, never a free `<input>` (the
+              `kind:"charcter"` silent-typo bug). If the entity's current kind
+              is outside the authorable set (e.g. an extraction-emitted `event`/
+              `terminology`), keep it as a selectable option so editing name/
+              aliases never silently mutates the kind. */}
+          <select
             value={kind}
             onChange={(e) => setKind(e.target.value)}
-            maxLength={100}
             className="rounded-md border bg-input px-3 py-2 text-xs outline-none focus:border-ring"
             data-testid="entity-edit-kind"
-          />
+          >
+            {!(AUTHORABLE_ENTITY_KINDS as readonly string[]).includes(
+              entity.kind,
+            ) && (
+              <option value={entity.kind}>{entity.kind}</option>
+            )}
+            {AUTHORABLE_ENTITY_KINDS.map((k) => (
+              <option key={k} value={k}>
+                {k}
+              </option>
+            ))}
+          </select>
         </label>
         <label className="flex flex-col gap-1">
           <span className="text-[11px] font-medium text-muted-foreground">

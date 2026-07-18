@@ -15,7 +15,10 @@ const TONE_CLASS = {
   bad: 'text-red-700 dark:text-red-300',
 } as const;
 
-export function ConformanceSceneRow({ scene, onRegenerate }: { scene: SceneConformance; onRegenerate: (nodeId: string) => void }) {
+export function ConformanceSceneRow(
+  { scene, onRegenerate, onOpenScene }:
+  { scene: SceneConformance; onRegenerate: (nodeId: string) => void; onOpenScene?: (sceneId: string) => void },
+) {
   const { t } = useTranslation('composition');
   const v = scene.conformance;
   // a verdict is "judged" only when BOTH binary flags are real booleans (the judge
@@ -31,7 +34,20 @@ export function ConformanceSceneRow({ scene, onRegenerate }: { scene: SceneConfo
       {/* planned */}
       <div className="sm:col-span-4">
         <div className="text-[10px] font-medium uppercase text-neutral-400">{t('motif.conf.planned', { defaultValue: 'Planned' })}</div>
-        <div className="text-neutral-700 dark:text-neutral-200">{beatLabel}</div>
+        {/* §2#6 loop-connect — jump to this scene in the inspector to fix a missed/drifted beat. */}
+        {onOpenScene ? (
+          <button
+            type="button"
+            data-testid={`conformance-open-scene-${scene.outline_node_id}`}
+            onClick={() => onOpenScene(scene.outline_node_id)}
+            className="text-left text-neutral-700 underline decoration-dotted hover:text-amber-700 dark:text-neutral-200 dark:hover:text-amber-300"
+            title={t('motif.conf.openScene', { defaultValue: 'Open this scene in the inspector' })}
+          >
+            {beatLabel}
+          </button>
+        ) : (
+          <div className="text-neutral-700 dark:text-neutral-200">{beatLabel}</div>
+        )}
         {scene.planned.tension != null && <div className="text-neutral-500">T{scene.planned.tension}</div>}
       </div>
       {/* realized — presence only (the trace never carries prose) */}

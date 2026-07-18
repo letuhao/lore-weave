@@ -37,9 +37,10 @@ from app.mcp.server import build_mcp_app, mcp_server
 from app.middleware.trace_id import TraceIdMiddleware
 from app.routers import (
     actions, approve, arc, authoring_runs, canon, conformance, engine, grounding, health,
-    import_source, internal_eval, internal_job_control, internal_model_settings, metrics,
+    import_source, internal_eval, internal_job_control, internal_model_settings,
+    internal_plan_state, internal_structure_state, metrics,
     motif, motif_sync, narrative_threads, outline, ping, plan, plan_bootstrap, plan_forge,
-    progress, prose, references, style_voice, works,
+    plan_overlay, progress, prose, references, style_voice, works,
 )
 
 logger = logging.getLogger(__name__)
@@ -228,13 +229,17 @@ app.include_router(arc.router)  # W10 — arc-template CRUD/adopt/catalog + appl
 app.include_router(import_source.router)  # W9 — import_source CRUD (per-user deconstruct input)
 app.include_router(engine.router)
 app.include_router(outline.router)
+app.include_router(outline.internal_router)  # 22 SC6/B4 — scene decompiler (internal token)
 app.include_router(plan.router)
+app.include_router(plan_overlay.router)  # 24 Plan Hub v2 H1.3 — decorations aggregate (read surface #3)
 app.include_router(plan_forge.router)
 app.include_router(plan_bootstrap.router)  # PlanForge auto-bootstrap gate POC
 app.include_router(authoring_runs.router)  # RAID Wave D2 — autonomy-dial run FSM
 app.include_router(internal_eval.router)
 app.include_router(internal_job_control.router)  # Unified Job Control Plane P3
 app.include_router(internal_model_settings.router)  # D-CHATAI-M1B — Book tier model-settings read
+app.include_router(internal_plan_state.router)  # per-turn "does this book have an arc plan?" probe
+app.include_router(internal_structure_state.router)  # Phase G · G0 — per-turn "did a compile write linked structure?" probe
 app.include_router(canon.router)
 app.include_router(narrative_threads.router)
 app.include_router(conformance.router)  # W5 — motif-conformance trace read (advisory)

@@ -1,6 +1,10 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 
+// S12 — the wizard's "View glossary" now navigates via useNavigate; the test renders outside a
+// <Router>, so stub it (same pattern as TranslateModal.test.tsx / TranslationTab.badge.test.tsx).
+vi.mock('react-router-dom', () => ({ useNavigate: () => vi.fn() }));
+
 // DOCK-9 adoption (docs/standards/dockable-gui.md) — swapped the hand-rolled `fixed inset-0`
 // backdrop+dialog pair for raw @radix-ui/react-dialog primitives (custom-chrome branch: the
 // pinned step-indicator row above the scrollable body doesn't fit FormDialog's title+body+footer

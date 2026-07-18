@@ -19,13 +19,14 @@ from app.routers.outline import _decode_child_cursor, _encode_child_cursor
 
 USER = UUID("00000000-0000-0000-0000-0000000000aa")
 PROJECT = UUID("00000000-0000-0000-0000-0000000000bb")
+BOOK = UUID("00000000-0000-0000-0000-0000000000cc")
 
 
 # ── child_count badge field (navigator scene/chapter counts) ─────────────────
 
 def test_outline_node_child_count_maps_and_defaults():
     base = dict(
-        id=uuid4(), user_id=USER, project_id=PROJECT, parent_id=None,
+        id=uuid4(), created_by=USER, project_id=PROJECT, book_id=BOOK, parent_id=None,
         kind="chapter", rank="a0",
     )
     # a row FROM list_children carries child_count → it maps onto the model.
@@ -80,28 +81,30 @@ class _FakeOutline:
         self.search_calls: list[dict] = []
         self.chapter_node: UUID | None = None
 
-    async def list_children(self, user_id, project_id, parent_id, *, after=None, limit=100, include_archived=False):
+    async def list_children(self, project_id, parent_id, *, after=None, limit=100, include_archived=False):
         self.calls.append({"parent_id": parent_id, "after": after, "limit": limit})
         return self.nodes
 
-    async def search_nodes(self, user_id, project_id, q, *, limit=30):
+    async def search_nodes(self, project_id, q, *, limit=30):
         self.search_calls.append({"q": q, "limit": limit})
         return self.search_items
 
-    async def outline_stats(self, user_id, project_id):
+    async def outline_stats(self, project_id):
         return {"arcs": 1, "chapters": 12, "scenes": 35}
 
-    async def scenes_for_chapter(self, user_id, project_id, chapter_id):
-        self.calls.append({"scenes_for_chapter": chapter_id, "user_id": user_id, "project_id": project_id})
+    async def scenes_for_chapter(self, project_id, chapter_id):
+        self.calls.append({"scenes_for_chapter": chapter_id, "project_id": project_id})
         return self.nodes
 
-    async def chapter_node_id(self, user_id, project_id, chapter_id):
+    async def chapter_node_id(self, project_id, chapter_id):
         return self.chapter_node
 
 
 class _StubWorks:
-    async def get(self, user_id, project_id):
-        return object()  # non-None → _require_work passes
+    async def get(self, project_id):
+        # non-None with a book_id → _require_work resolves + gates on the book.
+        from types import SimpleNamespace
+        return SimpleNamespace(book_id=BOOK)
 
 
 @pytest.fixture
@@ -111,13 +114,23 @@ def client(monkeypatch):
     monkeypatch.setattr("app.main.close_pool", AsyncMock())
     monkeypatch.setattr("app.main.get_pool", lambda: object())
     from app.main import app
-    from app.deps import get_outline_repo, get_works_repo
+    from app.deps import get_grant_client_dep, get_outline_repo, get_works_repo
+    from app.grant_client import GrantLevel
     from app.middleware.jwt_auth import get_current_user
+
+    # E0 book-grant authority stubbed at OWNER; the navigator endpoints
+    # _require_work (resolve the Work's book, then gate VIEW) before reading.
+    class _StubGrant:
+        async def resolve_grant(self, book_id, user_id):
+            return GrantLevel.OWNER
+        async def resolve_access(self, book_id, user_id):
+            return GrantLevel.OWNER, "active"
 
     holder: dict = {"repo": None}
     app.dependency_overrides[get_current_user] = lambda: USER
     app.dependency_overrides[get_works_repo] = lambda: _StubWorks()
     app.dependency_overrides[get_outline_repo] = lambda: holder["repo"]
+    app.dependency_overrides[get_grant_client_dep] = lambda: _StubGrant()
     with TestClient(app) as c:
         yield c, holder
     app.dependency_overrides.clear()
@@ -175,10 +188,11 @@ def test_chapter_scenes_wraps_scenes_for_chapter(client):
     assert len(body["items"]) == 2
     # M-G: the outline chapter node rides along (the rail's Create target)
     assert body["chapter_node_id"] == str(chapter_node)
-    # tenancy: the repo query is keyed by user + project + chapter (kinds-bug rule)
+    # tenancy (25 re-key): the repo query is keyed by project + chapter (the Work
+    # partition); access is decided at the E0 book gate, not in the repo.
     call = holder["repo"].calls[0]
     assert call["scenes_for_chapter"] == chapter_id
-    assert call["user_id"] == USER and call["project_id"] == PROJECT
+    assert call["project_id"] == PROJECT
 
 
 def test_chapter_scenes_null_chapter_node_when_never_outlined(client):

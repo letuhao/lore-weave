@@ -60,9 +60,28 @@ describe('confirmActionResult', () => {
     expect(out.result.isError).toBeUndefined();
     expect(out.result.structuredContent.status).toBe('executed');
   });
-  it('shapes a 409 reprice / other non-2xx as an isError result carrying the detail', () => {
-    const out = confirmActionResult({ id: 1 }, 409, JSON.stringify({ status: 'reprice_required' })) as { result: { isError: boolean; structuredContent: { status: string } } };
+  it('shapes a 409 reprice — a genuine domain outcome, not an error code — as the original raw pass-through', () => {
+    const out = confirmActionResult({ id: 1 }, 409, JSON.stringify({ status: 'reprice_required' })) as { result: { isError: boolean; structuredContent: { status: string; code?: unknown } } };
     expect(out.result.isError).toBe(true);
     expect(out.result.structuredContent.status).toBe('reprice_required');
+    // auth sent no `code` for this shape — never fabricate one.
+    expect(out.result.structuredContent.code).toBeUndefined();
+  });
+
+  // item #10: when auth-service DOES send its {code, message} business-error shape (writeErr —
+  // e.g. AUTH_APPROVAL_EXPIRED, AUTH_CONFIRM_EXECUTE_FAILED), it is routed through the SAME
+  // buildErrorEnvelope helper invoke-tool.ts's malformedResult/notActivatedError use, which
+  // now maps the code into the C4 closed set (message preserved verbatim).
+  it('routes an auth {code, message} business error through the shared envelope, code mapped to C4', () => {
+    const authBody = JSON.stringify({ code: 'AUTH_APPROVAL_EXPIRED', message: 'this confirmation has expired — propose it again' });
+    const out = confirmActionResult({ id: 9 }, 410, authBody) as {
+      id: unknown;
+      result: { isError: boolean; content: Array<{ text: string }>; structuredContent: { code: string; message: string } };
+    };
+    expect(out.id).toBe(9);
+    expect(out.result.isError).toBe(true);
+    // AUTH_APPROVAL_EXPIRED → CONFIRM_FAILED (C4); the human message is untouched.
+    expect(out.result.structuredContent).toEqual({ code: 'CONFIRM_FAILED', message: 'this confirmation has expired — propose it again' });
+    expect(JSON.parse(out.result.content[0].text)).toEqual(out.result.structuredContent);
   });
 });

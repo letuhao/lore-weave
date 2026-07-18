@@ -57,7 +57,8 @@
     "cancel": "Batal",
     "cancelConfirm": "Batal tugasan terjemahan ini? Entiti yang telah diproses akan mengekalkan terjemahannya.",
     "cancelRequested": "Pembatalan diminta",
-    "noEntities": "Tiada entiti yang perlu diterjemahkan untuk bahasa ini."
+    "noEntities": "Tiada entiti yang perlu diterjemahkan untuk bahasa ini.",
+    "pollFailed": "Tidak dapat memperoleh kemajuan terjemahan — perkhidmatan mungkin tidak tersedia. Mencuba semula…"
   },
   "results": {
     "title": "Terjemahan Selesai",

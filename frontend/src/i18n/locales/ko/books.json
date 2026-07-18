@@ -118,6 +118,7 @@
     "count": "{{count}}개 챕터",
     "count_other": "{{count}}개 챕터",
     "import": "가져오기",
+    "importPdf": "PDF 가져오기",
     "new": "새 챕터",
     "col": {
       "title": "제목",
@@ -150,8 +151,7 @@
       "title": "챕터를 휴지통으로 이동할까요?",
       "description": "\"{{title}}\"이(가) 휴지통으로 이동됩니다.",
       "confirm": "휴지통으로 이동"
-    },
-    "importPdf": "PDF 가져오기"
+    }
   },
   "glossary": {
     "header": "용어집 및 설정",
@@ -211,7 +211,8 @@
     "status": {
       "draft": "초안",
       "active": "활성",
-      "inactive": "비활성"
+      "inactive": "비활성",
+      "rejected": "거절됨"
     },
     "bulk": {
       "select_row": "엔티티 선택",
@@ -228,7 +229,8 @@
       "delete_confirm": {
         "title": "{{count}}개의 엔티티를 삭제할까요?",
         "description": "선택한 {{count}}개의 엔티티가 휴지통으로 이동됩니다."
-      }
+      },
+      "reject": "거절"
     },
     "clear_filters": "모든 필터 해제",
     "deleted": "엔티티 삭제됨",
@@ -252,7 +254,8 @@
       "title": "엔티티를 삭제할까요?",
       "description": "\"{{title}}\"이(가) 휴지통으로 이동됩니다.",
       "confirm": "삭제"
-    }
+    },
+    "scope_label_title": "범위 — 동일한 이름을 가진 다른 엔티티와 이 엔티티를 구분합니다"
   },
   "sharing": {
     "title": "공개 범위",

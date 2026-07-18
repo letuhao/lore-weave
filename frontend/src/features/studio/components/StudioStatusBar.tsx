@@ -36,8 +36,10 @@ export function StudioStatusBar({ bookLanguage, bottomOpen, onToggleBottom }: Pr
       {leftItems.map((i) => <i.component key={i.id} />)}
       <div className="flex-1" />
       {rightItems.map((i) => <i.component key={i.id} />)}
-      {/* #12 M-H — word count is now a registered F2 item (WordCountStatusItem). */}
-      <span>{t('status.modelPlaceholder', { defaultValue: 'no model' })}</span>
+      {/* #12 M-H — word count is now a registered F2 item (WordCountStatusItem). The active-model
+          indicator likewise belongs as a registered F2 producer, NOT a hardcoded stub: a static
+          "no model" span always contradicted the real model shown in the editor's inline toolbar
+          (S1 blackbox finding D-S1-MODEL-INDICATOR). Removed until a real producer registers one. */}
       {/* Palette hints (VS Code): ⌘P Quick Open · ⌘⇧P Command Palette. */}
       <span className="font-mono" title={t('palette.quickOpenTitle', { defaultValue: 'Go to chapter, scene, arc' })}>⌘P</span>
       <span className="font-mono" title={t('palette.commandPlaceholder', { defaultValue: 'Type a command…' })}>⌘⇧P</span>

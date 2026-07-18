@@ -70,10 +70,14 @@ class FakeConn:
         if s.startswith("SELECT") and "FROM knowledge_pending_facts" in s:
             user_id = args[0]
             session_id = args[1] if len(args) > 1 else None
+            # WS-2.5 — the diary_only path emits an "AND session_id IS NULL" predicate with NO bind param;
+            # detect it from the SQL so this fake reflects the real filter (else the mock hides it).
+            diary_only = "session_id IS NULL" in s
             rows = [
                 r for r in self.store.values()
                 if r["user_id"] == user_id
                 and (session_id is None or r["session_id"] == session_id)
+                and (not diary_only or r["session_id"] is None)
             ]
             rows.sort(key=lambda r: (r["created_at"], r["pending_fact_id"]))
             return [dict(r) for r in rows]
@@ -187,6 +191,26 @@ async def test_list_for_user_filters_by_session_id(repo_and_conn):
     one = await repo.list_for_user(user_id, session_id="sess-1")
     assert len(one) == 1
     assert one[0].fact_text == "in session 1"
+
+
+@pytest.mark.asyncio
+async def test_list_for_user_diary_only_returns_session_less_facts(repo_and_conn):
+    """WS-2.5 (audit MED): diary_only=True narrows to the SESSION-LESS diary facts, so chat-memory
+    facts (which carry a session_id) don't leak into the diary fact inbox."""
+    repo, _ = repo_and_conn
+    user_id = uuid4()
+    await repo.queue(user_id, project_id=None, session_id="chat-sess",
+                     fact_type="decision", fact_text="a chat-memory fact")
+    await repo.queue(user_id, project_id=None, session_id=None,
+                     fact_type="statement", fact_text="a diary fact")
+
+    # No filter → BOTH (the old, over-listing behavior).
+    assert len(await repo.list_for_user(user_id)) == 2
+    # diary_only → ONLY the session-less diary fact.
+    diary = await repo.list_for_user(user_id, diary_only=True)
+    assert len(diary) == 1
+    assert diary[0].fact_text == "a diary fact"
+    assert diary[0].session_id is None
 
 
 @pytest.mark.asyncio

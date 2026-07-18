@@ -1093,6 +1093,9 @@ MATCH (e:Event)
 WHERE e.user_id = $user_id
   AND e.archived_at IS NULL
   AND ($project_id IS NULL OR e.project_id = $project_id)
+  // D16 (spec 07 §Q4) — a project-less memory read excludes the user's assistant/diary projects, so a
+  // novel-writing session's timeline can't surface diary events. Empty list = no exclusion.
+  AND (size($exclude_project_ids) = 0 OR NOT coalesce(e.project_id, '') IN $exclude_project_ids)
   AND ($after_order IS NULL OR e.event_order > $after_order)
   AND ($before_order IS NULL OR e.event_order < $before_order)
   AND ($after_chronological IS NULL OR e.chronological_order > $after_chronological)
@@ -1180,6 +1183,7 @@ async def list_events_filtered(
     sort_dir: str = "asc",
     limit: int,
     offset: int,
+    exclude_project_ids: list[str] | None = None,
 ) -> tuple[list[Event], int]:
     """K19e.2 + C10 + C14 — paginated timeline browse.
 
@@ -1264,6 +1268,7 @@ async def list_events_filtered(
             f"<= event_date_to ({event_date_to!r})"
         )
     effective_limit = min(limit, EVENTS_MAX_LIMIT)
+    _exclude = list(exclude_project_ids or [])  # D16 — assistant/diary projects to drop under all-projects
     count_result = await run_read(
         session,
         _LIST_EVENTS_COUNT_CYPHER,
@@ -1277,6 +1282,7 @@ async def list_events_filtered(
         event_date_to=event_date_to,
         participant_candidates=participant_candidates,
         q=q,
+        exclude_project_ids=_exclude,
     )
     count_record = await count_result.single()
     total = int(count_record["total"]) if count_record else 0
@@ -1297,6 +1303,7 @@ async def list_events_filtered(
         q=q,
         offset=offset,
         limit=effective_limit,
+        exclude_project_ids=_exclude,
     )
     rows = [_node_to_event(record["e"]) async for record in page_result]
     return rows, total

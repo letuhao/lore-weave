@@ -16,12 +16,17 @@ class _FakeBookClient:
     def __init__(self, chapters):
         self._chapters = chapters
 
-    async def list_chapters(self, book_id, editorial_status=None):
+    # WS-0.6: mirrors the REAL BookClient.list_chapters signature, which now takes
+    # kg_indexed (the knowledge-graph membership gate) alongside editorial_status. A
+    # fake that lags the real signature would hide the re-key entirely.
+    async def list_chapters(self, book_id, editorial_status=None, kg_indexed=None):
         return self._chapters
 
 
 def _ch(cid, sort):
-    # revision_id non-None so the published-revision gate keeps it.
+    # revision_id non-None so the pinned-revision gate keeps it (WS-0.6: the pin is
+    # kg_indexed_revision_id; a None revision falls back to LIVE DRAFT text and is
+    # therefore skipped).
     return ChapterInfo(chapter_id=cid, title="", sort_order=sort, revision_id="rev")
 
 

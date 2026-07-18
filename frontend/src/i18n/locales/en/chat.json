@@ -50,7 +50,7 @@
       "working_memory": "Working memory",
       "steering": "Steering rules",
       "skills": "Skills",
-      "plan_nudge": "Plan nudge",
+      "plan_nudge": "Mode nudge",
       "book_note": "Book note",
       "attached_context": "Attached context",
       "history": "Conversation",
@@ -82,6 +82,7 @@
       "table": "Table"
     },
     "placeholder": "Ask about your story, characters, world-building...",
+    "assistant_placeholder": "Talk through your day — the people, projects and decisions…",
     "attach_context": "Attach context",
     "assist": "Assist",
     "voice_assist_on": "Voice Assist ON — AI responses will be spoken",
@@ -127,12 +128,6 @@
     "mode_write_hint": "Write mode — the agent can make undoable changes (asks once per new tool)"
   },
   "new": {
-    "preset": {
-      "novel": "Novel Assistant",
-      "translator": "Translator",
-      "worldbuilder": "Worldbuilder",
-      "editor": "Editor"
-    },
     "create_failed": "Failed to create chat: {{error}}",
     "title": "Start New Chat",
     "model": "Model",
@@ -234,7 +229,7 @@
   "actionConfirm": {
     "label": "Confirm action",
     "batch_count": "{{count}} items",
-    "warning": "This change is high-impact — please confirm.",
+    "warning": "Please review this change before applying.",
     "warning_destructive": "This is destructive and cascades — please confirm.",
     "destructive_skipped": "{{count}} destructive op(s) will be SKIPPED unless you enable them above.",
     "confirm": "Confirm",
@@ -345,14 +340,6 @@
     "title": "Session Settings",
     "model": "Model",
     "system_prompt": "System Prompt",
-    "preset": {
-      "Custom": "Custom",
-      "Novelist": "Novelist",
-      "Translator": "Translator",
-      "Worldbuilder": "Worldbuilder",
-      "Editor": "Editor",
-      "Analyst": "Analyst"
-    },
     "prompt_placeholder": "Give the AI a role, personality, or specific instructions...",
     "gen_params": "Generation Parameters",
     "max_tokens": "Max Tokens",
@@ -389,9 +376,11 @@
     "approve_once": "Approve once",
     "always_allow": "Always allow",
     "deny": "Deny",
+    "never_allow": "Never allow",
     "approved": "Approved — running ✓",
     "always_allowed": "Always allowed — running ✓",
-    "denied": "Denied"
+    "denied": "Denied",
+    "never_allowed": "Never allowed — you can undo this in Settings → Permissions"
   },
   "rack": {
     "label": "Context",
@@ -449,5 +438,13 @@
       "activated": "Activated",
       "tool_running": "Running tool"
     }
+  },
+  "presets": {
+    "custom": "Custom",
+    "novelist": "Novelist",
+    "translator": "Translator",
+    "worldbuilder": "Worldbuilder",
+    "editor": "Editor",
+    "analyst": "Analyst"
   }
 }

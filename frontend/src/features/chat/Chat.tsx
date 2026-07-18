@@ -6,6 +6,7 @@ import { NewChatDialog } from './components/NewChatDialog';
 import { ChatEmptyState } from './components/ChatEmptyState';
 import { SessionSwitcher } from './components/SessionSwitcher';
 import { useEmbeddedChatBinding } from './useEmbeddedChatBinding';
+import { useAssistantAutoSession } from './useAssistantAutoSession';
 import { useGlossaryDisplayLanguage } from '@/features/glossary/hooks/useGlossaryDisplayLanguage';
 
 interface ChatProps {
@@ -32,6 +33,10 @@ interface ChatProps {
   /** M2 (D-T5.4-CHAT-HOIST): pop-out — force the worker path (a pop-out window has no
    *  windowing host of its own, but must share the opener's in-flight turn). */
   forceShared?: boolean;
+  /** T-4 / WS-1.10: when 'assistant', a session auto-created here is stamped
+   *  session_kind='assistant' (the discriminator recall + capture gate on). Omit
+   *  everywhere else → the server defaults to 'chat'. */
+  sessionKind?: 'chat' | 'assistant';
   className?: string;
 }
 
@@ -44,7 +49,7 @@ interface ChatProps {
  * hook owns which session is active and binds it to the book's knowledge
  * project so the assistant has the book's lore/memory.
  */
-export function Chat({ bookId, editorContext, studioContext, composeMode, actionBar, windowingEnabled, forceShared, className }: ChatProps) {
+export function Chat({ bookId, editorContext, studioContext, composeMode, actionBar, windowingEnabled, forceShared, sessionKind, className }: ChatProps) {
   // Glossary-assistant P3: any book-scoped chat (incl. the editor) advertises the
   // glossary edit-existing tool. The editor also passes editorContext (chapter
   // prose tool); a glossary-page/reader chat passes only bookContext.
@@ -68,14 +73,14 @@ export function Chat({ bookId, editorContext, studioContext, composeMode, action
           bookContext={bookContext}
           displayLanguage={apiDisplayLanguage}
         >
-          <EmbeddedChat bookId={bookId} actionBar={actionBar} className={className} composeMode={composeMode} />
+          <EmbeddedChat bookId={bookId} actionBar={actionBar} className={className} composeMode={composeMode} sessionKind={sessionKind} />
         </ChatStreamProvider>
       </ChatLiveStateProvider>
     </ChatSessionProvider>
   );
 }
 
-function EmbeddedChat({ bookId, actionBar, className, composeMode }: ChatProps) {
+function EmbeddedChat({ bookId, actionBar, className, composeMode, sessionKind }: ChatProps) {
   const {
     sessions,
     sessionsLoading,
@@ -98,12 +103,23 @@ function EmbeddedChat({ bookId, actionBar, className, composeMode }: ChatProps) 
     updateActiveSession,
   });
 
+  // F-QC-1 — the diary assistant auto-creates its session (default model, book-bound) instead of greeting
+  // the user with the generic new-chat dialog. suppressGenericDialog is true while the assistant owns the
+  // create; it only releases (→ manual dialog) if there's no default model to auto-use.
+  const { suppressGenericDialog } = useAssistantAutoSession({
+    enabled: sessionKind === 'assistant',
+    needsNewSession,
+    hasActiveSession: !!activeSession,
+    bookId,
+    createSession,
+  });
+
   // Derived, not stored: show the create dialog while a book-scoped session is
   // needed and none is active — until the user dismisses it. No setState in
   // render (CLAUDE.md: don't drive UI off a useEffect/render side-effect).
   // The session switcher's "New chat" (showNewDialog) opens it on demand too,
   // even when a session is already active (bug #17).
-  const dialogOpen = (needsNewSession && !activeSession && !dialogDismissed) || showNewDialog;
+  const dialogOpen = (needsNewSession && !activeSession && !dialogDismissed && !suppressGenericDialog) || showNewDialog;
 
   return (
     <div className={`flex h-full flex-col overflow-hidden ${className ?? ''}`}>
@@ -124,12 +140,15 @@ function EmbeddedChat({ bookId, actionBar, className, composeMode }: ChatProps) 
           void createSession({
             model_source: 'user_model',
             model_ref: modelRef,
-            title: 'New Chat',
+            title: sessionKind === 'assistant' ? 'Work Assistant' : 'New Chat',
             system_prompt: systemPrompt,
             // D-COMPOSE-SESSION-RESTORE: tag at creation so this book's next
             // Compose open can find it again (JSON.stringify drops `undefined`
             // when there's no bookId — e.g. a non-book embedded host).
             book_id: bookId,
+            // T-4 / WS-1.10: stamp the assistant discriminator so recall + capture
+            // gate on it (undefined for a normal chat → server defaults to 'chat').
+            session_kind: sessionKind,
           });
         }}
       />

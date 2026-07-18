@@ -341,6 +341,88 @@ async def test_ingest_threads_canon_false_for_draft_indexing(monkeypatch):
         assert call.kwargs["canon"] is False
 
 
+async def _run_ingest_capturing_delete(monkeypatch, *, canon: bool):
+    """Helper: run a happy-path ingest and return the delete mock so a test can
+    assert the reap's `canon` scope (D-R20 keep-both)."""
+    book = _mk_book_client(text="Arthur rode toward Camelot. " * 300)
+
+    async def fake_embed(*, user_id, model_source, model_ref, texts):
+        return EmbeddingResult(
+            embeddings=[[0.1] * 1024 for _ in texts], dimension=1024, model="bge-m3",
+        )
+
+    emb = MagicMock()
+    emb.embed = fake_embed
+    delete = AsyncMock(return_value=0)
+    monkeypatch.setattr("app.extraction.passage_ingester.upsert_passage", AsyncMock())
+    monkeypatch.setattr(
+        "app.extraction.passage_ingester.delete_passages_for_source", delete,
+    )
+    await ingest_chapter_passages(
+        MagicMock(), book, emb,
+        user_id=USER_ID, project_id=PROJECT_ID,
+        book_id=BOOK_ID, chapter_id=CHAPTER_ID, chapter_index=1,
+        embedding_model="bge-m3", embedding_dim=1024,
+        canon=canon,
+    )
+    return delete
+
+
+@pytest.mark.asyncio
+async def test_ingest_draft_reaps_only_draft_bucket(monkeypatch):
+    """D-R20 (P-3, keep-both): a DRAFT index (canon=False) reaps ONLY the draft
+    bucket (`canon=False`), so the chapter's PUBLISHED canon passages survive
+    side by side. A reap that wiped canon here is the exact keep-both bug."""
+    delete = await _run_ingest_capturing_delete(monkeypatch, canon=False)
+    delete.assert_awaited_once()
+    assert delete.await_args.kwargs["canon"] is False
+
+
+@pytest.mark.asyncio
+async def test_ingest_publish_reaps_both_buckets(monkeypatch):
+    """D-R20 (P-3): a PUBLISH (canon=True) reaps BOTH buckets (`canon=None`) —
+    publishing establishes the new canon and supersedes any ahead-of-canon
+    draft, preserving the pre-P-3 clean-rewrite behavior for the publish path."""
+    delete = await _run_ingest_capturing_delete(monkeypatch, canon=True)
+    delete.assert_awaited_once()
+    assert delete.await_args.kwargs["canon"] is None
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("canon", [True, False])
+async def test_ingest_skip_gate_reads_matching_bucket(monkeypatch, canon):
+    """D-R20 (P-3): the content-hash skip-gate reads the SAME bucket it's about to
+    write (`canon=canon`), so the canon and draft sets never cross-contaminate the
+    gate once keep-both lets both coexist."""
+    book = _mk_book_client(text="Arthur rode toward Camelot. " * 300)
+
+    async def fake_embed(*, user_id, model_source, model_ref, texts):
+        return EmbeddingResult(
+            embeddings=[[0.1] * 1024 for _ in texts], dimension=1024, model="bge-m3",
+        )
+
+    emb = MagicMock()
+    emb.embed = fake_embed
+    state = AsyncMock(return_value=None)  # cache miss → ingest proceeds
+    monkeypatch.setattr("app.extraction.passage_ingester.upsert_passage", AsyncMock())
+    monkeypatch.setattr(
+        "app.extraction.passage_ingester.delete_passages_for_source",
+        AsyncMock(return_value=0),
+    )
+    # Override the autouse stub so we can capture the canon scope.
+    monkeypatch.setattr("app.extraction.passage_ingester.get_source_ingest_state", state)
+
+    await ingest_chapter_passages(
+        MagicMock(), book, emb,
+        user_id=USER_ID, project_id=PROJECT_ID,
+        book_id=BOOK_ID, chapter_id=CHAPTER_ID, chapter_index=1,
+        embedding_model="bge-m3", embedding_dim=1024,
+        canon=canon,
+    )
+    state.assert_awaited_once()
+    assert state.await_args.kwargs["canon"] is canon
+
+
 @pytest.mark.asyncio
 async def test_ingest_maps_block_index_from_block_indices(monkeypatch):
     """P3-C: the draft path maps a chunk's block_pos → block_indices[pos] and
@@ -870,9 +952,30 @@ async def test_ingest_keeps_passages_when_revision_missing_and_flag_false(monkey
 
 def _book_with_published(chapters, text="Arthur rode toward Camelot. " * 20):
     """book_client whose list_chapters returns `chapters` and whose per-chapter live
-    text yields one chunk (so each published chapter ingests one passage)."""
+    text yields one chunk (so each chapter ingests one passage).
+
+    review-impl: the returned rows are ENRICHED with the revision markers that the real
+    book-service chapter LIST projection always carries (published_revision_id +
+    kg_indexed_revision_id). The old fixtures omitted them entirely, so the backfill's
+    revision pin and canon derivation were never exercised — which is exactly how a
+    backfill that ingested LIVE DRAFT text and stamped it canon=True shipped green. A
+    fixture that is missing fields production always sends is not a simplification, it is
+    a blind spot.
+
+    A row that already declares its own markers (e.g. a draft-indexed chapter with
+    published_revision_id=None) is passed through untouched.
+    """
+    enriched = []
+    for ch in chapters:
+        ch = dict(ch)
+        if "kg_indexed_revision_id" not in ch and "published_revision_id" not in ch:
+            # Default shape: a normally-published chapter — both pointers at one revision.
+            rev = str(uuid4())
+            ch["published_revision_id"] = rev
+            ch["kg_indexed_revision_id"] = rev
+        enriched.append(ch)
     book = _mk_book_client(text=text)
-    book.list_chapters = AsyncMock(return_value=chapters)
+    book.list_chapters = AsyncMock(return_value=enriched)
     return book
 
 
@@ -889,9 +992,19 @@ def _dyn_embed():
 
 
 @pytest.mark.asyncio
-async def test_backfill_ingests_every_published_chapter_as_canon(monkeypatch):
-    """The backfill enumerates PUBLISHED chapters and ingests each as canon=True —
-    the fix for chapters published before the project/embedding existed."""
+async def test_backfill_ingests_every_kg_indexed_chapter(monkeypatch):
+    """WS-0.6 — the backfill enumerates the chapters in the KNOWLEDGE GRAPH
+    (``kg_indexed=True``), not the published ones.
+
+    A user's explicitly-indexed DRAFT chapters must get :Passage nodes too, or they are
+    invisible to L3 semantic retrieval and to chat grounding — the feature would look
+    like it worked (the chapter says "indexed") while recall returns nothing.
+
+    ⚠️ This re-keys the ENUMERATION ONLY. The `canon` flag on the ingested passages is
+    deliberately NOT re-keyed — ``canon = (revision_id == published_revision_id)`` stays
+    the rule (spec §3.7 / P1-8), because draft prose must not surface as canon. Flipping
+    that too would be the inverse bug.
+    """
     chapters = [
         {"chapter_id": str(uuid4()), "sort_order": 1, "editorial_status": "published"},
         {"chapter_id": str(uuid4()), "sort_order": 2, "editorial_status": "published"},
@@ -910,14 +1023,73 @@ async def test_backfill_ingests_every_published_chapter_as_canon(monkeypatch):
         user_id=USER_ID, project_id=PROJECT_ID, book_id=BOOK_ID,
         embedding_model="bge-m3", embedding_dim=1024,
     )
-    # Scopes to PUBLISHED chapters only.
-    book.list_chapters.assert_awaited_once_with(BOOK_ID, editorial_status="published")
+    # WS-0.6: scopes to the chapters that are IN THE KNOWLEDGE GRAPH.
+    book.list_chapters.assert_awaited_once_with(BOOK_ID, kg_indexed=True)
     assert res.chapters_indexed == 2
     assert res.passages_created == 2  # one chunk per chapter
     assert upsert.await_count == 2
     # Published passages are canon.
     for call in upsert.await_args_list:
         assert call.kwargs["canon"] is True
+
+
+@pytest.mark.asyncio
+async def test_backfill_draft_indexed_chapter_is_pinned_and_NOT_canon(monkeypatch):
+    """review-impl P0 — THE TEST WHOSE ABSENCE LET THE BUG SHIP.
+
+    The sibling test above asserts the rule in its DOCSTRING ("the canon flag is
+    deliberately NOT re-keyed... flipping it would be the inverse bug") — but its fixture
+    contained only PUBLISHED rows, so the draft-indexed case was never executed. A prose
+    guard is not a guard.
+
+    What actually shipped: WS-0.6b re-keyed this backfill's enumeration to kg_indexed=True
+    (which now returns never-published, user-indexed DRAFTS) while leaving
+    `revision_id=None, canon=True`. So every draft-indexed chapter had its LIVE DRAFT text
+    embedded — including prose typed AFTER the index action — and stamped CANONICAL,
+    landing it in the default `surface=canon` search used for chat grounding.
+
+    Two properties, both required (spec §3.7 / P1-8):
+      - PIN the revision the user actually indexed (never the live draft).
+      - canon = (revision_id == published_revision_id) ⇒ False for a never-published chapter.
+    """
+    pinned = str(uuid4())
+    chapters = [{
+        "chapter_id": str(uuid4()),
+        "sort_order": 1,
+        "editorial_status": "draft",
+        "published_revision_id": None,      # NEVER published
+        "kg_indexed_revision_id": pinned,   # but explicitly added to the knowledge graph
+    }]
+    book = _book_with_published(chapters)
+    emb = _dyn_embed()
+    upsert = AsyncMock()
+    monkeypatch.setattr("app.extraction.passage_ingester.upsert_passage", upsert)
+    monkeypatch.setattr(
+        "app.extraction.passage_ingester.delete_passages_for_source",
+        AsyncMock(return_value=0),
+    )
+
+    await backfill_published_passages(
+        MagicMock(), book, emb,
+        user_id=USER_ID, project_id=PROJECT_ID, book_id=BOOK_ID,
+        embedding_model="bge-m3", embedding_dim=1024,
+    )
+
+    assert upsert.await_count >= 1, "the draft-indexed chapter should still be ingested"
+    for call in upsert.await_args_list:
+        assert call.kwargs["canon"] is False, (
+            "a NEVER-PUBLISHED, user-indexed chapter's passages must be canon=False. "
+            "canon=True puts unreviewed draft prose into the DEFAULT surface=canon vector "
+            "search used for chat grounding — and surface=canon, the exact control that "
+            "exists to exclude it, can then no longer filter it out."
+        )
+
+    # And it must have been read at the PINNED revision, never the live draft.
+    fetch = book.get_chapter_revision_text
+    assert fetch.await_count >= 1, (
+        "the backfill must fetch the PINNED revision. revision_id=None reads the LIVE "
+        "DRAFT, so prose typed after the user's index action gets embedded too."
+    )
 
 
 @pytest.mark.asyncio

@@ -1,18 +1,9 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { Toaster } from 'sonner';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { QueryClientProvider } from '@tanstack/react-query';
 import { AuthProvider, RequireAuth } from '@/auth';
-
-const queryClient = new QueryClient({
-  defaultOptions: {
-    queries: {
-      staleTime: 30 * 1000, // 30s — data considered fresh for 30s
-      gcTime: 5 * 60 * 1000, // 5min — garbage collect after 5min
-      refetchOnWindowFocus: true, // refetch when user returns to tab
-      retry: 1,
-    },
-  },
-});
+// W0-S16 — the QueryClient now carries a global MutationCache.onError (see lib/queryClient.ts).
+import { queryClient } from '@/lib/queryClient';
 import { DashboardLayout } from '@/layouts/DashboardLayout';
 import { FullBleedLayout } from '@/layouts/FullBleedLayout';
 import { EditorLayout } from '@/layouts/EditorLayout';
@@ -21,6 +12,7 @@ import { PlaceholderPage } from '@/pages/PlaceholderPage';
 import { BooksPage } from '@/pages/BooksPage';
 import { TrashPage } from '@/pages/TrashPage';
 import { ChatPage } from '@/pages/ChatPage';
+import { AssistantPage } from '@/features/assistant/components/AssistantPage';
 import { RoleplayPage } from '@/features/roleplay/pages/RoleplayPage';
 import { BookDetailPage } from '@/pages/BookDetailPage';
 import { ChapterEditorPage } from '@/pages/ChapterEditorPage';
@@ -64,6 +56,11 @@ import { NotificationsPage } from '@/pages/NotificationsPage';
 import { RawSearchPage } from '@/pages/RawSearchPage';
 import { OnboardingPage } from '@/features/onboarding/pages/OnboardingPage';
 import { OAuthConsentPage } from '@/pages/OAuthConsentPage';
+import { PlatformHomePage } from '@/features/home/components/PlatformHomePage';
+import { ActivityPage } from '@/features/home/components/ActivityPage';
+import { YouPage } from '@/features/home/components/YouPage';
+import { UpdatePrompt } from '@/pwa/UpdatePrompt';
+import { MobileNav } from '@/app/shell/MobileNav';
 
 function AuthenticatedThemeProvider({ children }: { children: React.ReactNode }) {
   const { accessToken } = useAuth();
@@ -78,6 +75,9 @@ export function App() {
     <SidebarProvider>
       <BrowserRouter>
         <Toaster position="bottom-right" richColors closeButton />
+        <UpdatePrompt />
+        {/* The always-visible mobile bottom navigator (fixed; every app screen). */}
+        <MobileNav />
         <Routes>
           {/* ── Public routes (no auth required) ── */}
 
@@ -140,6 +140,9 @@ export function App() {
           <Route element={<RequireAuth><ChatLayout /></RequireAuth>}>
             <Route path="/chat" element={<ChatPage />} />
             <Route path="/chat/:sessionId" element={<ChatPage />} />
+            {/* WS-1.10 — the Work Assistant: reuses the chat surface + a home strip,
+                bound to the user's private diary book. Same layout chrome as chat. */}
+            <Route path="/assistant" element={<AssistantPage />} />
             {/* Roleplay practice — reuses the chat turn loop + voice; scripts +
                 start come from roleplay-service (/v1/roleplay). Interview is a
                 preset genre. /interview redirects (kept for old links). */}
@@ -154,6 +157,12 @@ export function App() {
                 is the re-entry "start something new" affordance (always shows). */}
             <Route path="/onboarding" element={<OnboardingPage />} />
             <Route path="/onboarding/new" element={<OnboardingPage forceShow />} />
+
+            {/* Mobile bottom-tab targets. /home + /activity are M2 (the platform home + feed);
+                /you is the M3 placeholder for now. Real routes on desktop too. */}
+            <Route path="/home" element={<PlatformHomePage />} />
+            <Route path="/activity" element={<ActivityPage />} />
+            <Route path="/you" element={<YouPage />} />
 
             {/* Workspace */}
             <Route path="/books" element={<BooksPage />} />

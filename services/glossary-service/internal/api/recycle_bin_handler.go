@@ -1,10 +1,13 @@
 package api
 
 import (
-	"github.com/loreweave/grantclient"
+	"context"
 	"net/http"
 	"strconv"
 	"time"
+
+	"github.com/google/uuid"
+	"github.com/loreweave/grantclient"
 )
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -151,7 +154,24 @@ func (s *Server) restoreEntity(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	ctx := r.Context()
+	found, err := s.restoreEntityCore(r.Context(), bookID, entityID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "restore failed")
+		return
+	}
+	if !found {
+		writeError(w, http.StatusNotFound, "GLOSS_NOT_FOUND", "entity not in trash")
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// restoreEntityCore un-deletes ONE entity (deleted_at=NULL), as long as it isn't
+// permanently purged. The single source of truth for the REST restore route above
+// AND the glossary_entity_restore Tier-A tool (entity_delete_tools.go) —
+// found=false means the entity isn't in the trash (already live, purged, or
+// nonexistent) — an idempotent no-op at the caller's discretion.
+func (s *Server) restoreEntityCore(ctx context.Context, bookID, entityID uuid.UUID) (found bool, err error) {
 	tag, err := s.pool.Exec(ctx,
 		`UPDATE glossary_entities
 		 SET deleted_at = NULL, updated_at = now()
@@ -160,14 +180,9 @@ func (s *Server) restoreEntity(w http.ResponseWriter, r *http.Request) {
 		   AND permanently_deleted_at IS NULL`,
 		entityID, bookID)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "restore failed")
-		return
+		return false, err
 	}
-	if tag.RowsAffected() == 0 {
-		writeError(w, http.StatusNotFound, "GLOSS_NOT_FOUND", "entity not in trash")
-		return
-	}
-	w.WriteHeader(http.StatusNoContent)
+	return tag.RowsAffected() > 0, nil
 }
 
 // ── DELETE /v1/glossary/books/{book_id}/recycle-bin/{entity_id} ───────────────

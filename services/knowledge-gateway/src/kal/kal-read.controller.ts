@@ -122,6 +122,10 @@ export class KalReadController {
     const items = ((data?.items as Array<Record<string, unknown>>) ?? []).map((e) => ({
       entity_id: e.entity_id,
       name: e.name ?? e.cached_name,
+      // A3 — pass the entity's KIND through (the upstream already selects k.code AS kind_code). Lets
+      // consumers (the PlanForge gather lens) rank/label cast by importance — protagonist first —
+      // instead of by drain order. One short scalar; the projection stays bounded.
+      kind: e.kind_code ?? e.kind ?? null,
     }));
     return { items, next_cursor: data?.next_cursor ?? null };
   }

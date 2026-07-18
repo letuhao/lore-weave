@@ -1,8 +1,10 @@
 {
+  "reconnecting": "Yeniden bağlanılıyor…",
   "nav": {
     "startNew": "Yeni bir şey başlat",
     "workspace": "Çalışma Alanı",
     "chat": "Sohbet",
+    "assistant": "Asistan",
     "roleplay": "Rol Yapma",
     "knowledge": "Bilgi",
     "worlds": "Dünyalar",
@@ -25,7 +27,8 @@
     "home": "Ana Sayfa",
     "account": "Hesap",
     "signin": "Giriş Yap",
-    "back_to_book": "Kitaba geri dön"
+    "back_to_book": "Kitaba geri dön",
+    "more": "Daha Fazla"
   },
   "logout_confirm": {
     "title": "Kaydedilmemiş değişikliklerle oturum kapatılsın mı?",

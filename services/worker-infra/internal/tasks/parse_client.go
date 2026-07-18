@@ -29,6 +29,11 @@ type Scene struct {
 	Path        string `json:"path"`
 	LeafText    string `json:"leaf_text"`
 	ContentHash string `json:"content_hash"`
+	// SourceSceneID (22-A5/SC7) — the composition outline_node.id recovered from
+	// the drafted prose's `data-scene-id` heading anchor, when present. Fresh
+	// pandoc/PDF imports carry no anchor, so it is absent → the index row's
+	// source_scene_id stays NULL. Soft ref (no FK, crosses the service boundary).
+	SourceSceneID *string `json:"source_scene_id,omitempty"`
 }
 
 // ParsedChapter mirrors loreweave_parse.Chapter (renamed to avoid clash

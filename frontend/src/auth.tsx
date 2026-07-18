@@ -1,5 +1,6 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { Navigate, useLocation } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { apiJson } from '@/api';
 
 type UserProfile = {
@@ -42,6 +43,35 @@ function readUser(): UserProfile | null {
   } catch {
     return null;
   }
+}
+
+/**
+ * M4 (newcomer polish F1) — an unobtrusive "Reconnecting…" chip shown ONLY while a silent token
+ * refresh is in flight (api.ts dispatches `lw-auth-refreshing`). It replaces the first-run diary's
+ * worst first impression — a confident logged-in shell while every call transiently 401s — with an
+ * honest "we're reconnecting" signal. The refresh itself already self-heals (single-flight + retry);
+ * this just tells the user what the ~1s blip is. Rendered once at the app root (inside AuthProvider).
+ */
+function AuthReconnectingChip() {
+  const { t } = useTranslation('common');
+  const [active, setActive] = useState(false);
+  useEffect(() => {
+    const on = (e: Event) => setActive(Boolean((e as CustomEvent).detail?.active));
+    window.addEventListener('lw-auth-refreshing', on);
+    return () => window.removeEventListener('lw-auth-refreshing', on);
+  }, []);
+  if (!active) return null;
+  return (
+    <div
+      role="status"
+      data-testid="auth-reconnecting"
+      // pointer-events-none: a purely informational status chip must never intercept a click during
+      // the ~1s it's visible (it sits bottom-center, over real UI).
+      className="pointer-events-none fixed bottom-4 left-1/2 z-[100] -translate-x-1/2 rounded-full border bg-background/95 px-3 py-1 text-xs text-muted-foreground shadow-lg backdrop-blur"
+    >
+      {t('reconnecting', { defaultValue: 'Reconnecting…' })}
+    </div>
+  );
 }
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
@@ -111,7 +141,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     [accessToken, refreshToken, user, setTokens, logoutLocal, updateUser],
   );
 
-  return <Ctx.Provider value={v}>{children}</Ctx.Provider>;
+  return (
+    <Ctx.Provider value={v}>
+      {children}
+      <AuthReconnectingChip />
+    </Ctx.Provider>
+  );
 }
 
 export function useAuth() {
@@ -125,7 +160,10 @@ export function RequireAuth({ children }: { children: React.ReactNode }) {
   const location = useLocation();
 
   if (!accessToken) {
-    return <Navigate to="/login" state={{ from: location.pathname }} replace />;
+    // Preserve the FULL location (pathname + search + hash), not just pathname (MB4): a cold
+    // deep-link like `/entry/123?sheet=today#note` must survive the login round-trip so a
+    // push/feed tap restores the exact tab + sheet, not a stripped path.
+    return <Navigate to="/login" state={{ from: location }} replace />;
   }
   return <>{children}</>;
 }

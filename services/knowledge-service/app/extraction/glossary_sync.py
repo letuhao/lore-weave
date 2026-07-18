@@ -10,14 +10,19 @@ source_type='glossary'). Called when:
 C12c-a (first production caller): activated via worker-ai's
 `scope='glossary_sync'` job branch + the tail of `scope='all'`.
 
-MERGE key is `(user_id, glossary_entity_id)` — glossary entities are
-shared across a user's projects when the underlying book is shared.
-C12c-a /review-impl MED#2: `project_id` is now updated on ON MATCH
-(latest-sync wins) in addition to ON CREATE, so a user with two
-projects sharing a book sees project_id reflect whichever project
-last synced the entity rather than being stuck at the first-sync
-value. Downstream queries that filter on project_id now see the
-most recent owner.
+MERGE key is `(user_id, project_id, glossary_entity_id)` — one node per
+(user, project, glossary entity), matching `Entity.id`'s own identity
+hash(user_id, project_id, name, kind).
+
+D-KG-GLOSSARY-FK-GLOBAL-UNIQUE (2026-07-10): the key used to be
+`(user_id, glossary_entity_id)` on the premise that "glossary entities are
+shared across a user's projects when the underlying book is shared". That
+made a user's SECOND project re-use and MUTATE the first project's node, so
+C12c-a had to overwrite `project_id` on ON MATCH ("latest-sync wins") —
+which left `project_id` meaningless on any shared node while every read
+(salience, coref, graph views) filters on it. The FK is now unique per
+(user, project), `project_id` is part of the node's identity, and it is
+never overwritten. Spec: docs/specs/2026-07-10-kg-glossary-fk-project-scoped.md
 """
 
 from __future__ import annotations
@@ -62,9 +67,19 @@ async def sync_glossary_entity_to_neo4j(
     canonical_name = canonicalize_entity_name(name)
     canonical_id = entity_canonical_id(user_id, project_id, name, kind)
 
+    # D-KG-GLOSSARY-FK-GLOBAL-UNIQUE: the MERGE key now includes `project_id`.
+    # It used to be `(user_id, glossary_entity_id)`, which meant a user's SECOND
+    # knowledge project over the same book re-used (and mutated) the FIRST project's
+    # node — the reason `project_id` was overwritten on ON MATCH ("latest-sync wins").
+    # That made `project_id` meaningless on any shared node. Now the node is per
+    # (user, project, entity), matching `Entity.id = hash(user, project, name, kind)`,
+    # so `project_id` is part of the identity and is never overwritten.
+    #
+    # `$project_id` is never NULL here (the caller coalesces to the "global" sentinel
+    # below), which matters: Cypher rejects a MERGE pattern with a null property.
     result = await session.run(
         """
-        MERGE (e:Entity {user_id: $user_id, glossary_entity_id: $glossary_entity_id})
+        MERGE (e:Entity {user_id: $user_id, project_id: $project_id, glossary_entity_id: $glossary_entity_id})
         ON CREATE SET
           e.id = $canonical_id,
           e.name = $name,
@@ -72,7 +87,6 @@ async def sync_glossary_entity_to_neo4j(
           e.kind = $kind,
           e.aliases = $aliases,
           e.short_description = $short_description,
-          e.project_id = $project_id,
           e.confidence = 1.0,
           e.source_type = 'glossary',
           e.source_types = ['glossary'],
@@ -90,7 +104,6 @@ async def sync_glossary_entity_to_neo4j(
           e.aliases = $aliases,
           e.short_description = $short_description,
           e.confidence = 1.0,
-          e.project_id = $project_id,
           e.updated_at = datetime()
         RETURN e.glossary_entity_id AS id, e.created_at = e.updated_at AS created
         """,

@@ -42,10 +42,11 @@ CORRECTION_EVENT_TYPES: frozenset[str] = frozenset(
         "glossary.entity_updated",
         "glossary.entity_merged",
         "glossary.name_confirmed",
-        # knowledge (entity/relation/event corrections share one handler)
+        # knowledge (entity/relation/event/fact corrections share one handler)
         "knowledge.entity_corrected",
         "knowledge.relation_corrected",
         "knowledge.event_corrected",
+        "knowledge.fact_corrected",  # S-05 (extraction-derived fact retractions)
         "knowledge.extraction_run_completed",
         "knowledge.config_adjusted",
         # chat

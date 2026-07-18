@@ -1,0 +1,549 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>LoreWeave — World Map Editor (studio dock panel, draft)</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  /* ══════════════════════════════════════════════════════════════════════
+     WORLD MAP EDITOR (`world-map`)
+     Spec: docs/specs/2026-07-01-writing-studio/38_kg_and_world.md  (S7 · World)
+
+     WHY THIS EXISTS  — the biggest NEW backend-dependent surface in S7
+       A "world map" here is the RASTER map that lives in book-service:
+       `world_maps` (a base image) + `map_markers` (pins at 0..1 coords) +
+       `map_regions` (polygons at 0..1 coords). It is NOT the composition
+       place-graph (`work.settings.world_map`, a node graph) — see the sibling
+       screen-place-graph.html. Plan 30 §10 refutes conflating them; a reader
+       who merges these two "world maps" reintroduces the exact confusion S7
+       was opened to end.
+
+       Today `WorldMapsSection.tsx` is VIEW-ONLY: it lists a world's maps
+       (`GET /v1/worlds/{id}/maps`, W10-M8), selects one, and renders the base
+       image with pins + regions overlaid from normalized coords. There is no
+       button to make a map, drop a pin, draw a region, or rename anything.
+       The empty state literally says: "Ask the assistant to 'make a map of
+       this world' to create one." The human has NO authoring surface — only
+       the agent (via MCP) or the BFF (via the internal image route) can write.
+
+     THE ARCHITECTURE THIS MOCK RENDERS
+       A first-party human editor over the SAME book-service tables the agent
+       already writes, on the SAME owner-scoping posture (worlds have no E0
+       sharing; every row filters `owner_user_id`, a foreign map is a 404 —
+       no existence oracle). Studio dock panel `world-map`. The mock reuses
+       the read shape that already exists and adds the write controls that do
+       not: a tool rail (Select / Pin / Region), a base-image upload, a map
+       list with "+ New map", draggable pins bound to glossary `location`
+       entities, editable region polygons, and a marker-detail popover.
+
+     ► BACKEND WORK THIS SCREEN IMPLIES — flagged LOUDLY, not silently.
+       Verified against source (mcp_maps.go, worlds_maps_rest.go, maps_image.go):
+       READS exist publicly. WRITES do not — they are agent-MCP-only, and
+       UPDATE exists at NO layer, not even for the agent.
+         • CREATE map        → only `world_map_create` (MCP). No public REST.
+             ⇒ NEW  POST   /v1/worlds/{id}/maps
+         • RENAME / set image→ EXISTS NOWHERE (no tool, no route).
+             ⇒ NEW  PATCH  /v1/worlds/{id}/maps/{map_id}   + world_map_update tool
+         • base image upload → only POST /internal/worlds/maps/{id}/image,
+             requireInternalToken — the browser cannot call it directly.
+             ⇒ NEW  a public/gateway-injected user_id wrapper for the upload
+         • ADD pin/region    → only `world_map_add_marker`/`add_region` (MCP).
+             ⇒ NEW  POST   /v1/worlds/{id}/maps/{map_id}/markers  · /regions
+         • MOVE pin (DRAG)   → EXISTS NOWHERE. add_marker + remove_marker only.
+             ⇒ NEW  PATCH  /markers/{marker_id}  (position delta / rebind / relabel)
+                    + world_map_update_marker tool.  ⚠ THE LOAD-BEARING ONE.
+         • RESHAPE region    → EXISTS NOWHERE. add_region + remove_region only.
+             ⇒ NEW  PATCH  /regions/{region_id}  (polygon)  + world_map_update_region
+         • DELETE pin/region → `world_map_remove_marker`/`remove_region` (MCP).
+             ⇒ NEW  DELETE /markers/{id} · /regions/{id}  (REST parity)
+       Without UPDATE, every drag/rename degrades to delete+recreate, which
+       churns `marker_id`/`region_id` and is NOT atomic — a mid-drag disconnect
+       strands the old row deleted and the new one un-created (silent data
+       loss). This draft's whole job is to make that missing UPDATE explicit
+       and designed, not discovered later by an agent "fixing" drag with a
+       remove+add loop.
+
+     STATES THIS MOCK MUST SHOW (all rendered below, none hand-waved)
+       ① BEFORE — WorldMapsSection today: select a map, view only. Every
+          write control struck-through (they do not exist).
+       ② Upload a base image + the map list / "+ New map".
+       ③ Drop / DRAG pin markers, bound to glossary `location` entities.
+       ④ Draw / reshape region polygons (vertex handles).
+       ⑤ The marker-detail popover — rename, rebind entity, delete.
+
+     SCALE — a world's map count is small (tens), but a single map can carry
+       hundreds of pins + regions. Coords are normalized [0,1] so the overlay
+       tracks the image at any zoom; pins virtualize above a few hundred; the
+       polygon editor caps interactive vertices and simplifies on save.
+  ═══════════════════════════════════════════════════════════════════════ */
+  :root {
+    --background: #181412; --background-alt: #1e1a17; --foreground: #f5efe8;
+    --card: #1e1a17; --card-hover: #272220; --border: #332d28; --border-hover: #4a423b;
+    --primary: #e8a832; --primary-fg: #141010; --primary-muted: #3d2e12;
+    --secondary: #282320; --muted-fg: #9e9488;
+    --accent: #3da692; --accent-muted: #1a2e2a; --accent-fg: #c8ede6;
+    --success: #3dba6a; --warning: #e8a832; --info: #5496e8; --destructive: #d9584f; --destructive-muted: #3a1f1c;
+    /* domain: pin = amber (brand), region = sky, entity-bound tie = violet */
+    --pin: #e8a832; --region: #5496e8; --region-muted: #1e2a3a; --bound: #b482e0;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Inter', system-ui, sans-serif; background: #0f0c0b; color: var(--foreground); -webkit-font-smoothing: antialiased; padding: 24px; }
+  .mono { font-family: 'JetBrains Mono', monospace; }
+  svg { display: block; }
+  ::-webkit-scrollbar { width: 8px; height: 8px; } ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--border-hover); border-radius: 4px; }
+
+  h1 { font-size: 18px; font-weight: 600; margin-bottom: 4px; }
+  h2 { font-size: 13px; font-weight: 600; margin: 28px 0 10px; display: flex; align-items: center; gap: 8px; }
+  h2 .tag { font-size: 9px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--muted-fg); border: 1px solid var(--border); border-radius: 4px; padding: 2px 6px; }
+  .sub { font-size: 12px; color: var(--muted-fg); margin-bottom: 16px; max-width: 1000px; line-height: 1.55; }
+  .sub b { color: var(--foreground); font-weight: 600; }
+  .sub code { font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--accent-fg); background: var(--accent-muted); padding: 1px 4px; border-radius: 3px; }
+
+  /* ── Legend ───────────────────────────────────────────────────────────── */
+  .legend { display: flex; gap: 18px; align-items: center; flex-wrap: wrap; padding: 10px 14px; margin-bottom: 20px;
+            background: var(--background-alt); border: 1px solid var(--border); border-radius: 8px; font-size: 11.5px; }
+  .legend .item { display: flex; align-items: center; gap: 7px; color: var(--muted-fg); }
+  .legend .item b { color: var(--foreground); font-weight: 600; }
+  .dot { width: 11px; height: 11px; border-radius: 50%; flex-shrink: 0; }
+  .dot.pin { background: var(--pin); } .dot.region { background: var(--region); } .dot.bound { background: var(--bound); }
+
+  /* ── Dock panel frame ─────────────────────────────────────────────────── */
+  .panel { background: var(--background-alt); border: 1px solid var(--border); border-radius: 10px; display: flex; flex-direction: column; overflow: hidden; }
+  .panel-head { height: 34px; flex-shrink: 0; display: flex; align-items: center; justify-content: space-between;
+    padding: 0 10px 0 12px; border-bottom: 1px solid var(--border);
+    font-size: 10px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--muted-fg); }
+  .panel-head .acts { display: flex; gap: 4px; }
+  .ico { width: 20px; height: 20px; display: flex; align-items: center; justify-content: center; border-radius: 5px; color: var(--muted-fg); cursor: pointer; }
+  .ico:hover { background: var(--secondary); color: var(--foreground); }
+  .ico svg { width: 13px; height: 13px; }
+  .editor { width: 1180px; max-width: 100%; height: 640px; }
+  .panel-foot { flex-shrink: 0; border-top: 1px solid var(--border); padding: 7px 12px; display: flex;
+    align-items: center; justify-content: space-between; font-size: 10.5px; color: var(--muted-fg); }
+  .panel-foot .note { display: flex; align-items: center; gap: 6px; }
+  .panel-foot .note svg { width: 12px; height: 12px; color: var(--warning); flex-shrink: 0; }
+  .coord { font-family: 'JetBrains Mono'; font-size: 10px; color: var(--muted-fg); }
+
+  /* ── Toolbar ──────────────────────────────────────────────────────────── */
+  .toolbar { padding: 8px 12px; border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
+  .seg { display: flex; background: var(--background); border: 1px solid var(--border); border-radius: 7px; overflow: hidden; }
+  .seg button { display: flex; align-items: center; gap: 6px; height: 28px; padding: 0 10px; background: transparent; border: none;
+    border-right: 1px solid var(--border); color: var(--muted-fg); font: inherit; font-size: 11.5px; font-weight: 500; cursor: pointer; }
+  .seg button:last-child { border-right: none; }
+  .seg button.on { background: var(--primary-muted); color: var(--primary); }
+  .seg button:hover:not(.on) { color: var(--foreground); }
+  .seg button svg { width: 13px; height: 13px; }
+  .tbtn { display: flex; align-items: center; gap: 6px; height: 28px; padding: 0 11px; border-radius: 7px;
+    background: var(--background); border: 1px solid var(--border); color: var(--foreground); font-size: 11.5px; font-weight: 500; cursor: pointer; }
+  .tbtn:hover { border-color: var(--border-hover); background: var(--card-hover); }
+  .tbtn.primary { background: var(--primary); border-color: var(--primary); color: var(--primary-fg); }
+  .tbtn svg { width: 13px; height: 13px; }
+  .zoom { margin-left: auto; display: flex; align-items: center; gap: 6px; font-family: 'JetBrains Mono'; font-size: 10.5px; color: var(--muted-fg); }
+  .zoom .ico { border: 1px solid var(--border); }
+
+  /* ── Editor body: map rail + canvas ───────────────────────────────────── */
+  .editor-body { flex: 1; min-height: 0; display: flex; }
+  .map-rail { width: 208px; flex-shrink: 0; border-right: 1px solid var(--border); display: flex; flex-direction: column; overflow-y: auto; }
+  .rail-head { padding: 9px 12px 6px; font-size: 9.5px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--muted-fg); }
+  .map-item { display: flex; align-items: center; gap: 8px; padding: 8px 12px; border-bottom: 1px solid var(--border); cursor: pointer; }
+  .map-item:hover { background: var(--card-hover); }
+  .map-item.active { background: var(--accent-muted); box-shadow: inset 2px 0 0 var(--accent); }
+  .map-thumb { width: 34px; height: 24px; border-radius: 4px; border: 1px solid var(--border); flex-shrink: 0;
+    background: linear-gradient(135deg, #2a3a2e, #23303f); overflow: hidden; }
+  .map-item .mi { min-width: 0; }
+  .map-item .mi .nm { font-size: 12px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .map-item .mi .meta { font-family: 'JetBrains Mono'; font-size: 9.5px; color: var(--muted-fg); }
+  .map-new { display: flex; align-items: center; gap: 7px; padding: 9px 12px; color: var(--muted-fg); font-size: 11.5px; cursor: pointer; }
+  .map-new:hover { color: var(--foreground); }
+  .map-new svg { width: 13px; height: 13px; }
+
+  .canvas-wrap { flex: 1; min-width: 0; position: relative; overflow: hidden; background:
+    repeating-conic-gradient(#141010 0% 25%, #17120f 0% 50%) 0 0 / 22px 22px; }
+  .canvas { position: absolute; inset: 0; }
+  /* the uploaded base image — drawn inline (no external asset in a self-contained draft) */
+  .basemap { position: absolute; inset: 0; width: 100%; height: 100%; }
+  .overlay { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+
+  /* region polygons */
+  .region-fill { fill: rgba(84,150,232,.14); stroke: var(--region); stroke-width: .4; }
+  .region-fill.editing { stroke-dasharray: 1.4 1; }
+  .vertex { fill: var(--background-alt); stroke: var(--region); stroke-width: .5; }
+  .region-label { fill: #bcd6f5; font-family: 'JetBrains Mono'; font-size: 3px; }
+
+  /* pins — absolutely positioned by % coords */
+  .pin { position: absolute; transform: translate(-50%, -100%); display: flex; flex-direction: column; align-items: center; cursor: grab; }
+  .pin .head { width: 20px; height: 20px; border-radius: 50% 50% 50% 0; transform: rotate(45deg);
+    background: var(--pin); border: 2px solid #1a1512; display: flex; align-items: center; justify-content: center; box-shadow: 0 2px 5px rgba(0,0,0,.5); }
+  .pin .head::after { content: ''; width: 6px; height: 6px; border-radius: 50%; background: #1a1512; }
+  .pin.bound .head { background: var(--bound); }
+  .pin .lab { margin-top: 3px; font-size: 10px; font-weight: 500; white-space: nowrap; background: rgba(15,12,11,.82);
+    border: 1px solid var(--border); border-radius: 4px; padding: 1px 5px; display: flex; align-items: center; gap: 4px; }
+  .pin .lab .link { color: var(--bound); }
+  .pin .lab .link svg { width: 9px; height: 9px; }
+  .pin.dragging .head { cursor: grabbing; box-shadow: 0 0 0 4px rgba(232,168,50,.25), 0 4px 10px rgba(0,0,0,.6); }
+  .pin.sel .head { box-shadow: 0 0 0 3px var(--foreground); }
+  .pin-ghost { position: absolute; transform: translate(-50%, -100%); opacity: .4; }
+  .pin-ghost .head { width: 20px; height: 20px; border-radius: 50% 50% 50% 0; transform: rotate(45deg); background: var(--muted-fg); border: 2px dashed var(--foreground); }
+  .drag-read { position: absolute; transform: translate(-50%, 6px); font-family: 'JetBrains Mono'; font-size: 9.5px;
+    background: var(--primary); color: var(--primary-fg); padding: 2px 5px; border-radius: 4px; white-space: nowrap; }
+
+  /* ── Marker-detail popover ────────────────────────────────────────────── */
+  .popover { position: absolute; width: 260px; background: var(--background-alt); border: 1px solid var(--border-hover);
+    border-radius: 10px; box-shadow: 0 12px 34px rgba(0,0,0,.55); z-index: 5; overflow: hidden; }
+  .pop-head { display: flex; align-items: center; justify-content: space-between; padding: 8px 10px; border-bottom: 1px solid var(--border);
+    font-size: 9.5px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--muted-fg); }
+  .pop-body { padding: 10px; display: flex; flex-direction: column; gap: 9px; }
+  .field { display: flex; flex-direction: column; gap: 4px; }
+  .field > label { font-size: 10px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: var(--muted-fg); }
+  .inp { background: var(--background); border: 1px solid var(--border); border-radius: 6px; color: var(--foreground);
+    font: inherit; font-size: 12px; padding: 5px 8px; outline: none; width: 100%; }
+  .inp:focus { border-color: var(--border-hover); }
+  .entity-tie { display: flex; align-items: center; gap: 7px; padding: 6px 8px; border-radius: 6px; background: var(--background); border: 1px solid var(--border); }
+  .entity-tie .av { width: 18px; height: 18px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 8px; font-weight: 700; color: #141010; flex-shrink: 0; }
+  .entity-tie .en { flex: 1; min-width: 0; }
+  .entity-tie .en .n { font-size: 11.5px; font-weight: 500; }
+  .entity-tie .en .k { font-family: 'JetBrains Mono'; font-size: 9px; color: var(--muted-fg); }
+  .entity-tie .re { font-size: 10.5px; color: var(--info); cursor: pointer; }
+  .pop-foot { display: flex; align-items: center; gap: 8px; padding: 9px 10px; border-top: 1px solid var(--border); }
+  .btn { height: 27px; padding: 0 12px; border-radius: 6px; font-size: 11.5px; font-weight: 600; cursor: pointer; border: 1px solid var(--border); background: var(--background); color: var(--foreground); }
+  .btn.primary { background: var(--primary); border-color: var(--primary); color: var(--primary-fg); }
+  .btn.danger { color: var(--destructive); border-color: transparent; background: transparent; margin-left: auto; }
+  .btn:hover { border-color: var(--border-hover); }
+  .coord-row { display: flex; gap: 8px; }
+  .coord-row .inp { font-family: 'JetBrains Mono'; font-size: 11px; text-align: center; }
+
+  /* ── BEFORE minis ─────────────────────────────────────────────────────── */
+  .stack { display: flex; gap: 20px; align-items: flex-start; flex-wrap: wrap; }
+  .mini { width: 300px; }
+  .mini .panel-head { height: 28px; font-size: 9px; }
+  .mini-canvas { height: 150px; position: relative; overflow: hidden; border-bottom: 1px solid var(--border); }
+  .ctrl-list { padding: 8px 10px; display: flex; flex-direction: column; gap: 6px; }
+  .ctrl { display: flex; align-items: center; gap: 7px; font-size: 11px; color: var(--muted-fg); }
+  .ctrl svg { width: 12px; height: 12px; flex-shrink: 0; }
+  .ctrl .fake-btn { border: 1px solid var(--border); border-radius: 5px; padding: 1px 7px; font-size: 10.5px; }
+  .strike { text-decoration: line-through; opacity: .5; }
+  .gone { margin-left: auto; font-family: 'JetBrains Mono'; font-size: 9px; color: var(--destructive); }
+  .empty-say { padding: 14px 12px; font-size: 10.5px; color: var(--muted-fg); line-height: 1.6; text-align: center; }
+
+  /* ── Annotation ───────────────────────────────────────────────────────── */
+  .callout { max-width: 1180px; margin-top: 12px; padding: 10px 13px; border-radius: 8px; font-size: 11.5px; line-height: 1.6;
+    background: var(--background-alt); border: 1px solid var(--border); border-left: 3px solid var(--info); color: var(--muted-fg); }
+  .callout.warn { border-left-color: var(--warning); }
+  .callout.bad { border-left-color: var(--destructive); }
+  .callout b { color: var(--foreground); }
+  .callout code { font-family: 'JetBrains Mono'; font-size: 10.5px; color: var(--accent-fg); }
+  .route-table { max-width: 1180px; margin-top: 12px; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+  .route-table .rt-row { display: grid; grid-template-columns: 150px 1fr 120px; gap: 10px; align-items: center;
+    padding: 7px 13px; border-bottom: 1px solid var(--border); font-size: 11px; }
+  .route-table .rt-row:last-child { border-bottom: none; }
+  .route-table .rt-row.hd { background: var(--background); font-size: 9.5px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: var(--muted-fg); }
+  .route-table .verb { font-family: 'JetBrains Mono'; font-size: 10.5px; color: var(--foreground); }
+  .route-table .verb b { color: var(--primary); }
+  .route-table .st { font-family: 'JetBrains Mono'; font-size: 9.5px; text-align: right; }
+  .route-table .st.miss { color: var(--destructive); } .route-table .st.have { color: var(--success); } .route-table .st.mcp { color: var(--warning); }
+  .route-table .desc { color: var(--muted-fg); }
+</style>
+</head>
+<body>
+
+<h1>World Map Editor <span class="mono" style="font-size:12px;color:var(--muted-fg);font-weight:400">— studio dock panel, draft</span></h1>
+<p class="sub">
+  Spec: <b>38_kg_and_world.md</b>. A first-party human editor over book-service's raster map: <code>world_maps</code> (a base image) +
+  <code>map_markers</code> (pins) + <code>map_regions</code> (polygons), all at normalized [0,1] coords. Today <code>WorldMapsSection.tsx</code> only
+  <b>views</b> a map the agent built — there is no button to create one, drop a pin, draw a region, or rename anything. This is the
+  <b>biggest new backend-dependent surface in S7</b>: the reads exist, every write is agent-MCP-only, and <b>UPDATE exists at no layer at all</b>.
+  This is <b>not</b> the composition place-graph — that is a node graph in <code>work.settings.world_map</code> (see <code>screen-place-graph.html</code>).
+</p>
+
+<div class="legend">
+  <div class="item"><span class="dot pin"></span><b>Pin</b> · map_markers · a point at (x,y)∈[0,1]</div>
+  <div class="item"><span class="dot region"></span><b>Region</b> · map_regions · a polygon of [x,y] points</div>
+  <div class="item"><span class="dot bound"></span><b>Entity-bound</b> · marker/region linked to a glossary <code style="font-family:'JetBrains Mono';font-size:10px;color:var(--accent-fg)">location</code> entity</div>
+  <div class="item" style="margin-left:auto"><svg viewBox="0 0 24 24" fill="none" stroke="var(--warning)" stroke-width="2" style="width:13px;height:13px"><path d="M12 9v4M12 17h.01M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/></svg>
+    Owner-scoped only — worlds have no E0 sharing</div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════════════
+     STATE ① — BEFORE. WorldMapsSection today: view/select only.
+     ══════════════════════════════════════════════════════════════════════ -->
+<h2>① Before — today <span class="tag">WorldMapsSection.tsx</span> — view &amp; select only, every write struck</h2>
+<p class="sub">
+  The current component lists a world's maps, lets you pick one, and overlays pins + regions read from
+  <code>GET /v1/worlds/{id}/maps/{map_id}</code> (W10-M8). That read is real. Everything a human would want to <i>author</i> is absent —
+  the only write paths are the agent's MCP tools and the BFF's internal image route.
+</p>
+
+<div class="stack">
+  <div class="panel mini">
+    <div class="panel-head"><span style="color:var(--destructive)">Before — a map exists (agent-built)</span></div>
+    <div class="mini-canvas">
+      <svg viewBox="0 0 300 150" preserveAspectRatio="xMidYMid slice" style="width:100%;height:100%">
+        <rect width="300" height="150" fill="#1a2620"/>
+        <path d="M0,96 C50,80 90,104 140,92 C190,80 240,100 300,88 L300,150 L0,150 Z" fill="#20303f"/>
+        <path d="M40,40 C70,30 110,46 150,38 C200,28 250,44 300,36" stroke="#2e4133" stroke-width="1.5" fill="none"/>
+        <g transform="translate(96,60)"><path d="M0,-8 A6,6 0 1 1 0,-8.01 L0,4 Z" fill="#e8a832" opacity=".9" transform="translate(0,-4)"/></g>
+      </svg>
+      <div class="pin bound" style="left:32%;top:64%;transform:translate(-50%,-100%) scale(.85)">
+        <div class="head"></div><div class="lab">Thanh Vân Môn</div>
+      </div>
+    </div>
+    <div class="ctrl-list">
+      <div class="ctrl"><span class="fake-btn strike">+ New map</span><span class="gone">no route</span></div>
+      <div class="ctrl"><span class="fake-btn strike">Upload base image</span><span class="gone">/internal only</span></div>
+      <div class="ctrl"><span class="fake-btn strike">Drop pin</span><span class="gone">MCP only</span></div>
+      <div class="ctrl"><span class="fake-btn strike">Draw region</span><span class="gone">MCP only</span></div>
+      <div class="ctrl"><span class="fake-btn strike">Rename map</span><span class="gone">nowhere</span></div>
+      <div class="ctrl"><span class="fake-btn strike">Move / rename pin</span><span class="gone">nowhere</span></div>
+    </div>
+  </div>
+
+  <div class="panel mini">
+    <div class="panel-head"><span style="color:var(--destructive)">Before — a world with no map</span></div>
+    <div class="empty-say" style="height:150px;display:flex;align-items:center;justify-content:center;border-bottom:1px solid var(--border)">
+      <div>No maps yet.<br /><span style="color:var(--foreground)">"Ask the assistant to 'make a<br />map of this world' to create one."</span>
+      <div style="margin-top:10px;font-size:10px;color:var(--destructive);line-height:1.6">← the tell. The empty state<br />delegates authoring to the agent<br />because the human has no form.</div></div>
+    </div>
+    <div class="ctrl-list">
+      <div class="ctrl"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
+        <span>The map DATA layer is complete —</span></div>
+      <div class="ctrl" style="padding-left:19px">tables, MinIO, 8 MCP tools, the two reads.</div>
+      <div class="ctrl" style="padding-left:19px;color:var(--foreground)">What is missing is the human's hands.</div>
+    </div>
+  </div>
+
+  <div class="panel mini">
+    <div class="panel-head"><span>The only write paths that exist today</span></div>
+    <div class="ctrl-list" style="gap:8px">
+      <div class="ctrl"><span class="dot" style="width:9px;height:9px;background:var(--warning)"></span><span style="color:var(--foreground)">Agent · 8 MCP tools</span></div>
+      <div class="ctrl" style="padding-left:17px;font-family:'JetBrains Mono';font-size:9.5px;line-height:1.7">world_map_create · _add_marker<br />_add_region · _delete<br />_remove_marker · _remove_region<br />_get · _list</div>
+      <div class="ctrl" style="margin-top:2px"><span class="dot" style="width:9px;height:9px;background:var(--info)"></span><span style="color:var(--foreground)">BFF · internal image route</span></div>
+      <div class="ctrl" style="padding-left:17px;font-family:'JetBrains Mono';font-size:9.5px">POST /internal/worlds/maps/{id}/image</div>
+      <div class="ctrl" style="padding-left:17px;color:var(--destructive)">requireInternalToken — browser can't call it</div>
+      <div class="ctrl" style="margin-top:4px;color:var(--destructive)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6 6 18M6 6l12 12"/></svg><span>NO update tool of any kind exists</span></div>
+    </div>
+  </div>
+</div>
+
+<div class="callout bad">
+  <b>What "view-only" actually costs.</b> Because the agent can only <code>add_marker</code>/<code>remove_marker</code> (never <i>move</i>), even the agent
+  cannot nudge a misplaced pin — it must delete and re-create it, minting a new <code>marker_id</code> and dropping any reference to the old one.
+  A human editor that drags pins is therefore not "just a frontend" — it is blocked on an UPDATE contract that does not exist for anyone.
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════════════
+     STATES ② ③ ④ — the editor operating.
+     ══════════════════════════════════════════════════════════════════════ -->
+<h2>② ③ ④ The editor <span class="tag">world-map</span> — base image · draggable pins · editable regions</h2>
+<p class="sub">
+  One dock panel over the same owner-scoped tables. The tool rail switches mode (<b>Select</b> drag/click · <b>Pin</b> click-to-drop ·
+  <b>Region</b> click-to-add-vertices). The map rail lists the world's maps and creates new ones. Below: a pin mid-<b>drag</b> with a live coord
+  readout (state ③), and a region being <b>reshaped</b> by its vertex handles (state ④) — both of which need the new PATCH routes.
+</p>
+
+<div class="panel editor">
+  <div class="panel-head">
+    <span>World Maps — Sơn Hải Di Văn · 山海遺聞</span>
+    <div class="acts">
+      <div class="ico" title="Fit to view"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 3H5a2 2 0 0 0-2 2v3M21 8V5a2 2 0 0 0-2-2h-3M3 16v3a2 2 0 0 0 2 2h3M16 21h3a2 2 0 0 0 2-2v-3"/></svg></div>
+      <div class="ico" title="Pop out"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 3h6v6M10 14 21 3M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/></svg></div>
+      <div class="ico" title="Close"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6 6 18M6 6l12 12"/></svg></div>
+    </div>
+  </div>
+
+  <div class="toolbar">
+    <div class="seg">
+      <button class="on"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m3 3 7.07 16.97 2.51-7.39 7.39-2.51L3 3z"/></svg> Select</button>
+      <button><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg> Pin</button>
+      <button><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2 2 7l10 5 10-5-10-5ZM2 17l10 5 10-5M2 12l10 5 10-5"/></svg> Region</button>
+    </div>
+    <button class="tbtn primary"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12"/></svg> Upload base image</button>
+    <span class="mono" style="font-size:10px;color:var(--muted-fg)">image_w 2048 · image_h 1152 · png</span>
+    <div class="zoom">
+      <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14"/></svg></div>
+      <span>84%</span>
+      <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg></div>
+    </div>
+  </div>
+
+  <div class="editor-body">
+    <!-- map list rail -->
+    <div class="map-rail">
+      <div class="rail-head">Maps in this world · 3</div>
+      <div class="map-item active">
+        <div class="map-thumb"><svg viewBox="0 0 34 24" style="width:100%;height:100%"><rect width="34" height="24" fill="#1e2a24"/><path d="M0,16 C8,13 16,17 24,14 C29,12 34,15 34,14 L34,24 L0,24Z" fill="#25384a"/></svg></div>
+        <div class="mi"><div class="nm">Cửu Châu toàn đồ</div><div class="meta">12 pins · 4 regions</div></div>
+      </div>
+      <div class="map-item">
+        <div class="map-thumb"></div>
+        <div class="mi"><div class="nm">Ô Trạch phường thị</div><div class="meta">31 pins · 0 regions</div></div>
+      </div>
+      <div class="map-item">
+        <div class="map-thumb" style="background:linear-gradient(135deg,#2a2233,#1e2a3a)"></div>
+        <div class="mi"><div class="nm">Loạn Tinh Hải</div><div class="meta">no image · 6 pins</div></div>
+      </div>
+      <div style="margin-top:auto"></div>
+      <div class="map-new"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg> New map…</div>
+    </div>
+
+    <!-- the raster canvas -->
+    <div class="canvas-wrap">
+      <div class="canvas">
+        <!-- base image, drawn inline (self-contained draft: no external asset) -->
+        <svg class="basemap" viewBox="0 0 100 62" preserveAspectRatio="xMidYMid slice">
+          <defs>
+            <linearGradient id="sea" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#16242e"/><stop offset="1" stop-color="#101b22"/></linearGradient>
+            <linearGradient id="land" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#2c3a2c"/><stop offset="1" stop-color="#23301f"/></linearGradient>
+          </defs>
+          <rect width="100" height="62" fill="url(#sea)"/>
+          <path d="M6,40 C14,30 24,34 30,26 C36,18 48,20 56,14 C66,8 80,12 92,10 C96,9 99,14 98,22 C97,34 90,44 78,50 C66,56 44,58 30,54 C18,50 2,50 6,40 Z" fill="url(#land)" stroke="#3a4a34" stroke-width=".5"/>
+          <path d="M30,26 C40,28 50,24 62,28" stroke="#3f5138" stroke-width=".4" fill="none" opacity=".7"/>
+          <path d="M40,44 C52,40 64,44 76,40" stroke="#3f5138" stroke-width=".4" fill="none" opacity=".7"/>
+          <path d="M58,18 L60,30 L54,40" stroke="#4a6a8a" stroke-width=".6" fill="none" opacity=".8"/>
+          <text x="20" y="46" fill="#5a7050" font-family="'JetBrains Mono'" font-size="2.6" opacity=".7">Nam Cương</text>
+          <text x="72" y="20" fill="#5a7050" font-family="'JetBrains Mono'" font-size="2.6" opacity=".7">Đại Tấn</text>
+        </svg>
+
+        <!-- region overlay: one settled, one being reshaped (state ④) -->
+        <svg class="overlay" viewBox="0 0 100 62" preserveAspectRatio="none">
+          <polygon class="region-fill" points="10,36 26,28 34,34 30,48 14,50"/>
+          <text class="region-label" x="16" y="42">Việt Quốc</text>
+          <polygon class="region-fill editing" points="60,16 82,14 88,26 74,34 58,30"/>
+          <text class="region-label" x="66" y="24">Bắc Nguyên</text>
+          <circle class="vertex" cx="60" cy="16" r="1.3"/>
+          <circle class="vertex" cx="82" cy="14" r="1.3"/>
+          <circle class="vertex" cx="88" cy="26" r="1.3" style="fill:var(--region)"/>
+          <circle class="vertex" cx="74" cy="34" r="1.3"/>
+          <circle class="vertex" cx="58" cy="30" r="1.3"/>
+        </svg>
+
+        <!-- pins (state ③) -->
+        <div class="pin bound sel" style="left:30%;top:58%">
+          <div class="head"></div>
+          <div class="lab"><span class="link"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 17H7A5 5 0 0 1 7 7h2M15 7h2a5 5 0 0 1 0 10h-2M8 12h8"/></svg></span>Thanh Vân Môn</div>
+        </div>
+        <div class="pin bound" style="left:47%;top:40%">
+          <div class="head"></div>
+          <div class="lab"><span class="link"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 17H7A5 5 0 0 1 7 7h2M15 7h2a5 5 0 0 1 0 10h-2M8 12h8"/></svg></span>Hoàng Phong Cốc</div>
+        </div>
+        <div class="pin" style="left:70%;top:30%">
+          <div class="head"></div>
+          <div class="lab">Ô Trạch</div>
+        </div>
+        <div class="pin bound" style="left:80%;top:52%">
+          <div class="head"></div>
+          <div class="lab"><span class="link"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 17H7A5 5 0 0 1 7 7h2M15 7h2a5 5 0 0 1 0 10h-2M8 12h8"/></svg></span>Loạn Tinh Hải</div>
+        </div>
+
+        <!-- a pin mid-drag: ghost at origin, live pin under cursor, coord readout -->
+        <div class="pin-ghost" style="left:55%;top:66%"><div class="head"></div></div>
+        <div class="pin dragging" style="left:62%;top:60%">
+          <div class="head"></div>
+          <div class="lab">Lạc Nhật Sơn</div>
+        </div>
+        <div class="drag-read" style="left:62%;top:60%">x 0.620 · y 0.600 → PATCH</div>
+
+        <!-- the marker-detail popover (state ⑤), anchored to the selected pin -->
+        <div class="popover" style="left:32%;top:62%">
+          <div class="pop-head"><span>Marker</span>
+            <div class="ico" title="Close"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6 6 18M6 6l12 12"/></svg></div>
+          </div>
+          <div class="pop-body">
+            <div class="field"><label>Label</label><input class="inp" value="Thanh Vân Môn" /></div>
+            <div class="field"><label>Bound entity</label>
+              <div class="entity-tie">
+                <span class="av" style="background:#3da692">青</span>
+                <div class="en"><div class="n">青云门 · Thanh Vân Môn</div><div class="k">location · glossary</div></div>
+                <span class="re">rebind</span>
+              </div>
+            </div>
+            <div class="field"><label>Position (normalized)</label>
+              <div class="coord-row"><input class="inp" value="0.300" /><input class="inp" value="0.580" /></div>
+            </div>
+            <div class="field"><label>Marker type</label><input class="inp" value="sect" /></div>
+          </div>
+          <div class="pop-foot">
+            <button class="btn primary">Save</button>
+            <button class="btn">Cancel</button>
+            <button class="btn danger"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:12px;height:12px;display:inline"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6"/></svg></button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="panel-foot">
+    <div class="note">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 9v4M12 17h.01M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/></svg>
+      Drag &amp; reshape need <b style="color:var(--foreground);font-weight:500">PATCH /markers/{id}</b> + <b style="color:var(--foreground);font-weight:500">PATCH /regions/{id}</b> — neither exists yet (design below)
+    </div>
+    <span class="coord">cursor 0.62, 0.60 · 12 pins · 4 regions · owner-scoped</span>
+  </div>
+</div>
+
+<div class="callout warn">
+  <b>Drag is an UPDATE, and UPDATE is the hole.</b> A pin drag must send a <i>position delta</i> to <code>PATCH /v1/worlds/{id}/maps/{map_id}/markers/{marker_id}</code>
+  and persist on <code>onDragEnd</code> (the same shape the place-graph already uses for node positions). The current toolset has only
+  <code>add_marker</code> + <code>remove_marker</code>; simulating a move as remove+add is <b>not atomic</b> (a disconnect strands the delete) and
+  <b>churns <code>marker_id</code></b>, breaking anything that referenced it. The mock renders the readout so the contract it needs is unmistakable.
+</div>
+
+<div class="callout">
+  <b>The entity tie is a SOFT cross-service UUID, and rebinding must stay soft.</b> A marker's <code>entity_id</code> points at a glossary
+  <code>location</code> entity but carries no FK (book-service and glossary are different services). "Rebind" swaps that UUID; deleting the
+  glossary entity must NOT cascade-delete the pin — the pin simply renders unbound. This is the same soft-pointer posture <code>world_map_add_marker</code>
+  already takes; the human editor inherits it rather than inventing a hard link.
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════════════
+     THE BACKEND CONTRACT — every route this screen needs, existence-checked.
+     ══════════════════════════════════════════════════════════════════════ -->
+<h2>The routes this screen implies <span class="tag">verified against source</span></h2>
+<p class="sub">
+  Existence checked in <code>worlds_maps_rest.go</code>, <code>mcp_maps.go</code>, <code>maps_image.go</code>. Reads exist; writes are agent-only;
+  UPDATE exists nowhere. Each new REST route mirrors an owner-scoped MCP tool (or the tool it needs), so the two surfaces stay at parity per the MCP-first invariant.
+</p>
+
+<div class="route-table">
+  <div class="rt-row hd"><span>Capability</span><span>Route / tool</span><span class="st">Status</span></div>
+  <div class="rt-row"><span class="desc">List / open a map</span><span class="verb">GET /v1/worlds/{id}/maps · /maps/{map_id}</span><span class="st have">exists · W10-M8</span></div>
+  <div class="rt-row"><span class="desc">Create a map</span><span class="verb">world_map_create → NEW <b>POST</b> /maps</span><span class="st mcp">MCP only</span></div>
+  <div class="rt-row"><span class="desc">Rename map / set image</span><span class="verb">NEW <b>PATCH</b> /maps/{map_id} + world_map_update</span><span class="st miss">NOWHERE</span></div>
+  <div class="rt-row"><span class="desc">Upload base image</span><span class="verb">POST /internal/…/image → NEW public wrapper</span><span class="st miss">internal only</span></div>
+  <div class="rt-row"><span class="desc">Add pin / region</span><span class="verb">world_map_add_* → NEW <b>POST</b> /markers · /regions</span><span class="st mcp">MCP only</span></div>
+  <div class="rt-row"><span class="desc">Move pin (drag)</span><span class="verb">NEW <b>PATCH</b> /markers/{id} + world_map_update_marker</span><span class="st miss">NOWHERE</span></div>
+  <div class="rt-row"><span class="desc">Reshape region</span><span class="verb">NEW <b>PATCH</b> /regions/{id} + world_map_update_region</span><span class="st miss">NOWHERE</span></div>
+  <div class="rt-row"><span class="desc">Delete pin / region</span><span class="verb">world_map_remove_* → NEW <b>DELETE</b> /markers/{id} · /regions/{id}</span><span class="st mcp">MCP only</span></div>
+</div>
+
+<div class="callout">
+  <b>This is additive, not a re-architecture.</b> The tables, MinIO storage, owner-scoping, and the 8 agent tools all exist and are correct.
+  What is missing is (a) a public REST mirror of the create/add/remove tools and (b) an <b>UPDATE contract that does not yet exist for anyone</b> —
+  three PATCH routes + three matching MCP tools (rename map, move/rebind marker, reshape region). Ship the PATCH tools too, or the agent stays
+  unable to move a pin it placed wrong.
+</div>
+
+<div class="callout bad">
+  <b>What this mock does NOT propose.</b> (1) It is <b>not</b> the place-graph — no location↔location node edges live here; a raster map's regions
+  are polygons, not graph relations (plan 30 §10). (2) It does <b>not</b> grant sharing — worlds have no E0 grants, so every route stays strictly
+  <code>owner_user_id</code>-scoped, and a foreign map is a 404 with no existence oracle. (3) It does <b>not</b> make the entity tie a hard FK across
+  services. A later agent should not "simplify" drag by looping remove+add, nor add a cross-service foreign key to bind a pin.
+</div>
+
+<script>
+  // vanilla, ~15 lines: make the tool-rail segmented control switch, for feel only.
+  document.querySelectorAll('.seg button').forEach((b) => {
+    b.addEventListener('click', () => {
+      b.parentElement.querySelectorAll('button').forEach((x) => x.classList.remove('on'));
+      b.classList.add('on');
+    });
+  });
+  document.querySelectorAll('.map-item').forEach((m) => {
+    m.addEventListener('click', () => {
+      m.parentElement.querySelectorAll('.map-item').forEach((x) => x.classList.remove('active'));
+      m.classList.add('active');
+    });
+  });
+</script>
+</body>
+</html>

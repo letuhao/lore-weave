@@ -37,6 +37,13 @@ from app.auth.grant_deps import (
 from app.clients.grant_client import GrantClient
 from app.db.ontology_models import TriageItemType, TriageStatus
 from app.db.pool import get_knowledge_pool
+from app.db.repositories.graph_schemas import GraphSchemasRepo
+from app.db.repositories.ontology_mutations import (
+    ChildNotFoundError,
+    DuplicateChildError,
+    OntologyMutationsRepo,
+    SchemaNotWritableError,
+)
 from app.db.repositories.triage import (
     GLOSSARY_HANDOFF_ACTIONS,
     SCHEMA_MUTATING_ACTIONS,
@@ -51,6 +58,12 @@ from app.ontology.triage_apply import (
     apply_resolved,
     requires_reapply,
 )
+from app.ontology.triage_schema_write_effect import (
+    TriageSchemaWriteDrift,
+    TriageSchemaWriteParams,
+    TriageSchemaWriteUnsupported,
+    apply_triage_schema_write,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -64,6 +77,51 @@ router = APIRouter(
 # ── DI (local factory; mirrors app.deps Repo(get_knowledge_pool()) pattern) ──
 def get_triage_repo() -> TriageRepo:
     return TriageRepo(get_knowledge_pool())
+
+
+def get_graph_schemas_repo() -> GraphSchemasRepo:
+    return GraphSchemasRepo(get_knowledge_pool())
+
+
+def get_ontology_mutations_repo() -> OntologyMutationsRepo:
+    return OntologyMutationsRepo(get_knowledge_pool())
+
+
+# S-05 — derive the schema-write params from the parked triage payloads, so a
+# human resolving a schema-mutating signature is ONE click (no form): the parked
+# element IS the proposed schema addition. `schema` gives the OCC anchor
+# (id + version) read in THIS request → no drift window for the direct human path.
+def _derive_schema_write_params(action: str, signature: str, pending: list, schema) -> "TriageSchemaWriteParams":
+    payload = (pending[0].payload or {}) if pending else {}
+    kwargs: dict[str, Any] = {
+        "action": action,
+        "signature": signature,
+        "schema_id": str(schema.schema_id),
+        "expected_schema_version": schema.schema_version,
+    }
+    if action == "add_to_schema":  # unknown_edge_type → add the parked predicate as an edge type
+        kwargs["code"] = str(payload.get("predicate") or "")
+    elif action == "add_to_vocab":  # unknown_vocab_value → add the parked value to its set
+        kwargs["set_code"] = str(payload.get("set_code") or "")
+        kwargs["code"] = str(payload.get("value") or "")
+    elif action == "widen_target_kinds":  # edge_kind_mismatch → widen the TARGET-kinds list
+        # `widen_edge_target_kinds` (the only widen mutation) touches an edge type's
+        # TARGET-kinds list ONLY, so it can fix a TARGET-endpoint violation and
+        # nothing else. Add JUST the observed `target_kind` — never `source_kind`
+        # (that endpoint is not the target list; adding it would broaden the schema
+        # past the evidence). For a SOURCE-endpoint violation there is no target-widen
+        # that helps: leave `add_kinds` empty so `apply_triage_schema_write` raises
+        # Unsupported (422), and the human uses re_target/drop_edge instead of a
+        # silent "resolved but the mismatch re-parks next extraction".
+        kwargs["code"] = str(payload.get("predicate") or "")
+        tgt = payload.get("target_kind")
+        if payload.get("violating_endpoint") == "target" and tgt:
+            kwargs["add_kinds"] = [str(tgt)]
+        else:
+            kwargs["add_kinds"] = []
+    elif action == "set_multi_active":
+        kwargs["code"] = str(payload.get("predicate") or payload.get("code") or "")
+    return TriageSchemaWriteParams(**kwargs)
 
 
 # ── valid action enum (mirrors the frozen contract TriageResolve.action) ─────
@@ -127,6 +185,19 @@ class TriageResolveResultOut(BaseModel):
     needs_glossary: NeedsGlossaryOut | None = None
 
 
+# S-05 — per-item drill-in (so the FE can dismiss ONE noisy item of a signature
+# group via the existing /{triage_id}/dismiss route, instead of only the whole
+# signature). Read-only, additive; the resolve/dismiss write paths are unchanged.
+class TriageItemOut(BaseModel):
+    triage_id: str
+    item_type: TriageItemType
+    payload: dict[str, Any] = Field(default_factory=dict)
+
+
+class TriageItemListOut(BaseModel):
+    items: list[TriageItemOut]
+
+
 def _not_found(detail: str = "not found") -> HTTPException:
     # Uniform 404 -- never an existence oracle for a project/signature.
     return HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=detail)
@@ -175,6 +246,36 @@ async def list_triage(
     )
 
 
+# ── GET the pending items of one signature (View-gated) ──────────────────────
+@router.get(
+    "/projects/{project_id}/triage/{signature}/items",
+    response_model=TriageItemListOut,
+)
+async def list_triage_items(
+    project_id: UUID,
+    signature: str = Path(..., min_length=1, max_length=500),
+    owner: UUID = Depends(require_project_grant(GrantLevel.VIEW)),
+    repo: TriageRepo = Depends(get_triage_repo),
+) -> TriageItemListOut:
+    """The PENDING items of one signature (S-05 per-item drill-in). View-gated;
+    the repo is scoped to the project OWNER (resolve-to-owner), so a cross-tenant
+    caller 404s in the dep. Lets the FE dismiss ONE noisy item via the existing
+    `/{triage_id}/dismiss` route instead of the whole signature group."""
+    items = await repo.list_pending_for_signature(
+        user_id=owner, project_id=str(project_id), signature=signature
+    )
+    return TriageItemListOut(
+        items=[
+            TriageItemOut(
+                triage_id=str(it.triage_id),
+                item_type=it.item_type,
+                payload=it.payload or {},
+            )
+            for it in items
+        ]
+    )
+
+
 # ── POST resolve a signature (batch; Edit- or Manage-gated by action) ────────
 @router.post(
     "/projects/{project_id}/triage/{signature}/resolve",
@@ -190,6 +291,8 @@ async def resolve_triage(
     meta=Depends(project_meta_dep),
     grant: GrantClient = Depends(get_grant_client),
     repo: TriageRepo = Depends(get_triage_repo),
+    schemas: GraphSchemasRepo = Depends(get_graph_schemas_repo),
+    mutations: OntologyMutationsRepo = Depends(get_ontology_mutations_repo),
 ) -> TriageResolveResultOut:
     """Apply ``action`` to every PENDING item of ``signature`` (batch, s11.3).
 
@@ -197,6 +300,12 @@ async def resolve_triage(
     actions (add_to_vocab/add_to_schema/widen/set_multi_active) need Manage. The
     gate runs AFTER we know the action so the required tier matches the action;
     the project grant resolves the owner the repo writes as.
+
+    SCHEMA-MUTATING (S-05, D-KG-LH-LC-SCHEMA-WRITE): the schema write now runs HERE
+    for the direct human path — a Manage-gated click IS the synchronous approval, so
+    it doesn't need the async agent confirm-token dance. Params are derived from the
+    parked payload (one click); the OCC anchor is read in this same request (no drift
+    window). The agent path still uses the class-C confirm-token flow (kg_actions).
     """
     action = body.action
     need = (
@@ -240,17 +349,38 @@ async def resolve_triage(
             needs_glossary=NeedsGlossaryOut(book_id=book_id, kinds=kinds),
         )
 
-    # Schema-mutating actions (Manage): the actual schema write + schema_version
-    # bump is LC's ontology_mutations -- compose-point D-KG-LH-LC-SCHEMA-WRITE.
-    # LH records the resolution intent + marks items resolved; it does NOT write
-    # the schema here. schema_version stays None until LC wires the write.
+    # Schema-mutating actions (Manage, S-05): APPLY the real ontology mutation now
+    # (D-KG-LH-LC-SCHEMA-WRITE done for the human path). Order matters — write the
+    # schema FIRST so a drift/duplicate 422/409s BEFORE we mark anything resolved
+    # (no "resolved but schema unchanged" inconsistency); then mark the batch
+    # resolved WITH the new version below.
     new_schema_version: int | None = None
     if action in SCHEMA_MUTATING_ACTIONS:
-        logger.info(
-            "triage schema-mutating action '%s' on %s/%s: recording intent; "
-            "actual schema write deferred to LC (D-KG-LH-LC-SCHEMA-WRITE)",
-            action, project, signature,
-        )
+        current = await schemas.active_project_schema(project)
+        if current is None:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                detail="this project has no adopted schema to edit — adopt one first",
+            )
+        params = _derive_schema_write_params(action, signature, pending, current)
+        try:
+            result = await apply_triage_schema_write(
+                schemas, mutations, repo, project, params, owner=owner
+            )
+        except (TriageSchemaWriteDrift, TriageSchemaWriteUnsupported) as exc:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(exc)
+            )
+        except DuplicateChildError:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="that schema element already exists",
+            )
+        except (ChildNotFoundError, SchemaNotWritableError) as exc:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(exc)
+            )
+        new_schema_version = result.get("schema_version")
 
     # KG-local actions (map/re_target/drop_edge/close_previous): mark the batch
     # resolved, THEN (E1, D-KG-LH-NEO4J-REAPPLY) re-apply the now-valid edge into

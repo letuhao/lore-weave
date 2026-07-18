@@ -54,7 +54,7 @@ func addTool[In, Out any](
 ) {
 	tool := &mcp.Tool{Name: name, Description: description, Meta: meta}
 	lwmcp.MustValidateToolMeta(tool)
-	mcp.AddTool(srv, tool, handler)
+	lwmcp.RegisterTool(srv, tool, handler)
 }
 
 // newMCPServer builds the book-service MCP server and registers the S-BOOK
@@ -82,7 +82,7 @@ func (s *Server) newMCPServer() *mcp.Server {
 		s.toolBookListChapters)
 
 	addTool(srv, "book_get_chapter",
-		"Fetch one chapter by book_id + chapter_id: metadata (title, language, sort "+
+		"[Saved book] Fetch one chapter by book_id + chapter_id: metadata (title, language, sort "+
 			"order, editorial status, published revision) always, plus the chapter's "+
 			"full plain-text prose in `body` when include_body=true (use that to READ a "+
 			"chapter after story_search locates it; the body can be large).",
@@ -94,6 +94,40 @@ func (s *Server) newMCPServer() *mcp.Server {
 			"body size), newest first. Use before restoring a revision.",
 		lwmcp.NewToolMeta(lwmcp.TierR, lwmcp.ScopeBook, nil, []string{"revisions", "history", "versions"}),
 		s.toolBookListRevisions)
+
+	addTool(srv, "book_scene_list",
+		"List a book's parsed SCENES (the prose index): scene_id, chapter_id, sort "+
+			"order, heading, and source_scene_id (the spec back-link). Filter by "+
+			"chapter_id, source_scene_id (resolve a spec scene → its prose index row for "+
+			"go-to-prose), or q (heading/prose substring). Read-only: authoring writes go "+
+			"to the composition outline, not here.",
+		lwmcp.NewToolMeta(lwmcp.TierR, lwmcp.ScopeBook, nil, []string{"scenes", "scene index", "go to prose"}),
+		s.toolBookSceneList)
+
+	addTool(srv, "book_scene_get",
+		"Fetch one scene index row by book_id + scene_id: heading, path, prose "+
+			"(leaf_text), content hash, and source_scene_id (the composition spec "+
+			"back-link). Read-only.",
+		lwmcp.NewToolMeta(lwmcp.TierR, lwmcp.ScopeBook, nil, []string{"scene detail", "open scene", "read scene"}),
+		s.toolBookSceneGet)
+
+	addTool(srv, "book_steering_list",
+		"List this book's steering rules — the per-book story-bible / .cursorrules "+
+			"that are injected into every matching chat turn: id, name, body, "+
+			"inclusion_mode, match_pattern, enabled, updated_at. Read these before "+
+			"authoring so you don't clobber an existing rule (max 20 per book).",
+		lwmcp.NewToolMeta(lwmcp.TierR, lwmcp.ScopeBook, nil, []string{"rules", "style guide", "story bible", "steering", "writing rules"}),
+		s.toolBookSteeringList)
+
+	addTool(srv, "book_search",
+		"Literal, exact-substring search over the book's manuscript (grep). Args: q "+
+			"(the verbatim text; LIKE metacharacters are escaped), surface "+
+			"(draft|canon|all, default draft), granularity (chapter|block, default "+
+			"chapter), limit/offset. Returns matching chapters/blocks with highlighted "+
+			"snippets + has_more. For meaning-alike / semantic passages use story_search "+
+			"instead — this one only finds the exact characters you pass.",
+		lwmcp.NewToolMeta(lwmcp.TierR, lwmcp.ScopeBook, nil, []string{"grep", "find text", "exact phrase", "literal search", "where in the book does it say"}),
+		s.toolBookSearch)
 
 	// ── Tier A (auto-write + Undo; scope=book; Edit grant) ────────────────────
 	// Every Tier-A result carries _meta.undo_hint = {tool, args} naming the
@@ -129,6 +163,26 @@ func (s *Server) newMCPServer() *mcp.Server {
 		lwmcp.NewToolMeta(lwmcp.TierA, lwmcp.ScopeBook, nil, []string{"rename chapter", "reorder chapter"}),
 		s.toolChapterUpdateMeta)
 
+	// S-02 — manuscript parts (acts / volumes). These let the assistant reorganise
+	// the manuscript hierarchy the same way the navigator will: create/rename/reorder/
+	// trash an act and move a chapter between acts. All Tier-A, scope=book, EDIT grant.
+	// C-merge C4 — part CRUD tools (book_part_*) moved to composition (structure_node kind='part').
+	// Only the chapter→part ASSIGNMENT stays here (it writes chapters.structure_node_id).
+	addTool(srv, "book_chapter_set_part",
+		"Move a chapter into / out of / between manuscript parts. part_id = the target part (a "+
+			"structure_node id from the book's parts list), or null to un-home it into the flat "+
+			"manuscript. Reverse: book_chapter_set_part with the chapter's prior part_id.",
+		lwmcp.NewToolMeta(lwmcp.TierA, lwmcp.ScopeBook, nil, []string{"move chapter to act", "put chapter in volume", "home chapter", "un-home chapter"}),
+		s.toolChapterSetPart)
+
+	// S-07 §3 — reorder was REST-only; this gives the agent reading-order parity with the human.
+	addTool(srv, "book_chapter_reorder",
+		"Set the reading order of a book's chapters. Pass chapter_ids as the COMPLETE list of the "+
+			"book's active chapters (one language track) in the new order — each exactly once. "+
+			"Reverse: book_chapter_reorder with the prior order.",
+		lwmcp.NewToolMeta(lwmcp.TierA, lwmcp.ScopeBook, nil, []string{"reorder chapters", "reorder manuscript", "change reading order", "move chapter"}),
+		s.toolChapterReorder)
+
 	addTool(srv, "book_chapter_restore_revision",
 		"Restore a chapter's draft to a prior saved revision (a new revision "+
 			"snapshots the current draft first, so it is reversible). Reverse: "+
@@ -137,17 +191,79 @@ func (s *Server) newMCPServer() *mcp.Server {
 		s.toolChapterRestoreRevision)
 
 	addTool(srv, "book_chapter_save_draft",
-		"Save a chapter draft body (Tiptap JSON). REQUIRES base_version (the "+
-			"draft_version you read); a version mismatch returns a conflict and "+
-			"stops — no overwrite. Reverse: book_chapter_restore_revision.",
+		"[Saved book] Save a chapter's PROSE as its draft. Put the chapter text itself in `body` as "+
+			"plain prose (blank line between paragraphs) — do NOT hand-write editor/Tiptap JSON. "+
+			"REQUIRES base_version (the draft_version you read); a version mismatch returns a conflict "+
+			"and stops — no overwrite. Reverse: book_chapter_restore_revision.",
 		lwmcp.NewToolMeta(lwmcp.TierA, lwmcp.ScopeBook, nil, []string{"save draft", "edit chapter text", "write chapter"}),
 		s.toolChapterSaveDraft)
+
+	// WS-0.4 — publish-independent KG indexing. Indexing is NOT publishing: a chapter
+	// can be added to the knowledge graph while remaining a draft forever (and
+	// kind='diary' books never publish at all). Never fires on autosave.
+	addTool(srv, "book_index_chapter",
+		"[Saved book] Add a chapter to the knowledge graph ('index it' / 'remember this "+
+			"chapter'). Works on a DRAFT chapter — it does NOT publish, and publishing is "+
+			"not required. Pins the current draft as the revision the knowledge layer "+
+			"reflects, re-parses its scenes, and enqueues extraction. Re-indexing an "+
+			"unchanged draft is a NO-OP and costs nothing (reused_revision=true). Refuses "+
+			"if the chapter is kg_exclude'd. COSTS MONEY: this enqueues an LLM extraction "+
+			"on the user's own model. The graph is NOT updated when this call returns — a "+
+			"background job does the work. There is NO cheap undo (removing the chapter "+
+			"again via book_chapter_set_kg_exclude also destroys anything a previous "+
+			"publish contributed), so do not index speculatively.",
+		// review-impl P2: WithPaid + WithAsync. The tool enqueues a real Pass-2 LLM
+		// extraction on the user's BYOK model (paid), and the graph is only updated by a
+		// background drain (async). Without these the workflow step-runner treats it as a
+		// free, synchronous write and an agent will happily call it in a loop.
+		lwmcp.WithAsync(lwmcp.WithPaid(lwmcp.NewToolMeta(lwmcp.TierA, lwmcp.ScopeBook, nil, []string{
+			"index chapter", "add to knowledge", "add chapter to knowledge graph",
+			"remember this chapter", "extract knowledge from this chapter",
+		}))),
+		s.toolBookIndexChapter)
+
+	addTool(srv, "book_chapter_set_kg_exclude",
+		"[Saved book] Include or exclude a chapter from the knowledge graph. "+
+			"kg_exclude=true KEEPS IT OUT and RETRACTS anything already extracted from it "+
+			"(facts and passages are removed) — use for 'forget this chapter' / 'don't "+
+			"remember this'. kg_exclude=false merely re-allows indexing; it does NOT "+
+			"re-index by itself (call book_index_chapter for that).",
+		lwmcp.NewToolMeta(lwmcp.TierA, lwmcp.ScopeBook, nil, []string{
+			"exclude from knowledge graph", "forget this chapter", "don't remember this chapter",
+			"remove chapter from knowledge", "un-index chapter",
+		}),
+		s.toolBookSetKGExclude)
+
+	addTool(srv, "book_steering_set",
+		"Author or replace a book steering rule (the .cursorrules / story-bible the "+
+			"agent obeys). Upsert keyed on name: a new name CREATES, an existing name "+
+			"FULLY replaces the rule (PUT semantics). The body is injected into every "+
+			"matching turn — keep it tight (max 8000 chars, max 20 rules per book). "+
+			"inclusion_mode: always|scene_match|manual|auto. Use this for 'write that "+
+			"down / always / never' instructions so they survive compaction + sessions. "+
+			"Returns the prior row when one was replaced; reverse is in the result's "+
+			"undo_hint.",
+		lwmcp.NewToolMeta(lwmcp.TierA, lwmcp.ScopeBook, nil, []string{"add rule", "remember this steering rule", "always do", "never do", "write that down"}),
+		s.toolBookSteeringSet)
+
+	addTool(srv, "book_steering_delete",
+		"Delete a book steering rule by name (or id). Returns the deleted row; the "+
+			"result's undo_hint restores it. An unknown name/id is an error, never a "+
+			"silent no-op.",
+		lwmcp.NewToolMeta(lwmcp.TierA, lwmcp.ScopeBook, nil, []string{"remove rule", "forget rule", "delete steering"}),
+		s.toolBookSteeringDelete)
 
 	// ── Tier W (confirm via token; scope=book; the propose tool MINTS only) ────
 	// The propose tools below MINT a confirm token (no write) + return a confirm
 	// card. The ONLY write path is /v1/book/actions/confirm (token-gated). See
 	// mcp_actions.go.
 	s.registerActionProposeTools(srv)
+
+	// ── W10-M1 world-container tools (Tier-R reads + Tier-A create/move) ──
+	s.registerWorldTools(srv)
+
+	// ── W10-M2 world-map tools (Tier-R reads + Tier-A create/marker/region) ──
+	s.registerMapTools(srv)
 
 	return srv
 }

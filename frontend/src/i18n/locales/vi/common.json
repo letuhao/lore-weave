@@ -1,8 +1,10 @@
 {
+  "reconnecting": "Đang kết nối lại…",
   "nav": {
     "startNew": "Bắt đầu điều gì đó mới",
     "workspace": "Không gian làm việc",
     "chat": "Trò chuyện",
+    "assistant": "Trợ lý",
     "roleplay": "Nhập vai",
     "knowledge": "Tri thức",
     "worlds": "Thế giới",
@@ -10,6 +12,7 @@
     "standards": "Tiêu chuẩn",
     "jobs": "Tác vụ",
     "browse": "Khám phá",
+    "trash": "Thùng rác",
     "usage": "Sử dụng",
     "leaderboard": "Bảng xếp hạng",
     "extensions": "Tiện ích mở rộng",
@@ -18,14 +21,14 @@
     "logout": "Đăng xuất",
     "main": "Chính",
     "manage": "Quản lý",
-    "trash": "Thùng rác",
     "expand_sidebar": "Mở rộng thanh bên",
     "collapse_sidebar": "Thu gọn thanh bên",
     "theme": "Giao diện: {{name}}",
     "home": "Trang chủ",
     "account": "Tài khoản",
     "signin": "Đăng nhập",
-    "back_to_book": "Quay lại sách"
+    "back_to_book": "Quay lại sách",
+    "more": "Thêm"
   },
   "logout_confirm": {
     "title": "Đăng xuất khi có thay đổi chưa lưu?",
@@ -86,6 +89,7 @@
     "silenceThreshold": "Ngưỡng im lặng",
     "autoSend": "Tự động gửi khi im lặng",
     "showInterim": "Hiển thị kết quả tạm thời",
+    "providerVoice": "Giọng nói",
     "browserVoice": "Giọng trình duyệt",
     "defaultVoice": "Mặc định",
     "speed": "Tốc độ",
@@ -102,7 +106,6 @@
     "recording": "Đang ghi...",
     "exitVoiceMode": "Thoát chế độ giọng nói",
     "pauseResume": "Tạm dừng / Tiếp tục",
-    "providerVoice": "Giọng nói",
     "inactive": "Không hoạt động",
     "sending": "Đang gửi...",
     "receiving": "Đang nhận...",

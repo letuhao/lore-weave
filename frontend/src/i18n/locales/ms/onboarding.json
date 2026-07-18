@@ -17,6 +17,10 @@
     "explore": {
       "title": "Teroka",
       "desc": "Semak pengetahuan anda — entiti, garis masa dan graf hubungan."
+    },
+    "assistant": {
+      "title": "Pembantu kerja",
+      "desc": "Jurnal harian peribadi yang mengingati orang tersayang, projek dan keputusan anda secara senyap."
     }
   }
 }

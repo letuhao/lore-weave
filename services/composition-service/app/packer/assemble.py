@@ -83,8 +83,23 @@ def build_segments(
             segs.append(Segment("present", line, B.PRIO_PRESENT_CORE, protected=True))
 
     beat = bundle.beat or {}
+    # Part A (2026-07-18 spec, PO-2 explicit render) — resolve the scene's effective POV
+    # (a GLOSSARY anchor: the scene's own pov_entity_id, or a POV-shift derivative's
+    # pov_anchor default-filled upstream) to its NAME from the present set and render an
+    # explicit `pov=<name>` steer. Closes the pre-existing gap where pov_entity_id reached
+    # the prompt only implicitly as a <present> cast member. The POV entity is folded into
+    # present_ids (pack.py), so its bio is in `bundle.present` and the name resolves here.
+    # A pov id NOT in present (e.g. a foreign/book-scope-missed anchor) → no pov line (safe:
+    # no leak — the book-scoped present lens never surfaced it).
+    pov_id = beat.get("pov_entity_id")
+    pov_name = (
+        next((p.get("name") for p in bundle.present
+              if str(p.get("entity_id")) == str(pov_id) and p.get("name")), None)
+        if pov_id else None
+    )
     beat_line = " | ".join(
         x for x in [
+            f'pov={pov_name}' if pov_name else "",
             f'beat={beat.get("beat_role")}' if beat.get("beat_role") else "",
             f'goal={beat.get("goal")}' if beat.get("goal") else "",
             f'synopsis={beat.get("synopsis")}' if beat.get("synopsis") else "",

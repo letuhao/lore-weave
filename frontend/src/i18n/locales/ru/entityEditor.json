@@ -16,6 +16,11 @@
       "translations": "{{count}} переводов",
       "evidences": "{{count}} доказательств"
     },
+    "scope_label": {
+      "placeholder": "Уточнение (напр., мир/реальность)...",
+      "aria": "Метка области действия — позволяет различать объекты с одинаковыми именами в разных контекстах сюжета",
+      "duplicate": "В этой книге уже существует объект с таким именем, типом и областью действия"
+    },
     "tab": {
       "attributes": "Атрибуты",
       "evidences": "Доказательства",
@@ -34,12 +39,20 @@
       "saved": "Сущность сохранена",
       "status_changed": "Статус изменен на {{status}}",
       "invalid_lang": "Неверный код языка (напр. en, zh, zh-tw)"
-    }
+    },
+    "remove_attr_confirm": "Удалить это значение атрибута? Вы сможете добавить его позже.",
+    "remove_attr_success": "Значение атрибута удалено",
+    "add_attr_heading": "Добавить значение для другого атрибута",
+    "add_attr_pick": "Выберите атрибут…",
+    "add_attr_value_placeholder": "Значение",
+    "add_attr_button": "Добавить",
+    "add_attr_success": "Атрибут добавлен"
   },
   "attr_card": {
     "required": "*обязательно",
     "modified": "изменено",
-    "has_translations": "Есть переводы"
+    "has_translations": "Есть переводы",
+    "remove": "Удалить это значение"
   },
   "translation_row": {
     "confidence": {

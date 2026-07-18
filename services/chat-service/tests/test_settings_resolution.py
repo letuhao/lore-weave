@@ -5,6 +5,8 @@ edge-case decisions from the adversarial review (EC-1 liveness-per-tier, EC-3
 shared-book slot, partial field inheritance, deep-merge null-clears)."""
 from __future__ import annotations
 
+import pytest
+
 from app.services import settings_resolution as sr
 
 
@@ -136,3 +138,118 @@ def test_collect_candidate_refs_dedupes():
         account_refs={"chat": ("user_model", "y")},
     )
     assert refs == {("user_model", "x"), ("user_model", "y")}
+
+
+# ── the shared closed-set registry (spec §8.1) ───────────────────────────────
+#
+# The enum registry used to live INSIDE the account router. The session row is a
+# SECOND write door onto the same settings — so a registry only one door can see
+# cannot defend the other. These tests pin the registry as shared, and that both
+# doors reach for it rather than re-declaring their own copy (the drift class that
+# lets a bad `context.mode` land and be read as 'auto' by every consumer).
+
+def test_validate_setting_enums_rejects_out_of_set_values():
+    with pytest.raises(ValueError, match="context.mode"):
+        sr.validate_setting_enums("context", {"mode": "sometimes"})
+    with pytest.raises(ValueError, match="behavior.permission_mode"):
+        sr.validate_setting_enums("behavior", {"permission_mode": "root"})
+    with pytest.raises(ValueError, match="behavior.reasoning_effort"):
+        sr.validate_setting_enums("behavior", {"reasoning_effort": "extreme"})
+
+
+def test_validate_setting_enums_names_the_allowed_set():
+    """IN-6 self-correcting error: the message must say what IS allowed, so the
+    caller (often an LLM) can fix itself without a second round-trip."""
+    with pytest.raises(ValueError) as exc:
+        sr.validate_setting_enums("context", {"mode": "nope"})
+    msg = str(exc.value)
+    assert "'auto'" in msg and "'on'" in msg and "'off'" in msg
+    assert "'nope'" in msg
+
+
+def test_validate_setting_enums_allows_none_absent_and_unknown_keys():
+    sr.validate_setting_enums("context", {"mode": None})       # null = clear to inherit
+    sr.validate_setting_enums("context", {})                    # absent = untouched
+    sr.validate_setting_enums("context", None)                  # whole category cleared
+    sr.validate_setting_enums("context", {"trigger_ratio": 0.8})  # not an enum key
+    sr.validate_setting_enums("voice", {"anything": "goes"})     # category has no enums
+
+
+def test_both_write_doors_use_the_one_registry():
+    """A private copy in either router is the drift this consolidation removes."""
+    from app.routers import ai_settings
+
+    assert not hasattr(ai_settings, "_ENUMS"), "the account router must not re-declare the enums"
+    assert set(sr.SETTING_ENUMS) == {"behavior", "context"}
+    assert sr.SETTING_ENUMS["context"]["mode"] == {"auto", "on", "off"}
+    assert sr.SETTING_ENUMS["behavior"]["permission_mode"] == {"ask", "write", "plan"}
+    assert sr.SETTING_ENUMS["behavior"]["reasoning_effort"] == {"off", "low", "medium", "high"}
+
+
+# ── D-CHATAI-VOICE-TWO-STORES — voice source vocab reconcile (WS-4.0) ────────
+# Voice sources nest in the `voice` blob, so they can't live in the flat SETTING_ENUMS;
+# they get their own `normalize_voice_sources` (coerce legacy 'ai_model' → canonical
+# 'user_model', reject an unknown value). This was formerly the deliberately-unvalidated
+# hole; the reconcile closes it with one canonical vocabulary.
+def test_voice_stays_out_of_flat_registry_but_has_its_own_validator():
+    assert "voice" not in sr.SETTING_ENUMS  # flat check can't reach nested paths
+    assert sr.VOICE_SOURCE_ALLOWED == {"browser", "user_model"}
+
+
+def test_normalize_coerces_legacy_ai_model_on_all_surfaces():
+    v = sr.normalize_voice_sources({
+        "chat": {"tts_source": "ai_model", "tts_model_ref": "m1"},
+        "reading": {"tts_source": "ai_model"},
+        "stt": {"source": "ai_model", "model_ref": "s1"},
+    })
+    assert v["chat"]["tts_source"] == "user_model"
+    assert v["reading"]["tts_source"] == "user_model"
+    assert v["stt"]["source"] == "user_model"
+    assert v["chat"]["tts_model_ref"] == "m1"  # sibling fields untouched
+
+
+def test_normalize_accepts_canonical_and_browser():
+    v = sr.normalize_voice_sources({"chat": {"tts_source": "user_model"}, "stt": {"source": "browser"}})
+    assert v["chat"]["tts_source"] == "user_model"
+    assert v["stt"]["source"] == "browser"
+
+
+def test_normalize_rejects_unknown_source():
+    with pytest.raises(ValueError, match="voice.chat.tts_source"):
+        sr.normalize_voice_sources({"chat": {"tts_source": "wat"}})
+
+
+def test_normalize_is_noop_on_absent_or_none():
+    assert sr.normalize_voice_sources(None) is None
+    assert sr.normalize_voice_sources({}) == {}
+    # a patch that doesn't touch source fields passes through untouched
+    assert sr.normalize_voice_sources({"chat": {"tts_voice_id": "nova"}}) == {"chat": {"tts_voice_id": "nova"}}
+
+
+def test_normalize_does_not_mutate_input():
+    src = {"chat": {"tts_source": "ai_model"}}
+    sr.normalize_voice_sources(src)
+    assert src["chat"]["tts_source"] == "ai_model"  # caller's dict untouched
+
+
+# ── WS-4.3 — per-user audio retention bounded by the deploy ceiling ──────────
+def test_audio_retention_accepts_in_range_and_zero():
+    sr.validate_audio_retention({"audio_retention_hours": 24}, 48)  # ok
+    sr.validate_audio_retention({"audio_retention_hours": 0}, 48)   # 0 = don't retain
+    sr.validate_audio_retention({"audio_retention_hours": 48}, 48)  # exactly the ceiling
+    sr.validate_audio_retention({}, 48)                             # absent = inherit
+    sr.validate_audio_retention({"audio_retention_hours": None}, 48)  # clear = inherit
+
+
+def test_audio_retention_rejects_over_ceiling():
+    with pytest.raises(ValueError, match=r"\[0, 48\]"):
+        sr.validate_audio_retention({"audio_retention_hours": 72}, 48)
+
+
+def test_audio_retention_rejects_negative_and_non_int():
+    with pytest.raises(ValueError):
+        sr.validate_audio_retention({"audio_retention_hours": -1}, 48)
+    with pytest.raises(ValueError):
+        sr.validate_audio_retention({"audio_retention_hours": "24"}, 48)
+    with pytest.raises(ValueError):
+        sr.validate_audio_retention({"audio_retention_hours": True}, 48)  # bool is not a valid count

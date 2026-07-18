@@ -7,6 +7,11 @@ import json
 from pathlib import Path
 from typing import Any
 
+from app.engine.plan_forge.existing_state import (
+    ExistingState,
+    merge_existing_into_spec,
+    render_existing_state_prompt,
+)
 from app.engine.plan_forge.json_extract import extract_json_object
 from app.engine.plan_forge.links import build_links_from_events, merge_links, normalize_planner_notes
 from app.engine.plan_forge.normalize import post_normalize_spec
@@ -114,16 +119,21 @@ def analyze_document(
     *,
     client: LMStudioClient | None = None,
     io_dir: Path | None = None,
+    existing: ExistingState | None = None,
 ) -> tuple[dict[str, Any], str]:
-    """Step 1 only: analyze markdown → PlanAnalyze. Returns (analyze, source_checksum)."""
+    """Step 1 only: analyze markdown → PlanAnalyze. Returns (analyze, source_checksum).
+
+    PROPOSE-BLIND: when `existing` is supplied the prompt gains an EXISTING STATE section so the
+    analysis references (not re-invents) the book's arcs/cast. Empty/None ⇒ byte-identical to blind."""
     text = raw_path.read_text(encoding="utf-8")
     checksum = _checksum(text)
     lm = client if client is not None else default_llm_client(io_dir=io_dir)
+    block = render_existing_state_prompt(existing) if existing is not None else ""
     analyze = _parse_with_repair(
         lm,
         "analyze",
         ANALYZE_SYSTEM,
-        analyze_user_prompt(text),
+        analyze_user_prompt(text, block),
         "analyze_repair",
     )
     analyze.setdefault("version", 1)
@@ -136,20 +146,28 @@ def materialize_from_analyze(
     *,
     client: LMStudioClient | None = None,
     io_dir: Path | None = None,
+    existing: ExistingState | None = None,
 ) -> dict[str, Any]:
-    """Step 2 only: PlanAnalyze → NovelSystemSpec."""
+    """Step 2 only: PlanAnalyze → NovelSystemSpec.
+
+    PROPOSE-BLIND: the EXISTING STATE section guides the LLM (prompt), and `merge_existing_into_spec`
+    is applied as a DETERMINISTIC backstop after normalize — so even if the model imperfectly follows
+    the CONTINUITY rule, an existing arc is annotated and an existing character carries its entity id."""
     lm = client if client is not None else default_llm_client(io_dir=io_dir)
     analyze_json = json.dumps(analyze, ensure_ascii=False, indent=2)
+    block = render_existing_state_prompt(existing) if existing is not None else ""
     spec = _parse_with_repair(
         lm,
         "materialize",
         MATERIALIZE_SYSTEM,
-        materialize_user_prompt(analyze_json, source_checksum),
+        materialize_user_prompt(analyze_json, source_checksum, block),
         "materialize_repair",
     )
     spec = normalize_spec(spec, source_checksum, analyze=analyze)
     if analyze.get("open_questions") and not spec.get("meta", {}).get("open_questions"):
         spec["meta"]["open_questions"] = analyze["open_questions"]
+    if existing is not None:
+        spec = merge_existing_into_spec(spec, existing)
     return spec
 
 
@@ -158,8 +176,11 @@ def propose_spec_llm(
     *,
     client: LMStudioClient | None = None,
     io_dir: Path | None = None,
+    existing: ExistingState | None = None,
 ) -> tuple[dict[str, Any], dict[str, Any]]:
-    """Run 2-step LLM propose. Returns (novel_system_spec, plan_analyze)."""
-    analyze, checksum = analyze_document(raw_path, client=client, io_dir=io_dir)
-    spec = materialize_from_analyze(analyze, checksum, client=client, io_dir=io_dir)
+    """Run 2-step LLM propose. Returns (novel_system_spec, plan_analyze).
+
+    PROPOSE-BLIND: `existing` threads through both steps (prompt grounding + deterministic merge)."""
+    analyze, checksum = analyze_document(raw_path, client=client, io_dir=io_dir, existing=existing)
+    spec = materialize_from_analyze(analyze, checksum, client=client, io_dir=io_dir, existing=existing)
     return spec, analyze

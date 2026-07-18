@@ -57,9 +57,28 @@ EXPECTED_TOOLS = {
     "composition_outline_node_delete", "composition_outline_node_restore",
     "composition_scene_link_create", "composition_scene_link_delete",
     "composition_canon_rule_create", "composition_canon_rule_update",
-    "composition_canon_rule_delete", "composition_write_prose",
+    "composition_canon_rule_delete", "composition_canon_rule_restore",
+    # S-01 · structure-template authoring (per-user)
+    "composition_structure_template_create", "composition_structure_template_clone",
+    "composition_structure_template_update", "composition_structure_template_archive",
+    "composition_structure_template_restore",
+    "composition_write_prose",
+    # ── S5 (D-DIVERGENCE-MCP-TOOLS) — the dị bản manage surface. ──
+    "composition_list_derivatives",   # Tier R
+    "composition_get_derivative_context",  # Tier R
+    "composition_archive_derivative",  # Tier A (reversible soft-delete)
+    "composition_switch_active_work",  # Tier A (per-user active-work pref)
+    "composition_create_derivative",  # Tier W (confirm-gated derive → composition.derive)
+    # ── S-04 — post-derive delta editing (spec + overrides now mutable). Tier A (auto-write + Undo). ──
+    "composition_divergence_spec_update",
+    "composition_entity_override_add",
+    "composition_entity_override_update",
+    "composition_entity_override_delete",
+    # ── S-03 — reference-shelf metadata edit (agent parity). Tier A (auto-write + Undo). ──
+    "composition_reference_update",
     # Tier W
     "composition_publish", "composition_generate",
+    "composition_decompile_arcs",  # close-21-28 P-O2a — confirm-gated arc decompiler
     # ── D-AGENT-MODE §20 authoring-run tools (register on the SAME server) ──
     # Tier R
     "composition_authoring_run_list", "composition_authoring_run_get",
@@ -77,18 +96,38 @@ EXPECTED_TOOLS = {
     "composition_get_mine_job", "composition_motif_link_list",
     "composition_motif_book_list",
     # Tier A (motif)
-    "composition_motif_create", "composition_motif_archive", "composition_motif_patch",
+    "composition_motif_create", "composition_motif_archive", "composition_motif_restore",
+    "composition_motif_patch",
     "composition_motif_bind", "composition_motif_unbind",
     "composition_motif_link_create", "composition_motif_link_delete",
     # Tier W (motif)
     "composition_motif_adopt", "composition_motif_mine",
     "composition_arc_import_analyze", "composition_conformance_run",
+    # ── 23 structure layer — arc SPEC CRUD + outline reorder (SAME server) ──
+    # Tier R (arc reads)
+    "composition_arc_list", "composition_arc_get", "composition_arc_template_drift",
+    # BA11 (O-3) — the 5 arc-template CRUD MCP tools (the "Full MCP surface" BA11 mandates).
+    "composition_arc_template_list", "composition_arc_template_get",
+    "composition_arc_template_create", "composition_arc_template_update",
+    "composition_arc_template_archive", "composition_arc_template_restore",
+    "composition_conformance_status",   # 26 IX-14 staleness read contract
+    # Tier A (arc auto-writes + outline move)
+    "composition_arc_create", "composition_arc_update", "composition_arc_delete",
+    "composition_arc_restore", "composition_arc_move", "composition_arc_assign_chapters",
+    "composition_arc_apply", "composition_arc_extract_template",
+    "composition_outline_node_move",
     # ── PlanForge (M4) plan_* tools ──
     # Tier R
     "plan_validate", "plan_self_check",
     # Tier A
     "plan_propose_spec", "plan_interpret_feedback", "plan_apply_revision",
     "plan_review_checkpoint", "plan_handoff_autofix", "plan_compile",
+    # 27 V2-F1 — the compiler-pass surface. The agent CANNOT skip a checkpoint through these:
+    # `plan_run_pass` refuses with its blockers named, and only `plan_review_checkpoint` (which a
+    # human drives) clears a blocking pass.
+    "plan_run_pass", "plan_pass_status", "plan_link",
+    # 28 AN-2/AN-3/AN-4 — the agent's three read surfaces (the gap layer AN-1 enumerates).
+    "composition_package_tree", "composition_find_references", "composition_diagnostics",
 }
 TIER_R = {"composition_get_work", "composition_list_outline",
           "composition_get_outline_node",
@@ -97,14 +136,19 @@ TIER_R = {"composition_get_work", "composition_list_outline",
           "composition_motif_search", "composition_motif_get",
           "composition_motif_suggest_for_chapter", "composition_arc_suggest",
           "composition_get_mine_job", "composition_motif_link_list",
+          "composition_arc_list", "composition_arc_get", "composition_arc_template_drift",
+          "composition_arc_template_list", "composition_arc_template_get",  # O-3 reads
+          "composition_conformance_status",
           "plan_validate", "plan_self_check",
           "composition_authoring_run_list", "composition_authoring_run_get"}
-TIER_W = {"composition_publish", "composition_generate",
+TIER_W = {"composition_publish", "composition_generate", "composition_decompile_arcs",
           "composition_motif_adopt", "composition_motif_mine",
           "composition_arc_import_analyze", "composition_conformance_run",
           "composition_authoring_run_create", "composition_authoring_run_gate",
           "composition_authoring_run_start", "composition_authoring_run_resume",
-          "composition_authoring_run_revert_all"}
+          "composition_authoring_run_revert_all",
+          "composition_arc_template_create", "composition_arc_template_update",  # O-3 writes
+          "composition_arc_template_archive", "composition_arc_template_restore"}
 
 
 # ── wire-path fixture ─────────────────────────────────────────────────────────
@@ -247,12 +291,12 @@ async def test_rejects_bad_user_id_uuid(mcp_base_url):
 
 
 def _work(user=TEST_USER) -> CompositionWork:
-    return CompositionWork(project_id=PROJECT, user_id=user, book_id=BOOK, id=PROJECT, version=1)
+    return CompositionWork(project_id=PROJECT, created_by=user, book_id=BOOK, id=PROJECT, version=1)
 
 
 def _node(**kw) -> OutlineNode:
     return OutlineNode(
-        id=kw.get("id", uuid.uuid4()), user_id=TEST_USER, project_id=PROJECT,
+        id=kw.get("id", uuid.uuid4()), created_by=TEST_USER, project_id=PROJECT, book_id=BOOK,
         kind=kw.get("kind", "scene"), rank="a0", title=kw.get("title", "S"),
         status=kw.get("status", "empty"), version=kw.get("version", 1),
     )
@@ -260,13 +304,13 @@ def _node(**kw) -> OutlineNode:
 
 def _rule(**kw) -> CanonRule:
     return CanonRule(
-        id=kw.get("id", uuid.uuid4()), user_id=TEST_USER, project_id=PROJECT,
+        id=kw.get("id", uuid.uuid4()), created_by=TEST_USER, project_id=PROJECT,
         text=kw.get("text", "magic costs HP"), version=kw.get("version", 1),
     )
 
 
 def _link() -> SceneLink:
-    return SceneLink(id=uuid.uuid4(), user_id=TEST_USER, project_id=PROJECT,
+    return SceneLink(id=uuid.uuid4(), created_by=TEST_USER, project_id=PROJECT,
                      from_node_id=uuid.uuid4(), to_node_id=uuid.uuid4())
 
 
@@ -289,8 +333,8 @@ async def _patched(*, grant_level=2, works_get=None, **repo_overrides):
     import app.mcp.server as srv
 
     if works_get is None:
-        async def works_get(user_id, project_id):  # default: caller owns the Work
-            return _work(user_id) if user_id == TEST_USER else None
+        async def works_get(project_id):  # default: caller owns the Work
+            return _work()
 
     works = AsyncMock()
     works.get = AsyncMock(side_effect=works_get)
@@ -342,12 +386,14 @@ async def test_od8_public_key_owned_only():
             await srv.composition_get_work(public, project_id=str(PROJECT))
 
 
-async def test_get_work_non_owner_rejected():
-    """A caller with NO Work row (the repo filters on user_id) → H13 uniform error."""
+async def test_get_work_missing_project_rejected():
+    """25 PM-9: reads are bare-id + gated at the E0 book grant — a project with no
+    Work row (works.get → None) yields the H13 uniform error (no existence oracle),
+    regardless of caller. The book-grant DENY path is covered separately below."""
     import app.mcp.server as srv
     from loreweave_mcp import NotAccessibleError
 
-    async def no_work(user_id, project_id):
+    async def no_work(project_id):
         return None
 
     async with _patched(works_get=no_work):
@@ -378,7 +424,7 @@ async def test_get_work_by_book_id_resolves_the_project():
         works.resolve_by_book = AsyncMock(return_value=[_work()])
         res = await srv.composition_get_work(_Ctx(), book_id=str(BOOK))
     assert res["project_id"] == str(PROJECT)
-    works.resolve_by_book.assert_awaited_once_with(TEST_USER, BOOK)
+    works.resolve_by_book.assert_awaited_once_with(BOOK)  # 25 PM-9: book-keyed, no user
 
 
 async def test_get_work_by_book_id_no_marked_work_uniform_deny():
@@ -410,13 +456,236 @@ async def test_get_work_without_any_id_rejected():
             await srv.composition_get_work(_Ctx())
 
 
+# ── OQ2 (2026-07-07 discovery-hardening spec) — composition_create_work with NO
+# project_id auto-resolves/auto-creates the book's default knowledge project. The
+# external audit's #7 finding: kg_project_list returns empty for a fresh book, so a
+# caller had no discoverable way to obtain a project_id at all. ────────────────
+
+
+async def test_create_work_no_project_id_auto_creates_default_project():
+    """No marked Work AND no pre-existing knowledge project for the book (§6.2
+    status='none') — composition_create_work must bootstrap a knowledge project
+    itself (via the SAME KnowledgeClient/service-bearer seam composition_get_prose
+    already uses) and persist the Work bound to it, without the caller ever
+    passing project_id."""
+    import app.mcp.server as srv
+
+    new_project_id = uuid.uuid4()
+
+    async def no_existing_work(project_id):
+        return None
+
+    knowledge = AsyncMock()
+    knowledge.list_projects_for_book = AsyncMock(return_value=[])  # no project yet
+    knowledge.create_project = AsyncMock(return_value={"project_id": str(new_project_id)})
+    book = AsyncMock()
+    book.get_book = AsyncMock(return_value={"title": "My Book"})
+
+    created_work = CompositionWork(
+        project_id=new_project_id, created_by=TEST_USER, book_id=BOOK,
+        id=new_project_id, version=1,
+    )
+
+    async with _patched(grant_level=2, works_get=no_existing_work) as s:
+        works = s.WorksRepo(None)
+        works.resolve_by_book = AsyncMock(return_value=[])  # no marked Work
+        works.create = AsyncMock(return_value=created_work)
+        with patch.object(srv, "get_knowledge_client", return_value=knowledge), \
+             patch.object(srv, "get_book_client", return_value=book), \
+             patch.object(srv, "mint_service_bearer", return_value="tok"):
+            res = await srv.composition_create_work(_Ctx(), book_id=str(BOOK))
+
+    assert res["project_id"] == str(new_project_id)
+    knowledge.create_project.assert_awaited_once()
+    works.create.assert_awaited_once_with(TEST_USER, new_project_id, BOOK)
+
+
+async def test_create_work_no_project_id_second_call_is_idempotent():
+    """A second composition_create_work(book_id=...) call (no project_id), once
+    the book already has a marked Work (§6.2 status='found'), reuses the SAME
+    project — it must NOT call knowledge.create_project again (no duplicate
+    project/Work)."""
+    import app.mcp.server as srv
+
+    existing_project_id = uuid.uuid4()
+    existing_work = CompositionWork(
+        project_id=existing_project_id, created_by=TEST_USER, book_id=BOOK,
+        id=existing_project_id, version=1,
+    )
+
+    async def works_get(project_id):
+        if project_id == existing_project_id:
+            return existing_work
+        return None
+
+    knowledge = AsyncMock()
+    knowledge.create_project = AsyncMock(return_value={"project_id": str(uuid.uuid4())})
+
+    async with _patched(grant_level=2, works_get=works_get) as s:
+        s.WorksRepo(None).resolve_by_book = AsyncMock(return_value=[existing_work])
+        with patch.object(srv, "get_knowledge_client", return_value=knowledge), \
+             patch.object(srv, "mint_service_bearer", return_value="tok"):
+            res = await srv.composition_create_work(_Ctx(), book_id=str(BOOK))
+
+    assert res["project_id"] == str(existing_project_id)
+    knowledge.create_project.assert_not_awaited()
+
+
+async def test_create_work_no_project_id_knowledge_outage_degrades_to_pending():
+    """A knowledge-service OUTAGE during auto-resolve (list_projects_for_book
+    returns None — transport/5xx) must NOT surface as a tool failure — it
+    degrades to a lazy null-project pending Work (mirrors the HTTP POST /work
+    C16/WG-3 path), so authoring keeps working while knowledge is down."""
+    import app.mcp.server as srv
+
+    async def no_existing_work(project_id):
+        return None
+
+    pending_work = CompositionWork(
+        project_id=None, created_by=TEST_USER, book_id=BOOK,
+        id=uuid.uuid4(), pending_project_backfill=True, version=1,
+    )
+
+    knowledge = AsyncMock()
+    knowledge.list_projects_for_book = AsyncMock(return_value=None)  # outage
+
+    async with _patched(grant_level=2, works_get=no_existing_work) as s:
+        works = s.WorksRepo(None)
+        works.resolve_by_book = AsyncMock(return_value=[])
+        works.get_pending_for_book = AsyncMock(return_value=None)
+        works.create_pending = AsyncMock(return_value=pending_work)
+        with patch.object(srv, "get_knowledge_client", return_value=knowledge), \
+             patch.object(srv, "mint_service_bearer", return_value="tok"):
+            res = await srv.composition_create_work(_Ctx(), book_id=str(BOOK))
+
+    assert res["pending_project_backfill"] is True
+    assert res["project_id"] is None
+    works.create_pending.assert_awaited_once_with(TEST_USER, BOOK)
+
+
+async def test_create_work_no_project_id_after_prior_outage_backfills_pending_row_not_duplicate():
+    """HIGH-1 (/review-impl finding): a PRIOR knowledge-service outage left a lazy
+    pending Work (project_id=NULL, pending_project_backfill=true) for this
+    (user,book). Once knowledge recovers, a LATER composition_create_work(book_id)
+    call (still no project_id) must backfill THAT SAME row — not mint a brand-new
+    composition_work row (and a second knowledge project), which would orphan the
+    pending row forever. Uses ONE `knowledge` mock across both calls so
+    `create_project` awaited-once proves only ONE project was ever created."""
+    import app.mcp.server as srv
+
+    pending_id = uuid.uuid4()
+    new_project_id = uuid.uuid4()
+
+    pending_work = CompositionWork(
+        project_id=None, created_by=TEST_USER, book_id=BOOK,
+        id=pending_id, pending_project_backfill=True, version=1,
+    )
+    backfilled_work = CompositionWork(
+        project_id=new_project_id, created_by=TEST_USER, book_id=BOOK,
+        id=pending_id, pending_project_backfill=False, version=2,
+    )
+
+    knowledge = AsyncMock()
+    # call 1: outage (transport/5xx → None); call 2: recovered, no project yet.
+    knowledge.list_projects_for_book = AsyncMock(side_effect=[None, []])
+    knowledge.create_project = AsyncMock(return_value={"project_id": str(new_project_id)})
+    book = AsyncMock()
+    book.get_book = AsyncMock(return_value={"title": "My Book"})
+
+    async def no_existing_work(project_id):
+        return None
+
+    # ── call 1: knowledge DOWN → degrades to a lazy pending Work ──
+    async with _patched(grant_level=2, works_get=no_existing_work) as s:
+        works1 = s.WorksRepo(None)
+        works1.resolve_by_book = AsyncMock(return_value=[])
+        works1.get_pending_for_book = AsyncMock(return_value=None)
+        works1.create_pending = AsyncMock(return_value=pending_work)
+        with patch.object(srv, "get_knowledge_client", return_value=knowledge), \
+             patch.object(srv, "get_book_client", return_value=book), \
+             patch.object(srv, "mint_service_bearer", return_value="tok"):
+            first = await srv.composition_create_work(_Ctx(), book_id=str(BOOK))
+
+    assert first["pending_project_backfill"] is True
+    assert first["project_id"] is None
+    knowledge.create_project.assert_not_awaited()
+
+    # ── call 2: knowledge RECOVERED → resolve_work → status="none" (still no
+    # marked Work, still no book-typed knowledge project) → create_project
+    # succeeds → the PRIOR pending row must be backfilled, not duplicated. ──
+    async def existing_work_lookup(project_id):
+        # composition_create_work's idempotent-get (`works.get(user, pid)`) must
+        # find the NOW-BACKFILLED row (its project_id == new_project_id).
+        if project_id == new_project_id:
+            return backfilled_work
+        return None
+
+    async with _patched(grant_level=2, works_get=existing_work_lookup) as s:
+        works2 = s.WorksRepo(None)
+        works2.resolve_by_book = AsyncMock(return_value=[])
+        works2.get_pending_for_book = AsyncMock(return_value=pending_work)
+        works2.backfill_project = AsyncMock(return_value=backfilled_work)
+        with patch.object(srv, "get_knowledge_client", return_value=knowledge), \
+             patch.object(srv, "get_book_client", return_value=book), \
+             patch.object(srv, "mint_service_bearer", return_value="tok"):
+            second = await srv.composition_create_work(_Ctx(), book_id=str(BOOK))
+
+    assert second["project_id"] == str(new_project_id)
+    assert second["pending_project_backfill"] is False
+    works2.backfill_project.assert_awaited_once_with(pending_id, new_project_id, created_by=TEST_USER)
+    works2.create.assert_not_awaited()  # no SECOND composition_work row inserted
+    knowledge.create_project.assert_awaited_once()  # exactly ONE project, across BOTH calls
+
+
+async def test_create_work_auto_create_404_error_names_owner_only_reason():
+    """MED-1 (/review-impl finding): a 404 from knowledge-service's project-create
+    route means the caller is a non-owner EDIT-grantee (auto-provisioning a fresh
+    knowledge project is OWNER-only) — the error must name the concrete reason +
+    a fix pointer, not just 'status 404', so an agent acting for a collaborator
+    doesn't retry a call that can never succeed."""
+    import app.mcp.server as srv
+    from app.clients.knowledge_client import KnowledgeContractError
+
+    async def no_existing_work(project_id):
+        return None
+
+    knowledge = AsyncMock()
+    knowledge.list_projects_for_book = AsyncMock(return_value=[])
+    knowledge.create_project = AsyncMock(side_effect=KnowledgeContractError(404))
+    book = AsyncMock()
+    book.get_book = AsyncMock(return_value={"title": "My Book"})
+
+    async with _patched(grant_level=2, works_get=no_existing_work) as s:
+        s.WorksRepo(None).resolve_by_book = AsyncMock(return_value=[])
+        with patch.object(srv, "get_knowledge_client", return_value=knowledge), \
+             patch.object(srv, "get_book_client", return_value=book), \
+             patch.object(srv, "mint_service_bearer", return_value="tok"):
+            res = await srv.composition_create_work(_Ctx(), book_id=str(BOOK))
+
+    assert res["success"] is False
+    assert "only the book owner can auto-provision" in res["error"]
+    assert "project_id" in res["error"]
+    assert "composition_get_work" in res["error"]
+
+
+async def test_create_work_still_accepts_explicit_project_id():
+    """Back-compat: a caller that already knows project_id (unchanged behavior)."""
+    import app.mcp.server as srv
+
+    async with _patched(grant_level=2):
+        res = await srv.composition_create_work(
+            _Ctx(), book_id=str(BOOK), project_id=str(PROJECT),
+        )
+    assert res["project_id"] == str(PROJECT)
+
+
 async def test_get_generation_job_owner_ok():
     """A generation job that belongs to the caller's Work+project is returned."""
     import app.mcp.server as srv
     from app.db.models import GenerationJob
 
     job_id = uuid.uuid4()
-    job = GenerationJob(id=job_id, user_id=TEST_USER, project_id=PROJECT,
+    job = GenerationJob(id=job_id, created_by=TEST_USER, project_id=PROJECT, book_id=BOOK,
                         operation="generate", status="completed")
     jobs = AsyncMock()
     jobs.get = AsyncMock(return_value=job)
@@ -426,7 +695,8 @@ async def test_get_generation_job_owner_ok():
         )
     assert res["id"] == str(job_id)
     assert res["status"] == "completed"
-    jobs.get.assert_awaited_once_with(TEST_USER, job_id)
+    # 25 re-key: jobs.get is BARE-ID; the IDOR scope check is job.project_id == pid.
+    jobs.get.assert_awaited_once_with(job_id)
 
 
 async def test_get_generation_job_foreign_project_rejected():
@@ -437,7 +707,7 @@ async def test_get_generation_job_foreign_project_rejected():
     from app.db.models import GenerationJob
 
     job_id, other_project = uuid.uuid4(), uuid.uuid4()
-    job = GenerationJob(id=job_id, user_id=TEST_USER, project_id=other_project,
+    job = GenerationJob(id=job_id, created_by=TEST_USER, project_id=other_project, book_id=BOOK,
                         operation="generate", status="completed")
     jobs = AsyncMock()
     jobs.get = AsyncMock(return_value=job)
@@ -481,7 +751,7 @@ async def test_get_outline_node_owner_ok():
         )
     assert res["id"] == str(node_id)
     assert res["version"] == 4
-    outline.get_node.assert_awaited_once_with(TEST_USER, node_id)
+    outline.get_node.assert_awaited_once_with(node_id)  # 25 PM-9: bare-id; IDOR via project_id
 
 
 async def test_get_outline_node_foreign_project_rejected():
@@ -492,7 +762,7 @@ async def test_get_outline_node_foreign_project_rejected():
 
     other_project = uuid.uuid4()
     foreign = OutlineNode(
-        id=uuid.uuid4(), user_id=TEST_USER, project_id=other_project,
+        id=uuid.uuid4(), created_by=TEST_USER, project_id=other_project, book_id=BOOK,
         kind="scene", rank="a0", title="S", status="empty", version=1,
     )
     outline = AsyncMock()
@@ -548,6 +818,444 @@ async def test_canon_rule_create_returns_undo_hint():
     assert undo["args"]["rule_id"] == str(rule.id)
 
 
+async def test_canon_rule_delete_undo_hint_points_at_restore():
+    """BE-11c — the reverse op now exists, so delete's undo_hint is real (was None)."""
+    import app.mcp.server as srv
+
+    canon = AsyncMock()
+    rule = _rule(id=uuid.uuid4())
+    canon.get = AsyncMock(return_value=rule)
+    canon.archive = AsyncMock(return_value=rule)
+    async with _patched(CanonRulesRepo=canon):
+        res = await srv.composition_canon_rule_delete(
+            _Ctx(), project_id=str(PROJECT), rule_id=str(rule.id),
+        )
+    undo = res["_meta"]["undo_hint"]
+    assert undo["tool"] == "composition_canon_rule_restore"
+    assert undo["args"]["rule_id"] == str(rule.id)
+
+
+async def test_canon_rule_restore_unarchives():
+    """BE-11c — the agent gains the same restore the human's Undo toast offers."""
+    import app.mcp.server as srv
+
+    canon = AsyncMock()
+    rule = _rule(id=uuid.uuid4())
+    canon.restore = AsyncMock(return_value=rule)
+    async with _patched(CanonRulesRepo=canon):
+        res = await srv.composition_canon_rule_restore(
+            _Ctx(), project_id=str(PROJECT), rule_id=str(rule.id),
+        )
+    assert res["id"] == str(rule.id)
+    canon.restore.assert_awaited_once()
+
+
+# ── S5 (D-DIVERGENCE-MCP-TOOLS) — the dị bản manage surface (agent parity). ─────
+
+
+def _derivative(**kw) -> CompositionWork:
+    """A DERIVATIVE Work: source_work_id set (points at PROJECT), a branch_point, and
+    its name in settings.derivative_name (BE-13a persists it there)."""
+    return CompositionWork(
+        project_id=kw.get("project_id", uuid.uuid4()), created_by=TEST_USER, book_id=BOOK,
+        id=kw.get("id", uuid.uuid4()), source_work_id=kw.get("source_work_id", PROJECT),
+        branch_point=kw.get("branch_point", 3), status=kw.get("status", "active"),
+        version=kw.get("version", 1),
+        settings={"derivative_name": kw.get("name", "What if Kai never left")},
+    )
+
+
+async def test_list_derivatives_returns_canonical_plus_branches():
+    """The agent's read side: canonical Work + every branch, each with is_canonical +
+    the derivative name lifted from settings (the divergence panel's LIST)."""
+    import app.mcp.server as srv
+
+    async with _patched(grant_level=1) as s:
+        s.WorksRepo(None).resolve_by_book = AsyncMock(return_value=[_work(), _derivative()])
+        res = await srv.composition_list_derivatives(_Ctx(), project_id=str(PROJECT))
+    works = res["works"]
+    assert len(works) == 2
+    assert works[0]["is_canonical"] is True and works[0]["name"] is None
+    assert works[1]["is_canonical"] is False
+    assert works[1]["name"] == "What if Kai never left"
+    assert works[1]["branch_point"] == 3
+
+
+async def test_get_derivative_context_returns_the_durable_spec():
+    """The agent reads ONE branch's full spec — taxonomy/branch_point/canon_rules/overrides."""
+    import app.mcp.server as srv
+    from types import SimpleNamespace as NS
+
+    deriv = _derivative(branch_point=2)
+
+    async def get_deriv(pid):
+        return deriv
+
+    ctx_obj = NS(source_project_id=PROJECT, branch_point=2, overrides=[])
+    spec_obj = NS(taxonomy="pov_shift", pov_anchor=None, canon_rule=["Kai stays"])
+    async with _patched(works_get=get_deriv) as s:
+        s.WorksRepo(None).get = AsyncMock(return_value=deriv)
+        with patch.object(srv, "build_derivative_context", AsyncMock(return_value=ctx_obj)), \
+             patch.object(srv, "DerivativesRepo") as DR:
+            DR.return_value.get_spec_for_work = AsyncMock(return_value=spec_obj)
+            res = await srv.composition_get_derivative_context(_Ctx(), project_id=str(deriv.project_id))
+    assert res["is_derivative"] is True
+    assert res["taxonomy"] == "pov_shift"
+    assert res["branch_point"] == 2
+    assert res["canon_rules"] == ["Kai stays"]
+
+
+async def test_get_derivative_context_false_for_the_canonical_work():
+    """The canonical Work (source_work_id None) is not a derivative — is_derivative=false, no spec read."""
+    import app.mcp.server as srv
+
+    async def get_canonical(pid):
+        return _work()
+
+    async with _patched(works_get=get_canonical) as s:
+        s.WorksRepo(None).get = AsyncMock(return_value=_work())
+        res = await srv.composition_get_derivative_context(_Ctx(), project_id=str(PROJECT))
+    assert res["is_derivative"] is False
+
+
+async def test_archive_derivative_rejects_the_canonical_work():
+    """Archiving the canonical Work would orphan the book — the tool must refuse it
+    (source_work_id is None ⇒ NOT_A_DERIVATIVE), never PATCH status on canon."""
+    import app.mcp.server as srv
+
+    async def get_canonical(pid):
+        return _work()  # source_work_id None
+
+    async with _patched(works_get=get_canonical) as s:
+        works = s.WorksRepo(None)
+        res = await srv.composition_archive_derivative(
+            _Ctx(), srv._DerivativeArchiveArgs(project_id=str(PROJECT), expected_version=1),
+        )
+    assert res["success"] is False
+    assert "NOT_A_DERIVATIVE" in res["error"]
+    works.update.assert_not_awaited()  # never touched the canonical row
+
+
+async def test_archive_derivative_soft_deletes_with_restore_hint():
+    """A dị bản archive is a reversible soft-delete: status→archived + a restore undo_hint."""
+    import app.mcp.server as srv
+
+    deriv = _derivative(status="active", version=2)
+    archived = _derivative(project_id=deriv.project_id, id=deriv.id, status="archived", version=3)
+
+    async def get_deriv(pid):
+        return deriv
+
+    async with _patched(works_get=get_deriv) as s:
+        s.WorksRepo(None).update = AsyncMock(return_value=archived)
+        res = await srv.composition_archive_derivative(
+            _Ctx(), srv._DerivativeArchiveArgs(project_id=str(deriv.project_id), expected_version=2),
+        )
+    assert res["status"] == "archived"
+    assert "restore" in res["_meta"]["undo_hint"].lower()
+
+
+async def test_archive_derivative_stale_version_is_applied_conflict():
+    """If-Match: a stale expected_version surfaces as applied_conflict with the current
+    version (the panel refetches + retries) — never a silent overwrite."""
+    import app.mcp.server as srv
+    from app.db.repositories import VersionMismatchError
+
+    deriv = _derivative(version=5)
+    current = _derivative(project_id=deriv.project_id, id=deriv.id, version=7)
+
+    async def get_deriv(pid):
+        return deriv
+
+    async with _patched(works_get=get_deriv) as s:
+        s.WorksRepo(None).update = AsyncMock(side_effect=VersionMismatchError(current))
+        res = await srv.composition_archive_derivative(
+            _Ctx(), srv._DerivativeArchiveArgs(project_id=str(deriv.project_id), expected_version=5),
+        )
+    assert res["success"] is False
+    assert res["outcome"] == "applied_conflict"
+    assert res["current_version"] == 7
+
+
+# ── S-04: post-derive delta editing (agent parity) ──
+
+async def test_divergence_spec_update_forwards_only_provided_fields():
+    """The spec edit passes ONLY the fields the agent set to the repo; taxonomy round-trips."""
+    import app.mcp.server as srv
+    from types import SimpleNamespace as NS
+
+    deriv = _derivative()
+
+    async def get_deriv(pid):
+        return deriv
+
+    updated = NS(model_dump=lambda mode=None: {"taxonomy": "pov_shift"})
+    prior = NS(taxonomy="au", pov_anchor=None, canon_rule=["A"])
+    async with _patched(works_get=get_deriv) as s:
+        s.WorksRepo(None).get = AsyncMock(return_value=deriv)
+        with patch.object(srv, "DerivativesRepo") as DR:
+            DR.return_value.get_spec_for_work = AsyncMock(return_value=prior)  # prior for the Undo
+            DR.return_value.update_spec = AsyncMock(return_value=updated)
+            res = await srv.composition_divergence_spec_update(
+                _Ctx(), srv._DivergenceSpecUpdateArgs(
+                    project_id=str(deriv.project_id), taxonomy="pov_shift"),
+            )
+            _, kwargs = DR.return_value.update_spec.call_args
+    assert res["success"] is True
+    assert res["spec"]["taxonomy"] == "pov_shift"
+    assert set(kwargs) == {"taxonomy"}  # pov_anchor / canon_rule NOT forwarded (omitted)
+    # Tier-A Undo restores ONLY the changed field to its prior value.
+    undo = res["_meta"]["undo_hint"]
+    assert undo["tool"] == "composition_divergence_spec_update"
+    assert undo["args"]["taxonomy"] == "au" and "pov_anchor" not in undo["args"]
+
+
+async def test_divergence_spec_update_rejects_the_canonical_work():
+    """A base Work has no spec → NOT_A_DERIVATIVE, repo never called."""
+    import app.mcp.server as srv
+
+    async def get_canonical(pid):
+        return _work()
+
+    async with _patched(works_get=get_canonical) as s:
+        with patch.object(srv, "DerivativesRepo") as DR:
+            res = await srv.composition_divergence_spec_update(
+                _Ctx(), srv._DivergenceSpecUpdateArgs(project_id=str(PROJECT), taxonomy="au"),
+            )
+            DR.return_value.update_spec.assert_not_called()
+    assert res["success"] is False and "NOT_A_DERIVATIVE" in res["error"]
+
+
+async def test_divergence_spec_update_taxonomy_is_closed_set():
+    """taxonomy is a closed set (Literal) — a value outside it is rejected at arg
+    construction (422), never reaches the DB CHECK. Mirrors the derive-args discipline."""
+    import app.mcp.server as srv
+    from pydantic import ValidationError
+
+    for good in ("pov_shift", "character_transform", "au"):
+        srv._DivergenceSpecUpdateArgs(project_id=str(PROJECT), taxonomy=good)
+    with pytest.raises(ValidationError):
+        srv._DivergenceSpecUpdateArgs(project_id=str(PROJECT), taxonomy="multiverse")
+
+
+async def test_entity_override_add_success_and_duplicate():
+    """add creates an override after derive; a duplicate target → OVERRIDE_EXISTS (not a 500)."""
+    import asyncpg as _asyncpg
+    import app.mcp.server as srv
+    from types import SimpleNamespace as NS
+
+    deriv = _derivative()
+    target = uuid.uuid4()
+
+    async def get_deriv(pid):
+        return deriv
+
+    ov = NS(id=uuid.uuid4(), target_entity_id=target, overridden_fields={"role": "hero"})
+    async with _patched(works_get=get_deriv) as s:
+        s.WorksRepo(None).get = AsyncMock(return_value=deriv)
+        with patch.object(srv, "DerivativesRepo") as DR:
+            DR.return_value.add_override = AsyncMock(return_value=ov)
+            res = await srv.composition_entity_override_add(
+                _Ctx(), srv._EntityOverrideAddArgs(
+                    project_id=str(deriv.project_id), target_entity_id=str(target),
+                    overridden_fields={"role": "hero"}),
+            )
+            assert res["success"] is True
+            assert res["override"]["overridden_fields"] == {"role": "hero"}
+            # duplicate target → OVERRIDE_EXISTS
+            DR.return_value.add_override = AsyncMock(
+                side_effect=_asyncpg.UniqueViolationError("dup"))
+            res2 = await srv.composition_entity_override_add(
+                _Ctx(), srv._EntityOverrideAddArgs(
+                    project_id=str(deriv.project_id), target_entity_id=str(target)),
+            )
+    assert res2["success"] is False and "OVERRIDE_EXISTS" in res2["error"]
+
+
+async def test_entity_override_update_and_delete():
+    """update replaces the field-set; delete reverts to canon (both return success)."""
+    import app.mcp.server as srv
+    from types import SimpleNamespace as NS
+
+    deriv = _derivative()
+    oid = uuid.uuid4()
+
+    async def get_deriv(pid):
+        return deriv
+
+    ov = NS(id=oid, target_entity_id=uuid.uuid4(), overridden_fields={"a": 1})
+    tgt = uuid.uuid4()
+    prior = NS(id=oid, target_entity_id=tgt, overridden_fields={"a": 0})
+    async with _patched(works_get=get_deriv) as s:
+        s.WorksRepo(None).get = AsyncMock(return_value=deriv)
+        with patch.object(srv, "DerivativesRepo") as DR:
+            DR.return_value.get_override = AsyncMock(return_value=prior)  # prior for the Undo
+            DR.return_value.update_override = AsyncMock(return_value=ov)
+            DR.return_value.delete_override = AsyncMock(return_value=True)
+            upd = await srv.composition_entity_override_update(
+                _Ctx(), srv._EntityOverrideUpdateArgs(
+                    project_id=str(deriv.project_id), override_id=str(oid),
+                    overridden_fields={"a": 1}),
+            )
+            dele = await srv.composition_entity_override_delete(
+                _Ctx(), srv._EntityOverrideDeleteArgs(
+                    project_id=str(deriv.project_id), override_id=str(oid)),
+            )
+    assert upd["success"] is True and upd["override"]["overridden_fields"] == {"a": 1}
+    # update Undo restores the prior field-set; delete Undo re-adds with prior target+fields.
+    assert upd["_meta"]["undo_hint"]["args"]["overridden_fields"] == {"a": 0}
+    assert dele["success"] is True and dele["deleted"] is True
+    assert dele["_meta"]["undo_hint"]["tool"] == "composition_entity_override_add"
+    assert dele["_meta"]["undo_hint"]["args"]["target_entity_id"] == str(tgt)
+
+
+# ── S-03: reference-shelf metadata edit (agent parity) ──
+
+async def test_reference_update_edits_only_metadata_with_undo():
+    """The reference edit forwards ONLY the fields the agent set (no re-embed — it never
+    calls the embedder), and its Tier-A Undo restores the prior metadata."""
+    import app.mcp.server as srv
+    from types import SimpleNamespace as NS
+
+    work = _work()
+
+    async def get_work(pid):
+        return work
+
+    prior = NS(title="Old Title", author="A", source_url="")
+    updated = NS(model_dump=lambda mode=None: {"title": "New Title", "author": "A"})
+    async with _patched(works_get=get_work) as s:
+        s.WorksRepo(None).get = AsyncMock(return_value=work)
+        with patch.object(srv, "ReferencesRepo") as RR:
+            RR.return_value.get = AsyncMock(return_value=prior)
+            RR.return_value.update_metadata = AsyncMock(return_value=updated)
+            res = await srv.composition_reference_update(
+                _Ctx(), srv._ReferenceUpdateArgs(
+                    project_id=str(PROJECT), reference_id=str(uuid.uuid4()), title="New Title"),
+            )
+            _, kwargs = RR.return_value.update_metadata.call_args
+    assert res["success"] is True and res["reference"]["title"] == "New Title"
+    assert set(kwargs) == {"title"}  # author/source_url NOT forwarded (omitted)
+    assert res["_meta"]["undo_hint"]["args"]["title"] == "Old Title"  # restores prior
+
+
+async def test_reference_update_rejects_a_content_field():
+    """S-03: editing CONTENT via MCP is out of scope — `content` is not on the args model,
+    so ForbidExtra rejects it at construction (the asymmetry is intentional, not an omission)."""
+    import app.mcp.server as srv
+    from pydantic import ValidationError
+
+    with pytest.raises(ValidationError):
+        srv._ReferenceUpdateArgs(
+            project_id=str(PROJECT), reference_id=str(uuid.uuid4()), content="new body")
+
+
+async def test_switch_active_work_sets_the_per_book_pref():
+    """The agent switches the studio onto a dị bản by writing the SAME per-user pref the human's
+    Switch-to writes (lw_active_work.<book> via auth-service)."""
+    import app.mcp.server as srv
+
+    async with _patched(grant_level=2) as s:
+        s.WorksRepo(None).get = AsyncMock(return_value=_work())  # a Work of BOOK
+        set_pref = AsyncMock()
+        with patch("app.clients.auth_prefs_client.set_user_preference", set_pref):
+            res = await srv.composition_switch_active_work(
+                _Ctx(), srv._SwitchActiveWorkArgs(book_id=str(BOOK), project_id=str(PROJECT)),
+            )
+    assert res["success"] is True and res["active_project_id"] == str(PROJECT)
+    a = set_pref.await_args.args
+    assert a[0] == TEST_USER and a[1] == f"lw_active_work.{BOOK}" and a[2] == str(PROJECT)
+
+
+async def test_switch_active_work_null_clears_to_canonical():
+    import app.mcp.server as srv
+
+    async with _patched(grant_level=2):
+        set_pref = AsyncMock()
+        with patch("app.clients.auth_prefs_client.set_user_preference", set_pref):
+            res = await srv.composition_switch_active_work(
+                _Ctx(), srv._SwitchActiveWorkArgs(book_id=str(BOOK), project_id=None),
+            )
+    assert res["success"] is True and res["active_project_id"] is None
+    assert set_pref.await_args.args[2] is None  # null → back to canonical
+
+
+async def test_switch_active_work_rejects_a_foreign_work():
+    import app.mcp.server as srv
+
+    async with _patched(grant_level=2) as s:
+        foreign = _work()
+        foreign.book_id = uuid.uuid4()  # a Work of a DIFFERENT book
+        s.WorksRepo(None).get = AsyncMock(return_value=foreign)
+        set_pref = AsyncMock()
+        with patch("app.clients.auth_prefs_client.set_user_preference", set_pref):
+            res = await srv.composition_switch_active_work(
+                _Ctx(), srv._SwitchActiveWorkArgs(book_id=str(BOOK), project_id=str(PROJECT)),
+            )
+    assert res["success"] is False and "NOT_A_WORK_OF_THIS_BOOK" in res["error"]
+    set_pref.assert_not_awaited()  # never wrote a foreign target
+
+
+async def test_switch_active_work_pref_write_unavailable():
+    import app.mcp.server as srv
+    from app.clients.auth_prefs_client import AuthPrefsError
+
+    async with _patched(grant_level=2):
+        set_pref = AsyncMock(side_effect=AuthPrefsError("auth down"))
+        with patch("app.clients.auth_prefs_client.set_user_preference", set_pref):
+            res = await srv.composition_switch_active_work(
+                _Ctx(), srv._SwitchActiveWorkArgs(book_id=str(BOOK), project_id=None),
+            )
+    assert res["success"] is False and "PREF_WRITE_UNAVAILABLE" in res["error"]
+
+
+async def test_create_derivative_returns_a_confirm_token_not_a_derivative():
+    """Tier-W derive is CONFIRM-GATED: the tool mints a confirm_token + descriptor and creates
+    NOTHING (no works.create_derivative call) until confirm_action runs."""
+    import app.mcp.server as srv
+
+    async def get_canonical(pid):
+        return _work()  # canonical source (source_work_id None), backed (id set)
+
+    async with _patched(works_get=get_canonical) as s:
+        works = s.WorksRepo(None)
+        res = await srv.composition_create_derivative(
+            _Ctx(), srv._DeriveArgs(project_id=str(PROJECT), name="What if Kai stayed", taxonomy="au"),
+        )
+    assert res["descriptor"] == "composition.derive"
+    assert res["confirm_token"] and isinstance(res["confirm_token"], str)
+    assert "What if Kai stayed" in res["title"]
+    works.create_derivative.assert_not_awaited()  # nothing created at propose time
+
+
+async def test_create_derivative_rejects_deriving_from_a_derivative():
+    import app.mcp.server as srv
+
+    async def get_deriv(pid):
+        return _derivative()  # already a derivative (source_work_id set)
+
+    async with _patched(works_get=get_deriv):
+        res = await srv.composition_create_derivative(
+            _Ctx(), srv._DeriveArgs(project_id=str(PROJECT), name="branch of a branch"),
+        )
+    assert res["success"] is False and "CANNOT_DERIVE_FROM_DERIVATIVE" in res["error"]
+
+
+async def test_create_derivative_rejects_an_unbacked_source():
+    import app.mcp.server as srv
+
+    async def get_unbacked(pid):
+        w = _work()
+        w.id = None  # a lazy/pending source with no surrogate id to link to
+        return w
+
+    async with _patched(works_get=get_unbacked):
+        res = await srv.composition_create_derivative(
+            _Ctx(), srv._DeriveArgs(project_id=str(PROJECT), name="x"),
+        )
+    assert res["success"] is False and "SOURCE_WORK_NOT_BACKED" in res["error"]
+
+
 async def test_scene_link_create_returns_undo_hint():
     import app.mcp.server as srv
 
@@ -563,6 +1271,64 @@ async def test_scene_link_create_returns_undo_hint():
             ),
         )
     assert res["_meta"]["undo_hint"]["tool"] == "composition_scene_link_delete"
+
+
+def test_scene_link_create_kind_is_closed_set():
+    """H5/IN-2: the MCP arg `kind` is a Literal (setup_payoff|custom), so a bad value from a
+    weak model fails validation at the schema (422) instead of reaching the DB CHECK (500).
+    Mirrors the REST mirror's LinkKind guard."""
+    import app.mcp.server as srv
+    from pydantic import ValidationError
+
+    nid = str(PROJECT)  # any string id; only `kind` is under test here
+    # Valid values construct cleanly.
+    for k in ("setup_payoff", "custom"):
+        srv._SceneLinkCreateArgs(project_id=str(PROJECT), from_node_id=nid, to_node_id=nid, kind=k)
+    # A value outside the closed set is rejected at construction (Pydantic Literal → 422).
+    with pytest.raises(ValidationError):
+        srv._SceneLinkCreateArgs(project_id=str(PROJECT), from_node_id=nid, to_node_id=nid, kind="Setup")
+
+
+async def test_outline_node_update_undo_none_when_prior_was_null():
+    """SC4-UNDO regression: setting a NULLABLE SC4 field (value_shift) from NULL→value has
+    no faithful single-op reverse — the sparse update patch treats None as leave-unchanged
+    (no clear verb), so an `undo_hint` listing value_shift=null would silently no-op. The
+    handler must emit undo_hint=None (honest) rather than a lying hint."""
+    import app.mcp.server as srv
+
+    outline = AsyncMock()
+    outline.get_node = AsyncMock(return_value=_node(version=5))          # value_shift defaults None
+    outline.update_node = AsyncMock(return_value=_node(version=6))
+    async with _patched(OutlineRepo=outline):
+        res = await srv.composition_outline_node_update(
+            _Ctx(),
+            srv._NodeUpdateArgs(
+                project_id=str(PROJECT), node_id=str(_node().id),
+                expected_version=5, value_shift=50,
+            ),
+        )
+    assert res["_meta"]["undo_hint"] is None, "a null-prior SC4 edit must not emit a lying undo"
+
+
+async def test_outline_node_update_undo_present_for_notnull_field():
+    """The common case stays reversible: a NOT NULL field (title) has a non-None prior, so
+    the undo_hint restores it."""
+    import app.mcp.server as srv
+
+    outline = AsyncMock()
+    outline.get_node = AsyncMock(return_value=_node(version=5, title="old"))
+    outline.update_node = AsyncMock(return_value=_node(version=6, title="new"))
+    async with _patched(OutlineRepo=outline):
+        res = await srv.composition_outline_node_update(
+            _Ctx(),
+            srv._NodeUpdateArgs(
+                project_id=str(PROJECT), node_id=str(_node().id),
+                expected_version=5, title="new",
+            ),
+        )
+    undo = res["_meta"]["undo_hint"]
+    assert undo is not None and undo["tool"] == "composition_outline_node_update"
+    assert undo["args"]["title"] == "old"
 
 
 async def test_outline_node_update_stale_version_is_conflict():
@@ -600,7 +1366,7 @@ OTHER_PROJECT = uuid.UUID("ffffffff-ffff-ffff-ffff-ffffffffffff")
 def _foreign_node(**kw) -> OutlineNode:
     """A node the caller owns but that lives in a DIFFERENT project (Work-B)."""
     return OutlineNode(
-        id=kw.get("id", uuid.uuid4()), user_id=TEST_USER, project_id=OTHER_PROJECT,
+        id=kw.get("id", uuid.uuid4()), created_by=TEST_USER, project_id=OTHER_PROJECT, book_id=BOOK,
         kind="scene", rank="a0", title="foreign", status="empty",
         version=kw.get("version", 1),
     )
@@ -608,7 +1374,7 @@ def _foreign_node(**kw) -> OutlineNode:
 
 def _foreign_rule(**kw) -> CanonRule:
     return CanonRule(
-        id=kw.get("id", uuid.uuid4()), user_id=TEST_USER, project_id=OTHER_PROJECT,
+        id=kw.get("id", uuid.uuid4()), created_by=TEST_USER, project_id=OTHER_PROJECT,
         text="foreign rule", version=kw.get("version", 1),
     )
 
@@ -706,7 +1472,7 @@ async def test_scene_link_delete_foreign_project_refused():
     from loreweave_mcp import NotAccessibleError
 
     links = AsyncMock()
-    # delete() returns False when the (user_id, id, project_id) triple matches nothing.
+    # delete() returns False when the (project_id, id) pair matches nothing (25 PM-9).
     links.delete = AsyncMock(return_value=False)
     async with _patched(SceneLinksRepo=links):
         with pytest.raises(NotAccessibleError):
@@ -714,8 +1480,9 @@ async def test_scene_link_delete_foreign_project_refused():
                 _Ctx(), project_id=str(PROJECT), link_id=str(uuid.uuid4()),
             )
     # The handler must constrain the repo delete by the resolved Work's project_id.
-    _, kwargs = links.delete.await_args
-    assert kwargs.get("project_id") == PROJECT
+    # 25 PM-9: delete is bare (project_id, link_id) — project_id is the 1st positional.
+    args, _ = links.delete.await_args
+    assert args[0] == PROJECT
 
 
 async def test_write_prose_stale_draft_version_rejected():
@@ -906,3 +1673,21 @@ async def test_generate_grant_denied_refused():
                     model_source="user_model", model_ref=str(MODEL_REF),
                 ),
             )
+
+
+# ── S-01 · structure-template MCP args validation (the agent-path guard) ──
+
+def test_structure_template_mcp_args_reject_blank_name():
+    """The empty-name bug at the agent surface: create/update/clone args must reject a blank name
+    (parity with the REST route), so an LLM cannot author an unfindable, blank-named structure."""
+    import pytest
+    import app.mcp.server as srv
+    for bad in ("", "   ", "\t"):
+        with pytest.raises(Exception):
+            srv._StructTemplateCreateArgs(name=bad)
+        with pytest.raises(Exception):
+            srv._StructTemplateUpdateArgs(template_id="x", expected_version=1, name=bad)
+        with pytest.raises(Exception):
+            srv._StructTemplateCloneArgs(template_id="x", name=bad)
+    # a valid name is trimmed + accepted
+    assert srv._StructTemplateCreateArgs(name="  My Structure  ").name == "My Structure"

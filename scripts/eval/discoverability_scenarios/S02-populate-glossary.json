@@ -1,0 +1,48 @@
+{
+  "scenarios": [
+    {
+      "scenario": "S02a",
+      "title": "Add my characters and terms — Path A (tell it a couple)",
+      "maps_to": "W3 / W2",
+      "persona": "P2 Linh / P1 Mai (near-zero platform knowledge)",
+      "model": "gemma-4-26b-a4b-qat",
+      "permission_mode": "write",
+      "fixture": "book Mị Đế — SKILL_BOOK_ID",
+      "context": {"book_context": {"book_id": "<BOOK_ID>"}},
+      "enabled_skills": [],
+      "jargon_denylist": [
+        "entity", "glossary", "kind", "attribute", "ontology", "extraction",
+        "propose", "confirm-token", "tool", "draft status", "inbox"
+      ],
+      "movements": [
+        {"id": "A", "label": "Tell it a couple"}
+      ],
+      "turns": [
+        {"movement": "A", "user": "Add these to my book: a character called Lâm Uyên, a young sect heir. And a term 'Chân Linh' — it means the core life-essence."},
+        {"movement": "A", "user": "Show me Lâm Uyên."}
+      ]
+    },
+    {
+      "scenario": "S02b",
+      "title": "Add my characters and terms — Path B (paste my notes)",
+      "maps_to": "W3 / W2 (seed-doc → glossary bridge)",
+      "persona": "P2 Linh / P1 Mai (near-zero platform knowledge)",
+      "model": "gemma-4-26b-a4b-qat",
+      "permission_mode": "write",
+      "fixture": "book Mị Đế + a short notes doc — SKILL_BOOK_ID",
+      "context": {"book_context": {"book_id": "<BOOK_ID>"}},
+      "enabled_skills": [],
+      "jargon_denylist": [
+        "entity", "glossary", "kind", "attribute", "ontology", "extraction",
+        "propose", "confirm-token", "tool", "draft status", "inbox"
+      ],
+      "movements": [
+        {"id": "B", "label": "Paste notes"}
+      ],
+      "turns": [
+        {"movement": "B", "user": "Add everyone and everything in here to my book.\n\n--- MY NOTES ---\nCharacters:\n- Lâm Uyên — a young sect heir, proud, secretly kind.\n- Mị Đế — the fallen empress, cold and brilliant, wants the throne back.\n- Hạc Thanh — a wandering swordsman who owes Mị Đế a life-debt.\n- Bạch Vô Thường — an assassin who serves no one.\n- Tô Ngọc — Lâm Uyên's little sister, a healer.\n- Diệp Hàn — the old sect master, keeper of a forbidden technique.\nTechniques:\n- Chân Linh Quyết — a breathing method that refines the core life-essence.\n- Vạn Kiếp Đồ — a forbidden sword art that costs the user years of life.\nTerms:\n- Chân Linh — the core life-essence every cultivator refines.\n- Ngũ Hành Tông — the Five-Elements Sect, the dominant power in the region.\n- Huyết Nguyệt — the Blood Moon, when spirit beasts go mad."},
+        {"movement": "B", "user": "Did you get them all? Any duplicates?"}
+      ]
+    }
+  ]
+}

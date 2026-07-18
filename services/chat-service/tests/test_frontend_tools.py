@@ -82,18 +82,28 @@ class TestFrontendToolDefs:
 
     def test_glossary_skill_prompt_mandates_one_card_batch(self):
         """#27/#29/#30 regression: the skill must steer multi-write goals to ONE
-        batched card (glossary_propose_batch / glossary_plan) and forbid looping the
-        single-propose tools — the run lifecycle honours only one confirm card per
-        turn, so a loop produces dead, un-confirmable cards. If this guidance is lost,
-        a weak model regresses to the N-card failure."""
-        from app.services.glossary_skill import GLOSSARY_SKILL_PROMPT
-        # the deterministic batch path must be named (it is a backend tool, so the
-        # frontend-name drift guard above does not cover it)
-        assert "glossary_propose_batch" in GLOSSARY_SKILL_PROMPT
-        # the hard one-card-per-turn rule and the no-loop prohibition must be present
-        assert "ONE confirm card per turn" in GLOSSARY_SKILL_PROMPT
-        low = GLOSSARY_SKILL_PROMPT.lower()
-        assert "never" in low and "loop" in low
+        batched card and forbid looping the single-propose tools — the run lifecycle
+        honours only one confirm card per turn, so a loop produces dead, un-confirmable
+        cards. If this guidance is lost, a weak model regresses to the N-card failure.
+
+        N5a (2026-07-18 F3) SPLIT the glossary skill: the always-injected CORE keeps the
+        ENTITY multi-write steering (glossary_propose_entities, "1+ items in one call"),
+        while the ONTOLOGY batch guidance (glossary_propose_batch for kinds/attributes) +
+        the hard one-card/no-loop rule moved to GLOSSARY_SHAPING_PROMPT — injected only
+        when the author actually does ontology work (pin / world-setup intent), which is
+        the only context that batches ontology writes. This asserts the guardrail is
+        preserved in BOTH halves at its correct home, not that it all lives in core."""
+        from app.services.glossary_skill import GLOSSARY_SKILL_PROMPT, GLOSSARY_SHAPING_PROMPT
+        # Ontology batch home (shaping): the deterministic batch path is named + the hard
+        # one-card-per-turn rule and the no-loop prohibition are present.
+        assert "glossary_propose_batch" in GLOSSARY_SHAPING_PROMPT
+        assert "ONE confirm card per turn" in GLOSSARY_SHAPING_PROMPT
+        shap = GLOSSARY_SHAPING_PROMPT.lower()
+        assert "never" in shap and "loop" in shap
+        # Core (always-injected) must still steer ENTITY multi-write to a single batched
+        # call, so the common "add these N characters" turn can't regress to N dead cards.
+        assert "glossary_propose_entities" in GLOSSARY_SKILL_PROMPT
+        assert "in one call" in GLOSSARY_SKILL_PROMPT
 
     def test_memory_tools_are_not_frontend(self):
         assert not is_frontend_tool("memory_search")

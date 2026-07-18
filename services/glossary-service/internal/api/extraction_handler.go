@@ -232,6 +232,29 @@ func (s *Server) getKnownEntities(w http.ResponseWriter, r *http.Request) {
 	if limit > 500 {
 		limit = 500
 	}
+	if limit < 1 {
+		limit = 1
+	}
+	// D-ANCHOR-PRELOAD-50-CAP: `offset` makes the 500-row page cap PAGEABLE, so a
+	// caller wanting every entity (extraction's anchor pre-load, the WS-4B graph
+	// projection) can walk the whole glossary instead of being silently truncated
+	// at the default 50. Requires the deterministic ORDER BY tiebreak below.
+	offset := queryInt(q.Get("offset"), 0)
+	if offset < 0 {
+		offset = 0
+	}
+	// D-GLOSSARY-KNOWN-ENTITIES-STATUS-PARAM: `status` was accepted by every caller
+	// (GlossaryClient.list_entities sent `status=active`) but NEVER read here — a
+	// write-only parameter that silently lied. Now honored: absent/empty ⇒ no status
+	// filter (the historical effective behavior, preserved for existing callers);
+	// a value must be one of the closed set or the request is rejected.
+	status := q.Get("status")
+	if status != "" && !validEntityStatus(status) {
+		writeError(w, http.StatusBadRequest, "GLOSS_INVALID_STATUS",
+			"status must be one of: active, inactive, draft, rejected")
+		KnownEntitiesTotal.WithLabelValues(OutcomeValidationError).Inc()
+		return
+	}
 
 	// Build the query dynamically based on filters.
 	// We join glossary_entities with system_kinds and aggregate chapter_entity_links
@@ -247,8 +270,22 @@ func (s *Server) getKnownEntities(w http.ResponseWriter, r *http.Request) {
 	args = append(args, bookID)
 	argIdx++
 
+	// Never surface soft-deleted entities. Soft-delete is a pure `SET deleted_at`
+	// (it leaves status/alive untouched and does NOT cascade chapter_entity_links),
+	// so without this a deleted `status='active'` entity still passes the frequency
+	// HAVING — and the W11-M3 public lore route would serve author-removed content to
+	// anonymous readers. Mirrors every sibling entity read (entity_handler.go).
+	conditions = append(conditions, "e.deleted_at IS NULL")
+
 	if alive {
 		conditions = append(conditions, "e.alive = true")
+	}
+
+	// D-GLOSSARY-KNOWN-ENTITIES-STATUS-PARAM — only filter when explicitly asked.
+	if status != "" {
+		conditions = append(conditions, "e.status = $"+strconv.Itoa(argIdx))
+		args = append(args, status)
+		argIdx++
 	}
 
 	// Chapter link subquery for frequency + recency
@@ -277,6 +314,9 @@ func (s *Server) getKnownEntities(w http.ResponseWriter, r *http.Request) {
 
 	args = append(args, limit)
 	limitParam := "$" + strconv.Itoa(argIdx)
+	argIdx++
+	args = append(args, offset)
+	offsetParam := "$" + strconv.Itoa(argIdx)
 
 	query := `
 		SELECT
@@ -308,8 +348,8 @@ func (s *Server) getKnownEntities(w http.ResponseWriter, r *http.Request) {
 		WHERE ` + strings.Join(conditions, " AND ") + `
 		GROUP BY e.entity_id, k.code, name_av.original_value, alias_av.original_value
 		HAVING ` + strings.Join(havingClauses, " AND ") + `
-		ORDER BY COUNT(cl.link_id) DESC
-		LIMIT ` + limitParam
+		ORDER BY COUNT(cl.link_id) DESC, e.entity_id ASC
+		LIMIT ` + limitParam + ` OFFSET ` + offsetParam
 
 	rows, err := s.pool.Query(ctx, query, args...)
 	if err != nil {
@@ -572,7 +612,7 @@ func (s *Server) bulkExtractEntities(w http.ResponseWriter, r *http.Request) {
 	// Pre-load attr_def map (book_kind_id+code → attr_id) for THIS book (G4 book tier).
 	// These two reads are book CONFIG — left on the pool, BEFORE the writeback tx, to
 	// keep the per-book advisory lock window tight (only the actual writes are locked).
-	attrDefMap, err := s.loadAttrDefMap(ctx, bookID)
+	attrDefMap, err := s.loadAttrDefMap(ctx, s.pool, bookID)
 	if err != nil {
 		BulkExtractTotal.WithLabelValues(OutcomeQueryFailed).Inc()
 		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "failed to load attribute definitions")
@@ -708,7 +748,10 @@ func (s *Server) bulkExtractEntities(w http.ResponseWriter, r *http.Request) {
 		}
 
 		// 1. Find existing entity by normalized name or alias match (same kind).
-		existingID, err := s.findEntityByNameOrAlias(ctx, tx, bookID, kindID, ent.Name)
+		// "" scope: the bulk extraction pipeline has no scope concept yet (out of
+		// scope for this pass — D-GLOSSARY-ENTITY-SCOPE only covers the interactive
+		// MCP creation path); this preserves its exact prior dedup behavior.
+		existingID, err := s.findEntityByNameOrAlias(ctx, tx, bookID, kindID, ent.Name, "")
 		if err != nil {
 			BulkExtractTotal.WithLabelValues(OutcomeQueryFailed).Inc()
 			writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "entity lookup failed")
@@ -726,7 +769,7 @@ func (s *Server) bulkExtractEntities(w http.ResponseWriter, r *http.Request) {
 		// duplication (#39, where the per-chapter writeback_key changes and the per-kind
 		// resolver misses the prior run's entity).
 		if existingID == uuid.Nil {
-			crossID, crossKindID, cerr := s.findEntityCrossKind(ctx, tx, bookID, ent.Name)
+			crossID, crossKindID, cerr := s.findEntityCrossKind(ctx, tx, bookID, ent.Name, "")
 			if cerr != nil {
 				BulkExtractTotal.WithLabelValues(OutcomeQueryFailed).Inc()
 				writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "cross-kind entity lookup failed")
@@ -1157,8 +1200,13 @@ func (s *Server) loadBookKindCodes(ctx context.Context, bookID uuid.UUID) (map[s
 // entity attributes resolve under universal. DISTINCT ON (kind_id, code) preferring
 // the universal row keeps one attr per (kind, code) even if a genre-specific row
 // shares the code.
-func (s *Server) loadAttrDefMap(ctx context.Context, bookID uuid.UUID) (map[string]uuid.UUID, error) {
-	rows, err := s.pool.Query(ctx, `
+// q lets a caller that already holds a tx (e.g. under the per-book advisory
+// lock, INV-C1) run this on that SAME connection instead of a second one from
+// s.pool — the fix for D-GLOSSARY-PROPOSE-LOCK's connection-pool deadlock risk
+// (a hardcoded s.pool here forced every tx-holding caller to need 2 connections
+// at once). Callers with no open tx yet just pass s.pool.
+func (s *Server) loadAttrDefMap(ctx context.Context, q pgxRWQuerier, bookID uuid.UUID) (map[string]uuid.UUID, error) {
+	rows, err := q.Query(ctx, `
 		SELECT DISTINCT ON (ba.kind_id, ba.code) ba.attr_id, ba.kind_id, ba.code
 		FROM book_attributes ba
 		JOIN book_genres g ON g.genre_id = ba.genre_id
@@ -1256,12 +1304,21 @@ func strategyToAction(strategy string) string {
 // merged-away loser is soft-deleted with its name/aliases folded into the WINNER, so an
 // incoming name must resolve to the live winner (whose folded alias matches), never to the
 // hidden loser. (/review-impl S6 #1 — Steps 1-2 previously omitted this; Step 3 inherited.)
-func (s *Server) findEntityByNameOrAlias(ctx context.Context, q pgxRWQuerier, bookID, kindID uuid.UUID, name string) (uuid.UUID, error) {
+// scope is an OPTIONAL disambiguation filter (glossary_entities.scope_label —
+// a plain author-set text label, e.g. a world/realm name, added 2026-07-08 per
+// real feedback: two entities can share a name+kind but genuinely be different
+// "Lâm gia" in different worlds — the resolver used to always fold them
+// together). Empty scope matches only entities whose OWN scope_label is also
+// empty (today's default, unchanged behavior for every caller that doesn't
+// pass one); a non-empty scope matches only entities carrying that EXACT
+// label. This is an additional filter, not a relaxation — normalized name/alias
+// still must match first.
+func (s *Server) findEntityByNameOrAlias(ctx context.Context, q pgxRWQuerier, bookID, kindID uuid.UUID, name, scope string) (uuid.UUID, error) {
 	normalizedName := normalizeEntity(name)
 
 	// Step 1: Try exact name match (normalized)
 	rows, err := q.Query(ctx, `
-		SELECT ge.entity_id, eav.original_value
+		SELECT ge.entity_id, eav.original_value, ge.scope_label
 		FROM glossary_entities ge
 		JOIN entity_attribute_values eav ON eav.entity_id = ge.entity_id
 		JOIN book_attributes ad ON ad.attr_id = eav.attr_def_id
@@ -1278,14 +1335,15 @@ func (s *Server) findEntityByNameOrAlias(ctx context.Context, q pgxRWQuerier, bo
 	type nameEntry struct {
 		entityID uuid.UUID
 		name     string
+		scope    string
 	}
 	var entries []nameEntry
 	for rows.Next() {
 		var e nameEntry
-		if err := rows.Scan(&e.entityID, &e.name); err != nil {
+		if err := rows.Scan(&e.entityID, &e.name, &e.scope); err != nil {
 			return uuid.Nil, err
 		}
-		if normalizeEntity(e.name) == normalizedName {
+		if normalizeEntity(e.name) == normalizedName && e.scope == scope {
 			return e.entityID, nil
 		}
 		entries = append(entries, e)
@@ -1293,7 +1351,7 @@ func (s *Server) findEntityByNameOrAlias(ctx context.Context, q pgxRWQuerier, bo
 
 	// Step 2: Check aliases (app-layer JSON parsing per design C1)
 	aliasRows, err := q.Query(ctx, `
-		SELECT ge.entity_id, eav.original_value
+		SELECT ge.entity_id, eav.original_value, ge.scope_label
 		FROM glossary_entities ge
 		JOIN entity_attribute_values eav ON eav.entity_id = ge.entity_id
 		JOIN book_attributes ad ON ad.attr_id = eav.attr_def_id
@@ -1310,9 +1368,12 @@ func (s *Server) findEntityByNameOrAlias(ctx context.Context, q pgxRWQuerier, bo
 
 	for aliasRows.Next() {
 		var entityID uuid.UUID
-		var aliasRaw string
-		if err := aliasRows.Scan(&entityID, &aliasRaw); err != nil {
+		var aliasRaw, entScope string
+		if err := aliasRows.Scan(&entityID, &aliasRaw, &entScope); err != nil {
 			return uuid.Nil, err
+		}
+		if entScope != scope {
+			continue
 		}
 		var aliases []string
 		if err := json.Unmarshal([]byte(aliasRaw), &aliases); err != nil {
@@ -1331,7 +1392,7 @@ func (s *Server) findEntityByNameOrAlias(ctx context.Context, q pgxRWQuerier, bo
 	// source-language name/aliases don't match (anti-resurrection across languages). Same
 	// book+kind scope as Steps 1-2.
 	tRows, err := q.Query(ctx, `
-		SELECT ge.entity_id, t.value
+		SELECT ge.entity_id, t.value, ge.scope_label
 		FROM glossary_entities ge
 		JOIN entity_attribute_values eav ON eav.entity_id = ge.entity_id
 		JOIN book_attributes ad ON ad.attr_id = eav.attr_def_id
@@ -1349,9 +1410,12 @@ func (s *Server) findEntityByNameOrAlias(ctx context.Context, q pgxRWQuerier, bo
 
 	for tRows.Next() {
 		var entityID uuid.UUID
-		var aliasRaw string
-		if err := tRows.Scan(&entityID, &aliasRaw); err != nil {
+		var aliasRaw, entScope string
+		if err := tRows.Scan(&entityID, &aliasRaw, &entScope); err != nil {
 			return uuid.Nil, err
+		}
+		if entScope != scope {
+			continue
 		}
 		var aliases []string
 		if err := json.Unmarshal([]byte(aliasRaw), &aliases); err != nil {
@@ -1381,16 +1445,25 @@ func (s *Server) findEntityByNameOrAlias(ctx context.Context, q pgxRWQuerier, bo
 // now — a cross-kind ALIAS collision is rarer and left as a follow-up. Safe under the
 // per-book extraction-writeback advisory lock (the loop is serialized per book), so a
 // cross-kind check-then-merge can't race another job into a duplicate.
-func (s *Server) findEntityCrossKind(ctx context.Context, q pgxRWQuerier, bookID uuid.UUID, name string) (entityID, kindID uuid.UUID, err error) {
+//
+// scope (D-GLOSSARY-ENTITY-SCOPE) — same discipline as findEntityByNameOrAlias: the
+// bulk extraction pipeline has no scope concept of its own (a caller here always
+// passes ""), so this only matches an UNSCOPED entity. Without this filter, a
+// human who had already disambiguated two same-named entities across worlds via
+// scope_label could have a later extraction pass silently attach new attributes to
+// WHICHEVER one is oldest, regardless of which world the chapter actually belongs
+// to — worse than making a fresh unscoped draft, which is at least visibly wrong
+// rather than silently mis-merged.
+func (s *Server) findEntityCrossKind(ctx context.Context, q pgxRWQuerier, bookID uuid.UUID, name, scope string) (entityID, kindID uuid.UUID, err error) {
 	normalized := normalizeEntity(name)
 	if normalized == "" {
 		return uuid.Nil, uuid.Nil, nil
 	}
 	err = q.QueryRow(ctx, `
 		SELECT entity_id, kind_id FROM glossary_entities
-		WHERE book_id = $1 AND normalized_name = $2 AND deleted_at IS NULL
+		WHERE book_id = $1 AND normalized_name = $2 AND scope_label = $3 AND deleted_at IS NULL
 		ORDER BY created_at, entity_id
-		LIMIT 1`, bookID, normalized).Scan(&entityID, &kindID)
+		LIMIT 1`, bookID, normalized, scope).Scan(&entityID, &kindID)
 	if err == pgx.ErrNoRows {
 		return uuid.Nil, uuid.Nil, nil
 	}
@@ -1976,6 +2049,29 @@ func (s *Server) internalEntityCount(w http.ResponseWriter, r *http.Request) {
 	}
 	EntityCountTotal.WithLabelValues(OutcomeOK).Inc()
 	writeJSON(w, http.StatusOK, map[string]any{"count": count})
+}
+
+// internalSuggestionsCount — GET /internal/books/{book_id}/suggestions-count.
+//
+// The entity-triage rail's completion signal for the Track-C rail driver: how many
+// AI-suggested items still await a triage decision. It reuses the tool's OWN producer
+// (queryAISuggestions with status="draft") rather than re-deriving the predicate, so the
+// count the driver grounds on can never drift from the pile the agent actually sees via
+// glossary_list_ai_suggestions — a keep/throw-out/combine decision moves an item off 'draft',
+// so this counts DOWN as the user triages, reaching 0 exactly when the pile is clean.
+// Auth-free like its siblings: this is an /internal route, the caller (chat-service) owns the
+// grant check on the session's book.
+func (s *Server) internalSuggestionsCount(w http.ResponseWriter, r *http.Request) {
+	bookID, ok := parsePathUUID(w, r, "book_id")
+	if !ok {
+		return
+	}
+	_, total, err := s.queryAISuggestions(r.Context(), bookID, "draft")
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "failed to count suggestions")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"count": total})
 }
 
 // ── C12c-a: glossary entities listing for knowledge-service sync ──────────

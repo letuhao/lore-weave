@@ -205,6 +205,34 @@ func (s *Server) getBookAccess(w http.ResponseWriter, r *http.Request) {
 	// to a grantee (lvl != none) so a non-grantee never gets an owner/existence oracle.
 	if lvl != GrantNone && owner != uuid.Nil {
 		resp["owner_user_id"] = owner.String()
+
+		// WS-1.2 (D16) — `kind` rides the access contract, behind the SAME grant gate.
+		//
+		// Every downstream egress surface (wiki, public-MCP, notifications, catalog,
+		// statistics) resolves access through here. Without `kind` they CANNOT enforce the
+		// diary taint even if they want to — they have no way to ask "is this private?".
+		// This is the enabling half of D16, exactly like the kg_indexed filter was the
+		// enabling half of publish-independent indexing.
+		//
+		// Gated behind lvl != GrantNone for the same reason owner_user_id is: an ungated
+		// `kind` would be an ORACLE — a stranger could probe any book id and learn which
+		// users keep a diary, which is itself sensitive.
+		// `kind` is the privacy taint every downstream egress guard keys on. review-impl:
+		// swallowing the lookup error and answering 200 WITHOUT it is a fail-open by
+		// construction — a consumer that expects `kind` and does not find it will treat the
+		// book as untainted. So a real DB error must FAIL the request (503), not silently
+		// omit the field. (s.pool is nil only in the pure-unit grant tests, which have no
+		// database; there the field is legitimately absent and the DB-level locks still hold.)
+		if s.pool != nil {
+			var kind string
+			if err := s.pool.QueryRow(r.Context(),
+				`SELECT kind FROM books WHERE id=$1`, bookID).Scan(&kind); err != nil {
+				writeError(w, http.StatusServiceUnavailable, "RESOLVE_FAILED",
+					"could not resolve book kind (the privacy taint must not be silently omitted)")
+				return
+			}
+			resp["kind"] = kind
+		}
 	}
 	writeJSON(w, http.StatusOK, resp)
 }

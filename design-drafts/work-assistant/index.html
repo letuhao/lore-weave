@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Work Assistant — UI drafts</title>
+<link rel="stylesheet" href="assets/draft.css">
+</head>
+<body>
+<main class="main">
+  <div class="wrap" style="max-width:960px">
+    <div class="eyebrow">Design drafts · companion to docs/specs/2026-07-11-work-assistant-mode.md</div>
+    <h1 class="h-page mt6">Work Assistant — UI drafts</h1>
+    <p class="muted mt6" style="max-width:640px">Static mockups of the <b>new</b> surfaces the feature needs. Everything else is reused: the assistant is a chat session (ChatView) reached from the nav bar, and the diary is the existing book workspace, kind-adapted. These four screens are what genuinely doesn't exist yet.</p>
+
+    <div class="gallery mt24">
+      <a class="card g-card" href="01-assistant-home.html">
+        <div class="thumb">chat + live "today so far" rail</div>
+        <div class="pad"><div class="between"><b>1 · Assistant home</b> <span class="badge-new">NEW</span></div><div class="tiny muted mt6">/assistant — the all-day driver. Chat, capture-status chip, "End my day", and a live rail showing what's being noticed (transparency-as-feature).</div></div>
+      </a>
+      <a class="card g-card" href="02-diary-timeline.html">
+        <div class="thumb">entry timeline + distilled day</div>
+        <div class="pad"><div class="between"><b>2 · Diary view</b> <span class="badge-reuse">REUSED GUI</span></div><div class="tiny muted mt6">The book workspace, kind=diary: activity heatmap, entry list, and a distilled-day detail. "Entry" not "Chapter"; private-locked; no publish/share.</div></div>
+      </a>
+      <a class="card g-card" href="03-end-of-day-review.html">
+        <div class="thumb">one calm review moment</div>
+        <div class="pad"><div class="between"><b>3 · End-of-day review</b> <span class="badge-new">NEW</span></div><div class="tiny muted mt6">Folds the entry + "people I noticed" + "worth remembering" + a reflection prompt into one ≤10-decision step. Keeps the review debt from fragmenting across surfaces.</div></div>
+      </a>
+      <a class="card g-card" href="04-weekly-reflection.html">
+        <div class="thumb">reflection + coaching</div>
+        <div class="pad"><div class="between"><b>4 · Weekly reflection &amp; coaching</b> <span class="badge-new">NEW</span></div><div class="tiny muted mt6">The self-improvement leg: weekly stats, a detected pattern → coaching nudge, "what I know about your work", and a communication scorecard with a trend.</div></div>
+      </a>
+    </div>
+
+    <div class="sec-h"><h3>Design principles (from the spec)</h3></div>
+    <div class="card pad">
+      <ul class="clean">
+        <li><b>No writer vocabulary.</b> The user never sees "chapter", "publish", "entity", "kind", or "inbox". They see Entry, Keep, People I noticed, Worth remembering (S06 no-jargon rule).</li>
+        <li><b>Capture is visible, not silent.</b> The "today so far" rail makes what's captured tangible every turn — the honest answer to the "is it actually collecting?" failure mode. Nothing is saved until the nightly review.</li>
+        <li><b>One calm review moment.</b> Entry + both inboxes + reflection collapse into a single end-of-day step with a bulk "Keep all" and a ≤10-decisions budget, so the memory never starves from review fatigue.</li>
+        <li><b>Week-1 value before the graph fills.</b> Raw recall ("what did I say about the launch?") works day one; the diary and "what I know" surfaces visibly fill up over time.</li>
+        <li><b>Private by construction.</b> The diary is kind-locked to private — a lock chip, no share button, grants and public-visibility blocked server-side.</li>
+        <li><b>Calm, personal tone.</b> Warm palette, serif display, first-person assistant voice — a diary, not a dashboard.</li>
+        <li><b>Mobile-first.</b> These are the phone's daily surfaces; the reused book GUI needs a real mobile pass (sidebar → drawer/bottom-nav), not just the chat.</li>
+      </ul>
+    </div>
+
+    <div class="sec-h"><h3>How this feeds the spec</h3></div>
+    <div class="card pad tiny">
+      <p>Mockups sharpen three things the spec left open: (a) the <b>"today so far" rail</b> is a concrete home for the capture-decision data path (PUX-5) — worth adding as a P1 surface, not just a status chip; (b) the <b>end-of-day review</b> confirms folding the three human gates into one screen (PUX-2/3) rather than routing to writer panels; (c) the <b>reflection/coaching</b> screen shows the P5 longitudinal leg needs a "what I know about you" knowledge view, which is a good week-1 empty-state anchor too.</p>
+      <p class="mt10 muted">Open questions surfaced by the drafts: does the activity heatmap/streak help or add pressure? Is the nightly review opt-in or a gentle nudge? Should "what I know about your work" be editable inline (forget/correct) from this view?</p>
+    </div>
+  </div>
+</main>
+<div class="frame-note">Draft index · design-drafts/work-assistant/</div>
+</body>
+</html>

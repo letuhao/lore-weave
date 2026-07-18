@@ -4,6 +4,19 @@ One model per table — the shape the repos (M2) return and validate. Text field
 carry StringConstraints length caps so a repo write can't store unbounded input
 (the cap is the input guard; reads tolerate existing rows). Cross-DB id fields
 are plain UUIDs (no FK — §1.4, validated in app code).
+
+BOOK-PACKAGE RE-KEY (spec 25 M3 / BPS-1; PM-5/PM-14 anti-revert): on the package
+tables the actor column is `created_by` — a plain STAMP (who did it: spend/audit
+attribution under BYOK), STORED but NEVER a scope key and NEVER filtered on.
+`project_id` is the Work PARTITION key and `book_id` is the TENANCY scope key;
+access is decided BEFORE the repo at the E0 book-grant gate. Do NOT re-introduce a
+per-user `user_id` field here or an actor predicate in a query — that reverts the
+re-key. Each model's fields mirror exactly what its repo's `_SELECT_COLS` project:
+a model carries `book_id` only where the repo actually selects it (OutlineNode,
+GenerationJob, MotifApplication, CompositionWork, Motif) — the other package
+tables store book_id but their repos don't project it, so the model omits it. The
+deps/ registry (StructureTemplate, Motif, ArcTemplate) and outside-the-package
+tables (ImportSource, daily-progress) keep `owner_user_id` BY DESIGN (PM-16).
 """
 
 from __future__ import annotations
@@ -44,7 +57,7 @@ class CompositionWork(BaseModel):
     # (C23 guard — null is greenfield-only). `id` defaults to project_id for backed
     # rows so existing project_id-keyed callers keep working unchanged.
     project_id: UUID | None = None
-    user_id: UUID
+    created_by: UUID  # 25 M3 actor stamp — stored, never a scope key / filter (PM-5)
     book_id: UUID
     id: UUID | None = None
     pending_project_backfill: bool = False
@@ -62,6 +75,24 @@ class CompositionWork(BaseModel):
     updated_at: datetime | None = None
 
 
+class WorkChapterDraft(BaseModel):
+    # D-S5-DERIVATIVE-MANUSCRIPT-FORK — a derivative Work's OWN manuscript for ONE chapter
+    # (the fork). Keyed by (project_id, chapter_id); project_id is the derivative Work's own
+    # partition (PM-3), book_id the E0 tenancy gate, created_by the actor stamp (never filtered).
+    # `body` is the full chapter doc (same shape as book-service's chapter_drafts.body);
+    # `draft_version` is the OI-2 OCC token. `merged_at` records the last promote-to-canon.
+    project_id: UUID
+    chapter_id: UUID
+    book_id: UUID
+    created_by: UUID
+    body: Any
+    draft_format: str = "json"
+    draft_version: int = 1
+    merged_at: datetime | None = None
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
+
+
 DivergenceTaxonomy = Literal["pov_shift", "character_transform", "au"]
 
 
@@ -72,7 +103,7 @@ class DivergenceSpec(BaseModel):
     + added canon rules). `project_id` = the derivative's own project."""
 
     id: UUID | None = None
-    user_id: UUID
+    created_by: UUID  # 25 M3 actor stamp — stored, never a scope key / filter (PM-5)
     project_id: UUID
     work_id: UUID
     taxonomy: DivergenceTaxonomy = "au"
@@ -88,7 +119,7 @@ class EntityOverride(BaseModel):
     applies it at retrieval in C25 (this cycle persists only)."""
 
     id: UUID | None = None
-    user_id: UUID
+    created_by: UUID  # 25 M3 actor stamp — stored, never a scope key / filter (PM-5)
     project_id: UUID
     work_id: UUID
     target_entity_id: UUID
@@ -100,9 +131,13 @@ class StructureTemplate(BaseModel):
     id: UUID
     owner_user_id: UUID | None = None  # NULL = global/built-in
     name: _Title
-    kind: str = "generic"
+    kind: str = "generic"  # S-01: a free-text label, NOT a closed enum (read nowhere semantically)
     beats: list[dict[str, Any]] = Field(default_factory=list)
     created_at: datetime | None = None
+    # S-01 write-side (mirror canon_rule): OCC + soft-delete.
+    updated_at: datetime | None = None
+    version: int = 1
+    is_archived: bool = False
 
 
 class NarrativeThread(BaseModel):
@@ -110,7 +145,7 @@ class NarrativeThread(BaseModel):
     ADVISORY — a flag + re-injection signal, not a hard commit gate."""
 
     id: UUID
-    user_id: UUID
+    created_by: UUID  # 25 M3 actor stamp — stored, never a scope key / filter (PM-5)
     project_id: UUID
     kind: Literal["promise", "foreshadow", "question", "mice_thread"]
     status: Literal["open", "progressing", "paid", "dropped"] = "open"
@@ -128,8 +163,9 @@ class NarrativeThread(BaseModel):
 
 class OutlineNode(BaseModel):
     id: UUID
-    user_id: UUID
-    project_id: UUID
+    created_by: UUID  # 25 M3 actor stamp — stored, never a scope key / filter (PM-5)
+    project_id: UUID  # Work partition key (PM-3)
+    book_id: UUID     # tenancy scope key (25 M1/M2); the E0 book gate resolves on this
     parent_id: UUID | None = None
     kind: NodeKind
     rank: Annotated[str, StringConstraints(max_length=200)]
@@ -143,6 +179,38 @@ class OutlineNode(BaseModel):
     tension: int | None = None  # 0..100
     story_order: int | None = None
     synopsis: _Long = ""
+    # 23 BA2/BA12 — the arc a CHAPTER node is assigned to (structure_node.id). NULL on
+    # scenes (the outline_structure_kind CHECK forbids a scene from carrying one). The
+    # packer reads it to inject the resolved arc frame into the draft prompt (BA12).
+    structure_node_id: UUID | None = None
+    # 22 SC4 — authored scene intent (the eight fields). Written via the MCP create/update
+    # args (B3) + _UPDATABLE_COLUMNS (B2); read back here so create/get/list ECHO the intent
+    # and the scene-inspector (22-C) can render it (else the fields are write-only). conflict/
+    # outcome/stakes are NOT NULL DEFAULT ''; the rest are nullable. exit_state is the SC12
+    # {v:1,…} envelope (stored JSONB; surfaced as a dict).
+    location_entity_id: UUID | None = None
+    story_time: str | None = None
+    conflict: str = ""
+    outcome: str = ""
+    value_shift: int | None = None      # -100..100
+    stakes: str = ""
+    target_words: int | None = None     # > 0
+    exit_state: dict[str, Any] | None = None
+    # ── SC11 amendment — the WRITTEN VERDICT (Phase 1). NOT authored: MAINTAINED. ──
+    # "Is there prose behind this spec node?" reconciled from book-service's
+    # `scenes.source_scene_id` (the sole authored anchor — DA-3 still holds, this is its
+    # regenerable inverse). Distinct from `status`, which is the AUTHOR'S INTENT: PH16 locks a
+    # two-chip desired-vs-actual header, and fusing them would mean marking a scene 'done' makes
+    # an UNWRITTEN scene render as written.
+    # `written_chapter_id` is WHICH CHAPTER'S PROSE backs it — NOT the node's own `chapter_id`.
+    # They come apart (a copied anchor; a planned node has chapter_id NULL), and a reconcile keyed
+    # on the wrong one either flaps forever or can never clear.
+    written_scene_id: UUID | None = None
+    written_chapter_id: UUID | None = None
+    written_at: datetime | None = None
+    # 26 IX-11 — provenance: 'authored' (human) · 'decompiled' (import) · 'planforge'.
+    # The inspector/Hub render a "mined" badge; the decompiler never overwrites 'authored'.
+    source: str = "authored"
     version: int = 1
     is_archived: bool = False
     created_at: datetime | None = None
@@ -154,9 +222,76 @@ class OutlineNode(BaseModel):
     child_count: int | None = None
 
 
+StructureNodeKind = Literal["saga", "arc", "part"]  # C-merge: 'part' = a depth-0 manuscript grouping
+
+
+class StructureNode(BaseModel):
+    """23 A3 — the durable spec layer (`structure_node`): the saga→arc→sub-arc
+    tree. Per-book (BA8: `book_id` is the SCOPE key, set directly — NO
+    composition_work join, NO project_id, NO user_id). `depth` (0..2) is
+    trigger-maintained; `parent_id` nesting is guarded by
+    `structure_node_depth_guard` (depth<=2 · no cycle · same book). `tracks`/
+    `roster` resolve root→leaf shadowed by `key`; `roster_bindings` by `role_key`
+    (StructureRepo.resolve_*). Provenance (`arc_template_id`/`template_version`)
+    is nullable — an arc authored from conversation has none (BA13).
+
+    `created_by` (23-A3) is the arc's author — a stored actor stamp, never a scope
+    key/filter (PM-5/DA-11), nullable (a pre-A3 arc has no recorded author). Fields
+    mirror the shipped columns exactly.
+    """
+
+    id: UUID
+    book_id: UUID
+    created_by: UUID | None = None  # 23-A3 actor stamp — stored, never a scope key (PM-5/DA-11)
+    parent_id: UUID | None = None
+    kind: StructureNodeKind
+    depth: int = 0
+    rank: Annotated[str, StringConstraints(max_length=200)]
+    title: _Title = ""
+    summary: _Long = ""
+    goal: _Short = ""
+    status: NodeStatus = "outline"
+    tracks: list[dict[str, Any]] = Field(default_factory=list)          # [{key,label}]
+    roster: list[dict[str, Any]] = Field(default_factory=list)          # [{key,actant,label,constraints[]}]
+    roster_bindings: dict[str, Any] = Field(default_factory=dict)       # {role_key: glossary_entity_id}
+    arc_template_id: UUID | None = None
+    template_version: int | None = None
+    version: int = 1
+    is_archived: bool = False
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
+
+
+# 22 SC12/BPS-12 — provenance of an exit_state write: 'generator' (the drafting
+# seam emitted it) vs 'author' (a human corrected it — a regeneration must never
+# silently discard an author's correction).
+ExitStateSource = Literal["generator", "author"]
+
+
+class SceneExitState(BaseModel):
+    """22 SC12 — the versioned `{v:1,…}` envelope stored in `outline_node.exit_state`.
+
+    Typed JSONB validated on write — never a free-form blob (an unvalidated JSONB
+    column becomes a schema nobody owns; the versioned envelope makes the next
+    migration possible). Mirrors the cross-chapter ChapterExitState delta
+    (engine/plan.py) pushed down to scene granularity: three typed buckets
+    (Character / World / Plot) as compact strings + the NEW-developments list.
+    extra='forbid' keeps a caller (LLM/router) from smuggling unversioned keys.
+    """
+
+    model_config = {"extra": "forbid"}
+
+    v: Literal[1] = 1
+    source: ExitStateSource = "generator"
+    characters: _Short = ""  # per-entity emotion/goal/relationship/power at scene end
+    world: _Short = ""       # location + time at scene end
+    plot: _Short = ""        # open threads / secrets / what's now revealed
+    advances: list[_Short] = Field(default_factory=list)  # NEW developments (anti-repeat signal)
+
+
 class SceneLink(BaseModel):
     id: UUID
-    user_id: UUID
+    created_by: UUID  # 25 M3 actor stamp — stored, never a scope key / filter (PM-5)
     project_id: UUID
     from_node_id: UUID
     to_node_id: UUID
@@ -167,7 +302,7 @@ class SceneLink(BaseModel):
 
 class CanonRule(BaseModel):
     id: UUID
-    user_id: UUID
+    created_by: UUID  # 25 M3 actor stamp — stored, never a scope key / filter (PM-5)
     project_id: UUID
     text: _Long
     scope: RuleScope = "world"
@@ -188,7 +323,7 @@ class SceneGroundingPin(BaseModel):
     source_id), never a localized label, so the pin survives a reader-language
     switch or a derivative override."""
     id: UUID
-    user_id: UUID
+    created_by: UUID  # 25 M3 actor stamp — stored, never a scope key / filter (PM-5)
     project_id: UUID
     outline_node_id: UUID
     item_type: GroundingItemType
@@ -205,7 +340,7 @@ class ReferenceSource(BaseModel):
     `embedding` is omitted from the list/search projection (the vector stays on the
     server); a row with a null embedding is never a search hit."""
     id: UUID
-    user_id: UUID
+    created_by: UUID  # 25 M3 actor stamp — stored, never a scope key / filter (PM-5)
     project_id: UUID
     title: _Title = ""
     author: _Title = ""
@@ -224,7 +359,7 @@ class StyleProfile(BaseModel):
     chapter_id (chapter) or outline node_id (scene). Density/Pace are 0-100; the
     packer resolves the most-specific row for a scene and maps them to prose-style
     directives in the draft prompts."""
-    user_id: UUID
+    created_by: UUID  # 25 M3 actor stamp — stored, never a scope key / filter (PM-5)
     project_id: UUID
     scope_type: StyleScope
     scope_id: UUID
@@ -237,7 +372,7 @@ class VoiceProfile(BaseModel):
     """T3.5 — per-character voice tags. Keyed by `entity_id`; `entity_name` is
     denormalized for prompt rendering. Injected only when the entity is present in
     the scene."""
-    user_id: UUID
+    created_by: UUID  # 25 M3 actor stamp — stored, never a scope key / filter (PM-5)
     project_id: UUID
     entity_id: UUID
     entity_name: str
@@ -247,8 +382,13 @@ class VoiceProfile(BaseModel):
 
 class GenerationJob(BaseModel):
     id: UUID
-    user_id: UUID
-    project_id: UUID
+    created_by: UUID  # 25 M3 actor stamp — BYOK spend attribution (25 T5); never a filter
+    # BE-7c: NULL only for an OWNER-scoped, Work-LESS job (a corpus/book motif-mine or an
+    # arc-import — there is no composition_work to derive a book from). For those rows
+    # `created_by` IS the scope key, and the read MUST gate on it (GET /motif-jobs/{id}).
+    # Both-or-neither is enforced by the DB (CHECK generation_job_scope_shape).
+    project_id: UUID | None = None  # Work partition key (PM-3)
+    book_id: UUID | None = None     # tenancy scope key (25 M1/M2); the E0 book gate resolves on this
     outline_node_id: UUID | None = None
     operation: Annotated[str, StringConstraints(max_length=100)]
     mode: JobMode = "cowrite"
@@ -268,7 +408,7 @@ class GenerationJob(BaseModel):
 
 class GenerationCorrection(BaseModel):
     id: UUID
-    user_id: UUID
+    created_by: UUID  # 25 M3 actor stamp (the corrector) — stored, never a filter (PM-5)
     project_id: UUID
     job_id: UUID
     kind: CorrectionKind
@@ -424,12 +564,15 @@ class MotifLink(BaseModel):
 
 class MotifApplication(BaseModel):
     id: UUID
-    user_id: UUID
+    created_by: UUID  # 25 M3 actor stamp — stored, never a scope key / filter (PM-5)
     project_id: UUID
     book_id: UUID
     motif_id: UUID | None = None                   # SET NULL if the motif is archived
     motif_version: int | None = None
     outline_node_id: UUID | None = None
+    structure_node_id: UUID | None = None          # BA5: the realized layout's arc (23-A1
+    #     added the column; arc_apply writes it first-class so arc conformance can read
+    #     `WHERE structure_node_id = $arc` instead of the legacy annotations bridge)
     role_bindings: dict[str, Any] = Field(default_factory=dict)
     annotations: dict[str, Any] = Field(default_factory=dict)
     created_at: datetime | None = None
@@ -449,6 +592,11 @@ class ArcPlacement(BaseModel):                     # one layout[] entry
 class ArcTemplate(BaseModel):
     id: UUID
     owner_user_id: UUID | None = None
+    # D-ARC-TEMPLATE-BOOK-TIER (34a, mirrors motif model B): book_shared=True ⇒ the book's SHARED
+    # tier (book-grant gated; owner is attribution only). Owner's full dump only — NEVER on the
+    # public/non-owner projection (_arc_public_projection drops both, B-3).
+    book_id: UUID | None = None
+    book_shared: bool = False
     code: _Code
     language: _Lang = "en"
     visibility: MotifVisibility = "private"
@@ -481,16 +629,79 @@ class ImportSource(BaseModel):
     created_at: datetime | None = None
 
 
-PlanRunStatus = Literal["pending", "proposed", "checkpoint", "validated", "compiled", "failed"]
-PlanRunMode = Literal["rules", "llm"]
-PlanArtifactKind = Literal[
-    "document", "analyze", "spec", "graph", "package", "llm_io", "validation_report",
+# 27 V2-A1: `planned` = the passes are staged but not yet compiled into a package.
+# These MIRROR `plan_run_status_chk` / `plan_artifact_kind_chk` in migrate.py. A value the
+# DB accepts but this Literal rejects is a silent 422 on a legal row; a value this accepts
+# but the DB rejects is a 500 on write. Change one, change both — there is no gate that
+# would catch the drift for you.
+PlanRunStatus = Literal[
+    "pending", "proposed", "checkpoint", "validated", "compiled", "failed", "planned",
 ]
+PlanRunMode = Literal["rules", "llm"]
+
+# The seven compiler passes (PF-1). The `pass_state` ledger is keyed by these, and the order here IS
+# the dependency order — `pass_cursor` walks it.
+#
+# This IS the closed set, and it is enforced on every surface that takes a pass id — the HTTP route
+# (`pass_id: PlanPassId` in the path ⇒ 422 on anything else) and the MCP tools (the `Literal`
+# annotation is the schema, so the enum reaches the agent). The Literal is the single source: there
+# is no second list to drift from it.
+#
+# These names are the SPEC's (27 §170), not a paraphrase: `motifs` not `motif`, `beats` not `beat`,
+# `character_arcs` not `char_arc`, `self_heal` not `heal`. A closed-set arg whose values drift from
+# the spec is the Frontend-Tool-Contract bug class — an agent passes the documented value and the
+# server 422s, or worse, silently no-ops. (`link` is NOT a pass: it is a step, and its artifact is
+# `link_report`.)
+PlanPassId = Literal[
+    "motifs", "cast", "world", "beats", "character_arcs", "scenes", "self_heal",
+]
+PASS_ORDER: tuple[str, ...] = (
+    "motifs", "cast", "world", "beats", "character_arcs", "scenes", "self_heal",
+)
+
+PlanArtifactKind = Literal[
+    # v1 — still writable (a CHECK re-add that drops a historical value makes existing rows
+    # unwritable; the same rule applies to the model that mirrors it).
+    "document", "analyze", "spec", "graph", "package", "llm_io", "validation_report",
+    # v2 — one artifact kind per pass, plus the two reports (27 V2-A1).
+    "motif_plan", "cast_plan", "world_plan", "beat_plan", "char_arc_plan", "scene_plan",
+    "heal_report", "link_report",
+    # close-21-28 P-O1a — the rules-mode pre-flight collision report.
+    "preflight",
+]
+
+PassStatus = Literal["pending", "running", "completed", "failed"]
+PassDecision = Literal["pending", "accepted", "rejected", "auto"]
+
+
+class PassEntry(BaseModel):
+    """One `pass_state` entry (27 V2-A1). Keyed by `pass_id` on `PlanRun.pass_state`.
+
+    NOTE what is NOT here: `fresh`/`stale`, `pass_cursor`, `blocked_at`. Those are DERIVED at
+    serialization from `input_fingerprint` vs the run's current inputs, and storing them would
+    make them a second source of truth that goes stale the instant an input changes — which is
+    the entire reason PF-3 keys freshness on a fingerprint rather than a flag.
+    """
+
+    status: PassStatus = "pending"
+    decision: PassDecision = "pending"
+    artifact_id: UUID | None = None
+    job_id: UUID | None = None
+    input_fingerprint: str | None = None
+    # The params this pass RAN with. STORED, because freshness recomputes the fingerprint and must
+    # use the same params — a derivation that took them from the caller would recompute with `None`
+    # (derive_view has no params to pass) and every param-carrying pass would read as permanently
+    # stale, blocking everything downstream.
+    params: dict[str, Any] = Field(default_factory=dict)
+    # passes 2/3 only (PF-7) — the glossary seed proposal this pass is waiting on.
+    bootstrap_proposal_id: UUID | None = None
+    decided_by: Literal["user", "auto"] | None = None
+    decided_at: datetime | None = None
 
 
 class PlanRun(BaseModel):
     id: UUID
-    owner_user_id: UUID
+    created_by: UUID  # 25 M3 actor stamp (was owner_user_id) — stored, never a filter (PM-5)
     book_id: UUID
     work_id: UUID | None = None
     status: PlanRunStatus = "pending"
@@ -498,9 +709,17 @@ class PlanRun(BaseModel):
     model_ref: UUID | None = None
     source_checksum: str = ""
     source_markdown: str = ""
+    is_archived: bool = False  # BE-4 — soft-archive; filtered from LIST, restorable
     active_job_id: UUID | None = None
     error_detail: str | None = None
     checkpoint_state: dict[str, Any] = Field(default_factory=dict)
+    # 27 V2-A1 — the pass ledger (one key per pass_id) + the genre input (PF-15).
+    pass_state: dict[str, PassEntry] = Field(default_factory=dict)
+    genre_tags: list[str] = Field(default_factory=list)
+    # D-PLANFORGE-PROPOSE-BLIND — what existing book-state was folded into this run's propose
+    # (fingerprint + counts). None ⇒ not grounded (blind / cold-start / ceiling-off) — an honest
+    # default, never silently {} (a read-only-looking write-only bug).
+    grounded_on: dict[str, Any] | None = None
     created_at: datetime | None = None
     updated_at: datetime | None = None
 
@@ -508,7 +727,7 @@ class PlanRun(BaseModel):
 class PlanArtifact(BaseModel):
     id: UUID
     run_id: UUID
-    owner_user_id: UUID
+    created_by: UUID  # 25 M3 actor stamp (was owner_user_id) — stored, never a filter (PM-5)
     kind: PlanArtifactKind
     content: dict[str, Any]
     created_at: datetime | None = None
@@ -524,7 +743,7 @@ class PlanBootstrapProposal(BaseModel):
     id: UUID
     run_id: UUID
     book_id: UUID
-    owner_user_id: UUID
+    created_by: UUID  # 25 M3 actor stamp (was owner_user_id) — stored, never a filter (PM-5)
     status: PlanBootstrapProposalStatus = "pending"
     diff: dict[str, Any]
     applied_results: dict[str, Any] = Field(default_factory=dict)
@@ -541,7 +760,7 @@ AuthoringRunStatus = Literal[
 
 class AuthoringRun(BaseModel):
     run_id: UUID
-    owner_user_id: UUID
+    created_by: UUID  # 25 M3 actor stamp (was owner_user_id) — spend/bearer identity; never a filter
     book_id: UUID
     plan_run_id: UUID
     level: int
@@ -590,6 +809,9 @@ class AuthoringRunUnit(BaseModel):
     # cost_usd[, detail]}. None = not critiqued (critic disabled / unit never
     # drafted / run paused-or-stolen at the boundary before the critique).
     critic_verdict: dict[str, Any] | None = None
+    # BE-9a: the generation_job that drafted this unit (NULL for pre-BE-9a units — never backfilled).
+    # It is what accept/reject attaches a generation_correction to (the human-gate learning signal).
+    job_id: UUID | None = None
     created_at: datetime | None = None
     updated_at: datetime | None = None
 

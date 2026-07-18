@@ -23,6 +23,7 @@
       --secondary: #282320; --muted-fg: #9e9488;
       --accent: #3da692; --accent-muted: #1a2e2a; --accent-fg: #c8ede6;
       --success: #3dba6a; --info: #5496e8; --lane-a: #5496e8; --lane-b: #e8b87e; --lane-c: #b89ee8;
+      --destructive: #d9584f; --destructive-muted: #3a1f1c;
     }
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body { font-family: 'Inter', system-ui, sans-serif; background: #0f0c0b; color: var(--foreground); }
@@ -71,7 +72,7 @@
       margin-top: 12px; padding: 8px 10px; border-radius: 6px; border: 1px dashed var(--border-hover);
       font-size: 10px; color: var(--muted-fg);
     }
-    .forbidden strong { color: #e85a5a; }
+    .forbidden strong { color: var(--destructive); }
 
     .mini-split { display: flex; gap: 8px; margin-top: 12px; min-height: 90px; }
     .mini-panel {

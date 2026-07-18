@@ -90,6 +90,18 @@ class Settings(BaseSettings):
     # on the empty path only; default ON (a miss-path fallback, not a re-ranker).
     context_l2_retry_widened: bool = True
 
+    # WS-4C (2026-07-09) — admit memory_remember / llm_tool_call facts into the
+    # per-turn L2 auto-recall. These project-level "we decided X / user prefers Y"
+    # facts are unanchored (no :ABOUT edge) and written at 0.7 (below the 0.8 L2
+    # gate) + NULL from_order, so the entity-anchored L2 path never surfaced them —
+    # the F4 continuity write-side gap. This branch selects them project-wide at
+    # their own lower floor. Kill-switch default ON.
+    context_l2_tool_facts: bool = True
+    context_l2_tool_fact_min_confidence: float = 0.7
+    # Cap on tool-facts injected per turn (they are rate-limited at write time, but
+    # bound the block so a long-lived project can't bloat every turn's context).
+    context_l2_tool_facts_limit: int = 20
+
     # M1a (2026-07-06) — passage→graph anchor bridge. After L2 facts + L3 passages
     # are retrieved, 1-hop-expand entities the PASSAGES surfaced that the message
     # didn't anchor, injecting the new relations into the L2 facts block. Deploy

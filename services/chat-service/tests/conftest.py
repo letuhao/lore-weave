@@ -2,6 +2,14 @@
 from __future__ import annotations
 
 import os
+import pathlib
+import sys
+
+# Expose the in-repo SDK (loreweave_safety — the shared safety floor for WS-5.13) from source
+# on a host whose Python predates the SDK's requires-python; the container installs it normally.
+_SDK = pathlib.Path(__file__).resolve().parents[3] / "sdks" / "python"
+if _SDK.is_dir() and str(_SDK) not in sys.path:
+    sys.path.insert(0, str(_SDK))
 from datetime import datetime, timezone
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, PropertyMock

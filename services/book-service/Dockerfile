@@ -20,6 +20,8 @@ COPY sdks/go/llmgw /src/sdks/go/llmgw
 COPY sdks/go/observability /src/sdks/go/observability
 COPY sdks/go/loreweave_mcp /src/sdks/go/loreweave_mcp
 COPY sdks/go/grantclient /src/sdks/go/grantclient
+# C5 / SD-C5 — the Go crypto SDK (diary encryption-at-rest).
+COPY sdks/go/loreweave_crypto /src/sdks/go/loreweave_crypto
 # contracts/platformjwt — shared HS256 platform-user JWT verifier; its replace
 # (=> ../../contracts/platformjwt) must resolve inside the container.
 COPY contracts/platformjwt /src/contracts/platformjwt

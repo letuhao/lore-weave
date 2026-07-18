@@ -5,6 +5,7 @@ import (
 	"net/http/httptest"
 	"slices"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/google/uuid"
@@ -77,7 +78,7 @@ func TestProposeNewEntity_CreatesDraftThenDedups(t *testing.T) {
 	// it's captured into the kind's "description" catch-all, so it's NOT reported
 	// as skipped anymore (skipped is now reserved for a genuine drop: no
 	// "description" attr_def on the kind, or INV-8 verified-clobber).
-	id, status, skipped, err := s.proposeNewEntity(ctx, book, kindID, "Nezha", map[string]any{"no_such_attr": "x"})
+	id, status, skipped, err := s.proposeNewEntity(ctx, book, kindID, "Nezha", map[string]any{"no_such_attr": "x"}, "")
 	if err != nil || status != "created" {
 		t.Fatalf("want created, got status=%q err=%v", status, err)
 	}
@@ -107,12 +108,27 @@ func TestProposeNewEntity_CreatesDraftThenDedups(t *testing.T) {
 	}
 
 	// H9 dedup: a second propose of the same name does not create a duplicate.
-	id2, status2, _, err := s.proposeNewEntity(ctx, book, kindID, "Nezha", nil)
+	id2, status2, _, err := s.proposeNewEntity(ctx, book, kindID, "Nezha", nil, "")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if status2 != "skipped_exists" || id2 != id {
 		t.Errorf("want skipped_exists with same id, got status=%q id=%v", status2, id2)
+	}
+
+	// The tool never mutates an existing entity, so re-proposing WITH attributes must
+	// surface them as discarded (sorted) rather than silently dropping them — the
+	// signal that tells a weak model to reapply via glossary_entity_set_attributes.
+	_, status3, discarded, err := s.proposeNewEntity(ctx, book, kindID, "Nezha",
+		map[string]any{"weapon": "Fire-tipped Spear", "title": "Third Prince"}, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if status3 != "skipped_exists" {
+		t.Errorf("want skipped_exists, got %q", status3)
+	}
+	if !slices.Equal(discarded, []string{"title", "weapon"}) {
+		t.Errorf("want discarded attrs [title weapon] (sorted), got %v", discarded)
 	}
 }
 
@@ -139,11 +155,78 @@ func TestProposeNewEntity_SkipsTombstoned(t *testing.T) {
 	})
 	s := &Server{pool: pool}
 
-	id, status, _, err := s.proposeNewEntity(ctx, book, kindID, "Rejected", nil)
+	id, status, _, err := s.proposeNewEntity(ctx, book, kindID, "Rejected", nil, "")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if status != "skipped_tombstoned" || id != rejectedID {
 		t.Errorf("want skipped_tombstoned with the rejected id, got status=%q id=%v (rejected=%v)", status, id, rejectedID)
+	}
+}
+
+// D-GLOSSARY-ENTITY-SCOPE — /review-impl HIGH fix (2026-07-09): entity creation +
+// the scope_label set now share ONE transaction, so a uq_entity_dedup collision on
+// the scope_label UPDATE rolls back the whole creation instead of leaving a
+// wrongly-empty-scoped orphan.
+//
+// D-GLOSSARY-PROPOSE-LOCK (cleared 2026-07-09): the dedup check now runs under the
+// SAME per-book advisory lock the bulk extraction pipeline uses (INV-C1), on the
+// SAME tx connection as everything else in proposeNewEntity — so this test now
+// asserts the FULL guarantee: exactly one "Race Entity" survives 8 truly
+// concurrent identical proposals, and it carries the correct scope. (Two earlier
+// attempts at this deadlocked under concurrent test load because they mixed
+// tx-bound calls with a call hitting s.pool directly for a second connection
+// while the tx's own connection was still held open — fixed by giving
+// loadAttrDefMap a querier param instead of hardcoding s.pool, so the whole
+// function now runs on exactly one connection.)
+func TestProposeNewEntity_ConcurrentRaceSerializedByBookLock(t *testing.T) {
+	pool := openTestDB(t)
+	ctx := context.Background()
+	runK2aMigrations(t, pool)
+	book := uuid.New()
+	adoptTestBook(t, pool, book)
+	kindID := bookKindID(t, pool, book, "character")
+	t.Cleanup(func() {
+		pool.Exec(ctx, `DELETE FROM entity_attribute_values WHERE entity_id IN (SELECT entity_id FROM glossary_entities WHERE book_id=$1)`, book)
+		pool.Exec(ctx, `DELETE FROM glossary_entities WHERE book_id=$1`, book)
+	})
+	s := &Server{pool: pool}
+
+	const n = 8
+	var wg sync.WaitGroup
+	wg.Add(n)
+	for i := 0; i < n; i++ {
+		go func() {
+			defer wg.Done()
+			_, _, _, _ = s.proposeNewEntity(ctx, book, kindID, "Race Entity", nil, "World A")
+		}()
+	}
+	wg.Wait()
+
+	rows, err := pool.Query(ctx, `
+		SELECT ge.scope_label
+		FROM glossary_entities ge
+		JOIN entity_attribute_values eav ON eav.entity_id = ge.entity_id
+		JOIN book_attributes ba ON ba.attr_id = eav.attr_def_id
+		WHERE ge.book_id=$1 AND ge.kind_id=$2 AND ba.code='name' AND eav.original_value='Race Entity'
+		  AND ge.deleted_at IS NULL`,
+		book, kindID)
+	if err != nil {
+		t.Fatalf("query result: %v", err)
+	}
+	defer rows.Close()
+	found := 0
+	for rows.Next() {
+		found++
+		var scope string
+		if err := rows.Scan(&scope); err != nil {
+			t.Fatalf("scan: %v", err)
+		}
+		if scope != "World A" {
+			t.Errorf("row %d: want scope_label=World A, got %q (an empty/wrong-scoped orphan survived the race)", found, scope)
+		}
+	}
+	if found != 1 {
+		t.Errorf("want exactly 1 surviving entity after the race (the advisory lock serializes the dedup check), got %d", found)
 	}
 }

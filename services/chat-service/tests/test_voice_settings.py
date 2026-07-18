@@ -17,7 +17,9 @@ def test_blob_maps_chat_surface_and_shared_fields():
     cfg = voice_blob_to_config(voice)
     assert cfg == {
         "tts_voice": "bella", "tts_model_ref": "m1", "tts_model_source": "user_model",
-        "stt_model_ref": "s1", "stt_model_source": "ai_model",
+        # legacy stored 'ai_model' is coerced to canonical 'user_model' on read
+        # (D-CHATAI-VOICE-TWO-STORES).
+        "stt_model_ref": "s1", "stt_model_source": "user_model",
         "vad_silence_frames": 12, "vad_min_duration_ms": 300,
     }
 
@@ -44,3 +46,20 @@ def test_request_kept_when_store_unset():
 
 def test_none_inputs_safe():
     assert merge_voice_config(None, None) == {}
+
+
+# ── D-CHATAI-VOICE-TWO-STORES — the two-stores vocab reconcile (WS-4.0) ──────
+def test_read_coerces_legacy_ai_model_on_both_surfaces():
+    voice = {
+        "chat": {"tts_source": "ai_model", "tts_model_ref": "m1"},
+        "stt": {"source": "ai_model", "model_ref": "s1"},
+    }
+    cfg = voice_blob_to_config(voice)
+    assert cfg["tts_model_source"] == "user_model"
+    assert cfg["stt_model_source"] == "user_model"
+
+
+def test_read_passes_browser_and_user_model_through():
+    cfg = voice_blob_to_config({"chat": {"tts_source": "user_model"}, "stt": {"source": "browser"}})
+    assert cfg["tts_model_source"] == "user_model"
+    assert cfg["stt_model_source"] == "browser"

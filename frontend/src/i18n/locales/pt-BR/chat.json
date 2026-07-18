@@ -82,6 +82,7 @@
       "table": "Tabela"
     },
     "placeholder": "Pergunte sobre sua história, personagens, construção de mundo...",
+    "assistant_placeholder": "Relate o seu dia — as pessoas, projetos e decisões…",
     "attach_context": "Anexar contexto",
     "assist": "Assistir",
     "voice_assist_on": "Assistente de Voz ATIVADO — as respostas da IA serão faladas",
@@ -127,12 +128,6 @@
     "mode_write_hint": "Modo de escrita — o agente pode fazer alterações irreversíveis (pergunta uma vez por nova ferramenta)"
   },
   "new": {
-    "preset": {
-      "novel": "Assistente de Romance",
-      "translator": "Tradutor",
-      "worldbuilder": "Construtor de Mundo",
-      "editor": "Editor"
-    },
     "create_failed": "Falha ao criar chat: {{error}}",
     "title": "Iniciar Novo Chat",
     "model": "Modelo",
@@ -234,7 +229,6 @@
   "actionConfirm": {
     "label": "Confirmar ação",
     "batch_count": "{{count}} itens",
-    "warning": "Esta alteração tem alto impacto — por favor, confirme.",
     "warning_destructive": "Esta ação é destrutiva e em cascata — por favor, confirme.",
     "destructive_skipped": "{{count}} op(s) destrutiva(s) serão PULADAS, a menos que você as habilite acima.",
     "confirm": "Confirmar",
@@ -248,7 +242,8 @@
     "cancelled": "Cancelado",
     "reprice": "O custo subiu para {{cost}} desde a estimativa — peça novamente para confirmar o novo preço.",
     "reprice_title": "Custo alterado — não aplicado",
-    "reprice_detail": "Estimado {{old}}, agora {{new}}. Nada foi gasto — peça novamente para confirmar o novo preço."
+    "reprice_detail": "Estimado {{old}}, agora {{new}}. Nada foi gasto — peça novamente para confirmar o novo preço.",
+    "warning": "Por favor, revise esta alteração antes de aplicá-la."
   },
   "batchConfirm": {
     "title": "Confirmar {{count}} ações de uma só vez",
@@ -345,14 +340,6 @@
     "title": "Configurações da Sessão",
     "model": "Modelo",
     "system_prompt": "Prompt do Sistema",
-    "preset": {
-      "Custom": "Personalizado",
-      "Novelist": "Romancista",
-      "Translator": "Tradutor",
-      "Worldbuilder": "Criador de Mundo",
-      "Editor": "Editor",
-      "Analyst": "Analista"
-    },
     "prompt_placeholder": "Dê ao IA um papel, personalidade ou instruções específicas...",
     "gen_params": "Parâmetros de Geração",
     "max_tokens": "Máx. Tokens",
@@ -389,9 +376,11 @@
     "approve_once": "Aprovar uma vez",
     "always_allow": "Sempre permitir",
     "deny": "Negar",
+    "never_allow": "Never allow",
     "approved": "Aprovado — executando ✓",
     "always_allowed": "Sempre permitido — executando ✓",
-    "denied": "Negado"
+    "denied": "Negado",
+    "never_allowed": "Never allowed — you can undo this in Settings → Permissions"
   },
   "rack": {
     "label": "Contexto",
@@ -416,6 +405,9 @@
     "more": "+{{count}} mais",
     "more_tooltip": "{{count}} ferramentas descobertas não exibidas",
     "remove": "Remover",
+    "advanced_tools": "Ferramentas avançadas ({{count}})",
+    "advanced_tools_hint": "Ferramentas obsoletas mantidas para chamadas antigas. Prefira as ferramentas acima, a menos que precise especificamente de uma destas.",
+    "legacy_pin_tooltip": "Você ativou esta ferramenta legada para esta sessão",
     "server": {
       "knowledge": "Conhecimento",
       "glossary": "Glossário",
@@ -426,10 +418,7 @@
       "ui": "UI",
       "chat": "Chat",
       "other": "Outros"
-    },
-    "advanced_tools": "Ferramentas avançadas ({{count}})",
-    "advanced_tools_hint": "Ferramentas obsoletas mantidas para chamadas antigas. Prefira as ferramentas acima, a menos que precise especificamente de uma destas.",
-    "legacy_pin_tooltip": "Você ativou esta ferramenta legada para esta sessão"
+    }
   },
   "inspector": {
     "title": "Runtime do Agente",
@@ -449,5 +438,13 @@
       "activated": "Ativado",
       "tool_running": "Executando ferramenta"
     }
+  },
+  "presets": {
+    "custom": "Personalizado",
+    "novelist": "Romancista",
+    "translator": "Tradutor",
+    "worldbuilder": "Criador de Mundo",
+    "editor": "Editor",
+    "analyst": "Analista"
   }
 }

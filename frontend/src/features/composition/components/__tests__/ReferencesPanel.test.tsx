@@ -1,11 +1,24 @@
 import { render, screen, fireEvent } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+
+// AddModelCta uses react-router's useLocation → needs a Router; stub it (it has its own tests).
+vi.mock('@/components/shared/AddModelCta', () => ({
+  AddModelCta: () => <a data-testid="add-model-cta">add model</a>,
+}));
+// ConfirmDialog is radix-portal'd; stub to a simple confirm button so the delete flow is testable.
+vi.mock('@/components/shared/ConfirmDialog', () => ({
+  ConfirmDialog: ({ open, onConfirm }: { open: boolean; onConfirm: () => void }) =>
+    open ? <button data-testid="confirm-delete" onClick={onConfirm}>confirm</button> : null,
+}));
+
 import { ReferencesPanel } from '../ReferencesPanel';
 
 // Mock the controller hook (the view test owns rendering + wiring, not data).
 const h = vi.hoisted(() => ({
   add: vi.fn(),
   remove: vi.fn(),
+  updateMetadata: vi.fn(),
+  updateContent: vi.fn(),
   setPin: vi.fn(),
   state: {
     references: [] as any[],
@@ -21,6 +34,8 @@ vi.mock('../../hooks/useReferences', () => ({
     ...h.state,
     add: { mutate: h.add, isPending: false },
     remove: { mutate: h.remove },
+    updateMetadata: { mutate: h.updateMetadata, isPending: false, variables: undefined },
+    updateContent: { mutate: h.updateContent, isPending: false, variables: undefined },
     setPin: h.setPin,
   }),
 }));
@@ -32,6 +47,7 @@ const EMBED_MODEL = {
 
 beforeEach(() => {
   h.add.mockReset(); h.remove.mockReset(); h.setPin.mockReset();
+  h.updateMetadata.mockReset(); h.updateContent.mockReset();
   h.state = { references: [], embedModelSet: false, isLoading: false, hits: [],
               searchUnavailable: false, isSearching: false };
 });
@@ -103,11 +119,68 @@ describe('ReferencesPanel (T3.6)', () => {
     renderPanel();
     expect(screen.getByTestId('references-lib-r9')).toHaveTextContent('Influence');
     fireEvent.click(screen.getByTestId('references-delete-r9'));
+    // H-4a — delete now goes through a confirm; remove fires only after confirming.
+    expect(h.remove).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByTestId('confirm-delete'));
     expect(h.remove).toHaveBeenCalledWith('r9');
   });
 
   it('shows the empty-library state', () => {
     renderPanel();
     expect(screen.getByTestId('references-empty')).toBeInTheDocument();
+  });
+
+  it('H-3a: the no-embed-model state offers an actionable CTA, not just text', () => {
+    renderPanel({ models: [] });
+    expect(screen.getByTestId('references-no-embed-model')).toBeInTheDocument();
+    expect(screen.getByTestId('add-model-cta')).toBeInTheDocument();
+  });
+
+  it('H-2b: filters the library by the search box (title/author/content)', () => {
+    h.state.references = [
+      { id: 'r1', title: 'Dune', author: 'Herbert', content: 'spice', embedding_model: 'm', embedding_dim: 1, created_at: null },
+      { id: 'r2', title: 'Neuromancer', author: 'Gibson', content: 'cyberspace', embedding_model: 'm', embedding_dim: 1, created_at: null },
+    ];
+    renderPanel();
+    expect(screen.getByTestId('references-lib-r1')).toBeInTheDocument();
+    expect(screen.getByTestId('references-lib-r2')).toBeInTheDocument();
+    fireEvent.change(screen.getByTestId('references-library-search'), { target: { value: 'gibson' } });
+    expect(screen.queryByTestId('references-lib-r1')).toBeNull();
+    expect(screen.getByTestId('references-lib-r2')).toBeInTheDocument();
+    fireEvent.change(screen.getByTestId('references-library-search'), { target: { value: 'zzz' } });
+    expect(screen.getByTestId('references-no-match')).toBeInTheDocument();
+  });
+
+  it('audit fix: captures source_url at ADD time (was silently dropped — no URL input)', () => {
+    h.state.embedModelSet = true;
+    renderPanel();
+    fireEvent.change(screen.getByTestId('references-add-content'), { target: { value: 'a passage' } });
+    fireEvent.change(screen.getByTestId('references-add-url'), { target: { value: 'https://src.example/x' } });
+    fireEvent.click(screen.getByTestId('references-add-submit'));
+    expect(h.add).toHaveBeenCalledTimes(1);
+    expect(h.add.mock.calls[0][0]).toMatchObject({ content: 'a passage', source_url: 'https://src.example/x' });
+  });
+
+  it('S-03: edits metadata (PATCH — no re-embed) — only shows Save when a field changed', () => {
+    h.state.references = [{ id: 'r9', title: 'Old', author: 'X', source_url: '', content: 'body', embedding_model: 'bge-m3', embedding_dim: 3, created_at: null }];
+    renderPanel();
+    fireEvent.click(screen.getByTestId('references-edit-r9'));  // expand the editor
+    // no Save until a field is dirty
+    expect(screen.queryByTestId('references-save-metadata-r9')).toBeNull();
+    fireEvent.change(screen.getByTestId('references-edit-author-r9'), { target: { value: 'New Author' } });
+    fireEvent.click(screen.getByTestId('references-save-metadata-r9'));
+    expect(h.updateMetadata).toHaveBeenCalledWith({ id: 'r9', patch: { title: 'Old', author: 'New Author', source_url: '' } });
+    expect(h.updateContent).not.toHaveBeenCalled();  // metadata edit never re-embeds
+  });
+
+  it('S-03: edits content (PUT — re-embeds) via the separate content action', () => {
+    h.state.references = [{ id: 'r9', title: 'T', author: '', source_url: '', content: 'orig body', embedding_model: 'bge-m3', embedding_dim: 3, created_at: null }];
+    renderPanel();
+    fireEvent.click(screen.getByTestId('references-edit-r9'));
+    expect(screen.queryByTestId('references-save-content-r9')).toBeNull();  // not dirty yet
+    fireEvent.change(screen.getByTestId('references-edit-content-r9'), { target: { value: 'rewritten body' } });
+    fireEvent.click(screen.getByTestId('references-save-content-r9'));
+    expect(h.updateContent).toHaveBeenCalledWith({ id: 'r9', content: 'rewritten body' });
+    expect(h.updateMetadata).not.toHaveBeenCalled();
   });
 });

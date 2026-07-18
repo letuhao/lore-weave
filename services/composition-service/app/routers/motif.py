@@ -8,6 +8,7 @@
   POST   /motifs                          — create (user tier; owner server-stamped)
   PATCH  /motifs/{id}[?book_id=]           — edit; owner-only, or a SHARED row (EDIT-gated)
   DELETE /motifs/{id}[?book_id=]           — soft archive; owner-only, or a SHARED row (EDIT-gated)
+  POST   /motifs/{id}/restore[?book_id=]   — un-archive (S-08); owner-only, or a SHARED row (EDIT-gated)
   POST   /motifs/{id}/adopt                — adopt into user | book (label) | book_shared (EDIT-gated)
 
 Tenancy (the kinds-bug fix + R1.1): owner_user_id is SERVER-STAMPED from the JWT
@@ -40,9 +41,11 @@ from pydantic import Field
 
 from app.config import settings
 from app.db.models import (
-    Motif, MotifCreateArgs, MotifPatchArgs, _ForbidExtra, _Key,
+    Motif, MotifCreateArgs, MotifLinkKind, MotifPatchArgs, _ForbidExtra, _Key,
 )
+from app.db.pool import get_pool
 from app.db.repositories import VersionMismatchError
+from app.db.repositories.motif_graph_layout import MotifGraphLayoutRepo
 from app.db.repositories.motif_repo import MotifRepo
 from app.deps import get_grant_client_dep, get_motif_repo
 from app.grant_client import GrantClient, GrantLevel
@@ -157,22 +160,24 @@ async def list_motifs(
     language: str | None = Query(default=None, max_length=20),
     status: str = Query(default="active", pattern="^(draft|active|archived)$"),
     limit: int = Query(default=50, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
     user_id: UUID = Depends(get_current_user),
     repo: MotifRepo = Depends(get_motif_repo),
 ) -> dict[str, Any]:
     """Tier-merged list under the read predicate. `scope=mine` (owner=caller),
     `system` (owner NULL), `all` (owned + system; NOT others' public — that is the
     catalog). Full owner/author view (the caller owns or is the platform for every
-    row). `embedding` is never projected."""
+    row). `embedding` is never projected. `offset` paginates a >limit library (§2#9 scale)."""
     repo_scope = "user" if scope == "mine" else scope  # repo names the owned scope 'user'
     rows = await repo.list_for_caller(
         user_id, scope=repo_scope, genre=genre, kind=kind, status=status,
-        q=q, language=language, limit=limit,
+        q=q, language=language, limit=limit, offset=offset,
     )
     return {
         "motifs": [m.model_dump(mode="json") for m in rows],
         "scope": scope,
         "limit": limit,
+        "offset": offset,
     }
 
 
@@ -380,6 +385,29 @@ async def archive_motif(
     return {"id": str(motif_id), "archived": True}
 
 
+@router.post("/motifs/{motif_id}/restore", status_code=200)
+async def restore_motif(
+    motif_id: UUID,
+    user_id: UUID = Depends(get_current_user),
+    repo: MotifRepo = Depends(get_motif_repo),
+    grant: GrantClient = Depends(get_grant_client_dep),
+    book_id: UUID | None = Query(default=None),
+) -> dict[str, Any]:
+    """Un-archive (S-08) — the reverse of DELETE /motifs/{id}, and the honest undo the archive tool
+    points at. Default (no book_id) = owner-only; pass `book_id` (EDIT-gated) to restore a SHARED
+    book-tier motif. Returns the restored row (so the library refreshes). 404 if no archived motif
+    with that id is restorable BY YOU (missing / not-owned / not in this shared book / not archived) —
+    a foreign row simply matches nothing, so this is no wider an oracle than your own scope."""
+    if book_id is not None:
+        await _gate_book(grant, book_id, user_id, GrantLevel.EDIT)
+        motif = await repo.restore_shared(user_id, motif_id, book_id)
+    else:
+        motif = await repo.restore(user_id, motif_id)
+    if motif is None:
+        raise HTTPException(status_code=404, detail=_NOT_FOUND)
+    return motif.model_dump(mode="json")
+
+
 # ── adopt (the clone primitive) ──────────────────────────────────────────────
 
 
@@ -440,6 +468,185 @@ async def adopt_motif(
     body_out["members_adopted"] = members_adopted
     status_code = 201 if created else 200
     return JSONResponse(status_code=status_code, content=body_out)
+
+
+# ── the motif graph (BE-M3) — composed_of · precedes · variant_of ────────────
+# These REST routes wrap the SAME MotifRepo.{list,create,delete}_link methods that back
+# the `composition_motif_link_*` MCP tools (server.py) — the graph was agent-only (no REST,
+# no GUI) until now. The DB `motif_link_guard` trigger is the spec: a self-link / cycle /
+# cross-tier edge is a 409 the FE renders inline, NOT a swallowed toast (plan 33 §3.1).
+
+
+class MotifLinkCreateBody(_ForbidExtra):
+    to_motif_id: UUID
+    kind: MotifLinkKind
+    ord: int | None = None
+    # book_id: set to link two SHARED motifs of that book (needs EDIT on the book; both
+    # endpoints must be book_shared in it). Omit for your own user-tier graph.
+    book_id: UUID | None = None
+
+
+@router.get("/motifs/{motif_id}/links")
+async def list_motif_links(
+    motif_id: UUID,
+    direction: str = Query(default="both"),
+    kinds: list[str] | None = Query(default=None),
+    book_id: UUID | None = Query(default=None),
+    user_id: UUID = Depends(get_current_user),
+    repo: MotifRepo = Depends(get_motif_repo),
+    grant: GrantClient = Depends(get_grant_client_dep),
+) -> dict[str, Any]:
+    """List one motif's relationship edges — `composed_of` members, `precedes`
+    successors, `variant_of` siblings — each joined to the neighbor's id/code/name.
+    `direction`: 'out' (this→neighbor), 'in', or 'both' (default). A not-visible anchor
+    returns an empty list (IDOR-safe — empty is indistinguishable from 'no edges', no
+    existence oracle). Pass `book_id` to read a SHARED book motif's graph (VIEW-gated)."""
+    if direction not in ("out", "in", "both"):
+        raise HTTPException(status_code=422, detail={
+            "code": "MOTIF_LINK_DIRECTION",
+            "message": "direction must be 'out', 'in', or 'both'",
+        })
+    if book_id is not None:
+        await _gate_book(grant, book_id, user_id, GrantLevel.VIEW)
+    links = await repo.list_links(
+        user_id, motif_id, direction=direction, kinds=kinds, book_id=book_id,
+    )
+    return {"motif_id": str(motif_id), "links": links, "count": len(links)}
+
+
+@router.post("/motifs/{motif_id}/links", status_code=201)
+async def create_motif_link(
+    motif_id: UUID,
+    body: MotifLinkCreateBody,
+    user_id: UUID = Depends(get_current_user),
+    repo: MotifRepo = Depends(get_motif_repo),
+    grant: GrantClient = Depends(get_grant_client_dep),
+) -> dict[str, Any]:
+    """Create an edge FROM this motif TO another. Default: BOTH endpoints must be motifs
+    you OWN (a user may not touch the system/foreign graph). Pass `book_id` to link two
+    SHARED motifs of that book (EDIT-gated). A self-link / cycle / cross-tier edge (the
+    `motif_link_guard` trigger) → 409; a duplicate edge → 409; an endpoint out of the
+    required scope → 404 (no oracle)."""
+    if body.book_id is not None:
+        await _gate_book(grant, body.book_id, user_id, GrantLevel.EDIT)
+    try:
+        link = await repo.create_link(
+            user_id, motif_id, body.to_motif_id, body.kind,
+            ord=body.ord, book_id=body.book_id,
+        )
+    except LookupError:
+        raise HTTPException(status_code=404, detail=_NOT_FOUND)
+    except asyncpg.UniqueViolationError:
+        raise HTTPException(status_code=409, detail={
+            "code": "MOTIF_LINK_EXISTS", "message": "that edge already exists",
+        })
+    except asyncpg.CheckViolationError:
+        raise HTTPException(status_code=409, detail={
+            "code": "MOTIF_LINK_INVALID",
+            "message": ("a motif cannot precede itself, and a cycle would make the "
+                        "succession chain unresolvable"),
+        })
+    return link.model_dump(mode="json")
+
+
+@router.delete("/motif-links/{link_id}", status_code=200)
+async def delete_motif_link(
+    link_id: UUID,
+    book_id: UUID | None = Query(default=None),
+    user_id: UUID = Depends(get_current_user),
+    repo: MotifRepo = Depends(get_motif_repo),
+    grant: GrantClient = Depends(get_grant_client_dep),
+) -> dict[str, Any]:
+    """Delete one edge (hard delete — edges have no children). Default: the edge must be
+    on one of YOUR motifs. Pass `book_id` to delete an edge in that book's SHARED graph
+    (EDIT-gated). A foreign / system / missing / wrong-book edge → 404 (no oracle)."""
+    if book_id is not None:
+        await _gate_book(grant, book_id, user_id, GrantLevel.EDIT)
+    deleted = await repo.delete_link(user_id, link_id, book_id=book_id)
+    if not deleted:
+        raise HTTPException(status_code=404, detail=_NOT_FOUND)
+    return {"deleted": True, "link_id": str(link_id)}
+
+
+# ── Wave-4 (D-MOTIF-GRAPH-CANVAS): the book-wide motif graph canvas + per-viewer layout ──
+_MOTIF_GRAPH_NODE_CAP = 300  # bound the node load; a book past this truncates LOUDLY (no silent cap)
+
+
+class _LayoutMove(_ForbidExtra):
+    motif_id: str
+    x: float
+    y: float
+
+
+class _LayoutPatchBody(_ForbidExtra):
+    moves: list[_LayoutMove] = Field(default_factory=list)
+    if_version: int = 0
+
+
+@router.get("/books/{book_id}/motif-graph")
+async def get_motif_graph(
+    book_id: UUID,
+    user_id: UUID = Depends(get_current_user),
+    grant: GrantClient = Depends(get_grant_client_dep),
+) -> dict[str, Any]:
+    """The book-wide motif graph for the canvas: the caller's own + book-shared motif NODES,
+    the motif_link EDGES among them, and the caller's OWN persisted layout (positions+version).
+    VIEW-gated on the book. Bounded by the node cap — a larger book reports `truncated` so the
+    FE can say so (no silent tail-hiding)."""
+    await _gate_book(grant, book_id, user_id, GrantLevel.VIEW)
+    repo = MotifGraphLayoutRepo(get_pool())
+    nodes = await repo.nodes_for_book(user_id, book_id, _MOTIF_GRAPH_NODE_CAP + 1)
+    truncated = len(nodes) > _MOTIF_GRAPH_NODE_CAP
+    nodes = nodes[:_MOTIF_GRAPH_NODE_CAP]
+    node_ids = [n["id"] for n in nodes]
+    edges = await repo.edges_among(node_ids)
+    positions, version = await repo.get(user_id, book_id)
+    return {
+        "nodes": [{
+            "id": str(n["id"]), "code": n["code"], "name": n["name"], "kind": n["kind"],
+            "mine": n["owner_user_id"] == user_id, "book_shared": n["book_shared"],
+        } for n in nodes],
+        "edges": [{
+            "id": str(e["id"]), "from_motif_id": str(e["from_motif_id"]),
+            "to_motif_id": str(e["to_motif_id"]), "kind": e["kind"], "ord": e["ord"],
+        } for e in edges],
+        "layout": {"positions": positions, "version": version},
+        "truncated": truncated, "node_cap": _MOTIF_GRAPH_NODE_CAP,
+    }
+
+
+@router.patch("/books/{book_id}/motif-graph/layout")
+async def patch_motif_graph_layout(
+    book_id: UUID,
+    body: _LayoutPatchBody,
+    user_id: UUID = Depends(get_current_user),
+    grant: GrantClient = Depends(get_grant_client_dep),
+) -> dict[str, Any]:
+    """Persist the caller's OWN node positions (a per-viewer cosmetic layout). VIEW-gated on the
+    book (a viewer arranges their own view even of a read-only graph). Every `motif_id` must be a
+    node the caller can see in this book (else 404, no oracle). Server-side MERGE + OCC: a stale
+    `if_version` → 412 with the current {positions, version} so the client reseeds + retries."""
+    await _gate_book(grant, book_id, user_id, GrantLevel.VIEW)
+    repo = MotifGraphLayoutRepo(get_pool())
+    moves: dict[str, dict[str, float]] = {}
+    for m in body.moves:
+        try:
+            mid = UUID(m.motif_id)
+        except (ValueError, TypeError):
+            raise HTTPException(status_code=404, detail=_NOT_FOUND)
+        if not await repo.motif_visible_in_book(user_id, book_id, mid):
+            raise HTTPException(status_code=404, detail=_NOT_FOUND)  # no oracle
+        moves[str(mid)] = {"x": m.x, "y": m.y}
+    result = await repo.merge(user_id, book_id, moves, if_version=body.if_version)
+    if result is None:
+        positions, version = await repo.get(user_id, book_id)  # OCC — reseed the client
+        raise HTTPException(status_code=412, detail={
+            "code": "MOTIF_GRAPH_LAYOUT_STALE",
+            "message": "the layout changed on another device; reseed and retry",
+            "current": {"positions": positions, "version": version},
+        })
+    positions, version = result
+    return {"positions": positions, "version": version}
 
 
 def _jsonify(value: Any) -> Any:

@@ -17,6 +17,11 @@ const apiMocks = vi.hoisted(() => ({
   patchEntity: vi.fn(),
 }));
 vi.mock('@/features/glossary/api', () => ({ glossaryApi: apiMocks }));
+// S-06 — the modal now mounts AddAttributeValueSection, which reads the book ontology via
+// react-query. Stub it (empty ⇒ the add-section renders nothing) so these tests need no QueryClient.
+vi.mock('@/features/glossary/hooks/useBookOntology', () => ({
+  useBookOntology: () => ({ ontology: { genres: [], kinds: [], attributes: [] }, isLoading: false }),
+}));
 
 import { toast } from 'sonner';
 import { EntityEditorModal } from '../EntityEditorModal';
@@ -129,5 +134,55 @@ describe('EntityEditorModal (Radix Dialog adoption)', () => {
     fireEvent.change(statusSelect, { target: { value: 'active' } });
     await waitFor(() => expect(apiMocks.patchEntity).toHaveBeenCalledWith(BOOK, ENTITY_ID, { status: 'active' }, 'tok'));
     await waitFor(() => expect(props.onSaved).toHaveBeenCalled());
+  });
+
+  it('blurring the scope_label field with a new value persists it', async () => {
+    const props = baseProps();
+    apiMocks.patchEntity.mockResolvedValue(entity());
+    render(<EntityEditorModal {...props} />);
+    await screen.findAllByText('Jiang Ziya');
+    const scopeInput = screen.getByLabelText('modal.scope_label.aria');
+    fireEvent.change(scopeInput, { target: { value: 'World A' } });
+    fireEvent.blur(scopeInput);
+    await waitFor(() => expect(apiMocks.patchEntity).toHaveBeenCalledWith(BOOK, ENTITY_ID, { scope_label: 'World A' }, 'tok'));
+    await waitFor(() => expect(props.onSaved).toHaveBeenCalled());
+  });
+
+  it('blurring the scope_label field with an UNCHANGED value does not call the API', async () => {
+    const props = baseProps();
+    render(<EntityEditorModal {...props} />);
+    await screen.findAllByText('Jiang Ziya');
+    const scopeInput = screen.getByLabelText('modal.scope_label.aria');
+    fireEvent.blur(scopeInput);
+    await waitFor(() => expect(screen.getByDisplayValue('Immortal')).toBeInTheDocument());
+    expect(apiMocks.patchEntity).not.toHaveBeenCalled();
+  });
+
+  it('a colliding scope_label toasts the backend error without closing the dialog', async () => {
+    const props = baseProps();
+    apiMocks.patchEntity.mockRejectedValue(new Error('an entity with this name, kind, and scope already exists in this book'));
+    render(<EntityEditorModal {...props} />);
+    await screen.findAllByText('Jiang Ziya');
+    const scopeInput = screen.getByLabelText('modal.scope_label.aria');
+    fireEvent.change(scopeInput, { target: { value: 'World B' } });
+    fireEvent.blur(scopeInput);
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith('an entity with this name, kind, and scope already exists in this book'));
+    expect(props.onClose).not.toHaveBeenCalled();
+  });
+
+  // /review-impl MED fix (2026-07-09): the field is now controlled and must revert
+  // to the entity's TRUE (unchanged) scope_label after a rejected edit — previously
+  // (uncontrolled, defaultValue) it kept showing the failed value as if it stuck.
+  it('reverts the displayed scope_label to the real value after a rejected edit', async () => {
+    const props = baseProps();
+    apiMocks.patchEntity.mockRejectedValue(new Error('an entity with this name, kind, and scope already exists in this book'));
+    render(<EntityEditorModal {...props} />);
+    await screen.findAllByText('Jiang Ziya');
+    const scopeInput = screen.getByLabelText('modal.scope_label.aria') as HTMLInputElement;
+    expect(scopeInput.value).toBe('');
+    fireEvent.change(scopeInput, { target: { value: 'World B' } });
+    fireEvent.blur(scopeInput);
+    await waitFor(() => expect(toast.error).toHaveBeenCalled());
+    await waitFor(() => expect(scopeInput.value).toBe(''));
   });
 });

@@ -6,6 +6,7 @@
     "commands": "命令与钩子",
     "subagents": "子代理",
     "plugins": "插件",
+    "permissions": "工具权限",
     "proposals": "提案",
     "activity": "活动日志",
     "ingest": "注册表源"
@@ -18,18 +19,18 @@
   "scope": {
     "label": "范围：",
     "mine": "我的扩展",
-    "orBook": "或一本书：",
+    "orBook": "或书籍：",
     "bookPlaceholder": "书籍范围…",
     "bookHint": "书籍范围 — 新项目仅适用于本书"
   },
   "common": {
-    "loading": "加载中…",
+    "loading": "正在加载…",
     "delete": "删除",
     "add": "添加",
     "cancel": "取消",
     "back": "返回",
     "next": "下一步",
-    "of": "共",
+    "of": "的",
     "system": "系统",
     "book": "书籍"
   },
@@ -60,24 +61,24 @@
     "filter": {
       "all": "状态：全部",
       "active": "运行中",
-      "pending": "扫描中",
+      "pending": "正在扫描",
       "suspended": "已隔离",
       "error": "无法连接"
     },
     "add": "+ 添加服务器",
-    "empty": "暂无 MCP 服务器。添加一个以赋予智能体更多工具。",
+    "empty": "尚无 MCP 服务器。添加一个服务器来为智能体提供额外工具。",
     "review": "⚠ 审核",
     "detail": {
       "back": "‹ 返回",
       "connection": "连接",
       "auth": "身份验证",
       "prefix": "前缀",
-      "egress": "出站白名单",
-      "health": "健康状态",
+      "egress": "出口白名单",
+      "health": "状态",
       "lastScanned": "最后扫描时间",
       "credentialStored": "凭据已存储",
       "healthOk": "正常 · {{count}} 个工具 · {{latency}}ms",
-      "healthError": "错误: {{error}}",
+      "healthError": "错误：{{error}}",
       "unreachable": "无法连接",
       "scanning": "正在扫描…",
       "rescan": "重新扫描",
@@ -86,7 +87,7 @@
     },
     "scan": {
       "label": "供应链扫描：",
-      "clean": "已清理",
+      "clean": "安全",
       "findings": "{{count}} 个发现",
       "tools": "工具 ({{count}})",
       "flagged": "已标记"
@@ -107,12 +108,12 @@
       "authBearer": "Bearer 令牌",
       "authOauth": "OAuth 2.1",
       "noAuthHint": "无需身份验证 — 此服务器是公开的。继续进行注册并扫描。",
-      "bearerLabel": "Bearer 令牌 (已加密存储在保险库中；此后不再显示)",
+      "bearerLabel": "Bearer 令牌 (已加密存储在保险库中；不会再次显示)",
       "bearerPlaceholder": "粘贴令牌",
       "authzEndpoint": "授权端点",
       "tokenEndpoint": "令牌端点",
       "clientId": "客户端 ID",
-      "scopes": "权限范围 (以空格分隔)",
+      "scopes": "作用域（用空格分隔）",
       "registering": "正在注册…",
       "registerScan": "注册并扫描",
       "statusLabel": "状态：",
@@ -120,44 +121,44 @@
       "runScan": "运行健康检查与扫描",
       "refresh": "刷新",
       "continue": "继续",
-      "authKind": "auth: {{kind}}",
+      "authKind": "身份验证方式: {{kind}}",
       "enable": "为我的会话启用",
       "done": "完成"
     }
   },
   "commands": {
     "title": "斜杠命令",
-    "description": "在聊天中输入 <code>/name</code> 来展开模板。使用 <code>{{args}}</code> 或 <code>{{key}}</code> 来传递参数。",
+    "description": "在聊天中输入 <code>/name</code> 以展开模板。使用 <code>{{args}}</code> 或 <code>{{key}}</code> 传递参数。",
     "namePlaceholder": "名称 (例如 plan-scene)",
-    "templatePlaceholder": "模板：规划关于 {{topic}} 的场景…",
+    "templatePlaceholder": "模板: 规划关于 {{topic}} 的场景…",
     "empty": "暂无命令。"
   },
   "hooks": {
     "title": "钩子",
     "description": "在智能体循环节点触发的声明式规则。无需编写代码 —— 只需定义一个事件、一个可选的工具匹配项以及一个动作。",
     "matchPlaceholder": "工具匹配 (例如 glossary_delete_*)",
-    "textPlaceholder": "要注入/标注的文本",
+    "textPlaceholder": "待注入/标注的文本",
     "empty": "暂无钩子。"
   },
   "subagents": {
-    "title": "子代理",
-    "description": "一个命名的角色，代理可以通过 <code>run_subagent</code> 将受限的子任务委派给它。它在隔离的轮次中运行，且仅能使用其权限范围内的工具。如果只需进行纯推理/总结，请将权限范围留空。",
+    "title": "子智能体",
+    "description": "一个命名的角色，智能体可以通过 <code>run_subagent</code> 将受限的子任务委派给它。它在隔离的轮次中运行，且仅能使用其作用域内的工具。若需纯推理/总结型角色，请将作用域留空。",
     "namePlaceholder": "名称 (例如 lore-scout)",
-    "scopePlaceholder": "工具权限范围: glossary_*, kg_*",
+    "scopePlaceholder": "工具作用域: glossary_*, kg_*",
     "modelPlaceholder": "模型 (可选，user_model ID)",
     "promptPlaceholder": "系统提示词 — 该角色的身份及其工作方式……",
-    "create": "创建子代理",
-    "empty": "暂无子代理。",
+    "create": "创建子智能体",
+    "empty": "暂无子智能体。",
     "reasoningOnly": "仅限推理 (无工具)",
     "modelPinned": "模型已固定"
   },
   "plugins": {
-    "description": "插件封装了技能、命令和钩子 — 导出以分享，导入以安装。",
-    "importing": "正在导入……",
-    "import": "导入压缩包",
-    "invalidJson": "该文件不是有效的 JSON。",
-    "notBundle": "不是 LoreWeave 压缩包（缺少 manifest.name）。",
-    "empty": "暂无插件。导入压缩包以进行安装。",
+    "description": "插件封装了技能、命令和钩子 — 支持导出分享，导入安装。",
+    "importing": "正在导入…",
+    "import": "导入资源包",
+    "invalidJson": "该文件不是有效的 JSON 格式。",
+    "notBundle": "不是 LoreWeave 资源包（缺少 manifest.name）。",
+    "empty": "暂无插件。导入资源包以进行安装。",
     "export": "导出"
   },
   "proposals": {
@@ -169,7 +170,7 @@
       "all": "全部"
     },
     "total": "共 {{count}} 项",
-    "empty": "暂无提案。智能体建议的技能将在此处显示，等待您批准。",
+    "empty": "暂无提案。智能体建议的技能将在此显示，等待您的批准。",
     "approve": "批准",
     "reject": "拒绝",
     "reason": "原因：{{reason}}"
@@ -182,7 +183,7 @@
       "7d": "过去 7 天",
       "30d": "过去 30 天"
     },
-    "empty": "此时间范围内无活动。",
+    "empty": "此时间范围内暂无活动。",
     "secondsAgo": "{{count}}秒前",
     "minutesAgo": "{{count}}分钟前",
     "hoursAgo": "{{count}}小时前",
@@ -190,7 +191,7 @@
   },
   "ingest": {
     "title": "注册表源 (管理员)",
-    "description": "从官方 MCP Registry 整理系统目录。验证 ≠ 安全 —— 每次批准都会在联邦化之前重新运行 SSRF 防护 + 供应链扫描。",
+    "description": "从官方 MCP 注册表整理系统目录。验证 ≠ 安全 — 每次批准都会在联邦化之前重新运行 SSRF 防护 + 供应链扫描。",
     "all": "全部",
     "pulling": "正在拉取…",
     "pull": "拉取注册表",
@@ -199,5 +200,58 @@
     "empty": "此视图中没有条目。请拉取注册表以填充队列。",
     "approve": "批准",
     "reject": "拒绝"
+  },
+  "permissions": {
+    "blurb": "您已授予助手永久使用或禁止使用的工具。“始终允许”会在审批卡片上添加一行。撤销权限意味着助手下次想使用该工具时会再次征求您的同意。",
+    "loading": "正在加载…",
+    "allowedTitle": "始终允许",
+    "deniedTitle": "已阻止",
+    "blockTitle": "阻止工具",
+    "emptyAllowed": "您尚未授予任何工具永久权限。助手每次使用时都会询问您。",
+    "emptyDenied": "未阻止任何工具。",
+    "toolPlaceholder": "工具名称 (例如 chapter_delete)",
+    "unknownTool": "这不属于助手的工具。请从列表中选择一个名称。",
+    "kind": {
+      "mutation": "可以修改我的作品",
+      "spend": "可以消费金额"
+    },
+    "decision": {
+      "allow": "无需询问即可运行",
+      "deny": "不再运行"
+    },
+    "actions": {
+      "revoke": "再次询问",
+      "deny": "不再允许",
+      "allow": "允许",
+      "block": "拦截"
+    }
+  },
+  "workflows": {
+    "total": "{{count}} 个工作流",
+    "empty": "暂无工作流。请批准工作流提案以添加新工作流。",
+    "enabled": "已启用",
+    "disabled": "已禁用",
+    "delete": "删除",
+    "proposalsEmpty": "暂无工作流提案。当智能体提出工作流建议时，它会出现在这里等待您批准。",
+    "view": "查看",
+    "hide": "隐藏",
+    "noSteps": "未定义步骤。"
+  },
+  "bindings": {
+    "loading": "正在加载…",
+    "autoSetupDesc": "在此模式下，助手会自动设置的规则。",
+    "none": "此处未设置任何自动规则。",
+    "turnOff": "关闭",
+    "turnBackOn": "重新开启",
+    "mode": {
+      "ask": "阅读与提问",
+      "write": "写作",
+      "plan": "规划"
+    },
+    "tier": {
+      "system": "内置",
+      "user": "由您设置",
+      "book": "本书专用"
+    }
   }
 }

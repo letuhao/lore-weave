@@ -34,6 +34,15 @@ export interface UsePlanRun {
   runSelfCheck: () => Promise<void>;
   runValidate: () => Promise<void>;
   runCompile: (arcId: string, runPipeline?: boolean, modelRef?: string) => Promise<void>;
+  // ── the Repair strip (M4-CP / ⑨) — shown only when self-check found gaps ──
+  /** A one-line human summary of the last repair action (autofix rounds / diagnosis / refine). */
+  repairOutput: string | null;
+  /** Fix the top gaps automatically — the bounded self-check→refine loop (BE-2). */
+  runAutofix: (modelRef: string) => Promise<void>;
+  /** Apply a single refine toward the current gap paths (no free-text revision needed). */
+  runRepairRefine: (modelRef: string, focusPaths: string[]) => Promise<void>;
+  /** Diagnose: ask the planner what's wrong (interpret, diagnostic-only — no writes). */
+  runExplain: (modelRef: string) => Promise<void>;
 }
 
 export function usePlanRun(bookId: string, token: string | null): UsePlanRun {
@@ -41,6 +50,7 @@ export function usePlanRun(bookId: string, token: string | null): UsePlanRun {
   const [selfCheck, setSelfCheck] = useState<PlanSelfCheck | null>(null);
   const [validation, setValidation] = useState<PlanValidateReport | null>(null);
   const [compileResult, setCompileResult] = useState<PlanCompileResult | null>(null);
+  const [repairOutput, setRepairOutput] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -79,6 +89,7 @@ export function usePlanRun(bookId: string, token: string | null): UsePlanRun {
     setSelfCheck(null);
     setValidation(null);
     setCompileResult(null);
+    setRepairOutput(null);
     try {
       const resp = await planForgeApi.createRun(bookId, body, token);
       if (genRef.current !== gen) return;
@@ -107,6 +118,7 @@ export function usePlanRun(bookId: string, token: string | null): UsePlanRun {
     setSelfCheck(null);
     setValidation(null);
     setCompileResult(null);
+    setRepairOutput(null);
     try {
       const detail = await planForgeApi.getRun(bookId, runId, token);
       if (genRef.current !== gen) return;
@@ -124,6 +136,7 @@ export function usePlanRun(bookId: string, token: string | null): UsePlanRun {
     setSelfCheck(null);
     setValidation(null);
     setCompileResult(null);
+    setRepairOutput(null);
     setError(null);
   }, []);
 
@@ -179,8 +192,61 @@ export function usePlanRun(bookId: string, token: string | null): UsePlanRun {
     }
   }, [bookId, token, run]);
 
+  const runAutofix = useCallback(async (modelRef: string) => {
+    if (!token || !run) return;
+    setBusy(true); setError(null); setRepairOutput(null);
+    try {
+      const r = await planForgeApi.autofix(bookId, run.id, { model_ref: modelRef }, token);
+      setRun(r.run);
+      const applied = r.rounds.filter((x) => x.result === 'applied').length;
+      setRepairOutput(
+        r.rounds.length === 0
+          ? 'No gaps to fix — the plan is clean.'
+          : `Autofix ran ${r.rounds.length} round(s), ${applied} applied. Re-run Self-check to confirm.`,
+      );
+    } catch (e) {
+      setError((e as Error).message);
+    } finally { setBusy(false); }
+  }, [bookId, token, run]);
+
+  const runRepairRefine = useCallback(async (modelRef: string, focusPaths: string[]) => {
+    if (!token || !run) return;
+    setBusy(true); setError(null); setRepairOutput(null);
+    try {
+      const r = await planForgeApi.refine(bookId, run.id, { model_ref: modelRef, focus_paths: focusPaths }, token);
+      // 202 ack → the refine runs on the worker; else the applied result carries a status/diagnosis.
+      if (isAck(r)) {
+        setRepairOutput('Refine started — re-run Self-check when it finishes.');
+      } else {
+        const res = r as import('../types').PlanRefineResult;
+        setRepairOutput(`Refine ${res.status}${res.diagnosis ? `: ${res.diagnosis}` : ''}`);
+      }
+    } catch (e) {
+      setError((e as Error).message);
+    } finally { setBusy(false); }
+  }, [bookId, token, run]);
+
+  const runExplain = useCallback(async (modelRef: string) => {
+    if (!token || !run) return;
+    setBusy(true); setError(null); setRepairOutput(null);
+    try {
+      const r = await planForgeApi.interpret(
+        bookId, run.id,
+        { user_message: 'Explain what is wrong with this plan based on the self-check gaps.', model_ref: modelRef, apply_mode_hint: 'diagnose_only' },
+        token,
+      );
+      const text = typeof r.summary === 'string' ? r.summary
+        : typeof r.diagnosis === 'string' ? r.diagnosis
+          : JSON.stringify(r).slice(0, 400);
+      setRepairOutput(text);
+    } catch (e) {
+      setError((e as Error).message);
+    } finally { setBusy(false); }
+  }, [bookId, token, run]);
+
   return {
-    run, selfCheck, validation, compileResult, busy, polling, error,
+    run, selfCheck, validation, compileResult, repairOutput, busy, polling, error,
     createRun, loadRun, resetRun, runSelfCheck, runValidate, runCompile,
+    runAutofix, runRepairRefine, runExplain,
   };
 }

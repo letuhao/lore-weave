@@ -146,5 +146,13 @@
       "system": "النظام"
     },
     "error": "تعذر تحميل سجل الإصدارات."
+  },
+  "createAs": "إنشاء «{{name}}» كـ...",
+  "kind": {
+    "character": "شخصية",
+    "location": "موقع",
+    "organization": "منظمة",
+    "concept": "مفهوم",
+    "item": "عنصر"
   }
 }

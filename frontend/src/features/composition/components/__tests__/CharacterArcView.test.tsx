@@ -13,6 +13,17 @@ vi.mock('../../hooks/useCharacterArc', async (orig) => ({
 const { navigate } = vi.hoisted(() => ({ navigate: vi.fn() }));
 vi.mock('react-router-dom', () => ({ useNavigate: () => navigate }));
 
+// D-KG-EVENT-CREATE-ROUTE — stub the create dialog (its hooks need auth + a
+// QueryClient this leaf test doesn't provide). We assert it opens with the
+// right create context.
+const { dialog } = vi.hoisted(() => ({ dialog: vi.fn() }));
+vi.mock('@/features/knowledge/components/EventEditDialog', () => ({
+  EventEditDialog: (p: { open: boolean; create?: { projectId: string; participants?: string[] } }) => {
+    dialog(p);
+    return p.open ? <div data-testid="event-create-dialog" data-project={p.create?.projectId} data-participant={p.create?.participants?.[0]} /> : null;
+  },
+}));
+
 function ev(id: string, order: number): TimelineEvent {
   return {
     id, user_id: 'u', project_id: 'kp1', title: id, canonical_title: id, summary: id,
@@ -63,7 +74,7 @@ describe('CharacterArcView (T2.4)', () => {
   const eventEl = (id: string) =>
     screen.getAllByTestId('timeline-event').find((g) => g.getAttribute('data-event-id') === id)!;
 
-  beforeEach(() => { onEntityChange.mockReset(); navigate.mockReset(); hook.mockReturnValue(base); });
+  beforeEach(() => { onEntityChange.mockReset(); navigate.mockReset(); dialog.mockReset(); hook.mockReturnValue(base); });
 
   it('renders the arc events with the spoiler cut and dims the future', () => {
     render0();
@@ -116,5 +127,22 @@ describe('CharacterArcView (T2.4)', () => {
     hook.mockReturnValue({ ...base, projectId: null, roster: [], events: [] });
     render0();
     expect(screen.getByText('chararc.noProject')).toBeInTheDocument();
+  });
+
+  // D-KG-EVENT-CREATE-ROUTE — the "+ Add event" affordance.
+  it('opens the create dialog anchored to this character on + Add event', () => {
+    render0();
+    // Closed until clicked.
+    expect(screen.queryByTestId('event-create-dialog')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByTestId('arc-add-event'));
+    const dlg = screen.getByTestId('event-create-dialog');
+    expect(dlg.getAttribute('data-project')).toBe('kp1');
+    expect(dlg.getAttribute('data-participant')).toBe('Kael'); // focused character anchors the event
+  });
+
+  it('hides + Add event without a knowledge project (nothing to author into)', () => {
+    hook.mockReturnValue({ ...base, projectId: null });
+    render0();
+    expect(screen.queryByTestId('arc-add-event')).not.toBeInTheDocument();
   });
 });

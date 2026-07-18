@@ -146,5 +146,13 @@
       "system": "hệ thống"
     },
     "error": "Không tải được lịch sử phiên bản."
+  },
+  "createAs": "Tạo «{{name}}» dưới dạng…",
+  "kind": {
+    "character": "Nhân vật",
+    "location": "Địa điểm",
+    "organization": "Tổ chức",
+    "concept": "Khái niệm",
+    "item": "Vật phẩm"
   }
 }

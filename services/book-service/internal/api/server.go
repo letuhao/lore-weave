@@ -67,6 +67,9 @@ type Server struct {
 	// goroutine+insert on a repeat this window). nil ⇒ no dedup (still correct — the
 	// DB ON CONFLICT dedups the row). Wired in NewServer.
 	auditDedup *tenantAuditDedup
+	// C5 / SD-C5 — diary encryption-at-rest. Non-nil after NewServer; .Enabled() is false when
+	// DIARY_ENCRYPTION_KEY is unset (writes stay plaintext). Tests can inject a disabled one.
+	diaryCrypto *diaryCrypto
 }
 
 func NewServer(pool *pgxpool.Pool, cfg *config.Config) *Server {
@@ -74,6 +77,9 @@ func NewServer(pool *pgxpool.Pool, cfg *config.Config) *Server {
 	s.resolveBook = s.resolveBookAuth
 	s.emitTenantAudit = s.asyncTenantAudit
 	s.auditDedup = &tenantAuditDedup{}
+	// C5 — diary encryption-at-rest (off with a loud warning when DIARY_ENCRYPTION_KEY is unset).
+	s.diaryCrypto = newDiaryCrypto(cfg.AuthServiceInternalURL, cfg.InternalServiceToken,
+		cfg.DiaryEncryptionKey, cfg.DiaryEncryptionKeysRetired)
 	if cfg.MinioEndpoint != "" && cfg.MinioSecretKey != "" {
 		mc, err := minio.New(cfg.MinioEndpoint, &minio.Options{
 			Creds:  credentials.NewStaticV4(cfg.MinioAccessKey, cfg.MinioSecretKey, ""),
@@ -196,9 +202,19 @@ func (s *Server) Router() http.Handler {
 		// G4 (W2) — world membership for the knowledge-service world-rollup
 		// subgraph. Owner-scoped by the ?user_id param (404 if not owned).
 		r.Get("/worlds/{world_id}/books", s.internalListWorldBooks)
-		r.Get("/book/jobs", s.reconcileImportJobs)                            // Unified Job Control Plane reconcile source (book-import, D-JOBS-BOOK-IMPORT-UNWIRED)
-		r.Get("/books/{book_id}/lexical-search", s.searchChapterTextInternal) // raw-search Phase 2 (lexical leg for the knowledge orchestrator)
+		r.Get("/worlds/{world_id}/bible", s.getInternalWorldBible)               // W10-M1 world→bible resolution (world-native lore authoring)
+		r.Post("/worlds/maps/{map_id}/image", s.uploadWorldMapImage)             // W10-M2 map base-image upload (owner-scoped by ?user_id)
+		r.Get("/books/{book_id}/reading-position", s.getInternalReadingPosition) // W11 reader spoiler cutoff (§4.1)
+		r.Get("/book/jobs", s.reconcileImportJobs)                               // Unified Job Control Plane reconcile source (book-import, D-JOBS-BOOK-IMPORT-UNWIRED)
+		r.Get("/books/{book_id}/lexical-search", s.searchChapterTextInternal)    // raw-search Phase 2 (lexical leg for the knowledge orchestrator)
 		r.Get("/books/{book_id}/chapters", s.getInternalBookChapters)
+		// chat-service calls this ONCE PER TURN: "how many chapters, and how many
+		// actually hold prose?" — one query, no paging. Deliberately NOT served by
+		// /chapters above: that route clamps limit to 100 (a >100-chapter book would
+		// have to be paged just to count) and its word_count_estimate only reads
+		// chapter_drafts, so an IMPORTED book (prose in chapter_raw_objects) reports
+		// 0 words per chapter and would look empty. See prose_state.go.
+		r.Get("/books/{book_id}/prose-state", s.getInternalBookProseState)
 		r.Get("/books/{book_id}/chapters/{chapter_id}", s.getInternalBookChapter)
 		r.Get("/books/{book_id}/chapters/{chapter_id}/blocks", s.getInternalChapterBlocks) // T2 translation segmentation — per-block rows
 		// P2 (hierarchical extraction T3) — knowledge-service consumes these
@@ -219,7 +235,22 @@ func (s *Server) Router() http.Handler {
 		// /internal/books/... because it's not scoped to a single book.
 		r.Post("/chapters/titles", s.postInternalChapterTitles)
 		r.Post("/chapters/sort-orders", s.postInternalChapterSortOrders)
+		// 26 IX-9 — canon-markers batch resolver consumed by composition's
+		// conformance-status read (the dirty predicate). Mirrors sort-orders'
+		// contract (200-id cap, partial responses) but is book-scoped by the path.
+		r.Post("/books/{book_id}/chapters/canon-markers", s.postInternalChapterCanonMarkers)
 		r.Patch("/imports/{import_id}", s.updateImportJobStatus)
+		// WS-1.8 (spec 06 §Q10) — the journal distiller's ONLY write seam: draft-only,
+		// owner-scoped, idempotent primary-per-day diary entry. Internal-token (the worker
+		// has no user JWT); the (book, owner) pair is verified to be the caller's own diary.
+		r.Post("/books/{book_id}/diary/entry", s.upsertDiaryEntry)
+		// WS-3.3 M1 — cheap pre-LLM kept check so the catch-up doesn't re-distill a kept day.
+		r.Get("/books/{book_id}/diary/day-kept", s.diaryDayKept)
+		// D-R27 — the assistant-erase orchestrator (gateway) resolves the diary (any lifecycle, no
+		// create) then HARD-deletes it + all its content (ON DELETE CASCADE). Internal-token;
+		// owner+diary guarded.
+		r.Get("/books/diary", s.getInternalDiaryBook)
+		r.Delete("/books/{book_id}/diary/erase", s.eraseDiaryBook)
 	})
 
 	r.Route("/v1/books", func(r chi.Router) {
@@ -227,6 +258,9 @@ func (s *Server) Router() http.Handler {
 		r.Get("/reading-history", s.getReadingHistory)
 		r.Post("/", s.createBook)
 		r.Get("/", s.listBooks)
+		// WS-1.4 — the diary provisioner (the only kind='diary' write path). Static segment,
+		// registered before the /{book_id} sub-route so it is not captured as a book id.
+		r.Post("/diary", s.provisionDiaryBook)
 		r.Get("/trash", s.listTrashedBooks)
 
 		// Favorites
@@ -279,14 +313,50 @@ func (s *Server) Router() http.Handler {
 			// paths (before /chapters/{chapter_id}) — same reason as bulk/page above.
 			r.Patch("/chapters/bulk-status", s.bulkUpdateChapterStatus)
 			r.Post("/chapters/export-zip", s.bulkExportChapters)
+			// 24 PH20 Row-3 — transactional reading-order reorder. Static path (before
+			// /chapters/{chapter_id}) — same reason as bulk/page above.
+			r.Post("/chapters/reorder", s.reorderChapters)
+
+			// C-merge C4 — manuscript part CRUD moved to composition (structure_node kind='part').
+			// book-service keeps only the chapter→part ASSIGNMENT (below, /chapters/{id}/part),
+			// which writes chapters.structure_node_id.
+
+			// 22-A2/A3 — scene browser (read-only, VIEW-gated; SC5 inverted authoring
+			// to composition). Book-wide keyset-paged list + single-scene get. Static
+			// "/scenes" registers before "/scenes/{scene_id}" so chi matches it first.
+			r.Get("/scenes", s.getBookScenes)
+			r.Get("/scenes/{scene_id}", s.getBookScene)
+
+			// B2 (spec 03/06 §Q6) — REVIEW→KEEP a draft diary entry (owner-only, diary-only).
+			// Sets diary_kept_at so a re-distill of the day no longer clobbers the kept primary.
+			r.Post("/diary/entries/{chapter_id}/keep", s.keepDiaryEntry)
+			// WS-2.6a / D17 leg 1 — AMEND (correct) a diary entry. The missing leg: unlike the
+			// distiller write-seam (refuses a kept entry), an amendment is an explicit human
+			// correction that writes a new revision AND PRESERVES diary_kept_at. Owner-only, diary-only.
+			r.Post("/diary/entries/{chapter_id}/amend", s.amendDiaryEntry)
+			// WS-2.6c / D17 forget-a-person (source-text leg) — redact a NAME from the diary bodies so a
+			// re-index can't resurface it (the knowledge leg deletes the structured :Entity/:Facts).
+			r.Post("/diary/redact", s.redactDiaryName)
+			// D-R18 — OWNER-ONLY diary stats (entry count / words / day span). NOT the shared
+			// statistics aggregate (the diary stays out of every cross-user surface, D-R16).
+			r.Get("/diary/stats", s.diaryStats)
+			// WS-1.10 — OWNER-ONLY diary entries list (newest-first, body inline) for the
+			// assistant home timeline + the end-of-day review. Diary-only; never a shared surface.
+			r.Get("/diary/entries", s.listDiaryEntries)
 
 			r.Route("/chapters/{chapter_id}", func(r chi.Router) {
 				r.Get("/", s.getChapter)
 				r.Patch("/", s.patchChapter)
+				// S-02 — move a chapter into/out of/between acts. Separate from patchChapter
+				// so the move is explicit/auditable and patchChapter's OCC contract is untouched.
+				r.Patch("/part", s.setChapterPart)
 				r.Delete("/", s.trashChapter)
 				r.Post("/restore", s.restoreChapter)
 				r.Delete("/purge", s.purgeChapter)
 				r.Get("/content", s.getChapterContent)
+				// 22-A2 — chapter-scoped scene rail (read-only, VIEW-gated). Distinct from
+				// the internal P2 orchestrator route; this is the public browser surface.
+				r.Get("/scenes", s.getChapterScenes)
 				r.Get("/export", s.exportChapter)
 				r.Get("/draft", s.getDraft)
 				r.Patch("/draft", s.patchDraft)
@@ -296,6 +366,11 @@ func (s *Server) Router() http.Handler {
 				r.Post("/revisions/{revision_id}/restore", s.restoreRevision)
 				r.Post("/publish", s.publishChapter)     // Canon Model CM1: draft → published (canon)
 				r.Post("/unpublish", s.unpublishChapter) // Canon Model CM1: published → draft
+				// WS-0.4: indexing is INDEPENDENT of publishing. "publish" now means only
+				// "this is the canonical version"; "index" means "add this to my knowledge
+				// graph" and works on any chapter of any book kind, draft or published.
+				r.Post("/index", s.postChapterIndex)        // → chapter.kg_indexed
+				r.Put("/kg-exclude", s.putChapterKGExclude) // true ⇒ retract from the KG
 				r.Post("/media", s.uploadChapterMedia)
 				r.Post("/media-generate", s.generateChapterMedia)
 				r.Get("/media-versions", s.listMediaVersions)
@@ -335,6 +410,22 @@ func (s *Server) Router() http.Handler {
 			r.Get("/books", s.listWorldBooks)
 			r.Post("/books", s.moveBookIntoWorld)
 			r.Delete("/books/{book_id}", s.removeBookFromWorld)
+			// W10-M8 — the maps FE canvas's read surface (list + detail with markers/regions).
+			r.Get("/maps", s.listWorldMaps)
+			r.Get("/maps/{map_id}", s.getWorldMapREST)
+			// S7·2 — the world-map EDITOR's public write surface (~10 routes). All owner-scoped via
+			// requireWorldOwner + the map-owner JOIN; map rename is If-Match/version OCC (428/412),
+			// marker/region writes are last-write-wins (spec §4.4). See worlds_maps_write_rest.go.
+			r.Post("/maps", s.createMapREST)                                     // R1
+			r.Patch("/maps/{map_id}", s.patchMapREST)                            // R2 (If-Match)
+			r.Delete("/maps/{map_id}", s.deleteMapREST)                          // R3
+			r.Post("/maps/{map_id}/image", s.uploadWorldMapImagePublic)          // R4 (public JWT wrapper)
+			r.Post("/maps/{map_id}/markers", s.addMarkerREST)                    // R5
+			r.Patch("/maps/{map_id}/markers/{marker_id}", s.patchMarkerREST)     // R6 (drag)
+			r.Delete("/maps/{map_id}/markers/{marker_id}", s.deleteMarkerREST)   // R7
+			r.Post("/maps/{map_id}/regions", s.addRegionREST)                    // R8
+			r.Patch("/maps/{map_id}/regions/{region_id}", s.patchRegionREST)     // R9 (reshape)
+			r.Delete("/maps/{map_id}/regions/{region_id}", s.deleteRegionREST)   // R10
 		})
 	})
 	return r
@@ -527,6 +618,31 @@ func appendEditorialStatusFilter(
 	return selWhere, countWhere, outArgs
 }
 
+// appendKGIndexedFilter — WS-0.6. The "is this chapter in the knowledge graph?" gate.
+//
+// Spec: docs/specs/2026-07-11-publish-independent-kg-indexing.md §3.5 (red-team P0-2).
+//
+// This is a SIBLING of appendEditorialStatusFilter, deliberately NOT a replacement.
+// `editorial_status` keeps meaning editorial status — it has legitimate non-KG users
+// (translation-service word counts, lore-enrichment, the chapter browser, knowledge's
+// draft lexical search). Re-defining it would break them. Extraction callers ask the
+// NEW question instead: "which chapters has the user put in their knowledge graph?"
+//
+// The predicate is the SAME ONE the reparse sweeper uses (WS-0.5) — deliberately, so
+// enumerate and heal can never disagree about the graph's membership. It is served by
+// idx_chapters_kg_indexed (migrate.go).
+//
+// Takes no bound argument: the predicate is a constant, so it cannot disturb the
+// caller's $N positions for limit/offset.
+func appendKGIndexedFilter(selWhere, countWhere string, kgIndexed bool) (string, string) {
+	if !kgIndexed {
+		return selWhere, countWhere
+	}
+	selWhere += " AND c.kg_indexed_revision_id IS NOT NULL AND c.kg_exclude = false"
+	countWhere += " AND kg_indexed_revision_id IS NOT NULL AND kg_exclude = false"
+	return selWhere, countWhere
+}
+
 func (s *Server) ensureQuotaRow(ctx context.Context, ownerID uuid.UUID) error {
 	_, err := s.pool.Exec(ctx, `
 INSERT INTO user_storage_quota(owner_user_id, used_bytes, quota_bytes)
@@ -615,11 +731,114 @@ func (s *Server) createBook(w http.ResponseWriter, r *http.Request) {
 	}
 	var bookID uuid.UUID
 	if err := s.pool.QueryRow(ctx, `
-INSERT INTO books(owner_user_id,title,description,original_language,summary,genre_tags)
-VALUES($1,$2,$3,$4,$5,$6)
+-- WS-1.1: kind EXPLICIT, never leaning on the column default. kind is the privacy lock,
+-- and a create path that silently inherits a default is exactly how a new path (a diary!)
+-- ends up mis-kinded and shareable. The hygiene test asserts every INSERT names it.
+INSERT INTO books(owner_user_id,title,description,original_language,summary,genre_tags,kind)
+VALUES($1,$2,$3,$4,$5,$6,'novel')
 RETURNING id
 `, ownerID, in.Title, in.Description, in.OriginalLanguage, in.Summary, in.GenreTags).Scan(&bookID); err != nil {
 		writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT", "failed to create book")
+		return
+	}
+	s.getBookByID(w, ctx, bookID, ownerID, http.StatusCreated)
+}
+
+// provisionDiaryBook — POST /v1/books/diary — the diary get-or-create (WS-1.4 step 1, spec 02 §Q2.1).
+//
+// The ONLY path allowed to write kind='diary'. Idempotent + race-safe get-or-create keyed on
+// uq_books_one_active_diary_per_user: a user has exactly ONE active diary, and two concurrent
+// provisions (two devices open /assistant, a retried BFF call) converge on it instead of
+// splitting the assistant's memory into two unreadable halves.
+//
+// Owner is the JWT principal, NEVER a body field (the caller is a chat/BFF request; a
+// body-supplied owner would be a cross-user write).
+//
+// The per-user active-book CEILING is deliberately NOT applied here (unlike createBook): the
+// diary is a system-provisioned private workspace, not a user-authored novel, and it is hidden
+// from the library grid — a user at their novel limit must still be able to get an assistant.
+//
+// E14: if the user's only diary is TRASHED, this refuses (409 BOOK_DIARY_TRASHED) with the
+// trashed id rather than silently forking a fresh diary (which strands the old KG anchors) or
+// silently resurrecting the trashed one — the caller offers restore-vs-start-fresh.
+func (s *Server) provisionDiaryBook(w http.ResponseWriter, r *http.Request) {
+	ownerID, ok := s.requireUserID(r)
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "BOOK_FORBIDDEN", "unauthorized")
+		return
+	}
+	var in struct {
+		Title string `json:"title"`
+	}
+	_ = json.NewDecoder(r.Body).Decode(&in) // body is optional
+	title := strings.TrimSpace(in.Title)
+	if title == "" {
+		title = "My Work Journal"
+	}
+	ctx := r.Context()
+
+	// 1. Already have an active diary? Return it — this is the common case on every re-open,
+	//    and it must be a cheap idempotent read, not a create attempt.
+	var existing uuid.UUID
+	err := s.pool.QueryRow(ctx,
+		`SELECT id FROM books WHERE owner_user_id=$1 AND kind='diary' AND lifecycle_state='active' LIMIT 1`,
+		ownerID).Scan(&existing)
+	if err == nil {
+		s.getBookByID(w, ctx, existing, ownerID, http.StatusOK)
+		return
+	}
+	if !errors.Is(err, pgx.ErrNoRows) {
+		writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT", "failed to read diary")
+		return
+	}
+
+	// 2. No ACTIVE diary — but a TRASHED one must not be silently forked or resurrected (E14).
+	// Only 'trashed' (restorable) is surfaced: a 'purge_pending' diary is on its way to
+	// deletion and CANNOT be restored (restoreBook refuses it), so telling the user to
+	// "restore or start fresh" would be a dead end — instead we fall through and provision a
+	// fresh diary (the purge_pending row is not 'active', so the partial unique allows it).
+	var trashed uuid.UUID
+	err = s.pool.QueryRow(ctx,
+		`SELECT id FROM books WHERE owner_user_id=$1 AND kind='diary'
+		   AND lifecycle_state='trashed' ORDER BY updated_at DESC LIMIT 1`,
+		ownerID).Scan(&trashed)
+	if err == nil {
+		writeError(w, http.StatusConflict, "BOOK_DIARY_TRASHED",
+			"your diary is in the trash ("+trashed.String()+"); restore it or choose to start fresh")
+		return
+	}
+	if !errors.Is(err, pgx.ErrNoRows) {
+		writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT", "failed to read trashed diary")
+		return
+	}
+
+	if err := s.ensureQuotaRow(ctx, ownerID); err != nil {
+		writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT", "failed to initialize quota")
+		return
+	}
+
+	// 3. Create it. ON CONFLICT repeats the partial-index predicate EXACTLY (the
+	//    partial-index/ON-CONFLICT-predicate lesson), so a concurrent provision that already
+	//    inserted the diary makes this a no-op; then re-read the row that WON the race.
+	var bookID uuid.UUID
+	err = s.pool.QueryRow(ctx, `
+INSERT INTO books(owner_user_id,title,kind) VALUES($1,$2,'diary')
+ON CONFLICT (owner_user_id) WHERE kind='diary' AND lifecycle_state='active'
+DO NOTHING
+RETURNING id`, ownerID, title).Scan(&bookID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		// A concurrent provision won (DO NOTHING → no RETURNING row). Return the winner.
+		if err = s.pool.QueryRow(ctx,
+			`SELECT id FROM books WHERE owner_user_id=$1 AND kind='diary' AND lifecycle_state='active' LIMIT 1`,
+			ownerID).Scan(&bookID); err != nil {
+			writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT", "failed to read diary after conflict")
+			return
+		}
+		s.getBookByID(w, ctx, bookID, ownerID, http.StatusOK)
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT", "failed to create diary")
 		return
 	}
 	s.getBookByID(w, ctx, bookID, ownerID, http.StatusCreated)
@@ -649,9 +868,23 @@ func (s *Server) listBooksByLifecycle(w http.ResponseWriter, r *http.Request, li
 	// access_level is computed per row so the FE can distinguish owned vs shared.
 	// is_bible=false excludes the auto-created hidden world-bible container books
 	// (C20) — they anchor lore but must never appear in the user's library.
-	accessFilter := "b.owner_user_id=$1 AND b.is_bible=false"
+	// ── WS-1.2 · EGRESS GUARD #7: the library/catalog listing (spec 09) ──
+	//
+	// The diary is hidden from the default library grid, reusing the SAME is_bible hiding
+	// precedent immediately above. It has its own surface (the Assistant); it is not a
+	// book you browse to among your novels, and a diary tile sitting in a shared-screen
+	// library is a real-world disclosure (a demo, a colleague looking over your shoulder).
+	//
+	// This is a LIST-level guard on purpose. The repo's paged-join lesson is that
+	// per-resource checks pass while the LIST leaks — filtering here is what actually
+	// keeps it out of the grid.
+	//
+	// NOTE for the shared branch: a diary can never be shared (see the collaborator and
+	// sharing guards), so the kind filter also makes the includeShared branch honest —
+	// a diary must not appear via someone else's grant either, however that grant arose.
+	accessFilter := "b.owner_user_id=$1 AND b.is_bible=false AND b.kind<>'diary'"
 	if includeShared {
-		accessFilter = "(b.owner_user_id=$1 OR EXISTS(SELECT 1 FROM book_collaborators bc WHERE bc.book_id=b.id AND bc.user_id=$1)) AND b.is_bible=false"
+		accessFilter = "(b.owner_user_id=$1 OR EXISTS(SELECT 1 FROM book_collaborators bc WHERE bc.book_id=b.id AND bc.user_id=$1)) AND b.is_bible=false AND b.kind<>'diary'"
 	}
 	rows, err := s.pool.Query(ctx, `
 SELECT b.id,b.owner_user_id,b.title,b.description,b.original_language,b.summary,b.lifecycle_state,b.trashed_at,b.purge_eligible_at,b.created_at,b.updated_at,
@@ -714,6 +947,18 @@ func nullableString(s string) any {
 		return nil
 	}
 	return s
+}
+
+// nullableStringPtr renders an optional (nullable) TEXT column for a JSON
+// response: a NULL (nil pointer) or empty string collapses to null, any other
+// value passes through. The null-safe form of nullableString for a *string scan
+// target — required for nullable columns like chapters.title, where scanning a
+// SQL NULL into a plain string errors "cannot scan NULL into *string".
+func nullableStringPtr(p *string) any {
+	if p == nil {
+		return nil
+	}
+	return nullableString(*p)
 }
 
 func (s *Server) getBook(w http.ResponseWriter, r *http.Request) {
@@ -857,6 +1102,30 @@ func (s *Server) patchBook(w http.ResponseWriter, r *http.Request) {
 		paramIdx++
 	}
 	if v, ok := in["wiki_settings"]; ok {
+		// ── WS-1.2 · EGRESS GUARD #3: the wiki (spec 09 §Q3) ──
+		//
+		// This was the widest hole in the design. The public wiki gate reads
+		// books.wiki_settings.visibility == "public" — a JSONB blob PATCHable right here,
+		// keyed on NOTHING about the book's kind. Sharing-service's guard never runs on
+		// this path.
+		//
+		// So the attack is two clicks: let the assistant build a wiki article about every
+		// colleague named in your diary, then flip wiki_settings.visibility='public'. The
+		// platform would then serve AI-written biographies of real people — your coworkers,
+		// your manager — to the open internet, with no share step and no warning.
+		//
+		// A diary has no wiki. Not "a private wiki" — NO wiki. Refuse the mutation.
+		var kind string
+		if err := s.pool.QueryRow(r.Context(),
+			`SELECT kind FROM books WHERE id=$1`, bookID).Scan(&kind); err != nil {
+			writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT", "failed to read book")
+			return
+		}
+		if kind == "diary" {
+			writeError(w, http.StatusForbidden, "BOOK_DIARY_NO_WIKI",
+				"a diary has no wiki — it is private and cannot be published")
+			return
+		}
 		raw, err := json.Marshal(v)
 		if err != nil {
 			writeError(w, http.StatusBadRequest, "BOOK_VALIDATION_ERROR", "invalid wiki_settings")
@@ -1108,7 +1377,7 @@ func (s *Server) listChapters(w http.ResponseWriter, r *http.Request) {
 	var total int
 	_ = s.pool.QueryRow(r.Context(), `SELECT COUNT(*) FROM chapters WHERE `+where, countArgs...).Scan(&total)
 	args = append(args, limit, offset)
-	rows, err := s.pool.Query(r.Context(), `SELECT id,book_id,title,original_filename,original_language,content_type,byte_size,sort_order,draft_updated_at,draft_revision_count,lifecycle_state,trashed_at,purge_eligible_at,created_at,updated_at,word_count,editorial_status,published_revision_id FROM chapters WHERE `+where+` ORDER BY `+orderBy+` LIMIT $`+strconv.Itoa(len(args)-1)+` OFFSET $`+strconv.Itoa(len(args)), args...)
+	rows, err := s.pool.Query(r.Context(), `SELECT id,book_id,title,original_filename,original_language,content_type,byte_size,sort_order,draft_updated_at,draft_revision_count,lifecycle_state,trashed_at,purge_eligible_at,created_at,updated_at,word_count,editorial_status,published_revision_id,structure_node_id FROM chapters WHERE `+where+` ORDER BY `+orderBy+` LIMIT $`+strconv.Itoa(len(args)-1)+` OFFSET $`+strconv.Itoa(len(args)), args...)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "CHAPTER_NOT_FOUND", "failed to list chapters")
 		return
@@ -1117,17 +1386,24 @@ func (s *Server) listChapters(w http.ResponseWriter, r *http.Request) {
 	items := make([]map[string]any, 0)
 	for rows.Next() {
 		var id, bid uuid.UUID
-		var title, fn, lang, ctype, lstate, editorialStatus string
+		var title *string // chapters.title is NULLABLE — a plain string errors the Scan on a titleless chapter, and the discarded-error path then zeroes every column AFTER it (part_id, sort_order, …). See getChapterByID.
+		var fn, lang, ctype, lstate, editorialStatus string
 		var size int64
 		var order, wordCount int
 		var draftUpdated, trashedAt, purgeAt, createdAt, updatedAt *time.Time
 		var revCount int
 		var publishedRevisionID *uuid.UUID
-		_ = rows.Scan(&id, &bid, &title, &fn, &lang, &ctype, &size, &order, &draftUpdated, &revCount, &lstate, &trashedAt, &purgeAt, &createdAt, &updatedAt, &wordCount, &editorialStatus, &publishedRevisionID)
+		var partID *uuid.UUID // S-02: the act this chapter is homed in (NULL = flat manuscript). The FE navigator groups on it.
+		// Check the Scan error (was discarded): a NULL into a non-pointer dest errors here, and a
+		// discarded error would append a ZEROED row (the title/part_id bug). Fail loud instead.
+		if err := rows.Scan(&id, &bid, &title, &fn, &lang, &ctype, &size, &order, &draftUpdated, &revCount, &lstate, &trashedAt, &purgeAt, &createdAt, &updatedAt, &wordCount, &editorialStatus, &publishedRevisionID, &partID); err != nil {
+			writeError(w, http.StatusInternalServerError, "CHAPTER_NOT_FOUND", "failed to list chapters")
+			return
+		}
 		items = append(items, map[string]any{
 			"chapter_id":            id,
 			"book_id":               bid,
-			"title":                 nullableString(title),
+			"title":                 nullableStringPtr(title),
 			"original_filename":     fn,
 			"original_language":     lang,
 			"content_type":          ctype,
@@ -1143,6 +1419,7 @@ func (s *Server) listChapters(w http.ResponseWriter, r *http.Request) {
 			"word_count":            wordCount,
 			"editorial_status":      editorialStatus,
 			"published_revision_id": publishedRevisionID,
+			"part_id":               partID,
 		})
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
@@ -1328,7 +1605,7 @@ func (s *Server) listChaptersKeyset(w http.ResponseWriter, r *http.Request) {
 
 	// Fetch limit+1 to detect a further page without a second COUNT.
 	args = append(args, limit+1)
-	rows, err := s.pool.Query(r.Context(), `SELECT id,book_id,title,original_filename,original_language,content_type,byte_size,sort_order,draft_updated_at,draft_revision_count,lifecycle_state,trashed_at,purge_eligible_at,created_at,updated_at,word_count,editorial_status,published_revision_id FROM chapters WHERE `+where+` ORDER BY `+orderBy+` LIMIT $`+strconv.Itoa(len(args)), args...)
+	rows, err := s.pool.Query(r.Context(), `SELECT id,book_id,title,original_filename,original_language,content_type,byte_size,sort_order,draft_updated_at,draft_revision_count,lifecycle_state,trashed_at,purge_eligible_at,created_at,updated_at,word_count,editorial_status,published_revision_id,structure_node_id FROM chapters WHERE `+where+` ORDER BY `+orderBy+` LIMIT $`+strconv.Itoa(len(args)), args...)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "CHAPTER_NOT_FOUND", "failed to list chapters")
 		return
@@ -1337,17 +1614,24 @@ func (s *Server) listChaptersKeyset(w http.ResponseWriter, r *http.Request) {
 	items := make([]map[string]any, 0, limit)
 	for rows.Next() {
 		var id, bid uuid.UUID
-		var title, fn, lang, ctype, lstate, editorialStatus string
+		var title *string // NULLABLE — scan into a pointer, else a titleless chapter errors the Scan and zeroes every later column (part_id included). See listChapters / getChapterByID.
+		var fn, lang, ctype, lstate, editorialStatus string
 		var size int64
 		var order, wordCount int
 		var draftUpdated, trashedAt, purgeAt, createdAt, updatedAt *time.Time
 		var revCount int
 		var publishedRevisionID *uuid.UUID
-		_ = rows.Scan(&id, &bid, &title, &fn, &lang, &ctype, &size, &order, &draftUpdated, &revCount, &lstate, &trashedAt, &purgeAt, &createdAt, &updatedAt, &wordCount, &editorialStatus, &publishedRevisionID)
+		var partID *uuid.UUID // S-02: the act this chapter is homed in (NULL = flat). The navigator (useManuscriptTree) groups on it.
+		// Check the Scan error (was discarded) — a NULL into a non-pointer dest would otherwise
+		// silently append a ZEROED row (the title/part_id bug). Fail loud.
+		if err := rows.Scan(&id, &bid, &title, &fn, &lang, &ctype, &size, &order, &draftUpdated, &revCount, &lstate, &trashedAt, &purgeAt, &createdAt, &updatedAt, &wordCount, &editorialStatus, &publishedRevisionID, &partID); err != nil {
+			writeError(w, http.StatusInternalServerError, "CHAPTER_NOT_FOUND", "failed to list chapters")
+			return
+		}
 		items = append(items, map[string]any{
 			"chapter_id":            id,
 			"book_id":               bid,
-			"title":                 nullableString(title),
+			"title":                 nullableStringPtr(title),
 			"original_filename":     fn,
 			"original_language":     lang,
 			"content_type":          ctype,
@@ -1363,6 +1647,7 @@ func (s *Server) listChaptersKeyset(w http.ResponseWriter, r *http.Request) {
 			"word_count":            wordCount,
 			"editorial_status":      editorialStatus,
 			"published_revision_id": publishedRevisionID,
+			"part_id":               partID,
 		})
 	}
 
@@ -1539,19 +1824,30 @@ func (s *Server) getChapter(w http.ResponseWriter, r *http.Request) {
 // (authBook). E0-2 dropped the owner filter — the query is keyed by chapter+book
 // id, which still scopes to the authorized book. `caller` is unused in the query
 // now but kept in the signature for call-site symmetry / future per-caller fields.
-func (s *Server) getChapterByID(w http.ResponseWriter, ctx context.Context, bookID, chapterID, caller uuid.UUID, status int) {
+// getChapterByID writes the canonical chapter JSON. `extra` (variadic, at most
+// one map) is merged into the response envelope — the publish path uses it to
+// carry the 26 IX-4 `reparse` delta counts as an additive field without forking
+// this shared reader. Existing callers pass no extra and are unaffected.
+func (s *Server) getChapterByID(w http.ResponseWriter, ctx context.Context, bookID, chapterID, caller uuid.UUID, status int, extra ...map[string]any) {
 	_ = caller
 	var id, bid uuid.UUID
-	var title, fn, lang, ctype, state, editorialStatus string
+	var title *string // chapters.title is NULLABLE — a plain string errors on a titleless chapter
+	var fn, lang, ctype, state, editorialStatus string
 	var size int64
 	var order, revCount, wordCount int
 	var draftUpdated, trashedAt, purgeAt, createdAt, updatedAt *time.Time
 	var publishedRevID *uuid.UUID
+	// WS-0.9: the KG markers ride the public chapter read. Without them the editor
+	// cannot render the "in your knowledge" state at all — an invisible knowledge graph
+	// is one the user can neither trust nor correct.
+	var kgIndexedRevID *uuid.UUID
+	var kgExclude bool
+	var partID *uuid.UUID // S-02: which act (parts row) this chapter is homed in; NULL = flat manuscript
 	err := s.pool.QueryRow(ctx, `
-SELECT c.id,c.book_id,c.title,c.original_filename,c.original_language,c.content_type,c.byte_size,c.sort_order,c.draft_updated_at,c.draft_revision_count,c.lifecycle_state,c.trashed_at,c.purge_eligible_at,c.created_at,c.updated_at,c.editorial_status,c.published_revision_id,c.word_count
+SELECT c.id,c.book_id,c.title,c.original_filename,c.original_language,c.content_type,c.byte_size,c.sort_order,c.draft_updated_at,c.draft_revision_count,c.lifecycle_state,c.trashed_at,c.purge_eligible_at,c.created_at,c.updated_at,c.editorial_status,c.published_revision_id,c.kg_indexed_revision_id,c.kg_exclude,c.word_count,c.structure_node_id
 FROM chapters c
 WHERE c.id=$1 AND c.book_id=$2
-`, chapterID, bookID).Scan(&id, &bid, &title, &fn, &lang, &ctype, &size, &order, &draftUpdated, &revCount, &state, &trashedAt, &purgeAt, &createdAt, &updatedAt, &editorialStatus, &publishedRevID, &wordCount)
+`, chapterID, bookID).Scan(&id, &bid, &title, &fn, &lang, &ctype, &size, &order, &draftUpdated, &revCount, &state, &trashedAt, &purgeAt, &createdAt, &updatedAt, &editorialStatus, &publishedRevID, &kgIndexedRevID, &kgExclude, &wordCount, &partID)
 	if errors.Is(err, pgx.ErrNoRows) || state == "purge_pending" {
 		writeError(w, http.StatusNotFound, "CHAPTER_NOT_FOUND", "chapter not found")
 		return
@@ -1560,10 +1856,10 @@ WHERE c.id=$1 AND c.book_id=$2
 		writeError(w, http.StatusInternalServerError, "CHAPTER_NOT_FOUND", "failed to get chapter")
 		return
 	}
-	writeJSON(w, status, map[string]any{
+	resp := map[string]any{
 		"chapter_id":            id,
 		"book_id":               bid,
-		"title":                 nullableString(title),
+		"title":                 nullableStringPtr(title),
 		"original_filename":     fn,
 		"original_language":     lang,
 		"content_type":          ctype,
@@ -1578,8 +1874,19 @@ WHERE c.id=$1 AND c.book_id=$2
 		"updated_at":            updatedAt,
 		"editorial_status":      editorialStatus,
 		"published_revision_id": publishedRevID,
-		"word_count":            wordCount,
-	})
+		// WS-0.9 — "is this chapter in my knowledge graph?" is now a DIFFERENT question
+		// from "is it published", so the editor needs both markers.
+		"kg_indexed_revision_id": kgIndexedRevID,
+		"kg_exclude":             kgExclude,
+		"word_count":             wordCount,
+		"part_id":                partID,
+	}
+	if len(extra) > 0 {
+		for k, v := range extra[0] {
+			resp[k] = v
+		}
+	}
+	writeJSON(w, status, resp)
 }
 
 func (s *Server) patchChapter(w http.ResponseWriter, r *http.Request) {
@@ -1887,16 +2194,18 @@ func (s *Server) getChapterContent(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	if _, _, _, ok := s.authBook(w, r, bookID, GrantView); !ok {
+	caller, owner, _, ok := s.authBook(w, r, bookID, GrantView)
+	if !ok {
 		return
 	}
 	var body string
+	var encrypted bool
 	err := s.pool.QueryRow(r.Context(), `
-SELECT ro.body_text
+SELECT ro.body_text, c.body_encrypted
 FROM chapter_raw_objects ro
 JOIN chapters c ON c.id=ro.chapter_id
 WHERE c.id=$1 AND c.book_id=$2
-`, chID, bookID).Scan(&body)
+`, chID, bookID).Scan(&body, &encrypted)
 	if errors.Is(err, pgx.ErrNoRows) {
 		writeError(w, http.StatusNotFound, "CHAPTER_NOT_FOUND", "chapter not found")
 		return
@@ -1904,6 +2213,23 @@ WHERE c.id=$1 AND c.book_id=$2
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "CHAPTER_NOT_FOUND", "failed to fetch content")
 		return
+	}
+	// D-DIARY-GENERIC-READERS-DECRYPT — a diary chapter is stored as ciphertext in chapter_raw_objects;
+	// this generic reader would otherwise return base64 NOISE. Decrypt it owner-gated. A diary is
+	// un-shareable, so any encrypted-chapter read by a non-owner is an anomaly — refuse defensively
+	// (never decrypt the owner's diary for a collaborator). decryptBody fails CLOSED if crypto is
+	// disabled while the row is marked encrypted (never returns the raw ciphertext).
+	if encrypted {
+		if caller != owner {
+			writeError(w, http.StatusForbidden, "DIARY_OWNER_ONLY", "diary content is readable only by its owner")
+			return
+		}
+		dec, derr := s.diaryCrypto.decryptBody(r.Context(), owner, chID, body, true)
+		if derr != nil {
+			writeError(w, http.StatusInternalServerError, "DECRYPT_FAILED", "failed to decrypt diary content")
+			return
+		}
+		body = dec
 	}
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 	w.WriteHeader(http.StatusOK)
@@ -2279,6 +2605,14 @@ func (s *Server) publishChapter(w http.ResponseWriter, r *http.Request) {
 	// Body is optional; ignore decode errors (no/empty body → unconditional publish).
 	_ = json.NewDecoder(r.Body).Decode(&in)
 
+	// 26 IX-2: parse the to-be-pinned body BEFORE the Tx (stateless /internal/parse,
+	// never a cross-service call inside the transaction). We compare prep.draftVersion
+	// against the FOR-UPDATE draft_version inside the Tx: if a concurrent save
+	// slipped in, the parsed tree describes a stale body → skip the upsert and let
+	// the sweeper heal (the same OQ-1 degrade as a parse failure). A parse failure
+	// itself never blocks publish.
+	prep := s.prepareReparse(r.Context(), bookID, chID)
+
 	tx, err := s.pool.Begin(r.Context())
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT", "failed to publish")
@@ -2344,15 +2678,67 @@ VALUES($1,$2,$3,'publish',$4) RETURNING id
 		writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT", "failed to snapshot revision")
 		return
 	}
-	if _, err := tx.Exec(r.Context(), `
+	// WS-0.3: publish also advances the KG pointer (see mcp_actions.go for the full
+	// rationale). kg_exclude is producer-side authoritative — publishing a chapter the
+	// user excluded from their knowledge graph must not silently re-index it.
+	// RETURNING kg_exclude — see the emit below (review-impl P0): the event, not the
+	// pointer, is what drives the graph write, so the exclusion must ride the payload.
+	var kgExcluded bool
+	if err := tx.QueryRow(r.Context(), `
 UPDATE chapters SET editorial_status='published', published_revision_id=$2,
+       kg_indexed_revision_id=CASE WHEN kg_exclude THEN kg_indexed_revision_id ELSE $2 END,
        draft_revision_count=draft_revision_count+1, updated_at=now()
-WHERE id=$1`, chID, revID); err != nil {
+WHERE id=$1
+RETURNING kg_exclude`, chID, revID).Scan(&kgExcluded); err != nil {
 		writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT", "failed to publish")
 		return
 	}
+	// 26 IX-2 step 3(b–d): same-Tx re-parse. Only when the parse succeeded AND it
+	// described the body we are actually pinning (draftVersion match). Otherwise
+	// the marker stays behind → the chapter is stale by the IX-3 predicate and the
+	// sweeper heals it. A parse/upsert issue must NOT hold user prose hostage
+	// (OQ-1), so a skipped re-parse is a warning, never a publish failure.
+	var counts reparseCounts
+	if prep.ok && prep.draftVersion == curr {
+		var uerr error
+		counts, uerr = s.upsertChapterScenes(r.Context(), tx, bookID, chID, prep.structuralPath, prep.tree)
+		if uerr != nil {
+			writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT", "failed to reindex scenes")
+			return
+		}
+		if _, err := tx.Exec(r.Context(), `UPDATE chapters SET last_parsed_revision_id=$2 WHERE id=$1`, chID, revID); err != nil {
+			writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT", "failed to publish")
+			return
+		}
+		// RB5-1: only emit when the INDEX actually changed. A no-op re-parse (identical
+		// prose → all scenes Unchanged) must not fire chapter.scenes_reparsed, whose
+		// knowledge consumer wipes the WHOLE book's extraction cache (a costly re-extract
+		// for zero index change). chapter.published still fires for the publish itself.
+		if counts.changed() {
+			if err := emitScenesReparsed(r.Context(), tx, bookID, chID, revID, counts.ParseVersion); err != nil {
+				writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT", "failed to publish")
+				return
+			}
+			// SC11-amendment Phase 0 — writer #2, and THE call site the census missed. Publish
+			// is the most common re-parse of all, and a re-parse re-resolves every scene's
+			// anchor, so the spec back-links may have moved. Same tx, same counts.changed() guard.
+			if err := emitScenesLinked(r.Context(), tx, bookID, chID); err != nil {
+				writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT", "failed to publish")
+				return
+			}
+		}
+	} else {
+		slog.WarnContext(r.Context(), "publish: re-parse skipped; index left stale for the sweeper",
+			"chapter_id", chID, "parse_ok", prep.ok, "draft_version_match", prep.draftVersion == curr)
+	}
+	// review-impl P0: carry kg_exclude. Not setting the pointer above does NOT keep an
+	// excluded chapter out of the knowledge graph — handle_chapter_published enqueues the
+	// extraction and ingests canon passages, and it cannot see the column. Without this,
+	// publishing a chapter the user asked us to forget silently re-indexes it.
 	if err := insertOutboxEvent(r.Context(), tx, "chapter.published", chID,
-		map[string]any{"book_id": bookID, "chapter_id": chID, "revision_id": revID}); err != nil {
+		map[string]any{
+			"book_id": bookID, "chapter_id": chID, "revision_id": revID, "kg_exclude": kgExcluded,
+		}); err != nil {
 		writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT", "failed to publish")
 		return
 	}
@@ -2360,7 +2746,7 @@ WHERE id=$1`, chID, revID); err != nil {
 		writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT", "failed to publish")
 		return
 	}
-	s.getChapterByID(w, r.Context(), bookID, chID, caller, http.StatusOK)
+	s.getChapterByID(w, r.Context(), bookID, chID, caller, http.StatusOK, map[string]any{"reparse": counts})
 }
 
 // unpublishChapter — Canon Model CM1. Reverts a chapter to 'draft' and clears
@@ -2721,12 +3107,23 @@ func (s *Server) getBookProjection(w http.ResponseWriter, r *http.Request) {
 	var genreTags []string
 	var wikiSettings json.RawMessage
 	var extractionProfile json.RawMessage
+	// WS-1.2 (D16): `kind` rides the projection. Every downstream consumer of this
+	// contract (wiki, notifications, statistics, catalog, public-MCP) needs it to enforce
+	// the diary taint — without it they cannot even ASK whether the book is private.
+	var kind string
+	// COALESCE the nullable text columns. They were scanned into plain `string`, so ANY
+	// book with a NULL description/summary/original_language 500s this endpoint. Existing
+	// books happened to carry '' (the create paths always pass a value), which is why it
+	// never fired — but the diary provisioner inserts (owner, title, kind) only, so the
+	// very first diary would have made its own projection unreadable.
 	err = s.pool.QueryRow(r.Context(), `
-SELECT b.id,b.owner_user_id,b.title,b.description,b.original_language,b.summary,b.lifecycle_state,b.created_at,
+SELECT b.id,b.owner_user_id,b.title,
+  COALESCE(b.description,''), COALESCE(b.original_language,''), COALESCE(b.summary,''),
+  b.lifecycle_state,b.created_at,
   COALESCE((SELECT COUNT(*) FROM chapters c WHERE c.book_id=b.id AND c.lifecycle_state='active'),0),
-  b.genre_tags, b.wiki_settings, b.extraction_profile
+  b.genre_tags, b.wiki_settings, b.extraction_profile, b.kind
 FROM books b WHERE b.id=$1
-`, bookID).Scan(&id, &owner, &title, &desc, &lang, &summary, &state, &createdAt, &chapterCount, &genreTags, &wikiSettings, &extractionProfile)
+`, bookID).Scan(&id, &owner, &title, &desc, &lang, &summary, &state, &createdAt, &chapterCount, &genreTags, &wikiSettings, &extractionProfile, &kind)
 	if errors.Is(err, pgx.ErrNoRows) {
 		ProjectionTotal.WithLabelValues(OutcomeNotFound).Inc()
 		writeError(w, http.StatusNotFound, "BOOK_NOT_FOUND", "book not found")
@@ -2752,6 +3149,7 @@ FROM books b WHERE b.id=$1
 	ProjectionTotal.WithLabelValues(OutcomeOK).Inc()
 	writeJSON(w, http.StatusOK, map[string]any{
 		"book_id":            id,
+		"kind":               kind, // WS-1.2 (D16) — the diary taint; consumers guard on it
 		"owner_user_id":      owner,
 		"title":              title,
 		"description":        nullableString(desc),
@@ -2816,6 +3214,31 @@ func (s *Server) getInternalBookChapters(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	where, countWhere, countArgs = appendEditorialStatusFilter(where, countWhere, countArgs, es)
+
+	// WS-0.6 — the kg_indexed gate (spec §3.5, red-team P0-2). ADDITIVE: it does not
+	// change what editorial_status means (see appendKGIndexedFilter).
+	//
+	// Extraction callers (worker-ai's whole-book rebuild, the passage backfill/ingester,
+	// the cost estimate, campaign chapter selection) must ask "what is in the knowledge
+	// graph?", NOT "what is published". Without this filter they can only ask the old
+	// question, so a user who indexes 50 draft chapters and then hits "Rebuild knowledge
+	// graph" gets ZERO of them enumerated — the job reports success having extracted
+	// nothing, and the cost estimate says "0 chapters". Their explicit act is silently
+	// undone by an unrelated button (the repo's own silent-success-is-a-bug class).
+	//
+	// Closed set: a typo'd value must 400, never silently fall through to "all chapters"
+	// (which would over-extract kg_exclude'd prose the user asked us to forget).
+	kgIndexedParam := r.URL.Query().Get("kg_indexed")
+	if kgIndexedParam != "" && kgIndexedParam != "true" && kgIndexedParam != "false" {
+		ChaptersListTotal.WithLabelValues(OutcomeValidationError).Inc()
+		writeError(w, http.StatusBadRequest, "BOOK_VALIDATION_ERROR",
+			"invalid kg_indexed (expected true|false)")
+		return
+	}
+	// Filter BOTH the COUNT and the LIST, so `total` matches the returned items — an
+	// estimate/enumeration drift here is what makes a cost preview lie.
+	where, countWhere = appendKGIndexedFilter(where, countWhere, kgIndexedParam == "true")
+
 	var total int
 	// CM3c review WARN#2: the published-gate rides on `total`; a swallowed
 	// COUNT error would yield total=0 (HTTP 200) — a silent published-gate
@@ -2830,9 +3253,13 @@ func (s *Server) getInternalBookChapters(w http.ResponseWriter, r *http.Request)
 	listArgs = append(listArgs, limit, offset)
 	limitPos := len(countArgs) + 1
 	offsetPos := len(countArgs) + 2
+	// WS-0.6: kg_indexed_revision_id + kg_exclude join the projection. Without them a
+	// re-keyed reader could FILTER on the KG gate but could not PIN the right revision —
+	// and worker-ai's extractor falls back to the LIVE DRAFT text when it gets no
+	// revision_id, which would silently extract unreviewed prose.
 	rows, err := s.pool.Query(r.Context(), fmt.Sprintf(`
 SELECT c.id, c.title, c.sort_order, c.original_language, c.draft_updated_at,
-  c.editorial_status, c.published_revision_id,
+  c.editorial_status, c.published_revision_id, c.kg_indexed_revision_id, c.kg_exclude,
   COALESCE((SELECT octet_length(d.body::text) / 5 FROM chapter_drafts d WHERE d.chapter_id = c.id LIMIT 1), 0) AS word_count_estimate
 FROM chapters c
 WHERE %s
@@ -2848,21 +3275,28 @@ LIMIT $%d OFFSET $%d
 	items := make([]map[string]any, 0)
 	for rows.Next() {
 		var chapterID uuid.UUID
-		var title, lang, editorialStatus string
+		var title *string // chapters.title is NULLABLE — a plain string errors on a titleless chapter (silently dropping the row)
+		var lang, editorialStatus string
 		var sortOrder int
 		var draftUpdated *time.Time
-		var publishedRevID *uuid.UUID
+		var publishedRevID, kgIndexedRevID *uuid.UUID
+		var kgExclude bool
 		var wordCount int
-		if err := rows.Scan(&chapterID, &title, &sortOrder, &lang, &draftUpdated, &editorialStatus, &publishedRevID, &wordCount); err == nil {
+		// Every column scans into a real target. A discarded scan zeroes the WHOLE pgx
+		// row, so kg_exclude would read false — i.e. fail OPEN on the user's opt-out.
+		if err := rows.Scan(&chapterID, &title, &sortOrder, &lang, &draftUpdated, &editorialStatus,
+			&publishedRevID, &kgIndexedRevID, &kgExclude, &wordCount); err == nil {
 			items = append(items, map[string]any{
-				"chapter_id":            chapterID,
-				"title":                 nullableString(title),
-				"sort_order":            sortOrder,
-				"original_language":     lang,
-				"draft_updated_at":      draftUpdated,
-				"editorial_status":      editorialStatus,
-				"published_revision_id": publishedRevID,
-				"word_count_estimate":   wordCount,
+				"chapter_id":             chapterID,
+				"title":                  nullableStringPtr(title),
+				"sort_order":             sortOrder,
+				"original_language":      lang,
+				"draft_updated_at":       draftUpdated,
+				"editorial_status":       editorialStatus,
+				"published_revision_id":  publishedRevID,
+				"kg_indexed_revision_id": kgIndexedRevID,
+				"kg_exclude":             kgExclude,
+				"word_count_estimate":    wordCount,
 			})
 		}
 	}
@@ -2894,7 +3328,8 @@ func (s *Server) getInternalBookChapter(w http.ResponseWriter, r *http.Request) 
 		writeError(w, http.StatusNotFound, "BOOK_NOT_FOUND", "book not found")
 		return
 	}
-	var title, lang, editorialStatus string
+	var title *string // chapters.title is NULLABLE — a plain string errors on a titleless chapter
+	var lang, editorialStatus string
 	var body json.RawMessage
 	var sortOrder int
 	var draftUpdated *time.Time
@@ -2929,7 +3364,7 @@ FROM chapter_blocks WHERE chapter_id=$1
 	ChapterFetchTotal.WithLabelValues(OutcomeOK).Inc()
 	writeJSON(w, http.StatusOK, map[string]any{
 		"chapter_id":            chapterID,
-		"title":                 nullableString(title),
+		"title":                 nullableStringPtr(title),
 		"sort_order":            sortOrder,
 		"original_language":     lang,
 		"draft_updated_at":      draftUpdated,
@@ -3177,7 +3612,7 @@ WHERE id = ANY($1::uuid[]) AND lifecycle_state = 'active'
 	for rows.Next() {
 		var id uuid.UUID
 		var sortOrder int
-		var title string
+		var title *string // chapters.title is NULLABLE — a plain string errors on a titleless chapter (the common case here) and drops the row before the "Chapter N" fallback
 		if err := rows.Scan(&id, &sortOrder, &title); err != nil {
 			// /review-impl L5 — surface scan errors rather than silent
 			// drop. A schema drift (title column type change) would
@@ -3187,10 +3622,10 @@ WHERE id = ANY($1::uuid[]) AND lifecycle_state = 'active'
 			scanErrors++
 			continue
 		}
-		if strings.TrimSpace(title) == "" {
+		if title == nil || strings.TrimSpace(*title) == "" {
 			titles[id.String()] = fmt.Sprintf("Chapter %d", sortOrder)
 		} else {
-			titles[id.String()] = fmt.Sprintf("Chapter %d — %s", sortOrder, title)
+			titles[id.String()] = fmt.Sprintf("Chapter %d — %s", sortOrder, *title)
 		}
 	}
 	// /review-impl L5 — rows.Err() catches iterator-level errors
@@ -3301,6 +3736,110 @@ WHERE id = ANY($1::uuid[]) AND lifecycle_state = 'active'
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"sort_orders": sortOrders})
+}
+
+// postInternalChapterCanonMarkers — 26 IX-9. The batch resolver composition's
+// conformance-status read polls to compute dirtiness (prose_drift / index_stale)
+// without a stored dirty bit. Mirrors postInternalChapterSortOrders' contract:
+//
+//	Request:  { "chapter_ids": [uuid, ...] }
+//	Response: { "markers": { "<uuid>": { "published_revision_id": uuid|null,
+//	                                     "kg_indexed_revision_id": uuid|null,
+//	                                     "kg_exclude": bool,
+//	                                     "last_parsed_revision_id": uuid|null,
+//	                                     "parse_version": int,
+//	                                     "editorial_status": "draft"|"published" } } }
+//
+// WS-0.7 (spec 2026-07-11-publish-independent-kg-indexing §3.6, red-team P0-3):
+// kg_indexed_revision_id + kg_exclude are ADDITIVE fields, and they are what make the
+// new staleness predicate expressible AT ALL on the consumer side. composition-service
+// hand-copies the sweeper's WHERE clause in Python to compute its `index_stale` badge;
+// without these two fields it literally cannot compute the post-WS-0.5 predicate, so it
+// would keep evaluating the OLD one and produce a PERMANENTLY-STUCK badge:
+// publish@A → index a draft@B → composition sees `published AND last_parsed(B) !=
+// published_revision_id(A)` ⇒ stale, while the sweeper sees `last_parsed(B) ==
+// kg_indexed(B)` ⇒ nothing to heal. The badge never clears.
+//
+//   - Empty list → 200 with an empty markers map.
+//   - Cap at 200 ids per call; oversized → 422.
+//   - BOOK-SCOPED by the path {book_id}: ids not in that book (or not active) are
+//     silently dropped — the query filters on book_id, so a caller passing a
+//     wrong book_id gets no cross-book leak (the token authenticates the caller
+//     service; the book_id scope is the tenancy defense at this layer, with the
+//     E0 grant enforced upstream at composition's VIEW-gated status route).
+//   - parse_version is the IX-4 CHAPTER SCALAR: MAX(parse_version) over the
+//     chapter's ACTIVE scenes rows (0 when a chapter has none yet).
+//   - Scan errors surface via scan_error_count (best-effort partial response);
+//     iterator-level errors return 500.
+func (s *Server) postInternalChapterCanonMarkers(w http.ResponseWriter, r *http.Request) {
+	bookID, ok := parseUUIDParam(w, r, "book_id")
+	if !ok {
+		return
+	}
+	const maxIDs = 200
+	var body struct {
+		ChapterIDs []uuid.UUID `json:"chapter_ids"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeError(w, http.StatusBadRequest, "BOOK_VALIDATION_ERROR", "invalid JSON body")
+		return
+	}
+	if len(body.ChapterIDs) == 0 {
+		writeJSON(w, http.StatusOK, map[string]any{"markers": map[string]any{}})
+		return
+	}
+	if len(body.ChapterIDs) > maxIDs {
+		writeError(w, http.StatusUnprocessableEntity, "BOOK_VALIDATION_ERROR",
+			fmt.Sprintf("too many chapter_ids (max %d)", maxIDs))
+		return
+	}
+	rows, err := s.pool.Query(r.Context(), `
+SELECT c.id, c.published_revision_id, c.kg_indexed_revision_id, c.kg_exclude,
+       c.last_parsed_revision_id, c.editorial_status,
+       COALESCE((SELECT MAX(parse_version) FROM scenes
+                 WHERE chapter_id = c.id AND lifecycle_state = 'active'), 0) AS parse_version
+FROM chapters c
+WHERE c.book_id = $1 AND c.id = ANY($2::uuid[]) AND c.lifecycle_state = 'active'
+`, bookID, body.ChapterIDs)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT", "failed to query canon markers")
+		return
+	}
+	defer rows.Close()
+	markers := make(map[string]any)
+	var scanErrors int
+	for rows.Next() {
+		var id uuid.UUID
+		var publishedRev, kgIndexedRev, lastParsedRev *uuid.UUID
+		var kgExclude bool
+		var editorialStatus string
+		var parseVersion int
+		// NB: every column is scanned into a real target. A discarded scan error would
+		// zero the WHOLE row (pgx), so kg_exclude would read false on any scan hiccup —
+		// i.e. fail OPEN on a privacy flag. scanErrors++ + continue keeps that honest.
+		if err := rows.Scan(&id, &publishedRev, &kgIndexedRev, &kgExclude,
+			&lastParsedRev, &editorialStatus, &parseVersion); err != nil {
+			scanErrors++
+			continue
+		}
+		markers[id.String()] = map[string]any{
+			"published_revision_id":   publishedRev,
+			"kg_indexed_revision_id":  kgIndexedRev,
+			"kg_exclude":              kgExclude,
+			"last_parsed_revision_id": lastParsedRev,
+			"parse_version":           parseVersion,
+			"editorial_status":        editorialStatus,
+		}
+	}
+	if err := rows.Err(); err != nil {
+		writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT", "canon markers iterator errored")
+		return
+	}
+	if scanErrors > 0 {
+		writeJSON(w, http.StatusOK, map[string]any{"markers": markers, "scan_error_count": scanErrors})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"markers": markers})
 }
 
 func excerpt(s string, n int) string {

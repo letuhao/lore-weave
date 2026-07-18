@@ -4,6 +4,9 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"go/ast"
+	"go/parser"
+	"go/token"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -92,22 +95,41 @@ func listTools(t *testing.T, ts *httptest.Server) []map[string]any {
 	return tools
 }
 
-// Every settings tool MUST carry C-TOOL _meta.tier + _meta.scope, and its name
-// MUST start with the settings_ prefix (C-GW — the gateway drops non-matching
-// names). This is the contract the consumer + gateway read without hardcoding.
+// allowedSettingsPrefixes MIRRORS ai-gateway's `EXTRA_PREFIX_MAP.settings` (+ the base
+// `settings_` from PROVIDER_PREFIX). The C-GW gate drops-and-WARNS any federated tool whose
+// name matches none of its provider's prefixes — it does not error — so a drift here is
+// silent: the tool simply vanishes from the catalog (exactly how `story_search` was once
+// lost). A Go test cannot import the TS map, so this is a hand-synced mirror. Adding a tool
+// under a NEW namespace on this server means updating BOTH this slice and
+// services/ai-gateway/src/config/config.ts.
+var allowedSettingsPrefixes = []string{
+	"settings_", // the provider's base namespace
+	"web_",      // Track D CD5 — the universal `web_search` lives on provider-registry
+}
+
+// Every tool on the settings server MUST carry C-TOOL _meta.tier + _meta.scope, and its
+// name MUST start with one of the prefixes the gateway allows for this provider (C-GW).
 func TestSettingsMCP_EveryToolHasTierScopeAndPrefix(t *testing.T) {
 	ts := httptest.NewServer(mcpUnitServer().mcpHandler())
 	defer ts.Close()
 	tools := listTools(t, ts)
-	// 5 Tier-R reads + 6 Tier-A + 1 Tier-W = 12. provider_create/update_secret are
-	// deliberately NOT tools (OD-S1).
-	if len(tools) != 12 {
-		t.Errorf("expected 12 settings tools, got %d", len(tools))
+	// 5 Tier-R reads + 6 Tier-A + 1 Tier-W + 1 Tier-R paid (web_search) = 13.
+	// provider_create/update_secret are deliberately NOT tools (OD-S1).
+	if len(tools) != 13 {
+		t.Errorf("expected 13 settings tools, got %d", len(tools))
 	}
 	for _, tool := range tools {
 		name, _ := tool["name"].(string)
-		if !strings.HasPrefix(name, "settings_") {
-			t.Errorf("tool %q does not carry the mandatory settings_ prefix (gateway would drop it)", name)
+		matched := false
+		for _, p := range allowedSettingsPrefixes {
+			if strings.HasPrefix(name, p) {
+				matched = true
+				break
+			}
+		}
+		if !matched {
+			t.Errorf("tool %q matches none of the gateway's allowed prefixes %v — the C-GW gate "+
+				"would silently DROP it from the federated catalog", name, allowedSettingsPrefixes)
 		}
 		meta, _ := tool["_meta"].(map[string]any)
 		if meta == nil {
@@ -124,6 +146,38 @@ func TestSettingsMCP_EveryToolHasTierScopeAndPrefix(t *testing.T) {
 		if lwmcp.Scope(scope) != lwmcp.ScopeUser {
 			t.Errorf("tool %q _meta.scope must be user (settings is user-scoped), got %q", name, scope)
 		}
+	}
+}
+
+// web_search is the platform's only PAID tool on this server. The two properties below are
+// the ones consumers actually branch on, and they are ORTHOGONAL: `paid` governs money
+// (chat's spend gate), `tier` governs mutation (ask-mode + the approval card). A paid READ
+// stays Tier R — promoting it to A/W would wrongly block it in ask mode, and dropping
+// `paid` would let a model spend the user's money with no consent prompt.
+func TestSettingsMCP_WebSearchIsPaidTierR(t *testing.T) {
+	ts := httptest.NewServer(mcpUnitServer().mcpHandler())
+	defer ts.Close()
+
+	var found map[string]any
+	for _, tool := range listTools(t, ts) {
+		if name, _ := tool["name"].(string); name == "web_search" {
+			found = tool
+			break
+		}
+	}
+	if found == nil {
+		t.Fatal("web_search is not registered on the settings MCP server")
+	}
+	meta, _ := found["_meta"].(map[string]any)
+	if meta == nil {
+		t.Fatal("web_search has no _meta")
+	}
+	if tier, _ := meta[lwmcp.MetaKeyTier].(string); lwmcp.Tier(tier) != lwmcp.TierR {
+		t.Errorf("web_search _meta.tier = %q, want R (it writes nothing; paid ⊥ tier)", tier)
+	}
+	if paid, _ := meta[lwmcp.MetaKeyPaid].(bool); !paid {
+		t.Error("web_search _meta.paid is not true — chat's spend gate would never prompt, " +
+			"letting a model spend the user's money without consent")
 	}
 }
 
@@ -447,6 +501,75 @@ func postConfirmAs(t *testing.T, srv *Server, bearerUser uuid.UUID, token string
 	return rec.Code
 }
 
+// postConfirmViaInternalEnvelope drives confirmSettingsAction exactly the way
+// auth-service's public-MCP confirm-replay does (mcp_approvals.go::replayConfirm):
+// query-param token, nil body, X-Internal-Token+X-User-Id, NO Authorization
+// header. Found live 2026-07-08: this route 401'd that shape unconditionally
+// before resolveConfirmCaller (D-PMCP-WORKER-CARRIER retrofit).
+func postConfirmViaInternalEnvelope(srv *Server, internalTok, userID, token string) int {
+	req := httptest.NewRequest(http.MethodPost, "/v1/settings/actions/confirm?token="+token, nil)
+	if internalTok != "" {
+		req.Header.Set("X-Internal-Token", internalTok)
+	}
+	if userID != "" {
+		req.Header.Set("X-User-Id", userID)
+	}
+	rec := httptest.NewRecorder()
+	srv.confirmSettingsAction(rec, req)
+	return rec.Code
+}
+
+// TestSettingsMCP_ModelDeleteConfirmInternalReplayEnvelope proves the retrofit:
+// auth-service's confirm-replay shape (no Bearer JWT at all) now succeeds, and
+// still fails closed on a wrong/missing/malformed internal envelope.
+func TestSettingsMCP_ModelDeleteConfirmInternalReplayEnvelope(t *testing.T) {
+	srv, pool, ts := mcpDBServer(t)
+	userID := uuid.New()
+	_, modelID := seedCredAndModel(t, srv, pool, userID, "secret-e")
+
+	out, code := callTool(t, ts, userID.String(), "settings_model_delete", map[string]any{"user_model_id": modelID.String()})
+	if code != http.StatusOK || toolIsError(out) {
+		t.Fatalf("model_delete mint failed: %v", out)
+	}
+	token := extractStructured(t, out, "confirm_token")
+	if token == "" {
+		t.Fatalf("no confirm_token in result: %v", out)
+	}
+
+	if code := postConfirmViaInternalEnvelope(srv, mcpTestInternalToken, userID.String(), token); code != http.StatusNoContent {
+		t.Fatalf("internal-envelope confirm-replay expected 204, got %d", code)
+	}
+	var n int
+	_ = pool.QueryRow(context.Background(), `SELECT count(*) FROM user_models WHERE user_model_id=$1`, modelID).Scan(&n)
+	if n != 0 {
+		t.Fatal("internal-envelope confirm must delete the model")
+	}
+
+	// resolveConfirmCaller rejects before the token is ever decoded/consumed, so
+	// the negative cases below can reuse the already-consumed token — only the
+	// envelope itself is under test here.
+	if code := postConfirmViaInternalEnvelope(srv, "wrong-token", userID.String(), token); code == http.StatusNoContent {
+		t.Fatal("wrong internal token must not be accepted")
+	}
+	if code := postConfirmViaInternalEnvelope(srv, mcpTestInternalToken, "", token); code == http.StatusNoContent {
+		t.Fatal("internal token with no X-User-Id must not be accepted")
+	}
+	if code := postConfirmViaInternalEnvelope(srv, mcpTestInternalToken, "not-a-uuid", token); code == http.StatusNoContent {
+		t.Fatal("internal token with malformed X-User-Id must not be accepted")
+	}
+	// Correct internal token, SYNTACTICALLY-valid X-User-Id naming a DIFFERENT user
+	// than the token's bound proposer → still 403: resolveConfirmCaller resolves the
+	// (wrong) caller successfully via the envelope path, but decodeSettingsConfirm's
+	// claims.UserID != userID check fires identically regardless of which auth path
+	// produced userID. That check runs BEFORE consumeSettingsToken, so the
+	// already-consumed token above is still usable here (its signature/claims are
+	// unaffected by consumption) — mirrors glossary's
+	// TestConfirmAction_InternalReplayEnvelope_WrongOrMissingCredsRejected.
+	if code := postConfirmViaInternalEnvelope(srv, mcpTestInternalToken, uuid.New().String(), token); code != http.StatusForbidden {
+		t.Errorf("internal envelope naming a different user than the proposer = %d, want 403", code)
+	}
+}
+
 // ── small helpers ──────────────────────────────────────────────────────────────
 
 func mustJSON(v any) string {
@@ -484,4 +607,63 @@ func extractStructured(t *testing.T, out map[string]any, field string) string {
 		}
 	}
 	return ""
+}
+
+// TestSettingsMCP_NoOutStructUsesRawMessage — the bug class that made
+// settings_get_profile and settings_update_profile fail 100% of calls, for every user,
+// from the day they were written.
+//
+// `json.RawMessage` is `[]byte`. The MCP Go SDK infers its output schema as
+// `["null","array"]`, but `encoding/json` marshals it as the raw JSON it HOLDS — an
+// object. The SDK then validates the tool's own output against its own declared schema
+// and rejects the call:
+//
+//	validating /properties/profile: type: map[...] has type "object", want one of "null, array"
+//
+// Nothing caught it: every wire gate asserts over `tools/list` METADATA and never issues a
+// `tools/call`, and no NL probe covered these tools. A deterministic capability sweep
+// (scripts/eval/tool_liveness/sweep.py) found it by simply calling every Tier-R tool.
+//
+// NOTE this asserts on the TYPE, not the schema. A genuine Go slice (`[]webSearchSource`)
+// also declares `["null","array"]` — and correctly marshals as an array. The schema shape
+// cannot tell the two apart; the field's Go type can.
+func TestSettingsMCP_NoOutStructUsesRawMessage(t *testing.T) {
+	fset := token.NewFileSet()
+	f, err := parser.ParseFile(fset, "mcp_server.go", nil, 0)
+	if err != nil {
+		t.Fatalf("parse mcp_server.go: %v", err)
+	}
+	checked := 0
+	ast.Inspect(f, func(n ast.Node) bool {
+		ts, ok := n.(*ast.TypeSpec)
+		if !ok || !strings.HasSuffix(ts.Name.Name, "Out") {
+			return true
+		}
+		st, ok := ts.Type.(*ast.StructType)
+		if !ok {
+			return true
+		}
+		checked++
+		for _, field := range st.Fields.List {
+			sel, ok := field.Type.(*ast.SelectorExpr)
+			if !ok {
+				continue
+			}
+			pkg, _ := sel.X.(*ast.Ident)
+			if pkg != nil && pkg.Name == "json" && sel.Sel.Name == "RawMessage" {
+				name := "<embedded>"
+				if len(field.Names) > 0 {
+					name = field.Names[0].Name
+				}
+				t.Errorf("%s.%s is json.RawMessage — the SDK declares it ['null','array'] but "+
+					"marshals the object it holds, so the tool's OWN output fails validation and "+
+					"every call errors. Use map[string]any (see profileObject).", ts.Name.Name, name)
+			}
+		}
+		return true
+	})
+	if checked == 0 {
+		t.Fatal("found no *Out structs to check — this gate is inert")
+	}
+	t.Logf("checked %d MCP Out structs", checked)
 }

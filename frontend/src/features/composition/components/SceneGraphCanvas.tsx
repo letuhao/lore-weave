@@ -148,7 +148,7 @@ export function SceneGraphCanvas({ work, bookId, token, onPromoted }: {
             const ghost = a.take?.ghost?.trim();
             if (ghost) {
               try {
-                await compositionApi.persistScenePromoteProse(proj, node.id, ghost, token);
+                await compositionApi.persistScenePromoteProse(proj, node.id, ghost, token, { anchorNodeId: anchorScene?.id ?? undefined });
               } catch {
                 proseFailed += 1;
               }
@@ -370,6 +370,11 @@ export function SceneGraphCanvas({ work, bookId, token, onPromoted }: {
           edgeEndpoints={(l) => ({ from: l.from_node_id, to: l.to_node_id })}
           edgeKey={(l) => l.id}
           nodeSize={{ w: NODE_W, h: NODE_H }}
+          // D-S5-SCENEGRAPH-VIRTUALIZE — cull to the viewport at book scale; always keep
+          // the selected scenes (link-create), the what-if alt nodes + their anchor (the
+          // branch overlay must never be culled).
+          virtualize
+          alwaysRenderIds={[...selected, ...(branch?.alts ?? []).map((a) => a.id), ...(branch ? [branch.anchorSceneId] : [])]}
           onNodeClick={(id) => { if (!altById.has(id)) toggleSelect(id); }}
           onNodeDrag={(id, pos) => applyLocal({ ...localRef.current, [id]: pos })}
           onNodeDragEnd={() => persist(localRef.current)}

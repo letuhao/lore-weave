@@ -1,9 +1,13 @@
 """Work resolve + CRUD router (composition-service, M3).
 
 GET /books/{book_id}/work wires the M2 `resolve_work` (§6.2) into a real
-endpoint — forwarding the caller's JWT to knowledge-service (user-scoped, so
-ownership is enforced server-side). GET/PATCH /works/{project_id} expose the
+endpoint — forwarding the caller's JWT to knowledge-service (actor identity;
+access is the E0 book grant). GET/PATCH /works/{project_id} expose the
 WorksRepo with If-Match optimistic concurrency (412 on a stale version).
+
+Book-package re-key (spec 25 PM-9): Work rows are PER-BOOK — repo calls carry
+no user id; every route gates on the caller's E0 grant on the book, and writes
+stamp `created_by` = the acting caller (actor, never scope).
 
 POST /books/{book_id}/work (M8) confirm-creates a Work: ensure a book-typed
 knowledge project exists (resolve, else ProjectCreate), then get-or-create the
@@ -19,21 +23,26 @@ import asyncpg
 from fastapi import APIRouter, Depends, Header, HTTPException
 from pydantic import BaseModel, field_validator
 
+from loreweave_mcp.errors import NOT_ACCESSIBLE_MESSAGE
 from app.clients.book_client import BookClient, BookClientError
 from app.engine.assembly import ASSEMBLY_MODES
 from app.clients.knowledge_client import KnowledgeClient, KnowledgeContractError
 from app.db.models import DivergenceSpec, DivergenceTaxonomy, EntityOverride, WorkStatus
 from app.db.pool import get_pool
-from app.db.repositories import VersionMismatchError
+from app.db.repositories import ReferenceViolationError, VersionMismatchError
 from app.db.repositories.derivatives import DerivativesRepo
 from app.db.repositories.works import WorksRepo
 from app.deps import (
     get_book_client_dep,
     get_derivatives_repo,
+    get_generation_jobs_repo,
     get_grant_client_dep,
     get_knowledge_client_dep,
+    get_work_chapter_drafts_repo,
     get_works_repo,
 )
+from app.db.repositories.generation_jobs import GenerationJobsRepo
+from app.db.repositories.work_chapter_drafts import WorkChapterDraftsRepo
 from app.grant_client import GrantClient, GrantLevel
 from app.grant_deps import InsufficientGrant, authorize_book
 from app.middleware.jwt_auth import get_bearer_token, get_current_user
@@ -79,29 +88,36 @@ def _serialize_resolution(res: WorkResolution) -> WorkResolutionResponse:
 
 async def _gate_book(grant: GrantClient, book_id: UUID, caller: UUID, need: GrantLevel) -> None:
     """E0-4c book-grant chokepoint → HTTP. none→404 (no oracle), under→403.
-    composition_work stays per-user; this gates whether the caller may use
-    composition on the book at the operation's tier."""
+    composition_work is PER-BOOK (spec 25 PM-9); this gate is the ONLY access
+    decision — the repo never filters on the caller."""
     try:
         await authorize_book(grant, book_id, caller, need)
     except OwnershipError:
-        raise HTTPException(status_code=404, detail="book not found")
+        # Anti-oracle: a no-grant caller and a missing Work must be INDISTINGUISHABLE.
+        # `works.get` is un-user-scoped since the re-key, so a distinct "work not found"
+        # here would let any authenticated user probe project_id existence (PM-8).
+        raise HTTPException(status_code=404, detail=NOT_ACCESSIBLE_MESSAGE)
     except InsufficientGrant:
         raise HTTPException(status_code=403, detail="insufficient access")
 
 
-async def _ensure_pending_work(works: WorksRepo, user_id: UUID, book_id: UUID):
+async def _ensure_pending_work(works: WorksRepo, book_id: UUID, *, created_by: UUID):
     """C16 (WG-3) greenfield degrade: return the (at-most-one) lazy null-project
-    Work for this user+book, creating it if absent. Idempotent + race-safe: the
-    partial-unique `(user,book) WHERE pending_project_backfill` index caps it at one,
-    so a concurrent loser re-gets the existing row instead of 500-ing. Used by both
-    the knowledge-DOWN (resolve unavailable) and create_project-OUTAGE paths."""
-    existing = await works.get_pending_for_book(user_id, book_id)
+    Work for this BOOK, creating it if absent (stamped `created_by` = the acting
+    caller — actor, not scope; PM-9). Idempotent + race-safe: the partial-unique
+    `(book_id) WHERE pending_project_backfill` index (PM-4) caps it at one per
+    book, so a concurrent loser — any collaborator — re-gets the existing row
+    instead of 500-ing. The catch-and-re-get below matches that index predicate
+    exactly (book_id + pending marker; see get_pending_for_book —
+    postgres-partial-index-on-conflict-predicate-must-match). Used by both the
+    knowledge-DOWN (resolve unavailable) and create_project-OUTAGE paths."""
+    existing = await works.get_pending_for_book(book_id)
     if existing is not None:
         return existing
     try:
-        return await works.create_pending(user_id, book_id)
+        return await works.create_pending(created_by, book_id)
     except asyncpg.UniqueViolationError:
-        racey = await works.get_pending_for_book(user_id, book_id)
+        racey = await works.get_pending_for_book(book_id)
         if racey is None:
             raise HTTPException(status_code=409, detail={"code": "WORK_CREATE_CONFLICT"})
         return racey
@@ -128,7 +144,7 @@ async def get_work_for_book(
     # E0-4c: read-pack tier → VIEW grant on the book.
     await _gate_book(grant, book_id, user_id, GrantLevel.VIEW)
     res = await resolve_work(
-        user_id, book_id, bearer=bearer, works_repo=works, knowledge_client=knowledge,
+        book_id, bearer=bearer, works_repo=works, knowledge_client=knowledge,
     )
     return _serialize_resolution(res)
 
@@ -168,7 +184,8 @@ async def create_work_for_book(
     is_derivative = body is not None and body.source_work_id is not None
     # E0-4c: creating a work is an authoring (write) action → EDIT grant. Then
     # fetch the book for its title (get_book returns the row for any grantee
-    # post-E0-2). composition_work itself is per-user (caller-keyed below).
+    # post-E0-2). composition_work is per-book (PM-9); the caller only stamps
+    # `created_by` on the create paths below.
     await _gate_book(grant, book_id, user_id, GrantLevel.EDIT)
     try:
         book_obj = await book.get_book(book_id, bearer)
@@ -178,7 +195,7 @@ async def create_work_for_book(
         raise HTTPException(status_code=404, detail="book not found")
 
     res = await resolve_work(
-        user_id, book_id, bearer=bearer, works_repo=works, knowledge_client=knowledge,
+        book_id, bearer=bearer, works_repo=works, knowledge_client=knowledge,
     )
     if res.status == "unavailable":
         # C16 (WG-3): knowledge-service is DOWN, so resolve couldn't even list the
@@ -190,7 +207,9 @@ async def create_work_for_book(
         # project. This fully decouples writing from the knowledge-service outage.
         if is_derivative:
             raise HTTPException(status_code=502, detail={"code": "KNOWLEDGE_UNAVAILABLE"})
-        return (await _ensure_pending_work(works, user_id, book_id)).model_dump(mode="json")
+        return (
+            await _ensure_pending_work(works, book_id, created_by=user_id)
+        ).model_dump(mode="json")
     # Already a Work → idempotent return (pick the first if several marked).
     if res.status == "found":
         return res.work.model_dump(mode="json")  # type: ignore[union-attr]
@@ -208,6 +227,11 @@ async def create_work_for_book(
         # (never degrade an auth/validation failure into a grounding-blind Work);
         # only an OUTAGE (None ← down/timeout/5xx) is eligible for graceful
         # degradation.
+        # OQ-1 (ratified): knowledge auto-provision stays OWNER-only — the
+        # caller's own bearer is forwarded and knowledge rejects a non-owner
+        # (F4), which surfaces below rather than minting an owner-identity
+        # token. A grantee's pending Work waits for the owner's next
+        # create/resolve to backfill (MED-1-style path, surfaced not silent).
         try:
             created = await knowledge.create_project(book_id, name, bearer)
         except KnowledgeContractError:
@@ -221,15 +245,20 @@ async def create_work_for_book(
             # GREENFIELD: degrade to a lazy null-project Work so the writer keeps
             # drafting + Generate while knowledge recovers (backfilled by a later
             # setup retry, below).
-            return (await _ensure_pending_work(works, user_id, book_id)).model_dump(mode="json")
+            return (
+                await _ensure_pending_work(works, book_id, created_by=user_id)
+            ).model_dump(mode="json")
         project_id = UUID(str(created["project_id"]))
 
         # C16 backfill seam: if a prior outage left a lazy pending Work for this
-        # (user,book), stamp the freshly-created project onto it (clear the marker)
-        # instead of spawning a second Work — knowledge has recovered.
-        pending = await works.get_pending_for_book(user_id, book_id)
+        # book (possibly created by a grantee — PM-9/F5), stamp the freshly-created
+        # project onto it (clear the marker) instead of spawning a second Work —
+        # knowledge has recovered.
+        pending = await works.get_pending_for_book(book_id)
         if pending is not None and pending.id is not None:
-            backfilled = await works.backfill_project(user_id, pending.id, project_id)
+            backfilled = await works.backfill_project(
+                pending.id, project_id, created_by=user_id,
+            )
             if backfilled is not None:
                 return backfilled.model_dump(mode="json")
 
@@ -240,7 +269,7 @@ async def create_work_for_book(
     # knowledge-side: create_project now dedupes via ProjectsRepo.create_or_get under
     # a per-(user,book) advisory lock, so both POSTs resolve to the SAME project_id
     # and this unique-violation catch dedupes the work row.)
-    existing = await works.get(user_id, project_id)  # type: ignore[arg-type]
+    existing = await works.get(project_id)  # type: ignore[arg-type]
     if existing is not None:
         return existing.model_dump(mode="json")
     # Seed the Work's source language from the book so the drafter writes in the
@@ -251,9 +280,10 @@ async def create_work_for_book(
     _book_lang = (book_obj.get("original_language") or "").strip()
     _init_settings = {"source_language": _book_lang} if _book_lang else None
     try:
+        # `user_id` = created_by, the acting caller (plain actor stamp — PM-9).
         work = await works.create(user_id, project_id, book_id, settings=_init_settings)  # type: ignore[arg-type]
     except asyncpg.UniqueViolationError:
-        racey = await works.get(user_id, project_id)  # type: ignore[arg-type]
+        racey = await works.get(project_id)  # type: ignore[arg-type]
         if racey is None:
             raise HTTPException(status_code=409, detail={"code": "WORK_CREATE_CONFLICT"})
         return racey.model_dump(mode="json")
@@ -276,54 +306,48 @@ class EntityOverrideBody(BaseModel):
 
 
 class DeriveBody(BaseModel):
+    # BE-13a: the dị bản's human name. The wizard has ALWAYS collected this
+    # (useDivergenceWizard refuses to submit without it) and then DISCARDED it —
+    # buildBody() never sent it and composition_work has no name column. It lives
+    # in `settings.derivative_name` so candidates[]/GET /works echo it for free
+    # (both dump the Work incl. settings) and the divergence manage panel can LIST
+    # named derivatives instead of unnamed UUIDs. Optional at the route (non-panel
+    # callers / back-compat); the panel enforces presence.
+    name: str | None = None
     branch_point: int | None = None
     divergence: DivergenceSpecBody = DivergenceSpecBody()
     entity_overrides: list[EntityOverrideBody] = []
 
+    @field_validator("name")
+    @classmethod
+    def _validate_name(cls, v: str | None) -> str | None:
+        if v is None:
+            return v
+        v = v.strip()
+        if not 1 <= len(v) <= 200:
+            raise ValueError("name must be 1..200 characters")
+        return v
 
-@router.post("/works/{project_id}/derive", status_code=201)
-async def derive_work(
-    project_id: UUID,
-    body: DeriveBody | None = None,
-    user_id: UUID = Depends(get_current_user),
-    bearer: str = Depends(get_bearer_token),
-    works: WorksRepo = Depends(get_works_repo),
-    derivatives: DerivativesRepo = Depends(get_derivatives_repo),
-    knowledge: KnowledgeClient = Depends(get_knowledge_client_dep),
-    book: BookClient = Depends(get_book_client_dep),
-    grant: GrantClient = Depends(get_grant_client_dep),
+
+async def perform_derive(
+    source: CompositionWork,
+    body: DeriveBody,
+    user_id: UUID,
+    *,
+    works: WorksRepo,
+    derivatives: DerivativesRepo,
+    knowledge: KnowledgeClient,
+    book: BookClient,
+    bearer: str,
 ) -> dict[str, Any]:
-    """C23 (dị bản M0): create a DERIVATIVE Work that diverges from a SOURCE Work.
-
-    COW (LOCKED): SPEC ONLY — no chapter/scene clone; the source reference spine
-    stays read-only and the writer adapts manually. The derivative:
-      • links to the source (`source_work_id`) at a chapter-level `branch_point` (G3);
-      • gets its OWN freshly-minted knowledge project_id (G2 — its own Neo4j delta
-        partition), NEVER the source's;
-      • persists its `divergence_spec` + any `entity_override[]` (M0 scope = entity
-        fields + added canon rules; relationship/event overrides DEFERRED) — these are
-        PERSISTED here and APPLIED at retrieval in C25.
-
-    ARCH-REVIEW GUARD (LOCKED, reconciled with C16's nullable column): a derivative
-    MUST carry a NOT-NULL project_id. If knowledge-service can't mint a fresh project
-    (outage/None or a 4xx contract error), we REJECT (4xx) rather than degrade to a
-    null project — a null project_id widens the knowledge timeline to ALL of a user's
-    projects (cross-project grounding leak). The DB CHECK is the belt; this is the
-    suspenders.
-    """
-    body = body or DeriveBody()
-    # Source Work must exist + be owned by the caller (per-user predicate). 404 (not
-    # 403) on a miss — no cross-user oracle.
-    source = await works.get(user_id, project_id)
-    if source is None:
-        raise HTTPException(status_code=404, detail="source work not found")
+    """The derive EXECUTION (mint a fresh knowledge partition + persist the derivative Work +
+    divergence_spec + entity_override[] in one txn). Shared by the REST route `derive_work` and the
+    Tier-W confirm handler (D-DIVERGENCE-MCP-TOOLS `composition.derive`). The caller has ALREADY
+    resolved `source` and gated EDIT on `source.book_id`. Raises the SAME HTTPException codes as the
+    route (pending source → 409; book outage → 502; knowledge outage → 503)."""
+    book_id = source.book_id
     if source.id is None:  # a pending/lazy source has no surrogate id to link to
         raise HTTPException(status_code=409, detail={"code": "SOURCE_WORK_NOT_BACKED"})
-    book_id = source.book_id
-
-    # E0-4c: deriving is an authoring (write) action on the source's book → EDIT grant
-    # (LOCKED: a derivative of a shared work follows the source's per-book grant).
-    await _gate_book(grant, book_id, user_id, GrantLevel.EDIT)
     try:
         book_obj = await book.get_book(book_id, bearer)
     except BookClientError:
@@ -352,13 +376,19 @@ async def derive_work(
     pool = get_pool()
     async with pool.acquire() as conn:
         async with conn.transaction():
+            # `user_id` = created_by, the acting caller (plain actor stamp — PM-9).
+            # BE-13a: seed settings.derivative_name at create so it is durable from
+            # the first read (candidates[]/GET /works dump settings). BE-18's merge
+            # PATCH then preserves it against later partial settings writes (e.g. a
+            # scene-graph drag on the derivative sends only {scene_graph}).
+            _derive_settings = {"derivative_name": body.name} if body.name else None
             work = await works.create_derivative(
                 user_id, derivative_project_id, book_id, source.id,
-                branch_point=body.branch_point, conn=conn,
+                branch_point=body.branch_point, settings=_derive_settings, conn=conn,
             )
             await derivatives.create_spec(
                 DivergenceSpec(
-                    user_id=user_id, project_id=derivative_project_id, work_id=work.id,
+                    created_by=user_id, project_id=derivative_project_id, work_id=work.id,
                     taxonomy=body.divergence.taxonomy, pov_anchor=body.divergence.pov_anchor,
                     canon_rule=list(body.divergence.canon_rule),
                 ),
@@ -367,13 +397,48 @@ async def derive_work(
             for ov in body.entity_overrides:
                 await derivatives.create_override(
                     EntityOverride(
-                        user_id=user_id, project_id=derivative_project_id, work_id=work.id,
+                        created_by=user_id, project_id=derivative_project_id, work_id=work.id,
                         target_entity_id=ov.target_entity_id,
                         overridden_fields=ov.overridden_fields,
                     ),
                     conn=conn,
                 )
     return work.model_dump(mode="json")
+
+
+@router.post("/works/{project_id}/derive", status_code=201)
+async def derive_work(
+    project_id: UUID,
+    body: DeriveBody | None = None,
+    user_id: UUID = Depends(get_current_user),
+    bearer: str = Depends(get_bearer_token),
+    works: WorksRepo = Depends(get_works_repo),
+    derivatives: DerivativesRepo = Depends(get_derivatives_repo),
+    knowledge: KnowledgeClient = Depends(get_knowledge_client_dep),
+    book: BookClient = Depends(get_book_client_dep),
+    grant: GrantClient = Depends(get_grant_client_dep),
+) -> dict[str, Any]:
+    """C23 (dị bản M0): create a DERIVATIVE Work that diverges from a SOURCE Work.
+
+    COW (LOCKED): SPEC ONLY — no chapter/scene clone; the source reference spine
+    stays read-only and the writer adapts manually. The derivative links to the source
+    at a chapter-level `branch_point`, gets its OWN freshly-minted knowledge project_id
+    (G2), and persists its divergence_spec + entity_override[]. See `perform_derive`.
+    """
+    body = body or DeriveBody()
+    # Source Work resolution is un-user-scoped (PM-9); ACCESS is the EDIT gate on
+    # the source's book just below — a no-grant caller gets the same 404 there
+    # (anti-oracle preserved; nothing is returned before the gate).
+    source = await works.get(project_id)
+    if source is None:
+        raise HTTPException(status_code=404, detail="source work not found")
+    # E0-4c: deriving is an authoring (write) action on the source's book → EDIT grant
+    # (gated BEFORE the backed/knowledge steps so a no-grant probe can't oracle state).
+    await _gate_book(grant, source.book_id, user_id, GrantLevel.EDIT)
+    return await perform_derive(
+        source, body, user_id,
+        works=works, derivatives=derivatives, knowledge=knowledge, book=book, bearer=bearer,
+    )
 
 
 @router.get("/works/{project_id}")
@@ -383,13 +448,41 @@ async def get_work(
     works: WorksRepo = Depends(get_works_repo),
     grant: GrantClient = Depends(get_grant_client_dep),
 ) -> dict[str, Any]:
-    work = await works.get(user_id, project_id)
+    work = await works.get(project_id)
     if work is None:
-        raise HTTPException(status_code=404, detail="work not found")
-    # E0-4c: the work row is the caller's own (per-user predicate above); still
-    # require VIEW on its book so a revoked collaborator can't read stale work.
+        raise HTTPException(status_code=404, detail=NOT_ACCESSIBLE_MESSAGE)
+    # E0-4c/PM-9: the row is per-book — VIEW on its book is the access decision
+    # (a no-grant caller 404s at the gate; nothing returned before it).
     await _gate_book(grant, work.book_id, user_id, GrantLevel.VIEW)
     return work.model_dump(mode="json")
+
+
+@router.get("/books/{book_id}/derivatives")
+async def list_book_derivatives(
+    book_id: UUID,
+    user_id: UUID = Depends(get_current_user),
+    works: WorksRepo = Depends(get_works_repo),
+    grant: GrantClient = Depends(get_grant_client_dep),
+) -> dict[str, Any]:
+    """S-09 W4 — list a book's Works (the canonical Work + every dị bản derivative), each
+    with is_canonical / name / branch_point / status / version. The REST twin of the MCP
+    `composition_list_derivatives` (the DivergenceManagerView's read side, which S-04 mutates).
+    VIEW grant on the book; a non-grantee 404s at the gate (anti-oracle)."""
+    await _gate_book(grant, book_id, user_id, GrantLevel.VIEW)
+    rows = await works.resolve_by_book(book_id)
+    return {
+        "works": [
+            {
+                "project_id": str(w.project_id) if w.project_id else None,
+                "is_canonical": w.source_work_id is None,
+                "name": (w.settings or {}).get("derivative_name"),
+                "branch_point": w.branch_point,
+                "status": w.status,
+                "version": w.version,
+            }
+            for w in rows
+        ],
+    }
 
 
 class DerivativeContextResponse(BaseModel):
@@ -401,6 +494,7 @@ class DerivativeContextResponse(BaseModel):
     `is_derivative=False` (everything else empty) for a greenfield Work."""
 
     is_derivative: bool
+    name: str | None = None  # BE-13a: settings.derivative_name (the dị bản's human label)
     source_work_id: UUID | None = None
     source_project_id: UUID | None = None
     branch_point: int | None = None
@@ -424,18 +518,19 @@ async def get_derivative_context(
     SAME persisted substrate the packer applies — so the studio reflects real state,
     not the ephemeral derive-time react-query cache. VIEW grant on the Work's book
     (a revoked collaborator can't read a stale derivative)."""
-    work = await works.get(user_id, project_id)
+    work = await works.get(project_id)
     if work is None:
-        raise HTTPException(status_code=404, detail="work not found")
+        raise HTTPException(status_code=404, detail=NOT_ACCESSIBLE_MESSAGE)
     await _gate_book(grant, work.book_id, user_id, GrantLevel.VIEW)
     if work.source_work_id is None:
         return DerivativeContextResponse(is_derivative=False).model_dump(mode="json")
     deriv = await build_derivative_context(
-        work, user_id=user_id, works_repo=works, derivatives_repo=derivatives,
+        work, works_repo=works, derivatives_repo=derivatives,
     )
-    spec = await derivatives.get_spec_for_work(user_id, work.id) if work.id else None
+    spec = await derivatives.get_spec_for_work(work.id) if work.id else None
     return DerivativeContextResponse(
         is_derivative=True,
+        name=(work.settings or {}).get("derivative_name"),
         source_work_id=work.source_work_id,
         source_project_id=deriv.source_project_id,
         branch_point=deriv.branch_point,
@@ -450,6 +545,330 @@ async def get_derivative_context(
             for o in deriv.overrides
         ],
     ).model_dump(mode="json")
+
+
+# ── S-04: derivative delta EDITING (the spec + overrides were frozen at derive-time).
+# Addressed by {project_id} like every other Work route (the FE holds project_id and
+# fetches derivative-context by it); each route resolves work.id + work.book_id and
+# gates EDIT on the book. Only a DERIVATIVE (source_work_id set) has a spec/overrides.
+
+class DivergenceSpecPatchBody(BaseModel):
+    """Partial edit of the divergence_spec. Every field optional; an OMITTED field
+    is left unchanged (Pydantic `model_fields_set` distinguishes omitted from an
+    explicit null — `pov_anchor: null` CLEARS the anchor, taxonomy/canon_rule null
+    are ignored since both are NOT NULL)."""
+
+    taxonomy: DivergenceTaxonomy | None = None
+    pov_anchor: UUID | None = None
+    canon_rule: list[str] | None = None
+
+
+class EntityOverrideAddBody(BaseModel):
+    target_entity_id: UUID
+    overridden_fields: dict[str, Any] = {}
+
+
+class EntityOverrideUpdateBody(BaseModel):
+    overridden_fields: dict[str, Any] = {}
+
+
+async def _require_derivative_work(works: WorksRepo, grant: GrantClient, user_id: UUID,
+                                   project_id: UUID, need: GrantLevel):
+    """Resolve project_id → Work, gate the book grant, and confirm it's a derivative.
+    Returns the Work (with .id + .book_id) for the repo calls. 404 anti-oracle when
+    absent/no-grant; 400 NOT_A_DERIVATIVE only AFTER the grant passes (the caller has
+    book access, so telling them 'this Work is not a derivative' is not an oracle)."""
+    work = await works.get(project_id)
+    if work is None:
+        raise HTTPException(status_code=404, detail=NOT_ACCESSIBLE_MESSAGE)
+    await _gate_book(grant, work.book_id, user_id, need)
+    if work.source_work_id is None:
+        raise HTTPException(status_code=400, detail={"code": "NOT_A_DERIVATIVE"})
+    return work
+
+
+@router.patch("/works/{project_id}/divergence-spec")
+async def update_divergence_spec(
+    project_id: UUID,
+    body: DivergenceSpecPatchBody,
+    user_id: UUID = Depends(get_current_user),
+    works: WorksRepo = Depends(get_works_repo),
+    derivatives: DerivativesRepo = Depends(get_derivatives_repo),
+    grant: GrantClient = Depends(get_grant_client_dep),
+) -> dict[str, Any]:
+    """S-04: mutate the (single) divergence_spec of a derivative — taxonomy / pov_anchor
+    / added canon_rule[]. EDIT grant. Only provided fields change; `taxonomy` off-enum is
+    a 422 (Pydantic + repo guard), never a CHECK 500."""
+    work = await _require_derivative_work(works, grant, user_id, project_id, GrantLevel.EDIT)
+    fs = body.model_fields_set
+    kwargs: dict[str, Any] = {}
+    if "taxonomy" in fs and body.taxonomy is not None:
+        kwargs["taxonomy"] = body.taxonomy
+    if "pov_anchor" in fs:  # explicit null clears the anchor
+        kwargs["pov_anchor"] = body.pov_anchor
+    if "canon_rule" in fs and body.canon_rule is not None:
+        kwargs["canon_rule"] = body.canon_rule
+    try:
+        spec = await derivatives.update_spec(work.id, work.book_id, **kwargs)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail={"code": "INVALID_TAXONOMY", "message": str(exc)})
+    if spec is None:
+        raise HTTPException(status_code=404, detail="divergence spec not found")
+    return spec.model_dump(mode="json")
+
+
+@router.get("/works/{project_id}/entity-overrides")
+async def list_entity_overrides(
+    project_id: UUID,
+    user_id: UUID = Depends(get_current_user),
+    works: WorksRepo = Depends(get_works_repo),
+    derivatives: DerivativesRepo = Depends(get_derivatives_repo),
+    grant: GrantClient = Depends(get_grant_client_dep),
+) -> dict[str, Any]:
+    """S-04: list a derivative's entity_override rows (VIEW grant). The FE's Lane-B
+    `divergenceEffects` refetches this after a mutation to refresh the override list."""
+    work = await _require_derivative_work(works, grant, user_id, project_id, GrantLevel.VIEW)
+    overrides = await derivatives.list_overrides_for_work(work.id)
+    return {"overrides": [o.model_dump(mode="json") for o in overrides]}
+
+
+@router.post("/works/{project_id}/entity-overrides", status_code=201)
+async def add_entity_override(
+    project_id: UUID,
+    body: EntityOverrideAddBody,
+    user_id: UUID = Depends(get_current_user),
+    works: WorksRepo = Depends(get_works_repo),
+    derivatives: DerivativesRepo = Depends(get_derivatives_repo),
+    grant: GrantClient = Depends(get_grant_client_dep),
+) -> dict[str, Any]:
+    """S-04: add an entity_override AFTER derive (the missing 'override another entity
+    later'). EDIT grant. A duplicate target → 409 (PATCH it instead); a target outside
+    the book's graph resolution → 404."""
+    work = await _require_derivative_work(works, grant, user_id, project_id, GrantLevel.EDIT)
+    try:
+        ov = await derivatives.add_override(
+            work.id, work.book_id, user_id, body.target_entity_id, body.overridden_fields,
+        )
+    except asyncpg.UniqueViolationError:
+        raise HTTPException(status_code=409, detail={
+            "code": "OVERRIDE_EXISTS",
+            "message": "an override for this entity already exists; PATCH it instead",
+        })
+    except ReferenceViolationError:
+        raise HTTPException(status_code=404, detail=NOT_ACCESSIBLE_MESSAGE)
+    return ov.model_dump(mode="json")
+
+
+@router.patch("/works/{project_id}/entity-overrides/{override_id}")
+async def update_entity_override(
+    project_id: UUID,
+    override_id: UUID,
+    body: EntityOverrideUpdateBody,
+    user_id: UUID = Depends(get_current_user),
+    works: WorksRepo = Depends(get_works_repo),
+    derivatives: DerivativesRepo = Depends(get_derivatives_repo),
+    grant: GrantClient = Depends(get_grant_client_dep),
+) -> dict[str, Any]:
+    """S-04: replace an override's field-set (whole-object — the override IS the delta).
+    EDIT grant. 404 when the override doesn't belong to this derivative."""
+    work = await _require_derivative_work(works, grant, user_id, project_id, GrantLevel.EDIT)
+    ov = await derivatives.update_override(
+        work.id, work.book_id, override_id, body.overridden_fields,
+    )
+    if ov is None:
+        raise HTTPException(status_code=404, detail="entity override not found")
+    return ov.model_dump(mode="json")
+
+
+@router.delete("/works/{project_id}/entity-overrides/{override_id}", status_code=204)
+async def delete_entity_override(
+    project_id: UUID,
+    override_id: UUID,
+    user_id: UUID = Depends(get_current_user),
+    works: WorksRepo = Depends(get_works_repo),
+    derivatives: DerivativesRepo = Depends(get_derivatives_repo),
+    grant: GrantClient = Depends(get_grant_client_dep),
+) -> None:
+    """S-04: hard-delete an override — reverts that entity to canon. EDIT grant; 404
+    when nothing matched (idempotent second delete is a 404, not a 500)."""
+    work = await _require_derivative_work(works, grant, user_id, project_id, GrantLevel.EDIT)
+    ok = await derivatives.delete_override(work.id, work.book_id, override_id)
+    if not ok:
+        raise HTTPException(status_code=404, detail="entity override not found")
+
+
+@router.get("/works/{project_id}/chapters/{chapter_id}/scene-drafts")
+async def get_chapter_scene_drafts(
+    project_id: UUID,
+    chapter_id: UUID,
+    user_id: UUID = Depends(get_current_user),
+    works: WorksRepo = Depends(get_works_repo),
+    jobs: GenerationJobsRepo = Depends(get_generation_jobs_repo),
+    grant: GrantClient = Depends(get_grant_client_dep),
+) -> dict[str, Any]:
+    """S5-B4 (branch prose-diff) — the latest completed scene-draft prose for every
+    scene in a chapter, WITH node_id + story_order, so the FE can diff a dị bản's scene
+    prose against the source canon's (fetch this for BOTH projects, correspond by
+    (chapter_id, story_order)). VIEW grant on the Work's book. Read-only; works on any
+    project (canon or derivative). A chapter with no scene drafts → empty items."""
+    work = await works.get(project_id)
+    if work is None:
+        raise HTTPException(status_code=404, detail=NOT_ACCESSIBLE_MESSAGE)
+    await _gate_book(grant, work.book_id, user_id, GrantLevel.VIEW)
+    items = await jobs.scene_drafts_detailed(project_id, chapter_id)
+    return {"items": items}
+
+
+# ── D-S5-DERIVATIVE-MANUSCRIPT-FORK — a derivative Work's OWN manuscript, per chapter.
+# Chapter-level copy-on-write: GET reads the fork if it exists, else reads-through to
+# canon (inherit); PATCH forks on first edit (expected_version=0) then OCC-bumps. Only a
+# DERIVATIVE Work has a fork layer — the canonical Work edits the book draft directly.
+class WorkChapterDraftPatchBody(BaseModel):
+    body: Any
+    # 0 = FORK this chapter (no work row yet — the FE saw the inherited canon at version 0);
+    # >=1 = overwrite the existing fork under OCC against its draft_version.
+    expected_version: int
+    draft_format: str = "json"
+
+
+@router.get("/works/{project_id}/chapters/{chapter_id}/work-draft")
+async def get_work_chapter_draft(
+    project_id: UUID,
+    chapter_id: UUID,
+    user_id: UUID = Depends(get_current_user),
+    bearer: str = Depends(get_bearer_token),
+    works: WorksRepo = Depends(get_works_repo),
+    grant: GrantClient = Depends(get_grant_client_dep),
+    book: BookClient = Depends(get_book_client_dep),
+    wcd: WorkChapterDraftsRepo = Depends(get_work_chapter_drafts_repo),
+) -> dict[str, Any]:
+    """The derivative's own draft for this chapter. If it has forked, return the fork
+    (`forked: true`). If not, READ THROUGH to canon (book-service) and return it with
+    `forked: false, inherited: true, draft_version: 0` — the FE edits it and PATCHes with
+    expected_version=0 to fork. VIEW grant. Rejects the canonical Work (it has no fork layer —
+    edit the book draft directly)."""
+    work = await works.get(project_id)
+    if work is None:
+        raise HTTPException(status_code=404, detail=NOT_ACCESSIBLE_MESSAGE)
+    await _gate_book(grant, work.book_id, user_id, GrantLevel.VIEW)
+    if work.source_work_id is None:
+        raise HTTPException(status_code=400, detail={"code": "NOT_A_DERIVATIVE"})
+    fork = await wcd.get(project_id, chapter_id)
+    if fork is not None:
+        return {
+            "forked": True, "inherited": False, "body": fork.body,
+            "draft_version": fork.draft_version, "draft_format": fork.draft_format,
+            "merged_at": fork.merged_at.isoformat() if fork.merged_at else None,
+        }
+    # Inherit canon (read-through). book-service 404 → the chapter doesn't exist → surface it.
+    try:
+        canon = await book.get_draft(work.book_id, chapter_id, bearer)
+    except BookClientError:
+        raise HTTPException(status_code=502, detail={"code": "BOOK_SERVICE_UNAVAILABLE"})
+    if canon is None:
+        raise HTTPException(status_code=404, detail="chapter not found")
+    return {
+        "forked": False, "inherited": True, "body": canon.get("body"),
+        "draft_version": 0, "draft_format": canon.get("draft_format", "json"),
+        "canon_version": canon.get("draft_version"),
+    }
+
+
+@router.patch("/works/{project_id}/chapters/{chapter_id}/work-draft")
+async def patch_work_chapter_draft(
+    project_id: UUID,
+    chapter_id: UUID,
+    body: WorkChapterDraftPatchBody,
+    user_id: UUID = Depends(get_current_user),
+    works: WorksRepo = Depends(get_works_repo),
+    grant: GrantClient = Depends(get_grant_client_dep),
+    wcd: WorkChapterDraftsRepo = Depends(get_work_chapter_drafts_repo),
+) -> dict[str, Any]:
+    """Write the derivative's fork for this chapter. expected_version=0 FORKS it (INSERT
+    version 1); >=1 overwrites under OCC (stale → 412). Canon (book-service) is NEVER touched —
+    the isolation the fork model promises. EDIT grant. Rejects the canonical Work."""
+    work = await works.get(project_id)
+    if work is None:
+        raise HTTPException(status_code=404, detail=NOT_ACCESSIBLE_MESSAGE)
+    await _gate_book(grant, work.book_id, user_id, GrantLevel.EDIT)
+    if work.source_work_id is None:
+        raise HTTPException(status_code=400, detail={"code": "NOT_A_DERIVATIVE"})
+    if body.expected_version == 0:
+        forked = await wcd.insert_fork(
+            project_id, chapter_id, work.book_id, user_id, body.body, body.draft_format,
+        )
+        if forked is None:  # a concurrent fork raced us — refetch and retry
+            raise HTTPException(status_code=409, detail={"code": "ALREADY_FORKED"})
+        return {"forked": True, "body": forked.body, "draft_version": forked.draft_version}
+    try:
+        updated = await wcd.update_occ(
+            project_id, chapter_id, body.body, body.expected_version, body.draft_format,
+        )
+    except VersionMismatchError as exc:
+        current = exc.current
+        raise HTTPException(status_code=412, detail={
+            "code": "STALE_VERSION",
+            "current_version": current.draft_version if current else None,
+        })
+    return {"forked": True, "body": updated.body, "draft_version": updated.draft_version}
+
+
+class MergeToCanonBody(BaseModel):
+    # The canon draft_version the user is merging against — merge ONLY if canon hasn't moved
+    # since (anti-clobber, surfaced as CANON_CONFLICT). None → merge over canon's CURRENT
+    # version (force-promote the fork; book-service's own OCC still guards the read→patch window).
+    expected_canon_version: int | None = None
+
+
+@router.post("/works/{project_id}/chapters/{chapter_id}/merge-to-canon")
+async def merge_work_chapter_to_canon(
+    project_id: UUID,
+    chapter_id: UUID,
+    body: MergeToCanonBody | None = None,
+    user_id: UUID = Depends(get_current_user),
+    bearer: str = Depends(get_bearer_token),
+    works: WorksRepo = Depends(get_works_repo),
+    grant: GrantClient = Depends(get_grant_client_dep),
+    book: BookClient = Depends(get_book_client_dep),
+    wcd: WorkChapterDraftsRepo = Depends(get_work_chapter_drafts_repo),
+) -> dict[str, Any]:
+    """Promote a derivative's forked chapter INTO canon — one-way content merge (the fork ROW
+    stays; the branch remains a parallel manuscript). Writes the fork body into canon
+    (book-service) under OCC against the canon draft_version: a concurrent canon edit → 409
+    CANON_CONFLICT (never a silent clobber). EDIT grant. Rejects the canonical Work + an
+    unforked chapter (nothing to merge)."""
+    body = body or MergeToCanonBody()
+    work = await works.get(project_id)
+    if work is None:
+        raise HTTPException(status_code=404, detail=NOT_ACCESSIBLE_MESSAGE)
+    await _gate_book(grant, work.book_id, user_id, GrantLevel.EDIT)
+    if work.source_work_id is None:
+        raise HTTPException(status_code=400, detail={"code": "NOT_A_DERIVATIVE"})
+    fork = await wcd.get(project_id, chapter_id)
+    if fork is None:
+        raise HTTPException(status_code=409, detail={"code": "NOT_FORKED"})  # nothing to merge
+    try:
+        if body.expected_canon_version is not None:
+            expected = body.expected_canon_version
+        else:
+            canon = await book.get_draft(work.book_id, chapter_id, bearer)
+            if canon is None:
+                raise HTTPException(status_code=404, detail="chapter not found")
+            expected = canon.get("draft_version")
+        name = (work.settings or {}).get("derivative_name") or "dị bản"
+        updated = await book.patch_draft(
+            work.book_id, chapter_id, bearer,
+            body=fork.body, expected_draft_version=expected,
+            body_format=fork.draft_format, commit_message=f"Merge {name} into canon",
+        )
+    except BookClientError as exc:
+        if exc.status == 409 or exc.code == "CHAPTER_DRAFT_CONFLICT":
+            raise HTTPException(status_code=409, detail={
+                "code": "CANON_CONFLICT", "detail": "canon changed since — refetch and retry",
+            })
+        raise HTTPException(status_code=502, detail={"code": "BOOK_MERGE_FAILED", "detail": exc.code})
+    await wcd.mark_merged(project_id, chapter_id)
+    return {"merged": True, "canon_draft_version": updated.get("draft_version")}
 
 
 # ── D-C16: id-addressable + self-healing backfill for a pending null-project ──
@@ -471,9 +890,9 @@ async def get_work_by_id(
     created GREENFIELD null-project Work has (no project_id yet to key the
     /works/{project_id} routes on). Lets the FE hold work.id after POST /work and
     read its backfill status. VIEW grant on the Work's book."""
-    work = await works.get_by_id(user_id, work_id)
+    work = await works.get_by_id(work_id)
     if work is None:
-        raise HTTPException(status_code=404, detail="work not found")
+        raise HTTPException(status_code=404, detail=NOT_ACCESSIBLE_MESSAGE)
     await _gate_book(grant, work.book_id, user_id, GrantLevel.VIEW)
     return work.model_dump(mode="json")
 
@@ -498,14 +917,18 @@ async def resolve_work_project(
     STILL_PENDING so the FE keeps polling. A 4xx contract error surfaces as 502
     (never silently swallowed). EDIT grant — backfilling binds a real grounding
     project, an authoring action."""
-    work = await works.get_by_id(user_id, work_id)
+    work = await works.get_by_id(work_id)
     if work is None:
-        raise HTTPException(status_code=404, detail="work not found")
+        raise HTTPException(status_code=404, detail=NOT_ACCESSIBLE_MESSAGE)
+    # Gate BEFORE the idempotent early-return: get_by_id is un-user-scoped now
+    # (PM-9), so returning row content pre-gate would be an any-caller oracle
+    # (worker-loaded-id-needs-parent-scoping — every by-id load keeps the book
+    # gate as its parent scope).
+    book_id = work.book_id
+    await _gate_book(grant, book_id, user_id, GrantLevel.EDIT)
     if work.project_id is not None or not work.pending_project_backfill:
         return work.model_dump(mode="json")
 
-    book_id = work.book_id
-    await _gate_book(grant, book_id, user_id, GrantLevel.EDIT)
     try:
         book_obj = await book.get_book(book_id, bearer)
     except BookClientError:
@@ -526,7 +949,7 @@ async def resolve_work_project(
 
     project_id = UUID(str(created["project_id"]))
     try:
-        backfilled = await works.backfill_project(user_id, work.id, project_id)
+        backfilled = await works.backfill_project(work.id, project_id, created_by=user_id)
     except asyncpg.UniqueViolationError:
         # Defensive (review #2): the one-Work-per-book invariant makes this
         # unreachable — a pending row exists ONLY when no backed row already
@@ -540,7 +963,7 @@ async def resolve_work_project(
     # Race / collision: a concurrent POST /work already backfilled (our
     # WHERE-pending UPDATE no-op'd, or a unique row already holds the project).
     # Re-read and return the now-backed row.
-    current = await works.get_by_id(user_id, work_id)
+    current = await works.get_by_id(work_id)
     return (current or work).model_dump(mode="json")
 
 
@@ -554,16 +977,17 @@ async def patch_work(
     if_match: str | None = Header(default=None, alias="If-Match"),
 ) -> dict[str, Any]:
     # E0-4c: patching the authoring context is a write → EDIT on the work's book.
-    # Resolve the caller's own work first (per-user) to get its book_id.
-    existing = await works.get(user_id, project_id)
+    # Resolve the (per-book) work first to get its book_id; the gate is the
+    # access decision (nothing returned before it).
+    existing = await works.get(project_id)
     if existing is None:
-        raise HTTPException(status_code=404, detail="work not found")
+        raise HTTPException(status_code=404, detail=NOT_ACCESSIBLE_MESSAGE)
     await _gate_book(grant, existing.book_id, user_id, GrantLevel.EDIT)
     expected_version = _parse_if_match(if_match)
     patch_dict = patch.model_dump(exclude_unset=True)
     try:
         updated = await works.update(
-            user_id, project_id, patch_dict, expected_version=expected_version,
+            project_id, patch_dict, created_by=user_id, expected_version=expected_version,
         )
     except VersionMismatchError as exc:
         raise HTTPException(
@@ -571,5 +995,5 @@ async def patch_work(
             detail={"code": "WORK_VERSION_CONFLICT", "current": exc.current.model_dump(mode="json")},
         )
     if updated is None:
-        raise HTTPException(status_code=404, detail="work not found")
+        raise HTTPException(status_code=404, detail=NOT_ACCESSIBLE_MESSAGE)
     return updated.model_dump(mode="json")

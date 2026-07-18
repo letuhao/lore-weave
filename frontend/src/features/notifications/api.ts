@@ -1,4 +1,5 @@
 import { apiJson } from '@/api';
+import { emitNotificationsMutated } from './mutationBus';
 
 export type Notification = {
   id: string;
@@ -38,14 +39,20 @@ export function fetchUnreadCount(token: string) {
   return apiJson<{ count: number }>('/v1/notifications/unread-count', { token });
 }
 
-export function markRead(id: string, token: string) {
-  return apiJson<void>(`/v1/notifications/${id}/read`, { method: 'PATCH', token });
+export async function markRead(id: string, token: string) {
+  const r = await apiJson<void>(`/v1/notifications/${id}/read`, { method: 'PATCH', token });
+  emitNotificationsMutated(); // every badge re-reads the truth (cross-surface sync)
+  return r;
 }
 
-export function markAllRead(token: string) {
-  return apiJson<{ marked: number }>('/v1/notifications/read-all', { method: 'POST', token });
+export async function markAllRead(token: string) {
+  const r = await apiJson<{ marked: number }>('/v1/notifications/read-all', { method: 'POST', token });
+  emitNotificationsMutated();
+  return r;
 }
 
-export function deleteNotification(id: string, token: string) {
-  return apiJson<void>(`/v1/notifications/${id}`, { method: 'DELETE', token });
+export async function deleteNotification(id: string, token: string) {
+  const r = await apiJson<void>(`/v1/notifications/${id}`, { method: 'DELETE', token });
+  emitNotificationsMutated();
+  return r;
 }

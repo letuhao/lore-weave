@@ -1,0 +1,31 @@
+{
+  "scenario": "S12",
+  "title": "Draft several chapters on your own, over an approved plan (Agent Mode)",
+  "maps_to": "W12 autonomous-drafting rail (wraps the existing agent-mode FSM)",
+  "persona": "P1 Mai (novelist) who has approved a plan and wants to wake up to pages",
+  "model": "gemma-4-26b-a4b-qat",
+  "permission_mode": "write",
+  "fixture": "⚠️ a book with an APPROVED PLAN — SKILL_BOOK_ID (the S06 flagship output book serves). W12's precondition IS an approved plan; without one the rail must refuse, which is a different test.",
+  "context": {"book_context": {"book_id": "<BOOK_ID>"}},
+  "enabled_skills": [],
+  "jargon_denylist": [
+    "FSM", "agent mode", "workflow", "rail", "job", "async", "poll",
+    "acceptance", "tool", "schema"
+  ],
+  "canon_facts": [
+    "PROSE actually landed for the chapters it claims to have drafted (M0a: a chapter row is NOT a drafted chapter)",
+    "a long-running draft was POLLED to a terminal state before being called done",
+    "the agent did NOT claim chapters were written while they were empty",
+    "it stopped and reported honestly if it could not continue"
+  ],
+  "movements": [
+    {"id": "A", "label": "Turn it loose"},
+    {"id": "B", "label": "Let it run"},
+    {"id": "C", "label": "What actually got written?"}
+  ],
+  "turns": [
+    {"movement": "A", "user": "Go ahead and draft the next few chapters from the plan while I'm away."},
+    {"movement": "B", "user": "Yes, keep going."},
+    {"movement": "C", "user": "What did you actually finish? Read me the opening of each one you saved."}
+  ]
+}

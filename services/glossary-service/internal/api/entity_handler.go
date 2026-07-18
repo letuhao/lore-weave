@@ -111,6 +111,11 @@ type entityListItem struct {
 	Status                 string       `json:"status"`
 	Tags                   []string     `json:"tags"`
 	ShortDescription       *string      `json:"short_description"`
+	// ScopeLabel (D-GLOSSARY-ENTITY-SCOPE) — an optional author-set disambiguator
+	// (e.g. a world/realm name); "" when unset (the common case). Surfaced so an
+	// agent/human can see whether a name collision already carries a scope before
+	// deciding whether a NEW entity of the same name needs a different one.
+	ScopeLabel             string       `json:"scope_label,omitempty"`
 	IsPinnedForContext     bool         `json:"is_pinned_for_context"`
 	ChapterLinkCount       int          `json:"chapter_link_count"`
 	TranslationCount       int          `json:"translation_count"`
@@ -161,7 +166,7 @@ func (s *Server) loadEntityDetail(ctx context.Context, bookID, entityID uuid.UUI
 				WHERE eav.entity_id = e.entity_id AND ad.code IN ('name','term')
 				ORDER BY ad.sort_order LIMIT 1
 			), '') AS display_name,
-			e.short_description, e.is_pinned_for_context,
+			e.short_description, e.scope_label, e.is_pinned_for_context,
 			(SELECT COUNT(*) FROM chapter_entity_links WHERE entity_id = e.entity_id) AS chapter_link_count,
 			(SELECT COUNT(*) FROM attribute_translations tr
 				JOIN entity_attribute_values eav2 ON eav2.attr_value_id = tr.attr_value_id
@@ -177,7 +182,7 @@ func (s *Server) loadEntityDetail(ctx context.Context, bookID, entityID uuid.UUI
 		&d.EntityID, &d.BookID, &d.KindID, &d.Status, &d.Tags, &d.CreatedAt, &d.UpdatedAt,
 		&d.Kind.KindID, &d.Kind.Code, &d.Kind.Name, &d.Kind.Icon, &d.Kind.Color,
 		&d.DisplayName,
-		&d.ShortDescription, &d.IsPinnedForContext,
+		&d.ShortDescription, &d.ScopeLabel, &d.IsPinnedForContext,
 		&d.ChapterLinkCount, &d.TranslationCount, &d.EvidenceCount,
 	)
 	if err == pgx.ErrNoRows {
@@ -776,7 +781,7 @@ func (s *Server) listEntities(w http.ResponseWriter, r *http.Request) {
 			ek.book_kind_id, ek.code, ek.name, ek.icon, ek.color,
 			%s AS display_name,
 			%s AS display_name_translation,
-			e.short_description, e.is_pinned_for_context,
+			e.short_description, e.scope_label, e.is_pinned_for_context,
 			(SELECT COUNT(*) FROM chapter_entity_links WHERE entity_id = e.entity_id) AS chapter_link_count,
 			(SELECT COUNT(*) FROM attribute_translations tr
 				JOIN entity_attribute_values eav2 ON eav2.attr_value_id = tr.attr_value_id
@@ -810,7 +815,7 @@ func (s *Server) listEntities(w http.ResponseWriter, r *http.Request) {
 			&item.Kind.KindID, &item.Kind.Code, &item.Kind.Name, &item.Kind.Icon, &item.Kind.Color,
 			&item.DisplayName,
 			&item.DisplayNameTranslation,
-			&item.ShortDescription, &item.IsPinnedForContext,
+			&item.ShortDescription, &item.ScopeLabel, &item.IsPinnedForContext,
 			&item.ChapterLinkCount, &item.TranslationCount, &item.EvidenceCount,
 			&cachedName, &cachedAliases,
 		); err != nil {
@@ -976,11 +981,9 @@ func (s *Server) patchEntity(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusBadRequest, "GLOSS_INVALID_BODY", "invalid status")
 			return
 		}
-		switch status {
-		case "active", "inactive", "draft":
-		default:
+		if !validEntityStatus(status) {
 			writeError(w, http.StatusUnprocessableEntity, "GLOSS_INVALID_STATUS",
-				"status must be active, inactive, or draft")
+				"status must be active, inactive, draft, or rejected")
 			return
 		}
 		setClauses = append(setClauses, fmt.Sprintf("status = $%d", argN))
@@ -1049,6 +1052,31 @@ func (s *Server) patchEntity(w http.ResponseWriter, r *http.Request) {
 		argN++
 	}
 
+	// scope_label (D-GLOSSARY-ENTITY-SCOPE) — an optional author-set disambiguator
+	// (e.g. a world/realm name) for a name that legitimately recurs across
+	// different in-story contexts. Plain string, no nullability tri-state (unlike
+	// short_description): an explicit "" clears it, same as any other value sets it.
+	if raw, ok := in["scope_label"]; ok {
+		var scope string
+		if err := json.Unmarshal(raw, &scope); err != nil {
+			writeError(w, http.StatusBadRequest, "GLOSS_INVALID_BODY", "scope_label must be a string")
+			return
+		}
+		// /review-impl MED fix (2026-07-09): same bound + message as every other
+		// scope_label write path (validateScopeLabel, entity_attribute_edit_tools.go)
+		// — an oversized value used to have no path-specific check, risking a raw
+		// Postgres "index row size exceeds maximum" error from the uq_entity_dedup
+		// btree entry instead of a clean 422.
+		validated, verr := validateScopeLabel(scope)
+		if verr != nil {
+			writeError(w, http.StatusUnprocessableEntity, "GLOSS_INVALID_SCOPE_LABEL", verr.Error())
+			return
+		}
+		setClauses = append(setClauses, fmt.Sprintf("scope_label = $%d", argN))
+		args = append(args, validated)
+		argN++
+	}
+
 	if raw, ok := in["is_pinned_for_context"]; ok {
 		var pinned bool
 		if err := json.Unmarshal(raw, &pinned); err != nil {
@@ -1093,6 +1121,14 @@ func (s *Server) patchEntity(w http.ResponseWriter, r *http.Request) {
 
 		tag, err := tx.Exec(ctx, updateSQL, args...)
 		if err != nil {
+			// A scope_label change can collide with uq_entity_dedup(book_id, kind_id,
+			// normalized_name, scope_label) if another entity already holds this exact
+			// name+kind+scope — a real, user-actionable conflict, not an infra fault.
+			if isUniqueViolation(err) {
+				writeError(w, http.StatusConflict, "GLOSS_DUPLICATE_NAME",
+					"an entity with this name, kind, and scope already exists in this book")
+				return
+			}
 			writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "update failed")
 			return
 		}
@@ -1164,7 +1200,7 @@ func (s *Server) patchEntity(w http.ResponseWriter, r *http.Request) {
 
 // ── POST /v1/glossary/books/{book_id}/entities/bulk-status ───────────────────
 
-// bulkSetEntityStatus flips status (active|inactive|draft) for many entities in
+// bulkSetEntityStatus flips status (active|inactive|draft|rejected) for many entities in
 // one transaction-free UPDATE. Primary use: bulk-activate freshly-extracted draft
 // entities so they feed the translation glossary (the translation-glossary query
 // only returns status='active'). Book-scoped + edit-grant gated.
@@ -1194,11 +1230,9 @@ func (s *Server) bulkSetEntityStatus(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "GLOSS_INVALID_BODY", "invalid JSON")
 		return
 	}
-	switch in.Status {
-	case "active", "inactive", "draft":
-	default:
+	if !validEntityStatus(in.Status) {
 		writeError(w, http.StatusUnprocessableEntity, "GLOSS_INVALID_STATUS",
-			"status must be active, inactive, or draft")
+			"status must be active, inactive, draft, or rejected")
 		return
 	}
 	if len(in.EntityIDs) == 0 {
@@ -1261,6 +1295,23 @@ func (s *Server) countLiveEntitiesInBook(ctx context.Context, bookID uuid.UUID, 
 		`SELECT count(*) FROM glossary_entities
 		 WHERE book_id = $1 AND entity_id = ANY($2::uuid[]) AND deleted_at IS NULL`,
 		bookID, ids).Scan(&n)
+	return n, err
+}
+
+// countEntitiesNeedingStatusChange returns how many of `ids` are live entities in the
+// book whose CURRENT status differs from `status` — i.e. how many would actually change.
+// effectStatusChange's UPDATE has no `status <> $1` guard, so it reports every live id as
+// "updated" even when every one of them already has the target status (external MCP
+// discoverability audit #11: used by toolProposeStatusChange to warn on that no-op case).
+func (s *Server) countEntitiesNeedingStatusChange(ctx context.Context, bookID uuid.UUID, ids []uuid.UUID, status string) (int, error) {
+	if len(ids) == 0 {
+		return 0, nil
+	}
+	var n int
+	err := s.pool.QueryRow(ctx,
+		`SELECT count(*) FROM glossary_entities
+		 WHERE book_id = $1 AND entity_id = ANY($2::uuid[]) AND deleted_at IS NULL AND status <> $3`,
+		bookID, ids, status).Scan(&n)
 	return n, err
 }
 
@@ -1340,21 +1391,33 @@ func (s *Server) deleteEntity(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	ctx := r.Context()
-	tag, err := s.pool.Exec(ctx,
-		`UPDATE glossary_entities
-	 SET deleted_at = now(), updated_at = now()
-	 WHERE entity_id = $1 AND book_id = $2 AND deleted_at IS NULL`,
-		entityID, bookID)
+	found, err := s.softDeleteEntityCore(r.Context(), bookID, entityID)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "delete failed")
 		return
 	}
-	if tag.RowsAffected() == 0 {
+	if !found {
 		writeError(w, http.StatusNotFound, "GLOSS_NOT_FOUND", "entity not found")
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// softDeleteEntityCore soft-deletes ONE entity (deleted_at=now()). The single
+// source of truth for the REST DELETE route above AND the glossary_entity_delete
+// Tier-W confirm effect (entity_delete_tools.go) — found=false means the entity
+// doesn't exist in this book, or is already deleted (idempotent no-op at the
+// caller's discretion).
+func (s *Server) softDeleteEntityCore(ctx context.Context, bookID, entityID uuid.UUID) (found bool, err error) {
+	tag, err := s.pool.Exec(ctx,
+		`UPDATE glossary_entities
+		 SET deleted_at = now(), updated_at = now()
+		 WHERE entity_id = $1 AND book_id = $2 AND deleted_at IS NULL`,
+		entityID, bookID)
+	if err != nil {
+		return false, err
+	}
+	return tag.RowsAffected() > 0, nil
 }
 
 // ── POST /v1/glossary/books/{book_id}/entities/bulk-delete ───────────────────
@@ -1425,8 +1488,32 @@ func (s *Server) bulkDeleteEntities(w http.ResponseWriter, r *http.Request) {
 }
 
 // ── GET /v1/glossary/books/{book_id}/entity-names ───────────────────────────
-// Lightweight endpoint for editor decoration scanning.
-// Returns only entity_id, display_name, display_name_translation, kind metadata.
+// Lightweight names-only surface for editor decoration scanning AND the Plan Hub
+// badge name map (F-H9/PH26). Returns entity_id, display_name + kind metadata.
+//
+// Widened (F-H9/PH26) from the old hard `LIMIT 500` bare-array to KEYSET
+// pagination over entity_id ASC (reuses internalListEntities' opaque base64
+// cursor codec — encode/decodeEntitiesCursor). Every page carries `truncated`
+// (more pages remain) + `next_cursor`, so a large glossary (15000+ entities)
+// pages fully instead of being silently capped at 500. The status filter is
+// widened to ALL non-deleted entities (deleted_at IS NULL) — the Hub needs the
+// full name map across draft/inactive/active, not just active. Book-scoped +
+// View-grant gated, exactly as before.
+
+type entityNameItem struct {
+	EntityID    string  `json:"entity_id"`
+	DisplayName string  `json:"display_name"`
+	KindCode    *string `json:"kind_code,omitempty"`
+	KindColor   *string `json:"kind_color,omitempty"`
+	KindIcon    *string `json:"kind_icon,omitempty"`
+	KindName    *string `json:"kind_name,omitempty"`
+}
+
+type entityNamesPageResp struct {
+	Items      []entityNameItem `json:"items"`
+	Truncated  bool             `json:"truncated"`
+	NextCursor *string          `json:"next_cursor"`
+}
 
 func (s *Server) listEntityNames(w http.ResponseWriter, r *http.Request) {
 	userID, ok := s.requireUserID(r)
@@ -1442,64 +1529,116 @@ func (s *Server) listEntityNames(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	q := r.URL.Query()
+	// Page size: default 200, clamped to [1, 500] (the old hard cap becomes the
+	// per-page ceiling; the caller pages past it via next_cursor).
+	limit := queryInt(q.Get("limit"), 200)
+	if limit < 1 {
+		limit = 1
+	}
+	if limit > 500 {
+		limit = 500
+	}
+
+	// Opaque keyset cursor over entity_id (reuses the internalListEntities codec).
+	// null/missing starts from the first entity; a malformed cursor is a 400.
+	var afterArg any
+	if raw := q.Get("cursor"); raw != "" {
+		id, err := decodeEntitiesCursor(raw)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, "GLOSS_BAD_CURSOR", "invalid cursor: "+err.Error())
+			return
+		}
+		afterArg = id
+	} else {
+		afterArg = nil
+	}
+
+	// Peek-ahead: fetch limit+1 rows; the (limit+1)-th row (if present) confirms a
+	// further page and sets truncated + next_cursor without being emitted.
+	// display_name resolution MUST mirror the canonical label lookup used everywhere else in this
+	// file (loadEntityDetail Q1 + the list queries): the label attribute is keyed under EITHER
+	// 'name' OR 'term' (kinds differ — e.g. a glossary term entry labels under 'term'), so a
+	// `code = 'name'`-only filter silently drops every term-keyed entity from the name map
+	// (glossary-unmatched-attr-fallback bug class). Use the same correlated subquery + IN clause.
 	rows, err := s.pool.Query(r.Context(), `
-		SELECT e.entity_id, eav.original_value AS display_name,
+		SELECT e.entity_id,
+			COALESCE((
+				SELECT eav.original_value FROM entity_attribute_values eav
+				JOIN book_attributes ad ON ad.attr_id = eav.attr_def_id
+				WHERE eav.entity_id = e.entity_id AND ad.code IN ('name','term')
+				ORDER BY (ad.code = 'name') DESC, ad.sort_order LIMIT 1
+			), '') AS display_name,
 			ek.code AS kind_code, ek.color AS kind_color, ek.icon AS kind_icon, ek.name AS kind_name
 		FROM glossary_entities e
 		JOIN book_kinds ek ON ek.book_kind_id = e.kind_id
-		LEFT JOIN entity_attribute_values eav ON eav.entity_id = e.entity_id
-			AND eav.attr_def_id = (
-				SELECT ba.attr_id FROM book_attributes ba
-				JOIN book_genres g ON g.genre_id = ba.genre_id
-				WHERE ba.kind_id = e.kind_id AND ba.code = 'name'
-				ORDER BY (g.code = 'universal') DESC, ba.sort_order LIMIT 1)
-		WHERE e.book_id = $1 AND e.deleted_at IS NULL AND e.status = 'active'
-		ORDER BY eav.original_value
-		LIMIT 500`, bookID)
+		WHERE e.book_id = $1 AND e.deleted_at IS NULL
+		  AND ($2::uuid IS NULL OR e.entity_id > $2::uuid)
+		ORDER BY e.entity_id ASC
+		LIMIT $3`, bookID, afterArg, limit+1)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "query failed")
 		return
 	}
 	defer rows.Close()
 
-	items := make([]map[string]any, 0, 100)
+	items := make([]entityNameItem, 0, limit)
+	var pageLastID uuid.UUID // entity_id of the last row AT-OR-BEFORE position `limit`
+	havePageLast := false
+	rowsScanned := 0
 	for rows.Next() {
 		var entityID uuid.UUID
 		var displayName, kindCode, kindColor, kindIcon, kindName *string
 		if err := rows.Scan(&entityID, &displayName, &kindCode, &kindColor, &kindIcon, &kindName); err != nil {
 			continue
 		}
+		rowsScanned++
+		// The (limit+1)-th row is the peek-ahead: it signals truncation but is
+		// neither emitted nor used as the cursor boundary.
+		if rowsScanned > limit {
+			break
+		}
+		// Track the last DB row of the page as the cursor boundary REGARDLESS of the
+		// name filter below — so a name-filtered row at the page boundary can't strand
+		// pagination (mirrors internalListEntities' peek-ahead correctness fix).
+		pageLastID = entityID
+		havePageLast = true
+
 		dn := ""
 		if displayName != nil {
 			dn = *displayName
 		}
 		if dn == "" {
-			continue // skip entities without a name
+			continue // skip nameless entities (still counted so pagination advances past them)
 		}
-		m := map[string]any{
-			"entity_id":    entityID,
-			"display_name": dn,
-		}
-		if kindCode != nil {
-			m["kind_code"] = *kindCode
-		}
-		if kindColor != nil {
-			m["kind_color"] = *kindColor
-		}
-		if kindIcon != nil {
-			m["kind_icon"] = *kindIcon
-		}
-		if kindName != nil {
-			m["kind_name"] = *kindName
-		}
-		items = append(items, m)
+		items = append(items, entityNameItem{
+			EntityID:    entityID.String(),
+			DisplayName: dn,
+			KindCode:    kindCode,
+			KindColor:   kindColor,
+			KindIcon:    kindIcon,
+			KindName:    kindName,
+		})
 	}
 	if err := rows.Err(); err != nil {
 		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "row iteration failed")
 		return
 	}
 
-	writeJSON(w, http.StatusOK, items)
+	// truncated when a peek-ahead row was observed. next_cursor = the entity_id of the
+	// last page row (position `limit`), so the next page resumes at entity_id > it.
+	truncated := rowsScanned > limit
+	var nextCursor *string
+	if truncated && havePageLast {
+		c := encodeEntitiesCursor(pageLastID)
+		nextCursor = &c
+	}
+
+	writeJSON(w, http.StatusOK, entityNamesPageResp{
+		Items:      items,
+		Truncated:  truncated,
+		NextCursor: nextCursor,
+	})
 }
 
 // parsePathUUID extracts and parses a UUID path parameter, writing a 400 on failure.

@@ -133,6 +133,28 @@ class TestMcpExecuteToolResultFormatting:
         await client.aclose()
 
     @pytest.mark.asyncio
+    async def test_prefers_structured_content_over_placeholder(self):
+        """#9B — a heavy read returns a PLACEHOLDER in content[0].text + the real
+        payload in structuredContent. The parser must use structuredContent, not
+        try (and fail) to json.loads the placeholder → 'unparseable content'."""
+        client = _make_client()
+        real = {"ontology": {"kinds": ["character", "location"]}}
+        result = _call_tool_result(content=[_text_content("ok — see structuredContent")])
+        result.structuredContent = real
+        tpatch, spatch, *_ = _patch_mcp(call_tool_return=result)
+        with tpatch, spatch:
+            out = await client.mcp_execute_tool(
+                user_id="user-1",
+                session_id="sess-1",
+                tool_name="glossary_book_ontology_read",
+                tool_args={"book_id": "B1"},
+            )
+        assert out["success"] is True
+        assert out["result"] == real
+        assert out["error"] is None
+        await client.aclose()
+
+    @pytest.mark.asyncio
     async def test_context_headers_set_and_args_carry_no_scope(self):
         """user_id / session_id / project_id ride in the MCP context
         headers (design D3) and are NOT injected into tool_args."""

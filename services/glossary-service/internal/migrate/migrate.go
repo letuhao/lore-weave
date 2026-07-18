@@ -214,6 +214,78 @@ func SeedKindAliases(ctx context.Context, pool *pgxpool.Pool) error {
 	return nil
 }
 
+// seedWorkKindsSQL — WS-1.5 (spec 05 §Q2). The System-tier WORK ontology: the 7 kinds the
+// Work Assistant captures from a diary — colleague · project · meeting · decision · task ·
+// jargon · org. (Spec §Q2 names the terminology kind "term", but a fiction "term" kind
+// already exists with different attrs; this uses the distinct code `jargon` — D-R11 — so the
+// two ontologies never collide in the shared catalogue.)
+//
+// Seeded is_default=false, is_hidden=FALSE (DR-13). NOT default keeps them out of the default
+// kind set. NOT hidden is LOAD-BEARING: adoptBookOntologyCore copies system_kinds.is_hidden
+// straight into book_kinds when it clones a kind into a book tier, so a HIDDEN system template
+// would clone HIDDEN into the diary and the user would never see the work kinds. Novel pickers
+// stay clean NOT via is_hidden but because per-book pickers read book_kinds (what the book
+// adopted) and a novel never adopts the work codes. Provisioning CLONES these into the diary's
+// own tier (the adopt-branch — next WS-1.5 piece).
+//
+// Idempotent (ON CONFLICT DO NOTHING) and shipped as a NEW ledger step (0052) — NOT edited
+// into domain.DefaultKinds, which only seeds an EMPTY catalogue and so would never reach an
+// already-migrated DB (spec 05's warning + the ledger's "new seed data needs a new chain
+// entry" rule). sort_order 1001+ keeps them after the fiction kinds.
+// This runs at step 0052 — AFTER the G4 cutover (0026-0029) that dropped the legacy
+// system_kind_attributes table and moved attributes into the TIERED model
+// (system_kinds + system_kind_genres + system_attributes, keyed by (kind, genre)). And
+// AFTER SeedGenreKindAttr (0025) whose "every kind → universal genre" link ran before these
+// kinds existed — so we add BOTH the universal link and the attrs here, mirroring that seed.
+const seedWorkKindsSQL = `
+-- 1) the 7 work kinds (non-default, NOT hidden — adopt copies is_hidden into the book tier)
+INSERT INTO system_kinds (code, name, description, icon, color, is_default, is_hidden, sort_order)
+VALUES
+  ('colleague', 'Colleague',    'A person you work with',              '👥', '#6366f1', false, false, 1001),
+  ('project',   'Project',      'A body of work with a goal',          '📊', '#0ea5e9', false, false, 1002),
+  ('meeting',   'Meeting',      'A scheduled discussion',              '📅', '#10b981', false, false, 1003),
+  ('decision',  'Decision',     'A choice that was made',              '✅', '#22c55e', false, false, 1004),
+  ('task',      'Task',         'An actionable item of work',          '📝', '#f59e0b', false, false, 1005),
+  ('jargon',    'Jargon',       'Domain terminology or an acronym',    '📖', '#a855f7', false, false, 1006),
+  ('org',       'Organization', 'A company, team, or external org',    '🏢', '#ef4444', false, false, 1007)
+ON CONFLICT (code) DO NOTHING;
+
+-- 2) link each work kind → the mandatory 'universal' genre (SeedGenreKindAttr's universal
+--    link ran at 0025, before these kinds existed, so it skipped them).
+INSERT INTO system_kind_genres (kind_id, genre_id)
+SELECT k.kind_id, g.genre_id
+FROM system_kinds k JOIN system_genres g ON g.code = 'universal'
+WHERE k.code IN ('colleague','project','meeting','decision','task','jargon','org')
+ON CONFLICT DO NOTHING;
+
+-- 3) lift name/aliases/description attrs into (kind, universal) — the minimal set the
+--    extractor/dedup/review GUI need. content_hash uses the SAME formula SeedGenreKindAttr
+--    uses (desc + options empty here), so a cross-tier hash comparison stays consistent.
+INSERT INTO system_attributes
+  (kind_id, genre_id, code, name, description, field_type, is_required, sort_order, options, content_hash)
+SELECT k.kind_id, g.genre_id, v.code, v.name, NULL, v.field_type, v.is_required, v.sort_order, NULL::text[],
+       md5(v.code||'|'||v.name||'|'||''||'|'||v.field_type||'|'||(v.is_required)::text||'|'||'')
+FROM system_kinds k
+JOIN system_genres g ON g.code = 'universal'
+CROSS JOIN (VALUES
+  ('name', 'Name', 'text', true, 1),
+  ('aliases', 'Aliases', 'tags', false, 2),
+  ('description', 'Description', 'textarea', false, 3)
+) AS v(code, name, field_type, is_required, sort_order)
+WHERE k.code IN ('colleague','project','meeting','decision','task','jargon','org')
+ON CONFLICT (kind_id, genre_id, code) DO NOTHING;
+`
+
+// SeedWorkKinds seeds the System-tier work ontology (WS-1.5). Idempotent; a NEW ledger step
+// (0052). Seeded is_default=false, is_hidden=FALSE (DR-13 — see seedWorkKindsSQL: a hidden
+// template would clone hidden into the diary; novel pickers stay clean via book_kinds, not is_hidden).
+func SeedWorkKinds(ctx context.Context, pool *pgxpool.Pool) error {
+	if _, err := pool.Exec(ctx, seedWorkKindsSQL); err != nil {
+		return fmt.Errorf("seed work kinds: %w", err)
+	}
+	return nil
+}
+
 // migrationLockKey is a fixed application-defined key for the migration advisory
 // lock (arbitrary 64-bit constant — the ASCII bytes of "glsxmig8").
 const migrationLockKey int64 = 0x676c73786d696738

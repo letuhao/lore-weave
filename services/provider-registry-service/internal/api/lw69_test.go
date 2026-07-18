@@ -163,6 +163,121 @@ func TestPatchUserModel_ContextLengthPresent_DecodesValue(t *testing.T) {
 	}
 }
 
+// ── D-PRICING-REFRESH: patchUserModel now accepts `pricing`, validated the
+// SAME way as createUserModel (parsePricingInput), before the UPDATE runs — so
+// (like the context_length guard above) an invalid rate returns 400 without
+// ever touching s.pool, keeping this a DB-free unit test. ─────────────────────
+
+func TestPatchUserModel_NegativePricingRejectedBeforeDB(t *testing.T) {
+	t.Parallel()
+
+	srv := lw69Server()
+	userID := uuid.New()
+	id := uuid.New()
+	body, _ := json.Marshal(map[string]any{"pricing": map[string]any{"input_per_mtok": -1}})
+	req := withRouteParam(
+		httptest.NewRequest(http.MethodPatch, "/", bytes.NewReader(body)),
+		"user_model_id", id.String(),
+	)
+	req.Header.Set("Authorization", "Bearer "+lw69Token(t, userID))
+	rr := httptest.NewRecorder()
+	srv.patchUserModel(rr, req)
+
+	if rr.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for negative pricing, got %d: %s", rr.Code, rr.Body.String())
+	}
+}
+
+func TestPatchUserModel_MalformedPricingRejectedBeforeDB(t *testing.T) {
+	t.Parallel()
+
+	srv := lw69Server()
+	userID := uuid.New()
+	id := uuid.New()
+	req := withRouteParam(
+		httptest.NewRequest(http.MethodPatch, "/", bytes.NewReader([]byte(`{"pricing":"not an object"}`))),
+		"user_model_id", id.String(),
+	)
+	req.Header.Set("Authorization", "Bearer "+lw69Token(t, userID))
+	rr := httptest.NewRecorder()
+	srv.patchUserModel(rr, req)
+
+	if rr.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for malformed pricing, got %d: %s", rr.Code, rr.Body.String())
+	}
+}
+
+// ── D-PRICING-REFRESH: parsePricingInput — the validator shared by create+patch ──
+
+func TestParsePricingInput_EmptyAndNullMeanUnchanged(t *testing.T) {
+	t.Parallel()
+	for _, raw := range [][]byte{nil, {}, []byte("null")} {
+		got, err := parsePricingInput(raw)
+		if err != nil || got != nil {
+			t.Errorf("raw=%q: want (nil, nil), got (%v, %v)", raw, got, err)
+		}
+	}
+}
+
+func TestParsePricingInput_ValidPricingPassesThrough(t *testing.T) {
+	t.Parallel()
+	raw := []byte(`{"input_per_mtok":2.5,"output_per_mtok":10}`)
+	got, err := parsePricingInput(raw)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if string(got) != string(raw) {
+		t.Errorf("want raw passed through unchanged, got %s", got)
+	}
+}
+
+func TestParsePricingInput_RejectsNegativeRate(t *testing.T) {
+	t.Parallel()
+	_, err := parsePricingInput([]byte(`{"input_per_mtok":-1}`))
+	if err == nil {
+		t.Fatal("want an error for a negative rate")
+	}
+}
+
+func TestParsePricingInput_RejectsMalformedJSON(t *testing.T) {
+	t.Parallel()
+	_, err := parsePricingInput([]byte(`"not an object"`))
+	if err == nil {
+		t.Fatal("want an error for pricing that isn't a JSON object")
+	}
+}
+
+// ── D-PRICING-REFRESH: suggestUserModelPricing pre-DB guards ──────────────────
+
+func TestSuggestUserModelPricing_MissingAuth(t *testing.T) {
+	t.Parallel()
+
+	srv := lw69Server()
+	id := uuid.New()
+	req := withRouteParam(httptest.NewRequest(http.MethodGet, "/", nil), "user_model_id", id.String())
+	rr := httptest.NewRecorder()
+	srv.suggestUserModelPricing(rr, req)
+
+	if rr.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401, got %d", rr.Code)
+	}
+}
+
+func TestSuggestUserModelPricing_InvalidUUID(t *testing.T) {
+	t.Parallel()
+
+	srv := lw69Server()
+	userID := uuid.New()
+	req := withRouteParam(httptest.NewRequest(http.MethodGet, "/", nil), "user_model_id", "not-a-uuid")
+	req.Header.Set("Authorization", "Bearer "+lw69Token(t, userID))
+	rr := httptest.NewRecorder()
+	srv.suggestUserModelPricing(rr, req)
+
+	if rr.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", rr.Code)
+	}
+}
+
 // ── T45/T46: has_secret computed field logic ───────────────────────────────────
 // The SQL expression `(secret_ciphertext IS NOT NULL AND secret_ciphertext <> '')`
 // is evaluated by Postgres. The unit-level test verifies the Go struct has the

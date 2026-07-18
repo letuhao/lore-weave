@@ -26,7 +26,33 @@ export type Domain =
   | 'jobs'
   | 'settings'
   | 'lore_enrichment'
-  | 'catalog';
+  | 'catalog'
+  // `story` — the universal manuscript-search surface (story_search, knowledge-service).
+  // Added 2026-07-08 (discovery-hardening plan item 8 / external audit #6): `story` was
+  // already a real, live GROUP_DIRECTORY domain on BOTH federation surfaces
+  // (chat-service's tool_discovery.py + this gateway's find-tools.ts) and `story_search`
+  // was already reachable on the authenticated chat surface — it was simply never added
+  // to this PUBLIC-key allowlist when the 2026-07-05 search-tool-unification plan
+  // promoted it to its own `story_` prefix (this file predates that plan). Confirmed an
+  // incomplete rollout, not intentional tier-gating: no key, however privileged short of
+  // the wildcard dev key, could ever reach it, since the Domain union itself had no
+  // member for it.
+  | 'story'
+  // `registry` (agent-registry-service) — the skills catalog surface (registry_list_skills,
+  // registry_get_skill, registry_propose_skill, registry_update_skill,
+  // registry_set_skill_enabled). Added 2026-07-08 (MED-1 review finding): `registry` was
+  // already a real, live federated provider (infra/docker-compose.yml
+  // AI_GATEWAY_PROVIDERS=...,registry=http://agent-registry-service:8099/mcp) with real
+  // Tier-R/Tier-A tools registered in services/agent-registry-service/internal/api/mcp_server.go,
+  // but had NO Domain member and NO TOOL_POLICY entries — the exact same incomplete-rollout
+  // shape as the `story` gap above. Confirmed an omission, not intentional gating.
+  | 'registry'
+  // `research` — EXTERNAL web retrieval. Added 2026-07-09 (Track D CD5 / C1 change).
+  // Deliberately NOT `knowledge` (that is the INTERNAL knowledge graph). Home of the
+  // universal `web_search` tool, renamed out of the `glossary_` prefix. NOTE: existing
+  // public keys keep working through the retained `glossary_web_search` legacy row
+  // (domains: ['glossary']); reaching the NEW name requires a `domain:research` scope.
+  | 'research';
 
 export interface ToolPolicy {
   tier: Tier;
@@ -44,6 +70,10 @@ export const WILDCARD_SCOPE = '*';
  * So a key may always call find_tools and always sees it in `tools/list`, regardless of scope.
  */
 export const FIND_TOOLS_NAME = 'find_tools';
+// WS-1a (contracts.md C2) — the deterministic discovery pair: always-allowed meta-tools whose
+// RESULTS are scope-filtered (a listed/loaded tool is re-checked here when actually called).
+export const TOOL_LIST_NAME = 'tool_list';
+export const TOOL_LOAD_NAME = 'tool_load';
 
 /** Build the `domain:<d>` scope string the key must carry to reach domain `d`. */
 export function domainScope(d: Domain): string {
@@ -122,6 +152,15 @@ export const TOOL_POLICY: Record<string, ToolPolicy> = {
   // catalog (P5 OD-7 — PUBLIC discovery; owner-agnostic, returns only public books)
   catalog_list_public_books: { tier: 'read', domains: ['catalog'] },
   catalog_get_book: { tier: 'read', domains: ['catalog'] },
+  // story (knowledge-service) — the universal manuscript search. Read-only, owner-scoped
+  // (project_id), no different from any other read tool; added here (2026-07-08) to close
+  // the incomplete-rollout gap above.
+  story_search: { tier: 'read', domains: ['story'] },
+  // registry (agent-registry-service) — skills catalog reads. Owner-scoped (System ∪
+  // caller's own skills), same privilege class as other read tools; Tier-R/ScopeUser in
+  // services/agent-registry-service/internal/api/mcp_server.go lines 22-35.
+  registry_list_skills: { tier: 'read', domains: ['registry'] },
+  registry_get_skill: { tier: 'read', domains: ['registry'] },
   // settings (secrets redacted upstream)
   settings_get_profile: { tier: 'read', domains: ['settings'] },
   settings_list_providers: { tier: 'read', domains: ['settings'] },
@@ -130,6 +169,13 @@ export const TOOL_POLICY: Record<string, ToolPolicy> = {
   settings_provider_inventory: { tier: 'read', domains: ['settings'] },
 
   // ── paid_read (Tier-R but incurs cost — needs paid_read scope; P3 spend gate) ─
+  // The universal web-research tool (Track D CD5). Lives on provider-registry.
+  web_search: { tier: 'paid_read', domains: ['research'] },
+  // LEGACY, retained: `glossary_web_search` is the same handler, demoted in place
+  // (visibility: legacy, superseded_by: web_search). Its row MUST stay — existing public
+  // keys are scoped to `domain:glossary`, and dropping it here would 403 them. A key
+  // scoped only to `glossary` cannot reach `web_search` (domain `research`), which is
+  // precisely why the old name keeps working instead of being renamed.
   glossary_web_search: { tier: 'paid_read', domains: ['glossary'] },
 
   // ── write_auto (Tier-A, no cost) ──────────────────────────────────────────
@@ -207,11 +253,36 @@ export const TOOL_POLICY: Record<string, ToolPolicy> = {
   settings_model_set_favorite: { tier: 'write_auto', domains: ['settings'] },
   settings_model_set_active: { tier: 'write_auto', domains: ['settings'] },
   settings_model_set_default: { tier: 'write_auto', domains: ['settings'] },
+  // registry (agent-registry-service) — skills catalog writes are all propose→human-approve
+  // (never a direct write) or a reversible own-user toggle, matching Tier-A/ScopeUser in
+  // mcp_server.go lines 37-59: registry_propose_skill/registry_update_skill mint a pending
+  // proposal row (nothing applied until UI approval); registry_set_skill_enabled is a
+  // reversible per-user enable/disable flag (never mutates the shared skill). No-cost, no
+  // confirm-token minting — same shape as other write_auto tools in this table.
+  registry_propose_skill: { tier: 'write_auto', domains: ['registry'] },
+  registry_update_skill: { tier: 'write_auto', domains: ['registry'] },
+  registry_set_skill_enabled: { tier: 'write_auto', domains: ['registry'] },
 
   // ── write_confirm (Tier-W → human-approve by default; priced ones also P3) ──
   // Non-priced W
   book_chapter_publish: { tier: 'write_confirm', domains: ['book'] },
   book_chapter_unpublish: { tier: 'write_confirm', domains: ['book'] },
+  // WS-0.4 — publish-independent KG indexing. domains ['book','knowledge'] per the H-F
+  // rule (classify by the domains TOUCHED, not the name prefix): they are book-prefixed,
+  // but their whole purpose is to write/retract the knowledge graph, so a public key must
+  // hold BOTH domains.
+  //
+  // review-impl: both are write_confirm at the PUBLIC edge, not write_auto.
+  //   book_chapter_set_kg_exclude is strictly MORE destructive than book_chapter_unpublish
+  //     (which is already confirm-gated): it retracts the chapter's ENTIRE graph evidence
+  //     and deletes its passages. Auto-executing it for a public key while gating the
+  //     lesser op was an inversion.
+  //   book_index_chapter enqueues a real Pass-2 LLM extraction on the user's BYOK model —
+  //     the same spend effect as book_chapter_publish, which is confirm-gated. Unattended
+  //     spend at the public edge should be a human decision.
+  // (The tools' own Tier-A meta is unchanged; this is the public-edge policy only.)
+  book_index_chapter: { tier: 'write_confirm', domains: ['book', 'knowledge'] },
+  book_chapter_set_kg_exclude: { tier: 'write_confirm', domains: ['book', 'knowledge'] },
   book_chapter_delete: { tier: 'write_confirm', domains: ['book'] },
   book_chapter_purge: { tier: 'write_confirm', domains: ['book'] },
   glossary_adopt_standards: { tier: 'write_confirm', domains: ['glossary'] },
@@ -281,9 +352,9 @@ export function knownTool(name: string): boolean {
  */
 export function isToolAllowed(name: string, scopes: readonly string[]): boolean {
   if (scopes.includes(WILDCARD_SCOPE)) return true;
-  // find_tools is the always-allowed discovery meta-tool (its results are scope-filtered; a
-  // discovered tool is re-checked here when called) — permitted for every key, any scope.
-  if (name === FIND_TOOLS_NAME) return true;
+  // The discovery meta-tools are always-allowed (their results are scope-filtered; a
+  // discovered/loaded tool is re-checked here when called) — permitted for every key, any scope.
+  if (name === FIND_TOOLS_NAME || name === TOOL_LIST_NAME || name === TOOL_LOAD_NAME) return true;
   const pol = TOOL_POLICY[name];
   if (!pol) return false;
   if (!scopes.includes(pol.tier)) return false;
@@ -297,4 +368,31 @@ export function isToolAllowed(name: string, scopes: readonly string[]): boolean 
 export function filterTools<T extends { name?: unknown }>(tools: T[], scopes: readonly string[]): T[] {
   if (scopes.includes(WILDCARD_SCOPE)) return tools;
   return tools.filter((t) => typeof t?.name === 'string' && isToolAllowed(t.name, scopes));
+}
+
+/**
+ * Scope-size-adaptive exposure (2026-07-07 spec, §3.3/§6/§8b.7): below this many resolved
+ * TOOL_POLICY entries, `tools/list` skips the lazy-hide collapse and advertises the full
+ * scope-filtered set directly — for a narrow key (e.g. 5 book-read tools) the two-hop
+ * find_tools→invoke_tool dance saves nothing (the list was already small) and only adds
+ * round-trips. At/above this count, today's collapse+invoke_tool path is unchanged. Picked
+ * from real measured key-scope data (§3.3): 5 real keys are bimodal — 3 resolve to 5 tools,
+ * 2 resolve to the full 161-tool allowlist — so any threshold in ~6–160 classifies today's
+ * keys identically; 20 is a deliberately round, conservative pick pending more data.
+ */
+export const DIRECT_LIST_TOOL_THRESHOLD = 20;
+
+/**
+ * Count how many `TOOL_POLICY` entries `scopes` would satisfy — the input to the
+ * scope-size-adaptive `tools/list` branch (spec §6). Pure, cheap (one pass over the
+ * allowlist). NOT meaningful for the wildcard scope (`*` would trivially "count" every
+ * entry, 161 today) — callers MUST keep the wildcard check as its own distinct, earlier
+ * branch (8b.7) and never route `*` through this function's result into the size decision.
+ */
+export function scopeToolCount(scopes: readonly string[]): number {
+  let n = 0;
+  for (const name of Object.keys(TOOL_POLICY)) {
+    if (isToolAllowed(name, scopes)) n++;
+  }
+  return n;
 }

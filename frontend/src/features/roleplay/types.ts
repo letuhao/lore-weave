@@ -11,6 +11,9 @@ export interface ScenarioCharter {
   beats?: string[];
   time_budget_min?: number | null;
   language?: string;
+  // ACP A4 — the fixed question count an interview drives before wrapping (a scenario may
+  // pin it; else an interview genre defaults to 5 server-side — mirrored in practiceProgress).
+  question_target?: number | null;
 }
 
 export interface Script {

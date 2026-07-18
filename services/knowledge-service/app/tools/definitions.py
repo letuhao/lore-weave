@@ -31,6 +31,7 @@ from app.tools.graph_schema_tools import (
 from app.tools.argbase import ProjectScopedArgs
 from app.tools.build_tools import BUILD_TOOL_ARG_MODELS
 from app.tools.project_tools import PROJECT_TOOL_ARG_MODELS
+from app.tools.reader_tools import READER_TOOL_ARG_MODELS
 
 __all__ = [
     "TOOL_NAMES",
@@ -121,6 +122,16 @@ class StorySearchArgs(ProjectScopedArgs):
     limit: int = Field(default=SEARCH_LIMIT_DEFAULT, ge=1, le=SEARCH_LIMIT_MAX)
     # L1/L2 reference-first contract (§6b) — versioned default "full".
     detail: Literal["summary", "full"] = "full"
+    # D-1 (Track B spec-complete) — the spoiler cutoff `raw_search` already has. OMIT for the
+    # full manuscript (the owner's authoring default); set to a chapter id to window results to
+    # that chapter and everything before it, so a reader-facing caller can't surface a hit from a
+    # chapter past the reader's position. FAIL-CLOSED: an unresolvable id keeps NOTHING, never the
+    # whole corpus (resolve_before_sort_order → -1).
+    before_chapter_id: str | None = Field(
+        default=None,
+        description="Optional spoiler cutoff: window results to this chapter and everything "
+        "before it (by chapter order). Omit to search the whole manuscript.",
+    )
 
 
 class MemoryRecallEntityArgs(ProjectScopedArgs):
@@ -156,7 +167,7 @@ class MemoryRememberArgs(ProjectScopedArgs):
     """`memory_remember` — store a new fact (guardrailed, design D5)."""
 
     fact_text: str = Field(min_length=1, max_length=2000)
-    fact_type: Literal["decision", "preference", "milestone", "negation"]
+    fact_type: Literal["decision", "preference", "milestone", "negation", "statement", "commitment"]
 
 
 class MemoryForgetArgs(BaseModel):
@@ -184,6 +195,8 @@ ARG_MODELS: dict[str, type[BaseModel]] = {
     **PROJECT_TOOL_ARG_MODELS,
     # Cost-gated job triggers (kg_build_graph) — confirm-token mint.
     **BUILD_TOOL_ARG_MODELS,
+    # W11-M2 reader "ask the lore" tools — spoiler-windowed reads.
+    **READER_TOOL_ARG_MODELS,
 }
 
 TOOL_NAMES: tuple[str, ...] = tuple(ARG_MODELS)
@@ -250,6 +263,15 @@ TOOL_DEFINITIONS: list[dict] = [
                 "maximum": SEARCH_LIMIT_MAX,
                 "description": (
                     f"Max hits to return (default {SEARCH_LIMIT_DEFAULT})."
+                ),
+            },
+            "before_chapter_id": {
+                "type": "string",
+                "description": (
+                    "Optional spoiler cutoff: window results to this chapter "
+                    "and everything before it (by chapter order). Omit to "
+                    "search the whole manuscript. Fail-closed on an "
+                    "unresolvable id (keeps nothing)."
                 ),
             },
             "detail": _DETAIL_PROP,
@@ -441,6 +463,33 @@ TOOL_DEFINITIONS: list[dict] = [
         },
         [],
     ),
+    # Project setup — the step BETWEEN kg_project_create and kg_run_benchmark that
+    # used to exist only as a REST route behind the Build-KG dialog, dead-ending
+    # every agent-created project (F6, Track D liveness eval).
+    _tool(
+        "kg_project_set_embedding_model",
+        "Configure the project's EMBEDDING MODEL — the one-time setup that "
+        "kg_run_benchmark and kg_build_graph both require. Call this when a build "
+        "reports the project has no embedding model configured, instead of sending "
+        "the user to the UI. Pass a provider-registry user_model UUID for one of your "
+        "own embedding models (find one with settings_list_models). The vector "
+        "dimension is probed automatically. Free, reversible, owner-only. Then call "
+        "kg_run_benchmark, then kg_build_graph.",
+        {
+            "embedding_model": {
+                "type": "string",
+                "minLength": 1,
+                "description": (
+                    "provider-registry user_model UUID of an embedding model you own."
+                ),
+            },
+            "project_id": {
+                "type": "string",
+                "description": "Project to configure. Omit to use the project in scope.",
+            },
+        },
+        ["embedding_model"],
+    ),
     # Cost-gated job trigger — build the knowledge graph (propose→confirm).
     _tool(
         "kg_build_graph",
@@ -448,7 +497,8 @@ TOOL_DEFINITIONS: list[dict] = [
         "the book's chapters. EXPENSIVE (LLM cost) so it does NOT run immediately — it "
         "returns a confirm_token + summary; a human confirms on the review surface, which "
         "shows the estimated cost, and the job starts then. Requires the project to have "
-        "an embedding model configured (run extraction setup once in the UI first). Pick "
+        "an embedding model configured — if it does not, call kg_project_set_embedding_model "
+        "then kg_run_benchmark first, rather than sending the user to the UI. Pick "
         "the extraction llm_model from settings_list_models.",
         {
             "llm_model": {
@@ -526,6 +576,82 @@ TOOL_DEFINITIONS: list[dict] = [
         "sandbox (it never touches the real graph). Returns passed + gate_failures; a pass "
         "enables Build-KG for this embedding model.",
         {"project_id": _PROJECT_ID_PROP},
+        [],
+    ),
+    # ── W11-M2 reader "ask the lore" tools (spoiler-windowed; cutoff server-enforced) ──
+    _tool(
+        "lore_ask",
+        "Ask about a book's lore SPOILER-SAFELY on the reader's behalf. Returns a "
+        "spoiler-windowed evidence bundle — canon entities the reader has met + "
+        "manuscript passages — bounded to the reader's own furthest-read chapter (you "
+        "cannot widen it). Compose the answer from this evidence on your own model; if "
+        "window_available is false the reader's position couldn't be pinned so nothing "
+        "is shown.",
+        {
+            "query": {
+                "type": "string",
+                "description": "What the reader is asking — a name, a relationship, or "
+                "'what has happened so far', in natural language.",
+            },
+            "limit": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 50,
+                "description": "Max passages + canon entities each (default 25).",
+            },
+            "project_id": _PROJECT_ID_PROP,
+        },
+        ["query"],
+    ),
+    _tool(
+        "lore_browse_entities",
+        "List the CANON cast (characters, places, factions) the reader has met so far "
+        "— spoiler-windowed to their furthest-read chapter. A reader whose position "
+        "can't be pinned gets an empty list, never the whole cast.",
+        {
+            "kind": {
+                "type": "string",
+                "description": "Optional — restrict to one entity kind (e.g. 'character', "
+                "'location'). Omit for the whole windowed cast.",
+            },
+            "limit": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 50,
+                "description": "Max entities (default/max 50).",
+            },
+            "project_id": _PROJECT_ID_PROP,
+        },
+        [],
+    ),
+    _tool(
+        "lore_entity",
+        "One entity's spoiler-windowed status + known facts, bounded to the reader's "
+        "furthest-read chapter (facts established later are hidden).",
+        {
+            "entity_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 200,
+                "description": "The entity id returned by lore_browse_entities / lore_ask.",
+            },
+            "project_id": _PROJECT_ID_PROP,
+        },
+        ["entity_id"],
+    ),
+    _tool(
+        "lore_timeline",
+        "The sequence of events up to the reader's position — spoiler-windowed so "
+        "later events are hidden. Empty when the reader's position can't be pinned.",
+        {
+            "limit": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 50,
+                "description": "Max events (default/max 50).",
+            },
+            "project_id": _PROJECT_ID_PROP,
+        },
         [],
     ),
 ]

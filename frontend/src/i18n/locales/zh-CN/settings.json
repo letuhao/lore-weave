@@ -9,7 +9,8 @@
       "translation": "翻译",
       "reading": "阅读",
       "language": "语言",
-      "mcp": "MCP 访问"
+      "mcp": "MCP 访问",
+      "workflow-bindings": "工作流自动设置"
     }
   },
   "mcp": {
@@ -492,6 +493,18 @@
       "testing": "正在测试...",
       "reverify": "重新验证",
       "verify": "验证",
+      "pricing_title": "价格 (每 100 万 Token 的美元费用)",
+      "pricing_input": "输入",
+      "pricing_output": "输出",
+      "pricing_free_local": "免费 — 在您自己的硬件上运行",
+      "pricing_hint": "创建时已预填。如果供应商发布的费率发生变化，请进行编辑，或前往 OpenRouter 查看实时估算。",
+      "pricing_check": "在 OpenRouter 中检查",
+      "pricing_checking": "正在检查...",
+      "pricing_suggestion_found": "OpenRouter ({{source}}): 输入 ${{input}} / 输出 ${{output}}",
+      "pricing_apply": "应用",
+      "pricing_not_found": "在 OpenRouter 上未找到匹配的模型 — 无法从该来源获取价格。",
+      "pricing_check_failed": "无法检查 OpenRouter 价格",
+      "pricing_negative_error": "价格必须大于或等于零",
       "delete_model": "删除模型",
       "confirm_delete": "确认删除",
       "deleting": "正在删除...",

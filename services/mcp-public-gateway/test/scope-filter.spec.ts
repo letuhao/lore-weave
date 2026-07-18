@@ -12,6 +12,10 @@ import {
   countToolCalls,
   filterListResponseText,
   singleToolCallErrored,
+  isToolListCall,
+  isToolLoadCall,
+  scopeFilterToolListResult,
+  scopeFilterToolLoadResult,
 } from '../src/scope/scope-filter.js';
 
 // Scopes a typical "knowledge read" key would carry.
@@ -239,6 +243,85 @@ describe('scope-filter.filterListResponseText (response filter)', () => {
     ]);
     const out = JSON.parse(filterListResponseText(batch, KNOWLEDGE_READ));
     expect(out[0].result.tools.map((t: { name: string }) => t.name)).toEqual(['kg_graph_query']);
+  });
+});
+
+describe('WS-1a — tool_list/tool_load edge scope-filter + activation', () => {
+  it('keeps the discovery pair (tool_list/tool_load) present under the lazy collapse', () => {
+    const listMsg = JSON.stringify({
+      result: {
+        tools: [
+          { name: 'tool_list' }, { name: 'tool_load' }, { name: 'find_tools' },
+          { name: 'kg_graph_query' }, { name: 'book_get' },
+        ],
+      },
+      id: 1,
+    });
+    const out = JSON.parse(
+      filterListResponseText(listMsg, KNOWLEDGE_READ, undefined, new Set(['kg_graph_query'])),
+    );
+    // meta-tools always present; in-scope + activated kept; out-of-scope book_get dropped.
+    expect(out.result.tools.map((t: { name: string }) => t.name)).toEqual([
+      'tool_list', 'tool_load', 'find_tools', 'kg_graph_query',
+    ]);
+  });
+
+  it('is detected as its own single tools/call', () => {
+    const call = (name: string) => ({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name } });
+    expect(isToolListCall(call('tool_list'))).toBe(true);
+    expect(isToolLoadCall(call('tool_load'))).toBe(true);
+    expect(isToolListCall(call('tool_load'))).toBe(false);
+    expect(isToolLoadCall([call('tool_load')])).toBe(false); // batch is single-only
+  });
+
+  it('tool_load: scope-filters loaded schemas + returns in-scope names to activate', () => {
+    const loadResp = JSON.stringify({
+      jsonrpc: '2.0', id: 1,
+      result: {
+        content: [{ type: 'text', text: 'x' }],
+        structuredContent: { tools: [{ name: 'kg_graph_query', input_schema: {} }, { name: 'book_get', input_schema: {} }] },
+      },
+    });
+    const { text, activatedNames } = scopeFilterToolLoadResult(loadResp, KNOWLEDGE_READ);
+    expect(activatedNames).toEqual(['kg_graph_query']);
+    const sc = JSON.parse(text).result.structuredContent;
+    expect(sc.tools.map((t: { name: string }) => t.name)).toEqual(['kg_graph_query']);
+  });
+
+  it('tool_list (flat): scope-filters tools, recomputes count, notes an entitlement gap', () => {
+    const listResp = JSON.stringify({
+      jsonrpc: '2.0', id: 1,
+      result: {
+        content: [{ type: 'text', text: 'x' }],
+        structuredContent: { category: 'knowledge', count: 1, tools: [{ name: 'book_get' }] },
+      },
+    });
+    const sc = JSON.parse(scopeFilterToolListResult(listResp, KNOWLEDGE_READ)).result.structuredContent;
+    expect(sc.tools).toEqual([]);
+    expect(sc.count).toBe(0);
+    expect(sc.scope_note).toBeDefined(); // non-empty→empty by THIS key's scope
+  });
+
+  it('tool_list (grouped): drops empty categories after scope-filter', () => {
+    const groupedResp = JSON.stringify({
+      jsonrpc: '2.0', id: 1,
+      result: {
+        content: [{ type: 'text', text: 'x' }],
+        structuredContent: {
+          categories: { knowledge: [{ name: 'kg_graph_query' }], book: [{ name: 'book_get' }] },
+          count: 2,
+        },
+      },
+    });
+    const sc = JSON.parse(scopeFilterToolListResult(groupedResp, KNOWLEDGE_READ)).result.structuredContent;
+    expect(Object.keys(sc.categories)).toEqual(['knowledge']);
+    expect(sc.count).toBe(1);
+  });
+
+  it('wildcard key: both filters pass through untouched', () => {
+    const t = JSON.stringify({ result: { structuredContent: { tools: [{ name: 'book_get' }] } }, id: 1 });
+    expect(scopeFilterToolListResult(t, ['*'])).toBe(t);
+    expect(scopeFilterToolLoadResult(t, ['*']).activatedNames).toEqual([]);
   });
 });
 

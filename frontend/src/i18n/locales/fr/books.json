@@ -118,6 +118,7 @@
     "count": "{{count}} chapitre",
     "count_other": "{{count}} chapitres",
     "import": "Importer",
+    "importPdf": "Importer un PDF",
     "new": "Nouveau chapitre",
     "col": {
       "title": "Titre",
@@ -150,8 +151,7 @@
       "title": "Déplacer le chapitre vers la corbeille ?",
       "description": "« {{title}} » sera déplacé vers la corbeille.",
       "confirm": "Déplacer vers la corbeille"
-    },
-    "importPdf": "Importer un PDF"
+    }
   },
   "glossary": {
     "header": "Glossaire et Lore",
@@ -211,7 +211,8 @@
     "status": {
       "draft": "Brouillon",
       "active": "Actif",
-      "inactive": "Inactif"
+      "inactive": "Inactif",
+      "rejected": "Rejeté"
     },
     "bulk": {
       "select_row": "Sélectionner l'entité",
@@ -228,7 +229,8 @@
       "delete_confirm": {
         "title": "Supprimer {{count}} entités ?",
         "description": "{{count}} entités sélectionnées seront déplacées vers la corbeille."
-      }
+      },
+      "reject": "Rejeter"
     },
     "clear_filters": "Effacer tous les filtres",
     "deleted": "Entité supprimée",
@@ -252,7 +254,8 @@
       "title": "Supprimer l'entité ?",
       "description": "« {{title}} » sera déplacé vers la corbeille.",
       "confirm": "Supprimer"
-    }
+    },
+    "scope_label_title": "Portée — permet de distinguer cette entité des autres portant le même nom"
   },
   "sharing": {
     "title": "Visibilité",

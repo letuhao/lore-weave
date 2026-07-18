@@ -241,11 +241,18 @@ func (s *Server) Router() http.Handler {
 		r.Post("/billing/guardrail/reserve", s.guardrailReserve)
 		r.Post("/billing/guardrail/reconcile", s.guardrailReconcile)
 		r.Post("/billing/guardrail/release", s.guardrailRelease)
+		// WS-2.8 (spec 10) — a read of a user's guardrail so a background worker (the diary distiller)
+		// can degrade gracefully before spending when the daily cap is exhausted. Internal-token gated;
+		// owner_user_id is an explicit query arg (same posture as mcp-key-usage below).
+		r.Get("/billing/guardrail/status", s.getGuardrailStatusInternal)
 		// Public MCP P3 (H-C/PUB-11) — per-key spend rollup for an owner. The MCP
 		// edge calls this to surface per-key usage (owner audit view, H-O) and feeds
 		// the future per-key sub-cap (H-K). Internal-token gated; owner_user_id is an
 		// explicit query arg (the caller already authenticated the owner).
 		r.Get("/billing/mcp-key-usage", s.getMcpKeyUsage)
+		// B1 (D-LANE-BUDGET-ENFORCE) — the per-lane spend report (assistant vs interactive), joining the
+		// per-user lane budget. Internal-token gated; owner_user_id is an explicit query arg.
+		r.Get("/billing/usage/by-lane", s.getUsageByLane)
 	})
 
 	r.Route("/v1/model-billing", func(r chi.Router) {
@@ -483,8 +490,9 @@ func (s *Server) writeUsageLog(ctx context.Context, tx pgx.Tx, p usageLogParams)
 INSERT INTO usage_logs(
   request_id, owner_user_id, provider_kind, model_source, model_ref,
   input_tokens, output_tokens, total_tokens, total_cost_usd, billing_decision, request_status, policy_version,
-  input_payload_ciphertext, output_payload_ciphertext, payload_encryption_key_ref, payload_encryption_algo, purpose, mcp_key_id
-) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,'AES-256-GCM',$16,$17)
+  input_payload_ciphertext, output_payload_ciphertext, payload_encryption_key_ref, payload_encryption_algo, purpose, lane, mcp_key_id
+) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,'AES-256-GCM',$16,
+  COALESCE((SELECT lane_code FROM lane_purpose_map WHERE purpose=$16), 'interactive'), $17)
 ON CONFLICT (request_id) DO NOTHING
 RETURNING usage_log_id
 `, p.RequestID, p.OwnerUserID, p.ProviderKind, p.ModelSource, p.ModelRef,

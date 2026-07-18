@@ -49,6 +49,8 @@ class StubMotifRepo:
         self.patch_result: Motif | None = _motif(version=2)
         self.patch_raises: Exception | None = None
         self.archive_calls: list = []
+        self.restore_calls: list = []
+        self.restore_result: Motif | None = _motif(status="active")
         self.adopt_result: tuple[Motif, bool] = (_motif(source="adopted", version=1), True)
         self.adopt_raises: Exception | None = None
         self.catalog_result: tuple[list[dict], int] = ([], 0)
@@ -58,6 +60,11 @@ class StubMotifRepo:
         self.last_patch_args = None
         self.last_create_args = None
         self.last_adopt = None
+        # motif graph (BE-M3)
+        self.links_result: list = []
+        self.create_link_result = None
+        self.create_link_raises: Exception | None = None
+        self.delete_link_result = True
 
     async def list_for_caller(self, caller_id, **kw):
         self.last_list = (caller_id, kw)
@@ -91,6 +98,14 @@ class StubMotifRepo:
     async def archive_shared(self, caller_id, motif_id, book_id):
         self.archive_calls.append((caller_id, motif_id, book_id))
 
+    async def restore(self, caller_id, motif_id):
+        self.restore_calls.append((caller_id, motif_id))
+        return self.restore_result
+
+    async def restore_shared(self, caller_id, motif_id, book_id):
+        self.restore_calls.append((caller_id, motif_id, book_id))
+        return self.restore_result
+
     async def list_in_book(self, caller_id, book_id, **kw):
         self.last_list_in_book = (caller_id, book_id, kw)
         return self.list_result
@@ -114,6 +129,23 @@ class StubMotifRepo:
 
     async def count_adopted_by_owner(self, owner_id):
         return self.adopted_count
+
+    # ── motif graph (BE-M3) ──────────────────────────────────────────────────
+    async def list_links(self, caller_id, motif_id, *, direction="both", kinds=None,
+                         limit=200, book_id=None):
+        self.last_list_links = (caller_id, motif_id, direction, kinds, book_id)
+        return self.links_result
+
+    async def create_link(self, caller_id, from_motif_id, to_motif_id, kind, *,
+                          ord=None, book_id=None):
+        self.last_create_link = (caller_id, from_motif_id, to_motif_id, kind, ord, book_id)
+        if self.create_link_raises:
+            raise self.create_link_raises
+        return self.create_link_result
+
+    async def delete_link(self, caller_id, link_id, *, book_id=None):
+        self.last_delete_link = (caller_id, link_id, book_id)
+        return self.delete_link_result
 
 
 def _unique_violation() -> asyncpg.UniqueViolationError:
@@ -247,6 +279,43 @@ def test_archive_returns_uniform_ok(ctx):
     r = c.delete(f"/v1/composition/motifs/{mid}")
     assert r.status_code == 200 and r.json() == {"id": str(mid), "archived": True}
     assert repo.archive_calls == [(USER, mid)]
+
+
+def test_restore_returns_the_row(ctx):
+    # S-08: POST /restore un-archives (owner) and returns the row so the library refreshes.
+    c, repo, _ = ctx
+    mid = uuid.uuid4()
+    r = c.post(f"/v1/composition/motifs/{mid}/restore")
+    assert r.status_code == 200 and r.json()["status"] == "active"
+    assert repo.restore_calls == [(USER, mid)]
+
+
+def test_restore_not_restorable_404(ctx):
+    # missing / not-owned / not-archived → repo returns None → 404 (no oracle).
+    c, repo, _ = ctx
+    repo.restore_result = None
+    r = c.post(f"/v1/composition/motifs/{uuid.uuid4()}/restore")
+    assert r.status_code == 404
+
+
+def test_restore_shared_tier_edit_gated(ctx):
+    # with book_id → EDIT-gated restore_shared (the fake grant defaults to EDIT).
+    c, repo, _ = ctx
+    mid, book = uuid.uuid4(), uuid.uuid4()
+    r = c.post(f"/v1/composition/motifs/{mid}/restore?book_id={book}")
+    assert r.status_code == 200
+    assert repo.restore_calls == [(USER, mid, book)]
+
+
+def test_restore_shared_denied_without_edit(ctx):
+    # review-impl MED-1: the shared-tier restore MUST 403 a VIEW-only caller BEFORE any write —
+    # this gate is the tenancy defense; without a test a refactor could drop it silently.
+    c, repo, _ = ctx
+    from app.grant_client import GrantLevel
+    repo.grant.level = GrantLevel.VIEW   # below EDIT
+    r = c.post(f"/v1/composition/motifs/{uuid.uuid4()}/restore?book_id={uuid.uuid4()}")
+    assert r.status_code == 403
+    assert repo.restore_calls == []      # no restore_shared attempted
 
 
 # ── publish quota (B-4) ───────────────────────────────────────────────────────
@@ -534,3 +603,136 @@ def test_requires_auth(ctx):
     assert c.get("/v1/composition/motifs").status_code in (401, 403)
     assert c.get("/v1/composition/motifs/catalog").status_code in (401, 403)
     assert c.post("/v1/composition/motifs", json={"code": "x", "name": "X"}).status_code in (401, 403)
+
+
+# ── motif graph (BE-M3) — links list / create / delete ────────────────────────
+
+
+def _motif_link(**kw):
+    from app.db.models import MotifLink
+    base = dict(
+        id=kw.pop("id", uuid.uuid4()),
+        from_motif_id=kw.pop("from_motif_id", uuid.uuid4()),
+        to_motif_id=kw.pop("to_motif_id", uuid.uuid4()),
+        kind=kw.pop("kind", "precedes"),
+    )
+    base.update(kw)
+    return MotifLink(**base)
+
+
+def _check_violation() -> asyncpg.CheckViolationError:
+    return asyncpg.CheckViolationError("motif_link_guard")
+
+
+def test_list_links_returns_edges_and_count(ctx):
+    c, repo, _ = ctx
+    mid = uuid.uuid4()
+    repo.links_result = [{"kind": "precedes", "direction": "out",
+                          "neighbor": {"id": str(uuid.uuid4()), "code": "x", "name": "X"}}]
+    r = c.get(f"/v1/composition/motifs/{mid}/links")
+    assert r.status_code == 200
+    body = r.json()
+    assert body["motif_id"] == str(mid)
+    assert body["count"] == 1 and len(body["links"]) == 1
+    # default direction is 'both'; no book gate on the user-tier read
+    assert repo.last_list_links[2] == "both" and repo.last_list_links[4] is None
+
+
+def test_list_links_rejects_bad_direction(ctx):
+    c, _, _ = ctx
+    r = c.get(f"/v1/composition/motifs/{uuid.uuid4()}/links?direction=sideways")
+    assert r.status_code == 422
+    assert r.json()["detail"]["code"] == "MOTIF_LINK_DIRECTION"
+
+
+def test_list_links_not_visible_anchor_is_empty_not_404(ctx):
+    """IDOR-safe: an anchor you can't see returns [] (no existence oracle), never 404."""
+    c, repo, _ = ctx
+    repo.links_result = []
+    r = c.get(f"/v1/composition/motifs/{uuid.uuid4()}/links")
+    assert r.status_code == 200 and r.json()["count"] == 0
+
+
+def test_list_links_shared_book_graph_is_view_gated(ctx):
+    c, repo, _ = ctx
+    book = uuid.uuid4()
+    r = c.get(f"/v1/composition/motifs/{uuid.uuid4()}/links?book_id={book}")
+    assert r.status_code == 200
+    # the VIEW grant was resolved for the book, and book_id rode through to the repo
+    assert repo.grant.calls and repo.grant.calls[-1][0] == book
+    assert repo.last_list_links[4] == book
+
+
+def test_create_link_201(ctx):
+    c, repo, _ = ctx
+    frm, to = uuid.uuid4(), uuid.uuid4()
+    repo.create_link_result = _motif_link(from_motif_id=frm, to_motif_id=to, kind="precedes")
+    r = c.post(f"/v1/composition/motifs/{frm}/links",
+               json={"to_motif_id": str(to), "kind": "precedes"})
+    assert r.status_code == 201
+    assert r.json()["kind"] == "precedes"
+    # the path motif is the FROM endpoint; the body carries only TO
+    assert repo.last_create_link[1] == frm and repo.last_create_link[2] == to
+
+
+def test_create_link_cycle_or_selflink_is_409_with_the_trigger_message(ctx):
+    """The DB motif_link_guard is the spec — a self-link/cycle surfaces as an inline 409,
+    NOT a swallowed toast (plan 33 §3.1)."""
+    c, repo, _ = ctx
+    repo.create_link_raises = _check_violation()
+    r = c.post(f"/v1/composition/motifs/{uuid.uuid4()}/links",
+               json={"to_motif_id": str(uuid.uuid4()), "kind": "precedes"})
+    assert r.status_code == 409
+    assert r.json()["detail"]["code"] == "MOTIF_LINK_INVALID"
+
+
+def test_create_link_duplicate_is_409(ctx):
+    c, repo, _ = ctx
+    repo.create_link_raises = _unique_violation()
+    r = c.post(f"/v1/composition/motifs/{uuid.uuid4()}/links",
+               json={"to_motif_id": str(uuid.uuid4()), "kind": "variant_of"})
+    assert r.status_code == 409 and r.json()["detail"]["code"] == "MOTIF_LINK_EXISTS"
+
+
+def test_create_link_endpoint_out_of_scope_is_404(ctx):
+    """LookupError from the repo (an endpoint isn't yours / not in the book's shared tier)
+    → a uniform 404, no oracle."""
+    c, repo, _ = ctx
+    repo.create_link_raises = LookupError("both endpoints must be motifs you own")
+    r = c.post(f"/v1/composition/motifs/{uuid.uuid4()}/links",
+               json={"to_motif_id": str(uuid.uuid4()), "kind": "composed_of"})
+    assert r.status_code == 404 and r.json()["detail"]["code"] == "MOTIF_NOT_FOUND"
+
+
+def test_create_link_forbids_extra_fields(ctx):
+    c, _, _ = ctx
+    r = c.post(f"/v1/composition/motifs/{uuid.uuid4()}/links",
+               json={"to_motif_id": str(uuid.uuid4()), "kind": "precedes",
+                     "from_motif_id": str(uuid.uuid4())})  # from is the PATH, not the body
+    assert r.status_code == 422
+
+
+def test_create_link_shared_book_is_edit_gated(ctx):
+    c, repo, _ = ctx
+    from app.grant_client import GrantLevel
+    book = uuid.uuid4()
+    repo.grant.level = GrantLevel.VIEW  # below EDIT → 403
+    r = c.post(f"/v1/composition/motifs/{uuid.uuid4()}/links",
+               json={"to_motif_id": str(uuid.uuid4()), "kind": "precedes", "book_id": str(book)})
+    assert r.status_code == 403
+
+
+def test_delete_link_200(ctx):
+    c, repo, _ = ctx
+    repo.delete_link_result = True
+    lid = uuid.uuid4()
+    r = c.delete(f"/v1/composition/motif-links/{lid}")
+    assert r.status_code == 200 and r.json()["deleted"] is True
+    assert repo.last_delete_link[1] == lid
+
+
+def test_delete_link_missing_or_foreign_is_404(ctx):
+    c, repo, _ = ctx
+    repo.delete_link_result = False
+    r = c.delete(f"/v1/composition/motif-links/{uuid.uuid4()}")
+    assert r.status_code == 404 and r.json()["detail"]["code"] == "MOTIF_NOT_FOUND"

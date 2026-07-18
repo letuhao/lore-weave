@@ -3,9 +3,10 @@
   "tabs": {
     "skills": "技能",
     "mcp": "MCP 伺服器",
-    "commands": "指令與 Hook",
+    "commands": "指令與鉤子",
     "subagents": "子代理",
     "plugins": "外掛程式",
+    "permissions": "工具權限",
     "proposals": "提案",
     "activity": "活動日誌",
     "ingest": "註冊來源"
@@ -29,7 +30,7 @@
     "cancel": "取消",
     "back": "返回",
     "next": "下一步",
-    "of": "共",
+    "of": "的",
     "system": "系統",
     "book": "書籍"
   },
@@ -65,8 +66,8 @@
       "error": "無法連線"
     },
     "add": "+ 新增伺服器",
-    "empty": "尚未新增 MCP 伺服器。新增伺服器可為代理程式提供額外工具。",
-    "review": "⚠ 審查",
+    "empty": "目前尚無 MCP 伺服器。新增一個伺服器可為代理程式提供額外工具。",
+    "review": "⚠ 審核",
     "detail": {
       "back": "‹ 返回",
       "connection": "連線",
@@ -74,7 +75,7 @@
       "prefix": "前綴",
       "egress": "出口白名單",
       "health": "狀態",
-      "lastScanned": "最後掃描時間",
+      "lastScanned": "上次掃描時間",
       "credentialStored": "憑證已儲存",
       "healthOk": "正常 · {{count}} 個工具 · {{latency}}ms",
       "healthError": "錯誤：{{error}}",
@@ -86,17 +87,17 @@
     },
     "scan": {
       "label": "供應鏈掃描：",
-      "clean": "乾淨",
+      "clean": "安全",
       "findings": "{{count}} 個發現",
       "tools": "工具 ({{count}})",
       "flagged": "已標記"
     },
     "wizard": {
       "steps": {
-        "connection": "連接",
+        "connection": "連線",
         "auth": "驗證",
         "scan": "健康檢查與掃描",
-        "review": "檢查"
+        "review": "審查"
       },
       "displayName": "顯示名稱",
       "displayNamePlaceholder": "我的工具伺服器",
@@ -104,10 +105,10 @@
       "urlPlaceholder": "https://mcp.example.com/mcp",
       "authentication": "身分驗證",
       "authNone": "無",
-      "authBearer": "Bearer 權杖",
+      "authBearer": "Bearer 令牌",
       "authOauth": "OAuth 2.1",
-      "noAuthHint": "無身分驗證 — 此伺服器是公開的。繼續進行註冊與掃描。",
-      "bearerLabel": "Bearer 權杖 (將儲存在保險箱中；之後不會再次顯示)",
+      "noAuthHint": "無須身分驗證 — 此伺服器為公開狀態。繼續進行註冊與掃描。",
+      "bearerLabel": "Bearer 令牌 (將儲存在保險箱中；不會再次顯示)",
       "bearerPlaceholder": "貼上權杖",
       "authzEndpoint": "授權端點",
       "tokenEndpoint": "權杖端點",
@@ -127,37 +128,37 @@
   },
   "commands": {
     "title": "斜線指令",
-    "description": "在對話中輸入 <code>/name</code> 以展開範本。使用 <code>{{args}}</code> 或 <code>{{key}}</code> 來傳遞參數。",
+    "description": "在對話中輸入 <code>/name</code> 以展開模板。使用 <code>{{args}}</code> 或 <code>{{key}}</code> 來傳遞參數。",
     "namePlaceholder": "名稱 (例如：plan-scene)",
-    "templatePlaceholder": "範本：規劃關於 {{topic}} 的場景…",
+    "templatePlaceholder": "模板：規劃關於 {{topic}} 的場景…",
     "empty": "尚無指令。"
   },
   "hooks": {
     "title": "鉤子 (Hooks)",
-    "description": "在代理人迴圈節點觸發的宣告式規則。無需撰寫程式碼 —— 僅需設定事件、選填的工具比對，以及對應動作。",
-    "matchPlaceholder": "工具比對 (例如：glossary_delete_*)",
+    "description": "在代理程式迴圈節點觸發的宣告式規則。無需撰寫程式碼 —— 僅需定義事件、選填的工具匹配條件以及動作。",
+    "matchPlaceholder": "工具匹配 (例如：glossary_delete_*)",
     "textPlaceholder": "要注入或標註的文字",
-    "empty": "尚無鉤子。"
+    "empty": "尚無 Hook。"
   },
   "subagents": {
     "title": "子代理 (Subagents)",
-    "description": "一個具備特定名稱的角色，代理可以透過 <code>run_subagent</code> 將受限的子任務委派給它。它會在一個隔離的對話回合中執行，且「僅」能使用其權限範圍內的工具。若要建立純粹用於推理或摘要的角色，請將範圍留空。",
+    "description": "一個具備特定名稱的角色，代理可以透過 <code>run_subagent</code> 將受限的子任務委派給它。它會在一個隔離的對話回合中執行，且「僅」能使用其範圍內的工具。若要建立純粹用於推理或摘要的角色，請將範圍留空。",
     "namePlaceholder": "名稱 (例如：lore-scout)",
     "scopePlaceholder": "工具範圍：glossary_*, kg_*",
     "modelPlaceholder": "模型 (選填，user_model ID)",
     "promptPlaceholder": "系統提示詞 — 說明此角色的身份與運作方式…",
     "create": "建立子代理",
-    "empty": "目前尚無子代理。",
+    "empty": "尚無子代理。",
     "reasoningOnly": "僅限推理 (無工具)",
     "modelPinned": "模型已固定"
   },
   "plugins": {
-    "description": "外掛程式將技能、指令與鉤子（hooks）封裝在一起 — 匯出以進行分享，匯入以進行安裝。",
+    "description": "插件封裝了技能、指令與 Hook — 可匯出分享，或匯入安裝。",
     "importing": "匯入中…",
-    "import": "匯入套件",
+    "import": "匯入套件包",
     "invalidJson": "該檔案不是有效的 JSON 格式。",
-    "notBundle": "這不是 LoreWeave 套件（缺少 manifest.name）。",
-    "empty": "目前尚無套件。請匯入套件以進行安裝。",
+    "notBundle": "這不是 LoreWeave 套件包（缺少 manifest.name）。",
+    "empty": "目前尚無插件。請匯入套件包以進行安裝。",
     "export": "匯出"
   },
   "proposals": {
@@ -169,7 +170,7 @@
       "all": "全部"
     },
     "total": "總計 {{count}} 筆",
-    "empty": "目前沒有提案。代理人建議的技能將顯示在此供您核准。",
+    "empty": "目前沒有提案。代理人建議的技能將顯示在此供您審核。",
     "approve": "核准",
     "reject": "拒絕",
     "reason": "原因：{{reason}}"
@@ -182,7 +183,7 @@
       "7d": "過去 7 天",
       "30d": "過去 30 天"
     },
-    "empty": "此範圍內無活動。",
+    "empty": "此範圍內沒有活動紀錄。",
     "secondsAgo": "{{count}} 秒前",
     "minutesAgo": "{{count}} 分鐘前",
     "hoursAgo": "{{count}} 小時前",
@@ -190,14 +191,67 @@
   },
   "ingest": {
     "title": "註冊表來源 (管理員)",
-    "description": "從官方 MCP Registry 整理系統目錄。驗證 ≠ 安全 — 每次核准都會在聯集前重新執行 SSRF 防護與供應鏈掃描。",
+    "description": "從官方 MCP Registry 整理系統目錄。驗證 ≠ 安全 — 每次核准在進行聯合前，都會重新執行 SSRF 防護與供應鏈掃描。",
     "all": "全部",
-    "pulling": "拉取中…",
-    "pull": "拉取註冊表",
-    "pullResult": "已拉取：獲取 {{fetched}} · 新增 {{new}} · 更新 {{updated}} · 跳過遠端 {{skipped}}",
-    "truncated": "· 部分內容 (已截斷)",
-    "empty": "此檢視中沒有項目。請拉取註冊表以填充隊列。",
+    "pulling": "擷取中…",
+    "pull": "擷取註冊表",
+    "pullResult": "已擷取：已取得 {{fetched}} · 新增 {{new}} · 已更新 {{updated}} · 略過 {{skipped}}",
+    "truncated": "· 部分擷取 (已截斷)",
+    "empty": "此檢視中沒有項目。請擷取註冊表以填充佇列。",
     "approve": "核准",
     "reject": "拒絕"
+  },
+  "permissions": {
+    "blurb": "您已授予助手永久使用、或已禁止使用的工具。「始終允許」會在核准卡片上新增一列於此。取消授權表示下次助手想要使用該工具時，會再次徵詢您的同意。",
+    "loading": "載入中…",
+    "allowedTitle": "始終允許",
+    "deniedTitle": "已封鎖",
+    "blockTitle": "封鎖工具",
+    "emptyAllowed": "您尚未授予任何工具永久權限。助手每次使用時都會徵詢您的同意。",
+    "emptyDenied": "目前沒有任何被封鎖的工具。",
+    "toolPlaceholder": "工具名稱 (例如：chapter_delete)",
+    "unknownTool": "這不是助手的工具之一。請從列表中選擇一個名稱。",
+    "kind": {
+      "mutation": "可以修改我的作品",
+      "spend": "可以花費金錢"
+    },
+    "decision": {
+      "allow": "無需詢問即可執行",
+      "deny": "永不執行"
+    },
+    "actions": {
+      "revoke": "再次詢問我",
+      "deny": "永不允許",
+      "allow": "允許",
+      "block": "封鎖"
+    }
+  },
+  "workflows": {
+    "total": "{{count}} 個工作流",
+    "empty": "目前尚無工作流。請核准工作流提案以新增工作流。",
+    "enabled": "開啟",
+    "disabled": "關閉",
+    "delete": "刪除",
+    "proposalsEmpty": "目前沒有工作流提案。當代理程式提出工作流時，會顯示在此供您核准。",
+    "view": "查看",
+    "hide": "隱藏",
+    "noSteps": "尚未定義步驟。"
+  },
+  "bindings": {
+    "loading": "載入中…",
+    "autoSetupDesc": "在此模式下，助手會自動設定的配方。",
+    "none": "此處未設定任何自動項目。",
+    "turnOff": "關閉",
+    "turnBackOn": "重新開啟",
+    "mode": {
+      "ask": "閱讀與提問",
+      "write": "寫作",
+      "plan": "規劃"
+    },
+    "tier": {
+      "system": "內建",
+      "user": "由您設定",
+      "book": "此書籍"
+    }
   }
 }

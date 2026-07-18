@@ -17,6 +17,12 @@ vi.mock('@/features/knowledge/hooks/useBookKnowledgeProject', () => ({
   useBookKnowledgeProject: (bookId: string) => useBookKnowledgeProject(bookId),
 }));
 
+// S-05 — the panel now reads a triage count for the deep-link nudge; stub it so
+// this stays a panel-wiring test (the queue itself is tested in TriageQueue.test).
+vi.mock('@/features/knowledge/hooks/useTriageQueue', () => ({
+  useTriageQueue: () => ({ groups: [], isLoading: false, error: null }),
+}));
+
 // KgNoProjectState (D-KG-NO-CREATE-CTA) owns the real empty-state copy + create-project
 // flow now, tested on its own in KgNoProjectState.test.tsx (it needs auth/react-query
 // providers this panel-wiring test doesn't otherwise set up). Stubbed here so this stays

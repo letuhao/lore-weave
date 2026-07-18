@@ -1,7 +1,7 @@
 import { useState, useMemo } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
-import { BookOpen, Plus, Filter, Trash2, Layers, Sparkles, Languages, HelpCircle, Lightbulb, GitMerge, CheckCircle2, CircleSlash, PencilLine } from 'lucide-react';
+import { BookOpen, Plus, Filter, Trash2, Layers, Sparkles, Languages, HelpCircle, Lightbulb, GitMerge, CheckCircle2, CircleSlash, XCircle, PencilLine, MapPin } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '@/auth';
 import { glossaryApi } from '../api';
@@ -31,6 +31,7 @@ const STATUS_COLORS: Record<string, string> = {
   draft: 'bg-amber-400/15 text-amber-400',
   active: 'bg-green-500/15 text-green-500',
   inactive: 'bg-muted text-muted-foreground',
+  rejected: 'bg-destructive/15 text-destructive',
 };
 
 function KindBadge({ kind }: { kind: GlossaryEntitySummary['kind'] }) {
@@ -294,7 +295,7 @@ export function GlossaryEntityList({ bookId, bookGenreTags = [], bookOriginalLan
     }
   };
 
-  const handleBulkStatus = async (status: 'active' | 'inactive') => {
+  const handleBulkStatus = async (status: 'active' | 'inactive' | 'rejected') => {
     const ids = [...selectedIds];
     if (!accessToken || ids.length === 0) return;
     setBulkBusy(true);
@@ -528,7 +529,7 @@ export function GlossaryEntityList({ bookId, bookGenreTags = [], bookOriginalLan
             <div className="space-y-1.5">
               <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">{t('glossary.status_label')}</span>
               <div className="flex gap-1.5">
-                {(['all', 'draft', 'active', 'inactive'] as const).map((s) => (
+                {(['all', 'draft', 'active', 'inactive', 'rejected'] as const).map((s) => (
                   <button
                     key={s}
                     onClick={() => updateFilters({ status: s })}
@@ -633,6 +634,15 @@ export function GlossaryEntityList({ bookId, bookGenreTags = [], bookOriginalLan
                   <span className={cn('rounded-full px-1.5 py-0.5 text-[9px] font-medium', STATUS_COLORS[e.status])}>
                     {t(`glossary.status.${e.status}`)}
                   </span>
+                  {e.scope_label && (
+                    <span
+                      className="inline-flex items-center gap-0.5 rounded-full bg-violet-500/15 px-1.5 py-0.5 text-[9px] font-medium text-violet-400"
+                      title={t('glossary.scope_label_title')}
+                    >
+                      <MapPin className="h-2.5 w-2.5" />
+                      {e.scope_label}
+                    </span>
+                  )}
                   {e.alive != null && (
                     <button
                       onClick={(ev) => { ev.stopPropagation(); void handleToggleAlive(e); }}
@@ -692,6 +702,14 @@ export function GlossaryEntityList({ bookId, bookGenreTags = [], bookOriginalLan
         >
           <CircleSlash className="h-3.5 w-3.5" />
           {t('glossary.bulk.deactivate')}
+        </button>
+        <button
+          onClick={() => void handleBulkStatus('rejected')}
+          disabled={bulkBusy}
+          className="inline-flex items-center gap-1.5 rounded-full border border-border px-4 py-1.5 text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-secondary disabled:opacity-50 transition-colors"
+        >
+          <XCircle className="h-3.5 w-3.5" />
+          {t('glossary.bulk.reject')}
         </button>
         <button
           onClick={() => setBulkDeleteOpen(true)}

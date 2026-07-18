@@ -9,6 +9,7 @@ import { versionsApi, translationApi, type LanguageVersionGroup, type BookTransl
 import { VersionSidebar } from '@/features/translation/components/VersionSidebar';
 import { TranslationViewer } from '@/features/translation/components/TranslationViewer';
 import { SplitCompareView } from '@/features/translation/components/SplitCompareView';
+import { TranslationErrorState } from '@/features/translation/components/TranslationErrorState';
 import { TranslateModal } from '@/pages/book-tabs/TranslateModal';
 
 interface Props {
@@ -56,6 +57,10 @@ export function ChapterTranslationsPanel({
   const [languages, setLanguages] = useState<LanguageVersionGroup[]>([]);
   const [, setSettings] = useState<BookTranslationSettings | null>(null);
   const [loading, setLoading] = useState(true);
+  // T6: a versions/chapters load failure must show a typed error banner + Retry, not a
+  // structurally-fine-but-empty workspace (blank title, `??` language) with the failure only
+  // in a toast that is long gone by the time the user looks.
+  const [loadError, setLoadError] = useState<unknown>(null);
   const [compareMode, setCompareMode] = useState(false);
   const [translateOpen, setTranslateOpen] = useState(false);
 
@@ -66,6 +71,7 @@ export function ChapterTranslationsPanel({
   const loadAll = useCallback(async () => {
     if (!accessToken) return;
     setLoading(true);
+    setLoadError(null);
     try {
       const [chaptersRes, versionsRes, settingsRes] = await Promise.all([
         booksApi.listChapters(accessToken, bookId, { lifecycle_state: 'active', limit: 100 }),
@@ -88,7 +94,9 @@ export function ChapterTranslationsPanel({
         return best.target_language;
       });
     } catch (e) {
-      toast.error(t('page.load_failed', { error: (e as Error).message }));
+      // T6: surface a persistent typed error state (below), not a transient toast over an
+      // empty workspace.
+      setLoadError(e);
     } finally {
       setLoading(false);
     }
@@ -181,6 +189,16 @@ export function ChapterTranslationsPanel({
     );
   }
 
+  // T6: a load failure is surfaced as a persistent, typed banner with Retry — never a
+  // structurally-fine, factually-empty workspace.
+  if (loadError) {
+    return (
+      <div data-testid="chapter-translations-panel" className={className ?? 'flex h-full items-center justify-center p-6'}>
+        <TranslationErrorState error={loadError} onRetry={loadAll} className="max-w-md" />
+      </div>
+    );
+  }
+
   return (
     <div data-testid="chapter-translations-panel" className={className ?? 'flex h-full overflow-hidden'}>
       {/* Sidebar */}
@@ -255,6 +273,9 @@ export function ChapterTranslationsPanel({
             isActive={isActive}
             onSetActive={handleSetActive}
             onReview={onReview}
+            // S4: a human edit creates a new version — reload so the sidebar's version list
+            // reflects it instead of silently going stale.
+            onSaved={() => void loadAll()}
           />
         )}
       </div>

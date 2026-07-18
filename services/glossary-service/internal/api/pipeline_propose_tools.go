@@ -17,43 +17,50 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/loreweave/grantclient"
+	lwmcp "github.com/loreweave/loreweave_mcp"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
 // RegisterPipelineProposeTools adds the M2 class-C propose tools to the user/book MCP server.
 func (s *Server) RegisterPipelineProposeTools(srv *mcp.Server) {
-	mcp.AddTool(srv, &mcp.Tool{
+	lwmcp.RegisterTool(srv, &mcp.Tool{
 		Name: "glossary_propose_status_change",
-		Description: "Propose a BATCH status change for entities (active | inactive | draft) — e.g. approve " +
-			"drafts or retire stale entities. book_id + status + entity_ids (UUIDs). Returns a confirm card; " +
-			"a human approves before anything changes. Reversible (just set the status back).",
+		Description: "Propose a BATCH status change for entities (active | inactive | draft | rejected) — e.g. " +
+			"approve drafts, retire stale entities, or reject a draft that shouldn't be kept. book_id + status + " +
+			"entity_ids (UUIDs). Returns a confirm card; a human approves before anything changes. Reversible " +
+			"(just set the status back).",
 		InputSchema: closedSetSchemaFor[proposeStatusChangeToolIn](map[string][]any{
-			"status": {"active", "inactive", "draft"},
+			"status": {"active", "inactive", "draft", "rejected"},
 		}),
+		// Mints a grant confirm_token (no direct write) ⇒ Tier W.
+		Meta: lwmcp.NewToolMeta(lwmcp.TierW, lwmcp.ScopeBook, nil, nil),
 	}, s.toolProposeStatusChange)
 
-	mcp.AddTool(srv, &mcp.Tool{
+	lwmcp.RegisterTool(srv, &mcp.Tool{
 		Name: "glossary_propose_restore_revision",
 		Description: "Propose restoring an entity to one of its prior revisions (see glossary_list_entity_revisions). " +
 			"book_id + entity_id + revision_id. DESTRUCTIVE: it prunes-then-restores the entity's attributes/" +
 			"translations/evidence/chapter-links to that snapshot (current values not in the snapshot are removed). " +
 			"Returns a confirm card; itself captured as a new revision, so it is reversible.",
+		Meta: lwmcp.NewToolMeta(lwmcp.TierW, lwmcp.ScopeBook, nil, nil),
 	}, s.toolProposeRestoreRevision)
 
-	mcp.AddTool(srv, &mcp.Tool{
+	lwmcp.RegisterTool(srv, &mcp.Tool{
 		Name: "glossary_propose_reassign_kind",
 		Description: "Propose moving an entity to a different kind (triage the unknown bucket — see " +
 			"glossary_list_unknown_entities). book_id + entity_id + kind_code (the target kind's code). " +
 			"DESTRUCTIVE: attribute values whose code has no counterpart in the new kind are DROPPED (the confirm " +
 			"card previews exactly which). Recoverable via revision restore. Returns a confirm card.",
+		Meta: lwmcp.NewToolMeta(lwmcp.TierW, lwmcp.ScopeBook, nil, nil),
 	}, s.toolProposeReassignKind)
 
-	mcp.AddTool(srv, &mcp.Tool{
+	lwmcp.RegisterTool(srv, &mcp.Tool{
 		Name: "glossary_propose_merge",
 		Description: "Propose merging duplicate entities (see glossary_list_merge_candidates). book_id + winner_id " +
 			"(kept) + loser_ids (merged away). DESTRUCTIVE: each loser is soft-deleted and its non-conflicting child " +
 			"rows + name/aliases fold into the winner. Losers must be the SAME kind as the winner. Returns a confirm " +
 			"card; each merge is journaled and reversible via the merge-journal revert.",
+		Meta: lwmcp.NewToolMeta(lwmcp.TierW, lwmcp.ScopeBook, nil, nil),
 	}, s.toolProposeMerge)
 }
 
@@ -76,7 +83,7 @@ func (s *Server) toolProposeStatusChange(ctx context.Context, _ *mcp.CallToolReq
 	}
 	status := strings.TrimSpace(in.Status)
 	if !validEntityStatus(status) {
-		return nil, confirmCardOut{}, errors.New("status must be active, inactive, or draft")
+		return nil, confirmCardOut{}, errors.New("status must be active, inactive, draft, or rejected")
 	}
 	ids := parseEntityIDs(in.EntityIDs)
 	if len(ids) == 0 {
@@ -100,8 +107,18 @@ func (s *Server) toolProposeStatusChange(ctx context.Context, _ *mcp.CallToolReq
 		{Label: "new status", Value: status},
 		{Label: "entities updated", Value: fmt.Sprint(live)},
 	}
-	return s.mintGrantActionCard(userID, bookID, descStatusChange,
+	res, out, err := s.mintGrantActionCard(userID, bookID, descStatusChange,
 		fmt.Sprintf("Set %d entities to %q", live, status), params, rows, false)
+	// External MCP discoverability audit #11 — effectStatusChange's UPDATE has no
+	// `status <> target` guard, so it reports every live id as "updated" even when they
+	// ALL already have the target status. Warn up front instead of letting the caller
+	// confirm a token that changes nothing meaningful.
+	if err == nil {
+		if changing, cerr := s.countEntitiesNeedingStatusChange(ctx, bookID, ids, status); cerr == nil && changing == 0 {
+			out.Warning = fmt.Sprintf("all %d matched entities already have status %q — this will change nothing", live, status)
+		}
+	}
+	return res, out, err
 }
 
 func (s *Server) toolProposeRestoreRevision(ctx context.Context, _ *mcp.CallToolRequest, in struct {
@@ -194,6 +211,15 @@ func (s *Server) toolProposeReassignKind(ctx context.Context, _ *mcp.CallToolReq
 	if !ok {
 		return nil, confirmCardOut{}, errors.New("unknown kind: " + kindCode)
 	}
+	// External MCP discoverability audit #11 — if the entity is ALREADY on the target
+	// kind, rekeyEntityToKind's re-key/drop UPDATEs all filter `od.kind_id <> newKindID`
+	// and match zero rows; only a timestamp bumps. Mint-time this is a clean, cheap check
+	// (one extra column off the row we already fetched via entityBelongsToBook's query).
+	var currentKindID uuid.UUID
+	if err := s.pool.QueryRow(ctx,
+		`SELECT kind_id FROM glossary_entities WHERE entity_id=$1`, entityID).Scan(&currentKindID); err != nil {
+		return nil, confirmCardOut{}, errors.New("failed to resolve the entity's current kind")
+	}
 	dropped, err := s.reassignKindDroppedCodes(ctx, entityID, kindID)
 	if err != nil {
 		return nil, confirmCardOut{}, errors.New("failed to preview the reassignment")
@@ -206,8 +232,12 @@ func (s *Server) toolProposeReassignKind(ctx context.Context, _ *mcp.CallToolReq
 		rows = append(rows, previewRow{Label: "attributes dropped (DATA LOSS)", Value: fmt.Sprint(len(dropped)),
 			Note: "codes with no counterpart: " + strings.Join(dropped, ", ") + " — recoverable via revision restore"})
 	}
-	return s.mintGrantActionCard(userID, bookID, descReassignKind,
+	res, out, err := s.mintGrantActionCard(userID, bookID, descReassignKind,
 		fmt.Sprintf("Reassign entity to kind %q", kindCode), params, rows, true)
+	if err == nil && currentKindID == kindID {
+		out.Warning = fmt.Sprintf("the entity is already kind %q — this will change nothing", kindCode)
+	}
+	return res, out, err
 }
 
 func (s *Server) toolProposeMerge(ctx context.Context, _ *mcp.CallToolRequest, in struct {

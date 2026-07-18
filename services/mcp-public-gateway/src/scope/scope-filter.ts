@@ -1,5 +1,8 @@
 import type { Logger } from '@nestjs/common';
-import { FIND_TOOLS_NAME, TOOL_POLICY, WILDCARD_SCOPE, filterTools, isToolAllowed, knownTool } from './tool-policy.js';
+import { FIND_TOOLS_NAME, TOOL_LIST_NAME, TOOL_LOAD_NAME, TOOL_POLICY, WILDCARD_SCOPE, filterTools, isToolAllowed, knownTool } from './tool-policy.js';
+
+/** The always-present discovery meta-tools — never scope-collapsed off tools/list, never drift-warned. */
+const DISCOVERY_META_TOOLS: ReadonlySet<string> = new Set([FIND_TOOLS_NAME, TOOL_LIST_NAME, TOOL_LOAD_NAME]);
 
 /**
  * Edge scope enforcement (PUB-3 / H-E / H-F), the SECOND of the two checks (the
@@ -173,7 +176,7 @@ function filterOneListMessage(
   if (log) {
     for (const t of tools) {
       const n = (t as { name?: unknown })?.name;
-      if (typeof n === 'string' && n !== FIND_TOOLS_NAME && !knownTool(n)) {
+      if (typeof n === 'string' && !DISCOVERY_META_TOOLS.has(n) && !knownTool(n)) {
         log.warn(`scope-filter: federated tool '${n}' not in policy table — denied (classify it in tool-policy.ts)`);
       }
     }
@@ -187,7 +190,9 @@ function filterOneListMessage(
   if (activated && !scopes.includes(WILDCARD_SCOPE)) {
     out = out.filter((t) => {
       const n = (t as { name?: unknown }).name;
-      return n === FIND_TOOLS_NAME || (typeof n === 'string' && activated.has(n));
+      // The discovery meta-tools (find_tools + the deterministic pair tool_list/tool_load) are
+      // ALWAYS present — they are the entrypoints; the surface grows as they activate tools.
+      return (typeof n === 'string' && DISCOVERY_META_TOOLS.has(n)) || (typeof n === 'string' && activated.has(n));
     });
   }
   msg.result!.tools = out;
@@ -244,17 +249,36 @@ interface FindToolsMatch {
  * scoped set). Returns the in-scope matched names (to SADD into the session). Shared by the single
  * and the batch path so they enforce the identical anti-oracle contract.
  */
+/**
+ * Entitlement-opacity fix (item #6): when this key's OWN scope-filter is what strips a
+ * previously non-empty match/enumeration set down to zero, the caller otherwise gets a bare
+ * `{tools:[], enumerated:true}` indistinguishable from ai-gateway's own "domain genuinely has
+ * no tools" case (its `note` field — see find-tools.ts `findToolsResult`/`enumerateGroup` —
+ * covers THAT case correctly and must not be duplicated here). This is a DIFFERENT condition:
+ * the domain has tools, this key just isn't entitled to them. Deliberately a different field
+ * name (`scope_note`, not `note`) so the two never collide if both legs somehow both fired.
+ */
+const ENTITLEMENT_GAP_NOTE =
+  'this domain has tools, but they are not enabled for this API key — ask the key owner to grant access';
+
 function filterOneFindToolsResult(result: unknown, scopes: readonly string[]): string[] {
   if (!result || typeof result !== 'object') return [];
   const inScope = new Set<string>();
-  const sc = (result as { structuredContent?: { tools?: unknown } }).structuredContent;
+  const sc = (result as { structuredContent?: { tools?: unknown; scope_note?: unknown } }).structuredContent;
   if (sc && Array.isArray(sc.tools)) {
-    sc.tools = (sc.tools as FindToolsMatch[]).filter((m) => {
+    const hadMatches = sc.tools.length > 0;
+    const filtered = (sc.tools as FindToolsMatch[]).filter((m) => {
       const n = typeof m?.name === 'string' ? m.name : '';
       const ok = n !== '' && isToolAllowed(n, scopes);
       if (ok) inScope.add(n);
       return ok;
     });
+    sc.tools = filtered;
+    // Only fire when THIS filtering step is what caused the non-empty→empty transition —
+    // if ai-gateway already handed back an empty set, its own `note` already explains why.
+    if (hadMatches && filtered.length === 0) {
+      sc.scope_note = ENTITLEMENT_GAP_NOTE;
+    }
     const content = (result as { content?: unknown }).content;
     if (Array.isArray(content) && content[0] && typeof content[0] === 'object') {
       (content[0] as { text?: unknown }).text = JSON.stringify(sc);
@@ -287,6 +311,129 @@ export function scopeFilterFindToolsResult(
   if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return { text, activatedNames: [] };
   const names = filterOneFindToolsResult((parsed as { result?: unknown }).result, scopes);
   return { text: JSON.stringify(parsed), activatedNames: names };
+}
+
+// ── WS-1a · tool_list / tool_load edge scope-filter + activation (contracts.md C2) ──────────────
+
+/** True iff the body is a SINGLE `tools/call` to `tool_list`. */
+export function isToolListCall(body: unknown): boolean {
+  if (Array.isArray(body) || !body || typeof body !== 'object') return false;
+  const msg = body as JsonRpcRequest;
+  return isToolCall(msg) && msg.params.name === TOOL_LIST_NAME;
+}
+
+/** True iff the body is a SINGLE `tools/call` to `tool_load`. */
+export function isToolLoadCall(body: unknown): boolean {
+  if (Array.isArray(body) || !body || typeof body !== 'object') return false;
+  const msg = body as JsonRpcRequest;
+  return isToolCall(msg) && msg.params.name === TOOL_LOAD_NAME;
+}
+
+/** Scope-filter a `{name}[]` tool array IN PLACE by `isToolAllowed`, optionally collecting the
+ * in-scope names. Returns whether the input was non-empty (to detect a non-empty→empty collapse). */
+function filterNamedToolsByScope(
+  tools: unknown,
+  scopes: readonly string[],
+  collect?: Set<string>,
+): { filtered: unknown[]; hadAny: boolean } {
+  if (!Array.isArray(tools)) return { filtered: [], hadAny: false };
+  const hadAny = tools.length > 0;
+  const filtered = (tools as Array<{ name?: unknown }>).filter((t) => {
+    const n = typeof t?.name === 'string' ? t.name : '';
+    const ok = n !== '' && isToolAllowed(n, scopes);
+    if (ok && collect) collect.add(n);
+    return ok;
+  });
+  return { filtered, hadAny };
+}
+
+/** Rewrite the mirrored `content[0].text` to match the (now scope-filtered) structuredContent. */
+function syncContentText(result: unknown, sc: unknown): void {
+  const content = (result as { content?: unknown }).content;
+  if (Array.isArray(content) && content[0] && typeof content[0] === 'object') {
+    (content[0] as { text?: unknown }).text = JSON.stringify(sc);
+  }
+}
+
+/**
+ * Scope-filter a SINGLE `tool_load` RESULT (anti-oracle) + collect the in-scope loaded names to
+ * ACTIVATE (making a subsequent raw `tools/call` permitted — the deterministic analogue of the
+ * find_tools→activate path). ai-gateway loads from the FULL catalogue; the edge drops any tool
+ * outside this key's scope so an external agent never even loads an out-of-scope schema.
+ */
+export function scopeFilterToolLoadResult(
+  text: string,
+  scopes: readonly string[],
+): { text: string; activatedNames: string[] } {
+  if (scopes.includes(WILDCARD_SCOPE)) return { text, activatedNames: [] };
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(text);
+  } catch {
+    return { text, activatedNames: [] };
+  }
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return { text, activatedNames: [] };
+  const result = (parsed as { result?: unknown }).result;
+  const names = new Set<string>();
+  if (result && typeof result === 'object') {
+    const sc = (result as { structuredContent?: { tools?: unknown; scope_note?: unknown } }).structuredContent;
+    if (sc && Array.isArray(sc.tools)) {
+      const { filtered, hadAny } = filterNamedToolsByScope(sc.tools, scopes, names);
+      sc.tools = filtered;
+      if (hadAny && filtered.length === 0) sc.scope_note = ENTITLEMENT_GAP_NOTE;
+      syncContentText(result, sc);
+    }
+  }
+  return { text: JSON.stringify(parsed), activatedNames: [...names] };
+}
+
+/**
+ * Scope-filter a SINGLE `tool_list` RESULT (anti-oracle) — drop out-of-scope tools from both the
+ * flat `tools` list and the grouped `categories` map, recompute `count`, and set `scope_note` when
+ * THIS key's scope is what emptied a non-empty set (entitlement opacity, feedback #6). Listing does
+ * NOT activate (only tool_load does), so this returns only the rewritten text.
+ */
+export function scopeFilterToolListResult(text: string, scopes: readonly string[]): string {
+  if (scopes.includes(WILDCARD_SCOPE)) return text;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(text);
+  } catch {
+    return text;
+  }
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return text;
+  const result = (parsed as { result?: unknown }).result;
+  if (result && typeof result === 'object') {
+    const sc = (result as { structuredContent?: Record<string, unknown> }).structuredContent;
+    if (sc && typeof sc === 'object') {
+      let emptiedFromNonEmpty = false;
+      if (Array.isArray(sc.tools)) {
+        const { filtered, hadAny } = filterNamedToolsByScope(sc.tools, scopes);
+        sc.tools = filtered;
+        sc.count = filtered.length;
+        if (hadAny && filtered.length === 0) emptiedFromNonEmpty = true;
+      }
+      const cats = sc.categories;
+      if (cats && typeof cats === 'object') {
+        let total = 0;
+        let hadAny = false;
+        for (const cat of Object.keys(cats as Record<string, unknown>)) {
+          const { filtered, hadAny: h } = filterNamedToolsByScope((cats as Record<string, unknown>)[cat], scopes);
+          if (h) hadAny = true;
+          if (filtered.length === 0) delete (cats as Record<string, unknown>)[cat];
+          else {
+            (cats as Record<string, unknown>)[cat] = filtered;
+            total += filtered.length;
+          }
+        }
+        sc.count = total;
+        if (hadAny && total === 0) emptiedFromNonEmpty = true;
+      }
+      if (emptiedFromNonEmpty) sc.scope_note = ENTITLEMENT_GAP_NOTE;
+      syncContentText(result, sc);
+    }
+  }
+  return JSON.stringify(parsed);
 }
 
 /**

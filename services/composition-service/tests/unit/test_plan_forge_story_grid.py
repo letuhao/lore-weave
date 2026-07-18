@@ -131,6 +131,38 @@ def test_format_story_grid_report_notes_gap_when_sg_fails(pipeline_artifacts):
     assert "sg_negative_turn_exists" in report
 
 
+def _rule(results, name):
+    return next(r for r in results if r["rule"] == name)
+
+
+def test_every_arc_has_events_FAILS_and_names_the_empty_arcs():
+    """F-5 governance — the exact defect the POC-welded prompt produced: all events in ONE arc,
+    the others empty. `spec_has_events` (total count) passes; this rule must FAIL and name the
+    empty arcs, because compiling any empty arc materialises nothing (E4's 400)."""
+    spec = {
+        "arcs": [{"id": "arc_1", "title": "A"}, {"id": "arc_2", "title": "B"}, {"id": "arc_3", "title": "C"}],
+        "events": [
+            {"id": "e1", "arc_id": "arc_2", "title": "x", "synopsis": "s"},
+            {"id": "e2", "arc_id": "arc_2", "title": "y", "synopsis": "s"},
+        ],
+    }
+    r = _rule(run_rules(spec), "every_arc_has_events")
+    assert r["pass"] is False
+    assert "arc_1" in r["detail"] and "arc_3" in r["detail"]  # names the empty arcs
+    assert _rule(run_rules(spec), "spec_has_events")["pass"] is True  # the weaker rule still passes
+
+
+def test_every_arc_has_events_PASSES_when_events_are_distributed():
+    spec = {
+        "arcs": [{"id": "arc_1", "title": "A"}, {"id": "arc_2", "title": "B"}],
+        "events": [
+            {"id": "e1", "arc_id": "arc_1", "title": "x", "synopsis": "s"},
+            {"id": "e2", "arc_id": "arc_2", "title": "y", "synopsis": "s"},
+        ],
+    }
+    assert _rule(run_rules(spec), "every_arc_has_events")["pass"] is True
+
+
 def test_format_story_grid_report_notes_no_gap_when_sg_all_pass(pipeline_artifacts):
     _, spec, _, compiled = pipeline_artifacts
     patched = json.loads(json.dumps(spec))

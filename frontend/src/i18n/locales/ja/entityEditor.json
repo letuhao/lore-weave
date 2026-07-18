@@ -16,6 +16,11 @@
       "translations": "{{count}} 件の翻訳",
       "evidences": "{{count}} 件の根拠"
     },
+    "scope_label": {
+      "placeholder": "曖昧さを回避（例：世界/領域）...",
+      "aria": "スコープラベル — 物語内の異なる文脈における同名エンティティを区別します",
+      "duplicate": "この名前、種類、およびスコープを持つエンティティがこの書籍内に既に存在します"
+    },
     "tab": {
       "attributes": "属性",
       "evidences": "根拠",
@@ -34,12 +39,20 @@
       "saved": "エンティティを保存しました",
       "status_changed": "ステータスを {{status}} に変更しました",
       "invalid_lang": "無効な言語コードです（例: en、zh、zh-tw）"
-    }
+    },
+    "remove_attr_confirm": "この属性値を削除しますか？後で再度追加できます。",
+    "remove_attr_success": "属性値を削除しました",
+    "add_attr_heading": "別の属性の値を追加",
+    "add_attr_pick": "属性を選択…",
+    "add_attr_value_placeholder": "値",
+    "add_attr_button": "追加",
+    "add_attr_success": "属性を追加しました"
   },
   "attr_card": {
     "required": "*必須",
     "modified": "変更済み",
-    "has_translations": "翻訳あり"
+    "has_translations": "翻訳あり",
+    "remove": "この値を削除"
   },
   "translation_row": {
     "confidence": {

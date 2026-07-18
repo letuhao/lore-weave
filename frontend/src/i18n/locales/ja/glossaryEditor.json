@@ -146,5 +146,13 @@
       "system": "システム"
     },
     "error": "バージョン履歴を読み込めませんでした。"
+  },
+  "createAs": "「{{name}}」を…として作成",
+  "kind": {
+    "character": "キャラクター",
+    "location": "場所",
+    "organization": "組織",
+    "concept": "概念",
+    "item": "アイテム"
   }
 }

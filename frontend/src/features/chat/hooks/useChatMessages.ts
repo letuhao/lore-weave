@@ -49,7 +49,11 @@ export type FrontendToolOutcome =
   // row; denied feeds "denied by user" so the agent self-corrects.
   | 'approved_once'
   | 'approved_always'
-  | 'denied';
+  | 'denied'
+  // D3 (PO sign-off) — "Never allow" ON THE CARD: persists a standing DENY for this
+  // tool (mirrors approved_always's persist) AND feeds "denied by user" (executes
+  // nothing). The natural moment to refuse a tool forever is when it is asking.
+  | 'denied_always';
 
 // RAID C2 — HITL permission mode. Persisted per-device in localStorage
 // (mirrors the editor's lw_editor_compose_mode pattern): a UI preference,

@@ -9,6 +9,7 @@ import type { ChapterConformance, CostEstimate } from '../types';
 
 export function useConformanceTrace(
   projectId: string | undefined, chapterId: string | undefined, token: string | null,
+  modelRef?: string | null,
 ) {
   const qc = useQueryClient();
   const [estimate, setEstimate] = useState<CostEstimate | null>(null);
@@ -22,18 +23,22 @@ export function useConformanceTrace(
     select: (d): ChapterConformance => d,
   });
 
-  const regenerateToBeat = useMutation({
-    mutationFn: (nodeId: string) => motifApi.regenerateToBeat(projectId!, nodeId, token!),
+  // Regenerate → the EXISTING scene-generate route (spec 33 §5.1); the bound motif steers it
+  // via the packer (BE-M2). Replaces the removed regenerate-to-beat endpoint.
+  const regenerateScene = useMutation({
+    mutationFn: (outlineNodeId: string) => motifApi.regenerateScene(projectId!, outlineNodeId, token!),
     onSuccess: invalidate,
   });
 
-  // Tier-W re-run: mint → confirm → poll → refresh.
+  // Tier-W re-run through the generic MCP spine: propose (mint token + estimate) → confirm →
+  // poll → refresh. Needs a BYOK model_ref (the view gates the button on it).
   const mintRun = useMutation({
-    mutationFn: () => motifApi.conformanceRunEstimate(projectId!, chapterId!, token!),
+    mutationFn: () => motifApi.chapterConformanceRunPropose(
+      { projectId: projectId!, chapterId: chapterId!, modelRef: modelRef! }, token!),
     onSuccess: (est) => setEstimate(est),
   });
   const confirmRun = useMutation({
-    mutationFn: () => motifApi.conformanceRunConfirm(estimate!.confirm_token, token!),
+    mutationFn: () => motifApi.chapterConformanceRunConfirm(estimate!.confirm_token, token!),
     onSuccess: () => { setEstimate(null); invalidate(); },
   });
   const cancelRun = () => setEstimate(null);
@@ -43,10 +48,11 @@ export function useConformanceTrace(
     isLoading: query.isLoading,
     isError: query.isError,
     refetch: query.refetch,
-    regenerateToBeat,
+    regenerateScene,
     estimate,
     mintRun,
     confirmRun,
     cancelRun,
+    canRerun: !!modelRef,
   };
 }

@@ -17,9 +17,25 @@ export interface StudioCommand {
 // Navigate/Layout groups. A panel with no `category` (forward-compat guard) sorts last under the
 // generic 'panels' fallback label — never dropped, never crashes.
 // Exported so the #19 User Guide panel groups by the exact same order instead of duplicating it.
-export const CATEGORY_ORDER: StudioPanelCategory[] = [
-  'editor', 'storyBible', 'knowledge', 'translation', 'enrichment', 'sharing', 'platform', 'discovery', 'jobs',
-];
+//
+// X-2 — `quality` sits after `knowledge`, before `translation`: it reads the manuscript, so it
+// groups with the other analysis surfaces. It was MISSING here while 5 `quality` panels shipped,
+// and the failure modes are INVERTED: an un-categorized panel sorts LAST (harmless fallback), but
+// an UNLISTED category indexOf()s to -1 and sorts FIRST — so all 5 sat above `editor` at the very
+// top of the palette. "Forgot to add it" must be UNBUILDABLE, not merely ugly.
+export const CATEGORY_ORDER = [
+  'editor', 'storyBible', 'knowledge', 'quality', 'translation',
+  'enrichment', 'sharing', 'platform', 'discovery', 'jobs',
+] as const satisfies readonly StudioPanelCategory[];
+
+// X-2 — compile-time exhaustiveness. A new StudioPanelCategory not listed above is now a TYPE ERROR.
+// ⚠ The `as const satisfies` above is LOAD-BEARING, NOT STYLE: with the old `: StudioPanelCategory[]`
+// annotation, `(typeof CATEGORY_ORDER)[number]` widens back to the full union, so `Exclude<>` is
+// always `never` and this guard PASSES WHILE STILL MISSING 'quality'. Dropping the annotation is
+// what gives the tuple its literal element type. Verify with `npx tsc --noEmit`, not vitest.
+type _UnorderedCategory = Exclude<StudioPanelCategory, (typeof CATEGORY_ORDER)[number]>;
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+const _CATEGORY_ORDER_IS_EXHAUSTIVE: [_UnorderedCategory] extends [never] ? true : never = true;
 
 interface ChromeActions {
   setActiveView: (v: ActivityView) => void;

@@ -1,0 +1,942 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>LoreWeave — Motif Library (studio dock panel, draft)</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  /* ══════════════════════════════════════════════════════════════════════
+     MOTIF LIBRARY (`motif-library`)  — category `storyBible`, enum 57 → 58
+     Spec: docs/specs/2026-07-01-writing-studio/33_motif_studio.md  (Wave 3a)
+
+     WHY THIS EXISTS
+     The entire narrative-craft layer of this product — 套路 (the motif
+     library), 爽点 (the beat/tension targets), 打脸 (the reversal machinery)
+     — is BUILT, TESTED, and UNREACHABLE. 86 files under
+     frontend/src/features/composition/motif/** (~30 components, 26 test
+     files) mounted on ChapterEditorPage, the page spec 16 deletes.
+     What the Studio shows instead is a NON-INTERACTIVE <span>
+     (NodeBadges.tsx:124-145 — `case 'motif'`, a title= tooltip, no onClick).
+     That span is the sum total of motif in the Writing Studio.
+
+     ► THIS IS A PORT, NOT A BUILD. The interesting content of this mock is
+       therefore WHAT CHANGES — the split, the two new tabs, the graph, the
+       tier gate — not a re-invention of a library that already works.
+
+     🔴 THE HARD GATE — READ BEFORE YOU BUILD ANY OF THIS
+       $ grep -rn "motif" services/composition-service/app/packer/ ; echo $?
+       1                      ← ZERO hits.
+     lenses.py / pack.py / assemble.py / budget.py have never heard of a
+     motif. The Hub RENDERS motif chips, the binder WRITES motif_application
+     rows, the conformance engine GRADES prose against them — and pack()
+     NEVER INJECTS THEM INTO A PROMPT. The author binds 打脸 to chapter 41
+     and the drafter is never told. That is the stored-but-unread /
+     write-only-behavior class CLAUDE.md's Settings & Config Boundary bans by
+     name. Every panel in this wave AUTHORS DATA WITH NO CONSUMER until
+     BE-M2 (`gather_motifs`) lands. Ship the panel first and you have built a
+     beautiful editor for a field nothing reads.
+
+     THE ARCHITECTURE THIS MOCK RENDERS
+       Detail is a DRAWER. Create is an INLINE FORM. Adopt is a MODAL. The
+       graph is a SECTION. NONE of them is a panel — and that is load-bearing,
+       not taste: plan 30 X-12 says `ui_open_studio_panel` carries a BARE ID
+       ONLY, so any panel needing a `motif_id` must be `hiddenFromPalette` ⇒
+       out of the enum, out of the palette, out of the User Guide. Keeping
+       detail a drawer sidesteps X-12 entirely. An agent who later "improves"
+       this by extracting a `motif-editor` panel has INTRODUCED the bug.
+
+     BACKEND WORK THIS SCREEN IMPLIES (flagged up front, not silently)
+       • BE-M2 🔴 `gather_motifs` packer lens — mirror `gather_arc`
+         (lenses.py:257 / gated pack.py:331 / emitted pack.py:522) + a REAL-DB
+         effect test (test_pack_motifs_wired.py, BA12 shape). CAP IT (≤3
+         bindings): the arc block rides OUTSIDE enforce_budget, so an uncapped
+         motif block is a Context-Budget-Law hole. BLOCKS THE WHOLE WAVE.
+       • BE-M1 🔴 ONE current-binding predicate. `current_for_nodes()` =
+         DISTINCT ON (outline_node_id) … ORDER BY created_at DESC. Rename
+         `by_nodes` → `history_by_nodes` so autocomplete cannot pick wrong.
+       • BE-M3 motif-link REST ×3 (GET/POST /motifs/{id}/links, DELETE
+         /motif-links/{id}) — thin wrappers over MotifRepo.list_links:215 /
+         create_link:275 / delete_link:320. There is NO MotifLinkRepo.
+         The FE bridge is NOT an option: tools.controller.ts:20 states its own
+         contract — "NOTHING here writes or deletes" — and links are writes.
+       • WIRE the route that has existed all along with no consumer:
+         GET /motifs/book/{book_id} (motif.py:219).
+         ⚠ IT IS NOT "THE SHARED TIER." It returns, MERGED, with NO tier filter:
+         the caller's GLOBAL motifs (the Mine tier!) + this book's PRIVATE
+         LABELS + the book's SHARED rows. It feeds BOTH the Book and Shared
+         tabs from ONE fetch, partitioned CLIENT-SIDE on the `book_shared` and
+         `book_id` fields that _book_view (:207) already returns on every row.
+         ⇒ ZERO backend work — but the Book tab MUST filter
+         `row.book_id === bookId && !row.book_shared`, or it DUPLICATES every
+         row already on the Mine tab. Two fetches of this route = a defect.
+       • ZERO gateway change. ZERO allowlist change. Composition-only.
+
+     STATES THIS MOCK MUST SHOW (all rendered below, none hand-waved)
+       ① Mine tab + detail drawer  ② the 6 scope tabs incl. book_shared
+       ③ System tier = clone-to-edit (NO Edit button — absent, not disabled)
+       ④ empty · ⑤ Drafts + Promote · ⑥ the graph + its 409 trigger
+       ⑦ adopt (quota gate) · ⑧ mine (LLM gate, ModelPicker, in-flight, no
+       fake Cancel) · ⑨ no-BYOK-model → AddModelCta · ⑩ OCC 412 conflict
+       ⑪ error boundary · ⑫ archived (.strike + Restore)
+       ⑬ BEFORE — the `kind` toggle that ships Wave 4's panel inside Wave 3's.
+
+     SCALE — a corpus mine over an 1,842-chapter book returns hundreds of
+     candidate motifs; the catalog tab is a public, shared list. Card grid is
+     keyset-paged (24/page) with a virtualized grid above a few hundred. The
+     graph is 3 typed edge lists, never a canvas (§3.1 / OQ-2).
+  ═══════════════════════════════════════════════════════════════════════ */
+  :root {
+    --background: #181412; --background-alt: #1e1a17; --foreground: #f5efe8;
+    --card: #1e1a17; --card-hover: #272220; --border: #332d28; --border-hover: #4a423b;
+    --primary: #e8a832; --primary-fg: #141010; --primary-muted: #3d2e12;
+    --secondary: #282320; --muted-fg: #9e9488;
+    --accent: #3da692; --accent-muted: #1a2e2a; --accent-fg: #c8ede6;
+    --success: #3dba6a; --warning: #e8a832; --info: #5496e8; --destructive: #d9584f; --destructive-muted: #3a1f1c;
+    --motif: #b482e0; --motif-muted: #2a1f38;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Inter', system-ui, sans-serif; background: #0f0c0b; color: var(--foreground); -webkit-font-smoothing: antialiased; padding: 24px; }
+  .mono { font-family: 'JetBrains Mono', monospace; }
+  svg { display: block; }
+  ::-webkit-scrollbar { width: 8px; height: 8px; } ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--border-hover); border-radius: 4px; }
+
+  h1 { font-size: 18px; font-weight: 600; margin-bottom: 4px; }
+  h2 { font-size: 13px; font-weight: 600; margin: 28px 0 10px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  h2 .tag { font-size: 9px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--muted-fg); border: 1px solid var(--border); border-radius: 4px; padding: 2px 6px; }
+  h2 .tag.gate { color: var(--destructive); border-color: var(--destructive); }
+  .sub { font-size: 12px; color: var(--muted-fg); margin-bottom: 16px; max-width: 1000px; line-height: 1.55; }
+  .sub b { color: var(--foreground); font-weight: 600; }
+  .sub code { font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--accent-fg); background: var(--accent-muted); padding: 1px 4px; border-radius: 3px; }
+
+  /* ── Tier legend — glyph + word + hue, NEVER hue alone (a11y §8.1) ────── */
+  .legend { display: flex; gap: 16px; align-items: center; flex-wrap: wrap; padding: 10px 14px; margin-bottom: 20px;
+            background: var(--background-alt); border: 1px solid var(--border); border-radius: 8px; font-size: 11.5px; }
+  .legend .item { display: flex; align-items: center; gap: 6px; color: var(--muted-fg); }
+  .legend .item b { color: var(--foreground); font-weight: 600; }
+
+  /* tier chip */
+  .tier { display: inline-flex; align-items: center; gap: 4px; height: 18px; padding: 0 6px; border-radius: 100px;
+          font-size: 9.5px; font-weight: 700; letter-spacing: .03em; white-space: nowrap; border: 1px solid transparent; }
+  .tier svg { width: 10px; height: 10px; }
+  .t-system { background: var(--secondary); color: var(--muted-fg); border-color: var(--border-hover); }
+  .t-mine   { background: var(--motif-muted); color: var(--motif); border-color: var(--motif); }
+  .t-book   { background: var(--primary-muted); color: var(--primary); border-color: var(--primary); }
+  .t-shared { background: var(--accent-muted); color: var(--accent-fg); border-color: var(--accent); }
+  .t-public { background: #23303f; color: #8ab6e8; border-color: #3c5878; }
+  .t-draft  { background: #2e2440; color: #c0a8e8; border-color: #4b3a68; }
+
+  /* ── Dock panel frame ─────────────────────────────────────────────────── */
+  .panel { background: var(--background-alt); border: 1px solid var(--border); border-radius: 10px; display: flex; flex-direction: column; overflow: hidden; }
+  .panel-head { height: 34px; flex-shrink: 0; display: flex; align-items: center; justify-content: space-between;
+    padding: 0 10px 0 12px; border-bottom: 1px solid var(--border);
+    font-size: 10px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--muted-fg); }
+  .panel-head .acts { display: flex; gap: 4px; }
+  .ico { width: 20px; height: 20px; display: flex; align-items: center; justify-content: center; border-radius: 5px; color: var(--muted-fg); cursor: pointer; flex-shrink: 0; }
+  .ico:hover { background: var(--secondary); color: var(--foreground); }
+  .ico svg { width: 13px; height: 13px; }
+  .body { flex: 1; min-height: 0; overflow-y: auto; position: relative; }   /* min-height:0 is load-bearing */
+  .panel-foot { flex-shrink: 0; border-top: 1px solid var(--border); padding: 7px 12px; display: flex;
+    align-items: center; justify-content: space-between; font-size: 10.5px; color: var(--muted-fg); gap: 10px; }
+  .panel-foot .note { display: flex; align-items: center; gap: 6px; }
+  .panel-foot .note svg { width: 12px; height: 12px; color: var(--info); flex-shrink: 0; }
+
+  .library  { width: 1000px; max-width: 100%; height: 700px; }
+  .drawer   { width: 400px; height: 700px; flex-shrink: 0; }
+  .mini     { width: 300px; height: 340px; }
+  .mini .panel-head { height: 28px; font-size: 9px; }
+  .midi     { width: 470px; }
+
+  /* ── Scope tabs ───────────────────────────────────────────────────────── */
+  .tabs { display: flex; align-items: center; gap: 2px; padding: 7px 10px 0; border-bottom: 1px solid var(--border); flex-shrink: 0; }
+  .tab { display: flex; align-items: center; gap: 5px; height: 26px; padding: 0 10px; border-radius: 6px 6px 0 0;
+    font-size: 11.5px; font-weight: 500; color: var(--muted-fg); cursor: pointer; border-bottom: 2px solid transparent; }
+  .tab:hover { color: var(--foreground); background: var(--secondary); }
+  .tab.active { color: var(--foreground); border-bottom-color: var(--primary); font-weight: 600; }
+  .tab .n { font-family: 'JetBrains Mono'; font-size: 9.5px; color: var(--muted-fg); }
+  .tab.new::after { content: 'NEW'; font-family: 'JetBrains Mono'; font-size: 8px; font-weight: 700; letter-spacing: .04em;
+    color: var(--accent); background: var(--accent-muted); border-radius: 3px; padding: 1px 3px; }
+
+  /* ── Toolbar ──────────────────────────────────────────────────────────── */
+  .toolbar { padding: 9px 12px; border-bottom: 1px solid var(--border); display: flex; flex-direction: column; gap: 8px; flex-shrink: 0; }
+  .row1 { display: flex; align-items: center; gap: 8px; }
+  .search-box { flex: 1; display: flex; align-items: center; gap: 7px; height: 30px; padding: 0 10px; border-radius: 7px;
+    background: var(--background); border: 1px solid var(--border); color: var(--muted-fg); font-size: 12.5px; }
+  .search-box svg { width: 14px; height: 14px; flex-shrink: 0; }
+  .search-box input { flex: 1; background: transparent; border: none; outline: none; color: var(--foreground); font-size: 12.5px; }
+  .search-box .kbd { font-family: 'JetBrains Mono'; font-size: 9px; border: 1px solid var(--border-hover); border-radius: 3px; padding: 1px 4px; }
+  .btn { display: flex; align-items: center; gap: 5px; height: 28px; padding: 0 10px; border-radius: 6px; white-space: nowrap;
+    font-size: 11.5px; font-weight: 600; cursor: pointer; border: 1px solid var(--border); background: var(--background); color: var(--foreground); }
+  .btn:hover { border-color: var(--border-hover); background: var(--card-hover); }
+  .btn svg { width: 13px; height: 13px; }
+  .btn.primary { background: var(--primary); border-color: var(--primary); color: var(--primary-fg); }
+  .btn.motif { background: var(--motif-muted); border-color: var(--motif); color: var(--motif); }
+  .btn.ghost { background: transparent; }
+  .btn.sm { height: 24px; padding: 0 8px; font-size: 11px; }
+  .btn.danger { color: var(--destructive); }
+  .btn[disabled] { opacity: .4; cursor: not-allowed; }
+
+  .seg { display: flex; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; flex-shrink: 0; }
+  .seg span { height: 26px; display: flex; align-items: center; padding: 0 9px; font-size: 11px; font-weight: 500; color: var(--muted-fg); cursor: pointer; }
+  .seg span.on { background: var(--secondary); color: var(--foreground); font-weight: 600; }
+
+  .row2 { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+  .chip { display: flex; align-items: center; gap: 5px; height: 24px; padding: 0 9px; border-radius: 100px;
+    background: var(--secondary); border: 1px solid transparent; color: var(--muted-fg); font-size: 11px; font-weight: 500; cursor: pointer; }
+  .chip.active { background: var(--accent-muted); border-color: var(--accent); color: var(--accent-fg); }
+  .chip:hover:not(.active) { border-color: var(--border-hover); color: var(--foreground); }
+  .chip-sep { width: 1px; height: 16px; background: var(--border); margin: 0 2px; }
+  .togg { display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--muted-fg); cursor: pointer; }
+  .sw { width: 26px; height: 15px; border-radius: 100px; background: var(--secondary); border: 1px solid var(--border-hover); position: relative; flex-shrink: 0; }
+  .sw i { position: absolute; top: 1px; left: 1px; width: 11px; height: 11px; border-radius: 50%; background: var(--muted-fg); }
+  .sw.on { background: var(--primary-muted); border-color: var(--primary); }
+  .sw.on i { left: 12px; background: var(--primary); }
+
+  /* ── Motif card grid ──────────────────────────────────────────────────── */
+  .grid { padding: 12px; display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .mcard { background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 10px 11px; cursor: pointer;
+    display: flex; flex-direction: column; gap: 7px; }
+  .mcard:hover { background: var(--card-hover); border-color: var(--border-hover); }
+  .mcard.sel { border-color: var(--motif); box-shadow: inset 2px 0 0 var(--motif); }
+  .mcard .top { display: flex; align-items: center; gap: 7px; }
+  .mcard .nm { font-size: 12.5px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .mcard .nm .en { color: var(--muted-fg); font-weight: 400; font-size: 11.5px; }
+  .mcard .code { font-family: 'JetBrains Mono'; font-size: 9.5px; color: var(--muted-fg); margin-left: auto; flex-shrink: 0; }
+  .mcard .desc { font-size: 11px; color: var(--muted-fg); line-height: 1.5; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  .mcard .meta { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+  .kind { font-family: 'JetBrains Mono'; font-size: 9.5px; padding: 1px 5px; border-radius: 3px; background: var(--secondary); color: var(--muted-fg); }
+  .beats { display: flex; align-items: center; gap: 3px; margin-left: auto; }
+  .beats i { width: 5px; height: 5px; border-radius: 50%; background: var(--border-hover); display: block; }
+  .beats i.on { background: var(--motif); }
+  .beats .lb { font-family: 'JetBrains Mono'; font-size: 9px; color: var(--muted-fg); margin-left: 3px; }
+  .used { font-family: 'JetBrains Mono'; font-size: 9.5px; color: var(--muted-fg); }
+  .used b { color: var(--foreground); font-weight: 500; }
+  .mcard.arch { opacity: .55; }
+  .strike { text-decoration: line-through; opacity: .5; }
+
+  /* ── Section (graph / drawer sections) ────────────────────────────────── */
+  .sect { border-top: 1px solid var(--border); }
+  .sect-head { display: flex; align-items: center; gap: 7px; padding: 9px 12px 7px; cursor: pointer;
+    font-size: 9.5px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--muted-fg); }
+  .sect-head svg.chev { width: 11px; height: 11px; }
+  .sect-head .src { margin-left: auto; font-family: 'JetBrains Mono'; font-size: 9px; opacity: .75; text-transform: none; letter-spacing: 0; }
+  .sect-body { padding: 0 12px 11px; display: flex; flex-direction: column; gap: 8px; }
+
+  .edge { display: flex; align-items: center; gap: 8px; padding: 6px 0; font-size: 11.5px; border-bottom: 1px solid var(--border); }
+  .edge:last-of-type { border-bottom: none; }
+  .edge .k { font-family: 'JetBrains Mono'; font-size: 9.5px; padding: 1px 5px; border-radius: 3px; background: var(--motif-muted); color: var(--motif); flex-shrink: 0; }
+  .edge .arrow { color: var(--muted-fg); flex-shrink: 0; }
+  .edge .to { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .edge .to .c { font-family: 'JetBrains Mono'; font-size: 9.5px; color: var(--muted-fg); margin-left: 5px; }
+  .edge-group { font-size: 10px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; color: var(--muted-fg); margin-top: 4px; }
+
+  .linkform { display: flex; align-items: center; gap: 6px; padding: 8px; border: 1px dashed var(--border-hover); border-radius: 7px; background: var(--background); }
+  .err-inline { display: flex; gap: 7px; align-items: flex-start; margin-top: 6px; padding: 7px 9px; border-radius: 6px;
+    background: var(--destructive-muted); border: 1px solid var(--destructive); font-size: 11px; line-height: 1.5; color: #f0c4c0; }
+  .err-inline svg { width: 13px; height: 13px; flex-shrink: 0; margin-top: 1px; color: var(--destructive); }
+  .err-inline .c { font-family: 'JetBrains Mono'; font-size: 9.5px; }
+
+  /* ── Fields / forms ───────────────────────────────────────────────────── */
+  .field { display: grid; grid-template-columns: 88px 1fr; gap: 10px; align-items: center; }
+  .field > label { font-size: 11px; color: var(--muted-fg); }
+  .inp { background: var(--background); border: 1px solid var(--border); border-radius: 6px; color: var(--foreground);
+    font: inherit; font-size: 12px; padding: 5px 8px; outline: none; width: 100%; }
+  .inp:focus { border-color: var(--border-hover); }
+  textarea.inp { resize: vertical; min-height: 44px; line-height: 1.45; }
+  select { appearance: none; background: var(--background); border: 1px solid var(--border); color: var(--foreground);
+    font: inherit; font-size: 11.5px; font-weight: 500; padding: 6px 22px 6px 9px; border-radius: 6px; cursor: pointer; }
+  .select-wrap { position: relative; }
+  .select-wrap > svg { position: absolute; right: 6px; top: 50%; transform: translateY(-50%); width: 11px; height: 11px; color: var(--muted-fg); pointer-events: none; }
+  .ro-note { font-size: 10px; color: var(--muted-fg); line-height: 1.5; }
+
+  /* ── Cost gate cards ──────────────────────────────────────────────────── */
+  .cost { border: 1px solid var(--primary); background: var(--primary-muted); border-radius: 8px; padding: 10px 12px; display: flex; flex-direction: column; gap: 7px; }
+  .cost .hd { display: flex; align-items: center; gap: 6px; font-size: 11.5px; font-weight: 700; color: var(--primary); }
+  .cost .hd svg { width: 13px; height: 13px; }
+  .cost .kv { display: flex; justify-content: space-between; font-size: 11px; color: var(--muted-fg); }
+  .cost .kv b { color: var(--foreground); font-weight: 500; font-family: 'JetBrains Mono'; font-size: 11px; }
+  .cost .acts { display: flex; gap: 6px; justify-content: flex-end; margin-top: 2px; }
+  .cost .tok { font-family: 'JetBrains Mono'; font-size: 9px; color: var(--muted-fg); word-break: break-all; }
+
+  .prog { height: 4px; border-radius: 2px; background: var(--secondary); overflow: hidden; }
+  .prog i { display: block; height: 100%; background: var(--primary); border-radius: 2px; }
+
+  .banner { display: flex; gap: 8px; align-items: flex-start; padding: 8px 11px; font-size: 11px; line-height: 1.5; flex-shrink: 0; }
+  .banner svg { width: 13px; height: 13px; flex-shrink: 0; margin-top: 1px; }
+  .banner.warn { background: var(--primary-muted); border-bottom: 1px solid var(--primary); color: #f0dcb0; }
+  .banner.warn svg { color: var(--warning); }
+  .banner.bad { background: var(--destructive-muted); border-bottom: 1px solid var(--destructive); color: #f0c4c0; }
+  .banner.bad svg { color: var(--destructive); }
+  .banner b { color: var(--foreground); }
+  .banner code { font-family: 'JetBrains Mono'; font-size: 10px; }
+
+  .skel { height: 58px; border-radius: 8px; background: linear-gradient(90deg, var(--card) 25%, var(--card-hover) 50%, var(--card) 75%); }
+  .empty { padding: 40px 20px; text-align: center; display: flex; flex-direction: column; align-items: center; gap: 10px; }
+  .empty svg { width: 28px; height: 28px; color: var(--border-hover); }
+  .empty .t { font-size: 12.5px; font-weight: 600; }
+  .empty .d { font-size: 11px; color: var(--muted-fg); line-height: 1.55; max-width: 240px; }
+
+  /* ── Layout + annotation ──────────────────────────────────────────────── */
+  .stack { display: flex; gap: 20px; align-items: flex-start; flex-wrap: wrap; }
+  .callout { max-width: 1420px; margin-top: 12px; padding: 10px 13px; border-radius: 8px; font-size: 11.5px; line-height: 1.6;
+    background: var(--background-alt); border: 1px solid var(--border); border-left: 3px solid var(--info); color: var(--muted-fg); }
+  .callout.warn { border-left-color: var(--warning); }
+  .callout.bad { border-left-color: var(--destructive); }
+  .callout b { color: var(--foreground); }
+  .callout code { font-family: 'JetBrains Mono'; font-size: 10.5px; color: var(--accent-fg); }
+  .note-strip { margin-top: 18px; display: grid; grid-template-columns: 1fr 1fr; gap: 14px; max-width: 1420px; }
+  .note { border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px; background: var(--background-alt); }
+  .note h3 { font-size: 11.5px; font-weight: 700; color: var(--primary); display: flex; align-items: center; gap: 6px; margin-bottom: 6px; }
+  .note h3 svg { width: 13px; height: 13px; }
+  .note p, .note li { font-size: 11.5px; color: var(--muted-fg); line-height: 1.6; }
+  .note ul { padding-left: 16px; }
+  .note code { font-family: 'JetBrains Mono'; font-size: 10.5px; background: var(--secondary); padding: 1px 4px; border-radius: 3px; color: var(--accent-fg); }
+</style>
+</head>
+<body>
+
+<h1>Motif Library <span class="mono" style="font-size:12px;color:var(--muted-fg);font-weight:400">— studio dock panel, draft</span></h1>
+<p class="sub">
+  Spec: <b>33_motif_studio.md</b> · Wave <b>3a</b> · new panel id <code>motif-library</code> (category <code>storyBible</code>, enum 57 → 58).
+  The 套路/爽点/打脸 layer — <b>86 files, ~30 components, 26 test files</b> — is built, tested and reachable only from
+  <code>ChapterEditorPage</code>, the page spec 16 deletes. This is a <b>port</b>: what follows is <i>what changes</i>.
+  <b>It ships behind a hard gate:</b> <code>grep -rn motif services/composition-service/app/packer/</code> returns <b>nothing</b> —
+  <code>pack()</code> has never read a motif, so until <b>BE-M2 (<code>gather_motifs</code>)</b> lands, every screen below authors data with no consumer.
+</p>
+
+<div class="legend">
+  <div class="item"><span class="tier t-system"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="10" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>system</span><b>read-only</b> · seeded · clone to edit</div>
+  <div class="item"><span class="tier t-mine"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg>mine</span><b>per-user</b> · <code class="mono" style="font-size:10px">owner_user_id</code></div>
+  <div class="item"><span class="tier t-book"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2Z"/></svg>book</span><b>per-book, private label</b></div>
+  <div class="item"><span class="tier t-shared"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.9"/></svg>shared</span><b>per-book, any EDIT-grantee writes</b></div>
+  <div class="item"><span class="tier t-public"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M2 12h20"/><path d="M12 2a15 15 0 0 1 0 20 15 15 0 0 1 0-20Z"/></svg>public</span><b>catalog</b> · someone else's · adopt to use</div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════════════
+     ① The hub — Mine tab + the detail DRAWER (not a panel: X-12)
+     ══════════════════════════════════════════════════════════════════════ -->
+<h2>① Motif Library <span class="tag">motif-library</span> <span class="tag">storyBible</span> — Mine tab, drawer open</h2>
+
+<div class="stack">
+<div class="panel library">
+  <div class="panel-head">
+    <span>Motif Library — Nghịch thiên</span>
+    <div class="acts">
+      <div class="ico" title="Refresh"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 1 1-2.6-6.4"/><path d="M21 3v6h-6"/></svg></div>
+      <div class="ico" title="Pop out"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 3h6v6M10 14 21 3M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/></svg></div>
+      <div class="ico" title="Close"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6 6 18M6 6l12 12"/></svg></div>
+    </div>
+  </div>
+
+  <!-- 6 scope tabs — the shipped component has FOUR (mine/system/all/drafts) -->
+  <div class="tabs">
+    <div class="tab active">Mine <span class="n">24</span></div>
+    <div class="tab new">Book <span class="n">6</span></div>
+    <div class="tab new">Shared <span class="n">3</span></div>
+    <div class="tab">System <span class="n">12</span></div>
+    <div class="tab">Catalog <span class="n">148</span></div>
+    <div class="tab">Drafts <span class="n">3</span></div>
+  </div>
+
+  <div class="toolbar">
+    <div class="row1">
+      <div class="search-box">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+        <input placeholder="Search motif names, codes and intents…" value="" />
+        <span class="kbd">⌘F</span>
+      </div>
+      <div class="seg" title="motif_simple_mode — a per-user setting, server-side (/v1/me/preferences)">
+        <span class="on">Simple</span><span>Expert</span>
+      </div>
+      <button class="btn motif"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 3h12l4 6-10 12L2 9Z"/><path d="M11 3 8 9l4 12 4-12-3-6"/><path d="M2 9h20"/></svg> Mine corpus</button>
+      <button class="btn primary"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg> New</button>
+    </div>
+    <div class="row2">
+      <div class="chip active">kind: reversal <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="width:10px;height:10px"><path d="M18 6 6 18M6 6l12 12"/></svg></div>
+      <div class="chip">genre</div>
+      <div class="chip">language: zh</div>
+      <div class="chip">status</div>
+      <div class="chip-sep"></div>
+      <div class="togg"><span class="sw"><i></i></span> Show archived</div>
+    </div>
+  </div>
+
+  <div class="body">
+    <div class="grid">
+
+      <div class="mcard sel">
+        <div class="top">
+          <span class="tier t-mine"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg>mine</span>
+          <span class="nm">打脸 <span class="en">· Face-slap</span></span>
+          <span class="code">face_slap · v5</span>
+        </div>
+        <div class="desc">The scorned party returns at the exact moment the mocker is most certain. Public, witnessed, and irreversible — the humiliation must be seen.</div>
+        <div class="meta">
+          <span class="kind">reversal</span><span class="kind">zh</span>
+          <span class="beats"><i class="on"></i><i class="on"></i><i class="on"></i><i></i><span class="lb">3 beats</span></span>
+        </div>
+        <div class="meta"><span class="used">bound to <b>7</b> nodes · adopted from <b>system:face_slap v3</b></span></div>
+      </div>
+
+      <div class="mcard">
+        <div class="top">
+          <span class="tier t-mine"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg>mine</span>
+          <span class="nm">扮猪吃老虎 <span class="en">· Play the pig</span></span>
+          <span class="code">pig_tiger · v2</span>
+        </div>
+        <div class="desc">The protagonist conceals strength, accepts contempt, and lets the antagonist commit fully before revealing the gap.</div>
+        <div class="meta">
+          <span class="kind">deception</span><span class="kind">zh</span>
+          <span class="beats"><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><span class="lb">4 beats</span></span>
+        </div>
+        <div class="meta"><span class="used">bound to <b>3</b> nodes</span></div>
+      </div>
+
+      <div class="mcard">
+        <div class="top">
+          <span class="tier t-book"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2Z"/></svg>book</span>
+          <span class="nm">Lời thề Hàn Giang <span class="en">· The Han River oath</span></span>
+          <span class="code">han_oath · v1</span>
+        </div>
+        <div class="desc">A promise sworn on the river returns as a debt three arcs later. Private to <i>Nghịch thiên</i> — this book only.</div>
+        <div class="meta">
+          <span class="kind">promise</span><span class="kind">vi</span>
+          <span class="beats"><i class="on"></i><i class="on"></i><i></i><i></i><span class="lb">2 beats</span></span>
+        </div>
+        <div class="meta"><span class="used">bound to <b>2</b> nodes</span></div>
+      </div>
+
+      <div class="mcard">
+        <div class="top">
+          <span class="tier t-mine"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg>mine</span>
+          <span class="nm">越级战斗 <span class="en">· Cross-tier duel</span></span>
+          <span class="code">cross_tier_duel · v4</span>
+        </div>
+        <div class="desc">Victory over an opponent one full cultivation tier above. The cost must be paid on the body, not narrated away.</div>
+        <div class="meta">
+          <span class="kind">escalation</span><span class="kind">zh</span>
+          <span class="beats"><i class="on"></i><i class="on"></i><i class="on"></i><i></i><span class="lb">3 beats</span></span>
+        </div>
+        <div class="meta"><span class="used">bound to <b>11</b> nodes</span></div>
+      </div>
+
+      <div class="mcard arch">
+        <div class="top">
+          <span class="tier t-mine"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg>mine</span>
+          <span class="nm strike">金手指 <span class="en">· Golden finger</span></span>
+          <span class="code">golden_finger · v1</span>
+        </div>
+        <div class="desc">Archived 3 weeks ago — superseded by <code class="mono" style="font-size:10px">inherited_sword_spirit</code>.</div>
+        <div class="meta">
+          <span class="kind">cheat_item</span>
+          <button class="btn sm ghost" style="margin-left:auto"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:11px;height:11px"><path d="M3 12a9 9 0 1 0 2.6-6.4"/><path d="M3 3v6h6"/></svg> Restore</button>
+        </div>
+        <div class="meta"><span class="used">the ledger row in <b>motif_application</b> survives — archive is soft</span></div>
+      </div>
+
+      <div class="mcard">
+        <div class="top">
+          <span class="tier t-shared"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.9"/></svg>shared</span>
+          <span class="nm">未婚妻退婚 <span class="en">· The broken engagement</span></span>
+          <span class="code">engagement_broken · v3</span>
+        </div>
+        <div class="desc">Written by <b>Trâm</b> (EDIT grantee). Any collaborator on this book may edit it — the owner field is attribution, not a lock.</div>
+        <div class="meta">
+          <span class="kind">inciting</span><span class="kind">zh</span>
+          <span class="beats"><i class="on"></i><i class="on"></i><i class="on"></i><i></i><span class="lb">3 beats</span></span>
+        </div>
+        <div class="meta"><span class="used">bound to <b>1</b> node · edited by Trâm <b>2 days ago</b></span></div>
+      </div>
+    </div>
+
+    <!-- ── The GRAPH section — no REST route, no GUI today (agent-only) ── -->
+    <div class="sect">
+      <div class="sect-head">
+        <svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="m6 9 6 6 6-6"/></svg>
+        ⑥ Graph — composed_of · precedes · variant_of
+        <span class="src mono">BE-M3 · GET /motifs/{id}/links?direction=both</span>
+      </div>
+      <div class="sect-body">
+        <div class="edge-group">打脸 · face_slap — outgoing</div>
+        <div class="edge"><span class="k">composed_of</span><span class="arrow">→</span>
+          <span class="to">当众羞辱 · The public mockery <span class="c">public_mockery</span></span>
+          <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6 6 18M6 6l12 12"/></svg></div></div>
+        <div class="edge"><span class="k">composed_of</span><span class="arrow">→</span>
+          <span class="to">实力揭示 · The reveal of strength <span class="c">strength_reveal</span></span>
+          <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6 6 18M6 6l12 12"/></svg></div></div>
+        <div class="edge"><span class="k">precedes</span><span class="arrow">→</span>
+          <span class="to">越级战斗 · Cross-tier duel <span class="c">cross_tier_duel</span></span>
+          <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6 6 18M6 6l12 12"/></svg></div></div>
+        <div class="edge-group">incoming</div>
+        <div class="edge"><span class="k">variant_of</span><span class="arrow">←</span>
+          <span class="to">冷脸 · The quiet slap <span class="c">cold_slap</span> — <i>system</i></span>
+          <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6 6 18M6 6l12 12"/></svg></div></div>
+
+        <div class="linkform">
+          <div class="select-wrap"><select><option>precedes</option><option>composed_of</option><option>variant_of</option></select>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg></div>
+          <div class="select-wrap" style="flex:1"><select style="width:100%"><option>打脸 · face_slap</option><option>扮猪吃老虎 · pig_tiger</option></select>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg></div>
+          <button class="btn sm"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.7 1.7"/><path d="M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7"/></svg> Link</button>
+        </div>
+        <div class="err-inline">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/><path d="M12 9v4M12 17h.01"/></svg>
+          <div><b>A motif cannot precede itself, and a cycle would make the succession chain unresolvable.</b><br />
+            <span class="c">409 · motif_link_guard · cycle: face_slap → cross_tier_duel → face_slap</span> — relayed from the DB trigger, verbatim.
+            <b>Not</b> flattened into a generic toast: the trigger <i>is</i> the spec.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="panel-foot">
+    <div class="note">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
+      <span class="mono">1–24 of 42</span> motifs · 3 drafts · <b style="color:var(--muted-fg);font-weight:400">graph = 3 typed edge lists, not a canvas</b>
+    </div>
+    <button class="btn sm">Load more</button>
+  </div>
+</div>
+
+<!-- ── The DETAIL DRAWER — deliberately NOT a panel (X-12) ─────────────── -->
+<div class="panel drawer">
+  <div class="panel-head">
+    <span>打脸 · Face-slap</span>
+    <div class="acts">
+      <div class="ico" title="Edit"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg></div>
+      <div class="ico" title="Archive"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="4" width="20" height="5" rx="1"/><path d="M4 9v10a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1V9"/><path d="M10 13h4"/></svg></div>
+      <div class="ico" title="Close drawer"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6 6 18M6 6l12 12"/></svg></div>
+    </div>
+  </div>
+
+  <!-- ⑩ OCC 412 — the panel does NOT clobber -->
+  <div class="banner warn">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/><path d="M12 9v4M12 17h.01"/></svg>
+    <div><b>This motif changed elsewhere — reload to see v6.</b> <code>412 · If-Match: 5</code>.
+      Your edits are still in the form below; copy anything you want to keep, then Reload.
+      <span style="text-decoration:underline;cursor:pointer">Reload</span></div>
+  </div>
+
+  <div class="body">
+    <div class="sect" style="border-top:none">
+      <div class="sect-head">Definition <span class="src mono">motif · v5 · owner: you</span></div>
+      <div class="sect-body">
+        <div class="field"><label>Name</label><input class="inp" value="打脸" /></div>
+        <div class="field"><label>Code</label><input class="inp mono" style="font-size:11.5px" value="face_slap" /></div>
+        <div class="field"><label>Kind</label><div class="select-wrap"><select style="width:100%"><option>reversal</option><option>deception</option><option>escalation</option><option>promise</option><option>inciting</option></select>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg></div></div>
+        <div class="field" style="align-items:start"><label style="padding-top:4px">Intent</label>
+          <textarea class="inp">The scorned party returns at the exact moment the mocker is most certain. Public, witnessed, irreversible.</textarea></div>
+      </div>
+    </div>
+
+    <div class="sect">
+      <div class="sect-head">Beats <span class="src mono">3 · annotations.beat_key</span></div>
+      <div class="sect-body" style="gap:6px">
+        <div class="edge"><span class="k">1 · setup</span><span class="to">the mockery is public and specific</span><span class="used">tension <b>2/5</b></span></div>
+        <div class="edge"><span class="k">2 · turn</span><span class="to">the gap in strength is revealed, not claimed</span><span class="used">tension <b>4/5</b></span></div>
+        <div class="edge"><span class="k">3 · land</span><span class="to">the mocker's own audience witnesses it</span><span class="used">tension <b>5/5</b></span></div>
+        <button class="btn sm ghost" style="align-self:start"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg> Add beat</button>
+      </div>
+    </div>
+
+    <div class="sect">
+      <div class="sect-head">Roles · preconditions · effects <span class="src mono">feeds gather_motifs (BE-M2)</span></div>
+      <div class="sect-body" style="gap:6px">
+        <div class="edge"><span class="k">role</span><span class="to">aggressor — the one who mocked</span></div>
+        <div class="edge"><span class="k">role</span><span class="to">target — the one who returns</span></div>
+        <div class="edge"><span class="k">pre</span><span class="to">the target's strength is unknown to the aggressor</span></div>
+        <div class="edge"><span class="k">effect</span><span class="to">the aggressor's faction loses standing publicly</span></div>
+        <div class="ro-note" style="margin-top:4px">
+          These strings ride into the prompt through <code class="mono" style="font-size:9.5px">gather_motifs</code> and are
+          <b style="color:var(--foreground)">sanitized</b> (<code class="mono" style="font-size:9.5px">sanitize_lore</code>, SEC3) —
+          a crafted motif name must not forge a block delimiter.
+        </div>
+      </div>
+    </div>
+
+    <div class="sect">
+      <div class="sect-head">Upstream <span class="src mono">system:face_slap · v3 → v4</span></div>
+      <div class="sect-body" style="gap:6px">
+        <div class="banner warn" style="border:1px solid var(--primary);border-radius:6px;padding:7px 9px">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 1 1-2.6-6.4"/><path d="M21 3v6h-6"/></svg>
+          <div><b>The motif you adopted has moved.</b> 2 fields differ from upstream v4.</div>
+        </div>
+        <button class="btn sm" style="align-self:start">Open diff — accept per field</button>
+        <div class="ro-note">3-way diff (<i>yours</i> · <i>adopted base v3</i> · <i>upstream v4</i>) in <code class="mono" style="font-size:9.5px">SyncDiffDrawer</code>. Accept per field; nothing is force-merged.</div>
+      </div>
+    </div>
+
+    <div class="sect">
+      <div class="sect-head">Graph <span class="src mono">collapsed by default</span></div>
+      <div class="sect-body"><div class="ro-note">4 links — <span style="text-decoration:underline;cursor:pointer;color:var(--accent-fg)">expand</span> (same edge list as the library foot; a drawer edge and a foot edge are the same data).</div></div>
+    </div>
+  </div>
+
+  <div class="panel-foot">
+    <span class="mono">v5 · bound to 7 nodes</span>
+    <div style="display:flex;gap:6px"><button class="btn sm">Revert</button><button class="btn sm primary">Save</button></div>
+  </div>
+</div>
+</div>
+
+<div class="callout">
+  <b>Why detail is a drawer and not a panel — this is architecture, not taste.</b>
+  Plan 30 <b>X-12</b>: <code>ui_open_studio_panel</code> carries a <b>bare id only</b>. A <code>motif-editor</code> panel would need a
+  <code>motif_id</code> ⇒ it must be <code>hiddenFromPalette</code> ⇒ it drops out of the enum, the command palette and the User Guide, and the
+  agent can never open it. <b>Drawer · inline form · modal · section</b> keeps every surface reachable from one bare id.
+  An agent who later "improves" this by extracting a panel has <i>introduced</i> the bug.
+</div>
+
+<div class="callout warn">
+  <b>🔴 The hard gate: nothing here has a consumer yet.</b> <code>grep -rn "motif" services/composition-service/app/packer/</code> → <b>exit 1, zero hits</b>.
+  <code>pack()</code> has never injected a motif into a prompt. The mirror is proven and sitting right there —
+  <code>gather_arc</code> (<code>lenses.py:257</code>), gated at <code>pack.py:331</code>, emitted at <code>pack.py:522</code>, and proven
+  <b>by effect</b> by <code>test_pack_arc_wired.py</code>, a <b>real-DB</b> test written <i>because</i> the unit test injected a fake at the chokepoint and
+  proved nothing. <b>Copy that test's shape, not just the lens's</b> — and cap the block: the arc block rides <i>outside</i>
+  <code>enforce_budget</code>, so an uncapped <code>&lt;motifs&gt;</code> block is a Context-Budget-Law hole.
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════════════
+     ② ③ ④ ⑤ — the tabs that are new, the tier that is read-only,
+     the empty state, and the drafts queue
+     ══════════════════════════════════════════════════════════════════════ -->
+<h2>② The six scope tabs — two are new, and one route feeds two of them</h2>
+<p class="sub">
+  The shipped <code>MotifScopeTabs</code> has <b>four</b>: mine / system / all / drafts. <b>The tab is the tier</b> (§8.1), so the
+  <code>book_shared</code> tier gets one — and its route, <code>GET /motifs/book/{book_id}</code>, <b>has existed all along with zero FE
+  consumers</b>. 3a wires it. The <code>catalog</code> tab is the public, adoptable list.
+  ⚠ <b>But that route is not tier-filtered</b>, and the first draft of this mock said it was.
+</p>
+
+<div class="callout warn">
+  <b>One route, two tabs — and the Book tab must filter, or it duplicates Mine.</b>
+  <code>GET /motifs/book/{book_id}</code> (<code>motif.py:219</code>) returns <b>merged, with no <code>tier</code> / <code>scope</code> param</b>:
+  the caller's <b>global</b> motifs <i>(the Mine tier)</i> <b>+</b> this book's <b>private labels</b> <b>+</b> the book's <b>SHARED</b> rows.
+  Its projection <code>_book_view</code> (<code>:207-216</code>) <b>does</b> return <code>book_id</code> + <code>book_shared</code> on every row —
+  so the split is a <b>free client-side partition</b> and needs <b>zero backend work</b>:
+  <b>Book</b> = <code>row.book_id === bookId &amp;&amp; !row.book_shared</code> · <b>Shared</b> = <code>row.book_shared === true</code>,
+  <b>from the same single fetch</b>. Drop the <code>book_id</code> test and every motif already on the Mine tab is rendered a second time under Book.
+  And note <b>Drafts is a <code>status</code>, not a <code>scope</code></b> (<code>?status=draft</code>; <code>scope</code> is only
+  <code>mine|system|all</code>). <b>A reviewer who finds two fetches of this route, or an un-<code>book_id</code>-filtered Book tab, has found a defect.</b>
+</div>
+
+<div class="stack">
+  <!-- ② book_shared -->
+  <div class="panel mini">
+    <div class="panel-head"><span>② Shared — <span style="color:var(--accent)">3</span></span></div>
+    <div class="banner" style="background:var(--accent-muted);border-bottom:1px solid var(--accent);color:var(--accent-fg)">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color:var(--accent)"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.9"/></svg>
+      <div><b>Route existed. Consumer did not.</b> <code>GET /motifs/book/{book_id}</code></div>
+    </div>
+    <div class="body">
+      <div class="grid" style="grid-template-columns:1fr;padding:8px">
+        <div class="mcard">
+          <div class="top"><span class="tier t-shared"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="9" cy="7" r="4"/><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/></svg>shared</span>
+            <span class="nm">未婚妻退婚</span><span class="code">v3</span></div>
+          <div class="meta"><span class="used">by <b>Trâm</b> · you may edit</span></div>
+        </div>
+        <div class="mcard">
+          <div class="top"><span class="tier t-shared"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="9" cy="7" r="4"/><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/></svg>shared</span>
+            <span class="nm">Nợ máu Hàn Giang</span><span class="code">v1</span></div>
+          <div class="meta"><span class="used">by <b>you</b> · owner = attribution</span></div>
+        </div>
+      </div>
+    </div>
+    <div class="panel-foot"><span class="mono">3 shared · book: Nghịch thiên</span></div>
+  </div>
+
+  <!-- ③ system read-only -->
+  <div class="panel mini">
+    <div class="panel-head"><span>③ System — read-only</span></div>
+    <div class="body">
+      <div class="grid" style="grid-template-columns:1fr;padding:8px">
+        <div class="mcard">
+          <div class="top"><span class="tier t-system"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="10" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>system</span>
+            <span class="nm">打脸 <span class="en">· Face-slap</span></span><span class="code">v4</span></div>
+          <div class="desc">Seeded. <code class="mono" style="font-size:10px">owner_user_id IS NULL</code> · <code class="mono" style="font-size:10px">uq_motif_system(code, language)</code>.</div>
+          <div class="meta">
+            <button class="btn sm motif"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M20 21H4"/></svg> Adopt</button>
+          </div>
+        </div>
+      </div>
+      <div style="padding:6px 12px 12px;font-size:10.5px;color:var(--muted-fg);line-height:1.65">
+        <span class="strike">Edit</span> · <span class="strike">Archive</span> — <b style="color:var(--foreground)">absent, not disabled-with-a-tooltip</b>.<br />
+        A regular user <b style="color:var(--foreground)">never mutates a System row</b>; they <b style="color:var(--foreground)">clone down</b>.
+        This is the <code class="mono" style="font-size:9.5px">entity_kinds</code> tenancy bug, pre-fixed in the DDL.
+      </div>
+    </div>
+    <div class="panel-foot"><span class="mono">12 system · admin-managed</span></div>
+  </div>
+
+  <!-- ④ empty -->
+  <div class="panel mini">
+    <div class="panel-head"><span>④ Mine — empty</span></div>
+    <div class="body">
+      <div class="empty">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 3h12l4 6-10 12L2 9Z"/><path d="M11 3 8 9l4 12 4-12-3-6"/><path d="M2 9h20"/></svg>
+        <div class="t">No motifs yet</div>
+        <div class="d">A motif is a reusable narrative pattern the drafter will be told about. Start from the catalog, or mine your own corpus.</div>
+        <div style="display:flex;gap:6px;margin-top:4px">
+          <button class="btn sm"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M20 21H4"/></svg> Adopt from catalog</button>
+          <button class="btn sm motif"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 3h12l4 6-10 12L2 9Z"/><path d="M2 9h20"/></svg> Mine corpus</button>
+        </div>
+      </div>
+    </div>
+    <div class="panel-foot"><span class="mono">0 motifs</span></div>
+  </div>
+
+  <!-- ⑤ drafts -->
+  <div class="panel mini">
+    <div class="panel-head"><span>⑤ Drafts — <span style="color:#c0a8e8">3</span> mined</span></div>
+    <div class="body">
+      <div class="grid" style="grid-template-columns:1fr;padding:8px">
+        <div class="mcard">
+          <div class="top"><span class="tier t-draft">draft</span><span class="nm">断亲 <span class="en">· Cutting the clan</span></span></div>
+          <div class="desc">Mined from 1,842 chapters · seen in <b>14</b> chapters · confidence 0.81</div>
+          <div class="meta">
+            <button class="btn sm primary">Promote</button>
+            <button class="btn sm ghost danger">Discard</button>
+          </div>
+        </div>
+        <div class="mcard">
+          <div class="top"><span class="tier t-draft">draft</span><span class="nm">灵根测试 <span class="en">· The root test</span></span></div>
+          <div class="desc">seen in <b>6</b> chapters · confidence 0.64</div>
+          <div class="meta"><button class="btn sm primary">Promote</button><button class="btn sm ghost danger">Discard</button></div>
+        </div>
+      </div>
+    </div>
+    <div class="panel-foot"><span class="mono">Promote = PATCH status='active' (OCC)</span></div>
+  </div>
+</div>
+
+<div class="callout">
+  <b>The tab is the tier, and the tier gates the write.</b> Four motif tiers (§8.1): <b>System</b> (<code>owner_user_id IS NULL</code>,
+  seed/migration only) · <b>per-user</b> (<code>uq_motif_user(owner_user_id, code, language) WHERE book_id IS NULL</code>) ·
+  <b>per-book private label</b> · <b>per-book SHARED</b> (<code>uq_motif_book_shared(book_id, code, language)</code>, <b>any EDIT-grantee</b> writes).
+  <code>CHECK motif_book_shared_shape</code> forbids a shared row from ever being <code>visibility='public'</code> — the <i>shared</i> axis and the
+  <i>public</i> axis are orthogonal, so a collaborator's motif can never leak into global discovery.
+</div>
+
+<div class="callout warn">
+  <b>A sub-gap carried forward, not silently dropped.</b> The FE has never sent <code>promote_target</code> on mine ⇒ <b>a mined draft can
+  never reach the <code>book_shared</code> tier from the GUI</b> (plan 30 §10) — the <i>agent</i> can do it and the human cannot, which is a GG-2
+  inverse gap. 3a adds the target selector to <code>MotifMinePanel</code>: it is a two-line arg, and the tier now has a tab to land in.
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════════════
+     ⑦ ⑧ ⑨ — the cost gates, all on ONE generic spine
+     ══════════════════════════════════════════════════════════════════════ -->
+<h2>⑦⑧⑨ Cost gates — adopt (quota) · mine (LLM, async) · and the model picker that must not tear down the dock <span class="tag gate">X-1</span></h2>
+<p class="sub">
+  <b>Every</b> paid action rides the <b>generic</b> spine: <code>mcpExecute(&lt;propose&gt;)</code> → <code>confirm_token</code> →
+  <code>GET /actions/preview</code> → <code>POST /actions/confirm?token=</code> → poll <code>composition_get_mine_job</code>.
+  <b>Zero bespoke estimate/confirm routes</b> — the two 404s this wave deletes (<code>/actions/conformance_run/estimate</code> ·
+  <code>/confirm</code>, <code>api.ts:224/230</code>) are exactly that mistake, already shipped once.
+</p>
+
+<div class="stack">
+  <!-- adopt modal -->
+  <div class="panel midi">
+    <div class="panel-head"><span>⑦ Adopt — 打脸 (system v4)</span>
+      <div class="acts"><div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6 6 18M6 6l12 12"/></svg></div></div></div>
+    <div class="body" style="padding:12px;display:flex;flex-direction:column;gap:10px">
+      <div class="field"><label>Adopt into</label><div class="select-wrap"><select style="width:100%">
+        <option>Mine (per-user, all books)</option>
+        <option>Nghịch thiên — private label</option>
+        <option>Nghịch thiên — SHARED with collaborators</option>
+      </select><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg></div></div>
+      <div class="field"><label>Code</label><input class="inp mono" style="font-size:11.5px" value="face_slap" /></div>
+      <div class="cost">
+        <div class="hd"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg> Confirm — quota-metered, no tokens spent</div>
+        <div class="kv"><span>Estimated cost</span><b>$0.00</b></div>
+        <div class="kv"><span>Motif quota</span><b>24 / 50 used</b></div>
+        <div class="kv"><span>Action</span><b>composition.motif_adopt</b></div>
+        <div class="tok">token: 3f9c1a7e-4b2d-4e88-9a10-cd77e2b41f05 · expires in 4m</div>
+        <div class="acts"><button class="btn sm ghost">Cancel</button><button class="btn sm primary">Adopt</button></div>
+      </div>
+      <div class="ro-note">Adopt is <b style="color:var(--foreground)">quota</b>-metered, not token-metered — <code class="mono" style="font-size:9.5px">est_usd = 0</code>.
+        It still goes through <code class="mono" style="font-size:9.5px">/actions/preview</code> + <code class="mono" style="font-size:9.5px">/actions/confirm</code>:
+        <b style="color:var(--foreground)">one spine, no exceptions</b>. Spec 28 AN-8 — <i>a reviewer finding a new confirmation convention here has found a defect.</i></div>
+    </div>
+  </div>
+
+  <!-- mine — in flight -->
+  <div class="panel midi">
+    <div class="panel-head"><span>⑧ Mine corpus — running</span></div>
+    <div class="body" style="padding:12px;display:flex;flex-direction:column;gap:10px">
+      <div class="field"><label>Corpus</label><div style="font-size:12px">Nghịch thiên · <span class="mono" style="font-size:11px">1,842 chapters</span></div></div>
+      <div class="field"><label>Model</label><div style="display:flex;align-items:center;gap:6px">
+        <span class="tier t-mine" style="height:20px">BYOK</span>
+        <span class="mono" style="font-size:11px">gemma-4-26b-a4b-qat · lm_studio</span></div></div>
+      <div class="field"><label>Promote to</label><div class="select-wrap"><select style="width:100%">
+        <option>Drafts (default)</option><option>Mine</option><option>Book — SHARED</option></select>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg></div></div>
+      <div class="cost" style="border-color:var(--border);background:var(--background)">
+        <div class="hd" style="color:var(--foreground)">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 1 1-2.6-6.4"/><path d="M21 3v6h-6"/></svg>
+          Mining — chapter 604 of 1,842</div>
+        <div class="prog"><i style="width:33%"></i></div>
+        <div class="kv"><span>Job</span><b class="mono">mine_9d41b0 · running</b></div>
+        <div class="kv"><span>Spent so far</span><b>$0.00 (local)</b></div>
+        <div class="ro-note" style="margin-top:2px">
+          <b style="color:var(--foreground)">No Cancel button — the worker is not cancellable.</b>
+          Saying so is honest; a Cancel that quietly does nothing is <code class="mono" style="font-size:9.5px">silent-success-is-a-bug</code>, shipped.
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- no BYOK model -->
+  <div class="panel midi" style="height:auto">
+    <div class="panel-head"><span>⑨ Mine corpus — no BYOK model</span></div>
+    <div class="body" style="padding:12px;display:flex;flex-direction:column;gap:10px">
+      <div class="field"><label>Model</label>
+        <div class="select-wrap"><select style="width:100%;color:var(--muted-fg)"><option>— no model with `chat` capability —</option></select>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg></div></div>
+      <div class="err-inline" style="background:var(--primary-muted);border-color:var(--primary);color:#f0dcb0">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color:var(--warning)"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/><path d="M12 9v4M12 17h.01"/></svg>
+        <div><b>Mining needs your own model (BYOK).</b> Add one in Settings → Models.
+          <div style="margin-top:6px"><button class="btn sm primary">Add a model →</button></div></div>
+      </div>
+      <div class="ro-note">
+        🔴 <b style="color:var(--foreground)">This button is the X-1 dependency.</b> <code class="mono" style="font-size:9.5px">AddModelCta</code> must route through
+        <code class="mono" style="font-size:9.5px">useOptionalStudioHost()</code>. A plain <code class="mono" style="font-size:9.5px">&lt;Link&gt;</code>
+        navigates <b style="color:var(--foreground)">out of the SPA and tears down the entire dock</b> (DOCK-7) — every open panel, every unsaved form, gone.
+      </div>
+      <button class="btn sm" disabled style="align-self:flex-end">Mine — needs a model</button>
+    </div>
+  </div>
+</div>
+
+<div class="callout warn">
+  <b>Every chip and select over a motif serializes its writes.</b> <code>motif</code> carries <code>version</code>; <code>PATCH /motifs/{id}</code>
+  sends <code>If-Match</code>. An instant-commit control fired twice rapidly <b>self-412s its own second write</b>
+  (<code>instant-commit-control-over-occ-entity-needs-write-serialization</code>) — chain the writes, don't fire them in parallel.
+  On 412 the drawer <b>re-fetches and keeps the user's edits in the form</b> (banner above); it never clobbers, and it never silently discards.
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════════════
+     ⑪ ⑫ ⑬ — the failure states and the BEFORE
+     ══════════════════════════════════════════════════════════════════════ -->
+<h2>⑪⑫⑬ Loading · error · and the BEFORE state — the <code style="font-size:11px" class="mono">kind</code> toggle that ships Wave 4 inside Wave 3</h2>
+
+<div class="stack">
+  <div class="panel mini">
+    <div class="panel-head"><span>⑪ Loading</span></div>
+    <div class="body" style="padding:12px;display:flex;flex-direction:column;gap:10px">
+      <div class="skel"></div><div class="skel"></div><div class="skel"></div>
+      <div class="ro-note"><code class="mono" style="font-size:9.5px">MotifStateBoundary</code> — skeletons, never a bare spinner over an empty grid.</div>
+    </div>
+  </div>
+
+  <div class="panel mini">
+    <div class="panel-head"><span style="color:var(--destructive)">⑫ Error</span></div>
+    <div class="body">
+      <div class="empty">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color:var(--destructive)"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/><path d="M12 9v4M12 17h.01"/></svg>
+        <div class="t">Couldn't load your motifs</div>
+        <div class="d mono" style="font-size:10px">503 · composition-service unreachable</div>
+        <button class="btn sm">Retry</button>
+      </div>
+      <div style="padding:0 12px 12px;font-size:10.5px;color:var(--muted-fg);line-height:1.6">
+        <b style="color:var(--foreground)">Never an empty list on error.</b> An error rendered as "0 motifs" is the
+        <code class="mono" style="font-size:9.5px">FE-fallback ⇒ LIST-omits-field</code> bug class — the user deletes nothing and believes everything is gone.
+      </div>
+    </div>
+    <div class="panel-foot"><span class="mono">MotifPanelBoundary</span></div>
+  </div>
+
+  <!-- BEFORE — the kind toggle -->
+  <div class="panel mini" style="width:320px">
+    <div class="panel-head"><span style="color:var(--destructive)">⑬ BEFORE — MotifLibraryView.tsx</span></div>
+    <div class="body" style="padding:10px">
+      <div style="display:flex;gap:2px;padding:4px;border:1px solid var(--destructive);border-radius:7px;background:var(--destructive-muted);margin-bottom:10px">
+        <span class="tab active" style="border-bottom-color:var(--motif)">Motifs</span>
+        <span class="tab">Arc templates</span>
+      </div>
+      <div style="font-size:10.5px;color:var(--muted-fg);line-height:1.7">
+        <code class="mono" style="font-size:9.5px">:44 const [kind, setKind] = useState&lt;'motifs' | 'arcs'&gt;</code><br />
+        <code class="mono" style="font-size:9.5px">:16 import ArcTemplateLibraryView</code><br /><br />
+        <b style="color:var(--destructive)">A naive port ships Wave 4's panel inside Wave 3's</b> —
+        <code class="mono" style="font-size:9.5px">ArcTemplateLibraryView</code>,
+        <code class="mono" style="font-size:9.5px">ArcConformancePanel</code>, and <b style="color:var(--destructive)">M-BUG-4</b> with them.<br /><br />
+        <span class="strike">kind toggle</span> — <b style="color:var(--foreground)">3a deletes it</b>. Wave 4 lifts the arcs half
+        into its own <code class="mono" style="font-size:9.5px">arc-templates</code> panel.
+      </div>
+    </div>
+    <div class="panel-foot"><span class="mono" style="color:var(--destructive)">legacy · ChapterEditorPage only</span></div>
+  </div>
+
+  <div class="panel mini" style="width:320px">
+    <div class="panel-head"><span style="color:var(--success)">AFTER — MotifLibraryPanel.tsx</span></div>
+    <div class="body" style="padding:10px">
+      <div class="tabs" style="border:1px solid var(--success);border-radius:7px;background:#16301f;padding:4px;margin-bottom:10px">
+        <span class="tab active">Mine</span><span class="tab">Book</span><span class="tab">Shared</span><span class="tab">System</span>
+      </div>
+      <div style="font-size:10.5px;color:var(--muted-fg);line-height:1.7">
+        Motifs only. No <code class="mono" style="font-size:9.5px">kind</code>. No arc import.<br /><br />
+        Wraps its tree in <b style="color:var(--foreground)">MotifSimpleModeProvider</b> — outside the provider,
+        <code class="mono" style="font-size:9.5px">useMotifSimpleMode()</code> returns a <b style="color:var(--destructive)">NO-OP</b>
+        (<code class="mono" style="font-size:9.5px">MotifSimpleModeContext.tsx:66</code>), so a forgotten provider ships a
+        Simple/Expert toggle that renders and <b style="color:var(--destructive)">does nothing</b>.<br /><br />
+        Passes <b style="color:var(--foreground)">meUserId</b> from <code class="mono" style="font-size:9.5px">useAuth()</code> —
+        <code class="mono" style="font-size:9.5px">currentUser.ts:8</code> reads <code class="mono" style="font-size:9.5px">localStorage['lw_user']</code>
+        directly, and a null id <b style="color:var(--destructive)">silently downgrades every owned motif to the read-only public tier</b>.
+      </div>
+    </div>
+    <div class="panel-foot"><span class="mono" style="color:var(--success)">data-testid="studio-motif-library-panel"</span></div>
+  </div>
+</div>
+
+<div class="callout bad">
+  <b>What this mock does NOT propose.</b>
+  <b>(1) The graph is not a canvas.</b> It is three typed edge lists (<code>composed_of</code> · <code>precedes</code> · <code>variant_of</code>),
+  rendered as a list — honest, cheap, and keyboard-navigable. A force-directed DAG is a real Wave-4/5 ask with a layout engine behind it
+  (<b>OQ-2</b> / <code>D-MOTIF-GRAPH-CANVAS</code>). <b>Do not "fix" this with d3.</b>
+  <b>(2) No <code>motif-editor</code> panel</b> — see the X-12 callout above.
+  <b>(3) No bespoke <code>/actions/motif_adopt/estimate</code> route.</b> The generic spine is the only spine; inventing a per-action estimate
+  route is precisely the mistake that produced the two 404s this wave deletes.
+  <b>(4) The <code>kind</code> toggle does not come along.</b> A reviewer who finds <code>ArcTemplateLibraryView</code> imported from
+  <code>MotifLibraryPanel.tsx</code> has found a defect, not a feature.
+</div>
+
+<div class="note-strip">
+  <div class="note">
+    <h3><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6 9 17l-5-5"/></svg> Registration (GG-8) — 58/58/58 or the guard reds</h3>
+    <ul>
+      <li><code>catalog.ts</code> — one <code>STUDIO_PANELS</code> row, <code>category:'storyBible'</code>. <code>category</code> + <code>guideBodyKey</code> are <b>both mandatory</b>.</li>
+      <li><code>frontend_tools.py</code> — <b>two</b> edits: the <code>panel_id</code> <b>enum</b> (:400) <i>and</i> the tool <b>description</b> prose (:479). That gloss is the model's <b>only</b> hint the panel exists.</li>
+      <li><code>frontend-tools.contract.json</code> — <b>never hand-edit</b>: <code>WRITE_FRONTEND_CONTRACT=1 pytest</code>, committed in the <b>same commit</b>.</li>
+      <li><code>studio.json</code> × 18 locales — <code>scripts/i18n_translate.py</code>, never by hand.</li>
+    </ul>
+  </div>
+  <div class="note">
+    <h3><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 1 1-2.6-6.4"/><path d="M21 3v6h-6"/></svg> Lane-B (X-4) — <code>motifEffects.ts</code> is MANDATORY</h3>
+    <p>The Lane-B registry covers <b>none</b> of this domain today (book / glossary / knowledge / translation only).
+      Without a new <code>motifEffects.ts</code>, <b>every agent write to a motif leaves every panel in this wave stale</b> —
+      the agent creates a motif, the library still shows 24, and the user reloads to find out.
+      <code>/^composition_motif_(create|patch|archive|adopt|mine)/</code> → the library key
+      (<b>read <code>useMotifLibrary.ts</code>'s key, don't guess it</b>) + <code>['composition','motif-candidates']</code>;
+      <code>/^composition_motif_link_/</code> → the links key. Also delete the now-false comment at
+      <code>useStudioEffectReconciler.ts:10</code>.</p>
+  </div>
+</div>
+
+<script>
+  /* One real toggle: the Graph section collapses, because the draft claims it is
+     "a collapsed section, not a panel" and a claim you can't click is a claim. */
+  document.querySelectorAll('.sect-head').forEach(function (h) {
+    var body = h.nextElementSibling;
+    if (!body || !body.classList.contains('sect-body')) return;
+    h.addEventListener('click', function () {
+      var hidden = body.style.display === 'none';
+      body.style.display = hidden ? '' : 'none';
+      var chev = h.querySelector('svg.chev');
+      if (chev) chev.style.transform = hidden ? '' : 'rotate(-90deg)';
+    });
+  });
+</script>
+</body>
+</html>

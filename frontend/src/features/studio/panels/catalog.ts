@@ -9,8 +9,18 @@ import type { FunctionComponent } from 'react';
 import type { IDockviewPanelProps } from 'dockview-react';
 import { WelcomePanel } from '../components/panels/WelcomePanel';
 import { ComposePanel } from './ComposePanel';
+import { SceneComposePanel } from './SceneComposePanel';
+import { ChapterAssemblePanel } from './ChapterAssemblePanel';
 import { EditorPanel } from './EditorPanel';
 import { PlannerPanel } from '@/features/plan-forge/components/PlannerPanel';
+import { PassRailPanel } from '@/features/plan-forge/components/PassRailPanel';
+import { MotifLibraryPanel } from './MotifLibraryPanel';
+import { MotifGraphPanel } from './MotifGraphPanel';
+import { QualityConformancePanel } from './QualityConformancePanel';
+import { ArcInspectorPanel } from './ArcInspectorPanel';   /* owner: S2 */
+import { ArcTemplatesPanel } from './ArcTemplatesPanel';   /* owner: S2 */
+import { StructureTemplatesPanel } from './StructureTemplatesPanel';   /* S-01 */
+import { DecomposePanel } from './DecomposePanel';   /* S-13 */
 import { UsagePanel } from './UsagePanel';
 import { NotificationsPanel } from './NotificationsPanel';
 import { SettingsPanel } from './SettingsPanel';
@@ -19,6 +29,8 @@ import { JsonEditorPanel } from './JsonEditorPanel';
 import { ExtensionsPanel } from './ExtensionsPanel';
 import { ProposalsPanel } from './ProposalsPanel';
 import { SkillEditorPanel } from './SkillEditorPanel';
+import { WorkflowsPanel } from './WorkflowsPanel';
+import { WorkflowProposalsPanel } from './WorkflowProposalsPanel';
 import { SteeringPanel } from './SteeringPanel';
 import { GlossaryPanel } from './GlossaryPanel';
 import { GlossaryOntologyPanel } from './GlossaryOntologyPanel';
@@ -40,6 +52,8 @@ import { KgInsightsPanel } from './KgInsightsPanel';
 import { KgJobsPanel } from './KgJobsPanel';
 import { KgGlobalBioPanel } from './KgGlobalBioPanel';
 import { KgPrivacyPanel } from './KgPrivacyPanel';
+import { KgTriagePanel } from './KgTriagePanel';   /* owner: S-05 */
+import { SearchPanel } from './SearchPanel';        /* owner: S-11 */
 import { JobsListPanel } from './JobsListPanel';
 import { JobDetailPanel } from './JobDetailPanel';
 import { BooksBrowserPanel } from './BooksBrowserPanel';
@@ -49,6 +63,15 @@ import { LeaderboardAuthorsPanel } from './LeaderboardAuthorsPanel';
 import { LeaderboardTranslatorsPanel } from './LeaderboardTranslatorsPanel';
 import { LeaderboardTrendingPanel } from './LeaderboardTrendingPanel';
 import { ChapterBrowserPanel } from './ChapterBrowserPanel';
+import { SceneBrowserPanel } from './SceneBrowserPanel';
+import { SceneInspectorPanel } from './SceneInspectorPanel';
+import { WhatIfCanvasPanel } from './WhatIfCanvasPanel';
+import { DivergencePanel } from './DivergencePanel';
+import { ReferenceShelfPanel } from './ReferenceShelfPanel';   /* H-1a — S-03 reference corpus */
+import { StyleVoiceStudioPanel } from './StyleVoiceStudioPanel';   /* S-10 O1 — style/voice steering */
+import { CanonViewPanel } from './CanonViewPanel';
+import { PlanHubPanel } from './PlanHubPanel';
+import { BookImportPanel } from './BookImportPanel';
 import { ContextInspectorPanel } from './ContextInspectorPanel';
 import { MediaVersionHistoryPanel } from './MediaVersionHistoryPanel';
 import { OriginalSourcePanel } from './OriginalSourcePanel';
@@ -71,6 +94,16 @@ import { QualityPromisesPanel } from './QualityPromisesPanel';
 import { QualityCriticPanel } from './QualityCriticPanel';
 import { QualityCoveragePanel } from './QualityCoveragePanel';
 import { QualityCanonPanel } from './QualityCanonPanel';
+import { QualityCanonRulesPanel } from './QualityCanonRulesPanel';
+import { QualityCorrectionsPanel } from './QualityCorrectionsPanel';
+import { QualityHealPanel } from './QualityHealPanel';
+import { ProgressStudioPanel } from './ProgressStudioPanel';
+import { FlywheelStudioPanel } from './FlywheelStudioPanel';
+// ── S7 · Knowledge/World/Cast ── (integrator-wired; components owned by build groups A/B/C)
+import { WorldMapEditorPanel } from './WorldMapEditorPanel';
+import { PlaceGraphPanel } from './PlaceGraphPanel';
+import { CastPanel } from './CastPanel';
+import { CharacterArcPanel } from './CharacterArcPanel';
 
 /** #18 — domain-area grouping for the Command Palette. Required for every non-hidden panel
  *  (enforced at runtime by panelCatalogContract.test.ts — B6, not just a convention). */
@@ -86,6 +119,21 @@ export type StudioPanelCategory =
   | 'discovery'
   | 'jobs';
 
+/** X-2 — the runtime mirror of the union above, so a test can assert CATEGORY_ORDER
+ *  (palette/useStudioCommands.ts) covers EXACTLY these. Kept adjacent to the union so the two
+ *  can't drift unseen; the compile-time half of the guard lives on CATEGORY_ORDER itself.
+ *  NOTE: this is deliberately NOT the home of CATEGORY_ORDER — catalog.ts imports UserGuidePanel,
+ *  which imports CATEGORY_ORDER from useStudioCommands; a value import back the other way would
+ *  close a real runtime cycle. */
+export const ALL_CATEGORIES = [
+  'editor', 'storyBible', 'knowledge', 'quality', 'translation',
+  'enrichment', 'sharing', 'platform', 'discovery', 'jobs',
+] as const satisfies readonly StudioPanelCategory[];
+// A category added to the union but not to ALL_CATEGORIES is a TYPE ERROR here.
+type _UnlistedCategory = Exclude<StudioPanelCategory, (typeof ALL_CATEGORIES)[number]>;
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+const _ALL_CATEGORIES_IS_EXHAUSTIVE: [_UnlistedCategory] extends [never] ? true : never = true;
+
 export interface StudioPanelDef {
   id: string;
   component: FunctionComponent<IDockviewPanelProps>;
@@ -96,9 +144,23 @@ export interface StudioPanelDef {
   hiddenFromPalette?: boolean;
   /** Command Palette sub-group (#18). Omit only when hiddenFromPalette is true. */
   category?: StudioPanelCategory;
-  /** #19 — longer i18n key for the User Guide panel + tour captions; falls back to `descKey`
-   *  when absent (Wave 1: no panel has this yet; Wave 2 fills it in per-panel). */
-  guideBodyKey?: string;
+  /** H-1b — a CURATED discoverable nav grouping (independent of `category`, which is too broad
+   *  to be a rail — `editor` alone has 19 panels). A panel tagged `bible` appears in the
+   *  `bible` activity-view rail (StudioSideBar). Extensible: add more groups/panels as rails grow. */
+  navGroup?: 'bible';
+  /** #19 / X-3 — the i18n key for the User Guide body. **REQUIRED, not optional.**
+   *
+   *  It was `guideBodyKey?: string` with a "falls back to descKey when absent" contract, and that
+   *  fallback is exactly how 5 panels shipped a SILENTLY BLANK guide row: UserGuidePanel.tsx:120
+   *  renders `t(p.guideBodyKey ?? p.descKey, { defaultValue: '' })`, so a missing key OR missing
+   *  copy renders an empty string — no warning, no crash. Making it required means "forgot the
+   *  guide body" is a TYPE ERROR, not a blank row a user discovers.
+   *
+   *  `hiddenFromPalette` rows carry the key too (rather than forking the type into an
+   *  openable/hidden union). Their copy is a forward-compat placeholder: they never render in the
+   *  guide, but the moment one is un-hidden, panelCatalogContract's "resolves to non-empty English
+   *  copy" test REDS until its `panels.<id>.guideBody` string is written. That is the guard working. */
+  guideBodyKey: string;
   /** #19 Wave 2 — the panel's root `data-testid` selector (e.g. `[data-testid="studio-glossary-panel"]`),
    *  used by role-specific guided tours to target this panel without re-deriving `studio-${id}-panel`
    *  (which is wrong for the few panels whose testid doesn't match their id 1:1, e.g. `knowledge` →
@@ -117,6 +179,9 @@ export const STUDIO_PANELS: StudioPanelDef[] = [
   { id: 'trash', component: TrashPanel, titleKey: 'panels.trash.title', descKey: 'panels.trash.desc', category: 'platform', guideBodyKey: 'panels.trash.guideBody' },
   // RAID C1 — per-book author steering rules (story-bible-as-steering). book-scoped, palette-openable.
   { id: 'steering', component: SteeringPanel, titleKey: 'panels.steering.title', descKey: 'panels.steering.desc', category: 'editor', guideBodyKey: 'panels.steering.guideBody' },
+  // S-10 O1 — style/voice steering (density/pace + per-character voice). Ports the legacy StyleVoicePanel
+  // (was reachable ONLY from the deprecated ChapterEditorPage) into a real dock panel.
+  { id: 'style-voice', component: StyleVoiceStudioPanel, titleKey: 'panels.style-voice.title', descKey: 'panels.style-voice.desc', category: 'editor', guideBodyKey: 'panels.style-voice.guideBody' },
   // #13 A3 — entity list/search/filter/bulk-actions (cycle-2 of the #12 per-tool queue).
   // Palette + agent openable (panelCatalogContract enforces openable-set == enum, so any
   // palette-visible panel must join `ui_open_studio_panel` — see frontend_tools.py + the
@@ -137,7 +202,7 @@ export const STUDIO_PANELS: StudioPanelDef[] = [
   // precedent as book-reader/json-editor/skill-editor: hidden from palette + outside the agent
   // enum (opened only via the `wiki` panel's Edit/History buttons — no wiki_* MCP tool exists
   // yet for an agent to target it with).
-  { id: 'wiki-editor', component: WikiEditorPanel, titleKey: 'panels.wiki-editor.title', descKey: 'panels.wiki-editor.desc', hiddenFromPalette: true },
+  { id: 'wiki-editor', component: WikiEditorPanel, titleKey: 'panels.wiki-editor.title', descKey: 'panels.wiki-editor.desc', hiddenFromPalette: true, guideBodyKey: 'panels.wiki-editor.guideBody' },
   // 14_kg_panels.md A2 — the KG launcher (DOCK-8 hub pattern): browse/open knowledge-graph
   // projects. Phase B adds the capability panels it currently opens via a new-tab fallback.
   { id: 'knowledge', component: KnowledgeHubPanel, titleKey: 'panels.knowledge.title', descKey: 'panels.knowledge.desc', category: 'knowledge', guideBodyKey: 'panels.knowledge.guideBody', tourAnchor: 'studio-knowledge-hub-panel' },
@@ -158,15 +223,17 @@ export const STUDIO_PANELS: StudioPanelDef[] = [
   { id: 'kg-jobs', component: KgJobsPanel, titleKey: 'panels.kg-jobs.title', descKey: 'panels.kg-jobs.desc', category: 'knowledge', guideBodyKey: 'panels.kg-jobs.guideBody' },
   { id: 'kg-bio', component: KgGlobalBioPanel, titleKey: 'panels.kg-bio.title', descKey: 'panels.kg-bio.desc', category: 'knowledge', guideBodyKey: 'panels.kg-bio.guideBody' },
   { id: 'kg-privacy', component: KgPrivacyPanel, titleKey: 'panels.kg-privacy.title', descKey: 'panels.kg-privacy.desc', category: 'knowledge', guideBodyKey: 'panels.kg-privacy.guideBody' },
+  { id: 'kg-triage', component: KgTriagePanel, titleKey: 'panels.kg-triage.title', descKey: 'panels.kg-triage.desc', category: 'knowledge', guideBodyKey: 'panels.kg-triage.guideBody' },   /* S-05 */
+  { id: 'search', component: SearchPanel, titleKey: 'panels.search.title', descKey: 'panels.search.desc', category: 'knowledge', guideBodyKey: 'panels.search.guideBody' },   /* S-11 */
   // 14_utility_panels.md Phase B — jobs-list is palette + agent openable; job-detail is a
   // params-retargeting singleton ({service, jobId}, json-editor/skill-editor precedent).
   { id: 'jobs-list', component: JobsListPanel, titleKey: 'panels.jobs-list.title', descKey: 'panels.jobs-list.desc', category: 'jobs', guideBodyKey: 'panels.jobs-list.guideBody' },
-  { id: 'job-detail', component: JobDetailPanel, titleKey: 'panels.job-detail.title', descKey: 'panels.job-detail.desc', hiddenFromPalette: true },
+  { id: 'job-detail', component: JobDetailPanel, titleKey: 'panels.job-detail.title', descKey: 'panels.job-detail.desc', hiddenFromPalette: true, guideBodyKey: 'panels.job-detail.guideBody' },
   // 14_utility_panels.md Phase C — browse-then-read, no navigate-away: books lists the user's
   // OTHER books; book-reader is a params-retargeting singleton ({bookId, chapterId?}) opened via
   // host.openPanel from a books row click, never a route hop (the active studio never unmounts).
   { id: 'books', component: BooksBrowserPanel, titleKey: 'panels.books.title', descKey: 'panels.books.desc', category: 'discovery', guideBodyKey: 'panels.books.guideBody' },
-  { id: 'book-reader', component: BookReaderPanel, titleKey: 'panels.book-reader.title', descKey: 'panels.book-reader.desc', hiddenFromPalette: true },
+  { id: 'book-reader', component: BookReaderPanel, titleKey: 'panels.book-reader.title', descKey: 'panels.book-reader.desc', hiddenFromPalette: true, guideBodyKey: 'panels.book-reader.guideBody' },
   // 14_utility_panels.md Phase D — the global leaderboard's 4-tab internal view-switch (DOCK-8
   // anti-pattern) becomes 4 sibling panels; each owns independent filter state.
   { id: 'leaderboard-books', component: LeaderboardBooksPanel, titleKey: 'panels.leaderboard-books.title', descKey: 'panels.leaderboard-books.desc', category: 'discovery', guideBodyKey: 'panels.leaderboard-books.guideBody' },
@@ -177,6 +244,21 @@ export const STUDIO_PANELS: StudioPanelDef[] = [
   // multi-select bulk actions + a Title-vs-Content search-mode toggle), sibling to
   // the Manuscript Navigator (tree, for writing) not a replacement for it.
   { id: 'chapter-browser', component: ChapterBrowserPanel, titleKey: 'panels.chapter-browser.title', descKey: 'panels.chapter-browser.desc', category: 'editor', guideBodyKey: 'panels.chapter-browser.guideBody' },
+  { id: 'scene-browser', component: SceneBrowserPanel, titleKey: 'panels.scene-browser.title', descKey: 'panels.scene-browser.desc', category: 'editor', guideBodyKey: 'panels.scene-browser.guideBody' },
+  { id: 'scene-inspector', component: SceneInspectorPanel, titleKey: 'panels.scene-inspector.title', descKey: 'panels.scene-inspector.desc', category: 'editor', guideBodyKey: 'panels.scene-inspector.guideBody' },
+  // 24 Plan Hub v2 (H2.1) — the package explorer on the graph canvas (structure lanes +
+  // keyset chapter/scene windows + scene-link edges, React Flow over the pure laneLayout).
+  // Palette + agent openable (panelCatalogContract enforces openable-set == the
+  // ui_open_studio_panel enum + regenerated contracts/frontend-tools.contract.json).
+  { id: 'plan-hub', component: PlanHubPanel, titleKey: 'panels.plan-hub.title', descKey: 'panels.plan-hub.desc', category: 'editor', guideBodyKey: 'panels.plan-hub.guideBody' },
+  { id: 'decompose', component: DecomposePanel, titleKey: 'panels.decompose.title', descKey: 'panels.decompose.desc', category: 'editor', guideBodyKey: 'panels.decompose.guideBody', tourAnchor: 'studio-decompose-panel' }, /* S-13 — decompose a book against an authored structure */
+  // S3 · PlanForge — the 7-pass compiler rail (motifs→…→self_heal) + its 2 blocking checkpoints.
+  { id: 'plan-passes', component: PassRailPanel, titleKey: 'panels.plan-passes.title', descKey: 'panels.plan-passes.desc', category: 'editor', guideBodyKey: 'panels.plan-passes.guideBody', tourAnchor: 'studio-plan-passes-panel' },
+  { id: 'whatif-canvas', component: WhatIfCanvasPanel, titleKey: 'panels.whatif-canvas.title', descKey: 'panels.whatif-canvas.desc', category: 'editor', guideBodyKey: 'panels.whatif-canvas.guideBody' },
+  // D-STUDIO-IMPORT-PANEL — the classic ChaptersTab's import toolbar (text/.docx/.epub +
+  // PDF-with-vision-captioning) ported into the studio dock, reusing ImportDialog/PdfImportWizard
+  // as-is (DOCK-2). Was reachable only from the pre-Studio /books/:bookId/chapters tab.
+  { id: 'book-import', component: BookImportPanel, titleKey: 'panels.book-import.title', descKey: 'panels.book-import.desc', category: 'editor', guideBodyKey: 'panels.book-import.guideBody' },
   // Context Budget Law §11 — the Context Compiler · Trace Inspector: per-turn context-build
   // observability (budget gauge · allocation map · Planner→Compiler waterfall). Palette + agent
   // openable (panelCatalogContract enforces openable-set == the ui_open_studio_panel enum);
@@ -187,18 +269,23 @@ export const STUDIO_PANELS: StudioPanelDef[] = [
   // singleton (json-editor precedent), hidden from palette + outside the enum.
   { id: 'extensions', component: ExtensionsPanel, titleKey: 'panels.extensions.title', descKey: 'panels.extensions.desc', category: 'platform', guideBodyKey: 'panels.extensions.guideBody' },
   { id: 'proposals', component: ProposalsPanel, titleKey: 'panels.proposals.title', descKey: 'panels.proposals.desc', category: 'platform', guideBodyKey: 'panels.proposals.guideBody' },
-  { id: 'skill-editor', component: SkillEditorPanel, titleKey: 'panels.skill-editor.title', descKey: 'panels.skill-editor.desc', hiddenFromPalette: true },
+  // S-12 (G-WORKFLOWS): the workflow recipe manager + its propose→approve inbox — the
+  // workflow twins of extensions/proposals. workflow-proposals is the UI the agent's
+  // registry_propose_workflow description promised (approve mints the workflow).
+  { id: 'workflows', component: WorkflowsPanel, titleKey: 'panels.workflows.title', descKey: 'panels.workflows.desc', category: 'platform', guideBodyKey: 'panels.workflows.guideBody' },
+  { id: 'workflow-proposals', component: WorkflowProposalsPanel, titleKey: 'panels.workflow-proposals.title', descKey: 'panels.workflow-proposals.desc', category: 'platform', guideBodyKey: 'panels.workflow-proposals.guideBody' },
+  { id: 'skill-editor', component: SkillEditorPanel, titleKey: 'panels.skill-editor.title', descKey: 'panels.skill-editor.desc', hiddenFromPalette: true, guideBodyKey: 'panels.skill-editor.guideBody' },
   // #12 R3/R4 — singleton, retargets via params {docType, resourceId}; opened by "Open as JSON"
   // affordances only (hidden from palette ⇒ outside the agent enum, no contract change this cycle).
-  { id: 'json-editor', component: JsonEditorPanel, titleKey: 'panels.json-editor.title', descKey: 'panels.json-editor.desc', hiddenFromPalette: true },
+  { id: 'json-editor', component: JsonEditorPanel, titleKey: 'panels.json-editor.title', descKey: 'panels.json-editor.desc', hiddenFromPalette: true, guideBodyKey: 'panels.json-editor.guideBody' },
   // #16 Phase 2 (2.7) — per-resource retargeting singleton (json-editor precedent), opened
   // only from the "history" button inside an image/video NodeView. hiddenFromPalette + outside
   // the agent enum — no contract change this cycle.
-  { id: 'media-version-history', component: MediaVersionHistoryPanel, titleKey: 'panels.media-version-history.title', descKey: 'panels.media-version-history.desc', hiddenFromPalette: true },
+  { id: 'media-version-history', component: MediaVersionHistoryPanel, titleKey: 'panels.media-version-history.title', descKey: 'panels.media-version-history.desc', hiddenFromPalette: true, guideBodyKey: 'panels.media-version-history.guideBody' },
   // #16 Phase 2 (2.11) — read-only original-source viewer, retargets via params
   // {bookId, chapterId}; opened only from EditorPanel's toolbar (json-editor precedent),
   // hidden from palette + outside the agent enum.
-  { id: 'original-source', component: OriginalSourcePanel, titleKey: 'panels.original-source.title', descKey: 'panels.original-source.desc', hiddenFromPalette: true },
+  { id: 'original-source', component: OriginalSourcePanel, titleKey: 'panels.original-source.title', descKey: 'panels.original-source.desc', hiddenFromPalette: true, guideBodyKey: 'panels.original-source.guideBody' },
   // 17_translation_enrichment_sharing_settings_docks.md — Book Sharing: visibility
   // radio-cards, unlisted-link+rotate, collaborator invite/role-change/remove. DOCK-7/DOCK-9
   // were already clean on the classic page — no navigate/Link, no hand-rolled overlays.
@@ -212,12 +299,12 @@ export const STUDIO_PANELS: StudioPanelDef[] = [
   // original-source precedent) opened only from the matrix's per-cell click — hidden from
   // palette + outside the agent enum (meaningless without a chapterId).
   { id: 'translation', component: TranslationPanel, titleKey: 'panels.translation.title', descKey: 'panels.translation.desc', category: 'translation', guideBodyKey: 'panels.translation.guideBody', tourAnchor: 'studio-translation-panel' },
-  { id: 'translation-versions', component: TranslationVersionsPanel, titleKey: 'panels.translation-versions.title', descKey: 'panels.translation-versions.desc', hiddenFromPalette: true },
+  { id: 'translation-versions', component: TranslationVersionsPanel, titleKey: 'panels.translation-versions.title', descKey: 'panels.translation-versions.desc', hiddenFromPalette: true, guideBodyKey: 'panels.translation-versions.guideBody' },
   // 16_chapter_editor_parity_and_retirement.md Phase 3 — the block-aligned review workspace
   // (legacy TranslationReviewPage), a params-retargeting singleton ({bookId, chapterId,
   // versionId}) opened only from TranslationViewer's "Review" button (DOCK-7 fix) — hidden from
   // palette + outside the agent enum (meaningless without a versionId).
-  { id: 'translation-review', component: TranslationReviewPanel, titleKey: 'panels.translation-review.title', descKey: 'panels.translation-review.desc', hiddenFromPalette: true },
+  { id: 'translation-review', component: TranslationReviewPanel, titleKey: 'panels.translation-review.title', descKey: 'panels.translation-review.desc', hiddenFromPalette: true, guideBodyKey: 'panels.translation-review.guideBody' },
   // 17_...docks.md — Lore Enrichment: EnrichmentView's former 6-way internal tab switch
   // (DOCK-8 anti-pattern) becomes 6 sibling panels, no hub — each independently
   // palette + agent openable, mirroring the kg-* panels' shape.
@@ -240,8 +327,8 @@ export const STUDIO_PANELS: StudioPanelDef[] = [
   // `chapter-revision-compare` is a params-retargeting singleton (json-editor/
   // wiki-editor/translation-versions precedent) — meaningless without a
   // chapterId, so it stays hidden regardless, same as those panels.
-  { id: 'agent-mode', component: AgentModePanel, titleKey: 'panels.agent-mode.title', descKey: 'panels.agent-mode.desc', category: 'editor' },
-  { id: 'chapter-revision-compare', component: ChapterRevisionComparePanel, titleKey: 'panels.chapter-revision-compare.title', descKey: 'panels.chapter-revision-compare.desc', hiddenFromPalette: true },
+  { id: 'agent-mode', component: AgentModePanel, titleKey: 'panels.agent-mode.title', descKey: 'panels.agent-mode.desc', category: 'editor', guideBodyKey: 'panels.agent-mode.guideBody' },
+  { id: 'chapter-revision-compare', component: ChapterRevisionComparePanel, titleKey: 'panels.chapter-revision-compare.title', descKey: 'panels.chapter-revision-compare.desc', hiddenFromPalette: true, guideBodyKey: 'panels.chapter-revision-compare.guideBody' },
   // Quality tab (docs/plans/2026-07-06-studio-quality-tab.md) — DOCK-8 hub +
   // sibling panels, same shape as `knowledge`/kg-*: promise ledger, per-chapter
   // critic scores, book-wide promise coverage, and canon issues are 4 distinct
@@ -253,7 +340,46 @@ export const STUDIO_PANELS: StudioPanelDef[] = [
   { id: 'quality-critic', component: QualityCriticPanel, titleKey: 'panels.quality-critic.title', descKey: 'panels.quality-critic.desc', category: 'quality', guideBodyKey: 'panels.quality-critic.guideBody' },
   { id: 'quality-coverage', component: QualityCoveragePanel, titleKey: 'panels.quality-coverage.title', descKey: 'panels.quality-coverage.desc', category: 'quality', guideBodyKey: 'panels.quality-coverage.guideBody' },
   { id: 'quality-canon', component: QualityCanonPanel, titleKey: 'panels.quality-canon.title', descKey: 'panels.quality-canon.desc', category: 'quality', guideBodyKey: 'panels.quality-canon.guideBody' },
-  { id: 'welcome', component: WelcomePanel, titleKey: 'welcome.tab', descKey: 'welcome.tab', hiddenFromPalette: true },
+  { id: 'welcome', component: WelcomePanel, titleKey: 'welcome.tab', descKey: 'welcome.tab', hiddenFromPalette: true, guideBodyKey: 'panels.welcome.guideBody' },
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // WRITING-STUDIO COMPLETENESS — the 8-session build (2026-07-16 orchestration).
+  // Each session adds its panels IN ITS OWN BLOCK below, so two sessions editing
+  // this file concurrently touch different line-ranges. Registration is not done
+  // until the row is here AND in chat-service's `ui_open_studio_panel` enum AND in
+  // contracts/frontend-tools.contract.json (regen: WRITE_FRONTEND_CONTRACT=1 pytest)
+  // AND has an `en` i18n guideBodyKey. Keep enum == openable == contract in sync.
+  // Panel-id ledger + per-session ownership: docs/plans/2026-07-16-studio-completeness-8-session-orchestration.md §4/§8.0
+  // ───────────────────────────────────────────────────────────────────────────
+  // ── S1 · Manuscript & Compose ──  (scene-compose, chapter-assemble)
+  { id: 'scene-compose', component: SceneComposePanel, titleKey: 'panels.scene-compose.title', descKey: 'panels.scene-compose.desc', category: 'editor', guideBodyKey: 'panels.scene-compose.guideBody', tourAnchor: 'studio-scene-compose-panel' }, /* owner: S1 */
+  { id: 'chapter-assemble', component: ChapterAssemblePanel, titleKey: 'panels.chapter-assemble.title', descKey: 'panels.chapter-assemble.desc', category: 'editor', guideBodyKey: 'panels.chapter-assemble.guideBody', tourAnchor: 'studio-chapter-assemble-panel' }, /* owner: S1 */
+  // ── S2 · Plan & Structure ──      (arc-inspector, arc-templates)
+  { id: 'arc-inspector', component: ArcInspectorPanel, titleKey: 'panels.arc-inspector.title', descKey: 'panels.arc-inspector.desc', category: 'editor', guideBodyKey: 'panels.arc-inspector.guideBody' }, /* owner: S2 */
+  { id: 'arc-templates', component: ArcTemplatesPanel, titleKey: 'panels.arc-templates.title', descKey: 'panels.arc-templates.desc', category: 'storyBible', guideBodyKey: 'panels.arc-templates.guideBody' }, /* owner: S2 */
+  { id: 'structure-templates', component: StructureTemplatesPanel, titleKey: 'panels.structure-templates.title', descKey: 'panels.structure-templates.desc', category: 'storyBible', guideBodyKey: 'panels.structure-templates.guideBody' }, /* S-01 */
+  // ── S3 · PlanForge ──             (plan-passes)
+  // ── S4 · Motif & craft ──         (motif-library, quality-conformance)
+  { id: 'motif-library', component: MotifLibraryPanel, titleKey: 'panels.motif-library.title', descKey: 'panels.motif-library.desc', category: 'storyBible', guideBodyKey: 'panels.motif-library.guideBody' },
+  { id: 'motif-graph', component: MotifGraphPanel, titleKey: 'panels.motif-graph.title', descKey: 'panels.motif-graph.desc', category: 'storyBible', guideBodyKey: 'panels.motif-graph.guideBody' },
+  { id: 'quality-conformance', component: QualityConformancePanel, titleKey: 'panels.quality-conformance.title', descKey: 'panels.quality-conformance.desc', category: 'quality', guideBodyKey: 'panels.quality-conformance.guideBody' },
+  // ── S5 · What-If & Divergence ──  (divergence, + canonview home)
+  { id: 'divergence', component: DivergencePanel, titleKey: 'panels.divergence.title', descKey: 'panels.divergence.desc', category: 'editor', navGroup: 'bible', guideBodyKey: 'panels.divergence.guideBody' }, /* owner: S5; H-1b bible rail */
+  { id: 'reference-shelf', component: ReferenceShelfPanel, titleKey: 'panels.reference-shelf.title', descKey: 'panels.reference-shelf.desc', category: 'storyBible', navGroup: 'bible', guideBodyKey: 'panels.reference-shelf.guideBody' }, /* H-1a — S-03 reference corpus (id ≠ 'references' to avoid the composition_find_references tool) */
+  { id: 'canonview', component: CanonViewPanel, titleKey: 'panels.canonview.title', descKey: 'panels.canonview.desc', category: 'editor', guideBodyKey: 'panels.canonview.guideBody' }, /* owner: S5 */
+  // ── S6 · Canon/Quality/Progress ──(quality-canon-rules, quality-corrections, quality-heal, progress, + flywheel home)
+  { id: 'quality-canon-rules', component: QualityCanonRulesPanel, titleKey: 'panels.quality-canon-rules.title', descKey: 'panels.quality-canon-rules.desc', category: 'quality', guideBodyKey: 'panels.quality-canon-rules.guideBody' },
+  { id: 'quality-corrections', component: QualityCorrectionsPanel, titleKey: 'panels.quality-corrections.title', descKey: 'panels.quality-corrections.desc', category: 'quality', guideBodyKey: 'panels.quality-corrections.guideBody' },
+  { id: 'quality-heal', component: QualityHealPanel, titleKey: 'panels.quality-heal.title', descKey: 'panels.quality-heal.desc', category: 'quality', guideBodyKey: 'panels.quality-heal.guideBody' },
+  { id: 'progress', component: ProgressStudioPanel, titleKey: 'panels.progress.title', descKey: 'panels.progress.desc', category: 'editor', guideBodyKey: 'panels.progress.guideBody' },
+  { id: 'flywheel', component: FlywheelStudioPanel, titleKey: 'panels.flywheel.title', descKey: 'panels.flywheel.desc', category: 'knowledge', guideBodyKey: 'panels.flywheel.guideBody' },
+  // ── S7 · Knowledge/World/Cast ──  (world, world-map, place-graph, cast, character-arc)
+  { id: 'world-map', component: WorldMapEditorPanel, titleKey: 'panels.world-map.title', descKey: 'panels.world-map.desc', category: 'storyBible', guideBodyKey: 'panels.world-map.guideBody' }, /* owner: S7 (Group B) */
+  { id: 'place-graph', component: PlaceGraphPanel, titleKey: 'panels.place-graph.title', descKey: 'panels.place-graph.desc', category: 'storyBible', guideBodyKey: 'panels.place-graph.guideBody' }, /* owner: S7 (Group C) — OQ-5: storyBible, not 'knowledge' */
+  { id: 'cast', component: CastPanel, titleKey: 'panels.cast.title', descKey: 'panels.cast.desc', category: 'storyBible', guideBodyKey: 'panels.cast.guideBody' }, /* owner: S7 (Group A) */
+  { id: 'character-arc', component: CharacterArcPanel, titleKey: 'panels.character-arc.title', descKey: 'panels.character-arc.desc', category: 'storyBible', guideBodyKey: 'panels.character-arc.guideBody' }, /* owner: S7 (Group A) */
+  // ── S8 · Translation ──           (translation-repair)
+  // ═══════════════════════════════════════════════════════════════════════════
 ];
 
 /** dockview component map (id → component) for StudioDock. */
@@ -262,6 +388,10 @@ export const STUDIO_PANEL_COMPONENTS: Record<string, FunctionComponent<IDockview
 
 /** Panels offered in the Command Palette "Open" group. */
 export const OPENABLE_STUDIO_PANELS = STUDIO_PANELS.filter((p) => !p.hiddenFromPalette);
+
+/** H-1b — the panels surfaced in the `bible` activity-view rail (StudioSideBar). Curated via the
+ *  `navGroup` field (NOT a raw category — `editor` alone has 19 panels). Single source of truth. */
+export const BIBLE_NAV_PANELS = STUDIO_PANELS.filter((p) => p.navGroup === 'bible' && !p.hiddenFromPalette);
 
 export function getStudioPanelDef(id: string): StudioPanelDef | undefined {
   return STUDIO_PANELS.find((p) => p.id === id);

@@ -43,6 +43,9 @@ from dataclasses import dataclass, replace
 from typing import Iterable
 from uuid import UUID
 
+from loreweave_vecmath import cosine_similarity_prenormed as _cosine
+from loreweave_vecmath import l2_norm as _norm
+
 from app.clients.embedding_client import EmbeddingClient
 from app.clients.llm_client import LLMClient
 from app.context.intent.classifier import Intent, IntentResult
@@ -394,23 +397,10 @@ def _jaccard(a: str, b: str) -> float:
     return inter / union if union else 0.0
 
 
-def _cosine(a: list[float], na: float, b: list[float], nb: float) -> float:
-    """Cosine similarity with pre-computed L2 norms.
-
-    Returns 0.0 if either vector has zero magnitude — safer than
-    raising, because MMR treats 0 as "not redundant" which is the
-    conservative call for a degenerate vector.
-    """
-    if na == 0.0 or nb == 0.0:
-        return 0.0
-    dot = sum(x * y for x, y in zip(a, b))
-    return dot / (na * nb)
-
-
-def _norm(v: list[float]) -> float:
-    """L2 norm for the cosine denominator. Separated from `_cosine` so
-    we can precompute per-hit once and amortize across the N² loop."""
-    return math.sqrt(sum(x * x for x in v))
+# `_cosine` / `_norm` are the shared loreweave_vecmath implementations
+# (imported above, aliased to keep this module's existing call sites
+# unchanged): cosine_similarity_prenormed / l2_norm — the pre-normalized
+# hot-loop variant MMR needs (see module docstring above the import).
 
 
 def _mmr_rerank(

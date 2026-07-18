@@ -1,8 +1,10 @@
 {
+  "reconnecting": "Menghubungkan kembali…",
   "nav": {
     "startNew": "Mulai sesuatu yang baru",
     "workspace": "Workspace",
     "chat": "Chat",
+    "assistant": "Asisten",
     "roleplay": "Roleplay",
     "knowledge": "Pengetahuan",
     "worlds": "Dunia",
@@ -25,7 +27,8 @@
     "home": "Beranda",
     "account": "Akun",
     "signin": "Masuk",
-    "back_to_book": "Kembali ke buku"
+    "back_to_book": "Kembali ke buku",
+    "more": "Lainnya"
   },
   "logout_confirm": {
     "title": "Keluar tanpa menyimpan perubahan?",

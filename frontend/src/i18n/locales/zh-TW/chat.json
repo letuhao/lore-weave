@@ -82,6 +82,7 @@
       "table": "表格"
     },
     "placeholder": "詢問關於您的故事、角色、世界觀...",
+    "assistant_placeholder": "聊聊你的一天 —— 遇見的人、進行中的計畫與做出的決定……",
     "attach_context": "附加情境",
     "assist": "輔助",
     "voice_assist_on": "語音輔助開啟 — AI 回應將被朗讀",
@@ -127,12 +128,6 @@
     "mode_write_hint": "寫入模式 — 代理可以進行可復原的變更（每個新工具只詢問一次）"
   },
   "new": {
-    "preset": {
-      "novel": "小說助手",
-      "translator": "翻譯",
-      "worldbuilder": "世界建構",
-      "editor": "編輯"
-    },
     "create_failed": "無法建立聊天：{{error}}",
     "title": "開始新聊天",
     "model": "模型",
@@ -234,7 +229,6 @@
   "actionConfirm": {
     "label": "確認操作",
     "batch_count": "{{count}} 項",
-    "warning": "此變更影響重大 — 請確認。",
     "warning_destructive": "此操作具破壞性且會連帶影響 — 請確認。",
     "destructive_skipped": "{{count}} 個破壞性操作將被略過，除非你在上方啟用它們。",
     "confirm": "確認",
@@ -248,7 +242,8 @@
     "cancelled": "已取消",
     "reprice": "估價後費用已上漲至 {{cost}} — 請重新詢問以依新價格再次確認。",
     "reprice_title": "費用已變動 — 尚未套用",
-    "reprice_detail": "原估 {{old}}，現為 {{new}}。未產生任何花費 — 請重新詢問以依新價格再次確認。"
+    "reprice_detail": "原估 {{old}}，現為 {{new}}。未產生任何花費 — 請重新詢問以依新價格再次確認。",
+    "warning": "在套用此變更前，請先進行確認。"
   },
   "batchConfirm": {
     "title": "一次確認 {{count}} 項操作",
@@ -345,14 +340,6 @@
     "title": "工作階段設定",
     "model": "模型",
     "system_prompt": "系統提示",
-    "preset": {
-      "Custom": "自訂",
-      "Novelist": "小說家",
-      "Translator": "翻譯",
-      "Worldbuilder": "世界建構",
-      "Editor": "編輯",
-      "Analyst": "分析師"
-    },
     "prompt_placeholder": "給 AI 一個角色、個性或具體指示...",
     "gen_params": "生成參數",
     "max_tokens": "最大 Token",
@@ -389,9 +376,11 @@
     "approve_once": "允許一次",
     "always_allow": "一律允許",
     "deny": "拒絕",
+    "never_allow": "Never allow",
     "approved": "已允許 — 執行中 ✓",
     "always_allowed": "一律允許 — 執行中 ✓",
-    "denied": "已拒絕"
+    "denied": "已拒絕",
+    "never_allowed": "Never allowed — you can undo this in Settings → Permissions"
   },
   "rack": {
     "label": "情境",
@@ -416,6 +405,9 @@
     "more": "還有 {{count}} 個",
     "more_tooltip": "還有 {{count}} 個已探索工具未顯示",
     "remove": "移除",
+    "advanced_tools": "進階工具 ({{count}})",
+    "advanced_tools_hint": "保留舊版工具以供舊版呼叫者使用。除非您有特定需求，否則請優先使用上方的工具。",
+    "legacy_pin_tooltip": "您已在此工作階段啟用此舊版工具",
     "server": {
       "knowledge": "知識",
       "glossary": "詞彙表",
@@ -426,10 +418,7 @@
       "ui": "介面",
       "chat": "聊天",
       "other": "其他"
-    },
-    "advanced_tools": "進階工具 ({{count}})",
-    "advanced_tools_hint": "保留舊版工具以供舊版呼叫者使用。除非您有特定需求，否則請優先使用上方的工具。",
-    "legacy_pin_tooltip": "您已在此工作階段啟用此舊版工具"
+    }
   },
   "inspector": {
     "title": "代理執行狀態",
@@ -449,5 +438,13 @@
       "activated": "已啟用",
       "tool_running": "執行工具中"
     }
+  },
+  "presets": {
+    "custom": "自訂",
+    "novelist": "小說家",
+    "translator": "翻譯",
+    "worldbuilder": "世界建構",
+    "editor": "編輯",
+    "analyst": "分析師"
   }
 }

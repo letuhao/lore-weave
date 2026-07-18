@@ -1,8 +1,10 @@
 {
+  "reconnecting": "Verbindung wird wiederhergestellt…",
   "nav": {
     "startNew": "Etwas Neues starten",
     "workspace": "Workspace",
     "chat": "Chat",
+    "assistant": "Assistent",
     "roleplay": "Rollenspiel",
     "knowledge": "Wissen",
     "worlds": "Welten",
@@ -25,7 +27,8 @@
     "home": "Home",
     "account": "Konto",
     "signin": "Anmelden",
-    "back_to_book": "Zurück zum Buch"
+    "back_to_book": "Zurück zum Buch",
+    "more": "Mehr"
   },
   "logout_confirm": {
     "title": "Abmelden mit ungespeicherten Änderungen?",

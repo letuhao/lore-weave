@@ -68,6 +68,22 @@ describe('useStudioChrome', () => {
     expect(saved.bottomOpen).toBe(true);
   });
 
+  it('defaults sidebarWidth and loads/clamps a persisted width', () => {
+    expect(renderHook(() => useStudioChrome('b1')).result.current.sidebarWidth).toBe(260);
+    localStorage.setItem(KEY, JSON.stringify({ activeView: 'manuscript', sidebarWidth: 999999 }));
+    expect(renderHook(() => useStudioChrome('b1')).result.current.sidebarWidth).toBe(640); // clamped to MAX
+  });
+
+  it('setSidebarWidth clamps; persist=false updates state WITHOUT writing, persist=true writes', () => {
+    const { result } = renderHook(() => useStudioChrome('b1'));
+    act(() => result.current.setSidebarWidth(120, false)); // below MIN, live (no write)
+    expect(result.current.sidebarWidth).toBe(200);
+    expect(localStorage.getItem(KEY)).toBeNull(); // live drag frame did NOT persist
+    act(() => result.current.setSidebarWidth(340, true)); // commit
+    expect(result.current.sidebarWidth).toBe(340);
+    expect(JSON.parse(localStorage.getItem(KEY)!).sidebarWidth).toBe(340);
+  });
+
   it('keys state per book (no cross-book bleed)', () => {
     const a = renderHook(() => useStudioChrome('b1'));
     act(() => a.result.current.setActiveView('quality'));

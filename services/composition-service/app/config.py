@@ -34,11 +34,44 @@ class Settings(BaseSettings):
     composition_job_sweep_secs: int = 60
     composition_job_sweep_timeout_secs: int = 900
 
+    # close-21-28 D-G5-DRIVE-EXEC — rules-mode propose auto-compile (platform default ON, PO-decided
+    # 2026-07-16). In `rules` mode the propose is a DETERMINISTIC transcription of an authored outline —
+    # there is NO LLM judgment between propose and compile, so a valid parse materialises its structure
+    # inline instead of depending on a second `plan_compile` call. The S06 flagship exposed that a weak
+    # agent reliably PROPOSES (valid numbered-header spec → arcs) but drops the follow-up compile
+    # (DR-G5-REROLL: 6 live gemma-4 rolls proposed, 0 compiled); the rail drive can hold+re-prompt but by
+    # G1 design does not execute the deterministic step. When ON, a rules-mode propose that parses ≥1 arc
+    # auto-compiles every arc so `structure_node>0` is a consequence of the governance-driven propose, not
+    # a coin-flip on the model — idempotent ($0, re-links by target, preserves human edits). Default ON
+    # because rules mode has nothing to review between propose and compile; set FALSE to restore a
+    # propose→review→compile checkpoint. (Autocompile only fires when the spec artifact carries a real
+    # list of arcs, so a mocked/degraded read is a safe no-op.)
+    planforge_rules_autocompile: bool = True
+
+    # D-PLANFORGE-PROPOSE-BLIND — the DEPLOY CEILING for propose-existing-state grounding (OQ-2).
+    # This is a platform-wide MAX the per-user `ground_on_existing` run flag narrows within:
+    # `effective = AND(this, ground_on_existing)`. FLIPPED ON 2026-07-17: the OQ-2 A/B eval passed —
+    # grounded cast continuity 2/3 vs blind 0/3 on two confirmed gemma runs, and the A1 protagonist
+    # injection is deterministic (report docs/reports/2026-07-17-propose-blind-ab-eval.md). So grounding
+    # is now AVAILABLE org-wide — but still fails-closed + OPT-IN: the per-user planner toggle defaults
+    # OFF, so a returning author must tick "Continue this book". (Making it on-by-default for everyone —
+    # OQ-2's per-user default → TRUE — waits on B1 broader-book validation.)
+    planforge_ground_on_existing_allowed: bool = True
+
+    # A1 — how many existing cast to DETERMINISTICALLY inject into a grounded propose when the model
+    # emitted only a placeholder protagonist (the A/B proved prompt grounding alone doesn't reuse
+    # existing names). 1 = protagonist anchor only (default, lowest-risk); 0 disables injection (the
+    # annotate-only escape hatch). Only takes effect under an effective grounded run.
+    planforge_inject_cast_max: int = 1
+
     # Internal service URLs — consumed by the M3 client wrappers.
     knowledge_internal_url: str = "http://knowledge-service:8092"
     glossary_internal_url: str = "http://glossary-service:8088"
     book_internal_url: str = "http://book-service:8082"
     llm_gateway_internal_url: str = "http://provider-registry-service:8085"
+    # D-DIVERGENCE-MCP-TOOLS switch_active_work — auth-service owns /v1/me/preferences (the store the
+    # FE reads active-work from). We set it on-behalf-of-user via a minted bearer to the JWT route.
+    auth_internal_url: str = "http://auth-service:8081"
     # KAL — the single versioned knowledge read/write boundary (INV-KAL). Reads the
     # KAL exposes (roster, facts, canonical, search, timeline, neighborhood) MUST go
     # through here, never the owning services' /internal/* knowledge routes directly.
@@ -137,8 +170,14 @@ class Settings(BaseSettings):
     # The owner_id is the reserved platform-owner identity whose BYOK credential holds
     # the platform embedding model (the local-rerank-as-platform precedent — D2). W3
     # fails closed if model_ref/owner are unset before its embed pipeline runs.
-    motif_embed_model_source: str = "platform_model"
-    motif_embed_model_ref: str = ""              # platform embedding model id; W3 asserts non-empty
+    # `source` is ALWAYS "user_model": provider-registry /internal/embed rejects
+    # model_source="platform_model" (it resolves creds from user_models only) — the
+    # "platform" embed model is a BYOK-as-platform credential (a bge-m3 user_model owned
+    # by the reserved platform-owner below), the local-rerank precedent, NOT the
+    # platform_models table (which can't serve embeds). A "platform_model" default here
+    # would 400 every motif embed, so it defaults to the only value the endpoint accepts.
+    motif_embed_model_source: str = "user_model"
+    motif_embed_model_ref: str = ""              # platform embedding model id (a user_model_id); W3 asserts non-empty
     motif_embed_owner_id: str = ""               # RECONCILE D2 — reserved platform-owner row
     # Retrieval (W3/W2): the SQL pre-filter ceiling (rows loaded for the cosine pass),
     # the top-K returned, and the minimum cosine for a planner-bindable match.

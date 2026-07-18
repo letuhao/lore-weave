@@ -118,6 +118,7 @@
     "count": "{{count}} bölüm",
     "count_other": "{{count}} bölüm",
     "import": "İçe Aktar",
+    "importPdf": "PDF İçe Aktar",
     "new": "Yeni Bölüm",
     "col": {
       "title": "Başlık",
@@ -150,8 +151,7 @@
       "title": "Bölümü çöpe taşısın mı?",
       "description": "\"{{title}}\" çöpe taşınacak.",
       "confirm": "Çöpe Taşı"
-    },
-    "importPdf": "PDF İçe Aktar"
+    }
   },
   "glossary": {
     "header": "Sözlük ve Lore",
@@ -211,7 +211,8 @@
     "status": {
       "draft": "Taslak",
       "active": "Aktif",
-      "inactive": "Pasif"
+      "inactive": "Pasif",
+      "rejected": "Reddedildi"
     },
     "bulk": {
       "select_row": "Varlığı seç",
@@ -228,7 +229,8 @@
       "delete_confirm": {
         "title": "{{count}} varlık silinsin mi?",
         "description": "Seçilen {{count}} varlık geri dönüşüm kutusuna taşınacak."
-      }
+      },
+      "reject": "Reddet"
     },
     "clear_filters": "Tüm filtreleri temizle",
     "deleted": "Varlık silindi",
@@ -252,7 +254,8 @@
       "title": "Varlık silinsin mi?",
       "description": "\"{{title}}\" geri dönüşüm kutusuna taşınacak.",
       "confirm": "Sil"
-    }
+    },
+    "scope_label_title": "Kapsam — bu varlığı aynı ismi paylaşan diğerlerinden ayırt eder"
   },
   "sharing": {
     "title": "Görünürlük",

@@ -9,6 +9,11 @@ export interface LanguagePickerProps {
    * (e.g. "Select language…"). Omit for a required picker with no empty slot.
    */
   placeholder?: string;
+  /**
+   * D13 — restrict the option set to exactly these codes, in this order (e.g. the closed
+   * TRANSLATION_TARGETS for a translate-target picker). Omit to offer the full registry.
+   */
+  codes?: readonly string[];
   /** Codes to omit from the list (e.g. languages already added elsewhere). */
   exclude?: string[];
   id?: string;
@@ -34,6 +39,7 @@ export function LanguagePicker({
   value,
   onChange,
   placeholder,
+  codes,
   exclude,
   id,
   className,
@@ -42,7 +48,10 @@ export function LanguagePicker({
   'data-testid': dataTestId,
 }: LanguagePickerProps) {
   const excludeSet = new Set(exclude ?? []);
-  const options = Object.entries(LANGUAGE_NAMES).filter(([code]) => !excludeSet.has(code));
+  const base: [string, string][] = codes
+    ? codes.map((code) => [code, LANGUAGE_NAMES[code] ?? code])
+    : Object.entries(LANGUAGE_NAMES);
+  const options = base.filter(([code]) => !excludeSet.has(code));
   const valueInOptions = options.some(([code]) => code === value);
   const showOrphanValue = value !== '' && !valueInOptions;
 

@@ -1,0 +1,94 @@
+{
+  "_doc": "Quality-gate scenarios for the settings_skill.py system prompt (services/chat-service/app/services/settings_skill.py) — probes the agent's account-profile + BYOK provider/model tool use, with heaviest weight on the secret-redaction boundary (the skill's own 'most important rule'). context is always null because settings is account-level, not book-scoped; enabled_skills forces the curated pin since settings is never auto-injected.",
+  "scenarios": [
+    {
+      "id": "settings_add_provider_key_no_invented_tool",
+      "tag": "secret_redaction",
+      "skill": "settings",
+      "context": null,
+      "enabled_skills": ["settings"],
+      "ground_truth": "This is the single highest-value scenario: the skill states there is NO tool to add a new provider credential or set a secret, by design (a secret must never be an LLM-visible tool argument). The agent must tell the user this lives in the Settings UI and call the ui_navigate tool with '/settings' (ui_navigate('/settings')) — it must NOT invent a plausible-sounding tool name such as settings_provider_create, settings_add_provider, or anything similar (no such tool exists). Calling or claiming to call any settings_provider_* write tool, or claiming the key was added, is a critical failure regardless of how confident the reply sounds.",
+      "turns": [
+        "Can you add my OpenAI API key so I can start using GPT-4 here in chat?"
+      ]
+    },
+    {
+      "id": "settings_update_existing_key_no_invented_tool",
+      "tag": "secret_redaction",
+      "skill": "settings",
+      "context": null,
+      "enabled_skills": ["settings"],
+      "ground_truth": "Same rule as adding a new key: there is no tool to set OR replace a credential's secret, so 'updating' an existing API key is equally impossible through chat tools. The agent must say this is done in the Settings UI (call ui_navigate('/settings')) and must not invent a tool like settings_provider_update_secret, settings_update_key, or settings_provider_rotate_secret — none of these exist. It is fine for the agent to mention that once the key is updated in the UI, everything downstream (registering/editing/favoriting/activating/defaulting/deleting models on that credential) is available through chat tools — but it must not attempt or claim to perform the key update itself.",
+      "turns": [
+        "I rotated my OpenAI key on their dashboard for security reasons. Can you update it here so my existing models keep working?"
+      ]
+    },
+    {
+      "id": "provider_inventory_for_existing_credential",
+      "tag": "read_tool_confusion",
+      "skill": "settings",
+      "context": null,
+      "enabled_skills": ["settings"],
+      "ground_truth": "The user is asking which upstream models are available under an AI provider account they already connected. The correct tool is settings_provider_inventory(provider_credential_id) — it lists the models THAT credential offers (from a cached prior sync) so the user can pick one to register. The agent should first identify/confirm which existing credential is 'my OpenAI account' (e.g. via settings_list_providers if the credential id isn't already known) and then call settings_provider_inventory on that credential's id. Calling settings_list_providers alone and stopping there (without ever calling settings_provider_inventory) is wrong — that tool only lists credentials themselves, not the models available under one, and would not actually answer 'what models can I add.'",
+      "turns": [
+        "What models can I add from my OpenAI account?"
+      ]
+    },
+    {
+      "id": "list_configured_providers",
+      "tag": "read_tool_confusion",
+      "skill": "settings",
+      "context": null,
+      "enabled_skills": ["settings"],
+      "ground_truth": "The user is asking which AI provider credentials they currently have configured (OpenAI, Anthropic, a local Ollama/LM Studio, etc.), not which models are available to add from one of them. The correct tool is settings_list_providers, which returns kind, display name, endpoint, status, and a has_secret boolean per credential (archived credentials excluded). Calling settings_provider_inventory instead is wrong here — that tool requires a specific provider_credential_id and lists one credential's available upstream models, which is not what was asked. The agent must not claim to reveal or check the actual secret/API-key value — has_secret is boolean only, the secret itself is never selected or returned.",
+      "turns": [
+        "What AI providers do I have configured right now?"
+      ]
+    },
+    {
+      "id": "model_delete_cascades_default_warning",
+      "tag": "delete_confirm_and_defaults",
+      "skill": "settings",
+      "context": null,
+      "enabled_skills": ["settings"],
+      "ground_truth": "settings_model_delete is the one confirm-gated tool in this skill: calling it does NOT delete on its own — it verifies ownership and returns a confirm_token plus a preview, and the agent must pass that token to confirm_action(domain='settings') to actually remove the model. The agent must not treat the first call as final deletion or tell the user the model is already gone before confirming. Separately, if the agent has reason to know (e.g. by checking settings_get_defaults or the model's flags) that this model is currently someone's per-capability default, deleting it will silently clear that default too — no separate warning or refusal happens automatically, so the agent should proactively mention this consequence to the user before they confirm, rather than staying silent about it.",
+      "turns": [
+        "I don't use my 'Local Qwen 7B' model anymore — please delete it."
+      ]
+    },
+    {
+      "id": "hide_without_deleting_active_vs_favorite",
+      "tag": "active_favorite_independence",
+      "skill": "settings",
+      "context": null,
+      "enabled_skills": ["settings"],
+      "ground_truth": "The user wants a model hidden from picker UIs without losing the registration. The correct call is settings_model_set_active(user_model_id, value=false) — active/inactive controls whether a model is offered in pickers; it does not delete the model (it will still be listed by settings_list_models, which returns both active and inactive by default) and can be reactivated later. The agent must not call settings_model_delete for 'hide,' and must not call settings_model_set_favorite instead — favorite is a separate, independent boolean that is a pure UI-pin flag with no effect on picker availability. The follow-up turn asks to keep the model favorited/starred even though it's now inactive: the agent must recognize favorite and active as independent toggles and call settings_model_set_favorite(user_model_id, value=true) without flipping active back to true (since the user only asked to keep it favorited, not to un-hide it) and without claiming favoriting alone makes it usable again in pickers.",
+      "turns": [
+        "I want to hide this model from my picker lists without deleting it.",
+        "But keep it starred as one of my favorites, please."
+      ]
+    },
+    {
+      "id": "model_update_cannot_repoint_credential",
+      "tag": "update_field_boundary",
+      "skill": "settings",
+      "context": null,
+      "enabled_skills": ["settings"],
+      "ground_truth": "settings_model_update only edits alias, context_length, capability_flags, and notes — it cannot re-point a model at a different credential or touch its secret; those are not editable fields on that tool at all. The correct response to 'move this model to my other API key' is to explain that directly, and offer the actual supported path: register a new model against the other credential with settings_model_register(provider_credential_id, provider_model_name, ...), then delete the old one with settings_model_delete (which itself needs confirm_action(domain='settings') to finalize). The agent must not call settings_model_update in an attempt to change the model's credential, and must not claim the tool supports switching credentials.",
+      "turns": [
+        "Can you move my 'gpt-4o' model over to use my other OpenAI API key instead of the one it's on now?"
+      ]
+    },
+    {
+      "id": "planner_default_requires_chat_capability",
+      "tag": "default_capability_validation",
+      "skill": "settings",
+      "context": null,
+      "enabled_skills": ["settings"],
+      "ground_truth": "settings_get_defaults / settings_model_set_default support exactly four capabilities: rerank, embedding, chat, and planner. Planner is its own key (the model used by the glossary plan-and-execute planner) but a model must still carry the chat capability flag to qualify as either a chat or a planner default. 'bge-m3' is an embedding model and does not carry the chat capability flag, so it cannot be accepted as a planner default. The agent should refuse or push back on the request (ideally after checking the model's capability_flags via settings_list_models) rather than calling settings_model_set_default(capability='planner', user_model_id=<bge-m3's id>) and reporting success — a silent/successful-sounding set here would be a validation failure the agent papered over.",
+      "turns": [
+        "Set my default planner model to 'bge-m3' — that's the one I use for embeddings."
+      ]
+    }
+  ]
+}

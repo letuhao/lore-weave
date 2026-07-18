@@ -16,6 +16,11 @@
       "translations": "{{count}}개 번역",
       "evidences": "{{count}}개 증거"
     },
+    "scope_label": {
+      "placeholder": "중의성 해소 (예: 세계/영역)...",
+      "aria": "범위 레이블 — 이야기 내 서로 다른 문맥에서 동일한 이름을 가진 개체를 구분합니다",
+      "duplicate": "이 책에 동일한 이름, 유형 및 범위를 가진 개체가 이미 존재합니다"
+    },
     "tab": {
       "attributes": "속성",
       "evidences": "증거",
@@ -34,12 +39,20 @@
       "saved": "엔티티가 저장되었습니다",
       "status_changed": "상태가 {{status}}(으)로 변경되었습니다",
       "invalid_lang": "유효하지 않은 언어 코드입니다 (예: en, zh, zh-tw)"
-    }
+    },
+    "remove_attr_confirm": "이 속성 값을 삭제하시겠습니까? 나중에 다시 추가할 수 있습니다.",
+    "remove_attr_success": "속성 값이 삭제되었습니다",
+    "add_attr_heading": "다른 속성의 값 추가",
+    "add_attr_pick": "속성 선택…",
+    "add_attr_value_placeholder": "값",
+    "add_attr_button": "추가",
+    "add_attr_success": "속성이 추가되었습니다"
   },
   "attr_card": {
     "required": "*필수",
     "modified": "수정됨",
-    "has_translations": "번역 있음"
+    "has_translations": "번역 있음",
+    "remove": "이 값 삭제"
   },
   "translation_row": {
     "confidence": {

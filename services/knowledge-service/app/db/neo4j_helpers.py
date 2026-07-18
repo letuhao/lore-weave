@@ -128,6 +128,43 @@ async def run_read(
     return await session.run(cypher, user_id=user_id, **params)
 
 
+async def run_read_any_owner(
+    session: CypherSession,
+    cypher: str,
+    **params: Any,
+) -> Any:
+    """Run a read-only Cypher query with **NO tenant filter**. Rare, and named loudly.
+
+    This exists because `get_entity_by_id_any_owner` legitimately needs an unfiltered
+    lookup — but it was calling `run_read`, whose `user_id` is a REQUIRED parameter and
+    whose `assert_user_id_param` demands the cypher reference `$user_id`. Its cypher does
+    neither, so the call raised
+    ``TypeError: run_read() missing 1 required positional argument: 'user_id'`` on every
+    invocation, and `kg_entity_edge_timeline` — its only consumer — could never work.
+    Found by the deterministic capability sweep (`scripts/eval/tool_liveness/sweep.py`);
+    nothing else ever called it.
+
+    SAFETY. Omitting the tenant filter is sound ONLY when both hold:
+
+    1. the match key is GLOBALLY UNIQUE, so there is no cross-tenant collision
+       (``Entity.id`` is a hash of user_id+project_id+name+kind); and
+    2. the caller grant-checks the returned row's project BEFORE exposing any of its data
+       (``_resolve_entity_project_grant`` does exactly this).
+
+    The assertion is INVERTED on purpose: a cypher that *does* carry ``$user_id`` has a
+    tenant filter and must go through :func:`run_read`, where the filter is enforced rather
+    than merely present. That keeps this unfiltered path from silently absorbing a query
+    which meant to be filtered.
+    """
+    if not isinstance(cypher, str) or not cypher.strip():
+        raise CypherSafetyError("cypher must be a non-empty str")
+    if _USER_ID_PARAM_RE.search(_STRING_LITERAL_RE.sub("", cypher)):
+        raise CypherSafetyError(
+            "cypher references $user_id — use run_read(), which enforces the filter"
+        )
+    return await session.run(cypher, **params)
+
+
 async def run_write(
     session: CypherSession,
     cypher: str,

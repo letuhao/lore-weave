@@ -49,7 +49,7 @@ jobs:
     outputs:
       class: ${{ steps.detect.outputs.class }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0  # need base for git diff
       - id: detect
@@ -72,7 +72,7 @@ jobs:
     needs: classify
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: deploy-freeze-check
         env:
           LW_ACTIVE_FREEZES: ${{ vars.LW_ACTIVE_FREEZES }}
@@ -88,7 +88,7 @@ jobs:
     needs: [classify, freeze]
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: build canary-controller (deploy artifact)
         run: cd services/canary-controller && go build ./...
       - name: note canary requirement

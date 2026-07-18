@@ -78,3 +78,26 @@ class TestCatalogRouter:
             items2 = resp2.json()["items"]
             assert {i["name"] for i in items2} == {"glossary_book_create"}
             assert items2[0]["visibility"] == "legacy"
+
+    @pytest.mark.asyncio
+    async def test_tools_catalog_domain_resolves_kg_and_memory_alias(self, client):
+        """review-impl fix (2026-07-07) — the FE tool-picker's `domain` field must
+        resolve through the same alias `find_tools`/hot-seeding use: a kg_*/memory_*
+        tool's real domain is "knowledge", not the literal "kg"/"memory" prefix."""
+        catalog = [
+            {"type": "function", "function": {
+                "name": "kg_graph_query", "description": "query", "_meta": {"tier": "R"},
+            }},
+            {"type": "function", "function": {
+                "name": "memory_search", "description": "search", "_meta": {"tier": "R"},
+            }},
+        ]
+        with patch("app.routers.catalog.get_knowledge_client") as mock_get:
+            kc = AsyncMock()
+            kc.get_tool_definitions = AsyncMock(return_value=catalog)
+            mock_get.return_value = kc
+            resp = await client.get("/v1/chat/tools/catalog")
+        assert resp.status_code == 200
+        domains = {i["name"]: i["domain"] for i in resp.json()["items"]}
+        assert domains["kg_graph_query"] == "knowledge"
+        assert domains["memory_search"] == "knowledge"

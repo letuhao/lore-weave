@@ -19,6 +19,8 @@ its model). This maps the `chat` surface (the voice-message loop).
 
 from __future__ import annotations
 
+from app.services.settings_resolution import canon_voice_source
+
 
 def voice_blob_to_config(voice: dict) -> dict:
     """Flatten the stored voice blob's `chat` surface + shared fields to the
@@ -31,12 +33,14 @@ def voice_blob_to_config(voice: dict) -> dict:
     if chat.get("tts_model_ref"):
         out["tts_model_ref"] = chat["tts_model_ref"]
     if chat.get("tts_source"):
-        out["tts_model_source"] = chat["tts_source"]
+        # coerce legacy 'ai_model' → canonical 'user_model' so already-stored rows
+        # resolve at the consumer (D-CHATAI-VOICE-TWO-STORES).
+        out["tts_model_source"] = canon_voice_source(chat["tts_source"])
     stt = voice.get("stt") or {}
     if stt.get("model_ref"):
         out["stt_model_ref"] = stt["model_ref"]
     if stt.get("source"):
-        out["stt_model_source"] = stt["source"]
+        out["stt_model_source"] = canon_voice_source(stt["source"])
     vad = voice.get("vad") or {}
     if vad.get("silence_frames") is not None:
         out["vad_silence_frames"] = vad["silence_frames"]

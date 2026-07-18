@@ -28,9 +28,13 @@ from app.routers.conformance import ConformanceTraceReader, _assemble_conformanc
 
 _DSN = os.environ.get("TEST_COMPOSITION_DB_URL")
 
-pytestmark = pytest.mark.skipif(
-    not _DSN, reason="set TEST_COMPOSITION_DB_URL to a throwaway DB to run",
-)
+pytestmark = [
+    pytest.mark.skipif(
+        not _DSN, reason="set TEST_COMPOSITION_DB_URL to a throwaway DB to run",
+    ),
+    # Shared-Postgres tests serialize onto one xdist worker (CLAUDE.md).
+    pytest.mark.xdist_group("pg"),
+]
 
 _TABLES = ["motif_application", "generation_job", "outline_node", "motif"]
 
@@ -53,39 +57,43 @@ async def pool():
         await p.close()
 
 
-async def _scene(c, *, user_id, project_id, chapter_id, beat_role="bait", tension=72):
+# Package re-key (spec 25): outline_node / motif_application / generation_job
+# carry `created_by` (the actor stamp — renamed from user_id) + `book_id NOT NULL`
+# (the tenancy scope key). These raw INSERTs must supply both explicitly.
+async def _scene(c, *, created_by, project_id, book_id, chapter_id, beat_role="bait", tension=72):
     return await c.fetchval(
         """
-        INSERT INTO outline_node (user_id, project_id, kind, rank, title, beat_role,
-                                  status, chapter_id, tension)
-        VALUES ($1,$2,'scene','aaa','S',$3,'done',$4,$5) RETURNING id
+        INSERT INTO outline_node (created_by, project_id, book_id, kind, rank, title,
+                                  beat_role, status, chapter_id, tension)
+        VALUES ($1,$2,$3,'scene','aaa','S',$4,'done',$5,$6) RETURNING id
         """,
-        user_id, project_id, beat_role, chapter_id, tension,
+        created_by, project_id, book_id, beat_role, chapter_id, tension,
     )
 
 
-async def _bind(c, *, user_id, project_id, node_id, motif_id, beat_key="bait"):
+async def _bind(c, *, created_by, project_id, book_id, node_id, motif_id, beat_key="bait"):
     return await c.fetchval(
         """
-        INSERT INTO motif_application (user_id, project_id, book_id, motif_id,
+        INSERT INTO motif_application (created_by, project_id, book_id, motif_id,
                                        motif_version, outline_node_id, role_bindings,
                                        annotations)
         VALUES ($1,$2,$3,$4,1,$5,$6::jsonb,$7::jsonb) RETURNING id
         """,
-        user_id, project_id, uuid.uuid4(), motif_id, node_id,
+        created_by, project_id, book_id, motif_id, node_id,
         json.dumps({"schemer": str(uuid.uuid4())}),
         json.dumps({"beat_key": beat_key}),
     )
 
 
-async def _job(c, *, user_id, project_id, node_id, status="completed", critic=None, text="prose"):
+async def _job(c, *, created_by, project_id, book_id, node_id, status="completed",
+               critic=None, text="prose"):
     return await c.fetchval(
         """
-        INSERT INTO generation_job (user_id, project_id, outline_node_id, operation,
-                                    status, result, critic)
-        VALUES ($1,$2,$3,'draft_scene',$4,$5::jsonb,$6::jsonb) RETURNING id
+        INSERT INTO generation_job (created_by, project_id, book_id, outline_node_id,
+                                    operation, status, result, critic)
+        VALUES ($1,$2,$3,$4,'draft_scene',$5,$6::jsonb,$7::jsonb) RETURNING id
         """,
-        user_id, project_id, node_id, status,
+        created_by, project_id, book_id, node_id, status,
         json.dumps({"text": text}) if text is not None else None,
         json.dumps(critic) if critic is not None else None,
     )
@@ -99,41 +107,61 @@ async def _seed_motif(c) -> uuid.UUID:
     )
 
 
-async def test_apps_by_nodes_tenant_scoped_and_latest(pool):
+async def test_apps_by_nodes_project_scoped_not_actor_scoped(pool):
+    # NEW LAW (spec 25 PM-8, re-keyed from the old per-user isolation): the trace
+    # reads are PROJECT-scoped, not user-scoped. Access is decided at the E0
+    # book-grant gate BEFORE this reader; `created_by` is a plain actor stamp,
+    # never filtered on. So a co-author's binding in the SAME project is visible
+    # (created_by is not a filter), while a DIFFERENT project's binding never
+    # leaks — the `WHERE project_id = $1` predicate is the isolation dimension
+    # (the kinds-bug rule). This replaces the old assertion that a foreign USER's
+    # binding was hidden by a user_id predicate, which is no longer the law.
     u1, u2 = uuid.uuid4(), uuid.uuid4()
-    proj = uuid.uuid4()
+    proj, proj_foreign = uuid.uuid4(), uuid.uuid4()
+    book, book_foreign = uuid.uuid4(), uuid.uuid4()
     chap = uuid.uuid4()
     reader = ConformanceTraceReader(pool)
     async with pool.acquire() as c:
         m_id = await _seed_motif(c)
-        n1 = await _scene(c, user_id=u1, project_id=proj, chapter_id=chap)
-        await _bind(c, user_id=u1, project_id=proj, node_id=n1, motif_id=m_id, beat_key="bait")
-        # a foreign user's binding on a DIFFERENT node must NOT leak
-        n_foreign = await _scene(c, user_id=u2, project_id=proj, chapter_id=chap)
-        await _bind(c, user_id=u2, project_id=proj, node_id=n_foreign, motif_id=m_id)
+        n1 = await _scene(c, created_by=u1, project_id=proj, book_id=book, chapter_id=chap)
+        await _bind(c, created_by=u1, project_id=proj, book_id=book, node_id=n1,
+                    motif_id=m_id, beat_key="bait")
+        # a co-author (different actor) binding in the SAME project → still visible
+        n_coauthor = await _scene(c, created_by=u2, project_id=proj, book_id=book, chapter_id=chap)
+        await _bind(c, created_by=u2, project_id=proj, book_id=book, node_id=n_coauthor,
+                    motif_id=m_id, beat_key="turn")
+        # a DIFFERENT project's binding must NOT leak into this project's trace
+        n_foreign = await _scene(c, created_by=u1, project_id=proj_foreign,
+                                 book_id=book_foreign, chapter_id=chap)
+        await _bind(c, created_by=u1, project_id=proj_foreign, book_id=book_foreign,
+                    node_id=n_foreign, motif_id=m_id)
 
-    got = await reader.apps_by_nodes(u1, proj, [n1, n_foreign])
+    got = await reader.apps_by_nodes(proj, [n1, n_coauthor, n_foreign])
     assert n1 in got
     assert got[n1].motif_id == m_id
     assert got[n1].annotations.get("beat_key") == "bait"
-    # the foreign node binding is filtered by the user_id predicate
+    # co-author binding in the same project IS returned (created_by is not a filter)
+    assert n_coauthor in got
+    # the foreign PROJECT's binding is filtered out by the project_id predicate
     assert n_foreign not in got
 
 
 async def test_latest_completed_by_nodes_projects_dim_and_skips_noncompleted(pool):
     u1 = uuid.uuid4()
     proj = uuid.uuid4()
+    book = uuid.uuid4()
     chap = uuid.uuid4()
     reader = ConformanceTraceReader(pool)
     dim = {"beat_realized": True, "tension_band_match": False, "calibrated": False}
     async with pool.acquire() as c:
-        n1 = await _scene(c, user_id=u1, project_id=proj, chapter_id=chap)
+        n1 = await _scene(c, created_by=u1, project_id=proj, book_id=book, chapter_id=chap)
         # an OLDER failed job + a NEWER completed job → the completed one wins
-        await _job(c, user_id=u1, project_id=proj, node_id=n1, status="failed", critic=None)
-        await _job(c, user_id=u1, project_id=proj, node_id=n1, status="completed",
-                   critic={"coherence": 4, "motif_conformance": dim})
+        await _job(c, created_by=u1, project_id=proj, book_id=book, node_id=n1,
+                   status="failed", critic=None)
+        await _job(c, created_by=u1, project_id=proj, book_id=book, node_id=n1,
+                   status="completed", critic={"coherence": 4, "motif_conformance": dim})
 
-    got = await reader.latest_completed_by_nodes(u1, proj, [n1])
+    got = await reader.latest_completed_by_nodes(proj, [n1])
     assert n1 in got
     assert got[n1]["has_text"] is True
     assert got[n1]["critic"]["motif_conformance"] == dim
@@ -144,21 +172,23 @@ async def test_latest_completed_by_nodes_projects_dim_and_skips_noncompleted(poo
 async def test_full_trace_assembles_end_to_end(pool):
     u1 = uuid.uuid4()
     proj = uuid.uuid4()
+    book = uuid.uuid4()
     chap = uuid.uuid4()
     reader = ConformanceTraceReader(pool)
     dim = {"beat_realized": True, "tension_band_match": False, "calibrated": False,
            "reason": "ok", "error": None}
     async with pool.acquire() as c:
         m_id = await _seed_motif(c)
-        n1 = await _scene(c, user_id=u1, project_id=proj, chapter_id=chap, tension=72)
-        await _bind(c, user_id=u1, project_id=proj, node_id=n1, motif_id=m_id, beat_key="bait")
-        await _job(c, user_id=u1, project_id=proj, node_id=n1, status="completed",
-                   critic={"coherence": 5, "motif_conformance": dim})
+        n1 = await _scene(c, created_by=u1, project_id=proj, book_id=book, chapter_id=chap, tension=72)
+        await _bind(c, created_by=u1, project_id=proj, book_id=book, node_id=n1,
+                    motif_id=m_id, beat_key="bait")
+        await _job(c, created_by=u1, project_id=proj, book_id=book, node_id=n1,
+                   status="completed", critic={"coherence": 5, "motif_conformance": dim})
 
     from app.db.repositories.outline import OutlineRepo
-    scenes = await OutlineRepo(pool).scenes_for_chapter(u1, proj, chap)
-    apps = await reader.apps_by_nodes(u1, proj, [s.id for s in scenes])
-    latest = await reader.latest_completed_by_nodes(u1, proj, [s.id for s in scenes])
+    scenes = await OutlineRepo(pool).scenes_for_chapter(proj, chap)
+    apps = await reader.apps_by_nodes(proj, [s.id for s in scenes])
+    latest = await reader.latest_completed_by_nodes(proj, [s.id for s in scenes])
     out = _assemble_conformance(
         chapter_id=chap, calibrated=False, scenes=scenes,
         apps_by_node=apps, latest_by_node=latest,

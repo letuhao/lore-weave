@@ -146,5 +146,13 @@
       "system": "sistem"
     },
     "error": "Sürüm geçmişi yüklenemedi."
+  },
+  "createAs": "«{{name}}» öğesini ... olarak oluştur",
+  "kind": {
+    "character": "Karakter",
+    "location": "Mekan",
+    "organization": "Organizasyon",
+    "concept": "Kavram",
+    "item": "Eşya"
   }
 }

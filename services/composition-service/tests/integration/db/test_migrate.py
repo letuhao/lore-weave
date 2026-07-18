@@ -19,9 +19,13 @@ from app.db.migrate import BUILTIN_TEMPLATES, run_migrations
 
 _DSN = os.environ.get("TEST_COMPOSITION_DB_URL")
 
-pytestmark = pytest.mark.skipif(
-    not _DSN, reason="set TEST_COMPOSITION_DB_URL to a throwaway DB to run",
-)
+pytestmark = [
+    pytest.mark.skipif(
+        not _DSN, reason="set TEST_COMPOSITION_DB_URL to a throwaway DB to run",
+    ),
+    # Shared-Postgres tests serialize onto one xdist worker (CLAUDE.md).
+    pytest.mark.xdist_group("pg"),
+]
 
 _TABLES = [
     "outbox_events", "generation_job", "canon_rule", "scene_link",
@@ -61,9 +65,10 @@ async def test_inserts_into_every_table(pool):
     chapter = uuid.uuid4()
 
     async with pool.acquire() as c:
-        # composition_work (1:1 with the project)
+        # composition_work (1:1 with the project). created_by = the 25 M3 actor
+        # stamp (was user_id pre-re-key); book_id is the tenancy scope key.
         await c.execute(
-            "INSERT INTO composition_work (project_id, user_id, book_id) VALUES ($1,$2,$3)",
+            "INSERT INTO composition_work (project_id, created_by, book_id) VALUES ($1,$2,$3)",
             project, user, book,
         )
         # a user-custom template
@@ -72,37 +77,38 @@ async def test_inserts_into_every_table(pool):
             user,
         )
         assert tmpl is not None
-        # outline: a chapter node + a scene node (scene requires chapter_id)
+        # outline: a chapter node + a scene node (scene requires chapter_id). Every
+        # re-keyed table now carries created_by (actor stamp) + book_id NOT NULL.
         chap_node = await c.fetchval(
-            "INSERT INTO outline_node (user_id, project_id, kind, rank, chapter_id) "
-            "VALUES ($1,$2,'chapter','a0',$3) RETURNING id",
-            user, project, chapter,
+            "INSERT INTO outline_node (created_by, project_id, book_id, kind, rank, chapter_id) "
+            "VALUES ($1,$2,$3,'chapter','a0',$4) RETURNING id",
+            user, project, book, chapter,
         )
         scene_node = await c.fetchval(
-            "INSERT INTO outline_node (user_id, project_id, parent_id, kind, rank, chapter_id, beat_role, story_order) "
-            "VALUES ($1,$2,$3,'scene','a0',$4,'hook',1) RETURNING id",
-            user, project, chap_node, chapter,
+            "INSERT INTO outline_node (created_by, project_id, book_id, parent_id, kind, rank, chapter_id, beat_role, story_order) "
+            "VALUES ($1,$2,$3,$4,'scene','a0',$5,'hook',1) RETURNING id",
+            user, project, book, chap_node, chapter,
         )
         scene2 = await c.fetchval(
-            "INSERT INTO outline_node (user_id, project_id, parent_id, kind, rank, chapter_id) "
-            "VALUES ($1,$2,$3,'scene','a1',$4) RETURNING id",
-            user, project, chap_node, chapter,
+            "INSERT INTO outline_node (created_by, project_id, book_id, parent_id, kind, rank, chapter_id) "
+            "VALUES ($1,$2,$3,$4,'scene','a1',$5) RETURNING id",
+            user, project, book, chap_node, chapter,
         )
         # scene_link between the two scenes
         await c.execute(
-            "INSERT INTO scene_link (user_id, project_id, from_node_id, to_node_id) VALUES ($1,$2,$3,$4)",
-            user, project, scene_node, scene2,
+            "INSERT INTO scene_link (created_by, project_id, book_id, from_node_id, to_node_id) VALUES ($1,$2,$3,$4,$5)",
+            user, project, book, scene_node, scene2,
         )
         # canon_rule
         await c.execute(
-            "INSERT INTO canon_rule (user_id, project_id, text, scope) VALUES ($1,$2,'No one knows the king is dead','reveal_gate')",
-            user, project,
+            "INSERT INTO canon_rule (created_by, project_id, book_id, text, scope) VALUES ($1,$2,$3,'No one knows the king is dead','reveal_gate')",
+            user, project, book,
         )
         # generation_job (base_revision_id is the OI-2 guard column)
         await c.execute(
-            "INSERT INTO generation_job (user_id, project_id, outline_node_id, operation, base_revision_id) "
-            "VALUES ($1,$2,$3,'draft_scene',$4)",
-            user, project, scene_node, uuid.uuid4(),
+            "INSERT INTO generation_job (created_by, project_id, book_id, outline_node_id, operation, base_revision_id) "
+            "VALUES ($1,$2,$3,$4,'draft_scene',$5)",
+            user, project, book, scene_node, uuid.uuid4(),
         )
         # outbox_events
         await c.execute(
@@ -124,10 +130,10 @@ async def test_inserts_into_every_table(pool):
 async def test_scene_requires_chapter_id(pool):
     """The outline_chapter_required CHECK rejects a scene with no chapter_id."""
     await run_migrations(pool)
-    user, project = uuid.uuid4(), uuid.uuid4()
+    user, project, book = uuid.uuid4(), uuid.uuid4(), uuid.uuid4()
     async with pool.acquire() as c:
         with pytest.raises(asyncpg.CheckViolationError):
             await c.execute(
-                "INSERT INTO outline_node (user_id, project_id, kind, rank) VALUES ($1,$2,'scene','a0')",
-                user, project,
+                "INSERT INTO outline_node (created_by, project_id, book_id, kind, rank) VALUES ($1,$2,$3,'scene','a0')",
+                user, project, book,
             )

@@ -69,12 +69,19 @@ def _deep_neutralize(v):
 
 
 def build_eval_messages(
-    charter: dict, state: dict, rubric: dict | None, transcript: list[dict]
+    charter: dict, state: dict, rubric: dict | None, transcript: list[dict],
+    *, dimensions: list[dict] | None = None,
 ) -> tuple[list[dict], bool]:
     """Build the evaluator messages and report whether the transcript was clipped.
 
     Returns (messages, clipped) — `clipped` feeds the server's `partial` flag.
-    """
+
+    C3 (SD-C3): `dimensions` is the SoT `coaching_rubrics` scoring standard
+    ([{key,label,anchors}]). When present it is serialized into the prompt as
+    `scoring_dimensions` and the model is asked to score each on 1-5; the reply's
+    dimensions are then rebuilt SERVER-AUTHORITATIVELY by `coerce_dimensions` (the model
+    can neither drop nor invent a dimension). The dimension keys/labels are the rubric's
+    own trusted System-tier data, so they are NOT neutralized (only untrusted leaves are)."""
     msgs = transcript or []
     clipped = len(msgs) > EVAL_MAX_MESSAGES
     window = msgs[-EVAL_MAX_MESSAGES:]
@@ -95,10 +102,20 @@ def build_eval_messages(
         "rubric": _deep_neutralize(rubric) or None,
         "transcript": _deep_neutralize(bounded),
     }
+    dim_instruction = ""
+    if dimensions:
+        # System-tier rubric data (trusted) — passed verbatim as the fixed scoring keys.
+        ctx["scoring_dimensions"] = dimensions
+        keys = ", ".join(str(d.get("key")) for d in dimensions if d.get("key"))
+        dim_instruction = (
+            f'\nAlso score EACH of scoring_dimensions on a 1-5 scale against its anchors, as '
+            f'"dimensions":[{{"key":<one of: {keys}>,"score":<int 1-5>,"note":<short evidence>}}]. '
+            "Use the EXACT keys given; do not add or omit a dimension."
+        )
     user = (
         "Session to evaluate:\n"
         + json.dumps(ctx, ensure_ascii=False)
-        + "\n\nReturn the scorecard JSON."
+        + "\n\nReturn the scorecard JSON." + dim_instruction
     )
     return (
         [

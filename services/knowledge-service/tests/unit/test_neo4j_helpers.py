@@ -16,6 +16,7 @@ from app.db.neo4j_helpers import (
     assert_user_id_param,
     purge_project,
     run_read,
+    run_read_any_owner,
     run_write,
 )
 
@@ -286,3 +287,76 @@ async def test_purge_project_skips_delete_when_no_nodes():
     out = await purge_project(session, _PROJ)
     assert out == {"nodes_deleted": 0, "indexes_dropped": 0}
     assert [c for c in session.calls if "DETACH DELETE" in c[0]] == []
+
+
+# ── run_read_any_owner — the unfiltered escape hatch ────────────────────────────
+#
+# `get_entity_by_id_any_owner` needs a lookup with NO tenant filter (Entity.id is globally
+# unique, and its caller grant-checks the returned project before exposing anything). It
+# was calling `run_read`, whose `user_id` is REQUIRED and whose `assert_user_id_param`
+# demands the cypher reference `$user_id`. Its cypher does neither, so every call raised
+#
+#     TypeError: run_read() missing 1 required positional argument: 'user_id'
+#
+# and `kg_entity_edge_timeline` — the only consumer — could never work. Nothing caught it:
+# no test called the tool, and the wire gates only read `tools/list` metadata. A
+# deterministic capability sweep found it.
+
+
+class _FakeSession:
+    def __init__(self):
+        self.calls = []
+
+    async def run(self, cypher, **params):
+        self.calls.append((cypher, params))
+        return "result"
+
+
+@pytest.mark.asyncio
+async def test_run_read_any_owner_runs_a_cypher_with_no_user_id():
+    """The regression: this exact shape used to raise TypeError."""
+    session = _FakeSession()
+    out = await run_read_any_owner(session, "MATCH (e:Entity {id: $id}) RETURN e", id="abc")
+    assert out == "result"
+    cypher, params = session.calls[0]
+    assert params == {"id": "abc"}, "no user_id is injected — that is the point"
+
+
+@pytest.mark.asyncio
+async def test_run_read_any_owner_refuses_a_cypher_that_has_a_tenant_filter():
+    """Inverted assertion, on purpose. A cypher carrying `$user_id` MEANT to be filtered,
+    and must go through run_read() where the filter is enforced — not merely present. This
+    stops the unfiltered path from silently absorbing a query that wanted tenancy."""
+    session = _FakeSession()
+    with pytest.raises(CypherSafetyError, match="use run_read"):
+        await run_read_any_owner(
+            session, "MATCH (e:Entity {user_id: $user_id}) RETURN e", user_id="u1")
+    assert session.calls == [], "must refuse BEFORE touching the driver"
+
+
+@pytest.mark.asyncio
+async def test_run_read_any_owner_rejects_an_empty_cypher():
+    session = _FakeSession()
+    for bad in ("", "   ", None):
+        with pytest.raises(CypherSafetyError):
+            await run_read_any_owner(session, bad)
+
+
+@pytest.mark.asyncio
+async def test_get_entity_by_id_any_owner_no_longer_raises_typeerror():
+    """The end-to-end regression for kg_entity_edge_timeline's dependency."""
+    from app.db.neo4j_repos import entities as entities_repo
+
+    class _Result:
+        async def single(self):
+            return None
+
+    class _Session(_FakeSession):
+        async def run(self, cypher, **params):
+            self.calls.append((cypher, params))
+            return _Result()
+
+    session = _Session()
+    assert await entities_repo.get_entity_by_id_any_owner(session, "eid-1") is None
+    cypher, params = session.calls[0]
+    assert "$user_id" not in cypher and params == {"id": "eid-1"}

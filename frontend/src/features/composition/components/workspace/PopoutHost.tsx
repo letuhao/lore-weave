@@ -67,8 +67,10 @@ export function PopoutHost() {
               token={accessToken}
               sceneId={sceneId}
               soloPanel={panel}
-              // The opener owns the editor — relay accepted prose for it to insert at cursor.
-              onAccept={(text, meta) => channel?.post({ kind: 'insert-prose', text, model: meta?.model })}
+              // The opener owns the editor — relay accepted prose for it to insert at cursor. Return
+              // true: insertion happens in the opener (out of this window's control), so the popout
+              // clears its draft optimistically after relaying, same as before the boolean contract.
+              onAccept={(text, meta) => { channel?.post({ kind: 'insert-prose', text, model: meta?.model }); return true; }}
             />
           </AssembleStateProvider>
         </LiveStateProvider>

@@ -279,10 +279,18 @@ fn regenerate_golden_baseline() {
 /// rebaseline trips this gate.
 #[test]
 fn golden_baseline_byte_identical() {
-    let golden = include_str!("golden/tilemap_baseline.json");
+    // `include_str!` reads the WORKING-TREE bytes. On Windows (core.autocrlf=true) a copy
+    // checked out before .gitattributes pinned `eol=lf` still sits there as CRLF, while
+    // serde_json always emits LF — so every one of the 8408 lines "differs" and the message
+    // below accuses the engine of drifting when nothing drifted at all (verified: `diff
+    // --strip-trailing-cr` → 0 lines). The fixture's line endings are not engine output, so
+    // normalise them; any REAL drift in the JSON still fails this byte-for-byte.
+    let golden = include_str!("golden/tilemap_baseline.json").replace("\r\n", "\n");
     let fresh = serde_json::to_string_pretty(&run(&fixture(), GOLDEN_SEED)).unwrap();
     assert_eq!(
         golden, fresh,
-        "place_tilemap output drifted from the committed golden baseline (AC-9)",
+        "place_tilemap output drifted from the committed golden baseline (AC-9). \
+         (If EVERY line differs, suspect a stale CRLF checkout of the golden, not the engine: \
+         `git rm --cached -r . && git reset --hard` renormalises the working tree.)",
     );
 }

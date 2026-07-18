@@ -146,5 +146,13 @@
       "system": "système"
     },
     "error": "Impossible de charger l'historique des versions."
+  },
+  "createAs": "Créer « {{name}} » en tant que…",
+  "kind": {
+    "character": "Personnage",
+    "location": "Lieu",
+    "organization": "Organisation",
+    "concept": "Concept",
+    "item": "Objet"
   }
 }

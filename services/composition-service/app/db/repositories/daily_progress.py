@@ -79,6 +79,36 @@ class DailyProgressRepo:
         async with self._pool.acquire() as c:
             await c.execute(query, user_id, project_id, chapter_id, words)
 
+    async def get_goal(self, user_id: UUID, project_id: UUID) -> int | None:
+        """BE-P2 — the caller's OWN daily word goal for this Work (None if unset).
+        Per-user: a legitimate viewer only ever sees their own goal, never another
+        collaborator's (the tenancy fix for the shared work.settings.daily_goal)."""
+        async with self._pool.acquire() as c:
+            g = await c.fetchval(
+                "SELECT daily_goal FROM composition_progress_goal "
+                "WHERE user_id = $1 AND project_id = $2",
+                user_id, project_id,
+            )
+        return int(g) if g is not None and g > 0 else None
+
+    async def set_goal(self, user_id: UUID, project_id: UUID, goal: int) -> None:
+        """Upsert the caller's OWN daily goal. `goal <= 0` clears it (deletes the row)
+        so 'no goal' is the absence of a row, not a stored 0 the reader must special-case."""
+        async with self._pool.acquire() as c:
+            if goal <= 0:
+                await c.execute(
+                    "DELETE FROM composition_progress_goal WHERE user_id = $1 AND project_id = $2",
+                    user_id, project_id,
+                )
+            else:
+                await c.execute(
+                    "INSERT INTO composition_progress_goal (user_id, project_id, daily_goal) "
+                    "VALUES ($1, $2, $3) "
+                    "ON CONFLICT (user_id, project_id) "
+                    "DO UPDATE SET daily_goal = EXCLUDED.daily_goal, updated_at = now()",
+                    user_id, project_id, goal,
+                )
+
     async def read_aggregate(
         self, user_id: UUID, project_id: UUID, on_or_before: date,
     ) -> ProgressAggregate:

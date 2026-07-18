@@ -82,6 +82,7 @@
       "table": "Tableau"
     },
     "placeholder": "Posez des questions sur votre histoire, vos personnages, votre univers...",
+    "assistant_placeholder": "Racontez votre journée — les personnes, les projets et les décisions…",
     "attach_context": "Attacher le contexte",
     "assist": "Assistance",
     "voice_assist_on": "Assistance vocale ACTIVÉE — les réponses de l'IA seront lues à voix haute",
@@ -127,12 +128,6 @@
     "mode_write_hint": "Mode écriture — l'agent peut effectuer des changements irréversibles (demande une confirmation par nouvel outil)"
   },
   "new": {
-    "preset": {
-      "novel": "Assistant Roman",
-      "translator": "Traducteur",
-      "worldbuilder": "Créateur d'univers",
-      "editor": "Éditeur"
-    },
     "create_failed": "Échec de la création du chat : {{error}}",
     "title": "Démarrer un nouveau chat",
     "model": "Modèle",
@@ -234,7 +229,6 @@
   "actionConfirm": {
     "label": "Confirmer l'action",
     "batch_count": "{{count}} éléments",
-    "warning": "Cette modification est importante — veuillez confirmer.",
     "warning_destructive": "Cette action est irréversible et s'applique en cascade — veuillez confirmer.",
     "destructive_skipped": "{{count}} op(s) destructif(s) seront IGNORÉ(S) à moins que vous ne les activiez ci-dessus.",
     "confirm": "Confirmer",
@@ -248,7 +242,8 @@
     "cancelled": "Annulé",
     "reprice": "Le coût est passé à {{cost}} depuis l'estimation — veuillez relancer pour confirmer au nouveau prix.",
     "reprice_title": "Le coût a changé — non appliqué",
-    "reprice_detail": "Estimé à {{old}}, maintenant {{new}}. Aucun frais n'a été engagé — veuillez relancer pour confirmer au nouveau prix."
+    "reprice_detail": "Estimé à {{old}}, maintenant {{new}}. Aucun frais n'a été engagé — veuillez relancer pour confirmer au nouveau prix.",
+    "warning": "Veuillez vérifier cette modification avant de l'appliquer."
   },
   "batchConfirm": {
     "title": "Confirmer {{count}} actions en une étape",
@@ -345,14 +340,6 @@
     "title": "Paramètres de session",
     "model": "Modèle",
     "system_prompt": "Prompt système",
-    "preset": {
-      "Custom": "Personnalisé",
-      "Novelist": "Romancier",
-      "Translator": "Traducteur",
-      "Worldbuilder": "Créateur d'univers",
-      "Editor": "Éditeur",
-      "Analyst": "Analyste"
-    },
     "prompt_placeholder": "Donnez un rôle, une personnalité ou des instructions spécifiques à l'IA...",
     "gen_params": "Paramètres de génération",
     "max_tokens": "Max Tokens",
@@ -389,9 +376,11 @@
     "approve_once": "Autoriser une fois",
     "always_allow": "Toujours autoriser",
     "deny": "Refuser",
+    "never_allow": "Never allow",
     "approved": "Approuvé — exécution ✓",
     "always_allowed": "Toujours autorisé — exécution ✓",
-    "denied": "Refusé"
+    "denied": "Refusé",
+    "never_allowed": "Never allowed — you can undo this in Settings → Permissions"
   },
   "rack": {
     "label": "Contexte",
@@ -416,6 +405,9 @@
     "more": "+{{count}} de plus",
     "more_tooltip": "{{count}} outils découverts supplémentaires non affichés",
     "remove": "Supprimer",
+    "advanced_tools": "Outils avancés ({{count}})",
+    "advanced_tools_hint": "Les outils obsolètes sont conservés pour les anciens appels. Privilégiez les outils ci-dessus, sauf si vous avez spécifiquement besoin de l'un d'entre eux.",
+    "legacy_pin_tooltip": "Vous avez activé cet outil obsolète pour cette session",
     "server": {
       "knowledge": "Connaissances",
       "glossary": "Glossaire",
@@ -426,10 +418,7 @@
       "ui": "UI",
       "chat": "Chat",
       "other": "Autre"
-    },
-    "advanced_tools": "Outils avancés ({{count}})",
-    "advanced_tools_hint": "Les outils obsolètes sont conservés pour les anciens appels. Privilégiez les outils ci-dessus, sauf si vous avez spécifiquement besoin de l'un d'entre eux.",
-    "legacy_pin_tooltip": "Vous avez activé cet outil obsolète pour cette session"
+    }
   },
   "inspector": {
     "title": "Runtime de l'agent",
@@ -449,5 +438,13 @@
       "activated": "Activé",
       "tool_running": "Exécution de l'outil"
     }
+  },
+  "presets": {
+    "custom": "Personnalisé",
+    "novelist": "Romancier",
+    "translator": "Traducteur",
+    "worldbuilder": "Créateur d'univers",
+    "editor": "Éditeur",
+    "analyst": "Analyste"
   }
 }

@@ -82,6 +82,7 @@
       "table": "Tabelle"
     },
     "placeholder": "Frage etwas zu deiner Story, deinen Charakteren, Worldbuilding...",
+    "assistant_placeholder": "Erzähle von deinem Tag – den Menschen, Projekten und Entscheidungen…",
     "attach_context": "Kontext anhängen",
     "assist": "Unterstützung",
     "voice_assist_on": "Sprachassistent AN — KI-Antworten werden vorgelesen",
@@ -127,12 +128,6 @@
     "mode_write_hint": "Schreibmodus — der Agent kann Änderungen vornehmen (fragt einmal pro neuem Tool nach)"
   },
   "new": {
-    "preset": {
-      "novel": "Roman-Assistent",
-      "translator": "Übersetzer",
-      "worldbuilder": "Weltenbauer",
-      "editor": "Editor"
-    },
     "create_failed": "Chat konnte nicht erstellt werden: {{error}}",
     "title": "Neuen Chat starten",
     "model": "Modell",
@@ -234,7 +229,6 @@
   "actionConfirm": {
     "label": "Aktion bestätigen",
     "batch_count": "{{count}} Elemente",
-    "warning": "Diese Änderung hat große Auswirkungen — bitte bestätigen.",
     "warning_destructive": "Dies ist eine destruktive Änderung mit Folgewirkungen — bitte bestätigen.",
     "destructive_skipped": "{{count}} destruktive(s) Op(s) wird übersprungen, sofern du sie oben nicht aktivierst.",
     "confirm": "Bestätigen",
@@ -248,7 +242,8 @@
     "cancelled": "Abgebrochen",
     "reprice": "Die Kosten sind seit der Schätzung auf {{cost}} gestiegen — bitte erneut bestätigen.",
     "reprice_title": "Kosten geändert — nicht angewendet",
-    "reprice_detail": "Geschätzt {{old}}, jetzt {{new}}. Es wurden keine Kosten verursacht — bitte erneut bestätigen."
+    "reprice_detail": "Geschätzt {{old}}, jetzt {{new}}. Es wurden keine Kosten verursacht — bitte erneut bestätigen.",
+    "warning": "Bitte überprüfen Sie diese Änderung, bevor Sie sie anwenden."
   },
   "batchConfirm": {
     "title": "{{count}} Aktionen in einem Schritt bestätigen",
@@ -345,14 +340,6 @@
     "title": "Sitzungseinstellungen",
     "model": "Modell",
     "system_prompt": "System-Prompt",
-    "preset": {
-      "Custom": "Benutzerdefiniert",
-      "Novelist": "Romanautor",
-      "Translator": "Übersetzer",
-      "Worldbuilder": "Weltenbauer",
-      "Editor": "Editor",
-      "Analyst": "Analyst"
-    },
     "prompt_placeholder": "Gib der KI eine Rolle, Persönlichkeit oder spezifische Anweisungen...",
     "gen_params": "Generierungsparameter",
     "max_tokens": "Max. Tokens",
@@ -389,9 +376,11 @@
     "approve_once": "Einmal erlauben",
     "always_allow": "Immer erlauben",
     "deny": "Ablehnen",
+    "never_allow": "Never allow",
     "approved": "Genehmigt — wird ausgeführt ✓",
     "always_allowed": "Immer erlaubt — wird ausgeführt ✓",
-    "denied": "Abgelehnt"
+    "denied": "Abgelehnt",
+    "never_allowed": "Never allowed — you can undo this in Settings → Permissions"
   },
   "rack": {
     "label": "Kontext",
@@ -416,6 +405,9 @@
     "more": "+{{count}} weitere",
     "more_tooltip": "{{count}} weitere entdeckte Tools werden nicht angezeigt",
     "remove": "Entfernen",
+    "advanced_tools": "Erweiterte Tools ({{count}})",
+    "advanced_tools_hint": "Veraltete Tools werden für ältere Aufrufe beibehalten. Verwenden Sie vorzugsweise die Tools oben, es sei denn, Sie benötigen eines dieser spezifischen Tools.",
+    "legacy_pin_tooltip": "Sie haben dieses Legacy-Tool für diese Sitzung aktiviert",
     "server": {
       "knowledge": "Wissen",
       "glossary": "Glossar",
@@ -426,10 +418,7 @@
       "ui": "UI",
       "chat": "Chat",
       "other": "Sonstiges"
-    },
-    "advanced_tools": "Erweiterte Tools ({{count}})",
-    "advanced_tools_hint": "Veraltete Tools werden für ältere Aufrufe beibehalten. Verwenden Sie vorzugsweise die Tools oben, es sei denn, Sie benötigen eines dieser spezifischen Tools.",
-    "legacy_pin_tooltip": "Sie haben dieses Legacy-Tool für diese Sitzung aktiviert"
+    }
   },
   "inspector": {
     "title": "Agenten-Laufzeit",
@@ -449,5 +438,13 @@
       "activated": "Aktiviert",
       "tool_running": "Tool wird ausgeführt"
     }
+  },
+  "presets": {
+    "custom": "Benutzerdefiniert",
+    "novelist": "Romanautor",
+    "translator": "Übersetzer",
+    "worldbuilder": "Weltenbauer",
+    "editor": "Editor",
+    "analyst": "Analyst"
   }
 }

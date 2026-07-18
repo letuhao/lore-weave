@@ -140,7 +140,7 @@ This closes spec 16 — Phases 1 through 4 are all complete. The "Cursor-for-nov
 
 ## Coordination — shared spine files (read before touching catalog/i18n/enum)
 
-This branch runs multiple concurrent Claude Code sessions on the same checkout (see [[shared-file-collision-safe-staging-multi-agent-checkout]]). Phase 1's new work is almost entirely **inside existing files** (`EditorPanel.tsx`, `ManuscriptUnitProvider.tsx`) or **new files with no collision risk** (`useManuscriptCheckpoints.ts`, `useRevisionHistory.ts`) — the only shared-spine touch is `ChaptersTab.tsx`'s route-click change (1.5), which is unrelated to any other in-flight studio-panel effort's files. Re-diff `docs/specs/2026-07-01-writing-studio/00_OVERVIEW.md` immediately before adding this component's row (other concurrent specs — e.g. `15_chapter_browser.md`, `15_wiki_panels.md` — are landing rows around the same time).
+This branch runs multiple concurrent Claude Code sessions on the same checkout (see [[shared-file-collision-safe-staging-multi-agent-checkout]]). Phase 1's new work is almost entirely **inside existing files** (`EditorPanel.tsx`, `ManuscriptUnitProvider.tsx`) or **new files with no collision risk** (`useManuscriptCheckpoints.ts`, `useRevisionHistory.ts`) — the only shared-spine touch is `ChaptersTab.tsx`'s route-click change (1.5), which is unrelated to any other in-flight studio-panel effort's files. Re-diff `docs/specs/2026-07-01-writing-studio/00_OVERVIEW.md` immediately before adding this component's row (other concurrent specs — e.g. `15b_chapter_browser.md`, `15a_wiki_panels.md` — are landing rows around the same time).
 
 ## Testing discipline
 

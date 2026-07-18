@@ -1,8 +1,10 @@
 {
+  "reconnecting": "Menyambung semula…",
   "nav": {
     "startNew": "Mulakan sesuatu yang baharu",
     "workspace": "Ruang Kerja",
     "chat": "Sembang",
+    "assistant": "Pembantu",
     "roleplay": "Main Peranan",
     "knowledge": "Pengetahuan",
     "worlds": "Dunia",
@@ -25,7 +27,8 @@
     "home": "Laman Utama",
     "account": "Akaun",
     "signin": "Log masuk",
-    "back_to_book": "Kembali ke buku"
+    "back_to_book": "Kembali ke buku",
+    "more": "Lagi"
   },
   "logout_confirm": {
     "title": "Log keluar dengan perubahan yang belum disimpan?",

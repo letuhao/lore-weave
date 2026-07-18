@@ -21,6 +21,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"log/slog"
 	"net/http"
 	"strings"
 	"time"
@@ -306,22 +307,44 @@ func (s *Server) previewBookAction(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// confirmBookAction — POST /v1/book/actions/confirm . JWT-gated; THE only write
-// path. Order: verify token → re-check grant → re-validate + execute the bound op.
+// resolveConfirmCaller returns the redeeming user's ID for the confirm route,
+// trusting EITHER a valid Bearer JWT (browser UI) or a trusted internal-service
+// envelope (X-Internal-Token, constant-time compare, + X-User-Id) — the shape
+// auth-service's public-MCP confirm-replay (`mcp_approvals.go::replayConfirm`)
+// sends, since it is a trusted internal caller and can never present the owner's
+// Bearer JWT. Mirrors glossary-service's identical retrofit
+// (action_confirm.go::resolveConfirmCaller) and composition/translation/
+// knowledge-service's existing Python dual-auth pattern (D-PMCP-WORKER-CARRIER).
+// Found live 2026-07-08: this route 401'd every confirm-replay unconditionally.
+// The internal-token branch is checked first and fails closed (never falls
+// through to the Bearer path) if X-User-Id is missing/malformed.
+func (s *Server) resolveConfirmCaller(r *http.Request) (uuid.UUID, bool) {
+	return lwmcp.ResolveEnvelopeOrBearerCaller(r, s.cfg.InternalServiceToken, s.requireUserID)
+}
+
+// confirmBookAction — POST /v1/book/actions/confirm . JWT- or internal-envelope-
+// gated (see resolveConfirmCaller); THE only write path. Order: verify token →
+// re-check grant → re-validate + execute the bound op.
 func (s *Server) confirmBookAction(w http.ResponseWriter, r *http.Request) {
-	userID, ok := s.requireUserID(r)
+	userID, ok := s.resolveConfirmCaller(r)
 	if !ok {
 		writeError(w, http.StatusUnauthorized, "BOOK_FORBIDDEN", "unauthorized")
 		return
 	}
-	var body struct {
-		ConfirmToken string `json:"confirm_token"`
+	// Token comes from the `token` query param (auth-service's internal
+	// confirm-replay, nil body) or the JSON body (the browser UI).
+	confirmToken := strings.TrimSpace(r.URL.Query().Get("token"))
+	if confirmToken == "" {
+		var body struct {
+			ConfirmToken string `json:"confirm_token"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			writeError(w, http.StatusBadRequest, "BOOK_VALIDATION_ERROR", "invalid payload")
+			return
+		}
+		confirmToken = body.ConfirmToken
 	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		writeError(w, http.StatusBadRequest, "BOOK_VALIDATION_ERROR", "invalid payload")
-		return
-	}
-	claims, ok := s.decodeActionToken(w, userID, body.ConfirmToken)
+	claims, ok := s.decodeActionToken(w, userID, confirmToken)
 	if !ok {
 		return
 	}
@@ -340,7 +363,7 @@ func (s *Server) confirmBookAction(w http.ResponseWriter, r *http.Request) {
 	// effect (HIGH /review-impl). A REPLAY of a still-valid token (within the
 	// 10-min TTL) hits the PK → 0 rows → refused, so the effect (publish revision +
 	// chapter.published outbox event, delete, etc.) runs at most once per token.
-	claimed, err := s.consumeBookActionToken(r.Context(), actionTokenHash(body.ConfirmToken), time.Unix(claims.Exp, 0))
+	claimed, err := s.consumeBookActionToken(r.Context(), actionTokenHash(confirmToken), time.Unix(claims.Exp, 0))
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT", "confirmation failed")
 		return
@@ -415,12 +438,12 @@ func (s *Server) effectPublish(w http.ResponseWriter, ctx context.Context, userI
 	}
 	switch p.Op {
 	case "publish":
-		revID, perr := s.mcpPublishChapter(ctx, userID, bookID, chID)
+		revID, counts, perr := s.mcpPublishChapter(ctx, userID, bookID, chID)
 		if perr != nil {
 			s.writeActionEffectError(w, perr)
 			return
 		}
-		writeJSON(w, http.StatusOK, map[string]any{"outcome": "action_done", "op": "publish", "chapter_id": chID, "revision_id": revID})
+		writeJSON(w, http.StatusOK, map[string]any{"outcome": "action_done", "op": "publish", "chapter_id": chID, "revision_id": revID, "reparse": counts})
 	case "unpublish":
 		if perr := s.mcpUnpublishChapter(ctx, bookID, chID); perr != nil {
 			s.writeActionEffectError(w, perr)
@@ -473,6 +496,12 @@ func (s *Server) writeActionEffectError(w http.ResponseWriter, err error) {
 		writeError(w, http.StatusUnprocessableEntity, "BOOK_ACTION_TOKEN", "the target no longer exists — propose again")
 	case errors.Is(err, errActionBadState):
 		writeError(w, http.StatusConflict, "BOOK_INVALID_LIFECYCLE", "the target is not in the right state for this action")
+	case errors.Is(err, errActionKGExcluded):
+		// WS-0.4: refuse LOUDLY and say why. A generic 500 (or worse, a silent 200 that
+		// indexed nothing) would leave the user re-clicking "add to knowledge" forever
+		// with no idea their own kg_exclude flag is what's blocking it.
+		writeError(w, http.StatusConflict, "BOOK_KG_EXCLUDED",
+			"this chapter is excluded from your knowledge graph — clear kg_exclude first")
 	default:
 		writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT", "action failed")
 	}
@@ -512,10 +541,16 @@ func isDestructiveOp(op string) bool {
 
 // ── effects reusing book-service write logic (re-validated at confirm) ────────
 
-func (s *Server) mcpPublishChapter(ctx context.Context, caller, bookID, chID uuid.UUID) (uuid.UUID, error) {
+func (s *Server) mcpPublishChapter(ctx context.Context, caller, bookID, chID uuid.UUID) (uuid.UUID, reparseCounts, error) {
+	// 26 IX-2: parse the to-be-pinned body BEFORE the Tx (never a cross-service
+	// call inside the transaction); the draftVersion guard below skips the upsert
+	// on a concurrent save. Mirrors publishChapter exactly (both publish sites,
+	// F10) so heal and produce share one path.
+	prep := s.prepareReparse(ctx, bookID, chID)
+
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {
-		return uuid.Nil, err
+		return uuid.Nil, reparseCounts{}, err
 	}
 	defer tx.Rollback(ctx)
 	var curr int64
@@ -525,10 +560,10 @@ func (s *Server) mcpPublishChapter(ctx context.Context, caller, bookID, chID uui
 SELECT d.draft_version, d.body, d.draft_format FROM chapter_drafts d JOIN chapters c ON c.id=d.chapter_id
 WHERE d.chapter_id=$1 AND c.book_id=$2 AND c.lifecycle_state='active' FOR UPDATE OF d`, chID, bookID).Scan(&curr, &body, &format)
 	if errors.Is(err, pgx.ErrNoRows) {
-		return uuid.Nil, errActionTargetGone
+		return uuid.Nil, reparseCounts{}, errActionTargetGone
 	}
 	if err != nil {
-		return uuid.Nil, err
+		return uuid.Nil, reparseCounts{}, err
 	}
 	// Empty-prose guard — union of the editor `_text` projection AND standard
 	// tiptap nested text leaves ($.**.text); see publishChapter for the rationale
@@ -541,26 +576,73 @@ SELECT COALESCE((
   SELECT string_agg(t #>> '{}', '') FROM jsonb_path_query(($1)::jsonb, '$.**.text') AS y(t)
 ), '')`, body).Scan(&prose)
 	if strings.TrimSpace(prose) == "" {
-		return uuid.Nil, errActionBadState
+		return uuid.Nil, reparseCounts{}, errActionBadState
 	}
 	var revID uuid.UUID
 	if err := tx.QueryRow(ctx, `
 INSERT INTO chapter_revisions(chapter_id, body, body_format, message, author_user_id)
 VALUES($1,$2,$3,'publish',$4) RETURNING id`, chID, body, format, caller).Scan(&revID); err != nil {
-		return uuid.Nil, err
+		return uuid.Nil, reparseCounts{}, err
 	}
-	if _, err := tx.Exec(ctx, `
+	// WS-0.3: publish also advances the KG pointer, so today's behavior (publish ⇒
+	// indexed) is preserved exactly under the re-keyed sweeper. kg_exclude is
+	// PRODUCER-side authoritative (spec §3.7): when the user has asked to keep this
+	// chapter out of their knowledge graph, publishing it must NOT drag it back in,
+	// so we leave the pointer untouched.
+	// RETURNING kg_exclude: the emitted chapter.published must CARRY the exclusion, or
+	// knowledge-service (which cannot see this column) will index the chapter anyway.
+	// Refusing to move the pointer here is not enough — the EVENT is what drives the
+	// graph write. See the review-impl P0 note on the emit below.
+	var kgExcluded bool
+	if err := tx.QueryRow(ctx, `
 UPDATE chapters SET editorial_status='published', published_revision_id=$2,
-  draft_revision_count=draft_revision_count+1, updated_at=now() WHERE id=$1`, chID, revID); err != nil {
-		return uuid.Nil, err
+  kg_indexed_revision_id=CASE WHEN kg_exclude THEN kg_indexed_revision_id ELSE $2 END,
+  draft_revision_count=draft_revision_count+1, updated_at=now() WHERE id=$1
+RETURNING kg_exclude`, chID, revID).Scan(&kgExcluded); err != nil {
+		return uuid.Nil, reparseCounts{}, err
 	}
-	if err := insertOutboxEvent(ctx, tx, "chapter.published", chID, map[string]any{"book_id": bookID, "chapter_id": chID, "revision_id": revID}); err != nil {
-		return uuid.Nil, err
+	// 26 IX-2 step 3(b–d): same-Tx re-parse when the parse succeeded and describes
+	// the pinned body (draftVersion match). Otherwise the marker stays behind and
+	// the sweeper heals — a parse failure never blocks publish (OQ-1).
+	var counts reparseCounts
+	if prep.ok && prep.draftVersion == curr {
+		counts, err = s.upsertChapterScenes(ctx, tx, bookID, chID, prep.structuralPath, prep.tree)
+		if err != nil {
+			return uuid.Nil, reparseCounts{}, err
+		}
+		if _, err := tx.Exec(ctx, `UPDATE chapters SET last_parsed_revision_id=$2 WHERE id=$1`, chID, revID); err != nil {
+			return uuid.Nil, reparseCounts{}, err
+		}
+		// RB5-1: emit only when the index changed (a no-op re-parse must not wipe the
+		// book's extraction cache via the knowledge consumer).
+		if counts.changed() {
+			if err := emitScenesReparsed(ctx, tx, bookID, chID, revID, counts.ParseVersion); err != nil {
+				return uuid.Nil, reparseCounts{}, err
+			}
+			// SC11-amendment Phase 0 — writer #2 of `scenes.source_scene_id` (see kg_index.go).
+			if err := emitScenesLinked(ctx, tx, bookID, chID); err != nil {
+				return uuid.Nil, reparseCounts{}, err
+			}
+		}
+	} else {
+		slog.WarnContext(ctx, "mcp publish: re-parse skipped; index left stale for the sweeper",
+			"chapter_id", chID, "parse_ok", prep.ok, "draft_version_match", prep.draftVersion == curr)
+	}
+	// review-impl P0: `kg_exclude` rides the payload. Refusing to set the pointer above
+	// does NOT keep an excluded chapter out of the graph — `handle_chapter_published` is
+	// what enqueues extraction and ingests canon passages, and it cannot see the column.
+	// Without this field, publishing a chapter the user asked us to forget silently
+	// re-indexes it. (We must not simply suppress the event: chapter.published has other
+	// consumers — glossary wiki-staleness among them — that still need it.)
+	if err := insertOutboxEvent(ctx, tx, "chapter.published", chID, map[string]any{
+		"book_id": bookID, "chapter_id": chID, "revision_id": revID, "kg_exclude": kgExcluded,
+	}); err != nil {
+		return uuid.Nil, reparseCounts{}, err
 	}
 	if err := tx.Commit(ctx); err != nil {
-		return uuid.Nil, err
+		return uuid.Nil, reparseCounts{}, err
 	}
-	return revID, nil
+	return revID, counts, nil
 }
 
 func (s *Server) mcpUnpublishChapter(ctx context.Context, bookID, chID uuid.UUID) error {

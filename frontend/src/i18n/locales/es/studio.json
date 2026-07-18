@@ -2,19 +2,88 @@
   "title": "Writing Studio",
   "back": "Volver a los libros",
   "settings": "Ajustes del libro",
+  "planNav": {
+    "title": "Plan",
+    "loading": "Cargando…",
+    "empty": "Aún no hay arcos.",
+    "emptyGuided": "Aún no hay arcos; el plan es la especificación que guía tu libro. Define sus arcos y capítulos para empezar.",
+    "planCta": "Planificar este libro"
+  },
   "welcome": {
     "tab": "Bienvenido",
     "title": "Writing Studio",
     "body": "Un espacio de trabajo acoplable para este libro. Los paneles (composición, planificador, reparto, calidad…) se añadirán aquí uno a uno. Arrastra las pestañas para dividir, apilar, flotar o extraer en su propia ventana.",
     "openUserGuide": "Abrir la guía del usuario",
-    "paletteHint": "⌘⇧P → «Elegir enfoque» o «Iniciar recorrido guiado» en cualquier momento",
-    "startGuidedTour": "Iniciar recorrido guiado"
+    "startGuidedTour": "Iniciar recorrido guiado",
+    "paletteHint": "⌘⇧P → «Elegir enfoque» o «Iniciar recorrido guiado» en cualquier momento"
   },
   "panels": {
+    "arc-templates": {
+      "title": "Plantillas de Arcos",
+      "desc": "Explora, crea, adopta y aplica estructuras de arcos multijapítulo reutilizables: hilos argumentales paralelos y roles de personajes a lo largo de varios capítulos",
+      "guideBody": "La biblioteca de Plantillas de Arcos contiene estructuras multijapítulo reutilizables: hilos argumentales paralelos (línea de venganza, romance, la mentira del mentor) dispuestos como motivos a lo largo de un tramo de capítulos, junto con los roles de personajes que el arco vincula al aplicarlo. Explora por nivel: tus propias plantillas, las generadas por el sistema y (en el Catálogo) las públicas de otros usuarios. Crea una nueva plantilla, adopta una del sistema o pública para personalizar tu propia copia, o abre una para ver su cronología de hilos × capítulos y previsualizar su aplicación en este libro. También puedes guardar un arco que ya hayas escrito como plantilla, o importar una historia de referencia y deconstruirla (拆文) en una nueva plantilla. La aplicación de una plantilla es primero una previsualización: nunca sobrescribe tus capítulos sin que tú lo materialices."
+    },
+    "arc-inspector": {
+      "title": "Inspector de Arcos",
+      "desc": "Lee y edita UN arco o saga: su objetivo, estado, las pistas argumentales y la lista de personajes resueltas en cascada, el tramo de capítulos, las promesas abiertas y la procedencia de la plantilla",
+      "guideBody": "El Inspector de Arcos abre un nodo del árbol de especificaciones de tu libro: una saga, un arco o un subarco. Este árbol no es decorativo: sus pistas argumentales y vinculaciones de personajes se leen en cada prompt de generación, por lo que editar un arco aquí cambia la forma en que la IA redacta sus capítulos. Las pistas y los espacios de la lista de personajes se resuelven en cascada: una entrada heredada de una saga superior se muestra en gris con una acción de «Anular» (editarla en el lugar crearía silenciosamente una bifurcación de la copia). El tramo de capítulos, el resumen de promesas abiertas y la procedencia de la plantilla son de solo lectura. Archivar un arco devuelve sus capítulos a la bandeja de «no planificados»; restaurarlo los vuelve a vincular. Ábrelo desde el Plan Hub (selecciona un arco), la paleta de comandos o el agente.",
+      "body": {
+        "loading": "Cargando…",
+        "selectArc": "Selecciona un arco para ver su plan.",
+        "archivedBanner": "Archivado: sus capítulos han vuelto a la bandeja de no planificados. Restáuralos para editarlos y volver a vincularlos.",
+        "restore": "Restaurar",
+        "secIdentity": "Identidad",
+        "fTitle": "Título",
+        "fGoal": "Objetivo (alcanza el prompt)",
+        "fSummary": "Resumen (una etiqueta, no el prompt)",
+        "fStatus": "Estado",
+        "status_empty": "vacío",
+        "status_outline": "esquema",
+        "status_drafting": "redactando",
+        "status_done": "completado",
+        "secTracks": "Trazas (tramas → prompt)",
+        "secRoster": "Reparto (espacios de personajes)",
+        "empty_track": "Aún no hay tramas.",
+        "empty_role": "Aún no hay roles de reparto.",
+        "remove": "eliminar",
+        "overrideHere": "sobrescribir aquí",
+        "add_track": "+ trama",
+        "add_role": "+ rol",
+        "keyPlaceholder": "clave",
+        "labelPlaceholder": "etiqueta (opcional)",
+        "addBtn": "añadir",
+        "cancel": "cancelar",
+        "keyExists": "la clave existe",
+        "secChapters": "Capítulos",
+        "chaptersLabel": "Capítulos",
+        "noChapters": "No hay capítulos asignados",
+        "nonContiguous": "no contiguos",
+        "secPromises": "Promesas abiertas",
+        "noPromises": "No hay promesas abiertas aquí.",
+        "secProvenance": "Procedencia",
+        "fromTemplate": "Desde la plantilla",
+        "authoredNoTemplate": "Escrito desde la conversación (sin plantilla).",
+        "secDanger": "Peligro",
+        "archiveArc": "Archivar arco",
+        "blast": "también archiva {{count}} subarcos",
+        "archivingNote": "Archivar devuelve sus capítulos a la bandeja de no planificados; restaurar los vuelve a vincular.",
+        "secTemplate": "Plantilla"
+      }
+    },
     "compose": {
-      "title": "Composición",
+      "title": "Chat de coautor",
       "desc": "Chat de coescritura con IA",
       "guideBody": "El coescritor de IA para este libro: chatea con él sobre una escena, pídele que redacte o revise un pasaje o haz una lluvia de ideas sobre qué pasará después. Ábrelo cuando necesites un compañero de conversación que ya conozca los personajes, el glosario y los capítulos anteriores de este libro."
+    },
+    "scene-compose": {
+      "title": "Componer escena",
+      "desc": "Redacta una escena con candidatos de IA",
+      "guideBody": "Redacta una escena con el coescritor de IA: elige una escena y un modelo, luego pulsa Generar para transmitir un borrador fantasma, o activa Divergir para obtener varios candidatos que puedes comparar, editar y aceptar. Al aceptar, la prosa se inserta en el Editor de este capítulo, y tus decisiones de regenerar/rechazar/editar entrenan al modelo. Ábrelo cuando quieras escribir la siguiente escena, no solo hablar de ella."
+    },
+    "chapter-assemble": {
+      "title": "Ensamblar capítulo",
+      "desc": "Ensambla o cose las escenas en un capítulo",
+      "guideBody": "Convierte las escenas de un capítulo en prosa de capítulo terminada: 'Generar capítulo' lo redacta de una pasada, o 'Coser' fusiona tus borradores de escena completados en un único capítulo fluido. Revisa la vista previa editable y luego pulsa Aceptar para insertarlo en el Editor; tus decisiones de editar/regenerar/rechazar entrenan al modelo, el mismo volante de corrección que Componer escena. Ábrelo cuando las escenas de un capítulo estén redactadas y quieras ensamblarlas."
     },
     "editor": {
       "title": "Editor",
@@ -50,6 +119,12 @@
       "title": "Dirección",
       "desc": "Reglas de autor que guían a la IA en este libro",
       "guideBody": "Escribe las reglas y preferencias que guían la forma en que la IA escribe para este libro específico: tono, punto de vista, elementos a evitar e instrucciones recurrentes que no quieras repetir en cada chat. Ábrelo al principio y vuelve a consultarlo siempre que el resultado de la IA se desvíe de lo que buscas."
+    },
+    "style-voice": {
+      "title": "Estilo y voz",
+      "desc": "Controla la densidad y el ritmo de la prosa, así como la voz distintiva de cada personaje; todo integrado en cada instrucción de borrador",
+      "guideBody": "«Estilo y voz» dirige la forma en que escribe la IA. Define la densidad y el ritmo de la prosa para todo el libro (o limítalos a un capítulo o escena) y otorga a cada personaje una voz propia al hablar. Estos ajustes se integran en cada instrucción de borrador, de modo que la escritura mantiene la coherencia sin que tengas que repetir instrucciones. Cada control muestra su valor efectivo y su origen (valor predeterminado del libro o ajuste de capítulo/escena). Ajústalo al principio para establecer el estilo general y luego perfecciónalo por personaje a medida que sus voces vayan surgiendo.",
+      "noWork": "La escritura aún no está configurada para este libro; configúrala para dirigir su estilo y voz aquí."
     },
     "glossary": {
       "title": "Glosario",
@@ -89,6 +164,56 @@
       "title": "Conocimiento",
       "desc": "Explora y abre tus proyectos de grafos de conocimiento",
       "guideBody": "Conocimiento es tu punto de entrada al grafo de conocimiento de un libro: las entidades, eventos y trasfondo que tus agentes de IA han extraído y organizado. Ábrelo para elegir en qué proyecto (libro) trabajar antes de sumergirte en las entidades, las líneas temporales o el grafo en sí."
+    },
+    "quality": {
+      "title": "Calidad",
+      "desc": "Promesas abiertas, puntuaciones de críticos, cobertura de la historia y problemas de canon",
+      "guideBody": "La Calidad es tu panel de diagnóstico — es solo informativo, nada de lo que aparece aquí cambia tu prosa. Selecciona una tarjeta para ver el registro de deuda de promesas abiertas, las puntuaciones de los críticos por capítulo, la cobertura de promesas de todo el libro o las contradicciones de canon confirmadas."
+    },
+    "quality-promises": {
+      "title": "Promesas",
+      "desc": "El registro de deuda de promesas abiertas (preparaciones aún no resueltas)",
+      "guideBody": "Promesas es tu libro de contabilidad de deuda narrativa: cada preparación que la historia ha planteado y que aún no se ha saldado. Una promesa se abre donde la siembras (una traición insinuada, un arma cargada, una cicatriz sin explicar) y se cierra donde el manuscrito la cumple. Agota la lista antes de terminar un libro; cualquier cosa que siga abierta al final es un hilo que los lectores notarán que has abandonado."
+    },
+    "quality-critic": {
+      "title": "Crítico",
+      "desc": "Puntuaciones de coherencia, voz, ritmo y canon por capítulo",
+      "guideBody": "El crítico califica un capítulo según su coherencia, voz, ritmo y fidelidad al canon, proporcionando el razonamiento detrás de cada veredicto. Es una herramienta de asesoramiento; nunca edita tu prosa. Úsala para detectar un capítulo que ha perdido el rumbo antes de que lo haga un lector, no como una nota para optimizar."
+    },
+    "quality-coverage": {
+      "title": "Cobertura de la historia",
+      "desc": "Auditoría de todo el libro sobre qué promesas del esquema se cumplieron",
+      "guideBody": "La cobertura de la historia es la visión global del libro sobre el registro de promesas: qué puntos del esquema se han entregado realmente en el manuscrito, cuáles siguen pendientes y dónde se concentran las resoluciones. Léelo cuando un borrador esté terminado para encontrar los actos que prometieron más de lo que cumplieron."
+    },
+    "quality-canon": {
+      "title": "Problemas de canon",
+      "desc": "Contradicciones confirmadas mediante generación y extracción de conocimiento",
+      "guideBody": "Problemas de canon recopila contradicciones confirmadas entre tu prosa y tu lore establecido: un personaje en dos lugares a la vez, un color de ojos que cambió, una regla de magia que la historia acaba de romper. Cada problema se vincula con el capítulo y la regla de canon que viola, para que puedas corregir el texto o modificar la regla."
+    },
+    "quality-canon-rules": {
+      "title": "Reglas de canon",
+      "desc": "Define los invariantes que el crítico aplica: crear, editar, archivar, restaurar",
+      "guideBody": "Las reglas de canon es donde declaras los invariantes que tu historia nunca debe romper: un personaje tiene un solo brazo después del capítulo 41, las piedras espirituales se consumen y nunca se devuelven, la identidad del Maestro de la Secta permanece oculta hasta el arco de la Corte de la Sal. Estas son las reglas que el crítico y el «auto-reparado» aplican en cada generación; escribirlas aquí es como le enseñas tu canon al coescritor. Es la otra mitad de «Problemas de canon»: ese panel muestra qué se rompió, este es donde corriges la regla."
+    },
+    "quality-corrections": {
+      "title": "Correcciones",
+      "desc": "Tus tasas de aceptar / editar / regenerar / rechazar en borradores de IA — la señal de calidad",
+      "guideBody": "Correcciones es el espejo de tu propia edición: cada vez que aceptas, editas, eliges un candidato distinto, regeneras o rechazas un borrador de IA, esa elección queda registrada; este panel muestra las tasas, desglosadas por Diverge (opción K) frente a Stream. Una tasa más baja de edición/regeneración/rechazo (y una mayor de aceptación tal cual) en Diverge significa que el reordenador está justificando su latencia adicional. Es informativo y de solo lectura; nunca cambia tu prosa: te indica si el coescritor está mejorando en tu libro."
+    },
+    "quality-heal": {
+      "title": "Auto-reparado",
+      "desc": "Ejecuta «Pulir» en un capítulo y acepta cada corrección antes de que se aplique a tu prosa",
+      "guideBody": "La función «Self-heal» realiza una revisión rápida de un capítulo y propone correcciones —desajustes de pronombres, erratas, errores de canon o descripciones excesivamente largas—, presentándolas en filas de aceptar/rechazar. Las correcciones deterministas (erratas, pronombres) aparecen marcadas por defecto; las reescrituras semánticas aparecen sin marcar para que tú decidas. Nada toca tu prosa hasta que pulses «Aplicar» y, aun así, se realiza una comprobación de versión: si el capítulo ha cambiado desde que se ejecutó Polish, la aplicación se rechaza en lugar de revertir tus ediciones más recientes."
+    },
+    "progress": {
+      "title": "Progreso",
+      "desc": "Palabras de hoy, tu racha, el total del libro, una meta diaria y un gráfico de líneas",
+      "guideBody": "El progreso convierte tu escritura en un hábito visible: palabras escritas hoy, tu racha actual, el total acumulado del libro y un gráfico de líneas de 7 o 30 días. Establece una meta diaria personal y una línea de referencia la marcará en el gráfico; la meta es solo tuya, no se comparte con colaboradores. Lee el recuento de palabras que el editor registra al guardar; nunca modifica tu prosa."
+    },
+    "flywheel": {
+      "title": "Flywheel",
+      "desc": "Lo que tu última publicación añadió al canon: nuevas personas, vínculos y eventos",
+      "guideBody": "Flywheel es la recompensa por publicar: cuando publicas un capítulo, un proceso de extracción expande el conocimiento de tu mundo, y este panel muestra lo que ha añadido —nuevas entidades, relaciones y eventos— con resaltados interactivos que te llevan directamente a ese personaje en el Reparto, a ese enlace en el gráfico o a ese momento en la línea de tiempo. Cierra el ciclo: escribir alimenta el canon, y el canon fundamenta tu próximo capítulo."
     },
     "kg-overview": {
       "title": "Resumen",
@@ -193,6 +318,160 @@
       "title": "Inspector de contexto",
       "desc": "Rastrea lo que la gestión de contexto hizo por turno: presupuesto, asignación y decisiones de Planner→Compiler",
       "guideBody": "Muestra exactamente qué contexto se envió a la IA en un turno determinado: el presupuesto de tokens, qué se incluyó o se descartó, y si se gestionó mediante un pase rápido o un pase de planificación completo. Ábrelo cuando la respuesta de la IA parezca errónea y quieras ver qué «vio» realmente, o cuando tengas curiosidad por saber cómo se está utilizando tu presupuesto de contexto."
+    },
+    "book-import": {
+      "title": "Importar",
+      "desc": "Importa capítulos desde archivos de texto, .docx o .epub, o un libro completo desde un PDF",
+      "intro": "Trae el contenido de un manuscrito existente a este libro.",
+      "guideBody": "Importa capítulos desde archivos de texto plano, .docx o .epub, o un libro completo desde un PDF (con subtitulado de imágenes opcional mediante IA — tú eliges el modelo de visión explícitamente). Ábrelo siempre que tengas contenido existente que quieras importar en lugar de escribir desde cero.",
+      "text": {
+        "title": "Importar capítulos",
+        "desc": ".txt, .docx o .epub — un capítulo por archivo"
+      },
+      "pdf": {
+        "title": "Importar desde PDF",
+        "desc": "Divide un PDF en capítulos, con subtitulado opcional de imágenes mediante IA"
+      }
+    },
+    "scene-browser": {
+      "title": "Explorador de escenas",
+      "desc": "Explora cada escena de este libro: la prosa analizada y su plan de autoría, lado a lado",
+      "guideBody": "El Explorador de escenas enumera todas las escenas de todo el libro uniendo dos realidades: la prosa escrita (de book-service) y la intención/plan de autoría (de composition). Una escena puede estar escrita y planificada (normal), planificada pero aún no escrita, o escrita pero aún no descompuesta en un plan; por ello, las escenas de un libro importado aparecen aquí incluso antes de que crees un plan.",
+      "noBook": "Abre un libro para explorar sus escenas.",
+      "search": "Buscar títulos y prosa…",
+      "count": "{{n}} escenas",
+      "workless": "Aún no hay plan: la intención de la escena (estado, POV, tensión) no está disponible hasta que crees un plan para este libro.",
+      "intentUnavailable": "El plan de la escena no está disponible temporalmente; solo se muestra la prosa escrita.",
+      "dirty": "canon movido",
+      "dirtyTitle": "El canon ha cambiado desde la última comprobación de conformidad",
+      "anchorLost": "Anclaje perdido",
+      "empty": "No hay escenas que coincidan.",
+      "loadMore": "Cargar más",
+      "loading": "Cargando…",
+      "col": {
+        "num": "#",
+        "scene": "Escena",
+        "status": "Estado",
+        "tension": "Tensión",
+        "words": "Palabras"
+      },
+      "badge": {
+        "notWritten": "aún no escrita",
+        "notPlanned": "no planificada",
+        "anchorLost": "ancla perdida"
+      },
+      "bulk": {
+        "count": "{{n}} seleccionadas",
+        "selectAll": "Seleccionar todo",
+        "selectRow": "Seleccionar escena: {{title}}",
+        "setStatus": "Establecer estado…",
+        "words": "Palabras objetivo",
+        "trash": "Papelera",
+        "clear": "Limpiar",
+        "updated": "{{n}} actualizadas",
+        "conflicted": "{{n}} con conflictos",
+        "failed": "{{n}} fallidas"
+      }
+    },
+    "plan-hub": {
+      "title": "Plan Hub",
+      "desc": "El plan de todo el libro en un lienzo gráfico: carriles de arcos, capítulos, escenas y sus vínculos",
+      "guideBody": "El Plan Hub representa la estructura completa de tu libro como un gráfico: cada saga, arco o subarco es un carril; sus capítulos y escenas son tarjetas a lo largo de un eje de orden narrativo, y los enlaces de escena trazan las conexiones causales entre ellos. Abre el panel para ver cada arco colapsado en una tarjeta de resumen; expande un arco para cargar sus capítulos de forma dinámica, y un capítulo para ver sus escenas. Desplaza y haz zoom para navegar; las insignias de problemas o desactualización aparecerán donde el canon o las promesas requieran atención."
+    },
+    "decompose": {
+      "title": "Descomponer",
+      "desc": "Descompón tu libro según una estructura narrativa: previsualiza el árbol de arco→capítulo→escena, edítalo y confírmalo",
+      "guideBody": "La función Descomponer convierte una estructura narrativa en el esquema de tu libro. Elige una de tus estructuras creadas (o una integrada), añade una premisa, selecciona un modelo y haz clic en Vista previa: la IA propondrá un árbol de arco→capítulo→escena que puedes editar directamente antes de confirmarlo. Al confirmar, se escribirá el esquema y el árbol de tu Manuscrito se actualizará para coincidir. Puedes abrirlo desde la Paleta de comandos o desde una estructura en el panel de Plantillas de estructura mediante «Usar en descomposición» (lo que preseleccionará dicha estructura aquí). ¿Aún no tienes ninguna? El panel te ofrecerá configurar una primero.",
+      "loading": "Resolviendo tu libro…",
+      "loadError": "No se pudo cargar el plan de este libro; inténtalo de nuevo.",
+      "retry": "Reintentar"
+    },
+    "plan-passes": {
+      "title": "Pasarela de Planificación",
+      "desc": "Compila un plan paso a paso y aprueba cada punto de control",
+      "guideBody": "La Pasarela de Planificación dirige el compilador de 7 pasos de PlanForge —motivos, reparto, mundo, beats, arcos de personajes, escenas y «self-heal»—, un paso a la vez. Cada paso indica si está «fresco» (sus entradas no han cambiado desde la última ejecución) o «obsoleto», y la pasarela te indica hasta dónde puede avanzar el compilador por su cuenta y qué paso está esperando tu acción. Dos pasos son puntos de control de bloqueo que debes aprobar antes de que el compilador avance: el reparto (quiénes son tus personajes) y los beats (qué forma toma la historia). Abre un paso para leer lo que ha producido, edítalo y luego aprueba o mantén en espera. Editar un paso vuelve a marcar como «obsoleto» automáticamente todo lo que viene después, para que el plan nunca pierda la sincronía consigo mismo."
+    },
+    "whatif-canvas": {
+      "title": "Ramas «¿Qué pasaría si...?»",
+      "desc": "Explora versiones alternativas de una escena sin comprometerte: crea una rama, genera una versión alternativa, compara y luego promueve la ganadora",
+      "guideBody": "El lienzo «what-if» te permite bifurcar una escena en una rama efímera, generar una toma alternativa y ver las insignias de juicio del crítico una al lado de la otra, todo sin tocar el borrador canónico. Cuando una rama sea la que desees, promociónla: se convertirá en una obra derivada real desde la que podrás seguir escribiendo. Nada se guarda hasta que promocionas, así que puedes explorar libremente. Esta es la superficie de edición detrás del botón «Promover»; el Plan Hub muestra el gráfico del plan, esto es donde pruebas alternativas sobre él.",
+      "noPlan": "Este libro aún no tiene un plan; primero define sus arcos y capítulos, y luego explora las ramas de «qué pasaría si» aquí."
+    },
+    "divergence": {
+      "title": "Versiones «¿Qué pasaría si...?»",
+      "desc": "Gestiona los derivados «what-if» de un libro: lista el canon y cada rama, cambia todo el estudio a una de ellas, archiva una o genera una nueva rama a partir de un capítulo.",
+      "guideBody": "Una versión «¿Qué pasaría si...?» ramifica tu libro en un capítulo y diverge —un universo alternativo, un cambio de punto de vista, un personaje modificado— en una obra derivada con su propia partición de conocimiento, mientras que la fuente permanece como canon de solo lectura. Este panel enumera tu obra canónica y cada rama que hayas generado. «Cambiar a» traslada todo tu estudio —editor, navegador, calidad, todo— a esa rama; la elección se recuerda por libro y se mantiene tras recargar. «Archivar» oculta una rama sin destruirla (sus capítulos y conocimiento se conservan). «Nueva versión» abre el asistente de 4 pasos para crear una. Selecciona una rama para leer su especificación (taxonomía, punto de ramificación, reglas del canon, anulaciones), la cual queda fijada al momento de su creación."
+    },
+    "reference-shelf": {
+      "title": "Estante de referencias",
+      "desc": "Organiza los pasajes de referencia (influencias externas) que fundamentan la escritura: añádelos, edítalos y elimínalos; se recuperan los más pertinentes por escena y pueden fijarse en el paquete de fundamentación.",
+      "guideBody": "El estante de referencias es el corpus de influencias de tu libro: pasajes, fuentes y ejemplos de estilo en los que la IA se apoya al redactar. Añade una referencia con su título, autor, URL de la fuente y texto; el texto se integra para que el estudio pueda recuperar los más relevantes por escena. Edita los detalles de una referencia (un cambio de metadatos sencillo) o su contenido (lo que requiere una nueva integración). Filtra un estante extenso con el cuadro de búsqueda. La recuperación y fijación por escena aparecen al abrir el estante junto a una escena; por separado, funciona como gestor de la biblioteca. Debe estar configurado un modelo de integración (añade uno desde los ajustes de IA) para que la recuperación funcione.",
+      "noWork": "La escritura aún no está configurada para este libro; configúrala para organizar su estantería de referencias aquí."
+    },
+    "canonview": {
+      "title": "Canon en el capítulo",
+      "desc": "Lo que el canon sabe hasta el capítulo en foco: entidades presentes/establecidas, estado del canon y línea de tiempo",
+      "guideBody": "Responde a «¿qué sabe el canon hasta el capítulo en el que estoy?»: las entidades presentes y establecidas por el capítulo actual (según el glosario), además del estado del canon (cuántas entidades están activas frente a las que han desaparecido) y los eventos de la línea de tiempo hasta ese punto (según el grafo de conocimiento). Sigue el capítulo que tengas seleccionado en el manuscrito, y es el mismo inspector que muestra el lienzo de «qué pasaría si» en un punto de bifurcación; así puedes comprobar qué está ya establecido antes de divergir. Abre una escena o un capítulo para darle el foco."
+    },
+    "scene-inspector": {
+      "title": "Inspector de escena",
+      "desc": "Lee y edita cada campo de una escena: intención, técnica, tensión y fundamentación",
+      "guideBody": "El Inspector de Escenas es el panel de detalles para una sola escena: selecciona una escena (en el Explorador de Escenas o en el manuscrito) y su plan completo se abrirá aquí: estado, objetivo, sinopsis, rol del beat, tensión y los campos de técnica (conflicto, desenlace, apuestas, tiempo narrativo, cambio de valor, palabras objetivo); todo es editable y cuenta con los puntos de fundamentación integrados. Los cambios se guardan inmediatamente y están protegidos contra ediciones contradictorias.",
+      "none": "Selecciona una escena para inspeccionar su plan completo.",
+      "loading": "Cargando…",
+      "dirty": "El canon ha cambiado desde la última comprobación de concordancia; este plan podría estar desactualizado.",
+      "section": {
+        "identity": "Identidad",
+        "intent": "Intención",
+        "cast": "Reparto y Escenario",
+        "craft": "Técnica",
+        "links": "Enlaces",
+        "grounding": "Fundamentación",
+        "motifs": "Motivos"
+      },
+      "links": {
+        "empty": "Aún no hay enlaces causales.",
+        "setup": "preparación→clímax",
+        "custom": "personalizado",
+        "remove": "Eliminar enlace",
+        "target": "Enlazar a escena",
+        "pick": "Enlazar a…",
+        "kind": "Tipo de enlace",
+        "label": "etiqueta",
+        "add": "enlace",
+        "dup": "Ya existe un enlace de ese tipo entre estas escenas.",
+        "failed": "No se pudo crear el enlace."
+      },
+      "f": {
+        "title": "Título",
+        "status": "Estado",
+        "goal": "Objetivo",
+        "synopsis": "Sinopsis",
+        "beat": "Función del beat",
+        "tension": "Tensión (0–100)",
+        "pov": "Personaje POV",
+        "present": "Personajes presentes",
+        "location": "Ubicación",
+        "conflict": "Conflicto",
+        "outcome": "Desenlace",
+        "stakes": "Riesgos",
+        "storyTime": "Tiempo de la historia",
+        "valueShift": "Cambio de valor (−100…100)",
+        "targetWords": "Palabras objetivo"
+      },
+      "ref": {
+        "none": "— ninguna —",
+        "add": "+ añadir",
+        "empty": "ninguna",
+        "loading": "(cargando…)",
+        "remove": "Eliminar {{name}}"
+      },
+      "status": {
+        "empty": "Vacío",
+        "outline": "Esquema",
+        "drafting": "Borrador",
+        "done": "Terminado"
+      }
     },
     "chapter-browser": {
       "title": "Explorador de capítulos",
@@ -327,18 +606,86 @@
     },
     "agent-mode": {
       "title": "Modo Agente",
-      "desc": "Ejecuciones de autoría autónoma de múltiples capítulos: control de misión"
+      "desc": "Ejecuciones de autoría autónoma de múltiples capítulos: control de misión",
+      "guideBody": "El Modo Agente es el centro de control para ejecuciones autónomas de múltiples capítulos: el agente redacta directamente siguiendo un plan aprobado mientras tú observas. Inicia, pausa y reanuda una ejecución desde aquí, y revisa cada capítulo a medida que se genera —su diff y el veredicto del crítico— para luego aceptar, rechazar o revertir. Nada de lo que escriba es definitivo hasta que tú lo aceptes."
     },
     "chapter-revision-compare": {
       "title": "Comparar revisión de capítulo",
       "desc": "Comparación detallada del editor para un par de revisiones de un capítulo",
       "empty": "Abre la comparación de revisión de un capítulo desde el panel de revisión del Modo Agente."
+    },
+    "world-map": {
+      "title": "Mapa del Mundo",
+      "desc": "Crea y edita los mapas de referencia de un mundo: sube una imagen base, arrastra y suelta pines de ubicación, dibuja y redefine regiones.",
+      "guideBody": "Crea mapas de mapa de bits para tu mundo. Sube una imagen base, luego coloca pines y dibuja regiones sobre ella. Arrastra un pin para moverlo (un arrastre es un único PATCH de coordenadas absolutas sobre un id de marcador estable; nunca es un eliminar-y-recrear) y arrastra un vértice de polígono para remodelar una región. Vincula un pin o región a una entidad de ubicación de glosario O de KG (el selector indica la fuente). Cada cambio se guarda en book-service; las herramientas world_map_* del asistente editan el mismo mapa en tiempo real. Cambia el nombre de un mapa con concurrencia optimista (If-Match), para que una edición conflictiva recargue en lugar de sobrescribir."
+    },
+    "place-graph": {
+      "title": "Grafo de lugares",
+      "desc": "Los lugares (ubicaciones) del libro como un grafo de nodos arrastrables",
+      "guideBody": "Añade y conecta los lugares (ubicaciones) del libro como un grafo de nodos. Escribe un nombre y pulsa + Lugar para crear una ubicación; activa Enlazar lugares, elige dos nodos y un predicado (contiene / limita / ruta_a) para conectarlos; arrastra para organizar (se guarda en el servidor y se comparte entre tus dispositivos); establece una imagen de fondo (requiere un capítulo abierto). Haz clic en un nodo para abrirlo en el códice de Reparto. Solo ubicaciones: usa Crear otros tipos para añadir personajes, objetos y el resto.",
+      "noWork": "La escritura aún no está configurada para este libro; configúrala para organizar sus lugares aquí.",
+      "openCompose": "Abrir Compose",
+      "loading": "Cargando mapa del mundo…",
+      "authorOther": "Crear otros tipos →"
+    },
+    "cast": {
+      "title": "Reparto",
+      "desc": "El reparto del libro: agrupado, con buscador y a prueba de spoilers; crea y retira entidades",
+      "guideBody": "Cada personaje, lugar, organización y concepto en el grafo de conocimiento de este libro, agrupados por tipo y con buscador, cada uno con su estado de historia a prueba de spoilers (activo/ausente según tu posición de lectura). Crea una nueva entidad con + Nuevo, cambia el nombre directamente, edita alias/tipo o retira (archivo suave) una. Haz clic en el glifo de arco de una fila para abrir su Arco de Personaje."
+    },
+    "character-arc": {
+      "title": "Arco de personaje",
+      "desc": "Los eventos de un personaje en una línea de tiempo, la banda de estado activo→ausente y las relaciones de un solo salto",
+      "guideBody": "Los eventos de un personaje en orden dentro de un arco compacto, con cortes de spoilers en tu posición de lectura, la banda de estado activo→ausente y las relaciones actuales de un solo salto. Selecciona un personaje, edítalo o añade una relación con + link entity."
+    },
+    "motif-library": {
+      "title": "Biblioteca de Motivos",
+      "desc": "Estudia tropos (套路/爽点/打脸), adóptalos o extráelos, e inspecciona el grafo de relaciones de motivos",
+      "guideBody": "La Biblioteca de Motivos es tu banco de trabajo de artesanía narrativa. Explora motivos por nivel: los tuyos, las etiquetas de este libro, el nivel compartido del libro, las semillas del sistema, el catálogo público y tus borradores extraídos. Crea un motivo directamente, adopta uno del catálogo o extrae tu propio corpus para descubrir patrones recurrentes. Abre cualquier motivo para leer sus ritmos y roles, y expande su grafo para ver de qué está compuesto, qué precede y sus variantes. Vincula motivos a escenas desde el Inspector de Escenas para que el borrador se escriba realmente en torno a ellos."
+    },
+    "quality-conformance": {
+      "title": "Conformidad",
+      "desc": "Ritmo a ritmo: ¿la prosa ejecutó el plan? Realizado/no realizado por escena + banda de tensión",
+      "guideBody": "Conformidad rastrea, escena por escena, si tu prosa escrita realmente cumplió con los ritmos de motivo que planeaste para un capítulo. Cada escena muestra lo realizado / no realizado y cómo su tensión se compara con el objetivo. Responde a la relación especificación-vs-prosa (no especificación-vs-plantilla; esa es la vista de desviación de plantillas de arco). La señal es consultiva (aproximada, no verificada causalmente). Regenera una escena que haya perdido su ritmo o vuelve a ejecutar todo el control frente al modelo que elijas."
+    },
+    "motif-graph": {
+      "title": "Gráfico de motivos",
+      "desc": "El gráfico de relaciones de motivos de todo el libro como un lienzo arrastrable: tus motivos compartidos con el libro y sus conexiones de «compuesto por», «precede a» o «variante de», con tu propio diseño guardado.",
+      "guideBody": "Un DAG visual de los motivos de este libro. Los nodos son tus motivos más los de nivel compartido del libro; las aristas son los enlaces de compuesto_por / precede_a / variante_de. Arrastra un nodo para organizar el gráfico: tu diseño se guarda por libro y te sigue en todos tus dispositivos (cada colaborador tiene su propia disposición). El diseño inicial se calcula automáticamente de izquierda a derecha a lo largo de las cadenas de precedencia. Crea y elimina aristas desde el detalle de un motivo en la Biblioteca de motivos.",
+      "signedOut": "Inicia sesión para ver el gráfico de motivos.",
+      "noBook": "Abre un libro para ver su gráfico de motivos."
+    },
+    "structure-templates": {
+      "title": "Plantillas de estructura",
+      "desc": "Crea estructuras de historia personalizadas (una lista ordenada de beats con nombre) y descompón tu libro basándote en ellas, como las integradas «Save the Cat» o «El viaje del héroe»",
+      "guideBody": "Las estructuras de la historia son hojas de beats ordenadas con las que descompones los capítulos de un libro. Este panel enumera las estructuras integradas (Save the Cat, Hero's Journey, Kishōtenketsu, Three-Act, Story Circle, Web-Novel Arc — solo lectura), además de las tuyas. Clona una estructura integrada para obtener una copia editable; luego podrás añadir, reordenar, renombrar y eliminar sus beats y guardarlos. Usa una estructura en Decompose para mapear sus beats en tus capítulos. Tus estructuras personalizadas son privadas y reutilizables en cada libro; puedes archivarlas para ocultarlas y restaurarlas más tarde. Las estructuras integradas permanecen intactas para todos: siempre editas tu propia copia."
+    },
+    "kg-triage": {
+      "title": "Triaje",
+      "desc": "Revisa los elementos extraídos que no coincidieron con tu esquema y resuélvelos.",
+      "guideBody": "Cuando la extracción encuentra un tipo de entidad, relación o valor que aún no está en tu esquema, lo guarda aquí en lugar de intentar adivinar. Cada fila ofrece únicamente las correcciones válidas para ese elemento: asígnale algo que ya tengas, añádelo a tu esquema/vocabulario, corrige un endpoint o descártalo."
+    },
+    "search": {
+      "title": "Buscar",
+      "desc": "Busca en la prosa (texto) o en los cajones de lore (semántico) de tu libro; un resultado te llevará directamente al editor.",
+      "guideBody": "La búsqueda tiene dos modos. El modo de Texto encuentra palabras y frases exactas en la prosa de tu manuscrito. El modo Semántico encuentra pasajes por su significado a través de tus cajones de lore (capítulos, chat, glosario). Haz clic en un resultado para abrir el editor en ese capítulo; la búsqueda es una vía de acceso a tu manuscrito, no una lista sin salida."
+    },
+    "workflows": {
+      "title": "Flujos de trabajo",
+      "desc": "Gestiona las recetas de flujos de trabajo guardadas",
+      "guideBody": "Lista las recetas de flujos de trabajo de varios pasos que tu agente puede ejecutar como una guía — los integrados del Sistema más los que tú hayas creado. Ábrelo para activar o desactivar una receta para ti, o para eliminar una propia. Las nuevas recetas se añaden aprobando una propuesta en el panel de Propuestas de Flujo de Trabajo, no se crean directamente aquí."
+    },
+    "workflow-proposals": {
+      "title": "Propuestas de flujo de trabajo",
+      "desc": "Revisa los flujos de trabajo propuestos por el agente",
+      "guideBody": "Lista las recetas de flujo de trabajo que el agente ha sugerido crear, basándose en secuencias de varios pasos que ha detectado que repites. Ábrelo para aprobar una propuesta — lo que genera el flujo de trabajo para que sea ejecutable — o para rechazarla. Aquí es donde un flujo de trabajo propuesto por el agente se vuelve realidad."
     }
   },
   "sceneRail": {
     "title": "Escenas",
     "toggle": "Escenas",
     "empty": "No hay escenas para este capítulo (créalo en el editor).",
+    "editTitle": "Renombrar escena",
     "synopsisPlaceholder": "Sinopsis…",
     "stale": "cambió en otro lugar — recargado",
     "notAnchored": "La escena aún no está anclada en el texto; usa ⚓ para vincular los encabezados.",
@@ -369,8 +716,51 @@
     "revert": "Revertir",
     "openAs": "Abrir como JSON"
   },
+  "planPasses": {
+    "comingSoon": "El sistema de 7 pasajes se cargará aquí.",
+    "noBook": "Abre un libro para compilar su plan.",
+    "noRun": "Aún no hay ejecución de plan; abre el Planificador para proponer y compilar uno.",
+    "loading": "Cargando pasajes…",
+    "notCompiled": "Esta ejecución aún no tiene un paquete compilado. Compílalo en el Planner antes de ejecutar las pasadas.",
+    "openPlanner": "← Planner (proponer / compilar)",
+    "blocking": "bloqueante",
+    "advisory": "informativa",
+    "running": "ejecutando…",
+    "done": "completado",
+    "failed": "fallido",
+    "notRun": "— no ejecutado",
+    "fresh": "actualizado",
+    "stale": "desactualizado",
+    "run": "ejecutar…",
+    "rerun": "re-ejecutar…",
+    "review": "revisar →",
+    "blocked": "bloqueado",
+    "blockedBy": "bloqueado por: {{blockers}}",
+    "runSpends": "Ejecutar {{pass}} — esto consume 1 llamada de LLM",
+    "runNow": "Ejecutar {{pass}}",
+    "cancel": "Cancelar",
+    "approve": "Aprobar",
+    "reject": "Rechazar",
+    "edit": "Editar",
+    "saveEdits": "Guardar cambios",
+    "cursor": "{{done}} de {{total}}",
+    "blockedAt": "bloqueado en",
+    "reviewTitle": "Revisar {{pass}}",
+    "reviewLoading": "Cargando…",
+    "reviewNoContent": "No hay contenido de artefacto para mostrar.",
+    "reviewPrompt": "¿Aprobar {{pass}}? Esto permite que el compilador continúe después de este punto.",
+    "seedUnavailable": "La propuesta de semilla del glosario no está disponible.",
+    "seedApplied": "Semilla del glosario aplicada; el reparto puede ser aprobado.",
+    "seedGate": "Los personajes de tu reparto deben añadirse al glosario antes de que puedas aprobar. Aplica la semilla para añadirlos.",
+    "applySeed": "Aplicar semilla",
+    "approveGated": "Aplica primero la semilla del glosario (PF-7)",
+    "editAdd": "Añadir",
+    "editRemove": "Eliminar",
+    "editEmpty": "Aún no hay nada aquí: añade una fila."
+  },
   "planner": {
     "sourcePlaceholder": "Pega el markdown del sistema de la novela…",
+    "proposeBlind": "Propuesto únicamente a partir de este volcado de ideas. No se leen los capítulos existentes.",
     "propose": "Proponer",
     "model": "Modelo",
     "empty": "Pega el markdown de tu sistema de novela y pulsa «Proponer» para iniciar una ejecución del plan.",
@@ -391,22 +781,44 @@
       "colMode": "Modo",
       "colStatus": "Estado",
       "colCreated": "Creado"
-    }
+    },
+    "grounded": "Basado en {{chapters}} capítulo(s) existente(s) + {{cast}} miembro(s) del elenco; se continúa con {{arcs}} arco(s) existente(s).",
+    "groundOnExisting": "Continuar este libro: basarse en su elenco, arcos y capítulos recientes existentes"
   },
   "editor": {
     "empty": "Selecciona un capítulo en el navegador del manuscrito para editarlo aquí.",
+    "startFirstChapter": "Empieza tu primer capítulo",
+    "startingChapter": "Creando…",
     "unsaved": "● sin guardar",
     "save": "Guardar",
     "grammar": "Gramática",
     "heatmap": "Mapa de calor",
+    "glossary": "Glosario",
     "focus": "Enfoque",
     "translate": "Traducir",
-    "glossary": "Glosario"
+    "derivativeForked": "En una versión «¿Qué pasaría si...?»: este capítulo está RAMIFICADO, aislado del canon. Los cambios se guardan en la rama; el canon permanece intacto.",
+    "derivativeInherit": "En una versión «¿Qué pasaría si...?»: este capítulo aún refleja el canon. Editar aquí lo RAMIFICA hacia la rama (el canon permanece intacto).",
+    "mergeToCanon": "Fusionar con el canon",
+    "mergeConfirm": "Confirmar — sobrescribir canon",
+    "merging": "Fusionando…",
+    "mergeDone": "Fusionado con el canon — la rama conserva su propia versión.",
+    "mergeConflict": "El canon ha cambiado — vuelve a abrir el capítulo y fusiona de nuevo.",
+    "mergeFailed": "No se pudo fusionar — inténtalo de nuevo."
+  },
+  "sceneCompose": {
+    "empty": "Selecciona un capítulo en el navegador del manuscrito para redactar sus escenas aquí.",
+    "inserted": "Insertado en el manuscrito.",
+    "insertFailed": "No se pudo insertar — haz clic en el texto del capítulo en el Editor y luego pulsa Aceptar de nuevo.",
+    "openedEditor": "Se ha abierto el Editor en este capítulo — Genera de nuevo para insertar el borrador aquí."
+  },
+  "chapterAssemble": {
+    "empty": "Selecciona un capítulo en el navegador del manuscrito para ensamblarlo aquí."
   },
   "popout": {
     "invalid": "Este enlace emergente no es válido.",
     "open": "Abrir en ventana emergente",
-    "openTitle": "Abrir el editor en su propia ventana"
+    "openTitle": "Abrir el editor en su propia ventana",
+    "needChapter": "Abre un capítulo primero; la ventana emergente abre el capítulo actual en su propia ventana"
   },
   "dock": {
     "dock": "Anclar"
@@ -469,6 +881,7 @@
       "editor": "Editor y capítulos",
       "storyBible": "Biblia de la historia",
       "knowledge": "Grafo de conocimiento",
+      "quality": "Calidad",
       "translation": "Traducción",
       "enrichment": "Enriquecimiento",
       "sharing": "Compartir y ajustes",
@@ -502,6 +915,7 @@
   },
   "activity": {
     "manuscript": "Manuscrito",
+    "plan": "Plan",
     "bible": "Biblia de la historia",
     "search": "Buscar",
     "quality": "Calidad"
@@ -524,8 +938,80 @@
       "body": "Puntuaciones de la crítica, hilos de promesas y problemas de canon. Próximamente."
     }
   },
+  "quality": {
+    "noWork": "Este libro aún no tiene una sesión de coescritura; primero redacta un capítulo y entonces aparecerán los datos de calidad aquí.",
+    "hubNoWorkHint": "Las promesas, las puntuaciones de la crítica y la cobertura de la historia requieren una sesión de coescritura; primero redacta un capítulo. Los problemas de canon que aparecen a continuación funcionarán de todos modos.",
+    "setupWork": "Configurar escritura",
+    "settingUpWork": "Configurando…",
+    "setupWorkError": "No se pudo configurar la escritura. Inténtalo de nuevo.",
+    "setupWorkPending": "La escritura se ha configurado, pero su proyecto de conocimiento aún se está preparando. Inténtalo de nuevo en breve.",
+    "setupWorkRetry": "Reintentar",
+    "pickModel": "Elige un modelo para analizar con...",
+    "pickChapter": "Elige un capítulo",
+    "pickChapterHint": "Elige un capítulo arriba para analizar su calidad.",
+    "chaptersTruncated": "mostrando los primeros {{shown}} de {{total}} capítulos",
+    "canonIntro": "Aviso: se han confirmado contradicciones con contenido marcado como eliminado o cambiado anteriormente en el libro. Nada de esto se aplica automáticamente.",
+    "canonEmpty": "No se encontraron problemas de canon.",
+    "canonCompositionError": "No se pudieron cargar los problemas de canon desde la generación; inténtalo de nuevo.",
+    "canonExtractionError": "No se pudieron cargar las etiquetas de canon desde la extracción de conocimiento; inténtalo de nuevo.",
+    "canonFromGeneration": "De la generación ({{n}})",
+    "canonFromExtraction": "De la extracción de conocimiento ({{n}})",
+    "untitledScene": "Escena sin título",
+    "jumpToChapter": "Abrir capítulo",
+    "promisesTitle": "Promesas",
+    "promisesDesc": "Libro de registro de deudas de promesas abiertas",
+    "criticTitle": "Crítico",
+    "criticDesc": "Puntuaciones de coherencia, voz, ritmo y canon por capítulo",
+    "coverageTitle": "Cobertura de la historia",
+    "coverageDesc": "Cobertura de la promesa de la obra completa",
+    "canonTitle": "Problemas de canon",
+    "canonDesc": "Contradicciones confirmadas",
+    "canonRulesTitle": "Reglas del canon",
+    "canonRulesDesc": "Define las invariantes que el crítico debe aplicar",
+    "correctionsTitle": "Correcciones",
+    "correctionsDesc": "Tus tasas de aceptar / editar / regenerar / rechazar",
+    "healTitle": "Autocorrección",
+    "healDesc": "Ejecuta Polish y acepta cada corrección antes de que afecte a tu prosa",
+    "canonFromRules": "Reglas incumplidas ({{n}})",
+    "canonRuleError": "No se pudieron cargar las infracciones de la regla canónica; inténtalo de nuevo.",
+    "canonRuleGone": "Una regla que ya no existe",
+    "canonRuleUnnamed": "esa regla",
+    "canonRuleFocused": "Mostrando primero las infracciones de la regla de la que vienes ({{n}}): «{{rule}}»",
+    "canonRuleFocusedEmpty": "La regla de la que vienes no tiene infracciones abiertas. Está anclada aquí, pero nada la ha roto.",
+    "canonFocused": "Mostrando primero el capítulo de procedencia ({{n}} hallazgo(s)).",
+    "canonFocusedEmpty": "El capítulo del que vienes no tiene hallazgos canónicos aquí.",
+    "canonUnavailable": "No se pudo conectar con el servicio de coescritor; los hallazgos del canon generados en tiempo real NO se incluyen a continuación.",
+    "canonNoWork": "Este libro aún no tiene sesiones de coescritura, por lo que no se han ejecutado las comprobaciones de canon durante la generación. Solo se muestran los hallazgos de la extracción de conocimientos.",
+    "canonRuleFocusUnknown": "No se pudo verificar la regla de la que vienes porque el servicio de coescritura no está disponible. Es posible que siga habiendo errores en algún lugar; esto no es un resultado definitivo.",
+    "canonRulesCapped": "Mostrando las {{shown}} reglas rotas más recientes de un total de {{total}}.",
+    "workUnavailable": "No se pudo conectar con el servicio de coescritura, por lo que no se pudieron cargar los datos de calidad de este libro. Es posible que existan problemas que no se muestran aquí. Inténtalo de nuevo en breve.",
+    "hubUnavailable": "No se pudo conectar con el servicio de coescritura, por lo que las promesas, las puntuaciones de los críticos y la cobertura de la historia no se pueden cargar en este momento. Es posible que existan problemas que no se muestran aquí.",
+    "conformanceTitle": "Conformidad",
+    "conformanceDesc": "¿Cumplió la prosa con el plan? Seguimiento de beats por escena",
+    "pickModelRerun": "Elige un modelo para volver a ejecutar con…",
+    "pickChapterConformanceHint": "Elige un capítulo arriba para rastrear cómo su prosa cumplió con el plan."
+  },
   "sidebar": {
-    "collapse": "Contraer"
+    "collapse": "Contraer",
+    "resize": "Cambiar tamaño de la barra lateral"
+  },
+  "layout": {
+    "title": "Diseño de panel",
+    "hint": "Organiza tus {{count}} paneles abiertos.",
+    "empty": "Abre paneles para organizarlos.",
+    "needPanels": "Abre al menos dos paneles primero",
+    "tooNarrow": "Se necesita una ventana más ancha",
+    "presets": {
+      "single": "Único",
+      "cols2": "Dos columnas",
+      "cols3": "Tres columnas",
+      "cols4": "Cuatro columnas",
+      "grid2x2": "Cuadrícula 2×2",
+      "grid3x2": "Cuadrícula 3×2",
+      "grid4x2": "Cuadrícula 4×2",
+      "cols6": "Seis columnas",
+      "cols8": "Ocho columnas"
+    }
   },
   "bottom": {
     "jobs": "Tareas",
@@ -533,23 +1019,33 @@
     "issues": "Problemas",
     "collapse": "Contraer panel",
     "toggle": "Alternar panel inferior",
-    "label": "Panel"
-  },
-  "bottomStub": {
-    "jobs": "Los procesos en segundo plano aparecerán aquí una vez configurados.",
-    "generation": "El progreso de generación en vivo aparecerá aquí una vez configurado.",
-    "issues": "Los problemas de calidad aparecerán aquí una vez configurados."
+    "label": "Panel",
+    "launch": {
+      "jobs": "El feed de tareas se abre en su propio panel.",
+      "generation": "El feed de generación se abre en su propio panel."
+    },
+    "openJobs": "Abrir el panel de tareas",
+    "issuesLoading": "Comprobando si hay problemas…",
+    "issuesError": "No se pudo cargar el panel de problemas.",
+    "issuesEmpty": "No se encontraron problemas en este libro.",
+    "issuesCapped": "mostrando las primeras filas de {{total}}",
+    "sev": {
+      "error": "Error",
+      "warn": "Advertencia",
+      "info": "Información"
+    }
   },
   "status": {
     "wordsPlaceholder": "— palabras",
     "words": "{{count}} palabras",
     "modelPlaceholder": "sin modelo",
     "notifications": "Notificaciones",
-    "cost24h": "Gasto, últimas 24h"
+    "cost24h": "Gasto, últimas 24h",
+    "proposalsPending": "{{count}} propuesta(s) pendiente(s) de aprobación"
   },
   "manuscript": {
     "title": "Manuscrito",
-    "newChapter": "Nuevo capítulo",
+    "openPlan": "Planifica este libro",
     "collapseAll": "Contraer todo",
     "reload": "Recargar",
     "arc": "ARC",
@@ -561,9 +1057,33 @@
     "loadingMore": "Cargando más…",
     "count": "{{n}} capítulos",
     "statArcs": "{{n}} arco",
+    "statActs": "{{n}} acto",
     "statChapters": "{{n}} cap",
     "statScenes": "{{n}} esc",
-    "window": "win {{a}}–{{b}} / {{n}}"
+    "window": "win {{a}}–{{b}} / {{n}}",
+    "chapterN": "Capítulo {{number}}",
+    "newChapter": "Nuevo capítulo",
+    "chapterShort": "Capítulo",
+    "startFirstChapter": "Empieza tu primer capítulo",
+    "creatingChapter": "Creando…",
+    "actShort": "Acto",
+    "actTag": "ACTO",
+    "newAct": "Nuevo acto",
+    "newActPlaceholder": "Nombre del nuevo acto…",
+    "renameAct": "Renombrar acto",
+    "renameActPlaceholder": "Nombre del acto…",
+    "trashAct": "Eliminar acto",
+    "moveActUp": "Mover acto arriba",
+    "moveActDown": "Mover acto abajo",
+    "untitledAct": "(acto sin título)",
+    "unassignedBucket": "Sin asignar",
+    "emptyActHint": "arrastra capítulos aquí",
+    "trashedActs": "Actos eliminados",
+    "restore": "Restaurar",
+    "restoreActHint": "Restaurar este acto (se restaurará vacío; vuelve a organizar los capítulos según sea necesario)",
+    "actTrashed": "El acto «{{name}}» ha sido eliminado; sus capítulos permanecen en el libro",
+    "partVsArc": "Las partes agrupan tu manuscrito. Los arcos son el plan.",
+    "undo": "Deshacer"
   },
   "intro": {
     "title": "Bienvenido a Writing Studio",
@@ -633,10 +1153,6 @@
           "title": "Pule la prosa",
           "body": "Una vez que una escena tiene palabras, refínala aquí: la revisión gramatical, las ayudas del glosario y el modo de enfoque residen en este editor."
         },
-        "planner": {
-          "title": "Planifica la estructura de la historia",
-          "body": "Organiza arcos, capítulos y puntos de giro antes o entre tus sesiones de escritura, para que Compose y el Editor tengan una estructura sobre la cual escribir."
-        },
         "grammar": {
           "title": "Detecta erratas mientras escribes",
           "body": "Activa la corrección gramatical y ortográfica en tiempo real sin salir de la página."
@@ -644,6 +1160,10 @@
         "heatmap": {
           "title": "Detecta inconsistencias",
           "body": "Resalta las líneas que podrían contradecir el canon establecido; vale la pena echarles un vistazo antes de continuar."
+        },
+        "planner": {
+          "title": "Planifica la estructura de la historia",
+          "body": "Organiza arcos, capítulos y puntos de giro antes o entre tus sesiones de escritura, para que Compose y el Editor tengan una estructura sobre la cual escribir."
         }
       },
       "worldbuilder": {
@@ -941,5 +1461,193 @@
       "label": "Ventana emergente",
       "desc": "Saca el editor a su propia ventana del sistema operativo para usarlo en un segundo monitor."
     }
+  },
+  "planHub": {
+    "undo": "Deshacer",
+    "empty": {
+      "title": "Aún no hay un plan para este libro",
+      "body": "El Plan Hub muestra la estructura: arcos, capítulos y escenas. Este libro aún no tiene ninguna. Nunca se generará automáticamente a partir de tu manuscrito: extráelo o crea uno nuevo.",
+      "extractCta": "Extraer el plan del manuscrito",
+      "extracting": "Extrayendo…",
+      "planCta": "Crear plan desde cero",
+      "extractNote": "La extracción lee las escenas ya analizadas de tus capítulos y convierte cada una en un nodo de la estructura. Agruparlas en arcos es un paso de IA independiente; solicítalo al agente. Hasta entonces, los capítulos extraídos permanecerán en la franja «Sin asignar».",
+      "nothingParsed": "Nada que extraer: este libro aún no tiene escenas analizadas. Primero analiza o importa los capítulos y luego extrae.",
+      "startArcCta": "Comienza con tu primer arco",
+      "startingArc": "Creando…",
+      "arcPlaceholder": "Pon nombre a tu primer arco…",
+      "untitledArc": "Arco sin título",
+      "extractNeedsChapters": "Extrayendo capítulos necesarios — este libro aún no tiene ninguno."
+    },
+    "node": {
+      "unplannedTray": "Capítulos sin planificar",
+      "unplannedUnknown": "Capítulos sin planificar: desconocido (no se pudo leer el manuscrito)",
+      "unplannedCapped": "…y {{n}} más (lista limitada)",
+      "unassignedStrip": "{{count}} capítulo sin arco — arrástralo a un carril",
+      "unassignedStrip_other": "{{count}} capítulos sin arco — arrástralos a un carril",
+      "untitled": "Sin título",
+      "unassignedFlow": "{{count}} capítulo no asignado a ninguna trama aún",
+      "unassignedFlow_other": "{{count}} capítulos no asignados a ninguna trama aún"
+    },
+    "loading": "Cargando el plan…",
+    "toolbar": {
+      "search": "Buscar un nodo…",
+      "fit": "Ajustar",
+      "problems": "Problemas",
+      "askAi": "Preguntar a la IA",
+      "askAiHint": "Selecciona un nodo para preguntar sobre él",
+      "viewNarrative": "Narrativa",
+      "viewTimeline": "Línea de tiempo",
+      "viewWorldmap": "Mapa del mundo",
+      "viewSoon": "Próximamente en una fase posterior"
+    },
+    "mode": {
+      "simple": "Simple",
+      "advanced": "Avanzado"
+    },
+    "simple": {
+      "guide": "Tu libro, capítulo a capítulo. Haz clic en uno para seguir escribiendo o comienza un nuevo capítulo abajo.",
+      "loading": "Cargando tus capítulos…",
+      "error": "No se pudieron cargar tus capítulos. Inténtalo de nuevo en un momento.",
+      "emptyLine": "Un libro en blanco. Empieza con una frase; la estructura puede venir después.",
+      "untitled": "Capítulo sin título",
+      "words": "{{n}}p",
+      "status": {
+        "done": "terminado",
+        "drafting": "escribiendo",
+        "empty": "sin empezar",
+        "aiIdea": "Idea de IA"
+      },
+      "more": "+ {{n}} más",
+      "loadingMore": "Cargando…",
+      "writeCta": "Escribir un nuevo capítulo",
+      "writing": "Creando…",
+      "doorNote": "Abre una página en blanco de inmediato.",
+      "goAdvanced": "Organizar en tramas →",
+      "rename": "Renombrar",
+      "delete": "Eliminar capítulo",
+      "aiDraft": "O deja que la IA redacte uno →",
+      "legend": {
+        "authored": "tú lo escribiste",
+        "ai": "Idea de IA"
+      }
+    },
+    "costHint": "Editar la estructura no consume créditos de modelo.",
+    "flow": {
+      "chNo": "cap {{n}}",
+      "chCount": "{{n}} cap",
+      "gap": "⚠ hueco",
+      "aiCollapsed": "IA · contraído",
+      "subArcTag": "sub-arco",
+      "untitledArc": "Arco sin título",
+      "untitledChapter": "Capítulo sin título",
+      "untitledScene": "Escena sin título",
+      "addChapter": "+ capítulo",
+      "addScene": "+ escena",
+      "addSubArc": "+ sub-arco",
+      "showScenes": "▸ escenas",
+      "moreChapters": "+ {{n}} más",
+      "empty": "Aún no hay tramas; añade un arco desde la barra de herramientas para empezar.",
+      "status": {
+        "empty": "vacío",
+        "outline": "esquema",
+        "drafting": "redactando",
+        "done": "completado"
+      },
+      "moveTo": "mover a la trama…",
+      "unassigned": "{{count}} capítulo sin trama",
+      "unassigned_other": "{{count}} capítulos sin trama"
+    },
+    "adv": {
+      "graph": "Gráfico",
+      "lane": "Carril",
+      "graphHint": "Gráfico: haz zoom, desplázate y arrastra para moverte (ideal para estructuras grandes)",
+      "laneHint": "Carril: tarjetas con ajuste de texto para facilitar la lectura (sin zoom)"
+    }
+  },
+  "structTpl": {
+    "subtitle": "estructuras de historia para descompone capítulos",
+    "builtin": "Integrada (solo lectura)",
+    "mine": "Mías",
+    "mineEmpty": "Aún no tienes ninguna; clona una integrada para empezar.",
+    "loading": "Cargando…",
+    "pickHint": "Selecciona una estructura para ver sus beats.",
+    "beats": "beats",
+    "builtinNote": "Esta es una estructura integrada. Clónala para personalizarla; tú editas tu copia y el original permanece intacto para todos.",
+    "cloneBuiltin": "Clonar en mis estructuras",
+    "duplicate": "Duplicar",
+    "cloning": "Duplicando…",
+    "beatLabel": "Etiqueta",
+    "beatPurpose": "¿Qué hace este beat…?",
+    "addBeat": "Añadir beat",
+    "save": "Guardar",
+    "saving": "Guardando…",
+    "showArchived": "archivados",
+    "archive": "Archivar",
+    "restore": "Restaurar",
+    "archivedNote": "Esta estructura está archivada. Restáurala para editarla o volver a usarla.",
+    "newStructure": "Nueva estructura",
+    "createStructure": "Crear estructura",
+    "creating": "Creando…",
+    "cancel": "Cancelar",
+    "unsaved": "Sin guardar",
+    "discard": "Descartar",
+    "discardTitle": "¿Descartar los cambios sin guardar?",
+    "discardBody": "Tus ediciones en esta estructura no se han guardado. Si sales ahora, se perderán.",
+    "archiveTitle": "¿Archivar esta estructura?",
+    "archiveBody": "«{{name}}» se moverá a archivados; podrás restaurarla más tarde.",
+    "nameLabel": "Nombre de la estructura",
+    "namePlaceholder": "Pon un nombre a tu estructura…",
+    "kindLabel": "Tipo (una etiqueta de texto libre)",
+    "beatKey": "clave",
+    "beatKeyLabel": "Clave del beat",
+    "beatLabelLabel": "Etiqueta del beat",
+    "moveUp": "Subir beat",
+    "moveDown": "Bajar beat",
+    "removeBeat": "Eliminar beat",
+    "decomposeHint": "Para usar esta estructura, abre un capítulo y ejecuta su paso de Descomposición; tus estructuras aparecerán allí en el selector.",
+    "err": {
+      "conflict": "Esta estructura ha cambiado en otro lugar; recarga y vuelve a aplicar tus ediciones.",
+      "duplicate": "Ya tienes una estructura con ese nombre.",
+      "blank": "Una estructura necesita un nombre.",
+      "unknown": "Algo ha salido mal; por favor, inténtalo de nuevo."
+    },
+    "toast": {
+      "saved": "Estructura guardada",
+      "archived": "Estructura archivada",
+      "restored": "Estructura restaurada",
+      "created": "Estructura creada"
+    },
+    "badge": {
+      "builtin": "integrada",
+      "mine": "mía",
+      "archived": "archivada"
+    }
+  },
+  "search": {
+    "modeLabel": "Modo de búsqueda",
+    "mode": {
+      "text": "Texto",
+      "semantic": "Semántico"
+    },
+    "rail": {
+      "placeholder": "Buscar en tu libro…",
+      "go": "Buscar",
+      "hint": "El modo Texto encuentra palabras exactas en tu prosa; el modo Semántico encuentra pasajes por su significado. Un resultado abre el editor en ese punto."
+    },
+    "semantic": {
+      "placeholder": "Buscar por significado en tu lore…",
+      "loadingProject": "Cargando…",
+      "noProject": "Este libro aún no tiene un proyecto de conocimiento; primero debes extraerlo o construirlo.",
+      "error": "La búsqueda semántica no está disponible en este momento.",
+      "hint": "Escribe al menos 3 caracteres para buscar por significado.",
+      "searching": "Buscando…",
+      "empty": "No se encontraron fragmentos coincidentes.",
+      "openChapter": "abrir →"
+    }
+  },
+  "setup": {
+    "firstStructureTitle": "Primer acto",
+    "everything": "O configura este libro por completo",
+    "everythingBusy": "Configurando…"
   }
 }

@@ -118,6 +118,7 @@
     "count": "{{count}} 个章节",
     "count_other": "{{count}} 个章节",
     "import": "导入",
+    "importPdf": "导入 PDF",
     "new": "新章节",
     "col": {
       "title": "标题",
@@ -150,8 +151,7 @@
       "title": "将章节移至回收站？",
       "description": "“{{title}}”将被移至回收站。",
       "confirm": "移至回收站"
-    },
-    "importPdf": "导入 PDF"
+    }
   },
   "glossary": {
     "header": "术语表与设定",
@@ -211,7 +211,8 @@
     "status": {
       "draft": "草稿",
       "active": "活跃",
-      "inactive": "非活跃"
+      "inactive": "非活跃",
+      "rejected": "已拒绝"
     },
     "bulk": {
       "select_row": "选择实体",
@@ -228,7 +229,8 @@
       "delete_confirm": {
         "title": "确定删除 {{count}} 个实体？",
         "description": "选中的 {{count}} 个实体将被移至回收站。"
-      }
+      },
+      "reject": "批量拒绝"
     },
     "clear_filters": "清除所有筛选",
     "deleted": "实体已删除",
@@ -252,7 +254,8 @@
       "title": "确定删除实体？",
       "description": "“{{title}}”将被移至回收站。",
       "confirm": "删除"
-    }
+    },
+    "scope_label_title": "范围 — 用于将此实体与具有相同名称的其他实体区分开来"
   },
   "sharing": {
     "title": "可见性",

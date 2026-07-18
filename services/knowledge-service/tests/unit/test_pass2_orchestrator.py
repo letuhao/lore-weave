@@ -554,7 +554,7 @@ async def test_p2_cache_hit_skips_all_4_llm_calls(
 
     repo = MagicMock()
     cached_entity = ExtractionLeaf(
-        id=uuid4(), book_id=book_id, scene_id=chapter_id,
+        id=uuid4(), book_id=book_id, chapter_id=chapter_id, scene_id=chapter_id,
         leaf_path="p", op="entity", task_id="t-e", status="completed",
         candidates_jsonb=[{
             "name": "CachedAlice", "kind": "person", "aliases": [],
@@ -567,7 +567,7 @@ async def test_p2_cache_hit_skips_all_4_llm_calls(
     )
     def _empty_cache_leaf(op: str) -> ExtractionLeaf:
         return ExtractionLeaf(
-            id=uuid4(), book_id=book_id, scene_id=chapter_id,
+            id=uuid4(), book_id=book_id, chapter_id=chapter_id, scene_id=chapter_id,
             leaf_path="p", op=op, task_id=f"t-{op}", status="completed",
             candidates_jsonb=[],
             retried_n=0, error_message=None,

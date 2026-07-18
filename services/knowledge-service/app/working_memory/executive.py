@@ -14,6 +14,12 @@ Safe-when-wrong BY CONSTRUCTION:
 
 The model is resolved per-user from provider-registry (no hardcoded model).
 docs/specs/2026-06-23-interview-roleplay.md.
+
+ACP A1 (RV-H1): the PURE parts — `merge_state` + `build_messages` + the executive
+prompt/constants — moved to the shared SDK `loreweave_agent_control.state_merge`.
+`run_executive` (the I/O: repo + LLM) stays here and imports them; behavior is
+byte-identical (RW-2 golden). `ex.merge_state` / `ex.build_messages` remain
+accessible via this module (re-exported) so existing callers/tests are unchanged.
 """
 from __future__ import annotations
 
@@ -23,79 +29,20 @@ from uuid import UUID
 
 from loreweave_llm import no_thinking_fields
 
+# ACP A1 — the pure state-merge + prompt-build now live in the SDK; re-exported here.
+from loreweave_agent_control.state_merge import (  # noqa: F401 — re-export for callers/tests
+    EXECUTIVE_MAX_TURN_CHARS,
+    EXECUTIVE_MAX_TURNS,
+    EXECUTIVE_SYSTEM_PROMPT,
+    build_messages,
+    merge_state,
+)
+
 logger = logging.getLogger(__name__)
 
 # The executive asks for JSON-only state; a reasoning model must NOT think out loud
 # (max_tokens=500 → hidden reasoning would eat the whole budget → empty → bad_json).
 _NO_THINKING = no_thinking_fields()
-
-# How many recent turns the prompt is bounded to (chat-service sends the window).
-EXECUTIVE_MAX_TURNS = 12
-
-EXECUTIVE_SYSTEM_PROMPT = (
-    "You are the silent director of a roleplay/interview session. You are given the "
-    "session CHARTER (a FIXED goal, the planned phases, and a checklist) and the recent "
-    "turns. Report ONLY the current progress as a JSON object — you do NOT change the "
-    "goal. Output exactly:\n"
-    '{"phase": <one of the charter phases>, '
-    '"covered": [<checklist items demonstrably covered so far, by their exact charter '
-    'wording>], '
-    '"redirect_hint": <a short in-character nudge to steer back to the goal IF the '
-    'conversation has drifted, else null>}\n'
-    "Write any prose (redirect_hint) in the charter's language. Output JSON only, no prose."
-)
-
-
-# Per-turn content cap — bound the prompt size so a single pasted wall of text
-# can't blow the model context / cost (EXECUTIVE_MAX_TURNS bounds the count).
-EXECUTIVE_MAX_TURN_CHARS = 2000
-
-
-def build_messages(charter: dict, state: dict, recent_turns: list[dict]) -> list[dict]:
-    turns = [
-        {
-            "role": t.get("role", ""),
-            "content": (t.get("content", "") or "")[:EXECUTIVE_MAX_TURN_CHARS],
-        }
-        for t in (recent_turns or [])[-EXECUTIVE_MAX_TURNS:]
-    ]
-    ctx = {"charter": charter, "current_state": state, "recent_turns": turns}
-    user = (
-        "Session context:\n"
-        + json.dumps(ctx, ensure_ascii=False)
-        + "\n\nReturn the updated progress JSON."
-    )
-    return [
-        {"role": "system", "content": EXECUTIVE_SYSTEM_PROMPT},
-        {"role": "user", "content": user},
-    ]
-
-
-def merge_state(charter: dict, old_state: dict, llm_state: dict) -> dict:
-    """Merge the LLM's reported progress into a new state — safe-when-wrong.
-
-    `covered` is monotonic (union, dedup-preserving order); `phase` must be a
-    charter phase or the prior phase is kept; non-string fields are dropped.
-    """
-    old_cov = old_state.get("covered") or []
-    new_cov = [c for c in (llm_state.get("covered") or []) if isinstance(c, str)]
-    covered = list(dict.fromkeys([*old_cov, *new_cov]))  # union, monotonic, ordered
-
-    phases = charter.get("phases") or []
-    phase = llm_state.get("phase")
-    if phase not in phases:
-        phase = old_state.get("phase", "")
-
-    def _str_or_none(v):
-        return v if isinstance(v, str) and v.strip() else None
-
-    return {
-        "phase": phase,
-        "covered": covered,
-        "elapsed_min": old_state.get("elapsed_min"),
-        "drift_note": _str_or_none(llm_state.get("drift_note")),
-        "redirect_hint": _str_or_none(llm_state.get("redirect_hint")),
-    }
 
 
 def _extract_content(job_result: dict | None) -> str:
@@ -188,6 +135,9 @@ async def run_executive(
         logger.warning("executive: bad JSON session=%s err=%s body=%r", session_id, exc, content[:200])
         return "bad_json"
 
-    new_state = merge_state(block["charter"], block["state"], llm_state)
-    await repo.update_state(session_id, new_state)
+    # RV-M6: the read-modify-write is serialized under a per-session advisory lock inside the
+    # repo, which RE-READS the current state (not the possibly-stale block["state"] we read
+    # before the slow LLM call) and merges under the lock — so two overlapping ticks can't
+    # last-writer-clobber. RV-H4: owner-scoped (same user_id we read the block under).
+    await repo.apply_state_update(session_id, user_id, block["charter"], llm_state, merge_state)
     return "updated"

@@ -21,6 +21,8 @@ from mcp.server.fastmcp import Context as MCPContext
 from mcp.server.fastmcp import FastMCP
 from mcp.server.transport_security import TransportSecuritySettings
 
+from .compact_content import patch_convert_result, patch_tool_run_size_gate
+
 # Soft dependency on the LLM SDK (P4/Wave-C slice D). The kit lives in services
 # that DON'T submit LLM jobs (e.g. a pure read facade) and so may not depend on
 # loreweave_llm — skip the carrier hook there. Where it IS installed, every tool
@@ -77,7 +79,14 @@ def make_stateless_fastmcp(name: str) -> FastMCP:
       default localhost-only Host allowlist would 421 a cross-process call with a
       ``Host: <svc>:<port>`` header. The trust boundary here is the network +
       internal token, not the Host header.
+
+    Also applies `patch_convert_result()` (external MCP discoverability audit
+    #9 — payload duplication) once per process: every service that builds its
+    FastMCP server through this one shared chokepoint gets the fix for free,
+    with no separate wiring of its own.
     """
+    patch_convert_result()
+    patch_tool_run_size_gate()
     return FastMCP(
         name,
         stateless_http=True,

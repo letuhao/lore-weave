@@ -31,6 +31,10 @@ vi.mock('../../hooks/useEntityFacts', () => ({
     isLoading: false,
     error: null,
   }),
+  // S-05/S-05b — inert author/invalidate/revalidate mutations (unused here).
+  useCreateEntityFact: () => ({ create: vi.fn(), isPending: false }),
+  useInvalidateFact: () => ({ invalidate: vi.fn(), isPending: false }),
+  useRevalidateFact: () => ({ revalidate: vi.fn(), isPending: false }),
 }));
 
 // #11 — the anchored-glossary description hook is stubbed so this suite stays a
@@ -145,6 +149,20 @@ describe('EntityDetailPanel — C9 unlock CTA', () => {
       { wrapper: Wrapper },
     );
     expect(screen.queryByTestId('entity-detail-description')).not.toBeInTheDocument();
+  });
+
+  it('renders the anchored glossary scope_label when present (D-GLOSSARY-ENTITY-SCOPE)', () => {
+    useAnchoredGlossaryEntityMock.mockReturnValue({
+      shortDescription: null,
+      scopeLabel: 'World A',
+      isLoading: false,
+    });
+    setDetail({ glossary_entity_id: 'g-1' });
+    render(
+      <EntityDetailPanel open={true} onOpenChange={vi.fn()} entityId="ent-1" bookId="b-1" />,
+      { wrapper: Wrapper },
+    );
+    expect(screen.getByText('World A')).toBeInTheDocument();
   });
 
   it('hides the unlock section when user_edited=false', () => {

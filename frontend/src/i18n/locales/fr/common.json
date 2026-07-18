@@ -1,8 +1,10 @@
 {
+  "reconnecting": "Reconnexion…",
   "nav": {
     "startNew": "Commencer quelque chose de nouveau",
     "workspace": "Espace de travail",
     "chat": "Chat",
+    "assistant": "Assistant",
     "roleplay": "Roleplay",
     "knowledge": "Connaissances",
     "worlds": "Mondes",
@@ -25,7 +27,8 @@
     "home": "Accueil",
     "account": "Compte",
     "signin": "Se connecter",
-    "back_to_book": "Retour au livre"
+    "back_to_book": "Retour au livre",
+    "more": "Plus"
   },
   "logout_confirm": {
     "title": "Déconnexion avec des modifications non enregistrées ?",

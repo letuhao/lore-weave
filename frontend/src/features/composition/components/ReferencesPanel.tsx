@@ -7,7 +7,11 @@ import { useTranslation } from 'react-i18next';
 import type { UserModel } from '../../ai-models/api';
 import { useReferences } from '../hooks/useReferences';
 import { useEffectiveModel } from '@/features/chat-ai-settings/context/ChatAiSettingsContext';
-import type { ReferenceHit } from '../types';
+import { AddModelCta } from '@/components/shared/AddModelCta';
+import { ConfirmDialog } from '@/components/shared/ConfirmDialog';
+import { cn } from '@/lib/utils';
+import { TOUCH_TARGET_MOBILE_ONLY_CLASS, TOUCH_TARGET_SQUARE_MOBILE_ONLY_CLASS } from '@/lib/touchTarget';
+import type { ReferenceHit, ReferenceSource } from '../types';
 
 function embeddingModels(models: UserModel[]): UserModel[] {
   return models.filter((m) => m.is_active && (m.capability_flags?.embed || m.capability_flags?.embedding));
@@ -19,6 +23,10 @@ export function ReferencesPanel({ projectId, sceneId, token, models }: {
   const { t } = useTranslation('composition');
   const [query, setQuery] = useState('');
   const [draft, setDraft] = useState({ title: '', author: '', source_url: '', content: '', model_ref: '' });
+  // H-4a — reference delete is a HARD delete with no restore → confirm before firing.
+  const [pendingDelete, setPendingDelete] = useState<ReferenceSource | null>(null);
+  // H-2b — client-side library filter (the shelf is small; no backend search needed).
+  const [librarySearch, setLibrarySearch] = useState('');
   const refs = useReferences(projectId, sceneId, token, query);
   const embedModels = embeddingModels(models);
   // Inherit the shared cascade embedding model (spec §8) before list[0].
@@ -26,6 +34,10 @@ export function ReferencesPanel({ projectId, sceneId, token, models }: {
 
   const needsModel = !refs.embedModelSet;
   const canAdd = draft.content.trim().length > 0 && (!needsModel || !!draft.model_ref || !!inheritedEmbed || embedModels.length > 0);
+  const _q = librarySearch.trim().toLowerCase();
+  const filteredLibrary = _q
+    ? refs.references.filter((r) => `${r.title} ${r.author} ${r.content}`.toLowerCase().includes(_q))
+    : refs.references;
 
   const submit = () => {
     if (!draft.content.trim()) return;
@@ -60,6 +72,12 @@ export function ReferencesPanel({ projectId, sceneId, token, models }: {
           className="rounded border px-2 py-1 text-xs dark:bg-neutral-900"
           value={draft.content} onChange={(e) => setDraft({ ...draft, content: e.target.value })}
         />
+        {/* Audit fix — the URL was captured at edit-time only; the add form dropped it (sent ''). */}
+        <input
+          data-testid="references-add-url" placeholder={t('referencesPanel.sourceUrl', { defaultValue: 'Source URL (optional)' })}
+          className="rounded border px-2 py-1 text-xs dark:bg-neutral-900"
+          value={draft.source_url} onChange={(e) => setDraft({ ...draft, source_url: e.target.value })}
+        />
         {needsModel && (
           embedModels.length > 0 ? (
             <select
@@ -73,14 +91,16 @@ export function ReferencesPanel({ projectId, sceneId, token, models }: {
               ))}
             </select>
           ) : (
-            <div data-testid="references-no-embed-model" className="rounded bg-amber-50 p-1.5 text-xs text-amber-800 dark:bg-amber-950 dark:text-amber-300">
-              {t('referencesPanel.noEmbedModel', { defaultValue: 'Add an embedding model (e.g. bge-m3) in AI settings to enable reference retrieval.' })}
+            <div data-testid="references-no-embed-model" className="flex flex-col items-start gap-1 rounded bg-amber-50 p-1.5 text-xs text-amber-800 dark:bg-amber-950 dark:text-amber-300">
+              <span>{t('referencesPanel.noEmbedModel', { defaultValue: 'Add an embedding model (e.g. bge-m3) to enable reference retrieval.' })}</span>
+              {/* Audit fix H-3a — an actionable CTA (opens AI settings in-dock) instead of a text dead-end. */}
+              <AddModelCta capability="embedding" variant="link" label={t('referencesPanel.addEmbedModel', { defaultValue: 'Add an embedding model' })} />
             </div>
           )
         )}
         <button
           type="button" data-testid="references-add-submit" disabled={!canAdd || refs.add.isPending}
-          className="self-end rounded bg-primary px-3 py-1 text-xs text-primary-foreground disabled:opacity-40"
+          className={cn('self-end rounded bg-primary px-3 py-1 text-xs text-primary-foreground disabled:opacity-40', TOUCH_TARGET_MOBILE_ONLY_CLASS)}
           onClick={submit}
         >
           {refs.add.isPending ? t('referencesPanel.adding', { defaultValue: 'Adding…' }) : t('referencesPanel.add', { defaultValue: 'Add reference' })}
@@ -118,21 +138,38 @@ export function ReferencesPanel({ projectId, sceneId, token, models }: {
 
       {/* library */}
       <div data-testid="references-library">
-        <div className="px-1 py-0.5 text-xs font-medium uppercase tracking-wide text-neutral-500">
-          {t('referencesPanel.library', { defaultValue: 'Library' })} ({refs.references.length})
+        <div className="flex items-center gap-1.5 px-1 py-0.5">
+          <span className="text-xs font-medium uppercase tracking-wide text-neutral-500">
+            {t('referencesPanel.library', { defaultValue: 'Library' })} ({filteredLibrary.length}{librarySearch.trim() ? `/${refs.references.length}` : ''})
+          </span>
+          {/* H-2b — filter the shelf (title/author/content) so a large library isn't an unfilterable scroll. */}
+          {refs.references.length > 0 && (
+            <input
+              data-testid="references-library-search"
+              placeholder={t('referencesPanel.filter', { defaultValue: 'Filter…' })}
+              className="ml-auto w-28 rounded border px-2 py-0.5 text-xs dark:bg-neutral-900"
+              value={librarySearch}
+              onChange={(e) => setLibrarySearch(e.target.value)}
+            />
+          )}
         </div>
         <ul className="flex flex-col gap-0.5">
-          {refs.references.map((r) => (
-            <li key={r.id} data-testid={`references-lib-${r.id}`} className="flex items-center justify-between gap-2 rounded border border-neutral-200 px-2 py-1 text-xs dark:border-neutral-700">
-              <span className="truncate" title={r.content}>{r.title || r.content.slice(0, 60)}{r.author ? <span className="text-neutral-400"> — {r.author}</span> : null}</span>
-              <button
-                type="button" data-testid={`references-delete-${r.id}`}
-                className="shrink-0 text-neutral-400 hover:text-destructive"
-                title={t('referencesPanel.delete', { defaultValue: 'Delete' })}
-                onClick={() => refs.remove.mutate(r.id)}
-              >✕</button>
-            </li>
+          {filteredLibrary.map((r) => (
+            <LibraryRow
+              key={r.id}
+              r={r}
+              onSaveMetadata={(patch) => refs.updateMetadata.mutate({ id: r.id, patch })}
+              onSaveContent={(content) => refs.updateContent.mutate({ id: r.id, content })}
+              onDelete={() => setPendingDelete(r)}
+              savingMetaId={refs.updateMetadata.isPending ? (refs.updateMetadata.variables as { id: string } | undefined)?.id : undefined}
+              savingContentId={refs.updateContent.isPending ? (refs.updateContent.variables as { id: string } | undefined)?.id : undefined}
+            />
           ))}
+          {librarySearch.trim() && filteredLibrary.length === 0 && refs.references.length > 0 && (
+            <li data-testid="references-no-match" className="px-1 py-1 text-xs text-neutral-500">
+              {t('referencesPanel.noMatch', { defaultValue: 'No references match your filter.' })}
+            </li>
+          )}
           {!refs.references.length && (
             <li data-testid="references-empty" className="px-1 py-1 text-xs text-neutral-500">
               {t('referencesPanel.empty', { defaultValue: 'No references yet — add influences above.' })}
@@ -140,7 +177,123 @@ export function ReferencesPanel({ projectId, sceneId, token, models }: {
           )}
         </ul>
       </div>
+
+      {/* H-4a — confirm the hard delete (no restore). */}
+      <ConfirmDialog
+        open={pendingDelete !== null}
+        onOpenChange={(o) => { if (!o) setPendingDelete(null); }}
+        variant="destructive"
+        title={t('referencesPanel.deleteTitle', { defaultValue: 'Delete this reference?' })}
+        description={t('referencesPanel.deleteBody', { defaultValue: 'This removes it from the shelf. It can’t be undone.' })}
+        confirmLabel={t('referencesPanel.delete', { defaultValue: 'Delete' })}
+        onConfirm={() => { if (pendingDelete) refs.remove.mutate(pendingDelete.id); setPendingDelete(null); }}
+      />
     </div>
+  );
+}
+
+// S-03 — a library row is editable: inline title/author/source_url (a cheap metadata
+// PATCH — feels instant) and a separate "Edit content" (a PUT that RE-EMBEDS — signalled
+// with a "re-embedding…" state so the cost is visible). Mounted with key={r.id} so a
+// selection change remounts with fresh drafts (no useEffect-to-sync-props).
+function LibraryRow({ r, onSaveMetadata, onSaveContent, onDelete, savingMetaId, savingContentId }: {
+  r: import('../types').ReferenceSource;
+  onSaveMetadata: (patch: { title: string; author: string; source_url: string }) => void;
+  onSaveContent: (content: string) => void;
+  onDelete: () => void;
+  savingMetaId: string | undefined;
+  savingContentId: string | undefined;
+}) {
+  const { t } = useTranslation('composition');
+  const [editing, setEditing] = useState(false);
+  const [meta, setMeta] = useState({ title: r.title, author: r.author, source_url: r.source_url });
+  const [content, setContent] = useState(r.content);
+  const metaDirty = meta.title !== r.title || meta.author !== r.author || meta.source_url !== r.source_url;
+  const contentDirty = content.trim().length > 0 && content !== r.content;
+  const savingMeta = savingMetaId === r.id;
+  const savingContent = savingContentId === r.id;
+
+  if (!editing) {
+    return (
+      <li data-testid={`references-lib-${r.id}`} className="flex items-center justify-between gap-2 rounded border border-neutral-200 px-2 py-1 text-xs dark:border-neutral-700">
+        {/* Audit fix — `truncate` needs `min-w-0 flex-1` in a flex row (mirrors HitRow), else a
+            long title overflows and shoves the action buttons off the row. */}
+        <span className="min-w-0 flex-1 truncate" title={r.content}>{r.title || r.content.slice(0, 60)}{r.author ? <span className="text-neutral-400"> — {r.author}</span> : null}</span>
+        <div className="flex shrink-0 items-center gap-1.5">
+          {/* H-5c — aria-label (title alone is invisible to AT + touch) + higher resting contrast. */}
+          <button
+            type="button" data-testid={`references-edit-${r.id}`}
+            className={cn('inline-flex items-center justify-center rounded px-1 text-neutral-500 hover:text-foreground', TOUCH_TARGET_SQUARE_MOBILE_ONLY_CLASS)}
+            title={t('referencesPanel.edit', { defaultValue: 'Edit' })}
+            aria-label={t('referencesPanel.edit', { defaultValue: 'Edit' })}
+            onClick={() => setEditing(true)}
+          >✎</button>
+          <button
+            type="button" data-testid={`references-delete-${r.id}`}
+            className={cn('inline-flex items-center justify-center rounded px-1 text-neutral-500 hover:text-destructive', TOUCH_TARGET_SQUARE_MOBILE_ONLY_CLASS)}
+            title={t('referencesPanel.delete', { defaultValue: 'Delete' })}
+            aria-label={t('referencesPanel.delete', { defaultValue: 'Delete' })}
+            onClick={onDelete}
+          >✕</button>
+        </div>
+      </li>
+    );
+  }
+
+  return (
+    <li data-testid={`references-lib-${r.id}`} className="flex flex-col gap-1.5 rounded border border-primary/40 px-2 py-2 text-xs dark:border-primary/40">
+      <div className="grid grid-cols-2 gap-1.5">
+        <input
+          data-testid={`references-edit-title-${r.id}`} placeholder={t('referencesPanel.title', { defaultValue: 'Title' })}
+          className="rounded border px-2 py-1 dark:bg-neutral-900"
+          value={meta.title} onChange={(e) => setMeta({ ...meta, title: e.target.value })}
+        />
+        <input
+          data-testid={`references-edit-author-${r.id}`} placeholder={t('referencesPanel.author', { defaultValue: 'Author' })}
+          className="rounded border px-2 py-1 dark:bg-neutral-900"
+          value={meta.author} onChange={(e) => setMeta({ ...meta, author: e.target.value })}
+        />
+      </div>
+      <input
+        data-testid={`references-edit-url-${r.id}`} placeholder={t('referencesPanel.sourceUrl', { defaultValue: 'Source URL' })}
+        className="rounded border px-2 py-1 dark:bg-neutral-900"
+        value={meta.source_url} onChange={(e) => setMeta({ ...meta, source_url: e.target.value })}
+      />
+      {metaDirty && (
+        <button
+          type="button" data-testid={`references-save-metadata-${r.id}`} disabled={savingMeta}
+          className="self-start rounded bg-primary px-2 py-0.5 text-primary-foreground disabled:opacity-40"
+          onClick={() => onSaveMetadata({ title: meta.title.trim(), author: meta.author.trim(), source_url: meta.source_url.trim() })}
+        >
+          {savingMeta ? t('referencesPanel.saving', { defaultValue: 'Saving…' }) : t('referencesPanel.saveMetadata', { defaultValue: 'Save details' })}
+        </button>
+      )}
+      <label className="mt-1 text-[10px] font-semibold uppercase tracking-wide text-neutral-500">
+        {t('referencesPanel.content', { defaultValue: 'Content' })}
+      </label>
+      <textarea
+        data-testid={`references-edit-content-${r.id}`} rows={3}
+        className="rounded border px-2 py-1 dark:bg-neutral-900"
+        value={content} onChange={(e) => setContent(e.target.value)}
+      />
+      {contentDirty && (
+        <button
+          type="button" data-testid={`references-save-content-${r.id}`} disabled={savingContent}
+          className="self-start rounded border border-primary px-2 py-0.5 text-primary disabled:opacity-40"
+          title={t('referencesPanel.contentRecomputes', { defaultValue: 'Saving content re-computes this reference’s embedding.' })}
+          onClick={() => onSaveContent(content.trim())}
+        >
+          {savingContent ? t('referencesPanel.reembedding', { defaultValue: 'Re-embedding…' }) : t('referencesPanel.saveContent', { defaultValue: 'Save content (re-embeds)' })}
+        </button>
+      )}
+      <button
+        type="button" data-testid={`references-edit-done-${r.id}`}
+        className="self-end text-neutral-400 hover:text-foreground"
+        onClick={() => setEditing(false)}
+      >
+        {t('referencesPanel.done', { defaultValue: 'Done' })}
+      </button>
+    </li>
   );
 }
 
@@ -160,14 +313,16 @@ function HitRow({ hit, onPin, scorePct }: {
       <div className="flex shrink-0 items-center gap-1">
         <button
           type="button" data-testid={`references-pin-${hit.id}`} aria-pressed={hit.pinned}
-          className={hit.pinned ? 'text-primary' : 'text-neutral-400 hover:text-neutral-600'}
+          className={cn('inline-flex items-center justify-center rounded px-1', hit.pinned ? 'text-primary' : 'text-neutral-500 hover:text-neutral-700', TOUCH_TARGET_SQUARE_MOBILE_ONLY_CLASS)}
           title={hit.pinned ? t('groundingPins.unpin', { defaultValue: 'Unpin' }) : t('groundingPins.pin', { defaultValue: 'Pin' })}
+          aria-label={hit.pinned ? t('groundingPins.unpin', { defaultValue: 'Unpin' }) : t('groundingPins.pin', { defaultValue: 'Pin' })}
           onClick={() => onPin(hit, hit.pinned ? 'none' : 'pin')}
         >📌</button>
         <button
           type="button" data-testid={`references-exclude-${hit.id}`} aria-pressed={hit.excluded}
-          className={hit.excluded ? 'text-destructive' : 'text-neutral-400 hover:text-neutral-600'}
+          className={cn('inline-flex items-center justify-center rounded px-1', hit.excluded ? 'text-destructive' : 'text-neutral-500 hover:text-neutral-700', TOUCH_TARGET_SQUARE_MOBILE_ONLY_CLASS)}
           title={hit.excluded ? t('groundingPins.restore', { defaultValue: 'Restore' }) : t('groundingPins.exclude', { defaultValue: 'Exclude' })}
+          aria-label={hit.excluded ? t('groundingPins.restore', { defaultValue: 'Restore' }) : t('groundingPins.exclude', { defaultValue: 'Exclude' })}
           onClick={() => onPin(hit, hit.excluded ? 'none' : 'exclude')}
         >🚫</button>
       </div>

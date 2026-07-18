@@ -9,7 +9,8 @@
       "translation": "Çeviri",
       "reading": "Okuma",
       "language": "Dil",
-      "mcp": "MCP Erişimi"
+      "mcp": "MCP Erişimi",
+      "workflow-bindings": "İş Akışı Otomatik Kurulumu"
     }
   },
   "mcp": {
@@ -492,6 +493,18 @@
       "testing": "Test ediliyor...",
       "reverify": "Yeniden Doğrula",
       "verify": "Doğrula",
+      "pricing_title": "Fiyatlandırma (1M token başına USD)",
+      "pricing_input": "Giriş",
+      "pricing_output": "Çıkış",
+      "pricing_free_local": "Ücretsiz — kendi donanımınızda çalışır",
+      "pricing_hint": "Oluşturulurken önceden doldurulur. Sağlayıcının yayınlanan fiyatı değiştiyse düzenleyin veya güncel bir tahmin için OpenRouter'ı kontrol edin.",
+      "pricing_check": "OpenRouter'ı Kontrol Et",
+      "pricing_checking": "Kontrol ediliyor...",
+      "pricing_suggestion_found": "OpenRouter ({{source}}): ${{input}} giriş / ${{output}} çıkış",
+      "pricing_apply": "Uygula",
+      "pricing_not_found": "OpenRouter üzerinde eşleşen bir model bulunamadı — bu kaynaktan fiyat bilgisi alınamıyor.",
+      "pricing_check_failed": "OpenRouter fiyatlandırması kontrol edilemedi",
+      "pricing_negative_error": "Fiyatlandırma sıfır veya daha büyük olmalıdır",
       "delete_model": "Modeli Sil",
       "confirm_delete": "Silmeyi Onayla",
       "deleting": "Siliniyor...",

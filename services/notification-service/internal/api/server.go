@@ -20,6 +20,7 @@ import (
 	"github.com/loreweave/notification-service/internal/category"
 	"github.com/loreweave/notification-service/internal/config"
 	"github.com/loreweave/notification-service/internal/prefs"
+	"github.com/loreweave/notification-service/internal/push"
 	"github.com/loreweave/notification-service/internal/redact"
 )
 
@@ -27,10 +28,23 @@ type Server struct {
 	pool   *pgxpool.Pool
 	cfg    *config.Config
 	secret []byte
+	vapid  push.VAPIDConfig
+	sender *push.Sender
 }
 
 func NewServer(pool *pgxpool.Pool, cfg *config.Config) *Server {
-	return &Server{pool: pool, cfg: cfg, secret: []byte(cfg.JWTSecret)}
+	vapid := push.VAPIDConfig{
+		PublicKey:  cfg.VAPIDPublicKey,
+		PrivateKey: cfg.VAPIDPrivateKey,
+		Subscriber: cfg.VAPIDSubscriber,
+	}
+	return &Server{
+		pool:   pool,
+		cfg:    cfg,
+		secret: []byte(cfg.JWTSecret),
+		vapid:  vapid,
+		sender: push.NewSender(pool, vapid, nil),
+	}
 }
 
 func (s *Server) Router() http.Handler {
@@ -82,6 +96,15 @@ func (s *Server) Router() http.Handler {
 		// P2·C (opt-out) — per-user category delivery preferences.
 		r.Get("/preferences", s.getPreferences)
 		r.Put("/preferences", s.setPreference)
+		// M5 (D-MOB-4) — Web Push: device registration + per-topic push toggle + the VAPID public
+		// key. Owner-scoped from the JWT `sub` (§8-H4) except the VAPID key, which is public by design
+		// (its handler skips requireUserID). All under /v1/notifications so they ride the gateway's
+		// existing notification proxy — no new gateway route.
+		r.Post("/push-subscriptions", s.registerPushSubscription)
+		r.Delete("/push-subscriptions", s.deletePushSubscription)
+		r.Get("/push-preferences", s.getPushPreferences)
+		r.Put("/push-preferences", s.setPushPreference)
+		r.Get("/push/vapid-public-key", s.getVAPIDPublicKey)
 	})
 
 	return r
@@ -236,6 +259,10 @@ func (s *Server) createNotification(w http.ResponseWriter, r *http.Request) {
 		userID, category, body.Title, redact.Body(body.Body), meta,
 		nullableText(body.MessageKey), nullableJSONB(body.MessageParams), nullableText(body.DedupKey),
 	).Scan(&id, &createdAt)
+	// B4 (§8-B4) exactly-once push: a FRESH insert returns a row (err==nil); a dedup collision
+	// returns pgx.ErrNoRows (we re-read the existing row, but it was ALREADY pushed on its first
+	// insert — so we must NOT push again). Track it before the re-read overwrites `err`.
+	freshInsert := err == nil
 	if err == pgx.ErrNoRows && strings.TrimSpace(body.DedupKey) != "" {
 		if e := s.pool.QueryRow(r.Context(),
 			`SELECT id, created_at FROM notifications WHERE user_id=$1 AND dedup_key=$2`,
@@ -251,6 +278,13 @@ func (s *Server) createNotification(w http.ResponseWriter, r *http.Request) {
 		"id":         id,
 		"created_at": createdAt.UTC().Format(time.RFC3339Nano),
 	})
+
+	// Fire a content-free push out-of-band, EXACTLY ONCE per stored row (fresh insert only). The
+	// gate inside pushForNotification is fail-closed + respects the per-topic opt-out; a push
+	// failure never affects the already-committed in-app row.
+	if freshInsert {
+		go s.pushForNotification(userID, category, body.MessageKey, "/activity", id.String())
+	}
 }
 
 func (s *Server) createNotificationBatch(w http.ResponseWriter, r *http.Request) {
@@ -326,6 +360,46 @@ func (s *Server) createNotificationBatch(w http.ResponseWriter, r *http.Request)
 
 // ── Public Handlers ───────────────────────────────────────────────────────
 
+// listNotificationsQuery builds the SELECT + args for the notifications feed. Pure (no DB) so
+// the keyset/offset/ordering logic is unit-testable. When both `before` and `beforeID` are set it
+// engages KEYSET paging — pages by the stable (created_at, id) tuple and omits OFFSET so a row
+// arriving between fetches can't shift the page boundary (MB3); otherwise it uses legacy OFFSET.
+// Ordering is always created_at DESC, id DESC (the id tiebreaker makes the keyset total-ordered).
+// The third return value reports whether keyset was engaged.
+func listNotificationsQuery(userID uuid.UUID, category string, unreadOnly bool, before *time.Time, beforeID *uuid.UUID, limit, offset int) (string, []any, bool) {
+	keyset := before != nil && beforeID != nil
+
+	query := `SELECT id, category, title, body, metadata, message_key, message_params, read_at, created_at
+		FROM notifications WHERE user_id = $1`
+	args := []any{userID}
+	argIdx := 2
+
+	if category != "" {
+		query += fmt.Sprintf(` AND category = $%d`, argIdx)
+		args = append(args, category)
+		argIdx++
+	}
+	if unreadOnly {
+		query += ` AND read_at IS NULL`
+	}
+	if keyset {
+		// Row-value compare against the DESC ordering: the next (older) page is everything
+		// strictly before the cursor tuple.
+		query += fmt.Sprintf(` AND (created_at, id) < ($%d, $%d)`, argIdx, argIdx+1)
+		args = append(args, *before, *beforeID)
+		argIdx += 2
+	}
+
+	query += fmt.Sprintf(` ORDER BY created_at DESC, id DESC LIMIT $%d`, argIdx)
+	args = append(args, limit)
+	argIdx++
+	if !keyset {
+		query += fmt.Sprintf(` OFFSET $%d`, argIdx)
+		args = append(args, offset)
+	}
+	return query, args, keyset
+}
+
 func (s *Server) listNotifications(w http.ResponseWriter, r *http.Request) {
 	userID, ok := s.requireUserID(r)
 	if !ok {
@@ -341,22 +415,23 @@ func (s *Server) listNotifications(w http.ResponseWriter, r *http.Request) {
 	category := r.URL.Query().Get("category")
 	unreadOnly := r.URL.Query().Get("unread") == "true"
 
-	query := `SELECT id, category, title, body, metadata, message_key, message_params, read_at, created_at
-		FROM notifications WHERE user_id = $1`
-	args := []any{userID}
-	argIdx := 2
-
-	if category != "" {
-		query += fmt.Sprintf(` AND category = $%d`, argIdx)
-		args = append(args, category)
-		argIdx++
+	// Keyset cursor (the mobile Activity feed — MB3): `before`/`before_id` page by the stable
+	// (created_at, id) tuple so a new notification arriving between fetches never duplicates or
+	// drops a row at a page boundary (the flaw of OFFSET paging). Both must be present + valid to
+	// engage keyset; otherwise we keep the legacy OFFSET path so existing consumers are unchanged.
+	var beforeTime *time.Time
+	var beforeID *uuid.UUID
+	if bs := r.URL.Query().Get("before"); bs != "" {
+		if t, err := time.Parse(time.RFC3339Nano, bs); err == nil {
+			beforeTime = &t
+		}
 	}
-	if unreadOnly {
-		query += ` AND read_at IS NULL`
+	if bid := r.URL.Query().Get("before_id"); bid != "" {
+		if id, err := uuid.Parse(bid); err == nil {
+			beforeID = &id
+		}
 	}
-
-	query += fmt.Sprintf(` ORDER BY created_at DESC LIMIT $%d OFFSET $%d`, argIdx, argIdx+1)
-	args = append(args, limit, offset)
+	query, args, _ := listNotificationsQuery(userID, category, unreadOnly, beforeTime, beforeID, limit, offset)
 
 	rows, err := s.pool.Query(r.Context(), query, args...)
 	if err != nil {
@@ -366,7 +441,14 @@ func (s *Server) listNotifications(w http.ResponseWriter, r *http.Request) {
 	defer rows.Close()
 
 	items := make([]map[string]any, 0, limit)
+	var lastCreatedAt time.Time
+	var lastID uuid.UUID
+	// rowCount counts rows the DB RETURNED (not just successfully-scanned ones) so a rare per-row
+	// scan error can't shrink items below `limit` and falsely null the cursor — which would
+	// silently truncate the feed and lose every older notification (cold-review M2).
+	rowCount := 0
 	for rows.Next() {
+		rowCount++
 		var id uuid.UUID
 		var cat, title string
 		var body *string
@@ -378,6 +460,8 @@ func (s *Server) listNotifications(w http.ResponseWriter, r *http.Request) {
 		if err := rows.Scan(&id, &cat, &title, &body, &metadata, &messageKey, &messageParams, &readAt, &createdAt); err != nil {
 			continue
 		}
+		lastCreatedAt = createdAt
+		lastID = id
 		items = append(items, serializeNotification(id, cat, title, body, metadata, messageKey, messageParams, readAt, createdAt))
 	}
 	if err := rows.Err(); err != nil {
@@ -400,7 +484,18 @@ func (s *Server) listNotifications(w http.ResponseWriter, r *http.Request) {
 	var total int64
 	_ = s.pool.QueryRow(r.Context(), countQuery, countArgs...).Scan(&total)
 
-	writeJSON(w, http.StatusOK, map[string]any{"items": items, "total": total})
+	// next_cursor for keyset paging: the tuple of the last (oldest) row, emitted only when the DB
+	// returned a FULL page (rowCount == limit → there may be more) AND we have an anchor row to
+	// point at. A short page means end-of-feed → null cursor → the client stops paging.
+	var nextCursor any
+	if rowCount == limit && limit > 0 && len(items) > 0 {
+		nextCursor = map[string]any{
+			"before":    lastCreatedAt.Format(time.RFC3339Nano),
+			"before_id": lastID.String(),
+		}
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{"items": items, "total": total, "next_cursor": nextCursor})
 }
 
 func (s *Server) unreadCount(w http.ResponseWriter, r *http.Request) {

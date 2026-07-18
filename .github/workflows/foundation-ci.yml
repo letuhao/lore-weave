@@ -33,7 +33,7 @@ jobs:
       (github.event_name == 'push' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/heads/mmo-rpg/'))) ||
       (github.event_name == 'pull_request' && (github.base_ref == 'main' || startsWith(github.base_ref, 'mmo-rpg/')))
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - run: cargo build --workspace # build ALL crates (world-gen included) — keeps compile coverage
@@ -57,8 +57,8 @@ jobs:
       (github.event_name == 'push' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/heads/mmo-rpg/'))) ||
       (github.event_name == 'pull_request' && (github.base_ref == 'main' || startsWith(github.base_ref, 'mmo-rpg/')))
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
         with:
           go-version: "1.25"
       - name: build + vet + test every go.mod module
@@ -85,6 +85,15 @@ jobs:
       - name: race detector — incident-bot breach monitor (110)
         run: go -C services/incident-bot test -race -count=1 ./internal/breach
 
+      # D-GLOSSARY-CONTRACT-FIRST: the OpenAPI route-conformance gate (P4) reads the
+      # contract YAMLs + testdata at RUNTIME, not as compiled inputs. A new /v1 route
+      # recompiles server.go so the module loop above catches it; but a CONTRACT-ONLY
+      # edit (a deleted/renamed YAML, an edited allowlist) leaves the test binary
+      # unchanged and can hit go test's cache → false-green. Re-run it with -count=1
+      # so contract drift is caught regardless of the build cache.
+      - name: glossary OpenAPI route-conformance (-count=1, cache-proof)
+        run: go -C services/glossary-service test -count=1 -run TestOpenAPIRouteConformance ./internal/api/
+
   lints:
     name: Foundation lints (I3 language-rule + projection-coverage + validators)
     runs-on: ubuntu-latest
@@ -93,7 +102,7 @@ jobs:
       (github.event_name == 'push' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/heads/mmo-rpg/'))) ||
       (github.event_name == 'pull_request' && (github.base_ref == 'main' || startsWith(github.base_ref, 'mmo-rpg/')))
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - run: bash scripts/language-rule-lint.sh
       - run: bash scripts/projection-coverage-lint.sh
       # Phase 0 (DEFERRED 078): wire the lint/validator scripts that PASS on
@@ -123,8 +132,8 @@ jobs:
       (github.event_name == 'push' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/heads/mmo-rpg/'))) ||
       (github.event_name == 'pull_request' && (github.base_ref == 'main' || startsWith(github.base_ref, 'mmo-rpg/')))
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
       # Byte-compile only — no pip install, no pytest (avoids heavy/networked
@@ -182,10 +191,10 @@ jobs:
     env:
       PGPASSWORD: foundation
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v7
         with:
           go-version: "1.25"
       - name: create dp_kernel_test + apply migrations 0002 + 0004 + 0013 (+ default partition)
@@ -381,10 +390,10 @@ jobs:
     # intentionally the one job that runs regardless of branch. The `.githooks/
     # pre-commit` hook adds a staged-diff pass so it is also caught pre-commit.
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
-      - uses: gitleaks/gitleaks-action@v2
+      - uses: gitleaks/gitleaks-action@v3
         env:
           GITLEAKS_CONFIG: .gitleaks.toml
           # gitleaks-action@v2 requires GITHUB_TOKEN to scan pull_request events

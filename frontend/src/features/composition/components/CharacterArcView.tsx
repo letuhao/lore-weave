@@ -4,9 +4,11 @@
 // / axisX / visibleOnPage (decoupled cutoff, no FE stride). Render-only; logic in
 // useCharacterArc. Controlled entity (lifted to CompositionPanel so the Cast codex can
 // launch this view with a character preselected).
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
+import { Plus } from 'lucide-react';
+import { EventEditDialog } from '@/features/knowledge/components/EventEditDialog';
 import { axisX, visibleOnPage } from '../hooks/useTimeline';
 import { arcBandSplit, useCharacterArc } from '../hooks/useCharacterArc';
 import { TimelineEventPoint } from './TimelineEventPoint';
@@ -33,6 +35,7 @@ export function CharacterArcView({
   const { t } = useTranslation('composition');
   const navigate = useNavigate();
   const arc = useCharacterArc(bookId, chapterId, token, entityId);
+  const [addOpen, setAddOpen] = useState(false);
 
   const count = arc.events.length;
   const width = Math.max(BASE_W, count * MIN_SPACING + 2 * PAD);
@@ -88,6 +91,20 @@ export function CharacterArcView({
             {gone ? t('chararc.gone', { defaultValue: 'gone' }) : t('chararc.active', { defaultValue: 'active' })}
           </span>
         )}
+        {/* + Add event — author a new timeline event onto THIS character's arc
+            (D-KG-EVENT-CREATE-ROUTE). Needs a project + a resolved character so
+            the new event's participant list anchors it to the arc. */}
+        {arc.projectId && arc.effectiveEntityId && (
+          <button
+            type="button"
+            data-testid="arc-add-event"
+            className="ml-auto inline-flex items-center gap-1 rounded border px-1.5 py-0.5 hover:bg-accent/50"
+            onClick={() => setAddOpen(true)}
+          >
+            <Plus className="h-3 w-3" />
+            {t('chararc.addEvent', { defaultValue: '+ Add event' })}
+          </button>
+        )}
       </div>
 
       {/* body */}
@@ -129,6 +146,20 @@ export function CharacterArcView({
             <ArcRelationsStrip entityId={arc.effectiveEntityId!} relations={arc.relations} />
           </div>
         </div>
+      )}
+
+      {arc.projectId && arc.effectiveEntityId && (
+        <EventEditDialog
+          open={addOpen}
+          onOpenChange={setAddOpen}
+          create={{
+            projectId: arc.projectId,
+            chapterId: chapterId || null,
+            // Anchor the new event to THIS character (its display name) so it
+            // lands on the arc's entity-scoped timeline.
+            participants: [arc.focusName ?? rosterName(arc.effectiveEntityId)],
+          }}
+        />
       )}
     </div>
   );

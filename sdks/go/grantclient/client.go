@@ -43,10 +43,16 @@ type Options struct {
 	Transport http.RoundTripper
 }
 
-// Access is a resolved (grant, book-lifecycle) pair from the /access authority.
+// Access is a resolved (grant, book-lifecycle, kind) triple from the /access authority.
 type Access struct {
 	Level     GrantLevel
 	Lifecycle string // book lifecycle_state: "active"|"trashed"|"purge_pending"; "" if book absent
+	// Kind is the book's kind ("novel"|"document"|"lore"|"diary"); "" if the book is
+	// absent, the caller holds no grant (book-service only returns kind to a grantee — no
+	// existence oracle, WS-1.2 D16), or the deployment predates the WS-1.2 kind contract.
+	// Lets a server-side consumer branch on kind WITHOUT trusting a caller-supplied arg
+	// (e.g. the work-capture flavor selected from kind='diary', WS-1.6 spec 05 §Q3).
+	Kind string
 }
 
 // Active reports whether the book is in its normal editable state. Edit/manage
@@ -167,9 +173,10 @@ func (c *Client) fetch(ctx context.Context, bookID, userID uuid.UUID) (Access, e
 	var body struct {
 		GrantLevel string `json:"grant_level"`
 		Lifecycle  string `json:"lifecycle_state"`
+		Kind       string `json:"kind"` // grant-gated by book-service; "" to a non-grantee
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
 		return Access{}, ErrUnavailable
 	}
-	return Access{Level: ParseGrantLevel(body.GrantLevel), Lifecycle: body.Lifecycle}, nil
+	return Access{Level: ParseGrantLevel(body.GrantLevel), Lifecycle: body.Lifecycle, Kind: body.Kind}, nil
 }

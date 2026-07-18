@@ -19,7 +19,7 @@ Monorepo layout:
 
 ### Services
 
-The repo has **~46 services**. This file does **not** enumerate them — the old inlined table went stale and misled agents. **Authoritative service→language map: [`contracts/language-rule.yaml`](contracts/language-rule.yaml); purposes: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).** Language rule: Go = domain/meta · Python = AI/LLM · TS = gateway/realtime · Rust = kernel-derived. Do not assume a service is absent because it's not named here.
+The repo has **47 services** (verify: `ls services/ | wc -l`). This file does **not** enumerate them — the old inlined table went stale and misled agents. **Authoritative service→language map: [`contracts/language-rule.yaml`](contracts/language-rule.yaml); purposes: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md); frontend feature → route → backing service: [`docs/FEATURE_INDEX.md`](docs/FEATURE_INDEX.md); data layer: [`docs/DATA_ARCHITECTURE.md`](docs/DATA_ARCHITECTURE.md).** Language rule: Go = domain/meta · Python = AI/LLM · TS = gateway/realtime · Rust = kernel-derived. Do not assume a service is absent because it's not named here.
 
 Load-bearing facts an agent needs regardless:
 - **`provider-registry-service`** is the ONLY home of provider SDKs/keys (Provider-gateway invariant below).
@@ -31,7 +31,14 @@ Load-bearing facts an agent needs regardless:
 - **📇 Standards index (start here)** — every cross-cutting rule/law/invariant/machine-contract in the repo is catalogued in [`docs/standards/README.md`](docs/standards/README.md): what it governs · where the authoritative source lives · how it's enforced · status. It has a *quick-nav by concern* (building an MCP tool? a dockable panel? a new table? an LLM call?) + a *Known gaps* list, and it **links out — never duplicates**. **Adding/retiring a standard? Update its row there.** The rules below are the always-loaded subset.
 - **Agent Extensibility Standard** — adding a user/agent-authorable capability (skill, slash command, hook, subagent, MCP-server registration, plugin bundle)? Follow [`docs/standards/agent-extensibility.md`](docs/standards/agent-extensibility.md): the storage→resolver→degrade-safe-consumer→live-E2E shape, validate-parity on import paths, no-silent-no-op (API advertises only what the engine wires), quarantine+scan+SSRF for every external source (verification ≠ safety), and enum-closed-set capability args. Each rule caught a real bug across P0→P5.
 - **Settings & Configuration Boundary** — adding *any* configurable behavior (a toggle, mode, threshold, model choice, persona, limit)? Follow [`docs/standards/settings-and-config.md`](docs/standards/settings-and-config.md) (SET-1..8). **Do not abuse a global setting / env var for what is really a per-user choice.** Ask "would two users want different values?" → **yes ⇒ user setting** (a tenancy tier + scope key + the resolution cascade, per User Boundaries), **not** an env flag. Env/global config is reserved for platform-wide, load-bearing infra + **deploy-time ceilings/kill-switches** — and a ceiling is a *max* the user narrows within (`effective = AND(deploy_allows, user_enables)`), **never a per-user knob**. A user setting must: expose its **effective value + source tier** (no silent hidden default — the "grounding always-on / reasoning silently-off" bug class); be **CONSUMED, proven by effect** (a stored-but-unread settings blob is a bug, not a feature — the write-only-behavior bug); enum-validate **closed-set values** on write (Frontend-Tool-Contract discipline); live **server-side** (not localStorage); and have **one home/one name** (consumers inherit, they don't re-store — the model-picked-in-8-places bug). Adding a new global `*_ENABLED`/`*_MODE` env flag that gates *user-facing* behavior is a `/review-impl` finding.
-- **Contract-first**: API contract frozen before frontend flow
+- **Contract-first**: API contract frozen before frontend flow. **Enforced for glossary-service** by
+  `TestOpenAPIRouteConformance` (`services/glossary-service/internal/api/route_conformance_test.go`,
+  D-GLOSSARY-CONTRACT-FIRST): it `chi.Walk`s the real router + parses `contracts/api/glossary-service/*.yaml`
+  and reds on any undocumented public `/v1` route (or phantom documented-but-unrouted path). A new public
+  `/v1` route without a contract entry fails CI. It reads the YAML at runtime, so CI runs it with `-count=1`
+  (a contract-only edit doesn't recompile the test binary). Add a route → document it, then
+  `REGEN_ROUTE_ALLOWLIST=1 go test -run TestOpenAPIRouteConformance` if a deliberate exemption is intended.
+  The pattern is reusable for other services.
 - **Gateway invariant**: all external traffic through `api-gateway-bff` — with ONE sanctioned exception (PRR-20): the `game-server` real-time WebSocket transport (Colyseus) is a second public entry point that inherits the same auth/rate-limit/audit edge controls. See `docs/03_planning/LLM_MMO_RPG/00_foundation/02_invariants.md` I1 amendment.
 - **MCP-first invariant (AI agent logic)** — *any* AI **agent** capability (logic where an LLM decides actions, calls tools, or reasons multi-step over tools/data) MUST be exposed and invoked as an **MCP tool-call through `ai-gateway`** — never a bespoke HTTP endpoint driven by a raw prompt. **If the tool doesn't exist, create it** as an MCP tool on the owning domain service (domain owns its tools; `ai-gateway` only federates/routes — see `docs/specs/2026-06-10-glossary-assistant-architecture.md`). Non-agentic LLM *pipelines* (e.g. translation, enrichment) are exempt, but **new** agentic logic is not. Legacy agentic logic still on HTTP/raw-prompt is **tracked for migration in Deferred**, never silently grandfathered.
 - **Provider gateway invariant (ENFORCED)** — NO service imports a provider SDK or calls a provider API directly; every LLM/embedding/**rerank**/image/audio/STT call goes through **`provider-registry-service`** (the only place provider SDKs/HTTP live). Verified held across all AI services 2026-06-10. Any new direct provider SDK import is a defect, not a shortcut.
@@ -55,6 +62,10 @@ features/<name>/
   api.ts        ← API layer
   types.ts      ← TypeScript types
 ```
+
+**Which `<name>`? → [`docs/FEATURE_INDEX.md`](docs/FEATURE_INDEX.md)** — all 41 feature folders, each with its route, purpose, and the service it actually talks to. Check it **before** adding a feature folder (the concept may already have a home) and **update it in the same commit** when you add one. The gateway path does NOT reliably name the owning service — `/v1/glossary-translate` and `/v1/extraction` both hit translation-service, `/v1/worlds` hits book-service. Don't infer; look it up.
+
+⚠️ **Two unrelated trees are called "features".** `frontend/src/features/*` = shipped UI (index above). `docs/03_planning/LLM_MMO_RPG/features/*` = design docs for the unbuilt MMO track ([its own index](docs/03_planning/LLM_MMO_RPG/features/_index.md)). Neither indexes the other.
 
 **Rules:**
 - **Separation of concerns** — components render, hooks own logic, context shares state. No API calls or business logic inside components.
@@ -120,6 +131,63 @@ Python suites run under **pytest-xdist**: `python -m pytest tests -q -n auto --d
 
 ---
 
+## Sub-agent Fan-out — the cost discipline (LOCKED — adopted 2026-07-13)
+
+**The incident this exists to prevent.** A planning run fanned out **605 sub-agents** and burned
+**~45M tokens** adjudicating 580 open questions — **one agent per question**. It hit the session limit
+and died, and the answers it did produce were **no better than ~10 agents grouped by file** would have
+given. A later run doing the same *class* of work with **4 agents grouped by file** cost **864k tokens**
+— **~52× cheaper, same quality**. The waste was **not** the volume of work. It was the **shape of the
+fan-out**.
+
+### Why a sub-agent is expensive in a way that is easy to miss
+
+The main session has a **1M context with prompt caching** (1-hour TTL): once a file is read, re-reasoning
+over it is nearly free, and every subsequent turn re-uses the cache. **A sub-agent starts COLD.** It
+shares none of that cache. It pays **full price** to re-read the same specs, the same plan, the same
+source files — and then it pays again to write its result back into the parent.
+
+⇒ **N sub-agents over the same corpus = N × full-price reads, with zero cache re-use.** This is why
+per-item fan-out explodes: 580 agents each re-read the same 5 plan documents to answer one question about
+them. Grouping by file reads each document **once**.
+
+### The rule
+
+**Solo-in-the-1M-context is the DEFAULT.** Fan out only when the work clears a bar — and say the estimate
+out loud before you do.
+
+**Fan out when:**
+- The slices are over **genuinely disjoint inputs** (different services, different files) — each agent
+  reads *different* bytes, so there is no cache to have re-used anyway.
+- You need **independent judgement** (adversarial verify, a judge panel, a cold-start review). Here the
+  isolation *is* the product — a fresh agent that cannot see your reasoning is the point.
+- The corpus **genuinely exceeds** what one context can hold.
+- Parallel **wall-clock** actually matters and the work is long-running.
+
+**Do NOT fan out when:**
+- 🔴 **The unit is an ITEM, not a FILE.** One agent per question / per finding / per gap / per row is the
+  anti-pattern. **Group by file, by domain, or by disjoint slice — never by list element.**
+- The answer is **greppable**. If `grep`/`Read` settles it, just do it. Spawning an agent to run a grep
+  you could run yourself costs ~1000× the grep.
+- All the agents would **read the same files** to answer different questions about them. That is one
+  agent's job, done once.
+- It is a **conversational or trivial** turn.
+
+### Before every fan-out, state this
+
+> *"N agents, each reading ⟨what⟩, because ⟨why one agent can't⟩."*
+
+If you cannot fill in *"why one agent can't"*, **don't fan out**.
+
+### Under `ultracode`
+
+`ultracode` removes **cost** as a constraint. It does **not** license **waste**. 605 agents producing what
+10 would produce is not thoroughness — it is a broken fan-out shape, and it *lowers* quality by dying
+mid-run. Exhaustive means **cover everything once**, not **read everything N times**. The granularity
+rule above holds regardless.
+
+---
+
 ## Session Protocol
 
 ### Session Start (every session)
@@ -147,6 +215,47 @@ A commit is a **task checkpoint, not a session boundary**. Once code is committe
 - If compaction is truly needed, run `/compact`. Do not ask the user to restart.
 
 The legitimate stop points are the workflow's own PO checkpoints (CLARIFY end, POST-REVIEW) and the user explicitly saying they're done — nothing else.
+
+### Long autonomous runs — the GOAL COMMITMENT (anti-drift) — MANDATORY
+
+Before any long / multi-phase / unattended run (`/loom` across milestones, a build track, an autonomous
+implementation), **establish an explicit GOAL first — it is a commitment between the human and the agent, and
+the agent must ASK for it, never invent it.** A run with no agreed finish line drifts by construction.
+
+**1 · Ask, then set `/goal`** (Claude Code ≥ v2.1.139 — condition-based; the session keeps working across
+turns until a fast evaluator says the condition holds). The agent asks the human what "done" means, proposes
+a precise condition, and the human sets it. One goal per session; `/goal` = status, `/goal clear` = stop.
+(`/loop` is a *time-interval* re-run — the wrong tool for "until done".)
+
+**2 · Know the evaluator's blind spot — this is the whole reason for the rest of this section.** The `/goal`
+evaluator **reads the transcript only. It cannot run commands or read files.** So it is satisfied by the agent
+*claiming* a check passed. **`/goal` enforces persistence, not honesty.** Therefore:
+
+- **Write the condition so it forces the proof INTO the transcript** ("the transcript contains the actual
+  pasted output of X"; "claiming a check passed without pasting its output does NOT satisfy this condition").
+- **Bound it** (`or stop after N turns`).
+
+**3 · Layer the enforcement — a goal alone is not enough.** Drift in a long run is rarely "forgot the task";
+it is **silently lowering the bar** (skipping `/review-impl`, treating a green unit test as proof of a
+behavior it never exercised, marking a slice done whose live-smoke never ran). Use all three:
+
+| Layer | Enforces | Can the agent talk past it? |
+|---|---|---|
+| `/goal` condition | persistence + a fresh-model completion check | **yes** (transcript-only evaluator) |
+| **A RUN-STATE file on disk** (the commitment, the invariants, the slice board where *done* = an evidence string, + registers for decisions/parked/debt/drift) | memory across compaction | no — it is a file |
+| **Rule-based scripts** — the pre-commit hook (`git config core.hooksPath .githooks`) + `scripts/workflow-gate.py` | phase order, VERIFY/POST-REVIEW evidence, the repo invariants | **no** — mechanical |
+
+**4 · Re-read the commitment, don't remember it.** Context is lossy (compaction summarizes; anything living
+only in the conversation can evaporate). **After every compaction: re-read the RUN-STATE file first**, then
+`git log`, then continue. Keep the RUN-STATE path in the TODO list — the harness re-surfaces todos, so it is
+the anchor that survives. **Never re-litigate a sealed decision from memory; re-read it.**
+
+**5 · Blocked ≠ stopped.** If the human has granted an autonomous run: park an unsolvable problem in the
+RUN-STATE register, move to other work, and keep going. Stop and ask **only** when an action is
+destructive/irreversible or a sealed decision turns out to be wrong.
+
+**6 · The registers make the final audit a byproduct.** Append decisions · parked · debt · drift as you go.
+**A run that ends with an empty drift log is not clean — it is dishonest.** Record the near-misses.
 
 ---
 

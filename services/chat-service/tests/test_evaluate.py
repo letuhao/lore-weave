@@ -65,6 +65,13 @@ def test_coerce_empty_charter_checklist_yields_no_verdicts():
     assert card.overall_score == 80
 
 
+def test_scorecard_is_quarantine_tier_and_model_cannot_lift_it():
+    # WS-5.22 / SD-7 — every score a code run produces is quarantine (shown, never trended)
+    # until the numeric gate clears in a human milestone; a model claiming otherwise is ignored.
+    card = ev.coerce_scorecard({"overall_score": 90, "quarantine": False}, _CHARTER, partial=False)
+    assert card.quarantine is True  # server-authoritative, like `partial`
+
+
 # ── is_partial (EC-13) ───────────────────────────────────────────────────────
 
 def test_is_partial_when_clipped():
@@ -101,6 +108,25 @@ def test_build_messages_caps_message_size():
 def test_build_messages_short_transcript_not_clipped():
     msgs, clipped = ev.build_eval_messages(_CHARTER, {}, None, [{"role": "user", "content": "hi"}])
     assert clipped is False
+
+
+def test_build_messages_includes_rubric_dimensions_when_given():
+    # C3 — the SoT rubric's dimensions reach the prompt as scoring_dimensions + a keyed instruction.
+    dims = [
+        {"key": "star_structure", "label": "STAR structure", "anchors": {"1": "none", "5": "complete"}},
+        {"key": "clarity", "label": "Clarity", "anchors": {"1": "unclear", "5": "crisp"}},
+    ]
+    msgs, _ = ev.build_eval_messages(_CHARTER, {}, None, [{"role": "user", "content": "hi"}], dimensions=dims)
+    user = msgs[1]["content"]
+    assert "scoring_dimensions" in user
+    assert "star_structure" in user and "clarity" in user
+    assert '"dimensions":' in user  # the model is told to return a dimensions array
+
+
+def test_build_messages_omits_dimensions_when_none():
+    # back-compat: no rubric dimensions → no scoring_dimensions block (legacy STAR path unchanged).
+    msgs, _ = ev.build_eval_messages(_CHARTER, {}, None, [{"role": "user", "content": "hi"}])
+    assert "scoring_dimensions" not in msgs[1]["content"]
 
 
 # ── parse_json_object: tolerant extraction ───────────────────────────────────

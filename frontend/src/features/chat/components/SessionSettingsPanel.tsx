@@ -1,520 +1,125 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { Settings, X, Brain, Zap } from 'lucide-react';
-import { toast } from 'sonner';
+// The unified SESSION settings surface (spec 2026-07-05-chat-ai-settings.md G1, §8).
+//
+// "One place … + a session-scoped subset reachable from chat." The account half shipped;
+// this is that subset. It replaces three fragmented surfaces — the old bespoke settings
+// panel, the standalone VoiceSettingsPanel, and NewChatDialog's separate preset list —
+// with sections that read the SAME cascade the turn resolves:
+//
+//     Session ▸ Book ▸ Account ▸ System
+//
+// Every row names the tier that supplied its value (TierChip) and, when this chat
+// overrides it, offers "clear · inherit X". Nothing is a silent client-side literal any
+// more: the old panel showed `temperature ?? 0.7` while sending the field UNSET, so the
+// number on screen was never the number in force.
+//
+// MVC: this file is the SHELL (chrome + section order). Logic lives in
+// `useSessionSettingsEditor`; each section is its own render-only component.
+import { useEffect, useRef } from 'react';
+import { Settings, X } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
-import { useAuth } from '@/auth';
-import { CHAT_CAPABILITY } from '@/features/settings/api';
-import { ModelPicker } from '@/components/model-picker';
-import { MultiProjectPicker } from '@/components/shared/MultiProjectPicker';
-import { chatApi } from '../api';
-import type { ChatSession, GenerationParams, PatchSessionPayload, ReasoningEffort } from '../types';
+import { useSessionSettingsEditor } from '@/features/chat-ai-settings/hooks/useSessionSettingsEditor';
+import type { ChatSession } from '../types';
+import { ModelsSection } from './session-settings/ModelsSection';
+import { BehaviorSection } from './session-settings/BehaviorSection';
+import { GroundingSection } from './session-settings/GroundingSection';
+import { ContextSection } from './session-settings/ContextSection';
+import { VoiceSettingsPanel } from './VoiceSettingsPanel';
 
-const SYSTEM_PROMPT_PRESETS: Record<string, string> = {
-  Custom: '',
-  Novelist: 'You are a creative writing assistant specializing in novels. Analyze character arcs, plot structure, and worldbuilding with a focus on internal consistency. When suggesting changes, provide concrete scene rewrites.',
-  Translator: 'You are a literary translator. Preserve the tone, style, and nuance of the original text. Explain translation choices when they involve cultural adaptation or idiomatic expressions.',
-  Worldbuilder: 'You are a worldbuilding consultant for fantasy and sci-fi settings. Help create consistent magic systems, political structures, geography, and cultural details. Flag inconsistencies.',
-  Editor: 'You are a professional book editor. Focus on pacing, dialogue quality, show-vs-tell, and narrative voice. Be specific and constructive in feedback.',
-  Analyst: 'You are a literary analyst. Examine themes, symbolism, narrative techniques, and character psychology. Support observations with textual evidence.',
-};
+export type SessionSettingsSection = 'models' | 'behavior' | 'grounding' | 'context' | 'voice';
 
 interface SessionSettingsPanelProps {
   session: ChatSession;
   onSessionUpdate: (updated: ChatSession) => void;
   onClose: () => void;
+  /** Deep-link: scroll a section into view on open (the mic button opens 'voice'). */
+  initialSection?: SessionSettingsSection;
 }
 
-export function SessionSettingsPanel({ session, onSessionUpdate, onClose }: SessionSettingsPanelProps) {
+export function SessionSettingsPanel({
+  session,
+  onSessionUpdate,
+  onClose,
+  initialSection,
+}: SessionSettingsPanelProps) {
   const { t } = useTranslation('chat');
-  const { t: tKnowledge } = useTranslation('knowledge');
-  const { accessToken } = useAuth();
   const panelRef = useRef<HTMLDivElement>(null);
+  const ed = useSessionSettingsEditor(session, onSessionUpdate);
 
-  // ── Local state (synced from session prop) ────────────────────────────────
-  const [systemPrompt, setSystemPrompt] = useState(session.system_prompt ?? '');
-  const [temperature, setTemperature] = useState(session.generation_params?.temperature ?? 0.7);
-  const [topP, setTopP] = useState(session.generation_params?.top_p ?? 0.9);
-  const [maxTokens, setMaxTokens] = useState(session.generation_params?.max_tokens ?? 0);
-  const [unlimited, setUnlimited] = useState(!session.generation_params?.max_tokens);
-  // Granular reasoning effort (replaces the old binary Think/Fast). 'off' disables hidden
-  // thinking — the fix for an over-thinking model that loops without finishing. Derived
-  // from a stored reasoning_effort, else the legacy boolean `thinking`.
-  const [reasoningEffort, setReasoningEffort] = useState<ReasoningEffort>(
-    session.generation_params?.reasoning_effort ??
-      (session.generation_params?.thinking ? 'medium' : 'off'),
-  );
-  const [selectedPreset, setSelectedPreset] = useState('Custom');
-
-  // Model selector (fetch/search/grouping owned by the shared ModelPicker —
-  // capability="chat" keeps rerankers/embedders out of the chat picker).
-  const [selectedModelRef, setSelectedModelRef] = useState(session.model_ref);
-  // A2A phase-2: optional composer model (in-turn prose delegation). '' = none.
-  const [selectedComposerRef, setSelectedComposerRef] = useState(session.composer_model_ref ?? '');
-  // D-PLAN-PLANNER-DEFAULT-FE phase 2: optional per-session planner model. '' = none
-  // (falls back to the per-user planner default / chat fallback).
-  const [selectedPlannerRef, setSelectedPlannerRef] = useState(session.planner_model_ref ?? '');
-
-  // K9.1 / W4 + Track B B1(2): the memory link is now a SET of knowledge graphs
-  // (multi-KG union). Seed from project_ids when present, else the legacy single
-  // project_id (back-compat display for pre-B1(2) sessions). The first id doubles
-  // as the tool-scope anchor (project_id) — see handleProjectsChange.
-  const [selectedProjectIds, setSelectedProjectIds] = useState<string[]>(
-    session.project_ids?.length
-      ? session.project_ids
-      : session.project_id
-        ? [session.project_id]
-        : [],
-  );
-
-  // D-CHAT-01: debounce + accumulator. We coalesce all PATCHes that
-  // arrive within the 500ms window into a single pending payload so
-  // (a) close-during-debounce flushes the change instead of dropping
-  // it, and (b) two unrelated edits (e.g. temperature then top_p)
-  // don't clobber each other through the shared timer. The previous
-  // implementation kept only the latest argument and lost the rest.
-  const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const pendingPatchRef = useRef<PatchSessionPayload | null>(null);
-  // Held in a ref so the unmount cleanup can call the latest closure
-  // without the effect re-subscribing on every render of the parent.
-  const flushPendingRef = useRef<() => void>(() => undefined);
-
-  // Close on ESC
+  // Close on ESC / click-outside, flushing any debounced edit first — closing the panel
+  // mid-debounce must never silently drop the setting the user just changed.
   useEffect(() => {
-    function handleKeyDown(e: KeyboardEvent) {
-      if (e.key === 'Escape') onClose();
-    }
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [onClose]);
-
-  // Close on click outside (use mousedown to avoid conflict with open button)
-  const openedAtRef = useRef(Date.now());
-  useEffect(() => {
-    openedAtRef.current = Date.now();
-    function handleClick(e: MouseEvent) {
-      // Ignore clicks within 150ms of opening (prevents instant close from trigger button)
-      if (Date.now() - openedAtRef.current < 150) return;
-      if (panelRef.current && !panelRef.current.contains(e.target as Node)) {
-        onClose();
-      }
-    }
-    window.addEventListener('mousedown', handleClick);
-    return () => window.removeEventListener('mousedown', handleClick);
-  }, [onClose]);
-
-  // ── Save helper (debounced PATCH with flush-on-unmount) ───────────────────
-  const flushPatch = useCallback(() => {
-    const patch = pendingPatchRef.current;
-    pendingPatchRef.current = null;
-    if (saveTimerRef.current) {
-      clearTimeout(saveTimerRef.current);
-      saveTimerRef.current = null;
-    }
-    if (!patch || !accessToken) return;
-    void chatApi
-      .patchSession(accessToken, session.session_id, patch)
-      .then((updated) => onSessionUpdate(updated))
-      .catch((err) => {
-        toast.error(t('settings.save_failed', { error: (err as Error).message }));
-      });
-  }, [accessToken, session.session_id, onSessionUpdate]);
-
-  // Keep the ref pointing at the latest flushPatch so unmount cleanup
-  // (which only runs once with empty deps) calls the current closure.
-  flushPendingRef.current = flushPatch;
-
-  // Flush any pending patch on unmount instead of dropping it. The
-  // dominant UX is "change one thing, click outside to dismiss" — that
-  // close fires inside the debounce window, and the previous cleanup
-  // (clearTimeout only) lost the change every time.
-  useEffect(() => {
-    return () => {
-      flushPendingRef.current();
+    const close = () => { void ed.flush().finally(onClose); };
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') close(); };
+    const onDown = (e: MouseEvent) => {
+      if (panelRef.current && !panelRef.current.contains(e.target as Node)) close();
     };
-  }, []);
+    document.addEventListener('keydown', onKey);
+    document.addEventListener('mousedown', onDown);
+    return () => {
+      document.removeEventListener('keydown', onKey);
+      document.removeEventListener('mousedown', onDown);
+    };
+  }, [ed, onClose]);
 
-  const patchSession = useCallback(
-    (patch: PatchSessionPayload) => {
-      if (!accessToken) return;
-      // Merge into the pending payload. generation_params is nested
-      // and each call passes only the fields the handler touched, so
-      // it needs its own shallow merge — otherwise a temperature edit
-      // followed by a top_p edit within 500ms would drop temperature.
-      const prev = pendingPatchRef.current ?? {};
-      const mergedGenParams =
-        patch.generation_params || prev.generation_params
-          ? { ...(prev.generation_params ?? {}), ...(patch.generation_params ?? {}) }
-          : undefined;
-      pendingPatchRef.current = {
-        ...prev,
-        ...patch,
-        ...(mergedGenParams ? { generation_params: mergedGenParams } : {}),
-      };
-      if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
-      saveTimerRef.current = setTimeout(() => {
-        flushPatch();
-      }, 500);
-    },
-    [accessToken, flushPatch],
-  );
-
-  // ── Handlers ──────────────────────────────────────────────────────────────
-  function handleSystemPromptChange(value: string) {
-    setSystemPrompt(value);
-    patchSession({ system_prompt: value });
-  }
-
-  function handlePresetChange(preset: string) {
-    setSelectedPreset(preset);
-    if (preset !== 'Custom') {
-      const prompt = SYSTEM_PROMPT_PRESETS[preset];
-      setSystemPrompt(prompt);
-      patchSession({ system_prompt: prompt });
-    }
-  }
-
-  function handleTemperatureChange(value: number) {
-    setTemperature(value);
-    patchSession({ generation_params: { temperature: value } });
-  }
-
-  function handleTopPChange(value: number) {
-    setTopP(value);
-    patchSession({ generation_params: { top_p: value } });
-  }
-
-  function handleMaxTokensChange(value: number) {
-    setMaxTokens(value);
-    if (!unlimited) {
-      patchSession({ generation_params: { max_tokens: value } });
-    }
-  }
-
-  function handleUnlimitedToggle(checked: boolean) {
-    setUnlimited(checked);
-    patchSession({ generation_params: { max_tokens: checked ? null : (maxTokens || 4096) } });
-  }
-
-  function handleEffortChange(effort: ReasoningEffort) {
-    setReasoningEffort(effort);
-    // Send reasoning_effort (the granular knob resolve_reasoning reads). Also clear the
-    // legacy boolean so the two can't disagree (reasoning_effort wins, but keep it tidy).
-    patchSession({ generation_params: { reasoning_effort: effort, thinking: null } });
-  }
-
-  function handleModelChange(modelId: string) {
-    setSelectedModelRef(modelId);
-    patchSession({ model_source: 'user_model', model_ref: modelId });
-  }
-
-  function handleComposerChange(modelId: string) {
-    // '' clears the composer (send explicit null so model_fields_set sees it).
-    const next = modelId || null;
-    setSelectedComposerRef(modelId);
-    patchSession({
-      composer_model_source: next ? 'user_model' : null,
-      composer_model_ref: next,
-    });
-  }
-
-  function handlePlannerChange(modelId: string) {
-    // '' clears the per-session planner (falls back to the per-user default).
-    const next = modelId || null;
-    setSelectedPlannerRef(modelId);
-    patchSession({
-      planner_model_source: next ? 'user_model' : null,
-      planner_model_ref: next,
-    });
-  }
-
-  function handleProjectsChange(next: string[]) {
-    // Track B B1(2): write the grounding SET. Keep the legacy single project_id
-    // in sync with the FIRST selected id — it's the tool-scope anchor
-    // (X-Project-Id) AND the back-compat single-grounding value when the set has
-    // ≤1 entry. Empty set → explicit null clears both (model_fields_set sees it).
-    setSelectedProjectIds(next);
-    patchSession({ project_ids: next, project_id: next[0] ?? null });
-  }
+  useEffect(() => {
+    if (!initialSection) return;
+    panelRef.current
+      ?.querySelector(`[data-section="${initialSection}"]`)
+      ?.scrollIntoView({ block: 'start' });
+  }, [initialSection]);
 
   return (
     <div
       ref={panelRef}
+      data-testid="session-settings-panel"
       className="fixed top-0 right-0 bottom-0 z-50 flex w-full flex-col border-l border-border bg-card shadow-[-8px_0_30px_rgba(0,0,0,0.4)] sm:w-[380px]"
     >
-      {/* Header */}
       <div className="flex items-center justify-between border-b border-border px-5 py-4">
         <div className="flex items-center gap-2">
           <Settings className="h-4 w-4 text-muted-foreground" />
           <h3 className="text-sm font-semibold">{t('settings.title')}</h3>
+          {ed.saving && <span className="text-[10px] text-muted-foreground">saving…</span>}
         </div>
         <button
           type="button"
-          onClick={onClose}
-          className="rounded-md p-1.5 text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors"
+          onClick={() => void ed.flush().finally(onClose)}
+          aria-label="Close"
+          className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
         >
           <X className="h-4 w-4" />
         </button>
       </div>
 
-      {/* Scrollable body */}
-      <div className="flex-1 overflow-y-auto p-5 space-y-5">
+      <p className="border-b border-border px-5 py-2 text-[10px] text-muted-foreground">
+        Settings for <b>this chat</b>. Anything you don&apos;t set here is inherited from the
+        book, then your account, then the system default — and each row says which.
+      </p>
 
-        {/* ── Model Selector ─────────────────────────────────────────── */}
-        <div>
-          <label className="mb-1.5 block text-xs font-medium text-muted-foreground">{t('settings.model')}</label>
-          <ModelPicker
-            capability={CHAT_CAPABILITY}
-            value={selectedModelRef || null}
-            onChange={(id) => {
-              if (id) handleModelChange(id);
-            }}
-            ariaLabel={t('settings.model')}
-          />
+      {ed.error && (
+        <p className="border-b border-border bg-amber-50 px-5 py-2 text-[11px] text-amber-800">
+          {ed.error}
+        </p>
+      )}
+
+      <div className="flex-1 space-y-6 overflow-y-auto p-5">
+        <div data-section="models"><ModelsSection ed={ed} /></div>
+        <div data-section="behavior"><BehaviorSection ed={ed} /></div>
+        <div data-section="grounding"><GroundingSection ed={ed} /></div>
+        <div data-section="context"><ContextSection ed={ed} /></div>
+
+        {/* Voice folded in (spec §8 "VoiceSettingsPanel → Voice sub-panel"). Rendered
+            embedded: same controls, no second slide-over fighting this one for the edge. */}
+        <div data-section="voice">
+          <h4 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+            Voice
+          </h4>
+          <VoiceSettingsPanel open embedded onClose={onClose} />
         </div>
 
-        {/* ── Composer model (A2A phase-2: in-turn prose delegation) ───── */}
-        <div>
-          <label className="mb-1.5 block text-xs font-medium text-muted-foreground">
-            {t('settings.composer_model', { defaultValue: 'Composer model (optional)' })}
-          </label>
-          <ModelPicker
-            capability={CHAT_CAPABILITY}
-            value={selectedComposerRef || null}
-            onChange={(id) => handleComposerChange(id ?? '')}
-            allowNone
-            noneLabel={t('settings.composer_none', { defaultValue: 'None — single model' })}
-            ariaLabel={t('settings.composer_model', { defaultValue: 'Composer model (optional)' })}
-          />
-          <p className="mt-1 text-[10px] text-muted-foreground">
-            {t('settings.composer_hint', { defaultValue: 'When set, the AI can delegate prose-writing to this model via compose_prose (best: a reasoning model for writing + a tool-capable main model).' })}
-          </p>
-        </div>
-
-        {/* ── Planner model (per-session override for glossary_plan) ──── */}
-        <div>
-          <label className="mb-1.5 block text-xs font-medium text-muted-foreground">
-            {t('settings.planner_model', { defaultValue: 'Planner model (optional)' })}
-          </label>
-          <ModelPicker
-            capability={CHAT_CAPABILITY}
-            value={selectedPlannerRef || null}
-            onChange={(id) => handlePlannerChange(id ?? '')}
-            allowNone
-            noneLabel={t('settings.planner_none', { defaultValue: 'Use my default planner' })}
-            ariaLabel={t('settings.planner_model', { defaultValue: 'Planner model (optional)' })}
-          />
-          <p className="mt-1 text-[10px] text-muted-foreground">
-            {t('settings.planner_hint', { defaultValue: 'The model the glossary assistant plans multi-step ontology changes with (overrides your Settings default for this session). Pick a strong, tool-capable model.' })}
-          </p>
-        </div>
-
-        {/* ── Knowledge graphs (memory link — multi-KG union) ────────── */}
-        <div>
-          <label className="mb-1.5 block text-xs font-medium text-muted-foreground">
-            {tKnowledge('picker.label')}
-          </label>
-          <MultiProjectPicker
-            value={selectedProjectIds}
-            onChange={handleProjectsChange}
-            placeholder={tKnowledge('picker.noProject')}
-          />
-          <p className="mt-1 text-[10px] text-muted-foreground">
-            {selectedProjectIds.length >= 2
-              ? t('settings.project_multi_hint', {
-                  defaultValue:
-                    'The AI is grounded on all selected knowledge graphs at once — facts from each are tagged with their source.',
-                })
-              : tKnowledge('picker.hint')}
-          </p>
-        </div>
-
-        {/* ── System Prompt ──────────────────────────────────────────── */}
-        <div>
-          <div className="mb-1.5 flex items-center justify-between">
-            <label className="text-xs font-medium text-muted-foreground">{t('settings.system_prompt')}</label>
-            <select
-              value={selectedPreset}
-              onChange={(e) => handlePresetChange(e.target.value)}
-              className="bg-transparent border-none text-xs text-accent cursor-pointer outline-none"
-            >
-              {Object.keys(SYSTEM_PROMPT_PRESETS).map((p) => (
-                <option key={p} value={p}>{t(`settings.preset.${p}`)}</option>
-              ))}
-            </select>
-          </div>
-          <textarea
-            value={systemPrompt}
-            onChange={(e) => handleSystemPromptChange(e.target.value)}
-            placeholder={t('settings.prompt_placeholder')}
-            className="min-h-[100px] w-full resize-y rounded-md border border-border bg-background p-2.5 text-xs leading-relaxed text-foreground placeholder:text-muted-foreground/50 outline-none focus:border-ring focus:shadow-[0_0_0_3px_rgba(212,149,42,0.2)]"
-          />
-        </div>
-
-        {/* ── Generation Parameters ──────────────────────────────────── */}
-        <details open>
-          <summary className="mb-3 flex cursor-pointer items-center gap-1.5 text-xs font-medium text-muted-foreground">
-            <svg className="h-2.5 w-2.5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M19 9l-7 7-7-7" /></svg>
-            {t('settings.gen_params')}
-          </summary>
-
-          {/* Max Tokens */}
-          <div className="mb-4">
-            <div className="mb-1.5 flex items-center justify-between">
-              <label className="text-[11px] text-muted-foreground">{t('settings.max_tokens')}</label>
-              <div className="flex items-center gap-2">
-                <input
-                  type="number"
-                  value={unlimited ? '' : maxTokens}
-                  onChange={(e) => handleMaxTokensChange(Number(e.target.value))}
-                  disabled={unlimited}
-                  placeholder="∞"
-                  className="w-[70px] rounded border border-border bg-background px-2 py-1 text-right font-mono text-xs text-foreground outline-none focus:border-ring disabled:opacity-40"
-                />
-                <label className="flex items-center gap-1 text-[11px] text-muted-foreground cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={unlimited}
-                    onChange={(e) => handleUnlimitedToggle(e.target.checked)}
-                    className="accent-accent"
-                  />
-                  &#8734;
-                </label>
-              </div>
-            </div>
-            <input
-              type="range"
-              min={256}
-              max={32768}
-              step={256}
-              value={unlimited ? 4096 : maxTokens}
-              onChange={(e) => handleMaxTokensChange(Number(e.target.value))}
-              disabled={unlimited}
-              className="w-full accent-primary disabled:opacity-30"
-            />
-            <div className="flex justify-between text-[9px] text-muted-foreground">
-              <span>256</span><span>32K</span>
-            </div>
-          </div>
-
-          {/* Temperature */}
-          <div className="mb-4">
-            <div className="mb-1.5 flex items-center justify-between">
-              <label className="text-[11px] text-muted-foreground">{t('settings.temperature')}</label>
-              <span className="font-mono text-xs text-foreground">{temperature.toFixed(1)}</span>
-            </div>
-            <input
-              type="range"
-              min={0}
-              max={2}
-              step={0.1}
-              value={temperature}
-              onChange={(e) => handleTemperatureChange(Number(e.target.value))}
-              className="w-full accent-primary"
-            />
-            <div className="flex justify-between text-[9px] text-muted-foreground">
-              <span>{t('settings.temp_min')}</span><span>{t('settings.temp_max')}</span>
-            </div>
-          </div>
-
-          {/* Top P */}
-          <div className="mb-4">
-            <div className="mb-1.5 flex items-center justify-between">
-              <label className="text-[11px] text-muted-foreground">{t('settings.top_p')}</label>
-              <span className="font-mono text-xs text-foreground">{topP.toFixed(2)}</span>
-            </div>
-            <input
-              type="range"
-              min={0}
-              max={1}
-              step={0.05}
-              value={topP}
-              onChange={(e) => handleTopPChange(Number(e.target.value))}
-              className="w-full accent-primary"
-            />
-            <div className="flex justify-between text-[9px] text-muted-foreground">
-              <span>{t('settings.topp_min')}</span><span>{t('settings.topp_max')}</span>
-            </div>
-          </div>
-
-          {/* Reasoning effort (replaces binary Think/Fast). 'Off' disables hidden thinking
-              — use it to stop an over-thinking model that loops without answering. */}
-          <div className="mb-2">
-            <div className="mb-1.5 flex items-center justify-between">
-              <label className="text-[11px] text-muted-foreground">
-                {t('settings.reasoning_effort', { defaultValue: 'Reasoning effort' })}
-              </label>
-              <div className="inline-flex rounded-md bg-secondary p-0.5 gap-0.5">
-                {(['off', 'low', 'medium', 'high'] as const).map((level) => (
-                  <button
-                    key={level}
-                    type="button"
-                    onClick={() => handleEffortChange(level)}
-                    className={`flex items-center gap-1 rounded px-2 py-1 text-[11px] font-medium transition-colors ${
-                      reasoningEffort === level
-                        ? level === 'off'
-                          ? 'bg-accent/10 text-accent border border-accent/30'
-                          : 'bg-[#1e1633] text-[#a78bfa] border border-[#3b2d6b]'
-                        : 'text-muted-foreground'
-                    }`}
-                  >
-                    {level === 'off' ? <Zap className="h-2.5 w-2.5" /> : <Brain className="h-2.5 w-2.5" />}
-                    {t(`settings.effort.${level}`, { defaultValue: level === 'off' ? 'Off' : level[0].toUpperCase() + level.slice(1) })}
-                  </button>
-                ))}
-              </div>
-            </div>
-            <p className="text-[10px] text-muted-foreground">
-              {t('settings.reasoning_effort_hint', { defaultValue: 'How much the model thinks before answering. Off = no hidden thinking (fastest, and stops runaway reasoning loops). Higher = deeper but slower and more tokens.' })}
-            </p>
-          </div>
-        </details>
-
-        {/* ── Session Info ────────────────────────────────────────────── */}
-        <div className="border-t border-border pt-4">
-          <label className="mb-2.5 block text-xs font-medium text-muted-foreground">{t('settings.session_info')}</label>
-          <div className="grid grid-cols-2 gap-2">
-            <div className="rounded-md bg-secondary p-2.5">
-              <p className="text-[10px] text-muted-foreground">{t('settings.messages')}</p>
-              <p className="mt-0.5 font-mono text-base font-semibold">{session.message_count}</p>
-            </div>
-            <div className="rounded-md bg-secondary p-2.5">
-              <p className="text-[10px] text-muted-foreground">{t('settings.status')}</p>
-              <p className="mt-0.5 text-sm font-medium capitalize">{session.status}</p>
-            </div>
-            <div className="rounded-md bg-secondary p-2.5">
-              <p className="text-[10px] text-muted-foreground">{t('settings.created')}</p>
-              <p className="mt-0.5 text-sm font-medium">
-                {new Date(session.created_at).toLocaleDateString()}
-              </p>
-            </div>
-            <div className="rounded-md bg-secondary p-2.5">
-              <p className="text-[10px] text-muted-foreground">{t('settings.pinned')}</p>
-              <p className="mt-0.5 text-sm font-medium">{session.is_pinned ? t('settings.yes') : t('settings.no')}</p>
-            </div>
-          {/* Reset + Actions */}
-          <div className="mt-4 flex gap-2">
-            <button
-              type="button"
-              onClick={() => {
-                setTemperature(0.7);
-                setTopP(0.9);
-                setMaxTokens(0);
-                setUnlimited(true);
-                setReasoningEffort('off');
-                setSystemPrompt('');
-                setSelectedPreset('Custom');
-                patchSession({
-                  system_prompt: '',
-                  generation_params: { temperature: null, top_p: null, max_tokens: null, thinking: null, reasoning_effort: null },
-                });
-              }}
-              className="flex-1 rounded-md border border-border px-3 py-2 text-xs text-muted-foreground hover:bg-secondary transition-colors"
-            >
-              {t('settings.reset')}
-            </button>
-          </div>
-          </div>
-        </div>
+        <section className="rounded border border-border p-3 text-[11px] text-muted-foreground">
+          <div className="flex justify-between"><span>Messages</span><span>{session.message_count}</span></div>
+          <div className="flex justify-between"><span>Status</span><span>{session.status}</span></div>
+        </section>
       </div>
     </div>
   );

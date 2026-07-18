@@ -13,6 +13,7 @@ Covers, mirroring `test_tool_definitions.py` / `test_tool_executor.py`:
 
 from __future__ import annotations
 
+from contextlib import asynccontextmanager
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 from uuid import uuid4
@@ -20,6 +21,7 @@ from uuid import uuid4
 import pytest
 from pydantic import ValidationError
 
+from app.extraction.anchor_loader import ProjectionResult
 from app.tools.definitions import ARG_MODELS, TOOL_DEFINITIONS, TOOL_NAMES
 from app.tools.executor import ToolContext, ToolExecutionError, execute_tool
 from app.tools.graph_schema_tools import (
@@ -51,8 +53,9 @@ _BOOK = uuid4()
 # owner gate confines it to the caller's own projects).
 _ENVELOPE_KEYS = {"user_id", "session_id"}
 
-# The 14 tools this lane builds (R + reversible W) — incl. Track-B kg_world_query +
-# kg_multi_query (B1(3): arbitrary owner-owned project set).
+# The 15 tools this lane builds (R + reversible W) — incl. Track-B kg_world_query +
+# kg_multi_query (B1(3): arbitrary owner-owned project set) and WS-4B
+# kg_project_entities_to_nodes (deterministic glossary→node projection).
 _LANE_LF_TOOLS = {
     "kg_graph_query",
     "kg_world_query",
@@ -65,6 +68,8 @@ _LANE_LF_TOOLS = {
     "kg_triage_list",
     "kg_propose_fact",
     "kg_propose_edge",
+    "kg_project_entities_to_nodes",
+    "kg_create_node",
     "kg_view_upsert",
     "kg_view_delete",
     "kg_triage_resolve",
@@ -99,16 +104,46 @@ def _defn(name: str) -> dict:
 
 
 def test_total_tool_count_is_memory_plus_lane_lf():
-    """5 memory + 1 story_search (#12 universal manuscript search) + 14 lane-LF
-    (incl. Track-B kg_world_query + kg_multi_query) + 5 live class-C + 2 project
-    lifecycle (kg_project_create + kg_project_list, the W0 #4a discovery tool) + 2
-    cost-gated (kg_build_graph, kg_build_wiki) + 1 kg_run_benchmark (R4) = 30."""
+    """5 memory + 1 story_search (#12 universal manuscript search) + 15 lane-LF
+    (incl. Track-B kg_world_query + kg_multi_query and WS-4B
+    kg_project_entities_to_nodes) + 5 live class-C + 3 project lifecycle
+    (kg_project_create + kg_project_list, the W0 #4a discovery tool, +
+    kg_project_set_embedding_model — the F6 setup step that used to exist only as a
+    REST route behind the Build-KG dialog, which left kg_build_graph unreachable by an
+    agent) + 2 cost-gated (kg_build_graph, kg_build_wiki) + 1 kg_run_benchmark (R4)
+    + 4 W11-M2 reader tools (lore_ask/lore_browse_entities/lore_entity/lore_timeline)
+    + 1 W10-M1 kg_create_node (manual single-node create)
+    = 37."""
     schema_names = {d["function"]["name"] for d in TOOL_DEFINITIONS}
-    assert len(TOOL_DEFINITIONS) == 30
+    assert len(TOOL_DEFINITIONS) == 37
     assert set(TOOL_NAMES) == set(ARG_MODELS) == schema_names
     assert len(set(TOOL_NAMES)) == len(TOOL_NAMES)  # no dupes
-    assert {"kg_project_create", "kg_project_list", "kg_build_graph",
-            "kg_build_wiki", "kg_run_benchmark", "story_search"}.issubset(schema_names)
+    assert {"kg_project_create", "kg_project_list", "kg_project_set_embedding_model",
+            "kg_build_graph", "kg_build_wiki", "kg_run_benchmark",
+            "story_search"}.issubset(schema_names)
+    assert {"lore_ask", "lore_browse_entities", "lore_entity",
+            "lore_timeline"}.issubset(schema_names)
+
+
+def test_agent_can_reach_kg_build_graph_without_leaving_the_tool_surface():
+    """F6 (Track D liveness eval). kg_build_graph's precondition — a configured embedding
+    model — must be satisfiable BY A TOOL. Before this the chain was:
+
+        kg_project_create ✅ → [configure embedding model ❌ REST + GUI only]
+                             → kg_run_benchmark ✅ → kg_build_graph ✅
+
+    so every agent-created project dead-ended, and the precondition error told the model
+    to open a dialog it cannot open. Assert every link exists on the tool surface, and
+    that the prose never sends a tool-caller to the UI."""
+    schema_names = {d["function"]["name"] for d in TOOL_DEFINITIONS}
+    chain = ["kg_project_create", "kg_project_set_embedding_model",
+             "kg_run_benchmark", "kg_build_graph"]
+    missing = [n for n in chain if n not in schema_names]
+    assert not missing, f"kg_build_graph is unreachable by an agent — missing: {missing}"
+
+    build = _defn("kg_build_graph")["function"]["description"]
+    assert "kg_project_set_embedding_model" in build
+    assert "dialog" not in build.lower()
 
 
 def test_lane_lf_tools_all_registered():
@@ -458,6 +493,24 @@ async def test_propose_fact_queues_into_pending_inbox(monkeypatch):
 # ── propose-edge: temporal-required + parks to triage (never Neo4j) ───
 
 
+def _patch_endpoints_present(monkeypatch, present=("a", "b")):
+    """Make kg_propose_edge's WS-4B endpoint precheck see both endpoints as
+    existing nodes, so the test exercises the park path (not the fail-fast).
+    Also stubs neo4j_session so no real driver is needed."""
+
+    @asynccontextmanager
+    async def _fake_session(**_kwargs):
+        yield object()
+
+    monkeypatch.setattr(
+        "app.tools.graph_schema_tools.neo4j_session", _fake_session,
+    )
+    monkeypatch.setattr(
+        "app.db.neo4j_repos.entities.existing_entity_node_ids",
+        AsyncMock(return_value=set(present)),
+    )
+
+
 @pytest.mark.asyncio
 async def test_propose_edge_temporal_required_rejected_at_mint():
     temporal_edge = SimpleNamespace(code="loves", temporal=True)
@@ -479,7 +532,8 @@ async def test_propose_edge_temporal_required_rejected_at_mint():
 @pytest.mark.asyncio
 async def test_propose_edge_parks_to_triage_inbox_never_neo4j(monkeypatch):
     """INV-K1 — a proposed edge is parked into the triage inbox; the handler
-    never opens a Neo4j session / write."""
+    never WRITES Neo4j (it reads it once for the WS-4B endpoint precheck)."""
+    _patch_endpoints_present(monkeypatch)
     # validate_edge returns an off-schema issue (closed schema, unknown edge).
     issue = SimpleNamespace(item_type="unknown_edge_type", signature="edge:loves")
     monkeypatch.setattr(
@@ -513,6 +567,7 @@ async def test_propose_edge_on_schema_parks_as_proposed_edge(monkeypatch):
     # D-KG-LF-PROPOSE-EDGE-INBOX: a well-formed on-schema proposal parks as its own
     # `proposed_edge` item_type — NOT edge_cardinality_conflict (a stateful
     # condition the tool can't check, INV-K1).
+    _patch_endpoints_present(monkeypatch)
     monkeypatch.setattr(
         "app.tools.graph_schema_tools.validate_edge",
         MagicMock(return_value=None),  # on-schema, no issue
@@ -534,6 +589,151 @@ async def test_propose_edge_on_schema_parks_as_proposed_edge(monkeypatch):
     assert res.success
     assert res.result["on_schema"] is True
     assert triage_repo.park.await_args.kwargs["item_type"] == "proposed_edge"
+
+
+@pytest.mark.asyncio
+async def test_propose_edge_fails_fast_when_endpoint_not_a_node(monkeypatch):
+    """WS-4B / contract C5 — an edge whose endpoint isn't a graph node yet is
+    rejected UP FRONT with KG_ENDPOINT_NOT_NODE + the missing ids, and is NEVER
+    parked (no dead-end park→fail-at-confirm)."""
+
+    @asynccontextmanager
+    async def _fake_session(**_kwargs):
+        yield object()
+
+    monkeypatch.setattr(
+        "app.tools.graph_schema_tools.neo4j_session", _fake_session,
+    )
+    # only "a" exists as a node; "b" is missing.
+    monkeypatch.setattr(
+        "app.db.neo4j_repos.entities.existing_entity_node_ids",
+        AsyncMock(return_value={"a"}),
+    )
+    monkeypatch.setattr(
+        "app.tools.graph_schema_tools.validate_edge",
+        MagicMock(return_value=None),
+    )
+    resolver = AsyncMock()
+    resolver.resolve = AsyncMock(return_value=_resolved_schema(
+        [SimpleNamespace(code="allies", temporal=False)]
+    ))
+    triage_repo = AsyncMock()
+    ctx = _ctx(ontology_resolver=resolver, triage_repo=triage_repo)
+    res = await execute_tool(
+        ctx, "kg_propose_edge",
+        {"source_entity_id": "a", "target_entity_id": "b", "edge_type": "allies"},
+    )
+    assert not res.success
+    assert res.code == "KG_ENDPOINT_NOT_NODE"
+    assert res.detail == {"missing": ["b"]}
+    assert "kg_project_entities_to_nodes" in res.error
+    # never parked — the whole point of fail-fast.
+    triage_repo.park.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_project_entities_to_nodes_returns_counts(monkeypatch):
+    """WS-4B — the projection tool returns {nodes_created, nodes_existing} from
+    the orchestrator, scoped to the project's book, under the owner."""
+
+    @asynccontextmanager
+    async def _fake_session(**_kwargs):
+        yield object()
+
+    monkeypatch.setattr(
+        "app.tools.graph_schema_tools.neo4j_session", _fake_session,
+    )
+    monkeypatch.setattr(
+        "app.clients.glossary_client.get_glossary_client",
+        MagicMock(return_value=MagicMock()),
+    )
+    proj = AsyncMock(
+        return_value=ProjectionResult(created=3, existing=1, seen=4, skipped=0),
+    )
+    monkeypatch.setattr(
+        "app.extraction.anchor_loader.project_glossary_entities_to_nodes", proj,
+    )
+    ctx = _ctx()  # caller == owner, project_meta → (_OWNER, _BOOK)
+    res = await execute_tool(ctx, "kg_project_entities_to_nodes", {})
+    assert res.success
+    assert res.result == {
+        "nodes_created": 3, "nodes_existing": 1, "entities_seen": 4, "skipped": 0,
+    }
+    kw = proj.await_args.kwargs
+    assert kw["user_id"] == str(_OWNER)
+    assert kw["book_id"] == _BOOK
+    assert kw["entity_ids"] is None  # whole-glossary when none given
+
+
+@pytest.mark.asyncio
+async def test_project_entities_to_nodes_refreshes_stat_cache(monkeypatch):
+    """D-KG-STAT-CACHE-DEAD (rail HIGH): after a projection, the handler recounts the
+    stat cache so `connections` becomes KNOWN — otherwise the vision-to-book rail
+    (connect-people done_when "connections > 0") stalls forever at STOP_UNKNOWN because
+    stat_updated_at has no other production writer."""
+
+    @asynccontextmanager
+    async def _fake_session(**_kwargs):
+        yield object()
+
+    monkeypatch.setattr("app.tools.graph_schema_tools.neo4j_session", _fake_session)
+    monkeypatch.setattr(
+        "app.clients.glossary_client.get_glossary_client",
+        MagicMock(return_value=MagicMock()),
+    )
+    monkeypatch.setattr(
+        "app.extraction.anchor_loader.project_glossary_entities_to_nodes",
+        AsyncMock(return_value=ProjectionResult(created=3, existing=1, seen=4, skipped=0)),
+    )
+    reconcile = AsyncMock(return_value={"stat_entity_count": 4})
+    # the handler imports reconcile_project_stats locally, so patch the module attribute
+    monkeypatch.setattr("app.jobs.stats_updater.reconcile_project_stats", reconcile)
+
+    ctx = _ctx()  # caller == owner, project_meta → (_OWNER, _BOOK)
+    res = await execute_tool(ctx, "kg_project_entities_to_nodes", {})
+    assert res.success
+    reconcile.assert_awaited_once()
+    args = reconcile.await_args.args
+    assert args[2] == _OWNER and args[3] == _PROJECT  # (pool, session, user_id, project_id)
+
+
+@pytest.mark.asyncio
+async def test_project_entities_to_nodes_survives_stat_recount_failure(monkeypatch):
+    """The stat recount is advisory — a recount error must NOT fail an otherwise-successful
+    projection (the nodes were placed; the counter is a best-effort cache)."""
+
+    @asynccontextmanager
+    async def _fake_session(**_kwargs):
+        yield object()
+
+    monkeypatch.setattr("app.tools.graph_schema_tools.neo4j_session", _fake_session)
+    monkeypatch.setattr(
+        "app.clients.glossary_client.get_glossary_client",
+        MagicMock(return_value=MagicMock()),
+    )
+    monkeypatch.setattr(
+        "app.extraction.anchor_loader.project_glossary_entities_to_nodes",
+        AsyncMock(return_value=ProjectionResult(created=2, existing=0, seen=2, skipped=0)),
+    )
+    monkeypatch.setattr(
+        "app.jobs.stats_updater.reconcile_project_stats",
+        AsyncMock(side_effect=RuntimeError("neo4j down")),
+    )
+    ctx = _ctx()
+    res = await execute_tool(ctx, "kg_project_entities_to_nodes", {})
+    assert res.success
+    assert res.result["nodes_created"] == 2
+
+
+@pytest.mark.asyncio
+async def test_project_entities_to_nodes_bookless_project_errors():
+    """A book-less project has no glossary to project → a clear tool error."""
+    projects_repo = AsyncMock()
+    projects_repo.project_meta = AsyncMock(return_value=(_OWNER, None))
+    ctx = _ctx(projects_repo=projects_repo)
+    res = await execute_tool(ctx, "kg_project_entities_to_nodes", {})
+    assert not res.success
+    assert "isn't linked to a book" in res.error
 
 
 @pytest.mark.asyncio
@@ -1332,3 +1532,82 @@ async def test_kg_world_query_unify_by_name_wired(monkeypatch):
     assert res.success, res.error
     assert seen["method"] == "by_name"
     assert res.result["unify_method"] == "by_name"
+
+
+# ── W10-M1 kg_create_node (manual single-node create) ────────────────────────
+@pytest.mark.asyncio
+async def test_kg_create_node_creates_and_returns_endpoint_id(monkeypatch):
+    ctx = _ctx()  # caller == owner
+
+    @asynccontextmanager
+    async def _fake_session(**_):
+        yield object()
+
+    monkeypatch.setattr("app.tools.graph_schema_tools.neo4j_session", _fake_session)
+    me = AsyncMock(return_value=SimpleNamespace(id="kg-sha", name="Kai", kind="character"))
+    monkeypatch.setattr("app.db.neo4j_repos.entities.merge_entity", me)
+
+    res = await execute_tool(ctx, "kg_create_node", {"name": "  Kai  ", "kind": "character"})
+    assert res.success
+    assert res.result["entity_id"] == "kg-sha"
+    _, kwargs = me.call_args
+    assert kwargs["name"] == "Kai"                 # trimmed
+    assert kwargs["kind"] == "character"
+    assert kwargs["source_type"] == "manual"
+    assert kwargs["user_id"] == str(_OWNER)        # ran as the OWNER
+
+
+@pytest.mark.asyncio
+async def test_kg_create_node_non_grantee_anti_oracle():
+    repo = AsyncMock()
+    repo.project_meta = AsyncMock(return_value=(_OWNER, _BOOK))  # owner != caller
+    grant = AsyncMock()
+    grant.resolve_grant = AsyncMock(return_value=GrantLevel.NONE)
+    ctx = _ctx(user_id=uuid4(), projects_repo=repo, grant_client=grant)
+    res = await execute_tool(ctx, "kg_create_node", {"name": "X", "kind": "character"})
+    assert not res.success
+    assert "project not found" in res.error.lower()  # no existence oracle
+
+
+@pytest.mark.asyncio
+async def test_kg_create_node_resolves_to_owner_not_caller(monkeypatch):
+    reader = uuid4()
+    repo = AsyncMock()
+    repo.project_meta = AsyncMock(return_value=(_OWNER, _BOOK))  # owner != caller
+    grant = AsyncMock()
+    grant.resolve_grant = AsyncMock(return_value=GrantLevel.EDIT)  # grantee can write
+    ctx = _ctx(user_id=reader, projects_repo=repo, grant_client=grant)
+
+    @asynccontextmanager
+    async def _fake_session(**_):
+        yield object()
+
+    monkeypatch.setattr("app.tools.graph_schema_tools.neo4j_session", _fake_session)
+    me = AsyncMock(return_value=SimpleNamespace(id="kg-1", name="Kai", kind="character"))
+    monkeypatch.setattr("app.db.neo4j_repos.entities.merge_entity", me)
+
+    res = await execute_tool(ctx, "kg_create_node", {"name": "Kai", "kind": "character"})
+    assert res.success
+    _, kwargs = me.call_args
+    assert kwargs["user_id"] == str(_OWNER)  # the write ran as OWNER, never the grantee
+
+
+@pytest.mark.asyncio
+async def test_kg_create_node_rejects_free_string_kind():
+    # S7-1 (INV-parity): the agent free-string kind path is now gated to the
+    # same closed set the human REST create accepts. A bogus kind must fail
+    # validation BEFORE any write (no silent free-string mint).
+    ctx = _ctx()  # caller == owner
+    res = await execute_tool(ctx, "kg_create_node", {"name": "X", "kind": "gadget"})
+    assert not res.success
+    assert "kind must be one of" in res.error.lower()
+
+
+@pytest.mark.asyncio
+async def test_kg_create_node_rejects_legacy_faction_kind():
+    # ``faction`` is the retired misnomer — the agent must not be able to mint
+    # it either (create == agent). ``organization`` is the canonical group kind.
+    ctx = _ctx()
+    res = await execute_tool(ctx, "kg_create_node", {"name": "The Guild", "kind": "faction"})
+    assert not res.success
+    assert "kind must be one of" in res.error.lower()

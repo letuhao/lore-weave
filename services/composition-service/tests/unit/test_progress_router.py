@@ -31,7 +31,7 @@ CHAPTER = uuid.uuid4()
 
 def _work(settings=None) -> CompositionWork:
     return CompositionWork(
-        project_id=PROJECT, user_id=USER, book_id=BOOK, id=uuid.uuid4(),
+        project_id=PROJECT, created_by=USER, book_id=BOOK, id=uuid.uuid4(),
         version=1, status="active", settings=settings or {},
     )
 
@@ -40,18 +40,26 @@ class StubWorks:
     def __init__(self, work=None):
         self.work = work
 
-    async def get(self, user_id, project_id):
+    async def get(self, project_id):
         return self.work
 
 
 class StubProgress:
-    def __init__(self, agg=None):
+    def __init__(self, agg=None, goal=None):
         self.agg = agg or ProgressAggregate()
+        self.goal = goal  # BE-P2 — the per-user daily goal (composition_progress_goal), None = unset
         self.reported: list[tuple] = []
         self.baselined: list[tuple] = []
 
     async def read_aggregate(self, user_id, project_id, on_or_before):
         return self.agg
+
+    async def get_goal(self, user_id, project_id):
+        # mirrors DailyProgressRepo.get_goal — the router reads this before the legacy fallback
+        return self.goal
+
+    async def set_goal(self, user_id, project_id, goal):
+        self.goal = goal
 
     async def report(self, user_id, project_id, chapter_id, words, snapshot_date):
         self.reported.append((chapter_id, words, snapshot_date))
@@ -67,13 +75,23 @@ def ctx(monkeypatch):
     monkeypatch.setattr("app.main.close_pool", AsyncMock())
     monkeypatch.setattr("app.main.get_pool", lambda: object())
     from app.main import app
-    from app.deps import get_daily_progress_repo, get_works_repo
+    from app.deps import get_daily_progress_repo, get_grant_client_dep, get_works_repo
+    from app.grant_client import GrantLevel
     from app.middleware.jwt_auth import get_current_user
+
+    # E0 book-grant authority stubbed at OWNER (the gate's deny paths live in
+    # test_grant_gate); the router now resolves the Work's book then gates VIEW.
+    class _StubGrant:
+        async def resolve_grant(self, book_id, user_id):
+            return GrantLevel.OWNER
+        async def resolve_access(self, book_id, user_id):
+            return GrantLevel.OWNER, "active"
 
     works, progress = StubWorks(_work()), StubProgress()
     app.dependency_overrides[get_current_user] = lambda: USER
     app.dependency_overrides[get_works_repo] = lambda: works
     app.dependency_overrides[get_daily_progress_repo] = lambda: progress
+    app.dependency_overrides[get_grant_client_dep] = lambda: _StubGrant()
     with TestClient(app) as c:
         yield c, works, progress
     app.dependency_overrides.clear()
@@ -146,6 +164,20 @@ def test_get_progress_shapes_response(ctx):
     assert body["daily_goal"] == 400
     assert body["current_streak"] == 2
     assert len(body["sparkline"]) == 30
+
+
+def test_the_PER_USER_goal_wins_over_the_legacy_work_setting(ctx):
+    # BE-P2 — the per-user composition_progress_goal shadows the legacy shared work.settings.daily_goal,
+    # and the response surfaces the source tier (SET-1). This exercises the get_goal path the stale stub
+    # broke (C1).
+    client, works, progress = ctx
+    works.work = _work(settings={"daily_goal": 400})  # legacy shared
+    progress.goal = 750                                # the caller's own per-user goal
+    r = client.get(f"/v1/composition/works/{PROJECT}/progress", params={"today": "2026-06-24"})
+    assert r.status_code == 200
+    body = r.json()
+    assert body["daily_goal"] == 750                   # per-user WINS
+    assert body.get("daily_goal_source") == "user"     # and the source tier is surfaced
 
 
 def test_get_progress_404_on_unknown_work(ctx):

@@ -84,6 +84,68 @@ async def test_get_reader_language_failure_returns_none(bc: BookClient):
         assert await bc.get_reader_language(book_id, user_id) is None
 
 
+# ── get_reading_position (W11-M2 reader spoiler cutoff) ──────────────
+def _reading_position_url(book_id) -> str:
+    return f"http://book-service:8082/internal/books/{book_id}/reading-position"
+
+
+@pytest.mark.asyncio
+async def test_get_reading_position_success(bc: BookClient):
+    book_id, user_id, chapter_id = uuid4(), uuid4(), uuid4()
+    with respx.mock() as mock:
+        route = mock.get(_reading_position_url(book_id)).mock(
+            return_value=httpx.Response(
+                200,
+                json={"furthest_chapter_id": str(chapter_id), "furthest_sort_order": 7},
+            ),
+        )
+        out = await bc.get_reading_position(book_id, user_id)
+    assert out == chapter_id
+    assert route.calls.last.request.url.params["user_id"] == str(user_id)
+
+
+@pytest.mark.asyncio
+async def test_get_reading_position_null_is_none(bc: BookClient):
+    # The route returns HTTP 200 with null furthest_chapter_id for "no position" —
+    # this MUST collapse to None (fail-closed), not be mistaken for a real position.
+    book_id, user_id = uuid4(), uuid4()
+    with respx.mock() as mock:
+        mock.get(_reading_position_url(book_id)).mock(
+            return_value=httpx.Response(
+                200, json={"furthest_chapter_id": None, "furthest_sort_order": None},
+            ),
+        )
+        assert await bc.get_reading_position(book_id, user_id) is None
+
+
+@pytest.mark.asyncio
+async def test_get_reading_position_failure_is_none(bc: BookClient):
+    # Any transport / non-200 failure → None (fail-closed): a reader whose position
+    # can't be pinned must window to nothing, never to the whole book.
+    book_id, user_id = uuid4(), uuid4()
+    with respx.mock() as mock:
+        mock.get(_reading_position_url(book_id)).mock(return_value=httpx.Response(503))
+        assert await bc.get_reading_position(book_id, user_id) is None
+
+
+@pytest.mark.asyncio
+async def test_get_reading_position_garbled_body_is_none(bc: BookClient):
+    # A garbled book-service response must fail CLOSED (None), never 500 a reader
+    # tool: a malformed chapter_id (UUID() raises) and a non-dict JSON body (no
+    # .get) both collapse to None. /review-impl LOW.
+    book_id, user_id = uuid4(), uuid4()
+    with respx.mock() as mock:
+        mock.get(_reading_position_url(book_id)).mock(
+            return_value=httpx.Response(200, json={"furthest_chapter_id": "not-a-uuid"}),
+        )
+        assert await bc.get_reading_position(book_id, user_id) is None
+    with respx.mock() as mock:
+        mock.get(_reading_position_url(book_id)).mock(
+            return_value=httpx.Response(200, json=["unexpected", "list"]),
+        )
+        assert await bc.get_reading_position(book_id, user_id) is None
+
+
 # ── lexical_search (raw-search Phase 2) ──────────────────────────────
 
 

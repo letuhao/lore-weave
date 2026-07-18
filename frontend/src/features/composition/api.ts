@@ -4,7 +4,7 @@
 import { apiBase, apiJson } from '../../api';
 import type {
   AutoGeneration, CanonRule, ChapterGeneration, CommitDecomposePayload, CorrectionBody, CorrectionStats,
-  CanonIssue, DecomposePreview, DeriveBody, DerivativeContextResponse, GenerationJob, Grounding, GroundingItemType, NarrativeThread, OutlineNode, OutlineSearchHit, PinAction, ProgressStats, PublishGate, ReferenceList, ReferenceSearch, ReferenceSource, SceneLink, SceneLinkKind, StructureTemplate, StyleProfile, StyleScope, VoiceProfile, Work, WorkResolution,
+  Beat, BookDiagnostics, CanonIssue, ConformanceStatus, DecomposePreview, DeriveBody, DerivativeContextResponse, DivergenceSpecPatch, DivergenceTaxonomy, EntityOverrideRow, GenerationJob, Grounding, GroundingItemType, NarrativeThread, OutlineNode, OutlineSearchHit, PinAction, ProgressStats, PublishGate, ReferenceList, ReferenceSearch, ReferenceSource, RuleViolationItem, SceneLink, SceneLinkKind, StructureTemplate, StyleProfile, StyleScope, VoiceProfile, Work, WorkResolution,
 } from './types';
 import type { MotifBindingsResponse } from './motif/types';
 
@@ -95,6 +95,11 @@ export const compositionApi = {
   resolveWork(bookId: string, token: string): Promise<WorkResolution> {
     return apiJson<WorkResolution>(`${BASE}/books/${bookId}/work`, { token });
   },
+  /** S-10 O3 — the read-only problems panel (studio Issues tab). REST twin of the
+   *  composition_diagnostics MCP tool; ranked error → warn → info, counts exact, rows capped. */
+  getBookDiagnostics(bookId: string, token: string): Promise<BookDiagnostics> {
+    return apiJson<BookDiagnostics>(`${BASE}/books/${bookId}/diagnostics`, { token });
+  },
   createWork(bookId: string, token: string): Promise<Work> {
     return apiJson<Work>(`${BASE}/books/${bookId}/work`, { method: 'POST', token });
   },
@@ -132,6 +137,87 @@ export const compositionApi = {
   // for a greenfield Work (everything else empty).
   getDerivativeContext(projectId: string, token: string): Promise<DerivativeContextResponse> {
     return apiJson<DerivativeContextResponse>(`${BASE}/works/${projectId}/derivative-context`, { token });
+  },
+  // S-04 — edit a derivative's divergence deltas AFTER derive (the spec + overrides
+  // were frozen at derive-time). PATCH the spec (taxonomy/pov_anchor/canon_rule); the
+  // entity_override rows get their own LIST/POST/PATCH/DELETE (with the row id the
+  // derivative-context projection omits). All keyed by the derivative's project_id.
+  patchDivergenceSpec(
+    projectId: string,
+    body: DivergenceSpecPatch,
+    token: string,
+  ): Promise<{ taxonomy: DivergenceTaxonomy; pov_anchor: string | null; canon_rule: string[] }> {
+    return apiJson(`${BASE}/works/${projectId}/divergence-spec`, {
+      method: 'PATCH', body: JSON.stringify(body), token,
+    });
+  },
+  listEntityOverrides(projectId: string, token: string): Promise<{ overrides: EntityOverrideRow[] }> {
+    return apiJson(`${BASE}/works/${projectId}/entity-overrides`, { token });
+  },
+  addEntityOverride(
+    projectId: string,
+    body: { target_entity_id: string; overridden_fields: Record<string, unknown> },
+    token: string,
+  ): Promise<EntityOverrideRow> {
+    return apiJson(`${BASE}/works/${projectId}/entity-overrides`, {
+      method: 'POST', body: JSON.stringify(body), token,
+    });
+  },
+  updateEntityOverride(
+    projectId: string,
+    overrideId: string,
+    body: { overridden_fields: Record<string, unknown> },
+    token: string,
+  ): Promise<EntityOverrideRow> {
+    return apiJson(`${BASE}/works/${projectId}/entity-overrides/${overrideId}`, {
+      method: 'PATCH', body: JSON.stringify(body), token,
+    });
+  },
+  deleteEntityOverride(projectId: string, overrideId: string, token: string): Promise<void> {
+    return apiJson(`${BASE}/works/${projectId}/entity-overrides/${overrideId}`, {
+      method: 'DELETE', token,
+    });
+  },
+  // S5-B4 — the latest completed scene-draft prose for a chapter in ONE project
+  // (node_id + story_order + title + text). Fetched for BOTH the dị bản and its source
+  // so the branch-diff can correspond scenes by (chapter_id, story_order).
+  getChapterSceneDrafts(
+    projectId: string,
+    chapterId: string,
+    token: string | null,
+  ): Promise<{ items: Array<{ node_id: string; story_order: number; title: string; text: string; anchor_node_id: string | null }> }> {
+    return apiJson(`${BASE}/works/${projectId}/chapters/${chapterId}/scene-drafts`, { token });
+  },
+  // ── D-S5-DERIVATIVE-MANUSCRIPT-FORK — a dị bản's OWN manuscript, per chapter. GET reads the
+  // fork if it exists, else reads-through to canon (draft_version 0 = inherited, not forked yet).
+  // PATCH with expected_version 0 forks; >=1 OCC-bumps. Canon (book-service) is never touched.
+  getWorkChapterDraft(
+    projectId: string,
+    chapterId: string,
+    token: string | null,
+  ): Promise<{ forked: boolean; inherited: boolean; body: unknown; draft_version: number; draft_format: string; canon_version?: number; merged_at?: string | null }> {
+    return apiJson(`${BASE}/works/${projectId}/chapters/${chapterId}/work-draft`, { token });
+  },
+  patchWorkChapterDraft(
+    projectId: string,
+    chapterId: string,
+    payload: { body: unknown; expected_version: number; draft_format?: string },
+    token: string | null,
+  ): Promise<{ forked: boolean; body: unknown; draft_version: number }> {
+    return apiJson(`${BASE}/works/${projectId}/chapters/${chapterId}/work-draft`, {
+      method: 'PATCH', token, body: JSON.stringify(payload),
+    });
+  },
+  mergeWorkChapterToCanon(
+    projectId: string,
+    chapterId: string,
+    token: string | null,
+    opts?: { expectedCanonVersion?: number },
+  ): Promise<{ merged: boolean; canon_draft_version: number }> {
+    return apiJson(`${BASE}/works/${projectId}/chapters/${chapterId}/merge-to-canon`, {
+      method: 'POST', token,
+      body: JSON.stringify(opts?.expectedCanonVersion !== undefined ? { expected_canon_version: opts.expectedCanonVersion } : {}),
+    });
   },
   getOutline(projectId: string, token: string, includeArchived = false): Promise<{ nodes: OutlineNode[]; scene_links: SceneLink[] }> {
     const qs = includeArchived ? '?include_archived=true' : '';
@@ -201,17 +287,35 @@ export const compositionApi = {
   createNode(projectId: string, payload: Partial<OutlineNode> & { kind: string }, token: string): Promise<OutlineNode> {
     return apiJson(`${BASE}/works/${projectId}/outline/nodes`, { method: 'POST', body: JSON.stringify(payload), token });
   },
+  // 22-C3 — a single node's FULL fields (the scene-inspector's detail read, VIEW-gated). The
+  // summary projections drop the intent/craft fields the inspector edits, so it reads the node whole.
+  // BARE node path (like patchNode/archiveNode) — the gate derives scope from the row, no project prefix.
+  getNode(nodeId: string, token: string): Promise<OutlineNode> {
+    return apiJson(`${BASE}/outline/nodes/${nodeId}`, { token });
+  },
+  // 26 IX-14 — the conformance staleness read contract (book-keyed, VIEW-gated). One wire shape for
+  // every surface (scene chips, Hub badges); advisory + cheap (no LLM). `arc_id` scopes to one arc.
+  getConformanceStatus(bookId: string, token: string): Promise<ConformanceStatus> {
+    return apiJson(`${BASE}/books/${bookId}/conformance/status`, { token });
+  },
   // M3 (WS-B3 prose-persist-on-promote) — persist a promoted derivative scene's take
   // PROSE, scene-scoped, in the DERIVATIVE project (a synthetic completed job keyed by
   // node_id; NEVER the shared book draft → source-clobber guard is server-side). Plain
   // text; empty/whitespace → 422 EMPTY_SCENE_PROSE (caller skips that scene). Idempotent
   // on node_id (a re-promote overwrites, never duplicates).
   persistScenePromoteProse(
-    projectId: string, nodeId: string, text: string, token: string, idempotencyKey?: string,
+    projectId: string, nodeId: string, text: string, token: string,
+    opts?: { idempotencyKey?: string; anchorNodeId?: string },
   ): Promise<{ node_id: string; persisted: boolean; version: number }> {
     return apiJson(`${BASE}/works/${projectId}/scenes/${nodeId}/prose`, {
       method: 'POST',
-      body: JSON.stringify({ text, ...(idempotencyKey ? { idempotency_key: idempotencyKey } : {}) }),
+      body: JSON.stringify({
+        text,
+        ...(opts?.idempotencyKey ? { idempotency_key: opts.idempotencyKey } : {}),
+        // S5-B4 — the canon scene this take is an alternate of, so the branch-diff
+        // pairs this promoted scene to canon reliably (not by dense story_order).
+        ...(opts?.anchorNodeId ? { anchor_node_id: opts.anchorNodeId } : {}),
+      }),
       token,
     });
   },
@@ -255,9 +359,33 @@ export const compositionApi = {
   // templates; decomposePreview → the proposed (NOT persisted) arc→chapter→scene
   // tree; commitDecompose → persist the edited tree (409 CHAPTER_ALREADY_PLANNED
   // carries .body.detail.chapter_ids → the hook resends with replace=true).
-  listTemplates(token: string): Promise<StructureTemplate[]> {
-    return apiJson<{ templates: StructureTemplate[] }>(`${BASE}/templates`, { token })
+  listTemplates(token: string, includeArchived = false): Promise<StructureTemplate[]> {
+    const q = includeArchived ? '?include_archived=true' : '';
+    return apiJson<{ templates: StructureTemplate[] }>(`${BASE}/templates${q}`, { token })
       .then((r) => r.templates);
+  },
+  // S-01 · custom structure-template authoring (per-user).
+  cloneTemplate(templateId: string, token: string, name?: string): Promise<StructureTemplate> {
+    return apiJson<StructureTemplate>(`${BASE}/templates/${templateId}/clone`, {
+      method: 'POST', token, body: JSON.stringify(name != null ? { name } : {}),
+    });
+  },
+  createTemplate(body: { name: string; kind?: string; beats?: Beat[] }, token: string): Promise<StructureTemplate> {
+    return apiJson<StructureTemplate>(`${BASE}/templates`, { method: 'POST', token, body: JSON.stringify(body) });
+  },
+  updateTemplate(
+    templateId: string, version: number,
+    patch: { name?: string; kind?: string; beats?: Beat[] }, token: string,
+  ): Promise<StructureTemplate> {
+    return apiJson<StructureTemplate>(`${BASE}/templates/${templateId}`, {
+      method: 'PATCH', token, headers: { 'If-Match': String(version) }, body: JSON.stringify(patch),
+    });
+  },
+  archiveTemplate(templateId: string, token: string): Promise<void> {
+    return apiJson<void>(`${BASE}/templates/${templateId}`, { method: 'DELETE', token });
+  },
+  restoreTemplate(templateId: string, token: string): Promise<StructureTemplate> {
+    return apiJson<StructureTemplate>(`${BASE}/templates/${templateId}/restore`, { method: 'POST', token });
   },
   async decomposePreview(projectId: string, body: DecomposeBody, token: string): Promise<DecomposePreview> {
     const resp = await apiJson<DecomposePreview & { job_id?: string; status?: string }>(
@@ -291,6 +419,13 @@ export const compositionApi = {
   // (YYYY-MM-DD) so streaks honor the writer's midnight, not UTC.
   getProgress(projectId: string, today: string, token: string): Promise<ProgressStats> {
     return apiJson(`${BASE}/works/${projectId}/progress?today=${encodeURIComponent(today)}`, { token });
+  },
+  // BE-P2 — set the caller's OWN daily goal (0 clears it). PER-USER — never touches the shared
+  // work.settings blob (the tenancy defect this replaces).
+  setDailyGoal(projectId: string, goal: number, token: string): Promise<{ ok: boolean; daily_goal: number | null }> {
+    return apiJson(`${BASE}/works/${projectId}/progress/goal`, {
+      method: 'PUT', body: JSON.stringify({ daily_goal: Math.max(0, Math.floor(goal)) }), token,
+    });
   },
   // T4.2 — report the active chapter's current total word count (a snapshot keyed
   // to the local date). Idempotent per (chapter, date). Fired best-effort on save.
@@ -367,6 +502,26 @@ export const compositionApi = {
   deleteReference(referenceId: string, token: string): Promise<{ id: string; deleted: boolean }> {
     return apiJson(`${BASE}/references/${referenceId}`, { method: 'DELETE', token });
   },
+  // S-03 — edit a reference. Metadata (title/author/source_url) is a CHEAP write, no
+  // re-embed; content is a separate PUT that DOES re-embed (priced — made explicit at
+  // the API so the UI can signal the cost). Both keyed by {projectId, referenceId}.
+  updateReferenceMetadata(
+    projectId: string,
+    referenceId: string,
+    body: { title?: string; author?: string; source_url?: string },
+    token: string,
+  ): Promise<ReferenceSource> {
+    return apiJson(`${BASE}/works/${projectId}/references/${referenceId}`, {
+      method: 'PATCH', body: JSON.stringify(body), token,
+    });
+  },
+  updateReferenceContent(
+    projectId: string, referenceId: string, content: string, token: string,
+  ): Promise<ReferenceSource> {
+    return apiJson(`${BASE}/works/${projectId}/references/${referenceId}/content`, {
+      method: 'PUT', body: JSON.stringify({ content }), token,
+    });
+  },
   // Per-scene semantic retrieval. `q` overrides the auto query (scene synopsis/beat).
   searchReferences(
     projectId: string, nodeId: string, token: string, q?: string,
@@ -409,6 +564,14 @@ export const compositionApi = {
   getJob(jobId: string, token: string): Promise<GenerationJob> {
     return apiJson(`${BASE}/jobs/${jobId}`, { token });
   },
+  // BE-7c — the OWNER-scoped poll for a Work-LESS job (motif-mine, arc-import). Such a job
+  // carries project_id=NULL, so `getJob` (`/jobs/{id}`, which gates on the job's project→book
+  // grant) 404s on it FOREVER — the "spinner forever after you paid" bug. This route gates on
+  // the actor stamp the row DOES carry (`created_by`). Use it ONLY for unbound flows; Work-bound
+  // polls (compose, conformance) stay on getJob so collaborators' VIEW grants still resolve.
+  getMotifJob(jobId: string, token: string): Promise<GenerationJob> {
+    return apiJson(`${BASE}/motif-jobs/${jobId}`, { token });
+  },
   // M4 — poll a job to terminal (used by the SSE consumer's 202 fallback when a
   // stream endpoint answers a batch job instead). Stops early if `signal` aborts.
   awaitJob(jobId: string, token: string, signal?: AbortSignal): Promise<GenerationJob> {
@@ -425,12 +588,24 @@ export const compositionApi = {
       body: JSON.stringify(commitMessage ? { commit_message: commitMessage } : {}),
     });
   },
-  // Patch the Work (LOOM chapter-assembly: set settings.assembly_mode). NOTE the
-  // server REPLACES the whole settings blob — the caller MUST merge the existing
-  // settings (see useChapterAssembly.setAssemblyMode) so it never drops
-  // critic_model_*/reasoning_engine/etc.
-  patchWork(projectId: string, patch: { settings?: Record<string, unknown>; status?: string }, token: string): Promise<Work> {
-    return apiJson(`${BASE}/works/${projectId}`, { method: 'PATCH', body: JSON.stringify(patch), token });
+  // Patch the Work (settings and/or status). BE-18: the server now SHALLOW-MERGES a
+  // partial `settings` patch (COALESCE(settings,'{}') || $n), so a caller may send only
+  // the keys it changes; merging the full blob FE-side is still safe (idempotent).
+  // `opts.version` opts IN to If-Match optimistic concurrency (412 WORK_VERSION_CONFLICT
+  // carrying the current row) — used by the divergence ARCHIVE, human-paced + conflict-
+  // meaningful. Do NOT pass it from high-frequency writers (e.g. world-map node drag).
+  patchWork(
+    projectId: string,
+    patch: { settings?: Record<string, unknown>; status?: string },
+    token: string,
+    opts?: { version?: number },
+  ): Promise<Work> {
+    return apiJson(`${BASE}/works/${projectId}`, {
+      method: 'PATCH',
+      body: JSON.stringify(patch),
+      token,
+      ...(opts?.version !== undefined ? { headers: { 'If-Match': String(opts.version) } } : {}),
+    });
   },
   // B2 chapter single-pass — generate a whole chapter from its decompose plan.
   async generateChapter(projectId: string, chapterId: string, params: ChapterAssembleParams, token: string): Promise<ChapterGeneration> {
@@ -553,8 +728,11 @@ export const compositionApi = {
       method: 'POST', body: JSON.stringify({ rule_id: ruleId }), token,
     });
   },
-  listCanonRules(projectId: string, token: string): Promise<{ rules: CanonRule[] }> {
-    return apiJson(`${BASE}/works/${projectId}/canon-rules`, { token });
+  listCanonRules(
+    projectId: string, token: string, opts?: { includeArchived?: boolean },
+  ): Promise<{ rules: CanonRule[] }> {
+    const q = opts?.includeArchived ? '?include_archived=true' : '';
+    return apiJson(`${BASE}/works/${projectId}/canon-rules${q}`, { token });
   },
   createCanonRule(projectId: string, payload: Partial<CanonRule>, token: string): Promise<CanonRule> {
     return apiJson(`${BASE}/works/${projectId}/canon-rules`, { method: 'POST', body: JSON.stringify(payload), token });
@@ -566,6 +744,11 @@ export const compositionApi = {
   },
   deleteCanonRule(ruleId: string, token: string): Promise<CanonRule> {
     return apiJson(`${BASE}/canon-rules/${ruleId}`, { method: 'DELETE', token });
+  },
+  // BE-11 — un-archive a soft-deleted rule: the UNDO the DELETE promises. Reachability is the
+  // "Rule deleted · Undo" toast (delete returns the archived row, so the FE holds the id).
+  restoreCanonRule(ruleId: string, token: string): Promise<CanonRule> {
+    return apiJson(`${BASE}/canon-rules/${ruleId}/restore`, { method: 'POST', token });
   },
   // T0.1 — read the narrative-thread ledger (FD-1 S4a). `open` = the unpaid-promise
   // debt (priority-ordered); `all` = the full ledger. `open_count` is the true debt
@@ -582,6 +765,14 @@ export const compositionApi = {
   // Read-only; mirrors the publish-gate's canon predicate but itemized, not counted.
   getCanonIssues(projectId: string, token: string): Promise<{ items: CanonIssue[] }> {
     return apiJson(`${BASE}/works/${projectId}/canon-issues`, { token });
+  },
+  // 24 PH18 — the RULE-keyed lane (critic verdicts), distinct from getCanonIssues'
+  // entity-continuity lane. This is the one a canon deep-link can filter on.
+  // Bounded: `count` is EXACT and `capped` says the list is short of it (OUT-5).
+  getRuleViolations(
+    projectId: string, token: string,
+  ): Promise<{ items: RuleViolationItem[]; count: number; capped: boolean }> {
+    return apiJson(`${BASE}/works/${projectId}/rule-violations`, { token });
   },
 };
 

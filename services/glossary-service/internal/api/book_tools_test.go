@@ -35,6 +35,46 @@ func newActionFixtureNoAdopt(t *testing.T, pool *pgxpool.Pool) *actionFixture {
 	return &actionFixture{srv: srv, jwt: signed, ownerID: owner, bookID: book}
 }
 
+// External MCP discoverability audit #11 — glossary_adopt_standards with no genres/kinds
+// specified is a genuine no-op (the book is already adopted, so even the always-included
+// universal/unknown add nothing new). It must still mint a valid, confirmable token (the
+// call itself isn't an error), but the response must carry a warning so a caller that
+// doesn't read preview_rows closely can't mistake it for a meaningful proposal.
+func TestBookTool_AdoptNoOpWarnsOnEmptyPayload(t *testing.T) {
+	pool := openTestDB(t)
+	f := newActionFixture(t, pool) // pre-adopted book — universal/unknown already present
+	_, card, err := f.srv.toolAdoptStandards(ctxWithUser(f.ownerID), nil,
+		adoptToolIn{BookID: f.bookID.String()}) // no Genres, no Kinds
+	if err != nil {
+		t.Fatalf("propose adopt: %v", err)
+	}
+	if card.ConfirmToken == "" {
+		t.Fatal("a no-op adopt must still mint a valid confirm_token (it is not an error)")
+	}
+	if card.Warning == "" {
+		t.Fatalf("a no-real-target adopt must carry a warning, got card=%+v", card)
+	}
+	if !strings.Contains(card.Warning, "nothing new") {
+		t.Errorf("warning should state that nothing new will be adopted, got %q", card.Warning)
+	}
+}
+
+// A non-empty adopt (real genres/kinds picked) must NOT carry the no-op warning, even
+// when some of the picked codes happen to already be present — the warning is specific to
+// "no real target was specified", not to the resulting new-count.
+func TestBookTool_AdoptWithTargetsCarriesNoWarning(t *testing.T) {
+	pool := openTestDB(t)
+	f := newActionFixtureNoAdopt(t, pool)
+	_, card, err := f.srv.toolAdoptStandards(ctxWithUser(f.ownerID), nil,
+		adoptToolIn{BookID: f.bookID.String(), Genres: []string{"xianxia"}, Kinds: []string{"character"}})
+	if err != nil {
+		t.Fatalf("propose adopt: %v", err)
+	}
+	if card.Warning != "" {
+		t.Errorf("an adopt with real targets must not carry the no-op warning, got %q", card.Warning)
+	}
+}
+
 // adopt (C) round-trip: propose → preview (new counts) → confirm → ontology grows.
 func TestBookTool_AdoptRoundTrip(t *testing.T) {
 	pool := openTestDB(t)

@@ -71,10 +71,30 @@ def test_chat_ai_prefs_table_and_session_override_columns():
 
 
 def test_ddl_has_no_unguarded_alter_add_column():
-    # every ALTER ... ADD COLUMN in the boot DDL must live inside a DO-block
-    # guard — a bare one would crash the second boot. Cheap structural pin.
-    for m in re.finditer(r"ALTER TABLE \w+ ADD COLUMN", DDL):
+    # The property is IDEMPOTENCY: the boot DDL re-runs on every start, so a bare
+    # `ALTER TABLE t ADD COLUMN c` crashes the second boot. TWO forms satisfy that,
+    # and both are in use here:
+    #   1. wrapped in a DO-block that information_schema-checks the column first;
+    #   2. Postgres' native `ADD COLUMN IF NOT EXISTS` (self-guarding, no block needed).
+    # Only accepting (1) would flunk perfectly safe DDL, so match on the guarantee
+    # rather than on one spelling of it.
+    for m in re.finditer(r"ALTER TABLE \w+ ADD COLUMN(?! IF NOT EXISTS)", DDL):
         preceding = DDL[: m.start()].rsplit("DO $$", 1)
         assert len(preceding) == 2 and "END $$" not in preceding[1], (
-            f"unguarded ADD COLUMN at offset {m.start()}"
+            f"unguarded ADD COLUMN at offset {m.start()}: "
+            f"{DDL[m.start():m.start() + 80]!r} — wrap it in a DO-block that checks "
+            f"information_schema first, or use ADD COLUMN IF NOT EXISTS; a bare "
+            f"ADD COLUMN crashes the next boot."
         )
+
+
+def test_the_add_column_guard_is_a_live_gate():
+    """Negative control — a guard that cannot fail is not a gate."""
+    bare = "ALTER TABLE chat_messages ADD COLUMN oops TEXT;"
+    assert re.search(r"ALTER TABLE \w+ ADD COLUMN(?! IF NOT EXISTS)", bare), (
+        "the pattern must still catch a bare, unguarded ADD COLUMN"
+    )
+    native = "ALTER TABLE chat_messages ADD COLUMN IF NOT EXISTS ok TEXT;"
+    assert not re.search(r"ALTER TABLE \w+ ADD COLUMN(?! IF NOT EXISTS)", native), (
+        "the pattern must treat native IF NOT EXISTS as already guarded"
+    )

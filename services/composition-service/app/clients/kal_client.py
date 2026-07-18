@@ -122,7 +122,9 @@ class KalClient:
             for e in items:
                 eid, name = e.get("entity_id"), e.get("name")
                 if eid and name:
-                    out.append({"entity_id": str(eid), "name": name})
+                    # A3 — carry the entity KIND through when the gateway provides it (optional;
+                    # None on an older gateway → degrade-safe, callers treat kind as a hint).
+                    out.append({"entity_id": str(eid), "name": name, "kind": e.get("kind")})
             nxt = data.get("next_cursor") if isinstance(data, dict) else None
             if not nxt:
                 return out  # COMPLETE drain (even if out is empty)

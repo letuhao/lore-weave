@@ -26,6 +26,7 @@ makes these classes pure/synchronous to unit-test.
 from __future__ import annotations
 
 import json
+import re
 from typing import Protocol
 from uuid import uuid4
 
@@ -34,12 +35,115 @@ __all__ = [
     "LegacyEmitter",
     "AgUiEmitter",
     "make_emitter",
+    "scrub_jargon",
 ]
 
 
 def _sse(obj: dict) -> str:
     """Encode one event dict as an SSE data line."""
     return f"data: {json.dumps(obj)}\n\n"
+
+
+# ── Track C §4 vocabulary guard (DETERMINISTIC "speak plainly") ──────────────────
+# The flagship promises the novelist never hears the SYSTEM's words. The rail asks the
+# model to speak plainly, but a mid-tier model (gemma) does not reliably comply — measured,
+# it leaks `glossary`/`entity`/`ontology`/`knowledge graph`/`vision-to-book` to the user.
+# So we ENFORCE it: rewrite the UNAMBIGUOUS §4 jargon in the assistant's user-facing text to
+# plain novelist words, at the wire chokepoint. Only terms with NO innocuous English use are
+# here — `kind`/`tool`/`spec`/`job`/`token` are deliberately EXCLUDED (a model says "what
+# kind of story" / "a tool for you" innocuously; rewriting those would mangle normal prose,
+# and they are not real jargon leaks). Ordered plural-before-singular so both forms match.
+_JARGON_SUBS: list[tuple[re.Pattern[str], str]] = [
+    (re.compile(r"\bknowledge\s+graphs?\b", re.I), "connection map"),
+    (re.compile(r"\bvision[-\s]?to[-\s]?book\b", re.I), "book-building"),
+    (re.compile(r"\bNovelSystemSpec\b", re.I), "plan"),
+    (re.compile(r"\bPlanForge\b", re.I), "the planner"),
+    (re.compile(r"\bglossaries\b", re.I), "story bibles"),
+    (re.compile(r"\bglossary\b", re.I), "story bible"),
+    (re.compile(r"\bontolog(?:y|ies)\b", re.I), "categories"),
+    (re.compile(r"\bentities\b", re.I), "elements"),
+    (re.compile(r"\bentity\b", re.I), "element"),
+    (re.compile(r"\battributes\b", re.I), "details"),
+    (re.compile(r"\battribute\b", re.I), "detail"),
+    (re.compile(r"\bschemas\b", re.I), "structures"),
+    (re.compile(r"\bschema\b", re.I), "structure"),
+    (re.compile(r"\bpipelines\b", re.I), "processes"),
+    (re.compile(r"\bpipeline\b", re.I), "process"),
+    (re.compile(r"\bworkflows\b", re.I), "recipes"),
+    (re.compile(r"\bworkflow\b", re.I), "recipe"),
+    (re.compile(r"\bwikis?\b", re.I), "notes"),
+]
+# MULTI-word §4 jargon phrases (lowercase word lists). The stream buffer holds back an
+# INCOMPLETE trailing prefix of any of these so the phrase is never emitted split across
+# deltas before scrub_jargon (which matches the whole phrase) sees it. Any length is handled,
+# so both "knowledge graph" (2) and the spaced "vision to book" (3) are covered.
+_MULTI_PHRASES: list[list[str]] = [
+    ["knowledge", "graph"],
+    ["vision", "to", "book"],
+]
+
+# Every lowercase word a jargon rule could match — used to decide whether a trailing partial
+# word is "risky" (a prefix of a jargon token) and must be HELD until it completes, vs. safe
+# to emit immediately. This keeps the stream eager for all normal prose and only buffers when
+# text could be forming a jargon word/phrase. Includes each multi-phrase's words (so "vision"
+# / "knowledge" are held as they arrive char-by-char) and the mid-phrase word "to".
+_JARGON_WORDS = frozenset({
+    "glossary", "glossaries", "ontology", "ontologies", "entity", "entities",
+    "attribute", "attributes", "schema", "schemas", "pipeline", "pipelines",
+    "workflow", "workflows", "wiki", "wikis", "novelsystemspec", "planforge",
+    "vision-to-book", "vision", "knowledge",
+})
+# Words that appear INSIDE a multi-phrase (not at the start) — a trailing one must not evict a
+# held phrase prefix, so `_is_risky_tail` keeps them buffered too (e.g. the "to" of "vision to
+# book", or a fragment like "gr" of "graph"). Built from the phrase word-lists.
+_PHRASE_INNER_WORDS = frozenset(
+    w for phrase in _MULTI_PHRASES for w in phrase[1:]
+)
+
+
+def _norm_word(w: str) -> str:
+    return w.lower().strip(".,!?;:\"'()[]{}")
+
+
+def _is_risky_tail(tail: str) -> bool:
+    """True when a trailing partial word could still grow into a jargon token OR into the next
+    word of a multi-word phrase we may be mid-way through (so it must be held). False for a
+    token that can only be ordinary prose (safe to emit now)."""
+    t = tail.lower().lstrip("\"'([{")
+    if not t:
+        return False
+    if any(w.startswith(t) for w in _JARGON_WORDS):
+        return True
+    # a fragment that could complete a mid-phrase word (e.g. "gr" → "graph", "bo" → "book")
+    return any(w.startswith(t) for w in _PHRASE_INNER_WORDS)
+
+
+def _incomplete_phrase_suffix(words: list[str]) -> int:
+    """How many TRAILING complete words of `words` form an INCOMPLETE prefix of some multi-word
+    jargon phrase (0 if none). Those words must be held until the phrase completes or flushes."""
+    norm = [_norm_word(w) for w in words]
+    best = 0
+    for phrase in _MULTI_PHRASES:
+        for k in range(1, min(len(phrase), len(norm)) + 1):
+            if k < len(phrase) and norm[-k:] == phrase[:k]:
+                best = max(best, k)
+    return best
+
+
+def _match_case(repl: str, orig: str) -> str:
+    """Carry the original token's casing onto the replacement (ALL-CAPS / Capitalized / lower)."""
+    if orig.isupper() and orig.lower() != orig:
+        return repl.upper()
+    if orig[:1].isupper():
+        return repl[:1].upper() + repl[1:]
+    return repl
+
+
+def scrub_jargon(text: str) -> str:
+    """Rewrite unambiguous §4 system-jargon to plain novelist words. Idempotent, case-aware."""
+    for pat, repl in _JARGON_SUBS:
+        text = pat.sub(lambda m: _match_case(repl, m.group(0)), text)
+    return text
 
 
 class StreamEmitter(Protocol):
@@ -209,14 +313,61 @@ class AgUiEmitter:
         self._run_id = str(uuid4())
         # Which message kind is currently open: None | "reasoning" | "text".
         self._open: str | None = None
+        # §4 vocab guard — trailing UNSETTLED text held back so a multi-word jargon phrase
+        # ("knowledge graph") is never split across two deltas before scrub_jargon sees it.
+        self._jargon_buf: str = ""
 
     # ── private framing helpers ───────────────────────────────────────────
+
+    def _text_content(self, delta: str) -> str:
+        return _sse({
+            "type": "TEXT_MESSAGE_CONTENT",
+            "messageId": self._message_id,
+            "delta": delta,
+        })
+
+    def _split_settled(self, buf: str) -> tuple[str, str]:
+        """Split a text buffer into (settled, held). `settled` is safe to emit now; `held` is
+        a trailing run kept back ONLY when it could still grow into a jargon token/phrase — so
+        normal prose streams eagerly and only jargon-forming text buffers.
+
+        Two independent holds, BOTH always applied:
+        (1) the trailing PARTIAL word is a prefix of a jargon token or a mid-phrase word
+            (e.g. "gloss"→glossary, "gr"→graph) — hold it until it completes;
+        (2) the trailing COMPLETE words are an INCOMPLETE prefix of a multi-word jargon phrase
+            (e.g. "knowledge", "vision to") — hold them until the phrase completes/flushes, so
+            scrub_jargon sees the whole phrase. Applied whether or not (1) fired (the bug the
+            /review-impl found: (2) used to be skipped when the tail was a jargon prefix)."""
+        idx = max(buf.rfind(" "), buf.rfind("\n"), buf.rfind("\t"))
+        tail = buf[idx + 1:] if idx >= 0 else buf
+        if _is_risky_tail(tail):
+            settled, held = (buf[: idx + 1] if idx >= 0 else ""), tail
+        else:
+            settled, held = buf, ""
+        # (2) — hold an incomplete multi-word phrase prefix at the END of `settled`, always.
+        spans = list(re.finditer(r"\S+", settled))
+        n = _incomplete_phrase_suffix([m.group(0) for m in spans])
+        if 0 < n <= len(spans):
+            cut = spans[-n].start()
+            held = settled[cut:] + held
+            settled = settled[:cut]
+        return settled, held
 
     def _close_open(self) -> list[str]:
         """Emit the END event(s) for whichever message is open, and clear state."""
         if self._open == "text":
             self._open = None
-            return [_sse({"type": "TEXT_MESSAGE_END", "messageId": self._message_id})]
+            lines: list[str] = []
+            if self._jargon_buf:  # flush any held tail through the scrubber
+                try:
+                    tail = scrub_jargon(self._jargon_buf)
+                except Exception:
+                    tail = self._jargon_buf
+                self._jargon_buf = ""
+                if tail:
+                    lines.append(self._text_content(tail))
+            lines.append(_sse({"type": "TEXT_MESSAGE_END", "messageId": self._message_id}))
+            return lines
         if self._open == "reasoning":
             self._open = None
             return [
@@ -317,11 +468,21 @@ class AgUiEmitter:
                 "role": "assistant",
             }))
             self._open = "text"
-        lines.append(_sse({
-            "type": "TEXT_MESSAGE_CONTENT",
-            "messageId": self._message_id,
-            "delta": delta,
-        }))
+        # §4 vocab guard: buffer, scrub the SETTLED prefix, hold a trailing partial/phrase-prefix.
+        # Fail-safe — any error falls back to emitting the held-so-far + this delta ONCE, raw, so
+        # the guard can never break, drop, OR DUPLICATE the assistant's output. Compute into a
+        # LOCAL first; only commit self._jargon_buf on success (so the except sees the pre-delta
+        # buffer, not one already mutated to include delta — the /review-impl double-emit fix).
+        try:
+            combined = self._jargon_buf + delta
+            settled, held = self._split_settled(combined)
+            self._jargon_buf = held
+            if settled:
+                lines.append(self._text_content(scrub_jargon(settled)))
+        except Exception:
+            raw, self._jargon_buf = self._jargon_buf + delta, ""
+            if raw:
+                lines.append(self._text_content(raw))
         return lines
 
     def tool_call(self, tc: dict) -> list[str]:
@@ -422,6 +583,7 @@ class AgUiEmitter:
         # message state, so we do NOT emit a (misleading) END for the open
         # message; just reset so a later done() is a clean no-op.
         self._open = None
+        self._jargon_buf = ""  # partial content is discarded on RUN_ERROR
         return [_sse({
             "type": "RUN_ERROR",
             "message": safe_msg,

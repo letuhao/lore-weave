@@ -82,6 +82,7 @@
       "table": "Jadual"
     },
     "placeholder": "Tanya tentang cerita, watak, pembinaan dunia anda...",
+    "assistant_placeholder": "Ceritakan tentang hari anda — orang di sekeliling, projek dan keputusan...",
     "attach_context": "Lampirkan konteks",
     "assist": "Bantuan",
     "voice_assist_on": "Bantuan Suara AKTIF — jawapan AI akan diucapkan",
@@ -127,12 +128,6 @@
     "mode_write_hint": "Mod tulis — ejen boleh membuat perubahan yang tidak boleh dibatalkan (bertanya sekali bagi setiap alatan baru)"
   },
   "new": {
-    "preset": {
-      "novel": "Pembantu Novel",
-      "translator": "Penterjemah",
-      "worldbuilder": "Pembina Dunia",
-      "editor": "Editor"
-    },
     "create_failed": "Gagal mencipta sembang: {{error}}",
     "title": "Mulakan Sembang Baru",
     "model": "Model",
@@ -234,7 +229,6 @@
   "actionConfirm": {
     "label": "Sahkan tindakan",
     "batch_count": "{{count}} item",
-    "warning": "Perubahan ini berimpak tinggi — sila sahkan.",
     "warning_destructive": "Ini adalah tindakan pemadaman bersiri — sila sahkan.",
     "destructive_skipped": "{{count}} op(s) pemadaman akan DIKELUARKAN kecuali anda mengaktifkannya di atas.",
     "confirm": "Sahkan",
@@ -248,7 +242,8 @@
     "cancelled": "Dibatalkan",
     "reprice": "Kos meningkat kepada {{cost}} sejak anggaran dibuat — minta semula untuk mengesahkan pada harga baharu.",
     "reprice_title": "Kos berubah — tidak dilaksanakan",
-    "reprice_detail": "Anggaran {{old}}, kini {{new}}. Tiada kos dibelanjakan — minta semula untuk mengesahkan pada harga baharu."
+    "reprice_detail": "Anggaran {{old}}, kini {{new}}. Tiada kos dibelanjakan — minta semula untuk mengesahkan pada harga baharu.",
+    "warning": "Sila semak perubahan ini sebelum melaksanakan."
   },
   "batchConfirm": {
     "title": "Sahkan {{count}} tindakan dalam satu langkah",
@@ -345,14 +340,6 @@
     "title": "Tetapan Sesi",
     "model": "Model",
     "system_prompt": "Prompt Sistem",
-    "preset": {
-      "Custom": "Custom",
-      "Novelist": "Novelis",
-      "Translator": "Penterjemah",
-      "Worldbuilder": "Pembina Dunia",
-      "Editor": "Editor",
-      "Analyst": "Penganalisis"
-    },
     "prompt_placeholder": "Berikan AI peranan, personaliti, atau arahan khusus...",
     "gen_params": "Parameter Penjanaan",
     "max_tokens": "Maksimum Token",
@@ -389,9 +376,11 @@
     "approve_once": "Lulus sekali",
     "always_allow": "Sentiasa benarkan",
     "deny": "Enggan",
+    "never_allow": "Never allow",
     "approved": "Diluluskan — sedang berjalan ✓",
     "always_allowed": "Sentiasa dibenarkan — sedang berjalan ✓",
-    "denied": "Ditolak"
+    "denied": "Ditolak",
+    "never_allowed": "Never allowed — you can undo this in Settings → Permissions"
   },
   "rack": {
     "label": "Konteks",
@@ -416,6 +405,9 @@
     "more": "+{{count}} lagi",
     "more_tooltip": "{{count}} lagi alat yang ditemui tidak dipaparkan",
     "remove": "Buang",
+    "advanced_tools": "Alatan lanjutan ({{count}})",
+    "advanced_tools_hint": "Alatan lama dikekalkan untuk pemanggil lama. Gunakan alatan di atas kecuali jika anda memerlukan salah satu daripada ini secara khusus.",
+    "legacy_pin_tooltip": "Anda telah mengaktifkan alatan lama ini untuk sesi ini",
     "server": {
       "knowledge": "Pengetahuan",
       "glossary": "Glosari",
@@ -426,10 +418,7 @@
       "ui": "UI",
       "chat": "Sembang",
       "other": "Lain-lain"
-    },
-    "advanced_tools": "Alatan lanjutan ({{count}})",
-    "advanced_tools_hint": "Alatan lama dikekalkan untuk pemanggil lama. Gunakan alatan di atas kecuali jika anda memerlukan salah satu daripada ini secara khusus.",
-    "legacy_pin_tooltip": "Anda telah mengaktifkan alatan lama ini untuk sesi ini"
+    }
   },
   "inspector": {
     "title": "Waktu larian ejen",
@@ -449,5 +438,13 @@
       "activated": "Diaktifkan",
       "tool_running": "Menjalankan alat"
     }
+  },
+  "presets": {
+    "custom": "Custom",
+    "novelist": "Novelis",
+    "translator": "Penterjemah",
+    "worldbuilder": "Pembina Dunia",
+    "editor": "Editor",
+    "analyst": "Penganalisis"
   }
 }

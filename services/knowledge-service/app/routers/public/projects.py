@@ -48,7 +48,8 @@ from app.db.repositories.projects import (
 )
 from app.auth.grant_deps import GrantLevel, require_project_grant
 from app.clients.grant_client import GrantClient
-from app.deps import get_grant_client, get_projects_repo
+from app.clients.book_client import BookClient
+from app.deps import get_book_client, get_grant_client, get_projects_repo
 from app.events.outbox_emit import config_adjustment_payload, emit_config_adjustment
 from app.middleware.jwt_auth import get_current_user
 
@@ -447,6 +448,57 @@ async def create_project(
     return project
 
 
+class AssistantProjectCreate(BaseModel):
+    """WS-1.4 — the body of POST /v1/knowledge/projects/assistant."""
+
+    book_id: UUID
+    name: str = "Work Assistant"
+
+
+@router.post(
+    "/assistant",
+    response_model=Project,
+    status_code=status.HTTP_201_CREATED,
+    responses={
+        status.HTTP_200_OK: {
+            "model": Project,
+            "description": "Existing assistant project returned (idempotent)",
+        },
+    },
+)
+async def provision_assistant_project(
+    body: AssistantProjectCreate,
+    response: Response,
+    user_id: UUID = Depends(get_current_user),
+    repo: ProjectsRepo = Depends(get_projects_repo),
+    grant: GrantClient = Depends(get_grant_client),
+    book_client: BookClient = Depends(get_book_client),
+) -> Project:
+    """WS-1.4 (spec 02 §Q2.2) — get-or-create the user's ONE assistant knowledge project,
+    bound to their diary book. ``is_assistant=true`` + ``chat_turn_extraction_enabled=false``
+    (fail-closed D6: the assistant's facts come once a day from the confirmed entry, never
+    per chat turn).
+
+    The diary must be OWNED by the caller — a non-owner is denied uniformly (404, no oracle),
+    exactly like create_project's book-binding path. This prevents binding the assistant's
+    memory to someone else's book.
+
+    It must ALSO be an actual ``kind='diary'`` book (review-impl WS-1.4 M2). Ownership alone
+    is not enough: binding the assistant project to a shareable NOVEL the caller owns would let
+    a collaborator on that novel read the assistant's private extracted memory (knowledge
+    authorizes project reads by resolve-to-owner on the project's book). Fail-closed — an
+    unresolvable/non-diary book is refused with the same uniform 404 as a non-owner."""
+    if await grant.resolve_grant(body.book_id, user_id) != GrantLevel.OWNER:
+        raise _not_found()
+    if await book_client.get_book_kind(body.book_id, user_id) != "diary":
+        raise _not_found()
+    project, created = await repo.get_or_create_assistant_project(
+        user_id, body.book_id, body.name
+    )
+    response.status_code = status.HTTP_201_CREATED if created else status.HTTP_200_OK
+    return project
+
+
 @router.get("/{project_id}", response_model=Project)
 async def get_project(
     project_id: UUID,
@@ -571,6 +623,30 @@ async def patch_project(
     if updated is None:
         raise _not_found()
     response.headers["ETag"] = _etag(updated.version)
+    return updated
+
+
+class CaptureConsentUpdate(BaseModel):
+    """A2 — the per-turn work-capture consent toggle body. Closed set (bool)."""
+
+    enabled: bool
+
+
+@router.put("/{project_id}/capture-consent", response_model=Project)
+async def put_capture_consent(
+    project_id: UUID,
+    body: CaptureConsentUpdate,
+    user_id: UUID = Depends(require_project_grant(GrantLevel.OWNER)),
+    repo: ProjectsRepo = Depends(get_projects_repo),
+) -> Project:
+    """A2 / D-R17 (spec 09) — the per-turn WORK-CAPTURE CONSENT toggle (`canon_capture_enabled`).
+    OWNER-only: it is the user's own consent to have their real colleagues/projects captured, so a
+    mere collaborator must not flip it. Fail-closed by default; this turns it on/off. Consumed by
+    the chat-service capture gate via `project_enables` — the effective value is
+    AND(deploy_ceiling, this), and turning it off stops capture on the next turn (E8). Idempotent."""
+    updated = await repo.set_canon_capture_consent(user_id, project_id, enabled=body.enabled)
+    if updated is None:
+        raise _not_found()
     return updated
 
 

@@ -1,0 +1,78 @@
+name: domain-db-smoke
+
+# WHY THIS EXISTS (Track B completeness audit, 2026-07-11).
+# book-service + glossary-service carry a large body of DB-backed round-trip tests
+# (entity CRUD + delete, known-entities status/paging, canon reads, world/map
+# authoring, reading-position) that are GATED on BOOK_TEST_DATABASE_URL /
+# GLOSSARY_TEST_DB_URL and SKIP when unset. No CI anywhere set those vars, so ~384
+# glossary + ~66 book behavioral tests were "green by skip", not green by proof — a
+# whole class of flagship behavior went unverified while the suite reported success.
+# This job spins an ephemeral Postgres, creates the two throwaway databases, and runs
+# each service's api suite WITH the env set, so the round-trips actually execute in CI.
+#
+# Notes:
+#  - Image is postgres:18-alpine to match dev — the schemas depend on PG18's built-in
+#    uuidv7() default. A pg16 image would fail migration ("function uuidv7() does not
+#    exist").
+#  - Both harnesses self-apply their schema (book: migrate.Up; glossary: runMigrations),
+#    so the job only needs empty databases — no migration files to mount.
+#  - NOT a shared dev DB: each run gets a fresh container, so the tests may TRUNCATE /
+#    seed freely (avoids the "shared dev DB is dirty" hazard).
+#  - Path-filtered: only runs when one of these services (or this workflow) changes.
+
+on:
+  push:
+    branches: ["**"]
+    paths:
+      - "services/book-service/**"
+      - "services/glossary-service/**"
+      - ".github/workflows/domain-db-smoke.yml"
+  pull_request:
+    branches: ["**"]
+    paths:
+      - "services/book-service/**"
+      - "services/glossary-service/**"
+      - ".github/workflows/domain-db-smoke.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  db-smoke:
+    name: Domain DB round-trips (book + glossary)
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:18-alpine
+        env:
+          POSTGRES_USER: loreweave
+          POSTGRES_PASSWORD: loreweave_dev
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U loreweave -d postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version: "1.25"
+      - name: create throwaway book + glossary databases
+        env:
+          PGPASSWORD: loreweave_dev
+        run: |
+          set -euo pipefail
+          for db in loreweave_book loreweave_glossary; do
+            psql -h localhost -p 5432 -U loreweave -d postgres -v ON_ERROR_STOP=1 -c "CREATE DATABASE $db;"
+          done
+      - name: book-service DB round-trips
+        env:
+          BOOK_TEST_DATABASE_URL: postgres://loreweave:loreweave_dev@localhost:5432/loreweave_book?sslmode=disable
+        run: go -C services/book-service test ./internal/api/... -count=1
+      - name: glossary-service DB round-trips
+        env:
+          GLOSSARY_TEST_DB_URL: postgres://loreweave:loreweave_dev@localhost:5432/loreweave_glossary?sslmode=disable
+        run: go -C services/glossary-service test ./internal/api/... -count=1

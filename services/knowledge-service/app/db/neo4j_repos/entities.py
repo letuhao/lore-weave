@@ -23,11 +23,11 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime
-from typing import Any
+from typing import Any, Literal, get_args
 
 from pydantic import BaseModel, Field, computed_field
 
-from app.db.neo4j_helpers import CypherSession, run_read, run_write
+from app.db.neo4j_helpers import CypherSession, run_read, run_read_any_owner, run_write
 from app.db.repositories import VersionMismatchError
 from app.db.neo4j_repos.canonical import (
     canonicalize_entity_name,
@@ -45,6 +45,8 @@ __all__ = [
     "ENTITIES_DETAIL_REL_CAP",
     "ENTITY_STATUSES",
     "ENTITY_SORT_KEYS",
+    "AUTHORABLE_KINDS",
+    "AuthorableKind",
     "merge_entity",
     "upsert_glossary_anchor",
     "get_entity",
@@ -177,6 +179,38 @@ ENTITY_STATUSES: tuple[str, ...] = ("canonical", "discovered", "archived")
 # is the legacy default (browse-by-frequency); `anchor_score` surfaces
 # the two-layer-anchored entities first (the semantic-curation view).
 ENTITY_SORT_KEYS: tuple[str, ...] = ("mention_count", "anchor_score")
+
+# S7-1 — the ONE home for the closed set of entity kinds a HUMAN may
+# hand-author (REST create/edit) and the AGENT's ``kg_create_node`` may
+# mint. The graph is otherwise extraction-built; this gate keeps user/agent
+# authoring from minting arbitrary kind strings. Three consumers mirror this
+# set: the REST create gate (``CreateEntityRequest`` in routers/public/
+# entities.py), the agent gate (``KgCreateNodeArgs`` in tools/
+# graph_schema_tools.py), and the FE picker (``entityKinds.ts``).
+#
+# ``organization`` is the canonical group kind — it is exactly the glossary
+# ``kind_code`` the extractor emits (``_EXTRACTOR_TO_GLOSSARY_KIND``). The
+# legacy ``faction`` misnomer that used to live in the create gate is GONE:
+# it existed nowhere in extraction/glossary and zero ``faction`` rows can
+# exist (the only caller sent ``location``), so this is a pure rename, no
+# migration. ``event_ref``/``preference`` (browse-filter kinds) stay OUT —
+# they are timeline-ref / chat-derived, not user-authorable content.
+#
+# Declared as a Literal (and the tuple DERIVED from it, the same idiom
+# ``FactType``/``FACT_TYPES`` uses) so a consumer that needs a *type* — notably
+# the FastMCP tool signature, which is what gets advertised as the MCP
+# ``inputSchema`` — can reuse this closed set instead of re-declaring it. A
+# closed-set arg must reach the model as an ``enum``, never as prose in a
+# description: prose is not machine-checked, so the agent learns the constraint
+# only by guessing wrong (the ``panel_id: "editor"`` silent-no-op bug class).
+AuthorableKind = Literal[
+    "character",
+    "location",
+    "organization",
+    "concept",
+    "item",
+]
+AUTHORABLE_KINDS: tuple[str, ...] = get_args(AuthorableKind)
 
 
 def _node_to_entity(node: Any) -> Entity:
@@ -457,9 +491,17 @@ async def merge_entity_at_id(
 # ── upsert_glossary_anchor ────────────────────────────────────────────
 
 
+# `__was_created` is a TRANSIENT create-vs-match marker: ON CREATE sets it true,
+# it is read into the `was_created` return column, then REMOVEd in the same
+# statement so it never persists on the node. This is how the counted projection
+# (kg_project_entities_to_nodes / WS-4B) reports {nodes_created, nodes_existing}
+# without a fragile created_at==updated_at heuristic. ON MATCH never sets it, so
+# `coalesce(e.__was_created, false)` is false on an existing node. Existing callers
+# that read only `record["e"]` are unaffected by the extra return column.
 _UPSERT_ANCHOR_CYPHER = """
 MERGE (e:Entity {id: $id})
 ON CREATE SET
+  e.__was_created = true,
   e.user_id = $user_id,
   e.project_id = $project_id,
   e.name = $name,
@@ -485,9 +527,11 @@ ON MATCH SET
   e.anchor_score = 1.0,
   e.archived_at = NULL,
   e.updated_at = datetime()
-WITH e
+WITH e, coalesce(e.__was_created, false) AS was_created
+REMOVE e.__was_created
+WITH e, was_created
 WHERE e.user_id = $user_id
-RETURN e
+RETURN e, was_created
 """
 
 
@@ -526,6 +570,35 @@ async def upsert_glossary_anchor(
     path (lookup-by-glossary_entity_id, then update name in place).
     Tracked as a K11.5b acceptance criterion.
     """
+    entity, _ = await upsert_glossary_anchor_counted(
+        session,
+        user_id=user_id,
+        project_id=project_id,
+        glossary_entity_id=glossary_entity_id,
+        name=name,
+        kind=kind,
+        aliases=aliases,
+        canonical_version=canonical_version,
+    )
+    return entity
+
+
+async def upsert_glossary_anchor_counted(
+    session: CypherSession,
+    *,
+    user_id: str,
+    project_id: str | None,
+    glossary_entity_id: str,
+    name: str,
+    kind: str,
+    aliases: list[str] | None = None,
+    canonical_version: int = 1,
+) -> tuple[Entity, bool]:
+    """Like `upsert_glossary_anchor`, but ALSO reports whether the node was
+    newly CREATED (`True`) or already existed and was updated (`False`) — the
+    accounting `kg_project_entities_to_nodes` (WS-4B) needs to return
+    `{nodes_created, nodes_existing}`. The MERGE stays idempotent; the flag is
+    the transient `__was_created` marker (see `_UPSERT_ANCHOR_CYPHER`)."""
     canonical_id = entity_canonical_id(
         user_id=user_id,
         project_id=project_id,
@@ -556,7 +629,80 @@ async def upsert_glossary_anchor(
         raise RuntimeError(
             f"upsert_glossary_anchor returned no row for id={canonical_id!r}"
         )
-    return _node_to_entity(record["e"])
+    return _node_to_entity(record["e"]), bool(record["was_created"])
+
+
+# ── existing_entity_node_ids (WS-4B fail-fast endpoint precheck) ───────
+
+
+_EXISTING_NODE_IDS_CYPHER = """
+UNWIND $ids AS wanted
+MATCH (e:Entity {id: wanted})
+WHERE e.user_id = $user_id
+RETURN e.id AS id
+"""
+
+
+async def existing_entity_node_ids(
+    session: CypherSession,
+    *,
+    user_id: str,
+    ids: list[str],
+) -> set[str]:
+    """Return the subset of `ids` that already exist as `:Entity` nodes for
+    `user_id`. Used by `kg_propose_edge`'s fail-fast endpoint precheck (WS-4B):
+    an edge whose endpoints aren't nodes yet would park then fail at confirm
+    (`create_relation` matches endpoints by `Entity.id`), so we reject it up
+    front with `KG_ENDPOINT_NOT_NODE`. Matching by `id` mirrors exactly how the
+    confirm-time write resolves the endpoints."""
+    if not ids:
+        return set()
+    result = await run_read(
+        session,
+        _EXISTING_NODE_IDS_CYPHER,
+        user_id=user_id,
+        ids=list(ids),
+    )
+    return {record["id"] async for record in result}
+
+
+# ── resolve_kg_entity_id_by_glossary_id (W11-M2 reader bridge) ─────────
+
+_KG_ID_BY_GLOSSARY_ID_CYPHER = """
+MATCH (e:Entity {user_id: $user_id, glossary_entity_id: $glossary_entity_id})
+WHERE ($project_id IS NULL OR e.project_id = $project_id)
+  AND e.archived_at IS NULL
+RETURN e.id AS id
+LIMIT 1
+"""
+
+
+async def resolve_kg_entity_id_by_glossary_id(
+    session: CypherSession,
+    *,
+    user_id: str,
+    project_id: str | None,
+    glossary_entity_id: str,
+) -> str | None:
+    """W11-M2 — map a GLOSSARY entity id (what the reader tools surface from the
+    canon cast) to its anchored KG `:Entity.id` (a canonical hash), so `lore_entity`
+    can read the entity's KG facts/status. Scoped to `user_id` (the owner) AND
+    `project_id` (the reader's granted book) — a glossary id from a DIFFERENT project
+    the owner happens to own resolves to None here, so the KG read can't cross the
+    grant boundary. Returns None when the canon entity has no KG anchor (→ the reader
+    gets canon-only, no KG facts) or the id doesn't belong to this project."""
+    if not glossary_entity_id:
+        return None
+    result = await run_read(
+        session,
+        _KG_ID_BY_GLOSSARY_ID_CYPHER,
+        user_id=user_id,
+        project_id=project_id,
+        glossary_entity_id=glossary_entity_id,
+    )
+    async for record in result:
+        return record["id"]
+    return None
 
 
 # ── get_entity ────────────────────────────────────────────────────────
@@ -615,7 +761,10 @@ async def get_entity_by_id_any_owner(
     its data is exposed to the caller. Used by
     `_resolve_entity_project_grant` to resolve-to-owner for the grant-gated
     edge timeline (D-KG-LD-GRANTEE-TIMELINE)."""
-    result = await run_read(
+    # run_read() REQUIRES a user_id and asserts the cypher references $user_id — this
+    # query intentionally does neither, so it raised TypeError on every call and
+    # kg_entity_edge_timeline (its only consumer) could never work.
+    result = await run_read_any_owner(
         session,
         _GET_ENTITY_ANY_OWNER_CYPHER,
         id=canonical_id,
@@ -645,18 +794,21 @@ async def get_entity_by_id_any_owner(
 _FIND_BY_NAME_CYPHER_ALL = """
 CALL {
   WITH $user_id AS user_id, $project_id AS project_id,
-       $canonical_name AS canonical_name
+       $canonical_name AS canonical_name, $exclude_project_ids AS exclude_project_ids
   MATCH (e:Entity)
   WHERE e.user_id = user_id
     AND e.canonical_name = canonical_name
     AND (project_id IS NULL OR e.project_id = project_id)
+    AND (size(exclude_project_ids) = 0 OR NOT coalesce(e.project_id, '') IN exclude_project_ids)
   RETURN e
   UNION
-  WITH $user_id AS user_id, $project_id AS project_id, $name AS name
+  WITH $user_id AS user_id, $project_id AS project_id, $name AS name,
+       $exclude_project_ids AS exclude_project_ids
   MATCH (e:Entity)
   WHERE e.user_id = user_id
     AND name IN e.aliases
     AND (project_id IS NULL OR e.project_id = project_id)
+    AND (size(exclude_project_ids) = 0 OR NOT coalesce(e.project_id, '') IN exclude_project_ids)
   RETURN e
 }
 RETURN e
@@ -816,20 +968,23 @@ async def get_most_connected_entity(
 _FIND_BY_NAME_CYPHER_ACTIVE = """
 CALL {
   WITH $user_id AS user_id, $project_id AS project_id,
-       $canonical_name AS canonical_name
+       $canonical_name AS canonical_name, $exclude_project_ids AS exclude_project_ids
   MATCH (e:Entity)
   WHERE e.user_id = user_id
     AND e.canonical_name = canonical_name
     AND e.archived_at IS NULL
     AND (project_id IS NULL OR e.project_id = project_id)
+    AND (size(exclude_project_ids) = 0 OR NOT coalesce(e.project_id, '') IN exclude_project_ids)
   RETURN e
   UNION
-  WITH $user_id AS user_id, $project_id AS project_id, $name AS name
+  WITH $user_id AS user_id, $project_id AS project_id, $name AS name,
+       $exclude_project_ids AS exclude_project_ids
   MATCH (e:Entity)
   WHERE e.user_id = user_id
     AND name IN e.aliases
     AND e.archived_at IS NULL
     AND (project_id IS NULL OR e.project_id = project_id)
+    AND (size(exclude_project_ids) = 0 OR NOT coalesce(e.project_id, '') IN exclude_project_ids)
   RETURN e
 }
 RETURN e
@@ -844,6 +999,7 @@ async def find_entities_by_name(
     project_id: str | None,
     name: str,
     include_archived: bool = False,
+    exclude_project_ids: list[str] | None = None,
 ) -> list[Entity]:
     """Find entities matching a display name within a user's namespace.
 
@@ -855,6 +1011,10 @@ async def find_entities_by_name(
     `project_id=None` means "search across all projects for this
     user" (cross-project alias resolution). When set, filters to
     one project and uses the `entity_user_project` index.
+
+    D16 (spec 07 §Q4) — `exclude_project_ids` removes matches from those projects even under the
+    all-projects fallback. The memory_* tools pass the user's ASSISTANT project ids here when a
+    session has no explicit project, so a novel-writing session can never surface work-diary entities.
     """
     canonical_name = canonicalize_entity_name(name)
     cypher = (
@@ -867,6 +1027,7 @@ async def find_entities_by_name(
         project_id=project_id,
         name=name,
         canonical_name=canonical_name,
+        exclude_project_ids=list(exclude_project_ids or []),
     )
     return [_node_to_entity(record["e"]) async for record in result]
 
@@ -1381,9 +1542,14 @@ async def find_entities_needing_embedding(
 # rename-aware path: the canonical_id is hash-derived from the
 # CURRENT name, so if the name changed in glossary the id won't
 # match anymore — but the glossary_entity_id link still does.
+#
+# D-KG-GLOSSARY-FK-GLOBAL-UNIQUE: scoped by `project_id` as well as `user_id`. The FK
+# is now unique per (user, project), so a user with two knowledge projects over the
+# same book has TWO nodes for the same glossary entity — one per project. Without the
+# project filter this would match both and silently return an arbitrary one.
 _FIND_BY_GLOSSARY_ID_CYPHER = """
 MATCH (e:Entity {glossary_entity_id: $glossary_entity_id})
-WHERE e.user_id = $user_id
+WHERE e.user_id = $user_id AND e.project_id = $project_id
 RETURN e
 """
 
@@ -1482,9 +1648,10 @@ async def get_entity_by_glossary_id(
     session: CypherSession,
     *,
     user_id: str,
+    project_id: str,
     glossary_entity_id: str,
 ) -> Entity | None:
-    """Look up an anchored entity by its glossary FK.
+    """Look up an anchored entity by its glossary FK, WITHIN one project.
 
     The rename-aware companion to `get_entity`. After
     `link_to_glossary` updates an entity's name across canonical
@@ -1492,8 +1659,12 @@ async def get_entity_by_glossary_id(
     even though `entity_canonical_id(new_name, kind)` no longer
     matches the stored id.
 
-    Multi-row safety: the K11.3 schema enforces uniqueness on
-    `e.glossary_entity_id` (K11.5b-R1/R1), so a properly-applied
+    `project_id` is REQUIRED (D-KG-GLOSSARY-FK-GLOBAL-UNIQUE): the FK is unique per
+    (user, project), so the same glossary entity may have one node in each of the
+    user's projects. Omitting the scope would return an arbitrary project's node.
+
+    Multi-row safety: the schema enforces uniqueness on
+    `(user_id, project_id, glossary_entity_id)`, so a properly-applied
     schema makes multi-row results impossible. The runtime
     safety net below catches the brief window where a misuse,
     a missing schema, or a race could produce two rows — instead
@@ -1502,10 +1673,13 @@ async def get_entity_by_glossary_id(
     """
     if not glossary_entity_id:
         raise ValueError("glossary_entity_id must be a non-empty string")
+    if not project_id:
+        raise ValueError("project_id must be a non-empty string")
     result = await run_read(
         session,
         _FIND_BY_GLOSSARY_ID_CYPHER,
         user_id=user_id,
+        project_id=project_id,
         glossary_entity_id=glossary_entity_id,
     )
     first: Entity | None = None
@@ -1518,12 +1692,13 @@ async def get_entity_by_glossary_id(
     if extra_count:
         logger.error(
             "K11.5b-R1/R2: get_entity_by_glossary_id found %d extra row(s) "
-            "for glossary_entity_id=%r user_id=%r — schema constraint "
-            "entity_glossary_id_unique should have prevented this. "
+            "for glossary_entity_id=%r user_id=%r project_id=%r — schema constraint "
+            "entity_glossary_fk_unique should have prevented this. "
             "Returning the first match; investigate the data.",
             extra_count,
             glossary_entity_id,
             user_id,
+            project_id,
         )
     return first
 
@@ -1845,7 +2020,27 @@ WHERE e.user_id = $user_id
     OR toLower(e.name) CONTAINS toLower($search)
     OR any(alias IN e.aliases WHERE toLower(alias) CONTAINS toLower($search))
   )
+  // W11 spoiler window (reader surface): when $before_order is set, an entity is
+  // only visible if the reader has actually MET it — i.e. it carries at least one
+  // ABOUT fact established BY their chapter (f.from_order <= $before_order), the SAME
+  // ordinal the fact window uses (facts.py `_LIST_FACTS_FOR_ENTITY_BODY`). This closes
+  // the name-existence leak the mandatory adversarial review found: the facts were
+  // windowed but the entity LIST was not, so a chapter-1 reader could browse the NAMES
+  // of characters first introduced 50 chapters later. FAIL-CLOSED: an unresolvable
+  // position resolves to $before_order = -1 (never NULL), and no fact has from_order
+  // <= -1, so the list is EMPTY — never the full cast. $before_order IS NULL means the
+  // caller did NOT ask for a window (editor / curation surfaces) → unfiltered, as before.
+  AND (
+    $before_order IS NULL
+    OR size([(e)<-[:ABOUT]-(wf:Fact)
+             WHERE wf.from_order IS NOT NULL AND wf.from_order <= $before_order | 1]) > 0
+  )
 """
+# NB: the window uses a pattern COMPREHENSION (`[...]`), NOT `EXISTS { ... }`. This WHERE
+# is shared by both the count query (plain concat) AND the page query, which is `.format(
+# sort_key=...)`-ed — a literal `{` from an EXISTS block would make str.format() treat it
+# as a replacement field and raise KeyError (a live-smoke 500 the mock-only unit tests could
+# not see). Brackets are format-safe. Same lesson as facts.py's "concatenation, not format()".
 
 _LIST_ENTITIES_COUNT_CYPHER = _LIST_ENTITIES_FILTER_WHERE + """
 RETURN count(e) AS total
@@ -1875,6 +2070,7 @@ async def list_entities_filtered(
     offset: int,
     status: str | None = None,
     sort_by: str = "mention_count",
+    before_order: int | None = None,
 ) -> tuple[list[Entity], int]:
     """K19d.2 — paginated browse with optional project / kind / search.
 
@@ -1932,6 +2128,7 @@ async def list_entities_filtered(
         kind=kind,
         search=search,
         status=status,
+        before_order=before_order,
     )
     count_record = await count_result.single()
     total = int(count_record["total"]) if count_record else 0
@@ -1948,6 +2145,7 @@ async def list_entities_filtered(
         status=status,
         offset=offset,
         limit=limit,
+        before_order=before_order,
     )
     rows = [_node_to_entity(record["e"]) async for record in page_result]
     return rows, total
@@ -2073,9 +2271,19 @@ async def get_entity_with_relations(
 # wiki caller knows the glossary entity_id, not the hash-derived
 # canonical_id (which drifts on rename).
 
+# D-KG-GLOSSARY-FK-GLOBAL-UNIQUE: `project_id` is OPTIONAL here. The only caller is
+# glossary-service's wiki renderer (POST /internal/knowledge/wiki-neighborhood), which
+# knows a BOOK, not a knowledge project — requiring the scope would be a cross-service
+# contract change for a read-only panel. When it is NULL we match the user's nodes and
+# take the first in a DETERMINISTIC order (by project_id), warning if more than one
+# matched. Today exactly one node carries a given FK per user, so behaviour is
+# unchanged; the ordering + warning make the ambiguity explicit if a second project
+# ever anchors the same entity.
 _GET_NEIGHBORHOOD_BY_GLOSSARY_ID_CYPHER = """
 MATCH (e:Entity {glossary_entity_id: $glossary_entity_id})
 WHERE e.user_id = $user_id
+  AND ($project_id IS NULL OR e.project_id = $project_id)
+WITH e ORDER BY e.project_id ASC
 CALL {
   WITH e
   OPTIONAL MATCH (subj:Entity)-[r:RELATES_TO]->(obj:Entity)
@@ -2105,6 +2313,7 @@ async def get_neighborhood_by_glossary_id(
     *,
     user_id: str,
     glossary_entity_id: str,
+    project_id: str | None = None,
     rel_cap: int = ENTITIES_DETAIL_REL_CAP,
 ) -> EntityDetail | None:
     """C5 (D4-03) — entity + 1-hop active RELATES_TO edges, keyed by the
@@ -2115,6 +2324,12 @@ async def get_neighborhood_by_glossary_id(
     never been synced into the KG, or a cross-user lookup). A None
     result is a VALID "empty neighborhood" signal for the wiki
     renderer — it produces a minimal body rather than failing.
+
+    `project_id` is OPTIONAL (D-KG-GLOSSARY-FK-GLOBAL-UNIQUE): the FK is unique per
+    (user, project), so a user with two knowledge projects over the same book has one
+    node per project. The wiki caller knows a book, not a project, so when the scope
+    is omitted we take the first node in a deterministic order (by `project_id`) and
+    warn if more than one matched — rather than silently picking an arbitrary one.
 
     Relations carry `confidence` + `pending_validation`, and the
     entity carries `source_types`, so the caller can mark enriched
@@ -2127,10 +2342,26 @@ async def get_neighborhood_by_glossary_id(
         session,
         _GET_NEIGHBORHOOD_BY_GLOSSARY_ID_CYPHER,
         user_id=user_id,
+        project_id=project_id,
         glossary_entity_id=glossary_entity_id,
         rel_cap=rel_cap,
     )
-    record = await result.single()
+    # NOT `result.single()`: without a project scope the FK can now legitimately match
+    # one node per project. Take the first (deterministically ordered) and say so.
+    record = None
+    extra = 0
+    async for row in result:
+        if record is None:
+            record = row
+        else:
+            extra += 1
+    if extra:
+        logger.warning(
+            "get_neighborhood_by_glossary_id: %d extra node(s) for "
+            "glossary_entity_id=%r user_id=%r with no project scope — returning the "
+            "lowest project_id. Pass project_id to disambiguate.",
+            extra, glossary_entity_id, user_id,
+        )
     if record is None:
         return None
     entity = _node_to_entity(record["e"])
@@ -2796,3 +3027,54 @@ async def merge_entities(
                 "target missing after dedupe",
             )
     return post
+
+
+# ── erase_entity_subgraph (WS-2.6c — the scoped-erasure primitive @ entity) ──
+
+
+_ERASE_ENTITY_SUBGRAPH_CYPHER = """
+MATCH (e:Entity {id: $entity_id})
+WHERE e.user_id = $user_id
+  AND ($project_id IS NULL OR e.project_id = $project_id)
+OPTIONAL MATCH (f:Fact)-[:ABOUT]->(e)
+WHERE f.user_id = $user_id
+WITH e, collect(DISTINCT f) AS facts, count(DISTINCT f) AS n
+FOREACH (x IN facts | DETACH DELETE x)
+DETACH DELETE e
+RETURN n AS facts_deleted
+"""
+
+
+async def erase_entity_subgraph(
+    session: CypherSession,
+    *,
+    user_id: str,
+    entity_id: str,
+    project_id: str | None = None,
+) -> dict[str, int]:
+    """WS-2.6c (D17 forget-a-person) — the KG leg of the SCOPED-ERASURE PRIMITIVE at scope=entity. DETACH
+    DELETE the :Entity AND every :Fact ABOUT it, tenant-scoped on user_id (+ project_id when given, so a
+    diary forget can't reach a novel entity — D16). Returns {entities_deleted, facts_deleted}.
+
+    Unlike `merge_entities` (which re-points the loser's :Fact ABOUT edges to a survivor), forget DELETEs
+    those facts — the person is gone, so the claims that name them go too. A fact ABOUT multiple entities
+    is deleted as well (it mentions the forgotten person); diary facts are single-subject so this is the
+    dominant, intended case. Passages that mention the name are refreshed by the diary-span REDACTION +
+    re-index leg (the source-text half of forget), not here — this leg owns the STRUCTURED graph only.
+
+    This is the entity-scoped sibling of `delete_all_kg_nodes_for_project` (account/project scope, D-R27);
+    WS-2.10d reuses the epoch-scoped variant and P-12 the account one — one primitive, three scopes
+    (D-R31). Returns entities_deleted=0 when the id doesn't resolve (idempotent re-forget)."""
+    if not entity_id:
+        raise ValueError("entity_id must be a non-empty string")
+    result = await run_write(
+        session,
+        _ERASE_ENTITY_SUBGRAPH_CYPHER,
+        user_id=user_id,
+        entity_id=entity_id,
+        project_id=project_id,
+    )
+    record = await result.single()
+    if record is None:
+        return {"entities_deleted": 0, "facts_deleted": 0}
+    return {"entities_deleted": 1, "facts_deleted": int(record["facts_deleted"])}

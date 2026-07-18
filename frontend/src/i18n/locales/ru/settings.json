@@ -9,7 +9,8 @@
       "translation": "Перевод",
       "reading": "Чтение",
       "language": "Язык",
-      "mcp": "Доступ MCP"
+      "mcp": "Доступ MCP",
+      "workflow-bindings": "Автонастройка рабочего процесса"
     }
   },
   "mcp": {
@@ -492,6 +493,18 @@
       "testing": "Тестирование...",
       "reverify": "Перепроверить",
       "verify": "Проверить",
+      "pricing_title": "Цена (USD за 1 млн токенов)",
+      "pricing_input": "Вход",
+      "pricing_output": "Выход",
+      "pricing_free_local": "Бесплатно — работает на вашем оборудовании",
+      "pricing_hint": "Заполняется автоматически при создании. Отредактируйте, если тариф провайдера изменился, или проверьте актуальную оценку на OpenRouter.",
+      "pricing_check": "Проверить в OpenRouter",
+      "pricing_checking": "Проверка...",
+      "pricing_suggestion_found": "OpenRouter ({{source}}): ${{input}} за / ${{output}} за",
+      "pricing_apply": "Применить",
+      "pricing_not_found": "Модель не найдена в OpenRouter — данные о цене из этого источника недоступны.",
+      "pricing_check_failed": "Не удалось проверить цену в OpenRouter",
+      "pricing_negative_error": "Цена должна быть больше или равна нулю",
       "delete_model": "Удалить модель",
       "confirm_delete": "Подтвердить удаление",
       "deleting": "Удаление...",

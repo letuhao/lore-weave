@@ -150,6 +150,8 @@ function StudioFrameInner({ bookId, initialChapterId }: { bookId: string; initia
               token={accessToken}
               selectedId={selectedNodeId}
               onSelectNode={onSelectNode}
+              width={chrome.sidebarWidth}
+              onResize={chrome.setSidebarWidth}
             />
           )}
 

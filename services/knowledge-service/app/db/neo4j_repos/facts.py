@@ -29,13 +29,14 @@ from __future__ import annotations
 
 import hashlib
 import logging
+from datetime import date as date_cls
 from datetime import datetime
-from typing import Any, Literal
+from typing import Any, Literal, get_args
 
 from pydantic import BaseModel, Field
 
 from app.db.neo4j_helpers import CypherSession, run_read, run_write
-from app.db.neo4j_repos.canonical import canonicalize_text
+from app.db.neo4j_repos.canonical import canonicalize_entity_name, canonicalize_text
 from app.db.neo4j_repos.temporal import (
     MAINTAIN_FACT_CHAIN_CYPHER,
     ORDINAL_OPEN_CEILING,
@@ -59,8 +60,15 @@ __all__ = [
 
 # Closed enum per KSA §5.1. New types require both a code change
 # and an extraction-side pattern, so a Literal is fine.
-FactType = Literal["decision", "preference", "milestone", "negation"]
-FACT_TYPES: tuple[str, ...] = ("decision", "preference", "milestone", "negation")
+# WS-5.7 (P5 Gate-1) — 'commitment' (a promised action + due date; the due date rides the
+# WS-2.6b s/p/o supersession trio). Adding it here (the SoT) must move IN LOCKSTEP with the
+# models.py mirror + the knowledge_pending_facts CHECK ×2 — the exact drift that 500'd a
+# 'statement' fact at merge_fact (WS-2.1). The write path validates THIS Literal, not kg_fact_types.
+FactType = Literal["decision", "preference", "milestone", "negation", "statement", "commitment"]
+# DERIVE the runtime validation tuple from the Literal — never hand-maintain a parallel copy. WS-2.1
+# added 'statement' to the Literal but a hand-kept tuple missed it, so a statement fact queued fine yet
+# 500'd at merge_fact (caught by the WS-2.4 live smoke). get_args keeps the two in lockstep by design.
+FACT_TYPES: tuple[str, ...] = get_args(FactType)
 
 
 def fact_id(
@@ -142,10 +150,19 @@ class Fact(BaseModel):
     # precision-preferring on re-mention. String (not date) so partial-precision
     # ("summer 1880" → "1880-06") keeps the "day unknown" signal.
     event_date_iso: str | None = None
+    # WS-2.6b (supersede-a-fact, spec 07 §Q5) — the structured CLAIM the fact makes, denormalized onto
+    # the node so recall can detect a supersession ("Mon: Friday → Wed: Tuesday") by grouping same-
+    # (subject, predicate) facts whose `object` changed over time. Both NULL for a coarse fact (no s/p/o)
+    # and for every extraction fact (only the diary WS-2.2 path fills them) — additive, no behavior change.
+    predicate: str | None = None
+    object: str | None = None
     evidence_count: int = 0
     archived_at: datetime | None = None
     created_at: datetime | None = None
     updated_at: datetime | None = None
+    # WS-2.6b — the fact's subject CANONICAL name, populated by `recall_facts` from the :ABOUT edge (NOT
+    # a node prop — the :Entity stays the SSOT). Transient; used to group supersessions in the read.
+    subject_canonical: str | None = None
 
 
 def _node_to_fact(node: Any) -> Fact:
@@ -189,6 +206,9 @@ ON CREATE SET
   // prose carried no explicit calendar date (the dominant case). Additive: it
   // never participates in the ordinal chain, only annotates/sorts.
   f.event_date_iso = $event_date_iso,
+  // WS-2.6b — the structured claim (diary supersession detection). NULL for coarse/extraction facts.
+  f.predicate = $predicate,
+  f.object = $object,
   f.evidence_count = 0,
   f.archived_at = NULL,
   f.created_at = datetime(),
@@ -236,6 +256,10 @@ ON MATCH SET
     WHEN $confidence > f.confidence THEN $pending_validation
     ELSE f.pending_validation
   END,
+  // WS-2.6b — backfill the claim on a later re-mention that carries it (never clobber a stored one),
+  // mirroring the event_date_iso backfill posture.
+  f.predicate = coalesce(f.predicate, $predicate),
+  f.object = coalesce(f.object, $object),
   f.updated_at = datetime()
 WITH f
 WHERE f.user_id = $user_id
@@ -260,6 +284,8 @@ async def merge_fact(
     from_order: int | None = None,
     valid_from_ordinal: int | None = None,
     event_date_iso: str | None = None,
+    predicate: str | None = None,
+    object: str | None = None,
     maintain_chain: bool = False,
 ) -> Fact:
     """Idempotent upsert. Same (user, project, type, normalized
@@ -336,6 +362,9 @@ async def merge_fact(
         open_ceiling=ORDINAL_OPEN_CEILING,
         event_date_iso=normalized_event_date_iso,
         provenance=provenance,
+        # WS-2.6b — empty string → None so a blank claim never clobbers a stored one on MATCH.
+        predicate=(predicate or None),
+        object=(object or None),
     )
     record = await result.single()
     if record is None:
@@ -416,6 +445,7 @@ MATCH (f:Fact)
 WHERE f.user_id = $user_id
   AND ($project_id IS NULL OR f.project_id = $project_id)
   AND ($type IS NULL OR f.type = $type)
+  AND ($source_type IS NULL OR $source_type IN f.source_types)
   AND ($exclude_pending = false OR coalesce(f.pending_validation, false) = false)
   AND f.confidence >= $min_confidence
   AND f.valid_until IS NULL
@@ -432,6 +462,7 @@ async def list_facts_by_type(
     user_id: str,
     project_id: str | None = None,
     type: str | None = None,
+    source_type: str | None = None,
     min_confidence: float = 0.8,
     exclude_pending: bool = True,
     include_archived: bool = False,
@@ -445,7 +476,9 @@ async def list_facts_by_type(
     `min_confidence=0.0` to see Pass 1 candidates.
 
     `type=None` returns facts of all types; otherwise pass one
-    of `FACT_TYPES`.
+    of `FACT_TYPES`. `source_type` (WS-4C) filters to facts whose
+    accumulated `source_types` list contains it (e.g. "llm_tool_call"
+    for memory_remember facts) — None means any source.
     """
     if type is not None and type not in FACT_TYPES:
         raise ValueError(f"type must be one of {FACT_TYPES} or None, got {type!r}")
@@ -460,12 +493,160 @@ async def list_facts_by_type(
         user_id=user_id,
         project_id=project_id,
         type=type,
+        source_type=source_type,
         min_confidence=min_confidence,
         exclude_pending=exclude_pending,
         include_archived=include_archived,
         limit=limit,
     )
     return [_node_to_fact(record["f"]) async for record in result]
+
+
+# ── WS-2.4 (spec 07 §Q2) — diary recall: days-since-epoch ordinal + a date-filtered read ───────────
+#
+# The headline promise "what did <person> say about <topic> last month" had NO query that could answer
+# it: every diary fact was invisible because valid_from_ordinal was NULL (dropped by the position
+# window) and the only date FILTER in the codebase was on :Event, never :Fact. This restores it:
+#   1. days_since_epoch(entry_date) — a diary is perfectly ordinal (one primary entry per day, strictly
+#      ordered), so this is a NOT-NULL valid_from_ordinal that re-arms every position-aware path.
+#   2. recall_facts — a date-filtered :Fact read mirroring the :Event event_date_iso range predicate,
+#      optionally narrowed to a subject via the :ABOUT edge (the "what did X say" half).
+
+_EPOCH_DAY = datetime(1970, 1, 1)
+
+
+def days_since_epoch(d: date_cls) -> int:
+    """The diary's story-time ordinal: whole days from the Unix epoch. Strictly increasing per calendar
+    day, so it orders diary entries exactly and gives merge_fact a NOT-NULL valid_from_ordinal."""
+    return (datetime(d.year, d.month, d.day) - _EPOCH_DAY).days
+
+
+# A date-filtered recall read. Unlike list_facts_by_type (project-wide, top-N-by-confidence, date-blind)
+# this is the net-new read spec 07 §Q2 demanded: filter by event_date_iso range (the :Event idiom) and,
+# when a subject is given, require an (:Fact)-[:ABOUT]->(:Entity{canonical_name}) edge. project_id is
+# REQUIRED (never the all-projects fallback) so a non-assistant caller can't pull diary facts (D16).
+_RECALL_FACTS_CYPHER = """
+MATCH (f:Fact)
+WHERE f.user_id = $user_id
+  AND f.project_id = $project_id
+  AND coalesce(f.pending_validation, false) = false
+  AND f.valid_until IS NULL
+  AND f.archived_at IS NULL
+  AND f.confidence >= $min_confidence
+  AND ($event_date_from IS NULL OR f.event_date_iso >= $event_date_from)
+  AND ($event_date_to   IS NULL OR f.event_date_iso <= $event_date_to)
+  AND (
+    $subject_canonical IS NULL OR EXISTS {
+      MATCH (f)-[:ABOUT]->(e:Entity)
+      WHERE e.user_id = $user_id AND e.canonical_name = $subject_canonical
+    }
+  )
+// WS-2.6b — carry the subject's canonical name (from the :ABOUT edge, the SSOT) so the read can group
+// same-(subject, predicate) facts into a supersession. OPTIONAL so a coarse (subjectless) fact still
+// returns. A fact with multiple :ABOUT edges is rare (diary facts have one); `head(collect(...))` keeps
+// one deterministic value without fanning the row out.
+OPTIONAL MATCH (f)-[:ABOUT]->(subj:Entity) WHERE subj.user_id = $user_id
+WITH f, head(collect(subj.canonical_name)) AS subject_canonical
+RETURN f, subject_canonical
+ORDER BY coalesce(f.event_date_iso, '') DESC, coalesce(f.valid_from_ordinal, 0) DESC, f.created_at DESC
+LIMIT $limit
+"""
+
+
+async def recall_facts(
+    session: CypherSession,
+    *,
+    user_id: str,
+    project_id: str,
+    event_date_from: str | None = None,
+    event_date_to: str | None = None,
+    subject_name: str | None = None,
+    min_confidence: float = 0.0,
+    limit: int = 50,
+) -> list[Fact]:
+    """WS-2.4 — the diary's date-filtered recall read. Returns active facts in [event_date_from,
+    event_date_to] (truncated-ISO string compare, the :Event idiom), newest-first, optionally narrowed
+    to those ABOUT `subject_name`. project_id is required — recall never spans all of a user's projects
+    (D16: a novel-writing session must not surface work facts).
+
+    The subject is matched by CANONICAL name: `subject_name` is run through the SAME
+    `canonicalize_entity_name` that stored `e.canonical_name` at promote time (strips honorifics +
+    punctuation, NFKC-casefolds, CJK-folds), so "Dr. Smith" / "田中様" / "Q3-Budget" recall the entity
+    they were stored under. A raw toLower compare (the pre-fix behavior) silently missed every titled,
+    punctuated, or non-Latin name (audit MED)."""
+    if not project_id:
+        raise ValueError("recall_facts requires an explicit project_id (D16 — no all-projects recall)")
+    subject_canonical = canonicalize_entity_name(subject_name) if subject_name else None
+    result = await run_read(
+        session,
+        _RECALL_FACTS_CYPHER,
+        user_id=user_id,
+        project_id=project_id,
+        event_date_from=event_date_from,
+        event_date_to=event_date_to,
+        subject_canonical=(subject_canonical or None),
+        min_confidence=min_confidence,
+        limit=limit,
+    )
+    facts: list[Fact] = []
+    async for record in result:
+        fact = _node_to_fact(record["f"])
+        # WS-2.6b — attach the subject from the :ABOUT edge (transient; not a node prop). Used by
+        # `group_supersessions` to detect a claim that changed over time.
+        fact.subject_canonical = record.get("subject_canonical")
+        facts.append(fact)
+    return facts
+
+
+# ── group_supersessions (WS-2.6b — spec 07 §Q5 "it changed") ──────────
+
+
+def group_supersessions(facts: list[Fact]) -> list[dict[str, Any]]:
+    """Group recalled facts into SUPERSESSIONS: a set of facts that make the SAME claim about the same
+    subject — same (subject_canonical, predicate) — but whose `object` changed across dates. Spec 07 §Q5:
+    recall must surface *"it changed"* ("Mon: Friday → Wed: Tuesday — which is right?"), not two
+    independent truths.
+
+    A group qualifies only when it has ≥2 facts with ≥2 DISTINCT objects (case/space-normalized) — a mere
+    re-affirmation of the same object on two days is NOT a supersession. Requires a subject AND a
+    predicate AND an object on each fact (the WS-2.2 structured trio); coarse facts (any of the three
+    missing) never form a supersession — they can't be reliably claimed to contradict. Each chain is
+    ordered OLDEST→NEWEST by (event_date_iso, valid_from_ordinal) so the arrow reads forward in time, and
+    `latest` names the current value. Pure over the passed facts (no DB) so it is trivially testable and
+    order-independent of the read's LIMIT."""
+    def _norm(s: str | None) -> str:
+        return " ".join((s or "").split()).casefold()
+
+    groups: dict[tuple[str, str], list[Fact]] = {}
+    for f in facts:
+        subj, pred, obj = f.subject_canonical, f.predicate, f.object
+        if not subj or not pred or not obj:
+            continue
+        groups.setdefault((_norm(subj), _norm(pred)), []).append(f)
+
+    supersessions: list[dict[str, Any]] = []
+    for (subj_key, _pred_key), members in groups.items():
+        if len(members) < 2:
+            continue
+        distinct_objects = {_norm(m.object) for m in members}
+        if len(distinct_objects) < 2:
+            continue  # same object re-affirmed — not a change
+        ordered = sorted(
+            members,
+            key=lambda m: ((m.event_date_iso or ""), (m.valid_from_ordinal or 0)),
+        )
+        supersessions.append({
+            # Present the original (un-normalized) subject/predicate of the newest member for display.
+            "subject": ordered[-1].subject_canonical,
+            "predicate": ordered[-1].predicate,
+            "latest": ordered[-1].object,
+            "changed": True,
+            "chain": [
+                {"object": m.object, "event_date": m.event_date_iso, "content": m.content}
+                for m in ordered
+            ],
+        })
+    return supersessions
 
 
 # ── list_facts_for_entity (T2.1) ──────────────────────────────────────
@@ -501,6 +682,7 @@ _LIST_FACTS_FOR_ENTITY_BODY = """
 MATCH (f:Fact)-[:ABOUT]->(e:Entity {id: $entity_id})
 WHERE f.user_id = $user_id
   AND e.user_id = $user_id
+  AND ($project_id IS NULL OR f.project_id = $project_id)
   AND ($exclude_pending = false OR coalesce(f.pending_validation, false) = false)
   AND f.confidence >= $min_confidence
   AND f.valid_until IS NULL
@@ -527,6 +709,7 @@ async def list_facts_for_entity(
     user_id: str,
     entity_id: str,
     before_order: int | None = None,
+    project_id: str | None = None,
     min_confidence: float = 0.8,
     exclude_pending: bool = True,
     include_archived: bool = False,
@@ -557,6 +740,7 @@ async def list_facts_for_entity(
         user_id=user_id,
         entity_id=entity_id,
         before_order=before_order,
+        project_id=project_id,
         min_confidence=min_confidence,
         exclude_pending=exclude_pending,
         include_archived=include_archived,
@@ -603,6 +787,183 @@ async def invalidate_fact(
     if record is None:
         return None
     return _node_to_fact(record["f"])
+
+
+# ── revalidate_fact (S-05b F9 — undo a mark-wrong) ────────────────────
+
+
+_REVALIDATE_FACT_CYPHER = """
+MATCH (f:Fact {id: $id})
+WHERE f.user_id = $user_id
+SET f.valid_until = NULL,
+    f.updated_at = datetime()
+RETURN f
+"""
+
+
+async def revalidate_fact(
+    session: CypherSession,
+    *,
+    user_id: str,
+    fact_id: str,
+) -> Fact | None:
+    """S-05b — the inverse of `invalidate_fact`: clear `valid_until` so a mark-wrong
+    can be UNDONE (the fact re-appears in the L2 loader). Owner-scoped; idempotent
+    (revalidating an active fact is a no-op). Returns None on cross-user/missing so
+    the router maps to 404 (no existence oracle). No event: a self-undo of one's own
+    invalidate is not an extraction correction (mirrors the S-05 emit-gating stance)."""
+    if not fact_id:
+        raise ValueError("fact_id must be a non-empty string")
+    result = await run_write(
+        session, _REVALIDATE_FACT_CYPHER, user_id=user_id, id=fact_id,
+    )
+    record = await result.single()
+    if record is None:
+        return None
+    return _node_to_fact(record["f"])
+
+
+# ── invalidate_facts_for_day (WS-2.6a leg 3 — D17 amendment reconcile) ─
+
+
+_INVALIDATE_FACTS_FOR_DAY_CYPHER = """
+MATCH (f:Fact)
+WHERE f.user_id = $user_id
+  AND f.project_id = $project_id
+  AND f.event_date_iso = $event_date
+  AND f.valid_until IS NULL
+  AND coalesce(f.pending_validation, false) = false
+SET f.valid_until = coalesce($valid_until, datetime()),
+    f.updated_at = datetime()
+RETURN count(f) AS invalidated
+"""
+
+
+async def invalidate_facts_for_day(
+    session: CypherSession,
+    *,
+    user_id: str,
+    project_id: str,
+    event_date: str,
+    valid_until: datetime | None = None,
+) -> int:
+    """WS-2.6a leg 3 (D17) — soft-invalidate ALL of one diary day's CONFIRMED facts by setting
+    `valid_until`, scoped to (user, assistant project, event_date). This is the reconcile leg of a
+    memory correction: after the user amends a day's diary entry (leg 1) and the worker re-extracts the
+    corrected facts into the inbox (leg 2), the day's OLD confirmed facts are superseded and must vanish
+    from recall — otherwise the wrong fact ("Minh froze the budget") survives alongside the corrected
+    one, and a KG rebuild resurrects it (the exact `memory_forget`-stops-at-leg-3 lie D17 names).
+
+    Bi-temporal soft-invalidation (never a hard delete): `valid_until` is set so recall (which filters
+    `valid_until IS NULL`) skips these, while the audit history + the :ABOUT edges survive. Only ACTIVE
+    (`valid_until IS NULL`) confirmed (`pending_validation=false`) facts are touched, so it is idempotent
+    — a re-run invalidates nothing more. `project_id` is REQUIRED (never all-projects) so a correction in
+    the diary can never reach another project's facts (D16). Returns the number invalidated.
+
+    NOTE this is deliberately DAY-scoped, not fact-scoped: the re-distill model (D-R30) treats the
+    corrected ENTRY as the new source of truth for the whole day, so the whole day's derived facts are
+    re-proposed from it. Unchanged facts re-appear in the inbox (same corrected entry ⇒ same facts) and
+    the user re-confirms; the changed/removed ones simply don't come back — no resurrection.
+    """
+    if not user_id or not project_id or not event_date:
+        raise ValueError("invalidate_facts_for_day requires user_id, project_id and event_date")
+    result = await run_write(
+        session,
+        _INVALIDATE_FACTS_FOR_DAY_CYPHER,
+        user_id=user_id,
+        project_id=project_id,
+        event_date=event_date,
+        valid_until=valid_until,
+    )
+    record = await result.single()
+    if record is None:
+        return 0
+    return int(record["invalidated"])
+
+
+# ── invalidate_all_facts_for_project (WS-2.10a — close an employment epoch) ──
+
+
+_INVALIDATE_ALL_FACTS_FOR_PROJECT_CYPHER = """
+MATCH (f:Fact)
+WHERE f.user_id = $user_id
+  AND f.project_id = $project_id
+  AND f.valid_until IS NULL
+SET f.valid_until = coalesce($valid_until, datetime()),
+    f.updated_at = datetime()
+RETURN count(f) AS invalidated
+"""
+
+
+async def invalidate_all_facts_for_project(
+    session: CypherSession,
+    *,
+    user_id: str,
+    project_id: str,
+    valid_until: datetime | None = None,
+) -> int:
+    """WS-2.10a (T18 employment epoch) — close an epoch by soft-invalidating EVERY active fact of the
+    epoch's assistant project (bulk `valid_until`). On a job change the ex-employer's confidential facts
+    must stop being 'valid now' so they don't blend into the new job's recall. Epoch scoping is primarily
+    by project (each epoch is its own assistant project + diary book, and recall is project-scoped), and
+    this marks the bi-temporal close on top. Tenant-scoped on (user, project); idempotent (only active
+    facts). Returns the count invalidated."""
+    if not user_id or not project_id:
+        raise ValueError("invalidate_all_facts_for_project requires user_id and project_id")
+    result = await run_write(
+        session,
+        _INVALIDATE_ALL_FACTS_FOR_PROJECT_CYPHER,
+        user_id=user_id,
+        project_id=project_id,
+        valid_until=valid_until,
+    )
+    record = await result.single()
+    return int(record["invalidated"]) if record else 0
+
+
+# ── export_facts_for_project (WS-2.10d — export before the epoch purge) ──
+
+
+_EXPORT_FACTS_FOR_PROJECT_CYPHER = """
+MATCH (f:Fact)
+WHERE f.user_id = $user_id
+  AND f.project_id = $project_id
+  AND coalesce(f.pending_validation, false) = false
+OPTIONAL MATCH (f)-[:ABOUT]->(subj:Entity) WHERE subj.user_id = $user_id
+WITH f, head(collect(subj.canonical_name)) AS subject_canonical
+RETURN f, subject_canonical
+ORDER BY coalesce(f.event_date_iso, '') ASC, f.created_at ASC
+LIMIT $limit
+"""
+
+
+async def export_facts_for_project(
+    session: CypherSession,
+    *,
+    user_id: str,
+    project_id: str,
+    limit: int = 10000,
+) -> list[Fact]:
+    """WS-2.10d (T18 export-then-purge) — dump EVERY confirmed fact of an epoch's project for the user's
+    export, INCLUDING invalidated (`valid_until`-set) ones — a closed epoch's facts are all invalidated
+    (WS-2.10a), so the recall read (which filters valid_until IS NULL) would export nothing. This is the
+    'export' half of the boundary offer; the caller then purges via the scoped-erasure primitive @epoch.
+    Tenant-scoped on (user, project). Oldest-first so the export reads chronologically."""
+    if not project_id:
+        raise ValueError("export_facts_for_project requires an explicit project_id")
+    result = await run_read(
+        session,
+        _EXPORT_FACTS_FOR_PROJECT_CYPHER,
+        user_id=user_id,
+        project_id=project_id,
+        limit=limit,
+    )
+    facts: list[Fact] = []
+    async for record in result:
+        fact = _node_to_fact(record["f"])
+        fact.subject_canonical = record.get("subject_canonical")
+        facts.append(fact)
+    return facts
 
 
 # ── delete_facts_with_zero_evidence ───────────────────────────────────

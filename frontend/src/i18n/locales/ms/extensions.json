@@ -4,11 +4,12 @@
     "skills": "Kemahiran",
     "mcp": "Pelayan MCP",
     "commands": "Perintah & Hook",
-    "subagents": "Subeagen",
+    "subagents": "Subejen",
     "plugins": "Plugin",
+    "permissions": "Kebenaran alatan",
     "proposals": "Cadangan",
     "activity": "Log aktiviti",
-    "ingest": "Sumber daftar"
+    "ingest": "Sumber pendaftaran"
   },
   "quota": {
     "skills": "Kemahiran",
@@ -46,7 +47,7 @@
       "name": "Nama A→Z",
       "lastTriggered": "Terakhir dicetuskan"
     },
-    "empty": "Tiada kemahiran lagi. Ejen boleh mencadangkan satu, atau menciptanya dalam editor.",
+    "empty": "Tiada kemahiran lagi. Ejen boleh mencadangkan satu, atau anda boleh menciptanya di editor.",
     "draft": "draf"
   },
   "mcp": {
@@ -65,18 +66,18 @@
       "error": "Tidak dapat dicapai"
     },
     "add": "+ Tambah pelayan",
-    "empty": "Tiada pelayan MCP lagi. Tambah satu untuk memberikan ejen alatan tambahan.",
-    "review": "⚠ semakan",
+    "empty": "Tiada pelayan MCP lagi. Tambah satu untuk memberikan ejen alat tambahan.",
+    "review": "⚠ semak",
     "detail": {
       "back": "‹ Kembali",
       "connection": "Sambungan",
-      "auth": "Pengesahan",
+      "auth": "Autentikasi",
       "prefix": "Awalan",
-      "egress": "Senarai putih egress",
+      "egress": "Senarai putih keluar",
       "health": "Status Kesihatan",
       "lastScanned": "Kali terakhir diimbas",
-      "credentialStored": "kredensial disimpan",
-      "healthOk": "ok · {{count}} alatan · {{latency}}ms",
+      "credentialStored": "kredential disimpan",
+      "healthOk": "ok · {{count}} alat · {{latency}}ms",
       "healthError": "ralat: {{error}}",
       "unreachable": "tidak dapat dicapai",
       "scanning": "Mengimbas…",
@@ -106,18 +107,18 @@
       "authNone": "Tiada",
       "authBearer": "Token Bearer",
       "authOauth": "OAuth 2.1",
-      "noAuthHint": "Tiada pengesahan — pelayan ini adalah terbuka. Teruskan untuk mendaftar dan mengimbasnya.",
+      "noAuthHint": "Tiada pengesahan — pelayan ini adalah terbuka. Teruskan untuk mendaftar dan imbasnya.",
       "bearerLabel": "Token Bearer (disimpan dalam peti simpanan; tidak akan dipaparkan lagi)",
       "bearerPlaceholder": "tampal token",
-      "authzEndpoint": "Hala tuju kebenaran",
-      "tokenEndpoint": "Hala tuju token",
+      "authzEndpoint": "Endpoint kebenaran",
+      "tokenEndpoint": "Endpoint token",
       "clientId": "ID Pelanggan",
       "scopes": "Skop (jarakkan dengan ruang)",
       "registering": "Mendaftarkan…",
       "registerScan": "Daftar & imbas",
       "statusLabel": "Status:",
       "connectOauth": "Sambung dengan OAuth →",
-      "runScan": "Jalankan kesihatan & imbasan",
+      "runScan": "Jalankan kesihatan & imbas",
       "refresh": "Segarkan",
       "continue": "Teruskan",
       "authKind": "auth: {{kind}}",
@@ -133,30 +134,30 @@
     "empty": "Tiada perintah lagi."
   },
   "hooks": {
-    "title": "Hook",
-    "description": "Peraturan deklaratif yang dicetuskan pada sambungan kitaran ejen. Tanpa kod — hanya acara, padanan alat pilihan, dan tindakan.",
+    "title": "Hooks",
+    "description": "Peraturan deklaratif yang dicetuskan pada peralihan gelung ejen. Tanpa kod — hanya acara, padanan alat pilihan, dan tindakan.",
     "matchPlaceholder": "padanan alat (cth. glossary_delete_*)",
-    "textPlaceholder": "teks untuk disuntik / dianotasi",
-    "empty": "Tiada hook lagi."
+    "textPlaceholder": "teks untuk suntikan / anotasi",
+    "empty": "Belum ada hook."
   },
   "subagents": {
-    "title": "Subeagen",
-    "description": "Persona bernama yang boleh didelegasikan oleh ejen untuk sub-tugasan terhad melalui <code>run_subagent</code>. Ia berjalan dalam giliran terasing dengan HANYA alatan skopnya sahaja. Biarkan skop kosong untuk persona penaakulan/ringkasan tulen.",
+    "title": "Sub-ejen",
+    "description": "Persona bernama yang boleh diberikan tugasan sub-tugas terhad oleh ejen melalui <code>run_subagent</code>. Ia berjalan dalam giliran terasing dengan HANYA alatan skopnya sahaja. Biarkan skop kosong untuk persona penaakulan/ringkasan tulen.",
     "namePlaceholder": "nama (cth. lore-scout)",
     "scopePlaceholder": "skop alatan: glossary_*, kg_*",
     "modelPlaceholder": "model (pilihan, id user_model)",
-    "promptPlaceholder": "Prompt sistem — siapa persona ini dan bagaimana ia berfungsi…",
-    "create": "Cipta subeagen",
-    "empty": "Tiada subeagen lagi.",
+    "promptPlaceholder": "Prompt sistem — siapa persona ini dan bagaimana ia berfungsi...",
+    "create": "Cipta sub-ejen",
+    "empty": "Belum ada sub-ejen.",
     "reasoningOnly": "hanya penaakulan (tiada alatan)",
     "modelPinned": "model ditetapkan"
   },
   "plugins": {
-    "description": "Plugin membundel kemahiran, arahan & pautan — eksport untuk berkongsi, import untuk memasang.",
-    "importing": "Mengimport…",
+    "description": "Plugin membundel kemahiran, arahan & hook — eksport untuk berkongsi, import untuk memasang.",
+    "importing": "Sedang mengimport…",
     "import": "Import bundle",
     "invalidJson": "Fail tersebut bukan JSON yang sah.",
-    "notBundle": "Bukan bundle LoreWeave (manifest.name hilang).",
+    "notBundle": "Bukan bundle LoreWeave (fail manifest.name hilang).",
     "empty": "Tiada plugin lagi. Import bundle untuk memasang plugin.",
     "export": "Eksport"
   },
@@ -185,19 +186,72 @@
     "empty": "Tiada aktiviti dalam julat ini.",
     "secondsAgo": "{{count}}s yang lalu",
     "minutesAgo": "{{count}}m yang lalu",
-    "hoursAgo": "{{count}}h yang lalu",
-    "daysAgo": "{{count}} hari yang lalu"
+    "hoursAgo": "{{count}}j yang lalu",
+    "daysAgo": "{{count}}h yang lalu"
   },
   "ingest": {
     "title": "Sumber pendaftaran (admin)",
     "description": "Kurasi katalog Sistem daripada MCP Registry rasmi. pengesahan ≠ keselamatan — setiap kelulusan akan menjalankan semula penjaga SSRF + imbasan rantaian bekalan sebelum ia difederasikan.",
     "all": "Semua",
-    "pulling": "Sedang menarik…",
+    "pulling": "Menarik data…",
     "pull": "Tarik pendaftaran",
-    "pullResult": "Telah ditarik: diambil {{fetched}} · baharu {{new}} · dikemas kini {{updated}} · tiada-remote {{skipped}}",
+    "pullResult": "Berjaya ditarik: diambil {{fetched}} · baharu {{new}} · dikemas kini {{updated}} · tiada-jauh {{skipped}}",
     "truncated": "· sebahagian (dipotong)",
-    "empty": "Tiada entri dalam paparan ini. Tarik pendaftaran untuk mengisi barisan.",
+    "empty": "Tiada entri dalam paparan ini. Tarik pendaftaran untuk mengisi senarai menunggu.",
     "approve": "Lulus",
     "reject": "Tolak"
+  },
+  "permissions": {
+    "blurb": "Alatan yang telah anda berikan kebenaran tetap kepada pembantu — dan alatan yang telah anda sekat. «Sentiasa benarkan» pada kad kelulusan akan menambah baris di sini. Menarik balik kebenaran bermakna pembantu akan bertanya kepada anda semula pada masa akan datang apabila ia ingin menggunakan alatan tersebut.",
+    "loading": "Memuatkan…",
+    "allowedTitle": "Sentiasa dibenarkan",
+    "deniedTitle": "Disekat",
+    "blockTitle": "Sekat alatan",
+    "emptyAllowed": "Anda belum memberikan sebarang kebenaran tetap kepada alatan. Pembantu akan bertanya kepada anda setiap kali.",
+    "emptyDenied": "Tiada alatan yang disekat.",
+    "toolPlaceholder": "Nama alatan (cth. chapter_delete)",
+    "unknownTool": "Itu bukan salah satu alatan pembantu. Sila pilih nama daripada senarai.",
+    "kind": {
+      "mutation": "Boleh mengubah karya saya",
+      "spend": "Boleh membelanjakan wang"
+    },
+    "decision": {
+      "allow": "Berjalan tanpa bertanya",
+      "deny": "Jangan jalankan lagi"
+    },
+    "actions": {
+      "revoke": "Tanya saya lagi",
+      "deny": "Jangan benarkan",
+      "allow": "Benarkan",
+      "block": "Sekat"
+    }
+  },
+  "workflows": {
+    "total": "{{count}} aliran kerja",
+    "empty": "Tiada aliran kerja lagi. Luluskan cadangan aliran kerja untuk menambahkannya.",
+    "enabled": "Aktif",
+    "disabled": "Nyahaktif",
+    "delete": "Padam",
+    "proposalsEmpty": "Tiada cadangan aliran kerja. Apabila ejen mencadangkan aliran kerja, ia akan muncul di sini untuk anda luluskan.",
+    "view": "Lihat",
+    "hide": "Sembunyi",
+    "noSteps": "Tiada langkah ditakrifkan."
+  },
+  "bindings": {
+    "loading": "Memuatkan…",
+    "autoSetupDesc": "Resipi yang ditetapkan secara automatik oleh pembantu dalam mod ini.",
+    "none": "Tiada apa-apa yang ditetapkan secara automatik di sini.",
+    "turnOff": "Matikan",
+    "turnBackOn": "Hidupkan semula",
+    "mode": {
+      "ask": "Membaca & bertanya",
+      "write": "Menulis",
+      "plan": "Perancangan"
+    },
+    "tier": {
+      "system": "Binaan dalaman",
+      "user": "Anda tetapkan ini",
+      "book": "Buku ini"
+    }
   }
 }

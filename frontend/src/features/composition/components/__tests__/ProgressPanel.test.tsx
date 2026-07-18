@@ -38,7 +38,7 @@ describe('ProgressPanel (T4.2)', () => {
   beforeEach(() => { useProgress.mockReset(); setGoalMutate.mockReset(); });
 
   const renderPanel = () =>
-    render(<ProgressPanel bookId="b1" projectId="p1" settings={{ assembly_mode: 'chapter' }} token="t" />);
+    render(<ProgressPanel bookId="b1" projectId="p1" token="t" />);
 
   it('shows today words, streak, book total and the goal bar when a goal is set', () => {
     useProgress.mockReturnValue({ data: makeData(), isLoading: false, isError: false });
@@ -65,13 +65,13 @@ describe('ProgressPanel (T4.2)', () => {
     expect(screen.getByTestId('progress-window-30').className).toContain('font-medium');
   });
 
-  it('persists an edited goal merging current settings', () => {
+  it('persists an edited goal to the caller own per-user goal (BE-P2 — not shared settings)', () => {
     useProgress.mockReturnValue({ data: makeData(), isLoading: false, isError: false });
     renderPanel();
     fireEvent.change(screen.getByTestId('progress-goal-input'), { target: { value: '750' } });
     fireEvent.click(screen.getByTestId('progress-goal-save'));
     expect(setGoalMutate).toHaveBeenCalledWith(
-      { projectId: 'p1', currentSettings: { assembly_mode: 'chapter' }, goal: 750 },
+      { projectId: 'p1', goal: 750 },
       expect.objectContaining({ onSuccess: expect.any(Function) }),
     );
   });
@@ -81,7 +81,7 @@ describe('ProgressPanel (T4.2)', () => {
     const { rerender } = renderPanel();
     expect(screen.getByText('progressPanel.loading')).toBeInTheDocument();
     useProgress.mockReturnValue({ data: undefined, isLoading: false, isError: true });
-    rerender(<ProgressPanel bookId="b1" projectId="p1" settings={{}} token="t" />);
+    rerender(<ProgressPanel bookId="b1" projectId="p1" token="t" />);
     expect(screen.getByText('progressPanel.error')).toBeInTheDocument();
   });
 });

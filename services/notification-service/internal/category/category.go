@@ -35,6 +35,10 @@ var Allowed = map[string]bool{
 	"mcp_approval": true,
 	"campaign":     true,
 	"billing":      true,
+	// R3 (D-PROACTIVE-DELIVERY) — the work-assistant proactive check-in (chat-service). Its own
+	// category so a user can opt out of assistant pings without silencing every system notification
+	// (Suppressed() keys on category — the per-category opt-out granularity).
+	"assistant": true,
 }
 
 // Valid reports whether c is a recognised notification category. Both

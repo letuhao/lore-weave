@@ -1,8 +1,11 @@
 {
+  "reconnecting": "再接続中…",
   "nav": {
     "startNew": "新しく始める",
     "workspace": "ワークスペース",
     "chat": "チャット",
+    "assistant": "アシスタント",
+    "roleplay": "ロールプレイ",
     "knowledge": "ナレッジ",
     "worlds": "ワールド",
     "campaigns": "キャンペーン",
@@ -25,7 +28,7 @@
     "account": "アカウント",
     "signin": "サインイン",
     "back_to_book": "書籍に戻る",
-    "roleplay": "ロールプレイ"
+    "more": "その他"
   },
   "logout_confirm": {
     "title": "未保存の変更があるままログアウトしますか？",

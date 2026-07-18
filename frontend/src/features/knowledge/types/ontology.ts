@@ -332,6 +332,10 @@ export interface GraphNode {
   kind: string;
   name: string;
   glossary_entity_id?: string | null;
+  // KG-ML M5 (C7) — localized labels for a reader whose language differs from
+  // the source. null ⇒ keep the canonical kind/name (explicit source fallback).
+  kind_label?: string | null;
+  name_label?: string | null;
 }
 
 export interface GraphEdge {
@@ -341,6 +345,8 @@ export interface GraphEdge {
   valid_from?: number | null;
   valid_to?: number | null;
   schema_version?: number | null;
+  // KG-ML M5 (C7) — localized predicate label (curated → humanized fallback).
+  edge_type_label?: string | null;
 }
 
 export interface GraphSlice {
@@ -386,6 +392,17 @@ export interface TriageGroup {
 export interface TriageGroupList {
   groups: TriageGroup[];
   next_cursor?: string | null;
+}
+
+// S-05 — per-item drill-in of a signature group (for single-item dismiss).
+export interface TriageItem {
+  triage_id: string;
+  item_type: TriageItemType;
+  payload?: Record<string, unknown>;
+}
+
+export interface TriageItemList {
+  items: TriageItem[];
 }
 
 export interface TriageListParams {
