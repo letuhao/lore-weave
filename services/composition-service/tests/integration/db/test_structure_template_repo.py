@@ -156,6 +156,18 @@ async def test_occ_stale_version_conflicts(pool):
         await repo.update(u, t.id, 1, name="stale write")  # expected 1, actual 2 → 412
 
 
+async def test_update_persists_kind(pool):
+    """`kind` is FE-editable (S-01b) — an update must actually PERSIST a changed kind, not drop it
+    (the write-only-behaviour bug class). Proven by a re-read, not just the echoed return."""
+    repo = StructureTemplatesRepo(pool)
+    u = uuid.uuid4()
+    t = await repo.create(u, name="Kind Test", kind="generic")
+    updated = await repo.update(u, t.id, t.version, kind="thriller")
+    assert updated is not None and updated.kind == "thriller"
+    refetched = await repo.get(u, t.id)
+    assert refetched is not None and refetched.kind == "thriller"
+
+
 # ── ARCHIVE / RESTORE symmetry ───────────────────────────────────────────────
 
 async def test_the_decompose_consumer_resolves_a_custom_template(pool):
