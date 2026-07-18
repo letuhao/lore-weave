@@ -125,3 +125,35 @@ async def test_parts_and_arcs_do_not_pollute_each_other(pool):
     part_tree = await repo.list_tree(book, kinds=("part",))
     assert [n.id for n in part_tree] == [p1]
     assert part_tree[0].title == "Part One"
+
+
+async def test_c4_create_part_integer_rank_and_reorder(pool):
+    """C4 write-cutover: create_part appends at integer rank max+1; reorder_parts rewrites ranks by
+    position; both keep the C3-decodable int(rank) scheme. Archive/restore round-trips too."""
+    from app.db.repositories.structure import StructureConflictError, StructureRepo
+
+    repo = StructureRepo(pool)
+    book = uuid.uuid4()
+    actor = uuid.uuid4()
+
+    a = await repo.create_part(book, created_by=actor, title="One")
+    b = await repo.create_part(book, created_by=actor, title="Two")
+    assert (int(a.rank), int(b.rank)) == (1, 2) and a.kind == "part" and a.depth == 0
+
+    # reorder → [b, a]
+    reordered = await repo.reorder_parts(book, [b.id, a.id])
+    assert [n.id for n in reordered] == [b.id, a.id]
+    assert [int(n.rank) for n in reordered] == [1, 2]
+
+    # reorder with a wrong set is rejected (LWW exact-set contract)
+    import pytest as _pytest
+    with _pytest.raises(StructureConflictError):
+        await repo.reorder_parts(book, [a.id])  # missing b
+
+    # archive a → excluded from the active parts read; restore brings it back
+    await repo.archive(a.id)
+    active = await repo.list_tree(book, kinds=("part",))
+    assert [n.id for n in active] == [b.id]
+    await repo.restore(a.id)
+    active2 = await repo.list_tree(book, kinds=("part",))
+    assert {n.id for n in active2} == {a.id, b.id}

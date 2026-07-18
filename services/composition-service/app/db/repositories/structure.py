@@ -450,6 +450,41 @@ class StructureRepo:
             return None
         raise VersionMismatchError(current)
 
+    async def create_part(self, book_id: UUID, *, created_by: UUID, title: str) -> StructureNode:
+        """C-merge C4 write-cutover — create a manuscript 'part' (depth-0 grouping) with a SIMPLE
+        INTEGER rank (parts are a FLAT list, unlike arcs' LexoRank tree; the C3 read decodes int(rank)).
+        Appends at max+1. This is the SSOT write once book-service parts is retired at the C4 drop."""
+        async with self._pool.acquire() as c:
+            nxt = await c.fetchval(
+                "SELECT COALESCE(MAX(CASE WHEN rank ~ '^[0-9]+$' THEN rank::int ELSE 0 END), 0) + 1 "
+                "FROM structure_node WHERE book_id = $1 AND kind = 'part'",
+                book_id,
+            )
+        return await self.create_node(
+            book_id, created_by=created_by, kind="part", title=title, rank=f"{int(nxt):08d}",
+        )
+
+    async def reorder_parts(self, book_id: UUID, ordered_ids: list[UUID]) -> list[StructureNode]:
+        """Rewrite the book's active 'part' ranks to the given order (fixed-width integer). ordered_ids
+        must be EXACTLY the active parts (subset/superset/foreign → StructureConflictError). LWW, no OCC
+        (parts are low-contention — mirrors book-service's retired reorder semantics)."""
+        async with self._pool.acquire() as c:
+            async with c.transaction():
+                rows = await c.fetch(
+                    "SELECT id FROM structure_node WHERE book_id = $1 AND kind = 'part' "
+                    "AND NOT is_archived FOR UPDATE",
+                    book_id,
+                )
+                if {r["id"] for r in rows} != set(ordered_ids) or len(ordered_ids) != len(rows):
+                    raise StructureConflictError("ordered_ids must be exactly the book's active parts")
+                for i, nid in enumerate(ordered_ids, start=1):
+                    await c.execute(
+                        "UPDATE structure_node SET rank = $3, updated_at = now() "
+                        "WHERE id = $1 AND book_id = $2 AND kind = 'part'",
+                        nid, book_id, f"{i:08d}",
+                    )
+        return await self.list_tree(book_id, kinds=("part",))
+
     async def archive(self, node_id: UUID) -> None:
         """Soft-archive a node AND its descendants (no orphaned-visible child under
         an archived parent). A recursive CTE walks parent_id DOWN, then one UPDATE

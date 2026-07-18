@@ -600,6 +600,113 @@ async def list_parts(
     return {"items": items}
 
 
+# ── C-merge C4 write-cutover: part CRUD moves to composition (structure_node kind='part') ──────────
+# These are the SSOT writes once book-service parts is retired at the C4 drop. Chapter→part assignment
+# stays in book-service (it writes chapters.structure_node_id, a book-service column). Parts are FLAT +
+# LWW (no OCC), matching the retired book-service semantics — distinct from arcs' OCC + LexoRank tree.
+
+
+class PartCreate(BaseModel):
+    title: str = Field(default="", max_length=500)
+
+
+class PartRename(BaseModel):
+    title: str = Field(default="", max_length=500)
+
+
+class PartReorder(BaseModel):
+    ordered_ids: list[UUID]
+
+
+def _part_json(n: Any) -> dict[str, Any]:
+    return {
+        "part_id": str(n.id),
+        "book_id": str(n.book_id),
+        "title": n.title or None,
+        "path": "",
+        "sort_order": int(n.rank) if (n.rank or "").isdigit() else 0,
+        "lifecycle_state": "trashed" if n.is_archived else "active",
+    }
+
+
+async def _gate_part(structures: StructureRepo, grant, user_id: UUID, node_id: UUID, level: GrantLevel):
+    """Resolve the node, 404 unless it's a 'part' (a parts route must never touch an arc), then gate
+    the owning book. Uniform 404 for missing/not-a-part/not-a-grantee — no existence oracle."""
+    node = await structures.get(node_id)
+    if node is None or node.kind != "part":
+        raise HTTPException(status_code=404, detail=NOT_ACCESSIBLE_MESSAGE)
+    await _gate_book(grant, node.book_id, user_id, level)
+    return node
+
+
+@router.post("/books/{book_id}/parts", status_code=201)
+async def create_part(
+    book_id: UUID,
+    body: PartCreate,
+    user_id: UUID = Depends(get_current_user),
+    grant: GrantClient = Depends(get_grant_client_dep),
+) -> dict[str, Any]:
+    await _gate_book(grant, book_id, user_id, GrantLevel.EDIT)
+    node = await _structures().create_part(book_id, created_by=user_id, title=body.title.strip())
+    return _part_json(node)
+
+
+@router.patch("/parts/{node_id}")
+async def rename_part(
+    node_id: UUID,
+    body: PartRename,
+    user_id: UUID = Depends(get_current_user),
+    grant: GrantClient = Depends(get_grant_client_dep),
+) -> dict[str, Any]:
+    structures = _structures()
+    await _gate_part(structures, grant, user_id, node_id, GrantLevel.EDIT)
+    updated = await structures.update(node_id, {"title": body.title.strip()}, expected_version=None)
+    if updated is None:
+        raise HTTPException(status_code=404, detail=NOT_ACCESSIBLE_MESSAGE)
+    return _part_json(updated)
+
+
+@router.post("/books/{book_id}/parts/reorder")
+async def reorder_parts(
+    book_id: UUID,
+    body: PartReorder,
+    user_id: UUID = Depends(get_current_user),
+    grant: GrantClient = Depends(get_grant_client_dep),
+) -> dict[str, Any]:
+    await _gate_book(grant, book_id, user_id, GrantLevel.EDIT)
+    try:
+        nodes = await _structures().reorder_parts(book_id, body.ordered_ids)
+    except StructureConflictError as exc:
+        raise _arc_conflict_http(exc)
+    return {"items": [_part_json(n) for n in nodes]}
+
+
+@router.delete("/parts/{node_id}", status_code=204)
+async def archive_part(
+    node_id: UUID,
+    user_id: UUID = Depends(get_current_user),
+    grant: GrantClient = Depends(get_grant_client_dep),
+) -> None:
+    structures = _structures()
+    await _gate_part(structures, grant, user_id, node_id, GrantLevel.EDIT)
+    # No cross-service chapter un-homing needed: chapters keep structure_node_id, but the grouping read
+    # (kind='part' AND NOT archived) excludes an archived part, so its chapters fall to Unassigned.
+    await structures.archive(node_id)
+
+
+@router.post("/parts/{node_id}/restore")
+async def restore_part(
+    node_id: UUID,
+    user_id: UUID = Depends(get_current_user),
+    grant: GrantClient = Depends(get_grant_client_dep),
+) -> dict[str, Any]:
+    structures = _structures()
+    await _gate_part(structures, grant, user_id, node_id, GrantLevel.EDIT)
+    await structures.restore(node_id)
+    restored = await structures.get(node_id)
+    return _part_json(restored)
+
+
 @router.get("/arcs/{node_id}")
 async def get_arc(
     node_id: UUID,
