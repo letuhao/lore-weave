@@ -39,10 +39,14 @@ interface PartsListResponse {
  * chapters/{id}/part route, NOT patchChapter (keeps patchChapter's OCC untouched).
  */
 export const partsApi = {
-  /** GET — active parts in sort order (include_trashed adds soft-trashed ones for a restore UI). */
+  /** GET — active parts in sort order (include_trashed adds soft-trashed ones for a restore UI).
+   *  C-merge C3 READ-CUTOVER: reads from composition's structure_node kind='part' mirror
+   *  (/v1/composition/books/{id}/parts), NOT the book-service parts TABLE — so C4 can drop that table.
+   *  WRITES still target book-service below (which dual-writes the mirror) until C4. Same response shape.
+   *  DEPLOY-ORDER: ships AFTER C2's mirror is live + backfilled, else this reads empty. */
   list(token: string, bookId: string, opts: { includeTrashed?: boolean } = {}): Promise<PartsListResponse> {
     const q = opts.includeTrashed ? '?include_trashed=true' : '';
-    return apiJson<PartsListResponse>(`/v1/books/${bookId}/parts${q}`, { token });
+    return apiJson<PartsListResponse>(`/v1/composition/books/${bookId}/parts${q}`, { token });
   },
 
   /** POST — create an act (appended at the end). 201. */

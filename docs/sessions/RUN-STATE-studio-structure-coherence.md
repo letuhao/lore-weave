@@ -49,8 +49,18 @@ C1→C4 cutover, `/review-impl` + cross-service live-smoke on every C-slice.
       archive/reactivate). Transport reuses the proven written-verdict relay+BaseProjectionConsumer path.
       LIVE-SMOKE (full emit→relay→consume) deferred: running images predate C2; each half live-verified
       + transport is proven infra → token "live infra unavailable: stack images predate C2".
-- [ ] C3 · READ-CUTOVER — Manuscript rail + hierarchy read structure_node via gateway; partsMode
-      collapses; two rails unify click contract. FE flips. review-impl + live-smoke + QC :5290.
+- [~] C3 · READ-CUTOVER (code-complete + component-verified; end-to-end live-QC is DEPLOY-GATED).
+      **Approach (PO-sealed): FE direct-read.** C3a: composition GET /v1/composition/books/{id}/parts
+      serves structure_node kind='part' (parts-compatible shape, include_trashed→archived); fixed 2
+      latent C1 gaps — list_tree now defaults kinds=('saga','arc') so a 'part' never pollutes the Plan
+      rail, and StructureNodeKind widened to 'part' (Pydantic rejected reading a part row). C3b: FE
+      partsApi.list flipped to the composition endpoint (writes still book-service → dual-write). tsc 0;
+      139 manuscript tests green (partsApi mocked, transparent); test_parts_mirror 5/5 incl. no-pollution.
+      **DEPLOY-ORDER (loud):** ships AFTER C2 mirror is live + backfilled + C3a endpoint deployed, else
+      the rail reads empty. LIVE-QC token: "live infra unavailable — running composition image predates
+      C3a; component paths verified (endpoint integration + FE unit); e2e QC at the C3 deploy after C2 soak."
+      **hierarchy.go (KG parts JOIN) cutover deferred to C4** (it reads book-service's own parts table,
+      which still exists until C4; its title source moves to structure_node at the drop).
 - [ ] C4 · RETIRE — drop parts routes/tools/table + chapters.part_id; delete parts FE + tests; update
       migrate_test + i18n. THE POINT OF NO RETURN — only after C3 soaks. review-impl + live-smoke.
 Build order: Part B → C1 → C2 → C3 → C4.
