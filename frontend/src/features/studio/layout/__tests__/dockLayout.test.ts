@@ -72,12 +72,11 @@ function makeFakeApi(n: number) {
   return { api, panels, moves, addGroup, anchor };
 }
 
-/** Group-id → count of panels landed there, from the recorded moves (last move wins per panel). */
-function finalGroups(moves: Array<{ panel: number; group: string }>): Record<string, number> {
-  const last = new Map<number, string>();
-  for (const m of moves) last.set(m.panel, m.group);
+/** Group-id → count of panels currently in it (reads each panel's live `.group`, so it counts
+ * panels the guard left in place as well as moved ones). */
+function finalGroups(panels: Array<{ group: { id: string } }>): Record<string, number> {
   const counts: Record<string, number> = {};
-  for (const g of last.values()) counts[g] = (counts[g] ?? 0) + 1;
+  for (const p of panels) counts[p.group.id] = (counts[p.group.id] ?? 0) + 1;
   return counts;
 }
 
@@ -90,30 +89,51 @@ describe('reflowDockGrid', () => {
   });
 
   it('4 panels → 2 columns: one new group, two cells of two panels', () => {
-    const { api, moves, addGroup } = makeFakeApi(4);
+    const { api, panels, addGroup } = makeFakeApi(4);
     reflowDockGrid(api, 2, 1);
     expect(addGroup).toHaveBeenCalledTimes(1);
     expect(addGroup.mock.calls[0][0]).toMatchObject({ direction: 'right' });
-    const counts = Object.values(finalGroups(moves)).sort();
+    const counts = Object.values(finalGroups(panels)).sort();
     expect(counts).toEqual([2, 2]); // two cells, two panels each
-    expect(Object.keys(finalGroups(moves))).toHaveLength(2);
+    expect(Object.keys(finalGroups(panels))).toHaveLength(2);
   });
 
   it('4 panels → 2×2 grid: three new groups, four single-panel cells', () => {
-    const { api, moves, addGroup } = makeFakeApi(4);
+    const { api, panels, addGroup } = makeFakeApi(4);
     reflowDockGrid(api, 2, 2);
     expect(addGroup).toHaveBeenCalledTimes(3);
     // one column split (right) + two row splits (below)
     const dirs = addGroup.mock.calls.map((c) => (c[0] as { direction: string }).direction).sort();
     expect(dirs).toEqual(['below', 'below', 'right']);
-    expect(Object.values(finalGroups(moves))).toEqual([1, 1, 1, 1]);
+    expect(Object.values(finalGroups(panels))).toEqual([1, 1, 1, 1]);
   });
 
   it('3 panels into an 8-column preset → 3 columns (no empty cells)', () => {
-    const { api, moves, addGroup } = makeFakeApi(3);
+    const { api, panels, addGroup } = makeFakeApi(3);
     reflowDockGrid(api, 8, 1);
     expect(addGroup).toHaveBeenCalledTimes(2); // anchor + 2 = 3 columns
-    expect(Object.keys(finalGroups(moves))).toHaveLength(3);
+    expect(Object.keys(finalGroups(panels))).toHaveLength(3);
+  });
+
+  it('merge-to-single: a panel already in the target cell is NOT self-moved (dock-empty bug guard)', () => {
+    // Simulate the post-cols2 state: two panels each ALONE in its own group. Reflowing to a single
+    // cell must merge them without moving panel[0] into its own group (which dockview would empty→
+    // remove mid-move, orphaning everything → empty dock, caught in live smoke).
+    let seq = 0;
+    const g = () => ({ id: `g${seq++}` });
+    const gA = g(), gB = g();
+    const moves: Array<{ panel: number; group: string }> = [];
+    const p0 = { group: gA, api: { moveTo: vi.fn((o: { group: { id: string } }) => { p0.group = o.group; moves.push({ panel: 0, group: o.group.id }); }), setActive: vi.fn() } };
+    const p1 = { group: gB, api: { moveTo: vi.fn((o: { group: { id: string } }) => { p1.group = o.group; moves.push({ panel: 1, group: o.group.id }); }), setActive: vi.fn() } };
+    const panels = [p0, p1];
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const api = { get panels() { return panels; }, activePanel: p0, addGroup: vi.fn(g) } as any;
+
+    reflowDockGrid(api, 1, 1);
+    expect(p0.api.moveTo).not.toHaveBeenCalled();   // already in the anchor (gA) → no self-move
+    expect(p1.api.moveTo).toHaveBeenCalledTimes(1);  // relocated into gA
+    expect(p1.group.id).toBe('g0');                  // gA
+    expect(api.addGroup).not.toHaveBeenCalled();     // single = one column, no new groups
   });
 
   it('restores the previously-active panel', () => {

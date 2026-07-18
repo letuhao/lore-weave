@@ -94,7 +94,12 @@ export function reflowDockGrid(api: DockviewApi, cols: number, rows: number): vo
 
       const count = cells[cellIdx] ?? 0;
       for (let k = 0; k < count; k++) {
-        panels[panelIdx].api.moveTo({ group: cellGroup, index: k });
+        // Skip a panel already in its target cell. Moving a panel into its OWN group when it is the
+        // sole occupant makes dockview empty→auto-remove that group mid-move, orphaning the panel
+        // (and cascading to an empty dock — caught in live smoke on the merge-to-single path).
+        if (panels[panelIdx].group !== cellGroup) {
+          panels[panelIdx].api.moveTo({ group: cellGroup, index: k });
+        }
         panelIdx++;
       }
       cellIdx++;
