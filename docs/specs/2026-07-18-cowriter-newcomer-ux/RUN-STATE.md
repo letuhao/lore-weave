@@ -19,7 +19,7 @@ isolated playwright session (recipe proven this session). **Model for co-writer 
 ## Slice board (done = evidence string) — post-review roster, build order
 | # | Slice | Finding | Collision risk | Status | Evidence |
 |---|-------|---------|----------------|--------|----------|
-| 1 | N5a co-writer over-reach | F3 | LOW (BE) | **[PARTIAL]** `(committed)` | persona restraint + glossary core/shaping split + adopt_standards off the default hot surface (unit-green). 3 live QCs still over-reach (model find_tools it). Full fix = tool-level intent gate (follow-up). N5b de-jargon is the harm-backstop. |
+| 1 | N5a co-writer over-reach | F3 | LOW→**invested** (BE) | **[x] DONE — FULL FIX** `(committed)` | N5a-FULL: bind CAPABILITY to intent at the discovery_catalog chokepoint (covers hot+find_tools+tool_load; closes the tool_load leak). 4 unit + **two-sided live QC**: write-turn = setup tools UNREACHABLE (no over-reach); setup-turn = reachable (legit setup intact). The control-model fix, not another surgical lever. Spec: N5a-FULL_tool-intent-gate.md. |
 | 2 | N5b de-jargon confirm (glossary-svc + FE copy) | F3 | LOW | **[x] DONE** `bf27d203f` | 3 Go sites + FE header; live binary has new copy (3), old gone (0); go build clean |
 | 3 | N6 chapter-create idempotency | F7 | LOW (BE) | **[x] DONE** (uncommitted→committing) | real-DB test green; no regression; go build clean |
 | 4 | N2 per-message Insert (inject onInsert) | F4 | MED (shared chat) | **[x] DONE** `9fb1960ac` | 6 unit + live /chat: Insert renders on reply, clicks clean, fires paste+toast |
