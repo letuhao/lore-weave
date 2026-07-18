@@ -437,6 +437,10 @@ func (s *Server) Router() http.Handler {
 					r.Post("/{staleness_id}/dismiss", s.dismissWikiStaleness)
 				})
 				r.Get("/suggestions", s.listWikiSuggestions)
+				// Submitter-facing read of their OWN suggestions WITH accept/reject status
+				// (no grant — `ws.user_id = caller` is the scope). Static 2-seg route wins
+				// over `/{article_id}/...` in chi's trie, so "mine" is never an article_id.
+				r.Get("/suggestions/mine", s.listMyWikiSuggestions)
 				r.Get("/public", s.publicListWikiArticles)
 				r.Get("/public/{article_id}", s.publicGetWikiArticle)
 				r.Route("/{article_id}", func(r chi.Router) {
@@ -446,6 +450,7 @@ func (s *Server) Router() http.Handler {
 					r.Post("/suggestions", s.submitWikiSuggestion)
 					r.Route("/suggestions/{sug_id}", func(r chi.Router) {
 						r.Patch("/", s.reviewWikiSuggestion)
+						r.Delete("/", s.withdrawWikiSuggestion)
 					})
 					r.Route("/revisions", func(r chi.Router) {
 						r.Get("/", s.listWikiRevisions)
