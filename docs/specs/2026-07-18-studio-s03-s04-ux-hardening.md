@@ -42,6 +42,28 @@
 
 ---
 
+## EDGE CASES resolved + DECISIONS sealed (2026-07-18, at build eval)
+
+**Sealed decisions** (PO delegated "resolve"): **PO-rail = `bible`** (empty stub today; "story bible" grouping);
+**PO-tap = promote `touchTarget` util to shared + mobile-only variant**; **PO-ovr-confirm = lightweight inline
+two-step** (not a modal — low stakes, re-addable).
+
+**Edge fixes (found evaluating the spec against the catalog):**
+1. **The `editor` category is too broad for a nav rail** (19 panels: settings/trash/planner/compose…). H-1b
+   does NOT list a category — it introduces a curated **`navGroup?: 'bible'`** field on catalog panels, tags
+   `reference-shelf` + `divergence` (extensible), and the `bible` rail lists `navGroup === 'bible'` panels as
+   `host.openPanel(id)` launcher rows (the `quality`-button pattern, `StudioSideBar.tsx:97-106`). No
+   `PANELS_BY_CATEGORY` (that was the wrong seam).
+2. **No ambient scene in the studio mount.** Reference retrieval + pins are per-SCENE (`outline_node`). The
+   studio dock has no reliable active-scene for a free-floating shelf, so **mount LIBRARY-FIRST**: pass
+   `sceneId=''` → the panel's existing `{sceneId && embedModelSet && …}` gate hides retrieval/pin and shows the
+   library CRUD (add/edit/delete/search — the S-03 core, fully operable). Per-scene retrieval-in-studio is a
+   NOTED follow-up (needs the studio's active-scene plumbing; not a blocker — library management is the job).
+3. **H-2c (library-row pin) is scene-gated too** — the pin control renders only when a `sceneId` is present
+   (consistent with #2); library-first, it's simply absent, no dead control.
+
+---
+
 ## Part 1 — Discoverability (the biggest score cap) — NOW IN SCOPE (PO pulled it in; absorbs S-10 O2 + O4-slice)
 
 **Load-bearing finding (verified):** the "left nav lists a view's panels" mechanism **does not exist** —
