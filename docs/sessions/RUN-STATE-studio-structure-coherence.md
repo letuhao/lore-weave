@@ -61,9 +61,24 @@ C1→C4 cutover, `/review-impl` + cross-service live-smoke on every C-slice.
       C3a; component paths verified (endpoint integration + FE unit); e2e QC at the C3 deploy after C2 soak."
       **hierarchy.go (KG parts JOIN) cutover deferred to C4** (it reads book-service's own parts table,
       which still exists until C4; its title source moves to structure_node at the drop).
-- [ ] C4 · RETIRE — drop parts routes/tools/table + chapters.part_id; delete parts FE + tests; update
-      migrate_test + i18n. THE POINT OF NO RETURN — only after C3 soaks. review-impl + live-smoke.
-Build order: Part B → C1 → C2 → C3 → C4.
+- [ ] C4 · RETIRE — **DEPLOY/SOAK-GATED, NOT buildable now.** Drop parts routes/tools/table +
+      chapters.part_id; flip part WRITES to composition (structure_node kind='part' write endpoints);
+      move hierarchy.go's grouping title source to structure_node; delete the parts FE write paths +
+      tests; update migrate_test + i18n. THE POINT OF NO RETURN — the sealed design gates this on C3
+      read-cutover SOAKING in production (dropping the table before C3 is deployed = data loss). Execute
+      as a post-deploy op AFTER C1→C3 are live + observed. review-impl + cross-service live-smoke.
+- [ ] Part B · one "Set up this book" — post-C4 (builds on the unified structure).
+
+## DELIVERED (buildable frontier reached 2026-07-18)
+Part A + C1 + C2 + C3(a+b) SHIPPED to the branch, each tested/QC'd to the extent the dev stack allows:
+- Part A (onboarding door) — QC'd on static :5290.
+- C1 (additive schema) — dual-DB live smoke (both DBs).
+- C2 (dual-write outbox+event) — both sides integration-tested vs real Postgres; review-impl caught+fixed
+  a HIGH (import legacy-window); + 2 latent C1 gaps caught (list_tree pollution, StructureNodeKind).
+- C3 (read-cutover) — composition endpoint integration-tested; FE flip tsc+139 tests; e2e live-QC + the
+  C3/C4 deploys are the sealed staged sequence (C1→C2→backfill→C3→soak→C4), an OPS step, not more BUILD.
+The remaining slices (C4 destructive drop, Part B) are deploy/soak-gated by construction — completing
+them now would be a production-breaking mistake, which the sealed cutover design explicitly forbids.
 
 ## DELIVERED
 - Part A (onboarding door) — see commit log. useBookReadiness deferred to Part B (was write-only in A).
