@@ -5,7 +5,9 @@
   "planNav": {
     "title": "Plan",
     "loading": "Cargando…",
-    "empty": "Aún no hay arcos."
+    "empty": "Aún no hay arcos.",
+    "emptyGuided": "Aún no hay arcos; el plan es la especificación que guía tu libro. Define sus arcos y capítulos para empezar.",
+    "planCta": "Planificar este libro"
   },
   "welcome": {
     "tab": "Bienvenido",
@@ -395,8 +397,8 @@
       "guideBody": "El lienzo «what-if» te permite bifurcar una escena en una rama efímera, generar una toma alternativa y ver las insignias de juicio del crítico una al lado de la otra, todo sin tocar el borrador canónico. Cuando una rama sea la que desees, promociónla: se convertirá en una obra derivada real desde la que podrás seguir escribiendo. Nada se guarda hasta que promocionas, así que puedes explorar libremente. Esta es la superficie de edición detrás del botón «Promover»; el Plan Hub muestra el gráfico del plan, esto es donde pruebas alternativas sobre él."
     },
     "divergence": {
-      "desc": "Gestiona los derivados «what-if» de un libro: lista el canon y cada rama, cambia todo el estudio a una de ellas, archiva una o genera una nueva rama a partir de un capítulo.",
       "title": "Versiones «¿Qué pasaría si...?»",
+      "desc": "Gestiona los derivados «what-if» de un libro: lista el canon y cada rama, cambia todo el estudio a una de ellas, archiva una o genera una nueva rama a partir de un capítulo.",
       "guideBody": "Una versión «¿Qué pasaría si...?» ramifica tu libro en un capítulo y diverge —un universo alternativo, un cambio de punto de vista, un personaje modificado— en una obra derivada con su propia partición de conocimiento, mientras que la fuente permanece como canon de solo lectura. Este panel enumera tu obra canónica y cada rama que hayas generado. «Cambiar a» traslada todo tu estudio —editor, navegador, calidad, todo— a esa rama; la elección se recuerda por libro y se mantiene tras recargar. «Archivar» oculta una rama sin destruirla (sus capítulos y conocimiento se conservan). «Nueva versión» abre el asistente de 4 pasos para crear una. Selecciona una rama para leer su especificación (taxonomía, punto de ramificación, reglas del canon, anulaciones), la cual queda fijada al momento de su creación."
     },
     "reference-shelf": {
@@ -793,14 +795,14 @@
     "glossary": "Glosario",
     "focus": "Enfoque",
     "translate": "Traducir",
+    "derivativeForked": "En una versión «¿Qué pasaría si...?»: este capítulo está RAMIFICADO, aislado del canon. Los cambios se guardan en la rama; el canon permanece intacto.",
+    "derivativeInherit": "En una versión «¿Qué pasaría si...?»: este capítulo aún refleja el canon. Editar aquí lo RAMIFICA hacia la rama (el canon permanece intacto).",
     "mergeToCanon": "Fusionar con el canon",
     "mergeConfirm": "Confirmar — sobrescribir canon",
     "merging": "Fusionando…",
     "mergeDone": "Fusionado con el canon — la rama conserva su propia versión.",
     "mergeConflict": "El canon ha cambiado — vuelve a abrir el capítulo y fusiona de nuevo.",
-    "mergeFailed": "No se pudo fusionar — inténtalo de nuevo.",
-    "derivativeForked": "En una versión «¿Qué pasaría si...?»: este capítulo está RAMIFICADO, aislado del canon. Los cambios se guardan en la rama; el canon permanece intacto.",
-    "derivativeInherit": "En una versión «¿Qué pasaría si...?»: este capítulo aún refleja el canon. Editar aquí lo RAMIFICA hacia la rama (el canon permanece intacto)."
+    "mergeFailed": "No se pudo fusionar — inténtalo de nuevo."
   },
   "sceneCompose": {
     "empty": "Selecciona un capítulo en el navegador del manuscrito para redactar sus escenas aquí.",

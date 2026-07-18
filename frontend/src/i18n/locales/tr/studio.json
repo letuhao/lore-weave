@@ -5,7 +5,9 @@
   "planNav": {
     "title": "Plan",
     "loading": "Yükleniyor…",
-    "empty": "Henüz ark yok."
+    "empty": "Henüz ark yok.",
+    "emptyGuided": "Henüz bir olay örgüsü yok — plan, kitabınıza yön veren teknik özelliktir. Başlamak için olay örgüsünü ve bölümleri düzenleyin.",
+    "planCta": "Bu kitabı planla"
   },
   "welcome": {
     "tab": "Hoş Geldiniz",
@@ -395,8 +397,8 @@
       "guideBody": "What-if tuvali, orijinal taslağa hiç dokunmadan bir sahneyi geçici bir dala ayırmanıza, alternatif bir versiyon oluşturmanıza ve eleştirmen yargı rozetlerini yan yana görmenize olanak tanır. Bir dal istediğiniz versiyon olduğunda onu yükseltin: artık üzerinde yazmaya devam edebileceğiniz gerçek bir türev eser haline gelir. Siz yükseltene kadar hiçbir şey kaydedilmez, bu sayede özgürce keşif yapabilirsiniz. Bu, Yükselt butonu arkasındaki düzenleme yüzeyidir; Plan Merkezi plan grafiğini gösterirken, burası o plan üzerindeki alternatifleri denediğiniz yerdir."
     },
     "divergence": {
-      "desc": "Bir kitabın what-if türevlerini yönetin — kanon listesini ve her bir dalı listeleyin, tüm stüdyoyu birine geçirin, birini arşivleyin veya bir bölümden yeni bir dal türetin",
       "title": "Ya olursa versiyonları",
+      "desc": "Bir kitabın what-if türevlerini yönetin — kanon listesini ve her bir dalı listeleyin, tüm stüdyoyu birine geçirin, birini arşivleyin veya bir bölümden yeni bir dal türetin",
       "guideBody": "Bir «ya olursa» versiyonu, kitabınızı bir bölümde dallara ayırır ve farklı bir evrene, bakış açısı değişimine veya değişmiş bir karaktere dönüşerek; kaynak metin salt okunur kanon olarak kalırken kendi bilgi bölümüne sahip türetilmiş bir esere dönüşür. Bu panel, kanonik çalışmanızı ve oluşturduğunuz tüm dalları listeler. «Şuna geç» seçeneği; editör, gezgin, kalite kontrol dahil tüm stüdyonuzu o dala taşır; bu seçim kitap bazında hatırlanır ve sayfa yenilense de korunur. «Arşivle» seçeneği, bir dalı yok etmeden gizler (bölümleri ve bilgileri korunur). «Yeni versiyon» seçeneği, yeni bir dal oluşturmak için 4 adımlı sihirbazı açar. Bir dalın özelliklerini (taksonomi, dallanma noktası, kanon kuralları, geçersiz kılmalar) okumak için bir dal seçin; bu özellikler oluşturma anında sabitlenir."
     },
     "reference-shelf": {
@@ -793,14 +795,14 @@
     "glossary": "Sözlük",
     "focus": "Odak",
     "translate": "Çevir",
+    "derivativeForked": "Bir «ya olursa» versiyonunda — bu bölüm DALLANMIŞTIR, kanondan izole edilmiştir. Düzenlemeler dala kaydedilir; kanon olduğu gibi kalır.",
+    "derivativeInherit": "Bir «ya olursa» versiyonunda — bu bölüm hâlâ kanonu yansıtmaktadır. Burada yapılan düzenleme, bölümü dala ayırarak dallandırır (kanon olduğu gibi kalır).",
     "mergeToCanon": "Kanona birleştir",
     "mergeConfirm": "Onayla — ana metinle değiştir",
     "merging": "Birleştiriliyor…",
     "mergeDone": "Ana metne birleştirildi — dal kendi sürümünü korur.",
     "mergeConflict": "Ana metin değişti — bölümü yeniden açın ve tekrar birleştirin.",
-    "mergeFailed": "Birleştirilemedi — tekrar deneyin.",
-    "derivativeForked": "Bir «ya olursa» versiyonunda — bu bölüm DALLANMIŞTIR, kanondan izole edilmiştir. Düzenlemeler dala kaydedilir; kanon olduğu gibi kalır.",
-    "derivativeInherit": "Bir «ya olursa» versiyonunda — bu bölüm hâlâ kanonu yansıtmaktadır. Burada yapılan düzenleme, bölümü dala ayırarak dallandırır (kanon olduğu gibi kalır)."
+    "mergeFailed": "Birleştirilemedi — tekrar deneyin."
   },
   "sceneCompose": {
     "empty": "Sahnelerini burada taslak haline getirmek için taslak gezgininden bir bölüm seçin.",

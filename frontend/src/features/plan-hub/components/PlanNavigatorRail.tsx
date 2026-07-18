@@ -22,9 +22,13 @@ interface Props {
   onFocusNode: (nodeId: string) => void;
   /** The currently focused node id (highlight) — mirrors the canvas selection. */
   selectedId: string | null;
+  /** Empty-state ORIGIN door (F8): open the plan-hub so its origin verb ("Start your first arc")
+   *  can create the book's first arc. Without this the empty rail is a dead end — the reason F8
+   *  exists. Mirrors the Manuscript rail's `+` (StudioSideBar wires both to the same open-plan door). */
+  onOpenPlan?: () => void;
 }
 
-export function PlanNavigatorRail({ bookId, onFocusNode, selectedId }: Props) {
+export function PlanNavigatorRail({ bookId, onFocusNode, selectedId, onOpenPlan }: Props) {
   const { t } = useTranslation('studio');
   const { rows, loading, error, toggle } = usePlanNavigator(bookId);
 
@@ -47,8 +51,26 @@ export function PlanNavigatorRail({ bookId, onFocusNode, selectedId }: Props) {
             {t('planNav.loading', { defaultValue: 'Loading…' })}
           </div>
         ) : rows.length === 0 && !error ? (
-          <div data-testid="plan-nav-empty" className="p-4 text-center text-[11px] text-muted-foreground">
-            {t('planNav.empty', { defaultValue: 'No arcs yet.' })}
+          // F8 — a guided empty state with a real door, not a dead end. The copy explains WHY the
+          // panel is empty (mirrors the sibling ArcInspectorPanel's wording); the button hands off to
+          // the plan-hub origin flow, the same door the Manuscript rail's `+` uses. Gated on
+          // `onOpenPlan` so a host-less render (or a caller that opts out) degrades to copy-only.
+          <div data-testid="plan-nav-empty" className="flex flex-col items-center gap-2.5 p-4 text-center">
+            <p className="text-[11px] leading-relaxed text-muted-foreground">
+              {t('planNav.emptyGuided', {
+                defaultValue: 'No arcs yet — the plan is the spec that steers your book. Lay out its arcs and chapters to get started.',
+              })}
+            </p>
+            {onOpenPlan && (
+              <button
+                type="button"
+                data-testid="plan-nav-plan-cta"
+                onClick={onOpenPlan}
+                className="rounded border border-border bg-background px-3 py-1 text-[11px] font-semibold hover:border-ring"
+              >
+                {t('planNav.planCta', { defaultValue: 'Plan this book' })}
+              </button>
+            )}
           </div>
         ) : (
           rows.map(({ node, depth, hasChildren, expanded }) => {

@@ -5,7 +5,9 @@
   "planNav": {
     "title": "Plan",
     "loading": "Wird geladen…",
-    "empty": "Noch keine Handlungsbögen."
+    "empty": "Noch keine Handlungsbögen.",
+    "emptyGuided": "Noch keine Handlungsbögen vorhanden – der Plan ist die Spezifikation, die Ihr Buch steuert. Legen Sie die Handlungsbögen und Kapitel fest, um zu beginnen.",
+    "planCta": "Dieses Buch planen"
   },
   "welcome": {
     "tab": "Willkommen",
@@ -395,8 +397,8 @@
       "guideBody": "Mit der What-if-Leinwand kannst du eine Szene in einen flüchtigen Zweig aufteilen, eine alternative Fassung erstellen und die Urteils-Badges des Kritikers nebeneinander sehen – und das alles, ohne den kanonischen Entwurf zu verändern. Wenn ein Zweig der richtige ist, kannst du ihn „promoten“: Er wird zu einem echten derivativen Werk, an dem du weiterarbeiten kannst. Es wird nichts gespeichert, bevor du ihn promotest, sodass du völlig frei experimentieren kannst. Dies ist die Bearbeitungsoberfläche hinter der Schaltfläche „Promoten“; während der Plan-Hub den Plan-Graphen anzeigt, ist dies der Ort, an dem du Alternativen daran ausprobierst."
     },
     "divergence": {
-      "desc": "Verwalte die What-if-Derivate eines Buches – liste den Kanon und jeden Zweig auf, verschiebe das gesamte Studio in einen Zweig, archiviere einen oder erstelle einen neuen Zweig aus einem Kapitel",
       "title": "Was-wäre-Versionen",
+      "desc": "Verwalte die What-if-Derivate eines Buches – liste den Kanon und jeden Zweig auf, verschiebe das gesamte Studio in einen Zweig, archiviere einen oder erstelle einen neuen Zweig aus einem Kapitel",
       "guideBody": "Eine Was-wäre-Version verzweigt dein Buch an einem Kapitel und divergiert – ein alternatives Universum, ein Perspektivwechsel, ein veränderter Charakter – in ein Derivat mit eigenem Wissensbereich, während das Original als schreibgeschützter Kanon bestehen bleibt. Dieses Panel listet dein kanonisches Werk und alle von dir erstellten Zweige auf. „Zu ... wechseln“ verschiebt dein gesamtes Studio – Editor, Navigator, Qualität, alles – auf diesen Zweig; die Auswahl wird pro Buch gespeichert und bleibt auch nach einem Neuladen erhalten. „Archivieren“ blendet einen Zweig aus, ohne ihn zu löschen (seine Kapitel und sein Wissen bleiben erhalten). „Neue Version“ öffnet den 4-Schritte-Assistenten zum Erstellen eines Zweigs. Wähle einen Zweig aus, um dessen Spezifikationen (Taxonomie, Verzweigungspunkt, Kanon-Regeln, Overrides) zu lesen, die bei der Erstellung festgelegt werden."
     },
     "reference-shelf": {
@@ -793,14 +795,14 @@
     "glossary": "Glossar",
     "focus": "Fokus",
     "translate": "Übersetzen",
+    "derivativeForked": "In einer Was-wäre-Version – dieses Kapitel ist ABGEZWEIGT und vom Kanon isoliert. Änderungen werden im Zweig gespeichert; der Kanon bleibt unberührt.",
+    "derivativeInherit": "In einer Was-wäre-Version – dieses Kapitel spiegelt noch den Kanon wider. Das Bearbeiten führt zu einer ABZWEIGUNG in den Zweig (der Kanon bleibt unberührt).",
     "mergeToCanon": "In den Kanon integrieren",
     "mergeConfirm": "Bestätigen – Kanon überschreiben",
     "merging": "Zusammenführen…",
     "mergeDone": "In den Kanon übernommen – der Zweig behält seine eigene Version.",
     "mergeConflict": "Kanon hat sich geändert – öffne das Kapitel erneut und führe es wieder zusammen.",
-    "mergeFailed": "Zusammenführen fehlgeschlagen – bitte erneut versuchen.",
-    "derivativeForked": "In einer Was-wäre-Version – dieses Kapitel ist ABGEZWEIGT und vom Kanon isoliert. Änderungen werden im Zweig gespeichert; der Kanon bleibt unberührt.",
-    "derivativeInherit": "In einer Was-wäre-Version – dieses Kapitel spiegelt noch den Kanon wider. Das Bearbeiten führt zu einer ABZWEIGUNG in den Zweig (der Kanon bleibt unberührt)."
+    "mergeFailed": "Zusammenführen fehlgeschlagen – bitte erneut versuchen."
   },
   "sceneCompose": {
     "empty": "Wählen Sie ein Kapitel im Manuskript-Navigator aus, um dessen Szenen hier zu entwerfen.",

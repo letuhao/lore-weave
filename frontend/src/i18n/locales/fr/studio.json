@@ -5,7 +5,9 @@
   "planNav": {
     "title": "Plan",
     "loading": "Chargement…",
-    "empty": "Aucun arc pour l’instant."
+    "empty": "Aucun arc pour l’instant.",
+    "emptyGuided": "Aucun arc narratif pour le moment — le plan est la structure qui guide votre livre. Définissez vos arcs et vos chapitres pour commencer.",
+    "planCta": "Planifier ce livre"
   },
   "welcome": {
     "tab": "Bienvenue",
@@ -395,8 +397,8 @@
       "guideBody": "Le canevas « what-if » vous permet de créer une branche éphémère pour une scène, de générer une prise alternative et de comparer les badges de jugement du critique côte à côte — le tout sans toucher au brouillon canonique. Lorsqu'une branche est celle que vous souhaitez conserver, « promouvez-la » : elle devient alors une véritable œuvre dérivée à partir de laquelle vous pouvez continuer à écrire. Rien n'est sauvegardé tant que vous ne promouvez pas la branche, ce qui vous permet d'explorer librement. Il s'agit de la surface d'édition située derrière le bouton « Promouvoir » ; le Plan Hub affiche le graphe de planification, tandis que ceci est l'endroit où vous testez des alternatives sur celui-ci."
     },
     "divergence": {
-      "desc": "Gérez les dérivés « what-if » d'un livre — listez le canon et chaque branche, basculez tout le studio sur l'une d'elles, archivez-en une ou créez une nouvelle branche à partir d'un chapitre",
       "title": "Versions « Et si... »",
+      "desc": "Gérez les dérivés « what-if » d'un livre — listez le canon et chaque branche, basculez tout le studio sur l'une d'elles, archivez-en une ou créez une nouvelle branche à partir d'un chapitre",
       "guideBody": "Une version « Et si... » crée une bifurcation de votre livre à un chapitre donné et diverge — un univers alternatif, un changement de point de vue, un personnage modifié — vers une œuvre dérivée possédant sa propre partition de connaissances, tandis que la source reste un canon en lecture seule. Ce panneau liste votre œuvre canonique et chaque branche que vous avez générée. « Passer à » déplace tout votre studio — éditeur, navigateur, qualité, tout — sur cette branche ; le choix est mémorisé par livre et persiste après un rechargement. « Archiver » masque une branche sans la détruire (ses chapitres et ses connaissances sont conservés). « Nouvelle version » ouvre l'assistant en 4 étapes pour en générer une. Sélectionnez une branche pour lire ses spécifications (taxonomie, point de bifurcation, règles canoniques, modifications), lesquelles sont fixées lors de la création."
     },
     "reference-shelf": {
@@ -793,14 +795,14 @@
     "glossary": "Glossaire",
     "focus": "Focus",
     "translate": "Traduire",
+    "derivativeForked": "Sur une version « Et si... » — ce chapitre est DIVERGÉ, isolé du canon. Les modifications sont enregistrées sur la branche ; le canon reste intact.",
+    "derivativeInherit": "Sur une version « Et si... » — ce chapitre reflète toujours le canon. Toute modification ici le DIVERGE vers la branche (le canon reste intact).",
     "mergeToCanon": "Fusionner avec le canon",
     "mergeConfirm": "Confirmer — écraser le canon",
     "merging": "Fusion en cours…",
     "mergeDone": "Fusionné dans le canon — la branche conserve sa propre version.",
     "mergeConflict": "Le canon a été modifié depuis — réouvrez le chapitre et fusionnez à nouveau.",
-    "mergeFailed": "Échec de la fusion — réessayez.",
-    "derivativeForked": "Sur une version « Et si... » — ce chapitre est DIVERGÉ, isolé du canon. Les modifications sont enregistrées sur la branche ; le canon reste intact.",
-    "derivativeInherit": "Sur une version « Et si... » — ce chapitre reflète toujours le canon. Toute modification ici le DIVERGE vers la branche (le canon reste intact)."
+    "mergeFailed": "Échec de la fusion — réessayez."
   },
   "sceneCompose": {
     "empty": "Sélectionnez un chapitre dans le navigateur de manuscrit pour en rédiger les scènes ici.",

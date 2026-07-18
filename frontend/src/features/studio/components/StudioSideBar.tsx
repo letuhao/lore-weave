@@ -83,6 +83,10 @@ export function StudioSideBar({ activeView, onCollapse, bookId, token, selectedI
             host.openPanel('plan-hub', { focus: true });
             host.publish({ type: 'planFocusNode', nodeId });
           }}
+          // F8 — the empty-state ORIGIN door: same open-plan handoff the Manuscript rail's `+` uses,
+          // so an empty Plan rail is a real exit (plan-hub carries the "Start your first arc" verb),
+          // not the "No arcs yet." dead end the newcomer hit.
+          onOpenPlan={() => host.openPanel('plan-hub', { focus: true })}
         />
       ) : (
         <>

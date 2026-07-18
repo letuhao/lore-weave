@@ -5,7 +5,9 @@
   "planNav": {
     "title": "Rencana",
     "loading": "Memuat…",
-    "empty": "Belum ada arc."
+    "empty": "Belum ada arc.",
+    "emptyGuided": "Belum ada alur cerita — rencana ini adalah panduan yang mengarahkan buku Anda. Susun alur dan babnya untuk memulai.",
+    "planCta": "Rencanakan buku ini"
   },
   "welcome": {
     "tab": "Selamat Datang",
@@ -395,8 +397,8 @@
       "guideBody": "Kanvas what-if memungkinkan Anda memisahkan adegan ke dalam cabang sementara, membuat versi alternatif, dan melihat lencana penilaian kritikus secara berdampingan — semuanya tanpa menyentuh draf kanon. Saat Anda menemukan cabang yang diinginkan, promosikan: ia akan menjadi karya turunan nyata yang dapat Anda lanjutkan penulisannya. Tidak ada yang tersimpan sampai Anda mempromosikannya, jadi Anda dapat bereksplorasi dengan bebas. Ini adalah permukaan penyuntingan di balik tombol Promote; Plan Hub menampilkan grafik rencana, sedangkan di sini adalah tempat Anda mencoba berbagai alternatif di dalamnya."
     },
     "divergence": {
-      "desc": "Kelola turunan what-if sebuah buku — daftar kanon dan setiap cabang, pindahkan seluruh studio ke salah satu cabang, arsipkan, atau buat cabang baru dari sebuah bab",
       "title": "Versi what-if",
+      "desc": "Kelola turunan what-if sebuah buku — daftar kanon dan setiap cabang, pindahkan seluruh studio ke salah satu cabang, arsipkan, atau buat cabang baru dari sebuah bab",
       "guideBody": "Versi what-if mencabangkan buku Anda pada suatu bab dan menyimpang — baik itu alam semesta alternatif, pergeseran POV, atau perubahan karakter — menjadi sebuah karya turunan dengan partisi pengetahuan tersendiri, sementara sumber aslinya tetap menjadi kanon yang bersifat read-only. Panel ini mencantumkan karya kanon Anda dan setiap cabang yang telah Anda buat. ‘Pindah ke’ akan memindahkan seluruh studio Anda — editor, navigator, kualitas, semuanya — ke cabang tersebut; pilihan ini akan diingat per buku dan tetap ada setelah memuat ulang. ‘Arsipkan’ menyembunyikan cabang tanpa menghapusnya (bab dan pengetahuannya tetap tersimpan). ‘Versi baru’ membuka wizard 4 langkah untuk membuat versi baru. Pilih cabang untuk membaca spesifikasinya (taksonomi, titik cabang, aturan kanon, override), yang bersifat tetap saat dibuat."
     },
     "reference-shelf": {
@@ -793,14 +795,14 @@
     "glossary": "Glosarium",
     "focus": "Fokus",
     "translate": "Terjemahkan",
+    "derivativeForked": "Pada versi what-if — bab ini adalah PERCABANGAN (FORKED), terisolasi dari kanon. Perubahan disimpan ke cabang tersebut; kanon tetap tidak tersentuh.",
+    "derivativeInherit": "Pada versi what-if — bab ini masih mencerminkan kanon. Mengedit di sini akan PERCABANG (FORK) bab tersebut ke dalam cabang (kanon tetap tidak tersentuh).",
     "mergeToCanon": "Gabungkan ke kanon",
     "mergeConfirm": "Konfirmasi — timpa kanon",
     "merging": "Menggabungkan...",
     "mergeDone": "Berhasil digabungkan ke kanon — cabang tetap menggunakan versinya sendiri.",
     "mergeConflict": "Kanon telah berubah — buka kembali bab ini dan gabungkan lagi.",
-    "mergeFailed": "Gagal menggabungkan — coba lagi.",
-    "derivativeForked": "Pada versi what-if — bab ini adalah PERCABANGAN (FORKED), terisolasi dari kanon. Perubahan disimpan ke cabang tersebut; kanon tetap tidak tersentuh.",
-    "derivativeInherit": "Pada versi what-if — bab ini masih mencerminkan kanon. Mengedit di sini akan PERCABANG (FORK) bab tersebut ke dalam cabang (kanon tetap tidak tersentuh)."
+    "mergeFailed": "Gagal menggabungkan — coba lagi."
   },
   "sceneCompose": {
     "empty": "Pilih bab dalam navigator manuskrip untuk menyusun adegan di sini.",

@@ -5,7 +5,9 @@
   "planNav": {
     "title": "Kế hoạch",
     "loading": "Đang tải…",
-    "empty": "Chưa có arc nào."
+    "empty": "Chưa có arc nào.",
+    "emptyGuided": "Chưa có cốt truyện — kế hoạch chính là bản thiết kế dẫn dắt cuốn sách của bạn. Hãy thiết lập các mạch truyện và chương hồi để bắt đầu.",
+    "planCta": "Lập kế hoạch cho cuốn sách này"
   },
   "welcome": {
     "tab": "Chào mừng",
@@ -395,8 +397,8 @@
       "guideBody": "Bảng vẽ 'what-if' cho phép bạn tách một cảnh thành một nhánh tạm thời, tạo ra một bản nháp thay thế và so sánh các huy hiệu đánh giá của chuyên gia cạnh nhau — tất cả đều không làm ảnh hưởng đến bản thảo chính thức. Khi đã chọn được nhánh ưng ý, hãy 'Promote' (Thăng cấp) nó: nó sẽ trở thành một tác phẩm phái sinh thực thụ mà bạn có thể tiếp tục viết tiếp. Không có gì được lưu lại cho đến khi bạn thực hiện Thăng cấp, vì vậy bạn có thể tự do khám phá. Đây là bề mặt chỉnh sửa đằng sau nút Promote; trong khi Plan Hub hiển thị sơ đồ kế hoạch, thì đây là nơi bạn thử nghiệm các phương án thay thế trên sơ đồ đó."
     },
     "divergence": {
-      "desc": "Quản lý các bản phái sinh 'what-if' của một cuốn sách — liệt kê bản chính và mọi nhánh, chuyển toàn bộ studio sang một nhánh, lưu trữ một nhánh, hoặc tạo một nhánh mới từ một chương",
       "title": "Các phiên bản giả định",
+      "desc": "Quản lý các bản phái sinh 'what-if' của một cuốn sách — liệt kê bản chính và mọi nhánh, chuyển toàn bộ studio sang một nhánh, lưu trữ một nhánh, hoặc tạo một nhánh mới từ một chương",
       "guideBody": "Một phiên bản giả định sẽ rẽ nhánh cuốn sách của bạn tại một chương nhất định và tạo ra sự khác biệt — một vũ trụ song song, một sự thay đổi góc nhìn (POV), hoặc một nhân vật được thay đổi — tạo thành một tác phẩm phái sinh với phân vùng kiến thức riêng, trong khi bản gốc vẫn được giữ ở chế độ chỉ đọc (canon). Bảng này liệt kê tác phẩm chính của bạn và mọi nhánh mà bạn đã tạo ra. ‘Chuyển sang’ sẽ di chuyển toàn bộ studio của bạn — trình chỉnh sửa, trình điều hướng, chất lượng, mọi thứ — sang nhánh đó; lựa chọn này được lưu theo từng cuốn sách và không bị mất khi tải lại trang. ‘Lưu trữ’ sẽ ẩn một nhánh mà không xóa nó (các chương và kiến thức của nhánh vẫn được giữ nguyên). ‘Phiên bản mới’ sẽ mở trình hướng dẫn 4 bước để tạo một nhánh mới. Chọn một nhánh để xem thông số kỹ thuật của nó (phân loại, điểm rẽ nhánh, quy tắc canon, các thiết lập đè), những thông số này sẽ được cố định khi tạo."
     },
     "reference-shelf": {
@@ -793,14 +795,14 @@
     "glossary": "Thuật ngữ",
     "focus": "Tập trung",
     "translate": "Dịch",
+    "derivativeForked": "Trong một phiên bản giả định — chương này đã được PHÂN NHÁNH, tách biệt hoàn toàn với bản gốc. Các chỉnh sửa sẽ được lưu vào nhánh này; bản gốc vẫn không thay đổi.",
+    "derivativeInherit": "Trong một phiên bản giả định — chương này vẫn đang phản chiếu bản gốc. Việc chỉnh sửa tại đây sẽ PHÂN NHÁNH nó vào nhánh mới (bản gốc vẫn không thay đổi).",
     "mergeToCanon": "Hợp nhất vào chính văn",
     "mergeConfirm": "Xác nhận — ghi đè lên bản chính",
     "merging": "Đang hợp nhất…",
     "mergeDone": "Đã hợp nhất vào bản chính — nhánh sẽ giữ phiên bản riêng.",
     "mergeConflict": "Bản chính đã thay đổi — hãy mở lại chương và thực hiện hợp nhất lại.",
-    "mergeFailed": "Không thể hợp nhất — vui lòng thử lại.",
-    "derivativeForked": "Trong một phiên bản giả định — chương này đã được PHÂN NHÁNH, tách biệt hoàn toàn với bản gốc. Các chỉnh sửa sẽ được lưu vào nhánh này; bản gốc vẫn không thay đổi.",
-    "derivativeInherit": "Trong một phiên bản giả định — chương này vẫn đang phản chiếu bản gốc. Việc chỉnh sửa tại đây sẽ PHÂN NHÁNH nó vào nhánh mới (bản gốc vẫn không thay đổi)."
+    "mergeFailed": "Không thể hợp nhất — vui lòng thử lại."
   },
   "sceneCompose": {
     "empty": "Chọn một chương trong trình điều hướng bản thảo để soạn thảo các cảnh tại đây.",

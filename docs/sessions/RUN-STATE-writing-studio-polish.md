@@ -61,8 +61,11 @@ Spec: docs/specs/2026-07-18-writing-studio-newcomer-polish/round-2-feedback.md (
       17 locales, gap-filled via gemma-4-26b (0 failed); grep-verified no rendered "dị bản" except the
       Vietnamese locale (correct native word) + 1 code comment; tsc 0; 435 unit green; parity OK. QC
       :5290: Story Bible tab + dock panel + tab all read "What-if versions"; empty state clean.
-- [ ] M7 · F8 Plan rail door — PlanNavigatorRail onOpenPlan + guided empty state + CTA; StudioSideBar
-      wires host.openPanel('plan-hub'); test; QC :5290.
+- [x] M7 · F8 Plan rail door — PlanNavigatorRail gets `onOpenPlan` + guided empty state + "Plan this
+      book" CTA (degrades to copy-only without the prop); StudioSideBar wires it to the same
+      host.openPanel('plan-hub') door the Manuscript `+` uses. New planNav.emptyGuided/planCta keys,
+      18-locale gap-fill. tsc 0; PlanNavigatorRail 9 tests (7+2), StudioSideBar 11. QC :5290: empty
+      Plan rail shows guided copy + CTA; clicking it opens the Plan Hub dock tab (real origin flow).
 - [ ] M9 · F10 mount WorkSetupCta on ReferenceShelf/StyleVoice noWork + reword; Divergence "no plan"
       → plan door; WorkSetupCta button "Set up co-writer"→"Set up writing"; review-impl; test; QC :5290.
 Build order: M8 → M7 → M9. Each: tsc 0, unit green, live QC on the static build (never vite dev).

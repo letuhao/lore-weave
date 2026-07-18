@@ -5,7 +5,9 @@
   "planNav": {
     "title": "Plano",
     "loading": "Carregando…",
-    "empty": "Ainda não há arcos."
+    "empty": "Ainda não há arcos.",
+    "emptyGuided": "Ainda não há arcos — o plano é a especificação que guia o seu livro. Estruture seus arcos e capítulos para começar.",
+    "planCta": "Planejar este livro"
   },
   "welcome": {
     "tab": "Bem-vindo",
@@ -395,8 +397,8 @@
       "guideBody": "O canvas «e se...» permite que você crie uma ramificação efêmera de uma cena, gere uma versão alternativa e veja as medalhas de julgamento do crítico lado a lado — tudo isso sem tocar no rascunho canônico. Quando uma ramificação for a que você deseja, promova-a: ela se tornará uma obra derivada real a partir da qual você poderá continuar escrevendo. Nada é salvo até que você promova, então você pode explorar livremente. Esta é a superfície de edição por trás do botão Promover; o Plan Hub mostra o gráfico do plano, este é o lugar onde você testa alternativas nele."
     },
     "divergence": {
-      "desc": "Gerencie as derivadas de «e se...» de um livro — liste o cânone e cada ramificação, mude todo o estúdio para uma delas, arquive uma ou crie uma nova ramificação a partir de um capítulo",
       "title": "Versões 'E se...'",
+      "desc": "Gerencie as derivadas de «e se...» de um livro — liste o cânone e cada ramificação, mude todo o estúdio para uma delas, arquive uma ou crie uma nova ramificação a partir de um capítulo",
       "guideBody": "Uma versão «e se...» ramifica seu livro em um capítulo e diverge — um universo alternativo, uma mudança de ponto de vista, um personagem alterado — em uma obra derivada com sua própria partição de conhecimento, enquanto a fonte permanece como o cânone de apenas leitura. Este painel lista sua obra canônica e cada ramificação que você criou. «Mudar para» move todo o seu estúdio — editor, navegador, qualidade, tudo — para essa ramificação; a escolha é lembrada por livro e permanece após recarregar. «Arquivar» esconde uma ramificação sem destruí-la (seus capítulos e conhecimentos são preservados). «Nova versão» abre o assistente de 4 etapas para criar uma. Selecione uma ramificação para ler suas especificações (taxonomia, ponto de ramificação, regras do cânone, sobreposições), que são fixas no momento da criação."
     },
     "reference-shelf": {
@@ -793,14 +795,14 @@
     "glossary": "Glossário",
     "focus": "Foco",
     "translate": "Traduzir",
+    "derivativeForked": "Em uma versão «e se...» — este capítulo está RAMIFICADO, isolado do cânone. As edições são salvas na ramificação; o cânone permanece intacto.",
+    "derivativeInherit": "Em uma versão «e se...» — este capítulo ainda reflete o cânone. Editar aqui RAMIFICA o capítulo para a ramificação (o cânone permanece intacto).",
     "mergeToCanon": "Mesclar ao cânone",
     "mergeConfirm": "Confirmar — sobrescrever o cânone",
     "merging": "Mesclando…",
     "mergeDone": "Mesclado no cânone — o ramo manterá sua própria versão.",
     "mergeConflict": "O cânone foi alterado — reabra o capítulo e mescle novamente.",
-    "mergeFailed": "Não foi possível mesclar — tente novamente.",
-    "derivativeForked": "Em uma versão «e se...» — este capítulo está RAMIFICADO, isolado do cânone. As edições são salvas na ramificação; o cânone permanece intacto.",
-    "derivativeInherit": "Em uma versão «e se...» — este capítulo ainda reflete o cânone. Editar aqui RAMIFICA o capítulo para a ramificação (o cânone permanece intacto)."
+    "mergeFailed": "Não foi possível mesclar — tente novamente."
   },
   "sceneCompose": {
     "empty": "Selecione um capítulo no navegador do manuscrito para rascunhar suas cenas aqui.",

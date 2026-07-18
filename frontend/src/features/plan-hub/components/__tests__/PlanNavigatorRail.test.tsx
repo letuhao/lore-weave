@@ -108,4 +108,23 @@ describe('PlanNavigatorRail (PH25)', () => {
     expect(screen.getByTestId('plan-nav-row-arc-1').className).toContain('bg-primary');
     expect(screen.getByTestId('plan-nav-row-saga').className).not.toContain('bg-primary');
   });
+
+  // F8 — the empty rail is a real door, not the "No arcs yet." dead end the newcomer hit. The CTA
+  // fires the open-plan handoff (StudioSideBar wires it to host.openPanel('plan-hub')).
+  it('the empty state renders a "Plan this book" CTA that fires onOpenPlan', async () => {
+    const onOpenPlan = vi.fn();
+    getArcs.mockResolvedValue({ arcs: [] });
+    renderWithClient(<PlanNavigatorRail bookId="b1" onFocusNode={vi.fn()} selectedId={null} onOpenPlan={onOpenPlan} />);
+    const cta = await screen.findByTestId('plan-nav-plan-cta');
+    fireEvent.click(cta);
+    expect(onOpenPlan).toHaveBeenCalledTimes(1);
+  });
+
+  // Degrade-safe: without an onOpenPlan the empty state is copy-only — never a broken/no-op button.
+  it('the empty state shows guided copy but NO CTA when onOpenPlan is absent', async () => {
+    getArcs.mockResolvedValue({ arcs: [] });
+    renderWithClient(<PlanNavigatorRail bookId="b1" onFocusNode={vi.fn()} selectedId={null} />);
+    await waitFor(() => expect(screen.getByTestId('plan-nav-empty')).toBeInTheDocument());
+    expect(screen.queryByTestId('plan-nav-plan-cta')).toBeNull();
+  });
 });
