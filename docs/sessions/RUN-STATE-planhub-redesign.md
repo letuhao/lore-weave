@@ -58,6 +58,24 @@ this same folder and their HMR cross-contaminates a shared dev server (the multi
       Committed MY files ONLY by explicit path — excluded 4 parallel sessions' work (useManuscriptTree
       S-02b, TriageQueue, services/*, KgOverviewPanel, studio-completeness docs, divergence docs).
 
+## COMPLETENESS AUDIT + FIXES (2026-07-18, commit a45db093b)
+Full item-by-item audit: `docs/plans/2026-07-18-plan-hub-mockup-parity.md`. An independent cold-start
+review + a user-flagged critical downgrade drove these fixes (all live-QC'd on :5290):
+- **Graph restored (the critical downgrade):** Advanced now = **Graph** (React Flow: zoom/pan/drag/
+  scene-links; the default) OR **Lane** (the mockup flow view), a per-user toggle (`usePlanAdvancedView`).
+  This also un-deads `PlanCanvas` + `usePlanMoves` (DEBT-2 resolved — all move/link fns are consumed again).
+- **Authorship color (HIGH):** `src()` only caught `'mined'`; real AI values are `'planforge'`/
+  `'decompiled'`/`'imported'`. `normalizeSource` (authored=human, all-else=machine). BE `source`
+  projection DEPLOYED; live: planforge→mono/teal, authored→serif/amber, status tints show.
+- Cross-book state-leak reset · ch-N dense-ordinal fix · dead-fn delete · cycle guard · unassigned
+  fileable group · Lane "move to arc" picker. 270 plan-hub + 1661 plan-hub+studio tests green; tsc 0.
+- **DEBT (pending): i18n keys uncommitted.** `planHub.adv.*` + `flow.moveTo`/`unassigned` are in the
+  working tree but held out of a45db093b — a sibling session's uncommitted `layout` keys got entangled
+  in the same locale files via gap-fill. App works via `t(key, default)` fallbacks; commit when the
+  sibling's i18n settles. Target: next session / coordinated i18n commit.
+- **GAP (minor, open): no "collapse scenes" affordance** in the Lane view once a chapter's scenes are
+  revealed. Low priority.
+
 ## DELIVERED
 Plan-hub redesign, both modes, committed. Simple mode (new, default) + Advanced readable cards + chip
 cut, on top of this arc's origin/+Chapter/+Scene create. QC'd on an isolated static build per the goal.
