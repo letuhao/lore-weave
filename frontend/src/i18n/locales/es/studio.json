@@ -373,7 +373,9 @@
       "title": "Descomponer",
       "desc": "Descompón tu libro según una estructura narrativa: previsualiza el árbol de arco→capítulo→escena, edítalo y confírmalo",
       "guideBody": "La función Descomponer convierte una estructura narrativa en el esquema de tu libro. Elige una de tus estructuras creadas (o una integrada), añade una premisa, selecciona un modelo y haz clic en Vista previa: la IA propondrá un árbol de arco→capítulo→escena que puedes editar directamente antes de confirmarlo. Al confirmar, se escribirá el esquema y el árbol de tu Manuscrito se actualizará para coincidir. Puedes abrirlo desde la Paleta de comandos o desde una estructura en el panel de Plantillas de estructura mediante «Usar en descomposición» (lo que preseleccionará dicha estructura aquí). ¿Aún no tienes ninguna? El panel te ofrecerá configurar una primero.",
-      "loading": "Resolviendo tu libro…"
+      "loading": "Resolviendo tu libro…",
+      "loadError": "No se pudo cargar el plan de este libro; inténtalo de nuevo.",
+      "retry": "Reintentar"
     },
     "plan-passes": {
       "title": "Pasarela de Planificación",

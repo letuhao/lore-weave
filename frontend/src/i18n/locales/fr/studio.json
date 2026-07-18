@@ -373,7 +373,9 @@
       "title": "Décomposer",
       "desc": "Décomposez votre livre selon une structure narrative — prévisualisez l'arborescence arc→chapitre→scène, modifiez-la et validez-la",
       "guideBody": "La décomposition transforme une structure narrative en le plan de votre livre. Choisissez l'une de vos structures (ou une structure intégrée), ajoutez une prémisse, sélectionnez un modèle, puis cliquez sur Aperçu : l'IA propose une arborescence arc→chapitre→scène que vous pouvez modifier directement avant de la valider. La validation génère le plan — l'arborescence de votre manuscrit est alors mise à jour en conséquence. Ouvrez cet outil via la Palette de commandes, ou depuis une structure dans le panneau Modèles de structure via « Utiliser pour la décomposition » (ce qui sélectionne automatiquement cette structure). Pas encore de structure ? Le panneau vous propose d'en créer une d'abord.",
-      "loading": "Analyse de votre livre…"
+      "loading": "Analyse de votre livre…",
+      "loadError": "Impossible de charger le plan de ce livre — réessayez.",
+      "retry": "Réessayer"
     },
     "plan-passes": {
       "title": "Rail de Planification",

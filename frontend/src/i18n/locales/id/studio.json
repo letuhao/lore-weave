@@ -373,7 +373,9 @@
       "title": "Dekomposisi",
       "desc": "Dekomposisi buku Anda berdasarkan struktur cerita — pratinjau pohon busur→bab→adegan, edit, dan simpan",
       "guideBody": "Dekomposisi mengubah struktur cerita menjadi kerangka buku Anda. Pilih salah satu struktur yang telah Anda buat (atau struktur bawaan), tambahkan premis, pilih model, lalu Pratinjau: AI akan mengusulkan pohon busur→bab→adegan yang dapat Anda edit secara langsung sebelum disimpan. Simpan akan menulis kerangka tersebut — pohon Manuskrip Anda akan diperbarui agar sesuai. Buka melalui Command Palette, atau dari struktur di panel Struktur Template melalui «Gunakan dalam dekomposisi» (yang akan memilih struktur tersebut secara otomatis). Belum ada struktur? Panel ini menawarkan untuk membuatnya terlebih dahulu.",
-      "loading": "Menyusun buku Anda..."
+      "loading": "Menyusun buku Anda...",
+      "loadError": "Gagal memuat rencana buku ini — coba lagi.",
+      "retry": "Coba lagi"
     },
     "plan-passes": {
       "title": "Pass Rail",

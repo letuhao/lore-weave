@@ -373,7 +373,9 @@
       "title": "Phân rã",
       "desc": "Phân rã cuốn sách của bạn dựa trên cấu trúc cốt truyện — xem trước sơ đồ cung bậc→chương→cảnh, chỉnh sửa và xác nhận",
       "guideBody": "Phân rã chuyển đổi một cấu trúc cốt truyện thành dàn ý cho cuốn sách của bạn. Hãy chọn một trong các cấu trúc bạn đã soạn (hoặc cấu trúc có sẵn), thêm tiền đề, chọn một mô hình, sau đó nhấn Xem trước: AI sẽ đề xuất một sơ đồ cung bậc→chương→cảnh mà bạn có thể chỉnh sửa trực tiếp trước khi xác nhận. Xác nhận sẽ ghi lại dàn ý — cây Bản thảo của bạn sẽ cập nhật tương ứng. Mở tính năng này từ Bảng lệnh (Command Palette), hoặc từ một cấu trúc trong bảng Mẫu cấu trúc (Structure Templates) thông qua lệnh «Sử dụng để phân rã» (lệnh này sẽ tự động chọn cấu trúc đó tại đây). Bạn chưa có cấu trúc nào? Bảng điều khiển sẽ đề xuất thiết lập một cấu trúc trước.",
-      "loading": "Đang xử lý cuốn sách của bạn…"
+      "loading": "Đang xử lý cuốn sách của bạn…",
+      "loadError": "Không thể tải sơ đồ của cuốn sách này — vui lòng thử lại.",
+      "retry": "Thử lại"
     },
     "plan-passes": {
       "title": "Đường ray Tiến trình",

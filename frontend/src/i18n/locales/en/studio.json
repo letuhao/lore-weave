@@ -373,7 +373,9 @@
       "title": "Decompose",
       "desc": "Decompose your book against a story structure — preview the arc→chapter→scene tree, edit it, and commit",
       "guideBody": "Decompose turns a story structure into your book's outline. Pick one of your authored structures (or a built-in), add a premise, choose a model, then Preview: the AI proposes an arc→chapter→scene tree you can edit inline before committing. Commit writes the outline — your Manuscript tree updates to match. Open it from the Command Palette, or from a structure in the Structure Templates panel via \"Use in decompose\" (which pre-selects that structure here). No Work yet? The panel offers to set one up first.",
-      "loading": "Resolving your book…"
+      "loading": "Resolving your book…",
+      "loadError": "Couldn't load this book's plan — try again.",
+      "retry": "Retry"
     },
     "plan-passes": {
       "title": "Pass Rail",
