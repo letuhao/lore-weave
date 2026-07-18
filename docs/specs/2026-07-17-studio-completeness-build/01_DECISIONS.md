@@ -37,6 +37,9 @@
 | S-04 | `add_override` upsert via `UNIQUE(work_id,target_entity_id)` | no silent duplicate |
 | S-06 | No `glossary_attribute_value_delete` MCP tool (defer) | agents rarely delete a single attr row; conscious asymmetry |
 | S-07 | Image upload gets its own `image_version`, never bumps metadata `version` | stops image-vs-rename racing |
+| S-07 | `world_map_update` (MCP) takes an OPTIONAL `expected_version`; present ⇒ OCC-gated + conflict names the current version; absent ⇒ last-write-wins | agent parity with REST If-Match without forcing every caller to read a version first |
+| S-07 (D-S07-world-delete-guard) | `world_delete` (MCP) is a direct TierA owner-scoped hard delete BUT REFUSES while the world holds non-bible member books (agent must move/remove them first) | `books.world_id` is ON DELETE SET NULL, so a naked delete silently ORPHANS the user's books — the guard keeps the tool to "clean up a world you mis-created" without a one-shot nuke, and is cheaper than the full TierW confirm spine |
+| S-07 | `book_chapter_reorder` (MCP) takes the COMPLETE ordered chapter-id list for one language track and requires an exact permutation (same length + all-belong + no dupes) | a partial/foreign list would strand a `sort_order` slot; reject rather than silent-partial. Shares the two-phase engine (`lockActiveChapterTrack`+`writeChapterTrackOrder`) with the REST route |
 | S-08 | Motif/arc-template restore mirrors `canon_rules.restore` exactly | the "complete" reference |
 
 ## Still needs a PO call (NOT sealed — do not build the affected item)

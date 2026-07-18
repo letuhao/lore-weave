@@ -28,7 +28,7 @@ was mis-carried as. See [`S-13_studio-decompose-surface.md`](S-13_studio-decompo
 | **S-04** | `derivative delta editing` — mutate `divergence_spec` + `entity_override` | A | ✅ update/delete repo methods | ❌ port (`DivergenceManagerView` exists) | M |
 | **S-05** | `KG fact authoring + triage surfacing` — author/invalidate a fact + the triage queue panel | B | ✅ fact-author route; triage is wire-up | ✅ **net-new** triage (`screen-kg-triage.html`) | S+M |
 | **S-06** | `glossary attribute-value` — add-later via REST + delete a value row | B | ✅ REST add + delete method | ❌ affordance on the entity editor | S |
-| **S-07** | `world-maps OCC + agent verbs` — OCC on MCP/image; MCP world_update/delete + chapter-reorder | B | ❌ wire-up over existing repo | ❌ backend-only | S |
+| **S-07** ✅ BUILT 2026-07-18 | `world-maps OCC + agent verbs` — OCC on MCP/image; MCP world_update/delete + chapter-reorder | B | ✅ image_version OCC decouple + world_update/delete + book_chapter_reorder | ✅ backend-only (RUN-STATE_S07) | S→M |
 | **S-08** | `soft-archive RESTORE` — motif + arc-template restore (dead-end soft-delete) | B | ✅ `restore` repo method each | ❌ affordance | S |
 | **S-09** | `small wire-ups` — corrections `list_for_job` route · glossary→graph seed route · wiki suggestion withdraw/status · view-aware graph reader (F-12) | B | mixed (routes over existing methods) | ❌ affordances | XS–S |
 | **S-11** | `search activity-view` (PO D-a: BUILD) — mount RawSearchPanel + memory_search into the `search` nav | C | ❌ mount/aggregation (BE complete) | ❌ port (`RawSearchPanel` is the reference) | S |
