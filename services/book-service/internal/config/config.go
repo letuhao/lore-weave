@@ -36,6 +36,11 @@ type Config struct {
 	// through worker-infra; .txt stays sync per existing UX (small files).
 	KnowledgeServiceURL string
 
+	// C-merge — composition-service base URL, so the .txt import can re-create the source's part
+	// grouping in composition (structure_node kind='part') after the book-service parts retirement.
+	// Best-effort: the import stays flat if this is unset or composition is unreachable.
+	CompositionServiceURL string
+
 	// E0-5 — auth-service /internal/users lookup for the collaborators panel
 	// (resolve invite email → user_id; resolve user_id → display_name for the list).
 	AuthServiceInternalURL string
@@ -86,6 +91,7 @@ func Load() (*Config, error) {
 		UsageBillingServiceURL:           getEnv("USAGE_BILLING_SERVICE_URL", ""),
 		InternalServiceToken:             os.Getenv("INTERNAL_SERVICE_TOKEN"),
 		KnowledgeServiceURL:              getEnv("KNOWLEDGE_SERVICE_URL", "http://knowledge-service:8092"),
+		CompositionServiceURL:            getEnv("COMPOSITION_SERVICE_URL", "http://composition-service:8093"),
 		AuthServiceInternalURL:           getEnv("AUTH_SERVICE_INTERNAL_URL", "http://auth-service:8081"),
 		DiaryEncryptionKey:               os.Getenv("DIARY_ENCRYPTION_KEY"),
 		DiaryEncryptionKeysRetired:       os.Getenv("DIARY_ENCRYPTION_KEYS_RETIRED"),

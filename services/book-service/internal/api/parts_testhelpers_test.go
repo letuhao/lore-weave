@@ -27,3 +27,17 @@ func ownerResolver(owner uuid.UUID) func(context.Context, uuid.UUID, uuid.UUID) 
 		return GrantOwner, owner, "active", nil
 	}
 }
+
+// seedPartsChapter inserts an active chapter in bookID at sortOrder, optionally homed in a manuscript
+// part via structure_node_id (nil = ungrouped). Returns the chapter id. (part_id was retired at C4.)
+func seedPartsChapter(t *testing.T, ctx context.Context, pool *pgxpool.Pool, bookID uuid.UUID, sortOrder int, structureNodeID *uuid.UUID) uuid.UUID {
+	t.Helper()
+	var chID uuid.UUID
+	if err := pool.QueryRow(ctx, `
+INSERT INTO chapters(book_id,original_filename,original_language,content_type,sort_order,storage_key,lifecycle_state,editorial_status,structure_node_id)
+VALUES($1,'c.txt','en','text/plain',$2,$3,'active','draft',$4) RETURNING id`,
+		bookID, sortOrder, "k-"+uuid.NewString(), structureNodeID).Scan(&chID); err != nil {
+		t.Fatalf("seed chapter: %v", err)
+	}
+	return chID
+}

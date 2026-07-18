@@ -181,11 +181,14 @@ func (s *Server) processTxtImport(
 	totalCount := 0
 	var lastChapterID uuid.UUID
 
-	// C-merge C4 — the import no longer creates book-service parts (parts moved to composition,
-	// structure_node kind='part'). Chapters import FLAT (structure_node_id NULL); part grouping is a
-	// post-import authoring act in the Studio (composition). The source's part boundaries still drive
-	// the per-chapter filename + the global sort order below.
+	// C-merge — parts moved to composition (structure_node kind='part'). We import chapters flat here,
+	// collect the source's part→chapters grouping, and re-create it in composition post-loop (best-effort).
+	partTitles := make([]string, len(tree.Parts))
+	partChapters := make(map[int][]uuid.UUID)
 	for partIdx, part := range tree.Parts {
+		if part.Title != nil {
+			partTitles[partIdx] = strings.TrimSpace(*part.Title)
+		}
 		for chIdxInPart, ch := range part.Chapters {
 			// Per-chapter body = concatenation of scene leaf_texts (joined by \n\n).
 			// For plain-text imports, ch.HTML is "" (D8 — plain has no html slice).
@@ -340,7 +343,13 @@ RETURNING id
 			totalCount++
 			chapterGlobalSort++
 			lastChapterID = chapterID
+			partChapters[partIdx] = append(partChapters[partIdx], chapterID)
 		}
+	}
+
+	// C-merge — re-create the source's part grouping in composition (best-effort; multi-part only).
+	if multiPart {
+		s.groupImportedChaptersIntoParts(r.Context(), r.Header.Get("Authorization"), bookID.String(), partTitles, partChapters)
 	}
 
 	_ = s.recalcQuota(r.Context(), owner)
