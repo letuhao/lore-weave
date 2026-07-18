@@ -71,17 +71,26 @@ Adversarial coverage pass — the suspicions I chased and CLEARED:
   (4 SearchPanel tests now; the new one would have caught a wiring break.)
 Verdict: no HIGH/MED. One LOW coverage gap, fixed. S-11 is structurally complete + operable.
 
-## DEFERRED (env-gated, tracked — gate #4)
-- **D-S11-BROWSER-SMOKE**: a live browser pass of the studio search flow (icon → rail → type → Search →
-  SearchPanel → text hit opens the editor; semantic hit deep-links). BLOCKED at dev time by TWO env facts:
-  (a) the shared `:5174` FE is the BAKED prod image (stale — no S-11; rebuilding it mid parallel-session
-  disrupts siblings), and (b) the test account has **0 books** — the studio (`/books/:bookId/studio`) has no
-  target and semantic mode has no knowledge project to query. RECIPE when unblocked: `vite dev` on a free
-  port (:5199, proxies /v1→:3123) + seed a book/chapters/knowledge-project, then Playwright-drive the flow.
-  Coverage in lieu: component tests (rail→openPanel, panel mode/param wiring, RawSearchPanel onJump,
-  SemanticSearchList chapter deep-link) + the machine-checked contract parity + both modes wrapping
-  ALREADY-LIVE shipped components. FE-only change ⇒ not under the ≥2-service live-smoke mandate.
+## ═══ D-S11-BROWSER-SMOKE — DONE (live browser, 2026-07-18) ═══
+CLEARED (the two env blockers were removed, not accepted):
+- Built the STATIC prod FE (`vite build` → dist, S-11 confirmed in the bundle) and served it on its OWN
+  port `:5203` via vite's programmatic `preview()` with the same `/v1`+`/ws` proxy → the live gateway
+  (:3123). Non-disruptive: a separate process, never touched the shared `:5174` baked image.
+- Seeded a book for the test account (`019f73ee-…`, "S-11 Smoke Book") so the studio has a target.
+- Drove it with Playwright's OWN isolated chromium (the MCP browsers were locked by a sibling) via a new
+  durable e2e spec `tests/e2e/specs/s11-search-smoke.spec.ts`, `PLAYWRIGHT_BASE_URL=http://127.0.0.1:5203`.
+- **RESULT: 1 passed (11.6s).** Login → studio → click the `search` activity icon → the REAL rail renders
+  (query box + Text/Semantic toggle + Search + hint), asserted **no "Coming soon"** → type + Search opens
+  the `search` dock panel → **Text mode mounts** (the reused RawSearchPanel + its query box) → toggle →
+  **Semantic mounts** (SemanticSearchList, showing the correct no-knowledge-project state for this book).
+  Screenshot: `frontend/test-results/s11-search-smoke.png` (rail + panel, both real). NO crash, NO stub.
+- Live-proven: reachability + both modes mount in a real browser. Wiring-proven (not live, needs indexed
+  content): a text hit → editor deep-link (SearchPanel test: onJump→focusManuscriptUnit) + a semantic
+  chapter hit → onOpenChapter (SemanticSearchList test) — `focusManuscriptUnit` is the same seam the
+  navigator/Quick-Open/agent already use live.
+- The durable spec needs a seeded book (env `S11_BOOK_ID`, defaults to the fixture); it runs against any
+  base URL, so `vite build` + serve dist with a `/v1` proxy + `PLAYWRIGHT_BASE_URL` re-runs it anywhere.
 
-## RESULT: S-11 COMPLETE + REVIEW-IMPL CLEAN — reachable, Router-safe, contract-parity-checked, operable
-## (Text + Semantic, deep-linking into the editor). Category sealed `knowledge`. One coverage gap fixed.
-## Only open item: the env-gated browser smoke (D-S11-BROWSER-SMOKE), tracked with its run recipe.
+## RESULT: S-11 COMPLETE + REVIEW-IMPL CLEAN + LIVE-SMOKED — reachable, Router-safe, contract-parity-checked,
+## operable in a REAL browser (rail → panel; Text + Semantic both mount). Category sealed `knowledge`.
+## One coverage gap fixed; D-S11-BROWSER-SMOKE DONE. No open items.
