@@ -345,6 +345,21 @@ async def test_motif_restore_shared_tier_edit_gated():
     assert res["_meta"]["undo_hint"]["args"].get("book_id") == str(BOOK)
 
 
+async def test_motif_restore_shared_denied_without_edit():
+    """review-impl MED-1: a VIEW-only caller (grant_level=1) restoring a shared row is the H13 deny
+    BEFORE any write — the EDIT gate is the shared-tier tenancy defense."""
+    import app.mcp.server as srv
+    from loreweave_mcp import NotAccessibleError
+
+    repo = AsyncMock()
+    async with _patched(grant_level=1, MotifRepo=repo):   # VIEW only
+        with pytest.raises(NotAccessibleError):
+            await srv.composition_motif_restore(
+                _Ctx(), motif_id=str(uuid.uuid4()), book_id=str(BOOK),
+            )
+    repo.restore_shared.assert_not_awaited()
+
+
 class _FakeTxn:
     async def __aenter__(self): return None
     async def __aexit__(self, *a): return False
@@ -1527,3 +1542,32 @@ def test_adopt_quota_rejects(client):
         _settings.motif_max_adopt = 0
     assert resp.status_code == 402
     repo.clone.assert_not_awaited()
+
+
+async def test_arc_template_restore_functional_and_honest_undo():
+    """review-impl MED-2: composition_arc_template_restore was in the tool-list but had no functional
+    test. It un-archives via repo.restore, returns the row, and its undo points back at archive."""
+    import app.mcp.server as srv
+
+    arc_id = str(uuid.uuid4())
+    arc = MagicMock()
+    arc.model_dump.return_value = {"id": arc_id, "status": "active"}
+    repo = AsyncMock()
+    repo.restore = AsyncMock(return_value=arc)
+    async with _patched(ArcTemplateRepo=repo):
+        res = await srv.composition_arc_template_restore(_Ctx(), arc_id=arc_id)
+    repo.restore.assert_awaited_once()
+    assert res["status"] == "active"
+    assert res["_meta"]["undo_hint"]["tool"] == "composition_arc_template_archive"
+
+
+async def test_arc_template_restore_not_archived_denied():
+    """A missing/foreign/not-archived id → repo.restore returns None → uniform deny (no oracle)."""
+    import app.mcp.server as srv
+    from loreweave_mcp import NotAccessibleError
+
+    repo = AsyncMock()
+    repo.restore = AsyncMock(return_value=None)
+    async with _patched(ArcTemplateRepo=repo):
+        with pytest.raises(NotAccessibleError):
+            await srv.composition_arc_template_restore(_Ctx(), arc_id=str(uuid.uuid4()))

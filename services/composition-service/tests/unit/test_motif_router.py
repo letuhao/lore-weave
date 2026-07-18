@@ -307,6 +307,17 @@ def test_restore_shared_tier_edit_gated(ctx):
     assert repo.restore_calls == [(USER, mid, book)]
 
 
+def test_restore_shared_denied_without_edit(ctx):
+    # review-impl MED-1: the shared-tier restore MUST 403 a VIEW-only caller BEFORE any write —
+    # this gate is the tenancy defense; without a test a refactor could drop it silently.
+    c, repo, _ = ctx
+    from app.grant_client import GrantLevel
+    repo.grant.level = GrantLevel.VIEW   # below EDIT
+    r = c.post(f"/v1/composition/motifs/{uuid.uuid4()}/restore?book_id={uuid.uuid4()}")
+    assert r.status_code == 403
+    assert repo.restore_calls == []      # no restore_shared attempted
+
+
 # ── publish quota (B-4) ───────────────────────────────────────────────────────
 
 
