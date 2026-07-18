@@ -28,6 +28,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/auth';
 import { booksApi } from '@/features/books/api';
 import { useWorkResolution } from '@/features/composition/hooks/useWork';
+import { useGlossaryRoster } from '@/features/composition/hooks/useGlossaryRoster';
 import { usePlanHub } from '@/features/plan-hub/hooks/usePlanHub';
 import { usePlanOrigin } from '@/features/plan-hub/hooks/usePlanOrigin';
 import { usePlanChildCreate } from '@/features/plan-hub/hooks/usePlanChildCreate';
@@ -69,6 +70,9 @@ export function PlanHubPanel(props: IDockviewPanelProps) {
   });
   const originalLanguage = bookInfo.data?.original_language ?? 'en';
   const childCreate = usePlanChildCreate(bookId, projectId, accessToken, originalLanguage);
+  // S-10 O5 — the glossary roster for the drawer's per-scene Motifs facet (role picker), same source
+  // the scene-inspector uses. Cheap + cached; empty until loaded (MotifBindingLens tolerates []).
+  const motifRoster = useGlossaryRoster(bookId || undefined, accessToken ?? null).data ?? [];
 
   const simpleChapters = useSimpleChapters(bookId, accessToken, mode.simple);
   // The "Write a new chapter" door: create a book chapter, then open it in the editor. This is the
@@ -443,6 +447,11 @@ export function PlanHubPanel(props: IDockviewPanelProps) {
           writes={view.nodeWrites}
           chapters={view.chapters}
           onOpenInEditor={(chapterId) => focusManuscriptUnit(chapterId)}
+          // S-10 O5 — the per-scene Motifs facet (MotifBindingLens) needs the KG project + auth + the
+          // glossary roster (for the role picker). projectId null ⇒ the drawer hides the Motifs section.
+          projectId={projectId}
+          token={accessToken ?? null}
+          roster={motifRoster}
           // Bug A — the contextual create the drawer never had: +Chapter under an arc, +Scene under a
           // chapter. Disabled (null) until a Work exists. The created node is selected so the drawer
           // re-targets it for inline rename — same create-then-name flow as the toolbar's +Arc.

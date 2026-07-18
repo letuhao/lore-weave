@@ -18,6 +18,19 @@ vi.mock('@/features/studio/panels/ArcInspectorEmbed', () => ({
     <div data-testid="arc-inspector-embed" data-arc={props.arcId} data-book={props.bookId} />
   ),
 }));
+// S-10 O5 — the per-scene Motifs facet fetches (bindings + roster) via react-query/auth; stub it so
+// this stays a render-only mount test. The stub echoes the props back so we can assert the drawer
+// threads projectId/chapterId/nodeId correctly. SceneMotifsSection's behaviour is its own test.
+vi.mock('@/features/composition/motif/components/MotifBindingLens', () => ({
+  MotifBindingLens: (props: { projectId: string | null; chapterId: string | null; nodeId: string }) => (
+    <div
+      data-testid="motif-binding-lens"
+      data-project={props.projectId ?? ''}
+      data-chapter={props.chapterId ?? ''}
+      data-node={props.nodeId}
+    />
+  ),
+}));
 
 import { PlanDrawer } from '../PlanDrawer';
 
@@ -119,6 +132,30 @@ describe('PlanDrawer', () => {
     expect(screen.queryByTestId('plan-drawer-section-roster')).toBeNull();
     // No outline craft facet on an arc.
     expect(screen.queryByTestId('plan-drawer-section-craft')).toBeNull();
+  });
+
+  // ── S-10 O5 — the per-scene Motifs facet mount (MotifBindingLens handoff regression guard) ──
+  it('scene: mounts MotifBindingLens with the threaded project/chapter/node when a project exists', () => {
+    hook.usePlanNode.mockReturnValue(
+      view({ kind: 'scene', outlineNode: outline({ id: 'S1', kind: 'scene', chapter_id: 'ch7', title: 'The duel' }) }),
+    );
+    render(
+      <PlanDrawer selectedId="S1" kind="scene" bookId="b" onClose={vi.fn()} projectId="proj-9" token="t" />,
+    );
+    const lens = screen.getByTestId('motif-binding-lens');
+    expect(lens).toHaveAttribute('data-project', 'proj-9');
+    expect(lens).toHaveAttribute('data-chapter', 'ch7');
+    expect(lens).toHaveAttribute('data-node', 'S1');
+    expect(screen.getByTestId('plan-drawer-section-motifs')).toBeInTheDocument();
+  });
+
+  it('scene: hides the Motifs facet when there is no project yet (no broken binding surface)', () => {
+    hook.usePlanNode.mockReturnValue(
+      view({ kind: 'scene', outlineNode: outline({ id: 'S1', kind: 'scene', chapter_id: 'ch7' }) }),
+    );
+    render(<PlanDrawer selectedId="S1" kind="scene" bookId="b" onClose={vi.fn()} projectId={null} />);
+    expect(screen.queryByTestId('motif-binding-lens')).toBeNull();
+    expect(screen.queryByTestId('plan-drawer-section-motifs')).toBeNull();
   });
 
   it('shows the loading state while the node fetch is in flight', () => {

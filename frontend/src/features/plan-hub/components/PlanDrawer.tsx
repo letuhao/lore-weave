@@ -27,6 +27,11 @@ import { PlanDrawerEdit } from './PlanDrawerEdit';
 // 32 §3.5 (AI-4/DOCK-2) — the drawer mounts the arc-inspector's SHARED body (embedded variant),
 // the SAME component the dock panel renders. No fork; no `ArcFacets` stub.
 import { ArcInspectorEmbed } from '@/features/studio/panels/ArcInspectorEmbed';
+// S-10 O5 — the per-scene motif facet. S4 built MotifBindingLens; S2 never mounted it (0 importers),
+// so per-scene motif binding was legacy-only. Mounting it here (component reuse, no fork — same
+// surface as the scene-inspector's Motifs section) makes bind/unbind reachable from the plan.
+import { MotifBindingLens } from '@/features/composition/motif/components/MotifBindingLens';
+import type { RosterOption } from '@/features/composition/hooks/useGlossaryRoster';
 import type { NodeEdit } from '../api';
 import type { PlanOverlay, PlanOverlayRef } from '../types';
 
@@ -60,6 +65,12 @@ export interface PlanDrawerProps {
   chapters?: { chapter_id: string; title: string; sort_order: number }[];
   /** PH16 — "Open in Editor" goes to the ACTUAL (the manuscript). */
   onOpenInEditor?: (chapterId: string) => void;
+  /** S-10 O5 — the KG project + auth + glossary roster the per-scene Motifs facet needs
+   *  (MotifBindingLens). Omitted / null ⇒ the Motifs section isn't rendered (no project yet, or a
+   *  read-only drawer), rather than a broken binding surface. */
+  projectId?: string | null;
+  token?: string | null;
+  roster?: RosterOption[];
   /** Bug A (spec 2026-07-17) — build the hierarchy DOWN from the selected node. Null ⇒ no Work yet, so
    *  there's nothing to hang children on (the button then isn't rendered, PH7). +Chapter shows on an
    *  arc/saga; +Scene on a chapter. Scene needs the chapter's BOOK chapter_id, which the node carries. */
@@ -204,6 +215,10 @@ function ChapterSceneFacets({
   writes,
   chapters,
   onOpenInEditor,
+  bookId,
+  projectId,
+  token,
+  roster,
 }: {
   node: OutlineNode;
   nameFor: PlanNodeView['nameFor'];
@@ -212,6 +227,10 @@ function ChapterSceneFacets({
   writes?: PlanDrawerProps['writes'];
   chapters?: PlanDrawerProps['chapters'];
   onOpenInEditor?: (chapterId: string) => void;
+  bookId: string;
+  projectId?: string | null;
+  token?: string | null;
+  roster?: RosterOption[];
 }) {
   const present = (node.present_entity_ids ?? []).map(nameFor).filter(Boolean).join(', ');
   const num = (v: number | null | undefined): ReactNode => (v == null ? null : String(v));
@@ -291,6 +310,23 @@ function ChapterSceneFacets({
         />
       </Section>
 
+      {/* S-10 O5 — the per-scene Motifs facet (bind/swap/clear + "Suggest a motif"), mounting S4's
+          MotifBindingLens (component reuse — the SAME surface as the scene-inspector's Motifs section,
+          not a fork). Rendered only when a KG project exists; MotifBindingLens owns its own heading, so
+          this is a plain bordered slot rather than a titled <Section> (which would double the heading). */}
+      {projectId && (
+        <section data-testid="plan-drawer-section-motifs" className="border-b p-3">
+          <MotifBindingLens
+            projectId={projectId}
+            bookId={bookId ?? null}
+            chapterId={node.chapter_id ?? null}
+            nodeId={node.id}
+            roster={roster ?? []}
+            token={token ?? null}
+          />
+        </section>
+      )}
+
       {/* References + Critic stay empty — and now say WHY, and what would fill them. The old copy
           ("loads in H4") was simply false once H4 landed; an honest gap names its real blocker. */}
       <Section title="References" testid="plan-drawer-section-references">
@@ -366,6 +402,9 @@ function DrawerBody({
   chapters,
   onOpenInEditor,
   childCreate,
+  projectId,
+  token,
+  roster,
 }: {
   view: PlanNodeView;
   bookId: string;
@@ -375,6 +414,9 @@ function DrawerBody({
   chapters?: PlanDrawerProps['chapters'];
   onOpenInEditor?: (chapterId: string) => void;
   childCreate?: PlanDrawerProps['childCreate'];
+  projectId?: string | null;
+  token?: string | null;
+  roster?: RosterOption[];
 }) {
   if (view.loading) return <Centered testid="plan-drawer-loading">Loading…</Centered>;
   if (view.error) return <Centered testid="plan-drawer-error" tone="error">{view.error}</Centered>;
@@ -391,6 +433,10 @@ function DrawerBody({
           writes={writes}
           chapters={chapters}
           onOpenInEditor={onOpenInEditor}
+          bookId={bookId}
+          projectId={projectId}
+          token={token}
+          roster={roster}
         />
       </>
     );
@@ -419,6 +465,9 @@ export function PlanDrawer({
   chapters,
   onOpenInEditor,
   childCreate,
+  projectId,
+  token,
+  roster,
 }: PlanDrawerProps) {
   // Hook first (unconditional — Rules of Hooks); then self-hide when there is no selection so the
   // orchestrator can keep <PlanDrawer/> mounted (never conditionally unmount a stateful child).
@@ -465,6 +514,9 @@ export function PlanDrawer({
           chapters={chapters}
           onOpenInEditor={onOpenInEditor}
           childCreate={childCreate}
+          projectId={projectId}
+          token={token}
+          roster={roster}
         />
       </div>
     </aside>
