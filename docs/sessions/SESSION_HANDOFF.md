@@ -19,18 +19,23 @@
   advertised ONLY on a navigation-intent turn (nav verb + panel-specific noun; deterministic, precision-biased so
   "write a scene" never fires). `ui_focus_manuscript_unit` stays always-on. On a typical WRITING turn the navigator
   is fully omitted → combined with M2 that is **2371 → 0 tok on most studio turns**. Not deprecated: the free-string
-  `ui_show_panel` fallback is the silent-no-op bug the enum fixed. Commit `<pending>`.
+  `ui_show_panel` fallback is the silent-no-op bug the enum fixed. Commit `696bbc18b`.
 
 **~5.4k tok/turn saved on a studio co-writer turn (~25% of 21.6k), NO capability loss on the medium model.**
-Files: `chat-service/app/config.py` (3 flags), `services/skill_registry.py` (load_skill tool+result+lazy params),
-`services/frontend_tools.py` (compact panel), `services/stream_service.py` (wiring: advertise+dispatch+resolve),
-`eval/run_lazy_context_ab_eval.py`, `tests/test_lazy_context_f7c.py` (17 tests). 226+ related tests green.
+Commits: `a0b0d2b6c` (M1/M2/M3), `696bbc18b` (M4). Files: `chat-service/app/config.py` (4 flags, all default TRUE),
+`services/skill_registry.py` (load_skill tool+result+lazy params), `services/frontend_tools.py` (compact panel +
+nav-gate), `services/stream_service.py` (wiring: advertise+dispatch+resolve+nav-gate), `eval/run_lazy_context_ab_eval.py`,
+`tests/test_lazy_context_f7c.py` (33 tests). 33 F7c + story04 + contract + 226 related green.
 
-**▶ LIVE ROLLOUT NEEDS A CHAT-SERVICE IMAGE REBUILD** — the A/B proved the logic by copying the changed modules
-into the running container; `stream_service.py`+`config.py` are NOT yet in the built image. Rebuild `chat-service`,
-then dogfood a real studio co-writer turn to confirm the token drop + no quality regression on the full surface
-(the eval was a focused battery, not the full grounded production surface — plain-chat `universal` skill lazy-path
-is the least-exercised residual).
+**✅ CHAT-SERVICE IMAGE REBUILT + LIVE-VERIFIED (2026-07-19)** — `docker compose build chat-service` +
+`up -d`; container healthy; all 4 flags read TRUE in-container; `load_skill`/nav-gate live; the A/B re-ran on the
+**native rebuilt image** (not module-copy) → identical results (M1 −3872, M2 6/6=6/6, skills 3/3=3/3). Enforcement
+is LIVE.
+
+**▶ NEXT (nice-to-have, not blocking):** dogfood a real studio co-writer turn in the browser + read the Context
+Inspector to confirm the per-turn token drop on the FULL grounded surface (the eval was a focused battery). The one
+least-exercised residual is the plain-CHAT `universal` skill lazy-path (the A/B covered book/studio, not bare chat) —
+low-risk (tools stay hot, web_search is always-on core), but worth one confirming turn.
 
 **Pre-existing red (NOT this track):** `tests/test_frontend_tools.py::test_glossary_skill_prompt_mandates_one_card_batch`
 fails on HEAD — a concurrent **F3-PARTIAL** commit (`490e9751e`) moved `glossary_propose_batch` from

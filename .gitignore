@@ -320,3 +320,5 @@ frontend/dist-s01/
 /test-results/
 
 .playwright-cli/
+
+frontend/dist-jamie/
