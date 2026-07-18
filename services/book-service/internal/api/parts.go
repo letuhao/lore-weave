@@ -117,10 +117,29 @@ func partPath(title string, sortOrder int) string {
 // (the second racer just takes MAX+2).
 func (s *Server) storeCreatePart(ctx context.Context, bookID uuid.UUID, title string) (partView, error) {
 	title = strings.TrimSpace(title)
-	var p partView
 	var lastErr error
 	for attempt := 0; attempt < 2; attempt++ {
-		row := s.pool.QueryRow(ctx, `
+		// Each attempt is its own txn so the C2 emit stays ATOMIC with the INSERT; a unique-violation
+		// racer rolls its txn back and retries (the second racer just takes MAX+2).
+		p, err := s.createPartTx(ctx, bookID, title)
+		if err == nil {
+			return p, nil
+		}
+		lastErr = err
+		if !isUniqueViolation(err) {
+			break
+		}
+	}
+	return partView{}, lastErr
+}
+
+func (s *Server) createPartTx(ctx context.Context, bookID uuid.UUID, title string) (partView, error) {
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return partView{}, err
+	}
+	defer tx.Rollback(ctx) //nolint:errcheck // no-op after Commit
+	row := tx.QueryRow(ctx, `
 INSERT INTO parts(book_id, sort_order, title, path)
 VALUES(
   $1,
@@ -129,30 +148,37 @@ VALUES(
   $3
 )
 RETURNING `+partSelectCols,
-			bookID, nullIfEmpty(title), partPath(title, 0))
-		p, lastErr = scanPart(row)
-		if lastErr == nil {
-			// Backfill a slug that couldn't know its sort_order at INSERT time (CJK
-			// title → empty slug → "part-<n>"). Cheap single-row update, only when needed.
-			if p.Path == "" {
-				fallback := partPath(title, p.SortOrder)
-				if _, err := s.pool.Exec(ctx,
-					`UPDATE parts SET path=$3 WHERE id=$1 AND book_id=$2`, p.PartID, bookID, fallback); err == nil {
-					p.Path = fallback
-				}
-			}
-			return p, nil
-		}
-		if !isUniqueViolation(lastErr) {
-			break
+		bookID, nullIfEmpty(title), partPath(title, 0))
+	p, err := scanPart(row)
+	if err != nil {
+		return partView{}, err
+	}
+	// Backfill a slug that couldn't know its sort_order at INSERT time (CJK title → empty slug →
+	// "part-<n>"). Cheap single-row update, only when needed.
+	if p.Path == "" {
+		fallback := partPath(title, p.SortOrder)
+		if _, err := tx.Exec(ctx,
+			`UPDATE parts SET path=$3 WHERE id=$1 AND book_id=$2`, p.PartID, bookID, fallback); err == nil {
+			p.Path = fallback
 		}
 	}
-	return partView{}, lastErr
+	if err := emitManuscriptPartChanged(ctx, tx, bookID); err != nil {
+		return partView{}, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return partView{}, err
+	}
+	return p, nil
 }
 
 // storeRenamePart renames an active act (LWW — no OCC). errPartNotFound if absent.
 func (s *Server) storeRenamePart(ctx context.Context, bookID, partID uuid.UUID, title string) (partView, error) {
-	row := s.pool.QueryRow(ctx, `
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return partView{}, err
+	}
+	defer tx.Rollback(ctx) //nolint:errcheck // no-op after Commit
+	row := tx.QueryRow(ctx, `
 UPDATE parts SET title=$3, updated_at=now()
 WHERE id=$1 AND book_id=$2 AND lifecycle_state='active'
 RETURNING `+partSelectCols,
@@ -161,7 +187,16 @@ RETURNING `+partSelectCols,
 	if errors.Is(err, pgx.ErrNoRows) {
 		return partView{}, errPartNotFound
 	}
-	return p, err
+	if err != nil {
+		return partView{}, err
+	}
+	if err := emitManuscriptPartChanged(ctx, tx, bookID); err != nil { // C2 dual-write
+		return partView{}, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return partView{}, err
+	}
+	return p, nil
 }
 
 // storeReorderParts rewrites the whole active ordering. orderedIDs must be EXACTLY
@@ -227,6 +262,10 @@ RETURNING `+partSelectCols, id, bookID, i+1)
 		}
 		out = append(out, p)
 	}
+	// C2 dual-write: reorder changed every part's rank → the mirror must re-read + reconcile.
+	if err := emitManuscriptPartChanged(ctx, tx, bookID); err != nil {
+		return nil, nil, err
+	}
 	if err := tx.Commit(ctx); err != nil {
 		return nil, nil, err
 	}
@@ -257,7 +296,12 @@ RETURNING id`, partID, bookID).Scan(&trashedID)
 	// Un-home this part's chapters — scoped by book_id AND part_id so it can never
 	// touch another book's rows.
 	if _, err := tx.Exec(ctx,
-		`UPDATE chapters SET part_id=NULL, updated_at=now() WHERE book_id=$1 AND part_id=$2`, bookID, partID); err != nil {
+		`UPDATE chapters SET part_id=NULL, structure_node_id=NULL, updated_at=now() WHERE book_id=$1 AND part_id=$2`, bookID, partID); err != nil {
+		return err
+	}
+	// C2 dual-write: the part is trashed + its chapters un-homed → the consumer archives the mirror
+	// structure_node and clears its chapter membership.
+	if err := emitManuscriptPartChanged(ctx, tx, bookID); err != nil {
 		return err
 	}
 	return tx.Commit(ctx)
@@ -266,7 +310,12 @@ RETURNING id`, partID, bookID).Scan(&trashedID)
 // storeRestorePart reactivates a soft-trashed act. Its chapters are NOT re-homed
 // (restore is a non-magical inverse of trash — sealed). errPartNotFound if absent.
 func (s *Server) storeRestorePart(ctx context.Context, bookID, partID uuid.UUID) (partView, error) {
-	row := s.pool.QueryRow(ctx, `
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return partView{}, err
+	}
+	defer tx.Rollback(ctx) //nolint:errcheck // no-op after Commit
+	row := tx.QueryRow(ctx, `
 UPDATE parts SET lifecycle_state='active', trashed_at=NULL, updated_at=now()
 WHERE id=$1 AND book_id=$2 AND lifecycle_state='trashed'
 RETURNING `+partSelectCols, partID, bookID)
@@ -274,7 +323,18 @@ RETURNING `+partSelectCols, partID, bookID)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return partView{}, errPartNotFound
 	}
-	return p, err
+	if err != nil {
+		return partView{}, err
+	}
+	// C2 dual-write: a restored part re-appears → the consumer re-creates/un-archives its mirror.
+	// (Chapters are NOT re-homed — restore is a non-magical inverse — so structure_node_id stays as is.)
+	if err := emitManuscriptPartChanged(ctx, tx, bookID); err != nil {
+		return partView{}, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return partView{}, err
+	}
+	return p, nil
 }
 
 // moveChapterToPart sets chapters.part_id, verifying (a) the chapter is an active
@@ -312,9 +372,15 @@ func (s *Server) moveChapterToPart(ctx context.Context, bookID, chapterID uuid.U
 			return err
 		}
 	}
+	// C2 dual-write: structure_node_id mirrors part_id (structure_node.id == part.id), stamped in the
+	// SAME txn — nothing reads it until C3, and it becomes the SSOT at C4 (part_id → structure_node_id
+	// is then a pure rename). A nil partID (un-home) nulls both.
 	if _, err := tx.Exec(ctx,
-		`UPDATE chapters SET part_id=$3, updated_at=now() WHERE id=$1 AND book_id=$2`,
+		`UPDATE chapters SET part_id=$3, structure_node_id=$3, updated_at=now() WHERE id=$1 AND book_id=$2`,
 		chapterID, bookID, partID); err != nil {
+		return err
+	}
+	if err := emitManuscriptPartChanged(ctx, tx, bookID); err != nil {
 		return err
 	}
 	return tx.Commit(ctx)
@@ -569,4 +635,65 @@ func (s *Server) setChapterPart(w http.ResponseWriter, r *http.Request) {
 	// Echo the resulting part_id so the caller sees the move without a re-read.
 	s.getChapterByID(w, r.Context(), bookID, chapterID, uuid.Nil, http.StatusOK,
 		map[string]any{"part_id": partID})
+}
+
+// getInternalPartsMirror — C-merge C2 dual-write. Returns a book's ACTIVE parts for composition's
+// structure_node mirror consumer. Under /internal (X-Internal-Token); NO grant check — a trusted
+// service call reconciling the mirror, not a user read. {parts:[{id,title,sort_order}]}. Removed at C4.
+func (s *Server) getInternalPartsMirror(w http.ResponseWriter, r *http.Request) {
+	bookID, ok := parseUUIDParam(w, r, "book_id")
+	if !ok {
+		return
+	}
+	rows, err := s.pool.Query(r.Context(),
+		`SELECT id, COALESCE(title,''), sort_order FROM parts
+		 WHERE book_id=$1 AND lifecycle_state='active' ORDER BY sort_order, id`, bookID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT", "failed to list parts mirror")
+		return
+	}
+	defer rows.Close()
+	type mirrorPart struct {
+		ID        uuid.UUID `json:"id"`
+		Title     string    `json:"title"`
+		SortOrder int       `json:"sort_order"`
+	}
+	out := []mirrorPart{}
+	for rows.Next() {
+		var p mirrorPart
+		if err := rows.Scan(&p.ID, &p.Title, &p.SortOrder); err != nil {
+			writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT", "failed to scan parts mirror")
+			return
+		}
+		out = append(out, p)
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"parts": out})
+}
+
+// postInternalPartsMirrorBackfill — C-merge C2. Emits one manuscript_part.changed per book that has
+// ANY part, so composition backfills its structure_node mirror for parts created before C2. Idempotent
+// (the consumer reconciles; re-running just re-reconciles). Invoked once at the C2 deploy and available
+// as a manual drift re-sync. Under /internal (X-Internal-Token). Removed at C4.
+func (s *Server) postInternalPartsMirrorBackfill(w http.ResponseWriter, r *http.Request) {
+	tx, err := s.pool.Begin(r.Context())
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT", "backfill begin failed")
+		return
+	}
+	defer tx.Rollback(r.Context()) //nolint:errcheck
+	// One book-level event per distinct book that owns a part (any lifecycle — a book with only
+	// trashed parts still needs its mirror reconciled to archived).
+	tag, err := tx.Exec(r.Context(), `
+		INSERT INTO outbox_events (aggregate_type, aggregate_id, event_type, payload)
+		SELECT 'book', book_id, $1, jsonb_build_object('book_id', book_id)
+		FROM (SELECT DISTINCT book_id FROM parts) b`, ManuscriptPartChangedEvent)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT", "backfill emit failed")
+		return
+	}
+	if err := tx.Commit(r.Context()); err != nil {
+		writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT", "backfill commit failed")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"emitted": tag.RowsAffected()})
 }

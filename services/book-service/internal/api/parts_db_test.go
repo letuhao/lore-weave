@@ -15,6 +15,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -495,5 +496,117 @@ func TestParts_ChapterListExposesPartId_DB(t *testing.T) {
 			t.Fatalf("%s: sort_order zeroed by NULL-title scan: homed=%v flat=%v",
 				path, order[homed.String()], order[flat.String()])
 		}
+	}
+}
+
+// TestParts_C2_EmitsAndMirrorsStructureNodeID_DB — C-merge C2 dual-write, verified by EFFECT:
+// every part mutation writes a `manuscript_part.changed` outbox row (aggregate_id = book_id), and a
+// chapter's structure_node_id mirrors its part_id (== value) on assign, and is nulled on un-home/archive.
+func TestParts_C2_EmitsAndMirrorsStructureNodeID_DB(t *testing.T) {
+	s, pool := dbTestServer(t)
+	ctx := context.Background()
+	owner := uuid.New()
+	bookID := seedPartsBook(t, ctx, pool, owner)
+
+	partEvents := func() int {
+		var n int
+		if err := pool.QueryRow(ctx,
+			`SELECT count(*) FROM outbox_events WHERE aggregate_id=$1 AND aggregate_type='book' AND event_type=$2`,
+			bookID, ManuscriptPartChangedEvent).Scan(&n); err != nil {
+			t.Fatalf("count events: %v", err)
+		}
+		return n
+	}
+	structNodeID := func(ch uuid.UUID) *uuid.UUID {
+		var id *uuid.UUID
+		if err := pool.QueryRow(ctx, `SELECT structure_node_id FROM chapters WHERE id=$1`, ch).Scan(&id); err != nil {
+			t.Fatalf("read structure_node_id: %v", err)
+		}
+		return id
+	}
+
+	// create → 1 event
+	p, err := s.storeCreatePart(ctx, bookID, "Part One")
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	if got := partEvents(); got != 1 {
+		t.Fatalf("after create: %d events, want 1", got)
+	}
+	partID := p.PartID
+
+	// rename → 2 events
+	if _, err := s.storeRenamePart(ctx, bookID, partID, "Act One"); err != nil {
+		t.Fatalf("rename: %v", err)
+	}
+	if got := partEvents(); got != 2 {
+		t.Fatalf("after rename: %d events, want 2", got)
+	}
+
+	// assign a chapter → 3 events + structure_node_id == part_id
+	ch := seedPartsChapter(t, ctx, pool, bookID, 1, nil)
+	if err := s.moveChapterToPart(ctx, bookID, ch, &partID); err != nil {
+		t.Fatalf("move: %v", err)
+	}
+	if got := partEvents(); got != 3 {
+		t.Fatalf("after move: %d events, want 3", got)
+	}
+	if got := structNodeID(ch); got == nil || *got != partID {
+		t.Fatalf("structure_node_id = %v, want == part_id %s", got, partID)
+	}
+
+	// archive → 4 events + chapter un-homed (structure_node_id NULL)
+	if err := s.storeArchivePart(ctx, bookID, partID); err != nil {
+		t.Fatalf("archive: %v", err)
+	}
+	if got := partEvents(); got != 4 {
+		t.Fatalf("after archive: %d events, want 4", got)
+	}
+	if got := structNodeID(ch); got != nil {
+		t.Fatalf("structure_node_id after archive = %v, want NULL", got)
+	}
+}
+
+// TestParts_C2_InternalPartsMirror_DB — the /internal parts-mirror endpoint returns a book's ACTIVE
+// parts (id, title, sort_order) for composition's mirror consumer; trashed parts are excluded.
+func TestParts_C2_InternalPartsMirror_DB(t *testing.T) {
+	s, pool := dbTestServer(t)
+	ctx := context.Background()
+	owner := uuid.New()
+	bookID := seedPartsBook(t, ctx, pool, owner)
+
+	p1, err := s.storeCreatePart(ctx, bookID, "Part One")
+	if err != nil {
+		t.Fatalf("create p1: %v", err)
+	}
+	p2, err := s.storeCreatePart(ctx, bookID, "Part Two")
+	if err != nil {
+		t.Fatalf("create p2: %v", err)
+	}
+	if err := s.storeArchivePart(ctx, bookID, p2.PartID); err != nil { // trashed → excluded
+		t.Fatalf("archive p2: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/internal/books/"+bookID.String()+"/parts-mirror", nil)
+	rctx := chi.NewRouteContext()
+	rctx.URLParams.Add("book_id", bookID.String())
+	req = req.WithContext(addChi(req, rctx))
+	w := httptest.NewRecorder()
+	s.getInternalPartsMirror(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("mirror = %d, body=%s", w.Code, w.Body.String())
+	}
+	var got struct {
+		Parts []struct {
+			ID        string `json:"id"`
+			Title     string `json:"title"`
+			SortOrder int    `json:"sort_order"`
+		} `json:"parts"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &got); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(got.Parts) != 1 || got.Parts[0].ID != p1.PartID.String() || got.Parts[0].Title != "Part One" {
+		t.Fatalf("want only active Part One, got %+v", got.Parts)
 	}
 }

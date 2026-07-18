@@ -167,6 +167,24 @@ class BookClient:
             logger.warning("book sort-orders unavailable: %s", exc)
             return {}
 
+    async def list_parts_mirror(self, book_id: UUID) -> list[dict[str, Any]]:
+        """C-merge C2 — a book's ACTIVE parts for the structure_node mirror consumer. INTERNAL token
+        (no user check — a trusted mirror reconcile, works for a Work-less book). RAISES BookClientError
+        on transport/non-200 so the consumer RETRIES rather than reconciling-to-empty (which would blank
+        a real book's part groupings — the scenes_linked BookSceneFetchError discipline)."""
+        url = f"{self._base_url}/internal/books/{book_id}/parts-mirror"
+        headers = {"X-Internal-Token": self._internal_token}
+        tid = trace_id_var.get()
+        if tid:
+            headers["X-Trace-Id"] = tid
+        try:
+            resp = await self._http.get(url, headers=headers)
+        except httpx.HTTPError as exc:
+            raise BookClientError(502, "BOOK_SERVICE_UNAVAILABLE", str(exc)) from exc
+        if resp.status_code != 200:
+            raise BookClientError(resp.status_code, None, "parts-mirror failed")
+        return resp.json().get("parts", [])
+
     async def canon_markers(
         self, book_id: UUID, chapter_ids: list[UUID],
     ) -> dict[str, dict[str, Any]]:

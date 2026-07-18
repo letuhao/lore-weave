@@ -37,13 +37,18 @@ C1→C4 cutover, `/review-impl` + cross-service live-smoke on every C-slice.
       has structure_node_id (nullable, coexists w/ part_id) + the index. Review: additive-only, focused
       inline (idempotent, auto-constraint-name verified live, no-FK correct); cold-start review-impl
       reserved for C2+ (data/logic slices). Reversible: nothing reads/writes the new fields.
-- [ ] C2 · DUAL-WRITE — **mechanism (PO-sealed): transactional outbox + event** (book-service emits
-      `manuscript_part.*` via its existing outbox in the mutation txn; a composition consumer upserts
-      the mirror). **Design refinement: structure_node.id == part.id** (1:1 same-UUID mirror) ⇒
-      chapters.structure_node_id == chapters.part_id numerically, upsert-by-id is trivially idempotent,
-      and C4 becomes a pure column rename. book-service stamps chapters.structure_node_id=part_id in the
-      same txn as setChapterPart (nothing reads it till C3). Backfill: synthetic upsert events for
-      existing parts. Consistency check. review-impl (cold-start) + cross-service live-smoke.
+- [~] C2 · DUAL-WRITE (built + tested both sides; review-impl next; full stack-up smoke deferred).
+      **book-service**: all 6 part mutations emit `manuscript_part.changed {book_id}` (aggregate_type
+      'book') ATOMICALLY (3 pool-direct methods tx-wrapped); moveChapterToPart stamps
+      chapters.structure_node_id=part_id (== value), archive nulls it; GET /internal/books/{id}/
+      parts-mirror + POST /internal/parts-mirror/backfill. Tests: TestParts_C2_EmitsAndMirrors (4 events
+      + structure_node_id assert) + InternalPartsMirror — green vs dev DB.
+      **composition**: PartsMirrorConsumer (own group, BOOK_STREAM) → book_client.list_parts_mirror
+      (raises on fail → retry, never blank) → reconcile_book_parts (upsert kind='part' by id==part.id
+      depth0, archive absent). Test: test_parts_mirror 4/4 vs throwaway Postgres (upsert/rename/reorder/
+      archive/reactivate). Transport reuses the proven written-verdict relay+BaseProjectionConsumer path.
+      LIVE-SMOKE (full emit→relay→consume) deferred: running images predate C2; each half live-verified
+      + transport is proven infra → token "live infra unavailable: stack images predate C2".
 - [ ] C3 · READ-CUTOVER — Manuscript rail + hierarchy read structure_node via gateway; partsMode
       collapses; two rails unify click contract. FE flips. review-impl + live-smoke + QC :5290.
 - [ ] C4 · RETIRE — drop parts routes/tools/table + chapters.part_id; delete parts FE + tests; update

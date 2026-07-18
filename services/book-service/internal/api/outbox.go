@@ -61,6 +61,20 @@ func emitScenesLinked(ctx context.Context, tx pgx.Tx, bookID, chapterID uuid.UUI
 	})
 }
 
+// ManuscriptPartChangedEvent — C-merge C2 dual-write bridge. ANY change to a book's parts
+// (create/rename/reorder/archive/restore/chapter-reassign) emits this ONE book-level event; the
+// composition consumer RE-READS the book's parts and reconciles its structure_node kind='part' mirror
+// (structure_node.id == part.id). Minimal payload {book_id} + consumer re-read ⇒ idempotent and
+// order-insensitive under the at-least-once relay — the exact chapter.scenes_linked pattern.
+// aggregate_type='book' ⇒ relayed to loreweave:events:book. TEMPORARY: removed at C4 when parts is
+// retired and structure_node becomes the sole SSOT. INV-O12: an emit that cannot be written rolls the
+// mutation back (never swallowed) — else the mirror silently diverges.
+const ManuscriptPartChangedEvent = "manuscript_part.changed"
+
+func emitManuscriptPartChanged(ctx context.Context, tx pgx.Tx, bookID uuid.UUID) error {
+	return insertBookOutbox(ctx, tx, ManuscriptPartChangedEvent, bookID, map[string]any{"book_id": bookID})
+}
+
 // jobServiceName is the value stored in the JobEvent payload's `service` field (and the
 // jobs-service `job_projection.service` + reconcile `_RECONCILE` key). The physical owner.
 const jobServiceName = "book"

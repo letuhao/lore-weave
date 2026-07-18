@@ -208,6 +208,10 @@ func (s *Server) Router() http.Handler {
 		r.Get("/book/jobs", s.reconcileImportJobs)                               // Unified Job Control Plane reconcile source (book-import, D-JOBS-BOOK-IMPORT-UNWIRED)
 		r.Get("/books/{book_id}/lexical-search", s.searchChapterTextInternal)    // raw-search Phase 2 (lexical leg for the knowledge orchestrator)
 		r.Get("/books/{book_id}/chapters", s.getInternalBookChapters)
+		// C-merge C2 — composition's structure_node mirror consumer re-reads a book's active parts
+		// here to reconcile its kind='part' nodes. Temporary bridge, removed at C4.
+		r.Get("/books/{book_id}/parts-mirror", s.getInternalPartsMirror)
+		r.Post("/parts-mirror/backfill", s.postInternalPartsMirrorBackfill) // C2 one-time backfill / drift re-sync
 		// chat-service calls this ONCE PER TURN: "how many chapters, and how many
 		// actually hold prose?" — one query, no paging. Deliberately NOT served by
 		// /chapters above: that route clamps limit to 100 (a >100-chapter book would
