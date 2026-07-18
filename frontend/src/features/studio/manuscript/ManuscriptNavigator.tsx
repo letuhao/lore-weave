@@ -19,6 +19,7 @@ import { useVirtualizer } from '@tanstack/react-virtual';
 import { ChevronDown, ChevronRight, ChevronsDownUp, ChevronUp, FolderPlus, Loader2, PanelLeftClose, Pencil, Plus, RotateCw, Search, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
+import { useOptionalStudioBusSelector } from '../host/StudioHostProvider';
 import { useManuscriptTree } from './useManuscriptTree';
 import { useManuscriptJump } from './useManuscriptJump';
 import { jumpResultToNode, type ManuscriptNode } from './types';
@@ -95,6 +96,18 @@ export function ManuscriptNavigator({ bookId, token, selectedId, onSelect, onNew
   } = useManuscriptTree(bookId, token);
   const jump = useManuscriptJump(bookId, token);
   const parentRef = useRef<HTMLDivElement>(null);
+
+  // M2 (F3) — a chapter created/renamed/deleted from ANOTHER panel (Plan Hub write door, editor
+  // create, drawer +Chapter) bumps `manuscriptChangeSeq` on the studio bus. The tree is hand-rolled
+  // useState a react-query invalidation can't reach, so we reload() on the bump — never on mount
+  // (the ref starts at the current value). Tolerates a missing host (unit tests render without one).
+  const manuscriptChangeSeq = useOptionalStudioBusSelector((s) => s.manuscriptChangeSeq ?? 0, 0);
+  const lastChangeSeq = useRef(manuscriptChangeSeq);
+  useEffect(() => {
+    if (manuscriptChangeSeq === lastChangeSeq.current) return; // initial mount / no change
+    lastChangeSeq.current = manuscriptChangeSeq;
+    reload();
+  }, [manuscriptChangeSeq, reload]);
   // S-02 — the chapter id currently dragged onto an act (native HTML5 DnD, trusted user drag).
   const dragChapterId = useRef<string | null>(null);
 

@@ -72,7 +72,13 @@ export type StudioBusEvent =
   // row's "view arc" is clicked; an ALREADY-OPEN character-arc panel subscribes so clicking a
   // different cast row switches the arc's subject (tier-2 live update). Mirrors 'arc'/'scene':
   // params (tier-1 deep-link) still win, the in-panel picker (tier-3) remains the fallback.
-  | { type: 'castEntity'; entityId: string };
+  | { type: 'castEntity'; entityId: string }
+  // M2 (newcomer polish F3) — a book's chapter set changed (created/renamed/deleted/moved) from a
+  // panel OTHER than the manuscript navigator (e.g. the Plan Hub "Write a new chapter" door, the
+  // editor's create, the drawer's +Chapter). The navigator's tree is hand-rolled useState that a
+  // react-query invalidation can't reach, so it subscribes to this one-shot bump and reloads —
+  // fixing the "saved but the sidebar still says 0 chapters" scare from the first-run diary.
+  | { type: 'manuscriptChanged' };
 
 /** The bus's current merged snapshot. `revision` increments on every publish (so a chat turn can
  * stamp `context_revision`). */
@@ -101,6 +107,10 @@ export interface StudioBusSnapshot {
    *  The character-arc panel reads it as tier-2 (params ?? this ?? picker) so an open panel
    *  re-subjects when a different cast row is clicked. */
   activeCastEntityId?: string;
+  /** M2 (F3) — bumped on every 'manuscriptChanged' event. The manuscript navigator diffs it
+   *  against the last value it reloaded on, so a cross-panel chapter mutation refreshes the tree
+   *  exactly once (never on initial mount). */
+  manuscriptChangeSeq?: number;
 }
 
 /** Reduce a bus event onto the snapshot (pure — one new object, revision bumped). */
@@ -127,6 +137,8 @@ export function applyBusEvent(s: StudioBusSnapshot, e: StudioBusEvent): StudioBu
       return { ...base, activeArcId: e.arcId };
     case 'castEntity':
       return { ...base, activeCastEntityId: e.entityId };
+    case 'manuscriptChanged':
+      return { ...base, manuscriptChangeSeq: (s.manuscriptChangeSeq ?? 0) + 1 };
     default:
       return base;
   }

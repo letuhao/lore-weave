@@ -183,6 +183,27 @@ export function useStudioBusSelector<T>(selector: (s: StudioBusSnapshot) => T): 
   return value;
 }
 
+/** Subscribe to ONE bus slice, tolerating a MISSING host (returns `fallback` unchanged when
+ * rendered outside a StudioHostProvider). For shared components — e.g. ManuscriptNavigator, which
+ * has unit tests that render it with no studio host — that must read the bus when present but never
+ * throw when absent. Same selector granularity as useStudioBusSelector. */
+export function useOptionalStudioBusSelector<T>(selector: (s: StudioBusSnapshot) => T, fallback: T): T {
+  const host = useOptionalStudioHost();
+  const selRef = useRef(selector);
+  selRef.current = selector;
+  const [value, setValue] = useState<T>(() => (host ? selector(host._busStore.get()) : fallback));
+  useEffect(() => {
+    if (!host) return;
+    const check = () => {
+      const next = selRef.current(host._busStore.get());
+      setValue((prev) => (Object.is(prev, next) ? prev : next));
+    };
+    check(); // reconcile anything that changed between render and effect
+    return host._busStore.subscribe(check);
+  }, [host]);
+  return host ? value : fallback;
+}
+
 /** The live sorted status-bar items for one side (#11 F2) — re-renders on (un)register only;
  * item DATA reactivity lives inside each item's own component. */
 export function useStatusBarItems(side: StudioStatusBarItem['side']): StudioStatusBarItem[] {

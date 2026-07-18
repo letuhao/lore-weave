@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { JumpResult, ManuscriptNode, ManuscriptRow } from '../types';
 
@@ -19,6 +19,7 @@ const jump = vi.hoisted(() => ({ value: {} as Record<string, unknown> }));
 vi.mock('../useManuscriptJump', () => ({ useManuscriptJump: () => jump.value }));
 
 import { ManuscriptNavigator } from '../ManuscriptNavigator';
+import { StudioHostProvider, useStudioHost } from '../../host/StudioHostProvider';
 
 const jumpBase = (over: Record<string, unknown> = {}) => ({
   query: '', setQuery: vi.fn(), results: [], searching: false, active: false, ...over,
@@ -203,5 +204,25 @@ describe('ManuscriptNavigator', () => {
     render_();
     expect(screen.getByTestId('manuscript-skeleton')).toBeTruthy();
     expect(screen.getByTestId('manuscript-window')).toBeTruthy();
+  });
+
+  // ── M2 (F3): a cross-panel chapter mutation reloads the tree via the studio bus ──────────────
+  it('reloads the tree when the studio bus signals a manuscript change — but NOT on mount', () => {
+    const reload = vi.fn();
+    hook.value = base({ rows: [nodeRow(n('c1'))], reload });
+    // A tiny consumer that hands the test the host so it can publish the bus event.
+    let publish: ((e: { type: 'manuscriptChanged' }) => void) | null = null;
+    function Grab() { publish = useStudioHost().publish; return null; }
+    render(
+      <StudioHostProvider bookId="b1">
+        <Grab />
+        <ManuscriptNavigator bookId="b1" token="t" />
+      </StudioHostProvider>,
+    );
+    expect(reload).not.toHaveBeenCalled(); // mount must not reload (the initial seq is 0)
+    act(() => publish!({ type: 'manuscriptChanged' }));
+    expect(reload).toHaveBeenCalledTimes(1); // the bump reloads exactly once
+    act(() => publish!({ type: 'manuscriptChanged' }));
+    expect(reload).toHaveBeenCalledTimes(2);
   });
 });

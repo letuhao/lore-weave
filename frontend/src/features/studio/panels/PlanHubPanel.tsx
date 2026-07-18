@@ -49,7 +49,11 @@ import type { PlanViewMode } from '@/features/plan-hub/components/PlanToolbar';
 export function PlanHubPanel(props: IDockviewPanelProps) {
   useStudioPanel('plan-hub', props.api);
   const { t } = useTranslation('studio');
-  const { bookId, openPanel, focusManuscriptUnit } = useStudioHost();
+  const { bookId, openPanel, focusManuscriptUnit, publish } = useStudioHost();
+  // M2 (F3) — tell the manuscript navigator (hand-rolled tree, unreachable by react-query
+  // invalidation) that this book's chapter set changed, so it reloads instead of stranding a
+  // just-created chapter behind a manual Reload.
+  const notifyManuscriptChanged = useCallback(() => publish({ type: 'manuscriptChanged' }), [publish]);
   const { accessToken } = useAuth();
   const qc = useQueryClient();
   // View mode FIRST — it decides whether usePlanHub auto-expands the hierarchy. Advanced ⇒ open the
@@ -82,20 +86,24 @@ export function PlanHubPanel(props: IDockviewPanelProps) {
     mutationFn: () => booksApi.createChapterEditor(accessToken!, bookId, { original_language: originalLanguage, title: '' }),
     onSuccess: (created) => {
       void qc.invalidateQueries({ queryKey: ['plan-hub', 'simple-chapters', bookId] });
+      notifyManuscriptChanged();
       if (created?.chapter_id) focusManuscriptUnit(created.chapter_id);
     },
   });
   // Simple-mode CRUD — the edit/delete the panel named as missing ("only add and view"). Rename PATCHes
   // the book chapter's title; delete trashes it (soft, restorable). Both refetch the windowed list.
   const invalidateSimple = () => void qc.invalidateQueries({ queryKey: ['plan-hub', 'simple-chapters', bookId] });
+  // Rename/delete also change what the manuscript navigator shows (a title / a missing row), so they
+  // refresh BOTH the react-query simple list and the hand-rolled navigator tree (M2).
+  const afterChapterMutation = () => { invalidateSimple(); notifyManuscriptChanged(); };
   const renameChapter = useMutation({
     mutationFn: (v: { chapterId: string; title: string }) =>
       booksApi.patchChapter(accessToken!, bookId, v.chapterId, { title: v.title }),
-    onSuccess: invalidateSimple,
+    onSuccess: afterChapterMutation,
   });
   const deleteChapter = useMutation({
     mutationFn: (chapterId: string) => booksApi.trashChapter(accessToken!, bookId, chapterId),
-    onSuccess: invalidateSimple,
+    onSuccess: afterChapterMutation,
   });
 
   // H2.6 — the editor's active chapter (book-service chapter_id) off the bus. Map it to the Hub node
@@ -469,9 +477,9 @@ export function PlanHubPanel(props: IDockviewPanelProps) {
                   busy: childCreate.creating,
                   error: childCreate.error,
                   addChapter: (arcId: string) =>
-                    void childCreate.addChapterUnderArc(arcId).then((n) => n && view.select(n.id)),
+                    void childCreate.addChapterUnderArc(arcId).then((n) => { if (n) { view.select(n.id); notifyManuscriptChanged(); } }),
                   addScene: (chapterNodeId: string, bookChapterId: string) =>
-                    void childCreate.addSceneUnderChapter(chapterNodeId, bookChapterId).then((n) => n && view.select(n.id)),
+                    void childCreate.addSceneUnderChapter(chapterNodeId, bookChapterId).then((n) => { if (n) { view.select(n.id); notifyManuscriptChanged(); } }),
                 }
               : null
           }
