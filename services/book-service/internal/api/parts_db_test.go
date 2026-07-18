@@ -610,3 +610,46 @@ func TestParts_C2_InternalPartsMirror_DB(t *testing.T) {
 		t.Fatalf("want only active Part One, got %+v", got.Parts)
 	}
 }
+
+// TestParts_C2_BackfillRepairsLegacyStructureNodeID_DB — the review-impl HIGH fix: a pre-C2 chapter
+// (part_id set by parse.go, structure_node_id NULL) is repaired by the backfill to structure_node_id
+// == part_id, and the backfill emits one event per book with parts.
+func TestParts_C2_BackfillRepairsLegacyStructureNodeID_DB(t *testing.T) {
+	s, pool := dbTestServer(t)
+	ctx := context.Background()
+	owner := uuid.New()
+	bookID := seedPartsBook(t, ctx, pool, owner)
+
+	p, err := s.storeCreatePart(ctx, bookID, "Imported Part")
+	if err != nil {
+		t.Fatalf("create part: %v", err)
+	}
+	// seedPartsChapter sets part_id but NOT structure_node_id — exactly a pre-C2 / import row.
+	ch := seedPartsChapter(t, ctx, pool, bookID, 1, &p.PartID)
+	var before *uuid.UUID
+	_ = pool.QueryRow(ctx, `SELECT structure_node_id FROM chapters WHERE id=$1`, ch).Scan(&before)
+	if before != nil {
+		t.Fatalf("precondition: structure_node_id should start NULL, got %v", before)
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "/internal/parts-mirror/backfill", nil)
+	req = req.WithContext(addChi(req, chi.NewRouteContext()))
+	w := httptest.NewRecorder()
+	s.postInternalPartsMirrorBackfill(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("backfill = %d, body=%s", w.Code, w.Body.String())
+	}
+
+	var after *uuid.UUID
+	_ = pool.QueryRow(ctx, `SELECT structure_node_id FROM chapters WHERE id=$1`, ch).Scan(&after)
+	if after == nil || *after != p.PartID {
+		t.Fatalf("structure_node_id after backfill = %v, want == part_id %s", after, p.PartID)
+	}
+	var events int
+	_ = pool.QueryRow(ctx,
+		`SELECT count(*) FROM outbox_events WHERE aggregate_id=$1 AND event_type=$2`,
+		bookID, ManuscriptPartChangedEvent).Scan(&events)
+	if events < 1 {
+		t.Fatalf("backfill emitted %d events for the book, want ≥1", events)
+	}
+}

@@ -681,7 +681,16 @@ func (s *Server) postInternalPartsMirrorBackfill(w http.ResponseWriter, r *http.
 		return
 	}
 	defer tx.Rollback(r.Context()) //nolint:errcheck
-	// One book-level event per distinct book that owns a part (any lifecycle — a book with only
+	// First close the legacy window: existing chapters (esp. IMPORTED ones — parse.go set part_id
+	// before C2) get structure_node_id = part_id (== value), the same mirror moveChapterToPart now
+	// maintains. Only fills NULLs, so it never disturbs already-mirrored rows.
+	if _, err := tx.Exec(r.Context(),
+		`UPDATE chapters SET structure_node_id = part_id
+		 WHERE part_id IS NOT NULL AND structure_node_id IS NULL`); err != nil {
+		writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT", "backfill structure_node_id failed")
+		return
+	}
+	// Then one book-level event per distinct book that owns a part (any lifecycle — a book with only
 	// trashed parts still needs its mirror reconciled to archived).
 	tag, err := tx.Exec(r.Context(), `
 		INSERT INTO outbox_events (aggregate_type, aggregate_id, event_type, payload)

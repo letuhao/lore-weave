@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"strings"
 	"time"
@@ -237,9 +238,12 @@ RETURNING id
 			}
 
 			var chapterID uuid.UUID
+			// C-merge C2: structure_node_id mirrors part_id (structure_node.id == part.id) on the
+			// IMPORT write too — else imported books (the commonest source of parts) would diverge
+			// from the mirror invariant with part_id set but structure_node_id NULL.
 			err = tx.QueryRow(r.Context(), `
-INSERT INTO chapters(book_id, title, original_filename, original_language, content_type, byte_size, sort_order, storage_key, lifecycle_state, draft_updated_at, updated_at, part_id, structural_path)
-VALUES($1, $2, $3, $4, 'text/plain', $5, $6, $7, 'active', now(), now(), $8, $9)
+INSERT INTO chapters(book_id, title, original_filename, original_language, content_type, byte_size, sort_order, storage_key, lifecycle_state, draft_updated_at, updated_at, part_id, structure_node_id, structural_path)
+VALUES($1, $2, $3, $4, 'text/plain', $5, $6, $7, 'active', now(), now(), $8, $8, $9)
 RETURNING id
 `, bookID, nullIfEmpty(chapterTitle), chFilename, lang,
 				int64(len(chapterBody)), chapterGlobalSort, storageKey,
@@ -352,6 +356,21 @@ RETURNING id
 			totalCount++
 			chapterGlobalSort++
 			lastChapterID = chapterID
+		}
+	}
+
+	// C-merge C2: the import wrote parts + chapters.part_id/structure_node_id above; tell composition to
+	// mirror them. A bulk import can't be one txn (per-chapter commits above), so this is a best-effort
+	// post-loop emit; the /internal/parts-mirror/backfill endpoint is the documented recovery if it fails.
+	if len(tree.Parts) > 0 {
+		if tx, err := s.pool.Begin(r.Context()); err == nil {
+			if emitErr := emitManuscriptPartChanged(r.Context(), tx, bookID); emitErr != nil {
+				_ = tx.Rollback(r.Context())
+				slog.Warn("import: manuscript_part.changed emit failed; mirror lags until backfill",
+					"book_id", bookID, "err", emitErr)
+			} else if err := tx.Commit(r.Context()); err != nil {
+				slog.Warn("import: manuscript_part.changed commit failed", "book_id", bookID, "err", err)
+			}
 		}
 	}
 

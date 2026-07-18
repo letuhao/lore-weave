@@ -71,3 +71,15 @@ Build order: Part B → C1 → C2 → C3 → C4.
 - Part A: PlaceGraphPanel.test asserted the old Compose-redirect CTA → updated to assert the shared door
   (mocked BookNotReadyDoor at the consumer boundary; the door's own behavior tested separately).
 - Part A: removed useBookReadiness.ts before commit — it had no consumer yet (write-only) → moved to Part B.
+- **C2 review-impl HIGH (caught + fixed):** `parse.go` (the IMPORT decomposer — the commonest source of
+  parts) wrote parts + chapters.part_id WITHOUT structure_node_id or the emit → imported books would
+  diverge from the C1/C2 mirror invariant. Classic close-legacy-window-in-writer. Fix: (a) import INSERT
+  now sets structure_node_id=part_id inline; (b) import emits manuscript_part.changed post-loop
+  (best-effort, backfill is recovery); (c) the /internal backfill endpoint now ALSO repairs existing
+  chapters (structure_node_id=part_id WHERE NULL). Test: TestParts_C2_BackfillRepairsLegacyStructureNodeID.
+- C2 review-impl LOW (accepted): reconcile ON CONFLICT WHERE kind='part' silently skips an id-collision
+  with a real arc (impossible under uuidv7) — documented, not guarded. Backfill re-run appends outbox
+  rows (no dedup) — fine, it's a manual one-time/drift-resync endpoint.
+- C2 review-impl standards check: I3 OK (structure→composition is the sealed reframe); tenancy OK
+  (/internal parts-mirror is X-Internal-Token, book_id-scoped, mirrors the sibling /internal/chapters
+  pattern); INV-O12 honored (emit err → return-before-commit → rollback). No provider/model/secret touched.
