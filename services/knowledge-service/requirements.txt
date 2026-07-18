@@ -75,4 +75,4 @@ mcp[cli]>=1.9,<2
 pymupdf>=1.24
 pytesseract>=0.3.10
 pdf2image>=1.17
-Pillow>=10.3
+Pillow>=12.3.0

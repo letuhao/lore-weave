@@ -22,7 +22,7 @@ ebooklib>=0.18
 beautifulsoup4>=4.15.0
 pytesseract>=0.3.10
 pdf2image>=1.17
-Pillow>=10.3
+Pillow>=12.3.0
 # LE-060 — Chinese word segmentation for the C12 contradiction canon-term
 # extraction (app/verify/canon_lookup.py). Pure-Python, MIT; lazily imported so
 # its dict only loads when a contradiction canon term is actually extracted.
