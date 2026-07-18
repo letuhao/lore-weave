@@ -531,8 +531,14 @@ func (s *Server) Router() http.Handler {
 							r.Post("/restore", s.restoreEntityRevision)
 						})
 					})
+					// S-06 — add a value for an attr-def added AFTER the entity existed (the
+					// add-later path that was MCP-only). Collection-level POST.
+					r.Post("/attributes", s.addAttributeValue)
 					r.Route("/attributes/{attr_value_id}", func(r chi.Router) {
 						r.Patch("/", s.patchAttributeValue)
+						// S-06 — remove the value ROW entirely (cascades children), distinct
+						// from a PATCH-to-empty which keeps the blank row.
+						r.Delete("/", s.deleteAttributeValue)
 						// D-GLOSSARY-MULTIROW-ATTR-VALUES slice 3 — per-item verify/tombstone.
 						r.Patch("/items/{item_id}", s.patchAttributeValueItem)
 						r.Route("/translations", func(r chi.Router) {
