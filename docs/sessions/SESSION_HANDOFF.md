@@ -37,9 +37,13 @@ Inspector to confirm the per-turn token drop on the FULL grounded surface (the e
 least-exercised residual is the plain-CHAT `universal` skill lazy-path (the A/B covered book/studio, not bare chat) —
 low-risk (tools stay hot, web_search is always-on core), but worth one confirming turn.
 
-**Pre-existing red (NOT this track):** `tests/test_frontend_tools.py::test_glossary_skill_prompt_mandates_one_card_batch`
-fails on HEAD — a concurrent **F3-PARTIAL** commit (`490e9751e`) moved `glossary_propose_batch` from
-`GLOSSARY_SKILL_PROMPT` into `GLOSSARY_SHAPING_PROMPT` but didn't update that test. Left for the F3 owner.
+**Pre-existing red CLEARED (2026-07-19):** `tests/test_frontend_tools.py::test_glossary_skill_prompt_mandates_one_card_batch`
+was red on HEAD — a concurrent **F3-PARTIAL** commit (`490e9751e`) moved `glossary_propose_batch` + the one-card/
+no-loop rule from `GLOSSARY_SKILL_PROMPT` into `GLOSSARY_SHAPING_PROMPT` but didn't update the test. Root-caused:
+the move is CORRECT per the N5a two-prompt split (ontology-batch guidance belongs in the shaping half that only
+injects on ontology work; core keeps the ENTITY multi-write steering `glossary_propose_entities`/"1+ items in one
+call"). Fixed the STALE TEST to assert the guardrail at its correct home in BOTH halves — the guardrail is preserved,
+not lost. test_frontend_tools.py now 22/22 green.
 
 ---
 
