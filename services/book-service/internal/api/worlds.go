@@ -316,12 +316,13 @@ func (s *Server) deleteWorld(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusUnauthorized, "BOOK_FORBIDDEN", "unauthorized")
 		return
 	}
-	ct, err := s.pool.Exec(r.Context(), `DELETE FROM worlds WHERE id=$1 AND owner_user_id=$2`, worldID, ownerID)
+	// S-07 audit — route the world's hidden bible through purge_pending (not orphan it active).
+	deleted, err := s.deleteWorldWithBiblePurge(r.Context(), worldID, ownerID)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT", "failed to delete world")
 		return
 	}
-	if ct.RowsAffected() == 0 {
+	if !deleted {
 		writeError(w, http.StatusNotFound, "WORLD_NOT_FOUND", "world not found")
 		return
 	}

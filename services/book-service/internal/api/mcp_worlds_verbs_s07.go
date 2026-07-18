@@ -140,12 +140,60 @@ WHERE world_id=$1 AND owner_user_id=$2 AND is_bible=false AND lifecycle_state!='
 			memberBooks)
 	}
 
-	tag, err := s.pool.Exec(ctx, `DELETE FROM worlds WHERE id=$1 AND owner_user_id=$2`, worldID, ownerID)
+	deleted, err := s.deleteWorldWithBiblePurge(ctx, worldID, ownerID)
 	if err != nil {
 		return nil, worldDeleteOut{}, errors.New("failed to delete world")
 	}
-	if tag.RowsAffected() == 0 {
+	if !deleted {
 		return nil, worldDeleteOut{}, errors.New("world not found") // owner-scoped, no oracle
 	}
 	return nil, worldDeleteOut{Deleted: true}, nil
+}
+
+// deleteWorldWithBiblePurge deletes a world AND routes its hidden bible book (+ that book's
+// chapters) through the standard `purge_pending` lifecycle — atomically, owner-scoped. Shared
+// by the MCP world_delete tool and the REST deleteWorld handler so both behave identically.
+//
+// Why not just `DELETE FROM worlds`? `books.world_id` is ON DELETE SET NULL, so a bare world
+// delete leaves the bible as an ACTIVE, world-less hidden book that NO purge sweeper collects
+// (it's `lifecycle_state='active'`) — a slow leak, and its KG/glossary anchors are stranded. A
+// normal book delete instead flips the book + chapters to `purge_pending` (mcp_actions.go), so
+// the sweeper + downstream cleanup handle them. We route the bible the same way. Member books
+// (non-bible) are intentionally NOT purged — the world FK SET-NULLs them back to standalone,
+// which is the intended "your own books survive" behaviour (and the MCP tool already refused
+// the delete if any exist). Returns false when no world row matched (not found / not owned) —
+// the whole tx rolls back, so a miss purges nothing.
+func (s *Server) deleteWorldWithBiblePurge(ctx context.Context, worldID, ownerID uuid.UUID) (bool, error) {
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return false, err
+	}
+	defer tx.Rollback(ctx) //nolint:errcheck // no-op after Commit
+
+	// The bible book's chapters first, then the book — the same purge_pending transition a
+	// normal delete uses. Owner-scoped; a non-owned world matches nothing here.
+	if _, err := tx.Exec(ctx, `
+UPDATE chapters SET lifecycle_state='purge_pending', purge_eligible_at=now(), updated_at=now()
+WHERE lifecycle_state!='purge_pending'
+  AND book_id IN (SELECT id FROM books WHERE world_id=$1 AND owner_user_id=$2 AND is_bible=true)`,
+		worldID, ownerID); err != nil {
+		return false, err
+	}
+	if _, err := tx.Exec(ctx, `
+UPDATE books SET lifecycle_state='purge_pending', purge_eligible_at=now(), updated_at=now()
+WHERE world_id=$1 AND owner_user_id=$2 AND is_bible=true AND lifecycle_state!='purge_pending'`,
+		worldID, ownerID); err != nil {
+		return false, err
+	}
+	tag, err := tx.Exec(ctx, `DELETE FROM worlds WHERE id=$1 AND owner_user_id=$2`, worldID, ownerID)
+	if err != nil {
+		return false, err
+	}
+	if tag.RowsAffected() == 0 {
+		return false, nil // not found / not owned → rollback (nothing purged)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return false, err
+	}
+	return true, nil
 }

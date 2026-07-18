@@ -78,6 +78,13 @@ func TestWorldDelete_GuardAndScope(t *testing.T) {
 
 	// (a) a fresh world (only its hidden bible) deletes cleanly.
 	emptyWorld := newS07World(t, s, ctx)
+	// Capture the bible book id so we can assert its fate after the world is deleted.
+	var bibleBookID uuid.UUID
+	if err := pool.QueryRow(ctx,
+		`SELECT id FROM books WHERE world_id=$1 AND is_bible=true`, uuid.MustParse(emptyWorld),
+	).Scan(&bibleBookID); err != nil {
+		t.Fatalf("resolve bible book: %v", err)
+	}
 	_, dout, err := s.toolWorldDelete(ctx, nil, worldDeleteIn{WorldID: emptyWorld})
 	if err != nil || !dout.Deleted {
 		t.Fatalf("bible-only world must delete: %v deleted=%v", err, dout.Deleted)
@@ -85,6 +92,26 @@ func TestWorldDelete_GuardAndScope(t *testing.T) {
 	// it's gone — a get 404s
 	if _, _, err := s.toolWorldGet(ctx, nil, worldGetIn{WorldID: emptyWorld}); err == nil {
 		t.Fatal("world must be gone after delete")
+	}
+	// S-07 audit — the bible must be routed through purge_pending (the sweeper collects it),
+	// NOT left as an orphaned ACTIVE hidden book that leaks forever.
+	var bibleState string
+	if err := pool.QueryRow(ctx,
+		`SELECT lifecycle_state FROM books WHERE id=$1`, bibleBookID).Scan(&bibleState); err != nil {
+		t.Fatalf("read bible state: %v", err)
+	}
+	if bibleState != "purge_pending" {
+		t.Fatalf("deleting a world must purge_pending its bible, got lifecycle_state=%q", bibleState)
+	}
+	// and the bible's chapters too (the sort_order-0 world-bible chapter).
+	var activeBibleChapters int
+	if err := pool.QueryRow(ctx,
+		`SELECT count(*) FROM chapters WHERE book_id=$1 AND lifecycle_state!='purge_pending'`, bibleBookID,
+	).Scan(&activeBibleChapters); err != nil {
+		t.Fatalf("read bible chapters: %v", err)
+	}
+	if activeBibleChapters != 0 {
+		t.Fatalf("the bible's chapters must also be purge_pending, %d still active", activeBibleChapters)
 	}
 
 	// (b) a world holding a member book is REFUSED (no silent orphaning).

@@ -55,4 +55,26 @@ world_delete MCP verbs), §3 (book_chapter_reorder MCP tool). DONE = built + DB-
 - Slice A's image_upload change removed the `version` return var but a response field still read it →
   caught by build; renamed to image_version end-to-end (incl. FE type).
 
-## RESULT: S-07 COMPLETE — all three gaps closed, backend-only, DB-proven. 3 commits (A/B/C).
+## ═══ COMPLETENESS AUDIT (goal, 2026-07-18) — clear all debts/defers/bugs of S-07 ═══
+Fresh adversarial pass vs code (not trusting this RUN-STATE). Three probes:
+- AUD-A (reorder downstream sync): CLEAN. book-service emits only `chapter.scenes_linked` + import
+  job events — NO chapter-order event. REST reorder emits nothing (comment: "caller's mirror must be
+  rebuilt"). So the MCP reorder tool is at EXACT parity with the REST route; an agent reorder is no
+  more stale than a human one. Not a gap.
+- AUD-B (world_delete orphaned the bible): REAL LEAK, FIXED. `deleteWorld` did a raw `DELETE FROM
+  worlds`; `books.world_id` is ON DELETE SET NULL, so the hidden bible book survived as an ACTIVE,
+  world-less book that NO purge sweeper collects (its KG/glossary anchors stranded). A normal book
+  delete instead flips book+chapters to `purge_pending` (mcp_actions.go). FIX: a shared
+  `deleteWorldWithBiblePurge` helper (used by BOTH the MCP world_delete tool AND REST deleteWorld)
+  routes the bible through purge_pending atomically, owner-scoped; member (non-bible) books still
+  SET-NULL back to standalone. Test asserts the bible book + its chapters are purge_pending after a
+  delete. Pre-existing REST behaviour, fixed at the source for both surfaces.
+- AUD-C (image_version write-only?): NO — it's read + returned on the upload response (RETURNING).
+  Surfacing it in world_map_get/list is speculative (no image-OCC consumer exists yet; the upload has
+  no expected_image_version) and costs a 5-SELECT worldMapDetail change for zero current reader.
+  Conscious not-now (add it when an image-OCC path lands), not a debt.
+Audit VERIFY: full `internal/api` suite green (real PG, 24.9s) incl. the extended world_delete test;
+build clean. No open S-07 debts/defers/bugs remain.
+
+## RESULT: S-07 COMPLETE + AUDITED — all three gaps closed, the bible-orphan leak cleared, backend-only,
+## DB-proven. Commits: 66020b719 (§1) · d1b811ce6 (§2) · 58863d092 (§3) · 7b4ca76d8 (docs) · +audit fix.
