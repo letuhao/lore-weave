@@ -19,12 +19,12 @@ isolated playwright session (recipe proven this session). **Model for co-writer 
 ## Slice board (done = evidence string) — post-review roster, build order
 | # | Slice | Finding | Collision risk | Status | Evidence |
 |---|-------|---------|----------------|--------|----------|
-| 1 | N5a persona scope restraint (chat-service) | F3 | LOW (BE) | **[PARKED]** | prompt fix unit-green but FAILS live QC ×2 — see debt |
+| 1 | N5a co-writer over-reach | F3 | LOW (BE) | **[PARTIAL]** `(committed)` | persona restraint + glossary core/shaping split + adopt_standards off the default hot surface (unit-green). 3 live QCs still over-reach (model find_tools it). Full fix = tool-level intent gate (follow-up). N5b de-jargon is the harm-backstop. |
 | 2 | N5b de-jargon confirm (glossary-svc + FE copy) | F3 | LOW | **[x] DONE** `bf27d203f` | 3 Go sites + FE header; live binary has new copy (3), old gone (0); go build clean |
 | 3 | N6 chapter-create idempotency | F7 | LOW (BE) | **[x] DONE** (uncommitted→committing) | real-DB test green; no regression; go build clean |
 | 4 | N2 per-message Insert (inject onInsert) | F4 | MED (shared chat) | **[x] DONE** `9fb1960ac` | 6 unit + live /chat: Insert renders on reply, clicks clean, fires paste+toast |
 | 5 | N1 mode legibility (VERIFY first-run mode FIRST) | F2 | MED (shared chat) | [ ] | |
-| 6 | N3 first-run routing | F5 | LOW | **[PARKED]** | BOTH spec+review seams wrong — register doesn't auth (see debt) |
+| 6 | N3 first-run routing (login-gate) | F5 | LOW | **[x] DONE** `(committed)` | seam corrected to LOGIN; live: unseen→chooser, seen→/books no-regression |
 | 7 | N4 sidebar grouping (+mobile) | F6 | HIGH (shell) | **[DEFERRED]** | shared app-shell; the other session is ACTIVELY committing studio/shell work — editing Sidebar now = high clobber risk. Defer to when the shell is quiet. |
 | 8 | N7 pop-out + SSE console | F8 | LOW | **[x] notif-sync DONE; rest = findings** | SSE console err = browser-native network log on SSE drop (app handles reconnect via onerror; not app-suppressible; clean-close is a gateway change, low value). Pop-out disabled = windowing not enabled for that panel context (`windowingEnabled`/`forceShared`); enabling needs the SharedWorker windowing infra — out of scope for LOW polish. Both recorded, not code-changed. |
 | 9 | N8 unread badge sync (was "99+ investigate") | F8 | — | **[x] DONE** `(committed)` | user corrected: it IS a bug — split source-of-truth. Fixed w/ mutationBus; live: bell 5→0 cross-surface. (Aside: the 1795 count itself is real per-user activity, not a boundary leak — that part holds.) |
