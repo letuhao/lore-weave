@@ -1,5 +1,22 @@
 # ▶▶ NEXT SESSION STARTS HERE
 
+## 🪟 STUDIO DOCK UX — resizable side bar + panel-layout presets — **SHIPPED (2026-07-18)**
+> Plan: [`docs/plans/2026-07-18-studio-dock-resizable-sidebar-and-layout-presets.md`](../plans/2026-07-18-studio-dock-resizable-sidebar-and-layout-presets.md). FE-only (no backend).
+> The manuscript side bar is now width-resizable like a dock panel (drag sash, dbl-click reset, per-book
+> localStorage), and a `LayoutGrid` top-bar icon opens a VS Code-style preset menu (1/2/3/4/6/8 columns +
+> 2×2/3×2/4×2 grids) that reflows the open dock panels via `host.applyDockLayout` — the missing UI for
+> ultrawide screens (dockview always supported unlimited splits). Commits: `bd6d2a02b` (resize), `18daacf26`
+> (reflow util), S3 (picker+icon+seam), `0fcb4e5e0` (live-smoke bug fix: reflow self-moved a sole-occupant
+> panel into its own group → dockview emptied the dock; fixed by skipping already-placed panels). Live-smoked
+> on :5199 (resize persist, cols2 split, single merge-back, cols8 too-narrow gating). 51 unit tests + full
+> studio vitest 1389 green; tsc 0.
+> **Deferred (1, tracked): `D-STUDIO-DOCK-I18N-CONVERGE`** — the 15 new `manuscript`/`layout`/`sidebar.resize`
+> studio keys are seeded in en + translated in the working tree (17 locales, gemma-4-26b) but the COMMIT is
+> deferred: en/studio.json was under LIVE concurrent edit by a plan-hub session (adding reference-shelf/adv
+> keys), and the i18n parity gate (working-tree-en as source) would force co-carrying their moving,
+> half-finished keys or risk clobbering their edits. Keys render via English `defaultValue` meanwhile; land at
+> convergence (S-02 i18n precedent). Trigger: when en/studio.json churn settles, commit the 18 studio.json.
+
 ## 🏗️ STUDIO COMPLETENESS — audited, specced, SEALED → **BUILD NEXT** (2026-07-17)
 > **Read first:** [`docs/specs/2026-07-17-studio-completeness-build/00_ROADMAP.md`](../specs/2026-07-17-studio-completeness-build/00_ROADMAP.md)
 > + [`01_DECISIONS.md`](../specs/2026-07-17-studio-completeness-build/01_DECISIONS.md) (sealed) ·
