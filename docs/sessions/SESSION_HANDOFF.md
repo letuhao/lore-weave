@@ -9,8 +9,16 @@ sessions from committing cleanly). Audited + committed it in 3 groups; **tree is
   with `--profile game up`); CORS-origin defaults on tilemap/roleplay/game-server → :5176; db-ensure adds
   `loreweave_scheduler`; `.gitignore` `frontend/dist-s01/`.
 - `65d6f40ab` **chore** — track the `.claude/skills/playwright-cli` skill (browser live-smoke tooling).
-**Completeness audit:** the studio-completeness build **S-01…S-13 is fully SHIPPED** (every spec has a
-COMPLETE/SHIPPED RUN-STATE marker + commits; verified via git log). No open build gaps in that track.
+**Completeness audit (code-level, 2026-07-18):** verified the studio-completeness build **S-01…S-13 against
+actual source + RUNNING tests** (not RUN-STATE/git self-report) — 4 cold-start sub-agents, one per disjoint
+service cluster, ~490+ tests re-run vs live Postgres :5555 (+ Neo4j where safe). **All 13 specs COMPLETE at
+the code+test level** — no MISSING artifact, no stub, no unwired route, no built-but-unreachable panel. Full
+falsifiable record: [`docs/specs/2026-07-17-studio-completeness-build/COMPLETENESS-AUDIT-RESULT-2026-07-18.md`](../specs/2026-07-17-studio-completeness-build/COMPLETENESS-AUDIT-RESULT-2026-07-18.md).
+Two conscious-accept deviations (not defects): **(1) S-05** authors facts graph-direct (`POST /entities/{id}/facts`),
+not the spec's `/pending-facts` review-queue; **(2) S-10 O4** bible rail lists 2 panels not ~13 (all palette-reachable).
+One honest execution gap: **S-05 Neo4j repo-layer left UNVERIFIED-by-execution** (shared dev graph TRUNCATE risk;
+unit-covered) — re-run on isolated Neo4j. Also flagged: several DB suites **silently skip without their env var**
+(`BOOK_TEST_DATABASE_URL`, `GLOSSARY_TEST_DB_URL`, `TEST_NEO4J_URI`) → bare `go test`/`pytest` gives false green.
 
 ## ✍️ WRITING STUDIO — NEWCOMER POLISH (dogfood-driven) — **SHIPPED (2026-07-18, `feat/context-budget-law`)**
 A first-run dogfood (real newcomer writing their first book) surfaced 7 friction/bug findings; spec+plan
