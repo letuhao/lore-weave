@@ -8,7 +8,7 @@ PyJWT==2.10.1
 # LLM re-arch Phase 3 M5 — decoupled video-gen job-row + terminal-event worker.
 # asyncpg backs the video_gen_jobs store (imported by the router → hard dep even
 # flag-off); redis.asyncio is the terminal-event consumer (worker process only).
-asyncpg>=0.29
+asyncpg>=0.31.0
 redis[hiredis]>=5.0
 # loreweave_llm SDK installed via `pip install /sdk` from repo root
 # (see Dockerfile — Phase 5e-α). Pinned to the version in sdks/python.

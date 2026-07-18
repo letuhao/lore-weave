@@ -1,6 +1,6 @@
 fastapi>=0.111
 uvicorn[standard]>=0.29
-asyncpg>=0.29
+asyncpg>=0.31.0
 pydantic>=2.6
 pydantic-settings>=2.2
 python-json-logger>=2.0
