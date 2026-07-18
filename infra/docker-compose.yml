@@ -1927,9 +1927,10 @@ services:
       LOREWEAVE_INTERNAL_TOKEN: ${INTERNAL_SERVICE_TOKEN:-dev_internal_token}
       TILEMAP_HTTP_BIND: "0.0.0.0:7100"
       # CORS origins for browser smoke (Session D V0 demo, spec AC-FG-13).
-      # Comma-separated; defaults to frontend-game dev server on :5174.
+      # Comma-separated; defaults to the frontend-game origin on :5176
+      # (was :5174 until that port collided with the main `frontend`).
       # Prod goes through api-gateway-bff (single-origin per spec §8).
-      LOREWEAVE_CORS_ORIGINS: ${LOREWEAVE_CORS_ORIGINS:-http://localhost:5174}
+      LOREWEAVE_CORS_ORIGINS: ${LOREWEAVE_CORS_ORIGINS:-http://localhost:5176}
       RUST_LOG: ${RUST_LOG:-info,tilemap_service=debug}
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:7100/livez"]
@@ -1980,7 +1981,9 @@ services:
       LOREWEAVE_INTERNAL_TOKEN: ${INTERNAL_SERVICE_TOKEN:-dev_internal_token}
       CHAT_SERVICE_URL: http://chat-service:8090
       ROLEPLAY_HTTP_BIND: "0.0.0.0:7110"
-      LOREWEAVE_CORS_ORIGINS: ${LOREWEAVE_CORS_ORIGINS:-http://localhost:5174}
+      # Defaults to the frontend-game origin on :5176 (was :5174 until that
+      # port collided with the main `frontend`).
+      LOREWEAVE_CORS_ORIGINS: ${LOREWEAVE_CORS_ORIGINS:-http://localhost:5176}
       RUST_LOG: ${RUST_LOG:-info,roleplay_service=debug}
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:7110/livez"]
@@ -2012,8 +2015,9 @@ services:
       # Same env name convention as tilemap-service for cross-service consistency.
       LOREWEAVE_INTERNAL_TOKEN: ${INTERNAL_SERVICE_TOKEN:-dev_internal_token}
       # CORS for matchmaking HTTP endpoint (POST /matchmake/<room>);
-      # WS upgrade itself doesn't preflight. Default frontend-game dev :5174.
-      LOREWEAVE_CORS_ORIGINS: ${LOREWEAVE_CORS_ORIGINS:-http://localhost:5174}
+      # WS upgrade itself doesn't preflight. Default = the frontend-game
+      # origin :5176 (was :5174 until it collided with the main `frontend`).
+      LOREWEAVE_CORS_ORIGINS: ${LOREWEAVE_CORS_ORIGINS:-http://localhost:5176}
       NODE_ENV: production
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:2567/livez"]
@@ -2033,8 +2037,18 @@ services:
   # V0 final piece (Session F per spec §16) — completes the
   # one-command local stack: `docker compose --profile full up`
   # boots tilemap-service + game-server + frontend-game and the user
-  # opens http://localhost:5174 for the V0 demo (iso tilemap +
+  # opens http://localhost:5176 for the V0 demo (iso tilemap +
   # click-to-walk Player + HUD reading /livez + WS echo panel).
+  #
+  # PORT: host 5176 → container 5174. It was 5174:5174, which COLLIDED
+  # with the main `frontend` (5174:80, no profile ⇒ always up), so
+  # `docker compose --profile game up` failed to bind. Host ports now:
+  # 5174 = frontend (main app) · 5175 = cms-frontend · 5176 = this.
+  # The container port stays 5174 (nginx + the /livez healthcheck below
+  # are internal, so they are unaffected). Anything that must allow this
+  # SPA's browser ORIGIN — the LOREWEAVE_CORS_ORIGINS defaults on
+  # tilemap-service, roleplay-service, and game-server — must therefore
+  # say 5176, not 5174.
   # Build context = repo root (pnpm-workspace.yaml lives there +
   # frontend-game depends on @loreweave/* packages).
   # ────────────────────────────────────────────────────────────────
@@ -2053,7 +2067,9 @@ services:
       start_period: 5s
     restart: on-failure:5
     ports:
-      - "5174:5174"
+      # host 5176 → container 5174 (see the PORT note above; 5174 is taken
+      # by the main `frontend`, which has no profile and is always up).
+      - "5176:5174"
     # V0 demo: frontend-game's bundled JS still hardcodes
     # localhost:8220 (tilemap-service) and localhost:2567 (game-server).
     # Both are exposed to host via compose port maps; browser sees them
