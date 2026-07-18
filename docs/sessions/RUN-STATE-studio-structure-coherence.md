@@ -61,13 +61,18 @@ C1→C4 cutover, `/review-impl` + cross-service live-smoke on every C-slice.
       C3a; component paths verified (endpoint integration + FE unit); e2e QC at the C3 deploy after C2 soak."
       **hierarchy.go (KG parts JOIN) cutover deferred to C4** (it reads book-service's own parts table,
       which still exists until C4; its title source moves to structure_node at the drop).
-- [ ] C4 · RETIRE — **DEPLOY/SOAK-GATED, NOT buildable now.** Drop parts routes/tools/table +
-      chapters.part_id; flip part WRITES to composition (structure_node kind='part' write endpoints);
-      move hierarchy.go's grouping title source to structure_node; delete the parts FE write paths +
-      tests; update migrate_test + i18n. THE POINT OF NO RETURN — the sealed design gates this on C3
-      read-cutover SOAKING in production (dropping the table before C3 is deployed = data loss). Execute
-      as a post-deploy op AFTER C1→C3 are live + observed. review-impl + cross-service live-smoke.
-- [ ] Part B · one "Set up this book" — post-C4 (builds on the unified structure).
+- [x] Part B · one "Set up this book" — the opt-in create-both shortcut on the onboarding door.
+      SHIPPED + QC'd on :5290 (verify-by-effect: click → Work + first arc created → shelf resolved).
+- [x] C4a · composition part-WRITE endpoints (create/rename/reorder/archive/restore kind='part') +
+      StructureRepo.create_part/reorder_parts (integer rank). test_parts_mirror 6/6.
+- [x] C4b · FE partsApi writes cut over to composition; chapter-move stays book-service. tsc 0, 139 tests.
+- [~] C4c + C4d · RETIRE (irreversible) — AUTHORED as a deploy-gated RUNBOOK, NOT executed:
+      `docs/specs/2026-07-18-studio-onboarding-and-structure-coherence/c4-final-cleanup-runbook.md`
+      (delete book-service parts subsystem + the C2 mirror bridge; gated `C_MERGE_C4_DROP_PARTS=1` drop
+      of the table + chapters.part_id). NOT run now because: (1) sealed soak gate — nothing has deployed;
+      (2) it drops the SHARED loreweave_book dev DB the 3 parallel sessions use; (3) dropping the working
+      subsystem before its replacement soaks is the exact risk the cutover sequence prevents. The
+      REPLACEMENT (C4a/b writes, C3 read) is built+tested+committed; the runbook is the final deploy-op.
 
 ## DELIVERED (buildable frontier reached 2026-07-18)
 Part A + C1 + C2 + C3(a+b) SHIPPED to the branch, each tested/QC'd to the extent the dev stack allows:
