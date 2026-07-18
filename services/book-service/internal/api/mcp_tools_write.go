@@ -267,6 +267,24 @@ func (s *Server) toolChapterCreate(ctx context.Context, _ *mcp.CallToolRequest, 
 // mcpCreateChapter inserts one chapter (+ draft + seed revision) in a tx, billing
 // the owner's quota. Mirrors createChapterRecord's writes without the HTTP shell.
 func (s *Server) mcpCreateChapter(ctx context.Context, caller, owner, bookID uuid.UUID, title, lang string, sortOrder int, body string) (uuid.UUID, error) {
+	// N6 (dogfood 2026-07-18 F7) — idempotency guard against the agent double-firing
+	// book_chapter_create (observed: two identical calls in one turn made a duplicate
+	// chapter, because sort_order=0→MAX+1 gives each a distinct slot so both pass the
+	// (book_id,sort_order,language) unique index). Agent tool calls execute SEQUENTIALLY,
+	// so a pre-insert lookup closes the observed case without a migration: if a NON-EMPTY
+	// title already matches an active chapter in this book+language, return it instead of
+	// inserting a second. Empty-title "Chapter N" placeholders stay distinct (never matched).
+	// (A DB partial-unique-index would be race-tight for truly-concurrent calls, but it would
+	// fail on books that already hold legit duplicate-title chapters — a data-cleanup this
+	// LOW-severity fix doesn't warrant; the sequential guard covers the real bug.)
+	if title != "" {
+		var existing uuid.UUID
+		if err := s.pool.QueryRow(ctx,
+			`SELECT id FROM chapters WHERE book_id=$1 AND lower(title)=lower($2) AND original_language=$3 AND lifecycle_state='active' ORDER BY created_at LIMIT 1`,
+			bookID, title, lang).Scan(&existing); err == nil {
+			return existing, nil
+		}
+	}
 	if sortOrder == 0 {
 		_ = s.pool.QueryRow(ctx, `SELECT COALESCE(MAX(sort_order),0)+1 FROM chapters WHERE book_id=$1`, bookID).Scan(&sortOrder)
 	}
