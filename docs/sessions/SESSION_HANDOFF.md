@@ -1,5 +1,26 @@
 # ▶▶ NEXT SESSION STARTS HERE
 
+## 🔁 S-12 WORKFLOWS + WORKFLOW-PROPOSALS GUI (G-WORKFLOWS) — **SHIPPED (2026-07-18)**
+> Spec: [`docs/specs/2026-07-17-studio-completeness-build/S-12_workflows.md`](../specs/2026-07-17-studio-completeness-build/S-12_workflows.md) ·
+> RUN-STATE: [`docs/plans/2026-07-18-S12-workflows-gui-RUN-STATE.md`](../plans/2026-07-18-S12-workflows-gui-RUN-STATE.md).
+> Closed the "an agent proposes a workflow (registry_propose_workflow) that no human can approve — there's no UI"
+> hole. **Investigation corrected 2 stale spec claims:** (a) the spec's "zero FE" was wrong — a read-only
+> `WorkflowRack` + a working `modeBindings` UI already existed, but ONLY on the `/extensions` route (not the
+> studio dock / panel enum); (b) mirroring `setSkillEnabled` REQUIRED a **new `workflow_enablement` table** the
+> spec didn't spell out. **Built (4 slices, each review-impl + QC):**
+> - **BE (4ca23a644):** `workflow_enablement` migration + `GET/DELETE /v1/agent-registry/workflows/{id}` +
+>   `PUT .../{id}/enablement` (mirror skills); list exposes workflow_id + effective enabled. 8 pgxmock tests.
+>   **SD-1:** enablement is a PER-USER override (safe for System too — a preference, not a shared-row write; the
+>   System guard is on DELETE). review-impl fixed getWorkflow book READ requiring ≥edit → ≥view.
+> - **FE panels (821fbe99f):** `workflows` (manage: per-user toggle + delete-own; System read-only) +
+>   `workflow-proposals` (approve mints the workflow / reject) studio panels — GG-8 (catalog + chat-service
+>   panel_id enum +2 + contract regen + i18n×17). 8 view tests + panelCatalogContract 9/9.
+> - **FE setting (9e3d5c050):** `workflow-bindings` settings tab (mode→workflow auto-inject) — lands on both
+>   /settings + studio dock via the one registry; settingsTabParity 9/9.
+> **Debt:** D-S12-LIVE-SMOKE (agent-loop E2E needs live stack+browser — each link proven in isolation);
+> D-S12-BINDINGS-I18N (BindingSettings hardcodes English, pre-existing). MCP delete/enablement tools = conscious
+> defer (agents propose, humans dispose).
+
 ## 📜 GLOSSARY CONTRACT-FIRST — P1–P4 COMPLETE, contract now 100% + CI-enforced **SHIPPED (2026-07-18)**
 > Spec: [`docs/specs/2026-07-18-glossary-contract-first-restoration.md`](../specs/2026-07-18-glossary-contract-first-restoration.md) ·
 > RUN-STATE: [`docs/plans/2026-07-18-glossary-contract-first-RUN-STATE.md`](../plans/2026-07-18-glossary-contract-first-RUN-STATE.md).
