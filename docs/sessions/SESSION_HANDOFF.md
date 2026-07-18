@@ -34,6 +34,11 @@ built + QC'd on the isolated static build :5290:
 - **M5** (`339a28115` + i18n `b65cec317`) rename Act→Part (kill the Act/Arc homophone, EN-only) + fix the missing `activity.plan` key (lowercase "plan" tab) + explainer tooltip.
 - **F5** sealed NO-CODE (default already Simple); **F7b** verify-only (99+ = seeded test data). **Deferred:** **F7c** chat co-writer context bloat (~22.6k tok/message) → **`context-budget-law`** track. Detail: `docs/sessions/RUN-STATE-writing-studio-polish.md`.
 
+**ROUND 2** — a *second* dogfood on the fixed build (F1–F7 verified live) surfaced 3 more, all FE-only, all composing around existing plumbing; feedback+design in `docs/specs/2026-07-18-writing-studio-newcomer-polish/round-2-feedback.md`:
+- **M8** (`9d7911bb5`) F9: retire the baked bilingual label `Divergence (dị bản)` → **"What-if versions"** (en + 18-locale real translations; "dị bản" now only in the Vietnamese locale, its correct native word).
+- **M7** (`baaa30bd8`) F8: the empty **Plan rail** was a dead end ("No arcs yet.") → guided copy + a **"Plan this book"** door reusing the Manuscript rail's `host.openPanel('plan-hub')`.
+- **M9** (`8fbf76c02`) F10: Story-Bible surfaces told a prose-full book "No writing project yet — set up a Work" with no door → mounted the existing idempotent **`WorkSetupCta`** on the Reference-shelf/Style-voice empty states + de-jargoned "Work" → **"Set up writing"** (AI "Co-writer Chat" deliberately untouched). QC verify-by-effect: click → Work created → real shelf. **Deferred:** divergence/what-if "no plan" plan-door → F6 unify track.
+
 ## 🧩 S-13 STUDIO DECOMPOSE SURFACE (G-STORY-STRUCTURE) — **SHIPPED (2026-07-18)** · closes D-S01-USE-IN-DECOMPOSE
 > Spec: [`docs/specs/2026-07-17-studio-completeness-build/S-13_studio-decompose-surface.md`](../specs/2026-07-17-studio-completeness-build/S-13_studio-decompose-surface.md) §11.
 > An **M FE-only PORT** (verified against code: the decompose UX already exists in `usePlanner`/`PlannerView`).

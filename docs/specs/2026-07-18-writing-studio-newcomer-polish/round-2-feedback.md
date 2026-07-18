@@ -192,7 +192,14 @@ static build (`vite build` → `vite preview --strictPort`)** — never `vite de
 constraint. `review-impl` on M9 (it touches the shared `WorkSetupCta` across four panels).
 
 ## Status
-`DESIGN SEALED` — round-2 dogfood complete on the fixed `:5290` build; F1–F7 verified resolved in
-live use. Three new findings (**F8–F10**) captured with code-grounded root causes, brainstormed, and
-sealed into the M7–M9 build-ready plan above with the human's naming decisions. **No code changed
-yet** — BUILD is the next step (human-initiated, same QC-per-slice discipline as M1–M6).
+`SHIPPED` (2026-07-18) — all three findings fixed, each QC'd on the isolated static build `:5290`:
+- **M8 · F9** `9d7911bb5` — `Divergence (dị bản)` → **"What-if versions"** in en + 18 locales; QC: tab,
+  dock region, and panel all read the new label.
+- **M7 · F8** `baaa30bd8` — Plan rail empty state → guided copy + **"Plan this book"** door; QC: the
+  button opens the Plan Hub origin flow (no longer a dead end).
+- **M9 · F10** `8fbf76c02` — mounted the existing create-Work CTA on the Reference-shelf / Style-voice
+  empty states + de-jargoned "Work" → **"Set up writing"**; QC verify-by-effect: clicking it created
+  the Work and revealed the real shelf, 0 console errors. review-impl fixed a button/toast vocab drift.
+
+**Deferred:** the divergence/what-if "no plan yet" states could get the same plan door, but they lack
+host access and their copy is already guided — folded into F6's unify-the-hierarchies track.

@@ -77,7 +77,7 @@ Spec: docs/specs/2026-07-18-writing-studio-newcomer-polish/round-2-feedback.md (
 Build order: M8 → M7 → M9 — ALL SHIPPED. Each: tsc 0, unit green, live QC on the static build.
 
 ## DELIVERED — ROUND 2 (2026-07-18)
-M8 9d7911bb5 · M7 baaa30bd8 · M9 <pending-hash>. All three round-2 findings fixed, each QC'd on the
+M8 9d7911bb5 · M7 baaa30bd8 · M9 8fbf76c02. All three round-2 findings fixed, each QC'd on the
 isolated static build :5290. F8/F9/F10 resolved; the divergence/whatif "no plan → plan door" nicety
 deferred (below).
 
