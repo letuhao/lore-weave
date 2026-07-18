@@ -9,6 +9,7 @@ import { useStudioHost } from '../host/StudioHostProvider';
 import { useSidebarResize } from '../hooks/useSidebarResize';
 import { PlanNavigatorRail } from '@/features/plan-hub/components';
 import { BIBLE_NAV_PANELS } from '../panels/catalog';
+import { SearchNavigatorRail } from '../search/SearchNavigatorRail';
 
 interface Props {
   activeView: ActivityView;
@@ -93,10 +94,12 @@ export function StudioSideBar({ activeView, onCollapse, bookId, token, selectedI
             </button>
           </div>
 
-          {/* H-1b — the `bible` view is now a real rail: a launcher list of the bible-group panels
-              (reference-shelf, divergence, …) so they're discoverable, not palette-only. Other views
-              (search) stay stubs; quality keeps its single hub button (DOCK-8). */}
-          {activeView === 'bible' ? (
+          {/* H-1b — the `bible` view is a real rail: a launcher list of the bible-group panels.
+              S-11 — `search` is now a real query rail too (was a stub). quality keeps its single
+              hub button (DOCK-8). */}
+          {activeView === 'search' ? (
+            <SearchNavigatorRail />
+          ) : activeView === 'bible' ? (
             <div data-testid="studio-sidebar-bible" className="flex flex-1 flex-col gap-0.5 overflow-y-auto p-2">
               {BIBLE_NAV_PANELS.map((p) => (
                 <button

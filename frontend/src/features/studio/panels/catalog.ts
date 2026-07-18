@@ -50,6 +50,7 @@ import { KgJobsPanel } from './KgJobsPanel';
 import { KgGlobalBioPanel } from './KgGlobalBioPanel';
 import { KgPrivacyPanel } from './KgPrivacyPanel';
 import { KgTriagePanel } from './KgTriagePanel';   /* owner: S-05 */
+import { SearchPanel } from './SearchPanel';        /* owner: S-11 */
 import { JobsListPanel } from './JobsListPanel';
 import { JobDetailPanel } from './JobDetailPanel';
 import { BooksBrowserPanel } from './BooksBrowserPanel';
@@ -216,6 +217,7 @@ export const STUDIO_PANELS: StudioPanelDef[] = [
   { id: 'kg-bio', component: KgGlobalBioPanel, titleKey: 'panels.kg-bio.title', descKey: 'panels.kg-bio.desc', category: 'knowledge', guideBodyKey: 'panels.kg-bio.guideBody' },
   { id: 'kg-privacy', component: KgPrivacyPanel, titleKey: 'panels.kg-privacy.title', descKey: 'panels.kg-privacy.desc', category: 'knowledge', guideBodyKey: 'panels.kg-privacy.guideBody' },
   { id: 'kg-triage', component: KgTriagePanel, titleKey: 'panels.kg-triage.title', descKey: 'panels.kg-triage.desc', category: 'knowledge', guideBodyKey: 'panels.kg-triage.guideBody' },   /* S-05 */
+  { id: 'search', component: SearchPanel, titleKey: 'panels.search.title', descKey: 'panels.search.desc', category: 'knowledge', guideBodyKey: 'panels.search.guideBody' },   /* S-11 */
   // 14_utility_panels.md Phase B — jobs-list is palette + agent openable; job-detail is a
   // params-retargeting singleton ({service, jobId}, json-editor/skill-editor precedent).
   { id: 'jobs-list', component: JobsListPanel, titleKey: 'panels.jobs-list.title', descKey: 'panels.jobs-list.desc', category: 'jobs', guideBodyKey: 'panels.jobs-list.guideBody' },

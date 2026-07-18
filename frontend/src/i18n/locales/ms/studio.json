@@ -384,6 +384,12 @@
       "desc": "Urus derivatif 'what-if' buku anda — senaraikan kanon dan setiap cabang, tukar keseluruhan studio kepada satu cabang, arkibkan satu cabang, atau mulakan cabang baharu daripada sesuatu bab",
       "guideBody": "Dị bản (divergence) memecahkan buku anda pada sesuatu bab dan menyimpang — sama ada alam semesta alternatif, peralihan POV, atau perubahan watak — menjadi karya derivatif dengan pembahagian pengetahuan tersendiri, manakala sumber asal kekal sebagai kanon mod baca sahaja. Panel ini menyenaraikan karya kanon anda dan setiap cabang yang telah anda hasilkan. 'Switch to' memindahkan keseluruhan studio anda — editor, navigasi, kualiti, segalanya — ke cabang tersebut; pilihan ini diingati bagi setiap buku dan kekal walaupun selepas dimuat semula. 'Archive' menyembunyikan cabang tanpa memusnahkannya (bab dan pengetahuannya tetap disimpan). 'New divergence' membuka wizard 4-langkah untuk memulakan satu cabang baharu. Pilih cabang untuk membaca spesifikasinya (taksonomi, titik cabang, peraturan kanon, aturan luar), yang ditetapkan semasa penciptaan."
     },
+    "reference-shelf": {
+      "title": "Rak rujukan",
+      "desc": "Kumpul petikan rujukan (pengaruh luaran) yang menjadi asas penulisan — tambah, sunting, dan padam; rujukan yang relevan bagi setiap bab akan diambil dan boleh disemat ke dalam pek asas penulisan.",
+      "guideBody": "Rak rujukan adalah korpus pengaruh buku anda — petikan, sumber, dan contoh gaya yang digunakan oleh AI semasa merangka draf. Tambah rujukan dengan tajuk, penulis, URL sumber, dan teks; teks tersebut akan disematkan supaya studio dapat mengambil yang paling relevan bagi setiap bab. Sunting butiran rujukan (perubahan metadata ringkas) atau kandungannya (yang akan menyemat semula teks tersebut). Tapis rak yang besar dengan kotak carian. Fungsi pengambilan dan penyematan mengikut bab akan muncul apabila anda membuka rak ini bersama-sama dengan sesuatu bab; jika dibuka secara berasingan, ia berfungsi sebagai pengurus perpustakaan. Model penyematan mesti dikonfigurasikan (tambah satu daripada tetapan AI) supaya fungsi pengambilan dapat berfungsi.",
+      "noWork": "Tiada projek penulisan lagi — tetapkan 'Work' terlebih dahulu, kemudian kumpul rak rujukan di sini."
+    },
     "canonview": {
       "title": "Kanon pada bab",
       "desc": "Apa yang diketahui kanon setakat bab yang difokuskan — entiti yang hadir/tertubuh, keadaan kanon dan garis masa",
@@ -641,11 +647,10 @@
       "desc": "Semak elemen yang diekstrak yang tidak sepadan dengan skema anda dan selesaikannya.",
       "guideBody": "Apabila pengekstrakan menemui jenis entiti, hubungan, atau nilai yang belum ada dalam skema anda, ia akan menyimpannya di sini daripada membuat tekaan. Setiap baris hanya menawarkan pembetulan yang sah untuknya — petakan ke sesuatu yang sedia ada, tambahkan ke skema/kosa kata anda, betulkan titik akhir (endpoint), atau abaikannya."
     },
-    "reference-shelf": {
-      "title": "Rak rujukan",
-      "desc": "Kumpul petikan rujukan (pengaruh luaran) yang menjadi asas penulisan — tambah, sunting, dan padam; rujukan yang relevan bagi setiap bab akan diambil dan boleh disemat ke dalam pek asas penulisan.",
-      "guideBody": "Rak rujukan adalah korpus pengaruh buku anda — petikan, sumber, dan contoh gaya yang digunakan oleh AI semasa merangka draf. Tambah rujukan dengan tajuk, penulis, URL sumber, dan teks; teks tersebut akan disematkan supaya studio dapat mengambil yang paling relevan bagi setiap bab. Sunting butiran rujukan (perubahan metadata ringkas) atau kandungannya (yang akan menyemat semula teks tersebut). Tapis rak yang besar dengan kotak carian. Fungsi pengambilan dan penyematan mengikut bab akan muncul apabila anda membuka rak ini bersama-sama dengan sesuatu bab; jika dibuka secara berasingan, ia berfungsi sebagai pengurus perpustakaan. Model penyematan mesti dikonfigurasikan (tambah satu daripada tetapan AI) supaya fungsi pengambilan dapat berfungsi.",
-      "noWork": "Tiada projek penulisan lagi — tetapkan 'Work' terlebih dahulu, kemudian kumpul rak rujukan di sini."
+    "search": {
+      "title": "Carian",
+      "desc": "Cari prosa (teks) atau laci lore (semantik) buku anda; hasil carian akan membuka editor pada bahagian tersebut.",
+      "guideBody": "Carian mempunyai dua mod. Teks mencari perkataan dan frasa tepat dalam prosa manuskrip anda. Semantik mencari petikan berdasarkan makna merentasi laci lore anda (bab, sembang, glosari). Klik pada hasil untuk membuka editor pada bab tersebut — carian adalah jalan masuk ke manuskrip anda, bukannya senarai yang buntu."
     }
   },
   "sceneRail": {
@@ -1567,6 +1572,28 @@
       "builtin": "sedia ada",
       "mine": "milik saya",
       "archived": "diarkibkan"
+    }
+  },
+  "search": {
+    "modeLabel": "Mod carian",
+    "mode": {
+      "text": "Teks",
+      "semantic": "Semantik"
+    },
+    "rail": {
+      "placeholder": "Cari buku anda…",
+      "go": "Cari",
+      "hint": "Teks mencari perkataan tepat dalam prosa anda; Semantik mencari petikan berdasarkan makna. Hasil carian akan membuka editor di bahagian tersebut."
+    },
+    "semantic": {
+      "placeholder": "Cari makna merentasi lore anda…",
+      "loadingProject": "Memuatkan…",
+      "noProject": "Buku ini belum mempunyai projek pengetahuan — ekstrak atau bina pengetahuan terlebih dahulu.",
+      "error": "Carian semantik tidak tersedia buat masa ini.",
+      "hint": "Taip sekurang-kurangnya 3 aksara untuk mencari mengikut makna.",
+      "searching": "Mencari...",
+      "empty": "Tiada petikan yang sepadan.",
+      "openChapter": "buka →"
     }
   }
 }

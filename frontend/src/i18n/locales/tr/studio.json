@@ -384,6 +384,12 @@
       "desc": "Bir kitabın what-if türevlerini yönetin — kanon listesini ve her bir dalı listeleyin, tüm stüdyoyu birine geçirin, birini arşivleyin veya bir bölümden yeni bir dal türetin",
       "guideBody": "Bir dị bản (divergence), kitabınızı bir bölümde dallara ayırır ve —alternatif bir evren, bir bakış açısı değişikliği veya değişmiş bir karakter— kendi bilgi bölümüne sahip türev bir eser oluştururken, kaynak metin salt okunur kanon olarak kalır. Bu panel, kanonik çalışmanızı ve oluşturduğunuz her bir dalı listeler. «Şuna geç» seçeneği; editör, gezgin, kalite ve her şeyiyle tüm stüdyonuzu o dala taşır; bu seçim kitap bazında hatırlanır ve sayfa yenilense de korunur. «Arşivle» bir dalı yok etmeden gizler (bölümleri ve bilgileri korunur). «Yeni dị bản» yeni bir dal oluşturmak için 4 adımlı sihirbazı açar. Bir dalın özelliklerini (taksonomi, dallanma noktası, kanon kuralları, geçersiz kılmalar) okumak için bir dal seçin; bu özellikler oluşturma anında sabitlenir."
     },
+    "reference-shelf": {
+      "title": "Referans rafı",
+      "desc": "Yazıma temel oluşturan referans pasajları (dış etkiler) burada düzenleyin — ekleyin, düzenleyin ve kaldırın; her sahne için ilgili olanlar getirilir ve temel paket içine sabitlenebilir.",
+      "guideBody": "Referans rafı, kitabınızın etki külliyatıdır — yapay zekanın taslak oluştururken yararlandığı pasajlar, kaynaklar ve üslup örnekleridir. Başlık, yazar, kaynak URL ve metin ile birlikte bir referans ekleyin; metin, stüdyonun her sahne için en alakalı olanları getirebilmesi için gömülür (embedded). Bir referansın ayrıntılarını (basit bir meta veri değişikliği) veya içeriğini (yeniden gömme işlemi gerektirir) düzenleyin. Büyük bir rafı arama kutusuyla filtreleyin. Sahneyle birlikte rafı açtığınızda sahne bazlı getirme ve sabitleme seçenekleri görünür; tek başına kullanıldığında ise kütüphaneyi yönetir. Getirme işleminin çalışması için bir gömme modeli (AI ayarlarından bir tane ekleyin) yapılandırılmalıdır.",
+      "noWork": "Henüz bir yazım projesi yok — önce bir Çalışma (Work) oluşturun, ardından referans rafını buradan düzenleyin."
+    },
     "canonview": {
       "title": "Bölüm bazlı kanon",
       "desc": "Odaklanılan bölüm itibarıyla kanonun bildikleri — mevcut/kurulmuş varlıklar, kanon durumu ve zaman çizelgesi",
@@ -641,11 +647,10 @@
       "desc": "Şemanızla eşleşmeyen çıkarılan öğeleri inceleyin ve bunları çözümleyin.",
       "guideBody": "Çıkarım işlemi şemanızda henüz bulunmayan bir varlık türü, ilişki veya değer bulduğunda, tahmin yürütmek yerine onu buraya park eder. Her satır yalnızca o öğe için geçerli olan düzeltmeleri sunar — onu halihazırda sahip olduğunuz bir şeye eşleyin, şemanıza/kelime dağarcığınıza ekleyin, bir uç noktayı düzeltin veya reddedin."
     },
-    "reference-shelf": {
-      "title": "Referans rafı",
-      "desc": "Yazıma temel oluşturan referans pasajları (dış etkiler) burada düzenleyin — ekleyin, düzenleyin ve kaldırın; her sahne için ilgili olanlar getirilir ve temel paket içine sabitlenebilir.",
-      "guideBody": "Referans rafı, kitabınızın etki külliyatıdır — yapay zekanın taslak oluştururken yararlandığı pasajlar, kaynaklar ve üslup örnekleridir. Başlık, yazar, kaynak URL ve metin ile birlikte bir referans ekleyin; metin, stüdyonun her sahne için en alakalı olanları getirebilmesi için gömülür (embedded). Bir referansın ayrıntılarını (basit bir meta veri değişikliği) veya içeriğini (yeniden gömme işlemi gerektirir) düzenleyin. Büyük bir rafı arama kutusuyla filtreleyin. Sahneyle birlikte rafı açtığınızda sahne bazlı getirme ve sabitleme seçenekleri görünür; tek başına kullanıldığında ise kütüphaneyi yönetir. Getirme işleminin çalışması için bir gömme modeli (AI ayarlarından bir tane ekleyin) yapılandırılmalıdır.",
-      "noWork": "Henüz bir yazım projesi yok — önce bir Çalışma (Work) oluşturun, ardından referans rafını buradan düzenleyin."
+    "search": {
+      "title": "Ara",
+      "desc": "Kitabınızın düz metnini (metin) veya bilgi birikimini (anlamsal) arayın; bir sonuç, editörü doğrudan o noktada açar.",
+      "guideBody": "Arama işleminin iki modu vardır. Metin modu, taslağınızdaki kelime ve ifadeleri tam olarak bulur. Anlamsal mod ise bilgi birikiminizdeki (bölümler, sohbet, sözlük) pasajları anlamlarına göre bulur. Bir sonuca tıklayarak editörü o bölümde açabilirsiniz; arama bir liste değil, taslağınıza açılan bir kapıdır."
     }
   },
   "sceneRail": {
@@ -1567,6 +1572,28 @@
       "builtin": "yerleşik",
       "mine": "benimki",
       "archived": "arşivlenmiş"
+    }
+  },
+  "search": {
+    "modeLabel": "Arama modu",
+    "mode": {
+      "text": "Metin",
+      "semantic": "Anlamsal"
+    },
+    "rail": {
+      "placeholder": "Kitabınızda arayın…",
+      "go": "Ara",
+      "hint": "Metin, düz metindeki tam kelimeleri bulur; Anlamsal, pasajları anlamlarına göre bulur. Bir sonuç, editörü o noktada açar."
+    },
+    "semantic": {
+      "placeholder": "Bilgi birikiminizde anlam arayın…",
+      "loadingProject": "Yükleniyor…",
+      "noProject": "Bu kitabın henüz bir bilgi projesi yok — önce bilgi çıkarın veya oluşturun.",
+      "error": "Anlamsal arama şu anda kullanılamıyor.",
+      "hint": "Anlama göre arama yapmak için en az 3 karakter yazın.",
+      "searching": "Aranıyor…",
+      "empty": "Eşleşen pasaj bulunamadı.",
+      "openChapter": "bölümü aç →"
     }
   }
 }

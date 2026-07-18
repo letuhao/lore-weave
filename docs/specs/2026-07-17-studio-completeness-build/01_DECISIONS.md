@@ -47,7 +47,7 @@
 | Q | Decision needed |
 |---|---|
 | ~~G-WORKFLOWS~~ | **SEALED 2026-07-17: BUILD IN THIS TRACK (→ S-12).** PO decided ownership. CLARIFY-verify shrank it — the proposals routes + a workflows LIST already exist; only 3 backend verbs (get-one/delete/enablement, mirror skills) + the FE panels are missing. |
-| **S-11 category** | Which category does the `search` panel belong to (`storyBible`, or a new top-level)? Minor; resolve at S-11 build. |
+| **S-11 category** | ~~Which category does the `search` panel belong to?~~ **RESOLVED at S-11 build (D-S11-category): `knowledge`** — joins the kg-* group (semantic search = knowledge drawers), avoids a new top-level category (which would churn CATEGORY_ORDER + palette.group i18n + the frontend-tools contract). |
 
 ## Build-readiness
 
@@ -56,5 +56,5 @@
 workflow (VERIFY evidence, 2-stage review, `/review-impl` for the data-layer/tenancy specs, live-smoke ≥2
 services where the spec crosses a service boundary).
 
-The only unresolved detail is **S-11's panel category** (minor — resolve at S-11 build), which does not
-block anything.
+**S-11's panel category is now RESOLVED** (`knowledge`, D-S11-category, sealed at the S-11 build 2026-07-18).
+No open details remain across the sealed specs.

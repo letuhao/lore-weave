@@ -29,12 +29,21 @@ function renderSideBar(overrides: Partial<typeof props> & { activeView: string }
 }
 
 describe('StudioSideBar', () => {
-  it('shows a stub navigator header + body for a not-yet-built view (keys)', () => {
-    renderSideBar({ activeView: 'search' });  // 'search' is still a stub (bible is now a real rail — H-1b)
+  it('S-11: the search view renders the real query rail, not the "Coming soon" stub', () => {
+    renderSideBar({ activeView: 'search' });
     const sb = screen.getByTestId('studio-sidebar');
-    expect(sb.textContent).toContain('activity.search');       // header label key
-    expect(sb.textContent).toContain('navStub.search.title');  // stub title key
-    expect(sb.textContent).toContain('navStub.search.body');   // stub body key
+    // the real rail (query box) is present…
+    expect(screen.getByTestId('studio-search-rail')).toBeInTheDocument();
+    expect(screen.getByTestId('studio-search-rail-input')).toBeInTheDocument();
+    // …and the old stub body is gone.
+    expect(sb.textContent).not.toContain('navStub.search.body');
+  });
+
+  it('still shows the stub header + body for a genuinely not-yet-built view (quality keeps a stub body)', () => {
+    renderSideBar({ activeView: 'quality' });
+    const sb = screen.getByTestId('studio-sidebar');
+    expect(sb.textContent).toContain('activity.quality');       // header label key
+    expect(sb.textContent).toContain('navStub.quality.title');  // stub title key
   });
 
   it('H-1b: the bible view lists the bible-group panels as launchers (discoverable, not palette-only)', () => {

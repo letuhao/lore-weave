@@ -384,6 +384,12 @@
       "desc": "Gerencie as derivadas de «e se...» de um livro — liste o cânone e cada ramificação, mude todo o estúdio para uma delas, arquive uma ou crie uma nova ramificação a partir de um capítulo",
       "guideBody": "Uma dị bản (divergência) ramifica seu livro em um capítulo e diverge — um universo alternativo, uma mudança de ponto de vista, um personagem alterado — em uma obra derivada com sua própria partição de conhecimento, enquanto a fonte permanece como o cânone de apenas leitura. Este painel lista seu trabalho canônico e cada ramificação que você criou. «Mudar para» move todo o seu estúdio — editor, navegador, qualidade, tudo — para essa ramificação; a escolha é lembrada por livro e sobrevive ao recarregamento. «Arquivar» esconde uma ramificação sem destruí-la (seus capítulos e conhecimento são mantidos). «Nova divergência» abre o assistente de 4 etapas para criar uma. Selecione uma ramificação para ler sua especificação (taxonomia, ponto de ramificação, regras do cânone, sobreposições), que é fixa no momento da criação."
     },
+    "reference-shelf": {
+      "title": "Prateleira de referências",
+      "desc": "Curadoria de passagens de referência (influências externas) que fundamentam a escrita — adicione, edite e remova-as; as passagens relevantes por cena são recuperadas e podem ser fixadas no pacote de fundamentação",
+      "guideBody": "A prateleira de referências é o corpus de influências do seu livro — passagens, fontes e exemplares de estilo que a IA utiliza ao redigir. Adicione uma referência com título, autor, URL de origem e texto; o texto é incorporado para que o estúdio possa recuperar os mais relevantes por cena. Edite os detalhes de uma referência (uma alteração simples de metadados) ou seu conteúdo (o que exige uma nova incorporação). Filtre uma prateleira extensa com a caixa de busca. A recuperação e a fixação por cena aparecem quando você abre a prateleira junto a uma cena; isoladamente, ela gerencia a biblioteca. Um modelo de embedding deve estar configurado (adicione um nas configurações de IA) para que a recuperação funcione.",
+      "noWork": "Nenhum projeto de escrita ainda — configure um Trabalho primeiro e, depois, faça a curadoria da prateleira de referências aqui."
+    },
     "canonview": {
       "title": "Cânone no capítulo",
       "desc": "O que o cânone sabe até o capítulo em foco — entidades presentes/estabelecidas, estado do cânone e linha do tempo",
@@ -641,11 +647,10 @@
       "desc": "Revise os elementos extraídos que não correspondem ao seu esquema e resolva-os.",
       "guideBody": "Quando a extração encontra um tipo de entidade, relacionamento ou valor que ainda não está no seu esquema, ela o armazena aqui em vez de tentar adivinhar. Cada linha oferece apenas as correções válidas para ela — mapeie para algo que você já possui, adicione ao seu esquema/vocabulário, corrija um endpoint ou descarte-o."
     },
-    "reference-shelf": {
-      "title": "Prateleira de referências",
-      "desc": "Curadoria de passagens de referência (influências externas) que fundamentam a escrita — adicione, edite e remova-as; as passagens relevantes por cena são recuperadas e podem ser fixadas no pacote de fundamentação",
-      "guideBody": "A prateleira de referências é o corpus de influências do seu livro — passagens, fontes e exemplares de estilo que a IA utiliza ao redigir. Adicione uma referência com título, autor, URL de origem e texto; o texto é incorporado para que o estúdio possa recuperar os mais relevantes por cena. Edite os detalhes de uma referência (uma alteração simples de metadados) ou seu conteúdo (o que exige uma nova incorporação). Filtre uma prateleira extensa com a caixa de busca. A recuperação e a fixação por cena aparecem quando você abre a prateleira junto a uma cena; isoladamente, ela gerencia a biblioteca. Um modelo de embedding deve estar configurado (adicione um nas configurações de IA) para que a recuperação funcione.",
-      "noWork": "Nenhum projeto de escrita ainda — configure um Trabalho primeiro e, depois, faça a curadoria da prateleira de referências aqui."
+    "search": {
+      "title": "Pesquisar",
+      "desc": "Pesquise a prosa (texto) ou os arquivos de lore (semântico) do seu livro; um resultado abre o editor exatamente naquele ponto.",
+      "guideBody": "A pesquisa possui dois modos. O modo Texto encontra palavras e frases exatas na prosa do seu manuscrito. O modo Semântico encontra passagens pelo significado em seus arquivos de lore (capítulos, chat, glossário). Clique em um resultado para abrir o editor naquele capítulo — a pesquisa é uma porta de entrada para o seu manuscrito, não uma lista sem saída."
     }
   },
   "sceneRail": {
@@ -1567,6 +1572,28 @@
       "builtin": "nativa",
       "mine": "minha",
       "archived": "arquivada"
+    }
+  },
+  "search": {
+    "modeLabel": "Modo de pesquisa",
+    "mode": {
+      "text": "Texto",
+      "semantic": "Semântico"
+    },
+    "rail": {
+      "placeholder": "Pesquisar seu livro...",
+      "go": "Pesquisar",
+      "hint": "Texto encontra palavras exatas na sua prosa; Semântico encontra passagens pelo significado. Um resultado abre o editor naquele ponto."
+    },
+    "semantic": {
+      "placeholder": "Pesquisar significado nos seus arquivos de lore...",
+      "loadingProject": "Carregando...",
+      "noProject": "Este livro ainda não possui um projeto de conhecimento — extraia ou construa o conhecimento primeiro.",
+      "error": "A busca semântica não está disponível no momento.",
+      "hint": "Digite pelo menos 3 caracteres para pesquisar pelo significado.",
+      "searching": "Pesquisando...",
+      "empty": "Nenhum trecho correspondente encontrado.",
+      "openChapter": "abrir →"
     }
   }
 }

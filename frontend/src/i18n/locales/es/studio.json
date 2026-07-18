@@ -384,6 +384,12 @@
       "desc": "Gestiona los derivados «what-if» de un libro: lista el canon y cada rama, cambia todo el estudio a una de ellas, archiva una o genera una nueva rama a partir de un capítulo.",
       "guideBody": "Una dị bản (divergencia) bifurca tu libro en un capítulo y diverge —un universo alternativo, un cambio de punto de vista, un personaje modificado— en una obra derivada con su propia partición de conocimiento, mientras que la fuente permanece como canon de solo lectura. Este panel enumera tu obra canónica y cada rama que hayas generado. «Cambiar a» traslada todo tu estudio —editor, navegador, calidad, todo— a esa rama; la elección se recuerda por libro y persiste tras recargar. «Archivar» oculta una rama sin destruirla (sus capítulos y conocimiento se conservan). «Nueva divergencia» abre el asistente de 4 pasos para generar una. Selecciona una rama para leer su especificación (taxonomía, punto de bifurcación, reglas del canon, anulaciones), la cual queda fijada al momento de su creación."
     },
+    "reference-shelf": {
+      "title": "Estante de referencias",
+      "desc": "Organiza los pasajes de referencia (influencias externas) que fundamentan la escritura: añádelos, edítalos y elimínalos; se recuperan los más pertinentes por escena y pueden fijarse en el paquete de fundamentación.",
+      "guideBody": "El estante de referencias es el corpus de influencias de tu libro: pasajes, fuentes y ejemplos de estilo en los que la IA se apoya al redactar. Añade una referencia con su título, autor, URL de la fuente y texto; el texto se integra para que el estudio pueda recuperar los más relevantes por escena. Edita los detalles de una referencia (un cambio de metadatos sencillo) o su contenido (lo que requiere una nueva integración). Filtra un estante extenso con el cuadro de búsqueda. La recuperación y fijación por escena aparecen al abrir el estante junto a una escena; por separado, funciona como gestor de la biblioteca. Debe estar configurado un modelo de integración (añade uno desde los ajustes de IA) para que la recuperación funcione.",
+      "noWork": "Aún no hay ningún proyecto de escritura; primero configura un «Work» y luego organiza su estante de referencias aquí."
+    },
     "canonview": {
       "title": "Canon en el capítulo",
       "desc": "Lo que el canon sabe hasta el capítulo en foco: entidades presentes/establecidas, estado del canon y línea de tiempo",
@@ -641,11 +647,10 @@
       "desc": "Revisa los elementos extraídos que no coincidieron con tu esquema y resuélvelos.",
       "guideBody": "Cuando la extracción encuentra un tipo de entidad, relación o valor que aún no está en tu esquema, lo guarda aquí en lugar de intentar adivinar. Cada fila ofrece únicamente las correcciones válidas para ese elemento: asígnale algo que ya tengas, añádelo a tu esquema/vocabulario, corrige un endpoint o descártalo."
     },
-    "reference-shelf": {
-      "title": "Estante de referencias",
-      "desc": "Organiza los pasajes de referencia (influencias externas) que fundamentan la escritura: añádelos, edítalos y elimínalos; se recuperan los más pertinentes por escena y pueden fijarse en el paquete de fundamentación.",
-      "guideBody": "El estante de referencias es el corpus de influencias de tu libro: pasajes, fuentes y ejemplos de estilo en los que la IA se apoya al redactar. Añade una referencia con su título, autor, URL de la fuente y texto; el texto se integra para que el estudio pueda recuperar los más relevantes por escena. Edita los detalles de una referencia (un cambio de metadatos sencillo) o su contenido (lo que requiere una nueva integración). Filtra un estante extenso con el cuadro de búsqueda. La recuperación y fijación por escena aparecen al abrir el estante junto a una escena; por separado, funciona como gestor de la biblioteca. Debe estar configurado un modelo de integración (añade uno desde los ajustes de IA) para que la recuperación funcione.",
-      "noWork": "Aún no hay ningún proyecto de escritura; primero configura un «Work» y luego organiza su estante de referencias aquí."
+    "search": {
+      "title": "Buscar",
+      "desc": "Busca en la prosa (texto) o en los cajones de lore (semántico) de tu libro; un resultado te llevará directamente al editor.",
+      "guideBody": "La búsqueda tiene dos modos. El modo de Texto encuentra palabras y frases exactas en la prosa de tu manuscrito. El modo Semántico encuentra pasajes por su significado a través de tus cajones de lore (capítulos, chat, glosario). Haz clic en un resultado para abrir el editor en ese capítulo; la búsqueda es una vía de acceso a tu manuscrito, no una lista sin salida."
     }
   },
   "sceneRail": {
@@ -1567,6 +1572,28 @@
       "builtin": "integrada",
       "mine": "mía",
       "archived": "archivada"
+    }
+  },
+  "search": {
+    "modeLabel": "Modo de búsqueda",
+    "mode": {
+      "text": "Texto",
+      "semantic": "Semántico"
+    },
+    "rail": {
+      "placeholder": "Buscar en tu libro…",
+      "go": "Buscar",
+      "hint": "El modo Texto encuentra palabras exactas en tu prosa; el modo Semántico encuentra pasajes por su significado. Un resultado abre el editor en ese punto."
+    },
+    "semantic": {
+      "placeholder": "Buscar por significado en tu lore…",
+      "loadingProject": "Cargando…",
+      "noProject": "Este libro aún no tiene un proyecto de conocimiento; primero debes extraerlo o construirlo.",
+      "error": "La búsqueda semántica no está disponible en este momento.",
+      "hint": "Escribe al menos 3 caracteres para buscar por significado.",
+      "searching": "Buscando…",
+      "empty": "No se encontraron fragmentos coincidentes.",
+      "openChapter": "abrir →"
     }
   }
 }

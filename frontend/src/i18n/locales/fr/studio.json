@@ -384,6 +384,12 @@
       "desc": "Gérez les dérivés « what-if » d'un livre — listez le canon et chaque branche, basculez tout le studio sur l'une d'elles, archivez-en une ou créez une nouvelle branche à partir d'un chapitre",
       "guideBody": "Une « dị bản » (divergence) crée une ramification de votre livre à un chapitre donné et diverge — un univers alternatif, un changement de point de vue, un personnage modifié — pour devenir une œuvre dérivée possédant sa propre partition de connaissances, tandis que la source reste le canon en lecture seule. Ce panneau liste votre œuvre canonique et chaque branche que vous avez créée. « Basculer vers » déplace l'intégralité de votre studio — éditeur, navigateur, qualité, tout — sur cette branche ; le choix est mémorisé par livre et persiste après un rechargement. « Archiver » masque une branche sans la détruire (ses chapitres et ses connaissances sont conservés). « Nouvelle divergence » ouvre l'assistant en 4 étapes pour en créer une. Sélectionnez une branche pour lire sa spécification (taxonomie, point de divergence, règles canoniques, modifications), laquelle est fixée lors de la création."
     },
+    "reference-shelf": {
+      "title": "Étagère de références",
+      "desc": "Organisez les passages de référence (influences externes) qui servent de base à votre écriture — ajoutez, modifiez et supprimez-les ; les passages pertinents par scène sont récupérés et peuvent être épinglés dans le pack de contextualisation.",
+      "guideBody": "L'étagère de références est le corpus d'influences de votre livre — les passages, sources et modèles de style sur lesquels l'IA s'appuie lors de la rédaction. Ajoutez une référence avec son titre, son auteur, l'URL de la source et le texte ; le texte est intégré afin que le studio puisse récupérer les éléments les plus pertinents par scène. Modifiez les détails d'une référence (un simple changement de métadonnées) ou son contenu (ce qui déclenche une nouvelle intégration). Filtrez une grande bibliothèque grâce à la barre de recherche. La récupération et l'épinglage par scène apparaissent lorsque vous ouvrez l'étagère à côté d'une scène ; seule, elle sert de gestionnaire de bibliothèque. Un modèle d'intégration (embedding) doit être configuré (ajoutez-en un dans les paramètres IA) pour que la récupération fonctionne.",
+      "noWork": "Aucun projet d'écriture en cours — créez d'abord un Projet, puis organisez son étagère de références ici."
+    },
     "canonview": {
       "title": "Le canon au chapitre",
       "desc": "Ce que le canon sait à l'état du chapitre en cours — entités présentes/établies, état du canon et chronologie",
@@ -641,11 +647,10 @@
       "desc": "Examinez les éléments extraits qui ne correspondent pas à votre schéma et résolvez-les.",
       "guideBody": "Lorsque l'extraction trouve une entité, une relation ou une valeur qui ne figure pas encore dans votre schéma, elle les place ici au lieu de faire des suppositions. Chaque ligne ne propose que les corrections valides pour cet élément : mappez-le vers un élément existant, ajoutez-le à votre schéma/vocabulaire, corrigez un point de terminaison ou ignorez-le."
     },
-    "reference-shelf": {
-      "title": "Étagère de références",
-      "desc": "Organisez les passages de référence (influences externes) qui servent de base à votre écriture — ajoutez, modifiez et supprimez-les ; les passages pertinents par scène sont récupérés et peuvent être épinglés dans le pack de contextualisation.",
-      "guideBody": "L'étagère de références est le corpus d'influences de votre livre — les passages, sources et modèles de style sur lesquels l'IA s'appuie lors de la rédaction. Ajoutez une référence avec son titre, son auteur, l'URL de la source et le texte ; le texte est intégré afin que le studio puisse récupérer les éléments les plus pertinents par scène. Modifiez les détails d'une référence (un simple changement de métadonnées) ou son contenu (ce qui déclenche une nouvelle intégration). Filtrez une grande bibliothèque grâce à la barre de recherche. La récupération et l'épinglage par scène apparaissent lorsque vous ouvrez l'étagère à côté d'une scène ; seule, elle sert de gestionnaire de bibliothèque. Un modèle d'intégration (embedding) doit être configuré (ajoutez-en un dans les paramètres IA) pour que la récupération fonctionne.",
-      "noWork": "Aucun projet d'écriture en cours — créez d'abord un Projet, puis organisez son étagère de références ici."
+    "search": {
+      "title": "Rechercher",
+      "desc": "Recherchez dans la prose de votre livre (texte) ou dans vos tiroirs de lore (sémantique) ; un résultat ouvre l'éditeur à cet endroit.",
+      "guideBody": "La recherche possède deux modes. Le mode Texte trouve les mots et expressions exacts dans la prose de votre manuscrit. Le mode Sémantique trouve des passages par leur sens à travers vos tiroirs de lore (chapitres, chat, glossaire). Cliquez sur un résultat pour ouvrir l'éditeur à ce chapitre — la recherche est une porte d'entrée vers votre manuscrit, pas une simple liste de résultats."
     }
   },
   "sceneRail": {
@@ -1567,6 +1572,28 @@
       "builtin": "intégrée",
       "mine": "la mienne",
       "archived": "archivée"
+    }
+  },
+  "search": {
+    "modeLabel": "Mode de recherche",
+    "mode": {
+      "text": "Texte",
+      "semantic": "Sémantique"
+    },
+    "rail": {
+      "placeholder": "Rechercher dans votre livre…",
+      "go": "Rechercher",
+      "hint": "Le mode Texte trouve les mots exacts dans votre prose ; le mode Sémantique trouve des passages par leur sens. Un résultat ouvre l'éditeur à cet endroit."
+    },
+    "semantic": {
+      "placeholder": "Rechercher par sens dans votre lore…",
+      "loadingProject": "Chargement…",
+      "noProject": "Ce livre n'a pas encore de projet de connaissances — extrayez ou créez des connaissances d'abord.",
+      "error": "La recherche sémantique est indisponible pour le moment.",
+      "hint": "Saisissez au moins 3 caractères pour rechercher par sens.",
+      "searching": "Recherche en cours…",
+      "empty": "Aucun passage ne correspond.",
+      "openChapter": "ouvrir →"
     }
   }
 }

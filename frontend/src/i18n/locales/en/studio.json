@@ -646,6 +646,11 @@
       "title": "Triage",
       "desc": "Review extracted elements that didn't match your schema and resolve them.",
       "guideBody": "When extraction finds an entity kind, relationship, or value that isn't in your schema yet, it parks it here instead of guessing. Each row offers only the fixes that are valid for it — map it to something you already have, add it to your schema/vocabulary, fix an endpoint, or dismiss it."
+    },
+    "search": {
+      "title": "Search",
+      "desc": "Search your book's prose (text) or lore drawers (semantic); a hit opens the editor there.",
+      "guideBody": "Search has two modes. Text finds exact words and phrases in your manuscript prose. Semantic finds passages by meaning across your lore drawers (chapters, chat, glossary). Click a result to open the editor at that chapter — search is a way into your manuscript, not a dead-end list."
     }
   },
   "sceneRail": {
@@ -1567,6 +1572,28 @@
       "builtin": "built-in",
       "mine": "mine",
       "archived": "archived"
+    }
+  },
+  "search": {
+    "modeLabel": "Search mode",
+    "mode": {
+      "text": "Text",
+      "semantic": "Semantic"
+    },
+    "rail": {
+      "placeholder": "Search your book…",
+      "go": "Search",
+      "hint": "Text finds exact words in your prose; Semantic finds passages by meaning. A hit opens the editor there."
+    },
+    "semantic": {
+      "placeholder": "Search meaning across your lore…",
+      "loadingProject": "Loading…",
+      "noProject": "This book has no knowledge project yet — extract or build knowledge first.",
+      "error": "Semantic search is unavailable right now.",
+      "hint": "Type at least 3 characters to search by meaning.",
+      "searching": "Searching…",
+      "empty": "No passages match.",
+      "openChapter": "open →"
     }
   }
 }

@@ -384,6 +384,12 @@
       "desc": "Quản lý các bản phái sinh 'what-if' của một cuốn sách — liệt kê bản chính và mọi nhánh, chuyển toàn bộ studio sang một nhánh, lưu trữ một nhánh, hoặc tạo một nhánh mới từ một chương",
       "guideBody": "Một dị bản (divergence) sẽ tách cuốn sách của bạn tại một chương và tạo ra một hướng đi mới — một vũ trụ song song, một sự thay đổi góc nhìn, hoặc một nhân vật thay đổi — thành một tác phẩm phái sinh với phân vùng kiến thức riêng, trong khi bản gốc vẫn được giữ ở chế độ chỉ đọc. Bảng này liệt kê tác phẩm chính thức và mọi nhánh bạn đã tạo. 'Switch to' (Chuyển sang) sẽ chuyển toàn bộ studio của bạn — trình chỉnh sửa, trình điều hướng, chất lượng, mọi thứ — sang nhánh đó; lựa chọn này được ghi nhớ theo từng cuốn sách và vẫn tồn tại sau khi tải lại trang. 'Archive' (Lưu trữ) sẽ ẩn một nhánh mà không xóa nó (các chương và kiến thức của nó vẫn được giữ lại). 'New divergence' (Dị bản mới) sẽ mở trình hướng dẫn 4 bước để tạo một nhánh mới. Chọn một nhánh để xem thông số kỹ thuật của nó (phân loại, điểm rẽ nhánh, quy tắc chính, các ghi đè), những thông số này sẽ được cố định khi tạo."
     },
+    "reference-shelf": {
+      "title": "Kệ tham chiếu",
+      "desc": "Tổng hợp các đoạn văn tham chiếu (nguồn cảm hứng bên ngoài) làm nền tảng cho việc viết lách — thêm, chỉnh sửa và xóa chúng; các đoạn phù hợp sẽ được truy xuất theo từng cảnh và có thể được ghim vào gói dữ liệu nền tảng.",
+      "guideBody": "Kệ tham chiếu là kho tàng các nguồn ảnh hưởng cho cuốn sách của bạn — bao gồm các đoạn văn, nguồn tài liệu và các mẫu phong cách mà AI sẽ dựa vào khi soạn thảo. Hãy thêm một tham chiếu với tiêu đề, tác giả, URL nguồn và nội dung văn bản; văn bản sẽ được nhúng để studio có thể truy xuất những đoạn phù hợp nhất cho từng cảnh. Bạn có thể chỉnh sửa chi tiết tham chiếu (thay đổi siêu dữ liệu nhanh chóng) hoặc nội dung của nó (việc này sẽ thực hiện nhúng lại). Sử dụng hộp tìm kiếm để lọc trong một kệ tham chiếu lớn. Chức năng truy xuất và ghim theo từng cảnh sẽ xuất hiện khi bạn mở kệ tham chiếu cùng với một cảnh; nếu mở riêng lẻ, nó sẽ đóng vai trò quản lý thư viện. Cần phải cấu hình một mô hình nhúng (thêm một mô hình từ cài đặt AI) để tính năng truy xuất hoạt động.",
+      "noWork": "Chưa có dự án viết nào — hãy thiết lập một Work trước, sau đó mới có thể tổng hợp kệ tham chiếu tại đây."
+    },
     "canonview": {
       "title": "Chính văn tại chương",
       "desc": "Những gì chính văn biết tính đến chương đang xem xét — các thực thể hiện diện/đã được thiết lập, trạng thái chính văn và dòng thời gian",
@@ -641,11 +647,10 @@
       "desc": "Xem lại các thành phần đã trích xuất không khớp với lược đồ của bạn và xử lý chúng.",
       "guideBody": "Khi quá trình trích xuất tìm thấy một loại thực thể, mối quan hệ hoặc giá trị chưa có trong lược đồ, hệ thống sẽ lưu tạm chúng tại đây thay vì tự ý dự đoán. Mỗi hàng chỉ cung cấp các phương án sửa lỗi hợp lệ — ánh xạ nó vào một mục đã có, thêm nó vào lược đồ/từ vựng, sửa lỗi điểm cuối (endpoint), hoặc loại bỏ nó."
     },
-    "reference-shelf": {
-      "title": "Kệ tham chiếu",
-      "desc": "Tổng hợp các đoạn văn tham chiếu (nguồn cảm hứng bên ngoài) làm nền tảng cho việc viết lách — thêm, chỉnh sửa và xóa chúng; các đoạn phù hợp sẽ được truy xuất theo từng cảnh và có thể được ghim vào gói dữ liệu nền tảng.",
-      "guideBody": "Kệ tham chiếu là kho tàng các nguồn ảnh hưởng cho cuốn sách của bạn — bao gồm các đoạn văn, nguồn tài liệu và các mẫu phong cách mà AI sẽ dựa vào khi soạn thảo. Hãy thêm một tham chiếu với tiêu đề, tác giả, URL nguồn và nội dung văn bản; văn bản sẽ được nhúng để studio có thể truy xuất những đoạn phù hợp nhất cho từng cảnh. Bạn có thể chỉnh sửa chi tiết tham chiếu (thay đổi siêu dữ liệu nhanh chóng) hoặc nội dung của nó (việc này sẽ thực hiện nhúng lại). Sử dụng hộp tìm kiếm để lọc trong một kệ tham chiếu lớn. Chức năng truy xuất và ghim theo từng cảnh sẽ xuất hiện khi bạn mở kệ tham chiếu cùng với một cảnh; nếu mở riêng lẻ, nó sẽ đóng vai trò quản lý thư viện. Cần phải cấu hình một mô hình nhúng (thêm một mô hình từ cài đặt AI) để tính năng truy xuất hoạt động.",
-      "noWork": "Chưa có dự án viết nào — hãy thiết lập một Work trước, sau đó mới có thể tổng hợp kệ tham chiếu tại đây."
+    "search": {
+      "title": "Tìm kiếm",
+      "desc": "Tìm kiếm văn bản (text) hoặc kho dữ liệu lore (ngữ nghĩa); kết quả sẽ đưa bạn đến thẳng trình chỉnh sửa tại vị trí đó.",
+      "guideBody": "Tìm kiếm có hai chế độ. Chế độ Văn bản sẽ tìm chính xác các từ và cụm từ trong bản thảo của bạn. Chế độ Ngữ nghĩa sẽ tìm các đoạn văn dựa trên ý nghĩa trong kho dữ liệu lore (chương, trò chuyện, thuật ngữ). Nhấp vào một kết quả để mở trình chỉnh sửa tại chương đó — tìm kiếm là cách để đi sâu vào bản thảo, không phải là một danh sách tĩnh."
     }
   },
   "sceneRail": {
@@ -1567,6 +1572,28 @@
       "builtin": "mặc định",
       "mine": "của tôi",
       "archived": "đã lưu trữ"
+    }
+  },
+  "search": {
+    "modeLabel": "Chế độ tìm kiếm",
+    "mode": {
+      "text": "Văn bản",
+      "semantic": "Ngữ nghĩa"
+    },
+    "rail": {
+      "placeholder": "Tìm kiếm trong sách của bạn…",
+      "go": "Tìm kiếm",
+      "hint": "Văn bản tìm chính xác từ ngữ trong bản thảo; Ngữ nghĩa tìm các đoạn văn theo ý nghĩa. Nhấp vào kết quả để mở trình chỉnh sửa tại đó."
+    },
+    "semantic": {
+      "placeholder": "Tìm kiếm theo ý nghĩa trong lore…",
+      "loadingProject": "Đang tải…",
+      "noProject": "Cuốn sách này chưa có dự án tri thức — hãy trích xuất hoặc xây dựng tri thức trước.",
+      "error": "Tìm kiếm ngữ nghĩa hiện không khả dụng.",
+      "hint": "Nhập ít nhất 3 ký tự để tìm kiếm theo ý nghĩa.",
+      "searching": "Đang tìm kiếm…",
+      "empty": "Không tìm thấy đoạn văn nào phù hợp.",
+      "openChapter": "mở →"
     }
   }
 }

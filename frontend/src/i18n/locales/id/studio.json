@@ -384,6 +384,12 @@
       "desc": "Kelola turunan what-if sebuah buku — daftar kanon dan setiap cabang, pindahkan seluruh studio ke salah satu cabang, arsipkan, atau buat cabang baru dari sebuah bab",
       "guideBody": "Dị bản (divergensi) memisahkan buku Anda pada suatu bab dan menyimpang — alam semesta alternatif, pergeseran POV, perubahan karakter — menjadi karya turunan dengan partisi pengetahuan tersendiri, sementara sumber aslinya tetap menjadi kanon yang hanya bisa dibaca. Panel ini mencantumkan karya kanon Anda dan setiap cabang yang telah Anda buat. 'Pindah ke' memindahkan seluruh studio Anda — editor, navigator, kualitas, semuanya — ke cabang tersebut; pilihan ini diingat per buku dan tetap ada setelah memuat ulang. 'Arsipkan' menyembunyikan cabang tanpa menghapusnya (bab dan pengetahuannya tetap disimpan). 'Divergensi baru' membuka wizard 4 langkah untuk membuatnya. Pilih cabang untuk membaca spesifikasinya (taksonomi, titik cabang, aturan kanon, override), yang bersifat tetap saat dibuat."
     },
+    "reference-shelf": {
+      "title": "Rak Referensi",
+      "desc": "Kurasi kutipan referensi (pengaruh eksternal) yang mendasari tulisan Anda — tambahkan, edit, dan hapus; kutipan relevan per adegan akan diambil dan dapat disematkan ke dalam paket pendukung.",
+      "guideBody": "Rak referensi adalah korpus pengaruh buku Anda — kutipan, sumber, dan contoh gaya bahasa yang digunakan AI saat menyusun draf. Tambahkan referensi dengan judul, penulis, URL sumber, dan teks; teks tersebut akan disematkan agar studio dapat mengambil yang paling relevan per adegan. Edit detail referensi (perubahan metadata ringan) atau kontennya (yang akan melakukan penyematan ulang). Filter rak yang besar dengan kotak pencarian. Pengambilan dan penyematan per adegan akan muncul saat Anda membuka rak bersamaan dengan sebuah adegan; jika dibuka sendiri, rak ini berfungsi untuk mengelola pustaka. Model embedding harus dikonfigurasi (tambahkan dari pengaturan AI) agar pengambilan data dapat berfungsi.",
+      "noWork": "Belum ada proyek tulisan — buat Work terlebih dahulu, lalu kurasi rak referensinya di sini."
+    },
     "canonview": {
       "title": "Kanon pada bab",
       "desc": "Apa yang diketahui kanon per bab yang sedang difokuskan — entitas yang hadir/terbentuk, status kanon, dan lini masa",
@@ -641,11 +647,10 @@
       "desc": "Tinjau elemen yang diekstraksi yang tidak cocok dengan skema Anda dan selesaikan.",
       "guideBody": "Saat ekstraksi menemukan jenis entitas, relasi, atau nilai yang belum ada dalam skema Anda, sistem akan menyimpannya di sini alih-alih menebak. Setiap baris hanya menawarkan perbaikan yang valid untuk elemen tersebut — petakan ke sesuatu yang sudah Anda miliki, tambahkan ke skema/kosakata Anda, perbaiki endpoint, atau abaikan."
     },
-    "reference-shelf": {
-      "title": "Rak Referensi",
-      "desc": "Kurasi kutipan referensi (pengaruh eksternal) yang mendasari tulisan Anda — tambahkan, edit, dan hapus; kutipan relevan per adegan akan diambil dan dapat disematkan ke dalam paket pendukung.",
-      "guideBody": "Rak referensi adalah korpus pengaruh buku Anda — kutipan, sumber, dan contoh gaya bahasa yang digunakan AI saat menyusun draf. Tambahkan referensi dengan judul, penulis, URL sumber, dan teks; teks tersebut akan disematkan agar studio dapat mengambil yang paling relevan per adegan. Edit detail referensi (perubahan metadata ringan) atau kontennya (yang akan melakukan penyematan ulang). Filter rak yang besar dengan kotak pencarian. Pengambilan dan penyematan per adegan akan muncul saat Anda membuka rak bersamaan dengan sebuah adegan; jika dibuka sendiri, rak ini berfungsi untuk mengelola pustaka. Model embedding harus dikonfigurasi (tambahkan dari pengaturan AI) agar pengambilan data dapat berfungsi.",
-      "noWork": "Belum ada proyek tulisan — buat Work terlebih dahulu, lalu kurasi rak referensinya di sini."
+    "search": {
+      "title": "Cari",
+      "desc": "Cari prosa (teks) buku Anda atau laci lore (semantik); hasil yang ditemukan akan langsung membuka editor di bagian tersebut.",
+      "guideBody": "Pencarian memiliki dua mode. Mode Teks menemukan kata dan frasa yang tepat dalam prosa manuskrip Anda. Mode Semantik menemukan bagian berdasarkan makna di seluruh laci lore Anda (bab, obrolan, glosarium). Klik hasil untuk membuka editor pada bab tersebut — pencarian adalah jalan masuk ke manuskrip Anda, bukan sekadar daftar mati."
     }
   },
   "sceneRail": {
@@ -1567,6 +1572,28 @@
       "builtin": "bawaan",
       "mine": "milik saya",
       "archived": "diarsipkan"
+    }
+  },
+  "search": {
+    "modeLabel": "Mode pencarian",
+    "mode": {
+      "text": "Teks",
+      "semantic": "Semantik"
+    },
+    "rail": {
+      "placeholder": "Cari buku Anda…",
+      "go": "Cari",
+      "hint": "Teks menemukan kata yang tepat dalam prosa Anda; Semantik menemukan bagian berdasarkan makna. Hasil yang ditemukan akan membuka editor di bagian tersebut."
+    },
+    "semantic": {
+      "placeholder": "Cari makna di seluruh lore Anda…",
+      "loadingProject": "Memuat…",
+      "noProject": "Buku ini belum memiliki proyek pengetahuan — ekstrak atau bangun pengetahuan terlebih dahulu.",
+      "error": "Pencarian semantik saat ini tidak tersedia.",
+      "hint": "Ketik minimal 3 karakter untuk mencari berdasarkan makna.",
+      "searching": "Mencari...",
+      "empty": "Tidak ada kutipan yang cocok.",
+      "openChapter": "buka →"
     }
   }
 }
