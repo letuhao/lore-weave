@@ -53,10 +53,10 @@ beautifulsoup4>=4.15.0,<5
 # Realistic added image footprint ~500MB-1GB including transitive
 # pydantic v2 + sentence-transformers + pyarrow (per plan LOW-12).
 # Used only in tests/quality/* and only opt-in via --run-quality.
-deepeval==4.0.4
+deepeval==4.1.0
 seqeval==1.2.2
 datasets==2.21.0
-krippendorff==0.7.0
+krippendorff==0.8.2
 
 # ARCH-1 C1 (2026-06-01) — MCP server facade for the memory tools.
 # FastMCP ships inside the official `mcp` SDK; the [cli] extra adds the
