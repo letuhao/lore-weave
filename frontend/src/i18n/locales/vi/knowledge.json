@@ -22,7 +22,17 @@
     "hint": "Cuộn để thu phóng · kéo vùng trống để di chuyển · nhấp một nút để xem chi tiết · ⊞ để mở rộng",
     "loading": "Đang tải đồ thị…",
     "loadFailed": "Không tải được đồ thị: {{error}}",
-    "empty": "Chưa có đồ thị tri thức — hãy xây dựng dự án này để khám phá mạng lưới của nó."
+    "empty": "Chưa có đồ thị tri thức — hãy xây dựng dự án này để khám phá mạng lưới của nó.",
+    "emptyLens": "Không có mối quan hệ nào khớp với chế độ xem này — hãy thử một chế độ xem khác, một chương trước đó, hoặc xóa bộ lọc.",
+    "truncatedLens": "đang hiển thị {{n}} mối quan hệ đầu tiên của chế độ xem này",
+    "hintLens": "Cuộn để phóng to · kéo để di chuyển · nhấp vào một nút để xem chi tiết",
+    "lens": {
+      "view": "Chế độ xem",
+      "noView": "Tất cả các mối quan hệ",
+      "asOf": "Tính đến chương",
+      "latest": "mới nhất",
+      "clear": "Xóa bộ lọc"
+    }
   },
   "schemaSection": {
     "title": "Lược đồ",

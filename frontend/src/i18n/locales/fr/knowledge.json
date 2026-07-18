@@ -22,7 +22,17 @@
     "hint": "Défilez pour zoomer · glissez l'espace vide pour déplacer · cliquez sur un nœud pour le détail · ⊞ pour développer",
     "loading": "Chargement du graphe…",
     "loadFailed": "Échec du chargement du graphe : {{error}}",
-    "empty": "Aucun graphe de connaissances pour le moment — construisez ce projet pour explorer son réseau."
+    "empty": "Aucun graphe de connaissances pour le moment — construisez ce projet pour explorer son réseau.",
+    "emptyLens": "Aucune relation ne correspond à cette vue — essayez une autre vue, un chapitre précédent ou effacez la vue.",
+    "truncatedLens": "affichage des {{n}} premières relations de cette vue",
+    "hintLens": "Faites défiler pour zoomer · glissez pour déplacer · cliquez sur un nœud pour les détails",
+    "lens": {
+      "view": "Vue",
+      "noView": "Toutes les relations",
+      "asOf": "À partir du chapitre",
+      "latest": "dernière",
+      "clear": "Effacer la vue"
+    }
   },
   "schemaSection": {
     "title": "Schéma",

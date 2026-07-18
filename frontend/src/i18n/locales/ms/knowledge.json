@@ -22,7 +22,17 @@
     "hint": "Skrol untuk zum · seret ruang kosong untuk gerak · klik nod untuk butiran · ⊞ untuk kembangkan",
     "loading": "Memuatkan graf…",
     "loadFailed": "Gagal memuatkan graf: {{error}}",
-    "empty": "Tiada graf pengetahuan lagi — bina projek ini untuk meneroka rangkaiannya."
+    "empty": "Tiada graf pengetahuan lagi — bina projek ini untuk meneroka rangkaiannya.",
+    "emptyLens": "Tiada hubungan yang sepadan dengan kanta ini — cuba paparan lain atau bab sebelumnya, atau kosongkan kanta.",
+    "truncatedLens": "menunjukkan {{n}} hubungan pertama bagi kanta ini",
+    "hintLens": "Skrol untuk zum · seret untuk gerak · klik nod untuk butiran",
+    "lens": {
+      "view": "Paparan",
+      "noView": "Semua hubungan",
+      "asOf": "Setakat bab",
+      "latest": "terkini",
+      "clear": "Kosongkan kanta"
+    }
   },
   "schemaSection": {
     "title": "Skema",

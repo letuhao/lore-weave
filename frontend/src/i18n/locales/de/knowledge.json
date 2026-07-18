@@ -22,7 +22,17 @@
     "hint": "Scrollen zum Zoomen · Leerraum ziehen zum Verschieben · Knoten klicken für Details · ⊞ zum Erweitern",
     "loading": "Graph wird geladen…",
     "loadFailed": "Graph konnte nicht geladen werden: {{error}}",
-    "empty": "Noch kein Wissensgraph vorhanden — erstelle dieses Projekt, um das Netzwerk zu erkunden."
+    "empty": "Noch kein Wissensgraph vorhanden — erstelle dieses Projekt, um das Netzwerk zu erkunden.",
+    "emptyLens": "Keine Beziehungen entsprechen diesem Filter – versuchen Sie eine andere Ansicht, ein früheres Kapitel oder löschen Sie den Filter.",
+    "truncatedLens": "zeigt die ersten {{n}} Beziehungen dieses Filters an",
+    "hintLens": "Scrollen zum Zoomen · Ziehen zum Verschieben · Klicken Sie auf einen Knoten für Details",
+    "lens": {
+      "view": "Ansicht",
+      "noView": "Alle Beziehungen",
+      "asOf": "Stand Kapitel",
+      "latest": "aktuellste",
+      "clear": "Filter löschen"
+    }
   },
   "schemaSection": {
     "title": "Schema",

@@ -22,7 +22,17 @@
     "hint": "Yakınlaştırmak için kaydırın · hareket ettirmek için boş alandan sürükleyin · ayrıntılar için bir düğüme tıklayın · genişletmek için ⊞",
     "loading": "Grafik yükleniyor…",
     "loadFailed": "Grafik yüklenemedi: {{error}}",
-    "empty": "Henüz bir bilgi grafiği yok — ağını keşfetmek için bu projeyi oluşturun."
+    "empty": "Henüz bir bilgi grafiği yok — ağını keşfetmek için bu projeyi oluşturun.",
+    "emptyLens": "Bu lens ile eşleşen ilişki bulunamadı — başka bir görünüm deneyin, daha önceki bir bölüme gidin veya lensi temizleyin.",
+    "truncatedLens": "bu lensin ilk {{n}} ilişkisi gösteriliyor",
+    "hintLens": "Yakınlaştırmak için kaydırın · hareket ettirmek için sürükleyin · detaylar için bir düğüme tıklayın",
+    "lens": {
+      "view": "Görünüm",
+      "noView": "Tüm ilişkiler",
+      "asOf": "Bölüm itibarıyla",
+      "latest": "en son",
+      "clear": "Lensi temizle"
+    }
   },
   "schemaSection": {
     "title": "Şema",

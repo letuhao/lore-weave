@@ -332,6 +332,10 @@ export interface GraphNode {
   kind: string;
   name: string;
   glossary_entity_id?: string | null;
+  // KG-ML M5 (C7) — localized labels for a reader whose language differs from
+  // the source. null ⇒ keep the canonical kind/name (explicit source fallback).
+  kind_label?: string | null;
+  name_label?: string | null;
 }
 
 export interface GraphEdge {
@@ -341,6 +345,8 @@ export interface GraphEdge {
   valid_from?: number | null;
   valid_to?: number | null;
   schema_version?: number | null;
+  // KG-ML M5 (C7) — localized predicate label (curated → humanized fallback).
+  edge_type_label?: string | null;
 }
 
 export interface GraphSlice {

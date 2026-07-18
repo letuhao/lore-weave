@@ -22,7 +22,17 @@
     "hint": "Gulir untuk zoom · seret ruang kosong untuk geser · klik simpul untuk detail · ⊞ untuk memperluas",
     "loading": "Memuat graf...",
     "loadFailed": "Gagal memuat graf: {{error}}",
-    "empty": "Belum ada graf pengetahuan — bangun proyek ini untuk menjelajahi jaringannya."
+    "empty": "Belum ada graf pengetahuan — bangun proyek ini untuk menjelajahi jaringannya.",
+    "emptyLens": "Tidak ada relasi yang cocok dengan lensa ini — coba tampilan lain atau bab sebelumnya, atau hapus lensa.",
+    "truncatedLens": "menampilkan {{n}} relasi pertama dari lensa ini",
+    "hintLens": "Gulir untuk memperbesar · seret untuk menggeser · klik simpul untuk detail",
+    "lens": {
+      "view": "Tampilan",
+      "noView": "Semua relasi",
+      "asOf": "Per bab",
+      "latest": "terbaru",
+      "clear": "Hapus lensa"
+    }
   },
   "schemaSection": {
     "title": "Skema",

@@ -22,7 +22,17 @@
     "hint": "Desliza para hacer zoom · arrastra espacio vacío para mover · haz clic en un nodo para ver detalles · ⊞ para expandir",
     "loading": "Cargando grafo…",
     "loadFailed": "Error al cargar el grafo: {{error}}",
-    "empty": "Aún no hay grafo de conocimiento — construye este proyecto para explorar su red."
+    "empty": "Aún no hay grafo de conocimiento — construye este proyecto para explorar su red.",
+    "emptyLens": "Ninguna relación coincide con este filtro; prueba con otra vista, un capítulo anterior o limpia el filtro.",
+    "truncatedLens": "mostrando las primeras {{n}} relaciones de este filtro",
+    "hintLens": "Desliza para acercar · arrastra para mover · haz clic en un nodo para ver detalles",
+    "lens": {
+      "view": "Vista",
+      "noView": "Todas las relaciones",
+      "asOf": "A partir del capítulo",
+      "latest": "más reciente",
+      "clear": "Limpiar filtro"
+    }
   },
   "schemaSection": {
     "title": "Esquema",

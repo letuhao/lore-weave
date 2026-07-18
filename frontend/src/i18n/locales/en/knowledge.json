@@ -22,7 +22,17 @@
     "hint": "Scroll to zoom · drag empty space to pan · click a node for detail · ⊞ to expand",
     "loading": "Loading graph…",
     "loadFailed": "Failed to load graph: {{error}}",
-    "empty": "No knowledge graph yet — build this project to explore its network."
+    "empty": "No knowledge graph yet — build this project to explore its network.",
+    "emptyLens": "No relations match this lens — try another view or an earlier chapter, or clear the lens.",
+    "truncatedLens": "showing the first {{n}} relations of this lens",
+    "hintLens": "Scroll to zoom · drag to pan · click a node for detail",
+    "lens": {
+      "view": "View",
+      "noView": "All relations",
+      "asOf": "As of chapter",
+      "latest": "latest",
+      "clear": "Clear lens"
+    }
   },
   "schemaSection": {
     "title": "Schema",
