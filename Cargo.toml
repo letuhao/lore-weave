@@ -118,7 +118,7 @@ reqwest = { version = "0.12", features = ["json", "rustls-tls", "stream"], defau
 # HTTP server (tilemap-service `serve` subcommand — POST /internal/v1/tilemaps/render)
 axum = "0.7"
 tower = "0.5"
-tower-http = { version = "0.6", features = ["timeout", "trace", "cors"] }
+tower-http = { version = "0.7", features = ["timeout", "trace", "cors"] }
 
 # Serialization
 serde = { version = "1.0", features = ["derive"] }
