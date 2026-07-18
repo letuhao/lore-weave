@@ -8,6 +8,7 @@ import { Bell } from 'lucide-react';
 import { useAuth } from '@/auth';
 import { fetchUnreadCount } from '@/features/notifications/api';
 import { useNotificationStream } from '@/features/notifications/hooks/useNotificationStream';
+import { onNotificationsMutated } from '@/features/notifications/mutationBus';
 import { useStudioBusSelector, useStudioHost } from '../host/StudioHostProvider';
 import { getStudioPanelDef } from '../panels/catalog';
 
@@ -29,6 +30,19 @@ export function NotificationsStatusItem() {
   useNotificationStream(accessToken, useCallback(() => {
     host.publish({ type: 'notificationsUnread', count: (host.getSnapshot().notificationsUnread ?? 0) + 1 });
   }, [host]));
+
+  // Cross-surface sync: a mark-read/mark-all/delete anywhere (this panel, the center page, the
+  // nav bell) RE-SEEDS the authoritative count onto the bus. Without this, the badge only
+  // corrected when the panel happened to be open (which re-publishes its list count) — so a
+  // mark-all could leave a stale studio badge, and the SSE-only +1 bumps had no counter-reset.
+  useEffect(() => {
+    if (!accessToken) return;
+    return onNotificationsMutated(() => {
+      fetchUnreadCount(accessToken)
+        .then((r) => host.publish({ type: 'notificationsUnread', count: r.count }))
+        .catch(() => {});
+    });
+  }, [accessToken, host]);
 
   const openPanel = () => {
     const def = getStudioPanelDef('notifications');

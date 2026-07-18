@@ -14,6 +14,7 @@ import type { Notification } from '@/features/notifications/api';
 import { CATEGORIES, type NotificationCategory } from '@/features/notifications/constants';
 import { NotificationItem } from '@/features/notifications/components/NotificationItem';
 import { useNotificationStream } from '@/features/notifications/hooks/useNotificationStream';
+import { onNotificationsMutated } from '@/features/notifications/mutationBus';
 
 export function NotificationBell() {
   const { t } = useTranslation('notifications');
@@ -41,6 +42,17 @@ export function NotificationBell() {
       .then((r) => setUnread(r.count))
       .catch(() => {});
   }, [accessToken, pathname]);
+
+  // Cross-surface sync: a mark-read/mark-all/delete on ANY surface (center page, studio
+  // panel) re-reads the authoritative count here, so this badge can't be left stale on the
+  // same route (the pathname refetch above only caught route changes). Single source of truth
+  // = the DB, post-mutation.
+  useEffect(() => {
+    if (!accessToken) return;
+    return onNotificationsMutated(() => {
+      fetchUnreadCount(accessToken).then((r) => setUnread(r.count)).catch(() => {});
+    });
+  }, [accessToken]);
 
   // Live SSE subscription — each event bumps the unread badge.
   useNotificationStream(
