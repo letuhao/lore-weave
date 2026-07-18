@@ -22,7 +22,7 @@ isolated playwright session (recipe proven this session). **Model for co-writer 
 | 1 | N5a persona scope restraint (chat-service) | F3 | LOW (BE) | **[PARKED]** | prompt fix unit-green but FAILS live QC ×2 — see debt |
 | 2 | N5b de-jargon confirm (glossary-svc + FE copy) | F3 | LOW | **[x] DONE** `bf27d203f` | 3 Go sites + FE header; live binary has new copy (3), old gone (0); go build clean |
 | 3 | N6 chapter-create idempotency (+migration) | F7 | LOW (BE) | [ ] | |
-| 4 | N2 per-message Insert (inject onInsert) | F4 | MED (shared chat) | [ ] | |
+| 4 | N2 per-message Insert (inject onInsert) | F4 | MED (shared chat) | **[x] DONE** `9fb1960ac` | 6 unit + live /chat: Insert renders on reply, clicks clean, fires paste+toast |
 | 5 | N1 mode legibility (VERIFY first-run mode FIRST) | F2 | MED (shared chat) | [ ] | |
 | 6 | N3 first-run routing | F5 | LOW | **[PARKED]** | BOTH spec+review seams wrong — register doesn't auth (see debt) |
 | 7 | N4 sidebar grouping (+mobile) | F6 | HIGH (shell) | [ ] | |
