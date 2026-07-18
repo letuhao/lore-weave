@@ -50,7 +50,7 @@
     "eslint": "^9",
     "eslint-plugin-react": "^7",
     "eslint-plugin-react-hooks": "^5",
-    "globals": "^15",
+    "globals": "^17",
     "jsdom": "^29.1.1",
     "postcss": "^8.5.8",
     "prettier": "^3",
