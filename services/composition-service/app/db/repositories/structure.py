@@ -268,20 +268,25 @@ class StructureRepo:
 
     async def list_tree(
         self, book_id: UUID, *, include_archived: bool = False,
+        kinds: tuple[str, ...] = ("saga", "arc"),
     ) -> list[StructureNode]:
         """The book's spec tree as a flat, deterministically-ordered list — depth
         first (root sagas, then arcs, then sub-arcs), then fractional rank. The
         caller assembles the tree. rank COLLATE "C" is byte order (matches the
-        fractional-rank algorithm) regardless of DB locale."""
+        fractional-rank algorithm) regardless of DB locale.
+
+        C-merge C1/C3: `kinds` defaults to the SPEC tree ('saga','arc') so every existing arc-surface
+        caller is behaviour-identical and NEVER sees the C-merge 'part' groupings (which would pollute
+        the Plan rail). The Manuscript surface asks explicitly for kinds=('part',)."""
         archived_pred = "" if include_archived else " AND NOT is_archived"
         async with self._pool.acquire() as c:
             rows = await c.fetch(
                 f"""
                 SELECT {_SELECT_COLS} FROM structure_node
-                WHERE book_id = $1{archived_pred}
+                WHERE book_id = $1 AND kind = ANY($2){archived_pred}
                 ORDER BY depth, rank COLLATE "C", id
                 """,
-                book_id,
+                book_id, list(kinds),
             )
         return [_row_to_node(r) for r in rows]
 

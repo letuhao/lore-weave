@@ -105,3 +105,23 @@ async def test_reconcile_reactivates_a_restored_part(pool):
     await reconcile_book_parts(pool, book, [_part(p1, "One", 1)])  # restored → un-archived
     rows = await _parts(pool, book)
     assert len(rows) == 1 and rows[0]["is_archived"] is False
+
+
+async def test_parts_and_arcs_do_not_pollute_each_other(pool):
+    """C3 pollution fix: list_tree defaults to ('saga','arc') so a mirrored 'part' never shows on the
+    Plan rail, and kinds=('part',) returns ONLY parts — the read-cutover source for the Manuscript rail."""
+    from app.db.repositories.structure import StructureRepo
+
+    book = uuid.uuid4()
+    p1 = uuid.uuid4()
+    await reconcile_book_parts(pool, book, [_part(p1, "Part One", 1)])
+    repo = StructureRepo(pool)
+    saga = await repo.create_node(book, created_by=uuid.uuid4(), kind="saga", title="The Saga")
+
+    # Plan-rail read (default kinds) sees ONLY the saga/arc — never the 'part'.
+    arc_tree = await repo.list_tree(book)
+    assert [n.id for n in arc_tree] == [saga.id]
+    # Manuscript-rail read (kinds=('part',)) sees ONLY the part.
+    part_tree = await repo.list_tree(book, kinds=("part",))
+    assert [n.id for n in part_tree] == [p1]
+    assert part_tree[0].title == "Part One"

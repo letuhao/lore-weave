@@ -222,7 +222,7 @@ class OutlineNode(BaseModel):
     child_count: int | None = None
 
 
-StructureNodeKind = Literal["saga", "arc"]
+StructureNodeKind = Literal["saga", "arc", "part"]  # C-merge: 'part' = a depth-0 manuscript grouping
 
 
 class StructureNode(BaseModel):

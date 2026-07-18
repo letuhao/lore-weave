@@ -571,6 +571,32 @@ async def list_arcs(
     return {"nodes": out_nodes, "book_id": str(book_id)}
 
 
+@router.get("/books/{book_id}/parts")
+async def list_parts(
+    book_id: UUID,
+    user_id: UUID = Depends(get_current_user),
+    grant: GrantClient = Depends(get_grant_client_dep),
+) -> dict[str, Any]:
+    """C-merge C3 read-cutover — the Manuscript rail's part groupings, served from structure_node
+    kind='part' (the C2 mirror of book-service parts) so the FE stops reading the parts TABLE and C4
+    can drop it. Parts-compatible shape ({items:[...]}); sort_order is decoded from the mirror rank
+    (the C2 reconcile encodes it fixed-width, so int(rank) is the original order). VIEW on the book."""
+    await _gate_book(grant, book_id, user_id, GrantLevel.VIEW)
+    nodes = await _structures().list_tree(book_id, kinds=("part",))
+    items = [
+        {
+            "part_id": str(n.id),
+            "book_id": str(book_id),
+            "title": n.title or None,
+            "path": "",
+            "sort_order": int(n.rank) if (n.rank or "").isdigit() else 0,
+            "lifecycle_state": "active",  # list_tree excludes archived by default
+        }
+        for n in nodes
+    ]
+    return {"items": items}
+
+
 @router.get("/arcs/{node_id}")
 async def get_arc(
     node_id: UUID,
