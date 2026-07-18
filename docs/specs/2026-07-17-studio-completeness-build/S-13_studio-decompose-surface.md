@@ -157,3 +157,29 @@ The `D-S01-USE-IN-DECOMPOSE` debt is CLOSED when: the `decompose` panel is regis
 **Use in decompose** button opens it pre-selected, and the live browser smoke shows author-structure → decompose →
 commit end-to-end inside the studio. Until built, the debt is **specced (this file) and ready to build in the
 fanout** — no longer "blocked".
+
+---
+
+## 11. BUILD STATUS (2026-07-18) — SHIPPED, D-S01-USE-IN-DECOMPOSE CLOSED
+
+Investigated against code first: the spec is **accurate**, with one mechanism refinement — `PlannerView`
+calls `usePlanner` **internally**, so the host cannot call `p.setTemplateId`. Wired the pre-select via a
+minimal backward-compatible **`initialTemplateId?` prop** on PlannerView (seeds once on mount; legacy
+`CompositionPanel` omits it → unchanged) — exactly the "thread through PlannerView props" §4/§9 permitted.
+
+- **`DecomposePanel`** (commit `63…`/feature `…`): resolves `project_id` via `useWorkResolution` +
+  `resolveActiveWork`; no Work → `WorkSetupCta` (ENTRY-from-empty); else mounts `PlannerView` with the work's
+  `default_model_ref`; DOCK-6 params (templateId at mount + `onDidParametersChange`), keyed to re-seed.
+- **GG-8 registration**: `decompose` catalog row (category `editor`) + `panel_id` enum + `frontend-tools.contract.json`
+  regen + `panels.decompose.*` i18n seeded in en and **filled across all 17 locales** (i18n_translate, 0 failed).
+- **S-01 deep-link**: `StructureTemplatesPanel`'s interim hint replaced with the real **"Use in decompose"**
+  button (OwnEditor edit-mode + BuiltinDetail) → `host.openPanel('decompose', {templateId})`.
+- **VERIFY**: DecomposePanel 4 + StructureTemplatesPanel deep-link (own + built-in) + panelCatalogContract 9 +
+  legacyParityContract 5 + registryPanels 4 green; tsc 0; BE `test_frontend_tools_contract` 20 (regen).
+- **LIVE SMOKE (:5199)**: palette → "Studio: Open Decompose" opens the panel → **WorkSetupCta** empty-state
+  (no Work → not a dead-end); structure-templates → select a built-in → the **Use in decompose** button
+  renders (interim hint gone) → click → the **Decompose tab activates**. The reachability + empty-state +
+  deep-link loop are live-proven. The with-Work **preview→commit** leg is the *unchanged* legacy `PlannerView`
+  flow (covered by its own tests + the DecomposePanel unit that mounts it with `project_id`+model); a full
+  author→commit E2E needs a seeded Work+structure+model on a book (heavier setup) — a follow-up live run, not
+  a code gap.

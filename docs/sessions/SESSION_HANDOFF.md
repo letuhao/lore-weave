@@ -1,5 +1,21 @@
 # ▶▶ NEXT SESSION STARTS HERE
 
+## 🧩 S-13 STUDIO DECOMPOSE SURFACE (G-STORY-STRUCTURE) — **SHIPPED (2026-07-18)** · closes D-S01-USE-IN-DECOMPOSE
+> Spec: [`docs/specs/2026-07-17-studio-completeness-build/S-13_studio-decompose-surface.md`](../specs/2026-07-17-studio-completeness-build/S-13_studio-decompose-surface.md) §11.
+> An **M FE-only PORT** (verified against code: the decompose UX already exists in `usePlanner`/`PlannerView`).
+> A studio `decompose` panel hosts the existing decompose flow (template → premise → preview arc→chapter→scene
+> tree → commit); a **"Use in decompose"** button in `structure-templates` opens it pre-selected — closing the
+> S-01 loop. **Mechanism note:** `PlannerView` owns `usePlanner` internally, so pre-select is wired via a
+> minimal backward-compat **`initialTemplateId?` prop** (legacy CompositionPanel unchanged). Commits: feature
+> (DecomposePanel + PlannerView prop + StructureTemplatesPanel deep-link) + `63ab92916` (GG-8: catalog row +
+> panel_id enum + contract regen + i18n×18). **VERIFY:** DecomposePanel 4 + deep-link (own+built-in) +
+> panelCatalogContract 9 + legacyParity 5 + registryPanels 4 green; tsc 0; BE contract 20 (regen). **LIVE
+> SMOKE (:5199):** palette → Open Decompose → **WorkSetupCta** empty-state (no Work → not a dead-end);
+> structure-templates → built-in → **Use in decompose** renders (interim hint gone) → click → **Decompose tab
+> activates**. Reachability + empty-state + deep-link live-proven; the with-Work preview→commit leg is the
+> unchanged legacy PlannerView flow (its own tests + DecomposePanel unit) — a full author→commit E2E needs a
+> seeded Work+structure+model (follow-up live run, not a code gap). **No open S-13 defers.**
+
 ## 🔁 S-12 WORKFLOWS + WORKFLOW-PROPOSALS GUI (G-WORKFLOWS) — **SHIPPED (2026-07-18)**
 > Spec: [`docs/specs/2026-07-17-studio-completeness-build/S-12_workflows.md`](../specs/2026-07-17-studio-completeness-build/S-12_workflows.md) ·
 > RUN-STATE: [`docs/plans/2026-07-18-S12-workflows-gui-RUN-STATE.md`](../plans/2026-07-18-S12-workflows-gui-RUN-STATE.md).
