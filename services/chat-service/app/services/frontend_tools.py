@@ -17,6 +17,7 @@ carry editor_context); other clients never have these tools advertised.
 """
 from __future__ import annotations
 
+import re as _re
 from copy import deepcopy
 
 # Tool names that the FRONTEND executes (suspend the run, don't call a backend).
@@ -570,6 +571,47 @@ _COMPACT_PANEL_DESC = (
 )
 
 
+# F7c M4 — deterministic navigation-intent gate for ui_open_studio_panel. The panel
+# navigator is a click/keypress the user can do manually, so it is advertised (paying its
+# ~880 tok) ONLY when the turn actually asks to open/see a panel. Biased to PRECISION: a
+# missed nav request just means the user clicks the panel; a FALSE POSITIVE (opening a panel
+# on a plain writing turn) is the harmful error. So the trigger is a nav VERB *and* a
+# PANEL-SPECIFIC noun — and the overloaded writing words (scene/arc/plan/chapter/character/
+# beat) are deliberately NOT panel nouns, so "write a scene" / "plan the arc" never fire.
+_NAV_VERBS: tuple[str, ...] = (
+    "open", "show", "view", "display", "navigate", "go to", "goto", "bring up",
+    "pull up", "switch to", "jump to", "take me to", "let me see", "let me open",
+    "where is", "where can i", "i want to see", "manage", "let me manage",
+    "import", "upload",  # the book-import panel's own opener verbs
+)
+_PANEL_NOUNS: frozenset[str] = frozenset({
+    # panel-shape words (rare in prose-writing instructions)
+    "panel", "tab", "dock", "matrix", "canvas", "inspector", "browser", "timeline",
+    "graph", "leaderboard", "dashboard", "hub", "shelf", "codex",
+    # panel-name words (a view, not a writing noun)
+    "glossary", "wiki", "ontology", "settings", "notifications", "translation",
+    "translations", "enrichment", "motif", "motifs", "quality", "critic", "coverage",
+    "conformance", "divergence", "what-if", "whatif", "kg", "knowledge", "world",
+    "map", "cast", "editor", "compose", "planner", "import", "proposals", "workflow",
+    "workflows", "steering", "usage", "trash", "sharing", "flywheel", "promises",
+    "leaderboards", "wireframe",
+})
+
+
+def _is_panel_nav_intent(message: str | None) -> bool:
+    """True when the turn reads as a request to OPEN/SEE a studio panel (nav verb +
+    panel-specific noun). Deterministic; precision-biased (see the note above)."""
+    m = (message or "").lower()
+    if not m.strip():
+        return False
+    if not any(v in m for v in _NAV_VERBS):
+        return False
+    # word-ish token scan so "map" doesn't match "roadmap"; the [a-z\-]* class keeps
+    # hyphenated panel nouns ("what-if") intact as a single token.
+    tokens = set(_re.findall(r"[a-z][a-z\-]*", m))
+    return bool(tokens & _PANEL_NOUNS)
+
+
 def _studio_panel_tool(*, compact: bool) -> dict:
     """ui_open_studio_panel with the full (default) or compact panel_id description.
     Same schema + IDENTICAL enum either way — only the guidance prose differs."""
@@ -766,6 +808,7 @@ def frontend_tool_defs(
     book_scoped: bool = False,
     studio: bool = False,
     compact_studio_panel: bool = False,
+    studio_panel_nav: bool = True,
 ) -> list[dict]:
     """Frontend tool schemas to advertise, by surface.
 
@@ -778,6 +821,10 @@ def frontend_tool_defs(
     ``compact_studio_panel`` (F7c) — advertise ui_open_studio_panel with the compact
     area-grouped description instead of the full per-panel prose (same enum). Off ⇒
     byte-identical to pre-F7c.
+    ``studio_panel_nav`` (F7c M4) — include the ui_open_studio_panel NAVIGATOR this turn.
+    Pass False on a plain writing turn (no navigation intent) to omit its ~880 tok;
+    ui_focus_manuscript_unit (open a chapter, part of the writing loop) is unaffected.
+    Default True ⇒ pre-M4 behavior.
 
     The flags are independent: a glossary-page chat is book_scoped but not editor.
     """
@@ -788,7 +835,8 @@ def frontend_tool_defs(
         defs.append(GLOSSARY_PROPOSE_EDIT_TOOL)
         defs.append(GLOSSARY_CONFIRM_ACTION_TOOL)
     if studio:
-        defs.append(_studio_panel_tool(compact=compact_studio_panel))
+        if studio_panel_nav:
+            defs.append(_studio_panel_tool(compact=compact_studio_panel))
         defs.append(UI_FOCUS_MANUSCRIPT_UNIT_TOOL)
     return defs
 

@@ -15,6 +15,11 @@
   (Frontend-Tool-Contract). **−1490 tok/turn · panel selection 6/6=6/6** (1st run regressed 5/6 on translation↔
   enrichment; disambiguated + re-eval'd to 6/6 — the methodology's iterate-and-re-measure).
 - **M3 `lazy_workflow_directive`** — workflow directive lists slug+title only; `workflow_load` pulls detail. ~−30/wf.
+- **M4 `studio_panel_intent_gated`** (user-directed follow-up) — `ui_open_studio_panel` (~880 tok, a manual click)
+  advertised ONLY on a navigation-intent turn (nav verb + panel-specific noun; deterministic, precision-biased so
+  "write a scene" never fires). `ui_focus_manuscript_unit` stays always-on. On a typical WRITING turn the navigator
+  is fully omitted → combined with M2 that is **2371 → 0 tok on most studio turns**. Not deprecated: the free-string
+  `ui_show_panel` fallback is the silent-no-op bug the enum fixed. Commit `<pending>`.
 
 **~5.4k tok/turn saved on a studio co-writer turn (~25% of 21.6k), NO capability loss on the medium model.**
 Files: `chat-service/app/config.py` (3 flags), `services/skill_registry.py` (load_skill tool+result+lazy params),

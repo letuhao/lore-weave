@@ -4360,10 +4360,13 @@ async def stream_response(
             if discovery_eligible and not catalog:
                 discovery_eligible = False
             if discovery_eligible:
-                from app.services.frontend_tools import frontend_tool_defs
+                from app.services.frontend_tools import frontend_tool_defs, _is_panel_nav_intent
                 from app.services.tool_discovery import filter_intent_gated_setup_tools
                 editor = bool(editor_context)
                 book_scoped = bool(editor_context or book_context)
+                # F7c M4 — advertise the studio panel navigator only on a navigation-intent
+                # turn (unless the gate is disabled). Saves ~880 tok on plain writing turns.
+                _panel_nav = (not settings.studio_panel_intent_gated) or _is_panel_nav_intent(user_message_content)
                 # N5a-FULL — capability floor: high-impact world-setup tools are dropped from the
                 # turn catalog (all three reach-paths) unless this turn is world-setup intent
                 # (glossary_shaping injected). Request-scoped autonomy for the co-writer.
@@ -4371,6 +4374,7 @@ async def stream_response(
                 discovery_extra_frontend = frontend_tool_defs(
                     editor=editor, book_scoped=book_scoped, studio=bool(studio_context),
                     compact_studio_panel=settings.compact_studio_panel_desc,  # F7c
+                    studio_panel_nav=_panel_nav,  # F7c M4 — nav-intent gate
                 )
                 from app.services.tool_surface import discovery_seed_for_surface
                 # The union of step tools across the turn's visible workflows — the ONLY
@@ -4409,12 +4413,16 @@ async def stream_response(
                     # Gateway down but still agui: re-advertise the frontend
                     # write-back / studio-nav tools so the surface can still
                     # propose/confirm/navigate (mirrors the resume path's catalog-down branch).
-                    from app.services.frontend_tools import frontend_tool_defs
+                    from app.services.frontend_tools import frontend_tool_defs, _is_panel_nav_intent
                     tool_defs = tool_defs + frontend_tool_defs(
                         editor=bool(editor_context),
                         book_scoped=bool(editor_context or book_context),
                         studio=bool(studio_context),
                         compact_studio_panel=settings.compact_studio_panel_desc,  # F7c
+                        studio_panel_nav=(
+                            (not settings.studio_panel_intent_gated)
+                            or _is_panel_nav_intent(user_message_content)
+                        ),  # F7c M4 — nav-intent gate
                     )
         # A2A phase-2: advertise compose_prose only when a composer model is
         # configured for this session (orchestrator → writer delegation).

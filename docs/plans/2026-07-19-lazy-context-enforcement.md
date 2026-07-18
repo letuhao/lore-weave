@@ -86,6 +86,21 @@ documented deploy-level kill-switch (env→0 reverts a lever + is how the A/B co
 **Live rollout needs a chat-service image REBUILD** — the eval proved the logic by copying the
 changed modules into the running container; stream_service.py + config.py are not yet in the image.
 
+### M4 — intent-gate the panel navigator (added 2026-07-19, user-directed)
+
+Follow-up question: `ui_open_studio_panel` opens a panel — a click/keypress the user can do
+manually — yet costs ~880 tok (compact) on EVERY studio turn. Deprecating it is wrong (the
+free-string `ui_show_panel` fallback is the silent-no-op bug the enum was built to fix). So
+`studio_panel_intent_gated` (default True) advertises the navigator **only on a navigation-intent
+turn** — a nav VERB (open/show/view/go to/manage/import/…) **+** a panel-specific noun
+(timeline/matrix/graph/glossary/wiki/what-if/…). `ui_focus_manuscript_unit` (open a chapter, part
+of the writing loop) stays always-on. Deterministic, PRECISION-biased: overloaded writing words
+(scene/arc/plan/chapter/character/beat) are NOT panel nouns, so "write a scene" / "plan the arc"
+never fire; a missed nav phrasing just means the user clicks. Unit-tested (8 nav fire, 7 writing
+don't); the tool is byte-identical to the 6/6 A/B run when it fires, so capability is unchanged.
+**Effect: on a typical writing turn the panel navigator is fully omitted — combined with M2 that
+is 2371 → 0 tok on most studio turns.**
+
 ## Invariants / gotchas
 
 - `load_skill` is a **consumer-local meta-tool** (like `tool_list`/`workflow_load`), NOT a

@@ -271,6 +271,17 @@ class Settings(BaseSettings):
     # ~1-2k), keeping the "call workflow_load(<slug>) FIRST" directive that steers
     # the model to load the rail's real detail on demand.
     lazy_workflow_directive: bool = True
+    # `studio_panel_intent_gated` (F7c M4) — the studio panel navigator
+    # (ui_open_studio_panel) is a click/keypress the user can do manually, yet it
+    # cost ~880 tok on EVERY studio turn. When ON, advertise it ONLY on a
+    # navigation-intent turn (a nav verb + a panel-specific noun) → ~0 tok on the
+    # common writing turn, full enum-safe capability when the user asks to open a
+    # panel. ui_focus_manuscript_unit (open a chapter, part of the writing loop)
+    # stays always-on. Off ⇒ pre-M4 behavior (always advertised). Deterministic gate,
+    # biased to PRECISION: a false-negative just means the user clicks the panel; a
+    # false-positive (opening a panel mid-write) is the harmful error, so overloaded
+    # writing words (scene/arc/plan/character) are NOT panel-noun triggers.
+    studio_panel_intent_gated: bool = True
 
     # D-T2-03 — degraded-mode fallback when knowledge-service is unreachable
     # or returns an error. Must agree with knowledge-service's Mode 1 + Mode 2

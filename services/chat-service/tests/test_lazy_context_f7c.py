@@ -13,6 +13,7 @@ import pytest
 
 from app.services.frontend_tools import (
     UI_OPEN_STUDIO_PANEL_TOOL,
+    _is_panel_nav_intent,
     _studio_panel_tool,
     frontend_tool_defs,
 )
@@ -146,6 +147,46 @@ class TestCompactStudioPanel:
         defs_off = frontend_tool_defs(studio=True)
         panel_off = next(d for d in defs_off if d["function"]["name"] == "ui_open_studio_panel")
         assert panel_off is UI_OPEN_STUDIO_PANEL_TOOL
+
+
+# ── M4: the ui_open_studio_panel navigation-intent gate ──────────────────────
+class TestPanelNavIntent:
+    # Real navigation requests must fire (recall) — the 6 A/B nav probes.
+    @pytest.mark.parametrize("msg", [
+        "Open the knowledge-graph timeline of in-story events.",
+        "Show me the per-chapter critic quality scores.",
+        "Open the motif relationship graph canvas.",
+        "I want to manage the what-if versions of this book.",
+        "Open the translation coverage matrix.",
+        "Let me import chapters from a docx file.",
+        "go to the glossary panel",
+        "switch to the wiki tab",
+    ])
+    def test_nav_requests_fire(self, msg):
+        assert _is_panel_nav_intent(msg) is True
+
+    # Plain writing / lore-edit turns must NOT fire (precision — the harmful error is
+    # opening a panel mid-write). Note "opening" contains "open" but carries no panel noun.
+    @pytest.mark.parametrize("msg", [
+        "Add a new character to this book: Kael, a fire mage and the protagonist's rival.",
+        "Record a new location in the glossary: the Ashen Spire.",  # 'glossary' noun but no nav verb
+        "Remember that Kael betrayed the protagonist in chapter 12.",
+        "Write chapter 2 with a dramatic opening scene.",  # 'opening'⊃'open' but 'scene' is not a panel noun
+        "Draft the next scene where the arc reaches its climax.",
+        "Continue the story from where we left off.",
+        "",
+    ])
+    def test_writing_turns_do_not_fire(self, msg):
+        assert _is_panel_nav_intent(msg) is False
+
+    def test_gate_omits_navigator_but_keeps_chapter_focus(self):
+        # studio_panel_nav=False (a writing turn) drops the ~880-tok navigator but keeps
+        # ui_focus_manuscript_unit (part of the writing loop).
+        off = [d["function"]["name"] for d in frontend_tool_defs(studio=True, studio_panel_nav=False)]
+        assert "ui_open_studio_panel" not in off
+        assert "ui_focus_manuscript_unit" in off
+        on = [d["function"]["name"] for d in frontend_tool_defs(studio=True, studio_panel_nav=True)]
+        assert "ui_open_studio_panel" in on
 
 
 # ── wiring seam: the advertise chokepoint gates load_skill on the flag ────────
