@@ -640,6 +640,12 @@
       "title": "Phân loại",
       "desc": "Xem lại các thành phần đã trích xuất không khớp với lược đồ của bạn và xử lý chúng.",
       "guideBody": "Khi quá trình trích xuất tìm thấy một loại thực thể, mối quan hệ hoặc giá trị chưa có trong lược đồ, hệ thống sẽ lưu tạm chúng tại đây thay vì tự ý dự đoán. Mỗi hàng chỉ cung cấp các phương án sửa lỗi hợp lệ — ánh xạ nó vào một mục đã có, thêm nó vào lược đồ/từ vựng, sửa lỗi điểm cuối (endpoint), hoặc loại bỏ nó."
+    },
+    "reference-shelf": {
+      "title": "Kệ tham chiếu",
+      "desc": "Tổng hợp các đoạn văn tham chiếu (nguồn cảm hứng bên ngoài) làm nền tảng cho việc viết lách — thêm, chỉnh sửa và xóa chúng; các đoạn phù hợp sẽ được truy xuất theo từng cảnh và có thể được ghim vào gói dữ liệu nền tảng.",
+      "guideBody": "Kệ tham chiếu là kho tàng các nguồn ảnh hưởng cho cuốn sách của bạn — bao gồm các đoạn văn, nguồn tài liệu và các mẫu phong cách mà AI sẽ dựa vào khi soạn thảo. Hãy thêm một tham chiếu với tiêu đề, tác giả, URL nguồn và nội dung văn bản; văn bản sẽ được nhúng để studio có thể truy xuất những đoạn phù hợp nhất cho từng cảnh. Bạn có thể chỉnh sửa chi tiết tham chiếu (thay đổi siêu dữ liệu nhanh chóng) hoặc nội dung của nó (việc này sẽ thực hiện nhúng lại). Sử dụng hộp tìm kiếm để lọc trong một kệ tham chiếu lớn. Chức năng truy xuất và ghim theo từng cảnh sẽ xuất hiện khi bạn mở kệ tham chiếu cùng với một cảnh; nếu mở riêng lẻ, nó sẽ đóng vai trò quản lý thư viện. Cần phải cấu hình một mô hình nhúng (thêm một mô hình từ cài đặt AI) để tính năng truy xuất hoạt động.",
+      "noWork": "Chưa có dự án viết nào — hãy thiết lập một Work trước, sau đó mới có thể tổng hợp kệ tham chiếu tại đây."
     }
   },
   "sceneRail": {
@@ -949,7 +955,26 @@
     "pickChapterConformanceHint": "Chọn một chương ở trên để truy vết cách văn bản thực hiện theo kế hoạch."
   },
   "sidebar": {
-    "collapse": "Thu gọn"
+    "collapse": "Thu gọn",
+    "resize": "Thay đổi kích thước thanh bên"
+  },
+  "layout": {
+    "title": "Bố cục bảng điều khiển",
+    "hint": "Sắp xếp {{count}} bảng điều khiển đang mở của bạn.",
+    "empty": "Mở các bảng điều khiển để sắp xếp chúng.",
+    "needPanels": "Hãy mở ít nhất hai bảng điều khiển trước",
+    "tooNarrow": "Cần cửa sổ rộng hơn",
+    "presets": {
+      "single": "Đơn",
+      "cols2": "Hai cột",
+      "cols3": "Ba cột",
+      "cols4": "Bốn cột",
+      "grid2x2": "Lưới 2×2",
+      "grid3x2": "Lưới 3×2",
+      "grid4x2": "Lưới 4×2",
+      "cols6": "Sáu cột",
+      "cols8": "Tám cột"
+    }
   },
   "bottom": {
     "jobs": "Tác vụ",
@@ -985,10 +1010,10 @@
     "loadingMore": "Đang tải thêm…",
     "count": "{{n}} chương",
     "statArcs": "{{n}} hồi",
+    "statActs": "{{n}} hồi",
     "statChapters": "{{n}} chương",
     "statScenes": "{{n}} cảnh",
     "window": "win {{a}}–{{b}} / {{n}}",
-    "statActs": "{{n}} hồi",
     "actShort": "Hồi",
     "actTag": "HỒI",
     "newAct": "Hồi mới",
@@ -1473,7 +1498,16 @@
         "outline": "phác thảo",
         "drafting": "đang soạn thảo",
         "done": "hoàn thành"
-      }
+      },
+      "moveTo": "chuyển đến arc…",
+      "unassigned": "{{count}} chương không thuộc cốt truyện",
+      "unassigned_other": "{{count}} chương không thuộc cốt truyện"
+    },
+    "adv": {
+      "graph": "Biểu đồ",
+      "lane": "Luồng",
+      "graphHint": "Biểu đồ — phóng to, thu nhỏ và kéo để di chuyển (tốt nhất cho cấu trúc lớn)",
+      "laneHint": "Luồng — các thẻ cuộn dễ đọc (không phóng to)"
     }
   },
   "structTpl": {

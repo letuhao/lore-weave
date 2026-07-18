@@ -47,6 +47,8 @@ type Home =
 //
 // The honest tally after the 2026-07-17 audit: **18 homed** (13 proven-carried + 5 reasoned
 // supersedes) · **5 NOT homed** (settings · beats · timeline · style · references) · 2 retired.
+// UPDATE 2026-07-18 (H-1a): `references` is now HOMED (reference-shelf carries ReferencesPanel) →
+// 19 homed · 4 NOT homed (settings · beats · timeline · style).
 // The header used to say "23 homed, 2 retired" — that count came from the id-existence check and
 // was wrong by five. **GG-4 retirement is gated on those five**, not on a green test run.
 const LEGACY_SUBTAB_HOME: Record<string, Home> = {
@@ -102,7 +104,7 @@ const LEGACY_SUBTAB_HOME: Record<string, Home> = {
   beats: { unported: 'AUDIT 2026-07-17 — the `beats: plan-hub` home was FALSE: BeatSheetView (drag a node onto a beat card to assign beat_role) has NO counterpart in plan-hub, which contains zero `beat` code. The Wave 6 M4a drawer facet was never built. Legacy-only until it is; GG-4 must not retire before this lands.' },
   timeline: { unported: 'AUDIT 2026-07-17 — `timeline: kg-timeline` is only a PARTIAL home: KgTimelinePanel mounts knowledge TimelineTab, which has no spoiler support, while composition TimelineView is the spoiler-SAFE chronology with the "AI sees <= here" cutoff marker. The cutoff is a load-bearing authoring feature; homing it needs a decision (extend TimelineTab vs port TimelineView).' },
   style: { unported: 'pending the F-1 port — style-voice panel not yet in the catalog; StyleVoicePanel (density/pace + per-character voice, folded into every draft prompt by packer/pack.py) is legacy-only and belongs to NO session charter' },
-  references: { unported: 'pending the F-1 port — reference-shelf panel not yet in the catalog; ReferencesPanel (the grounding corpus the Studio can already PIN but not ADD to) is legacy-only and belongs to NO session charter' },
+  references: { panel: 'reference-shelf', carries: 'ReferencesPanel' },  // H-1a — ported: ReferenceShelfPanel wraps ReferencesPanel (library-first mount)
   // — retired —
   threads: { retired: 'duplicate of quality-promises — delete, do not port (00C Q-3c)' },
   worldmap: {

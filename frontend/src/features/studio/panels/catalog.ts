@@ -63,6 +63,7 @@ import { SceneBrowserPanel } from './SceneBrowserPanel';
 import { SceneInspectorPanel } from './SceneInspectorPanel';
 import { WhatIfCanvasPanel } from './WhatIfCanvasPanel';
 import { DivergencePanel } from './DivergencePanel';
+import { ReferenceShelfPanel } from './ReferenceShelfPanel';   /* H-1a — S-03 reference corpus */
 import { CanonViewPanel } from './CanonViewPanel';
 import { PlanHubPanel } from './PlanHubPanel';
 import { BookImportPanel } from './BookImportPanel';
@@ -138,6 +139,10 @@ export interface StudioPanelDef {
   hiddenFromPalette?: boolean;
   /** Command Palette sub-group (#18). Omit only when hiddenFromPalette is true. */
   category?: StudioPanelCategory;
+  /** H-1b — a CURATED discoverable nav grouping (independent of `category`, which is too broad
+   *  to be a rail — `editor` alone has 19 panels). A panel tagged `bible` appears in the
+   *  `bible` activity-view rail (StudioSideBar). Extensible: add more groups/panels as rails grow. */
+  navGroup?: 'bible';
   /** #19 / X-3 — the i18n key for the User Guide body. **REQUIRED, not optional.**
    *
    *  It was `guideBodyKey?: string` with a "falls back to descKey when absent" contract, and that
@@ -344,7 +349,8 @@ export const STUDIO_PANELS: StudioPanelDef[] = [
   { id: 'motif-graph', component: MotifGraphPanel, titleKey: 'panels.motif-graph.title', descKey: 'panels.motif-graph.desc', category: 'storyBible', guideBodyKey: 'panels.motif-graph.guideBody' },
   { id: 'quality-conformance', component: QualityConformancePanel, titleKey: 'panels.quality-conformance.title', descKey: 'panels.quality-conformance.desc', category: 'quality', guideBodyKey: 'panels.quality-conformance.guideBody' },
   // ── S5 · What-If & Divergence ──  (divergence, + canonview home)
-  { id: 'divergence', component: DivergencePanel, titleKey: 'panels.divergence.title', descKey: 'panels.divergence.desc', category: 'editor', guideBodyKey: 'panels.divergence.guideBody' }, /* owner: S5 */
+  { id: 'divergence', component: DivergencePanel, titleKey: 'panels.divergence.title', descKey: 'panels.divergence.desc', category: 'editor', navGroup: 'bible', guideBodyKey: 'panels.divergence.guideBody' }, /* owner: S5; H-1b bible rail */
+  { id: 'reference-shelf', component: ReferenceShelfPanel, titleKey: 'panels.reference-shelf.title', descKey: 'panels.reference-shelf.desc', category: 'storyBible', navGroup: 'bible', guideBodyKey: 'panels.reference-shelf.guideBody' }, /* H-1a — S-03 reference corpus (id ≠ 'references' to avoid the composition_find_references tool) */
   { id: 'canonview', component: CanonViewPanel, titleKey: 'panels.canonview.title', descKey: 'panels.canonview.desc', category: 'editor', guideBodyKey: 'panels.canonview.guideBody' }, /* owner: S5 */
   // ── S6 · Canon/Quality/Progress ──(quality-canon-rules, quality-corrections, quality-heal, progress, + flywheel home)
   { id: 'quality-canon-rules', component: QualityCanonRulesPanel, titleKey: 'panels.quality-canon-rules.title', descKey: 'panels.quality-canon-rules.desc', category: 'quality', guideBodyKey: 'panels.quality-canon-rules.guideBody' },
@@ -367,6 +373,10 @@ export const STUDIO_PANEL_COMPONENTS: Record<string, FunctionComponent<IDockview
 
 /** Panels offered in the Command Palette "Open" group. */
 export const OPENABLE_STUDIO_PANELS = STUDIO_PANELS.filter((p) => !p.hiddenFromPalette);
+
+/** H-1b — the panels surfaced in the `bible` activity-view rail (StudioSideBar). Curated via the
+ *  `navGroup` field (NOT a raw category — `editor` alone has 19 panels). Single source of truth. */
+export const BIBLE_NAV_PANELS = STUDIO_PANELS.filter((p) => p.navGroup === 'bible' && !p.hiddenFromPalette);
 
 export function getStudioPanelDef(id: string): StudioPanelDef | undefined {
   return STUDIO_PANELS.find((p) => p.id === id);

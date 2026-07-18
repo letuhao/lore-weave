@@ -640,6 +640,12 @@
       "title": "Triage",
       "desc": "Tinjau elemen yang diekstraksi yang tidak cocok dengan skema Anda dan selesaikan.",
       "guideBody": "Saat ekstraksi menemukan jenis entitas, relasi, atau nilai yang belum ada dalam skema Anda, sistem akan menyimpannya di sini alih-alih menebak. Setiap baris hanya menawarkan perbaikan yang valid untuk elemen tersebut — petakan ke sesuatu yang sudah Anda miliki, tambahkan ke skema/kosakata Anda, perbaiki endpoint, atau abaikan."
+    },
+    "reference-shelf": {
+      "title": "Rak Referensi",
+      "desc": "Kurasi kutipan referensi (pengaruh eksternal) yang mendasari tulisan Anda — tambahkan, edit, dan hapus; kutipan relevan per adegan akan diambil dan dapat disematkan ke dalam paket pendukung.",
+      "guideBody": "Rak referensi adalah korpus pengaruh buku Anda — kutipan, sumber, dan contoh gaya bahasa yang digunakan AI saat menyusun draf. Tambahkan referensi dengan judul, penulis, URL sumber, dan teks; teks tersebut akan disematkan agar studio dapat mengambil yang paling relevan per adegan. Edit detail referensi (perubahan metadata ringan) atau kontennya (yang akan melakukan penyematan ulang). Filter rak yang besar dengan kotak pencarian. Pengambilan dan penyematan per adegan akan muncul saat Anda membuka rak bersamaan dengan sebuah adegan; jika dibuka sendiri, rak ini berfungsi untuk mengelola pustaka. Model embedding harus dikonfigurasi (tambahkan dari pengaturan AI) agar pengambilan data dapat berfungsi.",
+      "noWork": "Belum ada proyek tulisan — buat Work terlebih dahulu, lalu kurasi rak referensinya di sini."
     }
   },
   "sceneRail": {
@@ -949,7 +955,26 @@
     "pickChapterConformanceHint": "Pilih bab di atas untuk melacak bagaimana prosanya mewujudkan rencana tersebut."
   },
   "sidebar": {
-    "collapse": "Sembunyikan"
+    "collapse": "Sembunyikan",
+    "resize": "Ubah ukuran bilah sisi"
+  },
+  "layout": {
+    "title": "Tata letak panel",
+    "hint": "Mengatur {{count}} panel yang terbuka.",
+    "empty": "Buka panel untuk mengaturnya.",
+    "needPanels": "Buka setidaknya dua panel terlebih dahulu",
+    "tooNarrow": "Membutuhkan jendela yang lebih lebar",
+    "presets": {
+      "single": "Satu panel",
+      "cols2": "Dua kolom",
+      "cols3": "Tiga kolom",
+      "cols4": "Empat kolom",
+      "grid2x2": "Kisi 2×2",
+      "grid3x2": "Kisi 3×2",
+      "grid4x2": "Grid 4×2",
+      "cols6": "Enam kolom",
+      "cols8": "Delapan kolom"
+    }
   },
   "bottom": {
     "jobs": "Tugas",
@@ -985,10 +1010,10 @@
     "loadingMore": "Memuat lebih banyak...",
     "count": "{{n}} bab",
     "statArcs": "{{n}} alur",
+    "statActs": "{{n}} babak",
     "statChapters": "{{n}} bab",
     "statScenes": "{{n}} adegan",
     "window": "win {{a}}–{{b}} / {{n}}",
-    "statActs": "{{n}} babak",
     "actShort": "Babak",
     "actTag": "BABAK",
     "newAct": "Babak baru",
@@ -1473,7 +1498,16 @@
         "outline": "kerangka",
         "drafting": "drafting",
         "done": "selesai"
-      }
+      },
+      "moveTo": "pindah ke alur…",
+      "unassigned": "{{count}} bab tanpa alur cerita",
+      "unassigned_other": "{{count}} bab tanpa alur cerita"
+    },
+    "adv": {
+      "graph": "Grafik",
+      "lane": "Lajur",
+      "graphHint": "Grafik — perbesar, geser, dan seret untuk bergerak (terbaik untuk struktur besar)",
+      "laneHint": "Lajur — kartu berbalut yang mudah dibaca (tanpa perbesaran)"
     }
   },
   "structTpl": {

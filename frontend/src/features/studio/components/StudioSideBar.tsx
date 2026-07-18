@@ -8,6 +8,7 @@ import type { ManuscriptNode } from '../manuscript/types';
 import { useStudioHost } from '../host/StudioHostProvider';
 import { useSidebarResize } from '../hooks/useSidebarResize';
 import { PlanNavigatorRail } from '@/features/plan-hub/components';
+import { BIBLE_NAV_PANELS } from '../panels/catalog';
 
 interface Props {
   activeView: ActivityView;
@@ -92,27 +93,43 @@ export function StudioSideBar({ activeView, onCollapse, bookId, token, selectedI
             </button>
           </div>
 
-          {/* Per-view stub — bible/search have no navigator yet. Quality has no rail
-              navigator of its own (its 4 capabilities are dock panels, DOCK-8 hub
-              pattern) — this button is its only rail affordance. */}
-          <div className="flex flex-1 flex-col items-center justify-center gap-1.5 p-6 text-center">
-            <p className="text-xs font-medium text-foreground/70">
-              {t(`navStub.${activeView}.title`, { defaultValue: activeView })}
-            </p>
-            <p className="max-w-[200px] text-[11px] leading-relaxed text-muted-foreground">
-              {t(`navStub.${activeView}.body`, { defaultValue: 'Built next.' })}
-            </p>
-            {activeView === 'quality' && (
-              <button
-                type="button"
-                data-testid="studio-sidebar-open-quality"
-                onClick={() => host.openPanel('quality')}
-                className="mt-2 rounded bg-primary px-3 py-1 text-[11px] text-primary-foreground hover:opacity-90"
-              >
-                {t('panels.quality.title', { defaultValue: 'Quality' })}
-              </button>
-            )}
-          </div>
+          {/* H-1b — the `bible` view is now a real rail: a launcher list of the bible-group panels
+              (reference-shelf, divergence, …) so they're discoverable, not palette-only. Other views
+              (search) stay stubs; quality keeps its single hub button (DOCK-8). */}
+          {activeView === 'bible' ? (
+            <div data-testid="studio-sidebar-bible" className="flex flex-1 flex-col gap-0.5 overflow-y-auto p-2">
+              {BIBLE_NAV_PANELS.map((p) => (
+                <button
+                  key={p.id}
+                  type="button"
+                  data-testid={`studio-sidebar-open-${p.id}`}
+                  onClick={() => host.openPanel(p.id)}
+                  className="rounded px-2 py-1.5 text-left text-[12px] text-foreground/80 hover:bg-secondary hover:text-foreground"
+                >
+                  {t(p.titleKey, { defaultValue: p.id })}
+                </button>
+              ))}
+            </div>
+          ) : (
+            <div className="flex flex-1 flex-col items-center justify-center gap-1.5 p-6 text-center">
+              <p className="text-xs font-medium text-foreground/70">
+                {t(`navStub.${activeView}.title`, { defaultValue: activeView })}
+              </p>
+              <p className="max-w-[200px] text-[11px] leading-relaxed text-muted-foreground">
+                {t(`navStub.${activeView}.body`, { defaultValue: 'Built next.' })}
+              </p>
+              {activeView === 'quality' && (
+                <button
+                  type="button"
+                  data-testid="studio-sidebar-open-quality"
+                  onClick={() => host.openPanel('quality')}
+                  className="mt-2 rounded bg-primary px-3 py-1 text-[11px] text-primary-foreground hover:opacity-90"
+                >
+                  {t('panels.quality.title', { defaultValue: 'Quality' })}
+                </button>
+              )}
+            </div>
+          )}
         </>
       )}
 

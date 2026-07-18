@@ -640,6 +640,12 @@
       "title": "Triaje",
       "desc": "Revisa los elementos extraídos que no coincidieron con tu esquema y resuélvelos.",
       "guideBody": "Cuando la extracción encuentra un tipo de entidad, relación o valor que aún no está en tu esquema, lo guarda aquí en lugar de intentar adivinar. Cada fila ofrece únicamente las correcciones válidas para ese elemento: asígnale algo que ya tengas, añádelo a tu esquema/vocabulario, corrige un endpoint o descártalo."
+    },
+    "reference-shelf": {
+      "title": "Estante de referencias",
+      "desc": "Organiza los pasajes de referencia (influencias externas) que fundamentan la escritura: añádelos, edítalos y elimínalos; se recuperan los más pertinentes por escena y pueden fijarse en el paquete de fundamentación.",
+      "guideBody": "El estante de referencias es el corpus de influencias de tu libro: pasajes, fuentes y ejemplos de estilo en los que la IA se apoya al redactar. Añade una referencia con su título, autor, URL de la fuente y texto; el texto se integra para que el estudio pueda recuperar los más relevantes por escena. Edita los detalles de una referencia (un cambio de metadatos sencillo) o su contenido (lo que requiere una nueva integración). Filtra un estante extenso con el cuadro de búsqueda. La recuperación y fijación por escena aparecen al abrir el estante junto a una escena; por separado, funciona como gestor de la biblioteca. Debe estar configurado un modelo de integración (añade uno desde los ajustes de IA) para que la recuperación funcione.",
+      "noWork": "Aún no hay ningún proyecto de escritura; primero configura un «Work» y luego organiza su estante de referencias aquí."
     }
   },
   "sceneRail": {
@@ -949,7 +955,26 @@
     "pickChapterConformanceHint": "Elige un capítulo arriba para rastrear cómo su prosa cumplió con el plan."
   },
   "sidebar": {
-    "collapse": "Contraer"
+    "collapse": "Contraer",
+    "resize": "Cambiar tamaño de la barra lateral"
+  },
+  "layout": {
+    "title": "Diseño de panel",
+    "hint": "Organiza tus {{count}} paneles abiertos.",
+    "empty": "Abre paneles para organizarlos.",
+    "needPanels": "Abre al menos dos paneles primero",
+    "tooNarrow": "Se necesita una ventana más ancha",
+    "presets": {
+      "single": "Único",
+      "cols2": "Dos columnas",
+      "cols3": "Tres columnas",
+      "cols4": "Cuatro columnas",
+      "grid2x2": "Cuadrícula 2×2",
+      "grid3x2": "Cuadrícula 3×2",
+      "grid4x2": "Cuadrícula 4×2",
+      "cols6": "Seis columnas",
+      "cols8": "Ocho columnas"
+    }
   },
   "bottom": {
     "jobs": "Tareas",
@@ -985,10 +1010,10 @@
     "loadingMore": "Cargando más…",
     "count": "{{n}} capítulos",
     "statArcs": "{{n}} arco",
+    "statActs": "{{n}} acto",
     "statChapters": "{{n}} cap",
     "statScenes": "{{n}} esc",
     "window": "win {{a}}–{{b}} / {{n}}",
-    "statActs": "{{n}} acto",
     "actShort": "Acto",
     "actTag": "ACTO",
     "newAct": "Nuevo acto",
@@ -1473,7 +1498,16 @@
         "outline": "esquema",
         "drafting": "redactando",
         "done": "completado"
-      }
+      },
+      "moveTo": "mover a la trama…",
+      "unassigned": "{{count}} capítulo sin trama",
+      "unassigned_other": "{{count}} capítulos sin trama"
+    },
+    "adv": {
+      "graph": "Gráfico",
+      "lane": "Carril",
+      "graphHint": "Gráfico: haz zoom, desplázate y arrastra para moverte (ideal para estructuras grandes)",
+      "laneHint": "Carril: tarjetas con ajuste de texto para facilitar la lectura (sin zoom)"
     }
   },
   "structTpl": {

@@ -30,11 +30,21 @@ function renderSideBar(overrides: Partial<typeof props> & { activeView: string }
 
 describe('StudioSideBar', () => {
   it('shows a stub navigator header + body for a not-yet-built view (keys)', () => {
-    renderSideBar({ activeView: 'bible' });
+    renderSideBar({ activeView: 'search' });  // 'search' is still a stub (bible is now a real rail — H-1b)
     const sb = screen.getByTestId('studio-sidebar');
-    expect(sb.textContent).toContain('activity.bible');       // header label key
-    expect(sb.textContent).toContain('navStub.bible.title');  // stub title key
-    expect(sb.textContent).toContain('navStub.bible.body');   // stub body key
+    expect(sb.textContent).toContain('activity.search');       // header label key
+    expect(sb.textContent).toContain('navStub.search.title');  // stub title key
+    expect(sb.textContent).toContain('navStub.search.body');   // stub body key
+  });
+
+  it('H-1b: the bible view lists the bible-group panels as launchers (discoverable, not palette-only)', () => {
+    renderSideBar({ activeView: 'bible' });
+    expect(screen.getByTestId('studio-sidebar-bible')).toBeTruthy();
+    // reference-shelf (H-1a) + divergence are tagged navGroup:'bible' → surfaced here.
+    expect(screen.getByTestId('studio-sidebar-open-reference-shelf')).toBeTruthy();
+    expect(screen.getByTestId('studio-sidebar-open-divergence')).toBeTruthy();
+    // clicking goes through the real host.openPanel without throwing (chrome-test scope).
+    fireEvent.click(screen.getByTestId('studio-sidebar-open-reference-shelf'));
   });
 
   it('mounts the ManuscriptNavigator (no duplicate chrome header) for the manuscript view', () => {

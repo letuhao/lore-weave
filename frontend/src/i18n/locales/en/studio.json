@@ -384,6 +384,12 @@
       "desc": "Manage a book's what-if derivatives — list the canon and every branch, switch the whole studio to one, archive one, or spawn a new branch from a chapter",
       "guideBody": "A dị bản (divergence) branches your book at a chapter and diverges — an alternate universe, a POV shift, a character changed — into a derivative work with its own knowledge partition, while the source stays read-only canon. This panel lists your canonical work and every branch you've spawned. 'Switch to' moves your whole studio — editor, navigator, quality, everything — onto that branch; the choice is remembered per book and survives a reload. 'Archive' hides a branch without destroying it (its chapters and knowledge are kept). 'New divergence' opens the 4-step wizard to spawn one. Select a branch to read its spec (taxonomy, branch point, canon rules, overrides), which is fixed at creation."
     },
+    "reference-shelf": {
+      "title": "Reference shelf",
+      "desc": "Curate the reference passages (external influences) that ground the writing — add, edit, and remove them; per scene the relevant ones are retrieved and can be pinned into the grounding pack",
+      "guideBody": "The reference shelf is your book's corpus of influences — passages, sources, and style exemplars the AI draws on when it drafts. Add a reference with its title, author, source URL, and text; the text is embedded so the studio can retrieve the most relevant ones per scene. Edit a reference's details (a cheap metadata change) or its content (which re-embeds it). Filter a large shelf with the search box. Per-scene retrieval and pinning appear when you open the shelf alongside a scene; on its own it manages the library. An embedding model must be configured (add one from AI settings) for retrieval to work.",
+      "noWork": "No writing project yet — set up a Work first, then curate its reference shelf here."
+    },
     "canonview": {
       "title": "Canon at chapter",
       "desc": "What canon knows as of the chapter in focus — entities present/established, canon state and timeline",
@@ -949,7 +955,26 @@
     "pickChapterConformanceHint": "Pick a chapter above to trace how its prose realized the plan."
   },
   "sidebar": {
-    "collapse": "Collapse"
+    "collapse": "Collapse",
+    "resize": "Resize side bar"
+  },
+  "layout": {
+    "title": "Panel layout",
+    "hint": "Arranges your {{count}} open panels.",
+    "empty": "Open panels to arrange them.",
+    "needPanels": "Open at least two panels first",
+    "tooNarrow": "Needs a wider window",
+    "presets": {
+      "single": "Single",
+      "cols2": "Two columns",
+      "cols3": "Three columns",
+      "cols4": "Four columns",
+      "grid2x2": "Grid 2×2",
+      "grid3x2": "Grid 3×2",
+      "grid4x2": "Grid 4×2",
+      "cols6": "Six columns",
+      "cols8": "Eight columns"
+    }
   },
   "bottom": {
     "jobs": "Jobs",
@@ -1473,7 +1498,16 @@
         "outline": "outline",
         "drafting": "drafting",
         "done": "done"
-      }
+      },
+      "moveTo": "move to arc…",
+      "unassigned": "{{count}} chapter in no storyline",
+      "unassigned_other": "{{count}} chapters in no storyline"
+    },
+    "adv": {
+      "graph": "Graph",
+      "lane": "Lane",
+      "graphHint": "Graph — zoom, pan and drag to move (best for a large structure)",
+      "laneHint": "Lane — readable wrapping cards (no zoom)"
     }
   },
   "structTpl": {

@@ -640,6 +640,12 @@
       "title": "Triagem",
       "desc": "Revise os elementos extraídos que não correspondem ao seu esquema e resolva-os.",
       "guideBody": "Quando a extração encontra um tipo de entidade, relacionamento ou valor que ainda não está no seu esquema, ela o armazena aqui em vez de tentar adivinhar. Cada linha oferece apenas as correções válidas para ela — mapeie para algo que você já possui, adicione ao seu esquema/vocabulário, corrija um endpoint ou descarte-o."
+    },
+    "reference-shelf": {
+      "title": "Prateleira de referências",
+      "desc": "Curadoria de passagens de referência (influências externas) que fundamentam a escrita — adicione, edite e remova-as; as passagens relevantes por cena são recuperadas e podem ser fixadas no pacote de fundamentação",
+      "guideBody": "A prateleira de referências é o corpus de influências do seu livro — passagens, fontes e exemplares de estilo que a IA utiliza ao redigir. Adicione uma referência com título, autor, URL de origem e texto; o texto é incorporado para que o estúdio possa recuperar os mais relevantes por cena. Edite os detalhes de uma referência (uma alteração simples de metadados) ou seu conteúdo (o que exige uma nova incorporação). Filtre uma prateleira extensa com a caixa de busca. A recuperação e a fixação por cena aparecem quando você abre a prateleira junto a uma cena; isoladamente, ela gerencia a biblioteca. Um modelo de embedding deve estar configurado (adicione um nas configurações de IA) para que a recuperação funcione.",
+      "noWork": "Nenhum projeto de escrita ainda — configure um Trabalho primeiro e, depois, faça a curadoria da prateleira de referências aqui."
     }
   },
   "sceneRail": {
@@ -949,7 +955,26 @@
     "pickChapterConformanceHint": "Escolha um capítulo acima para rastrear como a prosa seguiu o plano."
   },
   "sidebar": {
-    "collapse": "Recolher"
+    "collapse": "Recolher",
+    "resize": "Redimensionar barra lateral"
+  },
+  "layout": {
+    "title": "Layout do painel",
+    "hint": "Organiza seus {{count}} painéis abertos.",
+    "empty": "Abra painéis para organizá-los.",
+    "needPanels": "Abra pelo menos dois painéis primeiro",
+    "tooNarrow": "Necessita de uma janela mais larga",
+    "presets": {
+      "single": "Único",
+      "cols2": "Duas colunas",
+      "cols3": "Três colunas",
+      "cols4": "Quatro colunas",
+      "grid2x2": "Grade 2×2",
+      "grid3x2": "Grade 3×2",
+      "grid4x2": "Grade 4×2",
+      "cols6": "Seis colunas",
+      "cols8": "Oito colunas"
+    }
   },
   "bottom": {
     "jobs": "Tarefas",
@@ -985,10 +1010,10 @@
     "loadingMore": "Carregando mais...",
     "count": "{{n}} capítulos",
     "statArcs": "{{n}} arco",
+    "statActs": "{{n}} ato",
     "statChapters": "{{n}} cap",
     "statScenes": "{{n}} cen",
     "window": "jan {{a}}–{{b}} / {{n}}",
-    "statActs": "{{n}} ato",
     "actShort": "Ato",
     "actTag": "ATO",
     "newAct": "Novo ato",
@@ -1473,7 +1498,16 @@
         "outline": "esboço",
         "drafting": "escrevendo",
         "done": "concluído"
-      }
+      },
+      "moveTo": "mover para o arco…",
+      "unassigned": "{{count}} capítulo sem linha narrativa",
+      "unassigned_other": "{{count}} capítulos sem linha narrativa"
+    },
+    "adv": {
+      "graph": "Gráfico",
+      "lane": "Linha",
+      "graphHint": "Gráfico — zoom, pan e arraste para mover (ideal para estruturas grandes)",
+      "laneHint": "Linha — cartões com quebra de texto legíveis (sem zoom)"
     }
   },
   "structTpl": {

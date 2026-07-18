@@ -640,6 +640,12 @@
       "title": "Triage",
       "desc": "Überprüfen Sie extrahierte Elemente, die nicht mit Ihrem Schema übereinstimmen, und lösen Sie diese.",
       "guideBody": "Wenn die Extraktion eine Entität, eine Beziehung oder einen Wert findet, der noch nicht in Ihrem Schema enthalten ist, wird dieser hier zwischengespeichert, anstatt zu raten. Jede Zeile bietet nur die Korrekturen an, die für sie gültig sind – ordnen Sie sie etwas zu, das Sie bereits haben, fügen Sie sie Ihrem Schema/Vokabular hinzu, korrigieren Sie einen Endpunkt oder ignorieren Sie sie."
+    },
+    "reference-shelf": {
+      "title": "Referenzregal",
+      "desc": "Kuratiere die Referenzpassagen (externe Einflüsse), die dein Schreiben stützen – füge sie hinzu, bearbeite sie oder entferne sie; pro Szene werden die relevanten Passagen abgerufen und können in das Grounding-Paket gepinnt werden.",
+      "guideBody": "Das Referenzregal ist der Korpus der Einflüsse deines Buches – Passagen, Quellen und Stilvorlagen, auf die die KI beim Entwerfen zurückgreift. Füge eine Referenz mit Titel, Autor, Quell-URL und Text hinzu; der Text wird eingebettet, damit das Studio die relevantesten Passagen pro Szene abrufen kann. Bearbeite die Details einer Referenz (eine einfache Metadatenänderung) oder ihren Inhalt (was ein erneutes Einbetten auslöst). Filtere ein umfangreiches Regal mit dem Suchfeld. Die szenenspezifische Abfrage und das Pinnen erscheinen, wenn du das Regal neben einer Szene öffnest; allein dient es der Verwaltung der Bibliothek. Ein Embedding-Modell muss konfiguriert sein (füge eines in den KI-Einstellungen hinzu), damit die Abfrage funktioniert.",
+      "noWork": "Noch kein Schreibprojekt vorhanden – erstelle zuerst ein „Work“, um dann hier das Referenzregal zu kuratieren."
     }
   },
   "sceneRail": {
@@ -949,7 +955,26 @@
     "pickChapterConformanceHint": "Wählen Sie oben ein Kapitel aus, um zu prüfen, wie dessen Text den Plan umgesetzt hat."
   },
   "sidebar": {
-    "collapse": "Einklappen"
+    "collapse": "Einklappen",
+    "resize": "Seitenleiste skalieren"
+  },
+  "layout": {
+    "title": "Panel-Layout",
+    "hint": "Ordnet deine {{count}} geöffneten Panels an.",
+    "empty": "Öffne Panels, um sie anzuordnen.",
+    "needPanels": "Öffne zuerst mindestens zwei Panels",
+    "tooNarrow": "Fenster muss breiter sein",
+    "presets": {
+      "single": "Einzeln",
+      "cols2": "Zwei Spalten",
+      "cols3": "Drei Spalten",
+      "cols4": "Vier Spalten",
+      "grid2x2": "Raster 2×2",
+      "grid3x2": "Raster 3×2",
+      "grid4x2": "Raster 4×2",
+      "cols6": "Sechs Spalten",
+      "cols8": "Acht Spalten"
+    }
   },
   "bottom": {
     "jobs": "Jobs",
@@ -985,10 +1010,10 @@
     "loadingMore": "Mehr laden…",
     "count": "{{n}} Kapitel",
     "statArcs": "{{n}} Handlungsbögen",
+    "statActs": "{{n}} Akt",
     "statChapters": "{{n}} Kap.",
     "statScenes": "{{n}} Szen.",
     "window": "Fenster {{a}}–{{b}} / {{n}}",
-    "statActs": "{{n}} Akt",
     "actShort": "Akt",
     "actTag": "AKT",
     "newAct": "Neuer Akt",
@@ -1473,7 +1498,16 @@
         "outline": "Entwurf",
         "drafting": "In Bearbeitung",
         "done": "Abgeschlossen"
-      }
+      },
+      "moveTo": "verschieben nach Bogen…",
+      "unassigned": "{{count}} Kapitel ohne Storyline",
+      "unassigned_other": "{{count}} Kapitel ohne Storyline"
+    },
+    "adv": {
+      "graph": "Graph",
+      "lane": "Lane",
+      "graphHint": "Graph — Zoomen, Verschieben und Ziehen zum Bewegen (ideal für große Strukturen)",
+      "laneHint": "Lane — Gut lesbare, umbrechende Karten (kein Zoom)"
     }
   },
   "structTpl": {

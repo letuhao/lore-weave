@@ -246,6 +246,7 @@
           "plan-passes",
           "whatif-canvas",
           "divergence",
+          "reference-shelf",
           "canonview",
           "book-import",
           "context-inspector",

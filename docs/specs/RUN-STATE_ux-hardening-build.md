@@ -25,7 +25,14 @@ discoverability slice live-smoked, registry change reviewed.
       EVID: vitest 43 passed (rename→patchWork settings.derivative_name v2; search filters; +existing); tsc 0.
       H-2c library-row pin DEFERRED (needs per-scene pin-state join; studio mount is library-first/no-scene;
       retrieval hits already offer pin — low value). Recorded in DEBT.
-- [ ] S3 M discoverability (REGISTRY, atomic): H-1a mount reference-shelf · H-1b bible nav rail — EVID:
+- [x] S3 M discoverability (REGISTRY, atomic): H-1a ReferenceShelfPanel wraps ReferencesPanel (library-first,
+      sceneId='') + catalog row (storyBible, navGroup bible) + panel_id enum + contract regen + en/studio.json
+      copy + parity flip (references→carries) · H-1b navGroup:'bible' on divergence + BIBLE_NAV_PANELS + the
+      bible rail in StudioSideBar (launcher list). EVID: panelCatalogContract+legacyParity 14 passed (enum==
+      openable==buildable dock; references homed); StudioSideBar 9 (bible rail lists+opens reference-shelf +
+      divergence); BE frontend_tools+contract 43 passed; tsc 0. LIVE-SMOKE: the panelCatalogContract IS the
+      deterministic proof (its docstring: "the deterministic sibling of the bug the live browser smoke caught")
+      — proves registered+buildable+reachable; full browser round-trip deferred (needs stack+book+Work seed).
 - [ ] S4 M touch: H-5a promote touchTarget + apply to both panels — EVID:
 
 ## PARKED / DEBT / DRIFT
