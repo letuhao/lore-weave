@@ -54,6 +54,32 @@ per-service, no `git add -A`, atomic pathspec commits (shared checkout).
   (mirrors the BE reader; additive).
 - No shared registry touched (no catalog.ts / panel_id enum / frontend-tools.contract.json).
 
+## REVIEW-IMPL (adversarial pass, 2026-07-18) — 0 HIGH / 0 MED
+Verified every new route's tenancy seam against code (not just the gate name):
+- **W1** `list_for_job` query is `WHERE project_id=$1 AND job_id=$2` — a job from another project
+  returns empty; the VIEW gate is on the SAME project_id's book. No cross-project leak.
+- **W2** subset path calls `fetch_entities_by_ids(book_id=…, entity_ids=…)` — the server-resolved
+  book_id scopes the fetch, so a caller-supplied cross-book entity_id is simply not returned. Write runs
+  as the project OWNER. Engine counting/idempotency/subset/truncation covered by test_anchor_loader +
+  the upsert_glossary_anchor idempotency test.
+- **W4** is a byte-for-byte field parity twin of the MCP `composition_list_derivatives` (same 6 fields,
+  same `resolve_by_book` which filters `status='active' AND NOT pending_project_backfill`). Anti-oracle
+  404 via `_gate_book` (OwnershipError→404, tested at the gate level + test_get_work_revoked_collaborator_404).
+- **W5** withdraw gates on submitter identity (user_id match), non-submitter→404 (anti-oracle), reviewed→409,
+  DELETE predicate repeats `status='pending'` (TOCTOU). `mine` scopes `wa.book_id=$1 AND ws.user_id=$2`.
+- **W3** no double-fetch (each hook `enabled` only for its mode — asserted), no silent no-op, escapable empty lens.
+
+**FIXED this pass (fix-now):** W2 now normalizes `entity_ids` exactly like the MCP handler (strip / drop-empty /
+empty-list→None) instead of passing the raw body — parity + robustness against a sloppy payload. +2 tests
+(`test_from_glossary_normalizes_entity_ids_like_the_mcp_tool`, `…_empty_id_list_becomes_whole_glossary`).
+
+## CONVERGENCE HAND-OFF (contract owner — the glossary contract-first track)
+`contracts/api/glossary-service/wiki.yaml` DELETE `.../suggestions/{sug_id}` documents responses `204/403/404`,
+but the `withdrawWikiSuggestion` handler NEVER emits 403 (it is submitter-identity-gated, not grant-gated) — it
+emits **404** (not found / non-submitter anti-oracle) + **409** (already reviewed). Correct set = **204 / 404 /
+409**. Left to the file's owner (their hot file; the method/path conformance gate is green either way — purely a
+response-code doc-accuracy nit). Not a defer — a one-line correction for whoever next touches wiki.yaml.
+
 ## DECISIONS (S-09-local)
 - W5 anti-oracle: a non-submitter gets 404 (not 403) on withdraw so a suggestion_id can't be probed.
 - W5 status read needs NO grant — a grant-less community contributor must still read their own outcome

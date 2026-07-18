@@ -82,3 +82,21 @@ def test_from_glossary_bookless_project_is_400(monkeypatch):
     c, _seen, _ = _build(monkeypatch, book=None)  # project_meta → (owner, None)
     r = c.post(f"/v1/knowledge/projects/{_PROJ}/entities/from-glossary", json={})
     assert r.status_code == 400
+
+
+def test_from_glossary_normalizes_entity_ids_like_the_mcp_tool(monkeypatch):
+    # Parity with kg_project_entities_to_nodes: strip whitespace, drop empties.
+    c, seen, _ = _build(monkeypatch, book=uuid4())
+    r = c.post(f"/v1/knowledge/projects/{_PROJ}/entities/from-glossary",
+               json={"entity_ids": ["  e1 ", "", "e2", "   "]})
+    assert r.status_code == 200
+    assert seen["entity_ids"] == ["e1", "e2"]
+
+
+def test_from_glossary_empty_id_list_becomes_whole_glossary(monkeypatch):
+    # An all-blank / empty subset → None (whole active glossary), not "project nothing".
+    c, seen, _ = _build(monkeypatch, book=uuid4())
+    r = c.post(f"/v1/knowledge/projects/{_PROJ}/entities/from-glossary",
+               json={"entity_ids": ["", "  "]})
+    assert r.status_code == 200
+    assert seen["entity_ids"] is None

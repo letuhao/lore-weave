@@ -877,10 +877,15 @@ async def project_entities_from_glossary(
     if book_id is None:
         # A book-less project has no glossary to project from.
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="project has no book")
+    # Normalize the subset exactly as the kg_project_entities_to_nodes MCP handler does
+    # (strip whitespace, drop empties, empty-list → None = whole glossary) so the REST
+    # twin and the tool behave identically on a sloppy client payload.
+    raw_ids = body.entity_ids if body else None
+    entity_ids = [e.strip() for e in raw_ids if e and e.strip()] if raw_ids else None
     async with neo4j_session() as session:
         result = await project_glossary_entities_to_nodes(
             session, glossary, user_id=str(owner), project_id=str(project_id),
-            book_id=book_id, entity_ids=(body.entity_ids if body else None),
+            book_id=book_id, entity_ids=entity_ids or None,
         )
         # The projection changed the graph → refresh the cached stat counters now (the
         # one production writer of stat_updated_at; mirrors the MCP tool). Best-effort:
