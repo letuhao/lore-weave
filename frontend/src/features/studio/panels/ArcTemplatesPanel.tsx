@@ -27,6 +27,7 @@ const TIERS = [
   { key: 'mine', dflt: 'Mine' },
   { key: 'system', dflt: 'System' },
   { key: 'book', dflt: 'Book' },   // 34a — the book's SHARED tier (collaborators co-own)
+  { key: 'archived', dflt: 'Archived' },   // S-08 — soft-deleted own rows, restorable here
 ] as const;
 
 export function ArcTemplatesPanel(props: IDockviewPanelProps) {
@@ -124,7 +125,12 @@ function Row({ state, arc, t }: { state: ArcTemplatesState; arc: ArcTemplate; t:
           : tier === 'mine' ? t('motif.arc.templates.chipMine', { defaultValue: 'Mine' })
             : t('motif.arc.templates.chipPublic', { defaultValue: 'Public' })}
       </span>
-      {tier === 'mine' ? (
+      {state.tier === 'archived' ? (
+        // S-08 — in the Archived view every row is a restorable own-row; the reverse of archive.
+        <button type="button" data-testid={`arc-restore-${arc.id}`} disabled={state.busy}
+          className="shrink-0 text-[10px] text-primary underline-offset-2 hover:underline disabled:opacity-50"
+          onClick={() => void state.restore(arc.id)}>{t('motif.arc.templates.restore', { defaultValue: 'restore' })}</button>
+      ) : tier === 'mine' ? (
         <button type="button" data-testid={`arc-archive-${arc.id}`} disabled={state.busy}
           className="shrink-0 text-[10px] text-muted-foreground underline-offset-2 hover:underline disabled:opacity-50"
           onClick={() => void state.archive(arc.id)}>{t('motif.arc.templates.archive', { defaultValue: 'archive' })}</button>

@@ -18,7 +18,7 @@ import { useActiveWorkId } from '@/features/composition/hooks/useActiveWork';
 import { resolveActiveWork } from '@/features/composition/workSelect';
 import { listBookSharedTemplates, createSharedTemplate } from '@/features/composition/arcTemplates/api';
 
-export type ArcTier = 'all' | 'mine' | 'system' | 'book';
+export type ArcTier = 'all' | 'mine' | 'system' | 'book' | 'archived';
 
 /** Scale guard (§2.9): the library is fetched whole, so cap what we RENDER and say so — a huge
  *  library never silently truncates or janks the panel. Browse the long tail via the Catalog tab. */
@@ -47,6 +47,7 @@ export interface ArcTemplatesState {
   create: (args: { code: string; name: string; language?: string; shareToBook?: boolean }) => Promise<void>;
   adopt: (id: string) => Promise<void>;
   archive: (id: string) => Promise<void>;
+  restore: (id: string) => Promise<void>;
 }
 
 export function useArcTemplates(bookId: string): ArcTemplatesState {
@@ -75,13 +76,23 @@ export function useArcTemplates(bookId: string): ArcTemplatesState {
     enabled: !!token && !!bookId && tier === 'book',
   });
 
+  // S-08 — archived rows are a SEPARATE fetch (the default library list is active-only). This is
+  // what makes Restore reachable: without an archived view a soft-deleted arc is invisible → a dead
+  // end. Owner-scoped (you only archive/restore your own).
+  const archivedLib = useQuery({
+    queryKey: ['composition', 'arc-templates', 'archived'],
+    queryFn: async () => (await arcApi.list({ scope: 'mine', status: 'archived', limit: 100 }, token!)).arc_templates,
+    enabled: !!token && tier === 'archived',
+  });
+
   const allInTier = useMemo(() => {
     if (tier === 'book') return bookLib.data ?? [];
+    if (tier === 'archived') return archivedLib.data ?? [];
     const all = lib.data ?? [];
     if (tier === 'mine') return all.filter((a) => a.owner_user_id === meId);
     if (tier === 'system') return all.filter((a) => a.owner_user_id === null);
     return all;
-  }, [tier, bookLib.data, lib.data, meId]);
+  }, [tier, bookLib.data, archivedLib.data, lib.data, meId]);
   // Scale (§2.9): the library is fetched whole; cap what we RENDER + surface the cap honestly
   // (the Catalog tab is the paged path for browsing beyond this) — never a silent truncation.
   const templates = useMemo(() => allInTier.slice(0, ARC_TEMPLATE_RENDER_CAP), [allInTier]);
@@ -127,8 +138,14 @@ export function useArcTemplates(bookId: string): ArcTemplatesState {
     await arcApi.archive(id, token!);
     setSelected((s) => (s?.id === id ? null : s)); // close the detail if we archived the open one
   }), [run, token]);
+  // S-08 — un-archive back into the active library. `run` invalidates the whole arc-templates key,
+  // so both the archived list AND the active tiers refresh (the row moves out of Archived, into Mine).
+  const restore = useCallback((id: string) => run(async () => {
+    await arcApi.restore(id, token!);
+    setSelected((s) => (s?.id === id ? null : s));
+  }), [run, token]);
 
-  const active = tier === 'book' ? bookLib : lib;
+  const active = tier === 'book' ? bookLib : tier === 'archived' ? archivedLib : lib;
   return {
     token, projectId, bookId,
     templates, truncated, totalInTier, loading: active.isLoading, isError: active.isError,
@@ -137,6 +154,6 @@ export function useArcTemplates(bookId: string): ArcTemplatesState {
     selected, select: setSelected,
     meId, tierOf,
     busy, actionError,
-    create, adopt, archive,
+    create, adopt, archive, restore,
   };
 }

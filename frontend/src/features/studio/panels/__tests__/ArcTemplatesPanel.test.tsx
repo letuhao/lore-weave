@@ -37,7 +37,8 @@ function makeState(over: Partial<ArcTemplatesState> = {}): ArcTemplatesState {
     refetch: vi.fn(), tier: 'all', setTier: vi.fn(), selected: null, select: vi.fn(), meId: 'me',
     tierOf: (a) => (a.owner_user_id === null ? 'system' : a.owner_user_id === 'me' ? 'mine' : 'public'),
     busy: false, actionError: null, create: vi.fn().mockResolvedValue(undefined),
-    adopt: vi.fn().mockResolvedValue(undefined), archive: vi.fn().mockResolvedValue(undefined), ...over,
+    adopt: vi.fn().mockResolvedValue(undefined), archive: vi.fn().mockResolvedValue(undefined),
+    restore: vi.fn().mockResolvedValue(undefined), ...over,
   } as ArcTemplatesState;
 }
 
@@ -77,6 +78,19 @@ describe('ArcTemplatesPanel', () => {
     fireEvent.change(screen.getByTestId('arc-create-name'), { target: { value: 'Shared Arc' } });
     fireEvent.click(screen.getByTestId('arc-create-submit'));
     await waitFor(() => expect(state.create).toHaveBeenCalledWith({ code: 'shared', name: 'Shared Arc', shareToBook: true }));
+  });
+
+  it('S-08: the Archived tier shows a Restore action (not archive/adopt) that fires restore', () => {
+    // In the Archived view every row is a soft-deleted own-row → the ONLY action is Restore. This
+    // is the affordance that makes archived arcs a non-dead-end (before S-08 they were unreachable).
+    const state = makeState({ tier: 'archived', templates: [MINE] as never });
+    ctrl.useArcTemplates.mockReturnValue(state);
+    render(<ArcTemplatesPanel {...props} />);
+    expect(screen.getByTestId('arc-tier-archived')).toBeInTheDocument();   // the tab exists
+    expect(screen.queryByTestId('arc-archive-a1')).toBeNull();             // no archive in archived view
+    expect(screen.queryByTestId('arc-adopt-a1')).toBeNull();
+    fireEvent.click(screen.getByTestId('arc-restore-a1'));
+    expect(state.restore).toHaveBeenCalledWith('a1');
   });
 
   it('adopt/archive fire the controller actions', () => {

@@ -109,6 +109,11 @@ export const motifApi = {
   archive(motifId: string, token: string): Promise<void> {
     return apiJson<void>(`${BASE}/motifs/${motifId}`, { method: 'DELETE', token });
   },
+  /** S-08 — un-archive (reverse of archive). Owner-only; pass bookId to restore a shared row. */
+  restore(motifId: string, token: string, bookId?: string): Promise<Motif> {
+    const qs = bookId ? `?book_id=${encodeURIComponent(bookId)}` : '';
+    return apiJson<Motif>(`${BASE}/motifs/${motifId}/restore${qs}`, { method: 'POST', token });
+  },
 
   // ── catalog (W1 — the B-3 allow-list projection) ───────────────────────────
   // Hits GET /motifs/catalog → list_public (the _CATALOG_COLS allow-list), NOT

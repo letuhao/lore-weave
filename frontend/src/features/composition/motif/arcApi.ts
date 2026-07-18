@@ -44,6 +44,11 @@ export const arcApi = {
   archive(arcId: string, token: string): Promise<void> {
     return apiJson<void>(`${BASE}/arc-templates/${arcId}`, { method: 'DELETE', token });
   },
+  /** S-08 — un-archive (reverse of archive). Owner-only; pass book_id to restore a shared row. */
+  restore(arcId: string, token: string, bookId?: string): Promise<ArcTemplate> {
+    const qs = bookId ? `?book_id=${encodeURIComponent(bookId)}` : '';
+    return apiJson<ArcTemplate>(`${BASE}/arc-templates/${arcId}/restore${qs}`, { method: 'POST', token });
+  },
   /** Adopt = clone-to-customize into the caller's own tier (cross-genre retag). */
   adopt(arcId: string, retagGenres: string[] | undefined, token: string): Promise<ArcTemplate> {
     return apiJson<ArcTemplate>(`${BASE}/arc-templates/${arcId}/adopt`, {
