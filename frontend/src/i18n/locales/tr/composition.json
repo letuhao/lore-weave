@@ -428,7 +428,6 @@
   "pacing": "tempo",
   "canon_consistency": "kanon",
   "dismiss": "kapat",
-  "overrideSlipBlocked": "Engellenen kabul: bir varyant (override) kanon değerine geri sızdı. Kabul etmeden önce yeniden oluşturun.",
   "overrideSlipExhausted": "Yeniden oluşturma sınırından sonra bile varyant sızmaya devam ediyor — incelemeniz için sunuldu (kabul artık engellenmiş değil).",
   "overrideSlipDetail": "{{name}} ({{field}}): beklenen “{{expected}}”, bulunan “{{found}}”",
   "deltaInconsistencyDetail": "{{name}}: “{{rule}}” delta kuralıyla çelişiyor",
@@ -1093,5 +1092,6 @@
       "loading": "Çalıştırma yükleniyor…",
       "back": "← Çalıştırmalar listesine dön"
     }
-  }
+  },
+  "overrideSlipBlocked": "Engellenen sürüm kabul edildi: bir «ya şöyle olsaydı» sürümü orijinal kanon değerine geri kaydı. Kabul etmeden önce yeniden oluşturun."
 }

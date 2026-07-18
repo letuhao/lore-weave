@@ -395,9 +395,9 @@
       "guideBody": "What-if tuvali, orijinal taslağa hiç dokunmadan bir sahneyi geçici bir dala ayırmanıza, alternatif bir versiyon oluşturmanıza ve eleştirmen yargı rozetlerini yan yana görmenize olanak tanır. Bir dal istediğiniz versiyon olduğunda onu yükseltin: artık üzerinde yazmaya devam edebileceğiniz gerçek bir türev eser haline gelir. Siz yükseltene kadar hiçbir şey kaydedilmez, bu sayede özgürce keşif yapabilirsiniz. Bu, Yükselt butonu arkasındaki düzenleme yüzeyidir; Plan Merkezi plan grafiğini gösterirken, burası o plan üzerindeki alternatifleri denediğiniz yerdir."
     },
     "divergence": {
-      "title": "Divergence (dị bản)",
       "desc": "Bir kitabın what-if türevlerini yönetin — kanon listesini ve her bir dalı listeleyin, tüm stüdyoyu birine geçirin, birini arşivleyin veya bir bölümden yeni bir dal türetin",
-      "guideBody": "Bir dị bản (divergence), kitabınızı bir bölümde dallara ayırır ve —alternatif bir evren, bir bakış açısı değişikliği veya değişmiş bir karakter— kendi bilgi bölümüne sahip türev bir eser oluştururken, kaynak metin salt okunur kanon olarak kalır. Bu panel, kanonik çalışmanızı ve oluşturduğunuz her bir dalı listeler. «Şuna geç» seçeneği; editör, gezgin, kalite ve her şeyiyle tüm stüdyonuzu o dala taşır; bu seçim kitap bazında hatırlanır ve sayfa yenilense de korunur. «Arşivle» bir dalı yok etmeden gizler (bölümleri ve bilgileri korunur). «Yeni dị bản» yeni bir dal oluşturmak için 4 adımlı sihirbazı açar. Bir dalın özelliklerini (taksonomi, dallanma noktası, kanon kuralları, geçersiz kılmalar) okumak için bir dal seçin; bu özellikler oluşturma anında sabitlenir."
+      "title": "Ya olursa versiyonları",
+      "guideBody": "Bir «ya olursa» versiyonu, kitabınızı bir bölümde dallara ayırır ve farklı bir evrene, bakış açısı değişimine veya değişmiş bir karaktere dönüşerek; kaynak metin salt okunur kanon olarak kalırken kendi bilgi bölümüne sahip türetilmiş bir esere dönüşür. Bu panel, kanonik çalışmanızı ve oluşturduğunuz tüm dalları listeler. «Şuna geç» seçeneği; editör, gezgin, kalite kontrol dahil tüm stüdyonuzu o dala taşır; bu seçim kitap bazında hatırlanır ve sayfa yenilense de korunur. «Arşivle» seçeneği, bir dalı yok etmeden gizler (bölümleri ve bilgileri korunur). «Yeni versiyon» seçeneği, yeni bir dal oluşturmak için 4 adımlı sihirbazı açar. Bir dalın özelliklerini (taksonomi, dallanma noktası, kanon kuralları, geçersiz kılmalar) okumak için bir dal seçin; bu özellikler oluşturma anında sabitlenir."
     },
     "reference-shelf": {
       "title": "Referans rafı",
@@ -793,14 +793,14 @@
     "glossary": "Sözlük",
     "focus": "Odak",
     "translate": "Çevir",
-    "derivativeForked": "Bir dị bản üzerinde — bu bölüm AYRILDI (FORKED), kanondan izole edildi. Düzenlemeler dala kaydedilir; kanon bozulmadan kalır.",
-    "derivativeInherit": "Bir dị bản üzerinde — bu bölüm hâlâ kanonu yansıtıyor. Burada düzenleme yapmak onu dala AYRILTIR (kanon bozulmadan kalır).",
     "mergeToCanon": "Kanona birleştir",
     "mergeConfirm": "Onayla — ana metinle değiştir",
     "merging": "Birleştiriliyor…",
     "mergeDone": "Ana metne birleştirildi — dal kendi sürümünü korur.",
     "mergeConflict": "Ana metin değişti — bölümü yeniden açın ve tekrar birleştirin.",
-    "mergeFailed": "Birleştirilemedi — tekrar deneyin."
+    "mergeFailed": "Birleştirilemedi — tekrar deneyin.",
+    "derivativeForked": "Bir «ya olursa» versiyonunda — bu bölüm DALLANMIŞTIR, kanondan izole edilmiştir. Düzenlemeler dala kaydedilir; kanon olduğu gibi kalır.",
+    "derivativeInherit": "Bir «ya olursa» versiyonunda — bu bölüm hâlâ kanonu yansıtmaktadır. Burada yapılan düzenleme, bölümü dala ayırarak dallandırır (kanon olduğu gibi kalır)."
   },
   "sceneCompose": {
     "empty": "Sahnelerini burada taslak haline getirmek için taslak gezgininden bir bölüm seçin.",
@@ -911,10 +911,10 @@
   },
   "activity": {
     "manuscript": "Taslak",
+    "plan": "Plan",
     "bible": "Hikaye İncili",
     "search": "Arama",
-    "quality": "Kalite",
-    "plan": "Plan"
+    "quality": "Kalite"
   },
   "navStub": {
     "manuscript": {
@@ -1072,14 +1072,14 @@
     "moveActUp": "Perdeyi yukarı taşı",
     "moveActDown": "Perdeyi aşağı taşı",
     "untitledAct": "(isimsiz perde)",
+    "unassignedBucket": "Atanmamış",
     "emptyActHint": "bölümleri buraya sürükleyin",
     "trashedActs": "Çöp kutusundaki bölümler",
     "restore": "Geri Yükle",
     "restoreActHint": "Bu bölümü geri yükle (bölüm boş olarak gelir — bölümleri gerektiği gibi yeniden dosyala)",
     "actTrashed": "«{{name}}» bölümü çöp kutusuna taşındı — bölümleri kitapta kaldı",
-    "undo": "Geri Al",
-    "unassignedBucket": "Atanmamış",
-    "partVsArc": "Bölümler taslağınızı gruplandırır. Arklar ise planınızdır."
+    "partVsArc": "Bölümler taslağınızı gruplandırır. Arklar ise planınızdır.",
+    "undo": "Geri Al"
   },
   "intro": {
     "title": "Writing Studio'ya Hoş Geldiniz",

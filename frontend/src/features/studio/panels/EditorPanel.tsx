@@ -316,8 +316,8 @@ export function EditorPanel(props: IDockviewPanelProps) {
         >
           <span data-testid="studio-editor-fork-state">
             ⑂ {unit.state.forked
-              ? t('editor.derivativeForked', { defaultValue: "On a dị bản — this chapter is FORKED, isolated from canon. Edits save to the branch; canon stays untouched." })
-              : t('editor.derivativeInherit', { defaultValue: "On a dị bản — this chapter still mirrors canon. Editing here FORKS it into the branch (canon stays untouched)." })}
+              ? t('editor.derivativeForked', { defaultValue: "On a what-if version — this chapter is FORKED, isolated from canon. Edits save to the branch; canon stays untouched." })
+              : t('editor.derivativeInherit', { defaultValue: "On a what-if version — this chapter still mirrors canon. Editing here FORKS it into the branch (canon stays untouched)." })}
           </span>
           {unit.state.forked && (
             <button

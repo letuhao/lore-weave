@@ -47,6 +47,26 @@ M1 502fdbee8 · M2 9d62865d3 · M3 6b02d4ec4 · M4 8a74acb09 · M5 339a28115 (+ 
 newcomer-diary finding resolved or honestly sealed. Each slice: tsc 0, unit tests green, live QC on the
 static build. Auth slice (M4) got the review-impl pass (found+fixed the pointer-events chip bug).
 
+## ROUND 2 — post-fix dogfood → F8–F10 (feedback 98d6f7fb1 · design sealed ce3100a92)
+Second newcomer pass on the fixed :5290 build. F1–F7 verified resolved live. Three new findings, all
+FE-only, all composing around existing plumbing (usePlanOrigin, WorkSetupCta, host.openPanel):
+- **F9 → "What-if versions"** (human-sealed): retire baked `Divergence (dị bản)` bilingual label.
+- **F8**: Plan rail empty state is a dead door — add guided copy + "Plan this book" button.
+- **F10 → "Writing setup"** (human-sealed): mount existing WorkSetupCta on noWork empty states + reword.
+Spec: docs/specs/2026-07-18-writing-studio-newcomer-polish/round-2-feedback.md (M7–M9 plan at bottom).
+
+### SLICE BOARD — ROUND 2 (done = an evidence string)
+- [x] M8 · F9 kill bilingual label → "What-if versions" — en studio+composition + 6 component
+      defaultValues (Divergence/SpecEditor/BranchDiff/CriticFlags/EditorPanel); deleted 5 stale keys ×
+      17 locales, gap-filled via gemma-4-26b (0 failed); grep-verified no rendered "dị bản" except the
+      Vietnamese locale (correct native word) + 1 code comment; tsc 0; 435 unit green; parity OK. QC
+      :5290: Story Bible tab + dock panel + tab all read "What-if versions"; empty state clean.
+- [ ] M7 · F8 Plan rail door — PlanNavigatorRail onOpenPlan + guided empty state + CTA; StudioSideBar
+      wires host.openPanel('plan-hub'); test; QC :5290.
+- [ ] M9 · F10 mount WorkSetupCta on ReferenceShelf/StyleVoice noWork + reword; Divergence "no plan"
+      → plan door; WorkSetupCta button "Set up co-writer"→"Set up writing"; review-impl; test; QC :5290.
+Build order: M8 → M7 → M9. Each: tsc 0, unit green, live QC on the static build (never vite dev).
+
 ## DEFERRED (gate-eligible — carry forward)
 - **F7c — chat co-writer context bloat** (gate #2 structural / belongs to another track). A 2-sentence
   creative ask sent ~22.6k input tokens (48 tools + 5 skills + ~12.9k tok preloaded for EVERY message).

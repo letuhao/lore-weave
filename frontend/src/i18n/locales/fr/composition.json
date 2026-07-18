@@ -428,7 +428,6 @@
   "pacing": "rythme",
   "canon_consistency": "canon",
   "dismiss": "ignorer",
-  "overrideSlipBlocked": "Acceptation bloquée : une variante a glissé vers la valeur canonique. Régénérez avant d'accepter.",
   "overrideSlipExhausted": "L'écrasement persiste après la limite de régénération — signalé pour examen (l'acceptation n'est plus bloquée).",
   "overrideSlipDetail": "{{name}} ({{field}}): attendu « {{expected}} », trouvé « {{found}} »",
   "deltaInconsistencyDetail": "{{name}} : contredit la règle delta « {{rule}} »",
@@ -1093,5 +1092,6 @@
       "loading": "Chargement de la session…",
       "back": "← Retour à la liste des sessions"
     }
-  }
+  },
+  "overrideSlipBlocked": "Acceptation du blocage : une version « et si » a glissé vers la valeur canonique. Régénérez avant d'accepter."
 }

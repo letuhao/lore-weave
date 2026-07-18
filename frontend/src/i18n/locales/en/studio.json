@@ -395,9 +395,9 @@
       "guideBody": "The what-if canvas lets you fork a scene into an ephemeral branch, generate an alternate take, and see the critic's judge badges side by side — all without touching the canonical draft. When a branch is the one you want, promote it: it becomes a real derivative work you can keep writing from. Nothing is saved until you promote, so you can explore freely. This is the editing surface behind the Promote button; the Plan Hub shows the plan graph, this is where you try alternatives on it."
     },
     "divergence": {
-      "title": "Divergence (dị bản)",
-      "desc": "Manage a book's what-if derivatives — list the canon and every branch, switch the whole studio to one, archive one, or spawn a new branch from a chapter",
-      "guideBody": "A dị bản (divergence) branches your book at a chapter and diverges — an alternate universe, a POV shift, a character changed — into a derivative work with its own knowledge partition, while the source stays read-only canon. This panel lists your canonical work and every branch you've spawned. 'Switch to' moves your whole studio — editor, navigator, quality, everything — onto that branch; the choice is remembered per book and survives a reload. 'Archive' hides a branch without destroying it (its chapters and knowledge are kept). 'New divergence' opens the 4-step wizard to spawn one. Select a branch to read its spec (taxonomy, branch point, canon rules, overrides), which is fixed at creation."
+      "title": "What-if versions",
+      "desc": "Manage a book's what-if versions — list the canon and every branch, switch the whole studio to one, archive one, or spawn a new branch from a chapter",
+      "guideBody": "A what-if version branches your book at a chapter and diverges — an alternate universe, a POV shift, a character changed — into a derivative work with its own knowledge partition, while the source stays read-only canon. This panel lists your canonical work and every branch you've spawned. 'Switch to' moves your whole studio — editor, navigator, quality, everything — onto that branch; the choice is remembered per book and survives a reload. 'Archive' hides a branch without destroying it (its chapters and knowledge are kept). 'New version' opens the 4-step wizard to spawn one. Select a branch to read its spec (taxonomy, branch point, canon rules, overrides), which is fixed at creation."
     },
     "reference-shelf": {
       "title": "Reference shelf",
@@ -793,8 +793,8 @@
     "glossary": "Glossary",
     "focus": "Focus",
     "translate": "Translate",
-    "derivativeForked": "On a dị bản — this chapter is FORKED, isolated from canon. Edits save to the branch; canon stays untouched.",
-    "derivativeInherit": "On a dị bản — this chapter still mirrors canon. Editing here FORKS it into the branch (canon stays untouched).",
+    "derivativeForked": "On a what-if version — this chapter is FORKED, isolated from canon. Edits save to the branch; canon stays untouched.",
+    "derivativeInherit": "On a what-if version — this chapter still mirrors canon. Editing here FORKS it into the branch (canon stays untouched).",
     "mergeToCanon": "Merge to canon",
     "mergeConfirm": "Confirm — overwrite canon",
     "merging": "Merging…",

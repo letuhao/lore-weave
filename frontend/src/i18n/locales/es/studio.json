@@ -395,9 +395,9 @@
       "guideBody": "El lienzo «what-if» te permite bifurcar una escena en una rama efímera, generar una toma alternativa y ver las insignias de juicio del crítico una al lado de la otra, todo sin tocar el borrador canónico. Cuando una rama sea la que desees, promociónla: se convertirá en una obra derivada real desde la que podrás seguir escribiendo. Nada se guarda hasta que promocionas, así que puedes explorar libremente. Esta es la superficie de edición detrás del botón «Promover»; el Plan Hub muestra el gráfico del plan, esto es donde pruebas alternativas sobre él."
     },
     "divergence": {
-      "title": "Divergencia (dị bản)",
       "desc": "Gestiona los derivados «what-if» de un libro: lista el canon y cada rama, cambia todo el estudio a una de ellas, archiva una o genera una nueva rama a partir de un capítulo.",
-      "guideBody": "Una dị bản (divergencia) bifurca tu libro en un capítulo y diverge —un universo alternativo, un cambio de punto de vista, un personaje modificado— en una obra derivada con su propia partición de conocimiento, mientras que la fuente permanece como canon de solo lectura. Este panel enumera tu obra canónica y cada rama que hayas generado. «Cambiar a» traslada todo tu estudio —editor, navegador, calidad, todo— a esa rama; la elección se recuerda por libro y persiste tras recargar. «Archivar» oculta una rama sin destruirla (sus capítulos y conocimiento se conservan). «Nueva divergencia» abre el asistente de 4 pasos para generar una. Selecciona una rama para leer su especificación (taxonomía, punto de bifurcación, reglas del canon, anulaciones), la cual queda fijada al momento de su creación."
+      "title": "Versiones «¿Qué pasaría si...?»",
+      "guideBody": "Una versión «¿Qué pasaría si...?» ramifica tu libro en un capítulo y diverge —un universo alternativo, un cambio de punto de vista, un personaje modificado— en una obra derivada con su propia partición de conocimiento, mientras que la fuente permanece como canon de solo lectura. Este panel enumera tu obra canónica y cada rama que hayas generado. «Cambiar a» traslada todo tu estudio —editor, navegador, calidad, todo— a esa rama; la elección se recuerda por libro y se mantiene tras recargar. «Archivar» oculta una rama sin destruirla (sus capítulos y conocimiento se conservan). «Nueva versión» abre el asistente de 4 pasos para crear una. Selecciona una rama para leer su especificación (taxonomía, punto de ramificación, reglas del canon, anulaciones), la cual queda fijada al momento de su creación."
     },
     "reference-shelf": {
       "title": "Estante de referencias",
@@ -793,14 +793,14 @@
     "glossary": "Glosario",
     "focus": "Enfoque",
     "translate": "Traducir",
-    "derivativeForked": "En un dị bản: este capítulo está RAMIFICADO, aislado del canon. Las ediciones se guardan en la rama; el canon permanece intacto.",
-    "derivativeInherit": "En un dị bản: este capítulo aún refleja el canon. Editar aquí lo RAMIFICA en la rama (el canon permanece intacto).",
     "mergeToCanon": "Fusionar con el canon",
     "mergeConfirm": "Confirmar — sobrescribir canon",
     "merging": "Fusionando…",
     "mergeDone": "Fusionado con el canon — la rama conserva su propia versión.",
     "mergeConflict": "El canon ha cambiado — vuelve a abrir el capítulo y fusiona de nuevo.",
-    "mergeFailed": "No se pudo fusionar — inténtalo de nuevo."
+    "mergeFailed": "No se pudo fusionar — inténtalo de nuevo.",
+    "derivativeForked": "En una versión «¿Qué pasaría si...?»: este capítulo está RAMIFICADO, aislado del canon. Los cambios se guardan en la rama; el canon permanece intacto.",
+    "derivativeInherit": "En una versión «¿Qué pasaría si...?»: este capítulo aún refleja el canon. Editar aquí lo RAMIFICA hacia la rama (el canon permanece intacto)."
   },
   "sceneCompose": {
     "empty": "Selecciona un capítulo en el navegador del manuscrito para redactar sus escenas aquí.",
@@ -911,10 +911,10 @@
   },
   "activity": {
     "manuscript": "Manuscrito",
+    "plan": "Plan",
     "bible": "Biblia de la historia",
     "search": "Buscar",
-    "quality": "Calidad",
-    "plan": "Plan"
+    "quality": "Calidad"
   },
   "navStub": {
     "manuscript": {
@@ -1072,14 +1072,14 @@
     "moveActUp": "Mover acto arriba",
     "moveActDown": "Mover acto abajo",
     "untitledAct": "(acto sin título)",
+    "unassignedBucket": "Sin asignar",
     "emptyActHint": "arrastra capítulos aquí",
     "trashedActs": "Actos eliminados",
     "restore": "Restaurar",
     "restoreActHint": "Restaurar este acto (se restaurará vacío; vuelve a organizar los capítulos según sea necesario)",
     "actTrashed": "El acto «{{name}}» ha sido eliminado; sus capítulos permanecen en el libro",
-    "undo": "Deshacer",
-    "unassignedBucket": "Sin asignar",
-    "partVsArc": "Las partes agrupan tu manuscrito. Los arcos son el plan."
+    "partVsArc": "Las partes agrupan tu manuscrito. Los arcos son el plan.",
+    "undo": "Deshacer"
   },
   "intro": {
     "title": "Bienvenido a Writing Studio",

@@ -195,7 +195,7 @@ export function DivergenceSpecEditor({
               <input
                 data-testid="divergence-override-add-name"
                 className="rounded border border-border bg-transparent px-2 py-1 text-[11px]"
-                placeholder={t('divergence.overrideNamePlaceholder', { defaultValue: 'New name in this dị bản (optional)…' })}
+                placeholder={t('divergence.overrideNamePlaceholder', { defaultValue: 'New name in this version (optional)…' })}
                 value={addName}
                 onChange={(e) => setAddName(e.target.value)}
               />
@@ -284,7 +284,7 @@ function OverrideRow({
         className="rounded border border-border bg-transparent px-2 py-1 text-[11px]"
         value={nameField}
         onChange={(e) => setNameField(e.target.value)}
-        placeholder={t('divergence.overrideNamePlaceholder', { defaultValue: 'New name in this dị bản (optional)…' })}
+        placeholder={t('divergence.overrideNamePlaceholder', { defaultValue: 'New name in this version (optional)…' })}
       />
       <input
         data-testid={`divergence-override-desc-${row.id}`}

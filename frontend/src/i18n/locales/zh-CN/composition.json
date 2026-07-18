@@ -428,7 +428,6 @@
   "pacing": "节奏",
   "canon_consistency": "设定一致性",
   "dismiss": "忽略",
-  "overrideSlipBlocked": "接受受阻：一个异版 (dị bản) 覆盖项滑回了设定值。请在接受前重新生成。",
   "overrideSlipExhausted": "在达到重新生成上限后覆盖项仍在滑回 — 已提交供您审核（接受不再受阻）。",
   "overrideSlipDetail": "{{name}} ({{field}}): 预期为 “{{expected}}”，实际为 “{{found}}”",
   "deltaInconsistencyDetail": "{{name}}: 违反了差异规则 “{{rule}}”",
@@ -1093,5 +1092,6 @@
       "loading": "正在加载运行…",
       "back": "← 返回运行列表"
     }
-  }
+  },
+  "overrideSlipBlocked": "接受已拦截：一个“如果”版本的覆盖值已滑回正文数值。请在接受前重新生成。"
 }

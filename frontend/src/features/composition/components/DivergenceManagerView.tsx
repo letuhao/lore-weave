@@ -76,7 +76,7 @@ export function DivergenceManagerView({ bookId, token }: { bookId: string; token
 
   const Row = ({ w, canon }: { w: Work; canon: boolean }) => {
     const active = isActive(w);
-    const name = derivativeName(w) ?? (canon ? t('divergence.canonical', { defaultValue: 'Canonical' }) : t('divergence.unnamed', { defaultValue: 'Untitled dị bản' }));
+    const name = derivativeName(w) ?? (canon ? t('divergence.canonical', { defaultValue: 'Canonical' }) : t('divergence.unnamed', { defaultValue: 'Untitled version' }));
     const selectable = !canon; // only a derivative opens a spec
     const select = () => m.setSelectedProjectId(w.project_id === m.selectedProjectId ? null : w.project_id);
     // A plain div (NOT a <button>) so the Switch/Archive <button>s below are not nested
@@ -134,7 +134,7 @@ export function DivergenceManagerView({ bookId, token }: { bookId: string; token
   return (
     <div data-testid="divergence-panel" className="flex h-full flex-col overflow-y-auto p-3 text-sm">
       <div className="mb-2 flex items-center justify-between">
-        <span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">{t('divergence.title', { defaultValue: 'Divergence (dị bản)' })}</span>
+        <span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">{t('divergence.title', { defaultValue: 'What-if versions' })}</span>
         <button
           type="button"
           data-testid="divergence-new"
@@ -158,7 +158,7 @@ export function DivergenceManagerView({ bookId, token }: { bookId: string; token
         </span>
         {m.derivatives.length === 0 ? (
           <div data-testid="divergence-empty" className="rounded border border-dashed border-border p-3 text-center text-[12px] text-muted-foreground">
-            {t('divergence.emptyDerivatives', { defaultValue: 'No what-if branches yet. A dị bản branches your book at a chapter and diverges — the source stays read-only canon.' })}
+            {t('divergence.emptyDerivatives', { defaultValue: 'No what-if versions yet. A version branches your book at a chapter and diverges — the source stays read-only canon.' })}
           </div>
         ) : (
           m.derivatives.map((w) => <Row key={w.project_id} w={w} canon={false} />)
@@ -169,7 +169,7 @@ export function DivergenceManagerView({ bookId, token }: { bookId: string; token
       {m.selected && (
         <div data-testid="divergence-detail" className="mt-3 rounded border border-border">
           <div className="flex items-center gap-1 border-b border-border px-2.5 py-1.5">
-            <span className="flex-1 truncate text-[12px] font-medium">{derivativeName(m.selected) ?? t('divergence.unnamed', { defaultValue: 'Untitled dị bản' })}</span>
+            <span className="flex-1 truncate text-[12px] font-medium">{derivativeName(m.selected) ?? t('divergence.unnamed', { defaultValue: 'Untitled version' })}</span>
             {/* H-2a — rename the derivative (settings.derivative_name). */}
             <button
               type="button" data-testid="divergence-rename"

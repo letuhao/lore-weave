@@ -395,9 +395,9 @@
       "guideBody": "O canvas «e se...» permite que você crie uma ramificação efêmera de uma cena, gere uma versão alternativa e veja as medalhas de julgamento do crítico lado a lado — tudo isso sem tocar no rascunho canônico. Quando uma ramificação for a que você deseja, promova-a: ela se tornará uma obra derivada real a partir da qual você poderá continuar escrevendo. Nada é salvo até que você promova, então você pode explorar livremente. Esta é a superfície de edição por trás do botão Promover; o Plan Hub mostra o gráfico do plano, este é o lugar onde você testa alternativas nele."
     },
     "divergence": {
-      "title": "Divergência (dị bản)",
       "desc": "Gerencie as derivadas de «e se...» de um livro — liste o cânone e cada ramificação, mude todo o estúdio para uma delas, arquive uma ou crie uma nova ramificação a partir de um capítulo",
-      "guideBody": "Uma dị bản (divergência) ramifica seu livro em um capítulo e diverge — um universo alternativo, uma mudança de ponto de vista, um personagem alterado — em uma obra derivada com sua própria partição de conhecimento, enquanto a fonte permanece como o cânone de apenas leitura. Este painel lista seu trabalho canônico e cada ramificação que você criou. «Mudar para» move todo o seu estúdio — editor, navegador, qualidade, tudo — para essa ramificação; a escolha é lembrada por livro e sobrevive ao recarregamento. «Arquivar» esconde uma ramificação sem destruí-la (seus capítulos e conhecimento são mantidos). «Nova divergência» abre o assistente de 4 etapas para criar uma. Selecione uma ramificação para ler sua especificação (taxonomia, ponto de ramificação, regras do cânone, sobreposições), que é fixa no momento da criação."
+      "title": "Versões 'E se...'",
+      "guideBody": "Uma versão «e se...» ramifica seu livro em um capítulo e diverge — um universo alternativo, uma mudança de ponto de vista, um personagem alterado — em uma obra derivada com sua própria partição de conhecimento, enquanto a fonte permanece como o cânone de apenas leitura. Este painel lista sua obra canônica e cada ramificação que você criou. «Mudar para» move todo o seu estúdio — editor, navegador, qualidade, tudo — para essa ramificação; a escolha é lembrada por livro e permanece após recarregar. «Arquivar» esconde uma ramificação sem destruí-la (seus capítulos e conhecimentos são preservados). «Nova versão» abre o assistente de 4 etapas para criar uma. Selecione uma ramificação para ler suas especificações (taxonomia, ponto de ramificação, regras do cânone, sobreposições), que são fixas no momento da criação."
     },
     "reference-shelf": {
       "title": "Prateleira de referências",
@@ -793,14 +793,14 @@
     "glossary": "Glossário",
     "focus": "Foco",
     "translate": "Traduzir",
-    "derivativeForked": "Em um dị bản — este capítulo está RAMIFICADO, isolado do cânone. As edições são salvas no ramo; o cânone permanece intacto.",
-    "derivativeInherit": "Em um dị bản — este capítulo ainda reflete o cânone. Editar aqui RAMIFICA o capítulo para o ramo (o cânone permanece intacto).",
     "mergeToCanon": "Mesclar ao cânone",
     "mergeConfirm": "Confirmar — sobrescrever o cânone",
     "merging": "Mesclando…",
     "mergeDone": "Mesclado no cânone — o ramo manterá sua própria versão.",
     "mergeConflict": "O cânone foi alterado — reabra o capítulo e mescle novamente.",
-    "mergeFailed": "Não foi possível mesclar — tente novamente."
+    "mergeFailed": "Não foi possível mesclar — tente novamente.",
+    "derivativeForked": "Em uma versão «e se...» — este capítulo está RAMIFICADO, isolado do cânone. As edições são salvas na ramificação; o cânone permanece intacto.",
+    "derivativeInherit": "Em uma versão «e se...» — este capítulo ainda reflete o cânone. Editar aqui RAMIFICA o capítulo para a ramificação (o cânone permanece intacto)."
   },
   "sceneCompose": {
     "empty": "Selecione um capítulo no navegador do manuscrito para rascunhar suas cenas aqui.",
@@ -911,10 +911,10 @@
   },
   "activity": {
     "manuscript": "Manuscrito",
+    "plan": "Plano",
     "bible": "Bíblia da História",
     "search": "Busca",
-    "quality": "Qualidade",
-    "plan": "Plano"
+    "quality": "Qualidade"
   },
   "navStub": {
     "manuscript": {
@@ -1072,14 +1072,14 @@
     "moveActUp": "Mover ato para cima",
     "moveActDown": "Mover ato para baixo",
     "untitledAct": "(ato sem título)",
+    "unassignedBucket": "Não atribuídos",
     "emptyActHint": "arraste capítulos para cá",
     "trashedActs": "Atos excluídos",
     "restore": "Restaurar",
     "restoreActHint": "Restaurar este ato (ele voltará vazio — reorganize os capítulos conforme necessário)",
     "actTrashed": "O ato «{{name}}» foi excluído — seus capítulos permaneceram no livro",
-    "undo": "Desfazer",
-    "unassignedBucket": "Não atribuídos",
-    "partVsArc": "As Partes agrupam seu manuscrito. Os Arcos são o planejamento."
+    "partVsArc": "As Partes agrupam seu manuscrito. Os Arcos são o planejamento.",
+    "undo": "Desfazer"
   },
   "intro": {
     "title": "Bem-vindo ao Writing Studio",

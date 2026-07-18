@@ -428,7 +428,6 @@
   "pacing": "nhịp độ",
   "canon_consistency": "nhất quán canon",
   "dismiss": "bỏ qua",
-  "overrideSlipBlocked": "Đã chặn chấp nhận: một ghi đè dị bản đã trượt về giá trị nguyên tác. Hãy tạo lại trước khi chấp nhận.",
   "overrideSlipExhausted": "Ghi đè vẫn trượt sau khi đạt giới hạn tạo lại — hiển thị để bạn xem xét (không còn chặn chấp nhận).",
   "overrideSlipDetail": "{{name}} ({{field}}): mong đợi “{{expected}}”, tìm thấy “{{found}}”",
   "deltaInconsistencyDetail": "{{name}}: mâu thuẫn với quy tắc delta “{{rule}}”",
@@ -1093,5 +1092,6 @@
       "loading": "Đang tải lượt chạy…",
       "back": "← Quay lại danh sách lượt chạy"
     }
-  }
+  },
+  "overrideSlipBlocked": "Chấp nhận bản bị chặn: một phiên bản giả định đã bị trượt về giá trị chính thống. Hãy tạo lại trước khi chấp nhận."
 }

@@ -428,7 +428,6 @@
   "pacing": "rentak",
   "canon_consistency": "kanon",
   "dismiss": "abaikan",
-  "overrideSlipBlocked": "Penerimaan terhalang: satu draf override telah terlepas kembali ke nilai kanon. Jana semula sebelum menerima.",
   "overrideSlipExhausted": "Override masih terlepas selepas had penjanaan semula — dipaparkan untuk semakan anda (penerimaan tidak lagi terhalang).",
   "overrideSlipDetail": "{{name}} ({{field}}): dijangka “{{expected}}”, didapati “{{found}}”",
   "deltaInconsistencyDetail": "{{name}}: bercanggah dengan peraturan delta “{{rule}}”",
@@ -1093,5 +1092,6 @@
       "loading": "Memuatkan sesi…",
       "back": "← Kembali ke senarai runs"
     }
-  }
+  },
+  "overrideSlipBlocked": "Terima yang tersegel: versi «what-if» yang tergelincir kembali ke nilai kanon. Jana semula sebelum menerima."
 }

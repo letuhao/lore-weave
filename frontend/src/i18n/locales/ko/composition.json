@@ -428,7 +428,6 @@
   "pacing": "호흡",
   "canon_consistency": "설정",
   "dismiss": "무시",
-  "overrideSlipBlocked": "차단된 수락: 설정값(canon)을 벗어난 변형이 다시 침투했습니다. 수락하기 전에 재생성하세요.",
   "overrideSlipExhausted": "재생성 한도 초과 후에도 변형이 지속됨 — 검토를 위해 표시되었습니다 (이제 수락이 차단되지 않음).",
   "overrideSlipDetail": "{{name}} ({{field}}): 예상값 “{{expected}}”, 실제값 “{{found}}”",
   "deltaInconsistencyDetail": "{{name}}: 델타 규칙 “{{rule}}”과 충돌함",
@@ -1093,5 +1092,6 @@
       "loading": "실행 로딩 중…",
       "back": "← 실행 목록으로 돌아가기"
     }
-  }
+  },
+  "overrideSlipBlocked": "차단된 오버라이드: ‘만약에’ 버전의 오버라이드가 정사(canon) 값으로 되돌아갔습니다. 수락하기 전에 다시 생성하세요."
 }

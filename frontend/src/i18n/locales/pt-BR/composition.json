@@ -428,7 +428,6 @@
   "pacing": "ritmo",
   "canon_consistency": "cânone",
   "dismiss": "descartar",
-  "overrideSlipBlocked": "Aceitação bloqueada: uma sobreposição de variante (dịton) escapou de volta ao valor do cânone. Regenere antes de aceitar.",
   "overrideSlipExhausted": "Sobreposição persistente após o limite de regeneração — exibida para sua revisão (a aceitação não está mais bloqueada).",
   "overrideSlipDetail": "{{name}} ({{field}}): esperado “{{expected}}”, encontrado “{{found}}”",
   "deltaInconsistencyDetail": "{{name}}: contradiz a regra delta “{{rule}}”",
@@ -1093,5 +1092,6 @@
       "loading": "Carregando execução…",
       "back": "← Voltar para a lista de execuções"
     }
-  }
+  },
+  "overrideSlipBlocked": "Aceitar bloqueio: uma versão «e se» (what-if) sobrepôs o valor canônico. Regenere antes de aceitar."
 }

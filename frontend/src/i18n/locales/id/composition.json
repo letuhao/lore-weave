@@ -428,7 +428,6 @@
   "pacing": "pacing",
   "canon_consistency": "kanon",
   "dismiss": "abaikan",
-  "overrideSlipBlocked": "Penerimaan terblokir: sebuah variasi override menyelinap kembali ke nilai kanon. Regenerasi sebelum menerima.",
   "overrideSlipExhausted": "Override tetap menyelinap setelah batas regenerasi tercapai — ditampilkan untuk tinjauan Anda (penerimaan tidak lagi terblokir).",
   "overrideSlipDetail": "{{name}} ({{field}}): diharapkan “{{expected}}”, ditemukan “{{found}}”",
   "deltaInconsistencyDetail": "{{name}}: bertentangan dengan aturan delta “{{rule}}”",
@@ -1093,5 +1092,6 @@
       "loading": "Memuat proses...",
       "back": "← Kembali ke daftar runs"
     }
-  }
+  },
+  "overrideSlipBlocked": "Terima yang terblokir: versi «what-if» yang menyimpang kembali ke nilai kanon. Regenerasi sebelum menerima."
 }

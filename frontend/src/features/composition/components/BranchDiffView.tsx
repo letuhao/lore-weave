@@ -94,7 +94,7 @@ function SceneDiff({ scene }: { scene: BranchDiffScene }) {
     return (
       <div data-testid="branchdiff-noprose" className="flex h-full flex-col items-center justify-center gap-2 p-6 text-center text-xs text-muted-foreground">
         <span className="font-medium text-foreground">{t('branchdiff.noProseTitle', { defaultValue: 'Not written yet' })}</span>
-        <span>{t('branchdiff.noProseBody', { defaultValue: 'This diverged scene has no prose in the dị bản yet — promote a take on the what-if canvas, then its diff appears here.' })}</span>
+        <span>{t('branchdiff.noProseBody', { defaultValue: 'This diverged scene has no prose in the what-if version yet — promote a take on the what-if canvas, then its diff appears here.' })}</span>
       </div>
     );
   }

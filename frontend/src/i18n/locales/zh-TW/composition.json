@@ -428,7 +428,6 @@
   "pacing": "節奏",
   "canon_consistency": "正典一致",
   "dismiss": "忽略",
-  "overrideSlipBlocked": "已封鎖接受：異本覆寫滑回了原典值。請先重新生成再接受。",
   "overrideSlipExhausted": "達到重生成上限後覆寫仍在滑回——已列出供你檢視（不再封鎖接受）。",
   "overrideSlipDetail": "{{name}}（{{field}}）：預期「{{expected}}」，發現「{{found}}」",
   "deltaInconsistencyDetail": "{{name}}：與差異規則「{{rule}}」相矛盾",
@@ -1093,5 +1092,6 @@
       "loading": "載入運行中…",
       "back": "← 返回運行清單"
     }
-  }
+  },
+  "overrideSlipBlocked": "接受已封鎖：一個「假設版本」的覆蓋值已滑回正典數值。請在接受前重新生成。"
 }

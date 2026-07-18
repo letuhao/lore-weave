@@ -428,7 +428,7 @@
   "pacing": "pacing",
   "canon_consistency": "canon",
   "dismiss": "dismiss",
-  "overrideSlipBlocked": "Accept blocked: a dị bản override slipped back to the canon value. Regenerate before accepting.",
+  "overrideSlipBlocked": "Accept blocked: a what-if-version override slipped back to the canon value. Regenerate before accepting.",
   "overrideSlipExhausted": "Override still slipping after the regeneration cap — surfaced for your review (accept is no longer blocked).",
   "overrideSlipDetail": "{{name}} ({{field}}): expected “{{expected}}”, found “{{found}}”",
   "deltaInconsistencyDetail": "{{name}}: contradicts the delta rule “{{rule}}”",

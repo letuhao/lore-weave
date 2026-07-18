@@ -395,9 +395,9 @@
       "guideBody": "Kanvas 'what-if' membolehkan anda memecahkan babak kepada cabang sementara, menghasilkan versi alternatif, dan melihat lencana penilaian pengkritik secara bersebelahan — semuanya tanpa menyentuh draf asal. Apabila anda telah memilih cabang yang diingini, promosikan ia: ia akan menjadi karya derivatif sebenar yang boleh anda teruskan penulisannya. Tiada apa yang disimpan sehingga anda mempromosikannya, jadi anda boleh meneroka dengan bebas. Ini adalah permukaan penyuntingan di sebalik butang Promote; Plan Hub menunjukkan graf pelan, manakala di sini adalah tempat anda mencuba alternatif pada pelan tersebut."
     },
     "divergence": {
-      "title": "Divergence (dị bản)",
       "desc": "Urus derivatif 'what-if' buku anda — senaraikan kanon dan setiap cabang, tukar keseluruhan studio kepada satu cabang, arkibkan satu cabang, atau mulakan cabang baharu daripada sesuatu bab",
-      "guideBody": "Dị bản (divergence) memecahkan buku anda pada sesuatu bab dan menyimpang — sama ada alam semesta alternatif, peralihan POV, atau perubahan watak — menjadi karya derivatif dengan pembahagian pengetahuan tersendiri, manakala sumber asal kekal sebagai kanon mod baca sahaja. Panel ini menyenaraikan karya kanon anda dan setiap cabang yang telah anda hasilkan. 'Switch to' memindahkan keseluruhan studio anda — editor, navigasi, kualiti, segalanya — ke cabang tersebut; pilihan ini diingati bagi setiap buku dan kekal walaupun selepas dimuat semula. 'Archive' menyembunyikan cabang tanpa memusnahkannya (bab dan pengetahuannya tetap disimpan). 'New divergence' membuka wizard 4-langkah untuk memulakan satu cabang baharu. Pilih cabang untuk membaca spesifikasinya (taksonomi, titik cabang, peraturan kanon, aturan luar), yang ditetapkan semasa penciptaan."
+      "title": "Versi 'Bagaimana jika'",
+      "guideBody": "Versi 'bagaimana jika' mencabangkan buku anda pada sesuatu bab dan menyimpang — sama ada alam semesta alternatif, peralihan POV, atau perubahan watak — menjadi sebuah karya derivatif dengan bahagian pengetahuan tersendiri, manakala sumber asal kekal sebagai kanon yang hanya boleh dibaca. Panel ini menyenaraikan karya kanon anda dan setiap cabang yang telah anda hasilkan. 'Tukar ke' akan memindahkan keseluruhan studio anda — editor, navigasi, kualiti, segalanya — ke cabang tersebut; pilihan ini akan diingati bagi setiap buku dan kekal walaupun selepas dimuat semula. 'Arkib' menyembunyikan cabang tanpa memusnahkannya (bab dan pengetahuannya tetap disimpan). 'Versi baharu' membuka wizard 4-langkah untuk menghasilkan satu cabang. Pilih cabang untuk membaca spesifikasinya (taksonomi, titik cabang, peraturan kanon, pengganti), yang ditetapkan semasa penciptaan."
     },
     "reference-shelf": {
       "title": "Rak rujukan",
@@ -793,14 +793,14 @@
     "glossary": "Glosari",
     "focus": "Fokus",
     "translate": "Terjemah",
-    "derivativeForked": "Pada sebuah dị bản — bab ini DIRETAK (FORKED), terasing daripada kanon. Suntingan disimpan ke dalam cabang; kanon kekal tidak berubah.",
-    "derivativeInherit": "Pada sebuah dị bản — bab ini masih mencerminkan kanon. Menyunting di sini akan MERETAK (FORK) bab tersebut ke dalam cabang (kanon kekal tidak berubah).",
     "mergeToCanon": "Gabung ke kanon",
     "mergeConfirm": "Sahkan — timpa kanon",
     "merging": "Sedang menggabungkan…",
     "mergeDone": "Telah digabungkan ke dalam kanon — cawangan akan mengekalkan versi sendiri.",
     "mergeConflict": "Kanon telah berubah — buka semula bab dan gabung semula.",
-    "mergeFailed": "Gagal menggabungkan — cuba lagi."
+    "mergeFailed": "Gagal menggabungkan — cuba lagi.",
+    "derivativeForked": "Pada versi 'bagaimana jika' — bab ini adalah FORKED, terasing daripada kanon. Suntingan disimpan ke dalam cabang; kanon kekal tidak berubah.",
+    "derivativeInherit": "Pada versi 'bagaimana jika' — bab ini masih mencerminkan kanon. Menyunting di sini akan melakukan FORK ke dalam cabang (kanon kekal tidak berubah)."
   },
   "sceneCompose": {
     "empty": "Pilih bab dalam navigasi manuskrip untuk merangka babak di sini.",
@@ -911,10 +911,10 @@
   },
   "activity": {
     "manuscript": "Manuskrip",
+    "plan": "Pelan",
     "bible": "Alkitab Cerita",
     "search": "Carian",
-    "quality": "Kualiti",
-    "plan": "Pelan"
+    "quality": "Kualiti"
   },
   "navStub": {
     "manuscript": {
@@ -1072,14 +1072,14 @@
     "moveActUp": "Gerakkan babak ke atas",
     "moveActDown": "Gerakkan babak ke bawah",
     "untitledAct": "(babak tanpa tajuk)",
+    "unassignedBucket": "Tidak Ditugaskan",
     "emptyActHint": "seret bab dalam ke sini",
     "trashedActs": "Babak yang dibuang",
     "restore": "Pulihkan",
     "restoreActHint": "Pulihkan babak ini (ia akan kembali kosong — susun semula bab mengikut keperluan)",
     "actTrashed": "Babak «{{name}}» telah dibuang — bab-bab di dalamnya kekal dalam buku",
-    "undo": "Batalkan",
-    "unassignedBucket": "Tidak Ditugaskan",
-    "partVsArc": "Bahagian menyusun manuskrip anda. Arka adalah pelannya."
+    "partVsArc": "Bahagian menyusun manuskrip anda. Arka adalah pelannya.",
+    "undo": "Batalkan"
   },
   "intro": {
     "title": "Selamat Datang ke Writing Studio",

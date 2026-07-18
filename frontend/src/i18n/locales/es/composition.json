@@ -428,7 +428,6 @@
   "pacing": "ritmo",
   "canon_consistency": "canon",
   "dismiss": "descartar",
-  "overrideSlipBlocked": "Bloqueo de anulación: una variante se filtró de nuevo al valor del canon. Regenera antes de aceptar.",
   "overrideSlipExhausted": "La anulación persiste tras alcanzar el límite de regeneración — se ha mostrado para tu revisión (la aceptación ya no está bloqueada).",
   "overrideSlipDetail": "{{name}} ({{field}}): se esperaba «{{expected}}», se encontró «{{found}}»",
   "deltaInconsistencyDetail": "{{name}}: contradice la regla delta «{{rule}}»",
@@ -1093,5 +1092,6 @@
       "loading": "Cargando ejecución…",
       "back": "← Volver a la lista de ejecuciones"
     }
-  }
+  },
+  "overrideSlipBlocked": "Aceptar el error: una versión «qué pasaría si» se ha deslizado de vuelta al valor del canon. Regenerar antes de aceptar."
 }

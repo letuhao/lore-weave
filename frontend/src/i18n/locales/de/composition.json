@@ -428,7 +428,6 @@
   "pacing": "Tempo",
   "canon_consistency": "Kanon",
   "dismiss": "Verwerfen",
-  "overrideSlipBlocked": "Blockierte Akzeptanz: Eine Abweichung wurde wieder auf den Kanon-Wert gesetzt. Vor dem Akzeptieren erneut generieren.",
   "overrideSlipExhausted": "Abweichung besteht trotz Regenerations-Limit weiterhin – zur Überprüfung markiert (Akzeptieren ist nicht mehr blockiert).",
   "overrideSlipDetail": "{{name}} ({{field}}): erwartet „{{expected}}“, gefunden „{{found}}“",
   "deltaInconsistencyDetail": "{{name}}: widerspricht der Delta-Regel „{{rule}}“",
@@ -1093,5 +1092,6 @@
       "loading": "Durchlauf wird geladen…",
       "back": "← Zurück zur Liste der Durchläufe"
     }
-  }
+  },
+  "overrideSlipBlocked": "Blockierte Überschreibung akzeptieren: Eine „Was-wäre-wenn“-Version ist zum Kanon-Wert zurückgefallen. Vor dem Akzeptieren neu generieren."
 }

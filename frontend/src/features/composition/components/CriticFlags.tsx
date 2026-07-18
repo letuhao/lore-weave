@@ -36,7 +36,7 @@ export function CriticFlags({
         >
           <div className={`font-medium ${blocked ? 'text-red-700 dark:text-red-300' : 'text-amber-800 dark:text-amber-300'}`}>
             {blocked
-              ? t('overrideSlipBlocked', { defaultValue: 'Accept blocked: a dị bản override slipped back to the canon value. Regenerate before accepting.' })
+              ? t('overrideSlipBlocked', { defaultValue: 'Accept blocked: a what-if-version override slipped back to the canon value. Regenerate before accepting.' })
               : t('overrideSlipExhausted', { defaultValue: 'Override still slipping after the regeneration cap — surfaced for your review (accept is no longer blocked).' })}
           </div>
           <ul className="mt-1 list-disc pl-4">
