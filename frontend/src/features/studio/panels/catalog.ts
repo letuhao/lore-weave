@@ -28,6 +28,8 @@ import { JsonEditorPanel } from './JsonEditorPanel';
 import { ExtensionsPanel } from './ExtensionsPanel';
 import { ProposalsPanel } from './ProposalsPanel';
 import { SkillEditorPanel } from './SkillEditorPanel';
+import { WorkflowsPanel } from './WorkflowsPanel';
+import { WorkflowProposalsPanel } from './WorkflowProposalsPanel';
 import { SteeringPanel } from './SteeringPanel';
 import { GlossaryPanel } from './GlossaryPanel';
 import { GlossaryOntologyPanel } from './GlossaryOntologyPanel';
@@ -261,6 +263,11 @@ export const STUDIO_PANELS: StudioPanelDef[] = [
   // singleton (json-editor precedent), hidden from palette + outside the enum.
   { id: 'extensions', component: ExtensionsPanel, titleKey: 'panels.extensions.title', descKey: 'panels.extensions.desc', category: 'platform', guideBodyKey: 'panels.extensions.guideBody' },
   { id: 'proposals', component: ProposalsPanel, titleKey: 'panels.proposals.title', descKey: 'panels.proposals.desc', category: 'platform', guideBodyKey: 'panels.proposals.guideBody' },
+  // S-12 (G-WORKFLOWS): the workflow recipe manager + its propose→approve inbox — the
+  // workflow twins of extensions/proposals. workflow-proposals is the UI the agent's
+  // registry_propose_workflow description promised (approve mints the workflow).
+  { id: 'workflows', component: WorkflowsPanel, titleKey: 'panels.workflows.title', descKey: 'panels.workflows.desc', category: 'platform', guideBodyKey: 'panels.workflows.guideBody' },
+  { id: 'workflow-proposals', component: WorkflowProposalsPanel, titleKey: 'panels.workflow-proposals.title', descKey: 'panels.workflow-proposals.desc', category: 'platform', guideBodyKey: 'panels.workflow-proposals.guideBody' },
   { id: 'skill-editor', component: SkillEditorPanel, titleKey: 'panels.skill-editor.title', descKey: 'panels.skill-editor.desc', hiddenFromPalette: true, guideBodyKey: 'panels.skill-editor.guideBody' },
   // #12 R3/R4 — singleton, retargets via params {docType, resourceId}; opened by "Open as JSON"
   // affordances only (hidden from palette ⇒ outside the agent enum, no contract change this cycle).

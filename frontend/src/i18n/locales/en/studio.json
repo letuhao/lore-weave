@@ -651,6 +651,16 @@
       "title": "Search",
       "desc": "Search your book's prose (text) or lore drawers (semantic); a hit opens the editor there.",
       "guideBody": "Search has two modes. Text finds exact words and phrases in your manuscript prose. Semantic finds passages by meaning across your lore drawers (chapters, chat, glossary). Click a result to open the editor at that chapter — search is a way into your manuscript, not a dead-end list."
+    },
+    "workflows": {
+      "title": "Workflows",
+      "desc": "Manage saved workflow recipes",
+      "guideBody": "Lists the multi-step workflow recipes your agent can run as a rail — the built-in System ones plus any you own. Open it to enable or disable a recipe for yourself, or delete one of your own. New recipes are added by approving a proposal in the Workflow Proposals panel, not created directly here."
+    },
+    "workflow-proposals": {
+      "title": "Workflow Proposals",
+      "desc": "Review workflows the agent proposed",
+      "guideBody": "Lists the workflow recipes the agent has suggested creating, based on multi-step sequences it noticed you repeat. Open it to approve a proposal — which mints the workflow so it becomes runnable — or reject it. This is where an agent-proposed workflow actually becomes real."
     }
   },
   "sceneRail": {

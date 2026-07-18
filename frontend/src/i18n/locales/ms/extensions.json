@@ -225,5 +225,13 @@
       "allow": "Benarkan",
       "block": "Sekat"
     }
+  },
+  "workflows": {
+    "total": "{{count}} aliran kerja",
+    "empty": "Tiada aliran kerja lagi. Luluskan cadangan aliran kerja untuk menambahkannya.",
+    "enabled": "Aktif",
+    "disabled": "Nyahaktif",
+    "delete": "Padam",
+    "proposalsEmpty": "Tiada cadangan aliran kerja. Apabila ejen mencadangkan aliran kerja, ia akan muncul di sini untuk anda luluskan."
   }
 }

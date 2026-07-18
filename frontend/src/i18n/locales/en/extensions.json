@@ -225,5 +225,13 @@
       "allow": "Allow",
       "block": "Block"
     }
+  },
+  "workflows": {
+    "total": "{{count}} workflows",
+    "empty": "No workflows yet. Approve a workflow proposal to add one.",
+    "enabled": "On",
+    "disabled": "Off",
+    "delete": "Delete",
+    "proposalsEmpty": "No workflow proposals. When the agent proposes a workflow, it appears here for you to approve."
   }
 }

@@ -225,5 +225,13 @@
       "allow": "Izinkan",
       "block": "Blokir"
     }
+  },
+  "workflows": {
+    "total": "{{count}} alur kerja",
+    "empty": "Belum ada alur kerja. Setujui proposal alur kerja untuk menambahkannya.",
+    "enabled": "Aktif",
+    "disabled": "Nonaktif",
+    "delete": "Hapus",
+    "proposalsEmpty": "Tidak ada proposal alur kerja. Saat agen mengajukan alur kerja, ia akan muncul di sini untuk Anda setujui."
   }
 }

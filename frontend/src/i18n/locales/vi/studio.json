@@ -651,6 +651,16 @@
       "title": "Tìm kiếm",
       "desc": "Tìm kiếm văn bản (text) hoặc kho dữ liệu lore (ngữ nghĩa); kết quả sẽ đưa bạn đến thẳng trình chỉnh sửa tại vị trí đó.",
       "guideBody": "Tìm kiếm có hai chế độ. Chế độ Văn bản sẽ tìm chính xác các từ và cụm từ trong bản thảo của bạn. Chế độ Ngữ nghĩa sẽ tìm các đoạn văn dựa trên ý nghĩa trong kho dữ liệu lore (chương, trò chuyện, thuật ngữ). Nhấp vào một kết quả để mở trình chỉnh sửa tại chương đó — tìm kiếm là cách để đi sâu vào bản thảo, không phải là một danh sách tĩnh."
+    },
+    "workflows": {
+      "title": "Quy trình làm việc",
+      "desc": "Quản lý các công thức quy trình đã lưu",
+      "guideBody": "Liệt kê các công thức quy trình nhiều bước mà tác nhân của bạn có thể thực hiện như một đường ray — bao gồm các quy trình Hệ thống có sẵn cộng với bất kỳ quy trình nào bạn sở hữu. Mở mục này để bật hoặc tắt một công thức cho riêng bạn, hoặc xóa một công thức của chính bạn. Các công thức mới được thêm vào bằng cách phê duyệt một đề xuất trong bảng Đề xuất Quy trình làm việc, chứ không phải được tạo trực tiếp tại đây."
+    },
+    "workflow-proposals": {
+      "title": "Đề xuất Quy trình làm việc",
+      "desc": "Xem xét các quy trình mà tác nhân đã đề xuất",
+      "guideBody": "Liệt kê các công thức quy trình mà tác nhân đã gợi ý tạo, dựa trên các chuỗi nhiều bước mà nó nhận thấy bạn thường lặp lại. Mở mục này để phê duyệt một đề xuất — việc này sẽ đúc kết quy trình để nó có thể thực thi được — hoặc từ chối nó. Đây là nơi một quy trình do tác nhân đề xuất thực sự trở thành hiện thực."
     }
   },
   "sceneRail": {

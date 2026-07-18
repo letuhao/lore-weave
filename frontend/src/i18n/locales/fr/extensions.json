@@ -225,5 +225,13 @@
       "allow": "Autoriser",
       "block": "Bloquer"
     }
+  },
+  "workflows": {
+    "total": "{{count}} workflows",
+    "empty": "Aucun workflow pour le moment. Approuvez une proposition de workflow pour en ajouter un.",
+    "enabled": "Activé",
+    "disabled": "Désactivé",
+    "delete": "Supprimer",
+    "proposalsEmpty": "Aucune proposition de workflow. Lorsqu'un agent propose un workflow, il apparaît ici pour approbation."
   }
 }

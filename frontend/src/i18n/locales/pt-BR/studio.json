@@ -651,6 +651,16 @@
       "title": "Pesquisar",
       "desc": "Pesquise a prosa (texto) ou os arquivos de lore (semântico) do seu livro; um resultado abre o editor exatamente naquele ponto.",
       "guideBody": "A pesquisa possui dois modos. O modo Texto encontra palavras e frases exatas na prosa do seu manuscrito. O modo Semântico encontra passagens pelo significado em seus arquivos de lore (capítulos, chat, glossário). Clique em um resultado para abrir o editor naquele capítulo — a pesquisa é uma porta de entrada para o seu manuscrito, não uma lista sem saída."
+    },
+    "workflows": {
+      "title": "Fluxos de Trabalho",
+      "desc": "Gerencie receitas de fluxos de trabalho salvas",
+      "guideBody": "Lista as receitas de fluxos de trabalho de várias etapas que seu agente pode executar como um trilho — os integrados ao Sistema, além de qualquer um que seja seu. Abra para ativar ou desativar uma receita para você, ou para excluir uma de sua autoria. Novas receitas são adicionadas ao aprovar uma proposta no painel de Propostas de Fluxo de Trabalho, não sendo criadas diretamente aqui."
+    },
+    "workflow-proposals": {
+      "title": "Propostas de Fluxo de Trabalho",
+      "desc": "Revise os fluxos de trabalho propostos pelo agente",
+      "guideBody": "Lista as receitas de fluxo de trabalho que o agente sugeriu criar, com base em sequências de várias etapas que ele notou que você repete. Abra para aprovar uma proposta — o que gera o fluxo de trabalho para que ele se torne executável — ou para rejeitá-la. É aqui que um fluxo de trabalho proposto pelo agente se torna real."
     }
   },
   "sceneRail": {

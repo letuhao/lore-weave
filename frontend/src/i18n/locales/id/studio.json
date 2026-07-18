@@ -651,6 +651,16 @@
       "title": "Cari",
       "desc": "Cari prosa (teks) buku Anda atau laci lore (semantik); hasil yang ditemukan akan langsung membuka editor di bagian tersebut.",
       "guideBody": "Pencarian memiliki dua mode. Mode Teks menemukan kata dan frasa yang tepat dalam prosa manuskrip Anda. Mode Semantik menemukan bagian berdasarkan makna di seluruh laci lore Anda (bab, obrolan, glosarium). Klik hasil untuk membuka editor pada bab tersebut — pencarian adalah jalan masuk ke manuskrip Anda, bukan sekadar daftar mati."
+    },
+    "workflows": {
+      "title": "Alur Kerja",
+      "desc": "Kelola resep alur kerja yang tersimpan",
+      "guideBody": "Menampilkan daftar resep alur kerja multi-langkah yang dapat dijalankan agen Anda sebagai rel — termasuk Sistem bawaan serta resep milik Anda sendiri. Buka panel ini untuk mengaktifkan atau menonaktifkan resep untuk diri Anda, atau menghapus resep milik Anda. Resep baru ditambahkan dengan menyetujui proposal di panel Proposal Alur Kerja, bukan dibuat langsung di sini."
+    },
+    "workflow-proposals": {
+      "title": "Proposal Alur Kerja",
+      "desc": "Tinjau alur kerja yang diusulkan oleh agen",
+      "guideBody": "Menampilkan daftar resep alur kerja yang disarankan oleh agen untuk dibuat, berdasarkan urutan multi-langkah yang ia perhatikan sering Anda ulangi. Buka panel ini untuk menyetujui proposal — yang akan mencetak alur kerja tersebut agar dapat dijalankan — atau menolaknya. Di sinilah alur kerja usulan agen benar-benar menjadi nyata."
     }
   },
   "sceneRail": {

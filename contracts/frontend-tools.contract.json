@@ -210,6 +210,8 @@
           "steering",
           "extensions",
           "proposals",
+          "workflows",
+          "workflow-proposals",
           "glossary",
           "glossary-ontology",
           "glossary-unknown",

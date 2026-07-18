@@ -225,5 +225,13 @@
       "allow": "允许",
       "block": "拦截"
     }
+  },
+  "workflows": {
+    "total": "{{count}} 个工作流",
+    "empty": "暂无工作流。请批准工作流提案以添加新工作流。",
+    "enabled": "已启用",
+    "disabled": "已禁用",
+    "delete": "删除",
+    "proposalsEmpty": "暂无工作流提案。当智能体提出工作流建议时，它会出现在这里等待您批准。"
   }
 }

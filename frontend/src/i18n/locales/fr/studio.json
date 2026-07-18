@@ -651,6 +651,16 @@
       "title": "Rechercher",
       "desc": "Recherchez dans la prose de votre livre (texte) ou dans vos tiroirs de lore (sémantique) ; un résultat ouvre l'éditeur à cet endroit.",
       "guideBody": "La recherche possède deux modes. Le mode Texte trouve les mots et expressions exacts dans la prose de votre manuscrit. Le mode Sémantique trouve des passages par leur sens à travers vos tiroirs de lore (chapitres, chat, glossaire). Cliquez sur un résultat pour ouvrir l'éditeur à ce chapitre — la recherche est une porte d'entrée vers votre manuscrit, pas une simple liste de résultats."
+    },
+    "workflows": {
+      "title": "Workflows",
+      "desc": "Gérer les recettes de workflows enregistrées",
+      "guideBody": "Affiche la liste des recettes de workflows multi-étapes que votre agent peut exécuter comme un rail — les recettes Système intégrées ainsi que les vôtres. Ouvrez ce panneau pour activer ou désactiver une recette pour vous-même, ou pour en supprimer une. Les nouvelles recettes sont ajoutées en approuvant une proposition dans le panneau Workflow Proposals, elles ne sont pas créées directement ici."
+    },
+    "workflow-proposals": {
+      "title": "Workflow Proposals",
+      "desc": "Examiner les workflows proposés par l'agent",
+      "guideBody": "Affiche la liste des recettes de workflows que l'agent a suggéré de créer, sur la base de séquences multi-étapes qu'il a remarqué que vous répétez. Ouvrez ce panneau pour approuver une proposition — ce qui génère le workflow pour qu'il devienne exécutable — ou pour la rejeter. C'est ici qu'un workflow proposé par l'agent devient réellement concret."
     }
   },
   "sceneRail": {

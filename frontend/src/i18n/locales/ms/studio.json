@@ -651,6 +651,16 @@
       "title": "Carian",
       "desc": "Cari prosa (teks) atau laci lore (semantik) buku anda; hasil carian akan membuka editor pada bahagian tersebut.",
       "guideBody": "Carian mempunyai dua mod. Teks mencari perkataan dan frasa tepat dalam prosa manuskrip anda. Semantik mencari petikan berdasarkan makna merentasi laci lore anda (bab, sembang, glosari). Klik pada hasil untuk membuka editor pada bab tersebut — carian adalah jalan masuk ke manuskrip anda, bukannya senarai yang buntu."
+    },
+    "workflows": {
+      "title": "Aliran Kerja",
+      "desc": "Urus resipi aliran kerja yang disimpan",
+      "guideBody": "Menyenaraikan resipi aliran kerja berbilang langkah yang boleh dijalankan oleh ejen anda sebagai landasan — termasuk Sistem terbina dalam serta resipi milik anda sendiri. Buka panel ini untuk mengaktifkan atau menyahaktifkan resipi untuk diri anda, atau memadamkan resipi anda sendiri. Resipi baharu ditambah dengan meluluskan cadangan dalam panel Cadangan Aliran Kerja, bukan dicipta secara terus di sini."
+    },
+    "workflow-proposals": {
+      "title": "Cadangan Aliran Kerja",
+      "desc": "Semak aliran kerja yang dicadangkan oleh ejen",
+      "guideBody": "Menyenaraikan resipi aliran kerja yang dicadangkan oleh ejen untuk dicipta, berdasarkan urutan berbilang langkah yang dikesan kerap anda ulangi. Buka panel ini untuk meluluskan cadangan — yang akan menghasilkan aliran kerja tersebut supaya ia boleh dijalankan — atau menolaknya. Di sinilah aliran kerja cadangan ejen menjadi realiti."
     }
   },
   "sceneRail": {

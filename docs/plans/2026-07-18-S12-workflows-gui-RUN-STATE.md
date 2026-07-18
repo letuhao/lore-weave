@@ -53,9 +53,19 @@ ns `panels.<id>.*` (guideBodyKey REQUIRED). `platform` category already in CATEG
 | slice | user gains | status | evidence |
 |---|---|---|---|
 | **1 · BE — enablement table + 3 routes + list id/enabled** | get/delete/enable-disable a workflow by id | **DONE** | `workflow_enablement` migration; `getWorkflow`/`deleteWorkflow`/`setWorkflowEnabled` (workflows_rest.go) mirror skills; list exposes workflow_id+effective enabled (separate REST struct, MCP contract untouched). **8 pgxmock route tests: get own/404, delete own-204/other-404/System-blocked, enable disables/404. Full pkg + migrate-lint green; build+vet+provider-gate clean.** review-impl: fixed getWorkflow book READ requiring ≥edit → ≥view (matches list+MCP; a view-grantee could see-but-not-open). |
-| **2 · FE — workflow-proposals panel (net-new)** | approve/reject the pending inbox (closes the hole) | **TODO** | — |
-| **3 · FE — workflows panel (extend rack → +toggle/delete + GG-8)** | list/view/enable-disable/delete own workflows | **TODO** | — |
+| **2 · FE — workflow-proposals panel (net-new)** | approve/reject the pending inbox (closes the hole) | **DONE** | `WorkflowProposalsView` + `WorkflowProposalsPanel` (GG-8, panel_id `workflow-proposals`), `useWorkflowProposals`, api list/approve/reject. Approve mints the workflow. |
+| **3 · FE — workflows panel (+toggle/delete + GG-8)** | list/view/enable-disable/delete own workflows | **DONE** | `WorkflowsView` + `WorkflowsPanel` (GG-8, panel_id `workflows`), `useWorkflowManage` (optimistic toggle, delete-own), api get/setEnabled/remove. System read-only + per-user toggle (SD-1). |
 | **4 · FE — mode-binding setting (GG-8 surface for existing UI)** | mode_bindings reachable as a real setting | **TODO** | — |
+
+**Slices 2+3 evidence (committed together — shared GG-8 registration):** catalog.ts +2 entries;
+chat-service `panel_id` enum +2 (`workflows`, `workflow-proposals`) + prose; `contracts/frontend-tools.contract.json`
+regenerated (`WRITE_FRONTEND_CONTRACT=1 pytest` → 20 passed); i18n en (studio panels.* + extensions workflows.*)
++ 17 locales via i18n_translate (0 failures, gate at full parity). **QC:** panelCatalogContract 9/9; 8 new view
+tests (proposals approve/reject/filter/empty, workflows toggle/delete/system-readonly/empty) + existing rack 4 =
+21 green; tsc 0; provider-gate clean. review-impl: panels palette-reachable via catalog (extensions/proposals
+precedent); optimistic toggle flips only on success (matches useSkills). **Live browser E2E** (agent proposes →
+panel → approve → runnable) deferred — full stack/browser MCP not available at dev time; each link proven (BE
+pgxmock ↔ FE vitest ↔ contract parity both sides ↔ tsc). `LIVE-SMOKE deferred to D-S12-LIVE-SMOKE`.
 
 ## REGISTERS
 ### DECISIONS — SD-1..SD-3 above.

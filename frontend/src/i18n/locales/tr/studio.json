@@ -651,6 +651,16 @@
       "title": "Ara",
       "desc": "Kitabınızın düz metnini (metin) veya bilgi birikimini (anlamsal) arayın; bir sonuç, editörü doğrudan o noktada açar.",
       "guideBody": "Arama işleminin iki modu vardır. Metin modu, taslağınızdaki kelime ve ifadeleri tam olarak bulur. Anlamsal mod ise bilgi birikiminizdeki (bölümler, sohbet, sözlük) pasajları anlamlarına göre bulur. Bir sonuca tıklayarak editörü o bölümde açabilirsiniz; arama bir liste değil, taslağınıza açılan bir kapıdır."
+    },
+    "workflows": {
+      "title": "İş Akışları",
+      "desc": "Kaydedilmiş iş akışı tariflerini yönetin",
+      "guideBody": "Aracınızın bir ray olarak çalıştırabileceği çok adımlı iş akışı tariflerini —yerleşik Sistem tarifleri ve size ait olanlar dahil— listeler. Bir tarifi kendiniz için etkinleştirmek veya devre dışı bırakmak ya da kendi tariflerinizden birini silmek için açın. Yeni tarifler doğrudan buradan oluşturulmaz; İş Akışı Teklifleri panelindeki bir teklifi onaylayarak eklenir."
+    },
+    "workflow-proposals": {
+      "title": "İş Akışı Teklifleri",
+      "desc": "Aracın önerdiği iş akışlarını inceleyin",
+      "guideBody": "Aracın, tekrarladığınızı fark ettiği çok adımlı dizilere dayanarak oluşturulmasını önerdiği iş akışı tariflerini listeler. Bir teklifi onaylamak —böylece iş akışı çalıştırılabilir hale gelir— veya reddetmek için açın. Aracın önerdiği bir iş akışının gerçek anlamda hayata geçtiği yer burasıdır."
     }
   },
   "sceneRail": {

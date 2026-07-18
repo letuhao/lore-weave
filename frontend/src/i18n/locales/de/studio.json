@@ -651,6 +651,16 @@
       "title": "Suche",
       "desc": "Durchsuche den Fließtext deines Buches (Text) oder deine Lore-Ordner (Semantik); ein Treffer öffnet direkt den Editor an dieser Stelle.",
       "guideBody": "Die Suche verfügt über zwei Modi. „Text“ findet exakte Wörter und Phrasen in deinem Manuskript. „Semantik“ findet Textpassagen basierend auf der Bedeutung über deine Lore-Ordner hinweg (Kapitel, Chat, Glossar). Klicke auf ein Ergebnis, um den Editor im entsprechenden Kapitel zu öffnen – die Suche ist ein Weg in dein Manuskript, keine Sackgasse."
+    },
+    "workflows": {
+      "title": "Workflows",
+      "desc": "Verwalten Sie gespeicherte Workflow-Rezepte",
+      "guideBody": "Hier werden die mehrstufigen Workflow-Rezepte aufgelistet, die Ihr Agent als Schiene ausführen kann – die integrierten System-Workflows sowie Ihre eigenen. Öffnen Sie diesen Bereich, um ein Rezept für sich selbst zu aktivieren oder zu deaktivieren oder um eines Ihrer eigenen zu löschen. Neue Rezepte werden durch die Annahme eines Vorschlags im Panel „Workflow-Vorschläge“ hinzugefügt und nicht direkt hier erstellt."
+    },
+    "workflow-proposals": {
+      "title": "Workflow-Vorschläge",
+      "desc": "Überprüfen Sie die vom Agenten vorgeschlagenen Workflows",
+      "guideBody": "Hier werden die Workflow-Rezepte aufgelistet, die der Agent basierend auf mehrstufigen Sequenzen vorgeschlagen hat, die er bei Ihnen wiederkehrend festgestellt hat. Öffnen Sie diesen Bereich, um einen Vorschlag anzunehmen – wodurch der Workflow erstellt wird und ausführbar ist – oder ihn abzulehnen. Hier wird ein vom Agenten vorgeschlagener Workflow tatsächlich realisiert."
     }
   },
   "sceneRail": {

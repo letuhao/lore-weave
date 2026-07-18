@@ -225,5 +225,13 @@
       "allow": "Zulassen",
       "block": "Blockieren"
     }
+  },
+  "workflows": {
+    "total": "{{count}} Workflows",
+    "empty": "Noch keine Workflows vorhanden. Genehmigen Sie einen Workflow-Vorschlag, um einen hinzuzufügen.",
+    "enabled": "An",
+    "disabled": "Aus",
+    "delete": "Löschen",
+    "proposalsEmpty": "Keine Workflow-Vorschläge. Wenn der Agent einen Workflow vorschlägt, erscheint er hier zur Genehmigung."
   }
 }

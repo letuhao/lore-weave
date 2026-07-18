@@ -225,5 +225,13 @@
       "allow": "Permitir",
       "block": "Bloquear"
     }
+  },
+  "workflows": {
+    "total": "{{count}} fluxos de trabalho",
+    "empty": "Nenhum fluxo de trabalho ainda. Aprove uma proposta de fluxo de trabalho para adicionar um.",
+    "enabled": "Ativado",
+    "disabled": "Desativado",
+    "delete": "Excluir",
+    "proposalsEmpty": "Sem propostas de fluxo de trabalho. Quando o agente propõe um fluxo de trabalho, ele aparece aqui para sua aprovação."
   }
 }

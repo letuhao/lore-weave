@@ -225,5 +225,13 @@
       "allow": "Cho phép",
       "block": "Chặn"
     }
+  },
+  "workflows": {
+    "total": "{{count}} quy trình",
+    "empty": "Chưa có quy trình nào. Hãy phê duyệt một đề xuất quy trình để thêm mới.",
+    "enabled": "Bật",
+    "disabled": "Tắt",
+    "delete": "Xóa",
+    "proposalsEmpty": "Không có đề xuất quy trình nào. Khi tác nhân đề xuất một quy trình, nó sẽ xuất hiện ở đây để bạn phê duyệt."
   }
 }

@@ -225,5 +225,13 @@
       "allow": "İzin ver",
       "block": "Engelle"
     }
+  },
+  "workflows": {
+    "total": "{{count}} iş akışı",
+    "empty": "Henüz iş akışı yok. Bir iş akışı eklemek için bir iş akışı önerisini onaylayın.",
+    "enabled": "Açık",
+    "disabled": "Kapalı",
+    "delete": "Sil",
+    "proposalsEmpty": "İş akışı önerisi yok. Aracılar bir iş akışı önerdiğinde, onaylamanız için burada görünecektir."
   }
 }

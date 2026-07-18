@@ -225,5 +225,13 @@
       "allow": "允許",
       "block": "封鎖"
     }
+  },
+  "workflows": {
+    "total": "{{count}} 個工作流",
+    "empty": "目前尚無工作流。請核准工作流提案以新增工作流。",
+    "enabled": "開啟",
+    "disabled": "關閉",
+    "delete": "刪除",
+    "proposalsEmpty": "目前沒有工作流提案。當代理程式提出工作流時，會顯示在此供您核准。"
   }
 }
