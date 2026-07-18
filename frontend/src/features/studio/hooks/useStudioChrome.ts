@@ -1,6 +1,6 @@
 import { useCallback, useState } from 'react';
 import { useIsMobile } from '@/hooks/useIsMobile';
-import { ACTIVITY_VIEWS, DEFAULT_CHROME, type ActivityView, type StudioChromeState } from '../types';
+import { ACTIVITY_VIEWS, DEFAULT_CHROME, clampSidebarWidth, type ActivityView, type StudioChromeState } from '../types';
 
 /**
  * The Writing Studio's frame UI state — which navigator is active, and whether the side bar
@@ -24,6 +24,9 @@ function load(bookId: string, mobileDefault: boolean): StudioChromeState {
         : DEFAULT_CHROME.activeView,
       sidebarCollapsed: !!parsed.sidebarCollapsed,
       bottomOpen: !!parsed.bottomOpen,
+      sidebarWidth: typeof parsed.sidebarWidth === 'number'
+        ? clampSidebarWidth(parsed.sidebarWidth)
+        : DEFAULT_CHROME.sidebarWidth,
     };
   } catch {
     return { ...DEFAULT_CHROME, sidebarCollapsed: mobileDefault };
@@ -61,10 +64,23 @@ export function useStudioChrome(bookId: string) {
     });
   }, [bookId]);
 
+  // Sidebar resize: update width live on every drag frame (persist=false so a mouse-move doesn't
+  // hammer localStorage), then persist once on pointer-up / reset (persist=true). Width is always
+  // clamped to the allowed range regardless of caller.
+  const setSidebarWidth = useCallback((width: number, persist = true) => {
+    setState((s) => {
+      const next = { ...s, sidebarWidth: clampSidebarWidth(width) };
+      if (next.sidebarWidth === s.sidebarWidth) return persist === false ? s : next;
+      if (persist) { try { localStorage.setItem(chromeKey(bookId), JSON.stringify(next)); } catch { /* quota */ } }
+      return next;
+    });
+  }, [bookId]);
+
   return {
     ...state,
     setActiveView,
     toggleSidebar,
     toggleBottom,
+    setSidebarWidth,
   };
 }

@@ -15,7 +15,7 @@ vi.mock('../../manuscript/ManuscriptNavigator', () => ({
 import { StudioHostProvider } from '../../host/StudioHostProvider';
 import { StudioSideBar } from '../StudioSideBar';
 
-const props = { onCollapse: vi.fn(), bookId: 'b1', token: 't' as string | null, selectedId: null, onSelectNode: vi.fn() };
+const props = { onCollapse: vi.fn(), bookId: 'b1', token: 't' as string | null, selectedId: null, onSelectNode: vi.fn(), width: 260, onResize: vi.fn() };
 
 // StudioSideBar reads useStudioHost() (the 'quality' branch's Open button) — every render
 // needs the real provider, not a bare component (matches every other panel test's pattern).
@@ -85,5 +85,15 @@ describe('StudioSideBar', () => {
     // No assertion on dockview internals here (out of scope for a chrome test) — the
     // button existing + being clickable without throwing proves the host wiring works;
     // QualityHubPanel's own tests cover what opening it actually renders.
+  });
+
+  it('applies the given width and renders a resize handle whose double-click resets to default', () => {
+    const onResize = vi.fn();
+    renderSideBar({ activeView: 'bible', width: 420, onResize });
+    const sb = screen.getByTestId('studio-sidebar');
+    expect(sb.style.width).toBe('420px');
+    const handle = screen.getByTestId('studio-sidebar-resize');
+    fireEvent.doubleClick(handle);
+    expect(onResize).toHaveBeenCalledWith(260, true); // SIDEBAR_WIDTH_DEFAULT, persisted
   });
 });

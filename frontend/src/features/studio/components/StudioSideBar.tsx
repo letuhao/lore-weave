@@ -1,4 +1,4 @@
-// Side bar (fixed slot, collapsible) — hosts the active navigator. Manuscript is a real
+// Side bar (resizable slot, collapsible) — hosts the active navigator. Manuscript is a real
 // navigator (#02); the other views are still per-view stubs (built as later components).
 import { useTranslation } from 'react-i18next';
 import { PanelLeftClose } from 'lucide-react';
@@ -6,6 +6,7 @@ import type { ActivityView } from '../types';
 import { ManuscriptNavigator } from '../manuscript/ManuscriptNavigator';
 import type { ManuscriptNode } from '../manuscript/types';
 import { useStudioHost } from '../host/StudioHostProvider';
+import { useSidebarResize } from '../hooks/useSidebarResize';
 import { PlanNavigatorRail } from '@/features/plan-hub/components';
 
 interface Props {
@@ -17,16 +18,23 @@ interface Props {
   // node is passed (the frame needs chapterId to open the editor — Debt #1 navigator→dock).
   selectedId: string | null;
   onSelectNode: (node: ManuscriptNode) => void;
+  // Width + resize live in the frame's chrome state (per-book, per-device localStorage) so the
+  // sidebar is resizable like a real dock panel. `onResize(width, persist)` updates live during a
+  // drag and persists only on release.
+  width: number;
+  onResize: (width: number, persist: boolean) => void;
 }
 
-export function StudioSideBar({ activeView, onCollapse, bookId, token, selectedId, onSelectNode }: Props) {
+export function StudioSideBar({ activeView, onCollapse, bookId, token, selectedId, onSelectNode, width, onResize }: Props) {
   const { t } = useTranslation('studio');
   const host = useStudioHost();
+  const { resizing, handleProps } = useSidebarResize({ width, onResize });
 
   return (
     <div
       data-testid="studio-sidebar"
-      className="flex w-[250px] flex-shrink-0 flex-col border-r bg-card"
+      style={{ width }}
+      className="relative flex flex-shrink-0 flex-col border-r bg-card"
     >
       {activeView === 'manuscript' ? (
         // The navigator owns its full view header (title + New/Collapse-all/Reload + collapse),
@@ -107,6 +115,28 @@ export function StudioSideBar({ activeView, onCollapse, bookId, token, selectedI
           </div>
         </>
       )}
+
+      {/* Resize handle — a thin strip on the right edge. Pointer-drag (with capture) resizes the
+          sidebar like a dock sash; double-click resets to default. The invisible strip is wider
+          than the visible line so it's easy to grab; the line brightens on hover / during drag. */}
+      <div
+        {...handleProps}
+        data-testid="studio-sidebar-resize"
+        role="separator"
+        aria-orientation="vertical"
+        aria-label={t('sidebar.resize', { defaultValue: 'Resize side bar' })}
+        title={t('sidebar.resize', { defaultValue: 'Resize side bar' })}
+        className="group absolute inset-y-0 right-0 z-20 w-1.5 translate-x-1/2 cursor-col-resize touch-none"
+      >
+        <div
+          className={`mx-auto h-full w-px transition-colors ${resizing ? 'bg-primary' : 'bg-transparent group-hover:bg-primary/60'}`}
+        />
+      </div>
+
+      {/* While dragging, a full-window overlay keeps the pointer/cursor ours even over dock iframes
+          (pointer capture already routes events here; the overlay just fixes the cursor + blocks
+          accidental hovers). Rendered only during a live drag. */}
+      {resizing && <div className="fixed inset-0 z-50 cursor-col-resize" data-testid="studio-sidebar-resize-overlay" />}
     </div>
   );
 }
