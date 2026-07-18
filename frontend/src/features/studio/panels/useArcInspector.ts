@@ -37,6 +37,9 @@ export interface ArcInspectorState {
   /** how many DESCENDANT arcs an archive would take (client-derived from the shell — the DELETE
    *  response carries no count, OUT-5). */
   blastRadius: number;
+  /** S-10 O6a — the caller's token, for the body's "Save as template" action (which POSTs directly
+   *  rather than through the OCC edit chain). null when unauthenticated. */
+  token: string | null;
 }
 
 function computeAncestors(shell: ArcListNode[], id: string | null): ArcListNode[] {
@@ -192,5 +195,6 @@ export function useArcInspector(bookId: string, paramsArcId?: string): ArcInspec
     restore,
     ancestors: useMemo(() => computeAncestors(shell, arcId), [shell, arcId]),
     blastRadius: useMemo(() => computeBlastRadius(shell, arcId), [shell, arcId]),
+    token,
   };
 }

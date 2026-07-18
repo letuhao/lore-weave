@@ -8,6 +8,7 @@ import type { TFunction } from 'i18next';
 import { cn } from '@/lib/utils';
 import type { ArcDetail, ArcEntry, ArcOpenPromise } from '@/features/plan-hub/types';
 import type { ArcInspectorState } from './useArcInspector';
+import { ArcExtractTemplateAction } from '@/features/composition/motif/components/ArcExtractTemplateAction';
 
 const STATUSES = ['empty', 'outline', 'drafting', 'done'];
 const B = 'panels.arc-inspector.body';   // studio-namespace key prefix for the body strings
@@ -139,7 +140,7 @@ export function ArcInspectorBody({ state, onOpenPromise }: {
   onOpenPromise?: (p: ArcOpenPromise) => void;
 }) {
   const { t } = useTranslation('studio');
-  const { detail, loading, error, saving, writeError, edit, archive, restore, blastRadius } = state;
+  const { detail, loading, error, saving, writeError, edit, archive, restore, blastRadius, arcId, token } = state;
 
   if (loading && !detail) return <div data-testid="arc-inspector-loading" className="p-6 text-center text-sm text-muted-foreground">{t(`${B}.loading`, { defaultValue: 'Loading…' })}</div>;
   if (error) return <div data-testid="arc-inspector-error" className="p-6 text-center text-sm text-destructive">{error}</div>;
@@ -233,6 +234,13 @@ export function ArcInspectorBody({ state, onOpenPromise }: {
           <p data-testid="arc-provenance-none" className="text-[11px] italic text-muted-foreground/70">{t(`${B}.authoredNoTemplate`, { defaultValue: 'Authored from conversation (no template).' })}</p>
         )}
       </Section>
+
+      {/* S-10 O6a — "Save this arc as a template" (the arc-agent verb that had a route but no button). */}
+      {!archived && arcId && (
+        <Section title={t(`${B}.secTemplate`, { defaultValue: 'Template' })}>
+          <ArcExtractTemplateAction nodeId={arcId} defaultName={d.title} token={token} />
+        </Section>
+      )}
 
       {!archived && (
         <Section title={t(`${B}.secDanger`, { defaultValue: 'Danger' })} tone="danger">

@@ -72,4 +72,48 @@ export const arcApi = {
       method: 'POST', body: JSON.stringify(args), token,
     });
   },
+  /** S-10 O6a — "Save this arc as a template": extract an AUTHORED arc (a structure_node) into the
+   *  caller's own arc-template library. Reading the arc ⇒ VIEW on its book; the new template is
+   *  owner-stamped to the caller. 409 (ARC_TEMPLATE_CODE_EXISTS) on a duplicate (owner, code, lang). */
+  extractTemplate(nodeId: string, args: ArcExtractArgs, token: string): Promise<ArcTemplate> {
+    return apiJson<ArcTemplate>(`${BASE}/arcs/${nodeId}/extract-template`, {
+      method: 'POST', body: JSON.stringify(args), token,
+    });
+  },
+  /** S-10 O6b — "Suggest an arc for this premise": rank the caller-visible arc templates that fit a
+   *  Work's premise/genre. Read-only (VIEW on the Work's book). */
+  suggest(args: ArcSuggestArgs, token: string): Promise<ArcSuggestResult> {
+    return apiJson<ArcSuggestResult>(`${BASE}/arc-templates/suggest`, {
+      method: 'POST', body: JSON.stringify(args), token,
+    });
+  },
+};
+
+// S-10 O6 — request/response shapes for the two direct arc-agent routes (co-located; they don't
+// touch the shared arcTypes surface). Kinds are the route's own closed sets.
+export type ArcExtractArgs = {
+  code: string;
+  name: string;
+  language?: string;
+  visibility?: 'private' | 'unlisted';
+};
+
+export type ArcSuggestArgs = {
+  project_id: string;
+  premise?: string;
+  genre?: string;
+  limit?: number;
+  detail?: 'summary' | 'full';
+};
+
+export type ArcSuggestCandidate = {
+  arc_template: ArcTemplate;
+  score: number;
+  match_reason: string | null;
+};
+
+export type ArcSuggestResult = {
+  candidates: ArcSuggestCandidate[];
+  detail: string;
+  count: number;
 };

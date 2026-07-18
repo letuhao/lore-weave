@@ -4,6 +4,12 @@
 import { render, screen, fireEvent } from '@testing-library/react';
 import { describe, it, expect, vi } from 'vitest';
 
+// S-10 O6a — the body now mounts the "Save as template" action (its own react-query mutation). Stub it
+// so this stays a render-only ISOLATION test (no QueryClient); the widget has its own test.
+vi.mock('@/features/composition/motif/components/ArcExtractTemplateAction', () => ({
+  ArcExtractTemplateAction: () => <div data-testid="arc-extract-template-action" />,
+}));
+
 import { ArcInspectorBody } from '../ArcInspectorBody';
 import type { ArcInspectorState } from '../useArcInspector';
 import type { ArcDetail } from '@/features/plan-hub/types';
@@ -27,7 +33,7 @@ function makeState(over: Partial<ArcInspectorState> = {}): ArcInspectorState {
   return {
     arcId: 'arc1', select: vi.fn(), shell: [], detail: makeDetail(), loading: false, error: null,
     saving: false, writeError: null, edit: vi.fn(), archive: vi.fn(), restore: vi.fn(),
-    ancestors: [], blastRadius: 2, ...over,
+    ancestors: [], blastRadius: 2, token: 't', ...over,
   };
 }
 
