@@ -4373,7 +4373,7 @@ dependencies = [
  "image",
  "loreweave_llm",
  "rand_chacha 0.3.1",
- "rand_core 0.6.4",
+ "rand_core 0.9.5",
  "serde",
  "serde_json",
  "sqlx",
