@@ -75,8 +75,11 @@ glossary-service is Go — no shared FE registry. FE slice touches api.ts (knowl
   `entity.kind.kind_id` against ontology `attr.kind_id`; both are **book_kind_id** (entity GET builds
   `kind.kind_id` from `book_kinds.book_kind_id`, `entity_handler.go:162,183`; `book_attributes.kind_id` is a
   book_kind_id). Same tier ⇒ missing attrs resolve correctly.
-- **Contract absence is pre-existing, not my gap.** No glossary OpenAPI contract documents the attr-value
-  route family AT ALL (incl. the long-shipped PATCH/translations). My add/delete match that pattern.
+- **Contract absence is pre-existing, not my gap** — but now SPECCED. No glossary OpenAPI contract documents
+  the attr-value route family AT ALL (incl. the long-shipped PATCH/translations). Measured: **~149 public
+  routes, ~30 documented (~20%)**, contract stale (2026-06-21) + unenforced. My add/delete match that pattern.
+  → Restoration specced as **[`../specs/2026-07-18-glossary-contract-first-restoration.md`]** (gate #2:
+  conformance gate via `chi.Walk` + phased backfill). Tracked as D-GLOSSARY-CONTRACT-FIRST below.
 - Verify after fix: entity-editor **27/27** + hook **16/16** (43 total) + tsc clean; BE Go tests still green.
 
 ## REGISTERS
@@ -86,6 +89,13 @@ glossary-service is Go — no shared FE registry. FE slice touches api.ts (knowl
   spec §3 (agents rarely delete one attr row). Won't-fix unless agent parity is later wanted.
 - **SD-5 (conscious):** the DELETE route permits removing ANY row incl. a required attr (add restores it);
   the FE gates its ✕ to non-system attrs (name/description stay). BE permissive + FE conservative — intended.
+- **D-GLOSSARY-CONTRACT-FIRST (gate #2, structural — SPECCED, not blocked).** The glossary OpenAPI contract is
+  ~20% complete (149 public routes / ~30 documented), stale, and unenforced — the entire entity route family
+  (incl. S-06's add/delete + the shipped PATCH) is undocumented. Restoration = a `chi.Walk` conformance gate
+  (red on any undocumented public route) + phased backfill. Home:
+  [`../specs/2026-07-18-glossary-contract-first-restoration.md`]. Priority = P1 (the gate, stops future rot);
+  P2–P4 backfill. NOT S-06 scope (service-wide); adding only S-06's 2 routes was rejected as a misleading
+  half-measure into a stale/unenforced doc.
 ### DRIFT
 - Spec §2 route paths were book-unscoped (wrong) — corrected against `server.go:534` before building.
 
