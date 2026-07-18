@@ -43,8 +43,11 @@
 > commit `b67bb8d19`): **D-S12-STUDIO-PROPOSAL-BADGE** (frame-level pending-approvals badge in the studio status
 > bar, routes to the right panel; BE count split), **D-S12-WORKFLOW-REVISIONS** (`GET …/workflows/{id}/revisions`
 > mirror of skills), **D-S12-BINDINGS-I18N** (BindingSettings i18n'd; WorkflowRack had no visible strings).
-> **Remaining debt:** D-S12-LIVE-SMOKE (agent-loop E2E needs live stack+browser — each link proven in isolation).
-> MCP delete/enablement tools = conscious defer (agents propose, humans dispose).
+> **D-S12-LIVE-SMOKE CLEARED (2026-07-18, commit `fb3b8d36f`):** full agent-loop E2E on the live stack — rebuilt
+> agent-registry + a static FE image on an isolated port (:5223, HMR-immune) driven by an isolated playwright
+> session. In-browser: badge renders count → click routes to the workflow-proposals panel → card shows the steps
+> → approve mints the workflow. BE loop via curl: approve/mint/enablement(SD-1 flip)/revisions. No new bugs.
+> **Only remaining:** MCP delete/enablement tools = conscious defer (agents propose, humans dispose). **S-12 fully done.**
 
 ## 📜 GLOSSARY CONTRACT-FIRST — P1–P4 COMPLETE, contract now 100% + CI-enforced **SHIPPED (2026-07-18)**
 > Spec: [`docs/specs/2026-07-18-glossary-contract-first-restoration.md`](../specs/2026-07-18-glossary-contract-first-restoration.md) ·
