@@ -68,7 +68,10 @@ export function StudioIssuesFeed() {
                 'flex items-start gap-2 border-b px-2 py-1.5',
                 clickable && 'cursor-pointer hover:bg-secondary',
               )}
-              onClick={clickable ? () => openPanel(panel, { focus: true, params: { bookId } }) : undefined}
+              // Deep-link to the OWNING panel, and — when the diagnostic carries them — the
+              // panel-appropriate focus params (e.g. focusRuleId / focusChapterId) so the row jumps to
+              // the exact offending item, not just the panel.
+              onClick={clickable ? () => openPanel(panel, { focus: true, params: { bookId, ...(it.focus ?? {}) } }) : undefined}
             >
               <span className={cn('mt-0.5 rounded px-1 py-0.5 text-[9px] font-semibold uppercase', SEV_STYLE[it.severity] ?? SEV_STYLE.info)}>
                 {t(`bottom.sev.${it.severity}`, { defaultValue: it.severity })}

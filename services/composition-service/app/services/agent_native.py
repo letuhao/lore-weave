@@ -114,6 +114,12 @@ class Diagnostic:
     detail: str = ""
     node_ref: dict[str, Any] | None = None
     at: str | None = None   # ISO ts, for the recency sort
+    # S-10 O3 — deep-link focus params for the panel that owns the fix. The `node_ref` names WHAT is
+    # wrong (a scene); `focus` carries the params THAT panel actually focuses by, which differ from the
+    # node id (quality-canon-rules focuses a `focusRuleId`, quality-canon a `focusChapterId`). The FE
+    # spreads these into the open-panel params so a row jumps to the exact offending row, not just the
+    # panel. Only set when the source repo exposes the panel-appropriate id.
+    focus: dict[str, str] | None = None
 
 
 @dataclass
@@ -143,6 +149,7 @@ class Diagnostics:
                     "kind": d.kind, "severity": d.severity, "title": d.title,
                     **({"detail": d.detail} if d.detail else {}),
                     **({"node_ref": d.node_ref} if d.node_ref else {}),
+                    **({"focus": d.focus} if d.focus else {}),
                     **({"at": d.at} if d.at else {}),
                 }
                 for d in shown
@@ -292,6 +299,7 @@ async def build_book_diagnostics(
             raise LookupError("no project")
         for issue in await OutlineRepo(pool).canon_issues(project_id):
             violations = issue.get("violations") or []
+            chapter_id = issue.get("chapter_id")
             diag.add(Diagnostic(
                 kind="canon_contradiction", severity=SEVERITY["canon_contradiction"],
                 title=f'{len(violations)} canon violation(s) in "{issue.get("scene_title") or "a scene"}"',
@@ -299,6 +307,8 @@ async def build_book_diagnostics(
                     str(v.get("detail") or v.get("rule") or v)[:120] for v in violations[:2]
                 ),
                 node_ref={"kind": "scene", "id": issue["scene_id"], "title": issue.get("scene_title")},
+                # quality-canon focuses by chapter (the scene's chapter), not the scene id.
+                focus={"focusChapterId": str(chapter_id)} if chapter_id else None,
                 at=issue.get("created_at"),
             ))
     except Exception:  # noqa: BLE001
@@ -312,11 +322,14 @@ async def build_book_diagnostics(
         rv = await OutlineRepo(pool).rule_violations(project_id)
         for item in rv["items"]:
             rule = item.get("rule_text") or "a rule that no longer exists"
+            rule_id = item.get("rule_id")
             diag.add(Diagnostic(
                 kind="broken_canon_rule", severity=SEVERITY["broken_canon_rule"],
                 title=f'canon rule broken: "{rule[:80]}"',
                 detail=(item.get("why") or item.get("span") or "")[:120],
                 node_ref={"kind": "scene", "id": item["scene_id"], "title": item.get("scene_title")},
+                # quality-canon-rules focuses the RULE (rule_id, LLM text id), not the scene.
+                focus={"focusRuleId": str(rule_id)} if rule_id else None,
                 at=item.get("created_at"),
             ))
         if rv["capped"]:

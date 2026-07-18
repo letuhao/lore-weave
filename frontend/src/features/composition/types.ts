@@ -571,6 +571,10 @@ export interface DiagnosticItem {
   title: string;
   detail?: string;
   node_ref?: DiagnosticNodeRef;
+  /** S-10 O3 — deep-link focus params for the owning panel (differ from the node id: quality-canon-rules
+   *  focuses `focusRuleId`, quality-canon `focusChapterId`). The Issues feed spreads these into the
+   *  open-panel params so a row jumps to the exact offending row. */
+  focus?: Record<string, string>;
   at?: string;
 }
 

@@ -21,12 +21,12 @@ const base = {
 beforeEach(() => { openPanel.mockReset(); diag.mockReturnValue(base); });
 
 describe('StudioIssuesFeed (O3)', () => {
-  it('renders ranked rows and deep-links a row to the panel that owns the fix', () => {
+  it('renders ranked rows and deep-links a row to the exact offending item (focus params)', () => {
     diag.mockReturnValue({
       ...base,
       total: 2,
       items: [
-        { kind: 'broken_canon_rule', severity: 'error', title: 'canon rule broken: "no magic"' },
+        { kind: 'broken_canon_rule', severity: 'error', title: 'canon rule broken: "no magic"', focus: { focusRuleId: 'rule-7' } },
         { kind: 'index_stale', severity: 'warn', title: '3 chapters have a stale prose index' },
       ],
     });
@@ -34,8 +34,19 @@ describe('StudioIssuesFeed (O3)', () => {
     expect(screen.getByTestId('studio-issue-broken_canon_rule')).toBeInTheDocument();
 
     fireEvent.click(screen.getByTestId('studio-issue-broken_canon_rule'));
-    // broken_canon_rule → quality-canon-rules, focused, book-scoped
-    expect(openPanel).toHaveBeenCalledWith('quality-canon-rules', { focus: true, params: { bookId: 'b1' } });
+    // broken_canon_rule → quality-canon-rules, focused ON THE RULE (not just the panel), book-scoped
+    expect(openPanel).toHaveBeenCalledWith('quality-canon-rules', { focus: true, params: { bookId: 'b1', focusRuleId: 'rule-7' } });
+  });
+
+  it('deep-links to the panel alone when a diagnostic carries no focus id', () => {
+    diag.mockReturnValue({
+      ...base,
+      total: 1,
+      items: [{ kind: 'unplanned_chapter', severity: 'warn', title: 'chapter "X" is written but not planned' }],
+    });
+    render(<StudioIssuesFeed />);
+    fireEvent.click(screen.getByTestId('studio-issue-unplanned_chapter'));
+    expect(openPanel).toHaveBeenCalledWith('plan-hub', { focus: true, params: { bookId: 'b1' } });
   });
 
   it('surfaces source warnings (absent, not zero)', () => {

@@ -221,6 +221,32 @@ def test_diagnostics_ranks_error_then_warn_then_info_and_caps_ROWS_not_COUNTS():
     assert out["counts"]["open_thread_debt"] == 30
 
 
+def test_ranked_serializes_the_deep_link_focus_params_when_present():
+    """S-10 O3 — a row deep-links to the EXACT offending item, not just the owning panel. The panel
+    focuses by a param that differs from the node id (quality-canon-rules focuses `focusRuleId`), so
+    the diagnostic carries `focus` and `ranked()` must surface it (and omit it when absent)."""
+    d = Diagnostics()
+    d.add(Diagnostic(
+        kind="broken_canon_rule", severity="error", title="rule broken",
+        node_ref={"kind": "scene", "id": "s1"}, focus={"focusRuleId": "rule-7"},
+    ))
+    d.add(Diagnostic(kind="index_stale", severity="warn", title="stale"))  # no focus
+    out = d.ranked()
+    assert out["items"][0]["focus"] == {"focusRuleId": "rule-7"}
+    assert "focus" not in out["items"][1]
+
+
+def test_build_book_diagnostics_threads_the_panel_appropriate_focus_ids():
+    """The two canon lanes route to panels that focus by a DIFFERENT id than the scene the node_ref
+    names: quality-canon-rules by `focusRuleId` (the LLM rule id), quality-canon by `focusChapterId`
+    (the scene's chapter). The builder must carry those, or the deep-link can only reach the panel."""
+    from app.services.agent_native import build_book_diagnostics
+
+    src = inspect.getsource(build_book_diagnostics)
+    assert 'focus={"focusRuleId"' in src
+    assert 'focus={"focusChapterId"' in src
+
+
 def test_a_source_that_FAILS_becomes_a_WARNING_not_a_missing_problem():
     """The nastiest failure mode a problems panel has: a source dies, and the book looks HEALTHIER
     than it is. Silence must never read as "no problems here"."""

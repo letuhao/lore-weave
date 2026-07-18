@@ -49,6 +49,15 @@ Genuinely UNBUILT (the S-10 build set):
 
 ## S-10 COMPLETE — all 7 O-items done (O2/O4/search were already shipped; O1/O3/O5/O6/O7 built this run).
 
+## O3 follow-up — Issues-feed deep-links now node-level (deferral cleared)
+The Issues rows deep-link to the EXACT offending item, not just the owning panel, where the source repo
+exposes the panel-appropriate id: **broken_canon_rule → quality-canon-rules `focusRuleId`** (rule_violations
+carries rule_id) and **canon_contradiction → quality-canon `focusChapterId`** (canon_issues returns
+chapter_id). Carried on a new `Diagnostic.focus` field (serialized by `ranked()`), spread into the open-panel
+params by StudioIssuesFeed. The rest stay panel-level BY DESIGN, not deferral: quality-conformance accepts no
+incoming focus param, open_thread_debt is an aggregate (no per-thread id), and plan-hub focuses via a bus +
+an id-type mismatch (chapter_id vs outline-node id). EVID: agent_native 25 + Issues feed 5 green.
+
 ## CONVERGENCE — i18n keys to batch-fill (deferred to avoid concurrent writes on the hot i18n files)
 All rendered via `t(key, {defaultValue})` (UI works now; parity gate passes since keys are absent). Fill in a
 convergence batch via `scripts/i18n_translate.py`:
