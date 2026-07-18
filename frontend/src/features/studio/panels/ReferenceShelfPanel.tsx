@@ -19,7 +19,7 @@ import { useTranslation } from 'react-i18next';
 
 import { useStudioHost } from '../host/StudioHostProvider';
 import { useStudioPanel } from './useStudioPanel';
-import { WorkSetupCta } from './WorkSetupCta';
+import { BookNotReadyDoor } from './BookNotReadyDoor';
 
 export function ReferenceShelfPanel(props: IDockviewPanelProps) {
   useStudioPanel('reference-shelf', props.api);
@@ -32,16 +32,15 @@ export function ReferenceShelfPanel(props: IDockviewPanelProps) {
   const models = useUserModels({ capability: 'embedding' }).models;
 
   if (!work?.project_id) {
-    // F10 — the newcomer wrote chapters but this gate said "No writing project yet — set up a Work
-    // first" with NO way to do so. Mount the existing idempotent create-Work CTA (was only on the
-    // Quality/Decompose panels) and de-jargon the copy off the internal word "Work".
+    // F10 / Part A — the shared onboarding door (guided copy + the idempotent create-Work CTA).
     return (
-      <div data-testid="reference-shelf-nowork" className="flex h-full flex-col items-center justify-center gap-3 p-6 text-center text-sm text-muted-foreground">
-        <p className="max-w-xs">
-          {t('panels.reference-shelf.noWork', { defaultValue: "Writing isn't set up for this book yet — set it up to curate its reference shelf here." })}
-        </p>
-        <WorkSetupCta bookId={host.bookId} token={accessToken} />
-      </div>
+      <BookNotReadyDoor
+        need="work"
+        bookId={host.bookId}
+        token={accessToken}
+        testId="reference-shelf-nowork"
+        message={t('panels.reference-shelf.noWork', { defaultValue: "Writing isn't set up for this book yet — set it up to curate its reference shelf here." })}
+      />
     );
   }
   return (

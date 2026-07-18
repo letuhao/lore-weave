@@ -394,7 +394,8 @@
     "whatif-canvas": {
       "title": "Ramificações 'E se...'",
       "desc": "Explore versões alternativas de uma cena sem se comprometer — ramifique, gere uma versão alternativa, compare e, então, promova a vencedora",
-      "guideBody": "O canvas «e se...» permite que você crie uma ramificação efêmera de uma cena, gere uma versão alternativa e veja as medalhas de julgamento do crítico lado a lado — tudo isso sem tocar no rascunho canônico. Quando uma ramificação for a que você deseja, promova-a: ela se tornará uma obra derivada real a partir da qual você poderá continuar escrevendo. Nada é salvo até que você promova, então você pode explorar livremente. Esta é a superfície de edição por trás do botão Promover; o Plan Hub mostra o gráfico do plano, este é o lugar onde você testa alternativas nele."
+      "guideBody": "O canvas «e se...» permite que você crie uma ramificação efêmera de uma cena, gere uma versão alternativa e veja as medalhas de julgamento do crítico lado a lado — tudo isso sem tocar no rascunho canônico. Quando uma ramificação for a que você deseja, promova-a: ela se tornará uma obra derivada real a partir da qual você poderá continuar escrevendo. Nada é salvo até que você promova, então você pode explorar livremente. Esta é a superfície de edição por trás do botão Promover; o Plan Hub mostra o gráfico do plano, este é o lugar onde você testa alternativas nele.",
+      "noPlan": "Este livro ainda não tem um plano — defina seus arcos e capítulos primeiro e, depois, explore ramificações de «e se» aqui."
     },
     "divergence": {
       "title": "Versões 'E se...'",
@@ -622,10 +623,10 @@
       "title": "Grafo de Lugares",
       "desc": "Os lugares (localizações) do livro como um grafo de nós arrastáveis",
       "guideBody": "Adicione e conecte os lugares (localizações) do livro como um grafo de nós. Digite um nome e pressione + Place para criar uma localização; ative Link places, escolha dois nós e um predicado (contains / borders / route_to) para conectá-los; arraste para organizar (salvo no servidor, compartilhado entre seus dispositivos); defina uma imagem de fundo (requer um capítulo aberto). Clique em um nó para abri-lo no codex de Elenco. Apenas Localizações — use Author other kinds para adicionar personagens, itens e o restante.",
-      "noWork": "Configure o coescritor no Compose para organizar os lugares.",
       "openCompose": "Abrir Compose",
       "loading": "Carregando mapa do mundo...",
-      "authorOther": "Criar outros tipos →"
+      "authorOther": "Criar outros tipos →",
+      "noWork": "A escrita ainda não foi configurada para este livro — configure-a para organizar seus lugares aqui."
     },
     "cast": {
       "title": "Elenco",
@@ -941,6 +942,8 @@
     "hubNoWorkHint": "Promessas, notas da crítica e cobertura da história exigem uma sessão de coescrita — comece a compor um capítulo primeiro. Problemas de cânone listados abaixo funcionarão de qualquer maneira.",
     "setupWork": "Configurar escrita",
     "settingUpWork": "Configurando...",
+    "setupWorkError": "Não foi possível configurar a escrita. Tente novamente.",
+    "setupWorkPending": "A escrita foi configurada, mas o projeto de conhecimento ainda está sendo preparado. Tente novamente em breve.",
     "setupWorkRetry": "Repetir",
     "pickModel": "Escolha um modelo para analisar com...",
     "pickChapter": "Escolha um capítulo",
@@ -985,9 +988,7 @@
     "conformanceTitle": "Conformidade",
     "conformanceDesc": "A prosa seguiu o plano? Rastreamento de batidas por cena",
     "pickModelRerun": "Escolha um modelo para reexecutar com…",
-    "pickChapterConformanceHint": "Escolha um capítulo acima para rastrear como a prosa seguiu o plano.",
-    "setupWorkError": "Não foi possível configurar a escrita. Tente novamente.",
-    "setupWorkPending": "A escrita foi configurada, mas o projeto de conhecimento ainda está sendo preparado. Tente novamente em breve."
+    "pickChapterConformanceHint": "Escolha um capítulo acima para rastrear como a prosa seguiu o plano."
   },
   "sidebar": {
     "collapse": "Recolher",

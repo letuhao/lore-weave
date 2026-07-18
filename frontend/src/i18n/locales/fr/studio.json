@@ -394,7 +394,8 @@
     "whatif-canvas": {
       "title": "Branches « Et si ? »",
       "desc": "Explorez des variantes d'une scène sans les valider — créez une branche, générez une alternative, comparez, puis promevez la meilleure version",
-      "guideBody": "Le canevas « what-if » vous permet de créer une branche éphémère pour une scène, de générer une prise alternative et de comparer les badges de jugement du critique côte à côte — le tout sans toucher au brouillon canonique. Lorsqu'une branche est celle que vous souhaitez conserver, « promouvez-la » : elle devient alors une véritable œuvre dérivée à partir de laquelle vous pouvez continuer à écrire. Rien n'est sauvegardé tant que vous ne promouvez pas la branche, ce qui vous permet d'explorer librement. Il s'agit de la surface d'édition située derrière le bouton « Promouvoir » ; le Plan Hub affiche le graphe de planification, tandis que ceci est l'endroit où vous testez des alternatives sur celui-ci."
+      "guideBody": "Le canevas « what-if » vous permet de créer une branche éphémère pour une scène, de générer une prise alternative et de comparer les badges de jugement du critique côte à côte — le tout sans toucher au brouillon canonique. Lorsqu'une branche est celle que vous souhaitez conserver, « promouvez-la » : elle devient alors une véritable œuvre dérivée à partir de laquelle vous pouvez continuer à écrire. Rien n'est sauvegardé tant que vous ne promouvez pas la branche, ce qui vous permet d'explorer librement. Il s'agit de la surface d'édition située derrière le bouton « Promouvoir » ; le Plan Hub affiche le graphe de planification, tandis que ceci est l'endroit où vous testez des alternatives sur celui-ci.",
+      "noPlan": "Ce livre n'a pas encore de plan — tracez d'abord ses arcs et ses chapitres, puis explorez les embranchements « et si » ici."
     },
     "divergence": {
       "title": "Versions « Et si... »",
@@ -622,10 +623,10 @@
       "title": "Graphe des lieux",
       "desc": "Les lieux du livre sous forme de graphe de nœuds déplaçables",
       "guideBody": "Ajoutez et connectez les lieux du livre sous forme de graphe de nœuds. Tapez un nom et appuyez sur + Lieu pour créer un emplacement ; activez « Lier les lieux », choisissez deux nœuds et un prédicat (contient / borde / mène_à) pour les connecter ; faites glisser pour organiser (sauvegardé côté serveur, partagé entre vos appareils) ; définissez une image d'arrière-plan (nécessite un chapitre ouvert). Cliquez sur un nœud pour l'ouvrir dans le codex des personnages. Lieux uniquement — utilisez « Créer d'autres types » pour ajouter des personnages, des objets et le reste.",
-      "noWork": "Configurez le co-auteur dans Compose pour organiser les lieux.",
       "openCompose": "Ouvrir Compose",
       "loading": "Chargement de la carte du monde…",
-      "authorOther": "Créer d'autres types →"
+      "authorOther": "Créer d'autres types →",
+      "noWork": "L'écriture n'est pas encore configurée pour ce livre — configurez-la pour organiser ses lieux ici."
     },
     "cast": {
       "title": "Distribution",
@@ -941,6 +942,8 @@
     "hubNoWorkHint": "Les promesses, les scores de critique et la couverture de l'histoire nécessitent une session de co-écriture — commencez d'abord à rédiger un chapitre. Les problèmes de canon ci-dessous fonctionnent dans tous les cas.",
     "setupWork": "Configurer l'écriture",
     "settingUpWork": "Configuration en cours…",
+    "setupWorkError": "Impossible de configurer l'écriture. Réessayez.",
+    "setupWorkPending": "L'écriture a été configurée, mais son projet de connaissances est encore en cours de préparation. Réessayez dans un instant.",
     "setupWorkRetry": "Réessayer",
     "pickModel": "Choisir un modèle pour l'analyse…",
     "pickChapter": "Choisir un chapitre",
@@ -985,9 +988,7 @@
     "conformanceTitle": "Conformité",
     "conformanceDesc": "La prose a-t-elle respecté le plan ? Traçage des battements par scène",
     "pickModelRerun": "Choisir un modèle pour relancer avec…",
-    "pickChapterConformanceHint": "Choisissez un chapitre ci-dessus pour voir comment sa prose a respecté le plan.",
-    "setupWorkError": "Impossible de configurer l'écriture. Réessayez.",
-    "setupWorkPending": "L'écriture a été configurée, mais son projet de connaissances est encore en cours de préparation. Réessayez dans un instant."
+    "pickChapterConformanceHint": "Choisissez un chapitre ci-dessus pour voir comment sa prose a respecté le plan."
   },
   "sidebar": {
     "collapse": "Réduire",

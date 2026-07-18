@@ -18,6 +18,7 @@ import { useActiveWorkId } from '@/features/composition/hooks/useActiveWork';
 import { resolveActiveWork } from '@/features/composition/workSelect';
 import { useStudioHost, useStudioBusSelector } from '../host/StudioHostProvider';
 import { useStudioPanel } from './useStudioPanel';
+import { BookNotReadyDoor } from './BookNotReadyDoor';
 
 export function PlaceGraphPanel(props: IDockviewPanelProps) {
   useStudioPanel('place-graph', props.api);
@@ -56,26 +57,19 @@ export function PlaceGraphPanel(props: IDockviewPanelProps) {
   }
 
   // ⭐NEW state (§4.2): the book has no composition Work. NEVER mount <WorldMap> with a null work.
+  // Part A — was a redirect to Compose ("Open Compose"), which punted the user elsewhere instead of
+  // creating the Work. Now the shared onboarding door creates it in place (WorkSetupCta).
   if (!work) {
     return (
-      <div
-        data-testid="studio-place-graph-panel"
-        className="flex h-full flex-col items-center justify-center gap-3 p-6 text-center text-sm text-muted-foreground"
-      >
-        <p data-testid="place-graph-nowork">
-          {t('panels.place-graph.noWork', {
-            defaultValue: 'Set up the co-writer in Compose to arrange places.',
-          })}
-        </p>
-        <button
-          type="button"
-          data-testid="place-graph-setup-cowriter"
-          className="rounded border px-3 py-1 text-xs hover:bg-secondary hover:text-foreground"
-          onClick={() => host.openPanel('compose')}
-        >
-          {t('panels.place-graph.openCompose', { defaultValue: 'Open Compose' })}
-        </button>
-      </div>
+      <BookNotReadyDoor
+        need="work"
+        bookId={host.bookId}
+        token={accessToken}
+        testId="studio-place-graph-panel"
+        message={t('panels.place-graph.noWork', {
+          defaultValue: "Writing isn't set up for this book yet — set it up to arrange its places here.",
+        })}
+      />
     );
   }
 

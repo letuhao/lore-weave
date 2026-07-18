@@ -11,6 +11,7 @@
 // 449-LOC re-implementation. `plan-hub` remains the graph VIEW's home; this is the
 // what-if EDITING surface it does not carry.
 import type { IDockviewPanelProps } from 'dockview-react';
+import { useTranslation } from 'react-i18next';
 
 import { useAuth } from '@/auth';
 import { SceneGraphCanvas } from '@/features/composition/components/SceneGraphCanvas';
@@ -20,9 +21,11 @@ import { resolveActiveWork } from '@/features/composition/workSelect';
 
 import { useStudioHost } from '../host/StudioHostProvider';
 import { useStudioPanel } from './useStudioPanel';
+import { BookNotReadyDoor } from './BookNotReadyDoor';
 
 export function WhatIfCanvasPanel(props: IDockviewPanelProps) {
   useStudioPanel('whatif-canvas', props.api);
+  const { t } = useTranslation('studio');
   const host = useStudioHost();
   const { accessToken } = useAuth();
   const workQ = useWorkResolution(host.bookId, accessToken);
@@ -36,16 +39,18 @@ export function WhatIfCanvasPanel(props: IDockviewPanelProps) {
   const work = resolveActiveWork(workQ.data, activeWorkId);
 
   if (!work) {
-    // No composition Work yet ⇒ no scene graph to branch. A calm empty state, not an error —
-    // the book has not been planned/compiled, so there is nothing to run a what-if against.
+    // No composition Work yet ⇒ no scene graph to branch. Part A — was hardcoded English dead text;
+    // now the shared onboarding door with a real plan door (planning the book creates the arc + the
+    // Work `usePlanOrigin` ensures, which is exactly what this surface needs).
     return (
-      <div
-        data-testid="whatif-canvas-nowork"
-        className="flex h-full items-center justify-center p-6 text-center text-sm text-muted-foreground"
-      >
-        This book has no plan yet — lay out its arcs and chapters first, then explore
-        &ldquo;what if&rdquo; branches here.
-      </div>
+      <BookNotReadyDoor
+        need="plan"
+        testId="whatif-canvas-nowork"
+        onPlan={() => host.openPanel('plan-hub', { focus: true })}
+        message={t('panels.whatif-canvas.noPlan', {
+          defaultValue: 'This book has no plan yet — lay out its arcs and chapters first, then explore “what if” branches here.',
+        })}
+      />
     );
   }
 

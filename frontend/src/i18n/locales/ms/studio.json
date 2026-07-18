@@ -394,7 +394,8 @@
     "whatif-canvas": {
       "title": "Cabang What-If",
       "desc": "Teroka versi alternatif bagi sesuatu babak tanpa komitmen — buat cabang, jana versi alternatif, bandingkan, kemudian promosikan pemenang",
-      "guideBody": "Kanvas 'what-if' membolehkan anda memecahkan babak kepada cabang sementara, menghasilkan versi alternatif, dan melihat lencana penilaian pengkritik secara bersebelahan — semuanya tanpa menyentuh draf asal. Apabila anda telah memilih cabang yang diingini, promosikan ia: ia akan menjadi karya derivatif sebenar yang boleh anda teruskan penulisannya. Tiada apa yang disimpan sehingga anda mempromosikannya, jadi anda boleh meneroka dengan bebas. Ini adalah permukaan penyuntingan di sebalik butang Promote; Plan Hub menunjukkan graf pelan, manakala di sini adalah tempat anda mencuba alternatif pada pelan tersebut."
+      "guideBody": "Kanvas 'what-if' membolehkan anda memecahkan babak kepada cabang sementara, menghasilkan versi alternatif, dan melihat lencana penilaian pengkritik secara bersebelahan — semuanya tanpa menyentuh draf asal. Apabila anda telah memilih cabang yang diingini, promosikan ia: ia akan menjadi karya derivatif sebenar yang boleh anda teruskan penulisannya. Tiada apa yang disimpan sehingga anda mempromosikannya, jadi anda boleh meneroka dengan bebas. Ini adalah permukaan penyuntingan di sebalik butang Promote; Plan Hub menunjukkan graf pelan, manakala di sini adalah tempat anda mencuba alternatif pada pelan tersebut.",
+      "noPlan": "Buku ini belum mempunyai pelan — susun lengkok cerita dan babnya terlebih dahulu, kemudian teroka cabang «what if» di sini."
     },
     "divergence": {
       "title": "Versi 'Bagaimana jika'",
@@ -622,10 +623,10 @@
       "title": "Graf Tempat",
       "desc": "Tempat-tempat (lokasi) dalam buku sebagai graf nod yang boleh diseret",
       "guideBody": "Tambah dan hubungkan tempat-tempat (lokasi) dalam buku sebagai graf nod. Taip nama dan tekan + Place untuk menghasilkan lokasi; aktifkan Link places, pilih dua nod dan predikat (contains / borders / route_to) untuk menghubungkannya; seret untuk menyusun (disimpan di sebelah pelayan, dikongsi merentasi peranti anda); tetapkan imej latar belakang (memerlukan bab terbuka). Klik nod untuk membukanya dalam kodeks Cast. Hanya untuk Lokasi — gunakan Author other kinds untuk menambah watak, item, dan lain-lain.",
-      "noWork": "Tetapkan penulis bersama dalam Compose untuk menyusun tempat.",
       "openCompose": "Buka Compose",
       "loading": "Memuatkan peta dunia...",
-      "authorOther": "Hasilkan jenis lain →"
+      "authorOther": "Hasilkan jenis lain →",
+      "noWork": "Penulisan belum ditetapkan untuk buku ini — tetapkannya untuk menyusun tempat-tempat di sini."
     },
     "cast": {
       "title": "Cast",
@@ -941,6 +942,8 @@
     "hubNoWorkHint": "Janji, skor pengkritik, dan liputan cerita memerlukan sesi penulis bersama — mulakan penulisan bab terlebih dahulu. Isu kanon di bawah tetap berfungsi dalam apa jua keadaan.",
     "setupWork": "Tetapkan penulisan",
     "settingUpWork": "Sedang menyediakan...",
+    "setupWorkError": "Tidak dapat menyediakan penulisan. Sila cuba lagi.",
+    "setupWorkPending": "Penulisan telah disediakan tetapi projek pengetahuannya masih sedang disediakan. Sila cuba lagi sebentar lagi.",
     "setupWorkRetry": "Cuba semula",
     "pickModel": "Pilih model untuk menganalisis dengan…",
     "pickChapter": "Pilih bab",
@@ -985,9 +988,7 @@
     "conformanceTitle": "Pematuhan",
     "conformanceDesc": "Adakah prosa merealisasikan rancangan tersebut? Jejak beat bagi setiap babak",
     "pickModelRerun": "Pilih model untuk jalankan semula dengan…",
-    "pickChapterConformanceHint": "Pilih bab yang di atas untuk menjejak bagaimana prosanya merealisasikan rancangan tersebut.",
-    "setupWorkError": "Tidak dapat menyediakan penulisan. Sila cuba lagi.",
-    "setupWorkPending": "Penulisan telah disediakan tetapi projek pengetahuannya masih sedang disediakan. Sila cuba lagi sebentar lagi."
+    "pickChapterConformanceHint": "Pilih bab yang di atas untuk menjejak bagaimana prosanya merealisasikan rancangan tersebut."
   },
   "sidebar": {
     "collapse": "Kecilkan",

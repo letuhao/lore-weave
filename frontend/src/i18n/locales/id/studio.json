@@ -394,7 +394,8 @@
     "whatif-canvas": {
       "title": "Cabang What-If",
       "desc": "Jelajahi versi alternatif dari sebuah adegan tanpa harus berkomitmen — buat cabang, hasilkan versi alternatif, bandingkan, lalu promosikan pemenangnya",
-      "guideBody": "Kanvas what-if memungkinkan Anda memisahkan adegan ke dalam cabang sementara, membuat versi alternatif, dan melihat lencana penilaian kritikus secara berdampingan — semuanya tanpa menyentuh draf kanon. Saat Anda menemukan cabang yang diinginkan, promosikan: ia akan menjadi karya turunan nyata yang dapat Anda lanjutkan penulisannya. Tidak ada yang tersimpan sampai Anda mempromosikannya, jadi Anda dapat bereksplorasi dengan bebas. Ini adalah permukaan penyuntingan di balik tombol Promote; Plan Hub menampilkan grafik rencana, sedangkan di sini adalah tempat Anda mencoba berbagai alternatif di dalamnya."
+      "guideBody": "Kanvas what-if memungkinkan Anda memisahkan adegan ke dalam cabang sementara, membuat versi alternatif, dan melihat lencana penilaian kritikus secara berdampingan — semuanya tanpa menyentuh draf kanon. Saat Anda menemukan cabang yang diinginkan, promosikan: ia akan menjadi karya turunan nyata yang dapat Anda lanjutkan penulisannya. Tidak ada yang tersimpan sampai Anda mempromosikannya, jadi Anda dapat bereksplorasi dengan bebas. Ini adalah permukaan penyuntingan di balik tombol Promote; Plan Hub menampilkan grafik rencana, sedangkan di sini adalah tempat Anda mencoba berbagai alternatif di dalamnya.",
+      "noPlan": "Buku ini belum memiliki rencana — susun alur dan babnya terlebih dahulu, lalu jelajahi cabang «what if» di sini."
     },
     "divergence": {
       "title": "Versi what-if",
@@ -622,10 +623,10 @@
       "title": "Graf Tempat",
       "desc": "Tempat-tempat (lokasi) dalam buku sebagai graf simpul yang dapat diseret",
       "guideBody": "Tambahkan dan hubungkan tempat-tempat (lokasi) dalam buku sebagai graf simpul. Ketik nama dan tekan + Place untuk membuat lokasi; aktifkan Link places, pilih dua simpul dan predikat (contains / borders / route_to) untuk menghubungkannya; seret untuk mengatur posisi (disimpan di sisi server, dibagikan ke seluruh perangkat Anda); atur gambar latar belakang (memerlukan bab yang terbuka). Klik simpul untuk membukanya di kodeks Cast. Hanya untuk Lokasi — gunakan Author other kinds untuk menambahkan karakter, item, dan lainnya.",
-      "noWork": "Atur co-writer di Compose untuk mengatur tempat.",
       "openCompose": "Buka Compose",
       "loading": "Memuat peta dunia...",
-      "authorOther": "Buat jenis lainnya →"
+      "authorOther": "Buat jenis lainnya →",
+      "noWork": "Penulisan belum diatur untuk buku ini — atur terlebih dahulu untuk menyusun tempat-tempatnya di sini."
     },
     "cast": {
       "title": "Cast",
@@ -941,6 +942,8 @@
     "hubNoWorkHint": "Janji, skor kritikus, dan cakupan cerita memerlukan sesi co-writer — tulis satu bab terlebih dahulu. Masalah kanon di bawah tetap dapat berfungsi dengan cara apa pun.",
     "setupWork": "Atur penulisan",
     "settingUpWork": "Sedang menyiapkan...",
+    "setupWorkError": "Tidak dapat menyiapkan penulisan. Coba lagi.",
+    "setupWorkPending": "Penulisan telah disiapkan, tetapi proyek pengetahuannya masih dalam proses persiapan. Coba lagi sebentar lagi.",
     "setupWorkRetry": "Coba lagi",
     "pickModel": "Pilih model untuk menganalisis dengan…",
     "pickChapter": "Pilih bab",
@@ -985,9 +988,7 @@
     "conformanceTitle": "Kesesuaian",
     "conformanceDesc": "Apakah prosa sudah mewujudkan rencana? Pelacakan beat per adegan",
     "pickModelRerun": "Pilih model untuk dijalankan ulang dengan…",
-    "pickChapterConformanceHint": "Pilih bab di atas untuk melacak bagaimana prosanya mewujudkan rencana tersebut.",
-    "setupWorkError": "Tidak dapat menyiapkan penulisan. Coba lagi.",
-    "setupWorkPending": "Penulisan telah disiapkan, tetapi proyek pengetahuannya masih dalam proses persiapan. Coba lagi sebentar lagi."
+    "pickChapterConformanceHint": "Pilih bab di atas untuk melacak bagaimana prosanya mewujudkan rencana tersebut."
   },
   "sidebar": {
     "collapse": "Sembunyikan",

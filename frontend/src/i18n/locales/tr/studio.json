@@ -394,7 +394,8 @@
     "whatif-canvas": {
       "title": "What-If Dallanmaları",
       "desc": "Bir sahne için alternatif versiyonları kalıcı hale getirmeden keşfedin — dallan, alternatif bir versiyon oluştur, karşılaştır ve ardından kazananı ana metne dahil et",
-      "guideBody": "What-if tuvali, orijinal taslağa hiç dokunmadan bir sahneyi geçici bir dala ayırmanıza, alternatif bir versiyon oluşturmanıza ve eleştirmen yargı rozetlerini yan yana görmenize olanak tanır. Bir dal istediğiniz versiyon olduğunda onu yükseltin: artık üzerinde yazmaya devam edebileceğiniz gerçek bir türev eser haline gelir. Siz yükseltene kadar hiçbir şey kaydedilmez, bu sayede özgürce keşif yapabilirsiniz. Bu, Yükselt butonu arkasındaki düzenleme yüzeyidir; Plan Merkezi plan grafiğini gösterirken, burası o plan üzerindeki alternatifleri denediğiniz yerdir."
+      "guideBody": "What-if tuvali, orijinal taslağa hiç dokunmadan bir sahneyi geçici bir dala ayırmanıza, alternatif bir versiyon oluşturmanıza ve eleştirmen yargı rozetlerini yan yana görmenize olanak tanır. Bir dal istediğiniz versiyon olduğunda onu yükseltin: artık üzerinde yazmaya devam edebileceğiniz gerçek bir türev eser haline gelir. Siz yükseltene kadar hiçbir şey kaydedilmez, bu sayede özgürce keşif yapabilirsiniz. Bu, Yükselt butonu arkasındaki düzenleme yüzeyidir; Plan Merkezi plan grafiğini gösterirken, burası o plan üzerindeki alternatifleri denediğiniz yerdir.",
+      "noPlan": "Bu kitabın henüz bir planı yok — önce olay örgüsünü ve bölümlerini belirleyin, ardından «ya şöyle olsaydı» dallanmalarını buradan keşfedin."
     },
     "divergence": {
       "title": "Ya olursa versiyonları",
@@ -622,10 +623,10 @@
       "title": "Yer Grafiği",
       "desc": "Kitaptaki yerlerin (konumların) sürüklenebilir bir düğüm grafiği olarak sunumu",
       "guideBody": "Kitaptaki yerleri (konumları) bir düğüm grafiği olarak ekleyin ve birbirine bağlayın. Bir isim yazın ve konumu oluşturmak için + Yer'e basın; Yerleri Bağla seçeneğini açın, iki düğüm ve bir yüklem (içerir / sınırı / rota_to) seçerek onları birbirine bağlayın; düzenlemek için sürükleyin (sunucu tarafında kaydedilir, cihazlarınız arasında paylaşılır); bir arka plan görseli ayarlayın (açık bir bölüm gerektirir). Bir düğümü Cast kodeksinde açmak için tıklayın. Sadece Konumlar — karakterler, eşyalar ve diğer her şeyi eklemek için Diğer türleri Yaz seçeneğini kullanın.",
-      "noWork": "Yerleri düzenlemek için Compose içinde ortak yazarı kurun.",
       "openCompose": "Compose'u Aç",
       "loading": "Dünya haritası yükleniyor...",
-      "authorOther": "Diğer türleri Yaz →"
+      "authorOther": "Diğer türleri Yaz →",
+      "noWork": "Yazım süreci bu kitap için henüz yapılandırılmadı — mekanları burada düzenlemek için kurulumu yapın."
     },
     "cast": {
       "title": "Cast",
@@ -941,6 +942,8 @@
     "hubNoWorkHint": "Vaatler, eleştirmen puanları ve hikaye kapsamı için bir ortak yazar oturumu gerekir — önce bir bölüm yazmaya başlayın. Aşağıdaki kanon sorunları her iki durumda da çalışmaya devam eder.",
     "setupWork": "Yazımı yapılandır",
     "settingUpWork": "Kuruluyor…",
+    "setupWorkError": "Yazım ayarları yapılamadı. Tekrar deneyin.",
+    "setupWorkPending": "Yazım ayarları yapıldı ancak bilgi projesi hâlâ hazırlanıyor. Kısa süre sonra tekrar deneyin.",
     "setupWorkRetry": "Tekrar Dene",
     "pickModel": "Analiz için bir model seçin…",
     "pickChapter": "Bir bölüm seçin",
@@ -985,9 +988,7 @@
     "conformanceTitle": "Uyumluluk",
     "conformanceDesc": "Metin planı gerçekleştirdi mi? Sahne bazlı olay örgüsü takibi",
     "pickModelRerun": "Yeniden çalıştırmak için bir model seçin…",
-    "pickChapterConformanceHint": "Metnin planı nasıl hayata geçirdiğini takip etmek için yukarıdan bir bölüm seçin.",
-    "setupWorkError": "Yazım ayarları yapılamadı. Tekrar deneyin.",
-    "setupWorkPending": "Yazım ayarları yapıldı ancak bilgi projesi hâlâ hazırlanıyor. Kısa süre sonra tekrar deneyin."
+    "pickChapterConformanceHint": "Metnin planı nasıl hayata geçirdiğini takip etmek için yukarıdan bir bölüm seçin."
   },
   "sidebar": {
     "collapse": "Daralt",

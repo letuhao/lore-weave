@@ -394,7 +394,8 @@
     "whatif-canvas": {
       "title": "Nhánh Giả định",
       "desc": "Khám phá các phương án thay thế cho một cảnh quay mà không làm thay đổi bản chính — tạo nhánh, tạo phương án thay thế, so sánh, sau đó chọn phương án tốt nhất để áp dụng",
-      "guideBody": "Bảng vẽ 'what-if' cho phép bạn tách một cảnh thành một nhánh tạm thời, tạo ra một bản nháp thay thế và so sánh các huy hiệu đánh giá của chuyên gia cạnh nhau — tất cả đều không làm ảnh hưởng đến bản thảo chính thức. Khi đã chọn được nhánh ưng ý, hãy 'Promote' (Thăng cấp) nó: nó sẽ trở thành một tác phẩm phái sinh thực thụ mà bạn có thể tiếp tục viết tiếp. Không có gì được lưu lại cho đến khi bạn thực hiện Thăng cấp, vì vậy bạn có thể tự do khám phá. Đây là bề mặt chỉnh sửa đằng sau nút Promote; trong khi Plan Hub hiển thị sơ đồ kế hoạch, thì đây là nơi bạn thử nghiệm các phương án thay thế trên sơ đồ đó."
+      "guideBody": "Bảng vẽ 'what-if' cho phép bạn tách một cảnh thành một nhánh tạm thời, tạo ra một bản nháp thay thế và so sánh các huy hiệu đánh giá của chuyên gia cạnh nhau — tất cả đều không làm ảnh hưởng đến bản thảo chính thức. Khi đã chọn được nhánh ưng ý, hãy 'Promote' (Thăng cấp) nó: nó sẽ trở thành một tác phẩm phái sinh thực thụ mà bạn có thể tiếp tục viết tiếp. Không có gì được lưu lại cho đến khi bạn thực hiện Thăng cấp, vì vậy bạn có thể tự do khám phá. Đây là bề mặt chỉnh sửa đằng sau nút Promote; trong khi Plan Hub hiển thị sơ đồ kế hoạch, thì đây là nơi bạn thử nghiệm các phương án thay thế trên sơ đồ đó.",
+      "noPlan": "Cuốn sách này chưa có kế hoạch — hãy thiết lập các mạch truyện và chương trước, sau đó khám phá các nhánh «nếu như» tại đây."
     },
     "divergence": {
       "title": "Các phiên bản giả định",
@@ -622,10 +623,10 @@
       "title": "Đồ thị Địa điểm",
       "desc": "Các địa điểm trong sách dưới dạng đồ thị nút có thể kéo thả",
       "guideBody": "Thêm và kết nối các địa điểm trong sách dưới dạng đồ thị nút. Nhập tên và nhấn + Place để tạo một địa điểm; bật Link places, chọn hai nút và một vị ngữ (contains / borders / route_to) để kết nối chúng; kéo để sắp xếp (được lưu ở phía máy chủ, chia sẻ giữa các thiết bị của bạn); thiết lập hình nền (yêu cầu phải có một chương đang mở). Nhấp vào một nút để mở nó trong codex Cast. Chỉ dành cho Địa điểm — hãy dùng Author other kinds để thêm nhân vật, vật phẩm và các loại khác.",
-      "noWork": "Thiết lập người đồng viết trong Compose để sắp xếp các địa điểm.",
       "openCompose": "Mở Compose",
       "loading": "Đang tải bản đồ thế giới…",
-      "authorOther": "Tạo các loại khác →"
+      "authorOther": "Tạo các loại khác →",
+      "noWork": "Chế độ viết chưa được thiết lập cho cuốn sách này — hãy thiết lập để sắp xếp các địa điểm tại đây."
     },
     "cast": {
       "title": "Dàn nhân vật",
@@ -941,6 +942,8 @@
     "hubNoWorkHint": "Các chỉ số về lời hứa, điểm số phê bình và độ bao phủ cốt truyện cần có một phiên làm việc với cộng sự — hãy bắt đầu viết một chương trước. Các vấn đề về tính nhất quán (Canon) bên dưới vẫn hoạt động trong mọi trường hợp.",
     "setupWork": "Thiết lập phần viết",
     "settingUpWork": "Đang thiết lập…",
+    "setupWorkError": "Không thể thiết lập chế độ viết. Vui lòng thử lại.",
+    "setupWorkPending": "Đã thiết lập chế độ viết nhưng dự án kiến thức vẫn đang được chuẩn bị. Vui lòng thử lại sau ít phút.",
     "setupWorkRetry": "Thử lại",
     "pickModel": "Chọn mô hình để phân tích với…",
     "pickChapter": "Chọn một chương",
@@ -985,9 +988,7 @@
     "conformanceTitle": "Sự tuân thủ",
     "conformanceDesc": "Văn bản có bám sát kế hoạch không? Truy vết từng nhịp độ trong mỗi cảnh",
     "pickModelRerun": "Chọn một mô hình để chạy lại với…",
-    "pickChapterConformanceHint": "Chọn một chương ở trên để truy vết cách văn bản thực hiện theo kế hoạch.",
-    "setupWorkError": "Không thể thiết lập chế độ viết. Vui lòng thử lại.",
-    "setupWorkPending": "Đã thiết lập chế độ viết nhưng dự án kiến thức vẫn đang được chuẩn bị. Vui lòng thử lại sau ít phút."
+    "pickChapterConformanceHint": "Chọn một chương ở trên để truy vết cách văn bản thực hiện theo kế hoạch."
   },
   "sidebar": {
     "collapse": "Thu gọn",

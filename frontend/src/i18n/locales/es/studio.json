@@ -394,7 +394,8 @@
     "whatif-canvas": {
       "title": "Ramas «¿Qué pasaría si...?»",
       "desc": "Explora versiones alternativas de una escena sin comprometerte: crea una rama, genera una versión alternativa, compara y luego promueve la ganadora",
-      "guideBody": "El lienzo «what-if» te permite bifurcar una escena en una rama efímera, generar una toma alternativa y ver las insignias de juicio del crítico una al lado de la otra, todo sin tocar el borrador canónico. Cuando una rama sea la que desees, promociónla: se convertirá en una obra derivada real desde la que podrás seguir escribiendo. Nada se guarda hasta que promocionas, así que puedes explorar libremente. Esta es la superficie de edición detrás del botón «Promover»; el Plan Hub muestra el gráfico del plan, esto es donde pruebas alternativas sobre él."
+      "guideBody": "El lienzo «what-if» te permite bifurcar una escena en una rama efímera, generar una toma alternativa y ver las insignias de juicio del crítico una al lado de la otra, todo sin tocar el borrador canónico. Cuando una rama sea la que desees, promociónla: se convertirá en una obra derivada real desde la que podrás seguir escribiendo. Nada se guarda hasta que promocionas, así que puedes explorar libremente. Esta es la superficie de edición detrás del botón «Promover»; el Plan Hub muestra el gráfico del plan, esto es donde pruebas alternativas sobre él.",
+      "noPlan": "Este libro aún no tiene un plan; primero define sus arcos y capítulos, y luego explora las ramas de «qué pasaría si» aquí."
     },
     "divergence": {
       "title": "Versiones «¿Qué pasaría si...?»",
@@ -622,10 +623,10 @@
       "title": "Grafo de lugares",
       "desc": "Los lugares (ubicaciones) del libro como un grafo de nodos arrastrables",
       "guideBody": "Añade y conecta los lugares (ubicaciones) del libro como un grafo de nodos. Escribe un nombre y pulsa + Lugar para crear una ubicación; activa Enlazar lugares, elige dos nodos y un predicado (contiene / limita / ruta_a) para conectarlos; arrastra para organizar (se guarda en el servidor y se comparte entre tus dispositivos); establece una imagen de fondo (requiere un capítulo abierto). Haz clic en un nodo para abrirlo en el códice de Reparto. Solo ubicaciones: usa Crear otros tipos para añadir personajes, objetos y el resto.",
-      "noWork": "Configura el coescritor en Compose para organizar los lugares.",
       "openCompose": "Abrir Compose",
       "loading": "Cargando mapa del mundo…",
-      "authorOther": "Crear otros tipos →"
+      "authorOther": "Crear otros tipos →",
+      "noWork": "La escritura aún no está configurada para este libro; configúrala para organizar sus lugares aquí."
     },
     "cast": {
       "title": "Reparto",
@@ -941,6 +942,8 @@
     "hubNoWorkHint": "Las promesas, las puntuaciones de la crítica y la cobertura de la historia requieren una sesión de coescritura; primero redacta un capítulo. Los problemas de canon que aparecen a continuación funcionarán de todos modos.",
     "setupWork": "Configurar escritura",
     "settingUpWork": "Configurando…",
+    "setupWorkError": "No se pudo configurar la escritura. Inténtalo de nuevo.",
+    "setupWorkPending": "La escritura se ha configurado, pero su proyecto de conocimiento aún se está preparando. Inténtalo de nuevo en breve.",
     "setupWorkRetry": "Reintentar",
     "pickModel": "Elige un modelo para analizar con...",
     "pickChapter": "Elige un capítulo",
@@ -985,9 +988,7 @@
     "conformanceTitle": "Conformidad",
     "conformanceDesc": "¿Cumplió la prosa con el plan? Seguimiento de beats por escena",
     "pickModelRerun": "Elige un modelo para volver a ejecutar con…",
-    "pickChapterConformanceHint": "Elige un capítulo arriba para rastrear cómo su prosa cumplió con el plan.",
-    "setupWorkError": "No se pudo configurar la escritura. Inténtalo de nuevo.",
-    "setupWorkPending": "La escritura se ha configurado, pero su proyecto de conocimiento aún se está preparando. Inténtalo de nuevo en breve."
+    "pickChapterConformanceHint": "Elige un capítulo arriba para rastrear cómo su prosa cumplió con el plan."
   },
   "sidebar": {
     "collapse": "Contraer",

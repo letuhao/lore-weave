@@ -394,7 +394,8 @@
     "whatif-canvas": {
       "title": "What-If Branches",
       "desc": "Explore alternate takes on a scene without committing — branch, generate an alt-take, compare, then promote the winner",
-      "guideBody": "The what-if canvas lets you fork a scene into an ephemeral branch, generate an alternate take, and see the critic's judge badges side by side — all without touching the canonical draft. When a branch is the one you want, promote it: it becomes a real derivative work you can keep writing from. Nothing is saved until you promote, so you can explore freely. This is the editing surface behind the Promote button; the Plan Hub shows the plan graph, this is where you try alternatives on it."
+      "guideBody": "The what-if canvas lets you fork a scene into an ephemeral branch, generate an alternate take, and see the critic's judge badges side by side — all without touching the canonical draft. When a branch is the one you want, promote it: it becomes a real derivative work you can keep writing from. Nothing is saved until you promote, so you can explore freely. This is the editing surface behind the Promote button; the Plan Hub shows the plan graph, this is where you try alternatives on it.",
+      "noPlan": "This book has no plan yet — lay out its arcs and chapters first, then explore “what if” branches here."
     },
     "divergence": {
       "title": "What-if versions",
@@ -622,7 +623,7 @@
       "title": "Place Graph",
       "desc": "The book's places (locations) as a draggable node graph",
       "guideBody": "Add and connect the book's places (locations) as a node graph. Type a name and press + Place to author a location; toggle Link places, pick two nodes and a predicate (contains / borders / route_to) to connect them; drag to arrange (saved server-side, shared across your devices); set a backdrop image (needs an open chapter). Click a node to open it in the Cast codex. Locations only — use Author other kinds to add characters, items, and the rest.",
-      "noWork": "Set up the co-writer in Compose to arrange places.",
+      "noWork": "Writing isn't set up for this book yet — set it up to arrange its places here.",
       "openCompose": "Open Compose",
       "loading": "Loading world map…",
       "authorOther": "Author other kinds →"

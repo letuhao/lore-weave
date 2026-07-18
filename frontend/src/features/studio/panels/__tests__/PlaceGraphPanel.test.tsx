@@ -44,6 +44,15 @@ vi.mock('@/features/composition/components/WorldMap', () => ({
   },
 }));
 
+// Part A — the no-Work state now renders the shared onboarding door (create-Work in place), not the
+// old redirect-to-Compose. The door's own behaviour is tested in BookNotReadyDoor.test; here we only
+// prove PlaceGraphPanel WIRES it with need="work" instead of punting the user to Compose.
+vi.mock('../BookNotReadyDoor', () => ({
+  BookNotReadyDoor: (p: { need: string; testId?: string; bookId?: string }) => (
+    <div data-testid={p.testId ?? 'book-not-ready'} data-need={p.need} data-book={p.bookId ?? ''} />
+  ),
+}));
+
 import { PlaceGraphPanel } from '../PlaceGraphPanel';
 
 const props = { api: {} } as never;
@@ -57,15 +66,16 @@ beforeEach(() => {
 });
 
 describe('PlaceGraphPanel (S7-3)', () => {
-  it('shows the no-Work state (with an Open Compose CTA) and NEVER mounts the leaf with a null Work', () => {
+  it('shows the no-Work onboarding door (create-Work in place, not a Compose redirect) and NEVER mounts the leaf', () => {
     resolution = { status: 'not_found', work: null };
     render(<PlaceGraphPanel {...props} />);
-    expect(screen.getByTestId('studio-place-graph-panel')).toBeInTheDocument();
-    expect(screen.getByTestId('place-graph-nowork')).toBeInTheDocument();
+    const door = screen.getByTestId('studio-place-graph-panel');
+    expect(door).toBeInTheDocument();
+    expect(door.getAttribute('data-need')).toBe('work'); // the create-Work door, not a redirect
+    expect(door.getAttribute('data-book')).toBe('book-1');
     expect(screen.queryByTestId('worldmap-leaf')).not.toBeInTheDocument();
-
-    fireEvent.click(screen.getByTestId('place-graph-setup-cowriter'));
-    expect(openPanel).toHaveBeenCalledWith('compose');
+    // it must NOT punt the user to Compose any more (that was the old dead-end pattern)
+    expect(openPanel).not.toHaveBeenCalledWith('compose');
   });
 
   it('shows a loading state while the Work resolves (and does not mount the leaf)', () => {

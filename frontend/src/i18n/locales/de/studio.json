@@ -394,7 +394,8 @@
     "whatif-canvas": {
       "title": "Was-wäre-wenn-Zweige",
       "desc": "Erforschen Sie alternative Szenen-Versionen, ohne sich festzulegen – verzweigen, eine Alternative generieren, vergleichen und dann den Gewinner übernehmen",
-      "guideBody": "Mit der What-if-Leinwand kannst du eine Szene in einen flüchtigen Zweig aufteilen, eine alternative Fassung erstellen und die Urteils-Badges des Kritikers nebeneinander sehen – und das alles, ohne den kanonischen Entwurf zu verändern. Wenn ein Zweig der richtige ist, kannst du ihn „promoten“: Er wird zu einem echten derivativen Werk, an dem du weiterarbeiten kannst. Es wird nichts gespeichert, bevor du ihn promotest, sodass du völlig frei experimentieren kannst. Dies ist die Bearbeitungsoberfläche hinter der Schaltfläche „Promoten“; während der Plan-Hub den Plan-Graphen anzeigt, ist dies der Ort, an dem du Alternativen daran ausprobierst."
+      "guideBody": "Mit der What-if-Leinwand kannst du eine Szene in einen flüchtigen Zweig aufteilen, eine alternative Fassung erstellen und die Urteils-Badges des Kritikers nebeneinander sehen – und das alles, ohne den kanonischen Entwurf zu verändern. Wenn ein Zweig der richtige ist, kannst du ihn „promoten“: Er wird zu einem echten derivativen Werk, an dem du weiterarbeiten kannst. Es wird nichts gespeichert, bevor du ihn promotest, sodass du völlig frei experimentieren kannst. Dies ist die Bearbeitungsoberfläche hinter der Schaltfläche „Promoten“; während der Plan-Hub den Plan-Graphen anzeigt, ist dies der Ort, an dem du Alternativen daran ausprobierst.",
+      "noPlan": "Dieses Buch hat noch keinen Plan – lege zuerst die Handlungsbögen und Kapitel fest und erkunde dann hier die „Was wäre wenn“-Verzweigungen."
     },
     "divergence": {
       "title": "Was-wäre-Versionen",
@@ -622,10 +623,10 @@
       "title": "Orts-Graph",
       "desc": "Die Schauplätze (Orte) des Buches als verschiebbarer Knotengraph",
       "guideBody": "Fügen Sie die Schauplätze (Orte) des Buches als Knotengraph hinzu und verbinden Sie diese. Geben Sie einen Namen ein und drücken Sie + Ort, um einen Schauplatz zu erstellen; aktivieren Sie „Orte verknüpfen“, wählen Sie zwei Knoten und ein Prädikat (enthält / grenzt an / führt nach) aus, um sie zu verbinden; ziehen Sie die Knoten an, um sie anzuordnen (serverseitig gespeichert, geräteübergreifend verfügbar); legen Sie ein Hintergrundbild fest (erfordert ein geöffnetes Kapitel). Klicken Sie auf einen Knoten, um ihn im Cast-Codex zu öffnen. Nur Orte – verwenden Sie „Andere Arten erstellen“, um Charaktere, Gegenstände und den Rest hinzuzufügen.",
-      "noWork": "Richten Sie den Co-Autor in „Compose“ ein, um Orte anzuordnen.",
       "openCompose": "Compose öffnen",
       "loading": "Weltkarte wird geladen…",
-      "authorOther": "Andere Arten erstellen →"
+      "authorOther": "Andere Arten erstellen →",
+      "noWork": "Das Schreiben ist für dieses Buch noch nicht eingerichtet – richte es ein, um die Orte hier anzuordnen."
     },
     "cast": {
       "title": "Cast",
@@ -941,6 +942,8 @@
     "hubNoWorkHint": "Versprechen, Kritiker-Scores und Story-Abdeckung erfordern eine Co-Writer-Session – beginne zuerst mit dem Schreiben eines Kapitels. Die unten aufgeführten Kanon-Probleme funktionieren in jedem Fall.",
     "setupWork": "Schreiben einrichten",
     "settingUpWork": "Einrichten…",
+    "setupWorkError": "Schreiben konnte nicht eingerichtet werden. Versuchen Sie es erneut.",
+    "setupWorkPending": "Das Schreiben wurde eingerichtet, aber das Wissensprojekt wird noch vorbereitet. Versuchen Sie es in Kürze erneut.",
     "setupWorkRetry": "Wiederholen",
     "pickModel": "Wähle ein Modell zur Analyse aus…",
     "pickChapter": "Wähle ein Kapitel",
@@ -985,9 +988,7 @@
     "conformanceTitle": "Konformität",
     "conformanceDesc": "Hat der Text den Plan umgesetzt? Beat-Verfolgung pro Szene",
     "pickModelRerun": "Wählen Sie ein Modell für den erneuten Durchlauf aus…",
-    "pickChapterConformanceHint": "Wählen Sie oben ein Kapitel aus, um zu prüfen, wie dessen Text den Plan umgesetzt hat.",
-    "setupWorkError": "Schreiben konnte nicht eingerichtet werden. Versuchen Sie es erneut.",
-    "setupWorkPending": "Das Schreiben wurde eingerichtet, aber das Wissensprojekt wird noch vorbereitet. Versuchen Sie es in Kürze erneut."
+    "pickChapterConformanceHint": "Wählen Sie oben ein Kapitel aus, um zu prüfen, wie dessen Text den Plan umgesetzt hat."
   },
   "sidebar": {
     "collapse": "Einklappen",

@@ -17,7 +17,7 @@ import { resolveActiveWork } from '@/features/composition/workSelect';
 
 import { useStudioHost } from '../host/StudioHostProvider';
 import { useStudioPanel } from './useStudioPanel';
-import { WorkSetupCta } from './WorkSetupCta';
+import { BookNotReadyDoor } from './BookNotReadyDoor';
 
 export function StyleVoiceStudioPanel(props: IDockviewPanelProps) {
   useStudioPanel('style-voice', props.api);
@@ -29,19 +29,17 @@ export function StyleVoiceStudioPanel(props: IDockviewPanelProps) {
   const work = resolveActiveWork(resolution.data, activeWorkId);
 
   if (!work?.project_id) {
-    // F10 — mount the existing idempotent create-Work CTA and de-jargon the copy (see ReferenceShelf).
+    // F10 / Part A — the shared onboarding door.
     return (
-      <div
-        data-testid="style-voice-nowork"
-        className="flex h-full flex-col items-center justify-center gap-3 p-6 text-center text-sm text-muted-foreground"
-      >
-        <p className="max-w-xs">
-          {t('panels.style-voice.noWork', {
-            defaultValue: "Writing isn't set up for this book yet — set it up to steer its style & voice here.",
-          })}
-        </p>
-        <WorkSetupCta bookId={host.bookId} token={accessToken} />
-      </div>
+      <BookNotReadyDoor
+        need="work"
+        bookId={host.bookId}
+        token={accessToken}
+        testId="style-voice-nowork"
+        message={t('panels.style-voice.noWork', {
+          defaultValue: "Writing isn't set up for this book yet — set it up to steer its style & voice here.",
+        })}
+      />
     );
   }
   return (
