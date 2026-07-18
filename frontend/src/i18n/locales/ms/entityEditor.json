@@ -16,6 +16,11 @@
       "translations": "{{count}} terjemahan",
       "evidences": "{{count}} bukti"
     },
+    "scope_label": {
+      "placeholder": "Disambigukan (cth. dunia/alam)...",
+      "aria": "Label skop — menjelaskan entiti bernama sama dalam konteks cerita yang berbeza",
+      "duplicate": "Entiti dengan nama, jenis, dan skop ini sudah wujud dalam buku ini"
+    },
     "tab": {
       "attributes": "Atribut",
       "evidences": "Bukti",
@@ -35,16 +40,19 @@
       "status_changed": "Status ditukar kepada {{status}}",
       "invalid_lang": "Kod bahasa tidak sah (cth. en, zh, zh-tw)"
     },
-    "scope_label": {
-      "placeholder": "Disambigukan (cth. dunia/alam)...",
-      "aria": "Label skop — menjelaskan entiti bernama sama dalam konteks cerita yang berbeza",
-      "duplicate": "Entiti dengan nama, jenis, dan skop ini sudah wujud dalam buku ini"
-    }
+    "remove_attr_confirm": "Padam nilai atribut ini? Anda boleh menambahnya semula kemudian.",
+    "remove_attr_success": "Nilai atribut telah dipadam",
+    "add_attr_heading": "Tambah nilai untuk atribut lain",
+    "add_attr_pick": "Pilih atribut…",
+    "add_attr_value_placeholder": "Nilai",
+    "add_attr_button": "Tambah",
+    "add_attr_success": "Atribut ditambah"
   },
   "attr_card": {
     "required": "*wajib",
     "modified": "diubah suai",
-    "has_translations": "Mempunyai terjemahan"
+    "has_translations": "Mempunyai terjemahan",
+    "remove": "Padam nilai ini"
   },
   "translation_row": {
     "confidence": {

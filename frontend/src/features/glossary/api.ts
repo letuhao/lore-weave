@@ -484,6 +484,33 @@ export const glossaryApi = {
     );
   },
 
+  // S-06 — add a value for an attr-def added to the ontology AFTER this entity existed (the
+  // "add-later" path that was MCP-only). 409 if a value row already exists (edit it via PATCH).
+  addAttributeValue(
+    bookId: string,
+    entityId: string,
+    payload: { attribute_def_id: string; value: string },
+    token: string,
+  ) {
+    return apiJson(
+      `${BASE}/books/${bookId}/entities/${entityId}/attributes`,
+      { method: 'POST', body: JSON.stringify(payload), token },
+    );
+  },
+
+  // S-06 — remove a value ROW entirely (distinct from PATCH-to-empty which keeps a blank row).
+  deleteAttributeValue(
+    bookId: string,
+    entityId: string,
+    attrValueId: string,
+    token: string,
+  ) {
+    return apiJson<void>(
+      `${BASE}/books/${bookId}/entities/${entityId}/attributes/${attrValueId}`,
+      { method: 'DELETE', token },
+    );
+  },
+
   // ── Attribute Translations ────────────────────────────────────────────────
 
   createTranslation(

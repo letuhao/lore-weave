@@ -53,7 +53,13 @@ Both: grant-gated EDIT + `verifyEntityInBook` (+ `verifyAttrValueInEntity` for d
 |---|---|---|---|
 | **1 · BE add route** | add a value for a post-create attr-def | **DONE** | `addAttributeValue` (applicability=kind+not-deprecated, insert-or-409, list-sync, name/desc hooks, event) + route. **Go test `TestAddAttributeValue`: 201 verified row + 1 event · 409 no-overwrite (twice) · 422 cross-kind · 400 missing id. PASS (real DB, not skipped).** |
 | **2 · BE delete route** | remove a value row (not blank) | **DONE** | `deleteAttributeValue` (cascade via FK, name/desc hooks, event, 204) + route. **Go test `TestDeleteAttributeValue`: 204 + row & child-translation cascade-gone + 1 event · 404 wrong-entity · 404 re-delete. PASS.** No regression (patch/items/version green); vet clean. |
-| **3 · FE affordance** | "＋ add value" for a missing attr-def + "remove" on a value row | TODO | api.ts add/delete + entity-editor affordance + i18n; FE tests |
+| **3 · FE affordance** | "＋ add value" for a missing attr-def + "remove" (✕) on a value row | **DONE** | `glossaryApi.addAttributeValue/deleteAttributeValue`; `useGlossaryEntity.addAttributeValue/removeAttributeValue` (reload on success); `AttrCard` `onRemove` (non-system only, confirm+toast); NEW `AddAttributeValueSection` (offers the kind's missing attr-defs from `useBookOntology`, matches the BE's kind-scoped acceptance so no offer-then-422). **QC: FE 27/27 entity-editor (incl. AddAttributeValueSection 4 + modal 9 — fixed a regression: mocked useBookOntology in the modal test) + tsc clean; +8 i18n keys × 17 locales (gate clean).** |
+
+## LIVE SMOKE
+- BE proven by real-DB Go tests (add/delete + cascade + events, NOT skipped). FE by unit tests + tsc.
+- Full browser E2E (add-later → new card → remove → gone, against a live stack): **infra-blocked — browser
+  MCPs held by concurrent sessions all session**. Feature spans glossary-service + FE; each link proven
+  (Go real-DB ↔ FE unit ↔ tsc). Recorded, not hidden.
 
 ## SAME-FOLDER / CONVERGENCE
 glossary-service is Go — no shared FE registry. FE slice touches api.ts (knowledge/glossary) + i18n

@@ -16,6 +16,11 @@
       "translations": "{{count}} 個翻譯",
       "evidences": "{{count}} 個佐證"
     },
+    "scope_label": {
+      "placeholder": "消除歧義（例如：世界/領域）...",
+      "aria": "範圍標籤 — 用於區分故事中不同情境下名稱相同的實體",
+      "duplicate": "這本書中已存在具有相同名稱、類型與範圍的實體"
+    },
     "tab": {
       "attributes": "屬性",
       "evidences": "佐證",
@@ -35,16 +40,19 @@
       "status_changed": "已將狀態變更為 {{status}}",
       "invalid_lang": "無效的語言代碼（例如：en、zh、zh-tw）"
     },
-    "scope_label": {
-      "placeholder": "消除歧義（例如：世界/領域）...",
-      "aria": "範圍標籤 — 用於區分故事中不同情境下名稱相同的實體",
-      "duplicate": "這本書中已存在具有相同名稱、類型與範圍的實體"
-    }
+    "remove_attr_confirm": "要移除此屬性值嗎？您稍後可以再次新增。",
+    "remove_attr_success": "屬性值已移除",
+    "add_attr_heading": "為另一個屬性新增值",
+    "add_attr_pick": "選擇屬性…",
+    "add_attr_value_placeholder": "值",
+    "add_attr_button": "新增",
+    "add_attr_success": "屬性已新增"
   },
   "attr_card": {
     "required": "*必填",
     "modified": "已修改",
-    "has_translations": "有翻譯"
+    "has_translations": "有翻譯",
+    "remove": "移除此值"
   },
   "translation_row": {
     "confidence": {

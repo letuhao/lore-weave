@@ -118,6 +118,28 @@ export function useGlossaryEntity(bookId: string, entityId: string) {
     setEntity((prev) => (prev ? { ...prev, evidence_count: prev.evidence_count + delta } : prev));
   };
 
+  // S-06 — add a value for a kind attr-def the entity has NO row for yet (added to the ontology
+  // after this entity was created; until now only the MCP path could fill it). Reload so the new
+  // editable card appears. Errors propagate to the caller (a toast, like save/setStatus).
+  const addAttributeValue = async (attributeDefId: string, value: string) => {
+    if (!accessToken || !entity) return;
+    await glossaryApi.addAttributeValue(bookId, entityId, { attribute_def_id: attributeDefId, value }, accessToken);
+    await reload();
+  };
+
+  // S-06 — remove a value ROW entirely (distinct from blanking it to empty). Drop any pending
+  // edit for it, then reload so the card disappears.
+  const removeAttributeValue = async (attrValueId: string) => {
+    if (!accessToken || !entity) return;
+    await glossaryApi.deleteAttributeValue(bookId, entityId, attrValueId, accessToken);
+    setPendingChanges((prev) => {
+      const m = new Map(prev);
+      m.delete(attrValueId);
+      return m;
+    });
+    await reload();
+  };
+
   return {
     entity,
     loading,
@@ -133,6 +155,8 @@ export function useGlossaryEntity(bookId: string, entityId: string) {
     reload,
     applyTranslationChange,
     bumpEvidenceCount,
+    addAttributeValue,
+    removeAttributeValue,
   };
 }
 

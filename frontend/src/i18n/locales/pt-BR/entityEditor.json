@@ -16,6 +16,11 @@
       "translations": "{{count}} traduções",
       "evidences": "{{count}} evidências"
     },
+    "scope_label": {
+      "placeholder": "Desambiguar (ex: mundo/reino)...",
+      "aria": "Rótulo de escopo — desambigua entidades com o mesmo nome em diferentes contextos da história",
+      "duplicate": "Uma entidade com este nome, tipo e escopo já existe neste livro"
+    },
     "tab": {
       "attributes": "Atributos",
       "evidences": "Evidências",
@@ -35,16 +40,19 @@
       "status_changed": "Status alterado para {{status}}",
       "invalid_lang": "Código de idioma inválido (ex: en, zh, zh-tw)"
     },
-    "scope_label": {
-      "placeholder": "Desambiguar (ex: mundo/reino)...",
-      "aria": "Rótulo de escopo — desambigua entidades com o mesmo nome em diferentes contextos da história",
-      "duplicate": "Uma entidade com este nome, tipo e escopo já existe neste livro"
-    }
+    "remove_attr_confirm": "Remover este valor de atributo? Você pode adicioná-lo novamente mais tarde.",
+    "remove_attr_success": "Valor do atributo removido",
+    "add_attr_heading": "Adicionar um valor para outro atributo",
+    "add_attr_pick": "Escolher um atributo…",
+    "add_attr_value_placeholder": "Valor",
+    "add_attr_button": "Adicionar",
+    "add_attr_success": "Atributo adicionado"
   },
   "attr_card": {
     "required": "*obrigatório",
     "modified": "modificado",
-    "has_translations": "Possui traduções"
+    "has_translations": "Possui traduções",
+    "remove": "Remover este valor"
   },
   "translation_row": {
     "confidence": {

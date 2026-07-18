@@ -17,6 +17,11 @@ const apiMocks = vi.hoisted(() => ({
   patchEntity: vi.fn(),
 }));
 vi.mock('@/features/glossary/api', () => ({ glossaryApi: apiMocks }));
+// S-06 — the modal now mounts AddAttributeValueSection, which reads the book ontology via
+// react-query. Stub it (empty ⇒ the add-section renders nothing) so these tests need no QueryClient.
+vi.mock('@/features/glossary/hooks/useBookOntology', () => ({
+  useBookOntology: () => ({ ontology: { genres: [], kinds: [], attributes: [] }, isLoading: false }),
+}));
 
 import { toast } from 'sonner';
 import { EntityEditorModal } from '../EntityEditorModal';

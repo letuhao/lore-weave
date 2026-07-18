@@ -39,12 +39,20 @@
       "saved": "Entity saved",
       "status_changed": "Status changed to {{status}}",
       "invalid_lang": "Invalid language code (e.g. en, zh, zh-tw)"
-    }
+    },
+    "remove_attr_confirm": "Remove this attribute value? You can add it again later.",
+    "remove_attr_success": "Attribute value removed",
+    "add_attr_heading": "Add a value for another attribute",
+    "add_attr_pick": "Pick an attribute…",
+    "add_attr_value_placeholder": "Value",
+    "add_attr_button": "Add",
+    "add_attr_success": "Attribute added"
   },
   "attr_card": {
     "required": "*required",
     "modified": "modified",
-    "has_translations": "Has translations"
+    "has_translations": "Has translations",
+    "remove": "Remove this value"
   },
   "translation_row": {
     "confidence": {

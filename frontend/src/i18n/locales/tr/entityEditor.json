@@ -16,6 +16,11 @@
       "translations": "{{count}} çeviri",
       "evidences": "{{count}} kanıt"
     },
+    "scope_label": {
+      "placeholder": "Belirsizliği giderin (örn. dünya/alem)...",
+      "aria": "Kapsam etiketi — hikaye içindeki farklı bağlamlarda aynı isme sahip varlıkları birbirinden ayırır",
+      "duplicate": "Bu isme, türe ve kapsama sahip bir varlık bu kitapta zaten mevcut"
+    },
     "tab": {
       "attributes": "Öznitelikler",
       "evidences": "Kanıtlar",
@@ -35,16 +40,19 @@
       "status_changed": "Durum {{status}} olarak değiştirildi",
       "invalid_lang": "Geçersiz dil kodu (örn. en, zh, zh-tw)"
     },
-    "scope_label": {
-      "placeholder": "Belirsizliği giderin (örn. dünya/alem)...",
-      "aria": "Kapsam etiketi — hikaye içindeki farklı bağlamlarda aynı isme sahip varlıkları birbirinden ayırır",
-      "duplicate": "Bu isme, türe ve kapsama sahip bir varlık bu kitapta zaten mevcut"
-    }
+    "remove_attr_confirm": "Bu öznitelik değerini silmek istiyor musunuz? Daha sonra tekrar ekleyebilirsiniz.",
+    "remove_attr_success": "Öznitelik değeri silindi",
+    "add_attr_heading": "Başka bir öznitelik için değer ekle",
+    "add_attr_pick": "Bir öznitelik seçin…",
+    "add_attr_value_placeholder": "Değer",
+    "add_attr_button": "Ekle",
+    "add_attr_success": "Öznitelik eklendi"
   },
   "attr_card": {
     "required": "*zorunlu",
     "modified": "değiştirildi",
-    "has_translations": "Çevirileri var"
+    "has_translations": "Çevirileri var",
+    "remove": "Bu değeri sil"
   },
   "translation_row": {
     "confidence": {

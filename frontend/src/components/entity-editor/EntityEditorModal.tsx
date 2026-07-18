@@ -11,6 +11,7 @@ import { getLanguageName } from '@/lib/languages';
 import { Skeleton } from '@/components/shared/Skeleton';
 import { LanguagePicker } from '@/components/shared';
 import { AttrCard } from './AttrCard';
+import { AddAttributeValueSection } from './AddAttributeValueSection';
 import { SummarizeAttrBody } from './SummarizeAttrBody';
 import { AttrTranslationRow } from './AttrTranslationRow';
 import { getCardComponent, SHORT_TYPES } from './cardRegistry';
@@ -72,6 +73,19 @@ export function EntityEditorModal({ bookId, entityId, bookGenreTags = [], kindGe
   // no manual keydown listener needed (DOCK-9 adoption also buys us this for free).
 
   const handleChange = (attrValueId: string, value: string) => glossaryEntity.setValue(attrValueId, value);
+
+  // S-06 — remove a value ROW entirely (confirmed; distinct from blanking it to empty). The hook
+  // reloads the entity so the card drops; onSaved refreshes the parent list snapshot.
+  const handleRemoveAttr = async (attrValueId: string) => {
+    if (!window.confirm(t('modal.remove_attr_confirm', { defaultValue: 'Remove this attribute value? You can add it again later.' }))) return;
+    try {
+      await glossaryEntity.removeAttributeValue(attrValueId);
+      toast.success(t('modal.remove_attr_success', { defaultValue: 'Attribute value removed' }));
+      onSaved();
+    } catch (e) {
+      toast.error((e as Error).message);
+    }
+  };
 
   const handleSave = async () => {
     try {
@@ -372,8 +386,19 @@ export function EntityEditorModal({ bookId, entityId, bookGenreTags = [], kindGe
                       displayLanguage={displayLanguage}
                       bookOriginalLanguage={bookOriginalLanguage}
                       bookId={bookId} entityId={entityId} onTranslationChanged={handleTranslationChanged}
+                      onRemove={handleRemoveAttr}
                     />
                   </>
+                )}
+
+                {/* S-06 — add a value for an attr-def the entity is missing (add-later). */}
+                {!viewTranslationMode && entity && (
+                  <AddAttributeValueSection
+                    bookId={bookId}
+                    entity={entity}
+                    onAdd={glossaryEntity.addAttributeValue}
+                    onAdded={onSaved}
+                  />
                 )}
 
                 {sortedAttrs.length === 0 && (
@@ -455,7 +480,7 @@ function SectionLabel({ color, children }: { color: 'info' | 'primary'; children
   );
 }
 
-function AttrGrid({ attrs, getValue, onChange, pendingChanges, translationLang, viewTranslationMode, displayLanguage, bookOriginalLanguage, bookId, entityId, onTranslationChanged }: {
+function AttrGrid({ attrs, getValue, onChange, pendingChanges, translationLang, viewTranslationMode, displayLanguage, bookOriginalLanguage, bookId, entityId, onTranslationChanged, onRemove }: {
   attrs: AttributeValue[];
   getValue: (attr: AttributeValue) => string;
   onChange: (id: string, value: string) => void;
@@ -467,6 +492,8 @@ function AttrGrid({ attrs, getValue, onChange, pendingChanges, translationLang, 
   bookId: string;
   entityId: string;
   onTranslationChanged: (attrValueId: string, updated: Translation | null, oldTranslationId?: string) => void;
+  // S-06 — remove a value row (non-system attrs only). Absent ⇒ no remove button.
+  onRemove?: (attrValueId: string) => void;
 }) {
   const { t } = useTranslation('entityEditor');
   const rendered: ReactNode[] = [];
@@ -528,6 +555,8 @@ function AttrGrid({ attrs, getValue, onChange, pendingChanges, translationLang, 
         modified={modified}
         hasTranslations={hasTranslations}
         translationSlot={translationSlot}
+        // S-06 — only non-system attrs are removable (name/description etc. are structural).
+        onRemove={!def.is_system && onRemove ? () => onRemove(attr.attr_value_id) : undefined}
       >
         {!viewTranslationMode && (
           def.merge_strategy === 'summarize' ? (

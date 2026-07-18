@@ -16,6 +16,11 @@
       "translations": "{{count}} bản dịch",
       "evidences": "{{count}} dẫn chứng"
     },
+    "scope_label": {
+      "placeholder": "Phân biệt (ví dụ: thế giới/cõi)...",
+      "aria": "Nhãn phạm vi — dùng để phân biệt các thực thể trùng tên trong các ngữ cảnh khác nhau của câu chuyện",
+      "duplicate": "Một thực thể có cùng tên, loại và phạm vi này đã tồn tại trong cuốn sách này"
+    },
     "tab": {
       "attributes": "Thuộc tính",
       "evidences": "Dẫn chứng",
@@ -35,16 +40,19 @@
       "status_changed": "Đã đổi trạng thái thành {{status}}",
       "invalid_lang": "Mã ngôn ngữ không hợp lệ (ví dụ: en, zh, zh-tw)"
     },
-    "scope_label": {
-      "placeholder": "Phân biệt (ví dụ: thế giới/cõi)...",
-      "aria": "Nhãn phạm vi — dùng để phân biệt các thực thể trùng tên trong các ngữ cảnh khác nhau của câu chuyện",
-      "duplicate": "Một thực thể có cùng tên, loại và phạm vi này đã tồn tại trong cuốn sách này"
-    }
+    "remove_attr_confirm": "Xóa giá trị thuộc tính này? Bạn có thể thêm lại sau.",
+    "remove_attr_success": "Đã xóa giá trị thuộc tính",
+    "add_attr_heading": "Thêm giá trị cho một thuộc tính khác",
+    "add_attr_pick": "Chọn một thuộc tính…",
+    "add_attr_value_placeholder": "Giá trị",
+    "add_attr_button": "Thêm",
+    "add_attr_success": "Đã thêm thuộc tính"
   },
   "attr_card": {
     "required": "*bắt buộc",
     "modified": "đã sửa",
-    "has_translations": "Có bản dịch"
+    "has_translations": "Có bản dịch",
+    "remove": "Xóa giá trị này"
   },
   "translation_row": {
     "confidence": {

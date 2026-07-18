@@ -16,6 +16,11 @@
       "translations": "{{count}} 条翻译",
       "evidences": "{{count}} 条证据"
     },
+    "scope_label": {
+      "placeholder": "消除歧义（例如：世界/领域）...",
+      "aria": "范围标签 — 用于区分不同故事语境下名称相同的实体",
+      "duplicate": "本书中已存在具有相同名称、类型和范围的实体"
+    },
     "tab": {
       "attributes": "属性",
       "evidences": "证据",
@@ -35,16 +40,19 @@
       "status_changed": "状态已更改为 {{status}}",
       "invalid_lang": "无效的语言代码 (例如 en, zh, zh-tw)"
     },
-    "scope_label": {
-      "placeholder": "消除歧义（例如：世界/领域）...",
-      "aria": "范围标签 — 用于区分不同故事语境下名称相同的实体",
-      "duplicate": "本书中已存在具有相同名称、类型和范围的实体"
-    }
+    "remove_attr_confirm": "移除此属性值？您稍后可以再次添加。",
+    "remove_attr_success": "属性值已移除",
+    "add_attr_heading": "为另一个属性添加值",
+    "add_attr_pick": "选择属性…",
+    "add_attr_value_placeholder": "值",
+    "add_attr_button": "添加",
+    "add_attr_success": "属性已添加"
   },
   "attr_card": {
     "required": "*必填",
     "modified": "已修改",
-    "has_translations": "包含翻译"
+    "has_translations": "包含翻译",
+    "remove": "移除此值"
   },
   "translation_row": {
     "confidence": {
