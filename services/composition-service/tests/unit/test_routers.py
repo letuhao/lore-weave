@@ -576,6 +576,25 @@ def test_resolve_candidates_serializes_marked_works(ctx):
     assert {w["project_id"] for w in body["candidates"]} == {str(w1.project_id), str(w2.project_id)}
 
 
+def test_list_book_derivatives(ctx):
+    """S-09 W4 — a book's Works (canon + derivatives) with is_canonical + the dị bản name/branch."""
+    c, works, _, _, _ = ctx
+    canon = _work(project_id=uuid.uuid4())  # source_work_id None → canonical
+    deriv = _work(project_id=uuid.uuid4())
+    deriv.source_work_id = uuid.uuid4()
+    deriv.branch_point = 3
+    deriv.settings = {"derivative_name": "What if Kai stayed"}
+    works.marked = [canon, deriv]
+    r = c.get(f"/v1/composition/books/{BOOK}/derivatives")
+    assert r.status_code == 200
+    rows = r.json()["works"]
+    assert len(rows) == 2
+    canon_row = next(w for w in rows if w["is_canonical"])
+    deriv_row = next(w for w in rows if not w["is_canonical"])
+    assert canon_row["name"] is None
+    assert deriv_row["name"] == "What if Kai stayed" and deriv_row["branch_point"] == 3
+
+
 # ── C23 (dị bản) derive ──
 
 def _derive_body(**kw):

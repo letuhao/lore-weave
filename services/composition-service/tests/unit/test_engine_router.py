@@ -76,6 +76,15 @@ class StubJobs:
     async def get(self, jid): return self.job
 
 
+class StubCorrections:
+    """S-09 W1 — list_for_job returns the rows a test sets; correction_stats keeps the
+    existing route happy (unused here)."""
+    def __init__(self): self.rows: list = []
+    async def list_for_job(self, project_id, job_id): return list(self.rows)
+    async def correction_stats(self, project_id):
+        return SimpleNamespace(model_dump=lambda mode=None: {})
+
+
 @pytest.fixture
 def ctx(monkeypatch):
     monkeypatch.setattr("app.main.create_pool", AsyncMock())
@@ -108,7 +117,8 @@ def ctx(monkeypatch):
 
     from app.main import app
     from app.deps import (get_book_client_dep, get_canon_rules_repo, get_derivatives_repo,
-                          get_embedding_client_dep, get_generation_jobs_repo,
+                          get_embedding_client_dep, get_generation_corrections_repo,
+                          get_generation_jobs_repo,
                           get_glossary_client_dep, get_grant_client_dep,
                           get_grounding_pins_repo,
                           get_knowledge_client_dep, get_llm_client_dep,
@@ -127,6 +137,9 @@ def ctx(monkeypatch):
             return GrantLevel.OWNER, "active"
 
     works, outline, canon, jobs = StubWorks(), StubOutline(), StubCanon(), StubJobs()
+    corrections = StubCorrections()
+    captured["corrections"] = corrections  # so a test can set corrections.rows (yield tuple is fixed)
+    app.dependency_overrides[get_generation_corrections_repo] = lambda: corrections
     app.dependency_overrides[get_current_user] = lambda: USER
     app.dependency_overrides[get_bearer_token] = lambda: "jwt"
     app.dependency_overrides[get_grant_client_dep] = lambda: _StubGrant()
@@ -971,3 +984,20 @@ def test_suggest_motifs_404_for_node_in_another_work(ctx, monkeypatch):
     monkeypatch.setattr("app.routers.engine.MotifRetriever", lambda pool: None)  # never reached
     r = c.get(f"/v1/composition/works/{PROJECT}/scenes/{NODE}/suggest-motifs")
     assert r.status_code == 404
+
+
+def test_list_job_corrections(ctx):
+    """S-09 W1 — the individual corrections recorded on a generation job (VIEW-gated);
+    empty for a job with none, and returns the rows newest-first as the repo yields them."""
+    c, works, outline, canon, jobs, judge_stub, captured = ctx
+    corrections = captured["corrections"]
+    job_id = uuid.uuid4()
+    # empty when the job has no corrections
+    r = c.get(f"/v1/composition/works/{PROJECT}/jobs/{job_id}/corrections")
+    assert r.status_code == 200 and r.json()["corrections"] == []
+    # returns each correction the repo yields
+    corrections.rows = [SimpleNamespace(model_dump=lambda mode=None: {"id": "c1", "action": "edit"})]
+    r = c.get(f"/v1/composition/works/{PROJECT}/jobs/{job_id}/corrections")
+    assert r.status_code == 200
+    body = r.json()["corrections"]
+    assert len(body) == 1 and body[0]["action"] == "edit"

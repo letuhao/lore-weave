@@ -1896,3 +1896,21 @@ async def correction_stats(
     await _gate_work(works, grant, user_id, project_id, GrantLevel.VIEW)
     stats = await corrections.correction_stats(project_id)
     return stats.model_dump(mode="json")
+
+
+@router.get("/works/{project_id}/jobs/{job_id}/corrections")
+async def list_job_corrections(
+    project_id: UUID,
+    job_id: UUID,
+    user_id: UUID = Depends(get_current_user),
+    works: WorksRepo = Depends(get_works_repo),
+    corrections: GenerationCorrectionsRepo = Depends(get_generation_corrections_repo),
+    grant: GrantClient = Depends(get_grant_client_dep),
+) -> dict[str, Any]:
+    """S-09 W1 — the INDIVIDUAL corrections a human recorded on a generation job (what they
+    actually changed — accept/edit/pick/regenerate/reject with the prose), not just the
+    accept-rate aggregate that `correction-stats` surfaces. Newest first, project-scoped.
+    VIEW grant on the Work's book. Append-only preference log — no update/delete (by design)."""
+    await _gate_work(works, grant, user_id, project_id, GrantLevel.VIEW)
+    rows = await corrections.list_for_job(project_id, job_id)
+    return {"corrections": [r.model_dump(mode="json") for r in rows]}

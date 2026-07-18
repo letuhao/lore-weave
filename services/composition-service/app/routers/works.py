@@ -457,6 +457,34 @@ async def get_work(
     return work.model_dump(mode="json")
 
 
+@router.get("/books/{book_id}/derivatives")
+async def list_book_derivatives(
+    book_id: UUID,
+    user_id: UUID = Depends(get_current_user),
+    works: WorksRepo = Depends(get_works_repo),
+    grant: GrantClient = Depends(get_grant_client_dep),
+) -> dict[str, Any]:
+    """S-09 W4 — list a book's Works (the canonical Work + every dị bản derivative), each
+    with is_canonical / name / branch_point / status / version. The REST twin of the MCP
+    `composition_list_derivatives` (the DivergenceManagerView's read side, which S-04 mutates).
+    VIEW grant on the book; a non-grantee 404s at the gate (anti-oracle)."""
+    await _gate_book(grant, book_id, user_id, GrantLevel.VIEW)
+    rows = await works.resolve_by_book(book_id)
+    return {
+        "works": [
+            {
+                "project_id": str(w.project_id) if w.project_id else None,
+                "is_canonical": w.source_work_id is None,
+                "name": (w.settings or {}).get("derivative_name"),
+                "branch_point": w.branch_point,
+                "status": w.status,
+                "version": w.version,
+            }
+            for w in rows
+        ],
+    }
+
+
 class DerivativeContextResponse(BaseModel):
     """WS-B2: the FE read-projection of a derivative Work's DURABLE divergence
     spec. The spec/overrides are already persisted (divergence_spec +

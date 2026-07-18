@@ -72,6 +72,10 @@ from app.clients.embedding_client import EmbeddingClient, EmbeddingError
 from app.clients.glossary_client import GlossaryClient
 from app.extraction.entity_resolver import normalize_kind_for_anchor_lookup
 from app.extraction.glossary_writeback import WRITEBACK_TAG
+# S-09 W2 — the glossary→graph projection engine + the project-scoped grant deps.
+import dataclasses
+from app.auth.grant_deps import GrantLevel, project_meta_dep, require_project_grant
+from app.extraction.anchor_loader import project_glossary_entities_to_nodes
 from app.deps import (
     get_book_client,
     get_embedding_client,
@@ -844,6 +848,49 @@ async def create_entity_fact(
         user_id, entity_id, body.fact_type, fact.id,
     )
     return fact
+
+
+class ProjectFromGlossaryRequest(BaseModel):
+    """Optional subset; omit / null → project the WHOLE active glossary."""
+    entity_ids: list[str] | None = None
+
+
+@entities_router.post("/projects/{project_id}/entities/from-glossary")
+async def project_entities_from_glossary(
+    project_id: UUID = Path(description="knowledge project id (uuid)"),
+    body: ProjectFromGlossaryRequest | None = None,
+    owner: UUID = Depends(require_project_grant(GrantLevel.EDIT)),
+    meta: "tuple[UUID, UUID | None] | None" = Depends(project_meta_dep),
+    projects_repo: ProjectsRepo = Depends(get_projects_repo),
+    glossary: GlossaryClient = Depends(get_glossary_client),
+) -> dict:
+    """S-09 W2 — deterministically project a book's glossary entities into the KG as
+    canonical :Entity nodes ("seed the graph from my lore, no prose"). The REST twin of
+    the `kg_project_entities_to_nodes` MCP tool, so this becomes a GUI one-click, not an
+    agent-only capability. EDIT grant on the project's book; the projection is idempotent
+    (re-seed upserts, never duplicates). `entity_ids=null` → the whole active glossary;
+    a subset targets those. Returns the {created, existing, seen, skipped, truncated,
+    conflicted} counts so the caller can explain a partial projection."""
+    if meta is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="project not found")
+    _owner, book_id = meta
+    if book_id is None:
+        # A book-less project has no glossary to project from.
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="project has no book")
+    async with neo4j_session() as session:
+        result = await project_glossary_entities_to_nodes(
+            session, glossary, user_id=str(owner), project_id=str(project_id),
+            book_id=book_id, entity_ids=(body.entity_ids if body else None),
+        )
+        # The projection changed the graph → refresh the cached stat counters now (the
+        # one production writer of stat_updated_at; mirrors the MCP tool). Best-effort:
+        # the projection itself is the contract, so a recount hiccup never fails it.
+        try:
+            from app.jobs.stats_updater import reconcile_project_stats
+            await reconcile_project_stats(projects_repo._pool, session, owner, project_id)
+        except Exception:  # pragma: no cover — advisory cache, never blocks the projection
+            logger.warning("from-glossary: stat recount failed (project=%s)", project_id, exc_info=True)
+    return dataclasses.asdict(result)
 
 
 # ── C10 (C10-gap-report) — GET /projects/{id}/gaps ───────────────────
