@@ -222,3 +222,170 @@ async def resolve_scope(works: Any, book_id: UUID) -> tuple[Any, UUID | None]:
         # surrogate every project-keyed row in this service is already written under.
         return pending, (pending.project_id or pending.id)
     return None, None
+
+
+async def build_book_diagnostics(
+    pool: Any,
+    *,
+    book_id: UUID,
+    project_id: UUID | None,
+    user_id: UUID,
+    cap: int,
+) -> "Diagnostics":
+    """S-10 O3 — the shared diagnostics builder behind BOTH ``composition_diagnostics`` (the MCP tool)
+    and ``GET /v1/composition/books/{book_id}/diagnostics`` (the FE Issues tab). Composes the SAME
+    read-only sources the human problems panel + the agent already share (conformance/index staleness,
+    canon contradictions, broken canon rules, open-thread debt, prose-deleted spec nodes, unplanned
+    chapters), ranked error → warn → info by ``Diagnostics.ranked``. Every source is best-effort: a
+    failed source appends a WARNING (absent, not zero) rather than silently reporting completeness — a
+    problems panel with a silent hole is worse than no panel. The caller resolves the project scope
+    (``resolve_scope``) and formats via ``diag.ranked(cap=cap)``."""
+    from app.clients.book_client import get_book_client
+    from app.config import settings
+    from app.db.repositories.narrative_thread import NarrativeThreadRepo
+    from app.db.repositories.outline import OutlineRepo
+    from app.mcp.service_bearer import mint_service_bearer
+
+    diag = Diagnostics()
+    if project_id is None:
+        diag.warnings.append(
+            "this book has no composition work — canon issues, thread debt and motif "
+            "applications were NOT checked (absent, not zero)",
+        )
+
+    # (1) conformance + index staleness
+    try:
+        from app.engine.arc_conformance_orchestrate import compute_conformance_status
+
+        status = await compute_conformance_status(
+            pool=pool, book_client=get_book_client(), book_id=book_id,
+        )
+        for arc in status["arcs"]:
+            reasons = arc.get("dirty_reasons") or []
+            if "never_run" in reasons:
+                kind = "conformance_never_run"
+            elif arc.get("dirty"):
+                kind = "conformance_dirty"
+            else:
+                continue
+            diag.add(Diagnostic(
+                kind=kind, severity=SEVERITY[kind],
+                title=f'arc "{arc.get("title") or "(untitled)"}" — {", ".join(reasons) or "dirty"}',
+                detail="run composition_conformance_run to refresh it",
+                node_ref={"kind": "arc", "id": arc["structure_node_id"], "title": arc.get("title")},
+                at=arc.get("computed_at"),
+            ))
+        stale = status["index"]["stale_chapter_count"]
+        if stale:
+            diag.add(Diagnostic(
+                kind="index_stale", severity=SEVERITY["index_stale"],
+                title=f"{stale} chapter(s) have a stale prose index",
+                detail="the sweeper heals these; re-indexing refreshes the canon windows",
+            ))
+    except Exception:  # noqa: BLE001
+        logger.warning("diagnostics: conformance source failed", exc_info=True)
+        diag.warnings.append("conformance + index staleness could not be computed")
+
+    # (2) canon contradictions (entity lane)
+    try:
+        if project_id is None:
+            raise LookupError("no project")
+        for issue in await OutlineRepo(pool).canon_issues(project_id):
+            violations = issue.get("violations") or []
+            diag.add(Diagnostic(
+                kind="canon_contradiction", severity=SEVERITY["canon_contradiction"],
+                title=f'{len(violations)} canon violation(s) in "{issue.get("scene_title") or "a scene"}"',
+                detail="; ".join(
+                    str(v.get("detail") or v.get("rule") or v)[:120] for v in violations[:2]
+                ),
+                node_ref={"kind": "scene", "id": issue["scene_id"], "title": issue.get("scene_title")},
+                at=issue.get("created_at"),
+            ))
+    except Exception:  # noqa: BLE001
+        logger.warning("diagnostics: canon source failed", exc_info=True)
+        diag.warnings.append("canon contradictions could not be read")
+
+    # (2b) broken canon rules (critic lane)
+    try:
+        if project_id is None:
+            raise LookupError("no project")
+        rv = await OutlineRepo(pool).rule_violations(project_id)
+        for item in rv["items"]:
+            rule = item.get("rule_text") or "a rule that no longer exists"
+            diag.add(Diagnostic(
+                kind="broken_canon_rule", severity=SEVERITY["broken_canon_rule"],
+                title=f'canon rule broken: "{rule[:80]}"',
+                detail=(item.get("why") or item.get("span") or "")[:120],
+                node_ref={"kind": "scene", "id": item["scene_id"], "title": item.get("scene_title")},
+                at=item.get("created_at"),
+            ))
+        if rv["capped"]:
+            diag.warnings.append(f"showing {len(rv['items'])} of {rv['count']} broken canon rules")
+    except Exception:  # noqa: BLE001
+        logger.warning("diagnostics: rule-violation source failed", exc_info=True)
+        diag.warnings.append("broken canon rules could not be read")
+
+    # (3) open thread debt
+    try:
+        if project_id is None:
+            raise LookupError("no project")
+        threads = await NarrativeThreadRepo(pool).list_open(project_id, limit=100)
+        if threads:
+            diag.add(Diagnostic(
+                kind="open_thread_debt", severity=SEVERITY["open_thread_debt"],
+                title=f"{len(threads)} open promise(s) still unpaid",
+                detail="; ".join((t.summary or "")[:60] for t in threads[:3]),
+            ))
+    except Exception:  # noqa: BLE001
+        logger.warning("diagnostics: thread source failed", exc_info=True)
+        diag.warnings.append("open thread debt could not be read")
+
+    # (4) prose-deleted spec nodes
+    try:
+        from app.services.coverage import compute_prose_deleted
+
+        pd = await compute_prose_deleted(
+            book_id, mint_service_bearer(user_id, settings.jwt_secret),
+            book=get_book_client(), outline=OutlineRepo(pool),
+        )
+        if pd.degraded:
+            diag.warnings.append(pd.warning)
+        else:
+            for n in pd.nodes[:cap]:
+                diag.add(Diagnostic(
+                    kind="prose_deleted_spec_node", severity=SEVERITY["prose_deleted_spec_node"],
+                    title=f'"{n.get("title") or "(untitled)"}" points at a chapter that no longer exists',
+                    detail=(
+                        "the spec SURVIVES a prose delete (IX-13) — re-link it to a chapter, or "
+                        "archive it. It is never auto-archived."
+                    ),
+                    node_ref={"kind": n.get("kind") or "chapter", "id": n["id"], "title": n.get("title")},
+                ))
+    except Exception:  # noqa: BLE001
+        logger.warning("diagnostics: prose-deleted source failed", exc_info=True)
+        diag.warnings.append("prose-deleted spec nodes could not be checked")
+
+    # (5) unplanned chapters
+    try:
+        from app.services.coverage import compute_coverage
+
+        cov = await compute_coverage(
+            book_id, mint_service_bearer(user_id, settings.jwt_secret),
+            book=get_book_client(), outline=OutlineRepo(pool),
+        )
+        if cov.degraded:
+            diag.warnings.append(
+                cov.warning or "the planned-vs-written diff degraded — unplanned chapters UNKNOWN",
+            )
+        else:
+            for ch in cov.unplanned[:cap]:
+                diag.add(Diagnostic(
+                    kind="unplanned_chapter", severity=SEVERITY["unplanned_chapter"],
+                    title=f'chapter "{ch.get("title") or "(untitled)"}" is written but not planned',
+                    node_ref={"kind": "chapter", "id": str(ch.get("chapter_id") or ""), "title": ch.get("title")},
+                ))
+    except Exception:  # noqa: BLE001
+        logger.warning("diagnostics: coverage source failed", exc_info=True)
+        diag.warnings.append("the planned-vs-written diff could not be computed")
+
+    return diag

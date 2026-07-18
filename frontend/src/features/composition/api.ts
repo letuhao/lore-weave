@@ -4,7 +4,7 @@
 import { apiBase, apiJson } from '../../api';
 import type {
   AutoGeneration, CanonRule, ChapterGeneration, CommitDecomposePayload, CorrectionBody, CorrectionStats,
-  Beat, CanonIssue, ConformanceStatus, DecomposePreview, DeriveBody, DerivativeContextResponse, DivergenceSpecPatch, DivergenceTaxonomy, EntityOverrideRow, GenerationJob, Grounding, GroundingItemType, NarrativeThread, OutlineNode, OutlineSearchHit, PinAction, ProgressStats, PublishGate, ReferenceList, ReferenceSearch, ReferenceSource, RuleViolationItem, SceneLink, SceneLinkKind, StructureTemplate, StyleProfile, StyleScope, VoiceProfile, Work, WorkResolution,
+  Beat, BookDiagnostics, CanonIssue, ConformanceStatus, DecomposePreview, DeriveBody, DerivativeContextResponse, DivergenceSpecPatch, DivergenceTaxonomy, EntityOverrideRow, GenerationJob, Grounding, GroundingItemType, NarrativeThread, OutlineNode, OutlineSearchHit, PinAction, ProgressStats, PublishGate, ReferenceList, ReferenceSearch, ReferenceSource, RuleViolationItem, SceneLink, SceneLinkKind, StructureTemplate, StyleProfile, StyleScope, VoiceProfile, Work, WorkResolution,
 } from './types';
 import type { MotifBindingsResponse } from './motif/types';
 
@@ -94,6 +94,11 @@ async function _resolveJob<T extends { job_id: string; status: string }>(
 export const compositionApi = {
   resolveWork(bookId: string, token: string): Promise<WorkResolution> {
     return apiJson<WorkResolution>(`${BASE}/books/${bookId}/work`, { token });
+  },
+  /** S-10 O3 — the read-only problems panel (studio Issues tab). REST twin of the
+   *  composition_diagnostics MCP tool; ranked error → warn → info, counts exact, rows capped. */
+  getBookDiagnostics(bookId: string, token: string): Promise<BookDiagnostics> {
+    return apiJson<BookDiagnostics>(`${BASE}/books/${bookId}/diagnostics`, { token });
   },
   createWork(bookId: string, token: string): Promise<Work> {
     return apiJson<Work>(`${BASE}/books/${bookId}/work`, { method: 'POST', token });

@@ -165,10 +165,12 @@ def test_scenes_and_chapters_split_by_KIND_not_by_a_second_table():
 def test_diagnostics_COMPOSES_the_engines_and_computes_NOTHING_new():
     """26 IX-14's consumer note is the law: ONE server-side computation, four consumers. A second
     staleness implementation here would be a second source of truth that drifts the moment either
-    side is touched — the CSS-var duplication lesson, in SQL."""
-    from app.mcp import server
+    side is touched — the CSS-var duplication lesson, in SQL. S-10 O3: the composition now lives in
+    the SHARED `build_book_diagnostics` (the MCP tool + the REST route both call it), so the guard
+    inspects the shared builder."""
+    from app.services.agent_native import build_book_diagnostics
 
-    src = inspect.getsource(server.composition_diagnostics)
+    src = inspect.getsource(build_book_diagnostics)
     assert "compute_conformance_status(" in src   # (1) IX-14's helper, not a re-derivation
     assert "canon_issues(" in src                 # (2) F-A5's repo
     assert "list_open(" in src                    # (3) BA15's query
@@ -180,11 +182,13 @@ def test_diagnostics_NEVER_SPENDS():
     determines autonomy — a read must stay a read). The refresh action is `composition_conformance_
     run` (Tier-W), and the tool's job is to POINT AT it, not to call it."""
     from app.mcp import server
+    from app.services.agent_native import build_book_diagnostics
 
-    src = inspect.getsource(server.composition_diagnostics)
+    # S-10 O3: the composition (and its "point at the Tier-W refresh" copy) lives in the shared builder.
+    src = inspect.getsource(build_book_diagnostics)
     assert "conformance_run(" not in src
     assert "composition_conformance_run" in src   # …it names the Tier-W action instead
-    # and it is registered as a READ
+    # and the TOOL is still registered as a READ
     block = inspect.getsource(server)
     meta = block[block.index('name="composition_diagnostics"'):][:900]
     assert 'require_meta(\n        "R"' in meta or '"R", "book"' in meta
@@ -248,9 +252,9 @@ def test_EVERY_declared_severity_kind_is_ACTUALLY_EMITTED_by_a_source():
     A declared-but-never-emitted kind is the write-only bug inverted, and the dead map entry was the
     only visible tell. Binding the map to the emitters means a future source cannot be declared and
     forgotten — nor emitted without a severity."""
-    from app.mcp import server
+    from app.services.agent_native import build_book_diagnostics
 
-    src = inspect.getsource(server.composition_diagnostics)
+    src = inspect.getsource(build_book_diagnostics)
     for kind in SEVERITY:
         # the kind must appear in the panel — as a literal `kind="…"`, or as the `kind` variable the
         # conformance branch computes. What must NOT be true is that it appears NOWHERE, which is
@@ -267,9 +271,9 @@ def test_all_of_AN4s_sources_are_queried_INCLUDING_the_rule_lane():
     ENTITY one (`canon_issues` — "a gone character is acting", no rule id). Without (2b) an agent
     asking "what is wrong with this book" could not see a broken author-declared RULE at all, while
     the human's quality-canon panel could. Same silent-gap class as the HIGH above, one lane over."""
-    from app.mcp import server
+    from app.services.agent_native import build_book_diagnostics
 
-    src = inspect.getsource(server.composition_diagnostics)
+    src = inspect.getsource(build_book_diagnostics)
     for n in ("1", "2", "2b", "3", "4", "5"):
         assert f"# ({n})" in src, f"AN-4 source ({n}) is not queried"
     assert "rule_violations(" in src, "the RULE lane must be READ, not just declared"

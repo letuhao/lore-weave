@@ -850,6 +850,29 @@ async def decompile_book_arcs(
     )
 
 
+# ── S-10 O3 — the read-only problems panel (the studio Issues tab). REST twin of the
+#    composition_diagnostics MCP tool; BOTH call the shared build_book_diagnostics so the human panel
+#    and the agent can never drift. Never spends (no LLM, no conformance run — it POINTS at the Tier-W
+#    refresh). VIEW on the book. ─────────────────────────────────────────────────────────────────────
+@router.get("/books/{book_id}/diagnostics")
+async def book_diagnostics(
+    book_id: UUID,
+    limit: int = 25,
+    user_id: UUID = Depends(get_current_user),
+    grant: GrantClient = Depends(get_grant_client_dep),
+) -> dict[str, Any]:
+    """Everything wrong with this book, ranked error → warn → info (conformance, canon contradictions,
+    broken canon rules, open-thread debt, prose-deleted spec nodes, unplanned chapters). Counts exact,
+    rows capped. VIEW on the book; a non-grantee 404s at the gate (anti-oracle)."""
+    await _gate_book(grant, book_id, user_id, GrantLevel.VIEW)
+    from app.services.agent_native import build_book_diagnostics, resolve_scope
+    pool = get_pool()
+    _work, pid = await resolve_scope(WorksRepo(pool), book_id)
+    cap = max(1, min(int(limit), 100))
+    diag = await build_book_diagnostics(pool, book_id=book_id, project_id=pid, user_id=user_id, cap=cap)
+    return {"book_id": str(book_id), **diag.ranked(cap=cap)}
+
+
 class ChapterReorder(BaseModel):
     """24 PH20 Row-3 — move a chapter in the book's READING order."""
 

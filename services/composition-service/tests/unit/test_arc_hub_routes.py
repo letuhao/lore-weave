@@ -445,6 +445,41 @@ def test_decompile_edit_runs_and_passes_through_the_engine_result(client, monkey
     assert seen == {"book_id": str(BOOK), "created_by": str(USER), "per": 8}
 
 
+# ── S-10 O3: diagnostics REST twin — VIEW gate + shared-builder passthrough ──
+
+
+def test_diagnostics_non_grantee_is_404(client):
+    c, _ = client(GrantLevel.NONE, structures=AsyncMock())
+    r = c.get(f"/v1/composition/books/{BOOK}/diagnostics")
+    assert r.status_code == 404
+
+
+def test_diagnostics_view_grantee_gets_the_ranked_panel(client, monkeypatch):
+    async def _scope(works, book_id):
+        return (None, None)
+
+    class _FakeDiag:
+        def ranked(self, cap):
+            return {"items": [{"kind": "index_stale", "severity": "warn"}], "counts": {"warn": 1}, "warnings": []}
+
+    seen: dict = {}
+
+    async def _build(pool, *, book_id, project_id, user_id, cap):
+        seen.update(book_id=str(book_id), user_id=str(user_id), cap=cap)
+        return _FakeDiag()
+
+    monkeypatch.setattr("app.services.agent_native.resolve_scope", _scope)
+    monkeypatch.setattr("app.services.agent_native.build_book_diagnostics", _build)
+    c, _ = client(GrantLevel.VIEW, structures=AsyncMock())
+    r = c.get(f"/v1/composition/books/{BOOK}/diagnostics?limit=10")
+    assert r.status_code == 200
+    body = r.json()
+    assert body["book_id"] == str(BOOK)
+    assert body["items"][0]["kind"] == "index_stale"
+    # VIEW is enough (a read); the builder gets the book + the acting caller + the clamped cap.
+    assert seen == {"book_id": str(BOOK), "user_id": str(USER), "cap": 10}
+
+
 def test_arc_public_drop_set_matches_the_mcp_twin():
     # The privacy allow-list is duplicated in arc.py + mcp/server.py `_arc_public_projection`.
     # Pin it here so a drift on either side is caught (they must stay identical).

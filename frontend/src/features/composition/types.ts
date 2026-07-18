@@ -552,3 +552,33 @@ export type StreamEvent =
 
 // T3.2 — selection-scoped AI operations on highlighted prose.
 export type SelectionOperation = 'rewrite' | 'expand' | 'describe';
+
+// S-10 O3 — the book "problems panel" (studio Issues tab), the FE shape of the shared
+// build_book_diagnostics → diag.ranked(). Ranked error → warn → info; `counts`/`total` are EXACT
+// (never capped), only the `items` rows are capped (`refs_capped`). A failed source lands in
+// `warnings` (absent, not zero) rather than silently reporting completeness.
+export type DiagnosticSeverity = 'error' | 'warn' | 'info';
+
+export interface DiagnosticNodeRef {
+  kind: string;
+  id: string;
+  title?: string | null;
+}
+
+export interface DiagnosticItem {
+  kind: string;
+  severity: DiagnosticSeverity;
+  title: string;
+  detail?: string;
+  node_ref?: DiagnosticNodeRef;
+  at?: string;
+}
+
+export interface BookDiagnostics {
+  book_id: string;
+  items: DiagnosticItem[];
+  counts: Record<string, number>;
+  total: number;
+  refs_capped: boolean;
+  warnings?: string[];
+}
