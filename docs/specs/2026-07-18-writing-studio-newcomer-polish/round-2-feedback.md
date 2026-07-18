@@ -129,7 +129,70 @@ Each slice: `en` copy + `scripts/i18n_translate.py --ns studio` gap-fill, unit t
 and a **live QC on the isolated static build (`vite build` → `vite preview --strictPort`)** — never
 `vite dev` — matching this track's constraint.
 
+---
+
+## Sealed decisions & build-ready fix plan (2026-07-18 brainstorm)
+
+The brainstorm's key finding: **all three fixes compose around plumbing that already exists** — no new
+backend, no schema/route change. The Studio already solved "give this book its plan/Work" once; it's
+just mounted in too few places:
+
+- `usePlanOrigin.start()` ([usePlanOrigin.ts](../../../frontend/src/features/plan-hub/hooks/usePlanOrigin.ts)) —
+  idempotent, race-safe, outage-resilient *create-arc + ensure-Work*; already fires from plan-hub's empty state.
+- `WorkSetupCta` ([WorkSetupCta.tsx](../../../frontend/src/features/studio/panels/WorkSetupCta.tsx)) —
+  self-contained idempotent create-Work button; currently mounted **only** on Decompose + Quality panels.
+- `host.openPanel('plan-hub', { focus: true })` — the exact door the Manuscript rail's `+` already uses.
+
+**Sealed naming decisions (human, 2026-07-18):**
+- **F9 term → "What-if versions"** (replaces `Divergence (dị bản)` everywhere it renders). "dị bản"
+  survives only in code comments / internal identifiers / test names — never in a rendered string.
+- **F10 term → "Writing setup" / "Set up writing"** for the *Work* concept in first-run empty states
+  (and the shared `WorkSetupCta` button). Keeps the AI-chat term "Co-writer" distinct from the Work
+  object (they are different things; the old CTA label conflated them).
+
+### M7 · F8 — a real door on the Plan rail
+- `PlanNavigatorRail.tsx`: add prop `onOpenPlan?: () => void`. Replace the bare `plan-nav-empty`
+  ("No arcs yet.") with **guided copy** (lift the wording from the sibling
+  [ArcInspectorPanel.tsx:56](../../../frontend/src/features/studio/panels/ArcInspectorPanel.tsx#L56))
+  **+ a "Plan this book" button** (`data-testid="plan-nav-plan-cta"`, gated on `onOpenPlan`).
+- `StudioSideBar.tsx`: pass `onOpenPlan={() => host.openPanel('plan-hub', { focus: true })}` — the
+  same door the Manuscript `+` uses; plan-hub's own empty state carries the real origin verb.
+- i18n: `planNav.emptyGuided`, reuse `manuscript.openPlan` ("Plan this book") for the button.
+- Test: empty state renders the CTA and fires `onOpenPlan`; gap-fill 18 locales.
+
+### M8 · F9 — kill the bilingual label
+- `en/studio.json`: `divergence.title` → **"What-if versions"**. Sweep the sibling strings that carry
+  the gloss: `divergence.unnamed` ("Untitled dị bản" → "Untitled version"),
+  `divergence.overrideNamePlaceholder` ("New name in this dị bản…" → "New name in this version…"),
+  `divergence.emptyDerivatives` (drop "dị bản"). Same defaultValues in
+  [DivergenceManagerView.tsx](../../../frontend/src/features/composition/components/DivergenceManagerView.tsx)
+  and `DivergenceSpecEditor.tsx`.
+- `scripts/i18n_translate.py --ns studio` (+ `--ns composition` if touched) to gap-fill all 18 locales
+  with **real translations**, not the baked literal.
+- Verify: grep the locale dirs + rendered components — no "dị bản" in any string a user can see.
+
+### M9 · F10 — mount the door that exists + de-jargon
+- `ReferenceShelfPanel.tsx` (line 33-39) and `StyleVoiceStudioPanel.tsx` `noWork` gates: mount
+  `<WorkSetupCta bookId={host.bookId} token={accessToken} />` under reworded copy — "No writing
+  project yet — set up a Work first…" → **"Writing isn't set up for this book yet — set it up to
+  curate its reference shelf / steer its style & voice here."** (`host` + `accessToken` are already in
+  scope in both.)
+- `WorkSetupCta.tsx`: button `quality.setupWork` "Set up co-writer" → **"Set up writing"** (shared
+  across Quality/Decompose too — a consistent global rename of the Work-setup verb).
+- **Divergence "no plan yet"** empty state → give it the **same plan-hub door as M7/F8** (it's a dock
+  panel with `host` access) rather than a Work button — its gate is a *plan*, not a *Work*.
+- The full "one shared door across Plan + Divergence + Reference shelf" unification stays **deferred**
+  (gate #2, structural) — folded into F6's unify-the-hierarchies track. M9 is only the cheap mounts.
+
+### Sizing & gates
+Whole add-on ≈ **S–M**, FE-only. Build order **M8 → M7 → M9** (string fix first = removes the most
+obviously-broken-looking thing; then the two door mounts). Each slice: `en` copy +
+`i18n_translate.py` gap-fill, a unit test on the empty state/CTA, and a **live QC on the isolated
+static build (`vite build` → `vite preview --strictPort`)** — never `vite dev`, per this track's
+constraint. `review-impl` on M9 (it touches the shared `WorkSetupCta` across four panels).
+
 ## Status
-`FEEDBACK` — round-2 dogfood complete on the fixed `:5290` build. F1–F7 verified resolved in live use.
-Three new findings (**F8–F10**) captured with code-grounded root causes. **No code changed in this
-round** — this is the complaint/spec artifact; BUILD is a separate, human-initiated decision.
+`DESIGN SEALED` — round-2 dogfood complete on the fixed `:5290` build; F1–F7 verified resolved in
+live use. Three new findings (**F8–F10**) captured with code-grounded root causes, brainstormed, and
+sealed into the M7–M9 build-ready plan above with the human's naming decisions. **No code changed
+yet** — BUILD is the next step (human-initiated, same QC-per-slice discipline as M1–M6).
