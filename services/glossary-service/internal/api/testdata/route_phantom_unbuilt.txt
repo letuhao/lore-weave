@@ -1,0 +1,18 @@
+# glossary-service — PHANTOM (documented-but-unbuilt) contract-path exemptions.
+# D-GLOSSARY-CONTRACT-FIRST, spec docs/specs/2026-07-18-glossary-contract-first-restoration.md (SD-8).
+#
+# These OpenAPI paths are DOCUMENTED in contracts/api/glossary-service/ but NOT routed
+# by this service — on purpose. They are the L5.F "canon RPC" contract, whose own YAML
+# headers state the server impl is "a separate sub-program that consumes this OpenAPI
+# spec" (Q-L5A-1). That sub-program is unbuilt in glossary-service today, so the paths
+# are contract-first-AHEAD-of-implementation, not stale docs.
+#
+# Kept HONEST: the gate reds if any entry here becomes routed (build the sub-program →
+# reconcile) or its YAML is deleted (stale exemption). This is NOT a blanket skip — each
+# path is named. Line format: <method> <normalized /v1 path>  # unbuilt: <reason>.
+get /v1/canon/{}/{}  # unbuilt: L5.F canon RPC read (canon_read.yaml, Q-L5A-1 separate sub-program)
+get /v1/canon/{}/entries  # unbuilt: L5.F canon RPC bulk read (canon_read.yaml)
+get /v1/canon/{}/history  # unbuilt: L5.F canon RPC history (canon_history.yaml)
+get /v1/canon/entries/{}/history  # unbuilt: L5.F canon RPC entry-history (canon_history.yaml)
+get /v1/canon/{}/seed_export  # unbuilt: L5.F canon seed export (seed_export.yaml)
+post /v1/canon  # unbuilt: L5.F canon RPC write (canon_write.yaml)

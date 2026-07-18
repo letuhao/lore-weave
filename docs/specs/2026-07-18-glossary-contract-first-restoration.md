@@ -84,9 +84,19 @@ debt counter that only goes down.
 - **SD-8 · P1 will likely surface PHANTOM contract paths — reconcile them, don't allowlist them.** The
   "no phantom contract path" direction checks the ~30 already-documented paths against the live routes; if any
   was renamed/removed since 2026-06-21, it reds. That is the gate earning its keep on day one. P1 resolves each:
-  fix the YAML to the real route, or delete the stale entry. (The phantom direction has NO backfill allowlist —
-  a documented path that isn't routed is always a bug in the doc.) Rare "documented-but-unbuilt" intent is
-  handled case-by-case, not by a blanket exemption.
+  fix the YAML to the real route, or delete the stale entry. (The phantom direction has NO *backfill* allowlist —
+  a documented path that isn't routed is a bug in the doc.) Rare "documented-but-unbuilt" intent is handled
+  case-by-case, not by a blanket exemption.
+  - **P1 FINDING (2026-07-18): 6 phantoms surfaced, ALL `/v1/canon/*`** (canon_read/write/history + seed_export
+    YAMLs). Verified against code: glossary-service registers **zero** `/v1/canon/*` routes. These are the **L5.F
+    canon RPC** contracts, whose own headers declare the impl "a separate sub-program that consumes this OpenAPI
+    spec" (Q-L5A-1) — i.e. contract-first *ahead of* an unbuilt transport, NOT stale docs. **This falsifies the
+    §3a feasibility note's "both `/v1/glossary` + `/v1/canon` are served" assumption** — `/v1/canon` is NOT
+    served here. Resolution (the concrete form of SD-8's "case-by-case"): a **named** phantom-exemption file
+    `internal/api/testdata/route_phantom_unbuilt.txt` (6 canon paths, each with a `# unbuilt: <reason>`), kept
+    **honest** — the gate reds if any becomes routed (build the sub-program → reconcile) or its YAML is deleted.
+    Not a blanket skip; each path is listed. Follow-up option (not P1): relocate the canon RPC YAMLs to their
+    owning track if they don't belong under glossary-service's contract dir.
 - **SD-9 · Two exemption classes in one file, by comment.** `route_coverage_exempt.txt` lines may carry a
   trailing `# backfill` (a `/v1` route awaiting docs — the shrinking debt) or `# permanent: <reason>` (a `/v1`
   route that legitimately never gets a public contract entry — rare). Both keep the gate green; only `# backfill`
@@ -97,15 +107,21 @@ tree incl. nested `r.Route` groups and composes the FULL path (mount prefix prep
 arrives complete. Opaque `r.Handle` leaves (`/mcp`) are NOT recursed into (we don't want their tool routes).
 
 ## 4. Phased slices (each: BUILD → QC)
-- **P1 · The gate + generated allowlist.** Build `TestOpenAPIRouteConformance`: `NewServer(nil, cfg).Router()`
-  → `chi.Walk` → the walked `(method, normalized-path)` set; parse `contracts/api/glossary-service/*.yaml` →
-  the documented set; apply the SD-1 `/v1/` prefix predicate (infra/mcp/internal exempt by prefix); the SD-2
-  normalization; the two-direction check (no undocumented `/v1` route, no phantom contract path) + the SD-5
-  honest-allowlist check. Generate `testdata/route_coverage_exempt.txt` via `REGEN_ROUTE_ALLOWLIST=1` (SD-4) so
-  the test is GREEN with the `/v1` gap explicit + checked in.
-  *DoD (paste the output):* `go test ./internal/api/ -run TestOpenAPIRouteConformance` → PASS; the allowlist
-  file's line count == the undocumented `/v1` route count; a deliberately-added fake `/v1` route (temporarily)
-  reds it with the SD-6 message (proves teeth); a stale allowlist entry reds it (proves SD-5).
+- **P1 · The gate + generated allowlist. ✅ BUILT 2026-07-18** (`route_conformance_test.go` +
+  `testdata/route_coverage_exempt.txt` + `testdata/route_phantom_unbuilt.txt`). Built
+  `TestOpenAPIRouteConformance`: `NewServer(nil, cfg).Router()` → `chi.Walk` → the walked
+  `(method, normalized-path)` set; **line-scan** the `paths:` block of `contracts/api/glossary-service/*.yaml`
+  (a full YAML parse chokes on unquoted colons in prose descriptions — `Authorization: Bearer …`; the
+  path/method structure is trivially regular by indentation) → the documented set; SD-1 `/v1/` prefix predicate;
+  SD-2 normalization; two-direction check + SD-5 honest-allowlist + SD-8 honest-phantom checks. Allowlist
+  generated via `REGEN_ROUTE_ALLOWLIST=1` (SD-4), which **preserves an existing `# permanent:` class** for a
+  still-present route (review-impl fix: a bare rewrite silently reverted the SD-9 class — the no-silent-revert
+  bug class).
+  *DoD (evidence):* `go test ./internal/api/ -run TestOpenAPIRouteConformance -count=1` → **PASS**; allowlist =
+  **113** lines == the undocumented `/v1` count (111 at first REGEN + 2 wiki-suggestion routes a convergent
+  S-09 W5 commit added, absorbed as backfill); a fake `/v1/glossary/__conformance_fake__` route **reds with the
+  SD-6 message** (teeth); a `# permanent:` marker **survives regen** (SD-9 fix); a bogus allowlist entry reds
+  `(route no longer exists)` (SD-5). SD-8 phantom direction surfaced + reconciled the 6 canon paths (above).
 - **P2 · Document the entity + attr-value family** (the S-06-adjacent surface first, since that's the live gap):
   a new `entity_attributes.yaml` + `entities.yaml` covering entity CRUD + attribute-value PATCH/POST/DELETE +
   translations/evidences/items + revisions/chapter-links/genres/status/scope. Remove each from the allowlist as

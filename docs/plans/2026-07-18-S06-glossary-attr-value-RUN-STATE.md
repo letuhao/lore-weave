@@ -89,13 +89,13 @@ glossary-service is Go — no shared FE registry. FE slice touches api.ts (knowl
   spec §3 (agents rarely delete one attr row). Won't-fix unless agent parity is later wanted.
 - **SD-5 (conscious):** the DELETE route permits removing ANY row incl. a required attr (add restores it);
   the FE gates its ✕ to non-system attrs (name/description stay). BE permissive + FE conservative — intended.
-- **D-GLOSSARY-CONTRACT-FIRST (gate #2, structural — SPECCED, not blocked).** The glossary OpenAPI contract is
+- **D-GLOSSARY-CONTRACT-FIRST (gate #2, structural — P1 BUILT 2026-07-18).** The glossary OpenAPI contract was
   ~20% complete (149 public routes / ~30 documented), stale, and unenforced — the entire entity route family
-  (incl. S-06's add/delete + the shipped PATCH) is undocumented. Restoration = a `chi.Walk` conformance gate
-  (red on any undocumented public route) + phased backfill. Home:
-  [`../specs/2026-07-18-glossary-contract-first-restoration.md`]. Priority = P1 (the gate, stops future rot);
-  P2–P4 backfill. NOT S-06 scope (service-wide); adding only S-06's 2 routes was rejected as a misleading
-  half-measure into a stale/unenforced doc.
+  (incl. S-06's add/delete + the shipped PATCH) undocumented. **P1 (the `chi.Walk` conformance gate) is now
+  built + green** — a new undocumented `/v1` route reds `TestOpenAPIRouteConformance`, so future rot is stopped.
+  Remaining backfill (P2 entity+attr-value family incl. S-06's routes, P3 rest, P4 strict+CI) tracked in
+  [`2026-07-18-glossary-contract-first-RUN-STATE.md`]. Spec:
+  [`../specs/2026-07-18-glossary-contract-first-restoration.md`].
 ### DRIFT
 - Spec §2 route paths were book-unscoped (wrong) — corrected against `server.go:534` before building.
 
