@@ -31,11 +31,24 @@ Genuinely UNBUILT (the S-10 build set):
   says "omitted on purpose"). PO D-d decided BUILD. BUILD the `[[NewName`→kind-picker→createEntity flow.
 
 ## SLICE BOARD (done = evidence)
-- [ ] O5 — mount MotifBindingLens in PlanDrawer's ChapterSceneFacets + thread projectId/chapterId; mount test.
-- [ ] O7 — `[[`-create in GlossaryAutocomplete (enum-gated AuthorableKind) + wire EditorPanel + ChapterEditorPage.
-- [ ] O6 — 3 arc buttons (extract-template / suggest-arc / decompile-arcs) over shipped engines.
+- [x] O5 — MotifBindingLens mounted in PlanDrawer (threaded projectId/token/roster; hidden w/o project).
+      EVID: +2 mount tests; plan-hub 251 green. Commit a2761f769.
+- [x] O7 — `[[`-create: GlossaryAutocomplete kind-picker (closed AuthorableKind) + useGlossaryQuickCreate
+      wired in BOTH consumers. EVID: hook 4 + component 2 tests; consumers 20 green; i18n +6×18. Commit e7b633a13.
+- [x] O6a — extract-template: "Save as template" on the arc inspector. EVID: 4 tests. (arcApi+hook+widget)
+- [x] O6b — suggest: "Suggest" tab in Arc Templates panel (premise→ranked candidates). EVID: 3 tests.
+- [x] O6c — decompile: REST twin POST /books/{id}/arcs/decompile + "Group chapters into arcs" in plan-hub
+      Simple view. EVID: BE 3 + FE 4 tests; arc-routes 32 green. (O6a/b/c commits per git log)
 - [ ] O1 — style-voice GG-8 panel (catalog + enum + contract + i18n + CATEGORY_ORDER + Lane-B handler).
 - [ ] O3 — GET /v1/composition/books/{bid}/diagnostics (read-only agent_native mirror) + wire the 3 bottom tabs.
+
+## CONVERGENCE — i18n keys to batch-fill (deferred to avoid concurrent writes on the hot i18n files)
+All rendered via `t(key, {defaultValue})` (UI works now; parity gate passes since keys are absent). Fill in a
+convergence batch via `scripts/i18n_translate.py`:
+- **studio.json**: `panels.arc-inspector.body.secTemplate`.
+- **composition.json**: `motif.arc.extract.*` (blurb/open/namePlaceholder/save/saving/cancel/conflict/error/done),
+  `motif.arc.suggest.*` (noProject/premisePlaceholder/genrePlaceholder/run/running/error/empty/mine/span),
+  `motif.arc.templates.tabSuggest`, `motif.arc.decompile.*` (open/confirm/run/running/cancel/error/done/none).
 
 ## DECISIONS (S-10-local)
 - O4-quality: keep the DOCK-8 hub (QualityHubPanel launcher) — reachability already met; do NOT add a rival
