@@ -17,6 +17,8 @@ carry editor_context); other clients never have these tools advertised.
 """
 from __future__ import annotations
 
+from copy import deepcopy
+
 # Tool names that the FRONTEND executes (suspend the run, don't call a backend).
 #   propose_edit                  — editor prose write-back (chapter editor only)
 #   glossary_propose_entity_edit  — edit an existing glossary entity (any book-scoped
@@ -534,6 +536,50 @@ UI_OPEN_STUDIO_PANEL_TOOL: dict = {
     },
 }
 
+# F7c (2026-07-19) — compact variant of ui_open_studio_panel. The full per-panel prose
+# above is ~2.4k tokens on EVERY studio turn though a panel is opened rarely. This variant
+# KEEPS the exact panel_id enum (Frontend-Tool Contract: the closed set is correctness — a
+# free-string panel_id was the original silent-no-op bug; never trim the enum) and replaces
+# the prose with a terse area-grouped guide (~0.7k). Most enum ids are self-describing
+# (`kg-timeline`, `quality-critic`, `motif-graph`); the groups orient the model, and it can
+# still pass any id. Gated by settings.compact_studio_panel_desc (default off) → A/B.
+_COMPACT_PANEL_DESC = (
+    "The studio panel to open (pass one panel_id from the enum). Panels by area — "
+    "WRITE: compose (AI co-writer chat), scene-compose, chapter-assemble, editor, agent-mode "
+    "(autonomous multi-chapter run). "
+    "PLAN/STRUCTURE: planner (PlanForge), plan-hub, plan-passes, decompose, arc-inspector, "
+    "arc-templates, structure-templates, scene-browser, scene-inspector, chapter-browser, "
+    "whatif-canvas, divergence (what-if versions), reference-shelf, canonview. "
+    "LORE (glossary): glossary, glossary-ontology, glossary-unknown, glossary-ai-suggestions, "
+    "glossary-merge-candidates, wiki, cast, character-arc. "
+    "KNOWLEDGE GRAPH: knowledge, kg-overview, kg-entities, kg-timeline, kg-evidence, kg-gap, "
+    "kg-proposals, kg-schema, kg-graph, kg-insights, kg-jobs, kg-bio, kg-privacy, kg-triage. "
+    "QUALITY: quality, quality-promises, quality-critic, quality-coverage, quality-canon, "
+    "quality-canon-rules, quality-corrections, quality-heal, quality-conformance, progress, flywheel. "
+    "MOTIFS: motif-library, motif-graph. "
+    "WORLD: world-map, place-graph. "
+    "LANGUAGES: translation (the multi-language translation coverage matrix — translate "
+    "chapters into other languages, per-language version history). "
+    "ENRICH LORE (expanding descriptions, NOT languages): enrichment-compose, "
+    "enrichment-proposals, enrichment-gaps, enrichment-sources, enrichment-jobs, enrichment-settings. "
+    "BOOK/ACCOUNT: books, book-import, book-settings, sharing, steering, context-inspector, "
+    "extensions, proposals, workflows, workflow-proposals, settings, usage, notifications, "
+    "jobs-list, trash, search, user-guide, quality-canon. "
+    "DISCOVER: leaderboard-books, leaderboard-authors, leaderboard-translators, leaderboard-trending. "
+    "If unsure which panel fits, open 'user-guide' (the catalog of every Studio tool)."
+)
+
+
+def _studio_panel_tool(*, compact: bool) -> dict:
+    """ui_open_studio_panel with the full (default) or compact panel_id description.
+    Same schema + IDENTICAL enum either way — only the guidance prose differs."""
+    if not compact:
+        return UI_OPEN_STUDIO_PANEL_TOOL
+    td = deepcopy(UI_OPEN_STUDIO_PANEL_TOOL)
+    td["function"]["parameters"]["properties"]["panel_id"]["description"] = _COMPACT_PANEL_DESC
+    return td
+
+
 UI_FOCUS_MANUSCRIPT_UNIT_TOOL: dict = {
     "type": "function",
     "function": {
@@ -714,7 +760,13 @@ def generic_frontend_tool_def(name: str) -> dict | None:
     return _GENERIC_FRONTEND_TOOLS_BY_NAME.get(name)
 
 
-def frontend_tool_defs(*, editor: bool = False, book_scoped: bool = False, studio: bool = False) -> list[dict]:
+def frontend_tool_defs(
+    *,
+    editor: bool = False,
+    book_scoped: bool = False,
+    studio: bool = False,
+    compact_studio_panel: bool = False,
+) -> list[dict]:
     """Frontend tool schemas to advertise, by surface.
 
     ``editor`` — the chapter editor panel (book_id + chapter_id): adds the prose
@@ -723,6 +775,9 @@ def frontend_tool_defs(*, editor: bool = False, book_scoped: bool = False, studi
     carrying a book context): adds ``glossary_propose_entity_edit``.
     ``studio`` — the Writing Studio compose panel (studio_context): adds the studio
     dock-navigation tools (open panel / focus manuscript unit — #09 Lane A).
+    ``compact_studio_panel`` (F7c) — advertise ui_open_studio_panel with the compact
+    area-grouped description instead of the full per-panel prose (same enum). Off ⇒
+    byte-identical to pre-F7c.
 
     The flags are independent: a glossary-page chat is book_scoped but not editor.
     """
@@ -733,7 +788,8 @@ def frontend_tool_defs(*, editor: bool = False, book_scoped: bool = False, studi
         defs.append(GLOSSARY_PROPOSE_EDIT_TOOL)
         defs.append(GLOSSARY_CONFIRM_ACTION_TOOL)
     if studio:
-        defs.extend(_STUDIO_UI_TOOLS)
+        defs.append(_studio_panel_tool(compact=compact_studio_panel))
+        defs.append(UI_FOCUS_MANUSCRIPT_UNIT_TOOL)
     return defs
 
 

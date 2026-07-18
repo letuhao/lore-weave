@@ -239,6 +239,39 @@ class Settings(BaseSettings):
     # stays "legacy" until the AG-UI frontend (C4) ships.
     default_stream_format: str = "legacy"
 
+    # ── F7c (2026-07-19) Lazy-context enforcement — index+load-on-demand ─────────
+    # docs/plans/2026-07-19-lazy-context-enforcement.md. Three DEPLOY-LEVEL
+    # kill-switches (SIBLINGS of rail_driver_enabled — NOT per-user knobs; per the
+    # Settings & Config Boundary, env is the sanctioned home for a platform-wide
+    # ceiling / A-B control, never a per-user behavior toggle). Each ENFORCES the
+    # index+load-on-demand discipline the platform already had for tools (tool_list/
+    # tool_load) but never applied to skills / studio panels / the workflow rail.
+    #
+    # DEFAULT TRUE (the enforce step). Validated by the capability-first A/B on the
+    # target MEDIUM model gemma-4-26b (eval/run_lazy_context_ab_eval.py): skill usage
+    # 3/3=3/3, panel selection 6/6=6/6 — NO capability loss — at ~5.4k tokens/turn
+    # saved on a studio co-writer turn. Set the env var to 0 to revert a lever to the
+    # pre-F7c behavior (the kill-switch, and how the A/B control run is measured).
+    #
+    # `lazy_skill_bodies` — when ON, a NON-curated turn injects only the L1 skill
+    # INDEX (skill_metadata_block, ~117 tok) instead of force-injecting full L2
+    # skill bodies (~5-7k). The Intent→Skill Router still preloads the matching
+    # skill's L2 (smart preload), pins + mode-bindings (plan_forge/co_write) still
+    # inject L2, and the new `load_skill` control tool pulls any skill's body on
+    # demand. The domain's TOOLS stay hot regardless (surface_hot_domains is
+    # surface-driven, not skill-body-driven) — only the verbose prose defers.
+    lazy_skill_bodies: bool = True
+    # `compact_studio_panel_desc` — when ON, ui_open_studio_panel advertises a
+    # compact area-grouped description (~2.4k → ~0.8k) while KEEPING the full
+    # panel_id enum (Frontend-Tool Contract: the closed set is correctness, never
+    # trimmed — only the prose guidance is compacted).
+    compact_studio_panel_desc: bool = True
+    # `lazy_workflow_directive` — when ON, the WS-5 workflow-preference block lists
+    # workflow SLUGS + short titles only (drops each workflow's full description,
+    # ~1-2k), keeping the "call workflow_load(<slug>) FIRST" directive that steers
+    # the model to load the rail's real detail on demand.
+    lazy_workflow_directive: bool = True
+
     # D-T2-03 — degraded-mode fallback when knowledge-service is unreachable
     # or returns an error. Must agree with knowledge-service's Mode 1 + Mode 2
     # `recent_message_count` (which also defaults to 50). Both services read

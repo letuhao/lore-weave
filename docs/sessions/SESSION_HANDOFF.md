@@ -1,5 +1,38 @@
 # ▶▶ NEXT SESSION STARTS HERE
 
+## 🪶 F7c — LAZY-CONTEXT ENFORCEMENT (index+load-on-demand) **SHIPPED (2026-07-19, `feat/context-budget-law`)**
+> Plan+result: [`docs/plans/2026-07-19-lazy-context-enforcement.md`](../plans/2026-07-19-lazy-context-enforcement.md).
+> Origin: F7c dogfood re-measurement — a Gemma-4 co-writer turn = 21.6k tok with MCP tools already budgeted.
+> User thesis (LOCKED): *"the platform already designed index+load-on-demand (tool_list/tool_load) but lacked
+> ENFORCEMENT."* So this ENFORCES the same discipline for the 3 un-budgeted sources. **chat-service only.**
+
+**Three levers, each behind a deploy-level kill-switch, DEFAULT TRUE after a capability-first A/B on gemma-4-26b
+(`services/chat-service/eval/run_lazy_context_ab_eval.py`):**
+- **M1 `lazy_skill_bodies`** — non-curated turns inject only the L1 skill INDEX + a new **`load_skill`** control
+  tool (twin of `tool_load`); pins/mode-bindings/intent-router still preload L2; domain TOOLS stay hot (only the
+  prose defers). **−3872 tok/turn · skill usage 3/3=3/3.**
+- **M2 `compact_studio_panel_desc`** — `ui_open_studio_panel` compact area-grouped description, **enum untrimmed**
+  (Frontend-Tool-Contract). **−1490 tok/turn · panel selection 6/6=6/6** (1st run regressed 5/6 on translation↔
+  enrichment; disambiguated + re-eval'd to 6/6 — the methodology's iterate-and-re-measure).
+- **M3 `lazy_workflow_directive`** — workflow directive lists slug+title only; `workflow_load` pulls detail. ~−30/wf.
+
+**~5.4k tok/turn saved on a studio co-writer turn (~25% of 21.6k), NO capability loss on the medium model.**
+Files: `chat-service/app/config.py` (3 flags), `services/skill_registry.py` (load_skill tool+result+lazy params),
+`services/frontend_tools.py` (compact panel), `services/stream_service.py` (wiring: advertise+dispatch+resolve),
+`eval/run_lazy_context_ab_eval.py`, `tests/test_lazy_context_f7c.py` (17 tests). 226+ related tests green.
+
+**▶ LIVE ROLLOUT NEEDS A CHAT-SERVICE IMAGE REBUILD** — the A/B proved the logic by copying the changed modules
+into the running container; `stream_service.py`+`config.py` are NOT yet in the built image. Rebuild `chat-service`,
+then dogfood a real studio co-writer turn to confirm the token drop + no quality regression on the full surface
+(the eval was a focused battery, not the full grounded production surface — plain-chat `universal` skill lazy-path
+is the least-exercised residual).
+
+**Pre-existing red (NOT this track):** `tests/test_frontend_tools.py::test_glossary_skill_prompt_mandates_one_card_batch`
+fails on HEAD — a concurrent **F3-PARTIAL** commit (`490e9751e`) moved `glossary_propose_batch` from
+`GLOSSARY_SKILL_PROMPT` into `GLOSSARY_SHAPING_PROMPT` but didn't update that test. Left for the F3 owner.
+
+---
+
 ## ✍️ CO-WRITER NEWCOMER-UX — dogfood-driven track **SHIPPED (2026-07-18/19, `feat/context-budget-law`)**
 > Spec: [`docs/specs/2026-07-18-cowriter-newcomer-ux/`](../specs/2026-07-18-cowriter-newcomer-ux/) (SPEC.md +
 > RUN-STATE.md + N5a-FULL_tool-intent-gate.md). Source: the "Cursor-for-writing" newcomer dogfood

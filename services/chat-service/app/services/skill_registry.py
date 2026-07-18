@@ -279,13 +279,98 @@ SYSTEM_SKILLS: dict[str, SkillDef] = {
 }
 
 
+# ── F7c (2026-07-19) — the `load_skill` control tool (twin of tool_load) ──────
+# Consumer-local meta-tool (like tool_list/tool_load/workflow_load): reads
+# SYSTEM_SKILLS, executes nothing, returns a skill's full L2 body so the model can
+# follow its workflow. Advertised only when `lazy_skill_bodies` is on (the L1 index
+# tells the model a skill EXISTS; this pulls its instructions on demand). The
+# returned body lands as a tool result → persists in message history like any tool
+# result, so no per-session `activated_skills` column is needed.
+LOAD_SKILL_NAME = "load_skill"
+
+# Closed set (Frontend-Tool-Contract discipline) — every separately-loadable skill
+# code. `admin` (its own CMS surface) and `glossary_shaping` (internal companion of
+# `glossary`, auto-added on world-setup intent, never separately loadable) are excluded,
+# matching skill_metadata_block / catalog_items.
+LOADABLE_SKILL_CODES: list[str] = sorted(
+    c for c in SYSTEM_SKILLS if c not in ("admin", "glossary_shaping")
+)
+
+LOAD_SKILL_TOOL: dict = {
+    "type": "function",
+    "function": {
+        "name": LOAD_SKILL_NAME,
+        "description": (
+            "Load the full instructions for a skill from the 'Available skills' list so you "
+            "can follow its workflow. Loading returns the skill's guidance; it runs nothing. "
+            "Use it when the user's request fits a skill whose body isn't already in context "
+            "(the skill list shows what each one does)."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "skill": {
+                    "type": "string",
+                    "enum": LOADABLE_SKILL_CODES,
+                    "description": "A single skill code from the Available skills list.",
+                },
+                "skills": {
+                    "type": "array",
+                    "items": {"type": "string", "enum": LOADABLE_SKILL_CODES},
+                    "description": "Several skill codes to load at once.",
+                },
+            },
+            "additionalProperties": False,
+        },
+        # C-TOOL — pure disclosure, executes nothing, no scope key. Explicit tier so it
+        # never relies on the silent "R" default the wire gates exist to close.
+        "_meta": {"tier": "R", "scope": "none"},
+    },
+}
+
+
+def load_skill_result(codes: list[str]) -> dict:
+    """Build the ``load_skill`` payload: full L2 body per requested skill code.
+
+    Pure disclosure — returns bodies, activates/executes nothing. Unknown codes come
+    back under ``not_found`` (never a silent drop — a resolver that drops a request
+    without saying so is how a model hallucinates the call succeeded). No surface
+    filter: the L1 index only lists surface-visible skills, and handing over a body
+    for an off-surface skill is harmless (the model still reaches its tools via
+    find_tools), so a strict filter would only add a needless error path."""
+    want: list[str] = []
+    for c in codes:
+        if c and c not in want:
+            want.append(c)
+    loaded: list[dict] = []
+    not_found: list[str] = []
+    for code in want:
+        skill = SYSTEM_SKILLS.get(code)
+        if skill is None:
+            not_found.append(code)
+            continue
+        loaded.append({"skill": code, "label": skill.label, "body": skill.prompt_loader()})
+    payload: dict = {"skills": loaded}
+    if not_found:
+        payload["not_found"] = sorted(not_found)
+    if not loaded and not not_found:
+        payload["note"] = (
+            "No skill requested — pass `skill` or `skills` (a code from the Available skills list)."
+        )
+    return payload
+
+
 def skill_metadata_block(
-    *, editor: bool, book_scoped: bool, admin: bool, studio: bool = False
+    *, editor: bool, book_scoped: bool, admin: bool, studio: bool = False, lazy: bool = False
 ) -> str | None:
     """L1 metadata tier (RAID C3): a compact list of the skills AVAILABLE on this
     surface (label + one-line description), so the model knows they exist and can pin
     or request one — at ~tens of tokens, versus loading every full L2 body. Returns
-    None when no skill is visible on the surface."""
+    None when no skill is visible on the surface.
+
+    ``lazy`` (F7c) — when the surface auto-defaults are NOT force-injected as full L2
+    bodies, this index is the model's only signal a skill exists, so the closing line
+    tells it to `load_skill('<code>')` the body on demand (the twin of tool_load)."""
     active = _surface_key(editor=editor, book_scoped=book_scoped, admin=admin, studio=studio)
     lines = [
         f"- **{s.label}** (`{s.code}`): {s.description}"
@@ -297,11 +382,15 @@ def skill_metadata_block(
     ]
     if not lines:
         return None
-    return (
-        "## Available skills\n"
-        "These skills are available on this surface. The relevant one is loaded in full; "
-        "if the user's request fits another, say so or pin it.\n" + "\n".join(lines)
+    guidance = (
+        "These skills are available on this surface. When the user's request fits one, "
+        "call `load_skill('<code>')` to load its full instructions, then follow them. "
+        "Their tools are already reachable (find_tools / already hot); load a skill for its workflow."
+        if lazy
+        else "These skills are available on this surface. The relevant one is loaded in full; "
+        "if the user's request fits another, say so or pin it."
     )
+    return "## Available skills\n" + guidance + "\n" + "\n".join(lines)
 
 
 def _surface_key(
@@ -342,6 +431,7 @@ def resolve_skills_to_inject(
     permission_mode: str = "write",
     studio: bool = False,
     binding_skills: list[str] | None = None,
+    lazy_bodies: bool = False,
 ) -> list[str]:
     """Return skill codes to inject this turn (ordered, deduped).
 
@@ -351,6 +441,15 @@ def resolve_skills_to_inject(
     selected. Default ``None`` ⇒ byte-identical behavior to before WS-3, which is what
     keeps every existing caller (and the degrade path, when the registry is down)
     unchanged.
+
+    ``lazy_bodies`` (F7c) — when True, the NON-curated SURFACE-DEFAULT auto-inject
+    (the ``else`` branch: glossary/knowledge/composition/universal) is suppressed:
+    the model knows those skills exist via the L1 index and pulls a body with
+    `load_skill` on demand, or the intent router preloads the matching one. Only the
+    BLANKET surface defaults go lazy — explicit PINS (``enabled_skills``), the mode
+    bindings (plan_forge in plan mode, co_write in write mode), glossary_shaping on a
+    glossary pin, and ``binding_skills`` are DELIBERATE selections and still inject
+    their full L2. Default False ⇒ byte-identical to the pre-F7c behavior.
     """
     if stream_format != "agui" or disable_tools or not tool_calling_enabled:
         return []
@@ -362,6 +461,13 @@ def resolve_skills_to_inject(
             code for code in enabled_skills
             if (skill := SYSTEM_SKILLS.get(code)) and _skill_visible(skill, active)
         ]
+    elif lazy_bodies:
+        # F7c lazy: skip the blanket surface auto-inject. `admin` is the ONE exception —
+        # it is not a lazy-loadable capability (its own CMS surface + catalog), and the
+        # admin turn genuinely needs its body, so it is never deferred. Everything else
+        # (glossary/knowledge/composition/universal) is reached via the L1 index +
+        # load_skill / the intent router.
+        out = ["admin"] if admin else []
     else:
         # Legacy auto-inject (empty enabled_skills = surface-default).
         out = []
@@ -453,6 +559,7 @@ async def resolve_skills_to_inject_async(
     model_source: str = "",
     model_ref: str = "",
     binding_skills: list[str] | None = None,
+    lazy_bodies: bool = False,
 ) -> list[str]:
     """Async twin of ``resolve_skills_to_inject`` — the Intent→Skill Router
     (Part F / F2, docs/plans/2026-07-07-intent-skill-router.md; docs/specs/
@@ -496,6 +603,7 @@ async def resolve_skills_to_inject_async(
         permission_mode=permission_mode,
         studio=studio,
         binding_skills=binding_skills,
+        lazy_bodies=lazy_bodies,
     )
     # Same hard gate the sync function itself applies (stream_format/disable_tools/
     # tool_calling_enabled) — `base` is already [] in that case; short-circuiting

@@ -99,6 +99,11 @@ from app.services.workflow_runner import (
     workflow_list_result,
     workflow_load_result,
 )
+from app.services.skill_registry import (
+    LOAD_SKILL_NAME,
+    LOAD_SKILL_TOOL,
+    load_skill_result,
+)
 from app.services.rail_progress import user_abandoned_rail
 from app.services.subagent_runtime import (
     RUN_SUBAGENT_NAME,
@@ -946,6 +951,12 @@ def _advertise_discovery_tools(
     if has_workflows:
         _add(WORKFLOW_LIST_TOOL)
         _add(WORKFLOW_LOAD_TOOL)
+    # F7c — the load_skill control (twin of tool_load): advertised ONLY when lazy skill
+    # bodies are enabled, so the model can pull a skill's full instructions on demand
+    # after seeing it in the L1 index. Flag OFF ⇒ not added ⇒ the surface is
+    # byte-identical to pre-F7c (the A/B baseline). Consumer-local; dispatched below.
+    if settings.lazy_skill_bodies:
+        _add(LOAD_SKILL_TOOL)
     for td in extra_frontend:
         _add(td)
     # Discovered tools — full schemas now that find_tools matched them.
@@ -2074,6 +2085,26 @@ async def _stream_with_tools(
                                 f"Activated {len(names_to_activate)} of {len(step_tools)} step tools "
                                 "(token budget); call tool_load for the rest as you reach those steps."
                             )
+                    working.append({
+                        "role": "tool", "tool_call_id": c["id"],
+                        "content": tool_result_content(payload),
+                    })
+                    yield {"tool_call": {
+                        "id": c["id"], "iteration": iteration, "tool": c["name"],
+                        "args": args_obj, "ok": True, "result": payload, "error": None,
+                    }}
+                    continue
+
+                # F7c — load_skill is CONSUMER-LOCAL (twin of tool_load/workflow_load):
+                # return one or more skills' full L2 bodies from SYSTEM_SKILLS so the model
+                # can follow the workflow it saw in the L1 index. Executes nothing, activates
+                # no tools — the body lands as this tool result and persists in message
+                # history like any other, so a later turn still has it (subject to compaction).
+                if c["name"] == LOAD_SKILL_NAME:
+                    args_obj = _parse_tool_args(c["arguments"])
+                    _codes = [str(args_obj.get("skill", "") or "")] if args_obj.get("skill") else []
+                    _codes += [str(x) for x in (args_obj.get("skills") or []) if x]
+                    payload = load_skill_result(_codes)
                     working.append({
                         "role": "tool", "tool_call_id": c["id"],
                         "content": tool_result_content(payload),
@@ -3811,6 +3842,10 @@ async def stream_response(
         user_id=user_id,
         model_source=model_source,
         model_ref=model_ref,
+        # F7c — when lazy skill bodies are on, the blanket surface auto-inject is
+        # suppressed (L1 index + load_skill instead); pins/mode-bindings/router still
+        # inject full L2. OFF ⇒ byte-identical to pre-F7c (the A/B baseline).
+        lazy_bodies=settings.lazy_skill_bodies,
     )
     _skill_prompts = skill_prompts(injected_skill_codes)
     glossary_skill: str | None = _skill_prompts.get("glossary")
@@ -3839,10 +3874,20 @@ async def stream_response(
     # RAID C3 — L1 skill metadata: a compact "available skills" list injected always
     # (cheap), so the model knows which skills exist on this surface even when only the
     # relevant one's full body (L2) is loaded above.
+    # F7c — the L1 index is the model's signal a skill exists whenever it's the ONLY
+    # thing injected. When lazy, render it even if the auto-inject list came back empty
+    # (the non-curated lazy case) so the model still sees what it can `load_skill`.
     skill_meta_block: str | None = None
-    if injected_skill_codes:  # only when skills are in play (agui + tools on)
+    _lazy_skills = settings.lazy_skill_bodies
+    if injected_skill_codes or (
+        _lazy_skills
+        and stream_format == "agui"
+        and not disable_tools
+        and kctx.tool_calling_enabled
+    ):
         skill_meta_block = skill_metadata_block(
             editor=_editor, book_scoped=_book_scoped, admin=_admin, studio=_studio,
+            lazy=_lazy_skills,
         )
 
     # Tool-catalog-simplification Part A — the group directory replaces whole-
@@ -4122,8 +4167,16 @@ async def stream_response(
     # the agent to workflow_load it would be a wasted round-trip.
     workflow_directive_block: str | None = None
     if turn_workflows:
+        # F7c — when lazy, list SLUG + short title only; the full description (the fat)
+        # is pulled on demand by workflow_load, which the directive already tells the model
+        # to call FIRST. Off ⇒ full description inline (byte-identical pre-F7c baseline).
+        _lazy_wf = settings.lazy_workflow_directive
         _wf_lines = "\n".join(
-            f"- {w.get('slug')}: {w.get('description') or w.get('title') or ''}".rstrip()
+            (
+                f"- {w.get('slug')}: {w.get('title') or ''}".rstrip()
+                if _lazy_wf
+                else f"- {w.get('slug')}: {w.get('description') or w.get('title') or ''}".rstrip()
+            )
             for w in turn_workflows
             if w.get("slug") and w.get("slug") not in _pinned_slugs
         )
@@ -4316,7 +4369,8 @@ async def stream_response(
                 # (glossary_shaping injected). Request-scoped autonomy for the co-writer.
                 discovery_catalog = filter_intent_gated_setup_tools(catalog, injected_skill_codes)
                 discovery_extra_frontend = frontend_tool_defs(
-                    editor=editor, book_scoped=book_scoped, studio=bool(studio_context)
+                    editor=editor, book_scoped=book_scoped, studio=bool(studio_context),
+                    compact_studio_panel=settings.compact_studio_panel_desc,  # F7c
                 )
                 from app.services.tool_surface import discovery_seed_for_surface
                 # The union of step tools across the turn's visible workflows — the ONLY
@@ -4360,6 +4414,7 @@ async def stream_response(
                         editor=bool(editor_context),
                         book_scoped=bool(editor_context or book_context),
                         studio=bool(studio_context),
+                        compact_studio_panel=settings.compact_studio_panel_desc,  # F7c
                     )
         # A2A phase-2: advertise compose_prose only when a composer model is
         # configured for this session (orchestrator → writer delegation).
@@ -5528,6 +5583,7 @@ async def resume_stream_response(
         user_id=user_id,
         model_source=susp.model_source,
         model_ref=susp.model_ref,
+        lazy_bodies=settings.lazy_skill_bodies,  # F7c — same lazy discipline as the fresh path
     )
 
     knowledge_client = get_knowledge_client()
