@@ -25,8 +25,8 @@ isolated playwright session (recipe proven this session). **Model for co-writer 
 | 4 | N2 per-message Insert (inject onInsert) | F4 | MED (shared chat) | **[x] DONE** `9fb1960ac` | 6 unit + live /chat: Insert renders on reply, clicks clean, fires paste+toast |
 | 5 | N1 mode legibility (VERIFY first-run mode FIRST) | F2 | MED (shared chat) | [ ] | |
 | 6 | N3 first-run routing (login-gate) | F5 | LOW | **[x] DONE** `(committed)` | seam corrected to LOGIN; live: unseen→chooser, seen→/books no-regression |
-| 7 | N4 sidebar grouping (+mobile) | F6 | HIGH (shell) | **[DEFERRED]** | shared app-shell; the other session is ACTIVELY committing studio/shell work — editing Sidebar now = high clobber risk. Defer to when the shell is quiet. |
-| 8 | N7 pop-out + SSE console | F8 | LOW | **[x] notif-sync DONE; rest = findings** | SSE console err = browser-native network log on SSE drop (app handles reconnect via onerror; not app-suppressible; clean-close is a gateway change, low value). Pop-out disabled = windowing not enabled for that panel context (`windowingEnabled`/`forceShared`); enabling needs the SharedWorker windowing infra — out of scope for LOW polish. Both recorded, not code-changed. |
+| 7 | N4 sidebar grouping | F6 | (collision cleared) | **[x] DONE** `(committed)` | over-deferred on collision RISK — Sidebar.tsx was clean; built it. Writing-led core + collapsible "More"; 2 real-render tests; nav.more ×17. Mobile already a categorized drawer (no change). |
+| 8 | N7 pop-out + SSE console | F8 | LOW | **[x] notif-sync + pop-out DONE; SSE won't-fix** | Notif-sync shipped. Pop-out: verified NOT a bug — deliberately chapter-gated (`!activeChapterId`), not "windowing infra" (my defer was wrong); fixed the misleading tooltip. SSE console err = browser-native network log (app reconnects cleanly; not app-suppressible) → conscious won't-fix. |
 | 9 | N8 unread badge sync (was "99+ investigate") | F8 | — | **[x] DONE** `(committed)` | user corrected: it IS a bug — split source-of-truth. Fixed w/ mutationBus; live: bell 5→0 cross-surface. (Aside: the 1795 count itself is real per-user activity, not a boundary leak — that part holds.) |
 
 ## Review outcome (2026-07-18, cold-start adversary)
@@ -57,7 +57,14 @@ follow-up).
   users don't regress (the review's MED-7 concern is avoidable by checking the signal, not routing all logins
   through the gate). Needs a post-login async pref check (resolveLoginRedirect is sync). Separately: RegisterPage's
   token assumption is a stale bug (register→verify→login now). Reverted the moot RegisterPage edit.
-- (parked) N3-follow: "Write card → studio not /books list" (coordinate w/ other agent).
+- (parked) N3-follow: "Write card → studio not /books list" (coordinate w/ other agent — genuinely
+  intersects their onboarding-door work; the only remaining defensible defer, gate #1 adjacent scope).
+- (cleared 2026-07-19 — the weak-defer sweep) After the N5a-FULL investment the weak defers were audited +
+  cleared per "fix-now is the default": **N5b i18n** converged ×17 (was skipped by the presence-only gate);
+  **pop-out** verified intentional (chapter-gated, not "windowing infra") + tooltip fixed; **N4 sidebar** built
+  (collision was never real — Sidebar.tsx clean); **LOW-9 rail Reload** verified NON-bug (`reload`=`resetAndLoad`,
+  the exact fn F1 proved refetches — the dogfood "did nothing" was a mis-click). Only N3-follow (coordination)
+  + the SSE browser-native log (won't-fix) remain, both legitimately.
 - (debt) LOW-9 rail Reload button manual refetch.
 - (drift) N6: SPEC (per review HIGH-3) called for a DB partial-unique-index + ON CONFLICT for race-safety. On build
   found that index would FAIL on books already holding legit duplicate-title active chapters (incl. the test book's
