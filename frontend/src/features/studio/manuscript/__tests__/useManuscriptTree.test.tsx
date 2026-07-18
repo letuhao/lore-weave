@@ -57,6 +57,22 @@ describe('useManuscriptTree', () => {
     expect(result.current.rows.some((r) => r.type === 'more')).toBe(true); // next_cursor → paging affordance
   });
 
+  // F11 — a Work whose outline is EMPTY (chapters never decomposed) must NOT show "No chapters yet."
+  // over a book that has chapters. Fall back to the flat book-service chapters.
+  it('has Work but EMPTY outline → falls back to book-service chapters (F11: chapters do not vanish)', async () => {
+    work.value = { data: { status: 'found', work: { project_id: 'p1' } }, isLoading: false };
+    listOutlineChildren.mockResolvedValue({ items: [], next_cursor: null }); // un-decomposed Work
+    listChaptersPage.mockResolvedValue({
+      items: [{ chapter_id: 'c1', sort_order: 1, title: 'Chapter 1', original_filename: 'a.txt' }],
+      next_cursor: null, total: 1,
+    });
+    listParts.mockResolvedValue({ items: [] });
+    const { result } = renderHook(() => useManuscriptTree('b1', 't'));
+    await waitFor(() => expect(result.current.rows.some((r) => isNode(r, 'c1'))).toBe(true));
+    expect(result.current.source).toBe('chapters'); // fell back
+    expect(listChaptersPage).toHaveBeenCalled();     // the real chapters loaded
+  });
+
   it('has Work → outline source: loads top-level arcs with parentId null', async () => {
     work.value = { data: { status: 'found', work: { project_id: 'p1' } }, isLoading: false };
     listOutlineChildren.mockResolvedValue({

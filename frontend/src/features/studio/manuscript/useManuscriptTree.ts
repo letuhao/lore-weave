@@ -71,7 +71,16 @@ export function useManuscriptTree(bookId: string, token: string | null) {
     [work.data, activeWorkId],
   );
 
-  const source: ManuscriptSource = work.isLoading ? 'pending' : projectId ? 'outline' : 'chapters';
+  const rawSource: ManuscriptSource = work.isLoading ? 'pending' : projectId ? 'outline' : 'chapters';
+  // F11 — a book can have a Work whose outline is EMPTY (its chapters were never decomposed into the
+  // plan). Reading the outline then shows "No chapters yet." and the book's real chapters VANISH from
+  // the rail — reads as data loss, and the onboarding door ("Set up writing" / "Set up this book")
+  // leads straight into it. When the outline root comes back empty (below), we flip to the flat
+  // book-service chapters so an un-planned Work still browses its manuscript.
+  const [outlineEmptyFallback, setOutlineEmptyFallback] = useState(false);
+  const source: ManuscriptSource = rawSource === 'outline' && outlineEmptyFallback ? 'chapters' : rawSource;
+  // Reset the fallback whenever the book or the underlying source changes (never leak it across books).
+  useEffect(() => setOutlineEmptyFallback(false), [bookId, rawSource]);
 
   const [tree, setTree] = useState<TreeState>(emptyTree);
   const [total, setTotal] = useState<number | null>(null);
@@ -158,7 +167,22 @@ export function useManuscriptTree(bookId: string, token: string | null) {
     setTrashedActs([]);
 
     if (source === 'outline') {
-      void loadPage(ROOT_KEY, null, null);
+      // Load the outline root ourselves (not via loadPage) so we can detect the EMPTY case: a Work
+      // whose chapters were never decomposed. Empty ⇒ flip to the chapters fallback (F11) instead of
+      // rendering "No chapters yet." over a book that has chapters.
+      if (!projectId || !token) return;
+      try {
+        const page = await compositionApi.listOutlineChildren(projectId, token, { parentId: null, cursor: null, limit: PAGE });
+        if (genRef.current !== gen) return;
+        const nodes = page.items.filter((n) => n.kind !== 'beat').map(outlineToNode);
+        if (nodes.length === 0) {
+          setOutlineEmptyFallback(true); // re-runs resetAndLoad as 'chapters' (source flips)
+          return;
+        }
+        setTree((t) => appendChildren(t, ROOT_KEY, nodes, page.next_cursor));
+      } catch (e) {
+        if (genRef.current === gen) setError((e as Error).message);
+      }
       return;
     }
     if (source !== 'chapters') return;
