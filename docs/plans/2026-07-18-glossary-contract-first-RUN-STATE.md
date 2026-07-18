@@ -22,8 +22,8 @@ glossary-service (Go). Size **L** (phased). Each slice: BUILD → review-impl �
 |---|---|---|---|
 | **P1 · gate + generated allowlist** | contract drift reds automatically | **DONE** | `TestOpenAPIRouteConformance` (chi.Walk + YAML line-scan + SD-1 prefix + SD-2 normalize + 2-direction + SD-5/SD-8 honesty). `go test -run … -count=1` **PASS**; allowlist **113** == undocumented /v1 count; fake route **reds w/ SD-6 msg**; `# permanent:` **survives regen** (review-impl fix); bogus entry reds `(route no longer exists)` (SD-5). vet+build clean. |
 | **P2 · document entity + attr-value family** | S-06 add/delete/PATCH + entity CRUD contracted | **DONE** | `entities.yaml` — 30 routes (entity CRUD, attr-value add/PATCH/delete, translations/evidences/items, chapter-links, revisions, merge/reassign/pin, bulk). Gate `-count=1` green; allowlist **113→83**; **0 phantoms** (all 30 paths match walked routes). review-impl: fixed a **fabricated `relevance` enum** (`[primary,secondary,mentioned]`→`[major,appears,mentioned]`, verified vs code); merge `loser_ids` + confidence enum verified correct; YAML full-parse valid (OpenAPI 3.0.3). |
-| **P3 · document remaining public families** | allowlist → genuine exemptions only | **TODO** (83 left: wiki, research-jobs, user-kinds attrs, ontology extras, sync, merge-candidates, translation-candidates, unknown-entities, recycle-bin, self/pipeline) | — |
-| **P4 · flip strict + wire CI + CLAUDE.md note** | new undocumented route reds pre-commit | **TODO** — CI must run `-count=1` (gate reads YAML/testdata at runtime; `go test` caches otherwise) | — |
+| **P3 · document remaining public families** | allowlist → 0 (fully documented) | **DONE** | 5 new YAMLs — `actions.yaml` (6), `system_tier_admin.yaml` (13), `user_kinds.yaml` (13), `wiki.yaml` (25), `book_operations.yaml` (26) = 83 routes. Gate `-count=1` green; **allowlist 83→0** (every public /v1 route documented, ~20%→100% path+method); **0 phantoms** (no typos across 83). review-impl: fixed a 2nd fabricated enum (wiki suggestion review body `{status:[…]}`→`{action:[accept,reject]}`, verified vs `req.Action+"ed"`). |
+| **P4 · flip strict + wire CI + CLAUDE.md note** | new undocumented route reds pre-commit | **TODO** — allowlist already 0 so the gate is DE-FACTO strict; remaining: CLAUDE.md contract-first note names this gate + the `-count=1` CI requirement | — |
 
 ## REGISTERS
 ### DECISIONS (sealed)
@@ -37,7 +37,8 @@ glossary-service (Go). Size **L** (phased). Each slice: BUILD → review-impl �
   113-line allowlist matches committed HEAD.
 
 ### DEBT
-- **83 backfill routes** in `route_coverage_exempt.txt` (was 113; P2 documented 30) — P3 pays down the rest.
+- **0 backfill routes** — allowlist fully drained (113→83→0 across P2+P3). Every public /v1 route is documented
+  at path+method. The file now holds only header comments + the 6 phantom-exempt canon entries live separately.
 - **Request-body shapes are best-effort at P2, not exhaustively verified** — SD-7 scopes P1–P4 to path+method;
   full request/response schema conformance is optional P5. Response schemas came from the real Go structs;
   concrete write-body fields were verified (createEntity/addAttr/bulk/merge/translation/evidence/reassign);

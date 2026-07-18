@@ -129,8 +129,14 @@ arrives complete. Opaque `r.Handle` leaves (`/mcp`) are NOT recursed into (we do
   **113→83**; **0 phantoms** (all 30 paths matched walked routes on first run — no typos); review-impl caught +
   fixed a fabricated `relevance` enum. Request-body schemas are best-effort (SD-7 path+method scope; full schema
   = P5) — the human review (§6) confirms shapes. **Note: the gate reads YAML at runtime → CI must use `-count=1`.**
-- **P3 · Document the remaining public families** (canon extensions, search, bulk, display-names, …), shrinking
-  the allowlist toward only genuine exemptions. *DoD:* allowlist == {health, /mcp, (internal if scoped out)}.
+- **P3 · Document the remaining public families. ✅ BUILT 2026-07-18** — 5 new YAMLs: `actions.yaml` (confirm/
+  preview + admin), `system_tier_admin.yaml` (System genres/kinds/attributes + trash, admin:write), `user_kinds.yaml`
+  (T2 user-kind CRUD + attrs + trash + merged-kind read), `wiki.yaml` (25 — article CRUD, gen-job, staleness feed,
+  suggestions + review + withdraw, revisions, public read), `book_operations.yaml` (26 — research-jobs, recycle-bin,
+  merge candidates/journal, ontology reverts, batch translation, exports, canon-at-chapter, wiki-contributions).
+  *DoD (evidence):* gate `-count=1` **green**; **allowlist 83→0** — every public /v1 route documented (~20%→100%
+  path+method); **0 phantoms** across all 83 (no typos); review-impl caught + fixed a 2nd fabricated enum (wiki
+  review body). Request-body/response schemas best-effort (SD-7; full schema = P5).
 - **P4 · Flip to strict + wire CI.** With the allowlist down to true exemptions, the gate now enforces
   contract-first for every NEW public route. Add the test to the service's CI lane (it already runs in
   `go test ./internal/api/`); note it in `CLAUDE.md`'s contract-first rule as the enforcement point for

@@ -1,0 +1,142 @@
+openapi: 3.0.3
+info:
+  title: LoreWeave Glossary Service — Confirm/Preview Actions API
+  version: 1.0.0
+  description: >-
+    The generalized class-C confirm machinery (§13): a single token-gated, single-use,
+    human-confirmed write path for high-impact actions (book_delete + schema creates,
+    adopt/sync/system later). /preview is non-consuming (a current-state card). The
+    admin/* pair is the System-tier RS256-gated path, separate from the HS256 user path.
+    Documented under D-GLOSSARY-CONTRACT-FIRST (P3).
+servers:
+  - url: https://glossary-service.loreweave.dev
+
+paths:
+  /v1/glossary/actions/confirm:
+    post:
+      tags: [actions]
+      summary: Confirm a class-C action (consumes a single-use token → performs the write)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [token]
+              properties:
+                token: { type: string, description: the single-use confirm token }
+      responses:
+        '200': { description: The action's result }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '409': { $ref: '#/components/responses/Conflict' }
+
+  /v1/glossary/actions/preview:
+    post:
+      tags: [actions]
+      summary: Preview a class-C action (non-consuming current-state card)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [token]
+              properties:
+                token: { type: string }
+      responses:
+        '200': { description: A preview card describing what the action would do }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /v1/glossary/actions/confirm-batch:
+    post:
+      tags: [actions]
+      summary: Confirm the N child tokens a chat turn minted, in one human card
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [tokens]
+              properties:
+                tokens: { type: array, items: { type: string } }
+      responses:
+        '200': { description: Per-token results }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /v1/glossary/actions/preview-batch:
+    post:
+      tags: [actions]
+      summary: Preview the N child tokens a chat turn minted (non-consuming)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [tokens]
+              properties:
+                tokens: { type: array, items: { type: string } }
+      responses:
+        '200': { description: Per-token preview cards }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /v1/glossary/actions/admin/confirm:
+    post:
+      tags: [actions]
+      summary: Confirm a System-tier admin action (RS256 admin:write-gated)
+      description: Separate from the HS256 user /actions/confirm — a human admin confirms a System write.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [token]
+              properties:
+                token: { type: string }
+      responses:
+        '200': { description: The admin action's result }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /v1/glossary/actions/admin/preview:
+    post:
+      tags: [actions]
+      summary: Preview a System-tier admin action (RS256 admin:write-gated, non-consuming)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [token]
+              properties:
+                token: { type: string }
+      responses:
+        '200': { description: A preview card for the admin action }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+components:
+  responses:
+    Unauthorized:
+      description: Missing or invalid credentials
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    Forbidden:
+      description: Caller lacks the required scope/grant
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    Conflict:
+      description: Token already consumed, expired, or a conflicting state
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+  schemas:
+    Error:
+      type: object
+      properties:
+        code: { type: string }
+        message: { type: string }

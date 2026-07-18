@@ -1,0 +1,179 @@
+openapi: 3.0.3
+info:
+  title: LoreWeave Glossary Service — System-tier Admin API
+  version: 1.0.0
+  description: >-
+    System-tier (platform-owned) default genres/kinds/attributes. Every write gates on an
+    RS256 admin JWT with the admin:write scope (requireAdminScope) — a regular HS256 user
+    token can NEVER satisfy it (User Boundaries: System tier is admin-only-write, everyone
+    reads). Soft-delete + recycle-bin restore (G-C8). Documented under D-GLOSSARY-CONTRACT-FIRST (P3).
+servers:
+  - url: https://glossary-service.loreweave.dev
+
+paths:
+  /v1/glossary/system-genres:
+    post:
+      tags: [system-admin]
+      summary: Create a System-tier genre (admin:write)
+      requestBody: { $ref: '#/components/requestBodies/GenreBody' }
+      responses:
+        '201': { description: The created System genre }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /v1/glossary/system-genres/{genre_id}:
+    patch:
+      tags: [system-admin]
+      summary: Patch a System-tier genre (admin:write; recomputes content_hash for G5 Sync)
+      parameters: [ { name: genre_id, in: path, required: true, schema: { type: string, format: uuid } } ]
+      requestBody: { $ref: '#/components/requestBodies/GenreBody' }
+      responses:
+        '200': { description: The updated genre }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    delete:
+      tags: [system-admin]
+      summary: Soft-delete a System-tier genre (admin:write, G-C8)
+      parameters: [ { name: genre_id, in: path, required: true, schema: { type: string, format: uuid } } ]
+      responses:
+        '204': { description: Soft-deleted }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /v1/glossary/system-genres/{genre_id}/restore:
+    post:
+      tags: [system-admin]
+      summary: Restore a soft-deleted System-tier genre (admin:write, G-C8)
+      parameters: [ { name: genre_id, in: path, required: true, schema: { type: string, format: uuid } } ]
+      responses:
+        '200': { description: Restored }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /v1/glossary/system-kinds:
+    post:
+      tags: [system-admin]
+      summary: Create a System-tier kind (admin:write)
+      requestBody: { $ref: '#/components/requestBodies/KindBody' }
+      responses:
+        '201': { description: The created System kind }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /v1/glossary/system-kinds/{kind_id}:
+    patch:
+      tags: [system-admin]
+      summary: Patch a System-tier kind (admin:write)
+      parameters: [ { name: kind_id, in: path, required: true, schema: { type: string, format: uuid } } ]
+      requestBody: { $ref: '#/components/requestBodies/KindBody' }
+      responses:
+        '200': { description: The updated kind }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    delete:
+      tags: [system-admin]
+      summary: Soft-delete a System-tier kind (admin:write)
+      parameters: [ { name: kind_id, in: path, required: true, schema: { type: string, format: uuid } } ]
+      responses:
+        '204': { description: Soft-deleted }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /v1/glossary/system-kinds/{kind_id}/restore:
+    post:
+      tags: [system-admin]
+      summary: Restore a soft-deleted System-tier kind (admin:write)
+      parameters: [ { name: kind_id, in: path, required: true, schema: { type: string, format: uuid } } ]
+      responses:
+        '200': { description: Restored }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /v1/glossary/system-attributes-admin:
+    post:
+      tags: [system-admin]
+      summary: Create a System-tier attribute (admin:write)
+      requestBody: { $ref: '#/components/requestBodies/AttributeBody' }
+      responses:
+        '201': { description: The created System attribute }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /v1/glossary/system-attributes-admin/{attr_id}:
+    patch:
+      tags: [system-admin]
+      summary: Patch a System-tier attribute (admin:write)
+      parameters: [ { name: attr_id, in: path, required: true, schema: { type: string, format: uuid } } ]
+      requestBody: { $ref: '#/components/requestBodies/AttributeBody' }
+      responses:
+        '200': { description: The updated attribute }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    delete:
+      tags: [system-admin]
+      summary: Soft-delete a System-tier attribute (admin:write)
+      parameters: [ { name: attr_id, in: path, required: true, schema: { type: string, format: uuid } } ]
+      responses:
+        '204': { description: Soft-deleted }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /v1/glossary/system-attributes-admin/{attr_id}/restore:
+    post:
+      tags: [system-admin]
+      summary: Restore a soft-deleted System-tier attribute (admin:write)
+      parameters: [ { name: attr_id, in: path, required: true, schema: { type: string, format: uuid } } ]
+      responses:
+        '200': { description: Restored }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /v1/glossary/system-trash:
+    get:
+      tags: [system-admin]
+      summary: List all soft-deleted System rows (admin:write, G-C8 recycle bin)
+      responses:
+        '200':
+          description: Soft-deleted System rows across genres/kinds/attributes
+          content:
+            application/json:
+              schema: { type: object }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+components:
+  requestBodies:
+    GenreBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              code: { type: string }
+              name: { type: string }
+              description: { type: string }
+    KindBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              code: { type: string }
+              name: { type: string }
+              icon: { type: string }
+              color: { type: string }
+    AttributeBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              code: { type: string }
+              name: { type: string }
+              field_type: { type: string }
+              kind_id: { type: string, format: uuid }
+              genre_id: { type: string, format: uuid }
+  responses:
+    Forbidden:
+      description: Caller lacks the admin:write scope (System tier is admin-only-write)
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    NotFound:
+      description: Not found
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+  schemas:
+    Error:
+      type: object
+      properties:
+        code: { type: string }
+        message: { type: string }

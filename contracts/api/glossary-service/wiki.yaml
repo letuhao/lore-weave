@@ -1,0 +1,329 @@
+openapi: 3.0.3
+info:
+  title: LoreWeave Glossary Service — Wiki API
+  version: 1.0.0
+  description: >-
+    The book wiki (wiki_* tables live in glossary-service — the wiki is NOT a separate
+    service). Article CRUD, LLM-generation job lifecycle, the recipe-drift "staleness"
+    change-feed, community suggestions + review, revisions/restore, and the public
+    read surface. All book-scoped + grant-gated (public/* is View-or-published-only).
+    Documented under D-GLOSSARY-CONTRACT-FIRST (P3).
+servers:
+  - url: https://glossary-service.loreweave.dev
+
+paths:
+  /v1/glossary/books/{book_id}/wiki:
+    get:
+      tags: [wiki]
+      summary: List a book's wiki articles
+      parameters: [ { $ref: '#/components/parameters/BookId' } ]
+      responses:
+        '200': { description: Article list }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    post:
+      tags: [wiki]
+      summary: Create a wiki article
+      parameters: [ { $ref: '#/components/parameters/BookId' } ]
+      requestBody: { $ref: '#/components/requestBodies/ArticleBody' }
+      responses:
+        '201': { description: The created article }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /v1/glossary/books/{book_id}/wiki/generate:
+    post:
+      tags: [wiki]
+      summary: Kick off LLM stub-generation for missing articles
+      parameters: [ { $ref: '#/components/parameters/BookId' } ]
+      responses:
+        '202': { description: Generation job enqueued }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /v1/glossary/books/{book_id}/wiki/gen-config:
+    get:
+      tags: [wiki]
+      summary: Get the flat per-article generation cost estimate + config status
+      parameters: [ { $ref: '#/components/parameters/BookId' } ]
+      responses:
+        '200': { description: Gen config status }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /v1/glossary/books/{book_id}/wiki/job:
+    get:
+      tags: [wiki]
+      summary: Get the current LLM-generation job status
+      parameters: [ { $ref: '#/components/parameters/BookId' } ]
+      responses:
+        '200': { description: Job status }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /v1/glossary/books/{book_id}/wiki/job/{job_id}/resume:
+    post:
+      tags: [wiki]
+      summary: Resume a paused generation job
+      parameters:
+        - { $ref: '#/components/parameters/BookId' }
+        - { name: job_id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '200': { description: Resumed }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /v1/glossary/books/{book_id}/wiki/job/{job_id}/cancel:
+    post:
+      tags: [wiki]
+      summary: Cancel a generation job
+      parameters:
+        - { $ref: '#/components/parameters/BookId' }
+        - { name: job_id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '200': { description: Cancelled }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /v1/glossary/books/{book_id}/wiki/staleness:
+    get:
+      tags: [wiki]
+      summary: List the "Knowledge updates" recipe-drift change-feed
+      parameters: [ { $ref: '#/components/parameters/BookId' } ]
+      responses:
+        '200': { description: Staleness feed }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /v1/glossary/books/{book_id}/wiki/staleness/sweep:
+    post:
+      tags: [wiki]
+      summary: On-demand sweep to flag AI articles whose recipe version lags
+      parameters: [ { $ref: '#/components/parameters/BookId' } ]
+      responses:
+        '200': { description: Sweep result }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /v1/glossary/books/{book_id}/wiki/staleness/dismiss-batch:
+    post:
+      tags: [wiki]
+      summary: Dismiss a batch of staleness entries
+      parameters: [ { $ref: '#/components/parameters/BookId' } ]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                staleness_ids: { type: array, items: { type: string, format: uuid } }
+      responses:
+        '200': { description: Dismissed count }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /v1/glossary/books/{book_id}/wiki/staleness/{staleness_id}/diff:
+    get:
+      tags: [wiki]
+      summary: Get the diff for one staleness entry
+      parameters:
+        - { $ref: '#/components/parameters/BookId' }
+        - { name: staleness_id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '200': { description: Diff }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /v1/glossary/books/{book_id}/wiki/staleness/{staleness_id}/dismiss:
+    post:
+      tags: [wiki]
+      summary: Dismiss one staleness entry
+      parameters:
+        - { $ref: '#/components/parameters/BookId' }
+        - { name: staleness_id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '200': { description: Dismissed }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /v1/glossary/books/{book_id}/wiki/suggestions:
+    get:
+      tags: [wiki]
+      summary: List suggestions across the book's wiki (reviewer view)
+      parameters: [ { $ref: '#/components/parameters/BookId' } ]
+      responses:
+        '200': { description: Suggestions }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /v1/glossary/books/{book_id}/wiki/suggestions/mine:
+    get:
+      tags: [wiki]
+      summary: Submitter-facing read of their OWN suggestions with accept/reject status
+      parameters: [ { $ref: '#/components/parameters/BookId' } ]
+      responses:
+        '200': { description: The caller's suggestions }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /v1/glossary/books/{book_id}/wiki/public:
+    get:
+      tags: [wiki]
+      summary: Public read — list published wiki articles
+      parameters: [ { $ref: '#/components/parameters/BookId' } ]
+      responses:
+        '200': { description: Published articles }
+
+  /v1/glossary/books/{book_id}/wiki/public/{article_id}:
+    get:
+      tags: [wiki]
+      summary: Public read — one published wiki article
+      parameters:
+        - { $ref: '#/components/parameters/BookId' }
+        - { name: article_id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '200': { description: The published article }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /v1/glossary/books/{book_id}/wiki/{article_id}:
+    get:
+      tags: [wiki]
+      summary: Get one wiki article
+      parameters:
+        - { $ref: '#/components/parameters/BookId' }
+        - { name: article_id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '200': { description: The article }
+        '404': { $ref: '#/components/responses/NotFound' }
+    patch:
+      tags: [wiki]
+      summary: Edit a wiki article
+      parameters:
+        - { $ref: '#/components/parameters/BookId' }
+        - { name: article_id, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody: { $ref: '#/components/requestBodies/ArticleBody' }
+      responses:
+        '200': { description: The updated article }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    delete:
+      tags: [wiki]
+      summary: Delete a wiki article
+      parameters:
+        - { $ref: '#/components/parameters/BookId' }
+        - { name: article_id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '204': { description: Deleted }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /v1/glossary/books/{book_id}/wiki/{article_id}/suggestions:
+    post:
+      tags: [wiki]
+      summary: Submit a suggestion (edit proposal) for an article
+      parameters:
+        - { $ref: '#/components/parameters/BookId' }
+        - { name: article_id, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                body: { type: string }
+                note: { type: string }
+      responses:
+        '201': { description: The created suggestion }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /v1/glossary/books/{book_id}/wiki/{article_id}/suggestions/{sug_id}:
+    patch:
+      tags: [wiki]
+      summary: Review a pending suggestion — accept or reject it
+      parameters:
+        - { $ref: '#/components/parameters/BookId' }
+        - { name: article_id, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: sug_id, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [action]
+              properties:
+                action: { type: string, enum: [accept, reject] }
+      responses:
+        '200': { description: The reviewed suggestion }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    delete:
+      tags: [wiki]
+      summary: Submitter withdraws their own pending suggestion (S-09 W5)
+      parameters:
+        - { $ref: '#/components/parameters/BookId' }
+        - { name: article_id, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: sug_id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '204': { description: Withdrawn }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /v1/glossary/books/{book_id}/wiki/{article_id}/revisions:
+    get:
+      tags: [wiki]
+      summary: List an article's revision history
+      parameters:
+        - { $ref: '#/components/parameters/BookId' }
+        - { name: article_id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '200': { description: Revisions }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /v1/glossary/books/{book_id}/wiki/{article_id}/revisions/{rev_id}:
+    get:
+      tags: [wiki]
+      summary: Get one article revision
+      parameters:
+        - { $ref: '#/components/parameters/BookId' }
+        - { name: article_id, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: rev_id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '200': { description: The revision }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /v1/glossary/books/{book_id}/wiki/{article_id}/revisions/{rev_id}/restore:
+    post:
+      tags: [wiki]
+      summary: Restore an article to a prior revision
+      parameters:
+        - { $ref: '#/components/parameters/BookId' }
+        - { name: article_id, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: rev_id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '200': { description: The restored article }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+components:
+  parameters:
+    BookId:
+      name: book_id
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+  requestBodies:
+    ArticleBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              title: { type: string }
+              body: { type: string }
+              entity_id: { type: string, format: uuid }
+              status: { type: string }
+  responses:
+    Forbidden:
+      description: Caller lacks the required grant on this book
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    NotFound:
+      description: Not found in this book
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+  schemas:
+    Error:
+      type: object
+      properties:
+        code: { type: string }
+        message: { type: string }
