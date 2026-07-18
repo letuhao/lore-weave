@@ -59,7 +59,9 @@ export function buildPartsTree(parts: Part[], chapters: ChapterLike[]): TreeStat
     t.nodes[groupId] = {
       id: groupId,
       kind: 'part',
-      title: g.unassigned ? 'Unassigned' : g.title || '(untitled act)',
+      title: g.unassigned
+        ? i18n.t('studio:manuscript.unassignedBucket', { defaultValue: 'Unassigned' })
+        : g.title || i18n.t('studio:manuscript.untitledAct', { defaultValue: '(untitled part)' }),
       number: null,
       status: g.unassigned ? 'unassigned' : null, // status carries the bucket flag for the renderer
       chapterId: null,

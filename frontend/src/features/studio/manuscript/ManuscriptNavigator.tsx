@@ -223,7 +223,9 @@ export function ManuscriptNavigator({ bookId, token, selectedId, onSelect, onNew
                 type="button"
                 data-testid="manuscript-part-new"
                 onClick={onNewAct}
-                title={t('manuscript.newAct', { defaultValue: 'New act' })}
+                // The label reads "Part"; the tooltip does double duty as the F6 explainer, at the
+                // exact spot the "Part" vs "Arc" distinction could confuse (renamed from "Act").
+                title={t('manuscript.partVsArc', { defaultValue: 'Parts group your manuscript. Arcs are the plan.' })}
                 className="flex h-5 items-center gap-0.5 rounded px-1 text-[10px] font-semibold uppercase tracking-[0.04em] text-muted-foreground hover:bg-secondary hover:text-foreground"
               >
                 <FolderPlus className="h-3.5 w-3.5" />
