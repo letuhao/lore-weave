@@ -91,9 +91,24 @@ The spec's **diagnosis is right, its mechanism claim is wrong.** Verified agains
   `ArcTemplatesPanel` shows an **Archived tab** whose rows carry only a **Restore** action. This is what
   makes the soft-delete a non-dead-end — before, archived arcs were never fetched, so nothing could
   surface a Restore. Panel test 10/10, tsc 0.
-- ⏭️ **DEFERRED — `D-S08-FE-MOTIF-ARCHIVED-VIEW`** (gate #2 · structural). The **motif library**
-  (`MotifLibraryView`) has **no archived-row surface at all** today — the audit's assumption that "an
-  Archived filter already lists archived rows" is inaccurate for both panels; arc-templates got its
-  archived view built here, but the motif library is a large, tab-heavy component and adding an archived
-  view + restore there is its own focused FE pass. `motifApi.restore` (+ shared via `book_id`) is already
-  wired and BE-tested, so this is a view-only add, not new capability. Target: a motif-library UX pass.
+- ✅ **`D-S08-FE-MOTIF-ARCHIVED-VIEW` — CLEARED** (commit `6e60be1b0`). The motif library gained an
+  **Archived scope tab** (`useMotifLibrary` `'archived'` scope → `scope='mine' status='archived'`, mirroring
+  the `'drafts'` scope) + a **Restore** action on archived `MotifCard`s (via `useMotifDraftActions.restore`).
+  Tests: MotifCard restore shown-on-archived/hidden-otherwise + fires; the archived scope fetches
+  `scope=mine,status=archived`. 200 composition-FE tests green, tsc 0.
+
+## 10. `/review-impl` (2026-07-18) — findings + fixes
+
+Standards gate **COMPLIANT** (`[User Boundaries & Tenancy — LOCKED]` correct scope keys + EDIT-gate before
+`restore_shared`; 404 anti-oracle; `[MCP-first]` domain tools; no provider/secret/FE-tool surface). No HIGH.
+Fixed now (commit `51f742a70`):
+- **MED-1 [coverage/tenancy]** — restore's shared-tier EDIT gate had only happy-path coverage. Added a route
+  `test_restore_shared_denied_without_edit` (VIEW → 403, no write) + MCP `test_motif_restore_shared_denied_without_edit`
+  (VIEW → H13). The gate now fails loud if a refactor drops it.
+- **MED-2 [coverage]** — `composition_arc_template_restore` had no functional test. Added round-trip +
+  honest-undo + not-archived→deny.
+- **LOW-1 [coverage]** — `useMotifLibrary` archived scope now has a fetch-assertion test (built with the view).
+- **LOW-2 [completeness, accepted]** — the arc/motif FE archived views are **owner-only** (`scope='mine'`,
+  restore without `book_id`); a book-*shared* archived row is restorable only via the REST route / (motif) MCP
+  `book_id` path, not the GUI. Consistent with the arc archive MCP being owner-only; the shared-tier GUI
+  restore is a conscious follow-up, not a gap in this pass.

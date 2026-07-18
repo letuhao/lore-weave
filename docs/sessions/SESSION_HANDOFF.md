@@ -34,9 +34,13 @@
 > 404/owner/shared + MCP tool-list parity/tier-gate/functional = **220 passed**; FE panel 10/10, tsc 0;
 > provider-gate clean. Container rebuild-smoke skipped (shared stack in active concurrent use; single-service
 > change → real-PG + real-MCP-loopback + TestClient cover the path).
-> **Deferred (1): `D-S08-FE-MOTIF-ARCHIVED-VIEW`** (gate #2 structural) — `MotifLibraryView` has no
-> archived-row surface today; adding an archived view + Restore there is its own FE pass. `motifApi.restore`
-> is wired + BE-tested, so it's a view-only add, not new capability. Target: a motif-library UX pass.
+> **`/review-impl` + completeness pass (2026-07-18):** standards COMPLIANT (tenancy scope keys + EDIT-gate,
+> 404 anti-oracle, MCP-first), no HIGH. Fixed MED-1 (restore shared-tier EDIT-gate DENY tests — route 403 +
+> MCP H13, commit `51f742a70`) + MED-2 (`composition_arc_template_restore` functional test). **Recently
+> cleared: `D-S08-FE-MOTIF-ARCHIVED-VIEW`** (commit `6e60be1b0`) — the motif library gained an **Archived
+> scope tab** + **Restore** on archived cards (mirrors the `drafts` scope; `useMotifDraftActions.restore`).
+> 200 composition-FE tests green, tsc 0. **No open S-08 defers.** (LOW-2 accepted: the FE archived views are
+> owner-only; book-shared restore is REST/MCP-only, a conscious follow-up.)
 
 ## 🪟 STUDIO DOCK UX — resizable side bar + panel-layout presets — **SHIPPED (2026-07-18)**
 > Plan: [`docs/plans/2026-07-18-studio-dock-resizable-sidebar-and-layout-presets.md`](../plans/2026-07-18-studio-dock-resizable-sidebar-and-layout-presets.md). FE-only (no backend).
