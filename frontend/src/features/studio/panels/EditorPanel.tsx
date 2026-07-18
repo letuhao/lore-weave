@@ -27,6 +27,7 @@ import { glossaryApi } from '@/features/glossary/api';
 import type { EntityNameEntry } from '@/features/glossary/types';
 import { GlossaryTooltip } from '@/components/editor/GlossaryTooltip';
 import { GlossaryAutocomplete } from '@/components/editor/GlossaryAutocomplete';
+import { useGlossaryQuickCreate } from '@/components/editor/useGlossaryQuickCreate';
 import { usePopoutInsertRelay } from '@/features/composition/hooks/usePopoutInsertRelay';
 import { onPasteToEditor } from '@/features/chat/utils/pasteToEditor';
 import { useIsMobile } from '@/hooks/useIsMobile';
@@ -239,6 +240,15 @@ export function EditorPanel(props: IDockviewPanelProps) {
   const handleInsertGlossaryEntity = (_from: number, _to: number, name: string) => {
     editorRef.current?.insertAtCursor(name);
   };
+
+  // S-10 O7 (PO D-d) — the `[[`-create flow: typing `[[NewName` + picking a kind creates the KG entity
+  // and inserts it (same insert path as picking an existing one). undefined until the Work's project
+  // resolves, so GlossaryAutocomplete hides "＋ Create" rather than offering a create that would fail.
+  const handleCreateGlossaryEntity = useGlossaryQuickCreate(
+    composeProjectId,
+    accessToken,
+    (name) => handleInsertGlossaryEntity(0, 0, name),
+  );
 
   // #16 2.5 — AI-provenance review UI. Mark-writing already works (Lane-C applyProposedEdit
   // threads ProvenanceAttrs) — this is purely the missing review affordance (unreviewed count,
@@ -476,14 +486,15 @@ export function EditorPanel(props: IDockviewPanelProps) {
       </div>
       {/* #16 2.4 — glossary hover tooltip + `[[` autocomplete, scoped to this panel's own editor. */}
       {glossaryEnabled && <GlossaryTooltip bookId={bookId} />}
-      {/* onSelect/onCreateNew omitted on purpose: the insert IS handleInsertGlossaryEntity, and no
-          create-from-editor flow exists yet — passing `() => {}` (what this did until the
-          2026-07-17 audit) rendered a live "+ Create new" link that silently did nothing. */}
+      {/* S-10 O7 — the `[[`-create flow is now wired (onCreateNew). It's undefined until the Work's
+          project resolves, so GlossaryAutocomplete still HIDES "＋ Create" rather than offering a
+          create that would fail — the 2026-07-17 audit's no-dead-affordance rule still holds. */}
       {glossaryEnabled && (
         <GlossaryAutocomplete
           entities={glossaryEntities}
           editorEl={editorEl}
           onInsertEntity={handleInsertGlossaryEntity}
+          onCreateNew={handleCreateGlossaryEntity}
         />
       )}
     </div>

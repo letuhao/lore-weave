@@ -146,5 +146,13 @@
       "system": "sistema"
     },
     "error": "Não foi possível carregar o histórico de versões."
+  },
+  "createAs": "Criar «{{name}}» como...",
+  "kind": {
+    "character": "Personagem",
+    "location": "Local",
+    "organization": "Organização",
+    "concept": "Conceito",
+    "item": "Item"
   }
 }

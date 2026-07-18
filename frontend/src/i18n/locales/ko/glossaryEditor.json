@@ -146,5 +146,13 @@
       "system": "시스템"
     },
     "error": "버전 기록을 불러올 수 없습니다."
+  },
+  "createAs": "{{name}}을(를) 다음과 같이 생성: …",
+  "kind": {
+    "character": "캐릭터",
+    "location": "장소",
+    "organization": "조직",
+    "concept": "개념",
+    "item": "아이템"
   }
 }

@@ -2,6 +2,12 @@ import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { EntityNameEntry } from '@/features/glossary/types';
 
+// S-10 O7 (PO D-d) — the CLOSED set of kinds the `[[`-create picker offers. Enum-gated per the
+// Frontend-Tool-Contract: the UI only ever sends one of these to knowledgeApi.createEntity, so a
+// free-typed / mistyped kind can never reach the backend from this surface.
+export const AUTHORABLE_KINDS = ['character', 'location', 'organization', 'concept', 'item'] as const;
+export type AuthorableKind = (typeof AUTHORABLE_KINDS)[number];
+
 type Props = {
   entities: EntityNameEntry[];
   editorEl: HTMLElement | null;
@@ -9,12 +15,12 @@ type Props = {
   onInsertEntity: (from: number, to: number, name: string) => void;
   /** Optional notification after a pick — the INSERT itself is onInsertEntity's job. */
   onSelect?: (entity: EntityNameEntry) => void;
-  /** AUDIT 2026-07-17 — OPTIONAL, and the "+ Create new" affordance only renders when handled.
-   *  It used to be required, and BOTH consumers (EditorPanel and the legacy ChapterEditorPage)
-   *  passed `() => {}` — so the link rendered in every `[[` popup, styled as a live primary-colour
-   *  action, and clicking it just closed the popup. It has never worked anywhere. Hiding it is the
-   *  honest state until someone builds the create-from-editor flow (recorded in the audit doc). */
-  onCreateNew?: (searchText: string) => void;
+  /** S-10 O7 (PO D-d) — the `[[`-create flow. When provided, typing `[[NewName` offers
+   *  "＋ Create "NewName" as…" with the AuthorableKind picker; choosing a kind calls this with the
+   *  typed name + the chosen (closed-set) kind. The consumer creates the entity + inserts it. OPTIONAL:
+   *  when omitted the affordance is HIDDEN (never a dead "+ Create new" link — the 2026-07-17 audit
+   *  removed that; this is the build the audit named). */
+  onCreateNew?: (name: string, kind: AuthorableKind) => void;
 };
 
 export function GlossaryAutocomplete({ entities, editorEl, onInsertEntity, onSelect, onCreateNew }: Props) {
@@ -24,6 +30,9 @@ export function GlossaryAutocomplete({ entities, editorEl, onInsertEntity, onSel
   const [pos, setPos] = useState({ x: 0, y: 0 });
   const [selectedIdx, setSelectedIdx] = useState(0);
   const [triggerRange, setTriggerRange] = useState<{ from: number; to: number } | null>(null);
+  // S-10 O7 — the `[[`-create sub-mode: the "＋ Create" affordance expands into the AuthorableKind
+  // picker in place. Reset whenever the popup closes / the query changes.
+  const [creating, setCreating] = useState(false);
 
   const filtered = useMemo(() => {
     if (!query) return entities.slice(0, 10);
@@ -139,7 +148,14 @@ export function GlossaryAutocomplete({ entities, editorEl, onInsertEntity, onSel
     setQuery('');
     setSelectedIdx(0);
     setTriggerRange(null);
+    setCreating(false);
   };
+
+  // Leaving the create sub-mode whenever the typed query changes keeps the picker from lingering
+  // over a stale name (the user kept typing after opening it).
+  useEffect(() => { setCreating(false); }, [query]);
+
+  const canCreate = !!onCreateNew && query.trim().length > 0;
 
   if (!open) return null;
 
@@ -172,15 +188,41 @@ export function GlossaryAutocomplete({ entities, editorEl, onInsertEntity, onSel
           <div className="px-3 py-2 text-xs text-muted-foreground">{t('noMatch')}</div>
         )}
       </div>
+      {/* S-10 O7 — the `[[`-create picker. Expands in place under the list: "Create "query" as…" +
+          one chip per AuthorableKind (closed set). Choosing a kind hands (name, kind) to the consumer
+          (create + insert) and closes. Only offered when a create handler is wired AND the query is a
+          real name. */}
+      {creating && canCreate && (
+        <div data-testid="glossary-create-picker" className="border-t px-3 py-2">
+          <div className="mb-1.5 text-[10px] text-muted-foreground">
+            {t('createAs', { defaultValue: 'Create "{{name}}" as…', name: query })}
+          </div>
+          <div className="flex flex-wrap gap-1">
+            {AUTHORABLE_KINDS.map((k) => (
+              <button
+                key={k}
+                type="button"
+                data-testid={`glossary-create-kind-${k}`}
+                onClick={() => { onCreateNew?.(query, k); cleanup(); }}
+                className="rounded border px-2 py-0.5 text-[11px] hover:bg-[var(--primary-muted)]"
+              >
+                {t(`kind.${k}`, { defaultValue: k })}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
       <div className="border-t px-3 py-1.5 flex justify-between text-[10px] text-muted-foreground">
         <span>↑↓ {t('navigate')} · Enter {t('select')} · Esc {t('dismiss')}</span>
-        {onCreateNew && (
-          <span
+        {canCreate && !creating && (
+          <button
+            type="button"
+            data-testid="glossary-create-toggle"
             className="text-[var(--primary)] cursor-pointer hover:underline"
-            onClick={() => { onCreateNew(query); cleanup(); }}
+            onClick={() => setCreating(true)}
           >
-            + {t('createNew')}
-          </span>
+            ＋ {t('createNew')}
+          </button>
         )}
       </div>
     </div>

@@ -46,6 +46,7 @@ import { ChapterTranslationsPanel } from '@/features/translation/components/Chap
 import { VersionHistoryPanel } from '@/components/editor/VersionHistoryPanel';
 import { GlossaryTooltip } from '@/components/editor/GlossaryTooltip';
 import { GlossaryAutocomplete } from '@/components/editor/GlossaryAutocomplete';
+import { useGlossaryQuickCreate } from '@/components/editor/useGlossaryQuickCreate';
 import { GlossaryPanel } from '@/components/editor/GlossaryPanel';
 import { glossaryApi } from '@/features/glossary/api';
 import type { EntityNameEntry } from '@/features/glossary/types';
@@ -502,6 +503,14 @@ export function ChapterEditorPage() {
     // A more robust approach would pass the editor instance directly
     document.execCommand('insertText', false, name);
   }, []);
+
+  // S-10 O7 (PO D-d) — the `[[`-create flow (create the KG entity + insert it), same shared hook the
+  // studio EditorPanel uses. undefined until the Work's project resolves ⇒ "＋ Create" stays hidden.
+  const handleCreateEntity = useGlossaryQuickCreate(
+    composeProjectId,
+    accessToken,
+    (name) => handleInsertEntity(0, 0, name),
+  );
 
   // Lazy-load original source when the Source tab is opened
   useEffect(() => {
@@ -1380,14 +1389,14 @@ export function ChapterEditorPage() {
       {/* T5.3 — AI-provenance hover tag (reads the span's data-* attrs) */}
       {composeProjectId && <ProvenanceTag />}
 
-      {/* Glossary [[ autocomplete. onSelect/onCreateNew omitted — see the note in EditorPanel: the
-          "+ Create new" link had no implementation in EITHER consumer, so it rendered dead in every
-          `[[` popup until the 2026-07-17 audit. */}
+      {/* S-10 O7 — the `[[`-create flow is wired here too (onCreateNew). Hidden until the project
+          resolves, so it never becomes the dead link the 2026-07-17 audit removed. */}
       {glossaryEnabled && (
         <GlossaryAutocomplete
           entities={glossaryEntities}
           editorEl={editorElRef.current}
           onInsertEntity={handleInsertEntity}
+          onCreateNew={handleCreateEntity}
         />
       )}
     </div>
