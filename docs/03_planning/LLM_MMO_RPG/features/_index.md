@@ -8,31 +8,57 @@
 
 ## Layout
 
+**34 subfolders** as of 2026-07-17. The `00_*` tier is the **foundation substrate** — shared aggregates that the numbered category features consume rather than redefine.
+
 ```
 features/
 ├── _index.md                                  # this file
-├── _spikes/                                   # cross-category exploratory design
+├── _spikes/                                   # SPIKE — cross-category exploratory design
 ├── DF/                                        # big Deferred Features (DF1..DF15)
-│   ├── DF04_world_rules/                      # V1-blocking (placeholder)
-│   ├── DF05_session_group_chat/               # V1-blocking (placeholder)
-│   └── DF07_pc_stats/                         # V1-blocking (placeholder)
-├── 02_world_authoring/                        # WA namespace
-├── 03_player_onboarding/                      # PO namespace
-├── 04_play_loop/                              # PL namespace
-├── 05_npc_systems/                            # NPC namespace
-├── 06_pc_systems/                             # PCS namespace
-├── 07_social/                                 # SOC namespace
-├── 08_narrative_canon/                        # NAR namespace
-├── 09_emergent/                               # EM namespace
-├── 10_platform_business/                      # PLT namespace
-├── 11_cross_cutting/                          # CC namespace
-├── 12_daily_life/                             # DL namespace (DF1 umbrella)
-├── 13_quests/                                 # QST namespace (V2 reserved 2026-04-26)
-├── 14_crafting/                               # CFT namespace (V2 reserved 2026-04-26)
-└── 15_organization/                           # ORG namespace (V3 reserved 2026-04-26)
+│   ├── DF04_world_rules/                      # V1-blocking
+│   ├── DF05_session_group_chat/               # V1-blocking
+│   └── DF07_pc_stats/                         # V1-blocking
+│
+│   ── 00_* foundation substrate (shared aggregates) ──
+├── 00_actor/                                  # ACT — unified actor identity + AI-drive + opinion + memory
+├── 00_cell_scene/                             # CSC — 4-layer cell→renderable-scene composition
+├── 00_entity/                                 # EF  — EntityId taxonomy + spatial presence
+├── 00_faction/                                # FAC — factions / sects / orders / clans / guilds
+├── 00_family/                                 # FF  — biological/adoption family graph + dynasty
+├── 00_geography/                              # GEO — world_geometry procedural substrate
+├── 00_identity/                               # IDF — shared PC+NPC concepts (race, lineage, …)
+├── 00_map/                                    # MAP — visual node-link map graph layer
+├── 00_place/                                  # PF  — place aggregate + PlaceType + connection graph
+├── 00_progression/                            # PROG— attributes / skills / cultivation stages
+├── 00_reputation/                             # REP — per-(actor, faction) standing
+├── 00_resource/                               # RES — ownable/transferable/producible value
+├── 00_tilemap/                                # TMP — procedural tilemap visual layer
+├── 00_titles/                                 # TIT — per-(actor, title) political/social rank
+├── 00_travel/                                 # TVL — inter-settlement route traversal
+│
+│   ── numbered categories (mirror catalog/cat_NN_*) ──
+├── 02_world_authoring/                        # WA
+├── 03_player_onboarding/                      # PO
+├── 04_play_loop/                              # PL
+├── 05_npc_systems/                            # NPC
+├── 06_pc_systems/                             # PCS
+├── 07_social/                                 # SOC  (index only — no feature docs yet)
+├── 08_narrative_canon/                        # NAR  (index only — no feature docs yet)
+├── 09_emergent/                               # EM   (index only — no feature docs yet)
+├── 10_platform_business/                      # PLT
+├── 11_cross_cutting/                          # CC   (index only — no feature docs yet)
+├── 12_daily_life/                             # DL   (index only — no feature docs yet)
+├── 13_quests/                                 # QST  (V2 reserved — reservation note only)
+├── 14_crafting/                               # CFT  (V2 reserved — reservation note only)
+├── 15_organization/                           # ORG  (V3 reserved — reservation note only)
+├── 16_ai_tier/                                # AIT — NPC tier hierarchy (PC/LLM/Rule/Untracked)
+├── 17_time_dilation/                          # TDIL— per-realm/cell/actor fiction-time flow
+└── 18_combat/                                 # combat resolution (concept notes only — no IDs yet)
 ```
 
-**Numbering** matches `catalog/cat_NN_*.md` (01 = IF = already kernel-level in `02_storage/`, so skipped here).
+**Numbering** for `02_`..`18_` matches `catalog/cat_NN_*.md` (01 = IF = already kernel-level in `02_storage/`, so skipped here). The `00_*` tier is **not** catalog-numbered — it is keyed by ID prefix (`cat_00_<PREFIX>_*.md`).
+
+> ⚠️ **Number collision:** `features/18_combat/` and `catalog/cat_18_DF5_session_group_chat.md` both use `18` for different things. The `18` in the features tree is combat; the `18` in catalog is the DF5 chunk.
 
 ---
 
@@ -68,6 +94,21 @@ Features consume stable IDs from catalog (each category chunk owns its letter-ID
 
 | Features subfolder | Catalog chunk | ID namespace |
 |---|---|---|
+| `00_actor/` | `cat_00_ACT_actor_foundation.md` | ACT-* |
+| `00_cell_scene/` | `cat_00_CSC_cell_scene_composition.md` | CSC-* |
+| `00_entity/` | `cat_00_EF_entity_foundation.md` | EF-* |
+| `00_faction/` | (none — no catalog chunk yet) | FAC-* |
+| `00_family/` | (none — no catalog chunk yet) | FF-* |
+| `00_geography/` | `cat_00_GEO_geography_foundation.md` | GEO-* |
+| `00_identity/` | (none — no catalog chunk yet) | IDF-* |
+| `00_map/` | `cat_00_MAP_map_foundation.md` | MAP-* |
+| `00_place/` | `cat_00_PF_place_foundation.md` | PF-* |
+| `00_progression/` | `cat_00_PROG_progression.md` | PROG-* |
+| `00_reputation/` | `cat_00_REP_reputation_foundation.md` | REP-* |
+| `00_resource/` | `cat_00_RES_resource.md` | RES-* |
+| `00_tilemap/` | `cat_00_TMP_tilemap_foundation.md` | TMP-* |
+| `00_titles/` | `cat_00_TIT_title_foundation.md` | TIT-* |
+| `00_travel/` | `cat_00_TVL_travel_foundation.md` | TVL-* |
 | `02_world_authoring/` | `cat_02_WA_world_authoring.md` | WA-* |
 | `03_player_onboarding/` | `cat_03_PO_player_onboarding.md` | PO-* |
 | `04_play_loop/` | `cat_04_PL_play_loop.md` | PL-* |
@@ -82,11 +123,30 @@ Features consume stable IDs from catalog (each category chunk owns its letter-ID
 | `13_quests/` | (V2 reserved — `cat_13_QST_quests.md` deferred) | QST-* (V2 reserved 2026-04-26) |
 | `14_crafting/` | (V2 reserved — `cat_14_CFT_crafting.md` deferred) | CFT-* (V2 reserved 2026-04-26) |
 | `15_organization/` | (V3 reserved — `cat_15_ORG_organization.md` deferred) | ORG-* (V3 reserved 2026-04-26) |
+| `16_ai_tier/` | `cat_16_AIT_ai_tier.md` | AIT-* |
+| `17_time_dilation/` | `cat_17_TDIL_time_dilation.md` | TDIL-* |
+| `18_combat/` | (none — concept notes only) | not yet allocated |
 | `DF/` | `decisions/deferred_DF01_DF15.md` | DF1..DF15 |
-| `_spikes/` | — (cross-category) | no owned IDs |
+| `_spikes/` | — (cross-category) | SPIKE-* |
+
+Bird's-eye feature counts + V1/V2/V3/V4 scope rollup live in [`../catalog/_index.md`](../catalog/_index.md) (**474 features** across 12 categories). This file maps *folders*; that file maps *features*.
 
 ---
 
 ## Pending splits / follow-ups
 
-None yet; subfolder is fresh.
+- **3 foundation folders have no catalog chunk** — `00_faction/` (FAC), `00_family/` (FF), `00_identity/` (IDF). Their IDs are allocated and in use by feature docs, but the bird's-eye catalog has no corresponding `cat_00_*` chunk, so those features are absent from the 474 rollup.
+- **`18_combat/` has no allocated ID prefix** — concept notes only.
+- **5 categories are index-only** (no feature docs yet): `07_social/`, `08_narrative_canon/`, `09_emergent/`, `11_cross_cutting/`, `12_daily_life/`.
+
+---
+
+## Drift check
+
+This index is hand-maintained and went stale once (2026-04-26 → 2026-07-17: it listed 14 subfolders while the directory had 34). Before trusting it:
+
+```bash
+ls -d docs/03_planning/LLM_MMO_RPG/features/*/ | wc -l   # must match the Layout tree
+```
+
+Per the "How to add a new feature" step 6 above, **a new subfolder must land in this file in the same commit.**
