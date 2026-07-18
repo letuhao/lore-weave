@@ -14,7 +14,11 @@
 > structure-templates → built-in → **Use in decompose** renders (interim hint gone) → click → **Decompose tab
 > activates**. Reachability + empty-state + deep-link live-proven; the with-Work preview→commit leg is the
 > unchanged legacy PlannerView flow (its own tests + DecomposePanel unit) — a full author→commit E2E needs a
-> seeded Work+structure+model (follow-up live run, not a code gap). **No open S-13 defers.**
+> seeded Work+structure+model (follow-up live run, not a code gap).
+> **`/review-impl` (2026-07-18):** standards COMPLIANT (Frontend-Tool-Contract enum both sides, machine-checked;
+> no provider/model/secret). No HIGH. Fixed MED-1 (DOCK-6 already-open retarget test) + LOW-1 (load-error+retry
+> state, not "no Work") — commits `707a03e89` + `1b7e6bdcc` (i18n) + `c694e5250` (spec §12). LOW-2 accepted
+> (onSelectScene no-op is spec-permitted §4). **No open S-13 bugs/defers/gaps.**
 
 ## 🔁 S-12 WORKFLOWS + WORKFLOW-PROPOSALS GUI (G-WORKFLOWS) — **SHIPPED (2026-07-18)**
 > Spec: [`docs/specs/2026-07-17-studio-completeness-build/S-12_workflows.md`](../specs/2026-07-17-studio-completeness-build/S-12_workflows.md) ·
