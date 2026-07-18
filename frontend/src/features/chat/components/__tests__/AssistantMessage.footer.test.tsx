@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, fireEvent } from '@testing-library/react';
 
 // Chat Quality Wave W2 — the per-message token footer (Windsurf pattern):
 // "↑in ↓out" renders as an ALWAYS-visible muted line on persisted assistant
@@ -38,5 +38,22 @@ describe('AssistantMessage token footer', () => {
   it('is suppressed while streaming', () => {
     render(<AssistantMessage content="Hi" isStreaming inputTokens={10} outputTokens={20} />);
     expect(screen.queryByTestId('message-token-footer')).toBeNull();
+  });
+});
+
+describe('AssistantMessage — N2 first-class Insert (dogfood F4)', () => {
+  it('renders a per-message Insert button that calls the injected onInsert with the reply content', () => {
+    const onInsert = vi.fn();
+    render(<AssistantMessage content="The forge glowed." messageId="m1" onInsert={onInsert} />);
+    fireEvent.click(screen.getByRole('button', { name: /insert/i }));
+    expect(onInsert).toHaveBeenCalledWith('The forge glowed.');
+  });
+
+  it('shows no Insert button while streaming or on an empty reply', () => {
+    const onInsert = vi.fn();
+    const { rerender } = render(<AssistantMessage content="partial" isStreaming onInsert={onInsert} />);
+    expect(screen.queryByRole('button', { name: /insert/i })).toBeNull();
+    rerender(<AssistantMessage content="   " onInsert={onInsert} />);
+    expect(screen.queryByRole('button', { name: /insert/i })).toBeNull();
   });
 });
