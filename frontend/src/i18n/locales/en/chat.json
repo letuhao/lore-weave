@@ -229,7 +229,7 @@
   "actionConfirm": {
     "label": "Confirm action",
     "batch_count": "{{count}} items",
-    "warning": "This change is high-impact — please confirm.",
+    "warning": "Please review this change before applying.",
     "warning_destructive": "This is destructive and cascades — please confirm.",
     "destructive_skipped": "{{count}} destructive op(s) will be SKIPPED unless you enable them above.",
     "confirm": "Confirm",

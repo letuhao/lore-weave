@@ -586,10 +586,10 @@ func (s *Server) previewAdopt(w http.ResponseWriter, ctx context.Context, claims
 		return
 	}
 	writeJSON(w, http.StatusOK, actionPreview{
-		Descriptor: descAdopt, Title: "Adopt standards into this book", Destructive: false,
+		Descriptor: descAdopt, Title: "Set up your book's world", Destructive: false,
 		PreviewRows: []previewRow{
-			{Label: "genres newly adopted", Value: fmt.Sprint(newGenres), Note: "+ universal (always)"},
-			{Label: "kinds newly adopted", Value: fmt.Sprint(newKinds), Note: "+ unknown (always)"},
+			{Label: "Story genres to add", Value: fmt.Sprint(newGenres), Note: "plus the always-on baseline"},
+			{Label: "Lore categories to add", Value: fmt.Sprint(newKinds), Note: "plus the always-on baseline"},
 		},
 	})
 }

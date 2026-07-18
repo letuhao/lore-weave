@@ -343,7 +343,7 @@ export function ConfirmActionCard({ record }: Props) {
       <p className="mb-1 text-[10px] text-muted-foreground">
         {destructive
           ? t('actionConfirm.warning_destructive', { defaultValue: 'This is destructive and cascades — please confirm.' })
-          : t('actionConfirm.warning', { defaultValue: 'This change is high-impact — please confirm.' })}
+          : t('actionConfirm.warning', { defaultValue: 'Please review this change before applying.' })}
       </p>
       {state === null ? (
         <div className="mt-1.5 flex gap-1.5">

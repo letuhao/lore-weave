@@ -127,8 +127,8 @@ func (s *Server) previewPlanOp(ctx context.Context, bookID uuid.UUID, op mcp.Op,
 			return previewRow{Label: "adopt", Value: "standards", Note: "scaffold baseline + adopt picks"}
 		}
 		return previewRow{
-			Label: "adopt", Value: fmt.Sprintf("%d genre(s), %d kind(s) new", newGenres, newKinds),
-			Note: "+ universal/unknown baseline (always)",
+			Label: "Set up your world", Value: fmt.Sprintf("%d genre(s), %d lore categories", newGenres, newKinds),
+			Note: "plus the always-on baseline",
 		}
 	case "create_kinds":
 		var p createKindsParams
