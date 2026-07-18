@@ -8,24 +8,31 @@ import { Handle, Position, type NodeProps } from 'reactflow';
 import { cn } from '@/lib/utils';
 
 import { NodeBadges } from './NodeBadges';
-import { orderNodeBadges, unionDotClass, unionStateClass, type PlanNodeData } from './nodePresentation';
+import { orderNodeBadges, type PlanNodeData } from './nodePresentation';
+import { chapterCardClass, normStatus, statusDotClass } from './flowPresentation';
+import { normalizeSource } from '../types';
 
 function SceneNodeInner({ data }: NodeProps<PlanNodeData>) {
-  const { node, content, overlay, unionState, selected, isHere, onOpenRef, resolveEntity , matched } = data;
+  const { node, content, overlay, selected, isHere, onOpenRef, resolveEntity , matched } = data;
   // PH26 — a scene's cast is the whole point of the chips: `present_entity_ids` is a SCENE field.
   const badges = orderNodeBadges({
     overlay, nodeId: node.id, showTension: false, content, resolveEntity,
   });
   const title = content?.title || `Sc ${node.storyOrder ?? '—'}`;
+  // MERGED coordinator — same status/authorship coding as the lane scene chip (see ChapterNode).
+  const status = normStatus(content?.status ?? 'outline');
+  const machine = normalizeSource(content?.source) === 'mined';
 
   return (
     <div
       data-testid={`plan-node-scene-${node.id}`}
       data-here={isHere ? 'true' : undefined}
+      data-status={status}
+      data-source={machine ? 'mined' : 'authored'}
       style={{ width: node.width }}
       className={cn(
         'select-none rounded border px-1.5 py-1 text-[11px] shadow-sm',
-        unionStateClass(unionState),
+        chapterCardClass(status),
         selected && 'ring-2 ring-primary',
         // PH15 find — a match is RINGED, not isolated. Non-matches stay exactly where they were.
         matched && 'ring-2 ring-yellow-500',
@@ -34,9 +41,9 @@ function SceneNodeInner({ data }: NodeProps<PlanNodeData>) {
     >
       <Handle type="target" position={Position.Left} className="!border-0 !bg-transparent" />
       <div className="flex items-center gap-1">
-        <span className={cn('h-1.5 w-1.5 shrink-0 rounded-full', unionDotClass(unionState))} />
-        {/* Real scene title once its window loads; a story-order label until then. */}
-        <span className="line-clamp-2 flex-1 break-words leading-tight" title={title}>{title}</span>
+        <span className={cn('h-1.5 w-1.5 shrink-0 rounded-full', statusDotClass(status))} />
+        {/* Real scene title once its window loads; a story-order label until then. Authorship font. */}
+        <span className={cn('line-clamp-2 flex-1 break-words leading-tight', machine ? 'font-mono' : 'font-serif')} title={title}>{title}</span>
       </div>
       <NodeBadges nodeId={node.id} badges={badges} onOpenRef={onOpenRef} compact />
       <Handle type="source" position={Position.Right} className="!border-0 !bg-transparent" />

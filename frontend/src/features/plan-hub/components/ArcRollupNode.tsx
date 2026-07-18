@@ -10,6 +10,7 @@ import { cn } from '@/lib/utils';
 
 import { NodeBadges } from './NodeBadges';
 import { orderNodeBadges, type PlanNodeData } from './nodePresentation';
+import { normalizeSource } from '../types';
 
 function ArcRollupNodeInner({ data }: NodeProps<PlanNodeData>) {
   const { node, content, overlay, conformance, selected, onToggle, onOpenRef, hiddenEdges } = data;
@@ -17,13 +18,17 @@ function ArcRollupNodeInner({ data }: NodeProps<PlanNodeData>) {
   const badges = orderNodeBadges({ overlay, conformance, nodeId: node.id, isArc: true });
   const count = node.rollupCount ?? 0;
   const countLabel = `${count} ${count === 1 ? 'chapter' : 'chapters'}`;
+  // MERGED coordinator — a machine (planner-proposed) arc reads mono + teal, like the lane lane-head.
+  const machine = normalizeSource(content?.source) === 'mined';
 
   return (
     <div
       data-testid={`plan-node-arc-rollup-${node.id}`}
+      data-source={machine ? 'mined' : 'authored'}
       style={{ width: node.width }}
       className={cn(
-        'select-none rounded-md border border-dashed bg-muted/40 px-2 py-1.5 text-xs shadow-sm',
+        'select-none rounded-md border border-dashed px-2 py-1.5 text-xs shadow-sm',
+        machine ? 'border-accent/40 bg-accent/[0.06]' : 'bg-muted/40',
         selected && 'ring-2 ring-primary',
       )}
     >
@@ -35,10 +40,10 @@ function ArcRollupNodeInner({ data }: NodeProps<PlanNodeData>) {
       <div className="flex items-center gap-1.5">
         {/* The arc title (from the shell) is primary; the chapter count is the rollup's secondary
             line. Before the shell resolves for this node, the count alone still reads correctly. */}
-        <span className="line-clamp-2 flex-1 break-words font-medium leading-tight" title={content?.title}>
+        <span className={cn('line-clamp-2 flex-1 break-words font-semibold leading-tight', machine ? 'font-mono' : 'font-serif')} title={content?.title}>
           {content?.title || countLabel}
           {content?.title && (
-            <span className="ml-1 font-normal text-muted-foreground">· {countLabel}</span>
+            <span className="ml-1 font-sans font-normal text-muted-foreground">· {countLabel}</span>
           )}
         </span>
         {/* PH13 — scene-links folded INSIDE this collapsed arc (both endpoints inside it, so an edge

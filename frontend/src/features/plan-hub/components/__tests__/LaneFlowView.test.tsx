@@ -74,6 +74,19 @@ describe('LaneFlowView (Advanced redesign)', () => {
     expect(onToggleChapter).toHaveBeenCalledWith('c1');
   });
 
+  it('an EXPANDED chapter can COLLAPSE its scenes again (the reveal toggle is gone once open)', () => {
+    const onToggleChapter = vi.fn();
+    setup([arc({ id: 'a1', chapters: [
+      { id: 'c1', chapterId: 'bk1', storyOrder: 0, title: 'Ch', status: 'drafting', source: 'authored', written: false, scenesExpanded: true, scenes: [
+        { id: 's1', title: 'A scene', status: 'drafting', source: 'authored', written: false, storyOrder: 1 },
+      ] },
+    ] })], { onToggleChapter });
+    // the "▸ scenes" reveal is gone; a "hide scenes" control collapses the branch
+    expect(screen.queryByTestId('flow-toggle-scenes-c1')).toBeNull();
+    fireEvent.click(screen.getByTestId('flow-hide-scenes-c1'));
+    expect(onToggleChapter).toHaveBeenCalledWith('c1');
+  });
+
   it('an EXPANDED chapter shows its scene chips + a "+ scene" add', () => {
     const onAddScene = vi.fn();
     setup([arc({ id: 'a1', chapters: [

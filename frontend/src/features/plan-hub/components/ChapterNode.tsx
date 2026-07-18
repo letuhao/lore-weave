@@ -7,23 +7,32 @@ import { Handle, Position, type NodeProps } from 'reactflow';
 import { cn } from '@/lib/utils';
 
 import { NodeBadges } from './NodeBadges';
-import { orderNodeBadges, unionDotClass, unionStateClass, type PlanNodeData } from './nodePresentation';
+import { orderNodeBadges, type PlanNodeData } from './nodePresentation';
+import { chapterCardClass, normStatus, statusDotClass } from './flowPresentation';
+import { normalizeSource } from '../types';
 
 function ChapterNodeInner({ data }: NodeProps<PlanNodeData>) {
-  const { node, content, overlay, unionState, selected, isHere, onToggle, onOpenRef, hiddenEdges, resolveEntity , matched } =
+  const { node, content, overlay, selected, isHere, onToggle, onOpenRef, hiddenEdges, resolveEntity , matched } =
     data;
   // Chapters aren't in conformance.arcs ⇒ no drift badge (isArc:false); pacing IS chapter-keyed.
   const badges = orderNodeBadges({ overlay, nodeId: node.id, showTension: true, content, resolveEntity });
   const title = content?.title || `Ch ${node.storyOrder ?? '—'}`;
+  // MERGED coordinator: the canvas card wears the SAME readable lane treatment as the redesign —
+  // status → fill/dot colour, authorship → serif (human) / mono (machine). This is what makes the
+  // graph and the lane "one thing": the graph card IS the lane card, just on a zoom/pan/drag canvas.
+  const status = normStatus(content?.status ?? 'outline');
+  const machine = normalizeSource(content?.source) === 'mined';
 
   return (
     <div
       data-testid={`plan-node-chapter-${node.id}`}
       data-here={isHere ? 'true' : undefined}
+      data-status={status}
+      data-source={machine ? 'mined' : 'authored'}
       style={{ width: node.width }}
       className={cn(
         'select-none rounded-md border px-2 py-1.5 text-xs shadow-sm',
-        unionStateClass(unionState),
+        chapterCardClass(status),
         selected && 'ring-2 ring-primary',
         // PH15 find — a match is RINGED, not isolated. Non-matches stay exactly where they were.
         matched && 'ring-2 ring-yellow-500',
@@ -33,9 +42,9 @@ function ChapterNodeInner({ data }: NodeProps<PlanNodeData>) {
     >
       <Handle type="target" position={Position.Left} className="!border-0 !bg-transparent" />
       <div className="flex items-center gap-1.5">
-        <span className={cn('h-2 w-2 shrink-0 rounded-full', unionDotClass(unionState))} />
-        {/* Real chapter title once the window loads; a story-order label until then. */}
-        <span className="line-clamp-2 flex-1 break-words font-medium leading-tight" title={title}>{title}</span>
+        <span className={cn('h-2 w-2 shrink-0 rounded-full', statusDotClass(status))} />
+        {/* Real chapter title once the window loads; a story-order label until then. Authorship font. */}
+        <span className={cn('line-clamp-2 flex-1 break-words font-semibold leading-tight', machine ? 'font-mono' : 'font-serif')} title={title}>{title}</span>
         {/* PH13 — scene-links whose other end is hidden (inside this collapsed chapter, or off in a
             collapsed arc). Counted here so the edge is accounted for rather than silently dropped. */}
         {!!hiddenEdges && (

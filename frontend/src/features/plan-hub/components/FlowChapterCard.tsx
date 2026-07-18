@@ -76,7 +76,17 @@ function FlowChapterCardInner({
       </div>
 
       {chapter.scenesExpanded ? (
-        <div className="mt-2 flex flex-wrap gap-1">
+        <div className="mt-2 flex flex-wrap items-center gap-1">
+          {/* collapse the scene branch again (the reveal toggle is gone once open) */}
+          <button
+            type="button"
+            data-testid={`flow-hide-scenes-${chapter.id}`}
+            onClick={(e) => { e.stopPropagation(); onToggleScenes(chapter.id); }}
+            className="font-mono text-[10px] text-muted-foreground/70 hover:text-primary"
+            title={t('planHub.flow.hideScenes', 'Hide scenes')}
+          >
+            ▾
+          </button>
           {chapter.scenes.map((sc) => (
             <span
               key={sc.id}
