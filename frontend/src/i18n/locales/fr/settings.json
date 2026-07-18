@@ -9,7 +9,8 @@
       "translation": "Traduction",
       "reading": "Lecture",
       "language": "Langue",
-      "mcp": "Accès MCP"
+      "mcp": "Accès MCP",
+      "workflow-bindings": "Configuration automatique du workflow"
     }
   },
   "mcp": {
@@ -492,13 +493,6 @@
       "testing": "Test en cours...",
       "reverify": "Re-vérifier",
       "verify": "Vérifier",
-      "delete_model": "Supprimer le modèle",
-      "confirm_delete": "Confirmer la suppression",
-      "deleting": "Suppression en cours...",
-      "request_failed": "La requête a échoué",
-      "cancel": "Annuler",
-      "saving": "Enregistrement...",
-      "submit": "Enregistrer les modifications",
       "pricing_title": "Tarification (USD pour 1M de tokens)",
       "pricing_input": "Entrée",
       "pricing_output": "Sortie",
@@ -510,7 +504,14 @@
       "pricing_apply": "Appliquer",
       "pricing_not_found": "Aucun modèle correspondant trouvé sur OpenRouter — tarification indisponible pour cette source.",
       "pricing_check_failed": "Échec de la vérification des tarifs sur OpenRouter",
-      "pricing_negative_error": "Le prix doit être supérieur ou égal à zéro"
+      "pricing_negative_error": "Le prix doit être supérieur ou égal à zéro",
+      "delete_model": "Supprimer le modèle",
+      "confirm_delete": "Confirmer la suppression",
+      "deleting": "Suppression en cours...",
+      "request_failed": "La requête a échoué",
+      "cancel": "Annuler",
+      "saving": "Enregistrement...",
+      "submit": "Enregistrer les modifications"
     },
     "toast": {
       "fetch_failed": "Échec de la récupération des modèles : {{error}}",

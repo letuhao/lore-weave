@@ -55,7 +55,7 @@ ns `panels.<id>.*` (guideBodyKey REQUIRED). `platform` category already in CATEG
 | **1 · BE — enablement table + 3 routes + list id/enabled** | get/delete/enable-disable a workflow by id | **DONE** | `workflow_enablement` migration; `getWorkflow`/`deleteWorkflow`/`setWorkflowEnabled` (workflows_rest.go) mirror skills; list exposes workflow_id+effective enabled (separate REST struct, MCP contract untouched). **8 pgxmock route tests: get own/404, delete own-204/other-404/System-blocked, enable disables/404. Full pkg + migrate-lint green; build+vet+provider-gate clean.** review-impl: fixed getWorkflow book READ requiring ≥edit → ≥view (matches list+MCP; a view-grantee could see-but-not-open). |
 | **2 · FE — workflow-proposals panel (net-new)** | approve/reject the pending inbox (closes the hole) | **DONE** | `WorkflowProposalsView` + `WorkflowProposalsPanel` (GG-8, panel_id `workflow-proposals`), `useWorkflowProposals`, api list/approve/reject. Approve mints the workflow. |
 | **3 · FE — workflows panel (+toggle/delete + GG-8)** | list/view/enable-disable/delete own workflows | **DONE** | `WorkflowsView` + `WorkflowsPanel` (GG-8, panel_id `workflows`), `useWorkflowManage` (optimistic toggle, delete-own), api get/setEnabled/remove. System read-only + per-user toggle (SD-1). |
-| **4 · FE — mode-binding setting (GG-8 surface for existing UI)** | mode_bindings reachable as a real setting | **TODO** | — |
+| **4 · FE — mode-binding setting** | mode_bindings reachable as a real setting | **DONE** | New `workflow-bindings` tab in the settings-tab registry (`tabs.tsx`) mounting the existing `BindingSettingsPanel` → lands on BOTH the /settings page + Studio settings dock (one registry, `settingsTabParity` proves it). No-bookId usage verified correct (getModeBinding treats book_id optional → System+user tiers). QC: settingsTabParity 9/9 + full settings suite 54/54; tsc 0; i18n en `page.tab.workflow-bindings` + 17 locales (gate full parity). |
 
 **Slices 2+3 evidence (committed together — shared GG-8 registration):** catalog.ts +2 entries;
 chat-service `panel_id` enum +2 (`workflows`, `workflow-proposals`) + prose; `contracts/frontend-tools.contract.json`
@@ -69,8 +69,15 @@ pgxmock ↔ FE vitest ↔ contract parity both sides ↔ tsc). `LIVE-SMOKE defer
 
 ## REGISTERS
 ### DECISIONS — SD-1..SD-3 above.
-### DEBT — (none yet)
-### DRIFT — (none yet)
+### DEBT
+- **D-S12-BINDINGS-I18N** — `BindingSettings`/`WorkflowRack` hardcode English (no `useTranslation`),
+  pre-existing. The new settings tab surfaces `BindingSettings` as-is; i18n-ing it is a small separate
+  pass (out of S-12 scope — S-12 is about REACHABILITY, not translating a pre-existing component).
+- **D-S12-LIVE-SMOKE** — the full agent-loop E2E (registry_propose_workflow → proposal appears in the
+  panel → human approves → workflow runnable/enabled) needs a live stack + browser MCP, unavailable at
+  dev time. Each link is proven in isolation (BE pgxmock ↔ FE vitest ↔ contract parity ↔ tsc). Trigger:
+  next time the full stack + a browser MCP are up.
+### DRIFT — (none)
 
 ## RESUME
 Re-read THIS → `git log --oneline -8` → continue at the first non-DONE slice. FE slices wait on the

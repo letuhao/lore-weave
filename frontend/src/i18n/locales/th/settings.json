@@ -9,7 +9,8 @@
       "translation": "การแปล",
       "reading": "การอ่าน",
       "language": "ภาษา",
-      "mcp": "การเข้าถึง MCP"
+      "mcp": "การเข้าถึง MCP",
+      "workflow-bindings": "การตั้งค่า Workflow อัตโนมัติ"
     }
   },
   "mcp": {
@@ -492,13 +493,6 @@
       "testing": "กำลังทดสอบ...",
       "reverify": "ตรวจสอบอีกครั้ง",
       "verify": "ตรวจสอบ",
-      "delete_model": "ลบโมเดล",
-      "confirm_delete": "ยืนยันการลบ",
-      "deleting": "กำลังลบ...",
-      "request_failed": "การส่งคำขอล้มเหลว",
-      "cancel": "ยกเลิก",
-      "saving": "กำลังบันทึก...",
-      "submit": "บันทึกการเปลี่ยนแปลง",
       "pricing_title": "ราคา (USD ต่อ 1 ล้าน tokens)",
       "pricing_input": "ระบุราคา",
       "pricing_output": "ผลลัพธ์",
@@ -510,7 +504,14 @@
       "pricing_apply": "ใช้",
       "pricing_not_found": "ไม่พบโมเดลที่ตรงกันบน OpenRouter — ไม่สามารถดึงข้อมูลราคาจากแหล่งนี้ได้",
       "pricing_check_failed": "ไม่สามารถตรวจสอบราคาจาก OpenRouter ได้",
-      "pricing_negative_error": "ราคาต้องมีค่าเป็นศูนย์หรือมากกว่า"
+      "pricing_negative_error": "ราคาต้องมีค่าเป็นศูนย์หรือมากกว่า",
+      "delete_model": "ลบโมเดล",
+      "confirm_delete": "ยืนยันการลบ",
+      "deleting": "กำลังลบ...",
+      "request_failed": "การส่งคำขอล้มเหลว",
+      "cancel": "ยกเลิก",
+      "saving": "กำลังบันทึก...",
+      "submit": "บันทึกการเปลี่ยนแปลง"
     },
     "toast": {
       "fetch_failed": "ดึงข้อมูลโมเดลไม่สำเร็จ: {{error}}",

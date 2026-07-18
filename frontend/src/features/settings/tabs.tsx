@@ -10,7 +10,7 @@
 // buttons + panel state) and import the tabs + content from here. Adding a tab is now a
 // one-line change that lands on both, and `settingsTabParity` proves it.
 import type { ReactElement } from 'react';
-import { User, MessagesSquare, Cpu, Languages, BookOpen, Globe, KeyRound } from 'lucide-react';
+import { User, MessagesSquare, Cpu, Languages, BookOpen, Globe, KeyRound, Workflow } from 'lucide-react';
 
 import { AccountTab } from './AccountTab';
 import { ProvidersTab } from './ProvidersTab';
@@ -19,6 +19,7 @@ import { ReadingTab } from './ReadingTab';
 import { LanguageTab } from './LanguageTab';
 import { McpAccessTab } from './McpAccessTab';
 import { ChatAiSettingsPanel } from '@/features/chat-ai-settings/components/ChatAiSettingsPanel';
+import { BindingSettingsPanel } from '@/features/modeBindings/components/BindingSettingsPanel';
 
 export type SettingsTabId =
   | 'account'
@@ -27,6 +28,7 @@ export type SettingsTabId =
   | 'translation'
   | 'reading'
   | 'language'
+  | 'workflow-bindings'
   | 'mcp';
 
 type TabIcon = React.ComponentType<{ className?: string }>;
@@ -40,6 +42,10 @@ const BASE_TABS: SettingsTab[] = [
   { id: 'translation', icon: Languages },
   { id: 'reading', icon: BookOpen },
   { id: 'language', icon: Globe },
+  // S-12 (G-WORKFLOWS): mode→workflow auto-injection bindings, surfaced as a real setting
+  // (effective value + source tier already come from getModeBinding, SET-1..8). Was
+  // write-only-behavior — the UI existed only on the /extensions route until now.
+  { id: 'workflow-bindings', icon: Workflow },
 ];
 
 /** Q-GATE: the public-MCP tab exists only when the platform flag is on for this user. */
@@ -76,6 +82,8 @@ export function SettingsTabContent({ tab }: { tab: SettingsTabId }): ReactElemen
       return <ReadingTab />;
     case 'language':
       return <LanguageTab />;
+    case 'workflow-bindings':
+      return <BindingSettingsPanel />;
     case 'mcp':
       return <McpAccessTab />;
   }

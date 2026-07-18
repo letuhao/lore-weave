@@ -9,7 +9,8 @@
       "translation": "अनुवाद",
       "reading": "रीडिंग",
       "language": "भाषा",
-      "mcp": "MCP एक्सेस"
+      "mcp": "MCP एक्सेस",
+      "workflow-bindings": "वर्कफ़्लो ऑटो-सेटअप"
     }
   },
   "mcp": {
@@ -492,13 +493,6 @@
       "testing": "परीक्षण किया जा रहा है...",
       "reverify": "पुनः सत्यापित करें",
       "verify": "सत्यापित करें",
-      "delete_model": "मॉडल हटाएं",
-      "confirm_delete": "हटाने की पुष्टि करें",
-      "deleting": "हटाया जा रहा है...",
-      "request_failed": "अनुरोध विफल रहा",
-      "cancel": "रद्द करें",
-      "saving": "सहेजा जा रहा है...",
-      "submit": "परिवर्तन सहेजें",
       "pricing_title": "मूल्य निर्धारण (USD प्रति 1M टोकन)",
       "pricing_input": "इनपुट",
       "pricing_output": "आउटपुट",
@@ -510,7 +504,14 @@
       "pricing_apply": "लागू करें",
       "pricing_not_found": "OpenRouter पर कोई मेल खाने वाला मॉडल नहीं मिला — इस स्रोत से मूल्य निर्धारण उपलब्ध नहीं है।",
       "pricing_check_failed": "OpenRouter मूल्य निर्धारण जाँचने में विफल",
-      "pricing_negative_error": "मूल्य निर्धारण शून्य या उससे अधिक होना चाहिए"
+      "pricing_negative_error": "मूल्य निर्धारण शून्य या उससे अधिक होना चाहिए",
+      "delete_model": "मॉडल हटाएं",
+      "confirm_delete": "हटाने की पुष्टि करें",
+      "deleting": "हटाया जा रहा है...",
+      "request_failed": "अनुरोध विफल रहा",
+      "cancel": "रद्द करें",
+      "saving": "सहेजा जा रहा है...",
+      "submit": "परिवर्तन सहेजें"
     },
     "toast": {
       "fetch_failed": "मॉडल प्राप्त करने में विफल: {{error}}",

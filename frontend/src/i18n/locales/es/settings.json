@@ -9,7 +9,8 @@
       "translation": "Traducción",
       "reading": "Lectura",
       "language": "Idioma",
-      "mcp": "Acceso MCP"
+      "mcp": "Acceso MCP",
+      "workflow-bindings": "Configuración automática del flujo de trabajo"
     }
   },
   "mcp": {
@@ -492,13 +493,6 @@
       "testing": "Probando...",
       "reverify": "Re-verificar",
       "verify": "Verificar",
-      "delete_model": "Eliminar Modelo",
-      "confirm_delete": "Confirmar eliminación",
-      "deleting": "Eliminando...",
-      "request_failed": "La petición ha fallado",
-      "cancel": "Cancelar",
-      "saving": "Guardando...",
-      "submit": "Guardar cambios",
       "pricing_title": "Precios (USD por 1M de tokens)",
       "pricing_input": "Entrada",
       "pricing_output": "Salida",
@@ -510,7 +504,14 @@
       "pricing_apply": "Aplicar",
       "pricing_not_found": "No se encontró ningún modelo coincidente en OpenRouter; los precios no están disponibles desde esta fuente.",
       "pricing_check_failed": "Error al consultar los precios de OpenRouter",
-      "pricing_negative_error": "El precio debe ser cero o mayor"
+      "pricing_negative_error": "El precio debe ser cero o mayor",
+      "delete_model": "Eliminar Modelo",
+      "confirm_delete": "Confirmar eliminación",
+      "deleting": "Eliminando...",
+      "request_failed": "La petición ha fallado",
+      "cancel": "Cancelar",
+      "saving": "Guardando...",
+      "submit": "Guardar cambios"
     },
     "toast": {
       "fetch_failed": "Error al obtener modelos: {{error}}",

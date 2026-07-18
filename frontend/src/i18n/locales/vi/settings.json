@@ -9,7 +9,8 @@
       "translation": "Dịch thuật",
       "reading": "Đọc",
       "language": "Ngôn ngữ",
-      "mcp": "Truy cập MCP"
+      "mcp": "Truy cập MCP",
+      "workflow-bindings": "Thiết lập tự động quy trình làm việc"
     }
   },
   "mcp": {
@@ -492,13 +493,6 @@
       "testing": "Đang kiểm tra...",
       "reverify": "Kiểm tra lại",
       "verify": "Xác minh",
-      "delete_model": "Xóa mô hình",
-      "confirm_delete": "Xác nhận xóa",
-      "deleting": "Đang xóa...",
-      "request_failed": "Yêu cầu thất bại",
-      "cancel": "Hủy",
-      "saving": "Đang lưu...",
-      "submit": "Lưu thay đổi",
       "pricing_title": "Giá cả (USD cho mỗi 1 triệu token)",
       "pricing_input": "Đầu vào",
       "pricing_output": "Đầu ra",
@@ -510,7 +504,14 @@
       "pricing_apply": "Áp dụng",
       "pricing_not_found": "Không tìm thấy mô hình tương ứng trên OpenRouter — không thể lấy giá từ nguồn này.",
       "pricing_check_failed": "Không thể kiểm tra giá trên OpenRouter",
-      "pricing_negative_error": "Giá phải lớn hơn hoặc bằng 0"
+      "pricing_negative_error": "Giá phải lớn hơn hoặc bằng 0",
+      "delete_model": "Xóa mô hình",
+      "confirm_delete": "Xác nhận xóa",
+      "deleting": "Đang xóa...",
+      "request_failed": "Yêu cầu thất bại",
+      "cancel": "Hủy",
+      "saving": "Đang lưu...",
+      "submit": "Lưu thay đổi"
     },
     "toast": {
       "fetch_failed": "Không thể lấy danh sách mô hình: {{error}}",

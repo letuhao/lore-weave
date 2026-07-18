@@ -9,7 +9,8 @@
       "translation": "翻译",
       "reading": "阅读",
       "language": "语言",
-      "mcp": "MCP 访问"
+      "mcp": "MCP 访问",
+      "workflow-bindings": "工作流自动设置"
     }
   },
   "mcp": {
@@ -492,13 +493,6 @@
       "testing": "正在测试...",
       "reverify": "重新验证",
       "verify": "验证",
-      "delete_model": "删除模型",
-      "confirm_delete": "确认删除",
-      "deleting": "正在删除...",
-      "request_failed": "请求失败",
-      "cancel": "取消",
-      "saving": "正在保存...",
-      "submit": "保存更改",
       "pricing_title": "价格 (每 100 万 Token 的美元费用)",
       "pricing_input": "输入",
       "pricing_output": "输出",
@@ -510,7 +504,14 @@
       "pricing_apply": "应用",
       "pricing_not_found": "在 OpenRouter 上未找到匹配的模型 — 无法从该来源获取价格。",
       "pricing_check_failed": "无法检查 OpenRouter 价格",
-      "pricing_negative_error": "价格必须大于或等于零"
+      "pricing_negative_error": "价格必须大于或等于零",
+      "delete_model": "删除模型",
+      "confirm_delete": "确认删除",
+      "deleting": "正在删除...",
+      "request_failed": "请求失败",
+      "cancel": "取消",
+      "saving": "正在保存...",
+      "submit": "保存更改"
     },
     "toast": {
       "fetch_failed": "获取模型失败: {{error}}",

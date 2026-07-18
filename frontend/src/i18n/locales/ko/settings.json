@@ -9,7 +9,8 @@
       "translation": "번역",
       "reading": "읽기",
       "language": "언어",
-      "mcp": "MCP 액세스"
+      "mcp": "MCP 액세스",
+      "workflow-bindings": "워크플로 자동 설정"
     }
   },
   "mcp": {
@@ -492,13 +493,6 @@
       "testing": "테스트 중...",
       "reverify": "재검증",
       "verify": "검증",
-      "delete_model": "모델 삭제",
-      "confirm_delete": "삭제 확인",
-      "deleting": "삭제 중...",
-      "request_failed": "요청 실패",
-      "cancel": "취소",
-      "saving": "저장 중...",
-      "submit": "변경 사항 저장",
       "pricing_title": "가격 (1M 토큰당 USD)",
       "pricing_input": "입력",
       "pricing_output": "출력",
@@ -510,7 +504,14 @@
       "pricing_apply": "적용",
       "pricing_not_found": "OpenRouter에서 일치하는 모델을 찾을 수 없습니다. 이 소스로부터는 가격 정보를 가져올 수 없습니다.",
       "pricing_check_failed": "OpenRouter 가격 확인 실패",
-      "pricing_negative_error": "가격은 0 또는 그 이상의 숫자여야 합니다"
+      "pricing_negative_error": "가격은 0 또는 그 이상의 숫자여야 합니다",
+      "delete_model": "모델 삭제",
+      "confirm_delete": "삭제 확인",
+      "deleting": "삭제 중...",
+      "request_failed": "요청 실패",
+      "cancel": "취소",
+      "saving": "저장 중...",
+      "submit": "변경 사항 저장"
     },
     "toast": {
       "fetch_failed": "모델을 가져오지 못했습니다: {{error}}",

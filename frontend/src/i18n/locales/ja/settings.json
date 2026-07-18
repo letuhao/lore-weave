@@ -9,7 +9,8 @@
       "translation": "翻訳",
       "reading": "読書",
       "language": "言語",
-      "mcp": "MCPアクセス"
+      "mcp": "MCPアクセス",
+      "workflow-bindings": "ワークフローの自動設定"
     }
   },
   "mcp": {
@@ -492,13 +493,6 @@
       "testing": "テスト中...",
       "reverify": "再検証",
       "verify": "検証",
-      "delete_model": "モデルを削除",
-      "confirm_delete": "削除を確認",
-      "deleting": "削除中...",
-      "request_failed": "リクエストに失敗しました",
-      "cancel": "キャンセル",
-      "saving": "保存中...",
-      "submit": "変更を保存",
       "pricing_title": "料金 (100万トークンあたりのUSD)",
       "pricing_input": "入力",
       "pricing_output": "出力",
@@ -510,7 +504,14 @@
       "pricing_apply": "適用",
       "pricing_not_found": "OpenRouterに一致するモデルが見つかりません。このソースからは料金を取得できません。",
       "pricing_check_failed": "OpenRouterの料金確認に失敗しました",
-      "pricing_negative_error": "料金は0以上である必要があります"
+      "pricing_negative_error": "料金は0以上である必要があります",
+      "delete_model": "モデルを削除",
+      "confirm_delete": "削除を確認",
+      "deleting": "削除中...",
+      "request_failed": "リクエストに失敗しました",
+      "cancel": "キャンセル",
+      "saving": "保存中...",
+      "submit": "変更を保存"
     },
     "toast": {
       "fetch_failed": "モデルの取得に失敗しました: {{error}}",

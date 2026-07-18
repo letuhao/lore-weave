@@ -22,6 +22,9 @@ vi.mock('../McpAccessTab', () => ({ McpAccessTab: () => <div data-testid="c-mcp"
 vi.mock('@/features/chat-ai-settings/components/ChatAiSettingsPanel', () => ({
   ChatAiSettingsPanel: () => <div data-testid="c-chat-ai" />,
 }));
+vi.mock('@/features/modeBindings/components/BindingSettingsPanel', () => ({
+  BindingSettingsPanel: () => <div data-testid="c-workflow-bindings" />,
+}));
 
 const authState = { user: { public_mcp_enabled: false } as { public_mcp_enabled: boolean } | null };
 vi.mock('@/auth', () => ({ useAuth: () => authState }));
@@ -32,7 +35,7 @@ import { settingsTabsFor, isSettingsTab, SettingsTabContent } from '../tabs';
 import { SettingsPage } from '@/pages/SettingsPage';
 import { SettingsPanel } from '@/features/studio/panels/SettingsPanel';
 
-const EXPECTED_BASE = ['account', 'chat-ai', 'providers', 'translation', 'reading', 'language'];
+const EXPECTED_BASE = ['account', 'chat-ai', 'providers', 'translation', 'reading', 'language', 'workflow-bindings'];
 
 beforeEach(() => {
   authState.user = { public_mcp_enabled: false };

@@ -9,7 +9,8 @@
       "translation": "Çeviri",
       "reading": "Okuma",
       "language": "Dil",
-      "mcp": "MCP Erişimi"
+      "mcp": "MCP Erişimi",
+      "workflow-bindings": "İş Akışı Otomatik Kurulumu"
     }
   },
   "mcp": {
@@ -492,13 +493,6 @@
       "testing": "Test ediliyor...",
       "reverify": "Yeniden Doğrula",
       "verify": "Doğrula",
-      "delete_model": "Modeli Sil",
-      "confirm_delete": "Silmeyi Onayla",
-      "deleting": "Siliniyor...",
-      "request_failed": "İstek başarısız oldu",
-      "cancel": "İptal",
-      "saving": "Kaydediliyor...",
-      "submit": "Değişiklikleri Kaydet",
       "pricing_title": "Fiyatlandırma (1M token başına USD)",
       "pricing_input": "Giriş",
       "pricing_output": "Çıkış",
@@ -510,7 +504,14 @@
       "pricing_apply": "Uygula",
       "pricing_not_found": "OpenRouter üzerinde eşleşen bir model bulunamadı — bu kaynaktan fiyat bilgisi alınamıyor.",
       "pricing_check_failed": "OpenRouter fiyatlandırması kontrol edilemedi",
-      "pricing_negative_error": "Fiyatlandırma sıfır veya daha büyük olmalıdır"
+      "pricing_negative_error": "Fiyatlandırma sıfır veya daha büyük olmalıdır",
+      "delete_model": "Modeli Sil",
+      "confirm_delete": "Silmeyi Onayla",
+      "deleting": "Siliniyor...",
+      "request_failed": "İstek başarısız oldu",
+      "cancel": "İptal",
+      "saving": "Kaydediliyor...",
+      "submit": "Değişiklikleri Kaydet"
     },
     "toast": {
       "fetch_failed": "Modeller alınamadı: {{error}}",

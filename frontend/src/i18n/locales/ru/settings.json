@@ -9,7 +9,8 @@
       "translation": "Перевод",
       "reading": "Чтение",
       "language": "Язык",
-      "mcp": "Доступ MCP"
+      "mcp": "Доступ MCP",
+      "workflow-bindings": "Автонастройка рабочего процесса"
     }
   },
   "mcp": {
@@ -492,13 +493,6 @@
       "testing": "Тестирование...",
       "reverify": "Перепроверить",
       "verify": "Проверить",
-      "delete_model": "Удалить модель",
-      "confirm_delete": "Подтвердить удаление",
-      "deleting": "Удаление...",
-      "request_failed": "Ошибка запроса",
-      "cancel": "Отмена",
-      "saving": "Сохранение...",
-      "submit": "Сохранить изменения",
       "pricing_title": "Цена (USD за 1 млн токенов)",
       "pricing_input": "Вход",
       "pricing_output": "Выход",
@@ -510,7 +504,14 @@
       "pricing_apply": "Применить",
       "pricing_not_found": "Модель не найдена в OpenRouter — данные о цене из этого источника недоступны.",
       "pricing_check_failed": "Не удалось проверить цену в OpenRouter",
-      "pricing_negative_error": "Цена должна быть больше или равна нулю"
+      "pricing_negative_error": "Цена должна быть больше или равна нулю",
+      "delete_model": "Удалить модель",
+      "confirm_delete": "Подтвердить удаление",
+      "deleting": "Удаление...",
+      "request_failed": "Ошибка запроса",
+      "cancel": "Отмена",
+      "saving": "Сохранение...",
+      "submit": "Сохранить изменения"
     },
     "toast": {
       "fetch_failed": "Не удалось получить список моделей: {{error}}",

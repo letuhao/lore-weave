@@ -9,7 +9,8 @@
       "translation": "Terjemahan",
       "reading": "Pembacaan",
       "language": "Bahasa",
-      "mcp": "Akses MCP"
+      "mcp": "Akses MCP",
+      "workflow-bindings": "Tetapan Automatik Aliran Kerja"
     }
   },
   "mcp": {
@@ -492,13 +493,6 @@
       "testing": "Menguji...",
       "reverify": "Sahkan Semula",
       "verify": "Sahkan",
-      "delete_model": "Padam Model",
-      "confirm_delete": "Sahkan Pemadaman",
-      "deleting": "Memadam...",
-      "request_failed": "Permintaan gagal",
-      "cancel": "Batal",
-      "saving": "Menyimpan...",
-      "submit": "Simpan Perubahan",
       "pricing_title": "Harga (USD bagi setiap 1M token)",
       "pricing_input": "Input",
       "pricing_output": "Output",
@@ -510,7 +504,14 @@
       "pricing_apply": "Guna",
       "pricing_not_found": "Tiada model sepadan ditemui di OpenRouter — harga tidak tersedia daripada sumber ini.",
       "pricing_check_failed": "Gagal menyemak harga OpenRouter",
-      "pricing_negative_error": "Harga mestilah sifar atau lebih"
+      "pricing_negative_error": "Harga mestilah sifar atau lebih",
+      "delete_model": "Padam Model",
+      "confirm_delete": "Sahkan Pemadaman",
+      "deleting": "Memadam...",
+      "request_failed": "Permintaan gagal",
+      "cancel": "Batal",
+      "saving": "Menyimpan...",
+      "submit": "Simpan Perubahan"
     },
     "toast": {
       "fetch_failed": "Gagal mengambil model: {{error}}",

@@ -9,7 +9,8 @@
       "translation": "Translation",
       "reading": "Reading",
       "language": "Language",
-      "mcp": "MCP Access"
+      "mcp": "MCP Access",
+      "workflow-bindings": "Workflow Auto-setup"
     }
   },
   "mcp": {
