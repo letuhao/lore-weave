@@ -12,6 +12,7 @@
 //   • need="plan" → a "Plan this book" button firing onPlan (opens the plan-hub origin flow).
 import { useTranslation } from 'react-i18next';
 import { WorkSetupCta } from './WorkSetupCta';
+import { SetupEverythingLink } from './SetupEverythingLink';
 
 interface WorkDoorProps {
   need: 'work';
@@ -40,7 +41,12 @@ export function BookNotReadyDoor(props: Props) {
     >
       <p className="max-w-xs">{message}</p>
       {props.need === 'work' ? (
-        <WorkSetupCta bookId={props.bookId} token={props.token} />
+        <>
+          <WorkSetupCta bookId={props.bookId} token={props.token} />
+          {/* Part B — the opt-in "set up everything" shortcut (renders itself only when the book also
+              lacks a plan, so it never nags a book that just needs a Work). */}
+          <SetupEverythingLink bookId={props.bookId} token={props.token} />
+        </>
       ) : (
         props.onPlan && (
           <button

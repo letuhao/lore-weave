@@ -623,10 +623,10 @@
       "title": "Orts-Graph",
       "desc": "Die Schauplätze (Orte) des Buches als verschiebbarer Knotengraph",
       "guideBody": "Fügen Sie die Schauplätze (Orte) des Buches als Knotengraph hinzu und verbinden Sie diese. Geben Sie einen Namen ein und drücken Sie + Ort, um einen Schauplatz zu erstellen; aktivieren Sie „Orte verknüpfen“, wählen Sie zwei Knoten und ein Prädikat (enthält / grenzt an / führt nach) aus, um sie zu verbinden; ziehen Sie die Knoten an, um sie anzuordnen (serverseitig gespeichert, geräteübergreifend verfügbar); legen Sie ein Hintergrundbild fest (erfordert ein geöffnetes Kapitel). Klicken Sie auf einen Knoten, um ihn im Cast-Codex zu öffnen. Nur Orte – verwenden Sie „Andere Arten erstellen“, um Charaktere, Gegenstände und den Rest hinzuzufügen.",
+      "noWork": "Das Schreiben ist für dieses Buch noch nicht eingerichtet – richte es ein, um die Orte hier anzuordnen.",
       "openCompose": "Compose öffnen",
       "loading": "Weltkarte wird geladen…",
-      "authorOther": "Andere Arten erstellen →",
-      "noWork": "Das Schreiben ist für dieses Buch noch nicht eingerichtet – richte es ein, um die Orte hier anzuordnen."
+      "authorOther": "Andere Arten erstellen →"
     },
     "cast": {
       "title": "Cast",
@@ -1643,5 +1643,10 @@
       "empty": "Keine passenden Textstellen gefunden.",
       "openChapter": "öffnen →"
     }
+  },
+  "setup": {
+    "firstStructureTitle": "Erster Akt",
+    "everything": "Dieses Buch vollständig einrichten",
+    "everythingBusy": "Einrichtung läuft…"
   }
 }

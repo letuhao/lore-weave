@@ -1643,5 +1643,10 @@
       "empty": "No passages match.",
       "openChapter": "open →"
     }
+  },
+  "setup": {
+    "firstStructureTitle": "Act One",
+    "everything": "Or set up this book completely",
+    "everythingBusy": "Setting up…"
   }
 }

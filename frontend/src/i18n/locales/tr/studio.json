@@ -623,10 +623,10 @@
       "title": "Yer Grafiği",
       "desc": "Kitaptaki yerlerin (konumların) sürüklenebilir bir düğüm grafiği olarak sunumu",
       "guideBody": "Kitaptaki yerleri (konumları) bir düğüm grafiği olarak ekleyin ve birbirine bağlayın. Bir isim yazın ve konumu oluşturmak için + Yer'e basın; Yerleri Bağla seçeneğini açın, iki düğüm ve bir yüklem (içerir / sınırı / rota_to) seçerek onları birbirine bağlayın; düzenlemek için sürükleyin (sunucu tarafında kaydedilir, cihazlarınız arasında paylaşılır); bir arka plan görseli ayarlayın (açık bir bölüm gerektirir). Bir düğümü Cast kodeksinde açmak için tıklayın. Sadece Konumlar — karakterler, eşyalar ve diğer her şeyi eklemek için Diğer türleri Yaz seçeneğini kullanın.",
+      "noWork": "Yazım süreci bu kitap için henüz yapılandırılmadı — mekanları burada düzenlemek için kurulumu yapın.",
       "openCompose": "Compose'u Aç",
       "loading": "Dünya haritası yükleniyor...",
-      "authorOther": "Diğer türleri Yaz →",
-      "noWork": "Yazım süreci bu kitap için henüz yapılandırılmadı — mekanları burada düzenlemek için kurulumu yapın."
+      "authorOther": "Diğer türleri Yaz →"
     },
     "cast": {
       "title": "Cast",
@@ -1643,5 +1643,10 @@
       "empty": "Eşleşen pasaj bulunamadı.",
       "openChapter": "bölümü aç →"
     }
+  },
+  "setup": {
+    "firstStructureTitle": "Birinci Perde",
+    "everything": "Veya bu kitabı tamamen yapılandır",
+    "everythingBusy": "Yapılandırılıyor…"
   }
 }

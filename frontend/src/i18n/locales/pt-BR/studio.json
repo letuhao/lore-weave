@@ -623,10 +623,10 @@
       "title": "Grafo de Lugares",
       "desc": "Os lugares (localizações) do livro como um grafo de nós arrastáveis",
       "guideBody": "Adicione e conecte os lugares (localizações) do livro como um grafo de nós. Digite um nome e pressione + Place para criar uma localização; ative Link places, escolha dois nós e um predicado (contains / borders / route_to) para conectá-los; arraste para organizar (salvo no servidor, compartilhado entre seus dispositivos); defina uma imagem de fundo (requer um capítulo aberto). Clique em um nó para abri-lo no codex de Elenco. Apenas Localizações — use Author other kinds para adicionar personagens, itens e o restante.",
+      "noWork": "A escrita ainda não foi configurada para este livro — configure-a para organizar seus lugares aqui.",
       "openCompose": "Abrir Compose",
       "loading": "Carregando mapa do mundo...",
-      "authorOther": "Criar outros tipos →",
-      "noWork": "A escrita ainda não foi configurada para este livro — configure-a para organizar seus lugares aqui."
+      "authorOther": "Criar outros tipos →"
     },
     "cast": {
       "title": "Elenco",
@@ -1643,5 +1643,10 @@
       "empty": "Nenhum trecho correspondente encontrado.",
       "openChapter": "abrir →"
     }
+  },
+  "setup": {
+    "firstStructureTitle": "Ato Um",
+    "everything": "Ou configure este livro completamente",
+    "everythingBusy": "Configurando…"
   }
 }

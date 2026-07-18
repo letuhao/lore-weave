@@ -623,10 +623,10 @@
       "title": "Grafo de lugares",
       "desc": "Los lugares (ubicaciones) del libro como un grafo de nodos arrastrables",
       "guideBody": "Añade y conecta los lugares (ubicaciones) del libro como un grafo de nodos. Escribe un nombre y pulsa + Lugar para crear una ubicación; activa Enlazar lugares, elige dos nodos y un predicado (contiene / limita / ruta_a) para conectarlos; arrastra para organizar (se guarda en el servidor y se comparte entre tus dispositivos); establece una imagen de fondo (requiere un capítulo abierto). Haz clic en un nodo para abrirlo en el códice de Reparto. Solo ubicaciones: usa Crear otros tipos para añadir personajes, objetos y el resto.",
+      "noWork": "La escritura aún no está configurada para este libro; configúrala para organizar sus lugares aquí.",
       "openCompose": "Abrir Compose",
       "loading": "Cargando mapa del mundo…",
-      "authorOther": "Crear otros tipos →",
-      "noWork": "La escritura aún no está configurada para este libro; configúrala para organizar sus lugares aquí."
+      "authorOther": "Crear otros tipos →"
     },
     "cast": {
       "title": "Reparto",
@@ -1643,5 +1643,10 @@
       "empty": "No se encontraron fragmentos coincidentes.",
       "openChapter": "abrir →"
     }
+  },
+  "setup": {
+    "firstStructureTitle": "Primer acto",
+    "everything": "O configura este libro por completo",
+    "everythingBusy": "Configurando…"
   }
 }

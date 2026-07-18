@@ -623,10 +623,10 @@
       "title": "Đồ thị Địa điểm",
       "desc": "Các địa điểm trong sách dưới dạng đồ thị nút có thể kéo thả",
       "guideBody": "Thêm và kết nối các địa điểm trong sách dưới dạng đồ thị nút. Nhập tên và nhấn + Place để tạo một địa điểm; bật Link places, chọn hai nút và một vị ngữ (contains / borders / route_to) để kết nối chúng; kéo để sắp xếp (được lưu ở phía máy chủ, chia sẻ giữa các thiết bị của bạn); thiết lập hình nền (yêu cầu phải có một chương đang mở). Nhấp vào một nút để mở nó trong codex Cast. Chỉ dành cho Địa điểm — hãy dùng Author other kinds để thêm nhân vật, vật phẩm và các loại khác.",
+      "noWork": "Chế độ viết chưa được thiết lập cho cuốn sách này — hãy thiết lập để sắp xếp các địa điểm tại đây.",
       "openCompose": "Mở Compose",
       "loading": "Đang tải bản đồ thế giới…",
-      "authorOther": "Tạo các loại khác →",
-      "noWork": "Chế độ viết chưa được thiết lập cho cuốn sách này — hãy thiết lập để sắp xếp các địa điểm tại đây."
+      "authorOther": "Tạo các loại khác →"
     },
     "cast": {
       "title": "Dàn nhân vật",
@@ -1643,5 +1643,10 @@
       "empty": "Không tìm thấy đoạn văn nào phù hợp.",
       "openChapter": "mở →"
     }
+  },
+  "setup": {
+    "firstStructureTitle": "Hồi Một",
+    "everything": "Hoặc thiết lập hoàn chỉnh cuốn sách này",
+    "everythingBusy": "Đang thiết lập…"
   }
 }

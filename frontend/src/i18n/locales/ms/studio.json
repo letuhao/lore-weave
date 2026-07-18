@@ -623,10 +623,10 @@
       "title": "Graf Tempat",
       "desc": "Tempat-tempat (lokasi) dalam buku sebagai graf nod yang boleh diseret",
       "guideBody": "Tambah dan hubungkan tempat-tempat (lokasi) dalam buku sebagai graf nod. Taip nama dan tekan + Place untuk menghasilkan lokasi; aktifkan Link places, pilih dua nod dan predikat (contains / borders / route_to) untuk menghubungkannya; seret untuk menyusun (disimpan di sebelah pelayan, dikongsi merentasi peranti anda); tetapkan imej latar belakang (memerlukan bab terbuka). Klik nod untuk membukanya dalam kodeks Cast. Hanya untuk Lokasi — gunakan Author other kinds untuk menambah watak, item, dan lain-lain.",
+      "noWork": "Penulisan belum ditetapkan untuk buku ini — tetapkannya untuk menyusun tempat-tempat di sini.",
       "openCompose": "Buka Compose",
       "loading": "Memuatkan peta dunia...",
-      "authorOther": "Hasilkan jenis lain →",
-      "noWork": "Penulisan belum ditetapkan untuk buku ini — tetapkannya untuk menyusun tempat-tempat di sini."
+      "authorOther": "Hasilkan jenis lain →"
     },
     "cast": {
       "title": "Cast",
@@ -1643,5 +1643,10 @@
       "empty": "Tiada petikan yang sepadan.",
       "openChapter": "buka →"
     }
+  },
+  "setup": {
+    "firstStructureTitle": "Bab Satu",
+    "everything": "Atau tetapkan buku ini sepenuhnya",
+    "everythingBusy": "Sedang menetapkan..."
   }
 }

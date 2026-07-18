@@ -13,6 +13,12 @@ vi.mock('../WorkSetupCta', () => ({
   ),
 }));
 
+// SetupEverythingLink owns readiness/setup hooks (react-query + auth); stub it — its own behaviour is
+// tested in SetupEverythingLink.test. Here we only prove the work door renders it.
+vi.mock('../SetupEverythingLink', () => ({
+  SetupEverythingLink: () => <div data-testid="setup-everything-stub" />,
+}));
+
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({ t: (_k: string, o?: { defaultValue?: string }) => o?.defaultValue ?? _k }),
 }));

@@ -623,10 +623,10 @@
       "title": "Graphe des lieux",
       "desc": "Les lieux du livre sous forme de graphe de nœuds déplaçables",
       "guideBody": "Ajoutez et connectez les lieux du livre sous forme de graphe de nœuds. Tapez un nom et appuyez sur + Lieu pour créer un emplacement ; activez « Lier les lieux », choisissez deux nœuds et un prédicat (contient / borde / mène_à) pour les connecter ; faites glisser pour organiser (sauvegardé côté serveur, partagé entre vos appareils) ; définissez une image d'arrière-plan (nécessite un chapitre ouvert). Cliquez sur un nœud pour l'ouvrir dans le codex des personnages. Lieux uniquement — utilisez « Créer d'autres types » pour ajouter des personnages, des objets et le reste.",
+      "noWork": "L'écriture n'est pas encore configurée pour ce livre — configurez-la pour organiser ses lieux ici.",
       "openCompose": "Ouvrir Compose",
       "loading": "Chargement de la carte du monde…",
-      "authorOther": "Créer d'autres types →",
-      "noWork": "L'écriture n'est pas encore configurée pour ce livre — configurez-la pour organiser ses lieux ici."
+      "authorOther": "Créer d'autres types →"
     },
     "cast": {
       "title": "Distribution",
@@ -1643,5 +1643,10 @@
       "empty": "Aucun passage ne correspond.",
       "openChapter": "ouvrir →"
     }
+  },
+  "setup": {
+    "firstStructureTitle": "Acte I",
+    "everything": "Ou configurer complètement ce livre",
+    "everythingBusy": "Configuration…"
   }
 }
