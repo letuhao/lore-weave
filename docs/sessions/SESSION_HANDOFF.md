@@ -16,9 +16,12 @@ the code+test level** — no MISSING artifact, no stub, no unwired route, no bui
 falsifiable record: [`docs/specs/2026-07-17-studio-completeness-build/COMPLETENESS-AUDIT-RESULT-2026-07-18.md`](../specs/2026-07-17-studio-completeness-build/COMPLETENESS-AUDIT-RESULT-2026-07-18.md).
 Two conscious-accept deviations (not defects): **(1) S-05** authors facts graph-direct (`POST /entities/{id}/facts`),
 not the spec's `/pending-facts` review-queue; **(2) S-10 O4** bible rail lists 2 panels not ~13 (all palette-reachable).
-One honest execution gap: **S-05 Neo4j repo-layer left UNVERIFIED-by-execution** (shared dev graph TRUNCATE risk;
-unit-covered) — re-run on isolated Neo4j. Also flagged: several DB suites **silently skip without their env var**
-(`BOOK_TEST_DATABASE_URL`, `GLOSSARY_TEST_DB_URL`, `TEST_NEO4J_URI`) → bare `go test`/`pytest` gives false green.
+Execution gap **CLOSED (2026-07-18):** the S-05 repo-layer (facts on Neo4j + triage on PG) was re-run against a
+**throwaway isolated Neo4j (:7690) + throwaway PG (`lw_audit_knowledge`)** — `test_facts_repo.py` +
+`test_kg_triage.py` → **38 passed** (was 10 passed / 28 skipped under bare pytest), zero risk to the shared dev
+graph; infra torn down after. No unrun code path remains in this track. Also flagged for CI hygiene: several DB
+suites **silently skip without their env var** (`BOOK_TEST_DATABASE_URL`, `GLOSSARY_TEST_DB_URL`,
+`TEST_NEO4J_URI`, `TEST_KNOWLEDGE_DB_URL`) → a bare `go test`/`pytest` reports false green.
 
 ## ✍️ WRITING STUDIO — NEWCOMER POLISH (dogfood-driven) — **SHIPPED (2026-07-18, `feat/context-budget-law`)**
 A first-run dogfood (real newcomer writing their first book) surfaced 7 friction/bug findings; spec+plan

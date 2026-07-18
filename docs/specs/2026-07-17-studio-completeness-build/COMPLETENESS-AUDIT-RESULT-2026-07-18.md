@@ -63,15 +63,23 @@ at live infra:
 
 - **book-service parts (S-02)** — gated on `BOOK_TEST_DATABASE_URL`; re-run vs `:5555/loreweave_book` → 19/19.
 - **glossary S-06/W5** — gated on `GLOSSARY_TEST_DB_URL`; re-run vs `:5555/loreweave_glossary_test` → green.
-- **knowledge S-05 Neo4j repo-layer** (invalidate/revalidate on a committed `:Fact`, triage vs a real graph):
-  ~28 tests gated on `TEST_NEO4J_URI`. **Deliberately NOT forced** against the live Neo4j — it is a shared
-  single instance and KG integration tests TRUNCATE the shared dev graph (repo memory). Route/handler
-  behavior is covered by 406 passing **unit** tests (mocked Neo4j); the **repo-layer Neo4j behavior for S-05
-  is UNVERIFIED-by-execution here** — the one honest "not run" in this audit. Verify on an isolated Neo4j when
-  one is available.
+- **knowledge S-05 repo-layer** (invalidate/revalidate on a committed `:Fact`, triage queue): 28 tests gated
+  on `TEST_NEO4J_URI` / `TEST_KNOWLEDGE_DB_URL`. **GAP NOW CLOSED (2026-07-18).** Rather than risk the shared
+  dev graph, spun a **throwaway isolated Neo4j** (`neo4j:2026.03-community` + APOC on host :7690) + a throwaway
+  PG DB (`lw_audit_knowledge` on :5555), ran the two files against them, and tore both down:
+  ```
+  $ TEST_NEO4J_URI=bolt://localhost:7690 TEST_KNOWLEDGE_DB_URL=…/lw_audit_knowledge \
+      python -m pytest tests/integration/db/test_facts_repo.py tests/integration/db/test_kg_triage.py
+    38 passed in 11.83s        # was 10 passed / 28 SKIPPED under bare pytest
+  ```
+  `test_facts_repo.py` (Neo4j: merge_fact idempotence + pass-2 promotion, invalidate sets valid_until,
+  list excludes pending/invalidated, cross-user boundary, WS26 supersession + merge-repoints-facts) and
+  `test_kg_triage.py` (PG TriageRepo: park/group-by-signature, resolve-batches-pending, glossary handoff,
+  cross-tenant + cross-project isolation) all green on real isolated infra. **No execution gap remains.**
 
 ## Bottom line
 
 The studio-completeness build is genuinely complete — not just claimed-complete. The two deviations are
-conscious-accepts, not defects. The only execution gap is S-05's Neo4j repo layer, left unrun by design to
-protect the shared dev graph; it is covered at the unit layer and flagged here for an isolated-infra re-run.
+conscious-accepts, not defects. The previously-open execution gap (S-05 Neo4j/PG repo layer) has since been
+**closed** by running it against throwaway isolated infra (38 passed) — there is now no unrun code path in
+this track.
