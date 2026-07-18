@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, act } from '@testing-library/react';
 
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({ t: (_k: string, o?: { defaultValue?: string }) => o?.defaultValue ?? _k, i18n: { language: 'en' } }),
@@ -30,8 +30,18 @@ vi.mock('../../search/SemanticSearchList', () => ({
 
 import { SearchPanel } from '../SearchPanel';
 
-function makeApi() {
-  return { onDidParametersChange: () => ({ dispose: vi.fn() }), setTitle: vi.fn() } as never;
+// Capture the onDidParametersChange listener so a test can fire it (the "rail re-queries an
+// already-open panel" path — updateParameters → onDidParametersChange → re-seed).
+function makeApi(): { api: never; fire: (p: Record<string, unknown>) => void } {
+  let listener: ((p: Record<string, unknown> | undefined) => void) | null = null;
+  const api = {
+    onDidParametersChange: (cb: (p: Record<string, unknown> | undefined) => void) => {
+      listener = cb;
+      return { dispose: vi.fn() };
+    },
+    setTitle: vi.fn(),
+  };
+  return { api: api as never, fire: (p) => listener?.(p) };
 }
 
 describe('SearchPanel (S-11)', () => {
@@ -42,7 +52,7 @@ describe('SearchPanel (S-11)', () => {
   });
 
   it('defaults to TEXT mode (reused RawSearchPanel) seeded with the params query + a studio onJump', () => {
-    render(<SearchPanel api={makeApi()} params={{ query: 'the tower' }} containerApi={{} as never} />);
+    render(<SearchPanel api={makeApi().api} params={{ query: 'the tower' }} containerApi={{} as never} />);
     expect(screen.getByTestId('raw-search-stub')).toBeInTheDocument();
     expect(screen.queryByTestId('semantic-stub')).not.toBeInTheDocument();
     const p = rawProps.value as { bookId: string; initialQuery: string; onJump: (id: string) => void };
@@ -54,15 +64,27 @@ describe('SearchPanel (S-11)', () => {
   });
 
   it('opens in SEMANTIC mode when the rail seeds params.mode', () => {
-    render(<SearchPanel api={makeApi()} params={{ query: 'x', mode: 'semantic' }} containerApi={{} as never} />);
+    render(<SearchPanel api={makeApi().api} params={{ query: 'x', mode: 'semantic' }} containerApi={{} as never} />);
     expect(screen.getByTestId('semantic-stub')).toBeInTheDocument();
     expect(screen.queryByTestId('raw-search-stub')).not.toBeInTheDocument();
   });
 
   it('the in-panel toggle switches modes', () => {
-    render(<SearchPanel api={makeApi()} params={{}} containerApi={{} as never} />);
+    render(<SearchPanel api={makeApi().api} params={{}} containerApi={{} as never} />);
     expect(screen.getByTestId('raw-search-stub')).toBeInTheDocument();
     fireEvent.click(screen.getByTestId('search-mode-semantic'));
     expect(screen.getByTestId('semantic-stub')).toBeInTheDocument();
+  });
+
+  it('re-seeds when the rail re-queries an ALREADY-OPEN panel (onDidParametersChange)', () => {
+    const { api, fire } = makeApi();
+    render(<SearchPanel api={api} params={{ query: 'first', mode: 'text' }} containerApi={{} as never} />);
+    expect((rawProps.value as { initialQuery: string }).initialQuery).toBe('first');
+    // the rail submits a new query + a mode switch while the panel is open
+    act(() => fire({ query: 'second', mode: 'semantic' }));
+    expect(screen.getByTestId('semantic-stub')).toBeInTheDocument();
+    // switch back to text and confirm the NEW query seeded (proves the reactive path, not stale mount)
+    fireEvent.click(screen.getByTestId('search-mode-text'));
+    expect((rawProps.value as { initialQuery: string }).initialQuery).toBe('second');
   });
 });

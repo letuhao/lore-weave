@@ -52,8 +52,36 @@ dead-end list). DONE = built, reachable, operable end-to-end, tests green.
   used in ChapterBrowser + RawSearchPage; useDrawerSearch in RawDrawersTab) over COMPLETE backends; the only
   net-new is tested wiring + deep-link. Panel is REACHABLE (activity-rail + palette + agent ui_open_studio_panel
   'search'). NOT a dead-end: every hit opens the editor at its chapter.
-- Browser live-smoke on the isolated static build: recommended follow-up (FE-only change; the component-test→
-  contract-parity→live-component chain covers each link; no cross-service runtime call added).
+## ═══ /review-impl + COMPLETENESS AUDIT (goal, 2026-07-18) ═══
+Standards gate: the only standard touched is the **Frontend-Tool Contract** — `search` is a closed-set
+`panel_id` added to catalog + frontend_tools.py enum + contract.json (both sides), machine-checked by
+panelCatalogContract.test.ts (enum == OPENABLE_STUDIO_PANELS == contract, and every id → a real component),
+and the resolver opens a real panel (no silent no-op). No tenancy/provider/model/secret/DB/language surface.
+Adversarial coverage pass — the suspicions I chased and CLEARED:
+- **Reachability** (built-but-unreachable-nav): `ACTIVITY_VIEWS` includes `search`; StudioActivityBar renders
+  its icon; StudioActivityBar.test already asserts the icon + onSelect('search'). Chain icon→activeView→rail
+  →openPanel('search')→SearchPanel is complete. NOT unreachable.
+- **Router crash risk**: RawSearchPanel calls `useNavigate()` unconditionally. Verified SAFE — existing dock
+  panels (CharacterArcPanel, KgOverviewPanel) use react-router, and the studio route is under the App Router
+  (+ the popout host is its own Route). No throw in the dock.
+- **TopBar "Search"** is Quick Open (go-to-location), NOT content search — complementary, no conflict.
+- **FOUND + FIXED (coverage gap)**: SearchPanel's reactive param re-seed (`onDidParametersChange` — the "rail
+  re-queries an ALREADY-OPEN panel" path) was wired correctly (BookReaderPanel precedent) but the test stubbed
+  it to a no-op → untested. Added a test that fires the listener + asserts the panel re-seeds mode + query.
+  (4 SearchPanel tests now; the new one would have caught a wiring break.)
+Verdict: no HIGH/MED. One LOW coverage gap, fixed. S-11 is structurally complete + operable.
 
-## RESULT: S-11 COMPLETE — the search activity-view is a real, reachable, operable surface (Text + Semantic,
-## deep-linking into the editor). Category sealed `knowledge`. FE-only.
+## DEFERRED (env-gated, tracked — gate #4)
+- **D-S11-BROWSER-SMOKE**: a live browser pass of the studio search flow (icon → rail → type → Search →
+  SearchPanel → text hit opens the editor; semantic hit deep-links). BLOCKED at dev time by TWO env facts:
+  (a) the shared `:5174` FE is the BAKED prod image (stale — no S-11; rebuilding it mid parallel-session
+  disrupts siblings), and (b) the test account has **0 books** — the studio (`/books/:bookId/studio`) has no
+  target and semantic mode has no knowledge project to query. RECIPE when unblocked: `vite dev` on a free
+  port (:5199, proxies /v1→:3123) + seed a book/chapters/knowledge-project, then Playwright-drive the flow.
+  Coverage in lieu: component tests (rail→openPanel, panel mode/param wiring, RawSearchPanel onJump,
+  SemanticSearchList chapter deep-link) + the machine-checked contract parity + both modes wrapping
+  ALREADY-LIVE shipped components. FE-only change ⇒ not under the ≥2-service live-smoke mandate.
+
+## RESULT: S-11 COMPLETE + REVIEW-IMPL CLEAN — reachable, Router-safe, contract-parity-checked, operable
+## (Text + Semantic, deep-linking into the editor). Category sealed `knowledge`. One coverage gap fixed.
+## Only open item: the env-gated browser smoke (D-S11-BROWSER-SMOKE), tracked with its run recipe.
