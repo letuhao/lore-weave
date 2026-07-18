@@ -1,5 +1,17 @@
 # ▶▶ NEXT SESSION STARTS HERE
 
+## 🧹 WORKING-TREE CLEARED (2026-07-18, `feat/context-budget-law`)
+Prior studio-completeness sessions left an uncommitted docs+infra batch dirty (which blocked those
+sessions from committing cleanly). Audited + committed it in 3 groups; **tree is now clean**:
+- `76d8d2a24` **docs** — ARCHITECTURE (47 svcs), DATA_ARCHITECTURE (22 DBs), new **FEATURE_INDEX.md**
+  (41 feature folders → route → service), MMO `_index.md`, README (Studio/Auto-Draft/workflow-rack/18-locale).
+- `69e55cdcf` **infra** — frontend-game host port 5174→5176 (5174 = main `frontend`, always-up, collided
+  with `--profile game up`); CORS-origin defaults on tilemap/roleplay/game-server → :5176; db-ensure adds
+  `loreweave_scheduler`; `.gitignore` `frontend/dist-s01/`.
+- `65d6f40ab` **chore** — track the `.claude/skills/playwright-cli` skill (browser live-smoke tooling).
+**Completeness audit:** the studio-completeness build **S-01…S-13 is fully SHIPPED** (every spec has a
+COMPLETE/SHIPPED RUN-STATE marker + commits; verified via git log). No open build gaps in that track.
+
 ## ✍️ WRITING STUDIO — NEWCOMER POLISH (dogfood-driven) — **SHIPPED (2026-07-18, `feat/context-budget-law`)**
 A first-run dogfood (real newcomer writing their first book) surfaced 7 friction/bug findings; spec+plan
 in `docs/specs/2026-07-18-writing-studio-newcomer-polish/`, diary in `docs/dogfood/`. All 6 milestones
