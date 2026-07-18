@@ -205,6 +205,14 @@ func (s *Server) newMCPServer() *mcp.Server {
 		lwmcp.NewToolMeta(lwmcp.TierA, lwmcp.ScopeBook, nil, []string{"move chapter to act", "put chapter in volume", "home chapter", "un-home chapter"}),
 		s.toolChapterSetPart)
 
+	// S-07 §3 — reorder was REST-only; this gives the agent reading-order parity with the human.
+	addTool(srv, "book_chapter_reorder",
+		"Set the reading order of a book's chapters. Pass chapter_ids as the COMPLETE list of the "+
+			"book's active chapters (one language track) in the new order — each exactly once. "+
+			"Reverse: book_chapter_reorder with the prior order.",
+		lwmcp.NewToolMeta(lwmcp.TierA, lwmcp.ScopeBook, nil, []string{"reorder chapters", "reorder manuscript", "change reading order", "move chapter"}),
+		s.toolChapterReorder)
+
 	addTool(srv, "book_chapter_restore_revision",
 		"Restore a chapter's draft to a prior saved revision (a new revision "+
 			"snapshots the current draft first, so it is reversible). Reverse: "+

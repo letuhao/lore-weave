@@ -23,6 +23,7 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -94,28 +95,8 @@ WHERE c.id = $1 AND c.book_id = $2
 	}
 
 	// FOR UPDATE serializes concurrent reorders of the same track (see the file header).
-	rows, err := tx.Query(ctx, `
-SELECT id FROM chapters
-WHERE book_id = $1 AND original_language = $2 AND lifecycle_state = 'active'
-ORDER BY sort_order, id
-FOR UPDATE
-`, bookID, lang)
+	order, err := lockActiveChapterTrack(ctx, tx, bookID, lang)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT", "failed to reorder chapters")
-		return
-	}
-	var order []uuid.UUID
-	for rows.Next() {
-		var id uuid.UUID
-		if err := rows.Scan(&id); err != nil {
-			rows.Close()
-			writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT", "failed to reorder chapters")
-			return
-		}
-		order = append(order, id)
-	}
-	rows.Close()
-	if err := rows.Err(); err != nil {
 		writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT", "failed to reorder chapters")
 		return
 	}
@@ -128,27 +109,10 @@ FOR UPDATE
 		return
 	}
 
-	// Phase 1: park every slot in the negative space (source positives → target negatives; the two
-	// sets are disjoint, so the per-row unique check never trips).
-	if _, err := tx.Exec(ctx, `
-UPDATE chapters SET sort_order = -sort_order - 1
-WHERE book_id = $1 AND original_language = $2 AND lifecycle_state = 'active'
-`, bookID, lang); err != nil {
+	out, err := writeChapterTrackOrder(ctx, tx, bookID, lang, next)
+	if err != nil {
 		writeError(w, http.StatusConflict, "BOOK_CONFLICT", "failed to reorder chapters")
 		return
-	}
-	// Phase 2: write the dense 1..N sequence (negatives → positives; disjoint again).
-	out := make([]reorderedChapter, 0, len(next))
-	for i, id := range next {
-		slot := i + 1
-		if _, err := tx.Exec(ctx, `
-UPDATE chapters SET sort_order = $3, updated_at = now()
-WHERE id = $1 AND book_id = $2
-`, id, bookID, slot); err != nil {
-			writeError(w, http.StatusConflict, "BOOK_CONFLICT", "failed to reorder chapters")
-			return
-		}
-		out = append(out, reorderedChapter{ChapterID: id, SortOrder: slot})
 	}
 	if err := tx.Commit(ctx); err != nil {
 		writeError(w, http.StatusConflict, "BOOK_CONFLICT", "failed to reorder chapters")
@@ -162,6 +126,62 @@ WHERE id = $1 AND book_id = $2
 		"original_language": lang,
 		"chapters":          out,
 	})
+}
+
+// lockActiveChapterTrack loads the book's active chapter ids in `lang`, in reading order,
+// taking FOR UPDATE so concurrent reorders of the same track serialize (file header). Shared
+// by the REST reorder handler and the S-07 book_chapter_reorder MCP tool so the collision-
+// dodging load lives once.
+func lockActiveChapterTrack(ctx context.Context, tx pgx.Tx, bookID uuid.UUID, lang string) ([]uuid.UUID, error) {
+	rows, err := tx.Query(ctx, `
+SELECT id FROM chapters
+WHERE book_id = $1 AND original_language = $2 AND lifecycle_state = 'active'
+ORDER BY sort_order, id
+FOR UPDATE
+`, bookID, lang)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var order []uuid.UUID
+	for rows.Next() {
+		var id uuid.UUID
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		order = append(order, id)
+	}
+	return order, rows.Err()
+}
+
+// writeChapterTrackOrder applies `next` — the COMPLETE desired order of the book's active
+// chapters in `lang` — via the two-phase negate/rewrite that dodges the partial UNIQUE
+// (book_id, sort_order, original_language). The caller must hold `tx` (having locked the
+// track via lockActiveChapterTrack) and pass every active chapter of the track exactly once;
+// a partial/foreign list would strand slots. Returns the dense 1..N slots. See the file
+// header for why a permutation cannot be written in one UPDATE. Shared by REST + MCP.
+func writeChapterTrackOrder(ctx context.Context, tx pgx.Tx, bookID uuid.UUID, lang string, next []uuid.UUID) ([]reorderedChapter, error) {
+	// Phase 1: park every slot in the negative space (source positives → target negatives; the
+	// two sets are disjoint, so the per-row unique check never trips).
+	if _, err := tx.Exec(ctx, `
+UPDATE chapters SET sort_order = -sort_order - 1
+WHERE book_id = $1 AND original_language = $2 AND lifecycle_state = 'active'
+`, bookID, lang); err != nil {
+		return nil, err
+	}
+	// Phase 2: write the dense 1..N sequence (negatives → positives; disjoint again).
+	out := make([]reorderedChapter, 0, len(next))
+	for i, id := range next {
+		slot := i + 1
+		if _, err := tx.Exec(ctx, `
+UPDATE chapters SET sort_order = $3, updated_at = now()
+WHERE id = $1 AND book_id = $2
+`, id, bookID, slot); err != nil {
+			return nil, err
+		}
+		out = append(out, reorderedChapter{ChapterID: id, SortOrder: slot})
+	}
+	return out, nil
 }
 
 // moveWithin returns `order` with `id` lifted out and re-inserted directly AFTER `afterID`
