@@ -72,4 +72,26 @@ supports it.
 - **S4 · i18n + QC + live smoke** — 18-locale keys via i18n_translate.py; full studio vitest + tsc; live smoke on :5199 (resize the sidebar; apply a 4-col preset with ≥4 panels open).
 
 ## Evidence log
-- (pending)
+- **S1 sidebar resize (bd6d2a02b):** chrome `sidebarWidth` (clamp [200,640], persist-on-commit) +
+  `useSidebarResize` (pointer-capture drag, dbl-click reset) + StudioSideBar sash. 25 tests, tsc 0.
+- **S2 reflow util (18daacf26):** `reflowDockGrid`/`planGrid`/`distribute`/`LAYOUT_PRESETS`/`isPresetTooNarrow`.
+  13 tests over a fake DockviewApi, tsc 0.
+- **S3 picker + icon + seam (b… ,f… ):** `host.applyDockLayout` + `LayoutPicker` + `StudioLayoutButton` in TopBar.
+  13 tests (picker 6, button 4, topbar 3), tsc 0.
+- **S4 i18n:** 15 keys seeded in en + gap-filled 17 locales (gemma-4-26b, 0 failed, `{{count}}` faithful).
+  **COMMIT DEFERRED to convergence** — en/studio.json is under LIVE concurrent edit (a plan-hub session was
+  actively adding `reference-shelf`/`planHub.adv` keys), so the i18n parity gate (working-tree-en as source)
+  demanded co-carrying their moving, half-finished keys, or risked clobbering their live edits by stripping
+  en. The 15 keys render correctly via English `defaultValue` now; the working-tree translations stay in place
+  (pre-translating everyone's keys) and land at convergence. This mirrors the S-02 i18n precedent.
+- **BUG FOUND + FIXED via live smoke (0fcb4e5e0):** the merge-to-single reflow self-moved panel[0] into its
+  own group → dockview emptied+removed the sole-occupant group mid-move → empty dock (persisted). Fixed by
+  skipping a panel already in its target cell; +1 guard unit test.
+- **LIVE SMOKE (:5199, book SIMPLE smoke):**
+  - Resize: drag +90 → 260→350px, persisted (localStorage sidebarWidth=350); double-click → 260. ✅
+  - Picker: opens; all 9 presets render; `cols8` DISABLED (too narrow for this viewport), rest enabled with
+    2 panels; hint "Arranges your 2 open panels." ✅
+  - Reflow: cols2 splits 1 group → 2 side-by-side (x=312, 1036); single merges back to 1 group / 2 tabs (NOT
+    empty — the fix); cols2 again → 2 groups. Repeatable, no panel loss. ✅
+  - (Multi-session HMR confound was live — the concurrent session's saves reloaded the page mid-script; worked
+    around with atomic single-shot evaluates + a fresh reload, per the isolated-build lesson.)
