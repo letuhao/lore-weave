@@ -1,5 +1,11 @@
 # Spec — Studio S-03/S-04 UX hardening: clear remaining dead-ends + lift GUI scores
 
+> **STATUS: BUILT + QC'd (2026-07-18), 4 slices.** Commits: a785e9d5f (S1 CTA/confirms/aria),
+> e2cba89d0 (S2 search/rename/BranchDiff), 3a4d36b13 (S3 mount reference-shelf + bible rail — registry,
+> atomic), touch slice (S4 promote touchTarget + apply). Final QC: 239 FE tests green across 8 surfaces;
+> BE frontend_tools+contract 43; tsc clean. Deferred: H-2c library-row pin (per-scene pin-state join);
+> H-5b measured column-stacking (no @container plugin). See RUN-STATE_ux-hardening-build.md.
+
 > **Status: CLARIFY (2026-07-18).** Follow-up to the cold-start UX audit of the reference-shelf (S-03) and
 > divergence editor (S-04). The audit's quick wins already shipped (commit 5b380d249: archive→Undo/restore,
 > POV snap-back, no-anchor hint, taxonomy labels, S-03 error toasts + URL-at-add + truncation). This spec
