@@ -241,6 +241,28 @@ class ArcTemplateRepo:
                     caller_id, arc_id,
                 )
 
+    async def restore(self, caller_id: UUID, arc_id: UUID, *, book_id: UUID | None = None) -> ArcTemplate | None:
+        """S-08 — archive()'s exact inverse. OWNER-only by default; with an EDIT-gated `book_id` a
+        collaborator may restore that book's SHARED rows (mirror of archive's book-tier arm). A
+        status-only flip archived→active that RETURNS the row (so the FE refreshes); None if the row is
+        missing / not-editable / NOT archived (router → 404). No version bump (mirrors canon_rules.restore)."""
+        async with self._pool.acquire() as c:
+            if book_id is not None:
+                row = await c.fetchrow(
+                    f"UPDATE arc_template SET status = 'active', updated_at = now() "
+                    f"WHERE (owner_user_id = $1 OR (book_shared AND book_id = $3)) "
+                    f"AND id = $2 AND status = 'archived' RETURNING {_SELECT_COLS}",
+                    caller_id, arc_id, book_id,
+                )
+            else:
+                row = await c.fetchrow(
+                    f"UPDATE arc_template SET status = 'active', updated_at = now() "
+                    f"WHERE owner_user_id = $1 AND id = $2 AND status = 'archived' "
+                    f"RETURNING {_SELECT_COLS}",
+                    caller_id, arc_id,
+                )
+        return _row_to_arc(row) if row is not None else None
+
     async def list_for_caller(
         self, caller_id: UUID, *, scope: str = "all", genre: str | None = None,
         status: str | None = "active", q: str | None = None,

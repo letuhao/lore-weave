@@ -140,3 +140,33 @@ async def test_retrieve_arcs_projects_renamed_columns_via_alias(repo):
     # the renamed DB columns round-trip to the model field names THROUGH the alias.
     assert [t["key"] for t in arc.threads] == ["main"]
     assert [e["key"] for e in arc.arc_roster] == ["protagonist"]
+
+
+async def test_restore_owner_and_shared(repo):
+    # S-08: archive→restore round-trip for the owner tier AND the EDIT-gated book-shared tier;
+    # version is preserved (lossless), foreign/wrong-book/not-archived → None (no oracle).
+    r, pool = repo
+    owner, grantee, u2 = uuid.uuid4(), uuid.uuid4(), uuid.uuid4()
+    book = uuid.uuid4()
+
+    # owner tier
+    a = await r.create(owner, _args(code="ra"))
+    await r.archive(owner, a.id)
+    assert (await r.get_visible(owner, a.id)).status == "archived"
+    assert await r.restore(u2, a.id) is None                     # foreign → None
+    restored = await r.restore(owner, a.id)
+    assert restored is not None and restored.status == "active" and restored.id == a.id
+    assert restored.version == a.version                         # restore must NOT bump version
+    assert await r.restore(owner, a.id) is None                  # already active → None
+
+    # shared book tier (mirror archive's book_id arm)
+    s = await r.create(owner, _args(code="rs"))
+    async with pool.acquire() as c:
+        await c.execute(
+            "UPDATE arc_template SET book_shared = true, book_id = $2 WHERE id = $1", s.id, book,
+        )
+    await r.archive(grantee, s.id, book_id=book)
+    assert (await r.get_visible(owner, s.id, book_id=book)).status == "archived"
+    assert await r.restore(grantee, s.id, book_id=uuid.uuid4()) is None   # wrong book → None
+    r2 = await r.restore(grantee, s.id, book_id=book)
+    assert r2 is not None and r2.status == "active" and r2.id == s.id

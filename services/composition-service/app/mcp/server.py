@@ -3252,15 +3252,58 @@ async def composition_motif_archive(
         if target is None or not target.book_shared or target.book_id != bid:
             raise uniform_not_accessible()
         await repo.archive_shared(tc.user_id, mid, bid)
-        return {"motif_id": motif_id, "archived": True, "_meta": {"undo_hint": None}}
+        return {"motif_id": motif_id, "archived": True,
+                "_meta": {"undo_hint": _undo("composition_motif_restore", motif_id=motif_id, book_id=book_id)}}
     # USER scope: you may only archive YOUR OWN motif. The owner-resolver raises the
     # uniform deny for a missing/foreign/system row before any write.
     guard = require_user_scope(_motif_owner_resolver(repo))
     await guard(tc, mid)
     await repo.archive(tc.user_id, mid)
-    # archive() flips status='archived'; un-archive is composition_motif_patch(status='active'),
-    # but archive() doesn't return the post-write version, so the MCP undo stays honest None here.
-    return {"motif_id": motif_id, "archived": True, "_meta": {"undo_hint": None}}
+    # archive() flips status='archived'; the honest reverse verb is now composition_motif_restore
+    # (S-08 — a clean status-only un-archive, no OCC dance), so the undo hint points there.
+    return {"motif_id": motif_id, "archived": True,
+            "_meta": {"undo_hint": _undo("composition_motif_restore", motif_id=motif_id)}}
+
+
+@mcp_server.tool(
+    name="composition_motif_restore",
+    description=(
+        "Restore an ARCHIVED motif of YOURS (the reverse of composition_motif_archive). Returns the "
+        "restored motif. A system/public/foreign or not-archived id is not restorable (uniform deny)."
+    ),
+    meta=require_meta(
+        "A", "user",
+        synonyms=["restore motif", "unarchive motif", "un-retire trope", "bring back a motif"],
+        tool_name="composition_motif_restore",
+    ),
+)
+async def composition_motif_restore(
+    ctx: MCPContext,
+    motif_id: Annotated[str, "The archived motif to restore."],
+    book_id: Annotated[
+        str | None,
+        "Set ONLY to restore a SHARED book-tier motif — requires EDIT on that book; any "
+        "EDIT-grantee may. Omit for one of YOUR OWN motifs.",
+    ] = None,
+) -> dict:
+    tc = _ctx(ctx)
+    repo = MotifRepo(get_pool())
+    mid = UUID(motif_id)
+    if book_id is not None:
+        # SHARED tier: access is the book grant, not ownership. EDIT-gate the book, then restore_shared
+        # matches only an ARCHIVED book_shared row in this book (None → uniform deny, no oracle).
+        bid = UUID(book_id)
+        await _gate(tc, bid, GrantLevel.EDIT)
+        motif = await repo.restore_shared(tc.user_id, mid, bid)
+    else:
+        # USER scope: only YOUR OWN archived motif (restore()'s predicate is owner + status='archived').
+        motif = await repo.restore(tc.user_id, mid)
+    if motif is None:
+        raise uniform_not_accessible()
+    out = motif.model_dump(mode="json")
+    undo_args = {"motif_id": motif_id, "book_id": book_id} if book_id is not None else {"motif_id": motif_id}
+    out["_meta"] = {"undo_hint": _undo("composition_motif_archive", **undo_args)}
+    return out
 
 
 # ── D-MOTIF-MCP-PATCH-SHARED — edit a motif's content (the MCP twin of HTTP PATCH /motifs/{id}).
@@ -5694,7 +5737,32 @@ async def composition_arc_template_archive(
 ) -> dict:
     tc = _ctx(ctx)
     await ArcTemplateRepo(get_pool()).archive(tc.user_id, UUID(arc_id))
-    return {"id": arc_id, "archived": True}
+    # honest undo (S-08): the reverse verb is composition_arc_template_restore.
+    return {"id": arc_id, "archived": True,
+            "_meta": {"undo_hint": _undo("composition_arc_template_restore", arc_id=arc_id)}}
+
+
+@mcp_server.tool(
+    name="composition_arc_template_restore",
+    description=(
+        "Restore an ARCHIVED arc template of YOURS (the reverse of composition_arc_template_archive). "
+        "Returns the restored template; a foreign/system/not-archived id is not restorable (uniform deny)."
+    ),
+    meta=require_meta("W", "book",
+                      synonyms=["restore arc template", "unarchive arc template"],
+                      tool_name="composition_arc_template_restore"),
+)
+async def composition_arc_template_restore(
+    ctx: MCPContext,
+    arc_id: Annotated[str, "The archived arc_template id (UUID)."],
+) -> dict:
+    tc = _ctx(ctx)
+    arc = await ArcTemplateRepo(get_pool()).restore(tc.user_id, UUID(arc_id))
+    if arc is None:
+        raise uniform_not_accessible()
+    out = arc.model_dump(mode="json")
+    out["_meta"] = {"undo_hint": _undo("composition_arc_template_archive", arc_id=arc_id)}
+    return out
 
 
 # ── B3 — the missing outline reorder (F6): a human has full drag-reorder

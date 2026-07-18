@@ -218,6 +218,43 @@ async def test_archive_owner_only(repo):
     assert (await r.get_visible(u1, m.id)).status == "archived"
 
 
+async def test_restore_owner_roundtrip_preserves_id_and_version(repo):
+    # S-08: archive→restore is a lossless round-trip (id + version survive — the whole point of
+    # soft-delete), owner-scoped, and idempotent-guarded (a non-archived row is a no-op → None).
+    r, _ = repo
+    u1, u2 = uuid.uuid4(), uuid.uuid4()
+    m = await r.create(u1, _args(code="r"))
+    assert m.version == 1
+    await r.archive(u1, m.id)
+    assert (await r.get_visible(u1, m.id)).status == "archived"
+
+    assert await r.restore(u2, m.id) is None                     # foreign → None (no oracle)
+    assert (await r.get_visible(u1, m.id)).status == "archived"  # still archived
+
+    restored = await r.restore(u1, m.id)                          # owner → active
+    assert restored is not None
+    assert restored.id == m.id and restored.status == "active"
+    assert restored.version == 1                                  # restore must NOT bump version
+
+    assert await r.restore(u1, m.id) is None                      # already active → None
+
+
+async def test_restore_shared_book_tier(repo):
+    # The SHARED tier mirrors archive_shared: keyed on book_shared AND book_id, any EDIT-grantee.
+    r, pool = repo
+    owner, grantee = uuid.uuid4(), uuid.uuid4()
+    book = uuid.uuid4()
+    m = await r.create(owner, _args(code="rs"))
+    async with pool.acquire() as c:  # promote to the shared book tier (what adopt target='book_shared' does)
+        await c.execute("UPDATE motif SET book_shared = true, book_id = $2 WHERE id = $1", m.id, book)
+    await r.archive_shared(grantee, m.id, book)
+    assert (await r.get_visible(owner, m.id)).status == "archived"
+
+    assert await r.restore_shared(grantee, m.id, uuid.uuid4()) is None   # wrong book → None
+    restored = await r.restore_shared(grantee, m.id, book)               # right book → active
+    assert restored is not None and restored.status == "active" and restored.id == m.id
+
+
 async def test_clone_copies_fields_vector_and_lineage(repo):
     r, pool = repo
     u1, u2 = uuid.uuid4(), uuid.uuid4()

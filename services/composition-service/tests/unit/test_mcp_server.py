@@ -96,7 +96,8 @@ EXPECTED_TOOLS = {
     "composition_get_mine_job", "composition_motif_link_list",
     "composition_motif_book_list",
     # Tier A (motif)
-    "composition_motif_create", "composition_motif_archive", "composition_motif_patch",
+    "composition_motif_create", "composition_motif_archive", "composition_motif_restore",
+    "composition_motif_patch",
     "composition_motif_bind", "composition_motif_unbind",
     "composition_motif_link_create", "composition_motif_link_delete",
     # Tier W (motif)
@@ -108,7 +109,7 @@ EXPECTED_TOOLS = {
     # BA11 (O-3) — the 5 arc-template CRUD MCP tools (the "Full MCP surface" BA11 mandates).
     "composition_arc_template_list", "composition_arc_template_get",
     "composition_arc_template_create", "composition_arc_template_update",
-    "composition_arc_template_archive",
+    "composition_arc_template_archive", "composition_arc_template_restore",
     "composition_conformance_status",   # 26 IX-14 staleness read contract
     # Tier A (arc auto-writes + outline move)
     "composition_arc_create", "composition_arc_update", "composition_arc_delete",
@@ -147,7 +148,7 @@ TIER_W = {"composition_publish", "composition_generate", "composition_decompile_
           "composition_authoring_run_start", "composition_authoring_run_resume",
           "composition_authoring_run_revert_all",
           "composition_arc_template_create", "composition_arc_template_update",  # O-3 writes
-          "composition_arc_template_archive"}
+          "composition_arc_template_archive", "composition_arc_template_restore"}
 
 
 # ── wire-path fixture ─────────────────────────────────────────────────────────

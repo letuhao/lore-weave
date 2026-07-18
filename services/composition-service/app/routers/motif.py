@@ -8,6 +8,7 @@
   POST   /motifs                          — create (user tier; owner server-stamped)
   PATCH  /motifs/{id}[?book_id=]           — edit; owner-only, or a SHARED row (EDIT-gated)
   DELETE /motifs/{id}[?book_id=]           — soft archive; owner-only, or a SHARED row (EDIT-gated)
+  POST   /motifs/{id}/restore[?book_id=]   — un-archive (S-08); owner-only, or a SHARED row (EDIT-gated)
   POST   /motifs/{id}/adopt                — adopt into user | book (label) | book_shared (EDIT-gated)
 
 Tenancy (the kinds-bug fix + R1.1): owner_user_id is SERVER-STAMPED from the JWT
@@ -382,6 +383,29 @@ async def archive_motif(
         return {"id": str(motif_id), "archived": True}
     await repo.archive(user_id, motif_id)
     return {"id": str(motif_id), "archived": True}
+
+
+@router.post("/motifs/{motif_id}/restore", status_code=200)
+async def restore_motif(
+    motif_id: UUID,
+    user_id: UUID = Depends(get_current_user),
+    repo: MotifRepo = Depends(get_motif_repo),
+    grant: GrantClient = Depends(get_grant_client_dep),
+    book_id: UUID | None = Query(default=None),
+) -> dict[str, Any]:
+    """Un-archive (S-08) — the reverse of DELETE /motifs/{id}, and the honest undo the archive tool
+    points at. Default (no book_id) = owner-only; pass `book_id` (EDIT-gated) to restore a SHARED
+    book-tier motif. Returns the restored row (so the library refreshes). 404 if no archived motif
+    with that id is restorable BY YOU (missing / not-owned / not in this shared book / not archived) —
+    a foreign row simply matches nothing, so this is no wider an oracle than your own scope."""
+    if book_id is not None:
+        await _gate_book(grant, book_id, user_id, GrantLevel.EDIT)
+        motif = await repo.restore_shared(user_id, motif_id, book_id)
+    else:
+        motif = await repo.restore(user_id, motif_id)
+    if motif is None:
+        raise HTTPException(status_code=404, detail=_NOT_FOUND)
+    return motif.model_dump(mode="json")
 
 
 # ── adopt (the clone primitive) ──────────────────────────────────────────────

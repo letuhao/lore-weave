@@ -6,7 +6,8 @@
   GET    /arc-templates/{id}               — read one
   POST   /arc-templates                    — create (user tier; owner server-stamped)
   PATCH  /arc-templates/{id}               — edit / flip visibility (= publish); owner-only
-  DELETE /arc-templates/{id}               — soft archive; owner-only
+  DELETE /arc-templates/{id}               — soft archive; owner-only, or a SHARED row (EDIT-gated)
+  POST   /arc-templates/{id}/restore[?book_id=] — un-archive (S-08); owner-only, or a SHARED row (EDIT-gated)
   POST   /arc-templates/{id}/adopt         — adopt = clone-to-customize = cross-genre retag
   POST   /arc-templates/{id}/apply         — apply-PREVIEW: rescale + roster-bind + drop/merge plan
 
@@ -295,6 +296,25 @@ async def archive_arc_template(
         await _gate_book(grant, book_id, user_id, GrantLevel.EDIT)
     await repo.archive(user_id, arc_id, book_id=book_id)
     return {"id": str(arc_id), "archived": True}
+
+
+@router.post("/arc-templates/{arc_id}/restore", status_code=200)
+async def restore_arc_template(
+    arc_id: UUID,
+    book_id: UUID | None = Query(default=None),
+    user_id: UUID = Depends(get_current_user),
+    grant: GrantClient = Depends(get_grant_client_dep),
+    repo: ArcTemplateRepo = Depends(get_arc_template_repo),
+) -> dict[str, Any]:
+    """Un-archive (S-08) — the reverse of DELETE /arc-templates/{id}. Owner-only by default; pass
+    `book_id` (EDIT-gated) to restore a book-SHARED row (D-ARC-TEMPLATE-BOOK-TIER). Returns the restored
+    row (so the library refreshes). 404 if no archived arc-template with that id is restorable by you."""
+    if book_id is not None:
+        await _gate_book(grant, book_id, user_id, GrantLevel.EDIT)
+    arc = await repo.restore(user_id, arc_id, book_id=book_id)
+    if arc is None:
+        raise HTTPException(status_code=404, detail=_NOT_FOUND)
+    return arc.model_dump(mode="json")
 
 
 # ── adopt (the clone primitive) ──────────────────────────────────────────────────────

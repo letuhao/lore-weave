@@ -49,6 +49,8 @@ class StubMotifRepo:
         self.patch_result: Motif | None = _motif(version=2)
         self.patch_raises: Exception | None = None
         self.archive_calls: list = []
+        self.restore_calls: list = []
+        self.restore_result: Motif | None = _motif(status="active")
         self.adopt_result: tuple[Motif, bool] = (_motif(source="adopted", version=1), True)
         self.adopt_raises: Exception | None = None
         self.catalog_result: tuple[list[dict], int] = ([], 0)
@@ -95,6 +97,14 @@ class StubMotifRepo:
 
     async def archive_shared(self, caller_id, motif_id, book_id):
         self.archive_calls.append((caller_id, motif_id, book_id))
+
+    async def restore(self, caller_id, motif_id):
+        self.restore_calls.append((caller_id, motif_id))
+        return self.restore_result
+
+    async def restore_shared(self, caller_id, motif_id, book_id):
+        self.restore_calls.append((caller_id, motif_id, book_id))
+        return self.restore_result
 
     async def list_in_book(self, caller_id, book_id, **kw):
         self.last_list_in_book = (caller_id, book_id, kw)
@@ -269,6 +279,32 @@ def test_archive_returns_uniform_ok(ctx):
     r = c.delete(f"/v1/composition/motifs/{mid}")
     assert r.status_code == 200 and r.json() == {"id": str(mid), "archived": True}
     assert repo.archive_calls == [(USER, mid)]
+
+
+def test_restore_returns_the_row(ctx):
+    # S-08: POST /restore un-archives (owner) and returns the row so the library refreshes.
+    c, repo, _ = ctx
+    mid = uuid.uuid4()
+    r = c.post(f"/v1/composition/motifs/{mid}/restore")
+    assert r.status_code == 200 and r.json()["status"] == "active"
+    assert repo.restore_calls == [(USER, mid)]
+
+
+def test_restore_not_restorable_404(ctx):
+    # missing / not-owned / not-archived → repo returns None → 404 (no oracle).
+    c, repo, _ = ctx
+    repo.restore_result = None
+    r = c.post(f"/v1/composition/motifs/{uuid.uuid4()}/restore")
+    assert r.status_code == 404
+
+
+def test_restore_shared_tier_edit_gated(ctx):
+    # with book_id → EDIT-gated restore_shared (the fake grant defaults to EDIT).
+    c, repo, _ = ctx
+    mid, book = uuid.uuid4(), uuid.uuid4()
+    r = c.post(f"/v1/composition/motifs/{mid}/restore?book_id={book}")
+    assert r.status_code == 200
+    assert repo.restore_calls == [(USER, mid, book)]
 
 
 # ── publish quota (B-4) ───────────────────────────────────────────────────────

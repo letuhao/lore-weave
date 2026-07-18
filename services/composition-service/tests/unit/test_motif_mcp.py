@@ -42,7 +42,8 @@ MOTIF_TOOLS = {
     "composition_motif_search", "composition_motif_get",
     "composition_motif_suggest_for_chapter", "composition_arc_suggest",
     "composition_get_mine_job",
-    "composition_motif_create", "composition_motif_archive", "composition_motif_patch",
+    "composition_motif_create", "composition_motif_archive", "composition_motif_restore",
+    "composition_motif_patch",
     "composition_motif_bind", "composition_motif_unbind",
     "composition_motif_adopt", "composition_motif_mine",
     "composition_arc_import_analyze", "composition_conformance_run",
@@ -52,7 +53,8 @@ MOTIF_TOOLS = {
 }
 MOTIF_USER_SCOPE = {
     "composition_motif_search", "composition_motif_get",
-    "composition_motif_create", "composition_motif_archive", "composition_motif_patch",
+    "composition_motif_create", "composition_motif_archive", "composition_motif_restore",
+    "composition_motif_patch",
     "composition_motif_adopt", "composition_arc_import_analyze",
     "composition_motif_link_list", "composition_motif_link_create",
     "composition_motif_link_delete",
@@ -299,6 +301,48 @@ async def test_archive_user_scope_foreign_rejected():
         with pytest.raises(NotAccessibleError):
             await srv.composition_motif_archive(_Ctx(), motif_id=str(uuid.uuid4()))
     repo.archive.assert_not_awaited()
+
+
+async def test_motif_restore_owner_roundtrip_and_honest_undo():
+    """S-08: composition_motif_restore un-archives the caller's OWN motif via repo.restore, returns
+    the row, and carries an undo pointing back at archive (the reverse of the reverse)."""
+    import app.mcp.server as srv
+
+    restored = _motif(status="active")
+    repo = AsyncMock()
+    repo.restore = AsyncMock(return_value=restored)
+    async with _patched(MotifRepo=repo):
+        res = await srv.composition_motif_restore(_Ctx(), motif_id=str(restored.id))
+    assert repo.restore.await_args.args[0] == TEST_USER          # owner-scoped
+    assert res["id"] == str(restored.id) and res["status"] == "active"
+    assert res["_meta"]["undo_hint"]["tool"] == "composition_motif_archive"
+
+
+async def test_motif_restore_not_archived_or_foreign_denied():
+    """A missing/foreign/not-archived id → repo.restore returns None → uniform deny (no oracle)."""
+    import app.mcp.server as srv
+    from loreweave_mcp import NotAccessibleError
+
+    repo = AsyncMock()
+    repo.restore = AsyncMock(return_value=None)
+    async with _patched(MotifRepo=repo):
+        with pytest.raises(NotAccessibleError):
+            await srv.composition_motif_restore(_Ctx(), motif_id=str(uuid.uuid4()))
+
+
+async def test_motif_restore_shared_tier_edit_gated():
+    """With book_id, restore_shared runs after the EDIT gate (grant_level=2); the undo carries book_id."""
+    import app.mcp.server as srv
+
+    restored = _motif(status="active", owner_user_id=OTHER_USER, book_id=BOOK, book_shared=True)
+    repo = AsyncMock()
+    repo.restore_shared = AsyncMock(return_value=restored)
+    async with _patched(grant_level=2, MotifRepo=repo):   # EDIT
+        res = await srv.composition_motif_restore(
+            _Ctx(), motif_id=str(restored.id), book_id=str(BOOK),
+        )
+    repo.restore_shared.assert_awaited_once_with(TEST_USER, restored.id, BOOK)
+    assert res["_meta"]["undo_hint"]["args"].get("book_id") == str(BOOK)
 
 
 class _FakeTxn:

@@ -460,6 +460,34 @@ class MotifRepo:
                 motif_id, book_id,
             )
 
+    async def restore(self, caller_id: UUID, motif_id: UUID) -> Motif | None:
+        """S-08 — archive()'s exact inverse (the reverse verb the archive tool's undo points at).
+        OWNER-only. A status-only flip archived→active that RETURNS the row (so the FE refreshes);
+        None if the row is missing / not-owned / NOT archived (router → 404). Mirrors
+        canon_rules.restore: it must NOT bump version or touch any other field, and takes no OCC —
+        an archived row has no concurrent editor."""
+        async with self._pool.acquire() as c:
+            row = await c.fetchrow(
+                f"UPDATE motif SET status = 'active', updated_at = now() "
+                f"WHERE owner_user_id = $1 AND id = $2 AND status = 'archived' "
+                f"RETURNING {_SELECT_COLS}",
+                caller_id, motif_id,
+            )
+        return _row_to_motif(row) if row is not None else None
+
+    async def restore_shared(self, caller_id: UUID, motif_id: UUID, book_id: UUID) -> Motif | None:
+        """Restore a SHARED book-tier row — the inverse of archive_shared, any EDIT-grantee (the caller
+        is EDIT-gated on `book_id` at the router/tool). Keys on book_shared AND book_id, not owner.
+        Returns the row; None if no ARCHIVED shared row in that book matches (router → 404)."""
+        async with self._pool.acquire() as c:
+            row = await c.fetchrow(
+                f"UPDATE motif SET status = 'active', updated_at = now() "
+                f"WHERE book_shared AND book_id = $2 AND id = $1 AND status = 'archived' "
+                f"RETURNING {_SELECT_COLS}",
+                motif_id, book_id,
+            )
+        return _row_to_motif(row) if row is not None else None
+
     async def list_in_book(
         self, caller_id: UUID, book_id: UUID, *, genre: str | None = None,
         kind: str | None = None, status: str | None = "active", q: str | None = None,
