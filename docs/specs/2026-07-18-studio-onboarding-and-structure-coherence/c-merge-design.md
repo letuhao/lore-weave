@@ -1,10 +1,17 @@
 # C-merge Design — unify manuscript Parts ⇄ plan Arcs into one structure
 
-**Status:** `DESIGN — awaiting PO sign-off.` No data touched. This is the gate the spec mandates before
-any Part-C build. Grounded in three parallel blast-radius maps (book-service · composition · frontend),
-2026-07-18.
+**Status:** `SIGNED OFF (PO, 2026-07-18) — cleared to build C1→C4.` Grounded in three parallel
+blast-radius maps (book-service · composition · frontend).
 
-**Decision requested:** approve the **SSOT choice** (§2) and the **cutover sequence** (§5), or redirect.
+**Sealed decisions (all as recommended):**
+1. **SSOT = arcs-win** — `structure_node` absorbs `parts`; the boundary reframe accepted
+   (book-service = prose containers; composition = structure).
+2. **Grouping kind = new `structure_node.kind='part'`** (a depth-0 manuscript grouping distinct from a
+   generation `arc`, so a drafter's "Part One" carries no plan semantics).
+3. **Cutover = staged C1→C4** (additive → dual-write → read-cutover → retire), reversible until C4.
+4. **Every C-slice gets `/review-impl` + cross-service live-smoke** (destructive migration + LOCKED I3).
+
+Progress tracked in `docs/sessions/RUN-STATE-studio-structure-coherence.md`.
 
 ---
 
