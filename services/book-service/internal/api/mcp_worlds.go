@@ -318,4 +318,18 @@ func (s *Server) registerWorldTools(srv *mcp.Server) {
 			"A hidden bible book cannot be moved.",
 		lwmcp.NewToolMeta(lwmcp.TierA, lwmcp.ScopeNone, nil, []string{"move book into world", "group book", "add book to world"}),
 		s.toolWorldMoveBook)
+
+	// S-07 §2 — the missing edit/cleanup verbs (REST had them; MCP did not).
+	addTool(srv, "world_update",
+		"Rename a world you own or change its one-line description. Owner-scoped. "+
+			"Reverse: world_update back to the prior name / description.",
+		lwmcp.NewToolMeta(lwmcp.TierA, lwmcp.ScopeNone, nil, []string{"rename world", "edit world", "update world description"}),
+		s.toolWorldUpdate)
+
+	addTool(srv, "world_delete",
+		"Delete a world you own (hard delete — NOT reversible). REFUSED while the world still "+
+			"contains member books; move them out (world_move_book to another world) or delete them "+
+			"first, so the delete can't silently orphan them. Use to clean up a world you mis-created.",
+		lwmcp.NewToolMeta(lwmcp.TierA, lwmcp.ScopeNone, nil, []string{"delete world", "remove world", "clean up world"}),
+		s.toolWorldDelete)
 }
