@@ -26,7 +26,7 @@
     "@loreweave/auth-client": "workspace:^",
     "@loreweave/design-tokens": "workspace:^",
     "@loreweave/i18n": "workspace:^",
-    "@react-three/drei": "^9.114",
+    "@react-three/drei": "^10.7",
     "@react-three/fiber": "^8.17",
     "@tanstack/react-query": "^5",
     "colyseus.js": "^0.16",
