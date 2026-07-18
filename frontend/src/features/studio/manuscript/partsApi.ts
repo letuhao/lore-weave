@@ -49,9 +49,14 @@ export const partsApi = {
     return apiJson<PartsListResponse>(`/v1/composition/books/${bookId}/parts${q}`, { token });
   },
 
+  // C-merge C4 WRITE-CUTOVER: part CRUD writes go to composition (structure_node kind='part'), the SSOT
+  // once book-service parts is dropped. The chapter→part MOVE (setChapterPart below) stays on
+  // book-service — it writes chapters.structure_node_id, a book-service column. DEPLOY-ORDER: ships with
+  // C4a (the composition endpoints) after C1–C3 soak; the book-service parts routes are removed at C4c.
+
   /** POST — create an act (appended at the end). 201. */
   create(token: string, bookId: string, title: string): Promise<Part> {
-    return apiJson<Part>(`/v1/books/${bookId}/parts`, {
+    return apiJson<Part>(`/v1/composition/books/${bookId}/parts`, {
       method: 'POST',
       token,
       body: JSON.stringify({ title }),
@@ -60,7 +65,7 @@ export const partsApi = {
 
   /** PATCH — rename an act (last-write-wins, no OCC). */
   rename(token: string, bookId: string, partId: string, title: string): Promise<Part> {
-    return apiJson<Part>(`/v1/books/${bookId}/parts/${partId}`, {
+    return apiJson<Part>(`/v1/composition/parts/${partId}`, {
       method: 'PATCH',
       token,
       body: JSON.stringify({ title }),
@@ -69,21 +74,21 @@ export const partsApi = {
 
   /** POST /reorder — orderedIds must be EXACTLY the book's active parts in the new order. */
   reorder(token: string, bookId: string, orderedIds: string[]): Promise<PartsListResponse> {
-    return apiJson<PartsListResponse>(`/v1/books/${bookId}/parts/reorder`, {
+    return apiJson<PartsListResponse>(`/v1/composition/books/${bookId}/parts/reorder`, {
       method: 'POST',
       token,
       body: JSON.stringify({ ordered_ids: orderedIds }),
     });
   },
 
-  /** DELETE — soft-trash an act; its chapters are UN-HOMED (part_id→NULL), never deleted. 204. */
+  /** DELETE — soft-trash an act; its chapters fall to Unassigned (read-filtered), never deleted. 204. */
   archive(token: string, bookId: string, partId: string): Promise<void> {
-    return apiJson<void>(`/v1/books/${bookId}/parts/${partId}`, { method: 'DELETE', token });
+    return apiJson<void>(`/v1/composition/parts/${partId}`, { method: 'DELETE', token });
   },
 
-  /** POST /restore — restore a trashed act (does NOT re-home its former chapters). */
+  /** POST /restore — restore a trashed act. */
   restore(token: string, bookId: string, partId: string): Promise<Part> {
-    return apiJson<Part>(`/v1/books/${bookId}/parts/${partId}/restore`, { method: 'POST', token });
+    return apiJson<Part>(`/v1/composition/parts/${partId}/restore`, { method: 'POST', token });
   },
 
   /**
