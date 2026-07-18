@@ -15,6 +15,10 @@ root cause in code (file:line), not the surface symptom — per the repo's anti-
   fix for each, acceptance criteria, and sizing/sequencing. Decisions **sealed** at the bottom.
 - **[plan.md](plan.md)** — the sequenced implementation plan (M1–M6): files, changes, tests,
   acceptance, and per-milestone gates.
+- **[round-2-feedback.md](round-2-feedback.md)** — a *second* dogfood pass on the build that already
+  ships the M1–M6 fixes. Confirms F1–F7 resolved in live use, and captures three new findings one
+  layer deeper (**F8–F10**: the Plan panel dead-end, the `Divergence (dị bản)` bilingual label leak,
+  and the un-onboarded "Work" concept). Not yet built.
 
 ## The findings at a glance (priority-ordered)
 
