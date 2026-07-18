@@ -64,7 +64,8 @@
         "secDanger": "警告",
         "archiveArc": "アークをアーカイブ",
         "blast": "さらに {{count}} 個のサブアークもアーカイブされます",
-        "archivingNote": "アーカイブすると、そのチャプターは「未計画」トレイに戻されます。復元すると、再び接続されます。"
+        "archivingNote": "アーカイブすると、そのチャプターは「未計画」トレイに戻されます。復元すると、再び接続されます。",
+        "secTemplate": "テンプレート"
       }
     },
     "compose": {
@@ -783,6 +784,8 @@
   },
   "editor": {
     "empty": "ナビゲーターで章を選ぶとここで編集できます。",
+    "startFirstChapter": "最初の章を書き始める",
+    "startingChapter": "作成中…",
     "unsaved": "● 未保存",
     "save": "保存",
     "grammar": "文法",
@@ -797,9 +800,7 @@
     "merging": "マージ中…",
     "mergeDone": "設定にマージされました — ブランチは独自のバージョンを保持します。",
     "mergeConflict": "設定が変更されました — チャプターを再度開き、マージし直してください。",
-    "mergeFailed": "マージできませんでした — もう一度お試しください。",
-    "startFirstChapter": "最初の章を書き始める",
-    "startingChapter": "作成中…"
+    "mergeFailed": "マージできませんでした — もう一度お試しください。"
   },
   "sceneCompose": {
     "empty": "原稿ナビゲーターから章を選択して、ここにシーンをドラフトしてください。",
@@ -912,7 +913,8 @@
     "manuscript": "原稿",
     "bible": "ストーリーバイブル",
     "search": "検索",
-    "quality": "品質"
+    "quality": "品質",
+    "plan": "プラン"
   },
   "navStub": {
     "manuscript": {
@@ -1013,12 +1015,21 @@
     "issues": "問題",
     "collapse": "パネルを折りたたむ",
     "toggle": "下部パネルの切替",
-    "label": "パネル"
-  },
-  "bottomStub": {
-    "jobs": "バックグラウンドジョブは接続後にここに表示されます。",
-    "generation": "ライブ生成の進捗は接続後にここに表示されます。",
-    "issues": "品質の問題は接続後にここに表示されます。"
+    "label": "パネル",
+    "launch": {
+      "jobs": "ジョブフィードは専用のパネルで開きます。",
+      "generation": "生成フィードは専用のパネルで開きます。"
+    },
+    "openJobs": "ジョブパネルを開く",
+    "issuesLoading": "問題をチェック中…",
+    "issuesError": "問題パネルを読み込めませんでした。",
+    "issuesEmpty": "この本に問題は見つかりませんでした。",
+    "issuesCapped": "上位 {{total}} 件を表示中",
+    "sev": {
+      "error": "エラー",
+      "warn": "警告",
+      "info": "情報"
+    }
   },
   "status": {
     "wordsPlaceholder": "— 語",
@@ -1047,6 +1058,10 @@
     "statScenes": "{{n}} シーン",
     "window": "win {{a}}–{{b}} / {{n}}",
     "chapterN": "第 {{number}} 章",
+    "newChapter": "新しい章",
+    "chapterShort": "第",
+    "startFirstChapter": "最初の章を書き始める",
+    "creatingChapter": "作成中…",
     "actShort": "幕",
     "actTag": "ACT",
     "newAct": "新しい幕",
@@ -1063,10 +1078,8 @@
     "restoreActHint": "この幕を復元します（内容は空の状態で復元されます。必要に応じて章を再度配置してください）",
     "actTrashed": "幕「{{name}}」は削除されました。章は本の中に保持されています",
     "undo": "元に戻す",
-    "newChapter": "新しい章",
-    "chapterShort": "第",
-    "startFirstChapter": "最初の章を書き始める",
-    "creatingChapter": "作成中…"
+    "unassignedBucket": "未割り当て",
+    "partVsArc": "「パート」は原稿をグループ化するものです。「アーク」は構成案です。"
   },
   "intro": {
     "title": "執筆スタジオへようこそ",

@@ -64,7 +64,8 @@
         "secDanger": "Tehlike",
         "archiveArc": "Arkı arşivle",
         "blast": "ayrıca {{count}} alt arkı da arşivler",
-        "archivingNote": "Arşivleme, bölümleri planlanmamışlar tepsisine geri döndürür; geri yükleme ise onları tekrar bağlar."
+        "archivingNote": "Arşivleme, bölümleri planlanmamışlar tepsisine geri döndürür; geri yükleme ise onları tekrar bağlar.",
+        "secTemplate": "Şablon"
       }
     },
     "compose": {
@@ -783,6 +784,8 @@
   },
   "editor": {
     "empty": "Düzenlemek için el yazması gezgininden bir bölüm seçin.",
+    "startFirstChapter": "İlk bölümünü oluştur",
+    "startingChapter": "Oluşturuluyor…",
     "unsaved": "● kaydedilmemiş",
     "save": "Kaydet",
     "grammar": "Dil Bilgisi",
@@ -797,9 +800,7 @@
     "merging": "Birleştiriliyor…",
     "mergeDone": "Ana metne birleştirildi — dal kendi sürümünü korur.",
     "mergeConflict": "Ana metin değişti — bölümü yeniden açın ve tekrar birleştirin.",
-    "mergeFailed": "Birleştirilemedi — tekrar deneyin.",
-    "startFirstChapter": "İlk bölümünü oluştur",
-    "startingChapter": "Oluşturuluyor…"
+    "mergeFailed": "Birleştirilemedi — tekrar deneyin."
   },
   "sceneCompose": {
     "empty": "Sahnelerini burada taslak haline getirmek için taslak gezgininden bir bölüm seçin.",
@@ -912,7 +913,8 @@
     "manuscript": "Taslak",
     "bible": "Hikaye İncili",
     "search": "Arama",
-    "quality": "Kalite"
+    "quality": "Kalite",
+    "plan": "Plan"
   },
   "navStub": {
     "manuscript": {
@@ -1013,12 +1015,21 @@
     "issues": "Sorunlar",
     "collapse": "Paneli daralt",
     "toggle": "Alt paneli aç/kapat",
-    "label": "Panel"
-  },
-  "bottomStub": {
-    "jobs": "Bağlantı kurulduğunda arka plan işleri burada görünür.",
-    "generation": "Bağlantı kurulduğunda canlı üretim ilerlemesi burada görünür.",
-    "issues": "Bağlantı kurulduğunda kalite sorunları burada görünür."
+    "label": "Panel",
+    "launch": {
+      "jobs": "İş akışı kendi panelinde açılır.",
+      "generation": "Oluşturma akışı kendi panelinde açılır."
+    },
+    "openJobs": "İşler panelini aç",
+    "issuesLoading": "Sorunlar kontrol ediliyor…",
+    "issuesError": "Sorunlar paneli yüklenemedi.",
+    "issuesEmpty": "Bu kitapta sorun bulunamadı.",
+    "issuesCapped": "{{total}} içinden en üst satırlar gösteriliyor",
+    "sev": {
+      "error": "Hata",
+      "warn": "Uyarı",
+      "info": "Bilgi"
+    }
   },
   "status": {
     "wordsPlaceholder": "— kelime",
@@ -1047,6 +1058,10 @@
     "statScenes": "{{n}} sah",
     "window": "penc. {{a}}–{{b}} / {{n}}",
     "chapterN": "Bölüm {{number}}",
+    "newChapter": "Yeni bölüm",
+    "chapterShort": "Bölüm",
+    "startFirstChapter": "İlk bölümünü oluştur",
+    "creatingChapter": "Oluşturuluyor…",
     "actShort": "Perde",
     "actTag": "PERDE",
     "newAct": "Yeni perde",
@@ -1063,10 +1078,8 @@
     "restoreActHint": "Bu bölümü geri yükle (bölüm boş olarak gelir — bölümleri gerektiği gibi yeniden dosyala)",
     "actTrashed": "«{{name}}» bölümü çöp kutusuna taşındı — bölümleri kitapta kaldı",
     "undo": "Geri Al",
-    "newChapter": "Yeni bölüm",
-    "chapterShort": "Bölüm",
-    "startFirstChapter": "İlk bölümünü oluştur",
-    "creatingChapter": "Oluşturuluyor…"
+    "unassignedBucket": "Atanmamış",
+    "partVsArc": "Bölümler taslağınızı gruplandırır. Arklar ise planınızdır."
   },
   "intro": {
     "title": "Writing Studio'ya Hoş Geldiniz",

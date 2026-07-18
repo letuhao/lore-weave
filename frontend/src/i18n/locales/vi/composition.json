@@ -826,7 +826,8 @@
         "driftViolation": "{{label}}: {{n}} lỗi thứ tự",
         "driftFolded": "Bị gấp (chưa bao giờ được liên kết)",
         "untitledArc": "(cốt truyện chưa đặt tên)",
-        "truncated": "Đang hiển thị {{shown}} trên {{count}} — hãy sử dụng Danh mục hoặc gói thu hẹp hơn để tìm thêm."
+        "truncated": "Đang hiển thị {{shown}} trên {{count}} — hãy sử dụng Danh mục hoặc gói thu hẹp hơn để tìm thêm.",
+        "tabSuggest": "Gợi ý"
       },
       "import": {
         "privacy": "Văn bản gốc sẽ được giữ riêng tư và không bao giờ được chia sẻ. Chỉ có cấu trúc trừu tượng được trích xuất mới có thể được xuất bản — và việc xuất bản sẽ loại bỏ các tham chiếu nguồn.",
@@ -850,6 +851,38 @@
         "pasteBody": "dán văn bản tham chiếu...",
         "tooLong": "Quá dài — hãy cắt bớt trước khi nhập.",
         "addSource": "Thêm nguồn"
+      },
+      "extract": {
+        "blurb": "Lưu cấu trúc cốt truyện này thành một mẫu có thể tái sử dụng trong thư viện của bạn.",
+        "open": "Lưu thành mẫu…",
+        "namePlaceholder": "Tên mẫu",
+        "saving": "Đang lưu…",
+        "save": "Lưu",
+        "cancel": "Hủy",
+        "conflict": "Bạn đã có một mẫu với tên này — vui lòng đổi tên.",
+        "error": "Không thể lưu cốt truyện này thành một mẫu.",
+        "done": "Đã lưu «{{name}}» vào thư viện mẫu của bạn."
+      },
+      "suggest": {
+        "noProject": "Hãy mở một cuốn sách có tác phẩm để nhận các gợi ý cốt truyện dựa trên tiền đề.",
+        "premisePlaceholder": "Mô tả tiền đề — ví dụ: «người thừa kế miễn cưỡng phải giành lại gia tộc đã sụp đổ»",
+        "genrePlaceholder": "Thể loại (không bắt buộc)",
+        "running": "Đang xếp hạng…",
+        "run": "Gợi ý các hồi",
+        "error": "Không thể xếp hạng các gợi ý hồi.",
+        "empty": "Chưa có mẫu hồi nào phù hợp — hãy tạo một mẫu mới hoặc nhập một câu chuyện để phân tích.",
+        "mine": "của bạn",
+        "span": "{{count}} chương"
+      },
+      "decompile": {
+        "open": "Nhóm các chương thành các hồi",
+        "confirm": "Tự động nhóm các chương của cuốn sách này thành các hồi (mỗi hồi khoảng {{n}} chương). Có thể chạy lại — các hồi hiện có sẽ được tái sử dụng.",
+        "running": "Đang nhóm…",
+        "run": "Nhóm thành các hồi",
+        "cancel": "Hủy",
+        "error": "Không thể nhóm các chương thành các hồi.",
+        "done": "Đã nhóm {{chapters}} chương thành {{arcs}} hồi.",
+        "none": "Chưa có chương nào để nhóm thành hồi."
       }
     },
     "simple": {

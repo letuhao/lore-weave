@@ -64,7 +64,8 @@
         "secDanger": "Danger",
         "archiveArc": "Archiver l'arc",
         "blast": "archive également {{count}} sous-arcs",
-        "archivingNote": "L'archivage renvoie ses chapitres dans le bac « non planifiés » ; la restauration les réattache."
+        "archivingNote": "L'archivage renvoie ses chapitres dans le bac « non planifiés » ; la restauration les réattache.",
+        "secTemplate": "Modèle"
       }
     },
     "compose": {
@@ -783,6 +784,8 @@
   },
   "editor": {
     "empty": "Sélectionnez un chapitre dans le navigateur de manuscrit pour l'éditer ici.",
+    "startFirstChapter": "Commencez votre premier chapitre",
+    "startingChapter": "Création en cours…",
     "unsaved": "● non enregistré",
     "save": "Enregistrer",
     "grammar": "Grammaire",
@@ -797,9 +800,7 @@
     "merging": "Fusion en cours…",
     "mergeDone": "Fusionné dans le canon — la branche conserve sa propre version.",
     "mergeConflict": "Le canon a été modifié depuis — réouvrez le chapitre et fusionnez à nouveau.",
-    "mergeFailed": "Échec de la fusion — réessayez.",
-    "startFirstChapter": "Commencez votre premier chapitre",
-    "startingChapter": "Création en cours…"
+    "mergeFailed": "Échec de la fusion — réessayez."
   },
   "sceneCompose": {
     "empty": "Sélectionnez un chapitre dans le navigateur de manuscrit pour en rédiger les scènes ici.",
@@ -912,7 +913,8 @@
     "manuscript": "Manuscrit",
     "bible": "Bible de l'histoire",
     "search": "Recherche",
-    "quality": "Qualité"
+    "quality": "Qualité",
+    "plan": "Plan"
   },
   "navStub": {
     "manuscript": {
@@ -1013,12 +1015,21 @@
     "issues": "Problèmes",
     "collapse": "Réduire le panneau",
     "toggle": "Basculer le panneau inférieur",
-    "label": "Panneau"
-  },
-  "bottomStub": {
-    "jobs": "Les tâches de fond apparaîtront ici une fois intégrées.",
-    "generation": "La progression de la génération en direct apparaîtra ici une fois intégrée.",
-    "issues": "Les problèmes de qualité apparaîtront ici une fois intégrés."
+    "label": "Panneau",
+    "launch": {
+      "jobs": "Le flux de tâches s'ouvre dans son propre panneau.",
+      "generation": "Le flux de génération s'ouvre dans son propre panneau."
+    },
+    "openJobs": "Ouvrir le panneau des tâches",
+    "issuesLoading": "Recherche de problèmes…",
+    "issuesError": "Impossible de charger le panneau des problèmes.",
+    "issuesEmpty": "Aucun problème trouvé dans ce livre.",
+    "issuesCapped": "affichant les premières lignes de {{total}}",
+    "sev": {
+      "error": "Erreur",
+      "warn": "Avertissement",
+      "info": "Info"
+    }
   },
   "status": {
     "wordsPlaceholder": "— mots",
@@ -1047,6 +1058,10 @@
     "statScenes": "{{n}} sc",
     "window": "win {{a}}–{{b}} / {{n}}",
     "chapterN": "Chapitre {{number}}",
+    "newChapter": "Nouveau chapitre",
+    "chapterShort": "Chapitre",
+    "startFirstChapter": "Commencez votre premier chapitre",
+    "creatingChapter": "Création en cours…",
     "actShort": "Acte",
     "actTag": "ACTE",
     "newAct": "Nouvel acte",
@@ -1063,10 +1078,8 @@
     "restoreActHint": "Restaurer cet acte (il sera vide — vous devrez réorganiser les chapitres)",
     "actTrashed": "L'acte « {{name}} » a été mis à la corbeille — ses chapitres sont restés dans le livre",
     "undo": "Annuler",
-    "newChapter": "Nouveau chapitre",
-    "chapterShort": "Chapitre",
-    "startFirstChapter": "Commencez votre premier chapitre",
-    "creatingChapter": "Création en cours…"
+    "unassignedBucket": "Non assignés",
+    "partVsArc": "Les parties regroupent votre manuscrit. Les arcs constituent le plan."
   },
   "intro": {
     "title": "Bienvenue sur Writing Studio",

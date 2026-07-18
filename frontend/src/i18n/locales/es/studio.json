@@ -64,7 +64,8 @@
         "secDanger": "Peligro",
         "archiveArc": "Archivar arco",
         "blast": "también archiva {{count}} subarcos",
-        "archivingNote": "Archivar devuelve sus capítulos a la bandeja de no planificados; restaurar los vuelve a vincular."
+        "archivingNote": "Archivar devuelve sus capítulos a la bandeja de no planificados; restaurar los vuelve a vincular.",
+        "secTemplate": "Plantilla"
       }
     },
     "compose": {
@@ -783,6 +784,8 @@
   },
   "editor": {
     "empty": "Selecciona un capítulo en el navegador del manuscrito para editarlo aquí.",
+    "startFirstChapter": "Empieza tu primer capítulo",
+    "startingChapter": "Creando…",
     "unsaved": "● sin guardar",
     "save": "Guardar",
     "grammar": "Gramática",
@@ -797,9 +800,7 @@
     "merging": "Fusionando…",
     "mergeDone": "Fusionado con el canon — la rama conserva su propia versión.",
     "mergeConflict": "El canon ha cambiado — vuelve a abrir el capítulo y fusiona de nuevo.",
-    "mergeFailed": "No se pudo fusionar — inténtalo de nuevo.",
-    "startFirstChapter": "Empieza tu primer capítulo",
-    "startingChapter": "Creando…"
+    "mergeFailed": "No se pudo fusionar — inténtalo de nuevo."
   },
   "sceneCompose": {
     "empty": "Selecciona un capítulo en el navegador del manuscrito para redactar sus escenas aquí.",
@@ -912,7 +913,8 @@
     "manuscript": "Manuscrito",
     "bible": "Biblia de la historia",
     "search": "Buscar",
-    "quality": "Calidad"
+    "quality": "Calidad",
+    "plan": "Plan"
   },
   "navStub": {
     "manuscript": {
@@ -1013,12 +1015,21 @@
     "issues": "Problemas",
     "collapse": "Contraer panel",
     "toggle": "Alternar panel inferior",
-    "label": "Panel"
-  },
-  "bottomStub": {
-    "jobs": "Los procesos en segundo plano aparecerán aquí una vez configurados.",
-    "generation": "El progreso de generación en vivo aparecerá aquí una vez configurado.",
-    "issues": "Los problemas de calidad aparecerán aquí una vez configurados."
+    "label": "Panel",
+    "launch": {
+      "jobs": "El feed de tareas se abre en su propio panel.",
+      "generation": "El feed de generación se abre en su propio panel."
+    },
+    "openJobs": "Abrir el panel de tareas",
+    "issuesLoading": "Comprobando si hay problemas…",
+    "issuesError": "No se pudo cargar el panel de problemas.",
+    "issuesEmpty": "No se encontraron problemas en este libro.",
+    "issuesCapped": "mostrando las primeras filas de {{total}}",
+    "sev": {
+      "error": "Error",
+      "warn": "Advertencia",
+      "info": "Información"
+    }
   },
   "status": {
     "wordsPlaceholder": "— palabras",
@@ -1047,6 +1058,10 @@
     "statScenes": "{{n}} esc",
     "window": "win {{a}}–{{b}} / {{n}}",
     "chapterN": "Capítulo {{number}}",
+    "newChapter": "Nuevo capítulo",
+    "chapterShort": "Capítulo",
+    "startFirstChapter": "Empieza tu primer capítulo",
+    "creatingChapter": "Creando…",
     "actShort": "Acto",
     "actTag": "ACTO",
     "newAct": "Nuevo acto",
@@ -1063,10 +1078,8 @@
     "restoreActHint": "Restaurar este acto (se restaurará vacío; vuelve a organizar los capítulos según sea necesario)",
     "actTrashed": "El acto «{{name}}» ha sido eliminado; sus capítulos permanecen en el libro",
     "undo": "Deshacer",
-    "newChapter": "Nuevo capítulo",
-    "chapterShort": "Capítulo",
-    "startFirstChapter": "Empieza tu primer capítulo",
-    "creatingChapter": "Creando…"
+    "unassignedBucket": "Sin asignar",
+    "partVsArc": "Las partes agrupan tu manuscrito. Los arcos son el plan."
   },
   "intro": {
     "title": "Bienvenido a Writing Studio",

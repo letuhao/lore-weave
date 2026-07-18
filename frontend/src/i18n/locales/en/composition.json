@@ -826,7 +826,8 @@
         "driftViolation": "{{label}}: {{n}} out-of-order",
         "driftFolded": "Folded (never bound)",
         "untitledArc": "(untitled arc)",
-        "truncated": "Showing the first {{shown}} of {{count}} — use Catalog or a narrower tier to find more."
+        "truncated": "Showing the first {{shown}} of {{count}} — use Catalog or a narrower tier to find more.",
+        "tabSuggest": "Suggest"
       },
       "import": {
         "privacy": "The raw text stays private to you and is never shared. Only the derived abstract structure can be published — and publishing strips the source reference.",
@@ -850,6 +851,38 @@
         "pasteBody": "paste reference text…",
         "tooLong": "Too long — trim before importing.",
         "addSource": "Add source"
+      },
+      "extract": {
+        "blurb": "Save this arc’s shape as a reusable template in your library.",
+        "open": "Save as template…",
+        "namePlaceholder": "Template name",
+        "saving": "Saving…",
+        "save": "Save",
+        "cancel": "Cancel",
+        "conflict": "You already have a template with that name — rename it.",
+        "error": "Could not save this arc as a template.",
+        "done": "Saved “{{name}}” to your template library."
+      },
+      "suggest": {
+        "noProject": "Open a book with a Work to get arc suggestions for its premise.",
+        "premisePlaceholder": "Describe the premise — e.g. \"a reluctant heir must reclaim a fallen house\"",
+        "genrePlaceholder": "Genre (optional)",
+        "running": "Ranking…",
+        "run": "Suggest arcs",
+        "error": "Could not rank arc suggestions.",
+        "empty": "No arc templates fit yet — create one, or import a story to deconstruct.",
+        "mine": "yours",
+        "span": "{{count}} ch"
+      },
+      "decompile": {
+        "open": "Group chapters into arcs",
+        "confirm": "Automatically group this book’s chapters into arcs (~{{n}} chapters each). Safe to re-run — existing arcs are reused.",
+        "running": "Grouping…",
+        "run": "Group into arcs",
+        "cancel": "Cancel",
+        "error": "Could not group the chapters into arcs.",
+        "done": "Grouped {{chapters}} chapters into {{arcs}} arcs.",
+        "none": "No chapters to group into arcs yet."
       }
     },
     "simple": {

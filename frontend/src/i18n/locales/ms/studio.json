@@ -64,7 +64,8 @@
         "secDanger": "Bahaya",
         "archiveArc": "Arkib ark",
         "blast": "juga mengarkibkan {{count}} sub-ark",
-        "archivingNote": "Pengarkiban mengembalikan bab-babnya ke talam tidak dirancang; pemulihan menyambungkannya semula."
+        "archivingNote": "Pengarkiban mengembalikan bab-babnya ke talam tidak dirancang; pemulihan menyambungkannya semula.",
+        "secTemplate": "Templat"
       }
     },
     "compose": {
@@ -783,6 +784,8 @@
   },
   "editor": {
     "empty": "Pilih bab dalam navigasi manuskrip untuk menyunting di sini.",
+    "startFirstChapter": "Mulakan bab pertama anda",
+    "startingChapter": "Sedang mencipta…",
     "unsaved": "● belum disimpan",
     "save": "Simpan",
     "grammar": "Tatabahasa",
@@ -797,9 +800,7 @@
     "merging": "Sedang menggabungkan…",
     "mergeDone": "Telah digabungkan ke dalam kanon — cawangan akan mengekalkan versi sendiri.",
     "mergeConflict": "Kanon telah berubah — buka semula bab dan gabung semula.",
-    "mergeFailed": "Gagal menggabungkan — cuba lagi.",
-    "startFirstChapter": "Mulakan bab pertama anda",
-    "startingChapter": "Sedang mencipta…"
+    "mergeFailed": "Gagal menggabungkan — cuba lagi."
   },
   "sceneCompose": {
     "empty": "Pilih bab dalam navigasi manuskrip untuk merangka babak di sini.",
@@ -912,7 +913,8 @@
     "manuscript": "Manuskrip",
     "bible": "Alkitab Cerita",
     "search": "Carian",
-    "quality": "Kualiti"
+    "quality": "Kualiti",
+    "plan": "Pelan"
   },
   "navStub": {
     "manuscript": {
@@ -1013,12 +1015,21 @@
     "issues": "Isu",
     "collapse": "Kecilkan panel",
     "toggle": "Tukar panel bawah",
-    "label": "Panel"
-  },
-  "bottomStub": {
-    "jobs": "Tugasan latar belakang akan muncul di sini setelah disambungkan.",
-    "generation": "Kemajuan penjanaan langsung akan muncul di sini setelah disambungkan.",
-    "issues": "Isu kualiti akan muncul di sini setelah disambungkan."
+    "label": "Panel",
+    "launch": {
+      "jobs": "Suapan kerja dibuka dalam panel tersendiri.",
+      "generation": "Suapan penjanaan dibuka dalam panel tersendiri."
+    },
+    "openJobs": "Buka panel Kerja",
+    "issuesLoading": "Menyemak masalah…",
+    "issuesError": "Tidak dapat memuatkan panel masalah.",
+    "issuesEmpty": "Tiada masalah ditemui dalam buku ini.",
+    "issuesCapped": "menunjukkan baris teratas daripada {{total}}",
+    "sev": {
+      "error": "Ralat",
+      "warn": "Amaran",
+      "info": "Info"
+    }
   },
   "status": {
     "wordsPlaceholder": "— patah perkataan",
@@ -1047,6 +1058,10 @@
     "statScenes": "{{n}} babak",
     "window": "win {{a}}–{{b}} / {{n}}",
     "chapterN": "Bab {{number}}",
+    "newChapter": "Bab baru",
+    "chapterShort": "Bab",
+    "startFirstChapter": "Mulakan bab pertama anda",
+    "creatingChapter": "Sedang mencipta…",
     "actShort": "Babak",
     "actTag": "BABAK",
     "newAct": "Babak baharu",
@@ -1063,10 +1078,8 @@
     "restoreActHint": "Pulihkan babak ini (ia akan kembali kosong — susun semula bab mengikut keperluan)",
     "actTrashed": "Babak «{{name}}» telah dibuang — bab-bab di dalamnya kekal dalam buku",
     "undo": "Batalkan",
-    "newChapter": "Bab baru",
-    "chapterShort": "Bab",
-    "startFirstChapter": "Mulakan bab pertama anda",
-    "creatingChapter": "Sedang mencipta…"
+    "unassignedBucket": "Tidak Ditugaskan",
+    "partVsArc": "Bahagian menyusun manuskrip anda. Arka adalah pelannya."
   },
   "intro": {
     "title": "Selamat Datang ke Writing Studio",

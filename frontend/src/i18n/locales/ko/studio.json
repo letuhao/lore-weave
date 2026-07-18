@@ -64,7 +64,8 @@
         "secDanger": "위험",
         "archiveArc": "아크 보관",
         "blast": "또한 {{count}}개의 하위 아크도 함께 보관합니다",
-        "archivingNote": "보관 시 챕터는 '계획되지 않음' 트레이로 이동하며, 복원 시 다시 연결됩니다."
+        "archivingNote": "보관 시 챕터는 '계획되지 않음' 트레이로 이동하며, 복원 시 다시 연결됩니다.",
+        "secTemplate": "템플릿"
       }
     },
     "compose": {
@@ -783,6 +784,8 @@
   },
   "editor": {
     "empty": "원고 탐색기에서 편집할 챕터를 선택하세요.",
+    "startFirstChapter": "첫 번째 챕터 시작하기",
+    "startingChapter": "생성 중…",
     "unsaved": "● 저장되지 않음",
     "save": "저장",
     "grammar": "문법",
@@ -797,9 +800,7 @@
     "merging": "병합 중…",
     "mergeDone": "원본에 병합되었습니다 — 브랜치는 자체 버전을 유지합니다.",
     "mergeConflict": "원본이 변경되었습니다 — 챕터를 다시 열고 다시 병합하세요.",
-    "mergeFailed": "병합에 실패했습니다 — 다시 시도하세요.",
-    "startFirstChapter": "첫 번째 챕터 시작하기",
-    "startingChapter": "생성 중…"
+    "mergeFailed": "병합에 실패했습니다 — 다시 시도하세요."
   },
   "sceneCompose": {
     "empty": "원고 탐색기에서 챕터를 선택하여 이곳에서 장면을 초안 작성하세요.",
@@ -912,7 +913,8 @@
     "manuscript": "원고",
     "bible": "스토리 바이블",
     "search": "검색",
-    "quality": "품질"
+    "quality": "품질",
+    "plan": "계획"
   },
   "navStub": {
     "manuscript": {
@@ -1013,12 +1015,21 @@
     "issues": "이슈",
     "collapse": "패널 접기",
     "toggle": "하단 패널 토글",
-    "label": "패널"
-  },
-  "bottomStub": {
-    "jobs": "연결되면 백그라운드 작업이 여기에 표시됩니다.",
-    "generation": "연결되면 실시간 생성 진행 상황이 여기에 표시됩니다.",
-    "issues": "연결되면 품질 이슈가 여기에 표시됩니다."
+    "label": "패널",
+    "launch": {
+      "jobs": "작업 피드가 별도의 패널로 열립니다.",
+      "generation": "생성 피드가 별도의 패널로 열립니다."
+    },
+    "openJobs": "작업 패널 열기",
+    "issuesLoading": "문제를 확인하는 중…",
+    "issuesError": "문제 패널을 불러올 수 없습니다.",
+    "issuesEmpty": "이 책에서 발견된 문제가 없습니다.",
+    "issuesCapped": "{{total}}개 중 상위 항목 표시",
+    "sev": {
+      "error": "오류",
+      "warn": "경고",
+      "info": "정보"
+    }
   },
   "status": {
     "wordsPlaceholder": "— 단어",
@@ -1047,6 +1058,10 @@
     "statScenes": "{{n}} 장면",
     "window": "win {{a}}–{{b}} / {{n}}",
     "chapterN": "{{number}}장",
+    "newChapter": "새 챕터",
+    "chapterShort": "챕터",
+    "startFirstChapter": "첫 번째 챕터 시작하기",
+    "creatingChapter": "생성 중…",
     "actShort": "막",
     "actTag": "ACT",
     "newAct": "새 막",
@@ -1063,10 +1078,8 @@
     "restoreActHint": "이 막을 복원합니다 (빈 상태로 복원되므로, 필요에 따라 챕터를 다시 배치하세요)",
     "actTrashed": "막 «{{name}}»이(가) 삭제되었습니다 — 챕터는 도서에 그대로 유지됩니다",
     "undo": "실행 취소",
-    "newChapter": "새 챕터",
-    "chapterShort": "챕터",
-    "startFirstChapter": "첫 번째 챕터 시작하기",
-    "creatingChapter": "생성 중…"
+    "unassignedBucket": "미지정",
+    "partVsArc": "Part는 원고를 그룹화합니다. Arc는 구성 계획입니다."
   },
   "intro": {
     "title": "Writing Studio에 오신 것을 환영합니다",

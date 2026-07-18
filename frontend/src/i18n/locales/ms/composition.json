@@ -826,7 +826,8 @@
         "driftViolation": "{{label}}: {{n}} tidak mengikut turutan",
         "driftFolded": "Terlipat (tidak pernah terikat)",
         "untitledArc": "(lengkungan tanpa tajuk)",
-        "truncated": "Menunjukkan {{shown}} daripada {{count}} yang pertama — gunakan Katalog atau peringkat yang lebih khusus untuk mencari lebih banyak."
+        "truncated": "Menunjukkan {{shown}} daripada {{count}} yang pertama — gunakan Katalog atau peringkat yang lebih khusus untuk mencari lebih banyak.",
+        "tabSuggest": "Cadangkan"
       },
       "import": {
         "privacy": "Teks asal kekal peribadi untuk anda dan tidak akan dikongsi. Hanya struktur abstrak yang terhasil boleh diterbitkan — dan penerbitan akan membuang rujukan sumber.",
@@ -850,6 +851,38 @@
         "pasteBody": "tampal teks rujukan…",
         "tooLong": "Terlalu panjang — potong sebelum mengimport.",
         "addSource": "Tambah sumber"
+      },
+      "extract": {
+        "blurb": "Simpan bentuk lengkok ini sebagai templat boleh guna semula dalam perpustakaan anda.",
+        "open": "Simpan sebagai templat…",
+        "namePlaceholder": "Nama templat",
+        "saving": "Menyimpan…",
+        "save": "Simpan",
+        "cancel": "Batal",
+        "conflict": "Anda sudah mempunyai templat dengan nama tersebut — sila namakan semula.",
+        "error": "Tidak dapat menyimpan lengkok ini sebagai templat.",
+        "done": "“{{name}}” telah disimpan ke dalam perpustakaan templat anda."
+      },
+      "suggest": {
+        "noProject": "Buka buku dengan Karya untuk mendapatkan cadangan lengkok bagi premisnya.",
+        "premisePlaceholder": "Huraikan premis — contohnya «seorang pewaris yang enggan mesti menuntut semula rumah yang telah jatuh»",
+        "genrePlaceholder": "Genre (pilihan)",
+        "running": "Menyusun kedudukan…",
+        "run": "Cadangkan lengkok cerita",
+        "error": "Tidak dapat menyusun kedudukan cadangan lengkok cerita.",
+        "empty": "Tiada templat lengkok yang sesuai lagi — cipta satu, atau import cerita untuk dianalisis.",
+        "mine": "milik anda",
+        "span": "{{count}} bab"
+      },
+      "decompile": {
+        "open": "Kumpulkan bab ke dalam lengkok cerita",
+        "confirm": "Kumpulkan bab buku ini secara automatik ke dalam lengkok cerita (~{{n}} bab setiap satu). Selamat untuk dijalankan semula — lengkok sedia ada akan digunakan semula.",
+        "running": "Mengumpulkan…",
+        "run": "Kumpulkan ke dalam lengkok cerita",
+        "cancel": "Batal",
+        "error": "Tidak dapat mengumpulkan bab ke dalam arka.",
+        "done": "Mengumpulkan {{chapters}} bab ke dalam {{arcs}} arka.",
+        "none": "Tiada bab untuk dikumpulkan ke dalam arka lagi."
       }
     },
     "simple": {

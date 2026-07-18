@@ -64,7 +64,8 @@
         "secDanger": "危險",
         "archiveArc": "封存故事弧",
         "blast": "同時也會封存 {{count}} 個子故事弧",
-        "archivingNote": "封存會將章節移回「未規劃」區；還原則會將其重新掛載。"
+        "archivingNote": "封存會將章節移回「未規劃」區；還原則會將其重新掛載。",
+        "secTemplate": "範本"
       }
     },
     "compose": {
@@ -783,6 +784,8 @@
   },
   "editor": {
     "empty": "在導覽列選擇章節即可在此編輯。",
+    "startFirstChapter": "開始你的第一章",
+    "startingChapter": "建立中…",
     "unsaved": "● 未儲存",
     "save": "儲存",
     "grammar": "文法",
@@ -797,9 +800,7 @@
     "merging": "合併中…",
     "mergeDone": "已合併至正文 — 分支將保留其原有版本。",
     "mergeConflict": "正文內容已變動 — 請重新開啟章節並再次進行合併。",
-    "mergeFailed": "合併失敗 — 請再試一次。",
-    "startFirstChapter": "開始你的第一章",
-    "startingChapter": "建立中…"
+    "mergeFailed": "合併失敗 — 請再試一次。"
   },
   "sceneCompose": {
     "empty": "請在手稿導覽器中選擇一個章節，在此草擬其場景。",
@@ -912,7 +913,8 @@
     "manuscript": "稿件",
     "bible": "故事聖經",
     "search": "搜尋",
-    "quality": "品質"
+    "quality": "品質",
+    "plan": "計畫"
   },
   "navStub": {
     "manuscript": {
@@ -1013,12 +1015,21 @@
     "issues": "問題",
     "collapse": "收合面板",
     "toggle": "切換底部面板",
-    "label": "面板"
-  },
-  "bottomStub": {
-    "jobs": "背景工作接上後會顯示於此。",
-    "generation": "即時生成進度接上後會顯示於此。",
-    "issues": "品質問題接上後會顯示於此。"
+    "label": "面板",
+    "launch": {
+      "jobs": "工作列表將在獨立面板中開啟。",
+      "generation": "生成列表將在獨立面板中開啟。"
+    },
+    "openJobs": "開啟工作面板",
+    "issuesLoading": "正在檢查問題…",
+    "issuesError": "無法載入問題面板。",
+    "issuesEmpty": "此書中未發現任何問題。",
+    "issuesCapped": "顯示前 {{total}} 筆",
+    "sev": {
+      "error": "錯誤",
+      "warn": "警告",
+      "info": "資訊"
+    }
   },
   "status": {
     "wordsPlaceholder": "— 字",
@@ -1047,6 +1058,10 @@
     "statScenes": "{{n}} 場景",
     "window": "win {{a}}–{{b}} / {{n}}",
     "chapterN": "第 {{number}} 章",
+    "newChapter": "新章節",
+    "chapterShort": "章",
+    "startFirstChapter": "開始你的第一章",
+    "creatingChapter": "建立中…",
     "actShort": "幕",
     "actTag": "幕",
     "newAct": "新增幕",
@@ -1063,10 +1078,8 @@
     "restoreActHint": "還原此幕（內容將變為空白 — 請根據需要重新整理章節）",
     "actTrashed": "幕「{{name}}」已刪除 — 其章節仍保留在書中",
     "undo": "復原",
-    "newChapter": "新章節",
-    "chapterShort": "章",
-    "startFirstChapter": "開始你的第一章",
-    "creatingChapter": "建立中…"
+    "unassignedBucket": "未分配",
+    "partVsArc": "「章節」用於對您的原稿進行分組，「大綱」則是您的規劃藍圖。"
   },
   "intro": {
     "title": "歡迎使用寫作工作室",

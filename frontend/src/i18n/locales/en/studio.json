@@ -64,7 +64,8 @@
         "secDanger": "Danger",
         "archiveArc": "Archive arc",
         "blast": "also archives {{count}} sub-arcs",
-        "archivingNote": "Archiving returns its chapters to the unplanned tray; restoring re-attaches them."
+        "archivingNote": "Archiving returns its chapters to the unplanned tray; restoring re-attaches them.",
+        "secTemplate": "Template"
       }
     },
     "compose": {
@@ -910,6 +911,7 @@
   },
   "activity": {
     "manuscript": "Manuscript",
+    "plan": "Plan",
     "bible": "Story Bible",
     "search": "Search",
     "quality": "Quality"
@@ -1013,12 +1015,21 @@
     "issues": "Issues",
     "collapse": "Collapse panel",
     "toggle": "Toggle bottom panel",
-    "label": "Panel"
-  },
-  "bottomStub": {
-    "jobs": "Background jobs appear here once wired.",
-    "generation": "Live generation progress appears here once wired.",
-    "issues": "Quality issues appear here once wired."
+    "label": "Panel",
+    "launch": {
+      "jobs": "The jobs feed opens in its own panel.",
+      "generation": "The generation feed opens in its own panel."
+    },
+    "openJobs": "Open the Jobs panel",
+    "issuesLoading": "Checking for problems…",
+    "issuesError": "Could not load the problems panel.",
+    "issuesEmpty": "No problems found in this book.",
+    "issuesCapped": "showing the top rows of {{total}}",
+    "sev": {
+      "error": "Error",
+      "warn": "Warning",
+      "info": "Info"
+    }
   },
   "status": {
     "wordsPlaceholder": "— words",
@@ -1042,7 +1053,7 @@
     "loadingMore": "Loading more…",
     "count": "{{n}} chapters",
     "statArcs": "{{n}} arc",
-    "statActs": "{{n}} act",
+    "statActs": "{{n}} part",
     "statChapters": "{{n}} ch",
     "statScenes": "{{n}} sc",
     "window": "win {{a}}–{{b}} / {{n}}",
@@ -1051,21 +1062,23 @@
     "chapterShort": "Chapter",
     "startFirstChapter": "Start your first chapter",
     "creatingChapter": "Creating…",
-    "actShort": "Act",
-    "actTag": "ACT",
-    "newAct": "New act",
-    "newActPlaceholder": "New act name…",
-    "renameAct": "Rename act",
-    "renameActPlaceholder": "Act name…",
-    "trashAct": "Trash act",
-    "moveActUp": "Move act up",
-    "moveActDown": "Move act down",
-    "untitledAct": "(untitled act)",
+    "actShort": "Part",
+    "actTag": "PART",
+    "newAct": "New part",
+    "newActPlaceholder": "New part name…",
+    "renameAct": "Rename part",
+    "renameActPlaceholder": "Part name…",
+    "trashAct": "Trash part",
+    "moveActUp": "Move part up",
+    "moveActDown": "Move part down",
+    "untitledAct": "(untitled part)",
+    "unassignedBucket": "Unassigned",
     "emptyActHint": "drag chapters here",
-    "trashedActs": "Trashed acts",
+    "trashedActs": "Trashed parts",
     "restore": "Restore",
-    "restoreActHint": "Restore this act (it comes back empty — re-file chapters as needed)",
-    "actTrashed": "Act \"{{name}}\" trashed — its chapters stayed in the book",
+    "restoreActHint": "Restore this part (it comes back empty — re-file chapters as needed)",
+    "actTrashed": "Part \"{{name}}\" trashed — its chapters stayed in the book",
+    "partVsArc": "Parts group your manuscript. Arcs are the plan.",
     "undo": "Undo"
   },
   "intro": {

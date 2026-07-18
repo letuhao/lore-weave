@@ -826,7 +826,8 @@
         "driftViolation": "{{label}} : {{n}} hors séquence",
         "driftFolded": "Replié (jamais lié)",
         "untitledArc": "(arc sans titre)",
-        "truncated": "Affichage des {{shown}} premiers sur {{count}} — utilisez le Catalogue ou un forfait supérieur pour en trouver davantage."
+        "truncated": "Affichage des {{shown}} premiers sur {{count}} — utilisez le Catalogue ou un forfait supérieur pour en trouver davantage.",
+        "tabSuggest": "Suggérer"
       },
       "import": {
         "privacy": "Le texte brut vous reste privé et n'est jamais partagé. Seule la structure abstraite dérivée peut être publiée — et la publication supprime la référence source.",
@@ -850,6 +851,38 @@
         "pasteBody": "coller le texte de référence…",
         "tooLong": "Trop long — coupez le texte avant l'importation.",
         "addSource": "Ajouter une source"
+      },
+      "extract": {
+        "blurb": "Enregistrez la structure de cet arc comme un modèle réutilisable dans votre bibliothèque.",
+        "open": "Enregistrer comme modèle…",
+        "namePlaceholder": "Nom du modèle",
+        "saving": "Enregistrement…",
+        "save": "Enregistrer",
+        "cancel": "Annuler",
+        "conflict": "Vous avez déjà un modèle portant ce nom — veuillez le renommer.",
+        "error": "Impossible d'enregistrer cet arc en tant que modèle.",
+        "done": "« {{name}} » a été enregistré dans votre bibliothèque de modèles."
+      },
+      "suggest": {
+        "noProject": "Ouvrez un livre contenant une œuvre pour obtenir des suggestions d'arc basées sur son intrigue.",
+        "premisePlaceholder": "Décrivez l'intrigue — ex. « un héritier réticent doit restaurer une maison déchue »",
+        "genrePlaceholder": "Genre (optionnel)",
+        "running": "Classement…",
+        "run": "Suggérer des arcs",
+        "error": "Impossible de classer les suggestions d'arcs.",
+        "empty": "Aucun modèle d'arc ne correspond pour l'instant — créez-en un ou importez une histoire pour la décomposer.",
+        "mine": "vôtre",
+        "span": "{{count}} chap."
+      },
+      "decompile": {
+        "open": "Grouper les chapitres en arcs",
+        "confirm": "Grouper automatiquement les chapitres de ce livre en arcs (environ {{n}} chapitres chacun). Vous pouvez relancer l'opération en toute sécurité — les arcs existants seront réutilisés.",
+        "running": "Groupement…",
+        "run": "Grouper en arcs",
+        "cancel": "Annuler",
+        "error": "Impossible de regrouper les chapitres en arcs.",
+        "done": "{{chapters}} chapitres ont été regroupés en {{arcs}} arcs.",
+        "none": "Aucun chapitre à regrouper en arcs pour le moment."
       }
     },
     "simple": {

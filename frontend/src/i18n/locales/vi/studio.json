@@ -64,7 +64,8 @@
         "secDanger": "Nguy hiểm",
         "archiveArc": "Lưu trữ cốt truyện",
         "blast": "cũng lưu trữ {{count}} cốt truyện phụ",
-        "archivingNote": "Lưu trữ sẽ đưa các chương trở lại khay chưa lập kế hoạch; khôi phục sẽ gắn lại chúng."
+        "archivingNote": "Lưu trữ sẽ đưa các chương trở lại khay chưa lập kế hoạch; khôi phục sẽ gắn lại chúng.",
+        "secTemplate": "Mẫu"
       }
     },
     "compose": {
@@ -783,6 +784,8 @@
   },
   "editor": {
     "empty": "Chọn một chương trong navigator để soạn ở đây.",
+    "startFirstChapter": "Bắt đầu chương đầu tiên",
+    "startingChapter": "Đang khởi tạo…",
     "unsaved": "● chưa lưu",
     "save": "Lưu",
     "grammar": "Ngữ pháp",
@@ -797,9 +800,7 @@
     "merging": "Đang hợp nhất…",
     "mergeDone": "Đã hợp nhất vào bản chính — nhánh sẽ giữ phiên bản riêng.",
     "mergeConflict": "Bản chính đã thay đổi — hãy mở lại chương và thực hiện hợp nhất lại.",
-    "mergeFailed": "Không thể hợp nhất — vui lòng thử lại.",
-    "startFirstChapter": "Bắt đầu chương đầu tiên",
-    "startingChapter": "Đang khởi tạo…"
+    "mergeFailed": "Không thể hợp nhất — vui lòng thử lại."
   },
   "sceneCompose": {
     "empty": "Chọn một chương trong trình điều hướng bản thảo để soạn thảo các cảnh tại đây.",
@@ -912,7 +913,8 @@
     "manuscript": "Bản thảo",
     "bible": "Sổ tay truyện",
     "search": "Tìm kiếm",
-    "quality": "Chất lượng"
+    "quality": "Chất lượng",
+    "plan": "Kế hoạch"
   },
   "navStub": {
     "manuscript": {
@@ -1013,12 +1015,21 @@
     "issues": "Vấn đề",
     "collapse": "Thu gọn bảng",
     "toggle": "Bật/tắt bảng dưới",
-    "label": "Bảng"
-  },
-  "bottomStub": {
-    "jobs": "Tác vụ nền sẽ hiển thị ở đây khi được nối.",
-    "generation": "Tiến độ sinh nội dung trực tiếp sẽ hiển thị ở đây khi được nối.",
-    "issues": "Vấn đề chất lượng sẽ hiển thị ở đây khi được nối."
+    "label": "Bảng",
+    "launch": {
+      "jobs": "Bảng tin công việc sẽ được mở trong một bảng riêng biệt.",
+      "generation": "Bảng tin tạo nội dung sẽ được mở trong một bảng riêng biệt."
+    },
+    "openJobs": "Mở bảng Công việc",
+    "issuesLoading": "Đang kiểm tra lỗi…",
+    "issuesError": "Không thể tải bảng lỗi.",
+    "issuesEmpty": "Không tìm thấy lỗi nào trong cuốn sách này.",
+    "issuesCapped": "đang hiển thị {{total}} dòng đầu tiên",
+    "sev": {
+      "error": "Lỗi",
+      "warn": "Cảnh báo",
+      "info": "Thông tin"
+    }
   },
   "status": {
     "wordsPlaceholder": "— từ",
@@ -1047,6 +1058,10 @@
     "statScenes": "{{n}} cảnh",
     "window": "win {{a}}–{{b}} / {{n}}",
     "chapterN": "Chương {{number}}",
+    "newChapter": "Chương mới",
+    "chapterShort": "Chương",
+    "startFirstChapter": "Bắt đầu chương đầu tiên",
+    "creatingChapter": "Đang khởi tạo…",
     "actShort": "Hồi",
     "actTag": "HỒI",
     "newAct": "Hồi mới",
@@ -1063,10 +1078,8 @@
     "restoreActHint": "Khôi phục hồi này (hồi sẽ trống — vui lòng sắp xếp lại các chương nếu cần)",
     "actTrashed": "Hồi «{{name}}» đã bị xóa — các chương của nó vẫn được giữ trong sách",
     "undo": "Hoàn tác",
-    "newChapter": "Chương mới",
-    "chapterShort": "Chương",
-    "startFirstChapter": "Bắt đầu chương đầu tiên",
-    "creatingChapter": "Đang khởi tạo…"
+    "unassignedBucket": "Chưa phân loại",
+    "partVsArc": "Phần giúp nhóm bản thảo của bạn. Các chương hồi là kế hoạch."
   },
   "intro": {
     "title": "Chào mừng đến Xưởng Sáng Tác",

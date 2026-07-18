@@ -826,7 +826,8 @@
         "driftViolation": "{{label}}: {{n}} tidak berurutan",
         "driftFolded": "Terlipat (tidak pernah terikat)",
         "untitledArc": "(alur tanpa judul)",
-        "truncated": "Menampilkan {{shown}} dari {{count}} pertama — gunakan Katalog atau tingkatan yang lebih sempit untuk menemukan lebih banyak."
+        "truncated": "Menampilkan {{shown}} dari {{count}} pertama — gunakan Katalog atau tingkatan yang lebih sempit untuk menemukan lebih banyak.",
+        "tabSuggest": "Saran"
       },
       "import": {
         "privacy": "Teks mentah tetap bersifat pribadi bagi Anda dan tidak akan pernah dibagikan. Hanya struktur abstrak yang diturunkan yang dapat dipublikasikan — dan publikasi akan menghapus referensi sumbernya.",
@@ -850,6 +851,38 @@
         "pasteBody": "tempelkan teks referensi...",
         "tooLong": "Terlalu panjang — potong sebelum mengimpor.",
         "addSource": "Tambah sumber"
+      },
+      "extract": {
+        "blurb": "Simpan alur ini sebagai templat yang dapat digunakan kembali di perpustakaan Anda.",
+        "open": "Simpan sebagai templat…",
+        "namePlaceholder": "Nama templat",
+        "saving": "Menyimpan…",
+        "save": "Simpan",
+        "cancel": "Batal",
+        "conflict": "Anda sudah memiliki templat dengan nama tersebut — ubah namanya.",
+        "error": "Tidak dapat menyimpan alur ini sebagai templat.",
+        "done": "Berhasil menyimpan «{{name}}» ke perpustakaan templat Anda."
+      },
+      "suggest": {
+        "noProject": "Buka buku dengan Karya untuk mendapatkan saran alur berdasarkan premisnya.",
+        "premisePlaceholder": "Deskripsikan premisnya — misal. «seorang ahli waris yang enggan harus merebut kembali rumah yang runtuh»",
+        "genrePlaceholder": "Genre (opsional)",
+        "running": "Peringkat…",
+        "run": "Sarankan alur",
+        "error": "Tidak dapat meranking saran alur.",
+        "empty": "Belum ada templat alur yang cocok — buat satu, atau impor cerita untuk dibedah.",
+        "mine": "milik Anda",
+        "span": "{{count}} bab"
+      },
+      "decompile": {
+        "open": "Kelompokkan bab ke dalam alur",
+        "confirm": "Kelompokkan bab buku ini ke dalam alur secara otomatis (~{{n}} bab per alur). Aman untuk dijalankan ulang — alur yang sudah ada akan digunakan kembali.",
+        "running": "Mengelompokkan…",
+        "run": "Kelompokkan ke dalam alur",
+        "cancel": "Batal",
+        "error": "Tidak dapat mengelompokkan bab ke dalam busur cerita.",
+        "done": "Berhasil mengelompokkan {{chapters}} bab ke dalam {{arcs}} busur cerita.",
+        "none": "Belum ada bab yang dapat dikelompokkan ke dalam busur cerita."
       }
     },
     "simple": {

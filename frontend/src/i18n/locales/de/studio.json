@@ -64,7 +64,8 @@
         "secDanger": "Gefahr",
         "archiveArc": "Handlungsbogen archivieren",
         "blast": "archiviert auch {{count}} Sub-Bögen",
-        "archivingNote": "Durch das Archivieren werden die Kapitel in die ungeplante Ablage zurückgeführt; durch das Wiederherstellen werden sie wieder verknüpft."
+        "archivingNote": "Durch das Archivieren werden die Kapitel in die ungeplante Ablage zurückgeführt; durch das Wiederherstellen werden sie wieder verknüpft.",
+        "secTemplate": "Vorlage"
       }
     },
     "compose": {
@@ -783,6 +784,8 @@
   },
   "editor": {
     "empty": "Wähle ein Kapitel im Manuskript-Navigator aus, um es hier zu bearbeiten.",
+    "startFirstChapter": "Beginnen Sie Ihr erstes Kapitel",
+    "startingChapter": "Wird erstellt…",
     "unsaved": "● unspeichern",
     "save": "Speichern",
     "grammar": "Grammatik",
@@ -797,9 +800,7 @@
     "merging": "Zusammenführen…",
     "mergeDone": "In den Kanon übernommen – der Zweig behält seine eigene Version.",
     "mergeConflict": "Kanon hat sich geändert – öffne das Kapitel erneut und führe es wieder zusammen.",
-    "mergeFailed": "Zusammenführen fehlgeschlagen – bitte erneut versuchen.",
-    "startFirstChapter": "Beginnen Sie Ihr erstes Kapitel",
-    "startingChapter": "Wird erstellt…"
+    "mergeFailed": "Zusammenführen fehlgeschlagen – bitte erneut versuchen."
   },
   "sceneCompose": {
     "empty": "Wählen Sie ein Kapitel im Manuskript-Navigator aus, um dessen Szenen hier zu entwerfen.",
@@ -912,7 +913,8 @@
     "manuscript": "Manuskript",
     "bible": "Story Bible",
     "search": "Suche",
-    "quality": "Qualität"
+    "quality": "Qualität",
+    "plan": "Plan"
   },
   "navStub": {
     "manuscript": {
@@ -1013,12 +1015,21 @@
     "issues": "Probleme",
     "collapse": "Panel einklappen",
     "toggle": "Unteres Panel umschalten",
-    "label": "Panel"
-  },
-  "bottomStub": {
-    "jobs": "Hintergrund-Jobs erscheinen hier, sobald sie verbunden sind.",
-    "generation": "Live-Generierungsfortschritt erscheint hier, sobald er verbunden ist.",
-    "issues": "Qualitätsprobleme erscheinen hier, sobald sie verbunden sind."
+    "label": "Panel",
+    "launch": {
+      "jobs": "Der Jobs-Feed öffnet sich in einem eigenen Panel.",
+      "generation": "Der Generierungs-Feed öffnet sich in einem eigenen Panel."
+    },
+    "openJobs": "Jobs-Panel öffnen",
+    "issuesLoading": "Suche nach Problemen…",
+    "issuesError": "Das Problem-Panel konnte nicht geladen werden.",
+    "issuesEmpty": "In diesem Buch wurden keine Probleme gefunden.",
+    "issuesCapped": "zeigt die ersten {{total}} Zeilen an",
+    "sev": {
+      "error": "Fehler",
+      "warn": "Warnung",
+      "info": "Info"
+    }
   },
   "status": {
     "wordsPlaceholder": "— Wörter",
@@ -1047,6 +1058,10 @@
     "statScenes": "{{n}} Szen.",
     "window": "Fenster {{a}}–{{b}} / {{n}}",
     "chapterN": "Kapitel {{number}}",
+    "newChapter": "Neues Kapitel",
+    "chapterShort": "Kapitel",
+    "startFirstChapter": "Beginnen Sie Ihr erstes Kapitel",
+    "creatingChapter": "Wird erstellt…",
     "actShort": "Akt",
     "actTag": "AKT",
     "newAct": "Neuer Akt",
@@ -1063,10 +1078,8 @@
     "restoreActHint": "Diese Akte wiederherstellen (sie wird leer sein – ordne die Kapitel bei Bedarf neu)",
     "actTrashed": "Akte „{{name}}“ gelöscht – ihre Kapitel verbleiben im Buch",
     "undo": "Rückgängig machen",
-    "newChapter": "Neues Kapitel",
-    "chapterShort": "Kapitel",
-    "startFirstChapter": "Beginnen Sie Ihr erstes Kapitel",
-    "creatingChapter": "Wird erstellt…"
+    "unassignedBucket": "Nicht zugewiesen",
+    "partVsArc": "Teile gruppieren dein Manuskript. Bögen sind der Plan."
   },
   "intro": {
     "title": "Willkommen im Writing Studio",

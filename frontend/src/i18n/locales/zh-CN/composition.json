@@ -826,7 +826,8 @@
         "driftViolation": "{{label}}: {{n}} 顺序错误",
         "driftFolded": "折叠（从未绑定）",
         "untitledArc": "（未命名弧线）",
-        "truncated": "正在显示第 {{shown}} / {{count}} 项 — 使用“目录”或更高级别的方案以查找更多内容。"
+        "truncated": "正在显示第 {{shown}} / {{count}} 项 — 使用“目录”或更高级别的方案以查找更多内容。",
+        "tabSuggest": "建议"
       },
       "import": {
         "privacy": "原始文本仅供您个人私密使用，绝不会被分享。只有生成的抽象结构可以发布 —— 且发布操作会移除原始引用。",
@@ -850,6 +851,38 @@
         "pasteBody": "粘贴参考文本…",
         "tooLong": "内容过长 — 请在导入前进行裁剪。",
         "addSource": "添加来源"
+      },
+      "extract": {
+        "blurb": "将此情节弧线的结构保存为库中可重复使用的模板。",
+        "open": "另存为模板…",
+        "namePlaceholder": "模板名称",
+        "saving": "正在保存…",
+        "save": "保存",
+        "cancel": "取消",
+        "conflict": "已存在同名模板 — 请重命名。",
+        "error": "无法将此情节弧线保存为模板。",
+        "done": "已将 «{{name}}» 保存至您的模板库。"
+      },
+      "suggest": {
+        "noProject": "打开一个包含“作品”的书籍，以获取基于其前提的情节弧线建议。",
+        "premisePlaceholder": "描述前提 — 例如：“一位不情愿的继承人必须夺回没落的家族”",
+        "genrePlaceholder": "类型（可选）",
+        "running": "正在排名……",
+        "run": "建议情节弧",
+        "error": "无法对情节弧建议进行排名。",
+        "empty": "目前尚无匹配的情节弧模板 —— 请创建一个，或导入故事进行拆解。",
+        "mine": "您的",
+        "span": "{{count}} 章"
+      },
+      "decompile": {
+        "open": "将章节分组为情节弧",
+        "confirm": "自动将本书章节分组为情节弧（每组约 {{n}} 章）。可以安全地重新运行 —— 已有的情节弧将被复用。",
+        "running": "正在分组……",
+        "run": "分组为情节弧",
+        "cancel": "取消",
+        "error": "无法将章节归类为卷。",
+        "done": "已将 {{chapters}} 个章节归类为 {{arcs}} 卷。",
+        "none": "暂无章节可进行分卷。"
       }
     },
     "simple": {

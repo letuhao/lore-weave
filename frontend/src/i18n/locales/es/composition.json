@@ -826,7 +826,8 @@
         "driftViolation": "{{label}}: {{n}} fuera de orden",
         "driftFolded": "Plegado (nunca vinculado)",
         "untitledArc": "(arco sin título)",
-        "truncated": "Mostrando los primeros {{shown}} de {{count}} — usa el Catálogo o un plan superior para encontrar más."
+        "truncated": "Mostrando los primeros {{shown}} de {{count}} — usa el Catálogo o un plan superior para encontrar más.",
+        "tabSuggest": "Sugerir"
       },
       "import": {
         "privacy": "El texto original es privado y nunca se comparte. Solo la estructura abstracta derivada puede publicarse; al publicar, se elimina la referencia a la fuente.",
@@ -850,6 +851,38 @@
         "pasteBody": "pegar texto de referencia…",
         "tooLong": "Demasiado largo: recórtalo antes de importar.",
         "addSource": "Añadir fuente"
+      },
+      "extract": {
+        "blurb": "Guarda la estructura de este arco como una plantilla reutilizable en tu biblioteca.",
+        "open": "Guardar como plantilla…",
+        "namePlaceholder": "Nombre de la plantilla",
+        "saving": "Guardando…",
+        "save": "Guardar",
+        "cancel": "Cancelar",
+        "conflict": "Ya tienes una plantilla con ese nombre; cámbiale el nombre.",
+        "error": "No se pudo guardar este arco como plantilla.",
+        "done": "Se ha guardado «{{name}}» en tu biblioteca de plantillas."
+      },
+      "suggest": {
+        "noProject": "Abre un libro con una Obra para obtener sugerencias de arco basadas en su premisa.",
+        "premisePlaceholder": "Describe la premisa — ej. «un heredero reacio debe reclamar una casa caída»",
+        "genrePlaceholder": "Género (opcional)",
+        "running": "Clasificando…",
+        "run": "Sugerir arcos",
+        "error": "No se pudieron clasificar las sugerencias de arcos.",
+        "empty": "Aún no hay plantillas de arcos que coincidan; crea una o importa una historia para analizarla.",
+        "mine": "tuyo",
+        "span": "{{count}} cap."
+      },
+      "decompile": {
+        "open": "Agrupar capítulos en arcos",
+        "confirm": "Agrupar automáticamente los capítulos de este libro en arcos (aprox. {{n}} capítulos cada uno). Es seguro volver a ejecutarlo: los arcos existentes se reutilizan.",
+        "running": "Agrupando…",
+        "run": "Agrupar en arcos",
+        "cancel": "Cancelar",
+        "error": "No se pudieron agrupar los capítulos en arcos.",
+        "done": "Se agruparon {{chapters}} capítulos en {{arcs}} arcos.",
+        "none": "Aún no hay capítulos para agrupar en arcos."
       }
     },
     "simple": {
