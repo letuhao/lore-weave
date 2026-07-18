@@ -1,5 +1,23 @@
 # ▶▶ NEXT SESSION STARTS HERE
 
+## ♻️ S-08 SOFT-ARCHIVE RESTORE (motif + arc-template) — **SHIPPED (2026-07-18)**
+> Spec: [`docs/specs/2026-07-17-studio-completeness-build/S-08_soft-archive-restore.md`](../specs/2026-07-17-studio-completeness-build/S-08_soft-archive-restore.md) §8–9.
+> **Investigation correction (verified vs code):** the spec's "dead-end soft-delete, no transport to
+> un-archive" was FALSE at the API layer — `patch(status='active')` already un-archives (both patch-args
+> carry `status`, no `status<>'archived'` guard). The real gap: no dedicated idempotent restore verb, no FE
+> affordance, and archive's MCP `undo_hint` was `None`. **Built:** `MotifRepo.restore`/`restore_shared` +
+> `ArcTemplateRepo.restore(book_id)`; routes `POST …/{id}/restore[?book_id=]`; MCP
+> `composition_motif_restore` + `composition_arc_template_restore`; archive tools' undo_hint now points at
+> restore. FE: arc-templates **Archived tab + Restore** (`useArcTemplates` archived tier + `arcApi.restore`/
+> `motifApi.restore`). Commits `fa79e0963` (BE), `005cf6545` (FE), `cf46d4a0f` (spec). **VERIFY:** repo DB
+> round-trip on real PG (id+version preserved, foreign/wrong-book/not-archived→None, shared tier) + router
+> 404/owner/shared + MCP tool-list parity/tier-gate/functional = **220 passed**; FE panel 10/10, tsc 0;
+> provider-gate clean. Container rebuild-smoke skipped (shared stack in active concurrent use; single-service
+> change → real-PG + real-MCP-loopback + TestClient cover the path).
+> **Deferred (1): `D-S08-FE-MOTIF-ARCHIVED-VIEW`** (gate #2 structural) — `MotifLibraryView` has no
+> archived-row surface today; adding an archived view + Restore there is its own FE pass. `motifApi.restore`
+> is wired + BE-tested, so it's a view-only add, not new capability. Target: a motif-library UX pass.
+
 ## 🪟 STUDIO DOCK UX — resizable side bar + panel-layout presets — **SHIPPED (2026-07-18)**
 > Plan: [`docs/plans/2026-07-18-studio-dock-resizable-sidebar-and-layout-presets.md`](../plans/2026-07-18-studio-dock-resizable-sidebar-and-layout-presets.md). FE-only (no backend).
 > The manuscript side bar is now width-resizable like a dock panel (drag sash, dbl-click reset, per-book
