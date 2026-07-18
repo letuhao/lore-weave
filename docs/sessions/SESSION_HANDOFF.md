@@ -101,12 +101,10 @@
 > panel into its own group → dockview emptied the dock; fixed by skipping already-placed panels). Live-smoked
 > on :5199 (resize persist, cols2 split, single merge-back, cols8 too-narrow gating). 51 unit tests + full
 > studio vitest 1389 green; tsc 0.
-> **Deferred (1, tracked): `D-STUDIO-DOCK-I18N-CONVERGE`** — the 15 new `manuscript`/`layout`/`sidebar.resize`
-> studio keys are seeded in en + translated in the working tree (17 locales, gemma-4-26b) but the COMMIT is
-> deferred: en/studio.json was under LIVE concurrent edit by a plan-hub session (adding reference-shelf/adv
-> keys), and the i18n parity gate (working-tree-en as source) would force co-carrying their moving,
-> half-finished keys or risk clobbering their edits. Keys render via English `defaultValue` meanwhile; land at
-> convergence (S-02 i18n precedent). Trigger: when en/studio.json churn settles, commit the 18 studio.json.
+> **CLEARED 2026-07-18 (commit `b65cec317`): `D-STUDIO-DOCK-I18N-CONVERGE`** — the `manuscript`/`layout`/
+> `sidebar.resize` studio keys (40/6/1) settled and are now committed at full 18-locale parity, folded into the
+> S-10 i18n convergence pass (which also landed the `bottom.*` O3 keys + `motif.arc.{extract,suggest,decompile}`
+> O6 keys and dropped the orphaned `bottomStub.*`). i18n-completeness-gate green (17 locales × en parity).
 
 ## 🏗️ STUDIO COMPLETENESS — audited, specced, SEALED → **BUILD NEXT** (2026-07-17)
 > **Read first:** [`docs/specs/2026-07-17-studio-completeness-build/00_ROADMAP.md`](../specs/2026-07-17-studio-completeness-build/00_ROADMAP.md)

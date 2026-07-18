@@ -58,17 +58,26 @@ params by StudioIssuesFeed. The rest stay panel-level BY DESIGN, not deferral: q
 incoming focus param, open_thread_debt is an aggregate (no per-thread id), and plan-hub focuses via a bus +
 an id-type mismatch (chapter_id vs outline-node id). EVID: agent_native 25 + Issues feed 5 green.
 
-## CONVERGENCE — i18n keys to batch-fill (deferred to avoid concurrent writes on the hot i18n files)
-All rendered via `t(key, {defaultValue})` (UI works now; parity gate passes since keys are absent). Fill in a
-convergence batch via `scripts/i18n_translate.py`:
-- **studio.json**: `panels.arc-inspector.body.secTemplate`.
-- **composition.json**: `motif.arc.extract.*` (blurb/open/namePlaceholder/save/saving/cancel/conflict/error/done),
-  `motif.arc.suggest.*` (noProject/premisePlaceholder/genrePlaceholder/run/running/error/empty/mine/span),
-  `motif.arc.templates.tabSuggest`, `motif.arc.decompile.*` (open/confirm/run/running/cancel/error/done/none).
-- **studio.json (O3)**: `bottom.issues`, `bottom.launch.{jobs,generation}`, `bottom.openJobs`,
-  `bottom.{issuesLoading,issuesError,issuesEmpty,issuesCapped}`, `bottom.sev.{error,warn,info}`. Also the old
-  `bottomStub.*` keys are now ORPHANED (StudioBottomPanel no longer uses them) — a convergence cleanup can drop them.
-- (O1's `panels.style-voice.*` studio.json keys ARE committed — the panelCatalogContract guideBody gate required them.)
+## CONVERGENCE — i18n keys CLEARED (commit b65cec317, 2026-07-18)
+DONE. All the S-10-deferred keys are now materialized in en + gap-filled across 17 locales via
+`scripts/i18n_translate.py` (+14 studio, +27 composition each; 0 failed; i18n-completeness-gate green):
+- **studio.json**: `panels.arc-inspector.body.secTemplate` + `bottom.{launch.{jobs,generation},openJobs,
+  issuesLoading,issuesError,issuesEmpty,issuesCapped,sev.{error,warn,info}}`.
+- **composition.json**: `motif.arc.{extract,suggest,decompile}.*` + `motif.arc.templates.tabSuggest`.
+- Orphaned `bottomStub.*` DROPPED from all 18 locales (StudioBottomPanel replaced the stub tabs with the
+  real Issues feed + jobs-launcher in O3).
+- (O1's `panels.style-voice.*` were already committed — the panelCatalogContract guideBody gate required them.)
+
+## COMPLETENESS AUDIT (2026-07-18) — all 7 O-items meet their S-10 ACs
+Verified vs spec + code (not the doc): O1 style-voice (catalog+enum+contract+i18n+legacyParity HOMED; the
+spec's "Lane-B styleVoiceEffects" was GG-8 boilerplate — the passive legacy-port panel needs none, matching
+O2 reference-shelf which shipped without one; reuses the existing `editor` category so no CATEGORY_ORDER
+change). O2 reference-shelf (shipped). O3 Issues+diagnostics (shared build_book_diagnostics; GET
+/books/{id}/diagnostics VIEW-gated + 404 anti-oracle tests; feed with node-level deep-links; jobs/gen launch
+jobs-list). O4 (bible list-rail; quality via QualityHubPanel launcher — conscious won't-fix, reachability met;
+search in S-11). O5 MotifBindingLens mounted + PlanDrawer mount test. O6 3 arc surfaces + i18n. O7 [[-create.
+EVID: BE agent_native+arc+mcp 131 green; FE studio/composition/plan-hub 228 green; i18n parity 40 green.
+No open debts / defers / bugs / missing gaps for S-10.
 
 ## DECISIONS (S-10-local)
 - O4-quality: keep the DOCK-8 hub (QualityHubPanel launcher) — reachability already met; do NOT add a rival
