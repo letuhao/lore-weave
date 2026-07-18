@@ -124,7 +124,7 @@
       "title": "Gaya & Suara",
       "desc": "Atur kepadatan prosa dan tempo, serta karakter suara unik setiap tokoh — terintegrasi dalam setiap perintah draf",
       "guideBody": "Gaya & Suara mengarahkan cara AI menulis. Atur kepadatan prosa dan tempo untuk seluruh buku (atau persempit ke bab atau adegan tertentu), dan berikan setiap karakter suara bicara yang khas. Pengaturan ini terintegrasi dalam setiap perintah draf, sehingga tulisan tetap konsisten tanpa Anda perlu mengulang instruksi. Setiap kontrol menunjukkan nilai efektifnya dan dari mana nilai tersebut berasal (setelan default buku, atau perubahan pada bab/adegan). Atur di awal untuk menetapkan gaya penulisan utama, lalu sesuaikan per karakter saat karakter mereka mulai muncul.",
-      "noWork": "Belum ada proyek penulisan — buat Work terlebih dahulu, lalu atur gaya & suaranya di sini."
+      "noWork": "Penulisan belum diatur untuk buku ini — atur terlebih dahulu untuk mengarahkan gaya & suara di sini."
     },
     "glossary": {
       "title": "Glosarium",
@@ -405,7 +405,7 @@
       "title": "Rak Referensi",
       "desc": "Kurasi kutipan referensi (pengaruh eksternal) yang mendasari tulisan Anda — tambahkan, edit, dan hapus; kutipan relevan per adegan akan diambil dan dapat disematkan ke dalam paket pendukung.",
       "guideBody": "Rak referensi adalah korpus pengaruh buku Anda — kutipan, sumber, dan contoh gaya bahasa yang digunakan AI saat menyusun draf. Tambahkan referensi dengan judul, penulis, URL sumber, dan teks; teks tersebut akan disematkan agar studio dapat mengambil yang paling relevan per adegan. Edit detail referensi (perubahan metadata ringan) atau kontennya (yang akan melakukan penyematan ulang). Filter rak yang besar dengan kotak pencarian. Pengambilan dan penyematan per adegan akan muncul saat Anda membuka rak bersamaan dengan sebuah adegan; jika dibuka sendiri, rak ini berfungsi untuk mengelola pustaka. Model embedding harus dikonfigurasi (tambahkan dari pengaturan AI) agar pengambilan data dapat berfungsi.",
-      "noWork": "Belum ada proyek tulisan — buat Work terlebih dahulu, lalu kurasi rak referensinya di sini."
+      "noWork": "Penulisan belum diatur untuk buku ini — atur terlebih dahulu untuk mengelola rak referensi di sini."
     },
     "canonview": {
       "title": "Kanon pada bab",
@@ -939,10 +939,8 @@
   "quality": {
     "noWork": "Buku ini belum memiliki sesi co-writer — tulis satu bab terlebih dahulu, maka data kualitas akan muncul di sini.",
     "hubNoWorkHint": "Janji, skor kritikus, dan cakupan cerita memerlukan sesi co-writer — tulis satu bab terlebih dahulu. Masalah kanon di bawah tetap dapat berfungsi dengan cara apa pun.",
-    "setupWork": "Siapkan rekan penulis",
+    "setupWork": "Atur penulisan",
     "settingUpWork": "Sedang menyiapkan...",
-    "setupWorkError": "Tidak dapat menyiapkan rekan penulis. Coba lagi.",
-    "setupWorkPending": "Sesi rekan penulis Anda telah dibuat, tetapi proyek pengetahuannya masih dalam proses pengaturan. Coba lagi sesaat lagi.",
     "setupWorkRetry": "Coba lagi",
     "pickModel": "Pilih model untuk menganalisis dengan…",
     "pickChapter": "Pilih bab",
@@ -987,7 +985,9 @@
     "conformanceTitle": "Kesesuaian",
     "conformanceDesc": "Apakah prosa sudah mewujudkan rencana? Pelacakan beat per adegan",
     "pickModelRerun": "Pilih model untuk dijalankan ulang dengan…",
-    "pickChapterConformanceHint": "Pilih bab di atas untuk melacak bagaimana prosanya mewujudkan rencana tersebut."
+    "pickChapterConformanceHint": "Pilih bab di atas untuk melacak bagaimana prosanya mewujudkan rencana tersebut.",
+    "setupWorkError": "Tidak dapat menyiapkan penulisan. Coba lagi.",
+    "setupWorkPending": "Penulisan telah disiapkan, tetapi proyek pengetahuannya masih dalam proses persiapan. Coba lagi sebentar lagi."
   },
   "sidebar": {
     "collapse": "Sembunyikan",

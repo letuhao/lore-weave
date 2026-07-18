@@ -17,6 +17,7 @@ import { resolveActiveWork } from '@/features/composition/workSelect';
 
 import { useStudioHost } from '../host/StudioHostProvider';
 import { useStudioPanel } from './useStudioPanel';
+import { WorkSetupCta } from './WorkSetupCta';
 
 export function StyleVoiceStudioPanel(props: IDockviewPanelProps) {
   useStudioPanel('style-voice', props.api);
@@ -28,14 +29,18 @@ export function StyleVoiceStudioPanel(props: IDockviewPanelProps) {
   const work = resolveActiveWork(resolution.data, activeWorkId);
 
   if (!work?.project_id) {
+    // F10 — mount the existing idempotent create-Work CTA and de-jargon the copy (see ReferenceShelf).
     return (
       <div
         data-testid="style-voice-nowork"
-        className="flex h-full items-center justify-center p-6 text-center text-sm text-muted-foreground"
+        className="flex h-full flex-col items-center justify-center gap-3 p-6 text-center text-sm text-muted-foreground"
       >
-        {t('panels.style-voice.noWork', {
-          defaultValue: 'No writing project yet — set up a Work first, then steer its style & voice here.',
-        })}
+        <p className="max-w-xs">
+          {t('panels.style-voice.noWork', {
+            defaultValue: "Writing isn't set up for this book yet — set it up to steer its style & voice here.",
+          })}
+        </p>
+        <WorkSetupCta bookId={host.bookId} token={accessToken} />
       </div>
     );
   }

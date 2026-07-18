@@ -124,7 +124,7 @@
       "title": "Phong cách & Giọng văn",
       "desc": "Điều chỉnh mật độ văn phong, nhịp độ và giọng văn riêng biệt của từng nhân vật — được tích hợp vào mọi câu lệnh bản thảo",
       "guideBody": "Phong cách & Giọng văn giúp điều hướng cách AI viết lách. Hãy thiết lập mật độ văn phong và nhịp độ cho toàn bộ cuốn sách (hoặc giới hạn trong một chương hoặc một cảnh), đồng thời tạo cho mỗi nhân vật một giọng nói riêng biệt. Các thiết lập này được lồng ghép vào mọi câu lệnh bản thảo, giúp văn phong luôn nhất quán mà bạn không cần phải lặp lại các chỉ dẫn. Mỗi trình điều khiển đều hiển thị giá trị hiệu dụng và nguồn gốc của giá trị đó (mặc định của sách, hoặc thiết lập riêng cho chương/cảnh). Hãy điều chỉnh sớm để thiết lập phong cách chủ đạo, sau đó tinh chỉnh theo từng nhân vật khi giọng văn của họ dần lộ diện.",
-      "noWork": "Chưa có dự án viết nào — hãy thiết lập một Work trước, sau đó điều chỉnh phong cách & giọng văn tại đây."
+      "noWork": "Chưa thiết lập phần viết cho cuốn sách này — hãy thiết lập để điều chỉnh phong cách & giọng văn tại đây."
     },
     "glossary": {
       "title": "Từ điển",
@@ -405,7 +405,7 @@
       "title": "Kệ tham chiếu",
       "desc": "Tổng hợp các đoạn văn tham chiếu (nguồn cảm hứng bên ngoài) làm nền tảng cho việc viết lách — thêm, chỉnh sửa và xóa chúng; các đoạn phù hợp sẽ được truy xuất theo từng cảnh và có thể được ghim vào gói dữ liệu nền tảng.",
       "guideBody": "Kệ tham chiếu là kho tàng các nguồn ảnh hưởng cho cuốn sách của bạn — bao gồm các đoạn văn, nguồn tài liệu và các mẫu phong cách mà AI sẽ dựa vào khi soạn thảo. Hãy thêm một tham chiếu với tiêu đề, tác giả, URL nguồn và nội dung văn bản; văn bản sẽ được nhúng để studio có thể truy xuất những đoạn phù hợp nhất cho từng cảnh. Bạn có thể chỉnh sửa chi tiết tham chiếu (thay đổi siêu dữ liệu nhanh chóng) hoặc nội dung của nó (việc này sẽ thực hiện nhúng lại). Sử dụng hộp tìm kiếm để lọc trong một kệ tham chiếu lớn. Chức năng truy xuất và ghim theo từng cảnh sẽ xuất hiện khi bạn mở kệ tham chiếu cùng với một cảnh; nếu mở riêng lẻ, nó sẽ đóng vai trò quản lý thư viện. Cần phải cấu hình một mô hình nhúng (thêm một mô hình từ cài đặt AI) để tính năng truy xuất hoạt động.",
-      "noWork": "Chưa có dự án viết nào — hãy thiết lập một Work trước, sau đó mới có thể tổng hợp kệ tham chiếu tại đây."
+      "noWork": "Chưa thiết lập phần viết cho cuốn sách này — hãy thiết lập để quản lý kệ tài liệu tham khảo tại đây."
     },
     "canonview": {
       "title": "Chính văn tại chương",
@@ -939,10 +939,8 @@
   "quality": {
     "noWork": "Cuốn sách này chưa có phiên làm việc với cộng sự — hãy bắt đầu viết một chương trước, sau đó dữ liệu chất lượng sẽ xuất hiện tại đây.",
     "hubNoWorkHint": "Các chỉ số về lời hứa, điểm số phê bình và độ bao phủ cốt truyện cần có một phiên làm việc với cộng sự — hãy bắt đầu viết một chương trước. Các vấn đề về tính nhất quán (Canon) bên dưới vẫn hoạt động trong mọi trường hợp.",
-    "setupWork": "Thiết lập cộng sự",
+    "setupWork": "Thiết lập phần viết",
     "settingUpWork": "Đang thiết lập…",
-    "setupWorkError": "Không thể thiết lập cộng sự. Vui lòng thử lại.",
-    "setupWorkPending": "Phiên làm việc với cộng sự đã được tạo nhưng dự án kiến thức vẫn đang được thiết lập. Vui lòng thử lại sau ít phút.",
     "setupWorkRetry": "Thử lại",
     "pickModel": "Chọn mô hình để phân tích với…",
     "pickChapter": "Chọn một chương",
@@ -987,7 +985,9 @@
     "conformanceTitle": "Sự tuân thủ",
     "conformanceDesc": "Văn bản có bám sát kế hoạch không? Truy vết từng nhịp độ trong mỗi cảnh",
     "pickModelRerun": "Chọn một mô hình để chạy lại với…",
-    "pickChapterConformanceHint": "Chọn một chương ở trên để truy vết cách văn bản thực hiện theo kế hoạch."
+    "pickChapterConformanceHint": "Chọn một chương ở trên để truy vết cách văn bản thực hiện theo kế hoạch.",
+    "setupWorkError": "Không thể thiết lập chế độ viết. Vui lòng thử lại.",
+    "setupWorkPending": "Đã thiết lập chế độ viết nhưng dự án kiến thức vẫn đang được chuẩn bị. Vui lòng thử lại sau ít phút."
   },
   "sidebar": {
     "collapse": "Thu gọn",

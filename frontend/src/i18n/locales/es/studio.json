@@ -124,7 +124,7 @@
       "title": "Estilo y voz",
       "desc": "Controla la densidad y el ritmo de la prosa, así como la voz distintiva de cada personaje; todo integrado en cada instrucción de borrador",
       "guideBody": "«Estilo y voz» dirige la forma en que escribe la IA. Define la densidad y el ritmo de la prosa para todo el libro (o limítalos a un capítulo o escena) y otorga a cada personaje una voz propia al hablar. Estos ajustes se integran en cada instrucción de borrador, de modo que la escritura mantiene la coherencia sin que tengas que repetir instrucciones. Cada control muestra su valor efectivo y su origen (valor predeterminado del libro o ajuste de capítulo/escena). Ajústalo al principio para establecer el estilo general y luego perfecciónalo por personaje a medida que sus voces vayan surgiendo.",
-      "noWork": "Aún no hay ningún proyecto de escritura; primero crea un «Work» y luego podrás configurar su estilo y voz aquí."
+      "noWork": "La escritura aún no está configurada para este libro; configúrala para dirigir su estilo y voz aquí."
     },
     "glossary": {
       "title": "Glosario",
@@ -405,7 +405,7 @@
       "title": "Estante de referencias",
       "desc": "Organiza los pasajes de referencia (influencias externas) que fundamentan la escritura: añádelos, edítalos y elimínalos; se recuperan los más pertinentes por escena y pueden fijarse en el paquete de fundamentación.",
       "guideBody": "El estante de referencias es el corpus de influencias de tu libro: pasajes, fuentes y ejemplos de estilo en los que la IA se apoya al redactar. Añade una referencia con su título, autor, URL de la fuente y texto; el texto se integra para que el estudio pueda recuperar los más relevantes por escena. Edita los detalles de una referencia (un cambio de metadatos sencillo) o su contenido (lo que requiere una nueva integración). Filtra un estante extenso con el cuadro de búsqueda. La recuperación y fijación por escena aparecen al abrir el estante junto a una escena; por separado, funciona como gestor de la biblioteca. Debe estar configurado un modelo de integración (añade uno desde los ajustes de IA) para que la recuperación funcione.",
-      "noWork": "Aún no hay ningún proyecto de escritura; primero configura un «Work» y luego organiza su estante de referencias aquí."
+      "noWork": "La escritura aún no está configurada para este libro; configúrala para organizar su estantería de referencias aquí."
     },
     "canonview": {
       "title": "Canon en el capítulo",
@@ -939,10 +939,8 @@
   "quality": {
     "noWork": "Este libro aún no tiene una sesión de coescritura; primero redacta un capítulo y entonces aparecerán los datos de calidad aquí.",
     "hubNoWorkHint": "Las promesas, las puntuaciones de la crítica y la cobertura de la historia requieren una sesión de coescritura; primero redacta un capítulo. Los problemas de canon que aparecen a continuación funcionarán de todos modos.",
-    "setupWork": "Configurar coescritor",
+    "setupWork": "Configurar escritura",
     "settingUpWork": "Configurando…",
-    "setupWorkError": "No se pudo configurar el coescritor. Inténtalo de nuevo.",
-    "setupWorkPending": "Se ha creado tu sesión de coescritor, pero su proyecto de conocimiento aún se está configurando. Inténtalo de nuevo en breve.",
     "setupWorkRetry": "Reintentar",
     "pickModel": "Elige un modelo para analizar con...",
     "pickChapter": "Elige un capítulo",
@@ -987,7 +985,9 @@
     "conformanceTitle": "Conformidad",
     "conformanceDesc": "¿Cumplió la prosa con el plan? Seguimiento de beats por escena",
     "pickModelRerun": "Elige un modelo para volver a ejecutar con…",
-    "pickChapterConformanceHint": "Elige un capítulo arriba para rastrear cómo su prosa cumplió con el plan."
+    "pickChapterConformanceHint": "Elige un capítulo arriba para rastrear cómo su prosa cumplió con el plan.",
+    "setupWorkError": "No se pudo configurar la escritura. Inténtalo de nuevo.",
+    "setupWorkPending": "La escritura se ha configurado, pero su proyecto de conocimiento aún se está preparando. Inténtalo de nuevo en breve."
   },
   "sidebar": {
     "collapse": "Contraer",

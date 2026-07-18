@@ -66,9 +66,20 @@ Spec: docs/specs/2026-07-18-writing-studio-newcomer-polish/round-2-feedback.md (
       host.openPanel('plan-hub') door the Manuscript `+` uses. New planNav.emptyGuided/planCta keys,
       18-locale gap-fill. tsc 0; PlanNavigatorRail 9 tests (7+2), StudioSideBar 11. QC :5290: empty
       Plan rail shows guided copy + CTA; clicking it opens the Plan Hub dock tab (real origin flow).
-- [ ] M9 · F10 mount WorkSetupCta on ReferenceShelf/StyleVoice noWork + reword; Divergence "no plan"
-      → plan door; WorkSetupCta button "Set up co-writer"→"Set up writing"; review-impl; test; QC :5290.
-Build order: M8 → M7 → M9. Each: tsc 0, unit green, live QC on the static build (never vite dev).
+- [x] M9 · F10 mounted the existing idempotent WorkSetupCta on ReferenceShelf + StyleVoice noWork
+      states + de-jargoned copy ("No writing project yet — set up a Work" → "Writing isn't set up for
+      this book yet — set it up…"). WorkSetupCta vocab unified "co-writer"→"writing" (button + the two
+      toasts, via review-impl below). AI "Co-writer Chat" deliberately untouched (sealed: distinct
+      concept). 3+2 keys gap-filled 18 locales. tsc 0; 2128 studio+plan-hub+composition tests green;
+      parity OK. QC :5290 VERIFY-BY-EFFECT: Reference shelf noWork → "Set up writing" → clicked →
+      Work created → empty state replaced by the real shelf ("No references yet — add influences"),
+      0 console errors. review-impl: found+fixed the button/toast vocab drift.
+Build order: M8 → M7 → M9 — ALL SHIPPED. Each: tsc 0, unit green, live QC on the static build.
+
+## DELIVERED — ROUND 2 (2026-07-18)
+M8 9d7911bb5 · M7 baaa30bd8 · M9 <pending-hash>. All three round-2 findings fixed, each QC'd on the
+isolated static build :5290. F8/F9/F10 resolved; the divergence/whatif "no plan → plan door" nicety
+deferred (below).
 
 ## DEFERRED (gate-eligible — carry forward)
 - **F7c — chat co-writer context bloat** (gate #2 structural / belongs to another track). A 2-sentence
@@ -77,6 +88,11 @@ Build order: M8 → M7 → M9. Each: tsc 0, unit green, live QC on the static bu
   chat, or lazy tool/skill-schema load. **Target track: `context-budget-law`.** Not built here.
 - **Non-EN Act→Part**: EN renamed to "Part"; other locales keep their concept translation (the homophone
   is EN-specific). Conscious won't-fix (gate #5) unless a locale reviewer flags a real collision.
+- **Divergence/WhatIf "no plan yet" → plan door** (gate #1 out-of-scope of F10's Work-gate + gate #2
+  needs prop-threading through DivergencePanel): the M9 plan floated giving these a "Plan this book"
+  door like M7/F8, but DivergenceManagerView is a `{bookId,token}`-only render component with no host
+  access, and its copy is ALREADY guided ("lay out its arcs and chapters first…") — a real dead-end
+  fix (M7) it is not. Folded into F6's unify-the-hierarchies "one shared plan door" track. Not built.
 
 ## REGISTERS (append as you go — an empty drift log at the end is dishonest)
 ### Decisions
@@ -94,3 +110,11 @@ Build order: M8 → M7 → M9. Each: tsc 0, unit green, live QC on the static bu
 - CAUGHT EARLY: F5 ("Advanced default") is NOT a code bug — code default is `simple=true`; the shared
   test account carried a persisted `plan_hub_mode_simple=false`. Reframed as a planless-book hardening
   nicety (M3), not a bug fix. Recorded so it isn't "fixed" as if it were broken.
+- CLOBBER (M9): a parallel session ran a working-tree restore (right before committing their
+  `a43947f97` completeness-audit) that WIPED my uncommitted M9 edits to StyleVoiceStudioPanel +
+  WorkSetupCta (ReferenceShelf survived — was mid-edit). Caught by the file-changed system reminders +
+  `git status`. Re-applied all three, tsc-verified they stuck (one-time cleanup, not a loop), staged
+  early to shrink the window, then committed. Lesson reinforced: on this shared checkout, commit each
+  slice promptly — uncommitted work is fair game for another session's `git restore`.
+- review-impl (M9): the WorkSetupCta button rename "co-writer"→"writing" left its own error/pending
+  TOASTS still saying "co-writer" — same-component vocab drift. Fixed both toasts + gap-filled.

@@ -124,7 +124,7 @@
       "title": "Estilo e Voz",
       "desc": "Controle a densidade e o ritmo da prosa, além da voz distinta de cada personagem — tudo integrado a cada comando de rascunho",
       "guideBody": "Estilo e Voz direciona a forma como a IA escreve. Defina a densidade e o ritmo da prosa para o livro inteiro (ou limite a um capítulo ou cena) e dê a cada personagem uma voz única. Essas configurações são integradas a cada comando de rascunho, para que a escrita permaneça consistente sem que você precise repetir instruções. Cada controle mostra seu valor efetivo e a origem desse valor (padrão do livro ou uma sobreposição de capítulo/cena). Ajuste cedo para definir o estilo da obra e, depois, faça ajustes por personagem conforme as vozes forem surgindo.",
-      "noWork": "Nenhum projeto de escrita criado ainda — configure um Work primeiro e, então, controle seu estilo e voz aqui."
+      "noWork": "A escrita ainda não foi configurada para este livro — configure-a para direcionar seu estilo e voz aqui."
     },
     "glossary": {
       "title": "Glossário",
@@ -405,7 +405,7 @@
       "title": "Prateleira de referências",
       "desc": "Curadoria de passagens de referência (influências externas) que fundamentam a escrita — adicione, edite e remova-as; as passagens relevantes por cena são recuperadas e podem ser fixadas no pacote de fundamentação",
       "guideBody": "A prateleira de referências é o corpus de influências do seu livro — passagens, fontes e exemplares de estilo que a IA utiliza ao redigir. Adicione uma referência com título, autor, URL de origem e texto; o texto é incorporado para que o estúdio possa recuperar os mais relevantes por cena. Edite os detalhes de uma referência (uma alteração simples de metadados) ou seu conteúdo (o que exige uma nova incorporação). Filtre uma prateleira extensa com a caixa de busca. A recuperação e a fixação por cena aparecem quando você abre a prateleira junto a uma cena; isoladamente, ela gerencia a biblioteca. Um modelo de embedding deve estar configurado (adicione um nas configurações de IA) para que a recuperação funcione.",
-      "noWork": "Nenhum projeto de escrita ainda — configure um Trabalho primeiro e, depois, faça a curadoria da prateleira de referências aqui."
+      "noWork": "A escrita ainda não foi configurada para este livro — configure-a para organizar sua estante de referências aqui."
     },
     "canonview": {
       "title": "Cânone no capítulo",
@@ -939,10 +939,8 @@
   "quality": {
     "noWork": "Este livro ainda não possui uma sessão de coescrita — comece a compor um capítulo primeiro, e os dados de qualidade aparecerão aqui.",
     "hubNoWorkHint": "Promessas, notas da crítica e cobertura da história exigem uma sessão de coescrita — comece a compor um capítulo primeiro. Problemas de cânone listados abaixo funcionarão de qualquer maneira.",
-    "setupWork": "Configurar coautor",
+    "setupWork": "Configurar escrita",
     "settingUpWork": "Configurando...",
-    "setupWorkError": "Não foi possível configurar o coautor. Tente novamente.",
-    "setupWorkPending": "Sua sessão de coautor foi criada, mas o projeto de conhecimento ainda está sendo configurado. Tente novamente em breve.",
     "setupWorkRetry": "Repetir",
     "pickModel": "Escolha um modelo para analisar com...",
     "pickChapter": "Escolha um capítulo",
@@ -987,7 +985,9 @@
     "conformanceTitle": "Conformidade",
     "conformanceDesc": "A prosa seguiu o plano? Rastreamento de batidas por cena",
     "pickModelRerun": "Escolha um modelo para reexecutar com…",
-    "pickChapterConformanceHint": "Escolha um capítulo acima para rastrear como a prosa seguiu o plano."
+    "pickChapterConformanceHint": "Escolha um capítulo acima para rastrear como a prosa seguiu o plano.",
+    "setupWorkError": "Não foi possível configurar a escrita. Tente novamente.",
+    "setupWorkPending": "A escrita foi configurada, mas o projeto de conhecimento ainda está sendo preparado. Tente novamente em breve."
   },
   "sidebar": {
     "collapse": "Recolher",

@@ -124,7 +124,7 @@
       "title": "Style & Voice",
       "desc": "Steer prose density and pace, and the distinct voice of each character — folded into every draft prompt",
       "guideBody": "Style & Voice steers how the AI writes. Set the prose density and pace for the whole book (or narrow to a chapter or scene), and give each character a distinct speaking voice. These settings are folded into every draft prompt, so the writing stays consistent without you repeating instructions. Each control shows its effective value and where that value comes from (book default, or a chapter/scene override). Adjust it early to set the house style, then tweak per character as their voices emerge.",
-      "noWork": "No writing project yet — set up a Work first, then steer its style & voice here."
+      "noWork": "Writing isn't set up for this book yet — set it up to steer its style & voice here."
     },
     "glossary": {
       "title": "Glossary",
@@ -405,7 +405,7 @@
       "title": "Reference shelf",
       "desc": "Curate the reference passages (external influences) that ground the writing — add, edit, and remove them; per scene the relevant ones are retrieved and can be pinned into the grounding pack",
       "guideBody": "The reference shelf is your book's corpus of influences — passages, sources, and style exemplars the AI draws on when it drafts. Add a reference with its title, author, source URL, and text; the text is embedded so the studio can retrieve the most relevant ones per scene. Edit a reference's details (a cheap metadata change) or its content (which re-embeds it). Filter a large shelf with the search box. Per-scene retrieval and pinning appear when you open the shelf alongside a scene; on its own it manages the library. An embedding model must be configured (add one from AI settings) for retrieval to work.",
-      "noWork": "No writing project yet — set up a Work first, then curate its reference shelf here."
+      "noWork": "Writing isn't set up for this book yet — set it up to curate its reference shelf here."
     },
     "canonview": {
       "title": "Canon at chapter",
@@ -939,10 +939,10 @@
   "quality": {
     "noWork": "This book has no co-writer session yet — set one up (or start composing a chapter), then quality data will appear here.",
     "hubNoWorkHint": "Promises, critic scores, and story coverage need a co-writer session — set one up (or start composing a chapter). Canon issues below still work either way.",
-    "setupWork": "Set up co-writer",
+    "setupWork": "Set up writing",
     "settingUpWork": "Setting up…",
-    "setupWorkError": "Could not set up the co-writer. Try again.",
-    "setupWorkPending": "Your co-writer session was created but its knowledge project is still being set up. Try again shortly.",
+    "setupWorkError": "Could not set up writing. Try again.",
+    "setupWorkPending": "Writing was set up but its knowledge project is still being prepared. Try again shortly.",
     "setupWorkRetry": "Retry",
     "pickModel": "Pick a model to analyze with…",
     "pickChapter": "Pick a chapter",

@@ -41,9 +41,9 @@ export function WorkSetupCta({ bookId, token }: { bookId: string; token: string 
       // Neither a project nor a surrogate id: nothing we can resolve or poll. A user pressed the
       // button and NOTHING would happen — a false no-op is a bug (silent-success class), so surface
       // it rather than leave the gate silently stuck.
-      toast.error(t('quality.setupWorkError', { defaultValue: 'Could not set up the co-writer. Try again.' }));
+      toast.error(t('quality.setupWorkError', { defaultValue: 'Could not set up writing. Try again.' }));
     } catch {
-      toast.error(t('quality.setupWorkError', { defaultValue: 'Could not set up the co-writer. Try again.' }));
+      toast.error(t('quality.setupWorkError', { defaultValue: 'Could not set up writing. Try again.' }));
     }
   };
 
@@ -54,7 +54,7 @@ export function WorkSetupCta({ bookId, token }: { bookId: string; token: string 
       <div data-testid="work-setup-failed" className="flex flex-col items-center gap-2">
         <p className="max-w-xs text-xs text-amber-700 dark:text-amber-300">
           {t('quality.setupWorkPending', {
-            defaultValue: 'Your co-writer session was created but its knowledge project is still being set up. Try again shortly.',
+            defaultValue: 'Writing was set up but its knowledge project is still being prepared. Try again shortly.',
           })}
         </p>
         <button
@@ -79,7 +79,7 @@ export function WorkSetupCta({ bookId, token }: { bookId: string; token: string 
     >
       {busy
         ? t('quality.settingUpWork', { defaultValue: 'Setting up…' })
-        : t('quality.setupWork', { defaultValue: 'Set up co-writer' })}
+        : t('quality.setupWork', { defaultValue: 'Set up writing' })}
     </button>
   );
 }

@@ -124,7 +124,7 @@
       "title": "Stil & Stimme",
       "desc": "Steuern Sie die Prosadichte, das Tempo und die markante Stimme jedes Charakters – integriert in jeden Entwurfs-Prompt",
       "guideBody": "Stil & Stimme steuert, wie die KI schreibt. Legen Sie die Prosadichte und das Tempo für das gesamte Buch fest (oder grenzen Sie dies auf ein Kapitel oder eine Szene ein) und verleihen Sie jedem Charakter eine unverwechselbare Sprechstimme. Diese Einstellungen werden in jeden Entwurfs-Prompt integriert, sodass der Schreibstil konsistent bleibt, ohne dass Sie Anweisungen wiederholen müssen. Jedes Steuerelement zeigt seinen effektiven Wert und dessen Herkunft an (Standardwert des Buches oder Überschreibung durch Kapitel/Szene). Passen Sie dies frühzeitig an, um den Hausstil festzulegen, und verfeinern Sie ihn dann pro Charakter, sobald dessen Stimme Gestalt annimmt.",
-      "noWork": "Noch kein Schreibprojekt vorhanden – erstellen Sie zuerst ein „Work“, um hier Stil & Stimme festzulegen."
+      "noWork": "Das Schreiben ist für dieses Buch noch nicht eingerichtet – richten Sie es ein, um Stil & Stimme hier zu steuern."
     },
     "glossary": {
       "title": "Glossar",
@@ -405,7 +405,7 @@
       "title": "Referenzregal",
       "desc": "Kuratiere die Referenzpassagen (externe Einflüsse), die dein Schreiben stützen – füge sie hinzu, bearbeite sie oder entferne sie; pro Szene werden die relevanten Passagen abgerufen und können in das Grounding-Paket gepinnt werden.",
       "guideBody": "Das Referenzregal ist der Korpus der Einflüsse deines Buches – Passagen, Quellen und Stilvorlagen, auf die die KI beim Entwerfen zurückgreift. Füge eine Referenz mit Titel, Autor, Quell-URL und Text hinzu; der Text wird eingebettet, damit das Studio die relevantesten Passagen pro Szene abrufen kann. Bearbeite die Details einer Referenz (eine einfache Metadatenänderung) oder ihren Inhalt (was ein erneutes Einbetten auslöst). Filtere ein umfangreiches Regal mit dem Suchfeld. Die szenenspezifische Abfrage und das Pinnen erscheinen, wenn du das Regal neben einer Szene öffnest; allein dient es der Verwaltung der Bibliothek. Ein Embedding-Modell muss konfiguriert sein (füge eines in den KI-Einstellungen hinzu), damit die Abfrage funktioniert.",
-      "noWork": "Noch kein Schreibprojekt vorhanden – erstelle zuerst ein „Work“, um dann hier das Referenzregal zu kuratieren."
+      "noWork": "Das Schreiben ist für dieses Buch noch nicht eingerichtet – richten Sie es ein, um das Referenzregal hier zu kuratieren."
     },
     "canonview": {
       "title": "Kanon zum Kapitel",
@@ -939,10 +939,8 @@
   "quality": {
     "noWork": "Dieses Buch hat noch keine Co-Writer-Session – schreibe zuerst ein Kapitel, dann werden hier Qualitätsdaten angezeigt.",
     "hubNoWorkHint": "Versprechen, Kritiker-Scores und Story-Abdeckung erfordern eine Co-Writer-Session – beginne zuerst mit dem Schreiben eines Kapitels. Die unten aufgeführten Kanon-Probleme funktionieren in jedem Fall.",
-    "setupWork": "Co-Autor einrichten",
+    "setupWork": "Schreiben einrichten",
     "settingUpWork": "Einrichten…",
-    "setupWorkError": "Co-Autor konnte nicht eingerichtet werden. Versuchen Sie es erneut.",
-    "setupWorkPending": "Ihre Co-Autor-Sitzung wurde erstellt, aber das Wissensprojekt wird noch eingerichtet. Versuchen Sie es in Kürze erneut.",
     "setupWorkRetry": "Wiederholen",
     "pickModel": "Wähle ein Modell zur Analyse aus…",
     "pickChapter": "Wähle ein Kapitel",
@@ -987,7 +985,9 @@
     "conformanceTitle": "Konformität",
     "conformanceDesc": "Hat der Text den Plan umgesetzt? Beat-Verfolgung pro Szene",
     "pickModelRerun": "Wählen Sie ein Modell für den erneuten Durchlauf aus…",
-    "pickChapterConformanceHint": "Wählen Sie oben ein Kapitel aus, um zu prüfen, wie dessen Text den Plan umgesetzt hat."
+    "pickChapterConformanceHint": "Wählen Sie oben ein Kapitel aus, um zu prüfen, wie dessen Text den Plan umgesetzt hat.",
+    "setupWorkError": "Schreiben konnte nicht eingerichtet werden. Versuchen Sie es erneut.",
+    "setupWorkPending": "Das Schreiben wurde eingerichtet, aber das Wissensprojekt wird noch vorbereitet. Versuchen Sie es in Kürze erneut."
   },
   "sidebar": {
     "collapse": "Einklappen",

@@ -124,7 +124,7 @@
       "title": "Gaya & Suara",
       "desc": "Kawal kepadatan prosa dan rentak, serta suara unik setiap watak — disepadukan ke dalam setiap draf arahan",
       "guideBody": "Gaya & Suara mengawal cara AI menulis. Tetapkan kepadatan prosa dan rentak untuk keseluruhan buku (atau kecilkan kepada bab atau babak), dan berikan setiap watak suara pertuturan yang tersendiri. Tetapan ini disepadukan ke dalam setiap draf arahan, supaya penulisan kekal konsisten tanpa anda perlu mengulang arahan. Setiap kawalan menunjukkan nilai berkesannya dan dari mana nilai itu berasal (pilihan lalai buku, atau pengganti bab/babak). Laraskan lebih awal untuk menetapkan gaya penulisan, kemudian sesuaikan mengikut watak apabila suara mereka mula muncul.",
-      "noWork": "Tiada projek penulisan lagi — tetapkan Work terlebih dahulu, kemudian kawal gaya & suaranya di sini."
+      "noWork": "Penulisan belum ditetapkan untuk buku ini — tetapkannya untuk mengawal gaya & suara di sini."
     },
     "glossary": {
       "title": "Glosari",
@@ -405,7 +405,7 @@
       "title": "Rak rujukan",
       "desc": "Kumpul petikan rujukan (pengaruh luaran) yang menjadi asas penulisan — tambah, sunting, dan padam; rujukan yang relevan bagi setiap bab akan diambil dan boleh disemat ke dalam pek asas penulisan.",
       "guideBody": "Rak rujukan adalah korpus pengaruh buku anda — petikan, sumber, dan contoh gaya yang digunakan oleh AI semasa merangka draf. Tambah rujukan dengan tajuk, penulis, URL sumber, dan teks; teks tersebut akan disematkan supaya studio dapat mengambil yang paling relevan bagi setiap bab. Sunting butiran rujukan (perubahan metadata ringkas) atau kandungannya (yang akan menyemat semula teks tersebut). Tapis rak yang besar dengan kotak carian. Fungsi pengambilan dan penyematan mengikut bab akan muncul apabila anda membuka rak ini bersama-sama dengan sesuatu bab; jika dibuka secara berasingan, ia berfungsi sebagai pengurus perpustakaan. Model penyematan mesti dikonfigurasikan (tambah satu daripada tetapan AI) supaya fungsi pengambilan dapat berfungsi.",
-      "noWork": "Tiada projek penulisan lagi — tetapkan 'Work' terlebih dahulu, kemudian kumpul rak rujukan di sini."
+      "noWork": "Penulisan belum ditetapkan untuk buku ini — tetapkannya untuk menyusun rak rujukan di sini."
     },
     "canonview": {
       "title": "Kanon pada bab",
@@ -939,10 +939,8 @@
   "quality": {
     "noWork": "Buku ini belum mempunyai sesi penulis bersama — mulakan penulisan bab terlebih dahulu, kemudian data kualiti akan dipaparkan di sini.",
     "hubNoWorkHint": "Janji, skor pengkritik, dan liputan cerita memerlukan sesi penulis bersama — mulakan penulisan bab terlebih dahulu. Isu kanon di bawah tetap berfungsi dalam apa jua keadaan.",
-    "setupWork": "Sediakan penulis bersama",
+    "setupWork": "Tetapkan penulisan",
     "settingUpWork": "Sedang menyediakan...",
-    "setupWorkError": "Tidak dapat menyediakan penulis bersama. Cuba lagi.",
-    "setupWorkPending": "Sesi penulis bersama anda telah dicipta tetapi projek pengetahuannya masih dalam proses penyediaan. Cuba lagi sebentar lagi.",
     "setupWorkRetry": "Cuba semula",
     "pickModel": "Pilih model untuk menganalisis dengan…",
     "pickChapter": "Pilih bab",
@@ -987,7 +985,9 @@
     "conformanceTitle": "Pematuhan",
     "conformanceDesc": "Adakah prosa merealisasikan rancangan tersebut? Jejak beat bagi setiap babak",
     "pickModelRerun": "Pilih model untuk jalankan semula dengan…",
-    "pickChapterConformanceHint": "Pilih bab yang di atas untuk menjejak bagaimana prosanya merealisasikan rancangan tersebut."
+    "pickChapterConformanceHint": "Pilih bab yang di atas untuk menjejak bagaimana prosanya merealisasikan rancangan tersebut.",
+    "setupWorkError": "Tidak dapat menyediakan penulisan. Sila cuba lagi.",
+    "setupWorkPending": "Penulisan telah disediakan tetapi projek pengetahuannya masih sedang disediakan. Sila cuba lagi sebentar lagi."
   },
   "sidebar": {
     "collapse": "Kecilkan",
