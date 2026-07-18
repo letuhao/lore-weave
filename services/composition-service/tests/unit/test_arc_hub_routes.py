@@ -414,6 +414,37 @@ def test_suggest_non_grantee_is_404(client, monkeypatch):
     assert r.status_code == 404
 
 
+# ── S-10 O6c: decompile REST twin — EDIT gate + deterministic engine passthrough ──
+
+
+def test_decompile_non_grantee_is_404(client):
+    c, _ = client(GrantLevel.NONE, structures=AsyncMock())
+    r = c.post(f"/v1/composition/books/{BOOK}/arcs/decompile", json={})
+    assert r.status_code == 404
+
+
+def test_decompile_view_grantee_is_403(client):
+    c, _ = client(GrantLevel.VIEW, structures=AsyncMock())
+    r = c.post(f"/v1/composition/books/{BOOK}/arcs/decompile", json={"chapters_per_arc": 5})
+    assert r.status_code == 403
+
+
+def test_decompile_edit_runs_and_passes_through_the_engine_result(client, monkeypatch):
+    seen: dict = {}
+
+    async def _fake(pool, book_id, *, created_by, chapters_per_arc):
+        seen.update(book_id=str(book_id), created_by=str(created_by), per=chapters_per_arc)
+        return {"arcs": 3, "chapters_assigned": 24, "arc_ids": ["a1", "a2", "a3"]}
+
+    monkeypatch.setattr("app.engine.arc_decompile.decompile_arcs", _fake)
+    c, _ = client(GrantLevel.EDIT, structures=AsyncMock())
+    r = c.post(f"/v1/composition/books/{BOOK}/arcs/decompile", json={"chapters_per_arc": 8})
+    assert r.status_code == 200
+    assert r.json() == {"arcs": 3, "chapters_assigned": 24, "arc_ids": ["a1", "a2", "a3"]}
+    # the route threads the book, the acting caller as created_by, and the requested grouping.
+    assert seen == {"book_id": str(BOOK), "created_by": str(USER), "per": 8}
+
+
 def test_arc_public_drop_set_matches_the_mcp_twin():
     # The privacy allow-list is duplicated in arc.py + mcp/server.py `_arc_public_projection`.
     # Pin it here so a drift on either side is caught (they must stay identical).

@@ -29,6 +29,7 @@ import { useAuth } from '@/auth';
 import { booksApi } from '@/features/books/api';
 import { useWorkResolution } from '@/features/composition/hooks/useWork';
 import { useGlossaryRoster } from '@/features/composition/hooks/useGlossaryRoster';
+import { DecompileArcsAction } from '@/features/composition/motif/components/DecompileArcsAction';
 import { usePlanHub } from '@/features/plan-hub/hooks/usePlanHub';
 import { usePlanOrigin } from '@/features/plan-hub/hooks/usePlanOrigin';
 import { usePlanChildCreate } from '@/features/plan-hub/hooks/usePlanChildCreate';
@@ -242,6 +243,13 @@ export function PlanHubPanel(props: IDockviewPanelProps) {
           onAiDraft={() => openPanel('planner', { focus: true })}
           onGoAdvanced={() => mode.setSimple(false)}
         />
+        {/* S-10 O6c — "Group my chapters into arcs" (the arc decompiler, agent-only until now). Offered
+            in Simple mode where the writer is looking at flat chapters and an arc layer would help. */}
+        {accessToken && (simpleChapters.total ?? 0) > 0 && (
+          <div className="border-t p-2">
+            <DecompileArcsAction bookId={bookId} token={accessToken} />
+          </div>
+        )}
       </div>
     );
   }

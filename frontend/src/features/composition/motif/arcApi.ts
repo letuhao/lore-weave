@@ -87,6 +87,20 @@ export const arcApi = {
       method: 'POST', body: JSON.stringify(args), token,
     });
   },
+  /** S-10 O6c — "Group my chapters into arcs": the deterministic arc decompiler ($0, idempotent —
+   *  re-running reuses existing decompiled arcs by position). EDIT on the book. */
+  decompile(bookId: string, chaptersPerArc: number, token: string): Promise<ArcDecompileResult> {
+    return apiJson<ArcDecompileResult>(`${BASE}/books/${bookId}/arcs/decompile`, {
+      method: 'POST', body: JSON.stringify({ chapters_per_arc: chaptersPerArc }), token,
+    });
+  },
+};
+
+export type ArcDecompileResult = {
+  arcs: number;
+  chapters_assigned: number;
+  arc_ids: string[];
+  reason?: string;
 };
 
 // S-10 O6 — request/response shapes for the two direct arc-agent routes (co-located; they don't

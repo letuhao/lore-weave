@@ -824,6 +824,32 @@ async def suggest_arc_templates(
     }
 
 
+# ── S-10 O6c — the REST twin of composition_decompile_arcs. "Group my chapters into arcs" is a
+#    DETERMINISTIC ($0, no LLM, idempotent — reuses existing decompiled arcs by position) structural
+#    write, so it gets an EDIT-gated REST route like the other arc twins (BE-7a/BE-7b). The agent path
+#    stays confirm-token-gated (an agent's proposal needs human approval); a human clicking the button
+#    IS the approval, so the direct twin is plain EDIT-gated — same shared engine either way. ──────────
+class DecompileArcs(BaseModel):
+    chapters_per_arc: int = Field(default=10, ge=1, le=100)
+
+
+@router.post("/books/{book_id}/arcs/decompile", status_code=200)
+async def decompile_book_arcs(
+    book_id: UUID,
+    body: DecompileArcs,
+    user_id: UUID = Depends(get_current_user),
+    grant: GrantClient = Depends(get_grant_client_dep),
+) -> dict[str, Any]:
+    """Group a book's chapters into arcs deterministically. EDIT on the book. Idempotent — re-running
+    reuses existing decompiled arcs by position (safe to click twice). Returns the engine's
+    `{arcs, chapters_assigned, arc_ids, reason?}` so the caller sees exactly what landed."""
+    await _gate_book(grant, book_id, user_id, GrantLevel.EDIT)
+    from app.engine.arc_decompile import decompile_arcs
+    return await decompile_arcs(
+        get_pool(), book_id, created_by=user_id, chapters_per_arc=body.chapters_per_arc,
+    )
+
+
 class ChapterReorder(BaseModel):
     """24 PH20 Row-3 — move a chapter in the book's READING order."""
 
