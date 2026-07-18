@@ -51,7 +51,7 @@ jobs:
           # its --selftest bite THEN the lint.
           - emit-migration-0013-lint
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Run ${{ matrix.lint }}
         run: bash scripts/${{ matrix.lint }}.sh
 
@@ -94,8 +94,8 @@ jobs:
           # branch's every commit (the byte-compile-only Python CI job never ran the tier tests).
           - tier-tag-gate
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
       # slo-latency-lint parses YAML; the others are stdlib-only. Installing here is
