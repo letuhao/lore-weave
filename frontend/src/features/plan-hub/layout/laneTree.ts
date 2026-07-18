@@ -11,6 +11,7 @@
 // never loaded them); a chapter's scenes appear only when the chapter is expanded. This tree is a
 // projection of whatever is loaded — it never fetches.
 import type { ArcListNode, NodeSource, SummaryNode } from '../types';
+import { normalizeSource } from '../types';
 
 export interface LaneScene {
   id: string;
@@ -77,7 +78,38 @@ function push<K, V>(m: Map<K, V[]>, k: K, v: V): void {
   else m.set(k, [v]);
 }
 
-const src = (s: NodeSource | undefined): NodeSource => (s === 'mined' ? 'mined' : 'authored');
+const src = normalizeSource;
+
+/** Group loaded scene windows under their chapter (parent_id). */
+function sceneIndex(content: Record<string, SummaryNode>): Map<string, SummaryNode[]> {
+  const m = new Map<string, SummaryNode[]>();
+  for (const n of Object.values(content)) {
+    if (n.kind === 'scene' && n.parent_id) push(m, n.parent_id, n);
+  }
+  return m;
+}
+
+function buildScene(n: SummaryNode): LaneScene {
+  return { id: n.id, title: n.title, status: n.status, source: src(n.source), written: n.written, storyOrder: n.story_order };
+}
+
+function buildChapter(
+  n: SummaryNode,
+  scenesByChapter: Map<string, SummaryNode[]>,
+  expandedChapters: Set<string>,
+): LaneChapter {
+  const scenesExpanded = expandedChapters.has(n.id);
+  const scenes = scenesExpanded
+    ? (scenesByChapter.get(n.id) ?? [])
+        .slice()
+        .sort((a, b) => orderKey(a.story_order) - orderKey(b.story_order) || byRank(a, b))
+        .map(buildScene)
+    : [];
+  return {
+    id: n.id, chapterId: n.chapter_id, storyOrder: n.story_order, title: n.title,
+    status: n.status, source: src(n.source), written: n.written, scenes, scenesExpanded,
+  };
+}
 
 /**
  * Build the arc → chapter → scene forest for the lane-flow Advanced view.
@@ -93,43 +125,12 @@ export function buildLaneTree(
   expandedArcs: Set<string>,
   expandedChapters: Set<string>,
 ): LaneArc[] {
-  // Group the loaded windows: chapters under their arc, scenes under their chapter.
+  // Group the loaded chapter windows under their arc.
   const chaptersByArc = new Map<string, SummaryNode[]>();
-  const scenesByChapter = new Map<string, SummaryNode[]>();
   for (const n of Object.values(content)) {
     if (n.kind === 'chapter' && n.structure_node_id) push(chaptersByArc, n.structure_node_id, n);
-    else if (n.kind === 'scene' && n.parent_id) push(scenesByChapter, n.parent_id, n);
   }
-
-  const buildScene = (n: SummaryNode): LaneScene => ({
-    id: n.id,
-    title: n.title,
-    status: n.status,
-    source: src(n.source),
-    written: n.written,
-    storyOrder: n.story_order,
-  });
-
-  const buildChapter = (n: SummaryNode): LaneChapter => {
-    const scenesExpanded = expandedChapters.has(n.id);
-    const scenes = scenesExpanded
-      ? (scenesByChapter.get(n.id) ?? [])
-          .slice()
-          .sort((a, b) => orderKey(a.story_order) - orderKey(b.story_order) || byRank(a, b))
-          .map(buildScene)
-      : [];
-    return {
-      id: n.id,
-      chapterId: n.chapter_id,
-      storyOrder: n.story_order,
-      title: n.title,
-      status: n.status,
-      source: src(n.source),
-      written: n.written,
-      scenes,
-      scenesExpanded,
-    };
-  };
+  const scenesByChapter = sceneIndex(content);
 
   // The arc forest, by parent_id + rank. A parent_id outside the set is treated as a root
   // (defensive — arc_list is one whole-book call, so this should not happen).
@@ -140,33 +141,57 @@ export function buildLaneTree(
     push(childrenOf, key, a);
   }
 
+  const visited = new Set<string>();
   const buildArc = (a: ArcListNode, depth: number): LaneArc => {
+    visited.add(a.id);
     const collapsed = !expandedArcs.has(a.id);
     const chapters = collapsed
       ? []
       : (chaptersByArc.get(a.id) ?? [])
           .slice()
           .sort((x, y) => orderKey(x.story_order) - orderKey(y.story_order) || byRank(x, y))
-          .map(buildChapter);
-    const kids = (childrenOf.get(a.id) ?? []).slice().sort(byRank);
+          .map((n) => buildChapter(n, scenesByChapter, expandedChapters));
+    // Guard a parent_id CYCLE (A→B→A): a cycle member is neither a root nor reachable from one, so it
+    // would be silently dropped. Skip a child already on the path to this node so recursion terminates.
+    const kids = (childrenOf.get(a.id) ?? []).filter((k) => !visited.has(k.id)).slice().sort(byRank);
     return {
-      id: a.id,
-      kind: a.kind,
-      depth,
-      title: a.title,
-      status: a.status,
-      source: src(a.source),
-      span: a.span,
-      summary: a.summary?.trim() ? a.summary.trim() : null,
-      isContiguous: a.is_contiguous,
-      chapterCount: a.chapter_count,
-      collapsed,
-      chapters,
-      subArcs: kids.map((k) => buildArc(k, depth + 1)),
+      id: a.id, kind: a.kind, depth, title: a.title, status: a.status, source: src(a.source),
+      span: a.span, summary: a.summary?.trim() ? a.summary.trim() : null,
+      isContiguous: a.is_contiguous, chapterCount: a.chapter_count, collapsed,
+      chapters, subArcs: kids.map((k) => buildArc(k, depth + 1)),
     };
   };
 
-  return (childrenOf.get(null) ?? []).slice().sort(byRank).map((r) => buildArc(r, 0));
+  const roots = (childrenOf.get(null) ?? []).slice().sort(byRank).map((r) => buildArc(r, 0));
+  // Any arc NOT reached from a root is a cycle member — surface it at the top level rather than
+  // dropping it silently (a data-integrity fault should be visible, not invisible).
+  const orphans = arcs.filter((a) => !visited.has(a.id)).sort(byRank).map((a) => buildArc(a, 0));
+  return [...roots, ...orphans];
+}
+
+/** Arc-less chapters (structure_node_id null) — the normal post-decompile state. They have no lane in
+ *  the forest, so the flow view renders them in a dedicated "Unassigned" group where they can be seen,
+ *  opened, and filed into an arc. Reading order, then rank. */
+export function unassignedChapters(
+  content: Record<string, SummaryNode>,
+  expandedChapters: Set<string>,
+): LaneChapter[] {
+  const scenesByChapter = sceneIndex(content);
+  return Object.values(content)
+    .filter((n) => n.kind === 'chapter' && !n.structure_node_id)
+    .sort((a, b) => orderKey(a.story_order) - orderKey(b.story_order) || byRank(a, b))
+    .map((n) => buildChapter(n, scenesByChapter, expandedChapters));
+}
+
+/** Flatten the arc forest to the pick-list the "move to arc" control offers (depth for indentation). */
+export function flattenArcOptions(roots: LaneArc[]): { id: string; title: string; depth: number }[] {
+  const out: { id: string; title: string; depth: number }[] = [];
+  const walk = (a: LaneArc) => {
+    out.push({ id: a.id, title: a.title, depth: a.depth });
+    a.subArcs.forEach(walk);
+  };
+  roots.forEach(walk);
+  return out;
 }
 
 /** The first N root-arc ids — the bounded set the flow view auto-expands on open so the hierarchy is

@@ -103,6 +103,58 @@ the children projection (`outline.py` `_summary_*`). `'authored'` → Lora+amber
       synthetic mined data). Live-authorship pending a composition-service redeploy — not fabricated.
 - [ ] Commit · MY files only (shared checkout — 4 parallel sessions)
 
+## COMPLETENESS AUDIT (follow-up, 2026-07-18)
+
+Regression sweep after the `PlanCanvas`→`LaneFlowView` swap. Suite: 1618 plan-hub+studio tests
+green (no test regression); BE 21 green. Selection→drawer confirmed working for arc/chapter/scene
+(so Advanced edit/archive CRUD is intact via the drawer). Auto-expand effect reviewed — seeds once
+per book, gated, no loop. Findings that need action:
+
+- **GAP-1 (regression — FIX): unassigned spec chapters are invisible + unfileable in the flow view.**
+  The old RF canvas rendered arc-less chapters (the normal post-decompile state) in a strip you could
+  drag into a lane. The flow view shows only a COUNT notice — the chapters themselves have no lane, so
+  they can't be selected, opened, or filed. Data loss of visibility. Fix: render an "Unassigned" group
+  in the flow view (selectable cards → drawer / open editor).
+- **DEBT-1 (regression — FIX minimal): moving/re-filing a chapter between arcs is gone.** It was
+  drag-only in `PlanCanvas`; the chapter drawer has no arc-reassign control, so once a chapter is under
+  the wrong arc there is no way to move it. Fix: a lightweight "move to arc" affordance (non-drag), which
+  ALSO files an unassigned chapter (one mechanism, both cases).
+- **DEBT-2 (dead code — decide): `PlanCanvas` + `usePlanMoves` + scene-linking are production-dead.**
+  Nothing mounts them after the swap (only their own tests + the barrel export reference them). The
+  drag-move/scene-link/camera features are aligned-out by the sealed mockup. Decision: keep the code
+  (revivable) but stop wiring the unused move plumbing into `usePlanHub`'s hot path if cheap; else record.
+- **GAP-2 (minor): no "collapse scenes" affordance** once a chapter's scenes are revealed (the reveal
+  toggle disappears). Low priority; add a collapse control on the scene row.
+
+### Independent cold-start review — findings + resolution
+An adversarial reviewer read all new/changed files. Every finding actioned:
+- **BUG (color — HIGH, user-flagged): authorship coding was invisible on real books.** `src()` only
+  mapped `'mined'`→machine, but the real AI source values are `'planforge'` / `'decompiled'` /
+  `'imported'` — so planner/import content rendered as if the writer authored it. FIX: `normalizeSource`
+  (authored = human; EVERY other value ⇒ machine/teal). Deployed BE + live-QC'd: a `planforge` chapter
+  now renders mono/teal, an `authored` one serif/amber; status tints (done=green, drafting=amber) show.
+- **BUG (cross-book state leak — MED):** `usePlanHub` never reset `expandedArcs`/`selectedId` on
+  `bookId` change → book A's ids fetched against book B + a stale drawer node. FIX: a `[bookId]` reset
+  effect (mirrors `usePlanWindows`), clearing the seed guard so the new book re-auto-expands.
+- **BUG (ch-N mislabel — LOW/MED):** cards used the within-arc index, so a "chapters 5–8" arc showed
+  "ch 1–4". FIX: `chapterDisplayNo` uses the arc's dense-ordinal span for contiguous arcs (+ tests).
+- **ROT (LOW):** dead `chapterNo` with a no-op ternary — deleted (replaced by `chapterDisplayNo`).
+- **ROBUSTNESS (LOW):** a `parent_id` cycle silently dropped its members — added a cycle guard that
+  surfaces orphaned arcs at the top level (+ test).
+- Reviewer confirmed clean: rename state, auto-expand loop-safety, fitSignal remount, FlowLane
+  recursion, sort stability, +scene null-guard, hook ordering.
+
+### Regressions resolved (the "critical downgrade")
+- **GAP-1 (unassigned):** arc-less chapters now render as a selectable, fileable **"Unassigned" group**
+  in the Lane view (was a count-only HUD). Live-tested.
+- **DEBT-1 + DEBT-2 + user's flag (drag/zoom/pan): RESOLVED by keeping BOTH Advanced sub-views.**
+  `PlanCanvas` (React Flow — zoom, pan, drag-to-move, scene links) is re-mounted as the **Graph**
+  sub-view (the default — the navigable canvas a large structure needs); the mockup **Lane** view is
+  the readable opt-in. A per-user `Graph | Lane` toggle (`usePlanAdvancedView`, mirrors MotifSimpleMode).
+  This un-deads PlanCanvas AND restores the free-move capability. Both sub-views live-QC'd on :5290.
+  The Lane view ALSO gained a non-drag **"move to arc"** picker (reuses the tested `moveChapterToArc`) —
+  live-tested: a chapter moved lanes + persisted server-side.
+
 ## ITEM-LEVEL VERDICT (1-by-1)
 Advanced A1–A26: BUILT. A4/A6/A15/A22/A25 authorship = built + unit-proven (colouring live pending
 BE redeploy). Simple S1–S14: BUILT (S6 machine-row rendering built + tested; no current flow produces a

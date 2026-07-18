@@ -1,6 +1,6 @@
 // Plan Hub redesign — the lane-flow tree projection (buildLaneTree). Pure, headless.
 import { describe, expect, it } from 'vitest';
-import { autoExpandArcIds, buildLaneTree } from '../laneTree';
+import { autoExpandArcIds, buildLaneTree, flattenArcOptions, unassignedChapters } from '../laneTree';
 import type { ArcListNode, SummaryNode } from '../../types';
 
 function arc(o: Partial<ArcListNode> & { id: string }): ArcListNode {
@@ -92,18 +92,61 @@ describe('buildLaneTree', () => {
     expect(chapterOpen[0].chapters[0].scenes.map((s) => s.id)).toEqual(['s1']);
   });
 
-  it('carries the authorship source (default authored) for arc/chapter/scene', () => {
-    const arcs = [arc({ id: 'arc1', source: 'mined' })];
+  it('codes authorship: ONLY authored is human — planforge/decompiled/etc. all read as machine', () => {
+    const arcs = [arc({ id: 'arc1', source: 'planforge' })]; // real AI value, not "mined"
     const content = contentOf(
-      chap({ id: 'c1', structure_node_id: 'arc1', source: 'mined' }),
-      chap({ id: 'c2', structure_node_id: 'arc1' }), // no source → authored
-      scene({ id: 's1', parent_id: 'c1', source: 'mined' }),
+      chap({ id: 'c1', structure_node_id: 'arc1', source: 'planforge' }), // AI planner
+      chap({ id: 'c2', structure_node_id: 'arc1', source: 'decompiled' }), // AI import
+      chap({ id: 'c3', structure_node_id: 'arc1' }), // no source → authored
+      scene({ id: 's1', parent_id: 'c1', source: 'authored' }),
     );
     const tree = buildLaneTree(arcs, content, new Set(['arc1']), new Set(['c1']));
-    expect(tree[0].source).toBe('mined');
-    expect(tree[0].chapters.find((c) => c.id === 'c1')!.source).toBe('mined');
-    expect(tree[0].chapters.find((c) => c.id === 'c2')!.source).toBe('authored');
-    expect(tree[0].chapters.find((c) => c.id === 'c1')!.scenes[0].source).toBe('mined');
+    expect(tree[0].source).toBe('mined'); // planforge arc → machine coding
+    expect(tree[0].chapters.find((c) => c.id === 'c1')!.source).toBe('mined'); // planforge → machine
+    expect(tree[0].chapters.find((c) => c.id === 'c2')!.source).toBe('mined'); // decompiled → machine
+    expect(tree[0].chapters.find((c) => c.id === 'c3')!.source).toBe('authored');
+    expect(tree[0].chapters.find((c) => c.id === 'c1')!.scenes[0].source).toBe('authored');
+  });
+});
+
+describe('unassignedChapters', () => {
+  it('returns arc-less chapters (structure_node_id null) in reading order', () => {
+    const content = contentOf(
+      chap({ id: 'c1', structure_node_id: 'arc1' }), // filed → excluded
+      { ...chap({ id: 'u2', structure_node_id: '' }), structure_node_id: null, story_order: 2000 } as SummaryNode,
+      { ...chap({ id: 'u1', structure_node_id: '' }), structure_node_id: null, story_order: 1000 } as SummaryNode,
+    );
+    const un = unassignedChapters(content, new Set());
+    expect(un.map((c) => c.id)).toEqual(['u1', 'u2']); // story order; c1 (filed) excluded
+  });
+});
+
+describe('flattenArcOptions', () => {
+  it('flattens the forest depth-first with depths for indentation', () => {
+    const tree = buildLaneTree(
+      [arc({ id: 'r', rank: 'a0' }), arc({ id: 'sub', parent_id: 'r', rank: 'a0' })],
+      {}, new Set(['r']), new Set(),
+    );
+    expect(flattenArcOptions(tree)).toEqual([
+      { id: 'r', title: 'Arc', depth: 0 },
+      { id: 'sub', title: 'Arc', depth: 1 },
+    ]);
+  });
+});
+
+describe('cycle guard', () => {
+  it('surfaces arcs caught in a parent_id cycle instead of silently dropping them', () => {
+    // A→B→A: neither is a root, so without the guard both vanish.
+    const arcs = [
+      arc({ id: 'A', parent_id: 'B', rank: 'a0' }),
+      arc({ id: 'B', parent_id: 'A', rank: 'a0' }),
+      arc({ id: 'ok', rank: 'b0' }),
+    ];
+    const tree = buildLaneTree(arcs, {}, new Set(), new Set());
+    const ids = tree.map((a) => a.id).sort();
+    expect(ids).toContain('ok');
+    expect(ids).toContain('A');
+    expect(ids).toContain('B'); // no arc is lost
   });
 });
 

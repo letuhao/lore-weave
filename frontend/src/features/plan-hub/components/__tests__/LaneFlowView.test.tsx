@@ -17,6 +17,9 @@ function arc(o: Partial<LaneArc> & { id: string }): LaneArc {
 function setup(tree: LaneArc[], o: Partial<LaneFlowViewProps> = {}) {
   const props: LaneFlowViewProps = {
     laneTree: tree,
+    unassigned: [],
+    arcOptions: [],
+    onMoveChapterToArc: vi.fn(),
     arcPagination: {},
     selectedId: null,
     activeChapterId: null,
@@ -34,6 +37,11 @@ function setup(tree: LaneArc[], o: Partial<LaneFlowViewProps> = {}) {
   render(<LaneFlowView {...props} />);
   return props;
 }
+
+const chap = (o: Partial<import('../../layout/laneTree').LaneChapter> & { id: string }) => ({
+  chapterId: `bk-${o.id}`, storyOrder: 0, title: 'Ch', status: 'outline' as const,
+  source: 'authored' as const, written: false, scenes: [], scenesExpanded: false, ...o,
+});
 
 describe('LaneFlowView (Advanced redesign)', () => {
   it('renders a lane per arc with its full title (never truncated) + the arc-subtitle', () => {
@@ -126,5 +134,33 @@ describe('LaneFlowView (Advanced redesign)', () => {
     setup([], { childError: 'Could not add the chapter.' });
     expect(screen.getByTestId('flow-child-error').textContent).toContain('Could not add the chapter.');
     expect(screen.getByTestId('flow-empty')).toBeTruthy();
+  });
+
+  it('renders arc-less chapters in an "Unassigned" group (not the empty state) so they are reachable', () => {
+    setup([], { unassigned: [chap({ id: 'u1', title: 'A drifting chapter' })] });
+    expect(screen.queryByTestId('flow-empty')).toBeNull(); // NOT empty — there is content
+    expect(screen.getByTestId('flow-unassigned')).toBeTruthy();
+    expect(screen.getByText('A drifting chapter')).toBeTruthy();
+  });
+
+  it('a chapter can be MOVED/filed into another arc via the picker (restores the drag-to-lane capability)', () => {
+    const onMoveChapterToArc = vi.fn();
+    setup([], {
+      unassigned: [chap({ id: 'u1', title: 'Unfiled' })],
+      arcOptions: [{ id: 'arcA', title: 'Arc A', depth: 0 }],
+      onMoveChapterToArc,
+    });
+    const select = screen.getByTestId('flow-move-u1') as HTMLSelectElement;
+    fireEvent.change(select, { target: { value: 'arcA' } });
+    expect(onMoveChapterToArc).toHaveBeenCalledWith('u1', 'arcA');
+  });
+
+  it('the move picker excludes the chapter\'s CURRENT arc (no self-move)', () => {
+    const arc0 = arc({ id: 'a1', chapters: [chap({ id: 'c1' })] });
+    setup([arc0], { arcOptions: [{ id: 'a1', title: 'A1', depth: 0 }, { id: 'a2', title: 'A2', depth: 0 }] });
+    const select = screen.getByTestId('flow-move-c1') as HTMLSelectElement;
+    const opts = [...select.querySelectorAll('option')].map((o) => o.getAttribute('value'));
+    expect(opts).toContain('a2');
+    expect(opts).not.toContain('a1'); // its own arc is not a move target
   });
 });

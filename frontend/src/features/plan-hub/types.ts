@@ -16,12 +16,21 @@ import type {
   LaneBand,
   LaneLayout,
 } from './layout/laneLayout';
-import type { LaneArc } from './layout/laneTree';
+import type { LaneArc, LaneChapter } from './layout/laneTree';
 
-/** Authorship of a spec node — the sealed Plan Hub redesign's type/colour semantic: `authored`
- *  (a human wrote it → Lora serif + amber) vs `mined` (the decompiler proposed it → JetBrains Mono
- *  + teal). Maps 1:1 to the real `outline_node.source` / `structure_node.source` column. */
+/** The FE authorship CODING — the sealed redesign's type/colour semantic: `authored` (a human wrote
+ *  it → Lora serif + amber) vs `mined` (a machine produced it → JetBrains Mono + teal). This is a
+ *  2-value DISPLAY coding, distinct from the wire's richer `source` enum. */
 export type NodeSource = 'authored' | 'mined';
+
+/** Normalise the wire's `source` (`outline_node.source` / `structure_node.source`) to the 2-value FE
+ *  coding. The human value is exactly `'authored'`; EVERY other value the backend uses — `'planforge'`,
+ *  `'decompiled'`, `'mined'`, `'imported'`, `'adopted'` — is machine-produced and gets the AI (teal +
+ *  mono) treatment. Recognising only `'mined'` (the old bug) rendered planner/import content as if the
+ *  writer had authored it, so the authorship coding was invisible on real books. */
+export function normalizeSource(s: string | undefined | null): NodeSource {
+  return !s || s === 'authored' ? 'authored' : 'mined';
+}
 
 // Re-export the laneLayout-owned types so a consumer imports one place.
 export type {
@@ -63,9 +72,9 @@ export interface ArcListNode {
   arc_template_id?: string | null;
   template_version?: number | null;
   version: number;
-  /** AUTHORSHIP (redesign) — 'authored' (human) vs 'mined' (decompiler). Rides the arc-list wire via
-   *  `model_dump`. Optional only defensively; consumers fall back to 'authored'. */
-  source?: NodeSource;
+  /** AUTHORSHIP (redesign) — the RAW wire value (`'authored'|'planforge'|'decompiled'|'mined'|
+   *  'imported'|…`). Rides the arc-list wire via `model_dump`. Normalise with `normalizeSource`. */
+  source?: string;
   // 32 §3.6 — widened to the full StructureNode shape so PlanDrawer's `as ArcListNode &
   // { tracks?: unknown }` cast (the type lying about the wire) can go. The inspector reads the
   // node's OWN arrays; the resolved cascade comes from the ArcDetail fetch.
@@ -126,9 +135,9 @@ export interface SummaryNode {
   pov_entity_id: string | null;
   present_entity_ids: string[];
   present_entity_count: number;
-  /** AUTHORSHIP (redesign) — 'authored' (human) vs 'mined' (decompiler). Now on the summary wire
-   *  (`outline.py _summary_projection`). Optional only defensively; consumers fall back to 'authored'. */
-  source?: NodeSource;
+  /** AUTHORSHIP (redesign) — the RAW wire value (`'authored'|'planforge'|'decompiled'|…`). Now on the
+   *  summary wire (`outline.py _summary_projection`). Normalise with `normalizeSource`. */
+  source?: string;
   /** SC11 amendment — "is there prose behind this node?", MAINTAINED server-side
    *  (`outline_node.written_scene_id`, reconciled from book-service's `scenes.source_scene_id`).
    *  It replaces the client-side two-truths join entirely: no scene-index page-walk, no per-chapter
@@ -277,6 +286,10 @@ export interface PlanHubView {
    *  projection of the SAME shell + loaded windows the `layout` uses — the flow view renders a
    *  document tree (stacked lanes, wrapping chapters), not the graph's absolute positions. */
   laneTree: LaneArc[];
+  /** Arc-less chapters (post-decompile) for the flow view's "Unassigned" group — visible + fileable. */
+  laneUnassigned: LaneChapter[];
+  /** Flattened arc pick-list for the "move to arc" control (id, title, depth for indentation). */
+  arcOptions: { id: string; title: string; depth: number }[];
   edges: SceneLinkEdge[];
   /** null until the overlay resolves; the canvas renders no problem badge while null. */
   overlay: PlanOverlay | null;

@@ -32,11 +32,13 @@ import { usePlanHub } from '@/features/plan-hub/hooks/usePlanHub';
 import { usePlanOrigin } from '@/features/plan-hub/hooks/usePlanOrigin';
 import { usePlanChildCreate } from '@/features/plan-hub/hooks/usePlanChildCreate';
 import { usePlanHubMode } from '@/features/plan-hub/hooks/usePlanHubMode';
+import { usePlanAdvancedView } from '@/features/plan-hub/hooks/usePlanAdvancedView';
 import { useSimpleChapters } from '@/features/plan-hub/hooks/useSimpleChapters';
 import { SimpleChapterList } from '@/features/plan-hub/components/SimpleChapterList';
-import type { PlanOverlayRef } from '@/features/plan-hub/types';
+import type { CameraFocusTarget, PlanOverlayRef } from '@/features/plan-hub/types';
 import {
   LaneFlowView,
+  PlanCanvas,
   PlanDrawer,
   PlanEmptyState,
   PlanToolbar,
@@ -54,7 +56,11 @@ export function PlanHubPanel(props: IDockviewPanelProps) {
   // ⇒ open the first roots by default (mockup "root fix 2"); Simple ⇒ never (Simple renders a plain
   // list and must not fire a chapter-window fetch). Per-user setting (mirrors MotifSimpleMode).
   const mode = usePlanHubMode(accessToken);
-  const view = usePlanHub(bookId, { autoExpandArcs: !mode.simple });
+  // Advanced sub-view: the navigable React Flow GRAPH (default) vs the readable LANE-flow view.
+  const advView = usePlanAdvancedView(accessToken);
+  // Auto-expand the lane hierarchy only when the LANE view will actually render it (Advanced + lane).
+  // The graph loads windows on demand as arcs expand, so it doesn't want the bounded pre-seed.
+  const view = usePlanHub(bookId, { autoExpandArcs: !mode.simple && !advView.graph });
   // The structure origin — the empty state's primary verb (spec 2026-07-17-studio-structure-origin).
   const origin = usePlanOrigin(bookId, accessToken);
   // Bug A — build the hierarchy DOWN from a selected node (+Chapter on an arc, +Scene on a chapter).
@@ -96,9 +102,16 @@ export function PlanHubPanel(props: IDockviewPanelProps) {
   // H2.6 — the editor's active chapter (book-service chapter_id) off the bus. Map it to the Hub node
   // whose loaded content carries that chapterId; null when nothing's open or its window isn't loaded.
   // The editor's active chapter (book-service chapter_id) off the bus. The lane-flow cards match it
-  // directly (a chapter card carries its chapterId), so the old chapterId→node-id derivation the RF
-  // canvas needed is gone.
+  // directly (each carries its chapterId); the GRAPH needs the mapped outline-node id for its
+  // "you are here" highlight, so both forms are kept.
   const activeChapterId = useStudioBusSelector((s) => s.activeChapterId);
+  const activeNodeId = useMemo(() => {
+    if (!activeChapterId) return null;
+    const hit = Object.entries(view.nodeContent).find(
+      ([, c]) => c.kind === 'chapter' && c.chapterId === activeChapterId,
+    );
+    return hit ? hit[0] : null;
+  }, [activeChapterId, view.nodeContent]);
 
   // PH18 deep-links — a problem ref opens its OWNING lens, FOCUSED on the offending row. Routed
   // through openPanel, never navigate() (PH24/DOCK-7).
@@ -142,14 +155,15 @@ export function PlanHubPanel(props: IDockviewPanelProps) {
     return hits;
   }, [search, view.nodeContent]);
 
-  // PH25 — the ACTIVITY BAR's Plan rail lives outside the dock, so it asks over the bus. The lane-flow
-  // view has no camera to pan, so a focus request SELECTS the node and OPENS its ancestor lanes (so a
-  // nested arc's lane is expanded and the card is on screen). We diff the seq (not the nodeId) so
-  // re-clicking the same row re-selects, and a fresh mount never replays a stale request.
+  // OQ-5 camera — a focus REQUEST (nodeId + monotonically bumped seq). The GRAPH pans to it; the LANE
+  // view ignores focusTarget and instead relies on the select + ancestor-expand (so the card is on
+  // screen). Doing all three makes a rail focus work in either sub-view.
+  const [focusTarget, setFocusTarget] = useState<CameraFocusTarget | null>(null);
   const { select, expandAncestorsOf } = view;
   const focusNode = useCallback(
     (nodeId: string) => {
       expandAncestorsOf(nodeId);
+      setFocusTarget((prev) => ({ nodeId, seq: (prev?.seq ?? 0) + 1 }));
       select(nodeId);
     },
     [select, expandAncestorsOf],
@@ -194,6 +208,32 @@ export function PlanHubPanel(props: IDockviewPanelProps) {
           {t('planHub.mode.advanced', 'Advanced')}
         </button>
       </span>
+      {/* Advanced sub-view: GRAPH (zoom/pan/drag — the navigable canvas) vs LANE (the readable flow).
+          Only meaningful in Advanced. */}
+      {!mode.simple && (
+        <span className="inline-flex overflow-hidden rounded-full border text-[11px]">
+          <button
+            type="button"
+            data-testid="plan-hub-adv-graph"
+            aria-pressed={advView.graph}
+            onClick={() => advView.setGraph(true)}
+            className={`px-3 py-1 font-medium ${advView.graph ? 'bg-primary/15 text-primary' : 'text-muted-foreground hover:text-foreground'}`}
+            title={t('planHub.adv.graphHint', 'Graph — zoom, pan and drag to move (best for a large structure)')}
+          >
+            {t('planHub.adv.graph', 'Graph')}
+          </button>
+          <button
+            type="button"
+            data-testid="plan-hub-adv-lane"
+            aria-pressed={!advView.graph}
+            onClick={() => advView.setGraph(false)}
+            className={`px-3 py-1 font-medium ${!advView.graph ? 'bg-primary/15 text-primary' : 'text-muted-foreground hover:text-foreground'}`}
+            title={t('planHub.adv.laneHint', 'Lane — readable wrapping cards (no zoom)')}
+          >
+            {t('planHub.adv.lane', 'Lane')}
+          </button>
+        </span>
+      )}
       {/* cost (mockup `.cost`) — editing structure makes NO model calls, so it is genuinely free. A
           truthful $0.00 (not a fabricated model spend); the tooltip says why. */}
       <span
@@ -351,48 +391,79 @@ export function PlanHubPanel(props: IDockviewPanelProps) {
         problemCount={view.problemTotal}
       />
       <div className="relative min-w-0 flex-1">
-        {/* ADVANCED = the sealed lane-flow view (design-drafts/plan-hub-redesign/index.html): stacked
-            arc lanes with wrapping chapter cards + inset sub-arcs. Replaces the React Flow graph — the
-            mockup is a document-flow layout, not a node graph. Selection routes the SAME drawer
-            (edit/archive); inline +chapter/+scene/+sub-arc wire the verified create routes. */}
-        <LaneFlowView
-          laneTree={view.laneTree}
-          arcPagination={view.arcPagination}
-          selectedId={view.selectedId}
-          activeChapterId={activeChapterId ?? null}
-          onSelect={view.select}
-          onToggleArc={view.toggleArc}
-          onToggleChapter={view.toggleChapter}
-          onLoadMoreArc={view.loadMoreArc}
-          onAddChapter={
-            accessToken && projectId
-              ? (arcId) => void childCreate.addChapterUnderArc(arcId).then((n) => n && view.select(n.id))
-              : null
-          }
-          onAddScene={
-            accessToken && projectId
-              ? (chapterNodeId, bookChapterId) =>
-                  void childCreate.addSceneUnderChapter(chapterNodeId, bookChapterId).then((n) => n && view.select(n.id))
-              : null
-          }
-          onAddSubArc={
-            accessToken
-              ? (parentArcId) =>
-                  void origin
-                    .start(t('planHub.empty.untitledArc', 'Untitled arc'), parentArcId)
-                    .then((arc) => arc && view.select(arc.id))
-              : null
-          }
-          addingChild={childCreate.creating || origin.creating}
-          childError={childCreate.error || origin.error}
-          matchedIds={matchedIds}
-          fitSignal={fitSignal}
-        />
-        {/* PH21 — a HUD notice for the UNASSIGNED strip (spec chapters bound to no arc — the normal
-            post-decompile state). They have no arc lane in the flow view, so this surfaces how many
-            exist rather than letting them vanish (they are filed via the drawer / assign). NOT the
-            unplanned tray — that is the other direction (manuscript chapters with no spec node). */}
-        {view.layout.unassigned.length > 0 && (
+        {/* ADVANCED has two sub-views (a per-user setting). GRAPH = the React Flow canvas (zoom, pan,
+            drag-to-move, scene links — the navigable tool for a large structure). LANE = the sealed
+            lane-flow redesign (design-drafts/plan-hub-redesign/index.html): readable wrapping cards,
+            inset sub-arcs, no zoom. Both share the SAME drawer, toolbar, tray, and create routes. */}
+        {advView.graph ? (
+          <PlanCanvas
+            layout={view.layout}
+            edges={view.edges}
+            overlay={view.overlay}
+            conformance={view.conformance}
+            unionState={view.unionState}
+            nodeContent={view.nodeContent}
+            selectedId={view.selectedId}
+            onSelect={view.select}
+            onToggleArc={view.toggleArc}
+            onToggleChapter={view.toggleChapter}
+            activeNodeId={activeNodeId}
+            focusTarget={focusTarget}
+            onMoveChapter={view.moveChapterToArc}
+            onMoveScene={view.moveSceneToChapter}
+            onMoveArc={view.moveArcTo}
+            onReorderChapter={view.reorderChapter}
+            arcPagination={view.arcPagination}
+            onLoadMoreArc={view.loadMoreArc}
+            onOpenRef={openRef}
+            onLinkScenes={view.linkScenes}
+            onUnlinkScenes={view.unlinkScenes}
+            resolveEntity={view.resolveEntity}
+            fitSignal={fitSignal}
+            matchedIds={matchedIds}
+            busy={view.moving}
+          />
+        ) : (
+          <LaneFlowView
+            laneTree={view.laneTree}
+            unassigned={view.laneUnassigned}
+            arcOptions={view.arcOptions}
+            onMoveChapterToArc={accessToken ? view.moveChapterToArc : null}
+            arcPagination={view.arcPagination}
+            selectedId={view.selectedId}
+            activeChapterId={activeChapterId ?? null}
+            onSelect={view.select}
+            onToggleArc={view.toggleArc}
+            onToggleChapter={view.toggleChapter}
+            onLoadMoreArc={view.loadMoreArc}
+            onAddChapter={
+              accessToken && projectId
+                ? (arcId) => void childCreate.addChapterUnderArc(arcId).then((n) => n && view.select(n.id))
+                : null
+            }
+            onAddScene={
+              accessToken && projectId
+                ? (chapterNodeId, bookChapterId) =>
+                    void childCreate.addSceneUnderChapter(chapterNodeId, bookChapterId).then((n) => n && view.select(n.id))
+                : null
+            }
+            onAddSubArc={
+              accessToken
+                ? (parentArcId) =>
+                    void origin
+                      .start(t('planHub.empty.untitledArc', 'Untitled arc'), parentArcId)
+                      .then((arc) => arc && view.select(arc.id))
+                : null
+            }
+            addingChild={childCreate.creating || origin.creating}
+            childError={childCreate.error || origin.error}
+            matchedIds={matchedIds}
+            fitSignal={fitSignal}
+          />
+        )}
+        {/* GRAPH mode surfaces arc-less chapters (drag them into a lane) via a HUD count — the graph
+            renders them in its own strip. LANE mode renders them as a selectable "Unassigned" group.  */}
+        {advView.graph && view.layout.unassigned.length > 0 && (
           <div
             data-testid="plan-hub-unassigned-notice"
             className="pointer-events-none absolute left-3 top-3 z-20 rounded-md border border-amber-500/40 bg-amber-500/10 px-2 py-1 text-xs text-amber-700 shadow"
@@ -404,6 +475,8 @@ export function PlanHubPanel(props: IDockviewPanelProps) {
             })}
           </div>
         )}
+        {/* A failed move (incl. the 412 "changed elsewhere — reloaded" OCC recovery) is surfaced,
+            never swallowed — the canvas has already re-synced from the server underneath it. */}
         {/* A failed move (incl. the 412 "changed elsewhere — reloaded" OCC recovery) is surfaced,
             never swallowed — the canvas has already re-synced from the server underneath it. */}
         {view.moveError && (

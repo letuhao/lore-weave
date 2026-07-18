@@ -10,7 +10,7 @@ import { cn } from '@/lib/utils';
 import type { ArcPagination } from '../types';
 import type { LaneArc } from '../layout/laneTree';
 import { FlowChapterCard } from './FlowChapterCard';
-import { arcSubtitle } from './flowPresentation';
+import { arcSubtitle, chapterDisplayNo } from './flowPresentation';
 
 export interface FlowLaneProps {
   arc: LaneArc;
@@ -28,6 +28,10 @@ export interface FlowLaneProps {
   onAddScene: ((chapterNodeId: string, bookChapterId: string) => void) | null;
   onAddSubArc: ((parentArcId: string) => void) | null;
   addingChild: boolean;
+  /** The arc pick-list for the per-chapter "move to arc" control. */
+  arcOptions: { id: string; title: string; depth: number }[];
+  /** Re-file a chapter under another arc. Null ⇒ no EDIT grant. */
+  onMoveChapterToArc: ((chapterNodeId: string, arcId: string) => void) | null;
 }
 
 function Chip({ children, tone = 'plain', testid }: { children: React.ReactNode; tone?: 'plain' | 'machine' | 'warn'; testid?: string }) {
@@ -48,7 +52,7 @@ function Chip({ children, tone = 'plain', testid }: { children: React.ReactNode;
 
 function FlowLaneInner(props: FlowLaneProps) {
   const { arc, arcPagination, selectedId, activeChapterId, matchedIds, onSelect, onToggleArc, onToggleChapter,
-    onLoadMoreArc, onAddChapter, onAddScene, onAddSubArc, addingChild } = props;
+    onLoadMoreArc, onAddChapter, onAddScene, onAddSubArc, addingChild, arcOptions, onMoveChapterToArc } = props;
   const { t } = useTranslation('studio');
   const machine = arc.source === 'mined';
   const isSub = arc.depth > 0;
@@ -109,7 +113,7 @@ function FlowLaneInner(props: FlowLaneProps) {
               <FlowChapterCard
                 key={ch.id}
                 chapter={ch}
-                index={i}
+                displayNo={chapterDisplayNo(arc, i)}
                 selected={selectedId === ch.id}
                 isHere={!!activeChapterId && ch.chapterId === activeChapterId}
                 matched={!!matchedIds?.has(ch.id)}
@@ -117,6 +121,9 @@ function FlowLaneInner(props: FlowLaneProps) {
                 onToggleScenes={onToggleChapter}
                 onAddScene={onAddScene}
                 addingChild={addingChild}
+                currentArcId={arc.id}
+                arcOptions={arcOptions}
+                onMoveToArc={onMoveChapterToArc}
               />
             ))}
             {pg?.hasMore && (

@@ -9,7 +9,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '@/auth';
 import { getArcs, getConformanceStatus, getPlanOverlay, getSceneLinks } from '../api';
 import { laneLayout } from '../layout/laneLayout';
-import { autoExpandArcIds, buildLaneTree } from '../layout/laneTree';
+import { autoExpandArcIds, buildLaneTree, flattenArcOptions, unassignedChapters } from '../layout/laneTree';
 
 /** How many root arcs the lane-flow view opens on first show. Bounds the cold-open cost (each opened
  *  arc fires ONE chapter-window fetch, after paint) so a 1000-arc book never fetches 1000 windows at
@@ -22,6 +22,7 @@ import type {
   PlanHubView,
   UnplannedChapter,
 } from '../types';
+import { normalizeSource } from '../types';
 import { usePlanWindows } from './usePlanWindows';
 import { usePlanMoves } from './usePlanMoves';
 import { useExtractPlan } from './useExtractPlan';
@@ -71,6 +72,21 @@ export function usePlanHub(
   const [expandedArcs, setExpandedArcs] = useState<Set<string>>(() => new Set());
   const [expandedChapters, setExpandedChapters] = useState<Set<string>>(() => new Set());
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  // Allow bounded auto-expand to re-seed for a NEW book (cleared alongside the sets on book change).
+  const seededBook = useRef<string | null>(null);
+
+  // Reset per-book view state when the studio switches books IN PLACE (the panel is not always
+  // remounted — `usePlanWindows` resets its own slices on `bookId` for the same reason). Without this,
+  // book A's expanded arcs + selection LEAK into book B: `usePlanWindows` then fetches book A's arc ids
+  // against book B (wasted, and an error flips the whole panel to its error branch), and the always-
+  // mounted drawer holds a node id that doesn't exist in book B. Declared BEFORE the auto-expand effect
+  // so, on a book change, it clears `seededBook` first and the new book re-seeds cleanly.
+  useEffect(() => {
+    setExpandedArcs(new Set());
+    setExpandedChapters(new Set());
+    setSelectedId(null);
+    seededBook.current = null;
+  }, [bookId]);
 
   const shell = useMemo(() => (arcsQuery.data?.arcs ?? []).map(toArcShellNode), [arcsQuery.data]);
 
@@ -107,6 +123,13 @@ export function usePlanHub(
     () => buildLaneTree(arcsQuery.data?.arcs ?? [], windowsResult.content, expandedArcs, expandedChapters),
     [arcsQuery.data, windowsResult.content, expandedArcs, expandedChapters],
   );
+  // Arc-less chapters (post-decompile) — rendered in the flow view's "Unassigned" group so they are
+  // visible + fileable, and the pick-list the "move to arc" control offers.
+  const laneUnassigned = useMemo(
+    () => unassignedChapters(windowsResult.content, expandedChapters),
+    [windowsResult.content, expandedChapters],
+  );
+  const arcOptions = useMemo(() => flattenArcOptions(laneTree), [laneTree]);
 
   const unionState = useMemo(
     () =>
@@ -126,8 +149,8 @@ export function usePlanHub(
       out[a.id] = {
         title: a.title, status: a.status, kind: a.kind, tension: null, beatRole: null,
         chapterId: null, castIds: [], castCount: 0,
-        // AUTHORSHIP (redesign) — from the arc-list wire; default 'authored' for a pre-source arc.
-        source: a.source ?? 'authored',
+        // AUTHORSHIP (redesign) — normalise the wire enum to the 2-value FE coding (non-'authored' ⇒ AI).
+        source: normalizeSource(a.source),
       };
     }
     for (const n of Object.values(windowsResult.content)) {
@@ -137,8 +160,8 @@ export function usePlanHub(
         // PH26 — the cast the server already capped to 3, plus the EXACT count for the +N chip.
         castIds: n.present_entity_ids ?? [],
         castCount: n.present_entity_count ?? 0,
-        // AUTHORSHIP (redesign) — from the summary wire; default 'authored' for a pre-source node.
-        source: n.source ?? 'authored',
+        // AUTHORSHIP (redesign) — normalise the wire enum to the 2-value FE coding (non-'authored' ⇒ AI).
+        source: normalizeSource(n.source),
       };
     }
     return out;
@@ -177,8 +200,8 @@ export function usePlanHub(
   // Bounded auto-expand for the lane-flow view (mockup "root fix 2": show the hierarchy by default).
   // Seeds ONCE per book, only when the caller asks (Advanced mode) — so Simple mode never fires a
   // chapter-window fetch — and only the first MAX_AUTO_EXPAND roots, so a huge book stays bounded.
-  // Seeding once (a ref guard) means a user who then COLLAPSES an auto-opened arc keeps it closed.
-  const seededBook = useRef<string | null>(null);
+  // Seeding once (the `seededBook` ref, cleared on book change above) means a user who then COLLAPSES
+  // an auto-opened arc keeps it closed.
   useEffect(() => {
     if (!opts.autoExpandArcs || !arcsQuery.isSuccess) return;
     if (seededBook.current === bookId) return;
@@ -319,6 +342,8 @@ export function usePlanHub(
   return {
     layout,
     laneTree,
+    laneUnassigned,
+    arcOptions,
     edges: sceneLinksQuery.data?.scene_links ?? [],
     overlay,
     conformance: conformanceQuery.data ?? null,

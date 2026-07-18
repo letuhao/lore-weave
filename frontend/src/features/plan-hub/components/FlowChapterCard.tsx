@@ -12,7 +12,8 @@ import { chapterCardClass, normStatus, statusDotClass } from './flowPresentation
 
 export interface FlowChapterCardProps {
   chapter: LaneChapter;
-  index: number;
+  /** The chapter's DISPLAY number (book reading ordinal for a contiguous arc, else within-arc). */
+  displayNo: number;
   selected: boolean;
   isHere: boolean;
   /** PH15 find — this card matches the toolbar query (ringed, never filtered). */
@@ -22,15 +23,24 @@ export interface FlowChapterCardProps {
   /** Add a scene under this chapter. Null ⇒ no EDIT grant / no Work / no book chapter id. */
   onAddScene: ((chapterNodeId: string, bookChapterId: string) => void) | null;
   addingChild: boolean;
+  /** The arc this chapter is currently in (null for an unassigned chapter), so the move picker can
+   *  exclude it. */
+  currentArcId: string | null;
+  /** The arcs a chapter can be MOVED/filed into. Empty ⇒ no move picker. */
+  arcOptions: { id: string; title: string; depth: number }[];
+  /** Re-file this chapter under another arc (also FILES an unassigned chapter). Null ⇒ no EDIT grant. */
+  onMoveToArc: ((chapterNodeId: string, arcId: string) => void) | null;
 }
 
 function FlowChapterCardInner({
-  chapter, index, selected, isHere, matched, onSelect, onToggleScenes, onAddScene, addingChild,
+  chapter, displayNo, selected, isHere, matched, onSelect, onToggleScenes, onAddScene, addingChild,
+  currentArcId, arcOptions, onMoveToArc,
 }: FlowChapterCardProps) {
   const { t } = useTranslation('studio');
   const status = normStatus(chapter.status);
   const machine = chapter.source === 'mined';
   const canAddScene = onAddScene && chapter.chapterId;
+  const moveTargets = onMoveToArc ? arcOptions.filter((a) => a.id !== currentArcId) : [];
 
   return (
     <div
@@ -39,7 +49,7 @@ function FlowChapterCardInner({
       data-source={chapter.source}
       onClick={() => onSelect(chapter.id)}
       className={cn(
-        'relative w-[188px] shrink-0 cursor-pointer rounded-md border px-2.5 py-2 transition-colors hover:border-primary/55',
+        'group relative w-[188px] shrink-0 cursor-pointer rounded-md border px-2.5 py-2 transition-colors hover:border-primary/55',
         chapterCardClass(status),
         selected && 'outline outline-2 outline-primary outline-offset-1',
         isHere && 'outline outline-2 outline-offset-2 outline-sky-500',
@@ -49,7 +59,7 @@ function FlowChapterCardInner({
       <div className="mb-1.5 flex items-center gap-1.5">
         <span className={cn('h-[7px] w-[7px] shrink-0 rounded-full', statusDotClass(status))} />
         <span className="font-mono text-[9.5px] text-muted-foreground">
-          {t('planHub.flow.chNo', { n: index + 1, defaultValue: 'ch {{n}}' })}
+          {t('planHub.flow.chNo', { n: displayNo, defaultValue: 'ch {{n}}' })}
         </span>
         <span className="ml-auto font-mono text-[9px] uppercase tracking-wide text-muted-foreground">
           {t(`planHub.flow.status.${status}`, status)}
@@ -104,6 +114,25 @@ function FlowChapterCardInner({
         >
           {t('planHub.flow.showScenes', '▸ scenes')}
         </button>
+      )}
+
+      {/* Move / file this chapter into another arc — the non-drag replacement for the old canvas
+          drag-into-lane, and the ONLY way to file an arc-less chapter. Hover-revealed to stay calm. */}
+      {moveTargets.length > 0 && (
+        <select
+          data-testid={`flow-move-${chapter.id}`}
+          value=""
+          onClick={(e) => e.stopPropagation()}
+          onChange={(e) => { e.stopPropagation(); if (e.target.value) onMoveToArc!(chapter.id, e.target.value); }}
+          className="mt-1.5 w-full cursor-pointer rounded border border-border bg-transparent px-1 py-0.5 font-mono text-[9px] text-muted-foreground opacity-0 transition-opacity focus:opacity-100 group-hover:opacity-100 disabled:opacity-40"
+          disabled={addingChild}
+          aria-label={t('planHub.flow.moveTo', 'Move to arc')}
+        >
+          <option value="">{t('planHub.flow.moveTo', 'move to arc…')}</option>
+          {moveTargets.map((a) => (
+            <option key={a.id} value={a.id}>{`${'· '.repeat(a.depth)}${a.title || t('planHub.flow.untitledArc', 'Untitled arc')}`}</option>
+          ))}
+        </select>
       )}
     </div>
   );
