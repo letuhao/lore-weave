@@ -53,6 +53,19 @@ function WorkflowProposalCard({ proposal, onApprove, onReject }: { proposal: Wor
         {!pending && <span className="text-[11px] text-muted-foreground">{proposal.status}</span>}
       </div>
       <div className="mt-1 text-xs text-muted-foreground">{proposal.description}</div>
+      {/* Show the STEPS being approved — a human approves the tool sequence, not blind
+          (informed-consent: the review card must show what the workflow will do). */}
+      {proposal.steps && proposal.steps.length > 0 && (
+        <ol className="mt-2 space-y-0.5 rounded bg-muted/40 p-2 text-[11px]" data-testid="workflow-proposal-steps">
+          {proposal.steps.map((s, i) => (
+            <li key={s.id || i} className="flex gap-2">
+              <span className="text-muted-foreground">{i + 1}.</span>
+              <span className="font-mono">{s.tool}</span>
+              {s.gate && s.gate !== 'auto' && <span className="rounded border px-1 text-[10px] text-amber-500">{s.gate}</span>}
+            </li>
+          ))}
+        </ol>
+      )}
       {proposal.notes_md && (
         <pre className="mt-2 max-h-40 overflow-auto rounded bg-muted/40 p-2 text-[11px] whitespace-pre-wrap">{proposal.notes_md}</pre>
       )}

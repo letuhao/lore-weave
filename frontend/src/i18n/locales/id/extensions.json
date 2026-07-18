@@ -232,6 +232,9 @@
     "enabled": "Aktif",
     "disabled": "Nonaktif",
     "delete": "Hapus",
-    "proposalsEmpty": "Tidak ada proposal alur kerja. Saat agen mengajukan alur kerja, ia akan muncul di sini untuk Anda setujui."
+    "proposalsEmpty": "Tidak ada proposal alur kerja. Saat agen mengajukan alur kerja, ia akan muncul di sini untuk Anda setujui.",
+    "view": "Lihat",
+    "hide": "Sembunyikan",
+    "noSteps": "Tidak ada langkah yang ditentukan."
   }
 }

@@ -232,6 +232,9 @@
     "enabled": "Ativado",
     "disabled": "Desativado",
     "delete": "Excluir",
-    "proposalsEmpty": "Sem propostas de fluxo de trabalho. Quando o agente propõe um fluxo de trabalho, ele aparece aqui para sua aprovação."
+    "proposalsEmpty": "Sem propostas de fluxo de trabalho. Quando o agente propõe um fluxo de trabalho, ele aparece aqui para sua aprovação.",
+    "view": "Visualizar",
+    "hide": "Ocultar",
+    "noSteps": "Nenhuma etapa definida."
   }
 }

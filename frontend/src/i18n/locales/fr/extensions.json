@@ -232,6 +232,9 @@
     "enabled": "Activé",
     "disabled": "Désactivé",
     "delete": "Supprimer",
-    "proposalsEmpty": "Aucune proposition de workflow. Lorsqu'un agent propose un workflow, il apparaît ici pour approbation."
+    "proposalsEmpty": "Aucune proposition de workflow. Lorsqu'un agent propose un workflow, il apparaît ici pour approbation.",
+    "view": "Voir",
+    "hide": "Masquer",
+    "noSteps": "Aucune étape définie."
   }
 }

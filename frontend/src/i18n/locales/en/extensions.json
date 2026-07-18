@@ -232,6 +232,9 @@
     "enabled": "On",
     "disabled": "Off",
     "delete": "Delete",
-    "proposalsEmpty": "No workflow proposals. When the agent proposes a workflow, it appears here for you to approve."
+    "proposalsEmpty": "No workflow proposals. When the agent proposes a workflow, it appears here for you to approve.",
+    "view": "View",
+    "hide": "Hide",
+    "noSteps": "No steps defined."
   }
 }

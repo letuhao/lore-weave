@@ -232,6 +232,9 @@
     "enabled": "An",
     "disabled": "Aus",
     "delete": "Löschen",
-    "proposalsEmpty": "Keine Workflow-Vorschläge. Wenn der Agent einen Workflow vorschlägt, erscheint er hier zur Genehmigung."
+    "proposalsEmpty": "Keine Workflow-Vorschläge. Wenn der Agent einen Workflow vorschlägt, erscheint er hier zur Genehmigung.",
+    "view": "Anzeigen",
+    "hide": "Ausblenden",
+    "noSteps": "Keine Schritte definiert."
   }
 }

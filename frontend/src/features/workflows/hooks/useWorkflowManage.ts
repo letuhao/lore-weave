@@ -4,7 +4,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useAuth } from '@/auth';
 import { workflowsApi } from '../api';
-import type { WorkflowMeta } from '../types';
+import type { WorkflowMeta, WorkflowFull } from '../types';
 
 export function useWorkflowManage(bookId?: string) {
   const { accessToken } = useAuth();
@@ -49,5 +49,14 @@ export function useWorkflowManage(bookId?: string) {
     [accessToken, refresh],
   );
 
-  return { workflows, loading, error, refresh, toggle, remove };
+  // view-one — fetch the full workflow (steps/inputs/notes) for the expand affordance.
+  const loadDetail = useCallback(
+    async (id: string): Promise<WorkflowFull | null> => {
+      if (!accessToken) return null;
+      return workflowsApi.get(accessToken, id);
+    },
+    [accessToken],
+  );
+
+  return { workflows, loading, error, refresh, toggle, remove, loadDetail };
 }

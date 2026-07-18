@@ -8,6 +8,7 @@ vi.mock('@/auth', () => ({ useAuth: () => ({ accessToken: 'test-token' }) }));
 
 const api = vi.hoisted(() => ({
   list: vi.fn(),
+  get: vi.fn(),
   setEnabled: vi.fn(),
   remove: vi.fn(),
 }));
@@ -47,6 +48,20 @@ describe('WorkflowsView (S-12)', () => {
     await waitFor(() => expect(screen.getByTestId('workflow-row')).toBeTruthy());
     fireEvent.click(screen.getByTestId('workflow-delete'));
     await waitFor(() => expect(api.remove).toHaveBeenCalledWith('test-token', 'w1'));
+  });
+
+  it('view → loadDetail(id) via api.get and shows the steps (view-one)', async () => {
+    api.list.mockResolvedValue({ workflows: [wf()] });
+    api.get.mockResolvedValue({
+      workflow_id: 'w1', slug: 'setup-world', title: 'Set up my world', description: 'a recipe',
+      tier: 'user', surfaces: ['chat'], inputs: {}, notes_md: '', status: 'published', enabled: true,
+      steps: [{ id: 's1', tool: 'book_create_world', gate: 'auto' }],
+    });
+    render(<WorkflowsView />);
+    await waitFor(() => expect(screen.getByTestId('workflow-view')).toBeTruthy());
+    fireEvent.click(screen.getByTestId('workflow-view'));
+    await waitFor(() => expect(api.get).toHaveBeenCalledWith('test-token', 'w1'));
+    await waitFor(() => expect(screen.getByText('book_create_world')).toBeTruthy());
   });
 
   it('a System workflow is read-only (no delete) but still toggleable', async () => {

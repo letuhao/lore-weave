@@ -232,6 +232,9 @@
     "enabled": "Activado",
     "disabled": "Desactivado",
     "delete": "Eliminar",
-    "proposalsEmpty": "No hay propuestas de flujo de trabajo. Cuando el agente proponga un flujo de trabajo, aparecerá aquí para que lo apruebes."
+    "proposalsEmpty": "No hay propuestas de flujo de trabajo. Cuando el agente proponga un flujo de trabajo, aparecerá aquí para que lo apruebes.",
+    "view": "Ver",
+    "hide": "Ocultar",
+    "noSteps": "No hay pasos definidos."
   }
 }

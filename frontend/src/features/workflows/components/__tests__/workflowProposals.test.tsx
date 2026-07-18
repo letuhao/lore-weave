@@ -17,7 +17,9 @@ import { WorkflowProposalsView } from '../WorkflowProposalsView';
 
 const proposal = (over: Record<string, unknown> = {}) => ({
   proposal_id: 'wp1', action: 'create', slug: 'setup-world', title: 'Set up my world',
-  description: 'proposed recipe', notes_md: '# steps', status: 'pending', reject_reason: '',
+  description: 'proposed recipe', surfaces: ['chat'], inputs: {},
+  steps: [{ id: 's1', tool: 'glossary_propose_entities', gate: 'confirm' }],
+  notes_md: '# steps', status: 'pending', reject_reason: '',
   from_session_id: '', from_session_label: '', created_at: '', expires_at: '', ...over,
 });
 
@@ -43,6 +45,13 @@ describe('WorkflowProposalsView (S-12)', () => {
     await waitFor(() => expect(api.approveProposal).toHaveBeenCalledWith('test-token', 'wp1'));
     fireEvent.click(screen.getByTestId('workflow-proposal-reject'));
     await waitFor(() => expect(api.rejectProposal).toHaveBeenCalledWith('test-token', 'wp1', ''));
+  });
+
+  it('renders the STEPS being approved (informed approval, not blind)', async () => {
+    api.listProposals.mockResolvedValue({ items: [proposal()], total: 1, limit: 50, offset: 0 });
+    render(<WorkflowProposalsView />);
+    await waitFor(() => expect(screen.getByTestId('workflow-proposal-steps')).toBeTruthy());
+    expect(screen.getByText('glossary_propose_entities')).toBeTruthy();
   });
 
   it('a non-pending proposal shows no approve/reject buttons', async () => {

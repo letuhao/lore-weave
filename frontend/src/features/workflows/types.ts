@@ -51,6 +51,9 @@ export interface WorkflowProposal {
   slug: string;
   title: string;
   description: string;
+  surfaces: string[];
+  inputs: Record<string, string>;
+  steps: WorkflowStep[];
   notes_md: string;
   status: WorkflowProposalStatus;
   reject_reason: string;

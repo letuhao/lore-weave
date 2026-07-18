@@ -67,9 +67,38 @@ precedent); optimistic toggle flips only on success (matches useSkills). **Live 
 panel → approve → runnable) deferred — full stack/browser MCP not available at dev time; each link proven (BE
 pgxmock ↔ FE vitest ↔ contract parity both sides ↔ tsc). `LIVE-SMOKE deferred to D-S12-LIVE-SMOKE`.
 
+## COMPLETENESS AUDIT (2026-07-18) — "is the loop TRULY closed?"
+The original hole was "there was no UI." Building the panel makes approval POSSIBLE, not DISCOVERED —
+a subtler re-run of the same hole ("invisible UI"). Audit end-to-end found + cleared:
+- **GAP-1 · Discoverability (fixed the primary signal).** An agent proposes → the row waits → the user
+  (working in the studio) had NO signal where to approve. The agent's tool message said "approve in the UI"
+  but didn't NAME the panel. **Fixed:** both `toolProposeWorkflow`/`toolUpdateWorkflow` messages now name the
+  "Workflow Proposals" panel + how to open it (⌘K) + nudge the agent to open it via
+  `ui_open_studio_panel(panel_id="workflow-proposals")`. (`proposals_pending` already counts workflow
+  proposals — verified — but is surfaced ONLY in the /extensions page; a persistent STUDIO badge is deferred,
+  see DEBT.)
+- **GAP-2 · Approving blind (fixed).** The proposal card showed `notes_md` but not the actual `steps`. **Fixed:**
+  the card + type now render the tool sequence (with gate badges) — informed consent for the approve action.
+- **GAP-3 · view-one missing (fixed).** Built `getWorkflow`/`api.get`/`WorkflowFull` but `WorkflowsView` had no
+  affordance calling them (dead code + spec §3 "view-one" unmet). **Fixed:** an expand/view button lazy-loads the
+  full workflow (steps) via the hook (MVC-correct). +2 tests (proposal steps render, view-one).
+- **Skills-parity absences are intentional:** no import/export/direct-patch (workflows author via propose→approve
+  by design, spec §2/§7); revisions = deferred (below).
+
 ## REGISTERS
 ### DECISIONS — SD-1..SD-3 above.
 ### DEBT
+- **D-S12-STUDIO-PROPOSAL-BADGE (GAP-1 residual, gate #2 structural).** A PERSISTENT pending-proposals signal
+  in the studio dock/palette (for the "came back later" case, complementing FIX-1's in-conversation signal).
+  The count exists (`proposals_pending` in /usage, already includes workflow proposals) but is surfaced ONLY on
+  the /extensions page — no studio-level usage poll or badge chrome exists. Building it = a studio usage poll +
+  a palette/dock badge surface (structural, touches studio chrome). Ideally split the count into skill vs
+  workflow so the badge can target the right panel. Deferred — FIX-1 (agent names + can auto-open the panel)
+  closes the common case (proposal made mid-session).
+- **D-S12-WORKFLOW-REVISIONS (GAP-4, gate #2 structural).** `snapshotWorkflowRevision` writes `workflow_revisions`
+  on approve-update, but there's no read route/FE (skills have `listSkillRevisions` + a revisions view). Captured
+  but unreadable — pre-existing, low value (workflows rarely updated). Mirror the skills revisions surface when a
+  workflow-history need arises.
 - **D-S12-BINDINGS-I18N** — `BindingSettings`/`WorkflowRack` hardcode English (no `useTranslation`),
   pre-existing. The new settings tab surfaces `BindingSettings` as-is; i18n-ing it is a small separate
   pass (out of S-12 scope — S-12 is about REACHABILITY, not translating a pre-existing component).

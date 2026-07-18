@@ -232,6 +232,9 @@
     "enabled": "Aktif",
     "disabled": "Nyahaktif",
     "delete": "Padam",
-    "proposalsEmpty": "Tiada cadangan aliran kerja. Apabila ejen mencadangkan aliran kerja, ia akan muncul di sini untuk anda luluskan."
+    "proposalsEmpty": "Tiada cadangan aliran kerja. Apabila ejen mencadangkan aliran kerja, ia akan muncul di sini untuk anda luluskan.",
+    "view": "Lihat",
+    "hide": "Sembunyi",
+    "noSteps": "Tiada langkah ditakrifkan."
   }
 }

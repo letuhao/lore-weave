@@ -403,7 +403,7 @@ func (s *Server) toolProposeWorkflow(ctx context.Context, _ *mcp.CallToolRequest
 		ProposalID: p.ProposalID.String(),
 		Status:     "pending",
 		Warnings:   livenessWarnings(wfIn.Steps), // CD4: loud, but non-blocking
-		Message:    "Proposed workflow '" + in.Slug + "'. Awaiting the user's approval in the UI — nothing runs or is saved until they approve.",
+		Message:    "Proposed workflow '" + in.Slug + "'. Nothing runs or is saved until the user approves it. Tell them to open the \"Workflow Proposals\" panel (⌘/Ctrl-K → \"Workflow Proposals\") to review its steps and approve or reject — or open it for them with ui_open_studio_panel(panel_id=\"workflow-proposals\").",
 	}, nil
 }
 
@@ -456,7 +456,7 @@ func (s *Server) toolUpdateWorkflow(ctx context.Context, _ *mcp.CallToolRequest,
 		ProposalID: p.ProposalID.String(),
 		Status:     "pending",
 		Warnings:   livenessWarnings(wfIn.Steps), // CD4: loud, but non-blocking
-		Message:    "Proposed an update to '" + in.Slug + "'. Awaiting the user's approval.",
+		Message:    "Proposed an update to '" + in.Slug + "'. The change won't apply until the user approves it in the \"Workflow Proposals\" panel — tell them to open it (⌘/Ctrl-K → \"Workflow Proposals\") to review the changed steps, or open it for them with ui_open_studio_panel(panel_id=\"workflow-proposals\").",
 	}, nil
 }
 

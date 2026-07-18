@@ -232,6 +232,9 @@
     "enabled": "Bật",
     "disabled": "Tắt",
     "delete": "Xóa",
-    "proposalsEmpty": "Không có đề xuất quy trình nào. Khi tác nhân đề xuất một quy trình, nó sẽ xuất hiện ở đây để bạn phê duyệt."
+    "proposalsEmpty": "Không có đề xuất quy trình nào. Khi tác nhân đề xuất một quy trình, nó sẽ xuất hiện ở đây để bạn phê duyệt.",
+    "view": "Xem",
+    "hide": "Ẩn",
+    "noSteps": "Chưa có bước nào được thiết lập."
   }
 }

@@ -232,6 +232,9 @@
     "enabled": "Açık",
     "disabled": "Kapalı",
     "delete": "Sil",
-    "proposalsEmpty": "İş akışı önerisi yok. Aracılar bir iş akışı önerdiğinde, onaylamanız için burada görünecektir."
+    "proposalsEmpty": "İş akışı önerisi yok. Aracılar bir iş akışı önerdiğinde, onaylamanız için burada görünecektir.",
+    "view": "Görüntüle",
+    "hide": "Gizle",
+    "noSteps": "Tanımlanmış adım yok."
   }
 }
