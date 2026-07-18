@@ -9,6 +9,8 @@ const apiMocks = vi.hoisted(() => ({
   getEntity: vi.fn(),
   patchAttributeValue: vi.fn(),
   patchEntity: vi.fn(),
+  addAttributeValue: vi.fn(),
+  deleteAttributeValue: vi.fn(),
 }));
 vi.mock('../../api', () => ({ glossaryApi: apiMocks }));
 
@@ -184,5 +186,40 @@ describe('useGlossaryEntity', () => {
     const result = await mountHook();
     act(() => result.current.bumpEvidenceCount(1));
     expect(result.current.entity?.evidence_count).toBe(1);
+  });
+
+  // ── S-06 add/remove: must PRESERVE the user's other unsaved edits (BUG-A: a plain reload()
+  //    cleared ALL pending, silently losing edits on unrelated attrs). ──
+  const av2 = () => ({
+    ...entity().attribute_values[0],
+    attr_value_id: 'av-2', attr_def_id: 'def-2', original_value: 'Staff',
+    attribute_def: { ...entity().attribute_values[0].attribute_def, attr_def_id: 'def-2', code: 'weapon', name: 'Weapon' },
+  });
+
+  it('removeAttributeValue drops the row + its pending edit but PRESERVES other unsaved edits (no clear-all reload)', async () => {
+    const result = await mountHook(entity({ attribute_values: [entity().attribute_values[0], av2()] }));
+    apiMocks.deleteAttributeValue.mockResolvedValue(undefined);
+    act(() => result.current.setValue('av-1', 'Deity'));   // unsaved edit on av-1
+    await act(async () => { await result.current.removeAttributeValue('av-2'); });
+    // av-2 gone locally; av-1's unsaved edit survives; no full refetch
+    expect(result.current.entity?.attribute_values.map((a) => a.attr_value_id)).toEqual(['av-1']);
+    expect(result.current.getValue(result.current.entity!.attribute_values[0])).toBe('Deity');
+    expect(result.current.isDirty).toBe(true);
+    expect(apiMocks.getEntity).toHaveBeenCalledTimes(1);   // mount only — no reload
+  });
+
+  it('addAttributeValue refetches for the new row but PRESERVES other unsaved edits', async () => {
+    const result = await mountHook(entity({ attribute_values: [entity().attribute_values[0], av2()] }));
+    apiMocks.addAttributeValue.mockResolvedValue({});
+    const av3 = { ...entity().attribute_values[0], attr_value_id: 'av-3', attr_def_id: 'def-3', original_value: '',
+      attribute_def: { ...entity().attribute_values[0].attribute_def, attr_def_id: 'def-3', code: 'origin', name: 'Origin' } };
+    apiMocks.getEntity.mockResolvedValueOnce(entity({ attribute_values: [entity().attribute_values[0], av2(), av3] }));
+    act(() => result.current.setValue('av-1', 'Deity'));   // unsaved edit on av-1
+    await act(async () => { await result.current.addAttributeValue('def-3', 'Kunlun'); });
+    expect(apiMocks.addAttributeValue).toHaveBeenCalledWith(BOOK, ENTITY_ID, { attribute_def_id: 'def-3', value: 'Kunlun' }, 'tok');
+    expect(result.current.entity?.attribute_values.map((a) => a.attr_value_id)).toContain('av-3');
+    // av-1's unsaved edit survives the refetch
+    const av1 = result.current.entity!.attribute_values.find((a) => a.attr_value_id === 'av-1')!;
+    expect(result.current.getValue(av1)).toBe('Deity');
   });
 });

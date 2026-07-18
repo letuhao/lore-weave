@@ -65,9 +65,27 @@ Both: grant-gated EDIT + `verifyEntityInBook` (+ `verifyAttrValueInEntity` for d
 glossary-service is Go — no shared FE registry. FE slice touches api.ts (knowledge/glossary) + i18n
 (knowledge ns) — add keys minimally, fill via i18n_translate. Commit via pathspec, no `git add -A`.
 
+## COMPLETENESS AUDIT (2026-07-18) — full S-06 stack
+- **BUG-A (fixed): add/remove wiped OTHER unsaved edits.** `addAttributeValue`/`removeAttributeValue`
+  called `reload()`, whose `setPendingChanges(new Map())` clears ALL pending — so typing a new value in
+  attr A (unsaved) then adding/removing any attr silently lost A's edit. Fix: **remove = local** (filter the
+  row + drop its pending, no refetch); **add = pending-preserving refetch** (`prunePending` keeps edits for
+  still-existing rows). +2 hook tests lock it. (Same data-loss class as S-01b's create-mode dirty gap.)
+- **BUG-B (verified NOT a bug): the add-section is not a silent empty shell.** It matches
+  `entity.kind.kind_id` against ontology `attr.kind_id`; both are **book_kind_id** (entity GET builds
+  `kind.kind_id` from `book_kinds.book_kind_id`, `entity_handler.go:162,183`; `book_attributes.kind_id` is a
+  book_kind_id). Same tier ⇒ missing attrs resolve correctly.
+- **Contract absence is pre-existing, not my gap.** No glossary OpenAPI contract documents the attr-value
+  route family AT ALL (incl. the long-shipped PATCH/translations). My add/delete match that pattern.
+- Verify after fix: entity-editor **27/27** + hook **16/16** (43 total) + tsc clean; BE Go tests still green.
+
 ## REGISTERS
 ### DEBT
-- (none yet)
+- **D-S06-MCP-DELETE (conscious asymmetry, SD-4):** no `glossary_attribute_value_delete` MCP tool — agent
+  add/edit already via `glossary_entity_set_attributes`; single-row delete is human-GUI driven. Deferred by
+  spec §3 (agents rarely delete one attr row). Won't-fix unless agent parity is later wanted.
+- **SD-5 (conscious):** the DELETE route permits removing ANY row incl. a required attr (add restores it);
+  the FE gates its ✕ to non-system attrs (name/description stay). BE permissive + FE conservative — intended.
 ### DRIFT
 - Spec §2 route paths were book-unscoped (wrong) — corrected against `server.go:534` before building.
 
