@@ -133,14 +133,16 @@ export function useStructureTemplates(): StructureTemplatesState {
     isLoading: q.isLoading,
     error: q.error ? (q.error as Error).message : null,
     selectedId,
-    // Selecting an existing row exits create-mode (the two are mutually exclusive views).
-    select: (id: string) => { setIsCreating(false); setSelectedId(id); },
+    // Selecting an existing row exits create-mode (the two are mutually exclusive views). Reset the
+    // save mutation so a failed save on the PREVIOUS template doesn't leak its error onto the next one.
+    select: (id: string) => { setIsCreating(false); setSelectedId(id); saveMut.reset(); },
     selected,
     cloning: cloneMut.isPending,
     clone: (id) => cloneMut.mutate(id),
     isCreating,
-    startCreate: () => { setIsCreating(true); setSelectedId(null); },
-    cancelCreate: () => setIsCreating(false),
+    // Reset both mutations entering/leaving create so a stale create/save error never shows on a fresh draft.
+    startCreate: () => { createMut.reset(); saveMut.reset(); setIsCreating(true); setSelectedId(null); },
+    cancelCreate: () => { createMut.reset(); setIsCreating(false); },
     creating: createMut.isPending,
     create: (patch) => createMut.mutate(patch),
     saving: saveMut.isPending,

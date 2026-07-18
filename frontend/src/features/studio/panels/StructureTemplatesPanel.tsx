@@ -106,7 +106,8 @@ export function StructureTemplatesPanel(props: IDockviewPanelProps) {
               </div>
               {/* S-01b — the create ON-RAMP: author a structure from scratch, not only by cloning a built-in. */}
               <button
-                type="button" data-testid="structtpl-new" onClick={() => guard(s.startCreate)}
+                type="button" data-testid="structtpl-new"
+                onClick={() => { if (!s.isCreating) guard(s.startCreate); }}
                 className={
                   'mx-2 mb-1 flex w-[calc(100%-1rem)] items-center gap-1 rounded border border-dashed px-2 py-1 text-[11px] hover:bg-accent/40 ' +
                   (s.isCreating ? 'border-primary text-primary' : 'text-muted-foreground')
@@ -139,6 +140,7 @@ export function StructureTemplatesPanel(props: IDockviewPanelProps) {
               saving={s.creating} saveError={s.saveError}
               onSave={(patch) => s.create({ name: patch.name ?? '', kind: patch.kind, beats: patch.beats })}
               onCancel={s.cancelCreate}
+              onDirty={trackDirty}
             />
           ) : !s.selected ? (
             <Hint>{t('structTpl.pickHint', { defaultValue: 'Pick a structure to view its beats — or create a new one.' })}</Hint>

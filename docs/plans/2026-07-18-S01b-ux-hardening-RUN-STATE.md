@@ -36,6 +36,23 @@ cleared + the scorecard target (≈6.3→≈8.4) is defensible, proven by unit g
 | **3 · Safety (C1 unsaved guard + C4 archive confirm)** | no silent lost edits (dirty marker + Discard + a discard-confirm on navigating away); archive asks first | switch-away-while-dirty gated; archive confirmed | **DONE** | `OwnEditor` dirty snapshot + `onDirty`→panel `dirtyRef`; `guard()` wraps row-select + New; `● Unsaved` + Discard; `askArchive`; single generic `ConfirmDialog` (app dialog, NOT OS confirm). **QC: 18/18 unit (archive gated, dirty marker, switch-guarded, discard resets), tsc clean (the 1 error is a sibling's knowledge/TriageMapDialog).** |
 | **4 · Layout + polish (D1/2, E1/2/3, A1 hint)** | editor degrades gracefully at narrow dock; fully localized; a11y labels; honest decompose hint | narrow-dock no-overflow; i18n parity; aria/tap | **DONE** | D1: grid `minmax(0,1fr)` detail track + `min-w-0` both columns + beat-row `flex-wrap` + shrinkable key. D2: `min-w-0`/truncate on rows + built-in beat label. E1: i18n'd the hardcoded `key`/`up`/`down`/`remove`. E2: real `aria-label`s + larger tap targets (h-6). E3: "built-in" badge (not "system"). A1: honest interim decompose hint (no fake no-op button). **+31 i18n keys × 17 locales filled (`i18n_translate --ns studio`, 0 failed), studio gate CLEAN.** **QC: 33/33 unit (structure 19 + panelCatalog 9 + legacyParity 5), tsc clean (mine). D3 single-column collapse DROPPED — needs the container-queries plugin (not installed); tracked below.** |
 
+## COMPLETENESS AUDIT (2026-07-18, post-S-01b) — full S-01 stack
+Audited BE + FE + the S-01b additions end-to-end.
+- **BE is COMPLETE — no write-only bug.** `kind` (the S-01b-editable field) flows the whole way:
+  FE input → `api.createTemplate/updateTemplate` (both carry `kind`) → route (`create` passes `kind`;
+  `update` `model_dump(exclude_unset)` → `repo.update(**patch)`) → `repo.create/update` persist it →
+  DB. **MCP parity holds too:** `composition_structure_template_create` passes `kind`; `_update` builds
+  `{name,kind,beats}` patch (its description documents "name / kind / beats"). Tenancy/OCC/clone-disambig
+  /archive/restore all correct in the repo. So editable-kind is genuinely CONSUMED, not a stored-but-unread blob.
+- **FE BUG-2 (fixed): create-mode was NOT dirty-guarded.** The create-mode `OwnEditor` got no `onDirty`, so
+  typing a new draft then clicking a row silently lost it (C1 only covered edit-mode). Fix: pass `onDirty=
+  {trackDirty}`; also made "+ New" a no-op while already creating (its stable `key="__new__"` wouldn't reset the
+  draft, so it would have fired a misleading discard confirm that discards nothing). +2 tests.
+- **FE BUG-3 (fixed): stale write error leaked across sessions.** `saveMut`/`createMut` errors persisted, so
+  selecting another template (or reopening create) showed the previous target's error. Fix: `saveMut.reset()` on
+  `select`; `createMut.reset()`+`saveMut.reset()` on `startCreate`; `createMut.reset()` on `cancelCreate`.
+- Verify: **21/21 unit** (structure 17 + hook 4), tsc clean (mine).
+
 ## REGISTERS
 ### DEBT
 - A1 real button deferred to S-13 landing (SD-1). Tracked; not blocked on missing infra — blocked on a sibling

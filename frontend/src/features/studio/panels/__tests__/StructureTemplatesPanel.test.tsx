@@ -169,4 +169,23 @@ describe('StructureTemplatesPanel', () => {
     render(<StructureTemplatesPanel {...props} />);
     expect(screen.getByTestId('structtpl-decompose-hint')).toBeInTheDocument();
   });
+
+  // ── completeness-audit fixes ──
+  it('create-mode is dirty-guarded too: typing a draft then clicking a row is intercepted (C1 gap fix)', () => {
+    const select = vi.fn();
+    state.value = base({ isCreating: true, selected: null, select });
+    render(<StructureTemplatesPanel {...props} />);
+    fireEvent.change(screen.getByTestId('structtpl-name'), { target: { value: 'Draft in progress' } });
+    fireEvent.click(screen.getByText('Save the Cat'));   // try to leave the dirty new draft
+    expect(select).not.toHaveBeenCalled();
+    expect(screen.getByText('Discard unsaved changes?')).toBeInTheDocument();
+  });
+
+  it('the "+ New structure" button is a no-op while already creating (no misleading discard confirm)', () => {
+    const startCreate = vi.fn();
+    state.value = base({ isCreating: true, selected: null, startCreate });
+    render(<StructureTemplatesPanel {...props} />);
+    fireEvent.click(screen.getByTestId('structtpl-new'));
+    expect(startCreate).not.toHaveBeenCalled();
+  });
 });
