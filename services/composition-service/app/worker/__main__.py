@@ -15,7 +15,6 @@ from app.config import settings
 from app.db.pool import close_pool, create_pool, get_pool
 from app.logging_config import setup_logging
 from app.events.consumer import CHAPTER_STREAM, CompositionEventConsumer
-from app.events.parts_mirror_consumer import BOOK_STREAM, PartsMirrorConsumer
 from app.worker.job_consumer import CompositionJobConsumer
 
 setup_logging(settings.log_level)  # P2·A2a — shared JSON logging (composition-service)
@@ -54,25 +53,13 @@ async def _main() -> None:
     mirror_task = asyncio.create_task(mirror.run())
     logger.info("written-verdict mirror: consuming %s", CHAPTER_STREAM)
 
-    # C-merge C2 — the manuscript-parts → structure_node mirror. Its own stream + group; deleted at C4.
-    parts_mirror = PartsMirrorConsumer(
-        settings.redis_url, pool,
-        book_base_url=settings.book_internal_url,
-        internal_token=settings.internal_service_token,
-        consumer_name="worker-1",
-    )
-    parts_mirror_task = asyncio.create_task(parts_mirror.run())
-    logger.info("parts mirror: consuming %s", BOOK_STREAM)
-
     try:
         await consumer.run()
     finally:
         sweeper.cancel()
         mirror_task.cancel()
-        parts_mirror_task.cancel()
         await consumer.close()
         await mirror.close()
-        await parts_mirror.close()
         await close_pool()
 
 
