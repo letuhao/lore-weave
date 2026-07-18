@@ -1174,7 +1174,8 @@ CREATE TABLE IF NOT EXISTS structure_node (
   created_by      UUID,                                       -- 23-A3 actor stamp (who authored the arc);
                                                               -- stored, never a scope key / filter (PM-5, DA-11)
   parent_id       UUID REFERENCES structure_node(id) ON DELETE CASCADE,
-  kind            TEXT NOT NULL CHECK (kind IN ('saga','arc')),
+  kind            TEXT NOT NULL CHECK (kind IN ('saga','arc','part')),  -- C-merge C1: 'part' = a
+                  -- depth-0 manuscript grouping absorbed from book-service parts (no generation semantics)
   depth           SMALLINT NOT NULL DEFAULT 0 CHECK (depth BETWEEN 0 AND 2),
   rank            TEXT NOT NULL,                              -- LexoRank, same scheme as outline_node
 
@@ -1208,6 +1209,12 @@ CREATE INDEX IF NOT EXISTS idx_structure_node_parent ON structure_node(parent_id
 -- (structure_node shipped without it); the fresh CREATE above carries it. Nullable — a
 -- pre-A3 arc has no recorded author, and created_by is never a scope key (PM-5/DA-11).
 ALTER TABLE structure_node ADD COLUMN IF NOT EXISTS created_by UUID;
+
+-- C-merge C1 (additive) — widen kind to admit 'part' on already-migrated DBs (the fresh CREATE above
+-- already carries it). A 'part' is a depth-0 manuscript grouping (parent_id NULL) migrated from
+-- book-service parts; nothing WRITES 'part' rows until C2 dual-write. Reversible: no data uses it yet.
+ALTER TABLE structure_node DROP CONSTRAINT IF EXISTS structure_node_kind_check;
+ALTER TABLE structure_node ADD CONSTRAINT structure_node_kind_check CHECK (kind IN ('saga','arc','part'));
 
 -- BA9 · depth + cycle guard (mirrors motif_application_scope_guard). A subtree
 -- reparent recomputes descendant depth in one statement (recursive CTE) inside

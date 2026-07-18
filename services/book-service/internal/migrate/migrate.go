@@ -306,11 +306,19 @@ ALTER TABLE chapters ADD COLUMN IF NOT EXISTS part_id UUID
   REFERENCES parts(id) ON DELETE SET NULL;
 ALTER TABLE chapters ADD COLUMN IF NOT EXISTS structural_path TEXT;
 
+-- C-merge C1 (additive) — the unified chapter→structure link. A book-scoped, cross-DB id pointing at
+-- composition's structure_node (NO FK — structure_node lives in a different service's DB, same pattern
+-- as scenes.source_scene_id). Nullable, sits ALONGSIDE part_id; nothing WRITES it until C2 dual-write
+-- and nothing READS it until C3. Reversible until then. Replaces part_id as the SSOT at C4.
+ALTER TABLE chapters ADD COLUMN IF NOT EXISTS structure_node_id UUID;
+
 CREATE INDEX IF NOT EXISTS idx_scenes_chapter_sort_active
   ON scenes(chapter_id, sort_order) WHERE lifecycle_state = 'active';
 CREATE INDEX IF NOT EXISTS idx_scenes_content_hash ON scenes(content_hash);
 CREATE INDEX IF NOT EXISTS idx_chapters_part ON chapters(part_id)
   WHERE part_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_chapters_structure_node ON chapters(structure_node_id)
+  WHERE structure_node_id IS NOT NULL;
 
 -- ── Canon Model CM1 (editorial lifecycle) - 2026-06-04 ──────────────────────
 -- A chapter is canon only once PUBLISHED. editorial_status gates canonization;

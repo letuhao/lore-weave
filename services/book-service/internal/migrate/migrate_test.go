@@ -68,6 +68,8 @@ func TestSchemaAddsChaptersPartAndStructuralPath(t *testing.T) {
 		"ALTER TABLE chapters ADD COLUMN IF NOT EXISTS part_id UUID",
 		"REFERENCES parts(id) ON DELETE SET NULL",
 		"ALTER TABLE chapters ADD COLUMN IF NOT EXISTS structural_path TEXT",
+		// C-merge C1: the additive unified chapter→structure link (no FK — cross-service id).
+		"ALTER TABLE chapters ADD COLUMN IF NOT EXISTS structure_node_id UUID",
 	} {
 		if !strings.Contains(schemaSQL, alter) {
 			t.Fatalf("chapters table missing ALTER: %q", alter)
@@ -80,6 +82,7 @@ func TestSchemaP1IndexesPresent(t *testing.T) {
 		"idx_scenes_chapter_sort_active",
 		"idx_scenes_content_hash",
 		"idx_chapters_part",
+		"idx_chapters_structure_node", // C-merge C1
 	} {
 		if !strings.Contains(schemaSQL, idx) {
 			t.Fatalf("missing P1 index: %q", idx)

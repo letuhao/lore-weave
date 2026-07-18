@@ -25,11 +25,18 @@ C1→C4 cutover, `/review-impl` + cross-service live-smoke on every C-slice.
 - [x] SPEC + C-merge DESIGN + PO sign-off — commits ce…, 6fd4e5e35 (+ sign-off edit).
 - [x] Part A · shared <BookNotReadyDoor> across studio dock panels — committed. tsc 0, 797 tests,
       QC :5290 (Places redirect→door, WhatIf dead-text→door, Ref/Style consolidated).
-- [ ] Part B · one "Set up this book" (useBookReadiness + usePlanOrigin; the "Set up everything"
-      secondary on BookNotReadyDoor). FE-only. test + QC :5290.
-- [ ] C1 · ADDITIVE — `structure_node.kind='part'` (composition) + book-scoped `chapters.structure_node_id`
-      (book-service, nullable, alongside part_id, no backfill). Nothing reads it. migrate_test asserts
-      updated. review-impl + both-service tests.
+- [ ] Part B · one "Set up this book" (useBookReadiness + usePlanOrigin) — **RESEQUENCED to after C4**
+      (gate: naturally-next-phase). It creates a *plan*, the exact structure C-merge reshapes; building
+      it on the unified post-merge model avoids rework. Part A already removed the dead ends, so nothing
+      user-facing regresses by waiting. FE-only when it lands.
+- [x] C1 · ADDITIVE — `structure_node.kind='part'` (composition migrate.py: inline + idempotent
+      DROP/ADD structure_node_kind_check) + `chapters.structure_node_id` UUID nullable, no-FK cross-DB
+      id + `idx_chapters_structure_node` (book-service migrate.go, alongside part_id). migrate_test
+      asserts extended both. Go schema tests green; composition migrate.py valid. LIVE-SMOKE (dual-DB):
+      loreweave_composition accepts kind='part' (depth auto-0) + still rejects bogus; loreweave_book
+      has structure_node_id (nullable, coexists w/ part_id) + the index. Review: additive-only, focused
+      inline (idempotent, auto-constraint-name verified live, no-FK correct); cold-start review-impl
+      reserved for C2+ (data/logic slices). Reversible: nothing reads/writes the new fields.
 - [ ] C2 · DUAL-WRITE — parts mutations mirror to structure_node/structure_node_id; backfill existing
       parts→structure_node; reads still from parts. Consistency check. review-impl + live-smoke.
 - [ ] C3 · READ-CUTOVER — Manuscript rail + hierarchy read structure_node via gateway; partsMode
