@@ -9,7 +9,7 @@ PyJWT>=2.8
 python-dotenv>=1.2.2
 # C18 observability — structured JSON logs + Prometheus /metrics.
 python-json-logger>=2.0
-prometheus-client>=0.20
+prometheus-client>=0.25.0
 # Compose slice 3 (mode F — attach files): multipart uploads + MinIO + text
 # extraction. OCR libs (pytesseract/pdf2image/Pillow) are import-guarded in
 # app/files/extract.py — they need the Tesseract + poppler binaries (installed in
