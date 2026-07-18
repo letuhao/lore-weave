@@ -33,9 +33,14 @@
 >   panel_id enum +2 + contract regen + i18n×17). 8 view tests + panelCatalogContract 9/9.
 > - **FE setting (9e3d5c050):** `workflow-bindings` settings tab (mode→workflow auto-inject) — lands on both
 >   /settings + studio dock via the one registry; settingsTabParity 9/9.
-> **Debt:** D-S12-LIVE-SMOKE (agent-loop E2E needs live stack+browser — each link proven in isolation);
-> D-S12-BINDINGS-I18N (BindingSettings hardcodes English, pre-existing). MCP delete/enablement tools = conscious
-> defer (agents propose, humans dispose).
+> **Audit + deferred-cleanup DONE (2026-07-18):** the audit closed the propose→approve loop's discoverability
+> (agent message names + auto-opens the panel; proposal card shows steps; workflows view-one). Then the 3 defers
+> were CLEARED (spec [`docs/specs/2026-07-18-S12-deferred-cleanup.md`](../specs/2026-07-18-S12-deferred-cleanup.md),
+> commit `b67bb8d19`): **D-S12-STUDIO-PROPOSAL-BADGE** (frame-level pending-approvals badge in the studio status
+> bar, routes to the right panel; BE count split), **D-S12-WORKFLOW-REVISIONS** (`GET …/workflows/{id}/revisions`
+> mirror of skills), **D-S12-BINDINGS-I18N** (BindingSettings i18n'd; WorkflowRack had no visible strings).
+> **Remaining debt:** D-S12-LIVE-SMOKE (agent-loop E2E needs live stack+browser — each link proven in isolation).
+> MCP delete/enablement tools = conscious defer (agents propose, humans dispose).
 
 ## 📜 GLOSSARY CONTRACT-FIRST — P1–P4 COMPLETE, contract now 100% + CI-enforced **SHIPPED (2026-07-18)**
 > Spec: [`docs/specs/2026-07-18-glossary-contract-first-restoration.md`](../specs/2026-07-18-glossary-contract-first-restoration.md) ·
