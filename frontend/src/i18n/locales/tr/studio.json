@@ -817,7 +817,8 @@
   "popout": {
     "invalid": "Bu açılır pencere bağlantısı geçersiz.",
     "open": "Aç",
-    "openTitle": "Compose'u ayrı bir pencerede aç"
+    "openTitle": "Compose'u ayrı bir pencerede aç",
+    "needChapter": "Önce bir bölüm açın — ayrıştırılmış pencere mevcut bölümü kendi penceresinde açar"
   },
   "dock": {
     "dock": "Sabitle"

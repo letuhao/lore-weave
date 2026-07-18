@@ -817,7 +817,8 @@
   "popout": {
     "invalid": "Liên kết cửa sổ bật ra này không hợp lệ.",
     "open": "Mở cửa sổ riêng",
-    "openTitle": "Mở Compose trong cửa sổ riêng"
+    "openTitle": "Mở Compose trong cửa sổ riêng",
+    "needChapter": "Cần mở một chương trước — chế độ xem cửa sổ riêng sẽ mở chương hiện tại trong một cửa sổ mới"
   },
   "dock": {
     "dock": "Ghép lại"

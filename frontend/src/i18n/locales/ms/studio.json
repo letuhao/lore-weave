@@ -817,7 +817,8 @@
   "popout": {
     "invalid": "Pautan pop-out ini tidak sah.",
     "open": "Pop out",
-    "openTitle": "Buka Compose dalam tetingkap sendiri"
+    "openTitle": "Buka Compose dalam tetingkap sendiri",
+    "needChapter": "Buka bab terlebih dahulu — fungsi pop-out akan membuka bab semasa dalam tetingkap baharu"
   },
   "dock": {
     "dock": "Dock"

@@ -817,7 +817,8 @@
   "popout": {
     "invalid": "Ce lien de fenêtre contextuelle est invalide.",
     "open": "Détacher",
-    "openTitle": "Ouvrir le Compositeur dans sa propre fenêtre"
+    "openTitle": "Ouvrir le Compositeur dans sa propre fenêtre",
+    "needChapter": "Ouvrez d'abord un chapitre — le mode pop-out ouvre le chapitre actuel dans sa propre fenêtre"
   },
   "dock": {
     "dock": "Ancrage"

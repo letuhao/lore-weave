@@ -817,7 +817,8 @@
   "popout": {
     "invalid": "This pop-out link is invalid.",
     "open": "Pop out",
-    "openTitle": "Open Compose in its own window"
+    "openTitle": "Open Compose in its own window",
+    "needChapter": "Open a chapter first — pop-out opens the current chapter in its own window"
   },
   "dock": {
     "dock": "Dock"

@@ -817,7 +817,8 @@
   "popout": {
     "invalid": "此弹出链接无效。",
     "open": "弹出",
-    "openTitle": "在独立窗口中打开编排器"
+    "openTitle": "在独立窗口中打开编排器",
+    "needChapter": "请先打开章节 —— 弹出窗口将在新窗口中打开当前章节"
   },
   "dock": {
     "dock": "停靠"

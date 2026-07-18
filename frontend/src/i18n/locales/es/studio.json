@@ -817,7 +817,8 @@
   "popout": {
     "invalid": "Este enlace emergente no es válido.",
     "open": "Abrir en ventana emergente",
-    "openTitle": "Abrir el editor en su propia ventana"
+    "openTitle": "Abrir el editor en su propia ventana",
+    "needChapter": "Abre un capítulo primero; la ventana emergente abre el capítulo actual en su propia ventana"
   },
   "dock": {
     "dock": "Anclar"

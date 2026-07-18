@@ -817,7 +817,8 @@
   "popout": {
     "invalid": "이 팝아웃 링크는 유효하지 않습니다.",
     "open": "팝아웃",
-    "openTitle": "Compose를 별도 창으로 열기"
+    "openTitle": "Compose를 별도 창으로 열기",
+    "needChapter": "먼저 챕터를 열어주세요 — 팝아웃은 현재 챕터를 별도의 창으로 엽니다"
   },
   "dock": {
     "dock": "독(Dock)"

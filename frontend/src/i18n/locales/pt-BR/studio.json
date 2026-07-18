@@ -817,7 +817,8 @@
   "popout": {
     "invalid": "Este link pop-out é inválido.",
     "open": "Abrir em janela flutuante",
-    "openTitle": "Abrir o Compositor em sua própria janela"
+    "openTitle": "Abrir o Compositor em sua própria janela",
+    "needChapter": "Abra um capítulo primeiro — o pop-out abre o capítulo atual em uma nova janela"
   },
   "dock": {
     "dock": "Dock"

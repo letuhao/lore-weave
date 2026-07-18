@@ -76,6 +76,11 @@ export function ComposePanel(props: IDockviewPanelProps) {
   const [poppedOut, setPoppedOut] = useState(false);
   const activeChapterId = unitMeta?.activeChapterId ?? null;
   const popoutTitle = t('popout.openTitle', { defaultValue: 'Open Compose in its own window' });
+  // N7 — when the pop-out is disabled it's ALWAYS because no chapter is open (the popped window
+  // is chapter-scoped). Say so, so a newcomer isn't left staring at a greyed button with no reason.
+  const popoutDisabledTitle = t('popout.needChapter', {
+    defaultValue: 'Open a chapter first — pop-out opens the current chapter in its own window',
+  });
 
   return (
     <div data-testid="studio-compose-panel" className="flex h-full min-h-0 flex-col">
@@ -83,7 +88,7 @@ export function ComposePanel(props: IDockviewPanelProps) {
         <button
           type="button"
           data-testid="studio-compose-popout"
-          title={popoutTitle}
+          title={!activeChapterId ? popoutDisabledTitle : popoutTitle}
           disabled={!activeChapterId || poppedOut}
           onClick={() => setPoppedOut(true)}
           className="rounded px-1.5 py-0.5 hover:bg-secondary hover:text-foreground disabled:opacity-40"

@@ -817,7 +817,8 @@
   "popout": {
     "invalid": "Dieser Pop-out-Link ist ungültig.",
     "open": "Auslagern",
-    "openTitle": "Compose in eigenem Fenster öffnen"
+    "openTitle": "Compose in eigenem Fenster öffnen",
+    "needChapter": "Öffne zuerst ein Kapitel – das Pop-out-Fenster öffnet das aktuelle Kapitel in einem eigenen Fenster"
   },
   "dock": {
     "dock": "Dock"

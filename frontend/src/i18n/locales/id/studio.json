@@ -817,7 +817,8 @@
   "popout": {
     "invalid": "Tautan pop-out ini tidak valid.",
     "open": "Pop out",
-    "openTitle": "Buka Compose di jendela terpisah"
+    "openTitle": "Buka Compose di jendela terpisah",
+    "needChapter": "Buka bab terlebih dahulu — fitur pop-out akan membuka bab saat ini di jendela terpisah"
   },
   "dock": {
     "dock": "Dock"

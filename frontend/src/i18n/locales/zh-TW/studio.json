@@ -817,7 +817,8 @@
   "popout": {
     "invalid": "此彈出視窗連結無效。",
     "open": "彈出視窗",
-    "openTitle": "在獨立視窗開啟 Compose"
+    "openTitle": "在獨立視窗開啟 Compose",
+    "needChapter": "請先開啟章節 — 彈出視窗將在獨立視窗中開啟當前章節"
   },
   "dock": {
     "dock": "收回"
