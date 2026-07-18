@@ -16,7 +16,6 @@ import type {
   LaneBand,
   LaneLayout,
 } from './layout/laneLayout';
-import type { LaneArc, LaneChapter } from './layout/laneTree';
 
 /** The FE authorship CODING — the sealed redesign's type/colour semantic: `authored` (a human wrote
  *  it → Lora serif + amber) vs `mined` (a machine produced it → JetBrains Mono + teal). This is a
@@ -43,7 +42,6 @@ export type {
   LaneBand,
   LaneLayout,
 };
-export type { LaneArc, LaneChapter, LaneScene } from './layout/laneTree';
 
 /** Read surface #1 — `GET /v1/composition/books/{book_id}/arcs` (composition_arc_list,
  *  23 B1). The whole structure shell + the derived block the Hub requires (OQ-2). Extra
@@ -282,14 +280,6 @@ export interface PlanHubView {
   /** The positioned lanes/nodes for the current shell + loaded windows + collapse state
    *  (the ONE laneLayout() call — never a second "where does a node go" in the canvas). */
   layout: LaneLayout;
-  /** The arc → chapter → scene TREE for the lane-flow Advanced view (the sealed redesign). A
-   *  projection of the SAME shell + loaded windows the `layout` uses — the flow view renders a
-   *  document tree (stacked lanes, wrapping chapters), not the graph's absolute positions. */
-  laneTree: LaneArc[];
-  /** Arc-less chapters (post-decompile) for the flow view's "Unassigned" group — visible + fileable. */
-  laneUnassigned: LaneChapter[];
-  /** Flattened arc pick-list for the "move to arc" control (id, title, depth for indentation). */
-  arcOptions: { id: string; title: string; depth: number }[];
   edges: SceneLinkEdge[];
   /** null until the overlay resolves; the canvas renders no problem badge while null. */
   overlay: PlanOverlay | null;

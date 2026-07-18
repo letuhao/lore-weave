@@ -9,12 +9,25 @@ import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '@/auth';
 import { getArcs, getConformanceStatus, getPlanOverlay, getSceneLinks } from '../api';
 import { laneLayout } from '../layout/laneLayout';
-import { autoExpandArcIds, buildLaneTree, flattenArcOptions, unassignedChapters } from '../layout/laneTree';
+import type { ArcListNode } from '../types';
 
-/** How many root arcs the lane-flow view opens on first show. Bounds the cold-open cost (each opened
- *  arc fires ONE chapter-window fetch, after paint) so a 1000-arc book never fetches 1000 windows at
- *  once, while a normal book shows its whole hierarchy by default (mockup "root fix 2"). */
+/** How many root arcs Advanced opens on first show. Bounds the cold-open cost (each opened arc fires
+ *  ONE chapter-window fetch, after paint) so a 1000-arc book never fetches 1000 windows at once, while
+ *  a normal book shows its whole hierarchy by default (mockup "root fix 2") instead of a wall of
+ *  collapsed rollups. */
 const MAX_AUTO_EXPAND = 8;
+
+/** The first N ROOT arc ids (rank order) — the bounded set Advanced auto-expands. Roots only: a
+ *  sub-arc opens with its parent. */
+function autoExpandArcIds(arcs: ArcListNode[], max: number): string[] {
+  const byId = new Map(arcs.map((a) => [a.id, a]));
+  return arcs
+    .filter((a) => !a.parent_id || !byId.has(a.parent_id))
+    .slice()
+    .sort((a, b) => (a.rank < b.rank ? -1 : a.rank > b.rank ? 1 : a.id < b.id ? -1 : a.id > b.id ? 1 : 0))
+    .slice(0, max)
+    .map((a) => a.id);
+}
 import type {
   ArcPagination,
   CollapseState,
@@ -117,19 +130,6 @@ export function usePlanHub(
     [shell, windowsResult.windows, collapse],
   );
 
-  // The lane-flow Advanced view's tree (the sealed redesign). Same shell + loaded windows the graph
-  // layout uses, reshaped into arc → chapter → scene. `content` carries source/title/status/written.
-  const laneTree = useMemo(
-    () => buildLaneTree(arcsQuery.data?.arcs ?? [], windowsResult.content, expandedArcs, expandedChapters),
-    [arcsQuery.data, windowsResult.content, expandedArcs, expandedChapters],
-  );
-  // Arc-less chapters (post-decompile) — rendered in the flow view's "Unassigned" group so they are
-  // visible + fileable, and the pick-list the "move to arc" control offers.
-  const laneUnassigned = useMemo(
-    () => unassignedChapters(windowsResult.content, expandedChapters),
-    [windowsResult.content, expandedChapters],
-  );
-  const arcOptions = useMemo(() => flattenArcOptions(laneTree), [laneTree]);
 
   const unionState = useMemo(
     () =>
@@ -341,9 +341,6 @@ export function usePlanHub(
 
   return {
     layout,
-    laneTree,
-    laneUnassigned,
-    arcOptions,
     edges: sceneLinksQuery.data?.scene_links ?? [],
     overlay,
     conformance: conformanceQuery.data ?? null,
