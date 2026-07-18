@@ -55,7 +55,9 @@ class TestResolveSkillsToInject:
         )
         # close-21-28: co_write auto-injects on every WRITE-mode book/editor surface
         # (the write-mode workflow sibling of plan mode's plan_forge). Curation adds to it.
-        assert codes == ["glossary", "co_write"]
+        # N5a: pinning `glossary` now ALSO injects the `glossary_shaping` companion (the
+        # ontology-building guidance split out of the lean core — see the shaping-gate tests).
+        assert codes == ["glossary", "co_write", "glossary_shaping"]
 
     def test_disable_tools_returns_empty(self):
         assert resolve_skills_to_inject(
@@ -696,3 +698,54 @@ class TestF2TracedWebResearchBugRemainsFixed:
         assert "web_search" in prompt
         assert "glossary_web_search" not in prompt
         assert "find_tools" in prompt
+
+
+class TestN5aScopeRestraint:
+    """N5a (dogfood 2026-07-18 F3) — the co-writer must not over-reach into unrequested
+    glossary/world setup, and the glossary shaping section is guarded to explicit-ask only."""
+
+    def test_co_write_prompt_forbids_unrequested_glossary_setup(self):
+        prompt = skill_prompts(["co_write"])["co_write"]
+        low = prompt.lower()
+        # The restraint clause must be present and name the specific over-reach the dogfood hit.
+        assert "never adopt glossary standards" in low
+        assert "one request" in low  # "one request, one focused action"
+
+    def test_glossary_core_has_no_proactive_shaping_imperatives(self):
+        # The always-injected glossary CORE must NOT carry the "adopt standards / do not skip
+        # it" push (a live Gemma QC proved a guard-line alone did not hold — the imperatives
+        # had to be REMOVED from the auto path). It keeps a lean explicit-ask pointer instead.
+        core = skill_prompts(["glossary"])["glossary"]
+        low = core.lower()
+        assert "do not skip it" not in low
+        assert "a book starts empty until its standards are adopted" not in low
+        assert "only when explicitly asked" in low  # the lean pointer
+
+    def test_glossary_shaping_lives_in_a_separate_skill(self):
+        shaping = skill_prompts(["glossary_shaping"])["glossary_shaping"]
+        assert "do not skip it" in shaping  # the shaping guidance still exists, just gated
+
+    def test_shaping_is_NOT_auto_injected_on_a_plain_write_turn(self):
+        # The over-reach seam: a book/editor WRITE turn with glossary NOT pinned must get the
+        # lean glossary core but NOT glossary_shaping (dogfood F3 — "write chapter 1" must not
+        # pull in ontology adoption).
+        codes = resolve_skills_to_inject(
+            enabled_skills=[], stream_format="agui", disable_tools=False,
+            tool_calling_enabled=True, editor=True, book_scoped=True, admin=False,
+            permission_mode="write",
+        )
+        assert "glossary" in codes
+        assert "glossary_shaping" not in codes
+
+    def test_shaping_IS_injected_when_glossary_is_pinned(self):
+        codes = resolve_skills_to_inject(
+            enabled_skills=["glossary"], stream_format="agui", disable_tools=False,
+            tool_calling_enabled=True, editor=True, book_scoped=True, admin=False,
+            permission_mode="write",
+        )
+        assert "glossary_shaping" in codes
+
+    def test_glossary_shaping_is_hidden_from_the_catalog(self):
+        ids = {item["id"] for item in catalog_items()}
+        assert "glossary" in ids
+        assert "glossary_shaping" not in ids

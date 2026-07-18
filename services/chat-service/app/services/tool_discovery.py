@@ -376,19 +376,35 @@ def surface_hot_domains(
     return domains
 
 
+# N5a (dogfood 2026-07-18 F3) — high-impact, book-WIDE tools that must NEVER ride the domain
+# hot-seed. Keeping `glossary_adopt_standards` advertised let the co-writer proactively "set up
+# the world" on a plain "write a chapter 1" turn and block the newcomer with a confirm they never
+# asked for. A prompt guard-line AND removing it from ALWAYS_HOT_WRITES both FAILED live QC — the
+# tool was still budget-hot (small schema fit the seed) and called directly (no find_tools). So it
+# joins the never-hot-seed set: fully reachable via find_tools/tool_load when the writer EXPLICITLY
+# asks to set up their world (the lean glossary skill instructs exactly that), just not advertised
+# by default. Same "not on the wire by default" mechanism as CAT-4's legacy exclusion.
+DISCOVER_ONLY_HIGH_IMPACT: frozenset[str] = frozenset({
+    "glossary_adopt_standards",
+})
+
+
 def hot_tool_names(catalog: list[dict], domains: set[str]) -> set[str]:
     """The catalog tool names whose domain prefix is in ``domains`` — the set to
     seed into the discovery active-set so they're advertised on the first pass.
     Empty ``domains`` → empty set (universal surface: nothing pre-seeded).
     CAT-4: a `legacy`-tagged tool is NEVER hot-seeded, even when its domain is —
     the whole point of tagging it legacy is that it stops riding the wire by
-    default; a domain hot-seed that ignored this would silently defeat CAT-4."""
+    default; a domain hot-seed that ignored this would silently defeat CAT-4.
+    N5a: `DISCOVER_ONLY_HIGH_IMPACT` tools are excluded for the same reason (kept
+    off the default wire; reachable via find_tools when explicitly asked)."""
     if not domains:
         return set()
     out: set[str] = set()
     for td in catalog:
         name = tool_name(td)
-        if name and _domain_of(name) in domains and not is_legacy_tool(td):
+        if (name and _domain_of(name) in domains and not is_legacy_tool(td)
+                and name not in DISCOVER_ONLY_HIGH_IMPACT):
             out.add(name)
     return out
 

@@ -44,6 +44,11 @@ def _load_glossary() -> str:
     return GLOSSARY_SKILL_PROMPT
 
 
+def _load_glossary_shaping() -> str:
+    from app.services.glossary_skill import GLOSSARY_SHAPING_PROMPT
+    return GLOSSARY_SHAPING_PROMPT
+
+
 def _load_admin() -> str:
     from app.services.glossary_skill import GLOSSARY_ADMIN_SKILL_PROMPT
     return GLOSSARY_ADMIN_SKILL_PROMPT
@@ -102,6 +107,26 @@ SYSTEM_SKILLS: dict[str, SkillDef] = {
         surfaces=frozenset({"book", "editor"}),
         prompt_loader=_load_glossary,
         description="Inspect and curate the book's glossary — characters, places, items, and the kinds/attributes schema.",
+        hot_domains=frozenset({"glossary"}),
+    ),
+    "glossary_shaping": SkillDef(
+        code="glossary_shaping",
+        label="Glossary ontology-shaping",
+        surfaces=frozenset({"book", "editor"}),
+        prompt_loader=_load_glossary_shaping,
+        # N5a (dogfood 2026-07-18 F3): the PROACTIVE ontology-building half of the glossary
+        # skill. Split OUT of the always-injected `glossary` core because its imperative
+        # "adopt standards / do not skip it" framing made the co-writer rebuild a newcomer's
+        # ontology on a plain "write a chapter" turn (a live Gemma QC proved a guard-line
+        # alone did not hold). Injected ONLY when the author is actually doing glossary/world
+        # work — pinned in the rack, or added by the intent router / find_tools — never on the
+        # legacy auto-inject path. Hidden from the catalog (it's an internal companion to
+        # `glossary`, not a separately-browsable capability).
+        description=(
+            "Set up, build, or expand the book's world ontology — kinds, attributes, adopt "
+            "standards, batch ontology proposals. Companion to the glossary skill; loads only "
+            "when the author explicitly does world/lore setup."
+        ),
         hot_domains=frozenset({"glossary"}),
     ),
     "universal": SkillDef(
@@ -265,7 +290,10 @@ def skill_metadata_block(
     lines = [
         f"- **{s.label}** (`{s.code}`): {s.description}"
         for s in SYSTEM_SKILLS.values()
-        if s.description and _skill_visible(s, active)
+        # glossary_shaping (N5a) is an INTERNAL companion of `glossary`, auto-added when the
+        # user does glossary work — not a separately-pinnable capability, so keep it out of the
+        # L1 "available skills" list too (consistent with catalog_items).
+        if s.description and _skill_visible(s, active) and s.code != "glossary_shaping"
     ]
     if not lines:
         return None
@@ -377,6 +405,18 @@ def resolve_skills_to_inject(
         cw = SYSTEM_SKILLS.get("co_write")
         if cw and _skill_visible(cw, active):
             out.append("co_write")
+
+    # N5a (dogfood 2026-07-18 F3) — the ontology-SHAPING companion is injected ONLY when the
+    # author has explicitly PINNED the glossary skill (real glossary/world work), never on the
+    # legacy auto-inject path where its "adopt standards / do not skip it" push made the
+    # co-writer rebuild a newcomer's ontology on a plain "write a chapter" turn. The lean
+    # `glossary` core (auto-injected) still teaches lookup/edit + points at find_tools for
+    # setup; the intent router adds glossary_shaping too when a turn's meaning matches world
+    # setup (the skill carries a description). Additive + surface-filtered like the rest.
+    if "glossary" in enabled_skills and "glossary_shaping" not in out:
+        gs = SYSTEM_SKILLS.get("glossary_shaping")
+        if gs and _skill_visible(gs, active):
+            out.append("glossary_shaping")
 
     # WS-3 (C6) — the mode→capability binding's skills. Additive + surface-filtered.
     for code in binding_skills or []:
@@ -509,5 +549,7 @@ def catalog_items() -> list[dict]:
             "surfaces": sorted(s.surfaces),
         }
         for s in SYSTEM_SKILLS.values()
-        if s.code != "admin"  # admin surface is cms-only; omit from rack browser
+        # admin surface is cms-only; glossary_shaping is an internal companion to `glossary`
+        # (N5a) — neither is a separately-browsable capability, so omit from the rack browser.
+        if s.code not in ("admin", "glossary_shaping")
     ]

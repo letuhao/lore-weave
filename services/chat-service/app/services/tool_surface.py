@@ -56,10 +56,17 @@ _READ_VERBS = (
 # Deliberately tight (not "all writes") so it never re-introduces the whole-domain context
 # explosion the token budget fixed; the long tail still lazy-loads via tool_load/find_tools.
 ALWAYS_HOT_WRITES: frozenset[str] = frozenset({
-    # glossary — populate + edit + set-up ontology (S01/S02/S03)
+    # glossary — populate + edit EXISTING entities (S01/S02/S03). These are the safe,
+    # low-surprise co-writer writes (add a character, set an attribute).
     "glossary_propose_entities",
     "glossary_entity_set_attributes",
-    "glossary_adopt_standards",
+    # NOTE (N5a, dogfood 2026-07-18 F3): `glossary_adopt_standards` is DELIBERATELY NOT hot.
+    # Keeping it hot made the co-writer proactively "set up the world" on a plain "write a
+    # chapter 1" turn and block the newcomer with a high-impact confirm they never asked for
+    # (a prompt guard-line alone did NOT hold — a live Gemma QC proved it). It is high-impact,
+    # book-wide, and confirmation-gated, so it belongs on the discover-on-demand path: the agent
+    # reaches it via find_tools/tool_load ONLY when the writer explicitly asks to set up their
+    # world (the lean glossary skill instructs exactly that). Do not re-add it here.
     # knowledge — continuity + KG build (S04, flagship)
     "memory_remember",
     "kg_propose_edge",
