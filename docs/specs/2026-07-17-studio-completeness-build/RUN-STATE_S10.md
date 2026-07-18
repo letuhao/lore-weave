@@ -39,8 +39,15 @@ Genuinely UNBUILT (the S-10 build set):
 - [x] O6b — suggest: "Suggest" tab in Arc Templates panel (premise→ranked candidates). EVID: 3 tests.
 - [x] O6c — decompile: REST twin POST /books/{id}/arcs/decompile + "Group chapters into arcs" in plan-hub
       Simple view. EVID: BE 3 + FE 4 tests; arc-routes 32 green. (O6a/b/c commits per git log)
-- [ ] O1 — style-voice GG-8 panel (catalog + enum + contract + i18n + CATEGORY_ORDER + Lane-B handler).
-- [ ] O3 — GET /v1/composition/books/{bid}/diagnostics (read-only agent_native mirror) + wire the 3 bottom tabs.
+- [x] O1 — style-voice GG-8 panel: StyleVoiceStudioPanel wrapper + catalog row + chat-service panel_id
+      enum + contract regen + legacyParityContract flip (style HOMED) + i18n ×18. EVID: panelCatalog +
+      legacyParity 14 green; frontend_tools_contract 20; tsc clean. (O1 commit per git log)
+- [x] O3 — Issues tab + diagnostics REST twin: extracted the shared build_book_diagnostics(agent_native)
+      called by BOTH the MCP tool + GET /books/{id}/diagnostics; FE Issues feed with kind→panel deep-links,
+      jobs/generation launch jobs-list. EVID: BE arc+agent_native+mcp 129 green (refactor behaviour-
+      preserving); FE Issues+bottom 8 + studio components 41 green; tsc clean. (O3 commit per git log)
+
+## S-10 COMPLETE — all 7 O-items done (O2/O4/search were already shipped; O1/O3/O5/O6/O7 built this run).
 
 ## CONVERGENCE — i18n keys to batch-fill (deferred to avoid concurrent writes on the hot i18n files)
 All rendered via `t(key, {defaultValue})` (UI works now; parity gate passes since keys are absent). Fill in a
@@ -49,6 +56,10 @@ convergence batch via `scripts/i18n_translate.py`:
 - **composition.json**: `motif.arc.extract.*` (blurb/open/namePlaceholder/save/saving/cancel/conflict/error/done),
   `motif.arc.suggest.*` (noProject/premisePlaceholder/genrePlaceholder/run/running/error/empty/mine/span),
   `motif.arc.templates.tabSuggest`, `motif.arc.decompile.*` (open/confirm/run/running/cancel/error/done/none).
+- **studio.json (O3)**: `bottom.issues`, `bottom.launch.{jobs,generation}`, `bottom.openJobs`,
+  `bottom.{issuesLoading,issuesError,issuesEmpty,issuesCapped}`, `bottom.sev.{error,warn,info}`. Also the old
+  `bottomStub.*` keys are now ORPHANED (StudioBottomPanel no longer uses them) — a convergence cleanup can drop them.
+- (O1's `panels.style-voice.*` studio.json keys ARE committed — the panelCatalogContract guideBody gate required them.)
 
 ## DECISIONS (S-10-local)
 - O4-quality: keep the DOCK-8 hub (QualityHubPanel launcher) — reachability already met; do NOT add a rival
