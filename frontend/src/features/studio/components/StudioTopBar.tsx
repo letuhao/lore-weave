@@ -3,6 +3,7 @@
 import { Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { ArrowLeft, LayoutDashboard, Search, Settings } from 'lucide-react';
+import { StudioLayoutButton } from './StudioLayoutButton';
 
 interface Props {
   bookId: string;
@@ -47,6 +48,10 @@ export function StudioTopBar({ bookId, bookTitle, onOpenQuickOpen }: Props) {
         <span className="truncate">{t('palette.placeholder', { defaultValue: 'Go to chapter, scene, arc…' })}</span>
         <kbd className="ml-auto rounded border border-border px-1.5 py-px font-mono text-[10px]">⌘P</kbd>
       </button>
+
+      {/* Panel-layout preset menu — arranges the open dock panels into N columns / a grid
+          (ultrawide-friendly, well past the ~2×2 users reach by hand). */}
+      <StudioLayoutButton />
 
       <Link
         to={`/books/${bookId}/settings`}

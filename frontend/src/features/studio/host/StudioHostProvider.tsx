@@ -11,6 +11,7 @@
 import { createContext, useContext, useEffect, useMemo, useRef, useState, type MutableRefObject, type ReactNode } from 'react';
 import { useSyncExternalStore } from 'react';
 import type { DockviewApi } from 'dockview-react';
+import { reflowDockGrid } from '../layout/dockLayout';
 import { applyBusEvent, type StudioBusEvent, type StudioBusSnapshot, type StudioStatusBarItem, type StudioToolRegistration } from './types';
 
 interface Store<S> {
@@ -51,6 +52,10 @@ export interface StudioHost {
   // panel id IS the component id (the singleton panels).
   openPanel: (panelId: string, opts?: { focus?: boolean; title?: string; params?: Record<string, unknown>; component?: string }) => void;
   focusManuscriptUnit: (chapterId: string, panelId?: string) => void;
+  // Arrange the open dock panels into a cols×rows grid (the layout-preset picker's one seam). Wraps
+  // reflowDockGrid so the dock api stays encapsulated; the resulting layout persists via the
+  // existing onDidLayoutChange writer. No-op if the dock api isn't ready or <2 panels are open.
+  applyDockLayout: (cols: number, rows: number) => void;
   // Internals for the reactive hooks + the dock wiring (not part of the public contract).
   _regStore: Store<StudioToolRegistration[]>;
   _busStore: Store<StudioBusSnapshot>;
@@ -119,6 +124,10 @@ export function StudioHostProvider({ bookId, children }: { bookId: string; child
         // agent's ui_focus_manuscript_unit all drive the editor through this one seam.
         busStore.set(applyBusEvent(busStore.get(), { type: 'chapter', chapterId, bookId }));
         openPanel(panelId);
+      },
+      applyDockLayout: (cols, rows) => {
+        const api = dockApiRef.current;
+        if (api) reflowDockGrid(api, cols, rows);
       },
       _regStore: regStore,
       _busStore: busStore,
