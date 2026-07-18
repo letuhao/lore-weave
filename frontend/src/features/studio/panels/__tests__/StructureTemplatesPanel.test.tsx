@@ -10,6 +10,10 @@ vi.mock('react-i18next', () => ({
 }));
 vi.mock('../useStudioPanel', () => ({ useStudioPanel: () => 'Structure Templates' }));
 
+// S-13 — the panel now uses the studio host for the "Use in decompose" openPanel exit.
+const openPanel = vi.hoisted(() => vi.fn());
+vi.mock('../../host/StudioHostProvider', () => ({ useStudioHost: () => ({ openPanel }) }));
+
 const state = vi.hoisted(() => ({ value: {} as Record<string, unknown> }));
 vi.mock('../useStructureTemplates', () => ({ useStructureTemplates: () => state.value }));
 
@@ -163,11 +167,22 @@ describe('StructureTemplatesPanel', () => {
     expect(screen.queryByTestId('structtpl-dirty')).toBeNull();
   });
 
-  // ── S-01b slice 4: the A1 interim decompose hint (no silent dead-end) ──
-  it('an own template shows the honest "how to use / decompose" hint (A1 interim)', () => {
+  // ── S-13: the real "Use in decompose" EXIT (replaced S-01b's interim hint) ──
+  it('an own template shows "Use in decompose" → opens the decompose panel pre-selected', () => {
+    openPanel.mockClear();
     state.value = base({ selectedId: 'm1', selected: mine });
     render(<StructureTemplatesPanel {...props} />);
-    expect(screen.getByTestId('structtpl-decompose-hint')).toBeInTheDocument();
+    expect(screen.queryByTestId('structtpl-decompose-hint')).toBeNull();   // the interim hint is gone
+    fireEvent.click(screen.getByTestId('structtpl-use-in-decompose'));
+    expect(openPanel).toHaveBeenCalledWith('decompose', { params: { templateId: 'm1' }, focus: true });
+  });
+
+  it('a built-in also offers "Use in decompose" (decompose accepts built-ins)', () => {
+    openPanel.mockClear();
+    state.value = base({ selectedId: 'b1', selected: builtin });
+    render(<StructureTemplatesPanel {...props} />);
+    fireEvent.click(screen.getByTestId('structtpl-use-in-decompose'));
+    expect(openPanel).toHaveBeenCalledWith('decompose', { params: { templateId: 'b1' }, focus: true });
   });
 
   // ── completeness-audit fixes ──

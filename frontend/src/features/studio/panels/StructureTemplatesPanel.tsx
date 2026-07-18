@@ -12,6 +12,7 @@ import { useTranslation } from 'react-i18next';
 
 import { ConfirmDialog } from '@/components/shared';
 import { useStudioPanel } from './useStudioPanel';
+import { useStudioHost } from '../host/StudioHostProvider';
 import { useStructureTemplates } from './useStructureTemplates';
 import type { Beat, StructureTemplate } from '@/features/composition/types';
 
@@ -39,6 +40,13 @@ export function StructureTemplatesPanel(props: IDockviewPanelProps) {
   });
   const { t } = useTranslation('studio');
   const s = useStructureTemplates();
+  const host = useStudioHost();
+  // S-13 — the "Use in decompose" EXIT: open the studio decompose panel pre-selected on this
+  // structure. Closes the D-S01-USE-IN-DECOMPOSE loop (replaces S-01b's honest interim hint).
+  const useInDecompose = useCallback(
+    (id: string) => host.openPanel('decompose', { params: { templateId: id }, focus: true }),
+    [host],
+  );
 
   // C1/C4 — the app's ConfirmDialog gates discarding unsaved edits and archiving.
   const dirtyRef = useRef(false);
@@ -145,7 +153,8 @@ export function StructureTemplatesPanel(props: IDockviewPanelProps) {
           ) : !s.selected ? (
             <Hint>{t('structTpl.pickHint', { defaultValue: 'Pick a structure to view its beats — or create a new one.' })}</Hint>
           ) : s.selected.owner_user_id == null ? (
-            <BuiltinDetail tpl={s.selected} t={t} cloning={s.cloning} onClone={() => s.clone(s.selected!.id)} />
+            <BuiltinDetail tpl={s.selected} t={t} cloning={s.cloning} onClone={() => s.clone(s.selected!.id)}
+              onUseInDecompose={() => useInDecompose(s.selected!.id)} />
           ) : s.selected.is_archived ? (
             <ArchivedDetail tpl={s.selected} t={t} onRestore={() => s.restore(s.selected!.id)} />
           ) : (
@@ -155,6 +164,7 @@ export function StructureTemplatesPanel(props: IDockviewPanelProps) {
               saving={s.saving} saveError={s.saveError}
               onSave={(patch) => s.save(s.selected!.id, s.selected!.version ?? 1, patch)}
               onArchive={() => askArchive(s.selected!.id, s.selected!.name)}
+              onUseInDecompose={() => useInDecompose(s.selected!.id)}
               onDirty={trackDirty}
             />
           )}
@@ -178,8 +188,8 @@ export function StructureTemplatesPanel(props: IDockviewPanelProps) {
 type TFn = ReturnType<typeof useTranslation>['0'];
 
 // Built-in: read-only beat list + the clone CTA (slice B).
-function BuiltinDetail({ tpl, t, cloning, onClone }: {
-  tpl: StructureTemplate; t: TFn; cloning: boolean; onClone: () => void;
+function BuiltinDetail({ tpl, t, cloning, onClone, onUseInDecompose }: {
+  tpl: StructureTemplate; t: TFn; cloning: boolean; onClone: () => void; onUseInDecompose?: () => void;
 }) {
   const beats = [...tpl.beats].sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
   return (
@@ -200,11 +210,18 @@ function BuiltinDetail({ tpl, t, cloning, onClone }: {
           </li>
         ))}
       </ol>
-      <div className="mt-3">
+      <div className="mt-3 flex flex-wrap items-center gap-2">
         <button type="button" data-testid="structtpl-clone" disabled={cloning} onClick={onClone}
           className="rounded border border-primary bg-primary/15 px-2.5 py-1 text-[11px] text-primary hover:opacity-90 disabled:opacity-50">
           {cloning ? t('structTpl.cloning', { defaultValue: 'Cloning…' }) : t('structTpl.cloneBuiltin', { defaultValue: 'Clone to my structures' })}
         </button>
+        {/* S-13 — decompose accepts built-ins too (no clone required). */}
+        {onUseInDecompose && (
+          <button type="button" data-testid="structtpl-use-in-decompose" onClick={onUseInDecompose}
+            className="rounded border border-primary/60 px-2.5 py-1 text-[11px] font-medium text-primary hover:bg-primary/10">
+            {t('structTpl.useInDecompose', { defaultValue: 'Use in decompose →' })}
+          </button>
+        )}
       </div>
     </>
   );
@@ -228,10 +245,10 @@ function ArchivedDetail({ tpl, t, onRestore }: { tpl: StructureTemplate; t: TFn;
 
 // Own template: the beat EDITOR (slice C). Local draft; Save → updateTemplate (OCC) in edit-mode, or
 // createTemplate in create-mode (S-01b — the blank draft on-ramp). `mode` picks which Save the panel wires.
-function OwnEditor({ tpl, t, mode = 'edit', saving, saveError, onSave, onArchive, onCancel, onDirty }: {
+function OwnEditor({ tpl, t, mode = 'edit', saving, saveError, onSave, onArchive, onCancel, onUseInDecompose, onDirty }: {
   tpl: StructureTemplate; t: TFn; mode?: 'edit' | 'create'; saving: boolean; saveError: string | null;
   onSave: (patch: { name?: string; kind?: string; beats?: Beat[] }) => void;
-  onArchive?: () => void; onCancel?: () => void; onDirty?: (dirty: boolean) => void;
+  onArchive?: () => void; onCancel?: () => void; onUseInDecompose?: () => void; onDirty?: (dirty: boolean) => void;
 }) {
   const sorted = (bs: Beat[]) => [...bs].sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
   const [name, setName] = useState(tpl.name);
@@ -359,12 +376,15 @@ function OwnEditor({ tpl, t, mode = 'edit', saving, saveError, onSave, onArchive
           </button>
         )}
       </div>
-      {/* A1 interim (S-01b) — the studio decompose EXIT is S-13 (not built yet). Until then, an HONEST
-          hint tells the user WHERE their structure is used, so authoring isn't a silent dead-end.
-          No fake button that would no-op (Frontend-Tool-Contract). */}
-      <p data-testid="structtpl-decompose-hint" className="mt-3 rounded-md border border-dashed px-2.5 py-1.5 text-[10px] leading-relaxed text-muted-foreground">
-        {t('structTpl.decomposeHint', { defaultValue: 'To use this structure, open a chapter and run its Decompose step — your structures appear in the picker there.' })}
-      </p>
+      {/* S-13 — the real "Use in decompose" EXIT (replaces S-01b's interim hint): opens the studio
+          decompose panel pre-selected on THIS structure. Only in edit-mode (a create-mode draft has
+          no id yet); the panel wires it to host.openPanel('decompose', {templateId}). */}
+      {mode === 'edit' && onUseInDecompose && (
+        <button type="button" data-testid="structtpl-use-in-decompose" onClick={onUseInDecompose}
+          className="mt-3 w-full rounded-md border border-primary bg-primary/10 px-2.5 py-1.5 text-[11px] font-medium text-primary hover:bg-primary/20">
+          {t('structTpl.useInDecompose', { defaultValue: 'Use in decompose →' })}
+        </button>
+      )}
     </>
   );
 }
