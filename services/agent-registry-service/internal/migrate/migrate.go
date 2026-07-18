@@ -463,6 +463,19 @@ CREATE TABLE IF NOT EXISTS workflow_revisions (
 );
 CREATE INDEX IF NOT EXISTS idx_workflow_revisions_wf ON workflow_revisions(workflow_id, created_at DESC);
 
+-- S-12 (G-WORKFLOWS): per-USER enablement override for a workflow, mirroring
+-- skill_enablement. A row here is a tenancy-safe PREFERENCE — it toggles a workflow
+-- for THAT user's view only (incl. turning OFF a System workflow they don't want), it
+-- never mutates the shared workflow row. Effective enablement = override ?? (status='published').
+-- The shared-row guard lives on DELETE (admin-only for System); this is per-user.
+CREATE TABLE IF NOT EXISTS workflow_enablement (
+  workflow_id UUID NOT NULL REFERENCES workflows(workflow_id) ON DELETE CASCADE,
+  owner_user_id UUID NOT NULL,
+  enabled BOOLEAN NOT NULL DEFAULT true,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  PRIMARY KEY (workflow_id, owner_user_id)
+);
+
 -- WS-5 (agent-discoverability spec §5 / Track C): seed the System-tier curated
 -- WORKFLOW CATALOG. Each row is a C3 steps object the chat-service step-runner
 -- (WS-2b) hands the agent as an explicit rail. The rail NAMES the tools in order so a

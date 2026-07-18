@@ -293,6 +293,12 @@ func (s *Server) Router() http.Handler {
 
 		// M5 — the FE workflow rack lists a user's visible recipes (System + own + granted book).
 		r.Get("/workflows", s.listUserWorkflows)
+		// S-12 (G-WORKFLOWS): get-one / delete / enablement, mirroring the skills surface so
+		// the workflows GUI reaches skills-parity (view, disable, delete). Create stays
+		// propose→approve (no direct POST; the approve route mints the workflow).
+		r.Get("/workflows/{workflow_id}", s.getWorkflow)
+		r.Delete("/workflows/{workflow_id}", s.deleteWorkflow)
+		r.Put("/workflows/{workflow_id}/enablement", s.setWorkflowEnabled)
 
 		r.Get("/workflow-proposals", s.listWorkflowProposals)
 		r.Get("/workflow-proposals/{proposal_id}", s.getWorkflowProposal)
