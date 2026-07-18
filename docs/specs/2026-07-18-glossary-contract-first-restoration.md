@@ -137,10 +137,13 @@ arrives complete. Opaque `r.Handle` leaves (`/mcp`) are NOT recursed into (we do
   *DoD (evidence):* gate `-count=1` **green**; **allowlist 83→0** — every public /v1 route documented (~20%→100%
   path+method); **0 phantoms** across all 83 (no typos); review-impl caught + fixed a 2nd fabricated enum (wiki
   review body). Request-body/response schemas best-effort (SD-7; full schema = P5).
-- **P4 · Flip to strict + wire CI.** With the allowlist down to true exemptions, the gate now enforces
-  contract-first for every NEW public route. Add the test to the service's CI lane (it already runs in
-  `go test ./internal/api/`); note it in `CLAUDE.md`'s contract-first rule as the enforcement point for
-  glossary. *DoD:* a new undocumented public route reds pre-commit.
+- **P4 · Flip to strict + wire CI. ✅ BUILT 2026-07-18.** The allowlist is drained to 0, so the gate is already
+  strict — there is no backfill cushion, and any NEW undocumented public `/v1` route reds. Wired a dedicated
+  `-count=1` conformance step into `foundation-ci.yml` (cache-proof — a contract-only edit doesn't recompile the
+  test binary; incident-bot precedent) and named the gate + REGEN idiom + `-count=1` in `CLAUDE.md`'s
+  contract-first rule. *DoD (evidence):* the exact CI command
+  `go -C services/glossary-service test -count=1 -run TestOpenAPIRouteConformance ./internal/api/` runs **green**;
+  allowlist 0; a new undocumented `/v1` route would red (P1 teeth proof). **Contract-first is now LIVED for glossary.**
 
 ## 5. Scope / decisions to seal at P1
 - **Public first; `/internal/*` deferred** to a follow-up (internal routes serve other services, a distinct

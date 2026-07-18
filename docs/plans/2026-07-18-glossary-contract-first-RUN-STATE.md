@@ -23,7 +23,7 @@ glossary-service (Go). Size **L** (phased). Each slice: BUILD → review-impl �
 | **P1 · gate + generated allowlist** | contract drift reds automatically | **DONE** | `TestOpenAPIRouteConformance` (chi.Walk + YAML line-scan + SD-1 prefix + SD-2 normalize + 2-direction + SD-5/SD-8 honesty). `go test -run … -count=1` **PASS**; allowlist **113** == undocumented /v1 count; fake route **reds w/ SD-6 msg**; `# permanent:` **survives regen** (review-impl fix); bogus entry reds `(route no longer exists)` (SD-5). vet+build clean. |
 | **P2 · document entity + attr-value family** | S-06 add/delete/PATCH + entity CRUD contracted | **DONE** | `entities.yaml` — 30 routes (entity CRUD, attr-value add/PATCH/delete, translations/evidences/items, chapter-links, revisions, merge/reassign/pin, bulk). Gate `-count=1` green; allowlist **113→83**; **0 phantoms** (all 30 paths match walked routes). review-impl: fixed a **fabricated `relevance` enum** (`[primary,secondary,mentioned]`→`[major,appears,mentioned]`, verified vs code); merge `loser_ids` + confidence enum verified correct; YAML full-parse valid (OpenAPI 3.0.3). |
 | **P3 · document remaining public families** | allowlist → 0 (fully documented) | **DONE** | 5 new YAMLs — `actions.yaml` (6), `system_tier_admin.yaml` (13), `user_kinds.yaml` (13), `wiki.yaml` (25), `book_operations.yaml` (26) = 83 routes. Gate `-count=1` green; **allowlist 83→0** (every public /v1 route documented, ~20%→100% path+method); **0 phantoms** (no typos across 83). review-impl: fixed a 2nd fabricated enum (wiki suggestion review body `{status:[…]}`→`{action:[accept,reject]}`, verified vs `req.Action+"ed"`). |
-| **P4 · flip strict + wire CI + CLAUDE.md note** | new undocumented route reds pre-commit | **TODO** — allowlist already 0 so the gate is DE-FACTO strict; remaining: CLAUDE.md contract-first note names this gate + the `-count=1` CI requirement | — |
+| **P4 · flip strict + wire CI + CLAUDE.md note** | a new undocumented /v1 route reds CI | **DONE** | Allowlist already 0 ⇒ gate is strict (no backfill cushion — any new undocumented /v1 route reds). `foundation-ci.yml`: dedicated `-count=1` conformance step (cache-proof, incident-bot precedent). `CLAUDE.md` contract-first rule now names the gate + REGEN idiom + `-count=1`. Exact CI cmd verified green. |
 
 ## REGISTERS
 ### DECISIONS (sealed)
@@ -50,6 +50,10 @@ glossary-service (Go). Size **L** (phased). Each slice: BUILD → review-impl �
 - **Canon RPC YAMLs may be mis-homed** — `/v1/canon/*` contracts sit under `contracts/api/glossary-service/`
   but no glossary route serves them (L5.F separate sub-program). Follow-up (not this build): relocate to the
   owning track if confirmed. Tracked via the phantom-exempt file's honesty (reds when built).
+- **`canon_read.yaml` is not standard-YAML-parseable** — line 166 has an unquoted `Authorization: Bearer <svid>`
+  in a `description:` (a colon the strict lexer rejects). Our gate line-scans so it's unaffected, but the file
+  is invalid for standard OpenAPI tooling. One-char fix (quote the description) — LEFT for the L5.F/canon track
+  to own (convergent-track discipline: don't edit another track's contract mid-flight). Cheap follow-up.
 
 ### DRIFT
 - **Spec §3a assumed `/v1/canon` is served by glossary — FALSE.** The gate's phantom direction (SD-8) proved
@@ -58,6 +62,12 @@ glossary-service (Go). Size **L** (phased). Each slice: BUILD → review-impl �
 - **review-impl caught a silent-revert bug:** REGEN rewrote every route as `# backfill`, clobbering a hand-set
   `# permanent:` (SD-9) class. Fixed: REGEN now preserves an existing comment for a still-present route.
 
+## STATUS — ALL SLICES DONE (2026-07-18)
+P1 (gate) + P2 (entity family) + P3 (all remaining families) + P4 (strict + CI + CLAUDE.md) complete.
+Glossary /v1 contract: ~20% → **100% path+method coverage**, allowlist drained to 0, gate wired into CI
+(`-count=1`, cache-proof) + named in CLAUDE.md. Optional follow-ups only: P5 full request/response **schema**
+conformance (SD-7 deferred); canon RPC YAML relocation + its one-char parse fix (L5.F track owns).
+
 ## RESUME
-Re-read THIS → `git log --oneline -8` → continue at P2 (document the entity + attr-value family; remove each
-documented route from the allowlist so 113 shrinks).
+Nothing pending on this build. If extending: P5 = deepen the request/response schemas the human review flags,
+or apply the reusable `chi.Walk` conformance-gate pattern to another service.

@@ -85,6 +85,15 @@ jobs:
       - name: race detector — incident-bot breach monitor (110)
         run: go -C services/incident-bot test -race -count=1 ./internal/breach
 
+      # D-GLOSSARY-CONTRACT-FIRST: the OpenAPI route-conformance gate (P4) reads the
+      # contract YAMLs + testdata at RUNTIME, not as compiled inputs. A new /v1 route
+      # recompiles server.go so the module loop above catches it; but a CONTRACT-ONLY
+      # edit (a deleted/renamed YAML, an edited allowlist) leaves the test binary
+      # unchanged and can hit go test's cache → false-green. Re-run it with -count=1
+      # so contract drift is caught regardless of the build cache.
+      - name: glossary OpenAPI route-conformance (-count=1, cache-proof)
+        run: go -C services/glossary-service test -count=1 -run TestOpenAPIRouteConformance ./internal/api/
+
   lints:
     name: Foundation lints (I3 language-rule + projection-coverage + validators)
     runs-on: ubuntu-latest

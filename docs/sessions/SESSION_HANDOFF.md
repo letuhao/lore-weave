@@ -1,19 +1,24 @@
 # ▶▶ NEXT SESSION STARTS HERE
 
-## 📜 GLOSSARY CONTRACT-FIRST — P1 conformance gate **SHIPPED (2026-07-18)**
+## 📜 GLOSSARY CONTRACT-FIRST — P1–P4 COMPLETE, contract now 100% + CI-enforced **SHIPPED (2026-07-18)**
 > Spec: [`docs/specs/2026-07-18-glossary-contract-first-restoration.md`](../specs/2026-07-18-glossary-contract-first-restoration.md) ·
 > RUN-STATE: [`docs/plans/2026-07-18-glossary-contract-first-RUN-STATE.md`](../plans/2026-07-18-glossary-contract-first-RUN-STATE.md).
-> The glossary OpenAPI contract was ~20% complete (149 public /v1 routes / ~30 documented), stale, unenforced.
-> **P1 = the machine gate that stops future rot:** `TestOpenAPIRouteConformance` walks the real router
-> (`chi.Walk`, no-DB `NewServer(nil,cfg).Router()`), line-scans the contract YAMLs' `paths:` block (a strict
-> YAML parse chokes on unquoted colons in prose), and reds in BOTH directions — undocumented `/v1` route, or
-> phantom (documented-but-unrouted) path. `/v1`-prefix scope (SD-1); param-name-agnostic normalize (SD-2);
-> `testdata/route_coverage_exempt.txt` (113 backfill routes, regen via `REGEN_ROUTE_ALLOWLIST=1`, honest — a
-> stale entry reds). **SD-8 earned its keep day one:** 6 `/v1/canon/*` phantoms surfaced (the L5.F canon RPC —
-> a separate unbuilt sub-program, zero canon routes served here) → named honest exemption
-> `testdata/route_phantom_unbuilt.txt`. **review-impl caught + fixed** a silent-revert bug (REGEN clobbered
-> `# permanent:` classes). VERIFY: `-count=1` PASS; fake route reds w/ offender message; teeth + SD-5 + SD-9
-> all proven. **NEXT: P2** — document the entity + attr-value family (incl. S-06 add/delete/PATCH), shrink 113.
+> The glossary OpenAPI contract was ~20% documented (149 public /v1 routes / ~30 documented), stale, unenforced.
+> **All 4 slices shipped:**
+> - **P1 (35aea0555)** — `TestOpenAPIRouteConformance`: `chi.Walk`s the real router (no-DB `NewServer(nil,cfg)`),
+>   line-scans the contract YAMLs' `paths:` block (a strict parse chokes on unquoted colons in prose), reds on
+>   undocumented `/v1` route OR phantom documented-but-unrouted path. `/v1`-prefix scope, param-name-agnostic
+>   normalize, honest regen'd allowlist. **SD-8 earned its keep day one:** 6 `/v1/canon/*` phantoms (L5.F canon
+>   RPC — unbuilt sub-program) → named honest exemption. review-impl fixed a silent-revert (`# permanent:` clobber).
+> - **P2 (6ab344a6d)** — `entities.yaml`: 30 entity-family routes (CRUD, attr-value add/PATCH/delete, translations/
+>   evidences/items, chapter-links, revisions, merge/reassign/pin, bulk). review-impl fixed a fabricated `relevance` enum.
+> - **P3 (a few commits)** — 5 YAMLs (actions, system-admin, user-kinds, wiki×25, book-ops×26) = 83 routes.
+>   **Allowlist drained 113→0 — every public /v1 route documented (~20%→100% path+method).** review-impl fixed
+>   a 2nd fabricated enum (wiki review body). 0 phantoms across all 113 (no typos).
+> - **P4** — allowlist 0 ⇒ gate strict; dedicated `-count=1` step in `foundation-ci.yml` (cache-proof); named in
+>   `CLAUDE.md`'s contract-first rule. **Contract-first is now LIVED for glossary.**
+> Scope was path+method (SD-7); full request/response **schema** conformance = optional P5. Follow-ups (RUN-STATE):
+> canon RPC YAML relocation + its one-char parse fix (L5.F track owns).
 
 ## ♻️ S-08 SOFT-ARCHIVE RESTORE (motif + arc-template) — **SHIPPED (2026-07-18)**
 > Spec: [`docs/specs/2026-07-17-studio-completeness-build/S-08_soft-archive-restore.md`](../specs/2026-07-17-studio-completeness-build/S-08_soft-archive-restore.md) §8–9.
