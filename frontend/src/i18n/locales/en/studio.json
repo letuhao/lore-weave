@@ -117,6 +117,12 @@
       "desc": "Author rules that guide AI on this book",
       "guideBody": "Write the rules and preferences that guide how the AI writes for this specific book — tone, POV, things to avoid, recurring instructions you don't want to repeat every chat. Open it once early on, then revisit whenever the AI's output drifts from what you want."
     },
+    "style-voice": {
+      "title": "Style & Voice",
+      "desc": "Steer prose density and pace, and the distinct voice of each character — folded into every draft prompt",
+      "guideBody": "Style & Voice steers how the AI writes. Set the prose density and pace for the whole book (or narrow to a chapter or scene), and give each character a distinct speaking voice. These settings are folded into every draft prompt, so the writing stays consistent without you repeating instructions. Each control shows its effective value and where that value comes from (book default, or a chapter/scene override). Adjust it early to set the house style, then tweak per character as their voices emerge.",
+      "noWork": "No writing project yet — set up a Work first, then steer its style & voice here."
+    },
     "glossary": {
       "title": "Glossary",
       "desc": "Entities, search, and bulk actions for this book",

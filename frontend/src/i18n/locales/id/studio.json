@@ -669,6 +669,12 @@
       "title": "Proposal Alur Kerja",
       "desc": "Tinjau alur kerja yang diusulkan oleh agen",
       "guideBody": "Menampilkan daftar resep alur kerja yang disarankan oleh agen untuk dibuat, berdasarkan urutan multi-langkah yang ia perhatikan sering Anda ulangi. Buka panel ini untuk menyetujui proposal — yang akan mencetak alur kerja tersebut agar dapat dijalankan — atau menolaknya. Di sinilah alur kerja usulan agen benar-benar menjadi nyata."
+    },
+    "style-voice": {
+      "title": "Gaya & Suara",
+      "desc": "Atur kepadatan prosa dan tempo, serta karakter suara unik setiap tokoh — terintegrasi dalam setiap perintah draf",
+      "guideBody": "Gaya & Suara mengarahkan cara AI menulis. Atur kepadatan prosa dan tempo untuk seluruh buku (atau persempit ke bab atau adegan tertentu), dan berikan setiap karakter suara bicara yang khas. Pengaturan ini terintegrasi dalam setiap perintah draf, sehingga tulisan tetap konsisten tanpa Anda perlu mengulang instruksi. Setiap kontrol menunjukkan nilai efektifnya dan dari mana nilai tersebut berasal (setelan default buku, atau perubahan pada bab/adegan). Atur di awal untuk menetapkan gaya penulisan utama, lalu sesuaikan per karakter saat karakter mereka mulai muncul.",
+      "noWork": "Belum ada proyek penulisan — buat Work terlebih dahulu, lalu atur gaya & suaranya di sini."
     }
   },
   "sceneRail": {
@@ -1038,6 +1044,7 @@
     "statChapters": "{{n}} bab",
     "statScenes": "{{n}} adegan",
     "window": "win {{a}}–{{b}} / {{n}}",
+    "chapterN": "Bab {{number}}",
     "actShort": "Babak",
     "actTag": "BABAK",
     "newAct": "Babak baru",
@@ -1053,8 +1060,7 @@
     "restore": "Pulihkan",
     "restoreActHint": "Pulihkan bab ini (bab akan kembali dalam keadaan kosong — susun ulang bab di dalamnya jika diperlukan)",
     "actTrashed": "Bab «{{name}}» telah dihapus — bab-bab di dalamnya tetap tersimpan di buku",
-    "undo": "Batalkan",
-    "chapterN": "Bab {{number}}"
+    "undo": "Batalkan"
   },
   "intro": {
     "title": "Selamat Datang di Writing Studio",

@@ -669,6 +669,12 @@
       "title": "Propostas de Fluxo de Trabalho",
       "desc": "Revise os fluxos de trabalho propostos pelo agente",
       "guideBody": "Lista as receitas de fluxo de trabalho que o agente sugeriu criar, com base em sequências de várias etapas que ele notou que você repete. Abra para aprovar uma proposta — o que gera o fluxo de trabalho para que ele se torne executável — ou para rejeitá-la. É aqui que um fluxo de trabalho proposto pelo agente se torna real."
+    },
+    "style-voice": {
+      "title": "Estilo e Voz",
+      "desc": "Controle a densidade e o ritmo da prosa, além da voz distinta de cada personagem — tudo integrado a cada comando de rascunho",
+      "guideBody": "Estilo e Voz direciona a forma como a IA escreve. Defina a densidade e o ritmo da prosa para o livro inteiro (ou limite a um capítulo ou cena) e dê a cada personagem uma voz única. Essas configurações são integradas a cada comando de rascunho, para que a escrita permaneça consistente sem que você precise repetir instruções. Cada controle mostra seu valor efetivo e a origem desse valor (padrão do livro ou uma sobreposição de capítulo/cena). Ajuste cedo para definir o estilo da obra e, depois, faça ajustes por personagem conforme as vozes forem surgindo.",
+      "noWork": "Nenhum projeto de escrita criado ainda — configure um Work primeiro e, então, controle seu estilo e voz aqui."
     }
   },
   "sceneRail": {
@@ -1038,6 +1044,7 @@
     "statChapters": "{{n}} cap",
     "statScenes": "{{n}} cen",
     "window": "jan {{a}}–{{b}} / {{n}}",
+    "chapterN": "Capítulo {{number}}",
     "actShort": "Ato",
     "actTag": "ATO",
     "newAct": "Novo ato",
@@ -1053,8 +1060,7 @@
     "restore": "Restaurar",
     "restoreActHint": "Restaurar este ato (ele voltará vazio — reorganize os capítulos conforme necessário)",
     "actTrashed": "O ato «{{name}}» foi excluído — seus capítulos permaneceram no livro",
-    "undo": "Desfazer",
-    "chapterN": "Capítulo {{number}}"
+    "undo": "Desfazer"
   },
   "intro": {
     "title": "Bem-vindo ao Writing Studio",

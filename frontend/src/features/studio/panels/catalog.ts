@@ -68,6 +68,7 @@ import { SceneInspectorPanel } from './SceneInspectorPanel';
 import { WhatIfCanvasPanel } from './WhatIfCanvasPanel';
 import { DivergencePanel } from './DivergencePanel';
 import { ReferenceShelfPanel } from './ReferenceShelfPanel';   /* H-1a — S-03 reference corpus */
+import { StyleVoiceStudioPanel } from './StyleVoiceStudioPanel';   /* S-10 O1 — style/voice steering */
 import { CanonViewPanel } from './CanonViewPanel';
 import { PlanHubPanel } from './PlanHubPanel';
 import { BookImportPanel } from './BookImportPanel';
@@ -178,6 +179,9 @@ export const STUDIO_PANELS: StudioPanelDef[] = [
   { id: 'trash', component: TrashPanel, titleKey: 'panels.trash.title', descKey: 'panels.trash.desc', category: 'platform', guideBodyKey: 'panels.trash.guideBody' },
   // RAID C1 — per-book author steering rules (story-bible-as-steering). book-scoped, palette-openable.
   { id: 'steering', component: SteeringPanel, titleKey: 'panels.steering.title', descKey: 'panels.steering.desc', category: 'editor', guideBodyKey: 'panels.steering.guideBody' },
+  // S-10 O1 — style/voice steering (density/pace + per-character voice). Ports the legacy StyleVoicePanel
+  // (was reachable ONLY from the deprecated ChapterEditorPage) into a real dock panel.
+  { id: 'style-voice', component: StyleVoiceStudioPanel, titleKey: 'panels.style-voice.title', descKey: 'panels.style-voice.desc', category: 'editor', guideBodyKey: 'panels.style-voice.guideBody' },
   // #13 A3 — entity list/search/filter/bulk-actions (cycle-2 of the #12 per-tool queue).
   // Palette + agent openable (panelCatalogContract enforces openable-set == enum, so any
   // palette-visible panel must join `ui_open_studio_panel` — see frontend_tools.py + the

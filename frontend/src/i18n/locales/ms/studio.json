@@ -669,6 +669,12 @@
       "title": "Cadangan Aliran Kerja",
       "desc": "Semak aliran kerja yang dicadangkan oleh ejen",
       "guideBody": "Menyenaraikan resipi aliran kerja yang dicadangkan oleh ejen untuk dicipta, berdasarkan urutan berbilang langkah yang dikesan kerap anda ulangi. Buka panel ini untuk meluluskan cadangan — yang akan menghasilkan aliran kerja tersebut supaya ia boleh dijalankan — atau menolaknya. Di sinilah aliran kerja cadangan ejen menjadi realiti."
+    },
+    "style-voice": {
+      "title": "Gaya & Suara",
+      "desc": "Kawal kepadatan prosa dan rentak, serta suara unik setiap watak — disepadukan ke dalam setiap draf arahan",
+      "guideBody": "Gaya & Suara mengawal cara AI menulis. Tetapkan kepadatan prosa dan rentak untuk keseluruhan buku (atau kecilkan kepada bab atau babak), dan berikan setiap watak suara pertuturan yang tersendiri. Tetapan ini disepadukan ke dalam setiap draf arahan, supaya penulisan kekal konsisten tanpa anda perlu mengulang arahan. Setiap kawalan menunjukkan nilai berkesannya dan dari mana nilai itu berasal (pilihan lalai buku, atau pengganti bab/babak). Laraskan lebih awal untuk menetapkan gaya penulisan, kemudian sesuaikan mengikut watak apabila suara mereka mula muncul.",
+      "noWork": "Tiada projek penulisan lagi — tetapkan Work terlebih dahulu, kemudian kawal gaya & suaranya di sini."
     }
   },
   "sceneRail": {
@@ -1038,6 +1044,7 @@
     "statChapters": "{{n}} bab",
     "statScenes": "{{n}} babak",
     "window": "win {{a}}–{{b}} / {{n}}",
+    "chapterN": "Bab {{number}}",
     "actShort": "Babak",
     "actTag": "BABAK",
     "newAct": "Babak baharu",
@@ -1053,8 +1060,7 @@
     "restore": "Pulihkan",
     "restoreActHint": "Pulihkan babak ini (ia akan kembali kosong — susun semula bab mengikut keperluan)",
     "actTrashed": "Babak «{{name}}» telah dibuang — bab-bab di dalamnya kekal dalam buku",
-    "undo": "Batalkan",
-    "chapterN": "Bab {{number}}"
+    "undo": "Batalkan"
   },
   "intro": {
     "title": "Selamat Datang ke Writing Studio",

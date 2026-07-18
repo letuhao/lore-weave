@@ -669,6 +669,12 @@
       "title": "Workflow Proposals",
       "desc": "Examiner les workflows proposés par l'agent",
       "guideBody": "Affiche la liste des recettes de workflows que l'agent a suggéré de créer, sur la base de séquences multi-étapes qu'il a remarqué que vous répétez. Ouvrez ce panneau pour approuver une proposition — ce qui génère le workflow pour qu'il devienne exécutable — ou pour la rejeter. C'est ici qu'un workflow proposé par l'agent devient réellement concret."
+    },
+    "style-voice": {
+      "title": "Style et voix",
+      "desc": "Orientez la densité et le rythme de la prose, ainsi que la voix distincte de chaque personnage — intégrés dans chaque commande de rédaction",
+      "guideBody": "Le menu Style et voix oriente la manière dont l'IA écrit. Définissez la densité et le rythme de la prose pour l'ensemble du livre (ou restreignez-les à un chapitre ou une scène), et donnez à chaque personnage une voix unique. Ces paramètres sont intégrés à chaque commande de rédaction, afin que le style reste cohérent sans que vous ayez à répéter les instructions. Chaque contrôle affiche sa valeur effective et sa provenance (valeur par défaut du livre, ou modification par chapitre/scène). Ajustez ces réglages dès le début pour établir le style de l'œuvre, puis affinez-les par personnage à mesure que leurs voix se dessinent.",
+      "noWork": "Aucun projet d'écriture en cours — créez d'abord un Projet, puis orientez son style et sa voix ici."
     }
   },
   "sceneRail": {
@@ -1038,6 +1044,7 @@
     "statChapters": "{{n}} ch",
     "statScenes": "{{n}} sc",
     "window": "win {{a}}–{{b}} / {{n}}",
+    "chapterN": "Chapitre {{number}}",
     "actShort": "Acte",
     "actTag": "ACTE",
     "newAct": "Nouvel acte",
@@ -1053,8 +1060,7 @@
     "restore": "Restaurer",
     "restoreActHint": "Restaurer cet acte (il sera vide — vous devrez réorganiser les chapitres)",
     "actTrashed": "L'acte « {{name}} » a été mis à la corbeille — ses chapitres sont restés dans le livre",
-    "undo": "Annuler",
-    "chapterN": "Chapitre {{number}}"
+    "undo": "Annuler"
   },
   "intro": {
     "title": "Bienvenue sur Writing Studio",

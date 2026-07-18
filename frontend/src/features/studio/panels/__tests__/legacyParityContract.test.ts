@@ -49,6 +49,8 @@ type Home =
 // supersedes) · **5 NOT homed** (settings · beats · timeline · style · references) · 2 retired.
 // UPDATE 2026-07-18 (H-1a): `references` is now HOMED (reference-shelf carries ReferencesPanel) →
 // 19 homed · 4 NOT homed (settings · beats · timeline · style).
+// UPDATE 2026-07-18 (S-10 O1): `style` is now HOMED (style-voice carries StyleVoicePanel) →
+// 20 homed · 3 NOT homed (settings · beats · timeline).
 // The header used to say "23 homed, 2 retired" — that count came from the id-existence check and
 // was wrong by five. **GG-4 retirement is gated on those five**, not on a green test run.
 const LEGACY_SUBTAB_HOME: Record<string, Home> = {
@@ -103,7 +105,9 @@ const LEGACY_SUBTAB_HOME: Record<string, Home> = {
   canonview: { panel: 'scene-inspector', carries: 'GroundingPanel' },      // M5.c — beside GroundingPanel
   beats: { unported: 'AUDIT 2026-07-17 — the `beats: plan-hub` home was FALSE: BeatSheetView (drag a node onto a beat card to assign beat_role) has NO counterpart in plan-hub, which contains zero `beat` code. The Wave 6 M4a drawer facet was never built. Legacy-only until it is; GG-4 must not retire before this lands.' },
   timeline: { unported: 'AUDIT 2026-07-17 — `timeline: kg-timeline` is only a PARTIAL home: KgTimelinePanel mounts knowledge TimelineTab, which has no spoiler support, while composition TimelineView is the spoiler-SAFE chronology with the "AI sees <= here" cutoff marker. The cutoff is a load-bearing authoring feature; homing it needs a decision (extend TimelineTab vs port TimelineView).' },
-  style: { unported: 'pending the F-1 port — style-voice panel not yet in the catalog; StyleVoicePanel (density/pace + per-character voice, folded into every draft prompt by packer/pack.py) is legacy-only and belongs to NO session charter' },
+  // S-10 O1 — HOMED: style-voice carries StyleVoicePanel (density/pace + per-character voice), wrapped as
+  // a dock panel (StyleVoiceStudioPanel → StyleVoicePanel) so it's no longer ChapterEditorPage-only.
+  style: { panel: 'style-voice', carries: 'StyleVoicePanel' },
   references: { panel: 'reference-shelf', carries: 'ReferencesPanel' },  // H-1a — ported: ReferenceShelfPanel wraps ReferencesPanel (library-first mount)
   // — retired —
   threads: { retired: 'duplicate of quality-promises — delete, do not port (00C Q-3c)' },

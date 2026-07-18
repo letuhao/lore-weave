@@ -669,6 +669,12 @@
       "title": "İş Akışı Teklifleri",
       "desc": "Aracın önerdiği iş akışlarını inceleyin",
       "guideBody": "Aracın, tekrarladığınızı fark ettiği çok adımlı dizilere dayanarak oluşturulmasını önerdiği iş akışı tariflerini listeler. Bir teklifi onaylamak —böylece iş akışı çalıştırılabilir hale gelir— veya reddetmek için açın. Aracın önerdiği bir iş akışının gerçek anlamda hayata geçtiği yer burasıdır."
+    },
+    "style-voice": {
+      "title": "Üslup ve Ses",
+      "desc": "Anlatım yoğunluğunu, tempoyu ve her karakterin kendine has sesini belirleyin — tüm taslak komutlarına dahil edilir",
+      "guideBody": "Üslup ve Ses, yapay zekanın nasıl yazacağını yönlendirir. Tüm kitabın (veya bir bölümün veya sahnenin) anlatım yoğunluğunu ve temposunu ayarlayın ve her karaktere kendine özgü bir konuşma sesi verin. Bu ayarlar her taslak komutuna dahil edilir, böylece talimatları tekrar etmenize gerek kalmadan yazım tutarlı kalır. Her kontrol, geçerli değerini ve bu değerin nereden geldiğini (kitap varsayılanı veya bölüm/sahne geçersiz kılma) gösterir. Genel üslubu belirlemek için ayarları erkenden yapın, ardından karakterlerin sesleri belirginleştikçe her biri için ince ayar yapın.",
+      "noWork": "Henüz bir yazım projesi yok — önce bir Çalışma oluşturun, ardından üslup ve ses ayarlarını buradan yönetin."
     }
   },
   "sceneRail": {
@@ -1038,6 +1044,7 @@
     "statChapters": "{{n}} böl",
     "statScenes": "{{n}} sah",
     "window": "penc. {{a}}–{{b}} / {{n}}",
+    "chapterN": "Bölüm {{number}}",
     "actShort": "Perde",
     "actTag": "PERDE",
     "newAct": "Yeni perde",
@@ -1053,8 +1060,7 @@
     "restore": "Geri Yükle",
     "restoreActHint": "Bu bölümü geri yükle (bölüm boş olarak gelir — bölümleri gerektiği gibi yeniden dosyala)",
     "actTrashed": "«{{name}}» bölümü çöp kutusuna taşındı — bölümleri kitapta kaldı",
-    "undo": "Geri Al",
-    "chapterN": "Bölüm {{number}}"
+    "undo": "Geri Al"
   },
   "intro": {
     "title": "Writing Studio'ya Hoş Geldiniz",

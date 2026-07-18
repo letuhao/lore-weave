@@ -669,6 +669,12 @@
       "title": "Workflow-Vorschläge",
       "desc": "Überprüfen Sie die vom Agenten vorgeschlagenen Workflows",
       "guideBody": "Hier werden die Workflow-Rezepte aufgelistet, die der Agent basierend auf mehrstufigen Sequenzen vorgeschlagen hat, die er bei Ihnen wiederkehrend festgestellt hat. Öffnen Sie diesen Bereich, um einen Vorschlag anzunehmen – wodurch der Workflow erstellt wird und ausführbar ist – oder ihn abzulehnen. Hier wird ein vom Agenten vorgeschlagener Workflow tatsächlich realisiert."
+    },
+    "style-voice": {
+      "title": "Stil & Stimme",
+      "desc": "Steuern Sie die Prosadichte, das Tempo und die markante Stimme jedes Charakters – integriert in jeden Entwurfs-Prompt",
+      "guideBody": "Stil & Stimme steuert, wie die KI schreibt. Legen Sie die Prosadichte und das Tempo für das gesamte Buch fest (oder grenzen Sie dies auf ein Kapitel oder eine Szene ein) und verleihen Sie jedem Charakter eine unverwechselbare Sprechstimme. Diese Einstellungen werden in jeden Entwurfs-Prompt integriert, sodass der Schreibstil konsistent bleibt, ohne dass Sie Anweisungen wiederholen müssen. Jedes Steuerelement zeigt seinen effektiven Wert und dessen Herkunft an (Standardwert des Buches oder Überschreibung durch Kapitel/Szene). Passen Sie dies frühzeitig an, um den Hausstil festzulegen, und verfeinern Sie ihn dann pro Charakter, sobald dessen Stimme Gestalt annimmt.",
+      "noWork": "Noch kein Schreibprojekt vorhanden – erstellen Sie zuerst ein „Work“, um hier Stil & Stimme festzulegen."
     }
   },
   "sceneRail": {
@@ -1038,6 +1044,7 @@
     "statChapters": "{{n}} Kap.",
     "statScenes": "{{n}} Szen.",
     "window": "Fenster {{a}}–{{b}} / {{n}}",
+    "chapterN": "Kapitel {{number}}",
     "actShort": "Akt",
     "actTag": "AKT",
     "newAct": "Neuer Akt",
@@ -1053,8 +1060,7 @@
     "restore": "Wiederherstellen",
     "restoreActHint": "Diese Akte wiederherstellen (sie wird leer sein – ordne die Kapitel bei Bedarf neu)",
     "actTrashed": "Akte „{{name}}“ gelöscht – ihre Kapitel verbleiben im Buch",
-    "undo": "Rückgängig machen",
-    "chapterN": "Kapitel {{number}}"
+    "undo": "Rückgängig machen"
   },
   "intro": {
     "title": "Willkommen im Writing Studio",
