@@ -27,14 +27,24 @@ function chapterIdFromResult(result: unknown): string | null {
   return readChapterId(unwrapToolResult(result));
 }
 
-/** After a book/composition draft-or-save write: refresh the affected chapter. Invalidates the
- * query cache always; reloads the Tier-4 editor hoist ONLY if that chapter is the ACTIVE unit and
- * NOT dirty (G7). It deliberately does NOT publish a `chapter` bus event — that would hijack the
- * user's editor to the agent-saved chapter (the bus `chapter` slice is user-intent focus only). */
+/** After a book/composition draft-or-save write: refresh the affected chapter AND the manuscript
+ * navigator tree. Invalidates the query cache; publishes `manuscriptChanged` so the hand-rolled tree
+ * reloads (see below); reloads the Tier-4 editor hoist ONLY if that chapter is the ACTIVE unit and
+ * NOT dirty (G7). It deliberately does NOT publish the `chapter` FOCUS event — that would hijack the
+ * user's editor to the agent-saved chapter (the bus `chapter` slice is user-intent focus only).
+ * `manuscriptChanged` is a DIFFERENT, safe event: it only bumps `manuscriptChangeSeq` → tree reload,
+ * it does not move the editor. */
 export function bookDraftEffect(ctx: EffectContext): void {
   const chapterId = chapterIdFromResult(ctx.result);
   if (!chapterId) return;
   ctx.queryClient.invalidateQueries({ queryKey: ['chapter', ctx.bookId, chapterId] });
+  // The manuscript navigator tree is hand-rolled (NOT react-query), so invalidateQueries can't reach
+  // it (the invalidatequeries-cannot-reach-hand-rolled-state class) — it reloads ONLY when
+  // `manuscriptChangeSeq` bumps on the studio bus. An AGENT chapter CREATE adds a row the tree must
+  // show; without this publish the rail stayed on "0 chapters" until a full page reload (dogfood
+  // 2026-07-18, "Cursor-for-writing" newcomer run). Published BEFORE the G7 dirty-guard so a dirty
+  // editor never blocks the tree from surfacing a newly-created sibling chapter.
+  ctx.host?.publish?.({ type: 'manuscriptChanged' });
   // G7: never clobber a dirty hoist. reloadChapter is a no-op unless this IS the active unit.
   if (ctx.isChapterDirty?.(chapterId)) return;
   ctx.reloadChapter?.(chapterId);

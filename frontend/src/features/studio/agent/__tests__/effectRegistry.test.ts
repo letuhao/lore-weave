@@ -64,12 +64,23 @@ describe('registerEffectHandler REJECTS the string-pattern bug class (X-4.0)', (
 });
 
 describe('bookDraftEffect (Lane B v1 handler)', () => {
-  it('invalidates the chapter query + reloads the Tier-4 hoist (does NOT publish a chapter — no editor hijack)', () => {
+  it('invalidates the chapter query + reloads the Tier-4 hoist + publishes manuscriptChanged (tree refresh), but NEVER the chapter focus event (no editor hijack)', () => {
     const c = ctx();
     bookDraftEffect(c);
     expect(c.queryClient.invalidateQueries).toHaveBeenCalledWith({ queryKey: ['chapter', 'b1', 'ch1'] });
     expect(c.reloadChapter).toHaveBeenCalledWith('ch1');
-    expect(c.host.publish).not.toHaveBeenCalled(); // reconcile must not switch the user's editor
+    // The hand-rolled navigator tree only reloads on this bus event — dogfood 2026-07-18: an agent
+    // chapter create left the rail on "0 chapters" until a full page reload without it.
+    expect(c.host.publish).toHaveBeenCalledWith({ type: 'manuscriptChanged' });
+    // …but STILL never the `chapter` FOCUS event — reconcile must not switch the user's editor.
+    expect(c.host.publish).not.toHaveBeenCalledWith(expect.objectContaining({ type: 'chapter' }));
+  });
+
+  it('publishes manuscriptChanged BEFORE the G7 dirty-guard, so a dirty editor never hides a new sibling chapter', () => {
+    const c = ctx({ isChapterDirty: () => true });
+    bookDraftEffect(c);
+    expect(c.host.publish).toHaveBeenCalledWith({ type: 'manuscriptChanged' }); // tree still refreshes
+    expect(c.reloadChapter).not.toHaveBeenCalled(); // …but the dirty hoist is protected
   });
 
   it('G7: skips the reload when the hoist is DIRTY (never clobbers unsaved edits); still invalidates cache', () => {
