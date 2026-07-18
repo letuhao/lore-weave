@@ -6,6 +6,24 @@ Build S-12 ([spec](../specs/2026-07-17-studio-completeness-build/S-12_workflows.
 a user can (a) see/approve/reject workflow proposals in a GUI, (b) list/view/enable-disable/delete their
 workflows, (c) set mode-bindings as a real setting. Slice-by-slice; review-impl + QC each.
 
+## ✅ D-S12-LIVE-SMOKE CLEARED (2026-07-18) — full agent-loop E2E on the live stack
+Rebuilt agent-registry (my migration + routes) + built a STATIC FE image, ran it on an ISOLATED port
+(**:5223**, one-off container on infra_default, nginx proxies /v1 → gateway — immune to other sessions'
+HMR, per the user's requirement) + drove it with an ISOLATED playwright session (`-s=s12`, no shared-MCP
+conflict). Evidence:
+- **BE loop (curl through the gateway :3123):** seed pending proposal → `/usage` shows `workflow_proposals_pending=1`
+  → list `/workflow-proposals` (2 steps) → PUT approve → workflow MINTED, enabled → GET `/workflows/{id}` full
+  steps → PUT enablement{false} → GET shows `enabled=false` (**per-user override SD-1 proven live**) → revisions=0.
+  The count split (`skill_/workflow_proposals_pending`) served live by the rebuilt binary.
+- **FE loop (real browser on :5223):** login → studio → **the `ProposalsStatusItem` badge renders with count "1"**
+  (discoverability proven) → **click badge routes to the `workflow-proposals` panel** → card shows the **STEPS**
+  (`glossary_propose_entities`[confirm] → `book_create_world`) → **click Approve → card clears to empty state →
+  workflow MINTED** (BE-confirmed). Screenshot `s12-smoke-studio.png`.
+- **No new bugs found** (that's the QC). Smoke artifacts cleaned up (container removed, seeded/minted data deleted,
+  `/usage` back to 0). Only the in-browser Workflows *management* panel (toggle/view/delete) wasn't driven — the
+  command palette wouldn't open via CLI keyboard (known dockview-automation fiddliness); those verbs are proven
+  live via curl (enablement flip 200, get-one steps) + FE unit tests (WorkflowsView 5).
+
 ## INVESTIGATION — verified vs code 2026-07-18 (corrects/extends the spec)
 - **Routes that EXIST** (`server.go:295-300`): `GET /workflows`, `GET /workflow-proposals`,
   `GET /workflow-proposals/{id}`, `PUT /workflow-proposals/{id}/approve`, `POST …/reject`. Missing:
@@ -100,10 +118,9 @@ a subtler re-run of the same hole ("invisible UI"). Audit end-to-end found + cle
   (`workflowVisibleToUser`). BE-only (skills' route also has no FE). 2 route tests.
 - **D-S12-BINDINGS-I18N ✅** — `BindingSettings` (the settings tab) now uses `useTranslation` (`extensions` ns,
   `bindings.*` keys, 17 locales). `WorkflowRack` verified to have NO visible hardcoded strings (needed no i18n).
-- **D-S12-LIVE-SMOKE** — the full agent-loop E2E (registry_propose_workflow → proposal appears in the
-  panel → human approves → workflow runnable/enabled) needs a live stack + browser MCP, unavailable at
-  dev time. Each link is proven in isolation (BE pgxmock ↔ FE vitest ↔ contract parity ↔ tsc). Trigger:
-  next time the full stack + a browser MCP are up.
+- **D-S12-LIVE-SMOKE ✅ CLEARED 2026-07-18** — driven on the live stack (static FE :5223 + isolated
+  playwright session): badge → panel → steps → approve → mint, plus the BE loop via curl (approve/mint/
+  enablement/revisions). See the "D-S12-LIVE-SMOKE CLEARED" block above. No new bugs.
 ### DRIFT — (none)
 
 ## RESUME
