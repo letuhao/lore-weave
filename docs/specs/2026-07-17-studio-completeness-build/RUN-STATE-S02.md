@@ -65,6 +65,15 @@ Commits: b56725e05 (A) · 4cc462f36 (B) · 190795cb1 (C) · dfbf3392b (review fi
   Remaining (non-blocking, NOT parked): i18n locale entries for the new keys — the UI renders now via
   `defaultValue`; the locale JSON is a convergence-node registry, so the keys land at convergence.
   Live browser E2E (rebuilt book-service stack) is the gold-standard step still to run — recipe in CONVERGENCE-S02.md.
+- **i18n GAP CLOSED (2026-07-18, commit a1eb635fe).** The S-02 completeness audit found the ONE open item
+  above was a genuine gap, not just cosmetics: the 17 new `manuscript.*` act/parts keys existed in NO locale
+  JSON (only English `defaultValue` in the TSX), so all 17 non-English locales silently rendered English act-
+  management strings. The i18n parity gate stayed GREEN only because `en` also lacked them (consistent-but-
+  incomplete — the gate checks locale-vs-en parity, not code-vs-en). Fix: seeded `en/studio.json` (actTrashed
+  upgraded from a JS `${name}` template literal to proper `{{name}}` i18next interpolation) + gap-filled all 17
+  locales via `scripts/i18n_translate.py` (gemma-4-26b-a4b-qat, 0 failed; {{n}}/{{name}}/{{a}}-{{b}} placeholders
+  verified faithful in vi/ja/ar). Gate back to full parity (17 locales × 33 ns). No code change → FE 131/131,
+  tsc 0, book-service go build clean all still hold.
 ### Debt / bugs fixed in-flight
 - (2026-07-17) FIXED pre-existing latent bug: `listChapters`+`listChaptersKeyset` scanned NULLABLE
   `title` into a non-pointer `string` → a titleless chapter errored the discarded `_ = rows.Scan()`
