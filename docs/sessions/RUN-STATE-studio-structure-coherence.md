@@ -66,13 +66,15 @@ C1→C4 cutover, `/review-impl` + cross-service live-smoke on every C-slice.
 - [x] C4a · composition part-WRITE endpoints (create/rename/reorder/archive/restore kind='part') +
       StructureRepo.create_part/reorder_parts (integer rank). test_parts_mirror 6/6.
 - [x] C4b · FE partsApi writes cut over to composition; chapter-move stays book-service. tsc 0, 139 tests.
-- [~] C4c + C4d · RETIRE (irreversible) — AUTHORED as a deploy-gated RUNBOOK, NOT executed:
-      `docs/specs/2026-07-18-studio-onboarding-and-structure-coherence/c4-final-cleanup-runbook.md`
-      (delete book-service parts subsystem + the C2 mirror bridge; gated `C_MERGE_C4_DROP_PARTS=1` drop
-      of the table + chapters.part_id). NOT run now because: (1) sealed soak gate — nothing has deployed;
-      (2) it drops the SHARED loreweave_book dev DB the 3 parallel sessions use; (3) dropping the working
-      subsystem before its replacement soaks is the exact risk the cutover sequence prevents. The
-      REPLACEMENT (C4a/b writes, C3 read) is built+tested+committed; the runbook is the final deploy-op.
+- [x] C4c + C4d · RETIRE — EXECUTED (PO confirmed dev-only DB, all test data, no production/soak needed).
+      composition: C2 mirror bridge deleted (consumer/service/client/worker-wiring). book-service: parts
+      table + chapters.part_id dropped from schemaSQL + a one-time c4DropPartsSQL in Up(); parts.go
+      gutted to chapter-assign only; part CRUD routes/store/MCP(book_part_*)/emit/internal-endpoints
+      removed; parse.go flat import; hierarchy.go part-less (synthetic fallback); chapter reads project
+      structure_node_id. Dev loreweave_book DROPPED parts + chapters.part_id (verified). Evidence:
+      go build/vet 0 + full book-service api suite green vs cleaned DB; composition 21; FE 212.
+      DEPLOY NOTE: the RUNNING composition + book-service images predate C3a/C4a, so the live dev stack
+      needs an image rebuild to serve parts from composition (the branch code is consistent + tested).
 
 ## DELIVERED (buildable frontier reached 2026-07-18)
 Part A + C1 + C2 + C3(a+b) SHIPPED to the branch, each tested/QC'd to the extent the dev stack allows:
