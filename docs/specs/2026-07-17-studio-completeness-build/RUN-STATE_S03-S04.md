@@ -119,6 +119,12 @@ A slice is NOT done if its FE affordance lands on an unreachable/inert panel. Ve
 Fixed (commit 5b380d249): S-04 archive→Undo/restore (was one-way dead-end); POV snap-back;
 no-anchor explanatory hint; taxonomy human labels. S-03 mutation error toasts (were silent);
 URL-at-add (was dropped); library-row truncation (min-w-0 flex-1).
+REMAINING → SPEC'D: full CLARIFY spec [`../2026-07-18-studio-s03-s04-ux-hardening.md`](../2026-07-18-studio-s03-s04-ux-hardening.md)
+for every remaining gap (rename, library search, pin-row, embed CTA, delete confirms, touch/a11y,
+BranchDiff responsive, divergence nav launcher). Discoverability (S-03 mount O2 + proper category rail O4)
+DEFERRED to S-10 (verified owner, unbuilt) — my S-03 edit affordance rides O2's mount for free. Projected:
+S-04 →~8, S-03 →~6.8 (ceiling ~7 gated on S-10 O2). 4 PO calls open (rail placement, touch-util promote,
+override-confirm style, H-1a scope).
 REMAINING (reported, deferred): S-03 reachable only via legacy ChapterEditorPage (S-10 port);
 S-04 palette-only no nav rail; rename-derivative; S-03 library search + pin-on-library-row +
 embed-model dead-end (text no CTA); touch tap-target sizing + BranchDiff narrow-panel layout;
