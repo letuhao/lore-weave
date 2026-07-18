@@ -1,5 +1,16 @@
 # ▶▶ NEXT SESSION STARTS HERE
 
+## ✍️ WRITING STUDIO — NEWCOMER POLISH (dogfood-driven) — **SHIPPED (2026-07-18, `feat/context-budget-law`)**
+A first-run dogfood (real newcomer writing their first book) surfaced 7 friction/bug findings; spec+plan
+in `docs/specs/2026-07-18-writing-studio-newcomer-polish/`, diary in `docs/dogfood/`. All 6 milestones
+built + QC'd on the isolated static build :5290:
+- **M1** (`502fdbee8`) chapter title never leaks `editor-<uuid>.txt` → "Chapter {n}" (shared `chapterDisplayTitle`).
+- **M2** (`9d62865d3`) navigator refreshes live on cross-panel chapter CRUD (studio-bus `manuscriptChanged`) — kills "saved but 0 chapters".
+- **M3** (`6b02d4ec4`) create-and-open a chapter from the Editor empty state / rail "＋ Chapter" / empty rail (shared `useChapterDoor`).
+- **M4** (`8a74acb09`) "Reconnecting…" chip during silent token refresh (additive events; review-impl'd).
+- **M5** (`339a28115` + i18n `b65cec317`) rename Act→Part (kill the Act/Arc homophone, EN-only) + fix the missing `activity.plan` key (lowercase "plan" tab) + explainer tooltip.
+- **F5** sealed NO-CODE (default already Simple); **F7b** verify-only (99+ = seeded test data). **Deferred:** **F7c** chat co-writer context bloat (~22.6k tok/message) → **`context-budget-law`** track. Detail: `docs/sessions/RUN-STATE-writing-studio-polish.md`.
+
 ## 🧩 S-13 STUDIO DECOMPOSE SURFACE (G-STORY-STRUCTURE) — **SHIPPED (2026-07-18)** · closes D-S01-USE-IN-DECOMPOSE
 > Spec: [`docs/specs/2026-07-17-studio-completeness-build/S-13_studio-decompose-surface.md`](../specs/2026-07-17-studio-completeness-build/S-13_studio-decompose-surface.md) §11.
 > An **M FE-only PORT** (verified against code: the decompose UX already exists in `usePlanner`/`PlannerView`).
