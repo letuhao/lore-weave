@@ -85,8 +85,29 @@ against the moving beta risks re-work), and Phase 1 (the actual bug-driven value
 the same `@mcp_server.tool()` facade. SP-0a keeps the stable 1.28.1 pin (valid; FastMCP intact); SP-0b Go pre.3
 stays (harmless; Go has no v2); SP-0c gateway rewrite deferred with the rest.
 
+## PHASE 1 FEASIBILITY FINDING (2026-07-19) — the real blocker is the GATEWAY, not the SDKs
+Verified in ai-gateway src: the proxy has **zero elicitation handling**. The inbound proxy Server advertises
+capabilities `{tools, resources, prompts}` only (no `elicitation`), and the per-call federation `Client`s
+(`executeTool`/`readResource`/`getPrompt`) are built with no elicitation capability and no server→client
+request-relay. So a domain MCP tool calling `ServerSession.Elicit(...)` mid-call has nowhere to send it — the
+**native elicitation human-gate cannot flow through the current gateway**, regardless of SDK version.
+
+**Consequence:** Phases 1-2 (and by extension the "native gate" end-state of the whole migration) are gated on
+building **bidirectional elicitation relay through the stateless per-request proxy** (domain server → federation
+client → proxy server → chat client) — a substantial, LOAD-BEARING gateway build. It is buildable (unbuilt infra,
+not externally blocked), but it is big + risky + delivers **no new user-facing capability**: the human gate ALREADY
+works today via the `confirm_token` + frontend-tool-suspend pattern (which Phase 0 just hardened with validation).
+
+**So the value calculus for the rest of the migration:** Phase 0 fixed the actual reported bug. Phases 1-4 are an
+architectural migration (move the gate from the working confirm_token/suspend pattern onto native MCP elicitation),
+whose prerequisite is a risky gateway elicitation-relay build — same "big re-architecture, zero capability gain"
+shape as the deferred v2 adoption. **Recommendation: treat Phase 0 as the shipped value; defer the
+elicitation-relay-dependent Phases 1-2 as a deliberate, planned gateway slice (authorize explicitly).** Phase 3
+(ui_* → ai-gateway-local directive tools, NO human gate) is the one remaining phase that does NOT need the relay.
+
 ## Parked / debt register
 - Go native Tasks durability (if ever wanted) — not in Go stable or beta today; `chat_suspended_runs` bridges it. Revisit if Go tasks ships.
+- **ai-gateway elicitation relay** — prerequisite for native Phases 1-2; unbuilt, load-bearing, no new capability. Deferred pending explicit authorization.
 
 ## Drift log (record near-misses honestly)
 - 2026-07-19 · Pre-existing, unrelated failure found during S1 VERIFY:
