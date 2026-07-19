@@ -150,6 +150,15 @@ Reuse existing cards (`ConfirmActionCard`, `RecordDiffCard`, `GlossaryDiffCard`)
   `chat_suspended_runs`), and on the human decision calls `task_provide_input` + polls `tasks/get`; **ai-gateway
   forwards `tasks/get`/`cancel` + passes `CreateTaskResult` through + `taskId→provider` routing**. FE reuses
   existing confirm cards. First FULL live-stack E2E of the durable gate.
+  > **SIMPLIFICATION (2026-07-19, supersedes the coupling for the CONFIRM gate): handle-in-content, not
+  > `CreateTaskResult`.** composition's gate tool returns the task HANDLE as normal tool content (`open_gate`'s dict;
+  > we do NOT call `enable_task_results`). ⇒ the ai-gateway forwards it as an ordinary `CallToolResult` (**no T2
+  > change, no polymorphic parse anywhere**); the input step is the `task_provide_input` TOOL (already gateway-
+  > forwarded, returns the completed result synchronously → **no `tasks/get` polling needed** for a confirm gate).
+  > So the durable gate reduces to a **chat-service-local driver** (detect handle → suspend via `chat_suspended_runs`
+  > → on resume call `task_provide_input`), like Phase 0 — NOT a coordinated cross-service slice. `enable_task_results`
+  > + `tasks/get` remain for a future protocol-pure / external-client / long-running-task path.
+  >
   > **COUPLING FINDING (2026-07-19): both client hops need polymorphic-result handling — the pieces can't be
   > split.** `mcp_execute_tool` (chat-service `knowledge_client.py:752`) and the gateway's `federation.executeTool`
   > both call `client.call_tool(...)`, which parses the response as a **`CallToolResult`** — a domain's

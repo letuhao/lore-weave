@@ -128,7 +128,6 @@ mcp_server = make_stateless_fastmcp("composition")
 # (bottom of module) so it wraps a handler that sees every tool.
 from loreweave_mcp.tasks import InMemoryTaskStore  # noqa: E402
 from loreweave_mcp.tasks_wire import (  # noqa: E402
-    enable_task_results,
     gate_or_confirm,
     register_task_endpoints,
 )
@@ -5715,10 +5714,17 @@ async def composition_outline_node_move(ctx: MCPContext, args: _OutlineNodeMoveA
     return out
 
 
-# ext-tasks: wrap the CallTool handler AFTER every @mcp_server.tool is registered,
-# so a gate tool (composition_create_derivative) emits a wire CreateTaskResult that a
-# tasks-capable client auto-detects. Non-gate tools pass through unchanged.
-enable_task_results(mcp_server, _task_store)
+# NOTE (T1c(3) simplification): we DELIBERATELY do NOT call `enable_task_results`
+# here. That wraps a gate tool's result into a wire `CreateTaskResult`
+# (resultType:"task"), which is protocol-pure but forces polymorphic result handling
+# at EVERY hop (chat-service `call_tool`, the ai-gateway federation client). Instead
+# the gate tool returns the task HANDLE as normal content (`open_gate`'s dict) — so
+# the gateway forwards it as an ordinary `CallToolResult` (no change) and chat-service
+# detects the handle in content (`task_detect.task_envelope_from_content`). The input
+# step is the `task_provide_input` TOOL, which the gateway already forwards and which
+# returns the completed result synchronously — so no `tasks/get` polling is needed for
+# the confirm gate. `enable_task_results` stays available for a future protocol-pure /
+# external-MCP-tasks-client path.
 
 
 # ── ASGI factory ──────────────────────────────────────────────────────────────
