@@ -199,9 +199,15 @@ internal token + `X-User-Id`/`X-Session-Id`:
   `inputRequests` with the confirm title) — **the gate HOLDS, nothing is written**.
 - **client does NOT declare caps** → the tool returns the **`confirm_token`** (descriptor `composition.derive`) —
   today's path, **byte-unchanged**.
-This live-proves the capability-negotiation + gate flow end to end through the real service, non-side-effectfully
-(no accept → no partition minted). The accept→`provide_input`→`perform_derive` tail is unit-proven (`TestTaskResume`);
-running it live mints a real knowledge partition (deferred to the activation pass with a throwaway source).
+This live-proves the capability-negotiation + gate flow end to end through the real service.
+
+**FULL ACCEPT-LOOP also live-proven (2026-07-19):** in one MCP session — open the gate → durable task
+(`input_required`); then **`composition_task_provide_input(task_id, accepted=True)`** → the accept ran the real
+write (`perform_derive`) → **`status: completed`**, minting a real new derivative Work + knowledge partition
+(project `019f7b34-…`, a test artifact, archivable). ⇒ the **ENTIRE durable gate loop — capability negotiation →
+hold (nothing written) → accept → real write → completed — is live-proven through the real composition service.**
+The gate is now fully implemented, unit-tested at every layer, AND end-to-end live-verified. Activation (flip
+`tasks_gate_enabled` on for real traffic) is a config flip; the code path is proven.
 
 ## 6.1 SP-T0 RESULTS (spiked 2026-07-19 — the SDK experimental Tasks is a DEAD END)
 Introspected mcp 1.28.1's Tasks API in the running chat-service container. Findings:
