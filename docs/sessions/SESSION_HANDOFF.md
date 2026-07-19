@@ -101,10 +101,19 @@ polymorphic parse needed for the confirm gate.** (spec §6 "SIMPLIFICATION").
   (default unprefixed for kit tests; composition passes its domain → `composition_task_provide_input`), and derive
   the provide-input tool name on resume from the gate tool's provider prefix (`c["name"]` → `composition`). taskId
   is process-local to the owning domain (in-memory store), so name-routing to that provider is sufficient.
-- **(e) FE** — render the task as a confirm card (reuse `ConfirmActionCard`).
-- **(f) ACTIVATE** — attach `tasks_capability_meta()` to gate-able tool calls (LAST). Then one live-stack E2E: a real
-  agent turn opens the derive gate → holds → accepts → commits. (ai-gateway T2 `tasks/get` forwarding stays OPTIONAL
-  — only for crash-resume/long-running; the confirm gate needs only the two tools, which the gateway already routes.)
+- **(a)+(b)+(c) DONE** — the chat-service task DRIVER is functionally complete + unit-tested, all DORMANT:
+  (a) `3c38a32b4` mcp_execute_tool surfaces a task envelope; (b) `7d13c590d` tool loop suspends on it →
+  chat_suspended_runs; (c) `f20da3826` resume calls `<prefix>_task_provide_input(taskId, accepted)` and feeds the
+  real result. Backend of the durable gate is DONE.
+- **(e) FE (remaining)** — the suspended `pending_tool_call` now carries `task` (`{taskId, status, inputRequests}`).
+  In `runChatStream.ts` (~L427, `result.status==='suspended' && result.pendingToolCall`) branch on a `task` field →
+  render a confirm card (reuse `ConfirmActionCard`: title/preview from `inputRequests`); Confirm/Dismiss POST the
+  outcome to `/tool-results` (accept ⇒ e.g. `action_done`, the resume drives provide-input). Small FE change.
+- **(f) ACTIVATE (remaining, LAST)** — attach `tasks_capability_meta()` (from `task_detect.py`) to gate-able tool
+  calls in chat-service's MCP tool-call `_meta`. MUST land with (e) — activating without the FE card would suspend a
+  gate the user can't confirm. Then one live-stack E2E (rebuild composition + chat images): a real agent turn opens
+  the derive gate → holds → accepts → commits. (ai-gateway T2 `tasks/get` forwarding stays OPTIONAL — crash-resume/
+  long-running only; the confirm gate uses only the two tools the gateway already routes.)
 Original coordinated text:
 
 **T1c(3) + T2 (coordinated) — the chat-service DRIVER + ai-gateway task forwarding.** chat-service declares
