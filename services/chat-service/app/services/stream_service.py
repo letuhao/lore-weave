@@ -67,8 +67,10 @@ from app.db.session_blocks import project_story_state
 from app.models import ProviderCredentials
 from app.services.composer import build_composer_messages, is_composer_tool
 from app.services.frontend_tools import (
+    frontend_tool_def_by_name,
     generic_frontend_tool_def,
     is_frontend_tool,
+    validate_frontend_tool_args,
 )
 from app.services.tool_discovery import (
     ALWAYS_ON_CORE_NAMES,
@@ -2500,15 +2502,47 @@ async def _stream_with_tools(
                     # would strand the confirm on resume. Protect ui_show_panel's real `args`
                     # param via its schema (generic index for ui_*/propose_*, catalog for
                     # domain confirm tools) — never a bare tool_def=None here.
+                    # Resolve the tool's canonical schema. The by-name map is the
+                    # COMPLETE frontend-tool set (Phase 0), so the two book-scoped
+                    # glossary tools are validated even when this turn didn't
+                    # advertise them (called-but-not-advertised → would otherwise
+                    # fail-open and skip the gate).
                     _fe_def = (
                         cat_index.get(c["name"])
                         or plain_index.get(c["name"])
-                        or generic_frontend_tool_def(c["name"])
+                        or frontend_tool_def_by_name(c["name"])
                     )
+                    _fe_args = _unwrap_wrapped_args(_parse_tool_args(c["arguments"]), _fe_def)
+                    # Phase 0 (frontend-tools → MCP migration) — the MCP-native
+                    # validation seam. A frontend tool used to SUSPEND on its raw
+                    # args with no validation, so a mis-shaped call (the reported
+                    # 019f771a bug: propose_edit with propose_record_edit's args)
+                    # rendered an un-appliable card. Validate against the tool's OWN
+                    # canonical inputSchema — the same enforcement a backend MCP tool
+                    # already gets — and on a mismatch feed the model the standard
+                    # `required: missing properties` signal it knows how to repair,
+                    # instead of suspending. Never suspend an un-appliable card.
+                    _fe_err = validate_frontend_tool_args(c["name"], _fe_args, _fe_def)
+                    if _fe_err is not None:
+                        # A missing-required miss feeds the SAME cross-tool blank/
+                        # invalid-args streak breaker the backend feeds (mirrors the
+                        # reset/increment rule at the backend dispatch site below).
+                        if _MISSING_REQUIRED_ARGS_MARKER in _fe_err:
+                            blank_tool_args_streak += 1
+                        working.append({
+                            "role": "tool", "tool_call_id": c["id"],
+                            "content": tool_result_content({"error": _fe_err}),
+                        })
+                        yield {"tool_call": {
+                            "id": c["id"], "iteration": iteration, "tool": c["name"],
+                            "args": _fe_args, "ok": False, "result": None, "error": _fe_err,
+                        }}
+                        continue
+                    blank_tool_args_streak = 0  # a valid frontend-tool call
                     suspended_call = {
                         "id": c["id"],
                         "name": c["name"],
-                        "args": _unwrap_wrapped_args(_parse_tool_args(c["arguments"]), _fe_def),
+                        "args": _fe_args,
                     }
                     break
                 args_obj = _parse_tool_args(c["arguments"])

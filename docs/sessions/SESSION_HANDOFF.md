@@ -1,5 +1,36 @@
 # ▶▶ NEXT SESSION STARTS HERE
 
+## 🔌 FRONTEND-TOOLS → MCP MIGRATION — **Phase 0 SHIPPED (2026-07-19, `fix/chat-persist-checkpoints`)**
+> Sealed spec: [`docs/specs/2026-07-19-frontend-tools-mcp-migration.md`](../specs/2026-07-19-frontend-tools-mcp-migration.md).
+> Build plan + RUN-STATE (slice board, decisions, drift log): [`docs/plans/2026-07-19-frontend-tools-mcp-migration-BUILD.md`](../plans/2026-07-19-frontend-tools-mcp-migration-BUILD.md).
+
+**Phase 0 = the MCP-native validation seam (root-cause fix for the 019f771a lost-proposal bug).** A frontend
+tool used to SUSPEND on its raw args with NO validation, so `propose_edit` called with `propose_record_edit`'s
+args rendered an un-appliable Apply card. Now every frontend-tool call is validated against its OWN canonical
+`inputSchema` (standard `Draft202012Validator`) at the suspend seam BEFORE suspending; on a mismatch the model
+gets the standard `required: missing properties` signal (feeds the same `blank_tool_args_streak` breaker) and
+the run continues — never a suspended un-appliable card. **Backend-only** (FE already handles an `ok:false`
+tool_call chunk generically, same shape as a standing-deny). New: `validate_frontend_tool_args` +
+`frontend_tool_def_by_name` (complete 12-tool schema map). Files: `frontend_tools.py`, `stream_service.py` seam
+(~L2503). Tests: `test_frontend_tool_validation.py` (13) + `test_stream_tools.py::TestFrontendToolValidationSeam`
+(2). **/review-impl:** 2 findings fixed (glossary_* fail-open resolver gap; all-names enforcement test).
+**LIVE E2E (real gateway→chat-service→Gemma-4-26B):** valid `propose_edit` → suspends; malformed (incident shape)
+→ rejected with `required: missing properties`, **0 suspends** = no un-appliable card.
+
+**▶ NEXT: Phase 1 — KIND C (domain propose/confirm) → native MCP tools, task-shaped gate.** Then Phase 2 (propose_edit),
+3 (ui_*), 4 (retire `frontend_tools.py` schemas + contract). **SP-0 (beta v2 SDK adoption) is PARKED** — it blocks
+nothing in Phases 0-3 and destabilizes the live stack; do it before native-Tasks work. See the BUILD slice board.
+
+**⚠ Deployed note:** the live `infra-chat-service-1` was hot-patched (docker cp + restart) for the Phase-0 E2E;
+a `docker compose build chat-service` bakes the committed source on next deploy.
+
+**Deferred (found during Phase-0 VERIFY, PRE-EXISTING, unrelated — gate #1 out-of-scope):**
+`D-PLANMODE-SHAPING-PIN-TEST` — `test_plan_mode.py::TestPlanSkillAutoInject::test_plan_mode_with_pins_appends_plan_forge`
+asserts `codes == ["glossary","plan_forge"]` but a `glossary_shaping` companion skill now auto-appends
+(`["glossary","glossary_shaping","plan_forge"]`). **Confirmed red on baseline (git-stash of the Phase-0 diff)** →
+not caused by this slice; belongs to the plan-mode skill-injection subsystem. Fix = verify `glossary_shaping`
+auto-inject is intended, then update the exact-match assertion (likely a stale test).
+
 ## 🪶 F7c — LAZY-CONTEXT ENFORCEMENT (index+load-on-demand) **SHIPPED (2026-07-19, `feat/context-budget-law`)**
 > Plan+result: [`docs/plans/2026-07-19-lazy-context-enforcement.md`](../plans/2026-07-19-lazy-context-enforcement.md).
 > Origin: F7c dogfood re-measurement — a Gemma-4 co-writer turn = 21.6k tok with MCP tools already budgeted.

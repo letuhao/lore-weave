@@ -20,6 +20,8 @@ from __future__ import annotations
 import re as _re
 from copy import deepcopy
 
+from jsonschema import Draft202012Validator
+
 # Tool names that the FRONTEND executes (suspend the run, don't call a backend).
 #   propose_edit                  — editor prose write-back (chapter editor only)
 #   glossary_propose_entity_edit  — edit an existing glossary entity (any book-scoped
@@ -802,6 +804,26 @@ def generic_frontend_tool_def(name: str) -> dict | None:
     return _GENERIC_FRONTEND_TOOLS_BY_NAME.get(name)
 
 
+# The COMPLETE frontend-tool schema map (generic + the two book-scoped glossary
+# tools) — every name in FRONTEND_TOOL_NAMES resolves here. Distinct from
+# `generic_frontend_tool_def`, which is deliberately the cross-domain-advertisement
+# subset (it must NOT surface the glossary tools on non-book surfaces). This map is
+# for the Phase 0 VALIDATION seam: it resolves a tool's canonical inputSchema even
+# when the tool is not in THIS turn's advertised set, so no frontend tool can slip
+# past validation on an unusual (called-but-not-advertised) path.
+_ALL_FRONTEND_TOOLS_BY_NAME: dict[str, dict] = {
+    **_GENERIC_FRONTEND_TOOLS_BY_NAME,
+    "glossary_propose_entity_edit": GLOSSARY_PROPOSE_EDIT_TOOL,
+    "glossary_confirm_action": GLOSSARY_CONFIRM_ACTION_TOOL,
+}
+
+
+def frontend_tool_def_by_name(name: str) -> dict | None:
+    """The canonical schema-bearing def for ANY frontend tool by name — the whole
+    set, for the validation seam. None for a non-frontend name."""
+    return _ALL_FRONTEND_TOOLS_BY_NAME.get(name)
+
+
 def frontend_tool_defs(
     *,
     editor: bool = False,
@@ -843,3 +865,76 @@ def frontend_tool_defs(
 
 def is_frontend_tool(name: str) -> bool:
     return name in FRONTEND_TOOL_NAMES
+
+
+# ── Phase 0 (frontend-tools → MCP migration) — the MCP-native validation seam ──
+# A frontend tool advertised to the LLM carries a canonical JSON-Schema (its
+# `function.parameters`, JSON Schema 2020-12) exactly like a backend MCP tool.
+# Backend tools inherit arg VALIDATION for free (the domain-service SDK validates
+# `arguments` against inputSchema before dispatch); frontend tools were a pre-MCP
+# construct that SUSPENDED the run on the raw args with NO validation. That gap
+# shipped the reported bug (session 019f771a): the model called `propose_edit`
+# with `propose_record_edit`'s args — nothing rejected it, so the run suspended
+# and rendered an Apply card that could never apply.
+#
+# This closes the gap at the source for ALL frontend tools in one place: validate
+# the (already-unwrapped) args against the tool's OWN canonical schema before the
+# suspend, and on a mismatch feed the model the SAME `required: missing
+# properties` signal the domain validator emits — the shape it already knows how
+# to repair. Uses the STANDARD Draft202012Validator against the canonical schema
+# (NOT a hand-rolled per-tool check), so Phases 1-3 reuse the exact same schema.
+#
+# The marker substring MUST match stream_service._MISSING_REQUIRED_ARGS_MARKER so
+# a frontend-tool miss feeds the same cross-tool blank/invalid-args streak breaker
+# the backend feeds. Kept in sync deliberately (two consumers, one contract).
+_MISSING_REQUIRED_MARKER = "required: missing properties"
+
+
+def _canonical_input_schema(tool_def: dict | None) -> dict | None:
+    """The tool's JSON-Schema for its arguments — `function.parameters` for an
+    OpenAI-shaped def (how both the generic frontend defs and the normalized
+    discovery-catalog entries are stored). None if absent."""
+    schema = (((tool_def or {}).get("function") or {}).get("parameters"))
+    return schema if isinstance(schema, dict) and schema else None
+
+
+def validate_frontend_tool_args(
+    name: str, args: object, tool_def: dict | None
+) -> str | None:
+    """Validate a frontend tool's (unwrapped) args against its canonical
+    inputSchema. Return None when valid (or when there is nothing to validate
+    against — FAIL-OPEN, so a schema-less tool is never blocked); otherwise a
+    compact, model-repairable error string.
+
+    The message prioritises the two shapes the incident exercised:
+      * missing top-level required props  → ``required: missing properties: [...]``
+        (contains the shared streak marker),
+      * disallowed props (additionalProperties:false) → the validator's message,
+    then falls back to the first schema error (type/enum/...). This is the exact
+    root-cause fix: a `propose_edit`-with-`propose_record_edit`-args call is
+    rejected here, before any suspend, for every frontend tool.
+    """
+    schema = _canonical_input_schema(tool_def)
+    if schema is None or not isinstance(args, dict):
+        return None  # fail-open: no schema, or a non-object payload we can't judge
+    try:
+        errors = list(Draft202012Validator(schema).iter_errors(args))
+    except Exception:  # noqa: BLE001 — a malformed schema must never block a call
+        return None
+    if not errors:
+        return None
+
+    parts: list[str] = []
+    top_required = [
+        p for p in (schema.get("required") or []) if p not in args
+    ]
+    if top_required:
+        parts.append(f"{_MISSING_REQUIRED_MARKER}: {top_required}")
+    extra = next((e for e in errors if e.validator == "additionalProperties"), None)
+    if extra is not None:
+        parts.append(extra.message)
+    if not parts:
+        e0 = errors[0]
+        loc = "/".join(str(p) for p in e0.absolute_path) or "(root)"
+        parts.append(f"{loc}: {e0.message}" if loc != "(root)" else e0.message)
+    return f'invalid arguments for "{name}": ' + "; ".join(parts)
