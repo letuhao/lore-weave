@@ -13,6 +13,7 @@ from app.services.task_detect import (
     GATE_RESULT_TYPE,
     task_envelope_from_content,
     task_envelope_from_result,
+    tasks_capability_meta,
 )
 
 
@@ -66,3 +67,17 @@ def test_non_json_string_is_none():
 
 def test_handle_missing_task_id_is_none():
     assert task_envelope_from_content({"type": GATE_RESULT_TYPE, "status": "input_required"}) is None
+
+
+# ── the client declaration ↔ server read must agree on the wire ───────────────
+def test_capability_meta_is_read_by_the_server_side_helper():
+    """The _meta chat-service would attach to opt into tasks must be exactly what
+    the domain's client_supports_tasks reads → they can't drift out of sync."""
+    from types import SimpleNamespace
+
+    from loreweave_mcp.tasks_wire import client_supports_tasks
+
+    ctx = SimpleNamespace(request_context=SimpleNamespace(meta=tasks_capability_meta()))
+    assert client_supports_tasks(ctx) is True
+    # and without it, the server reads False (the confirm_token fallback)
+    assert client_supports_tasks(SimpleNamespace(request_context=SimpleNamespace(meta={}))) is False

@@ -22,7 +22,27 @@ from typing import Any
 # Kept in sync with loreweave_mcp.tasks_wire.GATE_RESULT_TYPE (the gate handle marker).
 GATE_RESULT_TYPE = "io.loreweave/task-handle"
 
-__all__ = ["GATE_RESULT_TYPE", "task_envelope_from_result", "task_envelope_from_content"]
+# ext-tasks extension id + the per-request client-capability envelope keys — the
+# SAME wire keys loreweave_mcp.tasks_wire.client_supports_tasks reads server-side.
+_TASKS_EXTENSION = "io.modelcontextprotocol/tasks"
+_CLIENT_CAPS_KEY = "io.modelcontextprotocol/clientCapabilities"
+
+__all__ = [
+    "GATE_RESULT_TYPE",
+    "task_envelope_from_result",
+    "task_envelope_from_content",
+    "tasks_capability_meta",
+]
+
+
+def tasks_capability_meta() -> dict[str, Any]:
+    """The per-request `_meta` fragment chat-service merges into a tool call to
+    DECLARE it can drive ext-tasks (the domain's `client_supports_tasks` reads
+    exactly this to decide task-vs-confirm_token). Attaching this is the ACTIVATION
+    switch — done only once the detect + suspend + drive path is wired end to end,
+    so a declared-but-undriven task can never strand. Until then this is defined but
+    unused (dormant)."""
+    return {_CLIENT_CAPS_KEY: {"extensions": {_TASKS_EXTENSION: {}}}}
 
 
 def _task_envelope(task_id: str, status: str, input_requests: Any = None,
