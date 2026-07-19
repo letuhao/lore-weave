@@ -20,15 +20,56 @@
 | S3 | Phase 2 — KIND B (`propose_edit`) → MCP tool + elicitation | pending | — |
 | S4 | Phase 3 — KIND A (`ui_*`) → validated directive tools (ai-gateway-local) | pending | — |
 | S5 | Phase 4 — retire `frontend_tools.py` schemas + contract; `tools/list` = single contract | pending | — |
-| SP-0 | Beta v2 SDK spike + adoption (Tasks/elicitation-send/MCP-Apps capability matrix) | parked | informs S2–S5; blocks none |
+| SP-0a | Python `mcp` pin → 1.28.1 (chat + knowledge) | **DONE** | containers already run 1.28.1; native elicitation+tasks present |
+| SP-0b | Go 5 svcs `go-sdk` v1.6.1 → v1.7.0-pre.3 | **DONE** | all build + full test suites green; only a new transitive dep (x/time/rate) |
+| SP-0c | ai-gateway TS `sdk@1.29.0` → `server`+`client@2.0.0-beta.4` | **NEEDS-DECISION** | NOT a repackage — a real API redesign of the load-bearing gateway proxy (setRequestHandler method-string, web-standard transport, ctx shape). Client side trivial; server side a rewrite. |
+| SP-0 | (spike done — capability matrix above) | **DONE** | betas verified; D2 revised then user-ratified to adopt anyway |
 
 ## Decisions register (append as sealed)
+- 2026-07-19 · **D2 FINAL (user-ratified 2026-07-19):** despite SP-0 evidence that betas aren't needed for
+  capability, the user chose to **adopt the betas anyway** (future-proofing toward the 2026-07-28 RC, dev-phase).
+  Execute incrementally, lowest-risk-first, gated: **SP-0a** Python → pin `mcp==1.28.1` (no v2 exists; latest 1.x);
+  **SP-0b** Go 5 svcs `v1.6.1` → `v1.7.0-pre.3` (same module path); **SP-0c** ai-gateway TS `sdk@1.29.0` →
+  `@modelcontextprotocol/server`+`client@2.0.0-beta.4` (repackaging — the real migration). Build+test gate each;
+  live MCP round-trip at the end.
 - 2026-07-19 · Sequencing: run **Phase 0 first** (root-cause fix, live-E2E-able, no SDK churn); SP-0 beta adoption deferred/parked because it blocks nothing in Phase 0 and destabilizes a live dev platform.
 - 2026-07-19 · Phase-0 validator location: `frontend_tools.py::validate_frontend_tool_args(name, args, tool_def)` (keeps schema + validation together — the migration thesis).
 - 2026-07-19 · Streak integration: a frontend-tool validation error containing `required: missing properties` feeds the SAME `blank_tool_args_streak` the backend feeds (shared cross-tool flailing counter); mirrors backend reset/increment rule exactly.
 
+## SP-0 empirical findings (2026-07-19) — D2 versions PARTLY WRONG
+Verified against live registries:
+- **Python `mcp`: NO v2 beta exists on PyPI** — latest is **1.28.1** (1.x line). Spec's `mcp==2.0.0b1` is
+  unbuildable. chat-service currently pinned `>=1.9,<2` (installed 1.27.2). ⇒ Python can only move within 1.x;
+  the spike must determine whether 1.28.1 already exposes elicitation / tasks.
+- **Go `go-sdk`: `v1.7.0-pre.3` available** (newer than spec's pre.1). Currently v1.6.1 across 5 services.
+- **TS `@modelcontextprotocol/server`+`client`: `2.0.0-beta.4`** (past spec's beta.1). ai-gateway on `sdk@^1.29.0`.
+- **Linchpin:** chat-service (Python, the gate orchestrator) has no v2 → native Tasks/elicitation feasibility
+  depends entirely on Python 1.28.1's surface. Spike settles it before any adoption.
+
+## SP-0 CAPABILITY MATRIX (verified 2026-07-19) — D2 OVERTURNED
+Spiked each SDK in isolation (installed/introspected, no service changes):
+
+| SDK (current **stable**) | Elicitation (human gate) | Tasks ext (durability) |
+|---|---|---|
+| Python `mcp` **1.28.1** (chat-service client — ALREADY installed & running in-container) | ✓ `Context.elicit`/`ServerSession.elicit`, form+URL | ✓ experimental: `Task`, `TASK_STATUS_INPUT_REQUIRED`, `tasks/get`, `task_context`/`task_scope` |
+| Go `go-sdk` **v1.6.1** (5 domain servers) | ✓ `ServerSession.Elicit` | ✗ (not in v1.6.1 **nor** in v1.7.0-pre.3 beta) |
+| TS `@modelcontextprotocol/sdk` **1.29.0** (ai-gateway) | ✓ `ElicitRequest`/`elicitation/create` in types | types present |
+
+**Conclusion: the beta v2 SDKs are NOT needed.** The human-gate primitive (**elicitation**) is on ALL current
+stable SDKs; the Tasks extension is on Python stable and irrelevant on Go (absent in stable AND beta), with
+`chat_suspended_runs` covering durability regardless. The v2 betas add only stateless-core/MRTR/auth-hardening —
+orthogonal to Phases 1-2. Adopting them = cross-service dep-bump + TS repackaging risk for ZERO capability gain.
+
+**Revised recommendation (supersedes D2):** DO NOT adopt beta v2 SDKs. Build Phases 1-2 on current stable SDKs
+(native elicitation gate). Optional safe hygiene: tighten chat-service `mcp>=1.9,<2` → `>=1.28,<2` to lock the
+version already running (has tasks+elicitation). Go stays v1.6.1; ai-gateway stays sdk 1.29.0.
+
+**Root cause of the wrong D2:** the spec's version research overweighted the 2026-07-28 RC blog and missed that
+elicitation (stable since 2025-11-25) + the Tasks extension (experimental) already ship in the CURRENT stable
+SDKs. Also: `mcp==2.0.0b1` never existed on PyPI (latest is 1.28.1).
+
 ## Parked / debt register
-- SP-0 beta-SDK adoption (Python `2.0.0b1`, Go `v1.7.0-pre.1`, TS `server`+`client@2.0.0-beta.1`) — parked; do before native-Tasks work.
+- Go native Tasks durability (if ever wanted) — not in Go stable or beta today; `chat_suspended_runs` bridges it. Revisit if Go tasks ships.
 
 ## Drift log (record near-misses honestly)
 - 2026-07-19 · Pre-existing, unrelated failure found during S1 VERIFY:

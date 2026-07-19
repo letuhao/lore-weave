@@ -17,9 +17,22 @@ tool_call chunk generically, same shape as a standing-deny). New: `validate_fron
 **LIVE E2E (real gateway→chat-service→Gemma-4-26B):** valid `propose_edit` → suspends; malformed (incident shape)
 → rejected with `required: missing properties`, **0 suspends** = no un-appliable card.
 
-**▶ NEXT: Phase 1 — KIND C (domain propose/confirm) → native MCP tools, task-shaped gate.** Then Phase 2 (propose_edit),
-3 (ui_*), 4 (retire `frontend_tools.py` schemas + contract). **SP-0 (beta v2 SDK adoption) is PARKED** — it blocks
-nothing in Phases 0-3 and destabilizes the live stack; do it before native-Tasks work. See the BUILD slice board.
+**SP-0 (beta-SDK adoption) — user chose to adopt betas; spike found they're NOT needed for capability** (native
+elicitation is already on all CURRENT STABLE SDKs — Py 1.28.1, Go v1.6.1, TS 1.29.0; Tasks ext on Py stable;
+`chat_suspended_runs` covers durability). Adopting anyway (user's call, future-proofing the 2026-07-28 RC):
+- **SP-0a DONE** — Python `mcp` pinned `==1.28.1` (chat + knowledge; containers already run it).
+- **SP-0b DONE** — Go 5 svcs (agent-registry/book/catalog/glossary/provider-registry) `go-sdk v1.6.1 → v1.7.0-pre.3`;
+  all build + full test suites green (only a new transitive `golang.org/x/time/rate`). *Running Go binaries still
+  v1.6.1 until image rebuild — source-only, wire-compatible, safe.*
+- **SP-0c NEEDS-DECISION** — ai-gateway TS `@modelcontextprotocol/sdk@1.29.0` → `server`+`client@2.0.0-beta.4` is
+  NOT a repackage but a real API redesign of the LOAD-BEARING gateway proxy (`setRequestHandler` now takes a
+  method-string not a Zod schema; `StreamableHTTPServerTransport` → `WebStandardStreamableHTTPServerTransport`
+  web-standard model; handler `ctx` shape). Client side trivial; server side a rewrite. Deserves its own careful
+  slice — zero capability gain (v1.29.0 already has elicitation), real risk to all traffic.
+
+**▶ NEXT: Phase 1 — KIND C (domain propose/confirm) → native MCP tools, elicitation gate** (buildable on STABLE
+SDKs — native elicitation confirmed present). Then Phase 2 (propose_edit), 3 (ui_*), 4 (retire duplication). SP-0c
+(gateway TS rewrite) is a separate decision. See the BUILD slice board.
 
 **⚠ Deployed note:** the live `infra-chat-service-1` was hot-patched (docker cp + restart) for the Phase-0 E2E;
 a `docker compose build chat-service` bakes the committed source on next deploy.
