@@ -117,6 +117,25 @@ __all__ = ["mcp_server", "build_mcp_app"]
 
 mcp_server = make_stateless_fastmcp("composition")
 
+# ext-tasks durable-gate (spec 2026-07-19-mcp-tasks-durable-gate) — makes this
+# server task-capable: tasks/get + tasks/cancel handlers, the task_provide_input
+# input tool, and the CreateTaskResult wrap so a gate tool emits a wire task. A
+# KIND-C tool opens the gate via `gate_or_confirm(ctx, _task_store, …)` — which
+# returns a durable task ONLY to a tasks-capable client, else today's confirm_token
+# (so non-tasks clients are never stranded). In-memory store for the first cut
+# (single-process; a persistent store bound to the confirm/consumed-token layer is
+# the T3 hardening). `enable_task_results` is called AFTER all @mcp_server.tool defs
+# (bottom of module) so it wraps a handler that sees every tool.
+from loreweave_mcp.tasks import InMemoryTaskStore  # noqa: E402
+from loreweave_mcp.tasks_wire import (  # noqa: E402
+    enable_task_results,
+    gate_or_confirm,
+    register_task_endpoints,
+)
+
+_task_store = InMemoryTaskStore()
+register_task_endpoints(mcp_server, _task_store)
+
 # Confirm descriptors for the Tier-W actions (C-CONFIRM domain map → composition).
 _PUBLISH_DESCRIPTOR = "composition.publish"
 # Cost-gated grounded generation (the cowrite ENGINE — distinct from write_prose,
@@ -1309,15 +1328,38 @@ async def composition_create_derivative(ctx: MCPContext, args: _DeriveArgs) -> d
             for o in args.entity_overrides
         ],
     }
-    confirm_token = mint_confirm_token(
-        settings.confirm_token_signing_secret, tc.user_id, meta.book_id, _DERIVE_DESCRIPTOR, payload,
+    _title = f"Spawn a dị bản '{name}' — mints a knowledge partition (cannot be undone, only archived)"
+
+    async def _executor(_inputs):
+        # The gate ACCEPT effect: the SAME confirm-execute path /v1/composition/actions/confirm
+        # runs (rebuilds DeriveBody from the signed payload, then perform_derive). Lazy import
+        # avoids any import cycle with the actions router.
+        from app.routers.actions import _execute_derive
+
+        return await _execute_derive(payload, tc.user_id, works=works, book=get_book_client())
+
+    def _confirm_fallback():
+        confirm_token = mint_confirm_token(
+            settings.confirm_token_signing_secret, tc.user_id, meta.book_id, _DERIVE_DESCRIPTOR, payload,
+        )
+        return {
+            "confirm_token": confirm_token,
+            "descriptor": _DERIVE_DESCRIPTOR,
+            "title": _title,
+            "domain": "composition",
+        }
+
+    # Capability-gated (spec §4.2): a durable ext-tasks gate for a tasks-capable client,
+    # else today's confirm_token — a non-tasks client (pre-driver chat-service, the public
+    # edge) is NEVER handed a task it can't drive. `payload` is captured so the accept
+    # executes EXACTLY what was proposed (the LLM can't alter the target between the two).
+    return await gate_or_confirm(
+        ctx, _task_store,
+        descriptor=_DERIVE_DESCRIPTOR,
+        executor=_executor,
+        input_requests={"title": _title, "descriptor": _DERIVE_DESCRIPTOR, "domain": "composition"},
+        confirm_fallback=_confirm_fallback,
     )
-    return {
-        "confirm_token": confirm_token,
-        "descriptor": _DERIVE_DESCRIPTOR,
-        "title": f"Spawn a dị bản '{name}' — mints a knowledge partition (cannot be undone, only archived)",
-        "domain": "composition",
-    }
 
 
 # ── S-04: post-derive delta EDITING (agent parity). The deltas were frozen at
@@ -5671,6 +5713,12 @@ async def composition_outline_node_move(ctx: MCPContext, args: _OutlineNodeMoveA
     out = moved.model_dump(mode="json")
     out["_meta"] = {"undo_hint": None}   # a reorder has no single precise inverse token
     return out
+
+
+# ext-tasks: wrap the CallTool handler AFTER every @mcp_server.tool is registered,
+# so a gate tool (composition_create_derivative) emits a wire CreateTaskResult that a
+# tasks-capable client auto-detects. Non-gate tools pass through unchanged.
+enable_task_results(mcp_server, _task_store)
 
 
 # ── ASGI factory ──────────────────────────────────────────────────────────────
