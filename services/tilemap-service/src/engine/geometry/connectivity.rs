@@ -256,7 +256,7 @@ mod tests {
         let mut m = TileMask::new(w, h);
         for y in 0..h {
             for x in 0..w {
-                if rng.gen_bool(density) {
+                if rng.random_bool(density) {
                     m.set(TileCoord::new(x, y));
                 }
             }
@@ -275,7 +275,7 @@ mod tests {
         for _ in 0..600 {
             let passable = random_mask(&mut rng, 8, 8, 0.55);
             // Vary blocking density so both verdicts occur in quantity.
-            let bd = *[0.1, 0.25, 0.55].get(rng.gen_range(0..3)).unwrap();
+            let bd = *[0.1, 0.25, 0.55].get(rng.random_range(0..3)).unwrap();
             let blocking = random_mask(&mut rng, 8, 8, bd);
             let got = would_seal_a_gap(&blocking, &passable);
             let want = oracle_seals(&blocking, &passable);
