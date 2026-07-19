@@ -138,7 +138,19 @@ Reuse existing cards (`ConfirmActionCard`, `RecordDiffCard`, `GlossaryDiffCard`)
   loop: gate → tasks/get input_required → provide_input → executor runs → completed, nothing written until accept;
   decline → cancelled). Learnings: tasks/get carries STATUS only (1.28.1 `GetTaskResult` has no `inputRequests`
   field + `_meta` doesn't round-trip); card payload rides the gate handle, result rides the provide_input response.
-- **T1c — wire into a REAL Python domain confirm + `CreateTaskResult` wrap (NEXT).** Replace the self-contained
+- **T1c(1) — `CreateTaskResult` CallTool wrap → DONE** (`4f0724238`). `enable_task_results`; live E2E.
+- **T1c(2) — capability-gating primitive + REAL composition flip → DONE** (`517daedcb`, `47badff51`).
+  `client_supports_tasks(ctx)` + `gate_or_confirm(ctx, store, …, confirm_fallback)` (9 unit tests) — the guard that
+  makes a flip safe. `composition_create_derivative` now calls `gate_or_confirm` (executor = the shared
+  `_execute_derive`); composition-service is task-capable (verified in the real container: tasks/get|cancel handlers,
+  task_provide_input tool, CallTool wrapped, 100 tools; tool tests green). **Provable no-op for current traffic** (no
+  client declares tasks yet → always the `confirm_token` fallback); the task path activates with T1c(3).
+- **T1c(3) — chat-service DRIVER + T2 gateway forwarding (NEXT, coordinated).** chat-service declares the tasks
+  extension in its tool-call `_meta`, detects a `CreateTaskResult`, suspends (reuse `chat_suspended_runs`), and on
+  the human decision calls `task_provide_input` + polls `tasks/get`; **ai-gateway forwards `tasks/get`/`cancel` +
+  passes `CreateTaskResult` through + `taskId→provider` routing** (T2 — needed for chat→gateway→composition to
+  carry a task). FE reuses existing confirm cards. This is the first FULL live stack E2E of the durable gate.
+- **(superseded) T1c — wire into a REAL Python domain confirm + `CreateTaskResult` wrap.** Replace the self-contained
   `publish_book` gate with a real KIND-C confirm on a Python domain (composition/translation); emit a wire
   `CreateTaskResult{resultType:"task"}` via a CallTool wrap so a client auto-detects the task; live-prove on a
   stack-up. Then chat-service drives it (reuse `chat_suspended_runs`) + FE renders (reuse existing cards).

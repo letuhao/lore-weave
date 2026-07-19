@@ -56,14 +56,19 @@ fix it. DECISION (user-directed): build the Tasks extension OURSELVES.** New sea
   **⇒ The ext-tasks durable-gate FACADE is now functionally COMPLETE + live-proven** (`loreweave_mcp/tasks.py` +
   `tasks_wire.py`; 89 kit tests). It's the reusable kit primitive; what remains is *applying* it.
 
-**▶ NEXT: T1c(2) — wire `open_gate` into a REAL composition-service confirm tool** (captured pattern, spec §6 T1c:
-`open_gate(store, descriptor, executor=<actions.py commit logic>, input_requests={title,preview})` replaces
-`mint_confirm_token`; `enable_task_results(mcp, store)` after tools; `mint_confirm_token` stays as the
-capability-absent fallback). Live-prove on a rebuilt composition image (real HTTP MCP call). Then chat-service
-drives it (reuse `chat_suspended_runs`) + FE (reuse confirm cards). Then **T2** (ai-gateway forwards
-tasks/get|cancel + input step, taskId→provider routing), **T3** (Go facade for glossary/book + replicate),
-**T4** (retire the bespoke frontend confirm tools). Frontend-tools Phases 2-3 (propose_edit, ui_*) + SP-0c
-(gateway v2 rewrite) remain separate/deferred. Spec:
+- **T1c(1)** (`4f0724238`) — `enable_task_results` CallTool wrap (gate tool emits a wire CreateTaskResult).
+- **T1c(2)** (`517daedcb` + `47badff51`) — capability-gating primitive `gate_or_confirm(ctx,…)`/`client_supports_tasks`
+  (9 tests) + the REAL composition flip: `composition_create_derivative` is now capability-gated (task for a
+  tasks-client, else the identical `confirm_token`; executor = the shared `_execute_derive`). Verified task-capable
+  in the real composition container; tool tests green. **No-op for current traffic** (nothing declares tasks yet).
+
+**▶ NEXT: T1c(3) + T2 (coordinated) — the chat-service DRIVER + ai-gateway task forwarding.** chat-service declares
+the tasks extension in its tool-call `_meta`, detects a `CreateTaskResult`, suspends (reuse `chat_suspended_runs`),
+and on the human decision calls `task_provide_input` + polls `tasks/get`; **ai-gateway forwards `tasks/get`/`cancel`
++ passes `CreateTaskResult` through + `taskId→provider` routing** (needed for chat→gateway→composition to carry a
+task). FE reuses existing confirm cards. This is the first FULL live-stack E2E of the durable gate. Then **T3** (Go
+facade for glossary/book + a persistent store), **T4** (retire the bespoke frontend confirm tools). Frontend-tools
+Phases 2-3 (propose_edit, ui_*) + SP-0c (gateway v2 rewrite) remain separate/deferred. Spec:
 [`docs/specs/2026-07-19-mcp-tasks-durable-gate.md`](../specs/2026-07-19-mcp-tasks-durable-gate.md) §6.
 
 **⚠ Deployed note:** the live `infra-chat-service-1` was hot-patched (docker cp + restart) for the Phase-0 E2E;
