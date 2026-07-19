@@ -77,6 +77,19 @@ from .shape_snapshot import (
     build_shape_map,
     repo_root_from,
 )
+from .tasks import (
+    CANCELLED,
+    COMPLETED,
+    FAILED,
+    INPUT_REQUIRED,
+    TERMINAL,
+    WORKING,
+    InMemoryTaskStore,
+    Task,
+    TaskNotFound,
+    TaskNotWaiting,
+    TaskStore,
+)
 
 __all__ = [
     # context / server wiring
@@ -118,4 +131,16 @@ __all__ = [
     "repo_root_from",
     # external MCP discoverability audit #9 — payload-duplication fix
     "patch_convert_result",
+    # ext-tasks durable-gate CORE (2026-07-19-mcp-tasks-durable-gate spec, T1a)
+    "TaskStore",
+    "InMemoryTaskStore",
+    "Task",
+    "TaskNotFound",
+    "TaskNotWaiting",
+    "WORKING",
+    "INPUT_REQUIRED",
+    "COMPLETED",
+    "FAILED",
+    "CANCELLED",
+    "TERMINAL",
 ]
