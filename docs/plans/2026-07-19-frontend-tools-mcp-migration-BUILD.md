@@ -65,8 +65,25 @@ orthogonal to Phases 1-2. Adopting them = cross-service dep-bump + TS repackagin
 version already running (has tasks+elicitation). Go stays v1.6.1; ai-gateway stays sdk 1.29.0.
 
 **Root cause of the wrong D2:** the spec's version research overweighted the 2026-07-28 RC blog and missed that
-elicitation (stable since 2025-11-25) + the Tasks extension (experimental) already ship in the CURRENT stable
-SDKs. Also: `mcp==2.0.0b1` never existed on PyPI (latest is 1.28.1).
+elicitation (stable since 2025-11-25) + the Tasks extension (experimental) already ship in the CURRENT stable SDKs.
+
+### CORRECTION (2026-07-19, after user pointed to the actual releases)
+My "no Python v2 exists" claim above was **WRONG** — a methodology error (`pip index versions mcp` hides
+pre-releases; `--pre` reveals **`2.0.0b2, 2.0.0b1, 2.0.0a3/a2/a1`**). The Python beta v2 **exists** and installs.
+**But adopting v2 is a major rewrite, not a pin:**
+- **`mcp.server.fastmcp` is REMOVED in v2** (replaced by a new `MCPServer`/`McpServer` high-level API). The shared
+  `loreweave_mcp` kit + **6 Python services** build their MCP servers on `FastMCP` via `@mcp_server.tool()` — ~9.3k
+  lines (composition 5686, knowledge 1829, translation 1190, jobs 446, lore-enrichment 147, + chat client).
+- Client: `mcp.client.streamable_http.streamablehttp_client` → **`streamable_http_client`** (rename); httpx→httpx2.
+- `ClientSession`, `transport_security.TransportSecuritySettings` survive.
+
+**DECISION (user-ratified 2026-07-19): SKIP the v2 migration for now; continue to Phase 1 on stable.** Rationale:
+zero capability gain (elicitation already on stable 1.28.1, FastMCP intact), stable v2 lands **2026-07-28** (building
+against the moving beta risks re-work), and Phase 1 (the actual bug-driven value) is buildable now on stable.
+**When we DO adopt v2** (best after the 2026-07-28 stable): do it via a **FastMCP→MCPServer ADAPTER inside the
+`loreweave_mcp` kit** — the single chokepoint (`make_stateless_fastmcp`) — so the 6 services stay untouched behind
+the same `@mcp_server.tool()` facade. SP-0a keeps the stable 1.28.1 pin (valid; FastMCP intact); SP-0b Go pre.3
+stays (harmless; Go has no v2); SP-0c gateway rewrite deferred with the rest.
 
 ## Parked / debt register
 - Go native Tasks durability (if ever wanted) — not in Go stable or beta today; `chat_suspended_runs` bridges it. Revisit if Go tasks ships.

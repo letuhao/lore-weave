@@ -15,11 +15,15 @@ redis>=5.0
 aiofiles>=25.1.0
 # ARCH-2 C2 — MCP client (mcp.client.streamable_http) for the USE_MCP_TOOLS
 # dual-run path in stream_service. Base package only (no CLI tools needed).
-# Frontend-tools→MCP migration SP-0 (2026-07-19): pinned to 1.28.1 — the first
-# stable line that ships native elicitation (Context.elicit/ServerSession.elicit)
-# + the Tasks extension (experimental: TASK_STATUS_INPUT_REQUIRED, tasks/get),
-# the primitives Phases 1-2 build the human gate on. (No mcp 2.x exists on PyPI;
-# 1.28.1 is the latest 1.x and is already what the container resolves.)
+# Frontend-tools→MCP migration SP-0 (2026-07-19): pinned to 1.28.1 (latest STABLE),
+# which already ships native elicitation (Context.elicit/ServerSession.elicit) + the
+# Tasks extension (experimental: TASK_STATUS_INPUT_REQUIRED, tasks/get) — the primitives
+# Phases 1-2 build the human gate on. NOTE: a beta v2 DOES exist (mcp==2.0.0b2, `pip
+# install --pre`), but v2 is a major rework that REMOVES mcp.server.fastmcp (which the
+# loreweave_mcp kit + 6 services depend on) and renames the client streamable-http import.
+# Staying on stable 1.x (FastMCP intact) is deliberate: zero capability gain from v2 today,
+# and stable v2 lands 2026-07-28. A future v2 adoption goes through a FastMCP→MCPServer
+# ADAPTER in the loreweave_mcp kit (the single chokepoint), keeping the 6 services untouched.
 mcp==1.28.1
 # D-TOOLCALL-GEMMA-TOKEN-LEAK — generic JSON-repair fallback for malformed
 # tool-call arguments some local models emit (see _parse_tool_args).
