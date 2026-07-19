@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useChatStream } from '../providers';
-import { isUiTool, resolveUiTool } from '../nav/uiNav';
+import { isUiTool, resolveUiTool, uiDirectiveFromResult } from '../nav/uiNav';
 import { useUiNavInterceptor } from '../nav/uiNavScope';
 import type { ToolCallRecord } from '../types';
 
@@ -16,10 +16,19 @@ import type { ToolCallRecord } from '../types';
 //
 // This is a genuine synchronization concern (new streamed data → side effect),
 // not user-event handling, so it lives in a useEffect — but it is idempotent:
-// every pending nav record is executed AT MOST ONCE, tracked by toolCallId in a
-// ref, so a re-render or a message-list refetch never re-navigates.
+// every nav record is executed AT MOST ONCE, tracked by toolCallId in a ref, so a
+// re-render or a message-list refetch never re-navigates.
+//
+// TWO shapes are handled (Phase 3 cutover):
+//   1. DIRECTIVE result (the new path) — ai-gateway ran the ui_* tool locally and
+//      returned an `io.loreweave/ui-directive` RESULT; the FE just acts on it. There
+//      is NO suspend to resolve.
+//   2. PENDING suspend (the legacy path) — the run suspended on a ui_* frontend tool
+//      and the FE performs the action + POSTs the resolve. Unfed once P3.2 stops
+//      chat-service intercepting ui_* (kept for a safe coexistence window; retire in
+//      P4 — D-P3-RETIRE-UI-SUSPEND).
 
-/** Pull pending `ui_*` records out of a message's tool_calls. */
+/** Pull pending `ui_*` suspend records out of a message's tool_calls (legacy path). */
 function pendingUiToolCalls(records: ToolCallRecord[] | null | undefined): ToolCallRecord[] {
   if (!records) return [];
   return records.filter(
@@ -41,31 +50,50 @@ export function useUiToolExecutor(): void {
   const handledRef = useRef<Set<string>>(new Set());
 
   useEffect(() => {
-    const pending: ToolCallRecord[] = [];
     for (const m of messages) {
-      for (const tc of pendingUiToolCalls(m.tool_calls)) pending.push(tc);
-    }
-    for (const tc of pending) {
-      const id = tc.toolCallId!;
-      if (handledRef.current.has(id)) continue;
-      handledRef.current.add(id);
-
-      const args = (tc.args ?? {}) as Record<string, unknown>;
-      const interception = intercept?.(tc.tool, args) ?? null;
-      const { path, result, effect } = interception ?? { ...resolveUiTool(tc.tool, args), effect: undefined };
-      if (effect) {
-        try { effect(); } catch { /* surface action can throw if its host isn't ready */ }
-      }
-      if (path) {
-        try {
-          navigate(path);
-        } catch {
-          // navigation can throw if the router isn't ready; the resolve below
-          // still reports the attempted outcome so the agent isn't left hanging.
+      for (const tc of m.tool_calls ?? []) {
+        // (1) DIRECTIVE result — act, no resolve.
+        const directive = tc.toolCallId ? uiDirectiveFromResult(tc.result) : null;
+        if (directive) {
+          if (handledRef.current.has(tc.toolCallId!)) continue;
+          handledRef.current.add(tc.toolCallId!);
+          dispatchUiAction(directive.tool, directive.args, navigate, intercept);
+          continue;
+        }
+        // (2) PENDING suspend — act + resolve (legacy path).
+        if (tc.pending === true && isUiTool(tc.tool) && tc.runId && tc.toolCallId) {
+          if (handledRef.current.has(tc.toolCallId)) continue;
+          handledRef.current.add(tc.toolCallId);
+          const args = (tc.args ?? {}) as Record<string, unknown>;
+          const resolved = dispatchUiAction(tc.tool, args, navigate, intercept);
+          void submitToolResolve(tc.runId, tc.toolCallId, resolved);
         }
       }
-      // Resolve the suspended run with the (navigated|opened|shown|watching) flag.
-      void submitToolResolve(tc.runId!, id, result);
     }
   }, [messages, navigate, submitToolResolve, intercept]);
+}
+
+/** Perform a ui_* action (navigate for the SPA tools, or the surface effect for a
+ * studio tool via the interceptor). Shared by both the directive and the legacy
+ * suspend paths. Returns the resume payload (used only by the suspend path). */
+function dispatchUiAction(
+  tool: string,
+  args: Record<string, unknown>,
+  navigate: ReturnType<typeof useNavigate>,
+  intercept: ReturnType<typeof useUiNavInterceptor>,
+): Record<string, unknown> {
+  const interception = intercept?.(tool, args) ?? null;
+  const { path, result, effect } = interception ?? { ...resolveUiTool(tool, args), effect: undefined };
+  if (effect) {
+    try { effect(); } catch { /* surface action can throw if its host isn't ready */ }
+  }
+  if (path) {
+    try {
+      navigate(path);
+    } catch {
+      // navigation can throw if the router isn't ready; the caller still reports the
+      // attempted outcome so the agent isn't left hanging.
+    }
+  }
+  return result;
 }

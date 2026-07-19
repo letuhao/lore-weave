@@ -11,6 +11,34 @@
 // into pushing an arbitrary route. ui_open_book / ui_open_chapter / ui_watch_job
 // build their path from typed ids, so they are always allowlisted by construction.
 
+// Phase 3 cutover — ai-gateway now returns a DIRECTIVE for a ui_* tool call (instead
+// of chat-service suspending the run): the tool RESULT carries this shape, and the FE
+// acts on it (navigate / open a panel) with no suspend to resolve.
+export const UI_DIRECTIVE_TYPE = 'io.loreweave/ui-directive';
+
+export interface UiDirective {
+  type: typeof UI_DIRECTIVE_TYPE;
+  tool: string;
+  args: Record<string, unknown>;
+}
+
+/** Extract a ui directive from a tool-call RESULT, or null if it isn't one. The
+ * result may be the directive object itself (structuredContent) or carry it under a
+ * `structuredContent` key, depending on how the wire serialized it — accept both. */
+export function uiDirectiveFromResult(result: unknown): UiDirective | null {
+  const o = result as Record<string, unknown> | null | undefined;
+  const cand =
+    o && typeof o === 'object' && o.type === UI_DIRECTIVE_TYPE
+      ? o
+      : o && typeof (o as { structuredContent?: unknown }).structuredContent === 'object'
+        ? ((o as { structuredContent?: Record<string, unknown> }).structuredContent as Record<string, unknown>)
+        : null;
+  if (cand && cand.type === UI_DIRECTIVE_TYPE && typeof cand.tool === 'string') {
+    return { type: UI_DIRECTIVE_TYPE, tool: cand.tool as string, args: (cand.args as Record<string, unknown>) ?? {} };
+  }
+  return null;
+}
+
 /** The set of `ui_*` tool names this executor handles. */
 export const UI_TOOL_NAMES = [
   'ui_navigate',

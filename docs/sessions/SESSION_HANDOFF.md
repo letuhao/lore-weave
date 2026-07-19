@@ -14,11 +14,20 @@
   `/review-impl`: transient double-advertise verified SAFE (chat-service still intercepts `ui_*` via
   `is_frontend_tool` + dedupes by name ⇒ ai-gateway's copies are shadowed/inert until P3.2); 1 MED fixed (added
   declared-type validation). Full ai-gateway suite green (240 + 8 new). **Inert until P3.2.**
-- **▶ P3.2 NEXT** — chat-service: stop advertising/intercepting `ui_*` as frontend tools (remove from
-  `FRONTEND_TOOL_NAMES`/`is_frontend_tool`), keep the F7c nav-intent FILTER on the now-federated `ui_open_studio_panel`;
-  route the `ui_*` tool RESULT (directive) to the FE instead of suspending. Then **P3.3** (FE acts on the directive
-  via `nav/uiNav.ts`, retire the suspend path) + **P3.4** (browser E2E). Then **Phase 2** (propose_edit task-shaped)
-  + **Phase 4** (retire `frontend_tools.py`).
+- **P3.3 DONE** (this commit, FE — additive + inert until P3.2) — `useUiToolExecutor` now acts on a
+  `ToolCallRecord.result.type === 'io.loreweave/ui-directive'` (the new directive path: navigate/open a panel via
+  the shared `dispatchUiAction`, reusing `resolveUiTool`/`uiNavScope`, idempotent by `toolCallId`, **no** suspend to
+  resolve) ALONGSIDE the legacy pending-suspend path (kept for a safe coexistence window → retire in P4,
+  `D-P3-RETIRE-UI-SUSPEND`). `uiNav.ts` adds `UI_DIRECTIVE_TYPE` + `uiDirectiveFromResult`. Inert until P3.2 emits
+  directives. Tests: 10 executor (6 legacy + 4 new directive) + 11 uiNav + 15 FE-contract = 36 green.
+- **▶ P3.2 NEXT (the routing cutover — the risky half, needs a full-stack live-smoke)** — chat-service: remove the
+  7 `ui_*` from `FRONTEND_TOOL_NAMES`/`is_frontend_tool` (stop intercepting → route to ai-gateway federated);
+  remove the 5 nav `ui_*` from the always-on core map + the 2 studio `ui_*` from `frontend_tool_defs`; **MOVE the
+  F7c nav-intent gate** (`_is_panel_nav_intent`, `frontend_tool_defs`'s `studio_panel_nav`) to a FILTER on the
+  federated `ui_open_studio_panel` (else +880 tok/turn); ensure the directive `structuredContent` is what lands in
+  the `TOOL_CALL_RESULT` `content` the FE reads. Live-smoke: a real model turn calling `ui_navigate` through the
+  stack navigates the browser. Then **P3.4** (browser E2E), **Phase 2** (propose_edit task-shaped), **Phase 4**
+  (retire `frontend_tools.py`).
 - Deferred: `D-P3-COMPACT-PANEL-DESC` (F7c compact panel_id A/B, default-off, not ported to ai-gateway).
 
 

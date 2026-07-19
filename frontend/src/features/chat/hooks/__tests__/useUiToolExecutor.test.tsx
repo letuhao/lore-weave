@@ -106,4 +106,56 @@ describe('useUiToolExecutor', () => {
     expect(navigate).not.toHaveBeenCalled();
     expect(submitToolResolve).not.toHaveBeenCalled();
   });
+
+  // Phase 3 cutover — the DIRECTIVE path: ai-gateway ran the ui_* tool and returned an
+  // io.loreweave/ui-directive RESULT. The FE acts on it with NO suspend to resolve.
+  const directiveRecord: ToolCallRecord = {
+    tool: 'ui_navigate', ok: true, pending: false, toolCallId: 'd1',
+    result: { type: 'io.loreweave/ui-directive', tool: 'ui_navigate', args: { path: '/books/b1/glossary' } },
+  };
+
+  it('acts on a ui-directive RESULT once, WITHOUT resolving (no suspend)', () => {
+    streamMessages = [msgWith(directiveRecord)];
+    const { rerender } = renderHook(() => useUiToolExecutor());
+    expect(navigate).toHaveBeenCalledWith('/books/b1/glossary');
+    expect(submitToolResolve).not.toHaveBeenCalled(); // directive path never resolves
+    rerender();
+    expect(navigate).toHaveBeenCalledTimes(1); // idempotent by toolCallId
+  });
+
+  it('directive with a disallowed path does not navigate (and still never resolves)', () => {
+    streamMessages = [msgWith({
+      ...directiveRecord, toolCallId: 'd2',
+      result: { type: 'io.loreweave/ui-directive', tool: 'ui_navigate', args: { path: '/evil' } },
+    })];
+    renderHook(() => useUiToolExecutor());
+    expect(navigate).not.toHaveBeenCalled();
+    expect(submitToolResolve).not.toHaveBeenCalled();
+  });
+
+  it('directive consults the interceptor (studio effect, no navigate)', () => {
+    const effect = vi.fn();
+    const interceptor: UiNavInterceptor = (tool) =>
+      tool === 'ui_open_studio_panel' ? { path: null, result: { opened: true }, effect } : null;
+    const wrapper = ({ children }: { children: ReactNode }) => (
+      <UiNavInterceptorContext.Provider value={interceptor}>{children}</UiNavInterceptorContext.Provider>
+    );
+    streamMessages = [msgWith({
+      tool: 'ui_open_studio_panel', ok: true, pending: false, toolCallId: 'd3',
+      result: { type: 'io.loreweave/ui-directive', tool: 'ui_open_studio_panel', args: { panel_id: 'compose' } },
+    })];
+    renderHook(() => useUiToolExecutor(), { wrapper });
+    expect(effect).toHaveBeenCalledTimes(1);
+    expect(navigate).not.toHaveBeenCalled();
+    expect(submitToolResolve).not.toHaveBeenCalled();
+  });
+
+  it('ignores a non-directive result (a normal tool result is not a nav)', () => {
+    streamMessages = [msgWith({
+      tool: 'book_list', ok: true, pending: false, toolCallId: 'd4', result: { books: [] },
+    })];
+    renderHook(() => useUiToolExecutor());
+    expect(navigate).not.toHaveBeenCalled();
+    expect(submitToolResolve).not.toHaveBeenCalled();
+  });
 });
