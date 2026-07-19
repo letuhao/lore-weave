@@ -38,8 +38,49 @@ __all__ = [
     "register_task_endpoints",
     "enable_task_results",
     "open_gate",
+    "gate_or_confirm",
+    "client_supports_tasks",
+    "TASKS_EXTENSION",
     "GATE_RESULT_TYPE",
 ]
+
+# ext-tasks extension id + the per-request client-capability envelope keys (spec §4.2).
+TASKS_EXTENSION = "io.modelcontextprotocol/tasks"
+_CLIENT_CAPS_KEY = "io.modelcontextprotocol/clientCapabilities"
+
+
+def _mget(obj: Any, key: str) -> Any:
+    """Read ``key`` from a per-request _meta node that may be a plain dict OR a
+    pydantic model carrying it as an extra field."""
+    if obj is None:
+        return None
+    if isinstance(obj, dict):
+        return obj.get(key)
+    me = getattr(obj, "model_extra", None)
+    if isinstance(me, dict) and key in me:
+        return me[key]
+    getter = getattr(obj, "get", None)
+    if callable(getter):
+        try:
+            return getter(key)
+        except Exception:  # noqa: BLE001
+            pass
+    return getattr(obj, key, None)
+
+
+def client_supports_tasks(ctx: Any) -> bool:
+    """True iff THIS request's client declared the ext-tasks extension in per-request
+    `_meta` (`params._meta['io.modelcontextprotocol/clientCapabilities'].extensions[
+    'io.modelcontextprotocol/tasks']`). A KIND-C tool gates on this: task if True,
+    else the confirm_token fallback (OQ3) — so flipping a tool to the durable gate
+    NEVER strands a client that can't drive tasks (today's chat-service, the public
+    edge, external agents). Fail-closed on any read error → falls back to confirm_token."""
+    try:
+        meta = getattr(getattr(ctx, "request_context", None), "meta", None)
+    except Exception:  # noqa: BLE001
+        return False
+    exts = _mget(_mget(meta, _CLIENT_CAPS_KEY), "extensions")
+    return _mget(exts, TASKS_EXTENSION) is not None
 
 # A marker in the gate tool's result content so a client (and our own resolver)
 # recognises "this is a durable task handle, poll tasks/get".
@@ -95,6 +136,32 @@ async def open_gate(
         "pollIntervalMs": task.poll_interval_ms,
         "inputRequests": input_requests,
     }
+
+
+async def gate_or_confirm(
+    ctx: Any,
+    store: TaskStore,
+    *,
+    descriptor: str,
+    executor: Callable[[dict[str, Any]], Awaitable[Any]],
+    input_requests: Any,
+    confirm_fallback: Callable[[], Any],
+    ttl_ms: int | None = None,
+) -> Any:
+    """The capability-gated KIND-C gate — the ONE call a domain confirm tool makes.
+
+    If the request's client declared ext-tasks support → open a durable TASK
+    (`open_gate`). Otherwise → return ``confirm_fallback()`` (today's
+    ``{confirm_token, descriptor, …}`` dict) so a non-tasks client (chat-service
+    pre-driver, the public edge, external agents) is NEVER stranded with a task it
+    can't drive. This is the safety-critical gating from spec §4.2 — a domain tool
+    must go through this, never call ``open_gate`` unconditionally."""
+    if client_supports_tasks(ctx):
+        return await open_gate(
+            store, descriptor=descriptor, executor=executor,
+            input_requests=input_requests, ttl_ms=ttl_ms,
+        )
+    return confirm_fallback()
 
 
 def _create_task_result(task: Task) -> t.CreateTaskResult:
