@@ -1,6 +1,7 @@
 import { useMemo } from 'react';
 import type { TilemapView } from '@/types/tilemap';
 import { computeZoneBreakdown } from './zone-breakdown';
+import type { JSX } from 'react';
 
 // Compact metadata readout for the current TilemapView. Bottom-left,
 // shown only when data has settled. Pure presentation — no store
