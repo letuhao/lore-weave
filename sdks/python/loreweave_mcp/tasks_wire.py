@@ -34,7 +34,12 @@ import mcp.types as t
 
 from .tasks import COMPLETED, FAILED, Task, TaskStore
 
-__all__ = ["register_task_endpoints", "open_gate", "GATE_RESULT_TYPE"]
+__all__ = [
+    "register_task_endpoints",
+    "enable_task_results",
+    "open_gate",
+    "GATE_RESULT_TYPE",
+]
 
 # A marker in the gate tool's result content so a client (and our own resolver)
 # recognises "this is a durable task handle, poll tasks/get".
@@ -90,6 +95,69 @@ async def open_gate(
         "pollIntervalMs": task.poll_interval_ms,
         "inputRequests": input_requests,
     }
+
+
+def _create_task_result(task: Task) -> t.CreateTaskResult:
+    return t.CreateTaskResult(
+        task=t.Task(
+            taskId=task.task_id,
+            status=task.status,
+            createdAt=_dt(task.created_at),
+            lastUpdatedAt=_dt(task.updated_at),
+            ttl=task.ttl_ms,
+            pollInterval=task.poll_interval_ms,
+        )
+    )
+
+
+def _handle_of(call_tool_result: Any) -> dict[str, Any] | None:
+    """Extract a gate HANDLE dict from a CallToolResult, or None if this tool
+    result is not a gate. Reads structuredContent (FastMCP's dict return, possibly
+    wrapped under a lone ``result`` key) or a single JSON text block."""
+    import json
+
+    sc = getattr(call_tool_result, "structuredContent", None)
+    if isinstance(sc, dict):
+        cand = sc["result"] if set(sc.keys()) == {"result"} else sc
+        if isinstance(cand, dict) and cand.get("type") == GATE_RESULT_TYPE:
+            return cand
+    content = getattr(call_tool_result, "content", None) or []
+    if content and getattr(content[0], "type", None) == "text":
+        try:
+            cand = json.loads(content[0].text)
+        except (ValueError, TypeError):
+            return None
+        if isinstance(cand, dict) and cand.get("type") == GATE_RESULT_TYPE:
+            return cand
+    return None
+
+
+def enable_task_results(fastmcp: Any, store: TaskStore) -> None:
+    """Wrap the CallTool handler so a gate tool's HANDLE is emitted as a wire
+    ``CreateTaskResult`` (``resultType:"task"``) — which a tasks-capable client
+    auto-detects (no need to read the tool content to know it's a task). A normal
+    tool result passes through unchanged. Call once, after the tools are registered.
+
+    Non-gate tools are untouched; a gate tool whose handle can't be resolved back to
+    a live task also passes through as-is (fail-open — never breaks a tool call)."""
+    srv = fastmcp._mcp_server
+    inner = srv.request_handlers.get(t.CallToolRequest)
+    if inner is None:  # no tools registered yet — nothing to wrap
+        return
+
+    async def _wrapped(req: t.CallToolRequest) -> t.ServerResult:
+        result = await inner(req)
+        try:
+            inner_result = result.root if isinstance(result, t.ServerResult) else result
+            handle = _handle_of(inner_result)
+            if handle and handle.get("taskId"):
+                task = await store.get(handle["taskId"])
+                return t.ServerResult(_create_task_result(task))
+        except Exception:  # noqa: BLE001 — a wrap failure must never break tools/call
+            pass
+        return result
+
+    srv.request_handlers[t.CallToolRequest] = _wrapped
 
 
 def register_task_endpoints(fastmcp: Any, store: TaskStore) -> None:

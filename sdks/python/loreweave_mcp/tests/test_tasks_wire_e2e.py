@@ -22,7 +22,12 @@ from mcp.server.fastmcp import FastMCP
 from mcp.shared.memory import create_connected_server_and_client_session
 
 from loreweave_mcp.tasks import InMemoryTaskStore
-from loreweave_mcp.tasks_wire import GATE_RESULT_TYPE, open_gate, register_task_endpoints
+from loreweave_mcp.tasks_wire import (
+    GATE_RESULT_TYPE,
+    enable_task_results,
+    open_gate,
+    register_task_endpoints,
+)
 
 
 def _build_server(committed: list):
@@ -101,6 +106,44 @@ async def test_durable_gate_full_loop():
         #    this terminal status)
         done = await _get_task(session, task_id)
         assert done.status == "completed"
+
+
+@pytest.mark.asyncio
+async def test_gate_tool_emits_create_task_result():
+    """With enable_task_results, a gate tool's tools/call response IS a wire
+    CreateTaskResult (resultType:"task") a client auto-detects — no need to read
+    the tool content to know it's a durable task."""
+    committed: list = []
+    mcp = FastMCP("tasks-e2e-ctr", stateless_http=True)
+    store = InMemoryTaskStore()
+    register_task_endpoints(mcp, store)
+
+    @mcp.tool(name="publish_book")
+    async def publish_book(book_id: str) -> dict:
+        async def _commit(inputs):
+            committed.append(book_id)
+            return {"published": True}
+
+        return await open_gate(store, descriptor="book.publish", executor=_commit,
+                               input_requests={"title": f"Publish {book_id}?"})
+
+    enable_task_results(mcp, store)  # AFTER the tools are registered
+
+    async with create_connected_server_and_client_session(mcp._mcp_server) as session:
+        await session.initialize()
+        res = await session.send_request(
+            t.ClientRequest(
+                t.CallToolRequest(
+                    method="tools/call",
+                    params=t.CallToolRequestParams(name="publish_book",
+                                                   arguments={"book_id": "b-7"}),
+                )
+            ),
+            t.CreateTaskResult,
+        )
+        assert res.task.status == "input_required"
+        assert res.task.taskId.startswith("task_")
+        assert committed == []  # the gate holds — nothing written on create
 
 
 @pytest.mark.asyncio
