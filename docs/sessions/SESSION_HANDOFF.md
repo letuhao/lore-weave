@@ -30,9 +30,22 @@ elicitation is already on all CURRENT STABLE SDKs — Py 1.28.1, Go v1.6.1, TS 1
   web-standard model; handler `ctx` shape). Client side trivial; server side a rewrite. Deserves its own careful
   slice — zero capability gain (v1.29.0 already has elicitation), real risk to all traffic.
 
-**▶ NEXT: Phase 1 — KIND C (domain propose/confirm) → native MCP tools, elicitation gate** (buildable on STABLE
-SDKs — native elicitation confirmed present). Then Phase 2 (propose_edit), 3 (ui_*), 4 (retire duplication). SP-0c
-(gateway TS rewrite) is a separate decision. See the BUILD slice board.
+**Native gate is gated on the MCP Tasks extension (durable input_required), which the Go SDK lacks — v2 wouldn't
+fix it. DECISION (user-directed): build the Tasks extension OURSELVES.** New sealed spec:
+[`docs/specs/2026-07-19-mcp-tasks-durable-gate.md`](../specs/2026-07-19-mcp-tasks-durable-gate.md). Key facts:
+- Raw elicitation needs a bidirectional relay through the stateless proxy (hard). **Tasks is poll-based** (all
+  client→server) → fits our proxy with additive `tasks/get|update|cancel` forwarding.
+- **SP-T0 spike (done):** mcp 1.28.1's Tasks API works (`elicit_as_task` == our gate) BUT is experimental +
+  **removed in mcp 2.0** (Tasks → standalone `ext-tasks` extension). ⇒ **hand-roll the small `ext-tasks` wire
+  protocol** (CreateTaskResult + tasks/get/update/cancel) uniformly for Go+Python **over the existing
+  `chat_suspended_runs` store**. `confirm_token` stays as the capability-absent fallback (no regression).
+- **book_delete MCP tool REMOVED** (`bd5bd73a8`) — deleting a whole book is not an agent capability (users delete
+  via GUI `DELETE /v1/books/{id}`); book_create lost its undo as a consequence (documented).
+
+**▶ NEXT: T1 — build the shared `ext-tasks` facade helper + wire ONE Python-domain KIND-C confirm onto it +
+live-prove the `tools/call → input_required → tasks/update → completed` loop** (no gateway yet). Then T2 (ai-gateway
+task-method forwarding), T3 (replicate incl. a Go facade), T4 (retire the bespoke frontend confirm tools). Phases
+2-3 of the frontend-tools migration (propose_edit, ui_*) and SP-0c (gateway v2 rewrite) remain separate/deferred.
 
 **⚠ Deployed note:** the live `infra-chat-service-1` was hot-patched (docker cp + restart) for the Phase-0 E2E;
 a `docker compose build chat-service` bakes the committed source on next deploy.
