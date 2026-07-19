@@ -187,7 +187,19 @@ Reuse existing cards (`ConfirmActionCard`, `RecordDiffCard`, `GlossaryDiffCard`)
 - **Phase T3 — Go Tasks facade** (glossary/book). Build the Go helper; migrate one Go confirm (e.g. `glossary_book_delete`) onto Tasks; live-prove. Keep `confirm_token` fallback.
   - **T3a DONE** (`dbe1d92f5`): `sdks/go/loreweave_mcp/tasks.go` — Go mirror of the Python CORE (store + `input_required→completed|cancelled|failed` lifecycle, per-task single-winner `resolving` guard, executor-outside-lock, lazy TTL lapse). 10 unit tests.
   - **T3b DONE** (this commit): `sdks/go/loreweave_mcp/tasks_wire.go` — `ClientSupportsTasks` (fail-closed capability gate reading `req.Params.Meta`, parity-matched to Python incl. `tasks:null`⇒unsupported), `OpenGate`/`GateOrConfirm` (handle-in-content form), and `RegisterTaskProvideInput` (the `<prefix>_task_provide_input` tool, wire-identical to Python `task_id/accepted/inputs → {taskId,status,result?,error?}`). Proven over the **real go-sdk in-memory client↔server wire** (accept runs executor + result rides back; decline skips executor; double-accept ⇒ isError). `/review-impl`: 2 fixed — a Go-specific data race (returns lived `*Task`; now snapshots on return) + the `tasks:null` fail-closed parity drift. 21 task tests green, `go vet` clean.
-  - **T3c REMAINING**: wire `GateOrConfirm` into a real Go domain confirm tool (glossary `book_delete`/similar) + register its provide-input tool + live-prove through the stack; add a persistent `TaskStore` (bound to the confirm/consumed-token layer) for multi-replica.
+  - **T3c DONE (book_chapter_delete)** (this commit): `book-service` `book_chapter_delete` now supports the
+    durable gate. Propose-time keeps the exact identity+grant+existence checks; `GateOrConfirm(req.Params.Meta,…)`
+    branches on the client capability — a tasks-capable client gets a durable `input_required` task whose executor
+    performs the trash transition on accept (re-binding the caller to the proposing user + re-checking the grant =
+    `confirmBookAction` defense-in-depth; the task single-winner guard = single-use). A non-tasks client is
+    unchanged (`confirm_token`). Store is per-server-instance in-memory (persists across propose→accept because
+    `NewStatelessHandler` returns one `*mcp.Server`/process). **LIVE-PROVEN through the REAL /mcp handler + real
+    Postgres** (`mcp_actions_tasks_db_test.go`): tasks path → handle (chapter stays `active`) → accept → chapter
+    `trashed` → double-accept refused; non-tasks path → `confirm_token` card, chapter untouched. `internal/api`
+    suite green (29s); `/review-impl`: no HIGH; 2 tracked deferrals (D-MCPTASKS-GO-STORE multi-replica persistent
+    store; D-MCPTASKS-PROVIDEINPUT-VISIBILITY hide the bare mechanism tool in both kits).
+  - **T3c REMAINING**: a persistent `TaskStore` (bound to the confirm/consumed-token layer) for multi-replica;
+    optionally extend the gate to more Go confirm tools (publish/purge) once the store is durable.
 - **Phase T4 — retire the bespoke gate.** Once all KIND-C confirms are task-shaped: retire the chat-service-local `confirm_action`/`glossary_confirm_action`/`propose_record_edit` **frontend** tools (the parallel construct this whole track exists to remove); `tools/list` + Tasks are the contract. Fold into frontend-tools-migration Phase 4.
 - **(Outcome)** We are **feature-complete on v1** — every v2 capability has a v1/native/our-infra equivalent. **v2 becomes optional** cleanup, adoptable post-2026-07-28-stable via the `loreweave_mcp` kit adapter (tracked separately), on our schedule.
 

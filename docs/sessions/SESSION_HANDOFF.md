@@ -87,8 +87,27 @@ frontend-tools **Phases 2-4**.
   decline skips executor; double-accept⇒isError). `/review-impl`: 2 fixed — a Go-specific data race (was
   returning the lived `*Task`; now snapshots on return) + the `tasks:null` fail-closed parity drift. 21 task tests
   green, `go vet` clean.
-- **▶ T3c REMAINING**: wire `GateOrConfirm` into a real Go domain confirm tool (glossary) + register its
-  provide-input tool + live-prove through the stack; add a persistent `TaskStore`.
+- **T3c DONE (book_chapter_delete)** (this commit) — `book-service`'s `book_chapter_delete` now supports the
+  durable gate: propose-time keeps identity+grant+existence; `GateOrConfirm(req.Params.Meta,…)` gives a
+  tasks-capable client a durable `input_required` task whose executor performs the trash on accept (re-binds the
+  caller to the proposing user + re-checks the grant = `confirmBookAction` defense-in-depth; task single-winner =
+  single-use), and a non-tasks client the unchanged `confirm_token`. In-memory store persists across propose→accept
+  (one `*mcp.Server`/process via `NewStatelessHandler`). **LIVE-PROVEN through the REAL /mcp handler + real
+  Postgres** (`mcp_actions_tasks_db_test.go`, 2 tests): tasks → handle (chapter stays `active`) → accept → `trashed`
+  → double-accept refused; non-tasks → card, untouched. `internal/api` green. `/review-impl`: no HIGH.
+- **▶ T3c REMAINING**: a persistent `TaskStore` for multi-replica (D-MCPTASKS-GO-STORE); optionally extend the gate
+  to more Go confirm tools once the store is durable.
+
+**Deferred (MCP-tasks track — tracked, none blocking):**
+- **D-MCPTASKS-GO-STORE** (gate #2 structural) — the Go `InMemoryTaskStore` is per-process; a multi-replica
+  book-service would land propose on pod A and provide_input on pod B → `TaskNotFound`. HARMLESS today (the gate
+  only opens when the CLIENT declares caps, i.e. chat-service with `tasks_gate_enabled=True`, default False; the
+  `confirm_token` fallback is stateless/multi-replica-safe). Target: a persistent `TaskStore` bound to the
+  confirm/consumed-token layer BEFORE flipping tasks on for multi-replica traffic.
+- **D-MCPTASKS-PROVIDEINPUT-VISIBILITY** (gate #1 cross-kit hygiene) — `<prefix>_task_provide_input` is a bare
+  mechanism tool (no C-TOOL `_meta`, LLM-discoverable via find_tools/ListTools) in BOTH the Go and Python kits.
+  chat-service calls it by name (not via discovery), so it's harmless, but it should be `visibility:hidden`.
+  Target: add hidden-visibility meta to the provide-input registration in both `sdks/*/loreweave_mcp/tasks_wire.*`.
 
 _(build detail below — superseded by the summary above; kept for the file/line targets)_
 
