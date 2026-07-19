@@ -44,15 +44,24 @@ downstream provider).
   allowlist) → return `{ structuredContent: { directive: { tool, args } } }`; invalid →
   `toolErrorEnvelope`. Unit tests: valid → directive; out-of-enum `panel_id` → error (no
   silent no-op); drift test vs the contract.
-- **P3.2 (chat-service)** — stop advertising `ui_*` as frontend tools (they now arrive via
-  federation from ai-gateway); the `ui_*` tool RESULT (the directive) flows to the FE as a
-  normal tool result rather than a suspend. Keep the seam validation as defense-in-depth until
-  P3.3 lands. Tests: `ui_*` no longer in the advertised frontend-tool set; a `ui_*` call is
-  forwarded, not suspended.
-- **P3.3 (FE)** — act on the `ui_*` directive from the tool result (reuse `nav/uiNav.ts`
-  dispatch) instead of the suspend/resolve path (`useUiToolExecutor`); retire the `ui_*`
-  suspend handling. Tests: a directive tool-result triggers exactly one nav; unknown/blocked
-  path is ignored safely.
+- **P3.2 + P3.3 = ONE ATOMIC CUTOVER** (found 2026-07-20 during scoping — they cannot ship
+  independently without breaking nav or guessing the emission shape):
+  - *P3.2 (chat-service)* — remove `ui_*` from `FRONTEND_TOOL_NAMES`/`is_frontend_tool` so they
+    stop being intercepted at the suspend seam and route to ai-gateway (federated), which returns
+    the `io.loreweave/ui-directive`. **Preserve the F7c nav-intent FILTER**: `ui_open_studio_panel`
+    must be filtered OUT of the advertised federated catalog on non-nav-intent turns (else +880
+    tok/turn regression) — move `_is_panel_nav_intent` from a frontend-tool ADD-condition to a
+    catalog FILTER. The directive rides the normal `TOOL_CALL_RESULT` event (`e.content` = the
+    directive JSON).
+  - *P3.3 (FE)* — a new additive executor acts on a `ToolCallRecord.result.type ===
+    'io.loreweave/ui-directive'` (reuse `resolveUiTool`/`uiNavScope` from the suspend path),
+    idempotent by `toolCallId`; retire the `ui_*` branch of `useUiToolExecutor` (the suspend
+    path). Coexists cleanly — the suspend path is simply no longer fed once P3.2 stops suspending.
+  - *Why atomic:* P3.2 alone returns a directive the FE ignores (nav breaks); P3.3 alone can't be
+    tested without knowing P3.2's emission shape. Ship + browser-E2E together.
+  - **Emission shape (traced):** `runChatStream` TOOL_CALL_RESULT handler JSON-parses `e.content`
+    → `ToolCallRecord.result`. P3.2 must ensure the ui_* result's `e.content` is the directive
+    JSON (`{type, tool, args}`) so the FE's `result.type` check fires.
 - **P3.4 (E2E)** — browser: an agent turn that calls `ui_navigate` navigates the app; an
   out-of-enum `ui_open_studio_panel` surfaces an error, not a silent no-op.
 
