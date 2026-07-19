@@ -62,6 +62,23 @@ fix it. DECISION (user-directed): build the Tasks extension OURSELVES.** New sea
   tasks-client, else the identical `confirm_token`; executor = the shared `_execute_derive`). Verified task-capable
   in the real composition container; tool tests green. **No-op for current traffic** (nothing declares tasks yet).
 
+**🎯 T1c(3) — the ext-tasks DURABLE GATE is IMPLEMENTED END-TO-END + unit-tested (dormant behind a default-off
+flag).** Every layer built + tested this session: facade (T1a/b/c1) → capability gating (`gate_or_confirm`) → real
+composition flip (`composition_create_derivative`) → chat-service driver [(a) `mcp_execute_tool` detects a task
+envelope `3c38a32b4` · (b) tool-loop suspend `7d13c590d` · (c) resume-drive provide-input `f20da3826` · (e-backend)
+thread task to FE `6d9290a04`] → FE `TaskConfirmCard` (`e-FE`, 4 vitests) → activation switch `settings.
+tasks_gate_enabled` (`c96d9a32b`, default False). **The current stack is byte-unchanged** (flag off → confirm_token).
+
+**▶ ONLY REMAINING for T1c(3): the full-stack LIVE E2E (flip-and-prove).** Set `tasks_gate_enabled=True`, rebuild
+composition + chat images, drive a real agent turn that calls `composition_create_derivative` on a BACKED source
+Work → the derive gate holds at input_required → the FE `TaskConfirmCard` Confirm → chat-service resume drives
+`composition_task_provide_input` → `perform_derive` mints the partition. (Needs a seeded backed-source + is
+side-effectful — accept mints a real knowledge partition.) Then flip the flag on for real. After that: **T3** (Go
+facade for glossary/book + a persistent task store), **T4** (retire the bespoke frontend confirm tools),
+frontend-tools **Phases 2-4**.
+
+_(build detail below — superseded by the summary above; kept for the file/line targets)_
+
 **T1c(3) chat-service driver — DORMANT pieces built + unit-tested (activate last):**
 - **T1c(3.a)** (`553cd1ec9`^) — `app/services/task_detect.py`: `task_envelope_from_result`/`_from_content` recognise
   a durable task in a tools/call response (wire `CreateTaskResult` OR the gate HANDLE) → a task envelope the tool
