@@ -5276,6 +5276,11 @@ async def _emit_chat_turn(
                 "toolCallId": pending.get("id"),
                 "args": pending.get("args"),
             }
+            # ext-tasks (T1c(3.e)) — carry the durable-task info so a reload renders
+            # the confirm card (title/preview from inputRequests). None for a normal
+            # frontend-tool suspend (omitted below), so this is dormant there.
+            if pending.get("task") is not None:
+                _pending_record["task"] = pending["task"]
             await _persist_terminal_assistant(
                 pool,
                 msg_id=msg_id, session_id=session_id, user_id=user_id,
@@ -5297,7 +5302,10 @@ async def _emit_chat_turn(
             for line in emitter.finish(
                 finish, status="suspended",
                 pending={"runId": run_id, "toolCallId": pending["id"],
-                         "toolName": pending["name"]},
+                         "toolName": pending["name"],
+                         # ext-tasks (T1c(3.e)) — the FE reads pendingToolCall.task to
+                         # render the confirm card; absent (None) for a normal suspend.
+                         **({"task": pending["task"]} if pending.get("task") is not None else {})},
             ):
                 yield line
             for line in emitter.done():

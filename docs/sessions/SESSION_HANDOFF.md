@@ -105,10 +105,14 @@ polymorphic parse needed for the confirm gate.** (spec §6 "SIMPLIFICATION").
   (a) `3c38a32b4` mcp_execute_tool surfaces a task envelope; (b) `7d13c590d` tool loop suspends on it →
   chat_suspended_runs; (c) `f20da3826` resume calls `<prefix>_task_provide_input(taskId, accepted)` and feeds the
   real result. Backend of the durable gate is DONE.
-- **(e) FE (remaining)** — the suspended `pending_tool_call` now carries `task` (`{taskId, status, inputRequests}`).
-  In `runChatStream.ts` (~L427, `result.status==='suspended' && result.pendingToolCall`) branch on a `task` field →
-  render a confirm card (reuse `ConfirmActionCard`: title/preview from `inputRequests`); Confirm/Dismiss POST the
-  outcome to `/tool-results` (accept ⇒ e.g. `action_done`, the resume drives provide-input). Small FE change.
+- **(e) FE (remaining) — thread the task `inputRequests` through the suspend emit, then render.** The backend
+  suspend at `stream_service.py:5271` builds `_pending_record` (persist) + `emitter.tool_call_pending(pending)` +
+  `RUN_FINISHED.pendingToolCall` — none currently carry the `task`. Add `task=pending.get("task")` into: (1)
+  `_pending_record` (so a reload shows the card), (2) whatever `tool_call_pending` emits + the `RUN_FINISHED`
+  `pendingToolCall` (so the live FE sees it — check `stream_events.py` `tool_call_pending`). Then FE
+  `runChatStream.ts` (~L427): when `pendingToolCall.task` is present, put it on the `ToolCallRecord` and render a
+  confirm card (reuse `ConfirmActionCard`: title/preview from `task.inputRequests`); Confirm/Dismiss POST the outcome
+  to `/tool-results` (accept ⇒ `action_done` → resume drives provide-input). + a vitest for the branch.
 - **(f) ACTIVATE (remaining, LAST)** — attach `tasks_capability_meta()` (from `task_detect.py`) to gate-able tool
   calls in chat-service's MCP tool-call `_meta`. MUST land with (e) — activating without the FE card would suspend a
   gate the user can't confirm. Then one live-stack E2E (rebuild composition + chat images): a real agent turn opens
