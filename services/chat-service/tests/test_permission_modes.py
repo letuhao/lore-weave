@@ -811,8 +811,13 @@ def _resume(pool, kc, outcome: str):
     )
 
 
-def _task_suspended() -> SuspendedRun:
-    """A durable-gate suspend (ext-tasks T1c(3.b)): pending_tool_call carries `task`."""
+def _task_suspended(gate_name: str = "composition_create_derivative") -> SuspendedRun:
+    """A durable-gate suspend (ext-tasks T1c(3.b)): pending_tool_call carries `task`.
+
+    ``gate_name`` is the gate tool's name — the resume driver derives the
+    domain-unique provide-input tool from its provider prefix, so a book gate
+    (``book_chapter_delete``) must route to ``book_task_provide_input``, not a
+    composition-hardcoded name."""
     return SuspendedRun(
         run_id="run-task", session_id=str(TEST_SESSION_ID), owner_user_id=str(TEST_USER_ID),
         message_id=str(uuid4()),
@@ -820,10 +825,10 @@ def _task_suspended() -> SuspendedRun:
             {"role": "user", "content": "spawn a dị bản"},
             {"role": "assistant", "content": "",
              "tool_calls": [{"id": "cT", "type": "function",
-                             "function": {"name": "composition_create_derivative", "arguments": "{}"}}]},
+                             "function": {"name": gate_name, "arguments": "{}"}}]},
         ],
         pending_tool_call={
-            "id": "cT", "name": "composition_create_derivative", "args": {"project_id": "p"},
+            "id": "cT", "name": gate_name, "args": {"project_id": "p"},
             "task": {"taskId": "task_z", "status": "input_required",
                      "inputRequests": {"title": "Spawn?"}},
         },
@@ -866,6 +871,59 @@ class TestTaskResume:
         calls = [c.kwargs for c in kc.mcp_execute_tool.await_args_list]
         pi = next(c for c in calls if c["tool_name"] == "composition_task_provide_input")
         assert pi["tool_args"] == {"task_id": "task_z", "accepted": True}
+
+    @pytest.mark.asyncio
+    async def test_book_gate_derives_book_prefix(self):
+        """The provide-input tool is derived from the gate tool's provider prefix,
+        NOT hardcoded to composition — a book gate routes to book_task_provide_input
+        (regression guard now that a 2nd domain, book_chapter_delete, uses the gate)."""
+        pool = self._pool()
+        kc = AsyncMock()
+        kc.get_tool_definitions.return_value = []
+        kc.mcp_execute_tool.return_value = _envelope(
+            success=True, result={"outcome": "action_done", "op": "delete_chapter"})
+        scripts = [[tok("Trashed it."), usage(1, 1), done("stop")]]
+        with _patch_client(scripts), \
+             patch("app.services.stream_service.get_knowledge_client", return_value=kc), \
+             patch("app.services.stream_service.load_suspended_run",
+                   AsyncMock(return_value=_task_suspended("book_chapter_delete"))), \
+             patch("app.services.stream_service.delete_suspended_run", AsyncMock()):
+            async for _ in resume_stream_response(
+                session_id=str(TEST_SESSION_ID), user_id=str(TEST_USER_ID),
+                run_id="run-task", tool_call_id="cT", outcome="action_done",
+                applied_text=None, creds=_creds(), pool=pool, billing=AsyncMock(),
+                stream_format="agui",
+            ):
+                pass
+        calls = [c.kwargs for c in kc.mcp_execute_tool.await_args_list]
+        pi = next(c for c in calls if c["tool_name"] == "book_task_provide_input")
+        assert pi["tool_args"] == {"task_id": "task_z", "accepted": True}
+
+    @pytest.mark.asyncio
+    async def test_dismiss_declines_the_gate(self):
+        """A non-accept outcome (dismiss/cancel) drives provide-input with
+        accepted=False → the domain cancels the task, nothing is written."""
+        pool = self._pool()
+        kc = AsyncMock()
+        kc.get_tool_definitions.return_value = []
+        kc.mcp_execute_tool.return_value = _envelope(
+            success=True, result={"status": "cancelled"})
+        scripts = [[tok("Okay, cancelled."), usage(1, 1), done("stop")]]
+        with _patch_client(scripts), \
+             patch("app.services.stream_service.get_knowledge_client", return_value=kc), \
+             patch("app.services.stream_service.load_suspended_run",
+                   AsyncMock(return_value=_task_suspended())), \
+             patch("app.services.stream_service.delete_suspended_run", AsyncMock()):
+            async for _ in resume_stream_response(
+                session_id=str(TEST_SESSION_ID), user_id=str(TEST_USER_ID),
+                run_id="run-task", tool_call_id="cT", outcome="cancelled",
+                applied_text=None, creds=_creds(), pool=pool, billing=AsyncMock(),
+                stream_format="agui",
+            ):
+                pass
+        calls = [c.kwargs for c in kc.mcp_execute_tool.await_args_list]
+        pi = next(c for c in calls if c["tool_name"] == "composition_task_provide_input")
+        assert pi["tool_args"] == {"task_id": "task_z", "accepted": False}
 
 
 class TestApprovalResume:

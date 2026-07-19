@@ -108,6 +108,14 @@ frontend-tools **Phases 2-4**.
   mechanism tool (no C-TOOL `_meta`, LLM-discoverable via find_tools/ListTools) in BOTH the Go and Python kits.
   chat-service calls it by name (not via discovery), so it's harmless, but it should be `visibility:hidden`.
   Target: add hidden-visibility meta to the provide-input registration in both `sdks/*/loreweave_mcp/tasks_wire.*`.
+- **D-F7C-ADVERTISE-SNAPSHOT-STALE** (gate #1 — F7c track, not MCP-tasks; found 2026-07-20 while VERIFYing
+  chat-service tests) — `TestAdvertiseSurfaceSnapshot` (5 tests) is RED on the branch. Root cause: F7c added
+  `load_skill` to the discovery surface guarded by `settings.lazy_skill_bodies` (now on), but the snapshot's
+  `EXPECTED_{ASK,PLAN,WRITE}_SURFACE` sets neither include `load_skill` nor pin the flag — and they read the
+  ambient `settings` singleton, so a sibling test that patches `lazy_skill_bodies` changes which of them fail
+  (6-isolated vs 5-in-suite). NOT my change (fails with my diff stashed). Fix (F7c author's call): pin
+  `lazy_skill_bodies` per snapshot test AND either add `LOAD_SKILL_NAME` to the on-variant expected sets or assert
+  the off-baseline. Cheap once decided; deferred here only because it's a different track's intent decision.
 
 _(build detail below — superseded by the summary above; kept for the file/line targets)_
 
