@@ -363,6 +363,11 @@ export interface ChatMessage {
   model_ref: string | null;
   is_error: boolean;
   error_detail: string | null;
+  // DBT-CHAT-PERSIST — how the turn ended: null/'stop' = clean, 'error' = threw
+  // mid-stream (with is_error), 'interrupted' = the user stopped or a
+  // frontend-tool card was abandoned/expired. Drives the "incomplete" badge so
+  // a turn that didn't finish cleanly is shown instead of vanishing.
+  finish_reason?: string | null;
   parent_message_id: string | null;
   created_at: string;
   // K21-C (D1): tool calls the assistant made during this turn.

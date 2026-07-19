@@ -427,6 +427,12 @@ async def _stream_via_gateway(
 # pass is forced tool-free (tool_choice="none") so the loop always
 # terminates with a text answer (design D7).
 MAX_TOOL_ITERATIONS = 5
+# DBT-CHAT-PERSIST — minimum wall-clock between in-turn assistant checkpoints.
+# We checkpoint at tool boundaries (not per token) so a long tool-loop turn that
+# errors/interrupts/abandons mid-way keeps its work; this throttle bounds the
+# write count on a rapid tool loop (a burst of tool calls → at most one write
+# per interval). The suspend checkpoint bypasses it (always writes).
+_CHECKPOINT_MIN_INTERVAL_S = 1.5
 # Glossary-assistant P5 (H11): book-scoped surfaces run a richer multi-step
 # workflow (list_kinds → search → get_entity → propose ≈ 4 calls; multi-entity
 # tasks need headroom), so the cap is raised there. Per-turn token budget still
@@ -4513,6 +4519,158 @@ async def stream_response(
         yield line
 
 
+async def _persist_terminal_assistant(
+    pool: asyncpg.Pool,
+    *,
+    msg_id: str,
+    session_id: str,
+    user_id: str,
+    parent_message_id: str | None,
+    model_ref: str | None,
+    content: str,
+    reasoning: str,
+    tool_calls_history: list[dict] | None,
+    finish_reason: str,
+    is_error: bool,
+    error_detail: str | None,
+) -> bool:
+    """DBT-CHAT-PERSIST — persist an assistant reply that ended WITHOUT a clean
+    finish (an error mid-stream, a user interrupt, or an abandoned/expired
+    frontend-tool suspend) so the streamed content is not lost.
+
+    The normal end-of-turn write (the rich INSERT in `_emit_chat_turn`) only runs
+    on success; this is its terminal-path sibling. Idempotent on `message_id`
+    (ON CONFLICT DO UPDATE) so a double-materialization — e.g. an expired resume
+    AND the sweep both firing — can't duplicate or double-count. Best-effort:
+    never raises (it runs on error/cancel paths that must not add a second
+    failure). Returns True iff a row was written/updated.
+
+    Skips a truly-empty turn (no content and no reasoning and no tool calls): the
+    user message stands alone and a blank assistant bubble would be noise.
+    """
+    if not content and not reasoning and not tool_calls_history:
+        return False
+    parts: dict = {}
+    if reasoning:
+        parts["reasoning"] = reasoning
+        parts["reasoning_length"] = len(reasoning)
+    content_parts = json.dumps(parts) if parts else None
+    tool_calls_json = json.dumps(tool_calls_history) if tool_calls_history else None
+    try:
+        async with pool.acquire() as conn:
+            async with conn.transaction():
+                seq = await conn.fetchval(
+                    "SELECT COALESCE(MAX(sequence_num), 0) + 1 FROM chat_messages "
+                    "WHERE session_id = $1 AND branch_id = 0",
+                    session_id,
+                )
+                row = await conn.fetchrow(
+                    """
+                    INSERT INTO chat_messages
+                      (message_id, session_id, owner_user_id, role, content, content_parts,
+                       sequence_num, model_ref, parent_message_id, branch_id, tool_calls,
+                       is_error, error_detail, finish_reason)
+                    VALUES ($1,$2,$3,'assistant',$4,$5::jsonb,$6,$7,$8,0,$9::jsonb,$10,$11,$12)
+                    ON CONFLICT (message_id) DO UPDATE SET
+                      content = EXCLUDED.content,
+                      content_parts = EXCLUDED.content_parts,
+                      tool_calls = EXCLUDED.tool_calls,
+                      is_error = EXCLUDED.is_error,
+                      error_detail = EXCLUDED.error_detail,
+                      finish_reason = EXCLUDED.finish_reason
+                    RETURNING (xmax = 0) AS inserted
+                    """,
+                    msg_id, session_id, user_id, content, content_parts, seq,
+                    model_ref, parent_message_id, tool_calls_json,
+                    is_error, error_detail, finish_reason,
+                )
+                # Only bump the session counter on a genuine INSERT (xmax=0), never
+                # when ON CONFLICT took the UPDATE branch (already counted).
+                if row is not None and row["inserted"]:
+                    await conn.execute(
+                        "UPDATE chat_sessions SET message_count = message_count + 1, "
+                        "last_message_at = now(), updated_at = now() WHERE session_id = $1",
+                        session_id,
+                    )
+        logger.info(
+            "terminal-persist: saved %s assistant reply for session %s (msg %s, %d chars)",
+            finish_reason, session_id, msg_id, len(content),
+        )
+        return True
+    except Exception:  # noqa: BLE001 — best-effort; runs on error/cancel paths
+        logger.warning(
+            "terminal-persist FAILED for session %s (msg %s, reason=%s)",
+            session_id, msg_id, finish_reason, exc_info=True,
+        )
+        return False
+
+
+async def _materialize_abandoned_suspend(pool: asyncpg.Pool, susp) -> bool:
+    """DBT-CHAT-PERSIST — turn an abandoned frontend-tool suspend (its card
+    expired, or its resume was refused/errored) into a visible 'interrupted'
+    assistant message so the whole turn does not silently vanish on reload.
+
+    Reconstructs the model's visible PROSE from the suspended `working`
+    conversation (a pure tool-call turn often has none); when there is no prose,
+    falls back to the pending tool's rationale (or its name) so the bubble still
+    says *something*. Reuses the same message_id the resume would have written
+    under, so a later successful path stays idempotent. Best-effort."""
+    prose_parts = [
+        m["content"].strip()
+        for m in (susp.working or [])
+        if m.get("role") == "assistant"
+        and isinstance(m.get("content"), str)
+        and m["content"].strip()
+    ]
+    content = "\n\n".join(prose_parts)
+    if not content:
+        pend = susp.pending_tool_call or {}
+        args = pend.get("args") if isinstance(pend.get("args"), dict) else {}
+        rationale = args.get("rationale") if isinstance(args.get("rationale"), str) else None
+        content = (rationale or "").strip() or f"(A “{pend.get('name') or 'change'}” suggestion was proposed here.)"
+    return await _persist_terminal_assistant(
+        pool,
+        msg_id=susp.message_id,
+        session_id=susp.session_id,
+        user_id=susp.owner_user_id,
+        parent_message_id=susp.parent_message_id,
+        model_ref=susp.model_ref,
+        content=content,
+        reasoning="",
+        tool_calls_history=None,
+        finish_reason="interrupted",
+        is_error=False,
+        error_detail=None,
+    )
+
+
+async def _mark_suspend_abandoned(pool: asyncpg.Pool, susp) -> None:
+    """DBT-CHAT-PERSIST — a suspended run is being abandoned (its card expired /
+    the resume was refused). Preferred path: the suspend checkpoint already wrote
+    a rich provisional row ('awaiting_input') for this msg_id — just flip its badge
+    to 'interrupted' so the reply stays (with its prose + tools + the now-dead
+    card) but reads as incomplete. Only if NO provisional exists (the best-effort
+    suspend checkpoint failed) do we reconstruct from `working`. Never clobbers a
+    row that already resolved to 'stop'/'error'/'interrupted'. Best-effort."""
+    try:
+        row = await pool.fetchrow(
+            "SELECT finish_reason FROM chat_messages WHERE message_id = $1",
+            susp.message_id,
+        )
+        if row is None:
+            await _materialize_abandoned_suspend(pool, susp)
+        elif row["finish_reason"] == "awaiting_input":
+            await pool.execute(
+                "UPDATE chat_messages SET finish_reason = 'interrupted' WHERE message_id = $1",
+                susp.message_id,
+            )
+        # else: already resolved — leave it.
+    except Exception:  # noqa: BLE001 — best-effort recovery path
+        logger.warning(
+            "mark-suspend-abandoned failed for msg %s", susp.message_id, exc_info=True,
+        )
+
+
 async def _emit_chat_turn(
     *,
     session_id: str,
@@ -4725,6 +4883,13 @@ async def _emit_chat_turn(
 
     turn_succeeded = False
     post_finish_state: dict | None = None
+    # DBT-CHAT-PERSIST — flips True once the assistant row is durably written (the
+    # clean-finish INSERT below OR a terminal-path write). Guards the error/interrupt
+    # handlers from double-persisting a turn that already saved.
+    _persisted = False
+    # DBT-CHAT-PERSIST — monotonic timestamp of the last in-turn checkpoint (0 = none
+    # yet), used to throttle tool-boundary checkpoints.
+    _last_checkpoint = 0.0
 
     # RAID C2 (DR-C2 §4) + Track D S-SPEND — the per-user allowlist read, handed to
     # the loop as a callable so _stream_with_tools stays DB-free. ``kind`` selects the
@@ -4931,6 +5096,27 @@ async def _emit_chat_turn(
                 if activity is not None:
                     for line in emitter.activity(activity):
                         yield line
+                # DBT-CHAT-PERSIST — checkpoint the turn's progress at this tool
+                # boundary so a later error/interrupt/abandon can't lose the work
+                # already done (the reported failure: a long tool-loop turn that
+                # produced a card, then died before the clean finish). Throttled
+                # + upserts by msg_id; the clean finish overwrites 'streaming' →
+                # 'stop'. Best-effort — _persist_terminal_assistant never raises.
+                _now_ckpt = _time.monotonic()
+                if _now_ckpt - _last_checkpoint >= _CHECKPOINT_MIN_INTERVAL_S:
+                    _last_checkpoint = _now_ckpt
+                    # NB: do NOT set _persisted — the turn isn't finished. The row
+                    # now exists, but the terminal/clean-finish handlers must still
+                    # UPDATE it (upsert by msg_id) to the final finish_reason.
+                    await _persist_terminal_assistant(
+                        pool,
+                        msg_id=msg_id, session_id=session_id, user_id=user_id,
+                        parent_message_id=parent_message_id, model_ref=model_ref,
+                        content="".join(full_content),
+                        reasoning="".join(full_reasoning),
+                        tool_calls_history=tool_calls_history or None,
+                        finish_reason="streaming", is_error=False, error_detail=None,
+                    )
                 continue
             # W1 — tool-schema token measurement from the loop's first pass.
             schema_tokens = chunk_data.get("schema_tokens")
@@ -5023,6 +5209,31 @@ async def _emit_chat_turn(
                 pinned_step_tools=pinned_step_tools,
                 # P-1 — carry the rail's book so the resume can keep driving past the confirm.
                 book_id=(context_ids or {}).get("book_id"),
+            )
+            # DBT-CHAT-PERSIST — persist the reply produced UP TO the suspend as a
+            # visible message NOW (prose so far + the completed tools + the pending
+            # card), so a reload during the wait shows it and an abandoned/expired/
+            # refused resume can't lose it — the exact reported failure. Reuses the
+            # shared msg_id, so a successful resume UPSERTs this row to the final
+            # 'stop' reply. finish_reason='awaiting_input' shows NO failure badge
+            # (the card itself is the affordance); if the run is later abandoned the
+            # resume-expired path flips it to 'interrupted'.
+            _pending_record = {
+                "tool": pending.get("name"),
+                "ok": False,
+                "pending": True,
+                "runId": run_id,
+                "toolCallId": pending.get("id"),
+                "args": pending.get("args"),
+            }
+            await _persist_terminal_assistant(
+                pool,
+                msg_id=msg_id, session_id=session_id, user_id=user_id,
+                parent_message_id=parent_message_id, model_ref=model_ref,
+                content="".join(full_content),
+                reasoning="".join(full_reasoning),
+                tool_calls_history=[*tool_calls_history, _pending_record],
+                finish_reason="awaiting_input", is_error=False, error_detail=None,
             )
             # close any open assistant/reasoning message first
             for line in emitter.close_message():
@@ -5232,19 +5443,42 @@ async def _emit_chat_turn(
                 # distiller's day-window read excludes it. Persist the flag on BOTH the assistant reply
                 # and its parent user message (the user's own words are the sensitive half).
                 _exclude_mem = bool(canon_capture_ctx and not canon_capture_ctx.grounding_enabled)
-                await conn.execute(
+                # DBT-CHAT-PERSIST — UPSERT, not a plain INSERT. In-turn checkpoints
+                # (each tool boundary + the suspend point) write this same msg_id
+                # with finish_reason='streaming'/'awaiting_input'; the clean finish
+                # OVERWRITES that row with the full reply + 'stop'. sequence_num is
+                # NOT updated (keep the checkpoint's slot). RETURNING (xmax=0) tells
+                # us whether this was a genuine INSERT so message_count is bumped
+                # exactly once (a checkpoint already counted it).
+                _ins_row = await conn.fetchrow(
                     """
                     INSERT INTO chat_messages
                       (message_id, session_id, owner_user_id, role, content, content_parts,
                        sequence_num, input_tokens, output_tokens, model_ref, parent_message_id, branch_id, tool_calls,
-                       context_breakdown, response_id, exclude_from_memory, local_date)
-                    VALUES ($1,$2,$3,'assistant',$4,$5::jsonb,$6,$7,$8,$9,$10, 0, $11::jsonb, $12::jsonb, $13, $14, $15)
+                       context_breakdown, response_id, exclude_from_memory, local_date, finish_reason)
+                    VALUES ($1,$2,$3,'assistant',$4,$5::jsonb,$6,$7,$8,$9,$10, 0, $11::jsonb, $12::jsonb, $13, $14, $15, 'stop')
+                    ON CONFLICT (message_id) DO UPDATE SET
+                      content = EXCLUDED.content,
+                      content_parts = EXCLUDED.content_parts,
+                      input_tokens = EXCLUDED.input_tokens,
+                      output_tokens = EXCLUDED.output_tokens,
+                      model_ref = EXCLUDED.model_ref,
+                      tool_calls = EXCLUDED.tool_calls,
+                      context_breakdown = EXCLUDED.context_breakdown,
+                      response_id = EXCLUDED.response_id,
+                      exclude_from_memory = EXCLUDED.exclude_from_memory,
+                      local_date = EXCLUDED.local_date,
+                      finish_reason = 'stop',
+                      is_error = false,
+                      error_detail = NULL
+                    RETURNING (xmax = 0) AS inserted
                     """,
                     msg_id, session_id, user_id, final_text, content_parts, seq,
                     input_tok, output_tok, model_ref, parent_message_id, tool_calls_json,
                     json.dumps(_ctx_payload), _final_response_id, _exclude_mem,
                     _local_date,  # DBT-11 — bucket by the user's LOCAL day (resolved before acquire)
                 )
+                _did_insert = bool(_ins_row and _ins_row["inserted"])
                 if _exclude_mem and parent_message_id:
                     # The parent user message was persisted earlier (POST /messages) without knowing the
                     # turn's grounding choice; back-fill the flag so the user's own words are excluded too.
@@ -5271,16 +5505,19 @@ async def _emit_chat_turn(
                         artifact.language, artifact.title,
                     )
 
-                # Update session stats
+                # Update session stats. DBT-CHAT-PERSIST — only bump message_count
+                # when this was a genuine INSERT; if an in-turn checkpoint already
+                # created the row it was counted then (the UPSERT took the UPDATE
+                # branch). last_message_at/updated_at refresh either way.
                 await conn.execute(
                     """
                     UPDATE chat_sessions
-                    SET message_count = message_count + 1,
+                    SET message_count = message_count + CASE WHEN $2 THEN 1 ELSE 0 END,
                         last_message_at = now(),
                         updated_at = now()
                     WHERE session_id = $1
                     """,
-                    session_id,
+                    session_id, _did_insert,
                 )
 
                 # K13.2: emit chat.turn_completed outbox event.
@@ -5303,6 +5540,10 @@ async def _emit_chat_turn(
                     """,
                     msg_id, json.dumps(outbox_payload),
                 )
+
+        # DBT-CHAT-PERSIST — the assistant row + its outbox event are committed;
+        # the turn is durable, so the terminal-path handlers must NOT re-persist.
+        _persisted = True
 
         # Send custom data annotation (IDs back to frontend)
         data_payload: dict = {"message_id": msg_id}
@@ -5373,12 +5614,54 @@ async def _emit_chat_turn(
             "last_usage": last_usage,
         }
 
+    except (asyncio.CancelledError, GeneratorExit):
+        # DBT-CHAT-PERSIST — user interrupt / client disconnect. Neither is an
+        # `Exception`, so the handler below never caught them and there is no
+        # `finally`, so the streamed-so-far reply was silently lost. Persist the
+        # partial as an "interrupted" turn so it survives reload with a badge,
+        # then re-raise so cancellation still propagates (never swallow it).
+        #
+        # `shield` so the write completes even though THIS request task is being
+        # cancelled; await-only (no yield) is safe inside GeneratorExit cleanup.
+        if not _persisted:
+            try:
+                await asyncio.shield(
+                    _persist_terminal_assistant(
+                        pool,
+                        msg_id=msg_id, session_id=session_id, user_id=user_id,
+                        parent_message_id=parent_message_id, model_ref=model_ref,
+                        content="".join(full_content),
+                        reasoning="".join(full_reasoning),
+                        tool_calls_history=tool_calls_history,
+                        finish_reason="interrupted", is_error=False, error_detail=None,
+                    )
+                )
+            except BaseException:  # noqa: BLE001 — cleanup must never mask the cancel
+                logger.warning(
+                    "interrupt-persist failed for session %s", session_id, exc_info=True,
+                )
+        raise
+
     except Exception as exc:
         logger.exception("Stream error for session %s", session_id)
         # Sanitize error message — don't leak internal details
         safe_msg = str(exc)
         if any(kw in safe_msg.lower() for kw in ("traceback", "file ", "/usr/", "password", "secret")):
             safe_msg = "An internal error occurred. Please try again."
+        # DBT-CHAT-PERSIST — persist whatever the model already streamed before
+        # the throw so the turn is not lost on reload; is_error marks it and the
+        # FE badges it "incomplete". (Covers the reported case: a mid-turn BE
+        # error on a frontend-tool turn used to drop the whole reply.)
+        if not _persisted:
+            await _persist_terminal_assistant(
+                pool,
+                msg_id=msg_id, session_id=session_id, user_id=user_id,
+                parent_message_id=parent_message_id, model_ref=model_ref,
+                content="".join(full_content),
+                reasoning="".join(full_reasoning),
+                tool_calls_history=tool_calls_history,
+                finish_reason="error", is_error=True, error_detail=safe_msg,
+            )
         for line in emitter.error(safe_msg):
             yield line
 
@@ -5497,10 +5780,23 @@ async def resume_stream_response(
     via the shared _emit_chat_turn. Yields an AG-UI RUN_ERROR if the suspended
     run is missing/expired."""
     from app.services.frontend_tools import frontend_tool_defs
+    from app.db.suspended_runs import load_suspended_run_any
 
     susp = await load_suspended_run(pool, run_id, user_id)
     if susp is None or susp.pending_tool_call.get("id") != tool_call_id:
         # Unknown/expired/mismatched — surface a clean AG-UI error.
+        #
+        # DBT-CHAT-PERSIST — but do NOT let the trapped reply vanish. The run may
+        # be expired (TTL) or its resume otherwise refused; either way the whole
+        # assistant turn (prose + the proposed card) was never written to
+        # chat_messages, so a reload shows nothing. Materialize whatever the
+        # abandoned run still holds into a visible 'interrupted' message first
+        # (works on an EXPIRED row — load_suspended_run_any ignores the TTL),
+        # then drop the dead run so a retry can't double-materialize.
+        abandoned = await load_suspended_run_any(pool, run_id, user_id)
+        if abandoned is not None and abandoned.pending_tool_call.get("id") == tool_call_id:
+            await _mark_suspend_abandoned(pool, abandoned)
+            await delete_suspended_run(pool, run_id)
         emitter = make_emitter(stream_format, thread_id=session_id, message_id=str(uuid4()))
         for line in emitter.open_run():
             yield line

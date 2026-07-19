@@ -288,6 +288,16 @@ CREATE INDEX IF NOT EXISTS idx_chat_messages_local_date
 -- here is EXCLUDED from the day-window read. DEFAULT false keeps every existing message rememberable.
 ALTER TABLE chat_messages ADD COLUMN IF NOT EXISTS exclude_from_memory BOOLEAN NOT NULL DEFAULT false;
 
+-- DBT-CHAT-PERSIST — how the assistant turn ENDED, so a turn that did not finish
+-- cleanly is still shown (with a badge) instead of vanishing. Previously the
+-- assistant row was written ONLY on a clean finish, so an error, a user
+-- interrupt (client disconnect), or an abandoned/expired frontend-tool suspend
+-- lost the whole streamed reply. NULL = legacy/complete rows; 'stop' = clean;
+-- 'error' = threw mid-stream (pairs with is_error); 'interrupted' = user stopped
+-- or the suspended run was abandoned/expired. `is_error`/`error_detail` already
+-- exist for the error half.
+ALTER TABLE chat_messages ADD COLUMN IF NOT EXISTS finish_reason TEXT;
+
 -- ARCH-1 C6 — suspended runs for AG-UI frontend-tool-calls. When the model
 -- calls a frontend tool (e.g. propose_edit), the turn pauses: the in-flight
 -- conversation `working` list + the dangling assistant tool-call cannot be

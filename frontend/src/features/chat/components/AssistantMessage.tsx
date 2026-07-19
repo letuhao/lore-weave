@@ -56,6 +56,11 @@ interface AssistantMessageProps {
   toolCalls?: ToolCallRecord[] | null;
   /** MCP fan-out (C-ACTIVITY): Tier-A auto-applied ops streamed this turn. */
   activities?: ActivityEvent[] | null;
+  /** DBT-CHAT-PERSIST — how the turn ended. 'interrupted' (user stopped, or a
+   *  frontend-tool card was abandoned/expired) or 'error' (threw mid-stream)
+   *  render an "incomplete" badge so a partial reply is clearly marked instead
+   *  of looking like a finished answer. null/'stop'/undefined → no badge. */
+  finishReason?: string | null;
   /** N2 (dogfood 2026-07-18 F4) — host-aware "insert this reply into the chapter". When a parent
    * supplies it (the studio co-writer, via useAcceptIntoEditor) it wins; otherwise the button falls
    * back to the paste-to-editor event, which the studio EditorPanel + the legacy editor page both
@@ -129,6 +134,7 @@ export function AssistantMessage({
   toolCalls,
   activities,
   onInsert,
+  finishReason,
 }: AssistantMessageProps) {
   const { t } = useTranslation('chat');
   const [showMore, setShowMore] = useState(false);
@@ -197,6 +203,32 @@ export function AssistantMessage({
           <span className="inline-block h-4 w-1.5 animate-pulse rounded-sm bg-accent opacity-80" />
         )}
       </div>
+
+      {/* DBT-CHAT-PERSIST — incomplete-turn badge. A turn that ended by user
+          interrupt or a mid-stream error (incl. an abandoned/expired frontend-tool
+          card) is persisted with its partial text and shown with this marker,
+          rather than vanishing on reload. */}
+      {!isStreaming && (finishReason === 'interrupted' || finishReason === 'error') && (
+        <div
+          data-testid="message-incomplete-badge"
+          className={`mt-1 inline-flex items-center gap-1.5 rounded px-1.5 py-0.5 text-[11px] ${
+            finishReason === 'error'
+              ? 'bg-red-500/10 text-red-400/90'
+              : 'bg-amber-500/10 text-amber-400/90'
+          }`}
+        >
+          <span
+            className={`h-1.5 w-1.5 rounded-full ${
+              finishReason === 'error' ? 'bg-red-400/80' : 'bg-amber-400/80'
+            }`}
+          />
+          {finishReason === 'error'
+            ? t('message.incomplete_error', { defaultValue: 'Error — response incomplete' })
+            : t('message.incomplete_interrupted', {
+                defaultValue: 'Interrupted — response incomplete',
+              })}
+        </div>
+      )}
 
       {/* K21-C (D2): memory tool calls used in this reply. Renders
           nothing when toolCalls is empty/null. ARCH-1 C6: a pending

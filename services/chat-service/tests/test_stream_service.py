@@ -274,7 +274,7 @@ class TestStreamResponse:
 
         # Verify assistant message was inserted
         insert_calls = [
-            c for c in conn.execute.call_args_list
+            c for c in conn.fetchrow.call_args_list
             if "INSERT INTO chat_messages" in str(c)
         ]
         assert len(insert_calls) == 1
@@ -406,7 +406,7 @@ class TestStreamResponse:
 
         # Verify assistant INSERT includes parent_message_id
         insert_calls = [
-            c for c in conn.execute.call_args_list
+            c for c in conn.fetchrow.call_args_list
             if "INSERT INTO chat_messages" in str(c) and "parent_message_id" in str(c)
         ]
         assert len(insert_calls) == 1
@@ -1367,18 +1367,23 @@ class TestK21BToolCallingIntegration:
                 pass
 
         insert_calls = [
-            c for c in conn.execute.call_args_list
+            c for c in conn.fetchrow.call_args_list
             if "INSERT INTO chat_messages" in str(c)
         ]
-        assert len(insert_calls) == 1
+        # DBT-CHAT-PERSIST — a tool-loop turn now CHECKPOINTS the assistant row at
+        # the tool boundary (finish_reason='streaming') AND writes the final row
+        # (upsert by msg_id). Both carry tool_calls; only the FINAL rich upsert
+        # carries context_breakdown. Assert the final insert has the full payload.
+        assert len(insert_calls) >= 1
+        final_insert = insert_calls[-1]
         # The INSERT SQL writes the tool_calls column.
-        assert "tool_calls" in insert_calls[0].args[0]
-        tool_calls_json = insert_param(insert_calls[0], "tool_calls")
+        assert "tool_calls" in final_insert.args[0]
+        tool_calls_json = insert_param(final_insert, "tool_calls")
         assert tool_calls_json is not None
         assert json.loads(tool_calls_json) == [tool_call]
         # W1 — the context_breakdown JSONB is persisted and carries the per-category
         # breakdown incl. the tool_results bucket.
-        ctx_json = insert_param(insert_calls[0], "context_breakdown")
+        ctx_json = insert_param(final_insert, "context_breakdown")
         assert ctx_json is not None
         ctx = json.loads(ctx_json)
         assert set(ctx) >= {"used_tokens", "pct", "breakdown", "baseline_tokens",
@@ -1414,7 +1419,7 @@ class TestK21BToolCallingIntegration:
                 pass
 
         insert_calls = [
-            c for c in conn.execute.call_args_list
+            c for c in conn.fetchrow.call_args_list
             if "INSERT INTO chat_messages" in str(c)
         ]
         assert len(insert_calls) == 1
@@ -1453,11 +1458,13 @@ class TestK21BToolCallingIntegration:
                 pass
 
         insert_calls = [
-            c for c in conn.execute.call_args_list
+            c for c in conn.fetchrow.call_args_list
             if "INSERT INTO chat_messages" in str(c)
         ]
-        # conn.execute args are (sql, $1..$11); content is $4 → args[4].
-        persisted_content = insert_calls[0].args[4]
+        # DBT-CHAT-PERSIST — the tool boundary checkpoints a partial row; the FINAL
+        # upsert carries the complete content. Assert the final (fetchrow args are
+        # (sql, $1..); content is $4 → args[4]).
+        persisted_content = insert_calls[-1].args[4]
         assert persisted_content == "Let me check. Found it."
 
 
@@ -2314,7 +2321,7 @@ class TestW1ContextBreakdownFrame:
         assert frame["baseline_tokens"] >= 111 + 2222
         # And the same payload was persisted on the assistant row ($12, second-to-last
         # arg since the stateful-chain feature appended response_id as $13).
-        insert_calls = [c for c in conn.execute.call_args_list
+        insert_calls = [c for c in conn.fetchrow.call_args_list
                         if "INSERT INTO chat_messages" in str(c)]
         persisted = json.loads(insert_param(insert_calls[0], "context_breakdown"))
         assert persisted["breakdown"]["mcp_tool_schemas"] == 2222
@@ -2366,7 +2373,7 @@ class TestW1ContextBreakdownFrame:
         # trace savings fired in this fake scenario, so raw_tokens == used_tokens.
         assert frame["raw_tokens"] == 1000
 
-        insert_calls = [c for c in conn.execute.call_args_list
+        insert_calls = [c for c in conn.fetchrow.call_args_list
                         if "INSERT INTO chat_messages" in str(c)]
         persisted = json.loads(insert_param(insert_calls[0], "context_breakdown"))
         assert persisted["used_tokens"] == 1000
@@ -2394,7 +2401,7 @@ class TestW1ContextBreakdownFrame:
             ):
                 events.append(e)
         assert all('"CUSTOM"' not in e for e in events)  # legacy vocabulary only
-        insert_calls = [c for c in conn.execute.call_args_list
+        insert_calls = [c for c in conn.fetchrow.call_args_list
                         if "INSERT INTO chat_messages" in str(c)]
         assert "context_breakdown" in insert_calls[0].args[0]
         # $12, second-to-last arg since response_id trails it as $13.

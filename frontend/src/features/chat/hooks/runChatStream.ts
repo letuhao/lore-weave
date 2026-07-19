@@ -484,6 +484,11 @@ export function assembleAssistantMessage(
   result: ChatStreamResult,
   sessionId: string,
   sequenceNum: number,
+  // DBT-CHAT-PERSIST — 'interrupted' | 'error' when the turn was stopped/failed,
+  // so the seamlessly-appended bubble carries the incomplete badge immediately
+  // (the backend also persists it, but that refetch races the append). Defaults
+  // to 'stop' (a clean completion).
+  finishReason: 'stop' | 'interrupted' | 'error' = 'stop',
 ): ChatMessage {
   return {
     message_id: result.messageId || `done-${Date.now()}`,
@@ -505,8 +510,9 @@ export function assembleAssistantMessage(
     input_tokens: result.usage.promptTokens ?? null,
     output_tokens: result.usage.completionTokens ?? null,
     model_ref: null,
-    is_error: false,
+    is_error: finishReason === 'error',
     error_detail: null,
+    finish_reason: finishReason,
     parent_message_id: null,
     created_at: new Date().toISOString(),
     // K21-C (D2): attach the accumulated tool calls so the ToolCallIndicator

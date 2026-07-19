@@ -313,12 +313,25 @@ export function useChatMessages(
         stopThinkingTimer();
 
         if (aborted || controller.signal.aborted) {
-          // Abort path — the core resolved with the partial. Mirror the legacy
-          // AbortError branch: idle, refetch partial-persisted, fire stream-end,
-          // return the partial content (do NOT append a synthetic message).
+          // Abort path — the core resolved with the partial streamed so far.
+          // DBT-CHAT-PERSIST: KEEP that partial visible as an 'interrupted'
+          // message instead of dropping it. The backend also persists it on
+          // disconnect (best-effort/shielded), but that write races a refetch —
+          // so append from the accumulator here for an immediate, reliable
+          // result, and let the next natural reload reconcile with the server
+          // row (same message_id path). No refetch here (it could clobber the
+          // append with a not-yet-written server view).
           setStreamStatus('idle');
           setStreamPhase('idle');
-          void fetchMessages();
+          if (result.content || result.reasoning) {
+            const interrupted = assembleAssistantMessage(
+              result,
+              sessionId ?? '',
+              messages.length + 2, // user msg + this
+              'interrupted',
+            );
+            setMessages((prev) => [...prev, interrupted]);
+          }
           onStreamEndRef.current?.();
           return result.content;
         }
