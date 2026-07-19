@@ -3084,6 +3084,22 @@ async def _stream_with_tools(
                     tool_name=c["name"], tool_args=args_obj,
                     admin_token=admin_token,
                 )
+                # ext-tasks (T1c(3)) — a capability-gated domain tool opened a durable
+                # human gate (returned a task HANDLE, surfaced by mcp_execute_tool as
+                # envelope["task"]). Suspend exactly like a frontend tool, but mark it a
+                # TASK so resume calls the domain's provide-input tool (derived from the
+                # gate tool's provider prefix) instead of a client-side execution. DORMANT
+                # until chat-service declares tasks capability (no task comes back before
+                # then), so this branch never fires on the current stack.
+                _task = envelope.get("task")
+                if _task is not None:
+                    suspended_call = {
+                        "id": c["id"],
+                        "name": c["name"],
+                        "args": args_obj,
+                        "task": _task,
+                    }
+                    break
                 ok = bool(envelope.get("success"))
                 # P-1 step-runner — the single backend chokepoint where every rail step tool
                 # executes. Count a success only for a tool the pinned rail actually names, so

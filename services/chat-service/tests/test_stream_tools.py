@@ -1746,3 +1746,38 @@ class TestFrontendToolValidationSeam:
         assert len(susp) == 1
         assert susp[0]["pending_tool_call"]["name"] == "propose_edit"
         assert susp[0]["pending_tool_call"]["args"] == good
+
+
+class TestTaskGateSuspend:
+    """ext-tasks (T1c(3)) — a backend tool returning a task envelope (a capability-
+    gated domain gate: composition_create_derivative) suspends the run with the task
+    MARKED, so resume drives the domain's provide-input tool instead of a client
+    execution. Dormant on the current stack (nothing declares tasks caps)."""
+
+    @pytest.mark.asyncio
+    async def test_backend_task_envelope_suspends_with_task_marker(self):
+        kc = AsyncMock()
+        kc.mcp_execute_tool.return_value = {
+            "success": True, "result": None, "error": None,
+            "task": {"taskId": "task_z", "status": "input_required",
+                     "inputRequests": {"title": "Spawn dị bản?"}},
+        }
+        scripts = [
+            [
+                tool_frag(index=0, id="call_g", name="composition_create_derivative"),
+                tool_frag(index=0, arguments_delta='{"project_id":"p","name":"AU"}'),
+                done("tool_calls"),
+            ],
+        ]
+        with _patch_client(scripts):
+            chunks = await _drain(_run(
+                scripts, knowledge_client=kc,
+                tools=[{"type": "function", "function": {"name": "composition_create_derivative"}}],
+            ))
+
+        susp = [c["suspend"] for c in chunks if "suspend" in c]
+        assert len(susp) == 1
+        pend = susp[0]["pending_tool_call"]
+        assert pend["name"] == "composition_create_derivative"
+        assert pend["task"] == {"taskId": "task_z", "status": "input_required",
+                                "inputRequests": {"title": "Spawn dị bản?"}}
