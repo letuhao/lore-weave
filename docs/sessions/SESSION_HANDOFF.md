@@ -62,7 +62,23 @@ fix it. DECISION (user-directed): build the Tasks extension OURSELVES.** New sea
   tasks-client, else the identical `confirm_token`; executor = the shared `_execute_derive`). Verified task-capable
   in the real composition container; tool tests green. **No-op for current traffic** (nothing declares tasks yet).
 
-**▶ NEXT: T1c(3) + T2 (coordinated) — the chat-service DRIVER + ai-gateway task forwarding.** chat-service declares
+**T1c(3) chat-service driver — DORMANT pieces built + unit-tested (activate last):**
+- **T1c(3.a)** (`553cd1ec9`^) — `app/services/task_detect.py`: `task_envelope_from_result`/`_from_content` recognise
+  a durable task in a tools/call response (wire `CreateTaskResult` OR the gate HANDLE) → a task envelope the tool
+  loop will suspend on. 9 tests.
+- **T1c(3.b)** (`553cd1ec9`) — `tasks_capability_meta()`: the `_meta` chat-service will attach to DECLARE it drives
+  tasks (the activation switch). A round-trip test proves it's exactly what the domain's `client_supports_tasks`
+  reads — the wire ends can't drift. 10 tests.
+Both **dormant** (unused, no caps declared yet) so nothing strands on the current stack.
+
+**▶ REMAINING (coordinated integration — the wire-shape coupling, spec §6): (a) wire `task_detect` into
+`mcp_execute_tool`** (`knowledge_client.py:752`) with a polymorphic `CallToolResult|CreateTaskResult` parse; **(b)
+tool-loop: on a task envelope, suspend** (reuse the frontend-tool suspend path + `chat_suspended_runs`); **(c)
+resume-drive** `task_provide_input` + poll `tasks/get`; **(d) ai-gateway T2**: forward `tasks/get`/`cancel` + pass
+`CreateTaskResult` through (federation client also needs the polymorphic parse) + `taskId→provider` routing; **(e)
+FE** confirm card; **(f) ACTIVATE**: attach `tasks_capability_meta()`. Then one full-stack live E2E. Original text:
+
+**T1c(3) + T2 (coordinated) — the chat-service DRIVER + ai-gateway task forwarding.** chat-service declares
 the tasks extension in its tool-call `_meta`, detects a `CreateTaskResult`, suspends (reuse `chat_suspended_runs`),
 and on the human decision calls `task_provide_input` + polls `tasks/get`; **ai-gateway forwards `tasks/get`/`cancel`
 + passes `CreateTaskResult` through + `taskId→provider` routing** (needed for chat→gateway→composition to carry a
