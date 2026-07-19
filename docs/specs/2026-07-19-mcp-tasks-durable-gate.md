@@ -190,6 +190,19 @@ Reuse existing cards (`ConfirmActionCard`, `RecordDiffCard`, `GlossaryDiffCard`)
 
 ---
 
+## 6.2 LIVE E2E — the durable gate PROVEN through the real composition service (2026-07-19)
+Deployed the task-capable code to `infra-composition-service-1` (kit + `server.py`, restart) and drove
+`composition_create_derivative` over MCP on a REAL backed source Work (project `019f74af-…`, an owned book) with the
+internal token + `X-User-Id`/`X-Session-Id`:
+- **client DECLARES tasks caps** (`_meta.io.modelcontextprotocol/clientCapabilities.extensions[…/tasks]`) → the tool
+  returns a durable **task handle** (`type: io.loreweave/task-handle`, `status: input_required`, a real `taskId`,
+  `inputRequests` with the confirm title) — **the gate HOLDS, nothing is written**.
+- **client does NOT declare caps** → the tool returns the **`confirm_token`** (descriptor `composition.derive`) —
+  today's path, **byte-unchanged**.
+This live-proves the capability-negotiation + gate flow end to end through the real service, non-side-effectfully
+(no accept → no partition minted). The accept→`provide_input`→`perform_derive` tail is unit-proven (`TestTaskResume`);
+running it live mints a real knowledge partition (deferred to the activation pass with a throwaway source).
+
 ## 6.1 SP-T0 RESULTS (spiked 2026-07-19 — the SDK experimental Tasks is a DEAD END)
 Introspected mcp 1.28.1's Tasks API in the running chat-service container. Findings:
 - The Tasks machinery is **complete and functionally present**: `TaskStore` protocol + `InMemoryTaskStore`,
