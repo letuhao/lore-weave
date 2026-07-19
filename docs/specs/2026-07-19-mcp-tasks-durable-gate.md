@@ -145,11 +145,19 @@ Reuse existing cards (`ConfirmActionCard`, `RecordDiffCard`, `GlossaryDiffCard`)
   `_execute_derive`); composition-service is task-capable (verified in the real container: tasks/get|cancel handlers,
   task_provide_input tool, CallTool wrapped, 100 tools; tool tests green). **Provable no-op for current traffic** (no
   client declares tasks yet → always the `confirm_token` fallback); the task path activates with T1c(3).
-- **T1c(3) — chat-service DRIVER + T2 gateway forwarding (NEXT, coordinated).** chat-service declares the tasks
-  extension in its tool-call `_meta`, detects a `CreateTaskResult`, suspends (reuse `chat_suspended_runs`), and on
-  the human decision calls `task_provide_input` + polls `tasks/get`; **ai-gateway forwards `tasks/get`/`cancel` +
-  passes `CreateTaskResult` through + `taskId→provider` routing** (T2 — needed for chat→gateway→composition to
-  carry a task). FE reuses existing confirm cards. This is the first FULL live stack E2E of the durable gate.
+- **T1c(3) — chat-service DRIVER + T2 gateway forwarding (NEXT, coordinated — must land together).** chat-service
+  declares the tasks extension in its tool-call `_meta`, detects a `CreateTaskResult`, suspends (reuse
+  `chat_suspended_runs`), and on the human decision calls `task_provide_input` + polls `tasks/get`; **ai-gateway
+  forwards `tasks/get`/`cancel` + passes `CreateTaskResult` through + `taskId→provider` routing**. FE reuses
+  existing confirm cards. First FULL live-stack E2E of the durable gate.
+  > **COUPLING FINDING (2026-07-19): both client hops need polymorphic-result handling — the pieces can't be
+  > split.** `mcp_execute_tool` (chat-service `knowledge_client.py:752`) and the gateway's `federation.executeTool`
+  > both call `client.call_tool(...)`, which parses the response as a **`CallToolResult`** — a domain's
+  > `CreateTaskResult` would fail/drop. So T1c(3)+T2 = {chat-service client polymorphic handling + caps declaration
+  > + `CreateTaskResult` detection + suspend, gateway federation-client polymorphic handling + `tasks/*` forwarding
+  > + taskId routing, FE card}, ALL together. Declaring caps without the driver strands a task; forwarding without
+  > polymorphic handling drops it. This is why it's one coordinated slice, not four increments — build + live-E2E as
+  > a unit (a real agent turn: open the derive gate → hold → accept → commit through the whole stack).
 - **(superseded) T1c — wire into a REAL Python domain confirm + `CreateTaskResult` wrap.** Replace the self-contained
   `publish_book` gate with a real KIND-C confirm on a Python domain (composition/translation); emit a wire
   `CreateTaskResult{resultType:"task"}` via a CallTool wrap so a client auto-detects the task; live-prove on a
