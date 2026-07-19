@@ -29,6 +29,33 @@ func TestTaskCreateStartsInputRequired(t *testing.T) {
 	}
 }
 
+// A returned task is a SNAPSHOT: mutating the store afterwards must not change a
+// value the caller already holds (guards the data-race fix — Get/Create/ProvideInput
+// must not hand out the live, store-mutated pointer).
+func TestTaskReturnIsSnapshotNotLiveAlias(t *testing.T) {
+	s := NewInMemoryTaskStore()
+	created, _ := s.Create("d", noopExec, nil, 0)
+	if created.Status != TaskInputRequired {
+		t.Fatalf("created status = %q", created.Status)
+	}
+	// Resolve the task in the store; the earlier `created` handle must stay put.
+	if _, err := s.ProvideInput(context.Background(), created.TaskID, map[string]any{"accepted": true}); err != nil {
+		t.Fatalf("ProvideInput: %v", err)
+	}
+	if created.Status != TaskInputRequired {
+		t.Fatalf("earlier snapshot mutated by later store write: status = %q, want input_required", created.Status)
+	}
+	// A fresh Get reflects the new terminal state (proving it wasn't just a stale read).
+	got, _ := s.Get(created.TaskID, time.Time{})
+	if got.Status != TaskCompleted {
+		t.Fatalf("fresh Get status = %q, want completed", got.Status)
+	}
+	// And the executor is never leaked out to a caller.
+	if got.executor != nil {
+		t.Fatal("returned snapshot leaks the bound executor")
+	}
+}
+
 func TestTaskCreateRequiresDescriptor(t *testing.T) {
 	s := NewInMemoryTaskStore()
 	if _, err := s.Create("  ", noopExec, nil, 0); err == nil {

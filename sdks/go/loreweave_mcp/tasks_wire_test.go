@@ -1,0 +1,219 @@
+package loreweave_mcp
+
+import (
+	"context"
+	"testing"
+	"time"
+
+	"github.com/modelcontextprotocol/go-sdk/mcp"
+)
+
+// tasksMeta builds a per-request _meta declaring the ext-tasks extension.
+func tasksMeta() Meta {
+	return Meta{
+		clientCapsKey: map[string]any{
+			extensionsKey: map[string]any{
+				TasksExtension: map[string]any{},
+			},
+		},
+	}
+}
+
+func TestClientSupportsTasksTrue(t *testing.T) {
+	if !ClientSupportsTasks(tasksMeta()) {
+		t.Fatal("expected true when the tasks extension is declared")
+	}
+}
+
+func TestClientSupportsTasksFailClosed(t *testing.T) {
+	cases := map[string]Meta{
+		"nil meta":            nil,
+		"empty meta":          {},
+		"caps wrong type":     {clientCapsKey: "nope"},
+		"no extensions":       {clientCapsKey: map[string]any{}},
+		"exts wrong type":     {clientCapsKey: map[string]any{extensionsKey: 7}},
+		"different extension": {clientCapsKey: map[string]any{extensionsKey: map[string]any{"io.other/x": map[string]any{}}}},
+		// tasks declared but explicitly null ⇒ NOT supported (parity with Python
+		// `_mget(...) is not None`); a null-valued key must fall back to confirm.
+		"tasks value null": {clientCapsKey: map[string]any{extensionsKey: map[string]any{TasksExtension: nil}}},
+	}
+	for name, m := range cases {
+		if ClientSupportsTasks(m) {
+			t.Fatalf("%s: expected false (fail-closed)", name)
+		}
+	}
+}
+
+func TestGateOrConfirmOpensTaskWhenSupported(t *testing.T) {
+	s := NewInMemoryTaskStore()
+	ran := false
+	exec := func(ctx context.Context, inputs map[string]any) (any, error) { ran = true; return "ok", nil }
+	fallback := func() any { t.Fatal("fallback must not run when tasks supported"); return nil }
+
+	res, err := GateOrConfirm(context.Background(), tasksMeta(), s, "composition.derive", exec,
+		map[string]any{"title": "Derive?"}, fallback, 0)
+	if err != nil {
+		t.Fatalf("GateOrConfirm: %v", err)
+	}
+	handle, ok := res.(map[string]any)
+	if !ok {
+		t.Fatalf("result is not a handle map: %T", res)
+	}
+	if handle["type"] != GateHandleType {
+		t.Fatalf("handle type = %v, want %q", handle["type"], GateHandleType)
+	}
+	if handle["status"] != TaskInputRequired {
+		t.Fatalf("handle status = %v, want input_required", handle["status"])
+	}
+	if handle["inputRequests"].(map[string]any)["title"] != "Derive?" {
+		t.Fatalf("inputRequests not carried: %v", handle["inputRequests"])
+	}
+	// Opening the gate must NOT run the executor (that waits for provide-input).
+	if ran {
+		t.Fatal("executor ran at gate-open; must wait for accept")
+	}
+	// The task is durably stored and awaiting input.
+	got, err := s.Get(handle["taskId"].(string), time.Time{})
+	if err != nil || got.Status != TaskInputRequired {
+		t.Fatalf("task not stored awaiting input: err=%v status=%q", err, got.Status)
+	}
+}
+
+func TestGateOrConfirmFallsBackWhenUnsupported(t *testing.T) {
+	s := NewInMemoryTaskStore()
+	exec := func(ctx context.Context, inputs map[string]any) (any, error) { return nil, nil }
+	fallbackHit := false
+	fallback := func() any {
+		fallbackHit = true
+		return map[string]any{"confirm_token": "tok_123", "descriptor": "composition.derive"}
+	}
+
+	res, err := GateOrConfirm(context.Background(), Meta{}, s, "composition.derive", exec, nil, fallback, 0)
+	if err != nil {
+		t.Fatalf("GateOrConfirm: %v", err)
+	}
+	if !fallbackHit {
+		t.Fatal("fallback did not run for a non-tasks client")
+	}
+	m := res.(map[string]any)
+	if m["confirm_token"] != "tok_123" {
+		t.Fatalf("fallback result = %v, want confirm_token", res)
+	}
+	// No task minted when falling back — a non-tasks client can't drive it.
+	if len(s.tasks) != 0 {
+		t.Fatalf("minted %d tasks on fallback path, want 0", len(s.tasks))
+	}
+}
+
+func TestOpenGateReturnsPollInterval(t *testing.T) {
+	s := NewInMemoryTaskStore()
+	exec := func(ctx context.Context, inputs map[string]any) (any, error) { return nil, nil }
+	handle, err := OpenGate(s, "d", exec, nil, 0)
+	if err != nil {
+		t.Fatalf("OpenGate: %v", err)
+	}
+	if handle["pollIntervalMs"] != DefaultPollIntervalMs {
+		t.Fatalf("pollIntervalMs = %v, want %d", handle["pollIntervalMs"], DefaultPollIntervalMs)
+	}
+}
+
+// End-to-end over the REAL go-sdk in-memory wire: register the provide-input
+// tool, open a gate whose executor performs the "real write", then drive accept
+// through a client CallTool and assert the executor ran and the result rode back.
+func TestProvideInputTool_AcceptRunsExecutorAndReturnsResult(t *testing.T) {
+	store := NewInMemoryTaskStore()
+	ran := false
+	handle, err := OpenGate(store, "composition.derive",
+		func(ctx context.Context, inputs map[string]any) (any, error) {
+			ran = true
+			return map[string]any{"derivativeId": "wf_new", "note": inputs["note"]}, nil
+		}, map[string]any{"title": "Derive?"}, 0)
+	if err != nil {
+		t.Fatalf("OpenGate: %v", err)
+	}
+	taskID := handle["taskId"].(string)
+
+	srv := mcp.NewServer(&mcp.Implementation{Name: "domain", Version: "0.0.1"}, nil)
+	RegisterTaskProvideInput(srv, store, "composition")
+	cs := connectInMemory(t, srv)
+
+	res, err := cs.CallTool(context.Background(), &mcp.CallToolParams{
+		Name:      "composition_task_provide_input",
+		Arguments: map[string]any{"task_id": taskID, "accepted": true, "inputs": map[string]any{"note": "go-e2e"}},
+	})
+	if err != nil {
+		t.Fatalf("CallTool: %v", err)
+	}
+	if res.IsError {
+		t.Fatalf("provide-input returned isError: %+v", res.Content)
+	}
+	if !ran {
+		t.Fatal("executor never ran on accept")
+	}
+	out, _ := res.StructuredContent.(map[string]any)
+	if out["status"] != TaskCompleted {
+		t.Fatalf("status = %v, want completed", out["status"])
+	}
+	result, _ := out["result"].(map[string]any)
+	if result["derivativeId"] != "wf_new" || result["note"] != "go-e2e" {
+		t.Fatalf("result did not ride back: %v", out["result"])
+	}
+}
+
+// Decline over the real wire must cancel WITHOUT running the executor.
+func TestProvideInputTool_DeclineDoesNotRunExecutor(t *testing.T) {
+	store := NewInMemoryTaskStore()
+	ran := false
+	handle, _ := OpenGate(store, "composition.derive",
+		func(ctx context.Context, inputs map[string]any) (any, error) { ran = true; return nil, nil }, nil, 0)
+	taskID := handle["taskId"].(string)
+
+	srv := mcp.NewServer(&mcp.Implementation{Name: "domain", Version: "0.0.1"}, nil)
+	RegisterTaskProvideInput(srv, store, "composition")
+	cs := connectInMemory(t, srv)
+
+	res, err := cs.CallTool(context.Background(), &mcp.CallToolParams{
+		Name:      "composition_task_provide_input",
+		Arguments: map[string]any{"task_id": taskID, "accepted": false},
+	})
+	if err != nil {
+		t.Fatalf("CallTool: %v", err)
+	}
+	out, _ := res.StructuredContent.(map[string]any)
+	if out["status"] != TaskCancelled {
+		t.Fatalf("status = %v, want cancelled", out["status"])
+	}
+	if ran {
+		t.Fatal("executor ran on decline")
+	}
+}
+
+// A second accept on an already-resolved task surfaces as an error result (the
+// double-confirm guard) over the wire.
+func TestProvideInputTool_DoubleAcceptIsError(t *testing.T) {
+	store := NewInMemoryTaskStore()
+	handle, _ := OpenGate(store, "d",
+		func(ctx context.Context, inputs map[string]any) (any, error) { return "ok", nil }, nil, 0)
+	taskID := handle["taskId"].(string)
+
+	srv := mcp.NewServer(&mcp.Implementation{Name: "domain", Version: "0.0.1"}, nil)
+	RegisterTaskProvideInput(srv, store, "composition")
+	cs := connectInMemory(t, srv)
+
+	call := func() *mcp.CallToolResult {
+		r, err := cs.CallTool(context.Background(), &mcp.CallToolParams{
+			Name:      "composition_task_provide_input",
+			Arguments: map[string]any{"task_id": taskID, "accepted": true},
+		})
+		if err != nil {
+			t.Fatalf("CallTool: %v", err)
+		}
+		return r
+	}
+	if call().IsError {
+		t.Fatal("first accept must succeed")
+	}
+	if !call().IsError {
+		t.Fatal("second accept must be an error result (double-confirm guard)")
+	}
+}

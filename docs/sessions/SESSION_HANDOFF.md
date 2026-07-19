@@ -77,6 +77,19 @@ side-effectful — accept mints a real knowledge partition.) Then flip the flag 
 facade for glossary/book + a persistent task store), **T4** (retire the bespoke frontend confirm tools),
 frontend-tools **Phases 2-4**.
 
+**T3a + T3b DONE — the Go ext-tasks facade is built + wire-proven (2026-07-19):**
+- **T3a** (`dbe1d92f5`) — `sdks/go/loreweave_mcp/tasks.go`: Go mirror of the Python CORE (store + lifecycle,
+  single-winner `resolving` guard, executor-outside-lock, lazy TTL lapse). 10 tests.
+- **T3b** (this commit) — `sdks/go/loreweave_mcp/tasks_wire.go`: `ClientSupportsTasks` (fail-closed capability
+  gate on `req.Params.Meta`, parity-matched to Python incl. `tasks:null`⇒unsupported), `OpenGate`/`GateOrConfirm`
+  (handle-in-content), `RegisterTaskProvideInput` (the `<prefix>_task_provide_input` tool, wire-identical to
+  Python). **Proven over the REAL go-sdk in-memory client↔server wire** (accept runs executor + result rides back;
+  decline skips executor; double-accept⇒isError). `/review-impl`: 2 fixed — a Go-specific data race (was
+  returning the lived `*Task`; now snapshots on return) + the `tasks:null` fail-closed parity drift. 21 task tests
+  green, `go vet` clean.
+- **▶ T3c REMAINING**: wire `GateOrConfirm` into a real Go domain confirm tool (glossary) + register its
+  provide-input tool + live-prove through the stack; add a persistent `TaskStore`.
+
 _(build detail below — superseded by the summary above; kept for the file/line targets)_
 
 **T1c(3) chat-service driver — DORMANT pieces built + unit-tested (activate last):**

@@ -121,8 +121,20 @@ func (s *InMemoryTaskStore) Create(descriptor string, executor TaskExecutor, inp
 	}
 	s.mu.Lock()
 	s.tasks[t.TaskID] = t
+	snap := snapshot(t)
 	s.mu.Unlock()
-	return t, nil
+	return snap, nil
+}
+
+// snapshot returns a copy of the task safe to hand to a caller: the store keeps the
+// live pointer and mutates it under the lock, so returning the live pointer would let
+// a caller read fields lock-free while another goroutine writes them (a data race Go —
+// unlike the GIL/asyncio Python mirror — does not paper over). The executor field is
+// intentionally NOT copied out (never exposed to a client). Caller holds the lock.
+func snapshot(t *Task) *Task {
+	c := *t
+	c.executor = nil
+	return &c
 }
 
 // lapseIfExpired flips a non-terminal, past-TTL task to failed. Caller holds the lock.
@@ -145,7 +157,7 @@ func (s *InMemoryTaskStore) Get(taskID string, now time.Time) (*Task, error) {
 		return nil, ErrTaskNotFound
 	}
 	lapseIfExpired(t, now)
-	return t, nil
+	return snapshot(t), nil
 }
 
 func (s *InMemoryTaskStore) ProvideInput(ctx context.Context, taskID string, inputs map[string]any) (*Task, error) {
@@ -169,14 +181,16 @@ func (s *InMemoryTaskStore) ProvideInput(ctx context.Context, taskID string, inp
 		if act, _ := inputs["action"].(string); act == "decline" {
 			t.Status = TaskCancelled
 			t.UpdatedAt = time.Now()
+			snap := snapshot(t)
 			s.mu.Unlock()
-			return t, nil
+			return snap, nil
 		}
 		if acc, present := inputs["accepted"].(bool); present && !acc {
 			t.Status = TaskCancelled
 			t.UpdatedAt = time.Now()
+			snap := snapshot(t)
 			s.mu.Unlock()
-			return t, nil
+			return snap, nil
 		}
 	}
 	s.resolving[taskID] = true
@@ -203,7 +217,7 @@ func (s *InMemoryTaskStore) ProvideInput(ctx context.Context, taskID string, inp
 		t.Status = TaskCompleted
 	}
 	t.UpdatedAt = time.Now()
-	return t, nil
+	return snapshot(t), nil
 }
 
 func (s *InMemoryTaskStore) Cancel(taskID string) (*Task, error) {
@@ -214,9 +228,9 @@ func (s *InMemoryTaskStore) Cancel(taskID string) (*Task, error) {
 		return nil, ErrTaskNotFound
 	}
 	if IsTaskTerminal(t.Status) {
-		return t, nil // idempotent on a terminal task (cooperative)
+		return snapshot(t), nil // idempotent on a terminal task (cooperative)
 	}
 	t.Status = TaskCancelled
 	t.UpdatedAt = time.Now()
-	return t, nil
+	return snapshot(t), nil
 }
