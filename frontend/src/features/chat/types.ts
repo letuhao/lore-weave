@@ -347,6 +347,14 @@ export interface ToolCallRecord {
   pending?: boolean;
   runId?: string;
   toolCallId?: string;
+  // ext-tasks (T1c(3)) — a durable-gate suspend: the domain opened a task-shaped
+  // human gate. `task` carries {taskId, status, inputRequests} for the confirm card;
+  // Confirm resumes the run via /tool-results (accept → the domain runs the write).
+  task?: {
+    taskId: string;
+    status: string;
+    inputRequests?: Record<string, unknown> | null;
+  } | null;
 }
 
 export interface ChatMessage {

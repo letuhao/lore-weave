@@ -415,7 +415,13 @@ export async function runChatStream(
               const result = (event as RunFinishedEvent).result as
                 | (RunFinishedEvent['result'] & {
                     status?: string;
-                    pendingToolCall?: { runId: string; toolCallId: string; toolName: string };
+                    pendingToolCall?: {
+                      runId: string;
+                      toolCallId: string;
+                      toolName: string;
+                      // ext-tasks (T1c(3)) — present when the domain opened a durable gate.
+                      task?: { taskId: string; status: string; inputRequests?: Record<string, unknown> | null };
+                    };
                   })
                 | undefined;
               streamUsage = result?.usage || {};
@@ -439,6 +445,9 @@ export async function runChatStream(
                   runId: p.runId,
                   toolCallId: p.toolCallId,
                   args: parsedArgs,
+                  // ext-tasks (T1c(3)) — carry the durable-task info so the FE renders a
+                  // confirm card (TaskConfirmCard) from task.inputRequests.
+                  ...(p.task ? { task: p.task } : {}),
                 };
                 accumulatedToolCalls.push(record);
                 cb.onToolCall?.(record);

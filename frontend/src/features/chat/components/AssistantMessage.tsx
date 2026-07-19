@@ -20,6 +20,7 @@ import { ProposeEditCard } from './ProposeEditCard';
 import { GlossaryDiffCard } from './GlossaryDiffCard';
 import { ConfirmCard } from './ConfirmCard';
 import { ConfirmActionCard, descriptorDomain } from './ConfirmActionCard';
+import { TaskConfirmCard } from './TaskConfirmCard';
 import { BatchConfirmCard, type BatchChild } from './BatchConfirmCard';
 import { RecordDiffCard } from './RecordDiffCard';
 import { ToolApprovalCard, isToolApprovalRecord } from './ToolApprovalCard';
@@ -260,6 +261,10 @@ export function AssistantMessage({
         const proposals = toolCalls.filter(
           (tc) => isPendingFrontend(tc) && !isToolApprovalRecord(tc),
         );
+        // ext-tasks (T1c(3)) — a pending durable-gate suspend (the record carries a
+        // `task`). Its tool is a SERVER tool (e.g. composition_create_derivative), not
+        // in FRONTEND_TOOLS, so it routes by the `task` marker → TaskConfirmCard.
+        const taskGates = toolCalls.filter((tc) => tc.pending === true && !!tc.task);
         // S4: completed class-W translation/alias proposals render as a review card
         // (visible drafts), not a passive chip — but ONLY when the record carries
         // something renderable. A sparse record (e.g. replayed {tool, ok} with no
@@ -274,7 +279,8 @@ export function AssistantMessage({
           .map(skillProposal)
           .filter((p): p is SkillProposal => p !== null);
         const rest = toolCalls.filter(
-          (tc) => !isPendingFrontend(tc) && !isRenderableTranslation(tc) && !isToolApprovalRecord(tc) && !skillProposal(tc),
+          (tc) => !isPendingFrontend(tc) && !isRenderableTranslation(tc) && !isToolApprovalRecord(tc)
+            && !skillProposal(tc) && !(tc.pending === true && !!tc.task),
         );
         // Model-independent human gate: auto-render a confirm card for any completed
         // propose result that minted a LIVE confirm_token, unless an explicit (pending)
@@ -346,6 +352,9 @@ export function AssistantMessage({
                 }
               />
             )}
+            {taskGates.map((tc) => (
+              <TaskConfirmCard key={tc.toolCallId ?? tc.tool} record={tc} />
+            ))}
             {proposalsToRender.map((tc) => {
               const key = tc.toolCallId ?? tc.tool;
               if (tc.tool === 'glossary_propose_entity_edit') return <GlossaryDiffCard key={key} record={tc} />;
