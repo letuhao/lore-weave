@@ -93,6 +93,15 @@ LLM (chat-service, MCP client, declares tasks cap per-request)
 - ai-gateway advertises `io.modelcontextprotocol/tasks` in `server/discover` and **passes the client capability through** to the domain (it already forwards `_meta`, see `federation.executeTool` `params._meta`).
 - Each task-capable domain advertises the extension in its capabilities.
 
+> **⚠ SAFETY-CRITICAL (T1c(2) finding, 2026-07-19): the tool flip MUST be capability-gated, never unconditional.**
+> If a KIND-C tool returns `open_gate(...)` (a task) to a client that did NOT declare tasks support (today's
+> chat-service, the public edge, external agents), that client gets a durable task it cannot drive → the real
+> action is stranded forever. So a task-capable domain tool does: **`if <client declared tasks>: return await
+> open_gate(...) else: return {confirm_token, descriptor, …}` (today's path)**. The gating read + the chat-service
+> DRIVER (T1c(3)) must land TOGETHER — flipping a tool before its client can drive tasks is a broken deploy.
+> Reading the per-request client capability inside a FastMCP tool (from `ctx`/the request `_meta`) is the small
+> unbuilt piece T1c(2) needs; until then, the facade stays proven-but-unwired (no live domain tool is flipped).
+
 ### 4.3 The Go Tasks facade (glossary, book)
 A small reusable Go helper (candidate home: `sdks/go/` MCP layer, mirroring `loreweave_mcp`): persist a task row, implement `tasks/get`/`tasks/update`/`tasks/cancel` handlers, map `taskId`→the pending action. The propose tools return `CreateTaskResult{input_required}` instead of minting a `confirm_token`; the existing `/actions/confirm` commit logic moves behind `tasks/update`. **The write path and optimistic-lock (If-Match / base_version → 409/412) are unchanged** — a stale confirm still surfaces as `failed`/conflict, model self-corrects.
 
