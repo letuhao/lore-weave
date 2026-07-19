@@ -164,7 +164,7 @@ impl TileMask {
         if n == 0 {
             return None;
         }
-        let idx = rng.gen_range(0..n);
+        let idx = rng.random_range(0..n);
         self.iter_set().nth(idx)
     }
 }

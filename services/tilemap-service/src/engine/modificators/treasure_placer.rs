@@ -767,7 +767,13 @@ mod tests {
         // corrected bound (failures capped separately, successes never consume
         // budget) still places exactly target_count piles. 30×30 = 900 tiles,
         // density 7 ⇒ target_count = 6.
-        const E_SEED: u64 = 0;
+        //
+        // E_SEED chosen so the §3.3 loop deterministically hits ≥ 1 None (the
+        // failure path) under the ChaCha8 draw order. (Re-pinned from 0 → 2 at
+        // the rand 0.9 upgrade: `random_range` changed the draw sequence, so the
+        // old seed no longer stranded a pile; the D6-bound behaviour under test
+        // is unchanged.)
+        const E_SEED: u64 = 2;
         let mut state = solo_state("z", 30, 30, ZoneRole::Wilderness);
         let t = tier(1250, 1350, 7);
         let tmpl = template(vec![zone_spec("z", vec![t], None)]);

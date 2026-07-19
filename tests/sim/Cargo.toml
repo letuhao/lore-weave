@@ -39,5 +39,5 @@ async-trait = "0.1"
 uuid = { version = "1.10", features = ["serde", "v4", "v5"] }
 serde_json = "1.0"
 # Deterministic PRNG — ChaCha8 seeded per run fixes the entire interleaving.
-rand = "0.8"
-rand_chacha = "0.3"
+rand = "0.9"
+rand_chacha = "0.9"

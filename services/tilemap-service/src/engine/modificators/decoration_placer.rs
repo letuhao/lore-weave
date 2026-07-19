@@ -281,7 +281,7 @@ fn roll_weighted_tag<'a>(
     let total: f32 = pool.iter().map(|r| r.density_weight).sum();
     // Chunk-B validation guarantees weights are finite + positive, so
     // `total > 0` and `gen_range(0.0..total)` won't panic.
-    let mut roll: f32 = rng.gen_range(0.0..total);
+    let mut roll: f32 = rng.random_range(0.0..total);
     for r in pool {
         roll -= r.density_weight;
         if roll <= 0.0 {

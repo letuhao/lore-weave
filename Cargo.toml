@@ -130,8 +130,8 @@ blake3 = "1.5"
 
 # Deterministic procedural RNG — ChaCha8 streams sub-seeded from the blake3
 # TilemapSeed (TMP_002 §8). rand provides the SeedableRng/Rng traits.
-rand = "0.8"
-rand_chacha = "0.3"
+rand = "0.9"
+rand_chacha = "0.9"
 
 # Error handling
 thiserror = "2.0"
