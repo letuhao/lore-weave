@@ -4,6 +4,7 @@ import { LoginRoute } from '@/routes/login';
 import { WorldSelectRoute } from '@/routes/world-select';
 import { PlayRoute } from '@/routes/play';
 import { ErrorBoundary } from '@/components/shared/ErrorBoundary';
+import type { JSX } from 'react';
 
 // App router shell. Per spec §3, three routes:
 //   /login         → LoginRoute (Session E wires real auth)

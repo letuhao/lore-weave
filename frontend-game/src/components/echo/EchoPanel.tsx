@@ -3,6 +3,7 @@ import { createWsClient, type WsClient } from '@/net/ws-client';
 import type { ServerToClient } from '@/net/protocol';
 import { Button } from '@/components/shared/Button';
 import { SERVICES } from '@/config/services';
+import type { JSX } from 'react';
 
 // EchoPanel — Session E V0 demo UI for verifying the WebSocket path
 // end-to-end. Sends `echo` messages to game-server's EchoRoom and

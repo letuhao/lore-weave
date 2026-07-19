@@ -1,6 +1,7 @@
 import { Suspense } from 'react';
 import { Canvas } from '@react-three/fiber';
 import { Bounds, OrbitControls, useGLTF } from '@react-three/drei';
+import type { JSX } from 'react';
 
 // Reusable 3D globe viewer — renders a `world-gen` `.glb` displaced-sphere mesh
 // (real bathymetry + hypsometric/biome texture) with orbit controls. Pure view:

@@ -5,6 +5,7 @@
 // separate 64×32 asset set.
 
 import { useEffect, useState } from 'react';
+import type { JSX } from 'react';
 
 export function RotatePrompt(): JSX.Element | null {
   const [isPortrait, setIsPortrait] = useState(false);

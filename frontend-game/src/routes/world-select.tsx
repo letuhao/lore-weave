@@ -1,5 +1,6 @@
 import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/shared/Button';
+import type { JSX } from 'react';
 
 // World selection placeholder. Session E+ wires character list from
 // character-service. For V0 smoke, just one "Play" button that

@@ -1,4 +1,5 @@
 import { useViewerStore, type ViewerLayer } from '@/store/viewer-store';
+import type { JSX } from 'react';
 
 // 8 checkboxes (L0..L7). Wired to viewer-store; WorldScene subscribes
 // to the store and toggles per-layer visibility without re-fetching

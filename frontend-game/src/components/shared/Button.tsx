@@ -2,6 +2,7 @@
 // vendoring; this minimal one keeps the scaffold compile-clean.
 
 import type { ButtonHTMLAttributes, ReactNode } from 'react';
+import type { JSX } from 'react';
 
 type ButtonVariant = 'primary' | 'secondary' | 'ghost';
 
