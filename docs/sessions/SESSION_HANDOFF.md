@@ -81,14 +81,23 @@ polymorphic parse needed for the confirm gate.** (spec §6 "SIMPLIFICATION").
   handle returns (structuredContent, incl. nested under `result`); 20 tests, no regression.
 - **(a-detect/decl) DONE** — `task_detect.py` (`task_envelope_from_*`, `tasks_capability_meta`), 10 tests.
 
-**▶ REMAINING (chat-service-local — much smaller now): (b) tool-loop suspend on a task envelope** — in
-`_stream_with_tools` where the backend-tool envelope is processed, route `envelope.get("task")` to a suspend (reuse
-the frontend-tool suspend → `chat_suspended_runs`, carrying `taskId` + `inputRequests` as the confirm card); **(c)
-resume-drive** — on the human decision (`/tool-results`), instead of appending a role:tool outcome, call the
-`task_provide_input` tool with `{taskId, accepted}`, take its `{status, result}`, resume; **(e) FE** — render the
-task as a confirm card (reuse `ConfirmActionCard`); **(f) ACTIVATE** — attach `tasks_capability_meta()` to the
-gate-able tool calls (last). Then one live-stack E2E: a real agent turn that opens the derive gate → holds →
-accepts → commits. (ai-gateway T2 tasks/get forwarding is now OPTIONAL — only for crash-resume/long-running.)
+**▶ REMAINING (chat-service-local — much smaller now):**
+- **(b) tool-loop suspend on a task envelope** — in `_stream_with_tools` right after the backend-tool `envelope`
+  (`stream_service.py:3086`), add `if envelope.get("task"): suspended_call = {id: c["id"], name: c["name"],
+  args: args_obj, task: envelope["task"]}; break` → routes to the existing suspend emit (`:3209`) → `chat_suspended_
+  runs`. The `task` marker distinguishes a task suspend from a frontend-tool suspend on resume.
+- **(c) resume-drive** — on `/tool-results`, if the suspended pending call has a `task`, instead of appending a
+  role:tool outcome, call the domain's provide-input tool with `{taskId, accepted}`, take its `{status, result}`,
+  resume. **⚠ ROUTING FINDING (2026-07-19):** `register_task_endpoints` registers `task_provide_input` GENERICALLY,
+  but the ai-gateway catalog routes by tool NAME → multiple task-capable domains would COLLIDE and the resume must
+  reach the SPECIFIC provider that owns the task. FIX before (c): give `register_task_endpoints` a `tool_prefix`
+  (default unprefixed for kit tests; composition passes its domain → `composition_task_provide_input`), and derive
+  the provide-input tool name on resume from the gate tool's provider prefix (`c["name"]` → `composition`). taskId
+  is process-local to the owning domain (in-memory store), so name-routing to that provider is sufficient.
+- **(e) FE** — render the task as a confirm card (reuse `ConfirmActionCard`).
+- **(f) ACTIVATE** — attach `tasks_capability_meta()` to gate-able tool calls (LAST). Then one live-stack E2E: a real
+  agent turn opens the derive gate → holds → accepts → commits. (ai-gateway T2 `tasks/get` forwarding stays OPTIONAL
+  — only for crash-resume/long-running; the confirm gate needs only the two tools, which the gateway already routes.)
 Original coordinated text:
 
 **T1c(3) + T2 (coordinated) — the chat-service DRIVER + ai-gateway task forwarding.** chat-service declares

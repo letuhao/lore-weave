@@ -227,10 +227,17 @@ def enable_task_results(fastmcp: Any, store: TaskStore) -> None:
     srv.request_handlers[t.CallToolRequest] = _wrapped
 
 
-def register_task_endpoints(fastmcp: Any, store: TaskStore) -> None:
-    """Register tasks/get + tasks/cancel handlers and the task_provide_input tool
-    onto a FastMCP server. Idempotent-safe to call once per server at build time."""
+def register_task_endpoints(fastmcp: Any, store: TaskStore, *, tool_prefix: str = "") -> None:
+    """Register tasks/get + tasks/cancel handlers and the provide-input tool onto a
+    FastMCP server. Call once per server at build time.
+
+    ``tool_prefix`` names the input tool ``<prefix>_task_provide_input`` (e.g.
+    ``composition_task_provide_input``). REQUIRED for any domain reached through the
+    ai-gateway: the gateway catalog routes by tool NAME, so a bare ``task_provide_input``
+    would COLLIDE across task-capable domains and the resume couldn't reach the provider
+    that owns the task. Unprefixed (``""``) is only for in-process/kit-test servers."""
     srv = fastmcp._mcp_server
+    provide_input_name = f"{tool_prefix}_task_provide_input" if tool_prefix else "task_provide_input"
 
     async def _get(req: t.GetTaskRequest) -> t.ServerResult:
         task_id = req.params.taskId or getattr(req.params, "task", None)
@@ -251,7 +258,7 @@ def register_task_endpoints(fastmcp: Any, store: TaskStore) -> None:
     srv.request_handlers[t.GetTaskRequest] = _get
     srv.request_handlers[t.CancelTaskRequest] = _cancel
 
-    @fastmcp.tool(name="task_provide_input")
+    @fastmcp.tool(name=provide_input_name)
     async def task_provide_input(  # noqa: D401 — the input step (interim for tasks/update)
         task_id: str, accepted: bool = True, inputs: dict[str, Any] | None = None
     ) -> dict[str, Any]:

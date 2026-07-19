@@ -133,7 +133,10 @@ from loreweave_mcp.tasks_wire import (  # noqa: E402
 )
 
 _task_store = InMemoryTaskStore()
-register_task_endpoints(mcp_server, _task_store)
+# tool_prefix="composition" → the input tool is `composition_task_provide_input`
+# (gateway-routable + collision-free across task-capable domains; see the routing note
+# in the spec / SESSION_HANDOFF).
+register_task_endpoints(mcp_server, _task_store, tool_prefix="composition")
 
 # Confirm descriptors for the Tier-W actions (C-CONFIRM domain map → composition).
 _PUBLISH_DESCRIPTOR = "composition.publish"
