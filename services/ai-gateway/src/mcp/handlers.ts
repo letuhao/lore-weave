@@ -12,6 +12,7 @@ import {
   toolListResult,
   toolLoadResult,
 } from '../federation/find-tools.js';
+import { UI_TOOLS, UI_TOOL_NAMES, handleUiTool } from './ui-tools.js';
 
 const log = new Logger('McpProxy');
 
@@ -58,8 +59,18 @@ export async function handleListTools(
   // the DETERMINISTIC pair — go FIRST (the primary discovery path, OQ1); `find_tools` follows as the
   // OPTIONAL semantic convenience. All three are deduped by name on the consumer's name-keyed active
   // set + excluded from their own listing/search.
+  // Phase 3 — the consumer-local ui_* directive tools (KIND A). Like the discovery
+  // meta-tools they have no downstream provider (handled in handleCallTool). The
+  // per-turn advertisement gate (F7c nav-intent, studio_context) stays a CONSUMER
+  // concern in chat-service, which filters this catalog; ai-gateway lists them so
+  // they are discoverable + validated at one seam.
   return {
-    tools: [TOOL_LIST_TOOL, TOOL_LOAD_TOOL, FIND_TOOLS_TOOL, ...(federation.catalog() as any[]), ...overlay],
+    tools: [
+      TOOL_LIST_TOOL, TOOL_LOAD_TOOL, FIND_TOOLS_TOOL,
+      ...UI_TOOLS,
+      ...(federation.catalog() as any[]),
+      ...overlay,
+    ],
     _meta: { unavailable_providers: unavailable, partial: federation.isPartial() },
   };
 }
@@ -261,6 +272,13 @@ export async function handleCallTool(
   }
   if (name === FIND_TOOLS_NAME) {
     return handleFindTools(federation, args, headers);
+  }
+  // Phase 3 — ui_* are consumer-local directive tools: validate (enum/required) and
+  // return a directive the browser acts on; an out-of-enum arg is an isError result
+  // (the enum/required signal), NEVER a silent no-op. No provider, no identity needed
+  // (navigation is a client effect; nothing is written server-side).
+  if (UI_TOOL_NAMES.has(name)) {
+    return handleUiTool(name, args);
   }
 
   const env = extractEnvelope(headers);

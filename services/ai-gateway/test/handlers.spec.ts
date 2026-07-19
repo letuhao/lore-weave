@@ -14,6 +14,7 @@ import {
   sanitizeUpstreamErrorText,
   TOOL_ERROR_CODES,
 } from '../src/mcp/handlers.js';
+import { UI_TOOLS, UI_DIRECTIVE_TYPE } from '../src/mcp/ui-tools.js';
 import type { FederationService } from '../src/federation/federation.service.js';
 
 function fakeFederation(over: Partial<FederationService>): FederationService {
@@ -91,7 +92,12 @@ describe('handleListTools', () => {
     // WS-1a (OQ1): tool_list/tool_load are the deterministic PRIMARY pair, advertised FIRST;
     // find_tools follows as the optional semantic convenience; then the catalog.
     expect(res.tools[0].name).toBe('tool_list');
-    expect(res.tools.map((t: any) => t.name)).toEqual(['tool_list', 'tool_load', 'find_tools', 'memory_search']);
+    // Phase 3 — the consumer-local ui_* directive tools sit after the discovery
+    // meta-tools and before the federated catalog (sourced from the module so this
+    // assertion tracks the tool set without drifting).
+    expect(res.tools.map((t: any) => t.name)).toEqual([
+      'tool_list', 'tool_load', 'find_tools', ...UI_TOOLS.map((t) => t.name), 'memory_search',
+    ]);
     expect(res._meta).toEqual({ unavailable_providers: [], partial: false });
   });
 
@@ -105,6 +111,7 @@ describe('handleListTools', () => {
       'tool_list',
       'tool_load',
       'find_tools',
+      ...UI_TOOLS.map((t) => t.name),
       'memory_search',
       'u_deadbeef_search',
     ]);
@@ -133,6 +140,21 @@ describe('handleListTools', () => {
     expect(executeOverlay).toHaveBeenCalledWith('u_deadbeef_search', { q: 'x' }, { userId: 'u1', sessionId: undefined, traceId: undefined, projectId: undefined, mcpKeyId: undefined, spendCapUsd: undefined }, undefined);
     expect(executeTool).not.toHaveBeenCalled();
     expect(res).toEqual({ content: [{ type: 'text', text: 'overlay' }] });
+  });
+
+  it('Phase 3: dispatches a ui_* tool LOCALLY (directive), never to a provider', async () => {
+    const executeTool = jest.fn().mockResolvedValue({ content: [] });
+    const fed = fakeFederation({ executeTool });
+    const res = await handleCallTool(fed, 'ui_navigate', { path: '/books' }, { 'x-user-id': 'u1' });
+    expect(executeTool).not.toHaveBeenCalled(); // no downstream provider owns ui_*
+    expect((res as any).structuredContent).toEqual({ type: UI_DIRECTIVE_TYPE, tool: 'ui_navigate', args: { path: '/books' } });
+  });
+
+  it('Phase 3: a ui_* tool with an out-of-enum arg is an isError result, not a silent no-op', async () => {
+    const fed = fakeFederation({ executeTool: jest.fn() });
+    const res = await handleCallTool(fed, 'ui_open_studio_panel', { panel_id: 'not-real' }, { 'x-user-id': 'u1' });
+    expect((res as any).isError).toBe(true);
+    expect((res as any).structuredContent.type).not.toBe(UI_DIRECTIVE_TYPE);
   });
 });
 

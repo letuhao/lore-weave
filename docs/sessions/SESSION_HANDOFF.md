@@ -1,5 +1,27 @@
 # ▶▶ NEXT SESSION STARTS HERE
 
+## 🧩 FRONTEND-TOOLS MIGRATION — Phases 2–4 (full staged refactor, user-directed 2026-07-20)
+> Plan + RUN-STATE: [`docs/plans/2026-07-20-frontend-tools-phases-2-4-BUILD.md`](../plans/2026-07-20-frontend-tools-phases-2-4-BUILD.md).
+> The correctness root-cause is already banked (Phase 0 seam + FE allowlist + contract); this track is the
+> architectural retirement of the chat-service-local parallel construct (user chose "full refactor, staged").
+
+- **P3.1 DONE** (this commit) — `ui_*` KIND-A tools relocated to **ai-gateway as consumer-local directive tools**
+  (`services/ai-gateway/src/mcp/ui-tools.ts`): the 7 `ui_*` defs (moved from `frontend_tools.py`) + a data-driven
+  validator (required + declared type + enum → the enum/required signal, **never a silent no-op** — the panel_id
+  bug class) + directive dispatch (`{type: io.loreweave/ui-directive, tool, args}`). Wired into `handlers.ts`
+  (advertise + local dispatch, no downstream provider). **Contract stays SoT**: `test/ui-tools.spec.ts` drift-tests
+  the mirror vs `contracts/frontend-tools.contract.json` (ai-gateway can't read it at runtime — Docker context).
+  `/review-impl`: transient double-advertise verified SAFE (chat-service still intercepts `ui_*` via
+  `is_frontend_tool` + dedupes by name ⇒ ai-gateway's copies are shadowed/inert until P3.2); 1 MED fixed (added
+  declared-type validation). Full ai-gateway suite green (240 + 8 new). **Inert until P3.2.**
+- **▶ P3.2 NEXT** — chat-service: stop advertising/intercepting `ui_*` as frontend tools (remove from
+  `FRONTEND_TOOL_NAMES`/`is_frontend_tool`), keep the F7c nav-intent FILTER on the now-federated `ui_open_studio_panel`;
+  route the `ui_*` tool RESULT (directive) to the FE instead of suspending. Then **P3.3** (FE acts on the directive
+  via `nav/uiNav.ts`, retire the suspend path) + **P3.4** (browser E2E). Then **Phase 2** (propose_edit task-shaped)
+  + **Phase 4** (retire `frontend_tools.py`).
+- Deferred: `D-P3-COMPACT-PANEL-DESC` (F7c compact panel_id A/B, default-off, not ported to ai-gateway).
+
+
 ## 🔌 FRONTEND-TOOLS → MCP MIGRATION — **Phase 0 SHIPPED (2026-07-19, `fix/chat-persist-checkpoints`)**
 > Sealed spec: [`docs/specs/2026-07-19-frontend-tools-mcp-migration.md`](../specs/2026-07-19-frontend-tools-mcp-migration.md).
 > Build plan + RUN-STATE (slice board, decisions, drift log): [`docs/plans/2026-07-19-frontend-tools-mcp-migration-BUILD.md`](../plans/2026-07-19-frontend-tools-mcp-migration-BUILD.md).
