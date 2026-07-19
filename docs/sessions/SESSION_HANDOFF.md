@@ -86,9 +86,16 @@ polymorphic parse needed for the confirm gate.** (spec §6 "SIMPLIFICATION").
   (`stream_service.py:3086`), add `if envelope.get("task"): suspended_call = {id: c["id"], name: c["name"],
   args: args_obj, task: envelope["task"]}; break` → routes to the existing suspend emit (`:3209`) → `chat_suspended_
   runs`. The `task` marker distinguishes a task suspend from a frontend-tool suspend on resume.
-- **(c) resume-drive** — on `/tool-results`, if the suspended pending call has a `task`, instead of appending a
-  role:tool outcome, call the domain's provide-input tool with `{taskId, accepted}`, take its `{status, result}`,
-  resume. **⚠ ROUTING FINDING (2026-07-19):** `register_task_endpoints` registers `task_provide_input` GENERICALLY,
+- **(c) resume-drive — DONE: (b) is committed; (c) is the last chat-service piece.** In `resume_stream_response`
+  (`stream_service.py:5811`): the pending call now carries `task` (from step b). Mirror the existing `is_approval`
+  branch — where the approval computes a REAL execution once `knowledge_client`+`project_id` are in scope (search
+  `is_approval` / the `_approval_args` block ~5866 and its execution site lower down). Add: `is_task = bool(susp.
+  pending_tool_call.get("task"))`; when true, at the execution site call `knowledge_client.mcp_execute_tool(
+  tool_name=<provide-input tool>, tool_args={"task_id": task["taskId"], "accepted": outcome in (…apply/accept…)})`
+  and use its returned `{status, result}` as `result_payload` (instead of the `{outcome}` echo). **Provide-input
+  tool name:** derive from the gate tool's provider prefix — `susp.pending_tool_call["name"].split("_", 1)[0] +
+  "_task_provide_input"` (composition_create_derivative → `composition_task_provide_input`); OR (more robust) carry
+  it in the gate handle from `gate_or_confirm`/`open_gate`. Then the 2nd LLM pass acknowledges the real outcome. **⚠ ROUTING FINDING (2026-07-19):** `register_task_endpoints` registers `task_provide_input` GENERICALLY,
   but the ai-gateway catalog routes by tool NAME → multiple task-capable domains would COLLIDE and the resume must
   reach the SPECIFIC provider that owns the task. FIX before (c): give `register_task_endpoints` a `tool_prefix`
   (default unprefixed for kit tests; composition passes its domain → `composition_task_provide_input`), and derive
