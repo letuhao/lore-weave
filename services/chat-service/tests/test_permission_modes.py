@@ -811,6 +811,63 @@ def _resume(pool, kc, outcome: str):
     )
 
 
+def _task_suspended() -> SuspendedRun:
+    """A durable-gate suspend (ext-tasks T1c(3.b)): pending_tool_call carries `task`."""
+    return SuspendedRun(
+        run_id="run-task", session_id=str(TEST_SESSION_ID), owner_user_id=str(TEST_USER_ID),
+        message_id=str(uuid4()),
+        working=[
+            {"role": "user", "content": "spawn a dị bản"},
+            {"role": "assistant", "content": "",
+             "tool_calls": [{"id": "cT", "type": "function",
+                             "function": {"name": "composition_create_derivative", "arguments": "{}"}}]},
+        ],
+        pending_tool_call={
+            "id": "cT", "name": "composition_create_derivative", "args": {"project_id": "p"},
+            "task": {"taskId": "task_z", "status": "input_required",
+                     "inputRequests": {"title": "Spawn?"}},
+        },
+        input_tokens=1, output_tokens=1, model_source="user_model", model_ref=str(TEST_MODEL_REF),
+        parent_message_id=None, user_message_content="spawn a dị bản", permission_mode="write",
+    )
+
+
+class TestTaskResume:
+    """T1c(3.c) — resuming a durable-gate suspend calls the domain's provide-input
+    tool (accept → real write) and feeds its result to the 2nd pass."""
+
+    def _pool(self):
+        pool, conn = _make_pool_with_conn()
+        conn.fetchval.return_value = 1
+        pool.fetchrow.return_value = {"generation_params": {}, "project_id": None}
+        return pool
+
+    @pytest.mark.asyncio
+    async def test_accept_drives_provide_input_with_taskid(self):
+        pool = self._pool()
+        kc = AsyncMock()
+        kc.get_tool_definitions.return_value = []
+        kc.mcp_execute_tool.return_value = _envelope(
+            success=True, result={"published": True, "project_id": "new-proj"})
+        scripts = [[tok("Spawned it."), usage(1, 1), done("stop")]]
+        with _patch_client(scripts), \
+             patch("app.services.stream_service.get_knowledge_client", return_value=kc), \
+             patch("app.services.stream_service.load_suspended_run",
+                   AsyncMock(return_value=_task_suspended())), \
+             patch("app.services.stream_service.delete_suspended_run", AsyncMock()):
+            async for _ in resume_stream_response(
+                session_id=str(TEST_SESSION_ID), user_id=str(TEST_USER_ID),
+                run_id="run-task", tool_call_id="cT", outcome="action_done",
+                applied_text=None, creds=_creds(), pool=pool, billing=AsyncMock(),
+                stream_format="agui",
+            ):
+                pass
+        # the domain-unique provide-input tool was driven with the taskId + accepted
+        calls = [c.kwargs for c in kc.mcp_execute_tool.await_args_list]
+        pi = next(c for c in calls if c["tool_name"] == "composition_task_provide_input")
+        assert pi["tool_args"] == {"task_id": "task_z", "accepted": True}
+
+
 class TestApprovalResume:
     def _pool(self):
         pool, conn = _make_pool_with_conn()

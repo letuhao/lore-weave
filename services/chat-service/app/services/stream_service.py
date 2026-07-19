@@ -5868,7 +5868,11 @@ async def resume_stream_response(
         isinstance(_approval_args, dict)
         and _approval_args.get("kind") == "tool_approval"
     )
-    if not is_approval:
+    # ext-tasks (T1c(3.c)) — a durable-gate suspend (step b marked pending["task"]).
+    # Like an approval, its tool result is the REAL execution (call the domain's
+    # provide-input tool below once knowledge_client is in scope), NOT the outcome echo.
+    is_task = (not is_approval) and bool(susp.pending_tool_call.get("task"))
+    if not is_approval and not is_task:
         if result is not None:
             # MCP fan-out (C-NAV): a ui_* nav resolve — feed the structured result
             # (e.g. {"navigated": true}) back verbatim as the tool result.
@@ -5941,6 +5945,31 @@ async def resume_stream_response(
     )
 
     knowledge_client = get_knowledge_client()
+
+    # ext-tasks (T1c(3.c)) — resume-DRIVE the durable gate: on the human's decision,
+    # call the domain's provide-input tool (the gate ACCEPT runs the real write there
+    # and returns {status, result}); feed that back as the tool result so the 2nd pass
+    # acknowledges the REAL outcome. The provide-input tool is domain-unique
+    # (<prefix>_task_provide_input, gateway-routable — see the routing fix), derived from
+    # the gate tool's provider prefix. Accept outcomes confirm; anything else declines.
+    if is_task:
+        _task = susp.pending_tool_call.get("task") or {}
+        _gate = str(susp.pending_tool_call.get("name") or "")
+        _provide_tool = (_gate.split("_", 1)[0] + "_task_provide_input") if "_" in _gate else "task_provide_input"
+        _accepted = outcome in (
+            "applied_saved", "action_done", "accept", "applied", "approved_once", "confirmed",
+        )
+        _tenv = await knowledge_client.mcp_execute_tool(
+            user_id=user_id, session_id=session_id, project_id=project_id,
+            tool_name=_provide_tool,
+            tool_args={"task_id": _task.get("taskId"), "accepted": _accepted},
+            admin_token=admin_token,
+        )
+        _tres = _tenv.get("result") if _tenv.get("success") else {"error": _tenv.get("error")}
+        working.append({
+            "role": "tool", "tool_call_id": tool_call_id,
+            "content": tool_result_content(_tres if _tres is not None else {}),
+        })
 
     # RAID C2 (DR-C2 §4) — act on the approval outcome BEFORE the 2nd pass:
     #   approved_once   → execute the tool now; feed its REAL result back.
