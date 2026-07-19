@@ -108,11 +108,11 @@ VALUES($1,$2,$3,$4,$5,$6,'novel') RETURNING id`,
 		userID, title, in.Description, in.OriginalLanguage, in.Summary, in.GenreTags).Scan(&bookID); err != nil {
 		return nil, bookCreateOut{}, errors.New("failed to create book")
 	}
-	// Reverse op: trash the book (book_delete proposes a confirm; but the natural
-	// Undo of a fresh create is the reversible trash → restore. We name book_delete
-	// as the reverse; the consumer's Undo issues it as a confirmable delete).
-	res := undoResult("book_delete", map[string]any{"book_id": bookID.String()})
-	return res, bookCreateOut{BookID: bookID.String()}, nil
+	// No undo_hint: the agent book-trash tool (book_delete) was removed 2026-07-19,
+	// so there is no agent-invocable reverse for a book create — deleting a book is
+	// deliberately not an agent capability. A user trashes a book via the GUI
+	// (DELETE /v1/books/{id}). book_create is the one Tier-A tool without an undo.
+	return &mcp.CallToolResult{}, bookCreateOut{BookID: bookID.String()}, nil
 }
 
 // ── book_update_meta ─────────────────────────────────────────────────────────

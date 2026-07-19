@@ -825,7 +825,7 @@ class TestApprovalResume:
             success=True,
             result={"book_id": "b1",
                     "_meta": {"summary": "Created 'My Book'",
-                              "undo_hint": {"tool": "book_delete",
+                              "undo_hint": {"tool": "book_chapter_delete",
                                             "args": {"book_id": "b1"}}}},
         )
         return kc
@@ -866,7 +866,7 @@ class TestApprovalResume:
                       if e.get("type") == "CUSTOM" and e.get("name") == "activity"]
         assert len(activities) == 1
         assert activities[0]["value"]["undo"]["available"] is True
-        assert activities[0]["value"]["undo"]["tool"] == "book_delete"
+        assert activities[0]["value"]["undo"]["tool"] == "book_chapter_delete"
 
     @pytest.mark.asyncio
     async def test_approved_always_persists_allowlist_row_then_executes(self):

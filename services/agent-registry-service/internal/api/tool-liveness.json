@@ -65,11 +65,6 @@
       "proven": true,
       "effect_verified": true
     },
-    "book_delete": {
-      "status": "SWEEP-PASS",
-      "executes": true,
-      "proven": false
-    },
     "book_get": {
       "status": "PASS",
       "executes": true,

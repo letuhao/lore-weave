@@ -96,11 +96,10 @@ func (s *Server) registerActionProposeTools(srv *mcp.Server) {
 		lwmcp.NewToolMeta(lwmcp.TierW, lwmcp.ScopeBook, nil, []string{"unpublish", "revert canon", "withdraw"}),
 		s.toolProposeUnpublish)
 
-	addTool(srv, "book_delete",
-		"Propose DELETING a book (move to trash; recoverable until purge). Returns "+
-			"a confirm_token + card a human must confirm via confirm_action (domain=book).",
-		lwmcp.NewToolMeta(lwmcp.TierW, lwmcp.ScopeBook, nil, []string{"delete book", "trash book", "remove book"}),
-		s.toolProposeBookDelete)
+	// book_delete (agent-proposed book trash) REMOVED 2026-07-19 — deleting a whole
+	// book is not an agent-invocable capability. Users delete a book directly via the
+	// GUI (DELETE /v1/books/{id}); the agent has no path to it. The confirm-side
+	// `delete_book` op remains defensively unreachable (no tool mints its token).
 
 	addTool(srv, "book_chapter_delete",
 		"Propose DELETING a chapter (move to trash; recoverable until purge). "+
@@ -196,10 +195,6 @@ func (s *Server) toolProposePublish(ctx context.Context, _ *mcp.CallToolRequest,
 }
 func (s *Server) toolProposeUnpublish(ctx context.Context, _ *mcp.CallToolRequest, in chapterActionIn) (*mcp.CallToolResult, confirmCardOut, error) {
 	return s.proposeChapterAction(ctx, in, GrantEdit, descBookPublish, "unpublish", "Unpublish chapter (revert canon)", false)
-}
-func (s *Server) toolProposeBookDelete(ctx context.Context, _ *mcp.CallToolRequest, in bookActionIn) (*mcp.CallToolResult, confirmCardOut, error) {
-	// Book-level lifecycle is owner-only (E0-2).
-	return s.proposeBookAction(ctx, in, GrantOwner, descBookDelete, "delete_book", "Delete book (move to trash)", true)
 }
 func (s *Server) toolProposeChapterDelete(ctx context.Context, _ *mcp.CallToolRequest, in chapterActionIn) (*mcp.CallToolResult, confirmCardOut, error) {
 	return s.proposeChapterAction(ctx, in, GrantEdit, descBookDelete, "delete_chapter", "Delete chapter (move to trash)", true)

@@ -80,7 +80,7 @@ func TestMCP_ToolMetaValidatorAcceptsCatalogShapes(t *testing.T) {
 		meta mcp.Meta
 	}{
 		{"read", lwmcp.NewToolMeta(lwmcp.TierR, lwmcp.ScopeBook, nil, []string{"x"})},
-		{"auto", lwmcp.NewToolMeta(lwmcp.TierA, lwmcp.ScopeBook, map[string]any{"tool": "book_delete"}, nil)},
+		{"auto", lwmcp.NewToolMeta(lwmcp.TierA, lwmcp.ScopeBook, map[string]any{"tool": "book_purge"}, nil)},
 		{"write", lwmcp.NewToolMeta(lwmcp.TierW, lwmcp.ScopeBook, nil, nil)},
 	}
 	for _, c := range cases {

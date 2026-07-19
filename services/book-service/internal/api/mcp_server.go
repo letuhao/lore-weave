@@ -133,8 +133,7 @@ func (s *Server) newMCPServer() *mcp.Server {
 	// Every Tier-A result carries _meta.undo_hint = {tool, args} naming the
 	// verified reverse op (book uses trash/restore; draft ops → restore_revision).
 	addTool(srv, "book_create",
-		"Create a new (empty) book owned by the caller. Returns the new book_id. "+
-			"Reverse: book_delete (trash).",
+		"Create a new (empty) book owned by the caller. Returns the new book_id.",
 		lwmcp.NewToolMeta(lwmcp.TierA, lwmcp.ScopeBook, nil, []string{"new book", "add book", "start a novel"}),
 		s.toolBookCreate)
 

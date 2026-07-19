@@ -680,7 +680,7 @@ CONFIRM_ACTION_TOOL: dict = {
                     "type": "string",
                     "description": (
                         "The action descriptor from the propose call "
-                        "(e.g. 'book.publish', 'book.delete', 'translation.start_job')."
+                        "(e.g. 'book.publish', 'translation.start_job')."
                     ),
                 },
                 "title": {
