@@ -120,8 +120,19 @@ Reuse existing cards (`ConfirmActionCard`, `RecordDiffCard`, `GlossaryDiffCard`)
 ---
 
 ## 6. Phased plan (each independently shippable, review-impl + live-E2E)
-- **SP-T0 — Python-native Tasks spike.** Confirm mcp 1.28.1's experimental Tasks API is usable end-to-end: a FastMCP/`MCPServer` tool returns `CreateTaskResult{input_required}`, the 1.28.1 client polls `tasks/get` + `tasks/update`, over streamable-HTTP. Output: go/no-go on "leverage natively" + the exact API. *(Blocks the design's Python path.)*
-- **Phase T1 — one Python domain, end-to-end, direct (no gateway).** Pick the smallest KIND-C confirm on a Python domain (composition/translation). Domain emits a task; chat-service drives it; FE renders; **live-prove** a real confirm gate over Tasks. Proves the whole loop minus the gateway.
+- **SP-T0 — Tasks spike → DONE** (§6.1): the SDK experimental Tasks is a dead end (removed in 2.0) → hand-roll.
+- **T1a — durable-gate CORE → DONE** (`56fba54af`). `loreweave_mcp/tasks.py`: the store + `input_required →
+  completed|cancelled|failed` lifecycle, double-confirm guard, TTL, cancel-idempotency. 11 unit tests.
+- **T1b — FastMCP WIRE + live E2E → DONE** (`bebd1b2c2`,`84ce42f01`). `loreweave_mcp/tasks_wire.py`:
+  `register_task_endpoints` (tasks/get + tasks/cancel handlers on `_mcp_server.request_handlers`; `task_provide_input`
+  tool for the input step) + `open_gate`. **Live-proven over a real in-process MCP client↔server session** (accept
+  loop: gate → tasks/get input_required → provide_input → executor runs → completed, nothing written until accept;
+  decline → cancelled). Learnings: tasks/get carries STATUS only (1.28.1 `GetTaskResult` has no `inputRequests`
+  field + `_meta` doesn't round-trip); card payload rides the gate handle, result rides the provide_input response.
+- **T1c — wire into a REAL Python domain confirm + `CreateTaskResult` wrap (NEXT).** Replace the self-contained
+  `publish_book` gate with a real KIND-C confirm on a Python domain (composition/translation); emit a wire
+  `CreateTaskResult{resultType:"task"}` via a CallTool wrap so a client auto-detects the task; live-prove on a
+  stack-up. Then chat-service drives it (reuse `chat_suspended_runs`) + FE renders (reuse existing cards).
 - **Phase T2 — ai-gateway task forwarding.** Add `tasks/get|update|cancel` forwarding + `taskId→provider` routing; re-prove T1 **through the gateway** (the real path). Load-bearing → careful + live E2E.
 - **Phase T3 — Go Tasks facade** (glossary/book). Build the Go helper; migrate one Go confirm (e.g. `glossary_book_delete`) onto Tasks; live-prove. Keep `confirm_token` fallback.
 - **Phase T4 — retire the bespoke gate.** Once all KIND-C confirms are task-shaped: retire the chat-service-local `confirm_action`/`glossary_confirm_action`/`propose_record_edit` **frontend** tools (the parallel construct this whole track exists to remove); `tools/list` + Tasks are the contract. Fold into frontend-tools-migration Phase 4.

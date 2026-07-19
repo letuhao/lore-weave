@@ -42,10 +42,22 @@ fix it. DECISION (user-directed): build the Tasks extension OURSELVES.** New sea
 - **book_delete MCP tool REMOVED** (`bd5bd73a8`) — deleting a whole book is not an agent capability (users delete
   via GUI `DELETE /v1/books/{id}`); book_create lost its undo as a consequence (documented).
 
-**▶ NEXT: T1 — build the shared `ext-tasks` facade helper + wire ONE Python-domain KIND-C confirm onto it +
-live-prove the `tools/call → input_required → tasks/update → completed` loop** (no gateway yet). Then T2 (ai-gateway
-task-method forwarding), T3 (replicate incl. a Go facade), T4 (retire the bespoke frontend confirm tools). Phases
-2-3 of the frontend-tools migration (propose_edit, ui_*) and SP-0c (gateway v2 rewrite) remain separate/deferred.
+**T1a + T1b DONE** — the ext-tasks durable gate is built + live-proven:
+- **T1a** (`56fba54af`) — `loreweave_mcp/tasks.py`: durable-gate store + lifecycle (input_required→completed|
+  cancelled|failed, double-confirm guard, TTL, cancel-idempotency). 11 unit tests.
+- **T1b** (`bebd1b2c2` + fix `84ce42f01`) — `loreweave_mcp/tasks_wire.py`: `register_task_endpoints` (tasks/get +
+  tasks/cancel handlers on `fastmcp._mcp_server.request_handlers` — they route natively; `task_provide_input` tool
+  for the input step, an interim for ext-tasks `tasks/update` which has no 1.28.1 type) + `open_gate`. **Live E2E
+  over a real in-process MCP session** (accept: gate→tasks/get input_required→provide_input→executor→completed,
+  nothing written until accept; decline→cancelled). Kit suite 88 green.
+
+**▶ NEXT: T1c — wire the gate into a REAL Python-domain KIND-C confirm** (composition/translation) + emit a wire
+`CreateTaskResult{resultType:"task"}` (CallTool wrap) so a client auto-detects the task; live-prove on a stack-up;
+then chat-service drives it (reuse `chat_suspended_runs`) + FE renders (reuse existing confirm cards). Then **T2**
+(ai-gateway forwards tasks/get|cancel + the input step, taskId→provider routing), **T3** (Go facade for glossary/
+book + replicate), **T4** (retire the bespoke frontend confirm tools). Spec:
+[`docs/specs/2026-07-19-mcp-tasks-durable-gate.md`](../specs/2026-07-19-mcp-tasks-durable-gate.md) §6. Frontend-tools
+migration Phases 2-3 (propose_edit, ui_*) + SP-0c (gateway v2 rewrite) remain separate/deferred.
 
 **⚠ Deployed note:** the live `infra-chat-service-1` was hot-patched (docker cp + restart) for the Phase-0 E2E;
 a `docker compose build chat-service` bakes the committed source on next deploy.
