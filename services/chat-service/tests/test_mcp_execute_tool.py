@@ -175,6 +175,34 @@ class TestMcpExecuteToolResultFormatting:
         await client.aclose()
 
     @pytest.mark.asyncio
+    async def test_tasks_gate_disabled_sends_no_meta(self):
+        """Default (flag off): the tool call carries no tasks _meta → the domain
+        falls back to confirm_token (byte-unchanged)."""
+        client = _make_client()
+        result = _call_tool_result(content=[_text_content("{}")])
+        tpatch, spatch, _tf, _sf, mock_session = _patch_mcp(call_tool_return=result)
+        with tpatch, spatch:
+            await client.mcp_execute_tool(user_id="u", session_id="s",
+                                          tool_name="memory_search", tool_args={})
+        assert mock_session.call_tool.await_args.kwargs["meta"] is None
+        await client.aclose()
+
+    @pytest.mark.asyncio
+    async def test_tasks_gate_enabled_declares_capability_meta(self):
+        """T1c(3.f) activation — flag ON: the tool call declares the ext-tasks
+        extension in _meta so a capability-gated domain returns a durable task."""
+        from app.services.task_detect import tasks_capability_meta
+
+        client = _make_client()
+        result = _call_tool_result(content=[_text_content("{}")])
+        tpatch, spatch, _tf, _sf, mock_session = _patch_mcp(call_tool_return=result)
+        with tpatch, spatch, patch("app.config.settings.tasks_gate_enabled", True):
+            await client.mcp_execute_tool(user_id="u", session_id="s",
+                                          tool_name="composition_create_derivative", tool_args={})
+        assert mock_session.call_tool.await_args.kwargs["meta"] == tasks_capability_meta()
+        await client.aclose()
+
+    @pytest.mark.asyncio
     async def test_prefers_structured_content_over_placeholder(self):
         """#9B — a heavy read returns a PLACEHOLDER in content[0].text + the real
         payload in structuredContent. The parser must use structuredContent, not

@@ -749,7 +749,16 @@ class KnowledgeClient:
             ) as (read, write, _):
                 async with ClientSession(read, write) as mcp_session:
                     await mcp_session.initialize()
-                    result = await mcp_session.call_tool(tool_name, tool_args)
+                    # ext-tasks (T1c(3.f)) — the ACTIVATION switch. When enabled, declare
+                    # the tasks extension in this call's _meta so a capability-gated domain
+                    # tool returns a durable TASK (the driver holds/confirms it); when off,
+                    # the domain falls back to confirm_token (default, byte-unchanged). The
+                    # gateway forwards `_meta` to the owning provider.
+                    _task_meta = None
+                    if settings.tasks_gate_enabled:
+                        from app.services.task_detect import tasks_capability_meta  # noqa: PLC0415
+                        _task_meta = tasks_capability_meta()
+                    result = await mcp_session.call_tool(tool_name, tool_args, meta=_task_meta)
         except Exception as exc:
             logger.warning("mcp_execute_tool transport error: %s", exc)
             return {
