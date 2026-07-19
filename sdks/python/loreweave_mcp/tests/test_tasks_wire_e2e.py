@@ -48,9 +48,15 @@ def _build_server(committed: list):
 
 
 def _content_json(result) -> dict:
-    """Pull the single JSON object out of a CallToolResult's content."""
-    block = result.content[0]
-    return json.loads(block.text)
+    """Pull the JSON object out of a CallToolResult — from structuredContent when
+    present (a dict-returning FastMCP tool), else the text block. Robust to the
+    kit's `patch_convert_result` global monkeypatch, which alters which form a
+    tool result takes and can leak across tests in the full suite."""
+    sc = getattr(result, "structuredContent", None)
+    if isinstance(sc, dict):
+        # FastMCP wraps a non-BaseModel return under a "result" key.
+        return sc["result"] if set(sc.keys()) == {"result"} else sc
+    return json.loads(result.content[0].text)
 
 
 async def _get_task(session, task_id: str) -> t.GetTaskResult:
@@ -62,7 +68,7 @@ async def _get_task(session, task_id: str) -> t.GetTaskResult:
     )
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_durable_gate_full_loop():
     committed: list = []
     server = _build_server(committed)
@@ -97,7 +103,7 @@ async def test_durable_gate_full_loop():
         assert done.status == "completed"
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_decline_does_not_write():
     committed: list = []
     server = _build_server(committed)
@@ -111,8 +117,3 @@ async def test_decline_does_not_write():
         assert committed == []  # declined → no write
         got = await _get_task(session, task_id)
         assert got.status == "cancelled"
-
-
-@pytest.fixture
-def anyio_backend():
-    return "asyncio"
