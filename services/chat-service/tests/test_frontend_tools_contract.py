@@ -40,10 +40,18 @@ from app.services.frontend_tools import (
     _GENERIC_FRONTEND_TOOLS_BY_NAME,
 )
 
-# ── the full frontend-tool set (name → schema) ───────────────────────────────
-# _GENERIC_FRONTEND_TOOLS_BY_NAME holds the 10 generic tools; the two glossary
-# tools are advertised via the book_scoped branch of frontend_tool_defs, so add
-# them explicitly. Every FRONTEND_TOOL_NAMES entry MUST resolve to a schema here.
+# ── the CHAT-SERVICE-owned frontend-tool set (name → schema) ─────────────────
+# _GENERIC_FRONTEND_TOOLS_BY_NAME holds the generic tools (confirm_action,
+# propose_record_edit, propose_edit); the two glossary tools are advertised via the
+# book_scoped branch of frontend_tool_defs, so add them explicitly. Every
+# FRONTEND_TOOL_NAMES entry MUST resolve to a schema here.
+#
+# Phase 3 (P3.2, 2026-07-20): the ui_* tools are NO LONGER chat-service frontend
+# tools — they moved to ai-gateway as consumer-local directive tools. The shared
+# contract JSON is now SPLIT-OWNED: chat-service owns these 5 entries; ai-gateway
+# owns the 7 ui_* entries and drift-tests THEM against the same JSON in
+# services/ai-gateway/test/ui-tools.spec.ts. So this test validates only its slice
+# (subset-match) and the regen MERGES (never drops the ui_* entries).
 ALL_FRONTEND_TOOLS: dict[str, dict] = {
     **_GENERIC_FRONTEND_TOOLS_BY_NAME,
     "glossary_propose_entity_edit": GLOSSARY_PROPOSE_EDIT_TOOL,
@@ -54,14 +62,13 @@ ALL_FRONTEND_TOOLS: dict[str, dict] = {
 # each to be an `enum` so a weak model cannot drift the arg name or value. A
 # `[]` segment descends into an array's item schema. Free-form args (UUIDs,
 # prose, allowlisted paths, dynamic panel names) are deliberately NOT listed.
+# (The ui_* closed-set args — ui_open_book.tab, ui_open_chapter.mode,
+# ui_open_studio_panel.panel_id — are ai-gateway's now, enum-checked in ui-tools.spec.ts.)
 CLOSED_SET_ARGS: dict[str, list[str]] = {
     "propose_edit": ["operation"],
     "glossary_propose_entity_edit": ["changes[].target"],
-    "ui_open_book": ["tab"],
-    "ui_open_chapter": ["mode"],
     "confirm_action": ["domain"],
     "propose_record_edit": ["domain"],
-    "ui_open_studio_panel": ["panel_id"],
 }
 
 _CONTRACT_PATH = (
@@ -131,17 +138,23 @@ class TestFrontendToolContract:
         # The committed cross-language contract the FE guard reads. Regenerate on
         # an intentional schema change (see module docstring) — a silent drift here
         # is a red test, not a broken agent→GUI loop.
+        #
+        # Phase 3 split-ownership: the JSON also holds ai-gateway-owned ui_* entries
+        # (drift-tested in ui-tools.spec.ts). So we validate only the CHAT-SERVICE
+        # slice (subset-match) and MERGE on regen — never drop the ui_* entries.
         built = _build_contract()
-        if os.environ.get("WRITE_FRONTEND_CONTRACT") == "1":
-            _CONTRACT_PATH.parent.mkdir(parents=True, exist_ok=True)
-            _CONTRACT_PATH.write_text(json.dumps(built, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-            pytest.skip("regenerated contracts/frontend-tools.contract.json")
         assert _CONTRACT_PATH.exists(), (
             "contracts/frontend-tools.contract.json missing — generate with "
             "WRITE_FRONTEND_CONTRACT=1 pytest tests/test_frontend_tools_contract.py"
         )
         on_disk = json.loads(_CONTRACT_PATH.read_text(encoding="utf-8"))
-        assert on_disk == built, (
-            "frontend-tool schemas drifted from the committed contract — regenerate "
-            "with WRITE_FRONTEND_CONTRACT=1 and update the matching FE resolver"
-        )
+        if os.environ.get("WRITE_FRONTEND_CONTRACT") == "1":
+            merged = {**on_disk, **built}  # chat-service slice over the existing (ui_*-preserving) JSON
+            _CONTRACT_PATH.write_text(json.dumps(merged, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+            pytest.skip("regenerated contracts/frontend-tools.contract.json (merged chat-service slice)")
+        for name, schema in built.items():
+            assert name in on_disk, f"{name} missing from the committed contract — regenerate"
+            assert on_disk[name] == schema, (
+                f"{name} drifted from the committed contract — regenerate with "
+                "WRITE_FRONTEND_CONTRACT=1 and update the matching FE resolver"
+            )

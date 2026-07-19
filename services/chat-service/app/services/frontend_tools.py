@@ -50,18 +50,19 @@ FRONTEND_TOOL_NAMES: frozenset[str] = frozenset(
         "propose_edit",
         "glossary_propose_entity_edit",
         "glossary_confirm_action",
-        # generic, cross-domain (MCP-fanout):
-        "ui_navigate",
-        "ui_open_book",
-        "ui_open_chapter",
-        "ui_show_panel",
-        "ui_watch_job",
         "confirm_action",
         "propose_record_edit",
-        # Writing Studio surface (#09 Lane A) — advertised only when the request carries
-        # studio_context; the FE executes them against the StudioHost (resolve-immediately).
-        "ui_open_studio_panel",
-        "ui_focus_manuscript_unit",
+        # NOTE (Phase 3, P3.2, 2026-07-20): the KIND-A ui_* tools are NO LONGER frontend
+        # tools — they are ai-gateway CONSUMER-LOCAL directive tools (ui-tools.ts). Removing
+        # them here stops chat-service intercepting/suspending on them: a ui_* call now routes
+        # to ai-gateway, which validates (enum/required) and returns an io.loreweave/ui-directive
+        # RESULT the FE acts on (useUiToolExecutor's directive path). They stay ADVERTISED —
+        # the 5 nav tools via the federated catalog (ALWAYS_ON_CORE_NAMES → catalog_index wins),
+        # the 2 studio tools via frontend_tool_defs (which keeps the F7c nav-intent gate). The
+        # defs below are retained only as an ai-gateway-down advertisement fallback + the P0
+        # validation-seam map; retire fully in P4 (D-P3-RETIRE-UI-FRONTEND-DEFS).
+        #   removed: ui_navigate, ui_open_book, ui_open_chapter, ui_show_panel, ui_watch_job,
+        #            ui_open_studio_panel, ui_focus_manuscript_unit
     }
 )
 
@@ -783,19 +784,21 @@ PROPOSE_RECORD_EDIT_TOOL: dict = {
 
 
 # Map core frontend-tool names → their schema, so the discovery layer can
-# advertise the always-on core by name (C-FT). ui_open_chapter is NOT core
-# (discovered via find_tools) but is a valid frontend tool.
+# advertise the always-on core by name (C-FT).
+#
+# Phase 3 (P3.2): the ui_* tools are NO LONGER here — they are ai-gateway federated
+# directive tools now, so the always-on nav ui_* (ui_navigate/open_book/show_panel/
+# watch_job in ALWAYS_ON_CORE_NAMES) resolve their def from the federated CATALOG
+# (exactly like `web_search`: `catalog_index.get(name) or generic_frontend_tool_def(name)`
+# → the catalog def, else None ⇒ a degraded gateway simply omits it, never advertises a
+# fabricated schema). The studio ui_* keep their advertisement via `frontend_tool_defs`
+# (which references UI_OPEN_STUDIO_PANEL_TOOL / UI_FOCUS_MANUSCRIPT_UNIT_TOOL directly and
+# preserves the F7c nav-intent gate). The UI_*_TOOL constants remain for that + as the
+# ai-gateway-down reference; P4 sources the studio pair from the catalog too.
 _GENERIC_FRONTEND_TOOLS_BY_NAME: dict[str, dict] = {
-    "ui_navigate": UI_NAVIGATE_TOOL,
-    "ui_open_book": UI_OPEN_BOOK_TOOL,
-    "ui_open_chapter": UI_OPEN_CHAPTER_TOOL,
-    "ui_show_panel": UI_SHOW_PANEL_TOOL,
-    "ui_watch_job": UI_WATCH_JOB_TOOL,
     "confirm_action": CONFIRM_ACTION_TOOL,
     "propose_record_edit": PROPOSE_RECORD_EDIT_TOOL,
     "propose_edit": PROPOSE_EDIT_TOOL,
-    "ui_open_studio_panel": UI_OPEN_STUDIO_PANEL_TOOL,
-    "ui_focus_manuscript_unit": UI_FOCUS_MANUSCRIPT_UNIT_TOOL,
 }
 
 

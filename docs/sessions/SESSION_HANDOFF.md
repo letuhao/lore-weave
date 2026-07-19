@@ -20,14 +20,21 @@
   resolve) ALONGSIDE the legacy pending-suspend path (kept for a safe coexistence window → retire in P4,
   `D-P3-RETIRE-UI-SUSPEND`). `uiNav.ts` adds `UI_DIRECTIVE_TYPE` + `uiDirectiveFromResult`. Inert until P3.2 emits
   directives. Tests: 10 executor (6 legacy + 4 new directive) + 11 uiNav + 15 FE-contract = 36 green.
-- **▶ P3.2 NEXT (the routing cutover — the risky half, needs a full-stack live-smoke)** — chat-service: remove the
-  7 `ui_*` from `FRONTEND_TOOL_NAMES`/`is_frontend_tool` (stop intercepting → route to ai-gateway federated);
-  remove the 5 nav `ui_*` from the always-on core map + the 2 studio `ui_*` from `frontend_tool_defs`; **MOVE the
-  F7c nav-intent gate** (`_is_panel_nav_intent`, `frontend_tool_defs`'s `studio_panel_nav`) to a FILTER on the
-  federated `ui_open_studio_panel` (else +880 tok/turn); ensure the directive `structuredContent` is what lands in
-  the `TOOL_CALL_RESULT` `content` the FE reads. Live-smoke: a real model turn calling `ui_navigate` through the
-  stack navigates the browser. Then **P3.4** (browser E2E), **Phase 2** (propose_edit task-shaped), **Phase 4**
-  (retire `frontend_tools.py`).
+- **P3.2 DONE** (this commit — the routing cutover, LIVE-SMOKED) — chat-service: removed the 7 `ui_*` from
+  `FRONTEND_TOOL_NAMES` (stop intercepting → route to ai-gateway) + from `_GENERIC_FRONTEND_TOOLS_BY_NAME` (the 5
+  nav `ui_*` now resolve their def from the federated CATALOG exactly like `web_search`: `catalog_index.get(name)
+  or None`; the studio pair stays advertised via `frontend_tool_defs`, which keeps the F7c nav-intent gate
+  UNCHANGED — no +880-tok regression, less risk than rewiring it to a catalog filter). The directive rides the
+  normal path: `mcp_execute_tool` already prefers `structuredContent` → the directive lands in the
+  `TOOL_CALL_RESULT` content the FE reads. **Contract split-ownership:** the shared JSON keeps the 7 `ui_*`
+  (ai-gateway's, drift-tested in `ui-tools.spec.ts`); chat-service's contract test now validates only its 5-tool
+  slice (subset-match + merge-on-regen). **LIVE-SMOKE (real ai-gateway `/mcp`, rebuilt image):** all 7 `ui_*`
+  advertised in `tools/list` (287 tools); `ui_navigate(/books)` → the `io.loreweave/ui-directive`;
+  `ui_open_studio_panel(bad enum)` → `isError` + the enum list (no silent no-op). chat-service suites green
+  (frontend-tools/contract 33, stream-tools 103). **⇒ the ui_* cutover (P3.1+P3.2+P3.3) is functionally complete.**
+- **▶ P3.4 NEXT** — browser E2E (a real model turn calling `ui_navigate` navigates the app; retire the dead
+  `ui_*` suspend branch of `useUiToolExecutor` = `D-P3-RETIRE-UI-SUSPEND`). Then **Phase 2** (propose_edit
+  task-shaped), **Phase 4** (retire the remaining `frontend_tools.py` `ui_*` defs + the parallel construct).
 - Deferred: `D-P3-COMPACT-PANEL-DESC` (F7c compact panel_id A/B, default-off, not ported to ai-gateway).
 
 
