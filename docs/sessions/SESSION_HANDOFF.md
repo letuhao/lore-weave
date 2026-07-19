@@ -71,12 +71,25 @@ fix it. DECISION (user-directed): build the Tasks extension OURSELVES.** New sea
   reads — the wire ends can't drift. 10 tests.
 Both **dormant** (unused, no caps declared yet) so nothing strands on the current stack.
 
-**▶ REMAINING (coordinated integration — the wire-shape coupling, spec §6): (a) wire `task_detect` into
-`mcp_execute_tool`** (`knowledge_client.py:752`) with a polymorphic `CallToolResult|CreateTaskResult` parse; **(b)
-tool-loop: on a task envelope, suspend** (reuse the frontend-tool suspend path + `chat_suspended_runs`); **(c)
-resume-drive** `task_provide_input` + poll `tasks/get`; **(d) ai-gateway T2**: forward `tasks/get`/`cancel` + pass
-`CreateTaskResult` through (federation client also needs the polymorphic parse) + `taskId→provider` routing; **(e)
-FE** confirm card; **(f) ACTIVATE**: attach `tasks_capability_meta()`. Then one full-stack live E2E. Original text:
+**SIMPLIFICATION (`242be8fe1`) collapsed the coordinated slice → chat-service-local.** composition returns the task
+HANDLE in normal content (NOT a `CreateTaskResult` — dropped `enable_task_results`), and the input step is the
+`task_provide_input` TOOL (already gateway-forwarded, returns the result synchronously). ⇒ **no ai-gateway T2 and no
+polymorphic parse needed for the confirm gate.** (spec §6 "SIMPLIFICATION").
+
+**Driver progress (chat-service-local, dormant until activation):**
+- **(a) DONE** (`3c38a32b4`) — `mcp_execute_tool` (`knowledge_client.py`) surfaces a task envelope when a gate
+  handle returns (structuredContent, incl. nested under `result`); 20 tests, no regression.
+- **(a-detect/decl) DONE** — `task_detect.py` (`task_envelope_from_*`, `tasks_capability_meta`), 10 tests.
+
+**▶ REMAINING (chat-service-local — much smaller now): (b) tool-loop suspend on a task envelope** — in
+`_stream_with_tools` where the backend-tool envelope is processed, route `envelope.get("task")` to a suspend (reuse
+the frontend-tool suspend → `chat_suspended_runs`, carrying `taskId` + `inputRequests` as the confirm card); **(c)
+resume-drive** — on the human decision (`/tool-results`), instead of appending a role:tool outcome, call the
+`task_provide_input` tool with `{taskId, accepted}`, take its `{status, result}`, resume; **(e) FE** — render the
+task as a confirm card (reuse `ConfirmActionCard`); **(f) ACTIVATE** — attach `tasks_capability_meta()` to the
+gate-able tool calls (last). Then one live-stack E2E: a real agent turn that opens the derive gate → holds →
+accepts → commits. (ai-gateway T2 tasks/get forwarding is now OPTIONAL — only for crash-resume/long-running.)
+Original coordinated text:
 
 **T1c(3) + T2 (coordinated) — the chat-service DRIVER + ai-gateway task forwarding.** chat-service declares
 the tasks extension in its tool-call `_meta`, detects a `CreateTaskResult`, suspends (reuse `chat_suspended_runs`),
