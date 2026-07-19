@@ -133,6 +133,13 @@ Reuse existing cards (`ConfirmActionCard`, `RecordDiffCard`, `GlossaryDiffCard`)
   `publish_book` gate with a real KIND-C confirm on a Python domain (composition/translation); emit a wire
   `CreateTaskResult{resultType:"task"}` via a CallTool wrap so a client auto-detects the task; live-prove on a
   stack-up. Then chat-service drives it (reuse `chat_suspended_runs`) + FE renders (reuse existing cards).
+  **Concrete wiring pattern (captured from `composition-service/app/mcp/server.py`):** a confirm tool today does
+  `payload={…}; confirm_token = mint_confirm_token(secret, user_id, resource_id, descriptor, payload); return
+  {confirm_token, descriptor, title, domain}` — and a separate `actions.py` confirm endpoint verifies+executes.
+  The ext-tasks form: `return await open_gate(store, descriptor=<same>, executor=<the actions.py execute logic,
+  closed over payload>, input_requests={title, preview})`. The executor IS the existing commit logic; the store
+  binds to the domain's confirm/consumed-token persistence (durability). `mint_confirm_token` stays for the
+  capability-absent fallback (OQ3).
 - **Phase T2 — ai-gateway task forwarding.** Add `tasks/get|update|cancel` forwarding + `taskId→provider` routing; re-prove T1 **through the gateway** (the real path). Load-bearing → careful + live E2E.
 - **Phase T3 — Go Tasks facade** (glossary/book). Build the Go helper; migrate one Go confirm (e.g. `glossary_book_delete`) onto Tasks; live-prove. Keep `confirm_token` fallback.
 - **Phase T4 — retire the bespoke gate.** Once all KIND-C confirms are task-shaped: retire the chat-service-local `confirm_action`/`glossary_confirm_action`/`propose_record_edit` **frontend** tools (the parallel construct this whole track exists to remove); `tools/list` + Tasks are the contract. Fold into frontend-tools-migration Phase 4.
