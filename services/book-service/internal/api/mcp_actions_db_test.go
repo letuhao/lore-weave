@@ -24,6 +24,7 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"github.com/loreweave/book-service/internal/migrate"
+	"github.com/loreweave/book-service/internal/testsafe"
 	lwmcp "github.com/loreweave/loreweave_mcp"
 )
 
@@ -44,6 +45,18 @@ func dbTestServer(t *testing.T) (*Server, *pgxpool.Pool) {
 	if err := pool.Ping(ctx); err != nil {
 		pool.Close()
 		t.Skipf("BOOK_TEST_DATABASE_URL unreachable (%v) — skipping", err)
+	}
+	// SAFETY GUARD — DB-gated tests in this package run destructive setup/cleanup.
+	// Refuse anything but a throwaway DB so BOOK_TEST_DATABASE_URL can never wipe a
+	// real service database (see internal/testsafe — the loreweave_book wipe).
+	var dbName string
+	if err := pool.QueryRow(ctx, `SELECT current_database()`).Scan(&dbName); err != nil {
+		pool.Close()
+		t.Fatalf("current_database: %v", err)
+	}
+	if err := testsafe.EnsureThrowawayDB(dbName); err != nil {
+		pool.Close()
+		t.Fatal(err)
 	}
 	if err := migrate.Up(ctx, pool); err != nil {
 		pool.Close()

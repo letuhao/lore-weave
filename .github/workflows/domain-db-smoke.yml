@@ -60,19 +60,24 @@ jobs:
       - uses: actions/setup-go@v7
         with:
           go-version: "1.25"
+      # Throwaway DB names MUST carry a test marker (…_test). The DB-gated tests run
+      # destructive setup/cleanup and now REFUSE any DB whose name lacks a throwaway
+      # marker (internal/testsafe), so a *_TEST_DATABASE_URL accidentally pointed at a
+      # real service DB (loreweave_book) can never again wipe production data. Do NOT
+      # use the bare production name here — it would (correctly) be refused by the guard.
       - name: create throwaway book + glossary databases
         env:
           PGPASSWORD: loreweave_dev
         run: |
           set -euo pipefail
-          for db in loreweave_book loreweave_glossary; do
+          for db in loreweave_book_test loreweave_glossary_test; do
             psql -h localhost -p 5432 -U loreweave -d postgres -v ON_ERROR_STOP=1 -c "CREATE DATABASE $db;"
           done
       - name: book-service DB round-trips
         env:
-          BOOK_TEST_DATABASE_URL: postgres://loreweave:loreweave_dev@localhost:5432/loreweave_book?sslmode=disable
+          BOOK_TEST_DATABASE_URL: postgres://loreweave:loreweave_dev@localhost:5432/loreweave_book_test?sslmode=disable
         run: go -C services/book-service test ./internal/api/... -count=1
       - name: glossary-service DB round-trips
         env:
-          GLOSSARY_TEST_DB_URL: postgres://loreweave:loreweave_dev@localhost:5432/loreweave_glossary?sslmode=disable
+          GLOSSARY_TEST_DB_URL: postgres://loreweave:loreweave_dev@localhost:5432/loreweave_glossary_test?sslmode=disable
         run: go -C services/glossary-service test ./internal/api/... -count=1

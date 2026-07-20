@@ -10,6 +10,11 @@ package migrate
 // full-table UPDATE (10k+ chapter books are real), so the batching is load-bearing.
 //
 // Gated on BOOK_TEST_DATABASE_URL, a THROWAWAY database (this drops tables).
+//
+// db-safety-gate: file-ok — every destructive path here is guarded by
+// testsafe.EnsureThrowawayDB(current_database()) in scenesTestPool (refuses a
+// non-throwaway DB before any statement runs). The unscoped `DELETE FROM books`
+// cleanup is intentional (full-table reset between subtests on a disposable DB).
 
 import (
 	"context"
@@ -19,6 +24,8 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
+
+	"github.com/loreweave/book-service/internal/testsafe"
 )
 
 func scenesTestPool(t *testing.T) *pgxpool.Pool {
@@ -35,6 +42,18 @@ func scenesTestPool(t *testing.T) *pgxpool.Pool {
 	if err := pool.Ping(ctx); err != nil {
 		pool.Close()
 		t.Skipf("BOOK_TEST_DATABASE_URL unreachable (%v) — skipping", err)
+	}
+	// SAFETY GUARD — this file's cleanup runs an UNSCOPED `DELETE FROM books`. Refuse
+	// to proceed unless the target is a throwaway DB, so a *_TEST_DATABASE_URL pointed
+	// at the real loreweave_book can never again wipe every user's books.
+	var dbName string
+	if err := pool.QueryRow(ctx, `SELECT current_database()`).Scan(&dbName); err != nil {
+		pool.Close()
+		t.Fatalf("current_database: %v", err)
+	}
+	if err := testsafe.EnsureThrowawayDB(dbName); err != nil {
+		pool.Close()
+		t.Fatal(err)
 	}
 	if err := Up(ctx, pool); err != nil {
 		pool.Close()

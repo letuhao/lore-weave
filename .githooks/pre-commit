@@ -17,6 +17,10 @@ command -v python >/dev/null 2>&1 || PY=python3
 "$PY" "$ROOT/scripts/ai-provider-gate.py" --staged
 "$PY" "$ROOT/scripts/knowledge-access-gate.py" --staged
 "$PY" "$ROOT/scripts/knowledge-http-surface-gate.py" --staged
+# Destructive DB ops in tests — block an unscoped DELETE/TRUNCATE/DROP in a test file, or a
+# *_TEST_*_URL pointing at a bare production DB name (the loreweave_book wipe). CLAUDE.md ›
+# "Destructive DB ops in tests". Exempt a real false positive with a `db-safety-gate: ok` pragma.
+"$PY" "$ROOT/scripts/db-safety-gate.py" --staged
 
 # ML-7 (multilingual.md) — locale completeness. When an i18n locale JSON is staged, every uiLocale
 # must carry the full `en` key-set for the touched namespace(s): i.e. `en` copy was regenerated via
