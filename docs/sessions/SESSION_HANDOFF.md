@@ -46,9 +46,30 @@
      the guard never fired. Fixed: carry `e.toolCallId`.
   Also: the FE build needs `--build-arg VITE_API_BASE=` (empty ⇒ relative `/v1`); a bare `docker build` bakes the
   Dockerfile default `http://localhost:3000` and breaks auth. Rebuild via compose or pass the arg. FE tests 657 green.
-- **▶ NEXT: Phase 2** (`propose_edit` → task-shaped via the durable gate) + **Phase 4** (retire the dead `ui_*`
-  suspend branch of `useUiToolExecutor` = `D-P3-RETIRE-UI-SUSPEND`, the `frontend_tools.py` `ui_*` defs =
-  `D-P3-RETIRE-UI-FRONTEND-DEFS`, and the parallel construct once every kind is MCP-native).
+- **P2.1 DONE** (`0608baecb`, additive + inert) — ai-gateway `propose_edit` tool (`propose-edit-tool.ts`): moved
+  the def from `frontend_tools.py`, validates (operation enum + text required + type → the incident shape
+  `{domain,changes,…}` is rejected, a dedicated test), returns a **GATED** proposal directive
+  `{type: io.loreweave/propose-edit, operation, text, rationale?}` — a DISTINCT type from the resolve-immediately
+  `ui-directive` (the client must gate on Apply). Drift-tested vs the contract. Advertised + dispatched locally in
+  `handlers.ts`. INERT: chat-service still intercepts `propose_edit` (its suspend wins) until P2.2. ai-gateway 255 green.
+- **▶ P2.2 + P2.3 NEXT (the propose_edit cutover — coupled, risky, needs a live browser E2E; mirrors the
+  P3.2+P3.3 shape that took real live-debugging)**:
+  - *P2.2 (chat-service)* — remove `propose_edit` from `FRONTEND_TOOL_NAMES` (→ routes to ai-gateway); DETECT the
+    `io.loreweave/propose-edit` directive from `mcp_execute_tool` and SUSPEND with the SAME pending shape today's
+    frontend-tool suspend creates (`pending_tool_call = {name:'propose_edit', args:{operation,text,rationale}}`) so
+    the FE's `ProposeEditCard` + resume driver work unchanged. Keep the editor-surface advertisement gate
+    (`frontend_tool_defs` editor branch) as a consumer concern. The apply is CLIENT-side (no server executor); the
+    suspend IS the durable "task" (`chat_suspended_runs`).
+  - *P2.3 (FE)* — `ProposeEditCard` already renders on a `propose_edit` pending record + applies via `editorBridge`
+    + `submitToolResult('applied', text)`; verify it works when the suspend is directive-triggered (likely no
+    change if P2.2 reconstructs the same shape). **Watch the 3 traps Phase 3's E2E caught: (a) the FE build fails
+    silently on a tsc error → verify the served bundle has your code; (b) unwrap the `{ok, result}` envelope; (c)
+    the result record needs `toolCallId`** — all now fixed in shared code, but re-verify live.
+  - *P2.4* — browser E2E: a real editor-panel turn where the model calls `propose_edit` renders the Apply card and
+    applying inserts the prose into the Tiptap doc.
+- **▶ THEN Phase 4** (retire the dead `ui_*` suspend branch = `D-P3-RETIRE-UI-SUSPEND`, the `frontend_tools.py`
+  `ui_*`/`propose_edit` defs = `D-P3-RETIRE-UI-FRONTEND-DEFS`, the nav-intent-gate-as-catalog-filter, and the
+  parallel construct once every kind is MCP-native + live-proven).
 - Deferred: `D-P3-COMPACT-PANEL-DESC` (F7c compact panel_id A/B, default-off, not ported to ai-gateway).
 
 
