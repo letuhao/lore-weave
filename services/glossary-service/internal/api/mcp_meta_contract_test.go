@@ -118,6 +118,16 @@ func allToolMetas(t *testing.T) map[string]map[string]any {
 // fails here rather than shipping.
 func TestMCPEveryToolDeclaresMetaTierAndScope(t *testing.T) {
 	for name, meta := range allToolMetas(t) {
+		// The durable ext-tasks gate's input step (`glossary_task_provide_input`, kit-
+		// registered by RegisterTaskProvideInput) is a CAT-4 visibility:legacy MECHANISM
+		// tool: the client (chat-service's resume driver) calls it BY NAME to resolve a
+		// pending gate task — it is never LLM-discovered and carries no tier/scope by
+		// design. Its write is not tier-gated here; it is gated UPSTREAM by the Tier-W
+		// propose tool that opened the gate + the human's accept + the resolver's own
+		// caller-rebind + Manage-grant re-check. So it is exempt from the tier/scope law.
+		if strings.HasSuffix(name, "_task_provide_input") {
+			continue
+		}
 		if meta == nil {
 			t.Errorf("tool %q carries no _meta on the wire (tier+scope required)", name)
 			continue

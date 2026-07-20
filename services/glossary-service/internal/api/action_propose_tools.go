@@ -111,7 +111,7 @@ type proposeAttrToolIn struct {
 	Description string   `json:"description,omitempty"`
 }
 
-func (s *Server) toolProposeNewKind(ctx context.Context, _ *mcp.CallToolRequest, in proposeKindToolIn) (*mcp.CallToolResult, confirmCardOut, error) {
+func (s *Server) toolProposeNewKind(ctx context.Context, req *mcp.CallToolRequest, in proposeKindToolIn) (*mcp.CallToolResult, any, error) {
 	userID, ok := userIDFromCtx(ctx)
 	if !ok {
 		return nil, confirmCardOut{}, errors.New("missing caller identity")
@@ -169,7 +169,8 @@ func (s *Server) toolProposeNewKind(ctx context.Context, _ *mcp.CallToolRequest,
 	if len(attrs) > 0 {
 		title = fmt.Sprintf("Create kind %q + %d attribute(s)", name, len(attrs))
 	}
-	return s.mintGrantActionCard(userID, bookID, descSchemaCreateKind, title, params, rows, false)
+	_, card, cerr := s.mintGrantActionCard(userID, bookID, descSchemaCreateKind, title, params, rows, false)
+	return s.gateOrCard(ctx, req, descSchemaCreateKind, bookID, userID, params, card, cerr)
 }
 
 // ── batch schema create — the WHOLE ontology on ONE confirm ──────────────────
@@ -192,7 +193,7 @@ type proposeKindItemIn struct {
 // confirm card — the user builds a whole ontology with one approval instead of one
 // click per kind. The effect creates them idempotently (skip-on-conflict), so a
 // re-confirm after a partial batch fills only the missing kinds.
-func (s *Server) toolProposeKinds(ctx context.Context, _ *mcp.CallToolRequest, in proposeKindsToolIn) (*mcp.CallToolResult, confirmCardOut, error) {
+func (s *Server) toolProposeKinds(ctx context.Context, req *mcp.CallToolRequest, in proposeKindsToolIn) (*mcp.CallToolResult, any, error) {
 	userID, ok := userIDFromCtx(ctx)
 	if !ok {
 		return nil, confirmCardOut{}, errors.New("missing caller identity")
@@ -255,7 +256,8 @@ func (s *Server) toolProposeKinds(ctx context.Context, _ *mcp.CallToolRequest, i
 
 	params := kindsBatchParams{Kinds: kinds}
 	title := fmt.Sprintf("Create %d kind(s) with their attributes", len(kinds))
-	return s.mintGrantActionCard(userID, bookID, descSchemaCreateKinds, title, params, rows, false)
+	_, card, cerr := s.mintGrantActionCard(userID, bookID, descSchemaCreateKinds, title, params, rows, false)
+	return s.gateOrCard(ctx, req, descSchemaCreateKinds, bookID, userID, params, card, cerr)
 }
 
 // FieldTypeOrDefault returns the spec's field type, defaulting to "text" for the
@@ -267,7 +269,7 @@ func (a kindAttrSpec) FieldTypeOrDefault() string {
 	return a.FieldType
 }
 
-func (s *Server) toolProposeNewAttribute(ctx context.Context, _ *mcp.CallToolRequest, in proposeAttrToolIn) (*mcp.CallToolResult, confirmCardOut, error) {
+func (s *Server) toolProposeNewAttribute(ctx context.Context, req *mcp.CallToolRequest, in proposeAttrToolIn) (*mcp.CallToolResult, any, error) {
 	userID, ok := userIDFromCtx(ctx)
 	if !ok {
 		return nil, confirmCardOut{}, errors.New("missing caller identity")
@@ -306,8 +308,9 @@ func (s *Server) toolProposeNewAttribute(ctx context.Context, _ *mcp.CallToolReq
 		FieldType: in.FieldType, IsRequired: in.IsRequired, Options: in.Options,
 	}
 	rows := []previewRow{{Label: "kind", Value: kindCode}, {Label: "code", Value: code}, {Label: "name", Value: name}}
-	return s.mintGrantActionCard(userID, bookID, descSchemaCreateAttr,
-		fmt.Sprintf("Add attribute %q (code: %s) to kind %q", name, code, kindCode), params, rows, false)
+	title := fmt.Sprintf("Add attribute %q (code: %s) to kind %q", name, code, kindCode)
+	_, card, cerr := s.mintGrantActionCard(userID, bookID, descSchemaCreateAttr, title, params, rows, false)
+	return s.gateOrCard(ctx, req, descSchemaCreateAttr, bookID, userID, params, card, cerr)
 }
 
 // ── book_delete (the CP-1 canary — destructive cascade, class C) ──────────────
@@ -320,7 +323,7 @@ type bookDeleteToolIn struct {
 	GenreCode string `json:"genre_code,omitempty" jsonschema:"for level=attribute: the genre code the attribute belongs to"`
 }
 
-func (s *Server) toolBookDelete(ctx context.Context, _ *mcp.CallToolRequest, in bookDeleteToolIn) (*mcp.CallToolResult, confirmCardOut, error) {
+func (s *Server) toolBookDelete(ctx context.Context, req *mcp.CallToolRequest, in bookDeleteToolIn) (*mcp.CallToolResult, any, error) {
 	userID, ok := userIDFromCtx(ctx)
 	if !ok {
 		return nil, confirmCardOut{}, errors.New("missing caller identity")
@@ -361,6 +364,7 @@ func (s *Server) toolBookDelete(ctx context.Context, _ *mcp.CallToolRequest, in 
 	if err != nil {
 		return nil, confirmCardOut{}, errors.New("failed to preview the cascade")
 	}
-	return s.mintGrantActionCard(userID, bookID, descBookDelete,
-		fmt.Sprintf("Delete %s %q (and cascade)", level, code), p, rows, true)
+	title := fmt.Sprintf("Delete %s %q (and cascade)", level, code)
+	_, card, cerr := s.mintGrantActionCard(userID, bookID, descBookDelete, title, p, rows, true)
+	return s.gateOrCard(ctx, req, descBookDelete, bookID, userID, p, card, cerr)
 }

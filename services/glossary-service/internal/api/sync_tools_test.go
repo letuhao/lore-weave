@@ -84,12 +84,12 @@ func TestSyncTool_AvailableApplyRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("propose sync_apply: %v", err)
 	}
-	if card.Descriptor != descSyncApply || !card.Destructive || card.ConfirmToken == "" {
+	if asCard(card).Descriptor != descSyncApply || !asCard(card).Destructive || asCard(card).ConfirmToken == "" {
 		t.Fatalf("bad sync_apply card: %+v", card)
 	}
 
 	// preview (non-consuming) re-renders counts from current state.
-	if w := f.preview(t, card.ConfirmToken); w.Code != http.StatusOK {
+	if w := f.preview(t, asCard(card).ConfirmToken); w.Code != http.StatusOK {
 		t.Fatalf("preview: want 200, got %d (%s)", w.Code, w.Body.String())
 	} else {
 		var pv actionPreview
@@ -100,7 +100,7 @@ func TestSyncTool_AvailableApplyRoundTrip(t *testing.T) {
 	}
 
 	// confirm → applies the set.
-	if w := f.confirm(t, card.ConfirmToken); w.Code != http.StatusOK {
+	if w := f.confirm(t, asCard(card).ConfirmToken); w.Code != http.StatusOK {
 		t.Fatalf("confirm sync_apply: want 200, got %d (%s)", w.Code, w.Body.String())
 	}
 	// take_theirs on the kind overwrote its name in the book.
@@ -110,7 +110,7 @@ func TestSyncTool_AvailableApplyRoundTrip(t *testing.T) {
 		t.Errorf("kind take_theirs did not overwrite: name=%q", kn)
 	}
 	// replay → single-use 422.
-	if w := f.confirm(t, card.ConfirmToken); w.Code != http.StatusUnprocessableEntity {
+	if w := f.confirm(t, asCard(card).ConfirmToken); w.Code != http.StatusUnprocessableEntity {
 		t.Errorf("replay sync_apply: want 422 single-use, got %d", w.Code)
 	}
 }
@@ -175,14 +175,14 @@ func TestSyncTool_ApplyAllRetiredWarnsOnNoOp(t *testing.T) {
 	if err != nil {
 		t.Fatalf("propose sync_apply on a retired source: %v", err)
 	}
-	if card.ConfirmToken == "" {
+	if asCard(card).ConfirmToken == "" {
 		t.Fatal("an all-retired sync_apply must still mint a valid confirm_token (it is not an error)")
 	}
-	if card.Warning == "" {
+	if asCard(card).Warning == "" {
 		t.Fatalf("an all-retired sync_apply must carry a no-op warning, got card=%+v", card)
 	}
-	if !strings.Contains(card.Warning, "live source") {
-		t.Errorf("warning should mention the missing live source, got %q", card.Warning)
+	if !strings.Contains(asCard(card).Warning, "live source") {
+		t.Errorf("warning should mention the missing live source, got %q", asCard(card).Warning)
 	}
 }
 
@@ -220,8 +220,8 @@ func TestSyncTool_ApplyWithLiveSourceCarriesNoWarning(t *testing.T) {
 	if err != nil {
 		t.Fatalf("propose sync_apply: %v", err)
 	}
-	if card.Warning != "" {
-		t.Errorf("a sync_apply with a live source must not carry the no-op warning, got %q", card.Warning)
+	if asCard(card).Warning != "" {
+		t.Errorf("a sync_apply with a live source must not carry the no-op warning, got %q", asCard(card).Warning)
 	}
 }
 

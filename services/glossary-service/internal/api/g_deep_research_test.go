@@ -109,7 +109,7 @@ func TestDeepResearch_MintGates(t *testing.T) {
 	// owner → a confirm card is minted (nothing runs yet — class-C cost gate)
 	_, out, err := f.srv.toolDeepResearch(ctxWithUser(f.ownerID), nil,
 		deepResearchToolIn{BookID: f.bookID.String(), EntityID: eid.String(), Query: "who is this demon", MaxResults: 3})
-	if err != nil || out.ConfirmToken == "" {
+	if err != nil || asCard(out).ConfirmToken == "" {
 		t.Fatalf("mint: out=%+v err=%v", out, err)
 	}
 }

@@ -151,14 +151,14 @@ func TestPipelinePropose_StatusChangeRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("propose: %v", err)
 	}
-	if card.ConfirmToken == "" || card.Descriptor != descStatusChange {
+	if asCard(card).ConfirmToken == "" || asCard(card).Descriptor != descStatusChange {
 		t.Fatalf("bad card: %+v", card)
 	}
 	// preview is non-consuming
-	if w := f.preview(t, card.ConfirmToken); w.Code != http.StatusOK {
+	if w := f.preview(t, asCard(card).ConfirmToken); w.Code != http.StatusOK {
 		t.Fatalf("preview: want 200, got %d (%s)", w.Code, w.Body.String())
 	}
-	if w := f.confirm(t, card.ConfirmToken); w.Code != http.StatusOK {
+	if w := f.confirm(t, asCard(card).ConfirmToken); w.Code != http.StatusOK {
 		t.Fatalf("confirm: want 200, got %d (%s)", w.Code, w.Body.String())
 	}
 	var active int
@@ -168,7 +168,7 @@ func TestPipelinePropose_StatusChangeRoundTrip(t *testing.T) {
 		t.Errorf("status not applied: %d/2 active", active)
 	}
 	// replay → single-use → 422
-	if w := f.confirm(t, card.ConfirmToken); w.Code != http.StatusUnprocessableEntity {
+	if w := f.confirm(t, asCard(card).ConfirmToken); w.Code != http.StatusUnprocessableEntity {
 		t.Errorf("replay: want 422, got %d", w.Code)
 	}
 }
@@ -199,14 +199,14 @@ func TestPipelinePropose_StatusChangeNoOpWarnsWhenAlreadyAtTarget(t *testing.T) 
 	if err != nil {
 		t.Fatalf("propose status_change to the entity's current status: %v", err)
 	}
-	if card.ConfirmToken == "" {
+	if asCard(card).ConfirmToken == "" {
 		t.Fatal("a no-op status_change must still mint a valid confirm_token (it is not an error)")
 	}
-	if card.Warning == "" {
+	if asCard(card).Warning == "" {
 		t.Fatalf("a status_change to the CURRENT status must carry a no-op warning, got card=%+v", card)
 	}
-	if !strings.Contains(card.Warning, "already have status") {
-		t.Errorf("warning should state entities already have that status, got %q", card.Warning)
+	if !strings.Contains(asCard(card).Warning, "already have status") {
+		t.Errorf("warning should state entities already have that status, got %q", asCard(card).Warning)
 	}
 }
 
@@ -235,8 +235,8 @@ func TestPipelinePropose_StatusChangeRealChangeCarriesNoWarning(t *testing.T) {
 	if err != nil {
 		t.Fatalf("propose: %v", err)
 	}
-	if card.Warning != "" {
-		t.Errorf("a real status change must not carry the no-op warning, got %q", card.Warning)
+	if asCard(card).Warning != "" {
+		t.Errorf("a real status change must not carry the no-op warning, got %q", asCard(card).Warning)
 	}
 }
 
@@ -269,10 +269,10 @@ func TestPipelinePropose_MergeRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("propose: %v", err)
 	}
-	if card.Descriptor != descMerge || !card.Destructive {
+	if asCard(card).Descriptor != descMerge || !asCard(card).Destructive {
 		t.Fatalf("bad card: %+v", card)
 	}
-	if w := f.confirm(t, card.ConfirmToken); w.Code != http.StatusOK {
+	if w := f.confirm(t, asCard(card).ConfirmToken); w.Code != http.StatusOK {
 		t.Fatalf("confirm: want 200, got %d (%s)", w.Code, w.Body.String())
 	}
 	var loserDeleted bool
@@ -288,7 +288,7 @@ func TestPipelinePropose_MergeRoundTrip(t *testing.T) {
 		t.Errorf("merge journal not written: %d", journals)
 	}
 	// replay → 422
-	if w := f.confirm(t, card.ConfirmToken); w.Code != http.StatusUnprocessableEntity {
+	if w := f.confirm(t, asCard(card).ConfirmToken); w.Code != http.StatusUnprocessableEntity {
 		t.Errorf("replay: want 422, got %d", w.Code)
 	}
 }
@@ -338,23 +338,23 @@ func TestPipelinePropose_ReassignPreviewsDroppedAttrs(t *testing.T) {
 	if err != nil {
 		t.Fatalf("propose: %v", err)
 	}
-	if card.Descriptor != descReassignKind || !card.Destructive {
+	if asCard(card).Descriptor != descReassignKind || !asCard(card).Destructive {
 		t.Fatalf("bad card: %+v", card)
 	}
 	// the at-mint card must call out the dropped-attr data loss
 	found := false
-	for _, row := range card.PreviewRows {
+	for _, row := range asCard(card).PreviewRows {
 		if row.Label == "attributes dropped (DATA LOSS)" && row.Value != "0" {
 			found = true
 		}
 	}
 	if !found {
-		b, _ := json.Marshal(card.PreviewRows)
+		b, _ := json.Marshal(asCard(card).PreviewRows)
 		t.Errorf("reassign card must surface dropped attrs: %s", b)
 	}
 	// regression guard: a real kind change must NOT carry the same-kind no-op warning.
-	if card.Warning != "" {
-		t.Errorf("a real reassign to a DIFFERENT kind must not carry the no-op warning, got %q", card.Warning)
+	if asCard(card).Warning != "" {
+		t.Errorf("a real reassign to a DIFFERENT kind must not carry the no-op warning, got %q", asCard(card).Warning)
 	}
 }
 
@@ -384,13 +384,13 @@ func TestPipelinePropose_ReassignSameKindWarnsOnNoOp(t *testing.T) {
 	if err != nil {
 		t.Fatalf("propose reassign to the entity's current kind: %v", err)
 	}
-	if card.ConfirmToken == "" {
+	if asCard(card).ConfirmToken == "" {
 		t.Fatal("a same-kind reassign must still mint a valid confirm_token (it is not an error)")
 	}
-	if card.Warning == "" {
+	if asCard(card).Warning == "" {
 		t.Fatalf("a reassign to the entity's CURRENT kind must carry a no-op warning, got card=%+v", card)
 	}
-	if !strings.Contains(card.Warning, "already kind") {
-		t.Errorf("warning should state the entity is already that kind, got %q", card.Warning)
+	if !strings.Contains(asCard(card).Warning, "already kind") {
+		t.Errorf("warning should state the entity is already that kind, got %q", asCard(card).Warning)
 	}
 }

@@ -17,6 +17,7 @@ import (
 	"github.com/loreweave/foundation/contracts/adminjwt"
 	"github.com/loreweave/foundation/contracts/platformjwt"
 	"github.com/loreweave/grantclient"
+	lwmcp "github.com/loreweave/loreweave_mcp"
 	"github.com/loreweave/observability"
 
 	"github.com/loreweave/glossary-service/internal/config"
@@ -42,6 +43,12 @@ type Server struct {
 	// auditDedup bounds the P2·F audit WRITE path to first-per-window. nil ⇒ no dedup
 	// (still correct — the DB ON CONFLICT dedups the row). Wired in NewServer.
 	auditDedup *tenantAuditDedup
+	// actionTasks is the durable ext-tasks human-gate store (D-MCPTASKS-GO-STORE),
+	// wired in mcpHandler() and shared by every KIND-C propose tool via the gate
+	// helpers (action_task_gate.go). nil ⇒ struct-literal Server / no MCP handler —
+	// GateOrConfirm only touches it for a tasks-capable client, so a nil store is
+	// safe for the confirm_token fallback path (and for existing unit tests).
+	actionTasks lwmcp.TaskStore
 }
 
 func NewServer(pool *pgxpool.Pool, cfg *config.Config) *Server {

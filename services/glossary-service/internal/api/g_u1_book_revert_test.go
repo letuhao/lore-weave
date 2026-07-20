@@ -102,10 +102,10 @@ func TestBookRevert_RoundTripAndGuards(t *testing.T) {
 	if err != nil {
 		t.Fatalf("propose revert: %v", err)
 	}
-	if card.Descriptor != descBookRevert || card.Destructive || card.ConfirmToken == "" {
+	if asCard(card).Descriptor != descBookRevert || asCard(card).Destructive || asCard(card).ConfirmToken == "" {
 		t.Fatalf("bad revert card: %+v", card)
 	}
-	body := `{"confirm_token":"` + card.ConfirmToken + `"}`
+	body := `{"confirm_token":"` + asCard(card).ConfirmToken + `"}`
 	if pv := ukReq(t, srv, http.MethodPost, "/v1/glossary/actions/preview", owner.String(), body); pv.Code != http.StatusOK {
 		t.Fatalf("preview revert: want 200, got %d (%s)", pv.Code, pv.Body.String())
 	}

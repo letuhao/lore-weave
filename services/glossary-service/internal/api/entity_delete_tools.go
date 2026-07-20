@@ -94,7 +94,7 @@ type entityDeleteParams struct {
 	EntityID string `json:"entity_id"`
 }
 
-func (s *Server) toolProposeEntityDelete(ctx context.Context, _ *mcp.CallToolRequest, in entityDeleteToolIn) (*mcp.CallToolResult, confirmCardOut, error) {
+func (s *Server) toolProposeEntityDelete(ctx context.Context, req *mcp.CallToolRequest, in entityDeleteToolIn) (*mcp.CallToolResult, any, error) {
 	userID, ok := userIDFromCtx(ctx)
 	if !ok {
 		return nil, confirmCardOut{}, errors.New("missing caller identity")
@@ -126,16 +126,16 @@ func (s *Server) toolProposeEntityDelete(ctx context.Context, _ *mcp.CallToolReq
 	if info.Name != "" {
 		title = fmt.Sprintf("Delete entity %q", info.Name)
 	}
-	res, out, err := s.mintGrantActionCard(userID, bookID, descEntityDelete, title,
-		entityDeleteParams{EntityID: entityID.String()}, rows, true)
+	params := entityDeleteParams{EntityID: entityID.String()}
+	_, card, cerr := s.mintGrantActionCard(userID, bookID, descEntityDelete, title, params, rows, true)
 	// External MCP discoverability audit #11 precedent (same pattern as
 	// glossary_ontology_delete / glossary_propose_status_change / glossary_propose_reassign_kind):
 	// a token minted against an already-deleted entity is still confirmable but will
 	// change nothing — warn up front instead of letting the caller confirm blind.
-	if err == nil && deleted {
-		out.Warning = "this entity is already deleted — confirming will change nothing"
+	if cerr == nil && deleted {
+		card.Warning = "this entity is already deleted — confirming will change nothing"
 	}
-	return res, out, err
+	return s.gateOrCard(ctx, req, descEntityDelete, bookID, userID, params, card, cerr)
 }
 
 // effectEntityDelete re-validates against CURRENT state (§13.5 #4) and soft-

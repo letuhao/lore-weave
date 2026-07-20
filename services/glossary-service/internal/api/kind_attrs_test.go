@@ -65,21 +65,21 @@ func TestProposeKindWithAttributes_RoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("propose kind+attrs: %v", err)
 	}
-	if card.ConfirmToken == "" || card.Descriptor != descSchemaCreateKind {
+	if asCard(card).ConfirmToken == "" || asCard(card).Descriptor != descSchemaCreateKind {
 		t.Fatalf("bad card: %+v", card)
 	}
 	// The confirm-card preview enumerates the attribute (so the human sees it).
 	foundAttr := false
-	for _, r := range card.PreviewRows {
+	for _, r := range asCard(card).PreviewRows {
 		if r.Value == "triggers" {
 			foundAttr = true
 		}
 	}
 	if !foundAttr {
-		t.Fatalf("attribute not surfaced in preview rows: %+v", card.PreviewRows)
+		t.Fatalf("attribute not surfaced in preview rows: %+v", asCard(card).PreviewRows)
 	}
 	// Confirm → kind + attribute created in one shot.
-	if w := f.confirm(t, card.ConfirmToken); w.Code != http.StatusCreated {
+	if w := f.confirm(t, asCard(card).ConfirmToken); w.Code != http.StatusCreated {
 		t.Fatalf("confirm kind+attrs: want 201, got %d (%s)", w.Code, w.Body.String())
 	}
 	var n int

@@ -142,7 +142,7 @@ type adoptToolIn struct {
 	Kinds  []string `json:"kinds,omitempty" jsonschema:"system kind codes to adopt (unknown is always added)"`
 }
 
-func (s *Server) toolAdoptStandards(ctx context.Context, _ *mcp.CallToolRequest, in adoptToolIn) (*mcp.CallToolResult, confirmCardOut, error) {
+func (s *Server) toolAdoptStandards(ctx context.Context, req *mcp.CallToolRequest, in adoptToolIn) (*mcp.CallToolResult, any, error) {
 	userID, bookID, err := s.bookToolAuth(ctx, in.BookID, grantclient.GrantManage)
 	if err != nil {
 		return nil, confirmCardOut{}, err
@@ -155,17 +155,17 @@ func (s *Server) toolAdoptStandards(ctx context.Context, _ *mcp.CallToolRequest,
 		{Label: "Story genres to add", Value: fmt.Sprint(newGenres), Note: "plus the always-on baseline"},
 		{Label: "Lore categories to add", Value: fmt.Sprint(newKinds), Note: "plus the always-on baseline"},
 	}
-	res, out, err := s.mintGrantActionCard(userID, bookID, descAdopt, "Set up your book's world",
-		adoptParams{Genres: in.Genres, Kinds: in.Kinds}, rows, false)
+	params := adoptParams{Genres: in.Genres, Kinds: in.Kinds}
+	_, card, cerr := s.mintGrantActionCard(userID, bookID, descAdopt, "Set up your book's world", params, rows, false)
 	// External MCP discoverability audit #11 — a call with no real target (no genres/kinds
 	// specified) mints a valid-looking, confirmable token whose preview counts are already
 	// honest (they'll read 0 new beyond the always-included universal/unknown), but a caller
 	// that doesn't inspect the preview closely could confirm it and believe something happened.
 	// Flag it explicitly instead of relying on the caller to notice.
-	if err == nil && len(in.Genres) == 0 && len(in.Kinds) == 0 {
-		out.Warning = "no genres or kinds specified — this will adopt nothing new"
+	if cerr == nil && len(in.Genres) == 0 && len(in.Kinds) == 0 {
+		card.Warning = "no genres or kinds specified — this will adopt nothing new"
 	}
-	return res, out, err
+	return s.gateOrCard(ctx, req, descAdopt, bookID, userID, params, card, cerr)
 }
 
 // ── create (W) ────────────────────────────────────────────────────────────────

@@ -144,7 +144,7 @@ type bookRevertToolIn struct {
 	GenreCode string `json:"genre_code,omitempty" jsonschema:"for level=attribute: the genre code the attribute belongs to"`
 }
 
-func (s *Server) toolBookRevert(ctx context.Context, _ *mcp.CallToolRequest, in bookRevertToolIn) (*mcp.CallToolResult, confirmCardOut, error) {
+func (s *Server) toolBookRevert(ctx context.Context, req *mcp.CallToolRequest, in bookRevertToolIn) (*mcp.CallToolResult, any, error) {
 	userID, ok := userIDFromCtx(ctx)
 	if !ok {
 		return nil, confirmCardOut{}, fmt.Errorf("missing caller identity")
@@ -193,6 +193,7 @@ func (s *Server) toolBookRevert(ctx context.Context, _ *mcp.CallToolRequest, in 
 		{Label: "code", Value: code},
 		{Label: "reverts to", Value: tier + " default", Note: "discards this book's local edits to this row"},
 	}
-	return s.mintGrantActionCard(userID, bookID, descBookRevert,
-		fmt.Sprintf("Revert %s %q to its %s default", level, code, tier), p, rows, false)
+	title := fmt.Sprintf("Revert %s %q to its %s default", level, code, tier)
+	_, card, cerr := s.mintGrantActionCard(userID, bookID, descBookRevert, title, p, rows, false)
+	return s.gateOrCard(ctx, req, descBookRevert, bookID, userID, p, card, cerr)
 }
