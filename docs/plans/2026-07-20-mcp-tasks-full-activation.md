@@ -82,8 +82,8 @@ This is a **superset** of the in-memory store: the in-memory store becomes regis
     `PgTaskStore` takes a pool GETTER (built at import before the pool exists); JSONB via `json.dumps`/`::jsonb`;
     owner as `uuid.UUID`. composition module imports clean with the store; kit 100 tests green; provider-gate OK.
     **M1 COMPLETE** — the persistence foundation is done on both domains.
-  - **M2 `[~]`** — durable-gate activation MACHINERY complete + owner-check + service-layer live-proven; the
-    production flip + browser-card smoke are the explicit remaining ops step (below). Evidence:
+  - **M2 `[x]`** — durable-gate activation COMPLETE + owner-check + **full-turn e2e (accept + decline) effect-proven**.
+    Evidence:
     - **Accept-caller ownership check** — implemented (Go book: resolver `ctx`-check; Python: kit `_owner_check` in the
       provide-input tool via `build_tool_context`), 5 kit unit tests, and **LIVE on deployed composition** (real
       `/mcp`→ai-gateway→Postgres): a STRANGER accept → `not_task_owner` with the task untouched (`input_required`); the
@@ -95,14 +95,27 @@ This is a **superset** of the in-memory store: the in-memory store becomes regis
     - **Activation switch** — chat-service declares tasks caps when `tasks_gate_enabled` (knowledge_client.py:758);
       the caps→task path is proven (the live `/mcp` test used the identical `tasks_capability_meta()` caps envelope and
       composition returned a durable task). The suspend→resume→provide-input DRIVER is fully unit-covered.
-    - **CONSCIOUS DECISION — `tasks_gate_enabled` default stays `False`.** The production flip (default→True) is a
-      deploy-time ops decision (sealed D-C; the `confirm_token` fallback is the no-regression default, OQ3). The one
-      browser-unverified piece — the task-sourced confirm CARD rendering in a real agent turn — needs a full model+FE
-      turn, blocked on **test-account data** (no book chapters in loreweave_book; the derive source's EDIT grant drifted
-      since §6.2) + model tool-call reliability. The FE card path is UNCHANGED code (handle-in-content → the same
-      pending suspend shape the confirm card already renders), and the driver is unit-covered. **Recorded as the final
-      pre-activation smoke, NOT silently skipped.** (DRIFT vs the plan's literal "real agent turn": proven at the `/mcp`
-      cross-service layer instead — the same domain-side contract — because the agent turn is data/model-blocked.)
+    - **`tasks_gate_enabled` flipped `True`** (M3, all 4 domains redeployed) — the earlier "default stays False"
+      note is SUPERSEDED. The `confirm_token` fallback (OQ3) remains for non-tasks clients.
+    - **FULL-TURN e2e — CLOSED 2026-07-20 (the prior "data/model-blocked" note is REFUTED, not skipped).** The two
+      cited blockers were stale: (a) *test-account data* — the account now has "The Ashfall Chronicles" (book
+      `019f7e7f…`) with an active chapter (`019f7e83…`); (b) *model reliability* — with `book_chapter_delete`
+      force-advertised (`enabled_tools`) and the model's mental model corrected (it does NOT delete immediately, it
+      OPENS the confirm card), the local **Gemma** model DOES call it. Proven through a REAL SSE agent turn +
+      independent DB effect oracle, BOTH paths:
+      - **ACCEPT:** turn → `RUN_FINISHED status=suspended` carrying `pendingToolCall.task {taskId, status:input_required,
+        toolName:book_chapter_delete, inputRequests}` — **exactly the payload the FE `TaskConfirmCard` renders** (so the
+        FE render, already unit-covered, is fed a live-proven shape). Gate HELD: chapter stayed `active`, task persisted
+        `mcp_gate_tasks{status=input_required, descriptor=book.delete, owner_user_id=<test-user>}`. Owner `book_task_
+        provide_input(accepted:true)` → `outcome=action_done, status=completed` → **DB oracle: chapter now `trashed`
+        (deleted once)**. Second accept → refused `"task is not awaiting input"` (**single-winner**).
+      - **DECLINE:** fresh turn → suspend; owner `provide_input(accepted:false)` → `status=cancelled` → **DB oracle:
+        chapter STILL `active`** (the gated delete did NOT run).
+      - **OWNER-CHECK** (above): stranger → `not_task_owner`, task untouched.
+      Residual: only the *literal browser button-click* is unautomated here (the FE input bar has no `enabled_tools`
+      affordance, so a browser turn depends on model tool-choice); the rendered card is unit-tested and its source
+      payload is now live-proven, so the click adds no code coverage. Drivers: `scratchpad/gate_e2e.py` +
+      `gate_accept.py` + `gate_decline.py`.
   - **M3 `[x]` — every migratable KIND-C confirm is now task-shaped + ACTIVATED.**
     - **book** (`47d1e888c`): one dispatching `resolveBookAction` for all write descriptors (publish/unpublish/
       delete/purge); grantForOp security mapping; DB-tested.
