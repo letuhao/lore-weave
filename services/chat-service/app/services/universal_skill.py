@@ -2,8 +2,8 @@
 
 A fixed instruction block injected into the system message on the universal
 ``/chat`` surface (agui, no editor/book context) when tool-calling + discovery
-are active. It teaches the two-stage discovery workflow (tool_list first; find_tools
-is an optional legacy fallback), the
+are active. It teaches the deterministic two-stage discovery workflow (tool_list then
+tool_load), the
 capability-by-category answer (H5), the auto-apply/confirm tiers, async-job
 etiquette ("started, never done"), and partial-failure honesty (H17).
 
@@ -25,9 +25,9 @@ DETERMINISTICALLY: call `tool_list` with a `category` (e.g. "glossary", "book", 
 "translation", "knowledge", or "all") to see EVERY tool in that area — the complete \
 set, so you never miss a capability — then `tool_load` the one(s) you need to make \
 them callable. If a category is empty or gated, the result says so plainly; don't \
-keep guessing. `find_tools` (intent search) still exists as an OPTIONAL fallback for \
-when you don't know which category fits — but prefer `tool_list`, it's exhaustive and \
-deterministic where find_tools only ranks. If a service is temporarily unavailable, \
+keep guessing. If you're unsure which category fits, call `tool_list` with \
+`category: "all"` to see every tool at once — it's exhaustive and deterministic, so \
+you never miss a capability. If a service is temporarily unavailable, \
 tell the user the capability exists but to try again shortly — never say you can't do it.
 
 ## General web research (no book needed)

@@ -1619,13 +1619,16 @@ async def _stream_with_tools(
                         # "refuses" or reaches for the wrong tool, the first question is "did
                         # it even SEE the tool it should have used?" — unanswerable from counts.
                         # INFO so a LOG_LEVEL=INFO deploy records every turn's real surface
-                        # (grep for a tool name to see if it was on offer). frontend+activated
-                        # are the variable part; core is the fixed always-on set.
+                        # (grep for a tool name to see if it was on offer). core NAMES are
+                        # logged too, not just the count: F17 retired find_tools FROM the core
+                        # set, and "is a (deprecated) core tool still advertised to the model?"
+                        # is only answerable from the names — the count alone can't tell
+                        # find_tools-gone from some-other-core-tool-added.
                         logger.info(
                             "agent-surface advertised (session=%s): core=%d frontend=%d "
-                            "activated=%d | frontend=%s | activated=%s",
+                            "activated=%d | core=%s | frontend=%s | activated=%s",
                             session_id, len(_adv_core), len(_adv_frontend),
-                            len(_adv_activated), _adv_frontend, _adv_activated,
+                            len(_adv_activated), _adv_core, _adv_frontend, _adv_activated,
                         )
                 else:
                     # Ask mode filtered everything out — run the pass tool-free

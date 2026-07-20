@@ -67,8 +67,9 @@ book-wide ontology change the author has to stop and approve.
 Narration is not action. When you decide to run a step, emit the tool call in the SAME turn — \
 never write "I'll propose the spec now…" and end the turn without the call. Report an outcome \
 ("proposed", "compiled", "structure is ready") ONLY after a tool has actually returned it. \
-If a `plan_*` or `composition_*` tool you need is not advertised this turn, call `find_tools` \
-with what you want to do before telling the author you cannot.
+If a `plan_*`, `composition_*`, or `book_*` tool you need is not advertised this turn, call \
+`tool_list` (scoped to that domain) to see every tool it has, then `tool_load` the exact one — \
+before telling the author you cannot.
 
 ## model_ref
 Optional for every LLM step — omit it to use the author's default planner model. Only pass one \

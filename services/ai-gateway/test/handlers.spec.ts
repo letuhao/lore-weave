@@ -87,17 +87,17 @@ describe('headerValue / extractEnvelope', () => {
 });
 
 describe('handleListTools', () => {
-  it('prepends the discovery meta-tools (tool_list/tool_load first, then find_tools), then the catalog (H10)', async () => {
+  it('prepends the discovery meta-tools (tool_list/tool_load), then the catalog (H10)', async () => {
     const fed = fakeFederation({ catalog: () => [{ name: 'memory_search' }] as any });
     const res = await handleListTools(fed);
-    // WS-1a (OQ1): tool_list/tool_load are the deterministic PRIMARY pair, advertised FIRST;
-    // find_tools follows as the optional semantic convenience; then the catalog.
+    // WS-1a (OQ1): tool_list/tool_load are the deterministic discovery pair, advertised FIRST,
+    // then the catalog. F17 — find_tools is no longer advertised to the LLM (handler retained).
     expect(res.tools[0].name).toBe('tool_list');
     // Phase 3 — the consumer-local ui_* directive tools sit after the discovery
     // meta-tools and before the federated catalog (sourced from the module so this
     // assertion tracks the tool set without drifting).
     expect(res.tools.map((t: any) => t.name)).toEqual([
-      'tool_list', 'tool_load', 'find_tools', ...UI_TOOLS.map((t) => t.name), 'propose_edit', 'memory_search',
+      'tool_list', 'tool_load', ...UI_TOOLS.map((t) => t.name), 'propose_edit', 'memory_search',
     ]);
     expect(res._meta).toEqual({ unavailable_providers: [], partial: false });
   });
@@ -111,7 +111,6 @@ describe('handleListTools', () => {
     expect(res.tools.map((t: any) => t.name)).toEqual([
       'tool_list',
       'tool_load',
-      'find_tools',
       ...UI_TOOLS.map((t) => t.name),
       'propose_edit',
       'memory_search',
@@ -331,7 +330,7 @@ describe('handleCallTool', () => {
     );
   });
 
-  it('W0 #5: an unknown tool tells the model to use find_tools (not "provider error")', async () => {
+  it('W0 #5: an unknown tool tells the model to use tool_list/tool_load (not "provider error")', async () => {
     const fed = fakeFederation({
       executeTool: async () => {
         throw new Error("unknown tool 'book_lst'");
@@ -341,7 +340,8 @@ describe('handleCallTool', () => {
     expect(res.isError).toBe(true);
     const text = res.content[0].text as string;
     expect(text).toContain('unknown tool');
-    expect(text).toContain('find_tools');
+    expect(text).toContain('tool_list');
+    expect(text).toContain('tool_load');
   });
 
   it('W0 #5: an upstream JSON-RPC rejection passes its (sanitized) message through', async () => {

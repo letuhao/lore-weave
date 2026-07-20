@@ -57,9 +57,9 @@ export async function handleListTools(
   const overlay = await federation.overlayTools(extractEnvelope(headers));
   // Prepend the consumer-local discovery meta-tools so a minimal surface (the public edge) can
   // advertise them + relay their calls back here. WS-1a (contracts.md C2): `tool_list`/`tool_load` —
-  // the DETERMINISTIC pair — go FIRST (the primary discovery path, OQ1); `find_tools` follows as the
-  // OPTIONAL semantic convenience. All three are deduped by name on the consumer's name-keyed active
-  // set + excluded from their own listing/search.
+  // the DETERMINISTIC pair — are the discovery path. F17 (2026-07-20): `find_tools` is NO LONGER
+  // advertised — it is semantic top-K, so it structurally can't surface a tool outside the K matches
+  // (dogfood F14). Its handler stays dispatchable for a legacy caller, but the LLM never sees it.
   // Phase 3 — the consumer-local ui_* directive tools (KIND A). Like the discovery
   // meta-tools they have no downstream provider (handled in handleCallTool). The
   // per-turn advertisement gate (F7c nav-intent, studio_context) stays a CONSUMER
@@ -67,7 +67,7 @@ export async function handleListTools(
   // they are discoverable + validated at one seam.
   return {
     tools: [
-      TOOL_LIST_TOOL, TOOL_LOAD_TOOL, FIND_TOOLS_TOOL,
+      TOOL_LIST_TOOL, TOOL_LOAD_TOOL,
       ...UI_TOOLS,
       PROPOSE_EDIT_TOOL,
       ...(federation.catalog() as any[]),
@@ -348,7 +348,7 @@ const TRANSPORT_ERROR_RE =
 
 /**
  * Classify an executeTool failure into an LLM-actionable one-liner:
- *  - unknown tool          → say so + point at find_tools (the model mistyped);
+ *  - unknown tool          → say so + point at tool_list/tool_load (the model mistyped);
  *  - transport/timeout/5xx → "backend temporarily unreachable — retry may succeed";
  *  - upstream JSON-RPC / HTTP-4xx rejection → pass the upstream's message
  *    through, sanitized of URLs/hosts (it is server-authored and usually says
@@ -361,7 +361,7 @@ export function classifyCallToolError(e: unknown): string {
 
   // federation.executeTool throws this BEFORE any network call: no provider owns the name.
   if (/^unknown tool /.test(msg)) {
-    return `unknown tool — it is not in the tool catalog; call tool_list to see valid tool names (or find_tools to search by intent)`;
+    return `unknown tool — it is not in the tool catalog; call tool_list to see valid tool names, then tool_load the one you need`;
   }
 
   // JSON-RPC error relayed from the owning provider (the TS SDK's McpError

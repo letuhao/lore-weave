@@ -925,7 +925,7 @@ class TestK21BToolCallingIntegration:
     async def test_book_surface_seeds_glossary_hot_set_and_lazy_tail(self):
         """B (per-surface hot set): a book-scoped chat with a MULTI-DOMAIN catalog
         seeds the glossary domain into discovery_seed_names (advertised pass 1) and
-        leaves the other domains (book/translation) to the lazy find_tools tail.
+        leaves the other domains (book/translation) to the lazy discovery tail.
 
         This GUARDS the discovery_seed_names threading stream_response →
         _emit_chat_turn → _stream_with_tools — the other integration tests use a
@@ -964,7 +964,7 @@ class TestK21BToolCallingIntegration:
         seed = kw["discovery_seed_names"]
         assert seed is not None
         assert "glossary_search" in seed and "glossary_propose_batch" in seed
-        assert "book_create" not in seed  # lazy — reachable via find_tools
+        assert "book_create" not in seed  # lazy — reachable via tool_list/tool_load
         assert "translation_start_job" not in seed
         # …and the first-pass advertisement the model sees reflects it.
         adv = [t["function"]["name"] for t in kw["tools"]]
@@ -1096,16 +1096,17 @@ class TestK21BToolCallingIntegration:
         # H9: universal cap = 20, and discovery is on (catalog passed)
         assert loop_mock.call_args.kwargs["max_iterations"] == 20
         assert loop_mock.call_args.kwargs["discovery_catalog"] is not None
-        # C-FT: the first-pass advertisement is the curated core (incl. find_tools
-        # + the generic frontend tools), NOT the full catalog dumped to the LLM.
+        # C-FT: the first-pass advertisement is the curated core (incl. the
+        # tool_list/tool_load discovery pair + the generic frontend tools), NOT the
+        # full catalog dumped to the LLM. (F17 — find_tools retired from the LLM's view.)
         adv_names = [t["function"]["name"] for t in loop_mock.call_args.kwargs["tools"]]
-        assert "find_tools" in adv_names
+        assert "tool_list" in adv_names and "tool_load" in adv_names
         assert "ui_navigate" in adv_names and "confirm_action" in adv_names
         # Part D (2026-07-07, docs/specs/2026-07-07-skill-authoring-and-mcp-exposure-
         # standard.md §8b.9): surface_hot_domains now derives from knowledge_skill's own
         # declared hot_domains (honored everywhere it auto-injects, incl. universal chat)
         # instead of the old hand-authored constants that never included it — memory_search
-        # is correctly hot-seeded here now, not left to find_tools.
+        # is correctly hot-seeded here now, not left to the lazy discovery tail.
         assert "memory_search" in adv_names
 
     @pytest.mark.asyncio

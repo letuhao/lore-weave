@@ -178,10 +178,10 @@ TOOL_LIST_TOOL: dict = {
         "name": TOOL_LIST_NAME,
         "description": (
             "List EVERY tool in a category (or \"all\"), complete and deterministic — the "
-            "reliable way to see what you can do here. Prefer this over find_tools when you know "
-            "the rough area. Returns {name, description, tier} per tool; deprecated tools are "
-            "labeled with their replacement. Then call tool_load(name) to get a tool's exact "
-            "arguments before using it."
+            "reliable way to see what you can do here. This is how you discover a tool that "
+            "isn't already advertised: list the category, then call tool_load(name) to get a "
+            "tool's exact arguments before using it. Returns {name, description, tier} per "
+            "tool; deprecated tools are labeled with their replacement."
         ),
         "parameters": {
             "type": "object",
@@ -258,10 +258,15 @@ TOOL_LOAD_TOOL: dict = {
 # no open chapter. (`propose_record_edit` is the generic, surface-agnostic record
 # diff card and stays core.)
 ALWAYS_ON_CORE_NAMES: tuple[str, ...] = (
-    # WS-1a (OQ1): the deterministic pair FIRST, then find_tools (optional semantic convenience).
+    # F17 (2026-07-20): the DETERMINISTIC discovery pair is the ONLY discovery surface now.
+    # find_tools was retired FROM THE LLM's view — it is semantic top-K, so it structurally
+    # CANNOT surface a tool the agent needs when that tool falls outside the K matches (dogfood
+    # F14: the agent never reached book_list_chapters). tool_list (see every tool in a domain) +
+    # tool_load (load the exact one) have no such blind spot. (The find_tools handler stays
+    # dispatchable for any legacy caller, but is no longer advertised — never hot-seeded, never
+    # discoverable — so the model is never steered into the top-K trap.)
     TOOL_LIST_NAME,
     TOOL_LOAD_NAME,
-    FIND_TOOLS_NAME,
     "ui_navigate",
     "ui_open_book",
     "ui_show_panel",

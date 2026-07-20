@@ -1,7 +1,7 @@
 """MCP-fanout S-WORKFLOW (Wave 3) — the cross-service ORDERING fragment.
 
 A small static instruction block appended to the universal skill on the agui
-``/chat`` surface. The universal skill teaches *how* to act safely (find_tools,
+``/chat`` surface. The universal skill teaches *how* to act safely (tool_list/tool_load,
 tiers, async "started not done", partial-failure honesty); this fragment teaches
 *in what order* multi-service requests must run — the lazy-user chains like
 "import this book, translate it, build the glossary, make the wiki" only work in

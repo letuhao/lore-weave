@@ -384,7 +384,7 @@ def skill_metadata_block(
     guidance = (
         "These skills are available on this surface. When the user's request fits one, "
         "call `load_skill('<code>')` to load its full instructions, then follow them. "
-        "Their tools are already reachable (find_tools / already hot); load a skill for its workflow."
+        "Their tools are already reachable (via tool_list/tool_load, or already hot); load a skill for its workflow."
         if lazy
         else "These skills are available on this surface. The relevant one is loaded in full; "
         "if the user's request fits another, say so or pin it."
@@ -524,7 +524,7 @@ def resolve_skills_to_inject(
     # author has explicitly PINNED the glossary skill (real glossary/world work), never on the
     # legacy auto-inject path where its "adopt standards / do not skip it" push made the
     # co-writer rebuild a newcomer's ontology on a plain "write a chapter" turn. The lean
-    # `glossary` core (auto-injected) still teaches lookup/edit + points at find_tools for
+    # `glossary` core (auto-injected) still teaches lookup/edit + points at tool_list/tool_load for
     # setup; the intent router adds glossary_shaping too when a turn's meaning matches world
     # setup (the skill carries a description). Additive + surface-filtered like the rest.
     if "glossary" in enabled_skills and "glossary_shaping" not in out:

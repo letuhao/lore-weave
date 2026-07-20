@@ -120,6 +120,33 @@ the advertised core + the gateway's consumer-local set, keep `tool_list`/`tool_l
 mechanism, update the skill prose + tests) is the minimal correct cut; a full deletion is larger.
 XL — plan before BUILD.
 
+**RESOLVED (2026-07-20).** Done exactly as the minimal cut above; `find_tools` is hidden from the LLM
+on BOTH services, handler kept dispatchable for a legacy caller.
+- **chat-service:** `FIND_TOOLS_NAME` dropped from `ALWAYS_ON_CORE_NAMES`; skill prose (co_write /
+  glossary / plan_forge / universal / workflow / skill_registry) now steers to `tool_list`/`tool_load`;
+  `tool_list` description no longer cross-references find_tools (they're now explicitly distinguished:
+  `tool_list` = complete/deterministic discovery path, `find_tools` = legacy/optional/semantic).
+- **ai-gateway:** `FIND_TOOLS_TOOL` dropped from `handleListTools`; unknown-tool hint points at
+  `tool_list`→`tool_load`; `tool_list` description de-cross-referenced.
+- **Tests:** chat 285 pass / ai-gateway 255 pass (handler-dispatch + `find_tools_result` unit tests kept).
+- **Monitor gap closed** (the F14 monitor logged core only as a COUNT, so it could not show whether a
+  *core* tool like find_tools was advertised): `stream_service` now logs core tool NAMES too.
+- **Hygiene (commit `4d53ac78f`):** a stray raw NUL byte in `find-tools.ts` (the FindToolsAttemptTracker
+  cache-key delimiter) made git treat the file as binary → broke grep + blocked eol=lf. Replaced with
+  the `\x00` escape (runtime-identical) + renormalized CRLF→LF.
+
+**VERIFIED LIVE (deployed stack, model-independent + effect):**
+- **Gateway `/mcp` tools/list:** 274 tools, `find_tools` **ABSENT**, `tool_list`+`tool_load` present.
+- **Discovery reaches the F14 residual:** `tool_list(category="book")` returns **book_list_chapters +
+  book_chapter_delete** (the exact tools the semantic hot-seed truncated); `tool_load(book_list_chapters)`
+  returns a callable schema.
+- **chat-service monitor (real turn):** advertised `core=['tool_list','tool_load','ui_navigate',
+  'ui_open_book','ui_show_panel','ui_watch_job','propose_record_edit','confirm_action','web_search']` —
+  find_tools appears NOWHERE in the advertised surface. The local Gemma model **used
+  `tool_list(category="book")`** to discover book tools — the F17 path in action.
+
+**New finding surfaced during F17 verify → see F18 below.**
+
 ---
 
 ## F14 (original entry) · `agent-refuses-tool-actions` 🟠
@@ -160,6 +187,30 @@ observe the downstream effect of creating a language-less book.)
 **Root cause (to confirm):** the create-book form's enable/validation guards on title but not on
 language. Either make language required (it defaults the manuscript/translation language) or default it
 to a sensible value + surface that default. Verify what book-service stores when language is absent.
+
+---
+
+## F18 · `discovery-meta-tool-success-loop` — model re-lists instead of advancing 🟠 (surfaced by F17 verify)
+
+**Symptom (observed):** during the F17 live verify (global chat surface, local **Gemma-4 26B**), asked
+to "list the chapters … then tell me which tools you have for managing chapters," the model called
+**`tool_list(category="book")` ~28× in one turn, every one `ok=True`**, then finally described the book
+tools. Discovery WORKED (it reached the book tools deterministically — the F17 win), but it burned ~28
+identical successful calls getting there.
+
+**Root cause (grounded):** the repeated-tool-call breaker (`stream_service.py`, the read-fingerprint
+ledger) counts identical **successful reads** to suppress re-reads — but `tool_list`/`tool_load` are
+consumer-local **discovery meta-tools**, and the breaker's fingerprint set does not cover them (they are
+handled before the domain-tool read path). So a model that re-issues the *byte-identical successful*
+`tool_list(category="book")` is never told "you already have this list" → it re-lists.
+
+**Relation to F13:** F13 is the *failed*-call loop (identical `{}` args → validation error, never blocked
+because the breaker only counts *successful* reads). F18 is its mirror on the *success* side for the
+discovery meta-tools. A single fix could cover both: fingerprint `(name, args)` for `tool_list`/`tool_load`
+too and, after K identical repeats (success OR failure) with no state change, inject a synthesized
+"you already ran this exact discovery call — `tool_load` a specific tool or act now" tool-result.
+Distinct from blocking a *legitimate* re-list after the catalog changed (rare; key on an unchanged
+catalog snapshot). **Fold into F13's investigation.**
 
 ---
 

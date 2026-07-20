@@ -182,13 +182,15 @@ class TestAdvertiseSurfaceSnapshot:
         )
         assert _names(out) == self.EXPECTED_ASK_SURFACE
 
-    def test_ask_mode_keeps_frontend_tools_and_find_tools(self):
-        """Frontend tools are human-executed by construction — never filtered."""
+    def test_ask_mode_keeps_frontend_tools_and_discovery_pair(self):
+        """Frontend tools are human-executed by construction — never filtered; the
+        deterministic discovery pair (F17 — tool_list/tool_load is the discovery path,
+        find_tools retired from the LLM's view) is likewise always kept."""
         idx = _catalog_index(_catalog())
         out = _names(_advertise_discovery_tools(
             idx, ALL_CATALOG_NAMES, [PROPOSE_EDIT_TOOL], permission_mode="ask",
         ))
-        assert "find_tools" in out
+        assert "tool_list" in out and "tool_load" in out
         assert "confirm_action" in out
         assert "propose_record_edit" in out
         assert "propose_edit" in out
@@ -458,8 +460,9 @@ class TestAskChokepointDiscovery:
         req = _FakeClient.instances[0].requests[0]
         names = {t["function"]["name"] for t in req.tools}
         assert names & ALL_CATALOG_NAMES == R_CATALOG_NAMES
-        # discovery machinery intact
-        assert "find_tools" in names
+        # discovery machinery intact (F17 — tool_list/tool_load is the discovery path;
+        # find_tools retired from the LLM's view)
+        assert "tool_list" in names and "tool_load" in names
 
 
 class TestAskDefenseInDepth:
