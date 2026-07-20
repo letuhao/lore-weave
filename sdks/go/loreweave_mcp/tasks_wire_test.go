@@ -2,6 +2,8 @@ package loreweave_mcp
 
 import (
 	"context"
+	"encoding/json"
+	"strings"
 	"testing"
 	"time"
 
@@ -46,7 +48,10 @@ func TestClientSupportsTasksFailClosed(t *testing.T) {
 
 func TestGateOrConfirmOpensTaskWhenSupported(t *testing.T) {
 	ran := false
-	resolver := func(ctx context.Context, owner string, payload, inputs map[string]any) (any, error) { ran = true; return "ok", nil }
+	resolver := func(ctx context.Context, owner string, payload, inputs map[string]any) (any, error) {
+		ran = true
+		return "ok", nil
+	}
 	s := NewInMemoryTaskStore(TaskResolverRegistry{"composition.derive": resolver})
 	fallback := func() any { t.Fatal("fallback must not run when tasks supported"); return nil }
 
@@ -185,12 +190,21 @@ func TestProvideInputTool_IsVisibilityLegacy(t *testing.T) {
 	if found.Meta[MetaKeyVisibility] != string(VisibilityLegacy) {
 		t.Fatalf("visibility = %v, want legacy (a mechanism tool must not be discoverable)", found.Meta[MetaKeyVisibility])
 	}
+	// The result carries a dynamic `Result any` field; its outputSchema must be a valid
+	// object (NOT the SDK-inferred properties.result the ai-gateway federation rejects).
+	raw, _ := json.Marshal(found.OutputSchema)
+	if !strings.Contains(string(raw), `"type":"object"`) || strings.Contains(string(raw), `"result"`) {
+		t.Fatalf("provide-input outputSchema is not a valid object (or leaks properties.result): %s", raw)
+	}
 }
 
 // Decline over the real wire must cancel WITHOUT running the resolver.
 func TestProvideInputTool_DeclineDoesNotRunResolver(t *testing.T) {
 	ran := false
-	resolver := func(ctx context.Context, owner string, payload, inputs map[string]any) (any, error) { ran = true; return nil, nil }
+	resolver := func(ctx context.Context, owner string, payload, inputs map[string]any) (any, error) {
+		ran = true
+		return nil, nil
+	}
 	store := NewInMemoryTaskStore(TaskResolverRegistry{"composition.derive": resolver})
 	handle, _ := OpenGate(store, "composition.derive", "u1", nil, nil, 0)
 	taskID := handle["taskId"].(string)

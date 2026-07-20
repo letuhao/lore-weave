@@ -8,6 +8,7 @@ package loreweave_mcp
 import (
 	"context"
 
+	"github.com/google/jsonschema-go/jsonschema"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
@@ -127,6 +128,12 @@ func RegisterTaskProvideInput(srv *mcp.Server, store TaskStore, toolPrefix strin
 		// resume driver) calls by NAME, not something the LLM should discover via
 		// find_tools. Legacy ⇒ excluded from discovery/hot-seed, still callable by name.
 		Meta: WithVisibility(mcp.Meta{}, VisibilityLegacy),
+		// ProvideInputResult carries a `Result any` field (the domain write's dynamic
+		// result). The SDK infers `outputSchema.properties.result` as the bare permissive
+		// "any" schema, which strict federation validators (ai-gateway) REJECT — failing
+		// the whole provider's list-tools. Give it an explicit permissive-but-VALID object
+		// schema (same class of fix as RegisterTool's Out=any handling).
+		OutputSchema: &jsonschema.Schema{Type: "object"},
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, in ProvideInputArgs) (*mcp.CallToolResult, ProvideInputResult, error) {
 		accepted := true
 		if in.Accepted != nil {
