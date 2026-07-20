@@ -1,5 +1,16 @@
 # ▶▶ NEXT SESSION STARTS HERE
 
+## ▶ NEXT — MCP-TASKS FULL ACTIVATION track (DESIGN SEALED, awaiting a build `/goal`)
+The completeness audit + review-impl of both specs is DONE (below). User chose the **Full activation track**;
+the design is sealed in **[`docs/plans/2026-07-20-mcp-tasks-full-activation.md`](../plans/2026-07-20-mcp-tasks-full-activation.md)**.
+Key correction banked there: the persistent `TaskStore` is **NOT** a drop-in — the current interface persists an
+executor CLOSURE (unpersistable). SEALED fix = **resolver-registry** (`Create(descriptor, payload)` + a startup
+`descriptor → resolver` map; in-memory + persistent share one interface). Milestones: **M1a** kit interface evolution
+(pure shape-change, no persistence, existing lifecycle tests prove it) → **M1b** book-service `PgTaskStore` + migration
+→ **M1c** composition `PgTaskStore` → **M2** flip `tasks_gate_enabled` + full-stack live-E2E → **M3** remaining KIND-C
+confirms → **M4** retire the bespoke construct. **Cadence (user-directed): checkpoint per milestone, agent does NOT
+auto-advance — the user sets a fresh `/goal` per milestone.** Start with **M1a**.
+
 ## ✅ MCP-TASKS + FRONTEND-TOOLS MIGRATION — **implemented through the activation boundary (2026-07-20)**
 Both `docs/specs/2026-07-19-mcp-tasks-durable-gate.md` + `docs/specs/2026-07-19-frontend-tools-mcp-migration.md`
 are implemented up to the `tasks_gate_enabled` activation boundary. Every hard cutover is **live browser-proven**.
