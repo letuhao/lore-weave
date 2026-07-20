@@ -17,6 +17,17 @@ confirms → **M4** retire the bespoke construct.
     (multi-replica, single-winner, decline/TTL/cancel); the T3c `/mcp`+Postgres tests now run PgTaskStore end-to-end.
   - **M1c** — composition `PgTaskStore` (asyncpg, pool-getter) + `mcp_gate_tasks` in `run_migrations`; 5 real-Postgres
     tests green vs `loreweave_composition_test`.
+- **M3 DONE + ACTIVATED + a critical federation bug fixed (2026-07-20).** Every migratable KIND-C confirm is now
+  task-shaped: book (all writes, dispatching resolver), composition (7 tools; 5 stay on confirm_token — token-ledger/
+  billing), glossary (15 tools/14 descriptors via a recorder-replay dispatching resolver; 2 stay). `tasks_gate_enabled`
+  flipped **True** + all 4 services redeployed. **CRITICAL FIX** (`db503e09d` + follow-up): Go `Out=any` returns AND
+  the `Result any` field in `ProvideInputResult` made the SDK emit an `outputSchema.properties.result` the ai-gateway
+  zod validator rejects → book+glossary tools were UNROUTABLE through the gateway (silently since T3c — the durable
+  gate was only ever tested via the raw `/mcp` handler). Fixed at the kit root (`{type:object}`). **LIVE via the
+  gateway:** catalog 165→264 tools; book+glossary route; composition owner-check holds. **Remaining:** a browser smoke
+  of the TaskConfirmCard in a real agent turn (data+model-blocked: test account has no book chapters, derive grant
+  drifted; the FE card is unit-tested + the path is now fully routable). M4 = the PARTIAL retirement (confirm_action
+  stays — permanent confirm_token fallback + the 7 non-migratable tools).
 - **M2 activation machinery DONE + service-layer live-proven** (`771ffb5a0` + docs). Accept-caller OWNERSHIP CHECK
   (Go resolver + Python kit `_owner_check`) — 5 kit tests + **LIVE on deployed composition** (stranger→`not_task_owner`
   untouched; owner→passes, resolver runs, persists). book+composition REBUILT+deployed → `run_migrations`/`Up` create

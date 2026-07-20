@@ -103,7 +103,25 @@ This is a **superset** of the in-memory store: the in-memory store becomes regis
       pending suspend shape the confirm card already renders), and the driver is unit-covered. **Recorded as the final
       pre-activation smoke, NOT silently skipped.** (DRIFT vs the plan's literal "real agent turn": proven at the `/mcp`
       cross-service layer instead — the same domain-side contract — because the agent turn is data/model-blocked.)
-  - M3 `[ ]` · M4 `[ ]`  (done = an evidence string).
+  - **M3 `[x]` — every migratable KIND-C confirm is now task-shaped + ACTIVATED.**
+    - **book** (`47d1e888c`): one dispatching `resolveBookAction` for all write descriptors (publish/unpublish/
+      delete/purge); grantForOp security mapping; DB-tested.
+    - **composition** (`0d9b04a29`): 7 tools (publish/generate/5 authoring-run) via per-descriptor resolvers reusing
+      `_execute_*`. 5 tools left on confirm_token (need the token for the replay-ledger + billing key — a real
+      constraint).
+    - **glossary** (`3db85a772`): 15 tools / 14 descriptors via ONE dispatching resolver that replays
+      `dispatchConfirmEffect` through an httptest recorder (byte-identical effects; tokenless-effect + single-winner
+      verified). 2 left on confirm_token (dual-mode / System-tier).
+    - **CRITICAL FEDERATION FIX** (`db503e09d` + provide-input follow-up): Go `Out=any` tools + the `Result any`
+      field in `ProvideInputResult` made the SDK emit an `outputSchema.properties.result` the ai-gateway's zod
+      validator REJECTS — failing the WHOLE provider's list-tools so book+glossary tools were UNROUTABLE (silently,
+      since T3c — only ever tested via the raw `/mcp` handler, never the gateway). Fixed at the kit root
+      (permissive `{type:object}` schema). **LIVE-PROVEN through the gateway:** catalog 165→264 tools; book +
+      glossary tools now route; composition owner-check (stranger→not_task_owner) still holds; `tasks_gate_enabled`
+      flipped True + all 4 domains redeployed.
+    - **Feature-parity note:** glossary `execute_plan`'s per-op `enabled_ops` opt-in can't ride the task path (the
+      resume driver passes only `{task_id, accepted}`) → safely degrades to additive-only. Tracked.
+  - M4 `[ ]`  (done = an evidence string).
 - **Invariants:** provider-gateway · language-rule · tenancy scope-key on `mcp_gate_tasks` (owner_user_id) · confirm_token fallback stays · no closure persisted.
 - **Decisions / Parked / Debt / Drift:**
   - **DEBT → M2 (accept-caller ownership check) → RESOLVED (M2.1, `771ffb5a0`).** Go book enforces `caller==owner` in
