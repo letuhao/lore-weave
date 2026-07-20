@@ -1198,34 +1198,79 @@ func (s *Server) transitionBookLifecycle(w http.ResponseWriter, r *http.Request,
 	if !ok {
 		return
 	}
+	// Precondition first (so a bad state never opens a tx).
 	switch target {
 	case "trashed":
 		if lifecycle != "active" {
 			writeError(w, http.StatusConflict, "BOOK_INVALID_LIFECYCLE", "only active book can be trashed")
 			return
 		}
-		_, _ = s.pool.Exec(ctx, `UPDATE books SET lifecycle_state='trashed', trashed_at=now(), updated_at=now() WHERE id=$1`, bookID)
-		_, _ = s.pool.Exec(ctx, `UPDATE chapters SET lifecycle_state='trashed', trashed_at=now(), updated_at=now() WHERE book_id=$1 AND lifecycle_state='active'`, bookID)
-		w.WriteHeader(http.StatusNoContent)
 	case "active":
 		if lifecycle != "trashed" {
 			writeError(w, http.StatusConflict, "BOOK_INVALID_LIFECYCLE", "book must be trashed before restore")
 			return
 		}
-		_, _ = s.pool.Exec(ctx, `UPDATE books SET lifecycle_state='active', trashed_at=NULL, purge_eligible_at=NULL, updated_at=now() WHERE id=$1`, bookID)
-		_, _ = s.pool.Exec(ctx, `UPDATE chapters SET lifecycle_state='active', trashed_at=NULL, purge_eligible_at=NULL, updated_at=now() WHERE book_id=$1`, bookID)
-		s.getBookByID(w, ctx, bookID, ownerID, http.StatusOK)
 	case "purge_pending":
 		if lifecycle != "trashed" {
 			writeError(w, http.StatusConflict, "BOOK_INVALID_LIFECYCLE", "book must be trashed before purge")
 			return
 		}
-		_, _ = s.pool.Exec(ctx, `UPDATE books SET lifecycle_state='purge_pending', purge_eligible_at=now(), updated_at=now() WHERE id=$1`, bookID)
-		_, _ = s.pool.Exec(ctx, `UPDATE chapters SET lifecycle_state='purge_pending', purge_eligible_at=now(), updated_at=now() WHERE book_id=$1`, bookID)
-		w.WriteHeader(http.StatusNoContent)
 	default:
 		writeError(w, http.StatusBadRequest, "BOOK_VALIDATION_ERROR", "unsupported transition")
+		return
 	}
+	if err := s.transitionBookLifecycleTx(ctx, bookID, target); err != nil {
+		writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT", "failed to change book lifecycle")
+		return
+	}
+	if target == "active" {
+		s.getBookByID(w, ctx, bookID, ownerID, http.StatusOK)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// transitionBookLifecycleTx applies the book + cascaded-chapter lifecycle writes AND emits
+// book.lifecycle_changed in ONE tx — shared by the HTTP (transitionBookLifecycle) and MCP
+// (mcpTransitionBook) paths. Two things changed vs the prior bare-Exec code: (1) the writes are
+// transactional, so a mid-way failure no longer leaves book + chapters half-transitioned; (2) the
+// emit is atomic with the change (INV-O12) so composition's book_lifecycle mirror can never diverge
+// from a committed lifecycle. Callers validate the precondition BEFORE calling (this only writes).
+func (s *Server) transitionBookLifecycleTx(ctx context.Context, bookID uuid.UUID, target string) error {
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+	switch target {
+	case "trashed":
+		if _, err := tx.Exec(ctx, `UPDATE books SET lifecycle_state='trashed', trashed_at=now(), updated_at=now() WHERE id=$1`, bookID); err != nil {
+			return err
+		}
+		if _, err := tx.Exec(ctx, `UPDATE chapters SET lifecycle_state='trashed', trashed_at=now(), updated_at=now() WHERE book_id=$1 AND lifecycle_state='active'`, bookID); err != nil {
+			return err
+		}
+	case "active":
+		if _, err := tx.Exec(ctx, `UPDATE books SET lifecycle_state='active', trashed_at=NULL, purge_eligible_at=NULL, updated_at=now() WHERE id=$1`, bookID); err != nil {
+			return err
+		}
+		if _, err := tx.Exec(ctx, `UPDATE chapters SET lifecycle_state='active', trashed_at=NULL, purge_eligible_at=NULL, updated_at=now() WHERE book_id=$1`, bookID); err != nil {
+			return err
+		}
+	case "purge_pending":
+		if _, err := tx.Exec(ctx, `UPDATE books SET lifecycle_state='purge_pending', purge_eligible_at=now(), updated_at=now() WHERE id=$1`, bookID); err != nil {
+			return err
+		}
+		if _, err := tx.Exec(ctx, `UPDATE chapters SET lifecycle_state='purge_pending', purge_eligible_at=now(), updated_at=now() WHERE book_id=$1`, bookID); err != nil {
+			return err
+		}
+	default:
+		return fmt.Errorf("unsupported transition %q", target)
+	}
+	if err := emitBookLifecycleChanged(ctx, tx, bookID); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
 }
 
 func (s *Server) uploadCover(w http.ResponseWriter, r *http.Request) {

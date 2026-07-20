@@ -44,6 +44,7 @@ type structureSources struct {
 
 type bookStructureResponse struct {
 	BookID          string           `json:"book_id"`
+	BookLifecycle   string           `json:"book_lifecycle"` // active | trashed | purge_pending (spec §4.6 read-side gate)
 	KindsPresent    structureKinds   `json:"kinds_present"`
 	Parts           []structurePart  `json:"parts"`
 	UnassignedCount int              `json:"unassigned_count"`
@@ -118,10 +119,25 @@ func (s *Server) getBookStructure(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	if _, _, _, ok := s.authBook(w, r, bookID, GrantView); !ok {
+	_, _, lifecycle, ok := s.authBook(w, r, bookID, GrantView)
+	if !ok {
 		return
 	}
 	ctx := r.Context()
+	// Spec §4.6 read-side gate — the resolver joins the book's OWN lifecycle so it never renders LIVE
+	// structure over a trashed / purge_pending book. A non-active book returns an empty skeleton with the
+	// lifecycle marker + NO composition fetch (nothing live to show). This is the book-service half of the
+	// lifecycle cascade; composition's book_lifecycle column mirror (P3.2) is the composition-side half.
+	if lifecycle != "active" {
+		writeJSON(w, http.StatusOK, bookStructureResponse{
+			BookID:        bookID.String(),
+			BookLifecycle: lifecycle,
+			Parts:         []structurePart{},
+			ActiveWork:    structureWork{},
+			Sources:       structureSources{Parts: "ok", Work: "ok"},
+		})
+		return
+	}
 	// Local chapters — the SSOT + the join key. Active only, and NO cap (book-service owns chapters;
 	// the composition-side 2000 ceiling is exactly the silent truncation this resolver avoids).
 	rows, err := s.pool.Query(ctx,
@@ -154,7 +170,9 @@ func (s *Server) getBookStructure(w http.ResponseWriter, r *http.Request) {
 	parts, partsOK := s.fetchStructureParts(ctx, bookID.String(), bearer)
 	work, workOK := s.fetchStructureWork(ctx, bookID.String(), bearer)
 	sources := structureSources{Parts: sourceStatus(partsOK), Work: sourceStatus(workOK)}
-	writeJSON(w, http.StatusOK, buildBookStructure(bookID.String(), chapters, parts, work, sources))
+	resp := buildBookStructure(bookID.String(), chapters, parts, work, sources)
+	resp.BookLifecycle = lifecycle
+	writeJSON(w, http.StatusOK, resp)
 }
 
 func sourceStatus(ok bool) string {

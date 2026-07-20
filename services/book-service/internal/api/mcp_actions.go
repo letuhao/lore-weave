@@ -889,18 +889,17 @@ func (s *Server) mcpTransitionBook(ctx context.Context, bookID uuid.UUID, target
 		if lifecycle != "active" {
 			return errActionBadState
 		}
-		_, _ = s.pool.Exec(ctx, `UPDATE books SET lifecycle_state='trashed', trashed_at=now(), updated_at=now() WHERE id=$1`, bookID)
-		_, _ = s.pool.Exec(ctx, `UPDATE chapters SET lifecycle_state='trashed', trashed_at=now(), updated_at=now() WHERE book_id=$1 AND lifecycle_state='active'`, bookID)
 	case "purge_pending":
 		if lifecycle != "trashed" {
 			return errActionBadState
 		}
-		_, _ = s.pool.Exec(ctx, `UPDATE books SET lifecycle_state='purge_pending', purge_eligible_at=now(), updated_at=now() WHERE id=$1`, bookID)
-		_, _ = s.pool.Exec(ctx, `UPDATE chapters SET lifecycle_state='purge_pending', purge_eligible_at=now(), updated_at=now() WHERE book_id=$1`, bookID)
 	default:
 		return errActionBadState
 	}
-	return nil
+	// Shared tx + book.lifecycle_changed emit (mirrors the HTTP path). Before this, the agent
+	// purge/trash path wrote with bare swallowed Exec and emitted NOTHING, so an agent-driven trash
+	// never reached composition's book_lifecycle mirror.
+	return s.transitionBookLifecycleTx(ctx, bookID, target)
 }
 
 // mcpTransitionChapter applies a chapter lifecycle transition.
