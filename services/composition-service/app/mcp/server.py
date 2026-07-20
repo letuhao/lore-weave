@@ -149,19 +149,9 @@ async def _resolve_derive(owner_user_id: str, payload: dict, _inputs: dict):
     return await _execute_derive(payload, owner_user_id, works=WorksRepo(get_pool()), book=get_book_client())
 
 
-# The store persists only DATA ({descriptor, owner_user_id, payload}); the resolver is
-# reconstructed by descriptor. PERSISTENT (Postgres `mcp_gate_tasks`) so a propose on one
-# replica + its accept on another (or after a restart/deploy) resolve the same task
-# exactly once (D-MCPTASKS-GO-STORE / T3c-REMAINING). Built with the pool GETTER (the pool
-# doesn't exist yet at import time; PgTaskStore calls get_pool() lazily per op).
-_task_store = PgTaskStore(get_pool, {_DERIVE_DESCRIPTOR: _resolve_derive})
-# tool_prefix="composition" → the input tool is `composition_task_provide_input`
-# (gateway-routable + collision-free across task-capable domains; see the routing note
-# in the spec / SESSION_HANDOFF).
-register_task_endpoints(
-    mcp_server, _task_store, tool_prefix="composition",
-    internal_token=settings.internal_service_token,  # M2: accept-caller ownership check
-)
+# (The durable-gate store + its FULL resolver registry are constructed below —
+# after the confirm-descriptor constants + the sibling `_resolve_*` functions are
+# defined — so every migrated KIND-C tool keys the store by its descriptor.)
 
 # Confirm descriptors for the Tier-W actions (C-CONFIRM domain map → composition).
 _PUBLISH_DESCRIPTOR = "composition.publish"
@@ -194,6 +184,141 @@ _AUTHORING_RUN_GATE_DESCRIPTOR = "composition.authoring_run_gate"
 _AUTHORING_RUN_START_DESCRIPTOR = "composition.authoring_run_start"
 _AUTHORING_RUN_RESUME_DESCRIPTOR = "composition.authoring_run_resume"
 _AUTHORING_RUN_REVERT_ALL_DESCRIPTOR = "composition.authoring_run_revert_all"
+
+
+# ── Durable-gate resolvers for the OTHER migrated KIND-C confirm tools ─────────
+# Each mirrors _resolve_derive: reconstruct the confirm-execute effect from
+# {owner_user_id, payload} (NO closure, NO token — the durable task IS the
+# once-only guard), lazily importing the SAME `_execute_*` the POST /v1/
+# composition/actions/confirm route runs. Fresh per-request clients (pool-backed)
+# so the accept can land on any replica. owner_user_id → UUID to match the HTTP
+# route's `envelope_user` (a real UUID there).
+
+
+async def _resolve_publish(owner_user_id: str, payload: dict, _inputs: dict):
+    """composition.publish ACCEPT effect — canonize the reviewed chapter draft.
+    Mirrors the confirm route's Work-scoped branch: re-fetch the Work by the
+    payload's project_id (a 400 if it vanished since propose), then run the
+    shared `_execute_publish`."""
+    from fastapi import HTTPException
+
+    from app.routers.actions import _execute_publish
+
+    pool = get_pool()
+    try:
+        project_id = UUID(str(payload["project_id"]))
+    except (KeyError, ValueError, TypeError) as exc:
+        raise HTTPException(status_code=400, detail={"code": "action_error"}) from exc
+    work = await WorksRepo(pool).get(project_id)
+    if work is None:
+        raise HTTPException(status_code=400, detail={"code": "action_error"})
+    return await _execute_publish(
+        payload, project_id, work, UUID(str(owner_user_id)),
+        OutlineRepo(pool), get_book_client(),
+    )
+
+
+async def _resolve_generate(owner_user_id: str, payload: dict, _inputs: dict):
+    """composition.generate ACCEPT effect — run the grounded cowrite ENGINE
+    in-process (the SAME `_execute_generate` the confirm route runs). Re-fetch the
+    Work by project_id. Public-key spend attribution is a confirm-ROUTE concern
+    (the non-tasks fallback path lifts the MCP-key headers there); the durable
+    accept carries no MCP-key header context, consistent with derive/publish."""
+    from fastapi import HTTPException
+
+    from app.routers.actions import _execute_generate
+
+    pool = get_pool()
+    try:
+        project_id = UUID(str(payload["project_id"]))
+    except (KeyError, ValueError, TypeError) as exc:
+        raise HTTPException(status_code=400, detail={"code": "action_error"}) from exc
+    work = await WorksRepo(pool).get(project_id)
+    if work is None:
+        raise HTTPException(status_code=400, detail={"code": "action_error"})
+    return await _execute_generate(payload, project_id, work, UUID(str(owner_user_id)))
+
+
+async def _resolve_authoring_run_create(owner_user_id: str, payload: dict, _inputs: dict):
+    """composition.authoring_run_create ACCEPT effect (book-scoped, no ledger —
+    the service's guarded OCC transitions make a re-confirm a clean no-op/409)."""
+    from app.routers.actions import _execute_authoring_run_create
+
+    book_id = UUID(str(payload["book_id"]))
+    return await _execute_authoring_run_create(payload, book_id, UUID(str(owner_user_id)))
+
+
+async def _resolve_authoring_run_gate(owner_user_id: str, payload: dict, _inputs: dict):
+    """composition.authoring_run_gate ACCEPT effect — needs the book client to
+    resolve the chapter-id set (a headless service bearer is minted inside the
+    effect for the MCP path)."""
+    from app.routers.actions import _execute_authoring_run_gate
+
+    book_id = UUID(str(payload["book_id"]))
+    return await _execute_authoring_run_gate(
+        payload, book_id, UUID(str(owner_user_id)), get_book_client(),
+    )
+
+
+async def _resolve_authoring_run_start(owner_user_id: str, payload: dict, _inputs: dict):
+    """composition.authoring_run_start ACCEPT effect (gated → running)."""
+    from app.routers.actions import _execute_authoring_run_start
+
+    book_id = UUID(str(payload["book_id"]))
+    return await _execute_authoring_run_start(payload, book_id, UUID(str(owner_user_id)))
+
+
+async def _resolve_authoring_run_resume(owner_user_id: str, payload: dict, _inputs: dict):
+    """composition.authoring_run_resume ACCEPT effect (paused → running)."""
+    from app.routers.actions import _execute_authoring_run_resume
+
+    book_id = UUID(str(payload["book_id"]))
+    return await _execute_authoring_run_resume(payload, book_id, UUID(str(owner_user_id)))
+
+
+async def _resolve_authoring_run_revert_all(owner_user_id: str, payload: dict, _inputs: dict):
+    """composition.authoring_run_revert_all ACCEPT effect — needs the book client
+    for the per-chapter restore (headless bearer minted inside the effect)."""
+    from app.routers.actions import _execute_authoring_run_revert_all
+
+    book_id = UUID(str(payload["book_id"]))
+    return await _execute_authoring_run_revert_all(
+        payload, book_id, UUID(str(owner_user_id)), get_book_client(),
+    )
+
+
+# The store persists only DATA ({descriptor, owner_user_id, payload}); resolvers
+# are reconstructed by descriptor. PERSISTENT (Postgres `mcp_gate_tasks`) so a
+# propose on one replica + its accept on another (or after a restart/deploy)
+# resolve the same task exactly once (D-MCPTASKS-GO-STORE / T3c-REMAINING). Built
+# with the pool GETTER (the pool doesn't exist yet at import time; PgTaskStore
+# calls get_pool() lazily per op).
+#
+# NOT registered here — the ledger-guarded KIND-C confirms (decompile, motif_adopt,
+# motif_mine, arc_import, conformance_run): their `_execute_*` require the confirm
+# TOKEN (the consumed-token replay ledger; mine/import/conformance additionally key
+# the usage-billing reserve on the token jti via `_billing_job_id(token)`), which a
+# durable resolver has no access to. Reusing them cleanly needs an actions.py
+# refactor to split the ledger/billing key from the effect — deferred; they keep
+# minting a confirm_token (the durable task's own once-only resolve would replace
+# the ledger, but the billing-key idempotency is a real design change on spend).
+_task_store = PgTaskStore(get_pool, {
+    _DERIVE_DESCRIPTOR: _resolve_derive,
+    _PUBLISH_DESCRIPTOR: _resolve_publish,
+    _GENERATE_DESCRIPTOR: _resolve_generate,
+    _AUTHORING_RUN_CREATE_DESCRIPTOR: _resolve_authoring_run_create,
+    _AUTHORING_RUN_GATE_DESCRIPTOR: _resolve_authoring_run_gate,
+    _AUTHORING_RUN_START_DESCRIPTOR: _resolve_authoring_run_start,
+    _AUTHORING_RUN_RESUME_DESCRIPTOR: _resolve_authoring_run_resume,
+    _AUTHORING_RUN_REVERT_ALL_DESCRIPTOR: _resolve_authoring_run_revert_all,
+})
+# tool_prefix="composition" → the input tool is `composition_task_provide_input`
+# (gateway-routable + collision-free across task-capable domains; see the routing
+# note in the spec / SESSION_HANDOFF).
+register_task_endpoints(
+    mcp_server, _task_store, tool_prefix="composition",
+    internal_token=settings.internal_service_token,  # M2: accept-caller ownership check
+)
 
 # The motif kinds + the closed enums the LLM may pass (R1.4 schema). Defined here so
 # the arg models below and the tests share one source.
@@ -2129,16 +2254,30 @@ async def composition_publish(
         "chapter_id": chapter_id,
         "book_id": str(meta.book_id),
     }
-    confirm_token = mint_confirm_token(
-        settings.confirm_token_signing_secret,
-        tc.user_id, chap, _PUBLISH_DESCRIPTOR, payload,
+    _title = "Publish chapter (canonize the reviewed draft)"
+
+    def _confirm_fallback():
+        confirm_token = mint_confirm_token(
+            settings.confirm_token_signing_secret,
+            tc.user_id, chap, _PUBLISH_DESCRIPTOR, payload,
+        )
+        return {
+            "confirm_token": confirm_token,
+            "descriptor": _PUBLISH_DESCRIPTOR,
+            "title": _title,
+            "domain": "composition",
+        }
+
+    # Durable ext-tasks gate for a tasks-capable client, else today's confirm_token
+    # (a non-tasks client is never handed a task it can't drive).
+    return await gate_or_confirm(
+        ctx, _task_store,
+        descriptor=_PUBLISH_DESCRIPTOR,
+        owner_user_id=tc.user_id,
+        payload=payload,
+        input_requests={"title": _title, "descriptor": _PUBLISH_DESCRIPTOR, "domain": "composition"},
+        confirm_fallback=_confirm_fallback,
     )
-    return {
-        "confirm_token": confirm_token,
-        "descriptor": _PUBLISH_DESCRIPTOR,
-        "title": "Publish chapter (canonize the reviewed draft)",
-        "domain": "composition",
-    }
 
 
 @mcp_server.tool(
@@ -2265,20 +2404,31 @@ async def composition_generate(ctx: MCPContext, args: _GenerateArgs) -> dict:
         "max_output_tokens": args.max_output_tokens,
         "reasoning": args.reasoning,
     }
-    confirm_token = mint_confirm_token(
-        settings.confirm_token_signing_secret,
-        tc.user_id, UUID(target_id), _GENERATE_DESCRIPTOR, payload,
-    )
     summary = (f"generate a {target_kind} with the cowrite engine "
                f"(model {args.model_source}/{args.model_ref})")
-    return {
-        "confirm_token": confirm_token,
-        "descriptor": _GENERATE_DESCRIPTOR,
-        "title": summary,
-        "domain": "composition",
-        "requires": "human confirmation via the review surface — this spends LLM "
-                    "tokens; nothing is generated until confirmed",
-    }
+
+    def _confirm_fallback():
+        confirm_token = mint_confirm_token(
+            settings.confirm_token_signing_secret,
+            tc.user_id, UUID(target_id), _GENERATE_DESCRIPTOR, payload,
+        )
+        return {
+            "confirm_token": confirm_token,
+            "descriptor": _GENERATE_DESCRIPTOR,
+            "title": summary,
+            "domain": "composition",
+            "requires": "human confirmation via the review surface — this spends LLM "
+                        "tokens; nothing is generated until confirmed",
+        }
+
+    return await gate_or_confirm(
+        ctx, _task_store,
+        descriptor=_GENERATE_DESCRIPTOR,
+        owner_user_id=tc.user_id,
+        payload=payload,
+        input_requests={"title": summary, "descriptor": _GENERATE_DESCRIPTOR, "domain": "composition"},
+        confirm_fallback=_confirm_fallback,
+    )
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -2493,23 +2643,35 @@ async def composition_authoring_run_create(
         "pause_after_each_unit": args.pause_after_each_unit,
         "params": args.params,
     }
-    confirm_token = mint_confirm_token(
-        settings.confirm_token_signing_secret,
-        tc.user_id, book_id, _AUTHORING_RUN_CREATE_DESCRIPTOR, payload,
+    _title = (
+        f"Create a level-{args.level} autonomous authoring run "
+        f"(budget ${args.budget_usd}, {len(args.scope)} chapter(s), "
+        f"pause_after_each_unit={args.pause_after_each_unit})"
     )
-    return {
-        "confirm_token": confirm_token,
-        "descriptor": _AUTHORING_RUN_CREATE_DESCRIPTOR,
-        "title": (
-            f"Create a level-{args.level} autonomous authoring run "
-            f"(budget ${args.budget_usd}, {len(args.scope)} chapter(s), "
-            f"pause_after_each_unit={args.pause_after_each_unit})"
-        ),
-        "domain": "composition",
-        "requires": "human confirmation via the review surface — no chapters are "
-                    "drafted at create time, but the run holds the book's active-run "
-                    "slot until closed",
-    }
+
+    def _confirm_fallback():
+        confirm_token = mint_confirm_token(
+            settings.confirm_token_signing_secret,
+            tc.user_id, book_id, _AUTHORING_RUN_CREATE_DESCRIPTOR, payload,
+        )
+        return {
+            "confirm_token": confirm_token,
+            "descriptor": _AUTHORING_RUN_CREATE_DESCRIPTOR,
+            "title": _title,
+            "domain": "composition",
+            "requires": "human confirmation via the review surface — no chapters are "
+                        "drafted at create time, but the run holds the book's active-run "
+                        "slot until closed",
+        }
+
+    return await gate_or_confirm(
+        ctx, _task_store,
+        descriptor=_AUTHORING_RUN_CREATE_DESCRIPTOR,
+        owner_user_id=tc.user_id,
+        payload=payload,
+        input_requests={"title": _title, "descriptor": _AUTHORING_RUN_CREATE_DESCRIPTOR, "domain": "composition"},
+        confirm_fallback=_confirm_fallback,
+    )
 
 
 class _AuthoringRunIdArgs(TolerantArgs):
@@ -2542,17 +2704,29 @@ async def composition_authoring_run_gate(ctx: MCPContext, args: _AuthoringRunIdA
     svc = await get_authoring_run_service()
     await _require_own_run(tc, svc, book_id, run_id)
     payload = {"book_id": args.book_id, "run_id": args.run_id}
-    confirm_token = mint_confirm_token(
-        settings.confirm_token_signing_secret,
-        tc.user_id, run_id, _AUTHORING_RUN_GATE_DESCRIPTOR, payload,
+    _title = "Run the start-gate check (draft → gated)"
+
+    def _confirm_fallback():
+        confirm_token = mint_confirm_token(
+            settings.confirm_token_signing_secret,
+            tc.user_id, run_id, _AUTHORING_RUN_GATE_DESCRIPTOR, payload,
+        )
+        return {
+            "confirm_token": confirm_token,
+            "descriptor": _AUTHORING_RUN_GATE_DESCRIPTOR,
+            "title": _title,
+            "domain": "composition",
+            "requires": "human confirmation — a failing gate check is reported at confirm time",
+        }
+
+    return await gate_or_confirm(
+        ctx, _task_store,
+        descriptor=_AUTHORING_RUN_GATE_DESCRIPTOR,
+        owner_user_id=tc.user_id,
+        payload=payload,
+        input_requests={"title": _title, "descriptor": _AUTHORING_RUN_GATE_DESCRIPTOR, "domain": "composition"},
+        confirm_fallback=_confirm_fallback,
     )
-    return {
-        "confirm_token": confirm_token,
-        "descriptor": _AUTHORING_RUN_GATE_DESCRIPTOR,
-        "title": "Run the start-gate check (draft → gated)",
-        "domain": "composition",
-        "requires": "human confirmation — a failing gate check is reported at confirm time",
-    }
 
 
 class _AuthoringRunStartArgs(TolerantArgs):
@@ -2591,18 +2765,30 @@ async def composition_authoring_run_start(ctx: MCPContext, args: _AuthoringRunSt
     payload: dict[str, Any] = {"book_id": args.book_id, "run_id": args.run_id}
     if args.pause_after_each_unit is not None:
         payload["pause_after_each_unit"] = args.pause_after_each_unit
-    confirm_token = mint_confirm_token(
-        settings.confirm_token_signing_secret,
-        tc.user_id, run_id, _AUTHORING_RUN_START_DESCRIPTOR, payload,
+    _title = "Start the authoring run (spends LLM tokens)"
+
+    def _confirm_fallback():
+        confirm_token = mint_confirm_token(
+            settings.confirm_token_signing_secret,
+            tc.user_id, run_id, _AUTHORING_RUN_START_DESCRIPTOR, payload,
+        )
+        return {
+            "confirm_token": confirm_token,
+            "descriptor": _AUTHORING_RUN_START_DESCRIPTOR,
+            "title": _title,
+            "domain": "composition",
+            "requires": "human confirmation via the review surface — this spends LLM "
+                        "tokens; nothing drafts until confirmed",
+        }
+
+    return await gate_or_confirm(
+        ctx, _task_store,
+        descriptor=_AUTHORING_RUN_START_DESCRIPTOR,
+        owner_user_id=tc.user_id,
+        payload=payload,
+        input_requests={"title": _title, "descriptor": _AUTHORING_RUN_START_DESCRIPTOR, "domain": "composition"},
+        confirm_fallback=_confirm_fallback,
     )
-    return {
-        "confirm_token": confirm_token,
-        "descriptor": _AUTHORING_RUN_START_DESCRIPTOR,
-        "title": "Start the authoring run (spends LLM tokens)",
-        "domain": "composition",
-        "requires": "human confirmation via the review surface — this spends LLM "
-                    "tokens; nothing drafts until confirmed",
-    }
 
 
 class _AuthoringRunResumeArgs(TolerantArgs):
@@ -2639,18 +2825,30 @@ async def composition_authoring_run_resume(ctx: MCPContext, args: _AuthoringRunR
     payload: dict[str, Any] = {"book_id": args.book_id, "run_id": args.run_id}
     if args.pause_after_each_unit is not None:
         payload["pause_after_each_unit"] = args.pause_after_each_unit
-    confirm_token = mint_confirm_token(
-        settings.confirm_token_signing_secret,
-        tc.user_id, run_id, _AUTHORING_RUN_RESUME_DESCRIPTOR, payload,
+    _title = "Resume the authoring run (spends more LLM tokens)"
+
+    def _confirm_fallback():
+        confirm_token = mint_confirm_token(
+            settings.confirm_token_signing_secret,
+            tc.user_id, run_id, _AUTHORING_RUN_RESUME_DESCRIPTOR, payload,
+        )
+        return {
+            "confirm_token": confirm_token,
+            "descriptor": _AUTHORING_RUN_RESUME_DESCRIPTOR,
+            "title": _title,
+            "domain": "composition",
+            "requires": "human confirmation via the review surface — this spends more "
+                        "LLM tokens; nothing resumes until confirmed",
+        }
+
+    return await gate_or_confirm(
+        ctx, _task_store,
+        descriptor=_AUTHORING_RUN_RESUME_DESCRIPTOR,
+        owner_user_id=tc.user_id,
+        payload=payload,
+        input_requests={"title": _title, "descriptor": _AUTHORING_RUN_RESUME_DESCRIPTOR, "domain": "composition"},
+        confirm_fallback=_confirm_fallback,
     )
-    return {
-        "confirm_token": confirm_token,
-        "descriptor": _AUTHORING_RUN_RESUME_DESCRIPTOR,
-        "title": "Resume the authoring run (spends more LLM tokens)",
-        "domain": "composition",
-        "requires": "human confirmation via the review surface — this spends more "
-                    "LLM tokens; nothing resumes until confirmed",
-    }
 
 
 # ── Tier A — direct writes (pause/close/accept/reject: no new spend, no
@@ -2869,18 +3067,30 @@ async def composition_authoring_run_revert_all(ctx: MCPContext, args: _Authoring
     svc = await get_authoring_run_service()
     await _require_own_run(tc, svc, book_id, run_id)
     payload = {"book_id": args.book_id, "run_id": args.run_id}
-    confirm_token = mint_confirm_token(
-        settings.confirm_token_signing_secret,
-        tc.user_id, run_id, _AUTHORING_RUN_REVERT_ALL_DESCRIPTOR, payload,
+    _title = "Revert ALL drafted/accepted chapters in this run (destructive)"
+
+    def _confirm_fallback():
+        confirm_token = mint_confirm_token(
+            settings.confirm_token_signing_secret,
+            tc.user_id, run_id, _AUTHORING_RUN_REVERT_ALL_DESCRIPTOR, payload,
+        )
+        return {
+            "confirm_token": confirm_token,
+            "descriptor": _AUTHORING_RUN_REVERT_ALL_DESCRIPTOR,
+            "title": _title,
+            "domain": "composition",
+            "requires": "human confirmation — this is destructive and irreversible "
+                        "from this surface; nothing reverts until confirmed",
+        }
+
+    return await gate_or_confirm(
+        ctx, _task_store,
+        descriptor=_AUTHORING_RUN_REVERT_ALL_DESCRIPTOR,
+        owner_user_id=tc.user_id,
+        payload=payload,
+        input_requests={"title": _title, "descriptor": _AUTHORING_RUN_REVERT_ALL_DESCRIPTOR, "domain": "composition"},
+        confirm_fallback=_confirm_fallback,
     )
-    return {
-        "confirm_token": confirm_token,
-        "descriptor": _AUTHORING_RUN_REVERT_ALL_DESCRIPTOR,
-        "title": "Revert ALL drafted/accepted chapters in this run (destructive)",
-        "domain": "composition",
-        "requires": "human confirmation — this is destructive and irreversible "
-                    "from this surface; nothing reverts until confirmed",
-    }
 
 
 # ══════════════════════════════════════════════════════════════════════════════
