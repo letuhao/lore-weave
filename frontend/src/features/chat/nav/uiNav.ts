@@ -23,20 +23,22 @@ export interface UiDirective {
 }
 
 /** Extract a ui directive from a tool-call RESULT, or null if it isn't one. The
- * result may be the directive object itself (structuredContent) or carry it under a
- * `structuredContent` key, depending on how the wire serialized it — accept both. */
+ * shape the FE sees is chat-service's tool-result envelope: `runChatStream` JSON-parses
+ * the TOOL_CALL_RESULT content into `ToolCallRecord.result`, so a ui_* call arrives as
+ * `{ ok: true, result: { type: 'io.loreweave/ui-directive', tool, args } }`. Accept that
+ * envelope AND the bare directive AND a `structuredContent` wrapper (defensive across
+ * wire shapes — the envelope is the one the live loop actually uses; verified in-browser). */
 export function uiDirectiveFromResult(result: unknown): UiDirective | null {
   const o = result as Record<string, unknown> | null | undefined;
-  const cand =
-    o && typeof o === 'object' && o.type === UI_DIRECTIVE_TYPE
-      ? o
-      : o && typeof (o as { structuredContent?: unknown }).structuredContent === 'object'
-        ? ((o as { structuredContent?: Record<string, unknown> }).structuredContent as Record<string, unknown>)
-        : null;
-  if (cand && cand.type === UI_DIRECTIVE_TYPE && typeof cand.tool === 'string') {
-    return { type: UI_DIRECTIVE_TYPE, tool: cand.tool as string, args: (cand.args as Record<string, unknown>) ?? {} };
-  }
-  return null;
+  if (!o || typeof o !== 'object') return null;
+  const asDir = (c: unknown): UiDirective | null => {
+    const d = c as Record<string, unknown> | null | undefined;
+    if (d && typeof d === 'object' && d.type === UI_DIRECTIVE_TYPE && typeof d.tool === 'string') {
+      return { type: UI_DIRECTIVE_TYPE, tool: d.tool as string, args: (d.args as Record<string, unknown>) ?? {} };
+    }
+    return null;
+  };
+  return asDir(o) ?? asDir(o.result) ?? asDir(o.structuredContent);
 }
 
 /** The set of `ui_*` tool names this executor handles. */

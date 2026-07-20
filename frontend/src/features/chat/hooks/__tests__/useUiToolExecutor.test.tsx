@@ -109,9 +109,13 @@ describe('useUiToolExecutor', () => {
 
   // Phase 3 cutover — the DIRECTIVE path: ai-gateway ran the ui_* tool and returned an
   // io.loreweave/ui-directive RESULT. The FE acts on it with NO suspend to resolve.
+  // IMPORTANT: the result carries chat-service's REAL {ok, result: <directive>} envelope
+  // (runChatStream parses the whole TOOL_CALL_RESULT content into `result`) — using the
+  // bare directive here once hid a live bug the browser E2E caught (the directive was
+  // nested under `.result`, so the un-unwrapped detector never fired).
   const directiveRecord: ToolCallRecord = {
     tool: 'ui_navigate', ok: true, pending: false, toolCallId: 'd1',
-    result: { type: 'io.loreweave/ui-directive', tool: 'ui_navigate', args: { path: '/books/b1/glossary' } },
+    result: { ok: true, result: { type: 'io.loreweave/ui-directive', tool: 'ui_navigate', args: { path: '/books/b1/glossary' } } },
   };
 
   it('acts on a ui-directive RESULT once, WITHOUT resolving (no suspend)', () => {
@@ -126,7 +130,7 @@ describe('useUiToolExecutor', () => {
   it('directive with a disallowed path does not navigate (and still never resolves)', () => {
     streamMessages = [msgWith({
       ...directiveRecord, toolCallId: 'd2',
-      result: { type: 'io.loreweave/ui-directive', tool: 'ui_navigate', args: { path: '/evil' } },
+      result: { ok: true, result: { type: 'io.loreweave/ui-directive', tool: 'ui_navigate', args: { path: '/evil' } } },
     })];
     renderHook(() => useUiToolExecutor());
     expect(navigate).not.toHaveBeenCalled();
@@ -142,7 +146,7 @@ describe('useUiToolExecutor', () => {
     );
     streamMessages = [msgWith({
       tool: 'ui_open_studio_panel', ok: true, pending: false, toolCallId: 'd3',
-      result: { type: 'io.loreweave/ui-directive', tool: 'ui_open_studio_panel', args: { panel_id: 'compose' } },
+      result: { ok: true, result: { type: 'io.loreweave/ui-directive', tool: 'ui_open_studio_panel', args: { panel_id: 'compose' } } },
     })];
     renderHook(() => useUiToolExecutor(), { wrapper });
     expect(effect).toHaveBeenCalledTimes(1);

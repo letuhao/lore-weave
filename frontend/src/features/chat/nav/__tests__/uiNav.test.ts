@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { resolveUiTool, isUiTool } from '../uiNav';
+import { resolveUiTool, isUiTool, uiDirectiveFromResult } from '../uiNav';
 
 // MCP fan-out (C-NAV) — the pure nav resolver: tool name + args → {path, result}.
 // The `result` flag always reflects whether navigation was actually performed so
@@ -110,5 +110,27 @@ describe('resolveUiTool', () => {
     expect(r.path).toBeNull();
     expect(r.result).toMatchObject({ shown: false });
     expect(r.result.error).toBeTruthy();
+  });
+});
+
+describe('uiDirectiveFromResult', () => {
+  const dir = { type: 'io.loreweave/ui-directive', tool: 'ui_navigate', args: { path: '/settings' } };
+
+  it('unwraps the REAL chat-service {ok, result: <directive>} envelope (the live-loop shape)', () => {
+    // This is the exact TOOL_CALL_RESULT content shape the browser E2E revealed; a
+    // detector that only checked the top level silently no-op'd in the live app.
+    expect(uiDirectiveFromResult({ ok: true, result: dir })).toEqual(dir);
+  });
+
+  it('accepts a bare directive and a structuredContent wrapper too', () => {
+    expect(uiDirectiveFromResult(dir)).toEqual(dir);
+    expect(uiDirectiveFromResult({ structuredContent: dir })).toEqual(dir);
+  });
+
+  it('returns null for a non-directive result / junk', () => {
+    expect(uiDirectiveFromResult({ ok: true, result: { books: [] } })).toBeNull();
+    expect(uiDirectiveFromResult({ navigated: true })).toBeNull();
+    expect(uiDirectiveFromResult(null)).toBeNull();
+    expect(uiDirectiveFromResult('nope')).toBeNull();
   });
 });
