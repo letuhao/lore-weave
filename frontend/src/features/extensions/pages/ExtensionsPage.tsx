@@ -52,20 +52,22 @@ export function ExtensionsPage() {
 function ExtensionsPageInner() {
   const { t } = useTranslation('extensions');
   const [tab, setTab] = useState<Tab>('skills');
-  const usage = useUsage();
+  const { usage, unavailable } = useUsage();
   const isAdmin = useIsAdmin();
   const { bookId } = useExtensionScope();
   return (
     <div className="mx-auto max-w-4xl p-6" data-testid="extensions-page">
       <div className="mb-4 flex items-center justify-between">
         <h1 className="text-lg font-semibold">{t('title')}</h1>
-        {usage && (
+        {usage ? (
           <div className="flex gap-4 text-xs text-muted-foreground" data-testid="extensions-quota">
             <span>{t('quota.skills')} <b className="text-foreground">{usage.skills.used}/{usage.skills.limit}</b></span>
             <span>{t('quota.mcp')} <b className="text-foreground">{usage.mcp_servers.used}/{usage.mcp_servers.limit}</b></span>
             {usage.proposals_pending > 0 && <span>{t('quota.proposals')} <b className="text-foreground">{usage.proposals_pending}</b></span>}
           </div>
-        )}
+        ) : unavailable ? (
+          <div className="text-xs text-muted-foreground" data-testid="extensions-quota-unavailable">{t('quota.unavailable')}</div>
+        ) : null}
       </div>
       <ScopeBar />
       <div className="mb-4 flex gap-1 text-sm">

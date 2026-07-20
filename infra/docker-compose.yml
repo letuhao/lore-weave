@@ -14,6 +14,7 @@ x-build-labels: &build-labels
 
 services:
   postgres:
+    restart: unless-stopped
     image: postgres:18-alpine
     environment:
       POSTGRES_USER: loreweave
@@ -36,6 +37,7 @@ services:
       start_period: 10s
 
   redis:
+    restart: unless-stopped
     image: valkey/valkey:8-alpine
     ports:
       - "6399:6379"
@@ -48,6 +50,7 @@ services:
       retries: 10
 
   minio:
+    restart: unless-stopped
     image: minio/minio:RELEASE.2024-08-03T04-33-23Z
     command: server /data --console-address ":9001"
     environment:
@@ -61,6 +64,7 @@ services:
 
   # Mock audio service (TTS/STT) — optional, activate with: docker compose --profile audio up
   mock-audio-service:
+    restart: unless-stopped
     build:
       context: ../infra/mock-audio-service
       dockerfile: Dockerfile
@@ -76,12 +80,14 @@ services:
       retries: 3
 
   mailhog:
+    restart: unless-stopped
     image: mailhog/mailhog:latest
     ports:
       - "1148:1025"
       - "8148:8025"
 
   auth-service:
+    restart: unless-stopped
     # Phase 6c — repo-root build context so the Dockerfile can COPY
     # sdks/go/observability for the go.mod replace directive.
     build:
@@ -149,6 +155,7 @@ services:
       - "8204:8081"
 
   book-service:
+    restart: unless-stopped
     # Phase 5e-β.1 — repo-root build context so the Go SDK at
     # sdks/go/llmgw is reachable for the go.mod replace directive.
     build:
@@ -323,6 +330,7 @@ services:
     restart: unless-stopped
 
   sharing-service:
+    restart: unless-stopped
     # Phase 6c — repo-root build context so the Dockerfile can COPY
     # sdks/go/observability for the go.mod replace directive.
     build:
@@ -354,6 +362,7 @@ services:
   # WS-3.1 — the per-user scheduler (the platform's one true "time trigger" hole). Owns the clock;
   # claims due scheduled_agent_runs rows and posts eod_distill to the chat trigger (WS-3.2/WS-3.0).
   scheduler-service:
+    restart: unless-stopped
     build:
       context: ..
       dockerfile: services/scheduler-service/Dockerfile
@@ -384,6 +393,7 @@ services:
       - "8228:8095"
 
   catalog-service:
+    restart: unless-stopped
     # Phase 6c — repo-root build context so the Dockerfile can COPY
     # sdks/go/observability for the go.mod replace directive.
     build:
@@ -415,6 +425,7 @@ services:
       - "8207:8084"
 
   agent-registry-service:
+    restart: unless-stopped
     # Agent Extensibility Registry (docs/specs/2026-07-02-agent-extensibility-registry.md).
     # Repo-root build context so the Dockerfile can COPY sdks/go/observability
     # for the go.mod replace directive.
@@ -452,6 +463,7 @@ services:
       - "8230:8099"
 
   provider-registry-service:
+    restart: unless-stopped
     # Phase 6c — repo-root build context so the Dockerfile can COPY
     # sdks/go/observability for the go.mod replace directive.
     build:
@@ -549,6 +561,7 @@ services:
       - "8208:8085"
 
   usage-billing-service:
+    restart: unless-stopped
     # Phase 6c — repo-root build context so the Dockerfile can COPY
     # sdks/go/observability for the go.mod replace directive.
     build:
@@ -605,6 +618,7 @@ services:
       - "8209:8086"
 
   rabbitmq:
+    restart: unless-stopped
     image: rabbitmq:3.13-management-alpine
     environment:
       RABBITMQ_DEFAULT_USER: loreweave
@@ -621,6 +635,7 @@ services:
       retries: 10
 
   translation-service:
+    restart: unless-stopped
     # Phase 4c-α: context bumped to repo root so the Dockerfile can
     # COPY sdks/python alongside the service code (mirrors knowledge-
     # service Phase 4a-α + worker-ai Phase 4b-γ pattern).
@@ -690,6 +705,7 @@ services:
       - "8210:8087"
 
   campaign-service:
+    restart: unless-stopped
     # Auto-Draft Factory S1 — saga orchestrator + per-chapter projection.
     # Context = repo root so the Dockerfile can COPY sdks/python (loreweave_obs)
     # alongside the service code (same pattern as translation/knowledge).
@@ -730,6 +746,7 @@ services:
       - "8223:8095"
 
   jobs-service:
+    restart: unless-stopped
     # Unified Job Control Plane P2 — central job projection + read API + SSE.
     # Consumes loreweave:events:jobs (outbox-relayed by worker-infra) into a
     # unified job_projection table; serves /v1/jobs (list/detail/SSE). Context =
@@ -813,6 +830,7 @@ services:
         condition: service_healthy
 
   glossary-service:
+    restart: unless-stopped
     # Phase 6c — repo-root build context so the Dockerfile can COPY
     # sdks/go/observability for the go.mod replace directive.
     build:
@@ -869,6 +887,7 @@ services:
       - "8211:8088"
 
   video-gen-service:
+    restart: unless-stopped
     build:
       # Phase 5e-α: context bumped to repo root so Dockerfile can COPY
       # sdks/python alongside the service code. Mirrors chat-service +
@@ -944,6 +963,7 @@ services:
     restart: unless-stopped
 
   chat-service:
+    restart: unless-stopped
     build:
       # Phase 1c-ii: build context shifted to repo root so the Dockerfile
       # can COPY both `services/chat-service/...` AND `sdks/python` (the
@@ -1028,6 +1048,7 @@ services:
   # ai-gateway P0 — internal MCP federation gateway. MCP server upstream
   # (chat, composition) + MCP client downstream federating knowledge's /mcp.
   ai-gateway:
+    restart: unless-stopped
     build:
       context: ../services/ai-gateway
       dockerfile: Dockerfile
@@ -1074,6 +1095,7 @@ services:
   # ONLY (never /mcp/admin). OFF by default (PUBLIC_MCP_ENABLED). Reached externally
   # via api-gateway-bff /mcp. P0: envelope hop only (static test credential).
   mcp-public-gateway:
+    restart: unless-stopped
     build:
       context: ../services/mcp-public-gateway
       dockerfile: Dockerfile
@@ -1530,6 +1552,7 @@ services:
         max-file: "5"
 
   statistics-service:
+    restart: unless-stopped
     # Phase 6c — repo-root build context so the Dockerfile can COPY
     # sdks/go/observability for the go.mod replace directive.
     build:
@@ -1564,6 +1587,7 @@ services:
       - "8214:8089"
 
   notification-service:
+    restart: unless-stopped
     # Phase 6c — repo-root build context so the Dockerfile can COPY
     # sdks/go/observability for the go.mod replace directive.
     build:
@@ -1595,6 +1619,7 @@ services:
       - "8215:8091"
 
   api-gateway-bff:
+    restart: unless-stopped
     build:
       context: ../services/api-gateway-bff
       dockerfile: Dockerfile
@@ -1737,6 +1762,7 @@ services:
       start_period: 40s
 
   pandoc-server:
+    restart: unless-stopped
     image: pandoc/core:latest
     entrypoint: ["pandoc-server"]
     ports:
@@ -1748,6 +1774,7 @@ services:
       retries: 5
 
   frontend:
+    restart: unless-stopped
     build:
       context: ../frontend
       dockerfile: Dockerfile
@@ -1797,6 +1824,7 @@ services:
   # require an admin session (auth-service /v1/admin/session — needs admin
   # issuance enabled + the caller to be an admin_principal).
   cms-frontend:
+    restart: unless-stopped
     build:
       context: ../cms-frontend
       dockerfile: Dockerfile
@@ -1821,6 +1849,7 @@ services:
   # (empty URI skips the driver) and the neo4j container can be left
   # stopped.
   neo4j:
+    restart: unless-stopped
     image: neo4j:2026.03-community
     environment:
       NEO4J_AUTH: neo4j/${NEO4J_PASSWORD:-loreweave_dev_neo4j}
@@ -1865,6 +1894,7 @@ services:
   # tracer while OTEL_EXPORTER_OTLP_ENDPOINT is unset, so they boot fine
   # with the profile off — no service depends_on the collector.
   otel-collector:
+    restart: unless-stopped
     # Pin a concrete release tag, never `latest`.
     image: otel/opentelemetry-collector-contrib:0.123.0
     command: ["--config=/etc/otelcol/config.yaml"]
@@ -1880,6 +1910,7 @@ services:
       - full
 
   tempo:
+    restart: unless-stopped
     image: grafana/tempo:2.6.1
     command: ["-config.file=/etc/tempo/tempo.yaml"]
     volumes:
@@ -1890,6 +1921,7 @@ services:
       - full
 
   grafana:
+    restart: unless-stopped
     image: grafana/grafana:11.4.0
     environment:
       # Dev-only: anonymous admin, no login form. NOT for any shared env.

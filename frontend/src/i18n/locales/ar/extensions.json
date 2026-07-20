@@ -12,6 +12,7 @@
     "ingest": "مصادر السجل"
   },
   "quota": {
+    "unavailable": "الاستخدام غير متاح",
     "skills": "المهارات",
     "mcp": "خوادم MCP",
     "proposals": "المقترحات"

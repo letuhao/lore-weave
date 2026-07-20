@@ -1,6 +1,7 @@
 // Controller hook (MVC) — owns skills + proposals state & logic, no JSX.
 import { useCallback, useEffect, useState } from 'react';
 import { useAuth } from '@/auth';
+import { agentRegistryHealth } from '@/lib/agentRegistryHealth';
 import { extensionsApi } from '../api';
 import { useExtensionScope } from '../context/ExtensionScope';
 import type { Skill, Proposal, UsageCounters } from '../types';
@@ -110,18 +111,34 @@ export function useProposals() {
   return { proposals, total, status, setStatus, loading, error, refresh, approve, reject };
 }
 
-export function useUsage() {
+export function useUsage(): { usage: UsageCounters | null; unavailable: boolean } {
   const { accessToken } = useAuth();
   const [usage, setUsage] = useState<UsageCounters | null>(null);
+  const [unavailable, setUnavailable] = useState(false);
   useEffect(() => {
     if (!accessToken) return;
+    // F12 — if the registry just failed, skip the slow 504 round-trip on this
+    // (re)mount and surface "unavailable" instead of re-hammering a down service.
+    if (agentRegistryHealth.likelyDown()) {
+      setUnavailable(true);
+      return;
+    }
     let cancelled = false;
     void extensionsApi.usage(accessToken).then((u) => {
-      if (!cancelled) setUsage(u);
-    }).catch(() => undefined);
+      if (!cancelled) {
+        setUsage(u);
+        setUnavailable(false);
+        agentRegistryHealth.noteUp();
+      }
+    }).catch(() => {
+      if (!cancelled) {
+        setUnavailable(true);
+        agentRegistryHealth.noteDown();
+      }
+    });
     return () => {
       cancelled = true;
     };
   }, [accessToken]);
-  return usage;
+  return { usage, unavailable };
 }

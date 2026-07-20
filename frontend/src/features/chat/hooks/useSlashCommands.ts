@@ -6,6 +6,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { apiJson } from '@/api';
 import { useAuth } from '@/auth';
+import { agentRegistryHealth } from '@/lib/agentRegistryHealth';
 
 export interface SlashCommandItem {
   command_id: string;
@@ -23,6 +24,13 @@ export function useSlashCommands() {
 
   useEffect(() => {
     if (!accessToken) return;
+    // F12 — if the registry just failed, skip the slow 504 round-trip on this
+    // (re)mount. The built-in template picker still works, so degrading silently
+    // to "no custom commands" is fine here.
+    if (agentRegistryHealth.likelyDown()) {
+      setCommands([]);
+      return;
+    }
     let live = true;
     (async () => {
       try {
@@ -31,9 +39,13 @@ export function useSlashCommands() {
           setCommands(
             (r.items ?? []).map((c) => ({ command_id: c.command_id, name: c.name, description: c.description ?? '' })),
           );
+          agentRegistryHealth.noteUp();
         }
       } catch {
-        if (live) setCommands([]); // degrade — the built-in template picker still works
+        if (live) {
+          setCommands([]); // degrade — the built-in template picker still works
+          agentRegistryHealth.noteDown();
+        }
       }
     })();
     return () => { live = false; };

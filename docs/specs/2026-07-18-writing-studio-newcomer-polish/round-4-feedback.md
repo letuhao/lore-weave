@@ -43,6 +43,35 @@ Its last log is only `"listening" addr=":8099"` — it came up, then exited 255.
 missing env?) Restart-and-watch the crash. Separately: the FE should degrade gracefully — a down
 agent-registry should not flood the console; usage/commands should show an unobtrusive "unavailable".
 
+**RESOLVED (2026-07-20) — the "why 255" hypothesis was WRONG; evidence corrected it.**
+`docker inspect` showed **18h uptime** (StartedAt 07-19 07:05 → FinishedAt 07-20 01:32), **Exit=255,
+OOM=false, no docker Error, and NO application log at exit** (only the startup "listening"). So it did
+NOT crash on a startup dep/migration/env — it ran fine for 18h and was **terminated by a host/daemon
+lifecycle event** (Exit 255 + no log + no OOM on Windows/Docker Desktop is the classic signature).
+Restart-and-watch confirmed it: `docker compose up -d agent-registry-service` → **healthy in 6s**, same
+"listening" log, no error. Not a code bug.
+
+**Why it STAYED down:** every service in the compose had `restart: no` (16 had a policy, 32 — including
+agent-registry, auth, book, chat, ai-gateway, glossary, api-gateway-bff, postgres, redis, rabbitmq —
+had none). Nothing brought it back for ~9h.
+
+**FE flood, re-measured:** the round-4 "FE doesn't degrade" read was off. `useUsage` + `useSlashCommands`
+were ALREADY degrade-safe (single fetch, `catch → empty/undefined`, no retry/poll). The "wall of 504s"
+is the **browser's own** network-error logging (not JS-suppressible) + re-fetches on remount/token-churn.
+The stale `$0.50` is the **usage-billing** spend meter, a DIFFERENT service — not agent-registry.
+
+**Fix shipped (user chose: restart policy + FE polish, stack-wide):**
+- **F12a (infra):** `restart: unless-stopped` added to all 32 long-running services that lacked it (one-shot
+  jobs — none here — deliberately excluded). agent-registry recreated so its running container carries the
+  policy now (self-heals a future host/daemon kill); the rest pick it up on their next recreate. `compose
+  config` validates.
+- **F12b (FE):** a shared, **tenancy-safe** availability breaker (`lib/agentRegistryHealth.ts` — caches only
+  "registry down until T", a down service is down for everyone, never per-user data). `useUsage` +
+  `useSlashCommands` consult it: a failed read trips a 30s back-off so a remount skips the slow 504 path
+  instead of re-hammering. `useUsage` now exposes `unavailable`; ExtensionsPage shows an explicit
+  "Usage unavailable" (new `quota.unavailable` i18n key across all 18 locales, parity-green) instead of a
+  silently-empty panel. Tests: breaker unit test (3) + useSlashCommands breaker test; 7 slash tests green.
+
 ---
 
 ## F13 · `failing-tool-call-loop` — the model loops on an identical FAILED call 🟠

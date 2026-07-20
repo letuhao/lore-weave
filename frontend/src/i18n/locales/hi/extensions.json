@@ -12,6 +12,7 @@
     "ingest": "रजिस्ट्री स्रोत"
   },
   "quota": {
+    "unavailable": "उपयोग अनुपलब्ध",
     "skills": "कौशल",
     "mcp": "MCP सर्वर",
     "proposals": "प्रस्ताव"

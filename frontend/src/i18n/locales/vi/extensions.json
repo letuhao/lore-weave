@@ -12,6 +12,7 @@
     "ingest": "Nguồn đăng ký"
   },
   "quota": {
+    "unavailable": "Không có dữ liệu sử dụng",
     "skills": "Kỹ năng",
     "mcp": "Máy chủ MCP",
     "proposals": "Đề xuất"
