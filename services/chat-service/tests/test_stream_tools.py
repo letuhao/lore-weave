@@ -1566,10 +1566,11 @@ class TestW1SchemaTokens:
                 "name": "memory_search",
                 "parameters": {"type": "object", "properties": {"query": {"type": "string"}}},
             }},
-            # propose_edit is in FRONTEND_TOOL_NAMES → the frontend bucket.
+            # confirm_action is in FRONTEND_TOOL_NAMES → the frontend bucket. (propose_edit
+            # moved to ai-gateway in Phase 2, so a still-frontend tool fills the bucket here.)
             {"type": "function", "function": {
-                "name": "propose_edit",
-                "parameters": {"type": "object", "properties": {"replacement": {"type": "string"}}},
+                "name": "confirm_action",
+                "parameters": {"type": "object", "properties": {"confirm_token": {"type": "string"}}},
             }},
         ]
         scripts = [[tok("hi"), usage(1, 1), done()]]
@@ -1686,65 +1687,61 @@ class TestFrontendToolValidationSeam:
 
     @pytest.mark.asyncio
     async def test_bad_frontend_args_rejected_and_not_suspended(self):
-        from app.services.frontend_tools import PROPOSE_EDIT_TOOL
+        # The Phase 0 seam still guards the REMAINING frontend tools (confirm_action,
+        # glossary_*, propose_record_edit). propose_edit's own incident-shape rejection
+        # moved to ai-gateway (propose-edit-tool.spec.ts) in Phase 2. Here confirm_action
+        # (requires confirm_token+descriptor+title) is called with the record-edit shape
+        # → the seam rejects it BEFORE suspending, feeding the model the repair signal.
+        from app.services.frontend_tools import CONFIRM_ACTION_TOOL
 
         kc = AsyncMock()
-        # The exact 019f771a shape: propose_edit (requires operation+text,
-        # additionalProperties:false) called with the RECORD-edit arguments.
         incident_args = {
             "domain": "book",
             "resource_ref": {"book_id": "b", "chapter_id": "c"},
-            "base_version": "v1",
-            "changes": [
-                {"field_label": "Body", "old_value": "a", "new_value": "b", "target": "body"}
-            ],
+            "changes": [{"field_label": "Body", "old_value": "a", "new_value": "b", "target": "body"}],
         }
         scripts = [
-            # Pass 0 — the invalid frontend-tool call.
             [
-                tool_frag(index=0, id="call_x", name="propose_edit"),
+                tool_frag(index=0, id="call_x", name="confirm_action"),
                 tool_frag(index=0, arguments_delta=json.dumps(incident_args)),
                 done("tool_calls"),
             ],
-            # Pass 1 — the model recovers after the standard error signal.
             [tok("Let me correct that."), done("stop")],
         ]
         with _patch_client(scripts):
-            chunks = await _drain(_run(scripts, knowledge_client=kc, tools=[PROPOSE_EDIT_TOOL]))
+            chunks = await _drain(_run(scripts, knowledge_client=kc, tools=[CONFIRM_ACTION_TOOL]))
 
         # NEVER suspended — no un-appliable card was rendered.
         assert not any("suspend" in c for c in chunks)
-        # The model got a tool_call error in the shape it knows how to repair.
         tcs = [c["tool_call"] for c in chunks if "tool_call" in c]
         assert len(tcs) == 1
-        assert tcs[0]["tool"] == "propose_edit"
+        assert tcs[0]["tool"] == "confirm_action"
         assert tcs[0]["ok"] is False
         assert "required: missing properties" in tcs[0]["error"]
-        assert "operation" in tcs[0]["error"] and "text" in tcs[0]["error"]
-        # The run continued to a second pass and finished normally.
+        assert "confirm_token" in tcs[0]["error"]
         assert chunks[-1]["finish_reason"] == "stop"
-        # It is a FRONTEND tool — no backend execute happened.
+        # A frontend tool — no backend execute happened.
         kc.mcp_execute_tool.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_valid_frontend_args_still_suspend(self):
-        from app.services.frontend_tools import PROPOSE_EDIT_TOOL
+        from app.services.frontend_tools import CONFIRM_ACTION_TOOL
 
         kc = AsyncMock()
-        good = {"operation": "insert_at_cursor", "text": "Once upon a time."}
+        good = {"confirm_token": "tok", "descriptor": "book.publish", "title": "Publish?", "domain": "book"}
         scripts = [
             [
-                tool_frag(index=0, id="call_ok", name="propose_edit"),
+                tool_frag(index=0, id="call_ok", name="confirm_action"),
                 tool_frag(index=0, arguments_delta=json.dumps(good)),
                 done("tool_calls"),
             ],
         ]
         with _patch_client(scripts):
-            chunks = await _drain(_run(scripts, knowledge_client=kc, tools=[PROPOSE_EDIT_TOOL]))
+            chunks = await _drain(_run(scripts, knowledge_client=kc, tools=[CONFIRM_ACTION_TOOL]))
 
         susp = [c["suspend"] for c in chunks if "suspend" in c]
         assert len(susp) == 1
-        assert susp[0]["pending_tool_call"]["name"] == "propose_edit"
+        assert susp[0]["pending_tool_call"]["name"] == "confirm_action"
         assert susp[0]["pending_tool_call"]["args"] == good
 
 

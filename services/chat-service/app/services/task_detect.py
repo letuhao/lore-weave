@@ -22,6 +22,13 @@ from typing import Any
 # Kept in sync with loreweave_mcp.tasks_wire.GATE_RESULT_TYPE (the gate handle marker).
 GATE_RESULT_TYPE = "io.loreweave/task-handle"
 
+# Phase 2 — the GATED propose_edit proposal directive marker, kept in sync with
+# ai-gateway propose-edit-tool.ts PROPOSE_EDIT_DIRECTIVE_TYPE. Distinct from a durable
+# task: propose_edit's effect is a CLIENT edit (no server executor), so it suspends and
+# resumes exactly like the legacy frontend-tool propose_edit (the FE applies + submits
+# the outcome) — no `task` marker, no provide-input drive.
+PROPOSE_EDIT_DIRECTIVE_TYPE = "io.loreweave/propose-edit"
+
 # ext-tasks extension id + the per-request client-capability envelope keys — the
 # SAME wire keys loreweave_mcp.tasks_wire.client_supports_tasks reads server-side.
 _TASKS_EXTENSION = "io.modelcontextprotocol/tasks"
@@ -29,10 +36,35 @@ _CLIENT_CAPS_KEY = "io.modelcontextprotocol/clientCapabilities"
 
 __all__ = [
     "GATE_RESULT_TYPE",
+    "PROPOSE_EDIT_DIRECTIVE_TYPE",
     "task_envelope_from_result",
     "task_envelope_from_content",
+    "propose_edit_suspend_args_from_result",
     "tasks_capability_meta",
 ]
+
+
+def propose_edit_suspend_args_from_result(payload: Any) -> dict[str, Any] | None:
+    """A propose_edit GATED proposal directive (`{type: PROPOSE_EDIT_DIRECTIVE_TYPE,
+    operation, text, rationale?}`) — from a tool result's structuredContent (already a
+    dict by the time mcp_execute_tool returns) — → the suspend `args` the frontend-tool
+    propose_edit suspend used to carry (`{operation, text, rationale?}`), so the FE's
+    ProposeEditCard renders unchanged. Anything else → None (a normal tool result)."""
+    if isinstance(payload, str):
+        try:
+            payload = json.loads(payload)
+        except (ValueError, TypeError):
+            return None
+    if not isinstance(payload, dict) or payload.get("type") != PROPOSE_EDIT_DIRECTIVE_TYPE:
+        return None
+    op = payload.get("operation")
+    text = payload.get("text")
+    if not op or text is None:
+        return None
+    args: dict[str, Any] = {"operation": op, "text": text}
+    if isinstance(payload.get("rationale"), str) and payload["rationale"]:
+        args["rationale"] = payload["rationale"]
+    return args
 
 
 def tasks_capability_meta() -> dict[str, Any]:

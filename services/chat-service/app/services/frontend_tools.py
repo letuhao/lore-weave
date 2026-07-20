@@ -47,11 +47,17 @@ from jsonschema import Draft202012Validator
 #                                  book/composition record edits
 FRONTEND_TOOL_NAMES: frozenset[str] = frozenset(
     {
-        "propose_edit",
         "glossary_propose_entity_edit",
         "glossary_confirm_action",
         "confirm_action",
         "propose_record_edit",
+        # NOTE (Phase 2, P2.2, 2026-07-20): propose_edit is NO LONGER a frontend tool —
+        # it is an ai-gateway consumer-local tool (propose-edit-tool.ts) that returns a
+        # GATED proposal directive. chat-service stops intercepting it here (→ routes to
+        # ai-gateway), detects io.loreweave/propose-edit in the tool result, and SUSPENDS
+        # with the same shape the old frontend-tool suspend used, so ProposeEditCard is
+        # unchanged. The PROPOSE_EDIT_TOOL def below stays for the editor-surface
+        # advertisement (frontend_tool_defs) until Phase 4 sources it from the catalog.
         # NOTE (Phase 3, P3.2, 2026-07-20): the KIND-A ui_* tools are NO LONGER frontend
         # tools — they are ai-gateway CONSUMER-LOCAL directive tools (ui-tools.ts). Removing
         # them here stops chat-service intercepting/suspending on them: a ui_* call now routes
@@ -798,7 +804,8 @@ PROPOSE_RECORD_EDIT_TOOL: dict = {
 _GENERIC_FRONTEND_TOOLS_BY_NAME: dict[str, dict] = {
     "confirm_action": CONFIRM_ACTION_TOOL,
     "propose_record_edit": PROPOSE_RECORD_EDIT_TOOL,
-    "propose_edit": PROPOSE_EDIT_TOOL,
+    # propose_edit removed (Phase 2 P2.2) — now an ai-gateway consumer-local tool; the
+    # PROPOSE_EDIT_TOOL const is still advertised via frontend_tool_defs (editor branch).
 }
 
 

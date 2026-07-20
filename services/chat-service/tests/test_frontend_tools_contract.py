@@ -62,10 +62,9 @@ ALL_FRONTEND_TOOLS: dict[str, dict] = {
 # each to be an `enum` so a weak model cannot drift the arg name or value. A
 # `[]` segment descends into an array's item schema. Free-form args (UUIDs,
 # prose, allowlisted paths, dynamic panel names) are deliberately NOT listed.
-# (The ui_* closed-set args — ui_open_book.tab, ui_open_chapter.mode,
-# ui_open_studio_panel.panel_id — are ai-gateway's now, enum-checked in ui-tools.spec.ts.)
+# (The ui_* closed-set args + propose_edit.operation are ai-gateway's now — enum-checked
+# in ui-tools.spec.ts / propose-edit-tool.spec.ts.)
 CLOSED_SET_ARGS: dict[str, list[str]] = {
-    "propose_edit": ["operation"],
     "glossary_propose_entity_edit": ["changes[].target"],
     "confirm_action": ["domain"],
     "propose_record_edit": ["domain"],

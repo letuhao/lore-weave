@@ -11,6 +11,8 @@ from types import SimpleNamespace
 
 from app.services.task_detect import (
     GATE_RESULT_TYPE,
+    PROPOSE_EDIT_DIRECTIVE_TYPE,
+    propose_edit_suspend_args_from_result,
     task_envelope_from_content,
     task_envelope_from_result,
     tasks_capability_meta,
@@ -81,3 +83,30 @@ def test_capability_meta_is_read_by_the_server_side_helper():
     assert client_supports_tasks(ctx) is True
     # and without it, the server reads False (the confirm_token fallback)
     assert client_supports_tasks(SimpleNamespace(request_context=SimpleNamespace(meta={}))) is False
+
+
+# ── Phase 2 — the propose_edit gated proposal directive detector ──────────────
+def test_propose_edit_directive_becomes_the_legacy_suspend_args():
+    d = {"type": PROPOSE_EDIT_DIRECTIVE_TYPE, "operation": "insert_at_cursor",
+         "text": "Hi", "rationale": "clarity"}
+    assert propose_edit_suspend_args_from_result(d) == {
+        "operation": "insert_at_cursor", "text": "Hi", "rationale": "clarity"}
+
+
+def test_propose_edit_directive_omits_absent_rationale():
+    d = {"type": PROPOSE_EDIT_DIRECTIVE_TYPE, "operation": "replace_selection", "text": "x"}
+    assert propose_edit_suspend_args_from_result(d) == {"operation": "replace_selection", "text": "x"}
+
+
+def test_non_propose_edit_result_is_none():
+    # a normal tool result, a ui-directive, and junk are all None (not a suspend)
+    assert propose_edit_suspend_args_from_result({"books": []}) is None
+    assert propose_edit_suspend_args_from_result({"type": "io.loreweave/ui-directive"}) is None
+    assert propose_edit_suspend_args_from_result(None) is None
+    assert propose_edit_suspend_args_from_result("nope") is None
+
+
+def test_propose_edit_directive_missing_fields_is_none():
+    # a malformed directive (no operation/text) must not produce a broken suspend
+    assert propose_edit_suspend_args_from_result({"type": PROPOSE_EDIT_DIRECTIVE_TYPE, "text": "x"}) is None
+    assert propose_edit_suspend_args_from_result({"type": PROPOSE_EDIT_DIRECTIVE_TYPE, "operation": "insert_at_cursor"}) is None

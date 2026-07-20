@@ -3100,6 +3100,25 @@ async def _stream_with_tools(
                         "task": _task,
                     }
                     break
+                # Phase 2 (P2.2) — propose_edit is now an ai-gateway consumer-local tool
+                # that returns a GATED proposal directive instead of suspending as a
+                # frontend tool. Detect it and suspend with the SAME shape the legacy
+                # frontend-tool suspend created (name=propose_edit, args={operation,text,
+                # rationale}) so the FE's ProposeEditCard + the resume driver work
+                # unchanged. Client-effect gate: no `task` marker → resumed like a
+                # frontend tool (the FE applies the edit + submits applied/dismissed).
+                if c["name"] == "propose_edit" and bool(envelope.get("success")):
+                    from app.services.task_detect import (  # noqa: PLC0415
+                        propose_edit_suspend_args_from_result,
+                    )
+                    _pe_args = propose_edit_suspend_args_from_result(envelope.get("result"))
+                    if _pe_args is not None:
+                        suspended_call = {
+                            "id": c["id"],
+                            "name": "propose_edit",
+                            "args": _pe_args,
+                        }
+                        break
                 ok = bool(envelope.get("success"))
                 # P-1 step-runner — the single backend chokepoint where every rail step tool
                 # executes. Count a success only for a tool the pinned rail actually names, so
