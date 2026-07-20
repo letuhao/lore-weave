@@ -1083,7 +1083,16 @@
     "restoreActHint": "Khôi phục hồi này (hồi sẽ trống — vui lòng sắp xếp lại các chương nếu cần)",
     "actTrashed": "Hồi «{{name}}» đã bị xóa — các chương của nó vẫn được giữ trong sách",
     "partVsArc": "Phần giúp nhóm bản thảo của bạn. Các chương hồi là kế hoạch.",
-    "undo": "Hoàn tác"
+    "undo": "Hoàn tác",
+    "lensParts": "Các phần",
+    "lensOutline": "Dàn ý",
+    "lensToggle": "Xem",
+    "createFailed": "Không thể tạo phần này",
+    "renameFailed": "Không thể đổi tên phần này",
+    "trashFailed": "Không thể đưa phần này vào thùng rác",
+    "restoreFailed": "Không thể khôi phục phần này",
+    "moveFailed": "Không thể di chuyển chương đến phần đó",
+    "reorderFailed": "Không thể sắp xếp lại"
   },
   "intro": {
     "title": "Chào mừng đến Xưởng Sáng Tác",

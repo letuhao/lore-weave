@@ -1083,7 +1083,16 @@
     "restoreActHint": "Restaurar este ato (ele voltará vazio — reorganize os capítulos conforme necessário)",
     "actTrashed": "O ato «{{name}}» foi excluído — seus capítulos permaneceram no livro",
     "partVsArc": "As Partes agrupam seu manuscrito. Os Arcos são o planejamento.",
-    "undo": "Desfazer"
+    "undo": "Desfazer",
+    "lensParts": "Partes",
+    "lensOutline": "Esboço",
+    "lensToggle": "Visualizar",
+    "createFailed": "Não foi possível criar a parte",
+    "renameFailed": "Não foi possível renomear a parte",
+    "trashFailed": "Não foi possível excluir a parte",
+    "restoreFailed": "Não foi possível restaurar a parte",
+    "moveFailed": "Não foi possível mover o capítulo para esta parte",
+    "reorderFailed": "Não foi possível reordenar"
   },
   "intro": {
     "title": "Bem-vindo ao Writing Studio",

@@ -1083,7 +1083,16 @@
     "restoreActHint": "Restore this part (it comes back empty — re-file chapters as needed)",
     "actTrashed": "Part \"{{name}}\" trashed — its chapters stayed in the book",
     "partVsArc": "Parts group your manuscript. Arcs are the plan.",
-    "undo": "Undo"
+    "undo": "Undo",
+    "lensParts": "Parts",
+    "lensOutline": "Outline",
+    "lensToggle": "View",
+    "createFailed": "Could not create the part",
+    "renameFailed": "Could not rename the part",
+    "trashFailed": "Could not trash the part",
+    "restoreFailed": "Could not restore the part",
+    "moveFailed": "Could not move the chapter to that part",
+    "reorderFailed": "Could not reorder"
   },
   "intro": {
     "title": "Welcome to Writing Studio",

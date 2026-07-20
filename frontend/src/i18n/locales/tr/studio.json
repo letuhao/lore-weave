@@ -1083,7 +1083,16 @@
     "restoreActHint": "Bu bölümü geri yükle (bölüm boş olarak gelir — bölümleri gerektiği gibi yeniden dosyala)",
     "actTrashed": "«{{name}}» bölümü çöp kutusuna taşındı — bölümleri kitapta kaldı",
     "partVsArc": "Bölümler taslağınızı gruplandırır. Arklar ise planınızdır.",
-    "undo": "Geri Al"
+    "undo": "Geri Al",
+    "lensParts": "Bölümler",
+    "lensOutline": "Taslak",
+    "lensToggle": "Görünüm",
+    "createFailed": "Bölüm oluşturulamadı",
+    "renameFailed": "Bölüm yeniden adlandırılamadı",
+    "trashFailed": "Bölüm çöp kutusuna atılamadı",
+    "restoreFailed": "Bölüm geri yüklenemedi",
+    "moveFailed": "Bölüm o kısma taşınamadı",
+    "reorderFailed": "Sıralama yapılamadı"
   },
   "intro": {
     "title": "Writing Studio'ya Hoş Geldiniz",

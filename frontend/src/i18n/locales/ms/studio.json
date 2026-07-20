@@ -1083,7 +1083,16 @@
     "restoreActHint": "Pulihkan babak ini (ia akan kembali kosong — susun semula bab mengikut keperluan)",
     "actTrashed": "Babak «{{name}}» telah dibuang — bab-bab di dalamnya kekal dalam buku",
     "partVsArc": "Bahagian menyusun manuskrip anda. Arka adalah pelannya.",
-    "undo": "Batalkan"
+    "undo": "Batalkan",
+    "lensParts": "Bahagian",
+    "lensOutline": "Rangka",
+    "lensToggle": "Lihat",
+    "createFailed": "Tidak dapat mencipta bahagian tersebut",
+    "renameFailed": "Tidak dapat menamakan semula bahagian tersebut",
+    "trashFailed": "Tidak dapat membuang bahagian tersebut ke tong sampah",
+    "restoreFailed": "Tidak dapat memulihkan bahagian tersebut",
+    "moveFailed": "Tidak dapat memindahkan bab ke bahagian tersebut",
+    "reorderFailed": "Tidak dapat menyusun semula"
   },
   "intro": {
     "title": "Selamat Datang ke Writing Studio",

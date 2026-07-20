@@ -1083,7 +1083,16 @@
     "restoreActHint": "이 막을 복원합니다 (빈 상태로 복원되므로, 필요에 따라 챕터를 다시 배치하세요)",
     "actTrashed": "막 «{{name}}»이(가) 삭제되었습니다 — 챕터는 도서에 그대로 유지됩니다",
     "partVsArc": "Part는 원고를 그룹화합니다. Arc는 구성 계획입니다.",
-    "undo": "실행 취소"
+    "undo": "실행 취소",
+    "lensParts": "파트",
+    "lensOutline": "개요",
+    "lensToggle": "보기",
+    "createFailed": "파트를 생성할 수 없습니다",
+    "renameFailed": "파트의 이름을 변경할 수 없습니다",
+    "trashFailed": "파트를 삭제할 수 없습니다",
+    "restoreFailed": "파트를 복구할 수 없습니다",
+    "moveFailed": "해당 파트로 챕터를 이동할 수 없습니다",
+    "reorderFailed": "순서를 변경할 수 없습니다"
   },
   "intro": {
     "title": "Writing Studio에 오신 것을 환영합니다",

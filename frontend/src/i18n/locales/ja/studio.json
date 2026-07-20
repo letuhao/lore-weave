@@ -1083,7 +1083,16 @@
     "restoreActHint": "この幕を復元します（内容は空の状態で復元されます。必要に応じて章を再度配置してください）",
     "actTrashed": "幕「{{name}}」は削除されました。章は本の中に保持されています",
     "partVsArc": "「パート」は原稿をグループ化するものです。「アーク」は構成案です。",
-    "undo": "元に戻す"
+    "undo": "元に戻す",
+    "lensParts": "パート",
+    "lensOutline": "アウトライン",
+    "lensToggle": "表示",
+    "createFailed": "パートを作成できませんでした",
+    "renameFailed": "パートの名前を変更できませんでした",
+    "trashFailed": "パートをゴミ箱に移動できませんでした",
+    "restoreFailed": "パートを復元できませんでした",
+    "moveFailed": "章をそのパートに移動できませんでした",
+    "reorderFailed": "並べ替えに失敗しました"
   },
   "intro": {
     "title": "執筆スタジオへようこそ",

@@ -1083,7 +1083,16 @@
     "restoreActHint": "还原此幕（还原后内容为空 — 请根据需要重新整理章节）",
     "actTrashed": "幕 «{{name}}» 已删除 — 其章节仍保留在书中",
     "partVsArc": "“卷”用于对你的手稿进行分组，“情节弧”则是你的创作蓝图。",
-    "undo": "撤销"
+    "undo": "撤销",
+    "lensParts": "章节",
+    "lensOutline": "大纲",
+    "lensToggle": "视图",
+    "createFailed": "无法创建章节",
+    "renameFailed": "无法重命名章节",
+    "trashFailed": "无法删除章节",
+    "restoreFailed": "无法恢复章节",
+    "moveFailed": "无法将章节移动到该部分",
+    "reorderFailed": "无法重新排序"
   },
   "intro": {
     "title": "欢迎来到写作工作室",

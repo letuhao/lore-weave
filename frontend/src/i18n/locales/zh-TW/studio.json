@@ -1083,7 +1083,16 @@
     "restoreActHint": "還原此幕（內容將變為空白 — 請根據需要重新整理章節）",
     "actTrashed": "幕「{{name}}」已刪除 — 其章節仍保留在書中",
     "partVsArc": "「章節」用於對您的原稿進行分組，「大綱」則是您的規劃藍圖。",
-    "undo": "復原"
+    "undo": "復原",
+    "lensParts": "章節",
+    "lensOutline": "大綱",
+    "lensToggle": "檢視",
+    "createFailed": "無法建立章節",
+    "renameFailed": "無法重新命名章節",
+    "trashFailed": "無法將章節移至垃圾桶",
+    "restoreFailed": "無法還原章節",
+    "moveFailed": "無法將章節移動至該章節",
+    "reorderFailed": "無法重新排序"
   },
   "intro": {
     "title": "歡迎使用寫作工作室",

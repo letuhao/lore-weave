@@ -120,11 +120,15 @@
     returns canonical + NEVER forks a 2nd pending — the F5 regression; derivative≠canonical; existing-pending;
     create-when-none stamping created_by; race re-get; truly-stuck re-raise) + composition service+worker
     rebuilt HEALTHY (all 3 delegation sites import clean) + live `/structure` smoke (work resolution intact).
-  - **(b) i18n "part" 18 locales → DEFER, gate #4 (needs the ML-7 translation pipeline).** The new keys
-    (`manuscript.lensParts/lensOutline/partVsArc` + P2.1b `createFailed/…`) already WORK via `defaultValue`
-    (English fallback in every locale); proper translation across `frontend/src/i18n/locales/*/translation.json`
-    is the tooling-dependent tail. **The "Act One arc seed" sub-claim is STALE** — no such seed exists in code
-    (grep clean; the manuscript rail P1.2 already renders "Parts").
+  - **(b) i18n "part" [x] DONE + verified.** Re-checked vs code (anti-laziness): the act→part TERMINOLOGY was
+    ALREADY correct in `en/studio.json` (`actShort='Part'`, `trashAct='Trash part'`, …) — the "Act" I first saw
+    was only the DEAD code `defaultValue` fallback (studio.json wins). The real gap: 9 of my P1.2/P2.1b keys
+    (`lensParts/lensOutline/lensToggle` + the 6 error toasts `createFailed/renameFailed/trashFailed/
+    restoreFailed/moveFailed/reorderFailed`) were `defaultValue`-only (absent from `studio.json` → English in
+    every locale). Added them to `en/studio.json` + ran `i18n_translate.py --ns studio` (LM Studio gemma-4-26b,
+    gap-fill: +9 new keys × 17 locales, 0 failed, 28s). EVIDENCE: completeness gate GREEN (17 locales × 33 ns at
+    full en parity) + spot-check (vi `lensParts='Các phần'`, ja `'パート'`, de `'Abschnitte'` — real per-locale
+    translations, not English). The **"Act One arc seed" sub-claim is STALE** (no such seed in code).
   - **(c) route parts_import + arc-grouped Chapter Browser through the pipeline → DEFER (loosely-specified,
     low-value polish).** parts_import is a WRITE; the "pipeline" is the read resolver — the item needs scoping,
     and it is pure read-path consistency with no behavior change or bug. Lowest priority of the three.
