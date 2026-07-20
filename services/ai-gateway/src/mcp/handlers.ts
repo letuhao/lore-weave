@@ -13,6 +13,7 @@ import {
   toolLoadResult,
 } from '../federation/find-tools.js';
 import { UI_TOOLS, UI_TOOL_NAMES, handleUiTool } from './ui-tools.js';
+import { PROPOSE_EDIT_TOOL, PROPOSE_EDIT_NAME, handleProposeEdit } from './propose-edit-tool.js';
 
 const log = new Logger('McpProxy');
 
@@ -68,6 +69,7 @@ export async function handleListTools(
     tools: [
       TOOL_LIST_TOOL, TOOL_LOAD_TOOL, FIND_TOOLS_TOOL,
       ...UI_TOOLS,
+      PROPOSE_EDIT_TOOL,
       ...(federation.catalog() as any[]),
       ...overlay,
     ],
@@ -279,6 +281,13 @@ export async function handleCallTool(
   // (navigation is a client effect; nothing is written server-side).
   if (UI_TOOL_NAMES.has(name)) {
     return handleUiTool(name, args);
+  }
+  // Phase 2 — propose_edit is a consumer-local HUMAN-GATED tool: validate (enum/required)
+  // and return a gated PROPOSAL directive chat-service suspends on (no server write; the
+  // client applies on Apply). An out-of-enum/missing arg is an isError result — the exact
+  // incident (propose_edit called with propose_record_edit's args) is rejected at the source.
+  if (name === PROPOSE_EDIT_NAME) {
+    return handleProposeEdit(args);
   }
 
   const env = extractEnvelope(headers);
