@@ -2,9 +2,19 @@ package loreweave_mcp
 
 import (
 	"context"
+	"reflect"
 
+	"github.com/google/jsonschema-go/jsonschema"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
+
+// isEmptyInterface reports whether the type parameter T is `any` (interface{} with no
+// methods). A tool that returns different shapes per branch — a durable task HANDLE vs a
+// confirm CARD (GateOrConfirm) — legitimately has Out=any.
+func isEmptyInterface[T any]() bool {
+	et := reflect.TypeOf((*T)(nil)).Elem()
+	return et.Kind() == reflect.Interface && et.NumMethod() == 0
+}
 
 // compactContentPlaceholder replaces the go-sdk's own auto-generated duplicate
 // of a tool's full JSON result. External MCP discoverability audit #9: every
@@ -71,6 +81,17 @@ func RegisterTool[In, Out any](
 			}
 		}
 		return res, out, err
+	}
+	// Out=any makes the SDK infer an outputSchema whose `properties.result` is the
+	// permissive "any" schema (`true`/empty) — which strict federation validators (the
+	// ai-gateway proxy) REJECT, failing the whole provider's list-tools so NONE of its
+	// tools route. A GateOrConfirm tool legitimately returns two shapes (task handle vs
+	// confirm card), so Out=any is correct; give it an explicit permissive-but-VALID
+	// object schema so the SDK keeps this one instead of inferring the unvalidatable one.
+	// (The SDK still wraps the value under `structuredContent.result`; clients already
+	// unwrap that.) Only when the caller didn't set a schema themselves.
+	if t.OutputSchema == nil && isEmptyInterface[Out]() {
+		t.OutputSchema = &jsonschema.Schema{Type: "object"}
 	}
 	mcp.AddTool(s, t, wrapped)
 }
