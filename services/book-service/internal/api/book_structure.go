@@ -202,6 +202,12 @@ func (s *Server) fetchStructureParts(ctx context.Context, bookID, bearer string)
 	if resp.StatusCode != http.StatusOK {
 		return nil, false
 	}
+	return decodeStructureParts(resp.Body), true
+}
+
+// decodeStructureParts parses composition's {items:[{part_id,title,sort_order,lifecycle_state}]} shape —
+// shared by the bearer-forwarded public fetch and the internal-token fetch so both parse one contract.
+func decodeStructureParts(r io.Reader) []structurePartInput {
 	var out struct {
 		Items []struct {
 			PartID         string `json:"part_id"`
@@ -210,8 +216,8 @@ func (s *Server) fetchStructureParts(ctx context.Context, bookID, bearer string)
 			LifecycleState string `json:"lifecycle_state"`
 		} `json:"items"`
 	}
-	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
-		return nil, false
+	if err := json.NewDecoder(r).Decode(&out); err != nil {
+		return nil
 	}
 	parts := make([]structurePartInput, 0, len(out.Items))
 	for _, it := range out.Items {
@@ -220,7 +226,50 @@ func (s *Server) fetchStructureParts(ctx context.Context, bookID, bearer string)
 			Active: it.LifecycleState == "active",
 		})
 	}
-	return parts, true
+	return parts
+}
+
+// fetchStructurePartsInternal calls composition's INTERNAL parts route (X-Internal-Token + caller_user_id).
+// The AGENT/MCP write path has a user_id but NO user bearer, so it cannot use the bearer-gated public
+// /parts; this is how book_chapter_set_part validates a target part for an agent. ok=false ⇒ composition
+// unreachable OR the caller has no grant (uniform 404) — surface, never accept a bad write on a blind spot.
+func (s *Server) fetchStructurePartsInternal(ctx context.Context, bookID, userID string) ([]structurePartInput, bool) {
+	base := strings.TrimRight(s.cfg.CompositionServiceURL, "/")
+	if base == "" || s.cfg.InternalServiceToken == "" {
+		return nil, false
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet,
+		base+"/internal/composition/books/"+bookID+"/parts?caller_user_id="+userID, nil)
+	if err != nil {
+		return nil, false
+	}
+	req.Header.Set("X-Internal-Token", s.cfg.InternalServiceToken)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return nil, false
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return nil, false
+	}
+	return decodeStructureParts(resp.Body), true
+}
+
+// validatePartTargetInternal is validatePartTarget for the agent MCP write path (no user bearer): it
+// reaches composition via the internal parts route (X-Internal-Token + the acting user_id). Same
+// (valid, reachable) contract — reachable=false ⇒ composition down/unauthorized (don't accept the write).
+func (s *Server) validatePartTargetInternal(ctx context.Context, bookID, userID, partID uuid.UUID) (valid bool, reachable bool) {
+	parts, ok := s.fetchStructurePartsInternal(ctx, bookID.String(), userID.String())
+	if !ok {
+		return false, false
+	}
+	want := partID.String()
+	for _, p := range parts {
+		if p.Active && p.PartID == want {
+			return true, true
+		}
+	}
+	return false, true
 }
 
 // validatePartTarget verifies partID is a LIVE kind='part' of bookID (via composition). It closes the
