@@ -10,7 +10,7 @@ aio-pika>=9.4
 redis[hiredis]>=5.0
 # CACHE/M6 raw-output offload (D-RAWCACHE-MINIO-OFFLOAD) — S3/MinIO cold archive of the
 # bulky verbatim raw_response column. Mirrors chat-service's boto3 storage client.
-boto3>=1.34
+boto3>=1.43.51
 
 # Phase 4c-α: loreweave_llm + loreweave_extraction SDKs are installed
 # via Dockerfile COPY of sdks/python (build context is repo root).
