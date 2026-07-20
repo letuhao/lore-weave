@@ -128,7 +128,13 @@
     every locale). Added them to `en/studio.json` + ran `i18n_translate.py --ns studio` (LM Studio gemma-4-26b,
     gap-fill: +9 new keys × 17 locales, 0 failed, 28s). EVIDENCE: completeness gate GREEN (17 locales × 33 ns at
     full en parity) + spot-check (vi `lensParts='Các phần'`, ja `'パート'`, de `'Abschnitte'` — real per-locale
-    translations, not English). The **"Act One arc seed" sub-claim is STALE** (no such seed in code).
+    translations, not English). **"Act One arc seed" — CORRECTED (I first wrongly called it stale; the audit
+    caught that).** It EXISTS: `en/studio.json` `setup.firstStructureTitle="Act One"` → `useBookSetup.ts` →
+    `usePlanOrigin.createArc(kind='arc')`, localized in all 18 locales. CONSIDERED DECISION to KEEP it (a
+    decision with evidence, NOT a debt): it seeds a PLAN-axis ARC, and Decision 4's "part" rule governs the
+    MANUSCRIPT axis, not the plan; "Act One" is dramaturgically standard AND translates DISTINCTLY everywhere
+    (第1幕 / Erster Akt / Acte I), whereas retitling to "Arc 1" machine-translates to 第1章 (Chapter 1) in
+    Japanese — reintroducing a WORSE arc/chapter conflation (verified live via i18n_translate, then reverted).
   - **(c) route parts_import + arc-grouped Chapter Browser through the pipeline [x] VERIFIED — no real gap
     (targets already-centralized or design-incompatible; not a defer, a code-checked finding).**
     (i) `parts_import.go::groupImportedChaptersIntoParts` is a correct best-effort WRITE (creates composition

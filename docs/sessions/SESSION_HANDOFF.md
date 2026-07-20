@@ -24,7 +24,11 @@ SHIPPED + live-proven:
   `i18n_translate.py` (gate GREEN, real per-locale words). (c) **routing** — VERIFIED no real gap vs code (not a
   defer): parts_import is a correct WRITE, `useChapterBrowserGroups` already reuses the shared composition
   primitives (routing it through /structure conflicts with the skeleton design), and the one real divergent read
-  (the rail, Bug 4) was already centralized in P1.2. The "Act One arc seed" sub-claim is **STALE**.
+  (the rail, Bug 4) was already centralized in P1.2. **"Act One arc seed" — I first wrongly called it stale;
+  the completeness audit caught that. It EXISTS** (setup.firstStructureTitle → useBookSetup → createArc,
+  kind='arc'). CONSIDERED-KEPT (a decision, not a debt): a PLAN-axis arc (Decision 4 governs the manuscript
+  axis), dramaturgically standard + translates distinctly (第1幕/Erster Akt); "Arc 1" would machine-translate
+  to 第1章/chapter in CJK — worse.
   **▶ The whole book-structure-pipeline spec (P1–P5) is now built + proven.**
 
 ## 🐛 DOGFOOD ROUND-4 POLISH — in progress (2026-07-20, HEAD 07e62f8bf)
