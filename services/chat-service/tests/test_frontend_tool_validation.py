@@ -10,10 +10,10 @@ and rendered an un-appliable Apply card.
 from __future__ import annotations
 
 from app.services.frontend_tools import (
+    CONFIRM_ACTION_TOOL,
     FRONTEND_TOOL_NAMES,
     PROPOSE_EDIT_TOOL,
     UI_OPEN_STUDIO_PANEL_TOOL,
-    UI_NAVIGATE_TOOL,
     frontend_tool_def_by_name,
     generic_frontend_tool_def,
     validate_frontend_tool_args,
@@ -79,7 +79,9 @@ def test_disallowed_extra_prop_is_rejected():
     """additionalProperties:false — an unknown key must be caught even when all
     required props are present (the pure B↔C confusion tail)."""
     err = validate_frontend_tool_args(
-        "ui_navigate", {"path": "/books", "unexpected": 1}, UI_NAVIGATE_TOOL
+        "confirm_action",
+        {"confirm_token": "t", "descriptor": "book.publish", "title": "T", "domain": "book", "unexpected": 1},
+        CONFIRM_ACTION_TOOL,
     )
     assert err is not None
     assert "unexpected" in err
