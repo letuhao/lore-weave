@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Check, ShieldAlert, X } from 'lucide-react';
 import { useChatStream } from '../providers';
+import type { FrontendToolOutcome } from '../hooks/useChatMessages';
 import type { ToolCallRecord } from '../types';
 
 // ext-tasks (T1c(3)) — the durable-gate confirm card. A capability-gated domain tool
@@ -36,7 +37,7 @@ export function TaskConfirmCard({ record }: Props) {
   const ir = (task?.inputRequests ?? {}) as InputRequests;
   const title = ir.title || t('taskGate.defaultTitle', { defaultValue: 'Confirm this action?' });
 
-  async function resume(outcome: string) {
+  async function resume(outcome: FrontendToolOutcome) {
     if (record.runId && record.toolCallId) {
       await submitToolResult(record.runId, record.toolCallId, outcome);
     }

@@ -334,7 +334,10 @@ export async function runChatStream(
               // the tool_calls JSONB). AssistantMessage reads it to auto-render a
               // confirm card when a class-C propose tool minted a confirm_token but
               // the model never called the frontend confirm tool.
-              const record: ToolCallRecord = { tool, ok, result };
+              // toolCallId is carried so a result-consumer can dedupe by it — e.g.
+              // useUiToolExecutor's ui-directive path acts on a ui_* result AT MOST
+              // once (Phase 3 cutover; without the id it could never key idempotency).
+              const record: ToolCallRecord = { tool, ok, result, toolCallId: e.toolCallId };
               accumulatedToolCalls.push(record);
               cb.onToolCall?.(record);
               break;
