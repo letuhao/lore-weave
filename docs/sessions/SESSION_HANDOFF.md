@@ -25,11 +25,17 @@ writes; composition 7; glossary 15/14 — the rest legitimately stay on `confirm
 bug was found + fixed** (Go `Out=any` / `any`-field results emitted an `outputSchema` the ai-gateway rejected → book+
 glossary tools were silently unroutable through the gateway since T3c; catalog 165→264 after the fix). Everything is
 service-layer live-proven through the real `/mcp`+ai-gateway (owner-check: stranger→`not_task_owner`; routing; multi-
-replica DB tests). **The ONE remaining verification** is a browser smoke of the `TaskConfirmCard` in a real agent turn
-(blocked on test-account data — no book chapters, derive grant drifted — + model tool-call reliability; the FE card is
-unit-tested and the path is now fully routable). Full detail + every commit in
-[`docs/plans/2026-07-20-mcp-tasks-full-activation.md`](../plans/2026-07-20-mcp-tasks-full-activation.md) RUN-STATE;
-end-state rules in `docs/standards/mcp-tool-io.md` Part 5 (GATE-1..4).
+replica DB tests). **FULL-TURN e2e now CLOSED (2026-07-20)** — a real SSE agent turn calls `book_chapter_delete` →
+suspends with the exact `pendingToolCall.task` the FE `TaskConfirmCard` renders → gate HOLDS → owner accept → chapter
+trashed once (single-winner refuses re-accept); decline → chapter stays active; stranger → `not_task_owner`. All
+verified with an independent DB effect oracle (the stale "blocked on data/model" note was refuted: the account has a
+book+chapter, and the local model calls the tool once its mental model is corrected + the tool is force-advertised).
+**review-impl of the durable-gate core** found + FIXED **F-A** (HIGH `76648bc3c`: the Go decline path skipped the
+owner-check — a stranger could cancel another user's gate; Python owner-checked both paths — now the Go kit's wire
+handler does too, parity restored, regression-tested + live-reverified) and documented **F-B** (LOW: `accepted`
+fail-open default, benign). Concerns single-winner / resolver-injection / M1b-atomicity cleared. Full detail + every
+commit in [`docs/plans/2026-07-20-mcp-tasks-full-activation.md`](../plans/2026-07-20-mcp-tasks-full-activation.md)
+RUN-STATE; end-state rules in `docs/standards/mcp-tool-io.md` Part 5 (GATE-1..4).
 
 <details><summary>Milestone history (M1–M4, superseded by the summary above)</summary>
 
