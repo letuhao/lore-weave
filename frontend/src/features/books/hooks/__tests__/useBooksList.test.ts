@@ -101,6 +101,7 @@ describe('useBooksList', () => {
     const result = await mountHook();
     act(() => {
       result.current.setNewTitle('New Book');
+      result.current.setNewLang('en'); // F16 — language is required
       result.current.setCreateOpen(true);
     });
     let created: string | undefined;
@@ -108,7 +109,7 @@ describe('useBooksList', () => {
     expect(apiMocks.createBook).toHaveBeenCalledWith('tok', {
       title: 'New Book',
       description: undefined,
-      original_language: undefined,
+      original_language: 'en',
     });
     expect(result.current.createOpen).toBe(false);
     expect(result.current.newTitle).toBe('');
@@ -127,11 +128,21 @@ describe('useBooksList', () => {
     expect(created).toBeUndefined();
   });
 
+  it('F16 — handleCreate is a no-op with a title but NO language (no language-less book)', async () => {
+    const result = await mountHook();
+    act(() => { result.current.setNewTitle('Has Title'); }); // but newLang stays ''
+    let created: string | undefined;
+    await act(async () => { created = await result.current.handleCreate(); });
+    expect(apiMocks.createBook).not.toHaveBeenCalled();
+    expect(created).toBeUndefined();
+  });
+
   it('handleCreate surfaces a failure via error without closing the dialog, returns undefined', async () => {
     apiMocks.createBook.mockRejectedValue(new Error('title already exists'));
     const result = await mountHook();
     act(() => {
       result.current.setNewTitle('Dup');
+      result.current.setNewLang('en'); // F16 — language is required
       result.current.setCreateOpen(true);
     });
     let created: string | undefined;

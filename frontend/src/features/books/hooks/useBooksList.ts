@@ -94,7 +94,10 @@ export function useBooksList() {
   // return value on purpose — auto-navigating there would unmount the active
   // book's studio out from under the user.
   const handleCreate = async (): Promise<string | undefined> => {
-    if (!accessToken || !newTitle.trim()) return undefined;
+    // F16 — language is REQUIRED: a language-less book breaks downstream (chapters
+    // require original_language, which they inherit from the book). The submit button
+    // is disabled without it too; this guards the programmatic path.
+    if (!accessToken || !newTitle.trim() || !newLang) return undefined;
     setCreating(true);
     try {
       const created = await booksApi.createBook(accessToken, {

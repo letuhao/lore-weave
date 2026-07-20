@@ -16,7 +16,7 @@ export interface ChapterDoor {
 
 export function useChapterDoor(bookId: string): ChapterDoor {
   const { accessToken } = useAuth();
-  const { focusManuscriptUnit, publish } = useStudioHost();
+  const { focusManuscriptUnit, publish, openPanel, getSnapshot } = useStudioHost();
   const qc = useQueryClient();
 
   // The book's language is required by the create route (never hardcode 'en' — multilingual platform).
@@ -34,7 +34,19 @@ export function useChapterDoor(bookId: string): ChapterDoor {
       // Refresh the Plan Hub's simple list (react-query) AND the hand-rolled navigator tree (bus, M2).
       void qc.invalidateQueries({ queryKey: ['plan-hub', 'simple-chapters', bookId] });
       publish({ type: 'manuscriptChanged' });
-      if (created?.chapter_id) focusManuscriptUnit(created.chapter_id);
+      if (created?.chapter_id) {
+        // F15 (newcomer polish) — don't yank the writer out of an ACTIVE different panel (e.g.
+        // the Co-writer Chat) on auto-create. If the editor is already active (or nothing is),
+        // focus it as before; otherwise load the chapter into the editor and open it as an
+        // INACTIVE tab, so the user stays where they are and switches to it when ready.
+        const active = getSnapshot().activePanelIds;
+        if (active.length === 0 || active.includes('editor')) {
+          focusManuscriptUnit(created.chapter_id);
+        } else {
+          publish({ type: 'chapter', chapterId: created.chapter_id, bookId });
+          openPanel('editor', { focus: false });
+        }
+      }
     },
   });
 

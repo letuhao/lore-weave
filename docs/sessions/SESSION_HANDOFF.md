@@ -13,9 +13,16 @@ Fixing in **ALPHABET order, monitoring-first** (add the missing monitor before/w
   `find_tools` from the LLM; `tool_list`/`tool_load` are the sole discovery path (explicitly distinguished); monitor
   now logs core NAMES; `4d53ac78f` de-binaried `find-tools.ts`. F14+F17 **live-verified** (gateway `/mcp`: find_tools
   gone, `tool_list(book)`→book_list_chapters; Gemma used `tool_list(category=book)`).
-- **NEXT (alphabet):** **F13** (+**F18** folded: discovery-meta-tool *success*-loop — model re-lists `tool_list` ~28×;
-  the read-breaker counts only successful DOMAIN reads, not repeated failed calls (F13) nor repeated discovery calls
-  (F18)) · **F15** (chapter-create steals the chat panel) · **F16** (New-Book submit enabled with no language).
+- **DONE (2/2 investigation round):** **F13** — already fixed (the **S02 missing-required-args interceptor** +
+  `blank_tool_args_streak` cap catches the loop before dispatch; proven live during the durable-gate e2e). **F15** —
+  chapter-create no longer steals focus from the active Co-writer Chat (`useChapterDoor` opens the editor as an
+  INACTIVE tab when a different panel is active; FE tests green). **F16** — New Book now REQUIRES a language (submit
+  disabled + `handleCreate` guard; no language-less book; tests green).
+- **DEFERRED:** **F18** (discovery-meta-tool loop) — root-caused, but its ORIGINAL surface (the studio) is already
+  fixed by F14; the loop only reproduces on the artificial GLOBAL surface. **2 breaker approaches BACKFIRED live**
+  (per-call short-circuit → the weak model batch-retries harder, 28→311 calls; a budget charge to force finalization
+  → the model hallucinates a tool-call as text = garbage). Both reverted. It's a weak-model quirk; a non-regressing
+  fix needs to de-advertise `tool_list` after the cap (larger change) — deferred with that choice for the human.
 - **Debt:** 3 pre-existing `TestGenericFrontendTools` failures (this session's M3 frontend-tools migration).
 
 ## ✅ MCP-TASKS FULL ACTIVATION — **PLAN COMPLETE (M1–M4), ACTIVATED (2026-07-20)**

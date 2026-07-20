@@ -26,6 +26,45 @@ Along the way, five concrete findings (F12–F16), grounded in root cause per th
 
 ---
 
+## ▶ FINAL STATUS (2026-07-20) — all F12–F18 resolved
+Investigated **source-first** (bugs may be random/non-reproducible), then fixed the real ones. Since this
+session fixed a lot upstream (find_tools hidden, book auto-inject, durable gate), several had already changed:
+- **F12** ✅ `07e62f8bf` — restart policy (32 svcs) + FE availability breaker + "unavailable" (see below).
+- **F13** ✅ **already fixed** — the **S02 missing-required-args interceptor** (`stream_service.py` ~2860) +
+  `blank_tool_args_streak`/`BLANK_TOOL_ARGS_CAP` catches a repeated missing-arg call (incl. `composition_
+  get_mine_job` with no `job_id`) BEFORE dispatch, and hard-stops after the cap. Proven live during the
+  durable-gate e2e (it fired on `book_chapter_save_draft` missing `body`). The original claim ("breaker counts
+  only successful reads") predates this interceptor.
+- **F14** ✅ `977e7c71f` — book auto-inject + `LOG_LEVEL` fix + surface monitor.
+- **F15** ✅ — chapter-create no longer steals focus from an ACTIVE different panel (the Co-writer Chat):
+  `useChapterDoor` reads the active panel; if the editor is already active (or none is) it focuses as before,
+  else it loads the chapter + opens the editor as an **inactive** tab (`openPanel focus:false` → dockview
+  `inactive`). FE tests + tsc green.
+- **F16** ✅ — language is now **required** on New Book (submit disabled + `handleCreate` guard), so no
+  language-less book (chapters require `original_language`, inherited from the book). Tests updated + a
+  no-language guard test added.
+- **F17** ✅ `f30dc77e5` — hide `find_tools`; `tool_list`/`tool_load` the discovery path.
+- **F18** ⏸️ **DEFERRED — root-caused, but 2 fix approaches BACKFIRED live (reverted).** The gap is real (the
+  consumer-local `tool_list`/`tool_load` dispatch BEFORE the tier-R read breaker, so a repeated identical call
+  loops uncaught). BUT two things make a naive fix wrong here:
+  1. **F18's ORIGINAL surface — the writing studio — is already fixed by F14.** Book tools are auto-advertised
+     there, so the model never tool_list-loops to discover them. The loop only reproduces on the *artificial
+     GLOBAL* surface (no book context) that `f17_turn.py` drives.
+  2. **Both breaker attempts regressed a weak (Gemma) model, proven live:**
+     - *Per-call short-circuit* (return an error on the repeat): the error PROVOKED the weak model to
+       batch-retry HARDER — 28 calls → **311** (each cheap, and the useful description still came out, but 10×
+       the tool-call events).
+     - *+ Budget charge* (count a spin-pass against the write budget to force finalization): forcing the
+       tool-free final pass while the model still wanted a tool made it **HALLUCINATE a tool-call as text**
+       (`<|tool_call>…current_book_id_placeholder…`) — garbage output. Worse.
+  Both reverted. F18 is fundamentally a **weak-model quirk** (a capable model `tool_load`s + acts); the naive
+  breakers provoke worse behavior. A non-regressing fix would need to **de-advertise `tool_list` after the cap**
+  (so the model MUST use the list it already has) — a larger, riskier surface change — or just accept it as a
+  weak-model-only edge case that **F14 already neutralizes on the real surface**. Deferred with that choice for
+  the human.
+
+---
+
 ## F12 · `agent-registry-down` — the Usage/commands 504 flood 🔴
 
 **Symptom (observed):** on entering the Studio + starting a chat, the browser console filled with
