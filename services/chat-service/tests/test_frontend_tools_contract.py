@@ -37,7 +37,11 @@ from app.services.frontend_tools import (
     FRONTEND_TOOL_NAMES,
     GLOSSARY_CONFIRM_ACTION_TOOL,
     GLOSSARY_PROPOSE_EDIT_TOOL,
+    PROPOSE_EDIT_TOOL,
+    UI_FOCUS_MANUSCRIPT_UNIT_TOOL,
+    UI_OPEN_STUDIO_PANEL_TOOL,
     _GENERIC_FRONTEND_TOOLS_BY_NAME,
+    _studio_panel_tool,
 )
 
 # ── the CHAT-SERVICE-owned frontend-tool set (name → schema) ─────────────────
@@ -157,3 +161,52 @@ class TestFrontendToolContract:
                 f"{name} drifted from the committed contract — regenerate with "
                 "WRITE_FRONTEND_CONTRACT=1 and update the matching FE resolver"
             )
+
+
+# ── Residual RELOCATED defs still ADVERTISED by chat-service (drift guard) ────
+# Phases 2/3 relocated propose_edit + the studio ui_* to ai-gateway (execution +
+# validation live there, drift-tested vs the SAME contract JSON in
+# ui-tools.spec.ts / propose-edit-tool.spec.ts). But chat-service still ADVERTISES
+# these three to the model (frontend_tool_defs: propose_edit on the editor branch,
+# ui_open_studio_panel + ui_focus_manuscript_unit on the studio branch) from its own
+# local const schemas — a SECOND copy of each schema. They dropped out of
+# FRONTEND_TOOL_NAMES / _GENERIC / ALL_FRONTEND_TOOLS above, so nothing on the chat
+# side re-checked them: the advertised copy could silently DRIFT from ai-gateway's
+# validated copy (the model would call the args chat-service advertised, ai-gateway
+# would reject them — the exact both-sides-must-agree failure the LOCKED Frontend-Tool
+# Contract exists to prevent). Until P4 sources the advertisement from the catalog and
+# these consts are deleted, pin the advertised copy to the single contract SoT so both
+# copies stay machine-checked. (Retiring the defs is large; guarding them is cheap.)
+_RESIDUAL_ADVERTISED: dict[str, dict] = {
+    "propose_edit": PROPOSE_EDIT_TOOL,
+    "ui_open_studio_panel": UI_OPEN_STUDIO_PANEL_TOOL,
+    "ui_focus_manuscript_unit": UI_FOCUS_MANUSCRIPT_UNIT_TOOL,
+}
+
+
+class TestResidualAdvertisedDefsMatchContract:
+    """The relocated-but-still-advertised chat-side schemas must equal the committed
+    contract SoT — the same JSON ai-gateway drift-tests its copy against. This closes
+    the drift surface the migration left open (a chat-only edit to these consts would
+    otherwise pass every test yet diverge from ai-gateway's validator)."""
+
+    @pytest.mark.parametrize("name", sorted(_RESIDUAL_ADVERTISED))
+    def test_advertised_copy_matches_committed_contract(self, name):
+        on_disk = json.loads(_CONTRACT_PATH.read_text(encoding="utf-8"))
+        assert name in on_disk, (
+            f"{name} missing from contracts/frontend-tools.contract.json — it is "
+            "ai-gateway-owned; regenerate the ai-gateway slice"
+        )
+        assert _normalize(_RESIDUAL_ADVERTISED[name]) == on_disk[name], (
+            f"{name}: the schema chat-service ADVERTISES drifted from the contract "
+            "(ai-gateway validates against it). Re-sync the const in frontend_tools.py "
+            "or regenerate the ai-gateway contract slice — both copies must agree."
+        )
+
+    def test_compact_studio_panel_never_trims_the_enum(self):
+        # The compact ui_open_studio_panel variant (F7c, default-on) must trim only the
+        # PROSE, never the panel_id enum — a free-string panel_id was the original
+        # silent-no-op bug. Both variants must normalize to the SAME contract slice.
+        assert _normalize(_studio_panel_tool(compact=True)) == _normalize(
+            _studio_panel_tool(compact=False)
+        )

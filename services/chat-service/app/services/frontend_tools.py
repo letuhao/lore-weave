@@ -432,7 +432,8 @@ UI_OPEN_STUDIO_PANEL_TOOL: dict = {
 # free-string panel_id was the original silent-no-op bug; never trim the enum) and replaces
 # the prose with a terse area-grouped guide (~0.7k). Most enum ids are self-describing
 # (`kg-timeline`, `quality-critic`, `motif-graph`); the groups orient the model, and it can
-# still pass any id. Gated by settings.compact_studio_panel_desc (default off) → A/B.
+# still pass any id. Gated by settings.compact_studio_panel_desc (default ON — the
+# ~1.7k-tok saving is safe because the enum is kept; toggle OFF for the verbose A/B).
 _COMPACT_PANEL_DESC = (
     "The studio panel to open (pass one panel_id from the enum). Panels by area — "
     "WRITE: compose (AI co-writer chat), scene-compose, chapter-assemble, editor, agent-mode "

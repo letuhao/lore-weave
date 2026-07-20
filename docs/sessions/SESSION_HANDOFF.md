@@ -1,8 +1,15 @@
 # ▶▶ NEXT SESSION STARTS HERE
 
-## ✅ MCP-TASKS + FRONTEND-TOOLS MIGRATION — **BOTH SPECS COMPLETE, all defers CLEARED (2026-07-20)**
+## ✅ MCP-TASKS + FRONTEND-TOOLS MIGRATION — **implemented through the activation boundary (2026-07-20)**
 Both `docs/specs/2026-07-19-mcp-tasks-durable-gate.md` + `docs/specs/2026-07-19-frontend-tools-mcp-migration.md`
-are done. Every hard cutover is **live browser-proven**, and the session's deferred list is cleared:
+are implemented up to the `tasks_gate_enabled` activation boundary. Every hard cutover is **live browser-proven**.
+**Honest completeness note (2026-07-20 completeness audit + review-impl):** the *shipped* cutovers (Phase 0 validation
+seam, Phase 2 propose_edit, Phase 3 ui_*, and the durable-gate mechanism) are DONE and proven. The remaining spec
+phases — full KIND-C native migration (frontend-tools Phase 1), duplication retirement (Phase 4), and tasks-spec T4
+(retire the bespoke gate) — are **gated on the ops decision to flip `tasks_gate_enabled` on + build the multi-replica
+persistent store**, so they are legitimately deferred (naturally-next-phase / large-structural), NOT "done". The audit
+found + fixed one real gap (an unguarded cross-language schema-drift surface — see `D-P3-RETIRE-UI-FRONTEND-DEFS`
+below) and corrected two inaccurate defer notes. QC green post-fix; cutovers re-proven. Deferred list:
 
 - **`ui_*` cutover (Phase 3)** — LIVE E2E: agent turn on /assistant → `ui_navigate` → navigated to /settings/account.
 - **`propose_edit` cutover (Phase 2)** — **LIVE E2E (studio co-writer chat):** agent → `propose_edit` → ai-gateway
@@ -24,15 +31,23 @@ are done. Every hard cutover is **live browser-proven**, and the session's defer
   same interface, needed ONLY when `tasks_gate_enabled` is flipped on for a **multi-replica** deploy — which is
   itself deferred (the gate is off by default and the `confirm_token` fallback is stateless/multi-replica-safe).
   Build it AT activation, not speculatively.
-- **`D-P3-RETIRE-UI-FRONTEND-DEFS` (studio + propose_edit defs)** → *conscious won't-fix.* The parallel construct is
-  ~95% retired (validation seam gone for these, execution at ai-gateway, nav defs deleted, live-proven). The residual
-  is the 2 studio `ui_*` + `propose_edit` **advertisement** defs still sourced from `frontend_tool_defs`. Retiring
-  them needs the studio/editor advertisement moved to catalog-sourced (the F7c nav-intent-gate-as-catalog-filter) —
-  a delicate change to the per-turn advertisement path for **zero functional value** (the tools work via ai-gateway;
-  the defs are harmless advertisement sources). Won't-fix unless a future advertisement refactor lands.
-- **`D-P3-COMPACT-PANEL-DESC`** → *conscious drop.* The compact `panel_id` A/B was `settings.compact_studio_panel_desc`,
-  **default OFF** (never used in prod). ai-gateway owns the full description now; the A/B is dropped, re-add only if a
-  token-optimization pass wants it.
+- **`D-P3-RETIRE-UI-FRONTEND-DEFS` (studio + propose_edit defs)** → *DEF retirement deferred (large); drift now
+  GUARDED (2026-07-20 audit).* The parallel construct is ~95% retired (validation seam gone for these, execution at
+  ai-gateway, nav defs deleted, live-proven). The residual is the 2 studio `ui_*` + `propose_edit` **advertisement**
+  defs still sourced from `frontend_tool_defs` — a SECOND schema copy alongside ai-gateway's validated copy. Deleting
+  them needs the advertisement moved to catalog-sourced (the F7c nav-intent-gate-as-catalog-filter) — a delicate
+  change to the per-turn advertisement path, legitimately deferred (large/structural). **Correction to the earlier
+  "zero risk" framing:** those advertised copies had dropped out of every chat-side drift test, so they could have
+  silently diverged from ai-gateway's validator (the exact LOCKED Frontend-Tool-Contract failure this whole track
+  exists to kill). The audit added `TestResidualAdvertisedDefsMatchContract` (`test_frontend_tools_contract.py`) which
+  pins all 3 advertised copies to the single contract SoT ai-gateway also checks — so the deferral now carries **no
+  hidden correctness risk**; only the cosmetic def-deletion remains.
+- **`D-P3-COMPACT-PANEL-DESC`** → *NOT dropped — it is a LIVE, default-ON token optimization (2026-07-20 audit
+  correction).* The earlier "dropped, default OFF, never used" note was wrong on every count: `compact_studio_panel_desc`
+  is **`= True`** (config.py:277) and actively consumed (stream_service.py:4451/4496). It advertises `ui_open_studio_panel`
+  with a ~1.7k-tok-smaller area-grouped description while **keeping the full panel_id enum** (verified: compact and full
+  normalize identically; a regression test now pins that). chat-service owns the advertised description (its def wins the
+  advertise dedup); ai-gateway validates the identical 85-value enum. Keep as-is.
 - **Full-stack activation flip (`tasks_gate_enabled`)** → *ready-to-activate ops decision.* The gate is code-complete
   + live-proven; flipping it on (+ a Docker rebuild) is a deployment choice, not a code TODO. Note: needs
   `D-MCPTASKS-GO-STORE` first for multi-replica.
