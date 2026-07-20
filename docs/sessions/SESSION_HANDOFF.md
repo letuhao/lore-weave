@@ -1,5 +1,22 @@
 # ▶▶ NEXT SESSION STARTS HERE
 
+## 🐛 DOGFOOD ROUND-4 POLISH — in progress (2026-07-20, HEAD f30dc77e5)
+Newcomer dogfood on the durable-gate-ACTIVATED build found F12–F18 (backlog + grounded root causes:
+[`docs/specs/2026-07-18-writing-studio-newcomer-polish/round-4-feedback.md`](../specs/2026-07-18-writing-studio-newcomer-polish/round-4-feedback.md)).
+Fixing in **ALPHABET order, monitoring-first** (add the missing monitor before/while fixing — the user's directive).
+- **DONE:** **F14** — agent saw ZERO `book_*` tools on the writing studio (book skill was pin-only) → auto-inject `book`
+  on book surfaces; also fixed a SILENT `LOG_LEVEL=INFO` no-op (the "app" logger had no handler → all `logger.info`
+  dropped) + added the advertised-surface monitor. **F17** — hide `find_tools` from the LLM (semantic top-K can't
+  surface a tool outside the K matches); `tool_list`/`tool_load` are now the sole discovery path, explicitly
+  distinguished; monitor now logs core NAMES (not just count); `4d53ac78f` de-binaried `find-tools.ts` (stray NUL).
+  Both **live-verified** (gateway `/mcp`: find_tools gone, `tool_list(book)`→book_list_chapters; chat monitor core list;
+  Gemma used `tool_list(category=book)`).
+- **NEXT (alphabet):** **F12** `agent-registry-down` — `infra-agent-registry-service-1` Exited (255) → `/v1/agent-
+  registry/*` 504 flood + breaks skills/workflows/hooks/subagents (also the ai-gateway `registry` provider). Then
+  **F13** (+**F18** folded: discovery-meta-tool *success*-loop — model re-lists `tool_list` ~28×) · **F15**
+  (chapter-create steals the chat panel) · **F16** (New-Book submit enabled with no language).
+- **Debt:** 3 pre-existing `TestGenericFrontendTools` failures (this session's M3 frontend-tools migration).
+
 ## ✅ MCP-TASKS FULL ACTIVATION — **PLAN COMPLETE (M1–M4), ACTIVATED (2026-07-20)**
 The durable ext-tasks human gate is built, persistent (multi-replica), owner-checked, and **LIVE** —
 `tasks_gate_enabled=True`, all 4 services redeployed, all KIND-C confirms that CAN be task-shaped are (book all
