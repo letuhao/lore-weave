@@ -1,3 +1,4 @@
+import { useQueryClient } from '@tanstack/react-query';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { booksApi, type Chapter } from '@/features/books/api';
 import { compositionApi } from '@/features/composition/api';
@@ -9,6 +10,8 @@ import { appendChildren, flatten, setExpanded, setLoading } from './tree';
 import { ROOT_KEY, emptyTree, type ManuscriptNode, type TreeState } from './types';
 import { partsApi, type Part } from './partsApi';
 import { buildPartsTree, chapterDisplayTitle } from './partsTree';
+import { useBookStructure } from './useBookStructure';
+import { chooseManuscriptLens, showLensToggle, type ManuscriptLens } from './manuscriptLens';
 
 const PAGE = 100;
 // Cap for the parts grouping's whole-book chapter load (a structured book with acts is
@@ -71,16 +74,39 @@ export function useManuscriptTree(bookId: string, token: string | null) {
     [work.data, activeWorkId],
   );
 
-  const rawSource: ManuscriptSource = work.isLoading ? 'pending' : projectId ? 'outline' : 'chapters';
-  // F11 — a book can have a Work whose outline is EMPTY (its chapters were never decomposed into the
-  // plan). Reading the outline then shows "No chapters yet." and the book's real chapters VANISH from
-  // the rail — reads as data loss, and the onboarding door ("Set up writing" / "Set up this book")
-  // leads straight into it. When the outline root comes back empty (below), we flip to the flat
-  // book-service chapters so an un-planned Work still browses its manuscript.
+  // P1.2 (book-structure-pipeline spec §4.3) — the rail is chosen by CONTENT, not by a projectId gate.
+  // The unified /structure read reports whether the book has parts (and/or an outline); a book with
+  // parts renders them EVEN when it also has a Work. This kills Bug 4 (outline-mode used to skip parts).
+  const queryClient = useQueryClient();
+  const structure = useBookStructure(bookId, token);
+  // Refresh the /structure kinds after a mutation that changes whether the book HAS parts (create the
+  // first / trash the last / restore) so the lens flips immediately instead of after the cache expires.
+  const invalidateStructure = useCallback(
+    () => { void queryClient.invalidateQueries({ queryKey: ['book-structure', bookId] }); },
+    [queryClient, bookId],
+  );
+  // null ONLY while loading (→ lens 'pending'). On ERROR (loaded, no data) degrade to no-parts so the
+  // rail falls back to the outline/flat path — a /structure outage must NOT brick the manuscript with a
+  // permanent "Loading…" (the old code degraded to chapters on a parts-fetch failure).
+  const hasParts = structure.isLoading ? null : structure.data ? structure.data.kinds_present.parts : false;
+
+  // F11 — a Work whose outline is EMPTY must not strip the manuscript. When the outline root comes back
+  // empty (below) we drop `hasOutline`, so the lens falls to parts/flat instead of "No chapters yet."
   const [outlineEmptyFallback, setOutlineEmptyFallback] = useState(false);
-  const source: ManuscriptSource = rawSource === 'outline' && outlineEmptyFallback ? 'chapters' : rawSource;
-  // Reset the fallback whenever the book or the underlying source changes (never leak it across books).
-  useEffect(() => setOutlineEmptyFallback(false), [bookId, rawSource]);
+  const hasOutline = !work.isLoading && projectId != null && !outlineEmptyFallback;
+
+  // The [Parts | Outline] toggle (only meaningful when a book has both). Reset per book.
+  const [userLens, setUserLens] = useState<'parts' | 'outline' | null>(null);
+  const kinds =
+    work.isLoading || structure.isLoading || hasParts === null ? null : { parts: hasParts, outline: hasOutline };
+  const lens: ManuscriptLens = chooseManuscriptLens(kinds, userLens);
+  const showToggle = showLensToggle(kinds);
+  // `source` is the DATA source the loaders key on: 'outline' pulls composition arcs; 'parts' and 'flat'
+  // both pull book-service chapters (grouped or flat). Derived from the lens so a Work-book WITH parts
+  // resolves to 'chapters' (→ loads + groups its parts) instead of 'outline' (which skipped them).
+  const source: ManuscriptSource = lens === 'pending' ? 'pending' : lens === 'outline' ? 'outline' : 'chapters';
+  useEffect(() => setOutlineEmptyFallback(false), [bookId, projectId]);
+  useEffect(() => setUserLens(null), [bookId]);
 
   const [tree, setTree] = useState<TreeState>(emptyTree);
   const [total, setTotal] = useState<number | null>(null);
@@ -96,7 +122,7 @@ export function useManuscriptTree(bookId: string, token: string | null) {
   // is stale — it must not append the old book's rows into the new tree (review-impl M1).
   const genRef = useRef(0);
 
-  const partsMode = source === 'chapters' && parts.length > 0;
+  const partsMode = lens === 'parts' && parts.length > 0;
 
   const loadPage = useCallback(async (parentKey: string, parentNodeId: string | null, cursor: string | null) => {
     if (!token || inflight.current.has(parentKey)) return;
@@ -265,8 +291,9 @@ export function useManuscriptTree(bookId: string, token: string | null) {
   const createAct = useCallback(async (title: string) => {
     if (!token) return;
     await partsApi.create(token, bookId, title);
+    invalidateStructure(); // first part → kinds.parts flips true → lens becomes 'parts'
     await resetAndLoad();
-  }, [token, bookId, resetAndLoad]);
+  }, [token, bookId, resetAndLoad, invalidateStructure]);
 
   const renameAct = useCallback(async (partId: string, title: string) => {
     if (!token) return;
@@ -277,16 +304,18 @@ export function useManuscriptTree(bookId: string, token: string | null) {
   const trashAct = useCallback(async (partId: string) => {
     if (!token) return;
     await partsApi.archive(token, bookId, partId);
+    invalidateStructure(); // trashing the last part → kinds.parts flips false
     await resetAndLoad();
-  }, [token, bookId, resetAndLoad]);
+  }, [token, bookId, resetAndLoad, invalidateStructure]);
 
   // S-02b — restore a soft-trashed act. It comes back EMPTY (S-02 sealed: restore does NOT
   // re-home the chapters it once held); the caller's copy must say so.
   const restoreAct = useCallback(async (partId: string) => {
     if (!token) return;
     await partsApi.restore(token, bookId, partId);
+    invalidateStructure(); // restoring onto a partless book → kinds.parts flips true
     await resetAndLoad();
-  }, [token, bookId, resetAndLoad]);
+  }, [token, bookId, resetAndLoad, invalidateStructure]);
 
   const moveChapterToAct = useCallback(async (chapterId: string, partId: string | null) => {
     if (!token) return;
@@ -311,7 +340,8 @@ export function useManuscriptTree(bookId: string, token: string | null) {
   const rows = useMemo(() => flatten(tree), [tree]);
 
   return {
-    source, rows, total, counts, error, partsMode, parts, trashedActs,
+    source, lens, showToggle, selectLens: setUserLens,
+    rows, total, counts, error, partsMode, parts, trashedActs,
     toggleExpand, loadMore, collapseAll, reload: resetAndLoad,
     createAct, renameAct, trashAct, moveChapterToAct, moveAct, restoreAct,
   };

@@ -28,9 +28,14 @@
   route-conformance gate exists (glossary-only), so no contract entry needed. NOTE: resolver returns the
   parts skeleton + `active_work.project_id` (kinds.outline = project_id!=null, the P1 outline signal);
   chapters lazy-loaded per group by the FE (P1.2).
-- **P1.2 [ ] FE `useManuscriptTree` reads `/structure`; mode-by-content + `[Parts|Outline]` toggle; lazy chapter load per group.**
-  - AC: Bug 4 gone (co-writer book + Part → reload → Part reachable); outline-only book unchanged; partless book flat (no "Unassigned" banner).
-  - Gate: vitest + `/review-impl` + e2e-live (browser repro).
+- **P1.2 [~] FE `useManuscriptTree` reads `/structure` + mode-by-content + `[Parts|Outline]` toggle.** Files:
+  structureApi.ts, manuscriptLens.ts (pure), useBookStructure.ts, useManuscriptTree.ts (source now lens-derived),
+  ManuscriptNavigator.tsx (toggle). `source` is content-derived so a Work-book WITH parts → 'chapters' → loads
+  parts (Bug 4 gone); outline-only → unchanged; partless → flat. EVIDENCE: 147 manuscript tests green (6 new
+  lens + refactored hook + navigator + a HIGH regression test) + `tsc --noEmit` clean. `/review-impl` caught +
+  FIXED: (HIGH) a /structure ERROR left the rail permanently 'pending' → now degrades to flat; (MED) creating
+  the FIRST part didn't flip the lens until the 5s cache expired → invalidate /structure on create/trash/restore.
+  REMAINING: browser e2e (repro book 019f8027 = Part 1 + a real Work → the navigator shows Part 1, not hidden).
 - **P2.1 [ ] Write silent-seams:** validate `set_part` target (live kind='part' in this book) → typed error; FE surfaces mutation errors; mobile "Move to part…" affordance.
 - **P3.1 [ ] Lifecycle cascade:** `book.lifecycle_changed` outbox → composition consumer (soft-trash/restore/hard-delete structure); resolver joins book lifecycle; kind-gate to novel.
 - **P4.1 [ ] Agent + guidance (rescoped):** `book_get_structure` MCP + metadata-vs-structure tool-selection guidance (or `book_get_overview`). Fixes Bug 2.

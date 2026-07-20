@@ -97,6 +97,8 @@ export function ManuscriptNavigator({ bookId, token, selectedId, onSelect, onNew
     // `parts`/`trashedActs` default to [] so the navigator tolerates a hook shape without them
     // (older/partial mocks) — reading .length/.findIndex on undefined would crash every render.
     source, rows, total, counts, error, partsMode, parts = [], trashedActs = [],
+    // P1.2 — mode-by-content + [Parts|Outline] toggle (defaults tolerate older/partial mocks).
+    showToggle = false, lens = 'flat' as const, selectLens = (_l: 'parts' | 'outline') => {},
     toggleExpand, loadMore, collapseAll, reload,
     createAct, renameAct, trashAct, moveChapterToAct, moveAct, restoreAct,
   } = useManuscriptTree(bookId, token);
@@ -196,7 +198,26 @@ export function ManuscriptNavigator({ bookId, token, selectedId, onSelect, onNew
     <div data-testid="manuscript-nav" className="flex min-h-0 flex-1 flex-col">
       {/* Header: title + actions (mockup .nav-head) */}
       <div className="flex h-[34px] flex-shrink-0 items-center justify-between border-b pl-3 pr-2 text-[10px] font-bold uppercase tracking-[0.06em] text-muted-foreground">
-        <span>{t('manuscript.title', { defaultValue: 'Manuscript' })}</span>
+        <div className="flex items-center gap-2">
+          <span>{t('manuscript.title', { defaultValue: 'Manuscript' })}</span>
+          {/* P1.2 (spec §4.3) — the lens toggle, shown ONLY when a book has BOTH parts and an outline.
+              Parts = the manuscript grouping; Outline = the arc/scene plan lens. Keeps the two
+              orthogonal groupings user-switchable instead of one silently hiding the other (Bug 4). */}
+          {showToggle && (
+            <div className="flex items-center gap-px rounded border bg-muted/40 p-px normal-case" role="tablist"
+              aria-label={t('manuscript.lensToggle', { defaultValue: 'View' })}>
+              {(['parts', 'outline'] as const).map((l) => (
+                <button key={l} type="button" role="tab" aria-selected={lens === l}
+                  onClick={() => selectLens(l)}
+                  className={`rounded px-1.5 py-0.5 text-[9px] font-semibold tracking-wide ${lens === l ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}>
+                  {l === 'parts'
+                    ? t('manuscript.lensParts', { defaultValue: 'Parts' })
+                    : t('manuscript.lensOutline', { defaultValue: 'Outline' })}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
         <div className="flex items-center gap-0.5">
           {/* S-02 — New act (manuscript part). Only meaningful for a manuscript-structured book
               (no composition Work); the outline owns the hierarchy when a Work exists. */}
