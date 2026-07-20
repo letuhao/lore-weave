@@ -151,7 +151,7 @@ tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
 
 # User-facing JWT auth (crates/service-http::require_user; roleplay-service is
 # the first consumer). HS256, `sub` claim → user_id — mirrors book-service.
-jsonwebtoken = "9"
+jsonwebtoken = "10"
 # Typed TIMESTAMPTZ <-> DateTime<Utc> in sqlx models (roleplay-service).
 chrono = { version = "0.4", features = ["serde"] }
 
