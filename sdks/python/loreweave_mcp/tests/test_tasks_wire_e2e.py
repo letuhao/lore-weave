@@ -160,3 +160,15 @@ async def test_decline_does_not_write():
         assert committed == []  # declined → no write
         got = await _get_task(session, task_id)
         assert got.status == "cancelled"
+
+
+@pytest.mark.asyncio
+async def test_provide_input_tool_is_visibility_legacy():
+    """The provide-input tool is a MECHANISM tool — tagged visibility:legacy so
+    find_tools/discovery never surfaces it to the LLM (CAT-4; Go-parity)."""
+    mcp = FastMCP("vis", stateless_http=True)
+    register_task_endpoints(mcp, InMemoryTaskStore(), tool_prefix="composition")
+    tools = await mcp.list_tools()
+    pi = next((t for t in tools if t.name == "composition_task_provide_input"), None)
+    assert pi is not None, "provide-input tool not registered"
+    assert (pi.meta or {}).get("visibility") == "legacy"

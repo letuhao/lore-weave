@@ -121,6 +121,10 @@ func RegisterTaskProvideInput(srv *mcp.Server, store TaskStore, toolPrefix strin
 	RegisterTool(srv, &mcp.Tool{
 		Name:        name,
 		Description: "Resolve a pending durable-gate task: accept to run the gated action, or decline.",
+		// CAT-4 visibility:legacy — this is a MECHANISM tool the client (chat-service's
+		// resume driver) calls by NAME, not something the LLM should discover via
+		// find_tools. Legacy ⇒ excluded from discovery/hot-seed, still callable by name.
+		Meta: WithVisibility(mcp.Meta{}, VisibilityLegacy),
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, in ProvideInputArgs) (*mcp.CallToolResult, ProvideInputResult, error) {
 		accepted := true
 		if in.Accepted != nil {

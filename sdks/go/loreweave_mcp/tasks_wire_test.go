@@ -160,6 +160,31 @@ func TestProvideInputTool_AcceptRunsExecutorAndReturnsResult(t *testing.T) {
 	}
 }
 
+// The provide-input tool is a mechanism tool — it must be tagged visibility:legacy
+// so find_tools/discovery never surfaces it to the LLM (CAT-4).
+func TestProvideInputTool_IsVisibilityLegacy(t *testing.T) {
+	srv := mcp.NewServer(&mcp.Implementation{Name: "domain", Version: "0.0.1"}, nil)
+	RegisterTaskProvideInput(srv, NewInMemoryTaskStore(), "composition")
+	cs := connectInMemory(t, srv)
+
+	res, err := cs.ListTools(context.Background(), &mcp.ListToolsParams{})
+	if err != nil {
+		t.Fatalf("ListTools: %v", err)
+	}
+	var found *mcp.Tool
+	for _, tl := range res.Tools {
+		if tl.Name == "composition_task_provide_input" {
+			found = tl
+		}
+	}
+	if found == nil {
+		t.Fatal("provide-input tool not listed")
+	}
+	if found.Meta[MetaKeyVisibility] != string(VisibilityLegacy) {
+		t.Fatalf("visibility = %v, want legacy (a mechanism tool must not be discoverable)", found.Meta[MetaKeyVisibility])
+	}
+}
+
 // Decline over the real wire must cancel WITHOUT running the executor.
 func TestProvideInputTool_DeclineDoesNotRunExecutor(t *testing.T) {
 	store := NewInMemoryTaskStore()

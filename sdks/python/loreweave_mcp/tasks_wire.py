@@ -258,7 +258,11 @@ def register_task_endpoints(fastmcp: Any, store: TaskStore, *, tool_prefix: str 
     srv.request_handlers[t.GetTaskRequest] = _get
     srv.request_handlers[t.CancelTaskRequest] = _cancel
 
-    @fastmcp.tool(name=provide_input_name)
+    # CAT-4 visibility:legacy — a MECHANISM tool the client (chat-service's resume
+    # driver) calls by NAME; the LLM must never discover it via find_tools. Legacy ⇒
+    # excluded from the discoverable set on both surfaces (tool_discovery.py +
+    # find-tools.ts), still registered + callable. Mirrors the Go kit's WithVisibility.
+    @fastmcp.tool(name=provide_input_name, meta={"visibility": "legacy"})
     async def task_provide_input(  # noqa: D401 — the input step (interim for tasks/update)
         task_id: str, accepted: bool = True, inputs: dict[str, Any] | None = None
     ) -> dict[str, Any]:
