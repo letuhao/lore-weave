@@ -32,9 +32,23 @@
   advertised in `tools/list` (287 tools); `ui_navigate(/books)` → the `io.loreweave/ui-directive`;
   `ui_open_studio_panel(bad enum)` → `isError` + the enum list (no silent no-op). chat-service suites green
   (frontend-tools/contract 33, stream-tools 103). **⇒ the ui_* cutover (P3.1+P3.2+P3.3) is functionally complete.**
-- **▶ P3.4 NEXT** — browser E2E (a real model turn calling `ui_navigate` navigates the app; retire the dead
-  `ui_*` suspend branch of `useUiToolExecutor` = `D-P3-RETIRE-UI-SUSPEND`). Then **Phase 2** (propose_edit
-  task-shaped), **Phase 4** (retire the remaining `frontend_tools.py` `ui_*` defs + the parallel construct).
+- **P3.4 DONE — Phase 3 COMPLETE, ui_* cutover LIVE-PROVEN end-to-end** (`fdc4c160f`, envelope `114c34f3a`). A real
+  assistant turn ("open my Settings page") → model called `ui_navigate` → chat-service routed to ai-gateway →
+  ai-gateway returned the `io.loreweave/ui-directive` → **the browser navigated to /settings/account**. The browser
+  E2E caught THREE bugs no unit test did (the "verify by effect" the frontend-tool contract mandates):
+  1. `TaskConfirmCard.tsx` `resume(outcome: string)` → tsc error → **`npm run build` FAILED, so Docker silently
+     served the last-good (19h-old, pre-P3.3) image** — every "rebuild" was stale. (Lesson re-confirmed: verify the
+     deployed bundle contains your code before diagnosing a live result. `grep io.loreweave/ui-directive` in the
+     served bundle was the tell.) Fixed: typed the param `FrontendToolOutcome`.
+  2. `uiDirectiveFromResult` didn't unwrap chat-service's real `{ok, result: <directive>}` envelope (the SSE shape);
+     my unit test used the bare directive, hiding it. Fixed + tests use the real shape.
+  3. `runChatStream` `TOOL_CALL_RESULT` record lacked `toolCallId`; the directive path keys idempotency on it, so
+     the guard never fired. Fixed: carry `e.toolCallId`.
+  Also: the FE build needs `--build-arg VITE_API_BASE=` (empty ⇒ relative `/v1`); a bare `docker build` bakes the
+  Dockerfile default `http://localhost:3000` and breaks auth. Rebuild via compose or pass the arg. FE tests 657 green.
+- **▶ NEXT: Phase 2** (`propose_edit` → task-shaped via the durable gate) + **Phase 4** (retire the dead `ui_*`
+  suspend branch of `useUiToolExecutor` = `D-P3-RETIRE-UI-SUSPEND`, the `frontend_tools.py` `ui_*` defs =
+  `D-P3-RETIRE-UI-FRONTEND-DEFS`, and the parallel construct once every kind is MCP-native).
 - Deferred: `D-P3-COMPACT-PANEL-DESC` (F7c compact panel_id A/B, default-off, not ported to ai-gateway).
 
 
