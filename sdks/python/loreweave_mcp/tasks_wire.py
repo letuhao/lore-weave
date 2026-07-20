@@ -31,6 +31,7 @@ from datetime import datetime, timezone
 from typing import Any, Callable
 
 import mcp.types as t
+from mcp.server.fastmcp import Context as MCPContext
 
 from .tasks import COMPLETED, FAILED, Task, TaskStore
 
@@ -40,6 +41,7 @@ __all__ = [
     "open_gate",
     "gate_or_confirm",
     "client_supports_tasks",
+    "_owner_check",
     "TASKS_EXTENSION",
     "GATE_RESULT_TYPE",
 ]
@@ -232,7 +234,35 @@ def enable_task_results(fastmcp: Any, store: TaskStore) -> None:
     srv.request_handlers[t.CallToolRequest] = _wrapped
 
 
-def register_task_endpoints(fastmcp: Any, store: TaskStore, *, tool_prefix: str = "") -> None:
+async def _owner_check(
+    ctx: Any, internal_token: str | None, store: TaskStore, task_id: str
+) -> str | None:
+    """The M2 accept-caller ownership guard. Returns an error string to REFUSE, or None
+    to allow. Only the PROPOSING user (task.owner_user_id) may drive their gate — the
+    resume driver sends the resuming user's X-User-Id, so a leaked task_id can't let a
+    stranger trigger a pending action. No internal_token ⇒ in-process/kit mode, no check.
+    A missing/invalid identity envelope refuses (``identity_required``); a mismatch
+    refuses (``not_task_owner``). A get() failure (not-found/backend) is NOT the guard's
+    job — it returns None and lets ``provide_input`` surface the real error."""
+    if not internal_token:
+        return None
+    from .context import build_tool_context  # local import — kit-internal, avoids a cycle
+    try:
+        caller = str(build_tool_context(ctx, internal_token).user_id)
+    except Exception:  # noqa: BLE001 — missing/invalid identity ⇒ refuse
+        return "identity_required"
+    try:
+        existing = await store.get(task_id)
+    except Exception:  # noqa: BLE001 — not found / backend ⇒ defer to provide_input
+        return None
+    if existing.owner_user_id and caller != existing.owner_user_id:
+        return "not_task_owner"
+    return None
+
+
+def register_task_endpoints(
+    fastmcp: Any, store: TaskStore, *, tool_prefix: str = "", internal_token: str | None = None
+) -> None:
     """Register tasks/get + tasks/cancel handlers and the provide-input tool onto a
     FastMCP server. Call once per server at build time.
 
@@ -240,7 +270,14 @@ def register_task_endpoints(fastmcp: Any, store: TaskStore, *, tool_prefix: str 
     ``composition_task_provide_input``). REQUIRED for any domain reached through the
     ai-gateway: the gateway catalog routes by tool NAME, so a bare ``task_provide_input``
     would COLLIDE across task-capable domains and the resume couldn't reach the provider
-    that owns the task. Unprefixed (``""``) is only for in-process/kit-test servers."""
+    that owns the task. Unprefixed (``""``) is only for in-process/kit-test servers.
+
+    ``internal_token`` (M2 accept-caller OWNERSHIP CHECK) — when set, the provide-input
+    tool lifts the caller's identity from the request envelope (``build_tool_context``)
+    and refuses to drive a task whose ``owner_user_id`` differs, so a leaked ``task_id``
+    can't let another user trigger someone else's pending gate. Pass the domain's
+    ``settings.internal_service_token`` in production; omit for in-process/kit tests
+    (no envelope). The Go book domain enforces the same invariant in its resolver."""
     srv = fastmcp._mcp_server
     provide_input_name = f"{tool_prefix}_task_provide_input" if tool_prefix else "task_provide_input"
 
@@ -269,8 +306,15 @@ def register_task_endpoints(fastmcp: Any, store: TaskStore, *, tool_prefix: str 
     # find-tools.ts), still registered + callable. Mirrors the Go kit's WithVisibility.
     @fastmcp.tool(name=provide_input_name, meta={"visibility": "legacy"})
     async def task_provide_input(  # noqa: D401 — the input step (interim for tasks/update)
-        task_id: str, accepted: bool = True, inputs: dict[str, Any] | None = None
+        ctx: MCPContext, task_id: str, accepted: bool = True,
+        inputs: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
+        # M2 accept-caller OWNERSHIP CHECK — only the proposing user may drive their gate.
+        # `ctx: MCPContext` is INJECTED by FastMCP (not a client arg); it carries the
+        # request envelope (X-User-Id / X-Internal-Token) the guard reads.
+        deny = await _owner_check(ctx, internal_token, store, task_id)
+        if deny is not None:
+            return {"taskId": task_id, "status": FAILED, "error": deny}
         payload = dict(inputs or {})
         payload["accepted"] = accepted
         task = await store.provide_input(task_id, payload)

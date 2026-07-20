@@ -158,7 +158,10 @@ _task_store = PgTaskStore(get_pool, {_DERIVE_DESCRIPTOR: _resolve_derive})
 # tool_prefix="composition" → the input tool is `composition_task_provide_input`
 # (gateway-routable + collision-free across task-capable domains; see the routing note
 # in the spec / SESSION_HANDOFF).
-register_task_endpoints(mcp_server, _task_store, tool_prefix="composition")
+register_task_endpoints(
+    mcp_server, _task_store, tool_prefix="composition",
+    internal_token=settings.internal_service_token,  # M2: accept-caller ownership check
+)
 
 # Confirm descriptors for the Tier-W actions (C-CONFIRM domain map → composition).
 _PUBLISH_DESCRIPTOR = "composition.publish"
