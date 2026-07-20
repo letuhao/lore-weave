@@ -17,10 +17,15 @@ confirms → **M4** retire the bespoke construct.
     (multi-replica, single-winner, decline/TTL/cancel); the T3c `/mcp`+Postgres tests now run PgTaskStore end-to-end.
   - **M1c** — composition `PgTaskStore` (asyncpg, pool-getter) + `mcp_gate_tasks` in `run_migrations`; 5 real-Postgres
     tests green vs `loreweave_composition_test`.
-  **Next: M2** — flip `tasks_gate_enabled` + wire the chat-service driver (declare caps) + the accept-caller
-  ownership-check hardening + full-stack live-E2E (rebuild book+composition containers so `Up`/`run_migrations` create
-  the table on the real startup, then a real agent turn opens→holds→accepts the gate). See the plan's RUN-STATE
-  (M2 owner-check debt + M1b non-atomicity note recorded).
+- **M2 activation machinery DONE + service-layer live-proven** (`771ffb5a0` + docs). Accept-caller OWNERSHIP CHECK
+  (Go resolver + Python kit `_owner_check`) — 5 kit tests + **LIVE on deployed composition** (stranger→`not_task_owner`
+  untouched; owner→passes, resolver runs, persists). book+composition REBUILT+deployed → `run_migrations`/`Up` create
+  `mcp_gate_tasks` on real startup; the owner-check E2E ran against the deployed `PgTaskStore`. Activation switch +
+  suspend/resume driver: unit-covered; caps→task proven via `/mcp`. **`tasks_gate_enabled` stays default `False`**
+  (fallback-safe, sealed D-C) — the production flip + a browser smoke of the task-sourced confirm CARD is the final
+  ops step, blocked on test-account data (no book chapters; derive grant drifted) + model reliability; FE card path is
+  unchanged code. **Next: M3** — migrate the remaining KIND-C confirms (glossary_confirm_action, confirm_action,
+  propose_record_edit, glossary_propose_entity_edit) to `gate_or_confirm`.
 
 ## ✅ MCP-TASKS + FRONTEND-TOOLS MIGRATION — **implemented through the activation boundary (2026-07-20)**
 Both `docs/specs/2026-07-19-mcp-tasks-durable-gate.md` + `docs/specs/2026-07-19-frontend-tools-mcp-migration.md`

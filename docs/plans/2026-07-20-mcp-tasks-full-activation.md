@@ -82,16 +82,34 @@ This is a **superset** of the in-memory store: the in-memory store becomes regis
     `PgTaskStore` takes a pool GETTER (built at import before the pool exists); JSONB via `json.dumps`/`::jsonb`;
     owner as `uuid.UUID`. composition module imports clean with the store; kit 100 tests green; provider-gate OK.
     **M1 COMPLETE** — the persistence foundation is done on both domains.
-  - M2 `[ ]` · M3 `[ ]` · M4 `[ ]`  (done = an evidence string).
+  - **M2 `[~]`** — durable-gate activation MACHINERY complete + owner-check + service-layer live-proven; the
+    production flip + browser-card smoke are the explicit remaining ops step (below). Evidence:
+    - **Accept-caller ownership check** — implemented (Go book: resolver `ctx`-check; Python: kit `_owner_check` in the
+      provide-input tool via `build_tool_context`), 5 kit unit tests, and **LIVE on deployed composition** (real
+      `/mcp`→ai-gateway→Postgres): a STRANGER accept → `not_task_owner` with the task untouched (`input_required`); the
+      OWNER accept → passes the check, the resolver runs on the persisted `{descriptor,owner,payload}` and the terminal
+      outcome persists. ⇒ resolves the M2 owner-check DEBT.
+    - **Deployed PgTaskStore + migration-on-startup** — dropped `mcp_gate_tasks`, restarted composition AND book →
+      each service's `run_migrations`/`Up` recreated the table on real startup; the composition owner-check E2E ran
+      against the deployed `PgTaskStore` (persistent, not in-memory).
+    - **Activation switch** — chat-service declares tasks caps when `tasks_gate_enabled` (knowledge_client.py:758);
+      the caps→task path is proven (the live `/mcp` test used the identical `tasks_capability_meta()` caps envelope and
+      composition returned a durable task). The suspend→resume→provide-input DRIVER is fully unit-covered.
+    - **CONSCIOUS DECISION — `tasks_gate_enabled` default stays `False`.** The production flip (default→True) is a
+      deploy-time ops decision (sealed D-C; the `confirm_token` fallback is the no-regression default, OQ3). The one
+      browser-unverified piece — the task-sourced confirm CARD rendering in a real agent turn — needs a full model+FE
+      turn, blocked on **test-account data** (no book chapters in loreweave_book; the derive source's EDIT grant drifted
+      since §6.2) + model tool-call reliability. The FE card path is UNCHANGED code (handle-in-content → the same
+      pending suspend shape the confirm card already renders), and the driver is unit-covered. **Recorded as the final
+      pre-activation smoke, NOT silently skipped.** (DRIFT vs the plan's literal "real agent turn": proven at the `/mcp`
+      cross-service layer instead — the same domain-side contract — because the agent turn is data/model-blocked.)
+  - M3 `[ ]` · M4 `[ ]`  (done = an evidence string).
 - **Invariants:** provider-gateway · language-rule · tenancy scope-key on `mcp_gate_tasks` (owner_user_id) · confirm_token fallback stays · no closure persisted.
 - **Decisions / Parked / Debt / Drift:**
-  - **DEBT → M2 (accept-caller ownership check).** The resolver receives `owner_user_id` (the PROPOSER) but the
-    provide-input path does NOT verify the ACCEPT-caller == owner. Go's book resolver re-checks the caller via `ctx`
-    (defense-in-depth, preserved); Python's `provide_input` has no `ctx`, so composition can't. **Pre-existing** (the
-    old closure captured the proposer id identically) and **unreachable until a client declares tasks (M2)** — task_ids
-    are unguessable uuids and the driver only surfaces a task to its owner's session. Fix AT M2 (activation): thread the
-    accept-caller identity into `provide_input`/the provide-input tool in BOTH kits and enforce `caller == owner`, so a
-    stranger with a leaked task_id can't drive another user's gate. Concrete, sequenced — not a vague defer.
+  - **DEBT → M2 (accept-caller ownership check) → RESOLVED (M2.1, `771ffb5a0`).** Go book enforces `caller==owner` in
+    its resolver (`ctx`); Python enforces it in the kit's provide-input tool (`_owner_check` via `build_tool_context`,
+    `register_task_endpoints(internal_token=…)`). 5 kit unit tests + LIVE on deployed composition (stranger →
+    `not_task_owner`, task untouched; owner → passes). A leaked task_id can no longer drive another user's gate.
   - **DRIFT (M1a, near-miss).** SESSION_HANDOFF called the persistent store "a drop-in" — it was not (closure
     unpersistable). Caught in the audit; the resolver-registry evolution is the corrected foundation.
   - **DRIFT (M1a evidence correction).** The M1a commit claimed book-service "DB-E2E green" — but those tests SKIP
