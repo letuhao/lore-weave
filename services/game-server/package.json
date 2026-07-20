@@ -13,8 +13,8 @@
     "test": "tsc && node --test --enable-source-maps \"dist/**/*.test.js\""
   },
   "dependencies": {
-    "@colyseus/ws-transport": "^0.16.0",
-    "colyseus": "^0.16.0",
+    "@colyseus/ws-transport": "^0.17.13",
+    "colyseus": "^0.17.10",
     "cors": "^2.8.5",
     "express": "^4.21.0",
     "ioredis": "^5.11.1"
