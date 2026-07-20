@@ -48,6 +48,10 @@ REQUIRED_EVENTS = frozenset({
     "chapter.scenes_linked",
     "chapter.trashed",
     "chapter.deleted",
+    # A bulk book RESTORE un-trashes chapters (spec §4.6) — the prose comes BACK, so a chapter the
+    # trash cleared must be RECONCILED again (same re-read as scenes_linked), or the mirror keeps
+    # claiming a restored book is unwritten forever. Closed set ⇒ must be named + handled.
+    "chapter.restored",
 })
 
 
@@ -87,6 +91,9 @@ class CompositionEventConsumer(BaseProjectionConsumer):
             "chapter.scenes_linked": self._on_scenes_linked,
             "chapter.trashed": self._on_prose_gone,
             "chapter.deleted": self._on_prose_gone,
+            # Restore = prose returned ⇒ re-reconcile the chapter (re-establish the verdict the trash
+            # cleared). Same handler as scenes_linked: it re-reads the chapter and lands on the truth NOW.
+            "chapter.restored": self._on_scenes_linked,
         }
         missing = REQUIRED_EVENTS - set(self._handlers)
         if missing:  # fail LOUDLY at construction, never silently at runtime

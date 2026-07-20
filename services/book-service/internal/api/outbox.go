@@ -59,6 +59,39 @@ func emitBookLifecycleChanged(ctx context.Context, tx pgx.Tx, bookID uuid.UUID) 
 	})
 }
 
+// emitChapterLifecycleForBook emits ONE per-chapter event (chapter.trashed / chapter.deleted /
+// chapter.restored) for each chapter a BULK book lifecycle transition just moved, in the caller's tx.
+//
+// WHY THIS EXISTS (spec §4.6): a book-level trash/purge/restore bulk-updates chapters but historically
+// emitted NOTHING per-chapter, so the consumers of chapter.{trashed,deleted,restored} — glossary
+// citation-staleness, statistics counts, composition written-verdict — never learned the chapters
+// changed. A trashed book's chapters therefore still read as live to them (citations valid, stats not
+// decremented). Emitting the same per-chapter events a single-chapter transition emits makes the bulk
+// path behaviourally identical to N single-chapter ones. Batched (one pipelined round-trip, not N) so a
+// 6000-chapter book stays cheap; each row is atomic with the lifecycle write.
+func emitChapterLifecycleForBook(ctx context.Context, tx pgx.Tx, eventType string, bookID uuid.UUID, chapterIDs []uuid.UUID) error {
+	if len(chapterIDs) == 0 {
+		return nil
+	}
+	payload, err := json.Marshal(map[string]any{"book_id": bookID})
+	if err != nil {
+		return fmt.Errorf("chapter-event marshal: %w", err)
+	}
+	batch := &pgx.Batch{}
+	for _, chID := range chapterIDs {
+		batch.Queue(`INSERT INTO outbox_events (aggregate_type, aggregate_id, event_type, payload)
+			VALUES ('chapter', $1, $2, $3)`, chID, eventType, payload)
+	}
+	br := tx.SendBatch(ctx, batch)
+	defer br.Close()
+	for range chapterIDs {
+		if _, err := br.Exec(); err != nil {
+			return fmt.Errorf("chapter-event insert: %w", err)
+		}
+	}
+	return nil
+}
+
 // ScenesLinkedEvent is the event_type emitted whenever this chapter's scene→spec back-links
 // (`scenes.source_scene_id`) may have changed. SC11-amendment Phase 0.
 //

@@ -32,6 +32,10 @@ const (
 	evChapterPub      = "chapter.published"
 	evChapterDeleted  = "chapter.deleted"
 	evChapterTrashed  = "chapter.trashed"
+	// A chapter's prose came BACK — a bulk book RESTORE un-trashes its chapters (spec §4.6). The
+	// articles were hard-broken on the trash; the ground truth returning is a re-grounding trigger
+	// (content severity, like a re-publish), not another hard break. Closed-set, so it must be named.
+	evChapterRestored = "chapter.restored"
 	// WS-0.6 (spec 2026-07-11-publish-independent-kg-indexing): a chapter can now enter
 	// the knowledge graph WITHOUT being published ("add to knowledge" on a draft), which
 	// re-parses its scenes. stalenessRule below is a CLOSED SET — an event it doesn't
@@ -151,11 +155,11 @@ func stalenessRule(eventType string) (reason, severity, sourceType string, ok bo
 	case evEntityMerged:
 		// aggregate_id is the WINNER (the surviving canon, which now covers both).
 		return "merged", "structural", "entity", true
-	case evChapterPub, evChapterKGIndexed:
-		// Same reason code for both: in either case the chapter's prose (and the scene
-		// index the wiki's citations hang off) has been re-pinned, so the articles
-		// grounded on it need re-grounding. Publishing and indexing are now independent
-		// acts, and EITHER one moves the ground truth.
+	case evChapterPub, evChapterKGIndexed, evChapterRestored:
+		// Same reason code for all three: the chapter's prose (and the scene index the wiki's
+		// citations hang off) has been re-pinned, so the articles grounded on it need re-grounding.
+		// Publishing and indexing are independent acts, and a RESTORE (prose returns after a book
+		// trash) is a third — EACH moves the ground truth back into place.
 		return "chapter_regrounded", "content", "block", true
 	case evChapterDeleted, evChapterTrashed, evChapterKGExcluded:
 		// kg_excluded joins the HARD break class: the user retracted the chapter from

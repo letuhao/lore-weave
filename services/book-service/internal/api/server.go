@@ -1242,30 +1242,49 @@ func (s *Server) transitionBookLifecycleTx(ctx context.Context, bookID uuid.UUID
 		return err
 	}
 	defer tx.Rollback(ctx)
+	// Each case: (1) transition the book, (2) transition its chapters WITH `RETURNING id` so we know
+	// exactly which chapters moved, (3) emit one per-chapter event (spec §4.6 — the bulk path used to
+	// skip these, so glossary/statistics/written-verdict never learned a book-trashed chapter changed).
+	var bookSQL, chapterSQL, chapterEvent string
 	switch target {
 	case "trashed":
-		if _, err := tx.Exec(ctx, `UPDATE books SET lifecycle_state='trashed', trashed_at=now(), updated_at=now() WHERE id=$1`, bookID); err != nil {
-			return err
-		}
-		if _, err := tx.Exec(ctx, `UPDATE chapters SET lifecycle_state='trashed', trashed_at=now(), updated_at=now() WHERE book_id=$1 AND lifecycle_state='active'`, bookID); err != nil {
-			return err
-		}
+		bookSQL = `UPDATE books SET lifecycle_state='trashed', trashed_at=now(), updated_at=now() WHERE id=$1`
+		chapterSQL = `UPDATE chapters SET lifecycle_state='trashed', trashed_at=now(), updated_at=now() WHERE book_id=$1 AND lifecycle_state='active' RETURNING id`
+		chapterEvent = "chapter.trashed"
 	case "active":
-		if _, err := tx.Exec(ctx, `UPDATE books SET lifecycle_state='active', trashed_at=NULL, purge_eligible_at=NULL, updated_at=now() WHERE id=$1`, bookID); err != nil {
-			return err
-		}
-		if _, err := tx.Exec(ctx, `UPDATE chapters SET lifecycle_state='active', trashed_at=NULL, purge_eligible_at=NULL, updated_at=now() WHERE book_id=$1`, bookID); err != nil {
-			return err
-		}
+		bookSQL = `UPDATE books SET lifecycle_state='active', trashed_at=NULL, purge_eligible_at=NULL, updated_at=now() WHERE id=$1`
+		chapterSQL = `UPDATE chapters SET lifecycle_state='active', trashed_at=NULL, purge_eligible_at=NULL, updated_at=now() WHERE book_id=$1 AND lifecycle_state='trashed' RETURNING id`
+		chapterEvent = "chapter.restored"
 	case "purge_pending":
-		if _, err := tx.Exec(ctx, `UPDATE books SET lifecycle_state='purge_pending', purge_eligible_at=now(), updated_at=now() WHERE id=$1`, bookID); err != nil {
-			return err
-		}
-		if _, err := tx.Exec(ctx, `UPDATE chapters SET lifecycle_state='purge_pending', purge_eligible_at=now(), updated_at=now() WHERE book_id=$1`, bookID); err != nil {
-			return err
-		}
+		bookSQL = `UPDATE books SET lifecycle_state='purge_pending', purge_eligible_at=now(), updated_at=now() WHERE id=$1`
+		chapterSQL = `UPDATE chapters SET lifecycle_state='purge_pending', purge_eligible_at=now(), updated_at=now() WHERE book_id=$1 AND lifecycle_state<>'purge_pending' RETURNING id`
+		chapterEvent = "chapter.deleted"
 	default:
 		return fmt.Errorf("unsupported transition %q", target)
+	}
+	if _, err := tx.Exec(ctx, bookSQL, bookID); err != nil {
+		return err
+	}
+	// Read all moved chapter ids fully (and close the rows) BEFORE any further tx op.
+	rows, err := tx.Query(ctx, chapterSQL, bookID)
+	if err != nil {
+		return err
+	}
+	var chapterIDs []uuid.UUID
+	for rows.Next() {
+		var id uuid.UUID
+		if err := rows.Scan(&id); err != nil {
+			rows.Close()
+			return err
+		}
+		chapterIDs = append(chapterIDs, id)
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	if err := emitChapterLifecycleForBook(ctx, tx, chapterEvent, bookID, chapterIDs); err != nil {
+		return err
 	}
 	if err := emitBookLifecycleChanged(ctx, tx, bookID); err != nil {
 		return err

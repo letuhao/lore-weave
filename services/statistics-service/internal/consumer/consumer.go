@@ -87,7 +87,10 @@ func (c *Consumer) Run(ctx context.Context) {
 					c.handleReadingProgress(ctx, payloadStr)
 				case "chapter.created":
 					c.handleChapterCreated(ctx, payloadStr)
-				case "chapter.trashed", "chapter.deleted":
+				case "chapter.trashed", "chapter.deleted", "chapter.restored":
+					// All three just re-read the book's CURRENT active-chapter count from book-service
+					// (a re-read, order-safe — reflects the truth NOW), so a bulk book trash AND its
+					// restore both land the right count. Restore is symmetric here for free.
 					c.handleChapterRemoved(ctx, payloadStr)
 				case "chapter.translated":
 					c.handleChapterTranslated(ctx, payloadStr)
