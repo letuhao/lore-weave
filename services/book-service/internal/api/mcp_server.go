@@ -138,16 +138,22 @@ func (s *Server) newMCPServer() *mcp.Server {
 		s.toolBookCreate)
 
 	addTool(srv, "book_update_meta",
-		"Update a book's metadata (title, description, original_language, summary, "+
-			"genre_tags). Only provided fields change. Reverse: book_update_meta with "+
-			"the prior values.",
-		lwmcp.NewToolMeta(lwmcp.TierA, lwmcp.ScopeBook, nil, []string{"rename book", "edit book", "set genre"}),
+		"Set the book's own METADATA FIELDS — its title, description/blurb/synopsis, summary, "+
+			"original_language, genre_tags. This is the ONLY home for a book's description or summary: "+
+			"to write or change what the book is ABOUT, edit these fields here — NEVER create a chapter "+
+			"for it (a chapter is story prose, not book metadata). Only provided fields change. Reverse: "+
+			"book_update_meta with the prior values.",
+		lwmcp.NewToolMeta(lwmcp.TierA, lwmcp.ScopeBook, nil, []string{
+			"rename book", "edit book", "set genre", "set description", "update description",
+			"set summary", "update summary", "set blurb", "set synopsis", "write the book description"}),
 		s.toolBookUpdateMeta)
 
 	addTool(srv, "book_chapter_create",
-		"Create a new chapter in a book from plain text (or empty). Returns the "+
-			"new chapter_id. Reverse: book_chapter_delete (trash).",
-		lwmcp.NewToolMeta(lwmcp.TierA, lwmcp.ScopeBook, nil, []string{"new chapter", "add chapter"}),
+		"Create a new chapter — a unit of manuscript PROSE (the story text itself) — from plain text "+
+			"(or empty). Returns the new chapter_id. For the book's own description / summary / blurb "+
+			"(metadata about the book), use book_update_meta instead — do NOT create a chapter for it. "+
+			"Reverse: book_chapter_delete (trash).",
+		lwmcp.NewToolMeta(lwmcp.TierA, lwmcp.ScopeBook, nil, []string{"new chapter", "add chapter", "write a chapter"}),
 		s.toolChapterCreate)
 
 	addTool(srv, "book_chapter_bulk_create",

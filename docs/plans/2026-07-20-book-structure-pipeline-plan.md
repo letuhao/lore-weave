@@ -96,7 +96,19 @@
   (options A: hard-delete-on-purge scoped by book_id; B: add a dedicated `book_trashed` column + soft-cascade
   — bigger blast radius; C: read-side resolver lifecycle-join only, non-destructive; D: defer). Kind-gate to
   novel (diary has no composition structure).
-- **P4.1 [ ] Agent + guidance (rescoped):** `book_get_structure` MCP + metadata-vs-structure tool-selection guidance (or `book_get_overview`). Fixes Bug 2.
+- **P4.1 [x] Agent guidance — metadata-vs-structure disambiguation (Bug 2).** Scoping found `book_get`
+  ALREADY returns the description (so a NEW read tool would be redundant — Bug 2 is a tool-SELECTION problem,
+  not a missing-read one). Fix = sharpen the two write tools so the boundary is unmistakable:
+  `book_update_meta` now claims the metadata-field territory ("the ONLY home for a book's description/summary
+  … NEVER create a chapter for it") + gains write-imperative synonyms (set/update description|summary|blurb|
+  synonym, write the book description); `book_chapter_create` disclaims metadata ("a unit of manuscript PROSE
+  … for the book's own description use book_update_meta, do NOT create a chapter"). EVIDENCE: $0 real-model
+  selection proxy (Gemma-4 26B via provider-registry, `scripts/eval/tool_liveness/selection.py`, full 274-tool
+  catalog as distractors): book tools 90% discoverable (27/30); **book_update_meta correctly picked for "write
+  the book description" and NEVER confused with book_chapter_create for a metadata request — the Bug-2 failure
+  mode is gone.** A first run mis-picked `book_get` for the ambiguous read-phrase "what the book is about" →
+  replaced it with a clear write imperative → HIT. (The description IS deployed: verified book-service /mcp
+  tools/list directly; the re-federation needed an ai-gateway restart to bust its tool-list cache.)
 - **P5.1 [ ] Cleanup:** consolidate 3 `ensure_work` copies; "part" i18n across 18 locales + fix "Act One" arc seed; route `parts_import` + the arc-grouped Chapter Browser through the pipeline.
 
 ## Correctness must-fixes (fold into the touching slice)
@@ -111,6 +123,12 @@
   target-validated like the HTTP path: the MCP ctx has `user_id` but no user bearer, and composition's `/parts`
   is bearer/VIEW-gated, so validation needs a new composition internal parts route (X-Internal-Token + X-User-Id).
   Mitigated: the resolver's LEFT-JOIN-safety makes a bad agent target read as Unassigned (visible, not lost).
+  (3) LOW — the P4 selection proxy surfaced 3 PRE-EXISTING synonym overlaps (unrelated to Bug 2, out of P4
+  scope): `book_chapter_update_meta` ships "reorder chapter" (that's `book_chapter_reorder`'s job);
+  `book_index_chapter` "extract knowledge" collides with `kg_build_graph`; `book_search` "where in the book"
+  collides with `story_search`. A synonym-hygiene sweep, not a P4 fix. (4) LOW — bounded-Option-C put
+  `book_lifecycle` on 2 anchor tables; the 18 deep book-scoped tables rely on the Work chokepoint gate — a
+  belt-only column on them is a follow-up if a direct-by-book_id read of one is ever added.
 - **Drift:** (P3) The sealed spec (§4.6/§7) prescribed a "soft-trash / restore / hard-delete cascade" of
   composition structure. Scoping against real code proved that design partially WRONG: composition has no
   dedicated book-lifecycle column, so a soft-trash cascade would ride `is_archived`/`status` and reintroduce
