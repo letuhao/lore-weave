@@ -66,8 +66,13 @@ describe('useStudioEffectReconciler (Lane B)', () => {
     };
     renderHook(() => useStudioEffectReconciler());
     await waitFor(() => expect(qc.invalidateQueries).toHaveBeenCalledWith({ queryKey: ['chapter', 'b1', 'ch1'] }));
-    // reconcile must NOT publish a chapter event (would switch the user's editor).
-    expect(host.value.publish).not.toHaveBeenCalled();
+    // reconcile must NOT publish a `chapter` FOCUS event (that would hijack the user's editor).
+    // It MAY publish the SAFE `manuscriptChanged` (bumps the tree-reload seq, never moves the editor —
+    // added for the agent-created-sibling-chapter case; see bookEffects.bookDraftEffect).
+    const publish = host.value.publish as ReturnType<typeof vi.fn>;
+    const focusPublishes = publish.mock.calls.filter((c) => (c[0] as { type?: string })?.type === 'chapter');
+    expect(focusPublishes).toHaveLength(0);
+    expect(publish).toHaveBeenCalledWith({ type: 'manuscriptChanged' });
   });
 
   it('ignores a still-pending (suspended) tool call', async () => {

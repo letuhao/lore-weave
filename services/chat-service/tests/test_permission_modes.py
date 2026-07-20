@@ -32,6 +32,7 @@ from app.services.stream_service import (
     stream_response,
 )
 from app.services.tool_discovery import ALWAYS_ON_CORE_NAMES
+from app.services.skill_registry import LOAD_SKILL_NAME
 from tests.conftest import (
     TEST_MODEL_REF,
     TEST_SESSION_ID,
@@ -129,16 +130,33 @@ class TestAdvertiseSurfaceSnapshot:
     (the flagged risk: the ask filter must not silently shrink the default
     surface) and that `ask` advertises exactly the R subset."""
 
-    # The pre-C2 discovery surface for the representative catalog with every
-    # catalog tool active + propose_edit as the surface frontend tool. This is
-    # a SNAPSHOT — if it shrinks, the filter leaked into write mode.
-    EXPECTED_WRITE_SURFACE = set(ALWAYS_ON_CORE_NAMES) | {"propose_edit"} | ALL_CATALOG_NAMES
-    EXPECTED_ASK_SURFACE = set(ALWAYS_ON_CORE_NAMES) | {"propose_edit"} | R_CATALOG_NAMES
+    @pytest.fixture(autouse=True)
+    def _pin_lazy_skill(self, monkeypatch):
+        # F7c — load_skill is advertised in every mode when settings.lazy_skill_bodies
+        # is on (the production default, True). Pin it deterministically so this
+        # snapshot doesn't depend on the ambient settings singleton another test may
+        # have flipped (the order-dependent failure this fixture fixes), and include
+        # LOAD_SKILL_NAME in the expected surfaces below.
+        import app.services.stream_service as _ss
+        monkeypatch.setattr(_ss.settings, "lazy_skill_bodies", True)
+
+    # Since Phase 3/4 the nav ui_* are CATALOG-sourced (like web_search): a core name
+    # with no generic def is advertised only if the catalog provides it. This test's
+    # catalog fixture does NOT include the nav ui_*, so they aren't advertised here —
+    # subtract them from the core baseline (web_search stays: it IS in ALL_CATALOG_NAMES).
+    _CATALOG_SOURCED_UI = {"ui_navigate", "ui_open_book", "ui_open_chapter", "ui_show_panel", "ui_watch_job"}
+    _CORE = set(ALWAYS_ON_CORE_NAMES) - _CATALOG_SOURCED_UI
+
+    # The discovery surface for the representative catalog with every catalog tool
+    # active + propose_edit as the surface frontend tool + the always-on load_skill
+    # control (F7c). This is a SNAPSHOT — if it shrinks, the filter leaked into write mode.
+    EXPECTED_WRITE_SURFACE = _CORE | {"propose_edit", LOAD_SKILL_NAME} | ALL_CATALOG_NAMES
+    EXPECTED_ASK_SURFACE = _CORE | {"propose_edit", LOAD_SKILL_NAME} | R_CATALOG_NAMES
     # RAID Wave B2 — the PLAN surface pin: the ASK surface PLUS the `plan_*`
     # tools (even though they're tiered A/W). If this shrinks, plan mode lost
     # its planning tools; if it grows, a write tool leaked into plan mode.
     EXPECTED_PLAN_SURFACE = (
-        set(ALWAYS_ON_CORE_NAMES) | {"propose_edit"} | R_CATALOG_NAMES | PLAN_TOOL_NAMES
+        _CORE | {"propose_edit", LOAD_SKILL_NAME} | R_CATALOG_NAMES | PLAN_TOOL_NAMES
     )
 
     def test_write_mode_advertises_identical_pinned_surface(self):
@@ -733,13 +751,15 @@ class TestSuspendPersistsMode:
         pool.fetch.return_value = []
         conn.fetchval.return_value = 1
 
-        # Gateway-down agui editor surface: catalog empty → no discovery, but
-        # the frontend write-back tool is re-advertised → suspend path works.
+        # Gateway-down agui editor surface: catalog empty → no discovery, but the
+        # book-scoped frontend confirm tool is re-advertised → the suspend path works.
+        # (propose_edit is no longer a frontend tool since Phase 2 — it routes to
+        # ai-gateway — so a still-frontend tool drives this suspend-persists check.)
         kc = _patched_knowledge(tool_defs=[])
 
         scripts = [[
-            tool_frag(index=0, id="c1", name="propose_edit"),
-            tool_frag(index=0, arguments_delta='{"operation":"insert_at_cursor","text":"x"}'),
+            tool_frag(index=0, id="c1", name="glossary_confirm_action"),
+            tool_frag(index=0, arguments_delta='{"confirm_token":"t","descriptor":"glossary.merge","title":"Merge?"}'),
             done("tool_calls"),
         ]]
         save_mock = AsyncMock()
