@@ -75,7 +75,14 @@ This is a **superset** of the in-memory store: the in-memory store becomes regis
     `/mcp`+Postgres durable-gate tests now exercise `PgTaskStore` end-to-end and pass; full `internal/api` suite green
     WITH the DB (BOOK_TEST_DATABASE_URL). Note: one pre-existing scenes-backfill test fails only in full-suite ordering
     (shared-dev-DB pollution) — passes in isolation, unrelated to M1b (confirmed by stashing migrate.go).
-  - M1c `[ ]` · M2 `[ ]` · M3 `[ ]` · M4 `[ ]`  (done = an evidence string).
+  - **M1c `[x]`** — composition-service persistent `PgTaskStore` (asyncpg) + `mcp_gate_tasks` in `run_migrations`.
+    Evidence: 5 new real-Postgres tests green (`tests/integration/db/test_pg_task_store.py` vs
+    `loreweave_composition_test`): multi-replica propose-on-A/accept-on-B, concurrent single-winner (`asyncio.gather`),
+    decline, TTL-lapse, cancel-idempotent — and the fixture's `run_migrations` CREATED the table (migration wired).
+    `PgTaskStore` takes a pool GETTER (built at import before the pool exists); JSONB via `json.dumps`/`::jsonb`;
+    owner as `uuid.UUID`. composition module imports clean with the store; kit 100 tests green; provider-gate OK.
+    **M1 COMPLETE** — the persistence foundation is done on both domains.
+  - M2 `[ ]` · M3 `[ ]` · M4 `[ ]`  (done = an evidence string).
 - **Invariants:** provider-gateway · language-rule · tenancy scope-key on `mcp_gate_tasks` (owner_user_id) · confirm_token fallback stays · no closure persisted.
 - **Decisions / Parked / Debt / Drift:**
   - **DEBT → M2 (accept-caller ownership check).** The resolver receives `owner_user_id` (the PROPOSER) but the

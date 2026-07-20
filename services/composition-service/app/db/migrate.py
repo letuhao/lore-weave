@@ -1869,6 +1869,32 @@ BUILTIN_TEMPLATES: list[tuple[str, str, str, list[dict]]] = [
 ]
 
 
+# M1c (D-MCPTASKS-GO-STORE mirror) — the durable ext-tasks gate's PERSISTENT store.
+# One row per pending/terminal human-gate task; persists only DATA
+# ({descriptor, owner, payload}) so any replica reconstructs the write via the resolver
+# registry (no closure). PgTaskStore claims a task with an atomic input_required→working
+# UPDATE (single-winner across replicas), then writes the terminal outcome.
+_MCP_GATE_TASKS_SQL = """
+CREATE TABLE IF NOT EXISTS mcp_gate_tasks (
+  task_id          TEXT PRIMARY KEY,
+  status           TEXT NOT NULL
+                     CHECK (status IN ('working','input_required','completed','failed','cancelled')),
+  descriptor       TEXT NOT NULL,
+  owner_user_id    UUID NOT NULL,
+  payload          JSONB NOT NULL DEFAULT '{}'::jsonb,
+  input_requests   JSONB,
+  result           JSONB,
+  error            TEXT,
+  ttl_ms           INTEGER NOT NULL,
+  poll_interval_ms INTEGER NOT NULL,
+  created_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at       TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_mcp_gate_tasks_owner ON mcp_gate_tasks (owner_user_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_mcp_gate_tasks_status ON mcp_gate_tasks (status, created_at);
+"""
+
+
 async def _apply_base_schema(conn: asyncpg.Connection) -> None:
     """The base idempotent DDL — injected into the package re-key so its M0
     pre-flight runs BEFORE any DDL (25 PM-7) and its M2/M3 after (one unit)."""
@@ -1889,6 +1915,7 @@ async def run_migrations(pool: asyncpg.Pool) -> None:
         if rekeyed:
             logger.info("composition migrate: package re-key pkg_rekey_v1 applied this boot")
         await conn.execute(_MOTIF_SCHEMA_SQL)          # F0: narrative motif library DDL (+ structure_node)
+        await conn.execute(_MCP_GATE_TASKS_SQL)        # M1c: the durable ext-tasks gate PERSISTENT store
         # B3 (BA2): a CLEAN DB (fresh, or already drained of legacy arc rows) is auto-lifted here —
         # a safe CHECK-tighten with NOTHING to migrate — so fresh + throwaway-test DBs are born
         # consistent and never trip the guard below. Placed AFTER _MOTIF_SCHEMA_SQL because that is

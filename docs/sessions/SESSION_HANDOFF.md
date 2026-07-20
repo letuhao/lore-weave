@@ -9,11 +9,18 @@ executor CLOSURE (unpersistable). SEALED fix = **resolver-registry** (`Create(de
 (pure shape-change, no persistence, existing lifecycle tests prove it) → **M1b** book-service `PgTaskStore` + migration
 → **M1c** composition `PgTaskStore` → **M2** flip `tasks_gate_enabled` + full-stack live-E2E → **M3** remaining KIND-C
 confirms → **M4** retire the bespoke construct.
-- **M1a DONE** — resolver-registry interface evolution across BOTH kits (Go + Python): `TaskStore` persists
-  `{descriptor, owner_user_id, payload}` + a startup `descriptor→resolver` map instead of a closure; book_chapter_delete
-  + composition_create_derivative call sites ported. Green: Go kit + book-service (incl. real /mcp+Postgres DB-E2E),
-  Python kit 100 tests, composition import, provider-gate. **Next: M1b** (book-service `PgTaskStore` + `mcp_gate_tasks`
-  migration). See the plan's RUN-STATE (M2 owner-check debt recorded).
+- **M1 COMPLETE (a+b+c)** — the persistence foundation.
+  - **M1a** — resolver-registry interface evolution across BOTH kits: `TaskStore` persists `{descriptor,
+    owner_user_id, payload}` + a startup `descriptor→resolver` map instead of a closure; book + composition call sites
+    ported.
+  - **M1b** — book-service `PgTaskStore` + `mcp_gate_tasks` migration (Up-proven); 5 real-Postgres tests
+    (multi-replica, single-winner, decline/TTL/cancel); the T3c `/mcp`+Postgres tests now run PgTaskStore end-to-end.
+  - **M1c** — composition `PgTaskStore` (asyncpg, pool-getter) + `mcp_gate_tasks` in `run_migrations`; 5 real-Postgres
+    tests green vs `loreweave_composition_test`.
+  **Next: M2** — flip `tasks_gate_enabled` + wire the chat-service driver (declare caps) + the accept-caller
+  ownership-check hardening + full-stack live-E2E (rebuild book+composition containers so `Up`/`run_migrations` create
+  the table on the real startup, then a real agent turn opens→holds→accepts the gate). See the plan's RUN-STATE
+  (M2 owner-check debt + M1b non-atomicity note recorded).
 
 ## ✅ MCP-TASKS + FRONTEND-TOOLS MIGRATION — **implemented through the activation boundary (2026-07-20)**
 Both `docs/specs/2026-07-19-mcp-tasks-durable-gate.md` + `docs/specs/2026-07-19-frontend-tools-mcp-migration.md`

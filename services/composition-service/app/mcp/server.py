@@ -126,7 +126,7 @@ mcp_server = make_stateless_fastmcp("composition")
 # (single-process; a persistent store bound to the confirm/consumed-token layer is
 # the T3 hardening). `enable_task_results` is called AFTER all @mcp_server.tool defs
 # (bottom of module) so it wraps a handler that sees every tool.
-from loreweave_mcp.tasks import InMemoryTaskStore  # noqa: E402
+from app.mcp.pg_task_store import PgTaskStore  # noqa: E402
 from loreweave_mcp.tasks_wire import (  # noqa: E402
     gate_or_confirm,
     register_task_endpoints,
@@ -150,9 +150,11 @@ async def _resolve_derive(owner_user_id: str, payload: dict, _inputs: dict):
 
 
 # The store persists only DATA ({descriptor, owner_user_id, payload}); the resolver is
-# reconstructed by descriptor, so a persistent multi-replica store is a drop-in for the
-# SAME interface (D-MCPTASKS-GO-STORE / T3c-REMAINING).
-_task_store = InMemoryTaskStore({_DERIVE_DESCRIPTOR: _resolve_derive})
+# reconstructed by descriptor. PERSISTENT (Postgres `mcp_gate_tasks`) so a propose on one
+# replica + its accept on another (or after a restart/deploy) resolve the same task
+# exactly once (D-MCPTASKS-GO-STORE / T3c-REMAINING). Built with the pool GETTER (the pool
+# doesn't exist yet at import time; PgTaskStore calls get_pool() lazily per op).
+_task_store = PgTaskStore(get_pool, {_DERIVE_DESCRIPTOR: _resolve_derive})
 # tool_prefix="composition" → the input tool is `composition_task_provide_input`
 # (gateway-routable + collision-free across task-capable domains; see the routing note
 # in the spec / SESSION_HANDOFF).
