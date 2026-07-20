@@ -68,7 +68,14 @@ This is a **superset** of the in-memory store: the in-memory store becomes regis
 - **Commitment:** finish both specs past activation, multi-replica-correct, each slice review-impl'd + live-E2E'd.
 - **Slice board:**
   - **M1a `[x]`** — resolver-registry interface evolution (Go + Python kits), in-memory only. Evidence: Go kit `go test` green (incl. new `TestTaskAcceptWithNoResolverFails`); book-service build + `internal/api` green **including the real /mcp+Postgres DB-E2E** (`mcp_actions_tasks_db_test.go`) — proves the Go call-site resolver preserves behavior; Python kit 100 tests green (incl. `test_accept_with_no_resolver_fails`); composition module imports clean with the derive resolver registered; provider-gate OK.
-  - M1b `[ ]` · M1c `[ ]` · M2 `[ ]` · M3 `[ ]` · M4 `[ ]`  (done = an evidence string).
+  - **M1b `[x]`** — book-service persistent `PgTaskStore` + `mcp_gate_tasks` migration. Evidence: migration added to
+    `migrate.Up()` and PROVEN to run on startup (drop table → a `dbTestServer→migrate.Up` test recreates it); 5 new
+    real-Postgres tests green (`mcp_gate_task_store_db_test.go`): **multi-replica propose-on-A/accept-on-B**, concurrent
+    **single-winner** (atomic input_required→working claim), decline, TTL-lapse, cancel-idempotent; the 2 existing T3c
+    `/mcp`+Postgres durable-gate tests now exercise `PgTaskStore` end-to-end and pass; full `internal/api` suite green
+    WITH the DB (BOOK_TEST_DATABASE_URL). Note: one pre-existing scenes-backfill test fails only in full-suite ordering
+    (shared-dev-DB pollution) — passes in isolation, unrelated to M1b (confirmed by stashing migrate.go).
+  - M1c `[ ]` · M2 `[ ]` · M3 `[ ]` · M4 `[ ]`  (done = an evidence string).
 - **Invariants:** provider-gateway · language-rule · tenancy scope-key on `mcp_gate_tasks` (owner_user_id) · confirm_token fallback stays · no closure persisted.
 - **Decisions / Parked / Debt / Drift:**
   - **DEBT → M2 (accept-caller ownership check).** The resolver receives `owner_user_id` (the PROPOSER) but the
@@ -80,3 +87,11 @@ This is a **superset** of the in-memory store: the in-memory store becomes regis
     stranger with a leaked task_id can't drive another user's gate. Concrete, sequenced — not a vague defer.
   - **DRIFT (M1a, near-miss).** SESSION_HANDOFF called the persistent store "a drop-in" — it was not (closure
     unpersistable). Caught in the audit; the resolver-registry evolution is the corrected foundation.
+  - **DRIFT (M1a evidence correction).** The M1a commit claimed book-service "DB-E2E green" — but those tests SKIP
+    without `BOOK_TEST_DATABASE_URL` (they skipped). M1b ran them for real (they pass) — retroactively validating M1a.
+    Lesson: assert DB tests actually RAN, not just that the suite said "ok".
+  - **DEBT (low, M1b — resolver/status non-atomicity).** In `PgTaskStore.ProvideInput` the resolver's real write and
+    the terminal-status UPDATE are not in ONE transaction (the resolver is domain code owning its own tx). A crash
+    between them leaves a committed write on a `working` task → lapses to `failed` after TTL (a false-negative). Re-accept
+    is refused (status≠input_required), so no double-write. Same non-atomicity class as the existing confirm-token
+    mint→execute path; acceptable for the confirm gate. Revisit only if it bites (a resolver that accepts a tx handle).

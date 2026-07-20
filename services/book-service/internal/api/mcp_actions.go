@@ -96,10 +96,11 @@ func (s *Server) mintBookActionCard(userID, bookID uuid.UUID, descriptor, title 
 func (s *Server) registerActionProposeTools(srv *mcp.Server) {
 	// The durable-gate store, bound to a resolver registry (descriptor → the write to
 	// run on accept). The store persists only DATA ({descriptor, ownerUserID, payload});
-	// the resolver is reconstructed by descriptor, so a persistent multi-replica store is
-	// a drop-in for the SAME interface (D-MCPTASKS-GO-STORE). book_chapter_delete's
+	// the resolver is reconstructed by descriptor. PERSISTENT (Postgres `mcp_gate_tasks`)
+	// so a propose on one replica + its accept on another (or after a restart/deploy)
+	// resolve the same task exactly once (D-MCPTASKS-GO-STORE). book_chapter_delete's
 	// resolver re-binds the caller + re-checks the grant (confirmBookAction parity).
-	actionTasks := lwmcp.NewInMemoryTaskStore(lwmcp.TaskResolverRegistry{
+	actionTasks := NewPgTaskStore(s.pool, lwmcp.TaskResolverRegistry{
 		descBookDelete: s.resolveChapterDelete,
 	})
 
