@@ -107,3 +107,56 @@ async def resolve_work(
     if len(book_ids) == 1:
         return WorkResolution(status="unmarked_single", book_project_id=book_ids[0])
     return WorkResolution(status="unmarked_candidates", book_project_ids=book_ids)
+
+
+class _EnsureWorksRepo(Protocol):
+    async def resolve_by_book(self, book_id: UUID) -> list[CompositionWork]: ...
+    async def get_pending_for_book(self, book_id: UUID) -> CompositionWork | None: ...
+    async def create_pending(self, created_by: UUID, book_id: UUID) -> CompositionWork: ...
+
+
+def _canonical_work(works: list[CompositionWork]) -> CompositionWork | None:
+    """The book's CANONICAL marked Work (source_work_id IS NULL) — at most one post-M3 (the partial
+    unique uq_composition_work_book). `works` is earliest-created first (repo ORDER BY)."""
+    for w in works:
+        if w.source_work_id is None:
+            return w
+    return None
+
+
+async def ensure_work(
+    works: _EnsureWorksRepo, book_id: UUID, *, created_by: UUID
+) -> CompositionWork:
+    """THE canonical-first, F5-fork-safe Work-ensure primitive — the ONE place every Work-ensure site
+    resolves through (consolidated 2026-07-20 from 3 divergent copies: `plan_forge_service._ensure_work`
+    + `routers/works._ensure_pending_work` + `mcp/server._ensure_pending_work`).
+
+    Returns the book's CANONICAL marked Work (`source_work_id IS NULL`, active — at most one via the
+    partial `uq_composition_work_book`) if any, else its single pending Work (`(book_id) WHERE pending`,
+    PM-4), else creates a pending Work stamped `created_by` (a plain actor stamp, never scope — PM-9). The
+    UniqueViolation catch re-gets by the SAME book-keyed predicates the partial indexes enforce.
+
+    WHY canonical-FIRST is the invariant (the F5 bug this exists to prevent): a pending-only shortcut
+    ("just `create_pending`") at a write-site where the book ALREADY has a canonical Work mints a SECOND,
+    pending Work — the two live under DIFFERENT partial-unique indexes so neither collides — and an
+    EDIT-grantee's fork can never be backfilled (knowledge create is owner-only). Every ensure site MUST
+    come through here so that class of fork cannot reappear. Caller-INDEPENDENT (PM-9): resolution takes
+    no user id (access is decided upstream at the E0 book-grant gate); `created_by` is attribution only."""
+    import asyncpg
+
+    work = _canonical_work(await works.resolve_by_book(book_id))
+    if work is not None:
+        return work
+    pending = await works.get_pending_for_book(book_id)
+    if pending is not None:
+        return pending
+    try:
+        return await works.create_pending(created_by, book_id)
+    except asyncpg.UniqueViolationError:
+        pending = await works.get_pending_for_book(book_id)
+        if pending is not None:
+            return pending
+        work = _canonical_work(await works.resolve_by_book(book_id))
+        if work is not None:
+            return work
+        raise

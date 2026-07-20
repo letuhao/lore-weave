@@ -109,7 +109,7 @@ from app.packer.pack import build_derivative_context
 from app.grant_client import GrantLevel, get_grant_client
 from app.mcp.service_bearer import mint_service_bearer
 from app.services.authoring_run_service import ALLOWLISTABLE_TOOLS
-from app.work_resolution import resolve_work
+from app.work_resolution import ensure_work, resolve_work
 
 logger = logging.getLogger(__name__)
 
@@ -836,22 +836,16 @@ async def _resolve_or_create_default_project(
 
 
 async def _ensure_pending_work(works: WorksRepo, created_by: UUID, book_id: UUID):
-    """C16 (WG-3) greenfield degrade for the MCP path — mirrors
-    `app/routers/works.py::_ensure_pending_work`: return the (at-most-one) lazy
-    null-project Work for this book, creating it if absent (`created_by` is a
-    plain actor stamp, never a scope key). Idempotent + race-safe (the
-    partial-unique `(book_id) WHERE pending_project_backfill` index — PM-4 —
-    caps it at one, so a concurrent loser re-gets the existing row)."""
-    existing = await works.get_pending_for_book(book_id)
-    if existing is not None:
-        return existing
+    """C16 (WG-3) greenfield degrade for the MCP composition_create_work path — return THE Work for this
+    book, creating a lazy null-project one only if none exists. Now a thin delegate to the shared
+    canonical-first `work_resolution.ensure_work` primitive (consolidated 2026-07-20; this was a
+    pending-only copy that skipped the canonical check). Reached only when project resolution returned
+    None (outage) ⇒ 0 marked Works, so the canonical lookup is a race-safety net. A truly-stuck create
+    conflict raises ValueError (unchanged)."""
     try:
-        return await works.create_pending(created_by, book_id)
+        return await ensure_work(works, book_id, created_by=created_by)
     except asyncpg.UniqueViolationError:
-        racey = await works.get_pending_for_book(book_id)
-        if racey is None:
-            raise ValueError("work create conflict — retry") from None
-        return racey
+        raise ValueError("work create conflict — retry") from None
 
 
 @mcp_server.tool(

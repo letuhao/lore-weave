@@ -26,6 +26,7 @@ from app.db.models import CompositionWork, GenerationJob, PlanRun
 from app.db.repositories.generation_jobs import GenerationJobsRepo
 from app.db.repositories.plan_runs import PlanRunsRepo
 from app.db.repositories.works import WorksRepo
+from app.work_resolution import ensure_work
 from app.engine.plan_forge.compile import compile_artifacts, mock_pipeline_result
 from app.engine.plan_forge.coverage import build_section_map_from_text, load_coverage_context
 from app.engine.plan_forge.decompose import build_graph
@@ -1737,40 +1738,8 @@ class PlanForgeService:
         return "sync", body
 
     async def _ensure_work(self, book_id: UUID, *, created_by: UUID) -> CompositionWork:
-        """Resolve THE Work for the book — caller-INDEPENDENT (PM-9, spec 25).
-
-        Previously keyed by the acting caller, so an EDIT-grantee running
-        PlanForge silently forked their own pending Work that could never be
-        backfilled (knowledge create is owner-only) — the F5 fork bug. Now:
-        the book's CANONICAL marked Work (`source_work_id IS NULL`, active —
-        at most one via the partial `uq_composition_work_book`), else the
-        book's single pending Work (`(book_id) WHERE pending` partial unique,
-        PM-4), else create a pending Work stamped `created_by` = the acting
-        caller (plain actor stamp for attribution — never scope). Whichever
-        later owner-path creates the knowledge project backfills that row.
-        The UniqueViolation catch re-gets by the SAME book-keyed predicates
-        the partial indexes enforce."""
-        import asyncpg
-
-        def _canonical(works: list[CompositionWork]) -> CompositionWork | None:
-            for w in works:
-                if w.source_work_id is None:
-                    return w  # earliest-created first (repo ORDER BY); ≤1 post-M3
-            return None
-
-        work = _canonical(await self._works.resolve_by_book(book_id))
-        if work is not None:
-            return work
-        pending = await self._works.get_pending_for_book(book_id)
-        if pending is not None:
-            return pending
-        try:
-            return await self._works.create_pending(created_by, book_id)
-        except asyncpg.UniqueViolationError:
-            pending = await self._works.get_pending_for_book(book_id)
-            if pending is not None:
-                return pending
-            work = _canonical(await self._works.resolve_by_book(book_id))
-            if work is not None:
-                return work
-            raise
+        """Resolve THE Work for the book, canonical-first + F5-fork-safe — now a thin delegate to the
+        shared `work_resolution.ensure_work` primitive (consolidated 2026-07-20; this method WAS the
+        canonical copy, and the pending-only forks in routers/works + mcp/server now route through it
+        too). See `ensure_work` for the invariant + the F5 rationale."""
+        return await ensure_work(self._works, book_id, created_by=created_by)

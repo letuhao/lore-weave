@@ -109,15 +109,17 @@
   mode is gone.** A first run mis-picked `book_get` for the ambiguous read-phrase "what the book is about" →
   replaced it with a clear write imperative → HIT. (The description IS deployed: verified book-service /mcp
   tools/list directly; the re-federation needed an ai-gateway restart to bust its tool-list cache.)
-- **P5.1 [DEFERRED — each item clears the gate, verified against code not the spec note].** P5 is cleanup;
-  the substantive pipeline (P1–P4 = all four dogfood goals) is done + proven. Verifying the spec's P5 claims
-  against real code (anti-laziness rule):
-  - **(a) ensure_work consolidation → DEFER, gate #2 (delicate structural refactor).** Real: a canonical
-    `_ensure_work` (plan_forge_service.py:1739) + direct `create_pending` sites (mcp/server.py:849,
-    routers/works.py:118) + `_resolve_or_create_default_project` (mcp/server.py:722,895) that bypass it. The
-    spec §4.4 EXPLICITLY warns consolidation must "never expose the pending-only shape at a new write-site
-    (reintroduces the F5 fork-Work bug)". Pure tech-debt (all sites work today), cross-module, F5-bug-prone →
-    needs its own focused plan, not a tail-of-session edit.
+- **P5.1 — USER CHOSE TO COMPLETE P5, not defer (2026-07-20). Building all three.**
+  - **(a) ensure_work consolidation [x] DONE + verified.** Extracted the canonical-first, F5-fork-safe
+    `ensure_work(works, book_id, created_by)` into `app/work_resolution.py` (the ONE primitive); the three
+    divergent copies now delegate to it — `plan_forge_service._ensure_work`, `routers/works._ensure_pending_work`
+    (keeps its 409 wrapper), `mcp/server._ensure_pending_work` (keeps its ValueError wrapper). SAFETY (the F5
+    concern): both pending-only callers are reached ONLY after resolve_work returned `unavailable`/`None` ⇒ 0
+    marked Works, so canonical-first is a race-safety net there, not a behaviour change; verified every caller
+    just returns the Work (no pending-specific backfill). EVIDENCE: 6 ensure_work unit tests (canonical-first
+    returns canonical + NEVER forks a 2nd pending — the F5 regression; derivative≠canonical; existing-pending;
+    create-when-none stamping created_by; race re-get; truly-stuck re-raise) + composition service+worker
+    rebuilt HEALTHY (all 3 delegation sites import clean) + live `/structure` smoke (work resolution intact).
   - **(b) i18n "part" 18 locales → DEFER, gate #4 (needs the ML-7 translation pipeline).** The new keys
     (`manuscript.lensParts/lensOutline/partVsArc` + P2.1b `createFailed/…`) already WORK via `defaultValue`
     (English fallback in every locale); proper translation across `frontend/src/i18n/locales/*/translation.json`
