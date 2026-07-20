@@ -1,0 +1,125 @@
+# Round 4 — dogfood on the durable-gate-ACTIVATED build (2026-07-20)
+
+**Origin:** a fresh first-run dogfood immediately after the **MCP-Tasks full activation** landed
+(`tasks_gate_enabled=True`; all KIND-C confirms task-shaped; the `Out=any` gateway-federation fix).
+Put on the newcomer hat again: created a brand-new book **"The Ashfall Chronicles"**, opened the
+Co-writer Chat (model **Gemma-4 26B-A4B QAT**, lm_studio), and tried to (a) have the agent create a
+chapter, then (b) delete a chapter — the path that exercises the newly-activated durable confirm gate.
+
+**Headline:** the durable gate is wired correctly end-to-end — asked to delete a chapter, the agent
+*itself* said *"Deleting a chapter is a high-impact action. I will first **propose** the deletion,
+which will create a **confirmation card** for you to approve before any data is actually removed."* —
+so the prompt + tool surface reflect the gate, and the `/mcp` path is proven. But the **local model
+never actually pulled the trigger** (it kept asking for permission/info instead of calling the tool),
+so the `TaskConfirmCard` browser render is still unproven — a *model-capability* gap, not a code gap.
+Along the way, five concrete findings (F12–F16), grounded in root cause per this track's rule.
+
+## Findings at a glance (investigate in ALPHABET order of the slug)
+
+| ID | Slug (for al-order) | Severity | Finding (newcomer's words) | Root cause (grounded) |
+|----|---------------------|----------|----------------------------|-----------------------|
+| **F12** | `agent-registry-down` | 🔴 High | "The Usage meter and slash-commands never load — console is a wall of 504s." | `infra-agent-registry-service-1` is **Exited (255)** (crashed ~6h ago); the BFF proxies `/v1/agent-registry/*` → `agent-registry-service:8099` (down) → 504. |
+| **F13** | `failing-tool-call-loop` | 🟠 Med | "The agent spun on `composition_get_mine_job` seven times, all failed, then gave up." | The model calls the job-poller `composition_get_mine_job` (needs `job_id`) with no args → `job_id Field required`; the repeated-call BREAKER counts only *successful* identical reads (by design, to allow arg-fixing retries), so an **identical FAILING call is never blocked** → it loops. |
+| **F14** | `agent-refuses-tool-actions` | 🟠 Med | "I said 'create a chapter' and 'delete Chapter 1' and it just asked me questions instead of doing it." | Mix: weak local model + the agent asks permission before `book_list_chapters`/`book_chapter_delete`. Needs investigation: is the co-writer system prompt over-cautioning, or is the tool surface not steering it? (It DID correctly describe the confirm-gate, so the gate wiring is fine.) |
+| **F15** | `chapter-create-steals-panel` | 🟡 Low | "I made a chapter and my chat vanished — it jumped me to the Editor." | Creating a chapter (rail empty-state "Start your first chapter") auto-activates the **Editor** dock panel, deselecting the Co-writer Chat tab the user was in. |
+| **F16** | `newbook-language-not-required` | 🟡 Low | "I could hit *Create Book* with the language still on 'Select language…'." | New Book dialog enables the submit with `Select language…` selected (no required-field guard on language). Not verified downstream (I picked English), but a book with no original language is a smell. |
+
+---
+
+## F12 · `agent-registry-down` — the Usage/commands 504 flood 🔴
+
+**Symptom (observed):** on entering the Studio + starting a chat, the browser console filled with
+`Failed to load resource: 504 (Gateway Timeout)` for `/v1/agent-registry/usage` and
+`/v1/agent-registry/commands?limit=50` (13 errors accumulated over the short session). The Usage
+button in the status bar still showed a stale `$0.50`/`$0.63`.
+
+**Root cause (grounded):** `docker ps -a` → `infra-agent-registry-service-1  Exited (255) 6 hours ago`.
+Its last log is only `"listening" addr=":8099"` — it came up, then exited 255. The BFF
+(`services/api-gateway-bff/src/main.ts:34`) proxies `/v1/agent-registry/*` to
+`agent-registry-service:8099`, which is down → 504. This also matches the ai-gateway federation log
+`provider 'registry' list-tools failed → TypeError: fetch failed`.
+
+**To investigate:** *why* does agent-registry exit 255 on this stack? (Startup dep, a migration, a
+missing env?) Restart-and-watch the crash. Separately: the FE should degrade gracefully — a down
+agent-registry should not flood the console; usage/commands should show an unobtrusive "unavailable".
+
+---
+
+## F13 · `failing-tool-call-loop` — the model loops on an identical FAILED call 🟠
+
+**Symptom (observed):** twice, the agent's turn contained `composition_get_mine_job` called **7×**
+(first turn) and **4×** (second turn), every one marked **failed**, rendered as N identical ⚙ chips
+in one collapsible button.
+
+**Root cause (grounded):**
+- `composition_get_mine_job` is a real tool — the motif-mining job POLLER
+  (`services/composition-service/app/mcp/server.py:4298`), whose `_MotifMineJobArgs` **requires
+  `job_id`**. The model calls it with `{}` → `pydantic: job_id Field required`. (Confirmed by a direct
+  `/mcp` call.)
+- The repeated-tool-call breaker in `chat-service` (`stream_service.py`, the read-fingerprint ledger,
+  ~L3134) **only counts SUCCESSFUL identical reads** — a deliberate choice ("a call that FAILED has not
+  put its answer in the context, so retrying it with fixed args is legitimate and must not be
+  blocked"). But a model that repeats the **byte-identical failing call** (same name, same empty args,
+  same validation error) is never stopped → it burns N turns.
+
+**Candidate fix (for the investigation):** add a *failed-call* breaker keyed on
+`(name, args-fingerprint, error-fingerprint)` — after K (2–3) identical failures with no arg change,
+short-circuit with a synthesized "you already tried this exact call and it failed the same way; change
+the arguments or pick a different tool" tool-result, instead of letting it re-issue. Distinct from the
+success-read breaker; must NOT block a *retry with changed args* (the legitimate case the current
+design protects).
+
+**Open question:** *why did the model reach for `composition_get_mine_job` at all* for "create/delete a
+chapter"? Worth checking whether motif tools are being hot-seeded/advertised too eagerly for a
+book-scoped writing turn (a catalog-hygiene angle, cf. F7c).
+
+---
+
+## F14 · `agent-refuses-tool-actions` — won't drive the write/delete tools 🟠
+
+**Symptom (observed):** "Create a first chapter titled 'The Silent Gods'…" → the agent replied *"I
+cannot create a chapter for you yet because I don't have any information about your book"* and asked
+for genre/conflict/protagonist. "Delete 'Chapter 1'… call the book_chapter_delete tool." → *"I cannot
+delete… I don't have a list of the chapters… Shall I list the chapters now?"* — it never called
+`book_list_chapters` or `book_chapter_delete` itself.
+
+**Root cause (partial — needs investigation):** partly the weak local model (Gemma-4 26B is a poor
+tool-caller — see also F13). But it may also be steered by the co-writer system prompt to
+converse-first / ask-permission rather than act. **The gate itself is fine** — the agent *correctly
+described* the propose→confirm-card flow, so the tool descriptions + the durable-gate wiring read
+through. Investigation: (a) re-run with a stronger chat model to isolate model-vs-prompt; (b) check
+whether the system prompt over-emphasizes "ask before acting" for direct tool requests.
+
+---
+
+## F15 · `chapter-create-steals-panel` — creating a chapter deselects the chat 🟡
+
+**Symptom (observed):** with the Co-writer Chat tab active, clicking the Manuscript rail's *"＋ Start
+your first chapter"* created Chapter 1 **and switched the active dock panel to the Editor**, hiding the
+chat mid-conversation. Had to click the Co-writer Chat tab to get back.
+
+**Root cause (to confirm):** the create-chapter action opens/activates the Editor panel
+unconditionally. Reasonable to *open* the editor, but it shouldn't *steal focus* from an active chat —
+open the editor in a split/adjacent tab, or only auto-focus it when no other panel is active.
+
+---
+
+## F16 · `newbook-language-not-required` — submit enabled with no language 🟡
+
+**Symptom (observed):** in the New Book dialog, after typing only a **Title**, *"Create Book"* became
+enabled while **Original language** still read *"Select language…"*. (I selected English, so I did not
+observe the downstream effect of creating a language-less book.)
+
+**Root cause (to confirm):** the create-book form's enable/validation guards on title but not on
+language. Either make language required (it defaults the manuscript/translation language) or default it
+to a sensible value + surface that default. Verify what book-service stores when language is absent.
+
+---
+
+## Not-a-bug / confirmations
+- **Durable confirm gate:** wired correctly — the agent describes propose→confirm-card accurately; the
+  `book_chapter_delete` tool now routes through the gateway (post `Out=any` federation fix, catalog
+  165→264). The only unproven piece is the browser `TaskConfirmCard` render, blocked purely by the
+  local model not calling the tool (F14). A stronger model (or a scripted tool-call) would close it.
+- **Tools DO load:** the chat context showed **37 tools · 1 skill · 7,983 tok** after the first turn
+  (the initial "0 tools" is just the pre-first-message state).
