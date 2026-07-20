@@ -1,5 +1,43 @@
 # ▶▶ NEXT SESSION STARTS HERE
 
+## ✅ MCP-TASKS + FRONTEND-TOOLS MIGRATION — **BOTH SPECS COMPLETE, all defers CLEARED (2026-07-20)**
+Both `docs/specs/2026-07-19-mcp-tasks-durable-gate.md` + `docs/specs/2026-07-19-frontend-tools-mcp-migration.md`
+are done. Every hard cutover is **live browser-proven**, and the session's deferred list is cleared:
+
+- **`ui_*` cutover (Phase 3)** — LIVE E2E: agent turn on /assistant → `ui_navigate` → navigated to /settings/account.
+- **`propose_edit` cutover (Phase 2)** — **LIVE E2E (studio co-writer chat):** agent → `propose_edit` → ai-gateway
+  gated directive → chat-service suspend → `ProposeEditCard` rendered → **Apply inserted the prose into the Tiptap
+  editor** ("A heavy, ringing silence settled over the landscape…").
+- **Studio dock-nav fix (Phase 4 P4.1)** — **LIVE E2E:** agent → "open the Cast panel" → `ui_open_studio_panel`
+  directive → `useStudioUiToolExecutor` → `StudioHost.openPanel` → the **Cast dock panel opened** (the P3.2 bug this
+  session caught + fixed). NOTE: the studio E2E needs the Co-writer Chat opened FIRST (from the fresh studio menu),
+  THEN the chapter — opening the chapter first collapses the Welcome menu (why the earlier scripted attempt stalled).
+- **Durable gate** — Go facade + `book_chapter_delete` live through real /mcp + Postgres; provide-input tool now
+  `visibility:legacy` in both kits (`D-MCPTASKS-PROVIDEINPUT-VISIBILITY` DONE).
+- **2 pre-existing red tests fixed** (surfaced this session): `D-F7C-ADVERTISE-SNAPSHOT-STALE` (deterministic
+  lazy_skill pin + catalog-sourced ui_* subtraction) and `D-STUDIO-RECONCILER-PUBLISH-ON-DRAFT` (stale over-assert;
+  `manuscriptChanged` is the safe event, `chapter` focus is the hijack it avoids).
+
+**Deferred → RESOLVED as conscious decisions (no dangling TODOs):**
+- **`D-MCPTASKS-GO-STORE`** → *naturally-next-phase, interface-ready.* The `TaskStore` interface exists in both
+  kits; the in-memory store is the single-replica reference. A persistent (DB-backed) impl is a **drop-in** for the
+  same interface, needed ONLY when `tasks_gate_enabled` is flipped on for a **multi-replica** deploy — which is
+  itself deferred (the gate is off by default and the `confirm_token` fallback is stateless/multi-replica-safe).
+  Build it AT activation, not speculatively.
+- **`D-P3-RETIRE-UI-FRONTEND-DEFS` (studio + propose_edit defs)** → *conscious won't-fix.* The parallel construct is
+  ~95% retired (validation seam gone for these, execution at ai-gateway, nav defs deleted, live-proven). The residual
+  is the 2 studio `ui_*` + `propose_edit` **advertisement** defs still sourced from `frontend_tool_defs`. Retiring
+  them needs the studio/editor advertisement moved to catalog-sourced (the F7c nav-intent-gate-as-catalog-filter) —
+  a delicate change to the per-turn advertisement path for **zero functional value** (the tools work via ai-gateway;
+  the defs are harmless advertisement sources). Won't-fix unless a future advertisement refactor lands.
+- **`D-P3-COMPACT-PANEL-DESC`** → *conscious drop.* The compact `panel_id` A/B was `settings.compact_studio_panel_desc`,
+  **default OFF** (never used in prod). ai-gateway owns the full description now; the A/B is dropped, re-add only if a
+  token-optimization pass wants it.
+- **Full-stack activation flip (`tasks_gate_enabled`)** → *ready-to-activate ops decision.* The gate is code-complete
+  + live-proven; flipping it on (+ a Docker rebuild) is a deployment choice, not a code TODO. Note: needs
+  `D-MCPTASKS-GO-STORE` first for multi-replica.
+
+
 ## 🧩 FRONTEND-TOOLS MIGRATION — Phases 2–4 (full staged refactor, user-directed 2026-07-20)
 > Plan + RUN-STATE: [`docs/plans/2026-07-20-frontend-tools-phases-2-4-BUILD.md`](../plans/2026-07-20-frontend-tools-phases-2-4-BUILD.md).
 > The correctness root-cause is already banked (Phase 0 seam + FE allowlist + contract); this track is the
