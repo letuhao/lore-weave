@@ -1613,6 +1613,20 @@ async def _stream_with_tools(
                         )
                         if payload_as is not None:
                             yield {"agent_surface": payload_as}
+                        # OBSERVABILITY (F14 agent-behavior monitor) — the exact tool NAMES
+                        # advertised to the model on THIS pass. The Agent-runtime panel shows
+                        # only COUNTS (core N · frontend N · activated N); when the agent
+                        # "refuses" or reaches for the wrong tool, the first question is "did
+                        # it even SEE the tool it should have used?" — unanswerable from counts.
+                        # INFO so a LOG_LEVEL=INFO deploy records every turn's real surface
+                        # (grep for a tool name to see if it was on offer). frontend+activated
+                        # are the variable part; core is the fixed always-on set.
+                        logger.info(
+                            "agent-surface advertised (session=%s): core=%d frontend=%d "
+                            "activated=%d | frontend=%s | activated=%s",
+                            session_id, len(_adv_core), len(_adv_frontend),
+                            len(_adv_activated), _adv_frontend, _adv_activated,
+                        )
                 else:
                     # Ask mode filtered everything out — run the pass tool-free
                     # (an empty tools array 400s on some providers).

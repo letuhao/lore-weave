@@ -715,8 +715,9 @@ class TestSurfaceHotDomains:
     def test_book_scoped_hot_is_glossary_story_and_now_knowledge(self):
         # story_search (the universal manuscript find) is hot on every book-bound
         # surface — a weak model otherwise punts instead of discovering it (measured).
+        # F14 — `book` now auto-injects on book-bound surfaces, so book_* tools are hot.
         assert td.surface_hot_domains(editor=False, book_scoped=True) == {
-            "glossary", "story", "knowledge",
+            "glossary", "story", "knowledge", "book",
         }
 
     def test_editor_matches_book_glossary_skill(self):
@@ -727,7 +728,8 @@ class TestSurfaceHotDomains:
         # FRONTEND tool, so the editor's hot domains still equal the book-scoped surface's.
         editor = td.surface_hot_domains(editor=True, book_scoped=True)
         book = td.surface_hot_domains(editor=False, book_scoped=True)
-        assert editor == book == {"glossary", "story", "knowledge"}
+        # F14 — `book` now auto-injects on book-bound surfaces (a book is open).
+        assert editor == book == {"glossary", "story", "knowledge", "book"}
 
     def test_studio_hot_includes_story_and_knowledge(self):
         studio = td.surface_hot_domains(studio=True)

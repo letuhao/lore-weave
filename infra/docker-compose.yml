@@ -954,6 +954,10 @@ services:
       labels: *build-labels
     environment:
       PORT: "8090"
+      # Observability: INFO surfaces the per-turn agent-behavior logs (advertised tool
+      # surface, tool decisions) — the monitor for "why did the agent do/refuse X" bugs.
+      # Override to WARNING for a quiet prod deploy.
+      LOG_LEVEL: "${CHAT_LOG_LEVEL:-INFO}"
       T5_INTENT_GATE_ENABLED: "${T5_INTENT_GATE_ENABLED:-false}"
       # Context Budget Law T4 (story_state Core Memory Block) + T6/D13a (reversible
       # dup-read collapse). Default OFF; flip on (with T5) for the compaction A/B —

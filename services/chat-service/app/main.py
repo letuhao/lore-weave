@@ -39,11 +39,26 @@ from app.storage.minio_client import delete_object, ensure_bucket
 logger = logging.getLogger(__name__)
 
 # Optional per-deploy log level for the app loggers (default WARNING). Set LOG_LEVEL=INFO to
-# surface the step-runner's per-hop decisions when diagnosing a rail run.
+# surface the step-runner's per-hop decisions + the agent-behavior monitor (advertised tool
+# surface, tool decisions) when diagnosing a turn.
+#
+# OBSERVABILITY FIX: setting only the LOGGER level was a silent no-op — the "app" logger has
+# no handler, so its records propagate to root, whose only emitter is `logging.lastResort`
+# (a WARNING-level stderr handler). So `logger.warning` surfaced but every `logger.info`
+# diagnostic (47 of them) was dropped, and LOG_LEVEL=INFO did nothing. Attach a stdout
+# handler AT the requested level on "app" so the diagnostic logs actually emit.
 import os as _os
 _lvl = _os.getenv("LOG_LEVEL", "").upper()
 if _lvl in ("DEBUG", "INFO", "WARNING", "ERROR"):
-    logging.getLogger("app").setLevel(getattr(logging, _lvl))
+    _level = getattr(logging, _lvl)
+    _app_logger = logging.getLogger("app")
+    _app_logger.setLevel(_level)
+    if not any(isinstance(h, logging.StreamHandler) for h in _app_logger.handlers):
+        _h = logging.StreamHandler()
+        _h.setLevel(_level)
+        _h.setFormatter(logging.Formatter("%(levelname)s:%(name)s: %(message)s"))
+        _app_logger.addHandler(_h)
+        _app_logger.propagate = False  # emit once via our handler, not again via root
 
 async def _audio_cleanup_loop():
     """Periodically delete expired voice audio segments. AUDIO_TTL_HOURS is the deploy

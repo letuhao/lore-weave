@@ -40,8 +40,9 @@ class TestResolveSkillsToInject:
             book_scoped=True,
             admin=False,
         )
-        # + co_write: the write-mode workflow auto-injects on book/editor surfaces (close-21-28)
-        assert codes == ["glossary", "knowledge", "co_write"]
+        # F14 — `book` now auto-injects on book-bound surfaces (a book is open → its tools
+        # must be hot-seeded). + co_write: write-mode workflow on book/editor (close-21-28).
+        assert codes == ["glossary", "book", "knowledge", "co_write"]
 
     def test_curated_glossary_only(self):
         codes = resolve_skills_to_inject(
@@ -89,7 +90,8 @@ class TestStudioSurface:
             admin=False,
             studio=True,
         )
-        assert codes == ["glossary", "composition", "knowledge"]
+        # F14 — the studio is a book workbench, so `book` now auto-injects too.
+        assert codes == ["glossary", "composition", "book", "knowledge"]
 
     def test_studio_plus_editor_still_works(self):
         """studio is ADDITIVE, not exclusive with editor — a studio panel opened
@@ -311,9 +313,10 @@ class TestPhase2Skills:
         )
         assert set(codes) == {"settings", "jobs"}
 
-    def test_none_of_the_three_auto_inject_by_default(self):
+    def test_settings_jobs_do_not_auto_inject_by_default(self):
         """Curated-pin only — an empty enabled_skills (surface-default) on a
-        book-scoped turn must NOT silently include book/settings/jobs."""
+        book-scoped turn must NOT silently include settings/jobs. (F14: `book` NOW
+        auto-injects on book-bound surfaces — a book is open, so its tools are seeded.)"""
         codes = resolve_skills_to_inject(
             enabled_skills=[],
             stream_format="agui",
@@ -323,7 +326,8 @@ class TestPhase2Skills:
             book_scoped=True,
             admin=False,
         )
-        assert not {"book", "settings", "jobs"} & set(codes)
+        assert "book" in codes  # F14: book auto-injects on book-bound surfaces
+        assert not {"settings", "jobs"} & set(codes)
 
 
 # ════════════════════════════════════════════════════════════════════════════

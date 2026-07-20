@@ -249,12 +249,11 @@ SYSTEM_SKILLS: dict[str, SkillDef] = {
         surfaces=frozenset({"book", "editor", "studio"}),
         prompt_loader=_load_book,
         description="Browse/edit books and chapters, save and restore draft revisions, publish/unpublish, and propose cover/media/audio generation.",
-        # NEVER auto-injected by default (see resolve_skills_to_inject) — "book" is not
-        # hot-seeded on any surface today (unlike "glossary"/"story", which ARE in
-        # `_BOOK_SCOPED_HOT_DOMAINS`); before this skill, no skill named book_* tools
-        # directly, so there was nothing to seed for. Curated-pin only, same rollout
-        # posture as translation/composition-off-studio: tool_surface.py's generic
-        # curated hot-domain union safely seeds it ONLY for a session that pins it.
+        # F14 (round-4 dogfood, 2026-07-20): AUTO-injected on the book-bound surfaces
+        # (studio/editor/book_scoped) — a book is OPEN, so book_* tools (list/get/delete/
+        # publish chapters) must be hot-seeded. Was previously curated-pin-only, which meant
+        # a book workbench advertised ZERO book tools; the agent asked to manage chapters
+        # couldn't, and grabbed a wrong tool. (Still pinnable elsewhere.)
         hot_domains=frozenset({"book"}),
     ),
     "settings": SkillDef(
@@ -480,8 +479,17 @@ def resolve_skills_to_inject(
             # silently before this fix.
             out.append("glossary")
             out.append("composition")
+            # F14 (round-4 dogfood, 2026-07-20) — a book is OPEN in the studio, yet `book`
+            # was curated-pin-only, so book_* tools (list/get/delete/publish chapters) were
+            # NEVER hot-seeded. The agent asked to "manage chapters" saw ZERO book tools and
+            # grabbed composition_get_mine_job instead (proven by the advertised-surface
+            # monitor). A book workbench must offer its own book tools by default.
+            out.append("book")
         elif editor or book_scoped:
             out.append("glossary")
+            # F14 — book_* tools are meaningful wherever a book is open (the book skill's own
+            # surfaces include editor); seed them on the chapter-editor / book-scoped surface too.
+            out.append("book")
         else:
             out.append("universal")
         if not admin:
