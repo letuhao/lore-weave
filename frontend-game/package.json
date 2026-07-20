@@ -43,7 +43,7 @@
     "@testing-library/jest-dom": "^6",
     "@tailwindcss/postcss": "^4.3.2",
     "@testing-library/react": "^16",
-    "@types/node": "^25.9.3",
+    "@types/node": "^26.1.1",
     "@types/react": "^19.2.0",
     "@types/react-dom": "^19.2.0",
     "@types/three": "^0.185",
