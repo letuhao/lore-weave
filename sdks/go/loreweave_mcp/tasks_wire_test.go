@@ -141,7 +141,7 @@ func TestProvideInputTool_AcceptRunsResolverAndReturnsResult(t *testing.T) {
 	taskID := handle["taskId"].(string)
 
 	srv := mcp.NewServer(&mcp.Implementation{Name: "domain", Version: "0.0.1"}, nil)
-	RegisterTaskProvideInput(srv, store, "composition")
+	RegisterTaskProvideInput(srv, store, "composition", nil)
 	cs := connectInMemory(t, srv)
 
 	res, err := cs.CallTool(context.Background(), &mcp.CallToolParams{
@@ -167,11 +167,64 @@ func TestProvideInputTool_AcceptRunsResolverAndReturnsResult(t *testing.T) {
 	}
 }
 
+// The wire owner-check (parity with the Python kit's _owner_check) must guard BOTH
+// accept AND decline. This is the review-impl regression guard for the Go decline-path
+// gap: the decline short-circuits BEFORE the resolver (where the Go domains put their
+// accept-side re-bind), so without a wire check a stranger with a leaked task_id could
+// CANCEL another user's pending gate.
+func TestProvideInputTool_OwnerCheckGuardsDeclineToo(t *testing.T) {
+	ran := false
+	resolver := func(ctx context.Context, owner string, payload, inputs map[string]any) (any, error) {
+		ran = true
+		return "done", nil
+	}
+	store := NewInMemoryTaskStore(TaskResolverRegistry{"book.delete": resolver})
+	stranger := func(ctx context.Context) (string, bool) { return "u2", true } // NOT the owner (u1)
+
+	srv := mcp.NewServer(&mcp.Implementation{Name: "domain", Version: "0.0.1"}, nil)
+	RegisterTaskProvideInput(srv, store, "book", stranger)
+	cs := connectInMemory(t, srv)
+
+	newTask := func() string {
+		h, err := OpenGate(store, "book.delete", "u1", map[string]any{"chapter": "c1"}, nil, 0)
+		if err != nil {
+			t.Fatalf("OpenGate: %v", err)
+		}
+		return h["taskId"].(string)
+	}
+	assertRefused := func(taskID string, args map[string]any, label string) {
+		res, err := cs.CallTool(context.Background(), &mcp.CallToolParams{
+			Name: "book_task_provide_input", Arguments: args,
+		})
+		if err != nil {
+			t.Fatalf("%s CallTool: %v", label, err)
+		}
+		out, _ := res.StructuredContent.(map[string]any)
+		if out["status"] != TaskFailed || out["error"] != "not_task_owner" {
+			t.Fatalf("%s: stranger not refused: %v", label, out)
+		}
+		got, gerr := store.Get(taskID, time.Time{}) // must be UNTOUCHED (still awaiting input)
+		if gerr != nil || got.Status != TaskInputRequired {
+			t.Fatalf("%s: task not left input_required: %v %v", label, got, gerr)
+		}
+	}
+
+	// DECLINE by a stranger — the gap this guards: it must NOT cancel u1's task.
+	t1 := newTask()
+	assertRefused(t1, map[string]any{"task_id": t1, "accepted": false}, "stranger-decline")
+	// ACCEPT by a stranger — must NOT run the resolver.
+	t2 := newTask()
+	assertRefused(t2, map[string]any{"task_id": t2, "accepted": true}, "stranger-accept")
+	if ran {
+		t.Fatal("resolver ran for a stranger")
+	}
+}
+
 // The provide-input tool is a mechanism tool — it must be tagged visibility:legacy
 // so find_tools/discovery never surfaces it to the LLM (CAT-4).
 func TestProvideInputTool_IsVisibilityLegacy(t *testing.T) {
 	srv := mcp.NewServer(&mcp.Implementation{Name: "domain", Version: "0.0.1"}, nil)
-	RegisterTaskProvideInput(srv, NewInMemoryTaskStore(nil), "composition")
+	RegisterTaskProvideInput(srv, NewInMemoryTaskStore(nil), "composition", nil)
 	cs := connectInMemory(t, srv)
 
 	res, err := cs.ListTools(context.Background(), &mcp.ListToolsParams{})
@@ -210,7 +263,7 @@ func TestProvideInputTool_DeclineDoesNotRunResolver(t *testing.T) {
 	taskID := handle["taskId"].(string)
 
 	srv := mcp.NewServer(&mcp.Implementation{Name: "domain", Version: "0.0.1"}, nil)
-	RegisterTaskProvideInput(srv, store, "composition")
+	RegisterTaskProvideInput(srv, store, "composition", nil)
 	cs := connectInMemory(t, srv)
 
 	res, err := cs.CallTool(context.Background(), &mcp.CallToolParams{
@@ -237,7 +290,7 @@ func TestProvideInputTool_DoubleAcceptIsError(t *testing.T) {
 	taskID := handle["taskId"].(string)
 
 	srv := mcp.NewServer(&mcp.Implementation{Name: "domain", Version: "0.0.1"}, nil)
-	RegisterTaskProvideInput(srv, store, "composition")
+	RegisterTaskProvideInput(srv, store, "composition", nil)
 	cs := connectInMemory(t, srv)
 
 	call := func() *mcp.CallToolResult {

@@ -161,3 +161,19 @@ This is a **superset** of the in-memory store: the in-memory store becomes regis
     between them leaves a committed write on a `working` task → lapses to `failed` after TTL (a false-negative). Re-accept
     is refused (status≠input_required), so no double-write. Same non-atomicity class as the existing confirm-token
     mint→execute path; acceptable for the confirm gate. Revisit only if it bites (a resolver that accepts a tx handle).
+  - **REVIEW-IMPL FINDING → FIXED (F-A, HIGH, 2026-07-20; kit `RegisterTaskProvideInput` + book + glossary).** The Go
+    kit's provide-input wire handler had NO owner-check — it delegated to `store.ProvideInput`, whose DECLINE branch
+    short-circuits to `cancelled` WITHOUT running the resolver (where the Go domains put their accept-side re-bind). So
+    on both Go domains a stranger with a leaked task_id could **cancel** another user's pending gate (accept was safe —
+    the resolver checks; the gap was decline-only). Python already owner-checked BOTH paths in its wire tool
+    (`_owner_check`) — a Go/Python parity gap on a tenant boundary. **Fix:** added a `callerID func(ctx)(string,bool)`
+    param to `RegisterTaskProvideInput`; the handler now runs the owner-check BEFORE the accept/decline split (mirrors
+    Python), and book/glossary pass their `mcpUserID`/`userIDFromCtx` wrapper. Kit regression test
+    `TestProvideInputTool_OwnerCheckGuardsDeclineToo` (stranger refused on decline AND accept, task untouched).
+    **LIVE-PROVEN on the rebuilt book:** stranger decline → `not_task_owner`, task left `input_required`; owner decline
+    → `cancelled`.
+  - **REVIEW-IMPL FINDING → DOCUMENTED (F-B, LOW).** `accepted` defaults to `true` (both kits) — an omitted/null
+    decision ACCEPTS a destructive gate (fail-open). Benign in practice (the chat resume driver always sends an explicit
+    accepted, and after F-A a stranger is refused before either branch), so the only residual is the owner's own
+    malformed call accepting their own task. Left as-is (the default is documented in both kits); flip to fail-closed
+    only if a caller is ever added that can omit the decision.

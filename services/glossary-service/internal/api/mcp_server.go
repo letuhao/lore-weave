@@ -242,8 +242,16 @@ func (s *Server) mcpHandler() http.Handler {
 	// glossary_book_delete + glossary_book_* tools are registered in RegisterBookTools (T1).
 
 	// The input step for the durable gate. Gateway-routed by tool NAME → the `glossary`
-	// prefix is required (a bare task_provide_input would collide with book's).
-	lwmcp.RegisterTaskProvideInput(srv, s.actionTasks, "glossary")
+	// prefix is required (a bare task_provide_input would collide with book's). The callerID
+	// wrapper lets the kit owner-check BOTH accept + decline (resolveGlossaryAction only
+	// re-binds on accept), so a stranger can't cancel another user's gate.
+	lwmcp.RegisterTaskProvideInput(srv, s.actionTasks, "glossary", func(ctx context.Context) (string, bool) {
+		u, ok := userIDFromCtx(ctx)
+		if !ok {
+			return "", false
+		}
+		return u.String(), true
+	})
 
 	streamable := mcp.NewStreamableHTTPHandler(
 		func(*http.Request) *mcp.Server { return srv },

@@ -163,8 +163,16 @@ func (s *Server) registerActionProposeTools(srv *mcp.Server) {
 		s.toolProposeAudioGenerate)
 
 	// The input step for the durable gate (book_chapter_delete on a tasks-capable
-	// client). Gateway-routed by name → the `book` prefix is required.
-	lwmcp.RegisterTaskProvideInput(srv, actionTasks, "book")
+	// client). Gateway-routed by name → the `book` prefix is required. The callerID
+	// wrapper lets the kit owner-check BOTH accept + decline (the resolver only re-binds
+	// on accept), so a stranger can't cancel another user's gate.
+	lwmcp.RegisterTaskProvideInput(srv, actionTasks, "book", func(ctx context.Context) (string, bool) {
+		u, ok := mcpUserID(ctx)
+		if !ok {
+			return "", false
+		}
+		return u.String(), true
+	})
 }
 
 // ── propose tool args ─────────────────────────────────────────────────────────

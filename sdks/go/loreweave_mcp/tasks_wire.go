@@ -7,6 +7,7 @@ package loreweave_mcp
 
 import (
 	"context"
+	"time"
 
 	"github.com/google/jsonschema-go/jsonschema"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -116,7 +117,17 @@ type ProvideInputResult struct {
 // catalog routes by tool NAME, so a bare `task_provide_input` from two domains would
 // collide (mirror of the Python register_task_endpoints tool_prefix rule). Uses the
 // kit's RegisterTool so the result-size gate + content-dedup fixes apply.
-func RegisterTaskProvideInput(srv *mcp.Server, store TaskStore, toolPrefix string) {
+//
+// callerID (M2 accept-caller OWNERSHIP CHECK — parity with the Python kit's _owner_check,
+// tasks_wire.py) lifts the caller's identity from the request ctx (the domain passes a
+// wrapper over its envelope reader, e.g. mcpUserID / userIDFromCtx). Only the PROPOSING
+// user (task.OwnerUserID) may drive the gate, on ACCEPT **and DECLINE** — the Go domains
+// put their accept-side re-bind in the resolver, but the decline path short-circuits to
+// cancelled WITHOUT running the resolver, so a wire-level check is the only thing that
+// stops a stranger with a leaked task_id from cancelling another user's pending gate.
+// Pass nil for in-process/kit-test servers (no envelope) — matches Python's "no
+// internal_token ⇒ no check".
+func RegisterTaskProvideInput(srv *mcp.Server, store TaskStore, toolPrefix string, callerID func(context.Context) (string, bool)) {
 	name := "task_provide_input"
 	if toolPrefix != "" {
 		name = toolPrefix + "_task_provide_input"
@@ -135,6 +146,19 @@ func RegisterTaskProvideInput(srv *mcp.Server, store TaskStore, toolPrefix strin
 		// schema (same class of fix as RegisterTool's Out=any handling).
 		OutputSchema: &jsonschema.Schema{Type: "object"},
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, in ProvideInputArgs) (*mcp.CallToolResult, ProvideInputResult, error) {
+		// M2 accept-caller OWNERSHIP CHECK (guards ACCEPT **and DECLINE**) — runs BEFORE the
+		// accept/decline split so the decline short-circuit (which never reaches the resolver's
+		// own re-bind) can't let a stranger cancel another user's gate. Mirrors Python
+		// _owner_check: a get() failure defers to ProvideInput to surface the real error, and a
+		// task with no owner isn't checked. nil callerID ⇒ in-process/kit mode (no envelope).
+		if callerID != nil {
+			if existing, gerr := store.Get(in.TaskID, time.Time{}); gerr == nil && existing.OwnerUserID != "" {
+				caller, ok := callerID(ctx)
+				if !ok || caller != existing.OwnerUserID {
+					return nil, ProvideInputResult{TaskID: in.TaskID, Status: TaskFailed, Error: "not_task_owner"}, nil
+				}
+			}
+		}
 		accepted := true
 		if in.Accepted != nil {
 			accepted = *in.Accepted
