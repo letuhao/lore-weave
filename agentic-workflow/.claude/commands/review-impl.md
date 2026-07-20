@@ -25,6 +25,7 @@ Before reading any file, list in your head:
 2. **Every normalization step upstream** — does any of them make a downstream defense moot? (e.g., a whitespace-stripping normalizer that runs *before* a whitespace-sensitive sanitizer)
 3. **Every invariant the implementation claims** — idempotence, ordering, dedup keys — and whether a future change could break them without a test catching it
 4. **Every boundary between this code and its callers/callees** — what contract is assumed, and what happens if that contract drifts?
+5. **Every destructive operation — can it destroy the wrong thing? (data-loss class, HIGH)** In *tests*: an unscoped `DELETE`/`TRUNCATE`/`DROP`, a test that reads its DB URL from (or falls back to) a *production* connection var, or a destructive fixture that never verifies it's pointed at a disposable database — any test that *can* wipe a real DB is a HIGH finding. In *production*: a hard delete of user-important data that should be a soft delete (mark-deleted + a guarded purge), or a delete/update whose scope key is missing or too broad.
 
 ## Process
 
