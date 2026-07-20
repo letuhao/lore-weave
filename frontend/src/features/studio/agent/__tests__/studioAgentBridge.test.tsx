@@ -16,32 +16,42 @@ import { useStudioEffectReconciler } from '../useStudioEffectReconciler';
 describe('useStudioUiToolExecutor (Lane A)', () => {
   beforeEach(() => { host.value = { openPanel: vi.fn(), focusManuscriptUnit: vi.fn() }; });
 
-  it('resolves a pending studio ui tool via the host, then submits the resolve (idempotent)', () => {
-    const submitToolResolve = vi.fn();
+  // Phase 4 (P4.1) — the studio dock-nav tools come back as an io.loreweave/ui-directive
+  // RESULT now (ai-gateway consumer-local), NOT a suspend. The executor runs the host effect
+  // directly; there is no resolve to submit. (The result carries chat-service's real
+  // {ok, result: <directive>} envelope.)
+  const studioDirective = (tool: string, args: Record<string, unknown>, id: string) => ({
+    tool, ok: true, pending: false, toolCallId: id,
+    result: { ok: true, result: { type: 'io.loreweave/ui-directive', tool, args } },
+  });
+
+  it('runs a studio ui directive against the host (idempotent, no resolve)', () => {
     stream.value = {
-      submitToolResolve,
-      messages: [{ message_id: 'm1', tool_calls: [
-        { tool: 'ui_open_studio_panel', ok: false, pending: true, runId: 'r1', toolCallId: 't1', args: { panel_id: 'cast' } },
-      ] }],
+      messages: [{ message_id: 'm1', tool_calls: [studioDirective('ui_open_studio_panel', { panel_id: 'cast' }, 't1')] }],
     };
     const { rerender } = renderHook(() => useStudioUiToolExecutor());
     expect(host.value.openPanel).toHaveBeenCalledWith('cast');
-    expect(submitToolResolve).toHaveBeenCalledWith('r1', 't1', { opened: true });
-    submitToolResolve.mockClear();
-    rerender(); // same suspend must not fire twice
-    expect(submitToolResolve).not.toHaveBeenCalled();
+    (host.value.openPanel as ReturnType<typeof vi.fn>).mockClear();
+    rerender(); // same directive must not fire twice
+    expect(host.value.openPanel).not.toHaveBeenCalled();
+  });
+
+  it('focuses a manuscript unit for ui_focus_manuscript_unit', () => {
+    stream.value = {
+      messages: [{ message_id: 'm1', tool_calls: [studioDirective('ui_focus_manuscript_unit', { chapter_id: 'ch9' }, 't2')] }],
+    };
+    renderHook(() => useStudioUiToolExecutor());
+    expect(host.value.focusManuscriptUnit).toHaveBeenCalledWith('ch9');
   });
 
   it('ignores the chat own ui_* tools (disjoint from the studio set)', () => {
-    const submitToolResolve = vi.fn();
     stream.value = {
-      submitToolResolve,
-      messages: [{ message_id: 'm1', tool_calls: [
-        { tool: 'ui_navigate', ok: false, pending: true, runId: 'r1', toolCallId: 't1', args: { path: '/books' } },
-      ] }],
+      messages: [{ message_id: 'm1', tool_calls: [studioDirective('ui_navigate', { path: '/books' }, 't1')] }],
     };
     renderHook(() => useStudioUiToolExecutor());
-    expect(submitToolResolve).not.toHaveBeenCalled(); // the chat's own executor handles it
+    // the chat's own executor handles ui_navigate; the studio hook must not touch the host
+    expect(host.value.openPanel).not.toHaveBeenCalled();
+    expect(host.value.focusManuscriptUnit).not.toHaveBeenCalled();
   });
 });
 

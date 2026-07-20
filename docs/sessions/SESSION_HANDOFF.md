@@ -83,9 +83,23 @@
     the result record needs `toolCallId`** — all now fixed in shared code, but re-verify live.
   - *P2.4* — browser E2E: a real editor-panel turn where the model calls `propose_edit` renders the Apply card and
     applying inserts the prose into the Tiptap doc.
-- **▶ THEN Phase 4** (retire the dead `ui_*` suspend branch = `D-P3-RETIRE-UI-SUSPEND`, the `frontend_tools.py`
-  `ui_*`/`propose_edit` defs = `D-P3-RETIRE-UI-FRONTEND-DEFS`, the nav-intent-gate-as-catalog-filter, and the
-  parallel construct once every kind is MCP-native + live-proven).
+- **P4.1 DONE** (this commit) — retired the dead `ui_*` suspend branch of `useUiToolExecutor` (D-P3-RETIRE-UI-SUSPEND);
+  the hook is now directive-only (no `submitToolResolve`). **The retirement pass CAUGHT A REAL P3.2 BUG:**
+  `useStudioUiToolExecutor` handled only the (now-dead) suspend path and `makeStudioNavInterceptor`'s `default`
+  does NOT claim the studio-specific tools, so `ui_open_studio_panel` + `ui_focus_manuscript_unit` were **silently
+  broken** post-cutover (the agent's "open the compose panel" no-op'd). Fixed: `useStudioUiToolExecutor` now acts
+  on the `io.loreweave/ui-directive` result (→ `resolveStudioUiTool` → the StudioHost effect), idempotent by
+  toolCallId. FE 944 pass (1 pre-existing unrelated failure — see below).
+- **▶ Phase 4 REMAINING** — `D-P3-RETIRE-UI-FRONTEND-DEFS` (retire the `frontend_tools.py` `ui_*`/`propose_edit`
+  defs — needs the studio/editor advertisement moved from `frontend_tool_defs` to catalog-sourced + the F7c
+  nav-intent-gate-as-catalog-filter first), then remove the migrated tools from `frontend-tools.contract.json` +
+  update `docs/standards/mcp-tool-io.md`.
+- **Pre-existing (unrelated) FE failure noticed:** `studioAgentBridge.test.tsx :: useStudioEffectReconciler (Lane
+  B) :: runs the effect handlers for a COMPLETED MCP draft write` — asserts `host.publish` is NOT called on a draft
+  write (no editor hijack) but it IS; fails on committed code with the Phase-4 diff stashed, so NOT ours. Track
+  `D-STUDIO-RECONCILER-PUBLISH-ON-DRAFT` (studio effect-reconciler track).
+- **▶ ALSO REMAINING**: a studio browser E2E for the just-fixed `ui_open_studio_panel`/`ui_focus_manuscript_unit`
+  directive path (unit-tested; the studio dock-panel flow blocked the scripted attempt — same as P2.4).
 - Deferred: `D-P3-COMPACT-PANEL-DESC` (F7c compact panel_id A/B, default-off, not ported to ai-gateway).
 
 
