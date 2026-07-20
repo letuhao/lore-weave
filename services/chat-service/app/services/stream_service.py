@@ -517,6 +517,23 @@ BLANK_TOOL_ARGS_CAP = 2
 # never trips this; only a read that keeps handing back the byte-identical answer does.
 REPEAT_READ_CAP = 2
 
+# ── F18: the tool_list loop breaker (dogfood round-4) ────────────────────────
+# `tool_list` returns the COMPLETE category in one shot (no cursor/paging), so a
+# re-list of a category the model already listed is provably a loop — the answer is
+# already in context. Unlike a generic Tier-R read (bounded by the repeated-read
+# breaker above), tool_list is dispatched EARLIER in the tool loop and returned ok=True
+# UNCONDITIONALLY, so nothing bounded it: a weak model (gemma) called it 28× in one turn
+# and built nothing. Two reverted fixes proved the breaker's usual lever BACKFIRES here —
+# returning an ERROR framed the repeat as a failure the model "fixes" by retrying HARDER
+# (28→311 calls), and charging budget to force finalization made it HALLUCINATE a
+# tool-call as text. So this breaker does neither: on a repeat it AUTO-LOADS the
+# category's tools (the real tools the model was circling become callable) and STEERS it
+# to use them — forward progress, never a forced stop. Past a per-turn total, tool_list
+# is also dropped from the advertised set (tool_load stays, so a specific tool is still
+# reachable by name).
+TOOL_LIST_CATEGORY_CAP = 1   # 1 legit list per category; the 2nd (same category) is the loop
+TOOL_LIST_TOTAL_CAP = 5      # total tool_list calls this turn before it is de-advertised
+
 # P-1 step-runner — the per-turn cap on how many times the server re-drives the rail after the
 # model stops. The vision-to-book rail is 11 steps and a few are already done on the assent
 # turn, so ~8 covers a full drive-through; a per-STEP cap of 2 (rail_twice_nudged) bounds a
@@ -904,6 +921,7 @@ def _advertise_discovery_tools(
     extra_frontend: list[dict],
     permission_mode: str = "write",
     has_workflows: bool = False,
+    suppress_tool_list: bool = False,
 ) -> list[dict]:
     """MCP-fanout C-FT — the tools advertised on a universal /chat pass:
     ``{always-on core} ∪ {full schemas of active_tool_names}``, with the
@@ -947,6 +965,11 @@ def _advertise_discovery_tools(
         # WS-1a — tool_list/tool_load are consumer-local meta-tools (not federated), like
         # find_tools; source their schemas from the module defs.
         if name == TOOL_LIST_NAME:
+            # F18 — dropped from the wire once the model has exhausted discovery this turn
+            # (it looped on tool_list). tool_load stays advertised, so a specific tool is
+            # still reachable by name; the dispatch below still handles a hallucinated call.
+            if suppress_tool_list:
+                continue
             _add(TOOL_LIST_TOOL)
             continue
         if name == TOOL_LOAD_NAME:
@@ -1406,6 +1429,13 @@ async def _stream_with_tools(
         # exactly why, and told to use what it has).
         # (tool+args) -> (fingerprint of the last result, how many times that SAME result came back)
         read_call_results: dict[str, tuple[str, int]] = {}
+        # F18 — tool_list exhaustion state (see TOOL_LIST_CATEGORY_CAP). tool_list returns the
+        # WHOLE category at once, so a re-list is a loop; track per-category list counts + the
+        # per-turn total so a repeat switches to auto-load+steer and a persistent spammer gets
+        # tool_list de-advertised (suppress_tool_list is read at the advertise chokepoint below).
+        listed_categories: dict[str, int] = {}
+        tool_list_total = 0
+        suppress_tool_list = False
         # ── P-1 step-runner state (Track C) ──────────────────────────────────────
         # turn_succeeded — tools that SUCCEEDED this turn (backend chokepoint only), merged with
         # the turn-start DB counts to tell "the async job already started" from "not yet". Never
@@ -1528,6 +1558,7 @@ async def _stream_with_tools(
                         cat_index, active_tool_names, extra_fe,
                         permission_mode=permission_mode,
                         has_workflows=bool(turn_workflows),
+                        suppress_tool_list=suppress_tool_list,
                     )
                 else:
                     advertised = (
@@ -1959,6 +1990,87 @@ async def _stream_with_tools(
                     include_deprecated = args_obj.get("include_deprecated")
                     if not isinstance(include_deprecated, bool):
                         include_deprecated = True
+                    _norm_cat = category or "all"
+                    tool_list_total += 1
+
+                    # F18 — the model ALREADY has this category's complete list (tool_list is
+                    # not paginated), so re-listing it is the loop. Don't hand back the same
+                    # list; AUTO-LOAD the category's tools (exactly like tool_load) so the real
+                    # tools it was circling become callable, and STEER it to use them. Erroring
+                    # here backfired (the weak model retried harder, 28→311); this makes forward
+                    # progress instead. Past the per-turn total, tool_list is also de-advertised
+                    # (suppress_tool_list) — tool_load stays, so a specific tool is still reachable.
+                    if listed_categories.get(_norm_cat, 0) >= TOOL_LIST_CATEGORY_CAP:
+                        from app.services.tool_surface import (
+                            HOT_SEED_TOKEN_BUDGET,
+                            budget_names_by_tokens,
+                            merge_activated_tools,
+                        )
+                        _load_payload, loaded = tool_load_result(
+                            discovery_catalog or [], category=_norm_cat,
+                        )
+                        names_to_activate = budget_names_by_tokens(
+                            discovery_catalog or [], loaded,
+                            token_budget=scale_by_window(HOT_SEED_TOKEN_BUDGET, context_length),
+                        )
+                        active_tool_names.update(names_to_activate)
+                        if curated and activation_state is not None:
+                            activation_state["activated_tools"] = merge_activated_tools(
+                                activation_state["activated_tools"], loaded,
+                                catalog=discovery_catalog,
+                                context_length=context_length,
+                            )
+                            activation_state["dirty"] = True
+                        if tool_list_total >= TOOL_LIST_TOTAL_CAP:
+                            suppress_tool_list = True
+                        _loaded_names = sorted(names_to_activate)
+                        _steer = (
+                            f"You already listed '{_norm_cat}' and its complete tool list is "
+                            "above, unchanged — tool_list is not paginated, so there is nothing "
+                            "more to fetch. Its tools are now LOADED and callable: "
+                            f"{', '.join(_loaded_names) or '(none available in this category)'}. "
+                            "Call one of them now, or answer the user. Do NOT call tool_list for "
+                            "this category again."
+                        )
+                        if suppress_tool_list:
+                            _steer += (
+                                " tool_list is now disabled for the rest of this turn; use a tool "
+                                "loaded above, or tool_load(name=…) to load a specific tool by name."
+                            )
+                        payload = {
+                            "listed_before": True,
+                            "category": _norm_cat,
+                            "loaded_tools": _loaded_names,
+                            "note": _steer,
+                        }
+                        if surface_tracker is not None:
+                            _act_count = (
+                                len(activation_state["activated_tools"])
+                                if activation_state is not None
+                                else len(active_tool_names)
+                            )
+                            _payload_as = surface_tracker.activated(_act_count)
+                            if _payload_as is not None:
+                                yield {"agent_surface": _payload_as}
+                        logger.info(
+                            "tool_list loop breaker: category=%s re-listed (total=%d this turn) "
+                            "— auto-loaded %d tool(s)%s",
+                            _norm_cat, tool_list_total, len(_loaded_names),
+                            "; tool_list de-advertised" if suppress_tool_list else "",
+                        )
+                        working.append({
+                            "role": "tool", "tool_call_id": c["id"],
+                            "content": tool_result_content(payload),
+                        })
+                        yield {"tool_call": {
+                            "id": c["id"], "iteration": iteration, "tool": c["name"],
+                            "args": args_obj, "ok": True, "result": payload, "error": None,
+                        }}
+                        continue
+
+                    # First list of this category (within cap) — the complete, deterministic
+                    # enumeration. Deprecated tools LABELED not dropped. No activation, no write.
+                    listed_categories[_norm_cat] = listed_categories.get(_norm_cat, 0) + 1
                     payload = tool_list_result(
                         discovery_catalog or [],
                         category,

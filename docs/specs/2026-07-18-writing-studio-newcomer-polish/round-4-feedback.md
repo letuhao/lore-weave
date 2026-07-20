@@ -44,24 +44,26 @@ session fixed a lot upstream (find_tools hidden, book auto-inject, durable gate)
   language-less book (chapters require `original_language`, inherited from the book). Tests updated + a
   no-language guard test added.
 - **F17** ✅ `f30dc77e5` — hide `find_tools`; `tool_list`/`tool_load` the discovery path.
-- **F18** ⏸️ **DEFERRED — root-caused, but 2 fix approaches BACKFIRED live (reverted).** The gap is real (the
-  consumer-local `tool_list`/`tool_load` dispatch BEFORE the tier-R read breaker, so a repeated identical call
-  loops uncaught). BUT two things make a naive fix wrong here:
-  1. **F18's ORIGINAL surface — the writing studio — is already fixed by F14.** Book tools are auto-advertised
-     there, so the model never tool_list-loops to discover them. The loop only reproduces on the *artificial
-     GLOBAL* surface (no book context) that `f17_turn.py` drives.
-  2. **Both breaker attempts regressed a weak (Gemma) model, proven live:**
-     - *Per-call short-circuit* (return an error on the repeat): the error PROVOKED the weak model to
-       batch-retry HARDER — 28 calls → **311** (each cheap, and the useful description still came out, but 10×
-       the tool-call events).
-     - *+ Budget charge* (count a spin-pass against the write budget to force finalization): forcing the
-       tool-free final pass while the model still wanted a tool made it **HALLUCINATE a tool-call as text**
-       (`<|tool_call>…current_book_id_placeholder…`) — garbage output. Worse.
-  Both reverted. F18 is fundamentally a **weak-model quirk** (a capable model `tool_load`s + acts); the naive
-  breakers provoke worse behavior. A non-regressing fix would need to **de-advertise `tool_list` after the cap**
-  (so the model MUST use the list it already has) — a larger, riskier surface change — or just accept it as a
-  weak-model-only edge case that **F14 already neutralizes on the real surface**. Deferred with that choice for
-  the human.
+- **F18** ✅ **FIXED — the tool_list loop breaker (steer + auto-load, de-advertise as backstop).** Root cause,
+  precisely: the consumer-local `tool_list` dispatch (`stream_service.py` ~1987) runs BEFORE the tier-R
+  repeated-read breaker and returned `ok=True` UNCONDITIONALLY — so `tool_list` had **no breaker at all** (a
+  weak model called it dozens of times uncaught). The two EARLIER attempts (deferred) used the read-breaker's
+  lever and backfired: returning an *error* provoked harder retry (28→311); charging *budget* to force
+  finalization made the model hallucinate a tool-call as text. The human's insight (2026-07-20) fixed the shape:
+  `tool_list` is not paginated, so a **re-list of a category the model already listed is provably a loop** — so
+  on the repeat we neither error nor force a stop; we **auto-LOAD that category's tools** (the real tools it was
+  circling become callable) and **STEER** it to use them (forward progress, never a forced finalization), and
+  past a per-turn total we **de-advertise `tool_list`** entirely (`tool_load` stays, so a specific tool is still
+  reachable). New constants `TOOL_LIST_CATEGORY_CAP=1` / `TOOL_LIST_TOTAL_CAP=5`; `suppress_tool_list` threaded
+  through `_advertise_discovery_tools`. 6 unit tests drive the REAL `_stream_with_tools` loop (single untouched,
+  repeat→steer+autoload, distinct-cats-not-a-loop, de-advertise backstop, None/all collapse, empty-cat graceful).
+  **LIVE-PROVEN on the real Gemma model + full stack:** the loop reproduced (`tool_list(book)` ×2) → breaker
+  fired (`tool_list loop breaker: category=book re-listed (total=2) — auto-loaded 21 tool(s)`) → model
+  progressed to `book_list` + `book_list_chapters` + a real prose answer. `tool_list=2` (was **569**), zero
+  hallucination markers. The happy path (single list → answer) is untouched (5/5 clean). *(Process note: the
+  first live-smoke attempts showed an empty tool surface — ai-gateway was in `Created`/not-started, so the
+  federated catalog was empty and discovery fell back to `run_subagent`-only; a full `docker compose up -d`
+  fixed the environment and the breaker then worked as designed. Not a code issue — a half-booted stack.)*
 
 ---
 

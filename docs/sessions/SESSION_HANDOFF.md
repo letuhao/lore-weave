@@ -18,12 +18,21 @@ Fixing in **ALPHABET order, monitoring-first** (add the missing monitor before/w
   chapter-create no longer steals focus from the active Co-writer Chat (`useChapterDoor` opens the editor as an
   INACTIVE tab when a different panel is active; FE tests green). **F16** — New Book now REQUIRES a language (submit
   disabled + `handleCreate` guard; no language-less book; tests green).
-- **DEFERRED:** **F18** (discovery-meta-tool loop) — root-caused, but its ORIGINAL surface (the studio) is already
-  fixed by F14; the loop only reproduces on the artificial GLOBAL surface. **2 breaker approaches BACKFIRED live**
-  (per-call short-circuit → the weak model batch-retries harder, 28→311 calls; a budget charge to force finalization
-  → the model hallucinates a tool-call as text = garbage). Both reverted. It's a weak-model quirk; a non-regressing
-  fix needs to de-advertise `tool_list` after the cap (larger change) — deferred with that choice for the human.
-- **Debt:** 3 pre-existing `TestGenericFrontendTools` failures (this session's M3 frontend-tools migration).
+- **DONE:** **F18** (discovery-meta-tool loop) — **FIXED** with the human's chosen shape (steer + auto-load,
+  de-advertise as backstop). Real root cause: `tool_list` dispatched BEFORE the tier-R read breaker and returned
+  `ok=True` unconditionally → **no breaker at all**. `tool_list` is not paginated, so a re-list of a category is
+  provably a loop: on the repeat we AUTO-LOAD that category's tools (forward progress, not an error/forced-stop —
+  that's what backfired before) + STEER, and past `TOOL_LIST_TOTAL_CAP=5` de-advertise `tool_list` (`tool_load`
+  stays). `stream_service.py` + `test_tool_list_loop_breaker.py` (6 tests drive the real loop). **LIVE-PROVEN on
+  Gemma + full stack:** loop reproduced (`tool_list(book)`×2) → breaker log fired (`auto-loaded 21 tools`) → model
+  called `book_list`+`book_list_chapters` + real answer; `tool_list=2` (was 569), no hallucination. Happy path
+  (single list→answer) untouched (5/5). *(Live-smoke gotcha: ai-gateway must be UP — a half-booted stack gives an
+  empty catalog → `run_subagent`-only surface that masks everything. `docker compose up -d` the FULL stack first.)*
+- **Debt (pre-existing, this branch's `ui_*`→ai-gateway migration, NOT F18):** 17 unit failures in the
+  advertise/frontend-tool cluster — `TestGenericFrontendTools` (3), `test_agent_surface` `server_key_for_tool`/
+  `TestServersForNames`/`TestAdvertiseEmitsSurface` (8), `test_plan_mode` (3), `TestK21B` (3, incl. a `_pf_row`
+  `message_count` KeyError). Proven pre-existing (identical with the F18 change stashed). `ui_*` were relocated to
+  ai-gateway (P3.x) but the chat-side frontend-tool name set + these tests weren't updated — a migration follow-up.
 
 ## ✅ MCP-TASKS FULL ACTIVATION — **PLAN COMPLETE (M1–M4), ACTIVATED (2026-07-20)**
 The durable ext-tasks human gate is built, persistent (multi-replica), owner-checked, and **LIVE** —
