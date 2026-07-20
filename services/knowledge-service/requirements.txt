@@ -72,7 +72,7 @@ mcp[cli]>=1.9,<2
 # import-guarded in pdf_walker.py the same way lore-enrichment-service's
 # extract.py guards them — a missing lib/binary degrades gracefully
 # (text-layer only), it never crashes the service.
-pymupdf>=1.24
+pymupdf>=1.28.0
 pytesseract>=0.3.10
 pdf2image>=1.17
 Pillow>=12.3.0
