@@ -100,8 +100,12 @@ func (s *Server) registerActionProposeTools(srv *mcp.Server) {
 	// so a propose on one replica + its accept on another (or after a restart/deploy)
 	// resolve the same task exactly once (D-MCPTASKS-GO-STORE). book_chapter_delete's
 	// resolver re-binds the caller + re-checks the grant (confirmBookAction parity).
+	// One DISPATCHING resolver serves every book write descriptor (delete/trash/purge
+	// via descBookDelete; publish/unpublish via descBookPublish) — it switches on the
+	// payload op and calls the SAME underlying logic the /actions/confirm effects run.
 	actionTasks := NewPgTaskStore(s.pool, lwmcp.TaskResolverRegistry{
-		descBookDelete: s.resolveChapterDelete,
+		descBookDelete:  s.resolveBookAction,
+		descBookPublish: s.resolveBookAction,
 	})
 
 	addTool(srv, "book_chapter_publish",
@@ -109,13 +113,13 @@ func (s *Server) registerActionProposeTools(srv *mcp.Server) {
 			"returns a confirm_token + card a human must confirm — it does NOT publish. "+
 			"Pass the confirm_token to confirm_action (domain=book).",
 		lwmcp.NewToolMeta(lwmcp.TierW, lwmcp.ScopeBook, nil, []string{"publish", "canonize", "make canon"}),
-		s.toolProposePublish)
+		s.toolProposePublishGated(actionTasks))
 
 	addTool(srv, "book_chapter_unpublish",
 		"Propose UNPUBLISHING a chapter (revert canon → draft). Returns a "+
 			"confirm_token + card a human must confirm via confirm_action (domain=book).",
 		lwmcp.NewToolMeta(lwmcp.TierW, lwmcp.ScopeBook, nil, []string{"unpublish", "revert canon", "withdraw"}),
-		s.toolProposeUnpublish)
+		s.toolProposeUnpublishGated(actionTasks))
 
 	// book_delete (agent-proposed book trash) REMOVED 2026-07-19 — deleting a whole
 	// book is not an agent-invocable capability. Users delete a book directly via the
@@ -132,13 +136,13 @@ func (s *Server) registerActionProposeTools(srv *mcp.Server) {
 		"Propose PERMANENTLY purging a trashed book (irreversible). Returns a "+
 			"confirm_token + card a human must explicitly confirm via confirm_action.",
 		lwmcp.NewToolMeta(lwmcp.TierW, lwmcp.ScopeBook, nil, []string{"purge book", "permanently delete book"}),
-		s.toolProposeBookPurge)
+		s.toolProposeBookPurgeGated(actionTasks))
 
 	addTool(srv, "book_chapter_purge",
 		"Propose PERMANENTLY purging a trashed chapter (irreversible). Returns a "+
 			"confirm_token + card a human must explicitly confirm via confirm_action.",
 		lwmcp.NewToolMeta(lwmcp.TierW, lwmcp.ScopeBook, nil, []string{"purge chapter", "permanently delete chapter"}),
-		s.toolProposeChapterPurge)
+		s.toolProposeChapterPurgeGated(actionTasks))
 
 	addTool(srv, "book_set_cover",
 		"Propose generating/replacing a book cover image (priced). Returns a "+
@@ -200,27 +204,78 @@ func (s *Server) proposeChapterAction(ctx context.Context, in chapterActionIn, n
 	return s.mintBookActionCard(userID, bookID, descriptor, title, actionPayload{Op: op, ChapterID: chID.String()}, destructive)
 }
 
-func (s *Server) proposeBookAction(ctx context.Context, in bookActionIn, need GrantLevel, descriptor, op, title string, destructive bool) (*mcp.CallToolResult, confirmCardOut, error) {
+// ── durable-gate propose helpers (M3) — the write actions (publish/unpublish/
+// delete/purge) run task-shaped: GateOrConfirm returns a durable input_required TASK
+// for a tasks-capable client, else the SAME confirm_token card (no regression). The
+// mint is kept as the fallback (side-effect-free HMAC). Priced tools (set_cover/media/
+// audio) keep the plain mint path — their "confirm" only opens the UI, nothing to gate. ──
+
+func (s *Server) proposeChapterActionGated(ctx context.Context, meta lwmcp.Meta, store lwmcp.TaskStore, in chapterActionIn, need GrantLevel, descriptor, op, title string, destructive bool) (*mcp.CallToolResult, any, error) {
 	userID, ok := mcpUserID(ctx)
 	if !ok {
-		return nil, confirmCardOut{}, errMissingIdentity
+		return nil, nil, errMissingIdentity
 	}
 	bookID, err := uuid.Parse(in.BookID)
 	if err != nil {
-		return nil, confirmCardOut{}, errors.New("book_id must be a UUID")
+		return nil, nil, errors.New("book_id must be a UUID")
+	}
+	chID, err := uuid.Parse(in.ChapterID)
+	if err != nil {
+		return nil, nil, errors.New("chapter_id must be a UUID")
 	}
 	if _, err := s.mcpRequireGrant(ctx, bookID, userID, need); err != nil {
-		return nil, confirmCardOut{}, mcpOwnershipError(err)
+		return nil, nil, mcpOwnershipError(err)
 	}
-	return s.mintBookActionCard(userID, bookID, descriptor, title, actionPayload{Op: op}, destructive)
+	var exists bool
+	if err := s.pool.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM chapters WHERE id=$1 AND book_id=$2 AND lifecycle_state!='purge_pending')`, chID, bookID).Scan(&exists); err != nil || !exists {
+		return nil, nil, errBookNotAccessible
+	}
+	_, card, cerr := s.mintBookActionCard(userID, bookID, descriptor, title, actionPayload{Op: op, ChapterID: chID.String()}, destructive)
+	if cerr != nil {
+		return nil, nil, cerr
+	}
+	payload := map[string]any{"op": op, "book_id": bookID.String(), "chapter_id": chID.String()}
+	inputRequests := map[string]any{
+		"descriptor": descriptor, "op": op, "title": title, "domain": "book",
+		"book_id": bookID.String(), "chapter_id": chID.String(), "destructive": destructive,
+	}
+	out, err := lwmcp.GateOrConfirm(ctx, meta, store, descriptor, userID.String(), payload, inputRequests, func() any { return card }, 0)
+	if err != nil {
+		return nil, nil, err
+	}
+	return nil, out, nil
 }
 
-func (s *Server) toolProposePublish(ctx context.Context, _ *mcp.CallToolRequest, in chapterActionIn) (*mcp.CallToolResult, confirmCardOut, error) {
-	return s.proposeChapterAction(ctx, in, GrantEdit, descBookPublish, "publish", "Publish chapter (canonize)", false)
+func (s *Server) proposeBookActionGated(ctx context.Context, meta lwmcp.Meta, store lwmcp.TaskStore, in bookActionIn, need GrantLevel, descriptor, op, title string, destructive bool) (*mcp.CallToolResult, any, error) {
+	userID, ok := mcpUserID(ctx)
+	if !ok {
+		return nil, nil, errMissingIdentity
+	}
+	bookID, err := uuid.Parse(in.BookID)
+	if err != nil {
+		return nil, nil, errors.New("book_id must be a UUID")
+	}
+	if _, err := s.mcpRequireGrant(ctx, bookID, userID, need); err != nil {
+		return nil, nil, mcpOwnershipError(err)
+	}
+	_, card, cerr := s.mintBookActionCard(userID, bookID, descriptor, title, actionPayload{Op: op}, destructive)
+	if cerr != nil {
+		return nil, nil, cerr
+	}
+	payload := map[string]any{"op": op, "book_id": bookID.String()}
+	inputRequests := map[string]any{
+		"descriptor": descriptor, "op": op, "title": title, "domain": "book",
+		"book_id": bookID.String(), "destructive": destructive,
+	}
+	out, err := lwmcp.GateOrConfirm(ctx, meta, store, descriptor, userID.String(), payload, inputRequests, func() any { return card }, 0)
+	if err != nil {
+		return nil, nil, err
+	}
+	return nil, out, nil
 }
-func (s *Server) toolProposeUnpublish(ctx context.Context, _ *mcp.CallToolRequest, in chapterActionIn) (*mcp.CallToolResult, confirmCardOut, error) {
-	return s.proposeChapterAction(ctx, in, GrantEdit, descBookPublish, "unpublish", "Unpublish chapter (revert canon)", false)
-}
+
+// (publish/unpublish/purge propose tools are now the *Gated durable-gate variants
+// below — the old mint-only versions were retired in M3.)
 
 // toolProposeChapterDelete is the ext-tasks DURABLE-GATE variant of a KIND-C
 // propose tool (T3c). Propose-time it resolves identity + checks the grant +
@@ -231,68 +286,63 @@ func (s *Server) toolProposeUnpublish(ctx context.Context, _ *mcp.CallToolReques
 // (proposeChapterAction's exact result), so nothing is stranded. The Out is `any`
 // because the two branches return different shapes (a task handle vs a card).
 func (s *Server) toolProposeChapterDelete(store lwmcp.TaskStore) func(context.Context, *mcp.CallToolRequest, chapterActionIn) (*mcp.CallToolResult, any, error) {
-	const (
-		op    = "delete_chapter"
-		title = "Delete chapter (move to trash)"
-	)
 	return func(ctx context.Context, req *mcp.CallToolRequest, in chapterActionIn) (*mcp.CallToolResult, any, error) {
-		// ── propose-time authorization (identical to proposeChapterAction) ──
-		userID, ok := mcpUserID(ctx)
-		if !ok {
-			return nil, nil, errMissingIdentity
-		}
-		bookID, err := uuid.Parse(in.BookID)
-		if err != nil {
-			return nil, nil, errors.New("book_id must be a UUID")
-		}
-		chID, err := uuid.Parse(in.ChapterID)
-		if err != nil {
-			return nil, nil, errors.New("chapter_id must be a UUID")
-		}
-		if _, err := s.mcpRequireGrant(ctx, bookID, userID, GrantEdit); err != nil {
-			return nil, nil, mcpOwnershipError(err)
-		}
-		var exists bool
-		if err := s.pool.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM chapters WHERE id=$1 AND book_id=$2 AND lifecycle_state!='purge_pending')`, chID, bookID).Scan(&exists); err != nil || !exists {
-			return nil, nil, errBookNotAccessible
-		}
-
-		// The confirm_token fallback (a non-tasks client). Minted up front so its
-		// error is surfaced cleanly; the token is a stateless HMAC (no write), so
-		// minting it even on the task path is side-effect-free.
-		_, card, cerr := s.mintBookActionCard(userID, bookID, descBookDelete, title,
-			actionPayload{Op: op, ChapterID: chID.String()}, true)
-		if cerr != nil {
-			return nil, nil, cerr
-		}
-
-		// The durable payload captured at propose-time — EXACTLY what the accept will
-		// execute (the LLM cannot alter the target between propose and accept). Fully
-		// serializable so a persistent multi-replica store can round-trip it; the
-		// resolver (resolveChapterDelete, registered by descriptor) reads it on accept.
-		payload := map[string]any{"op": op, "book_id": bookID.String(), "chapter_id": chID.String()}
-
-		inputRequests := map[string]any{
-			"descriptor": descBookDelete, "op": op, "title": title, "domain": "book",
-			"book_id": bookID.String(), "chapter_id": chID.String(), "destructive": true,
-		}
-		out, err := lwmcp.GateOrConfirm(ctx, req.Params.Meta, store, descBookDelete,
-			userID.String(), payload, inputRequests, func() any { return card }, 0)
-		if err != nil {
-			return nil, nil, err
-		}
-		return nil, out, nil
+		return s.proposeChapterActionGated(ctx, req.Params.Meta, store, in, GrantEdit,
+			descBookDelete, "delete_chapter", "Delete chapter (move to trash)", true)
 	}
 }
 
-// resolveChapterDelete is the durable-gate resolver for descBookDelete (registered at
-// startup). It runs ONLY on accept, reconstructed on any replica from the persisted
-// {ownerUserID, payload} — no closure. It re-binds the caller to the proposing user and
-// re-checks the grant (confirmBookAction defense-in-depth: the accept arrives on a later
-// request, the grant may have been revoked meanwhile). The task single-winner guard is
-// the single-use equivalent of consumeBookActionToken.
-func (s *Server) resolveChapterDelete(exctx context.Context, ownerUserID string, payload map[string]any, _ map[string]any) (any, error) {
-	if caller, ok := mcpUserID(exctx); !ok || caller.String() != ownerUserID {
+func (s *Server) toolProposePublishGated(store lwmcp.TaskStore) func(context.Context, *mcp.CallToolRequest, chapterActionIn) (*mcp.CallToolResult, any, error) {
+	return func(ctx context.Context, req *mcp.CallToolRequest, in chapterActionIn) (*mcp.CallToolResult, any, error) {
+		return s.proposeChapterActionGated(ctx, req.Params.Meta, store, in, GrantEdit,
+			descBookPublish, "publish", "Publish chapter (canonize)", false)
+	}
+}
+
+func (s *Server) toolProposeUnpublishGated(store lwmcp.TaskStore) func(context.Context, *mcp.CallToolRequest, chapterActionIn) (*mcp.CallToolResult, any, error) {
+	return func(ctx context.Context, req *mcp.CallToolRequest, in chapterActionIn) (*mcp.CallToolResult, any, error) {
+		return s.proposeChapterActionGated(ctx, req.Params.Meta, store, in, GrantEdit,
+			descBookPublish, "unpublish", "Unpublish chapter (revert canon → draft)", false)
+	}
+}
+
+func (s *Server) toolProposeChapterPurgeGated(store lwmcp.TaskStore) func(context.Context, *mcp.CallToolRequest, chapterActionIn) (*mcp.CallToolResult, any, error) {
+	return func(ctx context.Context, req *mcp.CallToolRequest, in chapterActionIn) (*mcp.CallToolResult, any, error) {
+		return s.proposeChapterActionGated(ctx, req.Params.Meta, store, in, GrantManage,
+			descBookDelete, "purge_chapter", "Permanently purge chapter (irreversible)", true)
+	}
+}
+
+func (s *Server) toolProposeBookPurgeGated(store lwmcp.TaskStore) func(context.Context, *mcp.CallToolRequest, bookActionIn) (*mcp.CallToolResult, any, error) {
+	return func(ctx context.Context, req *mcp.CallToolRequest, in bookActionIn) (*mcp.CallToolResult, any, error) {
+		return s.proposeBookActionGated(ctx, req.Params.Meta, store, in, GrantOwner,
+			descBookDelete, "purge_book", "Permanently purge book (irreversible)", true)
+	}
+}
+
+// grantForOp is the grant level a book action's ACCEPT re-checks (defense-in-depth,
+// derived from the op so the resolver never trusts a weaker level than propose-time).
+func grantForOp(op string) GrantLevel {
+	switch op {
+	case "purge_book", "delete_book":
+		return GrantOwner
+	case "purge_chapter":
+		return GrantManage
+	default: // publish, unpublish, delete_chapter
+		return GrantEdit
+	}
+}
+
+// resolveBookAction is the durable-gate resolver for ALL book write descriptors
+// (descBookDelete / descBookPublish), registered at startup. It runs ONLY on accept,
+// reconstructed on any replica from the persisted {ownerUserID, payload} — no closure. It
+// re-binds the caller to the proposing user + re-checks the op-appropriate grant
+// (confirmBookAction defense-in-depth: the accept arrives on a later request, the grant may
+// have been revoked meanwhile). The task single-winner guard = single-use (consumeBookActionToken
+// equivalent). It dispatches by op to the SAME underlying logic the /actions/confirm effects run.
+func (s *Server) resolveBookAction(exctx context.Context, ownerUserID string, payload map[string]any, _ map[string]any) (any, error) {
+	caller, ok := mcpUserID(exctx)
+	if !ok || caller.String() != ownerUserID {
 		return nil, errBookNotAccessible // caller-binding parity with claims.UserID==caller
 	}
 	owner, err := uuid.Parse(ownerUserID)
@@ -303,30 +353,65 @@ func (s *Server) resolveChapterDelete(exctx context.Context, ownerUserID string,
 	if err != nil {
 		return nil, errors.New("book_id must be a UUID")
 	}
-	chID, err := uuid.Parse(asString(payload["chapter_id"]))
-	if err != nil {
-		return nil, errors.New("chapter_id must be a UUID")
-	}
-	if _, err := s.mcpRequireGrant(exctx, bookID, owner, GrantEdit); err != nil {
+	op := asString(payload["op"])
+	if _, err := s.mcpRequireGrant(exctx, bookID, owner, grantForOp(op)); err != nil {
 		return nil, mcpOwnershipError(err)
 	}
-	if err := s.mcpTransitionChapter(exctx, bookID, chID, "trashed"); err != nil {
-		return nil, err
+	chapter := func() (uuid.UUID, error) { return uuid.Parse(asString(payload["chapter_id"])) }
+	switch op {
+	case "publish":
+		chID, err := chapter()
+		if err != nil {
+			return nil, errors.New("chapter_id must be a UUID")
+		}
+		revID, counts, perr := s.mcpPublishChapter(exctx, owner, bookID, chID)
+		if perr != nil {
+			return nil, perr
+		}
+		return map[string]any{"outcome": "action_done", "op": "publish", "book_id": bookID.String(),
+			"chapter_id": chID.String(), "revision_id": revID.String(), "reparse": counts}, nil
+	case "unpublish":
+		chID, err := chapter()
+		if err != nil {
+			return nil, errors.New("chapter_id must be a UUID")
+		}
+		if perr := s.mcpUnpublishChapter(exctx, bookID, chID); perr != nil {
+			return nil, perr
+		}
+		return map[string]any{"outcome": "action_done", "op": "unpublish",
+			"book_id": bookID.String(), "chapter_id": chID.String()}, nil
+	case "delete_chapter", "purge_chapter":
+		chID, err := chapter()
+		if err != nil {
+			return nil, errors.New("chapter_id must be a UUID")
+		}
+		target := "trashed"
+		if op == "purge_chapter" {
+			target = "purge_pending"
+		}
+		if err := s.mcpTransitionChapter(exctx, bookID, chID, target); err != nil {
+			return nil, err
+		}
+		return map[string]any{"outcome": "action_done", "op": op,
+			"book_id": bookID.String(), "chapter_id": chID.String()}, nil
+	case "delete_book", "purge_book":
+		target := "trashed"
+		if op == "purge_book" {
+			target = "purge_pending"
+		}
+		if err := s.mcpTransitionBook(exctx, bookID, target); err != nil {
+			return nil, err
+		}
+		return map[string]any{"outcome": "action_done", "op": op, "book_id": bookID.String()}, nil
+	default:
+		return nil, errors.New("op does not match descriptor")
 	}
-	return map[string]any{"outcome": "action_done", "op": asString(payload["op"]),
-		"book_id": bookID.String(), "chapter_id": chID.String()}, nil
 }
 
 // asString reads a string field from a payload map (empty string if absent/non-string).
 func asString(v any) string {
 	s, _ := v.(string)
 	return s
-}
-func (s *Server) toolProposeBookPurge(ctx context.Context, _ *mcp.CallToolRequest, in bookActionIn) (*mcp.CallToolResult, confirmCardOut, error) {
-	return s.proposeBookAction(ctx, in, GrantOwner, descBookDelete, "purge_book", "Permanently purge book (irreversible)", true)
-}
-func (s *Server) toolProposeChapterPurge(ctx context.Context, _ *mcp.CallToolRequest, in chapterActionIn) (*mcp.CallToolResult, confirmCardOut, error) {
-	return s.proposeChapterAction(ctx, in, GrantManage, descBookDelete, "purge_chapter", "Permanently purge chapter (irreversible)", true)
 }
 
 // Priced ops — mint a token + a (placeholder) estimate. Execution of the actual

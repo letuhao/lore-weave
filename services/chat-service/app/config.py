@@ -118,7 +118,7 @@ class Settings(BaseSettings):
     # when False, the domain falls back to today's confirm_token (byte-unchanged). A
     # DEPLOY-level kill-switch: default False so the whole ext-tasks path stays dormant
     # until it is live-verified end to end, then flipped on.
-    tasks_gate_enabled: bool = False
+    tasks_gate_enabled: bool = True
 
     # ── WS-4C Half A — canon auto-capture ────────────────────────────────────────
     # Spec: docs/specs/2026-07-10-ws4c-half-a-canon-auto-capture.md
