@@ -43,7 +43,7 @@ pyahocorasick>=2.0
 # The len/4 heuristic undercounts CJK by ~3-7x, which over-promises
 # context budget. tiktoken.cl100k_base matches GPT-4/Claude-3.x
 # tokenization closely enough for budget enforcement.
-tiktoken>=0.7
+tiktoken>=0.13.0
 # P1 (2026-05-23) — loreweave_parse SDK uses bs4 + stdlib html.parser
 # for the /internal/parse endpoint. Pure Python, no native deps.
 beautifulsoup4>=4.15.0,<5
