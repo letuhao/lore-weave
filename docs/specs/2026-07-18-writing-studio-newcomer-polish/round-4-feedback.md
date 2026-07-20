@@ -75,7 +75,54 @@ book-scoped writing turn (a catalog-hygiene angle, cf. F7c).
 
 ---
 
-## F14 · `agent-refuses-tool-actions` — won't drive the write/delete tools 🟠
+## F14 · `agent-refuses-tool-actions` — ROOT CAUSE FOUND + CORE FIXED (2026-07-20) ✅🟠
+
+**Update (investigation + fix, `977e7c71f`):** diagnosed with a purpose-built monitor, then fixed.
+
+**Monitoring added (this bug class had none):**
+- A per-turn INFO log of the ADVERTISED tool NAMES (`stream_service.py`) — the Agent-runtime
+  panel only showed COUNTS (`core N · frontend N · activated N`), which can't answer "did the
+  agent even SEE the tool it needed?".
+- **Fixed a broken logging infra**: `logging.getLogger("app").setLevel(INFO)` was a SILENT NO-OP
+  — the "app" logger has no handler, so records fell to `logging.lastResort` (WARNING-level), so
+  every `logger.info` (all 47) was dropped and `LOG_LEVEL=INFO` did nothing (`main.py` +
+  `docker-compose CHAT_LOG_LEVEL=INFO`). *Every agent-behavior diagnostic depended on this.*
+
+**Root cause (PROVEN, not guessed):** on the book writing studio the advertised surface was
+100% glossary/kg/memory/composition/story tools and **not one `book_*` tool** — because the `book`
+skill was *curated-pin-only*, so `book` was never a hot domain. Asked to manage chapters, the agent
+saw no book tool and grabbed `composition_get_mine_job` (the seed's closest "job" tool) — this ALSO
+drives F13's loop.
+
+**Fix:** auto-inject `book` on the book-bound surfaces (studio/editor/book_scoped) —
+`resolve_skills_to_inject`. **Verified live via the monitor + browser:** book tools now advertised;
+the agent calls `book_list`, finds the book + "1 chapter", and accurately lists every book chapter
+tool. Before: zero book tools.
+
+**Residual (→ F13 + F17):** the 4000-tok seed budget (smallest-schema-first) still truncates
+`book_list_chapters` + `book_chapter_delete`, so the agent finds the book but can't list its
+chapters directly. The proper close is **F17 (remove `find_tools`, use `tool_list`/`tool_load`)** +
+possibly a per-surface primary-domain seed priority.
+
+## F17 · `remove-find-tools-semantic-discovery` 🟠 (user-directed, XL cross-service)
+
+**User directive (2026-07-20):** *"find_tools is deprecated and should be hidden from the LLM —
+it is semantic search that only returns top-K, so it can't surface the tool the agent needs; only
+`tool_list` + `tool_load` solve that."* Confirmed by F14's dogfood: the weak model never reached
+`book_list_chapters` (semantic find can't reliably surface it; the model also just re-called
+`book_list`).
+
+**Scope (why it's its own track, not a quick edit):** `find_tools` is wired across BOTH services —
+chat-service (`ALWAYS_ON_CORE_NAMES`, the discovery loop, `agent_surface`, and the co_write/glossary/
+plan_forge **skill prose** that names it) and ai-gateway (`find-tools.ts`, `catalog.ts`,
+`federation.service.ts`, `handlers.ts`) — plus **34 test files**. "Hide from the LLM" (drop it from
+the advertised core + the gateway's consumer-local set, keep `tool_list`/`tool_load` as the discovery
+mechanism, update the skill prose + tests) is the minimal correct cut; a full deletion is larger.
+XL — plan before BUILD.
+
+---
+
+## F14 (original entry) · `agent-refuses-tool-actions` 🟠
 
 **Symptom (observed):** "Create a first chapter titled 'The Silent Gods'…" → the agent replied *"I
 cannot create a chapter for you yet because I don't have any information about your book"* and asked
