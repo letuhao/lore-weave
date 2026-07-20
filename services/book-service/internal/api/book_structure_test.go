@@ -2,7 +2,40 @@ package api
 
 // P1.1 — unit tests for the PURE grouping (buildBookStructure). No DB/port needed.
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
+
+// REGRESSION (caught by the Work-book e2e): the active Work's project_id is NESTED under `work`, not the
+// top-level `book_project_id` (which is null for a resolved work). Reading the wrong field made
+// kinds.outline ALWAYS false → the FE mode-by-content toggle would never appear for a planned book.
+func TestDecodeStructureWork_ReadsNestedWorkProjectID(t *testing.T) {
+	body := `{"status":"found","work":{"project_id":"proj-9","book_id":"b","id":"w"},"book_project_id":null,"book_project_ids":[]}`
+	got, ok := decodeStructureWork(strings.NewReader(body))
+	if !ok {
+		t.Fatal("decode should succeed")
+	}
+	if got.ProjectID == nil || *got.ProjectID != "proj-9" {
+		t.Errorf("must read the NESTED work.project_id (proj-9), got %v", got.ProjectID)
+	}
+}
+
+func TestDecodeStructureWork_LazyOrAbsentWorkYieldsNilProject(t *testing.T) {
+	// a lazy/pending Work (work present, project_id null) → nil project → outline=false (matches the
+	// FE's 'chapters' mode); and a fully-unresolved book → nil project too.
+	for _, tc := range []struct {
+		name, body string
+	}{
+		{"lazy null-project work", `{"status":"found","work":{"project_id":null,"id":"w"}}`},
+		{"no work resolved", `{"status":"unavailable","work":null,"book_project_id":null}`},
+	} {
+		got, ok := decodeStructureWork(strings.NewReader(tc.body))
+		if !ok || got.ProjectID != nil {
+			t.Errorf("%s: want nil project, got ok=%v project=%v", tc.name, ok, got.ProjectID)
+		}
+	}
+}
 
 func sPart(id string, sortOrder int, active bool) structurePartInput {
 	return structurePartInput{PartID: id, Title: id, SortOrder: sortOrder, Active: active}

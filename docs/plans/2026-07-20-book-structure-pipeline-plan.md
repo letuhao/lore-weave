@@ -40,7 +40,7 @@
 - Verify C4 migration UUID-equivalence (test) · `has_work` = two bits (row-exists vs project-backed) · outline/part identity reconciliation.
 
 ## Registers
-- **Decisions:** owner=book-service; rail=mode-by-content+toggle; drop eager-provision; P4=metadata-vs-structure; kinds_present.outline = active_work.project_id!=null (P1 approximation of "has outline").
+- **Decisions:** owner=book-service; rail=mode-by-content+toggle; drop eager-provision; P4=metadata-vs-structure; kinds_present.outline = the resolved active Work's `work.project_id`!=null (mirrors the FE's resolveActiveWork; a lazy/null-project Work ⇒ outline=false = 'chapters' mode).
 - **Parked:** —
-- **Debt:** —
-- **Drift:** —
+- **Debt:** MED — no unit/contract test pins composition's `/parts` response shape the resolver parses (a field rename silently degrades parts to empty). `/work` shape now has `decodeStructureWork` regression tests; `/parts` still relies on the e2e. Add a companion contract-shape test (P1.2 e2e re-exercises both meanwhile).
+- **Drift:** P1.1 `/review-impl` + the Work-book e2e caught a REAL parse bug — `fetchStructureWork` read the top-level `book_project_id` (null for a resolved work) instead of the nested `work.project_id`, so kinds.outline was ALWAYS false → the FE toggle would never appear for a planned book. FIXED + regression-tested (`decodeStructureWork`) + re-e2e'd (repro book with a real Work → outline:true, parts still present). This is why e2e-per-slice is in the goal.

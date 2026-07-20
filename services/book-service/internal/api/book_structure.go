@@ -11,6 +11,7 @@ package api
 import (
 	"context"
 	"encoding/json"
+	"io"
 	"net/http"
 	"sort"
 	"strings"
@@ -225,11 +226,26 @@ func (s *Server) fetchStructureWork(ctx context.Context, bookID, bearer string) 
 	if resp.StatusCode != http.StatusOK {
 		return structureWork{}, false
 	}
+	return decodeStructureWork(resp.Body)
+}
+
+// decodeStructureWork parses composition's GET /books/{id}/work response for the active Work's
+// project_id. That id is NESTED under `work` (the resolved work) — the top-level `book_project_id` is a
+// DIFFERENT field that is null for a normally-resolved work, and reading it made kinds.outline ALWAYS
+// false (a real bug caught by the Work-book e2e). This mirrors the FE, which reads the resolved work's
+// project_id (useWorkResolution → resolveActiveWork(...).project_id). A null project (a lazy/pending
+// Work) correctly yields outline=false, matching the FE's 'chapters' mode. Extracted for unit testing.
+func decodeStructureWork(r io.Reader) (structureWork, bool) {
 	var out struct {
-		BookProjectID *string `json:"book_project_id"`
+		Work *struct {
+			ProjectID *string `json:"project_id"`
+		} `json:"work"`
 	}
-	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+	if err := json.NewDecoder(r).Decode(&out); err != nil {
 		return structureWork{}, false
 	}
-	return structureWork{ProjectID: out.BookProjectID}, true
+	if out.Work != nil {
+		return structureWork{ProjectID: out.Work.ProjectID}, true
+	}
+	return structureWork{}, true
 }
