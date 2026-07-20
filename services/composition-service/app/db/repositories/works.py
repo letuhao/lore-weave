@@ -263,9 +263,13 @@ class WorksRepo:
         the create_project → BACKFILL seam (which stamps the project onto this same
         pending row) instead of returning the placeholder as a finished `found` Work.
         """
+        # P3 (book-structure §4.6, Option C): `book_lifecycle = 'active'` gates the plan-hub entry so a
+        # trashed / purge_pending book's Work does not resolve as active — orthogonal to `status` (the
+        # USER Work-archive flag). The deep planning/generation reads hang off the resolved Work, so gating
+        # this chokepoint covers them without a column on every book-scoped table (the bounded Option C).
         query = f"""
         SELECT {_SELECT_COLS} FROM composition_work
-        WHERE book_id = $1 AND status = 'active'
+        WHERE book_id = $1 AND status = 'active' AND book_lifecycle = 'active'
           AND NOT pending_project_backfill
         ORDER BY created_at, project_id
         """

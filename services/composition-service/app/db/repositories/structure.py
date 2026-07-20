@@ -278,12 +278,18 @@ class StructureRepo:
         C-merge C1/C3: `kinds` defaults to the SPEC tree ('saga','arc') so every existing arc-surface
         caller is behaviour-identical and NEVER sees the C-merge 'part' groupings (which would pollute
         the Plan rail). The Manuscript surface asks explicitly for kinds=('part',)."""
+        # P3 (book-structure §4.6, Option C): `book_lifecycle = 'active'` hides a trashed / purge_pending
+        # book's structure from EVERY structure read (parts + arcs) — the composition-side half of the
+        # lifecycle cascade. Defaults to 'active' (existing rows live); only BookLifecycleConsumer sets it
+        # non-active. A no-op for every active book, empty for a dead one. Orthogonal to include_archived
+        # (that gates a USER-archived node within a LIVE book); a trashed book returns empty regardless —
+        # correct, you restore the BOOK not its parts. No reader needs a trashed book's structure.
         archived_pred = "" if include_archived else " AND NOT is_archived"
         async with self._pool.acquire() as c:
             rows = await c.fetch(
                 f"""
                 SELECT {_SELECT_COLS} FROM structure_node
-                WHERE book_id = $1 AND kind = ANY($2){archived_pred}
+                WHERE book_id = $1 AND kind = ANY($2) AND book_lifecycle = 'active'{archived_pred}
                 ORDER BY depth, rank COLLATE "C", id
                 """,
                 book_id, list(kinds),

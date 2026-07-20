@@ -67,10 +67,19 @@
     27.5s (no regression from the tx refactor of the working lifecycle path)** + go vet + db-safety-gate=0.
     Relay auto-routes aggregate_type='book' → `loreweave:events:book` (zero worker-infra change). Inert until
     P3.2's consumer (events pile harmlessly, MAXLEN-trimmed).
-  - **P3.2 [ ] composition:** migration (book_lifecycle ×2 anchor tables) + new `BookLifecycleConsumer`
-    (mirrors `CompositionEventConsumer`: re-read projection → UPDATE book_lifecycle WHERE book_id) + wire into
-    worker `__main__` + `/parts` (arc.py) & work-resolution reads exclude non-active. Python tests.
-  - **P3.3 [ ] live e2e:** trash repro book → structure hidden (resolver + /parts) → restore → visible.
+  - **P3.2 [x] composition:** migration adds `book_lifecycle TEXT DEFAULT 'active'` to structure_node +
+    composition_work; `BookLifecycleConsumer` (own stream `loreweave:events:book` + group, re-reads
+    `get_book_lifecycle` → projection → UPDATEs both anchors idempotently, RAISES on 5xx so it never mislabels
+    live) wired into worker `__main__`; `list_tree` (structure.py, covers parts+arcs) and `resolve_by_book`
+    (works.py, the plan-hub chokepoint) exclude non-active. EVIDENCE: 8 consumer unit tests (wiring/silent-
+    success guard, re-read contract, raise-on-outage) + migration applied clean (77+230 rows default 'active').
+    No central events SoT (consumer-local REQUIRED_EVENTS is the precedent); book DB already an OUTBOX_SOURCE.
+  - **P3.3 [x] live e2e (the real cross-service proof):** login → DELETE /v1/books/{repro} (204) → composition
+    mirror flipped `trashed` in 8s (BOTH anchors UPDATE 1) → GET /structure returned **parts=0, kinds all-false**
+    (resolver gate + list_tree filter both hiding) → POST /restore (200) → mirror flipped `active` in 25s → GET
+    /structure returned **parts=1, kinds restored** (full soft-restore, nothing lost). Baseline (active→parts=1)
+    proves the filters DON'T regress active reads. Consumer logs clean, no errors. **P3 COMPLETE — Option C
+    soft-cascade proven end-to-end (emit → relay → mirror → gated reads → restore).**
 - **P3.1-OLD [scoped] Lifecycle cascade — sealed spec design is WRONG; needs a human call.** Scoping
   against real code found: (1) composition has **no dedicated book-lifecycle column** — `structure_node`
   has only `is_archived`, `composition_work` only `status active|archived`, BOTH *user-archive* flags. The

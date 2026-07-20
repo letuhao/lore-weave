@@ -1205,6 +1205,16 @@ CREATE TABLE IF NOT EXISTS structure_node (
 CREATE INDEX IF NOT EXISTS idx_structure_node_book   ON structure_node(book_id) WHERE NOT is_archived;
 CREATE INDEX IF NOT EXISTS idx_structure_node_parent ON structure_node(parent_id, rank COLLATE "C", id)
   WHERE NOT is_archived;
+
+-- P3 (book-structure-pipeline spec 2026-07-20 §4.6, Option C) — the book_lifecycle MIRROR.
+-- composition's BookLifecycleConsumer mirrors book-service's lifecycle_state onto these two
+-- manuscript-structure ANCHOR tables (structure_node = parts/arcs, composition_work = the Work), so a
+-- trashed / purge_pending book's structure is soft-hidden from composition reads. It is a SEPARATE column
+-- from is_archived / status ON PURPOSE: those are USER-archive flags, and overloading them for book-trash
+-- would un-archive a user's manually-archived acts on restore (the symmetric-un-archive-orphan bug). Default
+-- 'active' so every existing row is live; the consumer sets 'trashed' / 'purge_pending' from the event.
+ALTER TABLE structure_node   ADD COLUMN IF NOT EXISTS book_lifecycle TEXT NOT NULL DEFAULT 'active';
+ALTER TABLE composition_work ADD COLUMN IF NOT EXISTS book_lifecycle TEXT NOT NULL DEFAULT 'active';
 -- 23-A3: actor stamp for arc authorship. Additive for a DB already migrated by Deploy 1
 -- (structure_node shipped without it); the fresh CREATE above carries it. Nullable — a
 -- pre-A3 arc has no recorded author, and created_by is never a scope key (PM-5/DA-11).

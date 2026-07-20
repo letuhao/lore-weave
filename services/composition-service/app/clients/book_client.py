@@ -108,6 +108,31 @@ class BookClient:
             return None
         return self._raise_for_status(resp)
 
+    async def get_book_lifecycle(self, book_id: UUID) -> str:
+        """P3 (book-structure §4.6) — the book's CURRENT lifecycle_state via the internal projection
+        (`GET /internal/books/{id}/projection`, token-gated, returns for ANY lifecycle state).
+        BookLifecycleConsumer re-reads this on each book.lifecycle_changed rather than trusting a
+        payload-carried state (order-/replay-safe, same design as chapter.scenes_linked). A 404 (book row
+        genuinely gone) reads as 'purge_pending' → hide its structure. A 5xx / transport error RAISES so
+        the consumer retries + dead-letters — it must NEVER silently mislabel a trashed book as live."""
+        url = f"{self._base_url}/internal/books/{book_id}/projection"
+        headers = {"X-Internal-Token": self._internal_token}
+        tid = trace_id_var.get()
+        if tid:
+            headers["X-Trace-Id"] = tid
+        try:
+            resp = await self._http.get(url, headers=headers)
+        except httpx.HTTPError as exc:
+            logger.warning("book projection unreachable: %s err=%s", url, exc)
+            raise BookClientError(502, "BOOK_SERVICE_UNAVAILABLE", str(exc)) from exc
+        if resp.status_code == 404:
+            return "purge_pending"
+        body = self._raise_for_status(resp)  # raises BookClientError on any non-2xx (retryable)
+        lifecycle = body.get("lifecycle_state")
+        if not isinstance(lifecycle, str) or not lifecycle:
+            raise BookClientError(502, "BOOK_PROJECTION_MALFORMED", "projection missing lifecycle_state")
+        return lifecycle
+
     async def get_draft(
         self, book_id: UUID, chapter_id: UUID, bearer: str
     ) -> dict[str, Any]:
