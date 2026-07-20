@@ -10,7 +10,7 @@ python-dotenv>=1.2.2
 # litellm dropped in Phase 1c-ii — chat-service now routes all LLM calls
 # through provider-registry's /internal/llm/stream via the local
 # loreweave_llm SDK (installed via Dockerfile COPY of sdks/python).
-boto3>=1.34
+boto3>=1.43.51
 redis>=5.0
 aiofiles>=25.1.0
 # ARCH-2 C2 — MCP client (mcp.client.streamable_http) for the USE_MCP_TOOLS
