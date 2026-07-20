@@ -567,7 +567,7 @@ export class FindToolsAttemptTracker {
 
   private static key(group: string | null | undefined, intent: string): string {
     const toks = Array.from(tokens(intent)).sort().join(' ');
-    return `${group ?? ''} ${toks}`;
+    return `${group ?? ''}\x00${toks}`;
   }
 
   /** Record this attempt for `sessionId` and report whether it is a REPEAT. Blank/enumeration
