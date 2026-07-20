@@ -4,6 +4,40 @@
 **Goal (committed):** plan + build the spec; **QC + `/review-impl` + a live e2e test per slice** to prove each works.
 **Branch:** feat/frontend-tools-mcp-migration. **Started:** 2026-07-20.
 
+## ▶ AUDIT-FIX RESUME (paused 2026-07-21 — user said "clear ALL issues, no debts")
+
+A completeness audit (3 cold-start agents over disjoint phase-code + a solo §6/§8 pass) found the P1–P5
+"complete" claim was over-stated. Clearing every gap. **DONE + live-proven:**
+- **H1 [x] `d77d7e0b1`** — bulk book trash/purge/restore now emits per-chapter chapter.trashed/deleted/
+  RESTORED (new, symmetric); statistics(re-read)/glossary(re-ground)/written-verdict(reconcile) handle
+  restored. LIVE: trash→2 trashed, restore→2 restored via the API, consumers clean; emit DB test + glossary
+  rule test + 11 verdict tests green.
+- **H2 [x] `5d2ddcdb7`** — agent write path `book_chapter_set_part` now validates the target via a NEW
+  internal composition parts route (`GET /internal/composition/books/{id}/parts?caller_user_id=`,
+  X-Internal-Token + grant-check). LIVE: bad part → "not a live part" (isError), good part → success.
+- **H3 [x] `d93e739b7`** — corrected the FALSE "Act One stale" doc claim; KEPT the seed (plan-axis arc,
+  clean distinct translations; "Arc 1" machine-translates to 第1章/chapter in CJK — reverted that experiment).
+
+**REMAINING (the resume worklist — every one is fix-not-defer):**
+- **M1** — Go regression tests: extract `partIsLiveTarget` + test (live/archived/arc/foreign → the matching);
+  resolver lifecycle-gate handler test (trashed → empty skeleton); composition read-filter EXCLUSION DB tests
+  (`list_tree` + `resolve_by_book` drop a non-active `book_lifecycle`) + a consumer `_apply` DB test. (The
+  behaviours are live-proven; these are the missing AUTOMATED regression guards.)
+- **M2** — FE `runAct`-on-FAILURE test: a rejected mutator fires `toast.error` (parts.test.tsx currently
+  mocks all mutators as resolved → the error path is untested).
+- **M3** — emit ATOMICITY test (inject a mid-tx failure → the lifecycle write + the events roll back together)
+  + drive the HTTP + MCP entry paths (currently the DB test calls `transitionBookLifecycleTx` directly).
+- **ML1** — FE reads the `/structure` `sources` outage signal → surface "parts unavailable" instead of a
+  silent flatten (`useManuscriptTree` reads only `kinds_present.parts`; `sources` is returned-but-unread).
+- **ML2** — toggle persistence: `userLens` is in-memory `useState` (resets on reload) → per-device
+  localStorage (the spec's §8 lean).
+- **L1** — resolver outline-detail half (`outline.arcs` + §6.4 `chapter_id` reconciliation). NOTE: assess a
+  consumer first — if none needs the reconciliation, this is a documented conscious-decision, not a build.
+- **L2** — migration id-equivalence verification test (§6.1 — C4 kept part UUIDs; pre-C4 chapters not all
+  Unassigned). **L3** — `has_work` two bits in the resolver (§6.3 row-exists vs project-backed). **L4** — FE
+  lazy-expand the skeleton instead of eager full-load. **L5** — zh `lensParts` 章节→部 (a translation-quality
+  nuance; needs a domain glossary in `i18n_translate` or a careful native term, NOT a blind hand-edit).
+
 ## Commitment / invariants (re-read after any compaction)
 - Resolver owner = **book-service** (holds chapters + the `structure_node_id` join key + lifecycle; calls
   composition for the *small* parts list + active work, bearer-forwarded — the `parts_import.go` pattern via
