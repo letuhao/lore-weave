@@ -55,7 +55,7 @@ beautifulsoup4>=4.15.0,<5
 # Used only in tests/quality/* and only opt-in via --run-quality.
 deepeval==4.1.0
 seqeval==1.2.2
-datasets==2.21.0
+datasets==5.0.0
 krippendorff==0.8.2
 
 # ARCH-1 C1 (2026-06-01) — MCP server facade for the memory tools.
