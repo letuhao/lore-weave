@@ -1,5 +1,20 @@
 # ▶▶ NEXT SESSION STARTS HERE
 
+## ✅ MCP-TASKS FULL ACTIVATION — **PLAN COMPLETE (M1–M4), ACTIVATED (2026-07-20)**
+The durable ext-tasks human gate is built, persistent (multi-replica), owner-checked, and **LIVE** —
+`tasks_gate_enabled=True`, all 4 services redeployed, all KIND-C confirms that CAN be task-shaped are (book all
+writes; composition 7; glossary 15/14 — the rest legitimately stay on `confirm_token`). A **critical gateway-federation
+bug was found + fixed** (Go `Out=any` / `any`-field results emitted an `outputSchema` the ai-gateway rejected → book+
+glossary tools were silently unroutable through the gateway since T3c; catalog 165→264 after the fix). Everything is
+service-layer live-proven through the real `/mcp`+ai-gateway (owner-check: stranger→`not_task_owner`; routing; multi-
+replica DB tests). **The ONE remaining verification** is a browser smoke of the `TaskConfirmCard` in a real agent turn
+(blocked on test-account data — no book chapters, derive grant drifted — + model tool-call reliability; the FE card is
+unit-tested and the path is now fully routable). Full detail + every commit in
+[`docs/plans/2026-07-20-mcp-tasks-full-activation.md`](../plans/2026-07-20-mcp-tasks-full-activation.md) RUN-STATE;
+end-state rules in `docs/standards/mcp-tool-io.md` Part 5 (GATE-1..4).
+
+<details><summary>Milestone history (M1–M4, superseded by the summary above)</summary>
+
 ## ▶ NEXT — MCP-TASKS FULL ACTIVATION track (DESIGN SEALED, awaiting a build `/goal`)
 The completeness audit + review-impl of both specs is DONE (below). User chose the **Full activation track**;
 the design is sealed in **[`docs/plans/2026-07-20-mcp-tasks-full-activation.md`](../plans/2026-07-20-mcp-tasks-full-activation.md)**.
@@ -37,6 +52,8 @@ confirms → **M4** retire the bespoke construct.
   ops step, blocked on test-account data (no book chapters; derive grant drifted) + model reliability; FE card path is
   unchanged code. **Next: M3** — migrate the remaining KIND-C confirms (glossary_confirm_action, confirm_action,
   propose_record_edit, glossary_propose_entity_edit) to `gate_or_confirm`.
+
+</details>
 
 ## ✅ MCP-TASKS + FRONTEND-TOOLS MIGRATION — **implemented through the activation boundary (2026-07-20)**
 Both `docs/specs/2026-07-19-mcp-tasks-durable-gate.md` + `docs/specs/2026-07-19-frontend-tools-mcp-migration.md`
