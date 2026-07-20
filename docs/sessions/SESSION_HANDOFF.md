@@ -1,5 +1,26 @@
 # ▶▶ NEXT SESSION STARTS HERE
 
+## 📚 BOOK-STRUCTURE PIPELINE — **P1–P4 SHIPPED + e2e-PROVEN, P5 deferred (2026-07-20, HEAD 387b6430a)**
+A later dogfood round (book *Mị Đế*, chat 019f771a) surfaced **Bug 4** (a manuscript Part vanishes on reload) +
+**Bug 2** (agent makes a chapter when asked for a description). Bug 4 root-caused to scattered book-structure
+ownership + a silent read-skip → a full design cycle (spec `docs/specs/2026-07-20-book-structure-pipeline.md`,
+3-adversary review) + build (RUN-STATE `docs/plans/2026-07-20-book-structure-pipeline-plan.md`). All four goals
+SHIPPED + live-proven:
+- **P1 (Bug 4):** book-service owns a unified `GET /v1/books/{id}/structure` resolver (parts ALWAYS resolved,
+  LEFT-JOIN-safe); FE rail is mode-by-content + a `[Parts|Outline]` toggle. Repro book renders Part 1 where it
+  used to vanish. `f22bd5510`/`065b55a0c`/`5c4e82cd2`/`3a5335284`.
+- **P2 (no silent seams):** `set_part` validates the target (typed **422**, not silent-Unassigned); FE surfaces all
+  8 part-mutation errors (toast). `fac96a334`/`a238e9acc`.
+- **P3 (lifecycle cascade, user chose Option C = SOFT):** `book.lifecycle_changed` emit + resolver lifecycle-gate
+  (`54df9a095`) + composition `book_lifecycle` column mirror + gated reads (`50078fd09`). **LIVE E2E**: trash →
+  structure hidden (mirror 8s + resolver) → restore → fully visible, nothing lost.
+- **P4 (Bug 2):** metadata-vs-structure tool disambiguation (`book_update_meta` owns the fields, `book_chapter_create`
+  disclaims). $0 Gemma selection-proxy: `book_update_meta` never confused with a chapter. `387b6430a`.
+- **P5 (cleanup) DEFERRED — each item clears the defer gate (verified vs code, not the stale spec note):**
+  ensure_work consolidation (gate #2, F5-fork-Work-bug-prone), "part" i18n 18 locales (gate #4, needs the ML-7
+  pipeline — keys already work via `defaultValue`; the "Act One seed" sub-claim is **STALE**),
+  parts_import/Chapter-Browser routing (loosely-specified low-value polish). See the plan's registers.
+
 ## 🐛 DOGFOOD ROUND-4 POLISH — in progress (2026-07-20, HEAD 07e62f8bf)
 Newcomer dogfood on the durable-gate-ACTIVATED build found F12–F18 (backlog + grounded root causes:
 [`docs/specs/2026-07-18-writing-studio-newcomer-polish/round-4-feedback.md`](../specs/2026-07-18-writing-studio-newcomer-polish/round-4-feedback.md)).

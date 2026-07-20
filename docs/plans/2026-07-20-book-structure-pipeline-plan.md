@@ -109,7 +109,23 @@
   mode is gone.** A first run mis-picked `book_get` for the ambiguous read-phrase "what the book is about" →
   replaced it with a clear write imperative → HIT. (The description IS deployed: verified book-service /mcp
   tools/list directly; the re-federation needed an ai-gateway restart to bust its tool-list cache.)
-- **P5.1 [ ] Cleanup:** consolidate 3 `ensure_work` copies; "part" i18n across 18 locales + fix "Act One" arc seed; route `parts_import` + the arc-grouped Chapter Browser through the pipeline.
+- **P5.1 [DEFERRED — each item clears the gate, verified against code not the spec note].** P5 is cleanup;
+  the substantive pipeline (P1–P4 = all four dogfood goals) is done + proven. Verifying the spec's P5 claims
+  against real code (anti-laziness rule):
+  - **(a) ensure_work consolidation → DEFER, gate #2 (delicate structural refactor).** Real: a canonical
+    `_ensure_work` (plan_forge_service.py:1739) + direct `create_pending` sites (mcp/server.py:849,
+    routers/works.py:118) + `_resolve_or_create_default_project` (mcp/server.py:722,895) that bypass it. The
+    spec §4.4 EXPLICITLY warns consolidation must "never expose the pending-only shape at a new write-site
+    (reintroduces the F5 fork-Work bug)". Pure tech-debt (all sites work today), cross-module, F5-bug-prone →
+    needs its own focused plan, not a tail-of-session edit.
+  - **(b) i18n "part" 18 locales → DEFER, gate #4 (needs the ML-7 translation pipeline).** The new keys
+    (`manuscript.lensParts/lensOutline/partVsArc` + P2.1b `createFailed/…`) already WORK via `defaultValue`
+    (English fallback in every locale); proper translation across `frontend/src/i18n/locales/*/translation.json`
+    is the tooling-dependent tail. **The "Act One arc seed" sub-claim is STALE** — no such seed exists in code
+    (grep clean; the manuscript rail P1.2 already renders "Parts").
+  - **(c) route parts_import + arc-grouped Chapter Browser through the pipeline → DEFER (loosely-specified,
+    low-value polish).** parts_import is a WRITE; the "pipeline" is the read resolver — the item needs scoping,
+    and it is pure read-path consistency with no behavior change or bug. Lowest priority of the three.
 
 ## Correctness must-fixes (fold into the touching slice)
 - Verify C4 migration UUID-equivalence (test) · `has_work` = two bits (row-exists vs project-backed) · outline/part identity reconciliation.
