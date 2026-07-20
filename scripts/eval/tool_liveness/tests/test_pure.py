@@ -915,7 +915,7 @@ def test_teardown_composition_is_book_scoped_and_verifies_completeness():
     from tool_liveness import project_chain
 
     src = inspect.getsource(project_chain.teardown_composition)
-    # every DELETE is book-scoped; there is no unscoped `DELETE FROM x` anywhere
+    # every DELETE is book-scoped; there is no unscoped `DELETE FROM x` anywhere  # db-safety-gate: ok — comment in a meta-test that PROVES teardown_composition is book-scoped; no DB execution
     assert "DELETE FROM {table} WHERE book_id='{bid}'" in src
     assert "DELETE FROM composition" not in src, "no hardcoded/unscoped table delete"
     # discovers tables at runtime (no hardcoded list to drift) and verifies no leak remains

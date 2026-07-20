@@ -85,6 +85,7 @@ class FakeConn:
 
     async def execute(self, sql: str, *args) -> str:
         s = sql.strip()
+        # db-safety-gate: ok — FakeConn stub string-dispatches on the SQL; no real DB, not an execution.
         if s.startswith("DELETE FROM knowledge_pending_facts"):
             user_id, pfid = args
             row = self.store.get(pfid)

@@ -23,6 +23,7 @@ import (
 
 	"github.com/loreweave/usage-billing-service/internal/config"
 	"github.com/loreweave/usage-billing-service/internal/migrate"
+	"github.com/loreweave/usage-billing-service/internal/testsafe"
 )
 
 const (
@@ -45,14 +46,28 @@ func openGuardrailTestDB(t *testing.T) *pgxpool.Pool {
 	if err != nil {
 		t.Fatalf("openGuardrailTestDB: %v", err)
 	}
+	// SAFETY GUARD — this helper TRUNCATEs spend_guardrails/token_reservations/
+	// platform_balances. Refuse to proceed unless the target is a recognizable
+	// throwaway DB, so a USAGE_BILLING_TEST_DB_URL accidentally pointed at the real
+	// loreweave_usage_billing can never be wiped.
+	var dbName string
+	if err := pool.QueryRow(context.Background(), `SELECT current_database()`).Scan(&dbName); err != nil {
+		pool.Close()
+		t.Fatalf("current_database: %v", err)
+	}
+	if err := testsafe.EnsureThrowawayDB(dbName); err != nil {
+		pool.Close()
+		t.Fatal(err)
+	}
 	if err := migrate.Up(context.Background(), pool); err != nil {
 		pool.Close()
 		t.Fatalf("migrate.Up: %v", err)
 	}
 	if _, err := pool.Exec(context.Background(),
+		// db-safety-gate: ok — TRUNCATE runs only after testsafe.EnsureThrowawayDB(current_database()) above refused a non-throwaway DB
 		`TRUNCATE spend_guardrails, token_reservations, platform_balances`); err != nil {
 		pool.Close()
-		t.Fatalf("truncate: %v", err)
+		t.Fatalf("truncate: %v", err) // db-safety-gate: ok — error-message string, not an executed statement
 	}
 	t.Cleanup(pool.Close)
 	return pool

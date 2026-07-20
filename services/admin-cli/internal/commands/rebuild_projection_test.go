@@ -9,6 +9,10 @@ import (
 	"github.com/google/uuid"
 )
 
+// db-safety-gate: file-ok — a pure unit test over fakeLifecycle / fakeTruncator mocks and
+// assertion messages ("truncate" is a mock call-log label, not SQL); it never connects to
+// or executes anything against a real database.
+
 type fakeLifecycle struct {
 	freezeErr, thawErr error
 	calls              []string

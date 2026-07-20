@@ -9,6 +9,10 @@ package migrate
 //   - is idempotent (a re-run changes nothing) and non-clobbering (an admin-authored
 //     description survives).
 // Runs on its own ephemeral DB for deterministic counts. Needs GLOSSARY_TEST_DB_URL.
+//
+// db-safety-gate: file-ok — the DROP DATABASE statements target a THROWAWAY ephemeral DB
+// this test CREATEs itself (unique name + PID) via CREATE DATABASE and drops on cleanup;
+// they never target the DB named in GLOSSARY_TEST_DB_URL (safe by construction).
 
 import (
 	"context"
