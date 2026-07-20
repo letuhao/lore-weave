@@ -317,6 +317,11 @@ func (s *Server) Router() http.Handler {
 			// /chapters/{chapter_id}) — same reason as bulk/page above.
 			r.Post("/chapters/reorder", s.reorderChapters)
 
+			// P1.1 (book-structure-pipeline spec §4.2) — the unified manuscript-structure read:
+			// parts (ALWAYS, from composition) grouped over the LOCAL chapters + the active Work,
+			// LEFT-JOIN-safe. book-service owns it (holds the chapters + join key + lifecycle). VIEW-gated.
+			r.Get("/structure", s.getBookStructure)
+
 			// C-merge C4 — manuscript part CRUD moved to composition (structure_node kind='part').
 			// book-service keeps only the chapter→part ASSIGNMENT (below, /chapters/{id}/part),
 			// which writes chapters.structure_node_id.
