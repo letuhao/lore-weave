@@ -205,6 +205,24 @@ func (s *Server) fetchStructureParts(ctx context.Context, bookID, bearer string)
 	return parts, true
 }
 
+// validatePartTarget verifies partID is a LIVE kind='part' of bookID (via composition). It closes the
+// "no silent seam" write gap (spec §4.5): setChapterPart / book_chapter_set_part used to accept ANY UUID
+// (an arc node id, a foreign book's part) and the chapter would then silently read as Unassigned. Returns
+// (valid, reachable): reachable=false ⇒ composition is down (surface a 502, don't accept a bad write).
+func (s *Server) validatePartTarget(ctx context.Context, bookID uuid.UUID, bearer string, partID uuid.UUID) (valid bool, reachable bool) {
+	parts, ok := s.fetchStructureParts(ctx, bookID.String(), bearer)
+	if !ok {
+		return false, false
+	}
+	want := partID.String()
+	for _, p := range parts {
+		if p.Active && p.PartID == want {
+			return true, true
+		}
+	}
+	return false, true
+}
+
 // fetchStructureWork calls composition GET /v1/composition/books/{id}/work (bearer-forwarded) and
 // returns the active Work's project_id (null when pending/unresolved) — the kinds_present.outline
 // signal (a project-backed Work has a compiled outline). ok=false ⇒ sources.work="unavailable".
