@@ -121,7 +121,17 @@ This is a **superset** of the in-memory store: the in-memory store becomes regis
       flipped True + all 4 domains redeployed.
     - **Feature-parity note:** glossary `execute_plan`'s per-op `enabled_ops` opt-in can't ride the task path (the
       resume driver passes only `{task_id, accepted}`) → safely degrades to additive-only. Tracked.
-  - M4 `[ ]`  (done = an evidence string).
+  - **M4 `[x]` — done as the HONEST PARTIAL it can be (the literal "delete confirm_action + the contract" is blocked
+    BY DESIGN).** M3 + the flip already achieved the meaningful outcome: with `tasks_gate_enabled` on, the durable
+    gate (TaskConfirmCard) is the PRIMARY KIND-C confirm path; `confirm_action` is demoted to the fallback. It
+    **cannot be deleted** because (1) the `confirm_token` fallback is sealed-permanent (OQ3) for non-tasks clients,
+    (2) 7 tools legitimately stay on the token (replay-ledger/billing, dual-mode, System-tier), (3) the C1
+    record-edit tools (`propose_record_edit`, `glossary_propose_entity_edit`) are client-side PATCH with no server
+    executor to gate. The shared `frontend-tools.contract.json` also stays (ai-gateway drift-tests against it). The
+    `propose_edit`/studio-`ui_*` advertisement-def retirement stays a documented won't-fix (guarded by the
+    start-of-session drift test; delicate advertisement-path change for zero functional value). **Deliverable:** the
+    end-state is documented in `docs/standards/mcp-tool-io.md` Part 5 (GATE-1..4), including the `Out=any` federation
+    gotcha as a LOCKED rule so it can't regress silently.
 - **Invariants:** provider-gateway · language-rule · tenancy scope-key on `mcp_gate_tasks` (owner_user_id) · confirm_token fallback stays · no closure persisted.
 - **Decisions / Parked / Debt / Drift:**
   - **DEBT → M2 (accept-caller ownership check) → RESOLVED (M2.1, `771ffb5a0`).** Go book enforces `caller==owner` in
