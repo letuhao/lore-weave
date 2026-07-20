@@ -43,9 +43,12 @@
   LIVE part of this book via `validatePartTarget` (reuses P1.1's composition fetch) → typed error instead of
   silently accepting any UUID. EVIDENCE: go vet + e2e-live (bad UUID→422 BOOK_PART_NOT_FOUND, good→200,
   null-unhome→200, archived-part→422). review-impl: no HIGH (VIEW/EDIT-gated, 502 on composition outage).
-- **P2.1b [ ] FE surfaces part-mutation errors** (createAct/rename/trash/moveChapter/reorder are `void` → a
-  failure shows nothing + reverts on reload). + **P2.1c [ ] mobile "Move to part…" affordance** (chapter→part
-  is native-drag only, no touch path).
+- **P2.1b [x] FE surfaces part-mutation errors** — a `runAct(promise, msg)` wrapper toasts on failure; applied
+  to ALL 8 mutation sites (create/rename/trash/restore/drag-move/reorder-up/down). A failed mutation now shows
+  a toast instead of silently reverting on reload. EVIDENCE: 34 navigator vitest + tsc clean + browser
+  regression (navigator still renders Part 1 + toggle, 0 console errors; the P2.1a 422 is what runAct now
+  surfaces). The failed-drag case is the highest-value (a stale/bad part target → 422 → toast, no silent revert).
+- **P2.1c [ ] mobile "Move to part…" affordance** (chapter→part is native-drag only — no touch path). DEFERRED.
 - **P3.1 [ ] Lifecycle cascade:** `book.lifecycle_changed` outbox → composition consumer (soft-trash/restore/hard-delete structure); resolver joins book lifecycle; kind-gate to novel.
 - **P4.1 [ ] Agent + guidance (rescoped):** `book_get_structure` MCP + metadata-vs-structure tool-selection guidance (or `book_get_overview`). Fixes Bug 2.
 - **P5.1 [ ] Cleanup:** consolidate 3 `ensure_work` copies; "part" i18n across 18 locales + fix "Act One" arc seed; route `parts_import` + the arc-grouped Chapter Browser through the pipeline.
