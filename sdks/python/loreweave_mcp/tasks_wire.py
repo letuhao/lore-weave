@@ -28,7 +28,7 @@ drives the full loop.)
 from __future__ import annotations
 
 from datetime import datetime, timezone
-from typing import Any, Awaitable, Callable
+from typing import Any, Callable
 
 import mcp.types as t
 
@@ -117,15 +117,18 @@ async def open_gate(
     store: TaskStore,
     *,
     descriptor: str,
-    executor: Callable[[dict[str, Any]], Awaitable[Any]],
+    owner_user_id: str,
+    payload: dict[str, Any],
     input_requests: Any = None,
     ttl_ms: int | None = None,
 ) -> dict[str, Any]:
     """A KIND-C tool calls this to durably open the human gate. Returns a task
     HANDLE the tool returns as its result; the client then polls tasks/get and,
-    when it has the human's decision, calls task_provide_input(taskId)."""
-    kwargs: dict[str, Any] = dict(descriptor=descriptor, executor=executor,
-                                  input_requests=input_requests)
+    when it has the human's decision, calls task_provide_input(taskId). The write to
+    run on accept is the resolver registered for ``descriptor`` (NOT passed here) —
+    open_gate persists only data (the proposing user + the serializable payload)."""
+    kwargs: dict[str, Any] = dict(descriptor=descriptor, owner_user_id=owner_user_id,
+                                  payload=payload, input_requests=input_requests)
     if ttl_ms is not None:
         kwargs["ttl_ms"] = ttl_ms
     task = await store.create(**kwargs)
@@ -143,7 +146,8 @@ async def gate_or_confirm(
     store: TaskStore,
     *,
     descriptor: str,
-    executor: Callable[[dict[str, Any]], Awaitable[Any]],
+    owner_user_id: str,
+    payload: dict[str, Any],
     input_requests: Any,
     confirm_fallback: Callable[[], Any],
     ttl_ms: int | None = None,
@@ -151,14 +155,15 @@ async def gate_or_confirm(
     """The capability-gated KIND-C gate — the ONE call a domain confirm tool makes.
 
     If the request's client declared ext-tasks support → open a durable TASK
-    (`open_gate`). Otherwise → return ``confirm_fallback()`` (today's
-    ``{confirm_token, descriptor, …}`` dict) so a non-tasks client (chat-service
-    pre-driver, the public edge, external agents) is NEVER stranded with a task it
-    can't drive. This is the safety-critical gating from spec §4.2 — a domain tool
-    must go through this, never call ``open_gate`` unconditionally."""
+    (`open_gate`), persisting only data ({descriptor, owner_user_id, payload}); the
+    write to run on accept is the resolver registered for ``descriptor``. Otherwise →
+    return ``confirm_fallback()`` (today's ``{confirm_token, descriptor, …}`` dict) so
+    a non-tasks client (chat-service pre-driver, the public edge, external agents) is
+    NEVER stranded with a task it can't drive. This is the safety-critical gating from
+    spec §4.2 — a domain tool must go through this, never call ``open_gate`` blindly."""
     if client_supports_tasks(ctx):
         return await open_gate(
-            store, descriptor=descriptor, executor=executor,
+            store, descriptor=descriptor, owner_user_id=owner_user_id, payload=payload,
             input_requests=input_requests, ttl_ms=ttl_ms,
         )
     return confirm_fallback()

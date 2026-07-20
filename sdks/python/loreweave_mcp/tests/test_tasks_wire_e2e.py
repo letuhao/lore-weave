@@ -31,21 +31,25 @@ from loreweave_mcp.tasks_wire import (
 
 
 def _build_server(committed: list):
-    """A FastMCP server with a gate tool whose executor records the committed write."""
+    """A FastMCP server with a gate tool whose resolver records the committed write.
+    M1a: the write is a REGISTRY resolver reading the durable payload (book_id) — not a
+    per-call closure — so this same wiring works on a persistent multi-replica store."""
     mcp = FastMCP("tasks-e2e", stateless_http=True)
-    store = InMemoryTaskStore()
+
+    async def _commit(owner_user_id, payload, inputs):
+        committed.append({"book_id": payload["book_id"], "inputs": inputs})
+        return {"published": True, "book_id": payload["book_id"]}
+
+    store = InMemoryTaskStore({"book.publish": _commit})
     register_task_endpoints(mcp, store)
 
     @mcp.tool(name="publish_book")
     async def publish_book(book_id: str) -> dict:
-        async def _commit(inputs):
-            committed.append({"book_id": book_id, "inputs": inputs})
-            return {"published": True, "book_id": book_id}
-
         return await open_gate(
             store,
             descriptor="book.publish",
-            executor=_commit,
+            owner_user_id="u1",
+            payload={"book_id": book_id},
             input_requests={"title": f"Publish book {book_id}?"},
         )
 
@@ -115,16 +119,18 @@ async def test_gate_tool_emits_create_task_result():
     the tool content to know it's a durable task."""
     committed: list = []
     mcp = FastMCP("tasks-e2e-ctr", stateless_http=True)
-    store = InMemoryTaskStore()
+
+    async def _commit(owner_user_id, payload, inputs):
+        committed.append(payload["book_id"])
+        return {"published": True}
+
+    store = InMemoryTaskStore({"book.publish": _commit})
     register_task_endpoints(mcp, store)
 
     @mcp.tool(name="publish_book")
     async def publish_book(book_id: str) -> dict:
-        async def _commit(inputs):
-            committed.append(book_id)
-            return {"published": True}
-
-        return await open_gate(store, descriptor="book.publish", executor=_commit,
+        return await open_gate(store, descriptor="book.publish", owner_user_id="u1",
+                               payload={"book_id": book_id},
                                input_requests={"title": f"Publish {book_id}?"})
 
     enable_task_results(mcp, store)  # AFTER the tools are registered

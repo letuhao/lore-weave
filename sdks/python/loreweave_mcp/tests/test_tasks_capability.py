@@ -69,16 +69,16 @@ def test_malformed_meta_fails_closed():
 
 
 # ── gate_or_confirm dispatch ──────────────────────────────────────────────────
-async def _executor(inputs):
+async def _resolver(owner_user_id, payload, inputs):
     return {"done": True}
 
 
 @pytest.mark.asyncio
 async def test_gate_or_confirm_tasks_client_gets_a_task():
-    store = InMemoryTaskStore()
+    store = InMemoryTaskStore({"book.publish": _resolver})
     out = await gate_or_confirm(
         _ctx(_tasks_meta_dict()), store,
-        descriptor="book.publish", executor=_executor,
+        descriptor="book.publish", owner_user_id="u1", payload={"chapter_id": "ch1"},
         input_requests={"title": "Publish?"},
         confirm_fallback=lambda: {"confirm_token": "tok", "descriptor": "book.publish"},
     )
@@ -89,7 +89,7 @@ async def test_gate_or_confirm_tasks_client_gets_a_task():
 
 @pytest.mark.asyncio
 async def test_gate_or_confirm_non_tasks_client_gets_confirm_token():
-    store = InMemoryTaskStore()
+    store = InMemoryTaskStore({"book.publish": _resolver})
     called = {"fallback": False}
 
     def _fallback():
@@ -98,7 +98,7 @@ async def test_gate_or_confirm_non_tasks_client_gets_confirm_token():
 
     out = await gate_or_confirm(
         _ctx(None), store,  # client did NOT declare tasks
-        descriptor="book.publish", executor=_executor,
+        descriptor="book.publish", owner_user_id="u1", payload={"chapter_id": "ch1"},
         input_requests={"title": "Publish?"},
         confirm_fallback=_fallback,
     )

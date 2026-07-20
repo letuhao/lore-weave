@@ -52,9 +52,11 @@ func ClientSupportsTasks(meta Meta) bool {
 }
 
 // OpenGate durably opens the human gate and returns the task HANDLE the tool returns
-// as its result (the client polls/confirms via the provide-input tool).
-func OpenGate(store TaskStore, descriptor string, executor TaskExecutor, inputRequests any, ttlMs int) (map[string]any, error) {
-	task, err := store.Create(descriptor, executor, inputRequests, ttlMs)
+// as its result (the client polls/confirms via the provide-input tool). The write to
+// run on accept is the resolver registered for `descriptor` (NOT passed here) —
+// OpenGate persists only data: the proposing user + the serializable payload.
+func OpenGate(store TaskStore, descriptor, ownerUserID string, payload map[string]any, inputRequests any, ttlMs int) (map[string]any, error) {
+	task, err := store.Create(descriptor, ownerUserID, payload, inputRequests, ttlMs)
 	if err != nil {
 		return nil, err
 	}
@@ -76,14 +78,14 @@ func GateOrConfirm(
 	_ context.Context,
 	meta Meta,
 	store TaskStore,
-	descriptor string,
-	executor TaskExecutor,
+	descriptor, ownerUserID string,
+	payload map[string]any,
 	inputRequests any,
 	confirmFallback func() any,
 	ttlMs int,
 ) (any, error) {
 	if ClientSupportsTasks(meta) {
-		return OpenGate(store, descriptor, executor, inputRequests, ttlMs)
+		return OpenGate(store, descriptor, ownerUserID, payload, inputRequests, ttlMs)
 	}
 	return confirmFallback(), nil
 }

@@ -45,13 +45,13 @@ func TestClientSupportsTasksFailClosed(t *testing.T) {
 }
 
 func TestGateOrConfirmOpensTaskWhenSupported(t *testing.T) {
-	s := NewInMemoryTaskStore()
 	ran := false
-	exec := func(ctx context.Context, inputs map[string]any) (any, error) { ran = true; return "ok", nil }
+	resolver := func(ctx context.Context, owner string, payload, inputs map[string]any) (any, error) { ran = true; return "ok", nil }
+	s := NewInMemoryTaskStore(TaskResolverRegistry{"composition.derive": resolver})
 	fallback := func() any { t.Fatal("fallback must not run when tasks supported"); return nil }
 
-	res, err := GateOrConfirm(context.Background(), tasksMeta(), s, "composition.derive", exec,
-		map[string]any{"title": "Derive?"}, fallback, 0)
+	res, err := GateOrConfirm(context.Background(), tasksMeta(), s, "composition.derive", "u1",
+		map[string]any{"name": "x"}, map[string]any{"title": "Derive?"}, fallback, 0)
 	if err != nil {
 		t.Fatalf("GateOrConfirm: %v", err)
 	}
@@ -68,27 +68,29 @@ func TestGateOrConfirmOpensTaskWhenSupported(t *testing.T) {
 	if handle["inputRequests"].(map[string]any)["title"] != "Derive?" {
 		t.Fatalf("inputRequests not carried: %v", handle["inputRequests"])
 	}
-	// Opening the gate must NOT run the executor (that waits for provide-input).
+	// Opening the gate must NOT run the resolver (that waits for provide-input).
 	if ran {
-		t.Fatal("executor ran at gate-open; must wait for accept")
+		t.Fatal("resolver ran at gate-open; must wait for accept")
 	}
-	// The task is durably stored and awaiting input.
+	// The task is durably stored (owner + payload) and awaiting input.
 	got, err := s.Get(handle["taskId"].(string), time.Time{})
 	if err != nil || got.Status != TaskInputRequired {
 		t.Fatalf("task not stored awaiting input: err=%v status=%q", err, got.Status)
 	}
+	if got.OwnerUserID != "u1" || got.Payload["name"] != "x" {
+		t.Fatalf("owner/payload not durably stored: owner=%q payload=%v", got.OwnerUserID, got.Payload)
+	}
 }
 
 func TestGateOrConfirmFallsBackWhenUnsupported(t *testing.T) {
-	s := NewInMemoryTaskStore()
-	exec := func(ctx context.Context, inputs map[string]any) (any, error) { return nil, nil }
+	s := NewInMemoryTaskStore(nil)
 	fallbackHit := false
 	fallback := func() any {
 		fallbackHit = true
 		return map[string]any{"confirm_token": "tok_123", "descriptor": "composition.derive"}
 	}
 
-	res, err := GateOrConfirm(context.Background(), Meta{}, s, "composition.derive", exec, nil, fallback, 0)
+	res, err := GateOrConfirm(context.Background(), Meta{}, s, "composition.derive", "u1", nil, nil, fallback, 0)
 	if err != nil {
 		t.Fatalf("GateOrConfirm: %v", err)
 	}
@@ -106,9 +108,8 @@ func TestGateOrConfirmFallsBackWhenUnsupported(t *testing.T) {
 }
 
 func TestOpenGateReturnsPollInterval(t *testing.T) {
-	s := NewInMemoryTaskStore()
-	exec := func(ctx context.Context, inputs map[string]any) (any, error) { return nil, nil }
-	handle, err := OpenGate(s, "d", exec, nil, 0)
+	s := NewInMemoryTaskStore(TaskResolverRegistry{"d": noopResolver})
+	handle, err := OpenGate(s, "d", "u1", nil, nil, 0)
 	if err != nil {
 		t.Fatalf("OpenGate: %v", err)
 	}
@@ -118,16 +119,17 @@ func TestOpenGateReturnsPollInterval(t *testing.T) {
 }
 
 // End-to-end over the REAL go-sdk in-memory wire: register the provide-input
-// tool, open a gate whose executor performs the "real write", then drive accept
-// through a client CallTool and assert the executor ran and the result rode back.
-func TestProvideInputTool_AcceptRunsExecutorAndReturnsResult(t *testing.T) {
-	store := NewInMemoryTaskStore()
+// tool, open a gate whose resolver performs the "real write", then drive accept
+// through a client CallTool and assert the resolver ran and the result rode back.
+func TestProvideInputTool_AcceptRunsResolverAndReturnsResult(t *testing.T) {
 	ran := false
-	handle, err := OpenGate(store, "composition.derive",
-		func(ctx context.Context, inputs map[string]any) (any, error) {
-			ran = true
-			return map[string]any{"derivativeId": "wf_new", "note": inputs["note"]}, nil
-		}, map[string]any{"title": "Derive?"}, 0)
+	resolver := func(ctx context.Context, owner string, payload, inputs map[string]any) (any, error) {
+		ran = true
+		return map[string]any{"derivativeId": "wf_new", "note": inputs["note"], "src": payload["src"]}, nil
+	}
+	store := NewInMemoryTaskStore(TaskResolverRegistry{"composition.derive": resolver})
+	handle, err := OpenGate(store, "composition.derive", "u1",
+		map[string]any{"src": "proj1"}, map[string]any{"title": "Derive?"}, 0)
 	if err != nil {
 		t.Fatalf("OpenGate: %v", err)
 	}
@@ -148,15 +150,15 @@ func TestProvideInputTool_AcceptRunsExecutorAndReturnsResult(t *testing.T) {
 		t.Fatalf("provide-input returned isError: %+v", res.Content)
 	}
 	if !ran {
-		t.Fatal("executor never ran on accept")
+		t.Fatal("resolver never ran on accept")
 	}
 	out, _ := res.StructuredContent.(map[string]any)
 	if out["status"] != TaskCompleted {
 		t.Fatalf("status = %v, want completed", out["status"])
 	}
 	result, _ := out["result"].(map[string]any)
-	if result["derivativeId"] != "wf_new" || result["note"] != "go-e2e" {
-		t.Fatalf("result did not ride back: %v", out["result"])
+	if result["derivativeId"] != "wf_new" || result["note"] != "go-e2e" || result["src"] != "proj1" {
+		t.Fatalf("result did not ride back (payload+inputs): %v", out["result"])
 	}
 }
 
@@ -164,7 +166,7 @@ func TestProvideInputTool_AcceptRunsExecutorAndReturnsResult(t *testing.T) {
 // so find_tools/discovery never surfaces it to the LLM (CAT-4).
 func TestProvideInputTool_IsVisibilityLegacy(t *testing.T) {
 	srv := mcp.NewServer(&mcp.Implementation{Name: "domain", Version: "0.0.1"}, nil)
-	RegisterTaskProvideInput(srv, NewInMemoryTaskStore(), "composition")
+	RegisterTaskProvideInput(srv, NewInMemoryTaskStore(nil), "composition")
 	cs := connectInMemory(t, srv)
 
 	res, err := cs.ListTools(context.Background(), &mcp.ListToolsParams{})
@@ -185,12 +187,12 @@ func TestProvideInputTool_IsVisibilityLegacy(t *testing.T) {
 	}
 }
 
-// Decline over the real wire must cancel WITHOUT running the executor.
-func TestProvideInputTool_DeclineDoesNotRunExecutor(t *testing.T) {
-	store := NewInMemoryTaskStore()
+// Decline over the real wire must cancel WITHOUT running the resolver.
+func TestProvideInputTool_DeclineDoesNotRunResolver(t *testing.T) {
 	ran := false
-	handle, _ := OpenGate(store, "composition.derive",
-		func(ctx context.Context, inputs map[string]any) (any, error) { ran = true; return nil, nil }, nil, 0)
+	resolver := func(ctx context.Context, owner string, payload, inputs map[string]any) (any, error) { ran = true; return nil, nil }
+	store := NewInMemoryTaskStore(TaskResolverRegistry{"composition.derive": resolver})
+	handle, _ := OpenGate(store, "composition.derive", "u1", nil, nil, 0)
 	taskID := handle["taskId"].(string)
 
 	srv := mcp.NewServer(&mcp.Implementation{Name: "domain", Version: "0.0.1"}, nil)
@@ -209,16 +211,15 @@ func TestProvideInputTool_DeclineDoesNotRunExecutor(t *testing.T) {
 		t.Fatalf("status = %v, want cancelled", out["status"])
 	}
 	if ran {
-		t.Fatal("executor ran on decline")
+		t.Fatal("resolver ran on decline")
 	}
 }
 
 // A second accept on an already-resolved task surfaces as an error result (the
 // double-confirm guard) over the wire.
 func TestProvideInputTool_DoubleAcceptIsError(t *testing.T) {
-	store := NewInMemoryTaskStore()
-	handle, _ := OpenGate(store, "d",
-		func(ctx context.Context, inputs map[string]any) (any, error) { return "ok", nil }, nil, 0)
+	store := NewInMemoryTaskStore(TaskResolverRegistry{"d": noopResolver})
+	handle, _ := OpenGate(store, "d", "u1", nil, nil, 0)
 	taskID := handle["taskId"].(string)
 
 	srv := mcp.NewServer(&mcp.Implementation{Name: "domain", Version: "0.0.1"}, nil)

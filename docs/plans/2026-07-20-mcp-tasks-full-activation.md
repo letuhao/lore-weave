@@ -66,6 +66,17 @@ This is a **superset** of the in-memory store: the in-memory store becomes regis
 
 ## RUN-STATE (living; re-read after any compaction)
 - **Commitment:** finish both specs past activation, multi-replica-correct, each slice review-impl'd + live-E2E'd.
-- **Slice board:** M1a `[ ]` · M1b `[ ]` · M1c `[ ]` · M2 `[ ]` · M3 `[ ]` · M4 `[ ]`  (done = an evidence string).
+- **Slice board:**
+  - **M1a `[x]`** — resolver-registry interface evolution (Go + Python kits), in-memory only. Evidence: Go kit `go test` green (incl. new `TestTaskAcceptWithNoResolverFails`); book-service build + `internal/api` green **including the real /mcp+Postgres DB-E2E** (`mcp_actions_tasks_db_test.go`) — proves the Go call-site resolver preserves behavior; Python kit 100 tests green (incl. `test_accept_with_no_resolver_fails`); composition module imports clean with the derive resolver registered; provider-gate OK.
+  - M1b `[ ]` · M1c `[ ]` · M2 `[ ]` · M3 `[ ]` · M4 `[ ]`  (done = an evidence string).
 - **Invariants:** provider-gateway · language-rule · tenancy scope-key on `mcp_gate_tasks` (owner_user_id) · confirm_token fallback stays · no closure persisted.
-- **Decisions / Parked / Debt / Drift:** (append as we go)
+- **Decisions / Parked / Debt / Drift:**
+  - **DEBT → M2 (accept-caller ownership check).** The resolver receives `owner_user_id` (the PROPOSER) but the
+    provide-input path does NOT verify the ACCEPT-caller == owner. Go's book resolver re-checks the caller via `ctx`
+    (defense-in-depth, preserved); Python's `provide_input` has no `ctx`, so composition can't. **Pre-existing** (the
+    old closure captured the proposer id identically) and **unreachable until a client declares tasks (M2)** — task_ids
+    are unguessable uuids and the driver only surfaces a task to its owner's session. Fix AT M2 (activation): thread the
+    accept-caller identity into `provide_input`/the provide-input tool in BOTH kits and enforce `caller == owner`, so a
+    stranger with a leaked task_id can't drive another user's gate. Concrete, sequenced — not a vague defer.
+  - **DRIFT (M1a, near-miss).** SESSION_HANDOFF called the persistent store "a drop-in" — it was not (closure
+    unpersistable). Caught in the audit; the resolver-registry evolution is the corrected foundation.

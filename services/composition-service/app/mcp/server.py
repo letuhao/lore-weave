@@ -132,7 +132,27 @@ from loreweave_mcp.tasks_wire import (  # noqa: E402
     register_task_endpoints,
 )
 
-_task_store = InMemoryTaskStore()
+# Defined here (ahead of the other confirm descriptors below) because the durable-gate
+# store is constructed at import time and needs the derive descriptor as its resolver key.
+_DERIVE_DESCRIPTOR = "composition.derive"
+
+
+async def _resolve_derive(owner_user_id: str, payload: dict, _inputs: dict):
+    """The composition.derive gate ACCEPT effect — the durable-gate resolver (registered
+    by descriptor). Runs on accept, RECONSTRUCTED on any replica from {owner_user_id,
+    payload} (no closure): the SAME confirm-execute path /v1/composition/actions/confirm
+    runs (rebuilds DeriveBody from the signed payload, then perform_derive). Fresh clients
+    are built here (pool-backed singletons), so the accept can arrive on any later request."""
+    from app.routers.actions import _execute_derive  # lazy — avoid an import cycle
+
+    # WorksRepo / get_pool / get_book_client are module-level imports (top of file).
+    return await _execute_derive(payload, owner_user_id, works=WorksRepo(get_pool()), book=get_book_client())
+
+
+# The store persists only DATA ({descriptor, owner_user_id, payload}); the resolver is
+# reconstructed by descriptor, so a persistent multi-replica store is a drop-in for the
+# SAME interface (D-MCPTASKS-GO-STORE / T3c-REMAINING).
+_task_store = InMemoryTaskStore({_DERIVE_DESCRIPTOR: _resolve_derive})
 # tool_prefix="composition" → the input tool is `composition_task_provide_input`
 # (gateway-routable + collision-free across task-capable domains; see the routing note
 # in the spec / SESSION_HANDOFF).
@@ -158,7 +178,7 @@ _DECOMPILE_DESCRIPTOR = "composition.decompile"
 # D-DIVERGENCE-MCP-TOOLS (S5) — the derive (spawn a dị bản). Tier-W: it MINTS a knowledge
 # partition + persists the branch spec (expensive, only archivable, not undoable), so it is
 # confirm-gated via the SAME mint_confirm_token → confirm_action spine (executed in actions.py).
-_DERIVE_DESCRIPTOR = "composition.derive"
+# (_DERIVE_DESCRIPTOR is defined earlier — the durable-gate store needs it at import time.)
 
 # ── D-AGENT-MODE §20 — authoring-run confirm descriptors (D5/D6). Book-scoped
 # (payload carries book_id, not project_id); the confirm route
@@ -1332,14 +1352,6 @@ async def composition_create_derivative(ctx: MCPContext, args: _DeriveArgs) -> d
     }
     _title = f"Spawn a dị bản '{name}' — mints a knowledge partition (cannot be undone, only archived)"
 
-    async def _executor(_inputs):
-        # The gate ACCEPT effect: the SAME confirm-execute path /v1/composition/actions/confirm
-        # runs (rebuilds DeriveBody from the signed payload, then perform_derive). Lazy import
-        # avoids any import cycle with the actions router.
-        from app.routers.actions import _execute_derive
-
-        return await _execute_derive(payload, tc.user_id, works=works, book=get_book_client())
-
     def _confirm_fallback():
         confirm_token = mint_confirm_token(
             settings.confirm_token_signing_secret, tc.user_id, meta.book_id, _DERIVE_DESCRIPTOR, payload,
@@ -1358,7 +1370,8 @@ async def composition_create_derivative(ctx: MCPContext, args: _DeriveArgs) -> d
     return await gate_or_confirm(
         ctx, _task_store,
         descriptor=_DERIVE_DESCRIPTOR,
-        executor=_executor,
+        owner_user_id=tc.user_id,
+        payload=payload,
         input_requests={"title": _title, "descriptor": _DERIVE_DESCRIPTOR, "domain": "composition"},
         confirm_fallback=_confirm_fallback,
     )

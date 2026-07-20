@@ -54,24 +54,35 @@ var (
 	ErrTaskNotWaiting = errors.New("task is not awaiting input")
 )
 
-// TaskExecutor runs the real domain write on accept; its return becomes the task
-// Result (what the original tools/call would have returned). inputs carries the
-// human's response payload.
-type TaskExecutor func(ctx context.Context, inputs map[string]any) (any, error)
+// TaskResolver runs the real domain write on accept, RECONSTRUCTED on any replica
+// from persisted data (NOT a closure over per-request state). It is registered once
+// per descriptor at startup and receives the durable inputs: the proposing user
+// (ownerUserID — for the caller re-bind / grant re-check), the serializable payload
+// captured at propose-time, and the human's response (inputs). Its return becomes the
+// task Result. This shape is what makes a DB-backed store possible — the persistent
+// store stores {descriptor, ownerUserID, payload} and looks the resolver up by
+// descriptor, so the same store interface serves single-process and multi-replica.
+type TaskResolver func(ctx context.Context, ownerUserID string, payload map[string]any, inputs map[string]any) (any, error)
 
-// Task is one durable gate task.
+// TaskResolverRegistry maps an action descriptor → its resolver. A domain builds one
+// at startup and hands it to the store constructor; the store never holds a closure.
+type TaskResolverRegistry map[string]TaskResolver
+
+// Task is one durable gate task. Every field is serializable (no bound function) so a
+// persistent store can round-trip it and any replica can resolve it.
 type Task struct {
 	TaskID         string
 	Status         TaskStatus
-	Descriptor     string // the action descriptor, e.g. "composition.derive"
-	InputRequests  any    // the rich card payload (title/preview) the client renders
-	Result         any    // set on completed
-	ErrorMsg       string // set on failed
+	Descriptor     string         // the action descriptor, e.g. "composition.derive" — also the resolver key
+	OwnerUserID    string         // the proposing user (tenancy scope key; passed to the resolver)
+	Payload        map[string]any // the serializable action data captured at propose-time
+	InputRequests  any            // the rich card payload (title/preview) the client renders
+	Result         any            // set on completed
+	ErrorMsg       string         // set on failed
 	CreatedAt      time.Time
 	UpdatedAt      time.Time
 	TTLMs          int
 	PollIntervalMs int
-	executor       TaskExecutor // never serialized to the client
 }
 
 // Expired reports whether the task is past its TTL as of now.
@@ -81,8 +92,10 @@ func (t *Task) Expired(now time.Time) bool {
 
 // TaskStore is the durable task-store surface (in-memory reference below; a
 // persistent impl bound to confirm/consumed-token storage implements the same API).
+// Both are constructed with a TaskResolverRegistry — the store never holds a closure,
+// so the SAME interface serves single-process and multi-replica.
 type TaskStore interface {
-	Create(descriptor string, executor TaskExecutor, inputRequests any, ttlMs int) (*Task, error)
+	Create(descriptor, ownerUserID string, payload map[string]any, inputRequests any, ttlMs int) (*Task, error)
 	Get(taskID string, now time.Time) (*Task, error)
 	ProvideInput(ctx context.Context, taskID string, inputs map[string]any) (*Task, error)
 	Cancel(taskID string) (*Task, error)
@@ -93,14 +106,20 @@ type InMemoryTaskStore struct {
 	mu        sync.Mutex
 	tasks     map[string]*Task
 	resolving map[string]bool
+	resolvers TaskResolverRegistry
 }
 
-// NewInMemoryTaskStore constructs an empty in-memory store.
-func NewInMemoryTaskStore() *InMemoryTaskStore {
-	return &InMemoryTaskStore{tasks: map[string]*Task{}, resolving: map[string]bool{}}
+// NewInMemoryTaskStore constructs an empty in-memory store bound to the given resolver
+// registry (descriptor → the write to run on accept). A nil registry is allowed (a
+// task whose descriptor has no resolver fails on accept with a clear error).
+func NewInMemoryTaskStore(resolvers TaskResolverRegistry) *InMemoryTaskStore {
+	if resolvers == nil {
+		resolvers = TaskResolverRegistry{}
+	}
+	return &InMemoryTaskStore{tasks: map[string]*Task{}, resolving: map[string]bool{}, resolvers: resolvers}
 }
 
-func (s *InMemoryTaskStore) Create(descriptor string, executor TaskExecutor, inputRequests any, ttlMs int) (*Task, error) {
+func (s *InMemoryTaskStore) Create(descriptor, ownerUserID string, payload map[string]any, inputRequests any, ttlMs int) (*Task, error) {
 	if strings.TrimSpace(descriptor) == "" {
 		return nil, fmt.Errorf("task descriptor is required")
 	}
@@ -108,16 +127,23 @@ func (s *InMemoryTaskStore) Create(descriptor string, executor TaskExecutor, inp
 		ttlMs = DefaultTaskTTLMs
 	}
 	now := time.Now()
+	// Defensively copy the payload (parity with the Python store's dict(payload)) so a
+	// caller mutating its map after Create can't alter the durable task.
+	pcopy := make(map[string]any, len(payload))
+	for k, v := range payload {
+		pcopy[k] = v
+	}
 	t := &Task{
 		TaskID:         "task_" + strings.ReplaceAll(uuid.NewString(), "-", ""),
 		Status:         TaskInputRequired, // a confirm gate needs the human immediately
 		Descriptor:     descriptor,
+		OwnerUserID:    ownerUserID,
+		Payload:        pcopy,
 		InputRequests:  inputRequests,
 		CreatedAt:      now,
 		UpdatedAt:      now,
 		TTLMs:          ttlMs,
 		PollIntervalMs: DefaultPollIntervalMs,
-		executor:       executor,
 	}
 	s.mu.Lock()
 	s.tasks[t.TaskID] = t
@@ -128,12 +154,12 @@ func (s *InMemoryTaskStore) Create(descriptor string, executor TaskExecutor, inp
 
 // snapshot returns a copy of the task safe to hand to a caller: the store keeps the
 // live pointer and mutates it under the lock, so returning the live pointer would let
-// a caller read fields lock-free while another goroutine writes them (a data race Go —
-// unlike the GIL/asyncio Python mirror — does not paper over). The executor field is
-// intentionally NOT copied out (never exposed to a client). Caller holds the lock.
+// a caller read the scalar status fields lock-free while another goroutine writes them
+// (a data race Go — unlike the GIL/asyncio Python mirror — does not paper over). Payload
+// is write-once at Create (never mutated after), so sharing its map reference is safe.
+// Caller holds the lock.
 func snapshot(t *Task) *Task {
 	c := *t
-	c.executor = nil
 	return &c
 }
 
@@ -196,14 +222,22 @@ func (s *InMemoryTaskStore) ProvideInput(ctx context.Context, taskID string, inp
 	s.resolving[taskID] = true
 	t.Status = TaskWorking
 	t.UpdatedAt = time.Now()
-	exec := t.executor
+	descriptor := t.Descriptor
+	ownerUserID := t.OwnerUserID
+	payload := t.Payload
+	resolver := s.resolvers[descriptor]
 	s.mu.Unlock()
 
-	// Run the executor OUTSIDE the lock (a real write may be slow / block).
+	// Run the resolver OUTSIDE the lock (a real write may be slow / block). The
+	// resolver is looked up by descriptor from the startup registry — reconstructed
+	// on any replica from the persisted {descriptor, ownerUserID, payload}, not a
+	// closure. A missing resolver is a wiring bug → fail the task with a clear error.
 	var result any
 	var err error
-	if exec != nil {
-		result, err = exec(ctx, inputs)
+	if resolver == nil {
+		err = fmt.Errorf("no resolver registered for descriptor %q", descriptor)
+	} else {
+		result, err = resolver(ctx, ownerUserID, payload, inputs)
 	}
 
 	s.mu.Lock()

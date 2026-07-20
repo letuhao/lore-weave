@@ -46,6 +46,8 @@ __all__ = [
     "InMemoryTaskStore",
     "TaskNotFound",
     "TaskNotWaiting",
+    "Resolver",
+    "ResolverRegistry",
 ]
 
 # ── status (ext-tasks wire values) ───────────────────────────────────────────
@@ -72,17 +74,25 @@ class TaskNotWaiting(RuntimeError):
     double-confirm guard: a second accept must NOT re-run the executor)."""
 
 
-# The executor a gate binds: run the real domain write on accept; its return value
-# becomes the task ``result`` (what the original tools/call would have returned).
-# ``inputs`` carries the human's response payload (e.g. edited scalar fields).
-Executor = Callable[[dict[str, Any]], Awaitable[Any]]
+# A resolver runs the real domain write on accept, RECONSTRUCTED on any replica from
+# persisted data (NOT a closure over per-request state). Registered once per descriptor
+# at startup; receives the durable inputs — the proposing user (owner_user_id), the
+# serializable ``payload`` captured at propose-time, and the human's response
+# (``inputs``). Its return becomes the task ``result``. This shape is what makes a
+# DB-backed store possible: the persistent store stores {descriptor, owner_user_id,
+# payload} and looks the resolver up by descriptor, so one interface serves single-
+# process and multi-replica.
+Resolver = Callable[[str, dict[str, Any], dict[str, Any]], Awaitable[Any]]
+ResolverRegistry = dict[str, Resolver]
 
 
 @dataclass
 class Task:
     task_id: str
     status: TaskStatus
-    descriptor: str  # the action descriptor, e.g. "book.publish" — for the card
+    descriptor: str  # the action descriptor, e.g. "book.publish" — also the resolver key
+    owner_user_id: str = ""  # the proposing user (tenancy scope key; passed to the resolver)
+    payload: dict[str, Any] = field(default_factory=dict)  # serializable action data captured at propose-time
     # The rich card payload the client renders as input_requests (title, preview,
     # the diff/confirm details). Opaque to the store.
     input_requests: Any = None
@@ -92,8 +102,6 @@ class Task:
     updated_at: float = field(default_factory=time.time)
     ttl_ms: int = DEFAULT_TTL_MS
     poll_interval_ms: int = DEFAULT_POLL_INTERVAL_MS
-    # The bound executor + captured context, never serialized to the client.
-    _executor: Optional[Executor] = None
 
     def expired(self, *, now: Optional[float] = None) -> bool:
         t = time.time() if now is None else now
@@ -102,13 +110,15 @@ class Task:
 
 class TaskStore:
     """The durable task-store surface. In-memory reference below; a persistent
-    impl (bound to confirm-token/suspended-run storage) implements the same API."""
+    impl (bound to confirm-token/suspended-run storage) implements the same API.
+    Both are constructed with a resolver registry — never a closure."""
 
     async def create(
         self,
         *,
         descriptor: str,
-        executor: Executor,
+        owner_user_id: str,
+        payload: dict[str, Any],
         input_requests: Any = None,
         ttl_ms: int = DEFAULT_TTL_MS,
         poll_interval_ms: int = DEFAULT_POLL_INTERVAL_MS,
@@ -134,17 +144,21 @@ class InMemoryTaskStore(TaskStore):
     already handles). The winner runs; the loser sees the terminal state.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, resolvers: Optional[ResolverRegistry] = None) -> None:
         self._tasks: dict[str, Task] = {}
         # per-task in-flight flag so provide_input is single-winner without an
-        # async lock dependency (the executor await must not block other tasks).
+        # async lock dependency (the resolver await must not block other tasks).
         self._resolving: set[str] = set()
+        # descriptor → resolver (the write to run on accept). The store holds NO
+        # closure; a task whose descriptor has no resolver fails on accept.
+        self._resolvers: ResolverRegistry = dict(resolvers or {})
 
     async def create(
         self,
         *,
         descriptor: str,
-        executor: Executor,
+        owner_user_id: str,
+        payload: dict[str, Any],
         input_requests: Any = None,
         ttl_ms: int = DEFAULT_TTL_MS,
         poll_interval_ms: int = DEFAULT_POLL_INTERVAL_MS,
@@ -157,10 +171,11 @@ class InMemoryTaskStore(TaskStore):
             task_id=tid,
             status=INPUT_REQUIRED,  # a confirm gate needs the human immediately
             descriptor=descriptor,
+            owner_user_id=owner_user_id,
+            payload=dict(payload or {}),
             input_requests=input_requests,
             ttl_ms=ttl_ms,
             poll_interval_ms=poll_interval_ms,
-            _executor=executor,
         )
         self._tasks[tid] = task
         return task
@@ -194,8 +209,15 @@ class InMemoryTaskStore(TaskStore):
         try:
             task.status = WORKING
             task.updated_at = time.time()
+            # Look the resolver up by descriptor from the startup registry —
+            # reconstructed on any replica from {descriptor, owner_user_id, payload},
+            # never a closure. A missing resolver is a wiring bug → fail with a clear
+            # error (never a silent no-op).
+            resolver = self._resolvers.get(task.descriptor)
             try:
-                result = await task._executor(inputs) if task._executor else None
+                if resolver is None:
+                    raise RuntimeError(f"no resolver registered for descriptor {task.descriptor!r}")
+                result = await resolver(task.owner_user_id, task.payload, inputs)
                 task.result = result
                 task.status = COMPLETED
             except Exception as exc:  # noqa: BLE001 — the write failed → failed status

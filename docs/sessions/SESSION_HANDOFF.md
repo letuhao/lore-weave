@@ -8,8 +8,12 @@ executor CLOSURE (unpersistable). SEALED fix = **resolver-registry** (`Create(de
 `descriptor → resolver` map; in-memory + persistent share one interface). Milestones: **M1a** kit interface evolution
 (pure shape-change, no persistence, existing lifecycle tests prove it) → **M1b** book-service `PgTaskStore` + migration
 → **M1c** composition `PgTaskStore` → **M2** flip `tasks_gate_enabled` + full-stack live-E2E → **M3** remaining KIND-C
-confirms → **M4** retire the bespoke construct. **Cadence (user-directed): checkpoint per milestone, agent does NOT
-auto-advance — the user sets a fresh `/goal` per milestone.** Start with **M1a**.
+confirms → **M4** retire the bespoke construct.
+- **M1a DONE** — resolver-registry interface evolution across BOTH kits (Go + Python): `TaskStore` persists
+  `{descriptor, owner_user_id, payload}` + a startup `descriptor→resolver` map instead of a closure; book_chapter_delete
+  + composition_create_derivative call sites ported. Green: Go kit + book-service (incl. real /mcp+Postgres DB-E2E),
+  Python kit 100 tests, composition import, provider-gate. **Next: M1b** (book-service `PgTaskStore` + `mcp_gate_tasks`
+  migration). See the plan's RUN-STATE (M2 owner-check debt recorded).
 
 ## ✅ MCP-TASKS + FRONTEND-TOOLS MIGRATION — **implemented through the activation boundary (2026-07-20)**
 Both `docs/specs/2026-07-19-mcp-tasks-durable-gate.md` + `docs/specs/2026-07-19-frontend-tools-mcp-migration.md`
