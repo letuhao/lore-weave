@@ -35,7 +35,10 @@
   lens + refactored hook + navigator + a HIGH regression test) + `tsc --noEmit` clean. `/review-impl` caught +
   FIXED: (HIGH) a /structure ERROR left the rail permanently 'pending' → now degrades to flat; (MED) creating
   the FIRST part didn't flip the lens until the 5s cache expired → invalidate /structure on create/trash/restore.
-  REMAINING: browser e2e (repro book 019f8027 = Part 1 + a real Work → the navigator shows Part 1, not hidden).
+  e2e-LIVE (browser, vite :5199 → gateway, repro book 019f8027 = Part 1 + a REAL Work = outline mode): the
+  Manuscript navigator renders "PART · Part 1 · 2" with Chapter 1 + Chapter 2 nested, the [Parts|Outline]
+  toggle present, footer "1 part · 2 ch". Before P1.2 this book was outline-mode → Part 1 HIDDEN (Bug 4);
+  now it shows. **P1 COMPLETE — Bug 4 fixed end-to-end (resolver → FE → live browser).**
 - **P2.1 [ ] Write silent-seams:** validate `set_part` target (live kind='part' in this book) → typed error; FE surfaces mutation errors; mobile "Move to part…" affordance.
 - **P3.1 [ ] Lifecycle cascade:** `book.lifecycle_changed` outbox → composition consumer (soft-trash/restore/hard-delete structure); resolver joins book lifecycle; kind-gate to novel.
 - **P4.1 [ ] Agent + guidance (rescoped):** `book_get_structure` MCP + metadata-vs-structure tool-selection guidance (or `book_get_overview`). Fixes Bug 2.
