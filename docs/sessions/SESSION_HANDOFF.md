@@ -90,10 +90,19 @@
   broken** post-cutover (the agent's "open the compose panel" no-op'd). Fixed: `useStudioUiToolExecutor` now acts
   on the `io.loreweave/ui-directive` result (→ `resolveStudioUiTool` → the StudioHost effect), idempotent by
   toolCallId. FE 944 pass (1 pre-existing unrelated failure — see below).
-- **▶ Phase 4 REMAINING** — `D-P3-RETIRE-UI-FRONTEND-DEFS` (retire the `frontend_tools.py` `ui_*`/`propose_edit`
-  defs — needs the studio/editor advertisement moved from `frontend_tool_defs` to catalog-sourced + the F7c
-  nav-intent-gate-as-catalog-filter first), then remove the migrated tools from `frontend-tools.contract.json` +
-  update `docs/standards/mcp-tool-io.md`.
+- **P4.2a DONE** (`f23306001`) — retired the 5 nav `ui_*` chat-service defs (dead since P3.2; resolved from the
+  federated catalog now, like `web_search`). 129 lines removed; the additionalProperties test moved to
+  `confirm_action`. 126 chat-service tests green.
+- **▶ Phase 4 REMAINING (low-value / risky — recommend DEFER)** — `D-P3-RETIRE-UI-FRONTEND-DEFS` tail: retire the 2
+  STUDIO `ui_*` + `propose_edit` chat-service defs + the contract entries. This needs the studio/editor
+  advertisement moved from `frontend_tool_defs` (chat-service consts) to CATALOG-sourced — i.e. the deferred F7c
+  **nav-intent-gate-as-catalog-filter** (moving `_is_panel_nav_intent` + `compact_studio_panel` + the
+  `studio_context`/`editor_context` gating into the discovery-advertisement assembly, which also has the
+  gateway-down fallback at `stream_service.py:4487`). It touches the delicate per-turn advertisement path for
+  **near-zero functional value** (the tools already work via ai-gateway; the defs are just advertisement sources),
+  so it clears the defer gate (#2 large/structural on a cross-cutting path). Do it as a careful dedicated slice, or
+  leave the defs — they are harmless. Then remove the migrated tools from `frontend-tools.contract.json` + update
+  `docs/standards/mcp-tool-io.md`.
 - **Pre-existing (unrelated) FE failure noticed:** `studioAgentBridge.test.tsx :: useStudioEffectReconciler (Lane
   B) :: runs the effect handlers for a COMPLETED MCP draft write` — asserts `host.publish` is NOT called on a draft
   write (no editor hijack) but it IS; fails on committed code with the Phase-4 diff stashed, so NOT ours. Track
