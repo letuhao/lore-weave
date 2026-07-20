@@ -1,20 +1,21 @@
 # ▶▶ NEXT SESSION STARTS HERE
 
-## 🐛 DOGFOOD ROUND-4 POLISH — in progress (2026-07-20, HEAD f30dc77e5)
+## 🐛 DOGFOOD ROUND-4 POLISH — in progress (2026-07-20, HEAD 07e62f8bf)
 Newcomer dogfood on the durable-gate-ACTIVATED build found F12–F18 (backlog + grounded root causes:
 [`docs/specs/2026-07-18-writing-studio-newcomer-polish/round-4-feedback.md`](../specs/2026-07-18-writing-studio-newcomer-polish/round-4-feedback.md)).
 Fixing in **ALPHABET order, monitoring-first** (add the missing monitor before/while fixing — the user's directive).
-- **DONE:** **F14** — agent saw ZERO `book_*` tools on the writing studio (book skill was pin-only) → auto-inject `book`
-  on book surfaces; also fixed a SILENT `LOG_LEVEL=INFO` no-op (the "app" logger had no handler → all `logger.info`
-  dropped) + added the advertised-surface monitor. **F17** — hide `find_tools` from the LLM (semantic top-K can't
-  surface a tool outside the K matches); `tool_list`/`tool_load` are now the sole discovery path, explicitly
-  distinguished; monitor now logs core NAMES (not just count); `4d53ac78f` de-binaried `find-tools.ts` (stray NUL).
-  Both **live-verified** (gateway `/mcp`: find_tools gone, `tool_list(book)`→book_list_chapters; chat monitor core list;
-  Gemma used `tool_list(category=book)`).
-- **NEXT (alphabet):** **F12** `agent-registry-down` — `infra-agent-registry-service-1` Exited (255) → `/v1/agent-
-  registry/*` 504 flood + breaks skills/workflows/hooks/subagents (also the ai-gateway `registry` provider). Then
-  **F13** (+**F18** folded: discovery-meta-tool *success*-loop — model re-lists `tool_list` ~28×) · **F15**
-  (chapter-create steals the chat panel) · **F16** (New-Book submit enabled with no language).
+- **DONE:** **F12** `agent-registry-down` (`07e62f8bf`) — evidence corrected the round-4 guess: it ran 18h then a
+  host/daemon killed it (Exit 255, no OOM/log) and STAYED down because every service had `restart: no`. Fix:
+  `restart: unless-stopped` on the 32 services lacking it (self-heal) + a shared tenancy-safe FE availability breaker
+  (`lib/agentRegistryHealth.ts`) so useUsage/useSlashCommands don't re-hammer a down registry + an explicit "Usage
+  unavailable" (18-locale i18n). **F14** — agent saw ZERO `book_*` tools (book skill pin-only) → auto-inject `book`;
+  fixed a SILENT `LOG_LEVEL=INFO` no-op + added the advertised-surface monitor. **F17** (`f30dc77e5`) — hide
+  `find_tools` from the LLM; `tool_list`/`tool_load` are the sole discovery path (explicitly distinguished); monitor
+  now logs core NAMES; `4d53ac78f` de-binaried `find-tools.ts`. F14+F17 **live-verified** (gateway `/mcp`: find_tools
+  gone, `tool_list(book)`→book_list_chapters; Gemma used `tool_list(category=book)`).
+- **NEXT (alphabet):** **F13** (+**F18** folded: discovery-meta-tool *success*-loop — model re-lists `tool_list` ~28×;
+  the read-breaker counts only successful DOMAIN reads, not repeated failed calls (F13) nor repeated discovery calls
+  (F18)) · **F15** (chapter-create steals the chat panel) · **F16** (New-Book submit enabled with no language).
 - **Debt:** 3 pre-existing `TestGenericFrontendTools` failures (this session's M3 frontend-tools migration).
 
 ## ✅ MCP-TASKS FULL ACTIVATION — **PLAN COMPLETE (M1–M4), ACTIVATED (2026-07-20)**
