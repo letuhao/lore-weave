@@ -129,9 +129,17 @@
     gap-fill: +9 new keys × 17 locales, 0 failed, 28s). EVIDENCE: completeness gate GREEN (17 locales × 33 ns at
     full en parity) + spot-check (vi `lensParts='Các phần'`, ja `'パート'`, de `'Abschnitte'` — real per-locale
     translations, not English). The **"Act One arc seed" sub-claim is STALE** (no such seed in code).
-  - **(c) route parts_import + arc-grouped Chapter Browser through the pipeline → DEFER (loosely-specified,
-    low-value polish).** parts_import is a WRITE; the "pipeline" is the read resolver — the item needs scoping,
-    and it is pure read-path consistency with no behavior change or bug. Lowest priority of the three.
+  - **(c) route parts_import + arc-grouped Chapter Browser through the pipeline [x] VERIFIED — no real gap
+    (targets already-centralized or design-incompatible; not a defer, a code-checked finding).**
+    (i) `parts_import.go::groupImportedChaptersIntoParts` is a correct best-effort WRITE (creates composition
+    parts + stamps `chapters.structure_node_id`) — NOT a divergent read; there is no read-pipeline to route a
+    write through. (ii) `books/hooks/useChapterBrowserGroups.ts` (the arc-grouped browser) ALREADY reuses the
+    shared composition primitives (`useWorkResolution` + `compositionApi.listOutlineChildren`, per its DOCK-2
+    docstring) — it is not a fork/divergent read; it builds a flat `chapter_id→arc_id` map. Routing it through
+    `/structure` is INCOMPATIBLE with the resolver's skeleton design (§4.2 "headers + counts, NOT inline
+    chapters"): the browser needs the full arc→chapter MEMBERSHIP the skeleton omits by design, and even the
+    spec's `outline.arcs` counts wouldn't supply it — so there is no benefit + a design conflict. (iii) The
+    ONE genuine divergent read (the manuscript rail, Bug 4) was centralized onto `/structure` in P1.2.
 
 ## Correctness must-fixes (fold into the touching slice)
 - Verify C4 migration UUID-equivalence (test) · `has_work` = two bits (row-exists vs project-backed) · outline/part identity reconciliation.

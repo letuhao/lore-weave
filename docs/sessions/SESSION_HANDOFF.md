@@ -16,10 +16,16 @@ SHIPPED + live-proven:
   structure hidden (mirror 8s + resolver) → restore → fully visible, nothing lost.
 - **P4 (Bug 2):** metadata-vs-structure tool disambiguation (`book_update_meta` owns the fields, `book_chapter_create`
   disclaims). $0 Gemma selection-proxy: `book_update_meta` never confused with a chapter. `387b6430a`.
-- **P5 (cleanup) DEFERRED — each item clears the defer gate (verified vs code, not the stale spec note):**
-  ensure_work consolidation (gate #2, F5-fork-Work-bug-prone), "part" i18n 18 locales (gate #4, needs the ML-7
-  pipeline — keys already work via `defaultValue`; the "Act One seed" sub-claim is **STALE**),
-  parts_import/Chapter-Browser routing (loosely-specified low-value polish). See the plan's registers.
+- **P5 (cleanup) COMPLETE — user chose to build it, not defer.** (a) **ensure_work consolidation** `e29967812`:
+  extracted the canonical-first, F5-fork-safe `work_resolution.ensure_work`; the 3 divergent copies delegate to
+  it (6 unit tests incl. the F5-fork regression + composition healthy + live smoke). (b) **"part" i18n**
+  `e0bd49067`: the terminology was ALREADY correct in en/studio.json; registered the 9 pipeline keys that were
+  `defaultValue`-only (lensParts/lensOutline/lensToggle + 6 error toasts) + translated all 17 locales via
+  `i18n_translate.py` (gate GREEN, real per-locale words). (c) **routing** — VERIFIED no real gap vs code (not a
+  defer): parts_import is a correct WRITE, `useChapterBrowserGroups` already reuses the shared composition
+  primitives (routing it through /structure conflicts with the skeleton design), and the one real divergent read
+  (the rail, Bug 4) was already centralized in P1.2. The "Act One arc seed" sub-claim is **STALE**.
+  **▶ The whole book-structure-pipeline spec (P1–P5) is now built + proven.**
 
 ## 🐛 DOGFOOD ROUND-4 POLISH — in progress (2026-07-20, HEAD 07e62f8bf)
 Newcomer dogfood on the durable-gate-ACTIVATED build found F12–F18 (backlog + grounded root causes:
