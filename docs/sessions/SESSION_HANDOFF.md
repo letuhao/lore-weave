@@ -52,8 +52,24 @@
   `{type: io.loreweave/propose-edit, operation, text, rationale?}` — a DISTINCT type from the resolve-immediately
   `ui-directive` (the client must gate on Apply). Drift-tested vs the contract. Advertised + dispatched locally in
   `handlers.ts`. INERT: chat-service still intercepts `propose_edit` (its suspend wins) until P2.2. ai-gateway 255 green.
-- **▶ P2.2 + P2.3 NEXT (the propose_edit cutover — coupled, risky, needs a live browser E2E; mirrors the
-  P3.2+P3.3 shape that took real live-debugging)**:
+- **P2.2 + P2.3 DONE** (`f8ba24e12`, P2.1 `0608baecb`) — the propose_edit cutover:
+  - *P2.2 (chat-service)* — removed `propose_edit` from `FRONTEND_TOOL_NAMES`/`_GENERIC` (→ routes to ai-gateway);
+    `task_detect.propose_edit_suspend_args_from_result` detects the `io.loreweave/propose-edit` directive; the
+    general dispatch SUSPENDS with the SAME shape the frontend-tool suspend used (`{name:'propose_edit',
+    args:{operation,text,rationale?}}`, no `task` marker). Contract split-ownership (operation enum → ai-gateway).
+  - *P2.3 (FE)* — **no change needed**: `ProposeEditCard` renders on a `propose_edit` pending record + applies via
+    `editorBridge` + `submitToolResult('applied', text)` exactly as before; the suspend is byte-identical, so the
+    existing (already-working) FE flow is reused. (Contrast Phase 3, where the FE directive path was NEW code.)
+  - **VERIFICATION:** WIRE-SMOKE (real ai-gateway `/mcp`, rebuilt image) — valid `propose_edit` → the gated
+    proposal directive in structuredContent; incident shape → `isError` "missing property 'operation'". Unit: 127
+    chat-service tests (frontend-tools/contract/task_detect/stream-tools) incl. the exact suspend reconstruction +
+    a `confirm_action` test preserving frontend-tool-suspend coverage; ai-gateway 255.
+  - **▶ P2.4 REMAINING (the effect-check)** — a full browser editor E2E: open a chapter in the Studio Editor +
+    Co-writer Chat (so the turn carries `editor_context` → propose_edit is advertised), prompt an edit, confirm the
+    Apply card renders and applying inserts the prose into the Tiptap doc. Lower-risk than Phase 3's E2E (the FE
+    path is unchanged existing code, not new), but do it to close "verify by effect". The studio dock-panel flow +
+    model dependency make it a focused follow-up.
+- _(superseded — kept for the original cutover design)_ P2.2 + P2.3 scoping:
   - *P2.2 (chat-service)* — remove `propose_edit` from `FRONTEND_TOOL_NAMES` (→ routes to ai-gateway); DETECT the
     `io.loreweave/propose-edit` directive from `mcp_execute_tool` and SUSPEND with the SAME pending shape today's
     frontend-tool suspend creates (`pending_tool_call = {name:'propose_edit', args:{operation,text,rationale}}`) so
