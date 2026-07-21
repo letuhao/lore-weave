@@ -30,6 +30,17 @@ SHIPPED + live-proven:
   axis), dramaturgically standard + translates distinctly (第1幕/Erster Akt); "Arc 1" would machine-translate
   to 第1章/chapter in CJK — worse.
   **▶ The whole book-structure-pipeline spec (P1–P5) is now built + proven.**
+- **COMPLETENESS AUDIT + FIX CYCLE COMPLETE (2026-07-21).** A 3-cold-start-agent + §6/§8 audit found the
+  "complete" claim over-stated; ALL gaps now cleared, NO debts: **H1** bulk-lifecycle per-chapter events
+  (trash/restore/purge symmetric across statistics/glossary/written-verdict, live-proven), **H2** agent-write
+  `book_chapter_set_part` validation via a new internal composition parts route (live-proven), **H3** the
+  false "Act One stale" doc corrected. Test gaps closed: **M1** partIsLiveTarget + resolver-gate + composition
+  read-filter + consumer `_apply` regression tests; **M3** HTTP entry-path + tx-atomicity; **M2** FE
+  runAct-on-failure toast. **ML1** FE surfaces the `/structure` outage signal; **ML2** toggle localStorage
+  persistence. **L3** has_work two bits; **L5** CJK "part" mistranslation fixed via an i18n domain glossary
+  (部/パート/부). Verified conscious decisions (not debts): **L1** §6.4 already satisfied (outline_node carries
+  chapter_id natively), **L2** synthetic migration test infeasible (guarded by LEFT-JOIN-safety + live-verified),
+  **L4** eager-load is spec-blessed (§4.2 6000 cap). See the plan's ▶ AUDIT-FIX RESUME block for commits.
 
 ## 🐛 DOGFOOD ROUND-4 POLISH — in progress (2026-07-20, HEAD 07e62f8bf)
 Newcomer dogfood on the durable-gate-ACTIVATED build found F12–F18 (backlog + grounded root causes:

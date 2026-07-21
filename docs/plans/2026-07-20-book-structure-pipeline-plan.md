@@ -18,7 +18,9 @@ A completeness audit (3 cold-start agents over disjoint phase-code + a solo §6/
 - **H3 [x] `d93e739b7`** — corrected the FALSE "Act One stale" doc claim; KEPT the seed (plan-axis arc,
   clean distinct translations; "Arc 1" machine-translates to 第1章/chapter in CJK — reverted that experiment).
 
-**REMAINING (the resume worklist — every one is fix-not-defer):**
+**✅ ALL CLEARED (audit-fix cycle COMPLETE 2026-07-21) — every gap fixed or resolved by a verified
+conscious decision; NO debts. Commits: H1 `d77d7e0b1` · H2 `5d2ddcdb7` · H3 `d93e739b7` · M1 `7fa513e68` ·
+M3 `794ee3ad9` · M2/ML1/ML2 `217652220` · L2/L3 `0d03d4270` · L1/L4/L5 `0efb73427`.**
 - **M1** — Go regression tests: extract `partIsLiveTarget` + test (live/archived/arc/foreign → the matching);
   resolver lifecycle-gate handler test (trashed → empty skeleton); composition read-filter EXCLUSION DB tests
   (`list_tree` + `resolve_by_book` drop a non-active `book_lifecycle`) + a consumer `_apply` DB test. (The
