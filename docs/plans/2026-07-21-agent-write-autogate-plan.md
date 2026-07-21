@@ -24,7 +24,10 @@ Deliver the FULL auto-gate: the agent calls only the natural domain write; the S
 |---|---|---|---|
 | **R1** ride-along | reasoning-loop breaker | `35024ec05`; 9 unit + 2 integ green; serial suite exit 0 | ✅ DONE |
 | **R2** ride-along | auto-title sanitizer | `35024ec05`; 10 tests incl. the "4." bug | ✅ DONE |
-| **M0** | kit + **book** auto-gate | Go: `book.meta` descriptor + `update_meta` confirm op + `changes[]` diff card; `book_update_meta` mints via GateOrConfirm; confirm route applies (OCC). chat-service suspends on it. FE renders `changes[]`. `propose_record_edit` de-advertised for book. **Evidence:** book-service `go test ./...` pasted green + chat-service pytest pasted green + **live re-smoke: description-rewrite → diff card, no loop** | ⬜ TODO |
+| **M0a** | book-service Go | `book.meta` descriptor + `update_meta` op + `changes[]` diff card; `book_update_meta` Tier-A→W, mints diff card; confirm route `effectUpdateMeta` applies (OCC on updated_at). **Evidence:** `7b861223c` — PASS TestMCP_BookUpdateMeta_ProposesDiff_NoWrite_ThenConfirmApplies_DB + _StaleVersion_Conflicts_DB; vet clean; api suite green | ✅ DONE |
+| **M0b** | chat-service | de-advertise `propose_record_edit` for the book domain (agent must reach book meta only via `book_update_meta`); confirm the server diff card (domain=book, `changes[]`) suspends + resumes like the confirm card. **Evidence:** pasted pytest | ⬜ TODO |
+| **M0c** | frontend | render the book confirm card's `changes[]` as the old→new diff card (reuse the `RecordEditChange` component). **Evidence:** pasted vitest | ⬜ TODO |
+| **M0d** | live | **live re-smoke: "rewrite the description" → diff card, no loop** (book *The Tidewright* `019f82b6-c31b-72e9-bf2a-3f37f4c8a847`, chat via :5174). **Evidence:** pasted browser observation | ⬜ TODO |
 | **M1** | composition | audit write tool(s) → adopt facade. Evidence: pasted composition unit + live | ⬜ TODO |
 | **M2** | glossary | reconcile `glossary_propose_entity_edit` with the shared factory. Evidence: pasted glossary tests + live | ⬜ TODO |
 | **M3** | settings | adopt facade. Evidence: pasted tests | ⬜ TODO |
@@ -45,7 +48,8 @@ For each domain: (1) which direct-write MCP tool edits its records? (2) Tier-A a
 - (none)
 
 ### Debt
-- (none)
+- M0a — `book_update_meta` returns the plain confirm_token diff card (not the GateOrConfirm *tasks* branch), because chat-service is non-tasks (the durable-gate path is dormant). Behaviorally identical for the live chat flow (GateOrConfirm's non-tasks branch returns the same card). If chat-service later declares tasks capability, register `descBookMeta` in the `actionTasks` resolver registry + add an `update_meta` case to `resolveBookAction` (calls the shared `applyBookMetaUpdate`). Not needed for M0's live smoke.
+- M0a — OCC key is `updated_at` (no dedicated version column on `books`); precision relies on timestamptz round-trip. Tested green, but a dedicated monotonic version column would be sturdier (future).
 
 ### Drift / near-misses
 - 2026-07-21 — nearly mis-filed Finding #2 as a misroute; the runtime trace showed `book_create` DID run first (correct). Lesson: read the full agent-runtime step trace, not just the pending confirm chip.
