@@ -33,6 +33,7 @@ from loreweave_llm import (
     ToolCallEvent,
     UsageEvent,
     infer_reasoning_control,
+    no_thinking_fields,
     reasoning_fields,
     resolve_reasoning,
 )
@@ -1689,10 +1690,16 @@ async def _stream_with_tools(
             _apply_reasoning_kwargs(request_kwargs, gen_params)
             if _suppress_reasoning_next_pass:
                 # D-REASONING-LOOP — the previous pass looped in the reasoning
-                # channel; run THIS steer-retry with reasoning OFF so it can't
-                # immediately re-enter the same deliberation instead of acting.
-                request_kwargs["reasoning_effort"] = "none"
-                request_kwargs.pop("chat_template_kwargs", None)
+                # channel; run THIS steer-retry with thinking DISABLED via the
+                # STANDARDIZED no-thinking fields (loreweave_llm.no_thinking_fields:
+                # reasoning_effort="none" + chat_template_kwargs.{thinking,
+                # enable_thinking:false}). The chat_template_kwargs is what actually
+                # suppresses the <think> block on local Qwen3/Gemma (lm_studio/vLLM);
+                # reasoning_effort ALONE is ignored (and on Gemma-4 even ENABLES it).
+                # (This previously hand-rolled reasoning_effort="none" and POPPED
+                # chat_template_kwargs, which stripped the working disable — so the
+                # steered retry kept reasoning and re-looped.)
+                request_kwargs.update(no_thinking_fields())
                 _suppress_reasoning_next_pass = False
             request = StreamRequest(**request_kwargs)
 

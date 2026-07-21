@@ -2001,8 +2001,15 @@ class TestInLoopCompactionWiring:
 
         # Exactly two passes: the looping pass was aborted, the steered retry ran.
         assert passes["n"] == 2, "loop must abort pass 0 and drive exactly one retry"
-        # The retry ran with reasoning FORCED OFF (can't re-enter the deliberation).
+        # The retry ran with thinking FORCED OFF via the STANDARDIZED no-thinking
+        # fields. chat_template_kwargs.enable_thinking=False is what actually
+        # suppresses <think> on local Qwen3/Gemma — reasoning_effort alone is ignored
+        # (and on Gemma-4 even ENABLES it). Guards the popped-chat_template_kwargs bug.
         assert getattr(requests[1], "reasoning_effort", None) == "none"
+        _ctk = getattr(requests[1], "chat_template_kwargs", None) or {}
+        assert _ctk.get("enable_thinking") is False, (
+            f"steer-retry must disable thinking via chat_template_kwargs, got {_ctk}"
+        )
         # A steer directive was injected into the retry's messages.
         assert any(
             "[SYSTEM DIRECTIVE]" in (m.get("content") or "")
