@@ -99,6 +99,7 @@ export function ManuscriptNavigator({ bookId, token, selectedId, onSelect, onNew
     source, rows, total, counts, error, partsMode, parts = [], trashedActs = [],
     // P1.2 — mode-by-content + [Parts|Outline] toggle (defaults tolerate older/partial mocks).
     showToggle = false, lens = 'flat' as const, selectLens = (_l: 'parts' | 'outline') => {},
+    partsUnavailable = false, // ML1 — a composition outage: surface it, don't silently flatten
     toggleExpand, loadMore, collapseAll, reload,
     createAct, renameAct, trashAct, moveChapterToAct, moveAct, restoreAct,
   } = useManuscriptTree(bookId, token);
@@ -325,6 +326,16 @@ export function ManuscriptNavigator({ bookId, token, selectedId, onSelect, onNew
       </div>
 
       {error && !jump.active && <div className="px-3 py-1.5 text-[11px] text-amber-600">{error}</div>}
+      {/* ML1 — a composition outage: /structure returned sources.parts='unavailable', so this book's
+          parts couldn't be loaded. Surface it (the book isn't partless — we just can't reach them) rather
+          than silently flattening the rail. */}
+      {partsUnavailable && !jump.active && (
+        <div className="px-3 py-1.5 text-[11px] text-amber-600" data-testid="manuscript-parts-unavailable">
+          {t('manuscript.partsUnavailable', {
+            defaultValue: 'Parts are temporarily unavailable — showing chapters flat.',
+          })}
+        </div>
+      )}
 
       <div ref={parentRef} data-testid="manuscript-scroll" className="min-h-0 flex-1 overflow-y-auto">
         {/* S-02c — inline "new act" input at the top of the list (replaces window.prompt) */}

@@ -1092,7 +1092,8 @@
     "trashFailed": "Không thể đưa phần này vào thùng rác",
     "restoreFailed": "Không thể khôi phục phần này",
     "moveFailed": "Không thể di chuyển chương đến phần đó",
-    "reorderFailed": "Không thể sắp xếp lại"
+    "reorderFailed": "Không thể sắp xếp lại",
+    "partsUnavailable": "Các phần tạm thời không khả dụng — đang hiển thị các chương theo dạng danh sách phẳng."
   },
   "intro": {
     "title": "Chào mừng đến Xưởng Sáng Tác",

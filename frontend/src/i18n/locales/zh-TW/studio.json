@@ -1092,7 +1092,8 @@
     "trashFailed": "無法將章節移至垃圾桶",
     "restoreFailed": "無法還原章節",
     "moveFailed": "無法將章節移動至該章節",
-    "reorderFailed": "無法重新排序"
+    "reorderFailed": "無法重新排序",
+    "partsUnavailable": "章節暫時無法載入 — 正在以平鋪模式顯示章節。"
   },
   "intro": {
     "title": "歡迎使用寫作工作室",

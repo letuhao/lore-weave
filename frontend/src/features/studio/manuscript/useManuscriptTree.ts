@@ -18,6 +18,27 @@ const PAGE = 100;
 // authored, typically hundreds of chapters). Beyond this we keep the flat paged tree.
 const PARTS_MAX_PAGES = 60; // 60 × 100 = 6000 chapters
 
+// ML2 (audit) — the [Parts|Outline] lens is a PER-DEVICE UI pref (localStorage, like sidebar/panel widths
+// per CLAUDE.md "UI state that is per-device"), keyed by book so the pick survives a RELOAD (it was
+// in-memory useState before → reset on every reload). Fail-soft: private-mode / quota errors just mean the
+// pick doesn't persist, never a crash.
+const lensKey = (bookId: string) => `lw:manuscript-lens:${bookId}`;
+function readStoredLens(bookId: string): 'parts' | 'outline' | null {
+  try {
+    const v = localStorage.getItem(lensKey(bookId));
+    return v === 'parts' || v === 'outline' ? v : null;
+  } catch {
+    return null;
+  }
+}
+function writeStoredLens(bookId: string, lens: 'parts' | 'outline'): void {
+  try {
+    localStorage.setItem(lensKey(bookId), lens);
+  } catch {
+    /* private mode / quota — the pick just won't persist */
+  }
+}
+
 /** book-service chapter → a flat chapter node (no children). */
 function chapterToNode(c: Chapter): ManuscriptNode {
   return {
@@ -95,8 +116,13 @@ export function useManuscriptTree(bookId: string, token: string | null) {
   const [outlineEmptyFallback, setOutlineEmptyFallback] = useState(false);
   const hasOutline = !work.isLoading && projectId != null && !outlineEmptyFallback;
 
-  // The [Parts | Outline] toggle (only meaningful when a book has both). Reset per book.
-  const [userLens, setUserLens] = useState<'parts' | 'outline' | null>(null);
+  // The [Parts | Outline] toggle (only meaningful when a book has both). ML2: PER-DEVICE persisted so the
+  // pick survives a reload; a book-switch loads THAT book's stored pick (below), not a blanket reset.
+  const [userLens, setUserLensState] = useState<'parts' | 'outline' | null>(() => readStoredLens(bookId));
+  const selectLens = useCallback((l: 'parts' | 'outline') => {
+    setUserLensState(l);
+    writeStoredLens(bookId, l);
+  }, [bookId]);
   const kinds =
     work.isLoading || structure.isLoading || hasParts === null ? null : { parts: hasParts, outline: hasOutline };
   const lens: ManuscriptLens = chooseManuscriptLens(kinds, userLens);
@@ -106,7 +132,7 @@ export function useManuscriptTree(bookId: string, token: string | null) {
   // resolves to 'chapters' (→ loads + groups its parts) instead of 'outline' (which skipped them).
   const source: ManuscriptSource = lens === 'pending' ? 'pending' : lens === 'outline' ? 'outline' : 'chapters';
   useEffect(() => setOutlineEmptyFallback(false), [bookId, projectId]);
-  useEffect(() => setUserLens(null), [bookId]);
+  useEffect(() => setUserLensState(readStoredLens(bookId)), [bookId]);
 
   const [tree, setTree] = useState<TreeState>(emptyTree);
   const [total, setTotal] = useState<number | null>(null);
@@ -339,8 +365,13 @@ export function useManuscriptTree(bookId: string, token: string | null) {
 
   const rows = useMemo(() => flatten(tree), [tree]);
 
+  // ML1 (audit) — surface a composition outage instead of silently flattening. /structure returns
+  // sources.parts='unavailable' when the parts fetch failed, so a book WITH parts reads as partless; the
+  // rail shows a small "parts unavailable" note rather than pretending the book has none.
+  const partsUnavailable =
+    !structure.isLoading && !!structure.data && structure.data.sources?.parts === 'unavailable';
   return {
-    source, lens, showToggle, selectLens: setUserLens,
+    source, lens, showToggle, selectLens, partsUnavailable,
     rows, total, counts, error, partsMode, parts, trashedActs,
     toggleExpand, loadMore, collapseAll, reload: resetAndLoad,
     createAct, renameAct, trashAct, moveChapterToAct, moveAct, restoreAct,

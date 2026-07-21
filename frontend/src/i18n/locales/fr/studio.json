@@ -1092,7 +1092,8 @@
     "trashFailed": "Impossible de mettre la partie à la corbeille",
     "restoreFailed": "Impossible de restaurer la partie",
     "moveFailed": "Impossible de déplacer le chapitre vers cette partie",
-    "reorderFailed": "Impossible de réorganiser"
+    "reorderFailed": "Impossible de réorganiser",
+    "partsUnavailable": "Les parties sont temporairement indisponibles — affichage des chapitres en liste simple."
   },
   "intro": {
     "title": "Bienvenue sur Writing Studio",

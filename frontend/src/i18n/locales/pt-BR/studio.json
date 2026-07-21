@@ -1092,7 +1092,8 @@
     "trashFailed": "Não foi possível excluir a parte",
     "restoreFailed": "Não foi possível restaurar a parte",
     "moveFailed": "Não foi possível mover o capítulo para esta parte",
-    "reorderFailed": "Não foi possível reordenar"
+    "reorderFailed": "Não foi possível reordenar",
+    "partsUnavailable": "As partes estão temporariamente indisponíveis — exibindo capítulos de forma linear."
   },
   "intro": {
     "title": "Bem-vindo ao Writing Studio",

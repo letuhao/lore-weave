@@ -1092,7 +1092,8 @@
     "trashFailed": "Could not trash the part",
     "restoreFailed": "Could not restore the part",
     "moveFailed": "Could not move the chapter to that part",
-    "reorderFailed": "Could not reorder"
+    "reorderFailed": "Could not reorder",
+    "partsUnavailable": "Parts are temporarily unavailable — showing chapters flat."
   },
   "intro": {
     "title": "Welcome to Writing Studio",

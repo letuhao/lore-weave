@@ -1092,7 +1092,8 @@
     "trashFailed": "无法删除章节",
     "restoreFailed": "无法恢复章节",
     "moveFailed": "无法将章节移动到该部分",
-    "reorderFailed": "无法重新排序"
+    "reorderFailed": "无法重新排序",
+    "partsUnavailable": "章节暂时无法查看 — 正在以平铺模式显示章节。"
   },
   "intro": {
     "title": "欢迎来到写作工作室",

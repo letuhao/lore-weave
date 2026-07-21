@@ -1092,7 +1092,8 @@
     "trashFailed": "Bölüm çöp kutusuna atılamadı",
     "restoreFailed": "Bölüm geri yüklenemedi",
     "moveFailed": "Bölüm o kısma taşınamadı",
-    "reorderFailed": "Sıralama yapılamadı"
+    "reorderFailed": "Sıralama yapılamadı",
+    "partsUnavailable": "Bölümler geçici olarak kullanılamıyor — bölümler düz liste olarak gösteriliyor."
   },
   "intro": {
     "title": "Writing Studio'ya Hoş Geldiniz",

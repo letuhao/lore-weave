@@ -1092,7 +1092,8 @@
     "trashFailed": "Abschnitt konnte nicht in den Papierkorb verschoben werden",
     "restoreFailed": "Abschnitt konnte nicht wiederhergestellt werden",
     "moveFailed": "Kapitel konnte nicht in diesen Abschnitt verschoben werden",
-    "reorderFailed": "Reihenfolge konnte nicht geändert werden"
+    "reorderFailed": "Reihenfolge konnte nicht geändert werden",
+    "partsUnavailable": "Teile sind vorübergehend nicht verfügbar – Kapitel werden in einer Liste angezeigt."
   },
   "intro": {
     "title": "Willkommen im Writing Studio",

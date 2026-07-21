@@ -1092,7 +1092,8 @@
     "trashFailed": "パートをゴミ箱に移動できませんでした",
     "restoreFailed": "パートを復元できませんでした",
     "moveFailed": "章をそのパートに移動できませんでした",
-    "reorderFailed": "並べ替えに失敗しました"
+    "reorderFailed": "並べ替えに失敗しました",
+    "partsUnavailable": "現在、パートは一時的に利用できません。チャプターを一覧表示しています。"
   },
   "intro": {
     "title": "執筆スタジオへようこそ",

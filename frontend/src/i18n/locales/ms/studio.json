@@ -1092,7 +1092,8 @@
     "trashFailed": "Tidak dapat membuang bahagian tersebut ke tong sampah",
     "restoreFailed": "Tidak dapat memulihkan bahagian tersebut",
     "moveFailed": "Tidak dapat memindahkan bab ke bahagian tersebut",
-    "reorderFailed": "Tidak dapat menyusun semula"
+    "reorderFailed": "Tidak dapat menyusun semula",
+    "partsUnavailable": "Bahagian tidak tersedia buat sementara waktu — memaparkan bab secara mendatar."
   },
   "intro": {
     "title": "Selamat Datang ke Writing Studio",
