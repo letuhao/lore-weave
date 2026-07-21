@@ -1,0 +1,74 @@
+# Spec — Eager tool-index discovery mode (kill the loop for weak LLMs)
+
+**Status:** DESIGN (approved direction 2026-07-21). Feature + A/B, gated by a user/session setting.
+**Origin:** dogfood 2026-07-21. The auto-gate `book_update_details` is correct + advertised, yet
+weak local models (Gemma-4 26B, Nemotron-3 Nano, even Qwen3.6 35B) never reach it in live chat —
+they call `tool_list(book)` then stall, never `tool_load`+call. The **out-of-loop benchmark**
+([scripts/eval/tool_liveness/tool_selection_benchmark.py](../../scripts/eval/tool_liveness/tool_selection_benchmark.py))
+proves the SAME models route correctly (Qwen3.6 6/6, Gemma 5/6) when handed the whole catalog at
+once. And the context-preflight metric proved input is LEAN (~6.5K/pass, 3% window) — so it is NOT
+bloat. **The lazy discovery LOOP itself is what weak models can't run.** Built-in pipelines don't
+use `tool_list` (they name their tools) and work — same reason.
+
+## The feature
+
+A discovery MODE, per user/session setting:
+- **`lazy` (today's default):** `ALWAYS_ON_CORE` advertises `tool_list`/`tool_load`; the model
+  searches the long tail on demand. Scales to thousands of tools; needs a capable model.
+- **`eager_index` (new):** **hide `tool_list`** (and `find_tools`); inject a COMPACT TOOL INDEX
+  (every discoverable tool as `name: one-line-description`, ~30-40 tok each) into the system
+  context so the model sees the whole menu at turn start and goes STRAIGHT to the tool. No search
+  loop. (`tool_load` MAY stay for the exact schema, OR auto-resolve — see options below.) Best for
+  weak models + bounded tool counts.
+
+## Settings boundary (SET-1..8)
+
+Two users want different values ⇒ **user setting** (not env). Name: `chat.tool_discovery_mode`,
+enum-closed-set `{lazy, eager_index}`, default `lazy`. Resolution cascade System→User→Session
+(session overrides). Expose effective value + source tier (Session Settings panel, next to
+Reasoning effort). Server-side (not localStorage). One home; consumers inherit.
+
+## Implementation hooks (located)
+
+- **Setting storage/resolution:** mirror `reasoning_effort` — it flows session→gen_params in
+  `stream_service.py` (`_apply_reasoning_kwargs`). Add `tool_discovery_mode` the same way (session
+  settings → the advertise path). FE toggle in `frontend/src/features/chat/components/session-settings/`.
+- **Hide tool_list + inject index:** [tool_discovery.py](../../services/chat-service/app/services/tool_discovery.py)
+  - `ALWAYS_ON_CORE_NAMES` (~:260) — in `eager_index`, DROP `TOOL_LIST_NAME`/`TOOL_LOAD_NAME` (keep
+    `tool_load` only if using option B below) + keep ui_*/propose_record_edit/confirm_action/web_search.
+  - Build the index from the federated catalog (`sweep._list_tools` equivalent already used by the
+    benchmark; chat-service reads the same ai-gateway catalog). Format = the benchmark's
+    `_catalog_text` (`name: desc[:160]`). Filter to `visibility != legacy`.
+  - Inject the index as a system block in the request assembly (`stream_service.py` around the
+    system-prompt build / the `context_breakdown` site ~:4563 — add a `tool_index` category so its
+    token cost is measured; ~10K for ~288 tools, well within the window per the preflight metric).
+- **How the model actually CALLS the tool (pick ONE, A/B if unsure):**
+  - **Option A — index + full schemas advertised:** advertise ALL tool schemas. Simplest for the
+    model, but ~288 full schemas is large (100K+ tok) → only viable for a small tool set / a
+    hot-scoped surface. Reject for the universal surface.
+  - **Option B — index + keep `tool_load` (RECOMMENDED):** the model sees the index, so it goes
+    directly `tool_load(book_update_details)` → call (ONE load, no search). Small token cost,
+    no loop. This is the minimal, safe change.
+  - **Option C — index + auto-resolve:** the model emits a tool call by name; chat-service
+    auto-loads the schema + executes transparently (no `tool_load` step). Best UX for the weakest
+    models; more plumbing (a name→schema resolve + validate at the call seam).
+
+## A/B evaluation
+
+Reuse the benchmark harness pattern but LIVE: same request across `lazy` vs `eager_index` × the
+model set, measure (1) did it call `book_update_details` → diff card, (2) turns/passes to get
+there, (3) loop incidence. The out-of-loop benchmark is the ceiling; this measures how close each
+mode gets in the real loop. Emit to `docs/eval/tool-liveness/discovery-mode-ab/`.
+
+## Why this likely fixes M0d's live diff card
+
+The benchmark = eager presentation = models route correctly. `eager_index` brings that into the
+live chat. Expected: on `eager_index`, "update the description" → the model directly
+`tool_load`s + calls `book_update_details` → the server-built diff card renders (M0c path, already
+proven). That is the pasted live re-smoke M0d needs.
+
+## Guardrails already in place (don't regress)
+
+- Context-window gate + per-turn input metric (`2d1b4197c`) — the index adds ~10K; the gate will
+  catch it if a small-window model can't fit index+history. Watch the `pct_used` metric.
+- The reasoning-loop breaker (`no_thinking_fields`) + `blank_tool_args` breakers stay as the net.
