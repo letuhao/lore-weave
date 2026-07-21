@@ -4,6 +4,33 @@
 **Branch:** feat/frontend-tools-mcp-migration
 **Origin:** live co-writer dogfood 2026-07-21 (book *The Tidewright*, chat 019f82b3) — Finding #3 (HIGH reasoning loop from a two-tools-one-job overlap).
 
+## 🔴 ROOT-CAUSE LEAD (2026-07-21) — CHAT-ONLY context poisoning (bigger than the diff card)
+
+**User hypothesis, confirmed by our data:** loop / "model gets dumb" bugs appear ONLY in
+chat sessions, NEVER in one-shot/pipeline (extraction, KG). The SAME models that route
+perfectly in the benchmark (clean one-shot: Qwen3.6 6/6, Gemma 5/6) FAIL in chat (never call
+the tool, loop). Difference = the chat session's ASSEMBLED INPUT.
+
+**Found the mechanism:** provider-registry's **JOBS path** rejects context-overflow
+(`jobs_handler.go` preflight), but the **STREAM path (chat)** SKIPPED it — the comment even
+says so ("chat omits max_tokens, server decides"). So a bloated chat prompt (every tool schema
++ grounding + re-sent history over a multi-pass tool loop; one live trace = **245K input
+tokens** for a one-line request, while the UI chip showed only 7K) OVERFLOWS the model window
+and llama.cpp/LM Studio **silently truncates** it → the model reasons over a clipped/poisoned
+prompt and degrades. Pipelines are gated → never poisoned. **Exact match to the signature.**
+
+**Fix shipped `2d1b4197c`:** default-on context-window gate + per-turn input-size METRIC in
+`preflightStream` (provider-registry). It rejects `input+safety > context_length` with
+`LLM_CONTEXT_OVERFLOW`, and logs `chat context preflight {input_tokens, context_length,
+pct_used, headroom}` EVERY turn (the monitoring that was missing).
+
+**NEXT (measure, then reduce bloat):** deploy + read the `chat context preflight` log on a real
+turn → see the true per-pass input size. If it's a large fraction of the window even sub-overflow,
+the deeper fix is REDUCING the per-pass bloat: (a) stop re-sending ALL tool schemas every pass
+(lazy/hot-set only), (b) cap grounding injection, (c) the multi-pass loop re-sends the full
+context each pass — bound it. This is likely the true root cause of the whole "chat agent is
+dumber than the model" class. Investigate with the new metric as the guide.
+
 ## THE COMMITMENT (re-read this first after every compaction)
 
 Deliver the FULL auto-gate: the agent calls only the natural domain write; the SERVER builds the old→new diff card and gates it through the existing `GateOrConfirm` seam. Convert **all 5** `propose_record_edit` domains, uniform MCP-tool gating (REST stays a direct write), then **delete `propose_record_edit`**. Done = every slice below carries a **pasted evidence string** (test output or live-smoke), not a claim.
