@@ -13,6 +13,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -130,86 +131,76 @@ type bookUpdateMetaOut struct {
 	Updated []string `json:"updated_fields"`
 }
 
-func (s *Server) toolBookUpdateMeta(ctx context.Context, _ *mcp.CallToolRequest, in bookUpdateMetaIn) (*mcp.CallToolResult, bookUpdateMetaOut, error) {
+// toolBookUpdateMeta is a Tier-W PROPOSE (auto-gate spec, M0): it NEVER writes.
+// It reads the current values, builds the server-side old→new diff, mints a
+// confirm token carrying the new values + base version, and returns a DIFF CARD.
+// The write happens only when the human confirms (POST /v1/book/actions/confirm →
+// effectUpdateMeta, OCC-guarded). The agent supplies only the new field values it
+// already has — no base_version, no read-first, no propose_record_edit (I1).
+func (s *Server) toolBookUpdateMeta(ctx context.Context, _ *mcp.CallToolRequest, in bookUpdateMetaIn) (*mcp.CallToolResult, confirmCardOut, error) {
 	userID, ok := mcpUserID(ctx)
 	if !ok {
-		return nil, bookUpdateMetaOut{}, errMissingIdentity
+		return nil, confirmCardOut{}, errMissingIdentity
 	}
 	bookID, err := uuid.Parse(in.BookID)
 	if err != nil {
-		return nil, bookUpdateMetaOut{}, errors.New("book_id must be a UUID")
+		return nil, confirmCardOut{}, errors.New("book_id must be a UUID")
 	}
 	if _, err := s.mcpRequireGrant(ctx, bookID, userID, GrantEdit); err != nil {
-		return nil, bookUpdateMetaOut{}, mcpOwnershipError(err)
+		return nil, confirmCardOut{}, mcpOwnershipError(err)
 	}
-	// Capture prior values for the undo_hint (verified reverse = same tool, prior
-	// values). Only fields the caller is changing are snapshotted.
 	var lifecycle string
-	prior := map[string]any{}
+	var updatedAt time.Time
 	var pTitle, pDesc, pLang, pSummary *string
 	var pTags []string
-	if err := s.pool.QueryRow(ctx, `SELECT lifecycle_state,title,description,original_language,summary,genre_tags FROM books WHERE id=$1`, bookID).
-		Scan(&lifecycle, &pTitle, &pDesc, &pLang, &pSummary, &pTags); err != nil {
+	if err := s.pool.QueryRow(ctx, `SELECT lifecycle_state,updated_at,title,description,original_language,summary,genre_tags FROM books WHERE id=$1`, bookID).
+		Scan(&lifecycle, &updatedAt, &pTitle, &pDesc, &pLang, &pSummary, &pTags); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			return nil, bookUpdateMetaOut{}, errBookNotAccessible
+			return nil, confirmCardOut{}, errBookNotAccessible
 		}
-		return nil, bookUpdateMetaOut{}, errors.New("failed to load book")
+		return nil, confirmCardOut{}, errors.New("failed to load book")
 	}
 	if lifecycle != "active" {
-		return nil, bookUpdateMetaOut{}, errors.New("book is not in an editable state")
+		return nil, confirmCardOut{}, errors.New("book is not in an editable state")
 	}
 
-	set := []string{"updated_at=now()"}
-	args := []any{bookID}
-	idx := 2
-	updated := []string{}
+	m := &metaEdit{BaseVersion: updatedAt.UTC().Format(time.RFC3339Nano)}
+	changes := []recordEditChange{}
 	if in.Title != nil {
-		set = append(set, fmt.Sprintf("title=$%d", idx))
-		args = append(args, *in.Title)
-		idx++
-		updated = append(updated, "title")
-		prior["title"] = derefStr(pTitle)
+		m.Title = in.Title
+		changes = append(changes, recordEditChange{FieldLabel: "Title", OldValue: derefS(pTitle), NewValue: *in.Title, Target: "title"})
 	}
 	if in.Description != nil {
-		set = append(set, fmt.Sprintf("description=$%d", idx))
-		args = append(args, *in.Description)
-		idx++
-		updated = append(updated, "description")
-		prior["description"] = derefStr(pDesc)
+		m.Description = in.Description
+		changes = append(changes, recordEditChange{FieldLabel: "Description", OldValue: derefS(pDesc), NewValue: *in.Description, Target: "description"})
 	}
 	if in.OriginalLanguage != nil {
-		set = append(set, fmt.Sprintf("original_language=$%d", idx))
-		args = append(args, *in.OriginalLanguage)
-		idx++
-		updated = append(updated, "original_language")
-		prior["original_language"] = derefStr(pLang)
+		m.OriginalLanguage = in.OriginalLanguage
+		changes = append(changes, recordEditChange{FieldLabel: "Original language", OldValue: derefS(pLang), NewValue: *in.OriginalLanguage, Target: "original_language"})
 	}
 	if in.Summary != nil {
-		set = append(set, fmt.Sprintf("summary=$%d", idx))
-		args = append(args, *in.Summary)
-		idx++
-		updated = append(updated, "summary")
-		prior["summary"] = derefStr(pSummary)
+		m.Summary = in.Summary
+		changes = append(changes, recordEditChange{FieldLabel: "Summary", OldValue: derefS(pSummary), NewValue: *in.Summary, Target: "summary"})
 	}
 	if in.GenreTags != nil {
-		set = append(set, fmt.Sprintf("genre_tags=$%d", idx))
-		args = append(args, *in.GenreTags)
-		idx++
-		updated = append(updated, "genre_tags")
-		if pTags == nil {
-			pTags = []string{}
-		}
-		prior["genre_tags"] = pTags
+		m.GenreTags = in.GenreTags
+		changes = append(changes, recordEditChange{FieldLabel: "Genre tags", OldValue: strings.Join(pTags, ", "), NewValue: strings.Join(*in.GenreTags, ", "), Target: "genre_tags"})
 	}
-	if len(updated) == 0 {
-		return nil, bookUpdateMetaOut{}, errors.New("no fields to update")
+	if len(changes) == 0 {
+		return nil, confirmCardOut{}, errors.New("no fields to update")
 	}
-	if _, err := s.pool.Exec(ctx, fmt.Sprintf("UPDATE books SET %s WHERE id=$1", strings.Join(set, ", ")), args...); err != nil {
-		return nil, bookUpdateMetaOut{}, errors.New("failed to update book")
+	card, err := s.mintBookMetaCard(userID, bookID, "Update book details", actionPayload{Op: "update_meta", Meta: m}, changes)
+	if err != nil {
+		return nil, confirmCardOut{}, err
 	}
-	prior["book_id"] = bookID.String()
-	res := undoResult("book_update_meta", prior)
-	return res, bookUpdateMetaOut{BookID: bookID.String(), Updated: updated}, nil
+	return nil, card, nil
+}
+
+func derefS(p *string) string {
+	if p == nil {
+		return ""
+	}
+	return *p
 }
 
 func derefStr(p *string) any {

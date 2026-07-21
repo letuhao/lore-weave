@@ -138,12 +138,14 @@ func (s *Server) newMCPServer() *mcp.Server {
 		s.toolBookCreate)
 
 	addTool(srv, "book_update_meta",
-		"Set the book's own METADATA FIELDS — its title, description/blurb/synopsis, summary, "+
-			"original_language, genre_tags. This is the ONLY home for a book's description or summary: "+
-			"to write or change what the book is ABOUT, edit these fields here — NEVER create a chapter "+
-			"for it (a chapter is story prose, not book metadata). Only provided fields change. Reverse: "+
-			"book_update_meta with the prior values.",
-		lwmcp.NewToolMeta(lwmcp.TierA, lwmcp.ScopeBook, nil, []string{
+		"Propose changes to the book's METADATA FIELDS — title, description/blurb/synopsis, "+
+			"summary, original_language, genre_tags. This is the ONLY home for a book's description "+
+			"or summary: to change what the book is ABOUT, edit these fields here — NEVER create a "+
+			"chapter for it (a chapter is story prose, not book metadata). Returns a DIFF CARD the "+
+			"human reviews and applies — it does NOT write immediately. Pass ONLY the new values you "+
+			"want; you do not need to read the book or supply a version first. Only provided fields "+
+			"change.",
+		lwmcp.NewToolMeta(lwmcp.TierW, lwmcp.ScopeBook, nil, []string{
 			"rename book", "edit book", "set genre", "set description", "update description",
 			"set summary", "update summary", "set blurb", "set synopsis", "write the book description"}),
 		s.toolBookUpdateMeta)

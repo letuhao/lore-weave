@@ -21,6 +21,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"strings"
@@ -38,6 +39,7 @@ const (
 	descBookPublish = "book.publish" // chapter publish / unpublish
 	descBookDelete  = "book.delete"  // book/chapter delete (trash) + purge
 	descBookMedia   = "book.media"   // priced: set_cover / media_generate / audio_generate
+	descBookMeta    = "book.meta"    // book metadata edit (title/description/summary/lang/genre) — diff-carded
 )
 
 // actionTokenTTL — the human has time to read the card and confirm.
@@ -47,9 +49,36 @@ const actionTokenTTL = 10 * time.Minute
 // the precise operation so confirm can re-validate + execute without trusting a
 // re-supplied arg. op disambiguates within a descriptor (e.g. publish vs unpublish).
 type actionPayload struct {
-	Op          string `json:"op"`                     // publish|unpublish|delete_book|delete_chapter|purge_book|purge_chapter|set_cover|media_generate|audio_generate
+	Op          string `json:"op"`                     // publish|unpublish|delete_book|delete_chapter|purge_book|purge_chapter|set_cover|media_generate|audio_generate|update_meta
 	ChapterID   string `json:"chapter_id,omitempty"`   // chapter-scoped ops
 	EstimateUSD string `json:"estimate_usd,omitempty"` // priced ops — shown on the card
+	// update_meta (book.meta) — the new field values captured at propose time so the
+	// confirm re-applies WITHOUT trusting a re-supplied arg (same discipline as the
+	// other ops), plus the base version for optimistic concurrency (I7).
+	Meta *metaEdit `json:"meta,omitempty"`
+}
+
+// metaEdit carries a book_update_meta proposal: only the fields the caller is
+// changing are set (nil = unchanged). BaseVersion is books.updated_at at propose
+// time; the confirm UPDATE is guarded on it so a concurrent edit → conflict, not a
+// silent clobber.
+type metaEdit struct {
+	BaseVersion      string    `json:"base_version"`
+	Title            *string   `json:"title,omitempty"`
+	Description      *string   `json:"description,omitempty"`
+	OriginalLanguage *string   `json:"original_language,omitempty"`
+	Summary          *string   `json:"summary,omitempty"`
+	GenreTags        *[]string `json:"genre_tags,omitempty"`
+}
+
+// recordEditChange is one row of the server-built diff card (old→new per field).
+// Mirror of the FE RecordEditChange the diff card already renders. The agent never
+// constructs this — the server builds it from current values + the proposal.
+type recordEditChange struct {
+	FieldLabel string `json:"field_label"`
+	OldValue   string `json:"old_value"`
+	NewValue   string `json:"new_value"`
+	Target     string `json:"target"`
 }
 
 // confirmCardOut is the propose result fed to the LLM and rendered by the FE
@@ -63,6 +92,10 @@ type confirmCardOut struct {
 	Destructive  bool   `json:"destructive"`
 	EstimateUSD  string `json:"estimate_usd,omitempty"`
 	ExpiresAt    string `json:"expires_at"`
+	// Changes — when present, this is a DIFF card (book_update_meta): the FE renders
+	// the old→new rows and confirms via the same book confirm endpoint. Absent for a
+	// plain yes/no confirm (delete/publish/purge).
+	Changes []recordEditChange `json:"changes,omitempty"`
 }
 
 // mintBookActionCard mints a kit confirm token bound to user+resource(book)+
@@ -616,6 +649,8 @@ func (s *Server) executeBookAction(w http.ResponseWriter, r *http.Request, userI
 		s.effectPublish(w, ctx, userID, bookID, p)
 	case descBookDelete:
 		s.effectDelete(w, ctx, bookID, p)
+	case descBookMeta:
+		s.effectUpdateMeta(w, ctx, bookID, p)
 	case descBookMedia:
 		// Op-whitelist symmetry with effectPublish/effectDelete: a media token may
 		// only carry a priced media op. Reject anything else (the confused-deputy
@@ -698,6 +733,88 @@ func (s *Server) effectDelete(w http.ResponseWriter, ctx context.Context, bookID
 	default:
 		writeError(w, http.StatusUnprocessableEntity, "BOOK_ACTION_TOKEN", "op does not match descriptor")
 	}
+}
+
+// effectUpdateMeta applies a confirmed book_update_meta diff (descBookMeta).
+func (s *Server) effectUpdateMeta(w http.ResponseWriter, ctx context.Context, bookID uuid.UUID, p actionPayload) {
+	if p.Op != "update_meta" {
+		writeError(w, http.StatusUnprocessableEntity, "BOOK_ACTION_TOKEN", "op does not match descriptor")
+		return
+	}
+	updated, err := s.applyBookMetaUpdate(ctx, bookID, p.Meta)
+	if err != nil {
+		s.writeActionEffectError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"outcome": "action_done", "op": "update_meta", "book_id": bookID, "updated_fields": updated,
+	})
+}
+
+// applyBookMetaUpdate applies the metadata edit under optimistic concurrency: the
+// UPDATE is guarded on updated_at = base_version AND lifecycle_state='active', so a
+// book edited (or trashed) since the diff was proposed yields 0 rows →
+// errActionBadState (the FE surfaces a conflict → re-read + re-propose, I7). Shared
+// by the confirm route and (future) a tasks-gate resolver.
+func (s *Server) applyBookMetaUpdate(ctx context.Context, bookID uuid.UUID, m *metaEdit) ([]string, error) {
+	if m == nil {
+		return nil, errActionBadState
+	}
+	base, err := time.Parse(time.RFC3339Nano, m.BaseVersion)
+	if err != nil {
+		return nil, errActionBadState
+	}
+	set := []string{"updated_at=now()"}
+	args := []any{bookID, base}
+	idx := 3
+	updated := []string{}
+	addStr := func(col, field string, v *string) {
+		if v == nil {
+			return
+		}
+		set = append(set, fmt.Sprintf("%s=$%d", col, idx))
+		args = append(args, *v)
+		idx++
+		updated = append(updated, field)
+	}
+	addStr("title", "title", m.Title)
+	addStr("description", "description", m.Description)
+	addStr("original_language", "original_language", m.OriginalLanguage)
+	addStr("summary", "summary", m.Summary)
+	if m.GenreTags != nil {
+		set = append(set, fmt.Sprintf("genre_tags=$%d", idx))
+		args = append(args, *m.GenreTags)
+		idx++
+		updated = append(updated, "genre_tags")
+	}
+	if len(updated) == 0 {
+		return nil, errActionBadState
+	}
+	tag, err := s.pool.Exec(ctx, fmt.Sprintf(
+		"UPDATE books SET %s WHERE id=$1 AND updated_at=$2 AND lifecycle_state='active'",
+		strings.Join(set, ", ")), args...)
+	if err != nil {
+		return nil, err
+	}
+	if tag.RowsAffected() == 0 {
+		return nil, errActionBadState // version drifted or no longer active → conflict
+	}
+	return updated, nil
+}
+
+// mintBookMetaCard mints the diff card for a book_update_meta proposal: a confirm
+// token bound to user+book+descBookMeta+payload (carrying the new values), plus the
+// server-built old→new `changes` the FE renders. Reuses the confirm-token spine (I2).
+func (s *Server) mintBookMetaCard(userID, bookID uuid.UUID, title string, p actionPayload, changes []recordEditChange) (confirmCardOut, error) {
+	tok, err := lwmcp.MintConfirmToken(s.cfg.ConfirmTokenSigningSecret, userID, bookID, descBookMeta, p, actionTokenTTL)
+	if err != nil {
+		return confirmCardOut{}, errors.New("confirmation is unavailable")
+	}
+	return confirmCardOut{
+		ConfirmToken: tok, Descriptor: descBookMeta, Title: title, Domain: "book",
+		Destructive: false, Changes: changes,
+		ExpiresAt: time.Now().Add(actionTokenTTL).UTC().Format(time.RFC3339),
+	}, nil
 }
 
 // writeActionEffectError maps a sentinel from an effect to the right status.
