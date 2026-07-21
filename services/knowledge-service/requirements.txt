@@ -31,7 +31,7 @@ langdetect>=1.0.9
 # check (extract_canon_terms: CJK proper-noun extraction, lazy-loaded so
 # its dict cost is paid only when a contradiction term is needed). Same
 # version lore-enrichment pins; pure Python, no native deps.
-jieba>=0.42
+jieba>=0.42.1
 # M-recall (2026-07-07) — pyahocorasick for CJK/VI-aware entity-anchor matching.
 # The intent classifier can't segment scriptio-continua (Chinese has no spaces),
 # so `select_l2_facts` anchored on classifier tokens returns 0 facts for CJK queries
