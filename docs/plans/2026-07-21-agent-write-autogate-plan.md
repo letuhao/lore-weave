@@ -64,7 +64,25 @@ tool is not selected. Two compounding reasons:
   It did — yet didn't reach the tool. (ai-gateway was re-federated after the tier A→W change;
   verify the tool actually appears in `tool_list(book)` now.)
 
-### NEXT TASK (do NOT rush under low context — touches advertisement-gating files): rename `book_update_meta` → `book_update_details`
+### ✅ RENAME DONE + DEPLOYED (`af5126951`) — now a MODEL-CAPABILITY question (user driving model tests)
+
+`book_update_meta` → **`book_update_details`** shipped: book-service registration + synonyms
++ the two disclaimers; **stale tier fixed** (`write_auto`→`write_confirm` in tool-policy.ts,
+since it now confirm-gates); tool-liveness manifest ×3; chat-service frontend_tools + book_skill;
+FE comments; the through-/mcp test (`Name:"book_update_details"` PASSES). All images rebuilt +
+restarted + **ai-gateway re-federated**.
+
+**Live state (2026-07-21):** with the natural name + the save_draft disclaimer, the local
+**Gemma-4 26B** stops mis-picking save_draft (clean `tool_list→book_list→book_get`) but STILL
+doesn't reach `book_update_details` — across ~7 attempts it never appears in the steps and there is
+no `tool_load`. The mechanism is proven (through-/mcp); this is now purely **local-model capability /
+discovery** on a weak model. **User is testing other models** (Qwen3 35B / gpt-4o / stronger) to find
+one that reliably selects it. Open sub-question if it persists on a strong model: confirm
+`tool_list(book)` actually enumerates `book_update_details` (chat-service discovery catalog) — the
+book-service tools/list DOES register it (through-/mcp proves CallTool works), but verify the
+chat-service discovery surfaces it (a `tool_load` never fired in the traces).
+
+### (superseded) original rename plan — kept for reference
 
 A natural name covering title/description/summary/genre. Careful cross-cutting rename
 (the Go handler func `toolBookUpdateMeta` and the confirm descriptor `book.meta` can STAY —
