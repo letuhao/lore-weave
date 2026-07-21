@@ -636,10 +636,14 @@ class TestToolListLoadDispatch:
 
 class TestGenericFrontendTools:
     def test_generic_tools_in_frontend_name_set(self):
-        for name in ("ui_navigate", "ui_open_book", "ui_open_chapter",
-                     "ui_show_panel", "ui_watch_job", "confirm_action",
-                     "propose_record_edit"):
+        # The chat-service-owned frontend tool set after two migrations: P3.2 moved the
+        # ui_* nav tools to ai-gateway (federated), and auto-gate M5 retired the generic
+        # propose_record_edit. What chat-service still owns as frontend (human-gated) tools:
+        for name in ("confirm_action", "glossary_propose_entity_edit", "glossary_confirm_action"):
             assert name in FRONTEND_TOOL_NAMES
+        # ui_* (P3.2 → ai-gateway) and propose_record_edit (M5, deleted) are NOT here:
+        for gone in ("ui_navigate", "ui_open_book", "ui_show_panel", "propose_record_edit"):
+            assert gone not in FRONTEND_TOOL_NAMES
 
     def test_universal_core_advertises_generic_frontend_tools(self):
         """The always-on core (advertised every universal /chat pass) carries the

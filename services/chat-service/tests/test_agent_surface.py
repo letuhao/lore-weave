@@ -70,7 +70,7 @@ class TestServerKeyForTool:
             "ui_show_panel",
             "confirm_action",
             "propose_edit",
-            "propose_record_edit",
+            # propose_record_edit removed (auto-gate M5) — the generic record diff card is retired.
             # frontend check has PRECEDENCE over the glossary_ prefix — these
             # are browser-executed despite the domain prefix.
             "glossary_confirm_action",

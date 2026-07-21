@@ -272,7 +272,8 @@ ALWAYS_ON_CORE_NAMES: tuple[str, ...] = (
     "ui_open_book",
     "ui_show_panel",
     "ui_watch_job",
-    "propose_record_edit",
+    # propose_record_edit REMOVED (auto-gate M5) — the generic record diff card is retired;
+    # each domain edits via its own natural direct-write tool (audit-confirmed vestigial).
     "confirm_action",
     # Track D CD5 — `web_search` is fundamental: grounding an answer in the open web is a
     # base capability, not a glossary errand, so it must not cost a find_tools round-trip.
@@ -740,7 +741,7 @@ def _domain_of(name: str) -> str:
 # which DOMAIN the conversation is working in, so they never make a domain sticky.
 _STICKY_DOMAIN_IGNORE: frozenset[str] = frozenset({
     FIND_TOOLS_NAME, TOOL_LIST_NAME, TOOL_LOAD_NAME,
-    "propose_record_edit", "confirm_action", "web_search",
+    "confirm_action", "web_search",
     "ui_navigate", "ui_open_book", "ui_show_panel", "ui_watch_job",
     "workflow_list", "workflow_load", "load_skill", "run_subagent",
 })

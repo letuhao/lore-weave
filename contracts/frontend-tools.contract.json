@@ -95,37 +95,6 @@
       "text"
     ]
   },
-  "propose_record_edit": {
-    "args": {
-      "base_version": {
-        "type": "string"
-      },
-      "changes": {
-        "type": "array"
-      },
-      "domain": {
-        "enum": [
-          "glossary",
-          "composition",
-          "translation",
-          "settings"
-        ],
-        "type": "string"
-      },
-      "rationale": {
-        "type": "string"
-      },
-      "resource_ref": {
-        "type": "object"
-      }
-    },
-    "required": [
-      "base_version",
-      "changes",
-      "domain",
-      "resource_ref"
-    ]
-  },
   "ui_focus_manuscript_unit": {
     "args": {
       "chapter_id": {

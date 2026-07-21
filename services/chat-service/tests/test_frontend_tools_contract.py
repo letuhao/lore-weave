@@ -45,10 +45,11 @@ from app.services.frontend_tools import (
 )
 
 # ── the CHAT-SERVICE-owned frontend-tool set (name → schema) ─────────────────
-# _GENERIC_FRONTEND_TOOLS_BY_NAME holds the generic tools (confirm_action,
-# propose_record_edit, propose_edit); the two glossary tools are advertised via the
-# book_scoped branch of frontend_tool_defs, so add them explicitly. Every
-# FRONTEND_TOOL_NAMES entry MUST resolve to a schema here.
+# _GENERIC_FRONTEND_TOOLS_BY_NAME holds the generic tool(s) (confirm_action; the
+# generic propose_record_edit was retired in auto-gate M5, propose_edit moved to
+# ai-gateway in P2.2); the two glossary tools are advertised via the book_scoped
+# branch of frontend_tool_defs, so add them explicitly. Every FRONTEND_TOOL_NAMES
+# entry MUST resolve to a schema here.
 #
 # Phase 3 (P3.2, 2026-07-20): the ui_* tools are NO LONGER chat-service frontend
 # tools — they moved to ai-gateway as consumer-local directive tools. The shared
@@ -71,7 +72,7 @@ ALL_FRONTEND_TOOLS: dict[str, dict] = {
 CLOSED_SET_ARGS: dict[str, list[str]] = {
     "glossary_propose_entity_edit": ["changes[].target"],
     "confirm_action": ["domain"],
-    "propose_record_edit": ["domain"],
+    # propose_record_edit REMOVED (auto-gate M5) — the generic record diff card is retired.
 }
 
 _CONTRACT_PATH = (

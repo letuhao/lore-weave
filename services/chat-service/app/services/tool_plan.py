@@ -29,7 +29,8 @@ import re
 # primitives a step legitimately needs (confirm a Tier-W card, apply a proposed
 # edit, load a tool's exact schema). Without these a planned write can't complete.
 _EXECUTOR_KEEP_CORE: frozenset[str] = frozenset(
-    {"confirm_action", "propose_record_edit", "propose_edit", "tool_load"}
+    # propose_record_edit removed (auto-gate M5) — the generic record diff card is retired.
+    {"confirm_action", "propose_edit", "tool_load"}
 )
 
 

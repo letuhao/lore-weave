@@ -22,7 +22,6 @@ import { ConfirmCard } from './ConfirmCard';
 import { ConfirmActionCard, descriptorDomain } from './ConfirmActionCard';
 import { TaskConfirmCard } from './TaskConfirmCard';
 import { BatchConfirmCard, type BatchChild } from './BatchConfirmCard';
-import { RecordDiffCard } from './RecordDiffCard';
 import { ToolApprovalCard, isToolApprovalRecord } from './ToolApprovalCard';
 import { TranslationReviewCard, isTranslationProposeCall, summarizeTranslationReview } from './TranslationReviewCard';
 import { SkillProposalCard, skillProposal, type SkillProposal } from './SkillProposalCard';
@@ -247,7 +246,9 @@ export function AssistantMessage({
         //   glossary_propose_entity_edit  → glossary diff card (legacy)
         //   glossary_confirm_action       → glossary confirm card (legacy)
         //   confirm_action               → GENERIC confirm card (C-CONFIRM, incl. batch)
-        //   propose_record_edit          → GENERIC record-diff card (C-PROPOSE)
+        // (propose_record_edit REMOVED in auto-gate M5 — the generic record-diff card is
+        //  retired. book_update_details' server-built diff renders via ConfirmActionCard's
+        //  own changes[] path — descriptor 'book.meta' — NOT the deleted RecordDiffCard.)
         // ui_* nav tools are NOT rendered here — useUiToolExecutor resolves them
         // headlessly (no human gate), so they never reach this surface.
         const FRONTEND_TOOLS = [
@@ -255,7 +256,6 @@ export function AssistantMessage({
           'glossary_propose_entity_edit',
           'glossary_confirm_action',
           'confirm_action',
-          'propose_record_edit',
         ];
         const isPendingFrontend = (tc: ToolCallRecord) =>
           tc.pending === true && FRONTEND_TOOLS.includes(tc.tool);
@@ -376,7 +376,9 @@ export function AssistantMessage({
                 return <ConfirmCard key={key} record={tc} />;
               }
               if (tc.tool === 'confirm_action') return <ConfirmActionCard key={key} record={tc} />;
-              if (tc.tool === 'propose_record_edit') return <RecordDiffCard key={key} record={tc} />;
+              // propose_record_edit dispatch REMOVED (auto-gate M5); its RecordDiffCard renderer
+              // is deleted. book_update_details' server-built diff renders via ConfirmActionCard
+              // (auto-confirm path below: minted confirm_token + changes[], descriptor 'book.meta').
               return <ProposeEditCard key={key} record={tc} />;
             })}
             {/* Auto-rendered confirm cards (model called the propose tool but not the

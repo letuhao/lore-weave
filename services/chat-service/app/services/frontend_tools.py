@@ -50,7 +50,10 @@ FRONTEND_TOOL_NAMES: frozenset[str] = frozenset(
         "glossary_propose_entity_edit",
         "glossary_confirm_action",
         "confirm_action",
-        "propose_record_edit",
+        # propose_record_edit REMOVED (auto-gate M5, 2026-07-21): the generic record
+        # diff card is retired — every domain (glossary/composition/translation/settings)
+        # edits its records via its OWN natural direct-write MCP tool (audit confirmed each
+        # exists; book left in M0b). book_update_details' diff renders via ConfirmActionCard.
         # NOTE (Phase 2, P2.2, 2026-07-20): propose_edit is NO LONGER a frontend tool —
         # it is an ai-gateway consumer-local tool (propose-edit-tool.ts) that returns a
         # GATED proposal directive. chat-service stops intercepting it here (→ routes to
@@ -597,83 +600,16 @@ CONFIRM_ACTION_TOOL: dict = {
 }
 
 
-# ── MCP-fanout C-PROPOSE — generic record diff card ──────────────────────────
-# Generalizes glossary_propose_entity_edit for book/composition record edits.
-# Suspends; on Apply the FE issues the domain's version-checked PATCH
-# (If-Match: base_version → 409/412 on drift, H8).
-PROPOSE_RECORD_EDIT_TOOL: dict = {
-    "type": "function",
-    "function": {
-        "name": "propose_record_edit",
-        "description": (
-            "Propose one or more edits to the fields of an EXISTING record (a chapter's "
-            "title, a composition/glossary/settings record, etc.) — applied together. The "
-            "changes are shown as a diff card with an Apply button and are NOT applied "
-            "automatically. For a BOOK's own metadata (title, description, summary, genre) "
-            "do NOT use this — call `book_update_details`, which builds the diff for you and "
-            "needs no version token. BEFORE calling this, read the record's current values "
-            "and its version token (pass it as `base_version`). After the user decides you "
-            "receive an `outcome`: `applied_saved` (saved), `applied_conflict` (the record "
-            "changed since you read it — re-read and propose afresh), `applied_error` (the "
-            "save failed), or `dismissed`. State the change was made ONLY when the outcome "
-            "is `applied_saved`."
-        ),
-        "parameters": {
-            "type": "object",
-            "properties": {
-                "domain": {
-                    "type": "string",
-                    # `book` removed (auto-gate spec M0): a book's own metadata is edited
-                    # via book_update_details, which server-builds the diff. The remaining
-                    # domains migrate to their own direct-write tools in M1-M4, then this
-                    # tool is deleted (M5).
-                    "enum": ["glossary", "composition", "translation", "settings"],
-                    "description": "Which service owns the record.",
-                },
-                "resource_ref": {
-                    "type": "object",
-                    "description": "Domain-specific ids, e.g. {book_id} or {book_id, chapter_id}.",
-                    "additionalProperties": True,
-                },
-                "base_version": {
-                    "type": "string",
-                    "description": "The record's version token (optimistic concurrency, H8).",
-                },
-                "changes": {
-                    "type": "array",
-                    "description": "One or more field changes to apply together.",
-                    "items": {
-                        "type": "object",
-                        "properties": {
-                            "field_label": {
-                                "type": "string",
-                                "description": "Human-readable field name shown on the diff card.",
-                            },
-                            "old_value": {"type": "string", "description": "The current value."},
-                            "new_value": {"type": "string", "description": "The proposed value."},
-                            "target": {
-                                "type": "string",
-                                "description": "Machine field key the PATCH writes.",
-                            },
-                            "target_ref": {
-                                "type": "string",
-                                "description": "Optional sub-resource id for the field.",
-                            },
-                        },
-                        "required": ["field_label", "old_value", "new_value", "target"],
-                        "additionalProperties": False,
-                    },
-                },
-                "rationale": {
-                    "type": "string",
-                    "description": "Optional one-line explanation shown to the user.",
-                },
-            },
-            "required": ["domain", "resource_ref", "base_version", "changes"],
-            "additionalProperties": False,
-        },
-    },
-}
+# ── MCP-fanout C-PROPOSE — generic record diff card — REMOVED (auto-gate M5) ──
+# `PROPOSE_RECORD_EDIT_TOOL` was the generic fallback diff card for
+# glossary/composition/translation/settings record edits. Retired 2026-07-21: the
+# per-domain audit confirmed every domain edits its records via its OWN natural
+# direct-write MCP tool (composition_outline_node_update · glossary_propose_entity_edit ·
+# translation_update_settings/… · per-service pref tools), in the safety model the
+# project chose to keep (Tier-A auto-write+Undo, or the domain's own Tier-W propose).
+# So the generic tool was vestigial. Its FE renderer `RecordDiffCard.tsx` is deleted too
+# (no other caller); book_update_details' server-built diff renders via ConfirmActionCard's
+# own changes[] path (descriptor `book.meta`, M0c).
 
 
 # Map core frontend-tool names → their schema, so the discovery layer can
@@ -690,7 +626,6 @@ PROPOSE_RECORD_EDIT_TOOL: dict = {
 # ai-gateway-down reference; P4 sources the studio pair from the catalog too.
 _GENERIC_FRONTEND_TOOLS_BY_NAME: dict[str, dict] = {
     "confirm_action": CONFIRM_ACTION_TOOL,
-    "propose_record_edit": PROPOSE_RECORD_EDIT_TOOL,
     # propose_edit removed (Phase 2 P2.2) — now an ai-gateway consumer-local tool; the
     # PROPOSE_EDIT_TOOL const is still advertised via frontend_tool_defs (editor branch).
 }

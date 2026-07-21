@@ -80,7 +80,8 @@ export interface BatchConfirmResult {
  *  Add a domain here once its service grows a confirm-batch route. */
 export const BATCH_CONFIRM_DOMAINS = new Set<string>(['glossary']);
 
-/** One field change in a `propose_record_edit` diff. */
+/** One field change in a server-built diff card (e.g. book_update_details / descriptor
+ *  `book.meta`), rendered old→new by ConfirmActionCard. */
 export interface RecordEditChange {
   field_label?: string;
   old_value?: string;

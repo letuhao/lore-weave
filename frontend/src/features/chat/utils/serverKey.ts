@@ -37,7 +37,6 @@ export const FRONTEND_TOOL_NAMES = new Set([
   'ui_show_panel',
   'ui_watch_job',
   'confirm_action',
-  'propose_record_edit',
   'ui_open_studio_panel',
   'ui_focus_manuscript_unit',
 ]);

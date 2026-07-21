@@ -6,7 +6,13 @@
 
 ## ✅ OUTCOME / CORRECTION (2026-07-21, end of investigation) — READ FIRST
 
-**M0 is DONE and LIVE-PROVEN.** Weak local Gemma-4 26B produces the server-built diff card
+**THE WHOLE AUTO-GATE IS DONE (M0–M5).** M0 shipped the book diff-card facade; M1–M4 audited the
+other four domains and found each already edits via its OWN natural direct-write tool (in the
+safety model the user chose to keep — Tier-A auto-write+Undo, or the domain's own Tier-W propose),
+so `propose_record_edit` was **vestigial**; **M5 deleted it** (tool + FE `RecordDiffCard` + contract),
+live-verified that book edits still work via ConfirmActionCard afterward.
+
+**M0 is LIVE-PROVEN.** Weak local Gemma-4 26B produces the server-built diff card
 on a real turn (`tool_list → book_list → book_get → book_update_details → book.meta diff card`).
 
 **The measurement discipline paid off — every "the model is weak" verdict dissolved into one of
@@ -109,7 +115,7 @@ Deliver the FULL auto-gate: the agent calls only the natural domain write; the S
 | **M2** | glossary | reconcile `glossary_propose_entity_edit` with the shared factory. Evidence: pasted glossary tests + live | ⬜ TODO |
 | **M3** | settings | adopt facade. Evidence: pasted tests | ⬜ TODO |
 | **M4** | translation | adopt facade. Evidence: pasted tests | ⬜ TODO |
-| **M5** | cleanup | delete `propose_record_edit` (tool + FE resolver + `contracts/frontend-tools.contract.json`). Evidence: contract drift-test pasted green | ⬜ TODO |
+| **M5** | cleanup | delete `propose_record_edit` (tool + FE resolver + contract). **Evidence:** chat def+core+planner-keep+sticky-ignore removed; FE dispatch branch removed + orphaned `RecordDiffCard.tsx`+test DELETED (book diff uses ConfirmActionCard, not RecordDiffCard — verified) + `serverKey`/`actionsApi` cleaned; contract regen'd → `propose_record_edit` gone (11 tools), **drift-test 11 passed**; `ConfirmActionCard` 22 passed; **tsc clean**; test_frontend_tools_contract 34 passed; test_agent_surface 8-fail baseline unchanged (no NEW fail); stale pre-P3.2 test #1 corrected. **live smoke:** "change the genre" → book_update_details diff card (Genre: (empty)→gothic maritime fantasy) renders via ConfirmActionCard AFTER the deletion. | ✅ DONE |
 
 ## M0d LIVE DIAGNOSIS (2026-07-21) — three red herrings cleared, real root cause found
 
