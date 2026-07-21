@@ -177,9 +177,28 @@ only the advertised TOOL-NAME string changes). Files:
 - Rebuild book-service + chat-service, **restart ai-gateway to re-federate**, re-smoke.
 - Historical docs/eval `*.json`/`*.md` under `docs/eval/tool-liveness/` are RECORDS — do NOT rewrite.
 
-## PER-DOMAIN AUDIT (fill before starting each of M1–M4)
+## PER-DOMAIN AUDIT (2026-07-21 — COMPLETE)
 
-For each domain: (1) which direct-write MCP tool edits its records? (2) Tier-A auto-commit or already Tier-W? (3) read-current source for `old_value`? (4) does the FE diff card already handle its `target` keys? A domain with no direct-write tool → build one (buildable, not blocked).
+**DECISION (user, 2026-07-21):** keep the two safety models — high-stakes/ambiguous edits use
+propose-then-confirm (book meta, deletes); routine STRUCTURED edits stay Tier-A auto-write + Undo.
+So M1–M4 are NOT a conversion; they are an AUDIT confirming each domain already has a natural
+direct-write tool, so `propose_record_edit` is vestigial → M5 deletes it.
+
+**Finding — every remaining `propose_record_edit` domain already has a natural tool:**
+
+| Domain (enum) | Natural direct-write MCP tool | Tier | Notes |
+|---|---|---|---|
+| **composition** | `composition_outline_node_update` (+ `_create`/`_delete`/`_restore`) | A + Undo | edits title/goal/synopsis/status/story_time/… with `expected_version` OCC |
+| **glossary** | `glossary_propose_entity_edit` | W propose | already the domain's own diff-card tool (the pattern `propose_record_edit` was generalized FROM) |
+| **translation** | `translation_update_settings`, `translation_set_active_version` | A + Undo | server header documents the A-tier + `_meta.undo_hint` model |
+| **settings** | per-service pref tools (`translation_update_settings`; composition reasoning-pref + active-work; auth security-prefs) | A + Undo | "settings" is not one service — each owns its prefs |
+
+⇒ `propose_record_edit` (enum `["glossary","composition","translation","settings"]`, book already
+dropped in M0b) is a **redundant generic fallback**. M1–M4 = confirmed vestigial (above). The real
+remaining work is **M5**: delete the tool + FE resolver + contract entry. **M5 pre-delete checks
+(the verify-before-delete gate):** (a) no FE resolver path uniquely needs it; (b) each domain's
+specific field-edits (e.g. a chapter title) have natural-tool coverage — no orphaned edit; (c) the
+`frontend-tools.contract.json` drift-test stays green after removal.
 
 ## REGISTERS (append as you go — an empty drift log at the end is dishonest)
 
