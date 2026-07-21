@@ -1950,6 +1950,116 @@ class TestInLoopCompactionWiring:
         assert seen == [], "compaction must not run when effective_limit is None"
 
     @pytest.mark.asyncio
+    async def test_reasoning_loop_aborted_steered_and_recovers(self):
+        """D-REASONING-LOOP — the live incident: a pass loops in the REASONING
+        channel (no tool call emitted), invisible to every tool-call breaker. The
+        detector aborts it, injects a steer directive, forces reasoning OFF for
+        the retry, and the retry completes the turn."""
+        import app.services.stream_service as ss
+        from loreweave_llm import ReasoningEvent, TokenEvent, DoneEvent
+
+        passes = {"n": 0}
+        requests = []
+
+        class FakeClient:
+            def __init__(self, **kw):
+                pass
+
+            async def aclose(self):
+                pass
+
+            def stream(self, request):
+                requests.append(request)
+                i = passes["n"]
+                passes["n"] += 1
+
+                async def gen():
+                    if i == 0:
+                        # period-2 oscillation — the exact shape from chat 019f82b3
+                        for _ in range(6):
+                            yield ReasoningEvent(delta="Actually, use book_update_meta.\n")
+                            yield ReasoningEvent(
+                                delta="Wait, use propose_record_edit instead.\n"
+                            )
+                        yield DoneEvent(finish_reason="stop")
+                    else:
+                        yield TokenEvent(delta="Done — updated the description.")
+                        yield DoneEvent(finish_reason="stop")
+
+                return gen()
+
+        frames = []
+        with patch.object(ss, "Client", FakeClient):
+            async for fr in ss._stream_with_tools(
+                model_source="user_model", model_ref=TEST_MODEL_REF, user_id="u",
+                messages=[{"role": "user", "content": "rewrite the description"}],
+                gen_params={"max_tokens": 100, "reasoning_effort": "medium"}, tools=[],
+                knowledge_client=AsyncMock(), session_id="s", project_id=None,
+                effective_limit=None,
+            ):
+                frames.append(fr)
+
+        # Exactly two passes: the looping pass was aborted, the steered retry ran.
+        assert passes["n"] == 2, "loop must abort pass 0 and drive exactly one retry"
+        # The retry ran with reasoning FORCED OFF (can't re-enter the deliberation).
+        assert getattr(requests[1], "reasoning_effort", None) == "none"
+        # A steer directive was injected into the retry's messages.
+        assert any(
+            "[SYSTEM DIRECTIVE]" in (m.get("content") or "")
+            for m in requests[1].messages
+        ), "the steer directive must be injected before the retry"
+        # The turn completed with the retry's content — no hang.
+        assert any(
+            "updated the description" in (fr.get("content") or "") for fr in frames
+        )
+
+    @pytest.mark.asyncio
+    async def test_reasoning_loop_capped_stops_honestly(self):
+        """D-REASONING-LOOP — a model that keeps looping even after being steered
+        must end the turn HONESTLY (a plain message), never hang. After
+        REASONING_LOOP_INTERVENTION_CAP steers, the next loop stops the turn."""
+        import app.services.stream_service as ss
+        from loreweave_llm import ReasoningEvent, DoneEvent
+
+        passes = {"n": 0}
+
+        class FakeClient:
+            def __init__(self, **kw):
+                pass
+
+            async def aclose(self):
+                pass
+
+            def stream(self, request):
+                passes["n"] += 1
+
+                async def gen():
+                    # EVERY pass loops — the model never takes the steer.
+                    for _ in range(6):
+                        yield ReasoningEvent(delta="Maybe tool A is right.\n")
+                        yield ReasoningEvent(delta="Or maybe tool B is right.\n")
+                    yield DoneEvent(finish_reason="stop")
+
+                return gen()
+
+        frames = []
+        with patch.object(ss, "Client", FakeClient):
+            async for fr in ss._stream_with_tools(
+                model_source="user_model", model_ref=TEST_MODEL_REF, user_id="u",
+                messages=[{"role": "user", "content": "do the thing"}],
+                gen_params={"max_tokens": 100}, tools=[],
+                knowledge_client=AsyncMock(), session_id="s", project_id=None,
+                effective_limit=None,
+            ):
+                frames.append(fr)
+
+        # cap = 2 steers → the 3rd loop trips the honest stop (bounded, no hang).
+        assert passes["n"] == ss.REASONING_LOOP_INTERVENTION_CAP + 1
+        assert any(
+            "got stuck deciding" in (fr.get("content") or "") for fr in frames
+        ), "must emit an honest give-up message, never hang"
+
+    @pytest.mark.asyncio
     async def test_blank_intent_find_tools_capped_within_turn(self):
         """D-FINDTOOLS-BLANK-INTENT-LOOP — reproduces the real production
         session (019f4000-43ee-7201-9d45-e2fafc83696d, gemma-4-26b-a4b-qat)

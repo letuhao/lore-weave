@@ -45,6 +45,7 @@ from app.services.canon_capture import CaptureContext, maybe_capture_canon, pers
 from app.services.context_autodetect import resolve_context_pressure
 from app.services.entity_presence import EntityPresence, detect_entity_presence
 from app.services.injection_defense import neutralize_injection
+from app.services.reasoning_loop_detector import ReasoningLoopDetector
 from app.config import settings
 from app.db.suspended_runs import (
     delete_suspended_run,
@@ -533,6 +534,16 @@ REPEAT_READ_CAP = 2
 # reachable by name).
 TOOL_LIST_CATEGORY_CAP = 1   # 1 legit list per category; the 2nd (same category) is the loop
 TOOL_LIST_TOTAL_CAP = 5      # total tool_list calls this turn before it is de-advertised
+
+# ── D-REASONING-LOOP: the streaming reasoning-channel loop breaker ────────────
+# Every breaker above fires in the TOOL-CALL loop, on an EMITTED call. A model
+# that thrashes in the *reasoning stream* WITHOUT emitting a call (live incident:
+# gemma oscillating book_update_meta⇄propose_record_edit 30+ times on a "rewrite
+# the description" ask, zero tool calls, hung until the user hit Stop) trips none
+# of them. ReasoningLoopDetector watches the streamed text itself; on a trip we
+# abort the pass, inject a steer directive, force reasoning off for the retry,
+# and cap the interventions so a persistent loop ends HONESTLY, never a hang.
+REASONING_LOOP_INTERVENTION_CAP = 2
 
 # P-1 step-runner — the per-turn cap on how many times the server re-drives the rail after the
 # model stops. The vision-to-book rail is 11 steps and a few are already done on the assent
@@ -1452,6 +1463,12 @@ async def _stream_with_tools(
         # next turn to re-establish a fresh chain from nudge-free history. Costs one turn's
         # stateful cache reuse on a (rare) driven turn; keeps the ephemeral nudge ephemeral.
         rail_drove_this_turn = False
+        # D-REASONING-LOOP — per-turn steer-intervention counter for a reasoning-channel
+        # thrash (a loop emitting NO tool call, invisible to every tool-call breaker).
+        # `_suppress_reasoning_next_pass` forces the retry pass to reason OFF so it can't
+        # immediately re-enter the same deliberation loop.
+        reasoning_loop_interventions = 0
+        _suppress_reasoning_next_pass = False
         # The rail's own step tools (across all pinned rails) — the "a rail step actually
         # succeeded this turn" gate that keeps the driver SILENT on pure-conversation turns.
         _rail_all_step_tools: set[str] = set()
@@ -1670,6 +1687,13 @@ async def _stream_with_tools(
             stream_job_id = str(uuid4())
             request_kwargs["stream_job_id"] = stream_job_id
             _apply_reasoning_kwargs(request_kwargs, gen_params)
+            if _suppress_reasoning_next_pass:
+                # D-REASONING-LOOP — the previous pass looped in the reasoning
+                # channel; run THIS steer-retry with reasoning OFF so it can't
+                # immediately re-enter the same deliberation instead of acting.
+                request_kwargs["reasoning_effort"] = "none"
+                request_kwargs.pop("chat_template_kwargs", None)
+                _suppress_reasoning_next_pass = False
             request = StreamRequest(**request_kwargs)
 
             tool_frags: dict = {}
@@ -1686,8 +1710,14 @@ async def _stream_with_tools(
             content_hold = ""
             reasoning_hold = ""
             finish_reason: str | None = None
+            # D-REASONING-LOOP — one detector per pass, fed BOTH channels. On a trip
+            # we abort the stream (hoisted iterator so we can aclose deterministically)
+            # and hand off to the steer/cap block after the loop.
+            loop_det = ReasoningLoopDetector()
+            _looped = False
+            _stream_iter = client.stream(request)
             try:
-                async for ev in client.stream(request):
+                async for ev in _stream_iter:
                     if isinstance(ev, TokenEvent):
                         text_parts.append(ev.delta)
                         content_hold += ev.delta
@@ -1695,6 +1725,9 @@ async def _stream_with_tools(
                         if flush:
                             yield {"content": flush, "reasoning_content": "",
                                    "finish_reason": None, "usage": None}
+                        if loop_det.feed(ev.delta):
+                            _looped = True
+                            break
                     elif isinstance(ev, ReasoningEvent):
                         reasoning_parts.append(ev.delta)
                         reasoning_hold += ev.delta
@@ -1702,6 +1735,9 @@ async def _stream_with_tools(
                         if flush:
                             yield {"content": "", "reasoning_content": flush,
                                    "finish_reason": None, "usage": None}
+                        if loop_det.feed(ev.delta):
+                            _looped = True
+                            break
                     elif isinstance(ev, ToolCallEvent):
                         slot = tool_frags.setdefault(
                             ev.index, {"id": None, "name": None, "arguments": ""}
@@ -1748,6 +1784,62 @@ async def _stream_with_tools(
                     tools_supported = False
                     continue
                 raise
+            finally:
+                # D-REASONING-LOOP — deterministically tear down the aborted stream
+                # (we broke out of the async-for; close its generator now rather than
+                # leaving the httpx response dangling until GC).
+                if _looped:
+                    try:
+                        await _stream_iter.aclose()
+                    except Exception:
+                        logger.debug(
+                            "D-REASONING-LOOP: stream aclose after abort failed",
+                            exc_info=True,
+                        )
+            # D-REASONING-LOOP — the pass looped in the reasoning/content channel and
+            # emitted no usable tool call. Flush held text, then steer (capped) or stop
+            # honestly. BEFORE the leaked-call salvage: an aborted loop pass has no
+            # legitimate structured call to recover.
+            if _looped:
+                logger.warning(
+                    "D-REASONING-LOOP: session=%s pass=%d aborted a reasoning-channel "
+                    "loop (%s) model_ref=%s",
+                    session_id, iteration, loop_det.reason, model_ref,
+                )
+                if trace is not None:
+                    trace.add(
+                        "compile", "T6", "tools",
+                        f"reasoning_loop_aborted:{loop_det.reason[:48]}",
+                        is_error=True,
+                    )
+                if content_hold or reasoning_hold:
+                    yield {"content": content_hold, "reasoning_content": reasoning_hold,
+                           "finish_reason": None, "usage": None}
+                    content_hold = reasoning_hold = ""
+                if reasoning_loop_interventions < REASONING_LOOP_INTERVENTION_CAP:
+                    reasoning_loop_interventions += 1
+                    working.append({
+                        "role": "user",
+                        "content": (
+                            "[SYSTEM DIRECTIVE] You began repeating yourself without making "
+                            "progress and the deliberation was cut off. STOP weighing "
+                            "alternatives. Choose the single most appropriate tool for the "
+                            "user's request and CALL it NOW with the arguments you already "
+                            "have — do not explain the choice first. If no tool fits, answer "
+                            "the user directly in one short message."
+                        ),
+                    })
+                    # Keep the ephemeral directive out of the persisted provider chain
+                    # (same treatment as a rail nudge): drop the chain head at turn end.
+                    rail_drove_this_turn = True
+                    _suppress_reasoning_next_pass = True
+                    continue
+                # Cap reached — end the turn honestly, never a silent hang.
+                yield {"content": (
+                        "\n\nI got stuck deciding how to do that and stopped rather than "
+                        "loop. Could you tell me the exact change you want, or rephrase it?"
+                    ), "reasoning_content": "", "finish_reason": None, "usage": None}
+                break
             # M3 — a disconnect raises GeneratorExit here; it unwinds to the
             # function's `finally: await client.aclose()`, and the gateway finalizes
             # this pass's row via the silent cascade (no explicit DELETE → no notify).
@@ -6459,6 +6551,50 @@ async def _fire_executive_tick(
         logger.warning("executive tick failed for session %s", session_id, exc_info=True)
 
 
+# Phrases a title-gen model echoes instead of producing a title — the prompt
+# leaking back ("The system instruction says…", "Generate a concise title…") or
+# a refusal. A candidate containing one is rejected outright.
+_TITLE_ECHO_MARKERS = (
+    "generate a concise title",
+    "the system instruction",
+    "here is the title",
+    "here's the title",
+    "title:",
+    "as an ai",
+    "i cannot",
+)
+# Leading list/enumeration/markdown noise a model prepends: "4.", "1)", "- ",
+# "* ", "#", "> ", a bullet glyph.
+_TITLE_LEADING_NOISE = __import__("re").compile(r"^\s*(?:[-*#>•·]+|\d+[.)])\s*")
+
+
+def _sanitize_title(raw: str) -> str:
+    """Turn a raw title-gen output into a usable title, or "" if it is
+    degenerate. Fixes the live bug where a model emitting ``"4."``, ``"* Eerie
+    Lighthouse…"`` or the prompt echo was saved verbatim as the chat title.
+
+    Rules: first non-empty line only; strip leading list/number/markdown markers
+    and wrapping quotes/emphasis; reject an echo of the prompt, a pure
+    punctuation/number fragment, or anything under 2 words."""
+    if not raw:
+        return ""
+    line = next((l.strip() for l in raw.splitlines() if l.strip()), "")
+    prev = None
+    while line != prev:  # peel repeatedly: "* 1. Title" -> "Title"
+        prev = line
+        line = _TITLE_LEADING_NOISE.sub("", line)
+        line = line.strip().strip("`*_\"'").strip()
+    line = " ".join(line.split())
+    low = line.lower()
+    if any(m in low for m in _TITLE_ECHO_MARKERS):
+        return ""
+    # must carry real words: >= 2 whitespace-separated tokens with a letter
+    word_tokens = [t for t in line.split() if any(c.isalpha() for c in t)]
+    if len(word_tokens) < 2:
+        return ""
+    return line if len(line) <= 100 else ""
+
+
 async def _auto_generate_title(
     session_id: str,
     user_id: str,
@@ -6512,10 +6648,11 @@ async def _auto_generate_title(
         raw_content = "".join(content_parts).strip()
         raw_reasoning = "".join(reasoning_parts).strip()
 
-        # Prefer content; fall back to last meaningful line of reasoning.
-        if raw_content:
-            title = raw_content.strip().strip('"').strip("'")
-        elif raw_reasoning:
+        # Prefer content; fall back to the last meaningful line of reasoning.
+        # Both run through _sanitize_title, which strips list/markdown noise and
+        # REJECTS a degenerate candidate (the "4." / prompt-echo bug) → "".
+        title = _sanitize_title(raw_content)
+        if not title and raw_reasoning:
             lines = [
                 l.strip()
                 for l in raw_reasoning.split("\n")
@@ -6523,11 +6660,9 @@ async def _auto_generate_title(
                 and not l.strip().startswith("Okay")
                 and not l.strip().startswith("Let me")
             ]
-            title = lines[-1].strip().strip('"').strip("'") if lines else ""
-        else:
-            title = ""
+            title = _sanitize_title(lines[-1]) if lines else ""
 
-        if title and len(title) <= 100:
+        if title:  # _sanitize_title already enforced len <= 100 + non-degenerate
             await pool.execute(
                 """
                 UPDATE chat_sessions SET title = $2, updated_at = now()
