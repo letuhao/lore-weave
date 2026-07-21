@@ -53,6 +53,28 @@ Reasoning effort). Server-side (not localStorage). One home; consumers inherit.
     auto-loads the schema + executes transparently (no `tool_load` step). Best UX for the weakest
     models; more plumbing (a name→schema resolve + validate at the call seam).
 
+## A/B RESULT (2026-07-21, live, Gemma-4 26B) — index-as-hint is INSUFFICIENT
+
+Code-free A/B: a chat whose custom SYSTEM PROMPT contained the book tool index + an explicit
+"do NOT use tool_list; call book_update_details directly."
+- **control (lazy):** `tool_list → book_list → book_get → STOP` (no diff card).
+- **treatment (index-in-prompt, tool_list still advertised):** `tool_list → load_skill → book_list
+  → book_get → STOP` — the model STILL used tool_list (it's advertised) and STILL stalled at
+  book_get; never `tool_load`ed or called `book_update_details`.
+
+**Two conclusions that redirect the implementation:**
+1. A prompt hint can't beat an ADVERTISED `tool_list` — the feature must actually REMOVE it from the
+   advertised set (not discourage it).
+2. Even when it knows the tool's NAME, the weak model won't `tool_load` it on its own — so **Option B
+   (keep tool_load) is insufficient for weak models.** The tool must be **directly CALLABLE**.
+
+**⇒ Revised recommendation: Option A/C for a bounded domain.** For book (~20 tools) advertise the
+domain's tool SCHEMAS directly when eager/hot (≈10-15K tok, fits per the preflight metric) — OR
+Option C auto-resolve (model emits a call by name → chat-service auto-loads the schema + executes).
+Then `book_update_details` is immediately callable and the read→write plan can complete. (This is
+exactly the "hot-seed the book domain" behavior a BOOK-SCOPED co-writer should already have — worth
+testing that path directly as a second A/B arm before/while building the setting.)
+
 ## A/B evaluation
 
 Reuse the benchmark harness pattern but LIVE: same request across `lazy` vs `eager_index` × the
