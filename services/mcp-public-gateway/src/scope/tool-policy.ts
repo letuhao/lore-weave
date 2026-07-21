@@ -181,7 +181,7 @@ export const TOOL_POLICY: Record<string, ToolPolicy> = {
   // ── write_auto (Tier-A, no cost) ──────────────────────────────────────────
   // book
   book_create: { tier: 'write_auto', domains: ['book'] },
-  book_update_meta: { tier: 'write_auto', domains: ['book'] },
+  book_update_details: { tier: 'write_confirm', domains: ['book'] },
   book_chapter_create: { tier: 'write_auto', domains: ['book'] },
   book_chapter_bulk_create: { tier: 'write_auto', domains: ['book'] },
   book_chapter_update_meta: { tier: 'write_auto', domains: ['book'] },

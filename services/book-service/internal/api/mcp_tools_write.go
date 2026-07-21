@@ -116,7 +116,7 @@ VALUES($1,$2,$3,$4,$5,$6,'novel') RETURNING id`,
 	return &mcp.CallToolResult{}, bookCreateOut{BookID: bookID.String()}, nil
 }
 
-// ── book_update_meta ─────────────────────────────────────────────────────────
+// ── book_update_details ─────────────────────────────────────────────────────────
 
 type bookUpdateMetaIn struct {
 	BookID           string    `json:"book_id" jsonschema:"the book to update (UUID)"`

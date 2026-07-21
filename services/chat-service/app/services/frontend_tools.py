@@ -610,7 +610,7 @@ PROPOSE_RECORD_EDIT_TOOL: dict = {
             "title, a composition/glossary/settings record, etc.) — applied together. The "
             "changes are shown as a diff card with an Apply button and are NOT applied "
             "automatically. For a BOOK's own metadata (title, description, summary, genre) "
-            "do NOT use this — call `book_update_meta`, which builds the diff for you and "
+            "do NOT use this — call `book_update_details`, which builds the diff for you and "
             "needs no version token. BEFORE calling this, read the record's current values "
             "and its version token (pass it as `base_version`). After the user decides you "
             "receive an `outcome`: `applied_saved` (saved), `applied_conflict` (the record "
@@ -624,7 +624,7 @@ PROPOSE_RECORD_EDIT_TOOL: dict = {
                 "domain": {
                     "type": "string",
                     # `book` removed (auto-gate spec M0): a book's own metadata is edited
-                    # via book_update_meta, which server-builds the diff. The remaining
+                    # via book_update_details, which server-builds the diff. The remaining
                     # domains migrate to their own direct-write tools in M1-M4, then this
                     # tool is deleted (M5).
                     "enum": ["glossary", "composition", "translation", "settings"],

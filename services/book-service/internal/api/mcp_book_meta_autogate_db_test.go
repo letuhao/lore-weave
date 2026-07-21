@@ -1,6 +1,6 @@
 package api
 
-// M0 (agent write auto-gate spec) — book_update_meta is now a Tier-W PROPOSE, not
+// M0 (agent write auto-gate spec) — book_update_details is now a Tier-W PROPOSE, not
 // a Tier-A write. Calling the tool MUST NOT mutate the book; it returns a server-
 // built DIFF CARD. The write happens only on confirm, guarded by optimistic
 // concurrency (base_version = updated_at). Gated on BOOK_TEST_DATABASE_URL.
@@ -65,7 +65,7 @@ func TestMCP_BookUpdateMeta_ProposesDiff_NoWrite_ThenConfirmApplies_DB(t *testin
 	}
 }
 
-// M0d (deterministic live proof) — drive book_update_meta THROUGH the real /mcp
+// M0d (deterministic live proof) — drive book_update_details THROUGH the real /mcp
 // handler (identity middleware + stateless StreamableHTTP transport + the go-sdk
 // output validator), exactly as the gateway does. The "rewrite the description"
 // request must return a DIFF CARD (confirm_token + server-built old→new changes,
@@ -101,14 +101,14 @@ func TestMCP_BookUpdateMeta_ThroughMCPHandler_ReturnsDiffCard_DB(t *testing.T) {
 
 	newDesc := "In a drowning port city, a glassmaker's daughter learns her gift can either save the harbor or shatter it forever."
 	res, err := cs.CallTool(ctx, &mcp.CallToolParams{
-		Name:      "book_update_meta",
+		Name:      "book_update_details",
 		Arguments: map[string]any{"book_id": bookID.String(), "description": newDesc},
 	})
 	if err != nil {
-		t.Fatalf("book_update_meta call failed: %v", err)
+		t.Fatalf("book_update_details call failed: %v", err)
 	}
 	if res.IsError {
-		t.Fatalf("book_update_meta returned isError=true: %+v", res.Content)
+		t.Fatalf("book_update_details returned isError=true: %+v", res.Content)
 	}
 	raw, _ := json.Marshal(res.StructuredContent)
 	var card struct {

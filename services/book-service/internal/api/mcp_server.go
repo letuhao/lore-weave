@@ -137,23 +137,25 @@ func (s *Server) newMCPServer() *mcp.Server {
 		lwmcp.NewToolMeta(lwmcp.TierA, lwmcp.ScopeBook, nil, []string{"new book", "add book", "start a novel"}),
 		s.toolBookCreate)
 
-	addTool(srv, "book_update_meta",
-		"Propose changes to the book's METADATA FIELDS — title, description/blurb/synopsis, "+
-			"summary, original_language, genre_tags. This is the ONLY home for a book's description "+
-			"or summary: to change what the book is ABOUT, edit these fields here — NEVER create a "+
-			"chapter for it (a chapter is story prose, not book metadata). Returns a DIFF CARD the "+
-			"human reviews and applies — it does NOT write immediately. Pass ONLY the new values you "+
-			"want; you do not need to read the book or supply a version first. Only provided fields "+
-			"change.",
+	addTool(srv, "book_update_details",
+		"Change a book's own DETAILS — its title, description/blurb/synopsis, summary, "+
+			"original_language, genre_tags. This is the ONLY home for a book's description, blurb "+
+			"or summary: to change what the book is ABOUT, edit these fields here — NEVER create or "+
+			"save a chapter for it (a chapter is story prose, not the book's details). Returns a DIFF "+
+			"CARD the human reviews and applies — it does NOT write immediately. Pass ONLY the new "+
+			"values you want; you do not need to read the book or supply a version first. Only "+
+			"provided fields change.",
 		lwmcp.NewToolMeta(lwmcp.TierW, lwmcp.ScopeBook, nil, []string{
-			"rename book", "edit book", "set genre", "set description", "update description",
-			"set summary", "update summary", "set blurb", "set synopsis", "write the book description"}),
+			"rename book", "edit book", "edit book details", "update book details", "book blurb",
+			"set genre", "set description", "update description", "change the description",
+			"update the book description", "set summary", "update summary", "set blurb",
+			"set synopsis", "write the book description"}),
 		s.toolBookUpdateMeta)
 
 	addTool(srv, "book_chapter_create",
 		"Create a new chapter — a unit of manuscript PROSE (the story text itself) — from plain text "+
 			"(or empty). Returns the new chapter_id. For the book's own description / summary / blurb "+
-			"(metadata about the book), use book_update_meta instead — do NOT create a chapter for it. "+
+			"(the book's own details, not chapter prose), use book_update_details instead — do NOT create a chapter for it. "+
 			"Reverse: book_chapter_delete (trash).",
 		lwmcp.NewToolMeta(lwmcp.TierA, lwmcp.ScopeBook, nil, []string{"new chapter", "add chapter", "write a chapter"}),
 		s.toolChapterCreate)
@@ -201,7 +203,7 @@ func (s *Server) newMCPServer() *mcp.Server {
 		"[Saved book] Save a CHAPTER's PROSE as its draft — the story text of one chapter. Put the "+
 			"chapter text in `body` as plain prose (blank line between paragraphs) — do NOT hand-write "+
 			"editor/Tiptap JSON. This is NOT for the book's own description / summary / blurb / synopsis "+
-			"(that is book METADATA, not chapter prose) — for those use book_update_meta, never save them "+
+			"(those are the book's own DETAILS, not chapter prose) — for those use book_update_details, never save them "+
 			"as a chapter draft. REQUIRES base_version (the draft_version you read); a version mismatch "+
 			"returns a conflict and stops — no overwrite. Reverse: book_chapter_restore_revision.",
 		lwmcp.NewToolMeta(lwmcp.TierA, lwmcp.ScopeBook, nil, []string{"save draft", "edit chapter text", "write chapter prose"}),

@@ -58,7 +58,7 @@ type actionPayload struct {
 	Meta *metaEdit `json:"meta,omitempty"`
 }
 
-// metaEdit carries a book_update_meta proposal: only the fields the caller is
+// metaEdit carries a book_update_details proposal: only the fields the caller is
 // changing are set (nil = unchanged). BaseVersion is books.updated_at at propose
 // time; the confirm UPDATE is guarded on it so a concurrent edit → conflict, not a
 // silent clobber.
@@ -92,7 +92,7 @@ type confirmCardOut struct {
 	Destructive  bool   `json:"destructive"`
 	EstimateUSD  string `json:"estimate_usd,omitempty"`
 	ExpiresAt    string `json:"expires_at"`
-	// Changes — when present, this is a DIFF card (book_update_meta): the FE renders
+	// Changes — when present, this is a DIFF card (book_update_details): the FE renders
 	// the old→new rows and confirms via the same book confirm endpoint. Absent for a
 	// plain yes/no confirm (delete/publish/purge).
 	Changes []recordEditChange `json:"changes,omitempty"`
@@ -735,7 +735,7 @@ func (s *Server) effectDelete(w http.ResponseWriter, ctx context.Context, bookID
 	}
 }
 
-// effectUpdateMeta applies a confirmed book_update_meta diff (descBookMeta).
+// effectUpdateMeta applies a confirmed book_update_details diff (descBookMeta).
 func (s *Server) effectUpdateMeta(w http.ResponseWriter, ctx context.Context, bookID uuid.UUID, p actionPayload) {
 	if p.Op != "update_meta" {
 		writeError(w, http.StatusUnprocessableEntity, "BOOK_ACTION_TOKEN", "op does not match descriptor")
@@ -802,7 +802,7 @@ func (s *Server) applyBookMetaUpdate(ctx context.Context, bookID uuid.UUID, m *m
 	return updated, nil
 }
 
-// mintBookMetaCard mints the diff card for a book_update_meta proposal: a confirm
+// mintBookMetaCard mints the diff card for a book_update_details proposal: a confirm
 // token bound to user+book+descBookMeta+payload (carrying the new values), plus the
 // server-built old→new `changes` the FE renders. Reuses the confirm-token spine (I2).
 func (s *Server) mintBookMetaCard(userID, bookID uuid.UUID, title string, p actionPayload, changes []recordEditChange) (confirmCardOut, error) {

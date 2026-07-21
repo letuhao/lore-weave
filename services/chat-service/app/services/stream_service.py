@@ -539,7 +539,7 @@ TOOL_LIST_TOTAL_CAP = 5      # total tool_list calls this turn before it is de-a
 # ── D-REASONING-LOOP: the streaming reasoning-channel loop breaker ────────────
 # Every breaker above fires in the TOOL-CALL loop, on an EMITTED call. A model
 # that thrashes in the *reasoning stream* WITHOUT emitting a call (live incident:
-# gemma oscillating book_update_meta⇄propose_record_edit 30+ times on a "rewrite
+# gemma oscillating book_update_details⇄propose_record_edit 30+ times on a "rewrite
 # the description" ask, zero tool calls, hung until the user hit Stop) trips none
 # of them. ReasoningLoopDetector watches the streamed text itself; on a trip we
 # abort the pass, inject a steer directive, force reasoning off for the retry,

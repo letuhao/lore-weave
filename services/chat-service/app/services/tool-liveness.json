@@ -137,7 +137,7 @@
       "executes": true,
       "proven": false
     },
-    "book_update_meta": {
+    "book_update_details": {
       "status": "PASS",
       "executes": true,
       "proven": true,
