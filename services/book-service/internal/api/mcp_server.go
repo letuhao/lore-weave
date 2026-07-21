@@ -198,11 +198,13 @@ func (s *Server) newMCPServer() *mcp.Server {
 		s.toolChapterRestoreRevision)
 
 	addTool(srv, "book_chapter_save_draft",
-		"[Saved book] Save a chapter's PROSE as its draft. Put the chapter text itself in `body` as "+
-			"plain prose (blank line between paragraphs) — do NOT hand-write editor/Tiptap JSON. "+
-			"REQUIRES base_version (the draft_version you read); a version mismatch returns a conflict "+
-			"and stops — no overwrite. Reverse: book_chapter_restore_revision.",
-		lwmcp.NewToolMeta(lwmcp.TierA, lwmcp.ScopeBook, nil, []string{"save draft", "edit chapter text", "write chapter"}),
+		"[Saved book] Save a CHAPTER's PROSE as its draft — the story text of one chapter. Put the "+
+			"chapter text in `body` as plain prose (blank line between paragraphs) — do NOT hand-write "+
+			"editor/Tiptap JSON. This is NOT for the book's own description / summary / blurb / synopsis "+
+			"(that is book METADATA, not chapter prose) — for those use book_update_meta, never save them "+
+			"as a chapter draft. REQUIRES base_version (the draft_version you read); a version mismatch "+
+			"returns a conflict and stops — no overwrite. Reverse: book_chapter_restore_revision.",
+		lwmcp.NewToolMeta(lwmcp.TierA, lwmcp.ScopeBook, nil, []string{"save draft", "edit chapter text", "write chapter prose"}),
 		s.toolChapterSaveDraft)
 
 	// WS-0.4 — publish-independent KG indexing. Indexing is NOT publishing: a chapter
