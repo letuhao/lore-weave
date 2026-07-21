@@ -615,6 +615,34 @@ class _ProbeAccessDenied(Exception):
 # toward this streak.
 _MISSING_REQUIRED_ARGS_MARKER = "required: missing properties"
 
+# D-CONFIRM-CARD-NUDGE (dogfood 2026-07-21) — a Tier-W/S propose tool returns a
+# SERVER-BUILT confirm card ({confirm_token, descriptor, …}); the FE renders it with
+# Confirm/Cancel and the human confirms via the domain endpoint — the model does NOT
+# need to do anything more. But a weak model (Gemma) reads the raw token blob as the
+# tool result, does not grasp it is PENDING THE HUMAN, and either re-calls the propose
+# tool (the observed double-card) or apologizes for a non-existent error. This note is
+# appended to the confirm-card tool result so the model writes one short "ready to
+# confirm" line and stops. (A prompt guard-line alone has failed weak-model QC before —
+# so if this does not hold live, the deterministic follow-up is to also stop advertising
+# the just-fired propose tool on the immediately-following pass.)
+_CONFIRM_CARD_STOP_NOTE = (
+    "\n\n[SYSTEM — CONFIRMATION PENDING: A confirmation card for this change is now shown "
+    "to the user with the exact edit, awaiting their approval. Nothing is saved until they "
+    "click Confirm. This action is COMPLETE on your side. Do NOT call this tool again, do "
+    "NOT call confirm_action yourself, and do NOT say an error occurred. Reply with ONE "
+    "short sentence telling the user the change is ready for them to confirm, then stop.]"
+)
+
+
+def _is_confirm_card_result(payload) -> bool:
+    """A Tier-W/S propose result that minted a server-built confirm card (has a
+    confirm_token + descriptor). Domain-agnostic — matches book/glossary/… alike."""
+    return (
+        isinstance(payload, dict)
+        and bool(payload.get("confirm_token"))
+        and bool(payload.get("descriptor"))
+    )
+
 # RAID Wave B2 (07S §5b) — PLAN mode. The executable server surface is the ASK
 # surface (tier R + find_tools + frontend tools) PLUS the PlanForge planning
 # tools, identified by this name prefix (they write plan artifacts — reversible
@@ -3414,6 +3442,11 @@ async def _stream_with_tools(
                         )
                 else:
                     _tool_content = tool_result_content(tool_payload)
+                # D-CONFIRM-CARD-NUDGE — a minted confirm card is PENDING THE HUMAN; tell
+                # the weak model to stop rather than re-fire the propose tool (double-card)
+                # or apologize for a non-error. Applies to the success payload only.
+                if ok and _is_confirm_card_result(tool_payload):
+                    _tool_content = (_tool_content or "") + _CONFIRM_CARD_STOP_NOTE
                 working.append({
                     "role": "tool", "tool_call_id": c["id"],
                     "content": _tool_content,

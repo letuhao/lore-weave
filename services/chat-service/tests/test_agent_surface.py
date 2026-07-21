@@ -321,3 +321,30 @@ class TestAdvertiseEmitsSurface:
                 project_id="proj-1",
             ))
         assert [c for c in out if "agent_surface" in c] == []
+
+
+class TestConfirmCardStopNote:
+    """D-CONFIRM-CARD-NUDGE — the weak-model confirm-flow stop signal."""
+
+    def test_detects_a_minted_confirm_card(self):
+        from app.services.stream_service import _is_confirm_card_result
+        card = {"confirm_token": "eyJ...", "descriptor": "book.meta",
+                "title": "Update book details", "domain": "book",
+                "changes": [{"field": "Description", "old": "a", "new": "b"}]}
+        assert _is_confirm_card_result(card) is True
+
+    def test_rejects_plain_and_error_results(self):
+        from app.services.stream_service import _is_confirm_card_result
+        assert _is_confirm_card_result({"books": [{"id": "1"}]}) is False   # a read result
+        assert _is_confirm_card_result({"error": "boom"}) is False
+        assert _is_confirm_card_result({"confirm_token": ""}) is False      # empty token
+        assert _is_confirm_card_result({"descriptor": "book.meta"}) is False  # token missing
+        assert _is_confirm_card_result(None) is False
+        assert _is_confirm_card_result("not-a-dict") is False
+
+    def test_stop_note_forbids_retry_and_apology(self):
+        from app.services.stream_service import _CONFIRM_CARD_STOP_NOTE
+        low = _CONFIRM_CARD_STOP_NOTE.lower()
+        assert "do not call this tool again" in low
+        assert "confirm" in low and "pending" in low
+        assert "error occurred" in low  # explicitly tells it NOT to fake an error
