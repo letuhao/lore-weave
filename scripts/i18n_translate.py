@@ -226,6 +226,13 @@ def verify_chunk(src: dict[str, str], out: dict, script_re: str | None):
 SYSTEM = (
     "You are a professional UI localization engine for a novel-writing/translation app. "
     "Translate ONLY the JSON string values from English into the target language. "
+    # DOMAIN GLOSSARY (this app's book-structure terms — translate the CONCEPT, never a near-synonym).
+    # Without this, machine translation renders a manuscript 'Part' as 'chapter'/'act' in CJK (章节 / 幕),
+    # breaking the Part-vs-Arc-vs-Chapter distinction the whole rail depends on.
+    "DOMAIN TERMS — use the target language's word for these EXACT book-structure concepts: a 'Part' / "
+    "'Parts' is a top-level book DIVISION that groups chapters (zh 部 / ja パート / ko 부) — NEVER render it "
+    "as a chapter (章 / 章节 / チャプター) or a dramatic 'act' (幕); an 'Arc' is a narrative planning unit "
+    "distinct from a Part; a 'Chapter' is 章 / 章 / 장; a 'Scene' is 场景 / シーン / 장면. "
     "Rules: keep every JSON key byte-identical; preserve every {{placeholder}}, $t(...) "
     "reference, and <html/tag> EXACTLY as-is; keep brand/proper names and short technical "
     "tokens (API, URL, ID, PDF) untranslated; produce idiomatic, natural phrasing. "

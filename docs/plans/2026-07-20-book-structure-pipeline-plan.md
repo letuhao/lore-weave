@@ -31,8 +31,14 @@ A completeness audit (3 cold-start agents over disjoint phase-code + a solo §6/
   silent flatten (`useManuscriptTree` reads only `kinds_present.parts`; `sources` is returned-but-unread).
 - **ML2** — toggle persistence: `userLens` is in-memory `useState` (resets on reload) → per-device
   localStorage (the spec's §8 lean).
-- **L1** — resolver outline-detail half (`outline.arcs` + §6.4 `chapter_id` reconciliation). NOTE: assess a
-  consumer first — if none needs the reconciliation, this is a documented conscious-decision, not a build.
+- **L1 [x] §6.4 — VERIFIED already satisfied; the resolver-outline-half is a no-consumer/no-benefit build
+  (conscious decision, not a debt).** The spec's "the resolver stamps `chapter_id` onto outline chapter
+  nodes so a consumer can correlate them" is ALREADY true WITHOUT the resolver: composition's `outline_node`
+  carries `chapter_id` natively (migrate.py, live 7/48 populated) and the FE `OutlineNode` type exposes it —
+  so a consumer can correlate outline↔manuscript today. The resolver's `outline.arcs` half is pure
+  centralization with NO user benefit (outline mode already works via the FE's direct composition fetch,
+  which reads `chapter_id`) and re-routing that working path is regression risk for zero gain. Not built —
+  Bug 4 (the actual goal) is a PARTS problem, solved by the parts-first skeleton.
 - **L2 [x] §6.1 — CONSCIOUS DECISION (verified), a synthetic migration test is infeasible.** The C2/C4
   parts→structure_node mirror is one-time INLINE DDL (no callable function to unit-test) and the pre-C4
   `parts` table is DROPPED (nothing to compare ids against). The concern is already GUARDED: the resolver's
@@ -49,9 +55,18 @@ A completeness audit (3 cold-start agents over disjoint phase-code + a solo §6/
   has_work=true, absent→false) + exposed in the FE `BookStructure` type (+ the previously-undeclared
   `book_lifecycle`). No consumer wired yet (the bit is AVAILABLE; wiring the door is that feature's job — not
   speculatively built here).
-- **L4** — FE lazy-expand the skeleton instead of eager full-load (bounded 6000, functionally fine today).
-  **L5** — CJK `lensParts` 章节→部 + the broader CJK "part"→幕/章节 mistranslation (add a domain glossary to
-  `i18n_translate`, NOT a blind non-native hand-edit).
+- **L4 [x] CONSCIOUS DECISION (functionally complete).** The FE grouped tree eager-loads chapters
+  (`loadGroupedTree`, bounded 6000 = spec-blessed §4.2 cap) then groups client-side, rather than
+  lazy-expanding per part. Lazy-expand needs a NEW per-part chapter-fetch endpoint (BE) + a re-architecture
+  of the working load path — a real refactor whose only win is memory/latency on a >hundreds-of-chapters
+  book, with regression risk on the common case. No current pain → gate #4 (fix when profiling shows it), not
+  a debt. The 6000 cap is the spec's own bound.
+- **L5 [x] DONE — CJK "part" mistranslation fixed via a domain glossary.** All 4 CJK locales rendered a
+  manuscript "Part" as 幕/막 (a dramatic ACT) or 章节 (CHAPTERS) — a Decision-4 violation. Added a DOMAIN
+  GLOSSARY to `i18n_translate.py`'s SYSTEM prompt (Part = 部/パート/부, distinct from Chapter/Arc/Act — the
+  systematic fix that also prevents future drift), deleted the 22 mistranslated manuscript keys from
+  zh-CN/zh-TW/ja/ko, and re-translated. VERIFIED: `actShort`/`lensParts`/`newAct` now 部/パート/부 (幕/章节
+  gone); i18n completeness gate GREEN.
 
 ## Commitment / invariants (re-read after any compaction)
 - Resolver owner = **book-service** (holds chapters + the `structure_node_id` join key + lifecycle; calls
