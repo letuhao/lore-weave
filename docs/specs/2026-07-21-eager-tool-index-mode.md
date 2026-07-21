@@ -75,6 +75,29 @@ Then `book_update_details` is immediately callable and the read→write plan can
 exactly the "hot-seed the book domain" behavior a BOOK-SCOPED co-writer should already have — worth
 testing that path directly as a second A/B arm before/while building the setting.)
 
+## A/B ARM 2 (2026-07-21, live, Gemma-4 26B) — BOOK-SCOPED co-writer: hot-seed WORKS, but budget-capped
+
+Ran the same request in the BOOK-SCOPED co-writer (book domain hot-seeded, book_id in context):
+- steps = `book_get → book_chapter_create` — **NO tool_list!** The hot-seed ELIMINATED the discovery
+  loop (the model went straight to book tools). ✅ This validates the eager/hot approach's core.
+- BUT the model picked **`book_chapter_create`** (Bug2 resurfaced — a chapter for the description),
+  NOT `book_update_details`, and produced a `book_chapter_create.batch` card (cancelled).
+
+**Root cause pinned:** the benchmark proves Gemma routes "update the description" → `book_update_details`
+correctly WHEN PRESENTED. It failed here because `book_update_details` was **not in the hot-seeded
+directly-callable set** — the hot-seed is capped by `HOT_SEED_TOKEN_BUDGET` (a full book domain ≈ 24K
+tok), so only SOME book tools get seeded on pass 1; `book_chapter_create` made the cut, the newly-added
+`book_update_details` (now Tier-W) apparently did not → the model chose the wrong AVAILABLE hot tool
+(and `book_chapter_create`'s disclaimer can't redirect to a tool that isn't callable).
+
+**⇒ THE FIX (concrete):** the eager/hot set for a bounded domain (book) must **guarantee the key
+write tools — incl. `book_update_details` — are advertised**, not trimmed by the budget. Options:
+(a) raise/scope `HOT_SEED_TOKEN_BUDGET` for a book-scoped surface so the WHOLE bounded book domain
+seeds; (b) a priority list so write tools (update_details/create/save_draft/publish/delete) always
+seed ahead of the long tail; (c) verify whether book_update_details is even eligible for hot-seed
+after the Tier-A→W change (the tier/visibility may affect seeding). Start by inspecting the actual
+seeded set for this surface (log it) and confirm book_update_details is present.
+
 ## A/B evaluation
 
 Reuse the benchmark harness pattern but LIVE: same request across `lazy` vs `eager_index` × the
