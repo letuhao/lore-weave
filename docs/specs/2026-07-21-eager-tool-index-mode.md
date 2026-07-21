@@ -12,21 +12,27 @@
 > not exist. **Do not invest further** unless a *genuinely* huge tool set later proves discovery is a
 > bottleneck for a *capable* model. Kept as a record of the wrong turn.
 >
-> ### ⚠️ EXCEPTION — the planner-executor (`tool_plan.py` / `planner_poc.py`) is NOT superseded
-> A follow-up dogfood turn (2026-07-21, session 019f83f7) surfaced a SECOND, real routing bug that
-> the planner *does* fix: **the per-turn domain-scoped hot set is not conversation-aware.** On a
-> follow-up like *"Change the blurb"* / *"Option 3, go with that"* — mid-conversation, obviously still
-> editing a book — the domain classifier found no "book" signal in the message text, activated the
-> **knowledge/KG** domain, and advertised **zero `book_*` tools**. The model literally could not act;
-> it could only converse. The planner-executor reads the **FULL catalog** (not the domain-scoped hot
-> set), so it emits `["book_get", "book_update_details"]` and force-loads them regardless of the
-> classifier's guess — **immune to this bug** (tracked as **D-DOMAIN-HOTSET-NOT-STICKY**). So the
-> planner stays a live candidate; the eager-index (this spec) does not. Two complementary fixes for
-> D-DOMAIN-HOTSET-NOT-STICKY: (a) make domain detection **sticky/conversation-aware** (once editing
-> book X, keep the book domain hot on follow-ups) — cheap, direct, root-cause; (b) the planner as the
-> **general robustness layer** — also handles decisiveness + future domain-detection gaps.
-> **Lesson:** verify the mechanics (is the tool even advertised?) BEFORE theorizing about model
-> capability — the cheap deterministic check would have found this in minutes, not a day.
+> ### The planner-executor (`tool_plan.py` / `planner_poc.py`) is also PARKED — cost not proven
+> A follow-up dogfood turn surfaced a SECOND real routing bug (`D-DOMAIN-HOTSET-NOT-STICKY`): the
+> per-turn domain hot set was not conversation-aware, so a low-signal follow-up (*"Go with the third
+> one."*) advertised **zero `book_*` tools** and the model wandered / hallucinated success. The
+> planner *would* fix this (it reads the FULL catalog, immune to domain mis-detection) — but the
+> **cheap, direct fix won on cost:** re-seed the domains the recent `chat_messages.tool_calls` show
+> the conversation engaged (`a3028d6f6`), and a stop-note on the minted confirm card
+> (`5276586b4`). Both **live-verified on weak Gemma** — a zero-keyword follow-up now reaches
+> `book_update_details` and produces one clean diff card, no double-card. **The planner never
+> proved a cost advantage over these targeted fixes, so it stays PARKED** — same test the eager-index
+> failed. Revisit only if a genuinely harder open-ended agency case appears where no cheap targeted
+> fix exists.
+>
+> ### The one hypothesis that was WRONG vs. the one that was RIGHT
+> - ❌ WRONG (this spec's premise): *"weak models can't run the discovery loop."* Disproven live.
+> - ✅ RIGHT (the project's foundational bet): *"the problems are mostly OUR code/logic, not the
+>   model — a cheap model is enough."* **Confirmed four-for-four** (starved tool, non-sticky domain,
+>   OpenAI `chat_template_kwargs` 400, confirm-card blob). Every "the model is weak" verdict dissolved
+>   into one of our bugs. **Lesson:** verify the mechanics (is the tool advertised? domain hot? result
+>   instructive?) BEFORE theorizing about capability — the cheap deterministic check would have found
+>   each bug in minutes.
 
 **Status:** ~~DESIGN (approved direction 2026-07-21)~~ **SUPERSEDED — premise invalidated (see banner).**
 **Origin:** dogfood 2026-07-21. The auto-gate `book_update_details` is correct + advertised, yet
