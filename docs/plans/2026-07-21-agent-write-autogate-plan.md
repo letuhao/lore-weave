@@ -25,7 +25,7 @@ Deliver the FULL auto-gate: the agent calls only the natural domain write; the S
 | **R1** ride-along | reasoning-loop breaker | `35024ec05`; 9 unit + 2 integ green; serial suite exit 0 | ✅ DONE |
 | **R2** ride-along | auto-title sanitizer | `35024ec05`; 10 tests incl. the "4." bug | ✅ DONE |
 | **M0a** | book-service Go | `book.meta` descriptor + `update_meta` op + `changes[]` diff card; `book_update_meta` Tier-A→W, mints diff card; confirm route `effectUpdateMeta` applies (OCC on updated_at). **Evidence:** `7b861223c` — PASS TestMCP_BookUpdateMeta_ProposesDiff_NoWrite_ThenConfirmApplies_DB + _StaleVersion_Conflicts_DB; vet clean; api suite green | ✅ DONE |
-| **M0b** | chat-service | de-advertise `propose_record_edit` for the book domain (agent must reach book meta only via `book_update_meta`); confirm the server diff card (domain=book, `changes[]`) suspends + resumes like the confirm card. **Evidence:** pasted pytest | ⬜ TODO |
+| **M0b** | chat-service | dropped `book` from `propose_record_edit` domain enum + redirect in description; contract mirror regen'd. **Evidence:** `5e9cff19c` — test_frontend_tools_contract 13 passed (drift red→green); validation green; test_agent_surface 8 fails proven pre-existing (identical at HEAD). | ✅ DONE |
 | **M0c** | frontend | render the book confirm card's `changes[]` as the old→new diff card (reuse the `RecordEditChange` component). **Evidence:** pasted vitest | ⬜ TODO |
 | **M0d** | live | **live re-smoke: "rewrite the description" → diff card, no loop** (book *The Tidewright* `019f82b6-c31b-72e9-bf2a-3f37f4c8a847`, chat via :5174). **Evidence:** pasted browser observation | ⬜ TODO |
 | **M1** | composition | audit write tool(s) → adopt facade. Evidence: pasted composition unit + live | ⬜ TODO |
