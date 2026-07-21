@@ -106,7 +106,6 @@
       "domain": {
         "enum": [
           "glossary",
-          "book",
           "composition",
           "translation",
           "settings"

@@ -606,22 +606,28 @@ PROPOSE_RECORD_EDIT_TOOL: dict = {
     "function": {
         "name": "propose_record_edit",
         "description": (
-            "Propose one or more edits to the fields of an EXISTING record (a book's "
-            "metadata, a chapter's title, etc.) — applied together. The changes are "
-            "shown as a diff card with an Apply button and are NOT applied "
-            "automatically. BEFORE calling this, read the record's current values and "
-            "its version token (pass it as `base_version`). After the user decides you "
-            "receive an `outcome`: `applied_saved` (saved), `applied_conflict` (the "
-            "record changed since you read it — re-read and propose afresh), "
-            "`applied_error` (the save failed), or `dismissed`. State the change was "
-            "made ONLY when the outcome is `applied_saved`."
+            "Propose one or more edits to the fields of an EXISTING record (a chapter's "
+            "title, a composition/glossary/settings record, etc.) — applied together. The "
+            "changes are shown as a diff card with an Apply button and are NOT applied "
+            "automatically. For a BOOK's own metadata (title, description, summary, genre) "
+            "do NOT use this — call `book_update_meta`, which builds the diff for you and "
+            "needs no version token. BEFORE calling this, read the record's current values "
+            "and its version token (pass it as `base_version`). After the user decides you "
+            "receive an `outcome`: `applied_saved` (saved), `applied_conflict` (the record "
+            "changed since you read it — re-read and propose afresh), `applied_error` (the "
+            "save failed), or `dismissed`. State the change was made ONLY when the outcome "
+            "is `applied_saved`."
         ),
         "parameters": {
             "type": "object",
             "properties": {
                 "domain": {
                     "type": "string",
-                    "enum": ["glossary", "book", "composition", "translation", "settings"],
+                    # `book` removed (auto-gate spec M0): a book's own metadata is edited
+                    # via book_update_meta, which server-builds the diff. The remaining
+                    # domains migrate to their own direct-write tools in M1-M4, then this
+                    # tool is deleted (M5).
+                    "enum": ["glossary", "composition", "translation", "settings"],
                     "description": "Which service owns the record.",
                 },
                 "resource_ref": {
