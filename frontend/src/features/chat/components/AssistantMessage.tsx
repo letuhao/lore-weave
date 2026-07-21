@@ -31,6 +31,7 @@ import { useMessageFeedback } from '../hooks/useMessageFeedback';
 import { useActivityUndo } from '../hooks/useActivityUndo';
 import { firePasteToEditor } from '../utils/pasteToEditor';
 import type { ActivityEvent, ToolCallRecord } from '../types';
+import type { RecordEditChange } from '../actionsApi';
 
 interface AssistantMessageProps {
   content: string;
@@ -80,7 +81,7 @@ interface AssistantMessageProps {
 // live confirm_token (independent of whether the model called the frontend tool). The
 // reused card's resume() safely no-ops without a runId; Confirm still POSTs to
 // /v1/<domain>/actions/confirm (the only write path, single-use).
-interface ProposeConfirm { confirm_token: string; descriptor?: string; title?: string }
+interface ProposeConfirm { confirm_token: string; descriptor?: string; title?: string; changes?: RecordEditChange[] }
 
 /** The action token's claims are its base64url segment-0 (a 2-part token:
  * claims.hmac, not a JWT header.payload). Return false once past `exp` so stale
@@ -110,10 +111,15 @@ function proposeConfirm(tc: ToolCallRecord): ProposeConfirm | null {
   // so the auto-card has a label without waiting on the (best-effort) preview fetch.
   const label = typeof p.title === 'string' ? p.title
     : typeof p.summary === 'string' ? p.summary : undefined;
+  // A server-built diff card (book_update_meta, descriptor `book.meta`) carries
+  // `changes[]` in its RESULT — carry it through so the confirm card renders the
+  // old→new diff instead of a bare yes/no (auto-gate spec M0c).
+  const changes = Array.isArray(p.changes) ? (p.changes as RecordEditChange[]) : undefined;
   return {
     confirm_token: p.confirm_token,
     descriptor: typeof p.descriptor === 'string' ? p.descriptor : undefined,
     title: label,
+    changes,
   };
 }
 
@@ -382,7 +388,7 @@ export function AssistantMessage({
               const synthetic: ToolCallRecord = {
                 tool: 'glossary_confirm_action',
                 ok: true,
-                args: { confirm_token: p.confirm_token, descriptor: p.descriptor, title: p.title },
+                args: { confirm_token: p.confirm_token, descriptor: p.descriptor, title: p.title, changes: p.changes },
               };
               const key = `auto-${p.confirm_token.slice(0, 20)}`;
               return descriptorDomain(p.descriptor)

@@ -62,6 +62,29 @@ describe('ConfirmActionCard', () => {
     await waitFor(() => expect(submitToolResult).toHaveBeenCalledWith('r1', 'c1', 'action_done'));
   });
 
+  it('M0c — renders the server-built diff (book.meta changes) and confirms via the book endpoint', async () => {
+    confirmAction.mockResolvedValue({});
+    previewAction.mockRejectedValue(new Error('no preview for book.meta')); // preview is best-effort
+    const diffArgs = {
+      confirm_token: 'metatok',
+      descriptor: 'book.meta',
+      title: 'Update book details',
+      domain: 'book',
+      changes: [
+        { field_label: 'Description', old_value: 'old desc', new_value: 'a dramatic new blurb', target: 'description' },
+      ],
+    };
+    renderWithClient(<ConfirmActionCard record={record(diffArgs)} />);
+    // the old→new diff renders (not a bare yes/no)
+    expect(screen.getByTestId('confirm-diff-rows')).toBeInTheDocument();
+    expect(screen.getByText('old desc')).toBeInTheDocument();
+    expect(screen.getByText('a dramatic new blurb')).toBeInTheDocument();
+    // apply still uses the confirm-token path against the book domain
+    fireEvent.click(screen.getByText('actionConfirm.confirm'));
+    await waitFor(() => expect(confirmAction).toHaveBeenCalledWith('book', 'metatok', 'tok'));
+    await waitFor(() => expect(submitToolResult).toHaveBeenCalledWith('r1', 'c1', 'action_done'));
+  });
+
   it('resumes token_expired on a 422', async () => {
     confirmAction.mockRejectedValue(Object.assign(new Error('expired'), { status: 422 }));
     renderWithClient(<ConfirmActionCard record={record(baseArgs)} />);
