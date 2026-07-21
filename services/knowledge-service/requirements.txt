@@ -53,7 +53,7 @@ beautifulsoup4>=4.15.0,<5
 # Realistic added image footprint ~500MB-1GB including transitive
 # pydantic v2 + sentence-transformers + pyarrow (per plan LOW-12).
 # Used only in tests/quality/* and only opt-in via --run-quality.
-deepeval==4.1.0
+deepeval==4.1.1
 seqeval==1.2.2
 datasets==2.21.0
 krippendorff==0.8.2
