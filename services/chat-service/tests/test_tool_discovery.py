@@ -770,6 +770,48 @@ class TestHotToolNames:
         assert "translation_start_job" not in hot
 
 
+class TestEngagedDomainsFromToolCalls:
+    """D-DOMAIN-HOTSET-NOT-STICKY — the conversation-memory signal that keeps the
+    working domain hot across turns in auto mode."""
+
+    def test_extracts_domain_from_recorded_shape(self):
+        # the server shape is {iteration, tool, args, ok, ...} — `tool` holds the name
+        rows = [[{"iteration": 1, "tool": "book_update_details", "ok": True}]]
+        assert td.engaged_domains_from_tool_calls(rows) == {"book"}
+
+    def test_tolerates_raw_json_string_row(self):
+        # asyncpg with no jsonb codec hands back a str; it must still parse
+        rows = ['[{"tool": "glossary_propose_entities", "ok": true}]']
+        assert td.engaged_domains_from_tool_calls(rows) == {"glossary"}
+
+    def test_counts_failed_calls_too_engagement_is_by_intent(self):
+        # a book edit that 400'd still means the writer is working in the book domain
+        rows = [[{"tool": "book_update_details", "ok": False}]]
+        assert "book" in td.engaged_domains_from_tool_calls(rows)
+
+    def test_ignores_discovery_and_core_tools(self):
+        # calling tool_list / confirm_action / ui_* says nothing about the working domain
+        rows = [[
+            {"tool": "tool_list", "ok": True},
+            {"tool": "confirm_action", "ok": True},
+            {"tool": "ui_navigate", "ok": True},
+        ]]
+        assert td.engaged_domains_from_tool_calls(rows) == set()
+
+    def test_unions_across_multiple_messages(self):
+        rows = [
+            [{"tool": "book_get", "ok": True}],
+            [{"tool": "kg_propose_fact", "ok": True}],
+        ]
+        assert td.engaged_domains_from_tool_calls(rows) == {"book", "knowledge"}
+
+    def test_empty_and_malformed_yield_empty(self):
+        assert td.engaged_domains_from_tool_calls(None) == set()
+        assert td.engaged_domains_from_tool_calls([]) == set()
+        assert td.engaged_domains_from_tool_calls(["not-json"]) == set()
+        assert td.engaged_domains_from_tool_calls([{"not": "a-list"}]) == set()
+
+
 class TestHotSetAdvertisedOnFirstPass:
     def test_seed_advertises_hot_tools_immediately(self):
         """A book-scoped surface seeds the glossary domain into the active set, so

@@ -1,6 +1,34 @@
 # Spec — Eager tool-index discovery mode (kill the loop for weak LLMs)
 
-**Status:** DESIGN (approved direction 2026-07-21). Feature + A/B, gated by a user/session setting.
+> ## ⛔ SUPERSEDED / PREMISE INVALIDATED (2026-07-21) — do NOT build
+> This spec's entire premise — *"weak models can't run the `tool_list → tool_load → call`
+> discovery loop"* — was **DISPROVEN by live measurement.** The real cause of the failure was a
+> plain bug in **our** code: `book_update_details` was **budget-starved out of the advertised tool
+> set** (`budget_names_by_tokens` orders reads first, and the tool wasn't in `ALWAYS_HOT_WRITES`),
+> so no model was ever shown it. Fixed in one line (`5625b0a3d`: add it to `ALWAYS_HOT_WRITES`).
+> **After the fix, weak local Gemma-4 26B ran the FULL discovery loop perfectly** —
+> `tool_list → book_list → book_get → book_update_details → diff card` — no eager-index needed.
+> So THIS feature — injecting a static index to *kill the discovery loop* — solves a problem that does
+> not exist. **Do not invest further** unless a *genuinely* huge tool set later proves discovery is a
+> bottleneck for a *capable* model. Kept as a record of the wrong turn.
+>
+> ### ⚠️ EXCEPTION — the planner-executor (`tool_plan.py` / `planner_poc.py`) is NOT superseded
+> A follow-up dogfood turn (2026-07-21, session 019f83f7) surfaced a SECOND, real routing bug that
+> the planner *does* fix: **the per-turn domain-scoped hot set is not conversation-aware.** On a
+> follow-up like *"Change the blurb"* / *"Option 3, go with that"* — mid-conversation, obviously still
+> editing a book — the domain classifier found no "book" signal in the message text, activated the
+> **knowledge/KG** domain, and advertised **zero `book_*` tools**. The model literally could not act;
+> it could only converse. The planner-executor reads the **FULL catalog** (not the domain-scoped hot
+> set), so it emits `["book_get", "book_update_details"]` and force-loads them regardless of the
+> classifier's guess — **immune to this bug** (tracked as **D-DOMAIN-HOTSET-NOT-STICKY**). So the
+> planner stays a live candidate; the eager-index (this spec) does not. Two complementary fixes for
+> D-DOMAIN-HOTSET-NOT-STICKY: (a) make domain detection **sticky/conversation-aware** (once editing
+> book X, keep the book domain hot on follow-ups) — cheap, direct, root-cause; (b) the planner as the
+> **general robustness layer** — also handles decisiveness + future domain-detection gaps.
+> **Lesson:** verify the mechanics (is the tool even advertised?) BEFORE theorizing about model
+> capability — the cheap deterministic check would have found this in minutes, not a day.
+
+**Status:** ~~DESIGN (approved direction 2026-07-21)~~ **SUPERSEDED — premise invalidated (see banner).**
 **Origin:** dogfood 2026-07-21. The auto-gate `book_update_details` is correct + advertised, yet
 weak local models (Gemma-4 26B, Nemotron-3 Nano, even Qwen3.6 35B) never reach it in live chat —
 they call `tool_list(book)` then stall, never `tool_load`+call. The **out-of-loop benchmark**

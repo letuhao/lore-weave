@@ -30,6 +30,7 @@ Key pieces
 """
 from __future__ import annotations
 
+import json
 import logging
 import re
 import time
@@ -733,6 +734,56 @@ def _domain_of(name: str) -> str:
     its own domain name)."""
     prefix = _provider_prefix(name)
     return _DOMAIN_ALIASES.get(prefix, prefix)
+
+
+# Discovery/write-back tools that are ALWAYS core — calling one says nothing about
+# which DOMAIN the conversation is working in, so they never make a domain sticky.
+_STICKY_DOMAIN_IGNORE: frozenset[str] = frozenset({
+    FIND_TOOLS_NAME, TOOL_LIST_NAME, TOOL_LOAD_NAME,
+    "propose_record_edit", "confirm_action", "web_search",
+    "ui_navigate", "ui_open_book", "ui_show_panel", "ui_watch_job",
+    "workflow_list", "workflow_load", "load_skill", "run_subagent",
+})
+
+
+def engaged_domains_from_tool_calls(tool_calls_rows) -> set[str]:
+    """The set of tool DOMAINS the recent conversation has ACTIVELY called into.
+
+    D-DOMAIN-HOTSET-NOT-STICKY (dogfood 2026-07-21): auto mode recomputes the hot
+    seed from the CURRENT message ONLY and forgets tools the agent discovered on a
+    prior turn (find_tools/tool_load accumulations are not re-advertised in auto —
+    tool_surface line ~453). So on a low-signal follow-up ("Option 3, go with that")
+    the model can no longer see the `book` domain it used two turns ago: it wanders,
+    or — worse, observed live — HALLUCINATES success ("I've prepared the update…")
+    with no tool call at all. Re-seeding the domains recently engaged keeps the
+    conversation's working domain hot across turns.
+
+    Purely derived from the persisted `chat_messages.tool_calls` record — no new
+    column, no write path — and it DECAYS naturally: once the lookback window no
+    longer contains a domain's call, it stops being seeded. Each row is the server's
+    executed-call record: a jsonb list of ``{iteration, tool, args, ok, …}`` (see
+    `app/db/tool_call_history.py`). A row may arrive already-parsed (list) or as a raw
+    jsonb string (asyncpg with no codec) — both are tolerated. Engagement is by INTENT,
+    so a call is counted whether or not it succeeded (``ok``): a book edit that 400'd
+    still means the writer is working in the book domain and wants it hot next turn.
+    """
+    domains: set[str] = set()
+    for raw in tool_calls_rows or []:
+        if isinstance(raw, str):
+            try:
+                raw = json.loads(raw)
+            except (TypeError, ValueError):
+                continue
+        if not isinstance(raw, list):
+            continue
+        for call in raw:
+            if not isinstance(call, dict):
+                continue
+            name = call.get("tool")
+            if not name or not isinstance(name, str) or name in _STICKY_DOMAIN_IGNORE:
+                continue
+            domains.add(_domain_of(name))
+    return domains
 
 
 # ── Design item 1 — true per-domain enumeration (external audit #1/#5) ───────

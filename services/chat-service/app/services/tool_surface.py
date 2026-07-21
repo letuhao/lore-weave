@@ -223,6 +223,7 @@ def discovery_seed_for_surface(
     workflow_step_tools: set[str] | None = None,
     binding_categories: list[str] | None = None,
     pinned_step_tools: list[str] | None = None,
+    sticky_domains: set[str] | None = None,
 ) -> set[str]:
     """Discovery active-set seed: hot set (auto) or pins ∪ activated (curated).
 
@@ -231,10 +232,20 @@ def discovery_seed_for_surface(
     ``HOT_SEED_TOKEN_BUDGET`` ceiling as the surface's own domains (never a second,
     independently-budgeted call: that is the additive-per-domain pattern that caused the
     2026-07-06 context explosion).
+
+    ``sticky_domains`` (D-DOMAIN-HOTSET-NOT-STICKY) are the domains the RECENT
+    conversation has actively called into (``engaged_domains_from_tool_calls``). They
+    union in the SAME additive way and ride the SAME single budget — so re-seeding the
+    book domain the writer used two turns ago costs nothing extra beyond the shared
+    ceiling, and the budget still truncates if the union grows. Without this, auto mode
+    forgets the working domain across turns and the model can't act on a low-signal
+    follow-up (or hallucinates that it did).
     """
     hot_domains = surface_hot_domains(
         editor=editor, book_scoped=book_scoped, studio=studio, permission_mode=permission_mode,
     )
+    if sticky_domains:
+        hot_domains = set(hot_domains) | set(sticky_domains)
     if binding_categories:
         # An unknown category contributes no tools. The registry rejects one at the write
         # (contract C1 closed set), so if one arrives here the two sides have DRIFTED —

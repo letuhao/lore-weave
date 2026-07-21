@@ -4,6 +4,40 @@
 **Branch:** feat/frontend-tools-mcp-migration
 **Origin:** live co-writer dogfood 2026-07-21 (book *The Tidewright*, chat 019f82b3) — Finding #3 (HIGH reasoning loop from a two-tools-one-job overlap).
 
+## ✅ OUTCOME / CORRECTION (2026-07-21, end of investigation) — READ FIRST
+
+**M0 is DONE and LIVE-PROVEN.** Weak local Gemma-4 26B produces the server-built diff card
+on a real turn (`tool_list → book_list → book_get → book_update_details → book.meta diff card`).
+
+**The measurement discipline paid off — every "the model is weak" verdict dissolved into one of
+OUR bugs. Two real root causes, both fixed; the headline hypothesis below was WRONG:**
+
+- ❌ **"CHAT context poisoning / 245K bloat" (the big lead below) — DISPROVEN.** The context
+  gate + metric we shipped (`2d1b4197c`) measured the real per-pass input: **lean (~6.5K, ~3% of
+  window)**, not 245K (that number was the SUM across loop passes, not a single prompt). The gate
+  is still a correct safety rail, but it was not the cause.
+- ✅ **Bug A — `book_update_details` was budget-starved out of the advertised set** (large Tier-W
+  schema, read-first ordering dropped it; it was NEVER advertised to ANY model). Fixed
+  `5625b0a3d` (add to `ALWAYS_HOT_WRITES`) + regression test that reproduces the starvation
+  without the fix. This alone made weak Gemma route correctly.
+- ✅ **Bug B — the per-turn domain hot-set is NOT conversation-aware** (`D-DOMAIN-HOTSET-NOT-STICKY`).
+  Auto mode recomputes the hot seed from the CURRENT message only and forgets the domain the
+  agent used two turns ago; on a low-signal follow-up ("Go with the third one.") the book domain
+  vanished and the model wandered / **hallucinated success** ("I've prepared the update…" with no
+  tool call). Fixed by re-seeding domains the recent `chat_messages.tool_calls` show the
+  conversation engaged (`engaged_domains_from_tool_calls` → `discovery_seed_for_surface(sticky_domains=…)`).
+  Live-verified: a zero-keyword follow-up now reaches `book_update_details` + diff card.
+- ⚠️ **Residual (weak-model decisiveness, NOT routing):** even with tools advertised, weak Gemma
+  can narrate confusion on the confirm flow (re-emits the diff card once with an "I hit an error"
+  apology — no server error, pure model narration). This is the class the **planner-executor**
+  (`tool_plan.py`, un-parked — see the eager-index spec's exception note) or a cleaner confirm
+  flow would address. Open decision, not a regression.
+
+**LESSON (recorded):** check the mechanical/verifiable thing (is the tool even advertised? is the
+domain hot?) BEFORE theorizing about model capability. A `grep` of the advertised-set log would
+have found both bugs on day one. Everything below this banner predates the correction — kept as
+the investigation record, not current truth.
+
 ## 🔴 ROOT-CAUSE LEAD (2026-07-21) — CHAT-ONLY context poisoning (bigger than the diff card)
 
 **User hypothesis, confirmed by our data:** loop / "model gets dumb" bugs appear ONLY in

@@ -4690,6 +4690,25 @@ async def stream_response(
                     for s in (wf.get("steps") or [])
                     if isinstance(s, dict) and s.get("tool")
                 }
+                # D-DOMAIN-HOTSET-NOT-STICKY — re-seed the domains the RECENT conversation
+                # actually called into, so auto mode stops forgetting the working domain
+                # across turns (the book domain the writer used two turns ago stays hot on a
+                # low-signal follow-up like "Option 3, go with that"). Read-only, bounded
+                # lookback, decays naturally; degrades to no stickiness on any error.
+                _sticky_domains: set[str] = set()
+                try:
+                    from app.services.tool_discovery import engaged_domains_from_tool_calls
+                    _tc_rows = await pool.fetch(
+                        "SELECT tool_calls FROM chat_messages "
+                        "WHERE session_id = $1 AND role = 'assistant' AND tool_calls IS NOT NULL "
+                        "ORDER BY sequence_num DESC LIMIT 8",
+                        session_id,
+                    )
+                    _sticky_domains = engaged_domains_from_tool_calls(
+                        [r["tool_calls"] for r in _tc_rows]
+                    )
+                except Exception:  # noqa: BLE001 — stickiness is best-effort; never break the turn
+                    _sticky_domains = set()
                 discovery_seed_names = discovery_seed_for_surface(
                     discovery_catalog,  # N5a-FULL — seed from the filtered catalog too
                     pins=tool_pins,
@@ -4701,6 +4720,7 @@ async def stream_response(
                     workflow_step_tools=_wf_step_tools,
                     binding_categories=(mode_binding.seed_tool_categories if mode_binding else None),
                     pinned_step_tools=pinned_step_tools,
+                    sticky_domains=_sticky_domains,
                 )
                 # `tool_defs` is the FIRST-pass advertisement when discovery is on;
                 # _stream_with_tools recomputes it each pass (core ∪ extra_fe ∪
