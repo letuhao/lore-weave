@@ -27,11 +27,16 @@ OUR bugs. Two real root causes, both fixed; the headline hypothesis below was WR
   tool call). Fixed by re-seeding domains the recent `chat_messages.tool_calls` show the
   conversation engaged (`engaged_domains_from_tool_calls` → `discovery_seed_for_surface(sticky_domains=…)`).
   Live-verified: a zero-keyword follow-up now reaches `book_update_details` + diff card.
-- ⚠️ **Residual (weak-model decisiveness, NOT routing):** even with tools advertised, weak Gemma
-  can narrate confusion on the confirm flow (re-emits the diff card once with an "I hit an error"
-  apology — no server error, pure model narration). This is the class the **planner-executor**
-  (`tool_plan.py`, un-parked — see the eager-index spec's exception note) or a cleaner confirm
-  flow would address. Open decision, not a regression.
+- ✅ **Residual (weak-model confirm-flow double-card) — FIXED with the CHEAP option, planner NOT
+  needed.** The model re-fired the propose tool + narrated a fake error because the confirm-card
+  tool result carried no instruction. Fix `5276586b4` (`D-CONFIRM-CARD-NUDGE`): append a stop-note
+  to the minted-card result telling the model the card is pending the human — do not re-call, do
+  not apologize, reply once and stop. Held on weak Gemma across a 2-turn flow (T1 direct edit +
+  T2 low-signal "make it a bit darker") — one clean card per turn, no double-card, no apology.
+  The note lives in the tool result the model is actively reasoning over, which is why it holds
+  where a distant system-prompt guard historically did not. **The planner-executor stays PARKED**
+  (its residual target is now solved); revisit only if a genuinely harder open-ended agency case
+  needs it.
 
 **LESSON (recorded):** check the mechanical/verifiable thing (is the tool even advertised? is the
 domain hot?) BEFORE theorizing about model capability. A `grep` of the advertised-set log would
