@@ -119,11 +119,14 @@ func buildResponsesBody(modelName string, input map[string]any) map[string]any {
 			body["reasoning"] = map[string]any{"effort": eff}
 		}
 	}
-	// chat_template_kwargs kept as a fallback for local models that honor it (harmless to
-	// the Responses reasoning field above).
-	if v, ok := input["chat_template_kwargs"]; ok {
-		body["chat_template_kwargs"] = v
-	}
+	// chat_template_kwargs is DELIBERATELY NOT forwarded to the Responses API. It is
+	// a llama.cpp/vLLM chat-template passthrough (e.g. {enable_thinking:false}); real
+	// OpenAI's /v1/responses REJECTS it (HTTP 400 "Unknown parameter:
+	// 'chat_template_kwargs'" — this broke EVERY OpenAI chat), and LM Studio's
+	// /v1/responses IGNORES it anyway (see the max_output_tokens note above —
+	// thinking-off there rides the nested reasoning.effort + the output cap, not this
+	// field). So forwarding it only breaks OpenAI for zero local benefit. (The
+	// /v1/chat/completions adapter already deletes it for the same reason — TR-4.)
 	if tools := toolsToResponsesTools(input["tools"]); len(tools) > 0 {
 		body["tools"] = tools
 		if tc, ok := input["tool_choice"]; ok {
