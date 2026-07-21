@@ -7,10 +7,13 @@ package api
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
+	"net/http/httptest"
 	"testing"
 
 	"github.com/google/uuid"
+	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
 func TestMCP_BookUpdateMeta_ProposesDiff_NoWrite_ThenConfirmApplies_DB(t *testing.T) {
@@ -59,6 +62,81 @@ func TestMCP_BookUpdateMeta_ProposesDiff_NoWrite_ThenConfirmApplies_DB(t *testin
 	}
 	if descNow != newDesc {
 		t.Fatalf("confirm must apply the edit; description = %q", descNow)
+	}
+}
+
+// M0d (deterministic live proof) — drive book_update_meta THROUGH the real /mcp
+// handler (identity middleware + stateless StreamableHTTP transport + the go-sdk
+// output validator), exactly as the gateway does. The "rewrite the description"
+// request must return a DIFF CARD (confirm_token + server-built old→new changes,
+// descriptor book.meta) and write NOTHING. This proves the deployed mechanism
+// independent of any LLM's tool-selection (which is the model's job).
+func TestMCP_BookUpdateMeta_ThroughMCPHandler_ReturnsDiffCard_DB(t *testing.T) {
+	s, pool := dbTestServer(t)
+	ctx := context.Background()
+	owner := uuid.New()
+	var bookID uuid.UUID
+	if err := pool.QueryRow(ctx,
+		`INSERT INTO books(owner_user_id,title,description) VALUES($1,'The Tidewright','old blurb') RETURNING id`,
+		owner).Scan(&bookID); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	s.resolveBook = ownerResolver(owner)
+
+	srv := httptest.NewServer(s.mcpHandler())
+	t.Cleanup(srv.Close)
+	transport := &mcp.StreamableClientTransport{
+		Endpoint: srv.URL,
+		HTTPClient: &http.Client{
+			Transport: headerRoundTripper{rt: http.DefaultTransport, userID: owner.String()},
+		},
+		DisableStandaloneSSE: true,
+	}
+	client := mcp.NewClient(&mcp.Implementation{Name: "test", Version: "0.0.1"}, nil)
+	cs, err := client.Connect(ctx, transport, nil)
+	if err != nil {
+		t.Fatalf("connect /mcp: %v", err)
+	}
+	t.Cleanup(func() { _ = cs.Close() })
+
+	newDesc := "In a drowning port city, a glassmaker's daughter learns her gift can either save the harbor or shatter it forever."
+	res, err := cs.CallTool(ctx, &mcp.CallToolParams{
+		Name:      "book_update_meta",
+		Arguments: map[string]any{"book_id": bookID.String(), "description": newDesc},
+	})
+	if err != nil {
+		t.Fatalf("book_update_meta call failed: %v", err)
+	}
+	if res.IsError {
+		t.Fatalf("book_update_meta returned isError=true: %+v", res.Content)
+	}
+	raw, _ := json.Marshal(res.StructuredContent)
+	var card struct {
+		ConfirmToken string `json:"confirm_token"`
+		Descriptor   string `json:"descriptor"`
+		Domain       string `json:"domain"`
+		Changes      []struct {
+			FieldLabel string `json:"field_label"`
+			OldValue   string `json:"old_value"`
+			NewValue   string `json:"new_value"`
+			Target     string `json:"target"`
+		} `json:"changes"`
+	}
+	if err := json.Unmarshal(raw, &card); err != nil {
+		t.Fatalf("unmarshal card: %v (raw=%s)", err, raw)
+	}
+	if card.ConfirmToken == "" || card.Descriptor != descBookMeta || card.Domain != "book" {
+		t.Fatalf("want a book.meta diff card, got %s", raw)
+	}
+	if len(card.Changes) != 1 || card.Changes[0].Target != "description" ||
+		card.Changes[0].OldValue != "old blurb" || card.Changes[0].NewValue != newDesc {
+		t.Fatalf("server-built diff wrong: %+v", card.Changes)
+	}
+	// NOTHING written at propose time (the write waits for confirm).
+	var descNow string
+	_ = pool.QueryRow(ctx, `SELECT description FROM books WHERE id=$1`, bookID).Scan(&descNow)
+	if descNow != "old blurb" {
+		t.Fatalf("propose through /mcp must NOT write; description = %q", descNow)
 	}
 }
 
