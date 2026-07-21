@@ -33,10 +33,25 @@ A completeness audit (3 cold-start agents over disjoint phase-code + a solo §6/
   localStorage (the spec's §8 lean).
 - **L1** — resolver outline-detail half (`outline.arcs` + §6.4 `chapter_id` reconciliation). NOTE: assess a
   consumer first — if none needs the reconciliation, this is a documented conscious-decision, not a build.
-- **L2** — migration id-equivalence verification test (§6.1 — C4 kept part UUIDs; pre-C4 chapters not all
-  Unassigned). **L3** — `has_work` two bits in the resolver (§6.3 row-exists vs project-backed). **L4** — FE
-  lazy-expand the skeleton instead of eager full-load. **L5** — zh `lensParts` 章节→部 (a translation-quality
-  nuance; needs a domain glossary in `i18n_translate` or a careful native term, NOT a blind hand-edit).
+- **L2 [x] §6.1 — CONSCIOUS DECISION (verified), a synthetic migration test is infeasible.** The C2/C4
+  parts→structure_node mirror is one-time INLINE DDL (no callable function to unit-test) and the pre-C4
+  `parts` table is DROPPED (nothing to compare ids against). The concern is already GUARDED: the resolver's
+  LEFT-JOIN-safety (a chapter whose link points at a re-keyed / dead / foreign / archived part → Unassigned,
+  never dropped, never mass-orphaned) is tested by `TestBuildBookStructure_DanglingLinkNeverDropsAChapter` +
+  the conservation assertion. VERIFIED LIVE against real data: of the book-service chapters with a part link,
+  the repro book's resolve to a live part (id-equivalence held); one stale orphan exists and the resolver
+  correctly routes it to Unassigned. Not a debt — a decision backed by infeasibility + an existing tested guard
+  + live verification.
+- **L3 [x] §6.3 — has_work two bits DONE.** `structureWork.HasWork` (json `has_work`) is set true whenever a
+  Work ROW exists (`decodeStructureWork`: `out.Work != nil`), even for a pending Work whose `project_id` is
+  null — DISTINCT from the project-backed bit (`kinds_present.outline` = project_id!=null). A consumer (door,
+  CTAs) can now show "pending" vs "absent" instead of conflating them. Tested (decodeStructureWork: pending→
+  has_work=true, absent→false) + exposed in the FE `BookStructure` type (+ the previously-undeclared
+  `book_lifecycle`). No consumer wired yet (the bit is AVAILABLE; wiring the door is that feature's job — not
+  speculatively built here).
+- **L4** — FE lazy-expand the skeleton instead of eager full-load (bounded 6000, functionally fine today).
+  **L5** — CJK `lensParts` 章节→部 + the broader CJK "part"→幕/章节 mistranslation (add a domain glossary to
+  `i18n_translate`, NOT a blind non-native hand-edit).
 
 ## Commitment / invariants (re-read after any compaction)
 - Resolver owner = **book-service** (holds chapters + the `structure_node_id` join key + lifecycle; calls

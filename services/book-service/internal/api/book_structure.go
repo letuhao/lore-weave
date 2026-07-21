@@ -33,6 +33,11 @@ type structureKinds struct {
 
 type structureWork struct {
 	ProjectID *string `json:"project_id"`
+	// §6.3 — has_work is a SEPARATE bit from project-backed. project_id is null for BOTH a pending Work
+	// (a row exists, awaiting its knowledge project) and NO Work at all; has_work distinguishes them so a
+	// consumer (onboarding door, quality CTAs) can reflect "pending" vs "absent", not conflate them.
+	// (kinds_present.outline stays the project-backed bit: project_id != null.)
+	HasWork bool `json:"has_work"`
 }
 
 // structureSources surfaces a composition outage instead of silently flattening the manuscript
@@ -331,7 +336,8 @@ func decodeStructureWork(r io.Reader) (structureWork, bool) {
 		return structureWork{}, false
 	}
 	if out.Work != nil {
-		return structureWork{ProjectID: out.Work.ProjectID}, true
+		// A Work ROW exists — has_work=true even when project_id is null (a pending Work).
+		return structureWork{ProjectID: out.Work.ProjectID, HasWork: true}, true
 	}
-	return structureWork{}, true
+	return structureWork{}, true // no Work row → has_work=false (the "absent" case)
 }

@@ -13,11 +13,15 @@ export interface StructurePartHeader {
 
 export interface BookStructure {
   book_id: string;
+  /** active | trashed | purge_pending — the resolver's §4.6 read-side gate (a non-active book → empty). */
+  book_lifecycle: string;
   kinds_present: { parts: boolean; outline: boolean };
   /** Active parts (acts) in sort order, headers + counts — chapters are lazy-loaded per group. */
   parts: StructurePartHeader[];
   unassigned_count: number;
-  active_work: { project_id: string | null };
+  /** §6.3 — has_work (a Work ROW exists) is DISTINCT from project-backed (kinds_present.outline): a pending
+   * Work has has_work=true + project_id=null. Lets a consumer show "pending" vs "absent". */
+  active_work: { project_id: string | null; has_work: boolean };
   /** "ok" | "unavailable" — surfaces a composition outage rather than silently flattening. */
   sources: { parts: string; work: string };
 }

@@ -21,20 +21,29 @@ func TestDecodeStructureWork_ReadsNestedWorkProjectID(t *testing.T) {
 	if got.ProjectID == nil || *got.ProjectID != "proj-9" {
 		t.Errorf("must read the NESTED work.project_id (proj-9), got %v", got.ProjectID)
 	}
+	if !got.HasWork {
+		t.Error("§6.3 — a resolved Work row → has_work=true")
+	}
 }
 
 func TestDecodeStructureWork_LazyOrAbsentWorkYieldsNilProject(t *testing.T) {
 	// a lazy/pending Work (work present, project_id null) → nil project → outline=false (matches the
 	// FE's 'chapters' mode); and a fully-unresolved book → nil project too.
+	// §6.3 — BOTH yield a nil project (outline=false), but has_work distinguishes pending (a row exists)
+	// from absent (no row) so the onboarding door reflects "pending" not "absent".
 	for _, tc := range []struct {
-		name, body string
+		name, body  string
+		wantHasWork bool
 	}{
-		{"lazy null-project work", `{"status":"found","work":{"project_id":null,"id":"w"}}`},
-		{"no work resolved", `{"status":"unavailable","work":null,"book_project_id":null}`},
+		{"lazy null-project (pending) work", `{"status":"found","work":{"project_id":null,"id":"w"}}`, true},
+		{"no work resolved (absent)", `{"status":"unavailable","work":null,"book_project_id":null}`, false},
 	} {
 		got, ok := decodeStructureWork(strings.NewReader(tc.body))
 		if !ok || got.ProjectID != nil {
 			t.Errorf("%s: want nil project, got ok=%v project=%v", tc.name, ok, got.ProjectID)
+		}
+		if got.HasWork != tc.wantHasWork {
+			t.Errorf("%s: has_work = %v, want %v (pending row-exists vs absent)", tc.name, got.HasWork, tc.wantHasWork)
 		}
 	}
 }
@@ -52,10 +61,10 @@ func TestBuildBookStructure_GroupsCountsAndSorts(t *testing.T) {
 	parts := []structurePartInput{sPart("p2", 2, true), sPart("p1", 1, true), sPart("pArch", 3, false)}
 	chapters := []structureChapterLink{
 		sLink("p1"), sLink("p1"), // 2 in p1
-		sLink("p2"),      // 1 in p2
-		sNoLink,          // null link → unassigned
-		sLink("pArch"),   // archived (inactive) part → unassigned
-		sLink("arcXYZ"),  // a foreign/arc id not in the active set → unassigned
+		sLink("p2"),     // 1 in p2
+		sNoLink,         // null link → unassigned
+		sLink("pArch"),  // archived (inactive) part → unassigned
+		sLink("arcXYZ"), // a foreign/arc id not in the active set → unassigned
 	}
 	got := buildBookStructure("book-1", chapters, parts,
 		structureWork{ProjectID: &proj}, structureSources{Parts: "ok", Work: "ok"})
