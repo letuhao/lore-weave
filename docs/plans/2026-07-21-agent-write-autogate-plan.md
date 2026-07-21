@@ -1,0 +1,57 @@
+# RUN-STATE — Agent write auto-gate (server-built diff card)
+
+**Spec:** [docs/specs/2026-07-21-agent-write-autogate.md](../specs/2026-07-21-agent-write-autogate.md)
+**Branch:** feat/frontend-tools-mcp-migration
+**Origin:** live co-writer dogfood 2026-07-21 (book *The Tidewright*, chat 019f82b3) — Finding #3 (HIGH reasoning loop from a two-tools-one-job overlap).
+
+## THE COMMITMENT (re-read this first after every compaction)
+
+Deliver the FULL auto-gate: the agent calls only the natural domain write; the SERVER builds the old→new diff card and gates it through the existing `GateOrConfirm` seam. Convert **all 5** `propose_record_edit` domains, uniform MCP-tool gating (REST stays a direct write), then **delete `propose_record_edit`**. Done = every slice below carries a **pasted evidence string** (test output or live-smoke), not a claim.
+
+## INVARIANTS (must hold at every slice — a violation blocks done)
+
+- **I1** — Agent-facing surface gains NO new free-string mechanic; the diff is server-built, model supplies only the new field values it already has.
+- **I2** — Reuse `loreweave_mcp.GateOrConfirm` + `MintConfirmToken` (Go) / `gate_or_confirm` (Py). No new kit primitive unless proven necessary.
+- **I3** — Tenancy: read-current + write stay owner/grant-scoped; confirm token HMAC-bound to {user,resource,descriptor,payload} (confused-deputy guard).
+- **I4** — No silent no-op: dismissed → `dismissed`; agent states "changed" ONLY on `applied_saved`.
+- **I5** — Single-use: the `*_consumed_tokens` replay ledger guards the confirm.
+- **I6** — REST `PATCH` stays a direct write (confirm route + automation use it); only the MCP tool surface is gated.
+- **I7** — OCC on confirm: a stale diff → `applied_conflict`, never a clobber.
+
+## SLICE BOARD  (done = the evidence string is filled in)
+
+| Slice | Scope | Done-criteria (evidence) | State |
+|---|---|---|---|
+| **R1** ride-along | reasoning-loop breaker | `35024ec05`; 9 unit + 2 integ green; serial suite exit 0 | ✅ DONE |
+| **R2** ride-along | auto-title sanitizer | `35024ec05`; 10 tests incl. the "4." bug | ✅ DONE |
+| **M0** | kit + **book** auto-gate | Go: `book.meta` descriptor + `update_meta` confirm op + `changes[]` diff card; `book_update_meta` mints via GateOrConfirm; confirm route applies (OCC). chat-service suspends on it. FE renders `changes[]`. `propose_record_edit` de-advertised for book. **Evidence:** book-service `go test ./...` pasted green + chat-service pytest pasted green + **live re-smoke: description-rewrite → diff card, no loop** | ⬜ TODO |
+| **M1** | composition | audit write tool(s) → adopt facade. Evidence: pasted composition unit + live | ⬜ TODO |
+| **M2** | glossary | reconcile `glossary_propose_entity_edit` with the shared factory. Evidence: pasted glossary tests + live | ⬜ TODO |
+| **M3** | settings | adopt facade. Evidence: pasted tests | ⬜ TODO |
+| **M4** | translation | adopt facade. Evidence: pasted tests | ⬜ TODO |
+| **M5** | cleanup | delete `propose_record_edit` (tool + FE resolver + `contracts/frontend-tools.contract.json`). Evidence: contract drift-test pasted green | ⬜ TODO |
+
+## PER-DOMAIN AUDIT (fill before starting each of M1–M4)
+
+For each domain: (1) which direct-write MCP tool edits its records? (2) Tier-A auto-commit or already Tier-W? (3) read-current source for `old_value`? (4) does the FE diff card already handle its `target` keys? A domain with no direct-write tool → build one (buildable, not blocked).
+
+## REGISTERS (append as you go — an empty drift log at the end is dishonest)
+
+### Decisions
+- 2026-07-21 — Scope = all 5 domains, uniform MCP gating (user chose "all five" + "always gate"). REST stays direct (I6) resolves the "breaks automation" risk.
+- 2026-07-21 — Reuse GateOrConfirm card factory; no new kit primitive (seam already supports an arbitrary card).
+
+### Parked / blocked
+- (none)
+
+### Debt
+- (none)
+
+### Drift / near-misses
+- 2026-07-21 — nearly mis-filed Finding #2 as a misroute; the runtime trace showed `book_create` DID run first (correct). Lesson: read the full agent-runtime step trace, not just the pending confirm chip.
+- 2026-07-21 — `-n auto` parallel run showed 3 false failures (skill-router embedding ConnectError under parallel load); the SERIAL run is the authoritative gate. Do not trust `-n auto` for these skill/embedding integration tests without `--dist loadgroup`.
+
+## RESUME PROTOCOL (after compaction)
+1. Re-read THIS file (commitment + invariants + slice board), not memory.
+2. `git log --oneline -8` to see what actually landed.
+3. Continue at the first ⬜ slice; fill its evidence string only from pasted output.
