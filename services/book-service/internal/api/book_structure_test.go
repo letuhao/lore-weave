@@ -5,6 +5,8 @@ package api
 import (
 	"strings"
 	"testing"
+
+	"github.com/google/uuid"
 )
 
 // REGRESSION (caught by the Work-book e2e): the active Work's project_id is NESTED under `work`, not the
@@ -127,5 +129,34 @@ func TestBuildBookStructure_SourcesPassThroughForNoSilentSeam(t *testing.T) {
 		structureSources{Parts: "unavailable", Work: "unavailable"})
 	if got.Sources.Parts != "unavailable" || got.Sources.Work != "unavailable" {
 		t.Errorf("sources must pass through to surface a composition outage, got %+v", got.Sources)
+	}
+}
+
+// M1 (audit) — the write-validation matching that closes the agent/HTTP "silent Unassigned" seam. Both
+// validatePartTarget and validatePartTargetInternal funnel through partIsLiveTarget, so this pins the
+// exact discrimination: only an ACTIVE part in THIS book's list is a valid target.
+func TestPartIsLiveTarget(t *testing.T) {
+	live := uuid.New()
+	archived := uuid.New()
+	parts := []structurePartInput{
+		{PartID: live.String(), Title: "Part 1", Active: true},
+		{PartID: archived.String(), Title: "old", Active: false}, // an archived part is NOT a live target
+	}
+	cases := []struct {
+		name string
+		id   uuid.UUID
+		want bool
+	}{
+		{"a live active part", live, true},
+		{"an archived part (would silently read Unassigned)", archived, false},
+		{"an arc / foreign-book id not in the list", uuid.New(), false},
+	}
+	for _, c := range cases {
+		if got := partIsLiveTarget(parts, c.id); got != c.want {
+			t.Errorf("%s: partIsLiveTarget = %v, want %v", c.name, got, c.want)
+		}
+	}
+	if partIsLiveTarget(nil, live) {
+		t.Error("an empty parts list (a Work-less / partless book) must never yield a live target")
 	}
 }

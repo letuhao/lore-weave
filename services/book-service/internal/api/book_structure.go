@@ -263,13 +263,7 @@ func (s *Server) validatePartTargetInternal(ctx context.Context, bookID, userID,
 	if !ok {
 		return false, false
 	}
-	want := partID.String()
-	for _, p := range parts {
-		if p.Active && p.PartID == want {
-			return true, true
-		}
-	}
-	return false, true
+	return partIsLiveTarget(parts, partID), true
 }
 
 // validatePartTarget verifies partID is a LIVE kind='part' of bookID (via composition). It closes the
@@ -281,13 +275,20 @@ func (s *Server) validatePartTarget(ctx context.Context, bookID uuid.UUID, beare
 	if !ok {
 		return false, false
 	}
+	return partIsLiveTarget(parts, partID), true
+}
+
+// partIsLiveTarget — the shared matching for BOTH validators (bearer HTTP + internal MCP): is partID an
+// ACTIVE part in the list? An archived part, an arc / foreign-book id, or a missing id is NOT a live
+// target. Pure + deterministic (unit-tested) — the one place the "silent Unassigned" write gap is closed.
+func partIsLiveTarget(parts []structurePartInput, partID uuid.UUID) bool {
 	want := partID.String()
 	for _, p := range parts {
 		if p.Active && p.PartID == want {
-			return true, true
+			return true
 		}
 	}
-	return false, true
+	return false
 }
 
 // fetchStructureWork calls composition GET /v1/composition/books/{id}/work (bearer-forwarded) and
