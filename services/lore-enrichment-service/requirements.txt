@@ -26,7 +26,7 @@ Pillow>=12.3.0
 # LE-060 — Chinese word segmentation for the C12 contradiction canon-term
 # extraction (app/verify/canon_lookup.py). Pure-Python, MIT; lazily imported so
 # its dict only loads when a contradiction canon term is actually extracted.
-jieba>=0.42
+jieba>=0.42.1
 # loreweave_obs (sdks/python) supplies setup_tracing + current_otel_trace_id;
 # OTel tracing is a no-op until OTEL_EXPORTER_OTLP_ENDPOINT is set. The SDK is
 # installed via the Dockerfile COPY of sdks/python (build context is repo root).
