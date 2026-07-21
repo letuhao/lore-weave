@@ -1083,7 +1083,17 @@
     "restoreActHint": "Pulihkan bab ini (bab akan kembali dalam keadaan kosong — susun ulang bab di dalamnya jika diperlukan)",
     "actTrashed": "Bab «{{name}}» telah dihapus — bab-bab di dalamnya tetap tersimpan di buku",
     "partVsArc": "Bagian mengelompokkan manuskrip Anda. Alur adalah rencananya.",
-    "undo": "Batalkan"
+    "undo": "Batalkan",
+    "lensParts": "Bagian",
+    "lensOutline": "Kerangka",
+    "lensToggle": "Tampilan",
+    "createFailed": "Tidak dapat membuat bagian",
+    "renameFailed": "Tidak dapat mengubah nama bagian",
+    "trashFailed": "Tidak dapat menghapus bagian",
+    "restoreFailed": "Tidak dapat memulihkan bagian",
+    "moveFailed": "Tidak dapat memindahkan bab ke bagian tersebut",
+    "reorderFailed": "Tidak dapat mengatur ulang",
+    "partsUnavailable": "Bagian sedang tidak tersedia untuk sementara — menampilkan bab secara berurutan."
   },
   "intro": {
     "title": "Selamat Datang di Writing Studio",

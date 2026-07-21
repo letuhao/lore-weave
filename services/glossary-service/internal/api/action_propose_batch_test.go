@@ -44,14 +44,14 @@ func TestProposeBatch_RoundTripToConfirm(t *testing.T) {
 	if err != nil {
 		t.Fatalf("propose batch: %v", err)
 	}
-	if out.ConfirmToken == "" || out.Descriptor != descExecutePlan {
+	if asCard(out).ConfirmToken == "" || asCard(out).Descriptor != descExecutePlan {
 		t.Fatalf("want an execute_plan card, got %+v", out)
 	}
-	if len(out.PreviewRows) != 2 {
-		t.Errorf("want 2 preview rows (one per op), got %d", len(out.PreviewRows))
+	if len(asCard(out).PreviewRows) != 2 {
+		t.Errorf("want 2 preview rows (one per op), got %d", len(asCard(out).PreviewRows))
 	}
 
-	if w := f.confirm(t, out.ConfirmToken); w.Code != http.StatusOK {
+	if w := f.confirm(t, asCard(out).ConfirmToken); w.Code != http.StatusOK {
 		t.Fatalf("confirm batch (1 click → whole plan): want 200, got %d (%s)", w.Code, w.Body.String())
 	}
 	for _, code := range []string{"qa_batch_a", "qa_batch_b"} {

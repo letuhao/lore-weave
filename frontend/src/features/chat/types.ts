@@ -347,6 +347,14 @@ export interface ToolCallRecord {
   pending?: boolean;
   runId?: string;
   toolCallId?: string;
+  // ext-tasks (T1c(3)) — a durable-gate suspend: the domain opened a task-shaped
+  // human gate. `task` carries {taskId, status, inputRequests} for the confirm card;
+  // Confirm resumes the run via /tool-results (accept → the domain runs the write).
+  task?: {
+    taskId: string;
+    status: string;
+    inputRequests?: Record<string, unknown> | null;
+  } | null;
 }
 
 export interface ChatMessage {
@@ -363,6 +371,11 @@ export interface ChatMessage {
   model_ref: string | null;
   is_error: boolean;
   error_detail: string | null;
+  // DBT-CHAT-PERSIST — how the turn ended: null/'stop' = clean, 'error' = threw
+  // mid-stream (with is_error), 'interrupted' = the user stopped or a
+  // frontend-tool card was abandoned/expired. Drives the "incomplete" badge so
+  // a turn that didn't finish cleanly is shown instead of vanishing.
+  finish_reason?: string | null;
   parent_message_id: string | null;
   created_at: string;
   // K21-C (D1): tool calls the assistant made during this turn.

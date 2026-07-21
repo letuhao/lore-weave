@@ -48,14 +48,14 @@ func TestBookTool_AdoptNoOpWarnsOnEmptyPayload(t *testing.T) {
 	if err != nil {
 		t.Fatalf("propose adopt: %v", err)
 	}
-	if card.ConfirmToken == "" {
+	if asCard(card).ConfirmToken == "" {
 		t.Fatal("a no-op adopt must still mint a valid confirm_token (it is not an error)")
 	}
-	if card.Warning == "" {
+	if asCard(card).Warning == "" {
 		t.Fatalf("a no-real-target adopt must carry a warning, got card=%+v", card)
 	}
-	if !strings.Contains(card.Warning, "nothing new") {
-		t.Errorf("warning should state that nothing new will be adopted, got %q", card.Warning)
+	if !strings.Contains(asCard(card).Warning, "nothing new") {
+		t.Errorf("warning should state that nothing new will be adopted, got %q", asCard(card).Warning)
 	}
 }
 
@@ -70,8 +70,8 @@ func TestBookTool_AdoptWithTargetsCarriesNoWarning(t *testing.T) {
 	if err != nil {
 		t.Fatalf("propose adopt: %v", err)
 	}
-	if card.Warning != "" {
-		t.Errorf("an adopt with real targets must not carry the no-op warning, got %q", card.Warning)
+	if asCard(card).Warning != "" {
+		t.Errorf("an adopt with real targets must not carry the no-op warning, got %q", asCard(card).Warning)
 	}
 }
 
@@ -86,12 +86,12 @@ func TestBookTool_AdoptRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("propose adopt: %v", err)
 	}
-	if card.Descriptor != descAdopt || card.Destructive {
+	if asCard(card).Descriptor != descAdopt || asCard(card).Destructive {
 		t.Fatalf("bad adopt card: %+v", card)
 	}
 
 	// preview enumerates new-vs-present (book is empty → xianxia+universal & character+unknown are new)
-	if w := f.preview(t, card.ConfirmToken); w.Code != http.StatusOK {
+	if w := f.preview(t, asCard(card).ConfirmToken); w.Code != http.StatusOK {
 		t.Fatalf("preview: want 200, got %d (%s)", w.Code, w.Body.String())
 	} else {
 		var pv actionPreview
@@ -101,7 +101,7 @@ func TestBookTool_AdoptRoundTrip(t *testing.T) {
 		}
 	}
 	// confirm → adopt copy-down
-	if w := f.confirm(t, card.ConfirmToken); w.Code != http.StatusOK {
+	if w := f.confirm(t, asCard(card).ConfirmToken); w.Code != http.StatusOK {
 		t.Fatalf("confirm adopt: want 200, got %d (%s)", w.Code, w.Body.String())
 	}
 	// universal + xianxia present; character + unknown present
@@ -120,7 +120,7 @@ func TestBookTool_AdoptRoundTrip(t *testing.T) {
 		}
 	}
 	// replay the adopt confirm → single-use 422
-	if w := f.confirm(t, card.ConfirmToken); w.Code != http.StatusUnprocessableEntity {
+	if w := f.confirm(t, asCard(card).ConfirmToken); w.Code != http.StatusUnprocessableEntity {
 		t.Errorf("replay adopt: want 422 single-use, got %d", w.Code)
 	}
 }

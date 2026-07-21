@@ -90,16 +90,16 @@ func TestEntityDelete_RoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("propose: %v", err)
 	}
-	if card.ConfirmToken == "" || card.Descriptor != descEntityDelete || !card.Destructive {
+	if asCard(card).ConfirmToken == "" || asCard(card).Descriptor != descEntityDelete || !asCard(card).Destructive {
 		t.Fatalf("bad card: %+v", card)
 	}
-	if card.Warning != "" {
-		t.Errorf("a live entity's delete proposal must not carry the no-op warning, got %q", card.Warning)
+	if asCard(card).Warning != "" {
+		t.Errorf("a live entity's delete proposal must not carry the no-op warning, got %q", asCard(card).Warning)
 	}
-	if w := f.preview(t, card.ConfirmToken); w.Code != http.StatusOK {
+	if w := f.preview(t, asCard(card).ConfirmToken); w.Code != http.StatusOK {
 		t.Fatalf("preview: want 200, got %d (%s)", w.Code, w.Body.String())
 	}
-	if w := f.confirm(t, card.ConfirmToken); w.Code != http.StatusOK {
+	if w := f.confirm(t, asCard(card).ConfirmToken); w.Code != http.StatusOK {
 		t.Fatalf("confirm: want 200, got %d (%s)", w.Code, w.Body.String())
 	}
 	var deleted bool
@@ -108,7 +108,7 @@ func TestEntityDelete_RoundTrip(t *testing.T) {
 		t.Error("entity was not soft-deleted")
 	}
 	// replay → single-use → 422
-	if w := f.confirm(t, card.ConfirmToken); w.Code != http.StatusUnprocessableEntity {
+	if w := f.confirm(t, asCard(card).ConfirmToken); w.Code != http.StatusUnprocessableEntity {
 		t.Errorf("replay: want 422, got %d", w.Code)
 	}
 }
@@ -133,17 +133,17 @@ func TestEntityDelete_NoOpWhenAlreadyDeleted(t *testing.T) {
 	if err != nil {
 		t.Fatalf("propose on an already-deleted entity must still mint (idempotent), got err: %v", err)
 	}
-	if card.ConfirmToken == "" {
+	if asCard(card).ConfirmToken == "" {
 		t.Fatal("a no-op delete proposal must still mint a valid confirm_token (it is not an error)")
 	}
-	if card.Warning == "" {
+	if asCard(card).Warning == "" {
 		t.Fatalf("proposing to delete an already-deleted entity must carry a no-op warning, got card=%+v", card)
 	}
-	if !strings.Contains(card.Warning, "already deleted") {
-		t.Errorf("warning should state the entity is already deleted, got %q", card.Warning)
+	if !strings.Contains(asCard(card).Warning, "already deleted") {
+		t.Errorf("warning should state the entity is already deleted, got %q", asCard(card).Warning)
 	}
 	// confirming is still a clean 200 (idempotent no-op), not an error.
-	if w := f.confirm(t, card.ConfirmToken); w.Code != http.StatusOK {
+	if w := f.confirm(t, asCard(card).ConfirmToken); w.Code != http.StatusOK {
 		t.Fatalf("confirm of an already-deleted entity: want 200 (idempotent), got %d (%s)", w.Code, w.Body.String())
 	}
 }
@@ -176,7 +176,7 @@ func TestEntityRestore_RoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("propose delete: %v", err)
 	}
-	if w := f.confirm(t, card.ConfirmToken); w.Code != http.StatusOK {
+	if w := f.confirm(t, asCard(card).ConfirmToken); w.Code != http.StatusOK {
 		t.Fatalf("confirm delete: want 200, got %d (%s)", w.Code, w.Body.String())
 	}
 	var deleted bool
@@ -261,7 +261,7 @@ func TestEntityDelete_PreviewShowsCounts(t *testing.T) {
 		t.Fatalf("propose: %v", err)
 	}
 	var foundName, foundAttrs, foundLinks bool
-	for _, row := range card.PreviewRows {
+	for _, row := range asCard(card).PreviewRows {
 		switch {
 		case row.Label == "name" && row.Value == "Test Name":
 			foundName = true
@@ -272,13 +272,13 @@ func TestEntityDelete_PreviewShowsCounts(t *testing.T) {
 		}
 	}
 	if !foundName {
-		t.Errorf("preview must show the entity's name, got %+v", card.PreviewRows)
+		t.Errorf("preview must show the entity's name, got %+v", asCard(card).PreviewRows)
 	}
 	if !foundAttrs {
-		t.Errorf("preview must show the attribute count, got %+v", card.PreviewRows)
+		t.Errorf("preview must show the attribute count, got %+v", asCard(card).PreviewRows)
 	}
 	if !foundLinks {
-		t.Errorf("preview must show the chapter-link count, got %+v", card.PreviewRows)
+		t.Errorf("preview must show the chapter-link count, got %+v", asCard(card).PreviewRows)
 	}
 }
 
@@ -296,7 +296,7 @@ func TestEntityDelete_PreviewOfGenuinelyEmptyEntity(t *testing.T) {
 		t.Fatalf("propose: %v", err)
 	}
 	var foundUnnamed, foundZeroAttrs, foundZeroLinks bool
-	for _, row := range card.PreviewRows {
+	for _, row := range asCard(card).PreviewRows {
 		switch {
 		case row.Label == "name" && row.Value == "(none)":
 			foundUnnamed = true
@@ -307,6 +307,6 @@ func TestEntityDelete_PreviewOfGenuinelyEmptyEntity(t *testing.T) {
 		}
 	}
 	if !foundUnnamed || !foundZeroAttrs || !foundZeroLinks {
-		t.Errorf("empty-entity preview should show (none)/0/0, got %+v", card.PreviewRows)
+		t.Errorf("empty-entity preview should show (none)/0/0, got %+v", asCard(card).PreviewRows)
 	}
 }

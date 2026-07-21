@@ -60,6 +60,21 @@ func (s *Server) toolChapterSetPart(ctx context.Context, _ *mcp.CallToolRequest,
 	if _, err := s.mcpRequireGrant(ctx, bookID, userID, GrantEdit); err != nil {
 		return nil, chapterSetPartOut{}, mcpOwnershipError(err)
 	}
+	// §4.5 (agent half of the no-silent-seam fix, H2) — a non-null target must be a LIVE kind='part' of
+	// THIS book. The HTTP path validates via the bearer-forwarded /parts; the MCP ctx has a user_id but
+	// no user bearer, so we validate via composition's INTERNAL parts route (X-Internal-Token + user_id).
+	// Without this an agent could home a chapter onto an arc id / foreign-book part and it would silently
+	// read as Unassigned — the exact "no check, silent error, for agents too" this closes. Un-home (null)
+	// skips the check.
+	if target != nil {
+		valid, reachable := s.validatePartTargetInternal(ctx, bookID, userID, *target)
+		if !reachable {
+			return nil, chapterSetPartOut{}, errors.New("could not verify the target part — composition is unavailable; try again shortly")
+		}
+		if !valid {
+			return nil, chapterSetPartOut{}, errors.New("target part is not a live part of this book")
+		}
+	}
 	// Capture the prior grouping for the undo hint (before the move).
 	var priorPart *uuid.UUID
 	_ = s.pool.QueryRow(ctx, `SELECT structure_node_id FROM chapters WHERE id=$1 AND book_id=$2`, chID, bookID).Scan(&priorPart)

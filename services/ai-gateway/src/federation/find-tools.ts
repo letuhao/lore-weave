@@ -409,9 +409,9 @@ export const TOOL_LIST_TOOL = {
   name: TOOL_LIST_NAME,
   description:
     'List EVERY tool in a category (or "all"), complete and deterministic — the reliable way to see ' +
-    'what you can do here. Prefer this over find_tools when you know the rough area. Returns ' +
-    '{name, description, tier} per tool; deprecated tools are labeled with their replacement. Then ' +
-    'call tool_load(name) to get a tool’s exact arguments before using it.',
+    'what you can do here. This is how you discover a tool that is not already advertised: list the ' +
+    'category, then call tool_load(name) to get a tool’s exact arguments before using it. Returns ' +
+    '{name, description, tier} per tool; deprecated tools are labeled with their replacement.',
   inputSchema: {
     type: 'object',
     properties: {
@@ -567,7 +567,7 @@ export class FindToolsAttemptTracker {
 
   private static key(group: string | null | undefined, intent: string): string {
     const toks = Array.from(tokens(intent)).sort().join(' ');
-    return `${group ?? ''} ${toks}`;
+    return `${group ?? ''}\x00${toks}`;
   }
 
   /** Record this attempt for `sessionId` and report whether it is a REPEAT. Blank/enumeration

@@ -12,6 +12,7 @@
     "ingest": "Registry sources"
   },
   "quota": {
+    "unavailable": "Usage unavailable",
     "skills": "Skills",
     "mcp": "MCP servers",
     "proposals": "Proposals"

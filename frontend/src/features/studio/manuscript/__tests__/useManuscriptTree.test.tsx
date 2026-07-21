@@ -1,9 +1,18 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { renderHook, waitFor, act } from '@testing-library/react';
 
-// useWorkResolution decides the source (Work → outline; none → chapters). Mock it + the two APIs.
+// useWorkResolution supplies the OUTLINE presence (Work → outline); the unified /structure read
+// supplies the PARTS presence. Mock both + the APIs. (P1.2 mode-by-content: parts render regardless
+// of Work-mode.) The structure mock defaults to no-parts; a parts test flips kinds_present.parts.
 const work = vi.hoisted(() => ({ value: { data: { status: 'none' } as Record<string, unknown>, isLoading: false } }));
 vi.mock('@/features/composition/hooks/useWork', () => ({ useWorkResolution: () => work.value }));
+const structure = vi.hoisted(() => ({ value: { data: { kinds_present: { parts: false, outline: false } } as Record<string, unknown>, isLoading: false } }));
+vi.mock('../useBookStructure', () => ({ useBookStructure: () => structure.value }));
+const invalidateQueries = vi.fn();
+vi.mock('@tanstack/react-query', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@tanstack/react-query')>();
+  return { ...actual, useQueryClient: () => ({ invalidateQueries }) };
+});
 
 const listChaptersPage = vi.fn();
 const listOutlineChildren = vi.fn();
@@ -41,6 +50,7 @@ beforeEach(() => {
   reorderParts.mockResolvedValue({ items: [] });
   listParts.mockResolvedValue({ items: [] }); // default: flat mode
   work.value = { data: { status: 'none' }, isLoading: false };
+  structure.value = { data: { kinds_present: { parts: false, outline: false } }, isLoading: false }; // default: no parts
 });
 
 describe('useManuscriptTree', () => {
@@ -124,6 +134,7 @@ describe('useManuscriptTree', () => {
     listParts.mockResolvedValue({
       items: [{ part_id: 'p1', book_id: 'b1', title: 'Act I', path: 'act-i', sort_order: 1, lifecycle_state: 'active' }],
     });
+    structure.value = { data: { kinds_present: { parts: true, outline: false } }, isLoading: false };
     listChaptersPage.mockResolvedValue({
       items: [{ chapter_id: 'c1', sort_order: 1, title: 'Ch', original_filename: 'a.txt', part_id: 'p1' }],
       next_cursor: null, total: 1,
@@ -142,6 +153,7 @@ describe('useManuscriptTree', () => {
 
   it('S-02b: moveAct swaps with a neighbour and reorders the FULL id set; boundary = no-op', async () => {
     listParts.mockResolvedValue({ items: [mkAct('p1', 1), mkAct('p2', 2), mkAct('p3', 3)] });
+    structure.value = { data: { kinds_present: { parts: true, outline: false } }, isLoading: false };
     listChaptersPage.mockResolvedValue({ items: [], next_cursor: null, total: 0 });
     const { result } = renderHook(() => useManuscriptTree('b1', 't'));
     await waitFor(() => expect(result.current.partsMode).toBe(true));
@@ -158,6 +170,7 @@ describe('useManuscriptTree', () => {
 
   it('S-02b: splits include_trashed into active `parts` + `trashedActs`; restoreAct calls restore', async () => {
     listParts.mockResolvedValue({ items: [mkAct('p1', 1), mkAct('gone', 2, 'trashed')] });
+    structure.value = { data: { kinds_present: { parts: true, outline: false } }, isLoading: false };
     listChaptersPage.mockResolvedValue({ items: [], next_cursor: null, total: 0 });
     const { result } = renderHook(() => useManuscriptTree('b1', 't'));
     await waitFor(() => expect(result.current.partsMode).toBe(true));
@@ -183,5 +196,19 @@ describe('useManuscriptTree', () => {
     await waitFor(() => expect(result.current.rows.length).toBeGreaterThan(0));
     expect(result.current.rows.some((r) => isNode(r, 'arc1'))).toBe(true);
     expect(result.current.rows.some((r) => isNode(r, 'b1'))).toBe(false); // beat dropped
+  });
+
+  // P1.2 review-impl HIGH — a /structure OUTAGE (loaded, no data) must NOT brick the rail with a
+  // permanent 'pending'/"Loading…"; it degrades to the flat path (parts merely unavailable).
+  it('a /structure error degrades to a usable rail (no permanent pending)', async () => {
+    structure.value = { data: undefined, isLoading: false }; // errored: not loading, no data
+    listChaptersPage.mockResolvedValue({
+      items: [{ chapter_id: 'c1', sort_order: 1, title: 'A', original_filename: 'a.txt' }],
+      next_cursor: null, total: 1,
+    });
+    const { result } = renderHook(() => useManuscriptTree('b1', 't'));
+    await waitFor(() => expect(result.current.source).not.toBe('pending'));
+    expect(result.current.source).toBe('chapters'); // degraded to flat, NOT bricked
+    await waitFor(() => expect(result.current.rows.some((r) => isNode(r, 'c1'))).toBe(true));
   });
 });

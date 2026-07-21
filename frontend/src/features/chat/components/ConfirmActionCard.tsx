@@ -4,7 +4,7 @@ import { toast } from 'sonner';
 import { ShieldAlert, Check, X } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/auth';
-import { actionsApi, parseRepriceError, type ActionPreview, type RepriceDetail } from '../actionsApi';
+import { actionsApi, parseRepriceError, type ActionPreview, type RepriceDetail, type RecordEditChange } from '../actionsApi';
 import { PlannerPlanView } from './PlannerPlanView';
 import { useChatStream } from '../providers';
 import { invalidateAfterConfirm } from '../utils/invalidateAfterConfirm';
@@ -43,6 +43,10 @@ interface ConfirmArgs {
   title?: string;
   domain?: string;
   items?: unknown[];
+  // Auto-gate spec M0c — a server-built DIFF card (book_update_meta / descriptor
+  // `book.meta`) carries the old→new field changes so this renders a diff, not a
+  // bare yes/no. The confirm-token apply path is unchanged (POST /v1/book/actions/confirm).
+  changes?: RecordEditChange[];
 }
 
 type CardState = null | 'done' | 'expired' | 'error' | 'cancelled' | 'reprice';
@@ -119,6 +123,9 @@ export function ConfirmActionCard({ record }: Props) {
   const domain = args.domain ?? descriptorDomain(args.descriptor) ?? '';
   const argTitle = args.title ?? '';
   const items = Array.isArray(args.items) ? args.items : [];
+  // M0c — server-built old→new diff rows (book_update_meta). When present, render
+  // the diff; the confirm-token apply path below is unchanged.
+  const changes = Array.isArray(args.changes) ? args.changes : [];
 
   // Fetch the current-state preview once on mount (synchronization, not event
   // handling). A failed/expired preview is non-fatal — Confirm re-validates.
@@ -262,6 +269,22 @@ export function ConfirmActionCard({ record }: Props) {
         {title || t('actionConfirm.label', { defaultValue: 'Confirm action' })}
         {isBatch && ` · ${t('actionConfirm.batch_count', { defaultValue: '{{count}} items', count: items.length })}`}
       </div>
+
+      {/* M0c — a server-built diff card (book_update_meta): show each field's
+          old→new value. The confirm-token flow below is unchanged. */}
+      {changes.length > 0 && (
+        <div data-testid="confirm-diff-rows" className="mb-1 space-y-1.5">
+          {changes.map((c, i) => (
+            <div key={i} className="rounded bg-background/60 p-1.5 text-[11px]">
+              <div className="mb-0.5 text-[10px] font-medium text-muted-foreground">
+                {c.field_label ?? t('recordEdit.field', { defaultValue: 'Field' })}
+              </div>
+              <div className="text-foreground/60 line-through">{c.old_value || t('recordEdit.empty', { defaultValue: '(empty)' })}</div>
+              <div className="font-medium text-emerald-400">{c.new_value || t('recordEdit.empty', { defaultValue: '(empty)' })}</div>
+            </div>
+          ))}
+        </div>
+      )}
 
       {/* H2 batch, FIX 1 — render the N rows in ONE card, sourced from the SERVER
           preview when it enumerates the token's items (what actually commits). */}

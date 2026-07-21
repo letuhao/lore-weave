@@ -62,7 +62,12 @@ krippendorff==0.8.2
 # FastMCP ships inside the official `mcp` SDK; the [cli] extra adds the
 # fastmcp CLI + dev tooling. Mounted at /mcp in app/main.py. The
 # bespoke /internal/tools/* path is retained (dual-run).
-mcp[cli]>=1.9,<2
+# SP-0 (2026-07-19): pinned to 1.28.1 (latest STABLE; native elicitation + Tasks
+# extension). Beta v2 (mcp==2.0.0b2) exists but REMOVES mcp.server.fastmcp, which this
+# service's whole MCP server is built on — a v2 move goes through a FastMCP→MCPServer
+# adapter in the loreweave_mcp kit, not a per-service rewrite. Deferred (see chat-service
+# requirements note + docs/plans/2026-07-19-frontend-tools-mcp-migration-BUILD.md).
+mcp[cli]==1.28.1
 
 # PDF-import vision op (docs/specs/2026-07-06-pdf-book-import.md) —
 # sdks/python/loreweave_parse/pdf_walker.py. pymupdf (imports as `fitz`)

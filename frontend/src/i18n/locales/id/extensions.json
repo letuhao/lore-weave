@@ -12,6 +12,7 @@
     "ingest": "Sumber registri"
   },
   "quota": {
+    "unavailable": "Penggunaan tidak tersedia",
     "skills": "Keterampilan",
     "mcp": "Server MCP",
     "proposals": "Proposal"

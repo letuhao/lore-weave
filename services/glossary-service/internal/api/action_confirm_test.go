@@ -356,10 +356,10 @@ func TestProposeNewKind_RoundTripToConfirm(t *testing.T) {
 	if err != nil {
 		t.Fatalf("propose: %v", err)
 	}
-	if out.ConfirmToken == "" || out.Descriptor != descSchemaCreateKind {
+	if asCard(out).ConfirmToken == "" || asCard(out).Descriptor != descSchemaCreateKind {
 		t.Fatalf("bad propose output: %+v", out)
 	}
-	if w := f.confirm(t, out.ConfirmToken); w.Code != http.StatusCreated {
+	if w := f.confirm(t, asCard(out).ConfirmToken); w.Code != http.StatusCreated {
 		t.Fatalf("confirm of a freshly-proposed token: want 201, got %d (%s)", w.Code, w.Body.String())
 	}
 }
@@ -375,7 +375,7 @@ func TestProposeNewKind_AutoScaffoldsUnadoptedBook(t *testing.T) {
 	if err != nil {
 		t.Fatalf("propose: %v", err)
 	}
-	if w := f.confirm(t, out.ConfirmToken); w.Code != http.StatusCreated {
+	if w := f.confirm(t, asCard(out).ConfirmToken); w.Code != http.StatusCreated {
 		t.Fatalf("confirm create-kind on an UNADOPTED book: want 201 (auto-scaffold), got %d (%s)", w.Code, w.Body.String())
 	}
 	// The baseline universal genre must now exist — proof the scaffold ran.
@@ -406,13 +406,13 @@ func TestProposeKinds_BatchRoundTripToConfirm(t *testing.T) {
 	if err != nil {
 		t.Fatalf("propose batch: %v", err)
 	}
-	if out.ConfirmToken == "" || out.Descriptor != descSchemaCreateKinds {
+	if asCard(out).ConfirmToken == "" || asCard(out).Descriptor != descSchemaCreateKinds {
 		t.Fatalf("bad batch output: %+v", out)
 	}
-	if len(out.PreviewRows) != 2 {
-		t.Errorf("want 2 preview rows (one per kind), got %d", len(out.PreviewRows))
+	if len(asCard(out).PreviewRows) != 2 {
+		t.Errorf("want 2 preview rows (one per kind), got %d", len(asCard(out).PreviewRows))
 	}
-	if w := f.confirm(t, out.ConfirmToken); w.Code != http.StatusCreated {
+	if w := f.confirm(t, asCard(out).ConfirmToken); w.Code != http.StatusCreated {
 		t.Fatalf("confirm batch (1 click → N kinds): want 201, got %d (%s)", w.Code, w.Body.String())
 	}
 	for _, code := range []string{"qa_concept", "qa_realm"} {
@@ -465,12 +465,12 @@ func TestBookDelete_CanaryRoundTripAndSingleUse(t *testing.T) {
 	if err != nil {
 		t.Fatalf("propose book_delete: %v", err)
 	}
-	if card.ConfirmToken == "" || card.Descriptor != descBookDelete || !card.Destructive {
+	if asCard(card).ConfirmToken == "" || asCard(card).Descriptor != descBookDelete || !asCard(card).Destructive {
 		t.Fatalf("bad card: %+v", card)
 	}
 
 	// preview (non-consuming) returns current-state cascade rows
-	if w := f.preview(t, card.ConfirmToken); w.Code != http.StatusOK {
+	if w := f.preview(t, asCard(card).ConfirmToken); w.Code != http.StatusOK {
 		t.Fatalf("preview: want 200, got %d (%s)", w.Code, w.Body.String())
 	} else {
 		var pv actionPreview
@@ -480,7 +480,7 @@ func TestBookDelete_CanaryRoundTripAndSingleUse(t *testing.T) {
 		}
 	}
 	// preview did NOT consume — confirm still works
-	if w := f.confirm(t, card.ConfirmToken); w.Code != http.StatusNoContent {
+	if w := f.confirm(t, asCard(card).ConfirmToken); w.Code != http.StatusNoContent {
 		t.Fatalf("confirm book_delete: want 204, got %d (%s)", w.Code, w.Body.String())
 	}
 	var dep *time.Time
@@ -489,7 +489,7 @@ func TestBookDelete_CanaryRoundTripAndSingleUse(t *testing.T) {
 		t.Error("kind was not soft-deleted")
 	}
 	// replay → single-use → 422
-	if w := f.confirm(t, card.ConfirmToken); w.Code != http.StatusUnprocessableEntity {
+	if w := f.confirm(t, asCard(card).ConfirmToken); w.Code != http.StatusUnprocessableEntity {
 		t.Errorf("replay of consumed book_delete: want 422, got %d", w.Code)
 	}
 }

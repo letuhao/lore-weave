@@ -91,7 +91,7 @@ type syncApplyToolIn struct {
 	Items  []syncApplyItemToolIn `json:"items" jsonschema:"the per-row choices to apply"`
 }
 
-func (s *Server) toolBookSyncApply(ctx context.Context, _ *mcp.CallToolRequest, in syncApplyToolIn) (*mcp.CallToolResult, confirmCardOut, error) {
+func (s *Server) toolBookSyncApply(ctx context.Context, req *mcp.CallToolRequest, in syncApplyToolIn) (*mcp.CallToolResult, any, error) {
 	userID, bookID, err := s.bookToolAuth(ctx, in.BookID, grantclient.GrantManage)
 	if err != nil {
 		return nil, confirmCardOut{}, err
@@ -127,8 +127,8 @@ func (s *Server) toolBookSyncApply(ctx context.Context, _ *mcp.CallToolRequest, 
 		{Label: "rows to update from source", Value: fmt.Sprint(takeN), Note: "take_theirs"},
 		{Label: "rows to keep as-is", Value: fmt.Sprint(keepN), Note: "keep_mine (accept divergence)"},
 	}
-	res, out, err := s.mintGrantActionCard(userID, bookID, descSyncApply, "Apply standard updates to this book",
-		syncApplyParams{Items: items}, rows, true)
+	params := syncApplyParams{Items: items}
+	_, card, cerr := s.mintGrantActionCard(userID, bookID, descSyncApply, "Apply standard updates to this book", params, rows, true)
 	// External MCP discoverability audit #11 — applySyncRow (book_sync_handler.go) only
 	// affects a row whose recorded source is STILL LIVE (its UPDATE joins FROM the live
 	// source row); a retired/purged source matches nothing regardless of take_theirs vs
@@ -136,7 +136,7 @@ func (s *Server) toolBookSyncApply(ctx context.Context, _ *mcp.CallToolRequest, 
 	// card is guaranteed to apply zero rows. bookSyncSourceLiveByID is the SAME liveness
 	// predicate previewSyncApply/applySyncRow use — best-effort here (a lookup failure
 	// just skips the warning rather than failing an otherwise-valid proposal).
-	if err == nil {
+	if cerr == nil {
 		if liveMap, lerr := s.bookSyncSourceLiveByID(ctx, bookID, userID); lerr == nil {
 			liveCount := 0
 			for _, it := range items {
@@ -145,10 +145,10 @@ func (s *Server) toolBookSyncApply(ctx context.Context, _ *mcp.CallToolRequest, 
 				}
 			}
 			if liveCount == 0 {
-				out.Warning = fmt.Sprintf(
+				card.Warning = fmt.Sprintf(
 					"none of the %d proposed row(s) still have a live source — applying will change nothing", len(items))
 			}
 		}
 	}
-	return res, out, err
+	return s.gateOrCard(ctx, req, descSyncApply, bookID, userID, params, card, cerr)
 }

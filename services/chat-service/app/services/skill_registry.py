@@ -249,12 +249,11 @@ SYSTEM_SKILLS: dict[str, SkillDef] = {
         surfaces=frozenset({"book", "editor", "studio"}),
         prompt_loader=_load_book,
         description="Browse/edit books and chapters, save and restore draft revisions, publish/unpublish, and propose cover/media/audio generation.",
-        # NEVER auto-injected by default (see resolve_skills_to_inject) — "book" is not
-        # hot-seeded on any surface today (unlike "glossary"/"story", which ARE in
-        # `_BOOK_SCOPED_HOT_DOMAINS`); before this skill, no skill named book_* tools
-        # directly, so there was nothing to seed for. Curated-pin only, same rollout
-        # posture as translation/composition-off-studio: tool_surface.py's generic
-        # curated hot-domain union safely seeds it ONLY for a session that pins it.
+        # F14 (round-4 dogfood, 2026-07-20): AUTO-injected on the book-bound surfaces
+        # (studio/editor/book_scoped) — a book is OPEN, so book_* tools (list/get/delete/
+        # publish chapters) must be hot-seeded. Was previously curated-pin-only, which meant
+        # a book workbench advertised ZERO book tools; the agent asked to manage chapters
+        # couldn't, and grabbed a wrong tool. (Still pinnable elsewhere.)
         hot_domains=frozenset({"book"}),
     ),
     "settings": SkillDef(
@@ -385,7 +384,7 @@ def skill_metadata_block(
     guidance = (
         "These skills are available on this surface. When the user's request fits one, "
         "call `load_skill('<code>')` to load its full instructions, then follow them. "
-        "Their tools are already reachable (find_tools / already hot); load a skill for its workflow."
+        "Their tools are already reachable (via tool_list/tool_load, or already hot); load a skill for its workflow."
         if lazy
         else "These skills are available on this surface. The relevant one is loaded in full; "
         "if the user's request fits another, say so or pin it."
@@ -480,8 +479,17 @@ def resolve_skills_to_inject(
             # silently before this fix.
             out.append("glossary")
             out.append("composition")
+            # F14 (round-4 dogfood, 2026-07-20) — a book is OPEN in the studio, yet `book`
+            # was curated-pin-only, so book_* tools (list/get/delete/publish chapters) were
+            # NEVER hot-seeded. The agent asked to "manage chapters" saw ZERO book tools and
+            # grabbed composition_get_mine_job instead (proven by the advertised-surface
+            # monitor). A book workbench must offer its own book tools by default.
+            out.append("book")
         elif editor or book_scoped:
             out.append("glossary")
+            # F14 — book_* tools are meaningful wherever a book is open (the book skill's own
+            # surfaces include editor); seed them on the chapter-editor / book-scoped surface too.
+            out.append("book")
         else:
             out.append("universal")
         if not admin:
@@ -516,7 +524,7 @@ def resolve_skills_to_inject(
     # author has explicitly PINNED the glossary skill (real glossary/world work), never on the
     # legacy auto-inject path where its "adopt standards / do not skip it" push made the
     # co-writer rebuild a newcomer's ontology on a plain "write a chapter" turn. The lean
-    # `glossary` core (auto-injected) still teaches lookup/edit + points at find_tools for
+    # `glossary` core (auto-injected) still teaches lookup/edit + points at tool_list/tool_load for
     # setup; the intent router adds glossary_shaping too when a turn's meaning matches world
     # setup (the skill carries a description). Additive + surface-filtered like the rest.
     if "glossary" in enabled_skills and "glossary_shaping" not in out:

@@ -111,6 +111,15 @@ class Settings(BaseSettings):
     # unchanged) and on a big-lore book it turns ON. Set False to force-kill globally.
     t5_intent_gate_enabled: bool = True
 
+    # ── ext-tasks durable gate (2026-07-19-mcp-tasks-durable-gate) ────────────────
+    # The ACTIVATION switch (spec §4.2, step f). When True, chat-service declares the
+    # ext-tasks extension in its tool-call `_meta`, so a capability-gated domain tool
+    # (composition_create_derivative) returns a durable TASK the driver holds/confirms;
+    # when False, the domain falls back to today's confirm_token (byte-unchanged). A
+    # DEPLOY-level kill-switch: default False so the whole ext-tasks path stays dormant
+    # until it is live-verified end to end, then flipped on.
+    tasks_gate_enabled: bool = True
+
     # ── WS-4C Half A — canon auto-capture ────────────────────────────────────────
     # Spec: docs/specs/2026-07-10-ws4c-half-a-canon-auto-capture.md
     # Every Nth assistant turn, POST the exchange to glossary's /capture-canon: the

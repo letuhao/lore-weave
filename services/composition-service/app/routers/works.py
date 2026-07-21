@@ -47,7 +47,7 @@ from app.grant_client import GrantClient, GrantLevel
 from app.grant_deps import InsufficientGrant, authorize_book
 from app.middleware.jwt_auth import get_bearer_token, get_current_user
 from app.packer.pack import OwnershipError, build_derivative_context
-from app.work_resolution import WorkResolution, resolve_work
+from app.work_resolution import WorkResolution, ensure_work, resolve_work
 
 router = APIRouter(prefix="/v1/composition")
 
@@ -102,25 +102,16 @@ async def _gate_book(grant: GrantClient, book_id: UUID, caller: UUID, need: Gran
 
 
 async def _ensure_pending_work(works: WorksRepo, book_id: UUID, *, created_by: UUID):
-    """C16 (WG-3) greenfield degrade: return the (at-most-one) lazy null-project
-    Work for this BOOK, creating it if absent (stamped `created_by` = the acting
-    caller — actor, not scope; PM-9). Idempotent + race-safe: the partial-unique
-    `(book_id) WHERE pending_project_backfill` index (PM-4) caps it at one per
-    book, so a concurrent loser — any collaborator — re-gets the existing row
-    instead of 500-ing. The catch-and-re-get below matches that index predicate
-    exactly (book_id + pending marker; see get_pending_for_book —
-    postgres-partial-index-on-conflict-predicate-must-match). Used by both the
-    knowledge-DOWN (resolve unavailable) and create_project-OUTAGE paths."""
-    existing = await works.get_pending_for_book(book_id)
-    if existing is not None:
-        return existing
+    """C16 (WG-3) greenfield degrade for POST /work — return THE Work for this book, creating a lazy
+    null-project one only if none exists. Now a thin delegate to the shared canonical-first
+    `work_resolution.ensure_work` primitive (consolidated 2026-07-20; this was a pending-only copy that
+    skipped the canonical check). Reached only after resolve_work returned `unavailable` ⇒ 0 marked Works,
+    so the canonical lookup is a race-safety net here, not a behaviour change. A truly-stuck create
+    conflict maps to 409 (unchanged)."""
     try:
-        return await works.create_pending(created_by, book_id)
+        return await ensure_work(works, book_id, created_by=created_by)
     except asyncpg.UniqueViolationError:
-        racey = await works.get_pending_for_book(book_id)
-        if racey is None:
-            raise HTTPException(status_code=409, detail={"code": "WORK_CREATE_CONFLICT"})
-        return racey
+        raise HTTPException(status_code=409, detail={"code": "WORK_CREATE_CONFLICT"}) from None
 
 
 def _parse_if_match(if_match: str | None) -> int | None:

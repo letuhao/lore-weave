@@ -6,6 +6,12 @@ package migrate
 // entities + wiki on every restart (catastrophic production data loss). This proves
 // the guard: after the cutover, seed an entity, re-run the cutover (simulating a
 // second boot), and assert the entity SURVIVES. Needs GLOSSARY_TEST_DB_URL.
+//
+// db-safety-gate: file-ok — the DROP DATABASE statements target a THROWAWAY ephemeral DB
+// ephemeralPool CREATEs itself (unique name + PID, proven throwaway via
+// testsafe.EnsureThrowawayDB) and drops on cleanup — never the DB in GLOSSARY_TEST_DB_URL.
+// The `TRUNCATE glossary_entities CASCADE` mentioned above is prose in this doc comment,
+// not an executed statement.
 
 import (
 	"context"
@@ -17,6 +23,8 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+
+	"github.com/loreweave/glossary-service/internal/testsafe"
 )
 
 func ephemeralPool(t *testing.T, tag string) *pgxpool.Pool {
@@ -38,7 +46,13 @@ func ephemeralPool(t *testing.T, tag string) *pgxpool.Pool {
 	}
 	defer admin.Close()
 
-	name := fmt.Sprintf("glossary_%s_%d", tag, os.Getpid())
+	name := fmt.Sprintf("glossary_%s_tmp_%d", tag, os.Getpid())
+	// Layer-3 safety guard (mirrors book-service testsafe): refuse to CREATE/DROP unless
+	// the target is a recognizable throwaway DB, so a broken ephemeral setup can never
+	// destroy a real service DB — the pool handed back is proven throwaway before any DDL.
+	if err := testsafe.EnsureThrowawayDB(name); err != nil {
+		t.Fatal(err)
+	}
 	_, _ = admin.Exec(ctx, `DROP DATABASE IF EXISTS `+pgx.Identifier{name}.Sanitize()+` WITH (FORCE)`)
 	if _, err := admin.Exec(ctx, `CREATE DATABASE `+pgx.Identifier{name}.Sanitize()); err != nil {
 		t.Fatalf("create ephemeral db: %v", err)

@@ -75,7 +75,7 @@ type deepResearchToolIn struct {
 	MaxResults int `json:"max_results,omitempty" jsonschema:"how many sources (1-10, default 5)"`
 }
 
-func (s *Server) toolDeepResearch(ctx context.Context, _ *mcp.CallToolRequest, in deepResearchToolIn) (*mcp.CallToolResult, confirmCardOut, error) {
+func (s *Server) toolDeepResearch(ctx context.Context, req *mcp.CallToolRequest, in deepResearchToolIn) (*mcp.CallToolResult, any, error) {
 	userID, ok := userIDFromCtx(ctx)
 	if !ok {
 		return nil, confirmCardOut{}, errors.New("missing caller identity")
@@ -121,8 +121,9 @@ func (s *Server) toolDeepResearch(ctx context.Context, _ *mcp.CallToolRequest, i
 		{Label: "web search (PAID)", Value: "1 query",
 			Note: fmt.Sprintf("outward call to your web-search provider — up to %d sources attached as draft evidence", maxResults)},
 	}
-	return s.mintGrantActionCard(userID, bookID, descDeepResearch,
-		fmt.Sprintf("Research %q on the web", name), params, rows, false)
+	title := fmt.Sprintf("Research %q on the web", name)
+	_, card, cerr := s.mintGrantActionCard(userID, bookID, descDeepResearch, title, params, rows, false)
+	return s.gateOrCard(ctx, req, descDeepResearch, bookID, userID, params, card, cerr)
 }
 
 func clampDeepResearchMax(n int) int {

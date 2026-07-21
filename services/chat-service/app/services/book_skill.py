@@ -51,7 +51,7 @@ only, no text. Check this before restoring a revision so you pick the right one.
 - `book_create(title, description?, original_language?, summary?, genre_tags?)` — \
 `title` is the only required field. Capped at 200 active books per caller — a caller \
 already at the ceiling gets a clear "book limit reached" refusal, not a silent no-op.
-- `book_update_meta(book_id, title?, description?, original_language?, summary?, \
+- `book_update_details(book_id, title?, description?, original_language?, summary?, \
 genre_tags?)` — only the fields you pass change; omitted fields keep their current \
 value. Refused if the book isn't in an editable (`active`) lifecycle state.
 - `book_chapter_create(book_id, original_language, title?, sort_order?, body?)` — \

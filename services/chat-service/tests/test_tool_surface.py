@@ -220,11 +220,65 @@ class TestTokenBudgetedSeed:
         out = budget_names_by_tokens(cat, names, token_budget=2000)
         assert "glossary_propose_entities" in out
 
+    def test_book_update_details_survives_read_pressure_with_large_schema(self):
+        # REGRESSION (dogfood 2026-07-21, D-BOOK-UPDATE-DETAILS-STARVED): book_update_details
+        # is a Tier-W write with a LARGE 5-field schema. The read-first + ascending-size trim
+        # starved it OUT of the advertised set entirely, so every model (weak local Gemma AND
+        # gpt-4o-mini) mis-routed "update the description" to book_chapter_create — the tool it
+        # could actually see. It was never advertised despite being federated. This is a HARDER
+        # case than the small glossary write above: a big schema is the FIRST thing the size
+        # ordering drops. Lock it so the tool stays hot regardless of schema size.
+        cat = ([_tool_big(f"book_get_{i}", 4000) for i in range(6)]      # ~1K tok each read
+               + [_tool_big("book_chapter_save_draft", 3000)]           # allowlisted sibling
+               + [_tool_big("book_update_details", 6000)])              # LARGE write, allowlisted
+        names = {t["function"]["name"] for t in cat}
+        out = budget_names_by_tokens(cat, names, token_budget=2000)
+        assert "book_update_details" in out, (
+            "book_update_details must stay advertised despite its large schema — this is the "
+            "starvation bug that made every model mis-route 'update the description'"
+        )
+        assert "book_chapter_save_draft" in out  # the sibling draft-capture write, same guarantee
+
+    def test_book_update_details_is_in_the_allowlist(self):
+        # The literal fix: membership in ALWAYS_HOT_WRITES. Guards a future edit that drops it.
+        from app.services.tool_surface import ALWAYS_HOT_WRITES
+        assert "book_update_details" in ALWAYS_HOT_WRITES
+
     def test_recall_and_timeline_classified_as_reads(self):
         from app.services.tool_surface import _is_read_tool
         assert _is_read_tool("memory_recall_entity")
         assert _is_read_tool("memory_timeline")
         assert not _is_read_tool("glossary_propose_entities")
+
+    def test_sticky_domain_reseeds_book_when_not_book_scoped(self):
+        # D-DOMAIN-HOTSET-NOT-STICKY — a universal chat (book_scoped=False) that
+        # engaged the book domain two turns ago must STILL hot-seed book tools, so
+        # the model can act on a low-signal follow-up ("Option 3, go with that")
+        # instead of wandering / hallucinating. book_update_details is the tool that
+        # went missing live.
+        cat = [_tool("book_update_details"), _tool("book_get"), _tool("book_list"),
+               _tool("glossary_search")]
+        pins = resolve_session_tool_pins({"enabled_tools": [], "activated_tools": []})
+        # WITHOUT stickiness: universal chat has no book domain → book tools absent
+        cold = discovery_seed_for_surface(cat, pins=pins, editor=False, book_scoped=False)
+        assert "book_update_details" not in cold
+        # WITH stickiness (book engaged recently): book tools are re-seeded
+        warm = discovery_seed_for_surface(
+            cat, pins=pins, editor=False, book_scoped=False, sticky_domains={"book"},
+        )
+        assert "book_update_details" in warm
+        assert "book_get" in warm
+
+    def test_sticky_domain_rides_the_same_token_budget(self):
+        # Stickiness unions into hot_domains BEFORE the single budget — it must not
+        # blow the ceiling even if the sticky domain is huge (same additive-per-domain
+        # discipline as binding_categories; no second independently-budgeted call).
+        cat = [_tool_big(f"book_t{i}", 4000) for i in range(60)]
+        pins = resolve_session_tool_pins({"enabled_tools": [], "activated_tools": []})
+        seed = discovery_seed_for_surface(
+            cat, pins=pins, editor=False, book_scoped=False, sticky_domains={"book"},
+        )
+        assert 0 < len(seed) < 20  # bounded, not the whole 60-tool domain
 
     def test_book_scoped_seed_is_bounded(self):
         # 60 glossary tools, each ~1K tokens = 60K → must be bounded to the budget.

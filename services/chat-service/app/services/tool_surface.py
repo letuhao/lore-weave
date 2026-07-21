@@ -71,8 +71,17 @@ ALWAYS_HOT_WRITES: frozenset[str] = frozenset({
     "memory_remember",
     "kg_propose_edge",
     "kg_propose_fact",
-    # book — draft capture (compose)
+    # book — draft capture (compose) + the book's own DETAILS (title/description/
+    # blurb/summary/genre). book_update_details is a SAFE, low-surprise co-writer
+    # write (a diff card the human applies) and the ONLY home for editing a book's
+    # description — but it's a Tier-W tool with a large 5-field schema, so the
+    # read-first budget ordering STARVED it out of the hot set (dogfood 2026-07-21:
+    # it was never advertised, so every model mis-routed "update the description" to
+    # book_chapter_create/save_draft — the tool it could actually see). Allowlist it
+    # so it's always reachable, exactly like save_draft. (This gap predates the
+    # book_update_meta→book_update_details rename — the old name was starved too.)
     "book_chapter_save_draft",
+    "book_update_details",
 })
 
 
@@ -214,6 +223,7 @@ def discovery_seed_for_surface(
     workflow_step_tools: set[str] | None = None,
     binding_categories: list[str] | None = None,
     pinned_step_tools: list[str] | None = None,
+    sticky_domains: set[str] | None = None,
 ) -> set[str]:
     """Discovery active-set seed: hot set (auto) or pins ∪ activated (curated).
 
@@ -222,10 +232,20 @@ def discovery_seed_for_surface(
     ``HOT_SEED_TOKEN_BUDGET`` ceiling as the surface's own domains (never a second,
     independently-budgeted call: that is the additive-per-domain pattern that caused the
     2026-07-06 context explosion).
+
+    ``sticky_domains`` (D-DOMAIN-HOTSET-NOT-STICKY) are the domains the RECENT
+    conversation has actively called into (``engaged_domains_from_tool_calls``). They
+    union in the SAME additive way and ride the SAME single budget — so re-seeding the
+    book domain the writer used two turns ago costs nothing extra beyond the shared
+    ceiling, and the budget still truncates if the union grows. Without this, auto mode
+    forgets the working domain across turns and the model can't act on a low-signal
+    follow-up (or hallucinates that it did).
     """
     hot_domains = surface_hot_domains(
         editor=editor, book_scoped=book_scoped, studio=studio, permission_mode=permission_mode,
     )
+    if sticky_domains:
+        hot_domains = set(hot_domains) | set(sticky_domains)
     if binding_categories:
         # An unknown category contributes no tools. The registry rejects one at the write
         # (contract C1 closed set), so if one arrives here the two sides have DRIFTED —

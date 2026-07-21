@@ -51,7 +51,7 @@ type planToolIn struct {
 // toolPlan handles glossary_plan: resolve a capable model → read current ontology →
 // ask the model for a typed plan → validate (+1 repair) → mint ONE execute_plan
 // confirm card. The user reviews the whole plan and confirms once.
-func (s *Server) toolPlan(ctx context.Context, _ *mcpsdk.CallToolRequest, in planToolIn) (*mcpsdk.CallToolResult, confirmCardOut, error) {
+func (s *Server) toolPlan(ctx context.Context, req *mcpsdk.CallToolRequest, in planToolIn) (*mcpsdk.CallToolResult, any, error) {
 	userID, ok := userIDFromCtx(ctx)
 	if !ok {
 		return nil, confirmCardOut{}, errors.New("missing caller identity")
@@ -98,7 +98,8 @@ func (s *Server) toolPlan(ctx context.Context, _ *mcpsdk.CallToolRequest, in pla
 
 	rows := planPreviewRows(plan)
 	title := fmt.Sprintf("Execute plan — %d operation(s)", len(plan.Ops))
-	return s.mintGrantActionCard(userID, bookID, descExecutePlan, title, plan, rows, false)
+	_, card, cerr := s.mintGrantActionCard(userID, bookID, descExecutePlan, title, plan, rows, false)
+	return s.gateOrCard(ctx, req, descExecutePlan, bookID, userID, plan, card, cerr)
 }
 
 // ── glossary_propose_batch — the DETERMINISTIC plan path (no planner LLM) ──────
@@ -132,7 +133,7 @@ type proposeBatchToolIn struct {
 // then mint ONE execute_plan confirm card. NO planner model is called — the agent
 // already specified the ops. The deterministic executor (plan_confirm.go →
 // loreweave_mcp.Execute) does the writes on confirm.
-func (s *Server) toolProposeBatch(ctx context.Context, _ *mcpsdk.CallToolRequest, in proposeBatchToolIn) (*mcpsdk.CallToolResult, confirmCardOut, error) {
+func (s *Server) toolProposeBatch(ctx context.Context, req *mcpsdk.CallToolRequest, in proposeBatchToolIn) (*mcpsdk.CallToolResult, any, error) {
 	userID, ok := userIDFromCtx(ctx)
 	if !ok {
 		return nil, confirmCardOut{}, errors.New("missing caller identity")
@@ -175,7 +176,8 @@ func (s *Server) toolProposeBatch(ctx context.Context, _ *mcpsdk.CallToolRequest
 	title := fmt.Sprintf("Execute plan — %d operation(s)", len(plan.Ops))
 	// Card-level destructive stays false: per-op destructive ops carry their own opt-in
 	// toggle (enabled_ops at confirm), mirroring toolPlan.
-	return s.mintGrantActionCard(userID, bookID, descExecutePlan, title, plan, rows, false)
+	_, card, cerr := s.mintGrantActionCard(userID, bookID, descExecutePlan, title, plan, rows, false)
+	return s.gateOrCard(ctx, req, descExecutePlan, bookID, userID, plan, card, cerr)
 }
 
 // llmClient builds an LLM-gateway client pointed at provider-registry (the gateway

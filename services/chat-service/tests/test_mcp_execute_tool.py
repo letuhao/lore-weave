@@ -133,6 +133,76 @@ class TestMcpExecuteToolResultFormatting:
         await client.aclose()
 
     @pytest.mark.asyncio
+    async def test_gate_handle_returns_task_envelope(self):
+        """ext-tasks (T1c(3)): a domain gate tool returns a durable task HANDLE in
+        structuredContent → mcp_execute_tool surfaces a task envelope the tool loop
+        suspends on (result=None; the task rides under 'task')."""
+        from app.services.task_detect import GATE_RESULT_TYPE
+
+        client = _make_client()
+        handle = {"type": GATE_RESULT_TYPE, "taskId": "task_x", "status": "input_required",
+                  "inputRequests": {"title": "Spawn dị bản?"}}
+        result = _call_tool_result(content=[_text_content("ok — see structuredContent")])
+        result.structuredContent = handle
+        tpatch, spatch, *_ = _patch_mcp(call_tool_return=result)
+        with tpatch, spatch:
+            out = await client.mcp_execute_tool(
+                user_id="user-1", session_id="sess-1",
+                tool_name="composition_create_derivative", tool_args={"project_id": "p"},
+            )
+        assert out["result"] is None and out["error"] is None
+        assert out["task"] == {"taskId": "task_x", "status": "input_required",
+                               "inputRequests": {"title": "Spawn dị bản?"}}
+        await client.aclose()
+
+    @pytest.mark.asyncio
+    async def test_gate_handle_nested_under_result_key(self):
+        """FastMCP may nest a dict return under a lone 'result' key in
+        structuredContent — the handle must still be detected."""
+        from app.services.task_detect import GATE_RESULT_TYPE
+
+        client = _make_client()
+        handle = {"type": GATE_RESULT_TYPE, "taskId": "task_y", "status": "input_required"}
+        result = _call_tool_result(content=[_text_content("ok")])
+        result.structuredContent = {"result": handle}
+        tpatch, spatch, *_ = _patch_mcp(call_tool_return=result)
+        with tpatch, spatch:
+            out = await client.mcp_execute_tool(
+                user_id="u", session_id="s",
+                tool_name="composition_create_derivative", tool_args={},
+            )
+        assert out["task"]["taskId"] == "task_y"
+        await client.aclose()
+
+    @pytest.mark.asyncio
+    async def test_tasks_gate_disabled_sends_no_meta(self):
+        """Default (flag off): the tool call carries no tasks _meta → the domain
+        falls back to confirm_token (byte-unchanged)."""
+        client = _make_client()
+        result = _call_tool_result(content=[_text_content("{}")])
+        tpatch, spatch, _tf, _sf, mock_session = _patch_mcp(call_tool_return=result)
+        with tpatch, spatch:
+            await client.mcp_execute_tool(user_id="u", session_id="s",
+                                          tool_name="memory_search", tool_args={})
+        assert mock_session.call_tool.await_args.kwargs["meta"] is None
+        await client.aclose()
+
+    @pytest.mark.asyncio
+    async def test_tasks_gate_enabled_declares_capability_meta(self):
+        """T1c(3.f) activation — flag ON: the tool call declares the ext-tasks
+        extension in _meta so a capability-gated domain returns a durable task."""
+        from app.services.task_detect import tasks_capability_meta
+
+        client = _make_client()
+        result = _call_tool_result(content=[_text_content("{}")])
+        tpatch, spatch, _tf, _sf, mock_session = _patch_mcp(call_tool_return=result)
+        with tpatch, spatch, patch("app.config.settings.tasks_gate_enabled", True):
+            await client.mcp_execute_tool(user_id="u", session_id="s",
+                                          tool_name="composition_create_derivative", tool_args={})
+        assert mock_session.call_tool.await_args.kwargs["meta"] == tasks_capability_meta()
+        await client.aclose()
+
+    @pytest.mark.asyncio
     async def test_prefers_structured_content_over_placeholder(self):
         """#9B — a heavy read returns a PLACEHOLDER in content[0].text + the real
         payload in structuredContent. The parser must use structuredContent, not

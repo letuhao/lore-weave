@@ -12,6 +12,7 @@
     "ingest": "레지스트리 소스"
   },
   "quota": {
+    "unavailable": "사용량을 사용할 수 없음",
     "skills": "스킬",
     "mcp": "MCP 서버",
     "proposals": "제안"

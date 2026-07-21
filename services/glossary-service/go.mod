@@ -13,13 +13,16 @@ require (
 	github.com/loreweave/loreweave_extraction v0.0.0
 	github.com/loreweave/loreweave_mcp v0.0.0
 	github.com/loreweave/observability v0.1.0
-	github.com/modelcontextprotocol/go-sdk v1.6.1
+	github.com/modelcontextprotocol/go-sdk v1.7.0-pre.3
 	github.com/prometheus/client_golang v1.23.2
 	github.com/redis/go-redis/v9 v9.21.0
 	golang.org/x/text v0.40.0
 )
 
-require go.uber.org/atomic v1.11.0 // indirect
+require (
+	go.uber.org/atomic v1.11.0 // indirect
+	golang.org/x/time v0.15.0 // indirect
+)
 
 replace github.com/loreweave/foundation/contracts/adminjwt => ../../contracts/adminjwt
 

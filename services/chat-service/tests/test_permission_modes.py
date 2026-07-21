@@ -32,6 +32,7 @@ from app.services.stream_service import (
     stream_response,
 )
 from app.services.tool_discovery import ALWAYS_ON_CORE_NAMES
+from app.services.skill_registry import LOAD_SKILL_NAME
 from tests.conftest import (
     TEST_MODEL_REF,
     TEST_SESSION_ID,
@@ -129,16 +130,33 @@ class TestAdvertiseSurfaceSnapshot:
     (the flagged risk: the ask filter must not silently shrink the default
     surface) and that `ask` advertises exactly the R subset."""
 
-    # The pre-C2 discovery surface for the representative catalog with every
-    # catalog tool active + propose_edit as the surface frontend tool. This is
-    # a SNAPSHOT — if it shrinks, the filter leaked into write mode.
-    EXPECTED_WRITE_SURFACE = set(ALWAYS_ON_CORE_NAMES) | {"propose_edit"} | ALL_CATALOG_NAMES
-    EXPECTED_ASK_SURFACE = set(ALWAYS_ON_CORE_NAMES) | {"propose_edit"} | R_CATALOG_NAMES
+    @pytest.fixture(autouse=True)
+    def _pin_lazy_skill(self, monkeypatch):
+        # F7c — load_skill is advertised in every mode when settings.lazy_skill_bodies
+        # is on (the production default, True). Pin it deterministically so this
+        # snapshot doesn't depend on the ambient settings singleton another test may
+        # have flipped (the order-dependent failure this fixture fixes), and include
+        # LOAD_SKILL_NAME in the expected surfaces below.
+        import app.services.stream_service as _ss
+        monkeypatch.setattr(_ss.settings, "lazy_skill_bodies", True)
+
+    # Since Phase 3/4 the nav ui_* are CATALOG-sourced (like web_search): a core name
+    # with no generic def is advertised only if the catalog provides it. This test's
+    # catalog fixture does NOT include the nav ui_*, so they aren't advertised here —
+    # subtract them from the core baseline (web_search stays: it IS in ALL_CATALOG_NAMES).
+    _CATALOG_SOURCED_UI = {"ui_navigate", "ui_open_book", "ui_open_chapter", "ui_show_panel", "ui_watch_job"}
+    _CORE = set(ALWAYS_ON_CORE_NAMES) - _CATALOG_SOURCED_UI
+
+    # The discovery surface for the representative catalog with every catalog tool
+    # active + propose_edit as the surface frontend tool + the always-on load_skill
+    # control (F7c). This is a SNAPSHOT — if it shrinks, the filter leaked into write mode.
+    EXPECTED_WRITE_SURFACE = _CORE | {"propose_edit", LOAD_SKILL_NAME} | ALL_CATALOG_NAMES
+    EXPECTED_ASK_SURFACE = _CORE | {"propose_edit", LOAD_SKILL_NAME} | R_CATALOG_NAMES
     # RAID Wave B2 — the PLAN surface pin: the ASK surface PLUS the `plan_*`
     # tools (even though they're tiered A/W). If this shrinks, plan mode lost
     # its planning tools; if it grows, a write tool leaked into plan mode.
     EXPECTED_PLAN_SURFACE = (
-        set(ALWAYS_ON_CORE_NAMES) | {"propose_edit"} | R_CATALOG_NAMES | PLAN_TOOL_NAMES
+        _CORE | {"propose_edit", LOAD_SKILL_NAME} | R_CATALOG_NAMES | PLAN_TOOL_NAMES
     )
 
     def test_write_mode_advertises_identical_pinned_surface(self):
@@ -164,13 +182,15 @@ class TestAdvertiseSurfaceSnapshot:
         )
         assert _names(out) == self.EXPECTED_ASK_SURFACE
 
-    def test_ask_mode_keeps_frontend_tools_and_find_tools(self):
-        """Frontend tools are human-executed by construction — never filtered."""
+    def test_ask_mode_keeps_frontend_tools_and_discovery_pair(self):
+        """Frontend tools are human-executed by construction — never filtered; the
+        deterministic discovery pair (F17 — tool_list/tool_load is the discovery path,
+        find_tools retired from the LLM's view) is likewise always kept."""
         idx = _catalog_index(_catalog())
         out = _names(_advertise_discovery_tools(
             idx, ALL_CATALOG_NAMES, [PROPOSE_EDIT_TOOL], permission_mode="ask",
         ))
-        assert "find_tools" in out
+        assert "tool_list" in out and "tool_load" in out
         assert "confirm_action" in out
         assert "propose_record_edit" in out
         assert "propose_edit" in out
@@ -440,8 +460,9 @@ class TestAskChokepointDiscovery:
         req = _FakeClient.instances[0].requests[0]
         names = {t["function"]["name"] for t in req.tools}
         assert names & ALL_CATALOG_NAMES == R_CATALOG_NAMES
-        # discovery machinery intact
-        assert "find_tools" in names
+        # discovery machinery intact (F17 — tool_list/tool_load is the discovery path;
+        # find_tools retired from the LLM's view)
+        assert "tool_list" in names and "tool_load" in names
 
 
 class TestAskDefenseInDepth:
@@ -733,13 +754,15 @@ class TestSuspendPersistsMode:
         pool.fetch.return_value = []
         conn.fetchval.return_value = 1
 
-        # Gateway-down agui editor surface: catalog empty → no discovery, but
-        # the frontend write-back tool is re-advertised → suspend path works.
+        # Gateway-down agui editor surface: catalog empty → no discovery, but the
+        # book-scoped frontend confirm tool is re-advertised → the suspend path works.
+        # (propose_edit is no longer a frontend tool since Phase 2 — it routes to
+        # ai-gateway — so a still-frontend tool drives this suspend-persists check.)
         kc = _patched_knowledge(tool_defs=[])
 
         scripts = [[
-            tool_frag(index=0, id="c1", name="propose_edit"),
-            tool_frag(index=0, arguments_delta='{"operation":"insert_at_cursor","text":"x"}'),
+            tool_frag(index=0, id="c1", name="glossary_confirm_action"),
+            tool_frag(index=0, arguments_delta='{"confirm_token":"t","descriptor":"glossary.merge","title":"Merge?"}'),
             done("tool_calls"),
         ]]
         save_mock = AsyncMock()
@@ -811,6 +834,121 @@ def _resume(pool, kc, outcome: str):
     )
 
 
+def _task_suspended(gate_name: str = "composition_create_derivative") -> SuspendedRun:
+    """A durable-gate suspend (ext-tasks T1c(3.b)): pending_tool_call carries `task`.
+
+    ``gate_name`` is the gate tool's name — the resume driver derives the
+    domain-unique provide-input tool from its provider prefix, so a book gate
+    (``book_chapter_delete``) must route to ``book_task_provide_input``, not a
+    composition-hardcoded name."""
+    return SuspendedRun(
+        run_id="run-task", session_id=str(TEST_SESSION_ID), owner_user_id=str(TEST_USER_ID),
+        message_id=str(uuid4()),
+        working=[
+            {"role": "user", "content": "spawn a dị bản"},
+            {"role": "assistant", "content": "",
+             "tool_calls": [{"id": "cT", "type": "function",
+                             "function": {"name": gate_name, "arguments": "{}"}}]},
+        ],
+        pending_tool_call={
+            "id": "cT", "name": gate_name, "args": {"project_id": "p"},
+            "task": {"taskId": "task_z", "status": "input_required",
+                     "inputRequests": {"title": "Spawn?"}},
+        },
+        input_tokens=1, output_tokens=1, model_source="user_model", model_ref=str(TEST_MODEL_REF),
+        parent_message_id=None, user_message_content="spawn a dị bản", permission_mode="write",
+    )
+
+
+class TestTaskResume:
+    """T1c(3.c) — resuming a durable-gate suspend calls the domain's provide-input
+    tool (accept → real write) and feeds its result to the 2nd pass."""
+
+    def _pool(self):
+        pool, conn = _make_pool_with_conn()
+        conn.fetchval.return_value = 1
+        pool.fetchrow.return_value = {"generation_params": {}, "project_id": None}
+        return pool
+
+    @pytest.mark.asyncio
+    async def test_accept_drives_provide_input_with_taskid(self):
+        pool = self._pool()
+        kc = AsyncMock()
+        kc.get_tool_definitions.return_value = []
+        kc.mcp_execute_tool.return_value = _envelope(
+            success=True, result={"published": True, "project_id": "new-proj"})
+        scripts = [[tok("Spawned it."), usage(1, 1), done("stop")]]
+        with _patch_client(scripts), \
+             patch("app.services.stream_service.get_knowledge_client", return_value=kc), \
+             patch("app.services.stream_service.load_suspended_run",
+                   AsyncMock(return_value=_task_suspended())), \
+             patch("app.services.stream_service.delete_suspended_run", AsyncMock()):
+            async for _ in resume_stream_response(
+                session_id=str(TEST_SESSION_ID), user_id=str(TEST_USER_ID),
+                run_id="run-task", tool_call_id="cT", outcome="action_done",
+                applied_text=None, creds=_creds(), pool=pool, billing=AsyncMock(),
+                stream_format="agui",
+            ):
+                pass
+        # the domain-unique provide-input tool was driven with the taskId + accepted
+        calls = [c.kwargs for c in kc.mcp_execute_tool.await_args_list]
+        pi = next(c for c in calls if c["tool_name"] == "composition_task_provide_input")
+        assert pi["tool_args"] == {"task_id": "task_z", "accepted": True}
+
+    @pytest.mark.asyncio
+    async def test_book_gate_derives_book_prefix(self):
+        """The provide-input tool is derived from the gate tool's provider prefix,
+        NOT hardcoded to composition — a book gate routes to book_task_provide_input
+        (regression guard now that a 2nd domain, book_chapter_delete, uses the gate)."""
+        pool = self._pool()
+        kc = AsyncMock()
+        kc.get_tool_definitions.return_value = []
+        kc.mcp_execute_tool.return_value = _envelope(
+            success=True, result={"outcome": "action_done", "op": "delete_chapter"})
+        scripts = [[tok("Trashed it."), usage(1, 1), done("stop")]]
+        with _patch_client(scripts), \
+             patch("app.services.stream_service.get_knowledge_client", return_value=kc), \
+             patch("app.services.stream_service.load_suspended_run",
+                   AsyncMock(return_value=_task_suspended("book_chapter_delete"))), \
+             patch("app.services.stream_service.delete_suspended_run", AsyncMock()):
+            async for _ in resume_stream_response(
+                session_id=str(TEST_SESSION_ID), user_id=str(TEST_USER_ID),
+                run_id="run-task", tool_call_id="cT", outcome="action_done",
+                applied_text=None, creds=_creds(), pool=pool, billing=AsyncMock(),
+                stream_format="agui",
+            ):
+                pass
+        calls = [c.kwargs for c in kc.mcp_execute_tool.await_args_list]
+        pi = next(c for c in calls if c["tool_name"] == "book_task_provide_input")
+        assert pi["tool_args"] == {"task_id": "task_z", "accepted": True}
+
+    @pytest.mark.asyncio
+    async def test_dismiss_declines_the_gate(self):
+        """A non-accept outcome (dismiss/cancel) drives provide-input with
+        accepted=False → the domain cancels the task, nothing is written."""
+        pool = self._pool()
+        kc = AsyncMock()
+        kc.get_tool_definitions.return_value = []
+        kc.mcp_execute_tool.return_value = _envelope(
+            success=True, result={"status": "cancelled"})
+        scripts = [[tok("Okay, cancelled."), usage(1, 1), done("stop")]]
+        with _patch_client(scripts), \
+             patch("app.services.stream_service.get_knowledge_client", return_value=kc), \
+             patch("app.services.stream_service.load_suspended_run",
+                   AsyncMock(return_value=_task_suspended())), \
+             patch("app.services.stream_service.delete_suspended_run", AsyncMock()):
+            async for _ in resume_stream_response(
+                session_id=str(TEST_SESSION_ID), user_id=str(TEST_USER_ID),
+                run_id="run-task", tool_call_id="cT", outcome="cancelled",
+                applied_text=None, creds=_creds(), pool=pool, billing=AsyncMock(),
+                stream_format="agui",
+            ):
+                pass
+        calls = [c.kwargs for c in kc.mcp_execute_tool.await_args_list]
+        pi = next(c for c in calls if c["tool_name"] == "composition_task_provide_input")
+        assert pi["tool_args"] == {"task_id": "task_z", "accepted": False}
+
+
 class TestApprovalResume:
     def _pool(self):
         pool, conn = _make_pool_with_conn()
@@ -825,7 +963,7 @@ class TestApprovalResume:
             success=True,
             result={"book_id": "b1",
                     "_meta": {"summary": "Created 'My Book'",
-                              "undo_hint": {"tool": "book_delete",
+                              "undo_hint": {"tool": "book_chapter_delete",
                                             "args": {"book_id": "b1"}}}},
         )
         return kc
@@ -866,7 +1004,7 @@ class TestApprovalResume:
                       if e.get("type") == "CUSTOM" and e.get("name") == "activity"]
         assert len(activities) == 1
         assert activities[0]["value"]["undo"]["available"] is True
-        assert activities[0]["value"]["undo"]["tool"] == "book_delete"
+        assert activities[0]["value"]["undo"]["tool"] == "book_chapter_delete"
 
     @pytest.mark.asyncio
     async def test_approved_always_persists_allowlist_row_then_executes(self):

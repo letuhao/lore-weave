@@ -1083,7 +1083,17 @@
     "restoreActHint": "Diese Akte wiederherstellen (sie wird leer sein – ordne die Kapitel bei Bedarf neu)",
     "actTrashed": "Akte „{{name}}“ gelöscht – ihre Kapitel verbleiben im Buch",
     "partVsArc": "Teile gruppieren dein Manuskript. Bögen sind der Plan.",
-    "undo": "Rückgängig machen"
+    "undo": "Rückgängig machen",
+    "lensParts": "Abschnitte",
+    "lensOutline": "Gliederung",
+    "lensToggle": "Ansicht",
+    "createFailed": "Abschnitt konnte nicht erstellt werden",
+    "renameFailed": "Abschnitt konnte nicht umbenannt werden",
+    "trashFailed": "Abschnitt konnte nicht in den Papierkorb verschoben werden",
+    "restoreFailed": "Abschnitt konnte nicht wiederhergestellt werden",
+    "moveFailed": "Kapitel konnte nicht in diesen Abschnitt verschoben werden",
+    "reorderFailed": "Reihenfolge konnte nicht geändert werden",
+    "partsUnavailable": "Teile sind vorübergehend nicht verfügbar – Kapitel werden in einer Liste angezeigt."
   },
   "intro": {
     "title": "Willkommen im Writing Studio",

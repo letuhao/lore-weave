@@ -12,6 +12,7 @@
     "ingest": "Sumber pendaftaran"
   },
   "quota": {
+    "unavailable": "Penggunaan tidak tersedia",
     "skills": "Kemahiran",
     "mcp": "Pelayan MCP",
     "proposals": "Cadangan"

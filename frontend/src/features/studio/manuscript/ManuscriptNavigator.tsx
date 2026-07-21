@@ -97,6 +97,9 @@ export function ManuscriptNavigator({ bookId, token, selectedId, onSelect, onNew
     // `parts`/`trashedActs` default to [] so the navigator tolerates a hook shape without them
     // (older/partial mocks) — reading .length/.findIndex on undefined would crash every render.
     source, rows, total, counts, error, partsMode, parts = [], trashedActs = [],
+    // P1.2 — mode-by-content + [Parts|Outline] toggle (defaults tolerate older/partial mocks).
+    showToggle = false, lens = 'flat' as const, selectLens = (_l: 'parts' | 'outline') => {},
+    partsUnavailable = false, // ML1 — a composition outage: surface it, don't silently flatten
     toggleExpand, loadMore, collapseAll, reload,
     createAct, renameAct, trashAct, moveChapterToAct, moveAct, restoreAct,
   } = useManuscriptTree(bookId, token);
@@ -123,25 +126,30 @@ export function ManuscriptNavigator({ bookId, token, selectedId, onSelect, onNew
   const [editingActId, setEditingActId] = useState<string | null>(null);
   // S-02c B6 — the act currently under a dragged chapter (drop-target highlight).
   const [dragOverPartId, setDragOverPartId] = useState<string | null>(null);
+  // P2.1 (spec §4.5, no silent seams) — a part mutation that FAILS must SURFACE, not vanish + silently
+  // revert on the next reload (every mutator used to be `void`-ed). Toast the error; the tree stays put.
+  const runAct = useCallback((p: Promise<unknown>, msg: string) => {
+    void p.catch((e) => toast.error(`${msg}: ${(e as Error)?.message ?? 'failed'}`));
+  }, []);
   const onNewAct = useCallback(() => { setEditingActId(null); setCreatingAct(true); }, []);
   const commitNewAct = useCallback((val: string) => {
     const title = val.trim();
-    if (title) void createAct(title); // blank = no-op (don't create an untitled act by accident)
+    if (title) runAct(createAct(title), t('manuscript.createFailed', { defaultValue: 'Could not create the part' }));
     setCreatingAct(false);
-  }, [createAct]);
+  }, [createAct, runAct, t]);
   const commitRename = useCallback((id: string, val: string) => {
-    void renameAct(id, val.trim()); // blank clears the title → "(untitled act)"
+    runAct(renameAct(id, val.trim()), t('manuscript.renameFailed', { defaultValue: 'Could not rename the part' }));
     setEditingActId(null);
-  }, [renameAct]);
+  }, [renameAct, runAct, t]);
   // S-02b — trash is INSTANT + UNDOABLE (no blocking confirm): trash, then a toast whose Undo
   // restores the act. Copy notes chapters were kept (un-filed), so it doesn't read as data loss.
   const onTrashAct = useCallback((id: string, name: string) => {
-    void trashAct(id);
+    runAct(trashAct(id), t('manuscript.trashFailed', { defaultValue: 'Could not trash the part' }));
     toast(t('manuscript.actTrashed', { name, defaultValue: `Act "${name}" trashed — its chapters stayed in the book` }), {
       duration: 10000,
-      action: { label: t('manuscript.undo', { defaultValue: 'Undo' }), onClick: () => void restoreAct(id) },
+      action: { label: t('manuscript.undo', { defaultValue: 'Undo' }), onClick: () => runAct(restoreAct(id), t('manuscript.restoreFailed', { defaultValue: 'Could not restore the part' })) },
     });
-  }, [trashAct, restoreAct, t]);
+  }, [trashAct, restoreAct, runAct, t]);
 
   // 1-based ordinal per top-level arc → roman numeral label (ARC I / II / …). Computed over the
   // full loaded row list (not the virtual window) so it's stable as you scroll.
@@ -196,7 +204,26 @@ export function ManuscriptNavigator({ bookId, token, selectedId, onSelect, onNew
     <div data-testid="manuscript-nav" className="flex min-h-0 flex-1 flex-col">
       {/* Header: title + actions (mockup .nav-head) */}
       <div className="flex h-[34px] flex-shrink-0 items-center justify-between border-b pl-3 pr-2 text-[10px] font-bold uppercase tracking-[0.06em] text-muted-foreground">
-        <span>{t('manuscript.title', { defaultValue: 'Manuscript' })}</span>
+        <div className="flex items-center gap-2">
+          <span>{t('manuscript.title', { defaultValue: 'Manuscript' })}</span>
+          {/* P1.2 (spec §4.3) — the lens toggle, shown ONLY when a book has BOTH parts and an outline.
+              Parts = the manuscript grouping; Outline = the arc/scene plan lens. Keeps the two
+              orthogonal groupings user-switchable instead of one silently hiding the other (Bug 4). */}
+          {showToggle && (
+            <div className="flex items-center gap-px rounded border bg-muted/40 p-px normal-case" role="tablist"
+              aria-label={t('manuscript.lensToggle', { defaultValue: 'View' })}>
+              {(['parts', 'outline'] as const).map((l) => (
+                <button key={l} type="button" role="tab" aria-selected={lens === l}
+                  onClick={() => selectLens(l)}
+                  className={`rounded px-1.5 py-0.5 text-[9px] font-semibold tracking-wide ${lens === l ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}>
+                  {l === 'parts'
+                    ? t('manuscript.lensParts', { defaultValue: 'Parts' })
+                    : t('manuscript.lensOutline', { defaultValue: 'Outline' })}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
         <div className="flex items-center gap-0.5">
           {/* S-02 — New act (manuscript part). Only meaningful for a manuscript-structured book
               (no composition Work); the outline owns the hierarchy when a Work exists. */}
@@ -299,6 +326,16 @@ export function ManuscriptNavigator({ bookId, token, selectedId, onSelect, onNew
       </div>
 
       {error && !jump.active && <div className="px-3 py-1.5 text-[11px] text-amber-600">{error}</div>}
+      {/* ML1 — a composition outage: /structure returned sources.parts='unavailable', so this book's
+          parts couldn't be loaded. Surface it (the book isn't partless — we just can't reach them) rather
+          than silently flattening the rail. */}
+      {partsUnavailable && !jump.active && (
+        <div className="px-3 py-1.5 text-[11px] text-amber-600" data-testid="manuscript-parts-unavailable">
+          {t('manuscript.partsUnavailable', {
+            defaultValue: 'Parts are temporarily unavailable — showing chapters flat.',
+          })}
+        </div>
+      )}
 
       <div ref={parentRef} data-testid="manuscript-scroll" className="min-h-0 flex-1 overflow-y-auto">
         {/* S-02c — inline "new act" input at the top of the list (replaces window.prompt) */}
@@ -434,7 +471,7 @@ export function ManuscriptNavigator({ bookId, token, selectedId, onSelect, onNew
                     setDragOverPartId(null);
                     const cid = dragChapterId.current;
                     dragChapterId.current = null;
-                    if (cid) void moveChapterToAct(cid, isUnassigned ? null : node.id);
+                    if (cid) runAct(moveChapterToAct(cid, isUnassigned ? null : node.id), t('manuscript.moveFailed', { defaultValue: 'Could not move the chapter to that part' }));
                   }) : undefined}
                   onClick={() => (isGroup ? (node.hasChildren && toggleExpand(node.id)) : onSelect?.(node))}
                   style={{ ...style, paddingLeft: 4 + depth * 16 }}
@@ -534,7 +571,7 @@ export function ManuscriptNavigator({ bookId, token, selectedId, onSelect, onNew
                             type="button"
                             data-testid={`manuscript-part-up-${node.id}`}
                             disabled={actIdx <= 0}
-                            onClick={(e) => { e.stopPropagation(); void moveAct(node.id, 'up'); }}
+                            onClick={(e) => { e.stopPropagation(); runAct(moveAct(node.id, 'up'), t('manuscript.reorderFailed', { defaultValue: 'Could not reorder' })); }}
                             title={t('manuscript.moveActUp', { defaultValue: 'Move act up' })}
                             className="flex h-4 w-4 items-center justify-center rounded text-muted-foreground hover:text-foreground disabled:pointer-events-none disabled:opacity-30"
                           >
@@ -544,7 +581,7 @@ export function ManuscriptNavigator({ bookId, token, selectedId, onSelect, onNew
                             type="button"
                             data-testid={`manuscript-part-down-${node.id}`}
                             disabled={actIdx < 0 || actIdx >= parts.length - 1}
-                            onClick={(e) => { e.stopPropagation(); void moveAct(node.id, 'down'); }}
+                            onClick={(e) => { e.stopPropagation(); runAct(moveAct(node.id, 'down'), t('manuscript.reorderFailed', { defaultValue: 'Could not reorder' })); }}
                             title={t('manuscript.moveActDown', { defaultValue: 'Move act down' })}
                             className="flex h-4 w-4 items-center justify-center rounded text-muted-foreground hover:text-foreground disabled:pointer-events-none disabled:opacity-30"
                           >
@@ -594,7 +631,7 @@ export function ManuscriptNavigator({ bookId, token, selectedId, onSelect, onNew
               <button
                 type="button"
                 data-testid={`manuscript-part-restore-${p.part_id}`}
-                onClick={() => void restoreAct(p.part_id)}
+                onClick={() => runAct(restoreAct(p.part_id), t('manuscript.restoreFailed', { defaultValue: 'Could not restore the part' }))}
                 title={t('manuscript.restoreActHint', { defaultValue: 'Restore this act (it comes back empty — re-file chapters as needed)' })}
                 className="ml-auto flex-shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium text-primary hover:bg-primary/10"
               >

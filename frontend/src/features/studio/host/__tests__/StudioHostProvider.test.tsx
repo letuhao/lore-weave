@@ -103,6 +103,7 @@ describe('StudioContextBus', () => {
     act(() => result.current.openPanel('settings', { title: 'Settings', params: { tab: 'providers' } }));
     expect(addPanel).toHaveBeenCalledWith({
       id: 'settings', component: 'settings', title: 'Settings', params: { tab: 'providers' },
+      inactive: false,
     });
 
     existing = { api: { updateParameters, setActive } };
@@ -122,7 +123,16 @@ describe('StudioContextBus', () => {
     expect(addPanel).toHaveBeenCalledWith({
       id: 'json-editor:loreweave.manuscript-unit.v1:ch1', component: 'json-editor',
       title: 'JSON · ch1', params: { docType: 'loreweave.manuscript-unit.v1', resourceId: 'ch1' },
+      inactive: false,
     });
+  });
+
+  it('F15 — openPanel focus:false opens a CLOSED panel as an inactive tab (no focus theft)', () => {
+    const { result } = renderHook(() => useStudioHost(), { wrapper: wrapper() });
+    const addPanel = vi.fn();
+    result.current._dockApiRef.current = { getPanel: () => null, addPanel } as never;
+    act(() => result.current.openPanel('editor', { focus: false }));
+    expect(addPanel).toHaveBeenCalledWith(expect.objectContaining({ id: 'editor', inactive: true }));
   });
 
   it('openPanel focus:false updates params without stealing focus', () => {

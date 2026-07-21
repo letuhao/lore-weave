@@ -30,6 +30,7 @@ Key pieces
 """
 from __future__ import annotations
 
+import json
 import logging
 import re
 import time
@@ -178,10 +179,10 @@ TOOL_LIST_TOOL: dict = {
         "name": TOOL_LIST_NAME,
         "description": (
             "List EVERY tool in a category (or \"all\"), complete and deterministic — the "
-            "reliable way to see what you can do here. Prefer this over find_tools when you know "
-            "the rough area. Returns {name, description, tier} per tool; deprecated tools are "
-            "labeled with their replacement. Then call tool_load(name) to get a tool's exact "
-            "arguments before using it."
+            "reliable way to see what you can do here. This is how you discover a tool that "
+            "isn't already advertised: list the category, then call tool_load(name) to get a "
+            "tool's exact arguments before using it. Returns {name, description, tier} per "
+            "tool; deprecated tools are labeled with their replacement."
         ),
         "parameters": {
             "type": "object",
@@ -258,15 +259,21 @@ TOOL_LOAD_TOOL: dict = {
 # no open chapter. (`propose_record_edit` is the generic, surface-agnostic record
 # diff card and stays core.)
 ALWAYS_ON_CORE_NAMES: tuple[str, ...] = (
-    # WS-1a (OQ1): the deterministic pair FIRST, then find_tools (optional semantic convenience).
+    # F17 (2026-07-20): the DETERMINISTIC discovery pair is the ONLY discovery surface now.
+    # find_tools was retired FROM THE LLM's view — it is semantic top-K, so it structurally
+    # CANNOT surface a tool the agent needs when that tool falls outside the K matches (dogfood
+    # F14: the agent never reached book_list_chapters). tool_list (see every tool in a domain) +
+    # tool_load (load the exact one) have no such blind spot. (The find_tools handler stays
+    # dispatchable for any legacy caller, but is no longer advertised — never hot-seeded, never
+    # discoverable — so the model is never steered into the top-K trap.)
     TOOL_LIST_NAME,
     TOOL_LOAD_NAME,
-    FIND_TOOLS_NAME,
     "ui_navigate",
     "ui_open_book",
     "ui_show_panel",
     "ui_watch_job",
-    "propose_record_edit",
+    # propose_record_edit REMOVED (auto-gate M5) — the generic record diff card is retired;
+    # each domain edits via its own natural direct-write tool (audit-confirmed vestigial).
     "confirm_action",
     # Track D CD5 — `web_search` is fundamental: grounding an answer in the open web is a
     # base capability, not a glossary errand, so it must not cost a find_tools round-trip.
@@ -728,6 +735,56 @@ def _domain_of(name: str) -> str:
     its own domain name)."""
     prefix = _provider_prefix(name)
     return _DOMAIN_ALIASES.get(prefix, prefix)
+
+
+# Discovery/write-back tools that are ALWAYS core — calling one says nothing about
+# which DOMAIN the conversation is working in, so they never make a domain sticky.
+_STICKY_DOMAIN_IGNORE: frozenset[str] = frozenset({
+    FIND_TOOLS_NAME, TOOL_LIST_NAME, TOOL_LOAD_NAME,
+    "confirm_action", "web_search",
+    "ui_navigate", "ui_open_book", "ui_show_panel", "ui_watch_job",
+    "workflow_list", "workflow_load", "load_skill", "run_subagent",
+})
+
+
+def engaged_domains_from_tool_calls(tool_calls_rows) -> set[str]:
+    """The set of tool DOMAINS the recent conversation has ACTIVELY called into.
+
+    D-DOMAIN-HOTSET-NOT-STICKY (dogfood 2026-07-21): auto mode recomputes the hot
+    seed from the CURRENT message ONLY and forgets tools the agent discovered on a
+    prior turn (find_tools/tool_load accumulations are not re-advertised in auto —
+    tool_surface line ~453). So on a low-signal follow-up ("Option 3, go with that")
+    the model can no longer see the `book` domain it used two turns ago: it wanders,
+    or — worse, observed live — HALLUCINATES success ("I've prepared the update…")
+    with no tool call at all. Re-seeding the domains recently engaged keeps the
+    conversation's working domain hot across turns.
+
+    Purely derived from the persisted `chat_messages.tool_calls` record — no new
+    column, no write path — and it DECAYS naturally: once the lookback window no
+    longer contains a domain's call, it stops being seeded. Each row is the server's
+    executed-call record: a jsonb list of ``{iteration, tool, args, ok, …}`` (see
+    `app/db/tool_call_history.py`). A row may arrive already-parsed (list) or as a raw
+    jsonb string (asyncpg with no codec) — both are tolerated. Engagement is by INTENT,
+    so a call is counted whether or not it succeeded (``ok``): a book edit that 400'd
+    still means the writer is working in the book domain and wants it hot next turn.
+    """
+    domains: set[str] = set()
+    for raw in tool_calls_rows or []:
+        if isinstance(raw, str):
+            try:
+                raw = json.loads(raw)
+            except (TypeError, ValueError):
+                continue
+        if not isinstance(raw, list):
+            continue
+        for call in raw:
+            if not isinstance(call, dict):
+                continue
+            name = call.get("tool")
+            if not name or not isinstance(name, str) or name in _STICKY_DOMAIN_IGNORE:
+                continue
+            domains.add(_domain_of(name))
+    return domains
 
 
 # ── Design item 1 — true per-domain enumeration (external audit #1/#5) ───────

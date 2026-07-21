@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ManuscriptNode, ManuscriptRow } from '../types';
 import { PART_UNASSIGNED_ID } from '../partsTree';
@@ -18,9 +18,12 @@ const hook = vi.hoisted(() => ({ value: {} as Record<string, unknown> }));
 vi.mock('../useManuscriptTree', () => ({ useManuscriptTree: () => hook.value }));
 const jump = vi.hoisted(() => ({ value: {} as Record<string, unknown> }));
 vi.mock('../useManuscriptJump', () => ({ useManuscriptJump: () => jump.value }));
-// Capture sonner toasts (the undo-toast on trash).
+// Capture sonner toasts — toast() (the undo-toast on trash) AND toast.error() (the runAct failure toast).
 const toastFn = vi.hoisted(() => vi.fn());
-vi.mock('sonner', () => ({ toast: (...a: unknown[]) => toastFn(...a) }));
+const toastErrorFn = vi.hoisted(() => vi.fn());
+vi.mock('sonner', () => ({
+  toast: Object.assign((...a: unknown[]) => toastFn(...a), { error: (...a: unknown[]) => toastErrorFn(...a) }),
+}));
 
 import { ManuscriptNavigator } from '../ManuscriptNavigator';
 
@@ -55,6 +58,7 @@ const base = (m: ReturnType<typeof mutators>, rows: ManuscriptRow[], parts: Retu
 beforeEach(() => {
   jump.value = { query: '', setQuery: vi.fn(), results: [], searching: false, active: false };
   toastFn.mockReset();
+  toastErrorFn.mockReset();
   vi.restoreAllMocks();
 });
 
@@ -90,6 +94,37 @@ describe('ManuscriptNavigator — S-02 act affordances', () => {
     fireEvent.keyDown(input, { key: 'Enter' });
     expect(m.createAct).toHaveBeenCalledWith('Rising Action'); // trimmed
     expect(promptSpy).not.toHaveBeenCalled();                  // no window.prompt
+  });
+
+  it('M2: a REJECTED mutation surfaces toast.error (the runAct guard) — never a silent failure', async () => {
+    const m = mutators();
+    m.createAct = vi.fn(() => Promise.reject(new Error('server said no')));
+    hook.value = base(m, [row(partNode('p1', 'Act I'), 0)]);
+    render(<ManuscriptNavigator bookId="b1" token="t" />);
+
+    fireEvent.click(screen.getByTestId('manuscript-part-new'));
+    const input = screen.getByTestId('manuscript-part-new-input');
+    fireEvent.change(input, { target: { value: 'X' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+
+    expect(m.createAct).toHaveBeenCalled();
+    // runAct's `.catch` fires the toast asynchronously — the whole point is the failure is VISIBLE,
+    // not swallowed by the old `void partsApi.X()` pattern that reverted on the next reload.
+    await waitFor(() => expect(toastErrorFn).toHaveBeenCalledTimes(1));
+  });
+
+  it('ML1: a composition outage (partsUnavailable) SURFACES a note — not a silent flatten', () => {
+    const m = mutators();
+    hook.value = { ...base(m, [row(chapNode('c1'), 0)]), partsUnavailable: true };
+    render(<ManuscriptNavigator bookId="b1" token="t" />);
+    expect(screen.getByTestId('manuscript-parts-unavailable')).toBeTruthy();
+  });
+
+  it('ML1: no note when parts ARE available (no false alarm)', () => {
+    const m = mutators();
+    hook.value = base(m, [row(chapNode('c1'), 0)]); // partsUnavailable defaults false
+    render(<ManuscriptNavigator bookId="b1" token="t" />);
+    expect(screen.queryByTestId('manuscript-parts-unavailable')).toBeNull();
   });
 
   it('S-02c: New act → Esc cancels (no create, input gone)', () => {

@@ -138,6 +138,48 @@ async def load_suspended_run(
     )
 
 
+async def load_suspended_run_any(
+    pool: asyncpg.Pool, run_id: str, owner_user_id: str
+) -> SuspendedRun | None:
+    """DBT-CHAT-PERSIST — like `load_suspended_run` but IGNORES the TTL.
+
+    `load_suspended_run` hides expired rows (correct: an expired card must not
+    re-execute). But the trapped assistant content of an expired/abandoned run
+    must still be recoverable so it can be materialized into a visible
+    'interrupted' message instead of vanishing. Owner-scoped, same as the live
+    loader; returns None only when the row is truly gone or another user's."""
+    row = await pool.fetchrow(
+        """
+        SELECT run_id, session_id, owner_user_id, message_id, working,
+               pending_tool_call, input_tokens, output_tokens, model_source,
+               model_ref, parent_message_id, user_message_content,
+               permission_mode, pinned_step_tools, book_id
+        FROM chat_suspended_runs
+        WHERE run_id = $1 AND owner_user_id = $2
+        """,
+        run_id, owner_user_id,
+    )
+    if row is None:
+        return None
+    return SuspendedRun(
+        run_id=str(row["run_id"]),
+        session_id=str(row["session_id"]),
+        owner_user_id=str(row["owner_user_id"]),
+        message_id=str(row["message_id"]),
+        working=_parse_json(row["working"]),
+        pending_tool_call=_parse_json(row["pending_tool_call"]),
+        input_tokens=row["input_tokens"],
+        output_tokens=row["output_tokens"],
+        model_source=row["model_source"],
+        model_ref=str(row["model_ref"]),
+        parent_message_id=str(row["parent_message_id"]) if row["parent_message_id"] else None,
+        user_message_content=row["user_message_content"],
+        permission_mode=str(row["permission_mode"] or "write"),
+        pinned_step_tools=_str_list(_parse_json(row["pinned_step_tools"])),
+        book_id=str(row["book_id"]) if row["book_id"] else None,
+    )
+
+
 async def delete_suspended_run(pool: asyncpg.Pool, run_id: str) -> None:
     await pool.execute("DELETE FROM chat_suspended_runs WHERE run_id = $1", run_id)
 

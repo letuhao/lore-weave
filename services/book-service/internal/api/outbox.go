@@ -12,20 +12,82 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
-// insertOutboxEvent writes a transactional outbox event within the given tx.
+// insertOutboxEvent writes a transactional 'chapter'-aggregate outbox event within the given tx.
 // The outbox row lives in the same database as the mutation, ensuring atomicity.
 // The worker-infra service polls/listens for new rows and relays them to Redis Streams.
 func insertOutboxEvent(ctx context.Context, tx pgx.Tx, eventType string, aggregateID uuid.UUID, payload map[string]any) error {
+	return insertOutboxEventTyped(ctx, tx, "chapter", eventType, aggregateID, payload)
+}
+
+// insertOutboxEventTyped writes an outbox event with an EXPLICIT aggregate_type. The worker-infra
+// relay auto-routes any aggregate_type to `loreweave:events:<aggregate_type>` (outbox_relay.go:220,
+// default MAXLEN for an unknown type), so introducing a NEW type (e.g. 'book') needs zero relay
+// change — only a consumer on the new stream. insertOutboxEvent keeps the 'chapter' default so the
+// existing call sites are unchanged.
+func insertOutboxEventTyped(ctx context.Context, tx pgx.Tx, aggregateType, eventType string, aggregateID uuid.UUID, payload map[string]any) error {
 	payloadJSON, err := json.Marshal(payload)
 	if err != nil {
 		return fmt.Errorf("outbox marshal: %w", err)
 	}
-	_, err = tx.Exec(ctx, `
+	if _, err := tx.Exec(ctx, `
 		INSERT INTO outbox_events (aggregate_type, aggregate_id, event_type, payload)
-		VALUES ('chapter', $1, $2, $3)
-	`, aggregateID, eventType, payloadJSON)
-	if err != nil {
+		VALUES ($1, $2, $3, $4)
+	`, aggregateType, aggregateID, eventType, payloadJSON); err != nil {
 		return fmt.Errorf("outbox insert: %w", err)
+	}
+	return nil
+}
+
+// BookLifecycleChangedEvent fires whenever a book's lifecycle_state changes (trash / restore / purge).
+//
+// WHY THE PAYLOAD CARRIES ONLY {book_id}. Like chapter.scenes_linked, the consumer RE-READS the book's
+// CURRENT lifecycle (GET /internal/books/{id}/projection) rather than trusting a payload-carried state.
+// The relay is at-least-once + unordered, so a payload state would let a stale trashed→restored→trashed
+// redelivery land the mirror on the wrong value; a re-read always converges to book-service's truth NOW.
+//
+// aggregate_type='book' — the FIRST book-aggregate event. The relay publishes it to
+// `loreweave:events:book` automatically; composition's BookLifecycleConsumer mirrors it onto the
+// `book_lifecycle` column of the manuscript-structure anchor tables (spec 2026-07-20 §4.6, Option C).
+const BookLifecycleChangedEvent = "book.lifecycle_changed"
+
+// emitBookLifecycleChanged writes book.lifecycle_changed into the caller's tx, atomic with the
+// lifecycle UPDATE (INV-O12: an emit that cannot be written rolls the mutation back — a book whose
+// trash never reached composition would silently render live structure over a dead book).
+func emitBookLifecycleChanged(ctx context.Context, tx pgx.Tx, bookID uuid.UUID) error {
+	return insertOutboxEventTyped(ctx, tx, "book", BookLifecycleChangedEvent, bookID, map[string]any{
+		"book_id": bookID,
+	})
+}
+
+// emitChapterLifecycleForBook emits ONE per-chapter event (chapter.trashed / chapter.deleted /
+// chapter.restored) for each chapter a BULK book lifecycle transition just moved, in the caller's tx.
+//
+// WHY THIS EXISTS (spec §4.6): a book-level trash/purge/restore bulk-updates chapters but historically
+// emitted NOTHING per-chapter, so the consumers of chapter.{trashed,deleted,restored} — glossary
+// citation-staleness, statistics counts, composition written-verdict — never learned the chapters
+// changed. A trashed book's chapters therefore still read as live to them (citations valid, stats not
+// decremented). Emitting the same per-chapter events a single-chapter transition emits makes the bulk
+// path behaviourally identical to N single-chapter ones. Batched (one pipelined round-trip, not N) so a
+// 6000-chapter book stays cheap; each row is atomic with the lifecycle write.
+func emitChapterLifecycleForBook(ctx context.Context, tx pgx.Tx, eventType string, bookID uuid.UUID, chapterIDs []uuid.UUID) error {
+	if len(chapterIDs) == 0 {
+		return nil
+	}
+	payload, err := json.Marshal(map[string]any{"book_id": bookID})
+	if err != nil {
+		return fmt.Errorf("chapter-event marshal: %w", err)
+	}
+	batch := &pgx.Batch{}
+	for _, chID := range chapterIDs {
+		batch.Queue(`INSERT INTO outbox_events (aggregate_type, aggregate_id, event_type, payload)
+			VALUES ('chapter', $1, $2, $3)`, chID, eventType, payload)
+	}
+	br := tx.SendBatch(ctx, batch)
+	defer br.Close()
+	for range chapterIDs {
+		if _, err := br.Exec(); err != nil {
+			return fmt.Errorf("chapter-event insert: %w", err)
+		}
 	}
 	return nil
 }

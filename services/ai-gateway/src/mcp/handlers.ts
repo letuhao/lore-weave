@@ -12,6 +12,8 @@ import {
   toolListResult,
   toolLoadResult,
 } from '../federation/find-tools.js';
+import { UI_TOOLS, UI_TOOL_NAMES, handleUiTool } from './ui-tools.js';
+import { PROPOSE_EDIT_TOOL, PROPOSE_EDIT_NAME, handleProposeEdit } from './propose-edit-tool.js';
 
 const log = new Logger('McpProxy');
 
@@ -55,11 +57,22 @@ export async function handleListTools(
   const overlay = await federation.overlayTools(extractEnvelope(headers));
   // Prepend the consumer-local discovery meta-tools so a minimal surface (the public edge) can
   // advertise them + relay their calls back here. WS-1a (contracts.md C2): `tool_list`/`tool_load` —
-  // the DETERMINISTIC pair — go FIRST (the primary discovery path, OQ1); `find_tools` follows as the
-  // OPTIONAL semantic convenience. All three are deduped by name on the consumer's name-keyed active
-  // set + excluded from their own listing/search.
+  // the DETERMINISTIC pair — are the discovery path. F17 (2026-07-20): `find_tools` is NO LONGER
+  // advertised — it is semantic top-K, so it structurally can't surface a tool outside the K matches
+  // (dogfood F14). Its handler stays dispatchable for a legacy caller, but the LLM never sees it.
+  // Phase 3 — the consumer-local ui_* directive tools (KIND A). Like the discovery
+  // meta-tools they have no downstream provider (handled in handleCallTool). The
+  // per-turn advertisement gate (F7c nav-intent, studio_context) stays a CONSUMER
+  // concern in chat-service, which filters this catalog; ai-gateway lists them so
+  // they are discoverable + validated at one seam.
   return {
-    tools: [TOOL_LIST_TOOL, TOOL_LOAD_TOOL, FIND_TOOLS_TOOL, ...(federation.catalog() as any[]), ...overlay],
+    tools: [
+      TOOL_LIST_TOOL, TOOL_LOAD_TOOL,
+      ...UI_TOOLS,
+      PROPOSE_EDIT_TOOL,
+      ...(federation.catalog() as any[]),
+      ...overlay,
+    ],
     _meta: { unavailable_providers: unavailable, partial: federation.isPartial() },
   };
 }
@@ -262,6 +275,20 @@ export async function handleCallTool(
   if (name === FIND_TOOLS_NAME) {
     return handleFindTools(federation, args, headers);
   }
+  // Phase 3 — ui_* are consumer-local directive tools: validate (enum/required) and
+  // return a directive the browser acts on; an out-of-enum arg is an isError result
+  // (the enum/required signal), NEVER a silent no-op. No provider, no identity needed
+  // (navigation is a client effect; nothing is written server-side).
+  if (UI_TOOL_NAMES.has(name)) {
+    return handleUiTool(name, args);
+  }
+  // Phase 2 — propose_edit is a consumer-local HUMAN-GATED tool: validate (enum/required)
+  // and return a gated PROPOSAL directive chat-service suspends on (no server write; the
+  // client applies on Apply). An out-of-enum/missing arg is an isError result — the exact
+  // incident (propose_edit called with propose_record_edit's args) is rejected at the source.
+  if (name === PROPOSE_EDIT_NAME) {
+    return handleProposeEdit(args);
+  }
 
   const env = extractEnvelope(headers);
   // A CallTool with no caller identity is almost always a bug. Per-tool identity
@@ -321,7 +348,7 @@ const TRANSPORT_ERROR_RE =
 
 /**
  * Classify an executeTool failure into an LLM-actionable one-liner:
- *  - unknown tool          → say so + point at find_tools (the model mistyped);
+ *  - unknown tool          → say so + point at tool_list/tool_load (the model mistyped);
  *  - transport/timeout/5xx → "backend temporarily unreachable — retry may succeed";
  *  - upstream JSON-RPC / HTTP-4xx rejection → pass the upstream's message
  *    through, sanitized of URLs/hosts (it is server-authored and usually says
@@ -334,7 +361,7 @@ export function classifyCallToolError(e: unknown): string {
 
   // federation.executeTool throws this BEFORE any network call: no provider owns the name.
   if (/^unknown tool /.test(msg)) {
-    return `unknown tool — it is not in the tool catalog; call tool_list to see valid tool names (or find_tools to search by intent)`;
+    return `unknown tool — it is not in the tool catalog; call tool_list to see valid tool names, then tool_load the one you need`;
   }
 
   // JSON-RPC error relayed from the owning provider (the TS SDK's McpError

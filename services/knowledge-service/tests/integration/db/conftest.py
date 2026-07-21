@@ -1,8 +1,15 @@
 """Integration-test DB fixtures.
 
-Connects to a real Postgres using TEST_KNOWLEDGE_DB_URL (or falls back to
-KNOWLEDGE_DB_URL). If the DB is unreachable, the test is skipped — this
-keeps `pytest` runnable on a dev host without Docker, while Gate 2 runs
+db-safety-gate: guarded-dir — the `pool` fixture here refuses a non-throwaway DSN via
+_guard_throwaway() BEFORE it runs its destructive TRUNCATE, and every DB test under this
+directory acquires its connection from that single guarded pool (no test opens its own
+Postgres pool). So this tree can never TRUNCATE a real service database. (See CLAUDE.md ›
+"Destructive DB ops in tests" + scripts/db-safety-gate.py.)
+
+Connects to a real Postgres using TEST_KNOWLEDGE_DB_URL — the dedicated test var ONLY. It
+never falls back to the production KNOWLEDGE_DB_URL, which in any dev shell points at the
+real loreweave_knowledge the TRUNCATE would wipe. If the DB is unreachable/unset, the test
+is skipped — this keeps `pytest` runnable on a dev host without Docker, while Gate 2 runs
 against the compose-managed Postgres so the DB is guaranteed.
 
 Also provides a shared `neo4j_driver` fixture for K11.5+ Neo4j repo
@@ -10,6 +17,7 @@ tests (skipped when TEST_NEO4J_URI is unset).
 """
 
 import os
+import re
 
 import asyncpg
 import pytest
@@ -18,9 +26,26 @@ import pytest_asyncio
 from app.db.migrate import run_migrations
 from app.db.neo4j_schema import run_neo4j_schema
 
+# A disposable test DB name carries one of these markers; a real service DB
+# (loreweave_knowledge) carries none. Mirrors campaign-service/tests/integration/conftest
+# + the kg-integration-tests-truncate-shared-dev-db lesson.
+_THROWAWAY = re.compile(r"(?i)(test|smoke|audit|scratch|throwaway|tmp|sandbox|ephemeral)")
+
 
 def _dsn() -> str | None:
-    return os.environ.get("TEST_KNOWLEDGE_DB_URL") or os.environ.get("KNOWLEDGE_DB_URL")
+    # ONLY the dedicated test var — never fall back to the production KNOWLEDGE_DB_URL,
+    # which in any dev shell points at the real loreweave_knowledge the TRUNCATE would wipe.
+    return os.environ.get("TEST_KNOWLEDGE_DB_URL")
+
+
+def _guard_throwaway(dsn: str) -> None:
+    db = dsn.rsplit("/", 1)[-1].split("?", 1)[0]
+    if not _THROWAWAY.search(db):
+        raise RuntimeError(
+            f"REFUSING: TEST_KNOWLEDGE_DB_URL database {db!r} is not a throwaway DB "
+            "(the name must contain test/smoke/audit/…). This fixture TRUNCATEs tables — "
+            "point it at a disposable DB, never the real loreweave_knowledge."
+        )
 
 
 @pytest_asyncio.fixture
@@ -31,7 +56,8 @@ async def pool():
     """
     dsn = _dsn()
     if not dsn or "u:p@h" in dsn:
-        pytest.skip("no real KNOWLEDGE_DB_URL set")
+        pytest.skip("no real TEST_KNOWLEDGE_DB_URL set")
+    _guard_throwaway(dsn)  # refuse a real DB BEFORE any destructive statement
     try:
         p = await asyncpg.create_pool(dsn, min_size=1, max_size=4, command_timeout=5)
     except (OSError, asyncpg.PostgresError) as exc:

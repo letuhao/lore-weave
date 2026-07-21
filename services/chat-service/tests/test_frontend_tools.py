@@ -50,9 +50,12 @@ from tests.test_stream_tools import (
 
 
 class TestFrontendToolDefs:
-    def test_propose_edit_is_a_frontend_tool(self):
-        assert is_frontend_tool("propose_edit")
-        assert "propose_edit" in FRONTEND_TOOL_NAMES
+    def test_propose_edit_is_no_longer_a_frontend_tool(self):
+        # Phase 2 (P2.2) — propose_edit moved to ai-gateway as a consumer-local tool
+        # that returns a GATED proposal directive; chat-service stops intercepting it
+        # as a frontend tool (it routes to ai-gateway, then suspends on the directive).
+        assert not is_frontend_tool("propose_edit")
+        assert "propose_edit" not in FRONTEND_TOOL_NAMES
 
     def test_glossary_edit_is_a_frontend_tool(self):
         assert is_frontend_tool("glossary_propose_entity_edit")
@@ -146,12 +149,17 @@ class TestFrontendToolDefs:
         # neither surface → nothing
         assert frontend_tool_defs() == []
 
-    def test_studio_ui_tools_are_frontend_tools(self):
-        # #09 Lane A — the studio dock-nav tools are client-executed frontend tools.
-        assert is_frontend_tool("ui_open_studio_panel")
-        assert is_frontend_tool("ui_focus_manuscript_unit")
-        assert "ui_open_studio_panel" in FRONTEND_TOOL_NAMES
-        assert "ui_focus_manuscript_unit" in FRONTEND_TOOL_NAMES
+    def test_ui_tools_are_no_longer_frontend_tools(self):
+        # Phase 3 (P3.2) — the KIND-A ui_* tools moved to ai-gateway as consumer-local
+        # directive tools; chat-service no longer intercepts/suspends on them (so they
+        # route to ai-gateway and return an io.loreweave/ui-directive result). They are
+        # still ADVERTISED (nav via the federated catalog, studio via frontend_tool_defs).
+        for name in (
+            "ui_navigate", "ui_open_book", "ui_open_chapter", "ui_show_panel",
+            "ui_watch_job", "ui_open_studio_panel", "ui_focus_manuscript_unit",
+        ):
+            assert not is_frontend_tool(name), f"{name} must no longer be a frontend tool"
+            assert name not in FRONTEND_TOOL_NAMES
 
     def test_studio_surface_advertises_only_the_studio_nav_tools(self):
         # studio flag adds ONLY the two dock-nav tools; independent of editor/book_scoped.
@@ -190,12 +198,45 @@ class TestFrontendToolDefs:
 
 class TestSuspendLoop:
     @pytest.mark.asyncio
-    async def test_frontend_tool_suspends_without_executing(self):
-        """A propose_edit call yields a `suspend` chunk carrying the rehydrate
-        state and does NOT call knowledge_client.execute_tool."""
+    async def test_confirm_action_frontend_tool_suspends_without_executing(self):
+        """A still-frontend tool (confirm_action) yields a `suspend` chunk carrying the
+        rehydrate state and does NOT call knowledge_client.execute_tool (the classic
+        frontend-tool suspend path, kept after propose_edit migrated to ai-gateway)."""
         kc = AsyncMock()
+        args = '{"confirm_token":"tok","descriptor":"book.publish","title":"Publish?"}'
         scripts = [[
-            tool_frag(index=0, id="call_fe", name="propose_edit"),
+            tool_frag(index=0, id="call_fe", name="confirm_action"),
+            tool_frag(index=0, arguments_delta=args),
+            usage(10, 4),
+            done("tool_calls"),
+        ]]
+        with _patch_client(scripts):
+            chunks = await _drain(_run(
+                scripts, knowledge_client=kc,
+                tools=[{"type": "function", "function": {"name": "confirm_action"}}],
+            ))
+        # never executed server-side (a frontend tool suspends, it doesn't call mcp)
+        kc.mcp_execute_tool.assert_not_awaited()
+        suspends = [c for c in chunks if "suspend" in c]
+        assert len(suspends) == 1
+        s = suspends[0]["suspend"]
+        assert s["pending_tool_call"]["name"] == "confirm_action"
+        assert s["pending_tool_call"]["id"] == "call_fe"
+        assert s["input_tokens"] == 10 and s["output_tokens"] == 4
+        assert any(m.get("role") == "assistant" and m.get("tool_calls") for m in s["working"])
+
+    @pytest.mark.asyncio
+    async def test_propose_edit_suspends_via_the_gated_proposal_directive(self):
+        """Phase 2 (P2.2) — propose_edit now ROUTES to ai-gateway (a real mcp call) which
+        returns a GATED proposal directive; chat-service detects it and suspends with the
+        SAME pending shape the old frontend-tool suspend used (so ProposeEditCard is
+        unchanged). Contrast the confirm_action test: propose_edit DOES call mcp now."""
+        kc = AsyncMock()
+        kc.mcp_execute_tool.return_value = _envelope(success=True, result={
+            "type": "io.loreweave/propose-edit", "operation": "insert_at_cursor", "text": "Hi",
+        })
+        scripts = [[
+            tool_frag(index=0, id="call_pe", name="propose_edit"),
             tool_frag(index=0, arguments_delta='{"operation":"insert_at_cursor","text":"Hi"}'),
             usage(10, 4),
             done("tool_calls"),
@@ -205,30 +246,33 @@ class TestSuspendLoop:
                 scripts, knowledge_client=kc,
                 tools=[{"type": "function", "function": {"name": "propose_edit"}}],
             ))
-        # never executed server-side
-        kc.mcp_execute_tool.assert_not_awaited()
-        kc.mcp_execute_tool.assert_not_awaited()
-        # a single suspend chunk with the pending call + working history
+        # propose_edit IS executed via ai-gateway now (returns the proposal directive)
+        kc.mcp_execute_tool.assert_awaited_once()
         suspends = [c for c in chunks if "suspend" in c]
         assert len(suspends) == 1
         s = suspends[0]["suspend"]
         assert s["pending_tool_call"]["name"] == "propose_edit"
-        assert s["pending_tool_call"]["id"] == "call_fe"
+        assert s["pending_tool_call"]["id"] == "call_pe"
+        # reconstructed to the legacy shape so ProposeEditCard renders unchanged
         assert s["pending_tool_call"]["args"] == {"operation": "insert_at_cursor", "text": "Hi"}
-        assert s["input_tokens"] == 10 and s["output_tokens"] == 4
-        # the dangling assistant tool-call message is in `working`
-        assert any(m.get("role") == "assistant" and m.get("tool_calls") for m in s["working"])
+        # NOT a durable task (client-effect gate → resumed like a frontend tool)
+        assert "task" not in s["pending_tool_call"]
 
     @pytest.mark.asyncio
-    async def test_backend_tool_executes_then_suspends_on_frontend_tool(self):
-        """A pass with a memory_* tool AND propose_edit: the memory tool runs
-        inline (result in working), then the loop suspends on propose_edit."""
+    async def test_backend_tool_executes_then_suspends_on_propose_edit_directive(self):
+        """A pass with memory_search AND propose_edit: both call mcp now (memory returns
+        hits, propose_edit returns the proposal directive), then the loop suspends on the
+        propose_edit directive with the memory result already in `working`."""
         kc = AsyncMock()
-        kc.mcp_execute_tool.return_value = _envelope(success=True, result={"hits": []})
+        kc.mcp_execute_tool.side_effect = [
+            _envelope(success=True, result={"hits": []}),  # memory_search
+            _envelope(success=True, result={  # propose_edit → proposal directive
+                "type": "io.loreweave/propose-edit", "operation": "insert_at_cursor", "text": "x"}),
+        ]
         scripts = [[
             tool_frag(index=0, id="call_mem", name="memory_search"),
             tool_frag(index=0, arguments_delta='{"query":"Kai"}'),
-            tool_frag(index=1, id="call_fe", name="propose_edit"),
+            tool_frag(index=1, id="call_pe", name="propose_edit"),
             tool_frag(index=1, arguments_delta='{"operation":"insert_at_cursor","text":"x"}'),
             usage(5, 2),
             done("tool_calls"),
@@ -239,14 +283,13 @@ class TestSuspendLoop:
                 tools=[{"type": "function", "function": {"name": "memory_search"}},
                        {"type": "function", "function": {"name": "propose_edit"}}],
             ))
-        # memory tool executed once
-        kc.mcp_execute_tool.assert_awaited_once()
-        # a tool_call chunk for the memory tool + a suspend for propose_edit
+        # both tools executed (memory + propose_edit route through mcp now)
+        assert kc.mcp_execute_tool.await_count == 2
         tool_chunks = [c for c in chunks if "tool_call" in c]
         assert [c["tool_call"]["tool"] for c in tool_chunks] == ["memory_search"]
         suspends = [c for c in chunks if "suspend" in c]
         assert len(suspends) == 1
-        # working has the memory tool result before the suspend
+        assert suspends[0]["suspend"]["pending_tool_call"]["name"] == "propose_edit"
         working = suspends[0]["suspend"]["working"]
         assert any(m.get("role") == "tool" and m.get("tool_call_id") == "call_mem" for m in working)
 

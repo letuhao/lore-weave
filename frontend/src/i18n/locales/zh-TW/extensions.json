@@ -12,6 +12,7 @@
     "ingest": "註冊來源"
   },
   "quota": {
+    "unavailable": "用量無法使用",
     "skills": "技能",
     "mcp": "MCP 伺服器",
     "proposals": "提案"

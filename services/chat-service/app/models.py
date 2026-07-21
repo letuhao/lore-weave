@@ -570,6 +570,11 @@ class ChatMessage(BaseModel):
     model_ref: UUID | None
     is_error: bool
     error_detail: str | None
+    # DBT-CHAT-PERSIST — how the turn ended: None/'stop' = clean, 'error' = threw
+    # mid-stream (with is_error), 'interrupted' = user stopped or the frontend-tool
+    # suspend was abandoned/expired/refused. Lets the FE badge an incomplete reply
+    # instead of the reply vanishing.
+    finish_reason: str | None = None
     parent_message_id: UUID | None
     created_at: datetime
 

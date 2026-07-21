@@ -1566,10 +1566,11 @@ class TestW1SchemaTokens:
                 "name": "memory_search",
                 "parameters": {"type": "object", "properties": {"query": {"type": "string"}}},
             }},
-            # propose_edit is in FRONTEND_TOOL_NAMES → the frontend bucket.
+            # confirm_action is in FRONTEND_TOOL_NAMES → the frontend bucket. (propose_edit
+            # moved to ai-gateway in Phase 2, so a still-frontend tool fills the bucket here.)
             {"type": "function", "function": {
-                "name": "propose_edit",
-                "parameters": {"type": "object", "properties": {"replacement": {"type": "string"}}},
+                "name": "confirm_action",
+                "parameters": {"type": "object", "properties": {"confirm_token": {"type": "string"}}},
             }},
         ]
         scripts = [[tok("hi"), usage(1, 1), done()]]
@@ -1670,3 +1671,110 @@ class TestConversationSearchDispatch:
         assert tc["ok"] is False
         assert tc["result"] is None
         assert "boom" in tc["error"]
+
+
+# ════════════════════════════════════════════════════════════════════════════
+# Phase 0 (frontend-tools → MCP migration) — the wired MCP-native validation seam
+# ════════════════════════════════════════════════════════════════════════════
+
+
+class TestFrontendToolValidationSeam:
+    """A frontend tool whose args fail its OWN canonical JSON-Schema is rejected
+    with the standard `required: missing properties` signal and the run
+    CONTINUES — it must never suspend an un-appliable card (the reported bug,
+    session 019f771a: propose_edit called with propose_record_edit's args). A
+    well-formed call still suspends exactly as before."""
+
+    @pytest.mark.asyncio
+    async def test_bad_frontend_args_rejected_and_not_suspended(self):
+        # The Phase 0 seam still guards the REMAINING frontend tools (confirm_action,
+        # glossary_*, propose_record_edit). propose_edit's own incident-shape rejection
+        # moved to ai-gateway (propose-edit-tool.spec.ts) in Phase 2. Here confirm_action
+        # (requires confirm_token+descriptor+title) is called with the record-edit shape
+        # → the seam rejects it BEFORE suspending, feeding the model the repair signal.
+        from app.services.frontend_tools import CONFIRM_ACTION_TOOL
+
+        kc = AsyncMock()
+        incident_args = {
+            "domain": "book",
+            "resource_ref": {"book_id": "b", "chapter_id": "c"},
+            "changes": [{"field_label": "Body", "old_value": "a", "new_value": "b", "target": "body"}],
+        }
+        scripts = [
+            [
+                tool_frag(index=0, id="call_x", name="confirm_action"),
+                tool_frag(index=0, arguments_delta=json.dumps(incident_args)),
+                done("tool_calls"),
+            ],
+            [tok("Let me correct that."), done("stop")],
+        ]
+        with _patch_client(scripts):
+            chunks = await _drain(_run(scripts, knowledge_client=kc, tools=[CONFIRM_ACTION_TOOL]))
+
+        # NEVER suspended — no un-appliable card was rendered.
+        assert not any("suspend" in c for c in chunks)
+        tcs = [c["tool_call"] for c in chunks if "tool_call" in c]
+        assert len(tcs) == 1
+        assert tcs[0]["tool"] == "confirm_action"
+        assert tcs[0]["ok"] is False
+        assert "required: missing properties" in tcs[0]["error"]
+        assert "confirm_token" in tcs[0]["error"]
+        assert chunks[-1]["finish_reason"] == "stop"
+        # A frontend tool — no backend execute happened.
+        kc.mcp_execute_tool.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_valid_frontend_args_still_suspend(self):
+        from app.services.frontend_tools import CONFIRM_ACTION_TOOL
+
+        kc = AsyncMock()
+        good = {"confirm_token": "tok", "descriptor": "book.publish", "title": "Publish?", "domain": "book"}
+        scripts = [
+            [
+                tool_frag(index=0, id="call_ok", name="confirm_action"),
+                tool_frag(index=0, arguments_delta=json.dumps(good)),
+                done("tool_calls"),
+            ],
+        ]
+        with _patch_client(scripts):
+            chunks = await _drain(_run(scripts, knowledge_client=kc, tools=[CONFIRM_ACTION_TOOL]))
+
+        susp = [c["suspend"] for c in chunks if "suspend" in c]
+        assert len(susp) == 1
+        assert susp[0]["pending_tool_call"]["name"] == "confirm_action"
+        assert susp[0]["pending_tool_call"]["args"] == good
+
+
+class TestTaskGateSuspend:
+    """ext-tasks (T1c(3)) — a backend tool returning a task envelope (a capability-
+    gated domain gate: composition_create_derivative) suspends the run with the task
+    MARKED, so resume drives the domain's provide-input tool instead of a client
+    execution. Dormant on the current stack (nothing declares tasks caps)."""
+
+    @pytest.mark.asyncio
+    async def test_backend_task_envelope_suspends_with_task_marker(self):
+        kc = AsyncMock()
+        kc.mcp_execute_tool.return_value = {
+            "success": True, "result": None, "error": None,
+            "task": {"taskId": "task_z", "status": "input_required",
+                     "inputRequests": {"title": "Spawn dị bản?"}},
+        }
+        scripts = [
+            [
+                tool_frag(index=0, id="call_g", name="composition_create_derivative"),
+                tool_frag(index=0, arguments_delta='{"project_id":"p","name":"AU"}'),
+                done("tool_calls"),
+            ],
+        ]
+        with _patch_client(scripts):
+            chunks = await _drain(_run(
+                scripts, knowledge_client=kc,
+                tools=[{"type": "function", "function": {"name": "composition_create_derivative"}}],
+            ))
+
+        susp = [c["suspend"] for c in chunks if "suspend" in c]
+        assert len(susp) == 1
+        pend = susp[0]["pending_tool_call"]
+        assert pend["name"] == "composition_create_derivative"
+        assert pend["task"] == {"taskId": "task_z", "status": "input_required",
+                                "inputRequests": {"title": "Spawn dị bản?"}}

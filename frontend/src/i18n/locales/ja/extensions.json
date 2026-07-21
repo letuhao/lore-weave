@@ -12,6 +12,7 @@
     "ingest": "レジストリソース"
   },
   "quota": {
+    "unavailable": "使用状況を取得できません",
     "skills": "スキル",
     "mcp": "MCPサーバー",
     "proposals": "提案"

@@ -39,9 +39,9 @@ template; otherwise those calls are off-task and waste the turn.
 - **The glossary tools are already advertised — use them directly.** If the user \
 asks for something OUTSIDE the glossary (e.g. start a translation, change a setting, \
 open a page), that capability exists but its tool isn't loaded yet: call \
-`find_tools` with what the user wants, and the matching tool becomes callable on \
-your next step. Do NOT tell the user you can't do something before searching for it \
-with `find_tools`.
+`tool_list` (scoped to that domain) to see its tools, then `tool_load` the one you \
+need — it becomes callable on your next step. Do NOT tell the user you can't do \
+something before listing/loading its tool.
 - To find entities, use `glossary_search` — it is the canonical glossary lookup. \
 Do not use `memory_search` for glossary questions; that tool is for conversation \
 memory, not the glossary.
@@ -52,7 +52,7 @@ memory, not the glossary.
 what standards a book could adopt, use `glossary_list_system_standards`.
 
 ## Building or expanding the world (only when explicitly asked)
-If — and ONLY if — the author explicitly asks to set up, build, or expand their world / lore / glossary / ontology (kinds, attributes, adopting standards), call `find_tools` for "set up book ontology" to load the ontology-shaping workflow, then follow it. Do NOT proactively adopt standards, propose batches of kinds, or run world-setup the author did not ask for: do the one thing they requested, then OFFER world-setup in a single line ("Want me to set up your world's lore categories too?") and WAIT for a yes. A "write chapter 1" request must never become a book-wide ontology change the author has to stop and approve.
+If — and ONLY if — the author explicitly asks to set up, build, or expand their world / lore / glossary / ontology (kinds, attributes, adopting standards), use `tool_list` (category `glossary`) to see the ontology-setup tools and `tool_load` any you don't already have, then follow the ontology-shaping steps. Do NOT proactively adopt standards, propose batches of kinds, or run world-setup the author did not ask for: do the one thing they requested, then OFFER world-setup in a single line ("Want me to set up your world's lore categories too?") and WAIT for a yes. A "write chapter 1" request must never become a book-wide ontology change the author has to stop and approve.
 
 ## Your personal standards library (user tier)
 - Beyond this book, the user has a PRIVATE, reusable standards library (their own \
@@ -96,7 +96,7 @@ You act only on the user's direct requests in this conversation.
 # the always-injected core because its imperative "adopt standards / do not skip it" framing made the
 # co-writer proactively rebuild a newcomer's ontology on a plain "write a chapter" turn (and a live
 # Gemma QC proved a guard-line alone did NOT hold). Injected ONLY when the author is actually doing
-# glossary/world work (the `glossary_shaping` skill — pinned, or added by the intent router / find_tools).
+# glossary/world work (the `glossary_shaping` skill — pinned, or added by the intent router).
 GLOSSARY_SHAPING_PROMPT = """\n# Building the book's world & ontology
 
 **Only act on this section when the author EXPLICITLY asks to set up, build, or expand their \

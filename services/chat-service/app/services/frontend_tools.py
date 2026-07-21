@@ -20,6 +20,8 @@ from __future__ import annotations
 import re as _re
 from copy import deepcopy
 
+from jsonschema import Draft202012Validator
+
 # Tool names that the FRONTEND executes (suspend the run, don't call a backend).
 #   propose_edit                  — editor prose write-back (chapter editor only)
 #   glossary_propose_entity_edit  — edit an existing glossary entity (any book-scoped
@@ -45,21 +47,31 @@ from copy import deepcopy
 #                                  book/composition record edits
 FRONTEND_TOOL_NAMES: frozenset[str] = frozenset(
     {
-        "propose_edit",
         "glossary_propose_entity_edit",
         "glossary_confirm_action",
-        # generic, cross-domain (MCP-fanout):
-        "ui_navigate",
-        "ui_open_book",
-        "ui_open_chapter",
-        "ui_show_panel",
-        "ui_watch_job",
         "confirm_action",
-        "propose_record_edit",
-        # Writing Studio surface (#09 Lane A) — advertised only when the request carries
-        # studio_context; the FE executes them against the StudioHost (resolve-immediately).
-        "ui_open_studio_panel",
-        "ui_focus_manuscript_unit",
+        # propose_record_edit REMOVED (auto-gate M5, 2026-07-21): the generic record
+        # diff card is retired — every domain (glossary/composition/translation/settings)
+        # edits its records via its OWN natural direct-write MCP tool (audit confirmed each
+        # exists; book left in M0b). book_update_details' diff renders via ConfirmActionCard.
+        # NOTE (Phase 2, P2.2, 2026-07-20): propose_edit is NO LONGER a frontend tool —
+        # it is an ai-gateway consumer-local tool (propose-edit-tool.ts) that returns a
+        # GATED proposal directive. chat-service stops intercepting it here (→ routes to
+        # ai-gateway), detects io.loreweave/propose-edit in the tool result, and SUSPENDS
+        # with the same shape the old frontend-tool suspend used, so ProposeEditCard is
+        # unchanged. The PROPOSE_EDIT_TOOL def below stays for the editor-surface
+        # advertisement (frontend_tool_defs) until Phase 4 sources it from the catalog.
+        # NOTE (Phase 3, P3.2, 2026-07-20): the KIND-A ui_* tools are NO LONGER frontend
+        # tools — they are ai-gateway CONSUMER-LOCAL directive tools (ui-tools.ts). Removing
+        # them here stops chat-service intercepting/suspending on them: a ui_* call now routes
+        # to ai-gateway, which validates (enum/required) and returns an io.loreweave/ui-directive
+        # RESULT the FE acts on (useUiToolExecutor's directive path). They stay ADVERTISED —
+        # the 5 nav tools via the federated catalog (ALWAYS_ON_CORE_NAMES → catalog_index wins),
+        # the 2 studio tools via frontend_tool_defs (which keeps the F7c nav-intent gate). The
+        # defs below are retained only as an ai-gateway-down advertisement fallback + the P0
+        # validation-seam map; retire fully in P4 (D-P3-RETIRE-UI-FRONTEND-DEFS).
+        #   removed: ui_navigate, ui_open_book, ui_open_chapter, ui_show_panel, ui_watch_job,
+        #            ui_open_studio_panel, ui_focus_manuscript_unit
     }
 )
 
@@ -254,133 +266,13 @@ GLOSSARY_CONFIRM_ACTION_TOOL: dict = {
 }
 
 
-# ── MCP-fanout C-NAV — navigation/render frontend tools ──────────────────────
-# Frontend tools (suspend→browser) but RESOLVE-IMMEDIATELY: no human Apply gate.
-# The FE executes the navigation and POSTs the resolve straight back. Advertised
-# only on the agui /chat surface (F2 — legacy clients never see them, so never
-# suspend / hang).
-
-UI_NAVIGATE_TOOL: dict = {
-    "type": "function",
-    "function": {
-        "name": "ui_navigate",
-        "description": (
-            "Navigate the user's browser to a page (e.g. '/books', '/jobs', "
-            "'/settings'). Use this to SHOW the user something rather than dumping "
-            "data into chat. The browser navigates immediately — no confirmation."
-        ),
-        "parameters": {
-            "type": "object",
-            "properties": {
-                "path": {
-                    "type": "string",
-                    "description": "An allowlisted in-app route, e.g. '/books' or '/settings'.",
-                },
-            },
-            "required": ["path"],
-            "additionalProperties": False,
-        },
-    },
-}
-
-UI_OPEN_BOOK_TOOL: dict = {
-    "type": "function",
-    "function": {
-        "name": "ui_open_book",
-        "description": (
-            "Open a book's detail page, optionally on a specific tab. Use when the "
-            "user wants to SEE a book or one of its surfaces (translation, glossary, "
-            "wiki...). Opens immediately."
-        ),
-        "parameters": {
-            "type": "object",
-            "properties": {
-                "book_id": {"type": "string", "description": "The book to open (UUID)."},
-                "tab": {
-                    "type": "string",
-                    "enum": [
-                        "overview", "translation", "glossary",
-                        "enrichment", "wiki", "settings",
-                    ],
-                    "description": "Optional tab to open the book on.",
-                },
-            },
-            "required": ["book_id"],
-            "additionalProperties": False,
-        },
-    },
-}
-
-UI_OPEN_CHAPTER_TOOL: dict = {
-    "type": "function",
-    "function": {
-        "name": "ui_open_chapter",
-        "description": (
-            "Open a chapter in the editor or reader. Use when the user wants to write "
-            "or read a specific chapter. Opens immediately."
-        ),
-        "parameters": {
-            "type": "object",
-            "properties": {
-                "book_id": {"type": "string", "description": "The book (UUID)."},
-                "chapter_id": {"type": "string", "description": "The chapter (UUID)."},
-                "mode": {
-                    "type": "string",
-                    "enum": ["edit", "read"],
-                    "description": "edit = open the editor; read = open the reader.",
-                },
-            },
-            "required": ["book_id", "chapter_id", "mode"],
-            "additionalProperties": False,
-        },
-    },
-}
-
-UI_SHOW_PANEL_TOOL: dict = {
-    "type": "function",
-    "function": {
-        "name": "ui_show_panel",
-        "description": (
-            "Open a tab or panel on the current view (e.g. the glossary, translation, "
-            "or wiki panel). Use to reveal a surface without leaving the page. Opens "
-            "immediately."
-        ),
-        "parameters": {
-            "type": "object",
-            "properties": {
-                "panel": {"type": "string", "description": "The panel/tab name to show."},
-                "args": {
-                    "type": "object",
-                    "description": "Optional panel-specific arguments.",
-                    "additionalProperties": True,
-                },
-            },
-            "required": ["panel"],
-            "additionalProperties": False,
-        },
-    },
-}
-
-UI_WATCH_JOB_TOOL: dict = {
-    "type": "function",
-    "function": {
-        "name": "ui_watch_job",
-        "description": (
-            "Open the jobs monitor focused on a running job so the user sees live "
-            "progress. ALWAYS call this after starting a long-running job (translation, "
-            "media generation): the job runs for minutes — say you STARTED it and offer "
-            "this live view; NEVER claim it finished. Opens immediately."
-        ),
-        "parameters": {
-            "type": "object",
-            "properties": {
-                "job_id": {"type": "string", "description": "The job to watch (UUID)."},
-            },
-            "required": ["job_id"],
-            "additionalProperties": False,
-        },
-    },
-}
+# ── MCP-fanout C-NAV — the navigation ui_* tools moved to ai-gateway ─────────
+# Phase 3 (P3.2): ui_navigate / ui_open_book / ui_open_chapter / ui_show_panel /
+# ui_watch_job are ai-gateway CONSUMER-LOCAL directive tools now (ui-tools.ts).
+# Their chat-service defs were retired in Phase 4 (D-P3-RETIRE-UI-FRONTEND-DEFS);
+# the 5 nav tools resolve their schema from the federated catalog. The 2 STUDIO
+# ui_* + propose_edit defs below remain until frontend_tool_defs sources them
+# from the catalog too (the deferred nav-intent-gate-as-catalog-filter).
 
 
 # ── Writing Studio surface (#09 Lane A) — dock navigation, resolve-immediately ──
@@ -543,7 +435,8 @@ UI_OPEN_STUDIO_PANEL_TOOL: dict = {
 # free-string panel_id was the original silent-no-op bug; never trim the enum) and replaces
 # the prose with a terse area-grouped guide (~0.7k). Most enum ids are self-describing
 # (`kg-timeline`, `quality-critic`, `motif-graph`); the groups orient the model, and it can
-# still pass any id. Gated by settings.compact_studio_panel_desc (default off) → A/B.
+# still pass any id. Gated by settings.compact_studio_panel_desc (default ON — the
+# ~1.7k-tok saving is safe because the enum is kept; toggle OFF for the verbose A/B).
 _COMPACT_PANEL_DESC = (
     "The studio panel to open (pass one panel_id from the enum). Panels by area — "
     "WRITE: compose (AI co-writer chat), scene-compose, chapter-assemble, editor, agent-mode "
@@ -678,7 +571,7 @@ CONFIRM_ACTION_TOOL: dict = {
                     "type": "string",
                     "description": (
                         "The action descriptor from the propose call "
-                        "(e.g. 'book.publish', 'book.delete', 'translation.start_job')."
+                        "(e.g. 'book.publish', 'translation.start_job')."
                     ),
                 },
                 "title": {
@@ -707,99 +600,60 @@ CONFIRM_ACTION_TOOL: dict = {
 }
 
 
-# ── MCP-fanout C-PROPOSE — generic record diff card ──────────────────────────
-# Generalizes glossary_propose_entity_edit for book/composition record edits.
-# Suspends; on Apply the FE issues the domain's version-checked PATCH
-# (If-Match: base_version → 409/412 on drift, H8).
-PROPOSE_RECORD_EDIT_TOOL: dict = {
-    "type": "function",
-    "function": {
-        "name": "propose_record_edit",
-        "description": (
-            "Propose one or more edits to the fields of an EXISTING record (a book's "
-            "metadata, a chapter's title, etc.) — applied together. The changes are "
-            "shown as a diff card with an Apply button and are NOT applied "
-            "automatically. BEFORE calling this, read the record's current values and "
-            "its version token (pass it as `base_version`). After the user decides you "
-            "receive an `outcome`: `applied_saved` (saved), `applied_conflict` (the "
-            "record changed since you read it — re-read and propose afresh), "
-            "`applied_error` (the save failed), or `dismissed`. State the change was "
-            "made ONLY when the outcome is `applied_saved`."
-        ),
-        "parameters": {
-            "type": "object",
-            "properties": {
-                "domain": {
-                    "type": "string",
-                    "enum": ["glossary", "book", "composition", "translation", "settings"],
-                    "description": "Which service owns the record.",
-                },
-                "resource_ref": {
-                    "type": "object",
-                    "description": "Domain-specific ids, e.g. {book_id} or {book_id, chapter_id}.",
-                    "additionalProperties": True,
-                },
-                "base_version": {
-                    "type": "string",
-                    "description": "The record's version token (optimistic concurrency, H8).",
-                },
-                "changes": {
-                    "type": "array",
-                    "description": "One or more field changes to apply together.",
-                    "items": {
-                        "type": "object",
-                        "properties": {
-                            "field_label": {
-                                "type": "string",
-                                "description": "Human-readable field name shown on the diff card.",
-                            },
-                            "old_value": {"type": "string", "description": "The current value."},
-                            "new_value": {"type": "string", "description": "The proposed value."},
-                            "target": {
-                                "type": "string",
-                                "description": "Machine field key the PATCH writes.",
-                            },
-                            "target_ref": {
-                                "type": "string",
-                                "description": "Optional sub-resource id for the field.",
-                            },
-                        },
-                        "required": ["field_label", "old_value", "new_value", "target"],
-                        "additionalProperties": False,
-                    },
-                },
-                "rationale": {
-                    "type": "string",
-                    "description": "Optional one-line explanation shown to the user.",
-                },
-            },
-            "required": ["domain", "resource_ref", "base_version", "changes"],
-            "additionalProperties": False,
-        },
-    },
-}
+# ── MCP-fanout C-PROPOSE — generic record diff card — REMOVED (auto-gate M5) ──
+# `PROPOSE_RECORD_EDIT_TOOL` was the generic fallback diff card for
+# glossary/composition/translation/settings record edits. Retired 2026-07-21: the
+# per-domain audit confirmed every domain edits its records via its OWN natural
+# direct-write MCP tool (composition_outline_node_update · glossary_propose_entity_edit ·
+# translation_update_settings/… · per-service pref tools), in the safety model the
+# project chose to keep (Tier-A auto-write+Undo, or the domain's own Tier-W propose).
+# So the generic tool was vestigial. Its FE renderer `RecordDiffCard.tsx` is deleted too
+# (no other caller); book_update_details' server-built diff renders via ConfirmActionCard's
+# own changes[] path (descriptor `book.meta`, M0c).
 
 
 # Map core frontend-tool names → their schema, so the discovery layer can
-# advertise the always-on core by name (C-FT). ui_open_chapter is NOT core
-# (discovered via find_tools) but is a valid frontend tool.
+# advertise the always-on core by name (C-FT).
+#
+# Phase 3 (P3.2): the ui_* tools are NO LONGER here — they are ai-gateway federated
+# directive tools now, so the always-on nav ui_* (ui_navigate/open_book/show_panel/
+# watch_job in ALWAYS_ON_CORE_NAMES) resolve their def from the federated CATALOG
+# (exactly like `web_search`: `catalog_index.get(name) or generic_frontend_tool_def(name)`
+# → the catalog def, else None ⇒ a degraded gateway simply omits it, never advertises a
+# fabricated schema). The studio ui_* keep their advertisement via `frontend_tool_defs`
+# (which references UI_OPEN_STUDIO_PANEL_TOOL / UI_FOCUS_MANUSCRIPT_UNIT_TOOL directly and
+# preserves the F7c nav-intent gate). The UI_*_TOOL constants remain for that + as the
+# ai-gateway-down reference; P4 sources the studio pair from the catalog too.
 _GENERIC_FRONTEND_TOOLS_BY_NAME: dict[str, dict] = {
-    "ui_navigate": UI_NAVIGATE_TOOL,
-    "ui_open_book": UI_OPEN_BOOK_TOOL,
-    "ui_open_chapter": UI_OPEN_CHAPTER_TOOL,
-    "ui_show_panel": UI_SHOW_PANEL_TOOL,
-    "ui_watch_job": UI_WATCH_JOB_TOOL,
     "confirm_action": CONFIRM_ACTION_TOOL,
-    "propose_record_edit": PROPOSE_RECORD_EDIT_TOOL,
-    "propose_edit": PROPOSE_EDIT_TOOL,
-    "ui_open_studio_panel": UI_OPEN_STUDIO_PANEL_TOOL,
-    "ui_focus_manuscript_unit": UI_FOCUS_MANUSCRIPT_UNIT_TOOL,
+    # propose_edit removed (Phase 2 P2.2) — now an ai-gateway consumer-local tool; the
+    # PROPOSE_EDIT_TOOL const is still advertised via frontend_tool_defs (editor branch).
 }
 
 
 def generic_frontend_tool_def(name: str) -> dict | None:
     """The schema for a generic (cross-domain) frontend tool by name, or None."""
     return _GENERIC_FRONTEND_TOOLS_BY_NAME.get(name)
+
+
+# The COMPLETE frontend-tool schema map (generic + the two book-scoped glossary
+# tools) — every name in FRONTEND_TOOL_NAMES resolves here. Distinct from
+# `generic_frontend_tool_def`, which is deliberately the cross-domain-advertisement
+# subset (it must NOT surface the glossary tools on non-book surfaces). This map is
+# for the Phase 0 VALIDATION seam: it resolves a tool's canonical inputSchema even
+# when the tool is not in THIS turn's advertised set, so no frontend tool can slip
+# past validation on an unusual (called-but-not-advertised) path.
+_ALL_FRONTEND_TOOLS_BY_NAME: dict[str, dict] = {
+    **_GENERIC_FRONTEND_TOOLS_BY_NAME,
+    "glossary_propose_entity_edit": GLOSSARY_PROPOSE_EDIT_TOOL,
+    "glossary_confirm_action": GLOSSARY_CONFIRM_ACTION_TOOL,
+}
+
+
+def frontend_tool_def_by_name(name: str) -> dict | None:
+    """The canonical schema-bearing def for ANY frontend tool by name — the whole
+    set, for the validation seam. None for a non-frontend name."""
+    return _ALL_FRONTEND_TOOLS_BY_NAME.get(name)
 
 
 def frontend_tool_defs(
@@ -843,3 +697,76 @@ def frontend_tool_defs(
 
 def is_frontend_tool(name: str) -> bool:
     return name in FRONTEND_TOOL_NAMES
+
+
+# ── Phase 0 (frontend-tools → MCP migration) — the MCP-native validation seam ──
+# A frontend tool advertised to the LLM carries a canonical JSON-Schema (its
+# `function.parameters`, JSON Schema 2020-12) exactly like a backend MCP tool.
+# Backend tools inherit arg VALIDATION for free (the domain-service SDK validates
+# `arguments` against inputSchema before dispatch); frontend tools were a pre-MCP
+# construct that SUSPENDED the run on the raw args with NO validation. That gap
+# shipped the reported bug (session 019f771a): the model called `propose_edit`
+# with `propose_record_edit`'s args — nothing rejected it, so the run suspended
+# and rendered an Apply card that could never apply.
+#
+# This closes the gap at the source for ALL frontend tools in one place: validate
+# the (already-unwrapped) args against the tool's OWN canonical schema before the
+# suspend, and on a mismatch feed the model the SAME `required: missing
+# properties` signal the domain validator emits — the shape it already knows how
+# to repair. Uses the STANDARD Draft202012Validator against the canonical schema
+# (NOT a hand-rolled per-tool check), so Phases 1-3 reuse the exact same schema.
+#
+# The marker substring MUST match stream_service._MISSING_REQUIRED_ARGS_MARKER so
+# a frontend-tool miss feeds the same cross-tool blank/invalid-args streak breaker
+# the backend feeds. Kept in sync deliberately (two consumers, one contract).
+_MISSING_REQUIRED_MARKER = "required: missing properties"
+
+
+def _canonical_input_schema(tool_def: dict | None) -> dict | None:
+    """The tool's JSON-Schema for its arguments — `function.parameters` for an
+    OpenAI-shaped def (how both the generic frontend defs and the normalized
+    discovery-catalog entries are stored). None if absent."""
+    schema = (((tool_def or {}).get("function") or {}).get("parameters"))
+    return schema if isinstance(schema, dict) and schema else None
+
+
+def validate_frontend_tool_args(
+    name: str, args: object, tool_def: dict | None
+) -> str | None:
+    """Validate a frontend tool's (unwrapped) args against its canonical
+    inputSchema. Return None when valid (or when there is nothing to validate
+    against — FAIL-OPEN, so a schema-less tool is never blocked); otherwise a
+    compact, model-repairable error string.
+
+    The message prioritises the two shapes the incident exercised:
+      * missing top-level required props  → ``required: missing properties: [...]``
+        (contains the shared streak marker),
+      * disallowed props (additionalProperties:false) → the validator's message,
+    then falls back to the first schema error (type/enum/...). This is the exact
+    root-cause fix: a `propose_edit`-with-`propose_record_edit`-args call is
+    rejected here, before any suspend, for every frontend tool.
+    """
+    schema = _canonical_input_schema(tool_def)
+    if schema is None or not isinstance(args, dict):
+        return None  # fail-open: no schema, or a non-object payload we can't judge
+    try:
+        errors = list(Draft202012Validator(schema).iter_errors(args))
+    except Exception:  # noqa: BLE001 — a malformed schema must never block a call
+        return None
+    if not errors:
+        return None
+
+    parts: list[str] = []
+    top_required = [
+        p for p in (schema.get("required") or []) if p not in args
+    ]
+    if top_required:
+        parts.append(f"{_MISSING_REQUIRED_MARKER}: {top_required}")
+    extra = next((e for e in errors if e.validator == "additionalProperties"), None)
+    if extra is not None:
+        parts.append(extra.message)
+    if not parts:
+        e0 = errors[0]
+        loc = "/".join(str(p) for p in e0.absolute_path) or "(root)"
+        parts.append(f"{loc}: {e0.message}" if loc != "(root)" else e0.message)
+    return f'invalid arguments for "{name}": ' + "; ".join(parts)

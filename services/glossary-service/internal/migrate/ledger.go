@@ -147,6 +147,10 @@ var chain = []Step{
 	// the seeded 'colleague'); the wiki-gen/enrichment PP-4 guards filter on it instead of the
 	// literal 'colleague' code, so a renamed/custom REAL-person kind can't leak an AI biography.
 	{"0054_kind_is_person", UpKindIsPerson},
+	// D-MCPTASKS-GO-STORE — the durable ext-tasks gate's PERSISTENT store (mcp_gate_tasks),
+	// mirroring book-service. Backs the KIND-C durable human gate (action_task_gate.go): a
+	// propose on one replica + its accept on another resolve the same task exactly once.
+	{"0055_mcp_gate_tasks", UpMcpGateTasks},
 }
 
 // EnsureLedger creates the schema_migrations bookkeeping table. Idempotent; must run

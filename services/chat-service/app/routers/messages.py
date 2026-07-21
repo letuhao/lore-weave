@@ -75,6 +75,9 @@ def _row_to_message(r: asyncpg.Record) -> ChatMessage:
         model_ref=r["model_ref"],
         is_error=r["is_error"],
         error_detail=r["error_detail"],
+        # `.get()` so a row read before the finish_reason migration ran (or a
+        # partial test record) degrades to None instead of a KeyError.
+        finish_reason=r.get("finish_reason"),
         parent_message_id=r["parent_message_id"],
         created_at=r["created_at"],
     )

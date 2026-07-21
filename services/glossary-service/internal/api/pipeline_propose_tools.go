@@ -72,7 +72,7 @@ type proposeStatusChangeToolIn struct {
 	EntityIDs []string `json:"entity_ids" jsonschema:"the entities to change (UUIDs)"`
 }
 
-func (s *Server) toolProposeStatusChange(ctx context.Context, _ *mcp.CallToolRequest, in proposeStatusChangeToolIn) (*mcp.CallToolResult, confirmCardOut, error) {
+func (s *Server) toolProposeStatusChange(ctx context.Context, req *mcp.CallToolRequest, in proposeStatusChangeToolIn) (*mcp.CallToolResult, any, error) {
 	userID, ok := userIDFromCtx(ctx)
 	if !ok {
 		return nil, confirmCardOut{}, errors.New("missing caller identity")
@@ -107,25 +107,25 @@ func (s *Server) toolProposeStatusChange(ctx context.Context, _ *mcp.CallToolReq
 		{Label: "new status", Value: status},
 		{Label: "entities updated", Value: fmt.Sprint(live)},
 	}
-	res, out, err := s.mintGrantActionCard(userID, bookID, descStatusChange,
-		fmt.Sprintf("Set %d entities to %q", live, status), params, rows, false)
+	title := fmt.Sprintf("Set %d entities to %q", live, status)
+	_, card, cardErr := s.mintGrantActionCard(userID, bookID, descStatusChange, title, params, rows, false)
 	// External MCP discoverability audit #11 — effectStatusChange's UPDATE has no
 	// `status <> target` guard, so it reports every live id as "updated" even when they
 	// ALL already have the target status. Warn up front instead of letting the caller
 	// confirm a token that changes nothing meaningful.
-	if err == nil {
+	if cardErr == nil {
 		if changing, cerr := s.countEntitiesNeedingStatusChange(ctx, bookID, ids, status); cerr == nil && changing == 0 {
-			out.Warning = fmt.Sprintf("all %d matched entities already have status %q — this will change nothing", live, status)
+			card.Warning = fmt.Sprintf("all %d matched entities already have status %q — this will change nothing", live, status)
 		}
 	}
-	return res, out, err
+	return s.gateOrCard(ctx, req, descStatusChange, bookID, userID, params, card, cardErr)
 }
 
-func (s *Server) toolProposeRestoreRevision(ctx context.Context, _ *mcp.CallToolRequest, in struct {
+func (s *Server) toolProposeRestoreRevision(ctx context.Context, req *mcp.CallToolRequest, in struct {
 	BookID     string `json:"book_id" jsonschema:"the book (UUID)"`
 	EntityID   string `json:"entity_id" jsonschema:"the entity (UUID)"`
 	RevisionID string `json:"revision_id" jsonschema:"the revision to restore to (UUID; see glossary_list_entity_revisions)"`
-}) (*mcp.CallToolResult, confirmCardOut, error) {
+}) (*mcp.CallToolResult, any, error) {
 	userID, ok := userIDFromCtx(ctx)
 	if !ok {
 		return nil, confirmCardOut{}, errors.New("missing caller identity")
@@ -168,15 +168,16 @@ func (s *Server) toolProposeRestoreRevision(ctx context.Context, _ *mcp.CallTool
 		{Label: "restore to", Value: fmt.Sprintf("revision #%d", revNum),
 			Note: "prunes-then-restores attributes/translations/evidence/links to that snapshot"},
 	}
-	return s.mintGrantActionCard(userID, bookID, descRestoreRevision,
-		fmt.Sprintf("Restore entity to revision #%d", revNum), params, rows, true)
+	title := fmt.Sprintf("Restore entity to revision #%d", revNum)
+	_, card, cerr := s.mintGrantActionCard(userID, bookID, descRestoreRevision, title, params, rows, true)
+	return s.gateOrCard(ctx, req, descRestoreRevision, bookID, userID, params, card, cerr)
 }
 
-func (s *Server) toolProposeReassignKind(ctx context.Context, _ *mcp.CallToolRequest, in struct {
+func (s *Server) toolProposeReassignKind(ctx context.Context, req *mcp.CallToolRequest, in struct {
 	BookID   string `json:"book_id" jsonschema:"the book (UUID)"`
 	EntityID string `json:"entity_id" jsonschema:"the entity to move (UUID)"`
 	KindCode string `json:"kind_code" jsonschema:"the target kind's code (see glossary_book_ontology_read)"`
-}) (*mcp.CallToolResult, confirmCardOut, error) {
+}) (*mcp.CallToolResult, any, error) {
 	userID, ok := userIDFromCtx(ctx)
 	if !ok {
 		return nil, confirmCardOut{}, errors.New("missing caller identity")
@@ -232,19 +233,19 @@ func (s *Server) toolProposeReassignKind(ctx context.Context, _ *mcp.CallToolReq
 		rows = append(rows, previewRow{Label: "attributes dropped (DATA LOSS)", Value: fmt.Sprint(len(dropped)),
 			Note: "codes with no counterpart: " + strings.Join(dropped, ", ") + " — recoverable via revision restore"})
 	}
-	res, out, err := s.mintGrantActionCard(userID, bookID, descReassignKind,
-		fmt.Sprintf("Reassign entity to kind %q", kindCode), params, rows, true)
-	if err == nil && currentKindID == kindID {
-		out.Warning = fmt.Sprintf("the entity is already kind %q — this will change nothing", kindCode)
+	title := fmt.Sprintf("Reassign entity to kind %q", kindCode)
+	_, card, cerr := s.mintGrantActionCard(userID, bookID, descReassignKind, title, params, rows, true)
+	if cerr == nil && currentKindID == kindID {
+		card.Warning = fmt.Sprintf("the entity is already kind %q — this will change nothing", kindCode)
 	}
-	return res, out, err
+	return s.gateOrCard(ctx, req, descReassignKind, bookID, userID, params, card, cerr)
 }
 
-func (s *Server) toolProposeMerge(ctx context.Context, _ *mcp.CallToolRequest, in struct {
+func (s *Server) toolProposeMerge(ctx context.Context, req *mcp.CallToolRequest, in struct {
 	BookID   string   `json:"book_id" jsonschema:"the book (UUID)"`
 	WinnerID string   `json:"winner_id" jsonschema:"the entity to KEEP (UUID)"`
 	LoserIDs []string `json:"loser_ids" jsonschema:"the entities to merge away (UUIDs; same kind as the winner)"`
-}) (*mcp.CallToolResult, confirmCardOut, error) {
+}) (*mcp.CallToolResult, any, error) {
 	userID, ok := userIDFromCtx(ctx)
 	if !ok {
 		return nil, confirmCardOut{}, errors.New("missing caller identity")
@@ -291,6 +292,7 @@ func (s *Server) toolProposeMerge(ctx context.Context, _ *mcp.CallToolRequest, i
 		rows = append(rows, previewRow{Label: "loser (merged away)", Value: name, Note: "soft-deleted; reversible"})
 	}
 	params := mergeParams{WinnerID: winnerID.String(), LoserIDs: losers}
-	return s.mintGrantActionCard(userID, bookID, descMerge,
-		fmt.Sprintf("Merge %d entities into %q", len(losers), winnerName), params, rows, true)
+	title := fmt.Sprintf("Merge %d entities into %q", len(losers), winnerName)
+	_, card, cerr := s.mintGrantActionCard(userID, bookID, descMerge, title, params, rows, true)
+	return s.gateOrCard(ctx, req, descMerge, bookID, userID, params, card, cerr)
 }

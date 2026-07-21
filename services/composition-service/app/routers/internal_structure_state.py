@@ -74,3 +74,38 @@ async def get_book_structure_state(
         latest_run_id=str(latest) if latest else None,
         latest_run_linked_count=state["latest_run_linked_count"],
     )
+
+
+@router.get("/books/{book_id}/parts")
+async def get_book_parts_internal(
+    book_id: UUID,
+    caller_user_id: UUID = Query(...),
+    structure=Depends(get_structure_repo),
+    grant=Depends(get_grant_client_dep),
+) -> dict:
+    """H2 (book-structure §4.5) — the book's LIVE manuscript parts, so the book-service MCP write path
+    (`book_chapter_set_part`) can validate a proposed target WITHOUT a user bearer. The agent MCP context
+    carries a user_id but no JWT, so composition's bearer-gated public `/parts` is unreachable; without a
+    check the agent could home a chapter onto an arc id / foreign-book part and it silently reads as
+    Unassigned (§4.5, the agent half of the no-silent-seam fix). Same `{items:[{part_id,title,sort_order,
+    lifecycle_state}]}` shape the public route returns, so book-service parses one contract.
+
+    Grant-checked on `caller_user_id` FIRST (the internal token authenticates the SERVICE, not
+    authorization — internal-route-driven-by-a-session-must-grant-check): no grant → uniform 404.
+    `list_tree` already excludes archived parts AND a non-active `book_lifecycle`, so a trashed book
+    returns [] (a bad target on a dead book fails validation, as it should)."""
+    if await grant.resolve_owner(book_id, caller_user_id) is None:
+        raise HTTPException(status_code=404, detail="book not found or no access")
+    if structure is None:
+        raise HTTPException(status_code=503, detail="structure repo unavailable")
+    nodes = await structure.list_tree(book_id, kinds=("part",))
+    items = [
+        {
+            "part_id": str(n.id),
+            "title": n.title or "",
+            "sort_order": int(n.rank) if (n.rank or "").isdigit() else 0,
+            "lifecycle_state": "active",
+        }
+        for n in nodes
+    ]
+    return {"items": items}

@@ -1,5 +1,529 @@
 # ▶▶ NEXT SESSION STARTS HERE
 
+## 🎛️ AGENT WRITE AUTO-GATE **M0–M5 COMPLETE** + tool-routing bug hunt (2026-07-21, HEAD 83db187e7)
+A live co-writer dogfood + investigation. **Foundational hypothesis CONFIRMED 4-for-4: the problems were
+OUR code, not the model — a cheap local model (Gemma-4 26B) is enough.** Every "the model is weak" verdict
+dissolved into a bug found by checking the mechanics (advertised? domain hot? result instructive?):
+- **Bug A** `5625b0a3d` — `book_update_details` was budget-starved out of the advertised set
+  (`ALWAYS_HOT_WRITES`); never shown to ANY model. + regression test (proven load-bearing).
+- **Bug B** `a3028d6f6` — `D-DOMAIN-HOTSET-NOT-STICKY`: the per-turn hot set forgot the domain across turns;
+  a low-signal follow-up ("Go with the third one.") dropped the book domain → model wandered/hallucinated.
+  Fix: re-seed domains the recent `chat_messages.tool_calls` show engaged (`engaged_domains_from_tool_calls`
+  → `discovery_seed_for_surface(sticky_domains=…)`). +10 tests, live-proven.
+- **Confirm-flow** `5276586b4` — `D-CONFIRM-CARD-NUDGE`: the minted confirm-card result carried no
+  instruction, so the weak model re-fired the propose tool (double-card) + narrated a fake error. Fix: a
+  stop-note appended to the card result (the model reasons over it → holds where a system-prompt guard didn't).
+- Also earlier: OpenAI `chat_template_kwargs` 400 (`dce5bae1e`), context-window gate+metric (`2d1b4197c`).
+- **Auto-gate M0–M5 DONE:** M0 = book diff-card facade (live-proven on Gemma). M1–M4 audit = every domain
+  already edits via its OWN natural tool (Tier-A auto-write+Undo, or its own Tier-W propose), so
+  `propose_record_edit` was vestigial. **M5 `83db187e7` deleted it** (tool + FE `RecordDiffCard` + contract);
+  book edits still work via `ConfirmActionCard` (live smoke: genre edit → diff card post-deletion).
+- **DECISIONS (user):** planner-executor **AND** eager-index BOTH parked (cost never proven vs cheap targeted
+  fixes); the eager-index premise ("weak models can't run discovery") was disproven live. Docs sealed:
+  `docs/plans/2026-07-21-agent-write-autogate-plan.md` (M0–M5 ✅), `docs/specs/2026-07-21-eager-tool-index-mode.md`
+  (SUPERSEDED).
+- **Pre-existing unrelated debt (NOT mine):** `test_agent_surface` (8) + `test_tool_discovery` TestGenericFrontendTools
+  (2) fail on **P3.2 ui_*-federation test-fixture drift** — the tests still expect `ui_*` in `FRONTEND_TOOL_NAMES`
+  though P3.2 moved them to ai-gateway. Fail identically at HEAD. A P3.2 test-hygiene task, not auto-gate.
+
+## 📚 BOOK-STRUCTURE PIPELINE — **P1–P4 SHIPPED + e2e-PROVEN, P5 deferred (2026-07-20, HEAD 387b6430a)**
+A later dogfood round (book *Mị Đế*, chat 019f771a) surfaced **Bug 4** (a manuscript Part vanishes on reload) +
+**Bug 2** (agent makes a chapter when asked for a description). Bug 4 root-caused to scattered book-structure
+ownership + a silent read-skip → a full design cycle (spec `docs/specs/2026-07-20-book-structure-pipeline.md`,
+3-adversary review) + build (RUN-STATE `docs/plans/2026-07-20-book-structure-pipeline-plan.md`). All four goals
+SHIPPED + live-proven:
+- **P1 (Bug 4):** book-service owns a unified `GET /v1/books/{id}/structure` resolver (parts ALWAYS resolved,
+  LEFT-JOIN-safe); FE rail is mode-by-content + a `[Parts|Outline]` toggle. Repro book renders Part 1 where it
+  used to vanish. `f22bd5510`/`065b55a0c`/`5c4e82cd2`/`3a5335284`.
+- **P2 (no silent seams):** `set_part` validates the target (typed **422**, not silent-Unassigned); FE surfaces all
+  8 part-mutation errors (toast). `fac96a334`/`a238e9acc`.
+- **P3 (lifecycle cascade, user chose Option C = SOFT):** `book.lifecycle_changed` emit + resolver lifecycle-gate
+  (`54df9a095`) + composition `book_lifecycle` column mirror + gated reads (`50078fd09`). **LIVE E2E**: trash →
+  structure hidden (mirror 8s + resolver) → restore → fully visible, nothing lost.
+- **P4 (Bug 2):** metadata-vs-structure tool disambiguation (`book_update_meta` owns the fields, `book_chapter_create`
+  disclaims). $0 Gemma selection-proxy: `book_update_meta` never confused with a chapter. `387b6430a`.
+- **P5 (cleanup) COMPLETE — user chose to build it, not defer.** (a) **ensure_work consolidation** `e29967812`:
+  extracted the canonical-first, F5-fork-safe `work_resolution.ensure_work`; the 3 divergent copies delegate to
+  it (6 unit tests incl. the F5-fork regression + composition healthy + live smoke). (b) **"part" i18n**
+  `e0bd49067`: the terminology was ALREADY correct in en/studio.json; registered the 9 pipeline keys that were
+  `defaultValue`-only (lensParts/lensOutline/lensToggle + 6 error toasts) + translated all 17 locales via
+  `i18n_translate.py` (gate GREEN, real per-locale words). (c) **routing** — VERIFIED no real gap vs code (not a
+  defer): parts_import is a correct WRITE, `useChapterBrowserGroups` already reuses the shared composition
+  primitives (routing it through /structure conflicts with the skeleton design), and the one real divergent read
+  (the rail, Bug 4) was already centralized in P1.2. **"Act One arc seed" — I first wrongly called it stale;
+  the completeness audit caught that. It EXISTS** (setup.firstStructureTitle → useBookSetup → createArc,
+  kind='arc'). CONSIDERED-KEPT (a decision, not a debt): a PLAN-axis arc (Decision 4 governs the manuscript
+  axis), dramaturgically standard + translates distinctly (第1幕/Erster Akt); "Arc 1" would machine-translate
+  to 第1章/chapter in CJK — worse.
+  **▶ The whole book-structure-pipeline spec (P1–P5) is now built + proven.**
+- **COMPLETENESS AUDIT + FIX CYCLE COMPLETE (2026-07-21).** A 3-cold-start-agent + §6/§8 audit found the
+  "complete" claim over-stated; ALL gaps now cleared, NO debts: **H1** bulk-lifecycle per-chapter events
+  (trash/restore/purge symmetric across statistics/glossary/written-verdict, live-proven), **H2** agent-write
+  `book_chapter_set_part` validation via a new internal composition parts route (live-proven), **H3** the
+  false "Act One stale" doc corrected. Test gaps closed: **M1** partIsLiveTarget + resolver-gate + composition
+  read-filter + consumer `_apply` regression tests; **M3** HTTP entry-path + tx-atomicity; **M2** FE
+  runAct-on-failure toast. **ML1** FE surfaces the `/structure` outage signal; **ML2** toggle localStorage
+  persistence. **L3** has_work two bits; **L5** CJK "part" mistranslation fixed via an i18n domain glossary
+  (部/パート/부). Verified conscious decisions (not debts): **L1** §6.4 already satisfied (outline_node carries
+  chapter_id natively), **L2** synthetic migration test infeasible (guarded by LEFT-JOIN-safety + live-verified),
+  **L4** eager-load is spec-blessed (§4.2 6000 cap). See the plan's ▶ AUDIT-FIX RESUME block for commits.
+
+## 🐛 DOGFOOD ROUND-4 POLISH — in progress (2026-07-20, HEAD 07e62f8bf)
+Newcomer dogfood on the durable-gate-ACTIVATED build found F12–F18 (backlog + grounded root causes:
+[`docs/specs/2026-07-18-writing-studio-newcomer-polish/round-4-feedback.md`](../specs/2026-07-18-writing-studio-newcomer-polish/round-4-feedback.md)).
+Fixing in **ALPHABET order, monitoring-first** (add the missing monitor before/while fixing — the user's directive).
+- **DONE:** **F12** `agent-registry-down` (`07e62f8bf`) — evidence corrected the round-4 guess: it ran 18h then a
+  host/daemon killed it (Exit 255, no OOM/log) and STAYED down because every service had `restart: no`. Fix:
+  `restart: unless-stopped` on the 32 services lacking it (self-heal) + a shared tenancy-safe FE availability breaker
+  (`lib/agentRegistryHealth.ts`) so useUsage/useSlashCommands don't re-hammer a down registry + an explicit "Usage
+  unavailable" (18-locale i18n). **F14** — agent saw ZERO `book_*` tools (book skill pin-only) → auto-inject `book`;
+  fixed a SILENT `LOG_LEVEL=INFO` no-op + added the advertised-surface monitor. **F17** (`f30dc77e5`) — hide
+  `find_tools` from the LLM; `tool_list`/`tool_load` are the sole discovery path (explicitly distinguished); monitor
+  now logs core NAMES; `4d53ac78f` de-binaried `find-tools.ts`. F14+F17 **live-verified** (gateway `/mcp`: find_tools
+  gone, `tool_list(book)`→book_list_chapters; Gemma used `tool_list(category=book)`).
+- **DONE (2/2 investigation round):** **F13** — already fixed (the **S02 missing-required-args interceptor** +
+  `blank_tool_args_streak` cap catches the loop before dispatch; proven live during the durable-gate e2e). **F15** —
+  chapter-create no longer steals focus from the active Co-writer Chat (`useChapterDoor` opens the editor as an
+  INACTIVE tab when a different panel is active; FE tests green). **F16** — New Book now REQUIRES a language (submit
+  disabled + `handleCreate` guard; no language-less book; tests green).
+- **DONE:** **F18** (discovery-meta-tool loop) — **FIXED** with the human's chosen shape (steer + auto-load,
+  de-advertise as backstop). Real root cause: `tool_list` dispatched BEFORE the tier-R read breaker and returned
+  `ok=True` unconditionally → **no breaker at all**. `tool_list` is not paginated, so a re-list of a category is
+  provably a loop: on the repeat we AUTO-LOAD that category's tools (forward progress, not an error/forced-stop —
+  that's what backfired before) + STEER, and past `TOOL_LIST_TOTAL_CAP=5` de-advertise `tool_list` (`tool_load`
+  stays). `stream_service.py` + `test_tool_list_loop_breaker.py` (6 tests drive the real loop). **LIVE-PROVEN on
+  Gemma + full stack:** loop reproduced (`tool_list(book)`×2) → breaker log fired (`auto-loaded 21 tools`) → model
+  called `book_list`+`book_list_chapters` + real answer; `tool_list=2` (was 569), no hallucination. Happy path
+  (single list→answer) untouched (5/5). *(Live-smoke gotcha: ai-gateway must be UP — a half-booted stack gives an
+  empty catalog → `run_subagent`-only surface that masks everything. `docker compose up -d` the FULL stack first.)*
+- **Debt (pre-existing, this branch's `ui_*`→ai-gateway migration, NOT F18):** 17 unit failures in the
+  advertise/frontend-tool cluster — `TestGenericFrontendTools` (3), `test_agent_surface` `server_key_for_tool`/
+  `TestServersForNames`/`TestAdvertiseEmitsSurface` (8), `test_plan_mode` (3), `TestK21B` (3, incl. a `_pf_row`
+  `message_count` KeyError). Proven pre-existing (identical with the F18 change stashed). `ui_*` were relocated to
+  ai-gateway (P3.x) but the chat-side frontend-tool name set + these tests weren't updated — a migration follow-up.
+
+## ✅ MCP-TASKS FULL ACTIVATION — **PLAN COMPLETE (M1–M4), ACTIVATED (2026-07-20)**
+The durable ext-tasks human gate is built, persistent (multi-replica), owner-checked, and **LIVE** —
+`tasks_gate_enabled=True`, all 4 services redeployed, all KIND-C confirms that CAN be task-shaped are (book all
+writes; composition 7; glossary 15/14 — the rest legitimately stay on `confirm_token`). A **critical gateway-federation
+bug was found + fixed** (Go `Out=any` / `any`-field results emitted an `outputSchema` the ai-gateway rejected → book+
+glossary tools were silently unroutable through the gateway since T3c; catalog 165→264 after the fix). Everything is
+service-layer live-proven through the real `/mcp`+ai-gateway (owner-check: stranger→`not_task_owner`; routing; multi-
+replica DB tests). **FULL-TURN e2e now CLOSED (2026-07-20)** — a real SSE agent turn calls `book_chapter_delete` →
+suspends with the exact `pendingToolCall.task` the FE `TaskConfirmCard` renders → gate HOLDS → owner accept → chapter
+trashed once (single-winner refuses re-accept); decline → chapter stays active; stranger → `not_task_owner`. All
+verified with an independent DB effect oracle (the stale "blocked on data/model" note was refuted: the account has a
+book+chapter, and the local model calls the tool once its mental model is corrected + the tool is force-advertised).
+**review-impl of the durable-gate core** found + FIXED **F-A** (HIGH `76648bc3c`: the Go decline path skipped the
+owner-check — a stranger could cancel another user's gate; Python owner-checked both paths — now the Go kit's wire
+handler does too, parity restored, regression-tested + live-reverified) and documented **F-B** (LOW: `accepted`
+fail-open default, benign). Concerns single-winner / resolver-injection / M1b-atomicity cleared. Full detail + every
+commit in [`docs/plans/2026-07-20-mcp-tasks-full-activation.md`](../plans/2026-07-20-mcp-tasks-full-activation.md)
+RUN-STATE; end-state rules in `docs/standards/mcp-tool-io.md` Part 5 (GATE-1..4).
+
+<details><summary>Milestone history (M1–M4, superseded by the summary above)</summary>
+
+## ▶ NEXT — MCP-TASKS FULL ACTIVATION track (DESIGN SEALED, awaiting a build `/goal`)
+The completeness audit + review-impl of both specs is DONE (below). User chose the **Full activation track**;
+the design is sealed in **[`docs/plans/2026-07-20-mcp-tasks-full-activation.md`](../plans/2026-07-20-mcp-tasks-full-activation.md)**.
+Key correction banked there: the persistent `TaskStore` is **NOT** a drop-in — the current interface persists an
+executor CLOSURE (unpersistable). SEALED fix = **resolver-registry** (`Create(descriptor, payload)` + a startup
+`descriptor → resolver` map; in-memory + persistent share one interface). Milestones: **M1a** kit interface evolution
+(pure shape-change, no persistence, existing lifecycle tests prove it) → **M1b** book-service `PgTaskStore` + migration
+→ **M1c** composition `PgTaskStore` → **M2** flip `tasks_gate_enabled` + full-stack live-E2E → **M3** remaining KIND-C
+confirms → **M4** retire the bespoke construct.
+- **M1 COMPLETE (a+b+c)** — the persistence foundation.
+  - **M1a** — resolver-registry interface evolution across BOTH kits: `TaskStore` persists `{descriptor,
+    owner_user_id, payload}` + a startup `descriptor→resolver` map instead of a closure; book + composition call sites
+    ported.
+  - **M1b** — book-service `PgTaskStore` + `mcp_gate_tasks` migration (Up-proven); 5 real-Postgres tests
+    (multi-replica, single-winner, decline/TTL/cancel); the T3c `/mcp`+Postgres tests now run PgTaskStore end-to-end.
+  - **M1c** — composition `PgTaskStore` (asyncpg, pool-getter) + `mcp_gate_tasks` in `run_migrations`; 5 real-Postgres
+    tests green vs `loreweave_composition_test`.
+- **M3 DONE + ACTIVATED + a critical federation bug fixed (2026-07-20).** Every migratable KIND-C confirm is now
+  task-shaped: book (all writes, dispatching resolver), composition (7 tools; 5 stay on confirm_token — token-ledger/
+  billing), glossary (15 tools/14 descriptors via a recorder-replay dispatching resolver; 2 stay). `tasks_gate_enabled`
+  flipped **True** + all 4 services redeployed. **CRITICAL FIX** (`db503e09d` + follow-up): Go `Out=any` returns AND
+  the `Result any` field in `ProvideInputResult` made the SDK emit an `outputSchema.properties.result` the ai-gateway
+  zod validator rejects → book+glossary tools were UNROUTABLE through the gateway (silently since T3c — the durable
+  gate was only ever tested via the raw `/mcp` handler). Fixed at the kit root (`{type:object}`). **LIVE via the
+  gateway:** catalog 165→264 tools; book+glossary route; composition owner-check holds. **Remaining:** a browser smoke
+  of the TaskConfirmCard in a real agent turn (data+model-blocked: test account has no book chapters, derive grant
+  drifted; the FE card is unit-tested + the path is now fully routable). M4 = the PARTIAL retirement (confirm_action
+  stays — permanent confirm_token fallback + the 7 non-migratable tools).
+- **M2 activation machinery DONE + service-layer live-proven** (`771ffb5a0` + docs). Accept-caller OWNERSHIP CHECK
+  (Go resolver + Python kit `_owner_check`) — 5 kit tests + **LIVE on deployed composition** (stranger→`not_task_owner`
+  untouched; owner→passes, resolver runs, persists). book+composition REBUILT+deployed → `run_migrations`/`Up` create
+  `mcp_gate_tasks` on real startup; the owner-check E2E ran against the deployed `PgTaskStore`. Activation switch +
+  suspend/resume driver: unit-covered; caps→task proven via `/mcp`. **`tasks_gate_enabled` stays default `False`**
+  (fallback-safe, sealed D-C) — the production flip + a browser smoke of the task-sourced confirm CARD is the final
+  ops step, blocked on test-account data (no book chapters; derive grant drifted) + model reliability; FE card path is
+  unchanged code. **Next: M3** — migrate the remaining KIND-C confirms (glossary_confirm_action, confirm_action,
+  propose_record_edit, glossary_propose_entity_edit) to `gate_or_confirm`.
+
+</details>
+
+## ✅ MCP-TASKS + FRONTEND-TOOLS MIGRATION — **implemented through the activation boundary (2026-07-20)**
+Both `docs/specs/2026-07-19-mcp-tasks-durable-gate.md` + `docs/specs/2026-07-19-frontend-tools-mcp-migration.md`
+are implemented up to the `tasks_gate_enabled` activation boundary. Every hard cutover is **live browser-proven**.
+**Honest completeness note (2026-07-20 completeness audit + review-impl):** the *shipped* cutovers (Phase 0 validation
+seam, Phase 2 propose_edit, Phase 3 ui_*, and the durable-gate mechanism) are DONE and proven. The remaining spec
+phases — full KIND-C native migration (frontend-tools Phase 1), duplication retirement (Phase 4), and tasks-spec T4
+(retire the bespoke gate) — are **gated on the ops decision to flip `tasks_gate_enabled` on + build the multi-replica
+persistent store**, so they are legitimately deferred (naturally-next-phase / large-structural), NOT "done". The audit
+found + fixed one real gap (an unguarded cross-language schema-drift surface — see `D-P3-RETIRE-UI-FRONTEND-DEFS`
+below) and corrected two inaccurate defer notes. QC green post-fix; cutovers re-proven. Deferred list:
+
+- **`ui_*` cutover (Phase 3)** — LIVE E2E: agent turn on /assistant → `ui_navigate` → navigated to /settings/account.
+- **`propose_edit` cutover (Phase 2)** — **LIVE E2E (studio co-writer chat):** agent → `propose_edit` → ai-gateway
+  gated directive → chat-service suspend → `ProposeEditCard` rendered → **Apply inserted the prose into the Tiptap
+  editor** ("A heavy, ringing silence settled over the landscape…").
+- **Studio dock-nav fix (Phase 4 P4.1)** — **LIVE E2E:** agent → "open the Cast panel" → `ui_open_studio_panel`
+  directive → `useStudioUiToolExecutor` → `StudioHost.openPanel` → the **Cast dock panel opened** (the P3.2 bug this
+  session caught + fixed). NOTE: the studio E2E needs the Co-writer Chat opened FIRST (from the fresh studio menu),
+  THEN the chapter — opening the chapter first collapses the Welcome menu (why the earlier scripted attempt stalled).
+- **Durable gate** — Go facade + `book_chapter_delete` live through real /mcp + Postgres; provide-input tool now
+  `visibility:legacy` in both kits (`D-MCPTASKS-PROVIDEINPUT-VISIBILITY` DONE).
+- **2 pre-existing red tests fixed** (surfaced this session): `D-F7C-ADVERTISE-SNAPSHOT-STALE` (deterministic
+  lazy_skill pin + catalog-sourced ui_* subtraction) and `D-STUDIO-RECONCILER-PUBLISH-ON-DRAFT` (stale over-assert;
+  `manuscriptChanged` is the safe event, `chapter` focus is the hijack it avoids).
+
+**Deferred → RESOLVED as conscious decisions (no dangling TODOs):**
+- **`D-MCPTASKS-GO-STORE`** → *naturally-next-phase, interface-ready.* The `TaskStore` interface exists in both
+  kits; the in-memory store is the single-replica reference. A persistent (DB-backed) impl is a **drop-in** for the
+  same interface, needed ONLY when `tasks_gate_enabled` is flipped on for a **multi-replica** deploy — which is
+  itself deferred (the gate is off by default and the `confirm_token` fallback is stateless/multi-replica-safe).
+  Build it AT activation, not speculatively.
+- **`D-P3-RETIRE-UI-FRONTEND-DEFS` (studio + propose_edit defs)** → *DEF retirement deferred (large); drift now
+  GUARDED (2026-07-20 audit).* The parallel construct is ~95% retired (validation seam gone for these, execution at
+  ai-gateway, nav defs deleted, live-proven). The residual is the 2 studio `ui_*` + `propose_edit` **advertisement**
+  defs still sourced from `frontend_tool_defs` — a SECOND schema copy alongside ai-gateway's validated copy. Deleting
+  them needs the advertisement moved to catalog-sourced (the F7c nav-intent-gate-as-catalog-filter) — a delicate
+  change to the per-turn advertisement path, legitimately deferred (large/structural). **Correction to the earlier
+  "zero risk" framing:** those advertised copies had dropped out of every chat-side drift test, so they could have
+  silently diverged from ai-gateway's validator (the exact LOCKED Frontend-Tool-Contract failure this whole track
+  exists to kill). The audit added `TestResidualAdvertisedDefsMatchContract` (`test_frontend_tools_contract.py`) which
+  pins all 3 advertised copies to the single contract SoT ai-gateway also checks — so the deferral now carries **no
+  hidden correctness risk**; only the cosmetic def-deletion remains.
+- **`D-P3-COMPACT-PANEL-DESC`** → *NOT dropped — it is a LIVE, default-ON token optimization (2026-07-20 audit
+  correction).* The earlier "dropped, default OFF, never used" note was wrong on every count: `compact_studio_panel_desc`
+  is **`= True`** (config.py:277) and actively consumed (stream_service.py:4451/4496). It advertises `ui_open_studio_panel`
+  with a ~1.7k-tok-smaller area-grouped description while **keeping the full panel_id enum** (verified: compact and full
+  normalize identically; a regression test now pins that). chat-service owns the advertised description (its def wins the
+  advertise dedup); ai-gateway validates the identical 85-value enum. Keep as-is.
+- **Full-stack activation flip (`tasks_gate_enabled`)** → *ready-to-activate ops decision.* The gate is code-complete
+  + live-proven; flipping it on (+ a Docker rebuild) is a deployment choice, not a code TODO. Note: needs
+  `D-MCPTASKS-GO-STORE` first for multi-replica.
+
+
+## 🧩 FRONTEND-TOOLS MIGRATION — Phases 2–4 (full staged refactor, user-directed 2026-07-20)
+> Plan + RUN-STATE: [`docs/plans/2026-07-20-frontend-tools-phases-2-4-BUILD.md`](../plans/2026-07-20-frontend-tools-phases-2-4-BUILD.md).
+> The correctness root-cause is already banked (Phase 0 seam + FE allowlist + contract); this track is the
+> architectural retirement of the chat-service-local parallel construct (user chose "full refactor, staged").
+
+- **P3.1 DONE** (this commit) — `ui_*` KIND-A tools relocated to **ai-gateway as consumer-local directive tools**
+  (`services/ai-gateway/src/mcp/ui-tools.ts`): the 7 `ui_*` defs (moved from `frontend_tools.py`) + a data-driven
+  validator (required + declared type + enum → the enum/required signal, **never a silent no-op** — the panel_id
+  bug class) + directive dispatch (`{type: io.loreweave/ui-directive, tool, args}`). Wired into `handlers.ts`
+  (advertise + local dispatch, no downstream provider). **Contract stays SoT**: `test/ui-tools.spec.ts` drift-tests
+  the mirror vs `contracts/frontend-tools.contract.json` (ai-gateway can't read it at runtime — Docker context).
+  `/review-impl`: transient double-advertise verified SAFE (chat-service still intercepts `ui_*` via
+  `is_frontend_tool` + dedupes by name ⇒ ai-gateway's copies are shadowed/inert until P3.2); 1 MED fixed (added
+  declared-type validation). Full ai-gateway suite green (240 + 8 new). **Inert until P3.2.**
+- **P3.3 DONE** (this commit, FE — additive + inert until P3.2) — `useUiToolExecutor` now acts on a
+  `ToolCallRecord.result.type === 'io.loreweave/ui-directive'` (the new directive path: navigate/open a panel via
+  the shared `dispatchUiAction`, reusing `resolveUiTool`/`uiNavScope`, idempotent by `toolCallId`, **no** suspend to
+  resolve) ALONGSIDE the legacy pending-suspend path (kept for a safe coexistence window → retire in P4,
+  `D-P3-RETIRE-UI-SUSPEND`). `uiNav.ts` adds `UI_DIRECTIVE_TYPE` + `uiDirectiveFromResult`. Inert until P3.2 emits
+  directives. Tests: 10 executor (6 legacy + 4 new directive) + 11 uiNav + 15 FE-contract = 36 green.
+- **P3.2 DONE** (this commit — the routing cutover, LIVE-SMOKED) — chat-service: removed the 7 `ui_*` from
+  `FRONTEND_TOOL_NAMES` (stop intercepting → route to ai-gateway) + from `_GENERIC_FRONTEND_TOOLS_BY_NAME` (the 5
+  nav `ui_*` now resolve their def from the federated CATALOG exactly like `web_search`: `catalog_index.get(name)
+  or None`; the studio pair stays advertised via `frontend_tool_defs`, which keeps the F7c nav-intent gate
+  UNCHANGED — no +880-tok regression, less risk than rewiring it to a catalog filter). The directive rides the
+  normal path: `mcp_execute_tool` already prefers `structuredContent` → the directive lands in the
+  `TOOL_CALL_RESULT` content the FE reads. **Contract split-ownership:** the shared JSON keeps the 7 `ui_*`
+  (ai-gateway's, drift-tested in `ui-tools.spec.ts`); chat-service's contract test now validates only its 5-tool
+  slice (subset-match + merge-on-regen). **LIVE-SMOKE (real ai-gateway `/mcp`, rebuilt image):** all 7 `ui_*`
+  advertised in `tools/list` (287 tools); `ui_navigate(/books)` → the `io.loreweave/ui-directive`;
+  `ui_open_studio_panel(bad enum)` → `isError` + the enum list (no silent no-op). chat-service suites green
+  (frontend-tools/contract 33, stream-tools 103). **⇒ the ui_* cutover (P3.1+P3.2+P3.3) is functionally complete.**
+- **P3.4 DONE — Phase 3 COMPLETE, ui_* cutover LIVE-PROVEN end-to-end** (`fdc4c160f`, envelope `114c34f3a`). A real
+  assistant turn ("open my Settings page") → model called `ui_navigate` → chat-service routed to ai-gateway →
+  ai-gateway returned the `io.loreweave/ui-directive` → **the browser navigated to /settings/account**. The browser
+  E2E caught THREE bugs no unit test did (the "verify by effect" the frontend-tool contract mandates):
+  1. `TaskConfirmCard.tsx` `resume(outcome: string)` → tsc error → **`npm run build` FAILED, so Docker silently
+     served the last-good (19h-old, pre-P3.3) image** — every "rebuild" was stale. (Lesson re-confirmed: verify the
+     deployed bundle contains your code before diagnosing a live result. `grep io.loreweave/ui-directive` in the
+     served bundle was the tell.) Fixed: typed the param `FrontendToolOutcome`.
+  2. `uiDirectiveFromResult` didn't unwrap chat-service's real `{ok, result: <directive>}` envelope (the SSE shape);
+     my unit test used the bare directive, hiding it. Fixed + tests use the real shape.
+  3. `runChatStream` `TOOL_CALL_RESULT` record lacked `toolCallId`; the directive path keys idempotency on it, so
+     the guard never fired. Fixed: carry `e.toolCallId`.
+  Also: the FE build needs `--build-arg VITE_API_BASE=` (empty ⇒ relative `/v1`); a bare `docker build` bakes the
+  Dockerfile default `http://localhost:3000` and breaks auth. Rebuild via compose or pass the arg. FE tests 657 green.
+- **P2.1 DONE** (`0608baecb`, additive + inert) — ai-gateway `propose_edit` tool (`propose-edit-tool.ts`): moved
+  the def from `frontend_tools.py`, validates (operation enum + text required + type → the incident shape
+  `{domain,changes,…}` is rejected, a dedicated test), returns a **GATED** proposal directive
+  `{type: io.loreweave/propose-edit, operation, text, rationale?}` — a DISTINCT type from the resolve-immediately
+  `ui-directive` (the client must gate on Apply). Drift-tested vs the contract. Advertised + dispatched locally in
+  `handlers.ts`. INERT: chat-service still intercepts `propose_edit` (its suspend wins) until P2.2. ai-gateway 255 green.
+- **P2.2 + P2.3 DONE** (`f8ba24e12`, P2.1 `0608baecb`) — the propose_edit cutover:
+  - *P2.2 (chat-service)* — removed `propose_edit` from `FRONTEND_TOOL_NAMES`/`_GENERIC` (→ routes to ai-gateway);
+    `task_detect.propose_edit_suspend_args_from_result` detects the `io.loreweave/propose-edit` directive; the
+    general dispatch SUSPENDS with the SAME shape the frontend-tool suspend used (`{name:'propose_edit',
+    args:{operation,text,rationale?}}`, no `task` marker). Contract split-ownership (operation enum → ai-gateway).
+  - *P2.3 (FE)* — **no change needed**: `ProposeEditCard` renders on a `propose_edit` pending record + applies via
+    `editorBridge` + `submitToolResult('applied', text)` exactly as before; the suspend is byte-identical, so the
+    existing (already-working) FE flow is reused. (Contrast Phase 3, where the FE directive path was NEW code.)
+  - **VERIFICATION:** WIRE-SMOKE (real ai-gateway `/mcp`, rebuilt image) — valid `propose_edit` → the gated
+    proposal directive in structuredContent; incident shape → `isError` "missing property 'operation'". Unit: 127
+    chat-service tests (frontend-tools/contract/task_detect/stream-tools) incl. the exact suspend reconstruction +
+    a `confirm_action` test preserving frontend-tool-suspend coverage; ai-gateway 255.
+  - **▶ P2.4 REMAINING (the effect-check)** — a full browser editor E2E: open a chapter in the Studio Editor +
+    Co-writer Chat (so the turn carries `editor_context` → propose_edit is advertised), prompt an edit, confirm the
+    Apply card renders and applying inserts the prose into the Tiptap doc. Lower-risk than Phase 3's E2E (the FE
+    path is unchanged existing code, not new), but do it to close "verify by effect". The studio dock-panel flow +
+    model dependency make it a focused follow-up.
+- _(superseded — kept for the original cutover design)_ P2.2 + P2.3 scoping:
+  - *P2.2 (chat-service)* — remove `propose_edit` from `FRONTEND_TOOL_NAMES` (→ routes to ai-gateway); DETECT the
+    `io.loreweave/propose-edit` directive from `mcp_execute_tool` and SUSPEND with the SAME pending shape today's
+    frontend-tool suspend creates (`pending_tool_call = {name:'propose_edit', args:{operation,text,rationale}}`) so
+    the FE's `ProposeEditCard` + resume driver work unchanged. Keep the editor-surface advertisement gate
+    (`frontend_tool_defs` editor branch) as a consumer concern. The apply is CLIENT-side (no server executor); the
+    suspend IS the durable "task" (`chat_suspended_runs`).
+  - *P2.3 (FE)* — `ProposeEditCard` already renders on a `propose_edit` pending record + applies via `editorBridge`
+    + `submitToolResult('applied', text)`; verify it works when the suspend is directive-triggered (likely no
+    change if P2.2 reconstructs the same shape). **Watch the 3 traps Phase 3's E2E caught: (a) the FE build fails
+    silently on a tsc error → verify the served bundle has your code; (b) unwrap the `{ok, result}` envelope; (c)
+    the result record needs `toolCallId`** — all now fixed in shared code, but re-verify live.
+  - *P2.4* — browser E2E: a real editor-panel turn where the model calls `propose_edit` renders the Apply card and
+    applying inserts the prose into the Tiptap doc.
+- **P4.1 DONE** (this commit) — retired the dead `ui_*` suspend branch of `useUiToolExecutor` (D-P3-RETIRE-UI-SUSPEND);
+  the hook is now directive-only (no `submitToolResolve`). **The retirement pass CAUGHT A REAL P3.2 BUG:**
+  `useStudioUiToolExecutor` handled only the (now-dead) suspend path and `makeStudioNavInterceptor`'s `default`
+  does NOT claim the studio-specific tools, so `ui_open_studio_panel` + `ui_focus_manuscript_unit` were **silently
+  broken** post-cutover (the agent's "open the compose panel" no-op'd). Fixed: `useStudioUiToolExecutor` now acts
+  on the `io.loreweave/ui-directive` result (→ `resolveStudioUiTool` → the StudioHost effect), idempotent by
+  toolCallId. FE 944 pass (1 pre-existing unrelated failure — see below).
+- **P4.2a DONE** (`f23306001`) — retired the 5 nav `ui_*` chat-service defs (dead since P3.2; resolved from the
+  federated catalog now, like `web_search`). 129 lines removed; the additionalProperties test moved to
+  `confirm_action`. 126 chat-service tests green.
+- **▶ Phase 4 REMAINING (low-value / risky — recommend DEFER)** — `D-P3-RETIRE-UI-FRONTEND-DEFS` tail: retire the 2
+  STUDIO `ui_*` + `propose_edit` chat-service defs + the contract entries. This needs the studio/editor
+  advertisement moved from `frontend_tool_defs` (chat-service consts) to CATALOG-sourced — i.e. the deferred F7c
+  **nav-intent-gate-as-catalog-filter** (moving `_is_panel_nav_intent` + `compact_studio_panel` + the
+  `studio_context`/`editor_context` gating into the discovery-advertisement assembly, which also has the
+  gateway-down fallback at `stream_service.py:4487`). It touches the delicate per-turn advertisement path for
+  **near-zero functional value** (the tools already work via ai-gateway; the defs are just advertisement sources),
+  so it clears the defer gate (#2 large/structural on a cross-cutting path). Do it as a careful dedicated slice, or
+  leave the defs — they are harmless. Then remove the migrated tools from `frontend-tools.contract.json` + update
+  `docs/standards/mcp-tool-io.md`.
+- **Pre-existing (unrelated) FE failure noticed:** `studioAgentBridge.test.tsx :: useStudioEffectReconciler (Lane
+  B) :: runs the effect handlers for a COMPLETED MCP draft write` — asserts `host.publish` is NOT called on a draft
+  write (no editor hijack) but it IS; fails on committed code with the Phase-4 diff stashed, so NOT ours. Track
+  `D-STUDIO-RECONCILER-PUBLISH-ON-DRAFT` (studio effect-reconciler track).
+- **▶ ALSO REMAINING**: a studio browser E2E for the just-fixed `ui_open_studio_panel`/`ui_focus_manuscript_unit`
+  directive path (unit-tested; the studio dock-panel flow blocked the scripted attempt — same as P2.4).
+- Deferred: `D-P3-COMPACT-PANEL-DESC` (F7c compact panel_id A/B, default-off, not ported to ai-gateway).
+
+
+## 🔌 FRONTEND-TOOLS → MCP MIGRATION — **Phase 0 SHIPPED (2026-07-19, `fix/chat-persist-checkpoints`)**
+> Sealed spec: [`docs/specs/2026-07-19-frontend-tools-mcp-migration.md`](../specs/2026-07-19-frontend-tools-mcp-migration.md).
+> Build plan + RUN-STATE (slice board, decisions, drift log): [`docs/plans/2026-07-19-frontend-tools-mcp-migration-BUILD.md`](../plans/2026-07-19-frontend-tools-mcp-migration-BUILD.md).
+
+**Phase 0 = the MCP-native validation seam (root-cause fix for the 019f771a lost-proposal bug).** A frontend
+tool used to SUSPEND on its raw args with NO validation, so `propose_edit` called with `propose_record_edit`'s
+args rendered an un-appliable Apply card. Now every frontend-tool call is validated against its OWN canonical
+`inputSchema` (standard `Draft202012Validator`) at the suspend seam BEFORE suspending; on a mismatch the model
+gets the standard `required: missing properties` signal (feeds the same `blank_tool_args_streak` breaker) and
+the run continues — never a suspended un-appliable card. **Backend-only** (FE already handles an `ok:false`
+tool_call chunk generically, same shape as a standing-deny). New: `validate_frontend_tool_args` +
+`frontend_tool_def_by_name` (complete 12-tool schema map). Files: `frontend_tools.py`, `stream_service.py` seam
+(~L2503). Tests: `test_frontend_tool_validation.py` (13) + `test_stream_tools.py::TestFrontendToolValidationSeam`
+(2). **/review-impl:** 2 findings fixed (glossary_* fail-open resolver gap; all-names enforcement test).
+**LIVE E2E (real gateway→chat-service→Gemma-4-26B):** valid `propose_edit` → suspends; malformed (incident shape)
+→ rejected with `required: missing properties`, **0 suspends** = no un-appliable card.
+
+**SP-0 (beta-SDK adoption) — user chose to adopt betas; spike found they're NOT needed for capability** (native
+elicitation is already on all CURRENT STABLE SDKs — Py 1.28.1, Go v1.6.1, TS 1.29.0; Tasks ext on Py stable;
+`chat_suspended_runs` covers durability). Adopting anyway (user's call, future-proofing the 2026-07-28 RC):
+- **SP-0a DONE** — Python `mcp` pinned `==1.28.1` (chat + knowledge; containers already run it).
+- **SP-0b DONE** — Go 5 svcs (agent-registry/book/catalog/glossary/provider-registry) `go-sdk v1.6.1 → v1.7.0-pre.3`;
+  all build + full test suites green (only a new transitive `golang.org/x/time/rate`). *Running Go binaries still
+  v1.6.1 until image rebuild — source-only, wire-compatible, safe.*
+- **SP-0c NEEDS-DECISION** — ai-gateway TS `@modelcontextprotocol/sdk@1.29.0` → `server`+`client@2.0.0-beta.4` is
+  NOT a repackage but a real API redesign of the LOAD-BEARING gateway proxy (`setRequestHandler` now takes a
+  method-string not a Zod schema; `StreamableHTTPServerTransport` → `WebStandardStreamableHTTPServerTransport`
+  web-standard model; handler `ctx` shape). Client side trivial; server side a rewrite. Deserves its own careful
+  slice — zero capability gain (v1.29.0 already has elicitation), real risk to all traffic.
+
+**Native gate is gated on the MCP Tasks extension (durable input_required), which the Go SDK lacks — v2 wouldn't
+fix it. DECISION (user-directed): build the Tasks extension OURSELVES.** New sealed spec:
+[`docs/specs/2026-07-19-mcp-tasks-durable-gate.md`](../specs/2026-07-19-mcp-tasks-durable-gate.md). Key facts:
+- Raw elicitation needs a bidirectional relay through the stateless proxy (hard). **Tasks is poll-based** (all
+  client→server) → fits our proxy with additive `tasks/get|update|cancel` forwarding.
+- **SP-T0 spike (done):** mcp 1.28.1's Tasks API works (`elicit_as_task` == our gate) BUT is experimental +
+  **removed in mcp 2.0** (Tasks → standalone `ext-tasks` extension). ⇒ **hand-roll the small `ext-tasks` wire
+  protocol** (CreateTaskResult + tasks/get/update/cancel) uniformly for Go+Python **over the existing
+  `chat_suspended_runs` store**. `confirm_token` stays as the capability-absent fallback (no regression).
+- **book_delete MCP tool REMOVED** (`bd5bd73a8`) — deleting a whole book is not an agent capability (users delete
+  via GUI `DELETE /v1/books/{id}`); book_create lost its undo as a consequence (documented).
+
+**T1a + T1b DONE** — the ext-tasks durable gate is built + live-proven:
+- **T1a** (`56fba54af`) — `loreweave_mcp/tasks.py`: durable-gate store + lifecycle (input_required→completed|
+  cancelled|failed, double-confirm guard, TTL, cancel-idempotency). 11 unit tests.
+- **T1b** (`bebd1b2c2` + fix `84ce42f01`) — `loreweave_mcp/tasks_wire.py`: `register_task_endpoints` (tasks/get +
+  tasks/cancel handlers on `fastmcp._mcp_server.request_handlers` — they route natively; `task_provide_input` tool
+  for the input step, an interim for ext-tasks `tasks/update` which has no 1.28.1 type) + `open_gate`. **Live E2E
+  over a real in-process MCP session** (accept: gate→tasks/get input_required→provide_input→executor→completed,
+  nothing written until accept; decline→cancelled). Kit suite 88 green.
+
+- **T1c(1)** (`4f0724238`) — `enable_task_results(fastmcp, store)`: the CallTool wrap so a gate tool emits a wire
+  `CreateTaskResult{resultType:"task"}` a client auto-detects (fail-open for non-gate tools). Live in-process E2E.
+  **⇒ The ext-tasks durable-gate FACADE is now functionally COMPLETE + live-proven** (`loreweave_mcp/tasks.py` +
+  `tasks_wire.py`; 89 kit tests). It's the reusable kit primitive; what remains is *applying* it.
+
+- **T1c(1)** (`4f0724238`) — `enable_task_results` CallTool wrap (gate tool emits a wire CreateTaskResult).
+- **T1c(2)** (`517daedcb` + `47badff51`) — capability-gating primitive `gate_or_confirm(ctx,…)`/`client_supports_tasks`
+  (9 tests) + the REAL composition flip: `composition_create_derivative` is now capability-gated (task for a
+  tasks-client, else the identical `confirm_token`; executor = the shared `_execute_derive`). Verified task-capable
+  in the real composition container; tool tests green. **No-op for current traffic** (nothing declares tasks yet).
+
+**🎯 T1c(3) — the ext-tasks DURABLE GATE is IMPLEMENTED END-TO-END + unit-tested (dormant behind a default-off
+flag).** Every layer built + tested this session: facade (T1a/b/c1) → capability gating (`gate_or_confirm`) → real
+composition flip (`composition_create_derivative`) → chat-service driver [(a) `mcp_execute_tool` detects a task
+envelope `3c38a32b4` · (b) tool-loop suspend `7d13c590d` · (c) resume-drive provide-input `f20da3826` · (e-backend)
+thread task to FE `6d9290a04`] → FE `TaskConfirmCard` (`e-FE`, 4 vitests) → activation switch `settings.
+tasks_gate_enabled` (`c96d9a32b`, default False). **The current stack is byte-unchanged** (flag off → confirm_token).
+
+**▶ ONLY REMAINING for T1c(3): the full-stack LIVE E2E (flip-and-prove).** Set `tasks_gate_enabled=True`, rebuild
+composition + chat images, drive a real agent turn that calls `composition_create_derivative` on a BACKED source
+Work → the derive gate holds at input_required → the FE `TaskConfirmCard` Confirm → chat-service resume drives
+`composition_task_provide_input` → `perform_derive` mints the partition. (Needs a seeded backed-source + is
+side-effectful — accept mints a real knowledge partition.) Then flip the flag on for real. After that: **T3** (Go
+facade for glossary/book + a persistent task store), **T4** (retire the bespoke frontend confirm tools),
+frontend-tools **Phases 2-4**.
+
+**T3a + T3b DONE — the Go ext-tasks facade is built + wire-proven (2026-07-19):**
+- **T3a** (`dbe1d92f5`) — `sdks/go/loreweave_mcp/tasks.go`: Go mirror of the Python CORE (store + lifecycle,
+  single-winner `resolving` guard, executor-outside-lock, lazy TTL lapse). 10 tests.
+- **T3b** (this commit) — `sdks/go/loreweave_mcp/tasks_wire.go`: `ClientSupportsTasks` (fail-closed capability
+  gate on `req.Params.Meta`, parity-matched to Python incl. `tasks:null`⇒unsupported), `OpenGate`/`GateOrConfirm`
+  (handle-in-content), `RegisterTaskProvideInput` (the `<prefix>_task_provide_input` tool, wire-identical to
+  Python). **Proven over the REAL go-sdk in-memory client↔server wire** (accept runs executor + result rides back;
+  decline skips executor; double-accept⇒isError). `/review-impl`: 2 fixed — a Go-specific data race (was
+  returning the lived `*Task`; now snapshots on return) + the `tasks:null` fail-closed parity drift. 21 task tests
+  green, `go vet` clean.
+- **T3c DONE (book_chapter_delete)** (this commit) — `book-service`'s `book_chapter_delete` now supports the
+  durable gate: propose-time keeps identity+grant+existence; `GateOrConfirm(req.Params.Meta,…)` gives a
+  tasks-capable client a durable `input_required` task whose executor performs the trash on accept (re-binds the
+  caller to the proposing user + re-checks the grant = `confirmBookAction` defense-in-depth; task single-winner =
+  single-use), and a non-tasks client the unchanged `confirm_token`. In-memory store persists across propose→accept
+  (one `*mcp.Server`/process via `NewStatelessHandler`). **LIVE-PROVEN through the REAL /mcp handler + real
+  Postgres** (`mcp_actions_tasks_db_test.go`, 2 tests): tasks → handle (chapter stays `active`) → accept → `trashed`
+  → double-accept refused; non-tasks → card, untouched. `internal/api` green. `/review-impl`: no HIGH.
+- **▶ T3c REMAINING**: a persistent `TaskStore` for multi-replica (D-MCPTASKS-GO-STORE); optionally extend the gate
+  to more Go confirm tools once the store is durable.
+
+**Deferred (MCP-tasks track — tracked, none blocking):**
+- **D-MCPTASKS-GO-STORE** (gate #2 structural) — the Go `InMemoryTaskStore` is per-process; a multi-replica
+  book-service would land propose on pod A and provide_input on pod B → `TaskNotFound`. HARMLESS today (the gate
+  only opens when the CLIENT declares caps, i.e. chat-service with `tasks_gate_enabled=True`, default False; the
+  `confirm_token` fallback is stateless/multi-replica-safe). Target: a persistent `TaskStore` bound to the
+  confirm/consumed-token layer BEFORE flipping tasks on for multi-replica traffic.
+- **D-MCPTASKS-PROVIDEINPUT-VISIBILITY** (gate #1 cross-kit hygiene) — `<prefix>_task_provide_input` is a bare
+  mechanism tool (no C-TOOL `_meta`, LLM-discoverable via find_tools/ListTools) in BOTH the Go and Python kits.
+  chat-service calls it by name (not via discovery), so it's harmless, but it should be `visibility:hidden`.
+  Target: add hidden-visibility meta to the provide-input registration in both `sdks/*/loreweave_mcp/tasks_wire.*`.
+- **D-F7C-ADVERTISE-SNAPSHOT-STALE** (gate #1 — F7c track, not MCP-tasks; found 2026-07-20 while VERIFYing
+  chat-service tests) — `TestAdvertiseSurfaceSnapshot` (5 tests) is RED on the branch. Root cause: F7c added
+  `load_skill` to the discovery surface guarded by `settings.lazy_skill_bodies` (now on), but the snapshot's
+  `EXPECTED_{ASK,PLAN,WRITE}_SURFACE` sets neither include `load_skill` nor pin the flag — and they read the
+  ambient `settings` singleton, so a sibling test that patches `lazy_skill_bodies` changes which of them fail
+  (6-isolated vs 5-in-suite). NOT my change (fails with my diff stashed). Fix (F7c author's call): pin
+  `lazy_skill_bodies` per snapshot test AND either add `LOAD_SKILL_NAME` to the on-variant expected sets or assert
+  the off-baseline. Cheap once decided; deferred here only because it's a different track's intent decision.
+
+_(build detail below — superseded by the summary above; kept for the file/line targets)_
+
+**T1c(3) chat-service driver — DORMANT pieces built + unit-tested (activate last):**
+- **T1c(3.a)** (`553cd1ec9`^) — `app/services/task_detect.py`: `task_envelope_from_result`/`_from_content` recognise
+  a durable task in a tools/call response (wire `CreateTaskResult` OR the gate HANDLE) → a task envelope the tool
+  loop will suspend on. 9 tests.
+- **T1c(3.b)** (`553cd1ec9`) — `tasks_capability_meta()`: the `_meta` chat-service will attach to DECLARE it drives
+  tasks (the activation switch). A round-trip test proves it's exactly what the domain's `client_supports_tasks`
+  reads — the wire ends can't drift. 10 tests.
+Both **dormant** (unused, no caps declared yet) so nothing strands on the current stack.
+
+**SIMPLIFICATION (`242be8fe1`) collapsed the coordinated slice → chat-service-local.** composition returns the task
+HANDLE in normal content (NOT a `CreateTaskResult` — dropped `enable_task_results`), and the input step is the
+`task_provide_input` TOOL (already gateway-forwarded, returns the result synchronously). ⇒ **no ai-gateway T2 and no
+polymorphic parse needed for the confirm gate.** (spec §6 "SIMPLIFICATION").
+
+**Driver progress (chat-service-local, dormant until activation):**
+- **(a) DONE** (`3c38a32b4`) — `mcp_execute_tool` (`knowledge_client.py`) surfaces a task envelope when a gate
+  handle returns (structuredContent, incl. nested under `result`); 20 tests, no regression.
+- **(a-detect/decl) DONE** — `task_detect.py` (`task_envelope_from_*`, `tasks_capability_meta`), 10 tests.
+
+**▶ REMAINING (chat-service-local — much smaller now):**
+- **(b) tool-loop suspend on a task envelope** — in `_stream_with_tools` right after the backend-tool `envelope`
+  (`stream_service.py:3086`), add `if envelope.get("task"): suspended_call = {id: c["id"], name: c["name"],
+  args: args_obj, task: envelope["task"]}; break` → routes to the existing suspend emit (`:3209`) → `chat_suspended_
+  runs`. The `task` marker distinguishes a task suspend from a frontend-tool suspend on resume.
+- **(c) resume-drive — DONE: (b) is committed; (c) is the last chat-service piece.** In `resume_stream_response`
+  (`stream_service.py:5811`): the pending call now carries `task` (from step b). Mirror the existing `is_approval`
+  branch — where the approval computes a REAL execution once `knowledge_client`+`project_id` are in scope (search
+  `is_approval` / the `_approval_args` block ~5866 and its execution site lower down). Add: `is_task = bool(susp.
+  pending_tool_call.get("task"))`; when true, at the execution site call `knowledge_client.mcp_execute_tool(
+  tool_name=<provide-input tool>, tool_args={"task_id": task["taskId"], "accepted": outcome in (…apply/accept…)})`
+  and use its returned `{status, result}` as `result_payload` (instead of the `{outcome}` echo). **Provide-input
+  tool name:** derive from the gate tool's provider prefix — `susp.pending_tool_call["name"].split("_", 1)[0] +
+  "_task_provide_input"` (composition_create_derivative → `composition_task_provide_input`); OR (more robust) carry
+  it in the gate handle from `gate_or_confirm`/`open_gate`. Then the 2nd LLM pass acknowledges the real outcome. **⚠ ROUTING FINDING (2026-07-19):** `register_task_endpoints` registers `task_provide_input` GENERICALLY,
+  but the ai-gateway catalog routes by tool NAME → multiple task-capable domains would COLLIDE and the resume must
+  reach the SPECIFIC provider that owns the task. FIX before (c): give `register_task_endpoints` a `tool_prefix`
+  (default unprefixed for kit tests; composition passes its domain → `composition_task_provide_input`), and derive
+  the provide-input tool name on resume from the gate tool's provider prefix (`c["name"]` → `composition`). taskId
+  is process-local to the owning domain (in-memory store), so name-routing to that provider is sufficient.
+- **(a)+(b)+(c) DONE** — the chat-service task DRIVER is functionally complete + unit-tested, all DORMANT:
+  (a) `3c38a32b4` mcp_execute_tool surfaces a task envelope; (b) `7d13c590d` tool loop suspends on it →
+  chat_suspended_runs; (c) `f20da3826` resume calls `<prefix>_task_provide_input(taskId, accepted)` and feeds the
+  real result. Backend of the durable gate is DONE.
+- **(e) FE (remaining) — thread the task `inputRequests` through the suspend emit, then render.** The backend
+  suspend at `stream_service.py:5271` builds `_pending_record` (persist) + `emitter.tool_call_pending(pending)` +
+  `RUN_FINISHED.pendingToolCall` — none currently carry the `task`. Add `task=pending.get("task")` into: (1)
+  `_pending_record` (so a reload shows the card), (2) whatever `tool_call_pending` emits + the `RUN_FINISHED`
+  `pendingToolCall` (so the live FE sees it — check `stream_events.py` `tool_call_pending`). Then FE
+  `runChatStream.ts` (~L427): when `pendingToolCall.task` is present, put it on the `ToolCallRecord` and render a
+  confirm card (reuse `ConfirmActionCard`: title/preview from `task.inputRequests`); Confirm/Dismiss POST the outcome
+  to `/tool-results` (accept ⇒ `action_done` → resume drives provide-input). + a vitest for the branch.
+- **(f) ACTIVATE (remaining, LAST)** — attach `tasks_capability_meta()` (from `task_detect.py`) to gate-able tool
+  calls in chat-service's MCP tool-call `_meta`. MUST land with (e) — activating without the FE card would suspend a
+  gate the user can't confirm. Then one live-stack E2E (rebuild composition + chat images): a real agent turn opens
+  the derive gate → holds → accepts → commits. (ai-gateway T2 `tasks/get` forwarding stays OPTIONAL — crash-resume/
+  long-running only; the confirm gate uses only the two tools the gateway already routes.)
+Original coordinated text:
+
+**T1c(3) + T2 (coordinated) — the chat-service DRIVER + ai-gateway task forwarding.** chat-service declares
+the tasks extension in its tool-call `_meta`, detects a `CreateTaskResult`, suspends (reuse `chat_suspended_runs`),
+and on the human decision calls `task_provide_input` + polls `tasks/get`; **ai-gateway forwards `tasks/get`/`cancel`
++ passes `CreateTaskResult` through + `taskId→provider` routing** (needed for chat→gateway→composition to carry a
+task). FE reuses existing confirm cards. This is the first FULL live-stack E2E of the durable gate. Then **T3** (Go
+facade for glossary/book + a persistent store), **T4** (retire the bespoke frontend confirm tools). Frontend-tools
+Phases 2-3 (propose_edit, ui_*) + SP-0c (gateway v2 rewrite) remain separate/deferred. Spec:
+[`docs/specs/2026-07-19-mcp-tasks-durable-gate.md`](../specs/2026-07-19-mcp-tasks-durable-gate.md) §6.
+
+**⚠ Deployed note:** the live `infra-chat-service-1` was hot-patched (docker cp + restart) for the Phase-0 E2E;
+a `docker compose build chat-service` bakes the committed source on next deploy.
+
+**Deferred (found during Phase-0 VERIFY, PRE-EXISTING, unrelated — gate #1 out-of-scope):**
+`D-PLANMODE-SHAPING-PIN-TEST` — `test_plan_mode.py::TestPlanSkillAutoInject::test_plan_mode_with_pins_appends_plan_forge`
+asserts `codes == ["glossary","plan_forge"]` but a `glossary_shaping` companion skill now auto-appends
+(`["glossary","glossary_shaping","plan_forge"]`). **Confirmed red on baseline (git-stash of the Phase-0 diff)** →
+not caused by this slice; belongs to the plan-mode skill-injection subsystem. Fix = verify `glossary_shaping`
+auto-inject is intended, then update the exact-match assertion (likely a stale test).
+
 ## 🪶 F7c — LAZY-CONTEXT ENFORCEMENT (index+load-on-demand) **SHIPPED (2026-07-19, `feat/context-budget-law`)**
 > Plan+result: [`docs/plans/2026-07-19-lazy-context-enforcement.md`](../plans/2026-07-19-lazy-context-enforcement.md).
 > Origin: F7c dogfood re-measurement — a Gemma-4 co-writer turn = 21.6k tok with MCP tools already budgeted.

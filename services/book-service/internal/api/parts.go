@@ -72,6 +72,21 @@ func (s *Server) setChapterPart(w http.ResponseWriter, r *http.Request) {
 		structureNodeID = &id
 	}
 
+	// P2.1 (spec §4.5, no silent seams) — a non-null target must be a LIVE part of THIS book. Without
+	// this, any UUID (an arc node, a foreign book's part) was accepted and the chapter then silently
+	// read as Unassigned. Un-home (null) skips the check.
+	if structureNodeID != nil {
+		valid, reachable := s.validatePartTarget(r.Context(), bookID, r.Header.Get("Authorization"), *structureNodeID)
+		if !reachable {
+			writeError(w, http.StatusBadGateway, "COMPOSITION_UNAVAILABLE", "could not verify the target part")
+			return
+		}
+		if !valid {
+			writeError(w, http.StatusUnprocessableEntity, "BOOK_PART_NOT_FOUND", "target part is not a live part of this book")
+			return
+		}
+	}
+
 	if err := s.moveChapterToPart(r.Context(), bookID, chapterID, structureNodeID); err != nil {
 		switch {
 		case errors.Is(err, errChapterNotFound):

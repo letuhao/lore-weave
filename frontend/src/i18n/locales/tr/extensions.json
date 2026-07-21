@@ -12,6 +12,7 @@
     "ingest": "Kayıt kaynakları"
   },
   "quota": {
+    "unavailable": "Kullanım bilgisi yok",
     "skills": "Yetenekler",
     "mcp": "MCP sunucuları",
     "proposals": "Teklifler"

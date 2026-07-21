@@ -1205,6 +1205,16 @@ CREATE TABLE IF NOT EXISTS structure_node (
 CREATE INDEX IF NOT EXISTS idx_structure_node_book   ON structure_node(book_id) WHERE NOT is_archived;
 CREATE INDEX IF NOT EXISTS idx_structure_node_parent ON structure_node(parent_id, rank COLLATE "C", id)
   WHERE NOT is_archived;
+
+-- P3 (book-structure-pipeline spec 2026-07-20 §4.6, Option C) — the book_lifecycle MIRROR.
+-- composition's BookLifecycleConsumer mirrors book-service's lifecycle_state onto these two
+-- manuscript-structure ANCHOR tables (structure_node = parts/arcs, composition_work = the Work), so a
+-- trashed / purge_pending book's structure is soft-hidden from composition reads. It is a SEPARATE column
+-- from is_archived / status ON PURPOSE: those are USER-archive flags, and overloading them for book-trash
+-- would un-archive a user's manually-archived acts on restore (the symmetric-un-archive-orphan bug). Default
+-- 'active' so every existing row is live; the consumer sets 'trashed' / 'purge_pending' from the event.
+ALTER TABLE structure_node   ADD COLUMN IF NOT EXISTS book_lifecycle TEXT NOT NULL DEFAULT 'active';
+ALTER TABLE composition_work ADD COLUMN IF NOT EXISTS book_lifecycle TEXT NOT NULL DEFAULT 'active';
 -- 23-A3: actor stamp for arc authorship. Additive for a DB already migrated by Deploy 1
 -- (structure_node shipped without it); the fresh CREATE above carries it. Nullable — a
 -- pre-A3 arc has no recorded author, and created_by is never a scope key (PM-5/DA-11).
@@ -1869,6 +1879,32 @@ BUILTIN_TEMPLATES: list[tuple[str, str, str, list[dict]]] = [
 ]
 
 
+# M1c (D-MCPTASKS-GO-STORE mirror) — the durable ext-tasks gate's PERSISTENT store.
+# One row per pending/terminal human-gate task; persists only DATA
+# ({descriptor, owner, payload}) so any replica reconstructs the write via the resolver
+# registry (no closure). PgTaskStore claims a task with an atomic input_required→working
+# UPDATE (single-winner across replicas), then writes the terminal outcome.
+_MCP_GATE_TASKS_SQL = """
+CREATE TABLE IF NOT EXISTS mcp_gate_tasks (
+  task_id          TEXT PRIMARY KEY,
+  status           TEXT NOT NULL
+                     CHECK (status IN ('working','input_required','completed','failed','cancelled')),
+  descriptor       TEXT NOT NULL,
+  owner_user_id    UUID NOT NULL,
+  payload          JSONB NOT NULL DEFAULT '{}'::jsonb,
+  input_requests   JSONB,
+  result           JSONB,
+  error            TEXT,
+  ttl_ms           INTEGER NOT NULL,
+  poll_interval_ms INTEGER NOT NULL,
+  created_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at       TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_mcp_gate_tasks_owner ON mcp_gate_tasks (owner_user_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_mcp_gate_tasks_status ON mcp_gate_tasks (status, created_at);
+"""
+
+
 async def _apply_base_schema(conn: asyncpg.Connection) -> None:
     """The base idempotent DDL — injected into the package re-key so its M0
     pre-flight runs BEFORE any DDL (25 PM-7) and its M2/M3 after (one unit)."""
@@ -1889,6 +1925,7 @@ async def run_migrations(pool: asyncpg.Pool) -> None:
         if rekeyed:
             logger.info("composition migrate: package re-key pkg_rekey_v1 applied this boot")
         await conn.execute(_MOTIF_SCHEMA_SQL)          # F0: narrative motif library DDL (+ structure_node)
+        await conn.execute(_MCP_GATE_TASKS_SQL)        # M1c: the durable ext-tasks gate PERSISTENT store
         # B3 (BA2): a CLEAN DB (fresh, or already drained of legacy arc rows) is auto-lifted here —
         # a safe CHECK-tighten with NOTHING to migrate — so fresh + throwaway-test DBs are born
         # consistent and never trip the guard below. Placed AFTER _MOTIF_SCHEMA_SQL because that is

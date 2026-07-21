@@ -1083,7 +1083,17 @@
     "restoreActHint": "Restaurer cet acte (il sera vide — vous devrez réorganiser les chapitres)",
     "actTrashed": "L'acte « {{name}} » a été mis à la corbeille — ses chapitres sont restés dans le livre",
     "partVsArc": "Les parties regroupent votre manuscrit. Les arcs constituent le plan.",
-    "undo": "Annuler"
+    "undo": "Annuler",
+    "lensParts": "Parties",
+    "lensOutline": "Plan",
+    "lensToggle": "Affichage",
+    "createFailed": "Impossible de créer la partie",
+    "renameFailed": "Impossible de renommer la partie",
+    "trashFailed": "Impossible de mettre la partie à la corbeille",
+    "restoreFailed": "Impossible de restaurer la partie",
+    "moveFailed": "Impossible de déplacer le chapitre vers cette partie",
+    "reorderFailed": "Impossible de réorganiser",
+    "partsUnavailable": "Les parties sont temporairement indisponibles — affichage des chapitres en liste simple."
   },
   "intro": {
     "title": "Bienvenue sur Writing Studio",

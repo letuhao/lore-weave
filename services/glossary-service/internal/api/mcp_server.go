@@ -25,6 +25,29 @@ import (
 func (s *Server) mcpHandler() http.Handler {
 	srv := mcp.NewServer(&mcp.Implementation{Name: "glossary", Version: "0.1.0"}, nil)
 
+	// Durable ext-tasks human gate (D-MCPTASKS-GO-STORE): the PERSISTENT store bound to
+	// ONE dispatching resolver registered for every migrated KIND-C descriptor (the write
+	// to run on accept — reconstructed by descriptor, no closure). Set on the Server BEFORE
+	// the propose tools register, so their gate helpers (action_task_gate.go) see it at
+	// call time. A tasks-capable client drives the gate to completion via the
+	// `glossary_task_provide_input` tool below; a non-tasks client is unchanged (confirm_token).
+	s.actionTasks = NewPgTaskStore(s.pool, lwmcp.TaskResolverRegistry{
+		descSchemaCreateKind:  s.resolveGlossaryAction,
+		descSchemaCreateKinds: s.resolveGlossaryAction,
+		descSchemaCreateAttr:  s.resolveGlossaryAction,
+		descBookDelete:        s.resolveGlossaryAction,
+		descBookRevert:        s.resolveGlossaryAction,
+		descAdopt:             s.resolveGlossaryAction,
+		descSyncApply:         s.resolveGlossaryAction,
+		descStatusChange:      s.resolveGlossaryAction,
+		descRestoreRevision:   s.resolveGlossaryAction,
+		descReassignKind:      s.resolveGlossaryAction,
+		descMerge:             s.resolveGlossaryAction,
+		descEntityDelete:      s.resolveGlossaryAction,
+		descDeepResearch:      s.resolveGlossaryAction,
+		descExecutePlan:       s.resolveGlossaryAction,
+	})
+
 	lwmcp.RegisterTool(srv, &mcp.Tool{
 		Name: "glossary_search",
 		Description: "Search a book's glossary for entities (characters, places, items, " +
@@ -217,6 +240,18 @@ func (s *Server) mcpHandler() http.Handler {
 		Meta: lwmcp.NewToolMeta(lwmcp.TierW, lwmcp.ScopeBook, nil, nil),
 	}, s.toolProposeNewAttribute)
 	// glossary_book_delete + glossary_book_* tools are registered in RegisterBookTools (T1).
+
+	// The input step for the durable gate. Gateway-routed by tool NAME → the `glossary`
+	// prefix is required (a bare task_provide_input would collide with book's). The callerID
+	// wrapper lets the kit owner-check BOTH accept + decline (resolveGlossaryAction only
+	// re-binds on accept), so a stranger can't cancel another user's gate.
+	lwmcp.RegisterTaskProvideInput(srv, s.actionTasks, "glossary", func(ctx context.Context) (string, bool) {
+		u, ok := userIDFromCtx(ctx)
+		if !ok {
+			return "", false
+		}
+		return u.String(), true
+	})
 
 	streamable := mcp.NewStreamableHTTPHandler(
 		func(*http.Request) *mcp.Server { return srv },

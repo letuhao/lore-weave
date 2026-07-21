@@ -23,6 +23,13 @@ root cause in code (file:line), not the surface symptom — per the repo's anti-
   merge. Confirms the merge works end-to-end, and captures **F11 (HIGH)**: creating a Work makes an
   un-decomposed book's chapters vanish from the Manuscript rail — and the onboarding door leads straight
   into it. Root cause + fix options; not yet built.
+- **[round-4-feedback.md](round-4-feedback.md)** — a *fourth* pass on the **durable-gate-ACTIVATED** build
+  (2026-07-20). Confirms the durable confirm gate is wired correctly (the agent describes propose→confirm-card
+  accurately). Captures **F12–F16**: agent-registry crashed (Exited 255) → a 504 flood; a failing-tool-call
+  LOOP (`composition_get_mine_job` with no `job_id`, 7×) the success-only breaker never stops; the agent
+  refusing to drive `book_chapter_delete`/`book_list_chapters` (weak local model + maybe prompt); chapter-create
+  stealing panel focus from the chat; and language-not-required on New Book. **Backlog — investigate one-by-one
+  in ALPHABET order of each finding's slug.** Not yet built.
 
 ## The findings at a glance (priority-ordered)
 

@@ -8,6 +8,10 @@ import (
 // P1 (2026-05-23) — regression lock for the parts/scenes schema additions.
 // Pure string check; real live-DB validation runs at VERIFY (Alice EPUB smoke).
 // Catches accidental removal during refactors.
+//
+// db-safety-gate: file-ok — asserts migration DDL text (schema + down-SQL strings) with
+// strings.Contains/Index; this file executes NO statement against any database. The live
+// DB-gated tests are the separate *_db_test.go files (testsafe-guarded).
 
 // C-merge C4 — the parts table is RETIRED. schemaSQL must NOT create it, and the one-time drop must
 // retire the pre-existing table + chapters.part_id (structure_node_id is the SSOT link now).

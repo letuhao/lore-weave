@@ -274,7 +274,7 @@ class TestStreamResponse:
 
         # Verify assistant message was inserted
         insert_calls = [
-            c for c in conn.execute.call_args_list
+            c for c in conn.fetchrow.call_args_list
             if "INSERT INTO chat_messages" in str(c)
         ]
         assert len(insert_calls) == 1
@@ -406,7 +406,7 @@ class TestStreamResponse:
 
         # Verify assistant INSERT includes parent_message_id
         insert_calls = [
-            c for c in conn.execute.call_args_list
+            c for c in conn.fetchrow.call_args_list
             if "INSERT INTO chat_messages" in str(c) and "parent_message_id" in str(c)
         ]
         assert len(insert_calls) == 1
@@ -925,7 +925,7 @@ class TestK21BToolCallingIntegration:
     async def test_book_surface_seeds_glossary_hot_set_and_lazy_tail(self):
         """B (per-surface hot set): a book-scoped chat with a MULTI-DOMAIN catalog
         seeds the glossary domain into discovery_seed_names (advertised pass 1) and
-        leaves the other domains (book/translation) to the lazy find_tools tail.
+        leaves the other domains (book/translation) to the lazy discovery tail.
 
         This GUARDS the discovery_seed_names threading stream_response →
         _emit_chat_turn → _stream_with_tools — the other integration tests use a
@@ -964,7 +964,7 @@ class TestK21BToolCallingIntegration:
         seed = kw["discovery_seed_names"]
         assert seed is not None
         assert "glossary_search" in seed and "glossary_propose_batch" in seed
-        assert "book_create" not in seed  # lazy — reachable via find_tools
+        assert "book_create" not in seed  # lazy — reachable via tool_list/tool_load
         assert "translation_start_job" not in seed
         # …and the first-pass advertisement the model sees reflects it.
         adv = [t["function"]["name"] for t in kw["tools"]]
@@ -1096,16 +1096,17 @@ class TestK21BToolCallingIntegration:
         # H9: universal cap = 20, and discovery is on (catalog passed)
         assert loop_mock.call_args.kwargs["max_iterations"] == 20
         assert loop_mock.call_args.kwargs["discovery_catalog"] is not None
-        # C-FT: the first-pass advertisement is the curated core (incl. find_tools
-        # + the generic frontend tools), NOT the full catalog dumped to the LLM.
+        # C-FT: the first-pass advertisement is the curated core (incl. the
+        # tool_list/tool_load discovery pair + the generic frontend tools), NOT the
+        # full catalog dumped to the LLM. (F17 — find_tools retired from the LLM's view.)
         adv_names = [t["function"]["name"] for t in loop_mock.call_args.kwargs["tools"]]
-        assert "find_tools" in adv_names
+        assert "tool_list" in adv_names and "tool_load" in adv_names
         assert "ui_navigate" in adv_names and "confirm_action" in adv_names
         # Part D (2026-07-07, docs/specs/2026-07-07-skill-authoring-and-mcp-exposure-
         # standard.md §8b.9): surface_hot_domains now derives from knowledge_skill's own
         # declared hot_domains (honored everywhere it auto-injects, incl. universal chat)
         # instead of the old hand-authored constants that never included it — memory_search
-        # is correctly hot-seeded here now, not left to find_tools.
+        # is correctly hot-seeded here now, not left to the lazy discovery tail.
         assert "memory_search" in adv_names
 
     @pytest.mark.asyncio
@@ -1367,18 +1368,23 @@ class TestK21BToolCallingIntegration:
                 pass
 
         insert_calls = [
-            c for c in conn.execute.call_args_list
+            c for c in conn.fetchrow.call_args_list
             if "INSERT INTO chat_messages" in str(c)
         ]
-        assert len(insert_calls) == 1
+        # DBT-CHAT-PERSIST — a tool-loop turn now CHECKPOINTS the assistant row at
+        # the tool boundary (finish_reason='streaming') AND writes the final row
+        # (upsert by msg_id). Both carry tool_calls; only the FINAL rich upsert
+        # carries context_breakdown. Assert the final insert has the full payload.
+        assert len(insert_calls) >= 1
+        final_insert = insert_calls[-1]
         # The INSERT SQL writes the tool_calls column.
-        assert "tool_calls" in insert_calls[0].args[0]
-        tool_calls_json = insert_param(insert_calls[0], "tool_calls")
+        assert "tool_calls" in final_insert.args[0]
+        tool_calls_json = insert_param(final_insert, "tool_calls")
         assert tool_calls_json is not None
         assert json.loads(tool_calls_json) == [tool_call]
         # W1 — the context_breakdown JSONB is persisted and carries the per-category
         # breakdown incl. the tool_results bucket.
-        ctx_json = insert_param(insert_calls[0], "context_breakdown")
+        ctx_json = insert_param(final_insert, "context_breakdown")
         assert ctx_json is not None
         ctx = json.loads(ctx_json)
         assert set(ctx) >= {"used_tokens", "pct", "breakdown", "baseline_tokens",
@@ -1414,7 +1420,7 @@ class TestK21BToolCallingIntegration:
                 pass
 
         insert_calls = [
-            c for c in conn.execute.call_args_list
+            c for c in conn.fetchrow.call_args_list
             if "INSERT INTO chat_messages" in str(c)
         ]
         assert len(insert_calls) == 1
@@ -1453,11 +1459,13 @@ class TestK21BToolCallingIntegration:
                 pass
 
         insert_calls = [
-            c for c in conn.execute.call_args_list
+            c for c in conn.fetchrow.call_args_list
             if "INSERT INTO chat_messages" in str(c)
         ]
-        # conn.execute args are (sql, $1..$11); content is $4 → args[4].
-        persisted_content = insert_calls[0].args[4]
+        # DBT-CHAT-PERSIST — the tool boundary checkpoints a partial row; the FINAL
+        # upsert carries the complete content. Assert the final (fetchrow args are
+        # (sql, $1..); content is $4 → args[4]).
+        persisted_content = insert_calls[-1].args[4]
         assert persisted_content == "Let me check. Found it."
 
 
@@ -1942,6 +1950,123 @@ class TestInLoopCompactionWiring:
         assert seen == [], "compaction must not run when effective_limit is None"
 
     @pytest.mark.asyncio
+    async def test_reasoning_loop_aborted_steered_and_recovers(self):
+        """D-REASONING-LOOP — the live incident: a pass loops in the REASONING
+        channel (no tool call emitted), invisible to every tool-call breaker. The
+        detector aborts it, injects a steer directive, forces reasoning OFF for
+        the retry, and the retry completes the turn."""
+        import app.services.stream_service as ss
+        from loreweave_llm import ReasoningEvent, TokenEvent, DoneEvent
+
+        passes = {"n": 0}
+        requests = []
+
+        class FakeClient:
+            def __init__(self, **kw):
+                pass
+
+            async def aclose(self):
+                pass
+
+            def stream(self, request):
+                requests.append(request)
+                i = passes["n"]
+                passes["n"] += 1
+
+                async def gen():
+                    if i == 0:
+                        # period-2 oscillation — the exact shape from chat 019f82b3
+                        for _ in range(6):
+                            yield ReasoningEvent(delta="Actually, use book_update_meta.\n")
+                            yield ReasoningEvent(
+                                delta="Wait, use propose_record_edit instead.\n"
+                            )
+                        yield DoneEvent(finish_reason="stop")
+                    else:
+                        yield TokenEvent(delta="Done — updated the description.")
+                        yield DoneEvent(finish_reason="stop")
+
+                return gen()
+
+        frames = []
+        with patch.object(ss, "Client", FakeClient):
+            async for fr in ss._stream_with_tools(
+                model_source="user_model", model_ref=TEST_MODEL_REF, user_id="u",
+                messages=[{"role": "user", "content": "rewrite the description"}],
+                gen_params={"max_tokens": 100, "reasoning_effort": "medium"}, tools=[],
+                knowledge_client=AsyncMock(), session_id="s", project_id=None,
+                effective_limit=None,
+            ):
+                frames.append(fr)
+
+        # Exactly two passes: the looping pass was aborted, the steered retry ran.
+        assert passes["n"] == 2, "loop must abort pass 0 and drive exactly one retry"
+        # The retry ran with thinking FORCED OFF via the STANDARDIZED no-thinking
+        # fields. chat_template_kwargs.enable_thinking=False is what actually
+        # suppresses <think> on local Qwen3/Gemma — reasoning_effort alone is ignored
+        # (and on Gemma-4 even ENABLES it). Guards the popped-chat_template_kwargs bug.
+        assert getattr(requests[1], "reasoning_effort", None) == "none"
+        _ctk = getattr(requests[1], "chat_template_kwargs", None) or {}
+        assert _ctk.get("enable_thinking") is False, (
+            f"steer-retry must disable thinking via chat_template_kwargs, got {_ctk}"
+        )
+        # A steer directive was injected into the retry's messages.
+        assert any(
+            "[SYSTEM DIRECTIVE]" in (m.get("content") or "")
+            for m in requests[1].messages
+        ), "the steer directive must be injected before the retry"
+        # The turn completed with the retry's content — no hang.
+        assert any(
+            "updated the description" in (fr.get("content") or "") for fr in frames
+        )
+
+    @pytest.mark.asyncio
+    async def test_reasoning_loop_capped_stops_honestly(self):
+        """D-REASONING-LOOP — a model that keeps looping even after being steered
+        must end the turn HONESTLY (a plain message), never hang. After
+        REASONING_LOOP_INTERVENTION_CAP steers, the next loop stops the turn."""
+        import app.services.stream_service as ss
+        from loreweave_llm import ReasoningEvent, DoneEvent
+
+        passes = {"n": 0}
+
+        class FakeClient:
+            def __init__(self, **kw):
+                pass
+
+            async def aclose(self):
+                pass
+
+            def stream(self, request):
+                passes["n"] += 1
+
+                async def gen():
+                    # EVERY pass loops — the model never takes the steer.
+                    for _ in range(6):
+                        yield ReasoningEvent(delta="Maybe tool A is right.\n")
+                        yield ReasoningEvent(delta="Or maybe tool B is right.\n")
+                    yield DoneEvent(finish_reason="stop")
+
+                return gen()
+
+        frames = []
+        with patch.object(ss, "Client", FakeClient):
+            async for fr in ss._stream_with_tools(
+                model_source="user_model", model_ref=TEST_MODEL_REF, user_id="u",
+                messages=[{"role": "user", "content": "do the thing"}],
+                gen_params={"max_tokens": 100}, tools=[],
+                knowledge_client=AsyncMock(), session_id="s", project_id=None,
+                effective_limit=None,
+            ):
+                frames.append(fr)
+
+        # cap = 2 steers → the 3rd loop trips the honest stop (bounded, no hang).
+        assert passes["n"] == ss.REASONING_LOOP_INTERVENTION_CAP + 1
+        assert any(
+            "got stuck deciding" in (fr.get("content") or "") for fr in frames
+        ), "must emit an honest give-up message, never hang"
+
+    @pytest.mark.asyncio
     async def test_blank_intent_find_tools_capped_within_turn(self):
         """D-FINDTOOLS-BLANK-INTENT-LOOP — reproduces the real production
         session (019f4000-43ee-7201-9d45-e2fafc83696d, gemma-4-26b-a4b-qat)
@@ -2314,7 +2439,7 @@ class TestW1ContextBreakdownFrame:
         assert frame["baseline_tokens"] >= 111 + 2222
         # And the same payload was persisted on the assistant row ($12, second-to-last
         # arg since the stateful-chain feature appended response_id as $13).
-        insert_calls = [c for c in conn.execute.call_args_list
+        insert_calls = [c for c in conn.fetchrow.call_args_list
                         if "INSERT INTO chat_messages" in str(c)]
         persisted = json.loads(insert_param(insert_calls[0], "context_breakdown"))
         assert persisted["breakdown"]["mcp_tool_schemas"] == 2222
@@ -2366,7 +2491,7 @@ class TestW1ContextBreakdownFrame:
         # trace savings fired in this fake scenario, so raw_tokens == used_tokens.
         assert frame["raw_tokens"] == 1000
 
-        insert_calls = [c for c in conn.execute.call_args_list
+        insert_calls = [c for c in conn.fetchrow.call_args_list
                         if "INSERT INTO chat_messages" in str(c)]
         persisted = json.loads(insert_param(insert_calls[0], "context_breakdown"))
         assert persisted["used_tokens"] == 1000
@@ -2394,7 +2519,7 @@ class TestW1ContextBreakdownFrame:
             ):
                 events.append(e)
         assert all('"CUSTOM"' not in e for e in events)  # legacy vocabulary only
-        insert_calls = [c for c in conn.execute.call_args_list
+        insert_calls = [c for c in conn.fetchrow.call_args_list
                         if "INSERT INTO chat_messages" in str(c)]
         assert "context_breakdown" in insert_calls[0].args[0]
         # $12, second-to-last arg since response_id trails it as $13.

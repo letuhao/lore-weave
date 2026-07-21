@@ -161,6 +161,7 @@ export function MessageBubble({
                 voiceTtsSentences={contentParts?.voice_tts_sentences}
                 toolCalls={message.tool_calls}
                 activities={message.activities}
+                finishReason={message.finish_reason}
               />
               {codeOutputs.length > 0 && (
                 <div className="mt-2 space-y-1.5">

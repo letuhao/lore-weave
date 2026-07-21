@@ -14,6 +14,8 @@ import {
   sanitizeUpstreamErrorText,
   TOOL_ERROR_CODES,
 } from '../src/mcp/handlers.js';
+import { UI_TOOLS, UI_DIRECTIVE_TYPE } from '../src/mcp/ui-tools.js';
+import { PROPOSE_EDIT_DIRECTIVE_TYPE } from '../src/mcp/propose-edit-tool.js';
 import type { FederationService } from '../src/federation/federation.service.js';
 
 function fakeFederation(over: Partial<FederationService>): FederationService {
@@ -85,13 +87,18 @@ describe('headerValue / extractEnvelope', () => {
 });
 
 describe('handleListTools', () => {
-  it('prepends the discovery meta-tools (tool_list/tool_load first, then find_tools), then the catalog (H10)', async () => {
+  it('prepends the discovery meta-tools (tool_list/tool_load), then the catalog (H10)', async () => {
     const fed = fakeFederation({ catalog: () => [{ name: 'memory_search' }] as any });
     const res = await handleListTools(fed);
-    // WS-1a (OQ1): tool_list/tool_load are the deterministic PRIMARY pair, advertised FIRST;
-    // find_tools follows as the optional semantic convenience; then the catalog.
+    // WS-1a (OQ1): tool_list/tool_load are the deterministic discovery pair, advertised FIRST,
+    // then the catalog. F17 — find_tools is no longer advertised to the LLM (handler retained).
     expect(res.tools[0].name).toBe('tool_list');
-    expect(res.tools.map((t: any) => t.name)).toEqual(['tool_list', 'tool_load', 'find_tools', 'memory_search']);
+    // Phase 3 — the consumer-local ui_* directive tools sit after the discovery
+    // meta-tools and before the federated catalog (sourced from the module so this
+    // assertion tracks the tool set without drifting).
+    expect(res.tools.map((t: any) => t.name)).toEqual([
+      'tool_list', 'tool_load', ...UI_TOOLS.map((t) => t.name), 'propose_edit', 'memory_search',
+    ]);
     expect(res._meta).toEqual({ unavailable_providers: [], partial: false });
   });
 
@@ -104,7 +111,8 @@ describe('handleListTools', () => {
     expect(res.tools.map((t: any) => t.name)).toEqual([
       'tool_list',
       'tool_load',
-      'find_tools',
+      ...UI_TOOLS.map((t) => t.name),
+      'propose_edit',
       'memory_search',
       'u_deadbeef_search',
     ]);
@@ -133,6 +141,36 @@ describe('handleListTools', () => {
     expect(executeOverlay).toHaveBeenCalledWith('u_deadbeef_search', { q: 'x' }, { userId: 'u1', sessionId: undefined, traceId: undefined, projectId: undefined, mcpKeyId: undefined, spendCapUsd: undefined }, undefined);
     expect(executeTool).not.toHaveBeenCalled();
     expect(res).toEqual({ content: [{ type: 'text', text: 'overlay' }] });
+  });
+
+  it('Phase 3: dispatches a ui_* tool LOCALLY (directive), never to a provider', async () => {
+    const executeTool = jest.fn().mockResolvedValue({ content: [] });
+    const fed = fakeFederation({ executeTool });
+    const res = await handleCallTool(fed, 'ui_navigate', { path: '/books' }, { 'x-user-id': 'u1' });
+    expect(executeTool).not.toHaveBeenCalled(); // no downstream provider owns ui_*
+    expect((res as any).structuredContent).toEqual({ type: UI_DIRECTIVE_TYPE, tool: 'ui_navigate', args: { path: '/books' } });
+  });
+
+  it('Phase 3: a ui_* tool with an out-of-enum arg is an isError result, not a silent no-op', async () => {
+    const fed = fakeFederation({ executeTool: jest.fn() });
+    const res = await handleCallTool(fed, 'ui_open_studio_panel', { panel_id: 'not-real' }, { 'x-user-id': 'u1' });
+    expect((res as any).isError).toBe(true);
+    expect((res as any).structuredContent.type).not.toBe(UI_DIRECTIVE_TYPE);
+  });
+
+  it('Phase 2: dispatches propose_edit LOCALLY (gated proposal), never to a provider', async () => {
+    const executeTool = jest.fn().mockResolvedValue({ content: [] });
+    const fed = fakeFederation({ executeTool });
+    const res = await handleCallTool(fed, 'propose_edit', { operation: 'insert_at_cursor', text: 'hi' }, { 'x-user-id': 'u1' });
+    expect(executeTool).not.toHaveBeenCalled();
+    expect((res as any).structuredContent).toEqual({ type: PROPOSE_EDIT_DIRECTIVE_TYPE, operation: 'insert_at_cursor', text: 'hi' });
+  });
+
+  it('Phase 2: propose_edit with the incident shape is an isError result, not a silent card', async () => {
+    const fed = fakeFederation({ executeTool: jest.fn() });
+    const res = await handleCallTool(fed, 'propose_edit', { domain: 'book', changes: [] }, { 'x-user-id': 'u1' });
+    expect((res as any).isError).toBe(true);
+    expect((res as any).structuredContent.type).not.toBe(PROPOSE_EDIT_DIRECTIVE_TYPE);
   });
 });
 
@@ -292,7 +330,7 @@ describe('handleCallTool', () => {
     );
   });
 
-  it('W0 #5: an unknown tool tells the model to use find_tools (not "provider error")', async () => {
+  it('W0 #5: an unknown tool tells the model to use tool_list/tool_load (not "provider error")', async () => {
     const fed = fakeFederation({
       executeTool: async () => {
         throw new Error("unknown tool 'book_lst'");
@@ -302,7 +340,8 @@ describe('handleCallTool', () => {
     expect(res.isError).toBe(true);
     const text = res.content[0].text as string;
     expect(text).toContain('unknown tool');
-    expect(text).toContain('find_tools');
+    expect(text).toContain('tool_list');
+    expect(text).toContain('tool_load');
   });
 
   it('W0 #5: an upstream JSON-RPC rejection passes its (sanitized) message through', async () => {

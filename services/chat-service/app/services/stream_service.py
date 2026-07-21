@@ -33,6 +33,7 @@ from loreweave_llm import (
     ToolCallEvent,
     UsageEvent,
     infer_reasoning_control,
+    no_thinking_fields,
     reasoning_fields,
     resolve_reasoning,
 )
@@ -45,6 +46,7 @@ from app.services.canon_capture import CaptureContext, maybe_capture_canon, pers
 from app.services.context_autodetect import resolve_context_pressure
 from app.services.entity_presence import EntityPresence, detect_entity_presence
 from app.services.injection_defense import neutralize_injection
+from app.services.reasoning_loop_detector import ReasoningLoopDetector
 from app.config import settings
 from app.db.suspended_runs import (
     delete_suspended_run,
@@ -67,8 +69,10 @@ from app.db.session_blocks import project_story_state
 from app.models import ProviderCredentials
 from app.services.composer import build_composer_messages, is_composer_tool
 from app.services.frontend_tools import (
+    frontend_tool_def_by_name,
     generic_frontend_tool_def,
     is_frontend_tool,
+    validate_frontend_tool_args,
 )
 from app.services.tool_discovery import (
     ALWAYS_ON_CORE_NAMES,
@@ -427,6 +431,12 @@ async def _stream_via_gateway(
 # pass is forced tool-free (tool_choice="none") so the loop always
 # terminates with a text answer (design D7).
 MAX_TOOL_ITERATIONS = 5
+# DBT-CHAT-PERSIST — minimum wall-clock between in-turn assistant checkpoints.
+# We checkpoint at tool boundaries (not per token) so a long tool-loop turn that
+# errors/interrupts/abandons mid-way keeps its work; this throttle bounds the
+# write count on a rapid tool loop (a burst of tool calls → at most one write
+# per interval). The suspend checkpoint bypasses it (always writes).
+_CHECKPOINT_MIN_INTERVAL_S = 1.5
 # Glossary-assistant P5 (H11): book-scoped surfaces run a richer multi-step
 # workflow (list_kinds → search → get_entity → propose ≈ 4 calls; multi-entity
 # tasks need headroom), so the cap is raised there. Per-turn token budget still
@@ -509,6 +519,33 @@ BLANK_TOOL_ARGS_CAP = 2
 # never trips this; only a read that keeps handing back the byte-identical answer does.
 REPEAT_READ_CAP = 2
 
+# ── F18: the tool_list loop breaker (dogfood round-4) ────────────────────────
+# `tool_list` returns the COMPLETE category in one shot (no cursor/paging), so a
+# re-list of a category the model already listed is provably a loop — the answer is
+# already in context. Unlike a generic Tier-R read (bounded by the repeated-read
+# breaker above), tool_list is dispatched EARLIER in the tool loop and returned ok=True
+# UNCONDITIONALLY, so nothing bounded it: a weak model (gemma) called it 28× in one turn
+# and built nothing. Two reverted fixes proved the breaker's usual lever BACKFIRES here —
+# returning an ERROR framed the repeat as a failure the model "fixes" by retrying HARDER
+# (28→311 calls), and charging budget to force finalization made it HALLUCINATE a
+# tool-call as text. So this breaker does neither: on a repeat it AUTO-LOADS the
+# category's tools (the real tools the model was circling become callable) and STEERS it
+# to use them — forward progress, never a forced stop. Past a per-turn total, tool_list
+# is also dropped from the advertised set (tool_load stays, so a specific tool is still
+# reachable by name).
+TOOL_LIST_CATEGORY_CAP = 1   # 1 legit list per category; the 2nd (same category) is the loop
+TOOL_LIST_TOTAL_CAP = 5      # total tool_list calls this turn before it is de-advertised
+
+# ── D-REASONING-LOOP: the streaming reasoning-channel loop breaker ────────────
+# Every breaker above fires in the TOOL-CALL loop, on an EMITTED call. A model
+# that thrashes in the *reasoning stream* WITHOUT emitting a call (live incident:
+# gemma oscillating book_update_details⇄propose_record_edit 30+ times on a "rewrite
+# the description" ask, zero tool calls, hung until the user hit Stop) trips none
+# of them. ReasoningLoopDetector watches the streamed text itself; on a trip we
+# abort the pass, inject a steer directive, force reasoning off for the retry,
+# and cap the interventions so a persistent loop ends HONESTLY, never a hang.
+REASONING_LOOP_INTERVENTION_CAP = 2
+
 # P-1 step-runner — the per-turn cap on how many times the server re-drives the rail after the
 # model stops. The vision-to-book rail is 11 steps and a few are already done on the assent
 # turn, so ~8 covers a full drive-through; a per-STEP cap of 2 (rail_twice_nudged) bounds a
@@ -577,6 +614,34 @@ class _ProbeAccessDenied(Exception):
 # real, unrelated reason (auth, not-found, business-rule) never counts
 # toward this streak.
 _MISSING_REQUIRED_ARGS_MARKER = "required: missing properties"
+
+# D-CONFIRM-CARD-NUDGE (dogfood 2026-07-21) — a Tier-W/S propose tool returns a
+# SERVER-BUILT confirm card ({confirm_token, descriptor, …}); the FE renders it with
+# Confirm/Cancel and the human confirms via the domain endpoint — the model does NOT
+# need to do anything more. But a weak model (Gemma) reads the raw token blob as the
+# tool result, does not grasp it is PENDING THE HUMAN, and either re-calls the propose
+# tool (the observed double-card) or apologizes for a non-existent error. This note is
+# appended to the confirm-card tool result so the model writes one short "ready to
+# confirm" line and stops. (A prompt guard-line alone has failed weak-model QC before —
+# so if this does not hold live, the deterministic follow-up is to also stop advertising
+# the just-fired propose tool on the immediately-following pass.)
+_CONFIRM_CARD_STOP_NOTE = (
+    "\n\n[SYSTEM — CONFIRMATION PENDING: A confirmation card for this change is now shown "
+    "to the user with the exact edit, awaiting their approval. Nothing is saved until they "
+    "click Confirm. This action is COMPLETE on your side. Do NOT call this tool again, do "
+    "NOT call confirm_action yourself, and do NOT say an error occurred. Reply with ONE "
+    "short sentence telling the user the change is ready for them to confirm, then stop.]"
+)
+
+
+def _is_confirm_card_result(payload) -> bool:
+    """A Tier-W/S propose result that minted a server-built confirm card (has a
+    confirm_token + descriptor). Domain-agnostic — matches book/glossary/… alike."""
+    return (
+        isinstance(payload, dict)
+        and bool(payload.get("confirm_token"))
+        and bool(payload.get("descriptor"))
+    )
 
 # RAID Wave B2 (07S §5b) — PLAN mode. The executable server surface is the ASK
 # surface (tier R + find_tools + frontend tools) PLUS the PlanForge planning
@@ -896,6 +961,7 @@ def _advertise_discovery_tools(
     extra_frontend: list[dict],
     permission_mode: str = "write",
     has_workflows: bool = False,
+    suppress_tool_list: bool = False,
 ) -> list[dict]:
     """MCP-fanout C-FT — the tools advertised on a universal /chat pass:
     ``{always-on core} ∪ {full schemas of active_tool_names}``, with the
@@ -939,6 +1005,11 @@ def _advertise_discovery_tools(
         # WS-1a — tool_list/tool_load are consumer-local meta-tools (not federated), like
         # find_tools; source their schemas from the module defs.
         if name == TOOL_LIST_NAME:
+            # F18 — dropped from the wire once the model has exhausted discovery this turn
+            # (it looped on tool_list). tool_load stays advertised, so a specific tool is
+            # still reachable by name; the dispatch below still handles a hallucinated call.
+            if suppress_tool_list:
+                continue
             _add(TOOL_LIST_TOOL)
             continue
         if name == TOOL_LOAD_NAME:
@@ -1398,6 +1469,13 @@ async def _stream_with_tools(
         # exactly why, and told to use what it has).
         # (tool+args) -> (fingerprint of the last result, how many times that SAME result came back)
         read_call_results: dict[str, tuple[str, int]] = {}
+        # F18 — tool_list exhaustion state (see TOOL_LIST_CATEGORY_CAP). tool_list returns the
+        # WHOLE category at once, so a re-list is a loop; track per-category list counts + the
+        # per-turn total so a repeat switches to auto-load+steer and a persistent spammer gets
+        # tool_list de-advertised (suppress_tool_list is read at the advertise chokepoint below).
+        listed_categories: dict[str, int] = {}
+        tool_list_total = 0
+        suppress_tool_list = False
         # ── P-1 step-runner state (Track C) ──────────────────────────────────────
         # turn_succeeded — tools that SUCCEEDED this turn (backend chokepoint only), merged with
         # the turn-start DB counts to tell "the async job already started" from "not yet". Never
@@ -1414,6 +1492,12 @@ async def _stream_with_tools(
         # next turn to re-establish a fresh chain from nudge-free history. Costs one turn's
         # stateful cache reuse on a (rare) driven turn; keeps the ephemeral nudge ephemeral.
         rail_drove_this_turn = False
+        # D-REASONING-LOOP — per-turn steer-intervention counter for a reasoning-channel
+        # thrash (a loop emitting NO tool call, invisible to every tool-call breaker).
+        # `_suppress_reasoning_next_pass` forces the retry pass to reason OFF so it can't
+        # immediately re-enter the same deliberation loop.
+        reasoning_loop_interventions = 0
+        _suppress_reasoning_next_pass = False
         # The rail's own step tools (across all pinned rails) — the "a rail step actually
         # succeeded this turn" gate that keeps the driver SILENT on pure-conversation turns.
         _rail_all_step_tools: set[str] = set()
@@ -1520,6 +1604,7 @@ async def _stream_with_tools(
                         cat_index, active_tool_names, extra_fe,
                         permission_mode=permission_mode,
                         has_workflows=bool(turn_workflows),
+                        suppress_tool_list=suppress_tool_list,
                     )
                 else:
                     advertised = (
@@ -1605,6 +1690,23 @@ async def _stream_with_tools(
                         )
                         if payload_as is not None:
                             yield {"agent_surface": payload_as}
+                        # OBSERVABILITY (F14 agent-behavior monitor) — the exact tool NAMES
+                        # advertised to the model on THIS pass. The Agent-runtime panel shows
+                        # only COUNTS (core N · frontend N · activated N); when the agent
+                        # "refuses" or reaches for the wrong tool, the first question is "did
+                        # it even SEE the tool it should have used?" — unanswerable from counts.
+                        # INFO so a LOG_LEVEL=INFO deploy records every turn's real surface
+                        # (grep for a tool name to see if it was on offer). core NAMES are
+                        # logged too, not just the count: F17 retired find_tools FROM the core
+                        # set, and "is a (deprecated) core tool still advertised to the model?"
+                        # is only answerable from the names — the count alone can't tell
+                        # find_tools-gone from some-other-core-tool-added.
+                        logger.info(
+                            "agent-surface advertised (session=%s): core=%d frontend=%d "
+                            "activated=%d | core=%s | frontend=%s | activated=%s",
+                            session_id, len(_adv_core), len(_adv_frontend),
+                            len(_adv_activated), _adv_core, _adv_frontend, _adv_activated,
+                        )
                 else:
                     # Ask mode filtered everything out — run the pass tool-free
                     # (an empty tools array 400s on some providers).
@@ -1614,6 +1716,19 @@ async def _stream_with_tools(
             stream_job_id = str(uuid4())
             request_kwargs["stream_job_id"] = stream_job_id
             _apply_reasoning_kwargs(request_kwargs, gen_params)
+            if _suppress_reasoning_next_pass:
+                # D-REASONING-LOOP — the previous pass looped in the reasoning
+                # channel; run THIS steer-retry with thinking DISABLED via the
+                # STANDARDIZED no-thinking fields (loreweave_llm.no_thinking_fields:
+                # reasoning_effort="none" + chat_template_kwargs.{thinking,
+                # enable_thinking:false}). The chat_template_kwargs is what actually
+                # suppresses the <think> block on local Qwen3/Gemma (lm_studio/vLLM);
+                # reasoning_effort ALONE is ignored (and on Gemma-4 even ENABLES it).
+                # (This previously hand-rolled reasoning_effort="none" and POPPED
+                # chat_template_kwargs, which stripped the working disable — so the
+                # steered retry kept reasoning and re-looped.)
+                request_kwargs.update(no_thinking_fields())
+                _suppress_reasoning_next_pass = False
             request = StreamRequest(**request_kwargs)
 
             tool_frags: dict = {}
@@ -1630,8 +1745,14 @@ async def _stream_with_tools(
             content_hold = ""
             reasoning_hold = ""
             finish_reason: str | None = None
+            # D-REASONING-LOOP — one detector per pass, fed BOTH channels. On a trip
+            # we abort the stream (hoisted iterator so we can aclose deterministically)
+            # and hand off to the steer/cap block after the loop.
+            loop_det = ReasoningLoopDetector()
+            _looped = False
+            _stream_iter = client.stream(request)
             try:
-                async for ev in client.stream(request):
+                async for ev in _stream_iter:
                     if isinstance(ev, TokenEvent):
                         text_parts.append(ev.delta)
                         content_hold += ev.delta
@@ -1639,6 +1760,9 @@ async def _stream_with_tools(
                         if flush:
                             yield {"content": flush, "reasoning_content": "",
                                    "finish_reason": None, "usage": None}
+                        if loop_det.feed(ev.delta):
+                            _looped = True
+                            break
                     elif isinstance(ev, ReasoningEvent):
                         reasoning_parts.append(ev.delta)
                         reasoning_hold += ev.delta
@@ -1646,6 +1770,9 @@ async def _stream_with_tools(
                         if flush:
                             yield {"content": "", "reasoning_content": flush,
                                    "finish_reason": None, "usage": None}
+                        if loop_det.feed(ev.delta):
+                            _looped = True
+                            break
                     elif isinstance(ev, ToolCallEvent):
                         slot = tool_frags.setdefault(
                             ev.index, {"id": None, "name": None, "arguments": ""}
@@ -1692,6 +1819,62 @@ async def _stream_with_tools(
                     tools_supported = False
                     continue
                 raise
+            finally:
+                # D-REASONING-LOOP — deterministically tear down the aborted stream
+                # (we broke out of the async-for; close its generator now rather than
+                # leaving the httpx response dangling until GC).
+                if _looped:
+                    try:
+                        await _stream_iter.aclose()
+                    except Exception:
+                        logger.debug(
+                            "D-REASONING-LOOP: stream aclose after abort failed",
+                            exc_info=True,
+                        )
+            # D-REASONING-LOOP — the pass looped in the reasoning/content channel and
+            # emitted no usable tool call. Flush held text, then steer (capped) or stop
+            # honestly. BEFORE the leaked-call salvage: an aborted loop pass has no
+            # legitimate structured call to recover.
+            if _looped:
+                logger.warning(
+                    "D-REASONING-LOOP: session=%s pass=%d aborted a reasoning-channel "
+                    "loop (%s) model_ref=%s",
+                    session_id, iteration, loop_det.reason, model_ref,
+                )
+                if trace is not None:
+                    trace.add(
+                        "compile", "T6", "tools",
+                        f"reasoning_loop_aborted:{loop_det.reason[:48]}",
+                        is_error=True,
+                    )
+                if content_hold or reasoning_hold:
+                    yield {"content": content_hold, "reasoning_content": reasoning_hold,
+                           "finish_reason": None, "usage": None}
+                    content_hold = reasoning_hold = ""
+                if reasoning_loop_interventions < REASONING_LOOP_INTERVENTION_CAP:
+                    reasoning_loop_interventions += 1
+                    working.append({
+                        "role": "user",
+                        "content": (
+                            "[SYSTEM DIRECTIVE] You began repeating yourself without making "
+                            "progress and the deliberation was cut off. STOP weighing "
+                            "alternatives. Choose the single most appropriate tool for the "
+                            "user's request and CALL it NOW with the arguments you already "
+                            "have — do not explain the choice first. If no tool fits, answer "
+                            "the user directly in one short message."
+                        ),
+                    })
+                    # Keep the ephemeral directive out of the persisted provider chain
+                    # (same treatment as a rail nudge): drop the chain head at turn end.
+                    rail_drove_this_turn = True
+                    _suppress_reasoning_next_pass = True
+                    continue
+                # Cap reached — end the turn honestly, never a silent hang.
+                yield {"content": (
+                        "\n\nI got stuck deciding how to do that and stopped rather than "
+                        "loop. Could you tell me the exact change you want, or rephrase it?"
+                    ), "reasoning_content": "", "finish_reason": None, "usage": None}
+                break
             # M3 — a disconnect raises GeneratorExit here; it unwinds to the
             # function's `finally: await client.aclose()`, and the gateway finalizes
             # this pass's row via the silent cascade (no explicit DELETE → no notify).
@@ -1934,6 +2117,87 @@ async def _stream_with_tools(
                     include_deprecated = args_obj.get("include_deprecated")
                     if not isinstance(include_deprecated, bool):
                         include_deprecated = True
+                    _norm_cat = category or "all"
+                    tool_list_total += 1
+
+                    # F18 — the model ALREADY has this category's complete list (tool_list is
+                    # not paginated), so re-listing it is the loop. Don't hand back the same
+                    # list; AUTO-LOAD the category's tools (exactly like tool_load) so the real
+                    # tools it was circling become callable, and STEER it to use them. Erroring
+                    # here backfired (the weak model retried harder, 28→311); this makes forward
+                    # progress instead. Past the per-turn total, tool_list is also de-advertised
+                    # (suppress_tool_list) — tool_load stays, so a specific tool is still reachable.
+                    if listed_categories.get(_norm_cat, 0) >= TOOL_LIST_CATEGORY_CAP:
+                        from app.services.tool_surface import (
+                            HOT_SEED_TOKEN_BUDGET,
+                            budget_names_by_tokens,
+                            merge_activated_tools,
+                        )
+                        _load_payload, loaded = tool_load_result(
+                            discovery_catalog or [], category=_norm_cat,
+                        )
+                        names_to_activate = budget_names_by_tokens(
+                            discovery_catalog or [], loaded,
+                            token_budget=scale_by_window(HOT_SEED_TOKEN_BUDGET, context_length),
+                        )
+                        active_tool_names.update(names_to_activate)
+                        if curated and activation_state is not None:
+                            activation_state["activated_tools"] = merge_activated_tools(
+                                activation_state["activated_tools"], loaded,
+                                catalog=discovery_catalog,
+                                context_length=context_length,
+                            )
+                            activation_state["dirty"] = True
+                        if tool_list_total >= TOOL_LIST_TOTAL_CAP:
+                            suppress_tool_list = True
+                        _loaded_names = sorted(names_to_activate)
+                        _steer = (
+                            f"You already listed '{_norm_cat}' and its complete tool list is "
+                            "above, unchanged — tool_list is not paginated, so there is nothing "
+                            "more to fetch. Its tools are now LOADED and callable: "
+                            f"{', '.join(_loaded_names) or '(none available in this category)'}. "
+                            "Call one of them now, or answer the user. Do NOT call tool_list for "
+                            "this category again."
+                        )
+                        if suppress_tool_list:
+                            _steer += (
+                                " tool_list is now disabled for the rest of this turn; use a tool "
+                                "loaded above, or tool_load(name=…) to load a specific tool by name."
+                            )
+                        payload = {
+                            "listed_before": True,
+                            "category": _norm_cat,
+                            "loaded_tools": _loaded_names,
+                            "note": _steer,
+                        }
+                        if surface_tracker is not None:
+                            _act_count = (
+                                len(activation_state["activated_tools"])
+                                if activation_state is not None
+                                else len(active_tool_names)
+                            )
+                            _payload_as = surface_tracker.activated(_act_count)
+                            if _payload_as is not None:
+                                yield {"agent_surface": _payload_as}
+                        logger.info(
+                            "tool_list loop breaker: category=%s re-listed (total=%d this turn) "
+                            "— auto-loaded %d tool(s)%s",
+                            _norm_cat, tool_list_total, len(_loaded_names),
+                            "; tool_list de-advertised" if suppress_tool_list else "",
+                        )
+                        working.append({
+                            "role": "tool", "tool_call_id": c["id"],
+                            "content": tool_result_content(payload),
+                        })
+                        yield {"tool_call": {
+                            "id": c["id"], "iteration": iteration, "tool": c["name"],
+                            "args": args_obj, "ok": True, "result": payload, "error": None,
+                        }}
+                        continue
+
+                    # First list of this category (within cap) — the complete, deterministic
+                    # enumeration. Deprecated tools LABELED not dropped. No activation, no write.
+                    listed_categories[_norm_cat] = listed_categories.get(_norm_cat, 0) + 1
                     payload = tool_list_result(
                         discovery_catalog or [],
                         category,
@@ -2494,15 +2758,47 @@ async def _stream_with_tools(
                     # would strand the confirm on resume. Protect ui_show_panel's real `args`
                     # param via its schema (generic index for ui_*/propose_*, catalog for
                     # domain confirm tools) — never a bare tool_def=None here.
+                    # Resolve the tool's canonical schema. The by-name map is the
+                    # COMPLETE frontend-tool set (Phase 0), so the two book-scoped
+                    # glossary tools are validated even when this turn didn't
+                    # advertise them (called-but-not-advertised → would otherwise
+                    # fail-open and skip the gate).
                     _fe_def = (
                         cat_index.get(c["name"])
                         or plain_index.get(c["name"])
-                        or generic_frontend_tool_def(c["name"])
+                        or frontend_tool_def_by_name(c["name"])
                     )
+                    _fe_args = _unwrap_wrapped_args(_parse_tool_args(c["arguments"]), _fe_def)
+                    # Phase 0 (frontend-tools → MCP migration) — the MCP-native
+                    # validation seam. A frontend tool used to SUSPEND on its raw
+                    # args with no validation, so a mis-shaped call (the reported
+                    # 019f771a bug: propose_edit with propose_record_edit's args)
+                    # rendered an un-appliable card. Validate against the tool's OWN
+                    # canonical inputSchema — the same enforcement a backend MCP tool
+                    # already gets — and on a mismatch feed the model the standard
+                    # `required: missing properties` signal it knows how to repair,
+                    # instead of suspending. Never suspend an un-appliable card.
+                    _fe_err = validate_frontend_tool_args(c["name"], _fe_args, _fe_def)
+                    if _fe_err is not None:
+                        # A missing-required miss feeds the SAME cross-tool blank/
+                        # invalid-args streak breaker the backend feeds (mirrors the
+                        # reset/increment rule at the backend dispatch site below).
+                        if _MISSING_REQUIRED_ARGS_MARKER in _fe_err:
+                            blank_tool_args_streak += 1
+                        working.append({
+                            "role": "tool", "tool_call_id": c["id"],
+                            "content": tool_result_content({"error": _fe_err}),
+                        })
+                        yield {"tool_call": {
+                            "id": c["id"], "iteration": iteration, "tool": c["name"],
+                            "args": _fe_args, "ok": False, "result": None, "error": _fe_err,
+                        }}
+                        continue
+                    blank_tool_args_streak = 0  # a valid frontend-tool call
                     suspended_call = {
                         "id": c["id"],
                         "name": c["name"],
-                        "args": _unwrap_wrapped_args(_parse_tool_args(c["arguments"]), _fe_def),
+                        "args": _fe_args,
                     }
                     break
                 args_obj = _parse_tool_args(c["arguments"])
@@ -3044,6 +3340,41 @@ async def _stream_with_tools(
                     tool_name=c["name"], tool_args=args_obj,
                     admin_token=admin_token,
                 )
+                # ext-tasks (T1c(3)) — a capability-gated domain tool opened a durable
+                # human gate (returned a task HANDLE, surfaced by mcp_execute_tool as
+                # envelope["task"]). Suspend exactly like a frontend tool, but mark it a
+                # TASK so resume calls the domain's provide-input tool (derived from the
+                # gate tool's provider prefix) instead of a client-side execution. DORMANT
+                # until chat-service declares tasks capability (no task comes back before
+                # then), so this branch never fires on the current stack.
+                _task = envelope.get("task")
+                if _task is not None:
+                    suspended_call = {
+                        "id": c["id"],
+                        "name": c["name"],
+                        "args": args_obj,
+                        "task": _task,
+                    }
+                    break
+                # Phase 2 (P2.2) — propose_edit is now an ai-gateway consumer-local tool
+                # that returns a GATED proposal directive instead of suspending as a
+                # frontend tool. Detect it and suspend with the SAME shape the legacy
+                # frontend-tool suspend created (name=propose_edit, args={operation,text,
+                # rationale}) so the FE's ProposeEditCard + the resume driver work
+                # unchanged. Client-effect gate: no `task` marker → resumed like a
+                # frontend tool (the FE applies the edit + submits applied/dismissed).
+                if c["name"] == "propose_edit" and bool(envelope.get("success")):
+                    from app.services.task_detect import (  # noqa: PLC0415
+                        propose_edit_suspend_args_from_result,
+                    )
+                    _pe_args = propose_edit_suspend_args_from_result(envelope.get("result"))
+                    if _pe_args is not None:
+                        suspended_call = {
+                            "id": c["id"],
+                            "name": "propose_edit",
+                            "args": _pe_args,
+                        }
+                        break
                 ok = bool(envelope.get("success"))
                 # P-1 step-runner — the single backend chokepoint where every rail step tool
                 # executes. Count a success only for a tool the pinned rail actually names, so
@@ -3111,6 +3442,11 @@ async def _stream_with_tools(
                         )
                 else:
                     _tool_content = tool_result_content(tool_payload)
+                # D-CONFIRM-CARD-NUDGE — a minted confirm card is PENDING THE HUMAN; tell
+                # the weak model to stop rather than re-fire the propose tool (double-card)
+                # or apologize for a non-error. Applies to the success payload only.
+                if ok and _is_confirm_card_result(tool_payload):
+                    _tool_content = (_tool_content or "") + _CONFIRM_CARD_STOP_NOTE
                 working.append({
                     "role": "tool", "tool_call_id": c["id"],
                     "content": _tool_content,
@@ -4387,6 +4723,25 @@ async def stream_response(
                     for s in (wf.get("steps") or [])
                     if isinstance(s, dict) and s.get("tool")
                 }
+                # D-DOMAIN-HOTSET-NOT-STICKY — re-seed the domains the RECENT conversation
+                # actually called into, so auto mode stops forgetting the working domain
+                # across turns (the book domain the writer used two turns ago stays hot on a
+                # low-signal follow-up like "Option 3, go with that"). Read-only, bounded
+                # lookback, decays naturally; degrades to no stickiness on any error.
+                _sticky_domains: set[str] = set()
+                try:
+                    from app.services.tool_discovery import engaged_domains_from_tool_calls
+                    _tc_rows = await pool.fetch(
+                        "SELECT tool_calls FROM chat_messages "
+                        "WHERE session_id = $1 AND role = 'assistant' AND tool_calls IS NOT NULL "
+                        "ORDER BY sequence_num DESC LIMIT 8",
+                        session_id,
+                    )
+                    _sticky_domains = engaged_domains_from_tool_calls(
+                        [r["tool_calls"] for r in _tc_rows]
+                    )
+                except Exception:  # noqa: BLE001 — stickiness is best-effort; never break the turn
+                    _sticky_domains = set()
                 discovery_seed_names = discovery_seed_for_surface(
                     discovery_catalog,  # N5a-FULL — seed from the filtered catalog too
                     pins=tool_pins,
@@ -4398,6 +4753,7 @@ async def stream_response(
                     workflow_step_tools=_wf_step_tools,
                     binding_categories=(mode_binding.seed_tool_categories if mode_binding else None),
                     pinned_step_tools=pinned_step_tools,
+                    sticky_domains=_sticky_domains,
                 )
                 # `tool_defs` is the FIRST-pass advertisement when discovery is on;
                 # _stream_with_tools recomputes it each pass (core ∪ extra_fe ∪
@@ -4511,6 +4867,158 @@ async def stream_response(
         rail_async_tools=_turn_async_tools,
     ):
         yield line
+
+
+async def _persist_terminal_assistant(
+    pool: asyncpg.Pool,
+    *,
+    msg_id: str,
+    session_id: str,
+    user_id: str,
+    parent_message_id: str | None,
+    model_ref: str | None,
+    content: str,
+    reasoning: str,
+    tool_calls_history: list[dict] | None,
+    finish_reason: str,
+    is_error: bool,
+    error_detail: str | None,
+) -> bool:
+    """DBT-CHAT-PERSIST — persist an assistant reply that ended WITHOUT a clean
+    finish (an error mid-stream, a user interrupt, or an abandoned/expired
+    frontend-tool suspend) so the streamed content is not lost.
+
+    The normal end-of-turn write (the rich INSERT in `_emit_chat_turn`) only runs
+    on success; this is its terminal-path sibling. Idempotent on `message_id`
+    (ON CONFLICT DO UPDATE) so a double-materialization — e.g. an expired resume
+    AND the sweep both firing — can't duplicate or double-count. Best-effort:
+    never raises (it runs on error/cancel paths that must not add a second
+    failure). Returns True iff a row was written/updated.
+
+    Skips a truly-empty turn (no content and no reasoning and no tool calls): the
+    user message stands alone and a blank assistant bubble would be noise.
+    """
+    if not content and not reasoning and not tool_calls_history:
+        return False
+    parts: dict = {}
+    if reasoning:
+        parts["reasoning"] = reasoning
+        parts["reasoning_length"] = len(reasoning)
+    content_parts = json.dumps(parts) if parts else None
+    tool_calls_json = json.dumps(tool_calls_history) if tool_calls_history else None
+    try:
+        async with pool.acquire() as conn:
+            async with conn.transaction():
+                seq = await conn.fetchval(
+                    "SELECT COALESCE(MAX(sequence_num), 0) + 1 FROM chat_messages "
+                    "WHERE session_id = $1 AND branch_id = 0",
+                    session_id,
+                )
+                row = await conn.fetchrow(
+                    """
+                    INSERT INTO chat_messages
+                      (message_id, session_id, owner_user_id, role, content, content_parts,
+                       sequence_num, model_ref, parent_message_id, branch_id, tool_calls,
+                       is_error, error_detail, finish_reason)
+                    VALUES ($1,$2,$3,'assistant',$4,$5::jsonb,$6,$7,$8,0,$9::jsonb,$10,$11,$12)
+                    ON CONFLICT (message_id) DO UPDATE SET
+                      content = EXCLUDED.content,
+                      content_parts = EXCLUDED.content_parts,
+                      tool_calls = EXCLUDED.tool_calls,
+                      is_error = EXCLUDED.is_error,
+                      error_detail = EXCLUDED.error_detail,
+                      finish_reason = EXCLUDED.finish_reason
+                    RETURNING (xmax = 0) AS inserted
+                    """,
+                    msg_id, session_id, user_id, content, content_parts, seq,
+                    model_ref, parent_message_id, tool_calls_json,
+                    is_error, error_detail, finish_reason,
+                )
+                # Only bump the session counter on a genuine INSERT (xmax=0), never
+                # when ON CONFLICT took the UPDATE branch (already counted).
+                if row is not None and row["inserted"]:
+                    await conn.execute(
+                        "UPDATE chat_sessions SET message_count = message_count + 1, "
+                        "last_message_at = now(), updated_at = now() WHERE session_id = $1",
+                        session_id,
+                    )
+        logger.info(
+            "terminal-persist: saved %s assistant reply for session %s (msg %s, %d chars)",
+            finish_reason, session_id, msg_id, len(content),
+        )
+        return True
+    except Exception:  # noqa: BLE001 — best-effort; runs on error/cancel paths
+        logger.warning(
+            "terminal-persist FAILED for session %s (msg %s, reason=%s)",
+            session_id, msg_id, finish_reason, exc_info=True,
+        )
+        return False
+
+
+async def _materialize_abandoned_suspend(pool: asyncpg.Pool, susp) -> bool:
+    """DBT-CHAT-PERSIST — turn an abandoned frontend-tool suspend (its card
+    expired, or its resume was refused/errored) into a visible 'interrupted'
+    assistant message so the whole turn does not silently vanish on reload.
+
+    Reconstructs the model's visible PROSE from the suspended `working`
+    conversation (a pure tool-call turn often has none); when there is no prose,
+    falls back to the pending tool's rationale (or its name) so the bubble still
+    says *something*. Reuses the same message_id the resume would have written
+    under, so a later successful path stays idempotent. Best-effort."""
+    prose_parts = [
+        m["content"].strip()
+        for m in (susp.working or [])
+        if m.get("role") == "assistant"
+        and isinstance(m.get("content"), str)
+        and m["content"].strip()
+    ]
+    content = "\n\n".join(prose_parts)
+    if not content:
+        pend = susp.pending_tool_call or {}
+        args = pend.get("args") if isinstance(pend.get("args"), dict) else {}
+        rationale = args.get("rationale") if isinstance(args.get("rationale"), str) else None
+        content = (rationale or "").strip() or f"(A “{pend.get('name') or 'change'}” suggestion was proposed here.)"
+    return await _persist_terminal_assistant(
+        pool,
+        msg_id=susp.message_id,
+        session_id=susp.session_id,
+        user_id=susp.owner_user_id,
+        parent_message_id=susp.parent_message_id,
+        model_ref=susp.model_ref,
+        content=content,
+        reasoning="",
+        tool_calls_history=None,
+        finish_reason="interrupted",
+        is_error=False,
+        error_detail=None,
+    )
+
+
+async def _mark_suspend_abandoned(pool: asyncpg.Pool, susp) -> None:
+    """DBT-CHAT-PERSIST — a suspended run is being abandoned (its card expired /
+    the resume was refused). Preferred path: the suspend checkpoint already wrote
+    a rich provisional row ('awaiting_input') for this msg_id — just flip its badge
+    to 'interrupted' so the reply stays (with its prose + tools + the now-dead
+    card) but reads as incomplete. Only if NO provisional exists (the best-effort
+    suspend checkpoint failed) do we reconstruct from `working`. Never clobbers a
+    row that already resolved to 'stop'/'error'/'interrupted'. Best-effort."""
+    try:
+        row = await pool.fetchrow(
+            "SELECT finish_reason FROM chat_messages WHERE message_id = $1",
+            susp.message_id,
+        )
+        if row is None:
+            await _materialize_abandoned_suspend(pool, susp)
+        elif row["finish_reason"] == "awaiting_input":
+            await pool.execute(
+                "UPDATE chat_messages SET finish_reason = 'interrupted' WHERE message_id = $1",
+                susp.message_id,
+            )
+        # else: already resolved — leave it.
+    except Exception:  # noqa: BLE001 — best-effort recovery path
+        logger.warning(
+            "mark-suspend-abandoned failed for msg %s", susp.message_id, exc_info=True,
+        )
 
 
 async def _emit_chat_turn(
@@ -4725,6 +5233,13 @@ async def _emit_chat_turn(
 
     turn_succeeded = False
     post_finish_state: dict | None = None
+    # DBT-CHAT-PERSIST — flips True once the assistant row is durably written (the
+    # clean-finish INSERT below OR a terminal-path write). Guards the error/interrupt
+    # handlers from double-persisting a turn that already saved.
+    _persisted = False
+    # DBT-CHAT-PERSIST — monotonic timestamp of the last in-turn checkpoint (0 = none
+    # yet), used to throttle tool-boundary checkpoints.
+    _last_checkpoint = 0.0
 
     # RAID C2 (DR-C2 §4) + Track D S-SPEND — the per-user allowlist read, handed to
     # the loop as a callable so _stream_with_tools stays DB-free. ``kind`` selects the
@@ -4931,6 +5446,27 @@ async def _emit_chat_turn(
                 if activity is not None:
                     for line in emitter.activity(activity):
                         yield line
+                # DBT-CHAT-PERSIST — checkpoint the turn's progress at this tool
+                # boundary so a later error/interrupt/abandon can't lose the work
+                # already done (the reported failure: a long tool-loop turn that
+                # produced a card, then died before the clean finish). Throttled
+                # + upserts by msg_id; the clean finish overwrites 'streaming' →
+                # 'stop'. Best-effort — _persist_terminal_assistant never raises.
+                _now_ckpt = _time.monotonic()
+                if _now_ckpt - _last_checkpoint >= _CHECKPOINT_MIN_INTERVAL_S:
+                    _last_checkpoint = _now_ckpt
+                    # NB: do NOT set _persisted — the turn isn't finished. The row
+                    # now exists, but the terminal/clean-finish handlers must still
+                    # UPDATE it (upsert by msg_id) to the final finish_reason.
+                    await _persist_terminal_assistant(
+                        pool,
+                        msg_id=msg_id, session_id=session_id, user_id=user_id,
+                        parent_message_id=parent_message_id, model_ref=model_ref,
+                        content="".join(full_content),
+                        reasoning="".join(full_reasoning),
+                        tool_calls_history=tool_calls_history or None,
+                        finish_reason="streaming", is_error=False, error_detail=None,
+                    )
                 continue
             # W1 — tool-schema token measurement from the loop's first pass.
             schema_tokens = chunk_data.get("schema_tokens")
@@ -5024,6 +5560,36 @@ async def _emit_chat_turn(
                 # P-1 — carry the rail's book so the resume can keep driving past the confirm.
                 book_id=(context_ids or {}).get("book_id"),
             )
+            # DBT-CHAT-PERSIST — persist the reply produced UP TO the suspend as a
+            # visible message NOW (prose so far + the completed tools + the pending
+            # card), so a reload during the wait shows it and an abandoned/expired/
+            # refused resume can't lose it — the exact reported failure. Reuses the
+            # shared msg_id, so a successful resume UPSERTs this row to the final
+            # 'stop' reply. finish_reason='awaiting_input' shows NO failure badge
+            # (the card itself is the affordance); if the run is later abandoned the
+            # resume-expired path flips it to 'interrupted'.
+            _pending_record = {
+                "tool": pending.get("name"),
+                "ok": False,
+                "pending": True,
+                "runId": run_id,
+                "toolCallId": pending.get("id"),
+                "args": pending.get("args"),
+            }
+            # ext-tasks (T1c(3.e)) — carry the durable-task info so a reload renders
+            # the confirm card (title/preview from inputRequests). None for a normal
+            # frontend-tool suspend (omitted below), so this is dormant there.
+            if pending.get("task") is not None:
+                _pending_record["task"] = pending["task"]
+            await _persist_terminal_assistant(
+                pool,
+                msg_id=msg_id, session_id=session_id, user_id=user_id,
+                parent_message_id=parent_message_id, model_ref=model_ref,
+                content="".join(full_content),
+                reasoning="".join(full_reasoning),
+                tool_calls_history=[*tool_calls_history, _pending_record],
+                finish_reason="awaiting_input", is_error=False, error_detail=None,
+            )
             # close any open assistant/reasoning message first
             for line in emitter.close_message():
                 yield line
@@ -5036,7 +5602,10 @@ async def _emit_chat_turn(
             for line in emitter.finish(
                 finish, status="suspended",
                 pending={"runId": run_id, "toolCallId": pending["id"],
-                         "toolName": pending["name"]},
+                         "toolName": pending["name"],
+                         # ext-tasks (T1c(3.e)) — the FE reads pendingToolCall.task to
+                         # render the confirm card; absent (None) for a normal suspend.
+                         **({"task": pending["task"]} if pending.get("task") is not None else {})},
             ):
                 yield line
             for line in emitter.done():
@@ -5232,19 +5801,42 @@ async def _emit_chat_turn(
                 # distiller's day-window read excludes it. Persist the flag on BOTH the assistant reply
                 # and its parent user message (the user's own words are the sensitive half).
                 _exclude_mem = bool(canon_capture_ctx and not canon_capture_ctx.grounding_enabled)
-                await conn.execute(
+                # DBT-CHAT-PERSIST — UPSERT, not a plain INSERT. In-turn checkpoints
+                # (each tool boundary + the suspend point) write this same msg_id
+                # with finish_reason='streaming'/'awaiting_input'; the clean finish
+                # OVERWRITES that row with the full reply + 'stop'. sequence_num is
+                # NOT updated (keep the checkpoint's slot). RETURNING (xmax=0) tells
+                # us whether this was a genuine INSERT so message_count is bumped
+                # exactly once (a checkpoint already counted it).
+                _ins_row = await conn.fetchrow(
                     """
                     INSERT INTO chat_messages
                       (message_id, session_id, owner_user_id, role, content, content_parts,
                        sequence_num, input_tokens, output_tokens, model_ref, parent_message_id, branch_id, tool_calls,
-                       context_breakdown, response_id, exclude_from_memory, local_date)
-                    VALUES ($1,$2,$3,'assistant',$4,$5::jsonb,$6,$7,$8,$9,$10, 0, $11::jsonb, $12::jsonb, $13, $14, $15)
+                       context_breakdown, response_id, exclude_from_memory, local_date, finish_reason)
+                    VALUES ($1,$2,$3,'assistant',$4,$5::jsonb,$6,$7,$8,$9,$10, 0, $11::jsonb, $12::jsonb, $13, $14, $15, 'stop')
+                    ON CONFLICT (message_id) DO UPDATE SET
+                      content = EXCLUDED.content,
+                      content_parts = EXCLUDED.content_parts,
+                      input_tokens = EXCLUDED.input_tokens,
+                      output_tokens = EXCLUDED.output_tokens,
+                      model_ref = EXCLUDED.model_ref,
+                      tool_calls = EXCLUDED.tool_calls,
+                      context_breakdown = EXCLUDED.context_breakdown,
+                      response_id = EXCLUDED.response_id,
+                      exclude_from_memory = EXCLUDED.exclude_from_memory,
+                      local_date = EXCLUDED.local_date,
+                      finish_reason = 'stop',
+                      is_error = false,
+                      error_detail = NULL
+                    RETURNING (xmax = 0) AS inserted
                     """,
                     msg_id, session_id, user_id, final_text, content_parts, seq,
                     input_tok, output_tok, model_ref, parent_message_id, tool_calls_json,
                     json.dumps(_ctx_payload), _final_response_id, _exclude_mem,
                     _local_date,  # DBT-11 — bucket by the user's LOCAL day (resolved before acquire)
                 )
+                _did_insert = bool(_ins_row and _ins_row["inserted"])
                 if _exclude_mem and parent_message_id:
                     # The parent user message was persisted earlier (POST /messages) without knowing the
                     # turn's grounding choice; back-fill the flag so the user's own words are excluded too.
@@ -5271,16 +5863,19 @@ async def _emit_chat_turn(
                         artifact.language, artifact.title,
                     )
 
-                # Update session stats
+                # Update session stats. DBT-CHAT-PERSIST — only bump message_count
+                # when this was a genuine INSERT; if an in-turn checkpoint already
+                # created the row it was counted then (the UPSERT took the UPDATE
+                # branch). last_message_at/updated_at refresh either way.
                 await conn.execute(
                     """
                     UPDATE chat_sessions
-                    SET message_count = message_count + 1,
+                    SET message_count = message_count + CASE WHEN $2 THEN 1 ELSE 0 END,
                         last_message_at = now(),
                         updated_at = now()
                     WHERE session_id = $1
                     """,
-                    session_id,
+                    session_id, _did_insert,
                 )
 
                 # K13.2: emit chat.turn_completed outbox event.
@@ -5303,6 +5898,10 @@ async def _emit_chat_turn(
                     """,
                     msg_id, json.dumps(outbox_payload),
                 )
+
+        # DBT-CHAT-PERSIST — the assistant row + its outbox event are committed;
+        # the turn is durable, so the terminal-path handlers must NOT re-persist.
+        _persisted = True
 
         # Send custom data annotation (IDs back to frontend)
         data_payload: dict = {"message_id": msg_id}
@@ -5373,12 +5972,54 @@ async def _emit_chat_turn(
             "last_usage": last_usage,
         }
 
+    except (asyncio.CancelledError, GeneratorExit):
+        # DBT-CHAT-PERSIST — user interrupt / client disconnect. Neither is an
+        # `Exception`, so the handler below never caught them and there is no
+        # `finally`, so the streamed-so-far reply was silently lost. Persist the
+        # partial as an "interrupted" turn so it survives reload with a badge,
+        # then re-raise so cancellation still propagates (never swallow it).
+        #
+        # `shield` so the write completes even though THIS request task is being
+        # cancelled; await-only (no yield) is safe inside GeneratorExit cleanup.
+        if not _persisted:
+            try:
+                await asyncio.shield(
+                    _persist_terminal_assistant(
+                        pool,
+                        msg_id=msg_id, session_id=session_id, user_id=user_id,
+                        parent_message_id=parent_message_id, model_ref=model_ref,
+                        content="".join(full_content),
+                        reasoning="".join(full_reasoning),
+                        tool_calls_history=tool_calls_history,
+                        finish_reason="interrupted", is_error=False, error_detail=None,
+                    )
+                )
+            except BaseException:  # noqa: BLE001 — cleanup must never mask the cancel
+                logger.warning(
+                    "interrupt-persist failed for session %s", session_id, exc_info=True,
+                )
+        raise
+
     except Exception as exc:
         logger.exception("Stream error for session %s", session_id)
         # Sanitize error message — don't leak internal details
         safe_msg = str(exc)
         if any(kw in safe_msg.lower() for kw in ("traceback", "file ", "/usr/", "password", "secret")):
             safe_msg = "An internal error occurred. Please try again."
+        # DBT-CHAT-PERSIST — persist whatever the model already streamed before
+        # the throw so the turn is not lost on reload; is_error marks it and the
+        # FE badges it "incomplete". (Covers the reported case: a mid-turn BE
+        # error on a frontend-tool turn used to drop the whole reply.)
+        if not _persisted:
+            await _persist_terminal_assistant(
+                pool,
+                msg_id=msg_id, session_id=session_id, user_id=user_id,
+                parent_message_id=parent_message_id, model_ref=model_ref,
+                content="".join(full_content),
+                reasoning="".join(full_reasoning),
+                tool_calls_history=tool_calls_history,
+                finish_reason="error", is_error=True, error_detail=safe_msg,
+            )
         for line in emitter.error(safe_msg):
             yield line
 
@@ -5497,10 +6138,23 @@ async def resume_stream_response(
     via the shared _emit_chat_turn. Yields an AG-UI RUN_ERROR if the suspended
     run is missing/expired."""
     from app.services.frontend_tools import frontend_tool_defs
+    from app.db.suspended_runs import load_suspended_run_any
 
     susp = await load_suspended_run(pool, run_id, user_id)
     if susp is None or susp.pending_tool_call.get("id") != tool_call_id:
         # Unknown/expired/mismatched — surface a clean AG-UI error.
+        #
+        # DBT-CHAT-PERSIST — but do NOT let the trapped reply vanish. The run may
+        # be expired (TTL) or its resume otherwise refused; either way the whole
+        # assistant turn (prose + the proposed card) was never written to
+        # chat_messages, so a reload shows nothing. Materialize whatever the
+        # abandoned run still holds into a visible 'interrupted' message first
+        # (works on an EXPIRED row — load_suspended_run_any ignores the TTL),
+        # then drop the dead run so a retry can't double-materialize.
+        abandoned = await load_suspended_run_any(pool, run_id, user_id)
+        if abandoned is not None and abandoned.pending_tool_call.get("id") == tool_call_id:
+            await _mark_suspend_abandoned(pool, abandoned)
+            await delete_suspended_run(pool, run_id)
         emitter = make_emitter(stream_format, thread_id=session_id, message_id=str(uuid4()))
         for line in emitter.open_run():
             yield line
@@ -5522,7 +6176,11 @@ async def resume_stream_response(
         isinstance(_approval_args, dict)
         and _approval_args.get("kind") == "tool_approval"
     )
-    if not is_approval:
+    # ext-tasks (T1c(3.c)) — a durable-gate suspend (step b marked pending["task"]).
+    # Like an approval, its tool result is the REAL execution (call the domain's
+    # provide-input tool below once knowledge_client is in scope), NOT the outcome echo.
+    is_task = (not is_approval) and bool(susp.pending_tool_call.get("task"))
+    if not is_approval and not is_task:
         if result is not None:
             # MCP fan-out (C-NAV): a ui_* nav resolve — feed the structured result
             # (e.g. {"navigated": true}) back verbatim as the tool result.
@@ -5595,6 +6253,31 @@ async def resume_stream_response(
     )
 
     knowledge_client = get_knowledge_client()
+
+    # ext-tasks (T1c(3.c)) — resume-DRIVE the durable gate: on the human's decision,
+    # call the domain's provide-input tool (the gate ACCEPT runs the real write there
+    # and returns {status, result}); feed that back as the tool result so the 2nd pass
+    # acknowledges the REAL outcome. The provide-input tool is domain-unique
+    # (<prefix>_task_provide_input, gateway-routable — see the routing fix), derived from
+    # the gate tool's provider prefix. Accept outcomes confirm; anything else declines.
+    if is_task:
+        _task = susp.pending_tool_call.get("task") or {}
+        _gate = str(susp.pending_tool_call.get("name") or "")
+        _provide_tool = (_gate.split("_", 1)[0] + "_task_provide_input") if "_" in _gate else "task_provide_input"
+        _accepted = outcome in (
+            "applied_saved", "action_done", "accept", "applied", "approved_once", "confirmed",
+        )
+        _tenv = await knowledge_client.mcp_execute_tool(
+            user_id=user_id, session_id=session_id, project_id=project_id,
+            tool_name=_provide_tool,
+            tool_args={"task_id": _task.get("taskId"), "accepted": _accepted},
+            admin_token=admin_token,
+        )
+        _tres = _tenv.get("result") if _tenv.get("success") else {"error": _tenv.get("error")}
+        working.append({
+            "role": "tool", "tool_call_id": tool_call_id,
+            "content": tool_result_content(_tres if _tres is not None else {}),
+        })
 
     # RAID C2 (DR-C2 §4) — act on the approval outcome BEFORE the 2nd pass:
     #   approved_once   → execute the tool now; feed its REAL result back.
@@ -5928,6 +6611,50 @@ async def _fire_executive_tick(
         logger.warning("executive tick failed for session %s", session_id, exc_info=True)
 
 
+# Phrases a title-gen model echoes instead of producing a title — the prompt
+# leaking back ("The system instruction says…", "Generate a concise title…") or
+# a refusal. A candidate containing one is rejected outright.
+_TITLE_ECHO_MARKERS = (
+    "generate a concise title",
+    "the system instruction",
+    "here is the title",
+    "here's the title",
+    "title:",
+    "as an ai",
+    "i cannot",
+)
+# Leading list/enumeration/markdown noise a model prepends: "4.", "1)", "- ",
+# "* ", "#", "> ", a bullet glyph.
+_TITLE_LEADING_NOISE = __import__("re").compile(r"^\s*(?:[-*#>•·]+|\d+[.)])\s*")
+
+
+def _sanitize_title(raw: str) -> str:
+    """Turn a raw title-gen output into a usable title, or "" if it is
+    degenerate. Fixes the live bug where a model emitting ``"4."``, ``"* Eerie
+    Lighthouse…"`` or the prompt echo was saved verbatim as the chat title.
+
+    Rules: first non-empty line only; strip leading list/number/markdown markers
+    and wrapping quotes/emphasis; reject an echo of the prompt, a pure
+    punctuation/number fragment, or anything under 2 words."""
+    if not raw:
+        return ""
+    line = next((l.strip() for l in raw.splitlines() if l.strip()), "")
+    prev = None
+    while line != prev:  # peel repeatedly: "* 1. Title" -> "Title"
+        prev = line
+        line = _TITLE_LEADING_NOISE.sub("", line)
+        line = line.strip().strip("`*_\"'").strip()
+    line = " ".join(line.split())
+    low = line.lower()
+    if any(m in low for m in _TITLE_ECHO_MARKERS):
+        return ""
+    # must carry real words: >= 2 whitespace-separated tokens with a letter
+    word_tokens = [t for t in line.split() if any(c.isalpha() for c in t)]
+    if len(word_tokens) < 2:
+        return ""
+    return line if len(line) <= 100 else ""
+
+
 async def _auto_generate_title(
     session_id: str,
     user_id: str,
@@ -5981,10 +6708,11 @@ async def _auto_generate_title(
         raw_content = "".join(content_parts).strip()
         raw_reasoning = "".join(reasoning_parts).strip()
 
-        # Prefer content; fall back to last meaningful line of reasoning.
-        if raw_content:
-            title = raw_content.strip().strip('"').strip("'")
-        elif raw_reasoning:
+        # Prefer content; fall back to the last meaningful line of reasoning.
+        # Both run through _sanitize_title, which strips list/markdown noise and
+        # REJECTS a degenerate candidate (the "4." / prompt-echo bug) → "".
+        title = _sanitize_title(raw_content)
+        if not title and raw_reasoning:
             lines = [
                 l.strip()
                 for l in raw_reasoning.split("\n")
@@ -5992,11 +6720,9 @@ async def _auto_generate_title(
                 and not l.strip().startswith("Okay")
                 and not l.strip().startswith("Let me")
             ]
-            title = lines[-1].strip().strip('"').strip("'") if lines else ""
-        else:
-            title = ""
+            title = _sanitize_title(lines[-1]) if lines else ""
 
-        if title and len(title) <= 100:
+        if title:  # _sanitize_title already enforced len <= 100 + non-degenerate
             await pool.execute(
                 """
                 UPDATE chat_sessions SET title = $2, updated_at = now()

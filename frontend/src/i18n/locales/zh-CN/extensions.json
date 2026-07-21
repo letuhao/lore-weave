@@ -12,6 +12,7 @@
     "ingest": "注册表源"
   },
   "quota": {
+    "unavailable": "用量不可用",
     "skills": "技能",
     "mcp": "MCP 服务器",
     "proposals": "提案"

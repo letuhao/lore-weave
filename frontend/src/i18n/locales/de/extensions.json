@@ -12,6 +12,7 @@
     "ingest": "Registry-Quellen"
   },
   "quota": {
+    "unavailable": "Nutzung nicht verfügbar",
     "skills": "Fähigkeiten",
     "mcp": "MCP-Server",
     "proposals": "Vorschläge"

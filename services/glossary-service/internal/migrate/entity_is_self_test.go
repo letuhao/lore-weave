@@ -7,6 +7,10 @@ package migrate
 // second "me"). The unique EXEMPTS soft-deleted tombstones so a delete never locks the book out.
 //
 // Runs on its own ephemeral DB. Needs GLOSSARY_TEST_DB_URL.
+//
+// db-safety-gate: file-ok — the DROP DATABASE statements target a THROWAWAY ephemeral DB
+// this test CREATEs itself (unique name + PID) via CREATE DATABASE and drops on cleanup;
+// they never target the DB named in GLOSSARY_TEST_DB_URL (safe by construction).
 
 import (
 	"context"

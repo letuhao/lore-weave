@@ -334,7 +334,10 @@ export async function runChatStream(
               // the tool_calls JSONB). AssistantMessage reads it to auto-render a
               // confirm card when a class-C propose tool minted a confirm_token but
               // the model never called the frontend confirm tool.
-              const record: ToolCallRecord = { tool, ok, result };
+              // toolCallId is carried so a result-consumer can dedupe by it — e.g.
+              // useUiToolExecutor's ui-directive path acts on a ui_* result AT MOST
+              // once (Phase 3 cutover; without the id it could never key idempotency).
+              const record: ToolCallRecord = { tool, ok, result, toolCallId: e.toolCallId };
               accumulatedToolCalls.push(record);
               cb.onToolCall?.(record);
               break;
@@ -415,7 +418,13 @@ export async function runChatStream(
               const result = (event as RunFinishedEvent).result as
                 | (RunFinishedEvent['result'] & {
                     status?: string;
-                    pendingToolCall?: { runId: string; toolCallId: string; toolName: string };
+                    pendingToolCall?: {
+                      runId: string;
+                      toolCallId: string;
+                      toolName: string;
+                      // ext-tasks (T1c(3)) — present when the domain opened a durable gate.
+                      task?: { taskId: string; status: string; inputRequests?: Record<string, unknown> | null };
+                    };
                   })
                 | undefined;
               streamUsage = result?.usage || {};
@@ -439,6 +448,9 @@ export async function runChatStream(
                   runId: p.runId,
                   toolCallId: p.toolCallId,
                   args: parsedArgs,
+                  // ext-tasks (T1c(3)) — carry the durable-task info so the FE renders a
+                  // confirm card (TaskConfirmCard) from task.inputRequests.
+                  ...(p.task ? { task: p.task } : {}),
                 };
                 accumulatedToolCalls.push(record);
                 cb.onToolCall?.(record);
@@ -484,6 +496,11 @@ export function assembleAssistantMessage(
   result: ChatStreamResult,
   sessionId: string,
   sequenceNum: number,
+  // DBT-CHAT-PERSIST — 'interrupted' | 'error' when the turn was stopped/failed,
+  // so the seamlessly-appended bubble carries the incomplete badge immediately
+  // (the backend also persists it, but that refetch races the append). Defaults
+  // to 'stop' (a clean completion).
+  finishReason: 'stop' | 'interrupted' | 'error' = 'stop',
 ): ChatMessage {
   return {
     message_id: result.messageId || `done-${Date.now()}`,
@@ -505,8 +522,9 @@ export function assembleAssistantMessage(
     input_tokens: result.usage.promptTokens ?? null,
     output_tokens: result.usage.completionTokens ?? null,
     model_ref: null,
-    is_error: false,
+    is_error: finishReason === 'error',
     error_detail: null,
+    finish_reason: finishReason,
     parent_message_id: null,
     created_at: new Date().toISOString(),
     // K21-C (D2): attach the accumulated tool calls so the ToolCallIndicator

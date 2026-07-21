@@ -21,6 +21,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"strings"
@@ -38,6 +39,7 @@ const (
 	descBookPublish = "book.publish" // chapter publish / unpublish
 	descBookDelete  = "book.delete"  // book/chapter delete (trash) + purge
 	descBookMedia   = "book.media"   // priced: set_cover / media_generate / audio_generate
+	descBookMeta    = "book.meta"    // book metadata edit (title/description/summary/lang/genre) — diff-carded
 )
 
 // actionTokenTTL — the human has time to read the card and confirm.
@@ -47,9 +49,36 @@ const actionTokenTTL = 10 * time.Minute
 // the precise operation so confirm can re-validate + execute without trusting a
 // re-supplied arg. op disambiguates within a descriptor (e.g. publish vs unpublish).
 type actionPayload struct {
-	Op          string `json:"op"`                     // publish|unpublish|delete_book|delete_chapter|purge_book|purge_chapter|set_cover|media_generate|audio_generate
+	Op          string `json:"op"`                     // publish|unpublish|delete_book|delete_chapter|purge_book|purge_chapter|set_cover|media_generate|audio_generate|update_meta
 	ChapterID   string `json:"chapter_id,omitempty"`   // chapter-scoped ops
 	EstimateUSD string `json:"estimate_usd,omitempty"` // priced ops — shown on the card
+	// update_meta (book.meta) — the new field values captured at propose time so the
+	// confirm re-applies WITHOUT trusting a re-supplied arg (same discipline as the
+	// other ops), plus the base version for optimistic concurrency (I7).
+	Meta *metaEdit `json:"meta,omitempty"`
+}
+
+// metaEdit carries a book_update_details proposal: only the fields the caller is
+// changing are set (nil = unchanged). BaseVersion is books.updated_at at propose
+// time; the confirm UPDATE is guarded on it so a concurrent edit → conflict, not a
+// silent clobber.
+type metaEdit struct {
+	BaseVersion      string    `json:"base_version"`
+	Title            *string   `json:"title,omitempty"`
+	Description      *string   `json:"description,omitempty"`
+	OriginalLanguage *string   `json:"original_language,omitempty"`
+	Summary          *string   `json:"summary,omitempty"`
+	GenreTags        *[]string `json:"genre_tags,omitempty"`
+}
+
+// recordEditChange is one row of the server-built diff card (old→new per field).
+// Mirror of the FE RecordEditChange the diff card already renders. The agent never
+// constructs this — the server builds it from current values + the proposal.
+type recordEditChange struct {
+	FieldLabel string `json:"field_label"`
+	OldValue   string `json:"old_value"`
+	NewValue   string `json:"new_value"`
+	Target     string `json:"target"`
 }
 
 // confirmCardOut is the propose result fed to the LLM and rendered by the FE
@@ -63,6 +92,10 @@ type confirmCardOut struct {
 	Destructive  bool   `json:"destructive"`
 	EstimateUSD  string `json:"estimate_usd,omitempty"`
 	ExpiresAt    string `json:"expires_at"`
+	// Changes — when present, this is a DIFF card (book_update_details): the FE renders
+	// the old→new rows and confirms via the same book confirm endpoint. Absent for a
+	// plain yes/no confirm (delete/publish/purge).
+	Changes []recordEditChange `json:"changes,omitempty"`
 }
 
 // mintBookActionCard mints a kit confirm token bound to user+resource(book)+
@@ -82,43 +115,67 @@ func (s *Server) mintBookActionCard(userID, bookID uuid.UUID, descriptor, title 
 
 // registerActionProposeTools registers the Tier-W propose tools on the MCP
 // server. Each is tier=W, scope=book; each MINTS only.
+//
+// book_chapter_delete additionally supports the ext-tasks DURABLE GATE (spec
+// docs/specs/2026-07-19-mcp-tasks-durable-gate.md, T3c): a tasks-capable client
+// gets a durable input_required TASK (held in `actionTasks`) instead of a
+// confirm_token, and drives it to completion via the `book_task_provide_input`
+// tool — the executor runs the SAME trash transition the confirm route would,
+// after re-binding the caller + re-checking the grant (defense-in-depth parity
+// with confirmBookAction). A non-tasks client is unchanged (confirm_token). The
+// store is per-server-instance in-memory; it persists across the propose and
+// provide-input calls because NewStatelessHandler returns one *mcp.Server for the
+// process (multi-replica ⇒ a persistent TaskStore, deferred: D-MCPTASKS-GO-STORE).
 func (s *Server) registerActionProposeTools(srv *mcp.Server) {
+	// The durable-gate store, bound to a resolver registry (descriptor → the write to
+	// run on accept). The store persists only DATA ({descriptor, ownerUserID, payload});
+	// the resolver is reconstructed by descriptor. PERSISTENT (Postgres `mcp_gate_tasks`)
+	// so a propose on one replica + its accept on another (or after a restart/deploy)
+	// resolve the same task exactly once (D-MCPTASKS-GO-STORE). book_chapter_delete's
+	// resolver re-binds the caller + re-checks the grant (confirmBookAction parity).
+	// One DISPATCHING resolver serves every book write descriptor (delete/trash/purge
+	// via descBookDelete; publish/unpublish via descBookPublish) — it switches on the
+	// payload op and calls the SAME underlying logic the /actions/confirm effects run.
+	actionTasks := NewPgTaskStore(s.pool, lwmcp.TaskResolverRegistry{
+		descBookDelete:  s.resolveBookAction,
+		descBookPublish: s.resolveBookAction,
+	})
+
 	addTool(srv, "book_chapter_publish",
 		"Propose PUBLISHING a chapter (snapshot the draft as canon). High-impact: "+
 			"returns a confirm_token + card a human must confirm — it does NOT publish. "+
 			"Pass the confirm_token to confirm_action (domain=book).",
 		lwmcp.NewToolMeta(lwmcp.TierW, lwmcp.ScopeBook, nil, []string{"publish", "canonize", "make canon"}),
-		s.toolProposePublish)
+		s.toolProposePublishGated(actionTasks))
 
 	addTool(srv, "book_chapter_unpublish",
 		"Propose UNPUBLISHING a chapter (revert canon → draft). Returns a "+
 			"confirm_token + card a human must confirm via confirm_action (domain=book).",
 		lwmcp.NewToolMeta(lwmcp.TierW, lwmcp.ScopeBook, nil, []string{"unpublish", "revert canon", "withdraw"}),
-		s.toolProposeUnpublish)
+		s.toolProposeUnpublishGated(actionTasks))
 
-	addTool(srv, "book_delete",
-		"Propose DELETING a book (move to trash; recoverable until purge). Returns "+
-			"a confirm_token + card a human must confirm via confirm_action (domain=book).",
-		lwmcp.NewToolMeta(lwmcp.TierW, lwmcp.ScopeBook, nil, []string{"delete book", "trash book", "remove book"}),
-		s.toolProposeBookDelete)
+	// book_delete (agent-proposed book trash) REMOVED 2026-07-19 — deleting a whole
+	// book is not an agent-invocable capability. Users delete a book directly via the
+	// GUI (DELETE /v1/books/{id}); the agent has no path to it. The confirm-side
+	// `delete_book` op remains defensively unreachable (no tool mints its token).
 
 	addTool(srv, "book_chapter_delete",
 		"Propose DELETING a chapter (move to trash; recoverable until purge). "+
 			"Returns a confirm_token + card a human must confirm via confirm_action.",
 		lwmcp.NewToolMeta(lwmcp.TierW, lwmcp.ScopeBook, nil, []string{"delete chapter", "trash chapter", "remove chapter"}),
-		s.toolProposeChapterDelete)
+		s.toolProposeChapterDelete(actionTasks))
 
 	addTool(srv, "book_purge",
 		"Propose PERMANENTLY purging a trashed book (irreversible). Returns a "+
 			"confirm_token + card a human must explicitly confirm via confirm_action.",
 		lwmcp.NewToolMeta(lwmcp.TierW, lwmcp.ScopeBook, nil, []string{"purge book", "permanently delete book"}),
-		s.toolProposeBookPurge)
+		s.toolProposeBookPurgeGated(actionTasks))
 
 	addTool(srv, "book_chapter_purge",
 		"Propose PERMANENTLY purging a trashed chapter (irreversible). Returns a "+
 			"confirm_token + card a human must explicitly confirm via confirm_action.",
 		lwmcp.NewToolMeta(lwmcp.TierW, lwmcp.ScopeBook, nil, []string{"purge chapter", "permanently delete chapter"}),
-		s.toolProposeChapterPurge)
+		s.toolProposeChapterPurgeGated(actionTasks))
 
 	addTool(srv, "book_set_cover",
 		"Propose generating/replacing a book cover image (priced). Returns a "+
@@ -137,6 +194,18 @@ func (s *Server) registerActionProposeTools(srv *mcp.Server) {
 			"confirm_token + cost estimate a human must confirm via confirm_action.",
 		lwmcp.NewToolMeta(lwmcp.TierW, lwmcp.ScopeBook, nil, []string{"audio", "narration", "tts", "read aloud"}),
 		s.toolProposeAudioGenerate)
+
+	// The input step for the durable gate (book_chapter_delete on a tasks-capable
+	// client). Gateway-routed by name → the `book` prefix is required. The callerID
+	// wrapper lets the kit owner-check BOTH accept + decline (the resolver only re-binds
+	// on accept), so a stranger can't cancel another user's gate.
+	lwmcp.RegisterTaskProvideInput(srv, actionTasks, "book", func(ctx context.Context) (string, bool) {
+		u, ok := mcpUserID(ctx)
+		if !ok {
+			return "", false
+		}
+		return u.String(), true
+	})
 }
 
 // ── propose tool args ─────────────────────────────────────────────────────────
@@ -176,39 +245,214 @@ func (s *Server) proposeChapterAction(ctx context.Context, in chapterActionIn, n
 	return s.mintBookActionCard(userID, bookID, descriptor, title, actionPayload{Op: op, ChapterID: chID.String()}, destructive)
 }
 
-func (s *Server) proposeBookAction(ctx context.Context, in bookActionIn, need GrantLevel, descriptor, op, title string, destructive bool) (*mcp.CallToolResult, confirmCardOut, error) {
+// ── durable-gate propose helpers (M3) — the write actions (publish/unpublish/
+// delete/purge) run task-shaped: GateOrConfirm returns a durable input_required TASK
+// for a tasks-capable client, else the SAME confirm_token card (no regression). The
+// mint is kept as the fallback (side-effect-free HMAC). Priced tools (set_cover/media/
+// audio) keep the plain mint path — their "confirm" only opens the UI, nothing to gate. ──
+
+func (s *Server) proposeChapterActionGated(ctx context.Context, meta lwmcp.Meta, store lwmcp.TaskStore, in chapterActionIn, need GrantLevel, descriptor, op, title string, destructive bool) (*mcp.CallToolResult, any, error) {
 	userID, ok := mcpUserID(ctx)
 	if !ok {
-		return nil, confirmCardOut{}, errMissingIdentity
+		return nil, nil, errMissingIdentity
 	}
 	bookID, err := uuid.Parse(in.BookID)
 	if err != nil {
-		return nil, confirmCardOut{}, errors.New("book_id must be a UUID")
+		return nil, nil, errors.New("book_id must be a UUID")
+	}
+	chID, err := uuid.Parse(in.ChapterID)
+	if err != nil {
+		return nil, nil, errors.New("chapter_id must be a UUID")
 	}
 	if _, err := s.mcpRequireGrant(ctx, bookID, userID, need); err != nil {
-		return nil, confirmCardOut{}, mcpOwnershipError(err)
+		return nil, nil, mcpOwnershipError(err)
 	}
-	return s.mintBookActionCard(userID, bookID, descriptor, title, actionPayload{Op: op}, destructive)
+	var exists bool
+	if err := s.pool.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM chapters WHERE id=$1 AND book_id=$2 AND lifecycle_state!='purge_pending')`, chID, bookID).Scan(&exists); err != nil || !exists {
+		return nil, nil, errBookNotAccessible
+	}
+	_, card, cerr := s.mintBookActionCard(userID, bookID, descriptor, title, actionPayload{Op: op, ChapterID: chID.String()}, destructive)
+	if cerr != nil {
+		return nil, nil, cerr
+	}
+	payload := map[string]any{"op": op, "book_id": bookID.String(), "chapter_id": chID.String()}
+	inputRequests := map[string]any{
+		"descriptor": descriptor, "op": op, "title": title, "domain": "book",
+		"book_id": bookID.String(), "chapter_id": chID.String(), "destructive": destructive,
+	}
+	out, err := lwmcp.GateOrConfirm(ctx, meta, store, descriptor, userID.String(), payload, inputRequests, func() any { return card }, 0)
+	if err != nil {
+		return nil, nil, err
+	}
+	return nil, out, nil
 }
 
-func (s *Server) toolProposePublish(ctx context.Context, _ *mcp.CallToolRequest, in chapterActionIn) (*mcp.CallToolResult, confirmCardOut, error) {
-	return s.proposeChapterAction(ctx, in, GrantEdit, descBookPublish, "publish", "Publish chapter (canonize)", false)
+func (s *Server) proposeBookActionGated(ctx context.Context, meta lwmcp.Meta, store lwmcp.TaskStore, in bookActionIn, need GrantLevel, descriptor, op, title string, destructive bool) (*mcp.CallToolResult, any, error) {
+	userID, ok := mcpUserID(ctx)
+	if !ok {
+		return nil, nil, errMissingIdentity
+	}
+	bookID, err := uuid.Parse(in.BookID)
+	if err != nil {
+		return nil, nil, errors.New("book_id must be a UUID")
+	}
+	if _, err := s.mcpRequireGrant(ctx, bookID, userID, need); err != nil {
+		return nil, nil, mcpOwnershipError(err)
+	}
+	_, card, cerr := s.mintBookActionCard(userID, bookID, descriptor, title, actionPayload{Op: op}, destructive)
+	if cerr != nil {
+		return nil, nil, cerr
+	}
+	payload := map[string]any{"op": op, "book_id": bookID.String()}
+	inputRequests := map[string]any{
+		"descriptor": descriptor, "op": op, "title": title, "domain": "book",
+		"book_id": bookID.String(), "destructive": destructive,
+	}
+	out, err := lwmcp.GateOrConfirm(ctx, meta, store, descriptor, userID.String(), payload, inputRequests, func() any { return card }, 0)
+	if err != nil {
+		return nil, nil, err
+	}
+	return nil, out, nil
 }
-func (s *Server) toolProposeUnpublish(ctx context.Context, _ *mcp.CallToolRequest, in chapterActionIn) (*mcp.CallToolResult, confirmCardOut, error) {
-	return s.proposeChapterAction(ctx, in, GrantEdit, descBookPublish, "unpublish", "Unpublish chapter (revert canon)", false)
+
+// (publish/unpublish/purge propose tools are now the *Gated durable-gate variants
+// below — the old mint-only versions were retired in M3.)
+
+// toolProposeChapterDelete is the ext-tasks DURABLE-GATE variant of a KIND-C
+// propose tool (T3c). Propose-time it resolves identity + checks the grant +
+// verifies the chapter exists (exactly like proposeChapterAction). Then
+// GateOrConfirm branches on the client's declared capability: a tasks-capable
+// client gets a durable input_required task whose executor performs the trash
+// transition on accept; every other client gets today's confirm_token card
+// (proposeChapterAction's exact result), so nothing is stranded. The Out is `any`
+// because the two branches return different shapes (a task handle vs a card).
+func (s *Server) toolProposeChapterDelete(store lwmcp.TaskStore) func(context.Context, *mcp.CallToolRequest, chapterActionIn) (*mcp.CallToolResult, any, error) {
+	return func(ctx context.Context, req *mcp.CallToolRequest, in chapterActionIn) (*mcp.CallToolResult, any, error) {
+		return s.proposeChapterActionGated(ctx, req.Params.Meta, store, in, GrantEdit,
+			descBookDelete, "delete_chapter", "Delete chapter (move to trash)", true)
+	}
 }
-func (s *Server) toolProposeBookDelete(ctx context.Context, _ *mcp.CallToolRequest, in bookActionIn) (*mcp.CallToolResult, confirmCardOut, error) {
-	// Book-level lifecycle is owner-only (E0-2).
-	return s.proposeBookAction(ctx, in, GrantOwner, descBookDelete, "delete_book", "Delete book (move to trash)", true)
+
+func (s *Server) toolProposePublishGated(store lwmcp.TaskStore) func(context.Context, *mcp.CallToolRequest, chapterActionIn) (*mcp.CallToolResult, any, error) {
+	return func(ctx context.Context, req *mcp.CallToolRequest, in chapterActionIn) (*mcp.CallToolResult, any, error) {
+		return s.proposeChapterActionGated(ctx, req.Params.Meta, store, in, GrantEdit,
+			descBookPublish, "publish", "Publish chapter (canonize)", false)
+	}
 }
-func (s *Server) toolProposeChapterDelete(ctx context.Context, _ *mcp.CallToolRequest, in chapterActionIn) (*mcp.CallToolResult, confirmCardOut, error) {
-	return s.proposeChapterAction(ctx, in, GrantEdit, descBookDelete, "delete_chapter", "Delete chapter (move to trash)", true)
+
+func (s *Server) toolProposeUnpublishGated(store lwmcp.TaskStore) func(context.Context, *mcp.CallToolRequest, chapterActionIn) (*mcp.CallToolResult, any, error) {
+	return func(ctx context.Context, req *mcp.CallToolRequest, in chapterActionIn) (*mcp.CallToolResult, any, error) {
+		return s.proposeChapterActionGated(ctx, req.Params.Meta, store, in, GrantEdit,
+			descBookPublish, "unpublish", "Unpublish chapter (revert canon → draft)", false)
+	}
 }
-func (s *Server) toolProposeBookPurge(ctx context.Context, _ *mcp.CallToolRequest, in bookActionIn) (*mcp.CallToolResult, confirmCardOut, error) {
-	return s.proposeBookAction(ctx, in, GrantOwner, descBookDelete, "purge_book", "Permanently purge book (irreversible)", true)
+
+func (s *Server) toolProposeChapterPurgeGated(store lwmcp.TaskStore) func(context.Context, *mcp.CallToolRequest, chapterActionIn) (*mcp.CallToolResult, any, error) {
+	return func(ctx context.Context, req *mcp.CallToolRequest, in chapterActionIn) (*mcp.CallToolResult, any, error) {
+		return s.proposeChapterActionGated(ctx, req.Params.Meta, store, in, GrantManage,
+			descBookDelete, "purge_chapter", "Permanently purge chapter (irreversible)", true)
+	}
 }
-func (s *Server) toolProposeChapterPurge(ctx context.Context, _ *mcp.CallToolRequest, in chapterActionIn) (*mcp.CallToolResult, confirmCardOut, error) {
-	return s.proposeChapterAction(ctx, in, GrantManage, descBookDelete, "purge_chapter", "Permanently purge chapter (irreversible)", true)
+
+func (s *Server) toolProposeBookPurgeGated(store lwmcp.TaskStore) func(context.Context, *mcp.CallToolRequest, bookActionIn) (*mcp.CallToolResult, any, error) {
+	return func(ctx context.Context, req *mcp.CallToolRequest, in bookActionIn) (*mcp.CallToolResult, any, error) {
+		return s.proposeBookActionGated(ctx, req.Params.Meta, store, in, GrantOwner,
+			descBookDelete, "purge_book", "Permanently purge book (irreversible)", true)
+	}
+}
+
+// grantForOp is the grant level a book action's ACCEPT re-checks (defense-in-depth,
+// derived from the op so the resolver never trusts a weaker level than propose-time).
+func grantForOp(op string) GrantLevel {
+	switch op {
+	case "purge_book", "delete_book":
+		return GrantOwner
+	case "purge_chapter":
+		return GrantManage
+	default: // publish, unpublish, delete_chapter
+		return GrantEdit
+	}
+}
+
+// resolveBookAction is the durable-gate resolver for ALL book write descriptors
+// (descBookDelete / descBookPublish), registered at startup. It runs ONLY on accept,
+// reconstructed on any replica from the persisted {ownerUserID, payload} — no closure. It
+// re-binds the caller to the proposing user + re-checks the op-appropriate grant
+// (confirmBookAction defense-in-depth: the accept arrives on a later request, the grant may
+// have been revoked meanwhile). The task single-winner guard = single-use (consumeBookActionToken
+// equivalent). It dispatches by op to the SAME underlying logic the /actions/confirm effects run.
+func (s *Server) resolveBookAction(exctx context.Context, ownerUserID string, payload map[string]any, _ map[string]any) (any, error) {
+	caller, ok := mcpUserID(exctx)
+	if !ok || caller.String() != ownerUserID {
+		return nil, errBookNotAccessible // caller-binding parity with claims.UserID==caller
+	}
+	owner, err := uuid.Parse(ownerUserID)
+	if err != nil {
+		return nil, errBookNotAccessible
+	}
+	bookID, err := uuid.Parse(asString(payload["book_id"]))
+	if err != nil {
+		return nil, errors.New("book_id must be a UUID")
+	}
+	op := asString(payload["op"])
+	if _, err := s.mcpRequireGrant(exctx, bookID, owner, grantForOp(op)); err != nil {
+		return nil, mcpOwnershipError(err)
+	}
+	chapter := func() (uuid.UUID, error) { return uuid.Parse(asString(payload["chapter_id"])) }
+	switch op {
+	case "publish":
+		chID, err := chapter()
+		if err != nil {
+			return nil, errors.New("chapter_id must be a UUID")
+		}
+		revID, counts, perr := s.mcpPublishChapter(exctx, owner, bookID, chID)
+		if perr != nil {
+			return nil, perr
+		}
+		return map[string]any{"outcome": "action_done", "op": "publish", "book_id": bookID.String(),
+			"chapter_id": chID.String(), "revision_id": revID.String(), "reparse": counts}, nil
+	case "unpublish":
+		chID, err := chapter()
+		if err != nil {
+			return nil, errors.New("chapter_id must be a UUID")
+		}
+		if perr := s.mcpUnpublishChapter(exctx, bookID, chID); perr != nil {
+			return nil, perr
+		}
+		return map[string]any{"outcome": "action_done", "op": "unpublish",
+			"book_id": bookID.String(), "chapter_id": chID.String()}, nil
+	case "delete_chapter", "purge_chapter":
+		chID, err := chapter()
+		if err != nil {
+			return nil, errors.New("chapter_id must be a UUID")
+		}
+		target := "trashed"
+		if op == "purge_chapter" {
+			target = "purge_pending"
+		}
+		if err := s.mcpTransitionChapter(exctx, bookID, chID, target); err != nil {
+			return nil, err
+		}
+		return map[string]any{"outcome": "action_done", "op": op,
+			"book_id": bookID.String(), "chapter_id": chID.String()}, nil
+	case "delete_book", "purge_book":
+		target := "trashed"
+		if op == "purge_book" {
+			target = "purge_pending"
+		}
+		if err := s.mcpTransitionBook(exctx, bookID, target); err != nil {
+			return nil, err
+		}
+		return map[string]any{"outcome": "action_done", "op": op, "book_id": bookID.String()}, nil
+	default:
+		return nil, errors.New("op does not match descriptor")
+	}
+}
+
+// asString reads a string field from a payload map (empty string if absent/non-string).
+func asString(v any) string {
+	s, _ := v.(string)
+	return s
 }
 
 // Priced ops — mint a token + a (placeholder) estimate. Execution of the actual
@@ -405,6 +649,8 @@ func (s *Server) executeBookAction(w http.ResponseWriter, r *http.Request, userI
 		s.effectPublish(w, ctx, userID, bookID, p)
 	case descBookDelete:
 		s.effectDelete(w, ctx, bookID, p)
+	case descBookMeta:
+		s.effectUpdateMeta(w, ctx, bookID, p)
 	case descBookMedia:
 		// Op-whitelist symmetry with effectPublish/effectDelete: a media token may
 		// only carry a priced media op. Reject anything else (the confused-deputy
@@ -487,6 +733,88 @@ func (s *Server) effectDelete(w http.ResponseWriter, ctx context.Context, bookID
 	default:
 		writeError(w, http.StatusUnprocessableEntity, "BOOK_ACTION_TOKEN", "op does not match descriptor")
 	}
+}
+
+// effectUpdateMeta applies a confirmed book_update_details diff (descBookMeta).
+func (s *Server) effectUpdateMeta(w http.ResponseWriter, ctx context.Context, bookID uuid.UUID, p actionPayload) {
+	if p.Op != "update_meta" {
+		writeError(w, http.StatusUnprocessableEntity, "BOOK_ACTION_TOKEN", "op does not match descriptor")
+		return
+	}
+	updated, err := s.applyBookMetaUpdate(ctx, bookID, p.Meta)
+	if err != nil {
+		s.writeActionEffectError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"outcome": "action_done", "op": "update_meta", "book_id": bookID, "updated_fields": updated,
+	})
+}
+
+// applyBookMetaUpdate applies the metadata edit under optimistic concurrency: the
+// UPDATE is guarded on updated_at = base_version AND lifecycle_state='active', so a
+// book edited (or trashed) since the diff was proposed yields 0 rows →
+// errActionBadState (the FE surfaces a conflict → re-read + re-propose, I7). Shared
+// by the confirm route and (future) a tasks-gate resolver.
+func (s *Server) applyBookMetaUpdate(ctx context.Context, bookID uuid.UUID, m *metaEdit) ([]string, error) {
+	if m == nil {
+		return nil, errActionBadState
+	}
+	base, err := time.Parse(time.RFC3339Nano, m.BaseVersion)
+	if err != nil {
+		return nil, errActionBadState
+	}
+	set := []string{"updated_at=now()"}
+	args := []any{bookID, base}
+	idx := 3
+	updated := []string{}
+	addStr := func(col, field string, v *string) {
+		if v == nil {
+			return
+		}
+		set = append(set, fmt.Sprintf("%s=$%d", col, idx))
+		args = append(args, *v)
+		idx++
+		updated = append(updated, field)
+	}
+	addStr("title", "title", m.Title)
+	addStr("description", "description", m.Description)
+	addStr("original_language", "original_language", m.OriginalLanguage)
+	addStr("summary", "summary", m.Summary)
+	if m.GenreTags != nil {
+		set = append(set, fmt.Sprintf("genre_tags=$%d", idx))
+		args = append(args, *m.GenreTags)
+		idx++
+		updated = append(updated, "genre_tags")
+	}
+	if len(updated) == 0 {
+		return nil, errActionBadState
+	}
+	tag, err := s.pool.Exec(ctx, fmt.Sprintf(
+		"UPDATE books SET %s WHERE id=$1 AND updated_at=$2 AND lifecycle_state='active'",
+		strings.Join(set, ", ")), args...)
+	if err != nil {
+		return nil, err
+	}
+	if tag.RowsAffected() == 0 {
+		return nil, errActionBadState // version drifted or no longer active → conflict
+	}
+	return updated, nil
+}
+
+// mintBookMetaCard mints the diff card for a book_update_details proposal: a confirm
+// token bound to user+book+descBookMeta+payload (carrying the new values), plus the
+// server-built old→new `changes` the FE renders. Reuses the confirm-token spine (I2).
+func (s *Server) mintBookMetaCard(userID, bookID uuid.UUID, title string, p actionPayload, changes []recordEditChange) (confirmCardOut, error) {
+	tok, err := lwmcp.MintConfirmToken(s.cfg.ConfirmTokenSigningSecret, userID, bookID, descBookMeta, p, actionTokenTTL)
+	if err != nil {
+		return confirmCardOut{}, errors.New("confirmation is unavailable")
+	}
+	return confirmCardOut{
+		ConfirmToken: tok, Descriptor: descBookMeta, Title: title, Domain: "book",
+		Destructive: false, Changes: changes,
+		ExpiresAt: time.Now().Add(actionTokenTTL).UTC().Format(time.RFC3339),
+	}, nil
 }
 
 // writeActionEffectError maps a sentinel from an effect to the right status.
@@ -678,18 +1006,17 @@ func (s *Server) mcpTransitionBook(ctx context.Context, bookID uuid.UUID, target
 		if lifecycle != "active" {
 			return errActionBadState
 		}
-		_, _ = s.pool.Exec(ctx, `UPDATE books SET lifecycle_state='trashed', trashed_at=now(), updated_at=now() WHERE id=$1`, bookID)
-		_, _ = s.pool.Exec(ctx, `UPDATE chapters SET lifecycle_state='trashed', trashed_at=now(), updated_at=now() WHERE book_id=$1 AND lifecycle_state='active'`, bookID)
 	case "purge_pending":
 		if lifecycle != "trashed" {
 			return errActionBadState
 		}
-		_, _ = s.pool.Exec(ctx, `UPDATE books SET lifecycle_state='purge_pending', purge_eligible_at=now(), updated_at=now() WHERE id=$1`, bookID)
-		_, _ = s.pool.Exec(ctx, `UPDATE chapters SET lifecycle_state='purge_pending', purge_eligible_at=now(), updated_at=now() WHERE book_id=$1`, bookID)
 	default:
 		return errActionBadState
 	}
-	return nil
+	// Shared tx + book.lifecycle_changed emit (mirrors the HTTP path). Before this, the agent
+	// purge/trash path wrote with bare swallowed Exec and emitted NOTHING, so an agent-driven trash
+	// never reached composition's book_lifecycle mirror.
+	return s.transitionBookLifecycleTx(ctx, bookID, target)
 }
 
 // mcpTransitionChapter applies a chapter lifecycle transition.

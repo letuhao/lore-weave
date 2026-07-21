@@ -12,6 +12,7 @@
     "ingest": "Fuentes del registro"
   },
   "quota": {
+    "unavailable": "Uso no disponible",
     "skills": "Habilidades",
     "mcp": "Servidores MCP",
     "proposals": "Propuestas"

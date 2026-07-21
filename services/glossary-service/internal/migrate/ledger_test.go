@@ -4,6 +4,12 @@ package migrate
 // is idempotent across boots, and (the D-GKA-G4-SEED-CLEANUP win) does NOT recreate the
 // legacy system_kind_attributes table on a second boot. Needs GLOSSARY_TEST_DB_URL;
 // each test uses its own ephemeral DB so the fresh-boot precondition is real.
+//
+// db-safety-gate: file-ok — every destructive statement here (DROP DATABASE, and the
+// DROP TABLE schema_migrations that simulates an un-ledgered DB) targets a THROWAWAY
+// ephemeral DB each test CREATEs itself (unique name + PID) and drops on cleanup; none
+// ever target the DB named in GLOSSARY_TEST_DB_URL. ephemeralDB additionally proves the
+// target is a throwaway via testsafe.EnsureThrowawayDB before any CREATE/DROP.
 
 import (
 	"context"
@@ -14,6 +20,8 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+
+	"github.com/loreweave/glossary-service/internal/testsafe"
 )
 
 // ephemeralDB spins up a throwaway database and returns a pool to it. The caller gets a
@@ -37,7 +45,13 @@ func ephemeralDB(t *testing.T, name string) *pgxpool.Pool {
 	}
 	defer admin.Close()
 
-	db := fmt.Sprintf("%s_%d", name, os.Getpid())
+	db := fmt.Sprintf("%s_tmp_%d", name, os.Getpid())
+	// Layer-3 safety guard (mirrors book-service testsafe): refuse to CREATE/DROP unless
+	// the target is a recognizable throwaway DB, so a broken ephemeral setup can never
+	// destroy a real service DB — the pool handed back is proven throwaway before any DDL.
+	if err := testsafe.EnsureThrowawayDB(db); err != nil {
+		t.Fatal(err)
+	}
 	_, _ = admin.Exec(ctx, `DROP DATABASE IF EXISTS `+pgx.Identifier{db}.Sanitize()+` WITH (FORCE)`)
 	if _, err := admin.Exec(ctx, `CREATE DATABASE `+pgx.Identifier{db}.Sanitize()); err != nil {
 		t.Fatalf("create ephemeral db: %v", err)

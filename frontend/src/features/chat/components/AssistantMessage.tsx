@@ -20,8 +20,8 @@ import { ProposeEditCard } from './ProposeEditCard';
 import { GlossaryDiffCard } from './GlossaryDiffCard';
 import { ConfirmCard } from './ConfirmCard';
 import { ConfirmActionCard, descriptorDomain } from './ConfirmActionCard';
+import { TaskConfirmCard } from './TaskConfirmCard';
 import { BatchConfirmCard, type BatchChild } from './BatchConfirmCard';
-import { RecordDiffCard } from './RecordDiffCard';
 import { ToolApprovalCard, isToolApprovalRecord } from './ToolApprovalCard';
 import { TranslationReviewCard, isTranslationProposeCall, summarizeTranslationReview } from './TranslationReviewCard';
 import { SkillProposalCard, skillProposal, type SkillProposal } from './SkillProposalCard';
@@ -30,6 +30,7 @@ import { useMessageFeedback } from '../hooks/useMessageFeedback';
 import { useActivityUndo } from '../hooks/useActivityUndo';
 import { firePasteToEditor } from '../utils/pasteToEditor';
 import type { ActivityEvent, ToolCallRecord } from '../types';
+import type { RecordEditChange } from '../actionsApi';
 
 interface AssistantMessageProps {
   content: string;
@@ -56,6 +57,11 @@ interface AssistantMessageProps {
   toolCalls?: ToolCallRecord[] | null;
   /** MCP fan-out (C-ACTIVITY): Tier-A auto-applied ops streamed this turn. */
   activities?: ActivityEvent[] | null;
+  /** DBT-CHAT-PERSIST — how the turn ended. 'interrupted' (user stopped, or a
+   *  frontend-tool card was abandoned/expired) or 'error' (threw mid-stream)
+   *  render an "incomplete" badge so a partial reply is clearly marked instead
+   *  of looking like a finished answer. null/'stop'/undefined → no badge. */
+  finishReason?: string | null;
   /** N2 (dogfood 2026-07-18 F4) — host-aware "insert this reply into the chapter". When a parent
    * supplies it (the studio co-writer, via useAcceptIntoEditor) it wins; otherwise the button falls
    * back to the paste-to-editor event, which the studio EditorPanel + the legacy editor page both
@@ -74,7 +80,7 @@ interface AssistantMessageProps {
 // live confirm_token (independent of whether the model called the frontend tool). The
 // reused card's resume() safely no-ops without a runId; Confirm still POSTs to
 // /v1/<domain>/actions/confirm (the only write path, single-use).
-interface ProposeConfirm { confirm_token: string; descriptor?: string; title?: string }
+interface ProposeConfirm { confirm_token: string; descriptor?: string; title?: string; changes?: RecordEditChange[] }
 
 /** The action token's claims are its base64url segment-0 (a 2-part token:
  * claims.hmac, not a JWT header.payload). Return false once past `exp` so stale
@@ -104,10 +110,15 @@ function proposeConfirm(tc: ToolCallRecord): ProposeConfirm | null {
   // so the auto-card has a label without waiting on the (best-effort) preview fetch.
   const label = typeof p.title === 'string' ? p.title
     : typeof p.summary === 'string' ? p.summary : undefined;
+  // A server-built diff card (book_update_meta, descriptor `book.meta`) carries
+  // `changes[]` in its RESULT — carry it through so the confirm card renders the
+  // old→new diff instead of a bare yes/no (auto-gate spec M0c).
+  const changes = Array.isArray(p.changes) ? (p.changes as RecordEditChange[]) : undefined;
   return {
     confirm_token: p.confirm_token,
     descriptor: typeof p.descriptor === 'string' ? p.descriptor : undefined,
     title: label,
+    changes,
   };
 }
 
@@ -129,6 +140,7 @@ export function AssistantMessage({
   toolCalls,
   activities,
   onInsert,
+  finishReason,
 }: AssistantMessageProps) {
   const { t } = useTranslation('chat');
   const [showMore, setShowMore] = useState(false);
@@ -198,6 +210,32 @@ export function AssistantMessage({
         )}
       </div>
 
+      {/* DBT-CHAT-PERSIST — incomplete-turn badge. A turn that ended by user
+          interrupt or a mid-stream error (incl. an abandoned/expired frontend-tool
+          card) is persisted with its partial text and shown with this marker,
+          rather than vanishing on reload. */}
+      {!isStreaming && (finishReason === 'interrupted' || finishReason === 'error') && (
+        <div
+          data-testid="message-incomplete-badge"
+          className={`mt-1 inline-flex items-center gap-1.5 rounded px-1.5 py-0.5 text-[11px] ${
+            finishReason === 'error'
+              ? 'bg-red-500/10 text-red-400/90'
+              : 'bg-amber-500/10 text-amber-400/90'
+          }`}
+        >
+          <span
+            className={`h-1.5 w-1.5 rounded-full ${
+              finishReason === 'error' ? 'bg-red-400/80' : 'bg-amber-400/80'
+            }`}
+          />
+          {finishReason === 'error'
+            ? t('message.incomplete_error', { defaultValue: 'Error — response incomplete' })
+            : t('message.incomplete_interrupted', {
+                defaultValue: 'Interrupted — response incomplete',
+              })}
+        </div>
+      )}
+
       {/* K21-C (D2): memory tool calls used in this reply. Renders
           nothing when toolCalls is empty/null. ARCH-1 C6: a pending
           propose_edit (frontend write-back tool) renders as an interactive
@@ -208,7 +246,9 @@ export function AssistantMessage({
         //   glossary_propose_entity_edit  → glossary diff card (legacy)
         //   glossary_confirm_action       → glossary confirm card (legacy)
         //   confirm_action               → GENERIC confirm card (C-CONFIRM, incl. batch)
-        //   propose_record_edit          → GENERIC record-diff card (C-PROPOSE)
+        // (propose_record_edit REMOVED in auto-gate M5 — the generic record-diff card is
+        //  retired. book_update_details' server-built diff renders via ConfirmActionCard's
+        //  own changes[] path — descriptor 'book.meta' — NOT the deleted RecordDiffCard.)
         // ui_* nav tools are NOT rendered here — useUiToolExecutor resolves them
         // headlessly (no human gate), so they never reach this surface.
         const FRONTEND_TOOLS = [
@@ -216,7 +256,6 @@ export function AssistantMessage({
           'glossary_propose_entity_edit',
           'glossary_confirm_action',
           'confirm_action',
-          'propose_record_edit',
         ];
         const isPendingFrontend = (tc: ToolCallRecord) =>
           tc.pending === true && FRONTEND_TOOLS.includes(tc.tool);
@@ -228,6 +267,10 @@ export function AssistantMessage({
         const proposals = toolCalls.filter(
           (tc) => isPendingFrontend(tc) && !isToolApprovalRecord(tc),
         );
+        // ext-tasks (T1c(3)) — a pending durable-gate suspend (the record carries a
+        // `task`). Its tool is a SERVER tool (e.g. composition_create_derivative), not
+        // in FRONTEND_TOOLS, so it routes by the `task` marker → TaskConfirmCard.
+        const taskGates = toolCalls.filter((tc) => tc.pending === true && !!tc.task);
         // S4: completed class-W translation/alias proposals render as a review card
         // (visible drafts), not a passive chip — but ONLY when the record carries
         // something renderable. A sparse record (e.g. replayed {tool, ok} with no
@@ -242,7 +285,8 @@ export function AssistantMessage({
           .map(skillProposal)
           .filter((p): p is SkillProposal => p !== null);
         const rest = toolCalls.filter(
-          (tc) => !isPendingFrontend(tc) && !isRenderableTranslation(tc) && !isToolApprovalRecord(tc) && !skillProposal(tc),
+          (tc) => !isPendingFrontend(tc) && !isRenderableTranslation(tc) && !isToolApprovalRecord(tc)
+            && !skillProposal(tc) && !(tc.pending === true && !!tc.task),
         );
         // Model-independent human gate: auto-render a confirm card for any completed
         // propose result that minted a LIVE confirm_token, unless an explicit (pending)
@@ -314,6 +358,9 @@ export function AssistantMessage({
                 }
               />
             )}
+            {taskGates.map((tc) => (
+              <TaskConfirmCard key={tc.toolCallId ?? tc.tool} record={tc} />
+            ))}
             {proposalsToRender.map((tc) => {
               const key = tc.toolCallId ?? tc.tool;
               if (tc.tool === 'glossary_propose_entity_edit') return <GlossaryDiffCard key={key} record={tc} />;
@@ -329,7 +376,9 @@ export function AssistantMessage({
                 return <ConfirmCard key={key} record={tc} />;
               }
               if (tc.tool === 'confirm_action') return <ConfirmActionCard key={key} record={tc} />;
-              if (tc.tool === 'propose_record_edit') return <RecordDiffCard key={key} record={tc} />;
+              // propose_record_edit dispatch REMOVED (auto-gate M5); its RecordDiffCard renderer
+              // is deleted. book_update_details' server-built diff renders via ConfirmActionCard
+              // (auto-confirm path below: minted confirm_token + changes[], descriptor 'book.meta').
               return <ProposeEditCard key={key} record={tc} />;
             })}
             {/* Auto-rendered confirm cards (model called the propose tool but not the
@@ -341,7 +390,7 @@ export function AssistantMessage({
               const synthetic: ToolCallRecord = {
                 tool: 'glossary_confirm_action',
                 ok: true,
-                args: { confirm_token: p.confirm_token, descriptor: p.descriptor, title: p.title },
+                args: { confirm_token: p.confirm_token, descriptor: p.descriptor, title: p.title, changes: p.changes },
               };
               const key = `auto-${p.confirm_token.slice(0, 20)}`;
               return descriptorDomain(p.descriptor)

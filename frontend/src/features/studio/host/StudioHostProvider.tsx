@@ -94,7 +94,9 @@ export function StudioHostProvider({ bookId, children }: { bookId: string; child
       const title = opts?.title ?? regMap.get(panelId)?.label ?? panelId;
       // component id must be a built dockview component (STUDIO_PANEL_COMPONENTS); unknown ⇒ no-op.
       // J1: `component` lets a per-resource panel id render the shared component.
-      try { api.addPanel({ id: panelId, component: opts?.component ?? panelId, title, params: opts?.params }); }
+      // F15 — `focus:false` opens the panel as an INACTIVE tab (dockview `inactive`) so a
+      // background open (e.g. auto-created chapter while the chat is active) doesn't steal focus.
+      try { api.addPanel({ id: panelId, component: opts?.component ?? panelId, title, params: opts?.params, inactive: opts?.focus === false }); }
       catch { /* panel not in the catalog */ }
     };
 

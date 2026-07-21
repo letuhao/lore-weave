@@ -1,5 +1,6 @@
-"""MCP-fanout S-CONSUMER — find_tools discovery, tier-driven advertising,
-H7 cap, H9 budget, C-ACTIVITY, and missing-vs-unavailable phrasing.
+"""MCP-fanout S-CONSUMER — tool_list/tool_load discovery (+ the retained find_tools
+handler), tier-driven advertising, H7 cap, H9 budget, C-ACTIVITY, and
+missing-vs-unavailable phrasing.
 
 Reuses the _FakeClient scripting harness from test_stream_tools. The discovery
 path is driven by passing `discovery_catalog`/`discovery_extra_frontend` into
@@ -201,7 +202,7 @@ class TestProviderAvailability:
 
 
 # ════════════════════════════════════════════════════════════════════════════
-# find_tools in the loop — discovery → call across passes
+# Discovery loop — tool_list/tool_load → call across passes (+ find_tools handler)
 # ════════════════════════════════════════════════════════════════════════════
 
 
@@ -241,19 +242,25 @@ class TestFindToolsMissingIntent:
         assert "required" not in payload.get("note", "")
 
 
-class TestFindToolsDiscovery:
+class TestDeterministicDiscovery:
     @pytest.mark.asyncio
-    async def test_find_tools_then_call_across_passes(self):
-        """Pass 0: the model calls find_tools('translate'). Pass 1: now that
-        translation_start_job is in the active set, its full schema is advertised
-        and the model calls it. Pass 2: text answer."""
+    async def test_tool_list_load_then_call_across_passes(self):
+        """Deterministic discovery (F17 — tool_list/tool_load is the discovery path;
+        find_tools retired from the LLM's view). Pass 0: the model calls
+        tool_list(category="translation") to enumerate the domain. Pass 1: it calls
+        tool_load("translation_start_job"), which unions the tool into the active set.
+        Pass 2: now that translation_start_job's full schema is advertised, the model
+        calls it. Pass 3: text answer."""
         kc = _kc()
         kc.mcp_execute_tool.return_value = _envelope(
             success=True, result={"confirm_token": "tok"}
         )
         scripts = [
-            [tool_frag(0, id="f1", name="find_tools"),
-             tool_frag(0, arguments_delta='{"intent":"translate my book"}'),
+            [tool_frag(0, id="l1", name="tool_list"),
+             tool_frag(0, arguments_delta='{"category":"translation"}'),
+             done("tool_calls")],
+            [tool_frag(0, id="d1", name="tool_load"),
+             tool_frag(0, arguments_delta='{"name":"translation_start_job"}'),
              done("tool_calls")],
             [tool_frag(0, id="t1", name="translation_start_job"),
              tool_frag(0, arguments_delta='{"book_id":"b"}'),
@@ -264,20 +271,21 @@ class TestFindToolsDiscovery:
             chunks = await _drain(_run_discovery(scripts, knowledge_client=kc))
 
         reqs = _FakeClient.instances[0].requests
-        # Pass 0 advertised the core (find_tools present) but NOT the domain tool.
+        # Pass 0 advertised the deterministic discovery pair but NOT the domain tool.
         p0_names = [t["function"]["name"] for t in reqs[0].tools]
-        assert "find_tools" in p0_names
+        assert "tool_list" in p0_names and "tool_load" in p0_names
         assert "translation_start_job" not in p0_names
-        # Pass 1 advertised the discovered tool's full schema.
-        p1_names = [t["function"]["name"] for t in reqs[1].tools]
-        assert "translation_start_job" in p1_names
+        # tool_load (pass 1) activated it — pass 2 advertised the tool's full schema.
+        p2_names = [t["function"]["name"] for t in reqs[2].tools]
+        assert "translation_start_job" in p2_names
         # The domain tool actually executed.
         assert kc.mcp_execute_tool.await_count == 1
         assert kc.mcp_execute_tool.await_args.kwargs["tool_name"] == "translation_start_job"
-        # find_tools never went to the gateway (consumer-local).
-        find_calls = [c for c in chunks if c.get("tool_call", {}).get("tool") == "find_tools"]
-        assert len(find_calls) == 1
-        assert find_calls[0]["tool_call"]["result"]["tools"]
+        # tool_list/tool_load never went to the gateway (consumer-local).
+        list_calls = [c for c in chunks if c.get("tool_call", {}).get("tool") == "tool_list"]
+        load_calls = [c for c in chunks if c.get("tool_call", {}).get("tool") == "tool_load"]
+        assert len(list_calls) == 1 and len(load_calls) == 1
+        assert load_calls[0]["tool_call"]["result"]["tools"]
 
     @pytest.mark.asyncio
     async def test_advertised_tools_have_no_meta(self):
@@ -287,7 +295,7 @@ class TestFindToolsDiscovery:
         scripts = [[tok("hi"), done("stop")]]
         with _patch_client(scripts):
             await _drain(_run_discovery(scripts, knowledge_client=kc))
-        # find a core+catalog advertisement; even after a find_tools the schemas
+        # find a core+catalog advertisement; even after a tool_load the schemas
         # are stripped. Pass 0 advertises the core only, but assert globally.
         for req in _FakeClient.instances[0].requests:
             for t in (req.tools or []):
@@ -628,10 +636,14 @@ class TestToolListLoadDispatch:
 
 class TestGenericFrontendTools:
     def test_generic_tools_in_frontend_name_set(self):
-        for name in ("ui_navigate", "ui_open_book", "ui_open_chapter",
-                     "ui_show_panel", "ui_watch_job", "confirm_action",
-                     "propose_record_edit"):
+        # The chat-service-owned frontend tool set after two migrations: P3.2 moved the
+        # ui_* nav tools to ai-gateway (federated), and auto-gate M5 retired the generic
+        # propose_record_edit. What chat-service still owns as frontend (human-gated) tools:
+        for name in ("confirm_action", "glossary_propose_entity_edit", "glossary_confirm_action"):
             assert name in FRONTEND_TOOL_NAMES
+        # ui_* (P3.2 → ai-gateway) and propose_record_edit (M5, deleted) are NOT here:
+        for gone in ("ui_navigate", "ui_open_book", "ui_show_panel", "propose_record_edit"):
+            assert gone not in FRONTEND_TOOL_NAMES
 
     def test_universal_core_advertises_generic_frontend_tools(self):
         """The always-on core (advertised every universal /chat pass) carries the
@@ -715,8 +727,9 @@ class TestSurfaceHotDomains:
     def test_book_scoped_hot_is_glossary_story_and_now_knowledge(self):
         # story_search (the universal manuscript find) is hot on every book-bound
         # surface — a weak model otherwise punts instead of discovering it (measured).
+        # F14 — `book` now auto-injects on book-bound surfaces, so book_* tools are hot.
         assert td.surface_hot_domains(editor=False, book_scoped=True) == {
-            "glossary", "story", "knowledge",
+            "glossary", "story", "knowledge", "book",
         }
 
     def test_editor_matches_book_glossary_skill(self):
@@ -727,7 +740,8 @@ class TestSurfaceHotDomains:
         # FRONTEND tool, so the editor's hot domains still equal the book-scoped surface's.
         editor = td.surface_hot_domains(editor=True, book_scoped=True)
         book = td.surface_hot_domains(editor=False, book_scoped=True)
-        assert editor == book == {"glossary", "story", "knowledge"}
+        # F14 — `book` now auto-injects on book-bound surfaces (a book is open).
+        assert editor == book == {"glossary", "story", "knowledge", "book"}
 
     def test_studio_hot_includes_story_and_knowledge(self):
         studio = td.surface_hot_domains(studio=True)
@@ -760,10 +774,52 @@ class TestHotToolNames:
         assert "translation_start_job" not in hot
 
 
+class TestEngagedDomainsFromToolCalls:
+    """D-DOMAIN-HOTSET-NOT-STICKY — the conversation-memory signal that keeps the
+    working domain hot across turns in auto mode."""
+
+    def test_extracts_domain_from_recorded_shape(self):
+        # the server shape is {iteration, tool, args, ok, ...} — `tool` holds the name
+        rows = [[{"iteration": 1, "tool": "book_update_details", "ok": True}]]
+        assert td.engaged_domains_from_tool_calls(rows) == {"book"}
+
+    def test_tolerates_raw_json_string_row(self):
+        # asyncpg with no jsonb codec hands back a str; it must still parse
+        rows = ['[{"tool": "glossary_propose_entities", "ok": true}]']
+        assert td.engaged_domains_from_tool_calls(rows) == {"glossary"}
+
+    def test_counts_failed_calls_too_engagement_is_by_intent(self):
+        # a book edit that 400'd still means the writer is working in the book domain
+        rows = [[{"tool": "book_update_details", "ok": False}]]
+        assert "book" in td.engaged_domains_from_tool_calls(rows)
+
+    def test_ignores_discovery_and_core_tools(self):
+        # calling tool_list / confirm_action / ui_* says nothing about the working domain
+        rows = [[
+            {"tool": "tool_list", "ok": True},
+            {"tool": "confirm_action", "ok": True},
+            {"tool": "ui_navigate", "ok": True},
+        ]]
+        assert td.engaged_domains_from_tool_calls(rows) == set()
+
+    def test_unions_across_multiple_messages(self):
+        rows = [
+            [{"tool": "book_get", "ok": True}],
+            [{"tool": "kg_propose_fact", "ok": True}],
+        ]
+        assert td.engaged_domains_from_tool_calls(rows) == {"book", "knowledge"}
+
+    def test_empty_and_malformed_yield_empty(self):
+        assert td.engaged_domains_from_tool_calls(None) == set()
+        assert td.engaged_domains_from_tool_calls([]) == set()
+        assert td.engaged_domains_from_tool_calls(["not-json"]) == set()
+        assert td.engaged_domains_from_tool_calls([{"not": "a-list"}]) == set()
+
+
 class TestHotSetAdvertisedOnFirstPass:
     def test_seed_advertises_hot_tools_immediately(self):
         """A book-scoped surface seeds the glossary domain into the active set, so
-        its full schemas are advertised on pass 0 WITHOUT a find_tools round-trip —
+        its full schemas are advertised on pass 0 WITHOUT a discovery round-trip —
         while the non-glossary long tail stays out (lazy).
 
         Part D (2026-07-07): `memory_search` (knowledge domain) is now correctly
@@ -783,7 +839,7 @@ class TestHotSetAdvertisedOnFirstPass:
         # glossary hot set present immediately
         assert {"glossary_search", "glossary_get_entity", "glossary_propose_batch"} <= names
         # story_search (universal manuscript find) is hot on a book surface too, so the
-        # agent can search/read the manuscript without a find_tools round-trip it never makes
+        # agent can search/read the manuscript without a discovery round-trip it never makes
         assert "story_search" in names
         # book-scoped frontend write-back tools present
         assert "glossary_propose_entity_edit" in names
@@ -793,21 +849,22 @@ class TestHotSetAdvertisedOnFirstPass:
         # Part D: knowledge is now hot too (see docstring above) — memory_search
         # rides the seed, it does NOT stay lazy anymore.
         assert "memory_search" in names
-        # find_tools is still there so the agent can reach the tail
-        assert td.FIND_TOOLS_NAME in names
+        # the deterministic discovery pair is there so the agent can reach the tail
+        # (F17 — tool_list/tool_load is the discovery path; find_tools retired from the LLM)
+        assert "tool_list" in names and "tool_load" in names
 
     @pytest.mark.asyncio
     async def test_seeded_loop_advertises_hot_and_still_lazy_for_tail(self):
         """End-to-end through the loop: pass 0 advertises the seeded glossary hot
-        set AND find_tools, but not the tail; the agent can act on a hot tool with
-        no discovery hop, then find_tools to reach a tail tool."""
+        set AND the discovery pair, but not the tail; the agent can act on a hot tool
+        with no discovery hop, then tool_list/tool_load to reach a tail tool."""
         kc = _kc()
         kc.mcp_execute_tool.return_value = _envelope(success=True, result={"ok": 1})
         seed = td.hot_tool_names(
             _MIXED_CATALOG, td.surface_hot_domains(editor=False, book_scoped=True)
         )
         scripts = [
-            # Pass 0: act directly on a hot glossary tool (no find_tools needed).
+            # Pass 0: act directly on a hot glossary tool (no discovery hop needed).
             [tool_frag(0, id="g", name="glossary_search"),
              tool_frag(0, arguments_delta='{"q":"king"}'),
              done("tool_calls")],
