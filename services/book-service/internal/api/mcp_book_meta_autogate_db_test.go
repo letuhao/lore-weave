@@ -99,6 +99,25 @@ func TestMCP_BookUpdateMeta_ThroughMCPHandler_ReturnsDiffCard_DB(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = cs.Close() })
 
+	// Discovery: the tool MUST be enumerated in tools/list under its new name (so the
+	// gateway federates it and the model can tool_load + call it). A registered-but-
+	// unlisted tool is callable by a test yet invisible to an agent.
+	lt, err := cs.ListTools(ctx, nil)
+	if err != nil {
+		t.Fatalf("list tools: %v", err)
+	}
+	var listed []string
+	found := false
+	for _, tl := range lt.Tools {
+		listed = append(listed, tl.Name)
+		if tl.Name == "book_update_details" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("book_update_details NOT in tools/list — invisible to discovery. listed=%v", listed)
+	}
+
 	newDesc := "In a drowning port city, a glassmaker's daughter learns her gift can either save the harbor or shatter it forever."
 	res, err := cs.CallTool(ctx, &mcp.CallToolParams{
 		Name:      "book_update_details",
