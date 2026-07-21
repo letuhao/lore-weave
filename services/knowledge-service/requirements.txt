@@ -10,7 +10,7 @@ PyJWT>=2.8
 # cryptography backend for RSA + SPKI/PKIX PEM parsing. Present transitively
 # today, but pinned explicitly so a security-critical dep can't silently drop.
 cryptography>=49.0.0
-cachetools>=5.3
+cachetools>=7.1.4
 prometheus-client>=0.25.0
 
 # loreweave_llm SDK (Phase 4a-α) — installed via Dockerfile COPY of
