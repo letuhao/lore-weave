@@ -26,7 +26,7 @@ Deliver the FULL auto-gate: the agent calls only the natural domain write; the S
 | **R2** ride-along | auto-title sanitizer | `35024ec05`; 10 tests incl. the "4." bug | ✅ DONE |
 | **M0a** | book-service Go | `book.meta` descriptor + `update_meta` op + `changes[]` diff card; `book_update_meta` Tier-A→W, mints diff card; confirm route `effectUpdateMeta` applies (OCC on updated_at). **Evidence:** `7b861223c` — PASS TestMCP_BookUpdateMeta_ProposesDiff_NoWrite_ThenConfirmApplies_DB + _StaleVersion_Conflicts_DB; vet clean; api suite green | ✅ DONE |
 | **M0b** | chat-service | dropped `book` from `propose_record_edit` domain enum + redirect in description; contract mirror regen'd. **Evidence:** `5e9cff19c` — test_frontend_tools_contract 13 passed (drift red→green); validation green; test_agent_surface 8 fails proven pre-existing (identical at HEAD). | ✅ DONE |
-| **M0c** | frontend | render the book confirm card's `changes[]` as the old→new diff card. **Evidence:** pasted vitest | ⬜ TODO |
+| **M0c** | frontend | render the book confirm card's `changes[]` as the old→new diff. **Evidence:** `4ec37f04c` — ConfirmActionCard 22 passed (new M0c diff+book-confirm test), autoConfirm 7, RecordDiffCard 4; tsc clean. | ✅ DONE |
 
 **M0c wiring (PRECISE — resume here):** dispatch is by TOOL NAME in [`AssistantMessage.tsx`](../../frontend/src/features/chat/components/AssistantMessage.tsx) around **lines 356–373**:
 - `:360` `if (tc.tool === 'glossary_propose_entity_edit') return <GlossaryDiffCard .../>`
