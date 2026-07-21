@@ -45,6 +45,40 @@ Deliver the FULL auto-gate: the agent calls only the natural domain write; the S
 | **M4** | translation | adopt facade. Evidence: pasted tests | ⬜ TODO |
 | **M5** | cleanup | delete `propose_record_edit` (tool + FE resolver + `contracts/frontend-tools.contract.json`). Evidence: contract drift-test pasted green | ⬜ TODO |
 
+## M0d LIVE DIAGNOSIS (2026-07-21) — three red herrings cleared, real root cause found
+
+The live NL smoke ("update the book's description" → diff card) went through THREE
+false blockers before the real one surfaced:
+1. **Auth expiry** (`6b426c04c` era) — a long-lived browser JWT expired → silent 401s that looked like a model hang. Fixed by re-login.
+2. **Reasoning-loop steer bug** — FIXED `6b426c04c` (use `no_thinking_fields()`, not hand-rolled). After this the model stopped LOOPING.
+3. **Wrong-tool pick** — the model chose `book_chapter_save_draft` for a metadata edit. FIXED `7d3659e60` (save_draft disclaims book metadata). After this the model stopped picking save_draft.
+
+**REAL ROOT CAUSE (still open):** even loop-free and save_draft-disclaimed, the model
+never reaches `book_update_meta`. It says "this is a **metadata** change, I'll prepare a
+proposal" (correct intent!) but calls `tool_list → book_list → book_get` and stops — the
+tool is not selected. Two compounding reasons:
+- **Engineer-jargon name.** `book_update_meta` — "meta" is a dev word; users/models say
+  "book description / details / blurb". The name doesn't match the intent language, hurting
+  both find-retrieval and selection. **User's call: rename it.**
+- **Discoverability.** In a GLOBAL chat the book domain is lazy; the model must `tool_list(book)`.
+  It did — yet didn't reach the tool. (ai-gateway was re-federated after the tier A→W change;
+  verify the tool actually appears in `tool_list(book)` now.)
+
+### NEXT TASK (do NOT rush under low context — touches advertisement-gating files): rename `book_update_meta` → `book_update_details`
+
+A natural name covering title/description/summary/genre. Careful cross-cutting rename
+(the Go handler func `toolBookUpdateMeta` and the confirm descriptor `book.meta` can STAY —
+only the advertised TOOL-NAME string changes). Files:
+- **book-service** `mcp_server.go` — the `addTool("book_update_meta", …)` name + strengthen synonyms with natural phrasings ("book details", "book blurb", "book description"); update the `book_chapter_create` + `book_chapter_save_draft` disclaimers that say "use book_update_meta".
+- **⚠️ ADVERTISEMENT-GATING (get these right or the renamed tool is blocked/invisible):**
+  - `services/mcp-public-gateway/src/scope/tool-policy.ts` — the tool scope/tier policy.
+  - `contracts/tool-liveness.json` + `services/chat-service/app/services/tool-liveness.json` + `services/agent-registry-service/internal/api/tool-liveness.json` — the tool-liveness manifest (3 copies must move together).
+- **chat-service** `frontend_tools.py` (propose_record_edit disclaimer), `stream_service.py` (steer directive), `book_skill.py` (if it names the tool).
+- **FE** `ConfirmActionCard.tsx` + `AssistantMessage.tsx` — comments only (the descriptor `book.meta` is unchanged, so functional dispatch is unaffected).
+- **Tests** — `mcp_book_meta_autogate_db_test.go` (CallTool Name), `test_stream_service.py` / `test_reasoning_loop_detector.py` fixtures.
+- Rebuild book-service + chat-service, **restart ai-gateway to re-federate**, re-smoke.
+- Historical docs/eval `*.json`/`*.md` under `docs/eval/tool-liveness/` are RECORDS — do NOT rewrite.
+
 ## PER-DOMAIN AUDIT (fill before starting each of M1–M4)
 
 For each domain: (1) which direct-write MCP tool edits its records? (2) Tier-A auto-commit or already Tier-W? (3) read-current source for `old_value`? (4) does the FE diff card already handle its `target` keys? A domain with no direct-write tool → build one (buildable, not blocked).
