@@ -1,5 +1,31 @@
 # ▶▶ NEXT SESSION STARTS HERE
 
+## 🎛️ AGENT WRITE AUTO-GATE **M0–M5 COMPLETE** + tool-routing bug hunt (2026-07-21, HEAD 83db187e7)
+A live co-writer dogfood + investigation. **Foundational hypothesis CONFIRMED 4-for-4: the problems were
+OUR code, not the model — a cheap local model (Gemma-4 26B) is enough.** Every "the model is weak" verdict
+dissolved into a bug found by checking the mechanics (advertised? domain hot? result instructive?):
+- **Bug A** `5625b0a3d` — `book_update_details` was budget-starved out of the advertised set
+  (`ALWAYS_HOT_WRITES`); never shown to ANY model. + regression test (proven load-bearing).
+- **Bug B** `a3028d6f6` — `D-DOMAIN-HOTSET-NOT-STICKY`: the per-turn hot set forgot the domain across turns;
+  a low-signal follow-up ("Go with the third one.") dropped the book domain → model wandered/hallucinated.
+  Fix: re-seed domains the recent `chat_messages.tool_calls` show engaged (`engaged_domains_from_tool_calls`
+  → `discovery_seed_for_surface(sticky_domains=…)`). +10 tests, live-proven.
+- **Confirm-flow** `5276586b4` — `D-CONFIRM-CARD-NUDGE`: the minted confirm-card result carried no
+  instruction, so the weak model re-fired the propose tool (double-card) + narrated a fake error. Fix: a
+  stop-note appended to the card result (the model reasons over it → holds where a system-prompt guard didn't).
+- Also earlier: OpenAI `chat_template_kwargs` 400 (`dce5bae1e`), context-window gate+metric (`2d1b4197c`).
+- **Auto-gate M0–M5 DONE:** M0 = book diff-card facade (live-proven on Gemma). M1–M4 audit = every domain
+  already edits via its OWN natural tool (Tier-A auto-write+Undo, or its own Tier-W propose), so
+  `propose_record_edit` was vestigial. **M5 `83db187e7` deleted it** (tool + FE `RecordDiffCard` + contract);
+  book edits still work via `ConfirmActionCard` (live smoke: genre edit → diff card post-deletion).
+- **DECISIONS (user):** planner-executor **AND** eager-index BOTH parked (cost never proven vs cheap targeted
+  fixes); the eager-index premise ("weak models can't run discovery") was disproven live. Docs sealed:
+  `docs/plans/2026-07-21-agent-write-autogate-plan.md` (M0–M5 ✅), `docs/specs/2026-07-21-eager-tool-index-mode.md`
+  (SUPERSEDED).
+- **Pre-existing unrelated debt (NOT mine):** `test_agent_surface` (8) + `test_tool_discovery` TestGenericFrontendTools
+  (2) fail on **P3.2 ui_*-federation test-fixture drift** — the tests still expect `ui_*` in `FRONTEND_TOOL_NAMES`
+  though P3.2 moved them to ai-gateway. Fail identically at HEAD. A P3.2 test-hygiene task, not auto-gate.
+
 ## 📚 BOOK-STRUCTURE PIPELINE — **P1–P4 SHIPPED + e2e-PROVEN, P5 deferred (2026-07-20, HEAD 387b6430a)**
 A later dogfood round (book *Mị Đế*, chat 019f771a) surfaced **Bug 4** (a manuscript Part vanishes on reload) +
 **Bug 2** (agent makes a chapter when asked for a description). Bug 4 root-caused to scattered book-structure
