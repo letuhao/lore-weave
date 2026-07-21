@@ -71,8 +71,17 @@ ALWAYS_HOT_WRITES: frozenset[str] = frozenset({
     "memory_remember",
     "kg_propose_edge",
     "kg_propose_fact",
-    # book — draft capture (compose)
+    # book — draft capture (compose) + the book's own DETAILS (title/description/
+    # blurb/summary/genre). book_update_details is a SAFE, low-surprise co-writer
+    # write (a diff card the human applies) and the ONLY home for editing a book's
+    # description — but it's a Tier-W tool with a large 5-field schema, so the
+    # read-first budget ordering STARVED it out of the hot set (dogfood 2026-07-21:
+    # it was never advertised, so every model mis-routed "update the description" to
+    # book_chapter_create/save_draft — the tool it could actually see). Allowlist it
+    # so it's always reachable, exactly like save_draft. (This gap predates the
+    # book_update_meta→book_update_details rename — the old name was starved too.)
     "book_chapter_save_draft",
+    "book_update_details",
 })
 
 
