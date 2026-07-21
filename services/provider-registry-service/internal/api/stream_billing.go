@@ -13,6 +13,7 @@ package api
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"strings"
@@ -89,6 +90,39 @@ func (s *Server) preflightStream(
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "LLM_INTERNAL_ERROR", "cost estimate failed")
 		return nil, false
+	}
+
+	// ── Context-window gate (D-CHAT-CONTEXT-OVERFLOW) — DEFAULT-ON ────────────────
+	// The JOBS path (jobs_handler preflight) already rejects requests that overflow
+	// the model's window, but the STREAM path historically SKIPPED it (chat omits
+	// max_tokens, "server decides"). That gap poisons chat SPECIFICALLY: a bloated
+	// assembled prompt (every tool schema + grounding + re-sent history over a
+	// multi-pass tool loop) OVERFLOWS the window, and llama.cpp/LM Studio SILENTLY
+	// TRUNCATES it — so the model reasons over a CLIPPED prompt and degrades (loops,
+	// mis-routes tools, "gets dumb"). Pipelines never hit this (they ARE gated) —
+	// which matches the observed "loops only in chat, never in one-shot/pipeline"
+	// signature. Gate on INPUT + safety; also LOG the input size every turn so the
+	// bloat is monitorable (the metric that was missing). Skipped only when the
+	// model's context_length is unknown (NULL/legacy/platform rows).
+	if s.jobsRepo != nil {
+		if ctxLen, ctxFound, ctxErr := s.jobsRepo.ModelContextLength(r.Context(), modelSource, userID, modelRef); ctxErr == nil && ctxFound && ctxLen > 0 {
+			inTokens := s.estimator.InputTokens(inputMap, 1)
+			safety := ctxLen * 15 / 100 // mirror the jobs-path + Python ContextBudget 15%
+			if inTokens+safety > ctxLen {
+				slog.Warn("chat context overflow — assembled prompt exceeds model window",
+					"input_tokens", inTokens, "safety", safety, "context_length", ctxLen,
+					"model_ref", modelRef.String(), "op", op)
+				writeError(w, http.StatusBadRequest, "LLM_CONTEXT_OVERFLOW", fmt.Sprintf(
+					"the assembled prompt overflows this model's context window: input=%d + safety=%d = %d > context_length=%d — reduce injected context (tools/grounding/history) or use a larger-window model",
+					inTokens, safety, inTokens+safety, ctxLen))
+				return nil, false
+			}
+			// Metric — even when it FITS, record the real input size + headroom so a
+			// creeping bloat is visible before it overflows.
+			slog.Info("chat context preflight", "input_tokens", inTokens,
+				"context_length", ctxLen, "headroom", ctxLen-inTokens,
+				"pct_used", inTokens*100/ctxLen, "model_ref", modelRef.String())
+		}
 	}
 
 	jobID, err := uuid.NewV7() // synthetic — a stream has no llm_jobs row
