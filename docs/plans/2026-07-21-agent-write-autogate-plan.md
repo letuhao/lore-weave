@@ -64,7 +64,21 @@ tool is not selected. Two compounding reasons:
   It did — yet didn't reach the tool. (ai-gateway was re-federated after the tier A→W change;
   verify the tool actually appears in `tool_list(book)` now.)
 
-### ✅ RENAME DONE + DEPLOYED (`af5126951`) — now a MODEL-CAPABILITY question (user driving model tests)
+### 🎯 BENCHMARK VERDICT (`3fcd0ddb6`) — the rename WORKS; the live failure is the DISCOVERY LOOP, not the name/model
+
+New multi-model tool-selection benchmark (`scripts/eval/tool_liveness/tool_selection_benchmark.py`,
+out-of-loop proxy: catalog present → pick one). Result: with `book_update_details` VISIBLE, BOTH
+Gemma-4 26B (5/6) and Nemotron-3 Nano (4/6) route "update the description / blurb / synopsis /
+summary" → `book_update_details`. Both 71% overall → NOT model-specific. So the live-chat failure
+(the model calling `tool_list(book)` then stopping, never `tool_load`+call) is the **LAZY DISCOVERY
+LOOP** — the model doesn't pull `book_update_details` into its callable set — NOT the name (fixed) and
+NOT model capability (both pick it when shown). **Next-fix direction changes: investigate why
+`tool_list(book)`→`tool_load(book_update_details)`→call doesn't happen in the live loop** (hot-seed
+the book domain for a book-metadata intent? the model needs a nudge to tool_load? verify tool_list(book)
+enumerates it end-to-end). The benchmark also surfaced sibling OVERLAPS (genre→glossary, prose→composition,
+publish→composition, toc→ui_*) — broader accuracy backlog.
+
+### (earlier) rename deployed — kept for reference
 
 `book_update_meta` → **`book_update_details`** shipped: book-service registration + synonyms
 + the two disclaimers; **stale tier fixed** (`write_auto`→`write_confirm` in tool-policy.ts,
