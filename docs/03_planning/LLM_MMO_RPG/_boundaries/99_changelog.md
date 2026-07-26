@@ -6,6 +6,17 @@
 
 ---
 
+## 2026-07-26 — `DL-A1 vs B3-D1` watchpoint CLOSED (amendment landed as `B3-D1a`)
+
+- **Lock CLAIMED 21:34, `Owner:` set before the first edit; released after.** Note: the claim edit returned git's *"file changed on disk"* warning — **treated as a stop, not as noise**, per the finding two entries down. Investigated: a peer session had written `_LOCK.md`, `locked_decisions.md`, `12` and `13` within the preceding three minutes. **Verified no content loss** (`B3-D1a` present; `13` matched HEAD) before continuing.
+- **Closes the `DL-A1 vs B3-D1` drift watchpoint.** Its "Pending" was the amendment row in `decisions/locked_decisions.md`, now landed as **`B3-D1a`**.
+- **The amendment is narrow, and the split is the point:** B3-D1 made two claims. *"No between-session **activity**"* is **preserved literally** — `DL-D1` evaluates routines **on read**, never ticks them, so there is zero background compute; V1 does not simulate between sessions, it computes what the world looks like now. Only *"NPCs resume where last session ended"* is superseded.
+- **B3-D2 / B3-D3 / B3-D4 / B3-D5 unchanged** — generative simulation stays V2+/V3+, opt-in, budget-capped, free-tier-frozen. B3 was protecting the **token cost of generative** simulation (its own list: relationship drift, plotline beats, rumour propagation); deterministic engine routines spend none of it.
+- **MV12-D4** (*"reality paused at 0 players"*) is **not an obstacle rather than overridden** — paused and running realities return the same answer when the answer is `f(fiction_time)`.
+- **Files within `_boundaries/`:** `_LOCK.md` + `01_feature_ownership_matrix.md` (1 watchpoint row) + `99_changelog.md`. **Outside:** `decisions/locked_decisions.md` (`B3-D1` marked amended + new `B3-D1a` row).
+
+---
+
 ## 2026-07-26 — Simulation tier registration (`SL-*` / `SC-*` / `CS-*` / `DL-*`)
 
 - **Lock CLAIMED 21:16 SEAST, `Owner:` set BEFORE the first edit**, per the discipline the preceding entry established. Released after.
