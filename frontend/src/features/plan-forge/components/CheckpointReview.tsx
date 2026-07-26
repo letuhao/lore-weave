@@ -14,16 +14,18 @@ import { useTranslation } from 'react-i18next';
 import { useCheckpointReview } from '../hooks/useCheckpointReview';
 import { PassArtifactView } from './PassArtifactView';
 import { PassArtifactEditor } from './PassArtifactEditor';
+import { ScenePlanEditor } from './ScenePlanEditor';
 import type { PlanPass } from '../types';
 
-/** Only these kinds have a structured editor; others stay read-only (F-1 view).
+/** EVERY reviewable atom kind is editable. The flat kinds share `PassArtifactEditor`; `scene_plan`
+ *  is NESTED (chapters[] → scenes[]) and gets its own `ScenePlanEditor`, because representing it in
+ *  the flat row editor would have meant flattening away the chapter grouping on save.
  *
- * `scene_plan` is deliberately absent: its list is NESTED (chapters[] → scenes[]), so the flat
- * row editor cannot represent it without flattening the structure on save. It needs a dedicated
- * nested editor — tracked, not faked. The agent can still revise it via plan_review_checkpoint,
- * where a `chapters` replace now deletes correctly. */
+ *  `scene_plan` mattered most and was fixed last: it is the atom the drafter actually writes from,
+ *  so leaving it read-only meant a GUI-only author could see a wrong scene breakdown and had no way
+ *  to correct it. */
 const EDITABLE_KINDS = new Set([
-  'cast_plan', 'beat_plan', 'motif_plan', 'world_plan', 'char_arc_plan',
+  'cast_plan', 'beat_plan', 'motif_plan', 'world_plan', 'char_arc_plan', 'scene_plan',
 ]);
 
 interface Props {
@@ -70,13 +72,22 @@ export function CheckpointReview({ pass, bookId, runId, token, busy, onReview, o
       ) : review.artifact && editing ? (
         // D-S3-CHECKPOINT-STRUCTURED-EDITS — the structured form. Saving holds the run with the
         // revised list (never a blind approve); the rail refetches the new artifact into this view.
-        <PassArtifactEditor
-          kind={pass.output_kind}
-          content={review.artifact.content}
-          busy={busy}
-          onSave={(edits) => { onSaveEdits(edits); setEditing(false); }}
-          onCancel={() => setEditing(false)}
-        />
+        pass.output_kind === 'scene_plan' ? (
+          <ScenePlanEditor
+            content={review.artifact.content}
+            busy={busy}
+            onSave={(edits) => { onSaveEdits(edits); setEditing(false); }}
+            onCancel={() => setEditing(false)}
+          />
+        ) : (
+          <PassArtifactEditor
+            kind={pass.output_kind}
+            content={review.artifact.content}
+            busy={busy}
+            onSave={(edits) => { onSaveEdits(edits); setEditing(false); }}
+            onCancel={() => setEditing(false)}
+          />
+        )
       ) : review.artifact ? (
         <div data-testid="review-content" className="max-h-40 overflow-auto text-[11px]">
           {/* F-1 — a readable per-kind render (cast list / beat list), not raw JSON. */}

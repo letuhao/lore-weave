@@ -106,13 +106,26 @@ describe('CheckpointReview (M4-CP)', () => {
     expect(edits.cast.map((c) => c.name)).toEqual(['Alice']);          // Bob is GONE from the list
   });
 
-  it('an advisory (non-editable) kind offers no Edit door', async () => {
-    // scene_plan, not motif_plan: motif_plan gained a structured editor. scene_plan's list is
-    // NESTED (chapters -> scenes), so the flat editor genuinely cannot represent it.
-    api.getArtifact.mockResolvedValue({ artifact_id: 'art1', kind: 'scene_plan', content: { chapters: [] }, created_at: null });
-    render(<CheckpointReview {...props({ pass: pass({ output_kind: 'scene_plan', checkpoint: 'advisory' }) })} />);
+  it('a NON-ATOM artifact kind offers no Edit door', async () => {
+    // All SIX reviewable atom kinds are now editable, so this can no longer be demonstrated with a
+    // pass artifact — `heal_report` is a real artifact kind that is not a reviewable atom, and it
+    // must still fall through to the read-only view rather than opening an editor with no shape.
+    api.getArtifact.mockResolvedValue({ artifact_id: 'art1', kind: 'heal_report', content: { findings: [] }, created_at: null });
+    render(<CheckpointReview {...props({ pass: pass({ output_kind: 'heal_report', checkpoint: 'advisory' }) })} />);
     await waitFor(() => screen.getByTestId('review-content'));
     expect(screen.queryByTestId('review-edit')).toBeNull();
+  });
+
+  it('scene_plan — the NESTED atom — opens its dedicated editor, not the flat one', async () => {
+    api.getArtifact.mockResolvedValue({
+      artifact_id: 'art1', kind: 'scene_plan', created_at: null,
+      content: { chapters: [{ chapter: { chapter_id: 'e1', title: 'The Wet Ink' }, scenes: [{ title: 's1' }] }] },
+    });
+    render(<CheckpointReview {...props({ pass: pass({ output_kind: 'scene_plan', checkpoint: 'advisory' }) })} />);
+    await waitFor(() => screen.getByTestId('review-edit'));
+    screen.getByTestId('review-edit').click();
+    await waitFor(() => screen.getByTestId('scene-plan-editor'));
+    expect(screen.queryByTestId('pass-artifact-editor')).toBeNull();
   });
 
   it('Reject calls onReview(false)', async () => {
