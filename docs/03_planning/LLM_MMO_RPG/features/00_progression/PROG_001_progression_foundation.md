@@ -67,7 +67,7 @@ PROG_001 establishes the value-substrate for ALL actor progression dimensions ac
 | `ActorClassMatch` / `FictionTimeWindow` / `RelationshipRequired` TrainingConditions | V1+30d (PROG-D10/D11/D12) | Q3e — 3 V1 only |
 | `HourlyBoundary` / Custom TickPeriod | V1+30d (PROG-D13) | Q3f — DailyBoundary only V1 |
 | `TrainingSource::Quest` | V2 (PROG-D14) | Q3c — QST_001 dependency |
-| `InstrumentClass` match | V1+30d (PROG-D15) | Q3 — broader category match V1+ |
+| ~~`InstrumentClass` match~~ | ✅ **RESOLVED 2026-07-26** by PL_007 (PROG-D15) | Q3 — deferred for want of a class taxonomy; PL_007 `ItemDefDecl.instrument_tags` supplies it, and `InstrumentMatch::ItemTag` is the match. See the §training closure-pass note. |
 | RES_001 NPC eager → lazy migration | V1+30d (PROG-D19) | Q4 REVISED — RES_001 closure pass alignment |
 | Intermediate-state interpolation | V1+ (PROG-D20) | Q4 REVISED — V1 conservative single-state |
 | NPC-to-NPC cascade during un-observed period | V2 (PROG-D21) | Q4 REVISED — complex determinism |
@@ -465,9 +465,34 @@ pub enum TargetMatch {
 
 pub enum InstrumentMatch {
     Any,
-    Specific(ResourceKind),                               // training Sword skill requires Sword item as tool
-    // InstrumentClass V1+30d (PROG-D15)
+    Specific(ResourceKind),                               // fungible tools only — see the 2026-07-26 note
+    ItemDef(ItemDefId),                                   // NEW 2026-07-26 (PL_007) — exact item
+    ItemTag(InstrumentTag),                               // NEW 2026-07-26 (PL_007) — RESOLVES PROG-D15
 }
+
+> **Closure-pass note 2026-07-26 (PL_007 Item Foundation cold-start review) — two additive variants,
+> and one clarification that is load-bearing.**
+>
+> **(a) `Specific(ResourceKind)` can no longer name a wielded weapon.** PL_007 ITM-A2 makes an item with
+> identity an **EF_001 entity** (`ItemDefId`), and **withdraws `ResourceKind::Item`** (RES-D1) — so a
+> sword is not nameable by any `ResourceKind`. Without the two new variants, *every* rule of the form
+> "train X while wielding/using Y" would have been **silently unsatisfiable**: the rule parses, the
+> match never fires, and the author sees a declared bonus that never arrives. `Specific(ResourceKind)`
+> is **retained** for genuinely fungible instruments. `ItemTag` is PROG-D15's "`InstrumentClass` match"
+> — deferred V1+30d for want of exactly this taxonomy, now **RESOLVED**; the tags are author-declared on
+> `ItemDefDecl.instrument_tags`, and PL_007 ITM-C7 warns at bootstrap if a tag no item carries is
+> referenced here.
+>
+> **(b) The same enum is resolved against different subjects by its two consumers — deliberately.**
+>
+> | Consumer | Resolves against | Why |
+> |---|---|---|
+> | **PROG_001 training rules** (this section, `§training` pseudocode) | **`current_turn.instrument`** — the `tools[0]` of the Interaction being processed. **Unchanged from the original semantic.** | Training is *what you just did with what was in your hand*. `ItemClass::Tool` (lockpick, flint, rope) is **never equippable** in PL_007 §5.2, so an equipped-only rule would make every tool-training rule permanently dead. |
+> | **DF07 `StatTerm.instrument_match`** ([DF07_001 §6.1](../DF/DF07_pc_stats/DF07_001_actor_stat_block.md)) | the **equipped main-hand instance** | A stat term is a *standing* contribution resolved outside any turn — there is no "current turn instrument" to read, and DF07 additionally needs the instrument inside `StatEpoch.equipment_version` rather than as a hidden per-action input its snapshot cannot see. |
+>
+> PL_007's first draft stated one global rule ("the main_hand-equipped item"), which would have changed
+> **this** feature's behaviour by side effect. It does not. PL_007 supplies the vocabulary and the tags;
+> each consumer resolves its own subject. No change to any existing `training_rules` declaration.
 
 pub enum TrainingAmount {
     Fixed { amount: u32 },                                // V1 active
@@ -1451,7 +1476,7 @@ Already enumerated in CONCEPT_NOTES §11.2 / §11.4 / §11.8 / §11.11. PROG-D33
 - PROG-D11 TrainingCondition::FictionTimeWindow
 - PROG-D12 TrainingCondition::RelationshipRequired
 - PROG-D13 TickPeriod::HourlyBoundary / Custom
-- PROG-D15 InstrumentMatch::InstrumentClass
+- ~~PROG-D15 InstrumentMatch::InstrumentClass~~ — ✅ **RESOLVED 2026-07-26 by PL_007** (`InstrumentMatch::ItemTag` + `ItemDefDecl.instrument_tags`; see §training closure-pass note)
 - PROG-D19 RES_001 NPC eager → lazy migration alignment
 - PROG-D23 Closed-form materialization optimization
 - PROG-D28 Per-instrument formula override
