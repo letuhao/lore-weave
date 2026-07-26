@@ -38,7 +38,11 @@ interface Props {
 }
 
 /** The field key holding the editable list, and the columns we expose, per known kind. */
-const SHAPE: Partial<Record<PlanArtifactKind, { field: string; cols: Col[] }>> = {
+// EXPORTED so `planArtifactContract.test.ts` can assert THESE bindings against the producer's
+// generated contract. A hand-mirrored copy in the test would just be a third place to be wrong —
+// which is the exact failure mode (consumer asserting its own assumption) that let the original
+// `beats`/`trait` drift ship green.
+export const SHAPE: Partial<Record<PlanArtifactKind, { field: string; cols: Col[] }>> = {
   cast_plan: {
     field: 'cast',
     cols: [
