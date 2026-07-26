@@ -8,6 +8,8 @@ generated_by: scripts/chunk_doc.py
 
 ## 12V. LLM Cost Controls — S6 Resolution (2026-04-24)
 
+> **⚠ PARTIALLY SUPERSEDED 2026-07-26 (AUD-F16 roots #4, #5).** `user_cost_ledger.event_id BIGINT` (§12V.7) assumes a global monotonic event id — identity is now `(reality_id, channel_id, channel_event_id)` — and the per-turn accounting assumes a synchronous awaited LLM turn, superseded by dispatch-never-await (SL-A3/A4). See [`19_reconciliation_register.md`](../19_reconciliation_register.md) REC-59 for the resolved payer model. Status markers below predate the island/commit-service model.
+
 **Origin:** Security Review S6 — no production per-user rate limit on LLM turns. Compromised paid-tier account could drain platform LLM budget. Closes economic DOS vector left by D2-D1 tier model.
 
 ### 12V.1 Threat model

@@ -191,9 +191,18 @@ trade: safety now, NPC-conversion risk later.
 
 ### 5.1 Offline vitals — coarse sweep (DL-Q1 → DL-D13)
 
-> **DL-D13 — An offline *unhidden* PC accrues vitals and **can die of them**. `/hide` pauses
-> `body_clock`; an unhidden body does not.** Hiding reuses the **TDIL-D5** precedent (a paused body
-> accrues no hunger), so it is a precedented state rather than a special case.
+> **DL-D13 — An offline *unhidden* PC accrues vitals and **can die of them**. ~~`/hide` pauses
+> `body_clock`; an unhidden body does not.~~ ~~Hiding reuses the **TDIL-D5** precedent (a paused body
+> accrues no hunger), so it is a precedented state rather than a special case.~~**
+>
+> **⚠ CORRECTED 2026-07-26 (REC-47 / AUD-F17 #31): the "TDIL-D5 precedent" claim is superseded —
+> TDIL-D5 is a DEFERRAL, not a precedent, and per-clock pausing is exactly what TDIL V1 explicitly
+> forbids.** A hidden PC's vitals immunity does not come from pausing `body_clock`. **V1
+> implements `/hide` immunity as a status/driver rule:** the hidden state carries an
+> **`offline_vitals` exemption flag** — the coarse `offline_vitals` sweep simply skips flagged
+> bodies. Same player-visible behaviour (a hidden PC never starves), zero clock machinery.
+> **Per-clock pausing stays V1+30d, landing with TDIL-D5 itself** — if/when TDIL ships it, DL_001
+> may swap the exemption flag for a genuine `body_clock` pause with no behaviour change.
 
 > **The evaluation cadence is COARSE — default 1 fiction-hour, configurable — not per-turn.** Offline
 > bodies are swept in bulk by the `offline_vitals` Class C rule; they never enter the per-turn generator
@@ -296,7 +305,7 @@ the V2/V3 generative rules are genuinely background.
 | **AC-DL-11** | A reality with `pc_conversion_enabled = false` never converts a hidden PC. |
 | **AC-DL-12** | Replaying a V1 daily-life day produces byte-identical state (no LLM in the V1 path). |
 | **AC-DL-13** | An offline **unhidden** PC left long enough starves to death; the death commits at a **sweep boundary**, carries a definite `died_at`, and triggers WA_006 + loot + succession normally. |
-| **AC-DL-14** | An offline **hidden** PC never starves, however long it is hidden (`body_clock` paused, TDIL-D5). |
+| **AC-DL-14** | An offline **hidden** PC never starves, however long it is hidden (~~`body_clock` paused, TDIL-D5~~ **`offline_vitals` exemption flag — REC-47 2026-07-26**; per-clock pausing is V1+30d with TDIL-D5). |
 | **AC-DL-15** | One `offline_vitals` sweep with `elapsed = 1h` yields **exactly** the vital values sixty per-turn evaluations would (TDIL-A3 O(1) elapsed multiplication) — coarse granularity is numerically lossless. |
 | **AC-DL-16** | A converted PC in a permadeath reality can die permanently; in a protective reality it cannot. Identical outcomes to the same character played by its owner. |
 | **AC-DL-17** | A converted PC's driver cannot **initiate** combat (DL-D14 tool set), but does defend when attacked. |

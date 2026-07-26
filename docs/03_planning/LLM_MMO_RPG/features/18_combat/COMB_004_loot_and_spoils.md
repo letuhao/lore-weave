@@ -317,6 +317,19 @@ generated drops, viewed through PL_007b's existing `CellItemView`. Taking spoils
 partial-fill** path — including its `item.inventory.cap_partial` warning when a claimant cannot carry
 everything, with the remainder correctly left in the cell rather than destroyed.
 
+> **⚠ CORRECTED 2026-07-26 (REC-11 / AUD-F17 #28, PO decision) — the delegation above was circular,
+> and this doc now owns the V1 action.** PL_007b's text gates its bulk path on *"that module's"*
+> (this module's) definition, while this section pointed back at PL_007b; PL_007's only V1
+> acquisition sub-type is single-instance `Item:PickUp`, so SPO-V5 and AC-SPO-10 gated an action
+> neither doc defined. **NEW EVT-T1 sub-type `Item:TakeSpoils`, owned by COMB_004:**
+> `{ cell_id, subjects: Vec<ItemInstanceId> | All, claimant: ActorId }` — resolves against
+> `CellItemView`, honours the §7 claim window (SPO-V5 entitlement inside the window, free-for-all
+> after expiry), fills to capacity with `item.inventory.cap_partial` on overflow, remainder stays
+> `InCell`. Each transferred instance is an `entity_binding` `InCell → HeldBy` transition — the
+> same delta `Item:PickUp` emits, batched; **no new aggregate, no new inventory surface**
+> (PL_007b's §10.7 prediction holds). Registration: EVT-T1 sub-type row + `_boundaries` ownership
+> per EVT-A11 rides the next lock cycle. AC-SPO-10 is now satisfiable as written.
+
 **Consequence, stated because it is a design choice and not an accident:** unclaimed spoils **persist in
 the world**. They are ordinary `Existing` items in a cell. A party that wipes and returns can recover what
 they left. A V1+ decay sweep is SPO-D-adjacent and deliberately not V1 — persistence is the simpler and
@@ -414,9 +427,17 @@ Two mechanisms, both cheap and both composing with COMB_005's spawn epochs:
    epoch; at zero, only `chance_milli = 1000` guaranteed entries fire. This bounds the *total* yield of a
    camp without needing per-actor cooldowns or a diminishing-returns curve.
 
-Both are **derived from the epoch**, so they need no stored counter that could drift — the same
-seed-and-epoch discipline COMB_005 uses for population. `MinEncounterRounds` (§3) is the third, softest
+~~Both are **derived from the epoch**, so they need no stored counter that could drift — the same
+seed-and-epoch discipline COMB_005 uses for population.~~ `MinEncounterRounds` (§3) is the third, softest
 lever: it makes trivially-fast kills ineligible for the good entries without banning them outright.
+
+> **⚠ CORRECTED 2026-07-26 (REC-46 / AUD-F17 #48): the struck sentence was false and this doc's own
+> §4.2 already contradicts it.** Only the **epoch key** is derived; both anti-farm mechanisms rest on
+> stored state — `SpawnGroupLootState` (§4.2) carries **two stored fields**: `claimed: BitSet` (the
+> `first_kill_only` entries already taken) and `budget_remaining: u16` (this section's loot budget).
+> Both are ephemeral, per materialised group, dying with it (§4.2's lifetime rules stand). COMB_005 §9's
+> "one piece of per-group runtime state" grant is amended in that doc to name both fields (REC-46),
+> alongside the `spawn_group_cleared` island-state set that REC-38 adds there.
 
 ---
 
@@ -557,7 +578,20 @@ survived, which is a property of the *enemy*, not of how carelessly the player f
 See the §1 "V1 NOT shipping" table for SPO-D1..D9; **SPO-D10** (persisting `first_kill_only` across an
 unload/re-observe inside one epoch) is added by §4.2. **No open questions remain.**
 
-## §16 — The Binding Contest (SPO-Q10..Q14 LOCKED 2026-07-26)
+## §16 — The Binding Contest (SPO-Q10..Q14 LOCKED 2026-07-26) — **⚠ V1+, re-scoped**
+
+> **⚠ RE-SCOPED 2026-07-26 (REC-10 / AUD-F17 #27, PO decision) — this whole section activates
+> alongside PL_007 ITM-D5, i.e. V1+, not V1.** As locked, SPO-Q10..Q14 and six unqualified V1 ACs
+> (AC-SPO-14/15/16/18/19/20) built on `PL_007.bound_to`, whose owner marked it *"V1: **ALWAYS
+> None** (soulbound, ITM-D5). **Reservation only.**"* — a lock on a field its owner had not
+> activated. Also lifecycle-impossible as written: §16.3 keeps a soulbound item `HeldBy` a dead
+> actor, which violates ITM-C4 (`instance.lifecycle_state == holder.lifecycle_state`) and PL_007
+> §8.5 (a dead combatant's items become `InCell(death_cell)` with cleared equipment) — the V1+
+> activation must resolve that with PL_007's owner, not around them. **The design is retained
+> intact as the V1+ contract** — the user direction it implements stands; only the tier moves.
+> The six ACs re-tag V1+. COMB_006's full-permadeath PvP note: V1 death loses unbound inventory
+> per §6 (already survivable-by-reclaim from the cell); the *binding* softening arrives with
+> ITM-D5. SPO-Q10..Q14 remain LOCKED **as V1+ decisions**.
 
 > **User direction 2026-07-26:** *"full WA_006, but item system have some bind item — bind item will
 > damage but still follow the soul for next reclaim; but still lost by damage or steal if the enemy have

@@ -8,6 +8,8 @@ generated_by: scripts/chunk_doc.py
 
 ## 12Y. Prompt Assembly Governance — S9 Resolution (2026-04-24)
 
+> **⚠ PARTIALLY SUPERSEDED 2026-07-26 (AUD-F16 root #7).** The framing that `roleplay-service` orchestrates all LLM calls is stale — orchestration sits with the island + `commit-service`; see [`17_game_data_architecture.md`](../17_game_data_architecture.md) R8 for the current retrieval/composition role split. The governance layers §12Y.1–§12Y.11 (template registry, section structure, injection defense, budgets, redaction, replay audit, regression harness) remain valid wherever assembly runs. Status markers below predate the island/commit-service model.
+
 **Origin:** Security Review S9 — roleplay-service orchestrates all LLM calls. Without governance on prompt assembly, capability-based memory (S2), privacy tiers (S3), PII boundaries (S8), and cost caps (S6) are all one sloppy prompt builder away from regression. Plus: no injection defense, no versioning, no regression tests, no deterministic replay for incident response.
 
 ### 12Y.1 Threat model
@@ -35,7 +37,7 @@ type PromptContext struct {
     SessionID       *uuid.UUID          // nil for world-seed / canon-extraction intents
     ActorUserRefID  uuid.UUID
     ActorPCID       *uuid.UUID
-    Intent          Intent              // enum: session_turn | npc_reply | canon_check | canon_extraction | admin_triggered | world_seed | summary
+    Intent          Intent              // enum: session_turn | npc_reply | canon_check | canon_extraction | admin_triggered | world_seed | summary | agent_decision (REC-60)
     RetrievalHints  RetrievalHints      // max_memories, max_history_events, relevance_query
     AdminTier       *ImpactClass        // present if admin-triggered (S5 tier)
     ConsentState    ConsentSnapshot     // cached from user_consent_ledger (5min TTL)
@@ -66,6 +68,9 @@ Intent enum:
 - `admin_triggered` — admin-initiated prompt (e.g., bulk summary)
 - `world_seed` — initial reality bootstrap (§12R.2)
 - `summary` — memory compaction prompt (§12H)
+- `agent_decision` — NPC/agent decision dispatch (tool-selection, not prose) — added by REC-60, see note below
+
+> **⚠ CORRECTED 2026-07-26 (REC-60): NEW intent `agent_decision` — NPC decisions no longer ride `intent=npc_reply`.** The enum and the 12Y.7 budget table had no decision/tool-selection intent, so NPC_002 dispatched agent decisions as `npc_reply` — a prose-composition intent with prose-shaped budgets and templates. `agent_decision` joins the enum and the budget table (input 8K / output 1K — a decision is a tool-call payload, not prose). The **`DecisionContext` → `PromptContext` mapping and the `ContextResolver` role (`17` R8 / GDA-D16) are hosted by ai-gateway**, per the REC-54/55/56 resolution: ai-gateway is the LLM-Originator, runs the tool-loop against the model via provider-registry, and therefore is where a `DecisionContext` arriving from commit-service's LlmDriver is resolved into a `PromptContext{Intent: agent_decision}` before assembly.
 
 ### 12Y.3 Layer 2 — Versioned Template Registry
 
@@ -199,6 +204,7 @@ Per-intent hard caps at assembly time:
 | `admin_triggered` | 8K | 2K | Scripted ops; tight default |
 | `world_seed` | 24K | 8K | One-shot bootstrap; generous |
 | `summary` | 8K | 1K | Memory compaction; tight |
+| `agent_decision` | 8K | 1K | ⚠ ADDED 2026-07-26 (REC-60) — decisions are tool-calls, not prose; context is the DecisionContext snapshot, output is one proposal-schema tool-call |
 
 Over-budget → **assembly fails with error** (not silent truncation):
 - Silent truncation would drop canon facts unpredictably

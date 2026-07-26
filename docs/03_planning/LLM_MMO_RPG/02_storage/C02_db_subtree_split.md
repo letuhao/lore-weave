@@ -8,6 +8,8 @@ generated_by: scripts/chunk_doc.py
 
 ## 12N. Database Subtree Split Runbook (C2 resolution)
 
+> **⚠ PARTIALLY SUPERSEDED 2026-07-26 (AUD-F16 root #8).** §12N.4's freeze-copy-cutover playbook treats the reality as a passive DB to drain — it lacks **island quiescence and epoch handoff**: the sticky writer node holds live state in memory plus an epoch token, so a split must checkpoint/quiesce islands and bump the epoch before cutover (see CS-D1 in [`15_commit_service.md`](../15_commit_service.md)). The two-tier approach and rollback discipline otherwise stand. Status markers below predate the island/commit-service model.
+
 **Origin:** SA+DE adversarial review 2026-04-24 surfaced C2 — §12D.6 specifies split thresholds (50M events OR 500 concurrent players per subtree) but §12D.10 waves over the actual "how do you move a live reality DB from shard A to shard B" ops procedure. This section locks the concrete playbook.
 
 ### 12N.1 When does split actually fire?

@@ -8,6 +8,8 @@ generated_by: scripts/chunk_doc.py
 
 ## 13. Known risks (for separate discussion)
 
+> **⚠ PARTIALLY SUPERSEDED 2026-07-26 (AUD-F16 roots #1, #3, #4).** This summary repeats superseded resolutions as MITIGATED: R7 “session is the concurrency unit” (now channel/island — DP-A16 · SL-A9 · CS-A1), the DB/events-table-as-SSOT framing behind R6/R12 (DB is a persistence sink; live state is island memory; Class A is never event-sourced), and the reality-global BIGSERIAL event id (now `(reality_id, channel_id, channel_event_id)`). Read these statuses against the corpus banner in [`_index.md`](_index.md), not at face value. Status markers below predate the island/commit-service model.
+
 > The user indicated they have ideas for these. Listed here so we have them in one place when we resume.
 
 ### R1. Event volume explosion — **MITIGATED**

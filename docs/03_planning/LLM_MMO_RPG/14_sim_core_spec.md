@@ -131,6 +131,23 @@ pub enum Outcome {
     Discarded { reason: DiscardReason },
     Buffered,
 }
+
+/// ⚠ ADDED 2026-07-26 (REC-63 / error-taxonomy sweep): this enum was referenced throughout the
+/// spec and enumerated NOWHERE — an S2/S3 implementer would have invented it on the spot, along
+/// with its player-facing delivery. Closed set, small on purpose:
+pub enum DiscardReason {
+    Duplicate,                                   // I2 seen-set hit (§5)
+    PreconditionFailed { p: Precondition },      // SC-A1 step-time re-validation miss
+    Superseded,                                  // generational invalidation (§7)
+    Expired,                                     // deadline passed before step (SL-A4)
+}
+// Player delivery (REC-64): commit-service emits a s2c `turn.outcome` frame
+// { turn_ref, outcome: Accepted | Rejected{RejectReason} | Discarded{reason_class, user_message} }
+// on the game transport alongside the patch broadcast. Fallback::Notify(entity, reason) resolves
+// to this frame — its previously-undefined `Reason` IS DiscardReason. Each class carries default
+// I18nBundle copy (e.g. PreconditionFailed → "the world moved on before your action landed").
+// This closes error layers 4+5 of the taxonomy sweep: the bus consumed the request, so the
+// response must be a push; there is no HTTP ack to ride.
 ```
 
 **`Payload` is generic over the domain** (`Island<D: Domain>`), so `sim-core` never imports combat.

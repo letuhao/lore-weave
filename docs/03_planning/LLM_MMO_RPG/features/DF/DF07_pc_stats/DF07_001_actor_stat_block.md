@@ -277,6 +277,24 @@ fn archetype_block(actor, reality) -> StatBlock:                     // the Untr
   return block
 ```
 
+> **⚠ CORRECTED 2026-07-26 (REC-43 / AUD-F17 #33): the archetype base is consulted on the
+> progression path too.** As written, step 1 read `v = milli(d.base)` — the reality-global
+> `StatSlotDecl` base — for **every** actor holding `actor_progression`. Consequence: RES_001's
+> NPC-peasant 50/50 default was **unreachable by any DF07 path** — a Tracked NPC has
+> `actor_progression`, so it resolved through the reality-global `MaxHp` base and got the PC's
+> 100. Per the register's resolution, step 1 for non-derived slots becomes a **per-class base
+> override**:
+>
+> ```pseudo
+> v = milli(reality.stat_archetypes[actor.actor_class]?[slot] ?? d.base)
+> ```
+>
+> — i.e. when the actor's `actor_class` has a `stat_archetypes` entry declaring this slot, that
+> archetype value is the `base`, **even on the progression path**; progression terms, equipment,
+> status, clamps and the Lex clamp then layer on top exactly as before. Actors with no archetype
+> entry (PCs by default) are unchanged. The Untracked `archetype_block` path is unchanged — this
+> makes the Tracked path consistent with it instead of silently diverging from RES_001 §9.2.
+
 **Why `MoveRange` still runs steps 3–6.** Its *base* derives from the resolved `Speed`, but equipment and
 status must still move it (boots of striding; `Exhausted` shortening a stride) — only steps 1–2 differ.
 Declaring `terms` on a derived slot is an author error, not a silent no-op:

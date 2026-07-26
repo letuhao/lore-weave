@@ -186,15 +186,29 @@ pub enum ForgeEditAction {
 }
 ```
 
-### §4.4 Auto-promotion V1 (Q2d) — DEFERRED
+### §4.4 Auto-promotion V1 (Q2d) — **REVISED 2026-07-26: mechanism V1, heuristic still deferred**
 
-V1: NO auto-promotion. V1+30d (AIT-D1) significance threshold heuristic (PC interactions count / named-mention count / token exchange volume).
+> **⚠ REC-12 / AUD-F17 #13 (PO decision).** Two consumers shipped V1 features on the deferred
+> mechanism: COMB_005 §7 promotes an engaged hostile to Tracked-Minor mid-encounter, and DL_001
+> DL-D6 promotes a hidden PC's body to Major (deferred-never-dropped on overflow). As written,
+> neither path existed. **Split, not wholesale promotion:** the **promotion mechanism** (AIT-D1's
+> transition machinery: write `npc_core` + `actor_progression` + `actor_clocks` per TDIL §4.2
+> crystallization — closing AUD-F17 #35's missing clock write — under `tier_capacity_caps` with
+> **soft-fail-at-cap**: promotion queues per DL-D6's deferred-never-dropped rule rather than
+> rejecting) is **V1, callable by two named triggers only**: COMB_005 engagement and DL_001
+> conversion. The **significance-threshold heuristic** (interaction counts / mentions / token
+> volume) and LLM-propose-promotion (AIT-D7) **stay V1+30d** — no ambient auto-promotion V1.
 
-V1+30d (AIT-D7): LLM-propose-promotion with author-confirm UI.
+V1+30d (AIT-D1 residual): significance threshold heuristic. V1+30d (AIT-D7): LLM-propose-promotion with author-confirm UI.
 
-### §4.5 Demotion V1 (Q2e) — DISABLED
+### §4.5 Demotion V1 (Q2e) — **REVISED 2026-07-26: one caller, V1**
 
-Tracked is permanent V1. V1+30d (AIT-D2) `Forge:DemoteTrackedToUntracked` for narrative use cases (deceased NPC simplified to memorial; sect dissolved members).
+> **⚠ REC-12 (PO decision).** COMB_005 declares `demote_after_days` and names AIT_001 as demotion's
+> owner; this section disabled it. **V1 ships exactly one demotion path**: encounter-promoted
+> Minors (per §4.4 above) demote back to Untracked after `demote_after_days` with no PC
+> interaction, evaluated **lazily at observation** (TDIL-A11 `ObservationAdvance` supplies the
+> elapsed window — no scheduler). Canonically-declared Tracked NPCs remain permanent V1.
+> `Forge:DemoteTrackedToUntracked` (AIT-D2) for narrative use stays V1+30d.
 
 ### §4.6 Untracked NpcId scoping (Q2f)
 
@@ -340,6 +354,19 @@ on PC_enters_cell(pc, cell, current_fiction_ts):
     };
 ```
 
+> **⚠ CORRECTED 2026-07-26 (REC-39 / AUD-F17 #26): COMB_005 spawn-group members ARE the Untracked
+> NPCs this pipeline generates — one generator, one stat source.** COMB_005 claimed its members
+> carry *"zero per-actor state"* while this section generates per-slot ids, names, sampled stats
+> and a runtime cache — two apparently-contradictory claims and two stat sources (DF07
+> `stat_archetypes` vs the `stat_ranges` sampling above) with no arbitration. Reconciled:
+> (a) COMB_005's "zero state" claim **scopes to COMB_005's own bookkeeping** — it stores nothing;
+> the per-slot state lives here, in AIT's session-ephemeral cache, exactly as for ambient
+> Untracked. (b) `HostileSpawnDecl` gains a **`role_ref` to an `UntrackedRoleDecl`** (§5.2) rather
+> than a bare `ActorClassRef` the generator could not consume. (c) **Stat source = AIT Stage 1
+> sampling** (the role's `stat_ranges`); **DF07 `stat_archetypes` is the fallback** for actors
+> with no sampled stats (e.g. the group-pool ceiling DF07 §9 supplies). See the matching REC-39
+> notes in COMB_005 §3/§7.
+
 ### §5.4 Re-entry behavior (Q5c-d)
 
 - **Same fiction-day re-entry**: same blake3 seed → identical NpcIds + stats + names. Cache may already have entries; re-entry is no-op for spawn (don't re-emit if cache valid).
@@ -433,6 +460,17 @@ on Forge:PromoteUntrackedToTracked(ephemeral_npc_id, cell_id, new_tier):
   
   // forge_audit_log records edit (WA_003 existing path)
 ```
+
+> **⚠ CORRECTED 2026-07-26 (REC-41 / AUD-F17 #35): promotion crystallizes `actor_clocks` alongside
+> `npc_core` + `actor_progression`, and the `last_observed_at_fiction_ts` write above is stale.**
+> TDIL_001 asserts promotion "crystallizes" the actor's clocks, but the pseudocode above wrote only
+> `npc_core` + `actor_progression` — a freshly promoted NPC had **no `actor_clocks` row**, which
+> TDIL §6.1 immediately requires. The promotion path now ALSO inserts the actor's `actor_clocks`
+> row per **TDIL_001 §4.2** (clocks initialized at the promoting observation instant), as the
+> §4.4 REC-12 note already records for the two V1 promotion triggers. Separately, the
+> `last_observed_at_fiction_ts: current_ts` field written into `ProgressionInstance` above is
+> **superseded and removed** — TDIL_001 §17.1 replaced that field (observation bookkeeping moved
+> to the TDIL clock substrate); writing it here was a stale survivor of the pre-TDIL shape.
 
 ---
 
@@ -572,6 +610,30 @@ pub enum ScriptedReaction {
 
 V1: ONLY `StartTraining` ScheduledAction + `SpeakCanned` ScriptedReaction active. Other variants reserved V1+30d.
 
+> **⚠ CORRECTED 2026-07-26 (REC-21 / AUD-F17 #45): `combat_reaction_table` added to
+> `MinorBehaviorScript` — the field had ZERO repo-wide hits while four docs built V1 surfaces on
+> it.** COMB_001 (§1 L2 ScriptDriver dispatch + §9 closure item 5), COMB_003 (THR-V2), ABL_001
+> (§8.2 driver table) and AIT_001's own §9.3 AIT-A16 carve-out all reference
+> `minor_behavior_scripts.combat_reaction_table`; the nearest real field here was
+> `reaction_table: Vec<ReactionDecl>`, which carries **no combat variants in V1**. The struct now
+> declares the extension the consumers were already built on:
+>
+> ```rust
+> pub struct MinorBehaviorScript {
+>     // ... fields above unchanged ...
+>     pub combat_reaction_table: Vec<CombatReactionDecl>,   // NEW (REC-21) — the ScriptDriver combat impl
+> }
+>
+> pub struct CombatReactionDecl {
+>     pub trigger: EventPattern,                 // combat trigger (e.g. StruckByPC, round start)
+>     pub target_selector: TargetSelector,       // COMB_003's TargetSelector — engine-resolved, zero LLM
+>     pub ability: Option<AbilityId>,            // None ⇒ basic Strike/Defend per trigger
+> }
+> ```
+>
+> Active in combat per §9.3's AIT-A16 engine-combat carve-out (AIT-D18 combat variants → V1,
+> REC-01). Outside combat the V1-active set above is unchanged.
+
 ### §7.3 NPC_002 Chorus tier filter (Q7e)
 
 Chorus closure pass folds in tier check:
@@ -587,6 +649,51 @@ fn npc_chorus_priority(npc_ref: ActorRef) -> Option<Priority>:
 ```
 
 Untracked NPCs are NEVER in Chorus (no actor_progression aggregate; semantic exclusion).
+
+> **⚠ CORRECTED 2026-07-26 (REC-40 / AUD-F17 #25): the pseudocode above dereferenced
+> `.tracking_tier` on a row Untracked never has.** `storage.actor_progression.get(npc_ref)`
+> returns nothing for an Untracked actor, so the `match actor_progression.tracking_tier` line
+> read a field of an absent row before the comment concluded "this code path not reached". The
+> guard now matches on the `Option<>` itself:
+>
+> ```pseudo
+> match storage.actor_progression.get(npc_ref):
+>   None            => return None                        // Untracked — excluded BEFORE any deref
+>   Some(prog)      => match prog.tracking_tier:
+>     None          => Priority::Pc
+>     Some(Major)   => calculate_full_chorus_priority(npc_ref)
+>     Some(Minor)   => Priority::MinorBaseline
+> ```
+>
+> NPC_002 §6.1's Chorus filter gains the matching AIT-A8 tier gate on its side (same REC).
+
+---
+
+### §7.5 Tracked-NPC lazy materialization (O(1)) — **NEW 2026-07-26 (REC-20 / AUD-F17 #44)**
+
+> **⚠ CORRECTED 2026-07-26 (REC-20 / AUD-F17 #44): this section did not exist, yet two locked
+> docs cited it as already revised.** This doc's own status block (header, 2026-04-27
+> closure-pass-extension) and TDIL_001 §17.3 both recorded "§7.5 lazy materialization formula
+> REVISED … O(1)" — **a lock cycle recorded an edit that was never made**, the register's
+> sharpest process finding. The section is now written, unblocked by TDIL-A11 (REC-04), which
+> supplies the non-zero `elapsed` the formula needs.
+
+When a Tracked NPC (Major or Minor) is **observed** after an absence, its progression is
+materialized lazily, in constant time:
+
+1. **TDIL-A11 `ObservationAdvance` fires first** — the observation lazily advances the channel's
+   clock against the reality's rate-1.0 baseline (TDIL_001 §7.1a) *before* any read, so `elapsed`
+   is non-zero even in a channel that had no actor-driven advances (the Tây Du Ký 365× case this
+   doc cites as its motivating example).
+2. **One-shot delta per PROG kind** — for each `ProgressionInstance` the NPC carries:
+   `delta = base_rate × elapsed × derives_from_multiplier` (the TDIL_001 §7.4 formula; integer
+   milli-unit math per DF7-A4/TDIL-A9). **NOT** a per-day replay loop — the cost is O(1) in the
+   absence length, which is what makes billion-NPC scale viable.
+3. **Emit `ActorProgressionMaterialized`** recording `{ actor_ref, elapsed, per-kind deltas }` —
+   the materialization is a recorded, replayable event (SL-A6), not a silent read-side mutation.
+
+The Schrödinger pattern is preserved: PCs eager, Tracked NPCs lazy at observation, Untracked
+nothing to materialize (no aggregate). Cross-realm observation stays O(1) per TDIL-A7.
 
 ---
 
@@ -662,7 +769,21 @@ NEW validator at PL_005 cascade pre-validation. Slot ordering: AFTER PL_005 Stag
 fn ait_v1_tier_action_validator(turn_event: TurnEvent) -> Option<RejectReason>:
   let actor_tier = resolve_tier(turn_event.actor);  // PC / Major / Minor / Untracked
   let interaction_kind = turn_event.interaction_kind;
-  
+
+  // ⚠ AIT-A16 (NEW 2026-07-26 — REC-01 / AUD-F17 #1, PO decision): ENGINE-COMBAT CARVE-OUT.
+  // Actions resolved by EngineDriver or ScriptDriver INSIDE an active combat_session bypass
+  // this gate entirely. Without this exemption the gate was unsatisfiable with COMB_005: every
+  // generated hostile is Untracked (default) or Minor, so (Minor, Strike) and (Untracked, _)
+  // below rejected every attack any spawned enemy could ever make — the whole encounter layer
+  // was unresolvable. The carve-out is principled, not a patch: this gate exists to stop
+  // LLM-DRIVEN action from cheap tiers (token containment, Q9d); an engine bulk-resolve inside
+  // COMB_001's law-chain spends zero tokens and emits zero free text. LlmDriver-originated
+  // action from cheap tiers remains rejected exactly as below — the gate now checks the
+  // DRIVER + combat context, not the tier alone. Promotes AIT-D18 to V1 for combat variants
+  // (ai_tier.scripted_attack_invalid activates V1; Flee active V1 in combat).
+  if turn_event.driver in { EngineDriver, ScriptDriver } && turn_event.combat_session.is_some():
+      return None;                                   // COMB_001 §L2 / COMB_003 own the semantics
+
   match (actor_tier, interaction_kind):
     (PC | Major, _) => None,                        // full range allowed
     

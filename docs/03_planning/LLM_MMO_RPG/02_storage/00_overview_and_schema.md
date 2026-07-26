@@ -180,6 +180,18 @@ The `metadata` JSONB holds cross-cutting concerns every event carries:
 
 ### 4.4 Command flow (write path)
 
+> **⚠ SUPERSEDED 2026-07-26 (GDA-D11) — the *sequence* below is obsolete; read
+> [`17_game_data_architecture.md` §5 R2](../17_game_data_architecture.md) for the current write path.**
+> This section predates `sim-core` / `commit-service` (docs `13`/`14`/`15`) and contradicts them in
+> two places: **(a)** it has the command handler write directly in a DB transaction, whereas the
+> **island** is the writer (SC-A4 §5.1) with `commit-service` wrapping `sim-core` on both sides
+> (CS-A2); **(b)** it validates by reading a projection, whereas preconditions are re-validated
+> **at step time, never at admission** (SC-A1) — admission is the EVT-V1 pipeline (CS-A3).
+> **What survives:** the optimistic-concurrency reasoning below is unchanged and still applies at the
+> durability step, where `UNIQUE(reality_id, channel_id, channel_event_id)` is the DB-level
+> expression of the same per-island total order SL-A9 asserts at the simulation layer.
+> Retained rather than deleted because that reasoning is still the best statement of it.
+
 ```
 1. Command arrives ("player X says 'hello' to NPC Y in region Z")
 2. Validate command against projection (cheap read — is X in Z? is Y in Z?)
@@ -209,6 +221,13 @@ For a *normal* CRUD app, full event sourcing is usually overkill. For this MMO i
 
 ### 4.6 Sync vs async projection — start sync
 
+> **✅ RETAINED 2026-07-26 (GDA-D10) — this decision stands; only its *host* moved.** Unlike §4.4, the
+> choice below was never in conflict with the `sim-core` model: who writes and when validation happens
+> changed, but whether the projection updates in the same transaction as the event append is an
+> **independent** question, and the reasoning here still holds at V1 turn rates. It re-homes from the
+> command handler to **`commit-service`'s durability step** ([`17` §5 R2](../17_game_data_architecture.md)
+> step 5). The V3 async escape hatch below travels with it unchanged.
+
 Projections can be updated (a) in the same transaction as the event append, or (b) asynchronously by a worker tailing the event stream.
 
 **V1 decision: synchronous, in-transaction.** The event append and the projection update commit together. Reads are strongly consistent. No projection lag window.
@@ -222,6 +241,15 @@ Deferring async keeps V1 simple and removes an entire class of bugs (stale reads
 ## 5. Projections
 
 Each aggregate type has one or more **projection tables** — denormalized, query-optimized views of current state. These are the tables the app actually reads from for rendering.
+
+> **⚠ NOT AN INVENTORY 2026-07-26 (GDA-D12).** The four projections below (PC / NPC / Region /
+> WorldKV) are **patterns** — per-actor, per-NPC, per-region, world-KV — and remain instructive as
+> such. They are **not** the catalogue: the feature layer has since declared **52 aggregates**, and
+> the authoritative registry with tier, scope and owning feature is
+> [`_boundaries/01_feature_ownership_matrix.md`](../_boundaries/01_feature_ownership_matrix.md).
+> The names here (`region`, `npc_proxy`) predate the feature vocabulary (`place`, `map_layout`,
+> `actor_core`, `entity_binding`, …) and should not be used for new work. No third registry was
+> created — see [`17` §5 R7](../17_game_data_architecture.md).
 
 ### 5.1 PC projection
 

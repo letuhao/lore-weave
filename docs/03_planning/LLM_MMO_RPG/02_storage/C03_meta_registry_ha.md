@@ -8,6 +8,8 @@ generated_by: scripts/chunk_doc.py
 
 ## 12O. Meta Registry High Availability (C3 resolution)
 
+> **⚠ PARTIALLY SUPERSEDED 2026-07-26 (AUD-F16 root #10).** §12O.5's meta access layer is a shared **Go** library imported by all services — this excludes the Rust writer node (world-service / commit-service per `contracts/language-rule.yaml`), which needs an equivalent Rust client or an RPC facade. The HA/replication/cache/degraded-mode design is unaffected. Status markers below predate the island/commit-service model.
+
 **Origin:** SA+DE adversarial review 2026-04-24 surfaced C3 — while reality DBs have DB-per-reality isolation (blast radius = 1 reality), the meta registry is a **platform-wide SPOF**. Meta outage breaks: reality routing, event propagation (meta-worker), publisher heartbeats, admin audit (R13), player dashboards, new reality spawn.
 
 ### 12O.1 Why meta is different

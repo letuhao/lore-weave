@@ -275,6 +275,18 @@ V1 simplification: derivation only affects training rate (Q1e). V1+30d may exten
 
 ### §5.1 CurveDecl enum
 
+> **⚠ CLOSURE-PASS-EXTENSION 2026-07-26 (REC-25 / RLS-A8) — all five `f32` fields in this doc
+> convert to fixed-point milli-units (`u32`/`i64` ×1000), authored as decimals, normalized at
+> ruleset load (RLS-A7).** Affected: `rate_per_train_unit` · `base_rate` · `difficulty_factor`
+> (here and in `WithinTierCurve`) · `training_rate_factor` (§4.4 `DerivationDecl`) ·
+> `min_damage_factor`/`max_damage_factor` (§9.2 — already DF7-superseded, corrected for the
+> record). Rationale: DF7-A4 and TDIL-A9 both hold that *"floats in a replayed, event-sourced
+> engine are a determinism liability"* — DF7 fixed the stat path and left this **training** path,
+> which feeds replay identically, on floats. Same milli-unit convention as `StatTerm.weight`
+> (`1.5` → `1500`); training arithmetic per §6.2 runs saturating-integer like DF7 §4. **This also
+> retires stale PROG-D6's framing**: DF7-A3 shipped the contribution/stacking layer that row
+> deferred.
+
 Per Q2a LOCKED — 3 V1 curve types. Threshold collapsed into Stage 1-tier degenerate (Q2b). DiscreteLevelup deferred V1+30d (PROG-D1).
 
 ```rust

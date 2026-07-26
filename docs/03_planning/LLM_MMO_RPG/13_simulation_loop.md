@@ -90,7 +90,16 @@ The same mechanism covers all three slow cases — this is why the classes share
 
 | Dispatch | Typical latency | Transport | Fallback on deadline |
 |---|---|---|---|
-| `LlmDriver.decide()` | 1–5 s | ai-gateway (MCP) | AGT-A2 context fallback (`Defend`) |
+| `LlmDriver.decide()` | 1–5 s | ~~ai-gateway (MCP)~~ **commit-service → ai-gateway dispatch** | AGT-A2 context fallback (`Defend`) |
+
+> **⚠ CORRECTED 2026-07-26 (REC-61 / decision-path sweep): the transport label conflated two
+> directions.** "ai-gateway (MCP)" labelled MCP as the transport for `decide()` dispatch — but
+> **MCP is the LLM's tool-call direction** (AGT-A4: the model invoking proposal-schema tools
+> *inside* ai-gateway's tool-loop), not the host-invokes-driver hop. Per the REC-54/55/56
+> resolution: the `LlmDriver` lives in **commit-service** (Rust) and **dispatches
+> `DecisionContext` to ai-gateway**; ai-gateway runs the tool-loop with the model via
+> provider-registry; the return path is the EVT-T6 proposal bus. The row's latency and fallback
+> are unchanged.
 | Class C world-sim batch | minutes | RabbitMQ + outbox | apply next cycle |
 | Offline progression | hours | scheduled worker | apply on next login |
 

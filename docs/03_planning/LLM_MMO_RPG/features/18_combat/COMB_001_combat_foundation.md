@@ -102,6 +102,16 @@ pub struct GroupPool {
 }
 ```
 
+> **⚠ CORRECTED 2026-07-26 (REC-18 / AUD-F17 #17): `encounter_id` is allocated at formation step 1,
+> before grid seeding — resolving the id/grid cycle.** As previously written, the wilderness arena
+> seeded on `blake3(reality_id, encounter_id)` (COMB_002 §7; COMB_005 §6 step 2), but `encounter_id`
+> belonged to the `CombatSession` created at step 5 — which itself consumes the grid produced at
+> step 2. A cycle: the grid needed the id, the id's owner needed the grid. **Fix (COMB_001's
+> preference, per the register): the `CombatSessionId` is allocated at COMB_005 §6 step 1**
+> (participant assembly) as a bare id allocation — no session exists yet; step 2 seeds the arena
+> from the already-allocated id; step 5's `CombatSessionBorn` carries that same id. No reseeding,
+> no second id, replay determinism unchanged (the id allocation is part of the formation record).
+>
 > **Why these are fields here rather than aggregates elsewhere.** Each is meaningful only *within* an
 > encounter and meaningless after it. Hosting them on the session that already has the right lifetime
 > means COMB_003, COMB_004, COMB_005 and ABL_001 together add **exactly one** new persistent-ish structure
@@ -233,8 +243,15 @@ LLM-chosen **bounded stance** (TG-A4), engine-resolved tile. All spatial math is
   > mortality finalisation (or at group-pool zero for Untracked bulk groups), guarded for idempotency by
   > SPO-V4. KO also clears the actor's COMB_003 threat rows, so a downed body stops drawing fire.
 - **Disparity cap (Q4):** reality `combat_disparity_cap` (5 sub-fields incl. `apply_to_pve_in_safe_zone`,
-  V1 default true) + WA_001 Lex axiom + PF_001 `combat_safety` compose to cap damage (flat 50%/blow) in
+  V1 default true) ~~+ WA_001 Lex axiom~~ + PF_001 `combat_safety` compose to cap damage (flat 50%/blow) in
   safe zones — anti-grief.
+  > **⚠ CORRECTED 2026-07-26 (REC-37 / AUD-F17 #20, PO decision): the WA_001 Lex axiom is dropped
+  > from the Q4 disparity-cap composition for V1 — the cap is engine-only.** WA_001 V1 axioms are
+  > **boolean** by LOCKED decision (*"no budgets, no tiers"*; `AllowedWithBudget` is V2+), so
+  > `lex_check` returns no value a flat-50% cap could compose with. V1 composition is
+  > `combat_disparity_cap` (manifest config) × PF_001 `combat_safety` — nothing else. The axiom
+  > name `combat_damage_cap_in_safe_zone` **stays registered as a V2+ reservation** for when
+  > WA_001 ships typed axioms; §9 item 7 and COMB-V6's "(Lex compose)" are re-scoped accordingly.
 - **Stat hiding (Q6):** self/party exact; hostile = HP bar % + 5-tier vague label (LLM narration coherence).
 
 ---
@@ -248,10 +265,15 @@ LLM-chosen **bounded stance** (TG-A4), engine-resolved tile. All spatial math is
   `strike_target_neutral_civilian` · `out_of_range` · `los_blocked` · `move_exceeds_budget` ·
   `tile_occupied` · `skill_unknown` · `skill_insufficient_stamina` · `flee_failed` (+ V1+ reservations).
 - **COMB-V validators** (V1): COMB-V1 intent-valid-in-CombatActive · V2 target-side-eligible · V3
-  range/LoS (TG) · V4 move-budget (TG) · V5 stamina · V6 disparity-cap (Lex compose) · V7 seed-determinism
-  assertion.
+  range/LoS (TG) · V4 move-budget (TG) · V5 stamina · V6 disparity-cap ~~(Lex compose)~~ (engine-only V1,
+  per the REC-37 note in §6) · V7 seed-determinism assertion.
 - **RealityManifest extensions** (§13): `combat_disparity_cap` · `combat_mortality_config` ·
-  `initiative_system` · `side_default_setup` · `combat_seed_visible` (V1+).
+  `initiative_system` · `side_default_setup` · `round_fiction_seconds` · `combat_seed_visible` (V1+).
+  > **⚠ CORRECTED 2026-07-26 (REC-22 / AUD-F17 #47): `round_fiction_seconds` promoted into the
+  > manifest extension list above.** It previously existed only in `00_CONCEPT_NOTES.md` §12.1,
+  > which this doc itself marks non-normative — yet **ABL_001 §7.3** consumes it for the
+  > rounds→fiction-time conversion (and REC-08's out-of-combat expiry contract depends on that
+  > conversion). A field a locked consumer reads must be declared by a normative owner; it now is.
 - **`COMB-*` stable-ID prefix** (promoted from reserved 2026-06-20).
 
 ### §7.1 — Family surface added 2026-07-26 (registered by the siblings, listed here for one-stop review)
@@ -323,7 +345,9 @@ each feature is next opened — the track's behavioral-closure pattern):
 4. **NPC_002** — combat-mode AssemblePrompt (3 tiers) + structured ActionDecl = the **LlmDriver** combat impl.
 5. **AIT_001** — `minor_behavior_scripts.combat_reaction_table` = the **ScriptDriver** combat impl + `combat_role` dispatch.
 6. **WA_006** — KO-intermediate semantic (doc note; no schema change).
-7. **WA_001** — Lex axiom `combat_damage_cap_in_safe_zone` (PvP + PvE paths, Q4).
+7. **WA_001** — Lex axiom `combat_damage_cap_in_safe_zone` (PvP + PvE paths, Q4). *⚠ Re-scoped
+   2026-07-26 (REC-37): **V2+ reservation only** — the axiom is out of the V1 Q4 composition (engine-only
+   cap; see the REC-37 note in §6). The name stays registered so V2+ typed axioms can claim it.*
 8. **PF_001** — `combat_safety: CombatSafetyLevel` on PlaceDecl + NewbieZone high-tier-spawn validator.
    ✅ **RESOLVED 2026-07-26** — the validator declared here and never built is **COMB_005 SPN-V4** (§8
    there). Enforced at **schema stage**, so a reality with a high-tier spawn in a Newbie zone cannot load;

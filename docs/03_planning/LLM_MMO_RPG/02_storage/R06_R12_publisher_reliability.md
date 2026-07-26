@@ -8,6 +8,8 @@ generated_by: scripts/chunk_doc.py
 
 ## 12F. Outbox Publisher Reliability (R6 + R12 mitigation)
 
+> **⚠ PARTIALLY SUPERSEDED 2026-07-26 (AUD-F16 roots #3, #4).** §12F.4's premise “authoritative state lives in Postgres events table” and its resume protocol (`last_seen_event_id` / `since={event_id}` against a reality-global BIGSERIAL) are stale: the DB is a persistence sink, live state is island memory, Class A is never event-sourced, and resume is a **per-channel token** over `(reality_id, channel_id, channel_event_id)` per DP-Ch18. The outbox/publisher reliability layering still applies to the sink path. Current design: [`13_simulation_loop.md`](../13_simulation_loop.md) + [`15_commit_service.md`](../15_commit_service.md). Status markers below predate the island/commit-service model.
+
 The outbox pattern (IF-6) is the critical path for realtime broadcast. Publisher service reliability determines whether players see "live" world state or stale state. R12 (Redis stream ephemerality) is fully resolved by this section's cache-vs-SSOT framing.
 
 ### 12F.1 Layer 1 — Outbox pattern (already locked)

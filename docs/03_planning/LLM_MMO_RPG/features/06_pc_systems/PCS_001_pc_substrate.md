@@ -115,7 +115,19 @@ After this lock: world-service can scaffold pc_user_binding + pc_mortality_state
 - **PCS-A6 (4-state mortality V1 schema):** Per Q7 LOCKED; Alive/Dying/Dead/Ghost. V1 active death transitions per mortality_config.mode; V1+ Respawn + Resurrection + GhostDispersed deferred PCS-D2.
 - **PCS-A7 (Synthetic actor PC forbidden V1):** Universal substrate discipline; reject `pc.synthetic_actor_forbidden`.
 - **PCS-A8 (Cross-reality strict V1):** Per Q8 LOCKED; V2+ Heresy migration via WA_002. xuyên không origin_world_ref is GlossaryEntityId (canonical reference; not active reality).
-- **PCS-A9 (Multi-PC cap=1 V1):** Per Q9 LOCKED Stage 0 schema validator counts pc_user_binding rows per reality; V1+ relax via RealityManifest.max_pc_count Optional (PCS-D3).
+- **PCS-A9 (PC cap — AMENDED 2026-07-26, REC-02 / AUD-F17 #6, PO decision): the V1 cap is
+  per-`(reality, user)`, not per-reality.** As locked (Q9: ≤1 `pc_user_binding` row *per reality*),
+  **no second player could ever onboard anywhere** — while PO_001 Mode A ships ~5 canonical PCs per
+  preset and its own reject table (`onboarding.user_already_has_pc`, `onboarding.canonical_pc_unavailable`
+  *"already bound to another user"*) had silently re-read the cap as per-user. Validators C13/C34
+  asserted the two "match" while stating different constraints. **PCS-D3 is pulled into V1 in its
+  cap form**: Stage 0 counts `pc_user_binding` rows per `(reality_id, user_id)` → ≤1; reject
+  `pc.multi_pc_per_user_forbidden_v1` (supersedes `pc.multi_pc_per_reality_forbidden_v1`, retired
+  per I15). `RealityManifest.max_pc_count` stays the V1+ *per-user* relaxation (charter coauthors).
+  The multiverse capacity bound was never this axiom — it is `multiverse.reality.player_cap` (100).
+  Q9's original intent (one user ≠ a party of alts) is preserved exactly; only the scope key moves.
+  Consequential re-reads: §8.9's count, the two enforcement pseudocode sites (§8 step / §bootstrap
+  step), and C13/C34's phrasing — all now count per-(reality, user).
 - **PCS-A10 (Single event clock-split contract):** Per Q10 LOCKED; PcTransmigrationCompleted (PCS_001-owned EVT-T1) consumed by TDIL_001 actor_clocks per TDIL §10 contract; aggregate-owner discipline EVT-A11 preserved.
 
 ---

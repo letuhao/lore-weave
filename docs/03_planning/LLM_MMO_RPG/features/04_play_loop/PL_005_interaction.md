@@ -206,6 +206,15 @@ Per PL_001 §8.3. Multi-output side-effect chain may need 10-15s for cascading C
 
 Reject paths split by validator stage owner per [`_boundaries/03_validator_pipeline_slots.md`](../../_boundaries/03_validator_pipeline_slots.md) Stage 3.5 group + Stage 4 lex_check + post-stage namespaces. PL_005 OWNS `interaction.*` namespace; other namespaces (`entity.*` / `place.*` / `map.*` / `csc.*` / `lex.*` / `mortality.*`) are foundation-owned and merely OBSERVED here for end-to-end UX.
 
+> **⚠ CORRECTED 2026-07-26 (REC-66 / error-taxonomy sweep): the `RejectReason::<Variant>{...}`
+> spellings in the table below are SHORTHAND, not a type.** The locked shape is PL_001 §3's
+> **struct** `RejectReason { rule_id, user_message, detail }` — `RejectReason` has no enum
+> variants; `EntityAffordanceViolation`, `PlaceStructuralViolation`, `MapLayoutViolation`,
+> `CellSceneViolation`, `LexViolation` and `WorldRuleViolation` are readable labels for the
+> **`rule_id` family** each row's `rule_id` already names. A builder constructs the struct with
+> that `rule_id`; nothing else exists to construct. (Same REC-66 notes at PL_001 §3's limits
+> table and PL_001b §15.)
+
 | DpError / RejectReason | Stage | Owner | When | UX |
 |---|---|---|---|---|
 | `RejectReason::EntityAffordanceViolation { rule_id: "entity.lifecycle_dead" }` | **Stage 3.5.a** | EF_001 | Strike a Dead/Ghost target; Give to Removed actor | Reject: "Mục tiêu đã không còn ở thế giới này." (Vietnamese reject copy from EF_001 §9). turn_number unchanged. |

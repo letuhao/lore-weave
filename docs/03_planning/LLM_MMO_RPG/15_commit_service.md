@@ -14,6 +14,16 @@
 > `game-server` (TS) reverts to WS edge only. **Revises SL-D7/SL-A8** for the Class B scheduler;
 > RTM-Q10 WASM stays for Class A walkability (§6).
 
+> **✅ CORRECTED 2026-07-26 (REC-52)** — four fixes from the `07_event_model/` verification sweep
+> (via the `18_reality_bootstrap.md` banner + `19` §12b): the **§3 origin table is superseded** by
+> §7b.2's three-class model (the "player = trusted, straight to ingress" row was wrong); **CS-D9's
+> System row corrected** — timers/generators are **EVT-T5 Generated** with the reduced subset
+> schema → capability → causal-ref → commit, **not** EVT-T4 zero-stages (EVT-T4 is the DP-internal
+> closed set of 8); **"hot-path gates on every path" scoped to turn-bearing paths** (the four
+> registered gates are turn-scoped); **CS-D10** gains the EVT-L4 head-of-line coupling as a revisit
+> trigger. The per-category subset registration in `_boundaries/03` rides the **REC-53 AMEND
+> bundle**.
+
 ---
 
 ## 1. The one thing that decides the shape
@@ -83,10 +93,17 @@ mechanisms `13`/`14` did not have —
 EVT-A7: *"Trusted-origin producers (orchestrator emitting deterministic content, scheduler firing
 pre-declared beats) can commit directly."* So the validator pipeline is **not** on every path:
 
+> ⚠️ **Superseded 2026-07-26 (REC-52) by §7b.2's three-class model.** The second row below was wrong
+> twice: the **player is not an EVT-A7 trusted producer** — player input runs the player category
+> subset (world-rule, capability, free-text sanitisation; §7b.2) and never goes straight to ingress
+> — and **timers/generators are EVT-T5 Generated**, running the reduced subset
+> schema → capability → causal-ref → commit, not a zero-stage pass. The table is retained for the
+> EVT-T6 row and the DP-R7 citation only; §7b.2 is normative.
+
 | Origin | Path | Why |
 |---|---|---|
 | **Untrusted** — `LlmDriver` proposals (EVT-T6) | bus → dedup → hot-path gates → **full EVT-V pipeline** → `sim-core` ingress | DP-R7 forbids `llm_output → dp::write`; the chain must be `llm_output → proposal_bus → validate → write` |
-| **Trusted** — player via gateway, timers, generators, `ScriptDriver`/`EngineDriver` | **straight to `sim-core` ingress** (still stamped, still dedup'd) | EVT-A7 trusted-origin; and EVT-P1 lists Player-Actor as producing *"via gateway-trusted commit-service"* |
+| ~~**Trusted** — player via gateway, timers, generators, `ScriptDriver`/`EngineDriver`~~ | ~~**straight to `sim-core` ingress** (still stamped, still dedup'd)~~ | ~~EVT-A7 trusted-origin; and EVT-P1 lists Player-Actor as producing *"via gateway-trusted commit-service"*~~ **superseded — see §7b.2** |
 
 > **CS-A3 — The validator pipeline gates *admission*, not *execution*.** Once an input is admitted it
 > enters `sim-core` as an ordinary stamped ingress item and is subject to SC-A1 ordering and
@@ -227,12 +244,22 @@ This needs **no DP change** — the existing primitives already permit it:
 > **per EVT-T\* category** and locked by **EVT-V1** (*"EVT-T4 System runs zero stages; EVT-T8
 > Administrative runs schema + capability + S5 dual-actor + causal-ref but skips A6 + canon-drift"*).
 > `commit-service` **applies** the declared subset. There is no trust-based shortcut to invent.
+>
+> **Corrected 2026-07-26 (REC-52):** EVT-V1's T4 zero-stage row is real but applies **only to the
+> DP-internal closed set of 8 sub-types** (EVT-P4 — no service can emit them). **Timers and
+> generators emit EVT-T5 Generated**, whose declared subset is
+> **schema → capability → causal-ref → commit** — reduced (no A6, no canon-drift), not zero. The
+> first version of this decision mapped them to T4, the same error `18`'s RBS-A7 inherited.
 
-Two corrections follow:
+Two corrections follow *(second-corrected 2026-07-26 — gate scope)*:
 
-- **Hot-path gates (EVT-V5) run on *every* path.** They are about **state validity, not trust** —
-  turn-slot availability, idempotency lookup, concurrent-turn detection, mortality. A trusted timer still
-  cannot make a dead actor act, and a player still cannot take two turns at once. **CS-Q3 → yes.**
+- **Hot-path gates (EVT-V5) run on every *turn-bearing* path.** They are about **state validity,
+  not trust** — turn-slot availability, idempotency lookup, concurrent-turn detection, mortality. A
+  trusted timer still cannot make a dead actor act, and a player still cannot take two turns at
+  once. **CS-Q3 → yes**, scoped: the four registered gates are **turn-scoped**, so on non-turn
+  paths (e.g. bootstrap seeding, where no actor or turn slot exists yet) only the gates whose
+  subject exists run — in seeding's case exactly the idempotency gate (`18` RBS-A8). "Every path"
+  as first written overclaimed.
 - **The player is *not* an EVT-A7 trusted-origin producer.** EVT-A7's examples are *orchestrator* and
   *scheduler* — deterministic machine output. EVT-P1 lists Player-Actor as producing *"via
   gateway-trusted commit-service"*: commit-service is the trusted producer **on the player's behalf,
@@ -245,7 +272,14 @@ Two corrections follow:
 |---|---|---|
 | **LLM proposal** (EVT-T6, `LlmDriver`) | ✅ | full — incl. A6 injection defense + canon-drift |
 | **Player** (via gateway) | ✅ | category subset — world-rule, capability, free-text sanitisation; not LLM-output stages |
-| **System** (timers, generators, `Script`/`EngineDriver`) | ✅ | **zero stages** (EVT-V1, EVT-T4 System) |
+| **System** (timers, generators, `Script`/`EngineDriver`) | ✅ (turn-scoped) | ~~zero stages (EVT-V1, EVT-T4 System)~~ **corrected 2026-07-26 (REC-52): EVT-T5 Generated — schema → capability → causal-ref → commit** (reduced, not zero; true T4 zero-stage is DP-internal only) |
+
+> **Registration note (added 2026-07-26):** category-declared subsets skip stages by *declaration*,
+> which must be reconciled with EVT-A5's no-skip rule — the reconciliation is that each category's
+> subset is itself **registered in `_boundaries/03_validator_pipeline_slots.md`**, so a skipped
+> stage is a declared absence, not a bypass. The per-category subset change above (System = EVT-T5
+> reduced subset) **needs that registration and it rides the REC-53 AMEND bundle**; until it lands,
+> CS-D2/CS-D9 cite this section.
 
 ### 7b.3 Encounter proposals ride the parent cell's stream (CS-Q4)
 
@@ -257,6 +291,12 @@ is reversible. Rationale: encounters are short-lived, so a stream per encounter 
 wastes per-stream `MAXLEN` budget (EVT-L5); and the **same writer node** consumes both, so a separate
 stream buys no routing benefit. **Revisit** if measurement shows encounter traffic starving cell traffic
 — which EVT-L5 backpressure would surface as a capacity signal rather than silently.
+
+> **Revisit trigger added 2026-07-26 (REC-52):** sharing the cell stream also couples the two at the
+> **head of line** — EVT-L4's *"process per-stream sequentially"* means a slow encounter admission
+> blocks every cell proposal queued behind it (and vice versa), which is a **latency** coupling
+> EVT-L5's depth-based backpressure does not surface. Head-of-line stalls between encounter and cell
+> traffic are the second revisit signal, alongside starvation.
 
 ---
 
@@ -272,8 +312,8 @@ stream buys no routing benefit. **Revisit** if measurement shows encounter traff
 | **CS-D6** | Reuse, don't redesign | The pipeline, bus, dead-letter, retry and idempotency semantics are **already locked** — this doc adds shape only, and changes no EVT-*/DP-* rule. |
 | **CS-D7** | **Host shape** | **PO 2026-07-26 — Rust host (CS-A5).** `commit-service` links `sim-core` as a native crate; `game-server` (TS) is the WS edge only. **Revises SL-D7/SL-A8** (WASM-in-game-server) for the Class B scheduler; **RTM-Q10 unchanged** for Class A walkability. `sim-core`'s purity + single-thread-steppability are unaffected — [14](14_sim_core_spec.md)'s crate contract does not change, only who links it. |
 | **CS-D8** | Encounter writer node | The encounter channel's writer **resolves to its parent cell's writer node** — participants come from that cell, and SL-D20b co-locates a region on one process, so encounter↔cell messaging stays in-process (§7b.1). **Mechanism (CS-Q5, corrected):** *CP-assigned* per DP-A16's non-cell rule, honouring a **co-location hint** passed at DP-Ch8 creation — **not** implicit inheritance, which would have violated DP-A16. |
-| **CS-D9** | Validator subsets | `commit-service` **applies** the EVT-V1 category-declared subset; it never chooses one. **EVT-V5 hot-path gates run on every path** (state validity, not trust). Three origin classes: LLM proposal / player / system (§7b.2). |
-| **CS-D10** | Bus topics | **No per-encounter stream** — encounter proposals ride the parent cell's stream, distinguished by `target_channel`. Reversible; EVT-L1 makes granularity operational (§7b.3). |
+| **CS-D9** | Validator subsets | `commit-service` **applies** the EVT-V1 category-declared subset; it never chooses one. **EVT-V5 hot-path gates run on every turn-bearing path** (state validity, not trust; the four registered gates are turn-scoped). Three origin classes: LLM proposal / player / system (§7b.2). **Corrected 2026-07-26 (REC-52):** System = timers/generators is **EVT-T5** with the reduced subset (schema→capability→causal-ref→commit), not EVT-T4 zero-stages; subset registration in `_boundaries/03` rides the REC-53 AMEND bundle. |
+| **CS-D10** | Bus topics | **No per-encounter stream** — encounter proposals ride the parent cell's stream, distinguished by `target_channel`. Reversible; EVT-L1 makes granularity operational (§7b.3). **Revisit triggers (2026-07-26):** EVT-L5 starvation *and* EVT-L4 head-of-line stalls between encounter and cell traffic. |
 
 ## 9. Open questions
 

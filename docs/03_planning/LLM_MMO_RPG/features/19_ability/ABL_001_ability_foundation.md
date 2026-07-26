@@ -60,8 +60,16 @@ category error rather than a shortcut. This doc supplies the missing declaring t
   corner-line LoS. The LLM never emits a tile or a distance (TG-A1).
 - **Derived acquisition** (§6) — `requires: Vec<ProgressionReq>` against PROG_001, plus item grants.
 - **Cost + cooldown model** (§7) against existing RES_001 vitals.
-- **12 V1 rule_ids** in the `ability.*` namespace + **8 validators** ABL-V1..V8 (V8 added by the
-  2026-07-26 seam review) + **AC-ABL-1..13**.
+- ~~**12 V1 rule_ids** in the `ability.*` namespace + **8 validators** ABL-V1..V8 (V8 added by the
+  2026-07-26 seam review)~~ **16 V1 rule_ids** in the `ability.*` namespace + **10 validators
+  ABL-V1..V10** + **AC-ABL-1..13**.
+  > **⚠ CORRECTED 2026-07-26 (REC-27 / AUD-F17 #46): the counts above were stale at three
+  > different sizes** — this line said 12, §11 enumerated 14, `02_extension_contracts` §1.4
+  > registered 14, COMB_001 cited 12. The enumerated V1 list is now **16**: the 14 in §11 plus
+  > `ability.los_blocked` (named by §8.1 step 5 but registered nowhere) plus
+  > `ability.status_needs_combat_v1` (REC-08). Validator count: the duplicate second ABL-V8 is
+  > renumbered **ABL-V10** (V9 already existed) — see the REC-27 note in §12. **The registry
+  > counts (`02_extension_contracts` §1.4's 14; COMB_001's 12) ride the next lock cycle.**
 
 ### V1 NOT shipping
 
@@ -461,7 +469,7 @@ fn known_abilities(actor, reality) -> BTreeSet<AbilityId>:      // BTreeSet ⇒ 
 - **An archetype-granted ability must be cost-free** (added 2026-07-26, DF07_002 §1.5 MED-5). `costs`
   deducts from RES_001 `vital_pool` (§7.1) and Untracked actors hold no such row — they have a pooled body
   (`combat_session.group_pools`, COMB_001 §2), not vitals. A costed ability on an archetype list is
-  therefore unfireable, so **ABL-V8 warns at schema stage** rather than letting it fail silently at
+  therefore unfireable, so **ABL-V10 warns at schema stage** (renumbered from ABL-V8 per REC-27, §12) rather than letting it fail silently at
   selection: the author sees the problem at declaration time, which is the same discipline ABL-V2 applies to
   the cooldown/out-of-combat combination. Giving Untracked groups a pooled stamina bar was the alternative
   and is deliberately not taken — it would put a second resource on the one tier that exists to have none.
@@ -499,8 +507,23 @@ authors meet the constraint at declaration time rather than discovering it in pl
 
 ### §7.3 `duration_rounds` outside combat
 
+> **⚠ RE-SCOPED 2026-07-26 (REC-08 / AUD-F17 #21, PO decision) — out-of-combat `StatusApply` is
+> V1+30d, shipping WITH `Scheduled:StatusExpire`.** The conversion below hands expiry to a PL_006
+> scheduler that **does not exist in V1** — COMB_001 diagnosed exactly this (*"PL_006 V1 has no
+> auto-expire at all; manual dispel only; the scheduler is V1+30d"*), fixed it inside the encounter,
+> and handed the out-of-combat case back to the missing mechanism while naming this section as the
+> consumer. A V1 out-of-combat `StatusApply { duration_rounds: 3 }` would be **permanent**.
+> **V1 rule:** out-of-combat ability use (now reachable via REC-07) may fire every `EffectOp`
+> **except duration-bearing `StatusApply`** — ABL-V2's context predicate rejects it with
+> `ability.status_needs_combat_v1` (V1 rule_id; supersedes none). Instant effects (`VitalRestore`,
+> narrative-only, `Reveal`) are unaffected. The conversion design below is **retained as the
+> V1+30d contract**, unchanged — including the round-trip asymmetry. Two consequential notes:
+> the conversion constant `round_fiction_seconds` must first be promoted into COMB_001 §7's
+> manifest list (REC-22 — it currently exists only in a non-normative concept doc), and the
+> lazy-clock model (TDIL-A11) means the V1+30d expiry evaluates at observation, not by timer.
+
 `StatusApply { duration_rounds }` is measured in **combat rounds**, and outside an encounter there are no
-rounds — so the field has no meaning on the out-of-combat path. Locked:
+rounds — so the field has no meaning on the out-of-combat path. Locked (V1+30d activation per the note above):
 
 - **Out of combat, `duration_rounds` converts to fiction-time** at the reality's `round_fiction_seconds`
   (COMB_001 §12.1 already fixes a round's fiction duration — this reuses it rather than inventing a
@@ -630,6 +653,14 @@ cycle; 2–6 are declared and land when each feature is next opened.
 | `ability.insufficient_resource` | 2 validate | "You lack the strength for that." | any declared cost unaffordable (checked whole, §7.1) |
 | `ability.invalid_target` | 2 validate | "You cannot use that on them." | `TargetRule` unsatisfied (wrong side, self-target on `OneHostile`, dead target) |
 | `ability.out_of_range` | 2 validate | "Too far." | Chebyshev distance > `range`, or `requires_los` and LoS blocked (delegates to `combat.los_blocked` in combat) |
+| `ability.los_blocked` | 2 validate | "You cannot see your target." | *(added 2026-07-26, REC-27)* `requires_los` and LoS blocked **out of combat** — §8.1 step 5 named this id but the table never carried it (in combat it delegates to `combat.los_blocked`, per the row above) |
+| `ability.status_needs_combat_v1` | 2 validate | "That technique only takes hold in battle (for now)." | *(added 2026-07-26, REC-27; introduced by REC-08)* duration-bearing `StatusApply` fired out of combat — V1 rejects; V1+30d ships `Scheduled:StatusExpire` (§7.3) |
+
+> **⚠ CORRECTED 2026-07-26 (REC-27 / AUD-F17 #46):** the two rows above were missing — §8.1 used
+> `ability.los_blocked` and the §7.3 REC-08 note declared `ability.status_needs_combat_v1`, but
+> neither appeared in this table, which is one of the three inconsistent `ability.*` sizes the
+> register flags (12 vs 14 vs 14). The V1 list is now 16; the `_boundaries` registration rides
+> the next lock cycle.
 
 Per RES_001 §2, every `ability.*` reject carries `RejectReason.user_message: I18nBundle` with an English
 `default` plus a Vietnamese translation from day one.
@@ -650,11 +681,28 @@ abilities — a leaked `mult_milli` is a leaked damage formula).
 | **ABL-V9** | runtime | **every point of vital reduction in the game passes the COMB_001 §4 law-chain.** No code path reduces an actor's vitals via `VitalRestore`, an item use-effect, or any other write that skips the chain, the hit roll, the Q4 disparity cap and the COMB_006 PvP predicate (§4.2.1) |
 | **ABL-V2** | 0 schema | **warn** (non-blocking): `cooldown_rounds > 0` ∧ `usable_out_of_combat` — the cooldown will not be enforced outside combat (ABL-A7) |
 | **ABL-V3** | 0 schema | every `ProgressionReq.kind_id` ∈ `progression_kinds`; every `PowerTerm.slot` ∈ `StatSlot`; every `StatusFlag` ∈ PL_006's set; every `VitalKind` ∈ the reality's declared vitals |
-| **ABL-V4** | 2 validate | the §8.1 predicate chain (known → context → cooldown → cost → target/range/LoS) |
+| **ABL-V4** | ~~2 validate~~ **3.5.f** *(re-slotted 2026-07-26, REC-32 — see note below)* | the §8.1 predicate chain (known → context → cooldown → cost → target/range/LoS); dead-target delegates to EF_001 `entity.lifecycle_dead` at 3.5.a |
 | **ABL-V5** | 0 schema | every `AbilityId` referenced by an AIT_001 `combat_reaction_table` entry or an archetype grant list resolves, **and** is reachable by that actor (a ScriptDriver cannot name an ability its actor can never know). Extends to item grants if ABL-Q9 is agreed — no rule change needed |
 | **ABL-V6** | commit | costs deducted **exactly once** per successful resolution, and **not at all** on any rejected path (§7.1 ordering) |
 | **ABL-V7** | replay | `known_abilities` iteration is order-stable (`BTreeSet`) ⇒ EngineDriver selection and effect ordering are byte-identical on replay; feeds DF7-V4 |
-| **ABL-V8** | 0 schema (warn) | an ability on an AIT_001 archetype `grant_only` list declares no `costs` — Untracked actors have a pooled body, not a `vital_pool`, so a costed archetype ability is unfireable (§6, DF07_002 §1.5 MED-5). Warn, not reject: the declaration is legal for a *Tracked* holder of the same archetype |
+| **ABL-V10** *(renumbered from ABL-V8, REC-27)* | 0 schema (warn) | an ability on an AIT_001 archetype `grant_only` list declares no `costs` — Untracked actors have a pooled body, not a `vital_pool`, so a costed archetype ability is unfireable (§6, DF07_002 §1.5 MED-5). Warn, not reject: the declaration is legal for a *Tracked* holder of the same archetype |
+
+> **⚠ CORRECTED 2026-07-26 (REC-27 / AUD-F17 #46): two different validators were both labelled
+> `ABL-V8`** — the runtime one-hit-roll rule (row 2) and the schema-stage archetype-cost warning
+> (last row) — under a header declaring `ABL-V*` stable. The schema-warn validator (the later
+> addition, from the DF07_002 seam review) is renumbered **ABL-V10** (`ABL-V9` already existed);
+> the §6 prose reference is updated to match. No behaviour changes.
+>
+> **⚠ CORRECTED 2026-07-26 (REC-32 / AUD-F17 #18): ABL-V4 re-slots to stage 3.5.f, and its
+> dead-target predicate is delegated.** As written, ABL-V4 ("2 validate") claimed a pipeline slot
+> owned by `05_llm_safety`, and ran ~1.5 stages **before** the EF_001 lifecycle verdict (stage
+> 3.5.a `entity_affordance`) that its own dead-target check consumes — under a pipeline that
+> forbids skips. Corrections: (a) **ABL-V4 runs at stage 3.5.f**, a registered foundation-tier
+> sub-stage after 3.5.a–3.5.d, so the lifecycle verdict exists before the predicate chain reads
+> it; (b) the **dead-target case inside `ability.invalid_target` delegates to EF_001's
+> `entity.lifecycle_dead` at 3.5.a** — one owner for "is this target dead", no duplicate verdict;
+> (c) the `ability.*` **stage→namespace matrix row rides the next lock cycle** (the namespace
+> currently has no row in `_boundaries/03_validator_pipeline_slots.md`).
 
 > **ABL-V9 is the most load-bearing check in this doc.** It is the mechanical statement of COMB_001's
 > *"the 4-step chain is the sole damage authority"* — a claim that was **false** until ABL-Q9 was

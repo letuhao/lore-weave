@@ -6,6 +6,58 @@
 
 ---
 
+## 2026-07-26 — data-architecture registration (`RLS` / `GDA` / `RBS` / `REC`) + ⚠️ **fourth** record correction
+
+- **Lock CLAIMED 21:47, `Owner:` set BEFORE the first edit, released after.** A genuine
+  `[boundaries-lock-claim+release]` cycle.
+- **⚠️ RECORD CORRECTION — this session's own, and it is the *fourth* instance of the defect the three
+  bullets in `_LOCK.md` already describe.** Docs `16`, `16a`, `17`, `18` and `19` were written earlier
+  today with headers asserting *"Prefix: `RLS-*` (registered 2026-07-26)"* and the same for `GDA-*`,
+  `RBS-*`, `REC-*`. **None of those registrations had happened.** No claim was made, no matrix row
+  existed, and the assertion sat in five doc headers for several hours. This session had **read** the
+  RECORD CORRECTION bullets before writing them. That is the strongest available evidence for the
+  standing conclusion in those bullets: **the convention is the failure point, not the agent** — a
+  pre-commit hook requiring `Owner:` ≠ `None` on any diff touching `_boundaries/*` would have caught
+  all four instances; care did not catch the fourth even with the first three in context.
+- **Registered 4 stable-ID prefixes** (matrix `## Stable-ID prefix ownership`):
+  **`RLS-*`** (`16` + `16a`, closes **AUD-F14**) — splits `RealityManifest` into Ruleset / WorldContent /
+  Provenance on a **cardinality** axis; presets **early-bound**; content-addressed digest pinned per
+  event; `Domain::Rules` so rules reach `apply()` as an argument, not ambient state ·
+  **`GDA-*`** (`17`, opens **AUD-F15**) — 6 boot levels, 18 flows, composes locked contracts and adds
+  no primitive · **`RBS-*`** (`18`) — `RealityBootstrapper` as a **role** on the §12R.2 seeding worker,
+  three seed sources on one lifecycle · **`REC-*`** (`19`) — the reconciliation register.
+  **All four own NO aggregate.**
+- **Two of the four carry an explicit correction hold, recorded in their matrix rows rather than
+  quietly**: `GDA-A5 ReadFreshness` is prohibited by **DP-X1** (*"no runtime flag to upgrade coherency
+  without upgrading tier"*), `GDA-A6` deletes the locked **`t1_read`** primitive, `GDA-Q1` is falsified
+  by **DP-Ch33**'s locked ≤2 s wakeup budget, and 4 **DP-R** rules are violated; `RBS`'s `*Born` events
+  are **EVT-T5, not EVT-T4** (EVT-T4 is DP-Internal-only, closed set of 8) and **EVT-T5 requires
+  causal-refs that bootstrap phase 1 cannot supply**. Both were found by verification agents reading
+  the locked specs the docs had only been *grepped* against.
+- **REC-28 — `commit-service` has no ownership row**, and **EVT-A4's closed 7-role producer set has no
+  role for `sim-core` / the island** despite SC-A4 making it the authoritative writer. **Recorded as a
+  gap, not invented** — adding a producer role is EVT-A12 point (e), an event-model AMEND. Two live
+  questions ride on it, including **two claimed writers for `fiction_clock`** (EVT-V6 says the pipeline
+  executor, SC-A4 says the island).
+- **Aggregate table declared the inventory SSOT** (GDA-D12) — `02_storage` §5's four projections are
+  *patterns*, and its `region` / `npc_proxy` vocabulary predates the feature layer's 52 rows.
+- **NOT done under this claim, deliberately:** the `02_extension_contracts.md` §2 Ruleset/WorldContent
+  split (needs `16a` owner sign-off — 65 fields, 6 owners with real decisions) · `RulesetEpochActivated`
+  EVT-T8 registration (**blocked on a knot `16` created itself**: EVT-A11 demands one owning *feature*,
+  RLS-D21 made `16` a platform doc with no feature identity; candidate owner **WA_003 Forge**) · the
+  REC-31 validator stage-order renumber (an AMEND owned by the boundary/event-model tracks).
+- **Two new AUD findings recorded**: **AUD-F16** (`02_storage` corpus stale — ~75 claims, ~30 HIGH,
+  **10 root causes**) and **AUD-F17** (feature layer — 48 findings, **13 CRITICAL**; as designed the V1
+  game cannot run). Both reach the same process conclusion: **documents are locked individually, but
+  correctness is a property of the set.**
+- Files within `_boundaries/`: `_LOCK.md` · `01_feature_ownership_matrix.md` · `99_changelog.md`.
+  Files outside this cycle: `PF_001` (REC-17) · `C05_lifecycle_cas.md` (REC-48) · `PL_005b` (REC-03,
+  REC-22) · `02_storage/_index.md` (AUD-F16 banner) · `12_module_coverage_audit.md`.
+- **NEXT:** the two P0 DECISIONs — **REC-04** (clock deadlock) and **REC-01** (no enemy can attack) —
+  then the REC-05..13 dependency-inversion table in **one** PO sitting.
+
+---
+
 ## 2026-07-26 — `DL-A1 vs B3-D1` watchpoint CLOSED (amendment landed as `B3-D1a`)
 
 - **Lock CLAIMED 21:34, `Owner:` set before the first edit; released after.** Note: the claim edit returned git's *"file changed on disk"* warning — **treated as a stop, not as noise**, per the finding two entries down. Investigated: a peer session had written `_LOCK.md`, `locked_decisions.md`, `12` and `13` within the preceding three minutes. **Verified no content loss** (`B3-D1a` present; `13` matched HEAD) before continuing.

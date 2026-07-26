@@ -98,6 +98,17 @@ What AIT_001 does **not** answer — and what the audit means by *"nothing puts 
   "spawned enemies" aggregate, no spawn timer, no scheduler tick. Same pattern as TMP_001's tilemap
   generation, CSC_001's fixture placement and DF07's derived stat block — and it is what makes population
   survive replay and MV12 time-travel with zero spawn-specific machinery.
+  > **⚠ CORRECTED 2026-07-26 (REC-38 / AUD-F17 #12, PO decision): SPN-A2's "no stored roster" claim
+  > gains exactly one named exception — `spawn_group_cleared: Set<(SpawnDeclId, epoch)>`, a flag set
+  > on the cell's island state, checkpointed with it.** As written, spawning was a pure function and
+  > AIT_001 discards Untracked on PC exit — so a player walking out of a cleared camp and back in
+  > respawned the identical bandits within the same epoch, making **AC-SPN-4** (a cleared camp stays
+  > cleared this epoch) unsatisfiable and undermining COMB_004's `first_kill_only` anti-farm. The set
+  > is inserted into when a group's last member is defeated; `hostile_population()` returns `[]` for a
+  > `(decl, epoch)` in the set. The epoch is in the key, so a new epoch is a fresh entry — no reset
+  > logic. There is still no roster, no timer, no tick: one stored *bit* per cleared group. **AC-SPN-4
+  > is now satisfiable.** (The claim "zero stored state" was already half-conceded by COMB_004's
+  > `SpawnGroupLootState` — see the REC-46 note in §9.)
 - **SPN-A3 (Respawn is epoch arithmetic, not a timer).** `epoch = floor(fiction_day / respawn_period_days)`.
   Within one epoch the population is fixed; crossing an epoch yields a fresh deterministic population.
   A timer would need durable per-group state, a scheduler, and an answer for time-dilated chambers
@@ -170,6 +181,15 @@ pub struct AggroDecl {
 - **`archetype` is the same `ActorClassRef`** that keys DF07 `stat_archetypes` and COMB_004 `loot_tables`.
   One identifier ties a `bandit`'s stats, drops and spawn behaviour together, and it means this doc adds
   **no new actor-identity concept**.
+  > **⚠ CORRECTED 2026-07-26 (REC-39 / AUD-F17 #26): `HostileSpawnDecl` gains `role_ref:
+  > UntrackedRoleDecl` — a bare `ActorClassRef` is a key AIT_001's generator cannot consume.**
+  > Spawn-group members are materialised by AIT_001 §5.3's Stage-1 pipeline, which generates from
+  > an `UntrackedRoleDecl` (name pool, `stat_ranges` sampling, appearance hints) — not from an
+  > `ActorClassRef` alone. The decl now carries a `role_ref` to the AIT_001 §5.2
+  > `UntrackedRoleDecl` (which itself carries the `actor_class`, so the DF07/COMB_004 keying above
+  > still holds through it). **Stat source arbitration:** member stats come from **AIT sampling**
+  > (the role's `stat_ranges`); DF07 `stat_archetypes` is the **fallback** for values with no
+  > sampled source (e.g. the Untracked group-pool ceiling, DF07 §9). Matching note in AIT_001 §5.3.
 - **`danger_tier` is a property of the spawn, not of the party** (SPN-D1). A place is dangerous or it is
   not; it does not become dangerous because a strong player arrived.
 - **`respawn_period_days: 0`** is the one-shot case — a scripted ambush, a story encounter. It spawns in
@@ -305,6 +325,11 @@ should_engage() fires
   └─ 6. handoff       — COMB_003 §8 seeds the threat table from initiator + FAC/REP stance
 ```
 
+> **⚠ CORRECTED 2026-07-26 (REC-18 / AUD-F17 #17):** step 2's arena seed `blake3(reality_id,
+> encounter_id)` consumed an id that, as written, only came into existence at step 5 — a cycle.
+> Per the COMB_001 §2 REC-18 note, the `CombatSessionId` is **allocated at step 1** (a bare id
+> allocation, no session yet); step 2 seeds from it; step 5's `CombatSessionBorn` carries the same id.
+
 Steps 2 and 3 are the reason COMB_002 §7's arena generator exists and has had no caller until now.
 Step 6 is the exact seam COMB_003 §8 declared: **initiator + participant list, nothing else crosses.**
 
@@ -339,6 +364,14 @@ AGT-D5 specifies engagement promote/demote as *the* cost lever. Applied here:
 | `Untracked` (default) | one archetype block for the whole group (DF07 §9); zero per-actor state | **stays Untracked** — `EngineDriver` bulk resolve, pooled body in `combat_session.group_pools` (COMB_001 §2; COMB_005 supplies `member_count` at formation, DF07 the ceiling), zero LLM | discarded |
 | `Minor` | untracked until engaged | promoted to Minor Tracked; `ScriptDriver` reaction table; **zero LLM** | demoted after `demote_after_days`, unless it took a durable action |
 | `Major` | untracked until engaged | promoted to Major Tracked; `LlmDriver` via NPC_002 Chorus | stays Tracked (a named actor persists) |
+
+> **⚠ CORRECTED 2026-07-26 (REC-39 / AUD-F17 #26): the Untracked row's "zero per-actor state"
+> claim scopes to COMB_005's own bookkeeping only.** Spawn-group members **are** AIT_001
+> Untracked NPCs, generated per-slot by AIT_001 §5.3 with ids, names and sampled stats held in
+> AIT's session-ephemeral cache — that state exists; it is simply not COMB_005's. COMB_005 stores
+> nothing per member (the pooled body lives in `combat_session.group_pools`, COMB_001 §2; the
+> one COMB_005-owned stored item is `spawn_group_cleared`, REC-38). Stat source and the
+> `role_ref` change are in the §3 REC-39 note.
 
 - **Promotion runs through AIT_001's existing path** — including its `tier_capacity_caps` check. If the cap
   is full, promotion **fails soft**: the actor fights at the lower tier rather than blocking the encounter
@@ -389,9 +422,17 @@ COMB_004 §10 hangs its two anti-farm mechanisms on:
   epoch is a different group and the entry is eligible again. No counter to reset, no cleanup.
 - `loot_budget` decrements within a group; at zero only guaranteed entries fire.
 
-The budget's decrement is the **one** piece of per-group runtime state either doc needs, and it is
+~~The budget's decrement is the **one** piece of per-group runtime state either doc needs, and it is
 ephemeral — it lives as long as the group is materialised and vanishes with it, so an unobserved camp
-carries no cost. Recorded plainly because it is the sole exception to "nothing is stored".
+carries no cost. Recorded plainly because it is the sole exception to "nothing is stored".~~
+
+> **⚠ CORRECTED 2026-07-26 (REC-46 / AUD-F17 #48): the struck "one piece / sole exception" grant
+> undercounted.** COMB_004 §4.2's `SpawnGroupLootState` carries **two stored fields**, both per
+> materialised group, both ephemeral: **`claimed: BitSet`** (the `first_kill_only` entries already
+> drawn) **and `budget_remaining: u16`** (the loot budget's decrement). Both are named here so the
+> grant matches what COMB_004 actually stores; COMB_004 §10's contradictory "no stored counter"
+> sentence is superseded there by the same REC. Separately, REC-38 adds this doc's own stored
+> exception, `spawn_group_cleared` on the cell's island state (see the SPN-A2 note in §2).
 
 ---
 
@@ -485,6 +526,9 @@ terrain description) and by the PF_001 safety band where the client surfaces it 
    makes population non-reproducible and trips SPN-V7.
 4. **Epoch respawn** — a camp cleared on fiction-day 3 with `respawn_period_days: 7` is absent for the rest
    of epoch 0 and present again at day 7 (epoch 1), with a **different** deterministic composition.
+   *⚠ Note 2026-07-26 (REC-38): "absent for the rest of epoch 0" is satisfiable only via the
+   `spawn_group_cleared` island-state set added by the REC-38 note in §2 — before it, a pure re-derivation
+   respawned the identical group on re-observation within the epoch.*
 5. **One-shot spawn** — `respawn_period_days: 0` spawns once and never returns.
 6. **Lazy materialisation** — an unobserved place generates **zero** actors; entering it materialises them
    through AIT_001's existing `Generated:UntrackedNpcSpawn` path, not a new one (SPN-A4).

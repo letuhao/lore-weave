@@ -8,6 +8,8 @@ generated_by: scripts/chunk_doc.py
 
 ## 12S. Security Review — S1/S2/S3 Resolutions (2026-04-24)
 
+> **⚠ PARTIALLY SUPERSEDED 2026-07-26 (AUD-F16 roots #1, #2, #4).** §12S.2's visibility schema keys events to `session_id` and routes `region_broadcast`/`reality_broadcast` “via R7 event-handler” — but the channel/island is the concurrency unit (SL-A9), cross-island propagation is async messages, not an events-table tailer (SL-A10), and event identity is `(reality_id, channel_id, channel_event_id)`, not a reality-global id. §12S.2.5's canonical prompt-assembly query also predates island state as an input. Current design: [`13_simulation_loop.md`](../13_simulation_loop.md) + [`15_commit_service.md`](../15_commit_service.md). Status markers below predate the island/commit-service model.
+
 **Origin:** Security Engineer / Threat Modeler adversarial review. S2 + S3 reshaped via user insight — capability-based data model replaces access-control-filter model. S3 extends with full Option A privacy tier system.
 
 Fundamental shift: **knowledge flows through session participation**, not through post-hoc filtering. Cross-PC leak becomes structurally impossible.

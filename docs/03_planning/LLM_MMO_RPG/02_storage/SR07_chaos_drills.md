@@ -7,6 +7,8 @@ note: Not produced by scripts/chunk_doc.py split; authored as new SR-series cont
 
 ## 12AJ. Chaos Drill Cadence — SR7 Resolution (2026-04-24)
 
+> **⚠ PARTIALLY SUPERSEDED 2026-07-26 (AUD-F16 root #8).** Pod-kill drills assume fungible replicas — killing a writer node is a **writer-loss / epoch-handoff** drill (highest blast class, not routine); and the reality-DB-outage pass criterion (“writes rejected cleanly”) is inverted under the island model, where expected behavior is buffering + tick dilation while the sink is down. Registry, hypothesis format and safety mechanics stand. Current design: [`13_simulation_loop.md`](../13_simulation_loop.md) + [`15_commit_service.md`](../15_commit_service.md). Status markers below predate the island/commit-service model.
+
 **Origin:** SRE Review SR7 — SR1-SR6 defined **what** reliable operation looks like (SLOs, incident flow, runbooks, postmortems, deploy safety, dependency handling) but not **proof that those mechanisms actually work**. Circuit breakers that have never opened · runbooks that have never been executed · degraded modes that have never activated under load — all are theoretical until exercised. SR7 makes reliability mechanisms **falsifiable** through hypothesis-driven chaos experiments run on a regular cadence, with a V1 minimal bar that gates launch.
 
 ### 12AJ.1 Problems closed

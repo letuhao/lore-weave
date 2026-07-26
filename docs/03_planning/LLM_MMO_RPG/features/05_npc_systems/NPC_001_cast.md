@@ -91,7 +91,16 @@ No new EVT-T* row. **EVT-T2 references throughout this doc** updated semanticall
 
 ## §3 Aggregate inventory
 
-Five aggregates total: 3 imported from R8 (locked by 02_storage; Cast adds DP-A14 scope/tier annotations only), 2 new owned by Cast.
+> **⚠ CORRECTED 2026-07-26 (REC-26 / AUD-F17 #24): §3.1–§3.3 below are SUPERSEDED shapes — the
+> three R8 aggregates were TRANSFERRED to ACT_001 (this file's own 2026-04-27 header), but the
+> normative body was never updated, leaving two owners on record for `npc`, `npc_session_memory`
+> and `npc_pc_relationship_projection`.** The header's transfer table is authoritative: `npc` →
+> ACT_001 `actor_core` + `actor_chorus_metadata`; `npc_session_memory` → ACT_001
+> `actor_session_memory`; `npc_pc_relationship_projection` → ACT_001 `actor_actor_opinion`
+> (bilateral). §3.1–§3.3 are retained below as historical shape reference only — **ACT_001 §3 is
+> the owning spec**; NPC_001 is a reader. §3.4 `npc_node_binding` remains NPC_001-owned. The §4
+> tier/scope rows, §5.2 write calls and §7.1 JWT claims for the three transferred aggregates are
+> superseded by the same REC (notes at each site).
 
 ### 3.1 `npc` (R8-locked, scope/tier annotated by Cast)
 
@@ -232,6 +241,15 @@ dp::t3_write::<NpcNodeBinding>(ctx, npc_id, BindingDelta::Handoff { new_owner, n
 
 The handoff write is T3 because it carries epoch fencing — must be globally visible before any new owner can write.
 
+> **⚠ CORRECTED 2026-07-26 (REC-26 / AUD-F17 #24): the first three write calls above are
+> superseded — they claim writer authority NPC_001 no longer holds.** `dp::t2_write::<Npc>`,
+> `dp::t2_write::<NpcSessionMemory>` and `dp::t2_write::<NpcPcRelationshipProjection>` write
+> aggregates transferred to **ACT_001** (header table): the post-unify writes are
+> `dp::t2_write::<ActorCore>` / `::<ActorSessionMemory>` / `::<ActorActorOpinion>` under
+> **ACT_001's Aggregate-Owner role** — NPC_001 code paths invoke them only as ACT_001's declared
+> write API, never as owner. Only the `npc_node_binding` T3 handoff write remains an NPC_001-owned
+> write claim.
+
 ### 5.3 Channel ops (handoff only)
 
 - `dp::DpClient::move_session_to_channel` — NOT applicable (NPCs are not sessions).
@@ -351,6 +369,15 @@ The world-service backend session that writes EVT-T2 NPCTurn on behalf of NPCs n
 ```
 
 `produce: NPCTurn` is the new claim Cast adds to the JWT shape — required by EVT-A4 producer-category binding.
+
+> **⚠ CORRECTED 2026-07-26 (REC-26 / AUD-F17 #24): the JWT `write` rows for `npc`,
+> `npc_session_memory` and `npc_pc_relationship_projection` above are superseded.** Those
+> aggregates are ACT_001-owned post-unification (header table); the capability rows belong to
+> ACT_001's substrate spec under the renamed aggregates (`actor_core` / `actor_session_memory` /
+> `actor_actor_opinion`), and NPC_001's claim set keeps only `npc_node_binding` (+
+> `entity_binding` per PL_001) and the `produce: NPCTurn` role. Leaving the old rows normative
+> here granted world-service a second, NPC_001-flavored write path onto ACT_001's aggregates —
+> exactly the two-owner drift the register flags.
 
 ### 7.2 Per-node binding
 

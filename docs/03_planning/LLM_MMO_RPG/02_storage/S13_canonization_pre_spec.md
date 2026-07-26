@@ -8,6 +8,8 @@ generated_by: scripts/chunk_doc.py
 
 ## 12AC. DF3 Canonization Security — S13 Pre-Spec Invariants (2026-04-24)
 
+> **⚠ PARTIALLY SUPERSEDED 2026-07-26 (AUD-F16).** The hot-propagation design (§12AC.8) fans canonization out across descendant realities as direct downstream writes (§12P index refresh, cache invalidation) — cross-reality writes must be **async island messages** admitted through each target island's path (SL-A10), not applied by a central propagator. The pre-spec security invariants (authority, Tier 1 classification, provenance, audit, injection defense) remain valid. Current design: [`13_simulation_loop.md`](../13_simulation_loop.md) + [`15_commit_service.md`](../15_commit_service.md). Status markers below predate the island/commit-service model.
+
 **Origin:** Security Review S13 — DF3 (Canonization / Author Review Flow) is registered as a deferred big feature. When designed and built, it will be the most powerful cross-reality operation on the platform (L3 reality-local → L2 seeded canon promotion affecting all descendant realities). This surface is high-leverage for attackers. Security invariants must be **locked now**, before DF3 design begins, so DF3 cannot violate them by accident.
 
 > **Scope note:** This section establishes **security invariants DF3 MUST honor**. Concrete UX, review flow, and author tooling are DF3's own design scope. S13 locks the non-negotiable bones.

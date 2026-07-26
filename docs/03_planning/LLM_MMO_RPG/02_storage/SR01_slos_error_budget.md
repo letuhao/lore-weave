@@ -8,6 +8,8 @@ generated_by: scripts/chunk_doc.py
 
 ## 12AD. SLOs + Error Budget Policy — SR1 Resolution (2026-04-24)
 
+> **⚠ PARTIALLY SUPERSEDED 2026-07-26 (AUD-F16).** `sli_event_delivery`'s flat “within 2s” target predates the class A/B/C latency budgets — delivery SLIs must be per-class; and projection-staleness SLIs measure the **sink**, not gameplay correctness, since projections are off the write path (CS-A3). The SLO/error-budget machinery itself is unaffected. Current design: [`13_simulation_loop.md`](../13_simulation_loop.md) + [`15_commit_service.md`](../15_commit_service.md). Status markers below predate the island/commit-service model.
+
 **Origin:** SRE Review SR1 — §12A–§12AC accumulated ~50+ metrics and alerts, but no formal reliability targets, no error budget policy, no user-journey SLIs. Raw thresholds scattered ("PAGE if X > 30s") have no derivation anchor. Without SLOs, reliability is implicit; without budgets, there's no mechanism to trade feature velocity for reliability when needed.
 
 ### 12AD.1 Why SLOs here

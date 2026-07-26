@@ -8,6 +8,8 @@ generated_by: scripts/chunk_doc.py
 
 ## 12AF. Runbook Library — SR3 Resolution (2026-04-24)
 
+> **⚠ PARTIALLY SUPERSEDED 2026-07-26 (AUD-F16).** The required minimum V1 set (§12AF.4, 27 runbooks) predates the island model — it lacks writer-node loss/failover, epoch-fencing and island quiescence/handoff runbooks, now the highest-blast operational surfaces. The runbook schema, drift detection and verification protocol are unaffected. Current design: [`15_commit_service.md`](../15_commit_service.md). Status markers below predate the island/commit-service model.
+
 **Origin:** SRE Review SR3 — SR1-D6 requires every alert link to a runbook; SR2-D6 references runbooks as core ops artifacts. But the library itself, format, verification, drift detection, and accessibility were undesigned. Without a runbook library, alert→runbook binding is aspirational; 3am ops is wishful.
 
 ### 12AF.1 Problems closed

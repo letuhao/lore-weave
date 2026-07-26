@@ -265,6 +265,15 @@ Locked to keep the design analyzable. Any value crossed at runtime → `WorldRul
 |---|---|---|---|
 | Max channel tree depth | 16 | Per DP-Ch1 invariant. | DP — `create_channel` rejects deeper trees. |
 | Max actors per cell | 32 | Cell is a "scene"; >32 actors degrades narrative coherence and LLM context-window usability. Tavern-or-bigger channels host crowds via bubble-up summaries, not full presence. | world-service before `move_entity_to_cell`; rejects with `RejectReason::WorldRuleViolation { rule_id: "cell_capacity" }`. |
+
+> **⚠ CORRECTED 2026-07-26 (REC-66 / error-taxonomy sweep): `RejectReason::WorldRuleViolation{...}`
+> above is SHORTHAND, not a type.** The locked shape is this doc's own §3 **struct**
+> `RejectReason { rule_id, user_message, detail }` (`user_message: I18nBundle` added per RES_001
+> §2.3) — there is no `RejectReason` enum and no `WorldRuleViolation` variant. Variant-style
+> syntax, wherever it appears (here, PL_001b §15, PL_005 §9, PL_002), reads as shorthand for a
+> **`rule_id` family** — `WorldRuleViolation{rule_id: "cell_capacity"}` means the struct with
+> `rule_id = "world_rule.cell_capacity"`-family id. A builder implements exactly one type: the
+> struct.
 | Max active turn-slots per writer node | 64 | Memory bound on outstanding LLM streams. Exceeded → new claims get `RateLimited`. | DP-A11 writer node. |
 | Max `fiction_duration` per single turn | 30 days fiction-time | Prevents accidental "/sleep for 1000 years" wedging the world. `/travel` caps at 30 days; longer journeys split across multiple turns or use a dedicated `/long_journey` command (V2). | world-service validator. |
 | Max idempotency-key TTL | 60 seconds wall-clock | §14 reconnect window. Beyond TTL, retry is treated as a new turn. | gateway in-memory cache. |

@@ -113,18 +113,29 @@ pub struct OnboardingDraft {                               // V1 schema-reserved
 ### §2.3 actor_user_session aggregate (V1 minimal session tracking)
 
 ```rust
+// ⚠ CORRECTED 2026-07-26 (REC-14 + REC-16 / AUD-F17 #4 + #36, PO decision):
+// (1) `session_id: SessionId` was a DF5 SessionId — but DF5 derives that id from a PC ANCHOR
+//     (`anchor_pc_id` MUST be kind=Pc), and the PC does not exist until onboarding completes;
+//     the 17-step cascade contains no session-creation step, so the field was unfillable.
+//     RENAMED to a PO_001-owned newtype: this row tracks the LOGIN session, not a DF5 chat session.
+// (2) REC-16 ownership dedup: DF05_001 solely owns `session_participation`; PO_001's duplicate
+//     declaration of that shape is WITHDRAWN. "Current chat session" lives in ACT_001
+//     `current_session_id` ALONE — PCS_001's `current_session` and any copy here are read-throughs,
+//     never written by PO_001. PCS_001 keeps login semantics only.
 #[derive(Aggregate)]
 #[dp(type_name = "actor_user_session", tier = "T2", scope = "reality")]
 pub struct ActorUserSession {
     pub reality_id: RealityId,
-    pub actor_ref: ActorRef,                               // PC only V1 per Q5 LOCKED (cap=1 per PCS-A9)
-    pub session_id: SessionId,
+    pub actor_ref: ActorRef,                               // PC only V1 per Q5 LOCKED (per-(reality,user) cap per PCS-A9 as amended REC-02)
+    pub login_session_id: LoginSessionId,                  // PO_001-owned newtype (REC-14) — NOT a DF5 SessionId
     pub user_id: UserId,                                   // auth-service ref
     pub onboarding_completed_at_turn: Option<u64>,         // None = onboarding in-progress; Some = completed
     pub onboarding_mode: OnboardingMode,
     pub onboarding_draft: Option<OnboardingDraft>,         // V1+30d active per PO-D3; V1 always None (all-or-nothing)
-    pub schema_version: u32,                               // V1 = 1
+    pub schema_version: u32,                               // V1 = 2 (field rename per REC-14)
 }
+
+pub struct LoginSessionId(pub Uuid);                       // REC-14 — issued at gateway bind, no PC dependency
 ```
 
 ### §2.4 PC creation cascade (Mode B Custom PC complete flow)
@@ -152,16 +163,35 @@ on Forge:CompleteOnboarding(user_id, mode, draft_data, reality_id):
       reject_if draft_data.body_memory.body.host_body_ref ∉ reality.canonical_actors → onboarding.draft_invalid
       reject_if draft_data.body_memory.soul.origin_world_ref Some && reality V1 → onboarding.cross_reality_migration_unsupported_v1 (V2+)
   
-  // Atomic 3-write Forge admin pattern (per WA_003)
-  WRITE 1: insert canonical_actor (CanonicalActorDecl from draft_data; if Mode A: lookup existing canonical_pc + bind)
-  WRITE 2: emit Forge:RegisterPc + Forge:BindPcUser cascade events; insert actor_user_session row
+  // ⚠ CORRECTED 2026-07-26 (REC-13 + REC-15 / AUD-F17 #34 + #5, PO decision).
+  // Two defects fixed in this cascade as originally written:
+  //
+  // (1) PRODUCER (REC-13): this handler ran under a PLAYER-scoped JWT and emitted
+  //     ActorBorn/EntityBorn directly — but both are bootstrap-only producers
+  //     (ACT_001: "RealityBootstrapper role only"; same for EF_001), and inserting
+  //     canonical_actor mutated RealityManifest content per player signup. RESOLUTION:
+  //     the ENTIRE cascade routes through Forge:CompleteOnboarding as ONE EVT-T8
+  //     Administrative action (it already existed as the orchestrator; it is now the
+  //     SOLE producer). The service account executing S5 dispatch — not the player
+  //     JWT — is the producer of record; the runtime actor row is a RUNTIME row, not
+  //     a canonical_actors mutation (the manifest stays a seed artifact per GDA-D3).
+  //
+  // (2) ORDER (REC-15): the emission order below was inverted at both hops vs the
+  //     owning foundations, which agree with each other: PCS_001 "PcRegistered emits
+  //     AFTER ActorBorn"; ACT_001 "ActorBorn emits AFTER EntityBorn". pc_user_binding's
+  //     FK into actor_core was being written before actor_core existed. Corrected order:
+  //     EntityBorn → ActorBorn → (IDF/substrate births) → PcRegistered → BindPcUser.
+
+  // Atomic 3-write Forge admin pattern (per WA_003) — all inside Forge:CompleteOnboarding (EVT-T8)
+  WRITE 1: insert runtime actor row (from draft_data; if Mode A: bind existing canonical_pc)
+  WRITE 2: emit the cascade below; insert actor_user_session row
   WRITE 3: append forge_audit_log entry
-  
-  // Cascade events (synchronous same turn; orchestrates 14-feature chain)
-  emit Forge:RegisterPc { pc_id, body_memory_init, user_id_init, spawn_cell }   // PCS_001
+
+  // Cascade events (synchronous same turn; orchestrates 14-feature chain) — REC-15 order
+  emit EntityBorn { entity_id, entity_type: Actor(Pc), cell_id: spawn_cell }     // EF_001  (1st — the entity)
+  emit ActorBorn { actor_id, kind: Pc, traits_summary }                          // ACT_001 (2nd — actor_core row)
+  emit Forge:RegisterPc { pc_id, body_memory_init, user_id_init, spawn_cell }   // PCS_001 (after actor_core exists)
   emit Forge:BindPcUser { pc_id, user_id }                                       // PCS_001
-  emit ActorBorn { actor_id, kind: Pc, traits_summary }                          // ACT_001
-  emit EntityBorn { entity_id, entity_type: Actor(Pc), cell_id: spawn_cell }     // EF_001
   emit RaceBorn { reality_id, actor_id, race_id }                                // IDF_001
   emit LanguageProficiencyBorn for each declared lang                            // IDF_002
   emit PersonalityBorn { actor_id, archetype_id }                                // IDF_003

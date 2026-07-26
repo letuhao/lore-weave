@@ -229,12 +229,21 @@ pub enum ForceLevel {
 
 ### 3.5 ProposedOutputs allowed
 
+> **⚠ SUPERSEDED 2026-07-26 (REC-22 / AUD-F17 #22 — COMB_001 §9.1, applied 2026-06-20).** The agent
+> **no longer proposes a damage number at all.** COMB_001 reversed the direction to
+> engine-computes-end-to-end via the 4-step law-chain (COMB-A1, *LLM-zero-math*) and records
+> *"PL_005 Strike — drop `damage_amount` ✅ applied"* — but this table was never updated and still
+> mandates a proposed negative `HpDelta` on **every** Strike. One payload cannot both carry and not
+> carry the number. **Proposed outputs for Strike are now the intent only** (target, instrument,
+> `StrikeIntent`); the `HpDelta` appears in **actual_outputs**, engine-sourced, against `vital_pool`.
+
 | aggregate_type | delta_kind | When |
 |---|---|---|
-| `pc_stats_v1_stub` | HpDelta(negative) | always — agent intends damage |
-| `pc_mortality_state` | MortalityTransition (Alive→Dying) | only when StrikeIntent=Lethal AND target current_hp ≤ proposed damage |
+| ~~`pc_stats_v1_stub`~~ | ~~HpDelta(negative)~~ | **WITHDRAWN** — engine computes damage (COMB-A1); the agent proposes no number |
+| `pc_mortality_state` | MortalityTransition (Alive→Dying) | ⚠ derived by the engine from the resolved chain, **not** proposed from `StrikeIntent` + a proposed damage value. NPC targets: see REC-06 |
 
-V1 Strike emits agent's INTENT; world-rule clamps to actual.
+~~V1 Strike emits agent's INTENT; world-rule clamps to actual.~~ **V1 Strike emits intent; the engine
+computes the outcome** — there is no proposed number to clamp.
 
 ### 3.6 ActualOutputs (validator-derived)
 
@@ -464,10 +473,22 @@ pub enum UseIntent {
 
 ### 6.2 Allowed InstrumentRef
 
+> **⚠ CORRECTED 2026-07-26 (REC-07 / AUD-F17 #11, PO decision) — `Ability` promotes to ✅ on `Use`.**
+> The prior blanket ❌ across all five kinds meant **no V1 event could submit an out-of-combat
+> ability at all** — yet ABL_001 justified its entire namespace on *"two V1 callers: COMB_001's
+> `Skill` verb and PL_005's out-of-combat `Use`"*, and shipped `usable_out_of_combat`, ABL-A7
+> cost-only gating and §7.3 fiction-time conversion against the caller that didn't exist. The
+> closed kind-set is preserved — no 6th kind; `Use` is the natural host (an ability *is* used).
+> Validation routes to ABL_001's own chain (ABL-V1..V8: known → context → cooldown → cost →
+> target), not to Item checks; `exactly 1` instrument rule unchanged (Item XOR Ability). Note
+> the effect-scope guard: out-of-combat `StatusApply` is V1+30d per REC-08 — ABL-V2's context
+> predicate enforces it.
+
 | Variant | Allowed? | Notes |
 |---|:---:|---|
 | Item | ✅ exactly 1 | the item being used |
-| BodyPart/Verbal/Ability | ❌ | not "Use" — those are other kinds |
+| **Ability** | **✅ exactly 1 (XOR Item)** | **V1 per REC-07** — out-of-combat ability use; validated by ABL_001 §8.1 chain; `AbilityId` must resolve in `reality.abilities` (ABL-V1) |
+| BodyPart/Verbal | ❌ | not "Use" — those are other kinds |
 
 ### 6.3 Allowed TargetRef
 
@@ -494,9 +515,19 @@ Highly item-dependent. Common patterns:
 
 ### 6.6 ActualOutputs (validator-derived)
 
-Lex axioms (WA_001) gate `Use` per item compatibility:
-- Reality 1 (Wuxia): healing potion ✓; spell scroll ✗ (`lex.ability_forbidden`)
-- Reality 2 (Sci-fi): firearm OK; qigong potion ✗
+~~Lex axioms (WA_001) gate `Use` per item compatibility:~~
+
+> **⚠ CORRECTED 2026-07-26 (REC-45 / AUD-F17 #41): Lex's `Use` gate runs over the NARRATED ABILITY
+> CLASS (ABL_001's axis), not over an item × reality compatibility matrix.** WA_001 has **no item
+> concept** to gate on — its `AxiomKind` set classifies *action/ability kinds* — and ABL_001 rules
+> the item-compatibility axis *backwards*: the correct question is **what class of ability the
+> narrated Use invokes** (does this Use fire a `MagicSpells`-class effect? a `Qigong`-class one?),
+> not which item names it. The examples below still reject correctly, but through the ability
+> classification: the spell scroll fails because its Use narrates a `MagicSpells` effect in a
+> reality whose axiom forbids that kind — not because the scroll-as-item is incompatible.
+
+- Reality 1 (Wuxia): healing potion ✓; spell scroll ✗ (`lex.ability_forbidden` — its Use narrates a `MagicSpells`-class effect)
+- Reality 2 (Sci-fi): firearm OK; qigong potion ✗ (its Use narrates a `Qigong`-class effect)
 - Reality 3 (Permissive default): all Use kinds pass through Lex no-op
 
 V1 ActualOutputs limited to items with V1-supported targets (e.g., Heal potion on `pc_stats_v1_stub`). Other items audit-only without state mutation.
@@ -526,16 +557,41 @@ Cross-kind summary of `aggregate_type` allowed in `proposed_outputs` / `actual_o
 
 | aggregate_type | Owner | delta_kinds | Used by Interaction kinds |
 |---|---|---|---|
+> **⚠ CORRECTED 2026-07-26 (REC-03 / AUD-F17 #10) — this table was making every combat and ability
+> outcome contract-illegal.** The closing rule below is *closed* (**"not in this table = forbidden"**),
+> and the table omitted `vital_pool` and `actor_status` — the two aggregates COMB_001 and ABL_001
+> route **all** outcomes to. Its HP row instead named `pc_stats_v1_stub`, a placeholder **nobody
+> writes**: RES_001 shipped `vital_pool` as the vital substrate and PL_006 shipped `actor_status`,
+> and DF07_001 later made the derived stat layer a projection with **no aggregate of its own**
+> (DF7-A2), so the "PCS_001 V1+ when designed" stub was never going to arrive. Three CANDIDATE-LOCK
+> docs disagreed and this table was the one that was wrong. Stub rows replaced below.
+
+| aggregate_type | Owner | delta_kinds | Used by Interaction kinds |
+|---|---|---|---|
 | `npc_pc_relationship_projection` | NPC_001 (R8) | OpinionDelta(±) | Speak (rare) / Give (always) / Strike (NPC target) |
-| `pc_stats_v1_stub` | PCS_001 (V1+ when designed) | HpDelta · StatusFlagDelta · WieldedTool | Strike (HpDelta) / Use (HpDelta + StatusFlag) |
-| `pc_mortality_state` | PCS_001 (V1+ when designed) | MortalityTransition | Strike (when hp→0) |
+| **`vital_pool`** | **RES_001** | HpDelta · StaminaDelta · ManaDelta | Strike (damage) / Use (heal potion) / ABL_001 ability costs |
+| **`actor_status`** | **PL_006** | StatusFlagApplied · StatusFlagCleared · MagnitudeDelta | Use (wine → Drunk; buff potion) / Strike (post-damage hooks) / ABL_001 `StatusApply` |
+| ~~`pc_stats_v1_stub`~~ | ~~PCS_001 (V1+)~~ | **WITHDRAWN — REC-03.** Never existed; superseded by `vital_pool` + `actor_status`. DF7's stat block is a **derived projection**, not an OutputDecl target (DF7-A2) | — |
+| `pc_mortality_state` | PCS_001 (**PCs only V1** per PCS-A1) | MortalityTransition | Strike (when hp→0). ⚠ **NPC targets have no mortality state** — see REC-06 |
 | `npc.flexible_state.liveness` | NPC_001 (V1 placeholder per B1) | NpcLivenessTransition | Strike (when target=NPC and "dies") — placeholder until NPC_003 |
 | `oracle_audit_log` | DP-internal / 05_llm_safety A3 | OracleQueryRecorded | Examine (when Oracle invoked) |
-| (V1+ `pc_inventory`) | PCS_001 (V1+) | InventoryDelta | Give / Use |
-| (V1+ `item_state`) | future Item substrate | LockTransition · DamageDelta · DurabilityDelta | Use / Strike-on-Item |
+| **`entity_binding`** | **EF_001** | HeldBy / InCell transitions | Give / `Item:PickUp` — PL_007's V1 acquisition path |
+| (V1+ `item_state`) | PL_007 (ITM-D\*) | LockTransition · DamageDelta · DurabilityDelta | Use / Strike-on-Item |
 | (V1+ `scene_state.lighting`) | PL_001 extension | LightingChange | Use (torch / candle) |
 
+*(The former `(V1+ pc_inventory)` row is also withdrawn: PL_007b resolved inventory as a **read-view**
+over RES_001 balances + EF_001 `HeldBy` — `actor_inventory_view` — with no aggregate of its own, so
+`InventoryDelta` lands on `entity_binding` above.)*
+
 **`aggregate_type` not in this table = forbidden in OutputDecl.** Adding a new aggregate_type goes through `_boundaries/01_feature_ownership_matrix.md` lock-claim per EVT-A11.
+
+> ~~**Still open here — REC-45 (`#41`).** §6.6 and §8.2 make item × reality compatibility *"the primary
+> reject path"* for Lex on `Use`. ABL_001 rules that axis *"backwards"* (the correct axis is **when**
+> an effect may fire, not which effects an item may name), and WA_001 has no item concept to gate on.
+> Not corrected here — it is a three-way disagreement needing ABL_001 and WA_001 at the table.~~
+> **⚠ RESOLVED 2026-07-26 (REC-45 / AUD-F17 #41):** applied per the register — Lex `Use`-severity
+> is evaluated **over the narrated ability class** (ABL_001's axis); the item × reality
+> compatibility-matrix framing in §6.6 and §8.2 is superseded (dated notes at both sites).
 
 ---
 
@@ -583,7 +639,7 @@ Stage 9  causal-ref       → EVT-A6 typed causal-refs (REQUIRED for NPCTurn / o
 | **Strike** | medium | StrikeKind/StrikeIntent axiom-allowed (e.g., MagicSpell strike rejects in non-magic reality) |
 | **Give** | no-op | Give mundane |
 | **Examine** | no-op | Examine mundane |
-| **Use** | **CRITICAL** | item × reality compatibility matrix; primary reject path for cross-reality items |
+| **Use** | **CRITICAL** | ~~item × reality compatibility matrix; primary reject path for cross-reality items~~ **severity is over the narrated ability class** (ABL_001's axis) — ⚠ CORRECTED 2026-07-26 (REC-45 / AUD-F17 #41): WA_001 has no item concept; the reject fires when the Use's narrated effect belongs to an axiom-forbidden ability kind, per the §6.6 REC-45 note |
 
 ### §8.3 Per-kind Stage 7 (world-rule physics) actions
 

@@ -126,6 +126,8 @@ pub struct MapConnectionDecl {
 - `connections[].default_fiction_duration.value > 0`; zero rejects `map.connection_duration_invalid` (Phase 3 cleanup S1.2 — distance_invalid only covered distance, not duration; teleport-without-intent prevention).
 - All asset_ref fields MUST BE `None` V1 (schema-only; V1+ MAP_002 populates). Author write attempts with non-None V1 reject `map.asset_pipeline_not_active_v1` (Phase 3 cleanup S1.3 — defensive write-time reject; rule retired when MAP_002 V1+30d lands). Reads with non-None values during V1 also reject via `map.asset_ref_unresolved`.
 
+> **⚠ CORRECTED 2026-07-26 (REC-19): referential connection validation is END-OF-BATCH within the bootstrap phase — not per-row write-time — for bootstrap writes.** As written, the `connections[].to_channel` existence check above ran at write time on every row, but bootstrap materialises layouts one decl at a time ([`18_reality_bootstrap.md`](../../18_reality_bootstrap.md) §3.2 phase 4), so **any mutually-referencing pair — including this doc's own canonical examples (e.g. `country:dai_tong ↔ country:tay_van`) — is un-bootstrappable**: the first-written row references a `map_layout` row that does not yet exist. Fix, per RBS-D6's per-phase validator rule (seed-time validators run per phase, immediately after that phase's emissions): during bootstrap, the referential checks (`map.connection_target_unknown`, `map.cross_tier_connection_disallowed`) evaluate **once at the end of phase 4, over the complete batch of that phase's rows**. Runtime single-row writes (Forge edits, V1+ in-fiction triggers) keep write-time checking unchanged — at runtime the target either already exists or the connection is genuinely orphan. Same class as RLS-A9 / `18` §3.2. Non-referential per-row invariants (position bounds, self-loop, distance/duration > 0, tier metadata shape) stay write-time everywhere.
+
 ---
 
 ## §4 MapConnectionKind closed enum
@@ -182,6 +184,23 @@ fn derive_lazy_map_layout_position(parent_existing_children: &[MapLayout]) -> Ma
     MapPosition { x: x.clamp(50, 950), y: y.clamp(50, 950) }       // keep inside viewport with margin
 }
 ```
+
+> **⚠ CORRECTED 2026-07-26 (REC-24): the `f32` `cos`/`sin` formula above is WITHDRAWN — lazy-cell positions compute in fixed-point.** The snippet uses `f32` transcendental trig, the exact pattern GEO_001 §5 and CSC_001 §5.2 both ban: `cos`/`sin` results differ across platforms/compilers, so the "NOT random (replay-determinism per EVT-A9)" comment was self-defeating — the offset was deterministic per machine, not per replay. Corrected discipline (matching GEO_001's own): positions compute in **fixed-point i32 milli-units** with **integer/table-based trig** (or an equivalent precomputed-offset table) — no floating point anywhere on the path:
+>
+> ```rust
+> // REC-24 corrected form — fixed-point, table-based trig; no f32 on the position path.
+> // SIN_MILLI[d] / COS_MILLI[d] = round(sin/cos(d°) × 1000) for d in 0..360 — const i32 tables.
+> fn derive_lazy_map_layout_position(parent_existing_children: &[MapLayout]) -> MapPosition {
+>     let n = parent_existing_children.len() as i64;
+>     let deg = ((n * 137_500) / 1_000).rem_euclid(360) as usize;      // golden angle 137.5° in milli-degrees, integer math
+>     let radius: i64 = (50 + ((n as u32) * 30).min(400)) as i64;      // same growth/cap as before
+>     let x = (500_000 + radius * COS_MILLI[deg]) / 1_000;             // milli-units → units
+>     let y = (500_000 + radius * SIN_MILLI[deg]) / 1_000;
+>     MapPosition { x: (x as u32).clamp(50, 950), y: (y as u32).clamp(50, 950) }
+> }
+> ```
+>
+> Table granularity (1° / milli-unit rounding) is irrelevant to layout quality here — the only contract is bit-identical output for the same `n_existing` on every platform and every replay.
 
 Same policy for both lazy-cell + lazy any future runtime-channel-creation cases. Author can override later via Forge:EditMapLayout.UpdatePosition.
 
@@ -406,7 +425,7 @@ pub struct TravelDefaults {
 | `map.missing_layout_decl` | channel exists without `map_layout` row at runtime | "Vị trí chưa được tô hình bản đồ." | No (bootstrap invariant) |
 | `map.duplicate_layout` | second write attempt for `channel_id` already with row | "Vị trí này đã có bản đồ." | No (write-time invariant) |
 | `map.position_out_of_bounds` | x or y outside `0..=1000` | "Tọa độ không hợp lệ." | No (write-time validator) |
-| `map.connection_target_unknown` | MapConnectionDecl `to_channel` references non-existent channel | "Đích kết nối không tồn tại." | No (write-time validator) |
+| `map.connection_target_unknown` | MapConnectionDecl `to_channel` references non-existent channel | "Đích kết nối không tồn tại." | No (~~write-time validator~~ **end-of-batch within bootstrap phase 4; write-time for runtime single-row writes** — ⚠ CORRECTED 2026-07-26 (REC-19), see §3 note) |
 | `map.cross_tier_connection_disallowed` | MapConnectionDecl `to_channel` is at different tier than `self` | "Kết nối khác cấp không được phép V1." | No (V1 invariant; V1+ may allow per MAP-D9) |
 | `map.invalid_tier_metadata` | `tier_metadata = None` but `tier ≠ Cell`, OR `tier_metadata = Some` but `tier == Cell`, OR cell-tier `connections` non-empty | "Cấu trúc cấp bản đồ không hợp lệ." | No (write-time validator) |
 | `map.asset_ref_unresolved` | asset_id doesn't exist in storage at read-time (V1 should never fire since all asset fields None) | "Không tìm thấy tài nguyên hình ảnh." | No (defensive) |
@@ -656,6 +675,19 @@ V1: this flow doesn't exist; all asset slots are None.
 | **MAP-D14** | `BookCanonRef` shared-schema registration | inherited from PF-D12; same boundary cleanup pass | Future boundary cleanup / IF_001 design |
 | **MAP-D15** | `ImageAssetRef.storage_uri` typed URI + `mime_type` closed enum | V1 freeform String accepts any content (security-relevant for V1+ when MAP_002 populates: path traversal, mime spoofing, malicious schemes). V1 schema-only (values None) so no exposure; V1+ MAP_002 must validate at write-time. Phase 3 cleanup S1.4 reservation. | V1+30d MAP_002 implementation |
 | **MAP-D16** | World-service unified `read_map_view(channel_id) → MapViewDTO` API merging MAP_001 + PF_001 at cell tier | V1: frontend dual-subscription (Subscription A on map_layout + Subscription B on place; client-side composition per §12.1). V1+ optimization to reduce round-trips. Phase 3 cleanup S2.1 reservation. | V1+30d profiling |
+| **GEO-D5** *(cross-reference row — added 2026-07-26, REC-30)* | GEO_001's V1+ derivation of `map_layout.position` from world-geometry (settlement coordinates) | GEO_001 claimed this doc carried the cross-reference; it never did. See precedence note below. | GEO-D5 activation |
+
+> **⚠ CORRECTED 2026-07-26 (REC-30 / AUD-F17 #42): GEO-D5 cross-reference row added above, with a
+> precedence rule that did not exist.** GEO-D5 (GEO_001) and MAP-D6 (this table) named **two
+> different V1+ derivation sources** for `map_layout.position`, with no rule for which wins, and
+> MAP_001 carried neither the cross-reference nor the row GEO_001 claimed it had. Precedence,
+> locked per the register: **(1) author-pin wins** — a Q3-a author-positioned `position` is never
+> overwritten by any derivation; **(2) GEO-D5 derivation fills UNPINNED positions only** (nodes
+> whose position was never author-set — e.g. lazy-created cells, currently served by §5's
+> deterministic offset); MAP-D6's force-directed auto-layout is likewise a fill-unpinned
+> proposal, never an overwrite. **TMP-A6 note:** TMP-A6's premise assumes positions are not
+> geometry-derived — if GEO-D5 activates, TMP-A6 requires an explicit amendment in the same
+> cycle; activation without that amendment is a drift defect, not an oversight.
 
 ---
 

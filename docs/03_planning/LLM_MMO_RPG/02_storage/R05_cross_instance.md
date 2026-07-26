@@ -8,6 +8,8 @@ generated_by: scripts/chunk_doc.py
 
 ## 12E. Cross-Instance Data Access (R5 mitigation)
 
+> **⚠ PARTIALLY SUPERSEDED 2026-07-26 (AUD-F16).** §12E.3's `xreality.user.deleted` handler “convert PC to orphan NPC” has meta-worker authoring game state — PC→NPC conversion is an **AGT-A3 driver swap** per DL-A8 and must route through the owning island's admission path, never be written by a cross-reality consumer. The no-live-cross-instance-query stance itself remains correct. Current design: [`15_commit_service.md`](../15_commit_service.md). Status markers below predate the island/commit-service model.
+
 Cross-reality queries across N reality DBs are rejected as an API pattern. This section locks the alternative: a tight 3-layer model for every legitimate cross-instance need, plus an explicit anti-pattern rule.
 
 ### 12E.1 Core insight — no product feature requires live cross-instance query

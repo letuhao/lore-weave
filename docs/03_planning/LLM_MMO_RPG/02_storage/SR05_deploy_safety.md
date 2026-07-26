@@ -8,6 +8,8 @@ generated_by: scripts/chunk_doc.py
 
 ## 12AH. Deploy Safety + Rollback — SR5 Resolution (2026-04-24)
 
+> **⚠ PARTIALLY SUPERSEDED 2026-07-26 (AUD-F16 root #8).** The deploy protocol assumes stateless fungible replicas — for a sticky writer node a redeploy is a **stateful failover** (checkpoint + CP-coordinated handoff with an epoch bump), not a rolling restart; and §12AH.5's 60s feature-flag cache conflicts with digest-pinned determinism for gameplay-affecting flags (a mid-epoch flag flip would fork simulation behavior). Canary, rollback-decision and deploy-audit layers otherwise stand. Current design: [`15_commit_service.md`](../15_commit_service.md) + [`18_reality_bootstrap.md`](../18_reality_bootstrap.md). Status markers below predate the island/commit-service model.
+
 **Origin:** SRE Review SR5 — R2 (projection rebuild) + R3 (§12C schema evolution) covered design-time schema safety + upcasters, but **operational deploy** — canary, rollback, feature flags, freeze enforcement, deploy windows, change review — was absent. SR1-D3 feature freeze references enforcement that didn't exist. SR3-D6 dry-run-first discipline needs analogous framework for code/schema/config deploys.
 
 ### 12AH.1 Problems closed

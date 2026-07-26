@@ -89,8 +89,14 @@ pub enum TitleBinding {                                   // Q2 B LOCKED
     Standalone,                                           // wandering hero / honor title / unaffiliated
 }
 
-pub enum SuccessionRule {                                 // Q3 A LOCKED — 3 V1 + 1 V1+
-    Eldest,                                               // FF_001 dynasty traversal eldest living member
+pub enum SuccessionRule {                                 // Q3 A LOCKED — ⚠ REVISED 2026-07-26 (REC-36): 2 V1 + 2 V1+
+    // ⚠ Eldest → V1+ (REC-36 / AUD-F17 #14, PO decision): `find_eldest_in_dynasty` has NO data
+    // source — no age, birth date, or birth-order key exists anywhere in the actor substrate
+    // (FF_001 family_node carries none; TDIL body_clock defaults to 0 for every canonical actor),
+    // and FF-D8 disagrees with this doc on what Eldest even reads. Activates V1+ when FF_001 adds
+    // an explicit author-declared `birth_order: u16` to family_node (NOT derived from clocks).
+    // AC-TIT-6's "eldest living son" re-tags V1+ with it. Designated + Vacate cover V1.
+    Eldest,                                               // V1+ — FF_001 birth_order traversal (was: unimplementable V1)
     Designated,                                           // canonical TitleHoldingDecl.designated_heir + Forge:DesignateHeir runtime
     Vacate,                                               // no auto-succession; manual re-grant required
     // V1+ FactionElect (procedural vote; depends on DIPL_001 V2+) — TIT-D1
@@ -362,6 +368,23 @@ on Forge:GrantTitle(admin, actor_id, title_id, designated_heir, reason):
 Registered in `_boundaries/03_validator_pipeline_slots.md` Stage 0+ canonical seed cross-aggregate consistency rules (joins existing C1-C17 from P4 commit; new rule TIT-C1):
 
 **TIT-C1 (cross-aggregate succession cascade):** Title-holder death (WA_006 mortality EVT-T3 actor_dies) triggers TIT_001 succession cascade synchronously same turn. Owner: TIT_001. Trigger source: WA_006 mortality_state transition Alive → Dying / Dead.
+
+> **⚠ TRIGGER RE-SCOPED 2026-07-26 (REC-06 / AUD-F17 #8, PO decision) — NPC-death-triggered
+> succession is V1+30d, not V1.** As locked, this trigger **cannot fire for the actors that
+> actually hold titles**: sect-masters, emperors and patriarchs are NPCs, and **NPCs have no
+> mortality state** — `pc_mortality_state` is *"sparse PC-only"* (PCS-A1: *"NPCs and Synthetic
+> forbidden V1"*), `MortalityOverride` is per-`(reality, pc_id)` (WA_006 §7.4), and NPC death
+> itself is EF_001 lifecycle `Existing → Destroyed`, marked **"NPC death (NPC_001 V1+30d)"**.
+> AC-TIT-6's setup (*"NPC Lý Tử … mortality_state=Dead"*) references a row that cannot exist,
+> and C25's *"designated_heir alive"* check is unevaluable for NPC heirs.
+> **V1 triggers are therefore:** (a) **PC** title-holder death via WA_006 (real, V1) and
+> (b) **`Forge:RevokeTitle`** / vacancy admin actions. **V1+30d:** the NPC trigger re-bases on
+> **EF_001 lifecycle `Destroyed`** (not a mortality-state read) and ships together with NPC death.
+> The doc's claim to resolve the *"WA_006 sect-leader-death cascade gap (V1 full)"* is corrected
+> to **V1+30d** — the cascade *machinery* is V1 (exercised by the PC + Forge paths, and by REC-05's
+> now-active FAC_001 `ChangeRole`/`SetCurrentHead` writes); only the NPC trigger waits.
+> AC-TIT-6 re-tags V1+30d. Heir-selection note: `Eldest` remains blocked on REC-36 (no age/birth
+> data exists) — `Designated` and `Vacate` are the V1-exercisable rules.
 
 ### §7.2 Cascade pseudocode
 

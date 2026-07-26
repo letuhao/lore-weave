@@ -313,12 +313,51 @@ These are **mechanical edits** (no semantic change to user-facing behavior); app
 
 ### §7.1 Per-channel turn stream
 
-Per PL_001 fiction_clock per-channel aggregate (existing). Each channel has independent turn stream. Heaven_clock advances ONLY when heaven activity occurs:
+> **⚠ CORRECTED 2026-07-26 (REC-04 / AUD-F17 #3, PO decision) — the original three-source list
+> deadlocks.** As first written, every V1 advance source was itself gated on an advance having
+> already happened: an actor turn requires someone present; a Minor scheduled action fires on a
+> `fiction_time_window` the frozen clock can never reach; Forge is V1+30d. In any PC-free channel
+> the clock was **permanently frozen** — so §7.4's observation formula computed `elapsed = 0`
+> regardless of absence length (the Tây Du Ký 365× case this doc cites accrued **nothing**),
+> DL_001's fiction-hour sweep never fired (AUD-F17 #29), and EF_001's 14-fiction-day NPC cold-decay
+> could only fire in cells that were not player-free (#30). Fixed by a **fourth source**, below.
+
+Per PL_001 fiction_clock per-channel aggregate (existing). Each channel has independent turn stream. Heaven_clock advances when:
 - Heaven actor takes turn (NPC/PC action)
 - Heaven Tracked Minor scheduled action runs (per AIT_001 MinorBehaviorScript)
 - Forge admin time-advance V1+30d (TDIL-D2)
+- **`ObservationAdvance` (NEW V1 — TDIL-A11):** any observation of the channel — actor entry, cross-realm read (§7.4), AIT materialization, DL_001 read-evaluation — **first lazily advances the channel clock, then reads.**
 
-If no heaven activity → heaven_clock frozen while mortal_clock advances. Quantum-observation principle (AIT_001 Q4 REVISED) extends naturally.
+### §7.1a `ObservationAdvance` (TDIL-A11, REC-04)
+
+> **TDIL-A11 — An unattended channel's clock advances lazily, at observation, against the reality's
+> rate-1.0 fiction baseline.** Each channel clock carries one new field, `last_baseline_sync: i64`
+> (the reality-baseline fiction timestamp at last advance). On observation:
+>
+> ```
+> delta_baseline   = reality_fiction_clock.now − channel.last_baseline_sync
+> channel.clock   += channel.time_flow_rate × delta_baseline
+> channel.last_baseline_sync = reality_fiction_clock.now
+> // THEN the read proceeds — materialization, sweep windows, §7.4 — over a non-zero elapsed
+> ```
+>
+> Properties, each load-bearing:
+> - **Zero background compute** — nothing ticks; the advance is O(1) at the moment someone looks.
+>   DL-A1 (*"nothing runs while nobody is there"*) and B3-D1a (*"evaluated on read, never ticked"*)
+>   stay **literally true** — this is the same quantum-observation move PROG_001 §7 and AIT_001
+>   already make for NPC *state*, extended to the clock the state reads.
+> - **The reference is the reality baseline, not wall-clock** — if nobody plays anywhere in the
+>   reality, `reality_fiction_clock` itself is frozen and nothing accrues anywhere, which is exactly
+>   B3-D1a's contract. Fiction time stays decoupled from real time.
+> - **Deterministic and replayable** — the advance is a pure function of two stored timestamps and
+>   the declared rate; it commits as part of the observing event's turn (recorded, not re-derived,
+>   per SL-A6/TDIL-A9).
+> - **Scheduled actions catch up correctly**: DL-D1's read-evaluation now evaluates routines over the
+>   freshly-advanced window, so a `fiction_time_window` action that "should have" fired during
+>   absence resolves at observation — Tracked-Minor lazy materialization semantics, unchanged.
+> - **Forge rate-edits are not retroactive**: an edit changes `time_flow_rate` forward from its own
+>   event; the advance formula uses the rate in force per interval (V1: single rate per interval is
+>   sufficient since rate edits are V1+30d per TDIL-D1).
 
 ### §7.2 Atomic-per-turn travel (Q7)
 
@@ -362,7 +401,13 @@ elapsed_heaven_proper_time = (heaven_clock_now - heaven_clock_at_last_observed) 
 accrual = base_rate × elapsed_heaven_proper_time × derives_from_multiplier
 ```
 
-ONE calculation regardless of magnitude. Even 1 trillion heaven-fiction-days = 1 calculation. AIT_001 §7.5 materialization closure-pass revises from per-day replay to O(1) — this commit.
+ONE calculation regardless of magnitude. Even 1 trillion heaven-fiction-days = 1 calculation. **The observation itself first fires `ObservationAdvance` (§7.1a) — without it `heaven_clock_now` equals `heaven_clock_at_last_observed` in any unattended realm and this formula returns 0** (REC-04).
+
+> ⚠ **Phantom reference (REC-20 / AUD-F17 #44):** "AIT_001 §7.5 materialization closure-pass revises
+> from per-day replay to O(1) — this commit" — **AIT_001 contains no §7.5.** The lock cycle recorded
+> an edit that was never made. The O(1) formula above is real and stands; AIT_001 must write the
+> section that hosts it before TDIL_001's lock claim on this line is honest. Tracked in
+> [`19_reconciliation_register.md`](../../19_reconciliation_register.md) REC-20.
 
 ---
 

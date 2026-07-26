@@ -8,6 +8,8 @@ generated_by: scripts/chunk_doc.py
 
 ## 12P. L3 Override Reverse Index (C4 resolution)
 
+> **⚠ PARTIALLY SUPERSEDED 2026-07-26 (AUD-F16 root #2).** §12P.3 maintains the index as an `event-handler` side effect committing into reality DBs — that service is a second writer; the event log is a sink, and L3 override writes must route via the island's admission path (`commit-service`), which then maintains the reverse index. The index shape and query patterns remain valid. Current design: [`15_commit_service.md`](../15_commit_service.md). Status markers below predate the island/commit-service model.
+
 **Origin:** SA+DE adversarial review 2026-04-24. M4 propagation (§9.8) works conceptually with passive read-through as default, BUT:
 - §9.8.1 preview ("M realities overridden this attribute") requires counting overrides
 - §9.8.3 force-propagate needs targeting query
