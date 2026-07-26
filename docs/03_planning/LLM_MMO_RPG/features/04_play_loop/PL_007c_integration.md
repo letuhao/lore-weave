@@ -217,7 +217,56 @@ this cycle; the rest apply when each target feature is next opened.
 | **12.10** | **WA_003 Forge** | 4 new `EVT-T8` sub-shapes (§10); `Forge:EditItemDef` is the **only** def-write path (ITM-A1) | no |
 | **12.11** | **07_event_model** | register 4 EVT-T1 + 1 EVT-T4 + 2 EVT-T3 `aggregate_type`s + 4 EVT-T8 + 1 V1+30d EVT-T5 | yes |
 | **12.12** | **AIT_001 / NPC_002 / COMB_005** | NPC equipment + inventory enter AssemblePrompt **only** as the bounded digest (PL_007b §5) — token cost flat in inventory size. **Added at review:** **ITM-C10** — Untracked actors hold **no** item instances and have **no** `actor_equipment` row; gear is DF07-archetype flavour, materialised only on AIT promotion. This is the rule that keeps COMB_005's default-`Untracked` hostile spawns from minting an entity per bandit per weapon (AC-ITM-19 counts the rows). | **yes** |
-| **12.13** | **ABL_001 Ability Foundation** (landed 2026-07-26, parallel) — **answering the two questions ABL_001 explicitly routed to the PL_007 owner** | **(a) ABL-Q9 / its closure item 5 — `UseEffectDecl` ⊂ `EffectOp` merge: AGREED IN PRINCIPLE, DEFERRED IN EXECUTION.** ABL_001 §4.2 is right that six of PL_007's seven variants are semantically identical to `EffectOp`, right that the V1 overlap is *redundant rather than incorrect* (both dispatch to the same owning aggregates), and right not to rewrite another feature's closed enum unilaterally. PL_007's answer: **do not merge inside V1.** A closed enum that two DRAFT features share becomes a change-coupling seam — every future `EffectOp` variant would then need a PL_007 boundary claim even when no item can produce it, and ABL's `Damage`/`ModifyThreat`/`ForceMove` are meaningless for items. **Merge at the first CANDIDATE-LOCK closure pass either feature takes**, when both vocabularies have stopped moving; the merged form should be ABL's `EffectOp` with PL_007 declaring the item-legal **subset** (a subset constraint, not a second enum). `Inert` stays PL_007-only. Recorded so ABL-Q9 is answered rather than left pending a reply. **(b) `EquipDecl.grants_ability`: AGREED, V1+ (ITM-D21).** ABL_001's derived-set model (§4.3 — the ability leaves the set when the item is unequipped, nothing stored, nothing to clean up) composes exactly with §6.5's equipped-only rule, so the field is cheap and correct when wanted. It stays out of V1 because ITM-A3's "items carry stat modifiers" is the whole of the V1 equipment contract, and ability-granting gear needs the ABL cost/cooldown model to be settled first. **(c) ITM-Q5 range arbitration** (§16) — ABL owns `Skill` and therefore the `reach`-vs-`range` precedence; PL_007 supplies `reach` as data and encodes no precedence. | **yes — answers ABL-Q9** |
+| **12.13** | **ABL_001 Ability Foundation** (landed 2026-07-26, parallel) — **answering the two questions ABL_001 explicitly routed to the PL_007 owner** | **(a) ABL-Q9 — `UseEffectDecl` ⊂ `EffectOp`: my answer was WRONG and is SUPERSEDED. Merge now.** ⚠️ **Corrected 2026-07-26 after commit `44645784a`.** I answered *"agreed in principle, deferred in execution — do not merge inside V1"*, on a change-coupling argument: a closed enum shared by two DRAFT features becomes a coupling seam, and ABL's `Damage`/`ModifyThreat`/`ForceMove` are meaningless for items. The combat-family session then resolved it the other way and was **right to**, because it found a **defect** where I had weighed a *preference* — and a defect beats tidiness every time. Two findings, both from reading the two enums side by side: (i) **they had already diverged in one day** — `StatusApply` here is `{ flag, magnitude }`, ABL's is `{ flag, magnitude, duration_rounds }`; `VitalDelta` here names its field `kind`, ABL's names it `vital`. Neither was wrong alone, which is precisely how two closed enums over one concept drift. (ii) **`VitalDelta { amount: i32 }` was a damage-law-chain bypass — in my doc.** The field is *signed*, so `UseItem { poison_vial, target } → VitalDelta { Hp, −30 }` writes damage that skips COMB_001 §4's chain entirely: **ignores `Armor`**, elem and resist, takes **no hit roll**, accrues **no COMB_003 threat** (accrual reads `damage_applied` *from* the chain), ignores **COMB_001 Q4's disparity cap**, and ignores **COMB_006's PvP eligibility predicate** (which guards `Strike` and `Damage`, not a raw vital write). Net effect: **an unmissable, armour-ignoring PvP weapon usable inside a sanctuary**, silently falsifying COMB_001's "the 4-step chain is the sole damage authority". **Neither of my two review passes caught this** — the cold-start pass read §7.1 closely enough to find `Unlock`/`Reveal` decorative and still missed that a signed amount is a weapon. Resolution as landed: `pub type UseEffectDecl = EffectOp;` — `ItemDef.use_effect` keeps its shape, only the type it names moves; **ABL_001 owns the vocabulary** (ABL-Q10, on the DF07 precedent — DF07 owns `StatModifier` while its producers live in PL_007/PL_006/Lex/Forge, so ownership sitting with the definer and producers living outside is the established shape here). Harm must be expressed as `Damage`, so every point of damage in the game passes the chain. The §7.1 variant table in `PL_007` §7 now documents the retirement in place. **My change-coupling concern was real but secondary**, and the right answer to it is ABL's subset constraint, not a second enum. **(b) `EquipDecl.grants_ability`: AGREED, V1+ (ITM-D21).** ABL_001's derived-set model (§4.3 — the ability leaves the set when the item is unequipped, nothing stored, nothing to clean up) composes exactly with §6.5's equipped-only rule, so the field is cheap and correct when wanted. It stays out of V1 because ITM-A3's "items carry stat modifiers" is the whole of the V1 equipment contract, and ability-granting gear needs the ABL cost/cooldown model to be settled first. **(c) ITM-Q5 range arbitration** (§16) — ABL owns `Skill` and therefore the `reach`-vs-`range` precedence; PL_007 supplies `reach` as data and encodes no precedence. | **yes — answers ABL-Q9** |
+
+---
+
+### 12.14 `UseEffectDecl` retires into `EffectOp` (ABL-Q9) — relocated verbatim from PL_007 §7.1
+
+Authored by the combat-family session in commit `44645784a` as a dated note in `PL_007_item.md` §7.1, and
+**moved here unchanged** because §12 is where this track keeps closure-pass extensions — and because
+PL_007 was 23 lines over the 800-line hard cap. `PL_007` §7.1 carries a pointer back to this section.
+This supersedes the answer in **§12.13(a)**, which was mine and was wrong; see that row for why.
+
+**⚠ CLOSURE-PASS-EXTENSION 2026-07-26 (combat family / ABL-Q9) — `UseEffectDecl` retires into
+`EffectOp`, and the reason is a defect, not tidiness.**
+
+```rust
+pub type UseEffectDecl = EffectOp;   // ABL_001 §4.1 owns the vocabulary (ABL-Q9/Q10)
+```
+
+`ItemDef.use_effect: Option<UseEffectDecl>` is **unchanged in shape** — only the type it names moves.
+Two findings forced this, both caught by reading the two enums side by side one day after both were
+written:
+
+1. **They had already diverged.** `StatusApply` here takes `{ flag, magnitude }`; ABL's takes
+   `{ flag, magnitude, duration_rounds }` (combat has rounds). `VitalDelta` here names its field `kind`,
+   ABL's names it `vital`. Neither doc was wrong alone — which is exactly how two closed enums over one
+   concept drift.
+2. **`VitalDelta { amount: i32 }` was a damage-law-chain bypass, in both docs.** The field is *signed*,
+   so `UseItem { poison_vial, target } → VitalDelta { Hp, −30 }` writes damage that skips COMB_001 §4's
+   chain (**ignores `Armor`**, elem, resist, variance), takes **no hit roll**, accrues **no COMB_003
+   threat** (accrual reads `damage_applied` *from* the chain), ignores **COMB_001 Q4's disparity cap**,
+   and ignores **COMB_006's PvP eligibility predicate** — which guards `Strike` and `Damage`, not a raw
+   vital write. Net: **an unmissable, armour-ignoring PvP weapon usable inside a sanctuary**, silently
+   falsifying COMB_001's *"the 4-step chain is the sole damage authority"*.
+
+**Fix:** `VitalDelta` → **`VitalRestore { vital, amount: u32 }`** — harm becomes **unrepresentable by
+type**, and every path that reduces another actor's vitals is `Damage { power: PowerTerm }`, which
+passes the chain, the hit roll, the disparity cap and the PvP predicate. `ABL-V9` asserts it. This is
+the same *unrepresentable-not-merely-invalid* discipline as **ITM-A7** (equipment is a slot assignment)
+and THR-Q7.
+
+**What PL_007 gains, not loses:** `Unlock` moves into `EffectOp` as its 11th variant (nothing lost), and
+items become able to declare `Damage` — so an **explosive talisman (符)** is finally expressible, which
+the 7-variant enum could not do except via the bypass above. **ITM-A4 is strengthened:** the item still
+emits no number; a damaging talisman declares a `PowerTerm` (a multiplier on a stat slot) and the engine
+computes the damage. **PL_007's narrative-only `Unlock`/`Reveal` treatment below is preserved verbatim**
+and has been adopted by ABL for the same reason.
+
+Registered in [`_boundaries/02_extension_contracts.md`](../../_boundaries/02_extension_contracts.md)
+§1.4a and the ownership matrix. Applied here as a dated note per the track's behavioural-closure
+pattern; the schema edit lands when this doc is next opened.
 
 ---
 
@@ -589,3 +638,36 @@ generalizable lesson for this track: a feature that integrates with eight others
 checked by the act of writing it (you must read the neighbour to write the sentence) and its **own closed
 enums and trait impls** left unchecked, because nothing forces a second look at them. `ItemClass`,
 `UseEffectDecl`, and `EquipDecl` were all authored once and never re-derived — and all three had defects.
+
+### 19.2 What both passes MISSED — found by a third party (recorded 2026-07-26)
+
+Kept here deliberately, because a findings ledger that lists only successes overstates how much the
+passes are worth.
+
+**The signed `VitalDelta` was a damage-law-chain bypass, and neither pass saw it.** The combat-family
+session found it while reconciling ABL-Q9 (commit `44645784a`). `UseEffectDecl::VitalDelta { amount: i32 }`
+is **signed**, so an item could write `{ Hp, −30 }` directly and skip COMB_001 §4's chain entirely — no
+`Armor`, no hit roll, no COMB_003 threat accrual (accrual reads `damage_applied` *from* the chain), no
+COMB_001 Q4 disparity cap, and no COMB_006 PvP eligibility check (those guard `Strike` and `Damage`, not a
+raw vital write). That is **an unmissable, armour-ignoring PvP weapon usable inside a sanctuary**, and it
+falsifies COMB_001's "the 4-step chain is the sole damage authority" from inside this feature's own §7.1.
+
+Why both passes missed it, which is the useful part:
+
+- The **self-review** was hunting cross-feature *contradictions* — statements in two docs that disagree.
+  This was not a contradiction; §7.1 and COMB_001 §4 never mention each other. It was an **absent
+  constraint**, and absences do not surface when the method is comparing two texts.
+- The **cold-start pass** read §7.1 closely — closely enough to find `Unlock` and `Reveal` decorative —
+  and still treated `VitalDelta` as the safe, unremarkable variant *precisely because it had an obvious
+  owner* (RES_001 `vital_pool`). Having a legitimate sink made it look finished. The question neither pass
+  asked was **"what is the worst thing an author can express with this field?"** — a sign check on one
+  `i32`.
+- What did find it: a session holding **both** enums in view for an unrelated reason. Not more care —
+  different adjacency.
+
+**Standing correction to §19's lesson:** a review pass catches what its *mode* is aimed at.
+Contradiction-hunting finds contradictions; interior-hunting finds interior sloppiness; neither reliably
+finds a **missing guard on a legal value**. For that the question is adversarial-authoring — *what can a
+careless or hostile author declare here?* — and it should now be asked of every author-declared numeric
+field in this track, starting with the ones PL_007 still owns (`weight`, `max_charges`, `reach`,
+`StatModifier.value`, `price`).

@@ -76,7 +76,7 @@ their target phase. §3 ITM-A6 resolves EF-D3 with a decision; EF-D4 stays with 
 | **EquipSlotId** | `pub struct EquipSlotId(pub String)` | Author-declarable with a 6-slot engine default (§6.1). |
 | **StatModifier** | **DF07-owned type** — `{ slot: StatSlot, op: ModifierOp, value: i32, source: ModifierSource }` | What an item *contributes*. PL_007 **produces** these with `source = ModifierSource::Equipment(entity_id)`; it does not define the type and does not resolve it (§6.3). |
 | **InstrumentTag** | `pub struct InstrumentTag(pub String)` | Author-declared weapon/tool category (`"blade"`, `"spear"`, `"bow"`). The operand that makes PROG_001 `instrument_match` and DF07 `StatTerm.instrument_match` evaluable against a wielded item — and **resolves PROG-D15** (§6.4 / ITM-C7). |
-| **UseEffectDecl** | Closed enum — 7 V1 variants (§7.1) | The bounded vocabulary of what `Use` can do. Each variant maps to an existing owner's aggregate; PL_007 invents no new effect substrate. |
+| **UseEffectDecl** | `= EffectOp` — **ABL_001-owned** closed enum (ABL-Q9/Q10); PL_007 declares the item-legal subset (§7.1) | The bounded vocabulary of what `Use` can do. PL_007 invents no effect substrate and, post-merge, does not own the vocabulary either. |
 | **CombatItemProfile** | `{ reach, two_handed, strike_kinds }` | The COMB seam: a weapon's reach feeds COMB_002 range, its `strike_kinds` gates PL_005b `StrikeKind`. |
 | **Provenance** | `{ origin: ItemOrigin, created_at_turn, created_by: Option<ActorId> }` | The minimum "history" RES-D1 deferred the whole Item variant over. V1 = 3 fields, not a ledger. |
 
@@ -509,26 +509,21 @@ pub enum InstrumentMatch {
 }
 ```
 
-**Resolution depends on the consumer — and this is the part the first draft got wrong.** It stated a
-single rule ("the `main_hand`-equipped item"), which silently changed PROG_001's existing semantics.
-PROG_001's training pseudocode evaluates `rule.instrument_match.matches(current_turn.instrument)` — the
-**instrument of the turn being processed**, i.e. `InteractionPayloadBase.tools[0]`, not whatever happens
-to be worn. The two consumers genuinely need two different resolutions:
+**Resolution depends on the consumer, and PL_007 does NOT define one global rule** — the first draft did,
+which would have changed PROG_001's training semantics by side effect (`ItemClass::Tool` is never
+equippable, so an equipped-only rule kills every "train X while using tool Y" rule). PL_007 supplies the
+vocabulary and the tags; each consumer resolves its own subject:
 
-| Consumer | Resolves against | Why |
-|---|---|---|
-| **PROG_001 training rules** (`Action { instrument_match }`) | the **turn's instrument** — `tools[0]` of the `Interaction` being processed (PROG_001's existing semantic, unchanged) | training is *what you just did with what you had in your hand*. A `Tool`-class item (lockpick, flint) is **never equippable** (§5.2), so an equipped-only rule would make *"train lockpicking while using a lockpick"* permanently unsatisfiable — a whole category of training rule silently dead. |
-| **DF07 `StatTerm.instrument_match`** | the **`main_hand`-equipped** item (V1; `off_hand` V1+ per ITM-D19) | a stat term is a *standing* contribution resolved by `resolve_stat_block` outside any turn — there is no "current turn instrument" to read, and a passive bonus for briefly holding something would be incoherent. |
+- **PROG_001 training rules** → the **turn's instrument** (`tools[0]`), its existing semantic, unchanged.
+- **DF07 `StatTerm`** → the **`main_hand`-equipped** item (`off_hand` V1+ per ITM-D19).
 
-Both use the same `InstrumentMatch` enum and the same `instrument_tags` operand; only the *subject* they
-match against differs, and each owner resolves its own. **PL_007 supplies the vocabulary and the tags;
-it does not define one global resolution rule.** DF07's example becomes
-`instrument_match: Some(InstrumentMatch::ItemTag(InstrumentTag("blade")))` with no change to DF07's law,
-and PROG_001's training rules keep behaving exactly as specified.
+The authoritative per-consumer table now lives in **[PROG_001 §training's closure-pass note](../00_progression/PROG_001_progression_foundation.md)**
+(where a future PROG editor will see it) and in [DF07_001 §6.1](../DF/DF07_pc_stats/DF07_001_actor_stat_block.md),
+which reached the same conclusion independently with a stronger reason: it keeps the instrument inside
+`StatEpoch.equipment_version` rather than being a hidden per-action input the snapshot cannot see.
 
-Author-declared rather than a closed enum, for the same reason RES_001's kinds are: a wuxia reality's
-weapon taxonomy is not a sci-fi reality's. Registered as ITM-C7 and as closure-pass extensions to
-PROG_001 (§12.6) and DF07 (§12.5).
+Tags are author-declared rather than a closed enum, for the same reason RES_001's kinds are: a wuxia
+reality's weapon taxonomy is not a sci-fi reality's. ITM-C7 warns at bootstrap on an unreferenced tag.
 
 ### 6.5 When modifiers apply
 
@@ -547,47 +542,16 @@ effective stats subscribes to `actor_equipment` (§12.1).
 
 ## §7 Use effects
 
-### 7.1 `UseEffectDecl` — closed enum, 7 V1 variants
+### 7.1 Use effects — the item-legal subset of ABL's `EffectOp`
 
 > **⚠ CLOSURE-PASS-EXTENSION 2026-07-26 (combat family / ABL-Q9) — `UseEffectDecl` retires into
-> `EffectOp`, and the reason is a defect, not tidiness.**
->
-> ```rust
-> pub type UseEffectDecl = EffectOp;   // ABL_001 §4.1 owns the vocabulary (ABL-Q9/Q10)
-> ```
->
-> `ItemDef.use_effect: Option<UseEffectDecl>` is **unchanged in shape** — only the type it names moves.
-> Two findings forced this, both caught by reading the two enums side by side one day after both were
-> written:
->
-> 1. **They had already diverged.** `StatusApply` here takes `{ flag, magnitude }`; ABL's takes
->    `{ flag, magnitude, duration_rounds }` (combat has rounds). `VitalDelta` here names its field `kind`,
->    ABL's names it `vital`. Neither doc was wrong alone — which is exactly how two closed enums over one
->    concept drift.
-> 2. **`VitalDelta { amount: i32 }` was a damage-law-chain bypass, in both docs.** The field is *signed*,
->    so `UseItem { poison_vial, target } → VitalDelta { Hp, −30 }` writes damage that skips COMB_001 §4's
->    chain (**ignores `Armor`**, elem, resist, variance), takes **no hit roll**, accrues **no COMB_003
->    threat** (accrual reads `damage_applied` *from* the chain), ignores **COMB_001 Q4's disparity cap**,
->    and ignores **COMB_006's PvP eligibility predicate** — which guards `Strike` and `Damage`, not a raw
->    vital write. Net: **an unmissable, armour-ignoring PvP weapon usable inside a sanctuary**, silently
->    falsifying COMB_001's *"the 4-step chain is the sole damage authority"*.
->
-> **Fix:** `VitalDelta` → **`VitalRestore { vital, amount: u32 }`** — harm becomes **unrepresentable by
-> type**, and every path that reduces another actor's vitals is `Damage { power: PowerTerm }`, which
-> passes the chain, the hit roll, the disparity cap and the PvP predicate. `ABL-V9` asserts it. This is
-> the same *unrepresentable-not-merely-invalid* discipline as **ITM-A7** (equipment is a slot assignment)
-> and THR-Q7.
->
-> **What PL_007 gains, not loses:** `Unlock` moves into `EffectOp` as its 11th variant (nothing lost), and
-> items become able to declare `Damage` — so an **explosive talisman (符)** is finally expressible, which
-> the 7-variant enum could not do except via the bypass above. **ITM-A4 is strengthened:** the item still
-> emits no number; a damaging talisman declares a `PowerTerm` (a multiplier on a stat slot) and the engine
-> computes the damage. **PL_007's narrative-only `Unlock`/`Reveal` treatment below is preserved verbatim**
-> and has been adopted by ABL for the same reason.
->
-> Registered in [`_boundaries/02_extension_contracts.md`](../../_boundaries/02_extension_contracts.md)
-> §1.4a and the ownership matrix. Applied here as a dated note per the track's behavioural-closure
-> pattern; the schema edit lands when this doc is next opened.
+> `EffectOp`:** `pub type UseEffectDecl = EffectOp;`. `ItemDef.use_effect` keeps its shape; only the type
+> it names moves, and **ABL_001 §4.1 owns the vocabulary** (ABL-Q10). Forced by a **defect, not tidiness**:
+> the two enums had already diverged in one day, and `VitalDelta { amount: i32 }` was *signed* — a
+> damage-law-chain bypass that ignored `Armor`, the hit roll, COMB_003 threat, COMB_001 Q4's disparity cap
+> and COMB_006's PvP predicate. **Full note, verbatim, with the fix and what PL_007 gains:**
+> [`PL_007c §12.14`](PL_007c_integration.md). Relocated there because the §12 table is where this track
+> keeps closure-pass extensions — and because PL_007 was over its 800-line cap.
 
 PL_007 adds no new effect substrate — it is a dispatch vocabulary, which is what keeps it bounded for
 AGT-A2. **But the first draft's blanket claim that "every variant routes to an aggregate already owned
@@ -596,43 +560,40 @@ a player experiences.** Corrected at cold-start review 2026-07-26:
 
 | Variant | V1 durable sink | Status |
 |---|---|---|
-| `VitalDelta` | RES_001 `vital_pool` | ✅ real |
+| `VitalRestore` (was `VitalDelta`) | RES_001 `vital_pool` | ✅ real |
+| `Damage` | RES_001 `vital_pool` **via COMB_001 §4's chain** | ✅ real (post-merge capability) |
 | `StatusApply` / `StatusDispel` | PL_006 `actor_status` | ✅ real |
 | `ResourceGrant` | RES_001 `resource_inventory` | ✅ real |
 | `Inert` | — (none by design) | ✅ honest by construction |
 | `Unlock` | **none** — §7.3: "validate the key, log the unlock, narrate it, **mutate nothing**"; blocked on the unwritten EnvObject body | ⚠️ **narrative-only V1** |
 | `Reveal` | **none** — PL_005b §5.6 places `KnowledgeAccrual` at "V1+ when PCS_001 `knowledge_tags` ships"; the Oracle read is a query, not a write | ⚠️ **narrative-only V1** |
 
-The risk this creates, stated plainly: `Unlock` and `Reveal` **pass ITM-V8** (`use_effect.is_some()`)
-and return **success with no state change**, which from the player's side is indistinguishable from a
-bug — and from a QA side is untestable, since there is nothing to assert. So V1 makes it explicit
-rather than silent:
+Both **pass ITM-V8** and return **success with no state change** — indistinguishable from a bug to a
+player, unassertable to QA. So V1 declares it rather than leaving it to be discovered:
 
-> **Narrative-only effects must be declared, not discovered.** `UseEffectDecl::Unlock` and `Reveal`
-> resolve to an **accepted turn carrying the `item.use_effect_narrative_only` warning** (the same
-> warning-on-accept shape as `item.inventory.cap_partial`), so the audit log records that a Use
-> succeeded with no durable delta, and the narrator is told to describe an outcome rather than imply a
-> persistent world change. An author who wants a *mechanical* lock should model it as
-> `StatusApply`/`ResourceGrant` on the actor until the EnvObject body lands (ITM-D4).
+> **Narrative-only effects must be declared, not discovered.** `Unlock` and `Reveal` resolve to an
+> **accepted turn carrying the `item.use_effect_narrative_only` warning** (same warning-on-accept shape as
+> `item.inventory.cap_partial`), so the audit log records a Use that succeeded with no durable delta and
+> the narrator describes an outcome rather than implying a persistent world change. An author wanting a
+> *mechanical* lock models it as `StatusApply`/`ResourceGrant` until the EnvObject body lands (ITM-D4).
 
-Consequence for §5.2's class table, worth naming since it decides whether two classes are worth
-shipping: **`Key` is narrative-only in V1** (its only sensible effect is `Unlock`), and `Document` is
-narrative-only unless the author gives it a `ResourceGrant`/`StatusApply` instead of `Reveal`. Both
-classes stay in V1 — they carry `display_name`, `description`, Examine text, Give/trade behaviour and
-digest grouping, which is real content — but neither has a mechanical effect until ITM-D4.
+Consequence for §5.2's class table: **`Key` is narrative-only in V1** (its only sensible effect is
+`Unlock`), and `Document` is too unless given `ResourceGrant`/`StatusApply` instead of `Reveal`. Both
+classes still ship — display name, description, Examine text, Give/trade, digest grouping are real
+content — but neither has a mechanical effect until ITM-D4.
 
-```rust
-pub enum UseEffectDecl {
-    VitalDelta   { kind: VitalKind, amount: i32 },              // → RES_001 §7.5 VitalDelta
-    StatusApply  { flag: StatusFlag, magnitude: u8 },           // → PL_006 actor_status
-    StatusDispel { flag: StatusFlag },                          // → PL_006
-    ResourceGrant{ kind: ResourceKind, amount: u64 },           // → RES_001 resource_inventory
-    Unlock       { key_tag: String },                           // → EnvObject (V1 audit-only, §7.3)
-    Reveal       { canon_ref: CanonRef },                       // → Oracle / knowledge-service
-    Inert,                                                      // flavour only; narration, no delta
-}
-```
+**The variant list itself is no longer declared here** — it is `EffectOp`, owned by
+[ABL_001 §4.1](../19_ability/ABL_001_ability_foundation.md) (ABL-Q9/Q10, per the closure-pass note above).
+PL_007 declares only *which* ops an item may carry and the discipline around them:
 
+- **Item-legal subset.** `VitalRestore` · `StatusApply` · `StatusDispel` · `ResourceGrant` · `Unlock` ·
+  `Reveal` · `Inert` · **`Damage`** (new capability — the explosive talisman the 7-variant enum could not
+  express except through the bypass). ABL-only ops (`ModifyThreat`, `ForceMove`, `SeverBinding`) are not
+  item-declarable in V1.
+- **`VitalRestore.amount` is `u32`** — harm is unrepresentable by type on this path. Any item that
+  *reduces* another actor's vitals declares `Damage { power: PowerTerm }` and goes through COMB_001 §4's
+  chain. This is what closes the bypass, and it is the same *unrepresentable-not-merely-invalid*
+  discipline as ITM-A5 (equipment is a slot assignment, so it cannot be a second location).
 - `amount` / `magnitude` come from the **def** (author-declared), never from the payload (ITM-A4).
   `InteractionUsePayload.effect_magnitude` (PL_005b §6.1) is therefore **ignored for item-driven
   effects in V1** and reserved for the V1+ adjustable-dose case — flagged to PL_005 in §12.3.
@@ -649,12 +610,12 @@ existing it should take an `EntityId` — flagged in §12.3.
 
 ### 7.3 Unlock stays audit-only in V1
 
-`Unlock` matches `key_tag` against an EnvObject's declared lock tag. **There is no runtime EnvObject
-state aggregate** (PL_005b §6.3 is explicit: "world-rule simulates state transitions in audit-log
-only until V1+ Item substrate ships"). PL_007 shipping does *not* discharge that — the missing half is
-the **EnvObject** body, which EF_001 §Defers-to assigns to a separate future feature. So V1 behaviour
-is unchanged: validate the key, log the unlock, narrate it, mutate nothing. Recorded as ITM-D4 with
-the honest blocker named.
+`Unlock` matches `key_tag` against an EnvObject's declared lock tag, and **there is no runtime EnvObject
+state aggregate** — PL_005b §6.3 is explicit that state transitions are simulated in the audit log "until
+V1+ Item substrate ships". **PL_007 shipping does not discharge that**: the missing half is the
+**EnvObject body**, which EF_001 §Defers-to assigns to a separate future feature, not to this one. V1
+behaviour is therefore unchanged — validate the key, log it, narrate it, mutate nothing (ITM-D4, blocker
+named).
 
 ---
 
