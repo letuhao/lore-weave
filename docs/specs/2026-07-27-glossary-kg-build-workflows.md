@@ -125,3 +125,23 @@ section in the SAME conversation, profile-so-far in context (Tô Thanh Dao, same
   the power system). The steering loop is bounded by its OWN plan (6-8 sections, one call each,
   one retry per section) — same no-loop guarantee, just more steps.
 The planner's worklist item shape gains `depth` (closed set: standard|deep) + `priority`.
+
+### E4 editorial evaluation (full-text review, 2026-07-27) → POC CLOSED
+
+**Strengths (read in full, not just counted):** zero canon contradictions; the seed's thesis
+("lòng tốt là điểm yếu") is made mechanically literal (she weaponizes Lâm Uyên's kindness via her
+invented "linh năng phản hồi"); genuine cross-section setup/payoff (§2's technique powers §5's
+trap; §1's trembling-hands detail pays off as §5's "điểm kỳ dị") — the accumulated conversation
+carries craft, not just facts; the tu-chân-khoa-học voice never slips.
+
+**Weaknesses → design consequences (none reopen the POC):**
+1. Formulaic scaffold (every section ends "Mâu thuẫn nội tâm…") — the steer prompt repeated the
+   same craft instruction. ⇒ vary the per-section craft instruction by section type.
+2. Canon-adjacent drift (§5 re-causalizes the sparing as part of the trap plan). ⇒ the review
+   card must surface **new canon claims** distinctly; human checkpoint #2 is load-bearing.
+3. 6.9K chars exceeds a glossary attribute. ⇒ a deep build stores the profile as **long-form
+   sections** (enrichment doc) + ONE distill call produces the short attribute set; inventions
+   (Thiên La Địa Võng, linh năng phản hồi) are extracted back into the planner's worklist as
+   candidate new entities (the flywheel).
+
+**POC verdict: CLOSED — 4 experiments, one coherent architecture. Proceed: DESIGN → BUILD.**

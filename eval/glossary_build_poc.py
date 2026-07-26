@@ -176,7 +176,7 @@ def e4_steered_deep_build() -> dict:
         finishes.append(dfin)
         convo.append({"role": "assistant", "content": dtext})
         details.append({"section": p["section"], "chars": len(dtext.strip()),
-                        "text_head": dtext.strip()[:120]})
+                        "text": dtext.strip()})
 
     total_chars = sum(d["chars"] for d in details)
     return {
