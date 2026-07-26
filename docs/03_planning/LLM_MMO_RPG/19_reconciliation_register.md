@@ -456,6 +456,43 @@ dependency-inversion table.
 fixed in place, resolved-and-applied, or sitting in one of the three gated queues above with its
 resolution already written. **Nothing is open without an owner and a stated next step.**
 
+## 15a. Build-phase amendments — 2026-07-27 (POC-1/POC-2 findings, recorded same-day)
+
+Three rows opened by the first BUILD contact with the design. All three are the healthy direction
+of drift — code teaching the docs — and each was applied in the build commit that found it; what
+remains is the owning docs' own text, gated as marked.
+
+### REC-77 · **REC-54c: ai-gateway has NO LLM surface — the LlmDriver originates** · **AMEND** · supersedes §12b REC-54/55/56 (a)+(c)
+
+Surface research against the running code (2026-07-27 01:05: ai-gateway's 5 controllers, the Go
+gateway router, chat-service's client code) falsifies the §12b premise that ai-gateway can
+originate LLM calls: **ai-gateway is MCP tool-federation ONLY.** The platform's sanctioned chain —
+used by chat-service (Python) and tilemap-service (Rust) alike — is *caller → `loreweave_llm` SDK →
+provider-registry `/internal/llm/stream`*; the agentic loop is always the caller's code.
+**Amendment:** (a) the **LlmDriver (commit-service) is the LLM-Originator**; (c) the driver runs
+the (single-shot) tool-call via the SDK. Unchanged: (b) LlmDriver in commit-service · (d) AGT tools
+are proposal-schemas in `contracts/agent/` executing nothing (so MCP-first has no executable tool
+in scope; provider-gateway is satisfied directly) · (e) return path = proposal bus.
+**Applied in code** (`services/commit-service`, commit `e94fb6650`); doc-15/11 text updates ride
+the next editing pass of those docs. *Lesson: verify a REC resolution's factual premise against
+code before building on it.*
+
+### REC-78 · **`DiscardReason` is a 5-variant set** · **AMEND** · REC-63 note
+
+S1b panic containment added **`Quarantined`** (SC-A9: the pill's fate is a recorded outcome,
+never silent) to REC-63's four-variant enumeration. Kernel + tests shipped (`df7a3ce69`);
+doc-14 §5's enum listing gains the fifth variant at its next editing pass.
+
+### REC-79 · **Candidate lists must separate IDENTITY from STATE** · **EDIT** · THR-A4 / COMB_003
+
+POC-2 live finding (validity 50% → 83% on fix): offered as a combined label
+(`"hostile-2 (healthy)"`), the model echoes the identity token and **strips the state
+descriptor**, so every strike rejects as target-not-offered. THR-A4's top-K vague-labelled
+candidate list must therefore offer **`{id, condition}` as separate fields**, with the tool's
+`target` matching `id` verbatim. `contracts/agent/vocabularies/combat_v1.json` + the LlmDriver
+already comply (commit `e94fb6650`); COMB_003's candidate-list shape gains the field split when
+that doc next opens (owner: COMB track).
+
 ## 14. The process finding
 
 Two of the four sweeps found the same thing at different layers, and it is not carelessness:
