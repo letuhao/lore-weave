@@ -42,6 +42,26 @@ class FakeLLM:
         return SimpleNamespace(status=self._status, result=res)
 
 
+def test_compress_prompt_is_a_state_ledger_not_a_generic_recap():
+    # Root-cause fix (2026-07-26 chapter-quality investigation): the ch5 continuity
+    # violations (Silas's dissolution state flipped; a character crossed an "erased
+    # void") happened because the running summary was a GENERIC recap that blurred
+    # each character's evolving physical/status state. The prompt must instruct an
+    # explicit per-entity STATE LEDGER — condition/transformation + location + what
+    # changed in the world — so the drafter cannot re-invent it.
+    system, _ = C.build_compress_messages(
+        prose=["Silas was dissolving into a rain-blurred sketch."],
+        timeline=[], plan="", source_language="auto",
+    )
+    s = system.lower()
+    assert "condition" in s          # per-character physical/mental state
+    assert "transformation" in s or "status" in s   # ongoing change (the Silas class)
+    assert "location" in s or "where" in s          # who/what is where (the void class)
+    # continuity intent is explicit, and the anti-hallucination guard is preserved
+    assert "ledger" in s or "state record" in s
+    assert "not invent" in s or "do not invent" in s
+
+
 async def test_compress_returns_summary():
     llm = FakeLLM(content="Kael reached the keep; Bryn distrusts him.")
     out = await C.compress(llm, user_id="u", model_source="user_model", model_ref="m",

@@ -43,13 +43,28 @@ def build_compress_messages(
     lang = "" if source_language in ("", "auto") else (
         f" Write the summary in the language with code '{source_language}'."
     )
+    # A running STATE LEDGER, not a plot recap. The 2026-07-26 chapter-quality
+    # investigation traced the mid-arc continuity breaks (a character's ongoing
+    # physical TRANSFORMATION silently flipped between chapters; a character crossed
+    # terrain the story had established as impassable) to a generic summary that
+    # blurred each entity's evolving CONDITION and LOCATION. When those facts are
+    # vague in the summary, the drafter re-invents them and contradicts canon. So we
+    # force the summary to carry the continuity-critical state explicitly.
     system = (
-        "You maintain a running story-state summary for a long chapter. Condense "
-        "what has happened SO FAR into a compact, faithful summary a writer can use "
-        "to continue coherently: who is present, the current situation, unresolved "
-        "tensions, and facts established. Preserve concrete names and outcomes; drop "
-        "prose flourishes. Do NOT invent anything not present in the inputs, and do "
-        "NOT speculate about what happens next. Return ONLY the summary text." + lang
+        "You maintain a running STORY-STATE LEDGER for a long work so a writer can "
+        "continue WITHOUT contradicting what is already established. Condense the "
+        "story so far into a compact, faithful state record — NOT a plot recap. "
+        "For EACH character present, record their current physical and mental "
+        "CONDITION and any ongoing TRANSFORMATION or status (e.g. wounded, changed, "
+        "fading, disguised, bound) — carry this forward PRECISELY, because otherwise "
+        "the writer will re-invent it and contradict it. Also record: the LOCATION "
+        "of each character and key object (who/what is WHERE); what has CHANGED in "
+        "the world or setting (what is destroyed, altered, or impassable); "
+        "unresolved tensions and open commitments; and established concrete facts "
+        "(names, relationships, outcomes). Preserve concrete names, states, and "
+        "outcomes; drop prose flourishes. Do NOT invent anything not present in the "
+        "inputs, and do NOT speculate about what happens next. Return ONLY the "
+        "state ledger." + lang
     )
     parts = []
     if plan:
