@@ -37,6 +37,8 @@ from app.engine.plan_forge.interpret import interpret_feedback, interpret_rules
 from app.engine.plan_forge.llm import ProviderPlanForgeLLM
 from app.engine.plan_forge.propose import propose_spec
 from app.engine.plan_forge.self_check import run_self_check, run_self_check_on_document
+from app.engine.plan_forge.structure import resolve_structure
+from app.engine.arc_plan import shape_tension_curve
 from app.engine.plan_forge.validate import _deep_merge, run_rules
 from app.worker.events import enqueue_job
 from app.worker.operations import run_plan_forge_propose, run_plan_forge_refine
@@ -82,8 +84,38 @@ def _work_project_id(work: CompositionWork) -> UUID:
 #: would otherwise silently keep a removed one (the silent-success bug /review-impl flagged).
 _PASS_LIST_REPLACE_FIELDS: dict[str, tuple[str, ...]] = {
     "cast_plan": ("cast", "roster"),
-    "beat_plan": ("beats",),
+    # `beat_plan`'s editable list is `chapters` — this said `"beats"`, a key `run_beats` has NEVER
+    # emitted (its output is {chapters, tension_curve, unmapped_beats}). So the wholesale-replace
+    # rule targeted nothing, the FE editor bound to nothing, and an author's beat edit was written
+    # to a field no pass reads — while still staling `scenes`+`self_heal` and forcing a paid re-run
+    # that could not change the outcome. Verified against live artifacts before changing it.
+    "beat_plan": ("chapters",),
 }
+
+
+def _recompute_tension_curve(merged: dict[str, Any]) -> dict[str, Any]:
+    """Re-derive `beat_plan.tension_curve` from the (possibly edited) chapter beat roles.
+
+    Pass 6 honours the stored curve VERBATIM (V2-C4) — deliberately, so a human's edit survives.
+    But that same property is a trap once `beat_role` is editable: change a chapter from `setup` to
+    `climax` and, without this, the curve still carries the OLD chapter's neutral target. The
+    author would see `climax` in the UI while the drafter aimed at 50. Re-deriving keeps the two
+    halves of the artifact from disagreeing, and it is the same pure function pass 4 used.
+    """
+    chapters = merged.get("chapters")
+    if not isinstance(chapters, list):
+        return merged
+    ordered = sorted(
+        (c for c in chapters if isinstance(c, dict)),
+        key=lambda c: c.get("ordinal") if isinstance(c.get("ordinal"), int) else 0,
+    )
+    curve = shape_tension_curve([c.get("beat_role") for c in ordered])
+    merged["tension_curve"] = [
+        {"chapter_index": t.chapter_index, "beat_role": t.beat_role,
+         "tension_target": t.tension_target}
+        for t in curve
+    ]
+    return merged
 
 
 def _merge_pass_edits(output_kind: str, content: dict[str, Any], edits: dict[str, Any]) -> dict[str, Any]:
@@ -97,6 +129,10 @@ def _merge_pass_edits(output_kind: str, content: dict[str, Any], edits: dict[str
     rest = {k: v for k, v in edits.items() if k not in replace}
     merged = _deep_merge(content, rest)
     merged.update(replace)  # wholesale — a shorter list DELETES; a longer one adds
+    # Only when the caller actually touched the chapters: an edit to, say, `unmapped_beats` alone
+    # must not silently rewrite a curve the author hand-tuned at this checkpoint.
+    if output_kind == "beat_plan" and "chapters" in replace:
+        merged = _recompute_tension_curve(merged)
     return merged
 
 
@@ -123,6 +159,18 @@ class PlanForgeService:
         self._works = works
         self._llm = llm
         self._proposals_repo: Any = None
+        self._structure_templates_repo: Any = None
+
+    @property
+    def _structure_templates(self):
+        """Lazy, for the same reason `_proposals` is: only `compile` reads the structure library,
+        and building it eagerly would mean threading a new argument through every construction site
+        (routers, deps, the worker's finalize hook) for a dependency most calls never touch."""
+        if self._structure_templates_repo is None:
+            from app.db.repositories.structure_templates import StructureTemplatesRepo
+
+            self._structure_templates_repo = StructureTemplatesRepo(self._runs._pool)
+        return self._structure_templates_repo
 
     @property
     def _proposals(self):
@@ -1583,6 +1631,9 @@ class PlanForgeService:
         arc_id: str,
         run_pipeline: bool = False,
         model_ref: UUID | None = None,
+        # D-PLANFORGE-BEATS-UNWIRED — an at-compile override of the run's story structure, so the
+        # author can re-shape an arc without re-proposing it. Unset ⇒ use the run's stored choice.
+        structure_template_id: UUID | None = None,
     ) -> tuple[str, dict[str, Any]]:
         run = await self._runs.get_for_book(book_id, run_id)
         if run is None:
@@ -1609,6 +1660,40 @@ class PlanForgeService:
         package = compiled["planning_package"]
         if run.genre_tags:
             package["genre_tags"] = list(run.genre_tags)
+
+        # STORY STRUCTURE (D-PLANFORGE-BEATS-UNWIRED) — the beats pass 4 maps chapters onto.
+        #
+        # This line is the whole fix. `package["beats"]` was never populated by ANYTHING, so
+        # `beat_keys` was always empty and `parse_chapter_map` discarded every beat_role the model
+        # produced (it only accepts keys present in that set). Ten chapters, ten NULLs, a flat
+        # tension ramp, and `unmapped_beats: []` reporting perfect health — verified live on run
+        # 019f9d2e. The library and the beat rows already existed and were already the right shape;
+        # only the connection was missing (the legacy planner never lost it — routers/plan.py).
+        #
+        # `structure` is stored ALONGSIDE the beats, always, including on failure: a consumer that
+        # sees only `beats` cannot distinguish an author's choice from a fallback from a total
+        # miss, and that indistinguishability is exactly how this stayed invisible.
+        structure = await resolve_structure(
+            self._structure_templates,
+            created_by,
+            structure_template_id=structure_template_id or run.structure_template_id,
+        )
+        package["beats"] = structure.beats
+        package["structure"] = structure.to_package()
+        if not structure.beats:
+            logger.warning(
+                "compile: run %s has NO story structure (%s) — every chapter's beat_role will be "
+                "empty and the tension curve will be flat", run_id, structure.note,
+            )
+
+        # An at-compile override is the author's new choice — persist it, so a re-compile, the pass
+        # runner and the FE all agree on what this run is planned against. Skipped when nothing was
+        # overridden, so a plain re-compile never writes.
+        if structure_template_id is not None and structure_template_id != run.structure_template_id:
+            await self._runs.update_run(
+                book_id, run_id, structure_template_id=structure_template_id,
+            )
+
         await self._runs.save_artifact(
             created_by, run_id, "package",
             {"planning_package": package, **{k: v for k, v in compiled.items() if k != "planning_package"}},
@@ -1679,18 +1764,23 @@ class PlanForgeService:
         # exercised successfully in production. `chapter_id=event_id` is
         # the correlation key the auto-bootstrap gate (§6 M3) uses to
         # attach each event's resulting scene/beat plan back to the real
-        # chapter it creates. `beats: []` degrades the pipeline's L1
-        # beat-map stage to a no-op (beat_role stays None) — PlanForge's
-        # `arc_kind` (e.g. "discovery"/"power") is a THEME tag, not a
-        # `structure_template.kind`, so there is no beats list to source
-        # here without inventing a new mapping; the pipeline's own
-        # degrade-safe design (planning_pipeline.py) tolerates this.
+        # chapter it creates.
+        #
+        # `beats` USED to be hardcoded `[]` here, reasoning that PlanForge's `arc_kind`
+        # ("discovery"/"power") is a THEME tag rather than a `structure_template.kind`, so there was
+        # "no beats list to source without inventing a new mapping". That conclusion was wrong in a
+        # costly way: the beats never needed to be DERIVED from `arc_kind` at all — the author picks
+        # a structure from the library directly (`plan_run.structure_template_id`), exactly as the
+        # legacy `/outline/decompose` planner has always required. The comment's own hedge
+        # ("the pipeline's degrade-safe design tolerates this") is what let a total structural
+        # blackout look tolerable for months. It now carries the SAME resolved beats as the pass
+        # path, so the two compile routes cannot disagree about the story's shape.
         pipe_input = {
             "worker_op": "plan_pipeline",
             "model_source": "user_model",
             "model_ref": str(model_ref),
             "premise": package.get("premise", ""),
-            "beats": [],
+            "beats": structure.beats,
             "chapters": [
                 {
                     "chapter_id": ch["event_id"], "title": ch["title"],

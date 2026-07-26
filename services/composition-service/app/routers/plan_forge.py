@@ -87,6 +87,10 @@ class PlanCompileRequest(BaseModel):
     arc_id: str
     run_pipeline: bool = False
     model_ref: UUID | None = None
+    #: D-PLANFORGE-BEATS-UNWIRED — the story structure whose ordered beats the `beats` pass maps
+    #: chapters onto. None ⇒ keep the run's stored choice (and, if it has none, the recorded
+    #: platform default). The compiled package echoes what was used under `structure`.
+    structure_template_id: UUID | None = None
 
 
 class PlanPassRequest(BaseModel):
@@ -498,6 +502,7 @@ async def compile_plan_run(
             arc_id=body.arc_id,
             run_pipeline=body.run_pipeline,
             model_ref=body.model_ref,
+            structure_template_id=body.structure_template_id,
         )
     except LookupError:
         raise HTTPException(status_code=404, detail="run not found")

@@ -1,5 +1,65 @@
 # ▶▶ NEXT SESSION STARTS HERE
 
+## 🔴 ATOM EDIT + THE FLAT-ARC BUG — investigation + fixes (2026-07-26, XL, in flight)
+**Track docs: [`docs/specs/2026-07-26-atom-edit/`](../specs/2026-07-26-atom-edit/) —
+`INVESTIGATION.md` (findings + evidence) · `CHECKLIST.md` (the RUN-STATE board; re-read it first).**
+
+**The headline: every book compiled so far had NO story shape.** `compile` never populated
+`package["beats"]`, so `beat_keys` was always empty, so `plan.py:172` discarded **every** beat role
+the model returned and `unmapped_beats` could never fire. The shipped 10-chapter arc had
+`beat_role=NULL` on 10/10 chapters and a flat 50→72 tension ramp — no setup, no midpoint, no
+climax, no resolution. Every chapter was drafted as narratively identical. This is the most likely
+cause of the human's "the chapter is wrong content somewhere".
+
+**Root cause = a dropped wire, not missing infra.** `structure_template` ships a table, 6 seeded
+built-ins, a repo, CRUD and MCP tools, with beats already in the exact `{key,label,order,purpose}`
+shape the prompt wants — and the LEGACY planner wires it (`routers/plan.py` `/outline/decompose`
+requires a `structure_template_id`). The V2 rewrite just stopped connecting it.
+
+**DONE + LIVE-PROVEN:**
+- `plan_run.structure_template_id` (forward-only) + `app/engine/plan_forge/structure.py` resolving
+  explicit → recorded default → absent-with-a-note (never a silent `[]`). `plan_compile` gained the
+  arg on MCP **and** REST; the package now carries `beats` + a `structure` provenance block.
+- **Live recompile + pass re-run:** 10/10 chapters now carry a beat role and the curve reaches
+  `climax=100` then drops to `resolution=52`. Ch9 "The Void" was assigned `climax` — semantically
+  correct, so the mapping is real.
+- **2nd bug found + fixed:** only the web-novel/3-act vocabulary existed in `arc_plan._BANDS`;
+  4 of 6 built-ins (Hero's Journey, Save the Cat, Story Circle, Kishōtenketsu) had **zero** mapped
+  keys and would have assigned roles yet still produced a flat curve. All 4 added, plus
+  `known_beat_keys()` + `unshaped_beat_keys`/`shapeable` so a CUSTOM template reports itself.
+- **3rd bug:** `composition_structure_template_edit` had 5 write ops and **no read** — the agent
+  could never discover a template id. Added `op=list` to the EXISTING unified tool (human rule:
+  *don't make a new tool if the current one can work — unify*).
+- **FE atom edit repaired.** `beat_plan` was bound to a `beats` key the producer has never emitted
+  (real shape: `{chapters, tension_curve, unmapped_beats}`), so the blocking checkpoint rendered
+  "No beats in this plan yet." on every real run and an edit wrote to a field no pass reads *while
+  still staling `scenes`*. `cast_plan` exposed an invented `trait` instead of `archetype`/`summary`.
+  Both re-bound to producer shapes; `beat_role` is now a **closed-set `<select>`** fed by a new
+  self-describing `available_beats` on the artifact; a chapters edit **re-derives `tension_curve`**.
+  Both suites' fixtures were the root cause (they asserted the invented shape) and are re-pointed.
+- **AGENT EDIT PROVEN LIVE** via `plan_review_checkpoint`: a beat re-assignment (curve correctly
+  re-ramped) and a **cast deletion** (7→6). Held as `decision=pending`, `scenes` staled.
+
+**VERIFY:** composition unit **2398 passed / 1 skipped**; FE `plan-forge`+`studio` **1577 passed /
+175 files**; `tsc --noEmit` **exit 0**; live cross-service MCP smoke (compile, pass re-run, 2 edits).
+
+**▶ NEXT (see CHECKLIST.md for the full board):**
+- **C1/C2** browser pass on the repaired checkpoint editor (FE is unit-proven only so far).
+- **C4** re-run `scenes` after an edit and prove the edit *changed the output* — an edit that stales
+  but does not influence would be the same bug class again.
+- **E7** re-run `scenes`/`self_heal` against the real curve; **E8** FE structure picker
+  (`StructureTemplatesPanel` is 462 lines of CRUD with **zero** links to a plan run — authored beat
+  sheets still cannot reach a plan from the GUI).
+- **E6** F7/F8 — the passes are still blind to canon rules + existing cast (`run_cast` re-invents
+  the book's characters from `premise` alone); `package["canon"]` is compiled and read by nobody.
+- **Phase D** error-block reporting (human chose BOTH surfaces: Draft Review + chapter editor).
+- **Phase F** finish the atom inventory matrix (atom × MCP × FE × wired × proven).
+
+⚠️ **Host drift (not a repo defect):** `frontend/node_modules` has TypeScript **7.0.2** against a
+`^5.5.4` manifest, so a local `npm run build`/`tsc` dies on `TS5102 baseUrl`. The Docker build copies
+only `package.json` and runs `npm install`, so it resolves 5.x and is unaffected. Fix locally with
+`npm install` in `frontend/` (its `package-lock.json` is gitignored).
+
 ## 🏗️ ARCHITECTURE — chat = supporter, compile+draft = subagent (2026-07-26)
 **Human decision (this session):** the chat agent is a lightweight **SUPPORTER** (atomic edits —
 edit plan/glossary/KG, suggestions); the heavy **COMPILE + long-run DRAFTING** runs in the

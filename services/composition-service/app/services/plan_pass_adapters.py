@@ -197,6 +197,16 @@ async def run_beats(ctx: PassContext) -> dict[str, Any]:
         # Surfaced, not swallowed: a beat the model could not place anywhere is a beat the story
         # will never hit. The human sees it AT the blocking checkpoint, which is the whole point.
         "unmapped_beats": list(unmapped_beats),
+        # D-S3-CHECKPOINT-STRUCTURED-EDITS — the CLOSED SET of roles a chapter may take, carried ON
+        # the artifact so the checkpoint editor can offer a picker instead of a free-text box.
+        # `beat_role` is exactly the kind of closed-set field that becomes a silent no-op when it is
+        # typed as a free string (the `panel_id` bug): a role outside this set is dropped by
+        # `parse_chapter_map` and by `band_for`, so an author who types one gets a neutral band and
+        # no warning. Self-describing beats making the FE re-derive it from the package.
+        "available_beats": [
+            {"key": b.get("key"), "label": b.get("label"), "purpose": b.get("purpose")}
+            for b in ctx.beats if isinstance(b, dict) and b.get("key")
+        ],
     }
 
 

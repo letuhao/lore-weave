@@ -1420,6 +1420,28 @@ CREATE INDEX IF NOT EXISTS idx_plan_artifact_run_kind
 ALTER TABLE plan_run ADD COLUMN IF NOT EXISTS pass_state JSONB NOT NULL DEFAULT '{}'::jsonb;
 ALTER TABLE plan_run ADD COLUMN IF NOT EXISTS genre_tags JSONB NOT NULL DEFAULT '[]'::jsonb;
 
+-- D-PLANFORGE-BEATS-UNWIRED — the run's STORY STRUCTURE (which `structure_template` supplies the
+-- ordered beats pass 4 maps chapters onto).
+--
+-- Why this column has to exist: `compile` emitted `package["beats"] = []` unconditionally, so
+-- `beat_keys` was always empty, so `plan.py:parse_chapter_map` rejected EVERY beat_role the model
+-- returned (it only accepts a key present in `beat_keys`) and `unmapped_beats` could never be
+-- non-empty. Result: every chapter got `beat_role=NULL` and `shape_tension_curve` collapsed to one
+-- neutral run — a flat 50→72 ramp with no climax and no resolution. Verified on the shipped
+-- 10-chapter arc (run 019f9d2e…, artifact 019f9d2f-ff27…): 10/10 chapters NULL.
+--
+-- The library, the 6 seeded built-ins, the repo, the CRUD and the MCP tools all already existed —
+-- and the LEGACY planner wires them (`routers/plan.py` /outline/decompose REQUIRES a
+-- structure_template_id and passes `tmpl.beats`). The V2 rewrite simply dropped the connection.
+--
+-- NULLable ON PURPOSE: NULL = "the author has not chosen a structure", which compile resolves to a
+-- named built-in default AND RECORDS in the package (`package["structure"].source`). A stored
+-- default here would be a silent hidden default — the exact bug class the settings standard bans.
+-- No FK: built-ins are global rows and a template may be archived after a run compiled against it;
+-- losing the run's provenance would be worse than a dangling id. Resolution degrades to the
+-- default and says so.
+ALTER TABLE plan_run ADD COLUMN IF NOT EXISTS structure_template_id UUID;
+
 -- The two CHECK swaps. Both are ADDITIVE in effect (they only WIDEN the allowed
 -- set), but a CHECK cannot be widened in place — it must be dropped and re-added.
 -- Per `migration-check-constraint-must-backfill-all-historical-blocks`, the re-add

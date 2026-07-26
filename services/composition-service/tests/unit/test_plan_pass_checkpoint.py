@@ -141,11 +141,65 @@ def test_a_cast_edit_REPLACES_the_roster_so_a_REMOVED_member_actually_disappears
     assert out["notes"] == "x"                               # untouched scalars are preserved
 
 
-def test_a_beat_edit_REPLACES_the_beats_even_though_beats_carry_ids():
-    """beats/events carry ids, so deep_merge would merge-by-id and never delete. Option A replaces."""
-    content = {"beats": [{"id": "b1"}, {"id": "b2"}, {"id": "b3"}]}
-    out = pfs._merge_pass_edits("beat_plan", content, {"beats": [{"id": "b1"}, {"id": "b3"}]})
-    assert [b["id"] for b in out["beats"]] == ["b1", "b3"]   # b2 removed
+def test_a_beat_edit_REPLACES_the_chapters_even_though_chapters_carry_ids():
+    """Chapters carry ids, so deep_merge would merge-by-id and never delete. Option A replaces.
+
+    This test used to operate on a `beats` key — which `run_beats` has NEVER emitted (its output is
+    {chapters, tension_curve, unmapped_beats}). It passed against a field that did not exist, and
+    so vouched for a replace rule that targeted nothing while the author's real beat edits went
+    nowhere. Fixtures here now mirror the adapter.
+    """
+    content = {
+        "chapters": [
+            {"ordinal": 1, "event_id": "b1", "title": "A", "beat_role": "hook", "intent": ""},
+            {"ordinal": 2, "event_id": "b2", "title": "B", "beat_role": "setup", "intent": ""},
+            {"ordinal": 3, "event_id": "b3", "title": "C", "beat_role": "climax", "intent": ""},
+        ],
+        "tension_curve": [{"chapter_index": i, "beat_role": None, "tension_target": 50}
+                          for i in (1, 2, 3)],
+    }
+    edits = {"chapters": [content["chapters"][0], content["chapters"][2]]}
+
+    out = pfs._merge_pass_edits("beat_plan", content, edits)
+
+    assert [c["event_id"] for c in out["chapters"]] == ["b1", "b3"]   # b2 removed
+
+
+def test_a_beat_edit_REDERIVES_the_tension_curve_so_the_halves_cannot_disagree():
+    """Pass 6 honours the stored curve VERBATIM, so a role edit that left the curve stale would
+    show the author `climax` while the drafter still aimed at the old chapter's neutral band."""
+    content = {
+        "chapters": [
+            {"ordinal": 1, "event_id": "e1", "title": "A", "beat_role": "setup", "intent": ""},
+            {"ordinal": 2, "event_id": "e2", "title": "B", "beat_role": "setup", "intent": ""},
+        ],
+        "tension_curve": [
+            {"chapter_index": 1, "beat_role": "setup", "tension_target": 30},
+            {"chapter_index": 2, "beat_role": "setup", "tension_target": 50},
+        ],
+    }
+    promoted = [dict(content["chapters"][0]),
+                {**content["chapters"][1], "beat_role": "climax"}]
+
+    out = pfs._merge_pass_edits("beat_plan", content, {"chapters": promoted})
+
+    curve = {c["chapter_index"]: c for c in out["tension_curve"]}
+    assert curve[2]["beat_role"] == "climax"
+    assert curve[2]["tension_target"] >= 88, "the promoted chapter must aim at the climax band"
+
+
+def test_a_non_chapter_beat_edit_does_NOT_rewrite_a_hand_tuned_curve():
+    """Editing only `unmapped_beats` must leave a curve the author tuned at this checkpoint alone —
+    the re-derive fires on a chapters edit, not on every beat_plan edit."""
+    content = {
+        "chapters": [{"ordinal": 1, "event_id": "e1", "title": "A", "beat_role": "setup"}],
+        "tension_curve": [{"chapter_index": 1, "beat_role": "setup", "tension_target": 77}],
+    }
+
+    out = pfs._merge_pass_edits("beat_plan", content, {"unmapped_beats": ["climax"]})
+
+    assert out["tension_curve"][0]["tension_target"] == 77, "hand-tuned value survived"
+    assert out["unmapped_beats"] == ["climax"]
 
 
 def test_a_non_list_edit_still_DEEP_MERGES_and_an_unknown_kind_is_untouched():

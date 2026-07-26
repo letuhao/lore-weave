@@ -720,6 +720,10 @@ class PlanRun(BaseModel):
     # (fingerprint + counts). None ⇒ not grounded (blind / cold-start / ceiling-off) — an honest
     # default, never silently {} (a read-only-looking write-only bug).
     grounded_on: dict[str, Any] | None = None
+    # D-PLANFORGE-BEATS-UNWIRED — which `structure_template` supplies the ordered beats pass 4 maps
+    # chapters onto. None ⇒ the author has not chosen one; `compile` resolves a named built-in and
+    # RECORDS that choice in the package rather than defaulting silently.
+    structure_template_id: UUID | None = None
     created_at: datetime | None = None
     updated_at: datetime | None = None
 

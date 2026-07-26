@@ -5067,7 +5067,11 @@ async def plan_handoff_autofix(
         "PlanForge: compile a validated spec's arc into a PlanningPackage (blocks S1–S8 "
         "failures with 422). run_pipeline=true also kicks the planning pipeline; "
         "model_ref is optional there too — omit it to use the author's default "
-        "planner model. EDIT required."
+        "planner model. `structure_template_id` picks the STORY STRUCTURE (the ordered beats the "
+        "'beats' pass maps chapters onto — Save the Cat, Hero's Journey, Story Circle, Web Novel "
+        "Arc, Kishōtenketsu, Three-Act, or the author's own); omit it to keep the run's current "
+        "choice, or the platform default if none was made. The compiled package reports which "
+        "structure was used and why under `structure`. EDIT required."
     ),
     meta=require_meta("A", "book", synonyms=["compile plan", "planning package", "build plan"],
                       # `run_pipeline=true` runs the LLM passes. A tool that MAY spend must declare
@@ -5085,6 +5089,12 @@ async def plan_compile(
         str | None,
         "optional user_model id for run_pipeline=true — omit to use the author's default planner model.",
     ] = None,
+    structure_template_id: Annotated[
+        str | None,
+        "optional structure_template id — the ordered story beats this plan is shaped by. Omit to "
+        "keep the run's current choice (or the recorded platform default). List the available "
+        "structures with composition_structure_template_edit(op='list').",
+    ] = None,
 ) -> dict:
     tc = _ctx(ctx)
     bid = UUID(book_id)
@@ -5093,6 +5103,7 @@ async def plan_compile(
         mode, payload = await _plan_svc().compile(
             tc.user_id, bid, UUID(run_id),
             arc_id=arc_id, run_pipeline=run_pipeline, model_ref=_opt_uuid(model_ref),
+            structure_template_id=_opt_uuid(structure_template_id),
         )
     except LookupError:
         raise uniform_not_accessible()
@@ -6747,7 +6758,11 @@ async def composition_outline_node_move(ctx: MCPContext, args: _OutlineNodeMoveA
 
 
 class _StructTemplateEditArgs(ForbidExtra):
-    op: Literal["create", "update", "clone", "archive", "restore"]
+    # `list` added with D-PLANFORGE-BEATS-UNWIRED. The family had five WRITE ops and no read, so the
+    # agent could author a structure but never DISCOVER one — and `plan_compile`'s new
+    # `structure_template_id` would have been un-callable without guessing a UUID. An affordance
+    # the agent cannot reach is the same silent no-op as a tool that does nothing.
+    op: Literal["list", "create", "update", "clone", "archive", "restore"]
     template_id: str | None = None       # update, clone, archive, restore
     expected_version: int | None = None  # update
     name: str | None = None              # create (req), update, clone
@@ -6758,18 +6773,44 @@ class _StructTemplateEditArgs(ForbidExtra):
 @mcp_server.tool(
     name="composition_structure_template_edit",
     description=(
-        "Create, edit, clone, archive, or restore one of YOUR structure templates (reusable "
-        "beat skeletons) — the unified template-CRUD entry point. op=create (needs name; optional "
-        "kind/beats). op=update your own (needs template_id + expected_version; only passed fields "
-        "change). op=clone copies one (needs template_id; optional new name). op=archive soft-archives "
-        "(needs template_id; reversible via op=restore). op=restore un-archives (needs template_id)."
+        "List, create, edit, clone, archive, or restore structure templates (the reusable ordered "
+        "story beats a plan is shaped by — Save the Cat, Hero's Journey, Story Circle, Web Novel "
+        "Arc, Kishōtenketsu, Three-Act, plus your own) — the unified template entry point. "
+        "op=list returns the built-ins + your own with their beats; use it to find the "
+        "template_id to pass to plan_compile. op=create (needs name; optional kind/beats). "
+        "op=update your own (needs template_id + expected_version; only passed fields change). "
+        "op=clone copies one (needs template_id; optional new name) — clone a built-in to customise "
+        "it, built-ins are never edited in place. op=archive soft-archives (needs template_id; "
+        "reversible via op=restore). op=restore un-archives (needs template_id)."
     ),
     meta=require_meta("A", "user",
-                      synonyms=["edit structure template", "create structure template",
+                      synonyms=["list structure templates", "story structure", "beat sheet",
+                                "edit structure template", "create structure template",
                                 "clone template", "archive structure template", "manage structure template"],
                       tool_name="composition_structure_template_edit"),
 )
 async def composition_structure_template_edit(ctx: MCPContext, args: _StructTemplateEditArgs) -> dict:
+    if args.op == "list":
+        tc = _ctx(ctx)
+        repo = StructureTemplatesRepo(get_pool())
+        rows = await repo.list_for_user(tc.user_id)
+        return {"templates": [
+            {
+                "template_id": str(t.id),
+                "name": t.name,
+                "kind": t.kind,
+                # The tier, stated plainly: a built-in is READ-ONLY and must be cloned before it can
+                # be customised (the System-tier write rule). Leaving the agent to infer that from a
+                # null owner is how a user ends up trying to edit a shared row.
+                "builtin": t.owner_user_id is None,
+                "beat_count": len(t.beats or []),
+                "beats": [
+                    {"key": b.get("key"), "label": b.get("label"), "purpose": b.get("purpose")}
+                    for b in (t.beats or []) if isinstance(b, dict)
+                ],
+            }
+            for t in rows
+        ]}
     if args.op == "create":
         if not args.name:
             raise ValueError("op=create requires name")

@@ -104,6 +104,37 @@ The test drove `propose → compile → materialize → authoring-run` programma
 4. **Set `target_words` at compile** (unblocks the existing length steer → fixes pacing sag).
 5. **POV per scene** at compile (anchor voice/continuity).
 
+## ✅ FIXES SHIPPED + PROVEN (2026-07-26)
+
+**Fix #1 — compress → per-entity STATE LEDGER** (`77dc6f3e2`). Rewrote the running
+story-so-far summary from a generic recap into a state ledger (each character's
+condition + ongoing transformation + location; what changed in the world).
+**PROVEN E2E:** the same critic (`judge_prose`) on old vs re-drafted ch5 —
+**canon_consistency 2→5, coherence 3→4, violations 2→0** — reproduced the original
+severe verdict on the old draft and scored the new one clean. Confirmed again in the
+FULL authoring-run path (ch5: severe→ok, canon=5, 0 violations).
+
+**Fix #2 — autonomous critic remediation (auto-revise)** (`221846ca8`). On a
+'severe' verdict the driver now auto-REVISES (re-draft against the named violations
++ re-critique) up to max_attempts before falling back to the human-in-loop pause;
+gated `AND(deploy ceiling, per-run opt-in)`. **PROVEN:** 5 unit tests (loop
+branches + gating) + full suite 103; deployed live; E2E confirmed the gating (a
+clean draft did NOT trigger a wasteful re-draft). The repair branch = fix #1's
+proven-clean re-draft.
+
+**Fix #3 — chapter LENGTH target** (`ef53eb47e`). The whole-chapter draft passed
+NO target_words (only a token ceiling) → short/uneven pacing. Now passes
+sum-of-scene-targets + generic length directive. **PROVEN:** 39 unit tests + live
+re-draft grew ch5 1345→1505 words, canon still clean.
+
+Combined VERIFY: **2400 composition unit tests pass**, no regressions.
+
+**Still open — Fix #4 (deterministic exit_state):** the belt-and-suspenders on top
+of fix #1 — have the scene compile EMIT exit_state per scene + the packer INJECT it
+deterministically (not only the LLM-compressed ledger). Larger/structural (compile
+writer + persist + packer) — a planned cycle, not a quick edit. Fix #1 already
+closed the observed ch5 failure, so this is a robustness upgrade, not a bug.
+
 ## Open questions — RESOLVED
 - [x] **`exit_state` is never written to scene rows on this path.** The scene persist (`outline.py:524-533`) writes only `title, synopsis, tension, present_entity_ids, story_order, beat_role, chapter_id` — it **omits `pov_entity_id`, `exit_state`, `value_shift`, `target_words`, `conflict`, `outcome`, `stakes`**. (The `conflict`/`goal` fields the DB shows populated come from the separate scene-plan link pass; the continuity/steer columns come from **no** pass.) `ChapterExitState` is constructed in `plan_pass_adapters.py:339` only for the older markdown-grounded path and is not persisted to the authoring-run scene tree. → **Fix #1 is a writer gap, not a missing tool.**
 - [x] **KG is not a drafting-packer lens.** The packer lenses (`pack.py`) are L1b timeline / L2 structural (COMP DB) / L3 recent prose — the drafter grounds on glossary canon + prior prose, **not** the knowledge graph. KG is available to the co-writer as a tool but is not auto-injected into chapter drafting.
