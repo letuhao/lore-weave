@@ -131,8 +131,9 @@ describe('PassArtifactEditor (structured checkpoint edits)', () => {
     expect((screen.getByTestId('edit-chapters-0-title') as HTMLElement).tagName).not.toBe('INPUT');
   });
 
-  it('an unknown kind renders nothing (no editor)', () => {
-    const { container } = render(<PassArtifactEditor kind="motif_plan" content={{}} busy={false} onSave={vi.fn()} onCancel={vi.fn()} />);
+  it('a kind with no declared shape renders nothing (no editor)', () => {
+    // scene_plan: its list is NESTED, so it deliberately has no flat SHAPE entry.
+    const { container } = render(<PassArtifactEditor kind="scene_plan" content={{}} busy={false} onSave={vi.fn()} onCancel={vi.fn()} />);
     expect(container.firstChild).toBeNull();
   });
 });

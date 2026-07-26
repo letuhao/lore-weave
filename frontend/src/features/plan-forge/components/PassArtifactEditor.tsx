@@ -48,6 +48,37 @@ const SHAPE: Partial<Record<PlanArtifactKind, { field: string; cols: Col[] }>> =
       { key: 'summary', label: 'Summary' },
     ],
   },
+  // Shapes below are the producers' (`run_motifs` / `run_world` / `run_character_arcs`), confirmed
+  // against live artifacts. Identity-ish and machine-owned fields (`code`, `is_new`, `attributes`)
+  // are deliberately NOT exposed — they are preserved by the row spread on save.
+  motif_plan: {
+    field: 'motifs',
+    cols: [
+      { key: 'name', label: 'Motif' },
+      // NOT an enum on purpose. `grounded_plan.motifs_for_beat` matches this by SUBSTRING and is
+      // explicitly fail-open ("any UNRECOGNISED role → always offered"), so a free string cannot
+      // silently drop a motif the way an unknown `beat_role` silently flattens a chapter.
+      { key: 'arc_role', label: 'Arc role (spine / recurring / foil / climax payoff)' },
+      { key: 'why', label: 'Why' },
+    ],
+  },
+  world_plan: {
+    field: 'entities',
+    cols: [
+      { key: 'name', label: 'Name' },
+      { key: 'kind', label: 'Kind' },
+      { key: 'summary', label: 'Summary' },
+    ],
+  },
+  char_arc_plan: {
+    field: 'character_arcs',
+    cols: [
+      { key: 'name', label: 'Character' },
+      { key: 'role', label: 'Role' },
+      { key: 'arc', label: 'Arc' },
+      { key: 'introduce_at_chapter', label: 'Intro ch.' },
+    ],
+  },
   beat_plan: {
     field: 'chapters',
     cols: [

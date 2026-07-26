@@ -107,8 +107,10 @@ describe('CheckpointReview (M4-CP)', () => {
   });
 
   it('an advisory (non-editable) kind offers no Edit door', async () => {
-    api.getArtifact.mockResolvedValue({ artifact_id: 'art1', kind: 'motif_plan', content: { motifs: [] }, created_at: null });
-    render(<CheckpointReview {...props({ pass: pass({ output_kind: 'motif_plan', checkpoint: 'advisory' }) })} />);
+    // scene_plan, not motif_plan: motif_plan gained a structured editor. scene_plan's list is
+    // NESTED (chapters -> scenes), so the flat editor genuinely cannot represent it.
+    api.getArtifact.mockResolvedValue({ artifact_id: 'art1', kind: 'scene_plan', content: { chapters: [] }, created_at: null });
+    render(<CheckpointReview {...props({ pass: pass({ output_kind: 'scene_plan', checkpoint: 'advisory' }) })} />);
     await waitFor(() => screen.getByTestId('review-content'));
     expect(screen.queryByTestId('review-edit')).toBeNull();
   });

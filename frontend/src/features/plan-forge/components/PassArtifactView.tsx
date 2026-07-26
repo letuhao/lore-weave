@@ -107,6 +107,111 @@ export function PassArtifactView({ kind, content }: Props) {
     );
   }
 
+  // motif_plan → the selected motifs. An EMPTY selection is called out rather than left blank:
+  // every motif_plan in the live database was empty for months (the `auto` language sentinel
+  // matched 0 of 147 rows), and a silent blank is precisely why nobody noticed.
+  if (kind === 'motif_plan') {
+    const motifs = arr(content, 'motifs').length ? arr(content, 'motifs') : arr(content, 'selected_motifs');
+    const warning = str((content as Record<string, unknown> | null)?.warning ?? '');
+    if (!motifs.length) {
+      return (
+        <p data-testid="artifact-motifs-empty" className="rounded bg-warning/15 px-2 py-1 text-[10px] text-foreground">
+          {warning || 'No motifs selected — scenes will be planned with no motif layer.'}
+        </p>
+      );
+    }
+    return (
+      <ul data-testid="artifact-motifs" className="space-y-1">
+        {motifs.map((m, i) => (
+          <li key={`${str(m.code)}-${i}`} className="rounded bg-muted/40 px-2 py-1">
+            <span className="font-medium text-foreground">{str(m.name) || '—'}</span>
+            {m.arc_role != null && str(m.arc_role) !== '' && (
+              <span className="ml-1 rounded bg-accent/15 px-1 text-[9px] text-accent">{str(m.arc_role)}</span>
+            )}
+            {m.why != null && str(m.why) !== '' && (
+              <span className="ml-1 text-[10px] text-muted-foreground">— {str(m.why)}</span>
+            )}
+          </li>
+        ))}
+      </ul>
+    );
+  }
+
+  // world_plan → the proposed places/factions/concepts.
+  if (kind === 'world_plan') {
+    const entities = arr(content, 'entities');
+    if (!entities.length) return <Empty label="No world entities in this plan yet." />;
+    return (
+      <ul data-testid="artifact-world" className="space-y-1">
+        {entities.map((e, i) => (
+          <li key={`${str(e.name)}-${i}`} className="rounded bg-muted/40 px-2 py-1">
+            <span className="font-medium text-foreground">{str(e.name) || '—'}</span>
+            {e.kind != null && <span className="ml-1 rounded bg-secondary px-1 text-[9px] uppercase text-muted-foreground">{str(e.kind)}</span>}
+            {e.is_new === false && <span className="ml-1 text-[9px] text-muted-foreground/70">existing</span>}
+            {e.summary != null && str(e.summary) !== '' && (
+              <span className="ml-1 text-[10px] text-muted-foreground">— {str(e.summary)}</span>
+            )}
+          </li>
+        ))}
+      </ul>
+    );
+  }
+
+  // char_arc_plan → who changes, how, and where they walk on.
+  if (kind === 'char_arc_plan') {
+    const arcs = arr(content, 'character_arcs');
+    if (!arcs.length) return <Empty label="No character arcs in this plan yet." />;
+    return (
+      <ul data-testid="artifact-char-arcs" className="space-y-1">
+        {arcs.map((a, i) => (
+          <li key={`${str(a.name)}-${i}`} className="rounded bg-muted/40 px-2 py-1">
+            <span className="font-medium text-foreground">{str(a.name) || '—'}</span>
+            {a.role != null && <span className="ml-1 rounded bg-secondary px-1 text-[9px] uppercase text-muted-foreground">{str(a.role)}</span>}
+            {a.introduce_at_chapter != null && (
+              <span className="ml-1 text-[9px] text-accent">enters ch.{str(a.introduce_at_chapter)}</span>
+            )}
+            {a.arc != null && str(a.arc) !== '' && (
+              <span className="ml-1 text-[10px] text-muted-foreground">— {str(a.arc)}</span>
+            )}
+          </li>
+        ))}
+      </ul>
+    );
+  }
+
+  // scene_plan → chapter → scenes. Read-only: the list is NESTED, so the flat structured editor
+  // cannot represent it (a dedicated nested editor is tracked separately).
+  if (kind === 'scene_plan') {
+    const chapters = arr(content, 'chapters');
+    if (!chapters.length) return <Empty label="No scenes in this plan yet." />;
+    return (
+      <ol data-testid="artifact-scenes" className="space-y-1">
+        {chapters.map((c, i) => {
+          const chapter = (c.chapter ?? {}) as Record<string, unknown>;
+          const scenes = Array.isArray(c.scenes) ? (c.scenes as Record<string, unknown>[]) : [];
+          return (
+            <li key={`${str(chapter.chapter_id)}-${i}`} className="rounded bg-muted/40 px-2 py-1">
+              <span className="font-medium text-foreground">{str(chapter.title) || '—'}</span>
+              <span className="ml-1 text-[9px] text-muted-foreground">{scenes.length} scene{scenes.length === 1 ? '' : 's'}</span>
+              {/* A chapter the decomposer flagged is the one worth a human's attention. */}
+              {c.warning != null && str(c.warning) !== '' && (
+                <span className="ml-1 rounded bg-warning/20 px-1 text-[9px] text-foreground">{str(c.warning)}</span>
+              )}
+              <ul className="mt-0.5 space-y-0.5 pl-3">
+                {scenes.map((s, si) => (
+                  <li key={si} className="text-[10px] text-muted-foreground">
+                    {str(s.title) || '—'}
+                    {s.tension != null && <span className="ml-1 text-accent">t{str(s.tension)}</span>}
+                  </li>
+                ))}
+              </ul>
+            </li>
+          );
+        })}
+      </ol>
+    );
+  }
+
   // Unknown kind → formatted JSON (still read-only; better a raw view than a blank).
   return (
     <pre data-testid="artifact-json" className="max-h-40 overflow-auto rounded bg-muted/40 p-1.5 font-mono text-[10px] leading-relaxed text-muted-foreground">

@@ -79,7 +79,7 @@ describe('PassArtifactView (F-1 — readable per-kind render, not raw JSON)', ()
   });
 
   it('an unknown kind falls back to formatted JSON (never blank)', () => {
-    render(<PassArtifactView kind="world_plan" content={{ regions: 3 }} />);
+    render(<PassArtifactView kind="heal_report" content={{ regions: 3 }} />);
     expect(screen.getByTestId('artifact-json').textContent).toContain('regions');
   });
 
@@ -93,5 +93,68 @@ describe('PassArtifactView (F-1 — readable per-kind render, not raw JSON)', ()
     render(<PassArtifactView kind="beat_plan" content={{ chapters: [] }} />);
     expect(screen.queryByTestId('artifact-beats')).toBeNull();
     expect(screen.getByText(/No chapter beats/)).toBeInTheDocument();
+  });
+});
+
+// ── the four kinds that used to fall back to raw JSON ───────────────────────────────────────────
+// Fixtures are the producers' live shapes: run_motifs {code,name,summary,why,arc_role},
+// run_world {name,kind,summary,is_new,attributes}, run_character_arcs
+// {name,role,arc,introduce_at_chapter}, run_scenes chapters[]{chapter,scenes,warning,exit_state}.
+
+describe('PassArtifactView — the remaining atom kinds', () => {
+  it('motif_plan → the selected motifs with their arc roles', () => {
+    render(<PassArtifactView kind="motif_plan" content={{ motifs: [
+      { code: 'dao_heart', name: 'Dao-Heart Tempering', arc_role: 'central spine',
+        why: 'Elara must confront the guilt of erasing Oakhaven.', summary: '' },
+    ] }} />);
+    const el = screen.getByTestId('artifact-motifs');
+    expect(el.textContent).toContain('Dao-Heart Tempering');
+    expect(el.textContent).toContain('central spine');
+    expect(screen.queryByTestId('artifact-json')).toBeNull();
+  });
+
+  it('motif_plan CALLS OUT an empty selection instead of rendering blank', () => {
+    // Every motif_plan in the live DB was empty for months and nobody noticed, because an empty
+    // list is indistinguishable from "this book has no motifs". It must announce itself.
+    render(<PassArtifactView kind="motif_plan" content={{ motifs: [], warning: 'no motif matched this arc' }} />);
+    expect(screen.getByTestId('artifact-motifs-empty').textContent).toContain('no motif matched this arc');
+  });
+
+  it('motif_plan falls back to a bare message when there is no warning', () => {
+    render(<PassArtifactView kind="motif_plan" content={{ motifs: [] }} />);
+    expect(screen.getByTestId('artifact-motifs-empty').textContent).toContain('no motif layer');
+  });
+
+  it('world_plan → entities with kind and existing-vs-new', () => {
+    render(<PassArtifactView kind="world_plan" content={{ entities: [
+      { name: 'Oakhaven', kind: 'location', summary: 'The erased village.', is_new: false, attributes: {} },
+    ] }} />);
+    const el = screen.getByTestId('artifact-world');
+    expect(el.textContent).toContain('Oakhaven');
+    expect(el.textContent).toContain('location');
+    expect(el.textContent).toContain('existing');
+  });
+
+  it('char_arc_plan → who changes and where they walk on', () => {
+    render(<PassArtifactView kind="char_arc_plan" content={{ character_arcs: [
+      { name: 'Kaelen', role: 'foil', arc: 'From rival to ally.', introduce_at_chapter: 3 },
+    ] }} />);
+    const el = screen.getByTestId('artifact-char-arcs');
+    expect(el.textContent).toContain('Kaelen');
+    expect(el.textContent).toContain('enters ch.3');
+    expect(el.textContent).toContain('From rival to ally.');
+  });
+
+  it('scene_plan → chapter → scenes, surfacing a decomposer warning', () => {
+    render(<PassArtifactView kind="scene_plan" content={{ chapters: [
+      { chapter: { chapter_id: 'e1', title: 'The Wet Ink' },
+        scenes: [{ title: 'Ink at midnight', tension: 40 }, { title: 'The road gone', tension: 55 }],
+        warning: 'thin', exit_state: null },
+    ] }} />);
+    const el = screen.getByTestId('artifact-scenes');
+    expect(el.textContent).toContain('The Wet Ink');
+    expect(el.textContent).toContain('2 scenes');
+    expect(el.textContent).toContain('Ink at midnight');
+    expect(el.textContent).toContain('thin');
   });
 });

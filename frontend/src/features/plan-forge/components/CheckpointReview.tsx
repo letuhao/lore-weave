@@ -16,8 +16,15 @@ import { PassArtifactView } from './PassArtifactView';
 import { PassArtifactEditor } from './PassArtifactEditor';
 import type { PlanPass } from '../types';
 
-/** Only these kinds have a structured editor; others stay read-only (F-1 view). */
-const EDITABLE_KINDS = new Set(['cast_plan', 'beat_plan']);
+/** Only these kinds have a structured editor; others stay read-only (F-1 view).
+ *
+ * `scene_plan` is deliberately absent: its list is NESTED (chapters[] → scenes[]), so the flat
+ * row editor cannot represent it without flattening the structure on save. It needs a dedicated
+ * nested editor — tracked, not faked. The agent can still revise it via plan_review_checkpoint,
+ * where a `chapters` replace now deletes correctly. */
+const EDITABLE_KINDS = new Set([
+  'cast_plan', 'beat_plan', 'motif_plan', 'world_plan', 'char_arc_plan',
+]);
 
 interface Props {
   pass: PlanPass;
