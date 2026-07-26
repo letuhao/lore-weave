@@ -510,8 +510,18 @@ def merge_activated_tools(
     (most-recently-activated wins) instead of a raw COUNT of 64 — a count cap let
     64 verbose schemas re-inflate the surface. Without a catalog (legacy callers /
     tests) fall back to the count cap so behaviour is unchanged.
+
+    D-ACTIVATED-LRU-REFRESH (2026-07-26, Mị Đế dogfood): a RE-activated name must
+    move to the recency END. The old `dict.fromkeys([*current, *matched])` kept
+    the FIRST occurrence, so re-loading an already-activated tool left it at its
+    original (oldest) position — and the budget evicted it first. Live degradation
+    loop: gemma tool_load'ed glossary_propose_entities, the next turn's newer rail
+    activations pushed it over budget, it was evicted DESPITE being the most
+    recently requested, the model fell back to the always-visible edit tool whose
+    error said "tool_load it" — and the cycle repeated, forever, with the agent
+    never able to create an entity.
     """
-    merged = list(dict.fromkeys([*current, *sorted(matched)]))
+    merged = list(dict.fromkeys([*(nm for nm in current if nm not in matched), *sorted(matched)]))
     if catalog is not None:
         tok = {tool_name(td): _tool_tokens(td) for td in catalog}
         budget = scale_by_window(ACTIVATED_TOOLS_TOKEN_BUDGET, context_length)

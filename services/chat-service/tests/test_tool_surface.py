@@ -105,6 +105,23 @@ class TestToolSurface:
         assert len(merged) == ACTIVATED_TOOLS_CAP
         assert merged[-1] == "new_tool"
 
+    def test_merge_activated_tools_reactivation_refreshes_recency(self):
+        # D-ACTIVATED-LRU-REFRESH (live 2026-07-26, Mị Đế dogfood): re-loading an
+        # ALREADY-activated tool must move it to the recency END. The old first-
+        # occurrence dedup left it at its original (oldest) slot, so the budget
+        # evicted the exact tool the model had JUST tool_load'ed — gemma re-loaded
+        # glossary_propose_entities every turn and it was gone again by the next,
+        # so the agent could never create an entity.
+        catalog = [_tool_padded(i) for i in range(40)]
+        current = [f"t{i}" for i in range(40)]  # t0 is the OLDEST
+        # re-activate the oldest name; budget forces eviction of the oldest slots
+        merged = merge_activated_tools(current, {"t0"}, catalog=catalog)
+        assert "t0" in merged, (
+            "a just-re-activated tool must survive the budget eviction — it is the "
+            "most recently REQUESTED, not the oldest"
+        )
+        assert merged[-1] == "t0"  # recency actually refreshed, not just retained
+
     def test_merge_activated_tools_scales_budget_with_context_length(self):
         # A 1M-context session must NOT get the same token-budget cap a 200K
         # session would — the exact bug class a flat/unscaled budget reintroduces.

@@ -49,9 +49,13 @@ Continuity editor · Line editor · Character coach · Genre reader (tu chân kh
 | 15 | cast setup | **HIGH→FIXED** | Frontend tools never receive the session's context-ids (the S02 injector sits below the FE branch) — the model must transcribe book_id itself, invents one ("ID giả định"), fails validation every time. | msg 854e5a33: 2×✗ "book_id must be a real UUID" |
 | 16 | echo guard v1 | MED→**FIXED** | First echo-guard cut missed every real echo: gemma opens the re-echo with "\n\n", the exact-prefix match diverged on char 1. Now whitespace-tolerant at the seams. | msg 854e5a33 content: copy1+"\n\n"+copy2 |
 
+| 17 | review inbox | MED (UX) | AI-suggestions card shows only name+kind ("appears in 0 chapters") — the 7 proposed attributes (gender, role, personality, description…) are invisible, so the human approves blind. | Lâm Uyên card vs DB attributes |
+| 18 | activated state | **HIGH→FIXED** | **The degradation loop's true root**: `merge_activated_tools` deduped by FIRST occurrence, so a re-`tool_load`ed tool kept its oldest LRU slot and was evicted first by the budget. Model re-loaded `glossary_propose_entities` every turn; it was gone by the next; the always-visible edit tool absorbed the intent → the "placeholder_id" loop. | advertised sets: 17→15 tools, propose_entities missing the turn after its tool_load |
+
 **Fixes landed this run (hard-block / wedge class):**
 - **#15 → FIXED** (D-FE-TOOL-CONTEXT-IDS) — frontend branch now runs `_inject_context_ids` (fill-blank + replace-malformed + studio override) before validation.
 - **#16 → FIXED** (D-PASS-TEXT-REECHO v2) — lstripped probe vs stripped turn text.
+- **#18 → FIXED** (D-ACTIVATED-LRU-REFRESH) — re-activation moves the name to the recency end; the just-requested tool now survives eviction.
 - **#10 → FIXED** (D-PASS-TEXT-REECHO) — continuation-pass opening tokens held while they verbatim-prefix the turn's streamed text; full echo swallowed, divergence flushed unchanged (incl. straddling delta). 3 regression tests.
 - **#5 → FIXED** `516d33eba` — frontend tools now feed the shared repeated-failure breaker + get de-advertised at the same cap (D-FE-TOOL-LOOP). 4 regression tests.
 - **#3 → FIXED** (D-RAIL-NEXT-STEP-EXEMPT) — the rail's NEXT actionable step tools are budget-exempt in the surface seed; the driven step is always on the wire. Note: the RESUME path still seeds from `susp.pinned_step_tools` without done/next info (pre-existing, lower risk) — tracked here, not fixed.
