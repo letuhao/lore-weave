@@ -63,6 +63,7 @@ services:
   translation-service: python
   video-gen-service: python
   worker-ai: python
+  jobs-service: python            # job orchestration / projection + read API + SSE (added 2026-06-15, row missed — PRR-21 backfill 2026-07-26)
   campaign-service: python        # auto-draft factory (novel-platform track)
   composition-service: python     # composition track (PR #29)
   learning-service: python        # learning/eval track
