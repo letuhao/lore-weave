@@ -6,6 +6,16 @@
 
 ---
 
+## 2026-07-26 — DF07-session record correction (lock held for real; no surface change)
+
+- **Lock genuinely CLAIMED and RELEASED** — `Owner:` set in `_LOCK.md` **before** the first edit and cleared after, which is exactly what the three cycles it corrects failed to do. **No boundary surface changed**; this claim existed only to fix the record with the mutex actually held.
+- **Corrected:** the three DF07-session `_LOCK.md` entries (DF07_001 DRAFT · DF07_002 closure · `/review-impl` seam pass) and their three matching changelog headers, each of which asserted a `[boundaries-lock-claim+release]` cycle that never happened. Also corrected the peer's top entry, which recorded the folder as *"held by the parallel session"* — it never was; that belief came from these entries.
+- **The harm was not content loss, it was a false signal.** The COMB/ABL session read a held lock, correctly stayed out, and **deferred its whole registration** — leaving `THR-*` / `SPO-*` / `SPN-*` / `PVP-*` / `ABL-*` on the branch with no catalog row until its own catch-up cycle. Serialisation by honest deferral is worth more than serialisation by luck, and the false note destroyed the former while relying on the latter.
+- **Verified no loss** across the unlocked concurrency: `DF7-*` · `stat.*` · `stat.tuning_invalid` · `group_pools` · `StatSnapshot` · §2.Z all present beside the peer's `ITM-*` / `THR-*` / `SPO-*` / `SPN-*` / `PVP-*` / `ABL-*` rows. The writes landed in different table regions; a same-row edit would have dropped one side silently.
+- **Both sessions found this independently within the hour** — which points at the convention rather than at either agent. Two mechanisms would have caught it that discipline did not: a **pre-commit check** that any diff touching `_boundaries/*` requires `Owner:` ≠ `None` in the same commit, and treating the tooling's *"file changed on disk"* warning as a **stop** rather than as merge noise. Both sessions saw that warning three times each and worked through it. **Even during this correction cycle, with `Owner:` set, another session wrote `99_changelog.md`** — so the mutex is advisory in practice and needs the hook to become real.
+
+---
+
 ## 2026-07-26 — combat-family boundary registration `[boundaries-lock-claim+release]`
 
 **A catch-up cycle, and worth recording as one.** COMB_003/004/005/006 + ABL_001 were authored earlier
@@ -124,7 +134,7 @@ Follow-up to the entry below, run at the user's request immediately after commit
 
 ## 2026-07-26 — `/review-impl` seam pass across the same-day family (7 cross-doc defects, all fixed)
 
-- **Lock CLAIMED + RELEASED** in single cycle (combined `[boundaries-lock-claim+release]`).
+- ⚠️ **CORRECTED 2026-07-26 21:05 — the lock was NOT claimed for this cycle.** The line below originally read "Lock CLAIMED + RELEASED"; `Owner:` was `None` throughout and only a release note was written afterwards. See `_LOCK.md` → the DF07-session RECORD CORRECTION bullet.
 - **Scope:** the eight docs authored the same day by two parallel sessions — DF07_001/002, PL_007/PL_007b, COMB_001 (CANDIDATE-LOCK), COMB_003/004/005, ABL_001 — reviewed **at the seams**, on the theory that docs cross-referencing each other's unfinished text is where defects hide. Findings and fixes recorded in [`DF07_002 §1.5`](../features/DF/DF07_pc_stats/DF07_002_edge_cases_and_closure.md).
 - **HIGH-1 — the Untracked group HP pool had no declaring owner.** AC-COMB-7 required a pooled HP bar, COMB_004 SPO-A1/A6 fired **loot generation when it reached zero**, DF07 §9 supplied its ceiling — and **no doc stored the current value**; Untracked actors hold no `vital_pool` row (AIT-A8). Since Untracked is the default tier for every COMB_005 spawn, the default enemy path was unimplementable. **Fixed:** NEW `combat_session.group_pools: BTreeMap<ActorRef, GroupPool { max, current, member_count }>` (COMB_001 §2 owns it; DF07 the ceiling; COMB_004 the zero-trigger; COMB_005 the member count), with COMB_001 §4 win/lose, COMB_004 SPO-A1/A6 and COMB_005 §7 all repointed at it.
 - **HIGH-2 — ABL_001 `PowerTerm.scale` read progression live**, while every other law-chain input came from the DF07 snapshot. PROG_001 `Action` training fires *during* combat (striking trains swordsmanship), so ability damage drifted mid-encounter while `Strike` stayed frozen — breaking AC-COMB-15 and AC-COMB-16. **DF7-V4 could not catch it**: the epoch guards the block; a direct progression read bypasses the block entirely. **Fixed:** the snapshot became `StatSnapshot { stats, prog, epoch }` (DF07 §8.1), `prog` carrying exactly the kinds any declared `PowerTerm.scale` references (bounded, known at schema stage via ABL-V3); ABL §4.3 reads `snapshot.prog` and saturating-multiplies (LOW-7).
@@ -139,7 +149,7 @@ Follow-up to the entry below, run at the user's request immediately after commit
 
 ## 2026-07-26 — DF07_002 closure pass (adversarial edge-case review of the stat law; 4 defects fixed)
 
-- **Lock CLAIMED + RELEASED** in single cycle (combined `[boundaries-lock-claim+release]`).
+- ⚠️ **CORRECTED 2026-07-26 21:05 — the lock was NOT claimed for this cycle** (originally "Lock CLAIMED + RELEASED"). See `_LOCK.md` → the DF07-session RECORD CORRECTION bullet.
 - **NEW** `features/DF/DF07_pc_stats/DF07_002_edge_cases_and_closure.md` — adversarial review of DF07_001 against the six consumers that landed the same day (COMB_001 CANDIDATE-LOCK, COMB_003/004/005, ABL_001, PL_007). **4 defects found in the law and fixed in DF07_001**, 11 edge cases closed, 3 open questions decided, 1 left open with an owner.
 - **The defects** (all internal to resolution — none had propagated to a consumer):
   - **EC-1 (high) — the Lex clamp was escapable.** The DRAFT ran `Lex clamp → slot clamp` reasoning "so an author clamp cannot escape a world rule"; that is inverted, because **the last clamp wins**. An author `clamp.min` above a Lex ceiling raised the value straight back through it — i.e. under DF4, a world rule would have been a suggestion. Order corrected to `slot clamp → Lex clamp` and generalised as **DF7-A14: clamp order is a security property**, so any future clamp source must declare its position. The Untracked archetype path applies both clamps too, or the same hole returns by the back door.
@@ -157,7 +167,7 @@ Follow-up to the entry below, run at the user's request immediately after commit
 
 ## 2026-07-26 — DF07_001 Actor Stat Block DRAFT (resolves AUD-F6; unblocks COMB_001 leaving DRAFT)
 
-- **Lock CLAIMED + RELEASED** in single cycle (combined `[boundaries-lock-claim+release]`).
+- ⚠️ **CORRECTED 2026-07-26 21:05 — the lock was NOT claimed for this cycle** (originally "Lock CLAIMED + RELEASED"). This is the entry whose false claim caused the COMB/ABL session to defer its registration for hours. See `_LOCK.md` → the DF07-session RECORD CORRECTION bullet.
 - **Promoted** DF7 from placeholder `_index.md` to **DRAFT** — `features/DF/DF07_pc_stats/DF07_001_actor_stat_block.md`. **Re-scoped**: the 2026-04-23 placeholder ("inventory + relationships + simple stats") is obsolete — those are owned by RES_001 / ACT_001 / PCS_001+WA_006. What was actually unowned, and what AUD-F6 flagged as V1-blocking, is the **derived-stat projection layer**: COMB_001 §4's law-chain reads `strike_power / armor / acc / dodge / crit_mult / speed` and COMB_002 TG-A3 reads `move_range`, while PROG_001 ships an *open, author-declared* kind schema. DF7 is the law between them.
 - **Files landed:**
   - **NEW** `features/DF/DF07_pc_stats/DF07_001_actor_stat_block.md` (DRAFT, 504 lines; DF7-A1..A11 axioms · DF7-Q1..Q11 LOCKED · DF7-D1..D13 · DF7-V1..V6 · AC-DF7-1..15).
