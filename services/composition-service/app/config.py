@@ -294,6 +294,17 @@ class Settings(BaseSettings):
     authoring_critic_severe_score: int = 1
     authoring_critic_warn_score: int = 2
     authoring_critic_estimate_usd: float = 0.01
+    # D5b — autonomous critic remediation. On a 'severe' verdict the default is to
+    # PAUSE for a human (07S). But an UNATTENDED run (background, no human) never
+    # gets that review, so the flawed chapter ships and later chapters stack on it
+    # (the 2026-07-26 investigation: ch5 severe → whole arc shipped with it). When
+    # enabled, the driver first auto-REVISES (re-draft against the named violations
+    # + re-critique) up to max_attempts, and only pauses if it still can't clear
+    # 'severe'. Deploy CEILING (default off — human-in-loop stays the default);
+    # a run opts in via params.critic_auto_revise ⇒ effective = AND(ceiling, param).
+    # Each attempt is a full re-draft + re-critique (real cost) — hence bounded.
+    authoring_auto_revise_enabled: bool = False
+    authoring_auto_revise_max_attempts: int = 1
 
 
 settings = Settings()  # type: ignore[call-arg]
