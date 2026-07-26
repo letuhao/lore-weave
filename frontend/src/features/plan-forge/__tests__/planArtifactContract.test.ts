@@ -43,7 +43,7 @@ const EDITOR_SHAPE: Record<string, { field: string; cols: string[] }> = Object.f
 /** Top-level keys each read-only view pulls off the artifact (PassArtifactView). */
 const VIEW_TOP_LEVEL: Record<string, string[]> = {
   cast_plan: ['cast'],
-  beat_plan: ['chapters', 'tension_curve', 'unmapped_beats'],
+  beat_plan: ['chapters', 'tension_curve', 'unmapped_beats', 'structure'],
   motif_plan: ['motifs'],
   world_plan: ['entities'],
   char_arc_plan: ['character_arcs'],

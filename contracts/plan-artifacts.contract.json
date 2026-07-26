@@ -14,6 +14,7 @@
       "top_level_fields": [
         "available_beats",
         "chapters",
+        "structure",
         "tension_curve",
         "unmapped_beats"
       ]

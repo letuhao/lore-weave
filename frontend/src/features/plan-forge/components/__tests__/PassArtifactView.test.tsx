@@ -25,6 +25,8 @@ const BEATS = {
   ],
   unmapped_beats: ['climax', 'resolution'],
   available_beats: [{ key: 'hook', label: 'Hook', purpose: '' }],
+  structure: { template_id: 't1', name: 'Web Novel Arc', kind: 'web_novel', source: 'run',
+               beat_count: 6, note: '', unshaped_beat_keys: [], shapeable: true },
 };
 
 describe('PassArtifactView (F-1 — readable per-kind render, not raw JSON)', () => {
@@ -76,6 +78,31 @@ describe('PassArtifactView (F-1 — readable per-kind render, not raw JSON)', ()
   it('beat_plan hides the unmapped banner when every beat is reached', () => {
     render(<PassArtifactView kind="beat_plan" content={{ ...BEATS, unmapped_beats: [] }} />);
     expect(screen.queryByTestId('artifact-unmapped-beats')).toBeNull();
+  });
+
+  it('beat_plan names the STRUCTURE that shaped the arc', () => {
+    // "Approve this story shape" is unanswerable without knowing which shape was applied.
+    render(<PassArtifactView kind="beat_plan" content={BEATS} />);
+    expect(screen.getByTestId('artifact-structure').textContent).toContain('Web Novel Arc');
+  });
+
+  it('beat_plan flags a DEFAULTED structure — it must not look like a choice', () => {
+    // A defaulted structure rendering identically to a chosen one is how the flat-arc bug hid.
+    render(<PassArtifactView kind="beat_plan" content={{ ...BEATS,
+      structure: { ...BEATS.structure, source: 'default' } }} />);
+    expect(screen.getByTestId('artifact-structure').textContent).toContain('platform default');
+  });
+
+  it('beat_plan warns when the pacing model does not know the structure beats', () => {
+    render(<PassArtifactView kind="beat_plan" content={{ ...BEATS,
+      structure: { ...BEATS.structure, unshaped_beat_keys: ['ki', 'ten'], shapeable: false } }} />);
+    expect(screen.getByTestId('artifact-structure').textContent).toContain('2 beat(s)');
+  });
+
+  it('beat_plan omits the structure line when the artifact has none (older runs)', () => {
+    const { structure, ...noStructure } = BEATS;
+    render(<PassArtifactView kind="beat_plan" content={noStructure} />);
+    expect(screen.queryByTestId('artifact-structure')).toBeNull();
   });
 
   it('an unknown kind falls back to formatted JSON (never blank)', () => {

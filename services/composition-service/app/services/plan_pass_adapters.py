@@ -85,6 +85,15 @@ class PassContext:
         c = self.package.get("chapters")
         return c if isinstance(c, list) else []
 
+    @property
+    def structure(self) -> dict[str, Any]:
+        """Which story structure supplied `beats`, and whether the author chose it (compile's
+        `resolve_structure` provenance block). Read so the beats checkpoint can SAY what shaped the
+        arc — a defaulted structure that looks identical to a chosen one is how the flat-arc bug
+        stayed invisible."""
+        s = self.package.get("structure")
+        return s if isinstance(s, dict) else {}
+
 
 def _chapter_plans(ctx: PassContext, beat_roles: dict[int, str | None] | None = None) -> list[Any]:
     """The package's chapters as the engines' `ChapterPlan`, optionally carrying pass-4's roles.
@@ -219,6 +228,12 @@ async def run_beats(ctx: PassContext) -> dict[str, Any]:
             {"key": b.get("key"), "label": b.get("label"), "purpose": b.get("purpose")}
             for b in ctx.beats if isinstance(b, dict) and b.get("key")
         ],
+        # WHICH structure shaped this arc, echoed onto the artifact so the checkpoint is
+        # self-explanatory. The author is being asked to approve a story shape; "approve this shape"
+        # is not answerable without knowing which shape was applied and whether anyone chose it.
+        # Carried here rather than fetched from the package by the FE for the same reason
+        # `available_beats` is: the artifact a reviewer opens should describe itself.
+        "structure": dict(ctx.structure),
     }
 
 

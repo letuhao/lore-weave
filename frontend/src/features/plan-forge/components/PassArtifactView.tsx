@@ -66,6 +66,7 @@ export function PassArtifactView({ kind, content }: Props) {
     const unmappedKeys = Array.isArray((content as Record<string, unknown> | null)?.unmapped_beats)
       ? ((content as Record<string, unknown>).unmapped_beats as unknown[]).map(str).filter(Boolean)
       : [];
+    const structure = ((content as Record<string, unknown> | null)?.structure ?? {}) as Record<string, unknown>;
     if (!chapters.length) return <Empty label="No chapter beats in this plan yet." />;
     const tensionByIndex = new Map<number, string>();
     curve.forEach((c) => {
@@ -74,6 +75,24 @@ export function PassArtifactView({ kind, content }: Props) {
     });
     return (
       <div className="space-y-1">
+        {/* WHICH structure shaped this arc. The author is being asked to approve a story SHAPE;
+            that is unanswerable without knowing which shape was applied — and a DEFAULTED structure
+            that renders identically to a chosen one is how the flat-arc bug stayed invisible. */}
+        {str(structure.name) !== '' && (
+          <p data-testid="artifact-structure" className="rounded bg-muted/60 px-2 py-1 text-[10px] text-muted-foreground">
+            Shaped by <span className="font-medium text-foreground">{str(structure.name)}</span>
+            {structure.source === 'default' && (
+              <span className="ml-1 text-warning">· platform default — change it to reshape the arc</span>
+            )}
+            {/* A custom structure whose beats the shaper does not recognise still assigns roles but
+                yields a FLAT curve. Say so rather than letting it look computed. */}
+            {Array.isArray(structure.unshaped_beat_keys) && structure.unshaped_beat_keys.length > 0 && (
+              <span className="ml-1 text-destructive">
+                · {(structure.unshaped_beat_keys as unknown[]).length} beat(s) the pacing model doesn’t know
+              </span>
+            )}
+          </p>
+        )}
         {/* A beat nothing hits is the checkpoint's whole safety signal — show it FIRST, loudly. */}
         {unmappedKeys.length > 0 && (
           <p data-testid="artifact-unmapped-beats" className="rounded bg-warning/15 px-2 py-1 text-[10px] text-foreground">
