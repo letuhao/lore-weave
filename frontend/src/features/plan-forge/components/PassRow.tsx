@@ -24,6 +24,18 @@ export function PassRow({ index, pass, blockedAtHere, onRun, onReview, onView, d
   const awaitingReview =
     pass.checkpoint === 'blocking' && completed && pass.decision === 'pending';
 
+  // Any completed pass with an artifact can be OPENED — to read it, and to edit it.
+  //
+  // `awaitingReview` used to be the ONLY route to `CheckpointReview`, which is the only host of the
+  // structured editors. That silently made four of the six atoms uneditable in the app: `motifs`,
+  // `world`, `character_arcs` and `scenes` are ADVISORY, so they never reach `awaitingReview` and
+  // never rendered a door — and even `cast`/`beats` became uneditable the moment they were
+  // approved, with no way back. The editors existed and were unreachable.
+  //
+  // Unit tests could not see this: they render `CheckpointReview` directly with a fabricated pass.
+  // A live browser pass on the real rail is what surfaced it.
+  const canOpen = completed && !!pass.artifact_id;
+
   const freshness = !completed
     ? { label: '—', cls: 'text-muted-foreground/50' }
     : pass.fresh
@@ -105,15 +117,28 @@ export function PassRow({ index, pass, blockedAtHere, onRun, onReview, onView, d
             🔒 {t('planPasses.blocked', { defaultValue: 'blocked' })}
           </span>
         ) : (
-          <button
-            type="button" data-testid={`pass-run-${pass.pass_id}`} onClick={() => onRun(pass.pass_id)}
-            disabled={disabled}
-            className="rounded bg-primary px-2 py-1 text-[11px] font-medium text-primary-foreground hover:brightness-110 disabled:opacity-40"
-          >
-            {completed
-              ? t('planPasses.rerun', { defaultValue: 're-run…' })
-              : t('planPasses.run', { defaultValue: 'run…' })}
-          </button>
+          <span className="flex items-center gap-1">
+            {/* The quiet door to the artifact + its structured editor. Deliberately NOT styled as
+                the urgent warning CTA above — an advisory pass is not asking the author for a
+                decision, it is merely open to correction. */}
+            {canOpen && (
+              <button
+                type="button" data-testid={`pass-edit-${pass.pass_id}`} onClick={() => onReview(pass.pass_id)}
+                className="rounded border border-border px-2 py-1 text-[11px] hover:bg-secondary"
+              >
+                {t('planPasses.openEdit', { defaultValue: 'edit…' })}
+              </button>
+            )}
+            <button
+              type="button" data-testid={`pass-run-${pass.pass_id}`} onClick={() => onRun(pass.pass_id)}
+              disabled={disabled}
+              className="rounded bg-primary px-2 py-1 text-[11px] font-medium text-primary-foreground hover:brightness-110 disabled:opacity-40"
+            >
+              {completed
+                ? t('planPasses.rerun', { defaultValue: 're-run…' })
+                : t('planPasses.run', { defaultValue: 'run…' })}
+            </button>
+          </span>
         )}
       </span>
     </div>

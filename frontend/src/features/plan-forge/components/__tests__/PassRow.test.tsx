@@ -75,3 +75,49 @@ describe('PassRow — the action cell reflects the pass state', () => {
     expect(screen.queryByTestId('pass-view-beats')).toBeNull();
   });
 });
+
+
+// ── the door to the editors ─────────────────────────────────────────────────────────────────────
+// `awaitingReview` (blocking + completed + pending) was the ONLY route to CheckpointReview, which
+// is the only host of the structured editors. That made the four ADVISORY atoms — motifs, world,
+// character_arcs, scenes — uneditable in the running app however complete their editors were, and
+// made cast/beats uneditable the moment they were approved. Caught by a live browser pass, not by
+// any unit test, because the editor tests render CheckpointReview directly with a fabricated pass.
+
+describe('PassRow — the edit door', () => {
+  const row = (over: Partial<PlanPass>, onReview: (id: string) => void = noop) => (
+    <PassRow index={1} pass={pass(over)} blockedAtHere={false} onRun={noop} onReview={onReview} disabled={false} />
+  );
+
+  it('an ADVISORY completed pass offers an edit door', () => {
+    render(row({ pass_id: 'motifs', checkpoint: 'advisory', output_kind: 'motif_plan',
+                 status: 'completed', decision: 'auto', artifact_id: 'art1' }));
+    expect(screen.getByTestId('pass-edit-motifs')).toBeInTheDocument();
+  });
+
+  it('an ACCEPTED blocking pass is still re-openable (no one-way door)', () => {
+    render(row({ pass_id: 'cast', checkpoint: 'blocking', output_kind: 'cast_plan',
+                 status: 'completed', decision: 'accepted', artifact_id: 'art1' }));
+    expect(screen.getByTestId('pass-edit-cast')).toBeInTheDocument();
+  });
+
+  it('a pass that never ran has nothing to open', () => {
+    render(row({ pass_id: 'self_heal', checkpoint: 'advisory', output_kind: 'scene_plan',
+                 status: 'pending', decision: 'pending', artifact_id: null }));
+    expect(screen.queryByTestId('pass-edit-self_heal')).toBeNull();
+  });
+
+  it('a completed pass with NO artifact offers no door (nothing to show)', () => {
+    render(row({ pass_id: 'world', checkpoint: 'advisory', output_kind: 'world_plan',
+                 status: 'completed', decision: 'auto', artifact_id: null }));
+    expect(screen.queryByTestId('pass-edit-world')).toBeNull();
+  });
+
+  it('the edit door opens the SAME review host the blocking CTA uses', () => {
+    const onReview = vi.fn();
+    render(row({ pass_id: 'scenes', checkpoint: 'advisory', output_kind: 'scene_plan',
+                 status: 'completed', decision: 'auto', artifact_id: 'art1' }, onReview));
+    fireEvent.click(screen.getByTestId('pass-edit-scenes'));
+    expect(onReview).toHaveBeenCalledWith('scenes');
+  });
+});
