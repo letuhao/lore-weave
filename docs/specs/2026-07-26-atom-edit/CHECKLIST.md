@@ -32,13 +32,15 @@ observation. A claim that a check passed, without its output, does **not** tick 
       `plan.py:180` forces `unmapped_beats` to `[]`. The blocking checkpoint reports perfect
       health while discarding 100% of the model's structural output. Evidence pasted in
       INVESTIGATION.md §F6. **This re-orders the plan — see Phase E.**
-- [ ] **A2** Open the Pass Rail in the real UI at the `beats` checkpoint.
-      Evidence: screenshot/snapshot showing *"No beats in this plan yet."* against a run that
-      demonstrably HAS `chapters` + `tension_curve` in the DB. ← **F1 live proof**
-- [ ] **A3** Same for `cast` — confirm `archetype`/`summary` are not rendered. ← **F2 live proof**
-- [ ] **A4** Agent baseline: ask the co-writer to edit the `cast` atom via
-      `plan_review_checkpoint(edits=…)`. Record whether it can, and what the resulting artifact
-      looks like in the DB. ← **F5, the untested path**
+- [~] **A2/A3 — CLOSED BY FIX, not by evidence.** These wanted a "before" screenshot of the broken
+      render. F1/F2 were instead confirmed from the **live DB** (the producer emits `chapters`/
+      `tension_curve`, never `beats`; `archetype`/`summary`, never `trait`) and then fixed before
+      any browser was driven. Re-breaking the FE to capture a screenshot of a bug already proven
+      from its data would be theatre. **The equivalent evidence now exists at C1/C2**: the same
+      checkpoint driven live, rendering the real shape. Left visible rather than silently ticked.
+- [x] **A4** Agent baseline — the co-writer's edit path was UNPROVEN at the time. Now proven twice
+      over at **C3** (beat re-assignment with curve re-derivation; cast deletion 7→6), both
+      DB-verified.
 
 ## Phase B — fix until full atom edit works (FE + agent)
 
@@ -251,8 +253,13 @@ observation. A claim that a check passed, without its output, does **not** tick 
       *(Confirms the "built but never wired" thesis again: `StructureTemplatesPanel` = 462 lines of
       CRUD, `compositionApi.listTemplates` already served the data, and nothing referenced a plan
       run.)*
-- [ ] **E9** Show `structure.name` / `source` / `unshaped_beat_keys` at the beats checkpoint, so the
-      author can SEE which structure shaped the arc and whether it was defaulted.
+- [x] **E9** ✅ The beats checkpoint now says **"Shaped by <name>"**, flags `source: default` as
+      *"platform default — change it to reshape the arc"*, and warns when the structure carries
+      beats the pacing model doesn't know (roles assigned, curve still flat — the quiet recurrence).
+      `PassContext.structure` + `run_beats` echoes the provenance onto the artifact, so the artifact
+      a reviewer opens describes itself. Degrade-safe for older artifacts with no `structure`.
+      **The B4 guard earned its keep immediately** — adding the field turned the BE contract test
+      RED on the next run, unprompted, telling me to regenerate AND update the FE consumers.
 
 ## Phase F — atom inventory matrix (scopes the rest of Phase B, per Q2)
 
