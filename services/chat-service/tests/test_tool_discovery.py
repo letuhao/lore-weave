@@ -714,8 +714,15 @@ class TestGenericFrontendTools:
         )
         names = [t["function"]["name"] for t in adv]
         assert "web_search" not in names
-        # the rest of the core still lands — one missing federated tool degrades alone
-        assert "tool_list" in names and "confirm_action" in names and "ui_navigate" in names
+        # the rest of the core still lands — one missing federated tool degrades alone.
+        # `ui_navigate` was asserted here until 2026-07-27: the ui_* GUI-control surface was
+        # deprecated in d389a3022 (gateway UI_TOOLS removed from handleListTools; chat-service
+        # `generic_frontend_tool_def` returns None), so it can no longer land — it was only
+        # still NAMED in ALWAYS_ON_CORE_NAMES, which additionally made the skill-claims lint
+        # exempt it and let four skills keep instructing the agent to call it.
+        assert "tool_list" in names and "confirm_action" in names
+        for gone in ("ui_navigate", "ui_open_book", "ui_show_panel", "ui_watch_job"):
+            assert gone not in names, f"{gone} is deprecated — it must never be advertised"
 
     def test_suppress_names_drops_a_completed_oneshot_from_the_wire(self):
         """oneshot-deadvertise (2026-07-25): a completed one-shot create in `suppress_names`

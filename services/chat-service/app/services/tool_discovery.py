@@ -289,10 +289,21 @@ ALWAYS_ON_CORE_NAMES: tuple[str, ...] = (
     # discoverable — so the model is never steered into the top-K trap.)
     TOOL_LIST_NAME,
     TOOL_LOAD_NAME,
-    "ui_navigate",
-    "ui_open_book",
-    "ui_show_panel",
-    "ui_watch_job",
+    # ui_navigate / ui_open_book / ui_show_panel / ui_watch_job REMOVED (2026-07-27).
+    #
+    # The agent GUI-control surface was deprecated in d389a3022 ("GUI control is user- and
+    # logic-driven; agent-driven nav only cost tokens"). That commit removed their SCHEMAS
+    # (`generic_frontend_tool_def` returns None for all four) and the ai-gateway handlers —
+    # but left the names here, which was not harmless:
+    #
+    #   `TestSkillClaimsLint` EXEMPTS anything in ALWAYS_ON_CORE_NAMES from its reachability
+    #   check, on the reasoning that an always-on tool can never be an unreachable claim. Once
+    #   these stopped being always-on, that exemption became a hole — and four skills went on
+    #   instructing the agent to call `ui_watch_job` / `ui_navigate`, tools that no longer
+    #   reach the wire, with the lint waving them through.
+    #
+    # A deprecated tool must disappear from EVERY list that describes the live surface, not
+    # just the one that emits schemas.
     # propose_record_edit REMOVED (auto-gate M5) — the generic record diff card is retired;
     # each domain edits via its own natural direct-write tool (audit-confirmed vestigial).
     "confirm_action",

@@ -56,8 +56,8 @@ delete (no undo) — confirm with the user before removing a link, not just a no
 ## Prose: TWO different tools, do not conflate them
 - **`book_chapter_save_draft`** saves prose the MODEL (you) already composed as plain \
 text — it does not call any generation engine and costs nothing beyond your own \
-output. **`expected_draft_version` is REQUIRED** (from `book_get_chapter`) — a \
-stale value is rejected, never blind-overwritten.
+output. **`expected_draft_version` is REQUIRED** (read the chapter with `book_read` \
+first) — a stale value is rejected, never blind-overwritten.
 - **`composition_generate`** runs the platform's grounded cowrite ENGINE (a \
 drafter+critic pass over the book's actual lore/canon/outline) — a DIFFERENT, \
 confirm-gated, LLM-spend operation. Pass exactly ONE of `outline_node_id` (generate one \
@@ -76,12 +76,11 @@ Author-declared invariants the story must respect (`composition_list_canon_rules
 tool exists for canon rules**, so confirm with the user before deleting one, unlike an \
 outline node which IS restorable].
 
-## Publishing
-`book_chapter_publish` canonizes a chapter's reviewed draft — \
-**confirm-gated** (mint a `confirm_token`, `domain="composition"`, then \
-`confirm_action`). It pre-checks a scene-completeness gate and refuses up front \
-(`{"success": false, "gate": {...}}`) if the chapter isn't ready — surface the gate \
-detail to the user rather than retrying blindly.
+## Publishing — NOT yours to do
+Canonizing a reviewed draft is a MANUAL UI action, and there is deliberately NO \
+agent-discoverable publish tool: the author presses the button. When they ask you to \
+publish, say the draft is ready and point them at the editor's publish control — never \
+claim you published anything.
 
 ## Motif (trope/pattern) library
 - Search: `composition_motif_search` (your library / `public` / `system` / `all`), \

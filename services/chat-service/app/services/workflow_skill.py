@@ -40,13 +40,14 @@ translated text is in place. Running it first yields empty or wrong results.
 Jumping ahead (glossary before chapters, wiki before glossary) is the most common \
 way to produce nonsense — keep the order.
 
-## Publishing
-Draft → publish: `book_chapter_save_draft` (auto) then `book_chapter_publish` \
-(confirm). Publishing a chapter with no prose is rejected — write or translate it first.
+## Publishing — NOT yours to do
+You write the draft (`book_chapter_save_draft`); PUBLISHING is a manual UI action and \
+has no agent tool by design. When a workflow reaches publish, say the draft is ready and \
+hand it to the author — never claim you published anything.
 
 ## Async ordering (the big one)
 A step that STARTS a job (translate, retranslate, media) is not done when the tool \
-returns — it is QUEUED. Say "started" with the job id and call `ui_watch_job`. Do \
+returns — it is QUEUED. Say "started" and give the job id (the UI shows progress from \nit). Do \
 NOT begin a step that DEPENDS on that job's output (e.g. glossary extraction over \
 the translated text) until the job has actually finished. If the user asks for the \
 whole chain, start step 1, watch it, and continue only when it completes.

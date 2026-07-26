@@ -1180,7 +1180,11 @@ class TestK21BToolCallingIntegration:
         # full catalog dumped to the LLM. (F17 — find_tools retired from the LLM's view.)
         adv_names = [t["function"]["name"] for t in loop_mock.call_args.kwargs["tools"]]
         assert "tool_list" in adv_names and "tool_load" in adv_names
-        assert "ui_navigate" in adv_names and "confirm_action" in adv_names
+        assert "confirm_action" in adv_names
+        # `ui_navigate` was asserted here too, until the ui_* GUI-control surface was fully
+        # retired (2026-07-27). d389a3022 de-advertised it at both emitters; the leftover name in
+        # ALWAYS_ON_CORE_NAMES made this test keep vouching for a tool the model can never see.
+        assert "ui_navigate" not in adv_names
         # Part D (2026-07-07, docs/specs/2026-07-07-skill-authoring-and-mcp-exposure-
         # standard.md §8b.9): surface_hot_domains now derives from knowledge_skill's own
         # declared hot_domains (honored everywhere it auto-injects, incl. universal chat)

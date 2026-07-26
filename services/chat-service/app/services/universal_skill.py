@@ -63,7 +63,7 @@ State the change happened only when the confirm outcome is `action_done`.
 
 ## Long-running jobs
 A translation or media job runs for minutes. Say you STARTED it (with its job id) \
-and call `ui_watch_job` so the user sees live progress. NEVER claim a job finished \
+— the UI renders live progress from that id itself. NEVER claim a job finished \
 just because you started it.
 
 ## Multi-step honesty
