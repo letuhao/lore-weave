@@ -64,9 +64,17 @@ observation. A claim that a check passed, without its output, does **not** tick 
       key and thus vouched for the bug) rewritten + 2 new curve tests added.
       **Evidence:** FE `plan-forge` + `studio` = **1577 passed / 175 files**; composition unit
       **2398 passed, 1 skipped**; `tsc --noEmit` **exit 0**.
-- [ ] **B4** **Machine-checked contract** for pass-artifact shapes across the BE↔FE seam, so this
-      class of drift reds in CI. (Mirrors `contracts/frontend-tools.contract.json`; that file does
-      not cover artifacts today.)
+- [x] **B4** ✅ **Machine-checked BE↔FE contract shipped** — `contracts/plan-artifacts.contract.json`.
+      **BE half** runs the REAL adapters (stubbing only the LLM-calling engine, using the engines'
+      own dataclasses) and snapshots what they actually emit — deliberately NOT a hand-declared
+      schema, which would just be a third place to be wrong. Regenerate with
+      `WRITE_PLAN_ARTIFACT_CONTRACT=1`.
+      **FE half** reads the snapshot and asserts every editor list-field, column, view key and
+      nested scene field really exists — and **imports the real `SHAPE`** from `PassArtifactEditor`
+      rather than mirroring it (a mirror would be the same failure mode this guard prevents).
+      **Proven to fail in BOTH directions** — reintroducing the original shapes in the test → 5 reds
+      naming both regressions; breaking the *component* (`beat_plan.field` → `'beats'`) → 2 reds.
+      A guard that cannot fail is worthless.
 - [x] **B5** GUI editing extended to `motif_plan`, `world_plan`, `char_arc_plan` + readable views
       for all four (raw-JSON fallback gone). `arc_role` left FREE TEXT after verifying
       `motifs_for_beat` matches by substring and is explicitly fail-open — an enum there would have
