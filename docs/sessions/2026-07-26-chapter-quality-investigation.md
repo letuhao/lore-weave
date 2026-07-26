@@ -129,6 +129,26 @@ re-draft grew ch5 1345→1505 words, canon still clean.
 
 Combined VERIFY: **2400 composition unit tests pass**, no regressions.
 
+### 🎯 GOAL MET — fresh re-run of the dip chapters clears every threshold
+Fresh authoring-run `019f9ef1` over ch5–ch8 (all 3 fixes, auto-revise OFF = honest
+first-draft), `authoring_run_units.critic_verdict`:
+
+| ch | severity | canon | coherence | pacing | violations |
+|----|----------|-------|-----------|--------|-----------|
+| ch5 70b4 | ok | 5 | 5 | 4 | 0 |
+| ch6 70cc | ok | 5 | 5 | 4 | 0 |
+| ch7 70e2 | ok | 5 | 5 | 4 | 0 |
+| ch8 70f6 | ok | 5 | 5 | 4 | 0 |
+
+Baseline (`019f9dd8`) → re-run: **severe 1→0 · violations 2→0 · canon min 2→5 ·
+coherence min 3→5 · pacing min 3→4.** ch5–ch8 were the only baseline dips, so this
+covers the whole problem. Quality improvement PROVEN by the system's own critic.
+
+Residual levers (not needed to meet the bar, tracked): chapter token cap =
+`min(scene_count × chapter_gen_per_scene_tokens[700], 8192)` (~1500 words/3-scene
+chapter) binds before the length target — raise `chapter_gen_per_scene_tokens` if
+fuller chapters are wanted; Fix #4 deterministic exit_state for extra robustness.
+
 **Still open — Fix #4 (deterministic exit_state):** the belt-and-suspenders on top
 of fix #1 — have the scene compile EMIT exit_state per scene + the packer INJECT it
 deterministically (not only the LLM-compressed ledger). Larger/structural (compile
