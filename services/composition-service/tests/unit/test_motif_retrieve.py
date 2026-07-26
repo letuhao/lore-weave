@@ -629,3 +629,66 @@ async def test_book_shared_motif_is_library_space_not_private(monkeypatch):
         user_model=("user_model", "user-embed-42"))
     assert out[0].match_reason["section"] == "library"   # shared, not 'mine'
     assert calls == []                                   # never billed to the owner as private
+
+
+# ── D-MOTIF-AUTO-LANGUAGE-ZEROES-RETRIEVAL ──────────────────────────────────────────────────────
+# `language` is a concrete stored code (`en`/`vi`), but the callers' NEUTRAL default is the
+# sentinel `"auto"`, which no row can equal. `AND language = 'auto'` therefore matched 0 of the
+# 147 motifs in the live database, `retrieve` returned [], and the motifs pass emitted a bare
+# `{"motifs": []}` — so EVERY motif_plan artifact was empty and pass 6 planned every scene with no
+# motif layer, while the checkpoint looked perfectly healthy. The empty-genre clause already had
+# this guard (MD-2); language did not.
+
+async def test_auto_language_does_NOT_filter_and_still_retrieves(monkeypatch):
+    """The regression. `auto` means "unspecified" ⇒ any language, exactly like an empty genre."""
+    from app.db.repositories.motif_retrieve import MotifRetriever
+
+    caller = uuid.uuid4()
+    _patch_query_embed(monkeypatch, [1.0, 0.0, 0.0])
+    pool = _FakePool([_row("m1", embedding=[1.0, 0.0, 0.0])])
+    retr = MotifRetriever(pool)
+
+    out = await retr.retrieve(
+        caller, book_id=uuid.uuid4(), project_id=uuid.uuid4(),
+        genre_tags=[], language="auto", beat_role="hook", tension=50, user_model=None)
+
+    sql = pool.conn.fetched_sql[0]
+    assert "language =" not in sql, "an `auto` language must not be used as a filter"
+    assert out, "a book with no declared language must still get motif candidates"
+
+
+async def test_a_real_language_STILL_filters(monkeypatch):
+    """The guard must not throw the filter away for a book that genuinely declares one."""
+    from app.db.repositories.motif_retrieve import MotifRetriever
+
+    caller = uuid.uuid4()
+    _patch_query_embed(monkeypatch, [1.0, 0.0, 0.0])
+    pool = _FakePool([_row("m1", embedding=[1.0, 0.0, 0.0])])
+    retr = MotifRetriever(pool)
+
+    await retr.retrieve(
+        caller, book_id=uuid.uuid4(), project_id=uuid.uuid4(),
+        genre_tags=[], language="vi", beat_role="hook", tension=50, user_model=None)
+
+    sql, args = pool.conn.fetched_sql[0], pool.conn.fetched_args[0]
+    assert "language =" in sql
+    assert "vi" in args
+
+
+async def test_the_ceiling_placeholder_still_binds_after_the_clauses_move(monkeypatch):
+    """The clauses are built by position, so a mis-numbered `LIMIT $n` would silently bound the
+    query by the caller id. Assert the LIMIT really receives the ceiling."""
+    from app.db.repositories.motif_retrieve import MotifRetriever
+
+    caller = uuid.uuid4()
+    _patch_query_embed(monkeypatch, [1.0, 0.0, 0.0])
+    pool = _FakePool([_row("m1", embedding=[1.0, 0.0, 0.0])])
+    retr = MotifRetriever(pool)
+
+    await retr.retrieve(
+        caller, book_id=uuid.uuid4(), project_id=uuid.uuid4(),
+        genre_tags=["xianxia"], language="en", beat_role="hook", tension=50, user_model=None)
+
+    sql, args = pool.conn.fetched_sql[0], pool.conn.fetched_args[0]
+    limit_idx = int(sql.split("LIMIT $")[1].split()[0])
+    assert isinstance(args[limit_idx - 1], int), "LIMIT must bind the integer ceiling"

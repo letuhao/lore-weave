@@ -549,11 +549,26 @@ class MotifRetriever:
         self, caller_id: UUID, genre_tags: list[str], language: str, ceiling: int,
     ) -> list[asyncpg.Record]:
         """The BOUNDING query (data-R1). Loads `embedding` for the bounded set ONLY.
-        $1 caller_id · $2 language · $3 ceiling · $4 genres (only when non-empty).
+        $1 caller_id · $2 ceiling · then language / genres, each only when it can match.
 
         A genre-less book ([]) OMITS the `&&` clause (MD-2) — an empty array && is always
-        false and would zero out retrieval; a language+tier+ceiling bound still applies."""
-        params: list[Any] = [caller_id, language, max(0, ceiling)]
+        false and would zero out retrieval; the tier+ceiling bound still applies.
+
+        D-MOTIF-AUTO-LANGUAGE-ZEROES-RETRIEVAL — the SAME guard now applies to `language`, and
+        for the same reason. `language` is a concrete stored code (`en`, `vi`); the callers'
+        NEUTRAL default is the sentinel **`"auto"`**, which no row can ever equal. So
+        `AND language = 'auto'` matched **zero of 147 motifs**, `retrieve` returned `[]`, and the
+        motifs pass emitted `{"motifs": []}` with no `degraded` flag — indistinguishable from "this
+        book legitimately has no motifs". Live-verified: every `motif_plan` artifact in the database
+        had 0 motifs, so pass 6 has always decomposed scenes with no motif layer at all.
+
+        `auto` means "unspecified", so the honest query is "any language" — exactly the treatment
+        an empty genre list already got. A REAL language code still filters."""
+        params: list[Any] = [caller_id, max(0, ceiling)]
+        lang_clause = ""
+        if language and language.strip().lower() not in ("auto", "unknown", "und"):
+            params.append(language)
+            lang_clause = f"  AND language = ${len(params)}\n"
         genre_clause = ""
         if genre_tags:
             params.append(list(genre_tags))
@@ -562,14 +577,13 @@ class MotifRetriever:
         SELECT {_RETRIEVE_COLS}
         FROM motif
         WHERE status = 'active'
-          AND language = $2
-{genre_clause}          AND {_VISIBLE_PREDICATE}
+{lang_clause}{genre_clause}          AND {_VISIBLE_PREDICATE}
         ORDER BY
           (owner_user_id = $1) DESC NULLS LAST,
           mining_support DESC NULLS LAST,
           judge_score DESC NULLS LAST,
           updated_at DESC
-        LIMIT $3
+        LIMIT $2
         """
         async with self._pool.acquire() as c:
             return await c.fetch(sql, *params)

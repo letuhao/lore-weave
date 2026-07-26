@@ -127,11 +127,23 @@ async def run_motifs(ctx: PassContext) -> dict[str, Any]:
         candidate_limit=int(ctx.params.get("candidate_limit", 15)),
         trace_id=ctx.trace_id, cancel_check=ctx.cancel_check,
     )
-    return {"motifs": [
+    out = {"motifs": [
         {"code": m.code, "name": m.name, "summary": m.summary,
          "why": m.why, "arc_role": m.arc_role}
         for m in selected
     ]}
+    if not selected:
+        # Absent ≠ zero, part two. The `degraded` flag above only covers "there was no retriever
+        # at all"; a retriever that ran and matched NOTHING emitted a bare `{"motifs": []}` — which
+        # renders, forever, as "this book has no motifs". That is exactly how
+        # D-MOTIF-AUTO-LANGUAGE-ZEROES-RETRIEVAL hid: `language="auto"` matched 0 of 147 rows, every
+        # motif_plan in the database was empty, and pass 6 planned every scene with no motif layer
+        # while the checkpoint looked healthy. An empty RESULT must be as loud as an empty LOOK.
+        out["warning"] = (
+            "no motif matched this arc — the library had no candidate for its language/genre, or "
+            "none scored above the similarity floor. Scenes will be planned with no motif layer."
+        )
+    return out
 
 
 # ── pass 2 · cast (BLOCKING) ─────────────────────────────────────────────────────────────────────

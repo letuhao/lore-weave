@@ -166,10 +166,34 @@ observation. A claim that a check passed, without its output, does **not** tick 
 
 ## Phase F — atom inventory matrix (scopes the rest of Phase B, per Q2)
 
-- [ ] **F1** Enumerate every atom type across composition / book / glossary / knowledge.
-- [ ] **F2** For each: MCP tool? FE edit surface? actually wired? real-run proven?
-- [ ] **F3** Rank the gaps; fold the "built but never wired" ones into Phase B.
-      *(`structure_template` is already a confirmed member of this class.)*
+- [x] **F0** 🔴 **Found + FIXED while mapping the matrix: the motifs pass has NEVER selected a
+      motif, for any book.** Every `motif_plan` artifact in the DB held 0 motifs and was NOT flagged
+      degraded, so pass 6 always planned scenes with no motif layer. Not an empty library — 147
+      rows. Cause: `_fetch_candidates` filters `AND language = $2`, but the neutral default is the
+      sentinel `"auto"`, which no row can equal (motifs are `en`/`vi`); the empty-**genre** case
+      already had this exact guard (MD-2) and `language` never got it. Also, `pass_input` never
+      threaded `source_language`, so every pass ran as `auto` regardless of the book.
+      **Fixed 3 ways** (omit the clause for auto/unknown/und; thread the Work's real language; warn
+      on an empty selection). **Live proof: 0 → 3 motifs**, semantically apt with distinct arc roles
+      (`Dao-Heart Tempering`/central spine, `Fortuitous Encounter→Legacy`/recurring, `chosen one
+      refuses the call`/climax payoff). 3 regression tests incl. one pinning the `LIMIT` placeholder
+      after the clause renumbering.
+- [x] **F1** Atom types enumerated across composition / book / glossary / knowledge (~22 kinds,
+      matching the human's "24+"): 6 PlanForge pass artifacts · 11 composition `*_edit` families ·
+      book chapter/details/structure · glossary entity/ontology/wiki · kg node/schema/view/template.
+- [~] **F2** Matrix in progress. Confirmed so far:
+      - **Consumed & wired:** canon_rule, motif, motif_bind/link, scene_link, reference,
+        entity_override (all → `pack()` at draft time); arc, outline_node (→ propose grounding);
+        arc_template (→ `arc_apply`).
+      - **BUILT BUT NOT WIRED:** `structure_template` — BE now wired by this track, but
+        `StructureTemplatesPanel` is **462 lines of full CRUD with ZERO references to a plan run**.
+        An author can lovingly write a beat sheet in the GUI and it can never reach a plan. (E8)
+      - **Agent cannot DELETE from 4 of 6 atom kinds:** `_PASS_LIST_REPLACE_FIELDS` covers only
+        `cast_plan`/`beat_plan`, so `motif_plan`(`motifs`), `world_plan`(`entities`),
+        `char_arc_plan`(`character_arcs`) and `scene_plan`(`chapters`) deep-merge — a shorter list
+        silently keeps the removed member. Live shapes confirmed. → **B6**
+      - **FE cannot edit 4 of 6 kinds at all** (read-only JSON fallback). → **B5**
+- [ ] **F3** Rank the remaining gaps; fold the "built but never wired" ones into Phase B.
 
 ---
 

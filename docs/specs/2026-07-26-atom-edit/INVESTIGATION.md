@@ -216,6 +216,58 @@ canon.py` (CRUD), and the single legacy `routers/plan.py` use above.
 4. Author + agent must be able to CHOOSE the structure (it is a per-book creative decision, not a
    platform constant) — this is itself an *atom edit* surface, and it is the missing FE wire.
 
+### F9 — 🔴 the motifs pass has NEVER selected a motif, for any book — **CONFIRMED (live DB) · FIXED**
+**Severity: critical. Third instance of the identical bug class, found while mapping the atom
+matrix.**
+
+Live evidence — **every** `motif_plan` artifact in the database:
+
+```
+ id                                   | n_motifs | degraded | warning
+ 019f9d20-6062-…                      |        0 |          |
+ 019f9ed9-a5c4-…                      |        0 |          |
+ 019f9d2f-6be8-…                      |        0 |          |
+ 019f6b9c-793a-…                      |        0 |          |
+ a63e7247-66b0-…                      |        0 |          |
+```
+
+Zero motifs, and **not** flagged `degraded` — so it read as "this book legitimately has no motifs".
+Consequence: pass 6 has always decomposed scenes with `motifs=[]`, and the prose has never carried
+a motif layer.
+
+**Not an empty library** — `motif` holds **147 rows** (88 platform-tier, 118 active).
+
+**Root cause:** `MotifRetriever._fetch_candidates` filters `AND language = $2`. `language` is a
+concrete stored code (`en`: 70 active, `vi`: 48 active), but the callers' NEUTRAL default is the
+sentinel **`"auto"`** (`packer/profile.from_settings`), which **no row can ever equal**. So the
+pre-filter matched 0 of 147, `retrieve` returned `[]`, and the pass emitted a bare `{"motifs": []}`.
+
+The empty-**genre** case already had exactly this guard — MD-2, *"an empty array && is always false
+and would zero out retrieval"* — so the defensive pattern was understood and simply not applied to
+`language`.
+
+Compounding it, `plan_forge_service`'s `pass_input` never included `source_language` at all, leaving
+the worker's `input.get("source_language") or "auto"` fallback permanently in charge — so even a
+book that DID declare `vi` ran every pass as `auto`.
+
+**Fix (3 parts):**
+1. `_fetch_candidates` omits the language clause for `auto`/`unknown`/`und`/empty — "unspecified"
+   means *any* language, the same treatment an empty genre already got.
+2. `pass_input` threads the Work's real `source_language` (the field `routers/plan.py` already reads).
+3. `run_motifs` emits a `warning` on an empty selection — an empty **result** must be as loud as an
+   empty **look** (the existing `degraded` flag only covered "no retriever at all").
+
+**Live proof after the fix** — same book/run, motifs pass re-run:
+
+```
+ 019f9ef7-3f04-…  15:07:11 | n_motifs = 3
+   Dao-Heart Tempering          | central spine  | "…confront the guilt of erasing Oakhaven…"
+   Fortuitous Encounter→Legacy  | recurring      | "…the ancient inks and the vanished cartographers…"
+   chosen one refuses the call  | climax payoff  | "…refuses Lord Vane's demand to redraw borders…"
+```
+
+0 → 3, semantically apt, with distinct arc roles.
+
 ### F7 — `package["canon"]` is compiled and read by nobody — **CONFIRMED (code)**
 `compile.py` builds `package["canon"]` from the charter's `consistency_anchors`. `PassContext`
 exposes only `premise`, `arc_title`, `beats`, `chapters`. No adapter reads `canon`, `constraints`,

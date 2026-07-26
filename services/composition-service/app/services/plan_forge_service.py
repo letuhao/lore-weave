@@ -39,6 +39,7 @@ from app.engine.plan_forge.propose import propose_spec
 from app.engine.plan_forge.self_check import run_self_check, run_self_check_on_document
 from app.engine.plan_forge.structure import resolve_structure
 from app.engine.arc_plan import shape_tension_curve
+from app.packer.profile import from_settings
 from app.engine.plan_forge.validate import _deep_merge, run_rules
 from app.worker.events import enqueue_job
 from app.worker.operations import run_plan_forge_propose, run_plan_forge_refine
@@ -1569,6 +1570,12 @@ class PlanForgeService:
             "model_source": "user_model",
             "params": dict(params or {}),
             "force": force,
+            # The book's declared language. Omitting it left the worker's
+            # `input.get("source_language") or "auto"` fallback in charge, so every pass ran as
+            # "auto": motif retrieval matched no row (see D-MOTIF-AUTO-LANGUAGE-ZEROES-RETRIEVAL)
+            # and every LLM prompt lost its language clause. The Work has always carried this —
+            # `routers/plan.py` reads the same field — the pass path just never passed it on.
+            "source_language": from_settings(work.settings).source_language,
         }
         job, _ = await self._jobs.create(
             project_id,
