@@ -1926,6 +1926,61 @@ CREATE INDEX IF NOT EXISTS idx_mcp_gate_tasks_owner ON mcp_gate_tasks (owner_use
 CREATE INDEX IF NOT EXISTS idx_mcp_gate_tasks_status ON mcp_gate_tasks (status, created_at);
 """
 
+# ── Glossary-build pipeline (spec 2026-07-27-glossary-kg-build-workflows, plan
+# 2026-07-27-glossary-build-pipeline). The deterministic planner/executor FSM that
+# replaced the chat rail's tool-choice for world building (Mị Đế dogfood pivot).
+# Tenancy: owner_user_id + book_id on every row, every query filters by them.
+# params carries model_source + model_ref (user-model UUID via provider-registry —
+# never a literal) + source_text + caps. Relations are stored by NAME on the item
+# (closed-set type) and resolved to entity ids only at the KG phase.
+_GLOSSARY_BUILD_SQL = """
+CREATE TABLE IF NOT EXISTS glossary_build_runs (
+  run_id          UUID PRIMARY KEY DEFAULT uuidv7(),
+  owner_user_id   UUID NOT NULL,
+  book_id         UUID NOT NULL,
+  params          JSONB NOT NULL DEFAULT '{}'::jsonb,
+  status          TEXT NOT NULL DEFAULT 'draft' CHECK (
+    status IN ('draft','planning','plan_ready','building','proposing','proposed',
+               'kg_projecting','edges_ready','done','failed','cancelled')
+  ),
+  worklist        JSONB NOT NULL DEFAULT '[]'::jsonb,
+  edges           JSONB NOT NULL DEFAULT '[]'::jsonb,
+  error_message   TEXT,
+  created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at      TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_glossary_build_runs_owner_book
+  ON glossary_build_runs(owner_user_id, book_id, created_at DESC);
+-- One in-flight run per book (mirrors uq_authoring_runs_active_book).
+CREATE UNIQUE INDEX IF NOT EXISTS uq_glossary_build_active_book
+  ON glossary_build_runs(book_id)
+  WHERE status IN ('planning','plan_ready','building','proposing','kg_projecting','edges_ready');
+
+CREATE TABLE IF NOT EXISTS glossary_build_items (
+  item_id         UUID PRIMARY KEY DEFAULT uuidv7(),
+  run_id          UUID NOT NULL REFERENCES glossary_build_runs(run_id) ON DELETE CASCADE,
+  owner_user_id   UUID NOT NULL,
+  book_id         UUID NOT NULL,
+  ordinal         INT NOT NULL,
+  name            TEXT NOT NULL,
+  kind            TEXT NOT NULL,
+  depth           TEXT NOT NULL DEFAULT 'standard' CHECK (depth IN ('standard','deep')),
+  status          TEXT NOT NULL DEFAULT 'pending' CHECK (
+    status IN ('pending','building','built','proposed','skipped')
+  ),
+  built           JSONB,
+  sections        JSONB,
+  relations       JSONB NOT NULL DEFAULT '[]'::jsonb,
+  proposed_entity_id UUID,
+  skip_reason     TEXT,
+  created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE (run_id, ordinal)
+);
+CREATE INDEX IF NOT EXISTS idx_glossary_build_items_run
+  ON glossary_build_items(run_id, ordinal);
+"""
+
 
 async def _apply_base_schema(conn: asyncpg.Connection) -> None:
     """The base idempotent DDL — injected into the package re-key so its M0
@@ -1948,6 +2003,7 @@ async def run_migrations(pool: asyncpg.Pool) -> None:
             logger.info("composition migrate: package re-key pkg_rekey_v1 applied this boot")
         await conn.execute(_MOTIF_SCHEMA_SQL)          # F0: narrative motif library DDL (+ structure_node)
         await conn.execute(_MCP_GATE_TASKS_SQL)        # M1c: the durable ext-tasks gate PERSISTENT store
+        await conn.execute(_GLOSSARY_BUILD_SQL)        # glossary-build pipeline FSM (spec 2026-07-27)
         # B3 (BA2): a CLEAN DB (fresh, or already drained of legacy arc rows) is auto-lifted here —
         # a safe CHECK-tighten with NOTHING to migrate — so fresh + throwaway-test DBs are born
         # consistent and never trip the guard below. Placed AFTER _MOTIF_SCHEMA_SQL because that is
