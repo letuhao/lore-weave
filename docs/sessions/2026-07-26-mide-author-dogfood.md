@@ -40,7 +40,11 @@ Continuity editor · Line editor · Character coach · Genre reader (tu chân kh
 | 8 | KG edge | MED | Model swallowed a FAILED approved write: `kg_propose_edge` errored ("endpoints not yet graph nodes") but the reply said everything was set up. User believes a relation exists that doesn't. | tool_calls JSONB: ok=false + the cheery final reply |
 | 9 | KG edge | INFO (good) | The edge error itself is excellent: names the repair tool + the order. Tool-side contract is right; the model + surface let it down. | error text in row 8 |
 
+| 10 | every multi-round turn | MED→**FIXED** | Reply bubble repeats the same content once per tool round (observed 4×) — gemma re-emits its full prior text verbatim each continuation pass and the stream concatenates passes. | persist 943→1884 (2×), 771→1542; 4-copy bubble at 11:42 PM |
+| 11 | breaker verify | INFO (good) | Post-fix live turn: the same entity_edit misuse stopped at **2 calls** (vs 205), model apologised honestly + formed the correct 4-step plan. Fix #5 verified by effect. | tool_calls: 2×✗ then honest text |
+
 **Fixes landed this run (hard-block / wedge class):**
+- **#10 → FIXED** (D-PASS-TEXT-REECHO) — continuation-pass opening tokens held while they verbatim-prefix the turn's streamed text; full echo swallowed, divergence flushed unchanged (incl. straddling delta). 3 regression tests.
 - **#5 → FIXED** `516d33eba` — frontend tools now feed the shared repeated-failure breaker + get de-advertised at the same cap (D-FE-TOOL-LOOP). 4 regression tests.
 - **#3 → FIXED** (D-RAIL-NEXT-STEP-EXEMPT) — the rail's NEXT actionable step tools are budget-exempt in the surface seed; the driven step is always on the wire. Note: the RESUME path still seeds from `susp.pinned_step_tools` without done/next info (pre-existing, lower risk) — tracked here, not fixed.
 

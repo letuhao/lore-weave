@@ -1725,6 +1725,13 @@ async def _stream_with_tools(
                 _middle, model_source=model_source, model_ref=model_ref, user_id=user_id,
             )
 
+        # D-PASS-TEXT-REECHO — all content ACCEPTED (streamed to the user) this turn,
+        # across passes. Gemma re-emits its full prior reply VERBATIM at the start of
+        # each continuation pass after a tool round, so an N-tool-round turn rendered
+        # the same paragraphs N+1 times (measured live: 943→1884 chars, then a 4-copy
+        # bubble). Each pass's opening tokens are held while they prefix-match this
+        # accumulator; a full match is swallowed, a divergence is flushed unchanged.
+        turn_text_so_far = ""
         iteration = -1
         while True:
             iteration += 1
@@ -1994,6 +2001,10 @@ async def _stream_with_tools(
             # marker that started but never completed, must not be silently lost).
             content_hold = ""
             reasoning_hold = ""
+            # D-PASS-TEXT-REECHO — guard only continuation passes with real prior text
+            # (a short accumulator is not worth guarding and raises false-hold risk).
+            _echo_scan = iteration > 0 and len(turn_text_so_far) >= 40
+            _echo_buf = ""
             finish_reason: str | None = None
             # D-REASONING-LOOP — one detector per pass, fed BOTH channels. On a trip
             # we abort the stream (hoisted iterator so we can aclose deterministically)
@@ -2004,15 +2015,36 @@ async def _stream_with_tools(
             try:
                 async for ev in _stream_iter:
                     if isinstance(ev, TokenEvent):
-                        text_parts.append(ev.delta)
-                        content_hold += ev.delta
+                        if loop_det.feed(ev.delta):
+                            _looped = True
+                            break
+                        _delta = ev.delta
+                        if _echo_scan:
+                            # D-PASS-TEXT-REECHO — hold the pass's opening tokens while
+                            # they verbatim-prefix the text already shown this turn.
+                            _echo_buf += _delta
+                            if turn_text_so_far.startswith(_echo_buf):
+                                if len(_echo_buf) == len(turn_text_so_far):
+                                    # full re-echo swallowed; stream the rest normally
+                                    _echo_scan = False
+                                    _echo_buf = ""
+                                continue
+                            _echo_scan = False
+                            if _echo_buf.startswith(turn_text_so_far):
+                                # a delta straddled the echo's end: swallow the echo,
+                                # keep only the genuinely-new excess
+                                _delta = _echo_buf[len(turn_text_so_far):]
+                            else:
+                                # diverged → not an echo: flush everything held, unchanged
+                                _delta = _echo_buf
+                            _echo_buf = ""
+                        text_parts.append(_delta)
+                        turn_text_so_far += _delta
+                        content_hold += _delta
                         flush, content_hold = _split_safe_emit(content_hold)
                         if flush:
                             yield {"content": flush, "reasoning_content": "",
                                    "finish_reason": None, "usage": None}
-                        if loop_det.feed(ev.delta):
-                            _looped = True
-                            break
                     elif isinstance(ev, ReasoningEvent):
                         reasoning_parts.append(ev.delta)
                         reasoning_hold += ev.delta
