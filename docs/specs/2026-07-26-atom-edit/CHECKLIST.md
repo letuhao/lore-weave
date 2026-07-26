@@ -71,16 +71,23 @@ observation. A claim that a check passed, without its output, does **not** tick 
       for all four (raw-JSON fallback gone). `arc_role` left FREE TEXT after verifying
       `motifs_for_beat` matches by substring and is explicitly fail-open — an enum there would have
       been wrong. `motif_plan` calls out an empty selection instead of rendering blank.
-      **`scene_plan` stays read-only in the GUI** — its list is nested (chapters → scenes), so the
-      flat row editor cannot represent it without flattening on save. Tracked, not faked. → **B8**
+      `scene_plan` needed a nested editor rather than a flattened fake → delivered in **B8**.
 - [x] **B6** Every atom kind now supports **DELETE**. `_PASS_LIST_REPLACE_FIELDS` gained
       `motif_plan {motifs|selected_motifs}`, `world_plan {entities}`,
       `char_arc_plan {character_arcs}`, `scene_plan {chapters}` — previously they fell through to
       `_deep_merge`'s id-upsert, so a shorter list silently kept the removed member while reporting
       success. 6 parametrized tests + a nested-scene deletion test.
-- [ ] **B8** Dedicated NESTED editor for `scene_plan` (chapters → scenes). Structural; the only
-      atom kind still GUI-read-only.
-- [ ] **B7** Re-verify: full composition unit suite + `plan-forge`/`studio-panels` FE suites, tsc.
+- [x] **B8** Dedicated NESTED editor for `scene_plan` (chapters → scenes) — `ScenePlanEditor`,
+      routed from `CheckpointReview`. **All 6 atoms are now GUI-editable.** Two invariants pinned by
+      tests: nothing unexposed is lost (scene `present_entity_ids`/`suggested_k`, chapter
+      `warning`/`exit_state` survive an unrelated edit — dropping the entity ids would silently
+      un-ground the scene), and the chapter grouping is never flattened. Also flags a zero-scene
+      chapter as "cannot be drafted".
+- [x] **B9** 🔴 **The door** (F10) — see C1/C2. The editors existed but nothing could open four of
+      them. Fixed after the browser pass.
+- [x] **B7** Re-verify: composition unit **2409 passed / 1 skipped**; FE `plan-forge` + `studio`
+      **1601 passed / 176 files**; `tsc --noEmit` **exit 0** (TS 5.5.4 — local node_modules has
+      drifted to 7.0.2, see the host-drift note in SESSION_HANDOFF).
 
 ## Phase C — real-run proof (the gate that actually matters)
 
