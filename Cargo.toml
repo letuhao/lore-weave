@@ -37,6 +37,14 @@ members = [
     # dp_kernel::resilience::CircuitBreaker is unchanged.
     "crates/breaker-core",
     "crates/dp-kernel",
+    # S1a (2026-07-26) — the simulation kernel per 14_sim_core_spec.md: pure,
+    # zero-dep, deterministic island scheduler (Domain trait w/ Rules seam per
+    # RLS-A12). `sim` is its test/chaos harness + TestDomain + bench bin.
+    # ⚠ [profile.release] panic="abort" below is FINE for these two crates but
+    # is a HARD S3 GATE ITEM for the commit-service host binary — see
+    # docs/plans/2026-07-26-sim-core-s1a.md (docs 14 §10.4 / 15 warned by name).
+    "crates/sim-core",
+    "crates/sim",
     # Cycle 13 — L3.B per-aggregate projection skeletons (consume
     # `crates/dp-kernel::Projection` trait shipped cycle 12; write to the
     # `contracts/migrations/per_reality/0006_projections.sql` tables shipped

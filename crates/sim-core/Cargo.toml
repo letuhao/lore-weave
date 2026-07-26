@@ -1,0 +1,12 @@
+# sim-core — the simulation kernel (14_sim_core_spec.md, S1a slice).
+#
+# ZERO runtime dependencies, deliberately: determinism is the product, and
+# every dependency is a determinism liability to audit. DetRng is a hand-rolled
+# SplitMix64; time is injected as `Tick`, never read from a clock.
+[package]
+name = "sim-core"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[dependencies]
