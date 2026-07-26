@@ -235,3 +235,23 @@ services:
     class: web
     v1: { min_replicas: 1, max_replicas: 2, cpu_per_replica: 0.5, memory_per_replica: 512Mi, scale_trigger: "rps>100" }
     v3: { min_replicas: 2, max_replicas: 6 }
+
+  # ── seeded 2026-07-26: three services were on disk with no budget row, so
+  # capacity-budget-lint (L1.K.7 / SR08 I17) had been FAILing. Stub budgets only —
+  # same pattern as the Cycle-7 seeding above; tuning belongs to each service's own
+  # sub-program cycle. Classes derived from source, not guessed:
+  #   agent-registry-service · knowledge-gateway → http.Server / NestJS  ⇒ web
+  #   scheduler-service      → "claims due scheduled_agent_runs rows and
+  #                             enqueues onto existing consumers"        ⇒ worker
+  - name: agent-registry-service
+    class: web
+    v1: { min_replicas: 1, max_replicas: 2, cpu_per_replica: 0.5, memory_per_replica: 512Mi, scale_trigger: "rps>100" }
+    v3: { min_replicas: 2, max_replicas: 6 }
+  - name: knowledge-gateway
+    class: web
+    v1: { min_replicas: 1, max_replicas: 4, cpu_per_replica: 0.5, memory_per_replica: 512Mi, scale_trigger: "rps>200" }
+    v3: { min_replicas: 2, max_replicas: 12 }
+  - name: scheduler-service
+    class: worker
+    v1: { min_replicas: 1, max_replicas: 2, cpu_per_replica: 0.5, memory_per_replica: 512Mi, scale_trigger: "scheduled_agent_runs_due>100" }
+    v3: { min_replicas: 2, max_replicas: 6 }

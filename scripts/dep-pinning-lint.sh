@@ -49,9 +49,20 @@ fi
 # pyproject lockfile coverage tracked separately as a non-blocking warning).
 while IFS= read -r py; do
   dir=$(dirname "$py")
-  # Grandfather: existing platform code outside scope of foundation cycles
+  # Grandfather: existing platform code outside scope of foundation cycles.
+  # Extended 2026-07-26 to the STANDALONE per-package descriptors under
+  # sdks/python/<pkg>/. They belong to the same already-grandfathered shared
+  # distribution — each says so in its own header ("ships its own descriptor so
+  # it can be created without editing that shared file") — and they are imported
+  # via PYTHONPATH=sdks/python, never installed. A lock file for a package
+  # nothing installs pins nothing; the shared distribution is where SR10
+  # lockfile coverage belongs, and it is already tracked as the non-blocking
+  # warning noted above. Without this, loreweave_authn and
+  # loreweave_internal_client failed the gate purely for having split their
+  # descriptor out of the exempt file.
   case "$py" in
     */sdks/python/pyproject.toml) continue ;;
+    */sdks/python/*/pyproject.toml) continue ;;
   esac
   if [[ ! -f "$dir/uv.lock" ]] && [[ ! -f "$dir/poetry.lock" ]]; then
     echo "[dep-pinning] FAIL — $py has neither uv.lock nor poetry.lock"
