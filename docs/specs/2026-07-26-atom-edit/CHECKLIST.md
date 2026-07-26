@@ -67,10 +67,19 @@ observation. A claim that a check passed, without its output, does **not** tick 
 - [ ] **B4** **Machine-checked contract** for pass-artifact shapes across the BE↔FE seam, so this
       class of drift reds in CI. (Mirrors `contracts/frontend-tools.contract.json`; that file does
       not cover artifacts today.)
-- [ ] **B5** Extend GUI editing to the remaining kinds — `motif_plan`, `world_plan`,
-      `char_arc_plan`, `scene_plan` (**pending Q1**).
-- [ ] **B6** Give every list-bearing kind wholesale-replace semantics so the agent can **delete**
-      a scene/motif/world entity, not only add (F5 caveat).
+- [x] **B5** GUI editing extended to `motif_plan`, `world_plan`, `char_arc_plan` + readable views
+      for all four (raw-JSON fallback gone). `arc_role` left FREE TEXT after verifying
+      `motifs_for_beat` matches by substring and is explicitly fail-open — an enum there would have
+      been wrong. `motif_plan` calls out an empty selection instead of rendering blank.
+      **`scene_plan` stays read-only in the GUI** — its list is nested (chapters → scenes), so the
+      flat row editor cannot represent it without flattening on save. Tracked, not faked. → **B8**
+- [x] **B6** Every atom kind now supports **DELETE**. `_PASS_LIST_REPLACE_FIELDS` gained
+      `motif_plan {motifs|selected_motifs}`, `world_plan {entities}`,
+      `char_arc_plan {character_arcs}`, `scene_plan {chapters}` — previously they fell through to
+      `_deep_merge`'s id-upsert, so a shorter list silently kept the removed member while reporting
+      success. 6 parametrized tests + a nested-scene deletion test.
+- [ ] **B8** Dedicated NESTED editor for `scene_plan` (chapters → scenes). Structural; the only
+      atom kind still GUI-read-only.
 - [ ] **B7** Re-verify: full composition unit suite + `plan-forge`/`studio-panels` FE suites, tsc.
 
 ## Phase C — real-run proof (the gate that actually matters)
